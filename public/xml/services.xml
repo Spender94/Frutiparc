@@ -1,0 +1,3 @@
+<services host="localhost:8888">
+	<service name="snake3" port="5173" />
+</services>

@@ -1,0 +1,22 @@
+<lang>
+	<ct>
+		<!-- à priori, une liste de pays ? -->
+		<c c="France" n="name" tn="regionName" d="displayCode">
+			<r c="region_a">Region A</r>
+			<r c="region_b">Region B</r>
+			<r c="region_c">Region C</r>
+		</c>
+	</ct>
+	<!-- à priori XML pas utilisé : -->
+	<gn>
+		<g d="snake3">FrutiSnake 3</g>
+	</gn>
+	<td>
+		<d t="h" i="id_a">Some <b>html</b> stuff.</d>
+		<!-- <d t="d" i="id_b"> Document stuff ..?? </d> -->
+		<d t="t" i="id_c">Some text stuff.</d>
+	</td>
+	<ex>
+		<c n=""></c>
+	</ex>
+</lang>
