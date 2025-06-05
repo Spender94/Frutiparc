@@ -17,7 +17,10 @@ server running on `localhost:8888`.
    You can change the port by setting the `PORT` environment variable if
    necessary.
 3. Open your browser at [`http://localhost:8888/index.html`](http://localhost:8888/index.html).
-   The page uses [Ruffle](https://ruffle.rs/) to load `main.swf`.
+   The page uses [Ruffle](https://ruffle.rs/) to load `main.swf`.  The
+   `flashvars` parameter in `public/index.html` already sets
+   `domain=localhost:8888/` so that the additional assets (e.g.
+   `fileIcon.swf`) are loaded from the same server.
 
 If everything is accessible, the progress bar shown by `main.swf` will
 continue past 10 % and the game will start.
