@@ -6,11 +6,11 @@
     <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
 </head>
 <body>
-   <object id="frutiparc-swf" data="main.swf" width="1024" height="768">
-
-
-        <!-- The Flash client expects the domain to include a trailing slash -->
-        <param name="flashvars" value="sid=debug&domain=localhost:8888/" />
-    </object>
+   <!-- Pass the domain via the query string so the SWF loads assets from the
+        same server. The trailing slash is required by the original code. -->
+   <object id="frutiparc-swf"
+           data="main.swf?sid=debug&domain=localhost:8888/"
+           width="1024" height="768">
+   </object>
 </body>
 </html>
