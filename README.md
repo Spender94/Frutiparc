@@ -14,6 +14,8 @@ server running on `localhost:8888`.
    ```bash
    npm start
    ```
+   On Windows you can run the `public/start.bat` script which launches the same
+   server.
    You can change the port by setting the `PORT` environment variable if
    necessary.
 3. Open your browser at [`http://localhost:8888/index.html`](http://localhost:8888/index.html).
