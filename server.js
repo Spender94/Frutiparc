@@ -30,6 +30,10 @@ app.get('/api/mvp/showcase', (req, res) => {
   res.json(buildMvpShowcase());
 });
 
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ ok: true, service: 'frutiparc-node-mvp' });
+});
+
 const server = app.listen(port, () => {
   console.log(`HTTP server running on http://localhost:${port}`);
 });

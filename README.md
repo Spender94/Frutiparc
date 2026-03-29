@@ -36,3 +36,9 @@ curl http://localhost:8888/api/mvp/showcase
 
 Cet endpoint exécute les modules portés (`feString`, `feColor`, `statusMng`, `classLoader`)
 et renvoie un JSON de démonstration.
+
+
+## Déploiement public
+
+Un blueprint Render est fourni via `render.yaml` pour exposer publiquement l'API Node MVP.
+Voir `docs/DEPLOY_NODE_MVP.md`.
