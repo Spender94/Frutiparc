@@ -17,6 +17,7 @@
 - ✅ **Module MD5** porté en Haxe: `packages/core-haxe/src/frutiparc/core/MD5.hx`
 - ✅ **Module HTTP** porté en Haxe (queue + callback orchestration): `packages/core-haxe/src/frutiparc/core/HTTP.hx`
 - ✅ **Module FileLoader** porté en Haxe (état + événements): `packages/core-haxe/src/frutiparc/core/FileLoader.hx`
+- ✅ **Module FEMCLoader** porté en Haxe (déduplication de chargements): `packages/core-haxe/src/frutiparc/core/FEMCLoader.hx`
 - ✅ Base transitoire `Slot` introduite: `packages/core-haxe/src/frutiparc/core/SlotBase.hx`
 - ✅ Miroirs runtime JS ajoutés pour intégration immédiate Node:
   - `packages/core-js/src/feColor.js`
@@ -35,6 +36,7 @@
   - `packages/core-js/src/md5.js`
   - `packages/core-js/src/http.js`
   - `packages/core-js/src/fileLoader.js`
+  - `packages/core-js/src/femcLoader.js`
 - ✅ Tests de parité ajoutés:
   - `tests/migration/feColor.spec.js`
   - `tests/migration/window.spec.js`
@@ -51,13 +53,14 @@
   - `tests/migration/md5.spec.js`
   - `tests/migration/http.spec.js`
   - `tests/migration/fileLoader.spec.js`
+  - `tests/migration/femcLoader.spec.js`
 
 ## Commandes de test
 
 ```bash
-node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js tests/migration/pref.spec.js tests/migration/runDate.spec.js tests/migration/lang.spec.js tests/migration/md5.spec.js tests/migration/http.spec.js tests/migration/fileLoader.spec.js
+node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js tests/migration/pref.spec.js tests/migration/runDate.spec.js tests/migration/lang.spec.js tests/migration/md5.spec.js tests/migration/http.spec.js tests/migration/fileLoader.spec.js tests/migration/femcLoader.spec.js
 ```
 
 ## Prochain module recommandé
 
-Pour poursuivre, le prochain module conseillé est `frutiengine/FEMCLoader.as`.
+Pour poursuivre, le prochain module conseillé est `frutiengine/FFileMng.as`.
