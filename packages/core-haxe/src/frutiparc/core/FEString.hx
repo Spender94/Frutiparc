@@ -91,6 +91,23 @@ class FEString {
     return false;
   }
 
+
+  public static function formatVars(str:String, obj:Dynamic):String {
+    var pos = str.indexOf("$");
+    while (pos > -1) {
+      var n = str.substr(pos + 1, 1);
+      if (n == "$") {
+        str = str.substr(0, pos) + "$" + str.substring(pos + 2, str.length);
+        pos = str.indexOf("$", pos + 2);
+      } else {
+        var r:Dynamic = Reflect.field(obj, n);
+        str = str.substr(0, pos) + Std.string(r) + str.substring(pos + 2, str.length);
+        pos = str.indexOf("$", pos + Std.string(r).length);
+      }
+    }
+    return str;
+  }
+
   public static function replaceBackSlashN(r:String):String {
     return replace(r, "\\n", "\n");
   }

@@ -93,6 +93,23 @@ function replaceBackSlashN(r) {
   return replace(r, '\\n', '\n');
 }
 
+
+function formatVars(str, obj) {
+  let pos = str.indexOf('$');
+  while (pos > -1) {
+    const n = str.substr(pos + 1, 1);
+    if (n === '$') {
+      str = `${str.substr(0, pos)}$${str.substring(pos + 2, str.length)}`;
+      pos = str.indexOf('$', pos + 2);
+    } else {
+      const r = obj[n];
+      str = `${str.substr(0, pos)}${r}${str.substring(pos + 2, str.length)}`;
+      pos = str.indexOf('$', pos + String(r).length);
+    }
+  }
+  return str;
+}
+
 module.exports = {
   replace,
   decode62,
@@ -107,4 +124,5 @@ module.exports = {
   endsWith,
   checkRepeat,
   replaceBackSlashN,
+  formatVars,
 };
