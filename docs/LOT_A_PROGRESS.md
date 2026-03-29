@@ -10,6 +10,7 @@
 - ✅ **Module FEString** porté en Haxe (subset pragmatique): `packages/core-haxe/src/frutiparc/core/FEString.hx`
 - ✅ **Module FENumber** porté en Haxe (subset utile): `packages/core-haxe/src/frutiparc/core/FENumber.hx`
 - ✅ **Module FEDate** porté en Haxe (subset utile): `packages/core-haxe/src/frutiparc/core/FEDate.hx`
+- ✅ **Module FEObject** porté en Haxe (subset utile): `packages/core-haxe/src/frutiparc/core/FEObject.hx`
 - ✅ Base transitoire `Slot` introduite: `packages/core-haxe/src/frutiparc/core/SlotBase.hx`
 - ✅ Miroirs runtime JS ajoutés pour intégration immédiate Node:
   - `packages/core-js/src/feColor.js`
@@ -21,6 +22,7 @@
   - `packages/core-js/src/feString.js`
   - `packages/core-js/src/feNumber.js`
   - `packages/core-js/src/feDate.js`
+  - `packages/core-js/src/feObject.js`
 - ✅ Tests de parité ajoutés:
   - `tests/migration/feColor.spec.js`
   - `tests/migration/window.spec.js`
@@ -30,13 +32,14 @@
   - `tests/migration/feString.spec.js`
   - `tests/migration/feNumber.spec.js`
   - `tests/migration/feDate.spec.js`
+  - `tests/migration/feObject.spec.js`
 
 ## Commandes de test
 
 ```bash
-node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js
+node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js
 ```
 
 ## Prochain module recommandé
 
-Pour continuer les utilitaires transverses, le prochain module conseillé est `frutiengine/FEObject.as`.
+Pour poursuivre le cœur utilitaire, le prochain module conseillé est `frutiengine/Pref.as`.
