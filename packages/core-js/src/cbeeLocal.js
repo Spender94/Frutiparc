@@ -1,5 +1,6 @@
 /**
  * Runtime JS mirror for pragmatic CBeeLocal subset.
+ * Supports both internal (CBeeManager bridge) and external (LocalConnection-like) variants.
  */
 class CBeeLocal {
   constructor(obj = {}) {
@@ -20,15 +21,46 @@ class CBeeLocal {
     this.addListener('ident', this, 'onIdent');
   }
 
+  static randomId() {
+    return Math.random().toString(36).slice(2, 10);
+  }
+
+  get isInternalMode() {
+    return this.cbeeManager !== undefined && this.cbeeManager !== null;
+  }
+
   init() {
-    if (this.port === undefined || !this.cbeeManager) return;
+    if (this.port === undefined) return;
 
-    this.initialized = true;
-    this.cbeeLC = this.cbeeManager.addListener(this.port, this, true);
+    if (this.isInternalMode) {
+      this.initialized = true;
+      this.cbeeLC = this.cbeeManager.addListener(this.port, this, true);
 
-    const obj = this.cbeeManager.getStatus(this.port);
-    if (obj && obj.connected) this.onConnect(true);
-    if (obj && obj.logged) this.callListenersArray(this.listeners[this.cmdList.ident]);
+      const obj = this.cbeeManager.getStatus(this.port);
+      if (obj && obj.connected) this.onConnect(true);
+      if (obj && obj.logged) this.callListenersArray(this.listeners[this.cmdList.ident]);
+      return;
+    }
+
+    const sid = this.sid;
+    const makeConnection = this.localConnectionFactory;
+    if (sid === undefined || typeof makeConnection !== 'function') return;
+
+    if (!this.lcName) this.lcName = `fp_cblc_${sid}_${this.port}_${CBeeLocal.randomId()}`;
+    if (!this.managerChannel) this.managerChannel = `fp_cbeeMng_${sid}`;
+
+    if (this.inboundConnection && typeof this.inboundConnection.connect === 'function') {
+      this.inboundConnection.connect(this.lcName);
+    }
+
+    const lc = makeConnection();
+    lc.obj = this;
+    lc.onStatus = (obj) => {
+      if (obj && obj.level === 'error') this.looseLocalConnection();
+      else this.initialized = true;
+    };
+    lc.send(this.managerChannel, 'addListener', this.port, this.lcName);
+    lc.send(this.managerChannel, 'getStatus', this.port, this.lcName);
   }
 
   close() {
@@ -36,6 +68,11 @@ class CBeeLocal {
   }
 
   check() {}
+
+  looseLocalConnection() {
+    this.initialized = false;
+    this.onClose();
+  }
 
   onConnect(success) {
     this.connected = !!success;
@@ -63,15 +100,46 @@ class CBeeLocal {
     });
   }
 
-  send(s) {
-    if (!this.initialized) return false;
-    if (!this.cbeeLC || typeof this.cbeeLC.send !== 'function') return false;
+  onStatus(obj) {
+    if (obj && obj.connected) this.onConnect(true);
+    this.logged = !!(obj && obj.logged);
+  }
 
-    this.cbeeLC.send(s);
+  send(s) {
+    if (this.isInternalMode) {
+      if (!this.initialized) return false;
+      if (!this.cbeeLC || typeof this.cbeeLC.send !== 'function') return false;
+      this.cbeeLC.send(s);
+      return true;
+    }
+
+    if (!this.initialized || !this.connected) return false;
+    if (typeof this.localConnectionFactory !== 'function') return false;
+
+    const lc = this.localConnectionFactory();
+    lc.obj = this;
+    lc.onStatus = (obj) => {
+      if (obj && obj.level === 'error') this.looseLocalConnection();
+    };
+    const channel = this.serverChannel || `fp_cbee_${this.port}_${this.sid}`;
+    lc.send(channel, 'send', s);
     return true;
   }
 
   cmd(cmd, attr, child) {
+    if (!this.isInternalMode) {
+      if (!this.initialized || !this.connected) return false;
+      if (typeof this.localConnectionFactory !== 'function') return false;
+      const lc = this.localConnectionFactory();
+      lc.obj = this;
+      lc.onStatus = (obj) => {
+        if (obj && obj.level === 'error') this.looseLocalConnection();
+      };
+      const channel = this.serverChannel || `fp_cbee_${this.port}_${this.sid}`;
+      lc.send(channel, 'cmd', cmd, attr, child);
+      return true;
+    }
+
     const cbeeCmdName = this.cmdList[String(cmd).toLowerCase()];
     if (cbeeCmdName === undefined) return false;
 

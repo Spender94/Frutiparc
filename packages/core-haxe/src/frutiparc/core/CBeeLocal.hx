@@ -1,8 +1,8 @@
 package frutiparc.core;
 
 /**
- * Portage Haxe pragmatique de CBeeLocal (version interne).
- * Focus: pont local vers CBeeManager/CBeeLC + listeners de commandes.
+ * Portage Haxe pragmatique de CBeeLocal.
+ * Supporte les variantes internes (CBeeManager) et externes (LocalConnection).
  */
 class CBeeLocal {
   public var cmdList:Map<String, String>;
@@ -14,6 +14,14 @@ class CBeeLocal {
   public var port:Int;
   public var cbeeLC:Dynamic;
   public var cbeeManager:Dynamic;
+
+  // External variant fields
+  public var sid:Dynamic;
+  public var lcName:String;
+  public var managerChannel:String;
+  public var serverChannel:String;
+  public var inboundConnection:Dynamic;
+  public var localConnectionFactory:Dynamic;
 
   public function new(?obj:Dynamic = null) {
     this.cmdList = new Map();
@@ -32,15 +40,43 @@ class CBeeLocal {
     this.addListener("ident", this, "onIdent");
   }
 
+  inline function isInternalMode():Bool {
+    return this.cbeeManager != null;
+  }
+
+  static function randomId():String {
+    return StringTools.replace(Std.string(Math.random()), "0.", "");
+  }
+
   public function init():Void {
-    if (this.port == null || this.cbeeManager == null) return;
+    if (this.port == null) return;
 
-    this.initialized = true;
-    this.cbeeLC = this.cbeeManager.addListener(this.port, this, true);
+    if (isInternalMode()) {
+      this.initialized = true;
+      this.cbeeLC = this.cbeeManager.addListener(this.port, this, true);
 
-    var obj = this.cbeeManager.getStatus(this.port);
-    if (obj != null && obj.connected) this.onConnect(true);
-    if (obj != null && obj.logged) this.callListenersArray(this.listeners.get(this.cmdList.get("ident")), null);
+      var obj = this.cbeeManager.getStatus(this.port);
+      if (obj != null && obj.connected) this.onConnect(true);
+      if (obj != null && obj.logged) this.callListenersArray(this.listeners.get(this.cmdList.get("ident")), null);
+      return;
+    }
+
+    if (this.sid == null || this.localConnectionFactory == null) return;
+    if (this.lcName == null) this.lcName = 'fp_cblc_${this.sid}_${this.port}_${randomId()}';
+    if (this.managerChannel == null) this.managerChannel = 'fp_cbeeMng_${this.sid}';
+
+    if (this.inboundConnection != null && Reflect.field(this.inboundConnection, "connect") != null) {
+      this.inboundConnection.connect(this.lcName);
+    }
+
+    var lc = this.localConnectionFactory();
+    lc.obj = this;
+    lc.onStatus = function(obj:Dynamic) {
+      if (obj != null && obj.level == "error") this.looseLocalConnection();
+      else this.initialized = true;
+    };
+    lc.send(this.managerChannel, "addListener", this.port, this.lcName);
+    lc.send(this.managerChannel, "getStatus", this.port, this.lcName);
   }
 
   public function close():Void {
@@ -48,6 +84,11 @@ class CBeeLocal {
   }
 
   public function check():Void {}
+
+  public function looseLocalConnection():Void {
+    this.initialized = false;
+    this.onClose();
+  }
 
   public function onConnect(success:Bool):Void {
     this.connected = success;
@@ -78,14 +119,43 @@ class CBeeLocal {
     }
   }
 
+  public function onStatus(obj:Dynamic):Void {
+    if (obj != null && obj.connected) this.onConnect(true);
+    this.logged = obj != null && obj.logged == true;
+  }
+
   public function send(s:Dynamic):Bool {
-    if (!this.initialized) return false;
-    if (this.cbeeLC == null || Reflect.field(this.cbeeLC, "send") == null) return false;
-    this.cbeeLC.send(s);
+    if (isInternalMode()) {
+      if (!this.initialized) return false;
+      if (this.cbeeLC == null || Reflect.field(this.cbeeLC, "send") == null) return false;
+      this.cbeeLC.send(s);
+      return true;
+    }
+
+    if (!this.initialized || !this.connected || this.localConnectionFactory == null) return false;
+    var lc = this.localConnectionFactory();
+    lc.obj = this;
+    lc.onStatus = function(obj:Dynamic) {
+      if (obj != null && obj.level == "error") this.looseLocalConnection();
+    };
+    var channel = this.serverChannel != null ? this.serverChannel : 'fp_cbee_${this.port}_${this.sid}';
+    lc.send(channel, "send", s);
     return true;
   }
 
   public function cmd(cmd:String, attr:Dynamic, ?child:Dynamic = null):Bool {
+    if (!isInternalMode()) {
+      if (!this.initialized || !this.connected || this.localConnectionFactory == null) return false;
+      var lc = this.localConnectionFactory();
+      lc.obj = this;
+      lc.onStatus = function(obj:Dynamic) {
+        if (obj != null && obj.level == "error") this.looseLocalConnection();
+      };
+      var channel = this.serverChannel != null ? this.serverChannel : 'fp_cbee_${this.port}_${this.sid}';
+      lc.send(channel, "cmd", cmd, attr, child);
+      return true;
+    }
+
     var cbeeCmdName = this.cmdList.get(Std.string(cmd).toLowerCase());
     if (cbeeCmdName == null) return false;
 
