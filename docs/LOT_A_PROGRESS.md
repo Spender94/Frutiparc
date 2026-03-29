@@ -22,6 +22,7 @@
 - ✅ **Module UserMng** porté en Haxe (helpers XP/profil + état utilisateur): `packages/core-haxe/src/frutiparc/core/UserMng.hx`
 - ✅ **Module UserListMng** porté en Haxe (gestion liste utilisateurs + listeners paginés): `packages/core-haxe/src/frutiparc/core/UserListMng.hx`
 - ✅ **Module StatusMng** porté en Haxe (encodage/décodage statut + émission cnx): `packages/core-haxe/src/frutiparc/core/StatusMng.hx`
+- ✅ **Module SlotList** porté en Haxe (profondeur slots + activation): `packages/core-haxe/src/frutiparc/core/SlotList.hx`
 - ✅ Base transitoire `Slot` introduite: `packages/core-haxe/src/frutiparc/core/SlotBase.hx`
 - ✅ Miroirs runtime JS ajoutés pour intégration immédiate Node:
   - `packages/core-js/src/feColor.js`
@@ -45,6 +46,7 @@
   - `packages/core-js/src/userMng.js`
   - `packages/core-js/src/userListMng.js`
   - `packages/core-js/src/statusMng.js`
+  - `packages/core-js/src/slotList.js`
 - ✅ Tests de parité ajoutés:
   - `tests/migration/feColor.spec.js`
   - `tests/migration/window.spec.js`
@@ -66,13 +68,14 @@
   - `tests/migration/userMng.spec.js`
   - `tests/migration/userListMng.spec.js`
   - `tests/migration/statusMng.spec.js`
+  - `tests/migration/slotList.spec.js`
 
 ## Commandes de test
 
 ```bash
-node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js tests/migration/pref.spec.js tests/migration/runDate.spec.js tests/migration/lang.spec.js tests/migration/md5.spec.js tests/migration/http.spec.js tests/migration/fileLoader.spec.js tests/migration/femcLoader.spec.js tests/migration/fFileMng.spec.js tests/migration/userMng.spec.js tests/migration/userListMng.spec.js tests/migration/statusMng.spec.js
+node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js tests/migration/pref.spec.js tests/migration/runDate.spec.js tests/migration/lang.spec.js tests/migration/md5.spec.js tests/migration/http.spec.js tests/migration/fileLoader.spec.js tests/migration/femcLoader.spec.js tests/migration/fFileMng.spec.js tests/migration/userMng.spec.js tests/migration/userListMng.spec.js tests/migration/statusMng.spec.js tests/migration/slotList.spec.js
 ```
 
 ## Prochain module recommandé
 
-Pour poursuivre, le prochain module conseillé est `frutiengine/SlotList.as`.
+Pour poursuivre, le prochain module conseillé est `frutiengine/Slot.as`.
