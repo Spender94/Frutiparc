@@ -20,6 +20,7 @@
 - ✅ **Module FEMCLoader** porté en Haxe (déduplication de chargements): `packages/core-haxe/src/frutiparc/core/FEMCLoader.hx`
 - ✅ **Module FFileMng** porté en Haxe (arbre et parsing XML): `packages/core-haxe/src/frutiparc/core/FFileMng.hx`
 - ✅ **Module UserMng** porté en Haxe (helpers XP/profil + état utilisateur): `packages/core-haxe/src/frutiparc/core/UserMng.hx`
+- ✅ **Module UserListMng** porté en Haxe (gestion liste utilisateurs + listeners paginés): `packages/core-haxe/src/frutiparc/core/UserListMng.hx`
 - ✅ Base transitoire `Slot` introduite: `packages/core-haxe/src/frutiparc/core/SlotBase.hx`
 - ✅ Miroirs runtime JS ajoutés pour intégration immédiate Node:
   - `packages/core-js/src/feColor.js`
@@ -41,6 +42,7 @@
   - `packages/core-js/src/femcLoader.js`
   - `packages/core-js/src/fFileMng.js`
   - `packages/core-js/src/userMng.js`
+  - `packages/core-js/src/userListMng.js`
 - ✅ Tests de parité ajoutés:
   - `tests/migration/feColor.spec.js`
   - `tests/migration/window.spec.js`
@@ -60,13 +62,14 @@
   - `tests/migration/femcLoader.spec.js`
   - `tests/migration/fFileMng.spec.js`
   - `tests/migration/userMng.spec.js`
+  - `tests/migration/userListMng.spec.js`
 
 ## Commandes de test
 
 ```bash
-node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js tests/migration/pref.spec.js tests/migration/runDate.spec.js tests/migration/lang.spec.js tests/migration/md5.spec.js tests/migration/http.spec.js tests/migration/fileLoader.spec.js tests/migration/femcLoader.spec.js tests/migration/fFileMng.spec.js tests/migration/userMng.spec.js
+node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js tests/migration/pref.spec.js tests/migration/runDate.spec.js tests/migration/lang.spec.js tests/migration/md5.spec.js tests/migration/http.spec.js tests/migration/fileLoader.spec.js tests/migration/femcLoader.spec.js tests/migration/fFileMng.spec.js tests/migration/userMng.spec.js tests/migration/userListMng.spec.js
 ```
 
 ## Prochain module recommandé
 
-Pour poursuivre, le prochain module conseillé est `frutiengine/UserListMng.as`.
+Pour poursuivre, le prochain module conseillé est `frutiengine/StatusMng.as`.

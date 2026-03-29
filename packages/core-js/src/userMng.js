@@ -114,6 +114,10 @@ class UserMng {
     }
   }
 
+  onDelete() {
+    this.mcList = [];
+  }
+
   setInfoBasic(obj) {
     Object.assign(this.infoBasic, obj);
   }

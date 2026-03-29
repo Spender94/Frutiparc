@@ -115,6 +115,10 @@ class UserMng {
     for (mc in mcList) if (Reflect.field(mc, "onInfoBasic") != null) mc.onInfoBasic(obj);
   }
 
+  public function onDelete():Void {
+    this.mcList = [];
+  }
+
   public function setInfoBasic(obj:Dynamic):Void {
     for (n in Reflect.fields(obj)) Reflect.setField(this.infoBasic, n, Reflect.field(obj, n));
   }
