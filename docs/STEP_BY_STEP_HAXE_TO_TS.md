@@ -76,3 +76,8 @@ Sorties:
 
 - Guide simple: `docs/COMMENT_TESTER.md`
 - Commande unique: `bash tools/migration/run_mvp.sh`
+
+## Lot A lancé (implémentation)
+
+- Premier portage réalisé: `FEColor`.
+- Voir `docs/LOT_A_PROGRESS.md` pour les commandes de test et la suite.
