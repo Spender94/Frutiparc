@@ -15,6 +15,7 @@
 - ✅ **Module RunDate** porté en Haxe (noyau métier): `packages/core-haxe/src/frutiparc/core/RunDate.hx`
 - ✅ **Module Lang** porté en Haxe (noyau formatage): `packages/core-haxe/src/frutiparc/core/Lang.hx`
 - ✅ **Module MD5** porté en Haxe: `packages/core-haxe/src/frutiparc/core/MD5.hx`
+- ✅ **Module HTTP** porté en Haxe (queue + callback orchestration): `packages/core-haxe/src/frutiparc/core/HTTP.hx`
 - ✅ Base transitoire `Slot` introduite: `packages/core-haxe/src/frutiparc/core/SlotBase.hx`
 - ✅ Miroirs runtime JS ajoutés pour intégration immédiate Node:
   - `packages/core-js/src/feColor.js`
@@ -31,6 +32,7 @@
   - `packages/core-js/src/runDate.js`
   - `packages/core-js/src/lang.js`
   - `packages/core-js/src/md5.js`
+  - `packages/core-js/src/http.js`
 - ✅ Tests de parité ajoutés:
   - `tests/migration/feColor.spec.js`
   - `tests/migration/window.spec.js`
@@ -45,13 +47,14 @@
   - `tests/migration/runDate.spec.js`
   - `tests/migration/lang.spec.js`
   - `tests/migration/md5.spec.js`
+  - `tests/migration/http.spec.js`
 
 ## Commandes de test
 
 ```bash
-node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js tests/migration/pref.spec.js tests/migration/runDate.spec.js tests/migration/lang.spec.js tests/migration/md5.spec.js
+node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js tests/migration/pref.spec.js tests/migration/runDate.spec.js tests/migration/lang.spec.js tests/migration/md5.spec.js tests/migration/http.spec.js
 ```
 
 ## Prochain module recommandé
 
-Pour poursuivre, le prochain module conseillé est `frutiengine/HTTP.as`.
+Pour poursuivre, le prochain module conseillé est `frutiengine/FileLoader.as`.
