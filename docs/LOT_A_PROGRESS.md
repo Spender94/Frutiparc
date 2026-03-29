@@ -26,6 +26,7 @@
 - ✅ **Module Slot** porté en Haxe (gestion box, activation et warning): `packages/core-haxe/src/frutiparc/core/Slot.hx`
 - ✅ **Module WinBox** porté en Haxe (cycle de vie fenêtre + slot hooks): `packages/core-haxe/src/frutiparc/core/WinBox.hx`
 - ✅ **Module WinStandard** porté en Haxe (subset logique: recal/resize/modes): `packages/core-haxe/src/frutiparc/core/WinStandard.hx`
+- ✅ **Module Tab** porté en Haxe (slot mono-box + auto-close): `packages/core-haxe/src/frutiparc/core/Tab.hx`
 - ✅ Base transitoire `Slot` introduite: `packages/core-haxe/src/frutiparc/core/SlotBase.hx`
 - ✅ Miroirs runtime JS ajoutés pour intégration immédiate Node:
   - `packages/core-js/src/feColor.js`
@@ -53,6 +54,7 @@
   - `packages/core-js/src/slot.js`
   - `packages/core-js/src/winBox.js`
   - `packages/core-js/src/winStandard.js`
+  - `packages/core-js/src/tab.js`
 - ✅ Tests de parité ajoutés:
   - `tests/migration/feColor.spec.js`
   - `tests/migration/window.spec.js`
@@ -78,13 +80,14 @@
   - `tests/migration/slot.spec.js`
   - `tests/migration/winBox.spec.js`
   - `tests/migration/winStandard.spec.js`
+  - `tests/migration/tab.spec.js`
 
 ## Commandes de test
 
 ```bash
-node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js tests/migration/pref.spec.js tests/migration/runDate.spec.js tests/migration/lang.spec.js tests/migration/md5.spec.js tests/migration/http.spec.js tests/migration/fileLoader.spec.js tests/migration/femcLoader.spec.js tests/migration/fFileMng.spec.js tests/migration/userMng.spec.js tests/migration/userListMng.spec.js tests/migration/statusMng.spec.js tests/migration/slotList.spec.js tests/migration/slot.spec.js tests/migration/winBox.spec.js tests/migration/winStandard.spec.js
+node --test tests/migration/feColor.spec.js tests/migration/window.spec.js tests/migration/fecmItem.spec.js tests/migration/desktop.spec.js tests/migration/cbeeLc.spec.js tests/migration/feString.spec.js tests/migration/feNumber.spec.js tests/migration/feDate.spec.js tests/migration/feObject.spec.js tests/migration/pref.spec.js tests/migration/runDate.spec.js tests/migration/lang.spec.js tests/migration/md5.spec.js tests/migration/http.spec.js tests/migration/fileLoader.spec.js tests/migration/femcLoader.spec.js tests/migration/fFileMng.spec.js tests/migration/userMng.spec.js tests/migration/userListMng.spec.js tests/migration/statusMng.spec.js tests/migration/slotList.spec.js tests/migration/slot.spec.js tests/migration/winBox.spec.js tests/migration/winStandard.spec.js tests/migration/tab.spec.js
 ```
 
 ## Prochain module recommandé
 
-Pour poursuivre, le prochain module conseillé est `frutiengine/Tab.as`.
+Pour poursuivre, le prochain module conseillé est `frutiengine/FEMC.as`.
