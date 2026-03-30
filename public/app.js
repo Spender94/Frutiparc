@@ -1,59 +1,44 @@
+const { SlotList, Slot, WinBox } = window.FrutiparcCore;
+
 const dockItems = [
   ['📁', 'Bureau'], ['🧑‍🤝‍🧑', 'Forum'], ['💬', 'Salons'], ['🕘', 'Historique'],
   ['⚙️', 'Préférences'], ['🧾', 'Scores'], ['🍉', 'Frutiblogs'], ['🫐', 'Club'],
 ];
 
-class UISlotList {
-  constructor() { this.arr = []; this.activeSlot = undefined; this.depth = -1; }
-  addSlot(slot, flGo = false) { this.depth += 1; this.arr[this.depth] = slot; slot.init(this, this.depth, flGo); }
-  rmSlot(slot) { const i = this.arr.indexOf(slot); if (i > -1) this.arr[i] = undefined; if (this.activeSlot === slot) this.activeSlot = undefined; }
-  activate(slot) {
-    if (!slot || this.activeSlot === slot || slot.flClose) return false;
-    if (this.activeSlot) this.activeSlot.onDeactivate();
-    this.activeSlot = slot;
-    this.activeSlot.onActivate();
-    return true;
-  }
-}
-
-class UISlot {
-  constructor() { this.arr = []; this.activeBox = null; this.flActive = false; this.flClose = false; }
-  init(slotList, baseDepth, flGo = false) { this.slotList = slotList; this.baseDepth = baseDepth; if (flGo) this.slotList.activate(this); }
-  addBox(box) { this.arr.push(box); box.init(this, this.arr.length - 1); this.activate(box); }
-  rmBox(box) { const i = this.arr.indexOf(box); if (i > -1) this.arr.splice(i, 1); if (this.arr.length === 0) this.close(); }
-  activate(box) {
-    if (this.activeBox === box) return false;
-    if (this.activeBox) this.activeBox.onDeactivate();
-    this.activeBox = box;
-    this.activeBox.onActivate();
-    return true;
-  }
-  onActivate() { this.flActive = true; this.arr.forEach((b) => b.onSlotActivate()); }
-  onDeactivate() { this.flActive = false; this.arr.forEach((b) => b.onSlotDeactivate()); }
-  close() { this.flClose = true; this.slotList.rmSlot(this); }
-}
-
-class UIWinBox {
-  constructor(el) {
-    this.el = el;
-    this.initialized = false;
-    this.flShow = false;
-    this.flActive = false;
-    this.wasShow = false;
-    this.flClosed = false;
-  }
-  init(slot, depth) { this.slot = slot; this.depth = depth; this.initialized = true; this.flShow = true; this.show(); return true; }
-  close() { this.slot.rmBox(this); this.flClosed = true; this.el.remove(); }
-  hide() { this.flShow = false; this.el.classList.add('minimized'); }
-  show() { this.flShow = true; this.el.classList.remove('minimized'); }
-  onActivate() { this.flActive = true; this.el.style.zIndex = 5; }
-  onDeactivate() { this.flActive = false; this.el.style.zIndex = 2; }
-  onSlotActivate() { if (this.wasShow) this.show(); this.wasShow = false; }
-  onSlotDeactivate() { if (this.flShow) { this.wasShow = true; this.hide(); } else this.wasShow = false; }
-  activate() { this.slot.activate(this); }
-}
-
 const state = { users: [], messages: [] };
+let chatWin = null;
+
+class ChatWindowBox extends WinBox {
+  constructor(el) {
+    super();
+    this.el = el;
+  }
+
+  onActivate() {
+    super.onActivate();
+    this.el.style.zIndex = 20;
+  }
+
+  onDeactivate() {
+    super.onDeactivate();
+    this.el.style.zIndex = 5;
+  }
+
+  hide() {
+    super.hide();
+    this.el.classList.add('minimized');
+  }
+
+  show() {
+    super.show();
+    this.el.classList.remove('minimized');
+  }
+
+  close() {
+    super.close();
+    this.el.remove();
+  }
+}
 
 function renderDock() {
   const dock = document.getElementById('dock');
@@ -88,6 +73,10 @@ function renderDesktopIcons() {
       dragging = false;
       icon.releasePointerCapture(e.pointerId);
       icon.style.cursor = 'grab';
+    });
+
+    icon.addEventListener('dblclick', () => {
+      if (chatWin && !chatWin.flClosed) chatWin.activate();
     });
   });
 }
@@ -171,13 +160,13 @@ function boot() {
   renderDock();
   renderDesktopIcons();
 
-  const slotList = new UISlotList();
-  const slot = new UISlot();
+  const slotList = new SlotList();
+  const slot = new Slot();
   slotList.addSlot(slot, true);
 
-  const winBox = new UIWinBox(document.getElementById('chatWindow'));
-  slot.addBox(winBox);
-  bindWindowInteractions(winBox);
+  chatWin = new ChatWindowBox(document.getElementById('chatWindow'));
+  slot.addBox(chatWin);
+  bindWindowInteractions(chatWin);
 
   refreshShowcase();
   fetchState();
