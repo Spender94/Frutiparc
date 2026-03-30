@@ -76,6 +76,52 @@ function renderDock() {
   dock.innerHTML = dockItems.map(([ico, label]) => `<div class="dock-item"><div class="ico">${ico}</div><div>${label}</div></div>`).join('');
 }
 
+function attachDragHandlers(target, { minTop = 0 } = {}) {
+  let dragging = false;
+  let dx = 0;
+  let dy = 0;
+
+  const getPoint = (event) => {
+    if (event.touches && event.touches[0]) {
+      return { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    }
+    return { x: event.clientX, y: event.clientY };
+  };
+
+  const onMove = (event) => {
+    if (!dragging) return;
+    const point = getPoint(event);
+    target.style.left = `${Math.max(0, point.x - dx)}px`;
+    target.style.top = `${Math.max(minTop, point.y - dy)}px`;
+    if (event.cancelable) event.preventDefault();
+  };
+
+  const onUp = () => {
+    dragging = false;
+    target.style.cursor = 'grab';
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onUp);
+  };
+
+  const onDown = (event) => {
+    const point = getPoint(event);
+    dragging = true;
+    dx = point.x - target.offsetLeft;
+    dy = point.y - target.offsetTop;
+    target.style.cursor = 'grabbing';
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onUp);
+  };
+
+  target.addEventListener('mousedown', onDown);
+  target.addEventListener('touchstart', onDown, { passive: true });
+}
+
 function renderDesktopIcons() {
   const icons = [
     ['👩', 'lea21220', 16, 20], ['🐭', 'hiko', 95, 22], ['📁', 'Forum', 175, 22], ['🍓', 'Les salons', 255, 24],
@@ -87,25 +133,7 @@ function renderDesktopIcons() {
   )).join('');
 
   layer.querySelectorAll('.desktop-icon').forEach((icon) => {
-    let dragging = false; let dx = 0; let dy = 0;
-    icon.addEventListener('pointerdown', (e) => {
-      dragging = true;
-      dx = e.clientX - icon.offsetLeft;
-      dy = e.clientY - icon.offsetTop;
-      icon.setPointerCapture(e.pointerId);
-      icon.style.cursor = 'grabbing';
-    });
-    icon.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      icon.style.left = `${Math.max(0, e.clientX - dx)}px`;
-      icon.style.top = `${Math.max(0, e.clientY - dy)}px`;
-    });
-    icon.addEventListener('pointerup', (e) => {
-      dragging = false;
-      icon.releasePointerCapture(e.pointerId);
-      icon.style.cursor = 'grab';
-    });
-
+    attachDragHandlers(icon);
     icon.addEventListener('dblclick', () => {
       if (chatWin && !chatWin.flClosed) chatWin.activate();
     });
@@ -203,28 +231,19 @@ function bindWindowInteractions(winBox) {
   const minBtn = document.getElementById('minBtn');
   const closeBtn = document.getElementById('closeBtn');
 
-  let dragging = false; let dx = 0; let dy = 0;
-  titleBar.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('button')) return;
-    dragging = true;
-    dx = e.clientX - el.offsetLeft;
-    dy = e.clientY - el.offsetTop;
-    titleBar.setPointerCapture(e.pointerId);
+  attachDragHandlers(el, { minTop: 70 });
+
+  const activateIfNotTool = (e) => {
+    if (e.target.closest && e.target.closest('button')) return;
     winBox.activate();
-  });
-  titleBar.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    el.style.left = `${Math.max(0, e.clientX - dx)}px`;
-    el.style.top = `${Math.max(70, e.clientY - dy)}px`;
-  });
-  titleBar.addEventListener('pointerup', (e) => {
-    dragging = false;
-    titleBar.releasePointerCapture(e.pointerId);
-  });
+  };
+
+  titleBar.addEventListener('mousedown', activateIfNotTool);
+  titleBar.addEventListener('touchstart', activateIfNotTool, { passive: true });
 
   minBtn.addEventListener('click', () => { if (winBox.flShow) winBox.hide(); else winBox.show(); });
   closeBtn.addEventListener('click', () => winBox.close());
-  el.addEventListener('pointerdown', () => winBox.activate());
+  el.addEventListener('mousedown', () => winBox.activate());
 }
 
 function boot() {
