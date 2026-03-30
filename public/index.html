@@ -1,16 +1,55 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Frutiparc with Ruffle</title>
-    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frutiparc Portable UI (MVP)</title>
+  <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-   <object id="frutiparc-swf" data="main.swf" width="1024" height="768">
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="identity-card">
+        <div class="avatar">🫐</div>
+        <div>
+          <div class="username" id="username">frutibot</div>
+          <div class="stats" id="stats">Niv 17 · 688 pts</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="chip" id="refreshBtn">Rafraîchir</button>
+        <a class="chip" href="/legacy">Mode legacy</a>
+      </div>
+    </header>
 
+    <nav class="dock" id="dock"></nav>
 
-        <!-- The Flash client expects the domain to include a trailing slash -->
-        <param name="flashvars" value="sid=debug&domain=localhost:8888/" />
-    </object>
+    <main class="desktop">
+      <section class="chat-window">
+        <div class="window-title">
+          <span>Salon — Prototype portable</span>
+          <span class="muted" id="statusBadge">connexion…</span>
+        </div>
+
+        <div class="window-content">
+          <aside class="left-avatars">
+            <div class="avatar-card">🧑‍🎤</div>
+            <div class="avatar-card">🫐</div>
+          </aside>
+
+          <section class="chat-feed" id="chatFeed"></section>
+
+          <aside class="user-list" id="userList"></aside>
+        </div>
+
+        <footer class="composer">
+          <input id="messageInput" type="text" placeholder="Écrire un message (démo locale)…" />
+          <button id="sendBtn">Envoyer</button>
+        </footer>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
 </body>
 </html>

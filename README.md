@@ -16,11 +16,30 @@ server running on `localhost:8888`.
    ```
    You can change the port by setting the `PORT` environment variable if
    necessary.
-3. Open your browser at [`http://localhost:8888/index.html`](http://localhost:8888/index.html).
-   The page uses [Ruffle](https://ruffle.rs/) to load `main.swf`.  The
-   `flashvars` parameter in `public/index.html` already sets
-   `domain=localhost:8888/` so that the additional assets (e.g.
-   `fileIcon.swf`) are loaded from the same server.
+3. Open your browser at [`http://localhost:8888/`](http://localhost:8888/).
+   This is now a first portable UI shell inspired by Frutiparc desktop (no Ruffle, no `main.swf`).
+4. For legacy Flash facade, open [`http://localhost:8888/legacy`](http://localhost:8888/legacy).
 
-If everything is accessible, the progress bar shown by `main.swf` will
-continue past 10 % and the game will start.
+Legacy SWF is only exposed via `/legacy/main.swf`.
+
+
+## Tester la version portée (sans Ruffle / sans `main.swf`)
+
+Tu peux tester la version Node des modules portés via l'endpoint MVP:
+
+```bash
+curl http://localhost:8888/api/mvp/showcase
+```
+
+Cet endpoint exécute les modules portés (`feString`, `feColor`, `statusMng`, `classLoader`)
+et renvoie un JSON de démonstration.
+
+L'UI portable consomme aussi:
+- `GET /api/app/state` (état chat/utilisateurs)
+- `POST /api/app/messages` (envoi message démo)
+
+
+## Déploiement public
+
+Un blueprint Render est fourni via `render.yaml` pour exposer publiquement l'API Node MVP.
+Voir `docs/DEPLOY_NODE_MVP.md`.
