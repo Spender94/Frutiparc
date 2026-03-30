@@ -35,9 +35,9 @@ const dockItems = [
   ['⚙️', 'Préférences'], ['🧾', 'Scores'], ['🍉', 'Frutiblogs'], ['🫐', 'Club'],
 ];
 
+const TEST_ACCOUNT = 'kasparov';
 const state = { users: [], messages: [] };
 let chatWin = null;
-let apiReachable = false;
 
 class ChatWindowBox extends WinBox {
   constructor(el) {
@@ -126,7 +126,7 @@ function renderMessages() {
 }
 
 function applyOfflineDemo() {
-  state.users = ['visiteur', 'frutibot'];
+  state.users = [TEST_ACCOUNT, 'frutibot'];
   state.messages = [
     { time: new Date().toISOString(), user: 'system', text: 'Mode démo local: API indisponible.' },
     { time: new Date().toISOString(), user: 'frutibot', text: 'L’interface reste utilisable même hors connexion.' },
@@ -136,7 +136,6 @@ function applyOfflineDemo() {
 }
 
 async function fetchState() {
-  const badge = document.getElementById('statusBadge');
   try {
     const res = await fetch('/api/app/state');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -147,11 +146,8 @@ async function fetchState() {
     renderUsers();
     renderMessages();
 
-    apiReachable = true;
-    badge.textContent = `connecté · ${data.status?.external || 'online'}`;
   } catch (e) {
-    if (!apiReachable) applyOfflineDemo();
-    badge.textContent = 'hors-ligne · mode démo';
+    applyOfflineDemo();
     console.warn('API /api/app/state inaccessible:', e.message);
   }
 }
@@ -162,9 +158,10 @@ async function refreshShowcase() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
-    document.getElementById('username').textContent = data.modules?.feString?.includes('Frutiparc') ? 'frutibot' : 'visiteur';
+    document.getElementById('username').textContent = TEST_ACCOUNT;
     document.getElementById('stats').textContent = `build ${data.version} · ${new Date(data.generatedAt).toLocaleTimeString()}`;
   } catch (e) {
+    document.getElementById('username').textContent = TEST_ACCOUNT;
     document.getElementById('stats').textContent = 'build démo locale';
   }
 }
@@ -178,7 +175,7 @@ async function sendMessage() {
     const res = await fetch('/api/app/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user: 'vous', text }),
+      body: JSON.stringify({ user: TEST_ACCOUNT, text }),
     });
 
     if (res.ok) {
@@ -190,31 +187,14 @@ async function sendMessage() {
     console.warn('API /api/app/messages inaccessible:', e.message);
   }
 
-  state.messages.push({ time: new Date().toISOString(), user: 'vous', text });
+  state.messages.push({ time: new Date().toISOString(), user: TEST_ACCOUNT, text });
   input.value = '';
   renderMessages();
 }
 
-function connectRealtime() {
-  const badge = document.getElementById('statusBadge');
-  try {
-    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${scheme}://${window.location.host}`);
-
-    ws.addEventListener('open', () => {
-      if (apiReachable) return;
-      badge.textContent = 'connecté · websocket';
-    });
-    ws.addEventListener('close', () => {
-      if (apiReachable) return;
-      badge.textContent = 'hors-ligne · mode démo';
-    });
-
-    return ws;
-  } catch (e) {
-    badge.textContent = 'hors-ligne · mode démo';
-    return null;
-  }
+function forceConnectedAccount() {
+  document.getElementById('username').textContent = TEST_ACCOUNT;
+  document.getElementById('statusBadge').textContent = `compte test · ${TEST_ACCOUNT}`;
 }
 
 function bindWindowInteractions(winBox) {
@@ -259,7 +239,7 @@ function boot() {
   slot.addBox(chatWin);
   bindWindowInteractions(chatWin);
 
-  connectRealtime();
+  forceConnectedAccount();
   refreshShowcase();
   fetchState();
   setInterval(fetchState, 5000);

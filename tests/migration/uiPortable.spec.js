@@ -17,8 +17,8 @@ test('portable UI uses runtime core mirrors for slot/window behavior', () => {
   assert.ok(js.includes('class ChatWindowBox extends WinBox'));
 });
 
-test('portable UI keeps working in offline demo mode', () => {
-  assert.ok(js.includes('createFallbackCore'));
-  assert.ok(js.includes('hors-ligne · mode démo'));
-  assert.ok(js.includes('new WebSocket'));
+test('portable UI forces default connected test account', () => {
+  assert.ok(js.includes("const TEST_ACCOUNT = 'kasparov'"));
+  assert.ok(js.includes('forceConnectedAccount'));
+  assert.ok(html.includes('compte test · kasparov'));
 });
