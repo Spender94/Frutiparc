@@ -1,16 +1,43 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Frutiparc with Ruffle</title>
-    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frutiparc Node MVP</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
+    a { color: #7dd3fc; }
+    pre { background: #111827; padding: 1rem; border-radius: 8px; overflow: auto; }
+    .muted { color: #94a3b8; }
+  </style>
 </head>
 <body>
-   <object id="frutiparc-swf" data="main.swf" width="1024" height="768">
+  <h1>Frutiparc — MVP porté (Node/Haxe)</h1>
+  <p class="muted">Cette page ne charge plus Ruffle ni <code>main.swf</code>.</p>
 
+  <p>
+    Endpoint testé: <code>/api/mvp/showcase</code>
+    · <a href="/legacy">Accéder à la version legacy Flash</a>
+  </p>
 
-        <!-- The Flash client expects the domain to include a trailing slash -->
-        <param name="flashvars" value="sid=debug&domain=localhost:8888/" />
-    </object>
+  <button id="reload">Recharger le showcase</button>
+  <pre id="output">Chargement...</pre>
+
+  <script>
+    async function loadShowcase() {
+      const output = document.getElementById('output');
+      output.textContent = 'Chargement...';
+      try {
+        const res = await fetch('/api/mvp/showcase');
+        const data = await res.json();
+        output.textContent = JSON.stringify(data, null, 2);
+      } catch (e) {
+        output.textContent = 'Erreur: ' + e.message;
+      }
+    }
+
+    document.getElementById('reload').addEventListener('click', loadShowcase);
+    loadShowcase();
+  </script>
 </body>
 </html>
