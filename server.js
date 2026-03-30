@@ -12,6 +12,14 @@ const port = process.env.PORT || 8888;
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/legacy', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
+});
+
+app.get('/legacy/main.swf', (req, res) => {
+  res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
+});
+
 // Example HTTP endpoints
 // Serve static example data for some endpoints
 app.get('/ff/tree', (req, res) => {

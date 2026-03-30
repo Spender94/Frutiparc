@@ -19,11 +19,11 @@ server running on `localhost:8888`.
    can be invoked from anywhere.
    You can change the port by setting the `PORT` environment variable if
    necessary.
-3. Open your browser at [`http://localhost:8888/index.html`](http://localhost:8888/index.html).
-   The page uses [Ruffle](https://ruffle.rs/) to load `main.swf`.
+3. Open your browser at [`http://localhost:8888/`](http://localhost:8888/).
+   This is now the Node/Haxe MVP page (no Ruffle, no `main.swf`).
+4. For legacy Flash facade, open [`http://localhost:8888/legacy`](http://localhost:8888/legacy).
 
-If everything is accessible, the progress bar shown by `main.swf` will
-continue past 10 % and the game will start.
+Legacy SWF is only exposed via `/legacy/main.swf`.
 
 
 ## Tester la version portée (sans Ruffle / sans `main.swf`)

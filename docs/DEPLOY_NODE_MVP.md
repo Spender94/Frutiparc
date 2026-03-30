@@ -28,3 +28,5 @@ curl https://<votre-app>.onrender.com/api/mvp/showcase
 
 - Le serveur lit `PORT` depuis l'environnement (compatible Render/Fly/Railway).
 - Cet endpoint est la version portée Node/Haxe (pas de `main.swf`, pas de Ruffle).
+
+- La façade Flash legacy reste disponible sur `/legacy` (SWF servi via `/legacy/main.swf`).
