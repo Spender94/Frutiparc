@@ -1,8 +1,11 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const path = require('path');
+const { buildMvpShowcase } = require('./packages/core-js/src/mvpShowcase');
+const { createAppState } = require('./packages/core-js/src/appState');
 
 const app = express();
+app.use(express.json());
 // The original game expects the HTTP server to run on port 8888.
 // We keep the ability to override via the PORT environment variable
 // but default to 8888 so that `npm start` works out of the box.
@@ -10,6 +13,16 @@ const port = process.env.PORT || 8888;
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
+
+const appState = createAppState();
+
+app.get('/legacy', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
+});
+
+app.get('/legacy/main.swf', (req, res) => {
+  res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
+});
 
 // Example HTTP endpoints
 // Serve static example data for some endpoints
@@ -23,6 +36,25 @@ app.get('/ff/mv', (req, res) => {
 
 app.get('/ff/cp', (req, res) => {
   res.sendFile(path.join(__dirname, 'examples', 'ff_cp.json'));
+});
+
+app.get('/api/mvp/showcase', (req, res) => {
+  res.json(buildMvpShowcase());
+});
+
+app.get('/api/app/state', (req, res) => {
+  res.json(appState.getState());
+});
+
+app.post('/api/app/messages', (req, res) => {
+  const { user, text } = req.body || {};
+  const ok = appState.addMessage(user, text);
+  if (!ok) return res.status(400).json({ ok: false, error: 'message vide' });
+  return res.json({ ok: true, state: appState.getState() });
+});
+
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ ok: true, service: 'frutiparc-node-mvp' });
 });
 
 const server = app.listen(port, () => {
