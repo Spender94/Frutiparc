@@ -3,41 +3,53 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Frutiparc Node MVP</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
-    a { color: #7dd3fc; }
-    pre { background: #111827; padding: 1rem; border-radius: 8px; overflow: auto; }
-    .muted { color: #94a3b8; }
-  </style>
+  <title>Frutiparc Portable UI (MVP)</title>
+  <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-  <h1>Frutiparc — MVP porté (Node/Haxe)</h1>
-  <p class="muted">Cette page ne charge plus Ruffle ni <code>main.swf</code>.</p>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="identity-card">
+        <div class="avatar">🫐</div>
+        <div>
+          <div class="username" id="username">frutibot</div>
+          <div class="stats" id="stats">Niv 17 · 688 pts</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="chip" id="refreshBtn">Rafraîchir</button>
+        <a class="chip" href="/legacy">Mode legacy</a>
+      </div>
+    </header>
 
-  <p>
-    Endpoint testé: <code>/api/mvp/showcase</code>
-    · <a href="/legacy">Accéder à la version legacy Flash</a>
-  </p>
+    <nav class="dock" id="dock"></nav>
 
-  <button id="reload">Recharger le showcase</button>
-  <pre id="output">Chargement...</pre>
+    <main class="desktop">
+      <section class="chat-window">
+        <div class="window-title">
+          <span>Salon — Prototype portable</span>
+          <span class="muted" id="statusBadge">connexion…</span>
+        </div>
 
-  <script>
-    async function loadShowcase() {
-      const output = document.getElementById('output');
-      output.textContent = 'Chargement...';
-      try {
-        const res = await fetch('/api/mvp/showcase');
-        const data = await res.json();
-        output.textContent = JSON.stringify(data, null, 2);
-      } catch (e) {
-        output.textContent = 'Erreur: ' + e.message;
-      }
-    }
+        <div class="window-content">
+          <aside class="left-avatars">
+            <div class="avatar-card">🧑‍🎤</div>
+            <div class="avatar-card">🫐</div>
+          </aside>
 
-    document.getElementById('reload').addEventListener('click', loadShowcase);
-    loadShowcase();
-  </script>
+          <section class="chat-feed" id="chatFeed"></section>
+
+          <aside class="user-list" id="userList"></aside>
+        </div>
+
+        <footer class="composer">
+          <input id="messageInput" type="text" placeholder="Écrire un message (démo locale)…" />
+          <button id="sendBtn">Envoyer</button>
+        </footer>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
 </body>
 </html>

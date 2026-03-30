@@ -20,7 +20,7 @@ server running on `localhost:8888`.
    You can change the port by setting the `PORT` environment variable if
    necessary.
 3. Open your browser at [`http://localhost:8888/`](http://localhost:8888/).
-   This is now the Node/Haxe MVP page (no Ruffle, no `main.swf`).
+   This is now a first portable UI shell inspired by Frutiparc desktop (no Ruffle, no `main.swf`).
 4. For legacy Flash facade, open [`http://localhost:8888/legacy`](http://localhost:8888/legacy).
 
 Legacy SWF is only exposed via `/legacy/main.swf`.

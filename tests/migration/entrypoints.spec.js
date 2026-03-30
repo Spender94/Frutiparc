@@ -6,7 +6,7 @@ const indexHtml = fs.readFileSync('public/index.html', 'utf8');
 const ruffleHtml = fs.readFileSync('public/ruffle.html', 'utf8');
 
 test('root entrypoint is Node/Haxe MVP (no Ruffle/main.swf)', () => {
-  assert.ok(indexHtml.includes('/api/mvp/showcase'));
+  assert.ok(indexHtml.includes('/app.js'));
   assert.ok(!indexHtml.includes('@ruffle-rs/ruffle'));
   assert.ok(!indexHtml.includes('data="main.swf"'));
 });
