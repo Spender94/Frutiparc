@@ -10,7 +10,7 @@
   <div class="app-shell">
     <header class="topbar">
       <div class="identity-card">
-        <div class="avatar">🫐</div>
+        <div class="avatar" id="topAvatar">🫐</div>
         <div>
           <div class="username" id="username">kasparov</div>
           <div class="stats" id="stats">Niv 17 · 688 pts</div>
@@ -39,8 +39,8 @@
 
         <div class="window-content" id="chatContent">
           <aside class="left-avatars">
-            <div class="avatar-card">🧑‍🎤</div>
-            <div class="avatar-card">🫐</div>
+            <div class="avatar-card" id="friendAvatar">🧑‍🎤</div>
+            <div class="avatar-card" id="myAvatar">🫐</div>
           </aside>
 
           <section class="chat-feed" id="chatFeed"></section>
@@ -55,6 +55,42 @@
       </section>
     </main>
   </div>
+
+  <section class="frutibouille-overlay hidden" id="frutibouilleOverlay">
+    <div class="frutibouille-modal">
+      <h2>Crée ta frutibouille</h2>
+      <p>Première étape obligatoire avant d’entrer dans Frutiparc.</p>
+
+      <div class="frutibouille-preview" id="frutibouillePreview">🫐</div>
+
+      <label>Capuche
+        <select id="hoodSelect">
+          <option value="blue">Bleue</option>
+          <option value="pink">Rose</option>
+          <option value="green">Verte</option>
+          <option value="gold">Dorée</option>
+        </select>
+      </label>
+
+      <label>Visage
+        <select id="faceSelect">
+          <option value="berry">Myrtille</option>
+          <option value="apple">Pomme</option>
+          <option value="pear">Poire</option>
+        </select>
+      </label>
+
+      <label>Regard
+        <select id="eyesSelect">
+          <option value="happy">Souriant</option>
+          <option value="cool">Cool</option>
+          <option value="wink">Clin d’œil</option>
+        </select>
+      </label>
+
+      <button id="createFrutibouilleBtn">Entrer dans Frutiparc</button>
+    </div>
+  </section>
 
   <script src="/runtime-core.js"></script>
   <script src="/app.js"></script>

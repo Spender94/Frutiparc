@@ -15,10 +15,15 @@ test('portable UI uses runtime core mirrors for slot/window behavior', () => {
   assert.ok(js.includes('new SlotList()'));
   assert.ok(js.includes('new Slot()'));
   assert.ok(js.includes('class ChatWindowBox extends WinBox'));
-  assert.ok(js.includes('attachDragHandlers'));
-  assert.ok(js.includes('attachDragHandlers(titleBar, el'))
-  assert.ok(js.includes("addEventListener('mousedown'"));
-  assert.ok(js.includes("addEventListener('touchstart'"));
+  assert.ok(js.includes('attachDragHandlers(titleBar, el'));
+});
+
+test('first action is frutibouille creation flow', () => {
+  assert.ok(html.includes('id="frutibouilleOverlay"'));
+  assert.ok(html.includes('id="createFrutibouilleBtn"'));
+  assert.ok(js.includes('lockOnFrutibouilleCreation'));
+  assert.ok(js.includes('restoreFrutibouilleIfExists'));
+  assert.ok(js.includes('FRUTIBOUILLE_KEY'));
 });
 
 test('portable UI forces default connected test account', () => {

@@ -36,7 +36,19 @@ const dockItems = [
 ];
 
 const TEST_ACCOUNT = 'kasparov';
-const state = { users: [], messages: [] };
+const FRUTIBOUILLE_KEY = 'frutiparc.frutibouille.v1';
+
+const HOOD_BG = {
+  blue: 'linear-gradient(#9dd5ff, #5c8ed5)',
+  pink: 'linear-gradient(#ffc4dd, #d77ab1)',
+  green: 'linear-gradient(#caf39a, #7bb850)',
+  gold: 'linear-gradient(#ffe18d, #d6a33e)',
+};
+
+const FACE_EMOJI = { berry: '🫐', apple: '🍎', pear: '🍐' };
+const EYES_EMOJI = { happy: '🙂', cool: '😎', wink: '😉' };
+
+const state = { users: [], messages: [], profile: null };
 let chatWin = null;
 
 class ChatWindowBox extends WinBox {
@@ -122,7 +134,6 @@ function attachDragHandlers(handle, target = handle, { minTop = 0 } = {}) {
   handle.addEventListener('touchstart', onDown, { passive: true });
 }
 
-
 function renderDesktopIcons() {
   const icons = [
     ['👩', 'lea21220', 16, 20], ['🐭', 'hiko', 95, 22], ['📁', 'Forum', 175, 22], ['🍓', 'Les salons', 255, 24],
@@ -152,6 +163,77 @@ function renderMessages() {
   const el = document.getElementById('chatFeed');
   el.innerHTML = state.messages.map((m) => `<div class="msg"><span class="time">[${hhmmss(m.time)}]</span><strong>${m.user}</strong> ${m.text}</div>`).join('');
   el.scrollTop = el.scrollHeight;
+}
+
+function getCurrentSelection() {
+  return {
+    hood: document.getElementById('hoodSelect').value,
+    face: document.getElementById('faceSelect').value,
+    eyes: document.getElementById('eyesSelect').value,
+  };
+}
+
+function serializeFrutibouille(selection) {
+  return `${selection.hood}:${selection.face}:${selection.eyes}`;
+}
+
+function renderFrutibouilleAvatar(selection) {
+  const top = document.getElementById('topAvatar');
+  const mine = document.getElementById('myAvatar');
+  const preview = document.getElementById('frutibouillePreview');
+
+  const text = `${FACE_EMOJI[selection.face] || '🫐'}${EYES_EMOJI[selection.eyes] || '🙂'}`;
+  const bg = HOOD_BG[selection.hood] || HOOD_BG.blue;
+
+  [top, mine, preview].forEach((el) => {
+    if (!el) return;
+    el.textContent = text;
+    el.style.background = bg;
+  });
+}
+
+function lockOnFrutibouilleCreation() {
+  const overlay = document.getElementById('frutibouilleOverlay');
+  const createBtn = document.getElementById('createFrutibouilleBtn');
+
+  const updatePreview = () => renderFrutibouilleAvatar(getCurrentSelection());
+
+  ['hoodSelect', 'faceSelect', 'eyesSelect'].forEach((id) => {
+    document.getElementById(id).addEventListener('change', updatePreview);
+  });
+
+  createBtn.addEventListener('click', () => {
+    const selection = getCurrentSelection();
+    state.profile = {
+      login: TEST_ACCOUNT,
+      fbouille: serializeFrutibouille(selection),
+      ...selection,
+    };
+    localStorage.setItem(FRUTIBOUILLE_KEY, JSON.stringify(state.profile));
+    overlay.classList.add('hidden');
+    renderFrutibouilleAvatar(selection);
+    state.messages.unshift({ time: new Date().toISOString(), user: 'system', text: `Frutibouille créée pour ${TEST_ACCOUNT}.` });
+    renderMessages();
+  });
+
+  updatePreview();
+  overlay.classList.remove('hidden');
+}
+
+function restoreFrutibouilleIfExists() {
+  try {
+    const raw = localStorage.getItem(FRUTIBOUILLE_KEY);
+    if (!raw) return false;
+    const profile = JSON.parse(raw);
+    if (!profile || !profile.hood || !profile.face || !profile.eyes) return false;
+
+    state.profile = profile;
+    renderFrutibouilleAvatar(profile);
+    document.getElementById('frutibouilleOverlay').classList.add('hidden');
+    return true;
+  } catch (_e) {
+    return false;
+  }
 }
 
 function applyOfflineDemo() {
@@ -263,6 +345,10 @@ function boot() {
   refreshShowcase();
   fetchState();
   setInterval(fetchState, 5000);
+
+  if (!restoreFrutibouilleIfExists()) {
+    lockOnFrutibouilleCreation();
+  }
 
   document.getElementById('refreshBtn').addEventListener('click', () => { refreshShowcase(); fetchState(); });
   document.getElementById('sendBtn').addEventListener('click', sendMessage);
