@@ -24,14 +24,20 @@
 
     <nav class="dock" id="dock"></nav>
 
-    <main class="desktop">
-      <section class="chat-window">
-        <div class="window-title">
+    <main class="desktop" id="desktopRoot">
+      <div class="icon-layer" id="iconLayer"></div>
+
+      <section class="chat-window" id="chatWindow">
+        <div class="window-title" id="chatTitleBar">
           <span>Salon — Prototype portable</span>
-          <span class="muted" id="statusBadge">connexion…</span>
+          <div class="window-tools">
+            <span class="muted" id="statusBadge">connexion…</span>
+            <button class="tool" id="minBtn">—</button>
+            <button class="tool" id="closeBtn">✕</button>
+          </div>
         </div>
 
-        <div class="window-content">
+        <div class="window-content" id="chatContent">
           <aside class="left-avatars">
             <div class="avatar-card">🧑‍🎤</div>
             <div class="avatar-card">🫐</div>
@@ -42,8 +48,8 @@
           <aside class="user-list" id="userList"></aside>
         </div>
 
-        <footer class="composer">
-          <input id="messageInput" type="text" placeholder="Écrire un message (démo locale)…" />
+        <footer class="composer" id="composer">
+          <input id="messageInput" type="text" placeholder="Écrire un message…" />
           <button id="sendBtn">Envoyer</button>
         </footer>
       </section>
