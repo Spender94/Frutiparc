@@ -16,6 +16,7 @@ test('portable UI uses runtime core mirrors for slot/window behavior', () => {
   assert.ok(js.includes('new Slot()'));
   assert.ok(js.includes('class ChatWindowBox extends WinBox'));
   assert.ok(js.includes('attachDragHandlers'));
+  assert.ok(js.includes('attachDragHandlers(titleBar, el'))
   assert.ok(js.includes("addEventListener('mousedown'"));
   assert.ok(js.includes("addEventListener('touchstart'"));
 });

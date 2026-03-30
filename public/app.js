@@ -76,7 +76,7 @@ function renderDock() {
   dock.innerHTML = dockItems.map(([ico, label]) => `<div class="dock-item"><div class="ico">${ico}</div><div>${label}</div></div>`).join('');
 }
 
-function attachDragHandlers(target, { minTop = 0 } = {}) {
+function attachDragHandlers(handle, target = handle, { minTop = 0 } = {}) {
   let dragging = false;
   let dx = 0;
   let dy = 0;
@@ -118,9 +118,10 @@ function attachDragHandlers(target, { minTop = 0 } = {}) {
     document.addEventListener('touchend', onUp);
   };
 
-  target.addEventListener('mousedown', onDown);
-  target.addEventListener('touchstart', onDown, { passive: true });
+  handle.addEventListener('mousedown', onDown);
+  handle.addEventListener('touchstart', onDown, { passive: true });
 }
+
 
 function renderDesktopIcons() {
   const icons = [
@@ -231,7 +232,7 @@ function bindWindowInteractions(winBox) {
   const minBtn = document.getElementById('minBtn');
   const closeBtn = document.getElementById('closeBtn');
 
-  attachDragHandlers(el, { minTop: 70 });
+  attachDragHandlers(titleBar, el, { minTop: 70 });
 
   const activateIfNotTool = (e) => {
     if (e.target.closest && e.target.closest('button')) return;
@@ -243,7 +244,7 @@ function bindWindowInteractions(winBox) {
 
   minBtn.addEventListener('click', () => { if (winBox.flShow) winBox.hide(); else winBox.show(); });
   closeBtn.addEventListener('click', () => winBox.close());
-  el.addEventListener('mousedown', () => winBox.activate());
+  el.addEventListener('click', () => winBox.activate());
 }
 
 function boot() {
