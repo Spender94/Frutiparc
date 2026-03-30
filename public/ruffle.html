@@ -1,16 +1,39 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Frutiparc with Ruffle</title>
+    <title>Frutiparc — Ruffle</title>
     <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+    <style>
+        body { margin: 0; background: #335511; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        #player-container { width: 1024px; height: 768px; }
+    </style>
 </head>
 <body>
-   <object id="frutiparc-swf" data="/legacy/main.swf" width="1024" height="768">
+    <div id="player-container"></div>
+    <script>
+        window.addEventListener("DOMContentLoaded", async () => {
+            const ruffle = window.RufflePlayer.newest();
+            const player = ruffle.createPlayer();
+            player.style.width = "1024px";
+            player.style.height = "768px";
+            document.getElementById("player-container").appendChild(player);
 
-
-        <!-- The Flash client expects the domain to include a trailing slash -->
-        <param name="flashvars" value="sid=debug&domain=localhost:8888/" />
-    </object>
+            await player.load({
+                url: "/legacy/main.swf",
+                parameters: {
+                    sid: "debug",
+                    domain: location.host + "/"
+                },
+                autoplay: "on",
+                unmuteOverlay: "visible",
+                logLevel: "warn",
+                openUrlMode: "allow",
+                allowScriptAccess: true,
+                // Force Ruffle to use the current host for all network requests
+                base: location.origin + "/"
+            });
+        });
+    </script>
 </body>
 </html>
