@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-03-30T13:19:49.825Z",
+  "strategy": "Haxe-first migration: select low-Flash-dependency business logic modules",
+  "sourceInventory": "migration/inventory/as2-inventory.json",
+  "candidates": [
+    {
+      "file": "frutiengine/Window.as",
+      "score": 14,
+      "lines": 13,
+      "classes": [
+        "Window"
+      ],
+      "extends": [
+        "MovieClip"
+      ],
+      "importsCount": 0,
+      "hasXml": false,
+      "reasons": [
+        "has class declaration"
+      ]
+    },
+    {
+      "file": "frutiengine/FECMItem.as",
+      "score": 14,
+      "lines": 18,
+      "classes": [
+        "FECMItem"
+      ],
+      "extends": [
+        "ContextMenuItem"
+      ],
+      "importsCount": 0,
+      "hasXml": false,
+      "reasons": [
+        "has class declaration"
+      ]
+    },
+    {
+      "file": "frutiengine/FEColor.as",
+      "score": 14,
+      "lines": 19,
+      "classes": [
+        "FEColor"
+      ],
+      "extends": [],
+      "importsCount": 0,
+      "hasXml": false,
+      "reasons": [
+        "has class declaration"
+      ]
+    },
+    {
+      "file": "frutiengine/Desktop.as",
+      "score": 14,
+      "lines": 20,
+      "classes": [
+        "Desktop"
+      ],
+      "extends": [
+        "Slot"
+      ],
+      "importsCount": 0,
+      "hasXml": false,
+      "reasons": [
+        "has class declaration"
+      ]
+    },
+    {
+      "file": "frutiengine/CBeeLC.as",
+      "score": 14,
+      "lines": 21,
+      "classes": [
+        "CBeeLC"
+      ],
+      "extends": [
+        "LocalConnection"
+      ],
+      "importsCount": 0,
+      "hasXml": false,
+      "reasons": [
+        "has class declaration"
+      ]
+    }
+  ]
+}
