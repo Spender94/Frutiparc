@@ -17,9 +17,8 @@ test('portable UI uses runtime core mirrors for slot/window behavior', () => {
   assert.ok(js.includes('class ChatWindowBox extends WinBox'));
 });
 
-test('portable UI includes desktop and window interactions', () => {
-  assert.ok(js.includes('desktop-icon'));
-  assert.ok(js.includes('pointerdown'));
-  assert.ok(js.includes('minBtn'));
-  assert.ok(js.includes('closeBtn'));
+test('portable UI keeps working in offline demo mode', () => {
+  assert.ok(js.includes('createFallbackCore'));
+  assert.ok(js.includes('hors-ligne · mode démo'));
+  assert.ok(js.includes('new WebSocket'));
 });

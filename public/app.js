@@ -1,4 +1,34 @@
-const { SlotList, Slot, WinBox } = window.FrutiparcCore;
+const core = window.FrutiparcCore || {};
+
+function createFallbackCore() {
+  class FallbackSlotList {
+    addSlot(slot) { this.activeSlot = slot; slot.init(this, 0, true); }
+    activate(slot) { this.activeSlot = slot; slot.onActivate?.(); }
+    rmSlot() {}
+  }
+  class FallbackSlot {
+    init(slotList) { this.slotList = slotList; }
+    addBox(box) { box.init?.(this, 0); this.activeBox = box; }
+    activate(box) { this.activeBox = box; box.onActivate?.(); }
+    move() {}
+    rmBox() {}
+  }
+  class FallbackWinBox {
+    constructor() { this.flShow = true; this.flClosed = false; }
+    init(slot) { this.slot = slot; }
+    activate() { this.slot?.activate?.(this); }
+    onActivate() {}
+    onDeactivate() {}
+    onSlotActivate() {}
+    onSlotDeactivate() {}
+    hide() { this.flShow = false; }
+    show() { this.flShow = true; }
+    close() { this.flClosed = true; }
+  }
+  return { SlotList: FallbackSlotList, Slot: FallbackSlot, WinBox: FallbackWinBox };
+}
+
+const { SlotList, Slot, WinBox } = core.SlotList && core.Slot && core.WinBox ? core : createFallbackCore();
 
 const dockItems = [
   ['📁', 'Bureau'], ['🧑‍🤝‍🧑', 'Forum'], ['💬', 'Salons'], ['🕘', 'Historique'],
@@ -7,6 +37,7 @@ const dockItems = [
 
 const state = { users: [], messages: [] };
 let chatWin = null;
+let apiReachable = false;
 
 class ChatWindowBox extends WinBox {
   constructor(el) {
@@ -94,27 +125,47 @@ function renderMessages() {
   el.scrollTop = el.scrollHeight;
 }
 
+function applyOfflineDemo() {
+  state.users = ['visiteur', 'frutibot'];
+  state.messages = [
+    { time: new Date().toISOString(), user: 'system', text: 'Mode démo local: API indisponible.' },
+    { time: new Date().toISOString(), user: 'frutibot', text: 'L’interface reste utilisable même hors connexion.' },
+  ];
+  renderUsers();
+  renderMessages();
+}
+
 async function fetchState() {
   const badge = document.getElementById('statusBadge');
   try {
     const res = await fetch('/api/app/state');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
     const data = await res.json();
     state.users = data.users || [];
     state.messages = data.messages || [];
     renderUsers();
     renderMessages();
+
+    apiReachable = true;
     badge.textContent = `connecté · ${data.status?.external || 'online'}`;
-  } catch (e) { badge.textContent = `erreur API: ${e.message}`; }
+  } catch (e) {
+    if (!apiReachable) applyOfflineDemo();
+    badge.textContent = 'hors-ligne · mode démo';
+    console.warn('API /api/app/state inaccessible:', e.message);
+  }
 }
 
 async function refreshShowcase() {
   try {
     const res = await fetch('/api/mvp/showcase');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
     const data = await res.json();
     document.getElementById('username').textContent = data.modules?.feString?.includes('Frutiparc') ? 'frutibot' : 'visiteur';
     document.getElementById('stats').textContent = `build ${data.version} · ${new Date(data.generatedAt).toLocaleTimeString()}`;
   } catch (e) {
-    document.getElementById('stats').textContent = `build indisponible (${e.message})`;
+    document.getElementById('stats').textContent = 'build démo locale';
   }
 }
 
@@ -122,8 +173,48 @@ async function sendMessage() {
   const input = document.getElementById('messageInput');
   const text = input.value.trim();
   if (!text) return;
-  const res = await fetch('/api/app/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: 'vous', text }) });
-  if (res.ok) { input.value = ''; await fetchState(); }
+
+  try {
+    const res = await fetch('/api/app/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: 'vous', text }),
+    });
+
+    if (res.ok) {
+      input.value = '';
+      await fetchState();
+      return;
+    }
+  } catch (e) {
+    console.warn('API /api/app/messages inaccessible:', e.message);
+  }
+
+  state.messages.push({ time: new Date().toISOString(), user: 'vous', text });
+  input.value = '';
+  renderMessages();
+}
+
+function connectRealtime() {
+  const badge = document.getElementById('statusBadge');
+  try {
+    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${scheme}://${window.location.host}`);
+
+    ws.addEventListener('open', () => {
+      if (apiReachable) return;
+      badge.textContent = 'connecté · websocket';
+    });
+    ws.addEventListener('close', () => {
+      if (apiReachable) return;
+      badge.textContent = 'hors-ligne · mode démo';
+    });
+
+    return ws;
+  } catch (e) {
+    badge.textContent = 'hors-ligne · mode démo';
+    return null;
+  }
 }
 
 function bindWindowInteractions(winBox) {
@@ -168,6 +259,7 @@ function boot() {
   slot.addBox(chatWin);
   bindWindowInteractions(chatWin);
 
+  connectRealtime();
   refreshShowcase();
   fetchState();
   setInterval(fetchState, 5000);
