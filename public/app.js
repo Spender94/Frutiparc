@@ -10,11 +10,8 @@ const dockItems = [
 ];
 
 const state = {
-  users: ['dalmatien17', 'groingroin'],
-  messages: [
-    { time: '23:24:47', user: 'system', text: 'Vous discutez maintenant sur le salon prototype.' },
-    { time: '23:24:52', user: 'groingroin', text: 'sifflote' },
-  ],
+  users: [],
+  messages: [],
 };
 
 function renderDock() {
@@ -29,48 +26,76 @@ function renderUsers() {
   el.innerHTML = `<h4>Participants</h4>${state.users.map((u) => `<div class="user">${u}</div>`).join('')}`;
 }
 
+function toHHMMSS(isoDate) {
+  if (!isoDate) return '--:--:--';
+  const d = new Date(isoDate);
+  return d.toTimeString().slice(0, 8);
+}
+
 function renderMessages() {
   const el = document.getElementById('chatFeed');
   el.innerHTML = state.messages
-    .map((m) => `<div class="msg"><span class="time">[${m.time}]</span><strong>${m.user}</strong> ${m.text}</div>`)
+    .map((m) => `<div class="msg"><span class="time">[${toHHMMSS(m.time)}]</span><strong>${m.user}</strong> ${m.text}</div>`)
     .join('');
   el.scrollTop = el.scrollHeight;
 }
 
-function now() {
-  return new Date().toTimeString().slice(0, 8);
-}
-
-function sendMessage() {
-  const input = document.getElementById('messageInput');
-  const text = input.value.trim();
-  if (!text) return;
-  state.messages.push({ time: now(), user: 'vous', text });
-  input.value = '';
-  renderMessages();
-}
-
-async function refreshShowcase() {
+async function fetchState() {
   const badge = document.getElementById('statusBadge');
-  badge.textContent = 'connexion…';
   try {
-    const res = await fetch('/api/mvp/showcase');
+    const res = await fetch('/api/app/state');
     const data = await res.json();
-    document.getElementById('username').textContent = data.modules?.feString?.includes('Frutiparc') ? 'frutibot' : 'visiteur';
-    document.getElementById('stats').textContent = `build ${data.version} · ${new Date(data.generatedAt).toLocaleTimeString()}`;
-    badge.textContent = 'connecté';
+
+    state.users = data.users || [];
+    state.messages = data.messages || [];
+
+    renderUsers();
+    renderMessages();
+
+    badge.textContent = `connecté · ${data.status?.external || 'online'}`;
   } catch (e) {
     badge.textContent = `erreur API: ${e.message}`;
   }
 }
 
+async function refreshShowcase() {
+  try {
+    const res = await fetch('/api/mvp/showcase');
+    const data = await res.json();
+    document.getElementById('username').textContent = data.modules?.feString?.includes('Frutiparc') ? 'frutibot' : 'visiteur';
+    document.getElementById('stats').textContent = `build ${data.version} · ${new Date(data.generatedAt).toLocaleTimeString()}`;
+  } catch (e) {
+    document.getElementById('stats').textContent = `build indisponible (${e.message})`;
+  }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('messageInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const res = await fetch('/api/app/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: 'vous', text }),
+  });
+
+  if (res.ok) {
+    input.value = '';
+    await fetchState();
+  }
+}
+
 function boot() {
   renderDock();
-  renderUsers();
-  renderMessages();
   refreshShowcase();
+  fetchState();
+  setInterval(fetchState, 5000);
 
-  document.getElementById('refreshBtn').addEventListener('click', refreshShowcase);
+  document.getElementById('refreshBtn').addEventListener('click', () => {
+    refreshShowcase();
+    fetchState();
+  });
   document.getElementById('sendBtn').addEventListener('click', sendMessage);
   document.getElementById('messageInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendMessage();

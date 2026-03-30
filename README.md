@@ -37,6 +37,10 @@ curl http://localhost:8888/api/mvp/showcase
 Cet endpoint exécute les modules portés (`feString`, `feColor`, `statusMng`, `classLoader`)
 et renvoie un JSON de démonstration.
 
+L'UI portable consomme aussi:
+- `GET /api/app/state` (état chat/utilisateurs)
+- `POST /api/app/messages` (envoi message démo)
+
 
 ## Déploiement public
 
