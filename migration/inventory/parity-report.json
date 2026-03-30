@@ -1,0 +1,1392 @@
+{
+  "summary": {
+    "generatedAt": "2026-03-30T13:31:22.756Z",
+    "sourceInventory": "migration/inventory/as2-inventory.json",
+    "totalFiles": 81,
+    "parity": {
+      "portedJsHaxe": 36,
+      "portedJsOnly": 0,
+      "portedHaxeOnly": 0,
+      "missing": 45
+    }
+  },
+  "files": [
+    {
+      "file": "frutiengine/Array.class.as",
+      "lines": 255,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "Array.class",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiengine/CBee.as",
+      "lines": 296,
+      "risk": 1,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "CBee",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/CBeeLC.as",
+      "lines": 21,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "CBeeLC",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/CBeeManager.as",
+      "lines": 188,
+      "risk": 1,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "CBeeManager",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/Desktop.as",
+      "lines": 20,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "Desktop",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/FECMItem.as",
+      "lines": 18,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FECMItem",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/FEColor.as",
+      "lines": 19,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FEColor",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/FEDate.as",
+      "lines": 138,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FEDate",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/FEMC.as",
+      "lines": 386,
+      "risk": 3,
+      "hasAttachMovie": true,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FEMC",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/FEMCLoader.as",
+      "lines": 51,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FEMCLoader",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/FENumber.as",
+      "lines": 117,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FENumber",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/FEObject.as",
+      "lines": 44,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FEObject",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/FEString.as",
+      "lines": 491,
+      "risk": 1,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "FEString",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/FFileMng.as",
+      "lines": 113,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FFileMng",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/FileLoader.as",
+      "lines": 165,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FileLoader",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/frusion_content/CBeeLocal.as",
+      "lines": 77,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "CBeeLocal",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/frusion_external/CBeeLocal.as",
+      "lines": 194,
+      "risk": 1,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "CBeeLocal",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/frusion_internal/CBeeLocal.as",
+      "lines": 183,
+      "risk": 1,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "CBeeLocal",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/HTTP.as",
+      "lines": 159,
+      "risk": 1,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "HTTP",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/Lang.as",
+      "lines": 168,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "Lang",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/MD5.as",
+      "lines": 185,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "MD5",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/MovieClip.class.as",
+      "lines": 346,
+      "risk": 3,
+      "hasAttachMovie": true,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "MovieClip.class",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiengine/Pref.as",
+      "lines": 177,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "Pref",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/RunDate.as",
+      "lines": 75,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "RunDate",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/Slot.as",
+      "lines": 184,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "Slot",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/SlotList.as",
+      "lines": 85,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "SlotList",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/StatusMng.as",
+      "lines": 79,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "StatusMng",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/Tab.as",
+      "lines": 31,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "Tab",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/TextField.class.as",
+      "lines": 46,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "TextField.class",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiengine/UserListMng.as",
+      "lines": 207,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "UserListMng",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/UserMng.as",
+      "lines": 214,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "UserMng",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/WinBox.as",
+      "lines": 101,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "WinBox",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/Window.as",
+      "lines": 13,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "Window",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiengine/WinStandard.as",
+      "lines": 732,
+      "risk": 3,
+      "hasAttachMovie": true,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "WinStandard",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiparc/BlackList.as",
+      "lines": 60,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "BlackList",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/cmdList.as",
+      "lines": 8,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "cmdList",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiparc/cmdList2.as",
+      "lines": 85,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "cmdList2",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/ContactList.as",
+      "lines": 73,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "ContactList",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/ContactListCache.as",
+      "lines": 51,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "ContactListCache",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/Depths.as",
+      "lines": 43,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "Depths",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/first.as",
+      "lines": 32,
+      "risk": 3,
+      "hasAttachMovie": false,
+      "hasLoadMovie": true,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "first",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPCBee.as",
+      "lines": 587,
+      "risk": 1,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "FPCBee",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPCBeeManager.as",
+      "lines": 21,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FPCBeeManager",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPDesktop.as",
+      "lines": 330,
+      "risk": 3,
+      "hasAttachMovie": true,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FPDesktop",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPFileMng.as",
+      "lines": 536,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FPFileMng",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPForumSlot.as",
+      "lines": 94,
+      "risk": 3,
+      "hasAttachMovie": true,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FPForumSlot",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPPlugin.class.as",
+      "lines": 207,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FPPlugin.class",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPSlotList.as",
+      "lines": 91,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FPSlotList",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPString.as",
+      "lines": 37,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FPString",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPTab.as",
+      "lines": 92,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FPTab",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPTopDesktop.as",
+      "lines": 57,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FPTopDesktop",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/FPTrashSlot.as",
+      "lines": 16,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "FPTrashSlot",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiparc/FrutizInfo.as",
+      "lines": 516,
+      "risk": 1,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "FrutizInfo",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/global.as",
+      "lines": 299,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "global",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/IconFileBox.as",
+      "lines": 193,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "IconFileBox",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/init_final.as",
+      "lines": 26,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "init_final",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/init.as",
+      "lines": 264,
+      "risk": 3,
+      "hasAttachMovie": true,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "init",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/InviteMng.as",
+      "lines": 54,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "InviteMng",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/lang_french.as",
+      "lines": 899,
+      "risk": 1,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "lang_french",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/lib/box/init.as",
+      "lines": 41,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "init",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/lib/fe/init.as",
+      "lines": 40,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "init",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/lib/frusion/init.as",
+      "lines": 18,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "init",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/lib/interface/init.as",
+      "lines": 155,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "init",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/lib/listener/init.as",
+      "lines": 16,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "init",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/lib/root/init.as",
+      "lines": 28,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "init",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/lib/unsorted/init.as",
+      "lines": 78,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "init",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/listener/dragIconMouse.as",
+      "lines": 50,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "dragIconMouse",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/listener/key.as",
+      "lines": 16,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "key",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/listener/main.as",
+      "lines": 1225,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "main",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/listener/mouse.as",
+      "lines": 12,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "mouse",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiparc/loading.as",
+      "lines": 103,
+      "risk": 6,
+      "hasAttachMovie": true,
+      "hasLoadMovie": true,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "loading",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/main/classLoader.as",
+      "lines": 60,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "classLoader",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiparc/MeMng.as",
+      "lines": 264,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "MeMng",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/openFunctions.as",
+      "lines": 660,
+      "risk": 3,
+      "hasAttachMovie": true,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "openFunctions",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/Path.as",
+      "lines": 68,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "Path",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/registerSymphony.as",
+      "lines": 138,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "registerSymphony",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/Standard.as",
+      "lines": 569,
+      "risk": 1,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "Standard",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/test_game/CBeeLocal.as",
+      "lines": 72,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "CBeeLocal",
+          "jsMirror": true,
+          "haxePort": true
+        }
+      ],
+      "parity": "ported-js-haxe"
+    },
+    {
+      "file": "frutiparc/test_game/init.as",
+      "lines": 28,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "init",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/TipTextMng.as",
+      "lines": 84,
+      "risk": 4,
+      "hasAttachMovie": true,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": true,
+      "classDetails": [
+        {
+          "className": "TipTextMng",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    },
+    {
+      "file": "frutiparc/WallPaperMng.as",
+      "lines": 128,
+      "risk": 0,
+      "hasAttachMovie": false,
+      "hasLoadMovie": false,
+      "hasOnClipEvent": false,
+      "hasXml": false,
+      "classDetails": [
+        {
+          "className": "WallPaperMng",
+          "jsMirror": false,
+          "haxePort": false
+        }
+      ],
+      "parity": "missing"
+    }
+  ]
+}
