@@ -1,6 +1,6 @@
 # MVP Lot A — Modules candidats (Haxe first)
 
-Généré le: 2026-03-29T16:16:17.693Z
+Généré le: 2026-03-30T13:19:49.825Z
 
 Ces 5 modules sont les meilleurs candidats initiaux pour le portage Haxe (faible dépendance runtime Flash).
 

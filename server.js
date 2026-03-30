@@ -3,6 +3,7 @@ const { WebSocketServer } = require('ws');
 const path = require('path');
 const { buildMvpShowcase } = require('./packages/core-js/src/mvpShowcase');
 const { createAppState } = require('./packages/core-js/src/appState');
+const { generateParityReport } = require('./tools/migration/parity_tracker');
 
 const app = express();
 app.use(express.json());
@@ -51,6 +52,16 @@ app.post('/api/app/messages', (req, res) => {
   const ok = appState.addMessage(user, text);
   if (!ok) return res.status(400).json({ ok: false, error: 'message vide' });
   return res.json({ ok: true, state: appState.getState() });
+});
+
+
+app.get('/api/migration/parity', (req, res) => {
+  try {
+    const report = generateParityReport();
+    res.json(report.summary);
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
 });
 
 app.get('/healthz', (req, res) => {

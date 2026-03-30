@@ -40,6 +40,17 @@ et renvoie un JSON de démonstration.
 L'UI portable consomme aussi:
 - `GET /api/app/state` (état chat/utilisateurs)
 - `POST /api/app/messages` (envoi message démo)
+- `GET /api/migration/parity` (résumé parité AS2 -> Haxe/JS, généré automatiquement)
+
+Pour piloter la reproduction Frutiparc en autonomie:
+```bash
+bash tools/migration/run_mvp.sh
+```
+Ce script génère:
+- `docs/MVP_LOT_A.md`
+- `docs/REPRO_FRUTIPARC_AUTONOME.md`
+- `migration/inventory/lot-a-candidates.json`
+- `migration/inventory/parity-report.json`
 
 
 ## Déploiement public
