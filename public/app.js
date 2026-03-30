@@ -195,11 +195,16 @@ function renderFrutibouilleAvatar(selection) {
 function lockOnFrutibouilleCreation() {
   const overlay = document.getElementById('frutibouilleOverlay');
   const createBtn = document.getElementById('createFrutibouilleBtn');
+  const hood = document.getElementById('hoodSelect');
+  const face = document.getElementById('faceSelect');
+  const eyes = document.getElementById('eyesSelect');
+
+  if (!overlay || !createBtn || !hood || !face || !eyes) return;
 
   const updatePreview = () => renderFrutibouilleAvatar(getCurrentSelection());
 
-  ['hoodSelect', 'faceSelect', 'eyesSelect'].forEach((id) => {
-    document.getElementById(id).addEventListener('change', updatePreview);
+  [hood, face, eyes].forEach((el) => {
+    el.addEventListener('change', updatePreview);
   });
 
   createBtn.addEventListener('click', () => {
@@ -229,7 +234,7 @@ function restoreFrutibouilleIfExists() {
 
     state.profile = profile;
     renderFrutibouilleAvatar(profile);
-    document.getElementById('frutibouilleOverlay').classList.add('hidden');
+    document.getElementById('frutibouilleOverlay')?.classList.add('hidden');
     return true;
   } catch (_e) {
     return false;
@@ -355,4 +360,13 @@ function boot() {
   document.getElementById('messageInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
 }
 
-boot();
+function safeBoot() {
+  try {
+    boot();
+  } catch (error) {
+    console.error('Boot error:', error);
+    document.getElementById('frutibouilleOverlay')?.classList.remove('hidden');
+  }
+}
+
+safeBoot();

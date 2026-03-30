@@ -19,11 +19,12 @@ test('portable UI uses runtime core mirrors for slot/window behavior', () => {
 });
 
 test('first action is frutibouille creation flow', () => {
-  assert.ok(html.includes('id="frutibouilleOverlay"'));
+  assert.ok(html.includes('class="frutibouille-overlay" id="frutibouilleOverlay"'));
   assert.ok(html.includes('id="createFrutibouilleBtn"'));
   assert.ok(js.includes('lockOnFrutibouilleCreation'));
   assert.ok(js.includes('restoreFrutibouilleIfExists'));
   assert.ok(js.includes('FRUTIBOUILLE_KEY'));
+  assert.ok(js.includes('safeBoot'));
 });
 
 test('portable UI forces default connected test account', () => {
