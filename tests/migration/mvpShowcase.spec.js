@@ -15,4 +15,8 @@ test('MVP showcase returns stable structure from migrated modules', () => {
   assert.equal(typeof payload.modules.statusMng.external, 'string');
   assert.equal(typeof payload.modules.classLoader.firstUrl, 'string');
   assert.equal(payload.modules.classLoader.nextLibLoaded, 1);
+  assert.equal(payload.modules.cmdList.ident, 'k');
+  assert.equal(payload.modules.listenerMouse.dragDeleted, true);
+  assert.equal(payload.modules.listenerMouse.lastWheelDelta, 3);
+  assert.equal(payload.modules.fpTrashSlot.title, 'trash');
 });

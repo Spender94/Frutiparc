@@ -1,13 +1,13 @@
 {
   "summary": {
-    "generatedAt": "2026-03-30T13:19:49.933Z",
+    "generatedAt": "2026-03-30T13:31:22.756Z",
     "sourceInventory": "migration/inventory/as2-inventory.json",
     "totalFiles": 81,
     "parity": {
-      "portedJsHaxe": 33,
+      "portedJsHaxe": 36,
       "portedJsOnly": 0,
       "portedHaxeOnly": 0,
-      "missing": 48
+      "missing": 45
     }
   },
   "files": [
@@ -617,11 +617,11 @@
       "classDetails": [
         {
           "className": "cmdList",
-          "jsMirror": false,
-          "haxePort": false
+          "jsMirror": true,
+          "haxePort": true
         }
       ],
-      "parity": "missing"
+      "parity": "ported-js-haxe"
     },
     {
       "file": "frutiparc/cmdList2.as",
@@ -889,11 +889,11 @@
       "classDetails": [
         {
           "className": "FPTrashSlot",
-          "jsMirror": false,
-          "haxePort": false
+          "jsMirror": true,
+          "haxePort": true
         }
       ],
-      "parity": "missing"
+      "parity": "ported-js-haxe"
     },
     {
       "file": "frutiparc/FrutizInfo.as",
@@ -1143,7 +1143,7 @@
       "hasXml": false,
       "classDetails": [
         {
-          "className": "listener",
+          "className": "dragIconMouse",
           "jsMirror": false,
           "haxePort": false
         }
@@ -1160,7 +1160,7 @@
       "hasXml": false,
       "classDetails": [
         {
-          "className": "listener",
+          "className": "key",
           "jsMirror": false,
           "haxePort": false
         }
@@ -1177,7 +1177,7 @@
       "hasXml": false,
       "classDetails": [
         {
-          "className": "listener",
+          "className": "main",
           "jsMirror": false,
           "haxePort": false
         }
@@ -1194,12 +1194,12 @@
       "hasXml": false,
       "classDetails": [
         {
-          "className": "listener",
-          "jsMirror": false,
-          "haxePort": false
+          "className": "mouse",
+          "jsMirror": true,
+          "haxePort": true
         }
       ],
-      "parity": "missing"
+      "parity": "ported-js-haxe"
     },
     {
       "file": "frutiparc/loading.as",

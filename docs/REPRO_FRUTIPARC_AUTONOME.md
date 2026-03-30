@@ -1,22 +1,19 @@
 # Plan autonome pour reproduire Frutiparc
 
-Rapport généré: 2026-03-30T13:19:49.933Z
+Rapport généré: 2026-03-30T13:31:22.756Z
 
 ## État de parité migration (AS2 -> Haxe/JS)
 
 - Fichiers AS2 inventoriés: **81**
-- Portés en JS + Haxe: **33**
+- Portés en JS + Haxe: **36**
 - Portés JS uniquement: **0**
 - Portés Haxe uniquement: **0**
-- Non portés: **48**
+- Non portés: **45**
 
 ## Prochaines cibles (ordre recommandé)
 
 | Fichier AS2 | Lignes | Risque Flash | Action recommandée |
 |---|---:|---:|---|
-| `frutiparc/cmdList.as` | 8 | 0 | Portage immédiat vers Haxe + miroir JS |
-| `frutiparc/listener/mouse.as` | 12 | 0 | Portage immédiat vers Haxe + miroir JS |
-| `frutiparc/FPTrashSlot.as` | 16 | 0 | Portage immédiat vers Haxe + miroir JS |
 | `frutiparc/lib/listener/init.as` | 16 | 0 | Portage immédiat vers Haxe + miroir JS |
 | `frutiparc/listener/key.as` | 16 | 0 | Portage immédiat vers Haxe + miroir JS |
 | `frutiparc/lib/frusion/init.as` | 18 | 0 | Portage immédiat vers Haxe + miroir JS |
@@ -24,6 +21,9 @@ Rapport généré: 2026-03-30T13:19:49.933Z
 | `frutiparc/init_final.as` | 26 | 0 | Portage immédiat vers Haxe + miroir JS |
 | `frutiparc/lib/root/init.as` | 28 | 0 | Portage immédiat vers Haxe + miroir JS |
 | `frutiparc/test_game/init.as` | 28 | 0 | Portage immédiat vers Haxe + miroir JS |
+| `frutiparc/FPString.as` | 37 | 0 | Portage immédiat vers Haxe + miroir JS |
+| `frutiparc/lib/fe/init.as` | 40 | 0 | Portage immédiat vers Haxe + miroir JS |
+| `frutiparc/lib/box/init.as` | 41 | 0 | Portage immédiat vers Haxe + miroir JS |
 
 ## Boucle de travail autonome (à répéter)
 

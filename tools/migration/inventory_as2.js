@@ -21,12 +21,22 @@ function walk(dir, collector) {
   }
 }
 
+function normalizeTypeName(rawName) {
+  if (!rawName) return rawName;
+  const parts = rawName.split('.').filter(Boolean);
+  return parts[parts.length - 1] || rawName;
+}
+
 function parseFile(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
   const lines = content.split(/\r?\n/);
 
-  const classes = [...content.matchAll(/\bclass\s+([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]);
-  const extendsMatch = [...content.matchAll(/\bclass\s+[A-Za-z_][A-Za-z0-9_]*\s+extends\s+([A-Za-z_][A-Za-z0-9_.]*)/g)].map((m) => m[1]);
+  const classes = [...content.matchAll(/\bclass\s+([A-Za-z_][A-Za-z0-9_.]*)/g)]
+    .map((m) => normalizeTypeName(m[1]));
+
+  const extendsMatch = [...content.matchAll(/\bclass\s+[A-Za-z_][A-Za-z0-9_.]*\s+extends\s+([A-Za-z_][A-Za-z0-9_.]*)/g)]
+    .map((m) => normalizeTypeName(m[1]));
+
   const imports = [...content.matchAll(/\bimport\s+([A-Za-z_][A-Za-z0-9_.]*)\s*;/g)].map((m) => m[1]);
 
   return {
