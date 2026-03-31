@@ -363,8 +363,12 @@ const server = app.listen(port, () => {
 
 // ─────────────────────────────────────────────
 // WebSocket → TCP bridge for Ruffle's socketProxy
-// Ruffle can't open raw TCP sockets; it opens a WebSocket instead.
-// We bridge each WS connection to the local CBee TCP server.
+//
+// Flash XMLSocket uses null-terminated (\0) strings over raw TCP.
+// Ruffle proxies this via WebSocket, but WS messages DON'T include \0.
+// The bridge must:
+//   WS→TCP: append \0 to each message before forwarding
+//   TCP→WS: split on \0, send each XML fragment as a separate WS message
 // ─────────────────────────────────────────────
 const wss = new WebSocketServer({ server });
 wss.on('connection', (ws) => {
@@ -374,18 +378,27 @@ wss.on('connection', (ws) => {
     console.log('[WS→TCP] TCP connection established');
   });
 
-  // WS → TCP: forward messages as-is (Ruffle sends null-terminated strings)
+  // WS → TCP: Ruffle sends each XMLSocket.send() as one WS message (no \0).
+  // The CBee TCP server expects \0-terminated messages.
   ws.on('message', (msg) => {
     const str = typeof msg === 'string' ? msg : msg.toString('utf8');
-    console.log('[WS→TCP] WS→TCP:', str.substring(0, 120));
-    tcp.write(str);
+    console.log('[WS→TCP] WS→TCP:', str.substring(0, 200));
+    tcp.write(str + '\0');
   });
 
-  // TCP → WS: forward data back (also null-terminated)
+  // TCP → WS: The CBee server sends \0-terminated XML.
+  // Split on \0 and send each fragment as a separate WS message.
+  let tcpBuffer = '';
   tcp.on('data', (data) => {
-    const str = data.toString('utf8');
-    console.log('[WS→TCP] TCP→WS:', str.substring(0, 120));
-    ws.send(str);
+    tcpBuffer += data.toString('utf8');
+    const parts = tcpBuffer.split('\0');
+    tcpBuffer = parts.pop(); // keep incomplete tail in buffer
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (trimmed.length === 0) continue;
+      console.log('[WS→TCP] TCP→WS:', trimmed.substring(0, 200));
+      ws.send(trimmed);
+    }
   });
 
   tcp.on('error', (err) => {
