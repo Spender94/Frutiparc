@@ -3,96 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Frutiparc Portable UI (MVP)</title>
-  <link rel="stylesheet" href="/app.css" />
+  <title>Frutiparc</title>
+  <style>
+    body { margin: 0; background: #335511; color: #fff; font-family: Verdana, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .splash { text-align: center; }
+    .splash h1 { font-size: 2.5rem; margin-bottom: 0.5rem; color: #CFF599; }
+    .splash p { font-size: 1rem; color: #ADE76B; margin-bottom: 2rem; }
+    .splash a { display: inline-block; padding: 1rem 2rem; background: #94DB39; color: #335511; text-decoration: none; font-weight: bold; border-radius: 8px; font-size: 1.1rem; }
+    .splash a:hover { background: #ADE76B; }
+  </style>
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="identity-card">
-        <div class="avatar" id="topAvatar">🫐</div>
-        <div>
-          <div class="username" id="username">kasparov</div>
-          <div class="stats" id="stats">Niv 17 · 688 pts</div>
-        </div>
-      </div>
-      <div class="top-actions">
-        <button class="chip" id="refreshBtn">Rafraîchir</button>
-        <a class="chip" href="/legacy">Mode legacy</a>
-      </div>
-    </header>
-
-    <nav class="dock" id="dock"></nav>
-
-    <main class="desktop" id="desktopRoot">
-      <div class="icon-layer" id="iconLayer"></div>
-
-      <section class="chat-window" id="chatWindow">
-        <div class="window-title" id="chatTitleBar">
-          <span>Salon — Prototype portable</span>
-          <div class="window-tools">
-            <span class="muted" id="statusBadge">compte test · kasparov</span>
-            <button class="tool" id="minBtn">—</button>
-            <button class="tool" id="closeBtn">✕</button>
-          </div>
-        </div>
-
-        <div class="window-content" id="chatContent">
-          <aside class="left-avatars">
-            <div class="avatar-card" id="friendAvatar">🧑‍🎤</div>
-            <div class="avatar-card" id="myAvatar">🫐</div>
-          </aside>
-
-          <section class="chat-feed" id="chatFeed"></section>
-
-          <aside class="user-list" id="userList"></aside>
-        </div>
-
-        <footer class="composer" id="composer">
-          <input id="messageInput" type="text" placeholder="Écrire un message…" />
-          <button id="sendBtn">Envoyer</button>
-        </footer>
-      </section>
-    </main>
+  <div class="splash">
+    <h1>Frutiparc</h1>
+    <p>Le site de jeux Flash des années 2000 — émulé avec Ruffle</p>
+    <a href="/legacy">Entrer dans Frutiparc</a>
   </div>
-
-  <section class="frutibouille-overlay" id="frutibouilleOverlay">
-    <div class="frutibouille-modal">
-      <h2>Crée ta frutibouille</h2>
-      <p>Première étape obligatoire avant d’entrer dans Frutiparc.</p>
-
-      <div class="frutibouille-preview" id="frutibouillePreview">🫐</div>
-
-      <label>Capuche
-        <select id="hoodSelect">
-          <option value="blue">Bleue</option>
-          <option value="pink">Rose</option>
-          <option value="green">Verte</option>
-          <option value="gold">Dorée</option>
-        </select>
-      </label>
-
-      <label>Visage
-        <select id="faceSelect">
-          <option value="berry">Myrtille</option>
-          <option value="apple">Pomme</option>
-          <option value="pear">Poire</option>
-        </select>
-      </label>
-
-      <label>Regard
-        <select id="eyesSelect">
-          <option value="happy">Souriant</option>
-          <option value="cool">Cool</option>
-          <option value="wink">Clin d’œil</option>
-        </select>
-      </label>
-
-      <button id="createFrutibouilleBtn">Entrer dans Frutiparc</button>
-    </div>
-  </section>
-
-  <script src="/runtime-core.js"></script>
-  <script src="/app.js"></script>
 </body>
 </html>
