@@ -1,59 +1,53 @@
 # Frutiparc
 
-This repository hosts a small server used to serve the assets of the
-**Frutiparc** Flash game.  The game expects to communicate with a web
-server running on `localhost:8888`.
+Code source de **Frutiparc**, un site de jeux Flash des années 2000,
+émulé dans le navigateur grâce à [Ruffle](https://ruffle.rs/).
 
-## Running the game
+Le serveur Node.js reconstitue la logique backend originale (endpoints HTTP
++ serveur XMLSocket pour le chat temps réel) afin que le SWF fonctionne
+comme à l'époque.
 
-1. Install the dependencies:
+## Lancer le projet
+
+1. Installer les dépendances :
    ```bash
    npm install
    ```
-2. Start the HTTP server (defaults to port `8888`):
+2. Démarrer le serveur (port `8888` par défaut) :
    ```bash
    npm start
    ```
-   On Windows you can run the `public/start.bat` script which launches the same
-   server. The batch file now automatically switches to its own directory so it
-   can be invoked from anywhere.
-   You can change the port by setting the `PORT` environment variable if
-   necessary.
-3. Open your browser at [`http://localhost:8888/`](http://localhost:8888/).
-   This is now a first portable UI shell inspired by Frutiparc desktop (no Ruffle, no `main.swf`).
-4. For legacy Flash facade, open [`http://localhost:8888/legacy`](http://localhost:8888/legacy).
+3. Ouvrir [`http://localhost:8888/`](http://localhost:8888/) dans le navigateur.
+4. Cliquer sur **Entrer dans Frutiparc** pour lancer le SWF via Ruffle.
 
-Legacy SWF is only exposed via `/legacy/main.swf`.
+## Architecture
 
-
-## Tester la version portée (sans Ruffle / sans `main.swf`)
-
-Tu peux tester la version Node des modules portés via l'endpoint MVP:
-
-```bash
-curl http://localhost:8888/api/mvp/showcase
+```
+server.js             Serveur Express (HTTP :8888) + XMLSocket CBee (:5173)
+public/               Fichiers statiques (HTML, SWF, XML, crossdomain)
+public/ruffle.html    Page Ruffle qui charge legacy/main.swf
+legacy/main.swf       SWF principal de Frutiparc
+frutiengine/          Code source ActionScript 2 du moteur
+frutiparc/            Code source AS2 de l'application principale
+frusion/              Système réseau (client/serveur Flash)
+Games/                Mini-jeux (Burning Kiwi, Kaluga, Frutibandas, etc.)
 ```
 
-Cet endpoint exécute les modules portés (`feString`, `feColor`, `statusMng`, `classLoader`)
-et renvoie un JSON de démonstration.
+## Endpoints HTTP
 
-L'UI portable consomme aussi:
-- `GET /api/app/state` (état chat/utilisateurs)
-- `POST /api/app/messages` (envoi message démo)
-- `GET /api/migration/parity` (résumé parité AS2 -> Haxe/JS, généré automatiquement)
+| Route | Rôle |
+|---|---|
+| `do/init` | Initialisation de session |
+| `do/prefdef` | Définitions des préférences |
+| `do/mypref` | Préférences utilisateur |
+| `do/prefsave` | Sauvegarde des préférences |
+| `do/onident` | Données post-identification |
+| `ff/tree` | Arbre des dossiers virtuels |
+| `ff/ls` | Contenu d'un dossier |
+| `ff/mk` `ff/mv` `ff/cp` `ff/erb` `ff/dm` | Opérations sur fichiers |
 
-Pour piloter la reproduction Frutiparc en autonomie:
-```bash
-bash tools/migration/run_mvp.sh
-```
-Ce script génère:
-- `docs/MVP_LOT_A.md`
-- `docs/REPRO_FRUTIPARC_AUTONOME.md`
-- `migration/inventory/lot-a-candidates.json`
-- `migration/inventory/parity-report.json`
+## Serveur XMLSocket (CBee)
 
-
-## Déploiement public
-
-Un blueprint Render est fourni via `render.yaml` pour exposer publiquement l'API Node MVP.
-Voir `docs/DEPLOY_NODE_MVP.md`.
+Le serveur TCP sur le port `5173` implémente le protocole CBee
+(XML null-terminated) utilisé par le SWF pour le chat, la présence
+et l'authentification.
