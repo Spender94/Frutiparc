@@ -1,3 +1,3 @@
-<services host="localhost">
+<services host="localhost:8888">
 	<service name="frutichat" port="5173" />
 </services>
