@@ -49,6 +49,12 @@ const PAD_BYTE = 0x2F; // '/'
 // loading screen completes once the main SWF is loaded.
 const bytePatches = [
   {
+    offset: 35257,
+    from: [0x00, 0x04, 0x00, 0x00],  // int32 LE 1024
+    to:   [0xFF, 0xFF, 0xFF, 0x7F],  // int32 LE 2147483647
+    desc: 'loading.as: change "iTotal < 1024" to "iTotal < MAX_INT" (always true)'
+  },
+  {
     offset: 35297,
     from: [0xB0, 0xAD, 0x01, 0x00],  // int32 LE 110000
     to:   [0x00, 0x00, 0x00, 0x00],  // int32 LE 0
