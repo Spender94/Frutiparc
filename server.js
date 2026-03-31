@@ -46,6 +46,7 @@ app.use((req, res, next) => {
 
 const port = process.env.PORT || 8888;
 const XMLSOCKET_PORT = Number(process.env.XMLSOCKET_PORT || 5000); // Port for the CBee XMLSocket server
+const SERVER_BUILD = process.env.SERVER_BUILD || 'codex-ruffle-debug-v4';
 
 // ─────────────────────────────────────────────
 // Helpers: base62 encode/decode (matches FEString/FENumber in AS2)
@@ -366,6 +367,7 @@ app.get('/healthz', (req, res) => {
 const server = app.listen(port, () => {
   console.log(`[HTTP]  Server running on http://localhost:${port}`);
   console.log(`        Legacy SWF:  http://localhost:${port}/legacy`);
+  console.log(`[BOOT]  Build=${SERVER_BUILD} XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
 });
 
 // ─────────────────────────────────────────────
@@ -637,6 +639,16 @@ function handleCBeeMessage(socket, rawXml) {
     case 'ip': {
       const ipAddr = normalizeClientIp(socket.remoteAddress);
       sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
+      // Some Ruffle/AVM1 paths never send explicit <k /> (ident) even after
+      // requesting IP/time. Auto-send ident once to avoid login deadlock.
+      if (!client.logged) {
+        const fallbackUser = users[client.username] || users['Angelisium'];
+        sendToClient(
+          socket,
+          `<${CMD.ident} l="${client.username || 'Angelisium'}" x="${fallbackUser.xp || 0}" f="${fallbackUser.fbouille || '000503000000111010'}" />`
+        );
+        sendToClient(socket, `<${CMD.serviceinfo} />`);
+      }
       break;
     }
 
@@ -908,7 +920,9 @@ function handleCBeeMessage(socket, rawXml) {
 // Start XMLSocket TCP server
 // ─────────────────────────────────────────────
 const xmlSocketServer = net.createServer((socket) => {
-  console.log(`[CBee]  Client connected from ${socket.remoteAddress}`);
+  const rawIp = socket.remoteAddress || '';
+  const normalizedIp = normalizeClientIp(rawIp);
+  console.log(`[CBee]  Client connected from ${rawIp} (normalized: ${normalizedIp})`);
   const defaultUser = 'Angelisium';
   const user = users[defaultUser];
 
