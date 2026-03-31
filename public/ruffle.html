@@ -10,30 +10,25 @@
     </style>
 </head>
 <body>
-    <div id="player-container"></div>
-    <script>
-        window.addEventListener("DOMContentLoaded", async () => {
-            const ruffle = window.RufflePlayer.newest();
-            const player = ruffle.createPlayer();
-            player.style.width = "1024px";
-            player.style.height = "768px";
-            document.getElementById("player-container").appendChild(player);
-
-            await player.load({
-                url: "/legacy/main.swf",
-                parameters: {
-                    sid: "debug",
-                    domain: location.host + "/"
-                },
-                autoplay: "on",
-                unmuteOverlay: "visible",
-                logLevel: "warn",
-                openUrlMode: "allow",
-                allowScriptAccess: true,
-                // Force Ruffle to use the current host for all network requests
-                base: location.origin + "/"
-            });
-        });
-    </script>
+    <div id="player-container">
+        <!--
+            Use the <object> polyfill approach — Ruffle's polyfill
+            intercepts this and emulates Flash.  This is more robust
+            than the JS API for flashvars / loadMovie support.
+        -->
+        <object
+            type="application/x-shockwave-flash"
+            data="/legacy/main.swf"
+            width="1024"
+            height="768"
+        >
+            <param name="movie" value="/legacy/main.swf" />
+            <param name="flashvars" value="sid=debug&domain=localhost:8888/" />
+            <param name="quality" value="high" />
+            <param name="allowScriptAccess" value="always" />
+            <param name="allowNetworking" value="all" />
+            <param name="base" value="/" />
+        </object>
+    </div>
 </body>
 </html>

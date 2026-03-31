@@ -5,6 +5,18 @@ const crypto = require('crypto');
 const path = require('path');
 
 const app = express();
+
+// Normalise multiple slashes in request URLs.
+// The SWF binary patch replaces shorter domain strings with '/' padding
+// (e.g. "localhost:8888////////"), resulting in URLs like
+// /////////do/init.  This middleware collapses runs of slashes.
+app.use((req, res, next) => {
+  if (req.url.includes('//')) {
+    req.url = req.url.replace(/\/{2,}/g, '/');
+  }
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -116,6 +128,15 @@ app.get('/legacy', (req, res) => {
 
 app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
+});
+
+// Explicit route for fileIcon.swf — Ruffle's loadMovie() fetches this
+// during the loading screen.  Serving it explicitly (with logging and
+// correct Content-Type) helps diagnose and resolve pending-fetch issues.
+app.get('/fileIcon.swf', (req, res) => {
+  console.log('[SWF]   fileIcon.swf requested');
+  res.type('application/x-shockwave-flash');
+  res.sendFile(path.join(__dirname, 'public', 'fileIcon.swf'));
 });
 
 // ─────────────────────────────────────────────

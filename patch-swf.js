@@ -29,6 +29,14 @@ const patches = [
   { from: 'swf.frutiparc.com', to: 'localhost:8888' },
 ];
 
+// Padding character — must NOT be 0x00 (null) because null bytes
+// act as string terminators in AVM1 ConstantPool actions.  Using
+// 0x00 creates phantom empty strings that shift all constant pool
+// indices, causing "Length mismatch in AVM1 action: ConstantPool"
+// errors in Ruffle.  We use 0x2F ('/') instead — the extra slashes
+// end up in URL paths and are normalised away by Express middleware.
+const PAD_BYTE = 0x2F; // '/'
+
 // Read the SWF
 const raw = fs.readFileSync(SRC);
 const sig = raw.slice(0, 3).toString('ascii');
@@ -66,12 +74,13 @@ for (const patch of patches) {
 
     // Write new string
     toBuf.copy(body, pos);
-    // Null-terminate
-    body[pos + toBuf.length] = 0x00;
-    // Fill remaining bytes with nulls (creates empty ghost strings — harmless)
-    for (let i = toBuf.length + 1; i < fromBuf.length; i++) {
-      body[pos + i] = 0x00;
+    // Pad remaining bytes (before the original null terminator) with PAD_BYTE
+    // so the string becomes e.g. "localhost:8888////////" — same length as the
+    // original, preserving the ConstantPool string count.
+    for (let i = toBuf.length; i < fromBuf.length; i++) {
+      body[pos + i] = PAD_BYTE;
     }
+    // The original null terminator at pos + fromBuf.length is left untouched
 
     patchCount++;
     pos += fromBuf.length;
