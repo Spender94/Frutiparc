@@ -45,7 +45,7 @@ app.use((req, res, next) => {
 });
 
 const port = process.env.PORT || 8888;
-const XMLSOCKET_PORT = 5173; // Port for the CBee XMLSocket server
+const XMLSOCKET_PORT = 5000; // Port for the CBee XMLSocket server (must end in 000 for FrutiChat cmdList)
 
 // ─────────────────────────────────────────────
 // Helpers: base62 encode/decode (matches FEString/FENumber in AS2)
@@ -621,17 +621,23 @@ function handleCBeeMessage(socket, rawXml) {
 
     // ── ident: login ──
     case 'ident': {
-      const login = msg.attrs.l;
-      const sid = msg.attrs.s;
+      const login = msg.attrs.l || '';
+      const sid = msg.attrs.s || '';
 
-      // Link session to socket
+      // sidAutoInit mode sends l="" — default to Angelisium
+      const effectiveLogin = login.length > 0 ? login : 'Angelisium';
+
+      // Auto-create session if needed
+      if (sid && !sessions[sid]) {
+        sessions[sid] = { user: null, createdAt: Date.now() };
+      }
       if (sid && sessions[sid]) {
-        sessions[sid].user = login || sessions[sid].user;
+        sessions[sid].user = effectiveLogin;
       }
 
       // Auto-create user if doesn't exist
-      if (login && !users[login]) {
-        users[login] = {
+      if (!users[effectiveLogin]) {
+        users[effectiveLogin] = {
           pass: '',
           xp: 10000,
           kikooz: 50,
@@ -645,25 +651,15 @@ function handleCBeeMessage(socket, rawXml) {
         };
       }
 
-      const user = login ? users[login] : null;
+      const user = users[effectiveLogin];
 
-      if (user || (sid && sessions[sid])) {
-        // Success: send ident response with user data
-        client.username = login || 'Guest';
-        client.sid = sid;
-        client.logged = true;
-        if (sid && sessions[sid]) {
-          sessions[sid].user = client.username;
-        }
+      // Success: send ident response with user data
+      client.username = effectiveLogin;
+      client.sid = sid;
+      client.logged = true;
 
-        const xp = user ? user.xp : 10000;
-        const fbouille = user ? user.fbouille : '000503000000111010';
-        sendToClient(socket, `<${CMD.ident} l="${client.username}" x="${xp}" f="${fbouille}" />`);
-        console.log(`[CBee]  User "${client.username}" logged in`);
-      } else {
-        // Failure
-        sendToClient(socket, `<${CMD.ident} k="1" />`);
-      }
+      sendToClient(socket, `<${CMD.ident} l="${effectiveLogin}" x="${user.xp}" f="${user.fbouille}" />`);
+      console.log(`[CBee]  User "${effectiveLogin}" logged in (sid=${sid})`);
       break;
     }
 
@@ -871,29 +867,20 @@ function handleCBeeMessage(socket, rawXml) {
 // ─────────────────────────────────────────────
 const xmlSocketServer = net.createServer((socket) => {
   console.log(`[CBee]  Client connected from ${socket.remoteAddress}`);
-  const defaultUser = 'Angelisium';
-  const user = users[defaultUser];
 
   xmlSocketClients.set(socket, {
     sid: null,
-    username: defaultUser,
-    logged: true,
+    username: null,
+    logged: false,
     channels: new Set(),
     buffer: '',
   });
 
-  // Auto-send IP echo — the SWF expects this right after connect
+  // Auto-send IP echo — the SWF's FPCBee.onConnect sends time+ip commands,
+  // but it also needs an early IP to trigger ident() in sidAutoInit mode.
   const ipAddr = socket.remoteAddress || '127.0.0.1';
   sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
   console.log(`[CBee]  -> Sent IP: ${ipAddr}`);
-
-  // Auto-send ident response (sidAutoInit mode: the SWF won't send ident itself)
-  setTimeout(() => {
-    sendToClient(socket,
-      `<${CMD.ident} l="${defaultUser}" x="${user.xp}" f="${user.fbouille}" />`
-    );
-    console.log(`[CBee]  -> Auto-ident as "${defaultUser}"`);
-  }, 100);
 
   socket.on('data', (data) => {
     const client = xmlSocketClients.get(socket);
