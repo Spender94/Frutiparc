@@ -588,6 +588,25 @@ function formatDateTime(d) {
   return d.toISOString().replace('T', ' ').substring(0, 19);
 }
 
+function buildChannelListXml() {
+  let inner = '';
+  for (const [name, ch] of Object.entries(channels)) {
+    inner += `<g g="${name}"><t>${ch.topic}</t></g>`;
+  }
+  return `<${CMD.channellist}>${inner}</${CMD.channellist}>`;
+}
+
+function sendBootSequence(socket, client) {
+  const ipAddr = socket.remoteAddress || '127.0.0.1';
+  const username = client?.username || 'Angelisium';
+  const user = users[username] || users['Angelisium'];
+  sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
+  sendToClient(socket, `<${CMD.time}>${formatDateTime(new Date())}</${CMD.time}>`);
+  sendToClient(socket, `<${CMD.ident} l="${username}" x="${user.xp || 0}" f="${user.fbouille || '000503000000111010'}" />`);
+  sendToClient(socket, `<${CMD.serviceinfo} />`);
+  sendToClient(socket, buildChannelListXml());
+}
+
 // ─────────────────────────────────────────────
 // Handle a single CBee XML message from a client
 // ─────────────────────────────────────────────
@@ -624,8 +643,15 @@ function handleCBeeMessage(socket, rawXml) {
       const login = msg.attrs.l;
       const sid = msg.attrs.s;
 
+      // In sidAutoInit mode (e.g. sid=debug from the loader page), the SWF
+      // may skip /do/init and still send ident with a sid.
+      // Create a transient session so ident can succeed.
+      if (sid && !sessions[sid]) {
+        sessions[sid] = { user: null, createdAt: Date.now(), transient: true };
+      }
+
       // Link session to socket
-      if (sid && sessions[sid]) {
+      if (sid) {
         sessions[sid].user = login || sessions[sid].user;
       }
 
@@ -645,20 +671,22 @@ function handleCBeeMessage(socket, rawXml) {
         };
       }
 
-      const user = login ? users[login] : null;
+      const resolvedLogin = login || (sid && sessions[sid] && sessions[sid].user) || 'Angelisium';
+      const user = users[resolvedLogin] || users['Angelisium'];
 
-      if (user || (sid && sessions[sid])) {
+      if (sid || user) {
         // Success: send ident response with user data
-        client.username = login || 'Guest';
+        client.username = resolvedLogin;
         client.sid = sid;
         client.logged = true;
-        if (sid && sessions[sid]) {
+        if (sid) {
           sessions[sid].user = client.username;
         }
 
         const xp = user ? user.xp : 10000;
         const fbouille = user ? user.fbouille : '000503000000111010';
         sendToClient(socket, `<${CMD.ident} l="${client.username}" x="${xp}" f="${fbouille}" />`);
+        sendToClient(socket, `<${CMD.serviceinfo} />`);
         console.log(`[CBee]  User "${client.username}" logged in`);
       } else {
         // Failure
@@ -669,11 +697,7 @@ function handleCBeeMessage(socket, rawXml) {
 
     // ── channellist: list available channels ──
     case 'channellist': {
-      let inner = '';
-      for (const [name, ch] of Object.entries(channels)) {
-        inner += `<g g="${name}"><t>${ch.topic}</t></g>`;
-      }
-      sendToClient(socket, `<${CMD.channellist}>${inner}</${CMD.channellist}>`);
+      sendToClient(socket, buildChannelListXml());
       break;
     }
 
@@ -882,12 +906,12 @@ const xmlSocketServer = net.createServer((socket) => {
     buffer: '',
   });
 
-  // Auto-send IP echo — the SWF expects this right after connect
-  const ipAddr = socket.remoteAddress || '127.0.0.1';
-  sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
-  console.log(`[CBee]  -> Sent IP: ${ipAddr}`);
+  // Auto-send bootstrap frames. In sidAutoInit mode some clients won't
+  // explicitly emit <k /> before waiting for initial state.
+  sendBootSequence(socket, xmlSocketClients.get(socket));
+  console.log('[CBee]  -> Sent boot sequence (ip/time/ident/serviceinfo/channellist)');
 
-  // Auto-send ident response (sidAutoInit mode: the SWF won't send ident itself)
+  // Keep delayed ident for compatibility with slower SWF init paths.
   setTimeout(() => {
     sendToClient(socket,
       `<${CMD.ident} l="${defaultUser}" x="${user.xp}" f="${user.fbouille}" />`
