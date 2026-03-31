@@ -20,6 +20,12 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Log all incoming requests for debugging
+app.use((req, res, next) => {
+  console.log(`[HTTP]  ${req.method} ${req.url}`);
+  next();
+});
+
 const port = process.env.PORT || 8888;
 const XMLSOCKET_PORT = 5173; // Port for the CBee XMLSocket server
 
@@ -305,6 +311,9 @@ app.post('/h/send_debug', (req, res) => {
 // Serve static files AFTER API routes so our endpoints take priority
 // ─────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
+// Fallback: swf.frutiparc.com URLs resolve to root paths (/wheel/wheel1.swf)
+// but files live under public/swf/. This second mount acts as fallback.
+app.use(express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
 // Health check
