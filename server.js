@@ -362,12 +362,50 @@ const server = app.listen(port, () => {
 });
 
 // ─────────────────────────────────────────────
-// WebSocket server (kept for future use)
+// WebSocket → TCP bridge for Ruffle's socketProxy
+// Ruffle can't open raw TCP sockets; it opens a WebSocket instead.
+// We bridge each WS connection to the local CBee TCP server.
 // ─────────────────────────────────────────────
 const wss = new WebSocketServer({ server });
 wss.on('connection', (ws) => {
+  console.log('[WS→TCP] New WebSocket client, bridging to TCP localhost:' + XMLSOCKET_PORT);
+
+  const tcp = net.createConnection({ host: '127.0.0.1', port: XMLSOCKET_PORT }, () => {
+    console.log('[WS→TCP] TCP connection established');
+  });
+
+  // WS → TCP: forward messages as-is (Ruffle sends null-terminated strings)
   ws.on('message', (msg) => {
-    ws.send(`echo: ${msg}`);
+    const str = typeof msg === 'string' ? msg : msg.toString('utf8');
+    console.log('[WS→TCP] WS→TCP:', str.substring(0, 120));
+    tcp.write(str);
+  });
+
+  // TCP → WS: forward data back (also null-terminated)
+  tcp.on('data', (data) => {
+    const str = data.toString('utf8');
+    console.log('[WS→TCP] TCP→WS:', str.substring(0, 120));
+    ws.send(str);
+  });
+
+  tcp.on('error', (err) => {
+    console.error('[WS→TCP] TCP error:', err.message);
+    ws.close();
+  });
+
+  tcp.on('close', () => {
+    console.log('[WS→TCP] TCP closed');
+    ws.close();
+  });
+
+  ws.on('close', () => {
+    console.log('[WS→TCP] WS closed');
+    tcp.destroy();
+  });
+
+  ws.on('error', (err) => {
+    console.error('[WS→TCP] WS error:', err.message);
+    tcp.destroy();
   });
 });
 
@@ -775,6 +813,39 @@ function handleCBeeMessage(socket, rawXml) {
       break;
     }
 
+    // ── searchuser: search for a user ──
+    case 'searchuser': {
+      const u = msg.attrs.u || '';
+      const results = Object.keys(users)
+        .filter(name => name.toLowerCase().includes(u.toLowerCase()))
+        .slice(0, 20);
+      let inner = '';
+      for (const name of results) {
+        const ud = users[name] || {};
+        inner += `<u u="${name}" f="${ud.fbouille || '000503000000111010'}" x="${ud.xp || 0}" />`;
+      }
+      sendToClient(socket, `<${CMD.searchuser}>${inner}</${CMD.searchuser}>`);
+      break;
+    }
+
+    // ── listbouilles: list available avatar parts ──
+    case 'listbouilles': {
+      sendToClient(socket, `<${CMD.listbouilles} />`);
+      break;
+    }
+
+    // ── serviceinfo: service information ──
+    case 'serviceinfo': {
+      sendToClient(socket, `<${CMD.serviceinfo} />`);
+      break;
+    }
+
+    // ── statusobj: status object ──
+    case 'statusobj': {
+      sendToClient(socket, `<${CMD.statusobj} />`);
+      break;
+    }
+
     default: {
       console.log(`[CBee]  Unhandled command: ${cmdName} (${msg.tag})`);
       break;
@@ -787,13 +858,29 @@ function handleCBeeMessage(socket, rawXml) {
 // ─────────────────────────────────────────────
 const xmlSocketServer = net.createServer((socket) => {
   console.log(`[CBee]  Client connected from ${socket.remoteAddress}`);
+  const defaultUser = 'Angelisium';
+  const user = users[defaultUser];
+
   xmlSocketClients.set(socket, {
     sid: null,
-    username: null,
-    logged: false,
+    username: defaultUser,
+    logged: true,
     channels: new Set(),
     buffer: '',
   });
+
+  // Auto-send IP echo — the SWF expects this right after connect
+  const ipAddr = socket.remoteAddress || '127.0.0.1';
+  sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
+  console.log(`[CBee]  -> Sent IP: ${ipAddr}`);
+
+  // Auto-send ident response (sidAutoInit mode: the SWF won't send ident itself)
+  setTimeout(() => {
+    sendToClient(socket,
+      `<${CMD.ident} l="${defaultUser}" x="${user.xp}" f="${user.fbouille}" />`
+    );
+    console.log(`[CBee]  -> Auto-ident as "${defaultUser}"`);
+  }, 100);
 
   socket.on('data', (data) => {
     const client = xmlSocketClients.get(socket);
