@@ -26,6 +26,7 @@ const BACKUP = 'legacy/main.swf.original';
 const patches = [
   { from: 'www.beta.frutiparc.com', to: 'localhost:8888' },
   { from: 'swf.beta.frutiparc.com', to: 'localhost:8888' },
+  { from: 'swf.frutiparc.com', to: 'localhost:8888' },
 ];
 
 // Read the SWF
