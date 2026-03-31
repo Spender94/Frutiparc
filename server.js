@@ -6,11 +6,31 @@ const path = require('path');
 
 const app = express();
 
-// Normalise multiple slashes in request URLs.
-// The SWF binary patch replaces shorter domain strings with '/' padding
-// (e.g. "localhost:8888////////"), resulting in URLs like
-// /////////do/init.  This middleware collapses runs of slashes.
+// ── CORS headers (Ruffle's WASM fetch may need them) ──
 app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', '*');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+// ── Strip SWF domain-shim prefixes ──
+// The patched SWF replaces hardcoded domains with localhost:8888/<prefix>
+// so that every replacement is the exact same byte-length as the original.
+//   www.beta.frutiparc.com  (22) → localhost:8888/betawww (22)
+//   swf.beta.frutiparc.com  (22) → localhost:8888/betaswf (22)
+//   swf.frutiparc.com       (17) → localhost:8888/sw      (17)
+// This middleware strips the prefix so the rest of the server sees clean paths.
+app.use((req, res, next) => {
+  if (req.url.startsWith('/betawww/') || req.url === '/betawww') {
+    req.url = req.url.substring(8) || '/';           // strip '/betawww'
+  } else if (req.url.startsWith('/betaswf/') || req.url === '/betaswf') {
+    req.url = req.url.substring(8) || '/';           // strip '/betaswf'
+  } else if (req.url.startsWith('/sw/') || req.url === '/sw') {
+    req.url = req.url.substring(3) || '/';           // strip '/sw'
+  }
+  // Also collapse any residual double slashes
   if (req.url.includes('//')) {
     req.url = req.url.replace(/\/{2,}/g, '/');
   }
