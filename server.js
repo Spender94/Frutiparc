@@ -643,8 +643,15 @@ function handleCBeeMessage(socket, rawXml) {
       const login = msg.attrs.l;
       const sid = msg.attrs.s;
 
+      // In sidAutoInit mode (e.g. sid=debug from the loader page), the SWF
+      // may skip /do/init and still send ident with a sid.
+      // Create a transient session so ident can succeed.
+      if (sid && !sessions[sid]) {
+        sessions[sid] = { user: null, createdAt: Date.now(), transient: true };
+      }
+
       // Link session to socket
-      if (sid && sessions[sid]) {
+      if (sid) {
         sessions[sid].user = login || sessions[sid].user;
       }
 
@@ -664,14 +671,15 @@ function handleCBeeMessage(socket, rawXml) {
         };
       }
 
-      const user = login ? users[login] : null;
+      const resolvedLogin = login || (sid && sessions[sid] && sessions[sid].user) || 'Angelisium';
+      const user = users[resolvedLogin] || users['Angelisium'];
 
-      if (user || (sid && sessions[sid])) {
+      if (sid || user) {
         // Success: send ident response with user data
-        client.username = login || 'Guest';
+        client.username = resolvedLogin;
         client.sid = sid;
         client.logged = true;
-        if (sid && sessions[sid]) {
+        if (sid) {
           sessions[sid].user = client.username;
         }
 
