@@ -3,16 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <title>Frutiparc — Ruffle</title>
-    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
     <style>
         body { margin: 0; background: #335511; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
         #player-container { width: 1024px; height: 768px; }
     </style>
+
+    <!-- Intercept fetch() BEFORE Ruffle loads so WASM picks up our override -->
+    <script>
+        (function() {
+            const _origFetch = window.fetch;
+
+            // Map original Frutiparc domains → local server paths
+            const domainMap = {
+                'www.beta.frutiparc.com': 'http://localhost:8888',
+                'www.frutiparc.com':      'http://localhost:8888',
+                'swf.beta.frutiparc.com': 'http://localhost:8888/swf',
+                'swf.frutiparc.com':      'http://localhost:8888/swf',
+                'localhost:5173':         'http://localhost:8888',     // SWF uses CBee port for HTTP — redirect
+            };
+
+            window.fetch = function(input, init) {
+                let url = (typeof input === 'string') ? input : (input instanceof Request ? input.url : String(input));
+
+                // Rewrite frutiparc.com URLs to localhost
+                try {
+                    const parsed = new URL(url);
+                    const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
+                    for (const [domain, target] of Object.entries(domainMap)) {
+                        if (host === domain || parsed.hostname === domain) {
+                            const newUrl = target + parsed.pathname + parsed.search;
+                            console.log('[FETCH rewrite]', url, '→', newUrl);
+                            return _origFetch.call(this, newUrl, init);
+                        }
+                    }
+                } catch(e) { /* not a valid absolute URL, pass through */ }
+
+                // Also rewrite prefix-based URLs from SWF patching
+                const prefixRewrites = [
+                    ['/betawww/', '/'],
+                    ['/betaswf/', '/swf/'],
+                    ['/sw/', '/swf/'],
+                ];
+                try {
+                    const parsed = new URL(url);
+                    if (parsed.hostname === 'localhost') {
+                        for (const [prefix, replacement] of prefixRewrites) {
+                            if (parsed.pathname.startsWith(prefix)) {
+                                parsed.pathname = replacement + parsed.pathname.substring(prefix.length);
+                                const newUrl = parsed.toString();
+                                console.log('[FETCH prefix]', url, '→', newUrl);
+                                return _origFetch.call(this, newUrl, init);
+                            }
+                        }
+                    }
+                } catch(e) { /* pass through */ }
+
+                console.log('[FETCH]', url);
+                return _origFetch.call(this, input, init);
+            };
+
+            // Also intercept XMLHttpRequest (some Ruffle code paths may use it)
+            const _origXHROpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+                let rewritten = url;
+                try {
+                    const parsed = new URL(url, window.location.origin);
+                    const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
+                    for (const [domain, target] of Object.entries(domainMap)) {
+                        if (host === domain || parsed.hostname === domain) {
+                            rewritten = target + parsed.pathname + parsed.search;
+                            console.log('[XHR rewrite]', url, '→', rewritten);
+                            break;
+                        }
+                    }
+                } catch(e) {}
+                return _origXHROpen.call(this, method, rewritten, ...rest);
+            };
+        })();
+    </script>
+
+    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
 </head>
 <body>
     <div id="player-container"></div>
     <script>
-        // Use Ruffle's JavaScript API for full control over config & networking
         window.addEventListener("DOMContentLoaded", async () => {
             const ruffle = window.RufflePlayer.newest();
             const player = ruffle.createPlayer();
@@ -27,7 +101,7 @@
                 quality: "high",
                 parameters: {
                     sid: "debug",
-                    domain: "localhost:8888/betawww/"
+                    domain: "localhost:8888/"
                 },
                 socketProxy: [
                     { host: "localhost", port: 5173, proxyUrl: "ws://localhost:8888" }

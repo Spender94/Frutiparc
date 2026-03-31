@@ -16,21 +16,19 @@ app.use((req, res, next) => {
 });
 
 // ── Strip SWF domain-shim prefixes ──
-// The patched SWF replaces hardcoded domains with localhost:8888/<prefix>
-// so that every replacement is the exact same byte-length as the original.
-//   www.beta.frutiparc.com  (22) → localhost:8888/betawww (22)
-//   swf.beta.frutiparc.com  (22) → localhost:8888/betaswf (22)
-//   swf.frutiparc.com       (17) → localhost:8888/sw      (17)
-// This middleware strips the prefix so the rest of the server sees clean paths.
+// The patched SWF replaces hardcoded domains with localhost:8888/<prefix>.
+// The JS fetch interceptor in ruffle.html may also rewrite to /swf/<path>.
+// This middleware normalises all variants so the rest of the server sees clean paths.
 app.use((req, res, next) => {
+  // Prefix-based shims from SWF patching
   if (req.url.startsWith('/betawww/') || req.url === '/betawww') {
-    req.url = req.url.substring(8) || '/';           // strip '/betawww'
+    req.url = req.url.substring(8) || '/';
   } else if (req.url.startsWith('/betaswf/') || req.url === '/betaswf') {
-    req.url = req.url.substring(8) || '/';           // strip '/betaswf'
+    req.url = req.url.substring(8) || '/';
   } else if (req.url.startsWith('/sw/') || req.url === '/sw') {
-    req.url = req.url.substring(3) || '/';           // strip '/sw'
+    req.url = req.url.substring(3) || '/';
   }
-  // Also collapse any residual double slashes
+  // Collapse any residual double slashes
   if (req.url.includes('//')) {
     req.url = req.url.replace(/\/{2,}/g, '/');
   }
@@ -328,12 +326,25 @@ app.post('/h/send_debug', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// Serve SWF assets under /swf/* (used by the JS fetch interceptor rewrite)
+// ─────────────────────────────────────────────
+app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
+
+// ─────────────────────────────────────────────
 // Serve static files AFTER API routes so our endpoints take priority
 // ─────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 // Fallback: swf.frutiparc.com URLs resolve to root paths (/wheel/wheel1.swf)
 // but files live under public/swf/. This second mount acts as fallback.
 app.use(express.static(path.join(__dirname, 'public', 'swf')));
+
+// ─────────────────────────────────────────────
+// Catch-all 404 with logging (helps diagnose missing assets)
+// ─────────────────────────────────────────────
+app.use((req, res) => {
+  console.log(`[404]   ${req.method} ${req.url}`);
+  res.status(404).type('text/plain').send('Not found');
+});
 
 // ─────────────────────────────────────────────
 // Health check
