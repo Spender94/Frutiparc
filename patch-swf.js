@@ -22,20 +22,19 @@ const SRC = 'legacy/main.swf';
 const DST = 'legacy/main.swf';
 const BACKUP = 'legacy/main.swf.original';
 
-// What to replace
+// What to replace — each `to` string MUST be the same length as `from`.
+// We pad short replacements with URL path segments that the browser
+// resolves away:  /pad/../  (8 chars, net effect = /)
+//                 /./       (3 chars, net effect = /)
+// This way http://localhost:8888/pad/../xml/foo → http://localhost:8888/xml/foo
 const patches = [
-  { from: 'www.beta.frutiparc.com', to: 'localhost:8888' },
-  { from: 'swf.beta.frutiparc.com', to: 'localhost:8888' },
-  { from: 'swf.frutiparc.com', to: 'localhost:8888' },
+  { from: 'www.beta.frutiparc.com', to: 'localhost:8888/pad/..' },  // 22 chars each
+  { from: 'swf.beta.frutiparc.com', to: 'localhost:8888/pad/..' },  // 22 chars each
+  { from: 'swf.frutiparc.com', to: 'localhost:8888/./' },            // 17 chars each
 ];
 
-// Padding character — must NOT be 0x00 (null) because null bytes
-// act as string terminators in AVM1 ConstantPool actions.  Using
-// 0x00 creates phantom empty strings that shift all constant pool
-// indices, causing "Length mismatch in AVM1 action: ConstantPool"
-// errors in Ruffle.  We use 0x2F ('/') instead — the extra slashes
-// end up in URL paths and are normalised away by Express middleware.
-const PAD_BYTE = 0x2F; // '/'
+// No padding needed — each replacement is exactly the same length
+// as the original, using URL path segments (../  ./) to fill the gap.
 
 // ── Bytecode patches ─────────────────────────────────────────────
 // These modify specific AVM1 bytecode values at known offsets in the
@@ -97,15 +96,8 @@ for (const patch of patches) {
   while ((pos = body.indexOf(fromBuf, pos)) !== -1) {
     console.log(`  Patching "${patch.from}" -> "${patch.to}" at offset ${pos}`);
 
-    // Write new string
+    // Write new string (same length as original, null terminator stays)
     toBuf.copy(body, pos);
-    // Pad remaining bytes (before the original null terminator) with PAD_BYTE
-    // so the string becomes e.g. "localhost:8888////////" — same length as the
-    // original, preserving the ConstantPool string count.
-    for (let i = toBuf.length; i < fromBuf.length; i++) {
-      body[pos + i] = PAD_BYTE;
-    }
-    // The original null terminator at pos + fromBuf.length is left untouched
 
     patchCount++;
     pos += fromBuf.length;
