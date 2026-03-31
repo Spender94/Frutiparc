@@ -28,13 +28,14 @@ const BACKUP = 'legacy/main.swf.original';
 //                 /./       (3 chars, net effect = /)
 // This way http://localhost:8888/pad/../xml/foo → http://localhost:8888/xml/foo
 const patches = [
-  { from: 'www.beta.frutiparc.com', to: 'localhost:8888/pad/..' },  // 22 chars each
-  { from: 'swf.beta.frutiparc.com', to: 'localhost:8888/pad/..' },  // 22 chars each
-  { from: 'swf.frutiparc.com', to: 'localhost:8888/./' },            // 17 chars each
+  { from: 'www.beta.frutiparc.com', to: 'localhost:8888/betawww' },  // 22 chars each
+  { from: 'swf.beta.frutiparc.com', to: 'localhost:8888/betaswf' },  // 22 chars each
+  { from: 'swf.frutiparc.com', to: 'localhost:8888/sw' },            // 17 chars each
 ];
 
-// No padding needed — each replacement is exactly the same length
-// as the original, using URL path segments (../  ./) to fill the gap.
+// Each replacement is exactly the same length as the original.
+// The server strips these prefixes (/betawww, /betaswf, /sw) from
+// incoming URLs before routing, so they act as transparent shims.
 
 // ── Bytecode patches ─────────────────────────────────────────────
 // These modify specific AVM1 bytecode values at known offsets in the
