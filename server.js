@@ -45,7 +45,7 @@ app.use((req, res, next) => {
 });
 
 const port = process.env.PORT || 8888;
-const XMLSOCKET_PORT = 5173; // Port for the CBee XMLSocket server
+const XMLSOCKET_PORT = Number(process.env.XMLSOCKET_PORT || 5000); // Port for the CBee XMLSocket server
 
 // ─────────────────────────────────────────────
 // Helpers: base62 encode/decode (matches FEString/FENumber in AS2)
@@ -180,6 +180,13 @@ app.get('/do/init', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/do/prefdef', (req, res) => {
   res.type('text/plain').send(`PrefDef=${buildPrefDefString()}`);
+});
+
+// Keep the advertised service port aligned with the live XMLSocket port.
+app.get('/xml/services.xml', (req, res) => {
+  res.type('text/xml').send(
+    `<services host="localhost"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
+  );
 });
 
 // ─────────────────────────────────────────────
@@ -588,6 +595,13 @@ function formatDateTime(d) {
   return d.toISOString().replace('T', ' ').substring(0, 19);
 }
 
+function normalizeClientIp(rawIp) {
+  if (!rawIp) return '127.0.0.1';
+  if (rawIp === '::1') return '127.0.0.1';
+  if (rawIp.startsWith('::ffff:')) return rawIp.substring(7);
+  return rawIp;
+}
+
 function buildChannelListXml() {
   let inner = '';
   for (const [name, ch] of Object.entries(channels)) {
@@ -597,7 +611,7 @@ function buildChannelListXml() {
 }
 
 function sendBootSequence(socket, client) {
-  const ipAddr = socket.remoteAddress || '127.0.0.1';
+  const ipAddr = normalizeClientIp(socket.remoteAddress);
   const username = client?.username || 'Angelisium';
   const user = users[username] || users['Angelisium'];
   sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
@@ -621,7 +635,7 @@ function handleCBeeMessage(socket, rawXml) {
   switch (cmdName) {
     // ── ip: client requests its IP ──
     case 'ip': {
-      const ipAddr = socket.remoteAddress || '127.0.0.1';
+      const ipAddr = normalizeClientIp(socket.remoteAddress);
       sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
       break;
     }
