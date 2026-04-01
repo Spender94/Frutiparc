@@ -6,6 +6,11 @@
     <style>
         body { margin: 0; background: #335511; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
         #player-container { width: 1024px; height: 768px; }
+        /* Ensure Ruffle's virtual-keyboard input is not hidden or blocked */
+        ruffle-player {
+            /* Remove any containment that might trap focus/input events */
+            contain: none !important;
+        }
     </style>
 
     <!-- Intercept fetch() BEFORE Ruffle loads so WASM picks up our override -->
@@ -100,6 +105,8 @@
                 autoplay: "on",
                 allowScriptAccess: true,
                 quality: "high",
+                playerVersion: 8,
+                wmode: "opaque",
                 parameters: {
                     sid: "debug",
                     domain: "localhost:8888/"
@@ -111,6 +118,64 @@
                 allowNetworking: "all",
                 base: "/"
             });
+
+            // Ensure player gets focus on click (needed for keyboard input)
+            player.addEventListener('click', () => {
+                player.focus();
+            });
+
+            // ── Fix Ruffle virtual-keyboard aria-hidden issue ──
+            // Ruffle adds aria-hidden to its virtual-keyboard input element which
+            // blocks focus and prevents keyboard input in AVM1 text fields.
+            // This MutationObserver removes it whenever Ruffle sets it.
+            const observer = new MutationObserver((mutations) => {
+                for (const mut of mutations) {
+                    // Watch for added nodes (Ruffle creates the input lazily)
+                    if (mut.type === 'childList') {
+                        for (const node of mut.addedNodes) {
+                            if (node.nodeType === 1) {
+                                const inputs = node.querySelectorAll ? node.querySelectorAll('input#virtual-keyboard, input.virtual-keyboard') : [];
+                                for (const inp of inputs) {
+                                    inp.removeAttribute('aria-hidden');
+                                }
+                                if (node.id === 'virtual-keyboard' || node.classList?.contains('virtual-keyboard')) {
+                                    node.removeAttribute('aria-hidden');
+                                }
+                            }
+                        }
+                    }
+                    // Watch for attribute changes on the input itself
+                    if (mut.type === 'attributes' && mut.attributeName === 'aria-hidden') {
+                        mut.target.removeAttribute('aria-hidden');
+                    }
+                }
+            });
+
+            // Observe the player's shadow root if accessible, otherwise the player element
+            const observeTarget = player.shadowRoot || player;
+            observer.observe(observeTarget, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['aria-hidden']
+            });
+
+            // Also periodically check and fix (fallback for shadow DOM timing)
+            setInterval(() => {
+                const targets = [
+                    ...document.querySelectorAll('input#virtual-keyboard, input.virtual-keyboard'),
+                ];
+                // Check inside shadow root
+                if (player.shadowRoot) {
+                    targets.push(...player.shadowRoot.querySelectorAll('input#virtual-keyboard, input.virtual-keyboard'));
+                }
+                for (const el of targets) {
+                    if (el.hasAttribute('aria-hidden')) {
+                        el.removeAttribute('aria-hidden');
+                        console.log('[Ruffle fix] Removed aria-hidden from virtual-keyboard');
+                    }
+                }
+            }, 500);
         });
     </script>
 </body>
