@@ -372,11 +372,10 @@ const server = app.listen(port, () => {
 // ─────────────────────────────────────────────
 // WebSocket → TCP bridge for Ruffle's socketProxy
 //
-// Flash XMLSocket uses null-terminated (\0) strings over raw TCP.
-// Ruffle proxies this via WebSocket, but WS messages DON'T include \0.
-// The bridge must:
-//   WS→TCP: append \0 to each message before forwarding
-//   TCP→WS: split on \0, send each XML fragment as a separate WS message
+// Ruffle's socketProxy emulates a raw TCP socket over WebSocket.
+// Flash XMLSocket uses \0 as message delimiter.
+// The bridge MUST preserve \0 in BOTH directions so Ruffle's
+// internal XMLSocket parser can split messages correctly.
 // ─────────────────────────────────────────────
 const wss = new WebSocketServer({ server });
 wss.on('connection', (ws) => {
@@ -386,27 +385,31 @@ wss.on('connection', (ws) => {
     console.log('[WS→TCP] TCP connection established');
   });
 
-  // WS → TCP: Ruffle sends each XMLSocket.send() as one WS message (no \0).
-  // The CBee TCP server expects \0-terminated messages.
+  // WS → TCP: Forward raw data from Ruffle to the CBee TCP server.
+  // Ruffle may or may not include \0 — ensure it's there for the TCP side.
   ws.on('message', (msg) => {
-    const str = typeof msg === 'string' ? msg : msg.toString('utf8');
-    console.log('[WS→TCP] WS→TCP:', str.substring(0, 200));
-    tcp.write(str + '\0');
+    const buf = Buffer.isBuffer(msg) ? msg : Buffer.from(msg);
+    const str = buf.toString('utf8');
+    console.log('[WS→TCP] WS→TCP:', str.replace(/\0/g, '').substring(0, 200));
+    // If the message already ends with \0, forward as-is; otherwise append \0
+    if (buf.length > 0 && buf[buf.length - 1] === 0x00) {
+      tcp.write(buf);
+    } else {
+      tcp.write(Buffer.concat([buf, Buffer.from([0x00])]));
+    }
   });
 
-  // TCP → WS: The CBee server sends \0-terminated XML.
-  // Split on \0 and send each fragment as a separate WS message.
-  let tcpBuffer = '';
+  // TCP → WS: Forward raw TCP data to WebSocket, preserving \0 delimiters.
+  // Ruffle's XMLSocket parser needs the \0 to know when a message is complete.
   tcp.on('data', (data) => {
-    tcpBuffer += data.toString('utf8');
-    const parts = tcpBuffer.split('\0');
-    tcpBuffer = parts.pop(); // keep incomplete tail in buffer
+    // Log for debugging (strip \0 for readability)
+    const str = data.toString('utf8');
+    const parts = str.split('\0').filter(s => s.trim().length > 0);
     for (const part of parts) {
-      const trimmed = part.trim();
-      if (trimmed.length === 0) continue;
-      console.log('[WS→TCP] TCP→WS:', trimmed.substring(0, 200));
-      ws.send(trimmed);
+      console.log('[WS→TCP] TCP→WS:', part.substring(0, 200));
     }
+    // Forward raw bytes including \0 terminators
+    ws.send(data);
   });
 
   tcp.on('error', (err) => {
