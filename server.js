@@ -366,7 +366,7 @@ app.get('/healthz', (req, res) => {
 const server = app.listen(port, () => {
   console.log(`[HTTP]  Server running on http://localhost:${port}`);
   console.log(`        Legacy SWF:  http://localhost:${port}/legacy`);
-  console.log(`[BOOT]  Build=${SERVER_BUILD} XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
+  console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
 });
 
 // ─────────────────────────────────────────────
@@ -614,17 +614,6 @@ function buildChannelListXml() {
   return `<${CMD.channellist}>${inner}</${CMD.channellist}>`;
 }
 
-function sendBootSequence(socket, client) {
-  const ipAddr = normalizeClientIp(socket.remoteAddress);
-  const username = client?.username || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
-  sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
-  sendToClient(socket, `<${CMD.time}>${formatDateTime(new Date())}</${CMD.time}>`);
-  sendToClient(socket, `<${CMD.ident} l="${username}" x="${user.xp || 0}" f="${user.fbouille || '000503000000111010'}" />`);
-  sendToClient(socket, `<${CMD.serviceinfo} />`);
-  sendToClient(socket, buildChannelListXml());
-}
-
 // ─────────────────────────────────────────────
 // Handle a single CBee XML message from a client
 // ─────────────────────────────────────────────
@@ -640,18 +629,11 @@ function handleCBeeMessage(socket, rawXml) {
     // ── ip: client requests its IP ──
     case 'ip': {
       // Strip IPv6-mapped prefix — AS2's FEString.trim may choke on ::ffff:
-      let ipAddr = (socket.remoteAddress || '127.0.0.1').replace(/^::ffff:/, '');
+      let ipAddr = normalizeClientIp(socket.remoteAddress);
       sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
-      // Some Ruffle/AVM1 paths never send explicit <k /> (ident) even after
-      // requesting IP/time. Auto-send ident once to avoid login deadlock.
-      if (!client.logged) {
-        const fallbackUser = users[client.username] || users['Angelisium'];
-        sendToClient(
-          socket,
-          `<${CMD.ident} l="${client.username || 'Angelisium'}" x="${fallbackUser.xp || 0}" f="${fallbackUser.fbouille || '000503000000111010'}" />`
-        );
-        sendToClient(socket, `<${CMD.serviceinfo} />`);
-      }
+      // Do NOT auto-send ident here. The SWF handles the ident flow itself:
+      //   onConnect → cmd("ip") → onIP → this.ident() → server responds to ident
+      // Auto-sending ident causes duplicate/out-of-order responses that confuse the SWF.
       break;
     }
 
