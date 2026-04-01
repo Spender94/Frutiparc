@@ -235,6 +235,30 @@ app.get('/do/eb', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: do/gmi — Get my info (user profile data)
+// Returns LoadVars with user profile fields
+// ─────────────────────────────────────────────
+app.get('/do/gmi', (req, res) => {
+  const sid = req.query.sid;
+  const session = sessions[sid];
+  const username = session ? session.user : 'Angelisium';
+  const user = users[username] || users['Angelisium'];
+
+  const params = new URLSearchParams({
+    state: '0',
+    l: username,
+    x: String(user.xp || 0),
+    k: String(user.kikooz || 0),
+    f: user.fbouille || '000503000000111010',
+    sx: user.gender || 'M',
+    bd: user.birthday || '2000-01-01',
+    co: user.country || 'FR',
+    rg: user.region || '',
+  });
+  res.type('text/plain').send(params.toString());
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: do/prefsavepartial — Save one preference
 // Returns LoadVars: state=0
 // ─────────────────────────────────────────────
