@@ -602,7 +602,8 @@ function handleCBeeMessage(socket, rawXml) {
   switch (cmdName) {
     // ── ip: client requests its IP ──
     case 'ip': {
-      const ipAddr = socket.remoteAddress || '127.0.0.1';
+      // Strip IPv6-mapped prefix — AS2's FEString.trim may choke on ::ffff:
+      let ipAddr = (socket.remoteAddress || '127.0.0.1').replace(/^::ffff:/, '');
       sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
       break;
     }
@@ -876,11 +877,8 @@ const xmlSocketServer = net.createServer((socket) => {
     buffer: '',
   });
 
-  // Auto-send IP echo — the SWF's FPCBee.onConnect sends time+ip commands,
-  // but it also needs an early IP to trigger ident() in sidAutoInit mode.
-  const ipAddr = socket.remoteAddress || '127.0.0.1';
-  sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
-  console.log(`[CBee]  -> Sent IP: ${ipAddr}`);
+  // Don't auto-send IP here — let the SWF request it via FPCBee.onConnect.
+  // Sending data before Ruffle's XMLSocket.onConnect fires causes data loss.
 
   socket.on('data', (data) => {
     const client = xmlSocketClients.get(socket);

@@ -19,7 +19,8 @@
                 'www.frutiparc.com':      'http://localhost:8888',
                 'swf.beta.frutiparc.com': 'http://localhost:8888/swf',
                 'swf.frutiparc.com':      'http://localhost:8888/swf',
-                'localhost:5173':         'http://localhost:8888',     // SWF uses CBee port for HTTP — redirect
+                'localhost:5173':         'http://localhost:8888',     // SWF uses old CBee port for HTTP — redirect
+                'localhost:5000':         'http://localhost:8888',     // SWF uses new CBee port for HTTP — redirect
             };
 
             window.fetch = function(input, init) {
