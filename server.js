@@ -799,10 +799,9 @@ function handleCBeeMessage(socket, rawXml) {
       const g = msg.attrs.g;
       const text = msg.content || '';
       if (g && client.logged) {
-        // Public message to channel
-        broadcastToChannel(g,
-          `<${CMD.send} g="${g}" u="${client.username}">${text}</${CMD.send}>`
-        );
+        // Public message to channel — broadcast to ALL users including sender
+        const xml = `<${CMD.send} g="${g}" u="${client.username}">${text}</${CMD.send}>`;
+        broadcastToChannel(g, xml);
       } else if (msg.attrs.u) {
         // Private message
         const targetUser = msg.attrs.u;
