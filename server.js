@@ -215,6 +215,25 @@ app.get('/do/prefsave', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: do/eb — Edit/validate frutibouille (avatar)
+// Called when the editbouille window opens or saves.
+// Params: b=<fbouille_string>, sid=<session_id>
+// Returns LoadVars: state=0 (success)
+// ─────────────────────────────────────────────
+app.get('/do/eb', (req, res) => {
+  const sid = req.query.sid;
+  const bouille = req.query.b;
+  // Update user's fbouille if provided
+  if (bouille && sid) {
+    const session = sessions[sid];
+    if (session && session.user && users[session.user]) {
+      users[session.user].fbouille = bouille;
+    }
+  }
+  res.type('text/plain').send('state=0');
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: do/prefsavepartial — Save one preference
 // Returns LoadVars: state=0
 // ─────────────────────────────────────────────
@@ -236,7 +255,11 @@ app.get('/do/onident', (req, res) => {
   const myPref = user.prefs || '';
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}" f="">
+  // Note: omit the "f" attribute — if present (even empty), the SWF
+  // auto-opens the frutibouille editor (editbouille window).
+  // "f" should only be set to a comma-separated list of part IDs when
+  // the server wants to force the user to customize specific avatar parts.
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}">
   <mp>${myPref}</mp>
   <ul></ul>
   <sl></sl>
