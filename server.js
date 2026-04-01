@@ -3,7 +3,7 @@ const { WebSocketServer } = require('ws');
 const net = require('net');
 const crypto = require('crypto');
 const path = require('path');
-
+const SERVER_BUILD = process.env.SERVER_BUILD || 'dev';
 const app = express();
 
 // ── CORS headers (Ruffle's WASM fetch may need them) ──
