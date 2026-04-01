@@ -95,6 +95,7 @@ users['Angelisium'] = {
   country: 'FR',
   region: 'IDF',
   prefs: '',
+  needsBouille: true, // Force editbouille on first login
 };
 
 // ─────────────────────────────────────────────
@@ -215,6 +216,49 @@ app.get('/do/prefsave', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: do/eb — Edit/validate frutibouille (avatar)
+// Called when the editbouille window opens or saves.
+// Params: b=<fbouille_string>, sid=<session_id>
+// Returns LoadVars: state=0 (success)
+// ─────────────────────────────────────────────
+app.get('/do/eb', (req, res) => {
+  const sid = req.query.sid;
+  const bouille = req.query.b;
+  // Update user's fbouille if provided
+  if (bouille && sid) {
+    const session = sessions[sid];
+    if (session && session.user && users[session.user]) {
+      users[session.user].fbouille = bouille;
+    }
+  }
+  res.type('text/plain').send('state=0');
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: do/gmi — Get my info (user profile data)
+// Returns LoadVars with user profile fields
+// ─────────────────────────────────────────────
+app.get('/do/gmi', (req, res) => {
+  const sid = req.query.sid;
+  const session = sessions[sid];
+  const username = session ? session.user : 'Angelisium';
+  const user = users[username] || users['Angelisium'];
+
+  const params = new URLSearchParams({
+    state: '0',
+    l: username,
+    x: String(user.xp || 0),
+    k: String(user.kikooz || 0),
+    f: user.fbouille || '000503000000111010',
+    sx: user.gender || 'M',
+    bd: user.birthday || '2000-01-01',
+    co: user.country || 'FR',
+    rg: user.region || '',
+  });
+  res.type('text/plain').send(params.toString());
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: do/prefsavepartial — Save one preference
 // Returns LoadVars: state=0
 // ─────────────────────────────────────────────
@@ -236,7 +280,15 @@ app.get('/do/onident', (req, res) => {
   const myPref = user.prefs || '';
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}" f="">
+  // The "f" attribute, when present, forces the SWF to open the editbouille
+  // window with the listed part families. Used for first-time avatar setup.
+  // Families 0-8 are the main customizable parts (capuche, yeux, bouche, etc.)
+  const fAttr = user.needsBouille ? ' f="0,1,2,3,4,5,6,7,8"' : '';
+  if (user.needsBouille) {
+    user.needsBouille = false; // Only force once per session
+  }
+
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}>
   <mp>${myPref}</mp>
   <ul></ul>
   <sl></sl>
@@ -366,7 +418,7 @@ app.get('/healthz', (req, res) => {
 const server = app.listen(port, () => {
   console.log(`[HTTP]  Server running on http://localhost:${port}`);
   console.log(`        Legacy SWF:  http://localhost:${port}/legacy`);
-  console.log(`[BOOT]  Build=${SERVER_BUILD} XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
+  console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
 });
 
 // ─────────────────────────────────────────────
@@ -614,17 +666,6 @@ function buildChannelListXml() {
   return `<${CMD.channellist}>${inner}</${CMD.channellist}>`;
 }
 
-function sendBootSequence(socket, client) {
-  const ipAddr = normalizeClientIp(socket.remoteAddress);
-  const username = client?.username || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
-  sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
-  sendToClient(socket, `<${CMD.time}>${formatDateTime(new Date())}</${CMD.time}>`);
-  sendToClient(socket, `<${CMD.ident} l="${username}" x="${user.xp || 0}" f="${user.fbouille || '000503000000111010'}" />`);
-  sendToClient(socket, `<${CMD.serviceinfo} />`);
-  sendToClient(socket, buildChannelListXml());
-}
-
 // ─────────────────────────────────────────────
 // Handle a single CBee XML message from a client
 // ─────────────────────────────────────────────
@@ -640,18 +681,11 @@ function handleCBeeMessage(socket, rawXml) {
     // ── ip: client requests its IP ──
     case 'ip': {
       // Strip IPv6-mapped prefix — AS2's FEString.trim may choke on ::ffff:
-      let ipAddr = (socket.remoteAddress || '127.0.0.1').replace(/^::ffff:/, '');
+      let ipAddr = normalizeClientIp(socket.remoteAddress);
       sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
-      // Some Ruffle/AVM1 paths never send explicit <k /> (ident) even after
-      // requesting IP/time. Auto-send ident once to avoid login deadlock.
-      if (!client.logged) {
-        const fallbackUser = users[client.username] || users['Angelisium'];
-        sendToClient(
-          socket,
-          `<${CMD.ident} l="${client.username || 'Angelisium'}" x="${fallbackUser.xp || 0}" f="${fallbackUser.fbouille || '000503000000111010'}" />`
-        );
-        sendToClient(socket, `<${CMD.serviceinfo} />`);
-      }
+      // Do NOT auto-send ident here. The SWF handles the ident flow itself:
+      //   onConnect → cmd("ip") → onIP → this.ident() → server responds to ident
+      // Auto-sending ident causes duplicate/out-of-order responses that confuse the SWF.
       break;
     }
 
@@ -765,10 +799,9 @@ function handleCBeeMessage(socket, rawXml) {
       const g = msg.attrs.g;
       const text = msg.content || '';
       if (g && client.logged) {
-        // Public message to channel
-        broadcastToChannel(g,
-          `<${CMD.send} g="${g}" u="${client.username}">${text}</${CMD.send}>`
-        );
+        // Public message to channel — broadcast to ALL users including sender
+        const xml = `<${CMD.send} g="${g}" u="${client.username}">${text}</${CMD.send}>`;
+        broadcastToChannel(g, xml);
       } else if (msg.attrs.u) {
         // Private message
         const targetUser = msg.attrs.u;
