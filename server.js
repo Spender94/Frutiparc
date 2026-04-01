@@ -182,6 +182,13 @@ app.get('/do/prefdef', (req, res) => {
   res.type('text/plain').send(`PrefDef=${buildPrefDefString()}`);
 });
 
+// Keep the advertised service port aligned with the live XMLSocket port.
+app.get('/xml/services.xml', (req, res) => {
+  res.type('text/xml').send(
+    `<services host="localhost"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
+  );
+});
+
 // ─────────────────────────────────────────────
 // ENDPOINT: do/mypref — User's personal preferences
 // Returns LoadVars: myPref=<encoded_string>
@@ -359,6 +366,7 @@ app.get('/healthz', (req, res) => {
 const server = app.listen(port, () => {
   console.log(`[HTTP]  Server running on http://localhost:${port}`);
   console.log(`        Legacy SWF:  http://localhost:${port}/legacy`);
+  console.log(`[BOOT]  Build=${SERVER_BUILD} XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
 });
 
 // ─────────────────────────────────────────────
@@ -588,6 +596,32 @@ function formatDateTime(d) {
   return d.toISOString().replace('T', ' ').substring(0, 19);
 }
 
+function normalizeClientIp(rawIp) {
+  if (!rawIp) return '127.0.0.1';
+  if (rawIp === '::1') return '127.0.0.1';
+  if (rawIp.startsWith('::ffff:')) return rawIp.substring(7);
+  return rawIp;
+}
+
+function buildChannelListXml() {
+  let inner = '';
+  for (const [name, ch] of Object.entries(channels)) {
+    inner += `<g g="${name}"><t>${ch.topic}</t></g>`;
+  }
+  return `<${CMD.channellist}>${inner}</${CMD.channellist}>`;
+}
+
+function sendBootSequence(socket, client) {
+  const ipAddr = normalizeClientIp(socket.remoteAddress);
+  const username = client?.username || 'Angelisium';
+  const user = users[username] || users['Angelisium'];
+  sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
+  sendToClient(socket, `<${CMD.time}>${formatDateTime(new Date())}</${CMD.time}>`);
+  sendToClient(socket, `<${CMD.ident} l="${username}" x="${user.xp || 0}" f="${user.fbouille || '000503000000111010'}" />`);
+  sendToClient(socket, `<${CMD.serviceinfo} />`);
+  sendToClient(socket, buildChannelListXml());
+}
+
 // ─────────────────────────────────────────────
 // Handle a single CBee XML message from a client
 // ─────────────────────────────────────────────
@@ -605,6 +639,16 @@ function handleCBeeMessage(socket, rawXml) {
       // Strip IPv6-mapped prefix — AS2's FEString.trim may choke on ::ffff:
       let ipAddr = (socket.remoteAddress || '127.0.0.1').replace(/^::ffff:/, '');
       sendToClient(socket, `<${CMD.ip}>${ipAddr}</${CMD.ip}>`);
+      // Some Ruffle/AVM1 paths never send explicit <k /> (ident) even after
+      // requesting IP/time. Auto-send ident once to avoid login deadlock.
+      if (!client.logged) {
+        const fallbackUser = users[client.username] || users['Angelisium'];
+        sendToClient(
+          socket,
+          `<${CMD.ident} l="${client.username || 'Angelisium'}" x="${fallbackUser.xp || 0}" f="${fallbackUser.fbouille || '000503000000111010'}" />`
+        );
+        sendToClient(socket, `<${CMD.serviceinfo} />`);
+      }
       break;
     }
 
@@ -666,11 +710,7 @@ function handleCBeeMessage(socket, rawXml) {
 
     // ── channellist: list available channels ──
     case 'channellist': {
-      let inner = '';
-      for (const [name, ch] of Object.entries(channels)) {
-        inner += `<g g="${name}"><t>${ch.topic}</t></g>`;
-      }
-      sendToClient(socket, `<${CMD.channellist}>${inner}</${CMD.channellist}>`);
+      sendToClient(socket, buildChannelListXml());
       break;
     }
 
