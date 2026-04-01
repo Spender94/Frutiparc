@@ -95,6 +95,7 @@ users['Angelisium'] = {
   country: 'FR',
   region: 'IDF',
   prefs: '',
+  needsBouille: true, // Force editbouille on first login
 };
 
 // ─────────────────────────────────────────────
@@ -255,11 +256,15 @@ app.get('/do/onident', (req, res) => {
   const myPref = user.prefs || '';
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
-  // Note: omit the "f" attribute — if present (even empty), the SWF
-  // auto-opens the frutibouille editor (editbouille window).
-  // "f" should only be set to a comma-separated list of part IDs when
-  // the server wants to force the user to customize specific avatar parts.
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}">
+  // The "f" attribute, when present, forces the SWF to open the editbouille
+  // window with the listed part families. Used for first-time avatar setup.
+  // Families 0-8 are the main customizable parts (capuche, yeux, bouche, etc.)
+  const fAttr = user.needsBouille ? ' f="0,1,2,3,4,5,6,7,8"' : '';
+  if (user.needsBouille) {
+    user.needsBouille = false; // Only force once per session
+  }
+
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}>
   <mp>${myPref}</mp>
   <ul></ul>
   <sl></sl>
