@@ -288,12 +288,7 @@ app.get('/do/onident', (req, res) => {
     user.needsBouille = false; // Only force once per session
   }
 
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}>
-  <mp>${myPref}</mp>
-  <ul></ul>
-  <sl></sl>
-  <bl></bl>
-</r>`;
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}><mp>${myPref}</mp><ul></ul><sl></sl><bl></bl></r>`;
 
   res.type('text/xml').send(xml);
 });

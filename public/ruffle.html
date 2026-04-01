@@ -6,11 +6,6 @@
     <style>
         body { margin: 0; background: #335511; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
         #player-container { width: 1024px; height: 768px; }
-        /* Ensure Ruffle's virtual-keyboard input is not hidden or blocked */
-        ruffle-player {
-            /* Remove any containment that might trap focus/input events */
-            contain: none !important;
-        }
     </style>
 
     <!-- Intercept fetch() BEFORE Ruffle loads so WASM picks up our override -->
@@ -105,8 +100,6 @@
                 autoplay: "on",
                 allowScriptAccess: true,
                 quality: "high",
-                playerVersion: 8,
-                wmode: "opaque",
                 parameters: {
                     sid: "debug",
                     domain: "localhost:8888/"
@@ -118,65 +111,139 @@
                 allowNetworking: "all",
                 base: "/"
             });
+        });
+    </script>
 
-            // Ensure player gets focus on click (needed for keyboard input)
-            player.addEventListener('click', () => {
-                player.focus();
-            });
+    <!-- HTML Chat Overlay — sends messages via a separate CBee connection -->
+    <div id="chat-overlay" style="
+        position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+        z-index: 9999; display: flex; gap: 6px; align-items: center;
+        background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 8px;
+        font-family: Arial, sans-serif; font-size: 13px;
+    ">
+        <label for="chat-input" style="color: #8f8; white-space: nowrap;">Chat :</label>
+        <select id="chat-channel" style="
+            padding: 4px; background: #1a1a1a; color: #8f8; border: 1px solid #6a6;
+            border-radius: 4px; font-size: 12px;
+        "></select>
+        <input id="chat-input" type="text" placeholder="Tape ton message ici..."
+            autocomplete="off" spellcheck="false"
+            style="width: 380px; padding: 4px 8px; border: 1px solid #6a6; border-radius: 4px;
+                   background: #1a1a1a; color: #fff; outline: none; font-size: 13px;" />
+        <button id="chat-send" style="
+            padding: 4px 12px; background: #4a4; color: #fff; border: none;
+            border-radius: 4px; cursor: pointer; font-size: 13px;
+        ">Envoyer</button>
+        <span id="chat-status" style="color: #888; font-size: 11px; margin-left: 4px;">...</span>
+    </div>
 
-            // ── Fix Ruffle virtual-keyboard aria-hidden issue ──
-            // Ruffle adds aria-hidden to its virtual-keyboard input element which
-            // blocks focus and prevents keyboard input in AVM1 text fields.
-            // This MutationObserver removes it whenever Ruffle sets it.
-            const observer = new MutationObserver((mutations) => {
-                for (const mut of mutations) {
-                    // Watch for added nodes (Ruffle creates the input lazily)
-                    if (mut.type === 'childList') {
-                        for (const node of mut.addedNodes) {
-                            if (node.nodeType === 1) {
-                                const inputs = node.querySelectorAll ? node.querySelectorAll('input#virtual-keyboard, input.virtual-keyboard') : [];
-                                for (const inp of inputs) {
-                                    inp.removeAttribute('aria-hidden');
-                                }
-                                if (node.id === 'virtual-keyboard' || node.classList?.contains('virtual-keyboard')) {
-                                    node.removeAttribute('aria-hidden');
-                                }
-                            }
+    <script>
+    // ── HTML Chat Bridge ──
+    // Opens a SEPARATE CBee connection (via WebSocket→TCP bridge) to send
+    // chat messages. Does NOT join any channel — just authenticates and sends.
+    // Messages are broadcast by the server to all connections in the channel,
+    // so the SWF (which IS in the channel) will receive and display them.
+    (function() {
+        const chatInput = document.getElementById('chat-input');
+        const chatSend = document.getElementById('chat-send');
+        const chatStatus = document.getElementById('chat-status');
+        const chatChannel = document.getElementById('chat-channel');
+
+        let chatWs = null;
+        let chatLogged = false;
+
+        function connectChat() {
+            chatWs = new WebSocket('ws://localhost:8888');
+            chatStatus.textContent = 'Connexion...';
+
+            chatWs.onopen = () => {
+                console.log('[ChatBridge] Connected');
+                chatStatus.textContent = 'Ident...';
+                // Send time + ip like the SWF does
+                chatWs.send('<c/>\0');
+                chatWs.send('<d/>\0');
+            };
+
+            chatWs.onmessage = (evt) => {
+                const data = typeof evt.data === 'string' ? evt.data : '';
+                const msgs = data.split('\0').filter(s => s.trim());
+
+                for (const raw of msgs) {
+                    console.log('[ChatBridge] <-', raw.substring(0, 200));
+
+                    // IP response → send ident
+                    if (raw.startsWith('<d>')) {
+                        chatWs.send('<k s="debug"/>\0');
+                    }
+
+                    // Ident response
+                    if (raw.startsWith('<k')) {
+                        if (raw.includes('k="')) {
+                            // Error attribute present
+                            chatStatus.textContent = 'Erreur auth';
+                        } else {
+                            chatLogged = true;
+                            chatStatus.textContent = 'OK';
+                            // Get channel list (to populate dropdown)
+                            chatWs.send('<q/>\0');
                         }
                     }
-                    // Watch for attribute changes on the input itself
-                    if (mut.type === 'attributes' && mut.attributeName === 'aria-hidden') {
-                        mut.target.removeAttribute('aria-hidden');
+
+                    // Channel list response → populate dropdown (do NOT join)
+                    if (raw.startsWith('<q')) {
+                        const matches = raw.matchAll(/g="([^"]+)"/g);
+                        chatChannel.innerHTML = '';
+                        for (const m of matches) {
+                            const opt = document.createElement('option');
+                            opt.value = m[1];
+                            opt.textContent = m[1];
+                            chatChannel.appendChild(opt);
+                        }
+                        // Default to "pomme" if available
+                        if (chatChannel.querySelector('option[value="pomme"]')) {
+                            chatChannel.value = 'pomme';
+                        }
+                        chatStatus.textContent = 'OK - ' + chatChannel.options.length + ' salons';
                     }
                 }
-            });
+            };
 
-            // Observe the player's shadow root if accessible, otherwise the player element
-            const observeTarget = player.shadowRoot || player;
-            observer.observe(observeTarget, {
-                childList: true,
-                subtree: true,
-                attributes: true,
-                attributeFilter: ['aria-hidden']
-            });
+            chatWs.onclose = () => {
+                chatLogged = false;
+                chatStatus.textContent = 'Deconnecte';
+                setTimeout(connectChat, 3000);
+            };
 
-            // Also periodically check and fix (fallback for shadow DOM timing)
-            setInterval(() => {
-                const targets = [
-                    ...document.querySelectorAll('input#virtual-keyboard, input.virtual-keyboard'),
-                ];
-                // Check inside shadow root
-                if (player.shadowRoot) {
-                    targets.push(...player.shadowRoot.querySelectorAll('input#virtual-keyboard, input.virtual-keyboard'));
-                }
-                for (const el of targets) {
-                    if (el.hasAttribute('aria-hidden')) {
-                        el.removeAttribute('aria-hidden');
-                        console.log('[Ruffle fix] Removed aria-hidden from virtual-keyboard');
-                    }
-                }
-            }, 500);
+            chatWs.onerror = () => {
+                chatStatus.textContent = 'Erreur WS';
+            };
+        }
+
+        function sendMessage() {
+            const text = chatInput.value.trim();
+            const channel = chatChannel.value;
+            if (!text || !chatLogged || !channel) return;
+
+            // Wire code "t" = send command. No need to be in the channel —
+            // the server broadcasts to all connections that ARE in it.
+            chatWs.send(`<t g="${channel}">${text}</t>\0`);
+            console.log('[ChatBridge] ->', channel, ':', text);
+            chatInput.value = '';
+            chatInput.focus();
+        }
+
+        chatSend.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+                e.preventDefault();
+            }
+            e.stopPropagation(); // Don't let Ruffle capture these keystrokes
         });
+        chatInput.addEventListener('mousedown', (e) => e.stopPropagation());
+
+        connectChat();
+    })();
     </script>
 </body>
 </html>
