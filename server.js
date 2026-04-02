@@ -126,7 +126,7 @@ function normalizeBouilleState(value) {
   // Frutibouille uses base62 tokens (0-9, a-z, A-Z), not only digits.
   let s = String(value || '').replace(/[^0-9a-zA-Z]/g, '');
 
-  if (s.length < 24) s = s.padEnd(24, '0');
+  if (s.length === 0) return DEFAULT_BOUILLE_STATE;
   if (s.length > 24) s = s.slice(0, 24);
 
   return s;
@@ -466,6 +466,11 @@ app.get('/ff/tree', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/ff/ls', (req, res) => {
   const uid = req.query.uid || 'root';
+  const sid = req.query.sid;
+  const session = sid ? sessions[sid] : null;
+  const username = (session && session.user) || 'Angelisium';
+  const user = users[username] || users['Angelisium'];
+  const currentBouille = bouilleOf(user);
   if (uid === 'root' || uid === 'desktop') {
     return res.type('text/xml').send(
       `<f u="root">
@@ -494,12 +499,12 @@ F9D190;</e>
         <e u="utopiz" t="wallpaper" s="10" d="0" a="0">Utopiz
 wal/ut.jpg
 F6AFA9;</e>
-        <e u="bananocle" t="bouille" s="10" d="0" a="0">Bananocle
-00000d0r020f0l06010k0w0g</e>
-        <e u="kiwix_beaute" t="bouille" s="10" d="0" a="0">Beauté
-00000d0r020f0l0b000k0w0g</e>
-        <e u="kiwix_normal" t="bouille" s="10" d="0" a="0">Normal
-00000d0r020f0l0000000000</e>
+        <e u="my_bouille_current" t="bouille" s="10" d="0" a="0">Ma bouille actuelle
+${escapeXml(currentBouille)}</e>
+        <e u="my_bouille_test_1" t="bouille" s="10" d="0" a="0">Test bouille #1
+${escapeXml(currentBouille)}</e>
+        <e u="my_bouille_test_2" t="bouille" s="10" d="0" a="0">Test bouille #2
+${escapeXml(currentBouille)}</e>
       </f>`
     );
   }
