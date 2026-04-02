@@ -2,49 +2,60 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Frutiparc — Ruffle</title>
+    <title>Frutiparc - Ruffle</title>
     <style>
-        body { margin: 0; background: #335511; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        #player-container { width: 1024px; height: 768px; }
+        body {
+            margin: 0;
+            background: #335511;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #player-container {
+            width: 1024px;
+            height: 768px;
+        }
     </style>
 
-    <!-- Intercept fetch() BEFORE Ruffle loads so WASM picks up our override -->
     <script>
         (function() {
             const _origFetch = window.fetch;
 
-            // Map original Frutiparc domains → local server paths
             const domainMap = {
                 'www.beta.frutiparc.com': 'http://localhost:8888',
                 'www.frutiparc.com':      'http://localhost:8888',
                 'swf.beta.frutiparc.com': 'http://localhost:8888/swf',
                 'swf.frutiparc.com':      'http://localhost:8888/swf',
-                'localhost:5173':         'http://localhost:8888',     // SWF uses old CBee port for HTTP — redirect
-                'localhost:5000':         'http://localhost:8888',     // SWF uses new CBee port for HTTP — redirect
+                'localhost:5173':         'http://localhost:8888',
+                'localhost:5000':         'http://localhost:8888',
             };
 
             window.fetch = function(input, init) {
-                let url = (typeof input === 'string') ? input : (input instanceof Request ? input.url : String(input));
+                let url = (typeof input === 'string')
+                    ? input
+                    : (input instanceof Request ? input.url : String(input));
 
-                // Rewrite frutiparc.com URLs to localhost
                 try {
                     const parsed = new URL(url);
                     const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
+
                     for (const [domain, target] of Object.entries(domainMap)) {
                         if (host === domain || parsed.hostname === domain) {
                             const newUrl = target + parsed.pathname + parsed.search;
-                            console.log('[FETCH rewrite]', url, '→', newUrl);
+                            console.log('[FETCH rewrite]', url, '->', newUrl);
                             return _origFetch.call(this, newUrl, init);
                         }
                     }
-                } catch(e) { /* not a valid absolute URL, pass through */ }
+                } catch (e) {}
 
-                // Also rewrite prefix-based URLs from SWF patching
                 const prefixRewrites = [
                     ['/betawww/', '/'],
                     ['/betaswf/', '/swf/'],
                     ['/sw/', '/swf/'],
                 ];
+
                 try {
                     const parsed = new URL(url);
                     if (parsed.hostname === 'localhost') {
@@ -52,32 +63,34 @@
                             if (parsed.pathname.startsWith(prefix)) {
                                 parsed.pathname = replacement + parsed.pathname.substring(prefix.length);
                                 const newUrl = parsed.toString();
-                                console.log('[FETCH prefix]', url, '→', newUrl);
+                                console.log('[FETCH prefix]', url, '->', newUrl);
                                 return _origFetch.call(this, newUrl, init);
                             }
                         }
                     }
-                } catch(e) { /* pass through */ }
+                } catch (e) {}
 
                 console.log('[FETCH]', url);
                 return _origFetch.call(this, input, init);
             };
 
-            // Also intercept XMLHttpRequest (some Ruffle code paths may use it)
             const _origXHROpen = XMLHttpRequest.prototype.open;
             XMLHttpRequest.prototype.open = function(method, url, ...rest) {
                 let rewritten = url;
+
                 try {
                     const parsed = new URL(url, window.location.origin);
                     const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
+
                     for (const [domain, target] of Object.entries(domainMap)) {
                         if (host === domain || parsed.hostname === domain) {
                             rewritten = target + parsed.pathname + parsed.search;
-                            console.log('[XHR rewrite]', url, '→', rewritten);
+                            console.log('[XHR rewrite]', url, '->', rewritten);
                             break;
                         }
                     }
-                } catch(e) {}
+                } catch (e) {}
+
                 return _origXHROpen.call(this, method, rewritten, ...rest);
             };
         })();
@@ -87,8 +100,43 @@
 </head>
 <body>
     <div id="player-container"></div>
+
     <script>
+        function normalizeAvatarState(value) {
+            let s = String(value || '').replace(/\D/g, '');
+
+            if (s.length < 24) s = s.padEnd(24, '0');
+            if (s.length > 24) s = s.slice(0, 24);
+
+            const family = s.slice(0, 2);
+            if (family !== '00' && family !== '01') {
+                s = '00' + s.slice(2);
+            }
+
+            return s;
+        }
+
+        function normalizeExpression(value) {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return '0';
+            return String(Math.max(0, Math.min(12, Math.floor(n))));
+        }
+
         window.addEventListener("DOMContentLoaded", async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+
+            const sid = urlParams.get('sid') || 'debug';
+            const s = normalizeAvatarState(
+                urlParams.get('s') || '000000000000000000000000'
+            );
+            const e = normalizeExpression(
+                urlParams.get('e') || '0'
+            );
+
+            console.log('[Ruffle] sid =', sid);
+            console.log('[Ruffle] s   =', s);
+            console.log('[Ruffle] e   =', e);
+
             const ruffle = window.RufflePlayer.newest();
             const player = ruffle.createPlayer();
             player.style.width = "1024px";
@@ -101,8 +149,10 @@
                 allowScriptAccess: true,
                 quality: "high",
                 parameters: {
-                    sid: "debug",
-                    domain: "localhost:8888/"
+                    sid: sid,
+                    domain: "localhost:8888/",
+                    s: s,
+                    e: e
                 },
                 socketProxy: [
                     { host: "localhost", port: 5000, proxyUrl: "ws://localhost:8888" }
@@ -114,136 +164,222 @@
         });
     </script>
 
-    <!-- HTML Chat Overlay — sends messages via a separate CBee connection -->
     <div id="chat-overlay" style="
-        position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
-        z-index: 9999; display: flex; gap: 6px; align-items: center;
-        background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 8px;
-        font-family: Arial, sans-serif; font-size: 13px;
+        position: fixed;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        background: rgba(0,0,0,0.75);
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-family: Arial, sans-serif;
+        font-size: 13px;
     ">
         <label for="chat-input" style="color: #8f8; white-space: nowrap;">Chat :</label>
+
         <select id="chat-channel" style="
-            padding: 4px; background: #1a1a1a; color: #8f8; border: 1px solid #6a6;
-            border-radius: 4px; font-size: 12px;
+            padding: 4px;
+            background: #1a1a1a;
+            color: #8f8;
+            border: 1px solid #6a6;
+            border-radius: 4px;
+            font-size: 12px;
         "></select>
-        <input id="chat-input" type="text" placeholder="Tape ton message ici..."
-            autocomplete="off" spellcheck="false"
-            style="width: 380px; padding: 4px 8px; border: 1px solid #6a6; border-radius: 4px;
-                   background: #1a1a1a; color: #fff; outline: none; font-size: 13px;" />
+
+        <input
+            id="chat-input"
+            type="text"
+            placeholder="Tape ton message ici..."
+            autocomplete="off"
+            spellcheck="false"
+            style="
+                width: 380px;
+                padding: 4px 8px;
+                border: 1px solid #6a6;
+                border-radius: 4px;
+                background: #1a1a1a;
+                color: #fff;
+                outline: none;
+                font-size: 13px;
+            "
+        />
+
         <button id="chat-send" style="
-            padding: 4px 12px; background: #4a4; color: #fff; border: none;
-            border-radius: 4px; cursor: pointer; font-size: 13px;
+            padding: 4px 12px;
+            background: #4a4;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
         ">Envoyer</button>
+
         <span id="chat-status" style="color: #888; font-size: 11px; margin-left: 4px;">...</span>
     </div>
 
-    <script>
-    // ── HTML Chat Bridge ──
-    // Opens a SEPARATE CBee connection (via WebSocket→TCP bridge) to send
-    // chat messages. Does NOT join any channel — just authenticates and sends.
-    // Messages are broadcast by the server to all connections in the channel,
-    // so the SWF (which IS in the channel) will receive and display them.
-    (function() {
-        const chatInput = document.getElementById('chat-input');
-        const chatSend = document.getElementById('chat-send');
-        const chatStatus = document.getElementById('chat-status');
-        const chatChannel = document.getElementById('chat-channel');
+<script>
+(function() {
+    const chatInput = document.getElementById('chat-input');
+    const chatSend = document.getElementById('chat-send');
+    const chatStatus = document.getElementById('chat-status');
+    const chatChannel = document.getElementById('chat-channel');
 
-        let chatWs = null;
-        let chatLogged = false;
+    let chatWs = null;
+    let chatLogged = false;
+    let currentJoinedChannel = null;
 
-        function connectChat() {
-            chatWs = new WebSocket('ws://localhost:8888');
-            chatStatus.textContent = 'Connexion...';
+    function decodeWsData(data) {
+        if (typeof data === 'string') return Promise.resolve(data);
+        if (data instanceof Blob) return data.text();
+        if (data instanceof ArrayBuffer) {
+            return Promise.resolve(new TextDecoder().decode(new Uint8Array(data)));
+        }
+        return Promise.resolve('');
+    }
 
-            chatWs.onopen = () => {
-                console.log('[ChatBridge] Connected');
-                chatStatus.textContent = 'Ident...';
-                // Send time + ip like the SWF does
-                chatWs.send('<c/>\0');
-                chatWs.send('<d/>\0');
-            };
+    function sendRaw(xml) {
+        if (!chatWs || chatWs.readyState !== WebSocket.OPEN) return;
+        chatWs.send(xml + '\0');
+        console.log('[ChatBridge] ->', xml);
+    }
 
-            chatWs.onmessage = (evt) => {
-                const data = typeof evt.data === 'string' ? evt.data : '';
-                const msgs = data.split('\0').filter(s => s.trim());
+    function joinChannel(channel) {
+        if (!channel || !chatLogged) return;
 
-                for (const raw of msgs) {
-                    console.log('[ChatBridge] <-', raw.substring(0, 200));
+        if (currentJoinedChannel && currentJoinedChannel !== channel) {
+            sendRaw(`<y g="${currentJoinedChannel}"/>`);
+        }
 
-                    // IP response → send ident
-                    if (raw.startsWith('<d>')) {
-                        chatWs.send('<k s="debug"/>\0');
-                    }
+        currentJoinedChannel = channel;
+        sendRaw(`<o g="${channel}"/>`);
+        chatStatus.textContent = 'Salon : ' + channel;
+    }
 
-                    // Ident response
-                    if (raw.startsWith('<k')) {
-                        if (raw.includes('k="')) {
-                            // Error attribute present
-                            chatStatus.textContent = 'Erreur auth';
-                        } else {
-                            chatLogged = true;
-                            chatStatus.textContent = 'OK';
-                            // Get channel list (to populate dropdown)
-                            chatWs.send('<q/>\0');
-                        }
-                    }
+    function connectChat() {
+        chatWs = new WebSocket('ws://localhost:8888');
+        chatWs.binaryType = 'arraybuffer';
+        chatStatus.textContent = 'Connexion...';
 
-                    // Channel list response → populate dropdown (do NOT join)
-                    if (raw.startsWith('<q')) {
-                        const matches = raw.matchAll(/g="([^"]+)"/g);
-                        chatChannel.innerHTML = '';
-                        for (const m of matches) {
-                            const opt = document.createElement('option');
-                            opt.value = m[1];
-                            opt.textContent = m[1];
-                            chatChannel.appendChild(opt);
-                        }
-                        // Default to "pomme" if available
-                        if (chatChannel.querySelector('option[value="pomme"]')) {
-                            chatChannel.value = 'pomme';
-                        }
-                        chatStatus.textContent = 'OK - ' + chatChannel.options.length + ' salons';
-                    }
+        chatWs.onopen = () => {
+            console.log('[ChatBridge] Connected');
+            chatStatus.textContent = 'Ident...';
+            sendRaw('<c/>');
+            sendRaw('<d/>');
+        };
+
+        chatWs.onmessage = async (evt) => {
+            const data = await decodeWsData(evt.data);
+            const msgs = data.split('\0').filter(s => s.trim());
+
+            for (const raw of msgs) {
+                console.log('[ChatBridge] <-', raw.substring(0, 300));
+
+                if (raw.startsWith('<d>')) {
+                    sendRaw('<k l="DebugBot" s="chatdebug"/>');
+                    continue;
                 }
-            };
 
-            chatWs.onclose = () => {
-                chatLogged = false;
-                chatStatus.textContent = 'Deconnecte';
-                setTimeout(connectChat, 3000);
-            };
+                if (raw.startsWith('<k')) {
+                    if (raw.includes(' k="')) {
+                        chatStatus.textContent = 'Erreur auth';
+                    } else {
+                        chatLogged = true;
+                        chatStatus.textContent = 'OK';
+                        sendRaw('<q/>');
+                    }
+                    continue;
+                }
 
-            chatWs.onerror = () => {
-                chatStatus.textContent = 'Erreur WS';
-            };
-        }
+                if (raw.startsWith('<q')) {
+                    const matches = [...raw.matchAll(/g="([^"]+)"/g)];
+                    chatChannel.innerHTML = '';
 
-        function sendMessage() {
-            const text = chatInput.value.trim();
-            const channel = chatChannel.value;
-            if (!text || !chatLogged || !channel) return;
+                    for (const m of matches) {
+                        const opt = document.createElement('option');
+                        opt.value = m[1];
+                        opt.textContent = m[1];
+                        chatChannel.appendChild(opt);
+                    }
 
-            // Wire code "t" = send command. No need to be in the channel —
-            // the server broadcasts to all connections that ARE in it.
-            chatWs.send(`<t g="${channel}">${text}</t>\0`);
-            console.log('[ChatBridge] ->', channel, ':', text);
-            chatInput.value = '';
-            chatInput.focus();
-        }
+                    if (chatChannel.querySelector('option[value="pomme"]')) {
+                        chatChannel.value = 'pomme';
+                    }
 
-        chatSend.addEventListener('click', sendMessage);
-        chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                sendMessage();
-                e.preventDefault();
+                    if (chatChannel.value) {
+                        joinChannel(chatChannel.value);
+                    } else {
+                        chatStatus.textContent = 'Aucun salon';
+                    }
+                    continue;
+                }
+
+                if (raw.startsWith('<p ')) {
+                    chatStatus.textContent = 'Dans : ' + (currentJoinedChannel || '?');
+                    continue;
+                }
+
+                if (raw.startsWith('<t ')) {
+                    console.log('[ChatBridge][MSG]', raw);
+                    continue;
+                }
             }
-            e.stopPropagation(); // Don't let Ruffle capture these keystrokes
-        });
-        chatInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        };
 
-        connectChat();
-    })();
-    </script>
+        chatWs.onclose = () => {
+            chatLogged = false;
+            currentJoinedChannel = null;
+            chatStatus.textContent = 'Déconnecté';
+            setTimeout(connectChat, 3000);
+        };
+
+        chatWs.onerror = () => {
+            chatStatus.textContent = 'Erreur WS';
+        };
+    }
+
+    function escapeXml(text) {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function sendMessage() {
+        const text = chatInput.value.trim();
+        const channel = chatChannel.value;
+
+        if (!text || !chatLogged || !channel) return;
+
+        sendRaw(`<t g="${channel}">${escapeXml(text)}</t>`);
+        chatInput.value = '';
+        chatInput.focus();
+    }
+
+    chatSend.addEventListener('click', sendMessage);
+
+    chatChannel.addEventListener('change', () => {
+        if (chatChannel.value) {
+            joinChannel(chatChannel.value);
+        }
+    });
+
+    chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            sendMessage();
+            e.preventDefault();
+        }
+        e.stopPropagation();
+    });
+
+    chatInput.addEventListener('mousedown', (e) => e.stopPropagation());
+
+    connectChat();
+})();
+</script>
 </body>
 </html>

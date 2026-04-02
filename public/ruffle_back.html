@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Frutiparc — Ruffle</title>
+    <style>
+        body { margin: 0; background: #335511; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        #player-container { width: 1024px; height: 768px; }
+    </style>
+
+    <!-- Intercept fetch() BEFORE Ruffle loads so WASM picks up our override -->
+    <script>
+        (function() {
+            const _origFetch = window.fetch;
+
+            // Map original Frutiparc domains → local server paths
+            const domainMap = {
+                'www.beta.frutiparc.com': 'http://localhost:8888',
+                'www.frutiparc.com':      'http://localhost:8888',
+                'swf.beta.frutiparc.com': 'http://localhost:8888/swf',
+                'swf.frutiparc.com':      'http://localhost:8888/swf',
+                'localhost:5173':         'http://localhost:8888',     // SWF uses old CBee port for HTTP — redirect
+                'localhost:5000':         'http://localhost:8888',     // SWF uses new CBee port for HTTP — redirect
+            };
+
+            window.fetch = function(input, init) {
+                let url = (typeof input === 'string') ? input : (input instanceof Request ? input.url : String(input));
+
+                // Rewrite frutiparc.com URLs to localhost
+                try {
+                    const parsed = new URL(url);
+                    const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
+                    for (const [domain, target] of Object.entries(domainMap)) {
+                        if (host === domain || parsed.hostname === domain) {
+                            const newUrl = target + parsed.pathname + parsed.search;
+                            console.log('[FETCH rewrite]', url, '→', newUrl);
+                            return _origFetch.call(this, newUrl, init);
+                        }
+                    }
+                } catch(e) { /* not a valid absolute URL, pass through */ }
+
+                // Also rewrite prefix-based URLs from SWF patching
+                const prefixRewrites = [
+                    ['/betawww/', '/'],
+                    ['/betaswf/', '/swf/'],
+                    ['/sw/', '/swf/'],
+                ];
+                try {
+                    const parsed = new URL(url);
+                    if (parsed.hostname === 'localhost') {
+                        for (const [prefix, replacement] of prefixRewrites) {
+                            if (parsed.pathname.startsWith(prefix)) {
+                                parsed.pathname = replacement + parsed.pathname.substring(prefix.length);
+                                const newUrl = parsed.toString();
+                                console.log('[FETCH prefix]', url, '→', newUrl);
+                                return _origFetch.call(this, newUrl, init);
+                            }
+                        }
+                    }
+                } catch(e) { /* pass through */ }
+
+                console.log('[FETCH]', url);
+                return _origFetch.call(this, input, init);
+            };
+
+            // Also intercept XMLHttpRequest (some Ruffle code paths may use it)
+            const _origXHROpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+                let rewritten = url;
+                try {
+                    const parsed = new URL(url, window.location.origin);
+                    const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
+                    for (const [domain, target] of Object.entries(domainMap)) {
+                        if (host === domain || parsed.hostname === domain) {
+                            rewritten = target + parsed.pathname + parsed.search;
+                            console.log('[XHR rewrite]', url, '→', rewritten);
+                            break;
+                        }
+                    }
+                } catch(e) {}
+                return _origXHROpen.call(this, method, rewritten, ...rest);
+            };
+        })();
+    </script>
+
+    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+</head>
+<body>
+    <div id="player-container"></div>
+    <script>
+        window.addEventListener("DOMContentLoaded", async () => {
+            const ruffle = window.RufflePlayer.newest();
+            const player = ruffle.createPlayer();
+            player.style.width = "1024px";
+            player.style.height = "768px";
+            document.getElementById("player-container").appendChild(player);
+
+            await player.load({
+                url: "/legacy/main.swf",
+                autoplay: "on",
+                allowScriptAccess: true,
+                quality: "high",
+                parameters: {
+                    sid: "debug",
+                    domain: "localhost:8888/"
+                },
+                socketProxy: [
+                    { host: "localhost", port: 5000, proxyUrl: "ws://localhost:8888" }
+                ],
+                openUrlMode: "allow",
+                allowNetworking: "all",
+                base: "/"
+            });
+        });
+    </script>
+
+    <!-- HTML Chat Overlay — sends messages via a separate CBee connection -->
+    <div id="chat-overlay" style="
+        position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+        z-index: 9999; display: flex; gap: 6px; align-items: center;
+        background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 8px;
+        font-family: Arial, sans-serif; font-size: 13px;
+    ">
+        <label for="chat-input" style="color: #8f8; white-space: nowrap;">Chat :</label>
+        <select id="chat-channel" style="
+            padding: 4px; background: #1a1a1a; color: #8f8; border: 1px solid #6a6;
+            border-radius: 4px; font-size: 12px;
+        "></select>
+        <input id="chat-input" type="text" placeholder="Tape ton message ici..."
+            autocomplete="off" spellcheck="false"
+            style="width: 380px; padding: 4px 8px; border: 1px solid #6a6; border-radius: 4px;
+                   background: #1a1a1a; color: #fff; outline: none; font-size: 13px;" />
+        <button id="chat-send" style="
+            padding: 4px 12px; background: #4a4; color: #fff; border: none;
+            border-radius: 4px; cursor: pointer; font-size: 13px;
+        ">Envoyer</button>
+        <span id="chat-status" style="color: #888; font-size: 11px; margin-left: 4px;">...</span>
+    </div>
+
+    <script>
+    // ── HTML Chat Bridge ──
+    // Opens a SEPARATE CBee connection (via WebSocket→TCP bridge) to send
+    // chat messages. Does NOT join any channel — just authenticates and sends.
+    // Messages are broadcast by the server to all connections in the channel,
+    // so the SWF (which IS in the channel) will receive and display them.
+    (function() {
+        const chatInput = document.getElementById('chat-input');
+        const chatSend = document.getElementById('chat-send');
+        const chatStatus = document.getElementById('chat-status');
+        const chatChannel = document.getElementById('chat-channel');
+
+        let chatWs = null;
+        let chatLogged = false;
+
+        function connectChat() {
+            chatWs = new WebSocket('ws://localhost:8888');
+            chatStatus.textContent = 'Connexion...';
+
+            chatWs.onopen = () => {
+                console.log('[ChatBridge] Connected');
+                chatStatus.textContent = 'Ident...';
+                // Send time + ip like the SWF does
+                chatWs.send('<c/>\0');
+                chatWs.send('<d/>\0');
+            };
+
+            chatWs.onmessage = (evt) => {
+                const data = typeof evt.data === 'string' ? evt.data : '';
+                const msgs = data.split('\0').filter(s => s.trim());
+
+                for (const raw of msgs) {
+                    console.log('[ChatBridge] <-', raw.substring(0, 200));
+
+                    // IP response → send ident
+                    if (raw.startsWith('<d>')) {
+                        chatWs.send('<k s="debug"/>\0');
+                    }
+
+                    // Ident response
+                    if (raw.startsWith('<k')) {
+                        if (raw.includes('k="')) {
+                            // Error attribute present
+                            chatStatus.textContent = 'Erreur auth';
+                        } else {
+                            chatLogged = true;
+                            chatStatus.textContent = 'OK';
+                            // Get channel list (to populate dropdown)
+                            chatWs.send('<q/>\0');
+                        }
+                    }
+
+                    // Channel list response → populate dropdown (do NOT join)
+                    if (raw.startsWith('<q')) {
+                        const matches = raw.matchAll(/g="([^"]+)"/g);
+                        chatChannel.innerHTML = '';
+                        for (const m of matches) {
+                            const opt = document.createElement('option');
+                            opt.value = m[1];
+                            opt.textContent = m[1];
+                            chatChannel.appendChild(opt);
+                        }
+                        // Default to "pomme" if available
+                        if (chatChannel.querySelector('option[value="pomme"]')) {
+                            chatChannel.value = 'pomme';
+                        }
+                        chatStatus.textContent = 'OK - ' + chatChannel.options.length + ' salons';
+                    }
+                }
+            };
+
+            chatWs.onclose = () => {
+                chatLogged = false;
+                chatStatus.textContent = 'Deconnecte';
+                setTimeout(connectChat, 3000);
+            };
+
+            chatWs.onerror = () => {
+                chatStatus.textContent = 'Erreur WS';
+            };
+        }
+
+        function sendMessage() {
+            const text = chatInput.value.trim();
+            const channel = chatChannel.value;
+            if (!text || !chatLogged || !channel) return;
+
+            // Wire code "t" = send command. No need to be in the channel —
+            // the server broadcasts to all connections that ARE in it.
+            chatWs.send(`<t g="${channel}">${text}</t>\0`);
+            console.log('[ChatBridge] ->', channel, ':', text);
+            chatInput.value = '';
+            chatInput.focus();
+        }
+
+        chatSend.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+                e.preventDefault();
+            }
+            e.stopPropagation(); // Don't let Ruffle capture these keystrokes
+        });
+        chatInput.addEventListener('mousedown', (e) => e.stopPropagation());
+
+        connectChat();
+    })();
+    </script>
+</body>
+</html>
