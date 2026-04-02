@@ -4,6 +4,9 @@ const net = require('net');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
+
+
 
 const app = express();
 
@@ -54,13 +57,7 @@ function warnIfStubSwfAssets() {
   const criticalSwfs = [
     'public/swf/fbouille/famille0.swf',
     'public/swf/fbouille/famille1.swf',
-    'public/swf/fbouille/famille2.swf',
-    'public/swf/fbouille/famille3.swf',
-    'public/swf/fbouille/famille4.swf',
-    'public/swf/fbouille/famille5.swf',
-    'public/swf/fbouille/famille6.swf',
-    'public/swf/fbouille/famille7.swf',
-    'public/swf/fbouille/famille8.swf',
+
   ];
 
   const stubFiles = [];
@@ -118,6 +115,28 @@ function decode62(s) {
   return r;
 }
 
+const DEFAULT_BOUILLE_STATE = '000000000000000000000000';
+
+function normalizeBouilleState(value) {
+  let s = String(value || '').replace(/\D/g, '');
+
+  if (s.length < 24) s = s.padEnd(24, '0');
+  if (s.length > 24) s = s.slice(0, 24);
+
+  const family = s.slice(0, 2);
+  if (family !== '00' && family !== '01') {
+    s = '00' + s.slice(2);
+  }
+
+  return s;
+}
+
+function bouilleOf(user) {
+  return normalizeBouilleState(
+    user && user.fbouille ? user.fbouille : DEFAULT_BOUILLE_STATE
+  );
+}
+
 // ─────────────────────────────────────────────
 // In-memory state
 // ─────────────────────────────────────────────
@@ -129,7 +148,7 @@ users['Angelisium'] = {
   pass: 'test',
   xp: 4680000,
   kikooz: 150,
-  fbouille: '000503000000111010',
+  fbouille: DEFAULT_BOUILLE_STATE,
   items: [1, 2, 3],
   gender: 'M',
   birthday: '1990-05-15',
@@ -164,17 +183,15 @@ function buildPrefDefString() {
 }
 
 const DEFAULT_BOUILLE_LIST = [
-  { b: '000503000000111010', n: 'Classique' },
-  { b: '000503000000111011', n: 'Classique 2' },
-  { b: '000503000000111012', n: 'Classique 3' },
-  { b: '010503000000111010', n: 'Capuche claire' },
-  { b: '020503000000111010', n: 'Capuche foncée' },
-  { b: '000403000000111010', n: 'Regard doux' },
+  { b: '000503000000111010000000', n: 'Classique' },
+  { b: '000503000000111011000000', n: 'Classique 2' },
+  { b: '000503000000111012000000', n: 'Classique 3' },
+  { b: '010503000000111010000000', n: 'Famille 1' },
 ];
 
 function buildBouilleListXml() {
   return DEFAULT_BOUILLE_LIST
-    .map((o) => `<b b="${escapeXml(o.b)}">${escapeXml(o.n)}</b>`)
+    .map((o) => `<b b="${escapeXml(normalizeBouilleState(o.b))}">${escapeXml(o.n)}</b>`)
     .join('');
 }
 
@@ -211,6 +228,12 @@ app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
 });
 
+app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
+  console.log('[SWF] fonts.swf requested:', req.url);
+  res.type('application/x-shockwave-flash');
+  res.sendFile(fontsPath);
+});
+
 // Explicit route for fileIcon.swf — Ruffle's loadMovie() fetches this
 // during the loading screen.  Serving it explicitly (with logging and
 // correct Content-Type) helps diagnose and resolve pending-fetch issues.
@@ -219,6 +242,32 @@ app.get('/fileIcon.swf', (req, res) => {
   res.type('application/x-shockwave-flash');
   res.sendFile(path.join(__dirname, 'public', 'fileIcon.swf'));
 });
+
+
+
+function sendAvatarFamily(res, fileName) {
+  const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
+
+  if (!fs.existsSync(absPath)) {
+    console.log(`[SWF]   Missing avatar asset: ${absPath}`);
+    return res.status(404).type('text/plain').send('Missing SWF');
+  }
+
+  console.log(`[SWF]   Serving avatar asset: ${fileName}`);
+  res.type('application/x-shockwave-flash');
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(absPath);
+}
+
+app.get(
+  ['/famille0.swf', '/fbouille/famille0.swf', '/swf/fbouille/famille0.swf'],
+  (req, res) => sendAvatarFamily(res, 'famille0.swf')
+);
+
+app.get(
+  ['/famille1.swf', '/fbouille/famille1.swf', '/swf/fbouille/famille1.swf'],
+  (req, res) => sendAvatarFamily(res, 'famille1.swf')
+);
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/init — Session initialization
@@ -277,17 +326,46 @@ app.get('/do/prefsave', (req, res) => {
 // Params: b=<fbouille_string>, sid=<session_id>
 // Returns LoadVars: state=0 (success)
 // ─────────────────────────────────────────────
-app.get('/do/eb', (req, res) => {
-  const sid = req.query.sid;
-  const bouille = req.query.b;
-  // Update user's fbouille if provided
-  if (bouille && sid) {
-    const session = sessions[sid];
-    if (session && session.user && users[session.user]) {
-      users[session.user].fbouille = bouille;
-    }
+function resolveUsernameFromSid(sid) {
+  if (sid && sessions[sid] && sessions[sid].user && users[sessions[sid].user]) {
+    return sessions[sid].user;
   }
-  res.type('text/plain').send('state=0');
+  return 'Angelisium';
+}
+
+app.all('/do/eb', (req, res) => {
+  const source = req.method === 'POST' ? req.body : req.query;
+
+  const sid = source.sid || 'debug';
+  const rawBouille = source.b || source.s || source.f || '';
+  const bouille = normalizeBouilleState(rawBouille);
+  const username = resolveUsernameFromSid(sid);
+
+  if (!sessions[sid]) {
+    sessions[sid] = { user: username, createdAt: Date.now() };
+  } else if (!sessions[sid].user) {
+    sessions[sid].user = username;
+  }
+
+  if (!users[username]) {
+    users[username] = {
+      pass: '',
+      xp: 10000,
+      kikooz: 50,
+      fbouille: DEFAULT_BOUILLE_STATE,
+      items: [],
+      gender: 'M',
+      birthday: '2000-01-01',
+      country: 'FR',
+      region: 'IDF',
+      prefs: '',
+    };
+  }
+
+  users[username].fbouille = bouille;
+
+  console.log(`[do/eb] Saved bouille for ${username}: ${bouille}`);
+  res.type('text/plain').send(`state=0&b=${bouille}&s=${bouille}`);
 });
 
 // ─────────────────────────────────────────────
@@ -297,7 +375,7 @@ app.get('/do/eb', (req, res) => {
 app.get('/do/gmi', (req, res) => {
   const sid = req.query.sid;
   const session = sessions[sid];
-  const username = session ? session.user : 'Angelisium';
+  const username = (session && session.user) || 'Angelisium';
   const user = users[username] || users['Angelisium'];
 
   const params = new URLSearchParams({
@@ -305,7 +383,7 @@ app.get('/do/gmi', (req, res) => {
     l: username,
     x: String(user.xp || 0),
     k: String(user.kikooz || 0),
-    f: user.fbouille || '000503000000111010',
+    f: bouilleOf(user),
     sx: user.gender || 'M',
     bd: user.birthday || '2000-01-01',
     co: user.country || 'FR',
@@ -334,7 +412,7 @@ app.get('/prefForm', (req, res) => {
 app.get('/do/onident', (req, res) => {
   const sid = req.query.sid;
   const session = sessions[sid];
-  const username = session ? session.user : 'Angelisium';
+  const username = (session && session.user) || 'Angelisium';
   const user = users[username] || users['Angelisium'];
 
   const items = (user.items || []).join(',');
@@ -704,8 +782,12 @@ function broadcastToChannel(channelName, xmlStr, excludeSocket = null) {
   }
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
 function formatDateTime(d) {
-  return d.toISOString().replace('T', ' ').substring(0, 19);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}.${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
 function normalizeClientIp(rawIp) {
@@ -718,7 +800,8 @@ function normalizeClientIp(rawIp) {
 function buildChannelListXml() {
   let inner = '';
   for (const [name, ch] of Object.entries(channels)) {
-    inner += `<g g="${name}"><t>${ch.topic}</t></g>`;
+    const desc = ch.desc || `Salon ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+    inner += `<g g="${name}" n="${ch.users.size}"><desc>${escapeXml(desc)}</desc></g>`;
   }
   return `<${CMD.channellist}>${inner}</${CMD.channellist}>`;
 }
@@ -780,7 +863,7 @@ function handleCBeeMessage(socket, rawXml) {
           pass: '',
           xp: 10000,
           kikooz: 50,
-          fbouille: '000503000000111010',
+          fbouille: DEFAULT_BOUILLE_STATE,
           items: [],
           gender: 'M',
           birthday: '2000-01-01',
@@ -797,7 +880,7 @@ function handleCBeeMessage(socket, rawXml) {
       client.sid = sid;
       client.logged = true;
 
-      sendToClient(socket, `<${CMD.ident} l="${effectiveLogin}" x="${user.xp}" f="${user.fbouille}" />`);
+      sendToClient(socket, `<${CMD.ident} l="${effectiveLogin}" x="${user.xp}" f="${bouilleOf(user)}" />`);
       console.log(`[CBee]  User "${effectiveLogin}" logged in (sid=${sid})`);
       break;
     }
@@ -809,34 +892,52 @@ function handleCBeeMessage(socket, rawXml) {
     }
 
     // ── join: join a channel ──
-    case 'join': {
-      const g = msg.attrs.g;
-      if (!channels[g]) {
-        channels[g] = { topic: `Salon ${g}`, users: new Set() };
-      }
-      channels[g].users.add(client.username);
-      client.channels.add(g);
+case 'join': {
+  const g = msg.attrs.g;
 
-      // Send userlist for this channel
-      const userArr = Array.from(channels[g].users);
-      let userXml = '';
-      for (const u of userArr) {
-        const ud = users[u] || {};
-        userXml += `<u u="${u}" f="${ud.fbouille || '000503000000111010'}" s="00000" p="1" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" />`;
-      }
-      sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
+  if (!channels[g]) {
+    channels[g] = {
+      desc: `Salon ${g.charAt(0).toUpperCase()}${g.slice(1)}`,
+      topic: `Bienvenue sur le salon ${g} !`,
+      users: new Set(),
+    };
+  }
 
-      // Send topic
-      sendToClient(socket, `<${CMD.topic} g="${g}">${channels[g].topic}</${CMD.topic}>`);
+  const channel = channels[g];
+  channel.users.add(client.username);
+  client.channels.add(g);
 
-      // Notify others
-      const ud = users[client.username] || {};
-      broadcastToChannel(g,
-        `<${CMD.userjoined} g="${g}" u="${client.username}" f="${ud.fbouille || '000503000000111010'}" s="00000" p="1" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" />`,
-        socket
-      );
-      break;
-    }
+  const userArr = Array.from(channel.users);
+  let userXml = '';
+
+  for (const u of userArr) {
+    const ud = users[u] || {};
+    userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
+  }
+
+  // 1. Réponse canonique au join
+  sendToClient(
+    socket,
+    `<${CMD.join} g="${g}" p=""><desc>${escapeXml(channel.desc || `Salon ${g}`)}</desc></${CMD.join}>`
+  );
+
+  // 2. Liste des utilisateurs
+  sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
+
+  // 3. Message système visible dans le chat
+  sendToClient(
+    socket,
+    `<${CMD.send} u="Serveur" t="m" p="" g="${g}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
+  );
+
+  // 4. Notification légère aux autres
+broadcastToChannel(
+  g,
+  `<${CMD.userjoined} u="${escapeXml(client.username)}" g="${g}" />`,
+  socket
+);
+  break;
+}
 
     // ── part: leave a channel ──
     case 'part': {
@@ -844,59 +945,75 @@ function handleCBeeMessage(socket, rawXml) {
       if (channels[g]) {
         channels[g].users.delete(client.username);
         client.channels.delete(g);
-        broadcastToChannel(g,
-          `<${CMD.userleaved} g="${g}" u="${client.username}" />`
-        );
+broadcastToChannel(
+  g,
+  `<${CMD.userleaved} u="${escapeXml(client.username)}" g="${g}" />`
+);
       }
       break;
     }
 
     // ── send: chat message ──
-    case 'send': {
-      const g = msg.attrs.g;
-      const text = msg.content || '';
-      if (g && client.logged) {
-        // Public message to channel — broadcast to ALL users including sender
-        const xml = `<${CMD.send} g="${g}" u="${client.username}">${text}</${CMD.send}>`;
-        broadcastToChannel(g, xml);
-      } else if (msg.attrs.u) {
-        // Private message
-        const targetUser = msg.attrs.u;
-        for (const [sock, cl] of xmlSocketClients) {
-          if (cl.username === targetUser) {
-            sendToClient(sock,
-              `<${CMD.send} u="${client.username}">${text}</${CMD.send}>`
-            );
-            break;
-          }
-        }
-      }
-      break;
+case 'send': {
+  const g = msg.attrs.g;
+  const text = msg.content || '';
+  const type = msg.attrs.t || 'm';
+  const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
+
+  if (g && client.logged) {
+    const safeText = escapeXml(text);
+    const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}">${safeText}</${CMD.send}>`;
+    broadcastToChannel(g, xml);
+} else if (msg.attrs.u) {
+  const targetUser = msg.attrs.u;
+  const safeText = escapeXml(text);
+
+  // Echo au sender, indispensable pour afficher sa propre ligne
+  sendToClient(
+    socket,
+    `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}">${safeText}</${CMD.send}>`
+  );
+
+  // Envoi au destinataire
+  for (const [sock, cl] of xmlSocketClients) {
+    if (cl.username === targetUser) {
+      sendToClient(
+        sock,
+        `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}">${safeText}</${CMD.send}>`
+      );
     }
+  }
+}
+  break;
+}
 
     // ── trace: request status updates for users ──
-    case 'trace': {
-      // Respond with current status for requested users
-      const targetUser = msg.attrs.u;
-      if (targetUser) {
-        const ud = users[targetUser] || users[client.username] || {};
-        sendToClient(socket,
-          `<${CMD.trace} u="${targetUser}" f="${ud.fbouille || '000503000000111010'}" p="1" s="00000" />`
-        );
-      }
-      // If children contain <u> elements, respond for each
-      for (const child of msg.children) {
-        if (child.tag === 'u' && child.attrs.u) {
-          const u = child.attrs.u;
-          const ud = users[u] || {};
-          sendToClient(socket,
-            `<${CMD.trace} u="${u}" f="${ud.fbouille || '000503000000111010'}" p="1" s="00000" />`
-          );
-        }
-      }
-      break;
+case 'trace': {
+  const traceChildren = (msg.children || []).filter(child => child.tag === 'u' && child.attrs.u);
+
+  if (traceChildren.length > 0) {
+    let inner = '';
+
+    for (const child of traceChildren) {
+      const u = child.attrs.u;
+      const ud = users[u] || {};
+      inner += `<u u="${u}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
     }
 
+    sendToClient(socket, `<${CMD.trace}>${inner}</${CMD.trace}>`);
+    break;
+  }
+
+  const targetUser = msg.attrs.u;
+  if (targetUser) {
+    const ud = users[targetUser] || users[client.username] || {};
+    sendToClient(
+      socket,
+      `<${CMD.trace} u="${targetUser}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`
+    );
+  }
+  break;
+}
     // ── stoptrace: stop tracking users ──
     case 'stoptrace': {
       // Just acknowledge — nothing to do server-side in our simple impl
@@ -928,15 +1045,54 @@ function handleCBeeMessage(socket, rawXml) {
       break;
     }
 
-    // ── fbouille: update avatar ──
-    case 'fbouille': {
-      const f = msg.attrs.f;
-      if (f && client.username && users[client.username]) {
-        users[client.username].fbouille = f;
-      }
-      sendToClient(socket, `<${CMD.fbouille} f="${f || ''}" />`);
-      break;
-    }
+case 'fbouille': {
+  const f = normalizeBouilleState(msg.attrs.f || DEFAULT_BOUILLE_STATE);
+
+  if (client.username && users[client.username]) {
+    users[client.username].fbouille = f;
+  }
+
+  sendToClient(socket, `<${CMD.fbouille} f="${f}" />`);
+  break;
+}
+
+case 'createchannel': {
+  const otherUser = msg.attrs.u || '';
+  const title = msg.content || otherUser || 'Discussion privée';
+
+  if (!otherUser) {
+    sendToClient(socket, `<${CMD.error} />`);
+    break;
+  }
+
+  // Accusé de réception de l’ouverture de la discussion privée
+  sendToClient(
+    socket,
+    `<${CMD.createchannel} u="${escapeXml(otherUser)}">${escapeXml(title)}</${CMD.createchannel}>`
+  );
+
+  // On pousse aussi les infos connues sur l’autre user
+  const ud = users[otherUser] || {
+    xp: 10000,
+    gender: 'M',
+    birthday: '2000-01-01.00:00:00',
+    country: 'FR',
+    region: '',
+    fbouille: DEFAULT_BOUILLE_STATE,
+  };
+
+  sendToClient(
+    socket,
+    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" />`
+  );
+
+  sendToClient(
+    socket,
+    `<${CMD.trace} u="${escapeXml(otherUser)}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`
+  );
+
+  break;
+}
 
     // ── xpflag ──
     case 'xpflag': {
@@ -965,7 +1121,7 @@ function handleCBeeMessage(socket, rawXml) {
       let inner = '';
       for (const name of results) {
         const ud = users[name] || {};
-        inner += `<u u="${name}" f="${ud.fbouille || '000503000000111010'}" x="${ud.xp || 0}" />`;
+        inner += `<u u="${name}" f="${bouilleOf(ud)}" x="${ud.xp || 0}" />`;
       }
       sendToClient(socket, `<${CMD.searchuser}>${inner}</${CMD.searchuser}>`);
       break;
