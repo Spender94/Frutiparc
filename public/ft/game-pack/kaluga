@@ -1,0 +1,12 @@
+<p n="Pack de Kaluga" i="16" h="0" p="pack,17">
+	<d><desc>Jouez le célèbre Tzongre et ses amis dans des défis incroyables</desc></d>
+	<!-- p for price -->
+	<r p="260">Bénéficiez du jeux complet et d'un pass journalier</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

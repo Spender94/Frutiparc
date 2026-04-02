@@ -1,0 +1,12 @@
+<p n="Pass quotidiende Frutisnake" i="21" h="0" p="pass,3">
+	<d><desc>Jouez un serpent de manière pour manger le plus de fruits possible.</desc></d>
+	<!-- p for price -->
+	<r p="80">Donne droit à une partie quotidienne supplémentaire pour réaliser le meilleur score en challenge</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

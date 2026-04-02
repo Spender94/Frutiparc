@@ -1,0 +1,7 @@
+<!-- Help search page, n for number of answers, m for method with "e" for exact results, other value for similar results -->
+<h n="3" m="e">
+	<!-- i for id page, n for title -->
+	<l i="1043" n="Comment s'inscrire"  />
+	<l i="1044" n="Charte du site" m="f" />
+	<l i="1045" n="Qui est Gaspard ?" m="e" />
+</h>

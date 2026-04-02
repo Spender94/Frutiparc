@@ -1,0 +1,12 @@
+<f u="mycontact">
+	<f u="frutifamille" t="folder">
+		<e u="tigrenoir" t="contact" s="10" d="0" a="0">tigrenoir@frutiparc.com</e>
+		<e u="EmiLicorne" t="contact" s="10" d="0" a="0">EmiLicorne@frutiparc.com</e>
+		<e u="SakurAmalia" t="contact" s="10" d="0" a="0">SakurAmalia@frutiparc.com</e>
+	</f>
+	<e u="kasparov" t="contact" s="10" d="0" a="0">kasparov@frutiparc.com</e>
+	<e u="test@yahoo.fr" t="contact" s="10" d="0" a="0">test@yahoo.fr</e>
+	<e u="test@hotmail.fr" t="contact" s="10" d="0" a="0">test@hotmail.fr</e>
+	<e u="test@aol.fr" t="contact" s="10" d="0" a="0">test@aol.fr</e>
+	<e u="test@gmail.fr" t="contact" s="10" d="0" a="0">test@gmail.fr</e>
+</f>

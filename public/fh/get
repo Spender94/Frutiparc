@@ -1,0 +1,13 @@
+<!-- Help page, i = id and n its title-->
+<h i="1042" n="Charte du site">
+	<!-- Content of the page -->
+	<c>
+Affichage de la charte
+	</c>
+	<!-- List of additional links -->
+	<!-- i for id page, n for title and t for category : cat_ls for "rubriques" list and cat_tree for "in this rubrique" -->
+	<l>
+		<link i="1044" n="Comment fonctionne le site" t="cat_ls" />
+		<link i="1045" n="Qui est Gaspard ?" t="cat_tree" />
+	</l>
+</h>

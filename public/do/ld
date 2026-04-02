@@ -1,0 +1,13 @@
+<!-- Loading games
+     * Attributes
+         * t = type, can be 0 (black CD / challenge), 1 (grey CD / challenge bonus), 2 (white CD, complete game) or 3 (red CD, demo)
+         * pm = mode can be single or multiplayer (only for Grapiz / Frutibandas)
+         * n = game name (short)
+         * u = ???
+         * p = parameters lists with "," as separator: w = width, h = height and m must be "i" because launched into Frutiparc interface
+     * List of swf files, one <s> node per file
+         * u = file path
+-->
+<game t="0" pm="single" n="snake3" u="1" p="w=700;h=480;m=i">
+	<s u="games/snakegame.swf" />
+</game>

@@ -1,0 +1,34 @@
+<!-- Pack definition, n = name, i = id and p = picto split with "," character, h = 1 if already bought, 0 otherwise -->
+
+<!-- 
+* picto id are:
+	0 = Orange (item id 315)
+	1 = Blue (item id 316)
+	2 = Dark green (item id 317)
+	3 = Bordeaux (item id 318)
+	4 = Pink (item id 319)
+	5 = Yellow (item id 320)
+	6 = Light Green (item id 321)
+	7 = Cyan (item id 322)
+	8 = Dark blue (item id 323)
+	9 = Brown (item id 324)
+	10 = Dark Brown (item id 325)
+	11 = Kaki (item id 326)
+	12 = Petrol blue (item id 327)
+	13 = Green (item id 599)
+	14 = Dark petrol blue (item id 600)
+	15 = Dark orange (item id 601)
+	16 = Violet (item id 602)
+-->
+<p n="Jeux complet de Frutisnake" i="315" h="0" p="feutre,16">
+	<d><desc>Jouez un serpent de manière illimité pour manger le plus de fruits possible.</desc></d>
+	<!-- p for price -->
+	<r p="180">La phobie des serpents est déconseillée</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

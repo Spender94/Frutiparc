@@ -1,0 +1,10 @@
+<!-- Pack definition, n = name, i = id and p = picto split with "," character, h = 1 if already bought, 0 otherwise -->
+<p n="Fond d'écran de la planète Mini-Star" i="81" h="1" p="wallpaper,1">
+	<!-- p for price, s for start, e for end of availability -->
+	<r p="180" s="0" e="0">Ne pas s'approcher trop près de cette fausse planète tiré du jeu Mini-Wave</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

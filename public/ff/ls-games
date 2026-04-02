@@ -1,0 +1,26 @@
+<f u="disccollector">
+	<e u="snake1" t="disc" s="10" d="0" a="0">0
+snake</e>
+	<e u="snakegrey" t="disc" s="10" d="0" a="0">1
+snake</e>
+	<e u="snakewhite" t="disc" s="10" d="0" a="0">2
+snake</e>
+	<e u="bk1" t="disc" s="10" d="0" a="0">0
+bkiwi</e>
+	<e u="mb21" t="disc" s="10" d="0" a="0">0
+mb2</e>
+	<e u="swapou21" t="disc" s="10" d="0" a="0">0
+swapou2</e>
+	<e u="kaluga1" t="disc" s="10" d="0" a="0">0
+kaluga</e>
+	<e u="kalugademo" t="disc" s="10" d="0" a="0">3
+kaluga</e>
+	<e u="grapiz1" t="disc" s="10" d="0" a="0">0
+grapiz</e>
+	<e u="bandas1" t="disc" s="10" d="0" a="0">0
+bandas</e>
+	<e u="pixiz" t="disc" s="10" d="0" a="0">2
+minipixiz</e>
+	<e u="wave" t="disc" s="10" d="0" a="0">2
+miniwave</e>
+</f>

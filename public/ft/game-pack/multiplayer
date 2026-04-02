@@ -1,0 +1,12 @@
+<p n="Pack de Frutibandas et Grapiz" i="17" h="0" p="pack,3">
+	<d><desc>Jouez de manière illimitée aux deux jeux multijoueurs : Grapiz et Frutibandas</desc></d>
+	<!-- p for price -->
+	<r p="260">Bénéficiez des jeux complet et d'un pass journalier pour chaque jeu</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

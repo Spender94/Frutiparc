@@ -1,0 +1,10 @@
+<!-- To add someone in contact list or blacklist -->
+<!-- * f for parent folder id
+     * u for object uid (blacklist or mycontact)
+     * t for object type (blacklist or mycontact)
+     * d for date format YYYY-MM-DD.HH:MM:SS
+     * node value as description
+     -->
+<contact f="" u="mycontact" t="mycontact" d="2025-07-13.13:55:53">
+	Description
+</contact>

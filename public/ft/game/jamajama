@@ -1,0 +1,12 @@
+<p n="Jeux complet de JamaJama" i="7" h="0" p="game,9">
+	<d><desc>Créez des niveaux et défiez vos amis dans des casses têtes communautaires</desc></d>
+	<!-- p for price -->
+	<r p="180">Le fantôme doit trouver la sortie.</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

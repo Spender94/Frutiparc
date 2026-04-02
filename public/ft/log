@@ -1,0 +1,11 @@
+<!-- Kikooz logs, attribute t = timestamp -->
+<l>
+	<!-- Buy, n = name, k = price -->
+	<b t="1749325728002" n="Pack de stylos" k="50" />
+	<!-- Get kikooz, c = buy method, k = kikooz -->
+	<c t="1749325728002" c="Allopass" k="75" />
+	<!-- Get kikooz as godfather, f = godchild, k = kikooz -->
+	<g t="1749325728002" f="kasparov" k="100" />
+	<!-- Get kikooz from animateur, f = animator, k = kikooz -->
+	<a t="1749325728002" f="kilou79" k="100" />
+</l>

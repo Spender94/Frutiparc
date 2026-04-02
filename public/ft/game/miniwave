@@ -1,0 +1,12 @@
+<p n="Mini-Wave" i="30" h="0" p="mini,1">
+	<d><desc>Embarquez à bord de certains vaisseaux et affrontez la flotte du terrible Orangre</desc></d>
+	<!-- p for price -->
+	<r p="180">Et d'autres missions spéciales !</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

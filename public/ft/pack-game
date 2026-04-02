@@ -1,0 +1,54 @@
+<!-- Pack definition, n = name, i = id and p = picto split with "," character, h = 1 if already bought, 0 otherwise -->
+<!-- First part of "picto" is designing the object type:
+	pass = One Grey FD
+	game = White FD
+	pack = White + one Grey FD
+-->
+
+<!-- 
+* picto id are for "game" and "pass":
+	1 = Motion Ball
+	2 = Hammerfest
+	3 = Frutisnake
+	4 = Burning Kiwi
+	5 = Swapou
+	6 = Frutibandas
+	7 = Grapiz
+	8 = Kaluga
+	9 = JamaJama (game only)
+-->
+
+<!-- 
+* picto id are for "pack":
+	1 = Empty (unused)
+	2 = Welcome (unused)
+	3 = Grapiz + Frutibandas
+	10 = Motion Ball
+	11 = Hammerfest
+	12 = Frutisnake
+	13 = Burning Kiwi
+	14 = Swapou
+	15 = Frutibandas
+	16 = Grapiz
+	17 = Kaluga
+	31 = KadoKado (unused)
+	32 = School pack (pen + Yota key chain)
+-->
+
+<!-- 
+* picto id are for "mini":
+	1 = Mini-Wave
+	2 = Mini-Pixiz
+-->
+<p n="Jeux complet de Frutisnake" i="0" h="0" p="mini,2">
+	<d><desc>Jouez un serpent de manière illimité pour manger le plus de fruits possible.</desc></d>
+	<!-- p for price -->
+	<r p="180">La phobie des serpents est déconseillée</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

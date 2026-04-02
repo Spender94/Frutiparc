@@ -1,0 +1,99 @@
+<p>
+	<c n="Général">
+		<p i="1" f="Ouvrir les dossiers de contacts">
+			<d>Déplie par défaut les dossiers dans la barre de contacts</d>
+			<f></f>
+		</p>
+		<p i="3" f="Animation des fenêtres">
+			<d>Le déplacement des fenêtres entraine une animation pouvant altérer les performances</d>
+			<f></f>
+		</p>
+		<p i="8" f="Affichage des informations fiche">
+			<d>Personnaliser le style d'affichage de l'âge et de la région dans la fiche</d>
+			<f>
+				<l>
+					<r w="100" v="value" u="0">Noir</r>
+					<r w="100" v="value" u="1">Genre</r>
+					<r w="100" v="value" u="2">Vert</r>
+				</l>
+			</f>
+		</p>
+		<p i="9" f="Taille de cache">
+			<d>Permet d'augmenter la fluidité de l'interface au détriment de la consommation mémoire</d>
+			<f></f>
+		</p>
+	</c>
+	<c n="Messages">
+		<p i="0" f="Notification des nouveaux messages">
+			<d>Après réception d'un nouveau message, l'icône clignote</d>
+			<f></f>
+		</p>
+		<p i="7" f="Sauvegarder les messages envoyés">
+			<d>Ils seront stockés dans la boîte d'envoi</d>
+			<f></f>
+		</p>
+	</c>
+	<c n="Discussions">
+		<p i="10" f="Afficher les personnes qui rejoignent un salon">
+			<d>Un message spécifique est afficher pour chaque nouveau entrant dans le salon</d>
+			<f></f>
+		</p>
+		<p i="11" f="Afficher les personnes qui quittent un salon">
+			<d>Un message spécifique est afficher pour chaque nouveau sortant dans le salon</d>
+			<f></f>
+		</p>
+		<p i="12" f="Afficher les personnes qui sont éjectées un salon">
+			<d>Un message spécifique est afficher pour chaque personne éjectée d'un salon</d>
+			<f></f>
+		</p>
+		<p i="13" f="Afficher l'heure des messages">
+			<d>Chaque message d'un salon aura l'heure d'envoi affichée avant</d>
+			<f></f>
+		</p>
+	</c>
+	<c n="Salons">
+		<p i="2" f="Connexion automatique à un salon">
+			<d>Se connecter ou afficher la liste des salons publics après la connexion au site</d>
+			<f>
+				<l>
+					<r w="100" v="value" u="1">Rien</r>
+					<r w="100" v="value" u="13">Demander</r>
+					<r w="100" v="value" u="0">Aléatoire</r>
+					<r w="100" v="value" u="12">Anim</r>
+					<r w="100" v="value" u="2">Pomme</r>
+					<r w="100" v="value" u="3">Abricot</r>
+					<r w="100" v="value" u="4">Poire</r>
+					<r w="100" v="value" u="5">Fraise</r>
+					<r w="100" v="value" u="6">Citron</r>
+					<r w="100" v="value" u="7">Kiwi</r>
+					<r w="100" v="value" u="8">Raisin</r>
+					<r w="100" v="value" u="9">Orange</r>
+					<r w="100" v="value" u="10">Cerise</r>
+					<r w="100" v="value" u="11">Banane</r>
+					<r w="100" v="value" u="14">Rencontre</r>
+				</l>
+			</f>
+		</p>
+		<p i="5" f="Invitation à un chat privé">
+			<d>Que faire si un frutiz vous envoie une invitation pour faire un chat privé</d>
+			<f>
+				<l>
+					<r w="65" v="value" u="A">Accepter</r>
+					<r w="65" v="value" u="R">Refuser</r>
+					<r w="75" v="value" u="P">Demander</r>
+				</l>
+			</f>
+		</p>
+		<p i="6" f="Invitation à un chat public">
+			<d>Que faire si un frutiz vous envoie une invitation pour faire un chat public</d>
+			<f>
+				<l>
+					<r w="65" v="value" u="A">Accepter</r>
+					<r w="65" v="value" u="R">Refuser</r>
+					<r w="75" v="value" u="P">Demander</r>
+				</l>
+			</f>
+		</p>
+	</c>
+</p>
+

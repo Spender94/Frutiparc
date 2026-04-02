@@ -1,0 +1,12 @@
+<p n="Mini-Pixiz" i="31" h="0" p="mini,2">
+	<d><desc>Capturez des fées et affrontez des démons pour collecter des objets</desc></d>
+	<!-- p for price -->
+	<r p="180">Attrappez-les toutes !</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

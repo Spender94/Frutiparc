@@ -1,0 +1,23 @@
+<!-- Define tree elements for the desktop, contact list and so on
+     * <f> node for folder
+     * For folders
+         * b = list of specific folders to reference inbox, disccollector, inventory, mycontact, recyclebin, with ; as separator
+         * m = ????
+     * For children
+         * <f> nodes
+         * u = unique id
+         * n = displayed name
+         * t = type, "folder" or one of folder id mentionned above
+         * p = normal or mail or "any" -->
+<f b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin" m="1">
+	<f u="inbox" n="Réception" t="inbox" p="mail" />
+	<f u="messages" n="Mes messages" t="messages" p="normal" />
+	<f u="outbox" n="Envois" t="outbox" p="mail" />
+	<f u="draftbox" n="Brouillons" t="draftbox" p="mail" />
+	<f u="blackbox" n="Indésirables" t="blackbox" p="normal" />
+	<f u="inventory" n="Mon inventaire" t="inventory" p="normal" />
+	<f u="disccollector" n="Mes jeux" t="disccollector" p="normal" />
+	<f u="mycontact" n="Mes contacts" t="mycontact" p="normal" />
+	<f u="recyclebin" n="Corbeille" t="recyclebin" p="normal" />
+	<f u="frutifamille" n="Frutifamille" t="folder" p="normal" />
+</f>

@@ -1,0 +1,13 @@
+<!-- Buy from the shop -->
+<r i="1042">
+	<!-- Type bought object:
+	     * f = file like games
+	     * i = item
+	     * b = accessory
+	-->
+	<f>0
+snake</f>
+	<i>315</i>
+	<!-- b = bouille id -->
+	<b b="0004060N02000O030y0t0j00">Nouvelle bouille</b>
+</r>
