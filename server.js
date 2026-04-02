@@ -790,6 +790,10 @@ function formatDateTime(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}.${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
+function formatChatTimePrefix(d) {
+  return `[${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}] `;
+}
+
 function normalizeClientIp(rawIp) {
   if (!rawIp) return '127.0.0.1';
   if (rawIp === '::1') return '127.0.0.1';
@@ -927,7 +931,7 @@ case 'join': {
   // 3. Message système visible dans le chat
   sendToClient(
     socket,
-    `<${CMD.send} u="Serveur" t="m" p="" g="${g}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
+    `<${CMD.send} u="Serveur" t="m" p="" g="${g}" h="${formatChatTimePrefix(new Date())}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
   );
 
   // 4. Notification légère aux autres
@@ -959,10 +963,11 @@ case 'send': {
   const text = msg.content || '';
   const type = msg.attrs.t || 'm';
   const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
+  const timePrefix = formatChatTimePrefix(new Date());
 
   if (g && client.logged) {
     const safeText = escapeXml(text);
-    const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}">${safeText}</${CMD.send}>`;
+    const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timePrefix}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
 } else if (msg.attrs.u) {
   const targetUser = msg.attrs.u;
@@ -971,7 +976,7 @@ case 'send': {
   // Echo au sender, indispensable pour afficher sa propre ligne
   sendToClient(
     socket,
-    `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}">${safeText}</${CMD.send}>`
+    `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timePrefix}">${safeText}</${CMD.send}>`
   );
 
   // Envoi au destinataire
@@ -979,7 +984,7 @@ case 'send': {
     if (cl.username === targetUser) {
       sendToClient(
         sock,
-        `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}">${safeText}</${CMD.send}>`
+        `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timePrefix}">${safeText}</${CMD.send}>`
       );
     }
   }
