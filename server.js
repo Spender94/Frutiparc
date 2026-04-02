@@ -3,6 +3,7 @@ const { WebSocketServer } = require('ws');
 const net = require('net');
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 
@@ -43,6 +44,46 @@ app.use((req, res, next) => {
   console.log(`[HTTP]  ${req.method} ${req.url}`);
   next();
 });
+
+
+
+// ─────────────────────────────────────────────
+// Diagnostics: validate critical SWF assets are real files (not stubs)
+// ─────────────────────────────────────────────
+function warnIfStubSwfAssets() {
+  const criticalSwfs = [
+    'public/swf/fbouille/famille0.swf',
+    'public/swf/fbouille/famille1.swf',
+    'public/swf/fbouille/famille2.swf',
+    'public/swf/fbouille/famille3.swf',
+    'public/swf/fbouille/famille4.swf',
+    'public/swf/fbouille/famille5.swf',
+    'public/swf/fbouille/famille6.swf',
+    'public/swf/fbouille/famille7.swf',
+    'public/swf/fbouille/famille8.swf',
+  ];
+
+  const stubFiles = [];
+  for (const relPath of criticalSwfs) {
+    const absPath = path.join(__dirname, relPath);
+    try {
+      const st = fs.statSync(absPath);
+      if (st.size <= 32) {
+        stubFiles.push(`${relPath} (${st.size} bytes)`);
+      }
+    } catch {
+      stubFiles.push(`${relPath} (missing)`);
+    }
+  }
+
+  if (stubFiles.length > 0) {
+    console.warn('[ASSETS] Frutibouille assets look incomplete.');
+    console.warn('[ASSETS] The avatar editor may show blank previews / "undefined" labels.');
+    for (const f of stubFiles) {
+      console.warn(`[ASSETS]   - ${f}`);
+    }
+  }
+}
 
 const port = process.env.PORT || 8888;
 const XMLSOCKET_PORT = 5000; // Port for the CBee XMLSocket server (must end in 000 for FrutiChat cmdList)
@@ -414,6 +455,7 @@ const server = app.listen(port, () => {
   console.log(`[HTTP]  Server running on http://localhost:${port}`);
   console.log(`        Legacy SWF:  http://localhost:${port}/legacy`);
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
+  warnIfStubSwfAssets();
 });
 
 // ─────────────────────────────────────────────
