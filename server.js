@@ -794,6 +794,14 @@ function formatChatTimePrefix(d) {
   return `[${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}] `;
 }
 
+function buildChatTimeAttrs(date = new Date()) {
+  return {
+    h: formatChatTimePrefix(date),
+    // Some legacy paths rebuild "$h" from a raw datetime field.
+    d: formatDateTime(date),
+  };
+}
+
 function normalizeClientIp(rawIp) {
   if (!rawIp) return '127.0.0.1';
   if (rawIp === '::1') return '127.0.0.1';
@@ -919,6 +927,8 @@ case 'join': {
     userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
   }
 
+  const timeAttrs = buildChatTimeAttrs();
+
   // 1. Réponse canonique au join
   sendToClient(
     socket,
@@ -931,7 +941,7 @@ case 'join': {
   // 3. Message système visible dans le chat
   sendToClient(
     socket,
-    `<${CMD.send} u="Serveur" t="m" p="" g="${g}" h="${formatChatTimePrefix(new Date())}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
+    `<${CMD.send} u="Serveur" t="m" p="" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
   );
 
   // 4. Notification légère aux autres
@@ -963,11 +973,11 @@ case 'send': {
   const text = msg.content || '';
   const type = msg.attrs.t || 'm';
   const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
-  const timePrefix = formatChatTimePrefix(new Date());
+  const timeAttrs = buildChatTimeAttrs();
 
   if (g && client.logged) {
     const safeText = escapeXml(text);
-    const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timePrefix}">${safeText}</${CMD.send}>`;
+    const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
 } else if (msg.attrs.u) {
   const targetUser = msg.attrs.u;
@@ -976,7 +986,7 @@ case 'send': {
   // Echo au sender, indispensable pour afficher sa propre ligne
   sendToClient(
     socket,
-    `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timePrefix}">${safeText}</${CMD.send}>`
+    `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
   );
 
   // Envoi au destinataire
@@ -984,7 +994,7 @@ case 'send': {
     if (cl.username === targetUser) {
       sendToClient(
         sock,
-        `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timePrefix}">${safeText}</${CMD.send}>`
+        `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
       );
     }
   }
