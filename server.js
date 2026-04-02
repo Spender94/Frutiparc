@@ -116,6 +116,11 @@ function decode62(s) {
 }
 
 const DEFAULT_BOUILLE_STATE = '000000000000000000000000';
+const ALL_PEN_ITEM_IDS = [315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 599, 600, 601, 602];
+
+function withDefaultPens(items = []) {
+  return Array.from(new Set([...(items || []), ...ALL_PEN_ITEM_IDS]));
+}
 
 function normalizeBouilleState(value) {
   let s = String(value || '').replace(/\D/g, '');
@@ -149,7 +154,7 @@ users['Angelisium'] = {
   xp: 4680000,
   kikooz: 150,
   fbouille: DEFAULT_BOUILLE_STATE,
-  items: [1, 2, 3],
+  items: withDefaultPens([1, 2, 3]),
   gender: 'M',
   birthday: '1990-05-15',
   country: 'FR',
@@ -169,6 +174,13 @@ const prefDefs = [
   { id: 4,  type: 'i', name: 'invite_chat_behavior',     def: encode62(1) },
   { id: 5,  type: 's', name: 'wallpaper',                def: '' },
   { id: 6,  type: 'i', name: 'cache_length',             def: encode62(30) },
+  { id: 7,  type: 'b', name: 'cl_open',                  def: 'Y' },
+  { id: 8,  type: 'b', name: 'win_flMoveAnim',           def: 'Y' },
+  { id: 9,  type: 'b', name: 'ch_dsp_h',                 def: 'Y' },
+  { id: 10, type: 'b', name: 'ch_dsp_join',              def: 'Y' },
+  { id: 11, type: 'b', name: 'ch_dsp_leave',             def: 'Y' },
+  { id: 12, type: 'b', name: 'ch_dsp_kick',              def: 'Y' },
+  { id: 13, type: 'b', name: 'ch_dsp_ban',               def: 'Y' },
 ];
 
 function buildPrefDefString() {
@@ -353,7 +365,7 @@ app.all('/do/eb', (req, res) => {
       xp: 10000,
       kikooz: 50,
       fbouille: DEFAULT_BOUILLE_STATE,
-      items: [],
+      items: withDefaultPens([]),
       gender: 'M',
       birthday: '2000-01-01',
       country: 'FR',
@@ -415,7 +427,8 @@ app.get('/do/onident', (req, res) => {
   const username = (session && session.user) || 'Angelisium';
   const user = users[username] || users['Angelisium'];
 
-  const items = (user.items || []).join(',');
+  user.items = withDefaultPens(user.items);
+  const items = user.items.join(',');
   const myPref = user.prefs || '';
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
@@ -790,6 +803,18 @@ function formatDateTime(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}.${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
+function formatChatTimePrefix(d) {
+  return `[${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}] `;
+}
+
+function buildChatTimeAttrs(date = new Date()) {
+  return {
+    h: formatChatTimePrefix(date),
+    // Some legacy paths rebuild "$h" from a raw datetime field.
+    d: formatDateTime(date),
+  };
+}
+
 function normalizeClientIp(rawIp) {
   if (!rawIp) return '127.0.0.1';
   if (rawIp === '::1') return '127.0.0.1';
@@ -864,7 +889,7 @@ function handleCBeeMessage(socket, rawXml) {
           xp: 10000,
           kikooz: 50,
           fbouille: DEFAULT_BOUILLE_STATE,
-          items: [],
+          items: withDefaultPens([]),
           gender: 'M',
           birthday: '2000-01-01',
           country: 'FR',
@@ -915,6 +940,8 @@ case 'join': {
     userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
   }
 
+  const timeAttrs = buildChatTimeAttrs();
+
   // 1. Réponse canonique au join
   sendToClient(
     socket,
@@ -927,7 +954,7 @@ case 'join': {
   // 3. Message système visible dans le chat
   sendToClient(
     socket,
-    `<${CMD.send} u="Serveur" t="m" p="" g="${g}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
+    `<${CMD.send} u="Serveur" t="m" p="" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
   );
 
   // 4. Notification légère aux autres
@@ -959,10 +986,11 @@ case 'send': {
   const text = msg.content || '';
   const type = msg.attrs.t || 'm';
   const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
+  const timeAttrs = buildChatTimeAttrs();
 
   if (g && client.logged) {
     const safeText = escapeXml(text);
-    const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}">${safeText}</${CMD.send}>`;
+    const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
 } else if (msg.attrs.u) {
   const targetUser = msg.attrs.u;
@@ -971,7 +999,7 @@ case 'send': {
   // Echo au sender, indispensable pour afficher sa propre ligne
   sendToClient(
     socket,
-    `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}">${safeText}</${CMD.send}>`
+    `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
   );
 
   // Envoi au destinataire
@@ -979,7 +1007,7 @@ case 'send': {
     if (cl.username === targetUser) {
       sendToClient(
         sock,
-        `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}">${safeText}</${CMD.send}>`
+        `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
       );
     }
   }
