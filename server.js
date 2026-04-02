@@ -116,17 +116,18 @@ function decode62(s) {
 }
 
 const DEFAULT_BOUILLE_STATE = '000000000000000000000000';
+const ALL_PEN_ITEM_IDS = [315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 599, 600, 601, 602];
+
+function withDefaultPens(items = []) {
+  return Array.from(new Set([...(items || []), ...ALL_PEN_ITEM_IDS]));
+}
 
 function normalizeBouilleState(value) {
-  let s = String(value || '').replace(/\D/g, '');
+  // Frutibouille uses base62 tokens (0-9, a-z, A-Z), not only digits.
+  let s = String(value || '').replace(/[^0-9a-zA-Z]/g, '');
 
-  if (s.length < 24) s = s.padEnd(24, '0');
+  if (s.length === 0) return DEFAULT_BOUILLE_STATE;
   if (s.length > 24) s = s.slice(0, 24);
-
-  const family = s.slice(0, 2);
-  if (family !== '00' && family !== '01') {
-    s = '00' + s.slice(2);
-  }
 
   return s;
 }
@@ -149,7 +150,7 @@ users['Angelisium'] = {
   xp: 4680000,
   kikooz: 150,
   fbouille: DEFAULT_BOUILLE_STATE,
-  items: [1, 2, 3],
+  items: withDefaultPens([1, 2, 3]),
   gender: 'M',
   birthday: '1990-05-15',
   country: 'FR',
@@ -169,6 +170,13 @@ const prefDefs = [
   { id: 4,  type: 'i', name: 'invite_chat_behavior',     def: encode62(1) },
   { id: 5,  type: 's', name: 'wallpaper',                def: '' },
   { id: 6,  type: 'i', name: 'cache_length',             def: encode62(30) },
+  { id: 7,  type: 'b', name: 'cl_open',                  def: 'Y' },
+  { id: 8,  type: 'b', name: 'win_flMoveAnim',           def: 'Y' },
+  { id: 9,  type: 'b', name: 'ch_dsp_h',                 def: 'Y' },
+  { id: 10, type: 'b', name: 'ch_dsp_join',              def: 'Y' },
+  { id: 11, type: 'b', name: 'ch_dsp_leave',             def: 'Y' },
+  { id: 12, type: 'b', name: 'ch_dsp_kick',              def: 'Y' },
+  { id: 13, type: 'b', name: 'ch_dsp_ban',               def: 'Y' },
 ];
 
 function buildPrefDefString() {
@@ -353,7 +361,7 @@ app.all('/do/eb', (req, res) => {
       xp: 10000,
       kikooz: 50,
       fbouille: DEFAULT_BOUILLE_STATE,
-      items: [],
+      items: withDefaultPens([]),
       gender: 'M',
       birthday: '2000-01-01',
       country: 'FR',
@@ -365,7 +373,9 @@ app.all('/do/eb', (req, res) => {
   users[username].fbouille = bouille;
 
   console.log(`[do/eb] Saved bouille for ${username}: ${bouille}`);
-  res.type('text/plain').send(`state=0&b=${bouille}&s=${bouille}`);
+  // Legacy callers consume LoadVars here; include k=0 to avoid error.http.undefined
+  // while keeping historical bouille fields.
+  res.type('text/plain').send(`state=0&k=0&b=${bouille}&s=${bouille}&f=${bouille}`);
 });
 
 // ─────────────────────────────────────────────
@@ -415,7 +425,8 @@ app.get('/do/onident', (req, res) => {
   const username = (session && session.user) || 'Angelisium';
   const user = users[username] || users['Angelisium'];
 
-  const items = (user.items || []).join(',');
+  user.items = withDefaultPens(user.items);
+  const items = user.items.join(',');
   const myPref = user.prefs || '';
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
@@ -455,8 +466,54 @@ app.get('/ff/tree', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/ff/ls', (req, res) => {
   const uid = req.query.uid || 'root';
+  const sid = req.query.sid;
+  const session = sid ? sessions[sid] : null;
+  const username = (session && session.user) || 'Angelisium';
+  const user = users[username] || users['Angelisium'];
+  const currentBouille = bouilleOf(user);
+  const bouilleBase = `${currentBouille}${DEFAULT_BOUILLE_STATE}`.slice(0, 15);
+  const accessoryTailA = '30x0t0w0D';
+  const accessoryBouilleA = `${bouilleBase}${accessoryTailA}`;
+  if (uid === 'root' || uid === 'desktop') {
+    return res.type('text/xml').send(
+      `<f u="root">
+        <f u="inbox" t="inbox" p="normal" />
+        <f u="disccollector" t="disccollector" />
+        <f u="inventory" t="inventory" />
+        <e u="Gaspard" t="contact" s="10" d="0" a="0">Gaspard@frutiparc.com</e>
+        <f u="mycontact" t="mycontact" />
+        <f u="recyclebin" t="recyclebin" />
+      </f>`
+    );
+  }
+
+  if (uid === 'inventory') {
+    return res.type('text/xml').send(
+      `<f u="inventory">
+        <e u="moutarde" t="wallpaper" s="10" d="0" a="0">Chavelier moutarde
+wal/ch.jpg
+4E5464;</e>
+        <e u="chorale" t="wallpaper" s="10" d="0" a="0">Chorale Frutiparc
+wal/fp.jpg
+ADE76B;</e>
+        <e u="pixiz" t="wallpaper" s="10" d="0" a="0">Pixiz
+wal/pi.jpg
+F9D190;</e>
+        <e u="utopiz" t="wallpaper" s="10" d="0" a="0">Utopiz
+wal/ut.jpg
+F6AFA9;</e>
+        <e u="my_bouille_current" t="bouille" s="10" d="0" a="0">Ma bouille actuelle
+${escapeXml(currentBouille)}</e>
+        <e u="my_bouille_test_1" t="bouille" s="10" d="0" a="0">Accessoire tail 30x0t0w0D
+${escapeXml(accessoryBouilleA)}</e>
+        <e u="my_bouille_test_2" t="bouille" s="10" d="0" a="0">Test bouille #2
+${escapeXml(currentBouille)}</e>
+      </f>`
+    );
+  }
+
   // Return an empty folder listing with a placeholder node to avoid legacy null-firstChild edge cases
-  res.type('text/xml').send(`<f u="${uid}"><i /></f>`);
+  return res.type('text/xml').send(`<f u="${uid}"><i /></f>`);
 });
 
 // ─────────────────────────────────────────────
@@ -782,12 +839,43 @@ function broadcastToChannel(channelName, xmlStr, excludeSocket = null) {
   }
 }
 
+function getSocketsForUsername(username) {
+  const sockets = [];
+  for (const [sock, cl] of xmlSocketClients) {
+    if (cl && cl.username === username && cl.logged) {
+      sockets.push(sock);
+    }
+  }
+  return sockets;
+}
+
+function resolveKnownUsername(nameOrLower) {
+  const raw = String(nameOrLower || '');
+  const low = raw.toLowerCase();
+  for (const known of Object.keys(users)) {
+    if (known.toLowerCase() === low) return known;
+  }
+  return raw;
+}
+
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
 function formatDateTime(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}.${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+function formatChatTimePrefix(d) {
+  return `[${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}] `;
+}
+
+function buildChatTimeAttrs(date = new Date()) {
+  return {
+    h: formatChatTimePrefix(date),
+    // Some legacy paths rebuild "$h" from a raw datetime field.
+    d: formatDateTime(date),
+  };
 }
 
 function normalizeClientIp(rawIp) {
@@ -864,7 +952,7 @@ function handleCBeeMessage(socket, rawXml) {
           xp: 10000,
           kikooz: 50,
           fbouille: DEFAULT_BOUILLE_STATE,
-          items: [],
+          items: withDefaultPens([]),
           gender: 'M',
           birthday: '2000-01-01',
           country: 'FR',
@@ -896,14 +984,31 @@ case 'join': {
   const g = msg.attrs.g;
 
   if (!channels[g]) {
+    if (String(g).indexOf('pm_') === 0) {
+      const parts = String(g).split('_');
+      const p1 = resolveKnownUsername(parts[1] || '');
+      const p2 = resolveKnownUsername(parts[2] || '');
+      channels[g] = {
+        desc: `Discussion privée ${p1}/${p2}`,
+        topic: `Discussion privée ${p1}/${p2}`,
+        users: new Set([p1, p2].filter(Boolean)),
+        participants: [p1, p2].filter(Boolean),
+        private: true,
+        pass: msg.attrs.p || '',
+      };
+    } else {
     channels[g] = {
       desc: `Salon ${g.charAt(0).toUpperCase()}${g.slice(1)}`,
       topic: `Bienvenue sur le salon ${g} !`,
       users: new Set(),
     };
+    }
   }
 
   const channel = channels[g];
+  if (channel.private && Array.isArray(channel.participants)) {
+    for (const u of channel.participants) channel.users.add(u);
+  }
   channel.users.add(client.username);
   client.channels.add(g);
 
@@ -914,6 +1019,8 @@ case 'join': {
     const ud = users[u] || {};
     userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
   }
+
+  const timeAttrs = buildChatTimeAttrs();
 
   // 1. Réponse canonique au join
   sendToClient(
@@ -927,7 +1034,7 @@ case 'join': {
   // 3. Message système visible dans le chat
   sendToClient(
     socket,
-    `<${CMD.send} u="Serveur" t="m" p="" g="${g}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
+    `<${CMD.send} u="Serveur" t="m" p="" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
   );
 
   // 4. Notification légère aux autres
@@ -938,6 +1045,24 @@ broadcastToChannel(
 );
   break;
 }
+
+    // ── userlist: explicit request for a channel user list ──
+    case 'userlist': {
+      const g = msg.attrs.g || '';
+      const channel = channels[g];
+      if (!channel) {
+        sendToClient(socket, `<${CMD.userlist} g="${g}"></${CMD.userlist}>`);
+        break;
+      }
+      const userArr = Array.from(channel.users || []);
+      let userXml = '';
+      for (const u of userArr) {
+        const ud = users[u] || {};
+        userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
+      }
+      sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
+      break;
+    }
 
     // ── part: leave a channel ──
     case 'part': {
@@ -959,10 +1084,11 @@ case 'send': {
   const text = msg.content || '';
   const type = msg.attrs.t || 'm';
   const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
+  const timeAttrs = buildChatTimeAttrs();
 
   if (g && client.logged) {
     const safeText = escapeXml(text);
-    const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}">${safeText}</${CMD.send}>`;
+    const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
 } else if (msg.attrs.u) {
   const targetUser = msg.attrs.u;
@@ -971,7 +1097,7 @@ case 'send': {
   // Echo au sender, indispensable pour afficher sa propre ligne
   sendToClient(
     socket,
-    `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}">${safeText}</${CMD.send}>`
+    `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
   );
 
   // Envoi au destinataire
@@ -979,7 +1105,7 @@ case 'send': {
     if (cl.username === targetUser) {
       sendToClient(
         sock,
-        `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}">${safeText}</${CMD.send}>`
+        `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
       );
     }
   }
@@ -1058,17 +1184,42 @@ case 'fbouille': {
 
 case 'createchannel': {
   const otherUser = msg.attrs.u || '';
+  const requester = client.username || '';
   const title = msg.content || otherUser || 'Discussion privée';
 
-  if (!otherUser) {
+  if (!otherUser || !requester) {
     sendToClient(socket, `<${CMD.error} />`);
     break;
+  }
+
+  const sortedUsers = [requester.toLowerCase(), otherUser.toLowerCase()].sort();
+  const privateGroup = `pm_${sortedUsers[0]}_${sortedUsers[1]}`;
+  const privatePass = `pw_${sortedUsers[0].slice(0, 4)}_${sortedUsers[1].slice(0, 4)}`;
+
+  if (!channels[privateGroup]) {
+    channels[privateGroup] = {
+      desc: `Discussion privée ${requester}/${otherUser}`,
+      topic: title,
+      users: new Set([requester, otherUser]),
+      participants: [requester, otherUser],
+      private: true,
+      pass: privatePass,
+    };
+  } else {
+    channels[privateGroup].users.add(requester);
+    channels[privateGroup].users.add(otherUser);
   }
 
   // Accusé de réception de l’ouverture de la discussion privée
   sendToClient(
     socket,
-    `<${CMD.createchannel} u="${escapeXml(otherUser)}">${escapeXml(title)}</${CMD.createchannel}>`
+    `<${CMD.createchannel} u="${escapeXml(otherUser)}" g="${privateGroup}" p="${privatePass}">${escapeXml(title)}</${CMD.createchannel}>`
+  );
+
+  // Invite "privée" envoyée au demandeur pour ouvrir immédiatement la box
+  sendToClient(
+    socket,
+    `<${CMD.invitechat} u="${escapeXml(otherUser)}" g="${privateGroup}" p="${privatePass}" />`
   );
 
   // On pousse aussi les infos connues sur l’autre user
@@ -1091,8 +1242,40 @@ case 'createchannel': {
     `<${CMD.trace} u="${escapeXml(otherUser)}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`
   );
 
+  // Si l'autre utilisateur est connecté, il reçoit aussi l'invitation.
+  for (const targetSock of getSocketsForUsername(otherUser)) {
+    sendToClient(
+      targetSock,
+      `<${CMD.invitechat} u="${escapeXml(requester)}" g="${privateGroup}" p="${privatePass}" />`
+    );
+  }
+
   break;
 }
+
+    // ── invitechat: invite a user to an existing private channel ──
+    case 'invitechat': {
+      const g = msg.attrs.g || '';
+      const targetUser = msg.attrs.u || '';
+      const requester = client.username || '';
+      const channel = channels[g];
+
+      if (!g || !targetUser || !requester || !channel) {
+        break;
+      }
+
+      const pass = msg.attrs.p || channel.pass || '';
+      channel.users.add(requester);
+      channel.users.add(targetUser);
+
+      for (const targetSock of getSocketsForUsername(targetUser)) {
+        sendToClient(
+          targetSock,
+          `<${CMD.invitechat} u="${escapeXml(requester)}" g="${g}" p="${pass}" />`
+        );
+      }
+      break;
+    }
 
     // ── xpflag ──
     case 'xpflag': {
