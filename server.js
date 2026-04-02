@@ -466,8 +466,46 @@ app.get('/ff/tree', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/ff/ls', (req, res) => {
   const uid = req.query.uid || 'root';
+  if (uid === 'root' || uid === 'desktop') {
+    return res.type('text/xml').send(
+      `<f u="root">
+        <f u="inbox" t="inbox" p="normal" />
+        <f u="disccollector" t="disccollector" />
+        <f u="inventory" t="inventory" />
+        <e u="Gaspard" t="contact" s="10" d="0" a="0">Gaspard@frutiparc.com</e>
+        <f u="mycontact" t="mycontact" />
+        <f u="recyclebin" t="recyclebin" />
+      </f>`
+    );
+  }
+
+  if (uid === 'inventory') {
+    return res.type('text/xml').send(
+      `<f u="inventory">
+        <e u="moutarde" t="wallpaper" s="10" d="0" a="0">Chavelier moutarde
+wal/ch.jpg
+4E5464;</e>
+        <e u="chorale" t="wallpaper" s="10" d="0" a="0">Chorale Frutiparc
+wal/fp.jpg
+ADE76B;</e>
+        <e u="pixiz" t="wallpaper" s="10" d="0" a="0">Pixiz
+wal/pi.jpg
+F9D190;</e>
+        <e u="utopiz" t="wallpaper" s="10" d="0" a="0">Utopiz
+wal/ut.jpg
+F6AFA9;</e>
+        <e u="bananocle" t="bouille" s="10" d="0" a="0">Bananocle
+00000d0r020f0l06010k0w0g</e>
+        <e u="kiwix_beaute" t="bouille" s="10" d="0" a="0">Beauté
+00000d0r020f0l0b000k0w0g</e>
+        <e u="kiwix_normal" t="bouille" s="10" d="0" a="0">Normal
+00000d0r020f0l0000000000</e>
+      </f>`
+    );
+  }
+
   // Return an empty folder listing with a placeholder node to avoid legacy null-firstChild edge cases
-  res.type('text/xml').send(`<f u="${uid}"><i /></f>`);
+  return res.type('text/xml').send(`<f u="${uid}"><i /></f>`);
 });
 
 // ─────────────────────────────────────────────
