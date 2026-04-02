@@ -3,6 +3,7 @@ const { WebSocketServer } = require('ws');
 const net = require('net');
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 
@@ -43,6 +44,46 @@ app.use((req, res, next) => {
   console.log(`[HTTP]  ${req.method} ${req.url}`);
   next();
 });
+
+
+
+// ─────────────────────────────────────────────
+// Diagnostics: validate critical SWF assets are real files (not stubs)
+// ─────────────────────────────────────────────
+function warnIfStubSwfAssets() {
+  const criticalSwfs = [
+    'public/swf/fbouille/famille0.swf',
+    'public/swf/fbouille/famille1.swf',
+    'public/swf/fbouille/famille2.swf',
+    'public/swf/fbouille/famille3.swf',
+    'public/swf/fbouille/famille4.swf',
+    'public/swf/fbouille/famille5.swf',
+    'public/swf/fbouille/famille6.swf',
+    'public/swf/fbouille/famille7.swf',
+    'public/swf/fbouille/famille8.swf',
+  ];
+
+  const stubFiles = [];
+  for (const relPath of criticalSwfs) {
+    const absPath = path.join(__dirname, relPath);
+    try {
+      const st = fs.statSync(absPath);
+      if (st.size <= 32) {
+        stubFiles.push(`${relPath} (${st.size} bytes)`);
+      }
+    } catch {
+      stubFiles.push(`${relPath} (missing)`);
+    }
+  }
+
+  if (stubFiles.length > 0) {
+    console.warn('[ASSETS] Frutibouille assets look incomplete.');
+    console.warn('[ASSETS] The avatar editor may show blank previews / "undefined" labels.');
+    for (const f of stubFiles) {
+      console.warn(`[ASSETS]   - ${f}`);
+    }
+  }
+}
 
 const port = process.env.PORT || 8888;
 const XMLSOCKET_PORT = 5000; // Port for the CBee XMLSocket server (must end in 000 for FrutiChat cmdList)
@@ -122,11 +163,26 @@ function buildPrefDefString() {
   return r;
 }
 
+const DEFAULT_BOUILLE_LIST = [
+  { b: '000503000000111010', n: 'Classique' },
+  { b: '000503000000111011', n: 'Classique 2' },
+  { b: '000503000000111012', n: 'Classique 3' },
+  { b: '010503000000111010', n: 'Capuche claire' },
+  { b: '020503000000111010', n: 'Capuche foncée' },
+  { b: '000403000000111010', n: 'Regard doux' },
+];
+
+function buildBouilleListXml() {
+  return DEFAULT_BOUILLE_LIST
+    .map((o) => `<b b="${escapeXml(o.b)}">${escapeXml(o.n)}</b>`)
+    .join('');
+}
+
 // ─────────────────────────────────────────────
 // File system tree (virtual)
 // b = "messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin"
 // ─────────────────────────────────────────────
-const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin">
+const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin">
   <f u="messages" n="Messages" t="messages">
     <f u="inbox" n="Boîte de réception" t="inbox" />
     <f u="outbox" n="Messages envoyés" t="outbox" />
@@ -266,6 +322,11 @@ app.get('/do/prefsavepartial', (req, res) => {
   res.type('text/plain').send('state=0');
 });
 
+// Legacy preferences form endpoint used by some SWF flows
+app.get('/prefForm', (req, res) => {
+  res.type('text/plain').send('state=0');
+});
+
 // ─────────────────────────────────────────────
 // ENDPOINT: do/onident — Post-identification data
 // Returns XML with kikooz, items, prefs, logs, etc.
@@ -288,7 +349,7 @@ app.get('/do/onident', (req, res) => {
     user.needsBouille = false; // Only force once per session
   }
 
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}><mp>${myPref}</mp><ul></ul><sl></sl><bl></bl></r>`;
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}><mp><![CDATA[${myPref}]]></mp><ul><!--empty--></ul><sl><!--empty--></sl><bl>${buildBouilleListXml()}</bl></r>`;
 
   res.type('text/xml').send(xml);
 });
@@ -316,8 +377,8 @@ app.get('/ff/tree', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/ff/ls', (req, res) => {
   const uid = req.query.uid || 'root';
-  // Return an empty folder listing — the SWF will display an empty desktop/contacts
-  res.type('text/xml').send(`<f u="${uid}"></f>`);
+  // Return an empty folder listing with a placeholder node to avoid legacy null-firstChild edge cases
+  res.type('text/xml').send(`<f u="${uid}"><i /></f>`);
 });
 
 // ─────────────────────────────────────────────
@@ -414,6 +475,7 @@ const server = app.listen(port, () => {
   console.log(`[HTTP]  Server running on http://localhost:${port}`);
   console.log(`        Legacy SWF:  http://localhost:${port}/legacy`);
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
+  warnIfStubSwfAssets();
 });
 
 // ─────────────────────────────────────────────
@@ -911,7 +973,7 @@ function handleCBeeMessage(socket, rawXml) {
 
     // ── listbouilles: list available avatar parts ──
     case 'listbouilles': {
-      sendToClient(socket, `<${CMD.listbouilles} />`);
+      sendToClient(socket, `<${CMD.listbouilles}>${buildBouilleListXml()}</${CMD.listbouilles}>`);
       break;
     }
 

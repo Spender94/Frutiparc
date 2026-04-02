@@ -11,13 +11,18 @@
     .splash p { font-size: 1rem; color: #ADE76B; margin-bottom: 2rem; }
     .splash a { display: inline-block; padding: 1rem 2rem; background: #94DB39; color: #335511; text-decoration: none; font-weight: bold; border-radius: 8px; font-size: 1.1rem; }
     .splash a:hover { background: #ADE76B; }
+    .links { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+    .links a.secondary { background:#dfeec8; color:#2f4d13; }
   </style>
 </head>
 <body>
   <div class="splash">
     <h1>Frutiparc</h1>
     <p>Le site de jeux Flash des années 2000 — émulé avec Ruffle</p>
-    <a href="/legacy">Entrer dans Frutiparc</a>
+    <div class="links">
+      <a href="/legacy">Entrer dans Frutiparc</a>
+      <a class="secondary" href="/modern/frutibouilleur/">Tester le frutibouilleur moderne</a>
+    </div>
   </div>
 </body>
 </html>

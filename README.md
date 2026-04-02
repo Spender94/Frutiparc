@@ -51,3 +51,25 @@ Games/                Mini-jeux (Burning Kiwi, Kaluga, Frutibandas, etc.)
 Le serveur TCP sur le port `5173` implémente le protocole CBee
 (XML null-terminated) utilisé par le SWF pour le chat, la présence
 et l'authentification.
+
+
+## Dépannage rapide (frutibouilleur)
+
+Si la fenêtre **Ma Frutibouille** affiche des champs à `undefined` ou un aperçu vide, le problème vient généralement des SWF d'assets manquants/incomplets (`public/swf/fbouille/famille*.swf`).
+
+Dans ce dépôt, plusieurs SWF peuvent être des stubs (taille très faible, ex. ~17 bytes) : le client charge bien les URLs en HTTP 200, mais il n'y a pas de contenu exploitable côté Flash/Ruffle pour alimenter les libellés/visuels.
+
+Au démarrage, `server.js` affiche maintenant un diagnostic `[ASSETS]` pour signaler explicitement ce cas.
+
+
+## Prototype moderne : frutibouilleur
+
+Un prototype sans Flash est disponible à l'URL :
+- `http://localhost:8888/modern/frutibouilleur/`
+
+Fichiers :
+- `public/modern/frutibouilleur/index.html`
+- `public/modern/frutibouilleur/styles.css`
+- `public/modern/frutibouilleur/app.js`
+
+Objectif : reproduire le workflow de composition de frutibouille (aperçu + code `fbouille`), en attendant une extraction propre des sprites historiques depuis les SWF.
