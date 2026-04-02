@@ -1112,10 +1112,14 @@ case 'createchannel': {
     channels[privateGroup] = {
       desc: `Discussion privée ${requester}/${otherUser}`,
       topic: title,
-      users: new Set(),
+      users: new Set([requester, otherUser]),
+      participants: [requester, otherUser],
       private: true,
       pass: privatePass,
     };
+  } else {
+    channels[privateGroup].users.add(requester);
+    channels[privateGroup].users.add(otherUser);
   }
 
   // Accusé de réception de l’ouverture de la discussion privée
@@ -1160,6 +1164,30 @@ case 'createchannel': {
 
   break;
 }
+
+    // ── invitechat: invite a user to an existing private channel ──
+    case 'invitechat': {
+      const g = msg.attrs.g || '';
+      const targetUser = msg.attrs.u || '';
+      const requester = client.username || '';
+      const channel = channels[g];
+
+      if (!g || !targetUser || !requester || !channel) {
+        break;
+      }
+
+      const pass = msg.attrs.p || channel.pass || '';
+      channel.users.add(requester);
+      channel.users.add(targetUser);
+
+      for (const targetSock of getSocketsForUsername(targetUser)) {
+        sendToClient(
+          targetSock,
+          `<${CMD.invitechat} u="${escapeXml(requester)}" g="${g}" p="${pass}" />`
+        );
+      }
+      break;
+    }
 
     // ── xpflag ──
     case 'xpflag': {
