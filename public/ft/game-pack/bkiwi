@@ -1,0 +1,12 @@
+<p n="Pack de Burning Kiwi" i="12" h="0" p="pack,13">
+	<d><desc>Devenez le roi du circuit de manière illimité en activant des turbo survitaminés.</desc></d>
+	<!-- p for price -->
+	<r p="260">Bénéficiez du jeux complet et d'un pass journalier</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

@@ -1,0 +1,8 @@
+<f u="desktop">
+	<f u="inbox" t="inbox" p="normal" />
+	<f u="disccollector" t="disccollector" />
+	<f u="inventory" t="inventory" />
+	<e u="Gaspard" t="contact" s="10" d="0" a="0">Gaspard@frutiparc.com</e>
+	<f u="mycontact" t="mycontact" />
+	<f u="recyclebin" t="recyclebin" />
+</f>

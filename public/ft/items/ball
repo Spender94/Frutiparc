@@ -1,0 +1,5 @@
+<p n="Boule de cristal" i="40" h="0" p="item,1">
+	<d><desc>Permet à Mdamirma de lire dans votre avenir pour révéler votre frutisigne</desc></d>
+	<!-- p for price -->
+	<r p="20">La prophétie des fruits vous concernera-t-elle ?</r>
+</p>

@@ -1,118 +1,106 @@
 <lang>
+	<!-- List of regions / states per country -->
 	<ct>
-		<c c="FR" n="France" tn="Région" d="1">
-			<r c="idf">Île-de-France</r>
-			<r c="pac">Provence-Alpes-Côte d'Azur</r>
-			<r c="ara">Auvergne-Rhône-Alpes</r>
-			<r c="occ">Occitanie</r>
-			<r c="naq">Nouvelle-Aquitaine</r>
-			<r c="pdl">Pays de la Loire</r>
-			<r c="bre">Bretagne</r>
-			<r c="nor">Normandie</r>
-			<r c="hdf">Hauts-de-France</r>
-			<r c="ges">Grand Est</r>
-			<r c="bfc">Bourgogne-Franche-Comté</r>
-			<r c="cvl">Centre-Val de Loire</r>
-			<r c="cor">Corse</r>
-			<r c="gua">Guadeloupe</r>
-			<r c="mtq">Martinique</r>
-			<r c="guf">Guyane</r>
-			<r c="reu">La Réunion</r>
-			<r c="may">Mayotte</r>
+		<c c="1" n="France" tn="fr" d="1">
+			<r c="0">Auvergne-Rhône-Alpes</r>
+			<r c="1">Bourgogne-Franche-Comté</r>
+			<r c="2">Bretagne</r>
+			<r c="3">Centre-Val de Loire</r>
+			<r c="4">Corse</r>
+			<r c="5">Grand Est</r>
+			<r c="6">Hauts-de-France</r>
+			<r c="7">Île-de-France</r>
+			<r c="8">Normandie</r>
+			<r c="9">Nouvelle-Aquitaine</r>
+			<r c="10">Occitanie</r>
+			<r c="11">Pays de la Loire</r>
+			<r c="12">Provence-Alpes-Côte d'Azur</r>
+			<r c="13">Guadeloupe</r>
+			<r c="14">Martinique</r>
+			<r c="15">Guyane</r>
+			<r c="16">La Réunion</r>
+			<r c="17">Mayotte</r>
 		</c>
-		<c c="BE" n="Belgique" tn="Province" d="1">
-			<r c="bru">Bruxelles-Capitale</r>
-			<r c="wbr">Brabant wallon</r>
-			<r c="wht">Hainaut</r>
-			<r c="wlg">Liège</r>
-			<r c="wlx">Luxembourg</r>
-			<r c="wna">Namur</r>
-			<r c="van">Anvers</r>
-			<r c="vbr">Brabant flamand</r>
-			<r c="vlm">Limbourg</r>
-			<r c="vov">Flandre-Orientale</r>
-			<r c="vwv">Flandre-Occidentale</r>
+		<c c="2" n="Belgique" tn="be" d="1">
+			<r c="0">Anvers</r>
+			<r c="1">Limbourg</r>
+			<r c="2">Flandre-Orientale</r>
+			<r c="3">Brabant flamand</r>
+			<r c="4">Flandre-Occidentale</r>
+			<r c="5">Bruxelles</r>
+			<r c="6">Brabant wallon</r>
+			<r c="7">Hainaut</r>
+			<r c="8">Liège</r>
+			<r c="9">Luxembourg</r>
+			<r c="10">Namur</r>
 		</c>
-		<c c="CH" n="Suisse" tn="Canton" d="1">
-			<r c="ge">Genève</r>
-			<r c="vd">Vaud</r>
-			<r c="vs">Valais</r>
-			<r c="ne">Neuchâtel</r>
-			<r c="fr">Fribourg</r>
-			<r c="ju">Jura</r>
-			<r c="be">Berne</r>
-			<r c="zh">Zürich</r>
-			<r c="bs">Bâle-Ville</r>
-			<r c="ti">Tessin</r>
+		<c c="3" n="Luxembourg" tn="lu" d="1">
+			<r c="0">Luxembourg</r>
 		</c>
-		<c c="CA" n="Canada" tn="Province" d="1">
-			<r c="qc">Québec</r>
-			<r c="on">Ontario</r>
-			<r c="nb">Nouveau-Brunswick</r>
-			<r c="mb">Manitoba</r>
-			<r c="ab">Alberta</r>
-			<r c="cb">Colombie-Britannique</r>
+		<c c="4" n="Canada" tn="ca" d="1">
+			<r c="0">Alberta</r>
+			<r c="1">Colombie-Britannique</r>
+			<r c="2">Île-du-Prince-Édouard</r>
+			<r c="3">Manitoba</r>
+			<r c="4">Nouveau-Brunswick</r>
+			<r c="5">Nouvelle-Écosse</r>
+			<r c="6">Ontario</r>
+			<r c="7">Québec</r>
+			<r c="8">Saskatchewan</r>
+			<r c="9">Terre-Neuve-et-Labrador</r>
+			<r c="10">Nunavut</r>
+			<r c="11">Territoires du Nord-Ouest</r>
+			<r c="12">Yukon</r>
 		</c>
-		<c c="SN" n="Sénégal" tn="Région" d="0">
-			<r c="dk">Dakar</r>
-			<r c="th">Thiès</r>
-			<r c="sl">Saint-Louis</r>
-		</c>
-		<c c="CI" n="Côte d'Ivoire" tn="District" d="0">
-			<r c="ab">Abidjan</r>
-			<r c="ym">Yamoussoukro</r>
-		</c>
-		<c c="MG" n="Madagascar" tn="Province" d="0">
-			<r c="an">Antananarivo</r>
-			<r c="to">Toamasina</r>
-		</c>
-		<c c="TN" n="Tunisie" tn="Gouvernorat" d="0">
-			<r c="tu">Tunis</r>
-			<r c="sf">Sfax</r>
-			<r c="so">Sousse</r>
-		</c>
-		<c c="MA" n="Maroc" tn="Région" d="0">
-			<r c="rb">Rabat-Salé-Kénitra</r>
-			<r c="cs">Casablanca-Settat</r>
-			<r c="ms">Marrakech-Safi</r>
-		</c>
-		<c c="LU" n="Luxembourg" tn="Canton" d="0">
-			<r c="lu">Luxembourg</r>
-			<r c="di">Diekirch</r>
-			<r c="gr">Grevenmacher</r>
+		<c c="5" n="Suisse" tn="ch" d="1">
+			<r c="0">Appenzell Rhodes-Extérieures</r>
+			<r c="1">Appenzell Rhodes-Intérieures</r>
+			<r c="2">Argovie</r>
+			<r c="3">Bâle-Campagne</r>
+			<r c="4">Bâle-Ville</r>
+			<r c="5">Berne</r>
+			<r c="6">Fribourg</r>
+			<r c="7">Genève</r>
+			<r c="8">Glaris</r>
+			<r c="9">Grisons</r>
+			<r c="10">Jura</r>
+			<r c="11">Lucerne</r>
+			<r c="12">Neuchâtel</r>
+			<r c="13">Nidwald</r>
+			<r c="14">Obwald</r>
+			<r c="15">Saint-Gall</r>
+			<r c="16">Schaffhouse</r>
+			<r c="17">Schwytz</r>
+			<r c="18">Soleure</r>
+			<r c="19">Tessin</r>
+			<r c="20">Thurgovie</r>
+			<r c="21">Uri</r>
+			<r c="22">Valais</r>
+			<r c="23">Vaud</r>
+			<r c="24">Zoug</r>
+			<r c="25">Zurich</r>
 		</c>
 	</ct>
+	<!-- Display right game name based on game id -->
 	<gn>
 		<g d="bkiwi">Burning Kiwi</g>
-		<g d="mb2">MotionBall 2</g>
-		<g d="swapou2">Swapou 2</g>
-		<g d="snake3">FrutiSnake 3</g>
+		<g d="snake3">Frutisnake 2</g>
+		<g d="mb2">Motion Ball 2</g>
 		<g d="bandas">Frutibandas</g>
+		<g d="swapou2">Swapou 2</g>
 		<g d="grapiz">Grapiz</g>
 		<g d="kaluga">Kaluga</g>
-		<g d="miniwave">MiniWave</g>
-		<g d="minifever">MiniFever</g>
-		<g d="minitroll">MiniTroll</g>
-		<g d="poulpi">Poulpi</g>
-		<g d="frutisign">FrutiSign</g>
+		<g d="miniwave">Mini-Wave</g>
+		<g d="jamajama">JamaJama</g>
+		<g d="minipixiz">Mini-Pixiz</g>
 	</gn>
+	<!-- Likely for Gaspard -->
 	<td>
-		<d t="h" i="welcome"><b>Bienvenue sur Frutiparc !</b><br/>Frutiparc est une communauté en ligne où tu peux jouer à des mini-jeux, discuter avec d'autres Frutiz et personnaliser ta Frutibouille.<br/><br/>Pour commencer, glisse un Fruti-Disque dans la <b>Frusion</b> (la console en haut à droite) pour lancer un jeu !</d>
-		<d t="h" i="frusion_help"><b>La Frusion</b><br/>La Frusion est ta console de jeux. Pour jouer, fais glisser un <b>Fruti-Disque</b> depuis ton bureau vers la Frusion. Les disques noirs sont distribués chaque jour à minuit. Tu peux aussi acheter des disques blancs ou des Pass dans la boutique.</d>
-		<d t="h" i="chat_help"><b>Le Chat</b><br/>Rejoins les <b>salons publics</b> pour discuter avec les autres Frutiz. Tu peux aussi envoyer des <b>messages privés</b> ou créer ton propre salon. Tape <i>/aide</i> pour voir les commandes disponibles.</d>
-		<d t="h" i="kikooz_help"><b>Les Kikooz</b><br/>Les Kikooz sont la monnaie de Frutiparc. Tu en gagnes en jouant aux mini-jeux, en parrainant des amis ou lors d'événements spéciaux. Dépense-les dans la <b>boutique</b> pour acheter des accessoires pour ta Frutibouille !</d>
-		<d t="t" i="tip_newuser">Astuce : Pense à personnaliser ta Frutibouille pour te démarquer des autres Frutiz !</d>
-		<d t="t" i="tip_scores">Astuce : Consulte le classement des scores pour voir les meilleurs joueurs de chaque jeu.</d>
-		<d t="t" i="tip_mail">Astuce : Tu peux envoyer des messages aux autres Frutiz même quand ils ne sont pas connectés.</d>
+		<d t="h" i="id_a">Some <b>html</b> stuff.</d>
+		<d t="t" i="id_c">Some text stuff.</d>
 	</td>
+	<!-- Unknown -->
 	<ex>
-		<c n="site_name">Frutiparc</c>
-		<c n="site_url">http://www.frutiparc.com</c>
-		<c n="currency">Kikooz</c>
-		<c n="console_name">Frusion</c>
-		<c n="disc_name">Fruti-Disque</c>
-		<c n="avatar_name">Frutibouille</c>
-		<c n="user_name">Frutiz</c>
-		<c n="shop_name">Boutique</c>
+		<c n=""></c>
 	</ex>
 </lang>

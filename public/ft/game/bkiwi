@@ -1,0 +1,12 @@
+<p n="Jeux complet de Burning Kiwi" i="2" h="0" p="game,4">
+	<d><desc>Devenez le roi du circuit de manière illimité en activant des turbo survitaminés.</desc></d>
+	<!-- p for price -->
+	<r p="180">Le permis de conduire n'est pas requis</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

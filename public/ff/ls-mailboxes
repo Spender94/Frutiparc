@@ -1,0 +1,6 @@
+<f u="messages">
+	<f u="draftbox" t="draftbox" />
+	<f u="blackbox" t="blackbox" />
+	<f u="outbox" t="outbox" />
+	<f u="inbox" t="inbox" />
+</f>

@@ -1,0 +1,23 @@
+<!-- Info edition -->
+<i>
+	<!-- Birthday format YYYY-MM-DD -->
+	<d>1991-01-01</d>
+	<!-- Firstname -->
+	<f>C-A</f>
+	<!-- Lastname, p = Y for public info, hidden otherwise -->
+	<l p="Y">Run</l>
+	<!-- Gender -->
+	<g>M</g>
+	<!-- Real job -->
+	<j>Blagueur</j>
+	<!--City -->
+	<c>Namur</c>
+	<!-- Country index -->
+	<o>1</o>
+	<!-- Region index -->
+	<r>1</r>
+	<!-- Website -->
+	<u>http://renault.up.md/FrutiStats/</u>
+	<!-- Comment -->
+	<m>Frutimarié à tigrenoir, frutipapa de SakurAmalia et EmiLicorne</m>
+</i>

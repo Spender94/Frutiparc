@@ -1,0 +1,66 @@
+<!-- List folder
+     * <f> node for folder, <e> for the rest
+     * For folders
+         * u = directory name with specific id like inbox, disccollector, inventory, mycontact, recyclebin
+         * t = type which must be "folder" for normal folder, or folder id to reference inbox, disccollector, inventory, mycontact, recyclebin
+     * For the rest
+         * u = id, can be user name or items name or accessory name or mail ID
+         * t = type which can be contact for users, bouille for accessory, wallpaper for wallpaper, disc for games
+         * s = ???
+         * d = date of the file (used for email as email's date)
+         * a = ???
+         * Node value
+              * For type "bouille", first line is the accessory name, the second the complete bouille ID
+              * For type "wallpaper", first line is the name, second line is the wallpaper path and third line is parameters with ";" as separator: background color;text color
+              * For type "disc", first line can be 0 (black CD / challenge), 1 (grey CD / challenge bonus), 2 (white CD, complete game) or 3 (red CD, demo), second line is game name (short) 
+              * For type email, first line is "from" field, second line is the title of the email, third line is "to" field -->
+<f u="mycontact">
+	<f u="frutifamille" t="folder">
+		<e u="tigrenoir" t="contact" s="10" d="0" a="0">tigrenoir</e>
+		<e u="EmiLicorne" t="contact" s="10" d="0" a="0">EmiLicorne</e>
+		<e u="SakurAmalia" t="contact" s="10" d="0" a="0">SakurAmalia</e>
+	</f>
+	<e u="kasparov" t="contact" s="10" d="0" a="0">kasparov</e>
+	<e u="mailid" t="mail" s="10" d="2025-07-09 02:01:53" a="0">kasparov@frutiparc.com
+Mode frutiz sous le manteau
+renault@frutiparc.com</e>
+	<f u="messages" t="messages" p="normal" />
+	<f u="disccollector" t="disccollector" />
+	<f u="inventory" t="inventory" />
+	<f u="mycontact" t="mycontact" />
+	<f u="recyclebin" t="recyclebin" />
+	<e u="bananocle" t="bouille" s="10" d="0" a="0">Bananocle
+00000d0r020f0l06010k0w0g</e>
+	<e u="kiwix" t="bouille" s="10" d="0" a="0">Beauté
+00000d0r020f0l0b000k0w0g</e>
+	<e u="kiwix" t="bouille" s="10" d="0" a="0">Normal
+00000d0r020f0l0000000000</e>
+	<e u="pixiz" t="wallpaper" s="10" d="0" a="0">Pixiz
+wal/pi.jpg
+;</e>
+	<e u="invpicto,1" t="item" s="10" d="0" a="0">Picto KiWiX</e>
+	<e u="snake1" t="disc" s="10" d="0" a="0">0
+snake</e>
+	<e u="snakegrey" t="disc" s="10" d="0" a="0">1
+snake</e>
+	<e u="snakewhite" t="disc" s="10" d="0" a="0">2
+snake</e>
+	<e u="bk1" t="disc" s="10" d="0" a="0">0
+bkiwi</e>
+	<e u="mb21" t="disc" s="10" d="0" a="0">0
+mb2</e>
+	<e u="swapou21" t="disc" s="10" d="0" a="0">0
+swapou2</e>
+	<e u="kaluga1" t="disc" s="10" d="0" a="0">0
+kaluga</e>
+	<e u="kalugademo" t="disc" s="10" d="0" a="0">3
+kaluga</e>
+	<e u="grapiz1" t="disc" s="10" d="0" a="0">0
+grapiz</e>
+	<e u="bandas1" t="disc" s="10" d="0" a="0">0
+bandas</e>
+	<e u="pixiz" t="disc" s="10" d="0" a="0">2
+minipixiz</e>
+	<e u="wave" t="disc" s="10" d="0" a="0">2
+miniwave</e>
+</f>

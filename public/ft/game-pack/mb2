@@ -1,0 +1,12 @@
+<p n="Pack de Motion Ball 2" i="10" h="0" p="pack,10">
+	<d><desc>Jouez les célèbres balles pour vaincre le célèbre Tournéboulé !</desc></d>
+	<!-- p for price -->
+	<r p="260">Bénéficiez du jeux complet et d'un pass journalier</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

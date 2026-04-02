@@ -1,3 +1,5 @@
-<services host="localhost">
-	<service name="frutichat" port="5000" />
+<services host="127.0.0.1">
+	<service name="frutichat" port="8000"></service>
+	<service name="frutiscore" port="8001"></service>
+	<service name="snake3" port="8888"></service>
 </services>

@@ -1,0 +1,18 @@
+<!-- Pack definition, n = name, i = id and p = picto split with "," character, h = 1 if already bought, 0 otherwise -->
+
+<!-- 
+* picto id are:
+	1 = Crystal ball
+-->
+<p n="Jeux complet de Frutisnake" i="0" h="0" p="item,1">
+	<d><desc>Jouez un serpent de manière illimité pour manger le plus de fruits possible.</desc></d>
+	<!-- p for price -->
+	<r p="180">La phobie des serpents est déconseillée</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

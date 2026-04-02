@@ -1,0 +1,28 @@
+<!-- Each wallpaper are tied to a specific color which is used to fill the desktop with a color which would be harmonized with the selected wallpaper.
+Because the wallpaper does not have the size to fill entirely the interface properly -->
+<f u="inventory">
+	<e u="moutarde" t="wallpaper" s="10" d="0" a="0">Chavelier moutarde
+wal/ch.jpg
+4E5464;</e>
+	<e u="chorale" t="wallpaper" s="10" d="0" a="0">Chorale Frutiparc
+wal/fp.jpg
+ADE76B;</e>
+	<e u="pixizchristmas" t="wallpaper" s="10" d="0" a="0">Noël Pixiz
+wal/ma.jpg
+ADE76B;</e>
+	<e u="snakechristmas" t="wallpaper" s="10" d="0" a="0">Noël Frutisnake
+wal/no.jpg
+ADE76B;</e>
+	<e u="pixiz" t="wallpaper" s="10" d="0" a="0">Pixiz
+wal/pi.jpg
+F9D190;</e>
+	<e u="nostromo" t="wallpaper" s="10" d="0" a="0">Mini-Wave Nostromo
+wal/pl.jpg
+000044;</e>
+	<e u="ministar" t="wallpaper" s="10" d="0" a="0">Mini-Wave Mini-Star
+wal/va.jpg
+000044;</e>
+	<e u="utopiz" t="wallpaper" s="10" d="0" a="0">Utopiz
+wal/ut.jpg
+F6AFA9;</e>
+</f>

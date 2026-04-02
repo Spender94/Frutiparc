@@ -1,0 +1,76 @@
+<!-- Define tree elements for the shop -->
+<c>
+	<!-- c as category node, n for its name -->
+	<c n="Jeux">
+		<c n="Jeux complets">
+			<!-- c as pack, n for its name and i for its id -->
+			<p n="Motion Ball 2" i="0" />
+			<p n="Frutisnake 2" i="1" />
+			<p n="Burning Kiwi" i="2" />
+			<p n="Swapou 2" i="3" />
+			<p n="Frutibandas" i="4" />
+			<p n="Grapiz" i="5" />
+			<p n="Kaluga" i="6" />
+			<p n="JamaJama" i="7" />
+		</c>
+		<c n="Packs">
+			<p n="Motion Ball 2" i="10" />
+			<p n="Frutisnake 2" i="11" />
+			<p n="Burning Kiwi" i="12" />
+			<p n="Swapou 2" i="13" />
+			<p n="Frutibandas" i="14" />
+			<p n="Grapiz" i="15" />
+			<p n="Kaluga" i="16" />
+			<p n="Multijoueurs" i="17" />
+		</c>
+		<c n="Pass">
+			<p n="Motion Ball 2" i="20" />
+			<p n="Frutisnake 2" i="21" />
+			<p n="Burning Kiwi" i="22" />
+			<p n="Swapou 2" i="23" />
+			<p n="Frutibandas" i="24" />
+			<p n="Grapiz" i="25" />
+			<p n="Kaluga" i="26" />
+		</c>
+		<c n="Mini jeux">
+			<p n="Mini-Wave" i="30" />
+			<p n="Mini-Pixiz" i="31" />
+		</c>
+	</c>
+	<c n="Items">
+		<p n="Boule de cristal" i="40" />
+		<p n="Pack de rentrée" i="41" />
+		<c n="Feutres">
+			<p n="Orange" i="50" />
+			<p n="Bleu" i="51" />
+			<p n="Vert foncé" i="52" />
+			<p n="Bordeaux" i="53" />
+			<p n="Rose" i="54" />
+			<p n="Jaune" i="55" />
+			<p n="Vert clair" i="56" />
+			<p n="Turquoise" i="57" />
+			<p n="Bleu foncé" i="58" />
+			<p n="Marron" i="59" />
+			<p n="Marron foncé" i="60" />
+			<p n="Kaki" i="61" />
+			<p n="Bleu pétrole" i="62" />
+			<p n="Vert" i="63" />
+			<p n="Bleu pétrole foncé" i="64" />
+			<p n="Orange foncé" i="65" />
+			<p n="Violet" i="66" />
+		</c>
+	</c>
+	<c n="Accessoires">
+		<p n="Casquette d'animateurs" i="70" />
+	</c>
+	<c n="Fonds d'écran">
+		<p n="Mini-Pixiz" i="80" />
+		<p n="Mini-Wave Mini-Star" i="81" />
+		<p n="Mini-Wave Nostromo" i="82" />
+		<p n="Chevalier moutarde" i="83" />
+		<p n="Noël Pixiz" i="84" />
+		<p n="Noël snake" i="85" />
+		<p n="Utopiz" i="86" />
+		<p n="Chorale de Frutiparc" i="87" />
+	</c>
+</c>

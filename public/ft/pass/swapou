@@ -1,0 +1,12 @@
+<p n="pass quotidien de Swapou 2" i="23" h="0" p="pass,5">
+	<d><desc>Jouez Dimitri ou Natacha pour remplir votre panier de fruits</desc></d>
+	<!-- p for price -->
+	<r p="80">Donne droit à une partie quotidienne supplémentaire pour réaliser le meilleur score en challenge</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/pi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/pl.jpg" w="150" h="150" />
+	</s>
+</p>

@@ -1,0 +1,14 @@
+<!-- Pack definition, n = name, i = id and p = picto split with "," character, h = 1 if already bought, 0 otherwise, q for quantity items  -->
+<!-- picto can start with "bouille" for accessory, the second value is the accessory id -->
+<p n="Jeux complet de Frutisnake" i="0" p="bouille,030y0t0j00" h="0">
+	<d>Description du jeux</d>
+	<!-- p for price, s for start, e for end -->
+	<r p="180" s="0" e="0">Commentaire</r>
+	<!-- List of screenshots, n for the name -->
+	<s n="Capture d'écran du jeu">
+		<!-- Big screenshot, u for url, w for width, h for height -->
+		<b u="wal/mi.jpg" w="150" h="150" />
+		<!-- Small screenshot, u for url, w for width, h for height -->
+		<t u="wal/mi.jpg" w="150" h="150" />
+	</s>
+</p>
