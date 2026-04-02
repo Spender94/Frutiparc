@@ -471,6 +471,9 @@ app.get('/ff/ls', (req, res) => {
   const username = (session && session.user) || 'Angelisium';
   const user = users[username] || users['Angelisium'];
   const currentBouille = bouilleOf(user);
+  const bouilleBase = currentBouille.length >= 9 ? currentBouille : DEFAULT_BOUILLE_STATE;
+  const accessoryTailA = '30x0t0w0D';
+  const accessoryBouilleA = `${bouilleBase.slice(0, bouilleBase.length - 9)}${accessoryTailA}`;
   if (uid === 'root' || uid === 'desktop') {
     return res.type('text/xml').send(
       `<f u="root">
@@ -501,8 +504,8 @@ wal/ut.jpg
 F6AFA9;</e>
         <e u="my_bouille_current" t="bouille" s="10" d="0" a="0">Ma bouille actuelle
 ${escapeXml(currentBouille)}</e>
-        <e u="my_bouille_test_1" t="bouille" s="10" d="0" a="0">Test bouille #1
-${escapeXml(currentBouille)}</e>
+        <e u="my_bouille_test_1" t="bouille" s="10" d="0" a="0">Accessoire tail 30x0t0w0D
+${escapeXml(accessoryBouilleA)}</e>
         <e u="my_bouille_test_2" t="bouille" s="10" d="0" a="0">Test bouille #2
 ${escapeXml(currentBouille)}</e>
       </f>`
