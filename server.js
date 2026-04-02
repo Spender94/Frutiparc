@@ -163,11 +163,26 @@ function buildPrefDefString() {
   return r;
 }
 
+const DEFAULT_BOUILLE_LIST = [
+  { b: '000503000000111010', n: 'Classique' },
+  { b: '000503000000111011', n: 'Classique 2' },
+  { b: '000503000000111012', n: 'Classique 3' },
+  { b: '010503000000111010', n: 'Capuche claire' },
+  { b: '020503000000111010', n: 'Capuche foncée' },
+  { b: '000403000000111010', n: 'Regard doux' },
+];
+
+function buildBouilleListXml() {
+  return DEFAULT_BOUILLE_LIST
+    .map((o) => `<b b="${escapeXml(o.b)}">${escapeXml(o.n)}</b>`)
+    .join('');
+}
+
 // ─────────────────────────────────────────────
 // File system tree (virtual)
 // b = "messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin"
 // ─────────────────────────────────────────────
-const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin">
+const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin">
   <f u="messages" n="Messages" t="messages">
     <f u="inbox" n="Boîte de réception" t="inbox" />
     <f u="outbox" n="Messages envoyés" t="outbox" />
@@ -307,6 +322,11 @@ app.get('/do/prefsavepartial', (req, res) => {
   res.type('text/plain').send('state=0');
 });
 
+// Legacy preferences form endpoint used by some SWF flows
+app.get('/prefForm', (req, res) => {
+  res.type('text/xml').send('<r />');
+});
+
 // ─────────────────────────────────────────────
 // ENDPOINT: do/onident — Post-identification data
 // Returns XML with kikooz, items, prefs, logs, etc.
@@ -329,7 +349,7 @@ app.get('/do/onident', (req, res) => {
     user.needsBouille = false; // Only force once per session
   }
 
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}><mp>${myPref}</mp><ul></ul><sl></sl><bl></bl></r>`;
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}><mp>${myPref}</mp><ul></ul><sl></sl><bl>${buildBouilleListXml()}</bl></r>`;
 
   res.type('text/xml').send(xml);
 });
@@ -953,7 +973,7 @@ function handleCBeeMessage(socket, rawXml) {
 
     // ── listbouilles: list available avatar parts ──
     case 'listbouilles': {
-      sendToClient(socket, `<${CMD.listbouilles} />`);
+      sendToClient(socket, `<${CMD.listbouilles}>${buildBouilleListXml()}</${CMD.listbouilles}>`);
       break;
     }
 
