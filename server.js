@@ -795,6 +795,16 @@ function broadcastToChannel(channelName, xmlStr, excludeSocket = null) {
   }
 }
 
+function getSocketsForUsername(username) {
+  const sockets = [];
+  for (const [sock, cl] of xmlSocketClients) {
+    if (cl && cl.username === username && cl.logged) {
+      sockets.push(sock);
+    }
+  }
+  return sockets;
+}
+
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
@@ -1086,17 +1096,38 @@ case 'fbouille': {
 
 case 'createchannel': {
   const otherUser = msg.attrs.u || '';
+  const requester = client.username || '';
   const title = msg.content || otherUser || 'Discussion privée';
 
-  if (!otherUser) {
+  if (!otherUser || !requester) {
     sendToClient(socket, `<${CMD.error} />`);
     break;
+  }
+
+  const sortedUsers = [requester.toLowerCase(), otherUser.toLowerCase()].sort();
+  const privateGroup = `pm_${sortedUsers[0]}_${sortedUsers[1]}`;
+  const privatePass = `pw_${sortedUsers[0].slice(0, 4)}_${sortedUsers[1].slice(0, 4)}`;
+
+  if (!channels[privateGroup]) {
+    channels[privateGroup] = {
+      desc: `Discussion privée ${requester}/${otherUser}`,
+      topic: title,
+      users: new Set(),
+      private: true,
+      pass: privatePass,
+    };
   }
 
   // Accusé de réception de l’ouverture de la discussion privée
   sendToClient(
     socket,
-    `<${CMD.createchannel} u="${escapeXml(otherUser)}">${escapeXml(title)}</${CMD.createchannel}>`
+    `<${CMD.createchannel} u="${escapeXml(otherUser)}" g="${privateGroup}" p="${privatePass}">${escapeXml(title)}</${CMD.createchannel}>`
+  );
+
+  // Invite "privée" envoyée au demandeur pour ouvrir immédiatement la box
+  sendToClient(
+    socket,
+    `<${CMD.invitechat} u="${escapeXml(otherUser)}" g="${privateGroup}" p="${privatePass}" />`
   );
 
   // On pousse aussi les infos connues sur l’autre user
@@ -1118,6 +1149,14 @@ case 'createchannel': {
     socket,
     `<${CMD.trace} u="${escapeXml(otherUser)}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`
   );
+
+  // Si l'autre utilisateur est connecté, il reçoit aussi l'invitation.
+  for (const targetSock of getSocketsForUsername(otherUser)) {
+    sendToClient(
+      targetSock,
+      `<${CMD.invitechat} u="${escapeXml(requester)}" g="${privateGroup}" p="${privatePass}" />`
+    );
+  }
 
   break;
 }
