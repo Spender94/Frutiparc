@@ -123,15 +123,11 @@ function withDefaultPens(items = []) {
 }
 
 function normalizeBouilleState(value) {
-  let s = String(value || '').replace(/\D/g, '');
+  // Frutibouille uses base62 tokens (0-9, a-z, A-Z), not only digits.
+  let s = String(value || '').replace(/[^0-9a-zA-Z]/g, '');
 
   if (s.length < 24) s = s.padEnd(24, '0');
   if (s.length > 24) s = s.slice(0, 24);
-
-  const family = s.slice(0, 2);
-  if (family !== '00' && family !== '01') {
-    s = '00' + s.slice(2);
-  }
 
   return s;
 }
@@ -805,6 +801,15 @@ function getSocketsForUsername(username) {
   return sockets;
 }
 
+function resolveKnownUsername(nameOrLower) {
+  const raw = String(nameOrLower || '');
+  const low = raw.toLowerCase();
+  for (const known of Object.keys(users)) {
+    if (known.toLowerCase() === low) return known;
+  }
+  return raw;
+}
+
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
@@ -931,14 +936,31 @@ case 'join': {
   const g = msg.attrs.g;
 
   if (!channels[g]) {
+    if (String(g).indexOf('pm_') === 0) {
+      const parts = String(g).split('_');
+      const p1 = resolveKnownUsername(parts[1] || '');
+      const p2 = resolveKnownUsername(parts[2] || '');
+      channels[g] = {
+        desc: `Discussion privée ${p1}/${p2}`,
+        topic: `Discussion privée ${p1}/${p2}`,
+        users: new Set([p1, p2].filter(Boolean)),
+        participants: [p1, p2].filter(Boolean),
+        private: true,
+        pass: msg.attrs.p || '',
+      };
+    } else {
     channels[g] = {
       desc: `Salon ${g.charAt(0).toUpperCase()}${g.slice(1)}`,
       topic: `Bienvenue sur le salon ${g} !`,
       users: new Set(),
     };
+    }
   }
 
   const channel = channels[g];
+  if (channel.private && Array.isArray(channel.participants)) {
+    for (const u of channel.participants) channel.users.add(u);
+  }
   channel.users.add(client.username);
   client.channels.add(g);
 
@@ -975,6 +997,24 @@ broadcastToChannel(
 );
   break;
 }
+
+    // ── userlist: explicit request for a channel user list ──
+    case 'userlist': {
+      const g = msg.attrs.g || '';
+      const channel = channels[g];
+      if (!channel) {
+        sendToClient(socket, `<${CMD.userlist} g="${g}"></${CMD.userlist}>`);
+        break;
+      }
+      const userArr = Array.from(channel.users || []);
+      let userXml = '';
+      for (const u of userArr) {
+        const ud = users[u] || {};
+        userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
+      }
+      sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
+      break;
+    }
 
     // ── part: leave a channel ──
     case 'part': {
