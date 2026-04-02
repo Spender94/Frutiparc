@@ -471,9 +471,9 @@ app.get('/ff/ls', (req, res) => {
   const username = (session && session.user) || 'Angelisium';
   const user = users[username] || users['Angelisium'];
   const currentBouille = bouilleOf(user);
-  const bouilleBase = currentBouille.length >= 9 ? currentBouille : DEFAULT_BOUILLE_STATE;
+  const bouilleBase = `${currentBouille}${DEFAULT_BOUILLE_STATE}`.slice(0, 15);
   const accessoryTailA = '30x0t0w0D';
-  const accessoryBouilleA = `${bouilleBase.slice(0, bouilleBase.length - 9)}${accessoryTailA}`;
+  const accessoryBouilleA = `${bouilleBase}${accessoryTailA}`;
   if (uid === 'root' || uid === 'desktop') {
     return res.type('text/xml').send(
       `<f u="root">
