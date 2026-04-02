@@ -169,6 +169,13 @@ const prefDefs = [
   { id: 4,  type: 'i', name: 'invite_chat_behavior',     def: encode62(1) },
   { id: 5,  type: 's', name: 'wallpaper',                def: '' },
   { id: 6,  type: 'i', name: 'cache_length',             def: encode62(30) },
+  { id: 7,  type: 'b', name: 'cl_open',                  def: 'Y' },
+  { id: 8,  type: 'b', name: 'win_flMoveAnim',           def: 'Y' },
+  { id: 9,  type: 'b', name: 'ch_dsp_h',                 def: 'Y' },
+  { id: 10, type: 'b', name: 'ch_dsp_join',              def: 'Y' },
+  { id: 11, type: 'b', name: 'ch_dsp_leave',             def: 'Y' },
+  { id: 12, type: 'b', name: 'ch_dsp_kick',              def: 'Y' },
+  { id: 13, type: 'b', name: 'ch_dsp_ban',               def: 'Y' },
 ];
 
 function buildPrefDefString() {
