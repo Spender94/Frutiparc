@@ -373,9 +373,9 @@ app.all('/do/eb', (req, res) => {
   users[username].fbouille = bouille;
 
   console.log(`[do/eb] Saved bouille for ${username}: ${bouille}`);
-  // Legacy caller expects an XML response with HTTP-like error key "k".
-  // Keep b/s payload for compatibility with existing bouille save consumers.
-  res.type('text/xml').send(`<r k="0" state="0" b="${bouille}" s="${bouille}" />`);
+  // Legacy callers consume LoadVars here; include k=0 to avoid error.http.undefined
+  // while keeping historical bouille fields.
+  res.type('text/plain').send(`state=0&k=0&b=${bouille}&s=${bouille}&f=${bouille}`);
 });
 
 // ─────────────────────────────────────────────
