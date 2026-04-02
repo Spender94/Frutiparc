@@ -116,6 +116,11 @@ function decode62(s) {
 }
 
 const DEFAULT_BOUILLE_STATE = '000000000000000000000000';
+const ALL_PEN_ITEM_IDS = [315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 599, 600, 601, 602];
+
+function withDefaultPens(items = []) {
+  return Array.from(new Set([...(items || []), ...ALL_PEN_ITEM_IDS]));
+}
 
 function normalizeBouilleState(value) {
   let s = String(value || '').replace(/\D/g, '');
@@ -149,7 +154,7 @@ users['Angelisium'] = {
   xp: 4680000,
   kikooz: 150,
   fbouille: DEFAULT_BOUILLE_STATE,
-  items: [1, 2, 3],
+  items: withDefaultPens([1, 2, 3]),
   gender: 'M',
   birthday: '1990-05-15',
   country: 'FR',
@@ -360,7 +365,7 @@ app.all('/do/eb', (req, res) => {
       xp: 10000,
       kikooz: 50,
       fbouille: DEFAULT_BOUILLE_STATE,
-      items: [],
+      items: withDefaultPens([]),
       gender: 'M',
       birthday: '2000-01-01',
       country: 'FR',
@@ -422,7 +427,8 @@ app.get('/do/onident', (req, res) => {
   const username = (session && session.user) || 'Angelisium';
   const user = users[username] || users['Angelisium'];
 
-  const items = (user.items || []).join(',');
+  user.items = withDefaultPens(user.items);
+  const items = user.items.join(',');
   const myPref = user.prefs || '';
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
@@ -883,7 +889,7 @@ function handleCBeeMessage(socket, rawXml) {
           xp: 10000,
           kikooz: 50,
           fbouille: DEFAULT_BOUILLE_STATE,
-          items: [],
+          items: withDefaultPens([]),
           gender: 'M',
           birthday: '2000-01-01',
           country: 'FR',
