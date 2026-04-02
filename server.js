@@ -324,7 +324,7 @@ app.get('/do/prefsavepartial', (req, res) => {
 
 // Legacy preferences form endpoint used by some SWF flows
 app.get('/prefForm', (req, res) => {
-  res.type('text/xml').send('<r />');
+  res.type('text/plain').send('state=0');
 });
 
 // ─────────────────────────────────────────────
@@ -349,7 +349,7 @@ app.get('/do/onident', (req, res) => {
     user.needsBouille = false; // Only force once per session
   }
 
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}><mp>${myPref}</mp><ul></ul><sl></sl><bl>${buildBouilleListXml()}</bl></r>`;
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}><mp><![CDATA[${myPref}]]></mp><ul><!--empty--></ul><sl><!--empty--></sl><bl>${buildBouilleListXml()}</bl></r>`;
 
   res.type('text/xml').send(xml);
 });
@@ -377,8 +377,8 @@ app.get('/ff/tree', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/ff/ls', (req, res) => {
   const uid = req.query.uid || 'root';
-  // Return an empty folder listing — the SWF will display an empty desktop/contacts
-  res.type('text/xml').send(`<f u="${uid}"></f>`);
+  // Return an empty folder listing with a placeholder node to avoid legacy null-firstChild edge cases
+  res.type('text/xml').send(`<f u="${uid}"><i /></f>`);
 });
 
 // ─────────────────────────────────────────────
