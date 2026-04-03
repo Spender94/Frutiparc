@@ -4,7 +4,10 @@
   "description": "Backend server for Frutiparc Flash game emulation via Ruffle",
   "main": "server.js",
   "scripts": {
-    "start": "node patch-swf.js && node patch-frusion-swfs.js && node server.js"
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20 <22"
   },
   "keywords": [],
   "author": "",

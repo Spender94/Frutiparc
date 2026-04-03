@@ -9,6 +9,11 @@ const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
 
 const app = express();
+const port = Number(process.env.PORT || 8888);
+const XMLSOCKET_PORT = Number(process.env.XMLSOCKET_PORT || 5000); // Must end in 000 for FrutiChat cmdList
+const PUBLIC_HOST = process.env.PUBLIC_HOST || 'localhost';
+const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
+const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
 
 // ── CORS headers (Ruffle's WASM fetch may need them) ──
 app.use((req, res, next) => {
@@ -42,9 +47,11 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Log all incoming requests for debugging
+// Optional HTTP request logs for debugging
 app.use((req, res, next) => {
-  console.log(`[HTTP]  ${req.method} ${req.url}`);
+  if (VERBOSE_HTTP_LOGS) {
+    console.log(`[HTTP]  ${req.method} ${req.url}`);
+  }
   next();
 });
 
@@ -82,9 +89,6 @@ function warnIfStubSwfAssets() {
     }
   }
 }
-
-const port = process.env.PORT || 8888;
-const XMLSOCKET_PORT = 5000; // Port for the CBee XMLSocket server (must end in 000 for FrutiChat cmdList)
 
 // ─────────────────────────────────────────────
 // Helpers: base62 encode/decode (matches FEString/FENumber in AS2)
@@ -144,53 +148,42 @@ function bouilleOf(user) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
-const frusionTrace = {};   // sid -> [{ at, event, meta }]
-let lastFrusionSid = null;
-let lastFrusionSidAt = 0;
+const DEFAULT_USERNAME = process.env.DEFAULT_USERNAME || 'skool';
+const DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD || 'test';
+const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
 
-function sidFromRequest(req) {
-  if (req.query && typeof req.query.sid === 'string' && req.query.sid) return req.query.sid;
-  const ref = req.get('referer') || req.get('referrer');
-  if (!ref) return null;
-  try {
-    const url = new URL(ref);
-    return url.searchParams.get('sid');
-  } catch {
-    return null;
-  }
+function createDefaultUser(pass) {
+  return {
+    pass,
+    xp: 4680000,
+    kikooz: 150,
+    fbouille: DEFAULT_BOUILLE_STATE,
+    items: withDefaultPens([1, 2, 3]),
+    contacts: [],
+    blacklist: [],
+    gender: 'M',
+    birthday: '1990-05-15',
+    country: 'FR',
+    region: 'IDF',
+    prefs: '',
+    needsBouille: true, // Force editbouille on first login
+  };
 }
 
-function recordFrusionEvent(sid, event, meta = {}) {
-  const key = sid || '__no_sid';
-  const row = { at: new Date().toISOString(), sid: key, event, meta };
+// Default user for quick testing/admin flows
+users[DEFAULT_USERNAME] = createDefaultUser(DEFAULT_PASSWORD);
 
-  if (!frusionTrace[key]) frusionTrace[key] = [];
-  frusionTrace[key].push(row);
-  if (frusionTrace[key].length > 80) frusionTrace[key].shift();
-
-  if (!frusionTrace.__all) frusionTrace.__all = [];
-  frusionTrace.__all.push(row);
-  if (frusionTrace.__all.length > 300) frusionTrace.__all.shift();
-
-  console.log(`[FRUSION][${key}] ${event} ${JSON.stringify(meta)}`);
+function normalizeUsername(raw) {
+  return String(raw || '').trim().toLowerCase();
 }
 
-// Default user for quick testing
-users['Angelisium'] = {
-  pass: 'test',
-  xp: 4680000,
-  kikooz: 150,
-  fbouille: DEFAULT_BOUILLE_STATE,
-  items: withDefaultPens([1, 2, 3]),
-  contacts: [],
-  blacklist: [],
-  gender: 'M',
-  birthday: '1990-05-15',
-  country: 'FR',
-  region: 'IDF',
-  prefs: '',
-  needsBouille: true, // Force editbouille on first login
-};
+function isValidUsername(username) {
+  return /^[a-z0-9_]{3,20}$/.test(username);
+}
+
+function isValidPassword(password) {
+  return typeof password === 'string' && password.length >= 6 && password.length <= 80;
+}
 
 // ─────────────────────────────────────────────
 // Preference definitions
@@ -250,9 +243,9 @@ function buildBouilleListXml() {
 
 // ─────────────────────────────────────────────
 // File system tree (virtual)
-// b = "messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin"
+// b = "messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;shop;accessories;mycontact;recyclebin"
 // ─────────────────────────────────────────────
-const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin">
+const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;shop;accessories;mycontact;recyclebin">
   <f u="messages" n="Messages" t="messages">
     <f u="inbox" n="Boîte de réception" t="inbox" />
     <f u="outbox" n="Messages envoyés" t="outbox" />
@@ -261,6 +254,9 @@ const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbo
   </f>
   <f u="disccollector" n="Mes disques" t="disccollector" />
   <f u="inventory" n="Inventaire" t="inventory" />
+  <f u="shop" n="Boutique" t="shop">
+    <f u="accessories" n="Accessoires" t="accessories" />
+  </f>
   <f u="mycontact" n="Mes contacts" t="mycontact" />
   <f u="recyclebin" n="Corbeille" t="recyclebin" />
 </s>`;
@@ -277,9 +273,45 @@ app.get('/legacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
-// Explicitly block legacy popup game runtime route.
-app.get('/frusion', (req, res) => {
-  res.type('text/html').send('<!doctype html><meta charset="utf-8"><script>try{window.close();}catch(e){}document.body.innerHTML="Frusion popup disabled.";</script>');
+app.get('/login', (req, res) => {
+  res.sendFile(LOGIN_PAGE_PATH);
+});
+
+app.post('/api/auth/register', (req, res) => {
+  const username = normalizeUsername(req.body && req.body.username);
+  const password = String((req.body && req.body.password) || '');
+
+  if (!isValidUsername(username)) {
+    return res.status(400).json({ ok: false, error: 'username_invalid', message: 'Username: 3-20 chars [a-z0-9_].' });
+  }
+  if (!isValidPassword(password)) {
+    return res.status(400).json({ ok: false, error: 'password_invalid', message: 'Password: 6-80 chars.' });
+  }
+  if (users[username]) {
+    return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
+  }
+
+  users[username] = createDefaultUser(password);
+  users[username].needsBouille = false;
+  return res.json({ ok: true, username });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const username = normalizeUsername(req.body && req.body.username);
+  const password = String((req.body && req.body.password) || '');
+  const user = users[username];
+
+  if (!user || user.pass !== password) {
+    return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+  }
+
+  const sid = crypto.randomBytes(16).toString('hex');
+  sessions[sid] = { user: username, createdAt: Date.now() };
+  return res.json({ ok: true, sid, username, redirect: `/legacy?sid=${encodeURIComponent(sid)}` });
+});
+
+app.get('/do/ld', (req, res) => {
+  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
 });
 
 app.get('/legacy/main.swf', (req, res) => {
@@ -287,7 +319,9 @@ app.get('/legacy/main.swf', (req, res) => {
 });
 
 app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
-  console.log('[SWF] fonts.swf requested:', req.url);
+  if (VERBOSE_SWF_LOGS) {
+    console.log('[SWF] fonts.swf requested:', req.url);
+  }
   res.type('application/x-shockwave-flash');
   res.sendFile(fontsPath);
 });
@@ -296,7 +330,9 @@ app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
 // during the loading screen.  Serving it explicitly (with logging and
 // correct Content-Type) helps diagnose and resolve pending-fetch issues.
 app.get('/fileIcon.swf', (req, res) => {
-  console.log('[SWF]   fileIcon.swf requested');
+  if (VERBOSE_SWF_LOGS) {
+    console.log('[SWF]   fileIcon.swf requested');
+  }
   res.type('application/x-shockwave-flash');
   res.sendFile(path.join(__dirname, 'public', 'fileIcon.swf'));
 });
@@ -305,7 +341,9 @@ app.get('/fileIcon.swf', (req, res) => {
 
 app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
   const fallback = path.join(__dirname, 'frusion', 'saf_debug.swf');
-  console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+  if (VERBOSE_SWF_LOGS) {
+    console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+  }
   res.type('application/x-shockwave-flash');
   res.sendFile(fallback);
 });
@@ -314,7 +352,9 @@ function sendAvatarFamily(res, fileName) {
   let absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
   if (!fs.existsSync(absPath)) {
-    console.log(`[SWF]   Missing avatar asset: ${absPath}`);
+    if (VERBOSE_SWF_LOGS) {
+      console.log(`[SWF]   Missing avatar asset: ${absPath}`);
+    }
     return res.status(404).type('text/plain').send('Missing SWF');
   }
 
@@ -330,7 +370,9 @@ function sendAvatarFamily(res, fileName) {
     } catch {}
   }
 
-  console.log(`[SWF]   Serving avatar asset: ${fileName}`);
+  if (VERBOSE_SWF_LOGS) {
+    console.log(`[SWF]   Serving avatar asset: ${fileName}`);
+  }
   res.type('application/x-shockwave-flash');
   res.set('Cache-Control', 'no-store');
   res.sendFile(absPath);
@@ -368,7 +410,7 @@ app.get('/do/prefdef', (req, res) => {
 // Keep the advertised service port aligned with the live XMLSocket port.
 app.get('/xml/services.xml', (req, res) => {
   res.type('text/xml').send(
-    `<services host="localhost"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
+    `<services host="${escapeXml(PUBLIC_HOST)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
   );
 });
 
@@ -407,7 +449,7 @@ function resolveUsernameFromSid(sid) {
   if (sid && sessions[sid] && sessions[sid].user && users[sessions[sid].user]) {
     return sessions[sid].user;
   }
-  return 'Angelisium';
+  return DEFAULT_USERNAME;
 }
 
 app.all('/do/eb', (req, res) => {
@@ -447,6 +489,39 @@ app.all('/do/eb', (req, res) => {
   res.type('text/plain').send(`state=0&k=0&b=${bouille}&s=${bouille}&f=${bouille}`);
 });
 
+function handleNewBouille(req, res) {
+  const sid = req.query.sid;
+  const session = sid ? sessions[sid] : null;
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
+
+  const entry = {
+    id: 'acc_' + crypto.randomBytes(4).toString('hex'),
+    q: String(req.query.q || ''),
+    n: String(req.query.n || '').trim(),
+    p: String(req.query.p || ''),
+    v: normalizeBouilleState(req.query.v || ''),
+    at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+  };
+
+  if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
+  user.customAccessories.push(entry);
+
+  res
+    .type('text/plain')
+    .send(`state=0&id=${entry.id}&n=${encodeURIComponent(entry.n)}&q=${entry.q}&p=${entry.p}&v=${entry.v}`);
+}
+
+// ─────────────────────────────────────────────
+// ENDPOINT: do/newbouille — Create/save accessory item
+// Used by admin "Frutibouille" tooling.
+// Params: q=<quantity/type>, n=<name>, p=<price>, v=<value>, sid=<session_id>
+// Returns LoadVars: state=0
+// Accept both /do/newbouille and /newbouille to tolerate legacy URL rewrites.
+// ─────────────────────────────────────────────
+app.get('/do/newbouille', handleNewBouille);
+app.get('/newbouille', handleNewBouille);
+
 // ─────────────────────────────────────────────
 // ENDPOINT: do/gmi — Get my info (user profile data)
 // Returns LoadVars with user profile fields
@@ -454,8 +529,8 @@ app.all('/do/eb', (req, res) => {
 app.get('/do/gmi', (req, res) => {
   const sid = req.query.sid;
   const session = sessions[sid];
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
 
   const params = new URLSearchParams({
     state: '0',
@@ -491,8 +566,8 @@ app.get('/prefForm', (req, res) => {
 app.get('/do/onident', (req, res) => {
   const sid = req.query.sid;
   const session = sessions[sid];
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
 
   user.items = withDefaultPens(user.items);
   const items = user.items.join(',');
@@ -529,63 +604,23 @@ function swfSizeForUrlPath(urlPath) {
 }
 
 // ─────────────────────────────────────────────
-// ENDPOINT: do/ld — Load game disc
-// Returns XML
+// ENDPOINT: do/ld — Game disc loading
+// Disabled in simplified mode (no Frusion launch hacks).
 // ─────────────────────────────────────────────
 app.get('/do/ld', (req, res) => {
-  const discId = req.query.u || 'unknown';
-  const discMap = {
-    kaluga1: {
-      t: '0',
-      pm: 'single',
-      n: 'kaluga',
-      u: '/swf/games/kaluga/kaluga.swf',
-      p: 'w=700;h=480;m=i',
-      swfList: [
-        '/swf/games/kaluga/kaluga.swf',
-        '/swf/sd/kaluga_tz.swf',
-        '/swf/sd/kaluga_panier.swf',
-      ],
-    },
-    mb21: {
-      t: '0',
-      pm: 'single',
-      n: 'kaluga',
-      u: '/swf/games/kaluga/kaluga.swf',
-      p: 'w=700;h=480;m=i',
-      swfList: [
-        '/swf/games/kaluga/kaluga.swf',
-        '/swf/sd/kaluga_tz.swf',
-        '/swf/sd/kaluga_panier.swf',
-      ],
-    },
-    swapou21: {
-      t: '0',
-      pm: 'single',
-      n: 'kaluga',
-      u: '/swf/games/kaluga/kaluga.swf',
-      p: 'w=700;h=480;m=i',
-      swfList: [
-        '/swf/games/kaluga/kaluga.swf',
-        '/swf/sd/kaluga_tz.swf',
-        '/swf/sd/kaluga_panier.swf',
-      ],
-    },
-  };
-
-  const game = discMap[discId] || discMap.kaluga1;
-  // Legacy loader prepends host on its side; keep <s u> relative to avoid host duplication.
-  const swfNodes = game.swfList.map((u) => `<s u="${u}" />`).join('');
-  res.type('text/xml').send(
-    `<game t="${game.t}" pm="${game.pm}" n="${game.u}" u="${discId}" p="${game.p}">${swfNodes}</game>`
-  );
+  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
 });
 
 // ─────────────────────────────────────────────
 // ENDPOINT: ff/tree — File system tree
 // Returns XML
 // ─────────────────────────────────────────────
-app.get('/ff/tree', (req, res) => {
+app.get(['/ff/tree', '/tree'], (req, res) => {
+  res.type('text/xml').send(FILE_TREE_XML);
+});
+
+// Legacy alias seen in some SWFs / URL rewrite paths
+app.get('/ft/tree', (req, res) => {
   res.type('text/xml').send(FILE_TREE_XML);
 });
 
@@ -593,12 +628,12 @@ app.get('/ff/tree', (req, res) => {
 // ENDPOINT: ff/ls — List folder contents
 // Returns XML
 // ─────────────────────────────────────────────
-app.get('/ff/ls', (req, res) => {
+app.get(['/ff/ls', '/ls'], (req, res) => {
   const uid = req.query.uid || 'root';
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
   ensureContactLists(user);
   const currentBouille = bouilleOf(user);
   const bouilleBase = `${currentBouille}${DEFAULT_BOUILLE_STATE}`.slice(0, 15);
@@ -618,6 +653,10 @@ app.get('/ff/ls', (req, res) => {
   }
 
   if (uid === 'inventory') {
+    const customAccessoryNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}
+${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+      .join('');
     return res.type('text/xml').send(
       `<f u="inventory">
         <e u="moutarde" t="wallpaper" s="10" d="0" a="0">Chavelier moutarde
@@ -638,8 +677,21 @@ ${escapeXml(currentBouille)}</e>
 ${escapeXml(accessoryBouilleA)}</e>
         <e u="my_bouille_test_2" t="bouille" s="10" d="0" a="0">Test bouille #2
 ${escapeXml(currentBouille)}</e>
+        ${customAccessoryNodes}
       </f>`
     );
+  }
+
+  if (uid === 'shop') {
+    return res.type('text/xml').send('<f u="shop"><f u="accessories" t="accessories" /></f>');
+  }
+
+  if (uid === 'accessories') {
+    const nodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}
+${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+      .join('');
+    return res.type('text/xml').send(`<f u="accessories">${nodes || '<i />'}</f>`);
   }
 
 
@@ -676,11 +728,11 @@ kaluga</e>
 // ENDPOINT: ff/mk — Create file/folder
 // Returns XML
 // ─────────────────────────────────────────────
-app.get('/ff/mk', (req, res) => {
+app.get(['/ff/mk', '/mk'], (req, res) => {
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
   ensureContactLists(user);
 
   const newUid = 'f' + crypto.randomBytes(4).toString('hex');
@@ -708,11 +760,11 @@ app.get('/ff/mk', (req, res) => {
 // ENDPOINT: ff/mv — Move file
 // Returns XML
 // ─────────────────────────────────────────────
-app.get('/ff/mv', (req, res) => {
+app.get(['/ff/mv', '/mv'], (req, res) => {
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
   ensureContactLists(user);
 
   const file = String(req.query.f || '');
@@ -743,7 +795,7 @@ app.get('/ff/mv', (req, res) => {
 // ENDPOINT: ff/cp — Copy file
 // Returns XML
 // ─────────────────────────────────────────────
-app.get('/ff/cp', (req, res) => {
+app.get(['/ff/cp', '/cp'], (req, res) => {
   const file = req.query.f || '';
   const folder = req.query.folder || '';
   const newUid = 'c' + crypto.randomBytes(4).toString('hex');
@@ -820,9 +872,10 @@ app.get('/healthz', (req, res) => {
 // ─────────────────────────────────────────────
 // Start HTTP server
 // ─────────────────────────────────────────────
-const server = app.listen(port, () => {
-  console.log(`[HTTP]  Server running on http://localhost:${port}`);
-  console.log(`        Legacy SWF:  http://localhost:${port}/legacy`);
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log(`[HTTP]  Server running on http://0.0.0.0:${port}`);
+  console.log(`        Public URL:  https://${PUBLIC_HOST}/`);
+  console.log(`        Legacy SWF:  https://${PUBLIC_HOST}/legacy`);
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
   warnIfStubSwfAssets();
 });
@@ -1148,8 +1201,8 @@ function handleCBeeMessage(socket, rawXml) {
       const login = msg.attrs.l || '';
       const sid = msg.attrs.s || '';
 
-      // sidAutoInit mode sends l="" — default to Angelisium
-      const effectiveLogin = login.length > 0 ? login : 'Angelisium';
+      // sidAutoInit mode sends l="" — default to the local admin user.
+      const effectiveLogin = login.length > 0 ? login : DEFAULT_USERNAME;
 
       // Auto-create session if needed
       if (sid && !sessions[sid]) {
