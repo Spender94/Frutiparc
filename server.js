@@ -254,11 +254,23 @@ app.get('/fileIcon.swf', (req, res) => {
 
 
 function sendAvatarFamily(res, fileName) {
-  const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
+  let absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
   if (!fs.existsSync(absPath)) {
     console.log(`[SWF]   Missing avatar asset: ${absPath}`);
     return res.status(404).type('text/plain').send('Missing SWF');
+  }
+
+  // Repo snapshot often has a tiny stub for famille1.swf (17 bytes).
+  // Serve famille0 as fallback to avoid malformed SWF parse loops in Ruffle.
+  if (fileName === 'famille1.swf') {
+    try {
+      const st = fs.statSync(absPath);
+      if (st.size <= 32) {
+        console.warn('[SWF]   famille1.swf is a stub, falling back to famille0.swf');
+        absPath = path.join(__dirname, 'public', 'swf', 'fbouille', 'famille0.swf');
+      }
+    } catch {}
   }
 
   console.log(`[SWF]   Serving avatar asset: ${fileName}`);
