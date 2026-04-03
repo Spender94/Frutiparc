@@ -449,9 +449,6 @@ app.get('/do/onident', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/do/ld', (req, res) => {
   const discId = req.query.u || 'unknown';
-  const origin = `${req.protocol}://${req.get('host')}`;
-  const abs = (u) => (u.startsWith('http://') || u.startsWith('https://') ? u : `${origin}${u.startsWith('/') ? '' : '/'}${u}`);
-
   const discMap = {
     kaluga1: {
       t: '0',
@@ -480,7 +477,8 @@ app.get('/do/ld', (req, res) => {
   };
 
   const game = discMap[discId] || discMap.kaluga1;
-  const swfNodes = game.swfList.map((u) => `<s u="${abs(u)}" />`).join('');
+  // Legacy loader prepends host on its side; keep <s u> relative to avoid host duplication.
+  const swfNodes = game.swfList.map((u) => `<s u="${u}" />`).join('');
   res.type('text/xml').send(
     `<game t="${game.t}" pm="${game.pm}" n="${game.n}" u="${game.u}" p="${game.p}">${swfNodes}</game>`
   );
