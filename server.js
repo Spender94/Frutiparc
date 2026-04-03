@@ -456,7 +456,11 @@ app.get('/do/ld', (req, res) => {
       n: 'kaluga',
       u: '/swf/games/kaluga/kaluga.swf',
       p: 'w=700;h=480;m=i',
-      swfList: ['/swf/games/kaluga/kaluga.swf'],
+      swfList: [
+        '/swf/games/kaluga/kaluga.swf',
+        '/swf/sd/kaluga_tz.swf',
+        '/swf/sd/kaluga_panier.swf',
+      ],
     },
     mb21: {
       t: '0',
@@ -464,7 +468,11 @@ app.get('/do/ld', (req, res) => {
       n: 'kaluga',
       u: '/swf/games/kaluga/kaluga.swf',
       p: 'w=700;h=480;m=i',
-      swfList: ['/swf/games/kaluga/kaluga.swf'],
+      swfList: [
+        '/swf/games/kaluga/kaluga.swf',
+        '/swf/sd/kaluga_tz.swf',
+        '/swf/sd/kaluga_panier.swf',
+      ],
     },
     swapou21: {
       t: '0',
@@ -472,7 +480,11 @@ app.get('/do/ld', (req, res) => {
       n: 'kaluga',
       u: '/swf/games/kaluga/kaluga.swf',
       p: 'w=700;h=480;m=i',
-      swfList: ['/swf/games/kaluga/kaluga.swf'],
+      swfList: [
+        '/swf/games/kaluga/kaluga.swf',
+        '/swf/sd/kaluga_tz.swf',
+        '/swf/sd/kaluga_panier.swf',
+      ],
     },
   };
 
