@@ -538,8 +538,13 @@ app.get('/do/ld', (req, res) => {
   }
   recordFrusionEvent(sid, 'do_ld', { discId, swf: game.u, files: game.swfList });
   if (sid) res.set('X-Frusion-Sid', sid);
-  // Legacy loader prepends host on its side; keep <s u> relative to avoid host duplication.
-  const swfNodes = game.swfList.map((u) => `<s u="${u}" />`).join('');
+  // Legacy GameDiscLoader stores unnamed <s> entries under files['index'];
+  // only the first one should be unnamed (main SWF), others must be named.
+  const swfNodes = game.swfList
+    .map((u, idx) => (idx === 0
+      ? `<s u="${u}" />`
+      : `<s n="${path.basename(u)}" u="${u}" />`))
+    .join('');
   res.type('text/xml').send(
     `<game t="${game.t}" pm="${game.pm}" n="${game.u}" u="${discId}" p="${game.p}">${swfNodes}</game>`
   );
