@@ -23,19 +23,21 @@ const DST = 'legacy/main.swf';
 const BACKUP = 'legacy/main.swf.original';
 
 // What to replace — each `to` string MUST be the same length as `from`.
-// We pad short replacements with URL path segments that the browser
-// resolves away:  /pad/../  (8 chars, net effect = /)
-//                 /./       (3 chars, net effect = /)
-// This way http://localhost:8888/pad/../xml/foo → http://localhost:8888/xml/foo
+// We pad short replacements with '/./' segments that URL parsers resolve
+// transparently, while keeping a slash right after the host. This avoids
+// malformed concatenations like http://localhost:8888animfrusion.swf.
 const patches = [
-  { from: 'www.beta.frutiparc.com', to: 'localhost:8888/betawww' },  // 22 chars each
-  { from: 'swf.beta.frutiparc.com', to: 'localhost:8888/betaswf' },  // 22 chars each
-  { from: 'swf.frutiparc.com', to: 'localhost:8888/sw' },            // 17 chars each
+  // Original host constants
+  { from: 'www.beta.frutiparc.com', to: 'localhost:8888/./././/' }, // 22 chars each
+  { from: 'swf.beta.frutiparc.com', to: 'localhost:8888/./././/' }, // 22 chars each
+  { from: 'swf.frutiparc.com', to: 'localhost:8888/./' },           // 17 chars each
+  // Migration from previous shim values (already patched files)
+  { from: 'localhost:8888/betawww', to: 'localhost:8888/./././/' }, // 22 chars each
+  { from: 'localhost:8888/betaswf', to: 'localhost:8888/./././/' }, // 22 chars each
+  { from: 'localhost:8888/sw', to: 'localhost:8888/./' },           // 17 chars each
 ];
 
 // Each replacement is exactly the same length as the original.
-// The server strips these prefixes (/betawww, /betaswf, /sw) from
-// incoming URLs before routing, so they act as transparent shims.
 
 // ── Bytecode patches ─────────────────────────────────────────────
 // These modify specific AVM1 bytecode values at known offsets in the
@@ -144,4 +146,4 @@ fs.writeFileSync(DST, newSwf);
 
 console.log(`\nDone! ${patchCount} patch(es) applied.`);
 console.log(`New SWF size: ${newSwf.length} bytes`);
-console.log(`\nThe SWF now points to localhost:8888 instead of www.beta.frutiparc.com`);
+console.log(`\nThe SWF now points to localhost:8888 with slash-safe host shims.`);
