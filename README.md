@@ -31,8 +31,6 @@ laisser des valeurs de dev en dur :
 - `PORT` (défaut `8888`)
 - `XMLSOCKET_PORT` (défaut `5000`, idéalement un port se terminant par `000`)
 - `PUBLIC_HOST` (optionnel, override explicite du domaine public)
-- `DEFAULT_USERNAME` (défaut `skool`)
-- `DEFAULT_PASSWORD` (défaut `test`)
 - `VERBOSE_HTTP_LOGS=1` pour activer les logs HTTP verbeux
 - `VERBOSE_SWF_LOGS=1` pour activer les logs SWF verbeux
 
@@ -47,8 +45,6 @@ Exemple de lancement "quasi-prod" en local :
 
 ```bash
 PUBLIC_HOST=frutiparc.example.com \
-DEFAULT_USERNAME=admin \
-DEFAULT_PASSWORD='change-me-now' \
 npm start
 ```
 
@@ -78,8 +74,6 @@ Tu peux déployer ce repo sur **Render Web Service** sans VPS manuel :
 4. Variables d'environnement Render:
    - `PORT` = (laisse Render injecter automatiquement; ne pas forcer une valeur fixe)
    - `PUBLIC_HOST` = ton domaine Render (ex: `mon-app.onrender.com`) ou ton domaine custom
-   - `DEFAULT_USERNAME` = un login de test non-public
-   - `DEFAULT_PASSWORD` = un vrai mot de passe (pas `test`)
    - `VERBOSE_HTTP_LOGS` = vide (ou `0`)
    - `VERBOSE_SWF_LOGS` = vide (ou `0`)
 5. Déployer et attendre le statut **Live**.
@@ -97,7 +91,7 @@ Notes Render:
 
 ### 3) Vérifs avant partage à d'autres testeurs
 
-- Changer les identifiants par défaut.
+- Vérifier le flux compte: créer un compte via `/login`, puis entrer dans `/legacy?sid=...`.
 - Couper les logs verbeux (`VERBOSE_HTTP_LOGS` / `VERBOSE_SWF_LOGS` non définis).
 - Vérifier que `PUBLIC_HOST` est bien ton domaine public.
 - Contrôler les assets SWF critiques (pas de stubs de quelques octets).
