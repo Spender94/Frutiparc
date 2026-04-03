@@ -221,9 +221,9 @@ function buildBouilleListXml() {
 
 // ─────────────────────────────────────────────
 // File system tree (virtual)
-// b = "messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin"
+// b = "messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;shop;accessories;mycontact;recyclebin"
 // ─────────────────────────────────────────────
-const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin">
+const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;shop;accessories;mycontact;recyclebin">
   <f u="messages" n="Messages" t="messages">
     <f u="inbox" n="Boîte de réception" t="inbox" />
     <f u="outbox" n="Messages envoyés" t="outbox" />
@@ -232,6 +232,9 @@ const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbo
   </f>
   <f u="disccollector" n="Mes disques" t="disccollector" />
   <f u="inventory" n="Inventaire" t="inventory" />
+  <f u="shop" n="Boutique" t="shop">
+    <f u="accessories" n="Accessoires" t="accessories" />
+  </f>
   <f u="mycontact" n="Mes contacts" t="mycontact" />
   <f u="recyclebin" n="Corbeille" t="recyclebin" />
 </s>`;
@@ -552,11 +555,6 @@ app.get('/ft/tree', (req, res) => {
   res.type('text/xml').send(FILE_TREE_XML);
 });
 
-// Legacy alias seen in some SWFs / URL rewrite paths
-app.get('/ft/tree', (req, res) => {
-  res.type('text/xml').send(FILE_TREE_XML);
-});
-
 // ─────────────────────────────────────────────
 // ENDPOINT: ff/ls — List folder contents
 // Returns XML
@@ -613,6 +611,18 @@ ${escapeXml(currentBouille)}</e>
         ${customAccessoryNodes}
       </f>`
     );
+  }
+
+  if (uid === 'shop') {
+    return res.type('text/xml').send('<f u="shop"><f u="accessories" t="accessories" /></f>');
+  }
+
+  if (uid === 'accessories') {
+    const nodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}
+${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+      .join('');
+    return res.type('text/xml').send(`<f u="accessories">${nodes || '<i />'}</f>`);
   }
 
 
