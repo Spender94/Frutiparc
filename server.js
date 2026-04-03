@@ -449,6 +449,8 @@ app.get('/do/onident', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/do/ld', (req, res) => {
   const discId = req.query.u || 'unknown';
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const abs = (u) => (u.startsWith('http://') || u.startsWith('https://') ? u : `${origin}${u.startsWith('/') ? '' : '/'}${u}`);
 
   const discMap = {
     kaluga1: {
@@ -457,7 +459,7 @@ app.get('/do/ld', (req, res) => {
       n: 'kaluga',
       u: '1',
       p: 'w=700;h=480;m=i',
-      swfList: ['swf/sd/kaluga_tz.swf', 'swf/sd/kaluga_panier.swf'],
+      swfList: ['/animfrusion.swf', '/swf/sd/kaluga_tz.swf', '/swf/sd/kaluga_panier.swf'],
     },
     mb21: {
       t: '0',
@@ -465,7 +467,7 @@ app.get('/do/ld', (req, res) => {
       n: 'mb2',
       u: '1',
       p: 'w=700;h=480;m=i',
-      swfList: ['swf/sd/mb2_ball.swf'],
+      swfList: ['/animfrusion.swf', '/swf/sd/mb2_ball.swf'],
     },
     swapou21: {
       t: '0',
@@ -473,12 +475,12 @@ app.get('/do/ld', (req, res) => {
       n: 'swapou2',
       u: '1',
       p: 'w=700;h=480;m=i',
-      swfList: ['swf/sd/swapou_chars.swf'],
+      swfList: ['/animfrusion.swf', '/swf/sd/swapou_chars.swf'],
     },
   };
 
   const game = discMap[discId] || discMap.kaluga1;
-  const swfNodes = game.swfList.map((u) => `<s u="${u}" />`).join('');
+  const swfNodes = game.swfList.map((u) => `<s u="${abs(u)}" />`).join('');
   res.type('text/xml').send(
     `<game t="${game.t}" pm="${game.pm}" n="${game.n}" u="${game.u}" p="${game.p}">${swfNodes}</game>`
   );
