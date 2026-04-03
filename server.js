@@ -148,8 +148,6 @@ function bouilleOf(user) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
-const DEFAULT_USERNAME = process.env.DEFAULT_USERNAME || 'skool';
-const DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD || 'test';
 const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
 
 function createDefaultUser(pass) {
@@ -169,9 +167,6 @@ function createDefaultUser(pass) {
     needsBouille: true, // Force editbouille on first login
   };
 }
-
-// Default user for quick testing/admin flows
-users[DEFAULT_USERNAME] = createDefaultUser(DEFAULT_PASSWORD);
 
 function normalizeUsername(raw) {
   return String(raw || '').trim().toLowerCase();
@@ -270,6 +265,10 @@ const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbo
 // Legacy Ruffle page
 // ─────────────────────────────────────────────
 app.get('/legacy', (req, res) => {
+  const sid = req.query.sid;
+  if (!resolveUsernameFromSid(sid)) {
+    return res.redirect('/login');
+  }
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
@@ -457,7 +456,20 @@ function resolveUsernameFromSid(sid) {
   if (sid && sessions[sid] && sessions[sid].user && users[sessions[sid].user]) {
     return sessions[sid].user;
   }
-  return DEFAULT_USERNAME;
+  return null;
+}
+
+function requireAuthBySid(sid, res, responseType = 'text/plain') {
+  const username = resolveUsernameFromSid(sid);
+  if (!username) {
+    if (responseType === 'text/xml') {
+      res.status(401).type('text/xml').send('<r k="401">auth_required</r>');
+    } else {
+      res.status(401).type('text/plain').send('state=1&error=auth_required');
+    }
+    return null;
+  }
+  return { username, user: users[username] };
 }
 
 app.all('/do/eb', (req, res) => {
@@ -466,32 +478,12 @@ app.all('/do/eb', (req, res) => {
   const sid = source.sid || 'debug';
   const rawBouille = source.b || source.s || source.f || '';
   const bouille = normalizeBouilleState(rawBouille);
-  const username = resolveUsernameFromSid(sid);
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
 
-  if (!sessions[sid]) {
-    sessions[sid] = { user: username, createdAt: Date.now() };
-  } else if (!sessions[sid].user) {
-    sessions[sid].user = username;
-  }
+  auth.user.fbouille = bouille;
 
-  if (!users[username]) {
-    users[username] = {
-      pass: '',
-      xp: 10000,
-      kikooz: 50,
-      fbouille: DEFAULT_BOUILLE_STATE,
-      items: withDefaultPens([]),
-      gender: 'M',
-      birthday: '2000-01-01',
-      country: 'FR',
-      region: 'IDF',
-      prefs: '',
-    };
-  }
-
-  users[username].fbouille = bouille;
-
-  console.log(`[do/eb] Saved bouille for ${username}: ${bouille}`);
+  console.log(`[do/eb] Saved bouille for ${auth.username}: ${bouille}`);
   // Legacy callers consume LoadVars here; include k=0 to avoid error.http.undefined
   // while keeping historical bouille fields.
   res.type('text/plain').send(`state=0&k=0&b=${bouille}&s=${bouille}&f=${bouille}`);
@@ -499,9 +491,9 @@ app.all('/do/eb', (req, res) => {
 
 function handleNewBouille(req, res) {
   const sid = req.query.sid;
-  const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
+  const { user } = auth;
 
   const entry = {
     id: 'acc_' + crypto.randomBytes(4).toString('hex'),
@@ -536,9 +528,9 @@ app.get('/newbouille', handleNewBouille);
 // ─────────────────────────────────────────────
 app.get('/do/gmi', (req, res) => {
   const sid = req.query.sid;
-  const session = sessions[sid];
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
+  const { username, user } = auth;
 
   const params = new URLSearchParams({
     state: '0',
@@ -573,9 +565,9 @@ app.get('/prefForm', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/do/onident', (req, res) => {
   const sid = req.query.sid;
-  const session = sessions[sid];
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
 
   user.items = withDefaultPens(user.items);
   const items = user.items.join(',');
@@ -639,9 +631,9 @@ app.get('/ft/tree', (req, res) => {
 app.get(['/ff/ls', '/ls'], (req, res) => {
   const uid = req.query.uid || 'root';
   const sid = req.query.sid;
-  const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
   ensureContactLists(user);
   const currentBouille = bouilleOf(user);
   const bouilleBase = `${currentBouille}${DEFAULT_BOUILLE_STATE}`.slice(0, 15);
@@ -738,9 +730,9 @@ kaluga</e>
 // ─────────────────────────────────────────────
 app.get(['/ff/mk', '/mk'], (req, res) => {
   const sid = req.query.sid;
-  const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
   ensureContactLists(user);
 
   const newUid = 'f' + crypto.randomBytes(4).toString('hex');
@@ -770,9 +762,9 @@ app.get(['/ff/mk', '/mk'], (req, res) => {
 // ─────────────────────────────────────────────
 app.get(['/ff/mv', '/mv'], (req, res) => {
   const sid = req.query.sid;
-  const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
   ensureContactLists(user);
 
   const file = String(req.query.f || '');
@@ -1214,9 +1206,12 @@ function handleCBeeMessage(socket, rawXml) {
       const sid = msg.attrs.s || '';
       const sessionUser = sid && sessions[sid] && sessions[sid].user ? sessions[sid].user : '';
 
-      // Priority: sid-bound user (real logged account) > explicit login > default dev user.
-      // This avoids forcing everyone onto DEFAULT_USERNAME when the SWF sends l="".
-      const effectiveLogin = sessionUser || login || DEFAULT_USERNAME;
+      // Priority: sid-bound user (real logged account) > explicit login.
+      const effectiveLogin = sessionUser || login;
+      if (!effectiveLogin) {
+        sendToClient(socket, `<${CMD.ident} k="401" />`);
+        break;
+      }
 
       // Auto-create session if needed
       if (sid && !sessions[sid]) {
