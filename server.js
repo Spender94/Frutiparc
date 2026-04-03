@@ -529,6 +529,8 @@ app.get('/do/ld', (req, res) => {
       p: 'w=700;h=480;m=i',
       swfList: [
         '/swf/games/kaluga/kaluga.swf',
+        '/swf/sd/kaluga_tz.swf',
+        '/swf/sd/kaluga_panier.swf',
       ],
     },
     mb21: {
@@ -539,6 +541,8 @@ app.get('/do/ld', (req, res) => {
       p: 'w=700;h=480;m=i',
       swfList: [
         '/swf/games/kaluga/kaluga.swf',
+        '/swf/sd/kaluga_tz.swf',
+        '/swf/sd/kaluga_panier.swf',
       ],
     },
     swapou21: {
@@ -549,30 +553,17 @@ app.get('/do/ld', (req, res) => {
       p: 'w=700;h=480;m=i',
       swfList: [
         '/swf/games/kaluga/kaluga.swf',
+        '/swf/sd/kaluga_tz.swf',
+        '/swf/sd/kaluga_panier.swf',
       ],
     },
   };
 
   const game = discMap[discId] || discMap.kaluga1;
-  const sid = sidFromRequest(req);
-  if (sid) {
-    lastFrusionSid = sid;
-    lastFrusionSidAt = Date.now();
-  }
-  recordFrusionEvent(sid, 'do_ld', { discId, swf: game.u, files: game.swfList });
-  if (sid) res.set('X-Frusion-Sid', sid);
-  // Legacy GameDiscLoader stores unnamed <s> entries under files['index'];
-  // only the first one should be unnamed (main SWF), others must be named.
-  const swfNodes = game.swfList
-    .map((u, idx) => {
-      const s = swfSizeForUrlPath(u);
-      return idx === 0
-        ? `<s u="${u}" s="${s}" />`
-        : `<s n="${path.basename(u)}" u="${u}" s="${s}" />`;
-    })
-    .join('');
+  // Legacy loader prepends host on its side; keep <s u> relative to avoid host duplication.
+  const swfNodes = game.swfList.map((u) => `<s u="${u}" />`).join('');
   res.type('text/xml').send(
-    `<game t="${game.t}" pm="${game.pm}" n="${game.n}" u="${game.u}" p="${game.p}">${swfNodes}</game>`
+    `<game t="${game.t}" pm="${game.pm}" n="${game.u}" u="${discId}" p="${game.p}">${swfNodes}</game>`
   );
 });
 
@@ -721,22 +712,6 @@ app.get(['/debug/frusion-state', '/debug/frusion-state/', '/debug/frusion-state/
 // ─────────────────────────────────────────────
 // Serve SWF assets under /swf/* (used by the JS fetch interceptor rewrite)
 // ─────────────────────────────────────────────
-app.use((req, res, next) => {
-  if (
-    req.url.startsWith('/animfrusion.sw') ||
-    req.url.startsWith('/swf/games/kaluga/kaluga.swf') ||
-    req.url.startsWith('/swf/sd/kaluga_tz.swf') ||
-    req.url.startsWith('/swf/sd/kaluga_panier.swf')
-  ) {
-    let sid = sidFromRequest(req);
-    if (!sid && lastFrusionSid && (Date.now() - lastFrusionSidAt) < 60000) {
-      sid = lastFrusionSid;
-    }
-    recordFrusionEvent(sid, 'asset_fetch', { url: req.url });
-  }
-  next();
-});
-
 // Compatibility aliases for patched legacy Frusion constants (15-char slash-safe names)
 app.get('/animfrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'animfrusion.swf')));
 app.get('/skinFrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf')));
