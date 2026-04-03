@@ -57,6 +57,7 @@ function warnIfStubSwfAssets() {
   const criticalSwfs = [
     'public/swf/fbouille/famille0.swf',
     'public/swf/fbouille/famille1.swf',
+    'public/frusion_client.swf',
 
   ];
 
@@ -143,6 +144,36 @@ function bouilleOf(user) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
+const frusionTrace = {};   // sid -> [{ at, event, meta }]
+let lastFrusionSid = null;
+let lastFrusionSidAt = 0;
+
+function sidFromRequest(req) {
+  if (req.query && typeof req.query.sid === 'string' && req.query.sid) return req.query.sid;
+  const ref = req.get('referer') || req.get('referrer');
+  if (!ref) return null;
+  try {
+    const url = new URL(ref);
+    return url.searchParams.get('sid');
+  } catch {
+    return null;
+  }
+}
+
+function recordFrusionEvent(sid, event, meta = {}) {
+  const key = sid || '__no_sid';
+  const row = { at: new Date().toISOString(), sid: key, event, meta };
+
+  if (!frusionTrace[key]) frusionTrace[key] = [];
+  frusionTrace[key].push(row);
+  if (frusionTrace[key].length > 80) frusionTrace[key].shift();
+
+  if (!frusionTrace.__all) frusionTrace.__all = [];
+  frusionTrace.__all.push(row);
+  if (frusionTrace.__all.length > 300) frusionTrace.__all.shift();
+
+  console.log(`[FRUSION][${key}] ${event} ${JSON.stringify(meta)}`);
+}
 
 // Default user for quick testing
 users['Angelisium'] = {
@@ -239,6 +270,11 @@ app.get('/legacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
+app.get('/frusion', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'frusion-ruffle.html'));
+});
+
+
 app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
 });
@@ -259,6 +295,13 @@ app.get('/fileIcon.swf', (req, res) => {
 });
 
 
+
+app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
+  const fallback = path.join(__dirname, 'frusion', 'saf_debug.swf');
+  console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+  res.type('application/x-shockwave-flash');
+  res.sendFile(fallback);
+});
 
 function sendAvatarFamily(res, fileName) {
   let absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
@@ -461,6 +504,22 @@ app.get('/do/onident', (req, res) => {
 
   res.type('text/xml').send(xml);
 });
+
+function swfSizeForUrlPath(urlPath) {
+  const clean = String(urlPath || '').replace(/\?.*$/, '');
+  const candidates = [
+    path.join(__dirname, 'public', clean.replace(/^\//, '')),
+    path.join(__dirname, clean.replace(/^\//, '')),
+    path.join(__dirname, 'Games', clean.replace(/^\/swf\/games\//, '')),
+  ];
+  for (const abs of candidates) {
+    try {
+      const st = fs.statSync(abs);
+      if (st.isFile()) return String(st.size);
+    } catch {}
+  }
+  return '0';
+}
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/ld — Load game disc
@@ -676,8 +735,18 @@ app.get('/ff/dm', (req, res) => {
 // ENDPOINT: h/send_debug — Debug logging (POST)
 // ─────────────────────────────────────────────
 app.post('/h/send_debug', (req, res) => {
-  console.log('[debug from SWF]', req.body.txt || '');
+  const sid = sidFromRequest(req);
+  const txt = req.body.txt || '';
+  console.log('[debug from SWF]', txt);
+  recordFrusionEvent(sid, 'swf_debug', { txt });
   res.type('text/plain').send('state=0');
+});
+
+app.get(['/debug/frusion-state', '/debug/frusion-state/', '/debug/frusion-state/all'], (req, res) => {
+  const sid = sidFromRequest(req) || req.query.sid || '';
+  const events = sid ? (frusionTrace[sid] || []) : (frusionTrace.__all || []);
+  const availableSids = Object.keys(frusionTrace).filter((k) => !k.startsWith('__'));
+  res.json({ ok: true, sid, count: events.length, availableSids, events });
 });
 
 // ─────────────────────────────────────────────
