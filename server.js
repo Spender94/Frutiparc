@@ -449,7 +449,39 @@ app.get('/do/onident', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/do/ld', (req, res) => {
   const discId = req.query.u || 'unknown';
-  res.type('text/xml').send(`<r u="${discId}" />`);
+
+  const discMap = {
+    kaluga1: {
+      t: '0',
+      pm: 'single',
+      n: 'kaluga',
+      u: '1',
+      p: 'w=700;h=480;m=i',
+      swfList: ['swf/sd/kaluga_tz.swf', 'swf/sd/kaluga_panier.swf'],
+    },
+    mb21: {
+      t: '0',
+      pm: 'single',
+      n: 'mb2',
+      u: '1',
+      p: 'w=700;h=480;m=i',
+      swfList: ['swf/sd/mb2_ball.swf'],
+    },
+    swapou21: {
+      t: '0',
+      pm: 'single',
+      n: 'swapou2',
+      u: '1',
+      p: 'w=700;h=480;m=i',
+      swfList: ['swf/sd/swapou_chars.swf'],
+    },
+  };
+
+  const game = discMap[discId] || discMap.kaluga1;
+  const swfNodes = game.swfList.map((u) => `<s u="${u}" />`).join('');
+  res.type('text/xml').send(
+    `<game t="${game.t}" pm="${game.pm}" n="${game.n}" u="${game.u}" p="${game.p}">${swfNodes}</game>`
+  );
 });
 
 // ─────────────────────────────────────────────
@@ -508,6 +540,19 @@ ${escapeXml(currentBouille)}</e>
 ${escapeXml(accessoryBouilleA)}</e>
         <e u="my_bouille_test_2" t="bouille" s="10" d="0" a="0">Test bouille #2
 ${escapeXml(currentBouille)}</e>
+      </f>`
+    );
+  }
+
+  if (uid === 'disccollector') {
+    return res.type('text/xml').send(
+      `<f u="disccollector">
+        <e u="kaluga1" t="disc" s="10" d="0" a="0">0
+kaluga</e>
+        <e u="mb21" t="disc" s="10" d="0" a="0">0
+mb2</e>
+        <e u="swapou21" t="disc" s="10" d="0" a="0">0
+swapou2</e>
       </f>`
     );
   }
