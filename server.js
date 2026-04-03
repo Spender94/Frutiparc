@@ -262,6 +262,11 @@ app.get('/legacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
+app.get('/frusion', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'frusion-ruffle.html'));
+});
+
+
 app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
 });
