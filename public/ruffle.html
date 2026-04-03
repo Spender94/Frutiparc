@@ -37,13 +37,21 @@
                     ? input
                     : (input instanceof Request ? input.url : String(input));
 
+                // Some legacy URL builders concatenate host + file without "/"
+                // (e.g. http://localhost:8888animfrusion.swf). Fix it here.
+                if (typeof url === 'string') {
+                    url = url.replace(/^http:\/\/localhost:8888(?![\/:])/, 'http://localhost:8888/');
+                    url = url.replace(/^https:\/\/localhost:8888(?![\/:])/, 'https://localhost:8888/');
+                }
+
                 try {
                     const parsed = new URL(url);
                     const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
 
                     for (const [domain, target] of Object.entries(domainMap)) {
                         if (host === domain || parsed.hostname === domain) {
-                            const newUrl = target + parsed.pathname + parsed.search;
+                            const path = parsed.pathname.startsWith('/') ? parsed.pathname : ('/' + parsed.pathname);
+                            const newUrl = target + path + parsed.search;
                             console.log('[FETCH rewrite]', url, '->', newUrl);
                             return _origFetch.call(this, newUrl, init);
                         }
@@ -78,13 +86,19 @@
             XMLHttpRequest.prototype.open = function(method, url, ...rest) {
                 let rewritten = url;
 
+                if (typeof rewritten === 'string') {
+                    rewritten = rewritten.replace(/^http:\/\/localhost:8888(?![\/:])/, 'http://localhost:8888/');
+                    rewritten = rewritten.replace(/^https:\/\/localhost:8888(?![\/:])/, 'https://localhost:8888/');
+                }
+
                 try {
-                    const parsed = new URL(url, window.location.origin);
+                    const parsed = new URL(rewritten, window.location.origin);
                     const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
 
                     for (const [domain, target] of Object.entries(domainMap)) {
                         if (host === domain || parsed.hostname === domain) {
-                            rewritten = target + parsed.pathname + parsed.search;
+                            const path = parsed.pathname.startsWith('/') ? parsed.pathname : ('/' + parsed.pathname);
+                            rewritten = target + path + parsed.search;
                             console.log('[XHR rewrite]', url, '->', rewritten);
                             break;
                         }
@@ -159,7 +173,7 @@
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",
-                base: "/"
+                base: "http://localhost:8888/"
             });
         });
     </script>
