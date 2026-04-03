@@ -182,7 +182,7 @@ users['Angelisium'] = {
   kikooz: 150,
   fbouille: DEFAULT_BOUILLE_STATE,
   items: withDefaultPens([1, 2, 3]),
-  contacts: ['Gaspard@frutiparc.com'],
+  contacts: [],
   blacklist: [],
   gender: 'M',
   birthday: '1990-05-15',
@@ -228,6 +228,13 @@ function ensureContactLists(user) {
   if (!Array.isArray(user.blacklist)) user.blacklist = [];
 }
 
+function normalizeContactAddress(raw) {
+  const v = String(raw || '').trim();
+  if (!v) return '';
+  if (v.includes('@')) return v;
+  return `${v}@frutiparc.com`;
+}
+
 const DEFAULT_BOUILLE_LIST = [
   { b: '000503000000111010000000', n: 'Classique' },
   { b: '000503000000111011000000', n: 'Classique 2' },
@@ -270,10 +277,10 @@ app.get('/legacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
+// Explicitly block legacy popup game runtime route.
 app.get('/frusion', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'frusion-ruffle.html'));
+  res.type('text/html').send('<!doctype html><meta charset="utf-8"><script>try{window.close();}catch(e){}location.replace("/legacy");</script>');
 });
-
 
 app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
@@ -683,7 +690,7 @@ app.get('/ff/mk', (req, res) => {
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
   if (type === 'contact' && (folder === 'mycontact' || folder === 'blacklist')) {
-    const addr = desc.split('\n')[0].trim();
+    const addr = normalizeContactAddress(desc.split('\n')[0]);
     const list = folder === 'blacklist' ? user.blacklist : user.contacts;
     if (addr && !list.includes(addr)) list.push(addr);
     const local = addr.split('@')[0] || addr || newUid;
@@ -710,9 +717,10 @@ app.get('/ff/mv', (req, res) => {
 
   let oldFolder = String(req.query.p || 'root');
   const local = file.split('@')[0];
+  const normalizedFileAddr = normalizeContactAddress(file);
 
-  const inContacts = user.contacts.find((a) => a.split('@')[0] === local);
-  const inBlacklist = user.blacklist.find((a) => a.split('@')[0] === local);
+  const inContacts = user.contacts.find((a) => a === normalizedFileAddr || a.split('@')[0] === local);
+  const inBlacklist = user.blacklist.find((a) => a === normalizedFileAddr || a.split('@')[0] === local);
 
   if (folder === 'recyclebin') {
     if (inContacts) {
