@@ -57,6 +57,7 @@ function warnIfStubSwfAssets() {
   const criticalSwfs = [
     'public/swf/fbouille/famille0.swf',
     'public/swf/fbouille/famille1.swf',
+    'public/frusion_client.swf',
 
   ];
 
@@ -250,6 +251,10 @@ app.get('/legacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
+app.get('/do/ld', (req, res) => {
+  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
+});
+
 app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
 });
@@ -270,6 +275,13 @@ app.get('/fileIcon.swf', (req, res) => {
 });
 
 
+
+app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
+  const fallback = path.join(__dirname, 'frusion', 'saf_debug.swf');
+  console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+  res.type('application/x-shockwave-flash');
+  res.sendFile(fallback);
+});
 
 function sendAvatarFamily(res, fileName) {
   let absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
@@ -506,6 +518,22 @@ app.get('/do/onident', (req, res) => {
   res.type('text/xml').send(xml);
 });
 
+function swfSizeForUrlPath(urlPath) {
+  const clean = String(urlPath || '').replace(/\?.*$/, '');
+  const candidates = [
+    path.join(__dirname, 'public', clean.replace(/^\//, '')),
+    path.join(__dirname, clean.replace(/^\//, '')),
+    path.join(__dirname, 'Games', clean.replace(/^\/swf\/games\//, '')),
+  ];
+  for (const abs of candidates) {
+    try {
+      const st = fs.statSync(abs);
+      if (st.isFile()) return String(st.size);
+    } catch {}
+  }
+  return '0';
+}
+
 // ─────────────────────────────────────────────
 // ENDPOINT: do/ld — Game disc loading
 // Disabled in simplified mode (no Frusion launch hacks).
@@ -725,13 +753,28 @@ app.get('/ff/dm', (req, res) => {
 // ENDPOINT: h/send_debug — Debug logging (POST)
 // ─────────────────────────────────────────────
 app.post('/h/send_debug', (req, res) => {
-  console.log('[debug from SWF]', req.body.txt || '');
+  const sid = sidFromRequest(req);
+  const txt = req.body.txt || '';
+  console.log('[debug from SWF]', txt);
+  recordFrusionEvent(sid, 'swf_debug', { txt });
   res.type('text/plain').send('state=0');
+});
+
+app.get(['/debug/frusion-state', '/debug/frusion-state/', '/debug/frusion-state/all'], (req, res) => {
+  const sid = sidFromRequest(req) || req.query.sid || '';
+  const events = sid ? (frusionTrace[sid] || []) : (frusionTrace.__all || []);
+  const availableSids = Object.keys(frusionTrace).filter((k) => !k.startsWith('__'));
+  res.json({ ok: true, sid, count: events.length, availableSids, events });
 });
 
 // ─────────────────────────────────────────────
 // Serve SWF assets under /swf/* (used by the JS fetch interceptor rewrite)
 // ─────────────────────────────────────────────
+// Compatibility aliases for patched legacy Frusion constants (15-char slash-safe names)
+app.get('/animfrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'animfrusion.swf')));
+app.get('/skinFrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf')));
+
+app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
