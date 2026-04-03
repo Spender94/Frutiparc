@@ -1128,6 +1128,43 @@ function resolveKnownUsername(nameOrLower) {
   return raw;
 }
 
+function parsePrivateParticipants(groupName) {
+  const g = String(groupName || '');
+  if (g.startsWith('pm2_')) {
+    const payload = g.substring(4);
+    const [aRaw, bRaw] = payload.split('__');
+    if (!aRaw || !bRaw) return [];
+    try {
+      return [decodeURIComponent(aRaw), decodeURIComponent(bRaw)].map(resolveKnownUsername);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!g.startsWith('pm_')) return [];
+  const payload = g.substring(3);
+  const knownLowers = Object.keys(users).map((u) => u.toLowerCase());
+  for (const candidate of knownLowers) {
+    const prefix = `${candidate}_`;
+    if (payload.startsWith(prefix)) {
+      const other = payload.substring(prefix.length);
+      if (other.length > 0) {
+        return [resolveKnownUsername(candidate), resolveKnownUsername(other)];
+      }
+    }
+  }
+  const parts = payload.split('_');
+  if (parts.length >= 2) {
+    return [resolveKnownUsername(parts[0]), resolveKnownUsername(parts.slice(1).join('_'))];
+  }
+  return [];
+}
+
+function buildPrivateGroupName(userA, userB) {
+  const sorted = [String(userA || '').toLowerCase(), String(userB || '').toLowerCase()].sort();
+  return `pm2_${encodeURIComponent(sorted[0])}__${encodeURIComponent(sorted[1])}`;
+}
+
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
@@ -1259,10 +1296,8 @@ case 'join': {
   const g = msg.attrs.g;
 
   if (!channels[g]) {
-    if (String(g).indexOf('pm_') === 0) {
-      const parts = String(g).split('_');
-      const p1 = resolveKnownUsername(parts[1] || '');
-      const p2 = resolveKnownUsername(parts[2] || '');
+    if (String(g).indexOf('pm_') === 0 || String(g).indexOf('pm2_') === 0) {
+      const [p1, p2] = parsePrivateParticipants(g);
       channels[g] = {
         desc: `Discussion privée ${p1}/${p2}`,
         topic: `Discussion privée ${p1}/${p2}`,
@@ -1458,7 +1493,8 @@ case 'fbouille': {
 }
 
 case 'createchannel': {
-  const otherUser = msg.attrs.u || '';
+  const otherUserRaw = msg.attrs.u || '';
+  const otherUser = resolveKnownUsername(normalizeUsername(otherUserRaw));
   const requester = client.username || '';
   const title = msg.content || otherUser || 'Discussion privée';
 
@@ -1468,7 +1504,7 @@ case 'createchannel': {
   }
 
   const sortedUsers = [requester.toLowerCase(), otherUser.toLowerCase()].sort();
-  const privateGroup = `pm_${sortedUsers[0]}_${sortedUsers[1]}`;
+  const privateGroup = buildPrivateGroupName(sortedUsers[0], sortedUsers[1]);
   const privatePass = `pw_${sortedUsers[0].slice(0, 4)}_${sortedUsers[1].slice(0, 4)}`;
 
   if (!channels[privateGroup]) {
