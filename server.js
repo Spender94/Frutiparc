@@ -492,7 +492,7 @@ app.get('/do/ld', (req, res) => {
   // Legacy loader prepends host on its side; keep <s u> relative to avoid host duplication.
   const swfNodes = game.swfList.map((u) => `<s u="${u}" />`).join('');
   res.type('text/xml').send(
-    `<game t="${game.t}" pm="${game.pm}" n="${game.n}" u="${game.u}" p="${game.p}">${swfNodes}</game>`
+    `<game t="${game.t}" pm="${game.pm}" n="${game.u}" u="${discId}" p="${game.p}">${swfNodes}</game>`
   );
 });
 
