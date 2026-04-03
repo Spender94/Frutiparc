@@ -546,7 +546,7 @@ app.get('/do/ld', (req, res) => {
       : `<s n="${path.basename(u)}" u="${u}" />`))
     .join('');
   res.type('text/xml').send(
-    `<game t="${game.t}" pm="${game.pm}" n="${game.u}" u="${discId}" p="${game.p}">${swfNodes}</game>`
+    `<game t="${game.t}" pm="${game.pm}" n="${game.n}" u="${game.u}" p="${game.p}">${swfNodes}</game>`
   );
 });
 
