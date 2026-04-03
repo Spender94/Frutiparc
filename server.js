@@ -158,12 +158,18 @@ function sidFromRequest(req) {
 }
 
 function recordFrusionEvent(sid, event, meta = {}) {
-  if (!sid) return;
-  const row = { at: new Date().toISOString(), event, meta };
-  if (!frusionTrace[sid]) frusionTrace[sid] = [];
-  frusionTrace[sid].push(row);
-  if (frusionTrace[sid].length > 80) frusionTrace[sid].shift();
-  console.log(`[FRUSION][${sid}] ${event} ${JSON.stringify(meta)}`);
+  const key = sid || '__no_sid';
+  const row = { at: new Date().toISOString(), sid: key, event, meta };
+
+  if (!frusionTrace[key]) frusionTrace[key] = [];
+  frusionTrace[key].push(row);
+  if (frusionTrace[key].length > 80) frusionTrace[key].shift();
+
+  if (!frusionTrace.__all) frusionTrace.__all = [];
+  frusionTrace.__all.push(row);
+  if (frusionTrace.__all.length > 300) frusionTrace.__all.shift();
+
+  console.log(`[FRUSION][${key}] ${event} ${JSON.stringify(meta)}`);
 }
 
 // Default user for quick testing
@@ -525,6 +531,7 @@ app.get('/do/ld', (req, res) => {
   const game = discMap[discId] || discMap.kaluga1;
   const sid = sidFromRequest(req);
   recordFrusionEvent(sid, 'do_ld', { discId, swf: game.u, files: game.swfList });
+  if (sid) res.set('X-Frusion-Sid', sid);
   // Legacy loader prepends host on its side; keep <s u> relative to avoid host duplication.
   const swfNodes = game.swfList.map((u) => `<s u="${u}" />`).join('');
   res.type('text/xml').send(
@@ -669,8 +676,9 @@ app.post('/h/send_debug', (req, res) => {
 
 app.get('/debug/frusion-state', (req, res) => {
   const sid = sidFromRequest(req) || req.query.sid || '';
-  const events = sid ? (frusionTrace[sid] || []) : frusionTrace;
-  res.json({ ok: true, sid, events });
+  const events = sid ? (frusionTrace[sid] || []) : (frusionTrace.__all || []);
+  const availableSids = Object.keys(frusionTrace).filter((k) => !k.startsWith('__'));
+  res.json({ ok: true, sid, count: events.length, availableSids, events });
 });
 
 // ─────────────────────────────────────────────
