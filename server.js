@@ -625,6 +625,10 @@ app.post('/h/send_debug', (req, res) => {
 // ─────────────────────────────────────────────
 // Serve SWF assets under /swf/* (used by the JS fetch interceptor rewrite)
 // ─────────────────────────────────────────────
+// Compatibility aliases for patched legacy Frusion constants (15-char slash-safe names)
+app.get('/animfrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'animfrusion.swf')));
+app.get('/skinFrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf')));
+
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 

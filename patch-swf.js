@@ -35,6 +35,9 @@ const patches = [
   { from: 'localhost:8888/betawww', to: 'localhost:8888/./././/' }, // 22 chars each
   { from: 'localhost:8888/betaswf', to: 'localhost:8888/./././/' }, // 22 chars each
   { from: 'localhost:8888/sw', to: 'localhost:8888/./' },           // 17 chars each
+  // Normalize Frusion loader movie names so host+filename concatenations stay valid
+  { from: 'animfrusion.swf', to: '/animfrusion.sw' },              // 15 chars each
+  { from: 'skinFrusion.swf', to: '/skinFrusion.sw' },              // 15 chars each
 ];
 
 // Each replacement is exactly the same length as the original.
