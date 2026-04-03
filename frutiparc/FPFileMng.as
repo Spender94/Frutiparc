@@ -257,7 +257,7 @@ class FPFileMng extends FFileMng{//}
 		inf.date = x.attributes.d;
 		inf.desc = x.firstChild.nodeValue.toString().split("\r\n");
 		inf.parent = x.attributes.f;
-		inf.pos = extra.pos;
+		inf.pos = (extra!=undefined)?extra.pos:undefined;
 		
 		if(inf.type == "folder"){
 			this.tree[inf.uid] = {name: inf.desc[0], type: inf.desc[1],tpl: x.attributes.p,childs:new Array(),parent: inf.parent};
