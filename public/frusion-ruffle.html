@@ -11,6 +11,7 @@
   <script>
     (async function(){
       const params = new URLSearchParams(window.location.search);
+      const wsOrigin = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
       const ruffle = window.RufflePlayer.newest();
       const player = ruffle.createPlayer();
       document.getElementById('player').appendChild(player);
@@ -18,7 +19,7 @@
       const flashVars = {};
       for (const [k,v] of params.entries()) flashVars[k] = v;
       if (!flashVars.sid) flashVars.sid = 'debug';
-      if (!flashVars.domain) flashVars.domain = 'localhost:8888/./';
+      if (!flashVars.domain) flashVars.domain = `${window.location.host}/./`;
 
       await player.load({
         url: '/frusion_client.swf',
@@ -27,8 +28,8 @@
         allowNetworking: 'all',
         openUrlMode: 'allow',
         quality: 'high',
-        base: 'http://localhost:8888/',
-        socketProxy: [{ host: 'localhost', port: 5000, proxyUrl: 'ws://localhost:8888' }],
+        base: `${window.location.origin}/`,
+        socketProxy: [{ host: 'localhost', port: 5000, proxyUrl: wsOrigin }],
         parameters: flashVars,
       });
     })();
