@@ -32,10 +32,59 @@
                 'localhost:5000':         'http://localhost:8888',
             };
 
+            function maybeAutoLaunchFrusion(requestUrl, responsePromise) {
+                return Promise.resolve(responsePromise).then((resp) => {
+                    try {
+                        const isDoLd = /\/do\/ld(\?|$)/.test(requestUrl || '');
+                        if (!isDoLd || window.__frusionAutoLaunchDone) return resp;
+                        window.__frusionAutoLaunchDone = true;
+
+                        resp.clone().text().then((xmlText) => {
+                            const gameTag = xmlText.match(/<game[^>]*>/i);
+                            if (!gameTag) return;
+                            const tag = gameTag[0];
+                            const firstSwfTag = xmlText.match(/<s[^>]*>/i);
+                            const getAttr = (name) => {
+                                const m = tag.match(new RegExp(name + '="([^"]*)"'));
+                                return m ? m[1] : '';
+                            };
+                            const getSwfAttr = (name) => {
+                                if (!firstSwfTag) return '';
+                                const m = firstSwfTag[0].match(new RegExp(name + '="([^"]*)"'));
+                                return m ? m[1] : '';
+                            };
+                            const sid = new URLSearchParams(window.location.search).get('sid') || 'debug';
+                            const target = new URL('/frusion', window.location.origin);
+                            target.searchParams.set('sid', sid);
+                            target.searchParams.set('disc_type', getAttr('t') || '0');
+                            target.searchParams.set('gameName', getAttr('n') || 'kaluga');
+                            target.searchParams.set('u', getAttr('u'));
+                            target.searchParams.set('id', getSwfAttr('u') || getAttr('u'));
+                            target.searchParams.set('size', getSwfAttr('s') || '0');
+                            target.searchParams.set('width', (getAttr('p').match(/w=(\d+)/) || [,'700'])[1]);
+                            target.searchParams.set('height', (getAttr('p').match(/h=(\d+)/) || [,'480'])[1]);
+                            target.searchParams.set('w', (getAttr('p').match(/w=(\d+)/) || [,'700'])[1]);
+                            target.searchParams.set('h', (getAttr('p').match(/h=(\d+)/) || [,'480'])[1]);
+                            target.searchParams.set('mode', (getAttr('p').match(/m=([a-z])/i) || [,'i'])[1]);
+                            console.log('[FRUSION autolaunch] ->', target.toString());
+                            setTimeout(() => { window.location.href = target.toString(); }, 50);
+                        }).catch(() => {});
+                    } catch (e) {}
+                    return resp;
+                });
+            }
+
             window.fetch = function(input, init) {
                 let url = (typeof input === 'string')
                     ? input
                     : (input instanceof Request ? input.url : String(input));
+
+                // Some legacy URL builders concatenate host + file without "/"
+                // (e.g. http://localhost:8888animfrusion.swf). Fix it here.
+                if (typeof url === 'string') {
+                    url = url.replace(/^http:\/\/localhost:8888(?![\/:])/, 'http://localhost:8888/');
+                    url = url.replace(/^https:\/\/localhost:8888(?![\/:])/, 'https://localhost:8888/');
+                }
 
                 try {
                     const parsed = new URL(url);
@@ -43,9 +92,10 @@
 
                     for (const [domain, target] of Object.entries(domainMap)) {
                         if (host === domain || parsed.hostname === domain) {
-                            const newUrl = target + parsed.pathname + parsed.search;
+                            const path = parsed.pathname.startsWith('/') ? parsed.pathname : ('/' + parsed.pathname);
+                            const newUrl = target + path + parsed.search;
                             console.log('[FETCH rewrite]', url, '->', newUrl);
-                            return _origFetch.call(this, newUrl, init);
+                            return maybeAutoLaunchFrusion(newUrl, _origFetch.call(this, newUrl, init));
                         }
                     }
                 } catch (e) {}
@@ -64,27 +114,33 @@
                                 parsed.pathname = replacement + parsed.pathname.substring(prefix.length);
                                 const newUrl = parsed.toString();
                                 console.log('[FETCH prefix]', url, '->', newUrl);
-                                return _origFetch.call(this, newUrl, init);
+                                return maybeAutoLaunchFrusion(newUrl, _origFetch.call(this, newUrl, init));
                             }
                         }
                     }
                 } catch (e) {}
 
                 console.log('[FETCH]', url);
-                return _origFetch.call(this, input, init);
+                return maybeAutoLaunchFrusion(url, _origFetch.call(this, input, init));
             };
 
             const _origXHROpen = XMLHttpRequest.prototype.open;
             XMLHttpRequest.prototype.open = function(method, url, ...rest) {
                 let rewritten = url;
 
+                if (typeof rewritten === 'string') {
+                    rewritten = rewritten.replace(/^http:\/\/localhost:8888(?![\/:])/, 'http://localhost:8888/');
+                    rewritten = rewritten.replace(/^https:\/\/localhost:8888(?![\/:])/, 'https://localhost:8888/');
+                }
+
                 try {
-                    const parsed = new URL(url, window.location.origin);
+                    const parsed = new URL(rewritten, window.location.origin);
                     const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
 
                     for (const [domain, target] of Object.entries(domainMap)) {
                         if (host === domain || parsed.hostname === domain) {
-                            rewritten = target + parsed.pathname + parsed.search;
+                            const path = parsed.pathname.startsWith('/') ? parsed.pathname : ('/' + parsed.pathname);
+                            rewritten = target + path + parsed.search;
                             console.log('[XHR rewrite]', url, '->', rewritten);
                             break;
                         }
@@ -102,6 +158,18 @@
     <div id="player-container"></div>
 
     <script>
+        // Called by legacy SWF via getURL("javascript:fp_goURLResize(...)" ).
+        // Popups are often blocked in modern browsers, so we fallback to same-tab navigation.
+        window.fp_goURLResize = function(url, _mode, _w, _h) {
+            try {
+                const w = window.open(url, "_blank", "noopener,noreferrer");
+                if (!w) window.location.href = url;
+            } catch (e) {
+                window.location.href = url;
+            }
+            return true;
+        };
+
         function normalizeAvatarState(value) {
             let s = String(value || '').replace(/\D/g, '');
 
@@ -150,7 +218,9 @@
                 quality: "high",
                 parameters: {
                     sid: sid,
-                    domain: "localhost:8888/",
+                    // Keep a slash-stable suffix: some legacy concatenations
+                    // drop one trailing slash before appending filenames.
+                    domain: "localhost:8888/./",
                     s: s,
                     e: e
                 },
@@ -159,7 +229,7 @@
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",
-                base: "/"
+                base: "http://localhost:8888/"
             });
         });
     </script>
