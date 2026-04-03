@@ -32,6 +32,38 @@
                 'localhost:5000':         'http://localhost:8888',
             };
 
+            function maybeAutoLaunchFrusion(requestUrl, responsePromise) {
+                return Promise.resolve(responsePromise).then((resp) => {
+                    try {
+                        const isDoLd = /\/do\/ld(\?|$)/.test(requestUrl || '');
+                        if (!isDoLd || window.__frusionAutoLaunchDone) return resp;
+                        window.__frusionAutoLaunchDone = true;
+
+                        resp.clone().text().then((xmlText) => {
+                            const gameTag = xmlText.match(/<game[^>]*>/i);
+                            if (!gameTag) return;
+                            const tag = gameTag[0];
+                            const getAttr = (name) => {
+                                const m = tag.match(new RegExp(name + '="([^"]*)"'));
+                                return m ? m[1] : '';
+                            };
+                            const sid = new URLSearchParams(window.location.search).get('sid') || 'debug';
+                            const target = new URL('/frusion', window.location.origin);
+                            target.searchParams.set('sid', sid);
+                            target.searchParams.set('disc_type', getAttr('t') || '0');
+                            target.searchParams.set('gameName', getAttr('n') || 'kaluga');
+                            target.searchParams.set('u', getAttr('u'));
+                            target.searchParams.set('id', getAttr('u'));
+                            target.searchParams.set('width', (getAttr('p').match(/w=(\d+)/) || [,'700'])[1]);
+                            target.searchParams.set('height', (getAttr('p').match(/h=(\d+)/) || [,'480'])[1]);
+                            console.log('[FRUSION autolaunch] ->', target.toString());
+                            setTimeout(() => { window.location.href = target.toString(); }, 50);
+                        }).catch(() => {});
+                    } catch (e) {}
+                    return resp;
+                });
+            }
+
             window.fetch = function(input, init) {
                 let url = (typeof input === 'string')
                     ? input
@@ -53,7 +85,7 @@
                             const path = parsed.pathname.startsWith('/') ? parsed.pathname : ('/' + parsed.pathname);
                             const newUrl = target + path + parsed.search;
                             console.log('[FETCH rewrite]', url, '->', newUrl);
-                            return _origFetch.call(this, newUrl, init);
+                            return maybeAutoLaunchFrusion(newUrl, _origFetch.call(this, newUrl, init));
                         }
                     }
                 } catch (e) {}
@@ -72,14 +104,14 @@
                                 parsed.pathname = replacement + parsed.pathname.substring(prefix.length);
                                 const newUrl = parsed.toString();
                                 console.log('[FETCH prefix]', url, '->', newUrl);
-                                return _origFetch.call(this, newUrl, init);
+                                return maybeAutoLaunchFrusion(newUrl, _origFetch.call(this, newUrl, init));
                             }
                         }
                     }
                 } catch (e) {}
 
                 console.log('[FETCH]', url);
-                return _origFetch.call(this, input, init);
+                return maybeAutoLaunchFrusion(url, _origFetch.call(this, input, init));
             };
 
             const _origXHROpen = XMLHttpRequest.prototype.open;
