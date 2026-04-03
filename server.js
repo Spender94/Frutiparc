@@ -182,6 +182,8 @@ users['Angelisium'] = {
   kikooz: 150,
   fbouille: DEFAULT_BOUILLE_STATE,
   items: withDefaultPens([1, 2, 3]),
+  contacts: ['Gaspard@frutiparc.com'],
+  blacklist: [],
   gender: 'M',
   birthday: '1990-05-15',
   country: 'FR',
@@ -219,6 +221,11 @@ function buildPrefDefString() {
     r += encode62(p.def.length, 2) + p.def;
   }
   return r;
+}
+
+function ensureContactLists(user) {
+  if (!Array.isArray(user.contacts)) user.contacts = [];
+  if (!Array.isArray(user.blacklist)) user.blacklist = [];
 }
 
 const DEFAULT_BOUILLE_LIST = [
@@ -585,6 +592,7 @@ app.get('/ff/ls', (req, res) => {
   const session = sid ? sessions[sid] : null;
   const username = (session && session.user) || 'Angelisium';
   const user = users[username] || users['Angelisium'];
+  ensureContactLists(user);
   const currentBouille = bouilleOf(user);
   const bouilleBase = `${currentBouille}${DEFAULT_BOUILLE_STATE}`.slice(0, 15);
   const accessoryTailA = '30x0t0w0D';
@@ -627,6 +635,23 @@ ${escapeXml(currentBouille)}</e>
     );
   }
 
+
+  if (uid === 'mycontact') {
+    const nodes = user.contacts.map((addr) => {
+      const local = String(addr).split('@')[0];
+      return `<e u="${escapeXml(local)}" t="contact" s="10" d="0" a="0">${escapeXml(addr)}</e>`;
+    }).join('');
+    return res.type('text/xml').send(`<f u="mycontact">${nodes || '<i />'}</f>`);
+  }
+
+  if (uid === 'blacklist') {
+    const nodes = user.blacklist.map((addr) => {
+      const local = String(addr).split('@')[0];
+      return `<e u="${escapeXml(local)}" t="contact" s="10" d="0" a="0">${escapeXml(addr)}</e>`;
+    }).join('');
+    return res.type('text/xml').send(`<f u="blacklist">${nodes || '<i />'}</f>`);
+  }
+
   if (uid === 'disccollector') {
     return res.type('text/xml').send(
       `<f u="disccollector">
@@ -645,11 +670,26 @@ kaluga</e>
 // Returns XML
 // ─────────────────────────────────────────────
 app.get('/ff/mk', (req, res) => {
+  const sid = req.query.sid;
+  const session = sid ? sessions[sid] : null;
+  const username = (session && session.user) || 'Angelisium';
+  const user = users[username] || users['Angelisium'];
+  ensureContactLists(user);
+
   const newUid = 'f' + crypto.randomBytes(4).toString('hex');
   const folder = req.query.folder || '';
   const type = req.query.t || 'file';
-  const desc = req.query.d || '';
+  const desc = String(req.query.d || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+  if (type === 'contact' && (folder === 'mycontact' || folder === 'blacklist')) {
+    const addr = desc.split('\n')[0].trim();
+    const list = folder === 'blacklist' ? user.blacklist : user.contacts;
+    if (addr && !list.includes(addr)) list.push(addr);
+    const local = addr.split('@')[0] || addr || newUid;
+    return res.type('text/xml').send(`<r u="${escapeXml(local)}" t="contact" f="${folder}" d="${now}">${escapeXml(addr)}</r>`);
+  }
+
   res.type('text/xml').send(`<r u="${newUid}" t="${type}" f="${folder}" d="${now}">${desc}</r>`);
 });
 

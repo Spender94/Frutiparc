@@ -158,15 +158,9 @@
     <div id="player-container"></div>
 
     <script>
-        // Called by legacy SWF via getURL("javascript:fp_goURLResize(...)" ).
-        // Popups are often blocked in modern browsers, so we fallback to same-tab navigation.
-        window.fp_goURLResize = function(url, _mode, _w, _h) {
-            try {
-                const w = window.open(url, "_blank", "noopener,noreferrer");
-                if (!w) window.location.href = url;
-            } catch (e) {
-                window.location.href = url;
-            }
+        // Disable legacy popup launch hook (keeps game launch in-place).
+        window.fp_goURLResize = function(_url, _mode, _w, _h) {
+            console.log("[Frusion] popup launch suppressed", _url);
             return true;
         };
 
