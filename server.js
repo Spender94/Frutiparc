@@ -410,7 +410,13 @@ app.get('/do/prefdef', (req, res) => {
 // Keep the advertised service port aligned with the live XMLSocket port.
 app.get('/xml/services.xml', (req, res) => {
   const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
-  const publicHost = PUBLIC_HOST || forwardedHost || req.headers.host || 'localhost';
+  const rawHost = PUBLIC_HOST || forwardedHost || req.headers.host || 'localhost';
+  let publicHost = rawHost;
+  try {
+    publicHost = new URL(`http://${rawHost}`).hostname;
+  } catch {
+    publicHost = String(rawHost).split(':')[0] || 'localhost';
+  }
   res.type('text/xml').send(
     `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
   );

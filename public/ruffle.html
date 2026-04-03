@@ -226,7 +226,8 @@
                     e: e
                 },
                 socketProxy: [
-                    { host: "localhost", port: 5000, proxyUrl: wsOrigin }
+                    { host: "localhost", port: 5000, proxyUrl: wsOrigin },
+                    { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin }
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",
