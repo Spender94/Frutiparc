@@ -30,11 +30,14 @@ laisser des valeurs de dev en dur :
 
 - `PORT` (défaut `8888`)
 - `XMLSOCKET_PORT` (défaut `5000`, idéalement un port se terminant par `000`)
-- `PUBLIC_HOST` (défaut `localhost`, doit pointer vers ton domaine public)
+- `PUBLIC_HOST` (optionnel, override explicite du domaine public)
 - `DEFAULT_USERNAME` (défaut `skool`)
 - `DEFAULT_PASSWORD` (défaut `test`)
 - `VERBOSE_HTTP_LOGS=1` pour activer les logs HTTP verbeux
 - `VERBOSE_SWF_LOGS=1` pour activer les logs SWF verbeux
+
+`PUBLIC_HOST` est optionnel : si non défini, le serveur essaie d'utiliser le host
+de la requête (`x-forwarded-host` / `host`) pour `xml/services.xml`.
 
 Version Node recommandée pour l'hébergement:
 - `.node-version` : `20.18.0`

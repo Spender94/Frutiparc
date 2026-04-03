@@ -191,6 +191,7 @@
         }
 
         window.addEventListener("DOMContentLoaded", async () => {
+            const wsOrigin = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
             const urlParams = new URLSearchParams(window.location.search);
 
             const sid = urlParams.get('sid') || 'debug';
@@ -225,7 +226,7 @@
                     e: e
                 },
                 socketProxy: [
-                    { host: "localhost", port: 5000, proxyUrl: WS_ORIGIN }
+                    { host: "localhost", port: 5000, proxyUrl: wsOrigin }
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",

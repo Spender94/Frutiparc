@@ -11,7 +11,7 @@ const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 const app = express();
 const port = Number(process.env.PORT || 8888);
 const XMLSOCKET_PORT = Number(process.env.XMLSOCKET_PORT || 5000); // Must end in 000 for FrutiChat cmdList
-const PUBLIC_HOST = process.env.PUBLIC_HOST || 'localhost';
+const PUBLIC_HOST = (process.env.PUBLIC_HOST || '').trim();
 const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
 const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
 
@@ -409,8 +409,10 @@ app.get('/do/prefdef', (req, res) => {
 
 // Keep the advertised service port aligned with the live XMLSocket port.
 app.get('/xml/services.xml', (req, res) => {
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const publicHost = PUBLIC_HOST || forwardedHost || req.headers.host || 'localhost';
   res.type('text/xml').send(
-    `<services host="${escapeXml(PUBLIC_HOST)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
+    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
   );
 });
 
@@ -874,8 +876,12 @@ app.get('/healthz', (req, res) => {
 // ─────────────────────────────────────────────
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`[HTTP]  Server running on http://0.0.0.0:${port}`);
-  console.log(`        Public URL:  https://${PUBLIC_HOST}/`);
-  console.log(`        Legacy SWF:  https://${PUBLIC_HOST}/legacy`);
+  if (PUBLIC_HOST) {
+    console.log(`        Public URL:  https://${PUBLIC_HOST}/`);
+    console.log(`        Legacy SWF:  https://${PUBLIC_HOST}/legacy`);
+  } else {
+    console.log('        Public URL:  (auto from request host; set PUBLIC_HOST to force)');
+  }
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
   warnIfStubSwfAssets();
 });
