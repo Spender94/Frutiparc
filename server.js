@@ -144,39 +144,10 @@ function bouilleOf(user) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
-const frusionTrace = {};   // sid -> [{ at, event, meta }]
-let lastFrusionSid = null;
-let lastFrusionSidAt = 0;
+const DEFAULT_USERNAME = 'skool';
 
-function sidFromRequest(req) {
-  if (req.query && typeof req.query.sid === 'string' && req.query.sid) return req.query.sid;
-  const ref = req.get('referer') || req.get('referrer');
-  if (!ref) return null;
-  try {
-    const url = new URL(ref);
-    return url.searchParams.get('sid');
-  } catch {
-    return null;
-  }
-}
-
-function recordFrusionEvent(sid, event, meta = {}) {
-  const key = sid || '__no_sid';
-  const row = { at: new Date().toISOString(), sid: key, event, meta };
-
-  if (!frusionTrace[key]) frusionTrace[key] = [];
-  frusionTrace[key].push(row);
-  if (frusionTrace[key].length > 80) frusionTrace[key].shift();
-
-  if (!frusionTrace.__all) frusionTrace.__all = [];
-  frusionTrace.__all.push(row);
-  if (frusionTrace.__all.length > 300) frusionTrace.__all.shift();
-
-  console.log(`[FRUSION][${key}] ${event} ${JSON.stringify(meta)}`);
-}
-
-// Default user for quick testing
-users['Angelisium'] = {
+// Default user for quick testing/admin flows
+users[DEFAULT_USERNAME] = {
   pass: 'test',
   xp: 4680000,
   kikooz: 150,
@@ -406,7 +377,7 @@ function resolveUsernameFromSid(sid) {
   if (sid && sessions[sid] && sessions[sid].user && users[sessions[sid].user]) {
     return sessions[sid].user;
   }
-  return 'Angelisium';
+  return DEFAULT_USERNAME;
 }
 
 app.all('/do/eb', (req, res) => {
@@ -447,14 +418,43 @@ app.all('/do/eb', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: do/newbouille — Create/save accessory item
+// Used by admin "Frutibouille" tooling.
+// Params: q=<quantity/type>, n=<name>, p=<price>, v=<value>, sid=<session_id>
+// Returns LoadVars: state=0
+// ─────────────────────────────────────────────
+app.get('/do/newbouille', (req, res) => {
+  const sid = req.query.sid;
+  const session = sid ? sessions[sid] : null;
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
+
+  const entry = {
+    id: 'acc_' + crypto.randomBytes(4).toString('hex'),
+    q: String(req.query.q || ''),
+    n: String(req.query.n || '').trim(),
+    p: String(req.query.p || ''),
+    v: normalizeBouilleState(req.query.v || ''),
+    at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+  };
+
+  if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
+  user.customAccessories.push(entry);
+
+  res
+    .type('text/plain')
+    .send(`state=0&id=${entry.id}&n=${encodeURIComponent(entry.n)}&q=${entry.q}&p=${entry.p}&v=${entry.v}`);
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: do/gmi — Get my info (user profile data)
 // Returns LoadVars with user profile fields
 // ─────────────────────────────────────────────
 app.get('/do/gmi', (req, res) => {
   const sid = req.query.sid;
   const session = sessions[sid];
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
 
   const params = new URLSearchParams({
     state: '0',
@@ -490,8 +490,8 @@ app.get('/prefForm', (req, res) => {
 app.get('/do/onident', (req, res) => {
   const sid = req.query.sid;
   const session = sessions[sid];
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
 
   user.items = withDefaultPens(user.items);
   const items = user.items.join(',');
@@ -528,56 +528,11 @@ function swfSizeForUrlPath(urlPath) {
 }
 
 // ─────────────────────────────────────────────
-// ENDPOINT: do/ld — Load game disc
-// Returns XML
+// ENDPOINT: do/ld — Game disc loading
+// Disabled in simplified mode (no Frusion launch hacks).
 // ─────────────────────────────────────────────
 app.get('/do/ld', (req, res) => {
-  const discId = req.query.u || 'unknown';
-  const discMap = {
-    kaluga1: {
-      t: '0',
-      pm: 'single',
-      n: 'kaluga',
-      u: '/swf/games/kaluga/kaluga.swf',
-      p: 'w=700;h=480;m=i',
-      swfList: [
-        '/swf/games/kaluga/kaluga.swf',
-        '/swf/sd/kaluga_tz.swf',
-        '/swf/sd/kaluga_panier.swf',
-      ],
-    },
-    mb21: {
-      t: '0',
-      pm: 'single',
-      n: 'kaluga',
-      u: '/swf/games/kaluga/kaluga.swf',
-      p: 'w=700;h=480;m=i',
-      swfList: [
-        '/swf/games/kaluga/kaluga.swf',
-        '/swf/sd/kaluga_tz.swf',
-        '/swf/sd/kaluga_panier.swf',
-      ],
-    },
-    swapou21: {
-      t: '0',
-      pm: 'single',
-      n: 'kaluga',
-      u: '/swf/games/kaluga/kaluga.swf',
-      p: 'w=700;h=480;m=i',
-      swfList: [
-        '/swf/games/kaluga/kaluga.swf',
-        '/swf/sd/kaluga_tz.swf',
-        '/swf/sd/kaluga_panier.swf',
-      ],
-    },
-  };
-
-  const game = discMap[discId] || discMap.kaluga1;
-  // Legacy loader prepends host on its side; keep <s u> relative to avoid host duplication.
-  const swfNodes = game.swfList.map((u) => `<s u="${u}" />`).join('');
-  res.type('text/xml').send(
-    `<game t="${game.t}" pm="${game.pm}" n="${game.u}" u="${discId}" p="${game.p}">${swfNodes}</game>`
-  );
+  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
 });
 
 // ─────────────────────────────────────────────
@@ -596,8 +551,8 @@ app.get('/ff/ls', (req, res) => {
   const uid = req.query.uid || 'root';
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
   ensureContactLists(user);
   const currentBouille = bouilleOf(user);
   const bouilleBase = `${currentBouille}${DEFAULT_BOUILLE_STATE}`.slice(0, 15);
@@ -678,8 +633,8 @@ kaluga</e>
 app.get('/ff/mk', (req, res) => {
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
   ensureContactLists(user);
 
   const newUid = 'f' + crypto.randomBytes(4).toString('hex');
@@ -710,8 +665,8 @@ app.get('/ff/mk', (req, res) => {
 app.get('/ff/mv', (req, res) => {
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
   ensureContactLists(user);
 
   const file = String(req.query.f || '');
@@ -1147,8 +1102,8 @@ function handleCBeeMessage(socket, rawXml) {
       const login = msg.attrs.l || '';
       const sid = msg.attrs.s || '';
 
-      // sidAutoInit mode sends l="" — default to Angelisium
-      const effectiveLogin = login.length > 0 ? login : 'Angelisium';
+      // sidAutoInit mode sends l="" — default to the local admin user.
+      const effectiveLogin = login.length > 0 ? login : DEFAULT_USERNAME;
 
       // Auto-create session if needed
       if (sid && !sessions[sid]) {
