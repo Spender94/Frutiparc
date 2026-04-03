@@ -687,10 +687,10 @@ app.get('/ff/mk', (req, res) => {
     const list = folder === 'blacklist' ? user.blacklist : user.contacts;
     if (addr && !list.includes(addr)) list.push(addr);
     const local = addr.split('@')[0] || addr || newUid;
-    return res.type('text/xml').send(`<r u="${escapeXml(local)}" t="contact" f="${folder}" d="${now}">${escapeXml(addr)}</r>`);
+    return res.type('text/xml').send(`<r f="${folder}"><f u="${escapeXml(local)}" t="contact" d="${now}" f="${folder}">${escapeXml(addr)}</f></r>`);
   }
 
-  res.type('text/xml').send(`<r u="${newUid}" t="${type}" f="${folder}" d="${now}">${desc}</r>`);
+  res.type('text/xml').send(`<r f="${folder}"><f u="${newUid}" t="${type}" d="${now}" f="${folder}">${desc}</f></r>`);
 });
 
 // ─────────────────────────────────────────────
@@ -698,10 +698,33 @@ app.get('/ff/mk', (req, res) => {
 // Returns XML
 // ─────────────────────────────────────────────
 app.get('/ff/mv', (req, res) => {
-  const file = req.query.f || '';
-  const folder = req.query.folder || '';
+  const sid = req.query.sid;
+  const session = sid ? sessions[sid] : null;
+  const username = (session && session.user) || 'Angelisium';
+  const user = users[username] || users['Angelisium'];
+  ensureContactLists(user);
+
+  const file = String(req.query.f || '');
+  const folder = String(req.query.folder || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  res.type('text/xml').send(`<r f="${folder}"><f n="${file}" t="file" d="${now}" p="">moved</f></r>`);
+
+  let oldFolder = String(req.query.p || 'root');
+  const local = file.split('@')[0];
+
+  const inContacts = user.contacts.find((a) => a.split('@')[0] === local);
+  const inBlacklist = user.blacklist.find((a) => a.split('@')[0] === local);
+
+  if (folder === 'recyclebin') {
+    if (inContacts) {
+      user.contacts = user.contacts.filter((a) => a !== inContacts);
+      oldFolder = 'mycontact';
+    } else if (inBlacklist) {
+      user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
+      oldFolder = 'blacklist';
+    }
+  }
+
+  res.type('text/xml').send(`<r f="${folder}"><f n="${escapeXml(local)}" t="contact" d="${now}" p="${oldFolder}">moved</f></r>`);
 });
 
 // ─────────────────────────────────────────────
