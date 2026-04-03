@@ -43,8 +43,14 @@
                             const gameTag = xmlText.match(/<game[^>]*>/i);
                             if (!gameTag) return;
                             const tag = gameTag[0];
+                            const firstSwfTag = xmlText.match(/<s[^>]*>/i);
                             const getAttr = (name) => {
                                 const m = tag.match(new RegExp(name + '="([^"]*)"'));
+                                return m ? m[1] : '';
+                            };
+                            const getSwfAttr = (name) => {
+                                if (!firstSwfTag) return '';
+                                const m = firstSwfTag[0].match(new RegExp(name + '="([^"]*)"'));
                                 return m ? m[1] : '';
                             };
                             const sid = new URLSearchParams(window.location.search).get('sid') || 'debug';
@@ -53,9 +59,13 @@
                             target.searchParams.set('disc_type', getAttr('t') || '0');
                             target.searchParams.set('gameName', getAttr('n') || 'kaluga');
                             target.searchParams.set('u', getAttr('u'));
-                            target.searchParams.set('id', getAttr('u'));
+                            target.searchParams.set('id', getSwfAttr('u') || getAttr('u'));
+                            target.searchParams.set('size', getSwfAttr('s') || '0');
                             target.searchParams.set('width', (getAttr('p').match(/w=(\d+)/) || [,'700'])[1]);
                             target.searchParams.set('height', (getAttr('p').match(/h=(\d+)/) || [,'480'])[1]);
+                            target.searchParams.set('w', (getAttr('p').match(/w=(\d+)/) || [,'700'])[1]);
+                            target.searchParams.set('h', (getAttr('p').match(/h=(\d+)/) || [,'480'])[1]);
+                            target.searchParams.set('mode', (getAttr('p').match(/m=([a-z])/i) || [,'i'])[1]);
                             console.log('[FRUSION autolaunch] ->', target.toString());
                             setTimeout(() => { window.location.href = target.toString(); }, 50);
                         }).catch(() => {});

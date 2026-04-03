@@ -498,6 +498,22 @@ app.get('/do/onident', (req, res) => {
   res.type('text/xml').send(xml);
 });
 
+function swfSizeForUrlPath(urlPath) {
+  const clean = String(urlPath || '').replace(/\?.*$/, '');
+  const candidates = [
+    path.join(__dirname, 'public', clean.replace(/^\//, '')),
+    path.join(__dirname, clean.replace(/^\//, '')),
+    path.join(__dirname, 'Games', clean.replace(/^\/swf\/games\//, '')),
+  ];
+  for (const abs of candidates) {
+    try {
+      const st = fs.statSync(abs);
+      if (st.isFile()) return String(st.size);
+    } catch {}
+  }
+  return '0';
+}
+
 // ─────────────────────────────────────────────
 // ENDPOINT: do/ld — Load game disc
 // Returns XML
@@ -513,8 +529,6 @@ app.get('/do/ld', (req, res) => {
       p: 'w=700;h=480;m=i',
       swfList: [
         '/swf/games/kaluga/kaluga.swf',
-        '/swf/sd/kaluga_tz.swf',
-        '/swf/sd/kaluga_panier.swf',
       ],
     },
     mb21: {
@@ -525,8 +539,6 @@ app.get('/do/ld', (req, res) => {
       p: 'w=700;h=480;m=i',
       swfList: [
         '/swf/games/kaluga/kaluga.swf',
-        '/swf/sd/kaluga_tz.swf',
-        '/swf/sd/kaluga_panier.swf',
       ],
     },
     swapou21: {
@@ -537,8 +549,6 @@ app.get('/do/ld', (req, res) => {
       p: 'w=700;h=480;m=i',
       swfList: [
         '/swf/games/kaluga/kaluga.swf',
-        '/swf/sd/kaluga_tz.swf',
-        '/swf/sd/kaluga_panier.swf',
       ],
     },
   };
@@ -554,9 +564,12 @@ app.get('/do/ld', (req, res) => {
   // Legacy GameDiscLoader stores unnamed <s> entries under files['index'];
   // only the first one should be unnamed (main SWF), others must be named.
   const swfNodes = game.swfList
-    .map((u, idx) => (idx === 0
-      ? `<s u="${u}" />`
-      : `<s n="${path.basename(u)}" u="${u}" />`))
+    .map((u, idx) => {
+      const s = swfSizeForUrlPath(u);
+      return idx === 0
+        ? `<s u="${u}" s="${s}" />`
+        : `<s n="${path.basename(u)}" u="${u}" s="${s}" />`;
+    })
     .join('');
   res.type('text/xml').send(
     `<game t="${game.t}" pm="${game.pm}" n="${game.n}" u="${game.u}" p="${game.p}">${swfNodes}</game>`
