@@ -144,6 +144,8 @@ function bouilleOf(user) {
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
 const frusionTrace = {};   // sid -> [{ at, event, meta }]
+let lastFrusionSid = null;
+let lastFrusionSidAt = 0;
 
 function sidFromRequest(req) {
   if (req.query && typeof req.query.sid === 'string' && req.query.sid) return req.query.sid;
@@ -530,6 +532,10 @@ app.get('/do/ld', (req, res) => {
 
   const game = discMap[discId] || discMap.kaluga1;
   const sid = sidFromRequest(req);
+  if (sid) {
+    lastFrusionSid = sid;
+    lastFrusionSidAt = Date.now();
+  }
   recordFrusionEvent(sid, 'do_ld', { discId, swf: game.u, files: game.swfList });
   if (sid) res.set('X-Frusion-Sid', sid);
   // Legacy loader prepends host on its side; keep <s u> relative to avoid host duplication.
@@ -674,7 +680,7 @@ app.post('/h/send_debug', (req, res) => {
   res.type('text/plain').send('state=0');
 });
 
-app.get('/debug/frusion-state', (req, res) => {
+app.get(['/debug/frusion-state', '/debug/frusion-state/', '/debug/frusion-state/all'], (req, res) => {
   const sid = sidFromRequest(req) || req.query.sid || '';
   const events = sid ? (frusionTrace[sid] || []) : (frusionTrace.__all || []);
   const availableSids = Object.keys(frusionTrace).filter((k) => !k.startsWith('__'));
@@ -691,7 +697,10 @@ app.use((req, res, next) => {
     req.url.startsWith('/swf/sd/kaluga_tz.swf') ||
     req.url.startsWith('/swf/sd/kaluga_panier.swf')
   ) {
-    const sid = sidFromRequest(req);
+    let sid = sidFromRequest(req);
+    if (!sid && lastFrusionSid && (Date.now() - lastFrusionSidAt) < 60000) {
+      sid = lastFrusionSid;
+    }
     recordFrusionEvent(sid, 'asset_fetch', { url: req.url });
   }
   next();
