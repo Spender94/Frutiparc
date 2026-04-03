@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frutibouilleur (prototype moderne)</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="layout">
+    <section class="panel preview-panel">
+      <h1>Frutibouilleur (prototype)</h1>
+      <p>
+        Prototype HTML/CSS/Canvas pour remplacer l'éditeur Flash.
+        Les réglages génèrent une chaîne <code>fbouille</code> compatible (9 paires de chiffres).
+      </p>
+      <canvas id="avatar" width="260" height="260" aria-label="Aperçu frutibouille"></canvas>
+      <label class="code-wrap" for="fbouilleCode">
+        Code fbouille
+        <input id="fbouilleCode" type="text" maxlength="18" spellcheck="false" />
+      </label>
+      <div class="actions">
+        <button id="copyBtn" type="button">Copier le code</button>
+        <button id="randomBtn" type="button" class="secondary">Aléatoire</button>
+      </div>
+    </section>
+
+    <section class="panel controls-panel">
+      <h2>Réglages</h2>
+      <div class="grid" id="controls"></div>
+
+      <h3>Presets</h3>
+      <div class="presets" id="presets"></div>
+
+      <p class="hint">
+        Note : en attendant l'extraction sprite-sheet depuis les SWF historiques,
+        ce prototype reproduit la logique de composition avec des primitives Canvas.
+      </p>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
