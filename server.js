@@ -143,9 +143,10 @@ function bouilleOf(user) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
+const DEFAULT_USERNAME = 'skool';
 
-// Default user for quick testing
-users['Angelisium'] = {
+// Default user for quick testing/admin flows
+users[DEFAULT_USERNAME] = {
   pass: 'test',
   xp: 4680000,
   kikooz: 150,
@@ -364,7 +365,7 @@ function resolveUsernameFromSid(sid) {
   if (sid && sessions[sid] && sessions[sid].user && users[sessions[sid].user]) {
     return sessions[sid].user;
   }
-  return 'Angelisium';
+  return DEFAULT_USERNAME;
 }
 
 app.all('/do/eb', (req, res) => {
@@ -405,14 +406,43 @@ app.all('/do/eb', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: do/newbouille — Create/save accessory item
+// Used by admin "Frutibouille" tooling.
+// Params: q=<quantity/type>, n=<name>, p=<price>, v=<value>, sid=<session_id>
+// Returns LoadVars: state=0
+// ─────────────────────────────────────────────
+app.get('/do/newbouille', (req, res) => {
+  const sid = req.query.sid;
+  const session = sid ? sessions[sid] : null;
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
+
+  const entry = {
+    id: 'acc_' + crypto.randomBytes(4).toString('hex'),
+    q: String(req.query.q || ''),
+    n: String(req.query.n || '').trim(),
+    p: String(req.query.p || ''),
+    v: normalizeBouilleState(req.query.v || ''),
+    at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+  };
+
+  if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
+  user.customAccessories.push(entry);
+
+  res
+    .type('text/plain')
+    .send(`state=0&id=${entry.id}&n=${encodeURIComponent(entry.n)}&q=${entry.q}&p=${entry.p}&v=${entry.v}`);
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: do/gmi — Get my info (user profile data)
 // Returns LoadVars with user profile fields
 // ─────────────────────────────────────────────
 app.get('/do/gmi', (req, res) => {
   const sid = req.query.sid;
   const session = sessions[sid];
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
 
   const params = new URLSearchParams({
     state: '0',
@@ -448,8 +478,8 @@ app.get('/prefForm', (req, res) => {
 app.get('/do/onident', (req, res) => {
   const sid = req.query.sid;
   const session = sessions[sid];
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
 
   user.items = withDefaultPens(user.items);
   const items = user.items.join(',');
@@ -493,8 +523,8 @@ app.get('/ff/ls', (req, res) => {
   const uid = req.query.uid || 'root';
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
   ensureContactLists(user);
   const currentBouille = bouilleOf(user);
   const bouilleBase = `${currentBouille}${DEFAULT_BOUILLE_STATE}`.slice(0, 15);
@@ -575,8 +605,8 @@ kaluga</e>
 app.get('/ff/mk', (req, res) => {
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
   ensureContactLists(user);
 
   const newUid = 'f' + crypto.randomBytes(4).toString('hex');
@@ -607,8 +637,8 @@ app.get('/ff/mk', (req, res) => {
 app.get('/ff/mv', (req, res) => {
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || 'Angelisium';
-  const user = users[username] || users['Angelisium'];
+  const username = (session && session.user) || DEFAULT_USERNAME;
+  const user = users[username] || users[DEFAULT_USERNAME];
   ensureContactLists(user);
 
   const file = String(req.query.f || '');
@@ -1029,8 +1059,8 @@ function handleCBeeMessage(socket, rawXml) {
       const login = msg.attrs.l || '';
       const sid = msg.attrs.s || '';
 
-      // sidAutoInit mode sends l="" — default to Angelisium
-      const effectiveLogin = login.length > 0 ? login : 'Angelisium';
+      // sidAutoInit mode sends l="" — default to the local admin user.
+      const effectiveLogin = login.length > 0 ? login : DEFAULT_USERNAME;
 
       // Auto-create session if needed
       if (sid && !sessions[sid]) {
