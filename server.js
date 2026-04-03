@@ -457,9 +457,9 @@ app.get('/do/ld', (req, res) => {
       t: '0',
       pm: 'single',
       n: 'kaluga',
-      u: 'sd/kaluga_tz.swf',
+      u: 'games/kaluga/kaluga.swf',
       p: 'w=700;h=480;m=i',
-      swfList: ['/animfrusion.swf', '/swf/sd/kaluga_tz.swf', '/swf/sd/kaluga_panier.swf'],
+      swfList: ['/animfrusion.swf', '/swf/games/kaluga/kaluga.swf'],
     },
     mb21: {
       t: '0',
@@ -625,6 +625,7 @@ app.post('/h/send_debug', (req, res) => {
 // ─────────────────────────────────────────────
 // Serve SWF assets under /swf/* (used by the JS fetch interceptor rewrite)
 // ─────────────────────────────────────────────
+app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
