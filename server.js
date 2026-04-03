@@ -9,6 +9,11 @@ const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
 
 const app = express();
+const port = Number(process.env.PORT || 8888);
+const XMLSOCKET_PORT = Number(process.env.XMLSOCKET_PORT || 5000); // Must end in 000 for FrutiChat cmdList
+const PUBLIC_HOST = (process.env.PUBLIC_HOST || '').trim();
+const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
+const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
 
 // ── CORS headers (Ruffle's WASM fetch may need them) ──
 app.use((req, res, next) => {
@@ -42,9 +47,11 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Log all incoming requests for debugging
+// Optional HTTP request logs for debugging
 app.use((req, res, next) => {
-  console.log(`[HTTP]  ${req.method} ${req.url}`);
+  if (VERBOSE_HTTP_LOGS) {
+    console.log(`[HTTP]  ${req.method} ${req.url}`);
+  }
   next();
 });
 
@@ -82,9 +89,6 @@ function warnIfStubSwfAssets() {
     }
   }
 }
-
-const port = process.env.PORT || 8888;
-const XMLSOCKET_PORT = 5000; // Port for the CBee XMLSocket server (must end in 000 for FrutiChat cmdList)
 
 // ─────────────────────────────────────────────
 // Helpers: base62 encode/decode (matches FEString/FENumber in AS2)
@@ -144,24 +148,42 @@ function bouilleOf(user) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
-const DEFAULT_USERNAME = 'skool';
+const DEFAULT_USERNAME = process.env.DEFAULT_USERNAME || 'skool';
+const DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD || 'test';
+const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
+
+function createDefaultUser(pass) {
+  return {
+    pass,
+    xp: 4680000,
+    kikooz: 150,
+    fbouille: DEFAULT_BOUILLE_STATE,
+    items: withDefaultPens([1, 2, 3]),
+    contacts: [],
+    blacklist: [],
+    gender: 'M',
+    birthday: '1990-05-15',
+    country: 'FR',
+    region: 'IDF',
+    prefs: '',
+    needsBouille: true, // Force editbouille on first login
+  };
+}
 
 // Default user for quick testing/admin flows
-users[DEFAULT_USERNAME] = {
-  pass: 'test',
-  xp: 4680000,
-  kikooz: 150,
-  fbouille: DEFAULT_BOUILLE_STATE,
-  items: withDefaultPens([1, 2, 3]),
-  contacts: [],
-  blacklist: [],
-  gender: 'M',
-  birthday: '1990-05-15',
-  country: 'FR',
-  region: 'IDF',
-  prefs: '',
-  needsBouille: true, // Force editbouille on first login
-};
+users[DEFAULT_USERNAME] = createDefaultUser(DEFAULT_PASSWORD);
+
+function normalizeUsername(raw) {
+  return String(raw || '').trim().toLowerCase();
+}
+
+function isValidUsername(username) {
+  return /^[a-z0-9_]{3,20}$/.test(username);
+}
+
+function isValidPassword(password) {
+  return typeof password === 'string' && password.length >= 6 && password.length <= 80;
+}
 
 // ─────────────────────────────────────────────
 // Preference definitions
@@ -251,6 +273,43 @@ app.get('/legacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
+app.get('/login', (req, res) => {
+  res.sendFile(LOGIN_PAGE_PATH);
+});
+
+app.post('/api/auth/register', (req, res) => {
+  const username = normalizeUsername(req.body && req.body.username);
+  const password = String((req.body && req.body.password) || '');
+
+  if (!isValidUsername(username)) {
+    return res.status(400).json({ ok: false, error: 'username_invalid', message: 'Username: 3-20 chars [a-z0-9_].' });
+  }
+  if (!isValidPassword(password)) {
+    return res.status(400).json({ ok: false, error: 'password_invalid', message: 'Password: 6-80 chars.' });
+  }
+  if (users[username]) {
+    return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
+  }
+
+  users[username] = createDefaultUser(password);
+  users[username].needsBouille = false;
+  return res.json({ ok: true, username });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const username = normalizeUsername(req.body && req.body.username);
+  const password = String((req.body && req.body.password) || '');
+  const user = users[username];
+
+  if (!user || user.pass !== password) {
+    return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+  }
+
+  const sid = crypto.randomBytes(16).toString('hex');
+  sessions[sid] = { user: username, createdAt: Date.now() };
+  return res.json({ ok: true, sid, username, redirect: `/legacy?sid=${encodeURIComponent(sid)}` });
+});
+
 app.get('/do/ld', (req, res) => {
   res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
 });
@@ -260,7 +319,9 @@ app.get('/legacy/main.swf', (req, res) => {
 });
 
 app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
-  console.log('[SWF] fonts.swf requested:', req.url);
+  if (VERBOSE_SWF_LOGS) {
+    console.log('[SWF] fonts.swf requested:', req.url);
+  }
   res.type('application/x-shockwave-flash');
   res.sendFile(fontsPath);
 });
@@ -269,7 +330,9 @@ app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
 // during the loading screen.  Serving it explicitly (with logging and
 // correct Content-Type) helps diagnose and resolve pending-fetch issues.
 app.get('/fileIcon.swf', (req, res) => {
-  console.log('[SWF]   fileIcon.swf requested');
+  if (VERBOSE_SWF_LOGS) {
+    console.log('[SWF]   fileIcon.swf requested');
+  }
   res.type('application/x-shockwave-flash');
   res.sendFile(path.join(__dirname, 'public', 'fileIcon.swf'));
 });
@@ -278,7 +341,9 @@ app.get('/fileIcon.swf', (req, res) => {
 
 app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
   const fallback = path.join(__dirname, 'frusion', 'saf_debug.swf');
-  console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+  if (VERBOSE_SWF_LOGS) {
+    console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+  }
   res.type('application/x-shockwave-flash');
   res.sendFile(fallback);
 });
@@ -287,7 +352,9 @@ function sendAvatarFamily(res, fileName) {
   let absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
   if (!fs.existsSync(absPath)) {
-    console.log(`[SWF]   Missing avatar asset: ${absPath}`);
+    if (VERBOSE_SWF_LOGS) {
+      console.log(`[SWF]   Missing avatar asset: ${absPath}`);
+    }
     return res.status(404).type('text/plain').send('Missing SWF');
   }
 
@@ -303,7 +370,9 @@ function sendAvatarFamily(res, fileName) {
     } catch {}
   }
 
-  console.log(`[SWF]   Serving avatar asset: ${fileName}`);
+  if (VERBOSE_SWF_LOGS) {
+    console.log(`[SWF]   Serving avatar asset: ${fileName}`);
+  }
   res.type('application/x-shockwave-flash');
   res.set('Cache-Control', 'no-store');
   res.sendFile(absPath);
@@ -340,8 +409,16 @@ app.get('/do/prefdef', (req, res) => {
 
 // Keep the advertised service port aligned with the live XMLSocket port.
 app.get('/xml/services.xml', (req, res) => {
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const rawHost = PUBLIC_HOST || forwardedHost || req.headers.host || 'localhost';
+  let publicHost = rawHost;
+  try {
+    publicHost = new URL(`http://${rawHost}`).hostname;
+  } catch {
+    publicHost = String(rawHost).split(':')[0] || 'localhost';
+  }
   res.type('text/xml').send(
-    `<services host="localhost"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
+    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
   );
 });
 
@@ -803,9 +880,14 @@ app.get('/healthz', (req, res) => {
 // ─────────────────────────────────────────────
 // Start HTTP server
 // ─────────────────────────────────────────────
-const server = app.listen(port, () => {
-  console.log(`[HTTP]  Server running on http://localhost:${port}`);
-  console.log(`        Legacy SWF:  http://localhost:${port}/legacy`);
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log(`[HTTP]  Server running on http://0.0.0.0:${port}`);
+  if (PUBLIC_HOST) {
+    console.log(`        Public URL:  https://${PUBLIC_HOST}/`);
+    console.log(`        Legacy SWF:  https://${PUBLIC_HOST}/legacy`);
+  } else {
+    console.log('        Public URL:  (auto from request host; set PUBLIC_HOST to force)');
+  }
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
   warnIfStubSwfAssets();
 });
@@ -1130,9 +1212,11 @@ function handleCBeeMessage(socket, rawXml) {
     case 'ident': {
       const login = msg.attrs.l || '';
       const sid = msg.attrs.s || '';
+      const sessionUser = sid && sessions[sid] && sessions[sid].user ? sessions[sid].user : '';
 
-      // sidAutoInit mode sends l="" — default to the local admin user.
-      const effectiveLogin = login.length > 0 ? login : DEFAULT_USERNAME;
+      // Priority: sid-bound user (real logged account) > explicit login > default dev user.
+      // This avoids forcing everyone onto DEFAULT_USERNAME when the SWF sends l="".
+      const effectiveLogin = sessionUser || login || DEFAULT_USERNAME;
 
       // Auto-create session if needed
       if (sid && !sessions[sid]) {
