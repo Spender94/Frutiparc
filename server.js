@@ -57,6 +57,7 @@ function warnIfStubSwfAssets() {
   const criticalSwfs = [
     'public/swf/fbouille/famille0.swf',
     'public/swf/fbouille/famille1.swf',
+    'public/frusion_client.swf',
 
   ];
 
@@ -287,6 +288,13 @@ app.get('/fileIcon.swf', (req, res) => {
 });
 
 
+
+app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
+  const fallback = path.join(__dirname, 'frusion', 'saf_debug.swf');
+  console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+  res.type('application/x-shockwave-flash');
+  res.sendFile(fallback);
+});
 
 function sendAvatarFamily(res, fileName) {
   let absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
