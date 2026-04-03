@@ -543,7 +543,12 @@ app.get('/do/ld', (req, res) => {
 // ENDPOINT: ff/tree — File system tree
 // Returns XML
 // ─────────────────────────────────────────────
-app.get('/ff/tree', (req, res) => {
+app.get(['/ff/tree', '/tree'], (req, res) => {
+  res.type('text/xml').send(FILE_TREE_XML);
+});
+
+// Legacy alias seen in some SWFs / URL rewrite paths
+app.get('/ft/tree', (req, res) => {
   res.type('text/xml').send(FILE_TREE_XML);
 });
 
@@ -556,7 +561,7 @@ app.get('/ft/tree', (req, res) => {
 // ENDPOINT: ff/ls — List folder contents
 // Returns XML
 // ─────────────────────────────────────────────
-app.get('/ff/ls', (req, res) => {
+app.get(['/ff/ls', '/ls'], (req, res) => {
   const uid = req.query.uid || 'root';
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
@@ -581,6 +586,10 @@ app.get('/ff/ls', (req, res) => {
   }
 
   if (uid === 'inventory') {
+    const customAccessoryNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}
+${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+      .join('');
     return res.type('text/xml').send(
       `<f u="inventory">
         <e u="moutarde" t="wallpaper" s="10" d="0" a="0">Chavelier moutarde
@@ -601,6 +610,7 @@ ${escapeXml(currentBouille)}</e>
 ${escapeXml(accessoryBouilleA)}</e>
         <e u="my_bouille_test_2" t="bouille" s="10" d="0" a="0">Test bouille #2
 ${escapeXml(currentBouille)}</e>
+        ${customAccessoryNodes}
       </f>`
     );
   }
@@ -639,7 +649,7 @@ kaluga</e>
 // ENDPOINT: ff/mk — Create file/folder
 // Returns XML
 // ─────────────────────────────────────────────
-app.get('/ff/mk', (req, res) => {
+app.get(['/ff/mk', '/mk'], (req, res) => {
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
   const username = (session && session.user) || DEFAULT_USERNAME;
@@ -671,7 +681,7 @@ app.get('/ff/mk', (req, res) => {
 // ENDPOINT: ff/mv — Move file
 // Returns XML
 // ─────────────────────────────────────────────
-app.get('/ff/mv', (req, res) => {
+app.get(['/ff/mv', '/mv'], (req, res) => {
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
   const username = (session && session.user) || DEFAULT_USERNAME;
@@ -706,7 +716,7 @@ app.get('/ff/mv', (req, res) => {
 // ENDPOINT: ff/cp — Copy file
 // Returns XML
 // ─────────────────────────────────────────────
-app.get('/ff/cp', (req, res) => {
+app.get(['/ff/cp', '/cp'], (req, res) => {
   const file = req.query.f || '';
   const folder = req.query.folder || '';
   const newUid = 'c' + crypto.randomBytes(4).toString('hex');
