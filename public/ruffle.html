@@ -164,7 +164,9 @@
                 quality: "high",
                 parameters: {
                     sid: sid,
-                    domain: "localhost:8888/",
+                    // Keep a slash-stable suffix: some legacy concatenations
+                    // drop one trailing slash before appending filenames.
+                    domain: "localhost:8888/./",
                     s: s,
                     e: e
                 },
