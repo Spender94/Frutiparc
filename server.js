@@ -279,7 +279,7 @@ app.get('/legacy', (req, res) => {
 
 // Explicitly block legacy popup game runtime route.
 app.get('/frusion', (req, res) => {
-  res.type('text/html').send('<!doctype html><meta charset="utf-8"><script>try{window.close();}catch(e){}location.replace("/legacy");</script>');
+  res.type('text/html').send('<!doctype html><meta charset="utf-8"><script>try{window.close();}catch(e){}document.body.innerHTML="Frusion popup disabled.";</script>');
 });
 
 app.get('/legacy/main.swf', (req, res) => {
@@ -684,10 +684,14 @@ app.get('/ff/mk', (req, res) => {
   ensureContactLists(user);
 
   const newUid = 'f' + crypto.randomBytes(4).toString('hex');
-  const folder = req.query.folder || '';
+  let folder = req.query.folder || '';
   const type = req.query.t || 'file';
   const desc = String(req.query.d || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+  if (type === 'contact' && !folder) {
+    folder = 'mycontact';
+  }
 
   if (type === 'contact' && (folder === 'mycontact' || folder === 'blacklist')) {
     const addr = normalizeContactAddress(desc.split('\n')[0]);
