@@ -461,18 +461,18 @@ app.get('/do/ld', (req, res) => {
     mb21: {
       t: '0',
       pm: 'single',
-      n: 'mb2',
-      u: '/swf/sd/mb2_ball.swf',
+      n: 'kaluga',
+      u: '/swf/games/kaluga/kaluga.swf',
       p: 'w=700;h=480;m=i',
-      swfList: ['/swf/sd/mb2_ball.swf'],
+      swfList: ['/swf/games/kaluga/kaluga.swf'],
     },
     swapou21: {
       t: '0',
       pm: 'single',
-      n: 'swapou2',
-      u: '/swf/sd/swapou_chars.swf',
+      n: 'kaluga',
+      u: '/swf/games/kaluga/kaluga.swf',
       p: 'w=700;h=480;m=i',
-      swfList: ['/swf/sd/swapou_chars.swf'],
+      swfList: ['/swf/games/kaluga/kaluga.swf'],
     },
   };
 
@@ -549,10 +549,6 @@ ${escapeXml(currentBouille)}</e>
       `<f u="disccollector">
         <e u="kaluga1" t="disc" s="10" d="0" a="0">0
 kaluga</e>
-        <e u="mb21" t="disc" s="10" d="0" a="0">0
-mb2</e>
-        <e u="swapou21" t="disc" s="10" d="0" a="0">0
-swapou2</e>
       </f>`
     );
   }
