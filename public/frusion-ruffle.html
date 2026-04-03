@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Frusion - Ruffle</title>
+  <style>body{margin:0;background:#223300;display:flex;justify-content:center;align-items:center;min-height:100vh}#player{width:384px;height:384px}</style>
+  <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+</head>
+<body>
+  <div id="player"></div>
+  <script>
+    (async function(){
+      const params = new URLSearchParams(window.location.search);
+      const ruffle = window.RufflePlayer.newest();
+      const player = ruffle.createPlayer();
+      document.getElementById('player').appendChild(player);
+
+      const flashVars = {};
+      for (const [k,v] of params.entries()) flashVars[k] = v;
+      if (!flashVars.sid) flashVars.sid = 'debug';
+      if (!flashVars.domain) flashVars.domain = 'localhost:8888/./';
+
+      await player.load({
+        url: '/frusion_client.swf',
+        autoplay: 'on',
+        allowScriptAccess: true,
+        allowNetworking: 'all',
+        openUrlMode: 'allow',
+        quality: 'high',
+        base: 'http://localhost:8888/',
+        socketProxy: [{ host: 'localhost', port: 5000, proxyUrl: 'ws://localhost:8888' }],
+        parameters: flashVars,
+      });
+    })();
+  </script>
+</body>
+</html>
