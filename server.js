@@ -417,13 +417,7 @@ app.all('/do/eb', (req, res) => {
   res.type('text/plain').send(`state=0&k=0&b=${bouille}&s=${bouille}&f=${bouille}`);
 });
 
-// ─────────────────────────────────────────────
-// ENDPOINT: do/newbouille — Create/save accessory item
-// Used by admin "Frutibouille" tooling.
-// Params: q=<quantity/type>, n=<name>, p=<price>, v=<value>, sid=<session_id>
-// Returns LoadVars: state=0
-// ─────────────────────────────────────────────
-app.get('/do/newbouille', (req, res) => {
+function handleNewBouille(req, res) {
   const sid = req.query.sid;
   const session = sid ? sessions[sid] : null;
   const username = (session && session.user) || DEFAULT_USERNAME;
@@ -444,7 +438,17 @@ app.get('/do/newbouille', (req, res) => {
   res
     .type('text/plain')
     .send(`state=0&id=${entry.id}&n=${encodeURIComponent(entry.n)}&q=${entry.q}&p=${entry.p}&v=${entry.v}`);
-});
+}
+
+// ─────────────────────────────────────────────
+// ENDPOINT: do/newbouille — Create/save accessory item
+// Used by admin "Frutibouille" tooling.
+// Params: q=<quantity/type>, n=<name>, p=<price>, v=<value>, sid=<session_id>
+// Returns LoadVars: state=0
+// Accept both /do/newbouille and /newbouille to tolerate legacy URL rewrites.
+// ─────────────────────────────────────────────
+app.get('/do/newbouille', handleNewBouille);
+app.get('/newbouille', handleNewBouille);
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/gmi — Get my info (user profile data)
@@ -540,6 +544,11 @@ app.get('/do/ld', (req, res) => {
 // Returns XML
 // ─────────────────────────────────────────────
 app.get('/ff/tree', (req, res) => {
+  res.type('text/xml').send(FILE_TREE_XML);
+});
+
+// Legacy alias seen in some SWFs / URL rewrite paths
+app.get('/ft/tree', (req, res) => {
   res.type('text/xml').send(FILE_TREE_XML);
 });
 
