@@ -9,15 +9,21 @@
     .splash { text-align: center; }
     .splash h1 { font-size: 2.5rem; margin-bottom: 0.5rem; color: #CFF599; }
     .splash p { font-size: 1rem; color: #ADE76B; margin-bottom: 2rem; }
+    .actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
     .splash a { display: inline-block; padding: 1rem 2rem; background: #94DB39; color: #335511; text-decoration: none; font-weight: bold; border-radius: 8px; font-size: 1.1rem; }
     .splash a:hover { background: #ADE76B; }
+    .splash a.secondary { background: #4f7b1f; color: #e5ffc7; }
+    .splash a.secondary:hover { background: #669d2b; }
   </style>
 </head>
 <body>
   <div class="splash">
     <h1>Frutiparc</h1>
     <p>Le site de jeux Flash des années 2000 — émulé avec Ruffle</p>
-    <a href="/legacy">Entrer dans Frutiparc</a>
+    <div class="actions">
+      <a href="/legacy">Entrer dans Frutiparc</a>
+      <a class="secondary" href="/login">Connexion / Inscription</a>
+    </div>
   </div>
 </body>
 </html>

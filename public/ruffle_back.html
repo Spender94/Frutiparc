@@ -13,14 +13,17 @@
         (function() {
             const _origFetch = window.fetch;
 
+            const APP_ORIGIN = window.location.origin;
+            const SWF_ORIGIN = `${APP_ORIGIN}/swf`;
+
             // Map original Frutiparc domains → local server paths
             const domainMap = {
-                'www.beta.frutiparc.com': 'http://localhost:8888',
-                'www.frutiparc.com':      'http://localhost:8888',
-                'swf.beta.frutiparc.com': 'http://localhost:8888/swf',
-                'swf.frutiparc.com':      'http://localhost:8888/swf',
-                'localhost:5173':         'http://localhost:8888',     // SWF uses old CBee port for HTTP — redirect
-                'localhost:5000':         'http://localhost:8888',     // SWF uses new CBee port for HTTP — redirect
+                'www.beta.frutiparc.com': APP_ORIGIN,
+                'www.frutiparc.com':      APP_ORIGIN,
+                'swf.beta.frutiparc.com': SWF_ORIGIN,
+                'swf.frutiparc.com':      SWF_ORIGIN,
+                'localhost:5173':         APP_ORIGIN,     // SWF uses old CBee port for HTTP — redirect
+                'localhost:5000':         APP_ORIGIN,     // SWF uses new CBee port for HTTP — redirect
             };
 
             window.fetch = function(input, init) {
@@ -47,7 +50,7 @@
                 ];
                 try {
                     const parsed = new URL(url);
-                    if (parsed.hostname === 'localhost') {
+                    if (parsed.host === window.location.host) {
                         for (const [prefix, replacement] of prefixRewrites) {
                             if (parsed.pathname.startsWith(prefix)) {
                                 parsed.pathname = replacement + parsed.pathname.substring(prefix.length);
@@ -102,10 +105,10 @@
                 quality: "high",
                 parameters: {
                     sid: "debug",
-                    domain: "localhost:8888/"
+                    domain: `${window.location.host}/./`
                 },
                 socketProxy: [
-                    { host: "localhost", port: 5000, proxyUrl: "ws://localhost:8888" }
+                    { host: "localhost", port: 5000, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` }
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",
@@ -153,7 +156,7 @@
         let chatLogged = false;
 
         function connectChat() {
-            chatWs = new WebSocket('ws://localhost:8888');
+            chatWs = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`);
             chatStatus.textContent = 'Connexion...';
 
             chatWs.onopen = () => {
