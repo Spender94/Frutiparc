@@ -291,7 +291,6 @@ app.post('/api/auth/register', (req, res) => {
   }
 
   users[username] = createDefaultUser(password);
-  users[username].needsBouille = false;
   return res.json({ ok: true, username });
 });
 
