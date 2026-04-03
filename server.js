@@ -277,9 +277,8 @@ app.get('/legacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
-// Explicitly block legacy popup game runtime route.
-app.get('/frusion', (req, res) => {
-  res.type('text/html').send('<!doctype html><meta charset="utf-8"><script>try{window.close();}catch(e){}document.body.innerHTML="Frusion popup disabled.";</script>');
+app.get('/do/ld', (req, res) => {
+  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
 });
 
 app.get('/legacy/main.swf', (req, res) => {
