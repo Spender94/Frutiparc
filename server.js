@@ -143,6 +143,28 @@ function bouilleOf(user) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
+const frusionTrace = {};   // sid -> [{ at, event, meta }]
+
+function sidFromRequest(req) {
+  if (req.query && typeof req.query.sid === 'string' && req.query.sid) return req.query.sid;
+  const ref = req.get('referer') || req.get('referrer');
+  if (!ref) return null;
+  try {
+    const url = new URL(ref);
+    return url.searchParams.get('sid');
+  } catch {
+    return null;
+  }
+}
+
+function recordFrusionEvent(sid, event, meta = {}) {
+  if (!sid) return;
+  const row = { at: new Date().toISOString(), event, meta };
+  if (!frusionTrace[sid]) frusionTrace[sid] = [];
+  frusionTrace[sid].push(row);
+  if (frusionTrace[sid].length > 80) frusionTrace[sid].shift();
+  console.log(`[FRUSION][${sid}] ${event} ${JSON.stringify(meta)}`);
+}
 
 // Default user for quick testing
 users['Angelisium'] = {
@@ -501,6 +523,8 @@ app.get('/do/ld', (req, res) => {
   };
 
   const game = discMap[discId] || discMap.kaluga1;
+  const sid = sidFromRequest(req);
+  recordFrusionEvent(sid, 'do_ld', { discId, swf: game.u, files: game.swfList });
   // Legacy loader prepends host on its side; keep <s u> relative to avoid host duplication.
   const swfNodes = game.swfList.map((u) => `<s u="${u}" />`).join('');
   res.type('text/xml').send(
@@ -636,13 +660,35 @@ app.get('/ff/dm', (req, res) => {
 // ENDPOINT: h/send_debug — Debug logging (POST)
 // ─────────────────────────────────────────────
 app.post('/h/send_debug', (req, res) => {
-  console.log('[debug from SWF]', req.body.txt || '');
+  const sid = sidFromRequest(req);
+  const txt = req.body.txt || '';
+  console.log('[debug from SWF]', txt);
+  recordFrusionEvent(sid, 'swf_debug', { txt });
   res.type('text/plain').send('state=0');
+});
+
+app.get('/debug/frusion-state', (req, res) => {
+  const sid = sidFromRequest(req) || req.query.sid || '';
+  const events = sid ? (frusionTrace[sid] || []) : frusionTrace;
+  res.json({ ok: true, sid, events });
 });
 
 // ─────────────────────────────────────────────
 // Serve SWF assets under /swf/* (used by the JS fetch interceptor rewrite)
 // ─────────────────────────────────────────────
+app.use((req, res, next) => {
+  if (
+    req.url.startsWith('/animfrusion.sw') ||
+    req.url.startsWith('/swf/games/kaluga/kaluga.swf') ||
+    req.url.startsWith('/swf/sd/kaluga_tz.swf') ||
+    req.url.startsWith('/swf/sd/kaluga_panier.swf')
+  ) {
+    const sid = sidFromRequest(req);
+    recordFrusionEvent(sid, 'asset_fetch', { url: req.url });
+  }
+  next();
+});
+
 // Compatibility aliases for patched legacy Frusion constants (15-char slash-safe names)
 app.get('/animfrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'animfrusion.swf')));
 app.get('/skinFrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf')));
