@@ -52,6 +52,13 @@ app.use((req, res, next) => {
   if (VERBOSE_HTTP_LOGS) {
     console.log(`[HTTP]  ${req.method} ${req.url}`);
   }
+  const sid = (req.query && (req.query.sid || req.query.c))
+    || (req.body && (req.body.sid || req.body.c))
+    || '';
+  if (sid) {
+    const ip = getClientIp(req);
+    if (ip) recentSidByIp.set(ip, sid);
+  }
   next();
 });
 
@@ -148,6 +155,7 @@ function bouilleOf(user) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
+const recentSidByIp = new Map(); // ip -> sid fallback for legacy calls missing sid
 const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
 
 function createDefaultUser(pass) {
@@ -171,6 +179,11 @@ function createDefaultUser(pass) {
 
 function normalizeUsername(raw) {
   return String(raw || '').trim().toLowerCase();
+}
+
+function getClientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.ip || (req.socket && req.socket.remoteAddress) || '';
 }
 
 function isValidUsername(username) {
@@ -379,6 +392,13 @@ app.get('/frusion', (req, res) => {
   res.redirect(`/frusion-ruffle.html${qs}`);
 });
 
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  res.redirect(`/frusion-ruffle.html${qs}`);
+});
+
 function sendAvatarFamily(res, fileName) {
   const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
@@ -516,6 +536,11 @@ function getSidFromRequest(req, source = null) {
     } catch {
       // ignore malformed referer
     }
+  }
+
+  const ip = req ? getClientIp(req) : '';
+  if (ip && recentSidByIp.has(ip)) {
+    return recentSidByIp.get(ip) || '';
   }
 
   return '';
