@@ -131,7 +131,7 @@ function createDefaultUser(pass) {
     country: 'FR',
     region: 'IDF',
     prefs: '',
-    isModerator: false,
+    isModerator: true,
     needsBouille: true, // Force editbouille on first login
   };
 }
@@ -196,6 +196,23 @@ const DEFAULT_BOUILLE_LIST = [
   { b: '000503000000111011000000', n: 'Classique 2' },
   { b: '000503000000111012000000', n: 'Classique 3' },
   { b: '010503000000111010000000', n: 'Famille 1' },
+];
+
+const DEFAULT_WALLPAPERS = [
+  { u: 'moutarde',       n: 'Chavelier moutarde',    url: 'wal/ch.jpg', color: '4E5464;' },
+  { u: 'chorale',        n: 'Chorale Frutiparc',     url: 'wal/fp.jpg', color: 'ADE76B;' },
+  { u: 'pixizchristmas', n: 'Noël Pixiz',            url: 'wal/ma.jpg', color: 'ADE76B;' },
+  { u: 'snakechristmas', n: 'Noël Frutisnake',       url: 'wal/no.jpg', color: 'ADE76B;' },
+  { u: 'pixiz',          n: 'Pixiz',                 url: 'wal/pi.jpg', color: 'F9D190;' },
+  { u: 'nostromo',       n: 'Mini-Wave Nostromo',    url: 'wal/pl.jpg', color: '000044;' },
+  { u: 'ministar',       n: 'Mini-Wave Mini-Star',   url: 'wal/va.jpg', color: '000044;' },
+  { u: 'utopiz',         n: 'Utopiz',                url: 'wal/ut.jpg', color: 'F6AFA9;' },
+];
+
+const DEFAULT_ACCESSORIES = [
+  { u: 'bananocle', n: 'Bananocle', v: '00000d0r020f0l06010k0w0g' },
+  { u: 'beaute',    n: 'Beauté',    v: '00000d0r020f0l0b000k0w0g' },
+  { u: 'normal',    n: 'Normal',    v: '00000d0r020f0l0000000000' },
 ];
 
 function buildBouilleListXml() {
@@ -599,12 +616,17 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   }
 
   if (uid === 'inventory') {
-    const customAccessoryNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
-      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}
-${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+    const wallpaperNodes = DEFAULT_WALLPAPERS
+      .map((wp) => `<e u="${escapeXml(wp.u)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(wp.n)}\n${wp.url}\n${wp.color}</e>`)
+      .join('');
+    const defaultAccNodes = DEFAULT_ACCESSORIES
+      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${acc.v}</e>`)
+      .join('');
+    const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
       .join('');
     return res.type('text/xml').send(
-      `<f u="inventory">${customAccessoryNodes || '<i />'}</f>`
+      `<f u="inventory">${wallpaperNodes}${defaultAccNodes}${customAccNodes}</f>`
     );
   }
 
@@ -613,11 +635,13 @@ ${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
   }
 
   if (uid === 'accessories') {
-    const nodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
-      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}
-${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+    const defaultAccNodes = DEFAULT_ACCESSORIES
+      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${acc.v}</e>`)
       .join('');
-    return res.type('text/xml').send(`<f u="accessories">${nodes || '<i />'}</f>`);
+    const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+      .join('');
+    return res.type('text/xml').send(`<f u="accessories">${defaultAccNodes}${customAccNodes}</f>`);
   }
 
 
@@ -1002,6 +1026,25 @@ const channels = {
   bienvenue: { topic: 'Bienvenue sur Frutiparc !', users: new Set() },
 };
 
+// ── Virtual test user: DebugBot (always connected on pomme) ──
+users['DebugBot'] = {
+  pass: '',
+  xp: 1000000,
+  kikooz: 100,
+  fbouille: '000503000000111010000000',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'M',
+  birthday: '2000-01-01',
+  country: 'FR',
+  region: 'IDF',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+};
+channels.pomme.users.add('DebugBot');
+
 const xmlSocketClients = new Map(); // socket -> { sid, username, logged, channels: Set }
 
 function sendToClient(socket, data) {
@@ -1052,6 +1095,17 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   } else {
     broadcastToChannel(channelName, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
   }
+
+  // Virtual test user DebugBot respawns on pomme after kick/ban (5s delay)
+  if (targetUser === 'DebugBot' && channelName === 'pomme') {
+    setTimeout(() => {
+      if (channel.banned) channel.banned.delete('DebugBot');
+      channel.users.add('DebugBot');
+      broadcastToChannel('pomme', `<${CMD.userjoined} u="DebugBot" g="pomme" />`);
+      console.log('[CBee]  DebugBot respawned on pomme');
+    }, 5000);
+  }
+
   return true;
 }
 
