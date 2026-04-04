@@ -58,39 +58,6 @@ app.use((req, res, next) => {
 
 
 // ─────────────────────────────────────────────
-// Diagnostics: validate critical SWF assets are real files (not stubs)
-// ─────────────────────────────────────────────
-function warnIfStubSwfAssets() {
-  const criticalSwfs = [
-    'public/swf/fbouille/famille0.swf',
-    'public/swf/fbouille/famille1.swf',
-    'public/frusion_client.swf',
-
-  ];
-
-  const stubFiles = [];
-  for (const relPath of criticalSwfs) {
-    const absPath = path.join(__dirname, relPath);
-    try {
-      const st = fs.statSync(absPath);
-      if (st.size <= 32) {
-        stubFiles.push(`${relPath} (${st.size} bytes)`);
-      }
-    } catch {
-      stubFiles.push(`${relPath} (missing)`);
-    }
-  }
-
-  if (stubFiles.length > 0) {
-    console.warn('[ASSETS] Frutibouille assets look incomplete.');
-    console.warn('[ASSETS] The avatar editor may show blank previews / "undefined" labels.');
-    for (const f of stubFiles) {
-      console.warn(`[ASSETS]   - ${f}`);
-    }
-  }
-}
-
-// ─────────────────────────────────────────────
 // Helpers: base62 encode/decode (matches FEString/FENumber in AS2)
 // ─────────────────────────────────────────────
 const BASE62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -164,7 +131,7 @@ function createDefaultUser(pass) {
     country: 'FR',
     region: 'IDF',
     prefs: '',
-    isModerator: true,
+    isModerator: false,
     needsBouille: true, // Force editbouille on first login
   };
 }
@@ -309,10 +276,6 @@ app.post('/api/auth/login', (req, res) => {
   return res.json({ ok: true, sid, username, redirect: `/legacy?sid=${encodeURIComponent(sid)}` });
 });
 
-app.get('/do/ld', (req, res) => {
-  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
-});
-
 app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
 });
@@ -339,34 +302,21 @@ app.get('/fileIcon.swf', (req, res) => {
 
 
 app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
-  const fallback = path.join(__dirname, 'frusion', 'saf_debug.swf');
   if (VERBOSE_SWF_LOGS) {
-    console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+    console.log('[SWF]   frusion_client.swf requested');
   }
   res.type('application/x-shockwave-flash');
-  res.sendFile(fallback);
+  res.sendFile(path.join(__dirname, 'public', 'frusion_client.swf'));
 });
 
 function sendAvatarFamily(res, fileName) {
-  let absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
+  const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
   if (!fs.existsSync(absPath)) {
     if (VERBOSE_SWF_LOGS) {
       console.log(`[SWF]   Missing avatar asset: ${absPath}`);
     }
     return res.status(404).type('text/plain').send('Missing SWF');
-  }
-
-  // Repo snapshot often has a tiny stub for famille1.swf (17 bytes).
-  // Serve famille0 as fallback to avoid malformed SWF parse loops in Ruffle.
-  if (fileName === 'famille1.swf') {
-    try {
-      const st = fs.statSync(absPath);
-      if (st.size <= 32) {
-        console.warn('[SWF]   famille1.swf is a stub, falling back to famille0.swf');
-        absPath = path.join(__dirname, 'public', 'swf', 'fbouille', 'famille0.swf');
-      }
-    } catch {}
   }
 
   if (VERBOSE_SWF_LOGS) {
@@ -475,7 +425,7 @@ function requireAuthBySid(sid, res, responseType = 'text/plain') {
 app.all('/do/eb', (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
 
-  const sid = source.sid || 'debug';
+  const sid = source.sid || '';
   const rawBouille = source.b || source.s || source.f || '';
   const bouille = normalizeBouilleState(rawBouille);
   const auth = requireAuthBySid(sid, res);
@@ -636,17 +586,12 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   if (!auth) return;
   const { user } = auth;
   ensureContactLists(user);
-  const currentBouille = bouilleOf(user);
-  const bouilleBase = `${currentBouille}${DEFAULT_BOUILLE_STATE}`.slice(0, 15);
-  const accessoryTailA = '30x0t0w0D';
-  const accessoryBouilleA = `${bouilleBase}${accessoryTailA}`;
   if (uid === 'root' || uid === 'desktop') {
     return res.type('text/xml').send(
       `<f u="root">
         <f u="inbox" t="inbox" p="normal" />
         <f u="disccollector" t="disccollector" />
         <f u="inventory" t="inventory" />
-        <e u="Gaspard" t="contact" s="10" d="0" a="0">Gaspard@frutiparc.com</e>
         <f u="mycontact" t="mycontact" />
         <f u="recyclebin" t="recyclebin" />
       </f>`
@@ -659,27 +604,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 ${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
       .join('');
     return res.type('text/xml').send(
-      `<f u="inventory">
-        <e u="moutarde" t="wallpaper" s="10" d="0" a="0">Chavelier moutarde
-wal/ch.jpg
-4E5464;</e>
-        <e u="chorale" t="wallpaper" s="10" d="0" a="0">Chorale Frutiparc
-wal/fp.jpg
-ADE76B;</e>
-        <e u="pixiz" t="wallpaper" s="10" d="0" a="0">Pixiz
-wal/pi.jpg
-F9D190;</e>
-        <e u="utopiz" t="wallpaper" s="10" d="0" a="0">Utopiz
-wal/ut.jpg
-F6AFA9;</e>
-        <e u="my_bouille_current" t="bouille" s="10" d="0" a="0">Ma bouille actuelle
-${escapeXml(currentBouille)}</e>
-        <e u="my_bouille_test_1" t="bouille" s="10" d="0" a="0">Accessoire tail 30x0t0w0D
-${escapeXml(accessoryBouilleA)}</e>
-        <e u="my_bouille_test_2" t="bouille" s="10" d="0" a="0">Test bouille #2
-${escapeXml(currentBouille)}</e>
-        ${customAccessoryNodes}
-      </f>`
+      `<f u="inventory">${customAccessoryNodes || '<i />'}</f>`
     );
   }
 
@@ -713,12 +638,7 @@ ${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
   }
 
   if (uid === 'disccollector') {
-    return res.type('text/xml').send(
-      `<f u="disccollector">
-        <e u="kaluga1" t="disc" s="10" d="0" a="0">0
-kaluga</e>
-      </f>`
-    );
+    return res.type('text/xml').send('<f u="disccollector"><i /></f>');
   }
 
   // Return an empty folder listing with a placeholder node to avoid legacy null-firstChild edge cases
@@ -823,18 +743,9 @@ app.get('/ff/dm', (req, res) => {
 // ENDPOINT: h/send_debug — Debug logging (POST)
 // ─────────────────────────────────────────────
 app.post('/h/send_debug', (req, res) => {
-  const sid = sidFromRequest(req);
   const txt = req.body.txt || '';
   console.log('[debug from SWF]', txt);
-  recordFrusionEvent(sid, 'swf_debug', { txt });
   res.type('text/plain').send('state=0');
-});
-
-app.get(['/debug/frusion-state', '/debug/frusion-state/', '/debug/frusion-state/all'], (req, res) => {
-  const sid = sidFromRequest(req) || req.query.sid || '';
-  const events = sid ? (frusionTrace[sid] || []) : (frusionTrace.__all || []);
-  const availableSids = Object.keys(frusionTrace).filter((k) => !k.startsWith('__'));
-  res.json({ ok: true, sid, count: events.length, availableSids, events });
 });
 
 // ─────────────────────────────────────────────
@@ -856,18 +767,18 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
-// Catch-all 404 with logging (helps diagnose missing assets)
-// ─────────────────────────────────────────────
-app.use((req, res) => {
-  console.log(`[404]   ${req.method} ${req.url}`);
-  res.status(404).type('text/plain').send('Not found');
-});
-
 // ─────────────────────────────────────────────
 // Health check
 // ─────────────────────────────────────────────
 app.get('/healthz', (req, res) => {
   res.json({ ok: true, service: 'frutiparc-backend' });
+});
+
+// Catch-all 404 with logging (helps diagnose missing assets)
+// ─────────────────────────────────────────────
+app.use((req, res) => {
+  console.log(`[404]   ${req.method} ${req.url}`);
+  res.status(404).type('text/plain').send('Not found');
 });
 
 // ─────────────────────────────────────────────
@@ -882,7 +793,6 @@ const server = app.listen(port, '0.0.0.0', () => {
     console.log('        Public URL:  (auto from request host; set PUBLIC_HOST to force)');
   }
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
-  warnIfStubSwfAssets();
 });
 
 // ─────────────────────────────────────────────
@@ -1314,19 +1224,7 @@ function handleCBeeMessage(socket, rawXml) {
 
       // Auto-create user if doesn't exist
       if (!users[effectiveLogin]) {
-        users[effectiveLogin] = {
-          pass: '',
-          xp: 10000,
-          kikooz: 50,
-          fbouille: DEFAULT_BOUILLE_STATE,
-          items: withDefaultPens([]),
-          gender: 'M',
-          birthday: '2000-01-01',
-            country: 'FR',
-            region: 'IDF',
-            prefs: '',
-            isModerator: true,
-          };
+        users[effectiveLogin] = createDefaultUser('');
       }
 
       const user = users[effectiveLogin];
@@ -1707,14 +1605,7 @@ case 'createchannel': {
   );
 
   // On pousse aussi les infos connues sur l’autre user
-  const ud = users[otherUser] || {
-    xp: 10000,
-    gender: 'M',
-    birthday: '2000-01-01.00:00:00',
-    country: 'FR',
-    region: '',
-    fbouille: DEFAULT_BOUILLE_STATE,
-  };
+  const ud = users[otherUser] || createDefaultUser('');
 
   sendToClient(
     socket,
