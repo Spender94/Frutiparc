@@ -169,6 +169,11 @@
             console.log("[Frusion] popup launch suppressed", _url);
             return true;
         };
+        window.fp_openHisto = function(user) {
+            const u = encodeURIComponent(String(user || ''));
+            window.open(`/legacy?histo=${u}`, '_blank', 'noopener,noreferrer');
+            return true;
+        };
 
         function normalizeAvatarState(value) {
             let s = String(value || '').replace(/\D/g, '');

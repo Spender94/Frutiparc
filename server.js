@@ -1136,7 +1136,11 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
       sendToClient(sock, `<${CMD.onkick} g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`);
     }
   }
-  broadcastToChannel(channelName, `<${CMD.userleaved} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+  if (reason === 'totoch' || reason === 'ban') {
+    broadcastToChannel(channelName, `<${CMD.ban} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+  } else {
+    broadcastToChannel(channelName, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+  }
   return true;
 }
 
@@ -1226,6 +1230,20 @@ function normalizeClientIp(rawIp) {
   if (rawIp === '::1') return '127.0.0.1';
   if (rawIp.startsWith('::ffff:')) return rawIp.substring(7);
   return rawIp;
+}
+
+function getMuteValue(user) {
+  const raw = user && user.mutedUntil ? String(user.mutedUntil) : '';
+  if (!raw) return '0000-00-00 00:00:00';
+  const d = new Date(raw.replace('.', ' '));
+  if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) return '0000-00-00 00:00:00';
+  return raw.includes('.') ? raw.replace('.', ' ') : raw;
+}
+
+function getStatusCode(user) {
+  const muteVal = getMuteValue(user);
+  const emote = muteVal === '0000-00-00 00:00:00' ? 0 : 7;
+  return `${encode62(0, 1)}${encode62(0, 2)}${encode62(emote, 1)}`;
 }
 
 function buildChannelListXml() {
@@ -1368,7 +1386,7 @@ case 'join': {
 
   for (const u of userArr) {
     const ud = users[u] || {};
-    userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
+    userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
   }
 
   const timeAttrs = buildChatTimeAttrs();
@@ -1409,7 +1427,7 @@ broadcastToChannel(
       let userXml = '';
       for (const u of userArr) {
         const ud = users[u] || {};
-        userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
+        userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
       }
       sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
       break;
@@ -1482,10 +1500,13 @@ case 'send': {
     }
     if (isModerator(client.username) && text.startsWith('/totoch ')) {
       const targetUser = resolveKnownUsername(text.substring(8).trim());
-      if (targetUser && channels[g]) {
-        if (!channels[g].banned) channels[g].banned = new Set();
-        channels[g].banned.add(targetUser);
-        kickUserFromChannel(g, targetUser, client.username, 'totoch');
+      const target = users[targetUser];
+      if (targetUser && target) {
+        const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
+        target.mutedUntil = until;
+        for (const targetSock of getSocketsForUsername(targetUser)) {
+          sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
+        }
       }
       break;
     }
@@ -1540,6 +1561,12 @@ case 'send': {
         sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       }
       sendToClient(socket, `<${CMD.mute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
+      const g = pickActiveChannel(client, msg.attrs);
+      if (g) {
+        const timeAttrs = buildChatTimeAttrs();
+        broadcastToChannel(g, `<${CMD.send} u="Serveur" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(targetUser)} a été totoché</${CMD.send}>`);
+        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
+      }
       break;
     }
 
@@ -1556,6 +1583,10 @@ case 'send': {
         sendToClient(targetSock, `<${CMD.endmute} u="${escapeXml(targetUser)}" />`);
       }
       sendToClient(socket, `<${CMD.unmute} u="${escapeXml(targetUser)}" />`);
+      const g = pickActiveChannel(client, msg.attrs);
+      if (g) {
+        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
+      }
       break;
     }
 
@@ -1569,7 +1600,7 @@ case 'trace': {
     for (const child of traceChildren) {
       const u = child.attrs.u;
       const ud = users[u] || {};
-      inner += `<u u="${u}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
+      inner += `<u u="${u}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
     }
 
     sendToClient(socket, `<${CMD.trace}>${inner}</${CMD.trace}>`);
@@ -1581,7 +1612,7 @@ case 'trace': {
     const ud = users[targetUser] || users[client.username] || {};
     sendToClient(
       socket,
-      `<${CMD.trace} u="${targetUser}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`
+      `<${CMD.trace} u="${targetUser}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`
     );
   }
   break;
