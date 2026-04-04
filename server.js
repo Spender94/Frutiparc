@@ -573,6 +573,7 @@ app.get('/do/onident', (req, res) => {
   const items = user.items.join(',');
   const myPref = user.prefs || '';
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const modAttr = user.isModerator ? ' m="1" a="1"' : '';
 
   // The "f" attribute, when present, forces the SWF to open the editbouille
   // window with the listed part families. Used for first-time avatar setup.
@@ -582,7 +583,7 @@ app.get('/do/onident', (req, res) => {
     user.needsBouille = false; // Only force once per session
   }
 
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}><mp><![CDATA[${myPref}]]></mp><ul><!--empty--></ul><sl><!--empty--></sl><bl>${buildBouilleListXml()}</bl></r>`;
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${modAttr}${fAttr}><mp><![CDATA[${myPref}]]></mp><ul><!--empty--></ul><sl><!--empty--></sl><bl>${buildBouilleListXml()}</bl></r>`;
 
   res.type('text/xml').send(xml);
 });
@@ -1469,7 +1470,7 @@ case 'send': {
   const senderData = users[client.username] || {};
   const mutedUntil = senderData.mutedUntil ? new Date(senderData.mutedUntil) : null;
   if (mutedUntil && !Number.isNaN(mutedUntil.getTime()) && mutedUntil.getTime() > Date.now()) {
-    sendToClient(socket, `<${CMD.onmute} e="${escapeXml(senderData.mutedUntil)}" />`);
+    sendToClient(socket, `<${CMD.onmute} u="${escapeXml(client.username)}" mt="${escapeXml(senderData.mutedUntil)}" mu="${escapeXml(senderData.mutedUntil)}" />`);
     break;
   }
 
@@ -1536,9 +1537,9 @@ case 'send': {
       const until = msg.attrs.e || new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
       target.mutedUntil = until;
       for (const targetSock of getSocketsForUsername(targetUser)) {
-        sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(targetUser)}" e="${escapeXml(until)}" />`);
+        sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       }
-      sendToClient(socket, `<${CMD.mute} u="${escapeXml(targetUser)}" e="${escapeXml(until)}" />`);
+      sendToClient(socket, `<${CMD.mute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       break;
     }
 
