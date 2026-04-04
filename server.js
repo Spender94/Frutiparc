@@ -181,6 +181,16 @@ function isValidPassword(password) {
   return typeof password === 'string' && password.length >= 6 && password.length <= 80;
 }
 
+function isDebugNotUser(username) {
+  return String(username || '').toLowerCase() === 'debugnot';
+}
+
+function getFrutizJob(username, user) {
+  if (isDebugNotUser(username)) return 'Frutiz';
+  if (user && user.isModerator) return 'Modérateur';
+  return 'Frutiz';
+}
+
 // ─────────────────────────────────────────────
 // Preference definitions
 // Built like the original: id(2 base62) + type(1 char) + nameLen(2 base62) + name + defaultLen(2 base62) + default
@@ -580,7 +590,9 @@ app.get('/do/onident', (req, res) => {
   const items = user.items.join(',');
   const myPref = user.prefs || '';
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  const modAttr = user.isModerator ? ' m="1" a="1"' : '';
+  const currentUsername = auth.username || '';
+  const allowModeration = user.isModerator && !isDebugNotUser(currentUsername);
+  const modAttr = allowModeration ? ' m="1" a="1"' : '';
 
   // The "f" attribute, when present, forces the SWF to open the editbouille
   // window with the listed part families. Used for first-time avatar setup.
@@ -1148,6 +1160,7 @@ function getSocketsForUsername(username) {
 }
 
 function isModerator(username) {
+  if (isDebugNotUser(username)) return false;
   return !!(username && users[username] && users[username].isModerator);
 }
 
@@ -1357,7 +1370,7 @@ function handleCBeeMessage(socket, rawXml) {
             country: 'FR',
             region: 'IDF',
             prefs: '',
-            isModerator: true,
+            isModerator: !isDebugNotUser(effectiveLogin),
           };
       }
 
@@ -1690,7 +1703,7 @@ case 'trace': {
       const r = msg.attrs.r || '';
       const ud = users[u] || {};
       sendToClient(socket,
-        `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="Modérateur" />`
+        `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(u, ud)}" />`
       );
       break;
     }
@@ -1758,7 +1771,7 @@ case 'createchannel': {
 
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="Modérateur" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(otherUser, ud)}" />`
   );
 
   sendToClient(
