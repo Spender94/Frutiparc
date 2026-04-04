@@ -11,6 +11,50 @@
   <script>
     (async function(){
       const params = new URLSearchParams(window.location.search);
+      const APP_ORIGIN = window.location.origin;
+      const domainMap = {
+        'www.beta.frutiparc.com': APP_ORIGIN,
+        'beta.frutiparc.com': APP_ORIGIN,
+        'www.frutiparc.com': APP_ORIGIN,
+        'www.frutiparc.net': APP_ORIGIN,
+        'swf.frutiparc.com': APP_ORIGIN,
+      };
+
+      const rewriteLegacyUrl = (rawUrl) => {
+        let url = String(rawUrl || '');
+        if (!url) return url;
+        try {
+          const parsed = new URL(url, window.location.origin);
+          const host = parsed.hostname + (parsed.port ? `:${parsed.port}` : '');
+          for (const [domain, target] of Object.entries(domainMap)) {
+            if (parsed.hostname === domain || host === domain) {
+              return target + parsed.pathname + parsed.search;
+            }
+          }
+          if (parsed.origin === APP_ORIGIN) {
+            if (parsed.pathname.startsWith('/betawww/')) return APP_ORIGIN + parsed.pathname.replace('/betawww/', '/') + parsed.search;
+            if (parsed.pathname.startsWith('/betaswf/')) return APP_ORIGIN + parsed.pathname.replace('/betaswf/', '/swf/') + parsed.search;
+            if (parsed.pathname.startsWith('/sw/')) return APP_ORIGIN + parsed.pathname.replace('/sw/', '/swf/') + parsed.search;
+          }
+          return parsed.toString();
+        } catch {
+          return url;
+        }
+      };
+
+      const _origFetch = window.fetch.bind(window);
+      window.fetch = function(input, init) {
+        const rawUrl = typeof input === 'string' ? input : (input && input.url ? input.url : String(input));
+        const rewritten = rewriteLegacyUrl(rawUrl);
+        return _origFetch(rewritten, init);
+      };
+
+      const _origXhrOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+        return _origXhrOpen.call(this, method, rewriteLegacyUrl(url), ...rest);
+      };
+
+      const wsOrigin = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
       const ruffle = window.RufflePlayer.newest();
       const player = ruffle.createPlayer();
       document.getElementById('player').appendChild(player);
@@ -18,7 +62,7 @@
       const flashVars = {};
       for (const [k,v] of params.entries()) flashVars[k] = v;
       if (!flashVars.sid) flashVars.sid = 'debug';
-      if (!flashVars.domain) flashVars.domain = 'localhost:8888/./';
+      if (!flashVars.domain) flashVars.domain = `${window.location.host}/./`;
 
       await player.load({
         url: '/frusion_client.swf',
@@ -27,8 +71,11 @@
         allowNetworking: 'all',
         openUrlMode: 'allow',
         quality: 'high',
-        base: 'http://localhost:8888/',
-        socketProxy: [{ host: 'localhost', port: 5000, proxyUrl: 'ws://localhost:8888' }],
+        base: `${window.location.origin}/`,
+        socketProxy: [
+          { host: 'localhost', port: 5000, proxyUrl: wsOrigin },
+          { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin },
+        ],
         parameters: flashVars,
       });
     })();
