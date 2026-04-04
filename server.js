@@ -541,27 +541,75 @@ app.get('/newbouille', handleNewBouille);
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/gmi — Get my info (user profile data)
-// Returns LoadVars with user profile fields
+// Returns XML payload used by the "Edit my info" legacy window
 // ─────────────────────────────────────────────
 app.get('/do/gmi', (req, res) => {
   const sid = req.query.sid;
   const auth = requireAuthBySid(sid, res);
   if (!auth) return;
-  const { username, user } = auth;
+  const { user } = auth;
 
-  const params = new URLSearchParams({
-    state: '0',
-    l: username,
-    x: String(user.xp || 0),
-    k: String(user.kikooz || 0),
-    f: bouilleOf(user),
-    sx: user.gender || 'M',
-    bd: user.birthday || '2000-01-01',
-    co: user.country || 'FR',
-    rg: user.region || '',
-  });
-  res.type('text/plain').send(params.toString());
+  const birthday = String(user.birthday || '2000-01-01');
+  const firstName = String(user.firstName || '');
+  const lastName = String(user.lastName || '');
+  const lastNamePublic = String(user.lastNamePublic || 'Y').toUpperCase() === 'N' ? 'N' : 'Y';
+  const gender = String(user.gender || 'M');
+  const realJob = String(user.realJob || 'Frutiz');
+  const city = String(user.city || '');
+  const countryIndex = String(user.countryIndex || '1');
+  const regionIndex = String(user.regionIndex || '1');
+  const siteUrl = String(user.siteUrl || '');
+  const comment = String(user.comment || '');
+
+  const xml = `<i>
+  <d>${escapeXml(birthday)}</d>
+  <f>${escapeXml(firstName)}</f>
+  <l p="${escapeXml(lastNamePublic)}">${escapeXml(lastName)}</l>
+  <g>${escapeXml(gender)}</g>
+  <j>${escapeXml(realJob)}</j>
+  <c>${escapeXml(city)}</c>
+  <o>${escapeXml(countryIndex)}</o>
+  <r>${escapeXml(regionIndex)}</r>
+  <u>${escapeXml(siteUrl)}</u>
+  <m>${escapeXml(comment)}</m>
+</i>`;
+
+  res.type('text/xml').send(xml);
 });
+
+function saveMyInfo(req, res) {
+  const source = req.method === 'POST' ? req.body : req.query;
+  const sid = source.sid || req.query.sid;
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
+  const { user } = auth;
+
+  const rawBirthday = String(source.d || user.birthday || '2000-01-01');
+  const birthday = /^\d{4}-\d{2}-\d{2}$/.test(rawBirthday) ? rawBirthday : (user.birthday || '2000-01-01');
+  const lastNamePublic = String(source.p || user.lastNamePublic || 'Y').toUpperCase() === 'N' ? 'N' : 'Y';
+
+  user.birthday = birthday;
+  user.firstName = String(source.f || user.firstName || '').slice(0, 64);
+  user.lastName = String(source.l || user.lastName || '').slice(0, 64);
+  user.lastNamePublic = lastNamePublic;
+  user.gender = String(source.g || user.gender || 'M').slice(0, 1) || 'M';
+  user.realJob = String(source.j || user.realJob || 'Frutiz').slice(0, 80);
+  user.city = String(source.c || user.city || '').slice(0, 80);
+  user.countryIndex = String(source.o || user.countryIndex || '1').slice(0, 8);
+  user.regionIndex = String(source.r || user.regionIndex || '1').slice(0, 8);
+  user.siteUrl = String(source.u || user.siteUrl || '').slice(0, 256);
+  user.comment = String(source.m || user.comment || '').slice(0, 500);
+
+  // Keep public userinfo fields in sync with the edit form values.
+  if (source.co) user.country = String(source.co).slice(0, 32) || user.country;
+  if (source.rg) user.region = String(source.rg).slice(0, 32) || user.region;
+
+  // Legacy flows expect LoadVars, often just "k=0" on success.
+  return res.type('text/plain').send('state=0&k=0');
+}
+
+// Accept multiple historical save routes used by legacy SWFs.
+app.all(['/do/smi', '/smi', '/do/mi', '/mi'], saveMyInfo);
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/prefsavepartial — Save one preference
@@ -632,6 +680,15 @@ const GAME_DISCS = {
     files: [
       { u: 'games/kaluga/kaluga.swf' },
       { u: 'games/kaluga/full.swf', n: 'full.swf' },
+    ],
+  },
+  kalugademo: {
+    discType: '3',
+    swfName: 'kaluga',
+    gameId: 'games/kaluga/kaluga.swf',
+    props: 'w=640;h=480;m=i',
+    files: [
+      { u: 'games/kaluga/kaluga.swf' },
     ],
   },
 };
@@ -747,7 +804,14 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   }
 
   if (uid === 'disccollector') {
-    return res.type('text/xml').send('<f u="disccollector"><i /></f>');
+    return res.type('text/xml').send(
+      `<f u="disccollector">
+        <e u="kaluga1" t="disc" s="10" d="0" a="0">0
+kaluga</e>
+        <e u="kalugademo" t="disc" s="10" d="0" a="0">3
+kaluga</e>
+      </f>`
+    );
   }
 
   // Return an empty folder listing with a placeholder node to avoid legacy null-firstChild edge cases
