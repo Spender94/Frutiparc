@@ -87,7 +87,7 @@ function decode62(s) {
   return r;
 }
 
-const DEFAULT_BOUILLE_STATE = '000000000000000000000000';
+const DEFAULT_BOUILLE_STATE = '000000010000000000000000';
 const ALL_PEN_ITEM_IDS = [315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 599, 600, 601, 602];
 
 function withDefaultPens(items = []) {
@@ -209,10 +209,12 @@ const DEFAULT_WALLPAPERS = [
   { u: 'utopiz',         n: 'Utopiz',                url: 'wal/ut.jpg', color: 'F6AFA9;' },
 ];
 
+// Accessories = last 9 chars of a 24-char bouille string.
+// The first 15 chars are filled from the user's current bouille at serve time.
 const DEFAULT_ACCESSORIES = [
-  { u: 'bananocle', n: 'Bananocle', v: '00000d0r020f0l06010k0w0g' },
-  { u: 'beaute',    n: 'Beauté',    v: '00000d0r020f0l0b000k0w0g' },
-  { u: 'normal',    n: 'Normal',    v: '00000d0r020f0l0000000000' },
+  { u: 'bananocle', n: 'Bananocle', suffix: '6010k0w0g' },
+  { u: 'beaute',    n: 'Beauté',    suffix: 'b000k0w0g' },
+  { u: 'normal',    n: 'Normal',    suffix: '000000000' },
 ];
 
 function buildBouilleListXml() {
@@ -616,11 +618,12 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   }
 
   if (uid === 'inventory') {
+    const bouillePrefix = bouilleOf(user).substring(0, 15);
     const wallpaperNodes = DEFAULT_WALLPAPERS
       .map((wp) => `<e u="${escapeXml(wp.u)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(wp.n)}\n${wp.url}\n${wp.color}</e>`)
       .join('');
     const defaultAccNodes = DEFAULT_ACCESSORIES
-      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${acc.v}</e>`)
+      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
       .join('');
     const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
       .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
@@ -635,8 +638,9 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   }
 
   if (uid === 'accessories') {
+    const bouillePrefix = bouilleOf(user).substring(0, 15);
     const defaultAccNodes = DEFAULT_ACCESSORIES
-      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${acc.v}</e>`)
+      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
       .join('');
     const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
       .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
@@ -1031,7 +1035,7 @@ users['DebugBot'] = {
   pass: '',
   xp: 1000000,
   kikooz: 100,
-  fbouille: '000503000000111010000000',
+  fbouille: '000000020000000000000000',
   items: withDefaultPens([1, 2, 3]),
   contacts: [],
   blacklist: [],
@@ -1095,6 +1099,9 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   } else {
     broadcastToChannel(channelName, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
   }
+  // The SWF's onKick/onBan listeners only handle errors.
+  // The channel UI updates the user list on "userleaved" events.
+  broadcastToChannel(channelName, `<${CMD.userleaved} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
 
   // Virtual test user DebugBot respawns on pomme after kick/ban (5s delay)
   if (targetUser === 'DebugBot' && channelName === 'pomme') {
