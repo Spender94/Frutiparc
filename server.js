@@ -372,6 +372,13 @@ app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'frusion_client.swf'));
 });
 
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  res.redirect(`/frusion-ruffle.html${qs}`);
+});
+
 function sendAvatarFamily(res, fileName) {
   const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
@@ -494,6 +501,26 @@ function getSidFromParams(source) {
   return source.sid || source.c || '';
 }
 
+function getSidFromRequest(req, source = null) {
+  const direct = getSidFromParams(source) || getSidFromParams(req && req.query);
+  if (direct) return direct;
+
+  // Some legacy calls (notably /do/smi) omit sid/c entirely.
+  // Recover sid from Referer (e.g. /legacy?sid=...).
+  const referer = String((req && req.headers && req.headers.referer) || '');
+  if (referer) {
+    try {
+      const u = new URL(referer);
+      const fromRef = u.searchParams.get('sid') || u.searchParams.get('c') || '';
+      if (fromRef) return fromRef;
+    } catch {
+      // ignore malformed referer
+    }
+  }
+
+  return '';
+}
+
 app.all('/do/eb', (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
 
@@ -549,7 +576,7 @@ app.get('/newbouille', handleNewBouille);
 // Returns XML payload used by the "Edit my info" legacy window
 // ─────────────────────────────────────────────
 app.get('/do/gmi', (req, res) => {
-  const sid = getSidFromParams(req.query);
+  const sid = getSidFromRequest(req, req.query);
   const auth = requireAuthBySid(sid, res);
   if (!auth) return;
   const { user } = auth;
@@ -584,7 +611,7 @@ app.get('/do/gmi', (req, res) => {
 
 function saveMyInfo(req, res) {
   const source = req.method === 'POST' ? req.body : req.query;
-  const sid = getSidFromParams(source) || getSidFromParams(req.query);
+  const sid = getSidFromRequest(req, source);
   const auth = requireAuthBySid(sid, res);
   if (!auth) return;
   const { user } = auth;
@@ -634,7 +661,7 @@ app.get('/prefForm', (req, res) => {
 // Returns XML with kikooz, items, prefs, logs, etc.
 // ─────────────────────────────────────────────
 app.get('/do/onident', (req, res) => {
-  const sid = getSidFromParams(req.query);
+  const sid = getSidFromRequest(req, req.query);
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user } = auth;
@@ -704,7 +731,7 @@ const GAME_DISCS = {
 app.get('/do/ld', (req, res) => {
   // Legacy Frusion flows may send "c" instead of "sid", and some clients
   // call /do/ld without auth context at all. The disc metadata itself is public.
-  const sid = getSidFromParams(req.query);
+  const sid = getSidFromRequest(req, req.query);
   if (sid) {
     const auth = requireAuthBySid(sid, res, 'text/xml');
     if (!auth) return;
