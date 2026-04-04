@@ -22,14 +22,18 @@
     <script>
         (function() {
             const _origFetch = window.fetch;
+            const APP_ORIGIN = window.location.origin;
+            const APP_HOST = window.location.host;
+            const WS_ORIGIN = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${APP_HOST}`;
+            const SWF_ORIGIN = `${APP_ORIGIN}/swf`;
 
             const domainMap = {
-                'www.beta.frutiparc.com': 'http://localhost:8888',
-                'www.frutiparc.com':      'http://localhost:8888',
-                'swf.beta.frutiparc.com': 'http://localhost:8888/swf',
-                'swf.frutiparc.com':      'http://localhost:8888/swf',
-                'localhost:5173':         'http://localhost:8888',
-                'localhost:5000':         'http://localhost:8888',
+                'www.beta.frutiparc.com': APP_ORIGIN,
+                'www.frutiparc.com':      APP_ORIGIN,
+                'swf.beta.frutiparc.com': SWF_ORIGIN,
+                'swf.frutiparc.com':      SWF_ORIGIN,
+                'localhost:5173':         APP_ORIGIN,
+                'localhost:5000':         APP_ORIGIN,
             };
 
             function maybeAutoLaunchFrusion(requestUrl, responsePromise) {
@@ -82,8 +86,9 @@
                 // Some legacy URL builders concatenate host + file without "/"
                 // (e.g. http://localhost:8888animfrusion.swf). Fix it here.
                 if (typeof url === 'string') {
-                    url = url.replace(/^http:\/\/localhost:8888(?![\/:])/, 'http://localhost:8888/');
-                    url = url.replace(/^https:\/\/localhost:8888(?![\/:])/, 'https://localhost:8888/');
+                    if (url.startsWith(APP_ORIGIN) && !url.startsWith(`${APP_ORIGIN}/`) && !url.startsWith(`${APP_ORIGIN}:`)) {
+                        url = url.replace(APP_ORIGIN, `${APP_ORIGIN}/`);
+                    }
                 }
 
                 try {
@@ -108,7 +113,7 @@
 
                 try {
                     const parsed = new URL(url);
-                    if (parsed.hostname === 'localhost') {
+                    if (parsed.host === APP_HOST) {
                         for (const [prefix, replacement] of prefixRewrites) {
                             if (parsed.pathname.startsWith(prefix)) {
                                 parsed.pathname = replacement + parsed.pathname.substring(prefix.length);
@@ -129,8 +134,9 @@
                 let rewritten = url;
 
                 if (typeof rewritten === 'string') {
-                    rewritten = rewritten.replace(/^http:\/\/localhost:8888(?![\/:])/, 'http://localhost:8888/');
-                    rewritten = rewritten.replace(/^https:\/\/localhost:8888(?![\/:])/, 'https://localhost:8888/');
+                    if (rewritten.startsWith(APP_ORIGIN) && !rewritten.startsWith(`${APP_ORIGIN}/`) && !rewritten.startsWith(`${APP_ORIGIN}:`)) {
+                        rewritten = rewritten.replace(APP_ORIGIN, `${APP_ORIGIN}/`);
+                    }
                 }
 
                 try {
@@ -163,6 +169,11 @@
             console.log("[Frusion] popup launch suppressed", _url);
             return true;
         };
+        window.fp_openHisto = function(user) {
+            const u = encodeURIComponent(String(user || ''));
+            window.open(`/legacy?histo=${u}`, '_blank', 'noopener,noreferrer');
+            return true;
+        };
 
         function normalizeAvatarState(value) {
             let s = String(value || '').replace(/\D/g, '');
@@ -185,6 +196,7 @@
         }
 
         window.addEventListener("DOMContentLoaded", async () => {
+            const wsOrigin = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
             const urlParams = new URLSearchParams(window.location.search);
 
             const sid = urlParams.get('sid') || 'debug';
@@ -214,16 +226,17 @@
                     sid: sid,
                     // Keep a slash-stable suffix: some legacy concatenations
                     // drop one trailing slash before appending filenames.
-                    domain: "localhost:8888/./",
+                    domain: `${window.location.host}/./`,
                     s: s,
                     e: e
                 },
                 socketProxy: [
-                    { host: "localhost", port: 5000, proxyUrl: "ws://localhost:8888" }
+                    { host: "localhost", port: 5000, proxyUrl: wsOrigin },
+                    { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin }
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",
-                base: "http://localhost:8888/"
+                base: `${window.location.origin}/`
             });
         });
     </script>
@@ -324,7 +337,7 @@
     }
 
     function connectChat() {
-        chatWs = new WebSocket('ws://localhost:8888');
+        chatWs = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`);
         chatWs.binaryType = 'arraybuffer';
         chatStatus.textContent = 'Connexion...';
 

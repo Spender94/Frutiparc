@@ -9,6 +9,11 @@ const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
 
 const app = express();
+const port = Number(process.env.PORT || 8888);
+const XMLSOCKET_PORT = Number(process.env.XMLSOCKET_PORT || 5000); // Must end in 000 for FrutiChat cmdList
+const PUBLIC_HOST = (process.env.PUBLIC_HOST || '').trim();
+const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
+const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
 
 // ── CORS headers (Ruffle's WASM fetch may need them) ──
 app.use((req, res, next) => {
@@ -42,9 +47,18 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Log all incoming requests for debugging
+// Optional HTTP request logs for debugging
 app.use((req, res, next) => {
-  console.log(`[HTTP]  ${req.method} ${req.url}`);
+  if (VERBOSE_HTTP_LOGS) {
+    console.log(`[HTTP]  ${req.method} ${req.url}`);
+  }
+  const sid = (req.query && (req.query.sid || req.query.c))
+    || (req.body && (req.body.sid || req.body.c))
+    || '';
+  if (sid) {
+    const ip = getClientIp(req);
+    if (ip) recentSidByIp.set(ip, sid);
+  }
   next();
 });
 
@@ -82,9 +96,6 @@ function warnIfStubSwfAssets() {
     }
   }
 }
-
-const port = process.env.PORT || 8888;
-const XMLSOCKET_PORT = 5000; // Port for the CBee XMLSocket server (must end in 000 for FrutiChat cmdList)
 
 // ─────────────────────────────────────────────
 // Helpers: base62 encode/decode (matches FEString/FENumber in AS2)
@@ -144,24 +155,54 @@ function bouilleOf(user) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
-const DEFAULT_USERNAME = 'skool';
+const recentSidByIp = new Map(); // ip -> sid fallback for legacy calls missing sid
+const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
 
-// Default user for quick testing/admin flows
-users[DEFAULT_USERNAME] = {
-  pass: 'test',
-  xp: 4680000,
-  kikooz: 150,
-  fbouille: DEFAULT_BOUILLE_STATE,
-  items: withDefaultPens([1, 2, 3]),
-  contacts: [],
-  blacklist: [],
-  gender: 'M',
-  birthday: '1990-05-15',
-  country: 'FR',
-  region: 'IDF',
-  prefs: '',
-  needsBouille: true, // Force editbouille on first login
-};
+function createDefaultUser(pass) {
+  return {
+    pass,
+    xp: 4680000,
+    kikooz: 150,
+    fbouille: DEFAULT_BOUILLE_STATE,
+    items: withDefaultPens([1, 2, 3]),
+    contacts: [],
+    blacklist: [],
+    gender: 'M',
+    birthday: '1990-05-15',
+    country: 'FR',
+    region: 'IDF',
+    prefs: '',
+    isModerator: true,
+    needsBouille: true, // Force editbouille on first login
+  };
+}
+
+function normalizeUsername(raw) {
+  return String(raw || '').trim().toLowerCase();
+}
+
+function getClientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.ip || (req.socket && req.socket.remoteAddress) || '';
+}
+
+function isValidUsername(username) {
+  return /^[a-z0-9_]{3,20}$/.test(username);
+}
+
+function isValidPassword(password) {
+  return typeof password === 'string' && password.length >= 6 && password.length <= 80;
+}
+
+function isDebugNotUser(username) {
+  return String(username || '').toLowerCase() === 'debugnot';
+}
+
+function getFrutizJob(username, user) {
+  if (isDebugNotUser(username)) return 'Frutiz';
+  if (user && user.isModerator) return 'Modérateur';
+  return 'Frutiz';
+}
 
 // ─────────────────────────────────────────────
 // Preference definitions
@@ -248,11 +289,47 @@ const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbo
 // Legacy Ruffle page
 // ─────────────────────────────────────────────
 app.get('/legacy', (req, res) => {
+  const sid = req.query.sid;
+  if (!resolveUsernameFromSid(sid)) {
+    return res.redirect('/login');
+  }
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
-app.get('/do/ld', (req, res) => {
-  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
+app.get('/login', (req, res) => {
+  res.sendFile(LOGIN_PAGE_PATH);
+});
+
+app.post('/api/auth/register', (req, res) => {
+  const username = normalizeUsername(req.body && req.body.username);
+  const password = String((req.body && req.body.password) || '');
+
+  if (!isValidUsername(username)) {
+    return res.status(400).json({ ok: false, error: 'username_invalid', message: 'Username: 3-20 chars [a-z0-9_].' });
+  }
+  if (!isValidPassword(password)) {
+    return res.status(400).json({ ok: false, error: 'password_invalid', message: 'Password: 6-80 chars.' });
+  }
+  if (users[username]) {
+    return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
+  }
+
+  users[username] = createDefaultUser(password);
+  return res.json({ ok: true, username });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const username = normalizeUsername(req.body && req.body.username);
+  const password = String((req.body && req.body.password) || '');
+  const user = users[username];
+
+  if (!user || user.pass !== password) {
+    return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+  }
+
+  const sid = crypto.randomBytes(16).toString('hex');
+  sessions[sid] = { user: username, createdAt: Date.now() };
+  return res.json({ ok: true, sid, username, redirect: `/legacy?sid=${encodeURIComponent(sid)}` });
 });
 
 app.get('/legacy/main.swf', (req, res) => {
@@ -260,7 +337,9 @@ app.get('/legacy/main.swf', (req, res) => {
 });
 
 app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
-  console.log('[SWF] fonts.swf requested:', req.url);
+  if (VERBOSE_SWF_LOGS) {
+    console.log('[SWF] fonts.swf requested:', req.url);
+  }
   res.type('application/x-shockwave-flash');
   res.sendFile(fontsPath);
 });
@@ -269,7 +348,9 @@ app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
 // during the loading screen.  Serving it explicitly (with logging and
 // correct Content-Type) helps diagnose and resolve pending-fetch issues.
 app.get('/fileIcon.swf', (req, res) => {
-  console.log('[SWF]   fileIcon.swf requested');
+  if (VERBOSE_SWF_LOGS) {
+    console.log('[SWF]   fileIcon.swf requested');
+  }
   res.type('application/x-shockwave-flash');
   res.sendFile(path.join(__dirname, 'public', 'fileIcon.swf'));
 });
@@ -278,16 +359,27 @@ app.get('/fileIcon.swf', (req, res) => {
 
 app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
   const fallback = path.join(__dirname, 'frusion', 'saf_debug.swf');
-  console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+  if (VERBOSE_SWF_LOGS) {
+    console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+  }
   res.type('application/x-shockwave-flash');
   res.sendFile(fallback);
+});
+
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  res.redirect(`/frusion-ruffle.html${qs}`);
 });
 
 function sendAvatarFamily(res, fileName) {
   let absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
   if (!fs.existsSync(absPath)) {
-    console.log(`[SWF]   Missing avatar asset: ${absPath}`);
+    if (VERBOSE_SWF_LOGS) {
+      console.log(`[SWF]   Missing avatar asset: ${absPath}`);
+    }
     return res.status(404).type('text/plain').send('Missing SWF');
   }
 
@@ -303,7 +395,9 @@ function sendAvatarFamily(res, fileName) {
     } catch {}
   }
 
-  console.log(`[SWF]   Serving avatar asset: ${fileName}`);
+  if (VERBOSE_SWF_LOGS) {
+    console.log(`[SWF]   Serving avatar asset: ${fileName}`);
+  }
   res.type('application/x-shockwave-flash');
   res.set('Cache-Control', 'no-store');
   res.sendFile(absPath);
@@ -340,8 +434,16 @@ app.get('/do/prefdef', (req, res) => {
 
 // Keep the advertised service port aligned with the live XMLSocket port.
 app.get('/xml/services.xml', (req, res) => {
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const rawHost = PUBLIC_HOST || forwardedHost || req.headers.host || 'localhost';
+  let publicHost = rawHost;
+  try {
+    publicHost = new URL(`http://${rawHost}`).hostname;
+  } catch {
+    publicHost = String(rawHost).split(':')[0] || 'localhost';
+  }
   res.type('text/xml').send(
-    `<services host="localhost"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
+    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /><service name="frutiscore" port="${XMLSOCKET_PORT}" /></services>`
   );
 });
 
@@ -380,7 +482,50 @@ function resolveUsernameFromSid(sid) {
   if (sid && sessions[sid] && sessions[sid].user && users[sessions[sid].user]) {
     return sessions[sid].user;
   }
-  return DEFAULT_USERNAME;
+  return null;
+}
+
+function requireAuthBySid(sid, res, responseType = 'text/plain') {
+  const username = resolveUsernameFromSid(sid);
+  if (!username) {
+    if (responseType === 'text/xml') {
+      res.status(401).type('text/xml').send('<r k="401">auth_required</r>');
+    } else {
+      res.status(401).type('text/plain').send('state=1&error=auth_required');
+    }
+    return null;
+  }
+  return { username, user: users[username] };
+}
+
+function getSidFromParams(source) {
+  if (!source) return '';
+  return source.sid || source.c || '';
+}
+
+function getSidFromRequest(req, source = null) {
+  const direct = getSidFromParams(source) || getSidFromParams(req && req.query);
+  if (direct) return direct;
+
+  // Some legacy calls (notably /do/smi) omit sid/c entirely.
+  // Recover sid from Referer (e.g. /legacy?sid=...).
+  const referer = String((req && req.headers && req.headers.referer) || '');
+  if (referer) {
+    try {
+      const u = new URL(referer);
+      const fromRef = u.searchParams.get('sid') || u.searchParams.get('c') || '';
+      if (fromRef) return fromRef;
+    } catch {
+      // ignore malformed referer
+    }
+  }
+
+  const ip = req ? getClientIp(req) : '';
+  if (ip && recentSidByIp.has(ip)) {
+    return recentSidByIp.get(ip) || '';
+  }
+
+  return '';
 }
 
 app.all('/do/eb', (req, res) => {
@@ -389,32 +534,12 @@ app.all('/do/eb', (req, res) => {
   const sid = source.sid || 'debug';
   const rawBouille = source.b || source.s || source.f || '';
   const bouille = normalizeBouilleState(rawBouille);
-  const username = resolveUsernameFromSid(sid);
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
 
-  if (!sessions[sid]) {
-    sessions[sid] = { user: username, createdAt: Date.now() };
-  } else if (!sessions[sid].user) {
-    sessions[sid].user = username;
-  }
+  auth.user.fbouille = bouille;
 
-  if (!users[username]) {
-    users[username] = {
-      pass: '',
-      xp: 10000,
-      kikooz: 50,
-      fbouille: DEFAULT_BOUILLE_STATE,
-      items: withDefaultPens([]),
-      gender: 'M',
-      birthday: '2000-01-01',
-      country: 'FR',
-      region: 'IDF',
-      prefs: '',
-    };
-  }
-
-  users[username].fbouille = bouille;
-
-  console.log(`[do/eb] Saved bouille for ${username}: ${bouille}`);
+  console.log(`[do/eb] Saved bouille for ${auth.username}: ${bouille}`);
   // Legacy callers consume LoadVars here; include k=0 to avoid error.http.undefined
   // while keeping historical bouille fields.
   res.type('text/plain').send(`state=0&k=0&b=${bouille}&s=${bouille}&f=${bouille}`);
@@ -422,9 +547,9 @@ app.all('/do/eb', (req, res) => {
 
 function handleNewBouille(req, res) {
   const sid = req.query.sid;
-  const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
+  const { user } = auth;
 
   const entry = {
     id: 'acc_' + crypto.randomBytes(4).toString('hex'),
@@ -455,27 +580,75 @@ app.get('/newbouille', handleNewBouille);
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/gmi — Get my info (user profile data)
-// Returns LoadVars with user profile fields
+// Returns XML payload used by the "Edit my info" legacy window
 // ─────────────────────────────────────────────
 app.get('/do/gmi', (req, res) => {
-  const sid = req.query.sid;
-  const session = sessions[sid];
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const sid = getSidFromRequest(req, req.query);
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
+  const { user } = auth;
 
-  const params = new URLSearchParams({
-    state: '0',
-    l: username,
-    x: String(user.xp || 0),
-    k: String(user.kikooz || 0),
-    f: bouilleOf(user),
-    sx: user.gender || 'M',
-    bd: user.birthday || '2000-01-01',
-    co: user.country || 'FR',
-    rg: user.region || '',
-  });
-  res.type('text/plain').send(params.toString());
+  const birthday = String(user.birthday || '2000-01-01');
+  const firstName = String(user.firstName || '');
+  const lastName = String(user.lastName || '');
+  const lastNamePublic = String(user.lastNamePublic || 'Y').toUpperCase() === 'N' ? 'N' : 'Y';
+  const gender = String(user.gender || 'M');
+  const realJob = String(user.realJob || 'Frutiz');
+  const city = String(user.city || '');
+  const countryIndex = String(user.countryIndex || '1');
+  const regionIndex = String(user.regionIndex || '1');
+  const siteUrl = String(user.siteUrl || '');
+  const comment = String(user.comment || '');
+
+  const xml = `<i>
+  <d>${escapeXml(birthday)}</d>
+  <f>${escapeXml(firstName)}</f>
+  <l p="${escapeXml(lastNamePublic)}">${escapeXml(lastName)}</l>
+  <g>${escapeXml(gender)}</g>
+  <j>${escapeXml(realJob)}</j>
+  <c>${escapeXml(city)}</c>
+  <o>${escapeXml(countryIndex)}</o>
+  <r>${escapeXml(regionIndex)}</r>
+  <u>${escapeXml(siteUrl)}</u>
+  <m>${escapeXml(comment)}</m>
+</i>`;
+
+  res.type('text/xml').send(xml);
 });
+
+function saveMyInfo(req, res) {
+  const source = req.method === 'POST' ? req.body : req.query;
+  const sid = getSidFromRequest(req, source);
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
+  const { user } = auth;
+
+  const rawBirthday = String(source.d || user.birthday || '2000-01-01');
+  const birthday = /^\d{4}-\d{2}-\d{2}$/.test(rawBirthday) ? rawBirthday : (user.birthday || '2000-01-01');
+  const lastNamePublic = String(source.p || user.lastNamePublic || 'Y').toUpperCase() === 'N' ? 'N' : 'Y';
+
+  user.birthday = birthday;
+  user.firstName = String(source.f || user.firstName || '').slice(0, 64);
+  user.lastName = String(source.l || user.lastName || '').slice(0, 64);
+  user.lastNamePublic = lastNamePublic;
+  user.gender = String(source.g || user.gender || 'M').slice(0, 1) || 'M';
+  user.realJob = String(source.j || user.realJob || 'Frutiz').slice(0, 80);
+  user.city = String(source.c || user.city || '').slice(0, 80);
+  user.countryIndex = String(source.o || user.countryIndex || '1').slice(0, 8);
+  user.regionIndex = String(source.r || user.regionIndex || '1').slice(0, 8);
+  user.siteUrl = String(source.u || user.siteUrl || '').slice(0, 256);
+  user.comment = String(source.m || user.comment || '').slice(0, 500);
+
+  // Keep public userinfo fields in sync with the edit form values.
+  if (source.co) user.country = String(source.co).slice(0, 32) || user.country;
+  if (source.rg) user.region = String(source.rg).slice(0, 32) || user.region;
+
+  // Legacy flows expect LoadVars, often just "k=0" on success.
+  return res.type('text/plain').send('state=0&k=0');
+}
+
+// Accept multiple historical save routes used by legacy SWFs.
+app.all(['/do/smi', '/smi', '/do/mi', '/mi'], saveMyInfo);
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/prefsavepartial — Save one preference
@@ -495,15 +668,18 @@ app.get('/prefForm', (req, res) => {
 // Returns XML with kikooz, items, prefs, logs, etc.
 // ─────────────────────────────────────────────
 app.get('/do/onident', (req, res) => {
-  const sid = req.query.sid;
-  const session = sessions[sid];
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const sid = getSidFromRequest(req, req.query);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
 
   user.items = withDefaultPens(user.items);
   const items = user.items.join(',');
   const myPref = user.prefs || '';
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const currentUsername = auth.username || '';
+  const allowModeration = user.isModerator && !isDebugNotUser(currentUsername);
+  const modAttr = allowModeration ? ' m="1" a="1"' : '';
 
   // The "f" attribute, when present, forces the SWF to open the editbouille
   // window with the listed part families. Used for first-time avatar setup.
@@ -513,7 +689,7 @@ app.get('/do/onident', (req, res) => {
     user.needsBouille = false; // Only force once per session
   }
 
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${fAttr}><mp><![CDATA[${myPref}]]></mp><ul><!--empty--></ul><sl><!--empty--></sl><bl>${buildBouilleListXml()}</bl></r>`;
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${modAttr}${fAttr}><mp><![CDATA[${myPref}]]></mp><ul><!--empty--></ul><sl><!--empty--></sl><bl>${buildBouilleListXml()}</bl></r>`;
 
   res.type('text/xml').send(xml);
 });
@@ -534,12 +710,75 @@ function swfSizeForUrlPath(urlPath) {
   return '0';
 }
 
+const GAME_DISCS = {
+  kaluga1: {
+    discType: '0',
+    swfName: 'kaluga',
+    gameId: 'games/kaluga/kaluga.swf',
+    props: 'w=640;h=480;m=i',
+    files: [
+      { u: 'games/kaluga/kaluga.swf' },
+      { u: 'games/kaluga/full.swf', n: 'full.swf' },
+    ],
+  },
+  kalugademo: {
+    discType: '3',
+    swfName: 'kaluga',
+    gameId: 'games/kaluga/kaluga.swf',
+    props: 'w=640;h=480;m=i',
+    files: [
+      { u: 'games/kaluga/kaluga.swf' },
+    ],
+  },
+  swapou1: {
+    discType: '0',
+    swfName: 'swapou2',
+    gameId: 'games/miniWave2/miniWave2.swf',
+    props: 'w=640;h=480;m=i',
+    files: [
+      { u: 'games/miniWave2/miniWave2.swf' },
+    ],
+  },
+  miniwave1: {
+    discType: '0',
+    swfName: 'miniwave2',
+    gameId: 'games/miniWave2/miniWave2.swf',
+    props: 'w=550;h=400;m=i',
+    files: [
+      { u: 'games/miniWave2/miniWave2.swf' },
+    ],
+  },
+};
+
 // ─────────────────────────────────────────────
 // ENDPOINT: do/ld — Game disc loading
-// Disabled in simplified mode (no Frusion launch hacks).
 // ─────────────────────────────────────────────
 app.get('/do/ld', (req, res) => {
-  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
+  // Legacy Frusion flows may send "c" instead of "sid", and some clients
+  // call /do/ld without auth context at all. The disc metadata itself is public.
+  const sid = getSidFromRequest(req, req.query);
+  if (sid) {
+    const auth = requireAuthBySid(sid, res, 'text/xml');
+    if (!auth) return;
+  }
+
+  const discUid = String(req.query.u || '');
+  const disc = GAME_DISCS[discUid];
+  if (!disc) {
+    return res.type('text/xml').send('<r k="404">disc_not_found</r>');
+  }
+
+  const filesXml = disc.files
+    .map((f) => {
+      const size = swfSizeForUrlPath(`/swf/${f.u}`);
+      const nAttr = f.n ? ` n="${escapeXml(f.n)}"` : '';
+      return `<s u="${escapeXml(f.u)}" s="${size}"${nAttr} />`;
+    })
+    .join('');
+
+  // Keep legacy root node name/attrs expected by Frusion ("game", not "r").
+  const xml = `<game t="${escapeXml(disc.discType)}" pm="single" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
+  res.type('text/xml').send(xml);
 });
 
 // ─────────────────────────────────────────────
@@ -562,9 +801,9 @@ app.get('/ft/tree', (req, res) => {
 app.get(['/ff/ls', '/ls'], (req, res) => {
   const uid = req.query.uid || 'root';
   const sid = req.query.sid;
-  const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
   ensureContactLists(user);
   const currentBouille = bouilleOf(user);
   const bouilleBase = `${currentBouille}${DEFAULT_BOUILLE_STATE}`.slice(0, 15);
@@ -647,6 +886,12 @@ ${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
       `<f u="disccollector">
         <e u="kaluga1" t="disc" s="10" d="0" a="0">0
 kaluga</e>
+        <e u="kalugademo" t="disc" s="10" d="0" a="0">3
+kaluga</e>
+        <e u="swapou1" t="disc" s="10" d="0" a="0">0
+swapou2</e>
+        <e u="miniwave1" t="disc" s="10" d="0" a="0">0
+miniwave2</e>
       </f>`
     );
   }
@@ -661,9 +906,9 @@ kaluga</e>
 // ─────────────────────────────────────────────
 app.get(['/ff/mk', '/mk'], (req, res) => {
   const sid = req.query.sid;
-  const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
   ensureContactLists(user);
 
   const newUid = 'f' + crypto.randomBytes(4).toString('hex');
@@ -693,9 +938,9 @@ app.get(['/ff/mk', '/mk'], (req, res) => {
 // ─────────────────────────────────────────────
 app.get(['/ff/mv', '/mv'], (req, res) => {
   const sid = req.query.sid;
-  const session = sid ? sessions[sid] : null;
-  const username = (session && session.user) || DEFAULT_USERNAME;
-  const user = users[username] || users[DEFAULT_USERNAME];
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
   ensureContactLists(user);
 
   const file = String(req.query.f || '');
@@ -775,6 +1020,7 @@ app.get('/animfrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'publ
 app.get('/skinFrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf')));
 
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
+app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
@@ -803,9 +1049,14 @@ app.get('/healthz', (req, res) => {
 // ─────────────────────────────────────────────
 // Start HTTP server
 // ─────────────────────────────────────────────
-const server = app.listen(port, () => {
-  console.log(`[HTTP]  Server running on http://localhost:${port}`);
-  console.log(`        Legacy SWF:  http://localhost:${port}/legacy`);
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log(`[HTTP]  Server running on http://0.0.0.0:${port}`);
+  if (PUBLIC_HOST) {
+    console.log(`        Public URL:  https://${PUBLIC_HOST}/`);
+    console.log(`        Legacy SWF:  https://${PUBLIC_HOST}/legacy`);
+  } else {
+    console.log('        Public URL:  (auto from request host; set PUBLIC_HOST to force)');
+  }
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
   warnIfStubSwfAssets();
 });
@@ -1046,6 +1297,46 @@ function getSocketsForUsername(username) {
   return sockets;
 }
 
+function isModerator(username) {
+  if (isDebugNotUser(username)) return false;
+  return !!(username && users[username] && users[username].isModerator);
+}
+
+function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
+  const channel = channels[channelName];
+  if (!channel) return false;
+
+  channel.users.delete(targetUser);
+  for (const [sock, cl] of xmlSocketClients) {
+    if (cl && cl.username === targetUser) {
+      cl.channels.delete(channelName);
+      sendToClient(sock, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+      sendToClient(sock, `<${CMD.onkick} g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`);
+    }
+  }
+  if (reason === 'totoch' || reason === 'ban') {
+    broadcastToChannel(channelName, `<${CMD.ban} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+  } else {
+    broadcastToChannel(channelName, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+  }
+  return true;
+}
+
+function pickActiveChannel(client, msgAttrs = {}) {
+  return msgAttrs.g || msgAttrs.channel || (client && client.channels ? Array.from(client.channels)[0] : '') || '';
+}
+
+function resolveModerationTarget(msg) {
+  const attrs = (msg && msg.attrs) || {};
+  const raw =
+    attrs.u ||
+    attrs.l ||
+    attrs.n ||
+    attrs.user ||
+    (typeof msg.content === 'string' ? msg.content.trim() : '');
+  return resolveKnownUsername(raw);
+}
+
 function resolveKnownUsername(nameOrLower) {
   const raw = String(nameOrLower || '');
   const low = raw.toLowerCase();
@@ -1053,6 +1344,43 @@ function resolveKnownUsername(nameOrLower) {
     if (known.toLowerCase() === low) return known;
   }
   return raw;
+}
+
+function parsePrivateParticipants(groupName) {
+  const g = String(groupName || '');
+  if (g.startsWith('pm2_')) {
+    const payload = g.substring(4);
+    const [aRaw, bRaw] = payload.split('__');
+    if (!aRaw || !bRaw) return [];
+    try {
+      return [decodeURIComponent(aRaw), decodeURIComponent(bRaw)].map(resolveKnownUsername);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!g.startsWith('pm_')) return [];
+  const payload = g.substring(3);
+  const knownLowers = Object.keys(users).map((u) => u.toLowerCase());
+  for (const candidate of knownLowers) {
+    const prefix = `${candidate}_`;
+    if (payload.startsWith(prefix)) {
+      const other = payload.substring(prefix.length);
+      if (other.length > 0) {
+        return [resolveKnownUsername(candidate), resolveKnownUsername(other)];
+      }
+    }
+  }
+  const parts = payload.split('_');
+  if (parts.length >= 2) {
+    return [resolveKnownUsername(parts[0]), resolveKnownUsername(parts.slice(1).join('_'))];
+  }
+  return [];
+}
+
+function buildPrivateGroupName(userA, userB) {
+  const sorted = [String(userA || '').toLowerCase(), String(userB || '').toLowerCase()].sort();
+  return `pm2_${encodeURIComponent(sorted[0])}__${encodeURIComponent(sorted[1])}`;
 }
 
 function pad2(n) {
@@ -1082,6 +1410,20 @@ function normalizeClientIp(rawIp) {
   return rawIp;
 }
 
+function getMuteValue(user) {
+  const raw = user && user.mutedUntil ? String(user.mutedUntil) : '';
+  if (!raw) return '0000-00-00 00:00:00';
+  const d = new Date(raw.replace('.', ' '));
+  if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) return '0000-00-00 00:00:00';
+  return raw.includes('.') ? raw.replace('.', ' ') : raw;
+}
+
+function getStatusCode(user) {
+  const muteVal = getMuteValue(user);
+  const emote = muteVal === '0000-00-00 00:00:00' ? 0 : 7;
+  return `${encode62(0, 1)}${encode62(0, 2)}${encode62(emote, 1)}`;
+}
+
 function buildChannelListXml() {
   let inner = '';
   for (const [name, ch] of Object.entries(channels)) {
@@ -1101,6 +1443,12 @@ function handleCBeeMessage(socket, rawXml) {
   if (!client) return;
 
   console.log(`[CBee]  <- ${cmdName} (${msg.tag}) ${JSON.stringify(msg.attrs)}`);
+
+  // FrutiScore overlap: wire code "v" is listModes request.
+  if (msg.tag === 'v') {
+    sendToClient(socket, '<v><m m="0" t="normal" /></v>');
+    return;
+  }
 
   switch (cmdName) {
     // ── ip: client requests its IP ──
@@ -1130,9 +1478,14 @@ function handleCBeeMessage(socket, rawXml) {
     case 'ident': {
       const login = msg.attrs.l || '';
       const sid = msg.attrs.s || '';
+      const sessionUser = sid && sessions[sid] && sessions[sid].user ? sessions[sid].user : '';
 
-      // sidAutoInit mode sends l="" — default to the local admin user.
-      const effectiveLogin = login.length > 0 ? login : DEFAULT_USERNAME;
+      // Priority: sid-bound user (real logged account) > explicit login.
+      const effectiveLogin = sessionUser || login;
+      if (!effectiveLogin) {
+        sendToClient(socket, `<${CMD.ident} k="401" />`);
+        break;
+      }
 
       // Auto-create session if needed
       if (sid && !sessions[sid]) {
@@ -1152,10 +1505,11 @@ function handleCBeeMessage(socket, rawXml) {
           items: withDefaultPens([]),
           gender: 'M',
           birthday: '2000-01-01',
-          country: 'FR',
-          region: 'IDF',
-          prefs: '',
-        };
+            country: 'FR',
+            region: 'IDF',
+            prefs: '',
+            isModerator: !isDebugNotUser(effectiveLogin),
+          };
       }
 
       const user = users[effectiveLogin];
@@ -1172,19 +1526,27 @@ function handleCBeeMessage(socket, rawXml) {
 
     // ── channellist: list available channels ──
     case 'channellist': {
+      // FrutiScore overlap: saveScore uses same wire code (q) with disc attrs.
+      if (msg.attrs.d != undefined) {
+        sendToClient(socket, `<${CMD.channellist} k="0" />`);
+        break;
+      }
       sendToClient(socket, buildChannelListXml());
       break;
     }
 
     // ── join: join a channel ──
 case 'join': {
+  // FrutiScore overlap: startGame uses wire code "o" with disc attrs.
+  if (msg.attrs.d != undefined) {
+    sendToClient(socket, `<${CMD.join} d="${escapeXml(String(msg.attrs.d))}" k="0" />`);
+    break;
+  }
   const g = msg.attrs.g;
 
   if (!channels[g]) {
-    if (String(g).indexOf('pm_') === 0) {
-      const parts = String(g).split('_');
-      const p1 = resolveKnownUsername(parts[1] || '');
-      const p2 = resolveKnownUsername(parts[2] || '');
+    if (String(g).indexOf('pm_') === 0 || String(g).indexOf('pm2_') === 0) {
+      const [p1, p2] = parsePrivateParticipants(g);
       channels[g] = {
         desc: `Discussion privée ${p1}/${p2}`,
         topic: `Discussion privée ${p1}/${p2}`,
@@ -1203,6 +1565,10 @@ case 'join': {
   }
 
   const channel = channels[g];
+  if (channel && channel.banned && channel.banned.has(client.username)) {
+    sendToClient(socket, `<${CMD.error} k="403" />`);
+    break;
+  }
   if (channel.private && Array.isArray(channel.participants)) {
     for (const u of channel.participants) channel.users.add(u);
   }
@@ -1214,7 +1580,7 @@ case 'join': {
 
   for (const u of userArr) {
     const ud = users[u] || {};
-    userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
+    userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
   }
 
   const timeAttrs = buildChatTimeAttrs();
@@ -1245,6 +1611,11 @@ broadcastToChannel(
 
     // ── userlist: explicit request for a channel user list ──
     case 'userlist': {
+      // FrutiScore overlap: endGame uses wire code "p".
+      if (msg.attrs.d != undefined || msg.attrs.g == undefined) {
+        sendToClient(socket, `<${CMD.userlist} k="0" />`);
+        break;
+      }
       const g = msg.attrs.g || '';
       const channel = channels[g];
       if (!channel) {
@@ -1255,7 +1626,7 @@ broadcastToChannel(
       let userXml = '';
       for (const u of userArr) {
         const ud = users[u] || {};
-        userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
+        userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
       }
       sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
       break;
@@ -1275,6 +1646,37 @@ broadcastToChannel(
       break;
     }
 
+    // ── kick: moderator removes a user from a channel ──
+    case 'kick': {
+      if (!isModerator(client.username)) {
+        sendToClient(socket, `<${CMD.error} k="403" />`);
+        break;
+      }
+      const g = pickActiveChannel(client, msg.attrs);
+      const targetUser = resolveModerationTarget(msg);
+      if (!g || !targetUser) break;
+      kickUserFromChannel(g, targetUser, client.username, 'kick');
+      sendToClient(socket, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(g)}" />`);
+      break;
+    }
+
+    // ── ban (totocher): moderator blocks user from a channel and kicks immediately ──
+    case 'ban': {
+      if (!isModerator(client.username)) {
+        sendToClient(socket, `<${CMD.error} k="403" />`);
+        break;
+      }
+      const g = pickActiveChannel(client, msg.attrs);
+      const targetUser = resolveModerationTarget(msg);
+      const channel = channels[g];
+      if (!g || !targetUser || !channel) break;
+      if (!channel.banned) channel.banned = new Set();
+      channel.banned.add(targetUser);
+      kickUserFromChannel(g, targetUser, client.username, 'totoch');
+      sendToClient(socket, `<${CMD.ban} u="${escapeXml(targetUser)}" g="${escapeXml(g)}" />`);
+      break;
+    }
+
     // ── send: chat message ──
 case 'send': {
   const g = msg.attrs.g;
@@ -1282,9 +1684,47 @@ case 'send': {
   const type = msg.attrs.t || 'm';
   const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
   const timeAttrs = buildChatTimeAttrs();
+  const senderData = users[client.username] || {};
+  const mutedUntil = senderData.mutedUntil ? new Date(senderData.mutedUntil) : null;
+  if (mutedUntil && !Number.isNaN(mutedUntil.getTime()) && mutedUntil.getTime() > Date.now()) {
+    sendToClient(socket, `<${CMD.onmute} u="${escapeXml(client.username)}" mt="${escapeXml(senderData.mutedUntil)}" mu="${escapeXml(senderData.mutedUntil)}" />`);
+    break;
+  }
 
   if (g && client.logged) {
-    const safeText = escapeXml(text);
+    const channel = channels[g];
+    if (!channel || !client.channels.has(g) || !channel.users.has(client.username)) {
+      sendToClient(socket, `<${CMD.error} k="220" />`);
+      break;
+    }
+    if (isModerator(client.username) && text.startsWith('/kick ')) {
+      const targetUser = resolveKnownUsername(text.substring(6).trim());
+      if (targetUser) kickUserFromChannel(g, targetUser, client.username, 'kick');
+      break;
+    }
+    if (isModerator(client.username) && text.startsWith('/totoch ')) {
+      const targetUser = resolveKnownUsername(text.substring(8).trim());
+      const target = users[targetUser];
+      if (targetUser && target) {
+        const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
+        target.mutedUntil = until;
+        for (const targetSock of getSocketsForUsername(targetUser)) {
+          sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
+        }
+      }
+      break;
+    }
+
+    let safeText = escapeXml(text);
+    if (isModerator(client.username) && text.startsWith('!')) {
+      const shout = escapeXml(text.substring(1).trim());
+      if (shout) {
+        // Legacy clients usually render `adminsend` (ap) in emphasized style.
+        const adminXml = `<${CMD.adminsend} u="${escapeXml(client.username)}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${shout}</${CMD.adminsend}>`;
+        broadcastToChannel(g, adminXml);
+        safeText = `<b><font color="#ff0000">${shout}</font></b>`;
+      }
+    }
     const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
 } else if (msg.attrs.u) {
@@ -1310,6 +1750,50 @@ case 'send': {
   break;
 }
 
+    // ── mute (totocher): temporary chat silence ──
+    case 'mute': {
+      if (!isModerator(client.username)) {
+        sendToClient(socket, `<${CMD.error} k="403" />`);
+        break;
+      }
+      const targetUser = resolveModerationTarget(msg);
+      const target = users[targetUser];
+      if (!targetUser || !target) break;
+      const until = msg.attrs.e || new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
+      target.mutedUntil = until;
+      for (const targetSock of getSocketsForUsername(targetUser)) {
+        sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
+      }
+      sendToClient(socket, `<${CMD.mute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
+      const g = pickActiveChannel(client, msg.attrs);
+      if (g) {
+        const timeAttrs = buildChatTimeAttrs();
+        broadcastToChannel(g, `<${CMD.send} u="Serveur" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(targetUser)} a été totoché</${CMD.send}>`);
+        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
+      }
+      break;
+    }
+
+    case 'unmute': {
+      if (!isModerator(client.username)) {
+        sendToClient(socket, `<${CMD.error} k="403" />`);
+        break;
+      }
+      const targetUser = resolveModerationTarget(msg);
+      const target = users[targetUser];
+      if (!targetUser || !target) break;
+      delete target.mutedUntil;
+      for (const targetSock of getSocketsForUsername(targetUser)) {
+        sendToClient(targetSock, `<${CMD.endmute} u="${escapeXml(targetUser)}" />`);
+      }
+      sendToClient(socket, `<${CMD.unmute} u="${escapeXml(targetUser)}" />`);
+      const g = pickActiveChannel(client, msg.attrs);
+      if (g) {
+        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
+      }
+      break;
+    }
+
     // ── trace: request status updates for users ──
 case 'trace': {
   const traceChildren = (msg.children || []).filter(child => child.tag === 'u' && child.attrs.u);
@@ -1320,7 +1804,7 @@ case 'trace': {
     for (const child of traceChildren) {
       const u = child.attrs.u;
       const ud = users[u] || {};
-      inner += `<u u="${u}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`;
+      inner += `<u u="${u}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
     }
 
     sendToClient(socket, `<${CMD.trace}>${inner}</${CMD.trace}>`);
@@ -1332,7 +1816,7 @@ case 'trace': {
     const ud = users[targetUser] || users[client.username] || {};
     sendToClient(
       socket,
-      `<${CMD.trace} u="${targetUser}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`
+      `<${CMD.trace} u="${targetUser}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`
     );
   }
   break;
@@ -1357,7 +1841,7 @@ case 'trace': {
       const r = msg.attrs.r || '';
       const ud = users[u] || {};
       sendToClient(socket,
-        `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" />`
+        `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(u, ud)}" />`
       );
       break;
     }
@@ -1380,7 +1864,8 @@ case 'fbouille': {
 }
 
 case 'createchannel': {
-  const otherUser = msg.attrs.u || '';
+  const otherUserRaw = msg.attrs.u || '';
+  const otherUser = resolveKnownUsername(normalizeUsername(otherUserRaw));
   const requester = client.username || '';
   const title = msg.content || otherUser || 'Discussion privée';
 
@@ -1390,7 +1875,7 @@ case 'createchannel': {
   }
 
   const sortedUsers = [requester.toLowerCase(), otherUser.toLowerCase()].sort();
-  const privateGroup = `pm_${sortedUsers[0]}_${sortedUsers[1]}`;
+  const privateGroup = buildPrivateGroupName(sortedUsers[0], sortedUsers[1]);
   const privatePass = `pw_${sortedUsers[0].slice(0, 4)}_${sortedUsers[1].slice(0, 4)}`;
 
   if (!channels[privateGroup]) {
@@ -1431,7 +1916,7 @@ case 'createchannel': {
 
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(otherUser, ud)}" />`
   );
 
   sendToClient(
