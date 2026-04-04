@@ -164,6 +164,7 @@ function createDefaultUser(pass) {
     country: 'FR',
     region: 'IDF',
     prefs: '',
+    isModerator: true,
     needsBouille: true, // Force editbouille on first login
   };
 }
@@ -1119,6 +1120,25 @@ function getSocketsForUsername(username) {
   return sockets;
 }
 
+function isModerator(username) {
+  return !!(username && users[username] && users[username].isModerator);
+}
+
+function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
+  const channel = channels[channelName];
+  if (!channel) return false;
+
+  channel.users.delete(targetUser);
+  for (const [sock, cl] of xmlSocketClients) {
+    if (cl && cl.username === targetUser) {
+      cl.channels.delete(channelName);
+      sendToClient(sock, `<${CMD.onkick} g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`);
+    }
+  }
+  broadcastToChannel(channelName, `<${CMD.userleaved} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+  return true;
+}
+
 function resolveKnownUsername(nameOrLower) {
   const raw = String(nameOrLower || '');
   const low = raw.toLowerCase();
@@ -1267,10 +1287,11 @@ function handleCBeeMessage(socket, rawXml) {
           items: withDefaultPens([]),
           gender: 'M',
           birthday: '2000-01-01',
-          country: 'FR',
-          region: 'IDF',
-          prefs: '',
-        };
+            country: 'FR',
+            region: 'IDF',
+            prefs: '',
+            isModerator: true,
+          };
       }
 
       const user = users[effectiveLogin];
@@ -1316,6 +1337,10 @@ case 'join': {
   }
 
   const channel = channels[g];
+  if (channel && channel.banned && channel.banned.has(client.username)) {
+    sendToClient(socket, `<${CMD.error} k="403" />`);
+    break;
+  }
   if (channel.private && Array.isArray(channel.participants)) {
     for (const u of channel.participants) channel.users.add(u);
   }
@@ -1388,6 +1413,37 @@ broadcastToChannel(
       break;
     }
 
+    // ── kick: moderator removes a user from a channel ──
+    case 'kick': {
+      if (!isModerator(client.username)) {
+        sendToClient(socket, `<${CMD.error} k="403" />`);
+        break;
+      }
+      const g = msg.attrs.g || '';
+      const targetUser = resolveKnownUsername(msg.attrs.u || '');
+      if (!g || !targetUser) break;
+      kickUserFromChannel(g, targetUser, client.username, 'kick');
+      sendToClient(socket, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(g)}" />`);
+      break;
+    }
+
+    // ── ban (totocher): moderator blocks user from a channel and kicks immediately ──
+    case 'ban': {
+      if (!isModerator(client.username)) {
+        sendToClient(socket, `<${CMD.error} k="403" />`);
+        break;
+      }
+      const g = msg.attrs.g || '';
+      const targetUser = resolveKnownUsername(msg.attrs.u || '');
+      const channel = channels[g];
+      if (!g || !targetUser || !channel) break;
+      if (!channel.banned) channel.banned = new Set();
+      channel.banned.add(targetUser);
+      kickUserFromChannel(g, targetUser, client.username, 'totoch');
+      sendToClient(socket, `<${CMD.ban} u="${escapeXml(targetUser)}" g="${escapeXml(g)}" />`);
+      break;
+    }
+
     // ── send: chat message ──
 case 'send': {
   const g = msg.attrs.g;
@@ -1397,7 +1453,26 @@ case 'send': {
   const timeAttrs = buildChatTimeAttrs();
 
   if (g && client.logged) {
-    const safeText = escapeXml(text);
+    if (isModerator(client.username) && text.startsWith('/kick ')) {
+      const targetUser = resolveKnownUsername(text.substring(6).trim());
+      if (targetUser) kickUserFromChannel(g, targetUser, client.username, 'kick');
+      break;
+    }
+    if (isModerator(client.username) && text.startsWith('/totoch ')) {
+      const targetUser = resolveKnownUsername(text.substring(8).trim());
+      if (targetUser && channels[g]) {
+        if (!channels[g].banned) channels[g].banned = new Set();
+        channels[g].banned.add(targetUser);
+        kickUserFromChannel(g, targetUser, client.username, 'totoch');
+      }
+      break;
+    }
+
+    let safeText = escapeXml(text);
+    if (isModerator(client.username) && text.startsWith('!')) {
+      const shout = escapeXml(text.substring(1).trim());
+      if (shout) safeText = `<b><font color="#ff0000">${shout}</font></b>`;
+    }
     const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
 } else if (msg.attrs.u) {

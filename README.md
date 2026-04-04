@@ -20,6 +20,7 @@ comme à l'époque.
 3. Ouvrir [`http://localhost:8888/`](http://localhost:8888/) dans le navigateur.
 4. Cliquer sur **Entrer dans Frutiparc** pour lancer le SWF via Ruffle.
 5. Pour tester le flux auth simple : ouvrir [`/login`](http://localhost:8888/login) (création de compte + connexion).
+6. Les comptes créés sont modérateurs par défaut (chat): `!message` (rouge gras), `/kick pseudo`, `/totoch pseudo`.
 
 ## Préparer une mise en ligne (checklist)
 
