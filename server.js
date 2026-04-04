@@ -1133,6 +1133,7 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   for (const [sock, cl] of xmlSocketClients) {
     if (cl && cl.username === targetUser) {
       cl.channels.delete(channelName);
+      sendToClient(sock, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
       sendToClient(sock, `<${CMD.onkick} g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`);
     }
   }
@@ -1141,8 +1142,6 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   } else {
     broadcastToChannel(channelName, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
   }
-  // Keep legacy state updates in sync for clients that only react to userleaved.
-  broadcastToChannel(channelName, `<${CMD.userleaved} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
   return true;
 }
 
@@ -1495,6 +1494,11 @@ case 'send': {
   }
 
   if (g && client.logged) {
+    const channel = channels[g];
+    if (!channel || !client.channels.has(g) || !channel.users.has(client.username)) {
+      sendToClient(socket, `<${CMD.error} k="220" />`);
+      break;
+    }
     if (isModerator(client.username) && text.startsWith('/kick ')) {
       const targetUser = resolveKnownUsername(text.substring(6).trim());
       if (targetUser) kickUserFromChannel(g, targetUser, client.username, 'kick');
