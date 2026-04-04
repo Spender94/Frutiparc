@@ -20,6 +20,7 @@ comme à l'époque.
 3. Ouvrir [`http://localhost:8888/`](http://localhost:8888/) dans le navigateur.
 4. Cliquer sur **Entrer dans Frutiparc** pour lancer le SWF via Ruffle.
 5. Pour tester le flux auth simple : ouvrir [`/login`](http://localhost:8888/login) (création de compte + connexion).
+6. Les comptes créés sont modérateurs par défaut (chat): `!message` (rouge gras), `/kick pseudo`, `/totoch pseudo`.
 
 ## Préparer une mise en ligne (checklist)
 
@@ -30,11 +31,12 @@ laisser des valeurs de dev en dur :
 
 - `PORT` (défaut `8888`)
 - `XMLSOCKET_PORT` (défaut `5000`, idéalement un port se terminant par `000`)
-- `PUBLIC_HOST` (défaut `localhost`, doit pointer vers ton domaine public)
-- `DEFAULT_USERNAME` (défaut `skool`)
-- `DEFAULT_PASSWORD` (défaut `test`)
+- `PUBLIC_HOST` (optionnel, override explicite du domaine public)
 - `VERBOSE_HTTP_LOGS=1` pour activer les logs HTTP verbeux
 - `VERBOSE_SWF_LOGS=1` pour activer les logs SWF verbeux
+
+`PUBLIC_HOST` est optionnel : si non défini, le serveur essaie d'utiliser le host
+de la requête (`x-forwarded-host` / `host`) pour `xml/services.xml`.
 
 Version Node recommandée pour l'hébergement:
 - `.node-version` : `20.18.0`
@@ -44,8 +46,6 @@ Exemple de lancement "quasi-prod" en local :
 
 ```bash
 PUBLIC_HOST=frutiparc.example.com \
-DEFAULT_USERNAME=admin \
-DEFAULT_PASSWORD='change-me-now' \
 npm start
 ```
 
@@ -75,8 +75,6 @@ Tu peux déployer ce repo sur **Render Web Service** sans VPS manuel :
 4. Variables d'environnement Render:
    - `PORT` = (laisse Render injecter automatiquement; ne pas forcer une valeur fixe)
    - `PUBLIC_HOST` = ton domaine Render (ex: `mon-app.onrender.com`) ou ton domaine custom
-   - `DEFAULT_USERNAME` = un login de test non-public
-   - `DEFAULT_PASSWORD` = un vrai mot de passe (pas `test`)
    - `VERBOSE_HTTP_LOGS` = vide (ou `0`)
    - `VERBOSE_SWF_LOGS` = vide (ou `0`)
 5. Déployer et attendre le statut **Live**.
@@ -94,7 +92,7 @@ Notes Render:
 
 ### 3) Vérifs avant partage à d'autres testeurs
 
-- Changer les identifiants par défaut.
+- Vérifier le flux compte: créer un compte via `/login`, puis entrer dans `/legacy?sid=...`.
 - Couper les logs verbeux (`VERBOSE_HTTP_LOGS` / `VERBOSE_SWF_LOGS` non définis).
 - Vérifier que `PUBLIC_HOST` est bien ton domaine public.
 - Contrôler les assets SWF critiques (pas de stubs de quelques octets).

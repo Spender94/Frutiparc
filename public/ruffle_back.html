@@ -91,6 +91,11 @@
 <body>
     <div id="player-container"></div>
     <script>
+        window.fp_openHisto = function(user) {
+            const u = encodeURIComponent(String(user || ''));
+            window.open(`/legacy?histo=${u}`, '_blank', 'noopener,noreferrer');
+            return true;
+        };
         window.addEventListener("DOMContentLoaded", async () => {
             const ruffle = window.RufflePlayer.newest();
             const player = ruffle.createPlayer();
@@ -108,7 +113,8 @@
                     domain: `${window.location.host}/./`
                 },
                 socketProxy: [
-                    { host: "localhost", port: 5000, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` }
+                    { host: "localhost", port: 5000, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` },
+                    { host: window.location.hostname, port: 5000, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` }
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",

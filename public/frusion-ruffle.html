@@ -29,7 +29,10 @@
         openUrlMode: 'allow',
         quality: 'high',
         base: `${window.location.origin}/`,
-        socketProxy: [{ host: 'localhost', port: 5000, proxyUrl: wsOrigin }],
+        socketProxy: [
+          { host: 'localhost', port: 5000, proxyUrl: wsOrigin },
+          { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin },
+        ],
         parameters: flashVars,
       });
     })();
