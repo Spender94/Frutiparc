@@ -478,6 +478,11 @@ function requireAuthBySid(sid, res, responseType = 'text/plain') {
   return { username, user: users[username] };
 }
 
+function getSidFromParams(source) {
+  if (!source) return '';
+  return source.sid || source.c || '';
+}
+
 app.all('/do/eb', (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
 
@@ -533,7 +538,7 @@ app.get('/newbouille', handleNewBouille);
 // Returns XML payload used by the "Edit my info" legacy window
 // ─────────────────────────────────────────────
 app.get('/do/gmi', (req, res) => {
-  const sid = req.query.sid;
+  const sid = getSidFromParams(req.query);
   const auth = requireAuthBySid(sid, res);
   if (!auth) return;
   const { user } = auth;
@@ -568,7 +573,7 @@ app.get('/do/gmi', (req, res) => {
 
 function saveMyInfo(req, res) {
   const source = req.method === 'POST' ? req.body : req.query;
-  const sid = source.sid || req.query.sid;
+  const sid = getSidFromParams(source) || getSidFromParams(req.query);
   const auth = requireAuthBySid(sid, res);
   if (!auth) return;
   const { user } = auth;
@@ -618,7 +623,7 @@ app.get('/prefForm', (req, res) => {
 // Returns XML with kikooz, items, prefs, logs, etc.
 // ─────────────────────────────────────────────
 app.get('/do/onident', (req, res) => {
-  const sid = req.query.sid;
+  const sid = getSidFromParams(req.query);
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user } = auth;
@@ -686,9 +691,13 @@ const GAME_DISCS = {
 // ENDPOINT: do/ld — Game disc loading
 // ─────────────────────────────────────────────
 app.get('/do/ld', (req, res) => {
-  const sid = req.query.sid;
-  const auth = requireAuthBySid(sid, res, 'text/xml');
-  if (!auth) return;
+  // Legacy Frusion flows may send "c" instead of "sid", and some clients
+  // call /do/ld without auth context at all. The disc metadata itself is public.
+  const sid = getSidFromParams(req.query);
+  if (sid) {
+    const auth = requireAuthBySid(sid, res, 'text/xml');
+    if (!auth) return;
+  }
 
   const discUid = String(req.query.u || '');
   const disc = GAME_DISCS[discUid];
@@ -704,7 +713,8 @@ app.get('/do/ld', (req, res) => {
     })
     .join('');
 
-  const xml = `<r u="${escapeXml(disc.gameId)}" t="${escapeXml(disc.discType)}" n="${escapeXml(disc.swfName)}" p="${escapeXml(disc.props)}">${filesXml}</r>`;
+  // Keep legacy root node name/attrs expected by Frusion ("game", not "r").
+  const xml = `<game t="${escapeXml(disc.discType)}" pm="single" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
   res.type('text/xml').send(xml);
 });
 
