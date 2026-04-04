@@ -120,7 +120,7 @@ function decode62(s) {
   return r;
 }
 
-const DEFAULT_BOUILLE_STATE = '000000000000000000000000';
+const DEFAULT_BOUILLE_STATE = '000000010000000000000000';
 const ALL_PEN_ITEM_IDS = [315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 599, 600, 601, 602];
 
 function withDefaultPens(items = []) {
@@ -229,6 +229,25 @@ const DEFAULT_BOUILLE_LIST = [
   { b: '000503000000111011000000', n: 'Classique 2' },
   { b: '000503000000111012000000', n: 'Classique 3' },
   { b: '010503000000111010000000', n: 'Famille 1' },
+];
+
+const DEFAULT_WALLPAPERS = [
+  { u: 'moutarde',       n: 'Chavelier moutarde',    url: 'wal/ch.jpg', color: '4E5464;' },
+  { u: 'chorale',        n: 'Chorale Frutiparc',     url: 'wal/fp.jpg', color: 'ADE76B;' },
+  { u: 'pixizchristmas', n: 'Noël Pixiz',            url: 'wal/ma.jpg', color: 'ADE76B;' },
+  { u: 'snakechristmas', n: 'Noël Frutisnake',       url: 'wal/no.jpg', color: 'ADE76B;' },
+  { u: 'pixiz',          n: 'Pixiz',                 url: 'wal/pi.jpg', color: 'F9D190;' },
+  { u: 'nostromo',       n: 'Mini-Wave Nostromo',    url: 'wal/pl.jpg', color: '000044;' },
+  { u: 'ministar',       n: 'Mini-Wave Mini-Star',   url: 'wal/va.jpg', color: '000044;' },
+  { u: 'utopiz',         n: 'Utopiz',                url: 'wal/ut.jpg', color: 'F6AFA9;' },
+];
+
+// Accessories = last 9 chars of a 24-char bouille string.
+// The first 15 chars are filled from the user's current bouille at serve time.
+const DEFAULT_ACCESSORIES = [
+  { u: 'bananocle', n: 'Bananocle', suffix: '6010k0w0g' },
+  { u: 'beaute',    n: 'Beauté',    suffix: 'b000k0w0g' },
+  { u: 'normal',    n: 'Normal',    suffix: '000000000' },
 ];
 
 function buildBouilleListXml() {
@@ -340,11 +359,11 @@ app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
     console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
   }
   res.type('application/x-shockwave-flash');
-  res.sendFile(fallback);
+  res.sendFile(path.join(__dirname, 'public', 'frusion_client.swf'));
 });
 
 function sendAvatarFamily(res, fileName) {
-  let absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
+  const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
   if (!fs.existsSync(absPath)) {
     if (VERBOSE_SWF_LOGS) {
@@ -353,16 +372,8 @@ function sendAvatarFamily(res, fileName) {
     return res.status(404).type('text/plain').send('Missing SWF');
   }
 
-  // Repo snapshot often has a tiny stub for famille1.swf (17 bytes).
-  // Serve famille0 as fallback to avoid malformed SWF parse loops in Ruffle.
-  if (fileName === 'famille1.swf') {
-    try {
-      const st = fs.statSync(absPath);
-      if (st.size <= 32) {
-        console.warn('[SWF]   famille1.swf is a stub, falling back to famille0.swf');
-        absPath = path.join(__dirname, 'public', 'swf', 'fbouille', 'famille0.swf');
-      }
-    } catch {}
+  if (VERBOSE_SWF_LOGS) {
+    console.log(`[SWF]   Serving avatar asset: ${fileName}`);
   }
 
   if (VERBOSE_SWF_LOGS) {
@@ -471,7 +482,7 @@ function requireAuthBySid(sid, res, responseType = 'text/plain') {
 app.all('/do/eb', (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
 
-  const sid = source.sid || 'debug';
+  const sid = source.sid || '';
   const rawBouille = source.b || source.s || source.f || '';
   const bouille = normalizeBouilleState(rawBouille);
   const auth = requireAuthBySid(sid, res);
@@ -663,17 +674,12 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   if (!auth) return;
   const { user } = auth;
   ensureContactLists(user);
-  const currentBouille = bouilleOf(user);
-  const bouilleBase = `${currentBouille}${DEFAULT_BOUILLE_STATE}`.slice(0, 15);
-  const accessoryTailA = '30x0t0w0D';
-  const accessoryBouilleA = `${bouilleBase}${accessoryTailA}`;
   if (uid === 'root' || uid === 'desktop') {
     return res.type('text/xml').send(
       `<f u="root">
         <f u="inbox" t="inbox" p="normal" />
         <f u="disccollector" t="disccollector" />
         <f u="inventory" t="inventory" />
-        <e u="Gaspard" t="contact" s="10" d="0" a="0">Gaspard@frutiparc.com</e>
         <f u="mycontact" t="mycontact" />
         <f u="recyclebin" t="recyclebin" />
       </f>`
@@ -681,32 +687,18 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   }
 
   if (uid === 'inventory') {
-    const customAccessoryNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
-      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}
-${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+    const bouillePrefix = bouilleOf(user).substring(0, 15);
+    const wallpaperNodes = DEFAULT_WALLPAPERS
+      .map((wp) => `<e u="${escapeXml(wp.u)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(wp.n)}\n${wp.url}\n${wp.color}</e>`)
+      .join('');
+    const defaultAccNodes = DEFAULT_ACCESSORIES
+      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
+      .join('');
+    const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
       .join('');
     return res.type('text/xml').send(
-      `<f u="inventory">
-        <e u="moutarde" t="wallpaper" s="10" d="0" a="0">Chavelier moutarde
-wal/ch.jpg
-4E5464;</e>
-        <e u="chorale" t="wallpaper" s="10" d="0" a="0">Chorale Frutiparc
-wal/fp.jpg
-ADE76B;</e>
-        <e u="pixiz" t="wallpaper" s="10" d="0" a="0">Pixiz
-wal/pi.jpg
-F9D190;</e>
-        <e u="utopiz" t="wallpaper" s="10" d="0" a="0">Utopiz
-wal/ut.jpg
-F6AFA9;</e>
-        <e u="my_bouille_current" t="bouille" s="10" d="0" a="0">Ma bouille actuelle
-${escapeXml(currentBouille)}</e>
-        <e u="my_bouille_test_1" t="bouille" s="10" d="0" a="0">Accessoire tail 30x0t0w0D
-${escapeXml(accessoryBouilleA)}</e>
-        <e u="my_bouille_test_2" t="bouille" s="10" d="0" a="0">Test bouille #2
-${escapeXml(currentBouille)}</e>
-        ${customAccessoryNodes}
-      </f>`
+      `<f u="inventory">${wallpaperNodes}${defaultAccNodes}${customAccNodes}</f>`
     );
   }
 
@@ -715,11 +707,14 @@ ${escapeXml(currentBouille)}</e>
   }
 
   if (uid === 'accessories') {
-    const nodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
-      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}
-${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+    const bouillePrefix = bouilleOf(user).substring(0, 15);
+    const defaultAccNodes = DEFAULT_ACCESSORIES
+      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
       .join('');
-    return res.type('text/xml').send(`<f u="accessories">${nodes || '<i />'}</f>`);
+    const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+      .join('');
+    return res.type('text/xml').send(`<f u="accessories">${defaultAccNodes}${customAccNodes}</f>`);
   }
 
 
@@ -740,12 +735,7 @@ ${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
   }
 
   if (uid === 'disccollector') {
-    return res.type('text/xml').send(
-      `<f u="disccollector">
-        <e u="kaluga1" t="disc" s="10" d="0" a="0">0
-kaluga</e>
-      </f>`
-    );
+    return res.type('text/xml').send('<f u="disccollector"><i /></f>');
   }
 
   // Return an empty folder listing with a placeholder node to avoid legacy null-firstChild edge cases
@@ -850,18 +840,9 @@ app.get('/ff/dm', (req, res) => {
 // ENDPOINT: h/send_debug — Debug logging (POST)
 // ─────────────────────────────────────────────
 app.post('/h/send_debug', (req, res) => {
-  const sid = sidFromRequest(req);
   const txt = req.body.txt || '';
   console.log('[debug from SWF]', txt);
-  recordFrusionEvent(sid, 'swf_debug', { txt });
   res.type('text/plain').send('state=0');
-});
-
-app.get(['/debug/frusion-state', '/debug/frusion-state/', '/debug/frusion-state/all'], (req, res) => {
-  const sid = sidFromRequest(req) || req.query.sid || '';
-  const events = sid ? (frusionTrace[sid] || []) : (frusionTrace.__all || []);
-  const availableSids = Object.keys(frusionTrace).filter((k) => !k.startsWith('__'));
-  res.json({ ok: true, sid, count: events.length, availableSids, events });
 });
 
 // ─────────────────────────────────────────────
@@ -883,18 +864,18 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
-// Catch-all 404 with logging (helps diagnose missing assets)
-// ─────────────────────────────────────────────
-app.use((req, res) => {
-  console.log(`[404]   ${req.method} ${req.url}`);
-  res.status(404).type('text/plain').send('Not found');
-});
-
 // ─────────────────────────────────────────────
 // Health check
 // ─────────────────────────────────────────────
 app.get('/healthz', (req, res) => {
   res.json({ ok: true, service: 'frutiparc-backend' });
+});
+
+// Catch-all 404 with logging (helps diagnose missing assets)
+// ─────────────────────────────────────────────
+app.use((req, res) => {
+  console.log(`[404]   ${req.method} ${req.url}`);
+  res.status(404).type('text/plain').send('Not found');
 });
 
 // ─────────────────────────────────────────────
@@ -909,7 +890,6 @@ const server = app.listen(port, '0.0.0.0', () => {
     console.log('        Public URL:  (auto from request host; set PUBLIC_HOST to force)');
   }
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
-  warnIfStubSwfAssets();
 });
 
 // ─────────────────────────────────────────────
@@ -1118,6 +1098,25 @@ const channels = {
   banane:    { topic: 'Salon Banane', users: new Set() },
   bienvenue: { topic: 'Bienvenue sur Frutiparc !', users: new Set() },
 };
+
+// ── Virtual test user: DebugBot (always connected on pomme) ──
+users['DebugBot'] = {
+  pass: '',
+  xp: 1000000,
+  kikooz: 100,
+  fbouille: '000000020000000000000000',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'M',
+  birthday: '2000-01-01',
+  country: 'FR',
+  region: 'IDF',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+};
+channels.pomme.users.add('DebugBot');
 
 const xmlSocketClients = new Map(); // socket -> { sid, username, logged, channels: Set }
 
@@ -1755,14 +1754,7 @@ case 'createchannel': {
   );
 
   // On pousse aussi les infos connues sur l’autre user
-  const ud = users[otherUser] || {
-    xp: 10000,
-    gender: 'M',
-    birthday: '2000-01-01.00:00:00',
-    country: 'FR',
-    region: '',
-    fbouille: DEFAULT_BOUILLE_STATE,
-  };
+  const ud = users[otherUser] || createDefaultUser('');
 
   sendToClient(
     socket,
