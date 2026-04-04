@@ -309,10 +309,6 @@ app.post('/api/auth/login', (req, res) => {
   return res.json({ ok: true, sid, username, redirect: `/legacy?sid=${encodeURIComponent(sid)}` });
 });
 
-app.get('/do/ld', (req, res) => {
-  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
-});
-
 app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
 });
@@ -417,7 +413,7 @@ app.get('/xml/services.xml', (req, res) => {
     publicHost = String(rawHost).split(':')[0] || 'localhost';
   }
   res.type('text/xml').send(
-    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
+    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /><service name="frutiscore" port="${XMLSOCKET_PORT}" /></services>`
   );
 });
 
@@ -604,12 +600,43 @@ function swfSizeForUrlPath(urlPath) {
   return '0';
 }
 
+const GAME_DISCS = {
+  kaluga1: {
+    discType: '0',
+    swfName: 'kaluga',
+    gameId: 'games/kaluga/kaluga.swf',
+    props: 'w=640;h=480;m=i',
+    files: [
+      { u: 'games/kaluga/kaluga.swf' },
+      { u: 'games/kaluga/full.swf', n: 'full.swf' },
+    ],
+  },
+};
+
 // ─────────────────────────────────────────────
 // ENDPOINT: do/ld — Game disc loading
-// Disabled in simplified mode (no Frusion launch hacks).
 // ─────────────────────────────────────────────
 app.get('/do/ld', (req, res) => {
-  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
+  const sid = req.query.sid;
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+
+  const discUid = String(req.query.u || '');
+  const disc = GAME_DISCS[discUid];
+  if (!disc) {
+    return res.type('text/xml').send('<r k="404">disc_not_found</r>');
+  }
+
+  const filesXml = disc.files
+    .map((f) => {
+      const size = swfSizeForUrlPath(`/swf/${f.u}`);
+      const nAttr = f.n ? ` n="${escapeXml(f.n)}"` : '';
+      return `<s u="${escapeXml(f.u)}" s="${size}"${nAttr} />`;
+    })
+    .join('');
+
+  const xml = `<r u="${escapeXml(disc.gameId)}" t="${escapeXml(disc.discType)}" n="${escapeXml(disc.swfName)}" p="${escapeXml(disc.props)}">${filesXml}</r>`;
+  res.type('text/xml').send(xml);
 });
 
 // ─────────────────────────────────────────────
@@ -1267,6 +1294,12 @@ function handleCBeeMessage(socket, rawXml) {
 
   console.log(`[CBee]  <- ${cmdName} (${msg.tag}) ${JSON.stringify(msg.attrs)}`);
 
+  // FrutiScore overlap: wire code "v" is listModes request.
+  if (msg.tag === 'v') {
+    sendToClient(socket, '<v><m m="0" t="normal" /></v>');
+    return;
+  }
+
   switch (cmdName) {
     // ── ip: client requests its IP ──
     case 'ip': {
@@ -1343,12 +1376,22 @@ function handleCBeeMessage(socket, rawXml) {
 
     // ── channellist: list available channels ──
     case 'channellist': {
+      // FrutiScore overlap: saveScore uses same wire code (q) with disc attrs.
+      if (msg.attrs.d != undefined) {
+        sendToClient(socket, `<${CMD.channellist} k="0" />`);
+        break;
+      }
       sendToClient(socket, buildChannelListXml());
       break;
     }
 
     // ── join: join a channel ──
 case 'join': {
+  // FrutiScore overlap: startGame uses wire code "o" with disc attrs.
+  if (msg.attrs.d != undefined) {
+    sendToClient(socket, `<${CMD.join} d="${escapeXml(String(msg.attrs.d))}" k="0" />`);
+    break;
+  }
   const g = msg.attrs.g;
 
   if (!channels[g]) {
@@ -1418,6 +1461,11 @@ broadcastToChannel(
 
     // ── userlist: explicit request for a channel user list ──
     case 'userlist': {
+      // FrutiScore overlap: endGame uses wire code "p".
+      if (msg.attrs.d != undefined || msg.attrs.g == undefined) {
+        sendToClient(socket, `<${CMD.userlist} k="0" />`);
+        break;
+      }
       const g = msg.attrs.g || '';
       const channel = channels[g];
       if (!channel) {
