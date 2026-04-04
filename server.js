@@ -1466,6 +1466,12 @@ case 'send': {
   const type = msg.attrs.t || 'm';
   const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
   const timeAttrs = buildChatTimeAttrs();
+  const senderData = users[client.username] || {};
+  const mutedUntil = senderData.mutedUntil ? new Date(senderData.mutedUntil) : null;
+  if (mutedUntil && !Number.isNaN(mutedUntil.getTime()) && mutedUntil.getTime() > Date.now()) {
+    sendToClient(socket, `<${CMD.onmute} e="${escapeXml(senderData.mutedUntil)}" />`);
+    break;
+  }
 
   if (g && client.logged) {
     if (isModerator(client.username) && text.startsWith('/kick ')) {
@@ -1518,6 +1524,40 @@ case 'send': {
   break;
 }
 
+    // ── mute (totocher): temporary chat silence ──
+    case 'mute': {
+      if (!isModerator(client.username)) {
+        sendToClient(socket, `<${CMD.error} k="403" />`);
+        break;
+      }
+      const targetUser = resolveModerationTarget(msg);
+      const target = users[targetUser];
+      if (!targetUser || !target) break;
+      const until = msg.attrs.e || new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
+      target.mutedUntil = until;
+      for (const targetSock of getSocketsForUsername(targetUser)) {
+        sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(targetUser)}" e="${escapeXml(until)}" />`);
+      }
+      sendToClient(socket, `<${CMD.mute} u="${escapeXml(targetUser)}" e="${escapeXml(until)}" />`);
+      break;
+    }
+
+    case 'unmute': {
+      if (!isModerator(client.username)) {
+        sendToClient(socket, `<${CMD.error} k="403" />`);
+        break;
+      }
+      const targetUser = resolveModerationTarget(msg);
+      const target = users[targetUser];
+      if (!targetUser || !target) break;
+      delete target.mutedUntil;
+      for (const targetSock of getSocketsForUsername(targetUser)) {
+        sendToClient(targetSock, `<${CMD.endmute} u="${escapeXml(targetUser)}" />`);
+      }
+      sendToClient(socket, `<${CMD.unmute} u="${escapeXml(targetUser)}" />`);
+      break;
+    }
+
     // ── trace: request status updates for users ──
 case 'trace': {
   const traceChildren = (msg.children || []).filter(child => child.tag === 'u' && child.attrs.u);
@@ -1565,7 +1605,7 @@ case 'trace': {
       const r = msg.attrs.r || '';
       const ud = users[u] || {};
       sendToClient(socket,
-        `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" />`
+        `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="Modérateur" />`
       );
       break;
     }
@@ -1640,7 +1680,7 @@ case 'createchannel': {
 
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="Modérateur" />`
   );
 
   sendToClient(
