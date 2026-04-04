@@ -406,6 +406,13 @@ app.get('/frusion', (req, res) => {
   res.redirect(`/frusion-ruffle.html${qs}`);
 });
 
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  res.redirect(`/frusion-ruffle.html${qs}`);
+});
+
 function sendAvatarFamily(res, fileName) {
   const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
@@ -755,6 +762,15 @@ const GAME_DISCS = {
       { u: 'games/kaluga/kaluga.swf' },
     ],
   },
+  swapou1: {
+    discType: '0',
+    swfName: 'swapou2',
+    gameId: 'games/miniWave2/miniWave2.swf',
+    props: 'w=640;h=480;m=i',
+    files: [
+      { u: 'games/miniWave2/miniWave2.swf' },
+    ],
+  },
 };
 
 // ─────────────────────────────────────────────
@@ -879,6 +895,8 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 kaluga</e>
         <e u="kalugademo" t="disc" s="10" d="0" a="0">3
 kaluga</e>
+        <e u="swapou1" t="disc" s="10" d="0" a="0">0
+swapou2</e>
       </f>`
     );
   }
@@ -998,6 +1016,7 @@ app.get('/animfrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'publ
 app.get('/skinFrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf')));
 
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
+app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
