@@ -57,7 +57,7 @@
                                 const m = firstSwfTag[0].match(new RegExp(name + '="([^"]*)"'));
                                 return m ? m[1] : '';
                             };
-                            const sid = new URLSearchParams(window.location.search).get('sid') || 'debug';
+                            const sid = new URLSearchParams(window.location.search).get('sid') || '';
                             const target = new URL('/frusion', window.location.origin);
                             target.searchParams.set('sid', sid);
                             target.searchParams.set('disc_type', getAttr('t') || '0');
@@ -199,7 +199,7 @@
             const wsOrigin = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
             const urlParams = new URLSearchParams(window.location.search);
 
-            const sid = urlParams.get('sid') || 'debug';
+            const sid = urlParams.get('sid') || '';
             const s = normalizeAvatarState(
                 urlParams.get('s') || '000000000000000000000000'
             );
@@ -356,7 +356,8 @@
                 console.log('[ChatBridge] <-', raw.substring(0, 300));
 
                 if (raw.startsWith('<d>')) {
-                    sendRaw('<k l="DebugBot" s="chatdebug"/>');
+                    const sid = new URLSearchParams(window.location.search).get('sid') || '';
+                    sendRaw(`<k l="" s="${sid}"/>`);
                     continue;
                 }
 
