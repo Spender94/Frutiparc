@@ -1141,6 +1141,8 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   } else {
     broadcastToChannel(channelName, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
   }
+  // Keep legacy state updates in sync for clients that only react to userleaved.
+  broadcastToChannel(channelName, `<${CMD.userleaved} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
   return true;
 }
 
