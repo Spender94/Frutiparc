@@ -413,6 +413,13 @@ app.get('/frusion', (req, res) => {
   res.redirect(`/frusion-ruffle.html${qs}`);
 });
 
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  res.redirect(`/frusion-ruffle.html${qs}`);
+});
+
 function sendAvatarFamily(res, fileName) {
   const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
@@ -771,6 +778,15 @@ const GAME_DISCS = {
       { u: 'games/miniWave2/miniWave2.swf' },
     ],
   },
+  miniwave1: {
+    discType: '0',
+    swfName: 'miniwave2',
+    gameId: 'games/miniWave2/miniWave2.swf',
+    props: 'w=550;h=400;m=i',
+    files: [
+      { u: 'games/miniWave2/miniWave2.swf' },
+    ],
+  },
 };
 
 // ─────────────────────────────────────────────
@@ -897,6 +913,8 @@ kaluga</e>
 kaluga</e>
         <e u="swapou1" t="disc" s="10" d="0" a="0">0
 swapou2</e>
+        <e u="miniwave1" t="disc" s="10" d="0" a="0">0
+miniwave2</e>
       </f>`
     );
   }

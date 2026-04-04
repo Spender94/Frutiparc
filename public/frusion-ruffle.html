@@ -25,6 +25,13 @@
       height:480px;
     }
   </style>
+  <script>
+    window.RufflePlayer = window.RufflePlayer || {};
+    window.RufflePlayer.config = {
+      ...(window.RufflePlayer.config || {}),
+      logLevel: "trace",
+    };
+  </script>
   <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
 </head>
 <body>
