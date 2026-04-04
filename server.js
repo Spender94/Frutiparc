@@ -1139,6 +1139,21 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   return true;
 }
 
+function pickActiveChannel(client, msgAttrs = {}) {
+  return msgAttrs.g || msgAttrs.channel || (client && client.channels ? Array.from(client.channels)[0] : '') || '';
+}
+
+function resolveModerationTarget(msg) {
+  const attrs = (msg && msg.attrs) || {};
+  const raw =
+    attrs.u ||
+    attrs.l ||
+    attrs.n ||
+    attrs.user ||
+    (typeof msg.content === 'string' ? msg.content.trim() : '');
+  return resolveKnownUsername(raw);
+}
+
 function resolveKnownUsername(nameOrLower) {
   const raw = String(nameOrLower || '');
   const low = raw.toLowerCase();
@@ -1419,8 +1434,8 @@ broadcastToChannel(
         sendToClient(socket, `<${CMD.error} k="403" />`);
         break;
       }
-      const g = msg.attrs.g || '';
-      const targetUser = resolveKnownUsername(msg.attrs.u || '');
+      const g = pickActiveChannel(client, msg.attrs);
+      const targetUser = resolveModerationTarget(msg);
       if (!g || !targetUser) break;
       kickUserFromChannel(g, targetUser, client.username, 'kick');
       sendToClient(socket, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(g)}" />`);
@@ -1433,8 +1448,8 @@ broadcastToChannel(
         sendToClient(socket, `<${CMD.error} k="403" />`);
         break;
       }
-      const g = msg.attrs.g || '';
-      const targetUser = resolveKnownUsername(msg.attrs.u || '');
+      const g = pickActiveChannel(client, msg.attrs);
+      const targetUser = resolveModerationTarget(msg);
       const channel = channels[g];
       if (!g || !targetUser || !channel) break;
       if (!channel.banned) channel.banned = new Set();
@@ -1471,7 +1486,12 @@ case 'send': {
     let safeText = escapeXml(text);
     if (isModerator(client.username) && text.startsWith('!')) {
       const shout = escapeXml(text.substring(1).trim());
-      if (shout) safeText = `<b><font color="#ff0000">${shout}</font></b>`;
+      if (shout) {
+        // Legacy clients usually render `adminsend` (ap) in emphasized style.
+        const adminXml = `<${CMD.adminsend} u="${escapeXml(client.username)}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${shout}</${CMD.adminsend}>`;
+        broadcastToChannel(g, adminXml);
+        safeText = `<b><font color="#ff0000">${shout}</font></b>`;
+      }
     }
     const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
