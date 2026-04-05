@@ -14,6 +14,7 @@ const XMLSOCKET_PORT = Number(process.env.XMLSOCKET_PORT || 5000); // Must end i
 const PUBLIC_HOST = (process.env.PUBLIC_HOST || '').trim();
 const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
 const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
+const VERBOSE_FRUSION_LOGS = process.env.VERBOSE_FRUSION_LOGS === '1';
 
 // ── CORS headers (Ruffle's WASM fetch may need them) ──
 app.use((req, res, next) => {
@@ -184,6 +185,21 @@ function normalizeUsername(raw) {
 function getClientIp(req) {
   const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
   return forwarded || req.ip || (req.socket && req.socket.remoteAddress) || '';
+}
+
+function getLaunchIdFromReq(req) {
+  const direct = String((req.query && req.query.launch_id) || '').trim();
+  if (direct) return direct;
+
+  const referer = String(req.headers.referer || '');
+  if (referer) {
+    try {
+      const u = new URL(referer);
+      const fromRef = String(u.searchParams.get('launch_id') || '').trim();
+      if (fromRef) return fromRef;
+    } catch {}
+  }
+  return '';
 }
 
 function isValidUsername(username) {
@@ -446,6 +462,20 @@ app.get('/frusion', (req, res) => {
 app.get('/frusion', (req, res) => {
   const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
   res.redirect(`/frusion-ruffle.html${qs}`);
+});
+
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const params = new URLSearchParams(req.query || {});
+  if (!params.get('launch_id')) {
+    const seed = String(params.get('sid') || crypto.randomBytes(4).toString('hex'));
+    params.set('launch_id', `${seed.slice(0, 8)}-${Date.now().toString(36)}`);
+  }
+  if (VERBOSE_FRUSION_LOGS) {
+    console.log(`[FRUSION] launch redirect launch_id=${params.get('launch_id')} sid=${params.get('sid') || ''} game=${params.get('gameName') || ''} u=${params.get('u') || ''}`);
+  }
+  res.redirect(`/frusion-ruffle.html?${params.toString()}`);
 });
 
 function sendAvatarFamily(res, fileName) {
@@ -835,8 +865,12 @@ app.get('/do/ld', (req, res) => {
   }
 
   const discUid = String(req.query.u || '');
+  const launchId = getLaunchIdFromReq(req);
   const disc = GAME_DISCS[discUid];
   if (!disc) {
+    if (VERBOSE_FRUSION_LOGS) {
+      console.log(`[FRUSION] do/ld miss launch_id=${launchId || '-'} u=${discUid}`);
+    }
     return res.type('text/xml').send('<r k="404">disc_not_found</r>');
   }
 
@@ -850,6 +884,9 @@ app.get('/do/ld', (req, res) => {
 
   // Keep legacy root node name/attrs expected by Frusion ("game", not "r").
   const xml = `<game t="${escapeXml(disc.discType)}" pm="single" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
+  if (VERBOSE_FRUSION_LOGS) {
+    console.log(`[FRUSION] do/ld hit launch_id=${launchId || '-'} u=${discUid} -> ${disc.gameId} props=${disc.props}`);
+  }
   res.type('text/xml').send(xml);
 });
 
@@ -1148,6 +1185,13 @@ app.post('/h/send_debug', (req, res) => {
 app.get('/animfrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'animfrusion.swf')));
 app.get('/skinFrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf')));
 
+app.use('/swf/games', (req, _res, next) => {
+  if (VERBOSE_FRUSION_LOGS) {
+    const launchId = getLaunchIdFromReq(req);
+    console.log(`[FRUSION] asset launch_id=${launchId || '-'} path=${req.path}`);
+  }
+  next();
+});
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
