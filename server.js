@@ -978,7 +978,7 @@ miniwave2</e>
 // ─────────────────────────────────────────────
 app.all(['/ff/mk', '/mk'], (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
-  const sid = source.sid || req.query.sid;
+  const sid = getSidFromRequest(req, source);
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user } = auth;
@@ -1010,6 +1010,7 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
         source.u, source.user, source.name, source.n, source.l, source.a,
         req.query.u, req.query.user, req.query.name, req.query.n, req.query.l, req.query.a,
         session && session.lastProfileUser,
+        session && session.lastTraceUser,
       ];
       contactRaw = String(fallbackCandidates.find((v) => !isPlaceholder(v)) || '');
     }
@@ -1984,6 +1985,9 @@ case 'trace': {
 
   const targetUser = msg.attrs.u;
   if (targetUser) {
+    if (client.sid && sessions[client.sid]) {
+      sessions[client.sid].lastTraceUser = targetUser;
+    }
     const ud = users[targetUser] || users[client.username] || {};
     sendToClient(
       socket,
