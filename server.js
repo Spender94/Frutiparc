@@ -420,6 +420,13 @@ app.get('/frusion', (req, res) => {
   res.redirect(`/frusion-ruffle.html${qs}`);
 });
 
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  res.redirect(`/frusion-ruffle.html${qs}`);
+});
+
 function sendAvatarFamily(res, fileName) {
   const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
@@ -988,6 +995,68 @@ app.get(['/ff/mv', '/mv'], (req, res) => {
   }
 
   res.type('text/xml').send(`<r f="${folder}"><f n="${escapeXml(local)}" t="contact" d="${now}" p="${oldFolder}">moved</f></r>`);
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: ff/rm — Remove file/contact
+// Returns XML
+// ─────────────────────────────────────────────
+app.get(['/ff/rm', '/rm'], (req, res) => {
+  const sid = req.query.sid;
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
+  ensureContactLists(user);
+
+  const folder = String(req.query.folder || req.query.f || '');
+  const rawFile = String(req.query.file || req.query.u || req.query.uid || req.query.n || '');
+  const normalized = normalizeContactAddress(rawFile);
+  const local = String(rawFile).split('@')[0];
+
+  let removedFrom = '';
+  let removedValue = '';
+
+  const removeFromList = (listName, value) => {
+    if (!value) return false;
+    const before = user[listName].length;
+    user[listName] = user[listName].filter((a) => a !== value);
+    return user[listName].length !== before;
+  };
+
+  const candidates = [normalized, rawFile, local]
+    .filter(Boolean)
+    .flatMap((v) => [v, normalizeContactAddress(v)])
+    .filter(Boolean);
+
+  const tryRemoveFrom = (listName) => {
+    for (const c of candidates) {
+      const hit = user[listName].find((a) => a === c || String(a).split('@')[0] === String(c).split('@')[0]);
+      if (hit && removeFromList(listName, hit)) {
+        removedFrom = listName === 'contacts' ? 'mycontact' : 'blacklist';
+        removedValue = hit;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  if (folder === 'mycontact') {
+    tryRemoveFrom('contacts');
+  } else if (folder === 'blacklist') {
+    tryRemoveFrom('blacklist');
+  } else {
+    // If folder is omitted, try both lists.
+    if (!tryRemoveFrom('contacts')) {
+      tryRemoveFrom('blacklist');
+    }
+  }
+
+  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const resultName = String(removedValue || normalized || rawFile || local || 'contact').split('@')[0];
+  const parent = removedFrom || folder || 'mycontact';
+  return res.type('text/xml').send(
+    `<r f="${escapeXml(parent)}"><f n="${escapeXml(resultName)}" t="contact" d="${now}" p="${escapeXml(parent)}">removed</f></r>`
+  );
 });
 
 // ─────────────────────────────────────────────
