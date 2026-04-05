@@ -818,7 +818,23 @@ app.get('/do/ld', (req, res) => {
 
   const discUid = String(req.query.u || '');
   const launchId = getLaunchIdFromReq(req);
-  const disc = GAME_DISCS[discUid];
+  let disc = GAME_DISCS[discUid];
+  let resolvedDiscUid = discUid;
+
+  // Some frusion wrappers call /do/ld with the game path instead of disc uid.
+  // Accept both styles:
+  //   - u=kaluga1
+  //   - u=games/kaluga/kaluga.swf
+  if (!disc) {
+    const entries = Object.entries(GAME_DISCS);
+    const hit = entries.find(([, d]) =>
+      d.gameId === discUid || (Array.isArray(d.files) && d.files.some((f) => f && f.u === discUid))
+    );
+    if (hit) {
+      resolvedDiscUid = hit[0];
+      disc = hit[1];
+    }
+  }
   if (!disc) {
     if (VERBOSE_FRUSION_LOGS) {
       console.log(`[FRUSION] do/ld miss launch_id=${launchId || '-'} u=${discUid}`);
@@ -837,7 +853,7 @@ app.get('/do/ld', (req, res) => {
   // Keep legacy root node name/attrs expected by Frusion ("game", not "r").
   const xml = `<game t="${escapeXml(disc.discType)}" pm="single" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
   if (VERBOSE_FRUSION_LOGS) {
-    console.log(`[FRUSION] do/ld hit launch_id=${launchId || '-'} u=${discUid} -> ${disc.gameId} props=${disc.props}`);
+    console.log(`[FRUSION] do/ld hit launch_id=${launchId || '-'} u=${discUid} resolved=${resolvedDiscUid} -> ${disc.gameId} props=${disc.props}`);
   }
   res.type('text/xml').send(xml);
 });
@@ -1001,18 +1017,19 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
 // ENDPOINT: ff/mv — Move file
 // Returns XML
 // ─────────────────────────────────────────────
-app.get(['/ff/mv', '/mv'], (req, res) => {
-  const sid = req.query.sid;
+app.all(['/ff/mv', '/mv'], (req, res) => {
+  const source = req.method === 'POST' ? req.body : req.query;
+  const sid = source.sid || req.query.sid;
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user } = auth;
   ensureContactLists(user);
 
-  const file = String(req.query.f || '');
-  const folder = String(req.query.folder || '');
+  const file = String(source.f || req.query.f || '');
+  const folder = String(source.folder || req.query.folder || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
-  let oldFolder = String(req.query.p || 'root');
+  let oldFolder = String(source.p || req.query.p || 'root');
   const local = file.split('@')[0];
   const normalizedFileAddr = normalizeContactAddress(file);
 
