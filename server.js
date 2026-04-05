@@ -427,6 +427,13 @@ app.get('/frusion', (req, res) => {
   res.redirect(`/frusion-ruffle.html${qs}`);
 });
 
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  res.redirect(`/frusion-ruffle.html${qs}`);
+});
+
 function sendAvatarFamily(res, fileName) {
   const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
@@ -934,17 +941,18 @@ miniwave2</e>
 // ENDPOINT: ff/mk — Create file/folder
 // Returns XML
 // ─────────────────────────────────────────────
-app.get(['/ff/mk', '/mk'], (req, res) => {
-  const sid = req.query.sid;
+app.all(['/ff/mk', '/mk'], (req, res) => {
+  const source = req.method === 'POST' ? req.body : req.query;
+  const sid = source.sid || req.query.sid;
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user } = auth;
   ensureContactLists(user);
 
   const newUid = 'f' + crypto.randomBytes(4).toString('hex');
-  let folder = req.query.folder || '';
-  const type = req.query.t || 'file';
-  const desc = String(req.query.d || '');
+  let folder = source.folder || req.query.folder || '';
+  const type = source.t || req.query.t || 'file';
+  const desc = String(source.d || req.query.d || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
   if (type === 'contact' && !folder) {
