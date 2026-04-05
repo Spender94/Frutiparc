@@ -1011,12 +1011,14 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
   const type = source.t || req.query.t || 'file';
   const desc = String(source.d || req.query.d || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const isContactFolder = folder === 'mycontact' || folder === 'blacklist';
+  const isContactCreate = type === 'contact' || isContactFolder;
 
-  if (type === 'contact' && !folder) {
+  if (isContactCreate && !folder) {
     folder = 'mycontact';
   }
 
-  if (type === 'contact' && (folder === 'mycontact' || folder === 'blacklist')) {
+  if (isContactCreate && (folder === 'mycontact' || folder === 'blacklist')) {
     const firstDescLine = String(desc.split('\n')[0] || '').trim();
 
     // Some legacy "add contact from profile" flows send d=NoText.
