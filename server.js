@@ -16,6 +16,7 @@ const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
 const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
 const VERBOSE_FRUSION_LOGS = process.env.VERBOSE_FRUSION_LOGS === '1';
 const FRUSION_CLIENT_SWF = (process.env.FRUSION_CLIENT_SWF || '').trim();
+const ALLOW_FRUSION_SERVER_SWF = process.env.ALLOW_FRUSION_SERVER_SWF === '1';
 
 // ── CORS headers (Ruffle's WASM fetch may need them) ──
 app.use((req, res, next) => {
@@ -394,9 +395,19 @@ app.get('/fileIcon.swf', (req, res) => {
 
 
 app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
-  const candidate = FRUSION_CLIENT_SWF
+  const defaultClient = path.join(__dirname, 'public', 'frusion_client.swf');
+  let candidate = FRUSION_CLIENT_SWF
     ? path.resolve(__dirname, FRUSION_CLIENT_SWF)
-    : path.join(__dirname, 'public', 'frusion_client.swf');
+    : defaultClient;
+
+  // Safety rail: frusion_server.swf is not the normal launcher.
+  // Use it only when explicitly allowed for experiments.
+  if (!ALLOW_FRUSION_SERVER_SWF && /frusion_server\.swf$/i.test(candidate)) {
+    if (VERBOSE_SWF_LOGS || VERBOSE_FRUSION_LOGS) {
+      console.log('[SWF]   FRUSION_CLIENT_SWF points to frusion_server.swf; ignoring unless ALLOW_FRUSION_SERVER_SWF=1');
+    }
+    candidate = defaultClient;
+  }
   const fallback = path.join(__dirname, 'frusion', 'saf_debug.swf');
   let servedPath = candidate;
   try {
