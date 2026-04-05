@@ -441,6 +441,13 @@ app.get('/frusion', (req, res) => {
   res.redirect(`/frusion-ruffle.html${qs}`);
 });
 
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  res.redirect(`/frusion-ruffle.html${qs}`);
+});
+
 function sendAvatarFamily(res, fileName) {
   const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
@@ -543,6 +550,11 @@ function resolveUsernameFromSid(sid) {
     return sessions[sid].user;
   }
   return null;
+}
+
+function getSessionBySid(sid) {
+  if (!sid || !sessions[sid]) return null;
+  return sessions[sid];
 }
 
 function requireAuthBySid(sid, res, responseType = 'text/plain') {
@@ -977,9 +989,11 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
     // Recover the actual username from alternate form/query fields when available.
     let contactRaw = firstDescLine;
     if (isPlaceholder(contactRaw)) {
+      const session = getSessionBySid(sid);
       const fallbackCandidates = [
         source.u, source.user, source.name, source.n, source.l, source.a,
         req.query.u, req.query.user, req.query.name, req.query.n, req.query.l, req.query.a,
+        session && session.lastProfileUser,
       ];
       contactRaw = String(fallbackCandidates.find((v) => !isPlaceholder(v)) || '');
     }
@@ -1973,6 +1987,9 @@ case 'trace': {
       const u = msg.attrs.u;
       const r = msg.attrs.r || '';
       const ud = users[u] || {};
+      if (client.sid && sessions[client.sid]) {
+        sessions[client.sid].lastProfileUser = u;
+      }
       sendToClient(socket,
         `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(u, ud)}" />`
       );
