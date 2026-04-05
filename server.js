@@ -265,6 +265,28 @@ function normalizeContactAddress(raw) {
   return `${v}@frutiparc.com`;
 }
 
+function isContactPlaceholder(value) {
+  const s = String(value || '').trim();
+  return s === '' || /^notext$/i.test(s) || /^undefined$/i.test(s) || /^null$/i.test(s);
+}
+
+function extractContactCandidateFromDesc(desc) {
+  const raw = String(desc || '').trim();
+  if (!raw) return '';
+
+  const tokens = raw
+    .split(/[\r\n\t;|,<>()[\]{}]+/g)
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+
+  for (const token of tokens) {
+    if (isContactPlaceholder(token)) continue;
+    if (/^[a-z0-9_.-]{2,32}(?:@frutiparc\.com)?$/i.test(token)) return token;
+  }
+
+  return '';
+}
+
 const DEFAULT_BOUILLE_LIST = [
   { b: '000503000000111010000000', n: 'Classique' },
   { b: '000503000000111011000000', n: 'Classique 2' },
@@ -996,23 +1018,21 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
 
   if (type === 'contact' && (folder === 'mycontact' || folder === 'blacklist')) {
     const firstDescLine = String(desc.split('\n')[0] || '').trim();
-    const isPlaceholder = (v) => {
-      const s = String(v || '').trim();
-      return s === '' || /^notext$/i.test(s) || /^undefined$/i.test(s) || /^null$/i.test(s);
-    };
 
     // Some legacy "add contact from profile" flows send d=NoText.
     // Recover the actual username from alternate form/query fields when available.
     let contactRaw = firstDescLine;
-    if (isPlaceholder(contactRaw)) {
+    if (isContactPlaceholder(contactRaw)) {
       const session = getSessionBySid(sid);
+      const fromDesc = extractContactCandidateFromDesc(desc);
       const fallbackCandidates = [
+        fromDesc,
         source.u, source.user, source.name, source.n, source.l, source.a,
         req.query.u, req.query.user, req.query.name, req.query.n, req.query.l, req.query.a,
         session && session.lastProfileUser,
         session && session.lastTraceUser,
       ];
-      contactRaw = String(fallbackCandidates.find((v) => !isPlaceholder(v)) || '');
+      contactRaw = String(fallbackCandidates.find((v) => !isContactPlaceholder(v)) || '');
     }
 
     const addr = normalizeContactAddress(contactRaw);
