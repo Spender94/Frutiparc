@@ -15,6 +15,7 @@ const PUBLIC_HOST = (process.env.PUBLIC_HOST || '').trim();
 const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
 const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
 const VERBOSE_FRUSION_LOGS = process.env.VERBOSE_FRUSION_LOGS === '1';
+const FRUSION_CLIENT_SWF = (process.env.FRUSION_CLIENT_SWF || '').trim();
 
 // ── CORS headers (Ruffle's WASM fetch may need them) ──
 app.use((req, res, next) => {
@@ -393,75 +394,26 @@ app.get('/fileIcon.swf', (req, res) => {
 
 
 app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
+  const candidate = FRUSION_CLIENT_SWF
+    ? path.resolve(__dirname, FRUSION_CLIENT_SWF)
+    : path.join(__dirname, 'public', 'frusion_client.swf');
   const fallback = path.join(__dirname, 'frusion', 'saf_debug.swf');
-  if (VERBOSE_SWF_LOGS) {
-    console.log('[SWF]   frusion_client.swf requested -> serving saf_debug.swf fallback');
+  let servedPath = candidate;
+  try {
+    const st = fs.statSync(candidate);
+    if (!st.isFile() || st.size <= 0) {
+      servedPath = fallback;
+    }
+  } catch {
+    servedPath = fallback;
+  }
+  if (VERBOSE_SWF_LOGS || VERBOSE_FRUSION_LOGS) {
+    let size = '?';
+    try { size = String(fs.statSync(servedPath).size); } catch {}
+    console.log(`[SWF]   frusion_client.swf requested -> serving ${path.relative(__dirname, servedPath)} (${size} bytes)`);
   }
   res.type('application/x-shockwave-flash');
-  res.sendFile(path.join(__dirname, 'public', 'frusion_client.swf'));
-});
-
-// Legacy Frusion launcher target used by game discs.
-// Keep querystring untouched so game params are forwarded.
-app.get('/frusion', (req, res) => {
-  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-  res.redirect(`/frusion-ruffle.html${qs}`);
-});
-
-// Legacy Frusion launcher target used by game discs.
-// Keep querystring untouched so game params are forwarded.
-app.get('/frusion', (req, res) => {
-  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-  res.redirect(`/frusion-ruffle.html${qs}`);
-});
-
-// Legacy Frusion launcher target used by game discs.
-// Keep querystring untouched so game params are forwarded.
-app.get('/frusion', (req, res) => {
-  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-  res.redirect(`/frusion-ruffle.html${qs}`);
-});
-
-// Legacy Frusion launcher target used by game discs.
-// Keep querystring untouched so game params are forwarded.
-app.get('/frusion', (req, res) => {
-  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-  res.redirect(`/frusion-ruffle.html${qs}`);
-});
-
-// Legacy Frusion launcher target used by game discs.
-// Keep querystring untouched so game params are forwarded.
-app.get('/frusion', (req, res) => {
-  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-  res.redirect(`/frusion-ruffle.html${qs}`);
-});
-
-// Legacy Frusion launcher target used by game discs.
-// Keep querystring untouched so game params are forwarded.
-app.get('/frusion', (req, res) => {
-  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-  res.redirect(`/frusion-ruffle.html${qs}`);
-});
-
-// Legacy Frusion launcher target used by game discs.
-// Keep querystring untouched so game params are forwarded.
-app.get('/frusion', (req, res) => {
-  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-  res.redirect(`/frusion-ruffle.html${qs}`);
-});
-
-// Legacy Frusion launcher target used by game discs.
-// Keep querystring untouched so game params are forwarded.
-app.get('/frusion', (req, res) => {
-  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-  res.redirect(`/frusion-ruffle.html${qs}`);
-});
-
-// Legacy Frusion launcher target used by game discs.
-// Keep querystring untouched so game params are forwarded.
-app.get('/frusion', (req, res) => {
-  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-  res.redirect(`/frusion-ruffle.html${qs}`);
+  res.sendFile(servedPath);
 });
 
 // Legacy Frusion launcher target used by game discs.
