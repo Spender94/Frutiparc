@@ -434,6 +434,13 @@ app.get('/frusion', (req, res) => {
   res.redirect(`/frusion-ruffle.html${qs}`);
 });
 
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  res.redirect(`/frusion-ruffle.html${qs}`);
+});
+
 function sendAvatarFamily(res, fileName) {
   const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
@@ -960,7 +967,24 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
   }
 
   if (type === 'contact' && (folder === 'mycontact' || folder === 'blacklist')) {
-    const addr = normalizeContactAddress(desc.split('\n')[0]);
+    const firstDescLine = String(desc.split('\n')[0] || '').trim();
+    const isPlaceholder = (v) => {
+      const s = String(v || '').trim();
+      return s === '' || /^notext$/i.test(s) || /^undefined$/i.test(s) || /^null$/i.test(s);
+    };
+
+    // Some legacy "add contact from profile" flows send d=NoText.
+    // Recover the actual username from alternate form/query fields when available.
+    let contactRaw = firstDescLine;
+    if (isPlaceholder(contactRaw)) {
+      const fallbackCandidates = [
+        source.u, source.user, source.name, source.n, source.l, source.a,
+        req.query.u, req.query.user, req.query.name, req.query.n, req.query.l, req.query.a,
+      ];
+      contactRaw = String(fallbackCandidates.find((v) => !isPlaceholder(v)) || '');
+    }
+
+    const addr = normalizeContactAddress(contactRaw);
     const list = folder === 'blacklist' ? user.blacklist : user.contacts;
     if (addr && !list.includes(addr)) list.push(addr);
     const local = addr.split('@')[0] || addr || newUid;
