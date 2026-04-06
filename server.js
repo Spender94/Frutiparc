@@ -976,18 +976,12 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   }
 
   if (uid === 'disccollector') {
-    return res.type('text/xml').send(
-      `<f u="disccollector">
-        <e u="kaluga1" t="disc" s="10" d="0" a="0">0
-kaluga</e>
-        <e u="kalugademo" t="disc" s="10" d="0" a="0">3
-kaluga</e>
-        <e u="swapou1" t="disc" s="10" d="0" a="0">0
-swapou2</e>
-        <e u="miniwave1" t="disc" s="10" d="0" a="0">0
-miniwave2</e>
-      </f>`
-    );
+    // disc format: content = "discType\ngameName"
+    let discNodes = '';
+    for (const [id, disc] of Object.entries(GAME_DISCS)) {
+      discNodes += `<e u="${escapeXml(id)}" t="disc" s="10" d="0" a="0">${disc.discType}\n${escapeXml(disc.swfName)}</e>`;
+    }
+    return res.type('text/xml').send(`<f u="disccollector">${discNodes || '<i />'}</f>`);
   }
 
   // Return an empty folder listing with a placeholder node to avoid legacy null-firstChild edge cases
@@ -1041,10 +1035,15 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
     const list = folder === 'blacklist' ? user.blacklist : user.contacts;
     if (addr && !list.includes(addr)) list.push(addr);
     const local = addr.split('@')[0] || addr || newUid;
-    return res.type('text/xml').send(`<r f="${folder}"><f u="${escapeXml(local)}" t="contact" d="${now}" f="${folder}">${escapeXml(addr)}</f></r>`);
+    // onMake reads: x.attributes.u (uid), x.attributes.t (type),
+    // x.attributes.d (date), x.attributes.f (parent folder),
+    // x.firstChild.nodeValue (description text)
+    return res.type('text/xml').send(
+      `<r u="${escapeXml(local)}" t="contact" d="${now}" f="${escapeXml(folder)}">${escapeXml(addr)}</r>`
+    );
   }
 
-  res.type('text/xml').send(`<r f="${folder}"><f u="${newUid}" t="${type}" d="${now}" f="${folder}">${desc}</f></r>`);
+  res.type('text/xml').send(`<r u="${newUid}" t="${escapeXml(type)}" d="${now}" f="${escapeXml(folder)}">${escapeXml(desc)}</r>`);
 });
 
 // ─────────────────────────────────────────────
@@ -1080,7 +1079,8 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
     }
   }
 
-  res.type('text/xml').send(`<r f="${folder}"><f n="${escapeXml(local)}" t="contact" d="${now}" p="${oldFolder}">moved</f></r>`);
+  const addr = normalizedFileAddr || file;
+  res.type('text/xml').send(`<r f="${folder}"><f n="${escapeXml(local)}" u="${escapeXml(local)}" t="contact" d="${now}" p="${oldFolder}">${escapeXml(addr)}</f></r>`);
 });
 
 // ─────────────────────────────────────────────
@@ -1718,7 +1718,7 @@ function handleCBeeMessage(socket, rawXml) {
       break;
     }
 
-    // ── channellist: list available channels ──
+    // ── channellist / FrutiScore saveScore ──
     case 'channellist': {
       // FrutiScore overlap: saveScore uses same wire code (q) with disc attrs.
       if (msg.attrs.d != undefined) {
@@ -1729,7 +1729,7 @@ function handleCBeeMessage(socket, rawXml) {
       break;
     }
 
-    // ── join: join a channel ──
+    // ── join / FrutiScore startGame ──
 case 'join': {
   // FrutiScore overlap: startGame uses wire code "o" with disc attrs.
   if (msg.attrs.d != undefined) {
@@ -1803,7 +1803,7 @@ broadcastToChannel(
   break;
 }
 
-    // ── userlist: explicit request for a channel user list ──
+    // ── userlist / FrutiScore endGame ──
     case 'userlist': {
       // FrutiScore overlap: endGame uses wire code "p".
       if (msg.attrs.d != undefined || msg.attrs.g == undefined) {
@@ -1811,6 +1811,12 @@ broadcastToChannel(
         break;
       }
       const g = msg.attrs.g || '';
+      // FrutiScore endGame (p) has no g= attr
+      if (!g) {
+        console.log('[CBee]  FrutiScore endGame');
+        sendToClient(socket, `<${CMD.userlist} />`);
+        break;
+      }
       const channel = channels[g];
       if (!channel) {
         sendToClient(socket, `<${CMD.userlist} g="${g}"></${CMD.userlist}>`);
@@ -2200,6 +2206,17 @@ case 'createchannel': {
     // ── statusobj: status object ──
     case 'statusobj': {
       sendToClient(socket, `<${CMD.statusobj} />`);
+      break;
+    }
+
+    // ── FrutiScore: listModes (v) ──
+    case 'v': {
+      const discId = msg.attrs.d || '';
+      console.log(`[CBee]  FrutiScore listModes: disc=${discId}`);
+      // Return available game modes for the disc
+      // Mode 0 = classic, type matches disc type
+      const disc = GAME_DISCS[discId] || {};
+      sendToClient(socket, `<v><m n="0" t="${disc.discType || '1'}" /></v>`);
       break;
     }
 

@@ -232,7 +232,15 @@
                 },
                 socketProxy: [
                     { host: "localhost", port: 5000, proxyUrl: wsOrigin },
-                    { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin }
+                    { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin },
+                    // FrusionServer may connect to hardcoded legacy hosts for FrutiScore
+                    { host: "www.beta.frutiparc.com", port: 5000, proxyUrl: wsOrigin },
+                    { host: "www.frutiparc.com", port: 5000, proxyUrl: wsOrigin },
+                    // Catch-all for any port (FrutiScore uses same port as FrutiChat)
+                    { host: "www.beta.frutiparc.com", port: 2000, proxyUrl: wsOrigin },
+                    { host: "www.frutiparc.com", port: 2000, proxyUrl: wsOrigin },
+                    { host: "localhost", port: 2000, proxyUrl: wsOrigin },
+                    { host: window.location.hostname, port: 2000, proxyUrl: wsOrigin }
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",
