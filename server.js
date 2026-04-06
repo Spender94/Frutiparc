@@ -14,6 +14,9 @@ const XMLSOCKET_PORT = Number(process.env.XMLSOCKET_PORT || 5000); // Must end i
 const PUBLIC_HOST = (process.env.PUBLIC_HOST || '').trim();
 const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
 const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
+const VERBOSE_FRUSION_LOGS = process.env.VERBOSE_FRUSION_LOGS === '1';
+const FRUSION_CLIENT_SWF = (process.env.FRUSION_CLIENT_SWF || '').trim();
+const ALLOW_FRUSION_SERVER_SWF = process.env.ALLOW_FRUSION_SERVER_SWF === '1';
 
 // ── CORS headers (Ruffle's WASM fetch may need them) ──
 app.use((req, res, next) => {
@@ -52,10 +55,50 @@ app.use((req, res, next) => {
   if (VERBOSE_HTTP_LOGS) {
     console.log(`[HTTP]  ${req.method} ${req.url}`);
   }
+  const sid = (req.query && (req.query.sid || req.query.c))
+    || (req.body && (req.body.sid || req.body.c))
+    || '';
+  if (sid) {
+    const ip = getClientIp(req);
+    if (ip) recentSidByIp.set(ip, sid);
+  }
   next();
 });
 
 
+
+// ─────────────────────────────────────────────
+// Diagnostics: validate critical SWF assets are real files (not stubs)
+// ─────────────────────────────────────────────
+function warnIfStubSwfAssets() {
+  const criticalSwfs = [
+    'public/swf/fbouille/famille0.swf',
+    'public/swf/fbouille/famille1.swf',
+    'public/frusion_client.swf',
+
+  ];
+
+  const stubFiles = [];
+  for (const relPath of criticalSwfs) {
+    const absPath = path.join(__dirname, relPath);
+    try {
+      const st = fs.statSync(absPath);
+      if (st.size <= 32) {
+        stubFiles.push(`${relPath} (${st.size} bytes)`);
+      }
+    } catch {
+      stubFiles.push(`${relPath} (missing)`);
+    }
+  }
+
+  if (stubFiles.length > 0) {
+    console.warn('[ASSETS] Frutibouille assets look incomplete.');
+    console.warn('[ASSETS] The avatar editor may show blank previews / "undefined" labels.');
+    for (const f of stubFiles) {
+      console.warn(`[ASSETS]   - ${f}`);
+    }
+  }
+}
 
 // ─────────────────────────────────────────────
 // Helpers: base62 encode/decode (matches FEString/FENumber in AS2)
@@ -87,7 +130,7 @@ function decode62(s) {
   return r;
 }
 
-const DEFAULT_BOUILLE_STATE = '000000000000000000000000';
+const DEFAULT_BOUILLE_STATE = '000000010000000000000000';
 const ALL_PEN_ITEM_IDS = [315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 599, 600, 601, 602];
 
 function withDefaultPens(items = []) {
@@ -115,6 +158,7 @@ function bouilleOf(user) {
 // ─────────────────────────────────────────────
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
+const recentSidByIp = new Map(); // ip -> sid fallback for legacy calls missing sid
 const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
 
 function createDefaultUser(pass) {
@@ -140,12 +184,42 @@ function normalizeUsername(raw) {
   return String(raw || '').trim().toLowerCase();
 }
 
+function getClientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.ip || (req.socket && req.socket.remoteAddress) || '';
+}
+
+function getLaunchIdFromReq(req) {
+  const direct = String((req.query && req.query.launch_id) || '').trim();
+  if (direct) return direct;
+
+  const referer = String(req.headers.referer || '');
+  if (referer) {
+    try {
+      const u = new URL(referer);
+      const fromRef = String(u.searchParams.get('launch_id') || '').trim();
+      if (fromRef) return fromRef;
+    } catch {}
+  }
+  return '';
+}
+
 function isValidUsername(username) {
   return /^[a-z0-9_]{3,20}$/.test(username);
 }
 
 function isValidPassword(password) {
   return typeof password === 'string' && password.length >= 6 && password.length <= 80;
+}
+
+function isDebugNotUser(username) {
+  return String(username || '').toLowerCase() === 'debugnot';
+}
+
+function getFrutizJob(username, user) {
+  if (isDebugNotUser(username)) return 'Frutiz';
+  if (user && user.isModerator) return 'Modérateur';
+  return 'Frutiz';
 }
 
 // ─────────────────────────────────────────────
@@ -191,6 +265,28 @@ function normalizeContactAddress(raw) {
   return `${v}@frutiparc.com`;
 }
 
+function isContactPlaceholder(value) {
+  const s = String(value || '').trim();
+  return s === '' || /^notext$/i.test(s) || /^undefined$/i.test(s) || /^null$/i.test(s);
+}
+
+function extractContactCandidateFromDesc(desc) {
+  const raw = String(desc || '').trim();
+  if (!raw) return '';
+
+  const tokens = raw
+    .split(/[\r\n\t;|,<>()[\]{}]+/g)
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+
+  for (const token of tokens) {
+    if (isContactPlaceholder(token)) continue;
+    if (/^[a-z0-9_.-]{2,32}(?:@frutiparc\.com)?$/i.test(token)) return token;
+  }
+
+  return '';
+}
+
 const DEFAULT_BOUILLE_LIST = [
   { b: '000503000000111010000000', n: 'Classique' },
   { b: '000503000000111011000000', n: 'Classique 2' },
@@ -209,10 +305,12 @@ const DEFAULT_WALLPAPERS = [
   { u: 'utopiz',         n: 'Utopiz',                url: 'wal/ut.jpg', color: 'F6AFA9;' },
 ];
 
+// Accessories = last 9 chars of a 24-char bouille string.
+// The first 15 chars are filled from the user's current bouille at serve time.
 const DEFAULT_ACCESSORIES = [
-  { u: 'bananocle', n: 'Bananocle', v: '00000d0r020f0l06010k0w0g' },
-  { u: 'beaute',    n: 'Beauté',    v: '00000d0r020f0l0b000k0w0g' },
-  { u: 'normal',    n: 'Normal',    v: '00000d0r020f0l0000000000' },
+  { u: 'bananocle', n: 'Bananocle', suffix: '6010k0w0g' },
+  { u: 'beaute',    n: 'Beauté',    suffix: 'b000k0w0g' },
+  { u: 'normal',    n: 'Normal',    suffix: '000000000' },
 ];
 
 function buildBouilleListXml() {
@@ -319,11 +417,50 @@ app.get('/fileIcon.swf', (req, res) => {
 
 
 app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
-  if (VERBOSE_SWF_LOGS) {
-    console.log('[SWF]   frusion_client.swf requested');
+  const defaultClient = path.join(__dirname, 'public', 'frusion_client.swf');
+  let candidate = FRUSION_CLIENT_SWF
+    ? path.resolve(__dirname, FRUSION_CLIENT_SWF)
+    : defaultClient;
+
+  // Safety rail: frusion_server.swf is not the normal launcher.
+  // Use it only when explicitly allowed for experiments.
+  if (!ALLOW_FRUSION_SERVER_SWF && /frusion_server\.swf$/i.test(candidate)) {
+    if (VERBOSE_SWF_LOGS || VERBOSE_FRUSION_LOGS) {
+      console.log('[SWF]   FRUSION_CLIENT_SWF points to frusion_server.swf; ignoring unless ALLOW_FRUSION_SERVER_SWF=1');
+    }
+    candidate = defaultClient;
+  }
+  const fallback = path.join(__dirname, 'frusion', 'saf_debug.swf');
+  let servedPath = candidate;
+  try {
+    const st = fs.statSync(candidate);
+    if (!st.isFile() || st.size <= 0) {
+      servedPath = fallback;
+    }
+  } catch {
+    servedPath = fallback;
+  }
+  if (VERBOSE_SWF_LOGS || VERBOSE_FRUSION_LOGS) {
+    let size = '?';
+    try { size = String(fs.statSync(servedPath).size); } catch {}
+    console.log(`[SWF]   frusion_client.swf requested -> serving ${path.relative(__dirname, servedPath)} (${size} bytes)`);
   }
   res.type('application/x-shockwave-flash');
-  res.sendFile(path.join(__dirname, 'public', 'frusion_client.swf'));
+  res.sendFile(servedPath);
+});
+
+// Legacy Frusion launcher target used by game discs.
+// Keep querystring untouched so game params are forwarded.
+app.get('/frusion', (req, res) => {
+  const params = new URLSearchParams(req.query || {});
+  if (!params.get('launch_id')) {
+    const seed = String(params.get('sid') || crypto.randomBytes(4).toString('hex'));
+    params.set('launch_id', `${seed.slice(0, 8)}-${Date.now().toString(36)}`);
+  }
+  if (VERBOSE_FRUSION_LOGS) {
+    console.log(`[FRUSION] launch redirect launch_id=${params.get('launch_id')} sid=${params.get('sid') || ''} game=${params.get('gameName') || ''} u=${params.get('u') || ''}`);
+  }
+  res.redirect(`/frusion-ruffle.html?${params.toString()}`);
 });
 
 function sendAvatarFamily(res, fileName) {
@@ -334,6 +471,10 @@ function sendAvatarFamily(res, fileName) {
       console.log(`[SWF]   Missing avatar asset: ${absPath}`);
     }
     return res.status(404).type('text/plain').send('Missing SWF');
+  }
+
+  if (VERBOSE_SWF_LOGS) {
+    console.log(`[SWF]   Serving avatar asset: ${fileName}`);
   }
 
   if (VERBOSE_SWF_LOGS) {
@@ -384,7 +525,7 @@ app.get('/xml/services.xml', (req, res) => {
     publicHost = String(rawHost).split(':')[0] || 'localhost';
   }
   res.type('text/xml').send(
-    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /></services>`
+    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /><service name="frutiscore" port="${XMLSOCKET_PORT}" /></services>`
   );
 });
 
@@ -426,6 +567,11 @@ function resolveUsernameFromSid(sid) {
   return null;
 }
 
+function getSessionBySid(sid) {
+  if (!sid || !sessions[sid]) return null;
+  return sessions[sid];
+}
+
 function requireAuthBySid(sid, res, responseType = 'text/plain') {
   const username = resolveUsernameFromSid(sid);
   if (!username) {
@@ -437,6 +583,36 @@ function requireAuthBySid(sid, res, responseType = 'text/plain') {
     return null;
   }
   return { username, user: users[username] };
+}
+
+function getSidFromParams(source) {
+  if (!source) return '';
+  return source.sid || source.c || '';
+}
+
+function getSidFromRequest(req, source = null) {
+  const direct = getSidFromParams(source) || getSidFromParams(req && req.query);
+  if (direct) return direct;
+
+  // Some legacy calls (notably /do/smi) omit sid/c entirely.
+  // Recover sid from Referer (e.g. /legacy?sid=...).
+  const referer = String((req && req.headers && req.headers.referer) || '');
+  if (referer) {
+    try {
+      const u = new URL(referer);
+      const fromRef = u.searchParams.get('sid') || u.searchParams.get('c') || '';
+      if (fromRef) return fromRef;
+    } catch {
+      // ignore malformed referer
+    }
+  }
+
+  const ip = req ? getClientIp(req) : '';
+  if (ip && recentSidByIp.has(ip)) {
+    return recentSidByIp.get(ip) || '';
+  }
+
+  return '';
 }
 
 app.all('/do/eb', (req, res) => {
@@ -491,27 +667,75 @@ app.get('/newbouille', handleNewBouille);
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/gmi — Get my info (user profile data)
-// Returns LoadVars with user profile fields
+// Returns XML payload used by the "Edit my info" legacy window
 // ─────────────────────────────────────────────
 app.get('/do/gmi', (req, res) => {
-  const sid = req.query.sid;
+  const sid = getSidFromRequest(req, req.query);
   const auth = requireAuthBySid(sid, res);
   if (!auth) return;
-  const { username, user } = auth;
+  const { user } = auth;
 
-  const params = new URLSearchParams({
-    state: '0',
-    l: username,
-    x: String(user.xp || 0),
-    k: String(user.kikooz || 0),
-    f: bouilleOf(user),
-    sx: user.gender || 'M',
-    bd: user.birthday || '2000-01-01',
-    co: user.country || 'FR',
-    rg: user.region || '',
-  });
-  res.type('text/plain').send(params.toString());
+  const birthday = String(user.birthday || '2000-01-01');
+  const firstName = String(user.firstName || '');
+  const lastName = String(user.lastName || '');
+  const lastNamePublic = String(user.lastNamePublic || 'Y').toUpperCase() === 'N' ? 'N' : 'Y';
+  const gender = String(user.gender || 'M');
+  const realJob = String(user.realJob || 'Frutiz');
+  const city = String(user.city || '');
+  const countryIndex = String(user.countryIndex || '1');
+  const regionIndex = String(user.regionIndex || '1');
+  const siteUrl = String(user.siteUrl || '');
+  const comment = String(user.comment || '');
+
+  const xml = `<i>
+  <d>${escapeXml(birthday)}</d>
+  <f>${escapeXml(firstName)}</f>
+  <l p="${escapeXml(lastNamePublic)}">${escapeXml(lastName)}</l>
+  <g>${escapeXml(gender)}</g>
+  <j>${escapeXml(realJob)}</j>
+  <c>${escapeXml(city)}</c>
+  <o>${escapeXml(countryIndex)}</o>
+  <r>${escapeXml(regionIndex)}</r>
+  <u>${escapeXml(siteUrl)}</u>
+  <m>${escapeXml(comment)}</m>
+</i>`;
+
+  res.type('text/xml').send(xml);
 });
+
+function saveMyInfo(req, res) {
+  const source = req.method === 'POST' ? req.body : req.query;
+  const sid = getSidFromRequest(req, source);
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
+  const { user } = auth;
+
+  const rawBirthday = String(source.d || user.birthday || '2000-01-01');
+  const birthday = /^\d{4}-\d{2}-\d{2}$/.test(rawBirthday) ? rawBirthday : (user.birthday || '2000-01-01');
+  const lastNamePublic = String(source.p || user.lastNamePublic || 'Y').toUpperCase() === 'N' ? 'N' : 'Y';
+
+  user.birthday = birthday;
+  user.firstName = String(source.f || user.firstName || '').slice(0, 64);
+  user.lastName = String(source.l || user.lastName || '').slice(0, 64);
+  user.lastNamePublic = lastNamePublic;
+  user.gender = String(source.g || user.gender || 'M').slice(0, 1) || 'M';
+  user.realJob = String(source.j || user.realJob || 'Frutiz').slice(0, 80);
+  user.city = String(source.c || user.city || '').slice(0, 80);
+  user.countryIndex = String(source.o || user.countryIndex || '1').slice(0, 8);
+  user.regionIndex = String(source.r || user.regionIndex || '1').slice(0, 8);
+  user.siteUrl = String(source.u || user.siteUrl || '').slice(0, 256);
+  user.comment = String(source.m || user.comment || '').slice(0, 500);
+
+  // Keep public userinfo fields in sync with the edit form values.
+  if (source.co) user.country = String(source.co).slice(0, 32) || user.country;
+  if (source.rg) user.region = String(source.rg).slice(0, 32) || user.region;
+
+  // Legacy flows expect LoadVars, often just "k=0" on success.
+  return res.type('text/plain').send('state=0&k=0');
+}
+
+// Accept multiple historical save routes used by legacy SWFs.
+app.all(['/do/smi', '/smi', '/do/mi', '/mi'], saveMyInfo);
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/prefsavepartial — Save one preference
@@ -531,7 +755,7 @@ app.get('/prefForm', (req, res) => {
 // Returns XML with kikooz, items, prefs, logs, etc.
 // ─────────────────────────────────────────────
 app.get('/do/onident', (req, res) => {
-  const sid = req.query.sid;
+  const sid = getSidFromRequest(req, req.query);
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user } = auth;
@@ -540,7 +764,9 @@ app.get('/do/onident', (req, res) => {
   const items = user.items.join(',');
   const myPref = user.prefs || '';
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  const modAttr = user.isModerator ? ' m="1" a="1"' : '';
+  const currentUsername = auth.username || '';
+  const allowModeration = user.isModerator && !isDebugNotUser(currentUsername);
+  const modAttr = allowModeration ? ' m="1" a="1"' : '';
 
   // The "f" attribute, when present, forces the SWF to open the editbouille
   // window with the listed part families. Used for first-time avatar setup.
@@ -571,12 +797,98 @@ function swfSizeForUrlPath(urlPath) {
   return '0';
 }
 
+const GAME_DISCS = {
+  kaluga1: {
+    discType: '0',
+    swfName: 'kaluga',
+    gameId: 'games/kaluga/kaluga.swf',
+    props: 'w=640;h=480;m=i',
+    files: [
+      { u: 'games/kaluga/kaluga.swf' },
+      { u: 'games/kaluga/full.swf', n: 'full.swf' },
+    ],
+  },
+  kalugademo: {
+    discType: '3',
+    swfName: 'kaluga',
+    gameId: 'games/kaluga/kaluga.swf',
+    props: 'w=640;h=480;m=i',
+    files: [
+      { u: 'games/kaluga/kaluga.swf' },
+    ],
+  },
+  swapou1: {
+    discType: '0',
+    swfName: 'swapou2',
+    gameId: 'games/miniWave2/miniWave2.swf',
+    props: 'w=640;h=480;m=i',
+    files: [
+      { u: 'games/miniWave2/miniWave2.swf' },
+    ],
+  },
+  miniwave1: {
+    discType: '0',
+    swfName: 'miniwave2',
+    gameId: 'games/miniWave2/miniWave2.swf',
+    props: 'w=550;h=400;m=i',
+    files: [
+      { u: 'games/miniWave2/miniWave2.swf' },
+    ],
+  },
+};
+
 // ─────────────────────────────────────────────
 // ENDPOINT: do/ld — Game disc loading
-// Disabled in simplified mode (no Frusion launch hacks).
 // ─────────────────────────────────────────────
 app.get('/do/ld', (req, res) => {
-  res.type('text/xml').send('<r k="404">disc_loader_disabled</r>');
+  // Legacy Frusion flows may send "c" instead of "sid", and some clients
+  // call /do/ld without auth context at all. The disc metadata itself is public.
+  const sid = getSidFromRequest(req, req.query);
+  if (sid) {
+    const auth = requireAuthBySid(sid, res, 'text/xml');
+    if (!auth) return;
+  }
+
+  const discUid = String(req.query.u || '');
+  const launchId = getLaunchIdFromReq(req);
+  let disc = GAME_DISCS[discUid];
+  let resolvedDiscUid = discUid;
+
+  // Some frusion wrappers call /do/ld with the game path instead of disc uid.
+  // Accept both styles:
+  //   - u=kaluga1
+  //   - u=games/kaluga/kaluga.swf
+  if (!disc) {
+    const entries = Object.entries(GAME_DISCS);
+    const hit = entries.find(([, d]) =>
+      d.gameId === discUid || (Array.isArray(d.files) && d.files.some((f) => f && f.u === discUid))
+    );
+    if (hit) {
+      resolvedDiscUid = hit[0];
+      disc = hit[1];
+    }
+  }
+  if (!disc) {
+    if (VERBOSE_FRUSION_LOGS) {
+      console.log(`[FRUSION] do/ld miss launch_id=${launchId || '-'} u=${discUid}`);
+    }
+    return res.type('text/xml').send('<r k="404">disc_not_found</r>');
+  }
+
+  const filesXml = disc.files
+    .map((f) => {
+      const size = swfSizeForUrlPath(`/swf/${f.u}`);
+      const nAttr = f.n ? ` n="${escapeXml(f.n)}"` : '';
+      return `<s u="${escapeXml(f.u)}" s="${size}"${nAttr} />`;
+    })
+    .join('');
+
+  // Keep legacy root node name/attrs expected by Frusion ("game", not "r").
+  const xml = `<game t="${escapeXml(disc.discType)}" pm="single" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
+  if (VERBOSE_FRUSION_LOGS) {
+    console.log(`[FRUSION] do/ld hit launch_id=${launchId || '-'} u=${discUid} resolved=${resolvedDiscUid} -> ${disc.gameId} props=${disc.props}`);
+  }
+  res.type('text/xml').send(xml);
 });
 
 // ─────────────────────────────────────────────
@@ -616,11 +928,12 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   }
 
   if (uid === 'inventory') {
+    const bouillePrefix = bouilleOf(user).substring(0, 15);
     const wallpaperNodes = DEFAULT_WALLPAPERS
       .map((wp) => `<e u="${escapeXml(wp.u)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(wp.n)}\n${wp.url}\n${wp.color}</e>`)
       .join('');
     const defaultAccNodes = DEFAULT_ACCESSORIES
-      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${acc.v}</e>`)
+      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
       .join('');
     const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
       .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
@@ -635,8 +948,9 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   }
 
   if (uid === 'accessories') {
+    const bouillePrefix = bouilleOf(user).substring(0, 15);
     const defaultAccNodes = DEFAULT_ACCESSORIES
-      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${acc.v}</e>`)
+      .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
       .join('');
     const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
       .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
@@ -662,7 +976,12 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   }
 
   if (uid === 'disccollector') {
-    return res.type('text/xml').send('<f u="disccollector"><i /></f>');
+    // disc format: content = "discType\ngameName"
+    let discNodes = '';
+    for (const [id, disc] of Object.entries(GAME_DISCS)) {
+      discNodes += `<e u="${escapeXml(id)}" t="disc" s="10" d="0" a="0">${disc.discType}\n${escapeXml(disc.swfName)}</e>`;
+    }
+    return res.type('text/xml').send(`<f u="disccollector">${discNodes || '<i />'}</f>`);
   }
 
   // Return an empty folder listing with a placeholder node to avoid legacy null-firstChild edge cases
@@ -673,50 +992,77 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 // ENDPOINT: ff/mk — Create file/folder
 // Returns XML
 // ─────────────────────────────────────────────
-app.get(['/ff/mk', '/mk'], (req, res) => {
-  const sid = req.query.sid;
+app.all(['/ff/mk', '/mk'], (req, res) => {
+  const source = req.method === 'POST' ? req.body : req.query;
+  const sid = getSidFromRequest(req, source);
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user } = auth;
   ensureContactLists(user);
 
   const newUid = 'f' + crypto.randomBytes(4).toString('hex');
-  let folder = req.query.folder || '';
-  const type = req.query.t || 'file';
-  const desc = String(req.query.d || '');
+  let folder = source.folder || req.query.folder || '';
+  const type = source.t || req.query.t || 'file';
+  const desc = String(source.d || req.query.d || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const isContactFolder = folder === 'mycontact' || folder === 'blacklist';
+  const isContactCreate = type === 'contact' || isContactFolder;
 
-  if (type === 'contact' && !folder) {
+  if (isContactCreate && !folder) {
     folder = 'mycontact';
   }
 
-  if (type === 'contact' && (folder === 'mycontact' || folder === 'blacklist')) {
-    const addr = normalizeContactAddress(desc.split('\n')[0]);
+  if (isContactCreate && (folder === 'mycontact' || folder === 'blacklist')) {
+    const firstDescLine = String(desc.split('\n')[0] || '').trim();
+
+    // Some legacy "add contact from profile" flows send d=NoText.
+    // Recover the actual username from alternate form/query fields when available.
+    let contactRaw = firstDescLine;
+    if (isContactPlaceholder(contactRaw)) {
+      const session = getSessionBySid(sid);
+      const fromDesc = extractContactCandidateFromDesc(desc);
+      const fallbackCandidates = [
+        fromDesc,
+        source.u, source.user, source.name, source.n, source.l, source.a,
+        req.query.u, req.query.user, req.query.name, req.query.n, req.query.l, req.query.a,
+        session && session.lastProfileUser,
+        session && session.lastTraceUser,
+      ];
+      contactRaw = String(fallbackCandidates.find((v) => !isContactPlaceholder(v)) || '');
+    }
+
+    const addr = normalizeContactAddress(contactRaw);
     const list = folder === 'blacklist' ? user.blacklist : user.contacts;
     if (addr && !list.includes(addr)) list.push(addr);
     const local = addr.split('@')[0] || addr || newUid;
-    return res.type('text/xml').send(`<r f="${folder}"><f u="${escapeXml(local)}" t="contact" d="${now}" f="${folder}">${escapeXml(addr)}</f></r>`);
+    // onMake reads: x.attributes.u (uid), x.attributes.t (type),
+    // x.attributes.d (date), x.attributes.f (parent folder),
+    // x.firstChild.nodeValue (description text)
+    return res.type('text/xml').send(
+      `<r u="${escapeXml(local)}" t="contact" d="${now}" f="${escapeXml(folder)}">${escapeXml(addr)}</r>`
+    );
   }
 
-  res.type('text/xml').send(`<r f="${folder}"><f u="${newUid}" t="${type}" d="${now}" f="${folder}">${desc}</f></r>`);
+  res.type('text/xml').send(`<r u="${newUid}" t="${escapeXml(type)}" d="${now}" f="${escapeXml(folder)}">${escapeXml(desc)}</r>`);
 });
 
 // ─────────────────────────────────────────────
 // ENDPOINT: ff/mv — Move file
 // Returns XML
 // ─────────────────────────────────────────────
-app.get(['/ff/mv', '/mv'], (req, res) => {
-  const sid = req.query.sid;
+app.all(['/ff/mv', '/mv'], (req, res) => {
+  const source = req.method === 'POST' ? req.body : req.query;
+  const sid = source.sid || req.query.sid;
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user } = auth;
   ensureContactLists(user);
 
-  const file = String(req.query.f || '');
-  const folder = String(req.query.folder || '');
+  const file = String(source.f || req.query.f || '');
+  const folder = String(source.folder || req.query.folder || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
-  let oldFolder = String(req.query.p || 'root');
+  let oldFolder = String(source.p || req.query.p || 'root');
   const local = file.split('@')[0];
   const normalizedFileAddr = normalizeContactAddress(file);
 
@@ -733,7 +1079,70 @@ app.get(['/ff/mv', '/mv'], (req, res) => {
     }
   }
 
-  res.type('text/xml').send(`<r f="${folder}"><f n="${escapeXml(local)}" t="contact" d="${now}" p="${oldFolder}">moved</f></r>`);
+  const addr = normalizedFileAddr || file;
+  res.type('text/xml').send(`<r f="${folder}"><f n="${escapeXml(local)}" u="${escapeXml(local)}" t="contact" d="${now}" p="${oldFolder}">${escapeXml(addr)}</f></r>`);
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: ff/rm — Remove file/contact
+// Returns XML
+// ─────────────────────────────────────────────
+app.get(['/ff/rm', '/rm'], (req, res) => {
+  const sid = req.query.sid;
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
+  ensureContactLists(user);
+
+  const folder = String(req.query.folder || req.query.f || '');
+  const rawFile = String(req.query.file || req.query.u || req.query.uid || req.query.n || '');
+  const normalized = normalizeContactAddress(rawFile);
+  const local = String(rawFile).split('@')[0];
+
+  let removedFrom = '';
+  let removedValue = '';
+
+  const removeFromList = (listName, value) => {
+    if (!value) return false;
+    const before = user[listName].length;
+    user[listName] = user[listName].filter((a) => a !== value);
+    return user[listName].length !== before;
+  };
+
+  const candidates = [normalized, rawFile, local]
+    .filter(Boolean)
+    .flatMap((v) => [v, normalizeContactAddress(v)])
+    .filter(Boolean);
+
+  const tryRemoveFrom = (listName) => {
+    for (const c of candidates) {
+      const hit = user[listName].find((a) => a === c || String(a).split('@')[0] === String(c).split('@')[0]);
+      if (hit && removeFromList(listName, hit)) {
+        removedFrom = listName === 'contacts' ? 'mycontact' : 'blacklist';
+        removedValue = hit;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  if (folder === 'mycontact') {
+    tryRemoveFrom('contacts');
+  } else if (folder === 'blacklist') {
+    tryRemoveFrom('blacklist');
+  } else {
+    // If folder is omitted, try both lists.
+    if (!tryRemoveFrom('contacts')) {
+      tryRemoveFrom('blacklist');
+    }
+  }
+
+  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const resultName = String(removedValue || normalized || rawFile || local || 'contact').split('@')[0];
+  const parent = removedFrom || folder || 'mycontact';
+  return res.type('text/xml').send(
+    `<r f="${escapeXml(parent)}"><f n="${escapeXml(resultName)}" t="contact" d="${now}" p="${escapeXml(parent)}">removed</f></r>`
+  );
 });
 
 // ─────────────────────────────────────────────
@@ -779,7 +1188,15 @@ app.post('/h/send_debug', (req, res) => {
 app.get('/animfrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'animfrusion.swf')));
 app.get('/skinFrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf')));
 
+app.use('/swf/games', (req, _res, next) => {
+  if (VERBOSE_FRUSION_LOGS) {
+    const launchId = getLaunchIdFromReq(req);
+    console.log(`[FRUSION] asset launch_id=${launchId || '-'} path=${req.path}`);
+  }
+  next();
+});
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
+app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
@@ -1031,7 +1448,7 @@ users['DebugBot'] = {
   pass: '',
   xp: 1000000,
   kikooz: 100,
-  fbouille: '000503000000111010000000',
+  fbouille: '000000020000000000000000',
   items: withDefaultPens([1, 2, 3]),
   contacts: [],
   blacklist: [],
@@ -1075,6 +1492,7 @@ function getSocketsForUsername(username) {
 }
 
 function isModerator(username) {
+  if (isDebugNotUser(username)) return false;
   return !!(username && users[username] && users[username].isModerator);
 }
 
@@ -1095,17 +1513,6 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   } else {
     broadcastToChannel(channelName, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
   }
-
-  // Virtual test user DebugBot respawns on pomme after kick/ban (5s delay)
-  if (targetUser === 'DebugBot' && channelName === 'pomme') {
-    setTimeout(() => {
-      if (channel.banned) channel.banned.delete('DebugBot');
-      channel.users.add('DebugBot');
-      broadcastToChannel('pomme', `<${CMD.userjoined} u="DebugBot" g="pomme" />`);
-      console.log('[CBee]  DebugBot respawned on pomme');
-    }, 5000);
-  }
-
   return true;
 }
 
@@ -1231,6 +1638,12 @@ function handleCBeeMessage(socket, rawXml) {
 
   console.log(`[CBee]  <- ${cmdName} (${msg.tag}) ${JSON.stringify(msg.attrs)}`);
 
+  // FrutiScore overlap: wire code "v" is listModes request.
+  if (msg.tag === 'v') {
+    sendToClient(socket, '<v><m m="0" t="normal" /></v>');
+    return;
+  }
+
   switch (cmdName) {
     // ── ip: client requests its IP ──
     case 'ip': {
@@ -1278,7 +1691,19 @@ function handleCBeeMessage(socket, rawXml) {
 
       // Auto-create user if doesn't exist
       if (!users[effectiveLogin]) {
-        users[effectiveLogin] = createDefaultUser('');
+        users[effectiveLogin] = {
+          pass: '',
+          xp: 10000,
+          kikooz: 50,
+          fbouille: DEFAULT_BOUILLE_STATE,
+          items: withDefaultPens([]),
+          gender: 'M',
+          birthday: '2000-01-01',
+            country: 'FR',
+            region: 'IDF',
+            prefs: '',
+            isModerator: !isDebugNotUser(effectiveLogin),
+          };
       }
 
       const user = users[effectiveLogin];
@@ -1293,14 +1718,24 @@ function handleCBeeMessage(socket, rawXml) {
       break;
     }
 
-    // ── channellist: list available channels ──
+    // ── channellist / FrutiScore saveScore ──
     case 'channellist': {
+      // FrutiScore overlap: saveScore uses same wire code (q) with disc attrs.
+      if (msg.attrs.d != undefined) {
+        sendToClient(socket, `<${CMD.channellist} k="0" />`);
+        break;
+      }
       sendToClient(socket, buildChannelListXml());
       break;
     }
 
-    // ── join: join a channel ──
+    // ── join / FrutiScore startGame ──
 case 'join': {
+  // FrutiScore overlap: startGame uses wire code "o" with disc attrs.
+  if (msg.attrs.d != undefined) {
+    sendToClient(socket, `<${CMD.join} d="${escapeXml(String(msg.attrs.d))}" k="0" />`);
+    break;
+  }
   const g = msg.attrs.g;
 
   if (!channels[g]) {
@@ -1368,9 +1803,20 @@ broadcastToChannel(
   break;
 }
 
-    // ── userlist: explicit request for a channel user list ──
+    // ── userlist / FrutiScore endGame ──
     case 'userlist': {
+      // FrutiScore overlap: endGame uses wire code "p".
+      if (msg.attrs.d != undefined || msg.attrs.g == undefined) {
+        sendToClient(socket, `<${CMD.userlist} k="0" />`);
+        break;
+      }
       const g = msg.attrs.g || '';
+      // FrutiScore endGame (p) has no g= attr
+      if (!g) {
+        console.log('[CBee]  FrutiScore endGame');
+        sendToClient(socket, `<${CMD.userlist} />`);
+        break;
+      }
       const channel = channels[g];
       if (!channel) {
         sendToClient(socket, `<${CMD.userlist} g="${g}"></${CMD.userlist}>`);
@@ -1567,6 +2013,9 @@ case 'trace': {
 
   const targetUser = msg.attrs.u;
   if (targetUser) {
+    if (client.sid && sessions[client.sid]) {
+      sessions[client.sid].lastTraceUser = targetUser;
+    }
     const ud = users[targetUser] || users[client.username] || {};
     sendToClient(
       socket,
@@ -1594,8 +2043,11 @@ case 'trace': {
       const u = msg.attrs.u;
       const r = msg.attrs.r || '';
       const ud = users[u] || {};
+      if (client.sid && sessions[client.sid]) {
+        sessions[client.sid].lastProfileUser = u;
+      }
       sendToClient(socket,
-        `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="Modérateur" />`
+        `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(u, ud)}" />`
       );
       break;
     }
@@ -1663,7 +2115,7 @@ case 'createchannel': {
 
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="Modérateur" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(otherUser, ud)}" />`
   );
 
   sendToClient(
@@ -1754,6 +2206,17 @@ case 'createchannel': {
     // ── statusobj: status object ──
     case 'statusobj': {
       sendToClient(socket, `<${CMD.statusobj} />`);
+      break;
+    }
+
+    // ── FrutiScore: listModes (v) ──
+    case 'v': {
+      const discId = msg.attrs.d || '';
+      console.log(`[CBee]  FrutiScore listModes: disc=${discId}`);
+      // Return available game modes for the disc
+      // Mode 0 = classic, type matches disc type
+      const disc = GAME_DISCS[discId] || {};
+      sendToClient(socket, `<v><m n="0" t="${disc.discType || '1'}" /></v>`);
       break;
     }
 
