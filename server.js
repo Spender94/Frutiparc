@@ -748,7 +748,7 @@ app.get('/do/prefsavepartial', (req, res) => {
 });
 
 // Legacy preferences form endpoint used by some SWF flows
-app.get('/prefForm', (req, res) => {
+app.get(['/do/prefForm', '/prefForm'], (req, res) => {
   res.type('text/plain').send('state=0');
 });
 
@@ -1510,10 +1510,23 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
       sendToClient(sock, `<${CMD.onkick} g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`);
     }
   }
+  // Broadcast kick or ban to channel so the Chat box shows the correct message
+  // ("userkicked" / "userbanned") and removes the user from the user list
   if (reason === 'totoch' || reason === 'ban') {
     broadcastToChannel(channelName, `<${CMD.ban} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
   } else {
     broadcastToChannel(channelName, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+  }
+
+  // Respawn DebugBot after 5 seconds if it was kicked
+  if (targetUser === 'DebugBot') {
+    setTimeout(() => {
+      if (channels[channelName]) {
+        channels[channelName].users.add('DebugBot');
+        // Broadcast userjoined so other clients see DebugBot reappear
+        broadcastToChannel(channelName, `<${CMD.userjoined} u="DebugBot" g="${escapeXml(channelName)}" />`);
+      }
+    }, 5000);
   }
   return true;
 }
