@@ -732,12 +732,13 @@ function saveMyInfo(req, res) {
   if (source.co) user.country = String(source.co).slice(0, 32) || user.country;
   if (source.rg) user.region = String(source.rg).slice(0, 32) || user.region;
 
-  // Legacy flows expect LoadVars, often just "k=0" on success.
-  return res.type('text/plain').send('state=0&k=0');
+  // Legacy flows expect LoadVars; "state=0" means success.
+  // Do NOT include k=... — the SWF treats the presence of "k" as an error indicator.
+  return res.type('text/plain').send('state=0');
 }
 
 // Accept multiple historical save routes used by legacy SWFs.
-app.all(['/do/smi', '/smi', '/do/mi', '/mi'], saveMyInfo);
+app.all(['/do/smi', '/smi', '/do/mi', '/mi', '/do/emi', '/emi'], saveMyInfo);
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/prefsavepartial — Save one preference
