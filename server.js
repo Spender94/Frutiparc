@@ -49,9 +49,9 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-// Ruffle's LoadVars.sendAndLoad may send POST bodies as text/plain.
-// Parse those as URL-encoded so req.body is populated.
-app.use(express.text({ type: ['text/plain', 'application/x-www-form-urlencoded'] }));
+// Ruffle's LoadVars.sendAndLoad may send POST bodies as text/plain or
+// with no Content-Type at all. Capture any unparsed body as raw text.
+app.use(express.text({ type: '*/*' }));
 app.use((req, res, next) => {
   if (typeof req.body === 'string' && req.body.includes('=')) {
     const parsed = Object.fromEntries(new URLSearchParams(req.body));
@@ -718,6 +718,8 @@ app.get('/do/gmi', (req, res) => {
 function saveMyInfo(req, res) {
   // Merge query and body — Ruffle may send data in either place
   const source = { ...req.query, ...(req.body && typeof req.body === 'object' ? req.body : {}) };
+  console.log(`[do/smi] method=${req.method} ct=${req.headers['content-type']} rawBody=${typeof req.body === 'string' ? req.body.substring(0, 200) : JSON.stringify(req.body).substring(0, 200)} mergedKeys=${Object.keys(source).join(',')}`);
+
   const sid = getSidFromRequest(req, source);
   const auth = requireAuthBySid(sid, res);
   if (!auth) return;
@@ -743,8 +745,10 @@ function saveMyInfo(req, res) {
   if (source.co) user.country = String(source.co).slice(0, 32) || user.country;
   if (source.rg) user.region = String(source.rg).slice(0, 32) || user.region;
 
-  // Legacy flows expect LoadVars; "state=0" means success.
-  // Do NOT include k=... — the SWF treats the presence of "k" as an error indicator.
+  console.log(`[do/smi] saved for ${auth.username}: birthday=${user.birthday} gender=${user.gender} city=${user.city}`);
+
+  // The compiled box.EditInfo may use either LoadVars or XML callback.
+  // Return LoadVars success format.
   return res.type('text/plain').send('state=0');
 }
 
