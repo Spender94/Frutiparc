@@ -1510,10 +1510,16 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
       sendToClient(sock, `<${CMD.onkick} g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`);
     }
   }
-  if (reason === 'totoch' || reason === 'ban') {
-    broadcastToChannel(channelName, `<${CMD.ban} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
-  } else {
-    broadcastToChannel(channelName, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+  // Broadcast userleaved so other clients update their user list UI
+  broadcastToChannel(channelName, `<${CMD.userleaved} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+
+  // Respawn DebugBot after 5 seconds if it was kicked
+  if (targetUser === 'DebugBot') {
+    setTimeout(() => {
+      if (channels[channelName]) {
+        channels[channelName].users.add('DebugBot');
+      }
+    }, 5000);
   }
   return true;
 }
