@@ -49,6 +49,16 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// Ruffle's LoadVars.sendAndLoad may send POST bodies as text/plain.
+// Parse those as URL-encoded so req.body is populated.
+app.use(express.text({ type: ['text/plain', 'application/x-www-form-urlencoded'] }));
+app.use((req, res, next) => {
+  if (typeof req.body === 'string' && req.body.includes('=')) {
+    const parsed = Object.fromEntries(new URLSearchParams(req.body));
+    req.body = parsed;
+  }
+  next();
+});
 
 // Optional HTTP request logs for debugging
 app.use((req, res, next) => {
@@ -706,7 +716,8 @@ app.get('/do/gmi', (req, res) => {
 });
 
 function saveMyInfo(req, res) {
-  const source = req.method === 'POST' ? req.body : req.query;
+  // Merge query and body — Ruffle may send data in either place
+  const source = { ...req.query, ...(req.body && typeof req.body === 'object' ? req.body : {}) };
   const sid = getSidFromRequest(req, source);
   const auth = requireAuthBySid(sid, res);
   if (!auth) return;
