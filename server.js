@@ -321,9 +321,11 @@ function buildBouilleListXml() {
 
 // ─────────────────────────────────────────────
 // File system tree (virtual)
-// b = "messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;shop;accessories;mycontact;recyclebin"
+// b = "messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin"
+// The AS2 client (FFileMng) reads bFolder[7]=mycontact, bFolder[8]=recyclebin.
+// Do NOT insert extra entries before mycontact/recyclebin or the indices shift.
 // ─────────────────────────────────────────────
-const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;shop;accessories;mycontact;recyclebin">
+const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin">
   <f u="messages" n="Messages" t="messages">
     <f u="inbox" n="Boîte de réception" t="inbox" />
     <f u="outbox" n="Messages envoyés" t="outbox" />
