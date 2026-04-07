@@ -698,6 +698,7 @@ app.get('/do/gmi', (req, res) => {
   const regionIndex = String(user.regionIndex || '1');
   const siteUrl = String(user.siteUrl || '');
   const comment = String(user.comment || '');
+  const departmentIndex = String(user.departmentIndex || '1');
 
   const xml = `<i>
   <d>${escapeXml(birthday)}</d>
@@ -708,6 +709,7 @@ app.get('/do/gmi', (req, res) => {
   <c>${escapeXml(city)}</c>
   <o>${escapeXml(countryIndex)}</o>
   <r>${escapeXml(regionIndex)}</r>
+  <q>${escapeXml(departmentIndex)}</q>
   <u>${escapeXml(siteUrl)}</u>
   <m>${escapeXml(comment)}</m>
 </i>`;
@@ -740,16 +742,17 @@ function saveMyInfo(req, res) {
   user.regionIndex = String(source.r || user.regionIndex || '1').slice(0, 8);
   user.siteUrl = String(source.u || user.siteUrl || '').slice(0, 256);
   user.comment = String(source.m || user.comment || '').slice(0, 500);
+  if (source.q !== undefined) user.departmentIndex = String(source.q).slice(0, 8);
 
   // Keep public userinfo fields in sync with the edit form values.
   if (source.co) user.country = String(source.co).slice(0, 32) || user.country;
   if (source.rg) user.region = String(source.rg).slice(0, 32) || user.region;
 
-  console.log(`[do/smi] saved for ${auth.username}: birthday=${user.birthday} gender=${user.gender} city=${user.city}`);
+  console.log(`[do/smi] saved for ${auth.username}: birthday=${user.birthday} gender=${user.gender} city=${user.city} firstName=${user.firstName} comment=${user.comment}`);
 
-  // The compiled box.EditInfo may use either LoadVars or XML callback.
-  // Return LoadVars success format.
-  return res.type('text/plain').send('state=0');
+  // The compiled box.EditInfo likely uses XML callback type (like do/gmi).
+  // Return XML success response — no k= attribute means no error.
+  return res.type('text/xml').send('<r />');
 }
 
 // Accept multiple historical save routes used by legacy SWFs.
