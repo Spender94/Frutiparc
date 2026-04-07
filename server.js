@@ -747,9 +747,14 @@ app.get('/do/prefsavepartial', (req, res) => {
   res.type('text/plain').send('state=0');
 });
 
-// Legacy preferences form endpoint used by some SWF flows
+// Preferences form endpoint — the compiled box.Pref window loads this to render the form.
+// Returns LoadVars with PrefDef (definitions) and myPref (user values).
 app.get(['/do/prefForm', '/prefForm'], (req, res) => {
-  res.type('text/plain').send('state=0');
+  const sid = getSidFromRequest(req, req.query);
+  const session = sid && sessions[sid];
+  const user = session && users[session.user];
+  const myPref = (user && user.prefs) || '';
+  res.type('text/plain').send(`PrefDef=${buildPrefDefString()}&myPref=${myPref}&state=0`);
 });
 
 // ─────────────────────────────────────────────
@@ -1510,13 +1515,14 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
       sendToClient(sock, `<${CMD.onkick} g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`);
     }
   }
-  // Broadcast kick or ban to channel so the Chat box shows the correct message
-  // ("userkicked" / "userbanned") and removes the user from the user list
-  if (reason === 'totoch' || reason === 'ban') {
-    broadcastToChannel(channelName, `<${CMD.ban} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
-  } else {
-    broadcastToChannel(channelName, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
-  }
+  // Broadcast userleaved to update the user list in other clients' Chat boxes
+  broadcastToChannel(channelName, `<${CMD.userleaved} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+  // Send a system chat message with the kick/ban reason
+  const timeAttrs = buildChatTimeAttrs();
+  const kickMsg = (reason === 'totoch' || reason === 'ban')
+    ? `${escapeXml(targetUser)} a été banni`
+    : `${escapeXml(targetUser)} a été éjecté`;
+  broadcastToChannel(channelName, `<${CMD.send} u="Serveur" t="m" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${kickMsg}</${CMD.send}>`);
 
   // Respawn DebugBot after 5 seconds if it was kicked
   if (targetUser === 'DebugBot') {
