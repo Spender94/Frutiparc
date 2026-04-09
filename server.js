@@ -1959,10 +1959,11 @@ case 'send': {
 
     // Moderator "!" prefix: send message in red bold (admin shout)
     if (isModerator(client.username) && text.startsWith('!')) {
-      const shout = escapeXml(text.substring(1).trim());
+      const shout = text.substring(1).trim();
       if (shout) {
-        // Flash TextFields render HTML — embed red styling directly in the message.
-        const redText = `<b><font color="#FF0000">${shout}</font></b>`;
+        // Wrap HTML in CDATA so the XML parser treats it as text content,
+        // not as child XML elements. Flash TextField then renders the HTML.
+        const redText = `<![CDATA[<b><font color="#FF0000">${shout}</font></b>]]>`;
         broadcastToChannel(g,
           `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${redText}</${CMD.send}>`
         );
