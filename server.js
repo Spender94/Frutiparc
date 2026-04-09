@@ -1956,15 +1956,20 @@ case 'send': {
     }
 
     let safeText = escapeXml(text);
+
+    // Moderator "!" prefix: send message in red bold (admin shout)
     if (isModerator(client.username) && text.startsWith('!')) {
       const shout = escapeXml(text.substring(1).trim());
       if (shout) {
-        // Legacy clients usually render `adminsend` (ap) in emphasized style.
-        const adminXml = `<${CMD.adminsend} u="${escapeXml(client.username)}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${shout}</${CMD.adminsend}>`;
-        broadcastToChannel(g, adminXml);
-        safeText = `<b><font color="#ff0000">${shout}</font></b>`;
+        // Flash TextFields render HTML — embed red styling directly in the message.
+        const redText = `<b><font color="#FF0000">${shout}</font></b>`;
+        broadcastToChannel(g,
+          `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${redText}</${CMD.send}>`
+        );
+        break;
       }
     }
+
     const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
 } else if (msg.attrs.u) {
