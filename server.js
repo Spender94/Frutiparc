@@ -2087,7 +2087,7 @@ case 'trace': {
         sessions[client.sid].lastProfileUser = u;
       }
       sendToClient(socket,
-        `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(u, ud)}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
       );
       break;
     }
@@ -2155,7 +2155,7 @@ case 'createchannel': {
 
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(otherUser, ud)}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
   );
 
   sendToClient(
