@@ -334,30 +334,30 @@ const DEFAULT_ACCESSORIES = [
 const SHOP_PACKS = [
   {
     id: 101,
-    name: 'Lunettes de star',
+    name: 'Bonnet de nuit',
     category: 'Accessoires',
     price: 60,
-    description: 'Des lunettes de soleil fashion pour briller sur le chat. Idéales pour les jours ensoleillés sur Frutiparc !',
-    suffix9: 'b000k0w0g',
-    comment: 'Offre de lancement',
+    description: 'Un bonnet douillet pour les Frutiz qui aiment rêvasser sur le chat. Parfait pour afficher une ambiance cosy !',
+    suffix9: '9020t0a00',
+    comment: 'Édition test',
   },
   {
     id: 102,
-    name: 'Bandana bananocle',
+    name: 'Chapeau de shérif',
     category: 'Accessoires',
     price: 60,
-    description: "L'accessoire incontournable des explorateurs ! Affichez votre style sauvage avec ce bandana exclusif.",
-    suffix9: '6010k0w0g',
+    description: 'Pour faire régner la loi à Frutiparc. Un classique indémodable de la panoplie du justicier.',
+    suffix9: '4020B0000',
     comment: 'Édition test',
   },
   {
     id: 103,
-    name: 'Look classique',
+    name: 'Masque de ski',
     category: 'Accessoires',
     price: 60,
-    description: 'Un look sobre et élégant pour les Frutiz qui préfèrent la discrétion.',
-    suffix9: '000000000',
-    comment: 'Intemporel',
+    description: 'Prêt à dévaler les pistes ! Ce masque coloré complètera votre tenue hivernale à merveille.',
+    suffix9: 'a0b0a080m',
+    comment: 'Édition test',
   },
 ];
 
@@ -390,11 +390,14 @@ function buildShopTreeXml(user) {
 }
 
 function buildShopPackXml(pack, user) {
-  const prefix14 = bouilleOf(user).substring(0, 14);
-  // picto format for bouille: "bouille,<10-char suffix>" where the 10 chars
-  // are appended to user.fbouille.substr(0,14) to make a 24-char bouille.
-  // We pad the 9-char accessory suffix with a trailing '0'.
-  const pictoSuffix10 = (pack.suffix9 + '0').slice(0, 10);
+  // box.Shop builds the picto bouille as:
+  //   _global.me.fbouille.substr(0,14) + picto[1]
+  // i.e. 14 chars from the user's current bouille + 10 chars from picto[1].
+  // The accessory "suffix9" covers positions 15-23 of the final 24-char
+  // bouille, so picto[1] must be: bouille[14] + suffix9 (1 + 9 = 10 chars).
+  const fullBouille = bouilleOf(user);
+  const char14 = (fullBouille.charAt(14) || '0');
+  const pictoSuffix10 = (char14 + pack.suffix9).slice(0, 10);
   const alreadyBuy = userOwnsShopPack(user, pack.id) ? '1' : '0';
   return (
     `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
@@ -1071,6 +1074,15 @@ app.get(['/ff/tree', '/tree'], (req, res) => {
   res.type('text/xml').send(FILE_TREE_XML);
 });
 
+// Flash's LoadVars/XML loader caches aggressively based on URL. Force every
+// shop response to be fresh so pack previews never get stuck on stale data.
+function sendShopXml(res, body) {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.type('text/xml').send(body);
+}
+
 // ─────────────────────────────────────────────
 // ENDPOINT: ft/tree — Shop catalog tree
 // The AS2 box.Shop (win.Shop) requests this on init to build the left menu.
@@ -1082,7 +1094,7 @@ app.get('/ft/tree', (req, res) => {
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user } = auth;
-  res.type('text/xml').send(buildShopTreeXml(user));
+  sendShopXml(res, buildShopTreeXml(user));
 });
 
 // ─────────────────────────────────────────────
@@ -1097,9 +1109,9 @@ app.get('/ft/pack', (req, res) => {
   const { user } = auth;
   const pack = getShopPack(req.query.id);
   if (!pack) {
-    return res.type('text/xml').send('<r k="1" />');
+    return sendShopXml(res, '<r k="1" />');
   }
-  res.type('text/xml').send(buildShopPackXml(pack, user));
+  sendShopXml(res, buildShopPackXml(pack, user));
 });
 
 // ─────────────────────────────────────────────
@@ -1117,16 +1129,16 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
 
   const pack = getShopPack(source.i);
   if (!pack) {
-    return res.type('text/xml').send('<r k="1" />');
+    return sendShopXml(res, '<r k="1" />');
   }
   if (userOwnsShopPack(user, pack.id)) {
     // Already owned — return a "dup" error.
-    return res.type('text/xml').send('<r k="2" />');
+    return sendShopXml(res, '<r k="2" />');
   }
   if (typeof user.kikooz !== 'number') user.kikooz = 0;
   if (user.kikooz < pack.price) {
     // Not enough kikooz.
-    return res.type('text/xml').send('<r k="3" />');
+    return sendShopXml(res, '<r k="3" />');
   }
 
   user.kikooz -= pack.price;
@@ -1150,7 +1162,7 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
     `<f>accessories</f>` +
     `</r>`;
   console.log(`[ft/buy] ${auth.username} bought pack #${pack.id} (${pack.name}) — kikooz now ${user.kikooz}`);
-  res.type('text/xml').send(xml);
+  sendShopXml(res, xml);
 });
 
 // ─────────────────────────────────────────────
