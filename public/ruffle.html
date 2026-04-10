@@ -244,7 +244,19 @@
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",
-                base: `${window.location.origin}/`
+                base: `${window.location.origin}/`,
+                // Load the legacy fonts.swf as an external font source.
+                // This exposes the embedded Verdana + Times New Roman faces
+                // (regular, bold, italic, bold italic) as device fonts so
+                // Ruffle can render the chat with the intended typography.
+                fontSources: [
+                    `${window.location.origin}/legacy/fonts.swf`
+                ],
+                defaultFonts: {
+                    sans: ["Verdana", "verdana"],
+                    serif: ["Times New Roman", "TimesNewRoman"],
+                    typewriter: ["Verdana", "verdana"]
+                }
             });
         });
     </script>
