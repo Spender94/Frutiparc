@@ -323,6 +323,88 @@ const DEFAULT_ACCESSORIES = [
   { u: 'normal',    n: 'Normal',    suffix: '000000000' },
 ];
 
+// ─────────────────────────────────────────────
+// Shop catalog — used by /ft/tree, /ft/pack, /ft/buy
+// The AS2 box.Shop expects a <c> (category) tree with <p> (product) leaves.
+// Each product, once purchased, is appended to user.customAccessories so it
+// appears in the Inventaire/Accessoires folder and can be worn by the avatar.
+// suffix9 = last 9 chars of a 24-char bouille string (prefix is taken from
+// the user's current bouille at serve time).
+// ─────────────────────────────────────────────
+const SHOP_PACKS = [
+  {
+    id: 101,
+    name: 'Lunettes de star',
+    category: 'Accessoires',
+    price: 60,
+    description: 'Des lunettes de soleil fashion pour briller sur le chat. Idéales pour les jours ensoleillés sur Frutiparc !',
+    suffix9: 'b000k0w0g',
+    comment: 'Offre de lancement',
+  },
+  {
+    id: 102,
+    name: 'Bandana bananocle',
+    category: 'Accessoires',
+    price: 60,
+    description: "L'accessoire incontournable des explorateurs ! Affichez votre style sauvage avec ce bandana exclusif.",
+    suffix9: '6010k0w0g',
+    comment: 'Édition test',
+  },
+  {
+    id: 103,
+    name: 'Look classique',
+    category: 'Accessoires',
+    price: 60,
+    description: 'Un look sobre et élégant pour les Frutiz qui préfèrent la discrétion.',
+    suffix9: '000000000',
+    comment: 'Intemporel',
+  },
+];
+
+function getShopPack(id) {
+  const num = Number(id);
+  return SHOP_PACKS.find((p) => p.id === num);
+}
+
+function userOwnsShopPack(user, id) {
+  if (!Array.isArray(user.customAccessories)) return false;
+  return user.customAccessories.some((a) => a && a.shopId === Number(id));
+}
+
+function buildShopTreeXml(user) {
+  // Group packs by category.
+  const byCategory = new Map();
+  for (const pack of SHOP_PACKS) {
+    if (!byCategory.has(pack.category)) byCategory.set(pack.category, []);
+    byCategory.get(pack.category).push(pack);
+  }
+  const defaultId = SHOP_PACKS.length ? SHOP_PACKS[0].id : '';
+  let inner = '';
+  for (const [cat, packs] of byCategory) {
+    const prods = packs
+      .map((p) => `<p i="${p.id}" n="${escapeXml(p.name)}"/>`)
+      .join('');
+    inner += `<c n="${escapeXml(cat)}">${prods}</c>`;
+  }
+  return `<c n="Boutique" d="${defaultId}">${inner}</c>`;
+}
+
+function buildShopPackXml(pack, user) {
+  const prefix14 = bouilleOf(user).substring(0, 14);
+  // picto format for bouille: "bouille,<10-char suffix>" where the 10 chars
+  // are appended to user.fbouille.substr(0,14) to make a 24-char bouille.
+  // We pad the 9-char accessory suffix with a trailing '0'.
+  const pictoSuffix10 = (pack.suffix9 + '0').slice(0, 10);
+  const alreadyBuy = userOwnsShopPack(user, pack.id) ? '1' : '0';
+  return (
+    `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
+    ` p="bouille,${escapeXml(pictoSuffix10)}" q="-1" h="${alreadyBuy}">` +
+    `<d>${escapeXml(pack.description)}</d>` +
+    `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
+    `</p>`
+  );
+}
+
 function buildBouilleListXml() {
   return DEFAULT_BOUILLE_LIST
     .map((o) => `<b b="${escapeXml(normalizeBouilleState(o.b))}">${escapeXml(o.n)}</b>`)
@@ -989,9 +1071,86 @@ app.get(['/ff/tree', '/tree'], (req, res) => {
   res.type('text/xml').send(FILE_TREE_XML);
 });
 
-// Legacy alias seen in some SWFs / URL rewrite paths
+// ─────────────────────────────────────────────
+// ENDPOINT: ft/tree — Shop catalog tree
+// The AS2 box.Shop (win.Shop) requests this on init to build the left menu.
+// Returns a <c> root with nested <c n="category"> and <p i="id" n="name"/>
+// leaves. The `d` attribute on root specifies the default displayed pack id.
+// ─────────────────────────────────────────────
 app.get('/ft/tree', (req, res) => {
-  res.type('text/xml').send(FILE_TREE_XML);
+  const sid = getSidFromRequest(req, req.query);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
+  res.type('text/xml').send(buildShopTreeXml(user));
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: ft/pack — Shop pack details
+// Returns a <p> element describing a single shop item (name, picto, price,
+// description, etc.). Called when the user clicks a product in the shop tree.
+// ─────────────────────────────────────────────
+app.get('/ft/pack', (req, res) => {
+  const sid = getSidFromRequest(req, req.query);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
+  const pack = getShopPack(req.query.id);
+  if (!pack) {
+    return res.type('text/xml').send('<r k="1" />');
+  }
+  res.type('text/xml').send(buildShopPackXml(pack, user));
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: ft/buy — Purchase a shop pack
+// Deducts the price from the user's kikooz balance and adds the purchased
+// accessory to user.customAccessories so it shows up in Inventaire/Accessoires.
+// Returns <r i="newKikoozBalance"><b b="bouille">name</b><f>accessories</f>...</r>
+// ─────────────────────────────────────────────
+app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
+  const source = req.method === 'POST' ? { ...req.query, ...(req.body || {}) } : req.query;
+  const sid = getSidFromRequest(req, source);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
+
+  const pack = getShopPack(source.i);
+  if (!pack) {
+    return res.type('text/xml').send('<r k="1" />');
+  }
+  if (userOwnsShopPack(user, pack.id)) {
+    // Already owned — return a "dup" error.
+    return res.type('text/xml').send('<r k="2" />');
+  }
+  if (typeof user.kikooz !== 'number') user.kikooz = 0;
+  if (user.kikooz < pack.price) {
+    // Not enough kikooz.
+    return res.type('text/xml').send('<r k="3" />');
+  }
+
+  user.kikooz -= pack.price;
+
+  const bouilleStr = bouilleOf(user).substring(0, 15) + pack.suffix9;
+  if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
+  user.customAccessories.push({
+    id: 'shop_' + pack.id,
+    shopId: pack.id,
+    n: pack.name,
+    v: bouilleStr,
+    at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+  });
+
+  // Build response: new kikooz balance, the bouille to push into bouilleList,
+  // and folder refresh requests so Inventaire/Accessoires re-list contents.
+  const xml =
+    `<r i="${user.kikooz}">` +
+    `<b b="${escapeXml(bouilleStr)}">${escapeXml(pack.name)}</b>` +
+    `<f>inventory</f>` +
+    `<f>accessories</f>` +
+    `</r>`;
+  console.log(`[ft/buy] ${auth.username} bought pack #${pack.id} (${pack.name}) — kikooz now ${user.kikooz}`);
+  res.type('text/xml').send(xml);
 });
 
 // ─────────────────────────────────────────────
