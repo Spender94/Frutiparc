@@ -770,15 +770,23 @@ app.get('/do/prefsavepartial', (req, res) => {
 // box.Pref.onPrefForm expects an XML tree of the shape:
 //   <p>
 //     <c n="Category">
-//       <p i="<id>" f="<friendly label>"><d>description</d></p>
+//       <p i="<id>" f="<friendly label>">
+//         <d>description</d>
+//         <f><l>...form widgets...</l></f>
+//       </p>
 //       ...
 //     </c>
 //     ...
 //   </p>
-// <f> (custom form override) is optional — if omitted, win.Pref falls back to
-// Standard.getPrefForm(type) which generates a default widget for bool/int/string.
-// The `i` attribute must be the decimal preference id so that box.Pref can look
-// it up in _global.userPref.prefsId to join against the already-loaded prefs.
+// The `<f>` element is REQUIRED in practice: box.Pref.analysePrefForm
+// initialises `_loc7_ = new XML()` and only replaces it when an `<f>` child
+// exists. If omitted, win.Pref.displayPref ends up iterating an empty XML and
+// renders no widgets — the parameter sheet looks blank. Standard.getPrefForm
+// (the documented fallback) is only called when `pref.form == undefined`,
+// which never happens with the empty-XML default. So we always emit `<f>`
+// with the same default `<l>` widget Standard.getPrefForm would produce per
+// type (bool/int/string). The `i` attribute must be the decimal preference id
+// so box.Pref can join it against `_global.userPref.prefsId`.
 app.get(['/do/prefForm', '/prefForm'], (req, res) => {
   const prefLabels = {
     default_channel:         { label: 'Salon par défaut',                desc: 'Identifiant du salon rejoint automatiquement à la connexion.' },
@@ -804,6 +812,16 @@ app.get(['/do/prefForm', '/prefForm'], (req, res) => {
     { name: 'Apparence',   ids: [5] },
   ];
 
+  // Default widget per pref type — mirrors Standard.getPrefForm in main.swf.
+  //  bool   → two radios labelled Oui/Non bound to "value" with values Y/N
+  //  int    → text input restricted to 0-9
+  //  string → free-text input
+  const formForType = {
+    b: '<l><s b="1"/><r w="60" v="value" u="Y">Oui</r><s b="1"/><r w="60" v="value" u="N">Non</r><s b="1"/></l>',
+    i: '<l><s w="20"/><i v="value" dy="1" b="1" r="0-9"></i><s w="20"/></l>',
+    s: '<l><s w="20"/><i v="value" dy="1" b="1"></i><s w="20"/></l>',
+  };
+
   const byId = Object.fromEntries(prefDefs.map((p) => [p.id, p]));
   let body = '<p>';
   for (const cat of categories) {
@@ -812,7 +830,8 @@ app.get(['/do/prefForm', '/prefForm'], (req, res) => {
       const def = byId[id];
       if (!def) continue;
       const meta = prefLabels[def.name] || { label: def.name, desc: '' };
-      body += `<p i="${id}" f="${escapeXml(meta.label)}"><d>${escapeXml(meta.desc)}</d></p>`;
+      const form = formForType[def.type] || formForType.s;
+      body += `<p i="${id}" f="${escapeXml(meta.label)}"><d>${escapeXml(meta.desc)}</d><f>${form}</f></p>`;
     }
     body += '</c>';
   }
@@ -1571,22 +1590,27 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   const channel = channels[channelName];
   if (!channel) return false;
 
+  // Choose the wire event matching what box.Chat listens for:
+  //  - "totoch"/"ban" → onban (cmdList "ah")  → chat.userbanned for moderators
+  //  - anything else  → onkick (cmdList "ag") → chat.userkicked for everyone
+  // Both handlers expect attribute `u` (target) so they can call userList.rmUser
+  // and detect self-kick via `u == _global.me.name`.
+  const isBan = (reason === 'totoch' || reason === 'ban');
+  const wire = isBan ? CMD.onban : CMD.onkick;
+  const notif = `<${wire} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`;
+
+  // Broadcast BEFORE removing the user from the channel — broadcastToChannel
+  // iterates client.channels, so we need the target user to still be a member
+  // for them to receive the close-chat notification.
+  broadcastToChannel(channelName, notif);
+
+  // Now actually remove the user from the channel state.
   channel.users.delete(targetUser);
   for (const [sock, cl] of xmlSocketClients) {
     if (cl && cl.username === targetUser) {
       cl.channels.delete(channelName);
-      sendToClient(sock, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
-      sendToClient(sock, `<${CMD.onkick} g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`);
     }
   }
-  // Broadcast userleaved to update the user list in other clients' Chat boxes
-  broadcastToChannel(channelName, `<${CMD.userleaved} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
-  // Send a system chat message with the kick/ban reason
-  const timeAttrs = buildChatTimeAttrs();
-  const kickMsg = (reason === 'totoch' || reason === 'ban')
-    ? `${escapeXml(targetUser)} a été banni`
-    : `${escapeXml(targetUser)} a été éjecté`;
-  broadcastToChannel(channelName, `<${CMD.send} u="Serveur" t="m" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${kickMsg}</${CMD.send}>`);
 
   // Respawn DebugBot after 5 seconds if it was kicked
   if (targetUser === 'DebugBot') {
@@ -2053,7 +2077,12 @@ case 'send': {
       const g = pickActiveChannel(client, msg.attrs);
       if (g) {
         const timeAttrs = buildChatTimeAttrs();
-        broadcastToChannel(g, `<${CMD.send} u="Serveur" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(targetUser)} a été totoché</${CMD.send}>`);
+        // Use u="admin" so box.Chat.onSend renders via chat.msg_admin
+        // ($h<i>$m</i>) instead of chat.msg ($h<b>$u</b>: $m). That drops
+        // the "Serveur:" username prefix and keeps it visually italic.
+        // There is no native chat.usermuted handler — this is the closest
+        // thing to a "natural" chat notice without modifying main.swf.
+        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(targetUser)} a été totoché</${CMD.send}>`);
         broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
       }
       break;
