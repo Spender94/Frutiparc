@@ -408,9 +408,9 @@ app.get('/legacy/main.swf', (req, res) => {
 });
 
 app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
-  if (VERBOSE_SWF_LOGS) {
-    console.log('[SWF] fonts.swf requested:', req.url);
-  }
+  // Always log fonts.swf requests so we can verify Ruffle is fetching it
+  // via fontSources (font loading is critical for chat typography).
+  console.log('[SWF] fonts.swf requested:', req.url, 'UA:', req.headers['user-agent']);
   res.type('application/x-shockwave-flash');
   res.sendFile(fontsPath);
 });

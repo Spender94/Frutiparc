@@ -158,6 +158,23 @@
         })();
     </script>
 
+    <script>
+        // Configure Ruffle BEFORE loading the core — this is the documented
+        // way to register external font sources. Setting these options on
+        // the global config ensures Ruffle picks them up during initialization.
+        window.RufflePlayer = window.RufflePlayer || {};
+        window.RufflePlayer.config = {
+            fontSources: [
+                `${window.location.origin}/legacy/fonts.swf`
+            ],
+            defaultFonts: {
+                sans:       ["Verdana", "verdana"],
+                serif:      ["Times New Roman", "TimesNewRoman"],
+                typewriter: ["Verdana", "verdana"]
+            }
+        };
+    </script>
+
     <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
 </head>
 <body>
@@ -244,19 +261,7 @@
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",
-                base: `${window.location.origin}/`,
-                // Load the legacy fonts.swf as an external font source.
-                // This exposes the embedded Verdana + Times New Roman faces
-                // (regular, bold, italic, bold italic) as device fonts so
-                // Ruffle can render the chat with the intended typography.
-                fontSources: [
-                    `${window.location.origin}/legacy/fonts.swf`
-                ],
-                defaultFonts: {
-                    sans: ["Verdana", "verdana"],
-                    serif: ["Times New Roman", "TimesNewRoman"],
-                    typewriter: ["Verdana", "verdana"]
-                }
+                base: `${window.location.origin}/`
             });
         });
     </script>
