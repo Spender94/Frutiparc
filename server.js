@@ -767,13 +767,58 @@ app.get('/do/prefsavepartial', (req, res) => {
 });
 
 // Preferences form endpoint — the compiled box.Pref window loads this to render the form.
-// Returns LoadVars with PrefDef (definitions) and myPref (user values).
+// box.Pref.onPrefForm expects an XML tree of the shape:
+//   <p>
+//     <c n="Category">
+//       <p i="<id>" f="<friendly label>"><d>description</d></p>
+//       ...
+//     </c>
+//     ...
+//   </p>
+// <f> (custom form override) is optional — if omitted, win.Pref falls back to
+// Standard.getPrefForm(type) which generates a default widget for bool/int/string.
+// The `i` attribute must be the decimal preference id so that box.Pref can look
+// it up in _global.userPref.prefsId to join against the already-loaded prefs.
 app.get(['/do/prefForm', '/prefForm'], (req, res) => {
-  const sid = getSidFromRequest(req, req.query);
-  const session = sid && sessions[sid];
-  const user = session && users[session.user];
-  const myPref = (user && user.prefs) || '';
-  res.type('text/plain').send(`PrefDef=${buildPrefDefString()}&myPref=${myPref}&state=0`);
+  const prefLabels = {
+    default_channel:         { label: 'Salon par défaut',                desc: 'Identifiant du salon rejoint automatiquement à la connexion.' },
+    dsp_newmail_alert:       { label: 'Alerte nouveau message',          desc: 'Afficher une alerte à la réception d\'un nouveau mail.' },
+    invite_channel_behavior: { label: 'Invitation salon',                desc: 'Comportement lors de la réception d\'une invitation de salon.' },
+    invite_chat_behavior:    { label: 'Invitation chat privé',           desc: 'Comportement lors de la réception d\'une invitation de chat privé.' },
+    wallpaper:               { label: 'Fond d\'écran',                   desc: 'Nom du fond d\'écran utilisé sur le bureau.' },
+    cache_length:            { label: 'Durée du cache',                  desc: 'Nombre de jours pendant lesquels les fichiers sont conservés.' },
+    cl_open:                 { label: 'Ouvrir la liste de contacts',     desc: 'Ouvrir automatiquement la liste de contacts au démarrage.' },
+    win_flMoveAnim:          { label: 'Animations des fenêtres',         desc: 'Activer les animations de déplacement des fenêtres.' },
+    ch_dsp_h:                { label: 'Afficher l\'heure',               desc: 'Afficher l\'heure devant chaque message du chat.' },
+    ch_dsp_join:             { label: 'Afficher les arrivées',           desc: 'Afficher un message quand un utilisateur rejoint le salon.' },
+    ch_dsp_leave:            { label: 'Afficher les départs',            desc: 'Afficher un message quand un utilisateur quitte le salon.' },
+    ch_dsp_kick:             { label: 'Afficher les expulsions',         desc: 'Afficher un message quand un utilisateur est expulsé.' },
+    ch_dsp_ban:              { label: 'Afficher les bannissements',      desc: 'Afficher un message quand un utilisateur est banni.' },
+  };
+
+  const categories = [
+    { name: 'Général', ids: [1, 6, 7, 8] },
+    { name: 'Chat',    ids: [9, 10, 11, 12, 13] },
+    { name: 'Mail',    ids: [2] },
+    { name: 'Invitations', ids: [3, 4] },
+    { name: 'Apparence',   ids: [5] },
+  ];
+
+  const byId = Object.fromEntries(prefDefs.map((p) => [p.id, p]));
+  let body = '<p>';
+  for (const cat of categories) {
+    body += `<c n="${escapeXml(cat.name)}">`;
+    for (const id of cat.ids) {
+      const def = byId[id];
+      if (!def) continue;
+      const meta = prefLabels[def.name] || { label: def.name, desc: '' };
+      body += `<p i="${id}" f="${escapeXml(meta.label)}"><d>${escapeXml(meta.desc)}</d></p>`;
+    }
+    body += '</c>';
+  }
+  body += '</p>';
+
+  res.type('text/xml').send(body);
 });
 
 // ─────────────────────────────────────────────
@@ -1828,13 +1873,7 @@ case 'join': {
   // 2. Liste des utilisateurs
   sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
 
-  // 3. Message système visible dans le chat
-  sendToClient(
-    socket,
-    `<${CMD.send} u="Serveur" t="m" p="" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
-  );
-
-  // 4. Notification légère aux autres
+  // 3. Notification légère aux autres
 broadcastToChannel(
   g,
   `<${CMD.userjoined} u="${escapeXml(client.username)}" g="${g}" />`,
