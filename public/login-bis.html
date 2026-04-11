@@ -17,7 +17,7 @@
       min-height: 100vh;
       font-family: Verdana, Arial, sans-serif;
       color: var(--text);
-      background: var(--green-bg) url('/images/bg.gif') center/120% no-repeat;
+      background: var(--green-bg) url('https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/bg.gif') center/120% no-repeat;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -185,7 +185,7 @@
 </head>
 <body>
   <header class="topbar" id="topbar">
-    <img class="logo" src="/images/logo.gif" alt="Frutiparc" />
+    <img class="logo" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/logo.gif" alt="Frutiparc" />
     <form id="login-form" class="login-form" autocomplete="on">
       <label for="username">Pseudo</label>
       <input id="username" name="username" minlength="3" maxlength="20" required />
@@ -222,18 +222,18 @@
 
     <article class="main">
       <div>
-        <img src="/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
+        <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
         <p><strong>Découvrez l'univers fruité de Frutiparc ! <span style="color:#d82222;">Inscrivez-vous</span></strong> et jouez à nos jeux fruités : réflexion, arcade et multijoueurs.</p>
         <p>Chaque jour, profitez de plusieurs parties gratuites pour battre les autres joueurs et grimper au classement.</p>
         <p>Frutiparc c'est aussi le mode Frutiz : e-mail, salons de discussions, forums et blog, dans une interface fruitée.</p>
 
         <div class="cta">
-          <img src="/images/decouvrir.gif" alt="Découvrir" />
-          <img src="/images/sinscrire.gif" alt="S'inscrire" id="cta-register" />
+          <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/decouvrir.gif" alt="Découvrir" />
+          <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/sinscrire.gif" alt="S'inscrire" id="cta-register" />
         </div>
       </div>
       <div>
-        <img src="/images/welcome.gif" alt="Frutiparc" class="welcome" />
+        <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome.gif" alt="Frutiparc" class="welcome" />
       </div>
     </article>
   </section>
@@ -252,6 +252,8 @@
   </footer>
 
   <script>
+    const ASSET_BASE = 'https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images';
+
     const games = [
       { id: 'bk', name: 'Burning Kiwi', image: 'bk.png' },
       { id: 'frutisnake', name: 'FrutiSnake 2', image: 'frutisnake.png' },
@@ -313,7 +315,7 @@
         if (selectedGame && selectedGame !== game.name) card.classList.add('compact');
 
         const img = document.createElement('img');
-        img.src = `/images/${game.image}`;
+        img.src = `${ASSET_BASE}/${game.image}`;
         img.alt = game.name;
         img.onerror = () => {
           img.style.objectFit = 'contain';
