@@ -187,6 +187,7 @@ function createDefaultUser(pass) {
     prefs: '',
     isModerator: true,
     needsBouille: true, // Force editbouille on first login
+    kikoozLog: [],      // Entries displayed in box.KikoozLog (/ft/log)
   };
 }
 
@@ -729,6 +730,64 @@ app.all('/do/eb', (req, res) => {
   res.type('text/plain').send(`state=0&k=0&b=${bouille}&s=${bouille}&f=${bouille}`);
 });
 
+// ─────────────────────────────────────────────
+// ENDPOINT: do/give — Transfer kikooz to another user (/donne command)
+// Params: k=<amount>, u=<target username>, r=<reason>, sid=<session_id>
+// Returns XML: <r k="0" a="<sender new balance>" u="<target>" g="<amount>"/>
+// On failure: <r k="<errorCode>"/>
+//   k="1"  invalid parameters
+//   k="2"  cannot give to yourself
+//   k="3"  target user unknown
+//   k="4"  not enough kikooz
+// ─────────────────────────────────────────────
+app.all('/do/give', (req, res) => {
+  const source = req.method === 'POST' ? { ...req.query, ...(req.body || {}) } : req.query;
+  const sid = getSidFromRequest(req, source);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user, username } = auth;
+
+  const amount = Math.floor(Number(source.k));
+  const targetRaw = String(source.u || '').trim();
+  const reason = String(source.r || '').trim();
+
+  if (!Number.isFinite(amount) || amount <= 0 || !targetRaw) {
+    return res.type('text/xml').send('<r k="1" />');
+  }
+  const targetName = resolveKnownUsername(targetRaw);
+  if (targetName.toLowerCase() === username.toLowerCase()) {
+    return res.type('text/xml').send('<r k="2" />');
+  }
+  const target = users[targetName];
+  if (!target) {
+    return res.type('text/xml').send('<r k="3" />');
+  }
+  if (typeof user.kikooz !== 'number') user.kikooz = 0;
+  if (user.kikooz < amount) {
+    return res.type('text/xml').send('<r k="4" />');
+  }
+
+  user.kikooz -= amount;
+  target.kikooz = (typeof target.kikooz === 'number' ? target.kikooz : 0) + amount;
+
+  const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+  // Log in recipient's kikooz history (type "c" = kcall / received kikooz)
+  if (!Array.isArray(target.kikoozLog)) target.kikoozLog = [];
+  target.kikoozLog.unshift({
+    type: 'c',
+    t: nowStr,
+    k: amount,
+    c: username,
+  });
+  if (target.kikoozLog.length > 200) target.kikoozLog.length = 200;
+
+  console.log(`[do/give] ${username} → ${targetName}: ${amount} kikooz${reason ? ' ('+reason+')' : ''}`);
+
+  const xml = `<r k="0" a="${user.kikooz}" u="${escapeXml(targetName)}" g="${amount}" />`;
+  res.type('text/xml').send(xml);
+});
+
 function handleNewBouille(req, res) {
   const sid = req.query.sid;
   const auth = requireAuthBySid(sid, res);
@@ -1143,6 +1202,7 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
 
   user.kikooz -= pack.price;
 
+  const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const bouilleStr = bouilleOf(user).substring(0, 15) + pack.suffix9;
   if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
   user.customAccessories.push({
@@ -1150,8 +1210,18 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
     shopId: pack.id,
     n: pack.name,
     v: bouilleStr,
-    at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    at: nowStr,
   });
+
+  // Record a "buy" entry in the kikooz history (box.KikoozLog / /ft/log)
+  if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+  user.kikoozLog.unshift({
+    type: 'b',
+    t: nowStr,
+    k: pack.price,
+    n: pack.name,
+  });
+  if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
 
   // Build response: new kikooz balance, the bouille to push into bouilleList,
   // and folder refresh requests so Inventaire/Accessoires re-list contents.
@@ -1163,6 +1233,41 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
     `</r>`;
   console.log(`[ft/buy] ${auth.username} bought pack #${pack.id} (${pack.name}) — kikooz now ${user.kikooz}`);
   sendShopXml(res, xml);
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: ft/log — Kikooz history
+// Returns a <l> root with entries for box.KikoozLog. Supported entry types:
+//   <b t="..." k="price" n="pack name"/>  — shop purchase
+//   <c t="..." k="amount" c="username"/>  — received kcall
+//   <g t="..." k="amount" f="friend"/>    — godfather bonus
+//   <a t="..." k="amount" f="anim name"/> — animation reward
+// Timestamps are in "YYYY-MM-DD HH:MM:SS" (parsed by FEDate.newFromString).
+// ─────────────────────────────────────────────
+app.get('/ft/log', (req, res) => {
+  const sid = getSidFromRequest(req, req.query);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
+  const entries = Array.isArray(user.kikoozLog) ? user.kikoozLog : [];
+  const body = entries.map((e) => {
+    const t = escapeXml(e.t || '');
+    const k = Number(e.k) || 0;
+    if (e.type === 'b') {
+      return `<b t="${t}" k="${k}" n="${escapeXml(e.n || '')}"/>`;
+    }
+    if (e.type === 'c') {
+      return `<c t="${t}" k="${k}" c="${escapeXml(e.c || '')}"/>`;
+    }
+    if (e.type === 'g') {
+      return `<g t="${t}" k="${k}" f="${escapeXml(e.f || '')}"/>`;
+    }
+    if (e.type === 'a') {
+      return `<a t="${t}" k="${k}" f="${escapeXml(e.f || '')}"/>`;
+    }
+    return '';
+  }).join('');
+  sendShopXml(res, `<l>${body}</l>`);
 });
 
 // ─────────────────────────────────────────────
@@ -1983,6 +2088,7 @@ function handleCBeeMessage(socket, rawXml) {
             region: 'IDF',
             prefs: '',
             isModerator: !isDebugNotUser(effectiveLogin),
+            kikoozLog: [],
           };
       }
 
@@ -2201,6 +2307,20 @@ case 'send': {
         broadcastToChannel(g,
           `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${redText}</${CMD.send}>`
         );
+        break;
+      }
+    }
+
+    // Type "g" (kikooz gift broadcast from /donne command):
+    // Body is an inner <g k="amount" u="target"/> element, not text.
+    // The /do/give HTTP endpoint already validated and transferred the kikooz,
+    // so here we just echo the broadcast to channel members.
+    if (type === 'g' && msg.children && msg.children.length > 0) {
+      const gChild = msg.children.find((c) => c.tag === 'g');
+      if (gChild) {
+        const childXml = `<g k="${escapeXml(gChild.attrs.k || '')}" u="${escapeXml(gChild.attrs.u || '')}" />`;
+        const giftXml = `<${CMD.send} u="${escapeXml(client.username)}" t="g" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${childXml}</${CMD.send}>`;
+        broadcastToChannel(g, giftXml);
         break;
       }
     }
