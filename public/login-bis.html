@@ -26,21 +26,21 @@
 
     .topbar {
       position: relative;
-      width: min(1080px, 100%);
-      height: 54px;
-      margin-top: 42px;
+      width: min(1060px, 100%);
+      height: 52px;
+      margin-top: 40px;
       background: #fff;
-      border-radius: 16px;
+      border-radius: 18px;
       box-shadow: 0 4px 10px rgba(0,0,0,.18);
-      padding: 6px 18px 6px 132px;
+      padding: 6px 12px 6px 126px;
       display: flex;
       align-items: center;
     }
     .logo {
       position: absolute;
-      left: -118px;
-      top: -26px;
-      height: 112px;
+      left: -108px;
+      top: -20px;
+      height: 100px;
       width: auto;
     }
 
@@ -48,44 +48,45 @@
       width: 100%;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       font-size: 12px;
     }
     .label-img {
-      height: 28px;
+      height: 24px;
       width: auto;
       display: block;
     }
     .login-form input {
-      height: 30px;
+      height: 32px;
       border: 2px solid #c7dc9d;
       border-radius: 10px;
       padding: 3px 8px;
-      min-width: 160px;
+      min-width: 178px;
       font-size: 14px;
     }
     .mode-inline {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       color: #4f7d1e;
       font-weight: 700;
-      font-size: 16px;
+      font-size: 13px;
       white-space: nowrap;
+      letter-spacing: .3px;
     }
     .mode-inline input {
-      width: 22px;
-      min-width: 22px;
-      height: 22px;
+      width: 14px;
+      min-width: 14px;
+      height: 14px;
       margin: 0;
     }
     .btn {
       border: 0;
-      border-radius: 8px;
-      padding: 4px 16px;
+      border-radius: 9px;
+      padding: 4px 14px 5px;
       font-weight: bold;
       cursor: pointer;
-      font-size: 28px;
+      font-size: 18px;
       line-height: .9;
     }
     .btn-primary { background: #f6a4ad; color: #7a1326; border: 2px solid #e78690; }
@@ -93,7 +94,11 @@
       margin-left: auto;
       background: transparent;
       color: #26374f;
-      font-size: 20px;
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1;
+      text-align: center;
+      width: 170px;
       border: 0;
       padding: 0 8px;
     }
@@ -221,7 +226,7 @@
       <input id="password" name="password" type="password" minlength="6" maxlength="80" required />
       <label class="mode-inline"><input type="checkbox" id="mode-frutiz" />MODE FRUTIZ</label>
       <button class="btn btn-primary" type="submit">OK</button>
-      <button class="btn btn-secondary" type="button" id="register-toggle">S'inscrire gratuitement</button>
+      <button class="btn btn-secondary" type="button" id="register-toggle">S'inscrire<br/>gratuitement</button>
     </form>
   </header>
 
