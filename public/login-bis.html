@@ -26,87 +26,72 @@
 
     .topbar {
       position: relative;
-      width: min(1080px, 100%);
-      height: 42px;
-      margin-top: 6px;
+      width: min(1056px, 100%);
+      height: 30px;
+      margin-top: 48px;
       background: #fff;
-      border-radius: 14px;
+      border-radius: 10px;
       box-shadow: 0 4px 10px rgba(0,0,0,.18);
-      padding: 4px 18px 4px 260px;
+      padding: 4px 30px 4px 132px;
       display: flex;
       align-items: center;
     }
     .logo {
       position: absolute;
-      left: -8px;
-      top: -14px;
-      height: 70px;
+      left: -80px;
+      top: -56px;
+      height: 90px;
       width: auto;
-    }
-    .topbar-register-link {
-      margin-left: auto;
-      margin-right: 10px;
-      color: #3a3a3a;
-      font-weight: 700;
-      font-size: 16px;
-      text-decoration: none;
-      white-space: nowrap;
     }
 
     .login-form {
       width: 100%;
       display: flex;
       align-items: center;
-      gap: 10px;
-      font-size: 17px;
-      font-weight: 700;
-      color: #55731f;
+      gap: 8px;
+      font-size: 12px;
     }
     .login-form input {
-      height: 28px;
-      border: 2px solid #c9d6ba;
-      border-radius: 8px;
-      padding: 4px 8px;
-      min-width: 188px;
-      font-size: 15px;
+      height: 22px;
+      border: 1px solid #b8c9a0;
+      border-radius: 4px;
+      padding: 2px 6px;
+      min-width: 110px;
+      font-size: 12px;
     }
-    .mode-frutiz { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; color: #4c7b1a; }
     .btn {
       border: 0;
       border-radius: 5px;
-      padding: 6px 12px;
+      padding: 4px 10px;
       font-weight: bold;
       cursor: pointer;
-      font-size: 16px;
+      font-size: 12px;
     }
-    .btn-primary { background: #f08d94; color: #6f0e19; }
-    .btn-secondary { background: #d8ebbe; color: #3e5720; font-size: 14px; padding: 6px 10px; }
+    .btn-primary { background: #8fc93b; color: #264008; }
+    .btn-secondary { background: #daeac2; color: #3e5720; }
 
     .layout {
-      width: min(1120px, 100%);
+      width: min(880px, 100%);
       display: grid;
-      grid-template-columns: 246px minmax(0, 1fr);
-      gap: 18px;
-      margin-top: 14px;
+      grid-template-columns: 176px minmax(0, 1fr);
+      gap: 24px;
+      margin-top: 20px;
       flex: 1;
     }
 
     .games {
-      height: 520px;
+      height: 405px;
       background: #fff;
       border-radius: 10px;
-      padding: 8px 10px;
+      padding: 8px;
       box-shadow: 0 4px 10px rgba(0,0,0,.15);
       overflow: hidden;
     }
     .games h3 {
       text-align: center;
-      color: #6d6d6d;
-      margin: 0 0 8px;
-      font-size: 15px;
-      line-height: 1.1;
-      text-transform: uppercase;
-      font-weight: 900;
+      color: #777;
+      margin: 0 0 6px;
+      font-size: 14px;
     }
     .games-list {
       display: flex;
@@ -114,10 +99,10 @@
       gap: 4px;
     }
     .game-card {
-      width: 220px;
-      height: 46px;
-      border: 3px solid #9ca3aa;
-      border-radius: 16px;
+      width: 160px;
+      height: 32px;
+      border: 2px solid #a5a5a5;
+      border-radius: 8px;
       overflow: hidden;
       cursor: pointer;
       transition: height .35s ease;
@@ -132,32 +117,29 @@
       display: block;
     }
     .game-card.active {
-      height: 118px;
+      height: 160px;
     }
     .game-card.active img { opacity: 1; }
-    .game-card.compact { height: 38px; }
+    .game-card.compact { height: 18px; }
 
     .main {
-      height: 520px;
-      background: #efefef;
+      height: 380px;
+      background: #fff;
       border-radius: 10px;
       box-shadow: 0 4px 10px rgba(0,0,0,.15);
-      padding: 14px 20px;
+      padding: 16px;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 360px;
-      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) 220px;
+      gap: 20px;
     }
     .main h1 { margin: 0 0 8px; font-size: 24px; }
-    .main p { margin: 8px 0; font-size: 14px; line-height: 1.25; color: #1f2633; }
-    .main p.main-copy { margin: 2px 0; font-size: 14px; line-height: 1.28; font-weight: 700; }
-    .copy-block { max-width: 635px; }
-    .cta { margin-top: 18px; display: flex; align-items: center; gap: 10px; }
-    .cta img { height: 48px; cursor: pointer; }
-    .cta .cta-between { width: 48px; height: 48px; object-fit: contain; transition: opacity .45s ease; }
-    .welcome { height: 402px; max-width: 100%; object-fit: contain; }
+    .main p { margin: 6px 0; font-size: 13px; line-height: 1.35; }
+    .cta { margin-top: 16px; display: flex; gap: 12px; }
+    .cta img { height: 40px; cursor: pointer; }
+    .welcome { height: 285px; max-width: 100%; object-fit: contain; }
 
     .status {
-      width: min(1120px, 100%);
+      width: min(880px, 100%);
       margin-top: 8px;
       min-height: 20px;
       text-align: center;
@@ -167,8 +149,8 @@
     }
 
     .loading {
-      width: min(1120px, 100%);
-      margin-top: 20px;
+      width: min(880px, 100%);
+      margin-top: 60px;
       background: #fff;
       border-radius: 10px;
       padding: 28px;
@@ -195,8 +177,8 @@
       text-align: center;
       font-size: 11px;
     }
-    .footer-top { background: #fff; color: #633f3f; padding: 4px; font-size: 13px; line-height: 1; }
-    .footer-bottom { background: var(--green-dark); color: #fff; padding: 4px; font-size: 12px; line-height: 1.1; }
+    .footer-top { background: #fff; color: #222; padding: 4px; }
+    .footer-bottom { background: var(--green-dark); color: #fff; padding: 4px; }
 
     .hidden { display: none !important; }
   </style>
@@ -205,15 +187,13 @@
   <header class="topbar" id="topbar">
     <img class="logo" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/logo.gif" alt="Frutiparc" />
     <form id="login-form" class="login-form" autocomplete="on">
-      <label for="username">NOM</label>
+      <label for="username">Pseudo</label>
       <input id="username" name="username" minlength="3" maxlength="20" required />
-      <label for="password">CODE</label>
+      <label for="password">Code secret</label>
       <input id="password" name="password" type="password" minlength="6" maxlength="80" required />
-      <label class="mode-frutiz"><input type="checkbox" id="mode-frutiz" /> MODE FRUTIZ</label>
-      <button class="btn btn-primary" type="submit">OK</button>
+      <button class="btn btn-primary" type="submit">Connexion</button>
       <button class="btn btn-secondary" type="button" id="register-toggle">Créer un compte</button>
     </form>
-    <a href="#" class="topbar-register-link" id="top-register-link">S'inscrire gratuitement</a>
   </header>
 
   <form id="register-form" class="topbar hidden" autocomplete="on">
@@ -236,22 +216,19 @@
 
   <section id="main-content" class="layout">
     <aside class="games">
-      <h3 id="game-title">▼ Sélectionner un jeu ▼</h3>
+      <h3 id="game-title">Sélectionner un jeu</h3>
       <div class="games-list" id="games-list"></div>
     </aside>
 
     <article class="main">
       <div>
         <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
-        <div class="copy-block">
-          <p class="main-copy"><strong>Découvrez l'univers fruité de Frutiparc ! <span style="color:#d82222;">Inscrivez-vous</span></strong> et jouez à nos jeux fruités : réflexion, arcade, multijoueurs, il y en a pour tous les goûts !</p>
-          <p class="main-copy">Chaque jour, vous disposez de plusieurs parties gratuites pour battre les autres joueurs et arriver premier du classement !</p>
-          <p class="main-copy">Frutiparc c'est aussi le mode Frutiz : une adresse e-mail, des salons de discussions (publics et privés), des forums, sans oublier votre blog, le tout gratuitement dans une interface graphique fruitée.</p>
-        </div>
+        <p><strong>Découvrez l'univers fruité de Frutiparc ! <span style="color:#d82222;">Inscrivez-vous</span></strong> et jouez à nos jeux fruités : réflexion, arcade et multijoueurs.</p>
+        <p>Chaque jour, profitez de plusieurs parties gratuites pour battre les autres joueurs et grimper au classement.</p>
+        <p>Frutiparc c'est aussi le mode Frutiz : e-mail, salons de discussions, forums et blog, dans une interface fruitée.</p>
 
         <div class="cta">
           <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/decouvrir.gif" alt="Découvrir" />
-          <img id="cta-between" class="cta-between" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/gauche.png" alt="" aria-hidden="true" />
           <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/sinscrire.gif" alt="S'inscrire" id="cta-register" />
         </div>
       </div>
@@ -300,11 +277,8 @@
     const statusEl = document.getElementById('status');
     const gameTitle = document.getElementById('game-title');
     const gamesList = document.getElementById('games-list');
-    const topRegisterLink = document.getElementById('top-register-link');
-    const ctaBetween = document.getElementById('cta-between');
 
     let selectedGame = null;
-    let ctaFrame = 0;
 
     function setStatus(text, error = false) {
       statusEl.textContent = text || '';
@@ -352,29 +326,16 @@
         card.appendChild(img);
         card.addEventListener('mouseenter', () => {
           selectedGame = game.name;
-          gameTitle.textContent = selectedGame.toUpperCase();
+          gameTitle.textContent = selectedGame;
           renderGames();
         });
         card.addEventListener('mouseleave', () => {
           selectedGame = null;
-          gameTitle.textContent = '▼ SÉLECTIONNER UN JEU ▼';
+          gameTitle.textContent = 'Sélectionner un jeu';
           renderGames();
         });
         gamesList.appendChild(card);
       });
-    }
-
-    function startCtaAnimation() {
-      const frames = [`${ASSET_BASE}/gauche.png`, `${ASSET_BASE}/droite.png`];
-      ctaBetween.src = frames[0];
-      setInterval(() => {
-        ctaFrame = (ctaFrame + 1) % frames.length;
-        ctaBetween.style.opacity = '0.2';
-        setTimeout(() => {
-          ctaBetween.src = frames[ctaFrame];
-          ctaBetween.style.opacity = '1';
-        }, 160);
-      }, 3000);
     }
 
     document.getElementById('register-toggle').addEventListener('click', () => {
@@ -390,13 +351,6 @@
     });
 
     document.getElementById('cta-register').addEventListener('click', () => {
-      topbar.classList.add('hidden');
-      registerForm.classList.remove('hidden');
-      setStatus('Inscris-toi pour rejoindre Frutiparc !');
-    });
-
-    topRegisterLink.addEventListener('click', (event) => {
-      event.preventDefault();
       topbar.classList.add('hidden');
       registerForm.classList.remove('hidden');
       setStatus('Inscris-toi pour rejoindre Frutiparc !');
@@ -444,7 +398,6 @@
     });
 
     renderGames();
-    startCtaAnimation();
   </script>
 </body>
 </html>
