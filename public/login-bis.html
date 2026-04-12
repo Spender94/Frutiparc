@@ -86,6 +86,47 @@
       border: 1px solid #9faf8f;
       background: #fff;
       border-radius: 3px;
+      position: relative;
+      z-index: 2;
+    }
+    .mode-check-wrap {
+      position: relative;
+      width: 13px;
+      height: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mode-ring {
+      position: absolute;
+      inset: -7px;
+      width: 27px;
+      height: 27px;
+      transform: rotate(-90deg);
+      pointer-events: none;
+      overflow: visible;
+    }
+    .mode-ring circle {
+      fill: none;
+      stroke: #e01f1f;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-dasharray: 65;
+      stroke-dashoffset: 65;
+      opacity: 0;
+    }
+    .mode-check-wrap.draw .mode-ring circle {
+      animation: drawModeRing .55s ease forwards;
+    }
+    @keyframes drawModeRing {
+      0% {
+        stroke-dashoffset: 65;
+        opacity: 1;
+      }
+      100% {
+        stroke-dashoffset: 0;
+        opacity: 1;
+      }
     }
     .btn {
       border: 0;
@@ -233,7 +274,7 @@
       <input id="username" name="username" minlength="3" maxlength="20" required />
       <label for="password"><img class="label-img" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/code.png" alt="Code" /></label>
       <input id="password" name="password" type="password" minlength="6" maxlength="80" required />
-      <label class="mode-inline"><input type="checkbox" id="mode-frutiz" />MODE FRUTIZ</label>
+      <label class="mode-inline"><span class="mode-check-wrap" id="mode-ring-wrap"><input type="checkbox" id="mode-frutiz" /><svg class="mode-ring" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="10.5"></circle></svg></span>MODE FRUTIZ</label>
       <button class="btn btn-primary" type="submit">OK</button>
       <button class="btn btn-secondary" type="button" id="register-toggle">S'inscrire gratuitement</button>
     </form>
@@ -320,6 +361,8 @@
     const statusEl = document.getElementById('status');
     const gameTitle = document.getElementById('game-title');
     const gamesList = document.getElementById('games-list');
+    const modeFrutizCheckbox = document.getElementById('mode-frutiz');
+    const modeRingWrap = document.getElementById('mode-ring-wrap');
 
     let selectedGame = null;
 
@@ -424,6 +467,13 @@
       } catch (error) {
         setStatus(error.message || 'Les identifiants sont incorrects.', true);
       }
+    });
+
+    modeFrutizCheckbox.addEventListener('click', () => {
+      modeRingWrap.classList.remove('draw');
+      // Force reflow to replay the ring drawing animation on every click.
+      void modeRingWrap.offsetWidth;
+      modeRingWrap.classList.add('draw');
     });
 
     renderGames();
