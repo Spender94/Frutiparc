@@ -31,7 +31,7 @@
       margin-top: 48px;
       background: #fff;
       border-radius: 14px;
-      box-shadow: 0 4px 10px rgba(0,0,0,.18);
+      box-shadow: none;
       padding: 4px 10px 4px 204px;
       display: flex;
       align-items: center;
@@ -66,6 +66,11 @@
       width: 100px;
       font-size: 12px;
       color: #7BA135;
+    }
+    .login-form input:focus {
+      outline: none;
+      border: 2px solid #ADE76B;
+      box-shadow: none;
     }
     .mode-inline {
       display: inline-flex;
@@ -284,6 +289,7 @@
   </header>
 
   <form id="register-form" class="topbar hidden" autocomplete="on">
+    <img class="logo" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/logo.gif" alt="Frutiparc" />
     <div class="login-form">
       <strong>Inscription</strong>
       <label for="reg-username">Pseudo</label>
