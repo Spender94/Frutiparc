@@ -170,6 +170,7 @@ const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
 const recentSidByIp = new Map(); // ip -> sid fallback for legacy calls missing sid
 const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
+const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
 
 function createDefaultUser(pass) {
   return {
@@ -455,6 +456,10 @@ app.get('/legacy', (req, res) => {
 
 app.get('/login', (req, res) => {
   res.sendFile(LOGIN_PAGE_PATH);
+});
+
+app.get('/', (req, res) => {
+  res.sendFile(LOGIN_BIS_PAGE_PATH);
 });
 
 app.post('/api/auth/register', (req, res) => {

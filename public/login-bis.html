@@ -416,27 +416,13 @@
     loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const body = Object.fromEntries(new FormData(loginForm).entries());
-      setLoading(true);
+      setStatus('Connexion...');
       try {
         const data = await postJson('/api/auth/login', body);
-        const minimumDuration = 2000;
-        setTimeout(() => {
-          localStorage.setItem('currentUser', JSON.stringify({ username: body.username }));
-          setLoading(false);
-          mainContent.classList.add('hidden');
-          welcomeUser.classList.remove('hidden');
-          welcomeUserText.textContent = `Connecté en tant que ${body.username}.`;
-          setStatus('Connexion réussie.');
-          setTimeout(() => {
-            window.location.href = data.redirect || '/legacy';
-          }, 800);
-        }, minimumDuration);
+        localStorage.setItem('currentUser', JSON.stringify({ username: body.username }));
+        window.location.href = data.redirect || '/legacy';
       } catch (error) {
-        const minimumDuration = 2000;
-        setTimeout(() => {
-          setLoading(false);
-          setStatus(error.message || 'Les identifiants sont incorrects.', true);
-        }, minimumDuration);
+        setStatus(error.message || 'Les identifiants sont incorrects.', true);
       }
     });
 
