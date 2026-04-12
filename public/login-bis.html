@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frutiparc — Accueil bis</title>
+  <style>
+    :root {
+      --green-bg: #aee868;
+      --green-dark: #6a931b;
+      --green-mid: #84b935;
+      --text: #2e3a1d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Verdana, Arial, sans-serif;
+      color: var(--text);
+      background: var(--green-bg) url('https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/bg.gif') center/120% no-repeat;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 16px 64px;
+    }
+
+    .topbar {
+      position: relative;
+      width: min(900px, 100%);
+      height: 28px;
+      margin-top: 48px;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 4px 10px rgba(0,0,0,.18);
+      padding: 4px 10px 4px 204px;
+      display: flex;
+      align-items: center;
+    }
+    .logo {
+      position: absolute;
+      left: 0;
+      top: -53px;
+      width: 190px;
+      height: auto;
+    }
+
+    .login-form {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .label-img {
+      height: 14px;
+      width: auto;
+      display: block;
+    }
+    .login-form input {
+      height: 18px;
+      border: 2px solid #ADE76B;
+      background: #EEFADE;
+      border-radius: 6px;
+      padding: 3px 8px;
+      min-width: 100px;
+      width: 100px;
+      font-size: 12px;
+      color: #7BA135;
+    }
+    .mode-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #4f7d1e;
+      font-weight: 700;
+      font-size: 12px;
+      white-space: nowrap;
+      letter-spacing: -0.8px;
+    }
+    .mode-inline input {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      width: 13px;
+      min-width: 13px;
+      height: 13px;
+      margin: 0;
+      padding: 0;
+      border: 2px solid #ADE76B;
+      background: #EEFADE;
+      border-radius: 2px;
+      position: relative;
+      z-index: 2;
+    }
+    .mode-check-wrap {
+      position: relative;
+      width: 13px;
+      height: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mode-ring {
+      position: absolute;
+      inset: -7px;
+      width: 27px;
+      height: 27px;
+      transform: rotate(-90deg);
+      pointer-events: none;
+      overflow: visible;
+    }
+    .mode-ring circle {
+      fill: none;
+      stroke: #e01f1f;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-dasharray: 65;
+      stroke-dashoffset: 65;
+      opacity: 0;
+    }
+    .mode-check-wrap.draw .mode-ring circle {
+      animation: drawModeRing .55s ease forwards;
+    }
+    @keyframes drawModeRing {
+      0% {
+        stroke-dashoffset: 65;
+        opacity: 1;
+      }
+      100% {
+        stroke-dashoffset: 0;
+        opacity: 1;
+      }
+    }
+    .btn {
+      border: 0;
+      border-radius: 8px;
+      padding: 2px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: .9;
+    }
+    .btn-primary { background: #f6a4ad; color: #7a1326; border: 2px solid #e78690; }
+    .btn-secondary {
+      margin-left: auto;
+      background: transparent;
+      color: #26374f;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+      text-align: center;
+      width: auto;
+      white-space: nowrap;
+      border: 0;
+      padding: 0 8px;
+    }
+
+    .layout {
+      width: min(880px, 100%);
+      display: grid;
+      grid-template-columns: 176px minmax(0, 1fr);
+      gap: 24px;
+      margin-top: 20px;
+      flex: 1;
+    }
+
+    .games {
+      height: 405px;
+      background: #fff;
+      border-radius: 10px;
+      padding: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,.15);
+      overflow: hidden;
+    }
+    .games h3 {
+      text-align: center;
+      color: #777;
+      margin: 0 0 6px;
+      font-size: 14px;
+    }
+    .games-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .game-card {
+      width: 160px;
+      height: 32px;
+      border: 2px solid #a5a5a5;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: height .75s cubic-bezier(.22,.61,.36,1);
+      background: #d8d8d8;
+    }
+    .game-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 1;
+      transition: none;
+      display: block;
+    }
+    .game-card.active {
+      height: 160px;
+    }
+    .game-card.active img { opacity: 1; }
+    .game-card.compact { height: 18px; }
+
+    .main {
+      height: 380px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,.15);
+      padding: 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      gap: 20px;
+      overflow: hidden;
+    }
+    .main h1 { margin: 0 0 8px; font-size: 24px; }
+    .main p { margin: 6px 0; font-size: 13px; line-height: 1.35; }
+    .cta { margin-top: 16px; display: flex; gap: 12px; }
+    .cta img { height: 40px; cursor: pointer; }
+    .welcome { height: 342px; max-width: 115%; max-height: 115%; object-fit: contain; justify-self: end; padding-right: 50px; }
+
+    .status {
+      width: min(880px, 100%);
+      margin-top: 8px;
+      min-height: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: #334a14;
+      font-weight: 700;
+    }
+
+    .loading {
+      width: min(880px, 100%);
+      margin-top: 60px;
+      background: #fff;
+      border-radius: 10px;
+      padding: 28px;
+      text-align: center;
+      box-shadow: 0 4px 10px rgba(0,0,0,.16);
+    }
+    .loading .bar { height: 12px; border-radius: 20px; background: #e7efda; overflow: hidden; margin-top: 10px; }
+    .loading .bar::before {
+      content: '';
+      display: block;
+      height: 100%;
+      width: 45%;
+      border-radius: 20px;
+      background: linear-gradient(90deg, #8dc83d, #b6e075);
+      animation: pulse 1s linear infinite alternate;
+    }
+    @keyframes pulse { from { transform: translateX(-25%);} to { transform: translateX(90%);} }
+
+    footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      text-align: center;
+      font-size: 11px;
+    }
+    .footer-top { background: #fff; color: #222; padding: 4px; }
+    .footer-bottom { background: var(--green-dark); color: #fff; padding: 4px; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header class="topbar" id="topbar">
+    <img class="logo" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/logo.gif" alt="Frutiparc" />
+    <form id="login-form" class="login-form" autocomplete="on">
+      <label for="username"><img class="label-img" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/nom.png" alt="Nom" /></label>
+      <input id="username" name="username" minlength="3" maxlength="20" required />
+      <label for="password"><img class="label-img" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/code.png" alt="Code" /></label>
+      <input id="password" name="password" type="password" minlength="6" maxlength="80" required />
+      <label class="mode-inline"><span class="mode-check-wrap" id="mode-ring-wrap"><input type="checkbox" id="mode-frutiz" /><svg class="mode-ring" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="10.5"></circle></svg></span>MODE FRUTIZ</label>
+      <button class="btn btn-primary" type="submit">OK</button>
+      <button class="btn btn-secondary" type="button" id="register-toggle">S'inscrire gratuitement</button>
+    </form>
+  </header>
+
+  <form id="register-form" class="topbar hidden" autocomplete="on">
+    <div class="login-form">
+      <strong>Inscription</strong>
+      <label for="reg-username">Pseudo</label>
+      <input id="reg-username" name="username" minlength="3" maxlength="20" required />
+      <label for="reg-password">Code secret</label>
+      <input id="reg-password" name="password" type="password" minlength="6" maxlength="80" required />
+      <button class="btn btn-primary" type="submit">Valider</button>
+      <button class="btn btn-secondary" type="button" id="register-cancel">Annuler</button>
+    </div>
+  </form>
+
+  <section id="loading" class="loading hidden">
+    <h2>Connexion en cours…</h2>
+    <p>Préparation de ton bureau Frutiz.</p>
+    <div class="bar"></div>
+  </section>
+
+  <section id="main-content" class="layout">
+    <aside class="games">
+      <h3 id="game-title">Sélectionner un jeu</h3>
+      <div class="games-list" id="games-list"></div>
+    </aside>
+
+    <article class="main">
+      <div>
+        <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
+        <p><strong>Découvrez l'univers fruité de Frutiparc ! <span style="color:#d82222;">Inscrivez-vous</span></strong> et jouez à nos jeux fruités : réflexion, arcade et multijoueurs.</p>
+        <p>Chaque jour, profitez de plusieurs parties gratuites pour battre les autres joueurs et grimper au classement.</p>
+        <p>Frutiparc c'est aussi le mode Frutiz : e-mail, salons de discussions, forums et blog, dans une interface fruitée.</p>
+
+        <div class="cta">
+          <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/decouvrir.gif" alt="Découvrir" />
+          <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/sinscrire.gif" alt="S'inscrire" id="cta-register" />
+        </div>
+      </div>
+      <div>
+        <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome.gif" alt="Frutiparc" class="welcome" />
+      </div>
+    </article>
+  </section>
+
+  <section id="welcome-user" class="loading hidden">
+    <h2>Bienvenue sur le bureau Frutiz</h2>
+    <p id="welcome-user-text"></p>
+    <p><a href="/legacy">Entrer dans Frutiparc</a></p>
+  </section>
+
+  <div class="status" id="status" aria-live="polite"></div>
+
+  <footer>
+    <div class="footer-top">Aide (Gaspard) · Oubli de code secret</div>
+    <div class="footer-bottom">© 2002-2007 Motion-Twin · Tous droits réservés · Frutiparc est une marque déposée de Motion Twin<br/>Partenaires : KadoKado · Dinoparc · Monlapin.net · Jeux Gratuits</div>
+  </footer>
+
+  <script>
+    const ASSET_BASE = 'https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images';
+
+    const games = [
+      { id: 'bk', name: 'Burning Kiwi', image: 'bk.png' },
+      { id: 'frutisnake', name: 'FrutiSnake 2', image: 'frutisnake.png' },
+      { id: 'mb', name: 'Motion Ball 2', image: 'mb.png' },
+      { id: 'fb', name: 'FrutiBandas', image: 'fb.png' },
+      { id: 'swapou', name: 'Swapou 2', image: 'swapou.png' },
+      { id: 'grapiz', name: 'Grapiz', image: 'grapiz.png' },
+      { id: 'kaluga', name: 'Kaluga', image: 'kaluga.png' },
+      { id: 'mwave', name: 'Mini-Wave', image: 'mwave.png' },
+      { id: 'jamajama', name: 'JamaJama', image: 'jamajama.png' },
+      { id: 'mpixiz', name: 'Mini-Pixiz', image: 'mpixiz.png' }
+    ];
+
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const topbar = document.getElementById('topbar');
+    const loadingEl = document.getElementById('loading');
+    const mainContent = document.getElementById('main-content');
+    const welcomeUser = document.getElementById('welcome-user');
+    const welcomeUserText = document.getElementById('welcome-user-text');
+    const statusEl = document.getElementById('status');
+    const gameTitle = document.getElementById('game-title');
+    const gamesList = document.getElementById('games-list');
+    const modeFrutizCheckbox = document.getElementById('mode-frutiz');
+    const modeRingWrap = document.getElementById('mode-ring-wrap');
+
+    let selectedGame = null;
+
+    function setStatus(text, error = false) {
+      statusEl.textContent = text || '';
+      statusEl.style.color = error ? '#b31111' : '#334a14';
+    }
+
+    async function postJson(url, body) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || `Erreur HTTP ${res.status}`);
+      }
+      return data;
+    }
+
+    function setLoading(visible) {
+      loadingEl.classList.toggle('hidden', !visible);
+      topbar.classList.toggle('hidden', visible);
+      registerForm.classList.add('hidden');
+      mainContent.classList.toggle('hidden', visible);
+      setStatus(visible ? 'Connexion en cours…' : '');
+    }
+
+    function renderGames() {
+      gamesList.innerHTML = '';
+      games.forEach((game) => {
+        const card = document.createElement('div');
+        card.className = 'game-card';
+        if (selectedGame === game.name) card.classList.add('active');
+        if (selectedGame && selectedGame !== game.name) card.classList.add('compact');
+
+        const img = document.createElement('img');
+        img.src = `${ASSET_BASE}/${game.image}`;
+        img.alt = game.name;
+        img.onerror = () => {
+          img.style.objectFit = 'contain';
+          img.style.background = '#c7d7ad';
+          img.style.padding = '3px';
+        };
+
+        card.appendChild(img);
+        card.addEventListener('mouseenter', () => {
+          selectedGame = game.name;
+          gameTitle.textContent = selectedGame;
+          renderGames();
+        });
+        card.addEventListener('mouseleave', () => {
+          selectedGame = null;
+          gameTitle.textContent = 'Sélectionner un jeu';
+          renderGames();
+        });
+        gamesList.appendChild(card);
+      });
+    }
+
+    document.getElementById('register-toggle').addEventListener('click', () => {
+      topbar.classList.add('hidden');
+      registerForm.classList.remove('hidden');
+      setStatus('');
+    });
+
+    document.getElementById('register-cancel').addEventListener('click', () => {
+      registerForm.classList.add('hidden');
+      topbar.classList.remove('hidden');
+      setStatus('');
+    });
+
+    document.getElementById('cta-register').addEventListener('click', () => {
+      topbar.classList.add('hidden');
+      registerForm.classList.remove('hidden');
+      setStatus('Inscris-toi pour rejoindre Frutiparc !');
+    });
+
+    registerForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const body = Object.fromEntries(new FormData(registerForm).entries());
+      setStatus('Création du compte…');
+      try {
+        await postJson('/api/auth/register', body);
+        setStatus('Compte créé. Tu peux te connecter.', false);
+        registerForm.classList.add('hidden');
+        topbar.classList.remove('hidden');
+      } catch (error) {
+        setStatus(error.message || 'Inscription impossible.', true);
+      }
+    });
+
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const body = Object.fromEntries(new FormData(loginForm).entries());
+      setStatus('Connexion...');
+      try {
+        const data = await postJson('/api/auth/login', body);
+        localStorage.setItem('currentUser', JSON.stringify({ username: body.username }));
+        window.location.href = data.redirect || '/legacy';
+      } catch (error) {
+        setStatus(error.message || 'Les identifiants sont incorrects.', true);
+      }
+    });
+
+    modeFrutizCheckbox.addEventListener('click', (event) => {
+      event.preventDefault();
+      modeFrutizCheckbox.checked = false;
+      modeRingWrap.classList.remove('draw');
+      // Force reflow to replay the ring drawing animation on every click.
+      void modeRingWrap.offsetWidth;
+      modeRingWrap.classList.add('draw');
+    });
+
+    renderGames();
+  </script>
+</body>
+</html>
