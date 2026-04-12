@@ -1809,8 +1809,18 @@ const channels = {
   bienvenue: { topic: 'Bienvenue sur Frutiparc !', users: new Set() },
 };
 
-// ── Virtual test user: DebugBot (always connected on pomme) ──
-users['DebugBot'] = {
+// ── Virtual users / PNJ (always connected on pomme) ──
+const CONNECTED_NPCS = new Set([
+  'DebugBot',
+  'Renault',
+  'tigrenoir',
+  'SakurAmalia',
+  'EmiLicorne',
+  'kasparov',
+  'Gaspard',
+]);
+
+users.DebugBot = {
   pass: '',
   xp: 1000000,
   kikooz: 100,
@@ -1825,8 +1835,167 @@ users['DebugBot'] = {
   prefs: '',
   isModerator: false,
   needsBouille: false,
+  city: 'Frutiparc',
+  realJob: 'Bot de debug',
+  firstName: 'Debug',
+  lastName: 'Bot',
+  comment: 'Bot de test connecté en permanence.',
 };
-channels.pomme.users.add('DebugBot');
+
+users.Renault = {
+  pass: '',
+  xp: 424242,
+  kikooz: 100,
+  fbouille: '00000d0r020f0l0000000000',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'M',
+  birthday: '1991-01-01',
+  country: '1',
+  region: '0',
+  countryIndex: '1',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: true,
+  needsBouille: false,
+  city: 'Namur',
+  realJob: 'Blagueur',
+  firstName: 'C-A',
+  lastName: 'Run',
+  comment: 'Frutimarié à tigrenoir, frutipapa de SakurAmalia et EmiLicorne',
+  siteUrl: 'http://renault.up.md/FrutiStats/',
+};
+
+users.tigrenoir = {
+  pass: '',
+  xp: 33,
+  kikooz: 100,
+  fbouille: '0004060N02000O030y0t0j00',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'F',
+  birthday: '1992-01-01',
+  country: '1',
+  region: '0',
+  countryIndex: '1',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  city: 'Namur',
+  realJob: 'Fleuriste',
+  firstName: 'J',
+  lastName: 'Run',
+  comment: 'Frutimariée à Renault, frutimaman de SakurAmalia et EmiLicorne',
+  siteUrl: '',
+};
+
+users.SakurAmalia = {
+  pass: '',
+  xp: 5,
+  kikooz: 100,
+  fbouille: '0004040J020k0P00000t0j00',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'F',
+  birthday: '2019-01-01',
+  country: '1',
+  region: '0',
+  countryIndex: '1',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  city: 'Namur',
+  realJob: 'Dresseuse Pokémon',
+  firstName: 'A',
+  lastName: 'Run',
+  comment: 'Frutifille de tigrenoir et Renault, frutisoeur de EmiLicorne',
+  siteUrl: '',
+};
+
+users.EmiLicorne = {
+  pass: '',
+  xp: 2,
+  kikooz: 100,
+  fbouille: '0004070K020n0e0a000O0000',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'F',
+  birthday: '2022-01-01',
+  country: '1',
+  region: '0',
+  countryIndex: '1',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  mutedUntil: '2030-01-01 00:00:00',
+  city: 'Namur',
+  realJob: 'Dresseuse de dragons',
+  firstName: 'É',
+  lastName: 'Run',
+  comment: 'Frutifille de tigrenoir et Renault, frutisoeur de SakurAmalia',
+  siteUrl: '',
+};
+
+users.kasparov = {
+  pass: '',
+  xp: 5353,
+  kikooz: 100,
+  fbouille: '0005000Q010t0a04010t0w00',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'M',
+  birthday: '1993-01-01',
+  country: '0',
+  region: '2',
+  countryIndex: '0',
+  regionIndex: '2',
+  prefs: '',
+  isModerator: true,
+  needsBouille: false,
+  city: 'Cachan',
+  realJob: 'Détective',
+  firstName: 'Rémi',
+  lastName: 'Sans famille',
+  comment: '[Frutimarié à Bee le Vendredi 19 Decembre 2008 à 21h42 et 6 secondes.] Вив каспаров [19:38:04] Babylou: Ah oui tu as raison kaspa [Animateur du 29 Aout 2007 au 18 Janvier 2009] [Modérateur depuis le 23 Janvier 2008]',
+  siteUrl: 'http://spikeo.no-ip.org/',
+};
+
+users.Gaspard = {
+  pass: '',
+  xp: 9999999,
+  kikooz: 100,
+  fbouille: '0n0000000000000000000000',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'M',
+  birthday: '2004-03-24',
+  country: '0',
+  region: '0',
+  countryIndex: '0',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  city: '',
+  realJob: '',
+  firstName: 'Gaspard',
+  lastName: '',
+  comment: '',
+  siteUrl: '',
+};
+
+for (const npc of CONNECTED_NPCS) {
+  channels.pomme.users.add(npc);
+}
 
 const xmlSocketClients = new Map(); // socket -> { sid, username, logged, channels: Set }
 
@@ -1888,13 +2057,13 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
     }
   }
 
-  // Respawn DebugBot after 5 seconds if it was kicked
-  if (targetUser === 'DebugBot') {
+  // Respawn connected PNJ after 5 seconds if one is kicked
+  if (CONNECTED_NPCS.has(targetUser)) {
     setTimeout(() => {
       if (channels[channelName]) {
-        channels[channelName].users.add('DebugBot');
-        // Broadcast userjoined so other clients see DebugBot reappear
-        broadcastToChannel(channelName, `<${CMD.userjoined} u="DebugBot" g="${escapeXml(channelName)}" />`);
+        channels[channelName].users.add(targetUser);
+        // Broadcast userjoined so other clients see PNJ reappear
+        broadcastToChannel(channelName, `<${CMD.userjoined} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
       }
     }, 5000);
   }
