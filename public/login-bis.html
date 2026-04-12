@@ -78,6 +78,9 @@
       letter-spacing: -0.8px;
     }
     .mode-inline input {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
       width: 13px;
       min-width: 13px;
       height: 13px;
@@ -187,7 +190,7 @@
       border-radius: 8px;
       overflow: hidden;
       cursor: pointer;
-      transition: height .75s cubic-bezier(.22,.61,.36,1);
+      transition: height .5s cubic-bezier(.22,.61,.36,1);
       background: #d8d8d8;
     }
     .game-card img {
@@ -397,8 +400,8 @@
       games.forEach((game) => {
         const card = document.createElement('div');
         card.className = 'game-card';
+        if (selectedGame) card.classList.add('compact');
         if (selectedGame === game.name) card.classList.add('active');
-        if (selectedGame && selectedGame !== game.name) card.classList.add('compact');
 
         const img = document.createElement('img');
         img.src = `${ASSET_BASE}/${game.image}`;
