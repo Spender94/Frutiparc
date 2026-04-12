@@ -83,9 +83,9 @@
       height: 13px;
       margin: 0;
       padding: 0;
-      border: 1px solid #9faf8f;
-      background: #fff;
-      border-radius: 3px;
+      border: 2px solid #ADE76B;
+      background: #EEFADE;
+      border-radius: 10px;
       position: relative;
       z-index: 2;
     }
@@ -469,7 +469,9 @@
       }
     });
 
-    modeFrutizCheckbox.addEventListener('click', () => {
+    modeFrutizCheckbox.addEventListener('click', (event) => {
+      event.preventDefault();
+      modeFrutizCheckbox.checked = false;
       modeRingWrap.classList.remove('draw');
       // Force reflow to replay the ring drawing animation on every click.
       void modeRingWrap.offsetWidth;
