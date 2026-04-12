@@ -307,11 +307,11 @@ const DEFAULT_BOUILLE_LIST = [
 ];
 
 const DEFAULT_WALLPAPERS = [
-  { u: 'moutarde',       n: 'Chavelier moutarde',    url: 'wal/ch.jpg', color: '4E5464;' },
+  { u: 'moutarde',       n: 'Chevalier moutarde',    url: 'wal/ch.jpg', color: '4E5464;' },
   { u: 'chorale',        n: 'Chorale Frutiparc',     url: 'wal/fp.jpg', color: 'ADE76B;' },
   { u: 'pixizchristmas', n: 'Noël Pixiz',            url: 'wal/ma.jpg', color: 'ADE76B;' },
   { u: 'snakechristmas', n: 'Noël Frutisnake',       url: 'wal/no.jpg', color: 'ADE76B;' },
-  { u: 'pixiz',          n: 'Pixiz',                 url: 'wal/pi.jpg', color: 'F9D190;' },
+  { u: 'pixiz',          n: 'Mini-Pixiz',            url: 'wal/pi.jpg', color: 'F9D190;' },
   { u: 'nostromo',       n: 'Mini-Wave Nostromo',    url: 'wal/pl.jpg', color: '000044;' },
   { u: 'ministar',       n: 'Mini-Wave Mini-Star',   url: 'wal/va.jpg', color: '000044;' },
   { u: 'utopiz',         n: 'Utopiz',                url: 'wal/ut.jpg', color: 'F6AFA9;' },
@@ -323,6 +323,7 @@ const DEFAULT_ACCESSORIES = [
   { u: 'bananocle', n: 'Bananocle', suffix: '6010k0w0g' },
   { u: 'beaute',    n: 'Beauté',    suffix: 'b000k0w0g' },
   { u: 'normal',    n: 'Normal',    suffix: '000000000' },
+  { u: 'Kiwix',    n: 'Kiwix',    suffix: '30x000000' },
 ];
 
 // ─────────────────────────────────────────────
@@ -348,12 +349,22 @@ const SHOP_PACKS = [
     name: 'Chapeau de shérif',
     category: 'Accessoires',
     price: 60,
-    description: 'Pour faire régner la loi à Frutiparc. Un classique indémodable de la panoplie du justicier.',
+    description: 'Pour faire régner la loi dans les contrées de Legumia. Un classique indémodable de la panoplie du justicier.',
     suffix9: '4020B0000',
     comment: 'Édition test',
   },
-  {
+    {
     id: 103,
+    name: 'Casquette Anim',
+    category: 'Accessoires',
+    price: 20,
+    description: 'Pour faire régner la loi dans les contrées de Legumia. Un classique indémodable de la panoplie du justicier.',
+    suffix9: '30y0t0j00',
+    comment: 'Édition test',
+  },
+
+  {
+    id: 104,
     name: 'Masque de ski',
     category: 'Accessoires',
     price: 60,
