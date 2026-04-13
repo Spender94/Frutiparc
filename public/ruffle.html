@@ -126,8 +126,15 @@
                 } catch (e) {}
 
                 console.log('[FETCH]', url);
-                return maybeAutoLaunchFrusion(url, _origFetch.call(this, input, init));
-            };
+
+if (input instanceof Request) {
+    return maybeAutoLaunchFrusion(
+        url,
+        _origFetch.call(this, new Request(url, input), init)
+    );
+}
+
+return maybeAutoLaunchFrusion(url, _origFetch.call(this, url, init));
 
             const _origXHROpen = XMLHttpRequest.prototype.open;
             XMLHttpRequest.prototype.open = function(method, url, ...rest) {
