@@ -31,54 +31,27 @@
 <body>
   <div id="player"></div>
 
-  <script>
-    (async function () {
-      const params = new URLSearchParams(window.location.search);
-      const wsOrigin = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+ <script>
+(async () => {
+  const qs = new URLSearchParams(window.location.search);
+  const flashvars = Object.fromEntries(qs.entries());
 
-      const sid = params.get("sid") || "debug";
-      const game = params.get("game") || "kaluga";
-      const swf = params.get("swf") || "/swf/games/kaluga/kaluga.swf";
-      const width = params.get("width") || params.get("w") || "640";
-      const height = params.get("height") || params.get("h") || "480";
-      const mode = params.get("mode") || "i";
+  const container = document.getElementById("player");
+  const ruffle = window.RufflePlayer?.newest();
+  if (!ruffle) throw new Error("Ruffle not loaded");
 
-      const playerHost = document.getElementById("player");
-      const ruffle = window.RufflePlayer.newest();
-      const player = ruffle.createPlayer();
-      player.style.width = "100%";
-      player.style.height = "100%";
-      playerHost.appendChild(player);
+  const player = ruffle.createPlayer();
+  player.style.width = (qs.get("width") || "640") + "px";
+  player.style.height = (qs.get("height") || "480") + "px";
+  container.appendChild(player);
 
-      await player.load({
-        url: "/frusion_client.swf",
-        autoplay: "on",
-        allowScriptAccess: true,
-        allowNetworking: "all",
-        openUrlMode: "allow",
-        quality: "high",
-        base: `${window.location.origin}/`,
-        socketProxy: [
-          { host: "localhost", port: 5000, proxyUrl: wsOrigin },
-          { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin },
-          { host: "www.beta.frutiparc.com", port: 5000, proxyUrl: wsOrigin },
-          { host: "www.frutiparc.com", port: 5000, proxyUrl: wsOrigin }
-        ],
-        parameters: {
-          sid: sid,
-          domain: `${window.location.host}/./`,
-          gameName: game,
-          swf: swf,
-          u: swf.replace(/^\/swf\//, ""),
-          id: swf.replace(/^\/swf\//, ""),
-          width: width,
-          height: height,
-          w: width,
-          h: height,
-          mode: mode
-        }
-      });
-    })();
-  </script>
+  await player.load({
+    url: "/frusion_client.swf?" + qs.toString(),
+    parameters: flashvars,
+    autoplay: "on",
+    unmuteOverlay: "hidden"
+  });
+})();
+</script>
 </body>
 </html>
