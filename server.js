@@ -2244,6 +2244,21 @@ function handleCBeeMessage(socket, rawXml) {
       break;
     }
 
+    case 'invite': {
+  // Frusion overload: <ab d="..."> is not a chat invite here, it's a game "use disc" command
+  if (msg.attrs.d !== undefined) {
+    console.log('[FRUSION] useDisc request for', msg.attrs.d);
+
+    // Minimal positive response expected by FrusionClient.onUseDisc()
+    sendToClient(socket, `<ab s="1"><daily>ok</daily></ab>`);
+    break;
+  }
+
+  // If you later need the original chat invite behavior, handle it here.
+  console.log('[CBee] invite/ab received outside Frusion context:', msg.attrs);
+  break;
+}
+
     // ── ping: just echo back ──
     case 'ping': {
       sendToClient(socket, `<${CMD.ping} />`);
