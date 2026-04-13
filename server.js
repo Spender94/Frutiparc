@@ -2203,6 +2203,8 @@ function getStatusCode(user) {
 function buildChannelListXml() {
   let inner = '';
   for (const [name, ch] of Object.entries(channels)) {
+    // Hide private message channels from the public room list
+    if (ch.private) continue;
     const desc = ch.desc || `Salon ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
     inner += `<g g="${name}" n="${ch.users.size}"><desc>${escapeXml(desc)}</desc></g>`;
   }
@@ -2254,8 +2256,49 @@ function handleCBeeMessage(socket, rawXml) {
     break;
   }
 
-  // If you later need the original chat invite behavior, handle it here.
-  console.log('[CBee] invite/ab received outside Frusion context:', msg.attrs);
+  // ── Channel invite: /invite <user> in a salon ──
+  const invTarget = msg.attrs.u || '';
+  const invGroup = msg.attrs.g || '';
+  const invReqId = msg.attrs.r || '';
+  const inviter = client.username || '';
+
+  if (!invTarget || !invGroup || !inviter) {
+    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTarget)}" r="${escapeXml(invReqId)}" k="1" />`);
+    break;
+  }
+
+  const invChannel = channels[invGroup];
+  if (!invChannel) {
+    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTarget)}" r="${escapeXml(invReqId)}" k="202" />`);
+    break;
+  }
+
+  const invTargetName = resolveKnownUsername(normalizeUsername(invTarget));
+  if (!invTargetName || !users[invTargetName]) {
+    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTarget)}" r="${escapeXml(invReqId)}" k="201" />`);
+    break;
+  }
+
+  // Check if target is already in the channel
+  if (invChannel.users.has(invTargetName)) {
+    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTargetName)}" r="${escapeXml(invReqId)}" k="205" />`);
+    break;
+  }
+
+  // Success: acknowledge to sender
+  sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTargetName)}" r="${escapeXml(invReqId)}" />`);
+
+  // Forward invite to target (without r attribute so listener.main.onInvite processes it)
+  const invTopic = invChannel.topic || invChannel.desc || invGroup;
+  const invPass = invChannel.pass || '';
+  for (const targetSock of getSocketsForUsername(invTargetName)) {
+    sendToClient(
+      targetSock,
+      `<${CMD.invite} u="${escapeXml(inviter)}" g="${escapeXml(invGroup)}" p="${escapeXml(invPass)}">${escapeXml(invTopic)}</${CMD.invite}>`
+    );
+  }
+
+  console.log(`[CBee]  ${inviter} invited ${invTargetName} to channel ${invGroup}`);
   break;
 }
 
@@ -2688,12 +2731,59 @@ case 'fbouille': {
 
 case 'createchannel': {
   const otherUserRaw = msg.attrs.u || '';
-  const otherUser = resolveKnownUsername(normalizeUsername(otherUserRaw));
   const requester = client.username || '';
-  const title = msg.content || otherUser || 'Discussion privée';
+  const reqId = msg.attrs.r || '';
+  const title = msg.content || '';
 
-  if (!otherUser || !requester) {
-    sendToClient(socket, `<${CMD.error} />`);
+  if (!requester) {
+    sendToClient(socket, `<${CMD.createchannel} k="1" r="${escapeXml(reqId)}" />`);
+    break;
+  }
+
+  // ── Public channel creation (no "u" attribute) ──
+  if (!otherUserRaw) {
+    if (!title.trim()) {
+      sendToClient(socket, `<${CMD.createchannel} k="1" r="${escapeXml(reqId)}" />`);
+      break;
+    }
+
+    // Generate unique channel ID
+    const slug = title.trim().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // strip accents
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').substring(0, 30);
+    let channelId = `ch_${slug}`;
+    let suffix = 1;
+    while (channels[channelId]) {
+      channelId = `ch_${slug}_${suffix++}`;
+    }
+
+    channels[channelId] = {
+      desc: title.trim(),
+      topic: title.trim(),
+      users: new Set(),
+      creator: requester,
+    };
+
+    // Auto-join the creator
+    channels[channelId].users.add(requester);
+    client.channels.add(channelId);
+
+    console.log(`[CBee]  Channel "${channelId}" created by ${requester} (topic: ${title.trim()})`);
+
+    // Response: <r g="channelId" r="requestId">topic</r>
+    sendToClient(
+      socket,
+      `<${CMD.createchannel} g="${channelId}" r="${escapeXml(reqId)}">${escapeXml(title.trim())}</${CMD.createchannel}>`
+    );
+    break;
+  }
+
+  // ── Private channel creation (with "u" attribute) ──
+  const otherUser = resolveKnownUsername(normalizeUsername(otherUserRaw));
+  const privateTitle = title || otherUser || 'Discussion privée';
+
+  if (!otherUser) {
+    sendToClient(socket, `<${CMD.createchannel} k="201" u="${escapeXml(otherUserRaw)}" r="${escapeXml(reqId)}" />`);
     break;
   }
 
@@ -2704,7 +2794,7 @@ case 'createchannel': {
   if (!channels[privateGroup]) {
     channels[privateGroup] = {
       desc: `Discussion privée ${requester}/${otherUser}`,
-      topic: title,
+      topic: privateTitle,
       users: new Set([requester, otherUser]),
       participants: [requester, otherUser],
       private: true,
@@ -2718,7 +2808,7 @@ case 'createchannel': {
   // Accusé de réception de l’ouverture de la discussion privée
   sendToClient(
     socket,
-    `<${CMD.createchannel} u="${escapeXml(otherUser)}" g="${privateGroup}" p="${privatePass}">${escapeXml(title)}</${CMD.createchannel}>`
+    `<${CMD.createchannel} u="${escapeXml(otherUser)}" g="${privateGroup}" p="${privatePass}">${escapeXml(privateTitle)}</${CMD.createchannel}>`
   );
 
   // Invite "privée" envoyée au demandeur pour ouvrir immédiatement la box
