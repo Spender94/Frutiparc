@@ -1133,7 +1133,7 @@ app.get('/do/ld', (req, res) => {
     .join('');
 
   // Keep legacy root node name/attrs expected by Frusion ("game", not "r").
-  const xml = `<game t="${escapeXml(disc.discType)}" pm="single" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
+  const xml = `<game t="${escapeXml(disc.discType)}" pm="preview" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
   if (VERBOSE_FRUSION_LOGS) {
     console.log(`[FRUSION] do/ld hit launch_id=${launchId || '-'} u=${discUid} resolved=${resolvedDiscUid} -> ${disc.gameId} props=${disc.props}`);
   }
