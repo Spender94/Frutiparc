@@ -19,135 +19,179 @@
         }
     </style>
 
-   <script>
-  (async function(){
-    const params = new URLSearchParams(window.location.search);
-    const APP_ORIGIN = window.location.origin;
-    const domainMap = {
-      'www.beta.frutiparc.com': APP_ORIGIN,
-      'beta.frutiparc.com': APP_ORIGIN,
-      'www.frutiparc.com': APP_ORIGIN,
-      'www.frutiparc.net': APP_ORIGIN,
-      'swf.frutiparc.com': APP_ORIGIN,
-    };
-
-    const rewriteLegacyUrl = (rawUrl) => {
-      let url = String(rawUrl || '');
-      if (!url) return url;
-
-      // Corrige les concaténations du type:
-      // https://frutiparc-1.onrender.comgames/kaluga/kaluga.swf
-      if (
-        url.startsWith(APP_ORIGIN) &&
-        !url.startsWith(`${APP_ORIGIN}/`) &&
-        !url.startsWith(`${APP_ORIGIN}:`)
-      ) {
-        url = url.replace(APP_ORIGIN, `${APP_ORIGIN}/`);
-      }
-
-      try {
-        const parsed = new URL(url, window.location.origin);
-        const host = parsed.hostname + (parsed.port ? `:${parsed.port}` : '');
-
-        for (const [domain, target] of Object.entries(domainMap)) {
-          if (parsed.hostname === domain || host === domain) {
-            return target + parsed.pathname + parsed.search;
-          }
-        }
-
-        if (parsed.origin === APP_ORIGIN) {
-          // Les SWF de jeux sont servis côté Node sous /swf/games/...
-          if (parsed.pathname.startsWith('/games/')) {
-            return APP_ORIGIN + '/swf' + parsed.pathname + parsed.search;
-          }
-
-          if (parsed.pathname.startsWith('/betawww/')) {
-            return APP_ORIGIN + parsed.pathname.replace('/betawww/', '/') + parsed.search;
-          }
-
-          if (parsed.pathname.startsWith('/betaswf/')) {
-            return APP_ORIGIN + parsed.pathname.replace('/betaswf/', '/swf/') + parsed.search;
-          }
-
-          if (parsed.pathname.startsWith('/sw/')) {
-            return APP_ORIGIN + parsed.pathname.replace('/sw/', '/swf/') + parsed.search;
-          }
-        }
-
-        return parsed.toString();
-      } catch {
-        return url;
-      }
-    };
-
-    const _origFetch = window.fetch.bind(window);
-    window.fetch = function(input, init) {
-      const rawUrl =
-        typeof input === 'string'
-          ? input
-          : (input && input.url ? input.url : String(input));
-
-      const rewritten = rewriteLegacyUrl(rawUrl);
-      console.log('[FRUSION FETCH]', rawUrl, '->', rewritten);
-      return _origFetch(rewritten, init);
-    };
-
-    const _origXhrOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-      const rewritten = rewriteLegacyUrl(url);
-      console.log('[FRUSION XHR]', url, '->', rewritten);
-      return _origXhrOpen.call(this, method, rewritten, ...rest);
-    };
-
-    const wsOrigin = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
-    const ruffle = window.RufflePlayer.newest();
-    const player = ruffle.createPlayer();
-    const width = Number(params.get('width') || params.get('w') || 640) || 640;
-    const height = Number(params.get('height') || params.get('h') || 480) || 480;
-    const wrap = document.getElementById('player-wrap');
-    const mount = document.getElementById('player');
-    wrap.style.width = `${width}px`;
-    wrap.style.height = `${height}px`;
-    mount.style.width = `${width}px`;
-    mount.style.height = `${height}px`;
-    document.documentElement.style.setProperty('--frusion-w', `${width}px`);
-    document.documentElement.style.setProperty('--frusion-h', `${height}px`);
-    mount.appendChild(player);
-
-    const flashVars = {};
-    for (const [k,v] of params.entries()) flashVars[k] = v;
-    if (!flashVars.sid) flashVars.sid = 'debug';
-    if (!flashVars.domain) flashVars.domain = `${window.location.host}/./`;
-
-    await player.load({
-      url: '/frusion_client.swf',
-      autoplay: 'on',
-      allowScriptAccess: true,
-      allowNetworking: 'all',
-      openUrlMode: 'allow',
-      quality: 'high',
-      letterbox: 'off',
-      base: `${window.location.origin}/`,
-      socketProxy: [
-        { host: 'localhost', port: 5000, proxyUrl: wsOrigin },
-        { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin },
-      ],
-      parameters: flashVars,
-    });
-  })();
-</script>
     <script>
-        // Configure Ruffle BEFORE loading the core — this is the documented
-        // way to register external font sources. Setting these options on
-        // the global config ensures Ruffle picks them up during initialization.
+        (function () {
+            const APP_ORIGIN = window.location.origin;
+            const APP_HOST = window.location.host;
+
+            const domainMap = {
+                "www.beta.frutiparc.com": APP_ORIGIN,
+                "beta.frutiparc.com": APP_ORIGIN,
+                "www.frutiparc.com": APP_ORIGIN,
+                "www.frutiparc.net": APP_ORIGIN,
+                "swf.frutiparc.com": APP_ORIGIN
+            };
+
+            function rewriteLegacyUrl(rawUrl) {
+                let url = String(rawUrl || "");
+                if (!url) return url;
+
+                if (
+                    url.startsWith(APP_ORIGIN) &&
+                    !url.startsWith(`${APP_ORIGIN}/`) &&
+                    !url.startsWith(`${APP_ORIGIN}:`)
+                ) {
+                    url = url.replace(APP_ORIGIN, `${APP_ORIGIN}/`);
+                }
+
+                try {
+                    const parsed = new URL(url, window.location.origin);
+                    const host = parsed.hostname + (parsed.port ? `:${parsed.port}` : "");
+
+                    for (const [domain, target] of Object.entries(domainMap)) {
+                        if (parsed.hostname === domain || host === domain) {
+                            return target + parsed.pathname + parsed.search;
+                        }
+                    }
+
+                    if (parsed.origin === APP_ORIGIN) {
+                        if (parsed.pathname.startsWith("/games/")) {
+                            return APP_ORIGIN + "/swf" + parsed.pathname + parsed.search;
+                        }
+
+                        if (parsed.pathname.startsWith("/betawww/")) {
+                            return APP_ORIGIN + parsed.pathname.replace("/betawww/", "/") + parsed.search;
+                        }
+
+                        if (parsed.pathname.startsWith("/betaswf/")) {
+                            return APP_ORIGIN + parsed.pathname.replace("/betaswf/", "/swf/") + parsed.search;
+                        }
+
+                        if (parsed.pathname.startsWith("/sw/")) {
+                            return APP_ORIGIN + parsed.pathname.replace("/sw/", "/swf/") + parsed.search;
+                        }
+                    }
+
+                    return parsed.toString();
+                } catch {
+                    return url;
+                }
+            }
+
+            function parseGameLaunch(xmlText) {
+                const gameTagMatch = xmlText.match(/<game\b[^>]*>/i);
+                if (!gameTagMatch) return null;
+
+                const gameTag = gameTagMatch[0];
+                const firstSwfTag = xmlText.match(/<s\b[^>]*>/i);
+
+                const getAttr = (tag, name) => {
+                    if (!tag) return "";
+                    const m = tag.match(new RegExp(name + '="([^"]*)"', "i"));
+                    return m ? m[1] : "";
+                };
+
+                const props = getAttr(gameTag, "p");
+                const width = (props.match(/w=(\d+)/i) || [null, "640"])[1];
+                const height = (props.match(/h=(\d+)/i) || [null, "480"])[1];
+                const mode = (props.match(/m=([a-z])/i) || [null, "i"])[1];
+
+                let swfPath = getAttr(firstSwfTag ? firstSwfTag[0] : "", "u") || getAttr(gameTag, "u");
+                if (!swfPath) return null;
+
+                if (!swfPath.startsWith("/")) {
+                    swfPath = "/swf/" + swfPath.replace(/^\/+/, "");
+                }
+
+                return {
+                    gameName: getAttr(gameTag, "n") || "",
+                    discType: getAttr(gameTag, "t") || "0",
+                    swfPath,
+                    width,
+                    height,
+                    mode
+                };
+            }
+
+            function maybeAutoLaunchGame(requestUrl, responsePromise) {
+                return Promise.resolve(responsePromise).then((resp) => {
+                    try {
+                        const isDoLd = /\/do\/ld(\?|$)/.test(requestUrl || "");
+                        if (!isDoLd) return resp;
+
+                        resp.clone().text().then((xmlText) => {
+                            const info = parseGameLaunch(xmlText);
+                            if (!info) return;
+
+                            const currentParams = new URLSearchParams(window.location.search);
+                            const sid = currentParams.get("sid") || "";
+
+                            const popupUrl = new URL("/game-popup.html", window.location.origin);
+                            popupUrl.searchParams.set("sid", sid);
+                            popupUrl.searchParams.set("game", info.gameName);
+                            popupUrl.searchParams.set("disc_type", info.discType);
+                            popupUrl.searchParams.set("swf", info.swfPath);
+                            popupUrl.searchParams.set("width", info.width);
+                            popupUrl.searchParams.set("height", info.height);
+                            popupUrl.searchParams.set("w", info.width);
+                            popupUrl.searchParams.set("h", info.height);
+                            popupUrl.searchParams.set("mode", info.mode);
+
+                            console.log("[GAME autolaunch]", popupUrl.toString());
+
+                            window.open(
+                                popupUrl.toString(),
+                                "frutiparc_game",
+                                `width=${info.width},height=${info.height},resizable=yes,scrollbars=no`
+                            );
+                        }).catch(() => {});
+                    } catch (e) {
+                        console.error("[GAME autolaunch error]", e);
+                    }
+
+                    return resp;
+                });
+            }
+
+            const _origFetch = window.fetch.bind(window);
+            window.fetch = function (input, init) {
+                const rawUrl =
+                    typeof input === "string"
+                        ? input
+                        : (input && input.url ? input.url : String(input));
+
+                const rewritten = rewriteLegacyUrl(rawUrl);
+                console.log("[FRUSION FETCH]", rawUrl, "->", rewritten);
+
+                let finalInput = rewritten;
+
+                if (typeof Request !== "undefined" && input instanceof Request) {
+                    finalInput = new Request(rewritten, input);
+                }
+
+                return maybeAutoLaunchGame(rewritten, _origFetch(finalInput, init));
+            };
+
+            const _origXhrOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+                const rewritten = rewriteLegacyUrl(url);
+                console.log("[FRUSION XHR]", url, "->", rewritten);
+                return _origXhrOpen.call(this, method, rewritten, ...rest);
+            };
+
+            window.__rewriteLegacyUrl = rewriteLegacyUrl;
+        })();
+    </script>
+
+    <script>
         window.RufflePlayer = window.RufflePlayer || {};
         window.RufflePlayer.config = {
             fontSources: [
                 `${window.location.origin}/legacy/fonts.swf`
             ],
             defaultFonts: {
-                sans:       ["Verdana", "verdana"],
-                serif:      ["Times New Roman", "TimesNewRoman"],
+                sans: ["Verdana", "verdana"],
+                serif: ["Times New Roman", "TimesNewRoman"],
                 typewriter: ["Verdana", "verdana"]
             }
         };
@@ -159,26 +203,43 @@
     <div id="player-container"></div>
 
     <script>
-        // Disable legacy popup launch hook (keeps game launch in-place).
-        window.fp_goURLResize = function(_url, _mode, _w, _h) {
-            console.log("[Frusion] popup launch suppressed", _url);
-            return true;
+        window.fp_goURLResize = function (url, mode, w, h) {
+            try {
+                const popupUrl = new URL("/game-popup.html", window.location.origin);
+                popupUrl.searchParams.set("legacy_url", String(url || ""));
+                popupUrl.searchParams.set("mode", String(mode || ""));
+                popupUrl.searchParams.set("width", String(w || 640));
+                popupUrl.searchParams.set("height", String(h || 480));
+
+                console.log("[fp_goURLResize]", url, "->", popupUrl.toString());
+
+                window.open(
+                    popupUrl.toString(),
+                    "frutiparc_game",
+                    `width=${w || 640},height=${h || 480},resizable=yes,scrollbars=no`
+                );
+                return true;
+            } catch (e) {
+                console.error("[fp_goURLResize error]", e);
+                return false;
+            }
         };
-        window.fp_openHisto = function(user) {
-            const u = encodeURIComponent(String(user || ''));
-            window.open(`/legacy?histo=${u}`, '_blank', 'noopener,noreferrer');
+
+        window.fp_openHisto = function (user) {
+            const u = encodeURIComponent(String(user || ""));
+            window.open(`/legacy?histo=${u}`, "_blank", "noopener,noreferrer");
             return true;
         };
 
         function normalizeAvatarState(value) {
-            let s = String(value || '').replace(/\D/g, '');
+            let s = String(value || "").replace(/\D/g, "");
 
-            if (s.length < 24) s = s.padEnd(24, '0');
+            if (s.length < 24) s = s.padEnd(24, "0");
             if (s.length > 24) s = s.slice(0, 24);
 
             const family = s.slice(0, 2);
-            if (family !== '00' && family !== '01') {
-                s = '00' + s.slice(2);
+            if (family !== "00" && family !== "01") {
+                s = "00" + s.slice(2);
             }
 
             return s;
@@ -186,25 +247,21 @@
 
         function normalizeExpression(value) {
             const n = Number(value);
-            if (!Number.isFinite(n)) return '0';
+            if (!Number.isFinite(n)) return "0";
             return String(Math.max(0, Math.min(12, Math.floor(n))));
         }
 
         window.addEventListener("DOMContentLoaded", async () => {
-            const wsOrigin = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+            const wsOrigin = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
             const urlParams = new URLSearchParams(window.location.search);
 
-            const sid = urlParams.get('sid') || '';
-            const s = normalizeAvatarState(
-                urlParams.get('s') || '000000000000000000000000'
-            );
-            const e = normalizeExpression(
-                urlParams.get('e') || '0'
-            );
+            const sid = urlParams.get("sid") || "";
+            const s = normalizeAvatarState(urlParams.get("s") || "000000000000000000000000");
+            const e = normalizeExpression(urlParams.get("e") || "0");
 
-            console.log('[Ruffle] sid =', sid);
-            console.log('[Ruffle] s   =', s);
-            console.log('[Ruffle] e   =', e);
+            console.log("[Ruffle] sid =", sid);
+            console.log("[Ruffle] s   =", s);
+            console.log("[Ruffle] e   =", e);
 
             const ruffle = window.RufflePlayer.newest();
             const player = ruffle.createPlayer();
@@ -219,8 +276,6 @@
                 quality: "high",
                 parameters: {
                     sid: sid,
-                    // Keep a slash-stable suffix: some legacy concatenations
-                    // drop one trailing slash before appending filenames.
                     domain: `${window.location.host}/./`,
                     s: s,
                     e: e
@@ -228,10 +283,8 @@
                 socketProxy: [
                     { host: "localhost", port: 5000, proxyUrl: wsOrigin },
                     { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin },
-                    // FrusionServer may connect to hardcoded legacy hosts for FrutiScore
                     { host: "www.beta.frutiparc.com", port: 5000, proxyUrl: wsOrigin },
                     { host: "www.frutiparc.com", port: 5000, proxyUrl: wsOrigin },
-                    // Catch-all for any port (FrutiScore uses same port as FrutiChat)
                     { host: "www.beta.frutiparc.com", port: 2000, proxyUrl: wsOrigin },
                     { host: "www.frutiparc.com", port: 2000, proxyUrl: wsOrigin },
                     { host: "localhost", port: 2000, proxyUrl: wsOrigin },
@@ -243,6 +296,5 @@
             });
         });
     </script>
-
 </body>
 </html>
