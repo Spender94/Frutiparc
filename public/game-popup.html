@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Jeu Frutiparc</title>
+  <style>
+    html, body {
+      margin: 0;
+      background: #000;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    #player {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+</head>
+<body>
+  <div id="player"></div>
+
+  <script>
+    (async function () {
+      const params = new URLSearchParams(window.location.search);
+      const swf = params.get('swf');
+      const sid = params.get('sid') || '';
+      const width = Number(params.get('width') || 640);
+      const height = Number(params.get('height') || 480);
+      const wsOrigin = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+
+      if (!swf) {
+        document.body.innerHTML = '<p style="color:white">SWF manquant</p>';
+        return;
+      }
+
+      const ruffle = window.RufflePlayer.newest();
+      const player = ruffle.createPlayer();
+
+      player.style.width = width + 'px';
+      player.style.height = height + 'px';
+
+      document.getElementById('player').appendChild(player);
+
+      await player.load({
+        url: swf,
+        autoplay: 'on',
+        allowScriptAccess: true,
+        allowNetworking: 'all',
+        openUrlMode: 'allow',
+        quality: 'high',
+        base: `${window.location.origin}/`,
+        socketProxy: [
+          { host: 'localhost', port: 5000, proxyUrl: wsOrigin },
+          { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin },
+          { host: 'www.beta.frutiparc.com', port: 5000, proxyUrl: wsOrigin },
+          { host: 'www.frutiparc.com', port: 5000, proxyUrl: wsOrigin }
+        ],
+        parameters: {
+          sid: sid,
+          domain: `${window.location.host}/./`
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
