@@ -1566,8 +1566,21 @@ app.post('/h/send_debug', (req, res) => {
 // Serve SWF assets under /swf/* (used by the JS fetch interceptor rewrite)
 // ─────────────────────────────────────────────
 // Compatibility aliases for patched legacy Frusion constants (15-char slash-safe names)
-app.get('/animfrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'animfrusion.swf')));
-app.get('/skinFrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf')));
+app.get(
+  ['/animfrusion.sw', '/animfrusion.sw/', '/animfrusion.swf', '/animfrusion.swf/'],
+  (req, res) => {
+    res.type('application/x-shockwave-flash');
+    res.sendFile(path.join(__dirname, 'public', 'animfrusion.swf'));
+  }
+);
+
+app.get(
+  ['/skinFrusion.sw', '/skinFrusion.sw/', '/skinFrusion.swf', '/skinFrusion.swf/'],
+  (req, res) => {
+    res.type('application/x-shockwave-flash');
+    res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf'));
+  }
+);
 
 app.use('/swf/games', (req, _res, next) => {
   if (VERBOSE_FRUSION_LOGS) {
