@@ -49,6 +49,16 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// Ruffle's LoadVars.sendAndLoad may send POST bodies as text/plain or
+// with no Content-Type at all. Capture any unparsed body as raw text.
+app.use(express.text({ type: '*/*' }));
+app.use((req, res, next) => {
+  if (typeof req.body === 'string' && req.body.includes('=')) {
+    const parsed = Object.fromEntries(new URLSearchParams(req.body));
+    req.body = parsed;
+  }
+  next();
+});
 
 // Optional HTTP request logs for debugging
 app.use((req, res, next) => {
@@ -160,6 +170,7 @@ const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
 const recentSidByIp = new Map(); // ip -> sid fallback for legacy calls missing sid
 const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
+const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
 
 function createDefaultUser(pass) {
   return {
@@ -177,6 +188,7 @@ function createDefaultUser(pass) {
     prefs: '',
     isModerator: true,
     needsBouille: true, // Force editbouille on first login
+    kikoozLog: [],      // Entries displayed in box.KikoozLog (/ft/log)
   };
 }
 
@@ -295,11 +307,11 @@ const DEFAULT_BOUILLE_LIST = [
 ];
 
 const DEFAULT_WALLPAPERS = [
-  { u: 'moutarde',       n: 'Chavelier moutarde',    url: 'wal/ch.jpg', color: '4E5464;' },
+  { u: 'moutarde',       n: 'Chevalier moutarde',    url: 'wal/ch.jpg', color: '4E5464;' },
   { u: 'chorale',        n: 'Chorale Frutiparc',     url: 'wal/fp.jpg', color: 'ADE76B;' },
   { u: 'pixizchristmas', n: 'Noël Pixiz',            url: 'wal/ma.jpg', color: 'ADE76B;' },
   { u: 'snakechristmas', n: 'Noël Frutisnake',       url: 'wal/no.jpg', color: 'ADE76B;' },
-  { u: 'pixiz',          n: 'Pixiz',                 url: 'wal/pi.jpg', color: 'F9D190;' },
+  { u: 'pixiz',          n: 'Mini-Pixiz',            url: 'wal/pi.jpg', color: 'F9D190;' },
   { u: 'nostromo',       n: 'Mini-Wave Nostromo',    url: 'wal/pl.jpg', color: '000044;' },
   { u: 'ministar',       n: 'Mini-Wave Mini-Star',   url: 'wal/va.jpg', color: '000044;' },
   { u: 'utopiz',         n: 'Utopiz',                url: 'wal/ut.jpg', color: 'F6AFA9;' },
@@ -311,7 +323,102 @@ const DEFAULT_ACCESSORIES = [
   { u: 'bananocle', n: 'Bananocle', suffix: '6010k0w0g' },
   { u: 'beaute',    n: 'Beauté',    suffix: 'b000k0w0g' },
   { u: 'normal',    n: 'Normal',    suffix: '000000000' },
+  { u: 'Kiwix',    n: 'Kiwix',    suffix: '30x000000' },
 ];
+
+// ─────────────────────────────────────────────
+// Shop catalog — used by /ft/tree, /ft/pack, /ft/buy
+// The AS2 box.Shop expects a <c> (category) tree with <p> (product) leaves.
+// Each product, once purchased, is appended to user.customAccessories so it
+// appears in the Inventaire/Accessoires folder and can be worn by the avatar.
+// suffix9 = last 9 chars of a 24-char bouille string (prefix is taken from
+// the user's current bouille at serve time).
+// ─────────────────────────────────────────────
+const SHOP_PACKS = [
+  {
+    id: 101,
+    name: 'Bonnet de nuit',
+    category: 'Accessoires',
+    price: 60,
+    description: 'Un bonnet douillet pour les Frutiz qui aiment rêvasser sur le chat. Parfait pour afficher une ambiance cosy !',
+    suffix9: '9020t0a00',
+    comment: 'Un bonnet douillet pour les Frutiz qui aiment rêvasser sur le chat. Parfait pour afficher une ambiance cosy !',
+  },
+  {
+    id: 102,
+    name: 'Chapeau de shérif',
+    category: 'Accessoires',
+    price: 60,
+    description: 'Pour faire régner la loi dans les contrées de Legumia. Un classique indémodable de la panoplie du justicier.',
+    suffix9: '4020B0000',
+    comment: 'Pour faire régner la loi dans les contrées de Legumia. Un classique indémodable de la panoplie du justicier.',
+  },
+  {
+    id: 103,
+    name: 'Masque de ski',
+    category: 'Accessoires',
+    price: 60,
+    description: 'Prêt à dévaler les pistes ! Ce masque coloré complètera votre tenue hivernale à merveille.',
+    suffix9: 'a0b0a080m',
+    comment: 'Prêt à dévaler les pistes ! Ce masque coloré complètera votre tenue hivernale à merveille.',
+  },
+      {
+    id: 104,
+    name: 'Casquette Anim',
+    category: 'Accessoires',
+    price: 20,
+    description: 'Pour faire régner la loi dans les contrées de Legumia. Un classique indémodable de la panoplie du justicier.',
+    suffix9: '30y0t0j00',
+    comment: 'Édition test',
+  },
+];
+
+function getShopPack(id) {
+  const num = Number(id);
+  return SHOP_PACKS.find((p) => p.id === num);
+}
+
+function userOwnsShopPack(user, id) {
+  if (!Array.isArray(user.customAccessories)) return false;
+  return user.customAccessories.some((a) => a && a.shopId === Number(id));
+}
+
+function buildShopTreeXml(user) {
+  // Group packs by category.
+  const byCategory = new Map();
+  for (const pack of SHOP_PACKS) {
+    if (!byCategory.has(pack.category)) byCategory.set(pack.category, []);
+    byCategory.get(pack.category).push(pack);
+  }
+  const defaultId = SHOP_PACKS.length ? SHOP_PACKS[0].id : '';
+  let inner = '';
+  for (const [cat, packs] of byCategory) {
+    const prods = packs
+      .map((p) => `<p i="${p.id}" n="${escapeXml(p.name)}"/>`)
+      .join('');
+    inner += `<c n="${escapeXml(cat)}">${prods}</c>`;
+  }
+  return `<c n="Boutique" d="${defaultId}">${inner}</c>`;
+}
+
+function buildShopPackXml(pack, user) {
+  // box.Shop builds the picto bouille as:
+  //   _global.me.fbouille.substr(0,14) + picto[1]
+  // i.e. 14 chars from the user's current bouille + 10 chars from picto[1].
+  // The accessory "suffix9" covers positions 15-23 of the final 24-char
+  // bouille, so picto[1] must be: bouille[14] + suffix9 (1 + 9 = 10 chars).
+  const fullBouille = bouilleOf(user);
+  const char14 = (fullBouille.charAt(14) || '0');
+  const pictoSuffix10 = (char14 + pack.suffix9).slice(0, 10);
+  const alreadyBuy = userOwnsShopPack(user, pack.id) ? '1' : '0';
+  return (
+    `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
+    ` p="bouille,${escapeXml(pictoSuffix10)}" q="-1" h="${alreadyBuy}">` +
+    `<d>${escapeXml(pack.description)}</d>` +
+    `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
+    `</p>`
+  );
+}
 
 function buildBouilleListXml() {
   return DEFAULT_BOUILLE_LIST
@@ -361,6 +468,10 @@ app.get('/login', (req, res) => {
   res.sendFile(LOGIN_PAGE_PATH);
 });
 
+app.get('/', (req, res) => {
+  res.sendFile(LOGIN_BIS_PAGE_PATH);
+});
+
 app.post('/api/auth/register', (req, res) => {
   const username = normalizeUsername(req.body && req.body.username);
   const password = String((req.body && req.body.password) || '');
@@ -398,9 +509,9 @@ app.get('/legacy/main.swf', (req, res) => {
 });
 
 app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
-  if (VERBOSE_SWF_LOGS) {
-    console.log('[SWF] fonts.swf requested:', req.url);
-  }
+  // Always log fonts.swf requests so we can verify Ruffle is fetching it
+  // via fontSources (font loading is critical for chat typography).
+  console.log('[SWF] fonts.swf requested:', req.url, 'UA:', req.headers['user-agent']);
   res.type('application/x-shockwave-flash');
   res.sendFile(fontsPath);
 });
@@ -526,8 +637,15 @@ app.get('/xml/services.xml', (req, res) => {
   } catch {
     publicHost = String(rawHost).split(':')[0] || 'localhost';
   }
+  // Include game names as service entries so FrusionServer can find ports
+  // (_global.cbeePort[gameDisc.swfName] must resolve to a valid port).
+  const gameServiceEntries = Object.values(GAME_DISCS)
+    .map((d) => d.swfName)
+    .filter((v, i, a) => a.indexOf(v) === i) // unique names
+    .map((n) => `<service name="${escapeXml(n)}" port="${XMLSOCKET_PORT}" />`)
+    .join('');
   res.type('text/xml').send(
-    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /><service name="frutiscore" port="${XMLSOCKET_PORT}" /></services>`
+    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /><service name="frutiscore" port="${XMLSOCKET_PORT}" />${gameServiceEntries}</services>`
   );
 });
 
@@ -634,6 +752,64 @@ app.all('/do/eb', (req, res) => {
   res.type('text/plain').send(`state=0&k=0&b=${bouille}&s=${bouille}&f=${bouille}`);
 });
 
+// ─────────────────────────────────────────────
+// ENDPOINT: do/give — Transfer kikooz to another user (/donne command)
+// Params: k=<amount>, u=<target username>, r=<reason>, sid=<session_id>
+// Returns XML: <r k="0" a="<sender new balance>" u="<target>" g="<amount>"/>
+// On failure: <r k="<errorCode>"/>
+//   k="1"  invalid parameters
+//   k="2"  cannot give to yourself
+//   k="3"  target user unknown
+//   k="4"  not enough kikooz
+// ─────────────────────────────────────────────
+app.all('/do/give', (req, res) => {
+  const source = req.method === 'POST' ? { ...req.query, ...(req.body || {}) } : req.query;
+  const sid = getSidFromRequest(req, source);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user, username } = auth;
+
+  const amount = Math.floor(Number(source.k));
+  const targetRaw = String(source.u || '').trim();
+  const reason = String(source.r || '').trim();
+
+  if (!Number.isFinite(amount) || amount <= 0 || !targetRaw) {
+    return res.type('text/xml').send('<r k="1" />');
+  }
+  const targetName = resolveKnownUsername(targetRaw);
+  if (targetName.toLowerCase() === username.toLowerCase()) {
+    return res.type('text/xml').send('<r k="2" />');
+  }
+  const target = users[targetName];
+  if (!target) {
+    return res.type('text/xml').send('<r k="3" />');
+  }
+  if (typeof user.kikooz !== 'number') user.kikooz = 0;
+  if (user.kikooz < amount) {
+    return res.type('text/xml').send('<r k="4" />');
+  }
+
+  user.kikooz -= amount;
+  target.kikooz = (typeof target.kikooz === 'number' ? target.kikooz : 0) + amount;
+
+  const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+  // Log in recipient's kikooz history (type "c" = kcall / received kikooz)
+  if (!Array.isArray(target.kikoozLog)) target.kikoozLog = [];
+  target.kikoozLog.unshift({
+    type: 'c',
+    t: nowStr,
+    k: amount,
+    c: username,
+  });
+  if (target.kikoozLog.length > 200) target.kikoozLog.length = 200;
+
+  console.log(`[do/give] ${username} → ${targetName}: ${amount} kikooz${reason ? ' ('+reason+')' : ''}`);
+
+  const xml = `<r k="0" a="${user.kikooz}" u="${escapeXml(targetName)}" g="${amount}" />`;
+  res.type('text/xml').send(xml);
+});
+
 function handleNewBouille(req, res) {
   const sid = req.query.sid;
   const auth = requireAuthBySid(sid, res);
@@ -688,6 +864,7 @@ app.get('/do/gmi', (req, res) => {
   const regionIndex = String(user.regionIndex || '1');
   const siteUrl = String(user.siteUrl || '');
   const comment = String(user.comment || '');
+  const departmentIndex = String(user.departmentIndex || '1');
 
   const xml = `<i>
   <d>${escapeXml(birthday)}</d>
@@ -698,6 +875,7 @@ app.get('/do/gmi', (req, res) => {
   <c>${escapeXml(city)}</c>
   <o>${escapeXml(countryIndex)}</o>
   <r>${escapeXml(regionIndex)}</r>
+  <q>${escapeXml(departmentIndex)}</q>
   <u>${escapeXml(siteUrl)}</u>
   <m>${escapeXml(comment)}</m>
 </i>`;
@@ -706,7 +884,10 @@ app.get('/do/gmi', (req, res) => {
 });
 
 function saveMyInfo(req, res) {
-  const source = req.method === 'POST' ? req.body : req.query;
+  // Merge query and body — Ruffle may send data in either place
+  const source = { ...req.query, ...(req.body && typeof req.body === 'object' ? req.body : {}) };
+  console.log(`[do/smi] method=${req.method} ct=${req.headers['content-type']} rawBody=${typeof req.body === 'string' ? req.body.substring(0, 200) : JSON.stringify(req.body).substring(0, 200)} mergedKeys=${Object.keys(source).join(',')}`);
+
   const sid = getSidFromRequest(req, source);
   const auth = requireAuthBySid(sid, res);
   if (!auth) return;
@@ -727,14 +908,17 @@ function saveMyInfo(req, res) {
   user.regionIndex = String(source.r || user.regionIndex || '1').slice(0, 8);
   user.siteUrl = String(source.u || user.siteUrl || '').slice(0, 256);
   user.comment = String(source.m || user.comment || '').slice(0, 500);
+  if (source.q !== undefined) user.departmentIndex = String(source.q).slice(0, 8);
 
   // Keep public userinfo fields in sync with the edit form values.
   if (source.co) user.country = String(source.co).slice(0, 32) || user.country;
   if (source.rg) user.region = String(source.rg).slice(0, 32) || user.region;
 
-  // Legacy flows expect LoadVars; "state=0" means success.
-  // Do NOT include k=... — the SWF treats the presence of "k" as an error indicator.
-  return res.type('text/plain').send('state=0');
+  console.log(`[do/smi] saved for ${auth.username}: birthday=${user.birthday} gender=${user.gender} city=${user.city} firstName=${user.firstName} comment=${user.comment}`);
+
+  // The compiled box.EditInfo likely uses XML callback type (like do/gmi).
+  // Return XML success response — no k= attribute means no error.
+  return res.type('text/xml').send('<r />');
 }
 
 // Accept multiple historical save routes used by legacy SWFs.
@@ -749,13 +933,77 @@ app.get('/do/prefsavepartial', (req, res) => {
 });
 
 // Preferences form endpoint — the compiled box.Pref window loads this to render the form.
-// Returns LoadVars with PrefDef (definitions) and myPref (user values).
+// box.Pref.onPrefForm expects an XML tree of the shape:
+//   <p>
+//     <c n="Category">
+//       <p i="<id>" f="<friendly label>">
+//         <d>description</d>
+//         <f><l>...form widgets...</l></f>
+//       </p>
+//       ...
+//     </c>
+//     ...
+//   </p>
+// The `<f>` element is REQUIRED in practice: box.Pref.analysePrefForm
+// initialises `_loc7_ = new XML()` and only replaces it when an `<f>` child
+// exists. If omitted, win.Pref.displayPref ends up iterating an empty XML and
+// renders no widgets — the parameter sheet looks blank. Standard.getPrefForm
+// (the documented fallback) is only called when `pref.form == undefined`,
+// which never happens with the empty-XML default. So we always emit `<f>`
+// with the same default `<l>` widget Standard.getPrefForm would produce per
+// type (bool/int/string). The `i` attribute must be the decimal preference id
+// so box.Pref can join it against `_global.userPref.prefsId`.
 app.get(['/do/prefForm', '/prefForm'], (req, res) => {
-  const sid = getSidFromRequest(req, req.query);
-  const session = sid && sessions[sid];
-  const user = session && users[session.user];
-  const myPref = (user && user.prefs) || '';
-  res.type('text/plain').send(`PrefDef=${buildPrefDefString()}&myPref=${myPref}&state=0`);
+  const prefLabels = {
+    default_channel:         { label: 'Salon par défaut',                desc: 'Identifiant du salon rejoint automatiquement à la connexion.' },
+    dsp_newmail_alert:       { label: 'Alerte nouveau message',          desc: 'Afficher une alerte à la réception d\'un nouveau mail.' },
+    invite_channel_behavior: { label: 'Invitation salon',                desc: 'Comportement lors de la réception d\'une invitation de salon.' },
+    invite_chat_behavior:    { label: 'Invitation chat privé',           desc: 'Comportement lors de la réception d\'une invitation de chat privé.' },
+    wallpaper:               { label: 'Fond d\'écran',                   desc: 'Nom du fond d\'écran utilisé sur le bureau.' },
+    cache_length:            { label: 'Durée du cache',                  desc: 'Nombre de jours pendant lesquels les fichiers sont conservés.' },
+    cl_open:                 { label: 'Ouvrir la liste de contacts',     desc: 'Ouvrir automatiquement la liste de contacts au démarrage.' },
+    win_flMoveAnim:          { label: 'Animations des fenêtres',         desc: 'Activer les animations de déplacement des fenêtres.' },
+    ch_dsp_h:                { label: 'Afficher l\'heure',               desc: 'Afficher l\'heure devant chaque message du chat.' },
+    ch_dsp_join:             { label: 'Afficher les arrivées',           desc: 'Afficher un message quand un utilisateur rejoint le salon.' },
+    ch_dsp_leave:            { label: 'Afficher les départs',            desc: 'Afficher un message quand un utilisateur quitte le salon.' },
+    ch_dsp_kick:             { label: 'Afficher les expulsions',         desc: 'Afficher un message quand un utilisateur est expulsé.' },
+    ch_dsp_ban:              { label: 'Afficher les bannissements',      desc: 'Afficher un message quand un utilisateur est banni.' },
+  };
+
+  const categories = [
+    { name: 'Général', ids: [1, 6, 7, 8] },
+    { name: 'Chat',    ids: [9, 10, 11, 12, 13] },
+    { name: 'Mail',    ids: [2] },
+    { name: 'Invitations', ids: [3, 4] },
+    { name: 'Apparence',   ids: [5] },
+  ];
+
+  // Default widget per pref type — mirrors Standard.getPrefForm in main.swf.
+  //  bool   → two radios labelled Oui/Non bound to "value" with values Y/N
+  //  int    → text input restricted to 0-9
+  //  string → free-text input
+  const formForType = {
+    b: '<l><s b="1"/><r w="60" v="value" u="Y">Oui</r><s b="1"/><r w="60" v="value" u="N">Non</r><s b="1"/></l>',
+    i: '<l><s w="20"/><i v="value" dy="1" b="1" r="0-9"></i><s w="20"/></l>',
+    s: '<l><s w="20"/><i v="value" dy="1" b="1"></i><s w="20"/></l>',
+  };
+
+  const byId = Object.fromEntries(prefDefs.map((p) => [p.id, p]));
+  let body = '<p>';
+  for (const cat of categories) {
+    body += `<c n="${escapeXml(cat.name)}">`;
+    for (const id of cat.ids) {
+      const def = byId[id];
+      if (!def) continue;
+      const meta = prefLabels[def.name] || { label: def.name, desc: '' };
+      const form = formForType[def.type] || formForType.s;
+      body += `<p i="${id}" f="${escapeXml(meta.label)}"><d>${escapeXml(meta.desc)}</d><f>${form}</f></p>`;
+    }
+    body += '</c>';
+  }
+  body += '</p>';
+
+  res.type('text/xml').send(body);
 });
 
 // ─────────────────────────────────────────────
@@ -808,6 +1056,7 @@ function swfSizeForUrlPath(urlPath) {
 const GAME_DISCS = {
   kaluga1: {
     discType: '0',
+    playMode: 'single',
     swfName: 'kaluga',
     gameId: 'games/kaluga/kaluga.swf',
     props: 'w=640;h=480;m=i',
@@ -818,6 +1067,7 @@ const GAME_DISCS = {
   },
   kalugademo: {
     discType: '3',
+    playMode: 'preview',
     swfName: 'kaluga',
     gameId: 'games/kaluga/kaluga.swf',
     props: 'w=640;h=480;m=i',
@@ -827,6 +1077,7 @@ const GAME_DISCS = {
   },
   swapou1: {
     discType: '0',
+    playMode: 'single',
     swfName: 'swapou2',
     gameId: 'games/miniWave2/miniWave2.swf',
     props: 'w=640;h=480;m=i',
@@ -836,6 +1087,7 @@ const GAME_DISCS = {
   },
   miniwave1: {
     discType: '0',
+    playMode: 'single',
     swfName: 'miniwave2',
     gameId: 'games/miniWave2/miniWave2.swf',
     props: 'w=550;h=400;m=i',
@@ -892,7 +1144,11 @@ app.get('/do/ld', (req, res) => {
     .join('');
 
   // Keep legacy root node name/attrs expected by Frusion ("game", not "r").
-  const xml = `<game t="${escapeXml(disc.discType)}" pm="single" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
+  const pm = disc.playMode || 'single';
+  // Force popup mode: Ruffle's LocalConnection doesn't work for internal mode,
+  // so we change m=i to m=p to make main.swf use PopupFrusion.
+  const propsForResponse = (disc.props || '').replace('m=i', 'm=p');
+  const xml = `<game t="${escapeXml(disc.discType)}" pm="${escapeXml(pm)}" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(propsForResponse)}">${filesXml}</game>`;
   if (VERBOSE_FRUSION_LOGS) {
     console.log(`[FRUSION] do/ld hit launch_id=${launchId || '-'} u=${discUid} resolved=${resolvedDiscUid} -> ${disc.gameId} props=${disc.props}`);
   }
@@ -907,9 +1163,141 @@ app.get(['/ff/tree', '/tree'], (req, res) => {
   res.type('text/xml').send(FILE_TREE_XML);
 });
 
-// Legacy alias seen in some SWFs / URL rewrite paths
+// Flash's LoadVars/XML loader caches aggressively based on URL. Force every
+// shop response to be fresh so pack previews never get stuck on stale data.
+function sendShopXml(res, body) {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.type('text/xml').send(body);
+}
+
+// ─────────────────────────────────────────────
+// ENDPOINT: ft/tree — Shop catalog tree
+// The AS2 box.Shop (win.Shop) requests this on init to build the left menu.
+// Returns a <c> root with nested <c n="category"> and <p i="id" n="name"/>
+// leaves. The `d` attribute on root specifies the default displayed pack id.
+// ─────────────────────────────────────────────
 app.get('/ft/tree', (req, res) => {
-  res.type('text/xml').send(FILE_TREE_XML);
+  const sid = getSidFromRequest(req, req.query);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
+  sendShopXml(res, buildShopTreeXml(user));
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: ft/pack — Shop pack details
+// Returns a <p> element describing a single shop item (name, picto, price,
+// description, etc.). Called when the user clicks a product in the shop tree.
+// ─────────────────────────────────────────────
+app.get('/ft/pack', (req, res) => {
+  const sid = getSidFromRequest(req, req.query);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
+  const pack = getShopPack(req.query.id);
+  if (!pack) {
+    return sendShopXml(res, '<r k="1" />');
+  }
+  sendShopXml(res, buildShopPackXml(pack, user));
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: ft/buy — Purchase a shop pack
+// Deducts the price from the user's kikooz balance and adds the purchased
+// accessory to user.customAccessories so it shows up in Inventaire/Accessoires.
+// Returns <r i="newKikoozBalance"><b b="bouille">name</b><f>accessories</f>...</r>
+// ─────────────────────────────────────────────
+app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
+  const source = req.method === 'POST' ? { ...req.query, ...(req.body || {}) } : req.query;
+  const sid = getSidFromRequest(req, source);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
+
+  const pack = getShopPack(source.i);
+  if (!pack) {
+    return sendShopXml(res, '<r k="1" />');
+  }
+  if (userOwnsShopPack(user, pack.id)) {
+    // Already owned — return a "dup" error.
+    return sendShopXml(res, '<r k="2" />');
+  }
+  if (typeof user.kikooz !== 'number') user.kikooz = 0;
+  if (user.kikooz < pack.price) {
+    // Not enough kikooz.
+    return sendShopXml(res, '<r k="3" />');
+  }
+
+  user.kikooz -= pack.price;
+
+  const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const bouilleStr = bouilleOf(user).substring(0, 15) + pack.suffix9;
+  if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
+  user.customAccessories.push({
+    id: 'shop_' + pack.id,
+    shopId: pack.id,
+    n: pack.name,
+    v: bouilleStr,
+    at: nowStr,
+  });
+
+  // Record a "buy" entry in the kikooz history (box.KikoozLog / /ft/log)
+  if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+  user.kikoozLog.unshift({
+    type: 'b',
+    t: nowStr,
+    k: pack.price,
+    n: pack.name,
+  });
+  if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+
+  // Build response: new kikooz balance, the bouille to push into bouilleList,
+  // and folder refresh requests so Inventaire/Accessoires re-list contents.
+  const xml =
+    `<r i="${user.kikooz}">` +
+    `<b b="${escapeXml(bouilleStr)}">${escapeXml(pack.name)}</b>` +
+    `<f>inventory</f>` +
+    `<f>accessories</f>` +
+    `</r>`;
+  console.log(`[ft/buy] ${auth.username} bought pack #${pack.id} (${pack.name}) — kikooz now ${user.kikooz}`);
+  sendShopXml(res, xml);
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: ft/log — Kikooz history
+// Returns a <l> root with entries for box.KikoozLog. Supported entry types:
+//   <b t="..." k="price" n="pack name"/>  — shop purchase
+//   <c t="..." k="amount" c="username"/>  — received kcall
+//   <g t="..." k="amount" f="friend"/>    — godfather bonus
+//   <a t="..." k="amount" f="anim name"/> — animation reward
+// Timestamps are in "YYYY-MM-DD HH:MM:SS" (parsed by FEDate.newFromString).
+// ─────────────────────────────────────────────
+app.get('/ft/log', (req, res) => {
+  const sid = getSidFromRequest(req, req.query);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { user } = auth;
+  const entries = Array.isArray(user.kikoozLog) ? user.kikoozLog : [];
+  const body = entries.map((e) => {
+    const t = escapeXml(e.t || '');
+    const k = Number(e.k) || 0;
+    if (e.type === 'b') {
+      return `<b t="${t}" k="${k}" n="${escapeXml(e.n || '')}"/>`;
+    }
+    if (e.type === 'c') {
+      return `<c t="${t}" k="${k}" c="${escapeXml(e.c || '')}"/>`;
+    }
+    if (e.type === 'g') {
+      return `<g t="${t}" k="${k}" f="${escapeXml(e.f || '')}"/>`;
+    }
+    if (e.type === 'a') {
+      return `<a t="${t}" k="${k}" f="${escapeXml(e.f || '')}"/>`;
+    }
+    return '';
+  }).join('');
+  sendShopXml(res, `<l>${body}</l>`);
 });
 
 // ─────────────────────────────────────────────
@@ -1193,8 +1581,21 @@ app.post('/h/send_debug', (req, res) => {
 // Serve SWF assets under /swf/* (used by the JS fetch interceptor rewrite)
 // ─────────────────────────────────────────────
 // Compatibility aliases for patched legacy Frusion constants (15-char slash-safe names)
-app.get('/animfrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'animfrusion.swf')));
-app.get('/skinFrusion.sw', (req, res) => res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf')));
+app.get(
+  ['/animfrusion.sw', '/animfrusion.sw/', '/animfrusion.swf', '/animfrusion.swf/'],
+  (req, res) => {
+    res.type('application/x-shockwave-flash');
+    res.sendFile(path.join(__dirname, 'public', 'animfrusion.swf'));
+  }
+);
+
+app.get(
+  ['/skinFrusion.sw', '/skinFrusion.sw/', '/skinFrusion.swf', '/skinFrusion.swf/'],
+  (req, res) => {
+    res.type('application/x-shockwave-flash');
+    res.sendFile(path.join(__dirname, 'public', 'skinFrusion.swf'));
+  }
+);
 
 app.use('/swf/games', (req, _res, next) => {
   if (VERBOSE_FRUSION_LOGS) {
@@ -1205,6 +1606,10 @@ app.use('/swf/games', (req, _res, next) => {
 });
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
+// Fallback: Frusion constructs URLs as baseURL+swfId (e.g. "/games/kaluga/kaluga.swf")
+// without the /swf/ prefix.  Serve them from the same location.
+app.use('/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
+app.use('/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
@@ -1451,8 +1856,18 @@ const channels = {
   bienvenue: { topic: 'Bienvenue sur Frutiparc !', users: new Set() },
 };
 
-// ── Virtual test user: DebugBot (always connected on pomme) ──
-users['DebugBot'] = {
+// ── Virtual users / PNJ (always connected on pomme) ──
+const CONNECTED_NPCS = new Set([
+  'DebugBot',
+  'Renault',
+  'tigrenoir',
+  'SakurAmalia',
+  'EmiLicorne',
+  'kasparov',
+  'Gaspard',
+]);
+
+users.DebugBot = {
   pass: '',
   xp: 1000000,
   kikooz: 100,
@@ -1467,8 +1882,167 @@ users['DebugBot'] = {
   prefs: '',
   isModerator: false,
   needsBouille: false,
+  city: 'Frutiparc',
+  realJob: 'Bot de debug',
+  firstName: 'Debug',
+  lastName: 'Bot',
+  comment: 'Bot de test connecté en permanence.',
 };
-channels.pomme.users.add('DebugBot');
+
+users.Renault = {
+  pass: '',
+  xp: 424242,
+  kikooz: 100,
+  fbouille: '00000d0r020f0l0000000000',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'M',
+  birthday: '1991-01-01',
+  country: '1',
+  region: '0',
+  countryIndex: '1',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: true,
+  needsBouille: false,
+  city: 'Namur',
+  realJob: 'Blagueur',
+  firstName: 'C-A',
+  lastName: 'Run',
+  comment: 'Frutimarié à tigrenoir, frutipapa de SakurAmalia et EmiLicorne',
+  siteUrl: 'http://renault.up.md/FrutiStats/',
+};
+
+users.tigrenoir = {
+  pass: '',
+  xp: 33,
+  kikooz: 100,
+  fbouille: '0004060N02000O030y0t0j00',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'F',
+  birthday: '1992-01-01',
+  country: '1',
+  region: '0',
+  countryIndex: '1',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  city: 'Namur',
+  realJob: 'Fleuriste',
+  firstName: 'J',
+  lastName: 'Run',
+  comment: 'Frutimariée à Renault, frutimaman de SakurAmalia et EmiLicorne',
+  siteUrl: '',
+};
+
+users.SakurAmalia = {
+  pass: '',
+  xp: 5,
+  kikooz: 100,
+  fbouille: '0004040J020k0P00000t0j00',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'F',
+  birthday: '2019-01-01',
+  country: '1',
+  region: '0',
+  countryIndex: '1',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  city: 'Namur',
+  realJob: 'Dresseuse Pokémon',
+  firstName: 'A',
+  lastName: 'Run',
+  comment: 'Frutifille de tigrenoir et Renault, frutisoeur de EmiLicorne',
+  siteUrl: '',
+};
+
+users.EmiLicorne = {
+  pass: '',
+  xp: 2,
+  kikooz: 100,
+  fbouille: '0004070K020n0e0a000O0000',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'F',
+  birthday: '2022-01-01',
+  country: '1',
+  region: '0',
+  countryIndex: '1',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  mutedUntil: '2030-01-01 00:00:00',
+  city: 'Namur',
+  realJob: 'Dresseuse de dragons',
+  firstName: 'É',
+  lastName: 'Run',
+  comment: 'Frutifille de tigrenoir et Renault, frutisoeur de SakurAmalia',
+  siteUrl: '',
+};
+
+users.kasparov = {
+  pass: '',
+  xp: 5353,
+  kikooz: 100,
+  fbouille: '0005000Q010t0a04010t0w00',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'M',
+  birthday: '1993-01-01',
+  country: '0',
+  region: '2',
+  countryIndex: '0',
+  regionIndex: '2',
+  prefs: '',
+  isModerator: true,
+  needsBouille: false,
+  city: 'Cachan',
+  realJob: 'Détective',
+  firstName: 'Rémi',
+  lastName: 'Sans famille',
+  comment: '[Frutimarié à Bee le Vendredi 19 Decembre 2008 à 21h42 et 6 secondes.] Вив каспаров [19:38:04] Babylou: Ah oui tu as raison kaspa [Animateur du 29 Aout 2007 au 18 Janvier 2009] [Modérateur depuis le 23 Janvier 2008]',
+  siteUrl: 'http://spikeo.no-ip.org/',
+};
+
+users.Gaspard = {
+  pass: '',
+  xp: 9999999,
+  kikooz: 100,
+  fbouille: '0n0000000000000000000000',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'M',
+  birthday: '2004-03-24',
+  country: '0',
+  region: '0',
+  countryIndex: '0',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  city: '',
+  realJob: '',
+  firstName: 'Gaspard',
+  lastName: '',
+  comment: '',
+  siteUrl: '',
+};
+
+for (const npc of CONNECTED_NPCS) {
+  channels.pomme.users.add(npc);
+}
 
 const xmlSocketClients = new Map(); // socket -> { sid, username, logged, channels: Set }
 
@@ -1508,30 +2082,35 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   const channel = channels[channelName];
   if (!channel) return false;
 
+  // Choose the wire event matching what box.Chat listens for:
+  //  - "totoch"/"ban" → onban (cmdList "ah")  → chat.userbanned for moderators
+  //  - anything else  → onkick (cmdList "ag") → chat.userkicked for everyone
+  // Both handlers expect attribute `u` (target) so they can call userList.rmUser
+  // and detect self-kick via `u == _global.me.name`.
+  const isBan = (reason === 'totoch' || reason === 'ban');
+  const wire = isBan ? CMD.onban : CMD.onkick;
+  const notif = `<${wire} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`;
+
+  // Broadcast BEFORE removing the user from the channel — broadcastToChannel
+  // iterates client.channels, so we need the target user to still be a member
+  // for them to receive the close-chat notification.
+  broadcastToChannel(channelName, notif);
+
+  // Now actually remove the user from the channel state.
   channel.users.delete(targetUser);
   for (const [sock, cl] of xmlSocketClients) {
     if (cl && cl.username === targetUser) {
       cl.channels.delete(channelName);
-      sendToClient(sock, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
-      sendToClient(sock, `<${CMD.onkick} g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`);
     }
   }
-  // Broadcast userleaved to update the user list in other clients' Chat boxes
-  broadcastToChannel(channelName, `<${CMD.userleaved} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
-  // Send a system chat message with the kick/ban reason
-  const timeAttrs = buildChatTimeAttrs();
-  const kickMsg = (reason === 'totoch' || reason === 'ban')
-    ? `${escapeXml(targetUser)} a été banni`
-    : `${escapeXml(targetUser)} a été éjecté`;
-  broadcastToChannel(channelName, `<${CMD.send} u="Serveur" t="m" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${kickMsg}</${CMD.send}>`);
 
-  // Respawn DebugBot after 5 seconds if it was kicked
-  if (targetUser === 'DebugBot') {
+  // Respawn connected PNJ after 5 seconds if one is kicked
+  if (CONNECTED_NPCS.has(targetUser)) {
     setTimeout(() => {
       if (channels[channelName]) {
-        channels[channelName].users.add('DebugBot');
-        // Broadcast userjoined so other clients see DebugBot reappear
-        broadcastToChannel(channelName, `<${CMD.userjoined} u="DebugBot" g="${escapeXml(channelName)}" />`);
+        channels[channelName].users.add(targetUser);
+        // Broadcast userjoined so other clients see PNJ reappear
+        broadcastToChannel(channelName, `<${CMD.userjoined} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
       }
     }, 5000);
   }
@@ -1643,6 +2222,8 @@ function getStatusCode(user) {
 function buildChannelListXml() {
   let inner = '';
   for (const [name, ch] of Object.entries(channels)) {
+    // Hide private message channels from the public room list
+    if (ch.private) continue;
     const desc = ch.desc || `Salon ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
     inner += `<g g="${name}" n="${ch.users.size}"><desc>${escapeXml(desc)}</desc></g>`;
   }
@@ -1683,6 +2264,62 @@ function handleCBeeMessage(socket, rawXml) {
       sendToClient(socket, `<${CMD.time}>${formatDateTime(new Date())}</${CMD.time}>`);
       break;
     }
+
+    case 'invite': {
+  // Frusion overload: <ab d="..."> is not a chat invite here, it's a game "use disc" command
+  if (msg.attrs.d !== undefined) {
+    console.log('[FRUSION] useDisc request for', msg.attrs.d);
+
+    // Minimal positive response expected by FrusionClient.onUseDisc()
+    sendToClient(socket, `<ab s="1"><daily>ok</daily></ab>`);
+    break;
+  }
+
+  // ── Channel invite: /invite <user> in a salon ──
+  const invTarget = msg.attrs.u || '';
+  const invGroup = msg.attrs.g || '';
+  const invReqId = msg.attrs.r || '';
+  const inviter = client.username || '';
+
+  if (!invTarget || !invGroup || !inviter) {
+    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTarget)}" r="${escapeXml(invReqId)}" k="1" />`);
+    break;
+  }
+
+  const invChannel = channels[invGroup];
+  if (!invChannel) {
+    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTarget)}" r="${escapeXml(invReqId)}" k="202" />`);
+    break;
+  }
+
+  const invTargetName = resolveKnownUsername(normalizeUsername(invTarget));
+  if (!invTargetName || !users[invTargetName]) {
+    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTarget)}" r="${escapeXml(invReqId)}" k="201" />`);
+    break;
+  }
+
+  // Check if target is already in the channel
+  if (invChannel.users.has(invTargetName)) {
+    sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTargetName)}" r="${escapeXml(invReqId)}" k="205" />`);
+    break;
+  }
+
+  // Success: acknowledge to sender
+  sendToClient(socket, `<${CMD.invite} u="${escapeXml(invTargetName)}" r="${escapeXml(invReqId)}" />`);
+
+  // Forward invite to target (without r attribute so listener.main.onInvite processes it)
+  const invTopic = invChannel.topic || invChannel.desc || invGroup;
+  const invPass = invChannel.pass || '';
+  for (const targetSock of getSocketsForUsername(invTargetName)) {
+    sendToClient(
+      targetSock,
+      `<${CMD.invite} u="${escapeXml(inviter)}" g="${escapeXml(invGroup)}" p="${escapeXml(invPass)}">${escapeXml(invTopic)}</${CMD.invite}>`
+    );
+  }
+
+  console.log(`[CBee]  ${inviter} invited ${invTargetName} to channel ${invGroup}`);
+  break;
+}
 
     // ── ping: just echo back ──
     case 'ping': {
@@ -1725,6 +2362,7 @@ function handleCBeeMessage(socket, rawXml) {
             region: 'IDF',
             prefs: '',
             isModerator: !isDebugNotUser(effectiveLogin),
+            kikoozLog: [],
           };
       }
 
@@ -1810,18 +2448,27 @@ case 'join': {
   // 2. Liste des utilisateurs
   sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
 
-  // 3. Message système visible dans le chat
-  sendToClient(
-    socket,
-    `<${CMD.send} u="Serveur" t="m" p="" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">Vous discutez à présent sur le salon ${escapeXml(channel.desc || g)}</${CMD.send}>`
-  );
+  // 3. Envoi proactif des données trace (bouille) pour tous les utilisateurs du salon.
+  //    Le client AS2 utilise autoTrace=true pour les UserMng du chat, ce qui
+  //    n'envoie jamais de requête trace au serveur. Sans cette poussée, les
+  //    FrutiScreen n'obtiennent jamais les données bouille et affichent un
+  //    message d'erreur ("vider le cache").
+  {
+    let traceXml = '';
+    for (const u of userArr) {
+      const ud = users[u] || {};
+      traceXml += `<u u="${escapeXml(u)}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+    }
+    sendToClient(socket, `<${CMD.trace}>${traceXml}</${CMD.trace}>`);
+  }
 
-  // 4. Notification légère aux autres
-broadcastToChannel(
-  g,
-  `<${CMD.userjoined} u="${escapeXml(client.username)}" g="${g}" />`,
-  socket
-);
+  // 4. Notification aux autres + trace du nouvel arrivant pour leurs FrutiScreen
+  {
+    const joinerUd = users[client.username] || {};
+    const joinerTrace = `<${CMD.trace}><u u="${escapeXml(client.username)}" p="1" s="${getStatusCode(joinerUd)}" mu="${getMuteValue(joinerUd)}" f="${bouilleOf(joinerUd)}" /></${CMD.trace}>`;
+    broadcastToChannel(g, `<${CMD.userjoined} u="${escapeXml(client.username)}" g="${g}" />`, socket);
+    broadcastToChannel(g, joinerTrace, socket);
+  }
   break;
 }
 
@@ -1938,15 +2585,35 @@ case 'send': {
     }
 
     let safeText = escapeXml(text);
+
+    // Moderator "!" prefix: send message in red bold (admin shout)
     if (isModerator(client.username) && text.startsWith('!')) {
-      const shout = escapeXml(text.substring(1).trim());
+      const shout = text.substring(1).trim();
       if (shout) {
-        // Legacy clients usually render `adminsend` (ap) in emphasized style.
-        const adminXml = `<${CMD.adminsend} u="${escapeXml(client.username)}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${shout}</${CMD.adminsend}>`;
-        broadcastToChannel(g, adminXml);
-        safeText = `<b><font color="#ff0000">${shout}</font></b>`;
+        // Wrap HTML in CDATA so the XML parser treats it as text content,
+        // not as child XML elements. Flash TextField then renders the HTML.
+        const redText = `<![CDATA[<b><font color="#FF0000">${shout}</font></b>]]>`;
+        broadcastToChannel(g,
+          `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${redText}</${CMD.send}>`
+        );
+        break;
       }
     }
+
+    // Type "g" (kikooz gift broadcast from /donne command):
+    // Body is an inner <g k="amount" u="target"/> element, not text.
+    // The /do/give HTTP endpoint already validated and transferred the kikooz,
+    // so here we just echo the broadcast to channel members.
+    if (type === 'g' && msg.children && msg.children.length > 0) {
+      const gChild = msg.children.find((c) => c.tag === 'g');
+      if (gChild) {
+        const childXml = `<g k="${escapeXml(gChild.attrs.k || '')}" u="${escapeXml(gChild.attrs.u || '')}" />`;
+        const giftXml = `<${CMD.send} u="${escapeXml(client.username)}" t="g" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${childXml}</${CMD.send}>`;
+        broadcastToChannel(g, giftXml);
+        break;
+      }
+    }
+
     const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
 } else if (msg.attrs.u) {
@@ -1990,7 +2657,12 @@ case 'send': {
       const g = pickActiveChannel(client, msg.attrs);
       if (g) {
         const timeAttrs = buildChatTimeAttrs();
-        broadcastToChannel(g, `<${CMD.send} u="Serveur" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(targetUser)} a été totoché</${CMD.send}>`);
+        // Use u="admin" so box.Chat.onSend renders via chat.msg_admin
+        // ($h<i>$m</i>) instead of chat.msg ($h<b>$u</b>: $m). That drops
+        // the "Serveur:" username prefix and keeps it visually italic.
+        // There is no native chat.usermuted handler — this is the closest
+        // thing to a "natural" chat notice without modifying main.swf.
+        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(targetUser)} a été totoché</${CMD.send}>`);
         broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
       }
       break;
@@ -2069,7 +2741,7 @@ case 'trace': {
         sessions[client.sid].lastProfileUser = u;
       }
       sendToClient(socket,
-        `<${CMD.userinfo} r="${r}" u="${u}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || ''}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(u, ud)}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
       );
       break;
     }
@@ -2093,12 +2765,59 @@ case 'fbouille': {
 
 case 'createchannel': {
   const otherUserRaw = msg.attrs.u || '';
-  const otherUser = resolveKnownUsername(normalizeUsername(otherUserRaw));
   const requester = client.username || '';
-  const title = msg.content || otherUser || 'Discussion privée';
+  const reqId = msg.attrs.r || '';
+  const title = msg.content || '';
 
-  if (!otherUser || !requester) {
-    sendToClient(socket, `<${CMD.error} />`);
+  if (!requester) {
+    sendToClient(socket, `<${CMD.createchannel} k="1" r="${escapeXml(reqId)}" />`);
+    break;
+  }
+
+  // ── Public channel creation (no "u" attribute) ──
+  if (!otherUserRaw) {
+    if (!title.trim()) {
+      sendToClient(socket, `<${CMD.createchannel} k="1" r="${escapeXml(reqId)}" />`);
+      break;
+    }
+
+    // Generate unique channel ID
+    const slug = title.trim().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // strip accents
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').substring(0, 30);
+    let channelId = `ch_${slug}`;
+    let suffix = 1;
+    while (channels[channelId]) {
+      channelId = `ch_${slug}_${suffix++}`;
+    }
+
+    channels[channelId] = {
+      desc: title.trim(),
+      topic: title.trim(),
+      users: new Set(),
+      creator: requester,
+    };
+
+    // Auto-join the creator
+    channels[channelId].users.add(requester);
+    client.channels.add(channelId);
+
+    console.log(`[CBee]  Channel "${channelId}" created by ${requester} (topic: ${title.trim()})`);
+
+    // Response: <r g="channelId" r="requestId">topic</r>
+    sendToClient(
+      socket,
+      `<${CMD.createchannel} g="${channelId}" r="${escapeXml(reqId)}">${escapeXml(title.trim())}</${CMD.createchannel}>`
+    );
+    break;
+  }
+
+  // ── Private channel creation (with "u" attribute) ──
+  const otherUser = resolveKnownUsername(normalizeUsername(otherUserRaw));
+  const privateTitle = title || otherUser || 'Discussion privée';
+
+  if (!otherUser) {
+    sendToClient(socket, `<${CMD.createchannel} k="201" u="${escapeXml(otherUserRaw)}" r="${escapeXml(reqId)}" />`);
     break;
   }
 
@@ -2109,7 +2828,7 @@ case 'createchannel': {
   if (!channels[privateGroup]) {
     channels[privateGroup] = {
       desc: `Discussion privée ${requester}/${otherUser}`,
-      topic: title,
+      topic: privateTitle,
       users: new Set([requester, otherUser]),
       participants: [requester, otherUser],
       private: true,
@@ -2123,7 +2842,7 @@ case 'createchannel': {
   // Accusé de réception de l’ouverture de la discussion privée
   sendToClient(
     socket,
-    `<${CMD.createchannel} u="${escapeXml(otherUser)}" g="${privateGroup}" p="${privatePass}">${escapeXml(title)}</${CMD.createchannel}>`
+    `<${CMD.createchannel} u="${escapeXml(otherUser)}" g="${privateGroup}" p="${privatePass}">${escapeXml(privateTitle)}</${CMD.createchannel}>`
   );
 
   // Invite "privée" envoyée au demandeur pour ouvrir immédiatement la box
@@ -2137,7 +2856,7 @@ case 'createchannel': {
 
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" fj="${getFrutizJob(otherUser, ud)}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
   );
 
   sendToClient(

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Frutiparc Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #player-wrap {
+      background: #000;
+      box-shadow: 0 0 0 1px rgba(255,255,255,.15);
+    }
+  </style>
+  <script>
+    window.RufflePlayer = window.RufflePlayer || {};
+    window.RufflePlayer.config = {
+      autoplay: "on",
+      logLevel: "warn",
+      fontSources: [
+        window.location.origin + "/legacy/fonts.swf"
+      ],
+      defaultFonts: {
+        sans: ["Verdana", "verdana"],
+        serif: ["Times New Roman", "TimesNewRoman"],
+        typewriter: ["Verdana", "verdana"]
+      }
+    };
+  </script>
+  <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+</head>
+<body>
+  <div id="player-wrap"></div>
+<script>
+(async () => {
+  const qs = new URLSearchParams(window.location.search);
+  const APP_ORIGIN = window.location.origin;
+
+  // Game SWF path (e.g. /swf/games/kaluga/kaluga.swf)
+  let swfPath = qs.get("swf") || "";
+  if (!swfPath) {
+    document.body.textContent = "Missing ?swf= parameter";
+    return;
+  }
+  // Ensure absolute path
+  if (!swfPath.startsWith("/")) swfPath = "/" + swfPath;
+  if (!swfPath.startsWith("/swf/") && swfPath.startsWith("/games/")) {
+    swfPath = "/swf" + swfPath;
+  }
+
+  const width  = parseInt(qs.get("width") || qs.get("w") || "640", 10) || 640;
+  const height = parseInt(qs.get("height") || qs.get("h") || "480", 10) || 480;
+
+  const wrap = document.getElementById("player-wrap");
+  wrap.style.width  = width + "px";
+  wrap.style.height = height + "px";
+
+  document.title = "Frutiparc - " + (qs.get("game") || "Game");
+
+  const ruffle = window.RufflePlayer.newest();
+  const player = ruffle.createPlayer();
+  player.style.width  = width + "px";
+  player.style.height = height + "px";
+  wrap.appendChild(player);
+
+  // Derive base URL from SWF path so relative loads (e.g. full.swf) resolve
+  // to the game's own directory instead of the site root.
+  var swfDir = swfPath.substring(0, swfPath.lastIndexOf("/") + 1);
+
+  // Load the game SWF directly (standalone mode, no Frusion wrapper).
+  await player.load({
+    url: swfPath,
+    autoplay: "on",
+    allowScriptAccess: true,
+    allowNetworking: "all",
+    quality: "high",
+    letterbox: "off",
+    base: APP_ORIGIN + swfDir,
+    parameters: {
+      sid: qs.get("sid") || "standalone",
+      standalone: "1"
+    }
+  });
+
+  console.log("[Game] Loaded", swfPath, "standalone at", width + "x" + height);
+})();
+</script>
+</body>
+</html>

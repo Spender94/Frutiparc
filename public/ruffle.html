@@ -14,148 +14,23 @@
         }
 
         #player-container {
-            width: 1024px;
-            height: 768px;
+            width: 1920px;
+            height: 1080px;
         }
     </style>
 
     <script>
-        (function() {
-            const _origFetch = window.fetch;
-            const APP_ORIGIN = window.location.origin;
-            const APP_HOST = window.location.host;
-            const WS_ORIGIN = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${APP_HOST}`;
-            const SWF_ORIGIN = `${APP_ORIGIN}/swf`;
-
-            const domainMap = {
-                'www.beta.frutiparc.com': APP_ORIGIN,
-                'www.frutiparc.com':      APP_ORIGIN,
-                'swf.beta.frutiparc.com': SWF_ORIGIN,
-                'swf.frutiparc.com':      SWF_ORIGIN,
-                'localhost:5173':         APP_ORIGIN,
-                'localhost:5000':         APP_ORIGIN,
-            };
-
-            function maybeAutoLaunchFrusion(requestUrl, responsePromise) {
-                return Promise.resolve(responsePromise).then((resp) => {
-                    try {
-                        const isDoLd = /\/do\/ld(\?|$)/.test(requestUrl || '');
-                        if (!isDoLd || window.__frusionAutoLaunchDone) return resp;
-                        window.__frusionAutoLaunchDone = true;
-
-                        resp.clone().text().then((xmlText) => {
-                            const gameTag = xmlText.match(/<game[^>]*>/i);
-                            if (!gameTag) return;
-                            const tag = gameTag[0];
-                            const firstSwfTag = xmlText.match(/<s[^>]*>/i);
-                            const getAttr = (name) => {
-                                const m = tag.match(new RegExp(name + '="([^"]*)"'));
-                                return m ? m[1] : '';
-                            };
-                            const getSwfAttr = (name) => {
-                                if (!firstSwfTag) return '';
-                                const m = firstSwfTag[0].match(new RegExp(name + '="([^"]*)"'));
-                                return m ? m[1] : '';
-                            };
-                            const sid = new URLSearchParams(window.location.search).get('sid') || '';
-                            const target = new URL('/frusion', window.location.origin);
-                            target.searchParams.set('sid', sid);
-                            target.searchParams.set('disc_type', getAttr('t') || '0');
-                            target.searchParams.set('gameName', getAttr('n') || 'kaluga');
-                            target.searchParams.set('u', getAttr('u'));
-                            target.searchParams.set('id', getSwfAttr('u') || getAttr('u'));
-                            target.searchParams.set('size', getSwfAttr('s') || '0');
-                            target.searchParams.set('width', (getAttr('p').match(/w=(\d+)/) || [,'700'])[1]);
-                            target.searchParams.set('height', (getAttr('p').match(/h=(\d+)/) || [,'480'])[1]);
-                            target.searchParams.set('w', (getAttr('p').match(/w=(\d+)/) || [,'700'])[1]);
-                            target.searchParams.set('h', (getAttr('p').match(/h=(\d+)/) || [,'480'])[1]);
-                            target.searchParams.set('mode', (getAttr('p').match(/m=([a-z])/i) || [,'i'])[1]);
-                            console.log('[FRUSION autolaunch] ->', target.toString());
-                            setTimeout(() => { window.location.href = target.toString(); }, 50);
-                        }).catch(() => {});
-                    } catch (e) {}
-                    return resp;
-                });
+        window.RufflePlayer = window.RufflePlayer || {};
+        window.RufflePlayer.config = {
+            fontSources: [
+                `${window.location.origin}/legacy/fonts.swf`
+            ],
+            defaultFonts: {
+                sans: ["Verdana", "verdana"],
+                serif: ["Times New Roman", "TimesNewRoman"],
+                typewriter: ["Verdana", "verdana"]
             }
-
-            window.fetch = function(input, init) {
-                let url = (typeof input === 'string')
-                    ? input
-                    : (input instanceof Request ? input.url : String(input));
-
-                // Some legacy URL builders concatenate host + file without "/"
-                // (e.g. http://localhost:8888animfrusion.swf). Fix it here.
-                if (typeof url === 'string') {
-                    if (url.startsWith(APP_ORIGIN) && !url.startsWith(`${APP_ORIGIN}/`) && !url.startsWith(`${APP_ORIGIN}:`)) {
-                        url = url.replace(APP_ORIGIN, `${APP_ORIGIN}/`);
-                    }
-                }
-
-                try {
-                    const parsed = new URL(url);
-                    const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
-
-                    for (const [domain, target] of Object.entries(domainMap)) {
-                        if (host === domain || parsed.hostname === domain) {
-                            const path = parsed.pathname.startsWith('/') ? parsed.pathname : ('/' + parsed.pathname);
-                            const newUrl = target + path + parsed.search;
-                            console.log('[FETCH rewrite]', url, '->', newUrl);
-                            return maybeAutoLaunchFrusion(newUrl, _origFetch.call(this, newUrl, init));
-                        }
-                    }
-                } catch (e) {}
-
-                const prefixRewrites = [
-                    ['/betawww/', '/'],
-                    ['/betaswf/', '/swf/'],
-                    ['/sw/', '/swf/'],
-                ];
-
-                try {
-                    const parsed = new URL(url);
-                    if (parsed.host === APP_HOST) {
-                        for (const [prefix, replacement] of prefixRewrites) {
-                            if (parsed.pathname.startsWith(prefix)) {
-                                parsed.pathname = replacement + parsed.pathname.substring(prefix.length);
-                                const newUrl = parsed.toString();
-                                console.log('[FETCH prefix]', url, '->', newUrl);
-                                return maybeAutoLaunchFrusion(newUrl, _origFetch.call(this, newUrl, init));
-                            }
-                        }
-                    }
-                } catch (e) {}
-
-                console.log('[FETCH]', url);
-                return maybeAutoLaunchFrusion(url, _origFetch.call(this, input, init));
-            };
-
-            const _origXHROpen = XMLHttpRequest.prototype.open;
-            XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-                let rewritten = url;
-
-                if (typeof rewritten === 'string') {
-                    if (rewritten.startsWith(APP_ORIGIN) && !rewritten.startsWith(`${APP_ORIGIN}/`) && !rewritten.startsWith(`${APP_ORIGIN}:`)) {
-                        rewritten = rewritten.replace(APP_ORIGIN, `${APP_ORIGIN}/`);
-                    }
-                }
-
-                try {
-                    const parsed = new URL(rewritten, window.location.origin);
-                    const host = parsed.hostname + (parsed.port ? ':' + parsed.port : '');
-
-                    for (const [domain, target] of Object.entries(domainMap)) {
-                        if (host === domain || parsed.hostname === domain) {
-                            const path = parsed.pathname.startsWith('/') ? parsed.pathname : ('/' + parsed.pathname);
-                            rewritten = target + path + parsed.search;
-                            console.log('[XHR rewrite]', url, '->', rewritten);
-                            break;
-                        }
-                    }
-                } catch (e) {}
-
-                return _origXHROpen.call(this, method, rewritten, ...rest);
-            };
-        })();
+        };
     </script>
 
     <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
@@ -164,90 +39,272 @@
     <div id="player-container"></div>
 
     <script>
-        // Disable legacy popup launch hook (keeps game launch in-place).
-        window.fp_goURLResize = function(_url, _mode, _w, _h) {
-            console.log("[Frusion] popup launch suppressed", _url);
-            return true;
-        };
-        window.fp_openHisto = function(user) {
-            const u = encodeURIComponent(String(user || ''));
-            window.open(`/legacy?histo=${u}`, '_blank', 'noopener,noreferrer');
-            return true;
-        };
+        (function () {
+            const APP_ORIGIN = window.location.origin;
+            const APP_HOST = window.location.host;
+            const WS_ORIGIN = `${window.location.protocol === "https:" ? "wss" : "ws"}://${APP_HOST}`;
+            const SWF_ORIGIN = `${APP_ORIGIN}/swf`;
 
-        function normalizeAvatarState(value) {
-            let s = String(value || '').replace(/\D/g, '');
+            const domainMap = {
+                "www.beta.frutiparc.com": APP_ORIGIN,
+                "beta.frutiparc.com": APP_ORIGIN,
+                "www.frutiparc.com": APP_ORIGIN,
+                "www.frutiparc.net": APP_ORIGIN,
+                "swf.beta.frutiparc.com": SWF_ORIGIN,
+                "swf.frutiparc.com": SWF_ORIGIN,
+                "localhost:5173": APP_ORIGIN,
+                "localhost:5000": APP_ORIGIN
+            };
 
-            if (s.length < 24) s = s.padEnd(24, '0');
-            if (s.length > 24) s = s.slice(0, 24);
+            function rewriteLegacyUrl(rawUrl) {
+                let url = String(rawUrl || "");
+                if (!url) return url;
 
-            const family = s.slice(0, 2);
-            if (family !== '00' && family !== '01') {
-                s = '00' + s.slice(2);
+                if (
+                    url.startsWith(APP_ORIGIN) &&
+                    !url.startsWith(`${APP_ORIGIN}/`) &&
+                    !url.startsWith(`${APP_ORIGIN}:`)
+                ) {
+                    url = url.replace(APP_ORIGIN, `${APP_ORIGIN}/`);
+                }
+
+                try {
+                    const parsed = new URL(url, window.location.origin);
+                    const host = parsed.hostname + (parsed.port ? ":" + parsed.port : "");
+
+                    for (const [domain, target] of Object.entries(domainMap)) {
+                        if (parsed.hostname === domain || host === domain) {
+                            const path = parsed.pathname.startsWith("/") ? parsed.pathname : "/" + parsed.pathname;
+                            return target + path + parsed.search;
+                        }
+                    }
+
+                    if (parsed.origin === APP_ORIGIN) {
+                        if (parsed.pathname.startsWith("/games/")) {
+                            return APP_ORIGIN + "/swf" + parsed.pathname + parsed.search;
+                        }
+
+                        if (parsed.pathname.startsWith("/betawww/")) {
+                            return APP_ORIGIN + parsed.pathname.replace("/betawww/", "/") + parsed.search;
+                        }
+
+                        if (parsed.pathname.startsWith("/betaswf/")) {
+                            return APP_ORIGIN + parsed.pathname.replace("/betaswf/", "/swf/") + parsed.search;
+                        }
+
+                        if (parsed.pathname.startsWith("/sw/")) {
+                            return APP_ORIGIN + parsed.pathname.replace("/sw/", "/swf/") + parsed.search;
+                        }
+                    }
+
+                    return parsed.toString();
+                } catch (e) {
+                    return url;
+                }
             }
 
-            return s;
-        }
+            // Parse /do/ld XML and store game info for the standalone popup
+            function parseDoLdResponse(text) {
+                try {
+                    var parser = new DOMParser();
+                    var doc = parser.parseFromString(text, "text/xml");
+                    var game = doc.querySelector("game");
+                    if (game && !game.getAttribute("k")) {
+                        var swfUrl = game.getAttribute("u") || "";
+                        var gameName = game.getAttribute("n") || "";
+                        var props = game.getAttribute("p") || "";
+                        var parsedProps = {};
+                        props.split(";").forEach(function (p) {
+                            var parts = p.split("=");
+                            if (parts[0]) parsedProps[parts[0]] = parts[1] || "";
+                        });
+                        window.__pendingGame = {
+                            swf: swfUrl,
+                            name: gameName,
+                            width: parseInt(parsedProps.w) || 640,
+                            height: parseInt(parsedProps.h) || 480
+                        };
+                        console.log("[FRUSION] Pending game:", JSON.stringify(window.__pendingGame));
+                    }
+                } catch (e) {
+                    console.warn("[FRUSION] /do/ld parse error:", e);
+                }
+            }
 
-        function normalizeExpression(value) {
-            const n = Number(value);
-            if (!Number.isFinite(n)) return '0';
-            return String(Math.max(0, Math.min(12, Math.floor(n))));
-        }
+            // --- Fetch interception (URL rewrite + /do/ld game info capture) ---
+            const _origFetch = window.fetch.bind(window);
+            window.fetch = function (input, init) {
+                const rawUrl =
+                    typeof input === "string"
+                        ? input
+                        : (input && input.url ? input.url : String(input));
 
-        window.addEventListener("DOMContentLoaded", async () => {
-            const wsOrigin = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
-            const urlParams = new URLSearchParams(window.location.search);
+                const rewritten = rewriteLegacyUrl(rawUrl);
+                console.log("[FETCH]", rawUrl, "->", rewritten);
 
-            const sid = urlParams.get('sid') || '';
-            const s = normalizeAvatarState(
-                urlParams.get('s') || '000000000000000000000000'
-            );
-            const e = normalizeExpression(
-                urlParams.get('e') || '0'
-            );
+                var isDoLd = false;
+                try {
+                    var u = new URL(rewritten, window.location.origin);
+                    isDoLd = u.pathname === "/do/ld";
+                } catch (e) {}
 
-            console.log('[Ruffle] sid =', sid);
-            console.log('[Ruffle] s   =', s);
-            console.log('[Ruffle] e   =', e);
+                if (isDoLd) {
+                    var doFetch = input instanceof Request
+                        ? _origFetch(new Request(rewritten, input), init)
+                        : _origFetch(rewritten, init);
+                    return doFetch.then(function (response) {
+                        var cloned = response.clone();
+                        cloned.text().then(function (text) {
+                            console.log("[FRUSION] /do/ld fetch response:", text);
+                            parseDoLdResponse(text);
+                        });
+                        return response;
+                    });
+                }
 
-            const ruffle = window.RufflePlayer.newest();
-            const player = ruffle.createPlayer();
-            player.style.width = "1024px";
-            player.style.height = "768px";
-            document.getElementById("player-container").appendChild(player);
+                if (input instanceof Request) {
+                    return _origFetch(new Request(rewritten, input), init);
+                }
+                return _origFetch(rewritten, init);
+            };
 
-            await player.load({
-                url: "/legacy/main.swf",
-                autoplay: "on",
-                allowScriptAccess: true,
-                quality: "high",
-                parameters: {
-                    sid: sid,
-                    // Keep a slash-stable suffix: some legacy concatenations
-                    // drop one trailing slash before appending filenames.
-                    domain: `${window.location.host}/./`,
-                    s: s,
-                    e: e
-                },
-                socketProxy: [
-                    { host: "localhost", port: 5000, proxyUrl: wsOrigin },
-                    { host: window.location.hostname, port: 5000, proxyUrl: wsOrigin },
-                    // FrusionServer may connect to hardcoded legacy hosts for FrutiScore
-                    { host: "www.beta.frutiparc.com", port: 5000, proxyUrl: wsOrigin },
-                    { host: "www.frutiparc.com", port: 5000, proxyUrl: wsOrigin },
-                    // Catch-all for any port (FrutiScore uses same port as FrutiChat)
-                    { host: "www.beta.frutiparc.com", port: 2000, proxyUrl: wsOrigin },
-                    { host: "www.frutiparc.com", port: 2000, proxyUrl: wsOrigin },
-                    { host: "localhost", port: 2000, proxyUrl: wsOrigin },
-                    { host: window.location.hostname, port: 2000, proxyUrl: wsOrigin }
-                ],
-                openUrlMode: "allow",
-                allowNetworking: "all",
-                base: `${window.location.origin}/`
+            // --- XHR interception (URL rewrite + /do/ld game info capture) ---
+            const _origXHROpen = XMLHttpRequest.prototype.open;
+            const _origXHRSend = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.open = function (method, url) {
+                this.__frusionUrl = url;
+                var rewritten = rewriteLegacyUrl(url);
+                var isDoLd = false;
+                try {
+                    var u = new URL(rewritten, window.location.origin);
+                    isDoLd = u.pathname === "/do/ld";
+                } catch (e) {}
+                this.__frusionIsDoLd = isDoLd;
+                console.log("[FRUSION XHR]", url, "->", rewritten);
+                return _origXHROpen.call(this, method, rewritten, arguments[2], arguments[3], arguments[4]);
+            };
+            XMLHttpRequest.prototype.send = function (body) {
+                if (this.__frusionIsDoLd) {
+                    var xhr = this;
+                    xhr.addEventListener("load", function () {
+                        if (xhr.status >= 200 && xhr.status < 300 && xhr.responseText) {
+                            console.log("[FRUSION] /do/ld XHR response:", xhr.responseText);
+                            parseDoLdResponse(xhr.responseText);
+                        }
+                    });
+                }
+                return _origXHRSend.call(this, body);
+            };
+
+            window.fp_goURLResize = function (_url, _mode, _w, _h) {
+                console.log("[Frusion] fp_goURLResize", _url, _w, _h);
+                return true;
+            };
+
+            window.fp_goURLNewWin = function (url, mode, w, h) {
+                const rewritten = rewriteLegacyUrl(url);
+                console.log("[Frusion] fp_goURLNewWin", url, "->", rewritten);
+
+                // If we have pending game info from /do/ld, open standalone game player
+                // instead of the legacy frusion page (LocalConnection is broken in Ruffle)
+                if (window.__pendingGame) {
+                    var game = window.__pendingGame;
+                    window.__pendingGame = null;
+                    var sid = new URLSearchParams(window.location.search).get("sid") || "";
+                    var popupUrl = "/game-popup.html"
+                        + "?swf=" + encodeURIComponent(game.swf)
+                        + "&width=" + game.width
+                        + "&height=" + game.height
+                        + "&game=" + encodeURIComponent(game.name)
+                        + "&sid=" + encodeURIComponent(sid);
+                    console.log("[Frusion] Opening standalone game:", popupUrl);
+                    var gw = game.width + 32;
+                    var gh = game.height + 32;
+                    var feat = "width=" + gw + ",height=" + gh + ",resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no";
+                    window.open(popupUrl, "frutiparc_game", feat);
+                    return true;
+                }
+
+                const features = `width=${w || 640},height=${h || 480},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`;
+                window.open(rewritten, "frutiparc_game", features);
+                return true;
+            };
+
+            window.fp_closePopupFrusion = function () {
+                console.log("[Frusion] fp_closePopupFrusion");
+                return true;
+            };
+
+            window.fp_openHisto = function (user) {
+                const u = encodeURIComponent(String(user || ""));
+                window.open(`/legacy?histo=${u}`, "_blank", "noopener,noreferrer");
+                return true;
+            };
+
+            function normalizeAvatarState(value) {
+                let s = String(value || "").replace(/\D/g, "");
+
+                if (s.length < 24) s = s.padEnd(24, "0");
+                if (s.length > 24) s = s.slice(0, 24);
+
+                const family = s.slice(0, 2);
+                if (family !== "00" && family !== "01") {
+                    s = "00" + s.slice(2);
+                }
+
+                return s;
+            }
+
+            function normalizeExpression(value) {
+                const n = Number(value);
+                if (!Number.isFinite(n)) return "0";
+                return String(Math.max(0, Math.min(12, Math.floor(n))));
+            }
+
+            window.addEventListener("DOMContentLoaded", async () => {
+                const urlParams = new URLSearchParams(window.location.search);
+
+                const sid = urlParams.get("sid") || "";
+                const s = normalizeAvatarState(urlParams.get("s") || "000000000000000000000000");
+                const e = normalizeExpression(urlParams.get("e") || "0");
+
+                console.log("[Ruffle] sid =", sid);
+                console.log("[Ruffle] s   =", s);
+                console.log("[Ruffle] e   =", e);
+
+                const ruffle = window.RufflePlayer.newest();
+                const player = ruffle.createPlayer();
+                player.style.width = "1024px";
+                player.style.height = "768px";
+                document.getElementById("player-container").appendChild(player);
+
+                await player.load({
+                    url: "/legacy/main.swf",
+                    autoplay: "on",
+                    allowScriptAccess: true,
+                    quality: "high",
+                    parameters: {
+                        sid: sid,
+                        domain: `${window.location.host}/./`,
+                        s: s,
+                        e: e
+                    },
+                    socketProxy: [
+                        { host: "localhost", port: 5000, proxyUrl: WS_ORIGIN },
+                        { host: window.location.hostname, port: 5000, proxyUrl: WS_ORIGIN },
+                        { host: "www.beta.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
+                        { host: "www.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
+                        { host: "www.beta.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },
+                        { host: "www.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },
+                        { host: "localhost", port: 2000, proxyUrl: WS_ORIGIN },
+                        { host: window.location.hostname, port: 2000, proxyUrl: WS_ORIGIN }
+                    ],
+                    openUrlMode: "allow",
+                    allowNetworking: "all",
+                    base: `${window.location.origin}/`
+                });
             });
-        });
+        })();
     </script>
-
 </body>
 </html>
