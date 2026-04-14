@@ -71,9 +71,22 @@
   player.style.height = height + "px";
   wrap.appendChild(player);
 
-  // Derive base URL from SWF path so relative loads (e.g. full.swf) resolve
+  // Derive base URL from SWF path so relative loads resolve
   // to the game's own directory instead of the site root.
   var swfDir = swfPath.substring(0, swfPath.lastIndexOf("/") + 1);
+
+  // Try full.swf first — it has all libs pre-merged (MovieClipLoader is broken
+  // in Ruffle, so the base SWF alone can't load its lib/*.swf dependencies).
+  var fullSwfPath = swfDir + "full.swf";
+  try {
+    var headResp = await fetch(fullSwfPath, { method: "HEAD" });
+    if (headResp.ok) {
+      console.log("[Game] Found full.swf, using it instead of", swfPath);
+      swfPath = fullSwfPath;
+    }
+  } catch (e) {
+    console.log("[Game] No full.swf available, using original SWF");
+  }
 
   // Load the game SWF directly (standalone mode, no Frusion wrapper).
   await player.load({
