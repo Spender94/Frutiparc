@@ -56,9 +56,6 @@
                 "localhost:5000": APP_ORIGIN
             };
 
-            window.__frusionPopupLaunchDone = false;
-            window.__frusionPopupRef = null;
-
             function rewriteLegacyUrl(rawUrl) {
                 let url = String(rawUrl || "");
                 if (!url) return url;
@@ -106,76 +103,6 @@
                 }
             }
 
-            function parseDoLdResponse(xmlText) {
-                const gameMatch = xmlText.match(/<game[^>]*t="([^"]*)"[^>]*n="([^"]*)"[^>]*u="([^"]*)"[^>]*p="([^"]*)"/i);
-                if (!gameMatch) return null;
-
-                const discType = gameMatch[1] || "0";
-                const gameName = gameMatch[2] || "game";
-                const gamePath = gameMatch[3] || "";
-                const props = gameMatch[4] || "";
-
-                const width = (props.match(/w=(\d+)/i) || [null, "640"])[1];
-                const height = (props.match(/h=(\d+)/i) || [null, "480"])[1];
-                const mode = (props.match(/m=([a-z])/i) || [null, "i"])[1];
-
-                let swfPath = gamePath;
-                if (!swfPath.startsWith("/")) swfPath = "/" + swfPath;
-                if (!swfPath.startsWith("/swf/")) swfPath = "/swf" + swfPath;
-
-                return {
-                    discType,
-                    gameName,
-                    swf: swfPath,
-                    width,
-                    height,
-                    mode
-                };
-            }
-
-            function openGamePopup(info) {
-                const sid = new URLSearchParams(window.location.search).get("sid") || "";
-
-                const popupUrl = new URL("/game-popup.html", window.location.origin);
-                popupUrl.searchParams.set("sid", sid);
-                popupUrl.searchParams.set("game", info.gameName);
-                popupUrl.searchParams.set("disc_type", info.discType);
-                popupUrl.searchParams.set("swf", info.swf);
-                popupUrl.searchParams.set("width", info.width);
-                popupUrl.searchParams.set("height", info.height);
-                popupUrl.searchParams.set("w", info.width);
-                popupUrl.searchParams.set("h", info.height);
-                popupUrl.searchParams.set("mode", info.mode);
-
-                const features = `width=${info.width},height=${info.height},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`;
-
-                if (window.__frusionPopupRef && !window.__frusionPopupRef.closed) {
-                    window.__frusionPopupRef.location.href = popupUrl.toString();
-                    window.__frusionPopupRef.focus();
-                } else {
-                    window.__frusionPopupRef = window.open(popupUrl.toString(), "frutiparc_game", features);
-                }
-
-                console.log("[FRUSION POPUP]", popupUrl.toString());
-            }
-
-            function shouldBlockInternalFrusion(rawUrl) {
-                if (!window.__frusionPopupLaunchDone) return false;
-
-                try {
-                    const parsed = new URL(rawUrl, window.location.origin);
-                    const path = parsed.pathname.toLowerCase();
-
-                    if (path.endsWith("/animfrusion.swf")) return true;
-                    if (path.startsWith("/games/")) return true;
-                    if (path.startsWith("/swf/games/")) return true;
-
-                    return false;
-                } catch (e) {
-                    return false;
-                }
-            }
-
             const _origFetch = window.fetch.bind(window);
             window.fetch = function (input, init) {
                 const rawUrl =
@@ -184,48 +111,12 @@
                         : (input && input.url ? input.url : String(input));
 
                 const rewritten = rewriteLegacyUrl(rawUrl);
-                console.log("[FRUSION FETCH]", rawUrl, "->", rewritten);
+                console.log("[FETCH]", rawUrl, "->", rewritten);
 
-                if (shouldBlockInternalFrusion(rewritten)) {
-                    console.log("[FRUSION BLOCK]", rewritten);
-                    return Promise.resolve(
-                        new Response("", {
-                            status: 204,
-                            headers: {
-                                "Content-Type": "application/octet-stream"
-                            }
-                        })
-                    );
+                if (input instanceof Request) {
+                    return _origFetch(new Request(rewritten, input), init);
                 }
-
-                const responsePromise = _origFetch.call(this, rewritten, init);
-
-                if (/\/do\/ld(\?|$)/i.test(rewritten)) {
-                    return Promise.resolve(responsePromise).then(async (resp) => {
-                        try {
-                            const xmlText = await resp.clone().text();
-                            const info = parseDoLdResponse(xmlText);
-
-                            if (info) {
-                                openGamePopup(info);
-                                window.__frusionPopupLaunchDone = true;
-
-                                return new Response('<r k="popup" />', {
-                                    status: 200,
-                                    headers: {
-                                        "Content-Type": "text/xml"
-                                    }
-                                });
-                            }
-                        } catch (e) {
-                            console.error("[FRUSION do/ld intercept failed]", e);
-                        }
-
-                        return resp;
-                    });
-                }
-
-                return responsePromise;
+                return _origFetch(rewritten, init);
             };
 
             const _origXHROpen = XMLHttpRequest.prototype.open;
@@ -236,7 +127,15 @@
             };
 
             window.fp_goURLResize = function (_url, _mode, _w, _h) {
-                console.log("[Frusion] popup launch suppressed", _url);
+                console.log("[Frusion] fp_goURLResize", _url, _w, _h);
+                return true;
+            };
+
+            window.fp_goURLNewWin = function (url, mode, w, h) {
+                const rewritten = rewriteLegacyUrl(url);
+                console.log("[Frusion] fp_goURLNewWin", url, "->", rewritten);
+                const features = `width=${w || 640},height=${h || 480},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`;
+                window.open(rewritten, "frutiparc_game", features);
                 return true;
             };
 

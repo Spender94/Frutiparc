@@ -637,8 +637,15 @@ app.get('/xml/services.xml', (req, res) => {
   } catch {
     publicHost = String(rawHost).split(':')[0] || 'localhost';
   }
+  // Include game names as service entries so FrusionServer can find ports
+  // (_global.cbeePort[gameDisc.swfName] must resolve to a valid port).
+  const gameServiceEntries = Object.values(GAME_DISCS)
+    .map((d) => d.swfName)
+    .filter((v, i, a) => a.indexOf(v) === i) // unique names
+    .map((n) => `<service name="${escapeXml(n)}" port="${XMLSOCKET_PORT}" />`)
+    .join('');
   res.type('text/xml').send(
-    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /><service name="frutiscore" port="${XMLSOCKET_PORT}" /></services>`
+    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /><service name="frutiscore" port="${XMLSOCKET_PORT}" />${gameServiceEntries}</services>`
   );
 });
 
@@ -1049,6 +1056,7 @@ function swfSizeForUrlPath(urlPath) {
 const GAME_DISCS = {
   kaluga1: {
     discType: '0',
+    playMode: 'single',
     swfName: 'kaluga',
     gameId: 'games/kaluga/kaluga.swf',
     props: 'w=640;h=480;m=i',
@@ -1059,6 +1067,7 @@ const GAME_DISCS = {
   },
   kalugademo: {
     discType: '3',
+    playMode: 'preview',
     swfName: 'kaluga',
     gameId: 'games/kaluga/kaluga.swf',
     props: 'w=640;h=480;m=i',
@@ -1068,6 +1077,7 @@ const GAME_DISCS = {
   },
   swapou1: {
     discType: '0',
+    playMode: 'single',
     swfName: 'swapou2',
     gameId: 'games/miniWave2/miniWave2.swf',
     props: 'w=640;h=480;m=i',
@@ -1077,6 +1087,7 @@ const GAME_DISCS = {
   },
   miniwave1: {
     discType: '0',
+    playMode: 'single',
     swfName: 'miniwave2',
     gameId: 'games/miniWave2/miniWave2.swf',
     props: 'w=550;h=400;m=i',
@@ -1133,7 +1144,8 @@ app.get('/do/ld', (req, res) => {
     .join('');
 
   // Keep legacy root node name/attrs expected by Frusion ("game", not "r").
-  const xml = `<game t="${escapeXml(disc.discType)}" pm="preview" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
+  const pm = disc.playMode || 'single';
+  const xml = `<game t="${escapeXml(disc.discType)}" pm="${escapeXml(pm)}" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
   if (VERBOSE_FRUSION_LOGS) {
     console.log(`[FRUSION] do/ld hit launch_id=${launchId || '-'} u=${discUid} resolved=${resolvedDiscUid} -> ${disc.gameId} props=${disc.props}`);
   }
@@ -1591,6 +1603,10 @@ app.use('/swf/games', (req, _res, next) => {
 });
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
+// Fallback: Frusion constructs URLs as baseURL+swfId (e.g. "/games/kaluga/kaluga.swf")
+// without the /swf/ prefix.  Serve them from the same location.
+app.use('/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
+app.use('/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
