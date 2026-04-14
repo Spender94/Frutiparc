@@ -2429,12 +2429,27 @@ case 'join': {
   // 2. Liste des utilisateurs
   sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
 
-  // 3. Notification légère aux autres
-broadcastToChannel(
-  g,
-  `<${CMD.userjoined} u="${escapeXml(client.username)}" g="${g}" />`,
-  socket
-);
+  // 3. Envoi proactif des données trace (bouille) pour tous les utilisateurs du salon.
+  //    Le client AS2 utilise autoTrace=true pour les UserMng du chat, ce qui
+  //    n'envoie jamais de requête trace au serveur. Sans cette poussée, les
+  //    FrutiScreen n'obtiennent jamais les données bouille et affichent un
+  //    message d'erreur ("vider le cache").
+  {
+    let traceXml = '';
+    for (const u of userArr) {
+      const ud = users[u] || {};
+      traceXml += `<u u="${escapeXml(u)}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+    }
+    sendToClient(socket, `<${CMD.trace}>${traceXml}</${CMD.trace}>`);
+  }
+
+  // 4. Notification aux autres + trace du nouvel arrivant pour leurs FrutiScreen
+  {
+    const joinerUd = users[client.username] || {};
+    const joinerTrace = `<${CMD.trace}><u u="${escapeXml(client.username)}" p="1" s="${getStatusCode(joinerUd)}" mu="${getMuteValue(joinerUd)}" f="${bouilleOf(joinerUd)}" /></${CMD.trace}>`;
+    broadcastToChannel(g, `<${CMD.userjoined} u="${escapeXml(client.username)}" g="${g}" />`, socket);
+    broadcastToChannel(g, joinerTrace, socket);
+  }
   break;
 }
 
