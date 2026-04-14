@@ -24,7 +24,15 @@
     window.RufflePlayer = window.RufflePlayer || {};
     window.RufflePlayer.config = {
       autoplay: "on",
-      logLevel: "warn"
+      logLevel: "warn",
+      fontSources: [
+        window.location.origin + "/legacy/fonts.swf"
+      ],
+      defaultFonts: {
+        sans: ["Verdana", "verdana"],
+        serif: ["Times New Roman", "TimesNewRoman"],
+        typewriter: ["Verdana", "verdana"]
+      }
     };
   </script>
   <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
@@ -63,8 +71,11 @@
   player.style.height = height + "px";
   wrap.appendChild(player);
 
+  // Derive base URL from SWF path so relative loads (e.g. full.swf) resolve
+  // to the game's own directory instead of the site root.
+  var swfDir = swfPath.substring(0, swfPath.lastIndexOf("/") + 1);
+
   // Load the game SWF directly (standalone mode, no Frusion wrapper).
-  // The game will see inFrusion as undefined and use its standalone path.
   await player.load({
     url: swfPath,
     autoplay: "on",
@@ -72,9 +83,8 @@
     allowNetworking: "all",
     quality: "high",
     letterbox: "off",
-    base: APP_ORIGIN + "/",
+    base: APP_ORIGIN + swfDir,
     parameters: {
-      // Provide minimal context the game may look for
       sid: qs.get("sid") || "standalone",
       standalone: "1"
     }
