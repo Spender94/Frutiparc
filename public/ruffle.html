@@ -113,6 +113,70 @@
                 const rewritten = rewriteLegacyUrl(rawUrl);
                 console.log("[FETCH]", rawUrl, "->", rewritten);
 
+                // Intercept /do/ld to force popup mode for standalone game loading
+                var isDoLd = false;
+                try {
+                    var parsedFetchUrl = new URL(rewritten, window.location.origin);
+                    isDoLd = parsedFetchUrl.pathname === "/do/ld";
+                } catch (e) {}
+
+                if (isDoLd) {
+                    var doFetch = input instanceof Request
+                        ? _origFetch(new Request(rewritten, input), init)
+                        : _origFetch(rewritten, init);
+
+                    return doFetch.then(function (response) {
+                        return response.text().then(function (text) {
+                            console.log("[FRUSION] /do/ld response:", text);
+                            try {
+                                var parser = new DOMParser();
+                                var doc = parser.parseFromString(text, "text/xml");
+                                var game = doc.querySelector("game");
+                                if (game && !game.getAttribute("k")) {
+                                    var swfUrl = game.getAttribute("u") || "";
+                                    var gameName = game.getAttribute("n") || "";
+                                    var props = game.getAttribute("p") || "";
+                                    var parsedProps = {};
+                                    props.split(";").forEach(function (p) {
+                                        var parts = p.split("=");
+                                        if (parts[0]) parsedProps[parts[0]] = parts[1] || "";
+                                    });
+
+                                    window.__pendingGame = {
+                                        swf: swfUrl,
+                                        name: gameName,
+                                        width: parseInt(parsedProps.w) || 640,
+                                        height: parseInt(parsedProps.h) || 480
+                                    };
+                                    console.log("[FRUSION] Pending game:", JSON.stringify(window.__pendingGame));
+
+                                    // Force popup mode: change m=i to m=p so main.swf
+                                    // uses PopupFrusion instead of InternalFrusion.
+                                    // This avoids the broken LocalConnection in Ruffle.
+                                    var finalText = text;
+                                    if (parsedProps.m === "i") {
+                                        finalText = text.replace("m=i", "m=p");
+                                        console.log("[FRUSION] Forced popup mode (m=i -> m=p)");
+                                    }
+
+                                    return new Response(finalText, {
+                                        status: response.status,
+                                        statusText: response.statusText,
+                                        headers: response.headers
+                                    });
+                                }
+                            } catch (e) {
+                                console.warn("[FRUSION] /do/ld parse error:", e);
+                            }
+                            return new Response(text, {
+                                status: response.status,
+                                statusText: response.statusText,
+                                headers: response.headers
+                            });
+                        });
+                    });
+                }
+
                 if (input instanceof Request) {
                     return _origFetch(new Request(rewritten, input), init);
                 }
@@ -134,8 +198,34 @@
             window.fp_goURLNewWin = function (url, mode, w, h) {
                 const rewritten = rewriteLegacyUrl(url);
                 console.log("[Frusion] fp_goURLNewWin", url, "->", rewritten);
+
+                // If we have pending game info from /do/ld, open standalone game player
+                // instead of the legacy frusion page (LocalConnection is broken in Ruffle)
+                if (window.__pendingGame) {
+                    var game = window.__pendingGame;
+                    window.__pendingGame = null;
+                    var sid = new URLSearchParams(window.location.search).get("sid") || "";
+                    var popupUrl = "/game-popup.html"
+                        + "?swf=" + encodeURIComponent(game.swf)
+                        + "&width=" + game.width
+                        + "&height=" + game.height
+                        + "&game=" + encodeURIComponent(game.name)
+                        + "&sid=" + encodeURIComponent(sid);
+                    console.log("[Frusion] Opening standalone game:", popupUrl);
+                    var gw = game.width + 32;
+                    var gh = game.height + 32;
+                    var feat = "width=" + gw + ",height=" + gh + ",resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no";
+                    window.open(popupUrl, "frutiparc_game", feat);
+                    return true;
+                }
+
                 const features = `width=${w || 640},height=${h || 480},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`;
                 window.open(rewritten, "frutiparc_game", features);
+                return true;
+            };
+
+            window.fp_closePopupFrusion = function () {
+                console.log("[Frusion] fp_closePopupFrusion");
                 return true;
             };
 
