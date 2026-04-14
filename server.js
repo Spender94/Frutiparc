@@ -1145,7 +1145,10 @@ app.get('/do/ld', (req, res) => {
 
   // Keep legacy root node name/attrs expected by Frusion ("game", not "r").
   const pm = disc.playMode || 'single';
-  const xml = `<game t="${escapeXml(disc.discType)}" pm="${escapeXml(pm)}" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(disc.props)}">${filesXml}</game>`;
+  // Force popup mode: Ruffle's LocalConnection doesn't work for internal mode,
+  // so we change m=i to m=p to make main.swf use PopupFrusion.
+  const propsForResponse = (disc.props || '').replace('m=i', 'm=p');
+  const xml = `<game t="${escapeXml(disc.discType)}" pm="${escapeXml(pm)}" n="${escapeXml(disc.swfName)}" u="${escapeXml(disc.gameId)}" p="${escapeXml(propsForResponse)}">${filesXml}</game>`;
   if (VERBOSE_FRUSION_LOGS) {
     console.log(`[FRUSION] do/ld hit launch_id=${launchId || '-'} u=${discUid} resolved=${resolvedDiscUid} -> ${disc.gameId} props=${disc.props}`);
   }

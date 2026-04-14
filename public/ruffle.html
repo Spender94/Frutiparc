@@ -103,6 +103,35 @@
                 }
             }
 
+            // Parse /do/ld XML and store game info for the standalone popup
+            function parseDoLdResponse(text) {
+                try {
+                    var parser = new DOMParser();
+                    var doc = parser.parseFromString(text, "text/xml");
+                    var game = doc.querySelector("game");
+                    if (game && !game.getAttribute("k")) {
+                        var swfUrl = game.getAttribute("u") || "";
+                        var gameName = game.getAttribute("n") || "";
+                        var props = game.getAttribute("p") || "";
+                        var parsedProps = {};
+                        props.split(";").forEach(function (p) {
+                            var parts = p.split("=");
+                            if (parts[0]) parsedProps[parts[0]] = parts[1] || "";
+                        });
+                        window.__pendingGame = {
+                            swf: swfUrl,
+                            name: gameName,
+                            width: parseInt(parsedProps.w) || 640,
+                            height: parseInt(parsedProps.h) || 480
+                        };
+                        console.log("[FRUSION] Pending game:", JSON.stringify(window.__pendingGame));
+                    }
+                } catch (e) {
+                    console.warn("[FRUSION] /do/ld parse error:", e);
+                }
+            }
+
+            // --- Fetch interception (URL rewrite + /do/ld game info capture) ---
             const _origFetch = window.fetch.bind(window);
             window.fetch = function (input, init) {
                 const rawUrl =
@@ -113,67 +142,23 @@
                 const rewritten = rewriteLegacyUrl(rawUrl);
                 console.log("[FETCH]", rawUrl, "->", rewritten);
 
-                // Intercept /do/ld to force popup mode for standalone game loading
                 var isDoLd = false;
                 try {
-                    var parsedFetchUrl = new URL(rewritten, window.location.origin);
-                    isDoLd = parsedFetchUrl.pathname === "/do/ld";
+                    var u = new URL(rewritten, window.location.origin);
+                    isDoLd = u.pathname === "/do/ld";
                 } catch (e) {}
 
                 if (isDoLd) {
                     var doFetch = input instanceof Request
                         ? _origFetch(new Request(rewritten, input), init)
                         : _origFetch(rewritten, init);
-
                     return doFetch.then(function (response) {
-                        return response.text().then(function (text) {
-                            console.log("[FRUSION] /do/ld response:", text);
-                            try {
-                                var parser = new DOMParser();
-                                var doc = parser.parseFromString(text, "text/xml");
-                                var game = doc.querySelector("game");
-                                if (game && !game.getAttribute("k")) {
-                                    var swfUrl = game.getAttribute("u") || "";
-                                    var gameName = game.getAttribute("n") || "";
-                                    var props = game.getAttribute("p") || "";
-                                    var parsedProps = {};
-                                    props.split(";").forEach(function (p) {
-                                        var parts = p.split("=");
-                                        if (parts[0]) parsedProps[parts[0]] = parts[1] || "";
-                                    });
-
-                                    window.__pendingGame = {
-                                        swf: swfUrl,
-                                        name: gameName,
-                                        width: parseInt(parsedProps.w) || 640,
-                                        height: parseInt(parsedProps.h) || 480
-                                    };
-                                    console.log("[FRUSION] Pending game:", JSON.stringify(window.__pendingGame));
-
-                                    // Force popup mode: change m=i to m=p so main.swf
-                                    // uses PopupFrusion instead of InternalFrusion.
-                                    // This avoids the broken LocalConnection in Ruffle.
-                                    var finalText = text;
-                                    if (parsedProps.m === "i") {
-                                        finalText = text.replace("m=i", "m=p");
-                                        console.log("[FRUSION] Forced popup mode (m=i -> m=p)");
-                                    }
-
-                                    return new Response(finalText, {
-                                        status: response.status,
-                                        statusText: response.statusText,
-                                        headers: response.headers
-                                    });
-                                }
-                            } catch (e) {
-                                console.warn("[FRUSION] /do/ld parse error:", e);
-                            }
-                            return new Response(text, {
-                                status: response.status,
-                                statusText: response.statusText,
-                                headers: response.headers
-                            });
+                        var cloned = response.clone();
+                        cloned.text().then(function (text) {
+                            console.log("[FRUSION] /do/ld fetch response:", text);
+                            parseDoLdResponse(text);
                         });
+                        return response;
                     });
                 }
 
@@ -183,11 +168,32 @@
                 return _origFetch(rewritten, init);
             };
 
+            // --- XHR interception (URL rewrite + /do/ld game info capture) ---
             const _origXHROpen = XMLHttpRequest.prototype.open;
-            XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-                const rewritten = rewriteLegacyUrl(url);
+            const _origXHRSend = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.open = function (method, url) {
+                this.__frusionUrl = url;
+                var rewritten = rewriteLegacyUrl(url);
+                var isDoLd = false;
+                try {
+                    var u = new URL(rewritten, window.location.origin);
+                    isDoLd = u.pathname === "/do/ld";
+                } catch (e) {}
+                this.__frusionIsDoLd = isDoLd;
                 console.log("[FRUSION XHR]", url, "->", rewritten);
-                return _origXHROpen.call(this, method, rewritten, ...rest);
+                return _origXHROpen.call(this, method, rewritten, arguments[2], arguments[3], arguments[4]);
+            };
+            XMLHttpRequest.prototype.send = function (body) {
+                if (this.__frusionIsDoLd) {
+                    var xhr = this;
+                    xhr.addEventListener("load", function () {
+                        if (xhr.status >= 200 && xhr.status < 300 && xhr.responseText) {
+                            console.log("[FRUSION] /do/ld XHR response:", xhr.responseText);
+                            parseDoLdResponse(xhr.responseText);
+                        }
+                    });
+                }
+                return _origXHRSend.call(this, body);
             };
 
             window.fp_goURLResize = function (_url, _mode, _w, _h) {
