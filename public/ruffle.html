@@ -205,11 +205,30 @@
                 const rewritten = rewriteLegacyUrl(url);
                 console.log("[Frusion] fp_goURLNewWin", url, "->", rewritten);
 
-                // If we have pending game info from /do/ld, open standalone game player
-                // instead of the legacy frusion page (LocalConnection is broken in Ruffle)
-                if (window.__pendingGame) {
-                    var game = window.__pendingGame;
-                    window.__pendingGame = null;
+                // Try to get game info from /do/ld interception first
+                var game = window.__pendingGame;
+                window.__pendingGame = null;
+
+                // Fallback: extract game info from the URL params (e.g. /frusion?gameName=snake3&u=games/snake3/snake3.swf)
+                if (!game) {
+                    try {
+                        var parsed = new URL(rewritten, window.location.origin);
+                        var gameId = parsed.searchParams.get("u") || "";
+                        var gameName = parsed.searchParams.get("gameName") || "";
+                        if (gameId && gameId.endsWith(".swf")) {
+                            game = {
+                                swf: gameId,
+                                name: gameName || gameId.split("/").pop().replace(".swf", ""),
+                                width: w || 640,
+                                height: h || 480
+                            };
+                            console.log("[Frusion] Extracted game info from URL:", JSON.stringify(game));
+                        }
+                    } catch (e) {}
+                }
+
+                // Open standalone game player (LocalConnection is broken in Ruffle)
+                if (game) {
                     var sid = new URLSearchParams(window.location.search).get("sid") || "";
                     var popupUrl = "/game-popup.html"
                         + "?swf=" + encodeURIComponent(game.swf)
