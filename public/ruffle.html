@@ -309,10 +309,19 @@
                         e: e
                     },
                     socketProxy: [
+                        // FrutiChat (port % 1000 == 0 → chat cmdList).
                         { host: "localhost", port: 5000, proxyUrl: WS_ORIGIN },
                         { host: window.location.hostname, port: 5000, proxyUrl: WS_ORIGIN },
                         { host: "www.beta.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
                         { host: "www.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
+                        // FrutiScore (port % 1000 == 1 → score cmdList).
+                        // The server routes all WebSocket traffic to the same TCP
+                        // handler — the port here is just a client-side cmdList hint.
+                        { host: "localhost", port: 5001, proxyUrl: WS_ORIGIN },
+                        { host: window.location.hostname, port: 5001, proxyUrl: WS_ORIGIN },
+                        { host: "www.beta.frutiparc.com", port: 5001, proxyUrl: WS_ORIGIN },
+                        { host: "www.frutiparc.com", port: 5001, proxyUrl: WS_ORIGIN },
+                        // Legacy port 2000 (kept for compatibility).
                         { host: "www.beta.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },
                         { host: "www.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },
                         { host: "localhost", port: 2000, proxyUrl: WS_ORIGIN },

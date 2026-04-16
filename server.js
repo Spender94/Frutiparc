@@ -11,6 +11,10 @@ const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 const app = express();
 const port = Number(process.env.PORT || 8888);
 const XMLSOCKET_PORT = Number(process.env.XMLSOCKET_PORT || 5000); // Must end in 000 for FrutiChat cmdList
+// FrutiScore advertised port: client's CBee uses port % 1000 to choose the
+// cmdList branch (==0 chat, ==1 score). The actual TCP bytes are routed back
+// to XMLSOCKET_PORT via the WebSocket proxy — this is purely a client-side hint.
+const FRUTISCORE_PORT = Number(process.env.FRUTISCORE_PORT || 5001);
 const PUBLIC_HOST = (process.env.PUBLIC_HOST || '').trim();
 const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
 const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
@@ -171,6 +175,108 @@ const users = {};          // username -> { pass, xp, kikooz, fbouille, items, p
 const recentSidByIp = new Map(); // ip -> sid fallback for legacy calls missing sid
 const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
 const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
+
+// ─────────────────────────────────────────────
+// FrutiScore persistence (data/scores.json)
+// Shape: { users: { [username]: { [rankingId]: { score, data, updatedAt } } } }
+// One ranking per game; ranking id = <gameName>_classic for mode 0.
+// ─────────────────────────────────────────────
+const SCORES_DIR = path.join(__dirname, 'data');
+const SCORES_FILE = path.join(SCORES_DIR, 'scores.json');
+let scoresData = { users: {} };
+
+function loadScores() {
+  try {
+    if (fs.existsSync(SCORES_FILE)) {
+      const raw = fs.readFileSync(SCORES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && parsed.users) {
+        scoresData = parsed;
+      }
+    }
+  } catch (e) {
+    console.error(`[SCORES] load failed: ${e.message}`);
+    scoresData = { users: {} };
+  }
+}
+
+function saveScoresFile() {
+  try {
+    if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
+    fs.writeFileSync(SCORES_FILE, JSON.stringify(scoresData, null, 2), 'utf8');
+  } catch (e) {
+    console.error(`[SCORES] save failed: ${e.message}`);
+  }
+}
+
+// Registered ranking IDs (one per game, mode 0 = classic).
+// name = human-readable, game = disc/game name (for client display).
+const RANKINGS = {
+  snake3_classic:   { name: 'Frutisnake - Classique',  game: 'snake3',   type: 'C' },
+  kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
+  swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
+  miniwave2_classic:{ name: 'MiniWave - Classique',    game: 'miniwave2',type: 'C' },
+};
+
+// Map a game/disc identifier to a ranking id.
+function rankingIdForGame(gameName) {
+  const key = String(gameName || '').toLowerCase();
+  if (!key) return null;
+  const direct = `${key}_classic`;
+  if (RANKINGS[direct]) return direct;
+  // Accept disc uids too (kaluga1, snake3, swapou1, miniwave1).
+  const disc = GAME_DISCS && GAME_DISCS[key];
+  if (disc && disc.swfName) {
+    const via = `${disc.swfName}_classic`;
+    if (RANKINGS[via]) return via;
+  }
+  return null;
+}
+
+// Save a score for user+ranking. Returns { updated, newScore, oldScore, oldPos, newPos }.
+function persistScore(username, rankingId, score, data) {
+  if (!username || !rankingId || !RANKINGS[rankingId]) {
+    return { updated: false, newScore: score, oldScore: 0, oldPos: 0, newPos: 0 };
+  }
+  if (!scoresData.users[username]) scoresData.users[username] = {};
+  const prev = scoresData.users[username][rankingId];
+  const oldScore = (prev && Number.isFinite(Number(prev.score))) ? Number(prev.score) : 0;
+  const n = Number(score) || 0;
+  const oldPos = computePosition(rankingId, username);
+  let updated = false;
+  if (n > oldScore) {
+    scoresData.users[username][rankingId] = {
+      score: n,
+      data: (data === undefined || data === null) ? '' : String(data),
+      updatedAt: new Date().toISOString(),
+    };
+    updated = true;
+    saveScoresFile();
+  }
+  const newPos = computePosition(rankingId, username);
+  return { updated, newScore: updated ? n : oldScore, oldScore, oldPos, newPos };
+}
+
+// Position for a user in a ranking (1-based). 0 if not ranked.
+function computePosition(rankingId, username) {
+  const all = [];
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+    if (rlist && rlist[rankingId] && Number.isFinite(Number(rlist[rankingId].score))) {
+      all.push({ u, s: Number(rlist[rankingId].score) });
+    }
+  }
+  all.sort((a, b) => b.s - a.s);
+  const idx = all.findIndex((e) => e.u === username);
+  return idx < 0 ? 0 : idx + 1;
+}
+
+function getUserScore(username, rankingId) {
+  const ud = scoresData.users[username];
+  if (!ud || !ud[rankingId]) return { score: 0, pos: 0 };
+  return { score: Number(ud[rankingId].score) || 0, pos: computePosition(rankingId, username) };
+}
+
+loadScores();
 
 function createDefaultUser(pass) {
   return {
@@ -504,6 +610,52 @@ app.post('/api/auth/login', (req, res) => {
   return res.json({ ok: true, sid, username, redirect: `/legacy?sid=${encodeURIComponent(sid)}` });
 });
 
+// ─────────────────────────────────────────────
+// ENDPOINT: /api/saveScore — Game popup posts score here after game ends.
+// Accepts both GET (from SWF getURL) and POST (from popup JS fetch).
+// Query/body params: sid, game (disc name or id), score, data (optional).
+// ─────────────────────────────────────────────
+function handleSaveScore(req, res) {
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  const sid = String(params.sid || '');
+  const gameName = String(params.game || params.g || params.disc || '');
+  const scoreVal = Number(params.score || params.s || 0) || 0;
+  const scoreData = String(params.data || params.da || '');
+
+  // Resolve user from session.
+  let username = '';
+  if (sid && sessions[sid]) username = sessions[sid].user || '';
+  if (!username) {
+    // SWF getURL calls may arrive without sid — try IP fallback.
+    const ip = getClientIp(req);
+    const fallbackSid = ip ? recentSidByIp.get(ip) : undefined;
+    if (fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
+  }
+
+  if (!username) {
+    return res.status(401).json({ ok: false, error: 'not_authenticated' });
+  }
+
+  const rankingId = rankingIdForGame(gameName);
+  if (!rankingId) {
+    return res.status(400).json({ ok: false, error: 'unknown_game', game: gameName });
+  }
+
+  const result = persistScore(username, rankingId, scoreVal, scoreData);
+  console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated}`);
+  return res.json({
+    ok: true,
+    updated: result.updated,
+    newScore: result.newScore,
+    oldScore: result.oldScore,
+    oldPos: result.oldPos,
+    newPos: result.newPos,
+    rankingId,
+  });
+}
+app.post('/api/saveScore', handleSaveScore);
+app.get('/api/saveScore', handleSaveScore);
+
 app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
 });
@@ -645,7 +797,7 @@ app.get('/xml/services.xml', (req, res) => {
     .map((n) => `<service name="${escapeXml(n)}" port="${XMLSOCKET_PORT}" />`)
     .join('');
   res.type('text/xml').send(
-    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /><service name="frutiscore" port="${XMLSOCKET_PORT}" />${gameServiceEntries}</services>`
+    `<services host="${escapeXml(publicHost)}"><service name="frutichat" port="${XMLSOCKET_PORT}" /><service name="frutiscore" port="${FRUTISCORE_PORT}" />${gameServiceEntries}</services>`
   );
 });
 
@@ -1658,7 +1810,7 @@ const server = app.listen(port, '0.0.0.0', () => {
   } else {
     console.log('        Public URL:  (auto from request host; set PUBLIC_HOST to force)');
   }
-  console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT}`);
+  console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT} (chat) / FRUTISCORE_PORT=${FRUTISCORE_PORT} (scores)`);
 });
 
 // ─────────────────────────────────────────────
@@ -2393,8 +2545,30 @@ function handleCBeeMessage(socket, rawXml) {
     // ── channellist / FrutiScore saveScore ──
     case 'channellist': {
       // FrutiScore overlap: saveScore uses same wire code (q) with disc attrs.
-      if (msg.attrs.d != undefined) {
-        sendToClient(socket, `<${CMD.channellist} k="0" />`);
+      // Known attributes (from Frusion protocol): d=discId, m=mode, s=score, da=data.
+      // We log the full attr set for diagnostic purposes since the AS2 source
+      // for GameClient.saveScore is in the compiled SWF and not in this repo.
+      if (msg.attrs.d != undefined || msg.attrs.s != undefined) {
+        const discId = String(msg.attrs.d || '');
+        const scoreVal = Number(msg.attrs.s || 0) || 0;
+        const scoreData = String(msg.attrs.da || msg.attrs.d2 || '');
+        const username = client.username || '';
+        console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)}`);
+        let rankingId = rankingIdForGame(discId);
+        // Fall back to the last started game on this connection.
+        if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame);
+        // Persist if we have a valid ranking + user.
+        let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
+        if (username && rankingId) {
+          res = persistScore(username, rankingId, scoreVal, scoreData);
+          console.log(`[FSCORE] ${username} ${rankingId}: ${res.oldScore} -> ${res.newScore} (updated=${res.updated}, pos ${res.oldPos}->${res.newPos})`);
+        } else {
+          console.log(`[FSCORE] skip persist (user="${username}" rankingId="${rankingId}")`);
+        }
+        // Minimal Frusion-style saveScore reply: status + one ranking result.
+        const rkAttr = rankingId ? ` rk="${escapeXml(rankingId)}"` : '';
+        const posAttrs = ` s="${res.newScore}" os="${res.oldScore}" p="${res.newPos}" op="${res.oldPos}"`;
+        sendToClient(socket, `<${CMD.channellist} k="0"${rkAttr}${posAttrs} />`);
         break;
       }
       sendToClient(socket, buildChannelListXml());
@@ -2405,7 +2579,10 @@ function handleCBeeMessage(socket, rawXml) {
 case 'join': {
   // FrutiScore overlap: startGame uses wire code "o" with disc attrs.
   if (msg.attrs.d != undefined) {
-    sendToClient(socket, `<${CMD.join} d="${escapeXml(String(msg.attrs.d))}" k="0" />`);
+    const discId = String(msg.attrs.d || '');
+    client.currentGame = discId;
+    console.log(`[FSCORE] startGame disc=${discId} user=${client.username || '-'}`);
+    sendToClient(socket, `<${CMD.join} d="${escapeXml(discId)}" k="0" />`);
     break;
   }
   const g = msg.attrs.g;
@@ -2527,8 +2704,21 @@ broadcastToChannel(
       break;
     }
 
-    // ── kick: moderator removes a user from a channel ──
+    // ── kick / FrutiScore listRankings ──
     case 'kick': {
+      // FrutiScore overlap: listRankings uses wire code "l" with dt (date) attr.
+      if (msg.attrs.dt !== undefined) {
+        const reqId = msg.attrs.r || '';
+        const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+        let inner = '<s ty="C">';
+        for (const [rkId, rk] of Object.entries(RANKINGS)) {
+          inner += `<rk rk="${escapeXml(rkId)}" rn="${escapeXml(rk.name)}" g="${escapeXml(rk.game)}" ty="${escapeXml(rk.type)}" />`;
+        }
+        inner += '</s>';
+        sendToClient(socket, `<${CMD.kick}${rAttr}>${inner}</${CMD.kick}>`);
+        console.log(`[FSCORE] listRankings: ${Object.keys(RANKINGS).length} rankings sent`);
+        break;
+      }
       if (!isModerator(client.username)) {
         sendToClient(socket, `<${CMD.error} k="403" />`);
         break;
@@ -2541,8 +2731,33 @@ broadcastToChannel(
       break;
     }
 
-    // ── ban (totocher): moderator blocks user from a channel and kicks immediately ──
+    // ── ban (totocher) / FrutiScore rankingResult ──
     case 'ban': {
+      // FrutiScore overlap: rankingResult uses wire code "m" with rk attr.
+      if (msg.attrs.rk !== undefined) {
+        const rkId = String(msg.attrs.rk);
+        const reqId = msg.attrs.r || '';
+        const start = Number(msg.attrs.s || 0) || 0;
+        const limit = Number(msg.attrs.l || 20) || 20;
+        const all = [];
+        for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+          if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+            all.push({ u, s: Number(rlist[rkId].score) });
+          }
+        }
+        all.sort((a, b) => b.s - a.s);
+        const slice = all.slice(start, start + limit);
+        let inner = '';
+        let pos = start;
+        for (const e of slice) {
+          pos += 1;
+          inner += `<r u="${escapeXml(e.u)}" s="${e.s}" p="${pos}" />`;
+        }
+        const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+        sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkId)}" t="${all.length}">${inner}</${CMD.ban}>`);
+        console.log(`[FSCORE] rankingResult ${rkId}: ${slice.length}/${all.length} entries`);
+        break;
+      }
       if (!isModerator(client.username)) {
         sendToClient(socket, `<${CMD.error} k="403" />`);
         break;
@@ -2970,6 +3185,53 @@ case 'createchannel': {
       // Mode 0 = classic, type matches disc type
       const disc = GAME_DISCS[discId] || {};
       sendToClient(socket, `<v><m n="0" t="${disc.discType || '1'}" /></v>`);
+      break;
+    }
+
+    // ── unban / FrutiScore userResult ──
+    // Wire 'n' — no existing chat handler above, so handle here.
+    case 'unban': {
+      // FrutiScore userResult: <n rs="rk1,rk2,..." r="reqId"><u u="target"/></n>
+      if (msg.attrs.rs !== undefined) {
+        const rkList = String(msg.attrs.rs || '').split(',').map((s) => s.trim()).filter(Boolean);
+        const reqId = msg.attrs.r || '';
+        // Target user is carried as a <u u=".."/> child (per FrutizInfo.as:290-293).
+        let targetUser = client.username || '';
+        if (Array.isArray(msg.children)) {
+          const uChild = msg.children.find((c) => c.tag === 'u' && c.attrs && c.attrs.u);
+          if (uChild) targetUser = uChild.attrs.u;
+        }
+        let inner = '';
+        for (const rkId of rkList) {
+          if (!RANKINGS[rkId]) continue;
+          const info = getUserScore(targetUser, rkId);
+          inner += `<rk rk="${escapeXml(rkId)}" s="${info.score}" p="${info.pos}" />`;
+        }
+        const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+        sendToClient(socket, `<${CMD.unban}${rAttr}>${inner}</${CMD.unban}>`);
+        console.log(`[FSCORE] userResult user=${targetUser} rankings=[${rkList.join(',')}]`);
+        break;
+      }
+      // Chat unban path (moderator lifts a ban) — not implemented yet.
+      sendToClient(socket, `<${CMD.unban} k="0" />`);
+      break;
+    }
+
+    // ── awarduser (hb): list trophies/awards a user has earned ──
+    case 'awarduser': {
+      const reqId = msg.attrs.r || '';
+      const targetUser = msg.attrs.u || client.username || '';
+      const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+      let inner = '';
+      // For each ranking where the user holds position 1, award a virtual trophy.
+      for (const [rkId, rk] of Object.entries(RANKINGS)) {
+        const info = getUserScore(targetUser, rkId);
+        if (info.pos === 1 && info.score > 0) {
+          inner += `<a g="${escapeXml(rk.game)}" n="${escapeXml(rk.name)}" v="${info.score}" d="0" />`;
+        }
+      }
+      sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.awarduser}>`);
+      console.log(`[FSCORE] awarduser user=${targetUser}`);
       break;
     }
 
