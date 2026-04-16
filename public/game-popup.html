@@ -43,6 +43,8 @@
 (async () => {
   const qs = new URLSearchParams(window.location.search);
   const APP_ORIGIN = window.location.origin;
+  const APP_HOST = window.location.host;
+  const WS_ORIGIN = (window.location.protocol === "https:" ? "wss" : "ws") + "://" + APP_HOST;
 
   // Game SWF path (e.g. /swf/games/kaluga/kaluga.swf)
   let swfPath = qs.get("swf") || "";
@@ -89,17 +91,32 @@
   }
 
   // Load the game SWF directly (standalone mode, no Frusion wrapper).
+  // We still provide socketProxy + domain so that calls to super.serviceConnect()
+  // (triggered e.g. by SnakeClient before the STANDALONE branch) don't crash
+  // when the game tries to set up its XMLSocket against the CBee server.
   await player.load({
     url: swfPath,
     autoplay: "on",
     allowScriptAccess: true,
     allowNetworking: "all",
+    openUrlMode: "allow",
     quality: "high",
     letterbox: "off",
     base: APP_ORIGIN + swfDir,
+    socketProxy: [
+      { host: "localhost", port: 5000, proxyUrl: WS_ORIGIN },
+      { host: window.location.hostname, port: 5000, proxyUrl: WS_ORIGIN },
+      { host: "www.beta.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
+      { host: "www.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
+      { host: "localhost", port: 2000, proxyUrl: WS_ORIGIN },
+      { host: window.location.hostname, port: 2000, proxyUrl: WS_ORIGIN },
+      { host: "www.beta.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },
+      { host: "www.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN }
+    ],
     parameters: {
       sid: qs.get("sid") || "standalone",
-      standalone: "1"
+      standalone: "1",
+      domain: APP_HOST + "/./"
     }
   });
 
