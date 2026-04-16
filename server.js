@@ -1948,7 +1948,14 @@ const CMD = {
   searchuser:       'bn',
   callmoderator:    'bo',
   moderatorcalled:  'bp',
-  statusobj:        'statusobj',
+  // FrutiCard (slot storage)
+  fcardgetpublicslot: 'ea',
+  fcardlistslots:     'eb',
+  fcardloadslot:      'ec',
+  fcardupdateslot:    'ed',
+  fcardclearslot:     'ee',
+  fcardlist:          'ef',
+  statusobj:          'statusobj',
 };
 
 // Reverse lookup: wire code -> command name
@@ -2565,10 +2572,16 @@ function handleCBeeMessage(socket, rawXml) {
         } else {
           console.log(`[FSCORE] skip persist (user="${username}" rankingId="${rankingId}")`);
         }
-        // Minimal Frusion-style saveScore reply: status + one ranking result.
-        const rkAttr = rankingId ? ` rk="${escapeXml(rankingId)}"` : '';
-        const posAttrs = ` s="${res.newScore}" os="${res.oldScore}" p="${res.newPos}" op="${res.oldPos}"`;
-        sendToClient(socket, `<${CMD.channellist} k="0"${rkAttr}${posAttrs} />`);
+        // Frusion GameClient parses each child node of <q> as a RankingResult,
+        // reading attributes rn (rankingName), r (rankingData), p (bestScorePos),
+        // os (oldScore), op (oldPos), s (bestScore). Without a child node the
+        // GameClient leaves ranking.bestScorePos undefined — which propagates
+        // into the UI as "Votre classement : undefined".
+        const rkInfo = rankingId ? (RANKINGS[rankingId] || {}) : {};
+        const rnAttr = rkInfo.name ? ` rn="${escapeXml(rkInfo.name)}"` : '';
+        const rAttr = scoreData ? ` r="${escapeXml(scoreData)}"` : ' r=""';
+        const subAttrs = `${rnAttr}${rAttr} p="${res.newPos}" os="${res.oldScore}" op="${res.oldPos}" s="${res.newScore}"`;
+        sendToClient(socket, `<${CMD.channellist} k="0"><rk${subAttrs}/></${CMD.channellist}>`);
         break;
       }
       sendToClient(socket, buildChannelListXml());
@@ -3232,6 +3245,26 @@ case 'createchannel': {
       }
       sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.awarduser}>`);
       console.log(`[FSCORE] awarduser user=${targetUser}`);
+      break;
+    }
+
+    // ── fcardlist (ef): games for which a user has a public FrutiCard ──
+    // Empty list is a valid response; FrutizInfo needs this to unblock the
+    // "scores" state machine (updateStateFromInt requires fcardlist == 2).
+    case 'fcardlist': {
+      const reqId = msg.attrs.r || '';
+      const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+      sendToClient(socket, `<${CMD.fcardlist}${rAttr}></${CMD.fcardlist}>`);
+      break;
+    }
+
+    // ── fcardgetpublicslot (ea): return an empty public FrutiCard slot ──
+    case 'fcardgetpublicslot': {
+      const reqId = msg.attrs.r || '';
+      const game = msg.attrs.g || '';
+      const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+      const gAttr = game ? ` g="${escapeXml(String(game))}"` : '';
+      sendToClient(socket, `<${CMD.fcardgetpublicslot}${rAttr}${gAttr}></${CMD.fcardgetpublicslot}>`);
       break;
     }
 
