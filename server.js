@@ -220,16 +220,68 @@ const RANKINGS = {
 
 // Map a game/disc identifier to a ranking id.
 function rankingIdForGame(gameName) {
-  const key = String(gameName || '').toLowerCase();
+  const raw = String(gameName || '').trim();
+  const key = raw.toLowerCase();
   if (!key) return null;
   const direct = `${key}_classic`;
   if (RANKINGS[direct]) return direct;
-  // Accept disc uids too (kaluga1, snake3, swapou1, miniwave1).
-  const disc = GAME_DISCS && GAME_DISCS[key];
-  if (disc && disc.swfName) {
-    const via = `${disc.swfName}_classic`;
+  // Accept Frutiparc disc uids directly (kaluga1, snake3, swapou1, miniwave1).
+  const directDisc = GAME_DISCS && GAME_DISCS[key];
+  if (directDisc && directDisc.swfName) {
+    const via = `${String(directDisc.swfName).toLowerCase()}_classic`;
     if (RANKINGS[via]) return via;
   }
+
+  // Accept game path forms returned by /do/ld and used by Frusion:
+  //   games/snake3/snake3.swf
+  //   /games/snake3/snake3.swf
+  //   /swf/games/snake3/snake3.swf
+  const normalizedCandidates = new Set([
+    key,
+    key.replace(/^\/+/, ''),
+    key.replace(/^\/?swf\//, ''),
+  ]);
+
+  for (const [discUid, disc] of Object.entries(GAME_DISCS || {})) {
+    const swfName = String((disc && disc.swfName) || '').toLowerCase();
+    if (swfName) {
+      const via = `${swfName}_classic`;
+      if (RANKINGS[via] && (normalizedCandidates.has(swfName) || normalizedCandidates.has(String(discUid).toLowerCase()))) {
+        return via;
+      }
+    }
+
+    const gameId = String((disc && disc.gameId) || '').toLowerCase();
+    const filePaths = [];
+    if (gameId) filePaths.push(gameId);
+    if (Array.isArray(disc && disc.files)) {
+      for (const f of disc.files) {
+        if (f && f.u) filePaths.push(String(f.u).toLowerCase());
+      }
+    }
+
+    if (swfName && RANKINGS[`${swfName}_classic`]) {
+      for (const p of filePaths) {
+        const pathVariants = [
+          p,
+          `/${p}`,
+          `swf/${p}`,
+          `/swf/${p}`,
+        ];
+        if (pathVariants.some((v) => normalizedCandidates.has(v))) {
+          return `${swfName}_classic`;
+        }
+      }
+    }
+  }
+
+  // Fallback: infer ranking id from SWF filename in a path-like input.
+  // Example: games/snake3/snake3.swf -> snake3_classic
+  const lastSeg = normalizedCandidates.values().next().value.split('/').pop() || '';
+  const base = lastSeg.replace(/\.swf$/i, '');
+  const fromBase = `${base}_classic`;
+  if (RANKINGS[fromBase]) return fromBase;
+
   return null;
 }
 
@@ -662,14 +714,18 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
   const gameName = req.params[0];
   const scoreVal = parseInt(req.params[1]) || 0;
   let username = '';
+  const sid = getSidFromRequest(req, req.query || {});
+  if (sid && sessions[sid]) username = sessions[sid].user || '';
   const ip = getClientIp(req);
   const fallbackSid = ip ? recentSidByIp.get(ip) : undefined;
-  if (fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
+  if (!username && fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
   if (!username || !scoreVal) {
+    console.log(`[SWF-SCORE] skip save user="${username}" sid="${sid}" ip="${ip}" game="${gameName}" score=${scoreVal}`);
     return res.type('text/plain').send('ok=0');
   }
   const rankingId = rankingIdForGame(gameName);
   if (!rankingId) {
+    console.log(`[SWF-SCORE] unknown ranking game="${gameName}" sid="${sid}" user="${username}"`);
     return res.type('text/plain').send('ok=0');
   }
   const result = persistScore(username, rankingId, scoreVal, '');
@@ -1919,6 +1975,7 @@ wssScore.on('connection', (ws) => {
   console.log('[FSCORE-WS] New FrutiScore WebSocket client');
 
   let loggedUser = '';
+  let currentGame = '';
   let buffer = '';
 
   function wsSend(xmlStr) {
@@ -1950,9 +2007,9 @@ wssScore.on('connection', (ws) => {
 
       switch (cmdName) {
         case 'time': {
-          const now = new Date();
-          const pad = (n) => String(n).padStart(2, '0');
-          const ts = `${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())}.${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
+          // Keep the exact same timestamp format as the TCP CBee handler
+          // so legacy parsers (ServTime.setFromString) behave identically.
+          const ts = formatDateTime(new Date());
           wsSend(`<${CMD.time}>${ts}</${CMD.time}>`);
           break;
         }
@@ -1977,6 +2034,41 @@ wssScore.on('connection', (ws) => {
           const user = users[effectiveLogin] || {};
           wsSend(`<${CMD.ident} l="${escapeXml(effectiveLogin)}" x="${user.xp || 0}" f="${bouilleOf(user)}" />`);
           console.log(`[FSCORE-WS] User "${effectiveLogin}" logged in (sid=${sid})`);
+          break;
+        }
+        // startGame (wire "o")
+        case 'join': {
+          if (msg.attrs.d !== undefined) {
+            currentGame = String(msg.attrs.d || '');
+            wsSend(`<${CMD.join} d="${escapeXml(currentGame)}" k="0" />`);
+            console.log(`[FSCORE-WS] startGame disc=${currentGame} user=${loggedUser || '-'}`);
+          }
+          break;
+        }
+        // saveScore (wire "q")
+        case 'channellist': {
+          if (msg.attrs.d !== undefined || msg.attrs.s !== undefined) {
+            const discId = String(msg.attrs.d || '');
+            const scoreVal = Number(msg.attrs.s || 0) || 0;
+            const scoreData = String(msg.attrs.da || msg.attrs.d2 || '');
+            let rankingId = rankingIdForGame(discId);
+            if (!rankingId && currentGame) rankingId = rankingIdForGame(currentGame);
+
+            let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
+            if (loggedUser && rankingId) {
+              res = persistScore(loggedUser, rankingId, scoreVal, scoreData);
+              console.log(`[FSCORE-WS] saveScore ${loggedUser} ${rankingId}: ${res.oldScore} -> ${res.newScore} (updated=${res.updated}, pos ${res.oldPos}->${res.newPos})`);
+            } else {
+              console.log(`[FSCORE-WS] saveScore skip persist (user="${loggedUser}" rankingId="${rankingId}" discId="${discId}" currentGame="${currentGame}")`);
+            }
+
+            const rkInfo = rankingId ? (RANKINGS[rankingId] || {}) : {};
+            const rnAttr = rkInfo.name ? ` rn="${escapeXml(rkInfo.name)}"` : '';
+            const rAttr = scoreData ? ` r="${escapeXml(scoreData)}"` : ' r=""';
+            const subAttrs = `${rnAttr}${rAttr} p="${res.newPos}" os="${res.oldScore}" op="${res.oldPos}" s="${res.newScore}"`;
+            wsSend(`<${CMD.channellist} k="0"><rk${subAttrs}/></${CMD.channellist}>`);
+            break;
+          }
           break;
         }
         // listrankings (wire "l" with dt attr)
