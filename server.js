@@ -2007,9 +2007,9 @@ wssScore.on('connection', (ws) => {
 
       switch (cmdName) {
         case 'time': {
-          const now = new Date();
-          const pad = (n) => String(n).padStart(2, '0');
-          const ts = `${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())}.${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
+          // Keep the exact same timestamp format as the TCP CBee handler
+          // so legacy parsers (ServTime.setFromString) behave identically.
+          const ts = formatDateTime(new Date());
           wsSend(`<${CMD.time}>${ts}</${CMD.time}>`);
           break;
         }
