@@ -1977,6 +1977,7 @@ wssScore.on('connection', (ws, request) => {
   let loggedUser = '';
   let currentGame = '';
   let buffer = '';
+  let autoIdentTimer = null;
   const reqUrl = request && request.url ? String(request.url) : '';
   let hintedSid = '';
   try {
@@ -1994,6 +1995,24 @@ wssScore.on('connection', (ws, request) => {
       ws.send(xmlStr + '\0');
       console.log('[FSCORE-WS] →', xmlStr.substring(0, 200));
     } catch (e) { /* ignore */ }
+  }
+
+  function tryAutoIdent(reason = '') {
+    if (loggedUser) return;
+    let hintedUser = '';
+    if (hintedSid && sessions[hintedSid] && sessions[hintedSid].user) {
+      hintedUser = sessions[hintedSid].user;
+    }
+    if (!hintedUser && hintedIp && recentSidByIp.has(hintedIp)) {
+      const sid = recentSidByIp.get(hintedIp);
+      if (sid && sessions[sid] && sessions[sid].user) {
+        hintedUser = sessions[sid].user;
+      }
+    }
+    loggedUser = hintedUser || 'anonymous';
+    const user = users[loggedUser] || {};
+    wsSend(`<${CMD.ident} l="${escapeXml(loggedUser)}" x="${user.xp || 0}" f="${bouilleOf(user)}" />`);
+    console.log(`[FSCORE-WS] Auto-ident(${reason}) user="${loggedUser}" sidHint="${hintedSid}" ipHint="${hintedIp}"`);
   }
 
   ws.on('message', (rawMsg) => {
@@ -2026,28 +2045,18 @@ wssScore.on('connection', (ws, request) => {
         }
         case 'ip': {
           wsSend(`<${CMD.ip}>127.0.0.1</${CMD.ip}>`);
-          // Some legacy FrutiScore paths never call ident() after ip/time on
-          // secondary connections. To avoid a deadlocked "not logged" state,
-          // proactively emit a successful ident once after ip.
-          if (!loggedUser) {
-            let hintedUser = '';
-            if (hintedSid && sessions[hintedSid] && sessions[hintedSid].user) {
-              hintedUser = sessions[hintedSid].user;
-            }
-            if (!hintedUser && hintedIp && recentSidByIp.has(hintedIp)) {
-              const sid = recentSidByIp.get(hintedIp);
-              if (sid && sessions[sid] && sessions[sid].user) {
-                hintedUser = sessions[sid].user;
-              }
-            }
-            loggedUser = hintedUser || 'anonymous';
-            const user = users[loggedUser] || {};
-            wsSend(`<${CMD.ident} l="${escapeXml(loggedUser)}" x="${user.xp || 0}" f="${bouilleOf(user)}" />`);
-            console.log(`[FSCORE-WS] Auto-ident user="${loggedUser}" sidHint="${hintedSid}" ipHint="${hintedIp}"`);
-          }
+          // Some legacy FrutiScore paths stay stuck after time/ip and never
+          // issue ident(). Send an ident proactively, then retry once shortly
+          // after to avoid race conditions with late listener registration.
+          tryAutoIdent('after-ip');
+          if (autoIdentTimer) clearTimeout(autoIdentTimer);
+          autoIdentTimer = setTimeout(() => {
+            tryAutoIdent('after-ip-delay');
+          }, 120);
           break;
         }
         case 'ping': {
+          tryAutoIdent('on-ping');
           wsSend(`<${CMD.ping} />`);
           break;
         }
@@ -2196,6 +2205,7 @@ wssScore.on('connection', (ws, request) => {
   });
 
   ws.on('close', () => {
+    if (autoIdentTimer) clearTimeout(autoIdentTimer);
     console.log(`[FSCORE-WS] Closed (user=${loggedUser || 'anonymous'})`);
   });
 
