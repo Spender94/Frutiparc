@@ -656,6 +656,27 @@ function handleSaveScore(req, res) {
 app.post('/api/saveScore', handleSaveScore);
 app.get('/api/saveScore', handleSaveScore);
 
+// SWF-triggered score save: the patched game SWFs call loadVariables("s<score>", "")
+// which resolves (via Ruffle base URL) to /swf/games/<game>/s<score>.
+app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
+  const gameName = req.params[0];
+  const scoreVal = parseInt(req.params[1]) || 0;
+  let username = '';
+  const ip = getClientIp(req);
+  const fallbackSid = ip ? recentSidByIp.get(ip) : undefined;
+  if (fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
+  if (!username || !scoreVal) {
+    return res.type('text/plain').send('ok=0');
+  }
+  const rankingId = rankingIdForGame(gameName);
+  if (!rankingId) {
+    return res.type('text/plain').send('ok=0');
+  }
+  const result = persistScore(username, rankingId, scoreVal, '');
+  console.log(`[SWF-SCORE] ${username} ${gameName} ${scoreVal} -> ${rankingId} updated=${result.updated}`);
+  res.type('text/plain').send('ok=1');
+});
+
 app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
 });
