@@ -276,6 +276,12 @@ function resolveInternalRankingId(rkLike) {
   return null;
 }
 
+function legacyDescriptorFromRkLike(rkLike) {
+  const raw = String(rkLike || '').trim();
+  if (!raw) return null;
+  return LEGACY_RANKINGS.find((r) => r.rk === raw || r.internal === raw) || null;
+}
+
 // Map a game/disc identifier to a ranking id.
 function rankingIdForGame(gameName) {
   const raw = String(gameName || '').trim();
@@ -2098,8 +2104,9 @@ wssScore.on('connection', (ws, request) => {
       'ap', 'aq', 'ar', 'as', 'at', 'au', 'av', 'aw', 'ax', 'ay', 'az',
       'ba', 'bb', 'bc',
     ];
+    const dt = formatDateTime(new Date());
     for (const rid of hintReqIds) {
-      wsSend(`<${CMD.kick} r="${rid}">${listInner}</${CMD.kick}>`);
+      wsSend(`<${CMD.kick} dt="${dt}" r="${rid}">${listInner}</${CMD.kick}>`);
       wsSend(`<${CMD.unban} r="${rid}">${userInner}</${CMD.unban}>`);
     }
     console.log(`[FSCORE-WS] Bootstrap hints sent for user=${loggedUser}`);
@@ -2208,7 +2215,9 @@ wssScore.on('connection', (ws, request) => {
           scoreFlowSeen = true;
           if (msg.attrs.dt !== undefined) {
             const reqId = msg.attrs.r || '';
+            const dt = String(msg.attrs.dt || '');
             const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+            const dtAttr = dt ? ` dt="${escapeXml(dt)}"` : '';
             let inner = '';
             const bySection = { C: [], L: [] };
             for (const d of LEGACY_RANKINGS) {
@@ -2222,7 +2231,7 @@ wssScore.on('connection', (ws, request) => {
               }
               inner += '</s>';
             }
-            wsSend(`<${CMD.kick}${rAttr}>${inner}</${CMD.kick}>`);
+            wsSend(`<${CMD.kick}${dtAttr}${rAttr}>${inner}</${CMD.kick}>`);
             console.log(`[FSCORE-WS] listRankings: ${LEGACY_RANKINGS.length} legacy rankings sent`);
             break;
           }
@@ -2230,7 +2239,9 @@ wssScore.on('connection', (ws, request) => {
           if (msg.attrs.rk !== undefined) {
             const rkInput = String(msg.attrs.rk);
             const internalId = resolveInternalRankingId(rkInput);
+            const legacyDesc = legacyDescriptorFromRkLike(rkInput);
             const reqId = msg.attrs.r || '';
+            const cAttrIn = String(msg.attrs.c || '');
             const start = Number(msg.attrs.s || 0) || 0;
             const limit = Number(msg.attrs.l || 20) || 20;
             const all = [];
@@ -2249,7 +2260,9 @@ wssScore.on('connection', (ws, request) => {
               inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
             }
             const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
-            wsSend(`<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}">${inner}</${CMD.ban}>`);
+            const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
+            const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
+            wsSend(`<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${inner}</${CMD.ban}>`);
             console.log(`[FSCORE-WS] rankingResult (bugged wire) ${rkInput}/${internalId || '-'}: ${slice.length}/${all.length}`);
             break;
           }
@@ -2261,7 +2274,9 @@ wssScore.on('connection', (ws, request) => {
           if (msg.attrs.rk !== undefined) {
             const rkInput = String(msg.attrs.rk);
             const internalId = resolveInternalRankingId(rkInput);
+            const legacyDesc = legacyDescriptorFromRkLike(rkInput);
             const reqId = msg.attrs.r || '';
+            const cAttrIn = String(msg.attrs.c || '');
             const start = Number(msg.attrs.s || 0) || 0;
             const limit = Number(msg.attrs.l || 20) || 20;
             const all = [];
@@ -2280,7 +2295,9 @@ wssScore.on('connection', (ws, request) => {
               inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
             }
             const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
-            wsSend(`<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}">${inner}</${CMD.ban}>`);
+            const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
+            const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
+            wsSend(`<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${inner}</${CMD.ban}>`);
             console.log(`[FSCORE-WS] rankingResult ${rkInput}/${internalId || '-'}: ${slice.length}/${all.length}`);
             break;
           }
@@ -2301,9 +2318,11 @@ wssScore.on('connection', (ws, request) => {
             for (const rkAny of rkList) {
               const internalId = resolveInternalRankingId(rkAny);
               if (!internalId) continue;
+              const legacyDesc = legacyDescriptorFromRkLike(rkAny) || legacyDescriptorFromRkLike(internalId);
               const info = getUserScore(targetUser, internalId);
               const rkOut = INTERNAL_TO_LEGACY_RK[internalId] || rkAny || internalId;
-              inner += `<rk rk="${escapeXml(rkOut)}" p="${info.pos}" s="${info.score}" />`;
+              const tAttr = legacyDesc && legacyDesc.ty && legacyDesc.ty !== '0' ? ` t="${escapeXml(legacyDesc.ty)}"` : '';
+              inner += `<rk rk="${escapeXml(rkOut)}" p="${info.pos}" s="${info.score}"${tAttr} />`;
             }
             const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
             wsSend(`<${CMD.unban}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.unban}>`);
