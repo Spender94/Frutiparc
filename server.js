@@ -267,6 +267,16 @@ const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
 const INTERNAL_TO_LEGACY_RK = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.internal, r.rk])
 );
+const HARDCODED_FRUTIZ = {
+  Renault: { x: 424242, f: '00000d0r020f0l0000000000' },
+  kasparov: { x: 5353, f: '0005000Q010t0a04010t0w00' },
+  DebugBot: { x: 1337, f: '000000010000000000000000' },
+};
+
+function hardcodedMeAttrs(name) {
+  const d = HARDCODED_FRUTIZ[String(name || '')] || HARDCODED_FRUTIZ.Renault;
+  return `x="${d.x}" f="${escapeXml(d.f)}"`;
+}
 
 function resolveInternalRankingId(rkLike) {
   const raw = String(rkLike || '').trim();
@@ -280,6 +290,53 @@ function legacyDescriptorFromRkLike(rkLike) {
   const raw = String(rkLike || '').trim();
   if (!raw) return null;
   return LEGACY_RANKINGS.find((r) => r.rk === raw || r.internal === raw) || null;
+}
+
+function buildLegacyRankingResultPayload(rkInput, reqId = '', cAttr = '') {
+  const rk = String(rkInput || '');
+  const r = reqId ? ` r="${escapeXml(reqId)}"` : '';
+  const c = cAttr ? ` c="${escapeXml(cAttr)}"` : '';
+  const me = 'Renault';
+  const meAttrs = hardcodedMeAttrs(me);
+  if (rk === '0') {
+    return `<m${r} ty="millisecond" rk="0"${c}><score u="${me}" ${meAttrs} s="36500" t="2025-07-02 00:56:00" d="Skiwix:5:1:" /></m>`;
+  }
+  if (rk === '3') {
+    return `<m${r} ty="0" rk="3"${c}><score u="${me}" ${meAttrs} s="30000" t="2025-07-02 00:56:00" d="S6:" /></m>`;
+  }
+  if (rk === '4') {
+    return `<m${r} ty="0" rk="4"${c}><score u="${me}" ${meAttrs} s="15000" t="2025-07-02 00:56:00" d="Smakulo:" /></m>`;
+  }
+  // Snake + generic fallback.
+  return `<m${r} ty="0" rk="${escapeXml(rk || '1')}"${c}><score u="${me}" ${meAttrs} s="1000000" t="2025-07-02 00:56:00" /></m>`;
+}
+
+function buildLegacyUserResultPayload(user, reqId = '') {
+  const r = reqId ? ` r="${escapeXml(reqId)}"` : '';
+  const u = escapeXml(String(user || 'Renault'));
+  return `<n${r} u="${u}">`
+    + '<rk rk="0" p="1" s="36600" t="millisecond" />'
+    + '<rk rk="1" p="1" s="1000000" />'
+    + '<rk rk="2" p="2" s="860053" t="ptmb2" />'
+    + '<rk rk="3" p="3" s="30000" />'
+    + '<rk rk="4" p="4" s="15000" />'
+    + '<rk rk="5" p="5" s="3" />'
+    + '<rk rk="6" p="6" s="10" />'
+    + '</n>';
+}
+
+function buildLegacyGameScoreInfo(gs) {
+  const game = Number(gs);
+  let inner = '';
+  if (game === 0) {
+    inner += '<desc n="Ecurie" t="s" w="60">bkiwi_team</desc>';
+    inner += '<desc n="Rang" t="s" w="60">bkiwi_rank</desc>';
+  } else if (game === 3) {
+    inner += '<desc n="Perso" t="s" w="45">swapou_score_chars</desc>';
+  } else if (game === 4) {
+    inner += '<desc n="Tzongre" t="s" w="60">kaluga_tz</desc>';
+  }
+  return `<w gs="${Number.isFinite(game) ? game : 0}"><ds>${inner}</ds></w>`;
 }
 
 // Map a game/disc identifier to a ranking id.
@@ -2262,7 +2319,11 @@ wssScore.on('connection', (ws, request) => {
             const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
             const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
             const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
-            wsSend(`<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${inner}</${CMD.ban}>`);
+            if (!inner) {
+              wsSend(buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
+            } else {
+              wsSend(`<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${inner}</${CMD.ban}>`);
+            }
             console.log(`[FSCORE-WS] rankingResult (bugged wire) ${rkInput}/${internalId || '-'}: ${slice.length}/${all.length}`);
             break;
           }
@@ -2297,7 +2358,11 @@ wssScore.on('connection', (ws, request) => {
             const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
             const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
             const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
-            wsSend(`<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${inner}</${CMD.ban}>`);
+            if (!inner) {
+              wsSend(buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
+            } else {
+              wsSend(`<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${inner}</${CMD.ban}>`);
+            }
             console.log(`[FSCORE-WS] rankingResult ${rkInput}/${internalId || '-'}: ${slice.length}/${all.length}`);
             break;
           }
@@ -2325,8 +2390,21 @@ wssScore.on('connection', (ws, request) => {
               inner += `<rk rk="${escapeXml(rkOut)}" p="${info.pos}" s="${info.score}"${tAttr} />`;
             }
             const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
-            wsSend(`<${CMD.unban}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.unban}>`);
+            if (!inner) {
+              wsSend(buildLegacyUserResultPayload(targetUser, reqId));
+            } else {
+              wsSend(`<${CMD.unban}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.unban}>`);
+            }
             console.log(`[FSCORE-WS] userResult user=${targetUser} rankings=[${rkList.join(',')}]`);
+            break;
+          }
+          break;
+        }
+        // gameScoreInfo (wire "w" with gs attr)
+        case 'channelclosed': {
+          scoreFlowSeen = true;
+          if (msg.attrs.gs !== undefined) {
+            wsSend(buildLegacyGameScoreInfo(msg.attrs.gs));
             break;
           }
           break;
@@ -3211,8 +3289,10 @@ broadcastToChannel(
       // "rk" attr (ranking id) which listRankings never carries.
       // Respond with wire "m" so the client dispatches to onRankingResult.
       if (msg.attrs.rk !== undefined) {
-        const rkId = String(msg.attrs.rk);
+        const rkInput = String(msg.attrs.rk);
+        const rkId = resolveInternalRankingId(rkInput) || rkInput;
         const reqId = msg.attrs.r || '';
+        const cAttrIn = String(msg.attrs.c || '');
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
         const all = [];
@@ -3230,8 +3310,12 @@ broadcastToChannel(
           inner += `<r u="${escapeXml(e.u)}" s="${e.s}" p="${pos}" />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
-        sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkId)}" t="${all.length}">${inner}</${CMD.ban}>`);
-        console.log(`[FSCORE] rankingResult (via bugged wire l) ${rkId}: ${slice.length}/${all.length} entries`);
+        if (!inner) {
+          sendToClient(socket, buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
+        } else {
+          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkId)}" t="${all.length}">${inner}</${CMD.ban}>`);
+        }
+        console.log(`[FSCORE] rankingResult (via bugged wire l) ${rkInput}/${rkId}: ${slice.length}/${all.length} entries`);
         break;
       }
       if (!isModerator(client.username)) {
@@ -3250,8 +3334,10 @@ broadcastToChannel(
     case 'ban': {
       // FrutiScore overlap: rankingResult uses wire code "m" with rk attr.
       if (msg.attrs.rk !== undefined) {
-        const rkId = String(msg.attrs.rk);
+        const rkInput = String(msg.attrs.rk);
+        const rkId = resolveInternalRankingId(rkInput) || rkInput;
         const reqId = msg.attrs.r || '';
+        const cAttrIn = String(msg.attrs.c || '');
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
         const all = [];
@@ -3269,8 +3355,12 @@ broadcastToChannel(
           inner += `<r u="${escapeXml(e.u)}" s="${e.s}" p="${pos}" />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
-        sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkId)}" t="${all.length}">${inner}</${CMD.ban}>`);
-        console.log(`[FSCORE] rankingResult ${rkId}: ${slice.length}/${all.length} entries`);
+        if (!inner) {
+          sendToClient(socket, buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
+        } else {
+          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkId)}" t="${all.length}">${inner}</${CMD.ban}>`);
+        }
+        console.log(`[FSCORE] rankingResult ${rkInput}/${rkId}: ${slice.length}/${all.length} entries`);
         break;
       }
       if (!isModerator(client.username)) {
@@ -3285,6 +3375,14 @@ broadcastToChannel(
       channel.banned.add(targetUser);
       kickUserFromChannel(g, targetUser, client.username, 'totoch');
       sendToClient(socket, `<${CMD.ban} u="${escapeXml(targetUser)}" g="${escapeXml(g)}" />`);
+      break;
+    }
+
+    // ── channelclosed / FrutiScore gameScoreInfo ──
+    case 'channelclosed': {
+      if (msg.attrs.gs !== undefined) {
+        sendToClient(socket, buildLegacyGameScoreInfo(msg.attrs.gs));
+      }
       break;
     }
 
@@ -3723,7 +3821,11 @@ case 'createchannel': {
           inner += `<rk rk="${escapeXml(rkId)}" s="${info.score}" p="${info.pos}" />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
-        sendToClient(socket, `<${CMD.unban}${rAttr}>${inner}</${CMD.unban}>`);
+        if (!inner) {
+          sendToClient(socket, buildLegacyUserResultPayload(targetUser, reqId));
+        } else {
+          sendToClient(socket, `<${CMD.unban}${rAttr}>${inner}</${CMD.unban}>`);
+        }
         console.log(`[FSCORE] userResult user=${targetUser} rankings=[${rkList.join(',')}]`);
         break;
       }
