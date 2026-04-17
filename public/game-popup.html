@@ -40,6 +40,23 @@
 <body>
   <div id="player-wrap"></div>
 <script>
+// Intercept getURL calls from patched game SWFs that save scores.
+// Ruffle routes getURL(url, target) through window.open when target is non-empty.
+// The patched SWF calls getURL("s"+score, true) — we catch that here,
+// fire a background fetch to persist the score, and suppress the popup.
+(function() {
+  var _open = window.open;
+  window.open = function(url, target) {
+    var u = String(url || "");
+    if (/(?:^|\/)s\d+$/.test(u)) {
+      var full = u.startsWith("/") ? u : new URL(u, document.baseURI).href;
+      fetch(full).catch(function() {});
+      return null;
+    }
+    return _open.apply(window, arguments);
+  };
+})();
+
 (async () => {
   const qs = new URLSearchParams(window.location.search);
   const APP_ORIGIN = window.location.origin;

@@ -2753,6 +2753,35 @@ broadcastToChannel(
         console.log(`[FSCORE] listRankings: ${Object.keys(RANKINGS).length} rankings sent`);
         break;
       }
+      // FrutiScore bug: the compiled FrutiScore.rankingResult() method sends
+      // wire "l" (listRankings) instead of "m" (rankingResult) due to a
+      // copy-paste error in FrutiScore.as.  Detect this by the presence of
+      // "rk" attr (ranking id) which listRankings never carries.
+      // Respond with wire "m" so the client dispatches to onRankingResult.
+      if (msg.attrs.rk !== undefined) {
+        const rkId = String(msg.attrs.rk);
+        const reqId = msg.attrs.r || '';
+        const start = Number(msg.attrs.s || 0) || 0;
+        const limit = Number(msg.attrs.l || 20) || 20;
+        const all = [];
+        for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+          if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+            all.push({ u, s: Number(rlist[rkId].score) });
+          }
+        }
+        all.sort((a, b) => b.s - a.s);
+        const slice = all.slice(start, start + limit);
+        let inner = '';
+        let pos = start;
+        for (const e of slice) {
+          pos += 1;
+          inner += `<r u="${escapeXml(e.u)}" s="${e.s}" p="${pos}" />`;
+        }
+        const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+        sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkId)}" t="${all.length}">${inner}</${CMD.ban}>`);
+        console.log(`[FSCORE] rankingResult (via bugged wire l) ${rkId}: ${slice.length}/${all.length} entries`);
+        break;
+      }
       if (!isModerator(client.username)) {
         sendToClient(socket, `<${CMD.error} k="403" />`);
         break;
