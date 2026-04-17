@@ -1616,6 +1616,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
         <f u="disccollector" t="disccollector" />
         <f u="inventory" t="inventory" />
         <f u="mycontact" t="mycontact" />
+        <e u="Gaspard" t="contact" s="10" d="0" a="0">Gaspard@frutiparc.com</e>
         <f u="recyclebin" t="recyclebin" />
       </f>`
     );
