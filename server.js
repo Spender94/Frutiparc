@@ -184,6 +184,17 @@ const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
 const SCORES_DIR = path.join(__dirname, 'data');
 const SCORES_FILE = path.join(SCORES_DIR, 'scores.json');
 let scoresData = { users: {} };
+const SEEDED_DEMO_SCORES = {
+  Renault: {
+    snake3_classic: { score: 24500, data: 'seed', updatedAt: '2026-01-01T00:00:00.000Z' },
+  },
+  DebugBot: {
+    snake3_classic: { score: 19840, data: 'seed', updatedAt: '2026-01-01T00:00:00.000Z' },
+  },
+  kasparov: {
+    snake3_classic: { score: 17620, data: 'seed', updatedAt: '2026-01-01T00:00:00.000Z' },
+  },
+};
 
 function loadScores() {
   try {
@@ -206,6 +217,26 @@ function saveScoresFile() {
     fs.writeFileSync(SCORES_FILE, JSON.stringify(scoresData, null, 2), 'utf8');
   } catch (e) {
     console.error(`[SCORES] save failed: ${e.message}`);
+  }
+}
+
+function seedDemoScores() {
+  if (!scoresData || typeof scoresData !== 'object') scoresData = { users: {} };
+  if (!scoresData.users || typeof scoresData.users !== 'object') scoresData.users = {};
+  for (const [username, rankings] of Object.entries(SEEDED_DEMO_SCORES)) {
+    if (!scoresData.users[username]) scoresData.users[username] = {};
+    for (const [rkId, row] of Object.entries(rankings || {})) {
+      const current = scoresData.users[username][rkId];
+      const currentScore = current && Number.isFinite(Number(current.score)) ? Number(current.score) : 0;
+      const seedScore = Number(row.score) || 0;
+      if (!current || currentScore < seedScore) {
+        scoresData.users[username][rkId] = {
+          score: seedScore,
+          data: row.data || 'seed',
+          updatedAt: row.updatedAt || new Date().toISOString(),
+        };
+      }
+    }
   }
 }
 
@@ -329,6 +360,7 @@ function getUserScore(username, rankingId) {
 }
 
 loadScores();
+seedDemoScores();
 
 function createDefaultUser(pass) {
   return {
