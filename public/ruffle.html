@@ -315,12 +315,11 @@
                         { host: "www.beta.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
                         { host: "www.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
                         // FrutiScore (port % 1000 == 1 → score cmdList).
-                        // The server routes all WebSocket traffic to the same TCP
-                        // handler — the port here is just a client-side cmdList hint.
-                        { host: "localhost", port: 5001, proxyUrl: WS_ORIGIN },
-                        { host: window.location.hostname, port: 5001, proxyUrl: WS_ORIGIN },
-                        { host: "www.beta.frutiparc.com", port: 5001, proxyUrl: WS_ORIGIN },
-                        { host: "www.frutiparc.com", port: 5001, proxyUrl: WS_ORIGIN },
+                        // Uses /score path so Ruffle opens a separate WebSocket.
+                        { host: "localhost", port: 5001, proxyUrl: WS_ORIGIN + "/score" },
+                        { host: window.location.hostname, port: 5001, proxyUrl: WS_ORIGIN + "/score" },
+                        { host: "www.beta.frutiparc.com", port: 5001, proxyUrl: WS_ORIGIN + "/score" },
+                        { host: "www.frutiparc.com", port: 5001, proxyUrl: WS_ORIGIN + "/score" },
                         // Legacy port 2000 (kept for compatibility).
                         { host: "www.beta.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },
                         { host: "www.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },

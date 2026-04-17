@@ -1842,21 +1842,37 @@ const server = app.listen(port, '0.0.0.0', () => {
 // The bridge MUST preserve \0 in BOTH directions so Ruffle's
 // internal XMLSocket parser can split messages correctly.
 // ─────────────────────────────────────────────
-const wss = new WebSocketServer({ server });
-wss.on('connection', (ws) => {
+const wssChat = new WebSocketServer({ noServer: true });
+const wssScore = new WebSocketServer({ noServer: true });
+
+// Route WebSocket upgrades based on URL path:
+//   /score  → FrutiScore handler (inline protocol, no TCP bridge)
+//   other   → TCP bridge to XMLSOCKET_PORT
+server.on('upgrade', (request, socket, head) => {
+  const pathname = (request.url || '/').split('?')[0];
+  if (pathname === '/score') {
+    wssScore.handleUpgrade(request, socket, head, (ws) => {
+      wssScore.emit('connection', ws, request);
+    });
+  } else {
+    wssChat.handleUpgrade(request, socket, head, (ws) => {
+      wssChat.emit('connection', ws, request);
+    });
+  }
+});
+
+// ── Main chat WebSocket → TCP bridge ──
+wssChat.on('connection', (ws) => {
   console.log('[WS→TCP] New WebSocket client, bridging to TCP localhost:' + XMLSOCKET_PORT);
 
   const tcp = net.createConnection({ host: '127.0.0.1', port: XMLSOCKET_PORT }, () => {
     console.log('[WS→TCP] TCP connection established');
   });
 
-  // WS → TCP: Forward raw data from Ruffle to the CBee TCP server.
-  // Ruffle may or may not include \0 — ensure it's there for the TCP side.
   ws.on('message', (msg) => {
     const buf = Buffer.isBuffer(msg) ? msg : Buffer.from(msg);
     const str = buf.toString('utf8');
     console.log('[WS→TCP] WS→TCP:', str.replace(/\0/g, '').substring(0, 200));
-    // If the message already ends with \0, forward as-is; otherwise append \0
     if (buf.length > 0 && buf[buf.length - 1] === 0x00) {
       tcp.write(buf);
     } else {
@@ -1864,16 +1880,12 @@ wss.on('connection', (ws) => {
     }
   });
 
-  // TCP → WS: Forward raw TCP data to WebSocket, preserving \0 delimiters.
-  // Ruffle's XMLSocket parser needs the \0 to know when a message is complete.
   tcp.on('data', (data) => {
-    // Log for debugging (strip \0 for readability)
     const str = data.toString('utf8');
     const parts = str.split('\0').filter(s => s.trim().length > 0);
     for (const part of parts) {
       console.log('[WS→TCP] TCP→WS:', part.substring(0, 200));
     }
-    // Forward raw bytes including \0 terminators
     ws.send(data);
   });
 
@@ -1895,6 +1907,178 @@ wss.on('connection', (ws) => {
   ws.on('error', (err) => {
     console.error('[WS→TCP] WS error:', err.message);
     tcp.destroy();
+  });
+});
+
+// ── FrutiScore WebSocket handler (inline protocol, no TCP bridge) ──
+// Handles the CBee FrutiScore protocol directly so we don't need a
+// second TCP connection.  Ruffle can't reliably open two WebSocket
+// connections to the same origin/path, so we use /score as a
+// dedicated endpoint.
+wssScore.on('connection', (ws) => {
+  console.log('[FSCORE-WS] New FrutiScore WebSocket client');
+
+  let loggedUser = '';
+  let buffer = '';
+
+  function wsSend(xmlStr) {
+    try {
+      ws.send(xmlStr + '\0');
+      console.log('[FSCORE-WS] →', xmlStr.substring(0, 200));
+    } catch (e) { /* ignore */ }
+  }
+
+  ws.on('message', (rawMsg) => {
+    const buf = Buffer.isBuffer(rawMsg) ? rawMsg : Buffer.from(rawMsg);
+    buffer += buf.toString('utf8');
+    const parts = buffer.split('\0');
+    buffer = parts.pop();
+
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+
+      if (trimmed.includes('<policy-file-request')) {
+        wsSend('<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="*" /></cross-domain-policy>');
+        continue;
+      }
+
+      const msg = parseXmlAttrs(trimmed);
+      if (!msg || !msg.tag) continue;
+      const cmdName = CMD_REV[msg.tag] || msg.tag;
+      console.log('[FSCORE-WS] ←', cmdName, `(${msg.tag})`, JSON.stringify(msg.attrs).substring(0, 150));
+
+      switch (cmdName) {
+        case 'time': {
+          const now = new Date();
+          const pad = (n) => String(n).padStart(2, '0');
+          const ts = `${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())}.${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
+          wsSend(`<${CMD.time}>${ts}</${CMD.time}>`);
+          break;
+        }
+        case 'ip': {
+          wsSend(`<${CMD.ip}>127.0.0.1</${CMD.ip}>`);
+          break;
+        }
+        case 'ping': {
+          wsSend(`<${CMD.ping} />`);
+          break;
+        }
+        case 'ident': {
+          const sid = msg.attrs.s || '';
+          const login = msg.attrs.l || '';
+          const sessionUser = sid && sessions[sid] && sessions[sid].user ? sessions[sid].user : '';
+          const effectiveLogin = sessionUser || login;
+          if (!effectiveLogin) {
+            wsSend(`<${CMD.ident} k="401" />`);
+            break;
+          }
+          loggedUser = effectiveLogin;
+          const user = users[effectiveLogin] || {};
+          wsSend(`<${CMD.ident} l="${escapeXml(effectiveLogin)}" x="${user.xp || 0}" f="${bouilleOf(user)}" />`);
+          console.log(`[FSCORE-WS] User "${effectiveLogin}" logged in (sid=${sid})`);
+          break;
+        }
+        // listrankings (wire "l" with dt attr)
+        case 'kick': {
+          if (msg.attrs.dt !== undefined) {
+            const reqId = msg.attrs.r || '';
+            const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+            let inner = '<s ty="C">';
+            for (const [rkId, rk] of Object.entries(RANKINGS)) {
+              inner += `<rk rk="${escapeXml(rkId)}" rn="${escapeXml(rk.name)}" g="${escapeXml(rk.game)}" ty="${escapeXml(rk.type)}" />`;
+            }
+            inner += '</s>';
+            wsSend(`<${CMD.kick}${rAttr}>${inner}</${CMD.kick}>`);
+            console.log(`[FSCORE-WS] listRankings: ${Object.keys(RANKINGS).length} rankings sent`);
+            break;
+          }
+          // rankingResult via bugged wire "l" (rk attr)
+          if (msg.attrs.rk !== undefined) {
+            const rkId = String(msg.attrs.rk);
+            const reqId = msg.attrs.r || '';
+            const start = Number(msg.attrs.s || 0) || 0;
+            const limit = Number(msg.attrs.l || 20) || 20;
+            const all = [];
+            for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+              if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+                all.push({ u, s: Number(rlist[rkId].score) });
+              }
+            }
+            all.sort((a, b) => b.s - a.s);
+            const slice = all.slice(start, start + limit);
+            let inner = '';
+            let pos = start;
+            for (const e of slice) { pos += 1; inner += `<r u="${escapeXml(e.u)}" s="${e.s}" p="${pos}" />`; }
+            const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+            wsSend(`<${CMD.ban}${rAttr} rk="${escapeXml(rkId)}" t="${all.length}">${inner}</${CMD.ban}>`);
+            console.log(`[FSCORE-WS] rankingResult (bugged wire) ${rkId}: ${slice.length}/${all.length}`);
+            break;
+          }
+          break;
+        }
+        // rankingResult (wire "m" with rk attr)
+        case 'ban': {
+          if (msg.attrs.rk !== undefined) {
+            const rkId = String(msg.attrs.rk);
+            const reqId = msg.attrs.r || '';
+            const start = Number(msg.attrs.s || 0) || 0;
+            const limit = Number(msg.attrs.l || 20) || 20;
+            const all = [];
+            for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+              if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+                all.push({ u, s: Number(rlist[rkId].score) });
+              }
+            }
+            all.sort((a, b) => b.s - a.s);
+            const slice = all.slice(start, start + limit);
+            let inner = '';
+            let pos = start;
+            for (const e of slice) { pos += 1; inner += `<r u="${escapeXml(e.u)}" s="${e.s}" p="${pos}" />`; }
+            const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+            wsSend(`<${CMD.ban}${rAttr} rk="${escapeXml(rkId)}" t="${all.length}">${inner}</${CMD.ban}>`);
+            console.log(`[FSCORE-WS] rankingResult ${rkId}: ${slice.length}/${all.length}`);
+            break;
+          }
+          break;
+        }
+        // userresult (wire "n" with rs attr)
+        case 'unban': {
+          if (msg.attrs.rs !== undefined) {
+            const rkList = String(msg.attrs.rs || '').split(',').map((s) => s.trim()).filter(Boolean);
+            const reqId = msg.attrs.r || '';
+            let targetUser = loggedUser || '';
+            if (Array.isArray(msg.children)) {
+              const uChild = msg.children.find((c) => c.tag === 'u' && c.attrs && c.attrs.u);
+              if (uChild) targetUser = uChild.attrs.u;
+            }
+            let inner = '';
+            for (const rkId of rkList) {
+              if (!RANKINGS[rkId]) continue;
+              const info = getUserScore(targetUser, rkId);
+              inner += `<rk rk="${escapeXml(rkId)}" s="${info.score}" p="${info.pos}" />`;
+            }
+            const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+            wsSend(`<${CMD.unban}${rAttr}>${inner}</${CMD.unban}>`);
+            console.log(`[FSCORE-WS] userResult user=${targetUser} rankings=[${rkList.join(',')}]`);
+            break;
+          }
+          break;
+        }
+        default: {
+          console.log(`[FSCORE-WS] Unhandled: ${cmdName} (${msg.tag})`);
+          break;
+        }
+      }
+    }
+  });
+
+  ws.on('close', () => {
+    console.log(`[FSCORE-WS] Closed (user=${loggedUser || 'anonymous'})`);
+  });
+
+  ws.on('error', (err) => {
+    console.error('[FSCORE-WS] Error:', err.message);
   });
 });
 
