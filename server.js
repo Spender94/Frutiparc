@@ -2046,13 +2046,12 @@ wssScore.on('connection', (ws, request) => {
         case 'ip': {
           wsSend(`<${CMD.ip}>127.0.0.1</${CMD.ip}>`);
           // Some legacy FrutiScore paths stay stuck after time/ip and never
-          // issue ident(). Send an ident proactively, then retry once shortly
-          // after to avoid race conditions with late listener registration.
-          tryAutoIdent('after-ip');
+          // issue ident(). However, firing ident immediately can race with
+          // local listener setup on the Flash side. Schedule it shortly after.
           if (autoIdentTimer) clearTimeout(autoIdentTimer);
           autoIdentTimer = setTimeout(() => {
             tryAutoIdent('after-ip-delay');
-          }, 120);
+          }, 250);
           break;
         }
         case 'ping': {
