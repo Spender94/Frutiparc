@@ -1971,12 +1971,23 @@ wssChat.on('connection', (ws) => {
 // second TCP connection.  Ruffle can't reliably open two WebSocket
 // connections to the same origin/path, so we use /score as a
 // dedicated endpoint.
-wssScore.on('connection', (ws) => {
+wssScore.on('connection', (ws, request) => {
   console.log('[FSCORE-WS] New FrutiScore WebSocket client');
 
   let loggedUser = '';
   let currentGame = '';
   let buffer = '';
+  const reqUrl = request && request.url ? String(request.url) : '';
+  let hintedSid = '';
+  try {
+    const u = new URL(reqUrl, 'http://localhost');
+    hintedSid = u.searchParams.get('sid') || u.searchParams.get('c') || '';
+  } catch {}
+  const hintedIp = request
+    ? String((request.headers && request.headers['x-forwarded-for']) || '')
+      .split(',')[0]
+      .trim()
+    : '';
 
   function wsSend(xmlStr) {
     try {
@@ -2015,6 +2026,25 @@ wssScore.on('connection', (ws) => {
         }
         case 'ip': {
           wsSend(`<${CMD.ip}>127.0.0.1</${CMD.ip}>`);
+          // Some legacy FrutiScore paths never call ident() after ip/time on
+          // secondary connections. To avoid a deadlocked "not logged" state,
+          // proactively emit a successful ident once after ip.
+          if (!loggedUser) {
+            let hintedUser = '';
+            if (hintedSid && sessions[hintedSid] && sessions[hintedSid].user) {
+              hintedUser = sessions[hintedSid].user;
+            }
+            if (!hintedUser && hintedIp && recentSidByIp.has(hintedIp)) {
+              const sid = recentSidByIp.get(hintedIp);
+              if (sid && sessions[sid] && sessions[sid].user) {
+                hintedUser = sessions[sid].user;
+              }
+            }
+            loggedUser = hintedUser || 'anonymous';
+            const user = users[loggedUser] || {};
+            wsSend(`<${CMD.ident} l="${escapeXml(loggedUser)}" x="${user.xp || 0}" f="${bouilleOf(user)}" />`);
+            console.log(`[FSCORE-WS] Auto-ident user="${loggedUser}" sidHint="${hintedSid}" ipHint="${hintedIp}"`);
+          }
           break;
         }
         case 'ping': {
