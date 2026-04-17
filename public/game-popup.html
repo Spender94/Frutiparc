@@ -50,6 +50,14 @@
     var u = String(url || "");
     if (/(?:^|\/)s\d+$/.test(u)) {
       var full = u.startsWith("/") ? u : new URL(u, document.baseURI).href;
+      try {
+        var sid = new URLSearchParams(window.location.search).get("sid") || "";
+        if (sid) {
+          var saveUrl = new URL(full, window.location.origin);
+          if (!saveUrl.searchParams.get("sid")) saveUrl.searchParams.set("sid", sid);
+          full = saveUrl.toString();
+        }
+      } catch (e) {}
       fetch(full).catch(function() {});
       return null;
     }
