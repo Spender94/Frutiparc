@@ -714,14 +714,18 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
   const gameName = req.params[0];
   const scoreVal = parseInt(req.params[1]) || 0;
   let username = '';
+  const sid = getSidFromRequest(req, req.query || {});
+  if (sid && sessions[sid]) username = sessions[sid].user || '';
   const ip = getClientIp(req);
   const fallbackSid = ip ? recentSidByIp.get(ip) : undefined;
-  if (fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
+  if (!username && fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
   if (!username || !scoreVal) {
+    console.log(`[SWF-SCORE] skip save user="${username}" sid="${sid}" ip="${ip}" game="${gameName}" score=${scoreVal}`);
     return res.type('text/plain').send('ok=0');
   }
   const rankingId = rankingIdForGame(gameName);
   if (!rankingId) {
+    console.log(`[SWF-SCORE] unknown ranking game="${gameName}" sid="${sid}" user="${username}"`);
     return res.type('text/plain').send('ok=0');
   }
   const result = persistScore(username, rankingId, scoreVal, '');
