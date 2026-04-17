@@ -114,7 +114,11 @@
                 },
                 socketProxy: [
                     { host: "localhost", port: 5000, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` },
-                    { host: window.location.hostname, port: 5000, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` }
+                    { host: window.location.hostname, port: 5000, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` },
+                    { host: "localhost", port: 5001, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` },
+                    { host: window.location.hostname, port: 5001, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` },
+                    { host: "www.beta.frutiparc.com", port: 5001, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` },
+                    { host: "www.frutiparc.com", port: 5001, proxyUrl: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` }
                 ],
                 openUrlMode: "allow",
                 allowNetworking: "all",
