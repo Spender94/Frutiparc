@@ -1430,10 +1430,10 @@ const GAME_DISCS = {
     discType: '0',
     playMode: 'single',
     swfName: 'swapou2',
-    gameId: 'games/miniWave2/miniWave2.swf',
+    gameId: 'games/swapou2/swapou.swf',
     props: 'w=640;h=480;m=i',
     files: [
-      { u: 'games/miniWave2/miniWave2.swf' },
+      { u: 'games/swapou2/swapou.swf' },
     ],
   },
   miniwave1: {
@@ -1969,11 +1969,13 @@ app.use('/swf/games', (req, _res, next) => {
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/swf/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3')));
+app.use('/swf/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2')));
 // Fallback: Frusion constructs URLs as baseURL+swfId (e.g. "/games/kaluga/kaluga.swf")
 // without the /swf/ prefix.  Serve them from the same location.
 app.use('/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3')));
+app.use('/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
