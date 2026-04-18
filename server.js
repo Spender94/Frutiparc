@@ -485,12 +485,12 @@ function nowSqlTimestamp() {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
-function addUserHistoryEntry(user, { type = 0, content = '' } = {}) {
+function addUserHistoryEntry(user, { type = 1, content = '' } = {}) {
   if (!user) return;
   if (!Array.isArray(user.userLog)) user.userLog = [];
   user.userLog.unshift({
     d: nowSqlTimestamp(),
-    t: Number(type) || 0,
+    t: Number(type) || 1,
     c: String(content || ''),
   });
   if (user.userLog.length > 200) user.userLog.length = 200;
@@ -502,7 +502,7 @@ function buildUserLogXml(entries) {
     const d = escapeXml(e && e.d ? e.d : '');
     const t = Number(e && e.t);
     const c = escapeXml(e && e.c ? e.c : '');
-    return `<l d="${d}" t="${Number.isFinite(t) ? t : 0}">${c}</l>`;
+    return `<l d="${d}" t="${Number.isFinite(t) && t > 0 ? t : 1}">${c}</l>`;
   }).join('');
 }
 
@@ -2857,7 +2857,8 @@ function handleCBeeMessage(socket, rawXml) {
       const user = users[effectiveLogin];
       if (user.hasWelcomeUserLog !== true) {
         addUserHistoryEntry(user, {
-          type: 0,
+          // type=1 = icône d'évènement standard (évite le type 0 qui ne fixe pas d'image)
+          type: 1,
           content: 'Bienvenue sur Frutiparc ! Ton compte vient d’être créé.',
         });
         user.hasWelcomeUserLog = true;
