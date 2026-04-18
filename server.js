@@ -243,6 +243,7 @@ function seedDemoScores() {
 // Registered ranking IDs (one per game, mode 0 = classic).
 // name = human-readable, game = disc/game name (for client display).
 const RANKINGS = {
+  bkiwi_classic:    { name: 'Burning Kiwi - Classique', game: 'bkiwi',    type: 'C' },
   snake3_classic:   { name: 'Frutisnake - Classique',  game: 'snake3',   type: 'C' },
   kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
@@ -251,7 +252,7 @@ const RANKINGS = {
 
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
 const LEGACY_RANKINGS = [
-  { rk: '0', internal: null,               ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi', section: 'C' },
+  { rk: '0', internal: 'bkiwi_classic',    ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi', section: 'C' },
   { rk: '1', internal: 'snake3_classic',   ty: '0',           rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'C' },
   { rk: '2', internal: null,               ty: 'ptmb2',       rn: 'Motion Ball 2',gs: '2', g: 'mb2',    section: 'C' },
   { rk: '3', internal: 'swapou2_classic',  ty: '0',           rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
@@ -390,6 +391,12 @@ function rankingIdForGame(gameName) {
           `/swf/${p}`,
         ];
         if (pathVariants.some((v) => normalizedCandidates.has(v))) {
+          return `${swfName}_classic`;
+        }
+        // Check if input matches a directory segment of the game path
+        // (e.g. input='burningKiwi' matches 'games/burningKiwi/burningkiwi.swf')
+        const segs = p.split('/').filter(Boolean);
+        if (segs.some((seg) => normalizedCandidates.has(seg.toLowerCase()))) {
           return `${swfName}_classic`;
         }
       }
@@ -1405,6 +1412,16 @@ function swfSizeForUrlPath(urlPath) {
 }
 
 const GAME_DISCS = {
+  bkiwi1: {
+    discType: '0',
+    playMode: 'single',
+    swfName: 'bkiwi',
+    gameId: 'games/burningKiwi/burningkiwi.swf',
+    props: 'w=640;h=480;m=i',
+    files: [
+      { u: 'games/burningKiwi/burningkiwi.swf' },
+    ],
+  },
   kaluga1: {
     discType: '0',
     playMode: 'single',
@@ -1966,12 +1983,14 @@ app.use('/swf/games', (req, _res, next) => {
   }
   next();
 });
+app.use('/swf/games/burningKiwi', express.static(path.join(__dirname, 'Games', 'burningKiwi')));
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/swf/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3')));
 app.use('/swf/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2')));
 // Fallback: Frusion constructs URLs as baseURL+swfId (e.g. "/games/kaluga/kaluga.swf")
 // without the /swf/ prefix.  Serve them from the same location.
+app.use('/games/burningKiwi', express.static(path.join(__dirname, 'Games', 'burningKiwi')));
 app.use('/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
 app.use('/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3')));
