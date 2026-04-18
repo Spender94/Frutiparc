@@ -2855,13 +2855,14 @@ function handleCBeeMessage(socket, rawXml) {
       }
 
       const user = users[effectiveLogin];
+      let welcomeLogEntry = null;
       if (user.hasWelcomeUserLog !== true) {
         addUserHistoryEntry(user, {
-          // type=1 = icône d'évènement standard (évite le type 0 qui ne fixe pas d'image)
-          type: 1,
-          content: 'Bienvenue sur Frutiparc ! Ton compte vient d’être créé.',
+          type: 8,
+          content: "Bienvenue sur Frutiparc Revival ! Tu n'as donc rien de mieux à faire ?!",
         });
         user.hasWelcomeUserLog = true;
+        welcomeLogEntry = user.userLog[0] || null;
       }
 
       // Success: send ident response with user data
@@ -2870,6 +2871,12 @@ function handleCBeeMessage(socket, rawXml) {
       client.logged = true;
 
       sendToClient(socket, `<${CMD.ident} l="${effectiveLogin}" x="${user.xp}" f="${bouilleOf(user)}" />`);
+      if (welcomeLogEntry) {
+        sendToClient(
+          socket,
+          `<${CMD.newuserlog} date="${escapeXml(welcomeLogEntry.d || nowSqlTimestamp())}" type="${escapeXml(String(welcomeLogEntry.t || 8))}">${escapeXml(welcomeLogEntry.c || '')}</${CMD.newuserlog}>`,
+        );
+      }
       console.log(`[CBee]  User "${effectiveLogin}" logged in (sid=${sid})`);
       break;
     }
