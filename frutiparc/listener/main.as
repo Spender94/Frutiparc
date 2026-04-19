@@ -274,7 +274,7 @@
 
 							if(c.nodeName != "l") continue;
 
-							_global.me.addUserLog({time: c.attributes.d,type: Number(c.attributes.t),content: c.firstChild.nodeValue.toString()});
+							_global.me.addUserLog({time: c.attributes.d,type: Number(c.attributes.t),content: c.firstChild.nodeValue.toString(),flNew: false});
 
 						}
 
