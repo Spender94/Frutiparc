@@ -180,10 +180,8 @@ class MeMng{
 		obj - object - Object containing properties content and time, flNew is added
 	*/
 	function addUserLog(obj){
-		if(obj.time > this.previousTime){
-			obj.flNew = true;
-		}else{
-			obj.flNew = false;
+		if(obj.flNew == undefined){
+			obj.flNew = (obj.time >= this.previousTime);
 		}
 		if(obj.flNew){
 			this.digitalScreen.unSleep(3);
@@ -201,10 +199,8 @@ class MeMng{
 	}
 	
 	function addSiteLog(obj){
-		if(obj.time > this.previousTime){
-			obj.flNew = true;
-		}else{
-			obj.flNew = false;
+		if(obj.flNew == undefined){
+			obj.flNew = (obj.time > this.previousTime);
 		}
 		if(obj.flNew){
 			this.digitalScreen.unSleep(4);
