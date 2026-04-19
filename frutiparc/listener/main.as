@@ -1220,4 +1220,3 @@ _global.fKillAll = function(str){
 
 */
 
-

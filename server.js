@@ -2855,14 +2855,12 @@ function handleCBeeMessage(socket, rawXml) {
       }
 
       const user = users[effectiveLogin];
-      let welcomeLogEntry = null;
       if (user.hasWelcomeUserLog !== true) {
         addUserHistoryEntry(user, {
-          type: 8,
+          type: 1,
           content: "Bienvenue sur Frutiparc Revival ! Tu n'as donc rien de mieux à faire ?!",
         });
         user.hasWelcomeUserLog = true;
-        welcomeLogEntry = user.userLog[0] || null;
       }
 
       // Success: send ident response with user data
