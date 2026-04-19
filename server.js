@@ -2907,6 +2907,12 @@ function handleCBeeMessage(socket, rawXml) {
       client.logged = true;
 
       sendToClient(socket, `<${CMD.ident} l="${effectiveLogin}" x="${user.xp}" f="${bouilleOf(user)}" />`);
+      if (welcomeLogEntry) {
+        sendToClient(
+          socket,
+          `<${CMD.newuserlog} date="${escapeXml(welcomeLogEntry.d || nowSqlTimestamp())}" type="${escapeXml(String(welcomeLogEntry.t || 8))}">${escapeXml(welcomeLogEntry.c || '')}</${CMD.newuserlog}>`,
+        );
+      }
       console.log(`[CBee]  User "${effectiveLogin}" logged in (sid=${sid})`);
       break;
     }
