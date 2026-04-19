@@ -288,13 +288,13 @@
 
 						_global.me.emptySiteLog();
 
-						for(var c=n.firstChild;c.nodeType>0;c=c.nextSibling){
+							for(var c=n.firstChild;c.nodeType>0;c=c.nextSibling){
 
-							if(c.nodeName != "l") continue;
+								if(c.nodeName != "l") continue;
 
-							_global.me.addSiteLog({time: c.attributes.d,type: Number(c.attributes.t),content: c.firstChild.nodeValue.toString()});
+								_global.me.addSiteLog({time: c.attributes.d,type: Number(c.attributes.t),content: c.firstChild.nodeValue.toString(),flNew: (c.attributes.n=="1")?true:undefined});
 
-						}
+							}
 
 						break;
 

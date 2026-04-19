@@ -477,7 +477,9 @@ function createDefaultUser(pass) {
     needsBouille: true, // Force editbouille on first login
     kikoozLog: [],      // Entries displayed in box.KikoozLog (/ft/log)
     userLog: [],        // Entries displayed in "Mon historique" (/do/onident <ul>)
+    siteLog: [],        // Entries displayed in "Evènements" (/do/onident <sl>)
     hasWelcomeUserLog: false,
+    hasWelcomeSiteLog: false,
   };
 }
 
@@ -496,6 +498,19 @@ function addUserHistoryEntry(user, { type = 1, content = '', flNew = false } = {
   if (flNew) entry.n = 1;
   user.userLog.unshift(entry);
   if (user.userLog.length > 200) user.userLog.length = 200;
+}
+
+function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
+  if (!user) return;
+  if (!Array.isArray(user.siteLog)) user.siteLog = [];
+  const entry = {
+    d: nowSqlTimestamp(),
+    t: Number(type) || 1,
+    c: String(content || ''),
+  };
+  if (flNew) entry.n = 1;
+  user.siteLog.unshift(entry);
+  if (user.siteLog.length > 200) user.siteLog.length = 200;
 }
 
 function buildUserLogXml(entries) {
@@ -1421,12 +1436,16 @@ app.get('/do/onident', (req, res) => {
   }
 
   const userLogXml = buildUserLogXml(user.userLog);
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${modAttr}${fAttr}><mp><![CDATA[${myPref}]]></mp><ul>${userLogXml}</ul><sl><!--empty--></sl><bl>${buildBouilleListXml()}</bl></r>`;
-  if (Array.isArray(user.userLog)) {
-    for (let i = 0; i < user.userLog.length; i += 1) {
-      if (user.userLog[i] && Number(user.userLog[i].n) === 1) delete user.userLog[i].n;
+  const siteLogXml = buildUserLogXml(user.siteLog);
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${modAttr}${fAttr}><mp><![CDATA[${myPref}]]></mp><ul>${userLogXml}</ul><sl>${siteLogXml}</sl><bl>${buildBouilleListXml()}</bl></r>`;
+  const clearTransientNewFlag = (arr) => {
+    if (!Array.isArray(arr)) return;
+    for (let i = 0; i < arr.length; i += 1) {
+      if (arr[i] && Number(arr[i].n) === 1) delete arr[i].n;
     }
-  }
+  };
+  clearTransientNewFlag(user.userLog);
+  clearTransientNewFlag(user.siteLog);
 
   res.type('text/xml').send(xml);
 });
@@ -2858,7 +2877,9 @@ function handleCBeeMessage(socket, rawXml) {
             isModerator: !isDebugNotUser(effectiveLogin),
             kikoozLog: [],
             userLog: [],
+            siteLog: [],
             hasWelcomeUserLog: false,
+            hasWelcomeSiteLog: false,
           };
       }
 
@@ -2870,6 +2891,14 @@ function handleCBeeMessage(socket, rawXml) {
           flNew: true,
         });
         user.hasWelcomeUserLog = true;
+      }
+      if (user.hasWelcomeSiteLog !== true) {
+        addSiteHistoryEntry(user, {
+          type: 1,
+          content: "Évènement: ton compte Frutiparc Revival vient d'être activé.",
+          flNew: true,
+        });
+        user.hasWelcomeSiteLog = true;
       }
 
       // Success: send ident response with user data
