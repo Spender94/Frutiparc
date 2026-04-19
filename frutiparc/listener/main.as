@@ -610,7 +610,7 @@
 
 	static function onNewUserLog(node){
 
-		_global.me.addUserLog({time: node.attributes.date,type: node.attributes.type,content: node.firstChild.nodeValue.toString()});
+		_global.me.addUserLog({time: node.attributes.date,type: Number(node.attributes.type),content: node.firstChild.nodeValue.toString(),flNew: true});
 
 	}
 
@@ -1219,6 +1219,4 @@ _global.fKillAll = function(str){
 };
 
 */
-
-
 
