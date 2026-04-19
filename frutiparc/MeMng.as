@@ -19,6 +19,8 @@ class MeMng{
 	var siteLog:Array;
 	var previousTime:String;
 	var digitalScreen:MovieClip;
+	var pendingDigitalWake:Array;
+	var pendingDigitalWakeInterval:Number;
 	var flMode:Boolean;
   var flAnimator:Boolean;
   var bouilleList:Array; // [] = {name: "",bouille: ""}
@@ -48,6 +50,8 @@ class MeMng{
 		this.$kikooz = 0;
 		this.userLog = new Array();
 		this.siteLog = new Array();
+		this.pendingDigitalWake = new Array();
+		this.pendingDigitalWakeInterval = undefined;
 		this.flMuted = false;
 		this.flMode = false;
 		
@@ -180,13 +184,11 @@ class MeMng{
 		obj - object - Object containing properties content and time, flNew is added
 	*/
 	function addUserLog(obj){
-		if(obj.time > this.previousTime){
-			obj.flNew = true;
-		}else{
-			obj.flNew = false;
+		if(obj.flNew == undefined){
+			obj.flNew = (obj.time >= this.previousTime);
 		}
 		if(obj.flNew){
-			this.digitalScreen.unSleep(3);
+			this.requestDigitalWake(3);
 		}
 		this.userLog.pushAt(0,obj);
 		this.broadcastMessage("userLog",this.userLog);
@@ -201,16 +203,35 @@ class MeMng{
 	}
 	
 	function addSiteLog(obj){
-		if(obj.time > this.previousTime){
-			obj.flNew = true;
-		}else{
-			obj.flNew = false;
+		if(obj.flNew == undefined){
+			obj.flNew = (obj.time > this.previousTime);
 		}
 		if(obj.flNew){
-			this.digitalScreen.unSleep(4);
+			this.requestDigitalWake(4);
 		}
 		this.siteLog.pushAt(0,obj);
 		this.broadcastMessage("siteLog",this.siteLog);
+	}
+
+	function requestDigitalWake(id){
+		if(this.digitalScreen != undefined){
+			this.digitalScreen.unSleep(id);
+			return;
+		}
+		this.pendingDigitalWake.push(id);
+		if(this.pendingDigitalWakeInterval == undefined){
+			this.pendingDigitalWakeInterval = setInterval(this,"flushPendingDigitalWake",250);
+		}
+	}
+
+	function flushPendingDigitalWake(){
+		if(this.digitalScreen == undefined) return;
+		clearInterval(this.pendingDigitalWakeInterval);
+		this.pendingDigitalWakeInterval = undefined;
+		for(var i=0;i<this.pendingDigitalWake.length;i++){
+			this.digitalScreen.unSleep(this.pendingDigitalWake[i]);
+		}
+		this.pendingDigitalWake = new Array();
 	}
 	
 	function onDisplaySiteLog(){

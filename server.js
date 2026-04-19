@@ -476,7 +476,52 @@ function createDefaultUser(pass) {
     isModerator: true,
     needsBouille: true, // Force editbouille on first login
     kikoozLog: [],      // Entries displayed in box.KikoozLog (/ft/log)
+    userLog: [],        // Entries displayed in "Mon historique" (/do/onident <ul>)
+    siteLog: [],        // Entries displayed in "Evènements" (/do/onident <sl>)
+    hasWelcomeUserLog: false,
+    hasWelcomeSiteLog: false,
   };
+}
+
+function nowSqlTimestamp() {
+  return new Date().toISOString().replace('T', ' ').substring(0, 19);
+}
+
+function addUserHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
+  if (!user) return;
+  if (!Array.isArray(user.userLog)) user.userLog = [];
+  const entry = {
+    d: nowSqlTimestamp(),
+    t: Number(type) || 1,
+    c: String(content || ''),
+  };
+  if (flNew) entry.n = 1;
+  user.userLog.unshift(entry);
+  if (user.userLog.length > 200) user.userLog.length = 200;
+}
+
+function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
+  if (!user) return;
+  if (!Array.isArray(user.siteLog)) user.siteLog = [];
+  const entry = {
+    d: nowSqlTimestamp(),
+    t: Number(type) || 1,
+    c: String(content || ''),
+  };
+  if (flNew) entry.n = 1;
+  user.siteLog.unshift(entry);
+  if (user.siteLog.length > 200) user.siteLog.length = 200;
+}
+
+function buildUserLogXml(entries) {
+  const list = Array.isArray(entries) ? entries : [];
+  return list.map((e) => {
+    const d = escapeXml(e && e.d ? e.d : '');
+    const t = Number(e && e.t);
+    const c = escapeXml(e && e.c ? e.c : '');
+    const n = (e && Number(e.n) === 1) ? ' n="1"' : '';
+    return `<l d="${d}" t="${Number.isFinite(t) && t > 0 ? t : 1}"${n}>${c}</l>`;
+  }).join('');
 }
 
 function normalizeUsername(raw) {
@@ -1377,7 +1422,7 @@ app.get('/do/onident', (req, res) => {
   user.items = withDefaultPens(user.items);
   const items = user.items.join(',');
   const myPref = user.prefs || '';
-  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const now = nowSqlTimestamp();
   const currentUsername = auth.username || '';
   const allowModeration = user.isModerator && !isDebugNotUser(currentUsername);
   const modAttr = allowModeration ? ' m="1" a="1"' : '';
@@ -1390,7 +1435,17 @@ app.get('/do/onident', (req, res) => {
     user.needsBouille = false; // Only force once per session
   }
 
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${modAttr}${fAttr}><mp><![CDATA[${myPref}]]></mp><ul><!--empty--></ul><sl><!--empty--></sl><bl>${buildBouilleListXml()}</bl></r>`;
+  const userLogXml = buildUserLogXml(user.userLog);
+  const siteLogXml = buildUserLogXml(user.siteLog);
+  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${modAttr}${fAttr}><mp><![CDATA[${myPref}]]></mp><ul>${userLogXml}</ul><sl>${siteLogXml}</sl><bl>${buildBouilleListXml()}</bl></r>`;
+  const clearTransientNewFlag = (arr) => {
+    if (!Array.isArray(arr)) return;
+    for (let i = 0; i < arr.length; i += 1) {
+      if (arr[i] && Number(arr[i].n) === 1) delete arr[i].n;
+    }
+  };
+  clearTransientNewFlag(user.userLog);
+  clearTransientNewFlag(user.siteLog);
 
   res.type('text/xml').send(xml);
 });
@@ -2821,10 +2876,30 @@ function handleCBeeMessage(socket, rawXml) {
             prefs: '',
             isModerator: !isDebugNotUser(effectiveLogin),
             kikoozLog: [],
+            userLog: [],
+            siteLog: [],
+            hasWelcomeUserLog: false,
+            hasWelcomeSiteLog: false,
           };
       }
 
       const user = users[effectiveLogin];
+      if (user.hasWelcomeUserLog !== true) {
+        addUserHistoryEntry(user, {
+          type: 1,
+          content: "Bienvenue sur Frutiparc Revival ! Tu n'as donc rien de mieux à faire ?!",
+          flNew: true,
+        });
+        user.hasWelcomeUserLog = true;
+      }
+      if (user.hasWelcomeSiteLog !== true) {
+        addSiteHistoryEntry(user, {
+          type: 1,
+          content: "Évènement: ton compte Frutiparc Revival vient d'être activé.",
+          flNew: true,
+        });
+        user.hasWelcomeSiteLog = true;
+      }
 
       // Success: send ident response with user data
       client.username = effectiveLogin;
