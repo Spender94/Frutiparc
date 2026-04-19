@@ -485,14 +485,16 @@ function nowSqlTimestamp() {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
-function addUserHistoryEntry(user, { type = 1, content = '' } = {}) {
+function addUserHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
   if (!user) return;
   if (!Array.isArray(user.userLog)) user.userLog = [];
-  user.userLog.unshift({
+  const entry = {
     d: nowSqlTimestamp(),
     t: Number(type) || 1,
     c: String(content || ''),
-  });
+  };
+  if (flNew) entry.n = 1;
+  user.userLog.unshift(entry);
   if (user.userLog.length > 200) user.userLog.length = 200;
 }
 
@@ -502,7 +504,8 @@ function buildUserLogXml(entries) {
     const d = escapeXml(e && e.d ? e.d : '');
     const t = Number(e && e.t);
     const c = escapeXml(e && e.c ? e.c : '');
-    return `<l d="${d}" t="${Number.isFinite(t) && t > 0 ? t : 1}">${c}</l>`;
+    const n = (e && Number(e.n) === 1) ? ' n="1"' : '';
+    return `<l d="${d}" t="${Number.isFinite(t) && t > 0 ? t : 1}"${n}>${c}</l>`;
   }).join('');
 }
 
@@ -1419,6 +1422,11 @@ app.get('/do/onident', (req, res) => {
 
   const userLogXml = buildUserLogXml(user.userLog);
   const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${modAttr}${fAttr}><mp><![CDATA[${myPref}]]></mp><ul>${userLogXml}</ul><sl><!--empty--></sl><bl>${buildBouilleListXml()}</bl></r>`;
+  if (Array.isArray(user.userLog)) {
+    for (let i = 0; i < user.userLog.length; i += 1) {
+      if (user.userLog[i] && Number(user.userLog[i].n) === 1) delete user.userLog[i].n;
+    }
+  }
 
   res.type('text/xml').send(xml);
 });
@@ -2859,6 +2867,7 @@ function handleCBeeMessage(socket, rawXml) {
         addUserHistoryEntry(user, {
           type: 1,
           content: "Bienvenue sur Frutiparc Revival ! Tu n'as donc rien de mieux à faire ?!",
+          flNew: true,
         });
         user.hasWelcomeUserLog = true;
       }
