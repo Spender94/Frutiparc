@@ -3071,8 +3071,29 @@ case 'join': {
       break;
     }
 
-    // ── part: leave a channel ──
+    // ── part: leave a channel / FrutiScore xpranking ──
     case 'part': {
+      // FrutiScore overlap: xpranking uses wire code "y" with s/l attrs.
+      if (msg.attrs.s !== undefined || msg.attrs.l !== undefined) {
+        const start = Number(msg.attrs.s || 0) || 0;
+        const limit = Number(msg.attrs.l || 10) || 10;
+        const all = [];
+        for (const [u, ud] of Object.entries(users)) {
+          if (ud && Number.isFinite(ud.xp) && ud.xp > 0) {
+            all.push({ u, s: ud.xp });
+          }
+        }
+        all.sort((a, b) => b.s - a.s);
+        const slice = all.slice(start, start + limit);
+        let inner = '';
+        for (const e of slice) {
+          const ud = users[e.u] || {};
+          inner += `<score u="${escapeXml(e.u)}" x="${e.s}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+        }
+        sendToClient(socket, `<${CMD.part}>${inner}</${CMD.part}>`);
+        console.log(`[FSCORE] xpranking: ${slice.length}/${all.length} entries`);
+        break;
+      }
       const g = msg.attrs.g;
       if (channels[g]) {
         channels[g].users.delete(client.username);
@@ -3127,7 +3148,7 @@ broadcastToChannel(
         if (internalId) {
           for (const [u, rlist] of Object.entries(scoresData.users || {})) {
             if (rlist && rlist[internalId] && Number.isFinite(Number(rlist[internalId].score))) {
-              all.push({ u, s: Number(rlist[internalId].score) });
+              all.push({ u, s: Number(rlist[internalId].score), d: rlist[internalId].data || '', at: rlist[internalId].updatedAt || '' });
             }
           }
         }
@@ -3136,7 +3157,9 @@ broadcastToChannel(
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+          const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
+          const dAttr = e.d ? ` d="${escapeXml(e.d)}"` : '';
+          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
@@ -3176,7 +3199,7 @@ broadcastToChannel(
         if (internalId) {
           for (const [u, rlist] of Object.entries(scoresData.users || {})) {
             if (rlist && rlist[internalId] && Number.isFinite(Number(rlist[internalId].score))) {
-              all.push({ u, s: Number(rlist[internalId].score) });
+              all.push({ u, s: Number(rlist[internalId].score), d: rlist[internalId].data || '', at: rlist[internalId].updatedAt || '' });
             }
           }
         }
@@ -3185,7 +3208,9 @@ broadcastToChannel(
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+          const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
+          const dAttr = e.d ? ` d="${escapeXml(e.d)}"` : '';
+          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
@@ -3393,9 +3418,29 @@ case 'trace': {
   }
   break;
 }
-    // ── stoptrace: stop tracking users ──
+    // ── stoptrace: stop tracking users / FrutiScore rateranking ──
     case 'stoptrace': {
-      // Just acknowledge — nothing to do server-side in our simple impl
+      // FrutiScore overlap: rateranking uses wire code "aa" with s/l attrs.
+      if (msg.attrs.s !== undefined || msg.attrs.l !== undefined) {
+        const start = Number(msg.attrs.s || 0) || 0;
+        const limit = Number(msg.attrs.l || 10) || 10;
+        const all = [];
+        for (const [u, ud] of Object.entries(users)) {
+          if (ud && Number.isFinite(ud.xp) && ud.xp > 0) {
+            all.push({ u, s: ud.xp });
+          }
+        }
+        all.sort((a, b) => b.s - a.s);
+        const slice = all.slice(start, start + limit);
+        let inner = '';
+        for (const e of slice) {
+          const ud = users[e.u] || {};
+          inner += `<score u="${escapeXml(e.u)}" x="${e.s}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+        }
+        sendToClient(socket, `<${CMD.stoptrace}>${inner}</${CMD.stoptrace}>`);
+        console.log(`[FSCORE] rateranking: ${slice.length}/${all.length} entries`);
+        break;
+      }
       break;
     }
 
@@ -3670,6 +3715,30 @@ case 'createchannel': {
       }
       // Chat unban path (moderator lifts a ban) — not implemented yet.
       sendToClient(socket, `<${CMD.unban} k="0" />`);
+      break;
+    }
+
+    // ── awardgame (ha): top-3 award holders for a game ──
+    case 'awardgame': {
+      const reqId = msg.attrs.r || '';
+      const gameName = msg.attrs.g || '';
+      const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+      let inner = '';
+      const rkId = rankingIdForGame(gameName);
+      if (rkId) {
+        const all = [];
+        for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+          if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+            all.push({ u, s: Number(rlist[rkId].score) });
+          }
+        }
+        all.sort((a, b) => b.s - a.s);
+        for (let i = 0; i < Math.min(3, all.length); i++) {
+          inner += `<a v="${i + 1}" u="${escapeXml(all[i].u)}" d="1" />`;
+        }
+      }
+      sendToClient(socket, `<${CMD.awardgame}${rAttr} g="${escapeXml(gameName)}">${inner}</${CMD.awardgame}>`);
+      console.log(`[FSCORE] awardgame game=${gameName} ranking=${rkId || '-'}`);
       break;
     }
 
