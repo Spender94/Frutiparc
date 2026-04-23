@@ -253,14 +253,14 @@ const RANKINGS = {
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
 const LEGACY_RANKINGS = [
   { rk: '0', internal: 'bkiwi_classic',    ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi', section: 'C' },
-  { rk: '1', internal: 'snake3_classic',   ty: '0',           rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'C' },
+  { rk: '1', internal: 'snake3_classic',   ty: 'point',       rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'C' },
   { rk: '2', internal: null,               ty: 'ptmb2',       rn: 'Motion Ball 2',gs: '2', g: 'mb2',    section: 'C' },
-  { rk: '3', internal: 'swapou2_classic',  ty: '0',           rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
-  { rk: '4', internal: 'kaluga_classic',   ty: '0',           rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'C' },
-  { rk: '5', internal: null,               ty: '0',           rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
-  { rk: '6', internal: null,               ty: '0',           rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
-  { rk: '7', internal: null,               ty: '0',           rn: 'Frutibandas',  gs: '7', g: 'bandas', section: 'L' },
-  { rk: '8', internal: null,               ty: '0',           rn: 'Grapiz',       gs: '8', g: 'grapiz', section: 'L' },
+  { rk: '3', internal: 'swapou2_classic',  ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
+  { rk: '4', internal: 'kaluga_classic',   ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'C' },
+  { rk: '5', internal: null,               ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
+  { rk: '6', internal: null,               ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
+  { rk: '7', internal: null,               ty: 'point',       rn: 'Frutibandas',  gs: '7', g: 'bandas', section: 'L' },
+  { rk: '8', internal: null,               ty: 'point',       rn: 'Grapiz',       gs: '8', g: 'grapiz', section: 'L' },
 ];
 const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.rk, r.internal])
@@ -303,13 +303,13 @@ function buildLegacyRankingResultPayload(rkInput, reqId = '', cAttr = '') {
     return `<m${r} ty="millisecond" rk="0"${c}><score u="${me}" ${meAttrs} s="36500" t="2025-07-02 00:56:00" d="Skiwix:5:1:" /></m>`;
   }
   if (rk === '3') {
-    return `<m${r} ty="0" rk="3"${c}><score u="${me}" ${meAttrs} s="30000" t="2025-07-02 00:56:00" d="S6:" /></m>`;
+    return `<m${r} ty="point" rk="3"${c}><score u="${me}" ${meAttrs} s="30000" t="2025-07-02 00:56:00" d="S6:" /></m>`;
   }
   if (rk === '4') {
-    return `<m${r} ty="0" rk="4"${c}><score u="${me}" ${meAttrs} s="15000" t="2025-07-02 00:56:00" d="Smakulo:" /></m>`;
+    return `<m${r} ty="point" rk="4"${c}><score u="${me}" ${meAttrs} s="15000" t="2025-07-02 00:56:00" d="Smakulo:" /></m>`;
   }
   // Snake + generic fallback.
-  return `<m${r} ty="0" rk="${escapeXml(rk || '1')}"${c}><score u="${me}" ${meAttrs} s="1000000" t="2025-07-02 00:56:00" /></m>`;
+  return `<m${r} ty="point" rk="${escapeXml(rk || '1')}"${c}><score u="${me}" ${meAttrs} s="1000000" t="2025-07-02 00:56:00" /></m>`;
 }
 
 function buildLegacyUserResultPayload(user, reqId = '') {
@@ -3700,8 +3700,9 @@ case 'createchannel': {
           if (!internalId) continue;
           const legacyDesc = legacyDescriptorFromRkLike(rkAny) || legacyDescriptorFromRkLike(internalId);
           const info = getUserScore(targetUser, internalId);
+          if (info.score <= 0 && info.pos <= 0) continue;
           const rkOut = INTERNAL_TO_LEGACY_RK[internalId] || rkAny || internalId;
-          const tAttr = legacyDesc && legacyDesc.ty && legacyDesc.ty !== '0' ? ` t="${escapeXml(legacyDesc.ty)}"` : '';
+          const tAttr = legacyDesc && legacyDesc.ty && legacyDesc.ty !== 'point' ? ` t="${escapeXml(legacyDesc.ty)}"` : '';
           inner += `<rk rk="${escapeXml(rkOut)}" p="${info.pos}" s="${info.score}"${tAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
