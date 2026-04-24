@@ -2030,10 +2030,21 @@ app.get(
   }
 );
 
-app.use('/swf/games', (req, _res, next) => {
+app.use('/swf/games', (req, res, next) => {
   if (VERBOSE_FRUSION_LOGS) {
     const launchId = getLaunchIdFromReq(req);
     console.log(`[FRUSION] asset launch_id=${launchId || '-'} path=${req.path}`);
+  }
+  if (req.path.endsWith('.swf')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.set('Pragma', 'no-cache');
+  }
+  next();
+});
+app.use('/games', (req, res, next) => {
+  if (req.path.endsWith('.swf')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.set('Pragma', 'no-cache');
   }
   next();
 });
