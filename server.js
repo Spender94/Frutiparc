@@ -1481,21 +1481,21 @@ const GAME_DISCS = {
     discType: '0',
     playMode: 'single',
     swfName: 'kaluga',
-    gameId: 'games/kaluga/kaluga.swf',
+    gameId: 'games/kaluga/loader_kaluga.swf',
     props: 'w=640;h=480;m=i',
     files: [
-      { u: 'games/kaluga/kaluga.swf' },
-      { u: 'games/kaluga/full.swf', n: 'full.swf' },
+      { u: 'games/kaluga/loader_kaluga.swf' },
+      { u: 'games/kaluga/kaluga2.swf', n: 'kaluga2.swf' },
     ],
   },
   kalugademo: {
     discType: '3',
     playMode: 'preview',
     swfName: 'kaluga',
-    gameId: 'games/kaluga/kaluga.swf',
+    gameId: 'games/kaluga/loader_kaluga.swf',
     props: 'w=640;h=480;m=i',
     files: [
-      { u: 'games/kaluga/kaluga.swf' },
+      { u: 'games/kaluga/loader_kaluga.swf' },
     ],
   },
   swapou1: {
