@@ -1796,12 +1796,12 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     return res.type('text/xml').send(`<f u="mycontact">${nodes || '<i />'}</f>`);
   }
 
-  if (uid === 'blacklist' || uid === 'blackbox') {
+  if (uid === 'blacklist') {
     const nodes = user.blacklist.map((addr) => {
       const local = String(addr).split('@')[0];
       return `<e u="${escapeXml(local)}" t="contact" s="10" d="0" a="0">${escapeXml(addr)}</e>`;
     }).join('');
-    return res.type('text/xml').send(`<f u="blackbox">${nodes || '<i />'}</f>`);
+    return res.type('text/xml').send(`<f u="blacklist">${nodes || '<i />'}</f>`);
   }
 
   if (uid === 'disccollector') {
@@ -1834,16 +1834,11 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
   const type = source.t || req.query.t || 'file';
   const desc = String(source.d || req.query.d || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  const isBlacklistFolder = folder === 'blacklist' || folder === 'blackbox';
-  const isContactFolder = folder === 'mycontact' || isBlacklistFolder;
+  const isContactFolder = folder === 'mycontact' || folder === 'blacklist';
   const isContactCreate = type === 'contact' || isContactFolder;
 
   if (isContactCreate && !folder) {
     folder = 'mycontact';
-  }
-
-  if (isBlacklistFolder) {
-    folder = 'blacklist';
   }
 
   if (isContactCreate && (folder === 'mycontact' || folder === 'blacklist')) {
@@ -1869,9 +1864,8 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
     const list = folder === 'blacklist' ? user.blacklist : user.contacts;
     if (addr && !list.includes(addr)) list.push(addr);
     const local = addr.split('@')[0] || addr || newUid;
-    const responseFolder = folder === 'blacklist' ? 'blackbox' : folder;
     return res.type('text/xml').send(
-      `<r u="${escapeXml(local)}" t="contact" d="${now}" f="${escapeXml(responseFolder)}">${escapeXml(addr)}</r>`
+      `<r u="${escapeXml(local)}" t="contact" d="${now}" f="${escapeXml(folder)}">${escapeXml(addr)}</r>`
     );
   }
 
@@ -1893,6 +1887,7 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
   const file = String(source.f || req.query.f || '');
   const folder = String(source.folder || req.query.folder || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  console.log(`[FF/MV] file="${file}" folder="${folder}" method=${req.method} query=${JSON.stringify(req.query)}`);
 
   let oldFolder = String(source.p || req.query.p || 'root');
   const local = file.split('@')[0];
@@ -1901,18 +1896,15 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
   const inContacts = user.contacts.find((a) => a === normalizedFileAddr || a.split('@')[0] === local);
   const inBlacklist = user.blacklist.find((a) => a === normalizedFileAddr || a.split('@')[0] === local);
 
-  const isBlacklistDest = folder === 'blacklist' || folder === 'blackbox';
-  const responseFolder = isBlacklistDest ? 'blackbox' : folder;
-
   if (folder === 'recyclebin') {
     if (inContacts) {
       user.contacts = user.contacts.filter((a) => a !== inContacts);
       oldFolder = 'mycontact';
     } else if (inBlacklist) {
       user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
-      oldFolder = 'blackbox';
+      oldFolder = 'blacklist';
     }
-  } else if (isBlacklistDest) {
+  } else if (folder === 'blacklist') {
     const addr = inContacts || normalizedFileAddr || file;
     if (inContacts) {
       user.contacts = user.contacts.filter((a) => a !== inContacts);
@@ -1925,7 +1917,7 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
     const addr = inBlacklist || normalizedFileAddr || file;
     if (inBlacklist) {
       user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
-      oldFolder = 'blackbox';
+      oldFolder = 'blacklist';
     }
     if (addr && !user.contacts.includes(addr)) {
       user.contacts.push(addr);
@@ -1933,7 +1925,7 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
   }
 
   const addr = normalizedFileAddr || file;
-  res.type('text/xml').send(`<r f="${responseFolder}"><f n="${escapeXml(local)}" u="${escapeXml(local)}" t="contact" d="${now}" p="${oldFolder}">${escapeXml(addr)}</f></r>`);
+  res.type('text/xml').send(`<r f="${escapeXml(folder)}"><f n="${escapeXml(local)}" u="${escapeXml(local)}" t="contact" d="${now}" p="${oldFolder}">${escapeXml(addr)}</f></r>`);
 });
 
 // ─────────────────────────────────────────────
@@ -1971,7 +1963,7 @@ app.get(['/ff/rm', '/rm'], (req, res) => {
     for (const c of candidates) {
       const hit = user[listName].find((a) => a === c || String(a).split('@')[0] === String(c).split('@')[0]);
       if (hit && removeFromList(listName, hit)) {
-        removedFrom = listName === 'contacts' ? 'mycontact' : 'blackbox';
+        removedFrom = listName === 'contacts' ? 'mycontact' : 'blacklist';
         removedValue = hit;
         return true;
       }
@@ -1981,7 +1973,7 @@ app.get(['/ff/rm', '/rm'], (req, res) => {
 
   if (folder === 'mycontact') {
     tryRemoveFrom('contacts');
-  } else if (folder === 'blacklist' || folder === 'blackbox') {
+  } else if (folder === 'blacklist') {
     tryRemoveFrom('blacklist');
   } else {
     // If folder is omitted, try both lists.
