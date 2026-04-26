@@ -1481,7 +1481,7 @@ const GAME_DISCS = {
     playMode: 'single',
     swfName: 'bkiwi',
     gameId: 'games/burningKiwi/burningkiwi.swf',
-    props: 'w=640;h=480;m=i',
+    props: 'w=350;h=350;m=i',
     files: [
       { u: 'games/burningKiwi/burningkiwi.swf' },
     ],
