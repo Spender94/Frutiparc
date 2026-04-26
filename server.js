@@ -243,7 +243,7 @@ function seedDemoScores() {
 // Registered ranking IDs (one per game, mode 0 = classic).
 // name = human-readable, game = disc/game name (for client display).
 const RANKINGS = {
-  bkiwi_classic:    { name: 'Burning Kiwi - Classique', game: 'bkiwi',    type: 'C' },
+  bkiwi_classic:    { name: 'Burning Kiwi - Classique', game: 'bkiwi',    type: 'C', lowerIsBetter: true },
   snake3_classic:   { name: 'Frutisnake - Classique',  game: 'snake3',   type: 'C' },
   kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
@@ -413,6 +413,14 @@ function rankingIdForGame(gameName) {
   return null;
 }
 
+function isLowerBetter(rankingId) {
+  return !!(RANKINGS[rankingId] && RANKINGS[rankingId].lowerIsBetter);
+}
+
+function scoreComparator(rankingId) {
+  return isLowerBetter(rankingId) ? (a, b) => a.s - b.s : (a, b) => b.s - a.s;
+}
+
 // Save a score for user+ranking. Returns { updated, newScore, oldScore, oldPos, newPos }.
 function persistScore(username, rankingId, score, data) {
   if (!username || !rankingId || !RANKINGS[rankingId]) {
@@ -424,7 +432,7 @@ function persistScore(username, rankingId, score, data) {
   const n = Number(score) || 0;
   const oldPos = computePosition(rankingId, username);
   let updated = false;
-  if (n > oldScore) {
+  if (isLowerBetter(rankingId) ? (oldScore === 0 || n < oldScore) : (n > oldScore)) {
     scoresData.users[username][rankingId] = {
       score: n,
       data: (data === undefined || data === null) ? '' : String(data),
@@ -445,7 +453,7 @@ function computePosition(rankingId, username) {
       all.push({ u, s: Number(rlist[rankingId].score) });
     }
   }
-  all.sort((a, b) => b.s - a.s);
+  all.sort(scoreComparator(rankingId));
   const idx = all.findIndex((e) => e.u === username);
   return idx < 0 ? 0 : idx + 1;
 }
@@ -3179,7 +3187,7 @@ broadcastToChannel(
             }
           }
         }
-        all.sort((a, b) => b.s - a.s);
+        all.sort(internalId ? scoreComparator(internalId) : (a, b) => b.s - a.s);
         const slice = all.slice(start, start + limit);
         let inner = '';
         for (const e of slice) {
@@ -3230,7 +3238,7 @@ broadcastToChannel(
             }
           }
         }
-        all.sort((a, b) => b.s - a.s);
+        all.sort(internalId ? scoreComparator(internalId) : (a, b) => b.s - a.s);
         const slice = all.slice(start, start + limit);
         let inner = '';
         for (const e of slice) {
@@ -3760,7 +3768,7 @@ case 'createchannel': {
             all.push({ u, s: Number(rlist[rkId].score) });
           }
         }
-        all.sort((a, b) => b.s - a.s);
+        all.sort(rkId ? scoreComparator(rkId) : (a, b) => b.s - a.s);
         for (let i = 0; i < Math.min(3, all.length); i++) {
           inner += `<a v="${i + 1}" u="${escapeXml(all[i].u)}" d="1" />`;
         }
