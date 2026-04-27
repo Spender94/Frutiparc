@@ -395,7 +395,12 @@ function parseKalugaTzId(raw) {
 
 function formatRankingExtraData(rankingId, rawData) {
   const raw = String(rawData || '').trim();
-  if (!raw) return '';
+  if (!raw) {
+    if (rankingId === 'bkiwi_classic') return 'Skiwix:5:1:';
+    if (rankingId === 'swapou2_classic') return 'S0:';
+    if (rankingId === 'kaluga_classic') return 'Skaluga:';
+    return '';
+  }
 
   if (rankingId === 'bkiwi_classic') {
     if (raw.includes(':')) return raw;
