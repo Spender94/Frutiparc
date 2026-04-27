@@ -18,22 +18,47 @@ async function initSchema() {
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id            SERIAL PRIMARY KEY,
-        username      TEXT UNIQUE NOT NULL,
-        password      TEXT NOT NULL,
-        xp            INTEGER DEFAULT 4680000,
-        kikooz        INTEGER DEFAULT 150,
-        fbouille      TEXT DEFAULT '000000010000000000000000',
-        gender        TEXT DEFAULT 'M',
-        birthday      DATE DEFAULT '1990-05-15',
-        country       TEXT DEFAULT 'FR',
-        region        TEXT DEFAULT 'IDF',
-        prefs         TEXT DEFAULT '',
-        is_moderator  BOOLEAN DEFAULT false,
-        needs_bouille BOOLEAN DEFAULT true,
-        created_at    TIMESTAMPTZ DEFAULT now(),
-        updated_at    TIMESTAMPTZ DEFAULT now()
+        id               SERIAL PRIMARY KEY,
+        username         TEXT UNIQUE NOT NULL,
+        password         TEXT NOT NULL,
+        xp               INTEGER DEFAULT 4680000,
+        kikooz           INTEGER DEFAULT 150,
+        fbouille         TEXT DEFAULT '000000010000000000000000',
+        gender           TEXT DEFAULT 'M',
+        birthday         DATE DEFAULT '1990-05-15',
+        country          TEXT DEFAULT 'FR',
+        region           TEXT DEFAULT 'IDF',
+        prefs            TEXT DEFAULT '',
+        is_moderator     BOOLEAN DEFAULT false,
+        needs_bouille    BOOLEAN DEFAULT true,
+        first_name       TEXT DEFAULT '',
+        last_name        TEXT DEFAULT '',
+        last_name_public TEXT DEFAULT 'Y',
+        real_job         TEXT DEFAULT '',
+        city             TEXT DEFAULT '',
+        country_index    TEXT DEFAULT '1',
+        region_index     TEXT DEFAULT '1',
+        department_index TEXT DEFAULT '1',
+        site_url         TEXT DEFAULT '',
+        comment          TEXT DEFAULT '',
+        created_at       TIMESTAMPTZ DEFAULT now(),
+        updated_at       TIMESTAMPTZ DEFAULT now()
       );
+
+      -- Profile columns added after initial schema
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name_public TEXT DEFAULT 'Y';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS real_job TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS city TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS country_index TEXT DEFAULT '1';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS region_index TEXT DEFAULT '1';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS department_index TEXT DEFAULT '1';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS site_url TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS comment TEXT DEFAULT '';
+      EXCEPTION WHEN OTHERS THEN NULL;
+      END $$;
 
       CREATE TABLE IF NOT EXISTS sessions (
         sid         TEXT PRIMARY KEY,
@@ -66,6 +91,20 @@ async function initSchema() {
         updated_at TIMESTAMPTZ DEFAULT now(),
         PRIMARY KEY (user_id, game, slot_id)
       );
+
+      CREATE TABLE IF NOT EXISTS user_accessories (
+        id         SERIAL PRIMARY KEY,
+        user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        acc_id     TEXT NOT NULL,
+        shop_id    INTEGER,
+        name       TEXT DEFAULT '',
+        value      TEXT DEFAULT '',
+        quantity   TEXT DEFAULT '',
+        price      TEXT DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_accessories_user ON user_accessories(user_id);
 
       CREATE TABLE IF NOT EXISTS contacts (
         user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -220,6 +259,54 @@ async function getFrutiSlots(userId, game) {
   return slots;
 }
 
+async function addAccessory(userId, acc) {
+  await pool.query(
+    `INSERT INTO user_accessories (user_id, acc_id, shop_id, name, value, quantity, price)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [userId, acc.id, acc.shopId || null, acc.n || '', acc.v || '', acc.q || '', acc.p || '']
+  );
+}
+
+async function getUserAccessories(userId) {
+  const { rows } = await pool.query(
+    'SELECT * FROM user_accessories WHERE user_id = $1 ORDER BY created_at',
+    [userId]
+  );
+  return rows.map((r) => ({
+    id: r.acc_id,
+    shopId: r.shop_id || undefined,
+    n: r.name,
+    v: r.value,
+    q: r.quantity,
+    p: r.price,
+    at: r.created_at ? r.created_at.toISOString().replace('T', ' ').substring(0, 19) : '',
+  }));
+}
+
+async function hasAccessoryByShopId(userId, shopId) {
+  const { rows } = await pool.query(
+    'SELECT 1 FROM user_accessories WHERE user_id = $1 AND shop_id = $2 LIMIT 1',
+    [userId, shopId]
+  );
+  return rows.length > 0;
+}
+
+async function loadScoresForUser(userId) {
+  const { rows } = await pool.query(
+    'SELECT ranking_id, score, data, updated_at FROM scores WHERE user_id = $1',
+    [userId]
+  );
+  const result = {};
+  for (const r of rows) {
+    result[r.ranking_id] = {
+      score: Number(r.score),
+      data: r.data || '',
+      updatedAt: r.updated_at ? r.updated_at.toISOString() : '',
+    };
+  }
+  return result;
+}
+
 module.exports = {
   pool,
   initSchema,
@@ -234,4 +321,8 @@ module.exports = {
   getScores,
   upsertFrutiSlot,
   getFrutiSlots,
+  addAccessory,
+  getUserAccessories,
+  hasAccessoryByShopId,
+  loadScoresForUser,
 };

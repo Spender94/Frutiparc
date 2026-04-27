@@ -499,6 +499,13 @@ function createDefaultUser(pass) {
 }
 
 function dbUserToMemory(row) {
+  const bday = row.birthday;
+  let birthdayStr = '1990-05-15';
+  if (bday instanceof Date) {
+    birthdayStr = bday.toISOString().substring(0, 10);
+  } else if (typeof bday === 'string' && bday.length >= 10) {
+    birthdayStr = bday.substring(0, 10);
+  }
   return {
     pass: row.password,
     xp: row.xp || 4680000,
@@ -508,12 +515,23 @@ function dbUserToMemory(row) {
     contacts: [],
     blacklist: [],
     gender: row.gender || 'M',
-    birthday: row.birthday || '1990-05-15',
+    birthday: birthdayStr,
     country: row.country || 'FR',
     region: row.region || 'IDF',
     prefs: row.prefs || '',
     isModerator: row.is_moderator || false,
     needsBouille: row.needs_bouille !== false,
+    firstName: row.first_name || '',
+    lastName: row.last_name || '',
+    lastNamePublic: row.last_name_public || 'Y',
+    realJob: row.real_job || '',
+    city: row.city || '',
+    countryIndex: row.country_index || '1',
+    regionIndex: row.region_index || '1',
+    departmentIndex: row.department_index || '1',
+    siteUrl: row.site_url || '',
+    comment: row.comment || '',
+    customAccessories: [],
     kikoozLog: [],
     userLog: [],
     siteLog: [],
@@ -889,6 +907,17 @@ app.post('/api/auth/login', async (req, res) => {
         users[username] = dbUserToMemory(dbUser);
         const items = await db.getUserItems(dbUser.id);
         if (items.length > 0) users[username].items = withDefaultPens(items);
+        const accs = await db.getUserAccessories(dbUser.id);
+        if (accs.length > 0) users[username].customAccessories = accs;
+        const dbScores = await db.loadScoresForUser(dbUser.id);
+        if (Object.keys(dbScores).length > 0) {
+          if (!scoresData.users[username]) scoresData.users[username] = {};
+          for (const [rkId, entry] of Object.entries(dbScores)) {
+            if (!scoresData.users[username][rkId]) {
+              scoresData.users[username][rkId] = entry;
+            }
+          }
+        }
       }
       users[username]._dbId = dbUser.id;
     } else {
@@ -1386,6 +1415,7 @@ function handleNewBouille(req, res) {
 
   if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
   user.customAccessories.push(entry);
+  if (user._dbId) db.addAccessory(user._dbId, entry).catch(() => {});
 
   res
     .type('text/plain')
@@ -1474,9 +1504,25 @@ function saveMyInfo(req, res) {
   if (source.rg) user.region = String(source.rg).slice(0, 32) || user.region;
 
   console.log(`[do/smi] saved for ${auth.username}: birthday=${user.birthday} gender=${user.gender} city=${user.city} firstName=${user.firstName} comment=${user.comment}`);
+  if (user._dbId) {
+    db.updateUser(auth.username, {
+      gender: user.gender,
+      birthday: user.birthday,
+      country: user.country || 'FR',
+      region: user.region || 'IDF',
+      first_name: user.firstName || '',
+      last_name: user.lastName || '',
+      last_name_public: user.lastNamePublic || 'Y',
+      real_job: user.realJob || '',
+      city: user.city || '',
+      country_index: user.countryIndex || '1',
+      region_index: user.regionIndex || '1',
+      department_index: user.departmentIndex || '1',
+      site_url: user.siteUrl || '',
+      comment: user.comment || '',
+    }).catch(() => {});
+  }
 
-  // The compiled box.EditInfo likely uses XML callback type (like do/gmi).
-  // Return XML success response — no k= attribute means no error.
   return res.type('text/xml').send('<r />');
 }
 
@@ -1824,13 +1870,15 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const bouilleStr = bouilleOf(user).substring(0, 15) + pack.suffix9;
   if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
-  user.customAccessories.push({
+  const accEntry = {
     id: 'shop_' + pack.id,
     shopId: pack.id,
     n: pack.name,
     v: bouilleStr,
     at: nowStr,
-  });
+  };
+  user.customAccessories.push(accEntry);
+  if (user._dbId) db.addAccessory(user._dbId, accEntry).catch(() => {});
 
   // Record a "buy" entry in the kikooz history (box.KikoozLog / /ft/log)
   if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
@@ -3068,6 +3116,17 @@ async function handleCBeeMessage(socket, rawXml) {
           try {
             const items = await db.getUserItems(dbUser.id);
             if (items.length > 0) users[effectiveLogin].items = withDefaultPens(items);
+            const accs = await db.getUserAccessories(dbUser.id);
+            if (accs.length > 0) users[effectiveLogin].customAccessories = accs;
+            const dbScores = await db.loadScoresForUser(dbUser.id);
+            if (Object.keys(dbScores).length > 0) {
+              if (!scoresData.users[effectiveLogin]) scoresData.users[effectiveLogin] = {};
+              for (const [rkId, entry] of Object.entries(dbScores)) {
+                if (!scoresData.users[effectiveLogin][rkId]) {
+                  scoresData.users[effectiveLogin][rkId] = entry;
+                }
+              }
+            }
           } catch (e) { /* ignore */ }
         } else {
           users[effectiveLogin] = {
