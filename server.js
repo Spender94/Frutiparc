@@ -916,6 +916,63 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
   res.type('text/plain').send('ok=1');
 });
 
+// ─────────────────────────────────────────────
+// ENDPOINT: /api/saveFrutiSlot — Persist FrutiCard slot data (modes, prefs, stats).
+// POST params: sid, game, slotId, data (JSON string).
+// ─────────────────────────────────────────────
+app.post('/api/saveFrutiSlot', (req, res) => {
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  const sid = String(params.sid || '');
+  const game = String(params.game || '');
+  const slotId = String(params.slotId || '0');
+  const data = String(params.data || '');
+
+  let username = '';
+  if (sid && sessions[sid]) username = sessions[sid].user || '';
+  if (!username) {
+    const ip = getClientIp(req);
+    const fallbackSid = ip ? recentSidByIp.get(ip) : undefined;
+    if (fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
+  }
+  if (!username || !game) {
+    return res.type('text/plain').send('ok=0');
+  }
+
+  if (!users[username].frutiSlots) users[username].frutiSlots = {};
+  if (!users[username].frutiSlots[game]) users[username].frutiSlots[game] = {};
+  users[username].frutiSlots[game][slotId] = data;
+  console.log(`[SLOT]  save ${username}/${game}/slot${slotId} (${data.length} chars)`);
+  res.type('text/plain').send('ok=1');
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: /api/loadFrutiSlots — Load all FrutiCard slots for a game.
+// Returns LoadVars format: slot0=<json>&slot1=<json>&slot2=<json>
+// ─────────────────────────────────────────────
+app.post('/api/loadFrutiSlots', (req, res) => {
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  const sid = String(params.sid || '');
+  const game = String(params.game || '');
+
+  let username = '';
+  if (sid && sessions[sid]) username = sessions[sid].user || '';
+  if (!username) {
+    const ip = getClientIp(req);
+    const fallbackSid = ip ? recentSidByIp.get(ip) : undefined;
+    if (fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
+  }
+
+  let response = 'ok=1';
+  if (username && users[username] && users[username].frutiSlots && users[username].frutiSlots[game]) {
+    const slots = users[username].frutiSlots[game];
+    for (const [key, val] of Object.entries(slots)) {
+      response += `&slot${key}=${encodeURIComponent(val)}`;
+    }
+  }
+  console.log(`[SLOT]  load ${username}/${game} -> ${response.length} chars`);
+  res.type('text/plain').send(response);
+});
+
 app.get('/legacy/main.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
 });
