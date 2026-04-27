@@ -444,6 +444,26 @@ function getScoreDataFromAttrs(attrs = {}) {
   return '';
 }
 
+function getScoreDataFromMessage(msg) {
+  const fromAttrs = getScoreDataFromAttrs((msg && msg.attrs) || {});
+  if (fromAttrs) return fromAttrs;
+
+  const children = Array.isArray(msg && msg.children) ? msg.children : [];
+  for (const child of children) {
+    if (!child) continue;
+    const childAttrsValue = getScoreDataFromAttrs(child.attrs || {});
+    if (childAttrsValue) return childAttrsValue;
+    const tag = String(child.tag || '').toLowerCase();
+    if (['r', 'da', 'data', 'misc', 'md'].includes(tag)) {
+      const content = String(child.content || '').trim();
+      if (content) return content;
+    }
+  }
+
+  const rootContent = String((msg && msg.content) || '').trim();
+  return rootContent || '';
+}
+
 // Map a game/disc identifier to a ranking id.
 function rankingIdForGame(gameName) {
   const raw = String(gameName || '').trim();
@@ -3318,9 +3338,9 @@ async function handleCBeeMessage(socket, rawXml) {
       if (msg.attrs.d != undefined || msg.attrs.s != undefined) {
         const discId = String(msg.attrs.d || '');
         const scoreVal = Number(msg.attrs.s || 0) || 0;
-        const scoreData = getScoreDataFromAttrs(msg.attrs);
+        const scoreData = getScoreDataFromMessage(msg);
         const username = client.username || '';
-        console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)}`);
+        console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" children=${JSON.stringify(msg.children || [])}`);
         let rankingId = rankingIdForGame(discId);
         // Fall back to the last started game on this connection.
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame);
