@@ -21,8 +21,8 @@ async function initSchema() {
         id               SERIAL PRIMARY KEY,
         username         TEXT UNIQUE NOT NULL,
         password         TEXT NOT NULL,
-        xp               INTEGER DEFAULT 4680000,
-        kikooz           INTEGER DEFAULT 150,
+        xp               INTEGER DEFAULT 1,
+        kikooz           INTEGER DEFAULT 60,
         fbouille         TEXT DEFAULT '000000010000000000000000',
         gender           TEXT DEFAULT 'M',
         birthday         DATE DEFAULT '1990-05-15',
@@ -47,6 +47,8 @@ async function initSchema() {
 
       -- Profile columns added after initial schema
       DO $$ BEGIN
+        ALTER TABLE users ALTER COLUMN xp SET DEFAULT 1;
+        ALTER TABLE users ALTER COLUMN kikooz SET DEFAULT 60;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name_public TEXT DEFAULT 'Y';
@@ -291,6 +293,60 @@ async function hasAccessoryByShopId(userId, shopId) {
   return rows.length > 0;
 }
 
+async function getContacts(userId) {
+  const { rows } = await pool.query(
+    `SELECT contact_name
+     FROM contacts
+     WHERE user_id = $1
+     ORDER BY created_at ASC`,
+    [userId]
+  );
+  return rows.map((r) => r.contact_name).filter(Boolean);
+}
+
+async function getBlacklist(userId) {
+  const { rows } = await pool.query(
+    `SELECT blocked_name
+     FROM blacklist
+     WHERE user_id = $1
+     ORDER BY created_at ASC`,
+    [userId]
+  );
+  return rows.map((r) => r.blocked_name).filter(Boolean);
+}
+
+async function addContact(userId, contactName) {
+  await pool.query(
+    `INSERT INTO contacts (user_id, contact_name, folder)
+     VALUES ($1, $2, 'mycontact')
+     ON CONFLICT (user_id, contact_name) DO NOTHING`,
+    [userId, contactName]
+  );
+}
+
+async function removeContact(userId, contactName) {
+  await pool.query(
+    'DELETE FROM contacts WHERE user_id = $1 AND contact_name = $2',
+    [userId, contactName]
+  );
+}
+
+async function addBlacklist(userId, blockedName) {
+  await pool.query(
+    `INSERT INTO blacklist (user_id, blocked_name)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id, blocked_name) DO NOTHING`,
+    [userId, blockedName]
+  );
+}
+
+async function removeBlacklist(userId, blockedName) {
+  await pool.query(
+    'DELETE FROM blacklist WHERE user_id = $1 AND blocked_name = $2',
+    [userId, blockedName]
+  );
+}
+
 async function loadScoresForUser(userId) {
   const { rows } = await pool.query(
     'SELECT ranking_id, score, data, updated_at FROM scores WHERE user_id = $1',
@@ -324,5 +380,11 @@ module.exports = {
   addAccessory,
   getUserAccessories,
   hasAccessoryByShopId,
+  getContacts,
+  getBlacklist,
+  addContact,
+  removeContact,
+  addBlacklist,
+  removeBlacklist,
   loadScoresForUser,
 };
