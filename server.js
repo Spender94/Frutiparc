@@ -341,6 +341,94 @@ function buildLegacyGameScoreInfo(gs) {
   return `<w gs="${Number.isFinite(game) ? game : 0}"><ds>${inner}</ds></w>`;
 }
 
+const KALUGA_TZONGRE_BY_ID = {
+  0: 'kaluga',
+  1: 'piwali',
+  2: 'nalika',
+  3: 'gomola',
+  4: 'makulo',
+};
+
+function parseMtSerializedArray(raw) {
+  const s = String(raw || '').trim();
+  if (!s.startsWith('[') || !s.endsWith(']')) return null;
+  const items = [];
+  const body = s.slice(1, -1);
+  const tokenRe = /([SNB])([^;]*);/g;
+  let m;
+  while ((m = tokenRe.exec(body)) !== null) {
+    const ty = m[1];
+    const payload = m[2] || '';
+    if (ty === 'N') {
+      const n = Number(payload);
+      items.push(Number.isFinite(n) ? n : 0);
+    } else if (ty === 'B') {
+      items.push(payload === '1' || /^true$/i.test(payload));
+    } else {
+      items.push(payload);
+    }
+  }
+  return items.length > 0 ? items : null;
+}
+
+function parseMtSerializedPrimitive(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const strMatch = s.match(/^S([^;]*)$/);
+  if (strMatch) return strMatch[1];
+  const numMatch = s.match(/^N(-?\d+(?:\.\d+)?)$/);
+  if (numMatch) return Number(numMatch[1]);
+  return null;
+}
+
+function parseKalugaTzId(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const directNum = Number(s);
+  if (Number.isFinite(directNum)) return directNum;
+  const mtNum = parseMtSerializedPrimitive(s);
+  if (typeof mtNum === 'number' && Number.isFinite(mtNum)) return mtNum;
+  const mtObj = s.match(/\$?tz[^0-9-]*N?(-?\d+)/i);
+  if (mtObj) return Number(mtObj[1]);
+  return null;
+}
+
+function formatRankingExtraData(rankingId, rawData) {
+  const raw = String(rawData || '').trim();
+  if (!raw) return '';
+
+  if (rankingId === 'bkiwi_classic') {
+    if (raw.includes(':')) return raw;
+    const arr = parseMtSerializedArray(raw);
+    if (arr && arr.length >= 3) {
+      return `${String(arr[0] || '')}:${String(arr[1] || '')}:${String(arr[2] || '')}:`;
+    }
+    return raw;
+  }
+
+  if (rankingId === 'swapou2_classic') {
+    if (/^S\d+:?$/i.test(raw)) return raw.endsWith(':') ? raw : `${raw}:`;
+    const v = parseMtSerializedPrimitive(raw);
+    if (typeof v === 'number' && Number.isFinite(v)) return `S${Math.trunc(v)}:`;
+    if (typeof v === 'string' && /^\d+$/.test(v)) return `S${v}:`;
+    if (/^\d+$/.test(raw)) return `S${raw}:`;
+    return raw;
+  }
+
+  if (rankingId === 'kaluga_classic') {
+    if (/^S[a-z0-9_]+:$/i.test(raw)) return raw;
+    const tzId = parseKalugaTzId(raw);
+    if (tzId !== null && KALUGA_TZONGRE_BY_ID[tzId] !== undefined) {
+      return `S${KALUGA_TZONGRE_BY_ID[tzId]}:`;
+    }
+    const v = parseMtSerializedPrimitive(raw);
+    if (typeof v === 'string' && v) return `S${v.toLowerCase()}:`;
+    return raw;
+  }
+
+  return raw;
+}
+
 // Map a game/disc identifier to a ranking id.
 function rankingIdForGame(gameName) {
   const raw = String(gameName || '').trim();
@@ -3232,7 +3320,8 @@ async function handleCBeeMessage(socket, rawXml) {
         // into the UI as "Votre classement : undefined".
         const rkInfo = rankingId ? (RANKINGS[rankingId] || {}) : {};
         const rnAttr = rkInfo.name ? ` rn="${escapeXml(rkInfo.name)}"` : '';
-        const rAttr = scoreData ? ` r="${escapeXml(scoreData)}"` : ' r=""';
+        const rankingDataForClient = rankingId ? formatRankingExtraData(rankingId, scoreData) : scoreData;
+        const rAttr = rankingDataForClient ? ` r="${escapeXml(rankingDataForClient)}"` : ' r=""';
         const subAttrs = `${rnAttr}${rAttr} p="${res.newPos}" os="${res.oldScore}" op="${res.oldPos}" s="${res.newScore}"`;
         sendToClient(socket, `<${CMD.channellist} k="0"><rk${subAttrs}/></${CMD.channellist}>`);
         break;
@@ -3443,7 +3532,8 @@ broadcastToChannel(
         for (const e of slice) {
           const ud = users[e.u] || {};
           const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
-          const dAttr = e.d ? ` d="${escapeXml(e.d)}"` : '';
+          const displayData = formatRankingExtraData(internalId, e.d);
+          const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
           inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
@@ -3494,7 +3584,8 @@ broadcastToChannel(
         for (const e of slice) {
           const ud = users[e.u] || {};
           const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
-          const dAttr = e.d ? ` d="${escapeXml(e.d)}"` : '';
+          const displayData = formatRankingExtraData(internalId, e.d);
+          const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
           inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
