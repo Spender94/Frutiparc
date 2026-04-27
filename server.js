@@ -429,6 +429,21 @@ function formatRankingExtraData(rankingId, rawData) {
   return raw;
 }
 
+function getScoreDataFromAttrs(attrs = {}) {
+  const candidates = [
+    attrs.da,
+    attrs.d2,
+    attrs.r,
+    attrs.data,
+    attrs.misc,
+    attrs.md,
+  ];
+  for (const c of candidates) {
+    if (c !== undefined && c !== null && String(c) !== '') return String(c);
+  }
+  return '';
+}
+
 // Map a game/disc identifier to a ranking id.
 function rankingIdForGame(gameName) {
   const raw = String(gameName || '').trim();
@@ -518,20 +533,24 @@ function persistScore(username, rankingId, score, data) {
   if (!scoresData.users[username]) scoresData.users[username] = {};
   const prev = scoresData.users[username][rankingId];
   const oldScore = (prev && Number.isFinite(Number(prev.score))) ? Number(prev.score) : 0;
+  const oldData = (prev && prev.data !== undefined && prev.data !== null) ? String(prev.data) : '';
   const n = Number(score) || 0;
+  const newData = (data === undefined || data === null) ? '' : String(data);
   const oldPos = computePosition(rankingId, username);
   let updated = false;
-  if (isLowerBetter(rankingId) ? (oldScore === 0 || n < oldScore) : (n > oldScore)) {
+  const scoreImproved = isLowerBetter(rankingId) ? (oldScore === 0 || n < oldScore) : (n > oldScore);
+  const shouldBackfillData = !oldData && !!newData && n === oldScore;
+  if (scoreImproved || shouldBackfillData) {
     scoresData.users[username][rankingId] = {
-      score: n,
-      data: (data === undefined || data === null) ? '' : String(data),
+      score: scoreImproved ? n : oldScore,
+      data: newData || oldData,
       updatedAt: new Date().toISOString(),
     };
     updated = true;
     saveScoresFile();
     const dbId = users[username] && users[username]._dbId;
     if (dbId) {
-      db.upsertScore(dbId, rankingId, n, scoresData.users[username][rankingId].data).catch((e) => {
+      db.upsertScore(dbId, rankingId, scoresData.users[username][rankingId].score, scoresData.users[username][rankingId].data).catch((e) => {
         console.error('[DB] score save error:', e.message);
       });
     }
@@ -1053,7 +1072,7 @@ function handleSaveScore(req, res) {
   const sid = String(params.sid || '');
   const gameName = String(params.game || params.g || params.disc || '');
   const scoreVal = Number(params.score || params.s || 0) || 0;
-  const scoreData = String(params.data || params.da || '');
+  const scoreData = String(params.data || params.da || params.r || params.misc || '');
 
   // Resolve user from session.
   let username = '';
@@ -3299,7 +3318,7 @@ async function handleCBeeMessage(socket, rawXml) {
       if (msg.attrs.d != undefined || msg.attrs.s != undefined) {
         const discId = String(msg.attrs.d || '');
         const scoreVal = Number(msg.attrs.s || 0) || 0;
-        const scoreData = String(msg.attrs.da || msg.attrs.d2 || '');
+        const scoreData = getScoreDataFromAttrs(msg.attrs);
         const username = client.username || '';
         console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)}`);
         let rankingId = rankingIdForGame(discId);
