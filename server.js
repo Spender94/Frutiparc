@@ -404,6 +404,10 @@ function formatRankingExtraData(rankingId, rawData) {
 
   if (rankingId === 'bkiwi_classic') {
     if (raw.includes(':')) return raw;
+    if (raw.includes(',')) {
+      const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 3) return `${parts[0]}:${parts[1]}:${parts[2]}:`;
+    }
     const arr = parseMtSerializedArray(raw);
     if (arr && arr.length >= 3) {
       return `${String(arr[0] || '')}:${String(arr[1] || '')}:${String(arr[2] || '')}:`;
@@ -422,6 +426,18 @@ function formatRankingExtraData(rankingId, rawData) {
 
   if (rankingId === 'kaluga_classic') {
     if (/^S[a-z0-9_]+:$/i.test(raw)) return raw;
+    if (raw === '[object Object]') return 'Skaluga:';
+    if (raw.startsWith('{') && raw.endsWith('}')) {
+      try {
+        const obj = JSON.parse(raw);
+        if (obj && obj.tz !== undefined) {
+          const tzNum = Number(obj.tz);
+          if (Number.isFinite(tzNum) && KALUGA_TZONGRE_BY_ID[tzNum] !== undefined) {
+            return `S${KALUGA_TZONGRE_BY_ID[tzNum]}:`;
+          }
+        }
+      } catch { /* ignore malformed json */ }
+    }
     const tzId = parseKalugaTzId(raw);
     if (tzId !== null && KALUGA_TZONGRE_BY_ID[tzId] !== undefined) {
       return `S${KALUGA_TZONGRE_BY_ID[tzId]}:`;
@@ -467,6 +483,17 @@ function getScoreDataFromMessage(msg) {
 
   const rootContent = String((msg && msg.content) || '').trim();
   return rootContent || '';
+}
+
+function serializeScoreData(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 // Map a game/disc identifier to a ranking id.
@@ -1097,7 +1124,9 @@ function handleSaveScore(req, res) {
   const sid = String(params.sid || '');
   const gameName = String(params.game || params.g || params.disc || '');
   const scoreVal = Number(params.score || params.s || 0) || 0;
-  const scoreData = String(params.data || params.da || params.r || params.misc || '');
+  const scoreData = serializeScoreData(
+    params.data ?? params.da ?? params.r ?? params.misc ?? params.md ?? params.tz ?? ''
+  );
 
   // Resolve user from session.
   let username = '';
