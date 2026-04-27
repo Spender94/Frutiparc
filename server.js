@@ -341,6 +341,161 @@ function buildLegacyGameScoreInfo(gs) {
   return `<w gs="${Number.isFinite(game) ? game : 0}"><ds>${inner}</ds></w>`;
 }
 
+const KALUGA_TZONGRE_BY_ID = {
+  0: 'kaluga',
+  1: 'piwali',
+  2: 'nalika',
+  3: 'gomola',
+  4: 'makulo',
+};
+
+function parseMtSerializedArray(raw) {
+  const s = String(raw || '').trim();
+  if (!s.startsWith('[') || !s.endsWith(']')) return null;
+  const items = [];
+  const body = s.slice(1, -1);
+  const tokenRe = /([SNB])([^;]*);/g;
+  let m;
+  while ((m = tokenRe.exec(body)) !== null) {
+    const ty = m[1];
+    const payload = m[2] || '';
+    if (ty === 'N') {
+      const n = Number(payload);
+      items.push(Number.isFinite(n) ? n : 0);
+    } else if (ty === 'B') {
+      items.push(payload === '1' || /^true$/i.test(payload));
+    } else {
+      items.push(payload);
+    }
+  }
+  return items.length > 0 ? items : null;
+}
+
+function parseMtSerializedPrimitive(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const strMatch = s.match(/^S([^;]*)$/);
+  if (strMatch) return strMatch[1];
+  const numMatch = s.match(/^N(-?\d+(?:\.\d+)?)$/);
+  if (numMatch) return Number(numMatch[1]);
+  return null;
+}
+
+function parseKalugaTzId(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const directNum = Number(s);
+  if (Number.isFinite(directNum)) return directNum;
+  const mtNum = parseMtSerializedPrimitive(s);
+  if (typeof mtNum === 'number' && Number.isFinite(mtNum)) return mtNum;
+  const mtObj = s.match(/\$?tz[^0-9-]*N?(-?\d+)/i);
+  if (mtObj) return Number(mtObj[1]);
+  return null;
+}
+
+function formatRankingExtraData(rankingId, rawData) {
+  const raw = String(rawData || '').trim();
+  if (!raw) {
+    if (rankingId === 'bkiwi_classic') return 'Skiwix:5:1:';
+    if (rankingId === 'swapou2_classic') return 'S0:';
+    if (rankingId === 'kaluga_classic') return 'Skaluga:';
+    return '';
+  }
+
+  if (rankingId === 'bkiwi_classic') {
+    if (raw.includes(':')) return raw;
+    if (raw.includes(',')) {
+      const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 3) return `${parts[0]}:${parts[1]}:${parts[2]}:`;
+    }
+    const arr = parseMtSerializedArray(raw);
+    if (arr && arr.length >= 3) {
+      return `${String(arr[0] || '')}:${String(arr[1] || '')}:${String(arr[2] || '')}:`;
+    }
+    return raw;
+  }
+
+  if (rankingId === 'swapou2_classic') {
+    if (/^S\d+:?$/i.test(raw)) return raw.endsWith(':') ? raw : `${raw}:`;
+    const v = parseMtSerializedPrimitive(raw);
+    if (typeof v === 'number' && Number.isFinite(v)) return `S${Math.trunc(v)}:`;
+    if (typeof v === 'string' && /^\d+$/.test(v)) return `S${v}:`;
+    if (/^\d+$/.test(raw)) return `S${raw}:`;
+    return raw;
+  }
+
+  if (rankingId === 'kaluga_classic') {
+    if (/^S[a-z0-9_]+:$/i.test(raw)) return raw;
+    if (raw === '[object Object]') return 'Skaluga:';
+    if (raw.startsWith('{') && raw.endsWith('}')) {
+      try {
+        const obj = JSON.parse(raw);
+        if (obj && obj.tz !== undefined) {
+          const tzNum = Number(obj.tz);
+          if (Number.isFinite(tzNum) && KALUGA_TZONGRE_BY_ID[tzNum] !== undefined) {
+            return `S${KALUGA_TZONGRE_BY_ID[tzNum]}:`;
+          }
+        }
+      } catch { /* ignore malformed json */ }
+    }
+    const tzId = parseKalugaTzId(raw);
+    if (tzId !== null && KALUGA_TZONGRE_BY_ID[tzId] !== undefined) {
+      return `S${KALUGA_TZONGRE_BY_ID[tzId]}:`;
+    }
+    const v = parseMtSerializedPrimitive(raw);
+    if (typeof v === 'string' && v) return `S${v.toLowerCase()}:`;
+    return raw;
+  }
+
+  return raw;
+}
+
+function getScoreDataFromAttrs(attrs = {}) {
+  const candidates = [
+    attrs.da,
+    attrs.d2,
+    attrs.r,
+    attrs.data,
+    attrs.misc,
+    attrs.md,
+  ];
+  for (const c of candidates) {
+    if (c !== undefined && c !== null && String(c) !== '') return String(c);
+  }
+  return '';
+}
+
+function getScoreDataFromMessage(msg) {
+  const fromAttrs = getScoreDataFromAttrs((msg && msg.attrs) || {});
+  if (fromAttrs) return fromAttrs;
+
+  const children = Array.isArray(msg && msg.children) ? msg.children : [];
+  for (const child of children) {
+    if (!child) continue;
+    const childAttrsValue = getScoreDataFromAttrs(child.attrs || {});
+    if (childAttrsValue) return childAttrsValue;
+    const tag = String(child.tag || '').toLowerCase();
+    if (['r', 'da', 'data', 'misc', 'md'].includes(tag)) {
+      const content = String(child.content || '').trim();
+      if (content) return content;
+    }
+  }
+
+  const rootContent = String((msg && msg.content) || '').trim();
+  return rootContent || '';
+}
+
+function serializeScoreData(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 // Map a game/disc identifier to a ranking id.
 function rankingIdForGame(gameName) {
   const raw = String(gameName || '').trim();
@@ -430,20 +585,24 @@ function persistScore(username, rankingId, score, data) {
   if (!scoresData.users[username]) scoresData.users[username] = {};
   const prev = scoresData.users[username][rankingId];
   const oldScore = (prev && Number.isFinite(Number(prev.score))) ? Number(prev.score) : 0;
+  const oldData = (prev && prev.data !== undefined && prev.data !== null) ? String(prev.data) : '';
   const n = Number(score) || 0;
+  const newData = (data === undefined || data === null) ? '' : String(data);
   const oldPos = computePosition(rankingId, username);
   let updated = false;
-  if (isLowerBetter(rankingId) ? (oldScore === 0 || n < oldScore) : (n > oldScore)) {
+  const scoreImproved = isLowerBetter(rankingId) ? (oldScore === 0 || n < oldScore) : (n > oldScore);
+  const shouldBackfillData = !oldData && !!newData && n === oldScore;
+  if (scoreImproved || shouldBackfillData) {
     scoresData.users[username][rankingId] = {
-      score: n,
-      data: (data === undefined || data === null) ? '' : String(data),
+      score: scoreImproved ? n : oldScore,
+      data: newData || oldData,
       updatedAt: new Date().toISOString(),
     };
     updated = true;
     saveScoresFile();
     const dbId = users[username] && users[username]._dbId;
     if (dbId) {
-      db.upsertScore(dbId, rankingId, n, scoresData.users[username][rankingId].data).catch((e) => {
+      db.upsertScore(dbId, rankingId, scoresData.users[username][rankingId].score, scoresData.users[username][rankingId].data).catch((e) => {
         console.error('[DB] score save error:', e.message);
       });
     }
@@ -539,6 +698,31 @@ function dbUserToMemory(row) {
     hasWelcomeSiteLog: false,
     _dbId: row.id,
   };
+}
+
+async function hydrateUserFromDb(username, dbUser) {
+  users[username] = dbUserToMemory(dbUser);
+  const [items, accs, dbScores, dbContacts, dbBlacklist] = await Promise.all([
+    db.getUserItems(dbUser.id),
+    db.getUserAccessories(dbUser.id),
+    db.loadScoresForUser(dbUser.id),
+    db.getContacts(dbUser.id),
+    db.getBlacklist(dbUser.id),
+  ]);
+
+  if (items.length > 0) users[username].items = withDefaultPens(items);
+  if (accs.length > 0) users[username].customAccessories = accs;
+  users[username].contacts = Array.isArray(dbContacts) ? dbContacts : [];
+  users[username].blacklist = Array.isArray(dbBlacklist) ? dbBlacklist : [];
+
+  if (Object.keys(dbScores).length > 0) {
+    if (!scoresData.users[username]) scoresData.users[username] = {};
+    for (const [rkId, entry] of Object.entries(dbScores)) {
+      if (!scoresData.users[username][rkId]) {
+        scoresData.users[username][rkId] = entry;
+      }
+    }
+  }
 }
 
 function nowSqlTimestamp() {
@@ -904,20 +1088,7 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
       }
       if (!users[username]) {
-        users[username] = dbUserToMemory(dbUser);
-        const items = await db.getUserItems(dbUser.id);
-        if (items.length > 0) users[username].items = withDefaultPens(items);
-        const accs = await db.getUserAccessories(dbUser.id);
-        if (accs.length > 0) users[username].customAccessories = accs;
-        const dbScores = await db.loadScoresForUser(dbUser.id);
-        if (Object.keys(dbScores).length > 0) {
-          if (!scoresData.users[username]) scoresData.users[username] = {};
-          for (const [rkId, entry] of Object.entries(dbScores)) {
-            if (!scoresData.users[username][rkId]) {
-              scoresData.users[username][rkId] = entry;
-            }
-          }
-        }
+        await hydrateUserFromDb(username, dbUser);
       }
       users[username]._dbId = dbUser.id;
     } else {
@@ -953,7 +1124,9 @@ function handleSaveScore(req, res) {
   const sid = String(params.sid || '');
   const gameName = String(params.game || params.g || params.disc || '');
   const scoreVal = Number(params.score || params.s || 0) || 0;
-  const scoreData = String(params.data || params.da || '');
+  const scoreData = serializeScoreData(
+    params.data ?? params.da ?? params.r ?? params.misc ?? params.md ?? params.tz ?? ''
+  );
 
   // Resolve user from session.
   let username = '';
@@ -2026,7 +2199,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 // ENDPOINT: ff/mk — Create file/folder
 // Returns XML
 // ─────────────────────────────────────────────
-app.all(['/ff/mk', '/mk'], (req, res) => {
+app.all(['/ff/mk', '/mk'], async (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
   const sid = getSidFromRequest(req, source);
   const auth = requireAuthBySid(sid, res, 'text/xml');
@@ -2068,6 +2241,12 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
     const addr = normalizeContactAddress(contactRaw);
     const list = folder === 'blacklist' ? user.blacklist : user.contacts;
     if (addr && !list.includes(addr)) list.push(addr);
+    if (addr && user._dbId) {
+      const persist = folder === 'blacklist'
+        ? db.addBlacklist(user._dbId, addr)
+        : db.addContact(user._dbId, addr);
+      persist.catch((e) => console.error('[DB] contact save error:', e.message));
+    }
     const local = addr.split('@')[0] || addr || newUid;
     return res.type('text/xml').send(
       `<r u="${escapeXml(local)}" t="contact" d="${now}" f="${escapeXml(folder)}">${escapeXml(addr)}</r>`
@@ -2081,7 +2260,7 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
 // ENDPOINT: ff/mv — Move file
 // Returns XML
 // ─────────────────────────────────────────────
-app.all(['/ff/mv', '/mv'], (req, res) => {
+app.all(['/ff/mv', '/mv'], async (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
   const sid = source.sid || req.query.sid;
   const auth = requireAuthBySid(sid, res, 'text/xml');
@@ -2105,27 +2284,33 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
     if (inContacts) {
       user.contacts = user.contacts.filter((a) => a !== inContacts);
       oldFolder = 'mycontact';
+      if (user._dbId) db.removeContact(user._dbId, inContacts).catch((e) => console.error('[DB] contact remove error:', e.message));
     } else if (inBlacklist) {
       user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
       oldFolder = 'blacklist';
+      if (user._dbId) db.removeBlacklist(user._dbId, inBlacklist).catch((e) => console.error('[DB] blacklist remove error:', e.message));
     }
   } else if (folder === 'blacklist') {
     const addr = inContacts || normalizedFileAddr || file;
     if (inContacts) {
       user.contacts = user.contacts.filter((a) => a !== inContacts);
       oldFolder = 'mycontact';
+      if (user._dbId) db.removeContact(user._dbId, inContacts).catch((e) => console.error('[DB] contact move error:', e.message));
     }
     if (addr && !user.blacklist.includes(addr)) {
       user.blacklist.push(addr);
+      if (user._dbId) db.addBlacklist(user._dbId, addr).catch((e) => console.error('[DB] blacklist add error:', e.message));
     }
   } else if (folder === 'mycontact') {
     const addr = inBlacklist || normalizedFileAddr || file;
     if (inBlacklist) {
       user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
       oldFolder = 'blacklist';
+      if (user._dbId) db.removeBlacklist(user._dbId, inBlacklist).catch((e) => console.error('[DB] blacklist move error:', e.message));
     }
     if (addr && !user.contacts.includes(addr)) {
       user.contacts.push(addr);
+      if (user._dbId) db.addContact(user._dbId, addr).catch((e) => console.error('[DB] contact add error:', e.message));
     }
   }
 
@@ -2137,7 +2322,7 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
 // ENDPOINT: ff/rm — Remove file/contact
 // Returns XML
 // ─────────────────────────────────────────────
-app.get(['/ff/rm', '/rm'], (req, res) => {
+app.get(['/ff/rm', '/rm'], async (req, res) => {
   const sid = req.query.sid;
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
@@ -2170,6 +2355,12 @@ app.get(['/ff/rm', '/rm'], (req, res) => {
       if (hit && removeFromList(listName, hit)) {
         removedFrom = listName === 'contacts' ? 'mycontact' : 'blacklist';
         removedValue = hit;
+        if (user._dbId) {
+          const persist = listName === 'contacts'
+            ? db.removeContact(user._dbId, hit)
+            : db.removeBlacklist(user._dbId, hit);
+          persist.catch((e) => console.error('[DB] contact delete error:', e.message));
+        }
         return true;
       }
     }
@@ -3112,21 +3303,8 @@ async function handleCBeeMessage(socket, rawXml) {
         let dbUser = null;
         try { dbUser = await db.findUserByUsername(effectiveLogin); } catch (e) { /* ignore */ }
         if (dbUser) {
-          users[effectiveLogin] = dbUserToMemory(dbUser);
           try {
-            const items = await db.getUserItems(dbUser.id);
-            if (items.length > 0) users[effectiveLogin].items = withDefaultPens(items);
-            const accs = await db.getUserAccessories(dbUser.id);
-            if (accs.length > 0) users[effectiveLogin].customAccessories = accs;
-            const dbScores = await db.loadScoresForUser(dbUser.id);
-            if (Object.keys(dbScores).length > 0) {
-              if (!scoresData.users[effectiveLogin]) scoresData.users[effectiveLogin] = {};
-              for (const [rkId, entry] of Object.entries(dbScores)) {
-                if (!scoresData.users[effectiveLogin][rkId]) {
-                  scoresData.users[effectiveLogin][rkId] = entry;
-                }
-              }
-            }
+            await hydrateUserFromDb(effectiveLogin, dbUser);
           } catch (e) { /* ignore */ }
         } else {
           users[effectiveLogin] = {
@@ -3194,9 +3372,9 @@ async function handleCBeeMessage(socket, rawXml) {
       if (msg.attrs.d != undefined || msg.attrs.s != undefined) {
         const discId = String(msg.attrs.d || '');
         const scoreVal = Number(msg.attrs.s || 0) || 0;
-        const scoreData = String(msg.attrs.da || msg.attrs.d2 || '');
+        const scoreData = getScoreDataFromMessage(msg);
         const username = client.username || '';
-        console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)}`);
+        console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" children=${JSON.stringify(msg.children || [])}`);
         let rankingId = rankingIdForGame(discId);
         // Fall back to the last started game on this connection.
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame);
@@ -3215,7 +3393,8 @@ async function handleCBeeMessage(socket, rawXml) {
         // into the UI as "Votre classement : undefined".
         const rkInfo = rankingId ? (RANKINGS[rankingId] || {}) : {};
         const rnAttr = rkInfo.name ? ` rn="${escapeXml(rkInfo.name)}"` : '';
-        const rAttr = scoreData ? ` r="${escapeXml(scoreData)}"` : ' r=""';
+        const rankingDataForClient = rankingId ? formatRankingExtraData(rankingId, scoreData) : scoreData;
+        const rAttr = rankingDataForClient ? ` r="${escapeXml(rankingDataForClient)}"` : ' r=""';
         const subAttrs = `${rnAttr}${rAttr} p="${res.newPos}" os="${res.oldScore}" op="${res.oldPos}" s="${res.newScore}"`;
         sendToClient(socket, `<${CMD.channellist} k="0"><rk${subAttrs}/></${CMD.channellist}>`);
         break;
@@ -3426,7 +3605,8 @@ broadcastToChannel(
         for (const e of slice) {
           const ud = users[e.u] || {};
           const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
-          const dAttr = e.d ? ` d="${escapeXml(e.d)}"` : '';
+          const displayData = formatRankingExtraData(internalId, e.d);
+          const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
           inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
@@ -3477,7 +3657,8 @@ broadcastToChannel(
         for (const e of slice) {
           const ud = users[e.u] || {};
           const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
-          const dAttr = e.d ? ` d="${escapeXml(e.d)}"` : '';
+          const displayData = formatRankingExtraData(internalId, e.d);
+          const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
           inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
