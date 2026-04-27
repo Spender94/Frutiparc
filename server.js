@@ -541,6 +541,31 @@ function dbUserToMemory(row) {
   };
 }
 
+async function hydrateUserFromDb(username, dbUser) {
+  users[username] = dbUserToMemory(dbUser);
+  const [items, accs, dbScores, dbContacts, dbBlacklist] = await Promise.all([
+    db.getUserItems(dbUser.id),
+    db.getUserAccessories(dbUser.id),
+    db.loadScoresForUser(dbUser.id),
+    db.getContacts(dbUser.id),
+    db.getBlacklist(dbUser.id),
+  ]);
+
+  if (items.length > 0) users[username].items = withDefaultPens(items);
+  if (accs.length > 0) users[username].customAccessories = accs;
+  users[username].contacts = Array.isArray(dbContacts) ? dbContacts : [];
+  users[username].blacklist = Array.isArray(dbBlacklist) ? dbBlacklist : [];
+
+  if (Object.keys(dbScores).length > 0) {
+    if (!scoresData.users[username]) scoresData.users[username] = {};
+    for (const [rkId, entry] of Object.entries(dbScores)) {
+      if (!scoresData.users[username][rkId]) {
+        scoresData.users[username][rkId] = entry;
+      }
+    }
+  }
+}
+
 function nowSqlTimestamp() {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
@@ -904,20 +929,7 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
       }
       if (!users[username]) {
-        users[username] = dbUserToMemory(dbUser);
-        const items = await db.getUserItems(dbUser.id);
-        if (items.length > 0) users[username].items = withDefaultPens(items);
-        const accs = await db.getUserAccessories(dbUser.id);
-        if (accs.length > 0) users[username].customAccessories = accs;
-        const dbScores = await db.loadScoresForUser(dbUser.id);
-        if (Object.keys(dbScores).length > 0) {
-          if (!scoresData.users[username]) scoresData.users[username] = {};
-          for (const [rkId, entry] of Object.entries(dbScores)) {
-            if (!scoresData.users[username][rkId]) {
-              scoresData.users[username][rkId] = entry;
-            }
-          }
-        }
+        await hydrateUserFromDb(username, dbUser);
       }
       users[username]._dbId = dbUser.id;
     } else {
@@ -2026,7 +2038,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 // ENDPOINT: ff/mk — Create file/folder
 // Returns XML
 // ─────────────────────────────────────────────
-app.all(['/ff/mk', '/mk'], (req, res) => {
+app.all(['/ff/mk', '/mk'], async (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
   const sid = getSidFromRequest(req, source);
   const auth = requireAuthBySid(sid, res, 'text/xml');
@@ -2068,6 +2080,12 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
     const addr = normalizeContactAddress(contactRaw);
     const list = folder === 'blacklist' ? user.blacklist : user.contacts;
     if (addr && !list.includes(addr)) list.push(addr);
+    if (addr && user._dbId) {
+      const persist = folder === 'blacklist'
+        ? db.addBlacklist(user._dbId, addr)
+        : db.addContact(user._dbId, addr);
+      persist.catch((e) => console.error('[DB] contact save error:', e.message));
+    }
     const local = addr.split('@')[0] || addr || newUid;
     return res.type('text/xml').send(
       `<r u="${escapeXml(local)}" t="contact" d="${now}" f="${escapeXml(folder)}">${escapeXml(addr)}</r>`
@@ -2081,7 +2099,7 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
 // ENDPOINT: ff/mv — Move file
 // Returns XML
 // ─────────────────────────────────────────────
-app.all(['/ff/mv', '/mv'], (req, res) => {
+app.all(['/ff/mv', '/mv'], async (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
   const sid = source.sid || req.query.sid;
   const auth = requireAuthBySid(sid, res, 'text/xml');
@@ -2105,27 +2123,33 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
     if (inContacts) {
       user.contacts = user.contacts.filter((a) => a !== inContacts);
       oldFolder = 'mycontact';
+      if (user._dbId) db.removeContact(user._dbId, inContacts).catch((e) => console.error('[DB] contact remove error:', e.message));
     } else if (inBlacklist) {
       user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
       oldFolder = 'blacklist';
+      if (user._dbId) db.removeBlacklist(user._dbId, inBlacklist).catch((e) => console.error('[DB] blacklist remove error:', e.message));
     }
   } else if (folder === 'blacklist') {
     const addr = inContacts || normalizedFileAddr || file;
     if (inContacts) {
       user.contacts = user.contacts.filter((a) => a !== inContacts);
       oldFolder = 'mycontact';
+      if (user._dbId) db.removeContact(user._dbId, inContacts).catch((e) => console.error('[DB] contact move error:', e.message));
     }
     if (addr && !user.blacklist.includes(addr)) {
       user.blacklist.push(addr);
+      if (user._dbId) db.addBlacklist(user._dbId, addr).catch((e) => console.error('[DB] blacklist add error:', e.message));
     }
   } else if (folder === 'mycontact') {
     const addr = inBlacklist || normalizedFileAddr || file;
     if (inBlacklist) {
       user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
       oldFolder = 'blacklist';
+      if (user._dbId) db.removeBlacklist(user._dbId, inBlacklist).catch((e) => console.error('[DB] blacklist move error:', e.message));
     }
     if (addr && !user.contacts.includes(addr)) {
       user.contacts.push(addr);
+      if (user._dbId) db.addContact(user._dbId, addr).catch((e) => console.error('[DB] contact add error:', e.message));
     }
   }
 
@@ -2137,7 +2161,7 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
 // ENDPOINT: ff/rm — Remove file/contact
 // Returns XML
 // ─────────────────────────────────────────────
-app.get(['/ff/rm', '/rm'], (req, res) => {
+app.get(['/ff/rm', '/rm'], async (req, res) => {
   const sid = req.query.sid;
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
@@ -2170,6 +2194,12 @@ app.get(['/ff/rm', '/rm'], (req, res) => {
       if (hit && removeFromList(listName, hit)) {
         removedFrom = listName === 'contacts' ? 'mycontact' : 'blacklist';
         removedValue = hit;
+        if (user._dbId) {
+          const persist = listName === 'contacts'
+            ? db.removeContact(user._dbId, hit)
+            : db.removeBlacklist(user._dbId, hit);
+          persist.catch((e) => console.error('[DB] contact delete error:', e.message));
+        }
         return true;
       }
     }
@@ -3112,21 +3142,8 @@ async function handleCBeeMessage(socket, rawXml) {
         let dbUser = null;
         try { dbUser = await db.findUserByUsername(effectiveLogin); } catch (e) { /* ignore */ }
         if (dbUser) {
-          users[effectiveLogin] = dbUserToMemory(dbUser);
           try {
-            const items = await db.getUserItems(dbUser.id);
-            if (items.length > 0) users[effectiveLogin].items = withDefaultPens(items);
-            const accs = await db.getUserAccessories(dbUser.id);
-            if (accs.length > 0) users[effectiveLogin].customAccessories = accs;
-            const dbScores = await db.loadScoresForUser(dbUser.id);
-            if (Object.keys(dbScores).length > 0) {
-              if (!scoresData.users[effectiveLogin]) scoresData.users[effectiveLogin] = {};
-              for (const [rkId, entry] of Object.entries(dbScores)) {
-                if (!scoresData.users[effectiveLogin][rkId]) {
-                  scoresData.users[effectiveLogin][rkId] = entry;
-                }
-              }
-            }
+            await hydrateUserFromDb(effectiveLogin, dbUser);
           } catch (e) { /* ignore */ }
         } else {
           users[effectiveLogin] = {
