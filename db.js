@@ -21,8 +21,8 @@ async function initSchema() {
         id               SERIAL PRIMARY KEY,
         username         TEXT UNIQUE NOT NULL,
         password         TEXT NOT NULL,
-        xp               INTEGER DEFAULT 4680000,
-        kikooz           INTEGER DEFAULT 150,
+        xp               INTEGER DEFAULT 1,
+        kikooz           INTEGER DEFAULT 60,
         fbouille         TEXT DEFAULT '000000010000000000000000',
         gender           TEXT DEFAULT 'M',
         birthday         DATE DEFAULT '1990-05-15',
@@ -47,6 +47,8 @@ async function initSchema() {
 
       -- Profile columns added after initial schema
       DO $$ BEGIN
+        ALTER TABLE users ALTER COLUMN xp SET DEFAULT 1;
+        ALTER TABLE users ALTER COLUMN kikooz SET DEFAULT 60;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name_public TEXT DEFAULT 'Y';

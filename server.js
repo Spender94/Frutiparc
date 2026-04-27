@@ -636,10 +636,10 @@ seedDemoScores();
 function createDefaultUser(pass) {
   return {
     pass,
-    xp: 4680000,
-    kikooz: 150,
+    xp: 1,
+    kikooz: 60,
     fbouille: DEFAULT_BOUILLE_STATE,
-    items: withDefaultPens([1, 2, 3]),
+    items: [],
     contacts: [],
     blacklist: [],
     gender: 'M',
@@ -667,8 +667,8 @@ function dbUserToMemory(row) {
   }
   return {
     pass: row.password,
-    xp: row.xp || 4680000,
-    kikooz: row.kikooz || 150,
+    xp: row.xp ?? 1,
+    kikooz: row.kikooz ?? 60,
     fbouille: row.fbouille || DEFAULT_BOUILLE_STATE,
     items: withDefaultPens([]),
     contacts: [],
@@ -3309,8 +3309,8 @@ async function handleCBeeMessage(socket, rawXml) {
         } else {
           users[effectiveLogin] = {
             pass: '',
-            xp: 10000,
-            kikooz: 50,
+            xp: 1,
+            kikooz: 60,
             fbouille: DEFAULT_BOUILLE_STATE,
             items: withDefaultPens([]),
             gender: 'M',
