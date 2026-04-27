@@ -4,6 +4,7 @@ const net = require('net');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const db = require('./db');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
 
@@ -440,6 +441,12 @@ function persistScore(username, rankingId, score, data) {
     };
     updated = true;
     saveScoresFile();
+    const dbId = users[username] && users[username]._dbId;
+    if (dbId) {
+      db.upsertScore(dbId, rankingId, n, scoresData.users[username][rankingId].data).catch((e) => {
+        console.error('[DB] score save error:', e.message);
+      });
+    }
   }
   const newPos = computePosition(rankingId, username);
   return { updated, newScore: updated ? n : oldScore, oldScore, oldPos, newPos };
@@ -488,6 +495,31 @@ function createDefaultUser(pass) {
     siteLog: [],        // Entries displayed in "Evènements" (/do/onident <sl>)
     hasWelcomeUserLog: false,
     hasWelcomeSiteLog: false,
+  };
+}
+
+function dbUserToMemory(row) {
+  return {
+    pass: row.password,
+    xp: row.xp || 4680000,
+    kikooz: row.kikooz || 150,
+    fbouille: row.fbouille || DEFAULT_BOUILLE_STATE,
+    items: withDefaultPens([]),
+    contacts: [],
+    blacklist: [],
+    gender: row.gender || 'M',
+    birthday: row.birthday || '1990-05-15',
+    country: row.country || 'FR',
+    region: row.region || 'IDF',
+    prefs: row.prefs || '',
+    isModerator: row.is_moderator || false,
+    needsBouille: row.needs_bouille !== false,
+    kikoozLog: [],
+    userLog: [],
+    siteLog: [],
+    hasWelcomeUserLog: false,
+    hasWelcomeSiteLog: false,
+    _dbId: row.id,
   };
 }
 
@@ -813,7 +845,7 @@ app.get('/', (req, res) => {
   res.sendFile(LOGIN_BIS_PAGE_PATH);
 });
 
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   const username = normalizeUsername(req.body && req.body.username);
   const password = String((req.body && req.body.password) || '');
 
@@ -827,21 +859,58 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
   }
 
-  users[username] = createDefaultUser(password);
-  return res.json({ ok: true, username });
+  try {
+    const dbUser = await db.createUser(username, password);
+    if (!dbUser) {
+      return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
+    }
+    users[username] = createDefaultUser(password);
+    users[username]._dbId = dbUser.id;
+    await db.setUserItems(dbUser.id, users[username].items);
+    return res.json({ ok: true, username });
+  } catch (e) {
+    console.error('[DB] register error:', e.message);
+    users[username] = createDefaultUser(password);
+    return res.json({ ok: true, username });
+  }
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const username = normalizeUsername(req.body && req.body.username);
   const password = String((req.body && req.body.password) || '');
-  const user = users[username];
 
-  if (!user || user.pass !== password) {
-    return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+  try {
+    const dbUser = await db.findUserByUsername(username);
+    if (dbUser) {
+      if (dbUser.password !== password) {
+        return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+      }
+      if (!users[username]) {
+        users[username] = dbUserToMemory(dbUser);
+        const items = await db.getUserItems(dbUser.id);
+        if (items.length > 0) users[username].items = withDefaultPens(items);
+      }
+      users[username]._dbId = dbUser.id;
+    } else {
+      const user = users[username];
+      if (!user || user.pass !== password) {
+        return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+      }
+    }
+  } catch (e) {
+    console.error('[DB] login lookup error:', e.message);
+    const user = users[username];
+    if (!user || user.pass !== password) {
+      return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+    }
   }
 
   const sid = crypto.randomBytes(16).toString('hex');
   sessions[sid] = { user: username, createdAt: Date.now() };
+  const userId = users[username] && users[username]._dbId;
+  if (userId) {
+    db.createSession(sid, userId).catch((e) => console.error('[DB] session save error:', e.message));
+  }
   return res.json({ ok: true, sid, username, redirect: `/legacy?sid=${encodeURIComponent(sid)}` });
 });
 
@@ -941,6 +1010,8 @@ app.post('/api/saveFrutiSlot', (req, res) => {
   if (!users[username].frutiSlots) users[username].frutiSlots = {};
   if (!users[username].frutiSlots[game]) users[username].frutiSlots[game] = {};
   users[username].frutiSlots[game][slotId] = data;
+  const dbId = users[username] && users[username]._dbId;
+  if (dbId) db.upsertFrutiSlot(dbId, game, Number(slotId), data).catch(() => {});
   console.log(`[SLOT]  save ${username}/${game}/slot${slotId} (${data.length} chars)`);
   res.type('text/plain').send('ok=1');
 });
@@ -949,7 +1020,7 @@ app.post('/api/saveFrutiSlot', (req, res) => {
 // ENDPOINT: /api/loadFrutiSlots — Load all FrutiCard slots for a game.
 // Returns LoadVars format: slot0=<json>&slot1=<json>&slot2=<json>
 // ─────────────────────────────────────────────
-app.post('/api/loadFrutiSlots', (req, res) => {
+app.post('/api/loadFrutiSlots', async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
   const game = String(params.game || '');
@@ -963,10 +1034,24 @@ app.post('/api/loadFrutiSlots', (req, res) => {
   }
 
   let response = 'ok=1';
-  if (username && users[username] && users[username].frutiSlots && users[username].frutiSlots[game]) {
-    const slots = users[username].frutiSlots[game];
-    for (const [key, val] of Object.entries(slots)) {
-      response += `&slot${key}=${encodeURIComponent(val)}`;
+  if (username && users[username]) {
+    if (!users[username].frutiSlots || !users[username].frutiSlots[game]) {
+      const dbId = users[username]._dbId;
+      if (dbId) {
+        try {
+          const dbSlots = await db.getFrutiSlots(dbId, game);
+          if (Object.keys(dbSlots).length > 0) {
+            if (!users[username].frutiSlots) users[username].frutiSlots = {};
+            users[username].frutiSlots[game] = dbSlots;
+          }
+        } catch (e) { /* ignore */ }
+      }
+    }
+    if (users[username].frutiSlots && users[username].frutiSlots[game]) {
+      const slots = users[username].frutiSlots[game];
+      for (const [key, val] of Object.entries(slots)) {
+        response += `&slot${key}=${encodeURIComponent(val)}`;
+      }
     }
   }
   console.log(`[SLOT]  load ${username}/${game} -> ${response.length} chars`);
@@ -1139,6 +1224,8 @@ app.get('/do/prefsave', (req, res) => {
   const session = sessions[sid];
   if (session && session.user && users[session.user]) {
     users[session.user].prefs = req.query.s || '';
+    const dbId = users[session.user]._dbId;
+    if (dbId) db.updateUser(session.user, { prefs: req.query.s || '' }).catch(() => {});
   }
   res.type('text/plain').send('state=0');
 });
@@ -1214,6 +1301,7 @@ app.all('/do/eb', (req, res) => {
   if (!auth) return;
 
   auth.user.fbouille = bouille;
+  if (auth.user._dbId) db.updateUser(auth.username, { fbouille: bouille, needs_bouille: false }).catch(() => {});
 
   console.log(`[do/eb] Saved bouille for ${auth.username}: ${bouille}`);
   // Legacy callers consume LoadVars here; include k=0 to avoid error.http.undefined
@@ -1260,6 +1348,8 @@ app.all('/do/give', (req, res) => {
 
   user.kikooz -= amount;
   target.kikooz = (typeof target.kikooz === 'number' ? target.kikooz : 0) + amount;
+  if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(() => {});
+  if (target._dbId) db.updateUser(targetName, { kikooz: target.kikooz }).catch(() => {});
 
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
@@ -1729,6 +1819,7 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
   }
 
   user.kikooz -= pack.price;
+  if (user._dbId) db.updateUser(auth.username, { kikooz: user.kikooz }).catch(() => {});
 
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const bouilleStr = bouilleOf(user).substring(0, 15) + pack.suffix9;
@@ -2170,6 +2261,21 @@ app.use((req, res) => {
 // ─────────────────────────────────────────────
 // Start HTTP server
 // ─────────────────────────────────────────────
+async function boot() {
+  if (process.env.DATABASE_URL) {
+    try {
+      await db.initSchema();
+      console.log('[DB] Connected and schema ready');
+    } catch (e) {
+      console.error('[DB] Init failed (running without persistence):', e.message);
+    }
+  } else {
+    console.log('[DB] No DATABASE_URL — running in memory-only mode');
+  }
+}
+
+boot();
+
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`[HTTP]  Server running on http://0.0.0.0:${port}`);
   if (PUBLIC_HOST) {
@@ -2838,7 +2944,7 @@ function buildChannelListXml() {
 // ─────────────────────────────────────────────
 // Handle a single CBee XML message from a client
 // ─────────────────────────────────────────────
-function handleCBeeMessage(socket, rawXml) {
+async function handleCBeeMessage(socket, rawXml) {
   const msg = parseXmlAttrs(rawXml);
   const cmdName = CMD_REV[msg.tag] || msg.tag;
   const client = xmlSocketClients.get(socket);
@@ -2953,16 +3059,25 @@ function handleCBeeMessage(socket, rawXml) {
         sessions[sid].user = effectiveLogin;
       }
 
-      // Auto-create user if doesn't exist
+      // Auto-create user if doesn't exist (check DB first)
       if (!users[effectiveLogin]) {
-        users[effectiveLogin] = {
-          pass: '',
-          xp: 10000,
-          kikooz: 50,
-          fbouille: DEFAULT_BOUILLE_STATE,
-          items: withDefaultPens([]),
-          gender: 'M',
-          birthday: '2000-01-01',
+        let dbUser = null;
+        try { dbUser = await db.findUserByUsername(effectiveLogin); } catch (e) { /* ignore */ }
+        if (dbUser) {
+          users[effectiveLogin] = dbUserToMemory(dbUser);
+          try {
+            const items = await db.getUserItems(dbUser.id);
+            if (items.length > 0) users[effectiveLogin].items = withDefaultPens(items);
+          } catch (e) { /* ignore */ }
+        } else {
+          users[effectiveLogin] = {
+            pass: '',
+            xp: 10000,
+            kikooz: 50,
+            fbouille: DEFAULT_BOUILLE_STATE,
+            items: withDefaultPens([]),
+            gender: 'M',
+            birthday: '2000-01-01',
             country: 'FR',
             region: 'IDF',
             prefs: '',
@@ -2973,6 +3088,7 @@ function handleCBeeMessage(socket, rawXml) {
             hasWelcomeUserLog: false,
             hasWelcomeSiteLog: false,
           };
+        }
       }
 
       const user = users[effectiveLogin];
