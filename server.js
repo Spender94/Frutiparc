@@ -3115,10 +3115,11 @@ async function handleCBeeMessage(socket, rawXml) {
       client.logged = true;
 
       sendToClient(socket, `<${CMD.ident} l="${effectiveLogin}" x="${user.xp}" f="${bouilleOf(user)}" />`);
-      if (welcomeLogEntry) {
+      if (user.userLog && user.userLog.length > 0 && user.userLog[0].n) {
+        const entry = user.userLog[0];
         sendToClient(
           socket,
-          `<${CMD.newuserlog} date="${escapeXml(welcomeLogEntry.d || nowSqlTimestamp())}" type="${escapeXml(String(welcomeLogEntry.t || 8))}">${escapeXml(welcomeLogEntry.c || '')}</${CMD.newuserlog}>`,
+          `<${CMD.newuserlog} date="${escapeXml(entry.d || nowSqlTimestamp())}" type="${escapeXml(String(entry.t || 8))}">${escapeXml(entry.c || '')}</${CMD.newuserlog}>`,
         );
       }
       console.log(`[CBee]  User "${effectiveLogin}" logged in (sid=${sid})`);
@@ -4038,7 +4039,9 @@ const xmlSocketServer = net.createServer((socket) => {
       }
 
       try {
-        handleCBeeMessage(socket, trimmed);
+        handleCBeeMessage(socket, trimmed).catch((e) => {
+          console.error(`[CBee]  Async error handling message: ${e.message}`);
+        });
       } catch (e) {
         console.error(`[CBee]  Error handling message: ${e.message}`);
       }

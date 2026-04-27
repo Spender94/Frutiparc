@@ -5,6 +5,8 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('render.com')
     ? { rejectUnauthorized: false }
     : undefined,
+  connectionTimeoutMillis: 5000,
+  query_timeout: 5000,
 });
 
 pool.on('error', (err) => {
