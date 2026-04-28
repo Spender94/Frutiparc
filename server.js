@@ -184,7 +184,9 @@ const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
 // ─────────────────────────────────────────────
 const SCORES_DIR = path.join(__dirname, 'data');
 const SCORES_FILE = path.join(SCORES_DIR, 'scores.json');
+const CHALLENGE_MEDALS_FILE = path.join(SCORES_DIR, 'challenge-medals.json');
 let scoresData = { users: {} };
+let challengeMedalsData = { lastRollDay: '', medalsByVisibleDay: {}, pendingNotifications: {} };
 const SEEDED_DEMO_SCORES = {
   Renault: {
     snake3_classic: { score: 24500, data: 'seed', updatedAt: '2026-01-01T00:00:00.000Z' },
@@ -241,6 +243,40 @@ function seedDemoScores() {
   }
 }
 
+function utcDayKey(d = new Date()) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function loadChallengeMedals() {
+  try {
+    if (fs.existsSync(CHALLENGE_MEDALS_FILE)) {
+      const raw = fs.readFileSync(CHALLENGE_MEDALS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        challengeMedalsData = {
+          lastRollDay: String(parsed.lastRollDay || ''),
+          medalsByVisibleDay: parsed.medalsByVisibleDay || {},
+          pendingNotifications: parsed.pendingNotifications || {},
+        };
+      }
+    }
+  } catch (e) {
+    console.error('[CHALLENGE] medal load failed:', e.message);
+  }
+}
+
+function saveChallengeMedals() {
+  try {
+    if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
+    fs.writeFileSync(CHALLENGE_MEDALS_FILE, JSON.stringify(challengeMedalsData, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[CHALLENGE] medal save failed:', e.message);
+  }
+}
+
 // Registered ranking IDs (one per game, mode 0 = classic).
 // name = human-readable, game = disc/game name (for client display).
 const RANKINGS = {
@@ -249,6 +285,11 @@ const RANKINGS = {
   kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
   miniwave2_classic:{ name: 'MiniWave - Classique',    game: 'miniwave2',type: 'C' },
+  bkiwi_challenge:    { name: 'Burning Kiwi - Challenge', game: 'bkiwi',    type: 'L', lowerIsBetter: true },
+  snake3_challenge:   { name: 'Frutisnake - Challenge',   game: 'snake3',   type: 'L' },
+  kaluga_challenge:   { name: 'Kaluga - Challenge',       game: 'kaluga',   type: 'L' },
+  swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
+  miniwave2_challenge:{ name: 'MiniWave - Challenge',     game: 'miniwave2',type: 'L' },
 };
 
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
@@ -286,6 +327,17 @@ function resolveInternalRankingId(rkLike) {
   if (RANKINGS[raw]) return raw;
   if (LEGACY_RK_TO_INTERNAL[raw]) return LEGACY_RK_TO_INTERNAL[raw];
   return null;
+}
+
+function resolveInternalRankingIdForRequest(rkLike, cAttr = '') {
+  const base = resolveInternalRankingId(rkLike);
+  if (!base) return null;
+  const c = String(cAttr || '').trim();
+  if (c === '2' || /^l$/i.test(c) || /^challenge$/i.test(c)) {
+    const challengeId = base.replace(/_classic$/, '_challenge');
+    if (RANKINGS[challengeId]) return challengeId;
+  }
+  return base;
 }
 
 function legacyDescriptorFromRkLike(rkLike) {
@@ -497,16 +549,18 @@ function serializeScoreData(value) {
 }
 
 // Map a game/disc identifier to a ranking id.
-function rankingIdForGame(gameName) {
+function rankingIdForGame(gameName, modeRaw = 0) {
   const raw = String(gameName || '').trim();
   const key = raw.toLowerCase();
+  const mode = Number(modeRaw);
+  const suffix = mode === 1 ? 'challenge' : 'classic';
   if (!key) return null;
-  const direct = `${key}_classic`;
+  const direct = `${key}_${suffix}`;
   if (RANKINGS[direct]) return direct;
   // Accept Frutiparc disc uids directly (kaluga1, snake3, swapou1, miniwave1).
   const directDisc = GAME_DISCS && GAME_DISCS[key];
   if (directDisc && directDisc.swfName) {
-    const via = `${String(directDisc.swfName).toLowerCase()}_classic`;
+    const via = `${String(directDisc.swfName).toLowerCase()}_${suffix}`;
     if (RANKINGS[via]) return via;
   }
 
@@ -523,7 +577,7 @@ function rankingIdForGame(gameName) {
   for (const [discUid, disc] of Object.entries(GAME_DISCS || {})) {
     const swfName = String((disc && disc.swfName) || '').toLowerCase();
     if (swfName) {
-      const via = `${swfName}_classic`;
+      const via = `${swfName}_${suffix}`;
       if (RANKINGS[via] && (normalizedCandidates.has(swfName) || normalizedCandidates.has(String(discUid).toLowerCase()))) {
         return via;
       }
@@ -538,7 +592,7 @@ function rankingIdForGame(gameName) {
       }
     }
 
-    if (swfName && RANKINGS[`${swfName}_classic`]) {
+    if (swfName && RANKINGS[`${swfName}_${suffix}`]) {
       for (const p of filePaths) {
         const pathVariants = [
           p,
@@ -547,13 +601,13 @@ function rankingIdForGame(gameName) {
           `/swf/${p}`,
         ];
         if (pathVariants.some((v) => normalizedCandidates.has(v))) {
-          return `${swfName}_classic`;
+          return `${swfName}_${suffix}`;
         }
         // Check if input matches a directory segment of the game path
         // (e.g. input='burningKiwi' matches 'games/burningKiwi/burningkiwi.swf')
         const segs = p.split('/').filter(Boolean);
         if (segs.some((seg) => normalizedCandidates.has(seg.toLowerCase()))) {
-          return `${swfName}_classic`;
+          return `${swfName}_${suffix}`;
         }
       }
     }
@@ -563,7 +617,7 @@ function rankingIdForGame(gameName) {
   // Example: games/snake3/snake3.swf -> snake3_classic
   const lastSeg = normalizedCandidates.values().next().value.split('/').pop() || '';
   const base = lastSeg.replace(/\.swf$/i, '');
-  const fromBase = `${base}_classic`;
+  const fromBase = `${base}_${suffix}`;
   if (RANKINGS[fromBase]) return fromBase;
 
   return null;
@@ -632,6 +686,11 @@ function getUserScore(username, rankingId) {
 
 loadScores();
 seedDemoScores();
+loadChallengeMedals();
+if (!challengeMedalsData.lastRollDay) {
+  challengeMedalsData.lastRollDay = utcDayKey();
+  saveChallengeMedals();
+}
 
 function createDefaultUser(pass) {
   return {
@@ -764,6 +823,96 @@ function buildUserLogXml(entries) {
     const n = (e && Number(e.n) === 1) ? ' n="1"' : '';
     return `<l d="${d}" t="${Number.isFinite(t) && t > 0 ? t : 1}"${n}>${c}</l>`;
   }).join('');
+}
+
+function challengeRankingIds() {
+  return Object.keys(RANKINGS).filter((rk) => rk.endsWith('_challenge'));
+}
+
+function collectTop3ForRanking(rankingId) {
+  const all = [];
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+    if (rlist && rlist[rankingId] && Number.isFinite(Number(rlist[rankingId].score))) {
+      all.push({ u, s: Number(rlist[rankingId].score) });
+    }
+  }
+  all.sort(scoreComparator(rankingId));
+  return all.slice(0, 3);
+}
+
+function notifyChallengeWinners(winnersByUser, visibleDay) {
+  for (const [username, medals] of Object.entries(winnersByUser || {})) {
+    const ranks = medals.map((m) => m.rank).join(', ');
+    const games = medals.map((m) => m.game).join(', ');
+    const text = `Challenge quotidien: médaille(s) ${ranks} remportée(s) sur ${games}. Affichées le ${visibleDay}.`;
+    const user = users[username];
+    if (user) {
+      addUserHistoryEntry(user, { type: 1, content: text, flNew: true });
+    } else {
+      if (!challengeMedalsData.pendingNotifications[username]) {
+        challengeMedalsData.pendingNotifications[username] = [];
+      }
+      challengeMedalsData.pendingNotifications[username].push({ type: 1, content: text });
+    }
+  }
+}
+
+function resetChallengeScoresInMemory() {
+  const challengeIds = new Set(challengeRankingIds());
+  for (const [username, rlist] of Object.entries(scoresData.users || {})) {
+    if (!rlist) continue;
+    for (const rkId of Object.keys(rlist)) {
+      if (challengeIds.has(rkId)) delete rlist[rkId];
+    }
+    if (Object.keys(rlist).length === 0) delete scoresData.users[username];
+  }
+  saveScoresFile();
+}
+
+function rollDailyChallengeIfNeeded() {
+  const today = utcDayKey();
+  if (challengeMedalsData.lastRollDay === today) return;
+
+  const winnersByUser = {};
+  for (const rkId of challengeRankingIds()) {
+    const top = collectTop3ForRanking(rkId);
+    for (let i = 0; i < top.length; i++) {
+      const rank = i + 1;
+      const medal = rank === 1 ? 'or' : rank === 2 ? 'argent' : 'bronze';
+      const username = top[i].u;
+      if (!winnersByUser[username]) winnersByUser[username] = [];
+      winnersByUser[username].push({
+        game: (RANKINGS[rkId] && RANKINGS[rkId].game) || rkId,
+        rankingId: rkId,
+        rank,
+        medal,
+      });
+    }
+  }
+
+  challengeMedalsData.medalsByVisibleDay[today] = winnersByUser;
+  notifyChallengeWinners(winnersByUser, today);
+  challengeMedalsData.lastRollDay = today;
+  saveChallengeMedals();
+
+  resetChallengeScoresInMemory();
+  db.clearDailyChallengeScores().catch((e) => {
+    console.error('[DB] challenge daily reset error:', e.message);
+  });
+}
+
+function applyPendingChallengeNotifications(username, user) {
+  const list = challengeMedalsData.pendingNotifications[username];
+  if (!Array.isArray(list) || list.length === 0) return;
+  for (const n of list) {
+    addUserHistoryEntry(user, {
+      type: Number(n.type) || 1,
+      content: String(n.content || ''),
+      flNew: true,
+    });
+  }
+  delete challengeMedalsData.pendingNotifications[username];
+  saveChallengeMedals();
 }
 
 function normalizeUsername(raw) {
@@ -1091,11 +1240,13 @@ app.post('/api/auth/login', async (req, res) => {
         await hydrateUserFromDb(username, dbUser);
       }
       users[username]._dbId = dbUser.id;
+      applyPendingChallengeNotifications(username, users[username]);
     } else {
       const user = users[username];
       if (!user || user.pass !== password) {
         return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
       }
+      applyPendingChallengeNotifications(username, user);
     }
   } catch (e) {
     console.error('[DB] login lookup error:', e.message);
@@ -1120,9 +1271,11 @@ app.post('/api/auth/login', async (req, res) => {
 // Query/body params: sid, game (disc name or id), score, data (optional).
 // ─────────────────────────────────────────────
 function handleSaveScore(req, res) {
+  rollDailyChallengeIfNeeded();
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
   const gameName = String(params.game || params.g || params.disc || '');
+  const mode = Number(params.m ?? params.mode ?? 0) || 0;
   const scoreVal = Number(params.score || params.s || 0) || 0;
   const scoreData = serializeScoreData(
     params.data ?? params.da ?? params.r ?? params.misc ?? params.md ?? params.tz ?? ''
@@ -1142,7 +1295,7 @@ function handleSaveScore(req, res) {
     return res.status(401).json({ ok: false, error: 'not_authenticated' });
   }
 
-  const rankingId = rankingIdForGame(gameName);
+  const rankingId = rankingIdForGame(gameName, mode);
   if (!rankingId) {
     return res.status(400).json({ ok: false, error: 'unknown_game', game: gameName });
   }
@@ -1165,6 +1318,7 @@ app.get('/api/saveScore', handleSaveScore);
 // SWF-triggered score save: the patched game SWFs call loadVariables("s<score>", "")
 // which resolves (via Ruffle base URL) to /swf/games/<game>/s<score>.
 app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
+  rollDailyChallengeIfNeeded();
   const gameName = req.params[0];
   const scoreVal = parseInt(req.params[1]) || 0;
   let username = '';
@@ -1177,7 +1331,7 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
     console.log(`[SWF-SCORE] skip save user="${username}" sid="${sid}" ip="${ip}" game="${gameName}" score=${scoreVal}`);
     return res.type('text/plain').send('ok=0');
   }
-  const rankingId = rankingIdForGame(gameName);
+  const rankingId = rankingIdForGame(gameName, 0);
   if (!rankingId) {
     console.log(`[SWF-SCORE] unknown ranking game="${gameName}" sid="${sid}" user="${username}"`);
     return res.type('text/plain').send('ok=0');
@@ -3184,6 +3338,7 @@ function buildChannelListXml() {
 // Handle a single CBee XML message from a client
 // ─────────────────────────────────────────────
 async function handleCBeeMessage(socket, rawXml) {
+  rollDailyChallengeIfNeeded();
   const msg = parseXmlAttrs(rawXml);
   const cmdName = CMD_REV[msg.tag] || msg.tag;
   const client = xmlSocketClients.get(socket);
@@ -3329,6 +3484,7 @@ async function handleCBeeMessage(socket, rawXml) {
       }
 
       const user = users[effectiveLogin];
+      applyPendingChallengeNotifications(effectiveLogin, user);
       if (user.hasWelcomeUserLog !== true) {
         addUserHistoryEntry(user, {
           type: 1,
@@ -3372,12 +3528,13 @@ async function handleCBeeMessage(socket, rawXml) {
       if (msg.attrs.d != undefined || msg.attrs.s != undefined) {
         const discId = String(msg.attrs.d || '');
         const scoreVal = Number(msg.attrs.s || 0) || 0;
+        const scoreMode = Number(msg.attrs.m || 0) || 0;
         const scoreData = getScoreDataFromMessage(msg);
         const username = client.username || '';
         console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" children=${JSON.stringify(msg.children || [])}`);
-        let rankingId = rankingIdForGame(discId);
+        let rankingId = rankingIdForGame(discId, scoreMode);
         // Fall back to the last started game on this connection.
-        if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame);
+        if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
         // Persist if we have a valid ranking + user.
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
         if (username && rankingId) {
@@ -3585,10 +3742,10 @@ broadcastToChannel(
       // Respond with wire "m" so the client dispatches to onRankingResult.
       if (msg.attrs.rk !== undefined) {
         const rkInput = String(msg.attrs.rk);
-        const internalId = resolveInternalRankingId(rkInput);
+        const cAttrIn = String(msg.attrs.c || '');
+        const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
-        const cAttrIn = String(msg.attrs.c || '');
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
         const all = [];
@@ -3637,10 +3794,10 @@ broadcastToChannel(
       // FrutiScore overlap: rankingResult uses wire code "m" with rk attr.
       if (msg.attrs.rk !== undefined) {
         const rkInput = String(msg.attrs.rk);
-        const internalId = resolveInternalRankingId(rkInput);
+        const cAttrIn = String(msg.attrs.c || '');
+        const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
-        const cAttrIn = String(msg.attrs.c || '');
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
         const all = [];
@@ -4204,6 +4361,11 @@ case 'createchannel': {
         if (info.pos === 1 && info.score > 0) {
           inner += `<a g="${escapeXml(rk.game)}" n="${escapeXml(rk.name)}" v="${info.score}" d="0" />`;
         }
+      }
+      const today = utcDayKey();
+      const medalsToday = (challengeMedalsData.medalsByVisibleDay[today] || {})[targetUser] || [];
+      for (const medal of medalsToday) {
+        inner += `<a g="${escapeXml(medal.game)}" n="${escapeXml(`Challenge ${medal.game} ${medal.medal}`)}" v="${medal.rank}" d="1" />`;
       }
       sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.awarduser}>`);
       console.log(`[FSCORE] awarduser user=${targetUser}`);

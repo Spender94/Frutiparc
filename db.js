@@ -363,6 +363,13 @@ async function loadScoresForUser(userId) {
   return result;
 }
 
+async function clearDailyChallengeScores() {
+  await pool.query(
+    `DELETE FROM scores
+     WHERE ranking_id LIKE '%_challenge'`
+  );
+}
+
 module.exports = {
   pool,
   initSchema,
@@ -387,4 +394,5 @@ module.exports = {
   addBlacklist,
   removeBlacklist,
   loadScoresForUser,
+  clearDailyChallengeScores,
 };
