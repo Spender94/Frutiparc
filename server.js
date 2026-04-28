@@ -184,7 +184,9 @@ const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
 // ─────────────────────────────────────────────
 const SCORES_DIR = path.join(__dirname, 'data');
 const SCORES_FILE = path.join(SCORES_DIR, 'scores.json');
+const CHALLENGE_MEDALS_FILE = path.join(SCORES_DIR, 'challenge-medals.json');
 let scoresData = { users: {} };
+let challengeMedalsData = { lastRollDay: '', medalsByVisibleDay: {}, pendingNotifications: {} };
 const SEEDED_DEMO_SCORES = {
   Renault: {
     snake3_classic: { score: 24500, data: 'seed', updatedAt: '2026-01-01T00:00:00.000Z' },
@@ -241,6 +243,40 @@ function seedDemoScores() {
   }
 }
 
+function utcDayKey(d = new Date()) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function loadChallengeMedals() {
+  try {
+    if (fs.existsSync(CHALLENGE_MEDALS_FILE)) {
+      const raw = fs.readFileSync(CHALLENGE_MEDALS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        challengeMedalsData = {
+          lastRollDay: String(parsed.lastRollDay || ''),
+          medalsByVisibleDay: parsed.medalsByVisibleDay || {},
+          pendingNotifications: parsed.pendingNotifications || {},
+        };
+      }
+    }
+  } catch (e) {
+    console.error('[CHALLENGE] medal load failed:', e.message);
+  }
+}
+
+function saveChallengeMedals() {
+  try {
+    if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
+    fs.writeFileSync(CHALLENGE_MEDALS_FILE, JSON.stringify(challengeMedalsData, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[CHALLENGE] medal save failed:', e.message);
+  }
+}
+
 // Registered ranking IDs (one per game, mode 0 = classic).
 // name = human-readable, game = disc/game name (for client display).
 const RANKINGS = {
@@ -249,6 +285,11 @@ const RANKINGS = {
   kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
   miniwave2_classic:{ name: 'MiniWave - Classique',    game: 'miniwave2',type: 'C' },
+  bkiwi_challenge:    { name: 'Burning Kiwi - Challenge', game: 'bkiwi',    type: 'L', lowerIsBetter: true },
+  snake3_challenge:   { name: 'Frutisnake - Challenge',   game: 'snake3',   type: 'L' },
+  kaluga_challenge:   { name: 'Kaluga - Challenge',       game: 'kaluga',   type: 'L' },
+  swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
+  miniwave2_challenge:{ name: 'MiniWave - Challenge',     game: 'miniwave2',type: 'L' },
 };
 
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
@@ -286,6 +327,17 @@ function resolveInternalRankingId(rkLike) {
   if (RANKINGS[raw]) return raw;
   if (LEGACY_RK_TO_INTERNAL[raw]) return LEGACY_RK_TO_INTERNAL[raw];
   return null;
+}
+
+function resolveInternalRankingIdForRequest(rkLike, cAttr = '') {
+  const base = resolveInternalRankingId(rkLike);
+  if (!base) return null;
+  const c = String(cAttr || '').trim();
+  if (c === '2' || /^l$/i.test(c) || /^challenge$/i.test(c)) {
+    const challengeId = base.replace(/_classic$/, '_challenge');
+    if (RANKINGS[challengeId]) return challengeId;
+  }
+  return base;
 }
 
 function legacyDescriptorFromRkLike(rkLike) {
@@ -341,17 +393,174 @@ function buildLegacyGameScoreInfo(gs) {
   return `<w gs="${Number.isFinite(game) ? game : 0}"><ds>${inner}</ds></w>`;
 }
 
+const KALUGA_TZONGRE_BY_ID = {
+  0: 'kaluga',
+  1: 'piwali',
+  2: 'nalika',
+  3: 'gomola',
+  4: 'makulo',
+};
+
+function parseMtSerializedArray(raw) {
+  const s = String(raw || '').trim();
+  if (!s.startsWith('[') || !s.endsWith(']')) return null;
+  const items = [];
+  const body = s.slice(1, -1);
+  const tokenRe = /([SNB])([^;]*);/g;
+  let m;
+  while ((m = tokenRe.exec(body)) !== null) {
+    const ty = m[1];
+    const payload = m[2] || '';
+    if (ty === 'N') {
+      const n = Number(payload);
+      items.push(Number.isFinite(n) ? n : 0);
+    } else if (ty === 'B') {
+      items.push(payload === '1' || /^true$/i.test(payload));
+    } else {
+      items.push(payload);
+    }
+  }
+  return items.length > 0 ? items : null;
+}
+
+function parseMtSerializedPrimitive(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const strMatch = s.match(/^S([^;]*)$/);
+  if (strMatch) return strMatch[1];
+  const numMatch = s.match(/^N(-?\d+(?:\.\d+)?)$/);
+  if (numMatch) return Number(numMatch[1]);
+  return null;
+}
+
+function parseKalugaTzId(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const directNum = Number(s);
+  if (Number.isFinite(directNum)) return directNum;
+  const mtNum = parseMtSerializedPrimitive(s);
+  if (typeof mtNum === 'number' && Number.isFinite(mtNum)) return mtNum;
+  const mtObj = s.match(/\$?tz[^0-9-]*N?(-?\d+)/i);
+  if (mtObj) return Number(mtObj[1]);
+  return null;
+}
+
+function formatRankingExtraData(rankingId, rawData) {
+  const raw = String(rawData || '').trim();
+  if (!raw) {
+    if (rankingId === 'bkiwi_classic') return 'Skiwix:5:1:';
+    if (rankingId === 'swapou2_classic') return 'S0:';
+    if (rankingId === 'kaluga_classic') return 'Skaluga:';
+    return '';
+  }
+
+  if (rankingId === 'bkiwi_classic') {
+    if (raw.includes(':')) return raw;
+    if (raw.includes(',')) {
+      const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 3) return `${parts[0]}:${parts[1]}:${parts[2]}:`;
+    }
+    const arr = parseMtSerializedArray(raw);
+    if (arr && arr.length >= 3) {
+      return `${String(arr[0] || '')}:${String(arr[1] || '')}:${String(arr[2] || '')}:`;
+    }
+    return raw;
+  }
+
+  if (rankingId === 'swapou2_classic') {
+    if (/^S\d+:?$/i.test(raw)) return raw.endsWith(':') ? raw : `${raw}:`;
+    const v = parseMtSerializedPrimitive(raw);
+    if (typeof v === 'number' && Number.isFinite(v)) return `S${Math.trunc(v)}:`;
+    if (typeof v === 'string' && /^\d+$/.test(v)) return `S${v}:`;
+    if (/^\d+$/.test(raw)) return `S${raw}:`;
+    return raw;
+  }
+
+  if (rankingId === 'kaluga_classic') {
+    if (/^S[a-z0-9_]+:$/i.test(raw)) return raw;
+    if (raw === '[object Object]') return 'Skaluga:';
+    if (raw.startsWith('{') && raw.endsWith('}')) {
+      try {
+        const obj = JSON.parse(raw);
+        if (obj && obj.tz !== undefined) {
+          const tzNum = Number(obj.tz);
+          if (Number.isFinite(tzNum) && KALUGA_TZONGRE_BY_ID[tzNum] !== undefined) {
+            return `S${KALUGA_TZONGRE_BY_ID[tzNum]}:`;
+          }
+        }
+      } catch { /* ignore malformed json */ }
+    }
+    const tzId = parseKalugaTzId(raw);
+    if (tzId !== null && KALUGA_TZONGRE_BY_ID[tzId] !== undefined) {
+      return `S${KALUGA_TZONGRE_BY_ID[tzId]}:`;
+    }
+    const v = parseMtSerializedPrimitive(raw);
+    if (typeof v === 'string' && v) return `S${v.toLowerCase()}:`;
+    return raw;
+  }
+
+  return raw;
+}
+
+function getScoreDataFromAttrs(attrs = {}) {
+  const candidates = [
+    attrs.da,
+    attrs.d2,
+    attrs.r,
+    attrs.data,
+    attrs.misc,
+    attrs.md,
+  ];
+  for (const c of candidates) {
+    if (c !== undefined && c !== null && String(c) !== '') return String(c);
+  }
+  return '';
+}
+
+function getScoreDataFromMessage(msg) {
+  const fromAttrs = getScoreDataFromAttrs((msg && msg.attrs) || {});
+  if (fromAttrs) return fromAttrs;
+
+  const children = Array.isArray(msg && msg.children) ? msg.children : [];
+  for (const child of children) {
+    if (!child) continue;
+    const childAttrsValue = getScoreDataFromAttrs(child.attrs || {});
+    if (childAttrsValue) return childAttrsValue;
+    const tag = String(child.tag || '').toLowerCase();
+    if (['r', 'da', 'data', 'misc', 'md'].includes(tag)) {
+      const content = String(child.content || '').trim();
+      if (content) return content;
+    }
+  }
+
+  const rootContent = String((msg && msg.content) || '').trim();
+  return rootContent || '';
+}
+
+function serializeScoreData(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 // Map a game/disc identifier to a ranking id.
-function rankingIdForGame(gameName) {
+function rankingIdForGame(gameName, modeRaw = 0) {
   const raw = String(gameName || '').trim();
   const key = raw.toLowerCase();
+  const mode = Number(modeRaw);
+  const suffix = mode === 1 ? 'challenge' : 'classic';
   if (!key) return null;
-  const direct = `${key}_classic`;
+  const direct = `${key}_${suffix}`;
   if (RANKINGS[direct]) return direct;
   // Accept Frutiparc disc uids directly (kaluga1, snake3, swapou1, miniwave1).
   const directDisc = GAME_DISCS && GAME_DISCS[key];
   if (directDisc && directDisc.swfName) {
-    const via = `${String(directDisc.swfName).toLowerCase()}_classic`;
+    const via = `${String(directDisc.swfName).toLowerCase()}_${suffix}`;
     if (RANKINGS[via]) return via;
   }
 
@@ -368,7 +577,7 @@ function rankingIdForGame(gameName) {
   for (const [discUid, disc] of Object.entries(GAME_DISCS || {})) {
     const swfName = String((disc && disc.swfName) || '').toLowerCase();
     if (swfName) {
-      const via = `${swfName}_classic`;
+      const via = `${swfName}_${suffix}`;
       if (RANKINGS[via] && (normalizedCandidates.has(swfName) || normalizedCandidates.has(String(discUid).toLowerCase()))) {
         return via;
       }
@@ -383,7 +592,7 @@ function rankingIdForGame(gameName) {
       }
     }
 
-    if (swfName && RANKINGS[`${swfName}_classic`]) {
+    if (swfName && RANKINGS[`${swfName}_${suffix}`]) {
       for (const p of filePaths) {
         const pathVariants = [
           p,
@@ -392,13 +601,13 @@ function rankingIdForGame(gameName) {
           `/swf/${p}`,
         ];
         if (pathVariants.some((v) => normalizedCandidates.has(v))) {
-          return `${swfName}_classic`;
+          return `${swfName}_${suffix}`;
         }
         // Check if input matches a directory segment of the game path
         // (e.g. input='burningKiwi' matches 'games/burningKiwi/burningkiwi.swf')
         const segs = p.split('/').filter(Boolean);
         if (segs.some((seg) => normalizedCandidates.has(seg.toLowerCase()))) {
-          return `${swfName}_classic`;
+          return `${swfName}_${suffix}`;
         }
       }
     }
@@ -408,7 +617,7 @@ function rankingIdForGame(gameName) {
   // Example: games/snake3/snake3.swf -> snake3_classic
   const lastSeg = normalizedCandidates.values().next().value.split('/').pop() || '';
   const base = lastSeg.replace(/\.swf$/i, '');
-  const fromBase = `${base}_classic`;
+  const fromBase = `${base}_${suffix}`;
   if (RANKINGS[fromBase]) return fromBase;
 
   return null;
@@ -430,20 +639,24 @@ function persistScore(username, rankingId, score, data) {
   if (!scoresData.users[username]) scoresData.users[username] = {};
   const prev = scoresData.users[username][rankingId];
   const oldScore = (prev && Number.isFinite(Number(prev.score))) ? Number(prev.score) : 0;
+  const oldData = (prev && prev.data !== undefined && prev.data !== null) ? String(prev.data) : '';
   const n = Number(score) || 0;
+  const newData = (data === undefined || data === null) ? '' : String(data);
   const oldPos = computePosition(rankingId, username);
   let updated = false;
-  if (isLowerBetter(rankingId) ? (oldScore === 0 || n < oldScore) : (n > oldScore)) {
+  const scoreImproved = isLowerBetter(rankingId) ? (oldScore === 0 || n < oldScore) : (n > oldScore);
+  const shouldBackfillData = !oldData && !!newData && n === oldScore;
+  if (scoreImproved || shouldBackfillData) {
     scoresData.users[username][rankingId] = {
-      score: n,
-      data: (data === undefined || data === null) ? '' : String(data),
+      score: scoreImproved ? n : oldScore,
+      data: newData || oldData,
       updatedAt: new Date().toISOString(),
     };
     updated = true;
     saveScoresFile();
     const dbId = users[username] && users[username]._dbId;
     if (dbId) {
-      db.upsertScore(dbId, rankingId, n, scoresData.users[username][rankingId].data).catch((e) => {
+      db.upsertScore(dbId, rankingId, scoresData.users[username][rankingId].score, scoresData.users[username][rankingId].data).catch((e) => {
         console.error('[DB] score save error:', e.message);
       });
     }
@@ -473,14 +686,19 @@ function getUserScore(username, rankingId) {
 
 loadScores();
 seedDemoScores();
+loadChallengeMedals();
+if (!challengeMedalsData.lastRollDay) {
+  challengeMedalsData.lastRollDay = utcDayKey();
+  saveChallengeMedals();
+}
 
 function createDefaultUser(pass) {
   return {
     pass,
-    xp: 4680000,
-    kikooz: 150,
+    xp: 1,
+    kikooz: 60,
     fbouille: DEFAULT_BOUILLE_STATE,
-    items: withDefaultPens([1, 2, 3]),
+    items: [],
     contacts: [],
     blacklist: [],
     gender: 'M',
@@ -508,8 +726,8 @@ function dbUserToMemory(row) {
   }
   return {
     pass: row.password,
-    xp: row.xp || 4680000,
-    kikooz: row.kikooz || 150,
+    xp: row.xp ?? 1,
+    kikooz: row.kikooz ?? 60,
     fbouille: row.fbouille || DEFAULT_BOUILLE_STATE,
     items: withDefaultPens([]),
     contacts: [],
@@ -539,6 +757,31 @@ function dbUserToMemory(row) {
     hasWelcomeSiteLog: false,
     _dbId: row.id,
   };
+}
+
+async function hydrateUserFromDb(username, dbUser) {
+  users[username] = dbUserToMemory(dbUser);
+  const [items, accs, dbScores, dbContacts, dbBlacklist] = await Promise.all([
+    db.getUserItems(dbUser.id),
+    db.getUserAccessories(dbUser.id),
+    db.loadScoresForUser(dbUser.id),
+    db.getContacts(dbUser.id),
+    db.getBlacklist(dbUser.id),
+  ]);
+
+  if (items.length > 0) users[username].items = withDefaultPens(items);
+  if (accs.length > 0) users[username].customAccessories = accs;
+  users[username].contacts = Array.isArray(dbContacts) ? dbContacts : [];
+  users[username].blacklist = Array.isArray(dbBlacklist) ? dbBlacklist : [];
+
+  if (Object.keys(dbScores).length > 0) {
+    if (!scoresData.users[username]) scoresData.users[username] = {};
+    for (const [rkId, entry] of Object.entries(dbScores)) {
+      if (!scoresData.users[username][rkId]) {
+        scoresData.users[username][rkId] = entry;
+      }
+    }
+  }
 }
 
 function nowSqlTimestamp() {
@@ -580,6 +823,96 @@ function buildUserLogXml(entries) {
     const n = (e && Number(e.n) === 1) ? ' n="1"' : '';
     return `<l d="${d}" t="${Number.isFinite(t) && t > 0 ? t : 1}"${n}>${c}</l>`;
   }).join('');
+}
+
+function challengeRankingIds() {
+  return Object.keys(RANKINGS).filter((rk) => rk.endsWith('_challenge'));
+}
+
+function collectTop3ForRanking(rankingId) {
+  const all = [];
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+    if (rlist && rlist[rankingId] && Number.isFinite(Number(rlist[rankingId].score))) {
+      all.push({ u, s: Number(rlist[rankingId].score) });
+    }
+  }
+  all.sort(scoreComparator(rankingId));
+  return all.slice(0, 3);
+}
+
+function notifyChallengeWinners(winnersByUser, visibleDay) {
+  for (const [username, medals] of Object.entries(winnersByUser || {})) {
+    const ranks = medals.map((m) => m.rank).join(', ');
+    const games = medals.map((m) => m.game).join(', ');
+    const text = `Challenge quotidien: médaille(s) ${ranks} remportée(s) sur ${games}. Affichées le ${visibleDay}.`;
+    const user = users[username];
+    if (user) {
+      addUserHistoryEntry(user, { type: 1, content: text, flNew: true });
+    } else {
+      if (!challengeMedalsData.pendingNotifications[username]) {
+        challengeMedalsData.pendingNotifications[username] = [];
+      }
+      challengeMedalsData.pendingNotifications[username].push({ type: 1, content: text });
+    }
+  }
+}
+
+function resetChallengeScoresInMemory() {
+  const challengeIds = new Set(challengeRankingIds());
+  for (const [username, rlist] of Object.entries(scoresData.users || {})) {
+    if (!rlist) continue;
+    for (const rkId of Object.keys(rlist)) {
+      if (challengeIds.has(rkId)) delete rlist[rkId];
+    }
+    if (Object.keys(rlist).length === 0) delete scoresData.users[username];
+  }
+  saveScoresFile();
+}
+
+function rollDailyChallengeIfNeeded() {
+  const today = utcDayKey();
+  if (challengeMedalsData.lastRollDay === today) return;
+
+  const winnersByUser = {};
+  for (const rkId of challengeRankingIds()) {
+    const top = collectTop3ForRanking(rkId);
+    for (let i = 0; i < top.length; i++) {
+      const rank = i + 1;
+      const medal = rank === 1 ? 'or' : rank === 2 ? 'argent' : 'bronze';
+      const username = top[i].u;
+      if (!winnersByUser[username]) winnersByUser[username] = [];
+      winnersByUser[username].push({
+        game: (RANKINGS[rkId] && RANKINGS[rkId].game) || rkId,
+        rankingId: rkId,
+        rank,
+        medal,
+      });
+    }
+  }
+
+  challengeMedalsData.medalsByVisibleDay[today] = winnersByUser;
+  notifyChallengeWinners(winnersByUser, today);
+  challengeMedalsData.lastRollDay = today;
+  saveChallengeMedals();
+
+  resetChallengeScoresInMemory();
+  db.clearDailyChallengeScores().catch((e) => {
+    console.error('[DB] challenge daily reset error:', e.message);
+  });
+}
+
+function applyPendingChallengeNotifications(username, user) {
+  const list = challengeMedalsData.pendingNotifications[username];
+  if (!Array.isArray(list) || list.length === 0) return;
+  for (const n of list) {
+    addUserHistoryEntry(user, {
+      type: Number(n.type) || 1,
+      content: String(n.content || ''),
+      flNew: true,
+    });
+  }
+  delete challengeMedalsData.pendingNotifications[username];
+  saveChallengeMedals();
 }
 
 function normalizeUsername(raw) {
@@ -904,27 +1237,16 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
       }
       if (!users[username]) {
-        users[username] = dbUserToMemory(dbUser);
-        const items = await db.getUserItems(dbUser.id);
-        if (items.length > 0) users[username].items = withDefaultPens(items);
-        const accs = await db.getUserAccessories(dbUser.id);
-        if (accs.length > 0) users[username].customAccessories = accs;
-        const dbScores = await db.loadScoresForUser(dbUser.id);
-        if (Object.keys(dbScores).length > 0) {
-          if (!scoresData.users[username]) scoresData.users[username] = {};
-          for (const [rkId, entry] of Object.entries(dbScores)) {
-            if (!scoresData.users[username][rkId]) {
-              scoresData.users[username][rkId] = entry;
-            }
-          }
-        }
+        await hydrateUserFromDb(username, dbUser);
       }
       users[username]._dbId = dbUser.id;
+      applyPendingChallengeNotifications(username, users[username]);
     } else {
       const user = users[username];
       if (!user || user.pass !== password) {
         return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
       }
+      applyPendingChallengeNotifications(username, user);
     }
   } catch (e) {
     console.error('[DB] login lookup error:', e.message);
@@ -949,11 +1271,15 @@ app.post('/api/auth/login', async (req, res) => {
 // Query/body params: sid, game (disc name or id), score, data (optional).
 // ─────────────────────────────────────────────
 function handleSaveScore(req, res) {
+  rollDailyChallengeIfNeeded();
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
   const gameName = String(params.game || params.g || params.disc || '');
+  const mode = Number(params.m ?? params.mode ?? 0) || 0;
   const scoreVal = Number(params.score || params.s || 0) || 0;
-  const scoreData = String(params.data || params.da || '');
+  const scoreData = serializeScoreData(
+    params.data ?? params.da ?? params.r ?? params.misc ?? params.md ?? params.tz ?? ''
+  );
 
   // Resolve user from session.
   let username = '';
@@ -969,7 +1295,7 @@ function handleSaveScore(req, res) {
     return res.status(401).json({ ok: false, error: 'not_authenticated' });
   }
 
-  const rankingId = rankingIdForGame(gameName);
+  const rankingId = rankingIdForGame(gameName, mode);
   if (!rankingId) {
     return res.status(400).json({ ok: false, error: 'unknown_game', game: gameName });
   }
@@ -992,6 +1318,7 @@ app.get('/api/saveScore', handleSaveScore);
 // SWF-triggered score save: the patched game SWFs call loadVariables("s<score>", "")
 // which resolves (via Ruffle base URL) to /swf/games/<game>/s<score>.
 app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
+  rollDailyChallengeIfNeeded();
   const gameName = req.params[0];
   const scoreVal = parseInt(req.params[1]) || 0;
   let username = '';
@@ -1004,7 +1331,7 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
     console.log(`[SWF-SCORE] skip save user="${username}" sid="${sid}" ip="${ip}" game="${gameName}" score=${scoreVal}`);
     return res.type('text/plain').send('ok=0');
   }
-  const rankingId = rankingIdForGame(gameName);
+  const rankingId = rankingIdForGame(gameName, 0);
   if (!rankingId) {
     console.log(`[SWF-SCORE] unknown ranking game="${gameName}" sid="${sid}" user="${username}"`);
     return res.type('text/plain').send('ok=0');
@@ -2026,7 +2353,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 // ENDPOINT: ff/mk — Create file/folder
 // Returns XML
 // ─────────────────────────────────────────────
-app.all(['/ff/mk', '/mk'], (req, res) => {
+app.all(['/ff/mk', '/mk'], async (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
   const sid = getSidFromRequest(req, source);
   const auth = requireAuthBySid(sid, res, 'text/xml');
@@ -2068,6 +2395,12 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
     const addr = normalizeContactAddress(contactRaw);
     const list = folder === 'blacklist' ? user.blacklist : user.contacts;
     if (addr && !list.includes(addr)) list.push(addr);
+    if (addr && user._dbId) {
+      const persist = folder === 'blacklist'
+        ? db.addBlacklist(user._dbId, addr)
+        : db.addContact(user._dbId, addr);
+      persist.catch((e) => console.error('[DB] contact save error:', e.message));
+    }
     const local = addr.split('@')[0] || addr || newUid;
     return res.type('text/xml').send(
       `<r u="${escapeXml(local)}" t="contact" d="${now}" f="${escapeXml(folder)}">${escapeXml(addr)}</r>`
@@ -2081,7 +2414,7 @@ app.all(['/ff/mk', '/mk'], (req, res) => {
 // ENDPOINT: ff/mv — Move file
 // Returns XML
 // ─────────────────────────────────────────────
-app.all(['/ff/mv', '/mv'], (req, res) => {
+app.all(['/ff/mv', '/mv'], async (req, res) => {
   const source = req.method === 'POST' ? req.body : req.query;
   const sid = source.sid || req.query.sid;
   const auth = requireAuthBySid(sid, res, 'text/xml');
@@ -2105,27 +2438,33 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
     if (inContacts) {
       user.contacts = user.contacts.filter((a) => a !== inContacts);
       oldFolder = 'mycontact';
+      if (user._dbId) db.removeContact(user._dbId, inContacts).catch((e) => console.error('[DB] contact remove error:', e.message));
     } else if (inBlacklist) {
       user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
       oldFolder = 'blacklist';
+      if (user._dbId) db.removeBlacklist(user._dbId, inBlacklist).catch((e) => console.error('[DB] blacklist remove error:', e.message));
     }
   } else if (folder === 'blacklist') {
     const addr = inContacts || normalizedFileAddr || file;
     if (inContacts) {
       user.contacts = user.contacts.filter((a) => a !== inContacts);
       oldFolder = 'mycontact';
+      if (user._dbId) db.removeContact(user._dbId, inContacts).catch((e) => console.error('[DB] contact move error:', e.message));
     }
     if (addr && !user.blacklist.includes(addr)) {
       user.blacklist.push(addr);
+      if (user._dbId) db.addBlacklist(user._dbId, addr).catch((e) => console.error('[DB] blacklist add error:', e.message));
     }
   } else if (folder === 'mycontact') {
     const addr = inBlacklist || normalizedFileAddr || file;
     if (inBlacklist) {
       user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
       oldFolder = 'blacklist';
+      if (user._dbId) db.removeBlacklist(user._dbId, inBlacklist).catch((e) => console.error('[DB] blacklist move error:', e.message));
     }
     if (addr && !user.contacts.includes(addr)) {
       user.contacts.push(addr);
+      if (user._dbId) db.addContact(user._dbId, addr).catch((e) => console.error('[DB] contact add error:', e.message));
     }
   }
 
@@ -2137,7 +2476,7 @@ app.all(['/ff/mv', '/mv'], (req, res) => {
 // ENDPOINT: ff/rm — Remove file/contact
 // Returns XML
 // ─────────────────────────────────────────────
-app.get(['/ff/rm', '/rm'], (req, res) => {
+app.get(['/ff/rm', '/rm'], async (req, res) => {
   const sid = req.query.sid;
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
@@ -2170,6 +2509,12 @@ app.get(['/ff/rm', '/rm'], (req, res) => {
       if (hit && removeFromList(listName, hit)) {
         removedFrom = listName === 'contacts' ? 'mycontact' : 'blacklist';
         removedValue = hit;
+        if (user._dbId) {
+          const persist = listName === 'contacts'
+            ? db.removeContact(user._dbId, hit)
+            : db.removeBlacklist(user._dbId, hit);
+          persist.catch((e) => console.error('[DB] contact delete error:', e.message));
+        }
         return true;
       }
     }
@@ -2993,6 +3338,7 @@ function buildChannelListXml() {
 // Handle a single CBee XML message from a client
 // ─────────────────────────────────────────────
 async function handleCBeeMessage(socket, rawXml) {
+  rollDailyChallengeIfNeeded();
   const msg = parseXmlAttrs(rawXml);
   const cmdName = CMD_REV[msg.tag] || msg.tag;
   const client = xmlSocketClients.get(socket);
@@ -3112,27 +3458,14 @@ async function handleCBeeMessage(socket, rawXml) {
         let dbUser = null;
         try { dbUser = await db.findUserByUsername(effectiveLogin); } catch (e) { /* ignore */ }
         if (dbUser) {
-          users[effectiveLogin] = dbUserToMemory(dbUser);
           try {
-            const items = await db.getUserItems(dbUser.id);
-            if (items.length > 0) users[effectiveLogin].items = withDefaultPens(items);
-            const accs = await db.getUserAccessories(dbUser.id);
-            if (accs.length > 0) users[effectiveLogin].customAccessories = accs;
-            const dbScores = await db.loadScoresForUser(dbUser.id);
-            if (Object.keys(dbScores).length > 0) {
-              if (!scoresData.users[effectiveLogin]) scoresData.users[effectiveLogin] = {};
-              for (const [rkId, entry] of Object.entries(dbScores)) {
-                if (!scoresData.users[effectiveLogin][rkId]) {
-                  scoresData.users[effectiveLogin][rkId] = entry;
-                }
-              }
-            }
+            await hydrateUserFromDb(effectiveLogin, dbUser);
           } catch (e) { /* ignore */ }
         } else {
           users[effectiveLogin] = {
             pass: '',
-            xp: 10000,
-            kikooz: 50,
+            xp: 1,
+            kikooz: 60,
             fbouille: DEFAULT_BOUILLE_STATE,
             items: withDefaultPens([]),
             gender: 'M',
@@ -3151,6 +3484,7 @@ async function handleCBeeMessage(socket, rawXml) {
       }
 
       const user = users[effectiveLogin];
+      applyPendingChallengeNotifications(effectiveLogin, user);
       if (user.hasWelcomeUserLog !== true) {
         addUserHistoryEntry(user, {
           type: 1,
@@ -3194,12 +3528,13 @@ async function handleCBeeMessage(socket, rawXml) {
       if (msg.attrs.d != undefined || msg.attrs.s != undefined) {
         const discId = String(msg.attrs.d || '');
         const scoreVal = Number(msg.attrs.s || 0) || 0;
-        const scoreData = String(msg.attrs.da || msg.attrs.d2 || '');
+        const scoreMode = Number(msg.attrs.m || 0) || 0;
+        const scoreData = getScoreDataFromMessage(msg);
         const username = client.username || '';
-        console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)}`);
-        let rankingId = rankingIdForGame(discId);
+        console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" children=${JSON.stringify(msg.children || [])}`);
+        let rankingId = rankingIdForGame(discId, scoreMode);
         // Fall back to the last started game on this connection.
-        if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame);
+        if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
         // Persist if we have a valid ranking + user.
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
         if (username && rankingId) {
@@ -3215,7 +3550,8 @@ async function handleCBeeMessage(socket, rawXml) {
         // into the UI as "Votre classement : undefined".
         const rkInfo = rankingId ? (RANKINGS[rankingId] || {}) : {};
         const rnAttr = rkInfo.name ? ` rn="${escapeXml(rkInfo.name)}"` : '';
-        const rAttr = scoreData ? ` r="${escapeXml(scoreData)}"` : ' r=""';
+        const rankingDataForClient = rankingId ? formatRankingExtraData(rankingId, scoreData) : scoreData;
+        const rAttr = rankingDataForClient ? ` r="${escapeXml(rankingDataForClient)}"` : ' r=""';
         const subAttrs = `${rnAttr}${rAttr} p="${res.newPos}" os="${res.oldScore}" op="${res.oldPos}" s="${res.newScore}"`;
         sendToClient(socket, `<${CMD.channellist} k="0"><rk${subAttrs}/></${CMD.channellist}>`);
         break;
@@ -3406,10 +3742,10 @@ broadcastToChannel(
       // Respond with wire "m" so the client dispatches to onRankingResult.
       if (msg.attrs.rk !== undefined) {
         const rkInput = String(msg.attrs.rk);
-        const internalId = resolveInternalRankingId(rkInput);
+        const cAttrIn = String(msg.attrs.c || '');
+        const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
-        const cAttrIn = String(msg.attrs.c || '');
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
         const all = [];
@@ -3426,7 +3762,8 @@ broadcastToChannel(
         for (const e of slice) {
           const ud = users[e.u] || {};
           const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
-          const dAttr = e.d ? ` d="${escapeXml(e.d)}"` : '';
+          const displayData = formatRankingExtraData(internalId, e.d);
+          const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
           inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
@@ -3457,10 +3794,10 @@ broadcastToChannel(
       // FrutiScore overlap: rankingResult uses wire code "m" with rk attr.
       if (msg.attrs.rk !== undefined) {
         const rkInput = String(msg.attrs.rk);
-        const internalId = resolveInternalRankingId(rkInput);
+        const cAttrIn = String(msg.attrs.c || '');
+        const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
-        const cAttrIn = String(msg.attrs.c || '');
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
         const all = [];
@@ -3477,7 +3814,8 @@ broadcastToChannel(
         for (const e of slice) {
           const ud = users[e.u] || {};
           const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
-          const dAttr = e.d ? ` d="${escapeXml(e.d)}"` : '';
+          const displayData = formatRankingExtraData(internalId, e.d);
+          const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
           inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
@@ -4023,6 +4361,11 @@ case 'createchannel': {
         if (info.pos === 1 && info.score > 0) {
           inner += `<a g="${escapeXml(rk.game)}" n="${escapeXml(rk.name)}" v="${info.score}" d="0" />`;
         }
+      }
+      const today = utcDayKey();
+      const medalsToday = (challengeMedalsData.medalsByVisibleDay[today] || {})[targetUser] || [];
+      for (const medal of medalsToday) {
+        inner += `<a g="${escapeXml(medal.game)}" n="${escapeXml(`Challenge ${medal.game} ${medal.medal}`)}" v="${medal.rank}" d="1" />`;
       }
       sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.awarduser}>`);
       console.log(`[FSCORE] awarduser user=${targetUser}`);
