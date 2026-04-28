@@ -1089,6 +1089,7 @@ const DEFAULT_WALLPAPERS = [
   { u: 'ministar',       n: 'Mini-Wave Mini-Star',   url: 'wal/va.jpg', color: '000044;' },
   { u: 'utopiz',         n: 'Utopiz',                url: 'wal/ut.jpg', color: 'F6AFA9;' },
 ];
+const WALLPAPER_BY_ID = Object.fromEntries(DEFAULT_WALLPAPERS.map(w => [w.u, w]));
 
 // Accessories = last 9 chars of a 24-char bouille string.
 // The first 15 chars are filled from the user's current bouille at serve time.
@@ -1144,6 +1145,15 @@ const SHOP_PACKS_DEFAULT = [
     suffix9: '30y0t0j00',
     comment: 'Édition test',
   },
+  // Wallpapers
+  { id: 201, name: 'Chevalier moutarde',    category: "Fonds d'écran", price: 0, description: 'Un fond chevaleresque aux tons moutarde.',     suffix9: '000000000', wallpaperId: 'moutarde' },
+  { id: 202, name: 'Chorale Frutiparc',     category: "Fonds d'écran", price: 0, description: 'La grande chorale de Frutiparc !',             suffix9: '000000000', wallpaperId: 'chorale' },
+  { id: 203, name: 'Noël Pixiz',            category: "Fonds d'écran", price: 0, description: 'Ambiance de Noël avec les Pixiz.',              suffix9: '000000000', wallpaperId: 'pixizchristmas' },
+  { id: 204, name: 'Noël Frutisnake',       category: "Fonds d'écran", price: 0, description: 'Frutisnake en mode fêtes de fin d\'année.',     suffix9: '000000000', wallpaperId: 'snakechristmas' },
+  { id: 205, name: 'Mini-Pixiz',            category: "Fonds d'écran", price: 0, description: 'Les petits Pixiz en action.',                   suffix9: '000000000', wallpaperId: 'pixiz' },
+  { id: 206, name: 'Mini-Wave Nostromo',    category: "Fonds d'écran", price: 0, description: 'Le vaisseau Nostromo de Mini-Wave.',             suffix9: '000000000', wallpaperId: 'nostromo' },
+  { id: 207, name: 'Mini-Wave Mini-Star',   category: "Fonds d'écran", price: 0, description: 'La planète Mini-Star de Mini-Wave.',             suffix9: '000000000', wallpaperId: 'ministar' },
+  { id: 208, name: 'Utopiz',                category: "Fonds d'écran", price: 0, description: 'Le monde coloré d\'Utopiz.',                    suffix9: '000000000', wallpaperId: 'utopiz' },
 ];
 const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
 
@@ -1176,6 +1186,18 @@ function buildShopTreeXml(user) {
 }
 
 function buildShopPackXml(pack, user) {
+  const alreadyBuy = userOwnsShopPack(user, pack.id) ? '1' : '0';
+  if (pack.wallpaperId) {
+    const wp = WALLPAPER_BY_ID[pack.wallpaperId];
+    const picto = wp ? `wallpaper,${wp.url}` : 'wallpaper,wal/ch.jpg';
+    return (
+      `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
+      ` p="${escapeXml(picto)}" q="-1" h="${alreadyBuy}">` +
+      `<d>${escapeXml(pack.description)}</d>` +
+      `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
+      `</p>`
+    );
+  }
   // box.Shop builds the picto bouille as:
   //   _global.me.fbouille.substr(0,14) + picto[1]
   // i.e. 14 chars from the user's current bouille + 10 chars from picto[1].
@@ -1184,7 +1206,6 @@ function buildShopPackXml(pack, user) {
   const fullBouille = bouilleOf(user);
   const char14 = (fullBouille.charAt(14) || '0');
   const pictoSuffix10 = (char14 + pack.suffix9).slice(0, 10);
-  const alreadyBuy = userOwnsShopPack(user, pack.id) ? '1' : '0';
   return (
     `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
     ` p="bouille,${escapeXml(pictoSuffix10)}" q="-1" h="${alreadyBuy}">` +
@@ -1660,12 +1681,14 @@ app.post('/api/admin/shop/:id/push-all', adminAuth, async (req, res) => {
     for (const row of allUsers) {
       const accs = await db.getUserAccessories(row.id);
       if (accs.some(a => a.shopId === pack.id)) { skipped++; continue; }
+      const isWp = !!pack.wallpaperId;
+      const wp = isWp ? WALLPAPER_BY_ID[pack.wallpaperId] : null;
       const bouille15 = (row.fbouille || DEFAULT_BOUILLE_STATE).substring(0, 15);
       const acc = {
-        id: 'shop_' + pack.id,
+        id: isWp ? ('wp_' + pack.wallpaperId) : ('shop_' + pack.id),
         shopId: pack.id,
         n: pack.name,
-        v: bouille15 + pack.suffix9,
+        v: isWp ? `wp:${wp.url}:${wp.color}` : bouille15 + pack.suffix9,
         q: '1',
         p: String(pack.price),
       };
@@ -2563,10 +2586,14 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
   if (user._dbId) db.updateUser(auth.username, { kikooz: user.kikooz }).catch(() => {});
 
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  const bouilleStr = bouilleOf(user).substring(0, 15) + pack.suffix9;
+  const isWallpaper = !!pack.wallpaperId;
+  const wp = isWallpaper ? WALLPAPER_BY_ID[pack.wallpaperId] : null;
+  const bouilleStr = isWallpaper
+    ? `wp:${wp.url}:${wp.color}`
+    : bouilleOf(user).substring(0, 15) + pack.suffix9;
   if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
   const accEntry = {
-    id: 'shop_' + pack.id,
+    id: isWallpaper ? ('wp_' + pack.wallpaperId) : ('shop_' + pack.id),
     shopId: pack.id,
     n: pack.name,
     v: bouilleStr,
@@ -2589,7 +2616,7 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
   // and folder refresh requests so Inventaire/Accessoires re-list contents.
   const xml =
     `<r i="${user.kikooz}">` +
-    `<b b="${escapeXml(bouilleStr)}">${escapeXml(pack.name)}</b>` +
+    (isWallpaper ? '' : `<b b="${escapeXml(bouilleStr)}">${escapeXml(pack.name)}</b>`) +
     `<f>inventory</f>` +
     `<f>accessories</f>` +
     `</r>`;
@@ -2658,17 +2685,23 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 
   if (uid === 'inventory') {
     const bouillePrefix = bouilleOf(user).substring(0, 15);
-    const wallpaperNodes = DEFAULT_WALLPAPERS
-      .map((wp) => `<e u="${escapeXml(wp.u)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(wp.n)}\n${wp.url}\n${wp.color}</e>`)
-      .join('');
     const defaultAccNodes = DEFAULT_ACCESSORIES
       .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
       .join('');
-    const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
-      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
-      .join('');
+    let customAccNodes = '';
+    for (const acc of (Array.isArray(user.customAccessories) ? user.customAccessories : [])) {
+      const v = acc.v || '';
+      if (v.startsWith('wp:')) {
+        const parts = v.split(':');
+        const wpUrl = parts[1] || '';
+        const wpColor = parts.slice(2).join(':') || '';
+        customAccNodes += `<e u="${escapeXml(acc.id)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(acc.n || 'Fond')}\n${wpUrl}\n${wpColor}</e>`;
+      } else {
+        customAccNodes += `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(v || DEFAULT_BOUILLE_STATE)}</e>`;
+      }
+    }
     return res.type('text/xml').send(
-      `<f u="inventory">${wallpaperNodes}${defaultAccNodes}${customAccNodes}</f>`
+      `<f u="inventory">${defaultAccNodes}${customAccNodes}</f>`
     );
   }
 
