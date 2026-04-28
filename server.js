@@ -1317,6 +1317,21 @@ function handleSaveScore(req, res) {
 app.post('/api/saveScore', handleSaveScore);
 app.get('/api/saveScore', handleSaveScore);
 
+app.post('/api/admin/clearScores', async (req, res) => {
+  const ranking = String(req.body.ranking || '').trim();
+  if (!ranking) return res.status(400).json({ ok: false, error: 'missing ranking' });
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+    if (rlist[ranking]) delete rlist[ranking];
+    if (Object.keys(rlist).length === 0) delete scoresData.users[u];
+  }
+  saveScoresFile();
+  if (process.env.DATABASE_URL) {
+    try { await db.pool.query("DELETE FROM scores WHERE ranking_id = $1", [ranking]); } catch (e) { console.error(e.message); }
+  }
+  console.log(`[ADMIN] Cleared scores for ranking: ${ranking}`);
+  return res.json({ ok: true, ranking });
+});
+
 // SWF-triggered score save: the patched game SWFs call loadVariables("s<score>", "")
 // which resolves (via Ruffle base URL) to /swf/games/<game>/s<score>.
 app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
