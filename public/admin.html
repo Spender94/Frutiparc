@@ -38,6 +38,10 @@
   .modal input, .modal select { background: #0f3460; border: 1px solid #2a3a5e; color: #e0e0e0; padding: 5px 8px; border-radius: 4px; font-size: 13px; width: 220px; }
   .modal .actions { margin-top: 16px; display: flex; gap: 10px; justify-content: flex-end; }
   .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; background: #0f3460; }
+  .badge-mod { background: #e94560; color: #fff; cursor: pointer; }
+  .badge-no-mod { background: #2a3a5e; color: #8899aa; cursor: pointer; }
+  .btn-success { background: #27ae60; color: #fff; }
+  .btn-success:hover { background: #219a52; }
   .empty { color: #667; font-style: italic; padding: 20px; }
   .bouille-preview { width: 24px; height: 24px; border-radius: 50%; background: #0f3460; display: inline-block; vertical-align: middle; overflow: hidden; }
   .count { color: #e94560; font-weight: bold; }
@@ -58,6 +62,7 @@
   <div class="tab active" data-tab="users" onclick="switchTab('users')">Joueurs</div>
   <div class="tab" data-tab="scores" onclick="switchTab('scores')">Scores</div>
   <div class="tab" data-tab="detail" onclick="switchTab('detail')">Détail joueur</div>
+  <div class="tab" data-tab="shop" onclick="switchTab('shop')">Boutique</div>
 </div>
 
 <div class="content" id="tab-users">
@@ -66,7 +71,7 @@
     <span id="user-count"></span>
   </div>
   <table>
-    <thead><tr><th>Pseudo</th><th>XP</th><th>Kikooz</th><th>Bouille</th><th>Genre</th><th>Inscrit le</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Pseudo</th><th>XP</th><th>Kikooz</th><th>Bouille</th><th>Genre</th><th>Modo</th><th>Inscrit le</th><th>Actions</th></tr></thead>
     <tbody id="users-body"></tbody>
   </table>
 </div>
@@ -92,6 +97,34 @@
     <button class="btn" onclick="loadDetail()">Charger</button>
   </div>
   <div id="detail-content"></div>
+</div>
+
+<div class="content" id="tab-shop" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadShop()">Rafraîchir</button>
+    <button class="btn-success" onclick="openAddPack()">+ Nouvel accessoire</button>
+    <span id="shop-count"></span>
+  </div>
+  <table>
+    <thead><tr><th>ID</th><th>Nom</th><th>Catégorie</th><th>Prix</th><th>Suffix9</th><th>Description</th><th>Actions</th></tr></thead>
+    <tbody id="shop-body"></tbody>
+  </table>
+</div>
+
+<div class="modal-bg" id="modal-add-pack">
+  <div class="modal">
+    <h3 id="pack-modal-title">Nouvel accessoire boutique</h3>
+    <label><span>ID :</span> <input id="pack-id" type="number" placeholder="105"></label>
+    <label><span>Nom :</span> <input id="pack-name" placeholder="Lunettes de soleil"></label>
+    <label><span>Catégorie :</span> <input id="pack-category" value="Accessoires"></label>
+    <label><span>Prix (Kikooz) :</span> <input id="pack-price" type="number" value="60"></label>
+    <label><span>Suffix9 :</span> <input id="pack-suffix9" placeholder="a0b0c0d0e" maxlength="9"></label>
+    <label><span>Description :</span> <input id="pack-desc" placeholder="Description de l'accessoire"></label>
+    <div class="actions">
+      <button class="btn" onclick="closeModal('modal-add-pack')">Annuler</button>
+      <button class="btn-danger" id="pack-save-btn" onclick="saveAddPack()">Créer</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal-bg" id="modal-edit-user">
@@ -176,11 +209,12 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail'].forEach(t => {
+  ['users','scores','detail','shop'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
   if (name === 'scores' && !$('#ranking-select').dataset.loaded) loadScores();
+  if (name === 'shop' && !$('#shop-body').dataset.loaded) loadShop();
 }
 
 function closeModal(id) { $(`#${id}`).classList.remove('open'); }
@@ -210,6 +244,7 @@ async function loadUsers() {
       <td>${u.kikooz || 0}</td>
       <td><code style="font-size:11px">${esc((u.fbouille||'').substring(0,12))}…</code></td>
       <td>${esc(u.gender || 'M')}</td>
+      <td><span class="badge ${u.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u.username)}',${!u.is_moderator})" title="Cliquer pour changer">${u.is_moderator ? 'Modo' : '-'}</span></td>
       <td>${fmtDate(u.created_at)}</td>
       <td>
         <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}')">Modifier</button>
@@ -342,6 +377,7 @@ async function loadDetail() {
       <tr><td>Kikooz</td><td>${user.kikooz}</td></tr>
       <tr><td>Bouille</td><td><code>${esc(user.fbouille||'')}</code></td></tr>
       <tr><td>Genre</td><td>${user.gender||'M'}</td></tr>
+      <tr><td>Modérateur</td><td><span class="badge ${user.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u)}',${!user.is_moderator});setTimeout(loadDetail,500)" style="cursor:pointer">${user.is_moderator ? 'Oui' : 'Non'}</span></td></tr>
       <tr><td>Anniversaire</td><td>${fmtDate(user.birthday)}</td></tr>
       <tr><td>Inscrit le</td><td>${fmtDate(user.created_at)}</td></tr>
     </table>`;
@@ -426,6 +462,126 @@ async function deleteItem(itemId) {
   await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/items/${itemId}`, { method: 'DELETE', headers: hdr() });
   toast('Item supprimé');
   loadDetail();
+}
+
+// ── Moderator toggle ──
+async function toggleMod(username, setMod) {
+  const action = setMod ? 'donner les droits modérateur à' : 'retirer les droits modérateur de';
+  if (!confirm(`${action} ${username} ?`)) return;
+  await fetch(`/api/admin/users/${encodeURIComponent(username)}`, {
+    method: 'PATCH', headers: hdr(),
+    body: JSON.stringify({ is_moderator: setMod })
+  });
+  toast(setMod ? `${username} est maintenant modérateur` : `${username} n'est plus modérateur`);
+  loadUsers();
+}
+
+// ── Shop / Boutique ──
+let shopPacks = [];
+let editingPackId = null;
+
+async function loadShop() {
+  try {
+    const r = await fetch('/api/admin/shop', { headers: hdr() });
+    shopPacks = await r.json();
+    $('#shop-body').dataset.loaded = '1';
+    $('#shop-count').innerHTML = `<span class="count">${shopPacks.length}</span> accessoires`;
+    const tb = $('#shop-body');
+    tb.innerHTML = shopPacks.map(p => `<tr>
+      <td>${p.id}</td>
+      <td>${esc(p.name)}</td>
+      <td>${esc(p.category || '')}</td>
+      <td>${p.price} K</td>
+      <td><code>${esc(p.suffix9)}</code></td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.description||'')}">${esc(p.description || '-')}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="editPack(${p.id})">Modifier</button>
+        <button class="btn-success btn-sm" onclick="pushPackAll(${p.id},'${esc(p.name)}')">Pousser à tous</button>
+        <button class="btn-danger btn-sm" onclick="deletePack(${p.id},'${esc(p.name)}')">Supprimer</button>
+      </td>
+    </tr>`).join('');
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+function openAddPack() {
+  editingPackId = null;
+  $('#pack-modal-title').textContent = 'Nouvel accessoire boutique';
+  $('#pack-id').value = '';
+  $('#pack-id').disabled = false;
+  $('#pack-name').value = '';
+  $('#pack-category').value = 'Accessoires';
+  $('#pack-price').value = 60;
+  $('#pack-suffix9').value = '';
+  $('#pack-desc').value = '';
+  $('#pack-save-btn').textContent = 'Créer';
+  $('#pack-save-btn').onclick = saveAddPack;
+  $('#modal-add-pack').classList.add('open');
+}
+
+function editPack(id) {
+  const p = shopPacks.find(x => x.id === id);
+  if (!p) return;
+  editingPackId = id;
+  $('#pack-modal-title').textContent = `Modifier : ${p.name}`;
+  $('#pack-id').value = p.id;
+  $('#pack-id').disabled = true;
+  $('#pack-name').value = p.name;
+  $('#pack-category').value = p.category || 'Accessoires';
+  $('#pack-price').value = p.price;
+  $('#pack-suffix9').value = p.suffix9;
+  $('#pack-desc').value = p.description || '';
+  $('#pack-save-btn').textContent = 'Sauvegarder';
+  $('#pack-save-btn').onclick = saveEditPack;
+  $('#modal-add-pack').classList.add('open');
+}
+
+async function saveAddPack() {
+  const body = {
+    id: Number($('#pack-id').value),
+    name: $('#pack-name').value,
+    category: $('#pack-category').value,
+    price: Number($('#pack-price').value),
+    suffix9: $('#pack-suffix9').value,
+    description: $('#pack-desc').value,
+  };
+  if (!body.id || !body.name || !body.suffix9) { toast('ID, nom et suffix9 requis'); return; }
+  const r = await fetch('/api/admin/shop', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+  const data = await r.json();
+  if (!r.ok) { toast('Erreur: ' + (data.error || 'inconnu')); return; }
+  closeModal('modal-add-pack');
+  toast(`Accessoire "${body.name}" créé`);
+  loadShop();
+}
+
+async function saveEditPack() {
+  const body = {
+    name: $('#pack-name').value,
+    category: $('#pack-category').value,
+    price: Number($('#pack-price').value),
+    suffix9: $('#pack-suffix9').value,
+    description: $('#pack-desc').value,
+  };
+  const r = await fetch(`/api/admin/shop/${editingPackId}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify(body) });
+  if (!r.ok) { toast('Erreur'); return; }
+  closeModal('modal-add-pack');
+  toast(`Accessoire mis à jour`);
+  loadShop();
+}
+
+async function deletePack(id, name) {
+  if (!confirm(`Supprimer l'accessoire "${name}" (ID ${id}) du catalogue ?\nCela ne retire pas l'accessoire des joueurs qui l'ont déjà.`)) return;
+  await fetch(`/api/admin/shop/${id}`, { method: 'DELETE', headers: hdr() });
+  toast(`Accessoire "${name}" supprimé du catalogue`);
+  loadShop();
+}
+
+async function pushPackAll(id, name) {
+  if (!confirm(`Pousser "${name}" dans la boutique de TOUS les joueurs ?\nLes joueurs qui l'ont déjà seront ignorés.`)) return;
+  toast('Envoi en cours…');
+  const r = await fetch(`/api/admin/shop/${id}/push-all`, { method: 'POST', headers: hdr() });
+  const data = await r.json();
+  if (!r.ok) { toast('Erreur: ' + (data.error || 'inconnu')); return; }
+  toast(`"${name}" poussé à ${data.pushed} joueurs (${data.skipped} avaient déjà)`);
 }
 </script>
 </body>

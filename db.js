@@ -445,7 +445,7 @@ async function getMedalsByDay(day) {
 
 async function listAllUsers() {
   const { rows } = await pool.query(
-    'SELECT id, username, xp, kikooz, fbouille, gender, created_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, xp, kikooz, fbouille, gender, is_moderator, created_at FROM users ORDER BY created_at DESC'
   );
   return rows;
 }

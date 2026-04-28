@@ -1460,9 +1460,13 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     if (body.xp !== undefined) fields.xp = Number(body.xp);
     if (body.kikooz !== undefined) fields.kikooz = Number(body.kikooz);
     if (body.password !== undefined) fields.password = body.password;
+    if (body.is_moderator !== undefined) fields.is_moderator = !!body.is_moderator;
     if (Object.keys(fields).length > 0) {
       await db.updateUser(u, fields);
-      if (users[u]) Object.assign(users[u], fields);
+      if (users[u]) {
+        Object.assign(users[u], fields);
+        if (fields.is_moderator !== undefined) users[u].isModerator = fields.is_moderator;
+      }
     }
     console.log(`[ADMIN] Updated user ${u}: ${Object.keys(fields).join(', ')}`);
     res.json({ ok: true });
@@ -1593,6 +1597,82 @@ app.delete('/api/admin/users/:username/items/:itemId', adminAuth, async (req, re
       users[req.params.username].items = withDefaultPens(await db.getUserItems(row.id));
     }
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Admin: Shop pack management ──
+app.get('/api/admin/shop', adminAuth, (req, res) => {
+  res.json(SHOP_PACKS);
+});
+
+app.post('/api/admin/shop', adminAuth, (req, res) => {
+  const b = req.body || {};
+  const id = Number(b.id);
+  if (!id || !b.name || !b.suffix9) return res.status(400).json({ error: 'missing id, name or suffix9' });
+  if (SHOP_PACKS.find(p => p.id === id)) return res.status(409).json({ error: 'id already exists' });
+  const pack = {
+    id,
+    name: String(b.name),
+    category: String(b.category || 'Accessoires'),
+    price: Number(b.price) || 0,
+    description: String(b.description || ''),
+    suffix9: String(b.suffix9),
+    comment: String(b.comment || b.description || ''),
+  };
+  SHOP_PACKS.push(pack);
+  console.log(`[ADMIN] Created shop pack ${id}: ${pack.name}`);
+  res.json({ ok: true, pack });
+});
+
+app.patch('/api/admin/shop/:id', adminAuth, (req, res) => {
+  const pack = SHOP_PACKS.find(p => p.id === Number(req.params.id));
+  if (!pack) return res.status(404).json({ error: 'not found' });
+  const b = req.body || {};
+  if (b.name !== undefined) pack.name = String(b.name);
+  if (b.category !== undefined) pack.category = String(b.category);
+  if (b.price !== undefined) pack.price = Number(b.price);
+  if (b.description !== undefined) { pack.description = String(b.description); pack.comment = String(b.description); }
+  if (b.suffix9 !== undefined) pack.suffix9 = String(b.suffix9);
+  console.log(`[ADMIN] Updated shop pack ${pack.id}: ${pack.name}`);
+  res.json({ ok: true, pack });
+});
+
+app.delete('/api/admin/shop/:id', adminAuth, (req, res) => {
+  const idx = SHOP_PACKS.findIndex(p => p.id === Number(req.params.id));
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  const removed = SHOP_PACKS.splice(idx, 1)[0];
+  console.log(`[ADMIN] Deleted shop pack ${removed.id}: ${removed.name}`);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/shop/:id/push-all', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  const pack = SHOP_PACKS.find(p => p.id === Number(req.params.id));
+  if (!pack) return res.status(404).json({ error: 'pack not found' });
+  try {
+    const allUsers = await db.listAllUsers();
+    let pushed = 0;
+    let skipped = 0;
+    for (const row of allUsers) {
+      const accs = await db.getUserAccessories(row.id);
+      if (accs.some(a => a.shopId === pack.id)) { skipped++; continue; }
+      const bouille15 = (row.fbouille || DEFAULT_BOUILLE_STATE).substring(0, 15);
+      const acc = {
+        id: 'shop_' + pack.id,
+        shopId: pack.id,
+        n: pack.name,
+        v: bouille15 + pack.suffix9,
+        q: '1',
+        p: String(pack.price),
+      };
+      await db.addAccessory(row.id, acc);
+      if (users[row.username]) {
+        users[row.username].customAccessories = await db.getUserAccessories(row.id);
+      }
+      pushed++;
+    }
+    console.log(`[ADMIN] Pushed shop pack ${pack.id} (${pack.name}) to ${pushed} users (${skipped} already owned)`);
+    res.json({ ok: true, pushed, skipped });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
