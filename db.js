@@ -380,6 +380,17 @@ async function loadAllScores() {
   return result;
 }
 
+async function loadAllBouilles() {
+  const { rows } = await pool.query(
+    'SELECT username, fbouille FROM users WHERE fbouille IS NOT NULL'
+  );
+  const result = {};
+  for (const r of rows) {
+    if (r.fbouille) result[r.username] = r.fbouille;
+  }
+  return result;
+}
+
 async function clearDailyChallengeScores() {
   await pool.query(
     `DELETE FROM scores
@@ -412,5 +423,6 @@ module.exports = {
   removeBlacklist,
   loadScoresForUser,
   loadAllScores,
+  loadAllBouilles,
   clearDailyChallengeScores,
 };

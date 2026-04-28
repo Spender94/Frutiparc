@@ -162,10 +162,12 @@ function normalizeBouilleState(value) {
   return s;
 }
 
-function bouilleOf(user) {
-  return normalizeBouilleState(
-    user && user.fbouille ? user.fbouille : DEFAULT_BOUILLE_STATE
-  );
+const bouilleCache = {};
+
+function bouilleOf(user, username) {
+  if (user && user.fbouille) return normalizeBouilleState(user.fbouille);
+  if (username && bouilleCache[username]) return normalizeBouilleState(bouilleCache[username]);
+  return DEFAULT_BOUILLE_STATE;
 }
 
 // ─────────────────────────────────────────────
@@ -1657,6 +1659,7 @@ app.all('/do/eb', (req, res) => {
   if (!auth) return;
 
   auth.user.fbouille = bouille;
+  bouilleCache[auth.username] = bouille;
   if (auth.user._dbId) db.updateUser(auth.username, { fbouille: bouille, needs_bouille: false }).catch(() => {});
 
   console.log(`[do/eb] Saved bouille for ${auth.username}: ${bouille}`);
@@ -2672,6 +2675,9 @@ async function boot() {
         }
       }
       console.log(`[DB] Loaded ${count} scores from database`);
+      const allBouilles = await db.loadAllBouilles();
+      Object.assign(bouilleCache, allBouilles);
+      console.log(`[DB] Loaded ${Object.keys(allBouilles).length} bouilles from database`);
     } catch (e) {
       console.error('[DB] Init failed (running without persistence):', e.message);
     }
@@ -3705,7 +3711,7 @@ case 'join': {
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          inner += `<score u="${escapeXml(e.u)}" x="${e.s}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+          inner += `<score u="${escapeXml(e.u)}" x="${e.s}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
         }
         sendToClient(socket, `<${CMD.part}>${inner}</${CMD.part}>`);
         console.log(`[FSCORE] xpranking: ${slice.length}/${all.length} entries`);
@@ -3829,7 +3835,7 @@ broadcastToChannel(
           const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
           const displayData = formatRankingExtraData(internalId, e.d);
           const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
-          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${ts}"${dAttr} />`;
+          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
@@ -4054,7 +4060,7 @@ case 'trace': {
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          inner += `<score u="${escapeXml(e.u)}" x="${e.s}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+          inner += `<score u="${escapeXml(e.u)}" x="${e.s}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
         }
         sendToClient(socket, `<${CMD.stoptrace}>${inner}</${CMD.stoptrace}>`);
         console.log(`[FSCORE] rateranking: ${slice.length}/${all.length} entries`);
@@ -4096,6 +4102,7 @@ case 'fbouille': {
 
   if (client.username && users[client.username]) {
     users[client.username].fbouille = f;
+    bouilleCache[client.username] = f;
   }
 
   sendToClient(socket, `<${CMD.fbouille} f="${f}" />`);
@@ -4265,7 +4272,7 @@ case 'createchannel': {
       let inner = '';
       for (const name of results) {
         const ud = users[name] || {};
-        inner += `<u u="${name}" f="${bouilleOf(ud)}" x="${ud.xp || 0}" />`;
+        inner += `<u u="${name}" f="${bouilleOf(ud, name)}" x="${ud.xp || 0}" />`;
       }
       sendToClient(socket, `<${CMD.searchuser}>${inner}</${CMD.searchuser}>`);
       break;
