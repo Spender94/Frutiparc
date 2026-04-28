@@ -72,6 +72,8 @@ class snake3.SnakeClient extends GameClient {
 		var k = Std.cast(slots[1]);
 		if( k == undefined )
 			k = { $keys : Const.DEFAULT_KEYS, $music : true, $sounds : true };
+		if( k.$keys == undefined )
+			k.$keys = Const.DEFAULT_KEYS;
 		Manager.music = !k.$music;
 		Manager.sounds = !k.$sounds;
 		Manager.toggleMusic();
