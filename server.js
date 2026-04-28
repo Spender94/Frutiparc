@@ -301,11 +301,6 @@ const RANKINGS = {
 
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
 const LEGACY_RANKINGS = [
-  { rk: '0', internal: 'bkiwi_classic',    ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi', section: 'C' },
-  { rk: '1', internal: 'snake3_classic',   ty: 'point',       rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'C' },
-  { rk: '2', internal: null,               ty: 'ptmb2',       rn: 'Motion Ball 2',gs: '2', g: 'mb2',    section: 'C' },
-  { rk: '3', internal: 'swapou2_classic',  ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
-  { rk: '4', internal: 'kaluga_classic',   ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'C' },
   { rk: '5', internal: null,               ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
   { rk: '6', internal: null,               ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
   { rk: '7', internal: 'bkiwi_challenge',   ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi', section: 'L' },
@@ -3983,12 +3978,20 @@ case 'join': {
       if (msg.attrs.s !== undefined || msg.attrs.l !== undefined) {
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 10) || 10;
-        const all = [];
+        const merged = new Map();
+        try {
+          const dbUsers = await db.listAllUsers();
+          for (const row of dbUsers) {
+            if (row.xp > 0) merged.set(row.username, row.xp);
+          }
+        } catch (e) { console.error('[FSCORE] xpranking DB error:', e.message); }
         for (const [u, ud] of Object.entries(users)) {
           if (ud && Number.isFinite(ud.xp) && ud.xp > 0) {
-            all.push({ u, s: ud.xp });
+            merged.set(u, ud.xp);
           }
         }
+        const all = [];
+        for (const [u, s] of merged) all.push({ u, s });
         all.sort((a, b) => b.s - a.s);
         const slice = all.slice(start, start + limit);
         let inner = '';
@@ -4336,12 +4339,20 @@ case 'trace': {
       if (msg.attrs.s !== undefined || msg.attrs.l !== undefined) {
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 10) || 10;
-        const all = [];
+        const merged = new Map();
+        try {
+          const dbUsers = await db.listAllUsers();
+          for (const row of dbUsers) {
+            if (row.xp > 0) merged.set(row.username, row.xp);
+          }
+        } catch (e) { console.error('[FSCORE] rateranking DB error:', e.message); }
         for (const [u, ud] of Object.entries(users)) {
           if (ud && Number.isFinite(ud.xp) && ud.xp > 0) {
-            all.push({ u, s: ud.xp });
+            merged.set(u, ud.xp);
           }
         }
+        const all = [];
+        for (const [u, s] of merged) all.push({ u, s });
         all.sort((a, b) => b.s - a.s);
         const slice = all.slice(start, start + limit);
         let inner = '';
@@ -4387,7 +4398,24 @@ case 'trace': {
 
     // ── xpposition: XP ranking position ──
     case 'xpposition': {
-      sendToClient(socket, `<${CMD.xpposition} p="1" />`);
+      const myXp = (users[client.username] || {}).xp || 0;
+      let pos = 1;
+      if (myXp > 0) {
+        try {
+          const dbUsers = await db.listAllUsers();
+          const merged = new Map();
+          for (const row of dbUsers) {
+            if (row.xp > 0) merged.set(row.username, row.xp);
+          }
+          for (const [u, ud] of Object.entries(users)) {
+            if (ud && Number.isFinite(ud.xp) && ud.xp > 0) merged.set(u, ud.xp);
+          }
+          for (const [, xp] of merged) {
+            if (xp > myXp) pos++;
+          }
+        } catch (e) { /* fallback to 1 */ }
+      }
+      sendToClient(socket, `<${CMD.xpposition} p="${pos}" />`);
       break;
     }
 
