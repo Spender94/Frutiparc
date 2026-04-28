@@ -363,6 +363,23 @@ async function loadScoresForUser(userId) {
   return result;
 }
 
+async function loadAllScores() {
+  const { rows } = await pool.query(
+    `SELECT u.username, s.ranking_id, s.score, s.data, s.updated_at
+     FROM scores s JOIN users u ON u.id = s.user_id`
+  );
+  const result = {};
+  for (const r of rows) {
+    if (!result[r.username]) result[r.username] = {};
+    result[r.username][r.ranking_id] = {
+      score: Number(r.score),
+      data: r.data || '',
+      updatedAt: r.updated_at ? r.updated_at.toISOString() : '',
+    };
+  }
+  return result;
+}
+
 async function clearDailyChallengeScores() {
   await pool.query(
     `DELETE FROM scores
@@ -394,5 +411,6 @@ module.exports = {
   addBlacklist,
   removeBlacklist,
   loadScoresForUser,
+  loadAllScores,
   clearDailyChallengeScores,
 };

@@ -2659,6 +2659,19 @@ async function boot() {
     try {
       await db.initSchema();
       console.log('[DB] Connected and schema ready');
+      const allScores = await db.loadAllScores();
+      let count = 0;
+      for (const [username, rankings] of Object.entries(allScores)) {
+        if (!scoresData.users[username]) scoresData.users[username] = {};
+        for (const [rkId, entry] of Object.entries(rankings)) {
+          const current = scoresData.users[username][rkId];
+          if (!current || Number(entry.score) > Number(current.score)) {
+            scoresData.users[username][rkId] = entry;
+            count++;
+          }
+        }
+      }
+      console.log(`[DB] Loaded ${count} scores from database`);
     } catch (e) {
       console.error('[DB] Init failed (running without persistence):', e.message);
     }
