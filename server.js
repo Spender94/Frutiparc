@@ -4038,7 +4038,8 @@ case 'trace': {
     for (const child of traceChildren) {
       const u = child.attrs.u;
       const ud = users[u] || {};
-      inner += `<u u="${u}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+      const pVal = getSocketsForUsername(u).length > 0 ? 1 : 0;
+      inner += `<u u="${u}" p="${pVal}" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, u)}" />`;
     }
 
     sendToClient(socket, `<${CMD.trace}>${inner}</${CMD.trace}>`);
@@ -4050,10 +4051,11 @@ case 'trace': {
     if (client.sid && sessions[client.sid]) {
       sessions[client.sid].lastTraceUser = targetUser;
     }
-    const ud = users[targetUser] || users[client.username] || {};
+    const ud = users[targetUser] || {};
+    const pVal = getSocketsForUsername(targetUser).length > 0 ? 1 : 0;
     sendToClient(
       socket,
-      `<${CMD.trace} u="${targetUser}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`
+      `<${CMD.trace} u="${targetUser}" p="${pVal}" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, targetUser)}" />`
     );
   }
   break;
@@ -4096,10 +4098,17 @@ case 'trace': {
     case 'userinfo': {
       const u = msg.attrs.u;
       const r = msg.attrs.r || '';
-      const ud = users[u] || {};
       if (client.sid && sessions[client.sid]) {
         sessions[client.sid].lastProfileUser = u;
       }
+      let ud = users[u];
+      if (!ud && process.env.DATABASE_URL) {
+        try {
+          const row = await db.findUserByUsername(u);
+          if (row) ud = dbUserToMemory(row);
+        } catch (e) { /* ignore */ }
+      }
+      if (!ud) ud = {};
       sendToClient(socket,
         `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
       );
@@ -4222,7 +4231,7 @@ case 'createchannel': {
 
   sendToClient(
     socket,
-    `<${CMD.trace} u="${escapeXml(otherUser)}" p="1" s="00000" mu="0000-00-00 00:00:00" f="${bouilleOf(ud)}" />`
+    `<${CMD.trace} u="${escapeXml(otherUser)}" p="${getSocketsForUsername(otherUser).length > 0 ? 1 : 0}" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, otherUser)}" />`
   );
 
   // Si l'autre utilisateur est connecté, il reçoit aussi l'invitation.
