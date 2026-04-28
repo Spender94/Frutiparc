@@ -275,6 +275,7 @@ async function getUserAccessories(userId) {
     [userId]
   );
   return rows.map((r) => ({
+    dbRowId: r.id,
     id: r.acc_id,
     shopId: r.shop_id || undefined,
     n: r.name,
@@ -398,6 +399,36 @@ async function clearDailyChallengeScores() {
   );
 }
 
+async function listAllUsers() {
+  const { rows } = await pool.query(
+    'SELECT id, username, xp, kikooz, fbouille, gender, created_at FROM users ORDER BY created_at DESC'
+  );
+  return rows;
+}
+
+async function deleteUser(userId) {
+  await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+}
+
+async function deleteScore(userId, rankingId) {
+  await pool.query('DELETE FROM scores WHERE user_id = $1 AND ranking_id = $2', [userId, rankingId]);
+}
+
+async function deleteAccessory(accRowId) {
+  await pool.query('DELETE FROM user_accessories WHERE id = $1', [accRowId]);
+}
+
+async function deleteItem(userId, itemId) {
+  await pool.query('DELETE FROM user_items WHERE user_id = $1 AND item_id = $2', [userId, itemId]);
+}
+
+async function addItem(userId, itemId) {
+  await pool.query(
+    'INSERT INTO user_items (user_id, item_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [userId, itemId]
+  );
+}
+
 module.exports = {
   pool,
   initSchema,
@@ -425,4 +456,10 @@ module.exports = {
   loadAllScores,
   loadAllBouilles,
   clearDailyChallengeScores,
+  listAllUsers,
+  deleteUser,
+  deleteScore,
+  deleteAccessory,
+  deleteItem,
+  addItem,
 };

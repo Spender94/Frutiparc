@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frutiparc Admin</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; }
+  .header { background: #16213e; padding: 12px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #0f3460; }
+  .header h1 { font-size: 18px; color: #e94560; }
+  .header .key-input { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .header input { background: #0f3460; border: 1px solid #e94560; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 13px; width: 180px; }
+  .tabs { display: flex; gap: 0; background: #16213e; border-bottom: 2px solid #0f3460; }
+  .tab { padding: 10px 24px; cursor: pointer; color: #8899aa; font-size: 14px; border-bottom: 2px solid transparent; }
+  .tab:hover { color: #e0e0e0; }
+  .tab.active { color: #e94560; border-bottom-color: #e94560; }
+  .content { padding: 20px 24px; max-width: 1200px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; background: #16213e; color: #e94560; border-bottom: 1px solid #0f3460; position: sticky; top: 0; }
+  td { padding: 7px 10px; border-bottom: 1px solid #1a1a3e; }
+  tr:hover td { background: #16213e; }
+  button { padding: 4px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .btn { background: #0f3460; color: #e0e0e0; }
+  .btn:hover { background: #1a4a8a; }
+  .btn-danger { background: #e94560; color: #fff; }
+  .btn-danger:hover { background: #c23350; }
+  .btn-sm { padding: 2px 8px; font-size: 11px; }
+  .toolbar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+  .toolbar select, .toolbar input { background: #0f3460; border: 1px solid #2a3a5e; color: #e0e0e0; padding: 6px 10px; border-radius: 4px; font-size: 13px; }
+  .toolbar select { min-width: 200px; }
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 100; justify-content: center; align-items: center; }
+  .modal-bg.open { display: flex; }
+  .modal { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 20px; min-width: 380px; max-width: 600px; }
+  .modal h3 { margin-bottom: 14px; color: #e94560; font-size: 15px; }
+  .modal label { display: block; margin-bottom: 10px; font-size: 13px; }
+  .modal label span { display: inline-block; width: 100px; }
+  .modal input, .modal select { background: #0f3460; border: 1px solid #2a3a5e; color: #e0e0e0; padding: 5px 8px; border-radius: 4px; font-size: 13px; width: 220px; }
+  .modal .actions { margin-top: 16px; display: flex; gap: 10px; justify-content: flex-end; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; background: #0f3460; }
+  .empty { color: #667; font-style: italic; padding: 20px; }
+  .bouille-preview { width: 24px; height: 24px; border-radius: 50%; background: #0f3460; display: inline-block; vertical-align: middle; overflow: hidden; }
+  .count { color: #e94560; font-weight: bold; }
+  #toast { position: fixed; bottom: 20px; right: 20px; background: #0f3460; color: #e0e0e0; padding: 10px 20px; border-radius: 6px; border: 1px solid #e94560; font-size: 13px; display: none; z-index: 200; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Frutiparc Admin</h1>
+  <div class="key-input">
+    <span>Clé admin :</span>
+    <input type="password" id="adminKey" placeholder="ADMIN_KEY" oninput="localStorage.setItem('adminKey',this.value)">
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="users" onclick="switchTab('users')">Joueurs</div>
+  <div class="tab" data-tab="scores" onclick="switchTab('scores')">Scores</div>
+  <div class="tab" data-tab="detail" onclick="switchTab('detail')">Détail joueur</div>
+</div>
+
+<div class="content" id="tab-users">
+  <div class="toolbar">
+    <button class="btn" onclick="loadUsers()">Rafraîchir</button>
+    <span id="user-count"></span>
+  </div>
+  <table>
+    <thead><tr><th>Pseudo</th><th>XP</th><th>Kikooz</th><th>Bouille</th><th>Genre</th><th>Inscrit le</th><th>Actions</th></tr></thead>
+    <tbody id="users-body"></tbody>
+  </table>
+</div>
+
+<div class="content" id="tab-scores" style="display:none">
+  <div class="toolbar">
+    <select id="ranking-select" onchange="loadScores()">
+      <option value="">Tous les classements</option>
+    </select>
+    <button class="btn" onclick="loadScores()">Rafraîchir</button>
+    <button class="btn-danger" onclick="clearRanking()">Vider ce classement</button>
+    <span id="score-count"></span>
+  </div>
+  <table>
+    <thead><tr><th>Joueur</th><th>Classement</th><th>Score</th><th>Data</th><th>Date</th><th>Actions</th></tr></thead>
+    <tbody id="scores-body"></tbody>
+  </table>
+</div>
+
+<div class="content" id="tab-detail" style="display:none">
+  <div class="toolbar">
+    <input type="text" id="detail-username" placeholder="Pseudo du joueur" onkeydown="if(event.key==='Enter')loadDetail()">
+    <button class="btn" onclick="loadDetail()">Charger</button>
+  </div>
+  <div id="detail-content"></div>
+</div>
+
+<div class="modal-bg" id="modal-edit-user">
+  <div class="modal">
+    <h3>Modifier le joueur <span id="edit-user-name"></span></h3>
+    <label><span>Bouille :</span> <input id="edit-fbouille"></label>
+    <label><span>XP :</span> <input id="edit-xp" type="number"></label>
+    <label><span>Kikooz :</span> <input id="edit-kikooz" type="number"></label>
+    <label><span>Mot de passe :</span> <input id="edit-password" placeholder="(laisser vide = inchangé)"></label>
+    <div class="actions">
+      <button class="btn" onclick="closeModal('modal-edit-user')">Annuler</button>
+      <button class="btn-danger" onclick="saveEditUser()">Sauvegarder</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-edit-score">
+  <div class="modal">
+    <h3>Modifier score</h3>
+    <label><span>Joueur :</span> <input id="escore-user" readonly></label>
+    <label><span>Classement :</span> <input id="escore-ranking" readonly></label>
+    <label><span>Score :</span> <input id="escore-value" type="number"></label>
+    <label><span>Data :</span> <input id="escore-data"></label>
+    <div class="actions">
+      <button class="btn" onclick="closeModal('modal-edit-score')">Annuler</button>
+      <button class="btn-danger" onclick="saveEditScore()">Sauvegarder</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-add-acc">
+  <div class="modal">
+    <h3>Ajouter un accessoire</h3>
+    <label><span>ID :</span> <input id="acc-id" placeholder="shop_101"></label>
+    <label><span>Shop ID :</span> <input id="acc-shopid" type="number" value="0"></label>
+    <label><span>Nom :</span> <input id="acc-name" placeholder="Pack Lunettes"></label>
+    <label><span>Valeur :</span> <input id="acc-value" placeholder="suffix9 / url"></label>
+    <label><span>Prix :</span> <input id="acc-price" value="0"></label>
+    <div class="actions">
+      <button class="btn" onclick="closeModal('modal-add-acc')">Annuler</button>
+      <button class="btn-danger" onclick="saveAddAcc()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-add-item">
+  <div class="modal">
+    <h3>Ajouter un item</h3>
+    <label><span>Item ID :</span> <input id="item-id" type="number"></label>
+    <div class="actions">
+      <button class="btn" onclick="closeModal('modal-add-item')">Annuler</button>
+      <button class="btn-danger" onclick="saveAddItem()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+let currentDetailUser = '';
+
+document.addEventListener('DOMContentLoaded', () => {
+  $('#adminKey').value = localStorage.getItem('adminKey') || '';
+  loadUsers();
+});
+
+function hdr() {
+  const h = { 'Content-Type': 'application/json' };
+  const k = $('#adminKey').value;
+  if (k) h['X-Admin-Key'] = k;
+  return h;
+}
+
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+
+function switchTab(name) {
+  $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  ['users','scores','detail'].forEach(t => {
+    const el = $(`#tab-${t}`);
+    if (el) el.style.display = t === name ? '' : 'none';
+  });
+  if (name === 'scores' && !$('#ranking-select').dataset.loaded) loadScores();
+}
+
+function closeModal(id) { $(`#${id}`).classList.remove('open'); }
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function fmtDate(s) {
+  if (!s) return '-';
+  try { return new Date(s).toLocaleDateString('fr-FR'); } catch { return s; }
+}
+
+// ── Users ──
+async function loadUsers() {
+  try {
+    const r = await fetch('/api/admin/users', { headers: hdr() });
+    const data = await r.json();
+    if (!Array.isArray(data)) { toast('Erreur: ' + JSON.stringify(data)); return; }
+    $('#user-count').innerHTML = `<span class="count">${data.length}</span> joueurs`;
+    const tb = $('#users-body');
+    tb.innerHTML = data.map(u => `<tr>
+      <td><a href="#" onclick="viewUser('${esc(u.username)}');return false" style="color:#4fc3f7">${esc(u.username)}</a></td>
+      <td>${u.xp || 0}</td>
+      <td>${u.kikooz || 0}</td>
+      <td><code style="font-size:11px">${esc((u.fbouille||'').substring(0,12))}…</code></td>
+      <td>${esc(u.gender || 'M')}</td>
+      <td>${fmtDate(u.created_at)}</td>
+      <td>
+        <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}')">Modifier</button>
+        <button class="btn-danger btn-sm" onclick="deleteUser('${esc(u.username)}')">Supprimer</button>
+      </td>
+    </tr>`).join('');
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+function editUser(name, xp, kikooz, fb) {
+  $('#edit-user-name').textContent = name;
+  $('#edit-user-name').dataset.name = name;
+  $('#edit-fbouille').value = fb;
+  $('#edit-xp').value = xp;
+  $('#edit-kikooz').value = kikooz;
+  $('#edit-password').value = '';
+  $('#modal-edit-user').classList.add('open');
+}
+
+async function saveEditUser() {
+  const name = $('#edit-user-name').dataset.name;
+  const body = { fbouille: $('#edit-fbouille').value, xp: $('#edit-xp').value, kikooz: $('#edit-kikooz').value };
+  const pw = $('#edit-password').value;
+  if (pw) body.password = pw;
+  await fetch(`/api/admin/users/${encodeURIComponent(name)}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify(body) });
+  closeModal('modal-edit-user');
+  toast(`${name} mis à jour`);
+  loadUsers();
+}
+
+async function deleteUser(name) {
+  if (!confirm(`Supprimer définitivement ${name} ? Cette action est irréversible.`)) return;
+  await fetch(`/api/admin/users/${encodeURIComponent(name)}`, { method: 'DELETE', headers: hdr() });
+  toast(`${name} supprimé`);
+  loadUsers();
+}
+
+function viewUser(name) {
+  $('#detail-username').value = name;
+  switchTab('detail');
+  loadDetail();
+}
+
+// ── Scores ──
+async function loadScores() {
+  const ranking = $('#ranking-select').value;
+  try {
+    const r = await fetch(`/api/admin/scores?ranking=${encodeURIComponent(ranking)}`, { headers: hdr() });
+    const data = await r.json();
+    const sel = $('#ranking-select');
+    if (!sel.dataset.loaded && data.rankings) {
+      data.rankings.forEach(rk => {
+        if (!sel.querySelector(`option[value="${rk}"]`)) {
+          const o = document.createElement('option');
+          o.value = rk; o.textContent = rk;
+          sel.appendChild(o);
+        }
+      });
+      sel.dataset.loaded = '1';
+    }
+    const scores = data.scores || [];
+    $('#score-count').innerHTML = `<span class="count">${scores.length}</span> scores`;
+    const tb = $('#scores-body');
+    tb.innerHTML = scores.map(s => `<tr>
+      <td><a href="#" onclick="viewUser('${esc(s.username)}');return false" style="color:#4fc3f7">${esc(s.username)}</a></td>
+      <td><span class="badge">${esc(s.ranking)}</span></td>
+      <td>${s.score}</td>
+      <td><code style="font-size:11px">${esc(s.data||'-')}</code></td>
+      <td>${fmtDate(s.updatedAt)}</td>
+      <td>
+        <button class="btn btn-sm" onclick="editScore('${esc(s.username)}','${esc(s.ranking)}',${s.score},'${esc(s.data||'')}')">Modifier</button>
+        <button class="btn-danger btn-sm" onclick="deleteScore('${esc(s.username)}','${esc(s.ranking)}')">Supprimer</button>
+      </td>
+    </tr>`).join('');
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+function editScore(user, ranking, score, data) {
+  $('#escore-user').value = user;
+  $('#escore-ranking').value = ranking;
+  $('#escore-value').value = score;
+  $('#escore-data').value = data;
+  $('#modal-edit-score').classList.add('open');
+}
+
+async function saveEditScore() {
+  const user = $('#escore-user').value;
+  const ranking = $('#escore-ranking').value;
+  await fetch(`/api/admin/scores/${encodeURIComponent(user)}/${encodeURIComponent(ranking)}`, {
+    method: 'PATCH', headers: hdr(),
+    body: JSON.stringify({ score: Number($('#escore-value').value), data: $('#escore-data').value })
+  });
+  closeModal('modal-edit-score');
+  toast('Score mis à jour');
+  loadScores();
+}
+
+async function deleteScore(user, ranking) {
+  if (!confirm(`Supprimer le score de ${user} dans ${ranking} ?`)) return;
+  await fetch(`/api/admin/scores/${encodeURIComponent(user)}/${encodeURIComponent(ranking)}`, { method: 'DELETE', headers: hdr() });
+  toast('Score supprimé');
+  loadScores();
+}
+
+async function clearRanking() {
+  const ranking = $('#ranking-select').value;
+  if (!ranking) { toast('Sélectionne un classement'); return; }
+  if (!confirm(`Vider TOUS les scores de ${ranking} ?`)) return;
+  await fetch('/api/admin/clearScores', { method: 'POST', headers: hdr(), body: JSON.stringify({ ranking }) });
+  toast(`${ranking} vidé`);
+  loadScores();
+}
+
+// ── Detail ──
+async function loadDetail() {
+  const u = $('#detail-username').value.trim();
+  if (!u) return;
+  currentDetailUser = u;
+  const dc = $('#detail-content');
+  dc.innerHTML = '<p>Chargement…</p>';
+  try {
+    const r = await fetch(`/api/admin/users/${encodeURIComponent(u)}`, { headers: hdr() });
+    if (!r.ok) { dc.innerHTML = '<p class="empty">Joueur non trouvé</p>'; return; }
+    const d = await r.json();
+    const user = d.user;
+    let html = `<h3 style="color:#e94560;margin:12px 0">${esc(u)}</h3>`;
+    html += `<table style="max-width:400px;margin-bottom:24px">
+      <tr><td>ID</td><td>${user.id}</td></tr>
+      <tr><td>XP</td><td>${user.xp}</td></tr>
+      <tr><td>Kikooz</td><td>${user.kikooz}</td></tr>
+      <tr><td>Bouille</td><td><code>${esc(user.fbouille||'')}</code></td></tr>
+      <tr><td>Genre</td><td>${user.gender||'M'}</td></tr>
+      <tr><td>Anniversaire</td><td>${fmtDate(user.birthday)}</td></tr>
+      <tr><td>Inscrit le</td><td>${fmtDate(user.created_at)}</td></tr>
+    </table>`;
+
+    // Scores
+    html += `<h4 style="color:#4fc3f7;margin:12px 0">Scores</h4>`;
+    const scores = Object.entries(d.scores || {});
+    if (scores.length) {
+      html += '<table style="max-width:600px;margin-bottom:24px"><thead><tr><th>Classement</th><th>Score</th><th>Data</th></tr></thead><tbody>';
+      scores.forEach(([rk, e]) => {
+        html += `<tr><td><span class="badge">${esc(rk)}</span></td><td>${e.score}</td><td><code>${esc(e.data||'-')}</code></td></tr>`;
+      });
+      html += '</tbody></table>';
+    } else {
+      html += '<p class="empty">Aucun score</p>';
+    }
+
+    // Accessories
+    html += `<h4 style="color:#4fc3f7;margin:12px 0">Accessoires <button class="btn btn-sm" onclick="openAddAcc()">+ Ajouter</button></h4>`;
+    const accs = d.accessories || [];
+    if (accs.length) {
+      html += '<table style="max-width:700px;margin-bottom:24px"><thead><tr><th>ID</th><th>Nom</th><th>Valeur</th><th>Shop</th><th>Actions</th></tr></thead><tbody>';
+      accs.forEach(a => {
+        const rowId = a.dbRowId || a.id;
+        html += `<tr><td><code>${esc(a.id||'')}</code></td><td>${esc(a.n||'')}</td><td><code style="font-size:11px">${esc(a.v||'')}</code></td><td>${a.shopId||'-'}</td>
+          <td><button class="btn-danger btn-sm" onclick="deleteAcc('${esc(String(rowId))}')">Suppr</button></td></tr>`;
+      });
+      html += '</tbody></table>';
+    } else {
+      html += '<p class="empty">Aucun accessoire</p>';
+    }
+
+    // Items
+    html += `<h4 style="color:#4fc3f7;margin:12px 0">Items <button class="btn btn-sm" onclick="openAddItem()">+ Ajouter</button></h4>`;
+    const items = d.items || [];
+    if (items.length) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px">';
+      items.forEach(id => {
+        html += `<span class="badge">${id} <button class="btn-danger btn-sm" onclick="deleteItem(${id})" style="margin-left:4px;padding:0 4px">×</button></span>`;
+      });
+      html += '</div>';
+    } else {
+      html += '<p class="empty">Aucun item</p>';
+    }
+
+    dc.innerHTML = html;
+  } catch (e) { dc.innerHTML = `<p class="empty">Erreur: ${e.message}</p>`; }
+}
+
+function openAddAcc() { $('#modal-add-acc').classList.add('open'); }
+function openAddItem() { $('#modal-add-item').classList.add('open'); }
+
+async function saveAddAcc() {
+  await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/accessories`, {
+    method: 'POST', headers: hdr(),
+    body: JSON.stringify({ id: $('#acc-id').value, shopId: Number($('#acc-shopid').value), name: $('#acc-name').value, value: $('#acc-value').value, price: $('#acc-price').value })
+  });
+  closeModal('modal-add-acc');
+  toast('Accessoire ajouté');
+  loadDetail();
+}
+
+async function saveAddItem() {
+  await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/items`, {
+    method: 'POST', headers: hdr(),
+    body: JSON.stringify({ itemId: Number($('#item-id').value) })
+  });
+  closeModal('modal-add-item');
+  toast('Item ajouté');
+  loadDetail();
+}
+
+async function deleteAcc(rowId) {
+  if (!confirm('Supprimer cet accessoire ?')) return;
+  await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/accessories/${encodeURIComponent(rowId)}`, { method: 'DELETE', headers: hdr() });
+  toast('Accessoire supprimé');
+  loadDetail();
+}
+
+async function deleteItem(itemId) {
+  if (!confirm(`Supprimer l'item ${itemId} ?`)) return;
+  await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/items/${itemId}`, { method: 'DELETE', headers: hdr() });
+  toast('Item supprimé');
+  loadDetail();
+}
+</script>
+</body>
+</html>

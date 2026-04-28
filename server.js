@@ -1332,6 +1332,210 @@ app.post('/api/admin/clearScores', async (req, res) => {
   return res.json({ ok: true, ranking });
 });
 
+// ─────────────────────────────────────────────
+// Admin panel & API
+// ─────────────────────────────────────────────
+const ADMIN_KEY = process.env.ADMIN_KEY || '';
+function adminAuth(req, res, next) {
+  if (ADMIN_KEY) {
+    const k = req.headers['x-admin-key'] || req.query.key || '';
+    if (k !== ADMIN_KEY) return res.status(403).json({ ok: false, error: 'forbidden' });
+  }
+  next();
+}
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+app.get('/api/admin/users', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json([]);
+  try {
+    const rows = await db.listAllUsers();
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/users/:username', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  if (!process.env.DATABASE_URL) return res.status(404).json({ error: 'no db' });
+  try {
+    const row = await db.findUserByUsername(u);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    const items = await db.getUserItems(row.id);
+    const accs = await db.getUserAccessories(row.id);
+    const scores = await db.loadScoresForUser(row.id);
+    res.json({ user: row, items, accessories: accs, scores });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/users/:username', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  try {
+    const row = await db.findUserByUsername(u);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    await db.deleteUser(row.id);
+    if (users[u]) delete users[u];
+    for (const [sid, s] of Object.entries(sessions)) {
+      if (s.user === u) delete sessions[sid];
+    }
+    if (scoresData.users[u]) delete scoresData.users[u];
+    saveScoresFile();
+    delete bouilleCache[u];
+    console.log(`[ADMIN] Deleted user: ${u}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  try {
+    const row = await db.findUserByUsername(u);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    const fields = {};
+    const body = req.body || {};
+    if (body.fbouille !== undefined) { fields.fbouille = body.fbouille; bouilleCache[u] = body.fbouille; }
+    if (body.xp !== undefined) fields.xp = Number(body.xp);
+    if (body.kikooz !== undefined) fields.kikooz = Number(body.kikooz);
+    if (body.password !== undefined) fields.password = body.password;
+    if (Object.keys(fields).length > 0) {
+      await db.updateUser(u, fields);
+      if (users[u]) Object.assign(users[u], fields);
+    }
+    console.log(`[ADMIN] Updated user ${u}: ${Object.keys(fields).join(', ')}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/scores', adminAuth, (req, res) => {
+  const ranking = req.query.ranking || '';
+  const result = [];
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+    if (ranking) {
+      if (rlist[ranking]) result.push({ username: u, ranking, score: rlist[ranking].score, data: rlist[ranking].data || '', updatedAt: rlist[ranking].updatedAt || '' });
+    } else {
+      for (const [rk, entry] of Object.entries(rlist)) {
+        result.push({ username: u, ranking: rk, score: entry.score, data: entry.data || '', updatedAt: entry.updatedAt || '' });
+      }
+    }
+  }
+  result.sort((a, b) => b.score - a.score);
+  res.json({ rankings: Object.keys(RANKINGS), scores: result });
+});
+
+app.delete('/api/admin/scores/:username/:ranking', adminAuth, async (req, res) => {
+  const { username, ranking } = req.params;
+  if (scoresData.users[username]) {
+    delete scoresData.users[username][ranking];
+    if (Object.keys(scoresData.users[username]).length === 0) delete scoresData.users[username];
+    saveScoresFile();
+  }
+  if (process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(username);
+      if (row) await db.deleteScore(row.id, ranking);
+    } catch (e) { console.error(e.message); }
+  }
+  console.log(`[ADMIN] Deleted score ${username}/${ranking}`);
+  res.json({ ok: true });
+});
+
+app.patch('/api/admin/scores/:username/:ranking', adminAuth, async (req, res) => {
+  const { username, ranking } = req.params;
+  const newScore = Number(req.body.score);
+  const newData = req.body.data;
+  if (!Number.isFinite(newScore)) return res.status(400).json({ error: 'invalid score' });
+  if (!scoresData.users[username]) scoresData.users[username] = {};
+  const entry = scoresData.users[username][ranking] || {};
+  entry.score = newScore;
+  if (newData !== undefined) entry.data = String(newData);
+  entry.updatedAt = new Date().toISOString();
+  scoresData.users[username][ranking] = entry;
+  saveScoresFile();
+  if (process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(username);
+      if (row) await db.upsertScore(row.id, ranking, newScore, entry.data || '');
+    } catch (e) { console.error(e.message); }
+  }
+  console.log(`[ADMIN] Updated score ${username}/${ranking} = ${newScore}`);
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/users/:username/accessories', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json([]);
+  try {
+    const row = await db.findUserByUsername(req.params.username);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    res.json(await db.getUserAccessories(row.id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/users/:username/accessories', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  try {
+    const row = await db.findUserByUsername(req.params.username);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    const acc = { id: req.body.id || `admin_${Date.now()}`, shopId: req.body.shopId || 0, n: req.body.name || '', v: req.body.value || '', q: req.body.quantity || '1', p: req.body.price || '0' };
+    await db.addAccessory(row.id, acc);
+    if (users[req.params.username]) {
+      users[req.params.username].customAccessories = await db.getUserAccessories(row.id);
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/users/:username/accessories/:accRowId', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  try {
+    await db.deleteAccessory(req.params.accRowId);
+    const row = await db.findUserByUsername(req.params.username);
+    if (row && users[req.params.username]) {
+      users[req.params.username].customAccessories = await db.getUserAccessories(row.id);
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/users/:username/items', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json([]);
+  try {
+    const row = await db.findUserByUsername(req.params.username);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    res.json(await db.getUserItems(row.id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/users/:username/items', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  try {
+    const row = await db.findUserByUsername(req.params.username);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    const itemId = Number(req.body.itemId);
+    if (!Number.isFinite(itemId)) return res.status(400).json({ error: 'invalid itemId' });
+    await db.addItem(row.id, itemId);
+    if (users[req.params.username]) {
+      users[req.params.username].items = withDefaultPens(await db.getUserItems(row.id));
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/users/:username/items/:itemId', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  try {
+    const row = await db.findUserByUsername(req.params.username);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    await db.deleteItem(row.id, Number(req.params.itemId));
+    if (users[req.params.username]) {
+      users[req.params.username].items = withDefaultPens(await db.getUserItems(row.id));
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // SWF-triggered score save: the patched game SWFs call loadVariables("s<score>", "")
 // which resolves (via Ruffle base URL) to /swf/games/<game>/s<score>.
 app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
