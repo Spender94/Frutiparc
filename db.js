@@ -148,6 +148,17 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_challenge_medals_user ON challenge_medals(user_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_challenge_medals_day ON challenge_medals(awarded_day);
+
+      CREATE TABLE IF NOT EXISTS shop_packs (
+        id          INTEGER PRIMARY KEY,
+        name        TEXT NOT NULL,
+        category    TEXT DEFAULT 'Accessoires',
+        price       INTEGER DEFAULT 0,
+        description TEXT DEFAULT '',
+        suffix9     TEXT NOT NULL,
+        comment     TEXT DEFAULT '',
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
     `);
     console.log('[DB] Schema initialized');
   } finally {
@@ -473,6 +484,33 @@ async function addItem(userId, itemId) {
   );
 }
 
+async function loadShopPacks() {
+  const { rows } = await pool.query('SELECT * FROM shop_packs ORDER BY id');
+  return rows.map(r => ({
+    id: r.id,
+    name: r.name,
+    category: r.category || 'Accessoires',
+    price: r.price || 0,
+    description: r.description || '',
+    suffix9: r.suffix9,
+    comment: r.comment || r.description || '',
+  }));
+}
+
+async function upsertShopPack(pack) {
+  await pool.query(
+    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (id) DO UPDATE SET
+       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7`,
+    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '']
+  );
+}
+
+async function deleteShopPack(id) {
+  await pool.query('DELETE FROM shop_packs WHERE id = $1', [id]);
+}
+
 module.exports = {
   pool,
   initSchema,
@@ -509,4 +547,7 @@ module.exports = {
   saveMedal,
   getMedalsForUser,
   getMedalsByDay,
+  loadShopPacks,
+  upsertShopPack,
+  deleteShopPack,
 };

@@ -1107,7 +1107,7 @@ const DEFAULT_ACCESSORIES = [
 // suffix9 = last 9 chars of a 24-char bouille string (prefix is taken from
 // the user's current bouille at serve time).
 // ─────────────────────────────────────────────
-const SHOP_PACKS = [
+const SHOP_PACKS_DEFAULT = [
   {
     id: 101,
     name: 'Bonnet de nuit',
@@ -1145,6 +1145,7 @@ const SHOP_PACKS = [
     comment: 'Édition test',
   },
 ];
+const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
 
 function getShopPack(id) {
   const num = Number(id);
@@ -1386,7 +1387,7 @@ app.post('/api/admin/clearScores', async (req, res) => {
 // ─────────────────────────────────────────────
 // Admin panel & API
 // ─────────────────────────────────────────────
-const ADMIN_KEY = process.env.ADMIN_KEY || '';
+const ADMIN_KEY = process.env.ADMIN_KEY || 'sorbetcitron';
 function adminAuth(req, res, next) {
   if (ADMIN_KEY) {
     const k = req.headers['x-admin-key'] || req.query.key || '';
@@ -1605,7 +1606,7 @@ app.get('/api/admin/shop', adminAuth, (req, res) => {
   res.json(SHOP_PACKS);
 });
 
-app.post('/api/admin/shop', adminAuth, (req, res) => {
+app.post('/api/admin/shop', adminAuth, async (req, res) => {
   const b = req.body || {};
   const id = Number(b.id);
   if (!id || !b.name || !b.suffix9) return res.status(400).json({ error: 'missing id, name or suffix9' });
@@ -1620,11 +1621,12 @@ app.post('/api/admin/shop', adminAuth, (req, res) => {
     comment: String(b.comment || b.description || ''),
   };
   SHOP_PACKS.push(pack);
+  if (process.env.DATABASE_URL) db.upsertShopPack(pack).catch(e => console.error('[DB] shop pack save:', e.message));
   console.log(`[ADMIN] Created shop pack ${id}: ${pack.name}`);
   res.json({ ok: true, pack });
 });
 
-app.patch('/api/admin/shop/:id', adminAuth, (req, res) => {
+app.patch('/api/admin/shop/:id', adminAuth, async (req, res) => {
   const pack = SHOP_PACKS.find(p => p.id === Number(req.params.id));
   if (!pack) return res.status(404).json({ error: 'not found' });
   const b = req.body || {};
@@ -1633,14 +1635,16 @@ app.patch('/api/admin/shop/:id', adminAuth, (req, res) => {
   if (b.price !== undefined) pack.price = Number(b.price);
   if (b.description !== undefined) { pack.description = String(b.description); pack.comment = String(b.description); }
   if (b.suffix9 !== undefined) pack.suffix9 = String(b.suffix9);
+  if (process.env.DATABASE_URL) db.upsertShopPack(pack).catch(e => console.error('[DB] shop pack save:', e.message));
   console.log(`[ADMIN] Updated shop pack ${pack.id}: ${pack.name}`);
   res.json({ ok: true, pack });
 });
 
-app.delete('/api/admin/shop/:id', adminAuth, (req, res) => {
+app.delete('/api/admin/shop/:id', adminAuth, async (req, res) => {
   const idx = SHOP_PACKS.findIndex(p => p.id === Number(req.params.id));
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   const removed = SHOP_PACKS.splice(idx, 1)[0];
+  if (process.env.DATABASE_URL) db.deleteShopPack(removed.id).catch(e => console.error('[DB] shop pack delete:', e.message));
   console.log(`[ADMIN] Deleted shop pack ${removed.id}: ${removed.name}`);
   res.json({ ok: true });
 });
@@ -3039,6 +3043,24 @@ async function boot() {
       const allBouilles = await db.loadAllBouilles();
       Object.assign(bouilleCache, allBouilles);
       console.log(`[DB] Loaded ${Object.keys(allBouilles).length} bouilles from database`);
+      try {
+        const dbPacks = await db.loadShopPacks();
+        const existingIds = new Set(SHOP_PACKS.map(p => p.id));
+        for (const p of dbPacks) {
+          if (existingIds.has(p.id)) {
+            const idx = SHOP_PACKS.findIndex(x => x.id === p.id);
+            SHOP_PACKS[idx] = p;
+          } else {
+            SHOP_PACKS.push(p);
+          }
+        }
+        console.log(`[DB] Loaded ${dbPacks.length} shop packs from database`);
+        for (const p of SHOP_PACKS) {
+          if (!dbPacks.find(d => d.id === p.id)) {
+            db.upsertShopPack(p).catch(() => {});
+          }
+        }
+      } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
     } catch (e) {
       console.error('[DB] Init failed (running without persistence):', e.message);
     }
@@ -4156,7 +4178,7 @@ broadcastToChannel(
           const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
           const displayData = formatRankingExtraData(internalId, e.d);
           const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
-          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud))}" s="${e.s}" t="${ts}"${dAttr} />`;
+          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
