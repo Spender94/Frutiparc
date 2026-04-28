@@ -134,6 +134,20 @@ async function initSchema() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_user_logs_user ON user_logs(user_id, log_type, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS challenge_medals (
+        id          SERIAL PRIMARY KEY,
+        user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        username    TEXT NOT NULL,
+        ranking_id  TEXT NOT NULL,
+        game        TEXT NOT NULL,
+        rank        SMALLINT NOT NULL,
+        medal       TEXT NOT NULL,
+        awarded_day TEXT NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_challenge_medals_user ON challenge_medals(user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_challenge_medals_day ON challenge_medals(awarded_day);
     `);
     console.log('[DB] Schema initialized');
   } finally {
@@ -399,6 +413,36 @@ async function clearDailyChallengeScores() {
   );
 }
 
+async function saveMedal(userId, username, rankingId, game, rank, medal, awardedDay) {
+  await pool.query(
+    `INSERT INTO challenge_medals (user_id, username, ranking_id, game, rank, medal, awarded_day)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [userId, username, rankingId, game, rank, medal, awardedDay]
+  );
+}
+
+async function getMedalsForUser(username) {
+  const { rows } = await pool.query(
+    `SELECT ranking_id, game, rank, medal, awarded_day, created_at
+     FROM challenge_medals WHERE username = $1 ORDER BY created_at DESC`,
+    [username]
+  );
+  return rows;
+}
+
+async function getMedalsByDay(day) {
+  const { rows } = await pool.query(
+    'SELECT username, ranking_id, game, rank, medal FROM challenge_medals WHERE awarded_day = $1',
+    [day]
+  );
+  const result = {};
+  for (const r of rows) {
+    if (!result[r.username]) result[r.username] = [];
+    result[r.username].push({ game: r.game, rankingId: r.ranking_id, rank: r.rank, medal: r.medal });
+  }
+  return result;
+}
+
 async function listAllUsers() {
   const { rows } = await pool.query(
     'SELECT id, username, xp, kikooz, fbouille, gender, created_at FROM users ORDER BY created_at DESC'
@@ -462,4 +506,7 @@ module.exports = {
   deleteAccessory,
   deleteItem,
   addItem,
+  saveMedal,
+  getMedalsForUser,
+  getMedalsByDay,
 };

@@ -251,6 +251,11 @@ function utcDayKey(d = new Date()) {
   const day = String(d.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+function yesterdayDayKey() {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - 1);
+  return utcDayKey(d);
+}
 
 function loadChallengeMedals() {
   try {
@@ -303,8 +308,11 @@ const LEGACY_RANKINGS = [
   { rk: '4', internal: 'kaluga_classic',   ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'C' },
   { rk: '5', internal: null,               ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
   { rk: '6', internal: null,               ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
-  { rk: '7', internal: null,               ty: 'point',       rn: 'Frutibandas',  gs: '7', g: 'bandas', section: 'L' },
-  { rk: '8', internal: null,               ty: 'point',       rn: 'Grapiz',       gs: '8', g: 'grapiz', section: 'L' },
+  { rk: '7', internal: 'bkiwi_challenge',   ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi', section: 'L' },
+  { rk: '8', internal: 'snake3_challenge', ty: 'point',       rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'L' },
+  { rk: '9', internal: 'swapou2_challenge',ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'L' },
+  { rk: '10',internal: 'kaluga_challenge', ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'L' },
+  { rk: '11',internal: 'miniwave2_challenge',ty:'point',      rn: 'MiniWave',     gs: '5', g: 'miniwave2',section:'L' },
 ];
 const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.rk, r.internal])
@@ -842,21 +850,59 @@ function collectTop3ForRanking(rankingId) {
   return all.slice(0, 3);
 }
 
+const GAME_DISPLAY_NAMES = {
+  bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', kaluga: 'Kaluga',
+  swapou2: 'Swapou', miniwave2: 'MiniWave',
+};
+const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
+
 function notifyChallengeWinners(winnersByUser, visibleDay) {
   for (const [username, medals] of Object.entries(winnersByUser || {})) {
-    const ranks = medals.map((m) => m.rank).join(', ');
-    const games = medals.map((m) => m.game).join(', ');
-    const text = `Challenge quotidien: médaille(s) ${ranks} remportée(s) sur ${games}. Affichées le ${visibleDay}.`;
-    const user = users[username];
-    if (user) {
-      addUserHistoryEntry(user, { type: 1, content: text, flNew: true });
-    } else {
-      if (!challengeMedalsData.pendingNotifications[username]) {
-        challengeMedalsData.pendingNotifications[username] = [];
+    for (const m of medals) {
+      const gameName = GAME_DISPLAY_NAMES[m.game] || m.game;
+      const medalName = MEDAL_DISPLAY_NAMES[m.medal] || m.medal;
+      const text = `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} ! (${visibleDay})`;
+      const user = users[username];
+      if (user) {
+        addUserHistoryEntry(user, { type: 1, content: text, flNew: true });
+      } else {
+        if (!challengeMedalsData.pendingNotifications[username]) {
+          challengeMedalsData.pendingNotifications[username] = [];
+        }
+        challengeMedalsData.pendingNotifications[username].push({ type: 1, content: text });
       }
-      challengeMedalsData.pendingNotifications[username].push({ type: 1, content: text });
+      if (user && user._dbId) {
+        db.saveMedal(user._dbId, username, m.rankingId, m.game, m.rank, m.medal, visibleDay).catch(() => {});
+      } else if (process.env.DATABASE_URL) {
+        db.findUserByUsername(username).then((row) => {
+          if (row) db.saveMedal(row.id, username, m.rankingId, m.game, m.rank, m.medal, visibleDay).catch(() => {});
+        }).catch(() => {});
+      }
     }
   }
+}
+
+function buildPodiumXml(rankingId) {
+  if (!rankingId || !rankingId.endsWith('_challenge')) return '';
+  const yesterday = yesterdayDayKey();
+  const dayMedals = challengeMedalsData.medalsByVisibleDay[yesterday] || {};
+  const game = RANKINGS[rankingId] && RANKINGS[rankingId].game;
+  if (!game) return '';
+  const podium = [];
+  for (const [username, medals] of Object.entries(dayMedals)) {
+    for (const m of medals) {
+      if (m.game === game) podium.push({ u: username, rank: m.rank, medal: m.medal });
+    }
+  }
+  if (podium.length === 0) return '';
+  podium.sort((a, b) => a.rank - b.rank);
+  let xml = `<podium day="${escapeXml(yesterday)}">`;
+  for (const p of podium) {
+    const ud = users[p.u] || {};
+    xml += `<m u="${escapeXml(p.u)}" r="${p.rank}" f="${escapeXml(bouilleOf(ud, p.u))}" />`;
+  }
+  xml += '</podium>';
+  return xml;
 }
 
 function resetChallengeScoresInMemory() {
@@ -1277,7 +1323,10 @@ function handleSaveScore(req, res) {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
   const gameName = String(params.game || params.g || params.disc || '');
-  const mode = Number(params.m ?? params.mode ?? 0) || 0;
+  let mode = Number(params.m ?? params.mode ?? 0) || 0;
+  if (mode === 0 && sid && sessions[sid] && sessions[sid].challengeMode) {
+    mode = 1;
+  }
   const scoreVal = Number(params.score || params.s || 0) || 0;
   const scoreData = serializeScoreData(
     params.data ?? params.da ?? params.r ?? params.misc ?? params.md ?? params.tz ?? ''
@@ -1343,6 +1392,15 @@ function adminAuth(req, res, next) {
   }
   next();
 }
+
+app.post('/api/setChallengeMode', (req, res) => {
+  const sid = String(req.body.sid || req.query.sid || '');
+  const challenge = req.body.challenge === true || req.body.challenge === 'true' || req.query.challenge === 'true';
+  if (sid && sessions[sid]) {
+    sessions[sid].challengeMode = challenge;
+  }
+  res.json({ ok: true, challenge });
+});
 
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
@@ -1552,13 +1610,15 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
     console.log(`[SWF-SCORE] skip save user="${username}" sid="${sid}" ip="${ip}" game="${gameName}" score=${scoreVal}`);
     return res.type('text/plain').send('ok=0');
   }
-  const rankingId = rankingIdForGame(gameName, 0);
+  const effectiveSid = sid || fallbackSid || '';
+  const swfMode = (effectiveSid && sessions[effectiveSid] && sessions[effectiveSid].challengeMode) ? 1 : 0;
+  const rankingId = rankingIdForGame(gameName, swfMode);
   if (!rankingId) {
-    console.log(`[SWF-SCORE] unknown ranking game="${gameName}" sid="${sid}" user="${username}"`);
+    console.log(`[SWF-SCORE] unknown ranking game="${gameName}" sid="${effectiveSid}" user="${username}"`);
     return res.type('text/plain').send('ok=0');
   }
   const result = persistScore(username, rankingId, scoreVal, '');
-  console.log(`[SWF-SCORE] ${username} ${gameName} ${scoreVal} -> ${rankingId} updated=${result.updated}`);
+  console.log(`[SWF-SCORE] ${username} ${gameName} ${scoreVal} -> ${rankingId} mode=${swfMode} updated=${result.updated}`);
   res.type('text/plain').send('ok=1');
 });
 
@@ -3766,12 +3826,11 @@ async function handleCBeeMessage(socket, rawXml) {
       if (msg.attrs.d != undefined || msg.attrs.s != undefined) {
         const discId = String(msg.attrs.d || '');
         const scoreVal = Number(msg.attrs.s || 0) || 0;
-        const scoreMode = Number(msg.attrs.m || 0) || 0;
+        const scoreMode = Number(msg.attrs.m || 0) || (client.currentGameMode || 0);
         const scoreData = getScoreDataFromMessage(msg);
         const username = client.username || '';
-        console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" children=${JSON.stringify(msg.children || [])}`);
+        console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" mode=${scoreMode} children=${JSON.stringify(msg.children || [])}`);
         let rankingId = rankingIdForGame(discId, scoreMode);
-        // Fall back to the last started game on this connection.
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
         // Persist if we have a valid ranking + user.
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
@@ -3803,8 +3862,13 @@ case 'join': {
   // FrutiScore overlap: startGame uses wire code "o" with disc attrs.
   if (msg.attrs.d != undefined) {
     const discId = String(msg.attrs.d || '');
+    const gameMode = Number(msg.attrs.m || 0) || 0;
     client.currentGame = discId;
-    console.log(`[FSCORE] startGame disc=${discId} user=${client.username || '-'}`);
+    client.currentGameMode = gameMode;
+    if (client.sid && sessions[client.sid]) {
+      sessions[client.sid].challengeMode = gameMode === 1;
+    }
+    console.log(`[FSCORE] startGame disc=${discId} mode=${gameMode} user=${client.username || '-'}`);
     sendToClient(socket, `<${CMD.join} d="${escapeXml(discId)}" k="0" />`);
     break;
   }
@@ -4007,10 +4071,11 @@ broadcastToChannel(
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
         const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
-        if (!inner) {
+        const podiumXml = buildPodiumXml(internalId);
+        if (!inner && !podiumXml) {
           sendToClient(socket, buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
         } else {
-          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${inner}</${CMD.ban}>`);
+          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${podiumXml}${inner}</${CMD.ban}>`);
         }
         console.log(`[FSCORE] rankingResult (via bugged wire l) ${rkInput}/${internalId || '-'}: ${slice.length}/${all.length} entries`);
         break;
@@ -4059,10 +4124,11 @@ broadcastToChannel(
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
         const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
-        if (!inner) {
+        const podiumXml2 = buildPodiumXml(internalId);
+        if (!inner && !podiumXml2) {
           sendToClient(socket, buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
         } else {
-          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${inner}</${CMD.ban}>`);
+          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${podiumXml2}${inner}</${CMD.ban}>`);
         }
         console.log(`[FSCORE] rankingResult ${rkInput}/${internalId || '-'}: ${slice.length}/${all.length} entries`);
         break;
@@ -4603,20 +4669,30 @@ case 'createchannel': {
       const targetUser = msg.attrs.u || client.username || '';
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       let inner = '';
-      // For each ranking where the user holds position 1, award a virtual trophy.
       for (const [rkId, rk] of Object.entries(RANKINGS)) {
         const info = getUserScore(targetUser, rkId);
         if (info.pos === 1 && info.score > 0) {
           inner += `<a g="${escapeXml(rk.game)}" n="${escapeXml(rk.name)}" v="${info.score}" d="0" />`;
         }
       }
-      const today = utcDayKey();
-      const medalsToday = (challengeMedalsData.medalsByVisibleDay[today] || {})[targetUser] || [];
-      for (const medal of medalsToday) {
-        inner += `<a g="${escapeXml(medal.game)}" n="${escapeXml(`Challenge ${medal.game} ${medal.medal}`)}" v="${medal.rank}" d="1" />`;
+      let allMedals = [];
+      if (process.env.DATABASE_URL) {
+        try { allMedals = await db.getMedalsForUser(targetUser); } catch (e) { /* ignore */ }
+      }
+      if (allMedals.length === 0) {
+        for (const [day, dayMedals] of Object.entries(challengeMedalsData.medalsByVisibleDay || {})) {
+          for (const m of (dayMedals[targetUser] || [])) {
+            allMedals.push({ game: m.game, ranking_id: m.rankingId, rank: m.rank, medal: m.medal, awarded_day: day });
+          }
+        }
+      }
+      for (const medal of allMedals) {
+        const gameName = GAME_DISPLAY_NAMES[medal.game] || medal.game;
+        const medalName = MEDAL_DISPLAY_NAMES[medal.medal] || medal.medal;
+        inner += `<a g="${escapeXml(medal.game)}" n="${escapeXml(`Médaille ${medalName} - ${gameName} (${medal.awarded_day})`)}" v="${medal.rank}" d="1" />`;
       }
       sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.awarduser}>`);
-      console.log(`[FSCORE] awarduser user=${targetUser}`);
+      console.log(`[FSCORE] awarduser user=${targetUser}: ${allMedals.length} medals`);
       break;
     }
 

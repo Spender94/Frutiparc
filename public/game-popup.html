@@ -86,6 +86,17 @@
   const width  = parseInt(qs.get("width") || qs.get("w") || "640", 10) || 640;
   const height = parseInt(qs.get("height") || qs.get("h") || "480", 10) || 480;
 
+  // Challenge mode: set server-side flag so scores route to _challenge rankings
+  const isChallenge = qs.get("mode") === "challenge" || qs.get("c") === "2";
+  const popupSid = qs.get("sid") || "";
+  if (popupSid) {
+    fetch("/api/setChallengeMode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sid: popupSid, challenge: isChallenge })
+    }).catch(function() {});
+  }
+
   const wrap = document.getElementById("player-wrap");
   wrap.style.width  = width + "px";
   wrap.style.height = height + "px";
