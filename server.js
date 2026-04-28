@@ -297,17 +297,23 @@ const RANKINGS = {
   kaluga_challenge:   { name: 'Kaluga - Challenge',       game: 'kaluga',   type: 'L' },
   swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
   miniwave2_challenge:{ name: 'MiniWave - Challenge',     game: 'miniwave2',type: 'L' },
+  bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
+  grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L' },
 };
 
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
 const LEGACY_RANKINGS = [
+  // Section C = "Challenge" in front-end
+  { rk: '0', internal: 'bkiwi_classic',    ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi',  section: 'C' },
+  { rk: '1', internal: 'snake3_classic',   ty: 'point',       rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'C' },
+  { rk: '2', internal: null,               ty: 'ptmb2',       rn: 'Motion Ball 2',gs: '2', g: 'mb2',    section: 'C' },
+  { rk: '3', internal: 'swapou2_classic',  ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
+  { rk: '4', internal: 'kaluga_classic',   ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'C' },
   { rk: '5', internal: null,               ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
   { rk: '6', internal: null,               ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
-  { rk: '7', internal: 'bkiwi_challenge',   ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi', section: 'L' },
-  { rk: '8', internal: 'snake3_challenge', ty: 'point',       rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'L' },
-  { rk: '9', internal: 'swapou2_challenge',ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'L' },
-  { rk: '10',internal: 'kaluga_challenge', ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'L' },
-  { rk: '11',internal: 'miniwave2_challenge',ty:'point',      rn: 'MiniWave',     gs: '5', g: 'miniwave2',section:'L' },
+  // Section L = "Championnat" in front-end — only Frutibandas and Grapiz
+  { rk: '7', internal: 'bandas_challenge',  ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
+  { rk: '8', internal: 'grapiz_challenge',  ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
 ];
 const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.rk, r.internal])
@@ -848,6 +854,7 @@ function collectTop3ForRanking(rankingId) {
 const GAME_DISPLAY_NAMES = {
   bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', kaluga: 'Kaluga',
   swapou2: 'Swapou', miniwave2: 'MiniWave',
+  bandas: 'Frutibandas', grapiz: 'Grapiz',
 };
 const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
 
