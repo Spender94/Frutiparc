@@ -441,21 +441,12 @@
                     var gw = game.width + 32;
                     var gh = game.height + 32;
                     var feat = "width=" + gw + ",height=" + gh + ",resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no";
-                    var win = window.open(popupUrl, "frutiparc_game", feat);
-                    if (!win || win.closed) {
-                        // Popup blocked or call returned null — fall back to a new tab.
-                        console.warn("[Frusion] window.open returned null, falling back to _blank");
-                        window.open(popupUrl, "_blank");
-                    }
+                    window.open(popupUrl, "frutiparc_game", feat);
                     return true;
                 }
 
                 const features = `width=${w || 640},height=${h || 480},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`;
-                var win2 = window.open(rewritten, "frutiparc_game", features);
-                if (!win2 || win2.closed) {
-                    console.warn("[Frusion] window.open returned null (no game info), falling back to _blank");
-                    window.open(rewritten, "_blank");
-                }
+                window.open(rewritten, "frutiparc_game", features);
                 return true;
             };
 
