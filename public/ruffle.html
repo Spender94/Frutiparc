@@ -260,6 +260,13 @@
                 return true;
             };
 
+            window.fp_openPopup = function (url, title, features) {
+                const rewritten = rewriteLegacyUrl(url);
+                console.log("[FP] fp_openPopup", url, "->", rewritten);
+                window.open(rewritten, title || "frutiparc_popup", features || "width=700,height=500,resizable=yes,scrollbars=yes");
+                return true;
+            };
+
             function normalizeAvatarState(value) {
                 let s = String(value || "").replace(/\D/g, "");
 
