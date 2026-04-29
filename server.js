@@ -1266,7 +1266,10 @@ const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbo
     <f u="draftbox" n="Brouillons" t="draftbox" />
   </f>
   <f u="disccollector" n="Mes disques" t="disccollector" />
-  <f u="inventory" n="Inventaire" t="inventory" />
+  <f u="inventory" n="Inventaire" t="inventory">
+    <f u="inv_accessories" n="Accessoires" t="inventory" />
+    <f u="inv_wallpapers" n="Fonds d&apos;écran" t="inventory" />
+  </f>
   <f u="shop" n="Boutique" t="shop">
     <f u="accessories" n="Accessoires" t="accessories" />
   </f>
