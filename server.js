@@ -3285,9 +3285,11 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 // first 2 chars as a base62 status code (00 = success), then treats the rest
 // as the file content. On error: "<XX>" → openErrorAlert("error.http.<n>").
 // ─────────────────────────────────────────────
-app.get(['/ff/get', '/get'], (req, res) => {
-  const uid = String(req.query.u || req.query.uid || '');
-  const sid = req.query.sid;
+app.all('/ff/get', (req, res) => {
+  const params = req.method === 'POST' ? { ...req.query, ...req.body } : req.query;
+  const uid = String(params.u || params.uid || '');
+  const sid = params.sid || params.c || '';
+  console.log('[ff/get] method:', req.method, 'query:', JSON.stringify(req.query), 'body:', JSON.stringify(req.body || {}), 'uid:', uid);
   const auth = requireAuthBySid(sid, res);
   if (!auth) return;
   const { user } = auth;
@@ -3301,9 +3303,10 @@ app.get(['/ff/get', '/get'], (req, res) => {
         mail.read = true;
         if (user._dbId) db.updateMailRead(mail.uid, true).catch(() => {});
       }
+      console.log('[ff/get] found mail', uid, 'body length:', (mail.body || '').length);
       return res.type('text/plain').send('00' + (mail.body || ''));
     }
-    // Not found
+    console.log('[ff/get] mail not found:', uid);
     return res.type('text/plain').send('01');
   }
 
