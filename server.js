@@ -3390,24 +3390,11 @@ async function boot() {
           }
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
-
-      try {
-        const wallpaperShopIds = SHOP_PACKS_DEFAULT.filter(p => p.wallpaperId).map(p => p.id);
-        const removed = await db.deleteWallpaperAccessories(wallpaperShopIds);
-        if (removed > 0) console.log(`[DB] Cleaned up ${removed} wallpaper accessories from user inventories`);
-      } catch (e) { console.error('[DB] Wallpaper cleanup error:', e.message); }
     } catch (e) {
       console.error('[DB] Init failed (running without persistence):', e.message);
     }
   } else {
     console.log('[DB] No DATABASE_URL — running in memory-only mode');
-  }
-
-  for (const username of Object.keys(users)) {
-    const u = users[username];
-    if (Array.isArray(u.customAccessories)) {
-      u.customAccessories = u.customAccessories.filter(acc => !getAccessoryWallpaper(acc));
-    }
   }
 
   const today = parisDayKey();
