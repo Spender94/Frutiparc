@@ -17,6 +17,36 @@
             width: 1920px;
             height: 1080px;
         }
+
+        /* Floating shortcut bar for features Ruffle can't trigger via getURL */
+        #fp-shortcuts {
+            position: fixed;
+            top: 6px;
+            right: 10px;
+            z-index: 100000;
+            display: flex;
+            gap: 6px;
+        }
+        #fp-shortcuts button {
+            font-family: Verdana, Geneva, sans-serif;
+            font-size: 11px;
+            font-weight: bold;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 14px;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,.25);
+        }
+        #fp-shortcuts .fp-btn-forum {
+            background: #7ec43c;
+        }
+        #fp-shortcuts .fp-btn-forum:hover {
+            background: #6cb22a;
+        }
+        #fp-shortcuts .fp-btn-forum.active {
+            background: #E57568;
+        }
     </style>
 
     <script>
@@ -36,6 +66,9 @@
     <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
 </head>
 <body>
+    <div id="fp-shortcuts">
+        <button class="fp-btn-forum" id="fp-forum-btn" onclick="toggleForum()">Forum</button>
+    </div>
     <div id="player-container"></div>
 
     <script>
@@ -95,6 +128,61 @@
                 console.warn("[FP-hook] could not override location.href setter:", e);
             }
         })();
+
+        // HTML Forum button — reliable fallback since Ruffle drops javascript: getURL.
+        var _forumOpen = false;
+        function toggleForum() {
+            var sid = new URLSearchParams(window.location.search).get("sid") || "";
+            var btn = document.getElementById("fp-forum-btn");
+            if (_forumOpen) {
+                // Close forum
+                if (window.fp_closeFrame) window.fp_closeFrame(1);
+                _forumOpen = false;
+                if (btn) { btn.textContent = "Forum"; btn.classList.remove("active"); }
+            } else {
+                // Open forum
+                if (window.fp_goURLResize) {
+                    window.fp_goURLResize("/fb/?sid=" + encodeURIComponent(sid), 1);
+                } else {
+                    // fp_goURLResize not defined yet — open directly
+                    var f = document.getElementById("fp-frame-1");
+                    if (!f) {
+                        f = document.createElement("iframe");
+                        f.id = "fp-frame-1";
+                        f.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:99001;background:#fff;display:none";
+                        document.body.appendChild(f);
+                        if (!window.__fpFrames) window.__fpFrames = {};
+                        window.__fpFrames["1"] = f;
+                    }
+                    f.src = "/fb/?sid=" + encodeURIComponent(sid);
+                    f.style.display = "block";
+                }
+                _forumOpen = true;
+                if (btn) { btn.textContent = "Fermer Forum"; btn.classList.add("active"); }
+            }
+        }
+        window.toggleForum = toggleForum;
+
+        // Also patch fp_closeFrame so the HTML button stays in sync
+        // when the forum is closed from inside (via the "Fermer" button).
+        var _origCloseFramePatched = false;
+        function patchCloseFrame() {
+            if (_origCloseFramePatched || !window.fp_closeFrame) return;
+            var _origClose = window.fp_closeFrame;
+            window.fp_closeFrame = function (mode) {
+                _origClose(mode);
+                if (Number(mode) === 1) {
+                    _forumOpen = false;
+                    var btn = document.getElementById("fp-forum-btn");
+                    if (btn) { btn.textContent = "Forum"; btn.classList.remove("active"); }
+                }
+            };
+            _origCloseFramePatched = true;
+        }
+        // Patch after the main IIFE defines fp_closeFrame
+        window.addEventListener("DOMContentLoaded", function () {
+            setTimeout(patchCloseFrame, 500);
+        });
 
         (function () {
             const APP_ORIGIN = window.location.origin;
