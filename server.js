@@ -736,7 +736,9 @@ async function hydrateUserFromDb(username, dbUser) {
 
   if (Object.keys(dbScores).length > 0) {
     if (!scoresData.users[username]) scoresData.users[username] = {};
+    const rollDone = challengeMedalsData.lastRollDay === parisDayKey();
     for (const [rkId, entry] of Object.entries(dbScores)) {
+      if (rollDone && rkId.endsWith('_challenge')) continue;
       if (!scoresData.users[username][rkId]) {
         scoresData.users[username][rkId] = entry;
       }
@@ -3117,12 +3119,29 @@ async function boot() {
     console.log('[DB] No DATABASE_URL — running in memory-only mode');
   }
 
+  const today = parisDayKey();
   rollDailyChallengeIfNeeded();
+
+  // Safety: if lastRollDay claims we already rolled today but _challenge
+  // scores still exist in memory, a previous boot set lastRollDay without
+  // actually clearing scores.  Reset lastRollDay and force a proper roll.
+  const staleCheck = challengeRankingIds().some(rkId => {
+    for (const [, rlist] of Object.entries(scoresData.users || {})) {
+      if (rlist && rlist[rkId]) return true;
+    }
+    return false;
+  });
+  if (staleCheck && challengeMedalsData.lastRollDay === today) {
+    console.log('[CHALLENGE] lastRollDay=today but stale challenge scores found — forcing roll');
+    challengeMedalsData.lastRollDay = yesterdayParisDayKey();
+    performChallengeRoll(today);
+  }
+
   if (!challengeMedalsData.lastRollDay) {
-    challengeMedalsData.lastRollDay = parisDayKey();
+    challengeMedalsData.lastRollDay = today;
     saveChallengeMedals();
   }
-  console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${parisDayKey()}`);
+  console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${today}, challengeScores=${staleCheck}`);
 }
 
 boot();
