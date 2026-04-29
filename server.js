@@ -4100,7 +4100,7 @@ broadcastToChannel(
         console.log(`[FSCORE-DEBUG] rankingResult request attrs=${JSON.stringify(msg.attrs)} selectedDt=${client && client.selectedDt}`);
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
-        const dtExplicit = msg.attrs.dt !== undefined ? String(msg.attrs.dt) : '';
+        const dtExplicit = msg.attrs.dt !== undefined ? String(msg.attrs.dt).slice(0, 10) : '';
         const internalId = resolveInternalRankingId(rkInput);
         const dtIn = dtExplicit || (internalId && isDailyResetRanking(internalId) ? (client.selectedDt || '') : '');
         if (internalId) {
@@ -4161,7 +4161,8 @@ broadcastToChannel(
       // Distinguish from chat kick by checking: no 'g' channel and no 'u' target.
       if (msg.attrs.dt !== undefined || (!msg.attrs.g && !msg.attrs.u)) {
         const reqId = msg.attrs.r || '';
-        const dt = msg.attrs.dt !== undefined ? String(msg.attrs.dt || '') : parisDayKey();
+        const dtRaw = msg.attrs.dt !== undefined ? String(msg.attrs.dt || '') : parisDayKey();
+        const dt = dtRaw.slice(0, 10);
         client.selectedDt = dt;
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const dtAttr = ` dt="${escapeXml(dt)}"`;
@@ -4202,7 +4203,8 @@ broadcastToChannel(
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
         const internalId = resolveInternalRankingId(rkInput);
-        const dtIn = internalId && isDailyResetRanking(internalId) ? (client.selectedDt || '') : '';
+        const dtInRaw = internalId && isDailyResetRanking(internalId) ? (client.selectedDt || '') : '';
+        const dtIn = dtInRaw ? dtInRaw.slice(0, 10) : '';
         const isHistorical = dtIn && dtIn !== parisDayKey() && internalId && isDailyResetRanking(internalId) && process.env.DATABASE_URL;
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
