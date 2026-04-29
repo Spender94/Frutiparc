@@ -189,18 +189,6 @@ const SCORES_FILE = path.join(SCORES_DIR, 'scores.json');
 const CHALLENGE_MEDALS_FILE = path.join(SCORES_DIR, 'challenge-medals.json');
 let scoresData = { users: {} };
 let challengeMedalsData = { lastRollDay: '', medalsByVisibleDay: {}, pendingNotifications: {} };
-const SEEDED_DEMO_SCORES = {
-  Renault: {
-    snake3_classic: { score: 24500, data: 'seed', updatedAt: '2026-01-01T00:00:00.000Z' },
-  },
-  DebugBot: {
-    snake3_classic: { score: 19840, data: 'seed', updatedAt: '2026-01-01T00:00:00.000Z' },
-  },
-  kasparov: {
-    snake3_classic: { score: 17620, data: 'seed', updatedAt: '2026-01-01T00:00:00.000Z' },
-  },
-};
-
 function loadScores() {
   try {
     if (fs.existsSync(SCORES_FILE)) {
@@ -222,26 +210,6 @@ function saveScoresFile() {
     fs.writeFileSync(SCORES_FILE, JSON.stringify(scoresData, null, 2), 'utf8');
   } catch (e) {
     console.error(`[SCORES] save failed: ${e.message}`);
-  }
-}
-
-function seedDemoScores() {
-  if (!scoresData || typeof scoresData !== 'object') scoresData = { users: {} };
-  if (!scoresData.users || typeof scoresData.users !== 'object') scoresData.users = {};
-  for (const [username, rankings] of Object.entries(SEEDED_DEMO_SCORES)) {
-    if (!scoresData.users[username]) scoresData.users[username] = {};
-    for (const [rkId, row] of Object.entries(rankings || {})) {
-      const current = scoresData.users[username][rkId];
-      const currentScore = current && Number.isFinite(Number(current.score)) ? Number(current.score) : 0;
-      const seedScore = Number(row.score) || 0;
-      if (!current || currentScore < seedScore) {
-        scoresData.users[username][rkId] = {
-          score: seedScore,
-          data: row.data || 'seed',
-          updatedAt: row.updatedAt || new Date().toISOString(),
-        };
-      }
-    }
   }
 }
 
@@ -328,13 +296,11 @@ const INTERNAL_TO_LEGACY_RK = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.internal, r.rk])
 );
 const HARDCODED_FRUTIZ = {
-  Renault: { x: 424242, f: '00000d0r020f0l0000000000' },
-  kasparov: { x: 5353, f: '0005000Q010t0a04010t0w00' },
   DebugBot: { x: 1337, f: '000000010000000000000000' },
 };
 
 function hardcodedMeAttrs(name) {
-  const d = HARDCODED_FRUTIZ[String(name || '')] || HARDCODED_FRUTIZ.Renault;
+  const d = HARDCODED_FRUTIZ[String(name || '')] || HARDCODED_FRUTIZ.DebugBot;
   return `x="${d.x}" f="${escapeXml(d.f)}"`;
 }
 
@@ -367,33 +333,15 @@ function buildLegacyRankingResultPayload(rkInput, reqId = '', cAttr = '') {
   const rk = String(rkInput || '');
   const r = reqId ? ` r="${escapeXml(reqId)}"` : '';
   const c = cAttr ? ` c="${escapeXml(cAttr)}"` : '';
-  const me = 'Renault';
-  const meAttrs = hardcodedMeAttrs(me);
-  if (rk === '0') {
-    return `<m${r} ty="millisecond" rk="0"${c}><score u="${me}" ${meAttrs} s="36500" t="2025-07-02 00:56:00" d="Skiwix:5:1:" /></m>`;
-  }
-  if (rk === '3') {
-    return `<m${r} ty="point" rk="3"${c}><score u="${me}" ${meAttrs} s="30000" t="2025-07-02 00:56:00" d="S6:" /></m>`;
-  }
-  if (rk === '4') {
-    return `<m${r} ty="point" rk="4"${c}><score u="${me}" ${meAttrs} s="15000" t="2025-07-02 00:56:00" d="Smakulo:" /></m>`;
-  }
-  // Snake + generic fallback.
-  return `<m${r} ty="point" rk="${escapeXml(rk || '1')}"${c}><score u="${me}" ${meAttrs} s="1000000" t="2025-07-02 00:56:00" /></m>`;
+  const legacyDesc = legacyDescriptorFromRkLike(rk);
+  const ty = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
+  return `<m${r}${ty} rk="${escapeXml(rk)}"${c}></m>`;
 }
 
 function buildLegacyUserResultPayload(user, reqId = '') {
   const r = reqId ? ` r="${escapeXml(reqId)}"` : '';
-  const u = escapeXml(String(user || 'Renault'));
-  return `<n${r} u="${u}">`
-    + '<rk rk="0" p="1" s="36600" t="millisecond" />'
-    + '<rk rk="1" p="1" s="1000000" />'
-    + '<rk rk="2" p="2" s="860053" t="ptmb2" />'
-    + '<rk rk="3" p="3" s="30000" />'
-    + '<rk rk="4" p="4" s="15000" />'
-    + '<rk rk="5" p="5" s="3" />'
-    + '<rk rk="6" p="6" s="10" />'
-    + '</n>';
+  const u = escapeXml(String(user || 'DebugBot'));
+  return `<n${r} u="${u}"></n>`;
 }
 
 function buildLegacyGameScoreInfo(gs) {
@@ -702,12 +650,12 @@ function getUserScore(username, rankingId) {
 }
 
 loadScores();
-seedDemoScores();
 loadChallengeMedals();
 if (!challengeMedalsData.lastRollDay) {
   challengeMedalsData.lastRollDay = parisDayKey();
   saveChallengeMedals();
 }
+rollDailyChallengeIfNeeded();
 
 function createDefaultUser(pass) {
   return {
@@ -2751,7 +2699,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
         <f u="disccollector" t="disccollector" />
         <f u="inventory" t="inventory" />
         <f u="mycontact" t="mycontact" />
-        <e u="Gaspard" t="contact" s="10" d="0" a="0">Gaspard@frutiparc.com</e>
+        <e u="DebugBot" t="contact" s="10" d="0" a="0">DebugBot@frutiparc.com</e>
         <f u="recyclebin" t="recyclebin" />
       </f>`
     );
@@ -3478,12 +3426,6 @@ const channels = {
 // ── Virtual users / PNJ (always connected on pomme) ──
 const CONNECTED_NPCS = new Set([
   'DebugBot',
-  'Renault',
-  'tigrenoir',
-  'SakurAmalia',
-  'EmiLicorne',
-  'kasparov',
-  'Gaspard',
 ]);
 
 users.DebugBot = {
@@ -3506,157 +3448,6 @@ users.DebugBot = {
   firstName: 'Debug',
   lastName: 'Bot',
   comment: 'Bot de test connecté en permanence.',
-};
-
-users.Renault = {
-  pass: '',
-  xp: 424242,
-  kikooz: 100,
-  fbouille: '00000d0r020f0l0000000000',
-  items: withDefaultPens([1, 2, 3]),
-  contacts: [],
-  blacklist: [],
-  gender: 'M',
-  birthday: '1991-01-01',
-  country: '1',
-  region: '0',
-  countryIndex: '1',
-  regionIndex: '0',
-  prefs: '',
-  isModerator: true,
-  needsBouille: false,
-  city: 'Namur',
-  realJob: 'Blagueur',
-  firstName: 'C-A',
-  lastName: 'Run',
-  comment: 'Frutimarié à tigrenoir, frutipapa de SakurAmalia et EmiLicorne',
-  siteUrl: 'http://renault.up.md/FrutiStats/',
-};
-
-users.tigrenoir = {
-  pass: '',
-  xp: 33,
-  kikooz: 100,
-  fbouille: '0004060N02000O030y0t0j00',
-  items: withDefaultPens([1, 2, 3]),
-  contacts: [],
-  blacklist: [],
-  gender: 'F',
-  birthday: '1992-01-01',
-  country: '1',
-  region: '0',
-  countryIndex: '1',
-  regionIndex: '0',
-  prefs: '',
-  isModerator: false,
-  needsBouille: false,
-  city: 'Namur',
-  realJob: 'Fleuriste',
-  firstName: 'J',
-  lastName: 'Run',
-  comment: 'Frutimariée à Renault, frutimaman de SakurAmalia et EmiLicorne',
-  siteUrl: '',
-};
-
-users.SakurAmalia = {
-  pass: '',
-  xp: 5,
-  kikooz: 100,
-  fbouille: '0004040J020k0P00000t0j00',
-  items: withDefaultPens([1, 2, 3]),
-  contacts: [],
-  blacklist: [],
-  gender: 'F',
-  birthday: '2019-01-01',
-  country: '1',
-  region: '0',
-  countryIndex: '1',
-  regionIndex: '0',
-  prefs: '',
-  isModerator: false,
-  needsBouille: false,
-  city: 'Namur',
-  realJob: 'Dresseuse Pokémon',
-  firstName: 'A',
-  lastName: 'Run',
-  comment: 'Frutifille de tigrenoir et Renault, frutisoeur de EmiLicorne',
-  siteUrl: '',
-};
-
-users.EmiLicorne = {
-  pass: '',
-  xp: 2,
-  kikooz: 100,
-  fbouille: '0004070K020n0e0a000O0000',
-  items: withDefaultPens([1, 2, 3]),
-  contacts: [],
-  blacklist: [],
-  gender: 'F',
-  birthday: '2022-01-01',
-  country: '1',
-  region: '0',
-  countryIndex: '1',
-  regionIndex: '0',
-  prefs: '',
-  isModerator: false,
-  needsBouille: false,
-  mutedUntil: '2030-01-01 00:00:00',
-  city: 'Namur',
-  realJob: 'Dresseuse de dragons',
-  firstName: 'É',
-  lastName: 'Run',
-  comment: 'Frutifille de tigrenoir et Renault, frutisoeur de SakurAmalia',
-  siteUrl: '',
-};
-
-users.kasparov = {
-  pass: '',
-  xp: 5353,
-  kikooz: 100,
-  fbouille: '0005000Q010t0a04010t0w00',
-  items: withDefaultPens([1, 2, 3]),
-  contacts: [],
-  blacklist: [],
-  gender: 'M',
-  birthday: '1993-01-01',
-  country: '0',
-  region: '2',
-  countryIndex: '0',
-  regionIndex: '2',
-  prefs: '',
-  isModerator: true,
-  needsBouille: false,
-  city: 'Cachan',
-  realJob: 'Détective',
-  firstName: 'Rémi',
-  lastName: 'Sans famille',
-  comment: '[Frutimarié à Bee le Vendredi 19 Decembre 2008 à 21h42 et 6 secondes.] Вив каспаров [19:38:04] Babylou: Ah oui tu as raison kaspa [Animateur du 29 Aout 2007 au 18 Janvier 2009] [Modérateur depuis le 23 Janvier 2008]',
-  siteUrl: 'http://spikeo.no-ip.org/',
-};
-
-users.Gaspard = {
-  pass: '',
-  xp: 9999999,
-  kikooz: 100,
-  fbouille: '0n0000000000000000000000',
-  items: withDefaultPens([1, 2, 3]),
-  contacts: [],
-  blacklist: [],
-  gender: 'M',
-  birthday: '2004-03-24',
-  country: '0',
-  region: '0',
-  countryIndex: '0',
-  regionIndex: '0',
-  prefs: '',
-  isModerator: false,
-  needsBouille: false,
-  city: '',
-  realJob: '',
-  firstName: 'Gaspard',
-  lastName: '',
-  comment: '',
-  siteUrl: '',
 };
 
 for (const npc of CONNECTED_NPCS) {
