@@ -179,6 +179,73 @@
     font-style: italic;
     color: #5a8030;
   }
+  .post-content blockquote.quote {
+    background: #ADE76C;
+    border-left: 3px solid #7ec43c;
+    margin: 6px 0;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #133200;
+  }
+  .post-content blockquote.quote .quote-author {
+    font-weight: bold;
+    font-size: 10px;
+    margin-bottom: 4px;
+    color: #5a8030;
+  }
+  .post-content a { color: #2d5e0c; text-decoration: underline; }
+  .post-author .post-count {
+    font-size: 10px;
+    color: #5a8030;
+    margin-top: 2px;
+  }
+  .post-author .role-badge {
+    display: inline-block;
+    background: #E57568;
+    color: #fff;
+    font-size: 9px;
+    font-weight: bold;
+    padding: 1px 5px;
+    border-radius: 2px;
+    margin-top: 3px;
+    text-transform: uppercase;
+  }
+  /* Toolbar above textareas (formatting buttons) */
+  .bbcode-toolbar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .bbcode-toolbar button {
+    background: #ADE76C;
+    border: 1px solid #8bc55a;
+    color: #133200;
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: Verdana, sans-serif;
+    border-radius: 2px;
+    min-width: 28px;
+  }
+  .bbcode-toolbar button:hover { background: #8bc55a; }
+  .bbcode-toolbar button.b { font-weight: bold; }
+  .bbcode-toolbar button.i { font-style: italic; }
+  .bbcode-toolbar button.u { text-decoration: underline; }
+  /* Inline edit area */
+  .post-edit-area textarea {
+    width: 100%;
+    height: 100px;
+    padding: 5px 7px;
+    font-size: 12px;
+    border: 1px solid #8bc55a;
+    border-radius: 3px;
+    font-family: Verdana, sans-serif;
+    background: #fff;
+    color: #133200;
+    margin-bottom: 6px;
+  }
+  .post-edit-area .form-actions { display: flex; gap: 6px; }
 
   /* Buttons */
   .btn {
@@ -348,6 +415,32 @@ function escapeHtml(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Minimal BBCode → HTML. Escapes first, then unescapes the recognised tags.
+function renderBBCode(s) {
+  let out = escapeHtml(s);
+  // [b], [i], [u], [s]
+  out = out.replace(/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong>$1</strong>');
+  out = out.replace(/\[i\]([\s\S]*?)\[\/i\]/gi, '<em>$1</em>');
+  out = out.replace(/\[u\]([\s\S]*?)\[\/u\]/gi, '<u>$1</u>');
+  out = out.replace(/\[s\]([\s\S]*?)\[\/s\]/gi, '<s>$1</s>');
+  // [url=…]…[/url] and [url]…[/url]
+  out = out.replace(/\[url=(https?:\/\/[^\s\]]+)\]([\s\S]*?)\[\/url\]/gi,
+    '<a href="$1" target="_blank" rel="noopener">$2</a>');
+  out = out.replace(/\[url\](https?:\/\/[^\s\[]+)\[\/url\]/gi,
+    '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  // [citation=author]…[/citation] and [quote=author]…[/quote]
+  out = out.replace(/\[(?:citation|quote)=([^\]]+)\]([\s\S]*?)\[\/(?:citation|quote)\]/gi,
+    '<blockquote class="quote"><div class="quote-author">$1 a écrit :</div>$2</blockquote>');
+  out = out.replace(/\[(?:citation|quote)\]([\s\S]*?)\[\/(?:citation|quote)\]/gi,
+    '<blockquote class="quote">$1</blockquote>');
+  // Auto-link bare URLs that weren't already caught
+  out = out.replace(/(^|[\s>])(https?:\/\/[^\s<]+)/g,
+    '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  // Newlines → <br>
+  out = out.replace(/\n/g, '<br>');
+  return out;
+}
+
 function formatDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -508,27 +601,42 @@ async function loadTopic(topicId, page) {
   ]);
 
   let html = '<div class="toolbar">';
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
   if (currentUser && !data.topic.isLocked) html += '<a href="#" class="btn btn-green" onclick="showReplyForm();return false">Répondre</a>';
-  else html += '<span></span>';
+  // Moderator tools
+  if (data.currentIsMod) {
+    html += '<a href="#" class="btn btn-orange btn-sm" onclick="toggleSticky();return false">' + (data.topic.isSticky ? 'Retirer Post-it' : 'Mettre en Post-it') + '</a>';
+    html += '<a href="#" class="btn btn-orange btn-sm" onclick="toggleLock();return false">' + (data.topic.isLocked ? 'Déverrouiller' : 'Verrouiller') + '</a>';
+  }
+  // Author or moderator can delete the topic
+  if (currentUser && (data.topic.author === currentUser || data.currentIsMod)) {
+    html += '<a href="#" class="btn btn-orange btn-sm" onclick="deleteTopic();return false">Supprimer</a>';
+  }
+  html += '</div>';
   html += '<span style="font-size:11px;font-weight:bold;color:#133200">' + escapeHtml(data.topic.title) + '</span>';
   html += '</div>';
 
   for (const p of data.posts) {
     const initial = (p.author || '?')[0].toUpperCase();
-    html += '<div class="post">';
+    const canEdit = currentUser && (p.author === currentUser);
+    const canDelete = currentUser && (p.author === currentUser || data.currentIsMod);
+    html += '<div class="post" id="post-' + p.id + '">';
     html += '<div class="post-author">';
     html += '<div class="avatar">' + escapeHtml(initial) + '</div>';
     html += '<div class="username">' + escapeHtml(p.author) + '</div>';
+    if (p.isModerator) html += '<div class="role-badge">Modérateur</div>';
+    if (typeof p.postCount === 'number') html += '<div class="post-count">Messages : ' + p.postCount + '</div>';
     html += '</div>';
     html += '<div class="post-body">';
     html += '<div class="post-header">';
     html += '<span>Posté le ' + formatDate(p.createdAt) + '</span>';
     html += '<div class="actions">';
     if (currentUser && !data.topic.isLocked) html += '<a href="#" class="btn btn-orange btn-sm" onclick="quotePost(' + p.id + ',\'' + escapeHtml(p.author).replace(/'/g,"\\'") + '\');return false">citer</a>';
-    if (currentUser && (p.author === currentUser)) html += ' <a href="#" class="btn btn-orange btn-sm" onclick="editPost(' + p.id + ');return false">éditer</a>';
+    if (canEdit) html += ' <a href="#" class="btn btn-orange btn-sm" onclick="editPost(' + p.id + ');return false">éditer</a>';
+    if (canDelete) html += ' <a href="#" class="btn btn-orange btn-sm" onclick="deletePost(' + p.id + ');return false">supprimer</a>';
     html += '</div>';
     html += '</div>';
-    html += '<div class="post-content" id="post-content-' + p.id + '">' + escapeHtml(p.content) + '</div>';
+    html += '<div class="post-content" id="post-content-' + p.id + '" data-raw="' + escapeHtml(p.content) + '">' + renderBBCode(p.content) + '</div>';
     if (p.updatedAt) html += '<div class="post-edited">Ce message a été édité le ' + formatDate(p.updatedAt) + '</div>';
     html += '</div>';
     html += '</div>';
@@ -539,6 +647,7 @@ async function loadTopic(topicId, page) {
   if (currentUser && !data.topic.isLocked) {
     html += '<div class="form-area" id="reply-form" style="display:none">';
     html += '<label>Répondre :</label>';
+    html += bbcodeToolbarHtml('reply-content');
     html += '<textarea id="reply-content" placeholder="Votre message..."></textarea>';
     html += '<div class="form-actions"><button class="btn btn-green" onclick="submitReply()">Envoyer</button> <button class="btn btn-orange" onclick="document.getElementById(\'reply-form\').style.display=\'none\'">Annuler</button></div>';
     html += '</div>';
@@ -556,10 +665,14 @@ function showReplyForm() {
 function quotePost(postId, author) {
   const el = document.getElementById('post-content-' + postId);
   if (!el) return;
-  const text = el.textContent;
+  // Quote the raw BBCode so the original formatting is preserved.
+  const raw = el.getAttribute('data-raw') || el.textContent;
+  const tmp = document.createElement('textarea');
+  tmp.innerHTML = raw;
+  const text = tmp.value;
   showReplyForm();
   const ta = document.getElementById('reply-content');
-  ta.value = '[citation=' + author + ']\n' + text.trim() + '\n[/citation]\n\n';
+  ta.value = '[quote=' + author + ']\n' + text.trim() + '\n[/quote]\n\n';
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
 }
@@ -581,18 +694,116 @@ async function submitReply() {
   }
 }
 
-async function editPost(postId) {
-  const el = document.getElementById('post-content-' + postId);
-  if (!el) return;
-  const original = el.textContent;
-  const newContent = prompt('Modifier le message :', original);
-  if (newContent === null || newContent.trim() === '') return;
+function bbcodeToolbarHtml(targetId) {
+  return '<div class="bbcode-toolbar">'
+    + '<button type="button" class="b" onclick="bbWrap(\'' + targetId + '\',\'b\')" title="Gras">B</button>'
+    + '<button type="button" class="i" onclick="bbWrap(\'' + targetId + '\',\'i\')" title="Italique">I</button>'
+    + '<button type="button" class="u" onclick="bbWrap(\'' + targetId + '\',\'u\')" title="Souligné">U</button>'
+    + '<button type="button" onclick="bbWrap(\'' + targetId + '\',\'s\')" title="Barré">S</button>'
+    + '<button type="button" onclick="bbWrap(\'' + targetId + '\',\'quote\')" title="Citation">&laquo;&raquo;</button>'
+    + '<button type="button" onclick="bbInsertUrl(\'' + targetId + '\')" title="Lien">URL</button>'
+    + '</div>';
+}
+
+function bbWrap(targetId, tag) {
+  const ta = document.getElementById(targetId);
+  if (!ta) return;
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const sel = ta.value.substring(start, end);
+  const open = '[' + tag + ']', close = '[/' + tag + ']';
+  ta.value = ta.value.substring(0, start) + open + sel + close + ta.value.substring(end);
+  ta.focus();
+  const cursor = start + open.length + sel.length;
+  ta.setSelectionRange(cursor, cursor);
+}
+
+function bbInsertUrl(targetId) {
+  const url = prompt('URL :', 'https://');
+  if (!url) return;
+  const ta = document.getElementById(targetId);
+  if (!ta) return;
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const sel = ta.value.substring(start, end) || url;
+  const insert = '[url=' + url + ']' + sel + '[/url]';
+  ta.value = ta.value.substring(0, start) + insert + ta.value.substring(end);
+  ta.focus();
+  ta.setSelectionRange(start + insert.length, start + insert.length);
+}
+
+function editPost(postId) {
+  const contentEl = document.getElementById('post-content-' + postId);
+  if (!contentEl) return;
+  // If already in edit mode, do nothing.
+  if (document.getElementById('edit-area-' + postId)) return;
+  const raw = contentEl.getAttribute('data-raw') || contentEl.textContent;
+  // Decode the data-raw attribute (was HTML-escaped on render).
+  const tmp = document.createElement('textarea');
+  tmp.innerHTML = raw;
+  const original = tmp.value;
+
+  const taId = 'edit-textarea-' + postId;
+  const wrap = document.createElement('div');
+  wrap.className = 'post-edit-area';
+  wrap.id = 'edit-area-' + postId;
+  wrap.innerHTML = bbcodeToolbarHtml(taId)
+    + '<textarea id="' + taId + '"></textarea>'
+    + '<div class="form-actions">'
+    + '<button class="btn btn-green" onclick="submitEdit(' + postId + ')">Enregistrer</button>'
+    + '<button class="btn btn-orange" onclick="cancelEdit(' + postId + ')">Annuler</button>'
+    + '</div>';
+  contentEl.style.display = 'none';
+  contentEl.parentNode.insertBefore(wrap, contentEl.nextSibling);
+  document.getElementById(taId).value = original;
+  document.getElementById(taId).focus();
+}
+
+function cancelEdit(postId) {
+  const wrap = document.getElementById('edit-area-' + postId);
+  if (wrap) wrap.remove();
+  const contentEl = document.getElementById('post-content-' + postId);
+  if (contentEl) contentEl.style.display = '';
+}
+
+async function submitEdit(postId) {
+  const ta = document.getElementById('edit-textarea-' + postId);
+  if (!ta) return;
+  const newContent = ta.value.trim();
+  if (!newContent) { alert('Le message ne peut pas être vide.'); return; }
   const data = await apiFetch('/api/forum/post/' + postId, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: newContent.trim(), sid: SID }),
+    body: JSON.stringify({ content: newContent, sid: SID }),
   });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
+  else alert('Erreur : ' + (data.error || 'inconnue'));
+}
+
+async function deletePost(postId) {
+  if (!confirm('Supprimer ce message ?')) return;
+  const data = await apiFetch('/api/forum/post/' + postId, { method: 'DELETE' });
+  if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
+  else alert('Erreur : ' + (data.error || 'inconnue'));
+}
+
+async function toggleSticky() {
+  if (!currentTopicId) return;
+  const data = await apiFetch('/api/forum/topic/' + currentTopicId + '/sticky', { method: 'POST' });
+  if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
+  else alert('Erreur : ' + (data.error || 'inconnue'));
+}
+
+async function toggleLock() {
+  if (!currentTopicId) return;
+  const data = await apiFetch('/api/forum/topic/' + currentTopicId + '/lock', { method: 'POST' });
+  if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
+  else alert('Erreur : ' + (data.error || 'inconnue'));
+}
+
+async function deleteTopic() {
+  if (!currentTopicId) return;
+  if (!confirm('Supprimer ce sujet et tous ses messages ?')) return;
+  const data = await apiFetch('/api/forum/topic/' + currentTopicId, { method: 'DELETE' });
+  if (data.ok) navigate('board', data.boardId || (currentTopicData && currentTopicData.topic.boardId));
   else alert('Erreur : ' + (data.error || 'inconnue'));
 }
 
@@ -604,6 +815,7 @@ function showNewTopicForm(boardId) {
   html += '<label>Titre :</label>';
   html += '<input type="text" id="new-topic-title" maxlength="200" placeholder="Titre du sujet">';
   html += '<label>Message :</label>';
+  html += bbcodeToolbarHtml('new-topic-content');
   html += '<textarea id="new-topic-content" placeholder="Votre message..." style="height:160px"></textarea>';
   html += '<div class="form-actions">';
   html += '<button class="btn btn-green" onclick="submitNewTopic(' + boardId + ')">Créer le sujet</button>';
