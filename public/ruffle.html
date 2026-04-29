@@ -39,6 +39,63 @@
     <div id="player-container"></div>
 
     <script>
+        // Intercept "javascript:" navigations from Ruffle's getURL() forwarding.
+        // FPForumSlot.as fires getURL("javascript:fp_goURLResize(...)", "") with
+        // an empty target — depending on Ruffle's version, the empty target can
+        // route the call through window.open or through location.href.  Hooking
+        // both sites makes sure fp_* helpers always run.
+        (function () {
+            function evalJsUrl(u) {
+                try {
+                    var code = decodeURIComponent(u.substring("javascript:".length));
+                    console.log("[FP-hook] eval javascript: URL ->", code);
+                    // eslint-disable-next-line no-eval
+                    (0, eval)(code);
+                } catch (e) {
+                    console.error("[FP-hook] eval failed:", e, "url=", u);
+                }
+            }
+
+            var _origOpen = window.open;
+            window.open = function (url, target, features) {
+                var u = String(url == null ? "" : url);
+                if (u.indexOf("javascript:") === 0) {
+                    evalJsUrl(u);
+                    return null;
+                }
+                return _origOpen.apply(window, arguments);
+            };
+
+            // Some Ruffle versions assign window.location.href = "javascript:..."
+            // for empty-target getURL.  Modern browsers run the script natively,
+            // but on hardened iframes (or with sandboxing) it can silently fail.
+            // Override the setter as a belt-and-braces fallback.
+            try {
+                var locProto = Object.getPrototypeOf(window.location);
+                var hrefDesc = Object.getOwnPropertyDescriptor(locProto, "href")
+                    || Object.getOwnPropertyDescriptor(window.location, "href");
+                if (hrefDesc && hrefDesc.set) {
+                    var origHrefSet = hrefDesc.set;
+                    Object.defineProperty(window.location, "href", {
+                        configurable: true,
+                        get: hrefDesc.get
+                            ? hrefDesc.get.bind(window.location)
+                            : function () { return location.toString(); },
+                        set: function (v) {
+                            var s = String(v == null ? "" : v);
+                            if (s.indexOf("javascript:") === 0) {
+                                evalJsUrl(s);
+                                return;
+                            }
+                            origHrefSet.call(window.location, v);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn("[FP-hook] could not override location.href setter:", e);
+            }
+        })();
+
         (function () {
             const APP_ORIGIN = window.location.origin;
             const APP_HOST = window.location.host;
@@ -363,7 +420,7 @@
                 await player.load({
                     url: "/legacy/main.swf",
                     autoplay: "on",
-                    allowScriptAccess: true,
+                    allowScriptAccess: "always",
                     quality: "high",
                     parameters: {
                         sid: sid,
