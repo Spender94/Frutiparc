@@ -184,8 +184,10 @@ async function initSchema() {
         description TEXT DEFAULT '',
         suffix9     TEXT NOT NULL,
         comment     TEXT DEFAULT '',
+        wallpaper_id TEXT DEFAULT NULL,
         created_at  TIMESTAMPTZ DEFAULT now()
       );
+      ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS wallpaper_id TEXT DEFAULT NULL;
     `);
     console.log('[DB] Schema initialized');
   } finally {
@@ -525,24 +527,28 @@ async function addItem(userId, itemId) {
 
 async function loadShopPacks() {
   const { rows } = await pool.query('SELECT * FROM shop_packs ORDER BY id');
-  return rows.map(r => ({
-    id: r.id,
-    name: r.name,
-    category: r.category || 'Accessoires',
-    price: r.price || 0,
-    description: r.description || '',
-    suffix9: r.suffix9,
-    comment: r.comment || r.description || '',
-  }));
+  return rows.map(r => {
+    const p = {
+      id: r.id,
+      name: r.name,
+      category: r.category || 'Accessoires',
+      price: r.price || 0,
+      description: r.description || '',
+      suffix9: r.suffix9,
+      comment: r.comment || r.description || '',
+    };
+    if (r.wallpaper_id) p.wallpaperId = r.wallpaper_id;
+    return p;
+  });
 }
 
 async function upsertShopPack(pack) {
   await pool.query(
-    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (id) DO UPDATE SET
-       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7`,
-    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '']
+       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8`,
+    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null]
   );
 }
 

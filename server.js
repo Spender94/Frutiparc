@@ -1026,6 +1026,28 @@ function buildPrefDefString() {
   return r;
 }
 
+function parsePrefString(str) {
+  const result = {};
+  let pos = 0;
+  while (pos + 4 <= str.length) {
+    const id = decode62(str.substring(pos, pos + 2));
+    const len = decode62(str.substring(pos + 2, pos + 4));
+    const val = str.substring(pos + 4, pos + 4 + len);
+    pos += 4 + len;
+    result[id] = val;
+  }
+  return result;
+}
+
+function encodePrefString(parsed) {
+  let r = '';
+  for (const [id, val] of Object.entries(parsed)) {
+    const v = String(val);
+    r += encode62(Number(id), 2) + encode62(v.length, 2) + v;
+  }
+  return r;
+}
+
 function ensureContactLists(user) {
   if (!Array.isArray(user.contacts)) user.contacts = [];
   if (!Array.isArray(user.blacklist)) user.blacklist = [];
@@ -2463,9 +2485,31 @@ app.all(['/do/smi', '/smi', '/do/mi', '/mi', '/do/emi', '/emi'], saveMyInfo);
 
 // ─────────────────────────────────────────────
 // ENDPOINT: do/prefsavepartial — Save one preference
-// Returns LoadVars: state=0
+// The client sends i=<prefId>&v=<value> to update a single pref.
+// We parse the encoded prefs string, update the entry, re-encode and persist.
 // ─────────────────────────────────────────────
 app.get('/do/prefsavepartial', (req, res) => {
+  const sid = req.query.sid;
+  const session = sessions[sid];
+  if (session && session.user && users[session.user]) {
+    const user = users[session.user];
+    const prefId = Number(req.query.i);
+    const rawVal = req.query.v;
+    if (Number.isFinite(prefId) && rawVal !== undefined) {
+      const parsed = parsePrefString(user.prefs || '');
+      const def = prefDefs.find(p => p.id === prefId);
+      if (def) {
+        const isDefault = (rawVal === '' || rawVal === def.def);
+        if (isDefault) {
+          delete parsed[prefId];
+        } else {
+          parsed[prefId] = rawVal;
+        }
+        user.prefs = encodePrefString(parsed);
+        if (user._dbId) db.updateUser(session.user, { prefs: user.prefs }).catch(() => {});
+      }
+    }
+  }
   res.type('text/plain').send('state=0');
 });
 
@@ -2902,18 +2946,26 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     const defaultAccNodes = DEFAULT_ACCESSORIES
       .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
       .join('');
+    const ownedWpIds = new Set();
     let customAccNodes = '';
     for (const acc of (Array.isArray(user.customAccessories) ? user.customAccessories : [])) {
       const wp = getAccessoryWallpaper(acc);
       if (wp) {
+        ownedWpIds.add(acc.id);
         customAccNodes += `<e u="${escapeXml(acc.id)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(acc.n || 'Fond')}\n${wp.url}\n${wp.color}</e>`;
       } else {
         const v = acc.v || '';
         customAccNodes += `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(v || DEFAULT_BOUILLE_STATE)}</e>`;
       }
     }
+    let defaultWpNodes = '';
+    for (const wp of DEFAULT_WALLPAPERS) {
+      if (!ownedWpIds.has(wp.u) && !ownedWpIds.has('wp_' + wp.u)) {
+        defaultWpNodes += `<e u="${escapeXml(wp.u)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(wp.n)}\n${wp.url}\n${wp.color}</e>`;
+      }
+    }
     return res.type('text/xml').send(
-      `<f u="inventory">${defaultAccNodes}${customAccNodes}</f>`
+      `<f u="inventory">${defaultAccNodes}${customAccNodes}${defaultWpNodes}</f>`
     );
   }
 
@@ -3291,8 +3343,11 @@ async function boot() {
       console.log(`[DB] Loaded ${Object.keys(allBouilles).length} bouilles from database`);
       try {
         const dbPacks = await db.loadShopPacks();
+        const defaultById = Object.fromEntries(SHOP_PACKS_DEFAULT.map(p => [p.id, p]));
         const existingIds = new Set(SHOP_PACKS.map(p => p.id));
         for (const p of dbPacks) {
+          const def = defaultById[p.id];
+          if (def && def.wallpaperId && !p.wallpaperId) p.wallpaperId = def.wallpaperId;
           if (existingIds.has(p.id)) {
             const idx = SHOP_PACKS.findIndex(x => x.id === p.id);
             SHOP_PACKS[idx] = p;
@@ -3304,6 +3359,9 @@ async function boot() {
         for (const p of SHOP_PACKS) {
           if (!dbPacks.find(d => d.id === p.id)) {
             db.upsertShopPack(p).catch(() => {});
+          } else if (p.wallpaperId) {
+            const dbP = dbPacks.find(d => d.id === p.id);
+            if (dbP && !dbP.wallpaperId) db.upsertShopPack(p).catch(() => {});
           }
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
