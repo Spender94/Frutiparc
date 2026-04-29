@@ -885,6 +885,12 @@ function resetChallengeScoresInMemory() {
 
 async function rollDailyChallengeIfNeeded() {
   const today = parisDayKey();
+  if (!challengeMedalsData.lastRollDay) {
+    challengeMedalsData.lastRollDay = today;
+    saveChallengeMedals();
+    console.log(`[CHALLENGE] First boot — set lastRollDay=${today}, no roll`);
+    return;
+  }
   if (challengeMedalsData.lastRollDay === today) return;
   await performChallengeRoll(today);
 }
@@ -3151,11 +3157,6 @@ async function boot() {
 
   const today = parisDayKey();
   await rollDailyChallengeIfNeeded();
-
-  if (!challengeMedalsData.lastRollDay) {
-    challengeMedalsData.lastRollDay = today;
-    saveChallengeMedals();
-  }
 
   if (process.env.DATABASE_URL) {
     const yesterday = yesterdayParisDayKey();
