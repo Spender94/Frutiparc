@@ -3280,6 +3280,38 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: ff/get — Fetch raw file content (text)
+// box.ViewMail uses this to load the mail body. The Flash client decodes the
+// first 2 chars as a base62 status code (00 = success), then treats the rest
+// as the file content. On error: "<XX>" → openErrorAlert("error.http.<n>").
+// ─────────────────────────────────────────────
+app.get(['/ff/get', '/get'], (req, res) => {
+  const uid = String(req.query.u || req.query.uid || '');
+  const sid = req.query.sid;
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
+  const { user } = auth;
+
+  // Mail content
+  if (uid && uid.charAt(0) === 'm') {
+    ensureMails(user);
+    const mail = user.mails.find((m) => m.uid === uid);
+    if (mail) {
+      if (mail.folder === 'inbox' && !mail.read) {
+        mail.read = true;
+        if (user._dbId) db.updateMailRead(mail.uid, true).catch(() => {});
+      }
+      return res.type('text/plain').send('00' + (mail.body || ''));
+    }
+    // Not found
+    return res.type('text/plain').send('01');
+  }
+
+  // Default: empty success response
+  return res.type('text/plain').send('00');
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: ff/mk — Create file/folder
 // Returns XML
 // ─────────────────────────────────────────────
