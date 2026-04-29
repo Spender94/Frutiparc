@@ -3599,13 +3599,15 @@ app.post('/fm/sendmail', async (req, res) => {
   const { username, user } = auth;
   ensureMails(user);
 
+  console.log('[Mail] POST /fm/sendmail body keys:', Object.keys(req.body), 'body:', JSON.stringify(req.body).substring(0, 500));
+
   const to = String(req.body.t || req.body.to || '').trim();
   const subject = String(req.body.s || req.body.subject || '');
   const content = String(req.body.c || req.body.content || '');
   const saveToOutbox = String(req.body.o || req.body.saveToOutbox || '1');
 
   if (!to) {
-    return res.type('text/xml').send('<r k="1">to_empty</r>');
+    return res.type('text/xml').send('<r k="1"><e>to_empty</e></r>');
   }
 
   const now = new Date().toLocaleString('fr-FR');
@@ -3639,8 +3641,8 @@ app.post('/fm/sendmail', async (req, res) => {
     console.error('[Mail] delivery error:', e.message);
   }
 
-  console.log(`[Mail] ${username} sent mail to ${to} (subject: ${subject})`);
-  res.type('text/xml').send('<r k="" />');
+  console.log(`[Mail] ${username} sent mail to ${to} (subject: ${subject}) body: ${content.substring(0, 100)}`);
+  res.type('text/xml').send('<r><ok /></r>');
 });
 
 // ─────────────────────────────────────────────
