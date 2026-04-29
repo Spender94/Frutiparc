@@ -902,10 +902,13 @@ async function performChallengeRoll(today) {
   const winnersByUser = {};
   for (const rkId of challengeRankingIds()) {
     const top = collectTop3ForRanking(rkId);
+    const direction = isLowerBetter(rkId) ? 'asc (lower=better)' : 'desc (higher=better)';
+    console.log(`[CHALLENGE] ${rkId} sort=${direction} top=${JSON.stringify(top)}`);
     for (let i = 0; i < top.length; i++) {
       const rank = i + 1;
       const medal = rank === 1 ? 'or' : rank === 2 ? 'argent' : 'bronze';
       const username = top[i].u;
+      console.log(`[CHALLENGE]   rank=${rank} medal=${medal} user=${username} score=${top[i].s}`);
       if (!winnersByUser[username]) winnersByUser[username] = [];
       winnersByUser[username].push({
         game: (RANKINGS[rkId] && RANKINGS[rkId].game) || rkId,
@@ -1752,13 +1755,61 @@ app.get('/api/admin/challenge/archive', adminAuth, async (req, res) => {
   try {
     if (day && ranking) {
       const scores = await db.getArchivedScores(ranking, day);
-      scores.sort((a, b) => Number(b.score) - Number(a.score));
+      const cmp = scoreComparator(ranking);
+      scores.sort((a, b) => cmp({ s: Number(a.score) }, { s: Number(b.score) }));
       res.json({ day, ranking, scores });
     } else {
       const days = await db.getArchiveDays();
       res.json({ days });
     }
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Diagnostic endpoint: returns full medal & score state for debugging.
+app.get('/api/admin/challenge/debug', adminAuth, async (req, res) => {
+  const today = parisDayKey();
+  const yesterday = yesterdayParisDayKey();
+
+  const memoryScores = {};
+  for (const rkId of challengeRankingIds()) {
+    const all = [];
+    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+      if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+        all.push({ u, s: Number(rlist[rkId].score) });
+      }
+    }
+    all.sort(scoreComparator(rkId));
+    memoryScores[rkId] = {
+      lowerIsBetter: isLowerBetter(rkId),
+      sortedBestFirst: all,
+    };
+  }
+
+  const dbMedalsByDay = {};
+  if (process.env.DATABASE_URL) {
+    try {
+      const days = [yesterday, today];
+      for (const d of days) {
+        dbMedalsByDay[d] = await db.getMedalsByDay(d);
+      }
+    } catch (e) { dbMedalsByDay.error = e.message; }
+  }
+
+  res.json({
+    today,
+    yesterday,
+    lastRollDay: challengeMedalsData.lastRollDay || '',
+    rankings: challengeRankingIds(),
+    rankingsConfig: Object.fromEntries(
+      challengeRankingIds().map(rkId => [rkId, {
+        game: RANKINGS[rkId] && RANKINGS[rkId].game,
+        lowerIsBetter: !!(RANKINGS[rkId] && RANKINGS[rkId].lowerIsBetter),
+      }])
+    ),
+    memoryScores,
+    memoryMedalsByDay: challengeMedalsData.medalsByVisibleDay,
+    dbMedalsByDay,
+  });
 });
 
 // SWF-triggered score save: the patched game SWFs call loadVariables("s<score>", "")
@@ -4814,6 +4865,7 @@ case 'createchannel': {
           }
         }
         podium.sort((a, b) => a.rank - b.rank);
+        console.log(`[FSCORE-DEBUG] awardgame g=${gameName} rkId=${rkId} game=${game} yesterday=${yesterday} podium=${JSON.stringify(podium)}`);
         for (const p of podium) {
           inner += `<a v="${p.rank}" u="${escapeXml(p.u)}" d="1" />`;
         }
@@ -4863,7 +4915,8 @@ case 'createchannel': {
         inner += `<a g="${escapeXml(medal.game)}" n="${escapeXml(`Médaille ${medalName} - ${gameName} (${medal.awarded_day})`)}" v="${medal.rank}" d="1" />`;
       }
       sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.awarduser}>`);
-      console.log(`[FSCORE] awarduser user=${targetUser}: ${allMedals.length} medals`);
+      const medalSummary = allMedals.map(m => `${m.game}:rank${m.rank}=${m.medal}`).join(',');
+      console.log(`[FSCORE] awarduser user=${targetUser}: ${allMedals.length} medals [${medalSummary}]`);
       break;
     }
 
