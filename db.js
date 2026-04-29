@@ -148,6 +148,13 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_challenge_medals_user ON challenge_medals(user_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_challenge_medals_day ON challenge_medals(awarded_day);
+      DELETE FROM challenge_medals a USING challenge_medals b
+        WHERE a.id < b.id
+          AND a.username = b.username
+          AND a.ranking_id = b.ranking_id
+          AND a.awarded_day = b.awarded_day;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_challenge_medals_user_rk_day
+        ON challenge_medals(username, ranking_id, awarded_day);
 
       CREATE TABLE IF NOT EXISTS challenge_score_archive (
         id          SERIAL PRIMARY KEY,
@@ -448,7 +455,9 @@ async function clearDailyChallengeScores(rankingIds) {
 async function saveMedal(userId, username, rankingId, game, rank, medal, awardedDay) {
   await pool.query(
     `INSERT INTO challenge_medals (user_id, username, ranking_id, game, rank, medal, awarded_day)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (username, ranking_id, awarded_day) DO UPDATE
+       SET rank = EXCLUDED.rank, medal = EXCLUDED.medal, user_id = EXCLUDED.user_id`,
     [userId, username, rankingId, game, rank, medal, awardedDay]
   );
 }

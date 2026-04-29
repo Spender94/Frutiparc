@@ -3141,6 +3141,21 @@ async function boot() {
     challengeMedalsData.lastRollDay = today;
     saveChallengeMedals();
   }
+
+  if (process.env.DATABASE_URL) {
+    const yesterday = yesterdayParisDayKey();
+    if (!challengeMedalsData.medalsByVisibleDay[yesterday] || Object.keys(challengeMedalsData.medalsByVisibleDay[yesterday]).length === 0) {
+      try {
+        const dbMedals = await db.getMedalsByDay(yesterday);
+        if (Object.keys(dbMedals).length > 0) {
+          challengeMedalsData.medalsByVisibleDay[yesterday] = dbMedals;
+          saveChallengeMedals();
+          console.log(`[CHALLENGE] Loaded ${Object.keys(dbMedals).length} medalists from DB for ${yesterday}`);
+        }
+      } catch (e) { console.error('[CHALLENGE] DB medal load error:', e.message); }
+    }
+  }
+
   console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${today}`);
 }
 
