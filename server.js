@@ -2117,17 +2117,34 @@ app.post('/api/admin/challenge/regenerate-medals', adminAuth, async (req, res) =
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Admin: broadcast event to all connected users ──
+// ── Admin: broadcast event to all users (Événements window) ──
+// Available SiteLog icons (frame numbers in icoSiteLog sprite 576):
+//   1  = info générale (default)
+//   11 = info technique
+//   20 = nouveauté
+//   21 = nouveau jeu
+const SITE_LOG_ICONS = [1, 11, 20, 21];
+const pushedEvents = []; // { id, message, type, time, chat }
+let pushedEventSeq = 0;
+
+function genEventId() {
+  pushedEventSeq += 1;
+  return `evt_${Date.now().toString(36)}_${pushedEventSeq}`;
+}
+
 app.post('/api/admin/broadcast', adminAuth, (req, res) => {
   const message = String(req.body.message || '').trim();
   if (!message) return res.status(400).json({ ok: false, error: 'message required' });
 
-  const type = Number(req.body.type) || 1;
-  const chatToo = req.body.chat !== false;
+  const rawType = Number(req.body.type);
+  const type = SITE_LOG_ICONS.includes(rawType) ? rawType : 1;
+  const chatToo = req.body.chat === true || req.body.chat === 'true';
 
-  const now = nowSqlTimestamp();
-  const xml = `<${CMD.newuserlog} date="${escapeXml(now)}" type="${type}">${escapeXml(message)}</${CMD.newuserlog}>`;
+  const eventId = genEventId();
+  const time = nowSqlTimestamp();
 
+  // Live notification to connected sockets via newsitelog (bl)
+  const xml = `<${CMD.newsitelog} date="${escapeXml(time)}" type="${type}">${escapeXml(message)}</${CMD.newsitelog}>`;
   let notified = 0;
   for (const [sock, client] of xmlSocketClients) {
     if (client.logged) {
@@ -2136,12 +2153,25 @@ app.post('/api/admin/broadcast', adminAuth, (req, res) => {
     }
   }
 
+  // Persistent: append to every known user's siteLog so it shows up after relog too.
+  // We tag the entry with `bid` so it can later be removed by event id.
   let historyCount = 0;
   for (const username of Object.keys(users)) {
-    addUserHistoryEntry(users[username], { type, content: message, flNew: true });
+    const user = users[username];
+    if (!user) continue;
+    if (!Array.isArray(user.siteLog)) user.siteLog = [];
+    user.siteLog.unshift({
+      d: time,
+      t: type,
+      c: message,
+      n: 1,
+      bid: eventId,
+    });
+    if (user.siteLog.length > 200) user.siteLog.length = 200;
     historyCount++;
   }
 
+  // Optional: also shout in every chat channel (red bold)
   if (chatToo) {
     const timeAttrs = buildChatTimeAttrs();
     const redText = `<![CDATA[<b><font color="#FF0000">${message}</font></b>]]>`;
@@ -2152,8 +2182,35 @@ app.post('/api/admin/broadcast', adminAuth, (req, res) => {
     }
   }
 
-  console.log(`[ADMIN] Broadcast event to ${notified} sockets, ${historyCount} users. chat=${chatToo}`);
-  res.json({ ok: true, notified, historyCount });
+  pushedEvents.unshift({ id: eventId, message, type, time, chat: chatToo, notified, historyCount });
+  if (pushedEvents.length > 200) pushedEvents.length = 200;
+
+  console.log(`[ADMIN] Push event ${eventId} type=${type} → ${notified} sockets, ${historyCount} users. chat=${chatToo}`);
+  res.json({ ok: true, id: eventId, notified, historyCount });
+});
+
+app.get('/api/admin/broadcast', adminAuth, (req, res) => {
+  res.json({ events: pushedEvents, icons: SITE_LOG_ICONS });
+});
+
+app.delete('/api/admin/broadcast/:id', adminAuth, (req, res) => {
+  const id = String(req.params.id || '');
+  const idx = pushedEvents.findIndex((e) => e.id === id);
+  if (idx === -1) return res.status(404).json({ ok: false, error: 'event not found' });
+  const evt = pushedEvents[idx];
+  pushedEvents.splice(idx, 1);
+
+  let removed = 0;
+  for (const username of Object.keys(users)) {
+    const user = users[username];
+    if (!user || !Array.isArray(user.siteLog)) continue;
+    const before = user.siteLog.length;
+    user.siteLog = user.siteLog.filter((e) => e.bid !== id);
+    if (user.siteLog.length !== before) removed++;
+  }
+
+  console.log(`[ADMIN] Delete event ${id} → removed from ${removed} users (siteLog). Connected users see deletion on next login.`);
+  res.json({ ok: true, removed, event: evt });
 });
 
 // SWF-triggered score save: the patched game SWFs call loadVariables("s<score>", "")

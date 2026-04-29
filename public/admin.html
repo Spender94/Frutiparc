@@ -152,24 +152,43 @@
 </div>
 
 <div class="content" id="tab-events" style="display:none">
-  <h4 style="color:#4fc3f7;margin-bottom:16px">Envoyer un événement à tous les joueurs</h4>
-  <div style="max-width:600px">
+  <h4 style="color:#4fc3f7;margin-bottom:16px">Pousser un événement (fenêtre Événements)</h4>
+  <div style="max-width:680px">
     <label style="display:block;margin-bottom:10px;font-size:13px">
-      <span style="display:inline-block;width:120px">Message :</span>
-      <textarea id="evt-message" rows="3" style="background:#0f3460;border:1px solid #2a3a5e;color:#e0e0e0;padding:6px 10px;border-radius:4px;font-size:13px;width:100%;resize:vertical" placeholder="Votre message ici..."></textarea>
+      <span style="display:inline-block;width:120px;vertical-align:top">Message :</span>
+      <textarea id="evt-message" rows="3" style="background:#0f3460;border:1px solid #2a3a5e;color:#e0e0e0;padding:6px 10px;border-radius:4px;font-size:13px;width:75%;resize:vertical" placeholder="Votre message ici..."></textarea>
     </label>
     <label style="display:block;margin-bottom:10px;font-size:13px">
-      <span style="display:inline-block;width:120px">Afficher dans le chat :</span>
-      <input type="checkbox" id="evt-chat" checked>
-      <span style="color:#888;font-size:12px"> (message en rouge dans toutes les salles)</span>
+      <span style="display:inline-block;width:120px">Icône :</span>
+      <select id="evt-type" style="background:#0f3460;border:1px solid #2a3a5e;color:#e0e0e0;padding:6px 10px;border-radius:4px;font-size:13px;width:240px">
+        <option value="1">Info générale</option>
+        <option value="11">Info technique</option>
+        <option value="20">Nouveauté</option>
+        <option value="21">Nouveau jeu</option>
+      </select>
+    </label>
+    <label style="display:block;margin-bottom:10px;font-size:13px">
+      <span style="display:inline-block;width:120px">Aussi dans le chat :</span>
+      <input type="checkbox" id="evt-chat">
+      <span style="color:#888;font-size:12px"> (message en rouge dans toutes les salles, optionnel)</span>
     </label>
     <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
-      <button class="btn-danger" onclick="sendBroadcast()" style="padding:8px 24px;font-size:14px">Envoyer à tous</button>
+      <button class="btn-danger" onclick="sendBroadcast()" style="padding:8px 24px;font-size:14px">Pousser à tous</button>
       <span id="evt-result" style="font-size:13px"></span>
     </div>
   </div>
-  <h4 style="color:#4fc3f7;margin:32px 0 12px">Historique des envois</h4>
-  <div id="evt-history" style="font-size:13px;color:#889"></div>
+  <h4 style="color:#4fc3f7;margin:32px 0 12px">Événements poussés</h4>
+  <div style="font-size:12px;color:#889;margin-bottom:8px">
+    La suppression retire l'événement du <code>siteLog</code> serveur de tous les joueurs.
+    Les joueurs connectés à ce moment-là verront la suppression à leur prochaine reconnexion.
+  </div>
+  <div class="toolbar">
+    <button class="btn" onclick="loadEvents()">Rafraîchir</button>
+  </div>
+  <table>
+    <thead><tr><th>Date</th><th>Icône</th><th>Message</th><th>Diffusion</th><th>Actions</th></tr></thead>
+    <tbody id="events-body"></tbody>
+  </table>
 </div>
 
 <div class="modal-bg" id="modal-add-pack">
@@ -277,6 +296,7 @@ function switchTab(name) {
   if (name === 'scores' && !$('#ranking-select').dataset.loaded) loadScores();
   if (name === 'shop' && !$('#shop-body').dataset.loaded) loadShop();
   if (name === 'challenge') loadChallengeStatus();
+  if (name === 'events') loadEvents();
 }
 
 function closeModal(id) { $(`#${id}`).classList.remove('open'); }
@@ -779,34 +799,56 @@ async function deleteMedalsForDay() {
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
-const evtHistory = [];
+const ICON_LABELS = { 1: 'Info générale', 11: 'Info technique', 20: 'Nouveauté', 21: 'Nouveau jeu' };
 
 async function sendBroadcast() {
   const message = $('#evt-message').value.trim();
   if (!message) { toast('Le message ne peut pas être vide'); return; }
-  if (!confirm(`Envoyer cet événement à TOUS les joueurs connectés ?\n\n"${message}"`)) return;
+  const type = Number($('#evt-type').value) || 1;
   const chat = $('#evt-chat').checked;
+  if (!confirm(`Pousser cet événement à TOUS les joueurs ?\n\nIcône : ${ICON_LABELS[type] || type}\nMessage : ${message}${chat ? '\n(+ chat rouge global)' : ''}`)) return;
   try {
     const r = await fetch('/api/admin/broadcast', {
-      method: 'POST', headers: hdr(), body: JSON.stringify({ message, chat }),
+      method: 'POST', headers: hdr(), body: JSON.stringify({ message, type, chat }),
     });
     const d = await r.json();
     if (!r.ok || !d.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
-    toast(`Événement envoyé à ${d.notified} socket(s), ${d.historyCount} joueur(s)`);
+    toast(`Événement poussé : ${d.notified} connecté(s), ${d.historyCount} joueur(s)`);
     $('#evt-result').textContent = `Envoyé à ${d.notified} connecté(s), ${d.historyCount} joueur(s) au total`;
-    evtHistory.unshift({ time: new Date().toLocaleTimeString('fr-FR'), message, notified: d.notified, historyCount: d.historyCount });
-    renderEvtHistory();
     $('#evt-message').value = '';
+    loadEvents();
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
-function renderEvtHistory() {
-  const el = $('#evt-history');
-  if (evtHistory.length === 0) { el.textContent = 'Aucun envoi cette session'; return; }
-  el.innerHTML = evtHistory.map(e => `<div style="margin-bottom:8px;padding:8px;background:#16213e;border-radius:4px;border-left:3px solid #e94560">
-    <span style="color:#e94560">${esc(e.time)}</span> — ${esc(e.message)}
-    <span style="color:#4fc3f7;margin-left:8px">(${e.notified} connecté(s), ${e.historyCount} joueur(s))</span>
-  </div>`).join('');
+async function loadEvents() {
+  try {
+    const r = await fetch('/api/admin/broadcast', { headers: hdr() });
+    const d = await r.json();
+    const list = (d && d.events) || [];
+    const tb = $('#events-body');
+    if (list.length === 0) {
+      tb.innerHTML = '<tr><td colspan="5" class="empty">Aucun événement poussé</td></tr>';
+      return;
+    }
+    tb.innerHTML = list.map(e => `<tr>
+      <td style="white-space:nowrap"><code style="font-size:11px">${esc(e.time)}</code></td>
+      <td><span class="badge">${esc(ICON_LABELS[e.type] || ('type ' + e.type))}</span></td>
+      <td>${esc(e.message)}${e.chat ? ' <span class="badge" style="background:#e94560;color:#fff">chat</span>' : ''}</td>
+      <td style="white-space:nowrap;font-size:12px;color:#889">${e.notified || 0} live, ${e.historyCount || 0} total</td>
+      <td><button class="btn-danger btn-sm" onclick="deleteEvent('${esc(e.id)}')">Supprimer</button></td>
+    </tr>`).join('');
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function deleteEvent(id) {
+  if (!confirm("Supprimer cet événement du siteLog de tous les joueurs ?\n(Joueurs connectés : visible jusqu'à leur prochaine reconnexion.)")) return;
+  try {
+    const r = await fetch(`/api/admin/broadcast/${encodeURIComponent(id)}`, { method: 'DELETE', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    toast(`Événement supprimé pour ${d.removed} joueur(s)`);
+    loadEvents();
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 
 async function loadArchive() {
