@@ -2143,8 +2143,14 @@ app.post('/api/admin/broadcast', adminAuth, (req, res) => {
   const eventId = genEventId();
   const time = nowSqlTimestamp();
 
+  // The Flash client's addSiteLog checks (obj.time > this.previousTime) to
+  // decide flNew — onNewSiteLog doesn't pass flNew explicitly unlike
+  // onNewUserLog. previousTime is seconds-precision (from onident p=).
+  // Include milliseconds so the wire date is always strictly > previousTime.
+  const wireDate = new Date().toISOString().replace('T', ' ').replace('Z', '');
+
   // Live notification to connected sockets via newsitelog (bl)
-  const xml = `<${CMD.newsitelog} date="${escapeXml(time)}" type="${type}">${escapeXml(message)}</${CMD.newsitelog}>`;
+  const xml = `<${CMD.newsitelog} date="${escapeXml(wireDate)}" type="${type}">${escapeXml(message)}</${CMD.newsitelog}>`;
   let notified = 0;
   for (const [sock, client] of xmlSocketClients) {
     if (client.logged) {
