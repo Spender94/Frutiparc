@@ -3137,26 +3137,11 @@ async function boot() {
   const today = parisDayKey();
   await rollDailyChallengeIfNeeded();
 
-  // Safety: if lastRollDay claims we already rolled today but daily-reset
-  // scores still exist in memory, a previous boot set lastRollDay without
-  // actually clearing scores.  Reset lastRollDay and force a proper roll.
-  const staleCheck = challengeRankingIds().some(rkId => {
-    for (const [, rlist] of Object.entries(scoresData.users || {})) {
-      if (rlist && rlist[rkId]) return true;
-    }
-    return false;
-  });
-  if (staleCheck && challengeMedalsData.lastRollDay === today) {
-    console.log('[CHALLENGE] lastRollDay=today but stale challenge scores found — forcing roll');
-    challengeMedalsData.lastRollDay = yesterdayParisDayKey();
-    await performChallengeRoll(today);
-  }
-
   if (!challengeMedalsData.lastRollDay) {
     challengeMedalsData.lastRollDay = today;
     saveChallengeMedals();
   }
-  console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${today}, challengeScores=${staleCheck}`);
+  console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${today}`);
 }
 
 boot();
@@ -4120,7 +4105,7 @@ broadcastToChannel(
           try {
             const archived = await db.getArchivedScores(internalId, dtIn);
             for (const row of archived) {
-              all.push({ u: row.username, s: Number(row.score), d: row.data || '', at: '' });
+              all.push({ u: row.username, s: Number(row.score), d: row.data || '', at: row.updated_at || '' });
             }
           } catch (e) { console.error('[FSCORE] archive query error:', e.message); }
         } else if (internalId) {
@@ -4153,7 +4138,6 @@ broadcastToChannel(
         }
         sendToClient(socket, responseXml);
         console.log(`[FSCORE] rankingResult (via bugged wire l) ${rkInput}/${internalId || '-'}${isHistorical ? ' dt=' + dtIn : ''}: ${slice.length}/${all.length} entries`);
-        console.log(`[FSCORE-DEBUG] response=${responseXml.length > 500 ? responseXml.slice(0, 500) + '...' : responseXml}`);
         break;
       }
       // FrutiScore listRankings: wire "l" without rk attr.
@@ -4215,7 +4199,7 @@ broadcastToChannel(
           try {
             const archived = await db.getArchivedScores(internalId, dtIn);
             for (const row of archived) {
-              all.push({ u: row.username, s: Number(row.score), d: row.data || '', at: '' });
+              all.push({ u: row.username, s: Number(row.score), d: row.data || '', at: row.updated_at || '' });
             }
           } catch (e) { console.error('[FSCORE] archive query error:', e.message); }
         } else if (internalId) {

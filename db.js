@@ -156,9 +156,18 @@ async function initSchema() {
         username    TEXT NOT NULL,
         score       BIGINT NOT NULL,
         data        TEXT DEFAULT '',
+        updated_at  TIMESTAMPTZ,
         created_at  TIMESTAMPTZ DEFAULT now()
       );
+      ALTER TABLE challenge_score_archive ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_challenge_archive_day ON challenge_score_archive(day_key, ranking_id);
+      DELETE FROM challenge_score_archive a USING challenge_score_archive b
+        WHERE a.id < b.id
+          AND a.day_key = b.day_key
+          AND a.ranking_id = b.ranking_id
+          AND a.username = b.username;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_challenge_archive_day_rk_user
+        ON challenge_score_archive(day_key, ranking_id, username);
 
       CREATE TABLE IF NOT EXISTS shop_packs (
         id          INTEGER PRIMARY KEY,
@@ -526,18 +535,22 @@ async function deleteShopPack(id) {
 async function archiveChallengeScores(dayKey, rankingIds) {
   if (!Array.isArray(rankingIds) || rankingIds.length === 0) return;
   await pool.query(
-    `INSERT INTO challenge_score_archive (day_key, ranking_id, username, score, data)
-     SELECT $1, s.ranking_id, u.username, s.score, s.data
+    `INSERT INTO challenge_score_archive (day_key, ranking_id, username, score, data, updated_at)
+     SELECT $1, s.ranking_id, u.username, s.score, s.data, s.updated_at
      FROM scores s
      JOIN users u ON u.id = s.user_id
-     WHERE s.ranking_id = ANY($2::text[])`,
+     WHERE s.ranking_id = ANY($2::text[])
+     ON CONFLICT (day_key, ranking_id, username) DO UPDATE
+       SET score = EXCLUDED.score,
+           data = EXCLUDED.data,
+           updated_at = EXCLUDED.updated_at`,
     [dayKey, rankingIds]
   );
 }
 
 async function getArchivedScores(rankingId, dayKey) {
   const { rows } = await pool.query(
-    `SELECT username, score, data FROM challenge_score_archive
+    `SELECT username, score, data, updated_at FROM challenge_score_archive
      WHERE ranking_id = $1 AND day_key = $2`,
     [rankingId, dayKey]
   );
