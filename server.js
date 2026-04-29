@@ -651,11 +651,6 @@ function getUserScore(username, rankingId) {
 
 loadScores();
 loadChallengeMedals();
-if (!challengeMedalsData.lastRollDay) {
-  challengeMedalsData.lastRollDay = parisDayKey();
-  saveChallengeMedals();
-}
-rollDailyChallengeIfNeeded();
 
 function createDefaultUser(pass) {
   return {
@@ -905,18 +900,17 @@ function performChallengeRoll(today) {
   challengeMedalsData.lastRollDay = today;
   saveChallengeMedals();
 
+  resetChallengeScoresInMemory();
   if (process.env.DATABASE_URL) {
     db.archiveChallengeScores(archiveDay).then(() => {
       console.log(`[CHALLENGE] Scores archived for day ${archiveDay}`);
+      return db.clearDailyChallengeScores();
+    }).then(() => {
+      console.log(`[CHALLENGE] DB challenge scores cleared`);
     }).catch((e) => {
-      console.error('[CHALLENGE] archive error:', e.message);
+      console.error('[CHALLENGE] archive/clear error:', e.message);
     });
   }
-
-  resetChallengeScoresInMemory();
-  db.clearDailyChallengeScores().catch((e) => {
-    console.error('[DB] challenge daily reset error:', e.message);
-  });
 }
 
 function applyPendingChallengeNotifications(username, user) {
@@ -3122,6 +3116,13 @@ async function boot() {
   } else {
     console.log('[DB] No DATABASE_URL — running in memory-only mode');
   }
+
+  rollDailyChallengeIfNeeded();
+  if (!challengeMedalsData.lastRollDay) {
+    challengeMedalsData.lastRollDay = parisDayKey();
+    saveChallengeMedals();
+  }
+  console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${parisDayKey()}`);
 }
 
 boot();
@@ -4110,13 +4111,15 @@ broadcastToChannel(
         console.log(`[FSCORE] rankingResult (via bugged wire l) ${rkInput}/${internalId || '-'}${isHistorical ? ' dt=' + dtIn : ''}: ${slice.length}/${all.length} entries`);
         break;
       }
-      // FrutiScore overlap: listRankings uses wire code "l" with dt (date) attr.
-      if (msg.attrs.dt !== undefined) {
+      // FrutiScore listRankings: wire "l" without rk attr.
+      // Handles both initial call (no dt) and date-navigation (with dt).
+      // Distinguish from chat kick by checking: no 'g' channel and no 'u' target.
+      if (msg.attrs.dt !== undefined || (!msg.attrs.g && !msg.attrs.u)) {
         const reqId = msg.attrs.r || '';
-        const dt = String(msg.attrs.dt || '');
+        const dt = msg.attrs.dt !== undefined ? String(msg.attrs.dt || '') : parisDayKey();
         client.selectedDt = dt;
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
-        const dtAttr = dt ? ` dt="${escapeXml(dt)}"` : '';
+        const dtAttr = ` dt="${escapeXml(dt)}"`;
         let inner = '';
         const bySection = { C: [], L: [] };
         for (const d of LEGACY_RANKINGS) {
@@ -4131,7 +4134,7 @@ broadcastToChannel(
           inner += '</s>';
         }
         sendToClient(socket, `<${CMD.kick}${dtAttr}${rAttr}>${inner}</${CMD.kick}>`);
-        console.log(`[FSCORE] listRankings: ${LEGACY_RANKINGS.length} legacy rankings sent`);
+        console.log(`[FSCORE] listRankings dt=${dt}: ${LEGACY_RANKINGS.length} legacy rankings sent`);
         break;
       }
       if (!isModerator(client.username)) {
