@@ -3320,6 +3320,183 @@ app.use('/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2'
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
+// Forum (opened from the Flash desktop "Forum" link via fp_goURLResize)
+// ─────────────────────────────────────────────
+
+app.get(['/fb', '/fb/'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'fb', 'index.html'));
+});
+
+function forumAuth(req) {
+  const sid = req.query.sid || req.body && req.body.sid || '';
+  return resolveUsernameFromSid(sid);
+}
+
+app.get('/api/forum/index', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ categories: [], boards: [] });
+  try {
+    const categories = await db.forumGetCategories();
+    const boards = await db.forumGetBoards();
+    const boardsByCategory = {};
+    for (const b of boards) {
+      if (!boardsByCategory[b.category_id]) boardsByCategory[b.category_id] = [];
+      boardsByCategory[b.category_id].push({
+        id: b.id, name: b.name, description: b.description,
+        topicCount: Number(b.topic_count), postCount: Number(b.post_count),
+        lastActivity: b.last_activity, lastActivityBy: b.last_activity_by,
+      });
+    }
+    res.json({
+      categories: categories.map(c => ({
+        id: c.id, name: c.name,
+        boards: boardsByCategory[c.id] || [],
+      })),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/forum/board/:id', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ board: null, topics: [], total: 0 });
+  try {
+    const boardId = Number(req.params.id);
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const board = await db.forumGetBoard(boardId);
+    if (!board) return res.status(404).json({ error: 'board not found' });
+    const { topics, total } = await db.forumGetTopics(boardId, page, 25);
+    const topicsOut = topics.map(t => ({
+      id: t.id, title: t.title, author: t.author_username,
+      isSticky: t.is_sticky, isLocked: t.is_locked,
+      viewCount: t.view_count, replyCount: Number(t.reply_count),
+      lastPostAt: t.last_post_at, lastPostBy: t.last_post_by,
+      createdAt: t.created_at,
+    }));
+    res.json({ board: { id: board.id, name: board.name, description: board.description }, topics: topicsOut, total, page, perPage: 25 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/forum/topic/:id', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ topic: null, posts: [], total: 0 });
+  try {
+    const topicId = Number(req.params.id);
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const topic = await db.forumGetTopic(topicId);
+    if (!topic) return res.status(404).json({ error: 'topic not found' });
+    await db.forumIncrementViews(topicId);
+    const board = await db.forumGetBoard(topic.board_id);
+    const { posts, total } = await db.forumGetPosts(topicId, page, 15);
+    const postsOut = posts.map(p => ({
+      id: p.id, author: p.author_username, content: p.content,
+      createdAt: p.created_at, updatedAt: p.updated_at,
+      bouille: bouilleOf(users[p.author_username], p.author_username),
+    }));
+    res.json({
+      topic: {
+        id: topic.id, title: topic.title, author: topic.author_username,
+        boardId: topic.board_id, boardName: board ? board.name : '',
+        isSticky: topic.is_sticky, isLocked: topic.is_locked,
+      },
+      posts: postsOut, total, page, perPage: 15,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/forum/topic', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  const boardId = Number(req.body.boardId);
+  const title = String(req.body.title || '').trim();
+  const content = String(req.body.content || '').trim();
+  if (!title || !content) return res.status(400).json({ error: 'title and content required' });
+  if (title.length > 200) return res.status(400).json({ error: 'title too long' });
+  try {
+    const topic = await db.forumCreateTopic(boardId, username, title, content);
+    res.json({ ok: true, topicId: topic.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/forum/post', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  const topicId = Number(req.body.topicId);
+  const content = String(req.body.content || '').trim();
+  if (!content) return res.status(400).json({ error: 'content required' });
+  try {
+    const topic = await db.forumGetTopic(topicId);
+    if (!topic) return res.status(404).json({ error: 'topic not found' });
+    if (topic.is_locked) return res.status(403).json({ error: 'topic locked' });
+    const post = await db.forumCreatePost(topicId, username, content);
+    res.json({ ok: true, postId: post.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/forum/post/:id', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  const content = String(req.body.content || '').trim();
+  if (!content) return res.status(400).json({ error: 'content required' });
+  try {
+    const { rows } = await db.pool.query('SELECT * FROM forum_posts WHERE id = $1', [req.params.id]);
+    const post = rows[0];
+    if (!post) return res.status(404).json({ error: 'not found' });
+    const isAdmin = users[username] && users[username].isModerator;
+    if (post.author_username !== username && !isAdmin) return res.status(403).json({ error: 'forbidden' });
+    await db.forumUpdatePost(post.id, content);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/forum/post/:id', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  try {
+    const { rows } = await db.pool.query('SELECT * FROM forum_posts WHERE id = $1', [req.params.id]);
+    const post = rows[0];
+    if (!post) return res.status(404).json({ error: 'not found' });
+    const isAdmin = users[username] && users[username].isModerator;
+    if (post.author_username !== username && !isAdmin) return res.status(403).json({ error: 'forbidden' });
+    await db.forumDeletePost(post.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: manage forum structure
+app.post('/api/admin/forum/seed', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  try {
+    const existing = await db.forumGetCategories();
+    if (existing.length > 0) return res.json({ ok: true, message: 'already seeded' });
+    const cats = [
+      { name: 'Gestion du site', boards: [
+        { name: 'Annonces', description: "Les annonces officielles de l'équipe Frutiparc" },
+      ]},
+      { name: 'Frutiparc', boards: [
+        { name: 'Animations', description: 'Les annonces des prochaines animations' },
+        { name: 'Jeux Frutiparc', description: 'Les jeux de Frutiparc, parlez-en !' },
+        { name: 'Frutiz', description: 'Pour parler de la vie des Frutiz, population de Frutiparc !' },
+      ]},
+      { name: 'La vie Frutiz', boards: [
+        { name: 'Jeux Vidéos', description: 'Pour parler de votre passion, les jeux vidéos ;)' },
+        { name: 'Créations littéraires', description: "Pour tous vos poèmes, textes et histoires, à vos plumes !" },
+        { name: 'Créations graphiques', description: "Pour tous vos dessins, trucages et gribouillis, à vos crayons !" },
+        { name: 'Musique', description: 'Car votre passion, c\'est la zique !' },
+      ]},
+    ];
+    for (let ci = 0; ci < cats.length; ci++) {
+      const cat = await db.forumCreateCategory(cats[ci].name, ci);
+      for (let bi = 0; bi < cats[ci].boards.length; bi++) {
+        const b = cats[ci].boards[bi];
+        await db.forumCreateBoard(cat.id, b.name, b.description, bi);
+      }
+    }
+    res.json({ ok: true, message: 'seeded' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
 // Club popup (opened from the Flash desktop "Club" link)
 // ─────────────────────────────────────────────
 app.get(['/club', '/club/'], (req, res) => {
@@ -3459,6 +3636,37 @@ async function boot() {
           }
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
+      try {
+        const forumCats = await db.forumGetCategories();
+        if (forumCats.length === 0) {
+          const defaultForum = [
+            { name: 'Gestion du site', boards: [
+              { name: 'Annonces', description: "Les annonces officielles de l'équipe Frutiparc" },
+            ]},
+            { name: 'Frutiparc', boards: [
+              { name: 'Animations', description: 'Les annonces des prochaines animations' },
+              { name: 'Jeux Frutiparc', description: 'Les jeux de Frutiparc, parlez-en !' },
+              { name: 'Frutiz', description: 'Pour parler de la vie des Frutiz, population de Frutiparc !' },
+            ]},
+            { name: 'La vie Frutiz', boards: [
+              { name: 'Jeux Vidéos', description: 'Pour parler de votre passion, les jeux vidéos ;)' },
+              { name: 'Créations littéraires', description: 'Pour tous vos poèmes, textes et histoires, à vos plumes !' },
+              { name: 'Créations graphiques', description: 'Pour tous vos dessins, trucages et gribouillis, à vos crayons !' },
+              { name: 'Musique', description: "Car votre passion, c'est la zique !" },
+            ]},
+          ];
+          for (let ci = 0; ci < defaultForum.length; ci++) {
+            const cat = await db.forumCreateCategory(defaultForum[ci].name, ci);
+            for (let bi = 0; bi < defaultForum[ci].boards.length; bi++) {
+              const b = defaultForum[ci].boards[bi];
+              await db.forumCreateBoard(cat.id, b.name, b.description, bi);
+            }
+          }
+          console.log('[FORUM] Seeded default categories and boards');
+        } else {
+          console.log(`[FORUM] ${forumCats.length} categories already in DB`);
+        }
+      } catch (e) { console.error('[FORUM] Seed error:', e.message); }
     } catch (e) {
       console.error('[DB] Init failed (running without persistence):', e.message);
     }

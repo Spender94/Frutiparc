@@ -188,6 +188,45 @@ async function initSchema() {
         created_at  TIMESTAMPTZ DEFAULT now()
       );
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS wallpaper_id TEXT DEFAULT NULL;
+
+      -- Forum tables
+      CREATE TABLE IF NOT EXISTS forum_categories (
+        id         SERIAL PRIMARY KEY,
+        name       TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS forum_boards (
+        id          SERIAL PRIMARY KEY,
+        category_id INTEGER REFERENCES forum_categories(id) ON DELETE CASCADE,
+        name        TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        sort_order  INTEGER DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS forum_topics (
+        id              SERIAL PRIMARY KEY,
+        board_id        INTEGER REFERENCES forum_boards(id) ON DELETE CASCADE,
+        author_username TEXT NOT NULL,
+        title           TEXT NOT NULL,
+        is_sticky       BOOLEAN DEFAULT false,
+        is_locked       BOOLEAN DEFAULT false,
+        view_count      INTEGER DEFAULT 0,
+        last_post_at    TIMESTAMPTZ DEFAULT now(),
+        last_post_by    TEXT DEFAULT '',
+        created_at      TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_forum_topics_board ON forum_topics(board_id, is_sticky DESC, last_post_at DESC);
+
+      CREATE TABLE IF NOT EXISTS forum_posts (
+        id              SERIAL PRIMARY KEY,
+        topic_id        INTEGER REFERENCES forum_topics(id) ON DELETE CASCADE,
+        author_username TEXT NOT NULL,
+        content         TEXT NOT NULL,
+        created_at      TIMESTAMPTZ DEFAULT now(),
+        updated_at      TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_forum_posts_topic ON forum_posts(topic_id, created_at ASC);
     `);
     console.log('[DB] Schema initialized');
   } finally {
@@ -625,6 +664,146 @@ async function getArchiveDays() {
   return rows.map(r => r.day_key);
 }
 
+// ── Forum ──
+
+async function forumGetCategories() {
+  const { rows } = await pool.query(
+    'SELECT * FROM forum_categories ORDER BY sort_order, id'
+  );
+  return rows;
+}
+
+async function forumGetBoards() {
+  const { rows } = await pool.query(`
+    SELECT b.*,
+      (SELECT COUNT(*) FROM forum_topics t WHERE t.board_id = b.id) AS topic_count,
+      (SELECT COUNT(*) FROM forum_posts p JOIN forum_topics t ON t.id = p.topic_id WHERE t.board_id = b.id) AS post_count,
+      (SELECT t2.last_post_at FROM forum_topics t2 WHERE t2.board_id = b.id ORDER BY t2.last_post_at DESC LIMIT 1) AS last_activity,
+      (SELECT t2.last_post_by FROM forum_topics t2 WHERE t2.board_id = b.id ORDER BY t2.last_post_at DESC LIMIT 1) AS last_activity_by
+    FROM forum_boards b ORDER BY b.sort_order, b.id
+  `);
+  return rows;
+}
+
+async function forumGetTopics(boardId, page, perPage) {
+  const offset = (page - 1) * perPage;
+  const { rows } = await pool.query(`
+    SELECT t.*,
+      (SELECT COUNT(*) FROM forum_posts p WHERE p.topic_id = t.id) - 1 AS reply_count
+    FROM forum_topics t WHERE t.board_id = $1
+    ORDER BY t.is_sticky DESC, t.last_post_at DESC
+    LIMIT $2 OFFSET $3
+  `, [boardId, perPage, offset]);
+  const { rows: countRows } = await pool.query(
+    'SELECT COUNT(*) AS total FROM forum_topics WHERE board_id = $1', [boardId]
+  );
+  return { topics: rows, total: Number(countRows[0].total) };
+}
+
+async function forumGetTopic(topicId) {
+  const { rows } = await pool.query('SELECT * FROM forum_topics WHERE id = $1', [topicId]);
+  return rows[0] || null;
+}
+
+async function forumGetPosts(topicId, page, perPage) {
+  const offset = (page - 1) * perPage;
+  const { rows } = await pool.query(
+    'SELECT * FROM forum_posts WHERE topic_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3',
+    [topicId, perPage, offset]
+  );
+  const { rows: countRows } = await pool.query(
+    'SELECT COUNT(*) AS total FROM forum_posts WHERE topic_id = $1', [topicId]
+  );
+  return { posts: rows, total: Number(countRows[0].total) };
+}
+
+async function forumCreateTopic(boardId, username, title, content) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: tRows } = await client.query(
+      `INSERT INTO forum_topics (board_id, author_username, title, last_post_by)
+       VALUES ($1, $2, $3, $2) RETURNING *`,
+      [boardId, username, title]
+    );
+    const topic = tRows[0];
+    await client.query(
+      `INSERT INTO forum_posts (topic_id, author_username, content)
+       VALUES ($1, $2, $3)`,
+      [topic.id, username, content]
+    );
+    await client.query('COMMIT');
+    return topic;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function forumCreatePost(topicId, username, content) {
+  const { rows } = await pool.query(
+    `INSERT INTO forum_posts (topic_id, author_username, content)
+     VALUES ($1, $2, $3) RETURNING *`,
+    [topicId, username, content]
+  );
+  await pool.query(
+    'UPDATE forum_topics SET last_post_at = now(), last_post_by = $2 WHERE id = $1',
+    [topicId, username]
+  );
+  return rows[0];
+}
+
+async function forumUpdatePost(postId, content) {
+  await pool.query(
+    'UPDATE forum_posts SET content = $2, updated_at = now() WHERE id = $1',
+    [postId, content]
+  );
+}
+
+async function forumDeletePost(postId) {
+  await pool.query('DELETE FROM forum_posts WHERE id = $1', [postId]);
+}
+
+async function forumIncrementViews(topicId) {
+  await pool.query('UPDATE forum_topics SET view_count = view_count + 1 WHERE id = $1', [topicId]);
+}
+
+async function forumGetBoard(boardId) {
+  const { rows } = await pool.query('SELECT * FROM forum_boards WHERE id = $1', [boardId]);
+  return rows[0] || null;
+}
+
+async function forumCreateBoard(categoryId, name, description, sortOrder) {
+  const { rows } = await pool.query(
+    `INSERT INTO forum_boards (category_id, name, description, sort_order)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [categoryId, name, description || '', sortOrder || 0]
+  );
+  return rows[0];
+}
+
+async function forumCreateCategory(name, sortOrder) {
+  const { rows } = await pool.query(
+    'INSERT INTO forum_categories (name, sort_order) VALUES ($1, $2) RETURNING *',
+    [name, sortOrder || 0]
+  );
+  return rows[0];
+}
+
+async function forumToggleSticky(topicId) {
+  await pool.query('UPDATE forum_topics SET is_sticky = NOT is_sticky WHERE id = $1', [topicId]);
+}
+
+async function forumToggleLocked(topicId) {
+  await pool.query('UPDATE forum_topics SET is_locked = NOT is_locked WHERE id = $1', [topicId]);
+}
+
+async function forumDeleteTopic(topicId) {
+  await pool.query('DELETE FROM forum_topics WHERE id = $1', [topicId]);
+}
+
 module.exports = {
   pool,
   initSchema,
@@ -673,4 +852,20 @@ module.exports = {
   getAllMedals,
   getMedalDays,
   deleteWallpaperAccessories,
+  forumGetCategories,
+  forumGetBoards,
+  forumGetTopics,
+  forumGetTopic,
+  forumGetPosts,
+  forumCreateTopic,
+  forumCreatePost,
+  forumUpdatePost,
+  forumDeletePost,
+  forumIncrementViews,
+  forumGetBoard,
+  forumCreateBoard,
+  forumCreateCategory,
+  forumToggleSticky,
+  forumToggleLocked,
+  forumDeleteTopic,
 };

@@ -196,9 +196,22 @@
                 return _origXHRSend.call(this, body);
             };
 
-            window.fp_goURLResize = function (_url, _mode, _w, _h) {
-                console.log("[Frusion] fp_goURLResize", _url, _w, _h);
+            window.__forumPopup = null;
+            window.fp_goURLResize = function (url, mode, w, h) {
+                var rewritten = rewriteLegacyUrl(url);
+                console.log("[FP] fp_goURLResize", url, "->", rewritten);
+                window.__forumPopup = window.open(rewritten, "frutiparc_forum", "width=980,height=700,resizable=yes,scrollbars=yes");
                 return true;
+            };
+            window.fp_activatePopupForum = function () {
+                if (window.__forumPopup && !window.__forumPopup.closed) window.__forumPopup.focus();
+            };
+            window.fp_closePopupForum = function () {
+                if (window.__forumPopup && !window.__forumPopup.closed) window.__forumPopup.close();
+                window.__forumPopup = null;
+            };
+            window.fp_resizeMe = function (mode) {
+                console.log("[FP] fp_resizeMe", mode);
             };
 
             window.fp_goURLNewWin = function (url, mode, w, h) {

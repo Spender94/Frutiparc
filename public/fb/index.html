@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Forum Frutiparc.com</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
+    font-size: 11px;
+    background: #e8f0d0;
+    color: #333;
+  }
+  a { color: #886422; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Header */
+  .forum-header {
+    background: #d8e8b0;
+    border-bottom: 1px solid #a0b870;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .forum-header img { width: 32px; height: 32px; }
+  .forum-header h1 {
+    font-size: 14px;
+    color: #557722;
+    font-weight: bold;
+  }
+  .forum-header .user-info {
+    margin-left: auto;
+    font-size: 11px;
+    color: #557722;
+  }
+
+  /* Breadcrumb */
+  .breadcrumb {
+    padding: 4px 12px;
+    font-size: 11px;
+    color: #557722;
+    background: #d8e8b0;
+    border-bottom: 1px solid #c0d8a0;
+  }
+  .breadcrumb a { color: #557722; font-weight: bold; }
+
+  /* Main container */
+  .container { padding: 8px; max-width: 980px; margin: 0 auto; }
+
+  /* Table header */
+  .tbl-header {
+    background: #7b9b3a;
+    color: #fff;
+    font-weight: bold;
+    font-size: 11px;
+    display: flex;
+    padding: 5px 8px;
+    border-radius: 3px 3px 0 0;
+  }
+  .tbl-header .col-main { flex: 1; }
+  .tbl-header .col-num { width: 65px; text-align: center; }
+  .tbl-header .col-last { width: 170px; text-align: center; }
+
+  /* Category header */
+  .cat-header {
+    background: #e8f0d0;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #557722;
+    border-bottom: 1px solid #c0d8a0;
+    border-top: 1px solid #c0d8a0;
+    cursor: pointer;
+  }
+
+  /* Board / topic rows */
+  .row {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    border-bottom: 1px solid #c8d8a8;
+    min-height: 40px;
+  }
+  .row:nth-child(even) { background: #d8e8b0; }
+  .row:nth-child(odd) { background: #e0ecc0; }
+  .row .icon { width: 36px; min-width: 36px; text-align: center; }
+  .row .icon img { width: 28px; height: 28px; }
+  .row .info { flex: 1; padding: 0 8px; }
+  .row .info .title { font-weight: bold; font-size: 12px; }
+  .row .info .title a { color: #557722; }
+  .row .info .desc { color: #666; font-size: 11px; margin-top: 2px; }
+  .row .col-num { width: 65px; text-align: center; font-size: 11px; color: #555; }
+  .row .col-last { width: 170px; font-size: 10px; color: #666; text-align: right; padding-right: 4px; }
+  .row .col-last a { color: #886422; }
+
+  .row .sticky-tag {
+    color: #886422;
+    font-weight: bold;
+    font-size: 10px;
+  }
+  .row .locked-tag {
+    color: #999;
+    font-size: 10px;
+  }
+
+  /* Topic list extras */
+  .topic-row .info .author {
+    font-size: 10px;
+    color: #888;
+    margin-top: 1px;
+  }
+  .topic-row .info .author a { color: #886422; }
+
+  /* Post view */
+  .post {
+    display: flex;
+    border: 1px solid #a0b870;
+    margin-bottom: 4px;
+    background: #fff;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .post .post-author {
+    width: 110px;
+    min-width: 110px;
+    background: #d8e8b0;
+    padding: 8px 6px;
+    text-align: center;
+    border-right: 1px solid #a0b870;
+  }
+  .post .post-author .avatar {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 4px auto;
+    background: #c0d8a0;
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    color: #7b9b3a;
+    font-weight: bold;
+  }
+  .post .post-author .username {
+    font-weight: bold;
+    font-size: 11px;
+    color: #557722;
+    word-break: break-all;
+  }
+  .post .post-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .post .post-header {
+    background: #e8f0d0;
+    padding: 4px 8px;
+    font-size: 10px;
+    color: #888;
+    border-bottom: 1px solid #c0d8a0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .post .post-header .actions { display: flex; gap: 4px; }
+  .post .post-content {
+    padding: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #333;
+    flex: 1;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .post .post-edited {
+    padding: 4px 8px;
+    font-size: 10px;
+    font-style: italic;
+    color: #999;
+    border-top: 1px solid #eee;
+  }
+  .post:nth-child(even) .post-body { background: #f4f9e8; }
+
+  /* Buttons */
+  .btn {
+    display: inline-block;
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: bold;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    text-decoration: none;
+    color: #fff;
+  }
+  .btn-green { background: #7b9b3a; }
+  .btn-green:hover { background: #6b8b2a; text-decoration: none; color: #fff; }
+  .btn-orange { background: #d4842a; }
+  .btn-orange:hover { background: #c4742a; text-decoration: none; color: #fff; }
+  .btn-sm { padding: 2px 8px; font-size: 10px; }
+
+  /* Pagination */
+  .pagination {
+    padding: 6px 0;
+    font-size: 11px;
+    color: #555;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+  }
+  .pagination a, .pagination span {
+    display: inline-block;
+    padding: 2px 6px;
+    border: 1px solid #c0d8a0;
+    background: #fff;
+    border-radius: 2px;
+  }
+  .pagination span.current {
+    background: #7b9b3a;
+    color: #fff;
+    border-color: #7b9b3a;
+    font-weight: bold;
+  }
+
+  /* Form */
+  .form-area {
+    background: #d8e8b0;
+    border: 1px solid #a0b870;
+    border-radius: 3px;
+    padding: 10px;
+    margin-top: 8px;
+  }
+  .form-area label {
+    font-weight: bold;
+    font-size: 11px;
+    color: #557722;
+    display: block;
+    margin-bottom: 3px;
+  }
+  .form-area input[type="text"] {
+    width: 100%;
+    padding: 4px 6px;
+    font-size: 12px;
+    border: 1px solid #a0b870;
+    border-radius: 3px;
+    margin-bottom: 8px;
+  }
+  .form-area textarea {
+    width: 100%;
+    height: 120px;
+    padding: 6px;
+    font-size: 12px;
+    font-family: Verdana, sans-serif;
+    border: 1px solid #a0b870;
+    border-radius: 3px;
+    margin-bottom: 8px;
+    resize: vertical;
+  }
+  .form-area .form-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+  }
+
+  /* Footer */
+  .forum-footer {
+    text-align: center;
+    padding: 10px;
+    font-size: 10px;
+    color: #999;
+    border-top: 1px solid #c0d8a0;
+    margin-top: 8px;
+  }
+
+  .loading {
+    text-align: center;
+    padding: 20px;
+    color: #888;
+    font-style: italic;
+  }
+  .empty {
+    text-align: center;
+    padding: 20px;
+    color: #888;
+  }
+
+  /* Peach icon SVG inline */
+  .peach-icon {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    background: #e89030;
+    border-radius: 50% 50% 50% 45%;
+    position: relative;
+  }
+  .peach-icon::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    right: 4px;
+    width: 8px;
+    height: 6px;
+    background: #5a8030;
+    border-radius: 0 60% 0 60%;
+    transform: rotate(-20deg);
+  }
+</style>
+</head>
+<body>
+
+<div class="forum-header">
+  <div class="peach-icon"></div>
+  <h1>Forum Frutiparc.com</h1>
+  <div class="user-info" id="user-info"></div>
+</div>
+<div class="breadcrumb" id="breadcrumb">
+  <a href="#" onclick="navigate('index')">Forum Frutiparc.com</a>
+</div>
+<div class="container" id="app">
+  <div class="loading">Chargement du forum...</div>
+</div>
+<div class="forum-footer">Frutiparc.com &copy; Motion Twin</div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const SID = params.get('sid') || '';
+let currentUser = null;
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const months = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const pad = n => n < 10 ? '0' + n : '' + n;
+  return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+function formatDateShort(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = n => n < 10 ? '0' + n : '' + n;
+  const months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
+  return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+async function apiFetch(url, opts) {
+  const sep = url.includes('?') ? '&' : '?';
+  const r = await fetch(url + sep + 'sid=' + encodeURIComponent(SID), opts);
+  return r.json();
+}
+
+function setBreadcrumb(parts) {
+  let html = '<a href="#" onclick="navigate(\'index\')">Forum Frutiparc.com</a>';
+  for (const p of parts) {
+    html += ' &raquo; ';
+    if (p.href) html += '<a href="#" onclick="' + escapeHtml(p.href) + '">' + escapeHtml(p.text) + '</a>';
+    else html += escapeHtml(p.text);
+  }
+  document.getElementById('breadcrumb').innerHTML = html;
+}
+
+function navigate(view, id, extra) {
+  if (view === 'index') loadIndex();
+  else if (view === 'board') loadBoard(id, extra);
+  else if (view === 'topic') loadTopic(id, extra);
+  else if (view === 'newTopic') showNewTopicForm(id);
+}
+
+function pagination(total, perPage, currentPage, onclick) {
+  const pages = Math.ceil(total / perPage);
+  if (pages <= 1) return '';
+  let html = '<div class="pagination">';
+  html += 'Page ' + currentPage + ' sur ' + pages + ' &mdash; ';
+  if (currentPage > 1) html += '<a href="#" onclick="' + onclick + '(' + (currentPage - 1) + ');return false">&laquo;</a> ';
+  for (let i = 1; i <= pages; i++) {
+    if (i === currentPage) html += '<span class="current">' + i + '</span> ';
+    else if (i <= 3 || i >= pages - 2 || Math.abs(i - currentPage) <= 2)
+      html += '<a href="#" onclick="' + onclick + '(' + i + ');return false">' + i + '</a> ';
+    else if (i === 4 && currentPage > 6) html += '... ';
+    else if (i === pages - 3 && currentPage < pages - 5) html += '... ';
+  }
+  if (currentPage < pages) html += '<a href="#" onclick="' + onclick + '(' + (currentPage + 1) + ');return false">&raquo;</a>';
+  html += '</div>';
+  return html;
+}
+
+// ── Index ──
+async function loadIndex() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">Chargement...</div>';
+  setBreadcrumb([]);
+
+  const data = await apiFetch('/api/forum/index');
+  if (!data.categories || data.categories.length === 0) {
+    app.innerHTML = '<div class="empty">Le forum est vide pour le moment.</div>';
+    return;
+  }
+
+  let html = '<div class="tbl-header"><span class="col-main">Forums</span><span class="col-num">Sujets</span><span class="col-num">Messages</span><span class="col-last">Dernier message</span></div>';
+
+  for (const cat of data.categories) {
+    html += '<div class="cat-header">' + escapeHtml(cat.name) + '</div>';
+    for (const b of cat.boards) {
+      html += '<div class="row">';
+      html += '<div class="icon"><div class="peach-icon"></div></div>';
+      html += '<div class="info">';
+      html += '<div class="title"><a href="#" onclick="navigate(\'board\',' + b.id + ');return false">' + escapeHtml(b.name) + '</a></div>';
+      html += '<div class="desc">' + escapeHtml(b.description) + '</div>';
+      html += '</div>';
+      html += '<div class="col-num">' + b.topicCount + '</div>';
+      html += '<div class="col-num">' + b.postCount + '</div>';
+      html += '<div class="col-last">';
+      if (b.lastActivity) {
+        html += formatDateShort(b.lastActivity);
+        if (b.lastActivityBy) html += '<br><a href="#">' + escapeHtml(b.lastActivityBy) + '</a>';
+      } else { html += '-'; }
+      html += '</div>';
+      html += '</div>';
+    }
+  }
+  app.innerHTML = html;
+}
+
+// ── Board (topic list) ──
+let currentBoardId = null;
+async function loadBoard(boardId, page) {
+  page = page || 1;
+  currentBoardId = boardId;
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">Chargement...</div>';
+
+  const data = await apiFetch('/api/forum/board/' + boardId + '?page=' + page);
+  if (!data.board) { app.innerHTML = '<div class="empty">Forum introuvable.</div>'; return; }
+
+  setBreadcrumb([{ text: data.board.name }]);
+
+  let html = '<div class="toolbar">';
+  if (currentUser) html += '<a href="#" class="btn btn-green" onclick="navigate(\'newTopic\',' + boardId + ');return false">Nouveau sujet</a>';
+  else html += '<span></span>';
+  html += '</div>';
+
+  html += '<div class="tbl-header"><span class="col-main">' + escapeHtml(data.board.name) + '</span><span class="col-num">Rép.</span><span class="col-num">Vues</span><span class="col-last">Dernier message</span></div>';
+
+  if (data.topics.length === 0) {
+    html += '<div class="empty" style="padding:20px">Aucun sujet dans ce forum.</div>';
+  }
+  for (const t of data.topics) {
+    html += '<div class="row topic-row">';
+    html += '<div class="icon"><div class="peach-icon"></div></div>';
+    html += '<div class="info">';
+    html += '<div class="title">';
+    if (t.isSticky) html += '<span class="sticky-tag">Post-it: </span>';
+    if (t.isLocked) html += '<span class="locked-tag">🔒 </span>';
+    html += '<a href="#" onclick="navigate(\'topic\',' + t.id + ');return false">' + escapeHtml(t.title) + '</a>';
+    html += '</div>';
+    html += '<div class="author">par <a href="#">' + escapeHtml(t.author) + '</a></div>';
+    html += '</div>';
+    html += '<div class="col-num">' + t.replyCount + '</div>';
+    html += '<div class="col-num">' + t.viewCount + '</div>';
+    html += '<div class="col-last">';
+    html += formatDateShort(t.lastPostAt);
+    if (t.lastPostBy) html += '<br><a href="#">' + escapeHtml(t.lastPostBy) + '</a>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  html += pagination(data.total, data.perPage, data.page, 'boardPage');
+  app.innerHTML = html;
+}
+function boardPage(p) { loadBoard(currentBoardId, p); }
+
+// ── Topic (posts) ──
+let currentTopicId = null;
+let currentTopicData = null;
+async function loadTopic(topicId, page) {
+  page = page || 1;
+  currentTopicId = topicId;
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">Chargement...</div>';
+
+  const data = await apiFetch('/api/forum/topic/' + topicId + '?page=' + page);
+  currentTopicData = data;
+  if (!data.topic) { app.innerHTML = '<div class="empty">Sujet introuvable.</div>'; return; }
+
+  setBreadcrumb([
+    { text: data.topic.boardName, href: "navigate('board'," + data.topic.boardId + ");return false" },
+    { text: data.topic.title },
+  ]);
+
+  let html = '<div class="toolbar">';
+  if (currentUser && !data.topic.isLocked) html += '<a href="#" class="btn btn-green" onclick="showReplyForm();return false">Répondre</a>';
+  html += '</div>';
+
+  for (const p of data.posts) {
+    const initial = (p.author || '?')[0].toUpperCase();
+    html += '<div class="post">';
+    html += '<div class="post-author">';
+    html += '<div class="avatar">' + escapeHtml(initial) + '</div>';
+    html += '<div class="username">' + escapeHtml(p.author) + '</div>';
+    html += '</div>';
+    html += '<div class="post-body">';
+    html += '<div class="post-header">';
+    html += '<span>Posté le ' + formatDate(p.createdAt) + '</span>';
+    html += '<div class="actions">';
+    if (currentUser && !data.topic.isLocked) html += '<a href="#" class="btn btn-orange btn-sm" onclick="quotePost(' + p.id + ',\'' + escapeHtml(p.author).replace(/'/g,"\\'") + '\');return false">citer</a>';
+    if (currentUser && (p.author === currentUser)) html += ' <a href="#" class="btn btn-orange btn-sm" onclick="editPost(' + p.id + ');return false">éditer</a>';
+    html += '</div>';
+    html += '</div>';
+    html += '<div class="post-content" id="post-content-' + p.id + '">' + escapeHtml(p.content) + '</div>';
+    if (p.updatedAt) html += '<div class="post-edited">Ce message a été édité le ' + formatDate(p.updatedAt) + '</div>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  html += pagination(data.total, data.perPage, data.page, 'topicPage');
+
+  if (currentUser && !data.topic.isLocked) {
+    html += '<div class="form-area" id="reply-form" style="display:none">';
+    html += '<label>Répondre :</label>';
+    html += '<textarea id="reply-content" placeholder="Votre message..."></textarea>';
+    html += '<div class="form-actions"><button class="btn btn-green" onclick="submitReply()">Envoyer</button> <button class="btn btn-orange" onclick="document.getElementById(\'reply-form\').style.display=\'none\'">Annuler</button></div>';
+    html += '</div>';
+  }
+
+  app.innerHTML = html;
+}
+function topicPage(p) { loadTopic(currentTopicId, p); }
+
+function showReplyForm() {
+  const f = document.getElementById('reply-form');
+  if (f) { f.style.display = 'block'; document.getElementById('reply-content').focus(); }
+}
+
+function quotePost(postId, author) {
+  const el = document.getElementById('post-content-' + postId);
+  if (!el) return;
+  const text = el.textContent;
+  showReplyForm();
+  const ta = document.getElementById('reply-content');
+  ta.value = '[citation=' + author + ']\n' + text.trim() + '\n[/citation]\n\n';
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+async function submitReply() {
+  const content = document.getElementById('reply-content').value.trim();
+  if (!content) return;
+  const data = await apiFetch('/api/forum/post', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topicId: currentTopicId, content: content, sid: SID }),
+  });
+  if (data.ok) {
+    const totalAfter = (currentTopicData ? currentTopicData.total : 0) + 1;
+    const lastPage = Math.ceil(totalAfter / 15);
+    loadTopic(currentTopicId, lastPage);
+  } else {
+    alert('Erreur : ' + (data.error || 'inconnue'));
+  }
+}
+
+async function editPost(postId) {
+  const el = document.getElementById('post-content-' + postId);
+  if (!el) return;
+  const original = el.textContent;
+  const newContent = prompt('Modifier le message :', original);
+  if (newContent === null || newContent.trim() === '') return;
+  const data = await apiFetch('/api/forum/post/' + postId, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: newContent.trim(), sid: SID }),
+  });
+  if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
+  else alert('Erreur : ' + (data.error || 'inconnue'));
+}
+
+// ── New topic form ──
+function showNewTopicForm(boardId) {
+  setBreadcrumb([{ text: 'Nouveau sujet' }]);
+  const app = document.getElementById('app');
+  let html = '<div class="form-area">';
+  html += '<h3 style="color:#557722;margin-bottom:8px">Nouveau sujet</h3>';
+  html += '<label>Titre :</label>';
+  html += '<input type="text" id="new-topic-title" maxlength="200" placeholder="Titre du sujet">';
+  html += '<label>Message :</label>';
+  html += '<textarea id="new-topic-content" placeholder="Votre message..." style="height:160px"></textarea>';
+  html += '<div class="form-actions">';
+  html += '<button class="btn btn-green" onclick="submitNewTopic(' + boardId + ')">Créer le sujet</button>';
+  html += ' <button class="btn btn-orange" onclick="navigate(\'board\',' + boardId + ')">Annuler</button>';
+  html += '</div></div>';
+  app.innerHTML = html;
+  document.getElementById('new-topic-title').focus();
+}
+
+async function submitNewTopic(boardId) {
+  const title = document.getElementById('new-topic-title').value.trim();
+  const content = document.getElementById('new-topic-content').value.trim();
+  if (!title || !content) { alert('Titre et message requis.'); return; }
+  const data = await apiFetch('/api/forum/topic', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ boardId: boardId, title: title, content: content, sid: SID }),
+  });
+  if (data.ok) navigate('topic', data.topicId);
+  else alert('Erreur : ' + (data.error || 'inconnue'));
+}
+
+// ── Init ──
+async function init() {
+  try {
+    const r = await fetch('/do/init?sid=' + encodeURIComponent(SID));
+    const text = await r.text();
+    const m = text.match(/name=([^&\n]+)/);
+    if (m) {
+      currentUser = m[1];
+      document.getElementById('user-info').textContent = 'Connecté : ' + currentUser;
+    }
+  } catch (e) {}
+  loadIndex();
+}
+
+init();
+</script>
+</body>
+</html>
