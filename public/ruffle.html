@@ -169,14 +169,11 @@
         }
         window.toggleForum = toggleForum;
 
-        // Disconnect user when the page is closed or navigated away.
-        window.addEventListener("beforeunload", function () {
-            var sid = new URLSearchParams(window.location.search).get("sid") || "";
-            if (sid) {
-                var blob = new Blob([JSON.stringify({ sid: sid })], { type: "application/json" });
-                navigator.sendBeacon("/api/logout", blob);
-            }
-        });
+        // Note: an auto-disconnect on beforeunload was disabled because it
+        // races with popup-based game launch — some browsers/Ruffle paths
+        // appear to fire beforeunload when the SWF triggers getURL, which
+        // invalidates the session right before fp_goURLNewWin opens the
+        // popup. Server-side session timeout handles stale sessions.
 
         // Also patch fp_closeFrame so the HTML button stays in sync
         // when the forum is closed from inside (via the "Fermer" button).
@@ -456,12 +453,21 @@
                     var gw = game.width + 32;
                     var gh = game.height + 32;
                     var feat = "width=" + gw + ",height=" + gh + ",resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no";
-                    window.open(popupUrl, "frutiparc_game", feat);
+                    var win = window.open(popupUrl, "frutiparc_game", feat);
+                    if (!win || win.closed) {
+                        // Popup blocked or call returned null — fall back to a new tab.
+                        console.warn("[Frusion] window.open returned null, falling back to _blank");
+                        window.open(popupUrl, "_blank");
+                    }
                     return true;
                 }
 
                 const features = `width=${w || 640},height=${h || 480},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`;
-                window.open(rewritten, "frutiparc_game", features);
+                var win2 = window.open(rewritten, "frutiparc_game", features);
+                if (!win2 || win2.closed) {
+                    console.warn("[Frusion] window.open returned null (no game info), falling back to _blank");
+                    window.open(rewritten, "_blank");
+                }
                 return true;
             };
 
