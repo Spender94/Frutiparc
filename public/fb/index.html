@@ -549,7 +549,7 @@ async function loadBoard(boardId, page) {
 
   let html = '<div class="toolbar">';
   if (currentUser) html += '<a href="#" class="btn btn-green" onclick="navigate(\'newTopic\',' + boardId + ');return false">Nouveau sujet</a>';
-  else html += '<span></span>';
+  else html += '<span style="font-size:10px;color:#888">Connecte-toi depuis Frutiparc pour poster</span>';
   html += '<span style="font-size:10px;color:#5a8030">' + escapeHtml(data.board.name) + '</span>';
   html += '</div>';
 

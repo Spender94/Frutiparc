@@ -3842,6 +3842,57 @@ const server = app.listen(port, '0.0.0.0', () => {
     console.log('        Public URL:  (auto from request host; set PUBLIC_HOST to force)');
   }
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT} (chat) / FRUTISCORE_PORT=${FRUTISCORE_PORT} (scores)`);
+
+  // Auto-seed forum categories/boards and demo content on first run
+  if (process.env.DATABASE_URL) {
+    (async () => {
+      try {
+        const cats = await db.forumGetCategories();
+        if (cats.length === 0) {
+          console.log('[FORUM] Seeding forum structure...');
+          const seedCats = [
+            { name: 'Gestion du site', boards: [
+              { name: 'Annonces', description: "Les annonces officielles de l'équipe Frutiparc" },
+            ]},
+            { name: 'Frutiparc', boards: [
+              { name: 'Animations', description: 'Les annonces des prochaines animations' },
+              { name: 'Jeux Frutiparc', description: 'Les jeux de Frutiparc, parlez-en !' },
+              { name: 'Frutiz', description: 'Pour parler de la vie des Frutiz, population de Frutiparc !' },
+            ]},
+            { name: 'La vie Frutiz', boards: [
+              { name: 'Jeux Vidéos', description: 'Pour parler de votre passion, les jeux vidéos ;)' },
+              { name: 'Créations littéraires', description: "Pour tous vos poèmes, textes et histoires, à vos plumes !" },
+              { name: 'Créations graphiques', description: "Pour tous vos dessins, trucages et gribouillis, à vos crayons !" },
+              { name: 'Musique', description: 'Car votre passion, c\'est la zique !' },
+            ]},
+          ];
+          const boardIds = [];
+          for (let ci = 0; ci < seedCats.length; ci++) {
+            const cat = await db.forumCreateCategory(seedCats[ci].name, ci);
+            for (let bi = 0; bi < seedCats[ci].boards.length; bi++) {
+              const b = seedCats[ci].boards[bi];
+              const board = await db.forumCreateBoard(cat.id, b.name, b.description, bi);
+              boardIds.push(board.id);
+            }
+          }
+          // Seed demo topics so the forum isn't empty on first visit
+          const demoUser = 'Frutiparc';
+          if (!users[demoUser]) users[demoUser] = { isModerator: true };
+          const t1 = await db.forumCreateTopic(boardIds[0], demoUser,
+            'Bienvenue sur le forum Frutiparc !',
+            "[b]Bienvenue à tous sur le forum de Frutiparc ![/b]\n\nIci vous pouvez discuter avec les autres Frutiz, partager vos scores et vos créations.\n\nBonne visite !");
+          const t2 = await db.forumCreateTopic(boardIds[2], demoUser,
+            'Quel est votre jeu préféré ?',
+            "Salut les Frutiz ! :)\n\nDites-moi, quel est votre jeu préféré sur Frutiparc ?\n\nPersonnellement j'adore [b]Swapou[/b], le mode duel est super fun !");
+          await db.forumCreatePost(t2.id, demoUser,
+            "J'oubliais, [i]Kaluga[/i] est pas mal non plus pour se détendre.");
+          console.log('[FORUM] Seed complete (' + boardIds.length + ' boards, 2 demo topics)');
+        }
+      } catch (e) {
+        console.error('[FORUM] Seed error:', e.message);
+      }
+    })();
+  }
 });
 
 // ─────────────────────────────────────────────
