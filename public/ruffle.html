@@ -96,6 +96,12 @@
                     evalJsUrl(u);
                     return null;
                 }
+                // Intercept logout navigation from Flash getURL
+                if (u.indexOf("/light/logout") !== -1) {
+                    console.log("[FP-hook] Intercepted logout, navigating:", u);
+                    window.location.href = u;
+                    return null;
+                }
                 return _origOpen.apply(window, arguments);
             };
 
@@ -162,6 +168,15 @@
             }
         }
         window.toggleForum = toggleForum;
+
+        // Disconnect user when the page is closed or navigated away.
+        window.addEventListener("beforeunload", function () {
+            var sid = new URLSearchParams(window.location.search).get("sid") || "";
+            if (sid) {
+                var blob = new Blob([JSON.stringify({ sid: sid })], { type: "application/json" });
+                navigator.sendBeacon("/api/logout", blob);
+            }
+        });
 
         // Also patch fp_closeFrame so the HTML button stays in sync
         // when the forum is closed from inside (via the "Fermer" button).
