@@ -2117,6 +2117,45 @@ app.post('/api/admin/challenge/regenerate-medals', adminAuth, async (req, res) =
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Admin: broadcast event to all connected users ──
+app.post('/api/admin/broadcast', adminAuth, (req, res) => {
+  const message = String(req.body.message || '').trim();
+  if (!message) return res.status(400).json({ ok: false, error: 'message required' });
+
+  const type = Number(req.body.type) || 1;
+  const chatToo = req.body.chat !== false;
+
+  const now = nowSqlTimestamp();
+  const xml = `<${CMD.newuserlog} date="${escapeXml(now)}" type="${type}">${escapeXml(message)}</${CMD.newuserlog}>`;
+
+  let notified = 0;
+  for (const [sock, client] of xmlSocketClients) {
+    if (client.logged) {
+      sendToClient(sock, xml);
+      notified++;
+    }
+  }
+
+  let historyCount = 0;
+  for (const username of Object.keys(users)) {
+    addUserHistoryEntry(users[username], { type, content: message, flNew: true });
+    historyCount++;
+  }
+
+  if (chatToo) {
+    const timeAttrs = buildChatTimeAttrs();
+    const redText = `<![CDATA[<b><font color="#FF0000">${message}</font></b>]]>`;
+    for (const channelName of Object.keys(channels)) {
+      broadcastToChannel(channelName,
+        `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${redText}</${CMD.send}>`
+      );
+    }
+  }
+
+  console.log(`[ADMIN] Broadcast event to ${notified} sockets, ${historyCount} users. chat=${chatToo}`);
+  res.json({ ok: true, notified, historyCount });
+});
+
 // SWF-triggered score save: the patched game SWFs call loadVariables("s<score>", "")
 // which resolves (via Ruffle base URL) to /swf/games/<game>/s<score>.
 app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
