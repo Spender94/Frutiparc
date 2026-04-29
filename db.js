@@ -149,6 +149,17 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_challenge_medals_user ON challenge_medals(user_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_challenge_medals_day ON challenge_medals(awarded_day);
 
+      CREATE TABLE IF NOT EXISTS challenge_score_archive (
+        id          SERIAL PRIMARY KEY,
+        day_key     TEXT NOT NULL,
+        ranking_id  TEXT NOT NULL,
+        username    TEXT NOT NULL,
+        score       BIGINT NOT NULL,
+        data        TEXT DEFAULT '',
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_challenge_archive_day ON challenge_score_archive(day_key, ranking_id);
+
       CREATE TABLE IF NOT EXISTS shop_packs (
         id          INTEGER PRIMARY KEY,
         name        TEXT NOT NULL,
@@ -511,6 +522,33 @@ async function deleteShopPack(id) {
   await pool.query('DELETE FROM shop_packs WHERE id = $1', [id]);
 }
 
+async function archiveChallengeScores(dayKey) {
+  await pool.query(
+    `INSERT INTO challenge_score_archive (day_key, ranking_id, username, score, data)
+     SELECT $1, s.ranking_id, u.username, s.score, s.data
+     FROM scores s
+     JOIN users u ON u.id = s.user_id
+     WHERE s.ranking_id LIKE '%_challenge'`,
+    [dayKey]
+  );
+}
+
+async function getArchivedScores(rankingId, dayKey) {
+  const { rows } = await pool.query(
+    `SELECT username, score, data FROM challenge_score_archive
+     WHERE ranking_id = $1 AND day_key = $2`,
+    [rankingId, dayKey]
+  );
+  return rows;
+}
+
+async function getArchiveDays() {
+  const { rows } = await pool.query(
+    'SELECT DISTINCT day_key FROM challenge_score_archive ORDER BY day_key DESC LIMIT 60'
+  );
+  return rows.map(r => r.day_key);
+}
+
 module.exports = {
   pool,
   initSchema,
@@ -550,4 +588,7 @@ module.exports = {
   loadShopPacks,
   upsertShopPack,
   deleteShopPack,
+  archiveChallengeScores,
+  getArchivedScores,
+  getArchiveDays,
 };

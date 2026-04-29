@@ -251,6 +251,12 @@ function utcDayKey(d = new Date()) {
   const day = String(d.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+function parisDayKey(d = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+function yesterdayParisDayKey() {
+  return parisDayKey(new Date(Date.now() - 86400000));
+}
 function yesterdayDayKey() {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - 1);
@@ -699,7 +705,7 @@ loadScores();
 seedDemoScores();
 loadChallengeMedals();
 if (!challengeMedalsData.lastRollDay) {
-  challengeMedalsData.lastRollDay = utcDayKey();
+  challengeMedalsData.lastRollDay = parisDayKey();
   saveChallengeMedals();
 }
 
@@ -886,7 +892,7 @@ function notifyChallengeWinners(winnersByUser, visibleDay) {
 
 function buildPodiumXml(rankingId) {
   if (!rankingId || !rankingId.endsWith('_challenge')) return '';
-  const yesterday = yesterdayDayKey();
+  const yesterday = yesterdayParisDayKey();
   const dayMedals = challengeMedalsData.medalsByVisibleDay[yesterday] || {};
   const game = RANKINGS[rankingId] && RANKINGS[rankingId].game;
   if (!game) return '';
@@ -920,8 +926,14 @@ function resetChallengeScoresInMemory() {
 }
 
 function rollDailyChallengeIfNeeded() {
-  const today = utcDayKey();
+  const today = parisDayKey();
   if (challengeMedalsData.lastRollDay === today) return;
+  performChallengeRoll(today);
+}
+
+function performChallengeRoll(today) {
+  const archiveDay = challengeMedalsData.lastRollDay || yesterdayParisDayKey();
+  console.log(`[CHALLENGE] Rolling cycle: archiveDay=${archiveDay} newDay=${today}`);
 
   const winnersByUser = {};
   for (const rkId of challengeRankingIds()) {
@@ -944,6 +956,14 @@ function rollDailyChallengeIfNeeded() {
   notifyChallengeWinners(winnersByUser, today);
   challengeMedalsData.lastRollDay = today;
   saveChallengeMedals();
+
+  if (process.env.DATABASE_URL) {
+    db.archiveChallengeScores(archiveDay).then(() => {
+      console.log(`[CHALLENGE] Scores archived for day ${archiveDay}`);
+    }).catch((e) => {
+      console.error('[CHALLENGE] archive error:', e.message);
+    });
+  }
 
   resetChallengeScoresInMemory();
   db.clearDailyChallengeScores().catch((e) => {
@@ -1700,6 +1720,60 @@ app.post('/api/admin/shop/:id/push-all', adminAuth, async (req, res) => {
     }
     console.log(`[ADMIN] Pushed shop pack ${pack.id} (${pack.name}) to ${pushed} users (${skipped} already owned)`);
     res.json({ ok: true, pushed, skipped });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Admin: Challenge cycle management ──
+app.get('/api/admin/challenge/status', adminAuth, async (req, res) => {
+  const today = parisDayKey();
+  const challengeIds = challengeRankingIds();
+  const summary = {};
+  for (const rkId of challengeIds) {
+    const all = [];
+    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+      if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+        all.push({ u, s: Number(rlist[rkId].score) });
+      }
+    }
+    all.sort(scoreComparator(rkId));
+    summary[rkId] = { count: all.length, top3: all.slice(0, 3) };
+  }
+  const archiveDays = process.env.DATABASE_URL ? await db.getArchiveDays().catch(() => []) : [];
+  res.json({
+    today,
+    lastRollDay: challengeMedalsData.lastRollDay || '',
+    challengeRankings: challengeIds,
+    scores: summary,
+    archiveDays,
+  });
+});
+
+app.post('/api/admin/challenge/roll', adminAuth, (req, res) => {
+  const today = parisDayKey();
+  const hadScores = challengeRankingIds().some(rkId => {
+    for (const [, rlist] of Object.entries(scoresData.users || {})) {
+      if (rlist && rlist[rkId]) return true;
+    }
+    return false;
+  });
+  performChallengeRoll(today);
+  console.log(`[ADMIN] Forced challenge roll. hadScores=${hadScores}`);
+  res.json({ ok: true, rolledDay: today, hadScores });
+});
+
+app.get('/api/admin/challenge/archive', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ days: [], scores: [] });
+  const day = String(req.query.day || '').trim();
+  const ranking = String(req.query.ranking || '').trim();
+  try {
+    if (day && ranking) {
+      const scores = await db.getArchivedScores(ranking, day);
+      scores.sort((a, b) => Number(b.score) - Number(a.score));
+      res.json({ day, ranking, scores });
+    } else {
+      const days = await db.getArchiveDays();
+      res.json({ days });
+    }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3104,6 +3178,12 @@ async function boot() {
 
 boot();
 
+setInterval(() => {
+  try { rollDailyChallengeIfNeeded(); } catch (e) {
+    console.error('[CHALLENGE] timer error:', e.message);
+  }
+}, 30000);
+
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`[HTTP]  Server running on http://0.0.0.0:${port}`);
   if (PUBLIC_HOST) {
@@ -4159,6 +4239,59 @@ broadcastToChannel(
 
     // ── kick / FrutiScore listRankings ──
     case 'kick': {
+      // FrutiScore bug: the compiled FrutiScore.rankingResult() method sends
+      // wire "l" (listRankings) instead of "m" (rankingResult) due to a
+      // copy-paste error in FrutiScore.as.  Detect this by the presence of
+      // "rk" attr (ranking id) which listRankings never carries.
+      // Respond with wire "m" so the client dispatches to onRankingResult.
+      if (msg.attrs.rk !== undefined) {
+        const rkInput = String(msg.attrs.rk);
+        const cAttrIn = String(msg.attrs.c || '');
+        const dtIn = msg.attrs.dt !== undefined ? String(msg.attrs.dt) : '';
+        const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
+        const legacyDesc = legacyDescriptorFromRkLike(rkInput);
+        const reqId = msg.attrs.r || '';
+        const start = Number(msg.attrs.s || 0) || 0;
+        const limit = Number(msg.attrs.l || 20) || 20;
+        const isHistorical = dtIn && internalId && internalId.endsWith('_challenge') && process.env.DATABASE_URL;
+        let all = [];
+        if (isHistorical) {
+          try {
+            const archived = await db.getArchivedScores(internalId, dtIn);
+            for (const row of archived) {
+              all.push({ u: row.username, s: Number(row.score), d: row.data || '', at: '' });
+            }
+          } catch (e) { console.error('[FSCORE] archive query error:', e.message); }
+        } else if (internalId) {
+          for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+            if (rlist && rlist[internalId] && Number.isFinite(Number(rlist[internalId].score))) {
+              all.push({ u, s: Number(rlist[internalId].score), d: rlist[internalId].data || '', at: rlist[internalId].updatedAt || '' });
+            }
+          }
+        }
+        all.sort(internalId ? scoreComparator(internalId) : (a, b) => b.s - a.s);
+        const slice = all.slice(start, start + limit);
+        let inner = '';
+        for (const e of slice) {
+          const ud = users[e.u] || {};
+          const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
+          const displayData = formatRankingExtraData(internalId, e.d);
+          const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
+          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
+        }
+        const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+        const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
+        const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
+        const dtAttr = dtIn ? ` dt="${escapeXml(dtIn)}"` : '';
+        const podiumXml = isHistorical ? '' : buildPodiumXml(internalId);
+        if (!inner && !podiumXml) {
+          sendToClient(socket, buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
+        } else {
+          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}${dtAttr}>${podiumXml}${inner}</${CMD.ban}>`);
+        }
+        console.log(`[FSCORE] rankingResult (via bugged wire l) ${rkInput}/${internalId || '-'}${isHistorical ? ' dt=' + dtIn : ''}: ${slice.length}/${all.length} entries`);
+        break;
+      }
       // FrutiScore overlap: listRankings uses wire code "l" with dt (date) attr.
       if (msg.attrs.dt !== undefined) {
         const reqId = msg.attrs.r || '';
@@ -4180,49 +4313,6 @@ broadcastToChannel(
         }
         sendToClient(socket, `<${CMD.kick}${dtAttr}${rAttr}>${inner}</${CMD.kick}>`);
         console.log(`[FSCORE] listRankings: ${LEGACY_RANKINGS.length} legacy rankings sent`);
-        break;
-      }
-      // FrutiScore bug: the compiled FrutiScore.rankingResult() method sends
-      // wire "l" (listRankings) instead of "m" (rankingResult) due to a
-      // copy-paste error in FrutiScore.as.  Detect this by the presence of
-      // "rk" attr (ranking id) which listRankings never carries.
-      // Respond with wire "m" so the client dispatches to onRankingResult.
-      if (msg.attrs.rk !== undefined) {
-        const rkInput = String(msg.attrs.rk);
-        const cAttrIn = String(msg.attrs.c || '');
-        const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
-        const legacyDesc = legacyDescriptorFromRkLike(rkInput);
-        const reqId = msg.attrs.r || '';
-        const start = Number(msg.attrs.s || 0) || 0;
-        const limit = Number(msg.attrs.l || 20) || 20;
-        const all = [];
-        if (internalId) {
-          for (const [u, rlist] of Object.entries(scoresData.users || {})) {
-            if (rlist && rlist[internalId] && Number.isFinite(Number(rlist[internalId].score))) {
-              all.push({ u, s: Number(rlist[internalId].score), d: rlist[internalId].data || '', at: rlist[internalId].updatedAt || '' });
-            }
-          }
-        }
-        all.sort(internalId ? scoreComparator(internalId) : (a, b) => b.s - a.s);
-        const slice = all.slice(start, start + limit);
-        let inner = '';
-        for (const e of slice) {
-          const ud = users[e.u] || {};
-          const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
-          const displayData = formatRankingExtraData(internalId, e.d);
-          const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
-          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
-        }
-        const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
-        const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
-        const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
-        const podiumXml = buildPodiumXml(internalId);
-        if (!inner && !podiumXml) {
-          sendToClient(socket, buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
-        } else {
-          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${podiumXml}${inner}</${CMD.ban}>`);
-        }
-        console.log(`[FSCORE] rankingResult (via bugged wire l) ${rkInput}/${internalId || '-'}: ${slice.length}/${all.length} entries`);
         break;
       }
       if (!isModerator(client.username)) {

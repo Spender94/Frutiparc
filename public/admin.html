@@ -63,6 +63,7 @@
   <div class="tab" data-tab="scores" onclick="switchTab('scores')">Scores</div>
   <div class="tab" data-tab="detail" onclick="switchTab('detail')">Détail joueur</div>
   <div class="tab" data-tab="shop" onclick="switchTab('shop')">Boutique</div>
+  <div class="tab" data-tab="challenge" onclick="switchTab('challenge')">Challenge</div>
 </div>
 
 <div class="content" id="tab-users">
@@ -108,6 +109,29 @@
   <table>
     <thead><tr><th>ID</th><th>Nom</th><th>Catégorie</th><th>Prix</th><th>Suffix9</th><th>Description</th><th>Actions</th></tr></thead>
     <tbody id="shop-body"></tbody>
+  </table>
+</div>
+
+<div class="content" id="tab-challenge" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadChallengeStatus()">Rafraîchir</button>
+    <button class="btn-danger" onclick="forceRoll()">Terminer le cycle (médailles + reset)</button>
+  </div>
+  <div id="challenge-status" style="margin:16px 0"></div>
+  <h4 style="color:#4fc3f7;margin:16px 0 8px">Scores actuels du cycle</h4>
+  <div id="challenge-scores"></div>
+  <h4 style="color:#4fc3f7;margin:24px 0 8px">Archives</h4>
+  <div class="toolbar" style="margin-bottom:8px">
+    <select id="archive-day" onchange="loadArchive()">
+      <option value="">Sélectionner une date</option>
+    </select>
+    <select id="archive-ranking" onchange="loadArchive()">
+      <option value="">Sélectionner un classement</option>
+    </select>
+  </div>
+  <table id="archive-table" style="display:none">
+    <thead><tr><th>#</th><th>Joueur</th><th>Score</th><th>Data</th></tr></thead>
+    <tbody id="archive-body"></tbody>
   </table>
 </div>
 
@@ -209,12 +233,13 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','shop'].forEach(t => {
+  ['users','scores','detail','shop','challenge'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
   if (name === 'scores' && !$('#ranking-select').dataset.loaded) loadScores();
   if (name === 'shop' && !$('#shop-body').dataset.loaded) loadShop();
+  if (name === 'challenge') loadChallengeStatus();
 }
 
 function closeModal(id) { $(`#${id}`).classList.remove('open'); }
@@ -582,6 +607,89 @@ async function pushPackAll(id, name) {
   const data = await r.json();
   if (!r.ok) { toast('Erreur: ' + (data.error || 'inconnu')); return; }
   toast(`"${name}" poussé à ${data.pushed} joueurs (${data.skipped} avaient déjà)`);
+}
+
+// ── Challenge ──
+async function loadChallengeStatus() {
+  try {
+    const r = await fetch('/api/admin/challenge/status', { headers: hdr() });
+    const d = await r.json();
+    let html = `<table style="max-width:500px;margin-bottom:16px">
+      <tr><td>Aujourd'hui (Paris)</td><td><strong>${esc(d.today)}</strong></td></tr>
+      <tr><td>Dernier cycle terminé</td><td><strong>${esc(d.lastRollDay || 'jamais')}</strong></td></tr>
+    </table>`;
+    $('#challenge-status').innerHTML = html;
+
+    let scoresHtml = '';
+    for (const rkId of (d.challengeRankings || [])) {
+      const info = d.scores[rkId] || { count: 0, top3: [] };
+      scoresHtml += `<div style="margin-bottom:12px"><strong style="color:#e94560">${esc(rkId)}</strong> — ${info.count} joueur(s)`;
+      if (info.top3.length > 0) {
+        scoresHtml += '<ol style="margin:4px 0 0 20px;padding:0">';
+        const medals = ['🥇','🥈','🥉'];
+        for (let i = 0; i < info.top3.length; i++) {
+          scoresHtml += `<li>${medals[i] || ''} ${esc(info.top3[i].u)} — ${info.top3[i].s}</li>`;
+        }
+        scoresHtml += '</ol>';
+      }
+      scoresHtml += '</div>';
+    }
+    $('#challenge-scores').innerHTML = scoresHtml || '<p class="empty">Aucun classement challenge configuré</p>';
+
+    const daySel = $('#archive-day');
+    const prevDay = daySel.value;
+    daySel.innerHTML = '<option value="">Sélectionner une date</option>';
+    for (const day of (d.archiveDays || [])) {
+      const o = document.createElement('option');
+      o.value = day; o.textContent = day;
+      daySel.appendChild(o);
+    }
+    if (prevDay) daySel.value = prevDay;
+
+    const rkSel = $('#archive-ranking');
+    const prevRk = rkSel.value;
+    rkSel.innerHTML = '<option value="">Sélectionner un classement</option>';
+    for (const rk of (d.challengeRankings || [])) {
+      const o = document.createElement('option');
+      o.value = rk; o.textContent = rk;
+      rkSel.appendChild(o);
+    }
+    if (prevRk) rkSel.value = prevRk;
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function forceRoll() {
+  if (!confirm('Terminer le cycle Challenge maintenant ?\nLes médailles seront attribuées au top 3, les scores seront archivés puis remis à zéro.')) return;
+  try {
+    const r = await fetch('/api/admin/challenge/roll', { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    toast(d.hadScores ? 'Cycle terminé — médailles attribuées, scores archivés et remis à zéro' : 'Cycle terminé (aucun score à traiter)');
+    loadChallengeStatus();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function loadArchive() {
+  const day = $('#archive-day').value;
+  const ranking = $('#archive-ranking').value;
+  if (!day || !ranking) { $('#archive-table').style.display = 'none'; return; }
+  try {
+    const r = await fetch(`/api/admin/challenge/archive?day=${encodeURIComponent(day)}&ranking=${encodeURIComponent(ranking)}`, { headers: hdr() });
+    const d = await r.json();
+    const scores = d.scores || [];
+    const tb = $('#archive-body');
+    if (scores.length === 0) {
+      tb.innerHTML = '<tr><td colspan="4" class="empty">Aucun score archivé pour cette date</td></tr>';
+    } else {
+      tb.innerHTML = scores.map((s, i) => `<tr>
+        <td>${i + 1}</td>
+        <td>${esc(s.username)}</td>
+        <td>${s.score}</td>
+        <td><code style="font-size:11px">${esc(s.data || '-')}</code></td>
+      </tr>`).join('');
+    }
+    $('#archive-table').style.display = '';
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 </script>
 </body>
