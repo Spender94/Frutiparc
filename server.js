@@ -1812,6 +1812,52 @@ app.get('/api/admin/challenge/debug', adminAuth, async (req, res) => {
   });
 });
 
+app.post('/api/admin/challenge/regenerate-medals', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'No database' });
+  const day = String(req.body.day || '').trim();
+  if (!day) return res.status(400).json({ error: 'day parameter required (YYYY-MM-DD)' });
+  try {
+    const rows = await db.getArchivedScoresForDay(day);
+    if (rows.length === 0) return res.json({ ok: false, error: 'No archived scores for that day' });
+    const byRanking = {};
+    for (const r of rows) {
+      if (!byRanking[r.ranking_id]) byRanking[r.ranking_id] = [];
+      byRanking[r.ranking_id].push({ u: r.username, s: Number(r.score) });
+    }
+    const winnersByUser = {};
+    const details = {};
+    for (const rkId of challengeRankingIds()) {
+      const all = byRanking[rkId] || [];
+      all.sort(scoreComparator(rkId));
+      const top = all.slice(0, 3);
+      details[rkId] = top;
+      for (let i = 0; i < top.length; i++) {
+        const rank = i + 1;
+        const medal = rank === 1 ? 'or' : rank === 2 ? 'argent' : 'bronze';
+        const username = top[i].u;
+        if (!winnersByUser[username]) winnersByUser[username] = [];
+        winnersByUser[username].push({
+          game: (RANKINGS[rkId] && RANKINGS[rkId].game) || rkId,
+          rankingId: rkId,
+          rank,
+          medal,
+        });
+      }
+    }
+    await db.deleteMedalsByDay(day);
+    for (const [username, medals] of Object.entries(winnersByUser)) {
+      for (const m of medals) {
+        const row = await db.findUserByUsername(username).catch(() => null);
+        const userId = (row && row.id) || 0;
+        await db.saveMedal(userId, username, m.rankingId, m.game, m.rank, m.medal, day);
+      }
+    }
+    challengeMedalsData.medalsByVisibleDay[day] = winnersByUser;
+    saveChallengeMedals();
+    res.json({ ok: true, day, details, winnersByUser });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // SWF-triggered score save: the patched game SWFs call loadVariables("s<score>", "")
 // which resolves (via Ruffle base URL) to /swf/games/<game>/s<score>.
 app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
@@ -3215,16 +3261,14 @@ async function boot() {
 
   if (process.env.DATABASE_URL) {
     const yesterday = yesterdayParisDayKey();
-    if (!challengeMedalsData.medalsByVisibleDay[yesterday] || Object.keys(challengeMedalsData.medalsByVisibleDay[yesterday]).length === 0) {
-      try {
-        const dbMedals = await db.getMedalsByDay(yesterday);
-        if (Object.keys(dbMedals).length > 0) {
-          challengeMedalsData.medalsByVisibleDay[yesterday] = dbMedals;
-          saveChallengeMedals();
-          console.log(`[CHALLENGE] Loaded ${Object.keys(dbMedals).length} medalists from DB for ${yesterday}`);
-        }
-      } catch (e) { console.error('[CHALLENGE] DB medal load error:', e.message); }
-    }
+    try {
+      const dbMedals = await db.getMedalsByDay(yesterday);
+      if (Object.keys(dbMedals).length > 0) {
+        challengeMedalsData.medalsByVisibleDay[yesterday] = dbMedals;
+        saveChallengeMedals();
+        console.log(`[CHALLENGE] Loaded ${Object.keys(dbMedals).length} medalists from DB for ${yesterday} (overrides JSON)`);
+      }
+    } catch (e) { console.error('[CHALLENGE] DB medal load error:', e.message); }
   }
 
   console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${today}`);

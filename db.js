@@ -575,6 +575,18 @@ async function getArchivedScores(rankingId, dayKey) {
   return rows;
 }
 
+async function getArchivedScoresForDay(dayKey) {
+  const { rows } = await pool.query(
+    'SELECT ranking_id, username, score FROM challenge_score_archive WHERE day_key = $1',
+    [dayKey]
+  );
+  return rows;
+}
+
+async function deleteMedalsByDay(dayKey) {
+  await pool.query('DELETE FROM challenge_medals WHERE awarded_day = $1', [dayKey]);
+}
+
 async function getArchiveDays() {
   const { rows } = await pool.query(
     'SELECT DISTINCT day_key FROM challenge_score_archive ORDER BY day_key DESC LIMIT 60'
@@ -624,5 +636,7 @@ module.exports = {
   deleteShopPack,
   archiveChallengeScores,
   getArchivedScores,
+  getArchivedScoresForDay,
   getArchiveDays,
+  deleteMedalsByDay,
 };
