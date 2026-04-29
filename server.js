@@ -3384,10 +3384,16 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     await db.forumIncrementViews(topicId);
     const board = await db.forumGetBoard(topic.board_id);
     const { posts, total } = await db.forumGetPosts(topicId, page, 15);
+    const authorNames = [...new Set(posts.map(p => p.author_username))];
+    const postCounts = await db.forumGetPostCounts(authorNames);
+    const currentUser = forumAuth(req);
+    const currentIsMod = currentUser && users[currentUser] && users[currentUser].isModerator;
     const postsOut = posts.map(p => ({
       id: p.id, author: p.author_username, content: p.content,
       createdAt: p.created_at, updatedAt: p.updated_at,
       bouille: bouilleOf(users[p.author_username], p.author_username),
+      postCount: postCounts[p.author_username] || 0,
+      isModerator: !!(users[p.author_username] && users[p.author_username].isModerator),
     }));
     res.json({
       topic: {
@@ -3396,6 +3402,7 @@ app.get('/api/forum/topic/:id', async (req, res) => {
         isSticky: topic.is_sticky, isLocked: topic.is_locked,
       },
       posts: postsOut, total, page, perPage: 15,
+      currentIsMod: !!currentIsMod,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3460,6 +3467,47 @@ app.delete('/api/forum/post/:id', async (req, res) => {
     if (post.author_username !== username && !isAdmin) return res.status(403).json({ error: 'forbidden' });
     await db.forumDeletePost(post.id);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/forum/topic/:id/sticky', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  const isMod = users[username] && users[username].isModerator;
+  if (!isMod) return res.status(403).json({ error: 'forbidden' });
+  try {
+    await db.forumToggleSticky(Number(req.params.id));
+    const topic = await db.forumGetTopic(Number(req.params.id));
+    res.json({ ok: true, isSticky: topic ? topic.is_sticky : false });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/forum/topic/:id/lock', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  const isMod = users[username] && users[username].isModerator;
+  if (!isMod) return res.status(403).json({ error: 'forbidden' });
+  try {
+    await db.forumToggleLocked(Number(req.params.id));
+    const topic = await db.forumGetTopic(Number(req.params.id));
+    res.json({ ok: true, isLocked: topic ? topic.is_locked : false });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/forum/topic/:id', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  try {
+    const topic = await db.forumGetTopic(Number(req.params.id));
+    if (!topic) return res.status(404).json({ error: 'not found' });
+    const isMod = users[username] && users[username].isModerator;
+    if (topic.author_username !== username && !isMod) return res.status(403).json({ error: 'forbidden' });
+    const boardId = topic.board_id;
+    await db.forumDeleteTopic(Number(req.params.id));
+    res.json({ ok: true, boardId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -801,7 +801,19 @@ async function forumToggleLocked(topicId) {
 }
 
 async function forumDeleteTopic(topicId) {
+  await pool.query('DELETE FROM forum_posts WHERE topic_id = $1', [topicId]);
   await pool.query('DELETE FROM forum_topics WHERE id = $1', [topicId]);
+}
+
+async function forumGetPostCounts(usernames) {
+  if (!usernames.length) return {};
+  const { rows } = await pool.query(
+    `SELECT author_username, COUNT(*)::int AS cnt FROM forum_posts WHERE author_username = ANY($1) GROUP BY author_username`,
+    [usernames]
+  );
+  const map = {};
+  for (const r of rows) map[r.author_username] = r.cnt;
+  return map;
 }
 
 module.exports = {
@@ -868,4 +880,5 @@ module.exports = {
   forumToggleSticky,
   forumToggleLocked,
   forumDeleteTopic,
+  forumGetPostCounts,
 };
