@@ -3588,6 +3588,104 @@ app.get('/ff/dm', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: fm/sendmail — Send mail (POST, LoadVars)
+// Flash's win.Mail sends: sid, to, subject, content, fromName, saveToOutbox
+// Response: XML <r /> on success
+// ─────────────────────────────────────────────
+app.post('/fm/sendmail', async (req, res) => {
+  const sid = req.body.sid || req.query.sid || '';
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { username, user } = auth;
+  ensureMails(user);
+
+  const to = String(req.body.to || '').trim();
+  const subject = String(req.body.subject || '');
+  const content = String(req.body.content || '');
+  const fromName = String(req.body.fromName || username);
+  const saveToOutbox = String(req.body.saveToOutbox || '1');
+
+  if (!to) {
+    return res.type('text/xml').send('<r k="1">to_empty</r>');
+  }
+
+  const now = new Date().toLocaleString('fr-FR');
+  const fromAddr = username + '@frutiparc.com';
+  const toAddrs = parseRecipients(to);
+
+  const mail = {
+    uid: genMailUid(),
+    from: fromName,
+    fromAddr,
+    to,
+    toAddrs,
+    subject,
+    body: content,
+    folder: 'outbox',
+    date: now,
+    read: true,
+  };
+
+  if (saveToOutbox !== '0' && saveToOutbox !== 'false') {
+    user.mails.push(mail);
+    if (user._dbId) {
+      db.saveMail(user._dbId, mail)
+        .catch((e) => console.error('[DB] outbox save error:', e.message));
+    }
+  }
+
+  try {
+    await deliverMailToRecipients(mail, username);
+  } catch (e) {
+    console.error('[Mail] delivery error:', e.message);
+  }
+
+  console.log(`[Mail] ${username} sent mail to ${to} (subject: ${subject})`);
+  res.type('text/xml').send('<r />');
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: fm/sd — Save draft (POST, LoadVars)
+// ─────────────────────────────────────────────
+app.post('/fm/sd', async (req, res) => {
+  const sid = req.body.sid || req.query.sid || '';
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+  const { username, user } = auth;
+  ensureMails(user);
+
+  const to = String(req.body.to || '');
+  const subject = String(req.body.subject || '');
+  const content = String(req.body.content || '');
+  const fromName = String(req.body.fromName || username);
+
+  const now = new Date().toLocaleString('fr-FR');
+  const fromAddr = username + '@frutiparc.com';
+
+  const mail = {
+    uid: genMailUid(),
+    from: fromName,
+    fromAddr,
+    to,
+    toAddrs: parseRecipients(to),
+    subject,
+    body: content,
+    folder: 'draftbox',
+    date: now,
+    read: true,
+  };
+
+  user.mails.push(mail);
+  if (user._dbId) {
+    db.saveMail(user._dbId, mail)
+      .catch((e) => console.error('[DB] draft save error:', e.message));
+  }
+
+  console.log(`[Mail] ${username} saved draft (subject: ${subject})`);
+  res.type('text/xml').send('<r />');
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: h/send_debug — Debug logging (POST)
 // ─────────────────────────────────────────────
 app.post('/h/send_debug', (req, res) => {
