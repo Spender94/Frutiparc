@@ -593,6 +593,16 @@ async function deleteMedalsByDay(dayKey) {
   await pool.query('DELETE FROM challenge_medals WHERE awarded_day = $1', [dayKey]);
 }
 
+async function deleteWallpaperAccessories(wallpaperShopIds) {
+  const ids = Array.isArray(wallpaperShopIds) ? wallpaperShopIds : [];
+  const { rowCount } = await pool.query(
+    `DELETE FROM user_accessories
+     WHERE value LIKE 'wp:%' OR shop_id = ANY($1::int[])`,
+    [ids]
+  );
+  return rowCount;
+}
+
 async function getAllMedals() {
   const { rows } = await pool.query(
     `SELECT username, ranking_id, game, rank, medal, awarded_day, created_at
@@ -662,4 +672,5 @@ module.exports = {
   deleteMedalsByDay,
   getAllMedals,
   getMedalDays,
+  deleteWallpaperAccessories,
 };

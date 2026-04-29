@@ -1734,6 +1734,24 @@ app.post('/api/admin/shop/:id/push-all', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/admin/wallpapers/cleanup', adminAuth, async (req, res) => {
+  for (const username of Object.keys(users)) {
+    const u = users[username];
+    if (Array.isArray(u.customAccessories)) {
+      u.customAccessories = u.customAccessories.filter(acc => !getAccessoryWallpaper(acc));
+    }
+  }
+  let removed = 0;
+  if (process.env.DATABASE_URL) {
+    try {
+      const ids = SHOP_PACKS_DEFAULT.filter(p => p.wallpaperId).map(p => p.id);
+      removed = await db.deleteWallpaperAccessories(ids);
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  console.log(`[ADMIN] Wallpaper cleanup: ${removed} accessories removed from DB`);
+  res.json({ ok: true, removed });
+});
+
 // ── Admin: Challenge cycle management ──
 app.get('/api/admin/challenge/status', adminAuth, async (req, res) => {
   const today = parisDayKey();
@@ -2942,31 +2960,35 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   }
 
   if (uid === 'inventory') {
+    return res.type('text/xml').send(
+      `<f u="inventory">` +
+      `<f u="inv_accessories" n="Accessoires" t="folder" />` +
+      `<f u="inv_wallpapers" n="Fonds d'écran" t="folder" />` +
+      `</f>`
+    );
+  }
+
+  if (uid === 'inv_accessories') {
     const bouillePrefix = bouilleOf(user).substring(0, 15);
     const defaultAccNodes = DEFAULT_ACCESSORIES
       .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
       .join('');
-    const ownedWpIds = new Set();
-    let customAccNodes = '';
+    const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .filter((acc) => !getAccessoryWallpaper(acc))
+      .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
+      .join('');
+    return res.type('text/xml').send(`<f u="inv_accessories">${defaultAccNodes}${customAccNodes}</f>`);
+  }
+
+  if (uid === 'inv_wallpapers') {
+    let nodes = '';
     for (const acc of (Array.isArray(user.customAccessories) ? user.customAccessories : [])) {
       const wp = getAccessoryWallpaper(acc);
       if (wp) {
-        ownedWpIds.add(acc.id);
-        customAccNodes += `<e u="${escapeXml(acc.id)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(acc.n || 'Fond')}\n${wp.url}\n${wp.color}</e>`;
-      } else {
-        const v = acc.v || '';
-        customAccNodes += `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(v || DEFAULT_BOUILLE_STATE)}</e>`;
+        nodes += `<e u="${escapeXml(acc.id)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(acc.n || 'Fond')}\n${wp.url}\n${wp.color}</e>`;
       }
     }
-    let defaultWpNodes = '';
-    for (const wp of DEFAULT_WALLPAPERS) {
-      if (!ownedWpIds.has(wp.u) && !ownedWpIds.has('wp_' + wp.u)) {
-        defaultWpNodes += `<e u="${escapeXml(wp.u)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(wp.n)}\n${wp.url}\n${wp.color}</e>`;
-      }
-    }
-    return res.type('text/xml').send(
-      `<f u="inventory">${defaultAccNodes}${customAccNodes}${defaultWpNodes}</f>`
-    );
+    return res.type('text/xml').send(`<f u="inv_wallpapers">${nodes || '<i />'}</f>`);
   }
 
   if (uid === 'shop') {
@@ -3365,11 +3387,24 @@ async function boot() {
           }
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
+
+      try {
+        const wallpaperShopIds = SHOP_PACKS_DEFAULT.filter(p => p.wallpaperId).map(p => p.id);
+        const removed = await db.deleteWallpaperAccessories(wallpaperShopIds);
+        if (removed > 0) console.log(`[DB] Cleaned up ${removed} wallpaper accessories from user inventories`);
+      } catch (e) { console.error('[DB] Wallpaper cleanup error:', e.message); }
     } catch (e) {
       console.error('[DB] Init failed (running without persistence):', e.message);
     }
   } else {
     console.log('[DB] No DATABASE_URL — running in memory-only mode');
+  }
+
+  for (const username of Object.keys(users)) {
+    const u = users[username];
+    if (Array.isArray(u.customAccessories)) {
+      u.customAccessories = u.customAccessories.filter(acc => !getAccessoryWallpaper(acc));
+    }
   }
 
   const today = parisDayKey();
