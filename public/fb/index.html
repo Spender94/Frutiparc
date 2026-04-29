@@ -840,14 +840,17 @@ async function submitNewTopic(boardId) {
 
 async function init() {
   try {
-    const r = await fetch('/do/init?sid=' + encodeURIComponent(SID));
-    const text = await r.text();
-    const m = text.match(/name=([^&\n]+)/);
-    if (m) {
-      currentUser = m[1];
+    const r = await fetch('/api/forum/me?sid=' + encodeURIComponent(SID));
+    const data = await r.json();
+    if (data && data.user) {
+      currentUser = data.user;
       document.getElementById('user-info').textContent = 'Connecté : ' + currentUser;
+    } else {
+      document.getElementById('user-info').textContent = 'Non connecté';
     }
-  } catch (e) {}
+  } catch (e) {
+    document.getElementById('user-info').textContent = 'Erreur d\'authentification';
+  }
   loadIndex();
 }
 

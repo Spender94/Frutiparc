@@ -3365,6 +3365,16 @@ function forumAuth(req) {
   return resolveUsernameFromSid(sid);
 }
 
+app.get('/api/forum/me', (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.json({ user: null });
+  const u = users[username] || {};
+  res.json({
+    user: username,
+    isModerator: !!u.isModerator,
+  });
+});
+
 app.get('/api/forum/index', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ categories: [], boards: [] });
   try {
