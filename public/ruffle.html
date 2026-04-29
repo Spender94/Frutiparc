@@ -96,12 +96,6 @@
                     evalJsUrl(u);
                     return null;
                 }
-                // Intercept logout navigation from Flash getURL
-                if (u.indexOf("/light/logout") !== -1) {
-                    console.log("[FP-hook] Intercepted logout, navigating:", u);
-                    window.location.href = u;
-                    return null;
-                }
                 return _origOpen.apply(window, arguments);
             };
 
@@ -168,12 +162,6 @@
             }
         }
         window.toggleForum = toggleForum;
-
-        // Note: an auto-disconnect on beforeunload was disabled because it
-        // races with popup-based game launch — some browsers/Ruffle paths
-        // appear to fire beforeunload when the SWF triggers getURL, which
-        // invalidates the session right before fp_goURLNewWin opens the
-        // popup. Server-side session timeout handles stale sessions.
 
         // Also patch fp_closeFrame so the HTML button stays in sync
         // when the forum is closed from inside (via the "Fermer" button).

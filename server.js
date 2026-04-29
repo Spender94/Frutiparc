@@ -1529,24 +1529,6 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// ENDPOINT: /api/logout — Disconnect user (used by sendBeacon on page close)
-// ─────────────────────────────────────────────
-app.post('/api/logout', (req, res) => {
-  const sid = (req.body && req.body.sid) || req.query.sid || '';
-  const username = disconnectUser(sid);
-  res.json({ ok: true, user: username || null });
-});
-
-// ─────────────────────────────────────────────
-// ENDPOINT: /light/logout — Flash logout (getURL redirect)
-// ─────────────────────────────────────────────
-app.get('/light/logout', (req, res) => {
-  const sid = req.query.sid || '';
-  disconnectUser(sid);
-  res.redirect('/');
-});
-
-// ─────────────────────────────────────────────
 // ENDPOINT: /api/saveScore — Game popup posts score here after game ends.
 // Accepts both GET (from SWF getURL) and POST (from popup JS fetch).
 // Query/body params: sid, game (disc name or id), score, data (optional).
@@ -4715,33 +4697,6 @@ function getSocketsForUsername(username) {
   return sockets;
 }
 
-function disconnectUser(sid) {
-  const session = sessions[sid];
-  if (!session) return null;
-  const username = session.user;
-  delete sessions[sid];
-  if (username) {
-    const socks = getSocketsForUsername(username);
-    for (const sock of socks) {
-      const client = xmlSocketClients.get(sock);
-      if (client && client.sid === sid) {
-        for (const g of client.channels) {
-          if (channels[g]) {
-            channels[g].users.delete(username);
-            broadcastToChannel(g,
-              `<${CMD.userleaved} g="${g}" u="${escapeXml(username)}" />`
-            );
-          }
-        }
-        xmlSocketClients.delete(sock);
-        try { sock.destroy(); } catch (e) { /* ignore */ }
-      }
-    }
-    console.log(`[Auth] User "${username}" disconnected (sid=${sid})`);
-  }
-  return username;
-}
-
 function isModerator(username) {
   if (isDebugNotUser(username)) return false;
   return !!(username && users[username] && users[username].isModerator);
@@ -6136,15 +6091,6 @@ const xmlSocketServer = net.createServer((socket) => {
           broadcastToChannel(g,
             `<${CMD.userleaved} g="${g}" u="${client.username}" />`
           );
-        }
-      }
-      // Invalidate session if this was the last socket for the user
-      if (client.sid && sessions[client.sid]) {
-        const remaining = getSocketsForUsername(client.username)
-          .filter(s => s !== socket);
-        if (remaining.length === 0) {
-          delete sessions[client.sid];
-          console.log(`[CBee]  Session invalidated for "${client.username}" (sid=${client.sid})`);
         }
       }
       console.log(`[CBee]  Client disconnected: ${client.username || 'anonymous'}`);
