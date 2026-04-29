@@ -3320,6 +3320,75 @@ app.use('/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2'
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
+// Club popup (opened from the Flash desktop "Club" link)
+// ─────────────────────────────────────────────
+app.get(['/club', '/club/'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'club', 'index.html'));
+});
+
+app.get('/api/club/medalists', async (req, res) => {
+  try {
+    let medals = [];
+    if (process.env.DATABASE_URL) {
+      try { medals = await db.getAllMedals(); } catch (e) { medals = []; }
+    }
+    if (!medals.length) {
+      for (const [day, dayMedals] of Object.entries(challengeMedalsData.medalsByVisibleDay || {})) {
+        for (const [username, list] of Object.entries(dayMedals || {})) {
+          for (const m of list) {
+            medals.push({ awarded_day: day, username, ranking_id: m.rankingId, game: m.game, rank: m.rank, medal: m.medal });
+          }
+        }
+      }
+    }
+    const counts = {};
+    for (const m of medals) {
+      const u = m.username;
+      if (!counts[u]) counts[u] = { user: u, gold: 0, silver: 0, bronze: 0, total: 0 };
+      if (m.medal === 'gold') counts[u].gold++;
+      else if (m.medal === 'silver') counts[u].silver++;
+      else if (m.medal === 'bronze') counts[u].bronze++;
+      counts[u].total++;
+    }
+    const list = Object.values(counts).sort(
+      (a, b) => b.gold - a.gold || b.silver - a.silver || b.bronze - a.bronze || a.user.localeCompare(b.user)
+    );
+    res.json({ medalists: list, totalMedals: medals.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/club/records', (req, res) => {
+  const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 10));
+  const out = [];
+  for (const [rkId, meta] of Object.entries(RANKINGS)) {
+    const all = [];
+    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+      if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+        all.push({
+          user: u,
+          score: Number(rlist[rkId].score),
+          data: rlist[rkId].data || '',
+          updatedAt: rlist[rkId].updatedAt || '',
+        });
+      }
+    }
+    const lowerBetter = isLowerBetter(rkId);
+    all.sort((a, b) => lowerBetter ? a.score - b.score : b.score - a.score);
+    out.push({
+      id: rkId,
+      name: meta.name,
+      game: meta.game,
+      type: meta.type,
+      lowerIsBetter: !!meta.lowerIsBetter,
+      scores: all.slice(0, limit),
+    });
+  }
+  res.json({ rankings: out });
+});
+
+// ─────────────────────────────────────────────
 // Serve static files AFTER API routes so our endpoints take priority
 // ─────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));

@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Club Frutiparc</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: "Trebuchet MS", "Lucida Sans", Arial, sans-serif;
+    background: #ade76b;
+    color: #333;
+  }
+  body { padding: 16px; }
+  h1 {
+    margin: 0 0 16px 0;
+    font-size: 24px;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.25);
+    text-align: center;
+  }
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    justify-content: center;
+  }
+  .tab {
+    padding: 8px 18px;
+    background: #f6afa9;
+    color: #fff;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.08);
+    transition: background 0.15s, transform 0.05s;
+  }
+  .tab:hover { background: #f49890; }
+  .tab:active { transform: translateY(1px); }
+  .tab.active {
+    background: #fff;
+    color: #c95a52;
+    box-shadow: 0 -2px 4px rgba(0,0,0,0.08);
+  }
+  .panel {
+    background: #fff;
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    min-height: 300px;
+  }
+  .panel.hidden { display: none; }
+
+  /* Medalists table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+  }
+  thead th {
+    background: #ade76b;
+    color: #fff;
+    padding: 8px;
+    text-align: left;
+    font-size: 13px;
+    border-bottom: 2px solid #fff;
+  }
+  thead th.num { text-align: center; width: 60px; }
+  tbody td {
+    padding: 7px 8px;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+  }
+  tbody tr:hover { background: #f9f9f9; }
+  td.num { text-align: center; font-weight: bold; }
+  td.gold   { color: #d4a017; }
+  td.silver { color: #8a8a8a; }
+  td.bronze { color: #a0522d; }
+  td.rank-cell {
+    text-align: center;
+    font-weight: bold;
+    color: #888;
+    width: 50px;
+  }
+  td.rank-cell.r1 { color: #d4a017; font-size: 16px; }
+  td.rank-cell.r2 { color: #8a8a8a; }
+  td.rank-cell.r3 { color: #a0522d; }
+  .username { font-weight: bold; color: #2a6e1a; }
+
+  /* Records grid */
+  .ranking-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 12px;
+  }
+  .ranking-card {
+    background: #f7fff0;
+    border: 1px solid #ade76b;
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .ranking-card h3 {
+    margin: 0 0 8px 0;
+    font-size: 15px;
+    color: #2a6e1a;
+    border-bottom: 1px solid #ade76b;
+    padding-bottom: 4px;
+  }
+  .ranking-card .empty {
+    color: #999;
+    font-style: italic;
+    font-size: 13px;
+    padding: 8px 0;
+  }
+  .score-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 13px;
+  }
+  .score-row .pos { width: 26px; color: #888; font-weight: bold; }
+  .score-row.r1 .pos { color: #d4a017; }
+  .score-row.r2 .pos { color: #8a8a8a; }
+  .score-row.r3 .pos { color: #a0522d; }
+  .score-row .pname { flex: 1; color: #2a6e1a; font-weight: bold; }
+  .score-row .pscore { color: #555; font-family: "Courier New", monospace; }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    padding: 6px 14px;
+    background: #f6afa9;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 13px;
+  }
+  .btn:hover { background: #f49890; }
+  .btn:active { transform: translateY(1px); }
+  select {
+    padding: 5px 8px;
+    border: 1px solid #ade76b;
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fff;
+  }
+  .summary {
+    color: #2a6e1a;
+    font-size: 13px;
+    font-weight: bold;
+  }
+  .loading {
+    text-align: center;
+    padding: 30px;
+    color: #888;
+    font-style: italic;
+  }
+  .group-title {
+    color: #2a6e1a;
+    font-size: 14px;
+    font-weight: bold;
+    margin: 16px 0 6px 0;
+    padding-bottom: 3px;
+    border-bottom: 2px solid #ade76b;
+  }
+  .group-title:first-child { margin-top: 0; }
+</style>
+</head>
+<body>
+
+<h1>🏆 Club Frutiparc</h1>
+
+<div class="tabs">
+  <button class="tab active" data-tab="medalists">Top médaillés</button>
+  <button class="tab" data-tab="records">Records par jeu</button>
+</div>
+
+<div id="panel-medalists" class="panel">
+  <div class="toolbar">
+    <button class="btn" onclick="loadMedalists()">Actualiser</button>
+    <span id="medalist-summary" class="summary"></span>
+  </div>
+  <div id="medalists-content" class="loading">Chargement…</div>
+</div>
+
+<div id="panel-records" class="panel hidden">
+  <div class="toolbar">
+    <button class="btn" onclick="loadRecords()">Actualiser</button>
+    <label>Affichage&nbsp;:
+      <select id="record-filter" onchange="renderRecords()">
+        <option value="all">Tous les classements</option>
+        <option value="C">Challenge (Classique)</option>
+        <option value="L">Championnat</option>
+      </select>
+    </label>
+    <label>Top&nbsp;:
+      <select id="record-limit" onchange="loadRecords()">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="20">20</option>
+      </select>
+    </label>
+  </div>
+  <div id="records-content" class="loading">Chargement…</div>
+</div>
+
+<script>
+  let recordsData = null;
+
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.getAttribute('data-tab');
+      document.getElementById('panel-medalists').classList.toggle('hidden', tab !== 'medalists');
+      document.getElementById('panel-records').classList.toggle('hidden', tab !== 'records');
+      if (tab === 'records' && !recordsData) loadRecords();
+    });
+  });
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  async function loadMedalists() {
+    const root = document.getElementById('medalists-content');
+    root.className = 'loading';
+    root.textContent = 'Chargement…';
+    try {
+      const r = await fetch('/api/club/medalists');
+      const data = await r.json();
+      const list = data.medalists || [];
+      document.getElementById('medalist-summary').textContent =
+        list.length + ' joueur' + (list.length > 1 ? 's' : '') +
+        ' • ' + (data.totalMedals || 0) + ' médaille' + ((data.totalMedals || 0) > 1 ? 's' : '') + ' attribuée' + ((data.totalMedals || 0) > 1 ? 's' : '');
+
+      if (!list.length) {
+        root.className = 'loading';
+        root.textContent = 'Aucune médaille attribuée pour le moment.';
+        return;
+      }
+      root.className = '';
+      let html = '<table><thead><tr>'
+        + '<th class="num">#</th>'
+        + '<th>Joueur</th>'
+        + '<th class="num">🥇 Or</th>'
+        + '<th class="num">🥈 Argent</th>'
+        + '<th class="num">🥉 Bronze</th>'
+        + '<th class="num">Total</th>'
+        + '</tr></thead><tbody>';
+      list.forEach((m, i) => {
+        const rk = i + 1;
+        const rkClass = rk <= 3 ? 'rank-cell r' + rk : 'rank-cell';
+        html += '<tr>'
+          + '<td class="' + rkClass + '">' + rk + '</td>'
+          + '<td><span class="username">' + escapeHtml(m.user) + '</span></td>'
+          + '<td class="num gold">' + m.gold + '</td>'
+          + '<td class="num silver">' + m.silver + '</td>'
+          + '<td class="num bronze">' + m.bronze + '</td>'
+          + '<td class="num">' + m.total + '</td>'
+          + '</tr>';
+      });
+      html += '</tbody></table>';
+      root.innerHTML = html;
+    } catch (e) {
+      root.className = 'loading';
+      root.textContent = 'Erreur de chargement: ' + e.message;
+    }
+  }
+
+  function formatScore(score, ranking) {
+    if (!Number.isFinite(score)) return String(score);
+    // Burning Kiwi (lowerIsBetter, millisecond) → mm:ss.cc
+    if (ranking.game === 'bkiwi') {
+      const total = Number(score);
+      const minutes = Math.floor(total / 60000);
+      const seconds = Math.floor((total % 60000) / 1000);
+      const cs = Math.floor((total % 1000) / 10);
+      const pad = n => (n < 10 ? '0' + n : '' + n);
+      return minutes + ':' + pad(seconds) + '.' + pad(cs);
+    }
+    return Number(score).toLocaleString('fr-FR');
+  }
+
+  async function loadRecords() {
+    const root = document.getElementById('records-content');
+    root.className = 'loading';
+    root.textContent = 'Chargement…';
+    const limit = document.getElementById('record-limit').value || 10;
+    try {
+      const r = await fetch('/api/club/records?limit=' + limit);
+      recordsData = await r.json();
+      renderRecords();
+    } catch (e) {
+      root.className = 'loading';
+      root.textContent = 'Erreur de chargement: ' + e.message;
+    }
+  }
+
+  function renderRecords() {
+    if (!recordsData) return;
+    const root = document.getElementById('records-content');
+    const filter = document.getElementById('record-filter').value;
+    const rankings = (recordsData.rankings || []).filter(rk => {
+      if (filter === 'all') return true;
+      return rk.type === filter;
+    });
+    if (!rankings.length) {
+      root.className = 'loading';
+      root.textContent = 'Aucun classement à afficher.';
+      return;
+    }
+    root.className = '';
+
+    const groups = { C: [], L: [] };
+    rankings.forEach(rk => {
+      if (groups[rk.type]) groups[rk.type].push(rk);
+      else (groups.other = groups.other || []).push(rk);
+    });
+    const groupLabels = { C: 'Challenge (Classique)', L: 'Championnat', other: 'Autres' };
+
+    let html = '';
+    for (const key of ['C', 'L', 'other']) {
+      const arr = groups[key];
+      if (!arr || !arr.length) continue;
+      if (filter === 'all') {
+        html += '<div class="group-title">' + groupLabels[key] + '</div>';
+      }
+      html += '<div class="ranking-list">';
+      arr.forEach(rk => {
+        html += '<div class="ranking-card">';
+        html += '<h3>' + escapeHtml(rk.name) + '</h3>';
+        if (!rk.scores || !rk.scores.length) {
+          html += '<div class="empty">Aucun score enregistré</div>';
+        } else {
+          rk.scores.forEach((s, i) => {
+            const pos = i + 1;
+            const cls = pos <= 3 ? ('score-row r' + pos) : 'score-row';
+            html += '<div class="' + cls + '">'
+              + '<span class="pos">' + pos + '.</span>'
+              + '<span class="pname">' + escapeHtml(s.user) + '</span>'
+              + '<span class="pscore">' + escapeHtml(formatScore(s.score, rk)) + '</span>'
+              + '</div>';
+          });
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+    root.innerHTML = html;
+  }
+
+  loadMedalists();
+</script>
+</body>
+</html>
