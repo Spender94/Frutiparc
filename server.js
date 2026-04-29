@@ -2007,6 +2007,11 @@ app.post('/api/saveFrutiSlot', (req, res) => {
     if (fallbackSid && sessions[fallbackSid]) username = sessions[fallbackSid].user || '';
   }
   if (!username || !game) {
+    console.log(`[SLOT]  save REJECTED — sid=${sid} username=${username} game=${game}`);
+    return res.type('text/plain').send('ok=0');
+  }
+  if (!users[username]) {
+    console.log(`[SLOT]  save REJECTED — user ${username} not in memory`);
     return res.type('text/plain').send('ok=0');
   }
 
@@ -2015,7 +2020,8 @@ app.post('/api/saveFrutiSlot', (req, res) => {
   users[username].frutiSlots[game][slotId] = data;
   const dbId = users[username] && users[username]._dbId;
   if (dbId) db.upsertFrutiSlot(dbId, game, Number(slotId), data).catch(() => {});
-  console.log(`[SLOT]  save ${username}/${game}/slot${slotId} (${data.length} chars)`);
+  const preview = data.length > 200 ? data.slice(0, 200) + '…' : data;
+  console.log(`[SLOT]  save ${username}/${game}/slot${slotId} (${data.length} chars): ${preview}`);
   res.type('text/plain').send('ok=1');
 });
 
@@ -2057,7 +2063,18 @@ app.post('/api/loadFrutiSlots', async (req, res) => {
       }
     }
   }
-  console.log(`[SLOT]  load ${username}/${game} -> ${response.length} chars`);
+  // Log the slot keys + first chars of each value so we can see what the
+  // game has saved (or hasn't) when diagnosing missing-character issues.
+  const slotKeys = (username && users[username] && users[username].frutiSlots && users[username].frutiSlots[game])
+    ? Object.keys(users[username].frutiSlots[game]) : [];
+  console.log(`[SLOT]  load sid=${sid} user=${username || '(none)'} game=${game} slots=[${slotKeys.join(',')}] respLen=${response.length}`);
+  if (slotKeys.length) {
+    for (const k of slotKeys) {
+      const v = users[username].frutiSlots[game][k];
+      const prev = String(v).length > 200 ? String(v).slice(0, 200) + '…' : v;
+      console.log(`[SLOT]    slot${k}=${prev}`);
+    }
+  }
   res.type('text/plain').send(response);
 });
 
