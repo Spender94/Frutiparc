@@ -3264,8 +3264,8 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 // ─────────────────────────────────────────────
 // ENDPOINT: ff/get — Fetch raw file content (text)
 // box.ViewMail uses this to load the mail body. The Flash client decodes the
-// first 2 chars as a base62 status code (00 = success), then treats the rest
-// as the file content. On error: "<XX>" → openErrorAlert("error.http.<n>").
+// first 4 chars as a base62 status code (0000 = success), then takes the rest
+// as the file content. On error: "<XXXX>" → openErrorAlert("error.http.<n>").
 // ─────────────────────────────────────────────
 app.all('/ff/get', (req, res) => {
   const params = req.method === 'POST' ? { ...req.query, ...req.body } : req.query;
@@ -3288,18 +3288,18 @@ app.all('/ff/get', (req, res) => {
         mail.read = true;
         if (user._dbId) db.updateMailRead(mail.uid, true).catch(() => {});
       }
-      payload = '00' + (mail.body || '');
+      payload = '0000' + (mail.body || '');
       console.log('[ff/get] found mail', uid, 'body length:', (mail.body || '').length, 'payload first 60 chars:', JSON.stringify(payload.substring(0, 60)));
     } else {
-      payload = '01';
+      payload = '0001';
       console.log('[ff/get] mail not found:', uid);
     }
   } else {
-    payload = '00';
+    payload = '0000';
     console.log('[ff/get] non-mail uid, returning empty success. uid was:', uid);
   }
 
-  console.log('[ff/get] sending', payload.length, 'bytes, prefix:', JSON.stringify(payload.substring(0, 4)));
+  console.log('[ff/get] sending', payload.length, 'bytes, prefix:', JSON.stringify(payload.substring(0, 6)));
   res.type('text/plain').send(payload);
 });
 
