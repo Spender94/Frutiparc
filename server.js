@@ -3269,6 +3269,58 @@ async function boot() {
         console.log(`[CHALLENGE] Loaded ${Object.keys(dbMedals).length} medalists from DB for ${yesterday} (overrides JSON)`);
       }
     } catch (e) { console.error('[CHALLENGE] DB medal load error:', e.message); }
+
+    const dayMedals = challengeMedalsData.medalsByVisibleDay[yesterday];
+    if (dayMedals && Object.keys(dayMedals).length > 0) {
+      const ranksByRanking = {};
+      for (const medals of Object.values(dayMedals)) {
+        for (const m of medals) {
+          if (!ranksByRanking[m.rankingId]) ranksByRanking[m.rankingId] = [];
+          ranksByRanking[m.rankingId].push(m.rank);
+        }
+      }
+      const hasDuplicateRanks = Object.values(ranksByRanking).some(ranks =>
+        ranks.length !== new Set(ranks).size
+      );
+      if (hasDuplicateRanks) {
+        console.log(`[CHALLENGE] Corrupt medal data detected for ${yesterday} — regenerating from archive`);
+        try {
+          const rows = await db.getArchivedScoresForDay(yesterday);
+          if (rows.length > 0) {
+            const byRanking = {};
+            for (const r of rows) {
+              if (!byRanking[r.ranking_id]) byRanking[r.ranking_id] = [];
+              byRanking[r.ranking_id].push({ u: r.username, s: Number(r.score) });
+            }
+            const winnersByUser = {};
+            for (const rkId of challengeRankingIds()) {
+              const all = byRanking[rkId] || [];
+              all.sort(scoreComparator(rkId));
+              const top = all.slice(0, 3);
+              for (let i = 0; i < top.length; i++) {
+                const rank = i + 1;
+                const medal = rank === 1 ? 'or' : rank === 2 ? 'argent' : 'bronze';
+                if (!winnersByUser[top[i].u]) winnersByUser[top[i].u] = [];
+                winnersByUser[top[i].u].push({
+                  game: (RANKINGS[rkId] && RANKINGS[rkId].game) || rkId,
+                  rankingId: rkId, rank, medal,
+                });
+              }
+            }
+            await db.deleteMedalsByDay(yesterday);
+            for (const [username, medals] of Object.entries(winnersByUser)) {
+              for (const m of medals) {
+                const row = await db.findUserByUsername(username).catch(() => null);
+                await db.saveMedal((row && row.id) || 0, username, m.rankingId, m.game, m.rank, m.medal, yesterday);
+              }
+            }
+            challengeMedalsData.medalsByVisibleDay[yesterday] = winnersByUser;
+            saveChallengeMedals();
+            console.log(`[CHALLENGE] Regenerated medals for ${yesterday} from archived scores`);
+          }
+        } catch (e) { console.error('[CHALLENGE] Regeneration error:', e.message); }
+      }
+    }
   }
 
   console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${today}`);
