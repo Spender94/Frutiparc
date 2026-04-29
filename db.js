@@ -587,6 +587,21 @@ async function deleteMedalsByDay(dayKey) {
   await pool.query('DELETE FROM challenge_medals WHERE awarded_day = $1', [dayKey]);
 }
 
+async function getAllMedals() {
+  const { rows } = await pool.query(
+    `SELECT username, ranking_id, game, rank, medal, awarded_day, created_at
+     FROM challenge_medals ORDER BY awarded_day DESC, ranking_id ASC, rank ASC`
+  );
+  return rows;
+}
+
+async function getMedalDays() {
+  const { rows } = await pool.query(
+    'SELECT DISTINCT awarded_day FROM challenge_medals ORDER BY awarded_day DESC LIMIT 60'
+  );
+  return rows.map(r => r.awarded_day);
+}
+
 async function getArchiveDays() {
   const { rows } = await pool.query(
     'SELECT DISTINCT day_key FROM challenge_score_archive ORDER BY day_key DESC LIMIT 60'
@@ -639,4 +654,6 @@ module.exports = {
   getArchivedScoresForDay,
   getArchiveDays,
   deleteMedalsByDay,
+  getAllMedals,
+  getMedalDays,
 };

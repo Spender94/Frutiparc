@@ -1150,6 +1150,27 @@ function getShopPack(id) {
   return SHOP_PACKS.find((p) => p.id === num);
 }
 
+// Returns the wallpaper definition tied to an accessory entry, or null.
+// Recognizes both the canonical "wp:url:color" value format and legacy
+// entries where only the shopId is reliable (older purchases stored as
+// regular bouille values before the wallpaper format was introduced).
+function getAccessoryWallpaper(acc) {
+  if (!acc) return null;
+  const v = acc.v || '';
+  if (typeof v === 'string' && v.startsWith('wp:')) {
+    const parts = v.split(':');
+    return { url: parts[1] || '', color: parts.slice(2).join(':') || '' };
+  }
+  if (acc.shopId) {
+    const pack = SHOP_PACKS.find((p) => p.id === Number(acc.shopId));
+    if (pack && pack.wallpaperId) {
+      const wp = WALLPAPER_BY_ID[pack.wallpaperId];
+      if (wp) return { url: wp.url, color: wp.color };
+    }
+  }
+  return null;
+}
+
 function userOwnsShopPack(user, id) {
   if (!Array.isArray(user.customAccessories)) return false;
   return user.customAccessories.some((a) => a && a.shopId === Number(id));
@@ -1763,6 +1784,44 @@ app.get('/api/admin/challenge/archive', adminAuth, async (req, res) => {
       res.json({ days });
     }
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/challenge/medals', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) {
+    const out = [];
+    for (const [day, dayMedals] of Object.entries(challengeMedalsData.medalsByVisibleDay || {})) {
+      for (const [username, medals] of Object.entries(dayMedals || {})) {
+        for (const m of medals) {
+          out.push({
+            awarded_day: day, username, ranking_id: m.rankingId,
+            game: m.game, rank: m.rank, medal: m.medal,
+          });
+        }
+      }
+    }
+    out.sort((a, b) => b.awarded_day.localeCompare(a.awarded_day) || a.ranking_id.localeCompare(b.ranking_id) || a.rank - b.rank);
+    return res.json({ medals: out, days: [...new Set(out.map(m => m.awarded_day))] });
+  }
+  try {
+    const medals = await db.getAllMedals();
+    const days = await db.getMedalDays();
+    res.json({ medals, days });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/challenge/medals', adminAuth, async (req, res) => {
+  const day = String(req.query.day || req.body && req.body.day || '').trim();
+  if (!day) return res.status(400).json({ error: 'day parameter required' });
+  if (challengeMedalsData.medalsByVisibleDay) {
+    delete challengeMedalsData.medalsByVisibleDay[day];
+    saveChallengeMedals();
+  }
+  if (process.env.DATABASE_URL) {
+    try { await db.deleteMedalsByDay(day); } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+  res.json({ ok: true, day });
 });
 
 // Diagnostic endpoint: returns full medal & score state for debugging.
@@ -2845,13 +2904,11 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
       .join('');
     let customAccNodes = '';
     for (const acc of (Array.isArray(user.customAccessories) ? user.customAccessories : [])) {
-      const v = acc.v || '';
-      if (v.startsWith('wp:')) {
-        const parts = v.split(':');
-        const wpUrl = parts[1] || '';
-        const wpColor = parts.slice(2).join(':') || '';
-        customAccNodes += `<e u="${escapeXml(acc.id)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(acc.n || 'Fond')}\n${wpUrl}\n${wpColor}</e>`;
+      const wp = getAccessoryWallpaper(acc);
+      if (wp) {
+        customAccNodes += `<e u="${escapeXml(acc.id)}" t="wallpaper" s="10" d="0" a="0">${escapeXml(acc.n || 'Fond')}\n${wp.url}\n${wp.color}</e>`;
       } else {
+        const v = acc.v || '';
         customAccNodes += `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(v || DEFAULT_BOUILLE_STATE)}</e>`;
       }
     }
@@ -2870,6 +2927,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
       .map((acc) => `<e u="${escapeXml(acc.u)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n)}\n${bouillePrefix}${acc.suffix}</e>`)
       .join('');
     const customAccNodes = (Array.isArray(user.customAccessories) ? user.customAccessories : [])
+      .filter((acc) => !getAccessoryWallpaper(acc))
       .map((acc) => `<e u="${escapeXml(acc.id)}" t="bouille" s="10" d="0" a="0">${escapeXml(acc.n || 'Accessoire')}\n${escapeXml(acc.v || DEFAULT_BOUILLE_STATE)}</e>`)
       .join('');
     return res.type('text/xml').send(`<f u="accessories">${defaultAccNodes}${customAccNodes}</f>`);

@@ -133,6 +133,21 @@
     <thead><tr><th>#</th><th>Joueur</th><th>Score</th><th>Data</th></tr></thead>
     <tbody id="archive-body"></tbody>
   </table>
+
+  <h4 style="color:#4fc3f7;margin:24px 0 8px">Médailles attribuées</h4>
+  <div class="toolbar" style="margin-bottom:8px">
+    <button class="btn" onclick="loadMedals()">Rafraîchir</button>
+    <select id="medals-day-filter" onchange="renderMedals()">
+      <option value="">Toutes les dates</option>
+    </select>
+    <button class="btn-danger" onclick="regenerateMedalsForDay()">Régénérer médailles (jour sélectionné)</button>
+    <button class="btn-danger" onclick="deleteMedalsForDay()">Supprimer médailles (jour sélectionné)</button>
+    <span id="medals-count"></span>
+  </div>
+  <table id="medals-table" style="display:none">
+    <thead><tr><th>Date</th><th>Jeu</th><th>Classement</th><th>Rang</th><th>Médaille</th><th>Joueur</th></tr></thead>
+    <tbody id="medals-body"></tbody>
+  </table>
 </div>
 
 <div class="modal-bg" id="modal-add-pack">
@@ -655,6 +670,7 @@ async function loadChallengeStatus() {
       rkSel.appendChild(o);
     }
     if (prevRk) rkSel.value = prevRk;
+    loadMedals();
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
@@ -666,6 +682,78 @@ async function forceRoll() {
     if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
     toast(d.hadScores ? 'Cycle terminé — médailles attribuées, scores archivés et remis à zéro' : 'Cycle terminé (aucun score à traiter)');
     loadChallengeStatus();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ── Medals tracking ──
+let allMedals = [];
+async function loadMedals() {
+  try {
+    const r = await fetch('/api/admin/challenge/medals', { headers: hdr() });
+    const d = await r.json();
+    allMedals = d.medals || [];
+    const sel = $('#medals-day-filter');
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">Toutes les dates</option>';
+    for (const day of (d.days || [])) {
+      const o = document.createElement('option');
+      o.value = day; o.textContent = day;
+      sel.appendChild(o);
+    }
+    if (prev) sel.value = prev;
+    renderMedals();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+function renderMedals() {
+  const filter = $('#medals-day-filter').value;
+  const list = filter ? allMedals.filter(m => m.awarded_day === filter) : allMedals;
+  const tb = $('#medals-body');
+  if (list.length === 0) {
+    $('#medals-table').style.display = 'none';
+    $('#medals-count').textContent = 'Aucune médaille';
+    return;
+  }
+  const medalEmoji = { or: '🥇', argent: '🥈', bronze: '🥉' };
+  tb.innerHTML = list.map(m => `<tr>
+    <td>${esc(m.awarded_day)}</td>
+    <td>${esc(m.game)}</td>
+    <td>${esc(m.ranking_id)}</td>
+    <td>${m.rank}</td>
+    <td>${medalEmoji[m.medal] || ''} ${esc(m.medal)}</td>
+    <td>${esc(m.username)}</td>
+  </tr>`).join('');
+  $('#medals-table').style.display = '';
+  $('#medals-count').textContent = `${list.length} médaille(s)`;
+}
+
+async function regenerateMedalsForDay() {
+  const day = $('#medals-day-filter').value;
+  if (!day) { toast('Sélectionnez d\'abord une date'); return; }
+  if (!confirm(`Régénérer les médailles du ${day} à partir des scores archivés ?\nLes médailles existantes pour ce jour seront remplacées.`)) return;
+  try {
+    const r = await fetch('/api/admin/challenge/regenerate-medals', {
+      method: 'POST', headers: hdr(), body: JSON.stringify({ day }),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    toast(`Médailles régénérées pour ${day}`);
+    loadMedals();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function deleteMedalsForDay() {
+  const day = $('#medals-day-filter').value;
+  if (!day) { toast('Sélectionnez d\'abord une date'); return; }
+  if (!confirm(`Supprimer toutes les médailles du ${day} ?`)) return;
+  try {
+    const r = await fetch(`/api/admin/challenge/medals?day=${encodeURIComponent(day)}`, {
+      method: 'DELETE', headers: hdr(),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    toast(`Médailles supprimées pour ${day}`);
+    loadMedals();
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
