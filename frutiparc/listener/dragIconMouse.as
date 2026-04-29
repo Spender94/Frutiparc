@@ -1,8 +1,23 @@
 class listener.dragIconMouse{//}
 	static var lastDropTarget;
+
+	// Walk up the parent chain to find a MovieClip with a valid drop handler.
+	// In Ruffle, _droptarget can resolve to inner MCs like mcMask that have no
+	// dropBox / onDrop — without this fix, drops fall through silently.
+	static function resolveDropTarget(mc){
+		while(mc != undefined && mc != _level0){
+			if(mc.dropBox != undefined) return mc;
+			if(typeof(mc.onDrop) == "function") return mc;
+			if(mc._parent == undefined) break;
+			mc = mc._parent;
+		}
+		return undefined;
+	}
+
 	static function onMouseUp(){
-		_global.debug("drop: "+_global.dragIcon._droptarget+" ("+(eval(_global.dragIcon._droptarget).dropBox != undefined)+")");
-		var mc = eval(_global.dragIcon._droptarget);
+		var raw = eval(_global.dragIcon._droptarget);
+		var mc = resolveDropTarget(raw);
+		_global.debug("drop: "+_global.dragIcon._droptarget+" -> "+mc+" ("+(mc.dropBox != undefined)+")");
 		if(mc == undefined){
 			_global.desktop.onDrop(_global.dragIconOrig);
 		}else{
@@ -14,9 +29,10 @@ class listener.dragIconMouse{//}
 		}
 		_global.deleteDragIcon();
 	}
-	
+
 	static function onMouseMove(){
-		var mc = eval(_global.dragIcon._droptarget);
+		var raw = eval(_global.dragIcon._droptarget);
+		var mc = resolveDropTarget(raw);
 		if(mc != lastDropTarget){
 			if(lastDropTarget == undefined){
 				_global.desktop.onDragRollOut(_global.dragIcon);
