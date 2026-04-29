@@ -484,6 +484,15 @@ async function getMedalsByDay(day) {
   return result;
 }
 
+async function clearAllChallengeData() {
+  await pool.query('DELETE FROM challenge_medals');
+  await pool.query('DELETE FROM challenge_score_archive');
+  await pool.query(
+    'DELETE FROM scores WHERE ranking_id = ANY($1::text[])',
+    [['bkiwi_classic', 'snake3_classic', 'swapou2_classic', 'kaluga_classic']]
+  );
+}
+
 async function listAllUsers() {
   const { rows } = await pool.query(
     'SELECT id, username, xp, kikooz, fbouille, gender, is_moderator, created_at FROM users ORDER BY created_at DESC'
@@ -600,6 +609,7 @@ module.exports = {
   loadAllScores,
   loadAllBouilles,
   clearDailyChallengeScores,
+  clearAllChallengeData,
   listAllUsers,
   deleteUser,
   deleteScore,

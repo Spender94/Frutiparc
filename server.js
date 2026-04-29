@@ -1720,6 +1720,21 @@ app.post('/api/admin/challenge/roll', adminAuth, async (req, res) => {
   res.json({ ok: true, rolledDay: today, hadScores });
 });
 
+app.post('/api/admin/challenge/reset', adminAuth, async (req, res) => {
+  resetChallengeScoresInMemory();
+  challengeMedalsData.medalsByVisibleDay = {};
+  challengeMedalsData.pendingNotifications = {};
+  challengeMedalsData.lastRollDay = parisDayKey();
+  saveChallengeMedals();
+  if (process.env.DATABASE_URL) {
+    try { await db.clearAllChallengeData(); } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+  console.log('[ADMIN] Challenge data fully reset (memory + DB)');
+  res.json({ ok: true });
+});
+
 app.get('/api/admin/challenge/archive', adminAuth, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ days: [], scores: [] });
   const day = String(req.query.day || '').trim();
@@ -4144,12 +4159,11 @@ broadcastToChannel(
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
         const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
         const dtAttr = dtIn ? ` dt="${escapeXml(dtIn)}"` : '';
-        const podiumXml = isHistorical ? '' : buildPodiumXml(internalId);
         let responseXml;
-        if (!inner && !podiumXml) {
+        if (!inner) {
           responseXml = buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn);
         } else {
-          responseXml = `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}${dtAttr}>${podiumXml}${inner}</${CMD.ban}>`;
+          responseXml = `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}${dtAttr}>${inner}</${CMD.ban}>`;
         }
         sendToClient(socket, responseXml);
         console.log(`[FSCORE] rankingResult (via bugged wire l) ${rkInput}/${internalId || '-'}${isHistorical ? ' dt=' + dtIn : ''}: ${slice.length}/${all.length} entries`);
@@ -4238,11 +4252,10 @@ broadcastToChannel(
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
         const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
         const dtAttr2 = dtIn ? ` dt="${escapeXml(dtIn)}"` : '';
-        const podiumXml2 = isHistorical ? '' : buildPodiumXml(internalId);
-        if (!inner && !podiumXml2) {
+        if (!inner) {
           sendToClient(socket, buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
         } else {
-          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}${dtAttr2}>${podiumXml2}${inner}</${CMD.ban}>`);
+          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}${dtAttr2}>${inner}</${CMD.ban}>`);
         }
         console.log(`[FSCORE] rankingResult ${rkInput}/${internalId || '-'}${isHistorical ? ' dt=' + dtIn : ''}: ${slice.length}/${all.length} entries`);
         break;
