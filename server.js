@@ -4097,11 +4097,19 @@ broadcastToChannel(
       // "rk" attr (ranking id) which listRankings never carries.
       // Respond with wire "m" so the client dispatches to onRankingResult.
       if (msg.attrs.rk !== undefined) {
+        console.log(`[FSCORE-DEBUG] rankingResult request attrs=${JSON.stringify(msg.attrs)} selectedDt=${client && client.selectedDt}`);
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
         const dtExplicit = msg.attrs.dt !== undefined ? String(msg.attrs.dt) : '';
         const internalId = resolveInternalRankingId(rkInput);
         const dtIn = dtExplicit || (internalId && isDailyResetRanking(internalId) ? (client.selectedDt || '') : '');
+        if (internalId) {
+          const memoryEntries = [];
+          for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+            if (rlist && rlist[internalId]) memoryEntries.push(`${u}:${rlist[internalId].score}`);
+          }
+          console.log(`[FSCORE-DEBUG] memory has ${memoryEntries.length} entries under ${internalId}: [${memoryEntries.join(', ')}]`);
+        }
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
         const start = Number(msg.attrs.s || 0) || 0;
@@ -4137,12 +4145,15 @@ broadcastToChannel(
         const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
         const dtAttr = dtIn ? ` dt="${escapeXml(dtIn)}"` : '';
         const podiumXml = isHistorical ? '' : buildPodiumXml(internalId);
+        let responseXml;
         if (!inner && !podiumXml) {
-          sendToClient(socket, buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
+          responseXml = buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn);
         } else {
-          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}${dtAttr}>${podiumXml}${inner}</${CMD.ban}>`);
+          responseXml = `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}${dtAttr}>${podiumXml}${inner}</${CMD.ban}>`;
         }
+        sendToClient(socket, responseXml);
         console.log(`[FSCORE] rankingResult (via bugged wire l) ${rkInput}/${internalId || '-'}${isHistorical ? ' dt=' + dtIn : ''}: ${slice.length}/${all.length} entries`);
+        console.log(`[FSCORE-DEBUG] response=${responseXml.length > 500 ? responseXml.slice(0, 500) + '...' : responseXml}`);
         break;
       }
       // FrutiScore listRankings: wire "l" without rk attr.
@@ -4187,6 +4198,7 @@ broadcastToChannel(
     case 'ban': {
       // FrutiScore overlap: rankingResult uses wire code "m" with rk attr.
       if (msg.attrs.rk !== undefined) {
+        console.log(`[FSCORE-DEBUG] rankingResult (wire m) attrs=${JSON.stringify(msg.attrs)} selectedDt=${client && client.selectedDt}`);
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
         const internalId = resolveInternalRankingId(rkInput);
