@@ -227,6 +227,23 @@ async function initSchema() {
         updated_at      TIMESTAMPTZ
       );
       CREATE INDEX IF NOT EXISTS idx_forum_posts_topic ON forum_posts(topic_id, created_at ASC);
+
+      -- Internal mailbox
+      CREATE TABLE IF NOT EXISTS user_mails (
+        uid          TEXT PRIMARY KEY,
+        user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        from_user    TEXT NOT NULL,
+        from_addr    TEXT NOT NULL,
+        to_users     TEXT DEFAULT '',
+        to_addrs     TEXT DEFAULT '',
+        subject      TEXT DEFAULT '',
+        body         TEXT DEFAULT '',
+        folder       TEXT NOT NULL DEFAULT 'inbox',
+        is_read      BOOLEAN DEFAULT false,
+        date_str     TEXT NOT NULL,
+        created_at   TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_mails_user_folder ON user_mails(user_id, folder, date_str DESC);
     `);
     console.log('[DB] Schema initialized');
   } finally {
@@ -805,6 +822,67 @@ async function forumDeleteTopic(topicId) {
   await pool.query('DELETE FROM forum_topics WHERE id = $1', [topicId]);
 }
 
+// ── Mail ──
+
+async function saveMail(userId, mail) {
+  await pool.query(
+    `INSERT INTO user_mails (uid, user_id, from_user, from_addr, to_users, to_addrs,
+                             subject, body, folder, is_read, date_str)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     ON CONFLICT (uid) DO UPDATE SET
+       folder = EXCLUDED.folder,
+       is_read = EXCLUDED.is_read,
+       subject = EXCLUDED.subject,
+       body = EXCLUDED.body,
+       to_users = EXCLUDED.to_users,
+       to_addrs = EXCLUDED.to_addrs`,
+    [
+      mail.uid, userId,
+      mail.from || '', mail.fromAddr || '',
+      Array.isArray(mail.to) ? mail.to.join(',') : (mail.to || ''),
+      Array.isArray(mail.toAddrs) ? mail.toAddrs.join(',') : (mail.toAddrs || ''),
+      mail.subject || '', mail.body || '',
+      mail.folder || 'inbox',
+      !!mail.read,
+      mail.date || '',
+    ]
+  );
+}
+
+async function getMailsForUser(userId) {
+  const { rows } = await pool.query(
+    `SELECT uid, from_user, from_addr, to_users, to_addrs, subject, body,
+            folder, is_read, date_str
+     FROM user_mails WHERE user_id = $1 ORDER BY date_str ASC`,
+    [userId]
+  );
+  return rows.map((r) => ({
+    uid: r.uid,
+    from: r.from_user,
+    fromAddr: r.from_addr,
+    to: r.to_users ? r.to_users.split(',').filter(Boolean) : [],
+    toAddrs: r.to_addrs ? r.to_addrs.split(',').filter(Boolean) : [],
+    subject: r.subject || '',
+    body: r.body || '',
+    folder: r.folder || 'inbox',
+    read: !!r.is_read,
+    date: r.date_str || '',
+  }));
+}
+
+async function updateMailFolder(uid, folder) {
+  await pool.query('UPDATE user_mails SET folder = $2 WHERE uid = $1', [uid, folder]);
+}
+
+async function updateMailRead(uid, isRead) {
+  await pool.query('UPDATE user_mails SET is_read = $2 WHERE uid = $1', [uid, !!isRead]);
+}
+
+async function deleteMails(uids) {
+  if (!Array.isArray(uids) || uids.length === 0) return;
+  await pool.query('DELETE FROM user_mails WHERE uid = ANY($1::text[])', [uids]);
+}
+
 async function forumGetPostCounts(usernames) {
   if (!usernames.length) return {};
   const { rows } = await pool.query(
@@ -881,4 +959,9 @@ module.exports = {
   forumToggleLocked,
   forumDeleteTopic,
   forumGetPostCounts,
+  saveMail,
+  getMailsForUser,
+  updateMailFolder,
+  updateMailRead,
+  deleteMails,
 };
