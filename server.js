@@ -1721,6 +1721,10 @@ app.post('/api/admin/challenge/roll', adminAuth, async (req, res) => {
     }
     return false;
   });
+  // For manual testing: pretend lastRollDay was yesterday so the archive lands
+  // under yesterdayParisDayKey() and medalsByVisibleDay[yesterday] gets populated,
+  // matching what awardgame/buildPodium look up for "yesterday's medalists".
+  challengeMedalsData.lastRollDay = yesterdayParisDayKey();
   await performChallengeRoll(today);
   console.log(`[ADMIN] Forced challenge roll. hadScores=${hadScores}`);
   res.json({ ok: true, rolledDay: today, hadScores });
@@ -4792,27 +4796,41 @@ case 'createchannel': {
       break;
     }
 
-    // ── awardgame (ha): top-3 award holders for a game ──
+    // ── awardgame (ha): 3 medalists from yesterday for daily-reset games ──
     case 'awardgame': {
       const reqId = msg.attrs.r || '';
       const gameName = msg.attrs.g || '';
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       let inner = '';
       const rkId = rankingIdForGame(gameName);
-      if (rkId) {
+      if (rkId && isDailyResetRanking(rkId)) {
+        const yesterday = yesterdayParisDayKey();
+        const dayMedals = challengeMedalsData.medalsByVisibleDay[yesterday] || {};
+        const game = (RANKINGS[rkId] && RANKINGS[rkId].game) || gameName;
+        const podium = [];
+        for (const [username, medals] of Object.entries(dayMedals)) {
+          for (const m of medals) {
+            if (m.game === game) podium.push({ u: username, rank: m.rank });
+          }
+        }
+        podium.sort((a, b) => a.rank - b.rank);
+        for (const p of podium) {
+          inner += `<a v="${p.rank}" u="${escapeXml(p.u)}" d="1" />`;
+        }
+      } else if (rkId) {
         const all = [];
         for (const [u, rlist] of Object.entries(scoresData.users || {})) {
           if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
             all.push({ u, s: Number(rlist[rkId].score) });
           }
         }
-        all.sort(rkId ? scoreComparator(rkId) : (a, b) => b.s - a.s);
+        all.sort(scoreComparator(rkId));
         for (let i = 0; i < Math.min(3, all.length); i++) {
           inner += `<a v="${i + 1}" u="${escapeXml(all[i].u)}" d="1" />`;
         }
       }
       sendToClient(socket, `<${CMD.awardgame}${rAttr} g="${escapeXml(gameName)}">${inner}</${CMD.awardgame}>`);
-      console.log(`[FSCORE] awardgame game=${gameName} ranking=${rkId || '-'}`);
+      console.log(`[FSCORE] awardgame game=${gameName} ranking=${rkId || '-'} medalists=${inner ? inner.match(/<a /g).length : 0}`);
       break;
     }
 
