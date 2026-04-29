@@ -883,13 +883,13 @@ function resetChallengeScoresInMemory() {
   saveScoresFile();
 }
 
-function rollDailyChallengeIfNeeded() {
+async function rollDailyChallengeIfNeeded() {
   const today = parisDayKey();
   if (challengeMedalsData.lastRollDay === today) return;
-  performChallengeRoll(today);
+  await performChallengeRoll(today);
 }
 
-function performChallengeRoll(today) {
+async function performChallengeRoll(today) {
   const archiveDay = challengeMedalsData.lastRollDay || yesterdayParisDayKey();
   console.log(`[CHALLENGE] Rolling cycle: archiveDay=${archiveDay} newDay=${today}`);
 
@@ -915,18 +915,19 @@ function performChallengeRoll(today) {
   challengeMedalsData.lastRollDay = today;
   saveChallengeMedals();
 
-  resetChallengeScoresInMemory();
   if (process.env.DATABASE_URL) {
     const rankingIds = challengeRankingIds();
-    db.archiveChallengeScores(archiveDay, rankingIds).then(() => {
+    try {
+      await db.archiveChallengeScores(archiveDay, rankingIds);
       console.log(`[CHALLENGE] Scores archived for day ${archiveDay} (${rankingIds.length} rankings)`);
-      return db.clearDailyChallengeScores(rankingIds);
-    }).then(() => {
+      await db.clearDailyChallengeScores(rankingIds);
       console.log(`[CHALLENGE] DB challenge scores cleared`);
-    }).catch((e) => {
+    } catch (e) {
       console.error('[CHALLENGE] archive/clear error:', e.message);
-    });
+    }
   }
+
+  resetChallengeScoresInMemory();
 }
 
 function applyPendingChallengeNotifications(username, user) {
@@ -1320,8 +1321,8 @@ app.post('/api/auth/login', async (req, res) => {
 // Accepts both GET (from SWF getURL) and POST (from popup JS fetch).
 // Query/body params: sid, game (disc name or id), score, data (optional).
 // ─────────────────────────────────────────────
-function handleSaveScore(req, res) {
-  rollDailyChallengeIfNeeded();
+async function handleSaveScore(req, res) {
+  await rollDailyChallengeIfNeeded();
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
   const gameName = String(params.game || params.g || params.disc || '');
@@ -1706,7 +1707,7 @@ app.get('/api/admin/challenge/status', adminAuth, async (req, res) => {
   });
 });
 
-app.post('/api/admin/challenge/roll', adminAuth, (req, res) => {
+app.post('/api/admin/challenge/roll', adminAuth, async (req, res) => {
   const today = parisDayKey();
   const hadScores = challengeRankingIds().some(rkId => {
     for (const [, rlist] of Object.entries(scoresData.users || {})) {
@@ -1714,7 +1715,7 @@ app.post('/api/admin/challenge/roll', adminAuth, (req, res) => {
     }
     return false;
   });
-  performChallengeRoll(today);
+  await performChallengeRoll(today);
   console.log(`[ADMIN] Forced challenge roll. hadScores=${hadScores}`);
   res.json({ ok: true, rolledDay: today, hadScores });
 });
@@ -1737,8 +1738,8 @@ app.get('/api/admin/challenge/archive', adminAuth, async (req, res) => {
 
 // SWF-triggered score save: the patched game SWFs call loadVariables("s<score>", "")
 // which resolves (via Ruffle base URL) to /swf/games/<game>/s<score>.
-app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, (req, res) => {
-  rollDailyChallengeIfNeeded();
+app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
+  await rollDailyChallengeIfNeeded();
   const gameName = req.params[0];
   const scoreVal = parseInt(req.params[1]) || 0;
   let username = '';
@@ -3134,7 +3135,7 @@ async function boot() {
   }
 
   const today = parisDayKey();
-  rollDailyChallengeIfNeeded();
+  await rollDailyChallengeIfNeeded();
 
   // Safety: if lastRollDay claims we already rolled today but daily-reset
   // scores still exist in memory, a previous boot set lastRollDay without
@@ -3148,7 +3149,7 @@ async function boot() {
   if (staleCheck && challengeMedalsData.lastRollDay === today) {
     console.log('[CHALLENGE] lastRollDay=today but stale challenge scores found — forcing roll');
     challengeMedalsData.lastRollDay = yesterdayParisDayKey();
-    performChallengeRoll(today);
+    await performChallengeRoll(today);
   }
 
   if (!challengeMedalsData.lastRollDay) {
@@ -3160,8 +3161,8 @@ async function boot() {
 
 boot();
 
-setInterval(() => {
-  try { rollDailyChallengeIfNeeded(); } catch (e) {
+setInterval(async () => {
+  try { await rollDailyChallengeIfNeeded(); } catch (e) {
     console.error('[CHALLENGE] timer error:', e.message);
   }
 }, 30000);
@@ -3704,7 +3705,7 @@ function buildChannelListXml() {
 // Handle a single CBee XML message from a client
 // ─────────────────────────────────────────────
 async function handleCBeeMessage(socket, rawXml) {
-  rollDailyChallengeIfNeeded();
+  await rollDailyChallengeIfNeeded();
   const msg = parseXmlAttrs(rawXml);
   const cmdName = CMD_REV[msg.tag] || msg.tag;
   const client = xmlSocketClients.get(socket);
@@ -4099,7 +4100,7 @@ broadcastToChannel(
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
         const dtExplicit = msg.attrs.dt !== undefined ? String(msg.attrs.dt) : '';
-        const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
+        const internalId = resolveInternalRankingId(rkInput);
         const dtIn = dtExplicit || (internalId && isDailyResetRanking(internalId) ? (client.selectedDt || '') : '');
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
@@ -4188,7 +4189,7 @@ broadcastToChannel(
       if (msg.attrs.rk !== undefined) {
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
-        const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
+        const internalId = resolveInternalRankingId(rkInput);
         const dtIn = internalId && isDailyResetRanking(internalId) ? (client.selectedDt || '') : '';
         const isHistorical = dtIn && dtIn !== parisDayKey() && internalId && isDailyResetRanking(internalId) && process.env.DATABASE_URL;
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
