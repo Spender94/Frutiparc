@@ -196,22 +196,51 @@
                 return _origXHRSend.call(this, body);
             };
 
-            window.__forumPopup = null;
+            window.__forumFrame = null;
+            function ensureForumFrame() {
+                if (window.__forumFrame && document.body.contains(window.__forumFrame)) {
+                    return window.__forumFrame;
+                }
+                var iframe = document.createElement("iframe");
+                iframe.id = "fp-forum-frame";
+                iframe.style.cssText = [
+                    "position:fixed", "top:0", "left:0", "width:100%", "height:100%",
+                    "border:none", "z-index:99999", "background:#fff", "display:none"
+                ].join(";");
+                document.body.appendChild(iframe);
+                window.__forumFrame = iframe;
+                return iframe;
+            }
+
             window.fp_goURLResize = function (url, mode, w, h) {
                 var rewritten = rewriteLegacyUrl(url);
-                console.log("[FP] fp_goURLResize", url, "->", rewritten);
-                window.__forumPopup = window.open(rewritten, "frutiparc_forum", "width=980,height=700,resizable=yes,scrollbars=yes");
+                console.log("[FP] fp_goURLResize", url, "->", rewritten, "mode=", mode);
+                var f = ensureForumFrame();
+                f.src = rewritten;
+                f.style.display = "block";
                 return true;
-            };
-            window.fp_activatePopupForum = function () {
-                if (window.__forumPopup && !window.__forumPopup.closed) window.__forumPopup.focus();
-            };
-            window.fp_closePopupForum = function () {
-                if (window.__forumPopup && !window.__forumPopup.closed) window.__forumPopup.close();
-                window.__forumPopup = null;
             };
             window.fp_resizeMe = function (mode) {
                 console.log("[FP] fp_resizeMe", mode);
+                var f = ensureForumFrame();
+                f.style.display = (Number(mode) === 1) ? "block" : "none";
+            };
+            window.fp_closeFrame = function (mode) {
+                console.log("[FP] fp_closeFrame", mode);
+                if (window.__forumFrame) {
+                    window.__forumFrame.style.display = "none";
+                    window.__forumFrame.src = "about:blank";
+                }
+            };
+            window.fp_activatePopupForum = function () {
+                var f = ensureForumFrame();
+                f.style.display = "block";
+            };
+            window.fp_closePopupForum = function () {
+                if (window.__forumFrame) {
+                    window.__forumFrame.style.display = "none";
+                    window.__forumFrame.src = "about:blank";
+                }
             };
 
             window.fp_goURLNewWin = function (url, mode, w, h) {
@@ -326,7 +355,8 @@
                         sid: sid,
                         domain: `${window.location.host}/./`,
                         s: s,
-                        e: e
+                        e: e,
+                        cwm: "1"
                     },
                     socketProxy: [
                         // FrutiChat (port % 1000 == 0 → chat cmdList).

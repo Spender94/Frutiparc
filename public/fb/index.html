@@ -9,185 +9,181 @@
   body {
     font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
     font-size: 11px;
-    background: #e8f0d0;
-    color: #333;
+    background: #fff;
+    color: #133200;
   }
-  a { color: #886422; text-decoration: none; }
+  a { color: #133200; text-decoration: none; }
   a:hover { text-decoration: underline; }
 
-  /* Header */
-  .forum-header {
-    background: #d8e8b0;
-    border-bottom: 1px solid #a0b870;
-    padding: 6px 12px;
+  /* Top close bar */
+  .topbar {
+    background: #fff;
+    padding: 4px 10px;
     display: flex;
+    justify-content: flex-end;
     align-items: center;
-    gap: 8px;
+    border-bottom: 1px solid #eee;
+    font-size: 11px;
   }
-  .forum-header img { width: 32px; height: 32px; }
-  .forum-header h1 {
-    font-size: 14px;
-    color: #557722;
+  .topbar .user-info {
+    margin-right: auto;
+    color: #133200;
     font-weight: bold;
   }
-  .forum-header .user-info {
-    margin-left: auto;
-    font-size: 11px;
-    color: #557722;
-  }
-
-  /* Breadcrumb */
-  .breadcrumb {
+  .topbar .close-btn {
+    background: #E57568;
+    color: #fff;
     padding: 4px 12px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: Verdana, sans-serif;
     font-size: 11px;
-    color: #557722;
-    background: #d8e8b0;
-    border-bottom: 1px solid #c0d8a0;
+    font-weight: bold;
   }
-  .breadcrumb a { color: #557722; font-weight: bold; }
+  .topbar .close-btn:hover { background: #d56558; }
 
-  /* Main container */
-  .container { padding: 8px; max-width: 980px; margin: 0 auto; }
+  /* Breadcrumb (subtle, integrated into the page) */
+  .breadcrumb {
+    padding: 6px 14px;
+    font-size: 11px;
+    background: #fff;
+    color: #133200;
+  }
+  .breadcrumb a { color: #133200; font-weight: bold; }
 
-  /* Table header */
+  /* Column header (pink/coral) */
   .tbl-header {
-    background: #7b9b3a;
+    background: #E57568;
     color: #fff;
     font-weight: bold;
     font-size: 11px;
     display: flex;
-    padding: 5px 8px;
-    border-radius: 3px 3px 0 0;
+    padding: 6px 10px;
   }
-  .tbl-header .col-main { flex: 1; }
-  .tbl-header .col-num { width: 65px; text-align: center; }
-  .tbl-header .col-last { width: 170px; text-align: center; }
+  .tbl-header .col-main { flex: 1; text-align: center; }
+  .tbl-header .col-num { width: 75px; text-align: center; }
+  .tbl-header .col-last { width: 180px; text-align: center; }
 
-  /* Category header */
+  /* Category header (light green) */
   .cat-header {
-    background: #e8f0d0;
-    padding: 6px 8px;
+    background: #ADE76C;
+    padding: 5px 14px;
     font-size: 12px;
     font-weight: bold;
-    color: #557722;
-    border-bottom: 1px solid #c0d8a0;
-    border-top: 1px solid #c0d8a0;
-    cursor: pointer;
+    color: #133200;
   }
 
-  /* Board / topic rows */
+  /* Rows */
   .row {
     display: flex;
     align-items: center;
-    padding: 6px 8px;
-    border-bottom: 1px solid #c8d8a8;
-    min-height: 40px;
+    padding: 8px 10px;
+    background: #D7F8B6;
+    border-bottom: 1px solid #c0e6a0;
+    min-height: 44px;
   }
-  .row:nth-child(even) { background: #d8e8b0; }
-  .row:nth-child(odd) { background: #e0ecc0; }
-  .row .icon { width: 36px; min-width: 36px; text-align: center; }
-  .row .icon img { width: 28px; height: 28px; }
-  .row .info { flex: 1; padding: 0 8px; }
+  .row .icon { width: 38px; min-width: 38px; text-align: center; }
+  .row .icon img.peach { width: 28px; height: 28px; vertical-align: middle; }
+  .row .info { flex: 1; padding: 0 10px; }
   .row .info .title { font-weight: bold; font-size: 12px; }
-  .row .info .title a { color: #557722; }
-  .row .info .desc { color: #666; font-size: 11px; margin-top: 2px; }
-  .row .col-num { width: 65px; text-align: center; font-size: 11px; color: #555; }
-  .row .col-last { width: 170px; font-size: 10px; color: #666; text-align: right; padding-right: 4px; }
-  .row .col-last a { color: #886422; }
-
-  .row .sticky-tag {
-    color: #886422;
-    font-weight: bold;
-    font-size: 10px;
+  .row .info .title a { color: #133200; }
+  .row .info .desc {
+    color: #133200;
+    font-size: 11px;
+    margin-top: 2px;
+    font-weight: normal;
   }
-  .row .locked-tag {
-    color: #999;
-    font-size: 10px;
+  .row .col-num {
+    width: 75px;
+    text-align: center;
+    font-size: 11px;
+    color: #133200;
   }
+  .row .col-last {
+    width: 180px;
+    font-size: 10px;
+    color: #133200;
+    text-align: center;
+    line-height: 1.4;
+  }
+  .row .col-last a { color: #133200; text-decoration: underline; }
+  .row .sticky-tag { color: #133200; font-weight: bold; }
+  .row .locked-tag { color: #888; }
 
-  /* Topic list extras */
   .topic-row .info .author {
     font-size: 10px;
-    color: #888;
+    color: #133200;
     margin-top: 1px;
   }
-  .topic-row .info .author a { color: #886422; }
+  .topic-row .info .author a { color: #133200; text-decoration: underline; }
 
-  /* Post view */
+  /* Posts */
   .post {
     display: flex;
-    border: 1px solid #a0b870;
-    margin-bottom: 4px;
-    background: #fff;
-    border-radius: 3px;
-    overflow: hidden;
+    background: #D7F8B6;
+    border-bottom: 1px solid #c0e6a0;
   }
   .post .post-author {
-    width: 110px;
-    min-width: 110px;
-    background: #d8e8b0;
-    padding: 8px 6px;
+    width: 130px;
+    min-width: 130px;
+    padding: 12px 8px;
     text-align: center;
-    border-right: 1px solid #a0b870;
   }
   .post .post-author .avatar {
     width: 80px;
     height: 80px;
-    margin: 0 auto 4px auto;
-    background: #c0d8a0;
+    margin: 0 auto 6px auto;
+    background: #ADE76C;
+    border: 1px solid #8bc55a;
     border-radius: 4px;
-    overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 28px;
-    color: #7b9b3a;
+    font-size: 32px;
+    color: #133200;
     font-weight: bold;
   }
   .post .post-author .username {
     font-weight: bold;
     font-size: 11px;
-    color: #557722;
+    color: #133200;
     word-break: break-all;
   }
   .post .post-body {
     flex: 1;
-    display: flex;
-    flex-direction: column;
+    padding: 8px 12px;
+    border-left: 1px solid #c0e6a0;
   }
   .post .post-header {
-    background: #e8f0d0;
-    padding: 4px 8px;
-    font-size: 10px;
-    color: #888;
-    border-bottom: 1px solid #c0d8a0;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+    font-size: 10px;
+    color: #133200;
   }
-  .post .post-header .actions { display: flex; gap: 4px; }
+  .post .post-header .actions { display: flex; gap: 6px; }
   .post .post-content {
-    padding: 8px;
     font-size: 12px;
     line-height: 1.5;
-    color: #333;
-    flex: 1;
+    color: #133200;
     white-space: pre-wrap;
     word-wrap: break-word;
+    padding: 4px 0;
   }
   .post .post-edited {
-    padding: 4px 8px;
+    margin-top: 6px;
     font-size: 10px;
     font-style: italic;
-    color: #999;
-    border-top: 1px solid #eee;
+    color: #5a8030;
   }
-  .post:nth-child(even) .post-body { background: #f4f9e8; }
 
   /* Buttons */
   .btn {
     display: inline-block;
-    padding: 5px 12px;
+    padding: 6px 14px;
     font-size: 11px;
     font-weight: bold;
     border: none;
@@ -195,69 +191,72 @@
     cursor: pointer;
     text-decoration: none;
     color: #fff;
+    font-family: Verdana, sans-serif;
   }
-  .btn-green { background: #7b9b3a; }
-  .btn-green:hover { background: #6b8b2a; text-decoration: none; color: #fff; }
-  .btn-orange { background: #d4842a; }
-  .btn-orange:hover { background: #c4742a; text-decoration: none; color: #fff; }
-  .btn-sm { padding: 2px 8px; font-size: 10px; }
+  .btn-green { background: #7ec43c; }
+  .btn-green:hover { background: #6cb22a; text-decoration: none; color: #fff; }
+  .btn-orange { background: #E57568; }
+  .btn-orange:hover { background: #d56558; text-decoration: none; color: #fff; }
+  .btn-sm { padding: 3px 9px; font-size: 10px; }
 
   /* Pagination */
   .pagination {
-    padding: 6px 0;
+    padding: 8px 14px;
     font-size: 11px;
-    color: #555;
+    color: #133200;
+    background: #fff;
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 4px;
+    border-top: 1px solid #c0e6a0;
   }
   .pagination a, .pagination span {
     display: inline-block;
-    padding: 2px 6px;
-    border: 1px solid #c0d8a0;
+    padding: 2px 7px;
+    border: 1px solid #ADE76C;
     background: #fff;
     border-radius: 2px;
+    color: #133200;
   }
   .pagination span.current {
-    background: #7b9b3a;
-    color: #fff;
-    border-color: #7b9b3a;
+    background: #ADE76C;
+    color: #133200;
     font-weight: bold;
   }
 
   /* Form */
   .form-area {
-    background: #d8e8b0;
-    border: 1px solid #a0b870;
-    border-radius: 3px;
-    padding: 10px;
-    margin-top: 8px;
+    background: #D7F8B6;
+    padding: 14px;
+    margin: 10px 0;
+  }
+  .form-area h3 {
+    color: #133200;
+    margin-bottom: 10px;
+    font-size: 14px;
   }
   .form-area label {
     font-weight: bold;
     font-size: 11px;
-    color: #557722;
+    color: #133200;
     display: block;
-    margin-bottom: 3px;
+    margin-bottom: 4px;
   }
-  .form-area input[type="text"] {
-    width: 100%;
-    padding: 4px 6px;
-    font-size: 12px;
-    border: 1px solid #a0b870;
-    border-radius: 3px;
-    margin-bottom: 8px;
-  }
+  .form-area input[type="text"],
   .form-area textarea {
     width: 100%;
-    height: 120px;
-    padding: 6px;
+    padding: 5px 7px;
     font-size: 12px;
-    font-family: Verdana, sans-serif;
-    border: 1px solid #a0b870;
+    border: 1px solid #8bc55a;
     border-radius: 3px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
+    font-family: Verdana, sans-serif;
+    background: #fff;
+    color: #133200;
+  }
+  .form-area textarea {
+    height: 130px;
     resize: vertical;
   }
   .form-area .form-actions {
@@ -265,42 +264,38 @@
     gap: 8px;
   }
 
-  /* Toolbar */
   .toolbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 6px 0;
+    padding: 8px 14px;
+    background: #fff;
   }
 
-  /* Footer */
   .forum-footer {
     text-align: center;
-    padding: 10px;
+    padding: 12px;
     font-size: 10px;
-    color: #999;
-    border-top: 1px solid #c0d8a0;
-    margin-top: 8px;
+    color: #5a8030;
+    background: #fff;
+    border-top: 1px solid #ADE76C;
+    margin-top: 10px;
   }
 
-  .loading {
+  .loading, .empty {
     text-align: center;
-    padding: 20px;
-    color: #888;
+    padding: 24px;
+    color: #5a8030;
     font-style: italic;
-  }
-  .empty {
-    text-align: center;
-    padding: 20px;
-    color: #888;
+    background: #fff;
   }
 
-  /* Peach icon SVG inline */
+  /* Peach icon (CSS-only fallback) */
   .peach-icon {
     display: inline-block;
     width: 28px;
     height: 28px;
-    background: #e89030;
+    background: #f29630;
     border-radius: 50% 50% 50% 45%;
     position: relative;
   }
@@ -315,19 +310,19 @@
     border-radius: 0 60% 0 60%;
     transform: rotate(-20deg);
   }
+  .peach-icon.pink { background: #f29ba0; }
 </style>
 </head>
 <body>
 
-<div class="forum-header">
-  <div class="peach-icon"></div>
-  <h1>Forum Frutiparc.com</h1>
+<div class="topbar">
   <div class="user-info" id="user-info"></div>
+  <button class="close-btn" onclick="closeForum()">Fermer</button>
 </div>
 <div class="breadcrumb" id="breadcrumb">
-  <a href="#" onclick="navigate('index')">Forum Frutiparc.com</a>
+  <a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a>
 </div>
-<div class="container" id="app">
+<div id="app">
   <div class="loading">Chargement du forum...</div>
 </div>
 <div class="forum-footer">Frutiparc.com &copy; Motion Twin</div>
@@ -336,6 +331,16 @@
 const params = new URLSearchParams(window.location.search);
 const SID = params.get('sid') || '';
 let currentUser = null;
+
+function closeForum() {
+  try {
+    if (window.parent && window.parent !== window && typeof window.parent.fp_closeFrame === 'function') {
+      window.parent.fp_closeFrame(1);
+      return;
+    }
+  } catch (e) {}
+  window.close();
+}
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
@@ -357,7 +362,7 @@ function formatDateShort(iso) {
   const d = new Date(iso);
   const pad = n => n < 10 ? '0' + n : '' + n;
   const months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
-  return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + '<br>' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
 async function apiFetch(url, opts) {
@@ -367,7 +372,7 @@ async function apiFetch(url, opts) {
 }
 
 function setBreadcrumb(parts) {
-  let html = '<a href="#" onclick="navigate(\'index\')">Forum Frutiparc.com</a>';
+  let html = '<a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
   for (const p of parts) {
     html += ' &raquo; ';
     if (p.href) html += '<a href="#" onclick="' + escapeHtml(p.href) + '">' + escapeHtml(p.text) + '</a>';
@@ -387,21 +392,20 @@ function pagination(total, perPage, currentPage, onclick) {
   const pages = Math.ceil(total / perPage);
   if (pages <= 1) return '';
   let html = '<div class="pagination">';
-  html += 'Page ' + currentPage + ' sur ' + pages + ' &mdash; ';
-  if (currentPage > 1) html += '<a href="#" onclick="' + onclick + '(' + (currentPage - 1) + ');return false">&laquo;</a> ';
+  html += 'Page ' + currentPage + ' sur ' + pages + '&nbsp;&mdash;&nbsp;';
+  if (currentPage > 1) html += '<a href="#" onclick="' + onclick + '(' + (currentPage - 1) + ');return false">&laquo;</a>';
   for (let i = 1; i <= pages; i++) {
-    if (i === currentPage) html += '<span class="current">' + i + '</span> ';
+    if (i === currentPage) html += '<span class="current">' + i + '</span>';
     else if (i <= 3 || i >= pages - 2 || Math.abs(i - currentPage) <= 2)
-      html += '<a href="#" onclick="' + onclick + '(' + i + ');return false">' + i + '</a> ';
-    else if (i === 4 && currentPage > 6) html += '... ';
-    else if (i === pages - 3 && currentPage < pages - 5) html += '... ';
+      html += '<a href="#" onclick="' + onclick + '(' + i + ');return false">' + i + '</a>';
+    else if (i === 4 && currentPage > 6) html += '<span>...</span>';
+    else if (i === pages - 3 && currentPage < pages - 5) html += '<span>...</span>';
   }
   if (currentPage < pages) html += '<a href="#" onclick="' + onclick + '(' + (currentPage + 1) + ');return false">&raquo;</a>';
   html += '</div>';
   return html;
 }
 
-// ── Index ──
 async function loadIndex() {
   const app = document.getElementById('app');
   app.innerHTML = '<div class="loading">Chargement...</div>';
@@ -438,7 +442,6 @@ async function loadIndex() {
   app.innerHTML = html;
 }
 
-// ── Board (topic list) ──
 let currentBoardId = null;
 async function loadBoard(boardId, page) {
   page = page || 1;
@@ -454,20 +457,21 @@ async function loadBoard(boardId, page) {
   let html = '<div class="toolbar">';
   if (currentUser) html += '<a href="#" class="btn btn-green" onclick="navigate(\'newTopic\',' + boardId + ');return false">Nouveau sujet</a>';
   else html += '<span></span>';
+  html += '<span style="font-size:10px;color:#5a8030">' + escapeHtml(data.board.name) + '</span>';
   html += '</div>';
 
   html += '<div class="tbl-header"><span class="col-main">' + escapeHtml(data.board.name) + '</span><span class="col-num">Rép.</span><span class="col-num">Vues</span><span class="col-last">Dernier message</span></div>';
 
   if (data.topics.length === 0) {
-    html += '<div class="empty" style="padding:20px">Aucun sujet dans ce forum.</div>';
+    html += '<div class="empty">Aucun sujet dans ce forum.</div>';
   }
   for (const t of data.topics) {
     html += '<div class="row topic-row">';
-    html += '<div class="icon"><div class="peach-icon"></div></div>';
+    html += '<div class="icon"><div class="peach-icon' + (t.isSticky ? ' pink' : '') + '"></div></div>';
     html += '<div class="info">';
     html += '<div class="title">';
     if (t.isSticky) html += '<span class="sticky-tag">Post-it: </span>';
-    if (t.isLocked) html += '<span class="locked-tag">🔒 </span>';
+    if (t.isLocked) html += '<span class="locked-tag">[verrouillé] </span>';
     html += '<a href="#" onclick="navigate(\'topic\',' + t.id + ');return false">' + escapeHtml(t.title) + '</a>';
     html += '</div>';
     html += '<div class="author">par <a href="#">' + escapeHtml(t.author) + '</a></div>';
@@ -486,7 +490,6 @@ async function loadBoard(boardId, page) {
 }
 function boardPage(p) { loadBoard(currentBoardId, p); }
 
-// ── Topic (posts) ──
 let currentTopicId = null;
 let currentTopicData = null;
 async function loadTopic(topicId, page) {
@@ -506,6 +509,8 @@ async function loadTopic(topicId, page) {
 
   let html = '<div class="toolbar">';
   if (currentUser && !data.topic.isLocked) html += '<a href="#" class="btn btn-green" onclick="showReplyForm();return false">Répondre</a>';
+  else html += '<span></span>';
+  html += '<span style="font-size:11px;font-weight:bold;color:#133200">' + escapeHtml(data.topic.title) + '</span>';
   html += '</div>';
 
   for (const p of data.posts) {
@@ -591,12 +596,11 @@ async function editPost(postId) {
   else alert('Erreur : ' + (data.error || 'inconnue'));
 }
 
-// ── New topic form ──
 function showNewTopicForm(boardId) {
   setBreadcrumb([{ text: 'Nouveau sujet' }]);
   const app = document.getElementById('app');
   let html = '<div class="form-area">';
-  html += '<h3 style="color:#557722;margin-bottom:8px">Nouveau sujet</h3>';
+  html += '<h3>Nouveau sujet</h3>';
   html += '<label>Titre :</label>';
   html += '<input type="text" id="new-topic-title" maxlength="200" placeholder="Titre du sujet">';
   html += '<label>Message :</label>';
@@ -622,7 +626,6 @@ async function submitNewTopic(boardId) {
   else alert('Erreur : ' + (data.error || 'inconnue'));
 }
 
-// ── Init ──
 async function init() {
   try {
     const r = await fetch('/do/init?sid=' + encodeURIComponent(SID));
