@@ -671,6 +671,7 @@ function createDefaultUser(pass) {
     kikoozLog: [],      // Entries displayed in box.KikoozLog (/ft/log)
     userLog: [],        // Entries displayed in "Mon historique" (/do/onident <ul>)
     siteLog: [],        // Entries displayed in "Evènements" (/do/onident <sl>)
+    mails: [],          // Internal mailbox; each entry: {uid, from, fromAddr, to, toAddrs, subject, body, folder, date, read}
     hasWelcomeUserLog: false,
     hasWelcomeSiteLog: false,
   };
@@ -713,6 +714,7 @@ function dbUserToMemory(row) {
     kikoozLog: [],
     userLog: [],
     siteLog: [],
+    mails: [],
     hasWelcomeUserLog: false,
     hasWelcomeSiteLog: false,
     _dbId: row.id,
@@ -721,18 +723,20 @@ function dbUserToMemory(row) {
 
 async function hydrateUserFromDb(username, dbUser) {
   users[username] = dbUserToMemory(dbUser);
-  const [items, accs, dbScores, dbContacts, dbBlacklist] = await Promise.all([
+  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails] = await Promise.all([
     db.getUserItems(dbUser.id),
     db.getUserAccessories(dbUser.id),
     db.loadScoresForUser(dbUser.id),
     db.getContacts(dbUser.id),
     db.getBlacklist(dbUser.id),
+    db.getMailsForUser(dbUser.id).catch(() => []),
   ]);
 
   if (items.length > 0) users[username].items = withDefaultPens(items);
   if (accs.length > 0) users[username].customAccessories = accs;
   users[username].contacts = Array.isArray(dbContacts) ? dbContacts : [];
   users[username].blacklist = Array.isArray(dbBlacklist) ? dbBlacklist : [];
+  users[username].mails = Array.isArray(dbMails) ? dbMails : [];
 
   if (Object.keys(dbScores).length > 0) {
     if (!scoresData.users[username]) scoresData.users[username] = {};
@@ -1051,6 +1055,159 @@ function encodePrefString(parsed) {
 function ensureContactLists(user) {
   if (!Array.isArray(user.contacts)) user.contacts = [];
   if (!Array.isArray(user.blacklist)) user.blacklist = [];
+}
+
+// ─────────────────────────────────────────────
+// Mail system helpers
+// Each user has user.mails: [{uid, from, fromAddr, to, toAddrs, subject,
+// body, folder, date, read}]. Folders: inbox|outbox|draftbox|blackbox|
+// recyclebin. Sender keeps a copy in outbox; recipients get one in inbox.
+// ─────────────────────────────────────────────
+const MAIL_FOLDERS = new Set(['inbox', 'outbox', 'draftbox', 'blackbox', 'recyclebin']);
+
+function ensureMails(user) {
+  if (!Array.isArray(user.mails)) user.mails = [];
+}
+
+function genMailUid() {
+  return 'm' + crypto.randomBytes(5).toString('hex');
+}
+
+// desc[0]=from, desc[1]=subject, desc[2]=to, desc[3..]=body lines
+function parseMailDesc(d) {
+  const lines = String(d || '').split(/\r?\n/);
+  return {
+    from: (lines[0] || '').trim(),
+    subject: lines[1] || '',
+    to: (lines[2] || '').trim(),
+    body: lines.slice(3).join('\n'),
+  };
+}
+
+function encodeMailDesc(mail) {
+  return [
+    mail.fromAddr || mail.from || '',
+    mail.subject || '',
+    Array.isArray(mail.toAddrs) ? mail.toAddrs.join(', ') : (mail.to || ''),
+    mail.body || '',
+  ].join('\r\n');
+}
+
+// "Alice <alice@frutiparc.com>" → "alice@frutiparc.com"
+function extractEmailAddress(s) {
+  const v = String(s || '').trim();
+  const m = v.match(/<([^>]+)>/);
+  if (m) return m[1].trim();
+  return v;
+}
+
+// Split a "to" string with comma-separated recipients.
+function parseRecipients(toRaw) {
+  return String(toRaw || '')
+    .split(/[,;]/)
+    .map((s) => extractEmailAddress(s))
+    .filter(Boolean);
+}
+
+// Resolve a frutiparc address to a username. Checks in-memory users first,
+// then falls back to the DB so that offline recipients are reachable.
+async function addressToUsername(addr) {
+  const v = String(addr || '').trim().toLowerCase();
+  if (!v) return null;
+  const local = v.split('@')[0];
+  if (!local) return null;
+  // In-memory match (case-insensitive).
+  for (const name of Object.keys(users)) {
+    if (name.toLowerCase() === local) return name;
+  }
+  // Fall back to DB: lookup confirms the recipient exists.
+  try {
+    const dbUser = await db.findUserByUsername(local);
+    if (dbUser) {
+      // Hydrate so subsequent in-memory operations work.
+      try { await hydrateUserFromDb(dbUser.username, dbUser); } catch (e) { /* ignore */ }
+      return dbUser.username;
+    }
+  } catch (e) {
+    /* DB unreachable — fall through */
+  }
+  return null;
+}
+
+function findMail(user, uid) {
+  ensureMails(user);
+  return user.mails.find((m) => m.uid === uid) || null;
+}
+
+function buildMailElementXml(mail) {
+  const desc = encodeMailDesc(mail);
+  const access = mail.read ? '1' : '0';
+  return `<e u="${escapeXml(mail.uid)}" t="mail" s="${desc.length}" d="${escapeXml(mail.date || '')}" a="${access}">${escapeXml(desc)}</e>`;
+}
+
+function unreadInboxCount(user) {
+  ensureMails(user);
+  return user.mails.filter((m) => m.folder === 'inbox' && !m.read).length;
+}
+
+// Deliver a mail to each known recipient: copies the mail (new uid) into the
+// recipient's inbox and notifies them via CBee if they are connected.
+// senderUsername is the human-readable username of the sender (for logging /
+// blacklist checks).
+async function deliverMailToRecipients(mail, senderUsername) {
+  const recipients = Array.isArray(mail.toAddrs) && mail.toAddrs.length
+    ? mail.toAddrs
+    : parseRecipients(mail.toAddrs || mail.to || '');
+  const seen = new Set();
+  for (const addr of recipients) {
+    const target = await addressToUsername(addr);
+    if (!target) {
+      console.log(`[Mail] Recipient "${addr}" unknown — skipped (sender=${senderUsername})`);
+      continue;
+    }
+    if (seen.has(target)) continue;
+    seen.add(target);
+    const recipientUser = users[target];
+    if (!recipientUser) continue;
+
+    ensureMails(recipientUser);
+
+    // Spam-folder routing if recipient blacklisted the sender.
+    const senderAddr = mail.fromAddr || (senderUsername + '@frutiparc.com');
+    const blacklisted = Array.isArray(recipientUser.blacklist)
+      && recipientUser.blacklist.some((a) => String(a).toLowerCase() === senderAddr.toLowerCase());
+    const destFolder = blacklisted ? 'blackbox' : 'inbox';
+
+    const delivered = {
+      uid: 'm' + crypto.randomBytes(5).toString('hex'),
+      from: mail.from,
+      fromAddr: senderAddr,
+      to: mail.to,
+      toAddrs: mail.toAddrs,
+      subject: mail.subject,
+      body: mail.body,
+      folder: destFolder,
+      date: mail.date,
+      read: false,
+    };
+    recipientUser.mails.push(delivered);
+    if (recipientUser._dbId) {
+      db.saveMail(recipientUser._dbId, delivered)
+        .catch((e) => console.error('[DB] mail deliver save error:', e.message));
+    }
+
+    notifyNewMail(target, delivered);
+    console.log(`[Mail] Delivered ${mail.uid} → ${target}/${destFolder} (as ${delivered.uid})`);
+  }
+}
+
+// Notify a connected recipient over CBee that they received a new mail.
+// FPFileMng / listener.main.onNewMail expects <ax from="..." subject="..." />.
+function notifyNewMail(targetUsername, mail) {
+  const socks = getSocketsForUsername(targetUsername);
+  if (!socks.length) return;
+  const xml = `<${CMD.newmail} from="${escapeXml(mail.fromAddr || mail.from || '')}" subject="${escapeXml(mail.subject || '')}" />`;
+  for (const sock of socks) sendToClient(sock, xml);
 }
 
 function normalizeContactAddress(raw) {
@@ -2842,7 +2999,14 @@ app.get('/do/ld', (req, res) => {
 // Returns XML
 // ─────────────────────────────────────────────
 app.get(['/ff/tree', '/tree'], (req, res) => {
-  res.type('text/xml').send(FILE_TREE_XML);
+  const sid = req.query.sid;
+  const username = resolveUsernameFromSid(sid);
+  let xml = FILE_TREE_XML;
+  if (username && users[username]) {
+    const m = unreadInboxCount(users[username]);
+    xml = xml.replace(/m="0"/, `m="${m}"`);
+  }
+  res.type('text/xml').send(xml);
 });
 
 // Flash's LoadVars/XML loader caches aggressively based on URL. Force every
@@ -3087,6 +3251,30 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     return res.type('text/xml').send(`<f u="disccollector">${discNodes || '<i />'}</f>`);
   }
 
+  // Mail folders
+  if (MAIL_FOLDERS.has(uid)) {
+    ensureMails(user);
+    const list = user.mails.filter((m) => m.folder === uid);
+    // Newest first
+    list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const nodes = list.map((m) => buildMailElementXml(m)).join('');
+    return res.type('text/xml').send(`<f u="${uid}">${nodes || '<i />'}</f>`);
+  }
+
+  // Individual mail fetch (uid starts with 'm' and is in user's mailbox)
+  if (uid && uid.charAt(0) === 'm') {
+    ensureMails(user);
+    const mail = user.mails.find((m) => m.uid === uid);
+    if (mail) {
+      // Mark as read once opened (only inbox mails are "unread")
+      if (mail.folder === 'inbox' && !mail.read) {
+        mail.read = true;
+        if (user._dbId) db.updateMailRead(mail.uid, true).catch(() => {});
+      }
+      return res.type('text/xml').send(`<f u="${escapeXml(mail.folder)}">${buildMailElementXml(mail)}</f>`);
+    }
+  }
+
   // Return an empty folder listing with a placeholder node to avoid legacy null-firstChild edge cases
   return res.type('text/xml').send(`<f u="${uid}"><i /></f>`);
 });
@@ -3113,6 +3301,39 @@ app.all(['/ff/mk', '/mk'], async (req, res) => {
 
   if (isContactCreate && !folder) {
     folder = 'mycontact';
+  }
+
+  // Mail creation (drafts and direct sends)
+  if (type === 'mail') {
+    ensureMails(user);
+    const parsed = parseMailDesc(desc);
+    const targetFolder = MAIL_FOLDERS.has(folder) ? folder : 'draftbox';
+    const fromAddr = auth.username + '@frutiparc.com';
+    const toAddrs = parseRecipients(parsed.to);
+    // Resolve recipients best-effort (in-memory first; DB lookup runs lazily on send).
+    const resolvedTo = [];
+    for (const a of toAddrs) {
+      const u = await addressToUsername(a);
+      if (u) resolvedTo.push(u);
+    }
+    const mail = {
+      uid: 'm' + crypto.randomBytes(5).toString('hex'),
+      from: auth.username,
+      fromAddr,
+      to: resolvedTo,
+      toAddrs,
+      subject: parsed.subject || '',
+      body: parsed.body || '',
+      folder: targetFolder,
+      date: now,
+      read: targetFolder !== 'inbox',
+    };
+    user.mails.push(mail);
+    if (user._dbId) db.saveMail(user._dbId, mail).catch((e) => console.error('[DB] mail save error:', e.message));
+    console.log(`[Mail] ${auth.username} created mail ${mail.uid} in ${targetFolder} (subject="${mail.subject}", to=[${toAddrs.join(',')}])`);
+    return res.type('text/xml').send(
+      `<r u="${escapeXml(mail.uid)}" t="mail" d="${now}" f="${escapeXml(targetFolder)}">${escapeXml(encodeMailDesc(mail))}</r>`
+    );
   }
 
   if (isContactCreate && (folder === 'mycontact' || folder === 'blacklist')) {
@@ -3168,6 +3389,34 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
   const folder = String(source.folder || req.query.folder || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
   console.log(`[FF/MV] file="${file}" folder="${folder}" method=${req.method} query=${JSON.stringify(req.query)}`);
+
+  // Mail moves — file uid starts with 'm'
+  if (file && file.charAt(0) === 'm') {
+    ensureMails(user);
+    const mail = user.mails.find((m) => m.uid === file);
+    if (mail) {
+      const oldF = mail.folder;
+      const targetFolder = MAIL_FOLDERS.has(folder) ? folder : 'recyclebin';
+
+      // Sending: draftbox → outbox triggers delivery to recipients.
+      if (oldF === 'draftbox' && targetFolder === 'outbox') {
+        mail.folder = 'outbox';
+        mail.date = now;
+        if (user._dbId) db.updateMailFolder(mail.uid, 'outbox').catch(() => {});
+        deliverMailToRecipients(mail, auth.username).catch((e) =>
+          console.error('[Mail] deliver error:', e.message));
+      } else {
+        mail.folder = targetFolder;
+        if (user._dbId) db.updateMailFolder(mail.uid, targetFolder).catch(() => {});
+      }
+
+      const desc = encodeMailDesc(mail);
+      return res.type('text/xml').send(
+        `<r f="${escapeXml(targetFolder)}"><f n="${escapeXml(mail.uid)}" u="${escapeXml(mail.uid)}" t="mail" d="${escapeXml(mail.date)}" p="${escapeXml(oldF)}">${escapeXml(desc)}</f></r>`
+      );
+    }
+    return res.type('text/xml').send(`<r k="404" />`);
+  }
 
   let oldFolder = String(source.p || req.query.p || 'root');
   const local = file.split('@')[0];
@@ -3303,9 +3552,38 @@ app.get('/ff/erb', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// ENDPOINT: ff/dm — Delete mail
+// ENDPOINT: ff/dm — Delete mail(s) in a folder
+// Params:
+//   u = folder uid (inbox/outbox/draftbox/blackbox)
+//   r = 0 → delete ALL mails in folder; r = 1 → delete READ mails only
 // ─────────────────────────────────────────────
 app.get('/ff/dm', (req, res) => {
+  const sid = req.query.sid;
+  const auth = requireAuthBySid(sid, res);
+  if (!auth) return;
+  const { user } = auth;
+  ensureMails(user);
+
+  const target = String(req.query.u || '');
+  const onlyRead = String(req.query.r || '0') === '1';
+
+  if (!MAIL_FOLDERS.has(target)) {
+    return res.type('text/plain').send('state=0');
+  }
+
+  const before = user.mails.length;
+  const removed = [];
+  user.mails = user.mails.filter((m) => {
+    if (m.folder !== target) return true;
+    if (onlyRead && !m.read) return true;
+    removed.push(m.uid);
+    return false;
+  });
+  if (user._dbId && removed.length) {
+    db.deleteMails(removed).catch((e) => console.error('[DB] mail delete error:', e.message));
+  }
+  console.log(`[Mail] ${auth.username} deleted ${before - user.mails.length} mail(s) from ${target} (onlyRead=${onlyRead})`);
+
   res.type('text/plain').send('state=0');
 });
 
