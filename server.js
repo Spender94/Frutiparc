@@ -2056,6 +2056,22 @@ app.post('/api/loadFrutiSlots', async (req, res) => {
         } catch (e) { /* ignore */ }
       }
     }
+
+    // Provide default slot data for games that need it when no save exists.
+    // Swapou2: slot0 = character unlocks + stats, slot1 = preferences.
+    // These match the defaults from swapou2/Client.as:onServiceConnect().
+    if (game === 'swapou2') {
+      if (!users[username].frutiSlots) users[username].frutiSlots = {};
+      if (!users[username].frutiSlots[game]) users[username].frutiSlots[game] = {};
+      const gs = users[username].frutiSlots[game];
+      if (gs['0'] === undefined) {
+        gs['0'] = JSON.stringify({"$chars":[true,true,false,false,false,false,false,false,false],"$record":0,"$classic_record":0,"$swap":0,"$items":[],"$combos":[]});
+      }
+      if (gs['1'] === undefined) {
+        gs['1'] = JSON.stringify({"$sound":true,"$music":true,"$lod":3});
+      }
+    }
+
     if (users[username].frutiSlots && users[username].frutiSlots[game]) {
       const slots = users[username].frutiSlots[game];
       for (const [key, val] of Object.entries(slots)) {
