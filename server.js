@@ -3589,8 +3589,8 @@ app.get('/ff/dm', (req, res) => {
 
 // ─────────────────────────────────────────────
 // ENDPOINT: fm/sendmail — Send mail (POST, LoadVars)
-// Flash's win.Mail sends: sid, to, subject, content, fromName, saveToOutbox
-// Response: XML <r /> on success
+// Flash's win.Mail sends: sid, t (to), s (subject), c (content), o (saveToOutbox 0/1)
+// Response: <r k="" /> on success, <r k="<code>" /> on error → openErrorAlert("error.http."+k)
 // ─────────────────────────────────────────────
 app.post('/fm/sendmail', async (req, res) => {
   const sid = req.body.sid || req.query.sid || '';
@@ -3599,11 +3599,10 @@ app.post('/fm/sendmail', async (req, res) => {
   const { username, user } = auth;
   ensureMails(user);
 
-  const to = String(req.body.to || '').trim();
-  const subject = String(req.body.subject || '');
-  const content = String(req.body.content || '');
-  const fromName = String(req.body.fromName || username);
-  const saveToOutbox = String(req.body.saveToOutbox || '1');
+  const to = String(req.body.t || req.body.to || '').trim();
+  const subject = String(req.body.s || req.body.subject || '');
+  const content = String(req.body.c || req.body.content || '');
+  const saveToOutbox = String(req.body.o || req.body.saveToOutbox || '1');
 
   if (!to) {
     return res.type('text/xml').send('<r k="1">to_empty</r>');
@@ -3615,7 +3614,7 @@ app.post('/fm/sendmail', async (req, res) => {
 
   const mail = {
     uid: genMailUid(),
-    from: fromName,
+    from: username,
     fromAddr,
     to,
     toAddrs,
@@ -3641,11 +3640,12 @@ app.post('/fm/sendmail', async (req, res) => {
   }
 
   console.log(`[Mail] ${username} sent mail to ${to} (subject: ${subject})`);
-  res.type('text/xml').send('<r />');
+  res.type('text/xml').send('<r k="" />');
 });
 
 // ─────────────────────────────────────────────
 // ENDPOINT: fm/sd — Save draft (POST, LoadVars)
+// Same param schema as sendmail (t/s/c). Optional u = existing draft uid to update.
 // ─────────────────────────────────────────────
 app.post('/fm/sd', async (req, res) => {
   const sid = req.body.sid || req.query.sid || '';
@@ -3654,35 +3654,48 @@ app.post('/fm/sd', async (req, res) => {
   const { username, user } = auth;
   ensureMails(user);
 
-  const to = String(req.body.to || '');
-  const subject = String(req.body.subject || '');
-  const content = String(req.body.content || '');
-  const fromName = String(req.body.fromName || username);
+  const to = String(req.body.t || req.body.to || '');
+  const subject = String(req.body.s || req.body.subject || '');
+  const content = String(req.body.c || req.body.content || '');
+  const existingUid = String(req.body.u || '');
 
   const now = new Date().toLocaleString('fr-FR');
   const fromAddr = username + '@frutiparc.com';
+  const toAddrs = parseRecipients(to);
 
-  const mail = {
-    uid: genMailUid(),
-    from: fromName,
-    fromAddr,
-    to,
-    toAddrs: parseRecipients(to),
-    subject,
-    body: content,
-    folder: 'draftbox',
-    date: now,
-    read: true,
-  };
-
-  user.mails.push(mail);
-  if (user._dbId) {
-    db.saveMail(user._dbId, mail)
-      .catch((e) => console.error('[DB] draft save error:', e.message));
+  let mail = existingUid ? findMail(user, existingUid) : null;
+  if (mail && mail.folder === 'draftbox') {
+    mail.to = to;
+    mail.toAddrs = toAddrs;
+    mail.subject = subject;
+    mail.body = content;
+    mail.date = now;
+    if (user._dbId) {
+      db.saveMail(user._dbId, mail)
+        .catch((e) => console.error('[DB] draft update error:', e.message));
+    }
+  } else {
+    mail = {
+      uid: genMailUid(),
+      from: username,
+      fromAddr,
+      to,
+      toAddrs,
+      subject,
+      body: content,
+      folder: 'draftbox',
+      date: now,
+      read: true,
+    };
+    user.mails.push(mail);
+    if (user._dbId) {
+      db.saveMail(user._dbId, mail)
+        .catch((e) => console.error('[DB] draft save error:', e.message));
+    }
   }
 
-  console.log(`[Mail] ${username} saved draft (subject: ${subject})`);
-  res.type('text/xml').send('<r />');
+  console.log(`[Mail] ${username} saved draft ${mail.uid} (subject: ${subject})`);
+  res.type('text/xml').send(`<r k="" u="${escapeXml(mail.uid)}" />`);
 });
 
 // ─────────────────────────────────────────────
