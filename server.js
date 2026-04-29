@@ -738,7 +738,7 @@ async function hydrateUserFromDb(username, dbUser) {
     if (!scoresData.users[username]) scoresData.users[username] = {};
     const rollDone = challengeMedalsData.lastRollDay === parisDayKey();
     for (const [rkId, entry] of Object.entries(dbScores)) {
-      if (rollDone && rkId.endsWith('_challenge')) continue;
+      if (rollDone && isDailyResetRanking(rkId)) continue;
       if (!scoresData.users[username][rkId]) {
         scoresData.users[username][rkId] = entry;
       }
@@ -787,8 +787,21 @@ function buildUserLogXml(entries) {
   }).join('');
 }
 
+// Daily-reset rankings = rankings displayed in the front-end "Challenge"
+// tab (section C of LEGACY_RANKINGS).  Internally these IDs end with
+// "_classic" (the suffix used when a user plays in default mode).
+// Note: section L = "Championnat" in front-end; those rankings (currently
+// only bandas_challenge and grapiz_challenge) are NOT reset daily.
+const DAILY_RESET_RANKING_SET = new Set(
+  LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal).map(r => r.internal)
+);
+
 function challengeRankingIds() {
-  return Object.keys(RANKINGS).filter((rk) => rk.endsWith('_challenge'));
+  return Array.from(DAILY_RESET_RANKING_SET);
+}
+
+function isDailyResetRanking(rkId) {
+  return DAILY_RESET_RANKING_SET.has(rkId);
 }
 
 function collectTop3ForRanking(rankingId) {
@@ -836,7 +849,7 @@ function notifyChallengeWinners(winnersByUser, visibleDay) {
 }
 
 function buildPodiumXml(rankingId) {
-  if (!rankingId || !rankingId.endsWith('_challenge')) return '';
+  if (!rankingId || !isDailyResetRanking(rankingId)) return '';
   const yesterday = yesterdayParisDayKey();
   const dayMedals = challengeMedalsData.medalsByVisibleDay[yesterday] || {};
   const game = RANKINGS[rankingId] && RANKINGS[rankingId].game;
@@ -904,9 +917,10 @@ function performChallengeRoll(today) {
 
   resetChallengeScoresInMemory();
   if (process.env.DATABASE_URL) {
-    db.archiveChallengeScores(archiveDay).then(() => {
-      console.log(`[CHALLENGE] Scores archived for day ${archiveDay}`);
-      return db.clearDailyChallengeScores();
+    const rankingIds = challengeRankingIds();
+    db.archiveChallengeScores(archiveDay, rankingIds).then(() => {
+      console.log(`[CHALLENGE] Scores archived for day ${archiveDay} (${rankingIds.length} rankings)`);
+      return db.clearDailyChallengeScores(rankingIds);
     }).then(() => {
       console.log(`[CHALLENGE] DB challenge scores cleared`);
     }).catch((e) => {
@@ -3122,7 +3136,7 @@ async function boot() {
   const today = parisDayKey();
   rollDailyChallengeIfNeeded();
 
-  // Safety: if lastRollDay claims we already rolled today but _challenge
+  // Safety: if lastRollDay claims we already rolled today but daily-reset
   // scores still exist in memory, a previous boot set lastRollDay without
   // actually clearing scores.  Reset lastRollDay and force a proper roll.
   const staleCheck = challengeRankingIds().some(rkId => {
@@ -4086,12 +4100,12 @@ broadcastToChannel(
         const cAttrIn = String(msg.attrs.c || '');
         const dtExplicit = msg.attrs.dt !== undefined ? String(msg.attrs.dt) : '';
         const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
-        const dtIn = dtExplicit || (internalId && internalId.endsWith('_challenge') ? (client.selectedDt || '') : '');
+        const dtIn = dtExplicit || (internalId && isDailyResetRanking(internalId) ? (client.selectedDt || '') : '');
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
-        const isHistorical = dtIn && dtIn !== parisDayKey() && internalId && internalId.endsWith('_challenge') && process.env.DATABASE_URL;
+        const isHistorical = dtIn && dtIn !== parisDayKey() && internalId && isDailyResetRanking(internalId) && process.env.DATABASE_URL;
         let all = [];
         if (isHistorical) {
           try {
@@ -4175,8 +4189,8 @@ broadcastToChannel(
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
         const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
-        const dtIn = internalId && internalId.endsWith('_challenge') ? (client.selectedDt || '') : '';
-        const isHistorical = dtIn && dtIn !== parisDayKey() && internalId && internalId.endsWith('_challenge') && process.env.DATABASE_URL;
+        const dtIn = internalId && isDailyResetRanking(internalId) ? (client.selectedDt || '') : '';
+        const isHistorical = dtIn && dtIn !== parisDayKey() && internalId && isDailyResetRanking(internalId) && process.env.DATABASE_URL;
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
         const start = Number(msg.attrs.s || 0) || 0;

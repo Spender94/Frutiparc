@@ -428,10 +428,11 @@ async function loadAllBouilles() {
   return result;
 }
 
-async function clearDailyChallengeScores() {
+async function clearDailyChallengeScores(rankingIds) {
+  if (!Array.isArray(rankingIds) || rankingIds.length === 0) return;
   await pool.query(
-    `DELETE FROM scores
-     WHERE ranking_id LIKE '%_challenge'`
+    'DELETE FROM scores WHERE ranking_id = ANY($1::text[])',
+    [rankingIds]
   );
 }
 
@@ -522,14 +523,15 @@ async function deleteShopPack(id) {
   await pool.query('DELETE FROM shop_packs WHERE id = $1', [id]);
 }
 
-async function archiveChallengeScores(dayKey) {
+async function archiveChallengeScores(dayKey, rankingIds) {
+  if (!Array.isArray(rankingIds) || rankingIds.length === 0) return;
   await pool.query(
     `INSERT INTO challenge_score_archive (day_key, ranking_id, username, score, data)
      SELECT $1, s.ranking_id, u.username, s.score, s.data
      FROM scores s
      JOIN users u ON u.id = s.user_id
-     WHERE s.ranking_id LIKE '%_challenge'`,
-    [dayKey]
+     WHERE s.ranking_id = ANY($2::text[])`,
+    [dayKey, rankingIds]
   );
 }
 
