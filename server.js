@@ -900,8 +900,8 @@ function performChallengeRoll(today) {
     }
   }
 
-  challengeMedalsData.medalsByVisibleDay[today] = winnersByUser;
-  notifyChallengeWinners(winnersByUser, today);
+  challengeMedalsData.medalsByVisibleDay[archiveDay] = winnersByUser;
+  notifyChallengeWinners(winnersByUser, archiveDay);
   challengeMedalsData.lastRollDay = today;
   saveChallengeMedals();
 
@@ -3426,6 +3426,7 @@ const channels = {
 // ── Virtual users / PNJ (always connected on pomme) ──
 const CONNECTED_NPCS = new Set([
   'DebugBot',
+  'Gaspard',
 ]);
 
 users.DebugBot = {
@@ -3448,6 +3449,31 @@ users.DebugBot = {
   firstName: 'Debug',
   lastName: 'Bot',
   comment: 'Bot de test connecté en permanence.',
+};
+
+users.Gaspard = {
+  pass: '',
+  xp: 9999999,
+  kikooz: 100,
+  fbouille: '0n0000000000000000000000',
+  items: withDefaultPens([1, 2, 3]),
+  contacts: [],
+  blacklist: [],
+  gender: 'M',
+  birthday: '2004-03-24',
+  country: '0',
+  region: '0',
+  countryIndex: '0',
+  regionIndex: '0',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  city: '',
+  realJob: '',
+  firstName: 'Gaspard',
+  lastName: '',
+  comment: '',
+  siteUrl: '',
 };
 
 for (const npc of CONNECTED_NPCS) {
@@ -4038,13 +4064,14 @@ broadcastToChannel(
       if (msg.attrs.rk !== undefined) {
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
-        const dtIn = msg.attrs.dt !== undefined ? String(msg.attrs.dt) : '';
+        const dtExplicit = msg.attrs.dt !== undefined ? String(msg.attrs.dt) : '';
         const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
+        const dtIn = dtExplicit || (internalId && internalId.endsWith('_challenge') ? (client.selectedDt || '') : '');
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
-        const isHistorical = dtIn && internalId && internalId.endsWith('_challenge') && process.env.DATABASE_URL;
+        const isHistorical = dtIn && dtIn !== parisDayKey() && internalId && internalId.endsWith('_challenge') && process.env.DATABASE_URL;
         let all = [];
         if (isHistorical) {
           try {
@@ -4087,6 +4114,7 @@ broadcastToChannel(
       if (msg.attrs.dt !== undefined) {
         const reqId = msg.attrs.r || '';
         const dt = String(msg.attrs.dt || '');
+        client.selectedDt = dt;
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const dtAttr = dt ? ` dt="${escapeXml(dt)}"` : '';
         let inner = '';
@@ -4125,12 +4153,21 @@ broadcastToChannel(
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
         const internalId = resolveInternalRankingIdForRequest(rkInput, cAttrIn);
+        const dtIn = internalId && internalId.endsWith('_challenge') ? (client.selectedDt || '') : '';
+        const isHistorical = dtIn && dtIn !== parisDayKey() && internalId && internalId.endsWith('_challenge') && process.env.DATABASE_URL;
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
-        const all = [];
-        if (internalId) {
+        let all = [];
+        if (isHistorical) {
+          try {
+            const archived = await db.getArchivedScores(internalId, dtIn);
+            for (const row of archived) {
+              all.push({ u: row.username, s: Number(row.score), d: row.data || '', at: '' });
+            }
+          } catch (e) { console.error('[FSCORE] archive query error:', e.message); }
+        } else if (internalId) {
           for (const [u, rlist] of Object.entries(scoresData.users || {})) {
             if (rlist && rlist[internalId] && Number.isFinite(Number(rlist[internalId].score))) {
               all.push({ u, s: Number(rlist[internalId].score), d: rlist[internalId].data || '', at: rlist[internalId].updatedAt || '' });
@@ -4150,13 +4187,14 @@ broadcastToChannel(
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
         const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
-        const podiumXml2 = buildPodiumXml(internalId);
+        const dtAttr2 = dtIn ? ` dt="${escapeXml(dtIn)}"` : '';
+        const podiumXml2 = isHistorical ? '' : buildPodiumXml(internalId);
         if (!inner && !podiumXml2) {
           sendToClient(socket, buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
         } else {
-          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}>${podiumXml2}${inner}</${CMD.ban}>`);
+          sendToClient(socket, `<${CMD.ban}${rAttr} rk="${escapeXml(rkInput)}"${tyAttr}${cAttr}${dtAttr2}>${podiumXml2}${inner}</${CMD.ban}>`);
         }
-        console.log(`[FSCORE] rankingResult ${rkInput}/${internalId || '-'}: ${slice.length}/${all.length} entries`);
+        console.log(`[FSCORE] rankingResult ${rkInput}/${internalId || '-'}${isHistorical ? ' dt=' + dtIn : ''}: ${slice.length}/${all.length} entries`);
         break;
       }
       if (!isModerator(client.username)) {
@@ -4786,6 +4824,7 @@ const xmlSocketServer = net.createServer((socket) => {
     logged: false,
     channels: new Set(),
     buffer: '',
+    selectedDt: '',
   });
 
   // Don't auto-send IP here — let the SWF request it via FPCBee.onConnect.
