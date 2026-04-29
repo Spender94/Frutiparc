@@ -196,50 +196,64 @@
                 return _origXHRSend.call(this, body);
             };
 
-            window.__forumFrame = null;
-            function ensureForumFrame() {
-                if (window.__forumFrame && document.body.contains(window.__forumFrame)) {
-                    return window.__forumFrame;
-                }
+            // Mode-keyed iframe registry so different slots (forum=1, frusion=2)
+            // each get their own overlay and never collide.  Mode 0 from
+            // fp_resizeMe is a "hide everything" signal.
+            window.__fpFrames = {};
+            function ensureFrame(mode) {
+                var key = String(Number(mode) || 1);
+                var existing = window.__fpFrames[key];
+                if (existing && document.body.contains(existing)) return existing;
                 var iframe = document.createElement("iframe");
-                iframe.id = "fp-forum-frame";
+                iframe.id = "fp-frame-" + key;
                 iframe.style.cssText = [
                     "position:fixed", "top:0", "left:0", "width:100%", "height:100%",
-                    "border:none", "z-index:99999", "background:#fff", "display:none"
+                    "border:none", "z-index:" + (99000 + Number(key)),
+                    "background:#fff", "display:none"
                 ].join(";");
                 document.body.appendChild(iframe);
-                window.__forumFrame = iframe;
+                window.__fpFrames[key] = iframe;
                 return iframe;
             }
 
             window.fp_goURLResize = function (url, mode, w, h) {
                 var rewritten = rewriteLegacyUrl(url);
                 console.log("[FP] fp_goURLResize", url, "->", rewritten, "mode=", mode);
-                var f = ensureForumFrame();
+                var f = ensureFrame(mode);
                 f.src = rewritten;
                 f.style.display = "block";
                 return true;
             };
             window.fp_resizeMe = function (mode) {
+                var m = Number(mode);
                 console.log("[FP] fp_resizeMe", mode);
-                var f = ensureForumFrame();
-                f.style.display = (Number(mode) === 1) ? "block" : "none";
+                if (m === 0) {
+                    Object.keys(window.__fpFrames).forEach(function (k) {
+                        window.__fpFrames[k].style.display = "none";
+                    });
+                    return;
+                }
+                var f = ensureFrame(m);
+                f.style.display = "block";
             };
             window.fp_closeFrame = function (mode) {
+                var key = String(Number(mode) || 1);
                 console.log("[FP] fp_closeFrame", mode);
-                if (window.__forumFrame) {
-                    window.__forumFrame.style.display = "none";
-                    window.__forumFrame.src = "about:blank";
+                var f = window.__fpFrames[key];
+                if (f) {
+                    f.style.display = "none";
+                    f.src = "about:blank";
                 }
             };
             window.fp_activatePopupForum = function () {
-                var f = ensureForumFrame();
+                var f = ensureFrame(1);
                 f.style.display = "block";
             };
             window.fp_closePopupForum = function () {
-                if (window.__forumFrame) {
-                    window.__forumFrame.style.display = "none";
-                    window.__forumFrame.src = "about:blank";
+                var f = window.__fpFrames["1"];
+                if (f) {
+                    f.style.display = "none";
+                    f.src = "about:blank";
                 }
             };
 
@@ -355,8 +369,7 @@
                         sid: sid,
                         domain: `${window.location.host}/./`,
                         s: s,
-                        e: e,
-                        cwm: "1"
+                        e: e
                     },
                     socketProxy: [
                         // FrutiChat (port % 1000 == 0 → chat cmdList).
