@@ -35,20 +35,17 @@
     upgradeToHttps: false,
     splashScreen: false,
     preferredRenderer: "canvas",
-    backgroundColor: "#ADE76C",
-    logLevel: "trace"
+    backgroundColor: "#ADE76C"
   };
 </script>
 <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
 </head>
 <body>
 <div id="player-container"></div>
-<pre id="debug" style="position:fixed;bottom:0;left:0;right:0;max-height:40%;overflow:auto;background:rgba(0,0,0,0.85);color:#0f0;font:11px monospace;padding:6px;z-index:9999;pointer-events:auto;"></pre>
 <script>
 (function () {
   var params = new URLSearchParams(window.location.search);
   var state = String(params.get("s") || "000000010000000000000000");
-  var mode = params.get("mode") || "loader";
 
   function decode62(s) {
     var result = 0, mult = 1;
@@ -66,92 +63,23 @@
     return result;
   }
 
-  function log(msg) {
-    console.log("[bouille] " + msg);
-    var d = document.getElementById("debug");
-    if (d) d.textContent += msg + "\n";
-  }
-
-  // Capture ALL console output to debug panel
-  ["log","warn","error","info","debug"].forEach(function(m) {
-    var orig = console[m];
-    console[m] = function() {
-      var msg = Array.prototype.join.call(arguments, " ");
-      orig.apply(console, arguments);
-      var d = document.getElementById("debug");
-      if (d && msg.length < 500) d.textContent += "[" + m + "] " + msg + "\n";
-    };
-  });
-
   window.addEventListener("DOMContentLoaded", async function () {
+    if (!window.RufflePlayer || !window.RufflePlayer.newest) return;
     var familyId = decode62(state.substring(0, 2));
-    log("state=" + state + " familyId=" + familyId + " mode=" + mode);
-
-    // First verify the SWF is reachable
-    var testUrl = mode === "direct"
-      ? "/fbouille_patched/famille" + familyId + ".swf"
-      : "/loader_bouille_local.swf";
-    try {
-      var resp = await fetch(testUrl, { method: "HEAD" });
-      log("fetch " + testUrl + " → " + resp.status + " " + resp.headers.get("content-type"));
-    } catch (fe) {
-      log("fetch FAILED: " + fe);
-    }
-
-    try {
-      if (!window.RufflePlayer || !window.RufflePlayer.newest) {
-        log("ERROR: Ruffle not loaded");
-        return;
-      }
-      var ruffle = window.RufflePlayer.newest();
-      log("Ruffle version: " + (ruffle.version || "unknown"));
-      var player = ruffle.createPlayer();
-      player.style.width = "100%";
-      player.style.height = "100%";
-      document.getElementById("player-container").appendChild(player);
-
-      var loadConfig;
-      if (mode === "direct") {
-        loadConfig = {
-          url: "/fbouille_patched/famille" + familyId + ".swf",
-          autoplay: "on",
-          allowScriptAccess: true,
-          quality: "high",
-          backgroundColor: "#ADE76C",
-          parameters: { s: state },
-          allowNetworking: "all"
-        };
-      } else {
-        loadConfig = {
-          url: "/loader_bouille_local.swf",
-          autoplay: "on",
-          allowScriptAccess: true,
-          quality: "high",
-          backgroundColor: "#ADE76C",
-          parameters: { s: state },
-          allowNetworking: "all"
-        };
-      }
-      log("loading: " + loadConfig.url);
-      await player.load(loadConfig);
-      log("player.load() resolved OK");
-
-      // Log player state after a short delay
-      setTimeout(function () {
-        try {
-          log("player.isPlaying=" + player.isPlaying);
-          log("player readyState=" + player.readyState);
-          var canvas = player.shadowRoot && player.shadowRoot.querySelector("canvas");
-          if (canvas) {
-            log("canvas: " + canvas.width + "x" + canvas.height);
-          } else {
-            log("no canvas found in shadow root");
-          }
-        } catch (e2) { log("state check error: " + e2); }
-      }, 2000);
-    } catch (e) {
-      log("Ruffle load FAILED: " + e);
-    }
+    var ruffle = window.RufflePlayer.newest();
+    var player = ruffle.createPlayer();
+    player.style.width = "100%";
+    player.style.height = "100%";
+    document.getElementById("player-container").appendChild(player);
+    await player.load({
+      url: "/fbouille_patched/famille" + familyId + ".swf",
+      autoplay: "on",
+      allowScriptAccess: true,
+      quality: "high",
+      backgroundColor: "#ADE76C",
+      parameters: { s: state },
+      allowNetworking: "all"
+    });
   });
 })();
 </script>

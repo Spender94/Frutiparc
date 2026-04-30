@@ -466,7 +466,7 @@ function renderBouillAvatar(bouille, username) {
   var s = String(bouille || '').replace(/[^0-9a-zA-Z]/g, '');
   if (!s || s.length < 2) s = '000000010000000000000000';
   return '<iframe src="/bouille-preview.html?s=' + encodeURIComponent(s)
-    + '&mode=direct" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe>';
+    + '" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe>';
 }
 
 function formatDate(iso) {
