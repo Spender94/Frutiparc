@@ -66,23 +66,142 @@ function pushInt(buf, off, n) {
 function opcode(buf, off, op) { buf.writeUInt8(op, off); return off + 1; }
 
 function buildApplyTag() {
-  const buf = Buffer.alloc(256);
+  const buf = Buffer.alloc(2048);
   let off = 0;
   // trace("INVOKE-APPLY")
   off = pushString(buf, off, 'INVOKE-APPLY');
-  off = opcode(buf, off, 0x26); // Trace
-  // apply(_root.s)  → push s, GetVariable; push 1; push 'apply'; CallFunction; Pop
+  off = opcode(buf, off, 0x26);
+  // apply(_root.s)
   off = pushString(buf, off, 's');
-  off = opcode(buf, off, 0x1c); // GetVariable
+  off = opcode(buf, off, 0x1c);
   off = pushInt(buf, off, 1);
   off = pushString(buf, off, 'apply');
+  off = opcode(buf, off, 0x3d);
+  off = opcode(buf, off, 0x17);
+
+  // Define _root.stopAll = function(mc) {
+  //   mc.stop();
+  //   for (var k in mc) {
+  //     var c = mc[k];
+  //     if (typeof c === "movieclip") stopAll(c);
+  //   }
+  // }
+  // Push 'stopAll' name first so SetVariable binds it
+  off = pushString(buf, off, 'stopAll');
+
+  // DefineFunction2 with empty name (anonymous), 1 param "mc" in reg1
+  buf.writeUInt8(0x8e, off); off++;
+  const fnLenOff = off; off += 2;
+  const fnHdrStart = off;
+  buf.writeUInt8(0x00, off); off++; // empty name
+  buf.writeUInt16LE(1, off); off += 2; // 1 param
+  buf.writeUInt8(5, off); off++; // 5 registers (1=mc, 2=key, 3=child, 4=enum, 5=temp)
+  buf.writeUInt16LE(0x00, off); off += 2; // flags = 0
+  buf.writeUInt8(1, off); off++; // param register=1
+  buf.write('mc', off, 'ascii'); off += 2;
+  buf.writeUInt8(0x00, off); off++;
+  const codeSizeOff = off; off += 2;
+  buf.writeUInt16LE(off - fnHdrStart, fnLenOff);
+  const fnBodyStart = off;
+
+  // mc.stop()
+  // Push i32:0 (arg count), reg:1 (mc), 'stop' (method name)
+  buf.writeUInt8(0x96, off); off++;
+  buf.writeUInt16LE(5 + 2 + 1 + 4 + 1, off); off += 2; // payload: i32(5)+reg(2)+str(1+4+1) = 13
+  buf.writeUInt8(0x07, off); off++; buf.writeInt32LE(0, off); off += 4; // i32:0
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(1, off); off++; // reg:1
+  buf.writeUInt8(0x00, off); off++; buf.write('stop', off, 'ascii'); off += 4; buf.writeUInt8(0x00, off); off++;
+  off = opcode(buf, off, 0x52); // CallMethod
+  off = opcode(buf, off, 0x17); // Pop
+
+  // Push reg:1; Enumerate2 (0x55) — pushes children keys with terminator
+  buf.writeUInt8(0x96, off); off++;
+  buf.writeUInt16LE(2, off); off += 2;
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(1, off); off++;
+  off = opcode(buf, off, 0x55); // Enumerate2
+
+  // LOOP_START:
+  const loopStart = off;
+  // StoreRegister r2 (key); Pop
+  buf.writeUInt8(0x87, off); off++; buf.writeUInt16LE(1, off); off += 2; buf.writeUInt8(2, off); off++;
+  off = opcode(buf, off, 0x17); // Pop
+
+  // if (r2 === undefined) jump LOOP_END
+  // Push reg:2, undefined; StrictEquals; If LOOP_END
+  buf.writeUInt8(0x96, off); off++;
+  buf.writeUInt16LE(2 + 1, off); off += 2;
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++;
+  buf.writeUInt8(0x03, off); off++; // undefined type
+  off = opcode(buf, off, 0x66); // StrictEquals
+  // If (jump if true) — placeholder offset
+  buf.writeUInt8(0x9d, off); off++;
+  buf.writeUInt16LE(2, off); off += 2;
+  const ifEndJumpOffset = off;
+  buf.writeInt16LE(0, off); off += 2; // placeholder
+
+  // child = mc[key]
+  buf.writeUInt8(0x96, off); off++;
+  buf.writeUInt16LE(2 + 2, off); off += 2;
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(1, off); off++;
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++;
+  off = opcode(buf, off, 0x4e); // GetMember
+  buf.writeUInt8(0x87, off); off++; buf.writeUInt16LE(1, off); off += 2; buf.writeUInt8(3, off); off++;
+  off = opcode(buf, off, 0x17); // Pop
+
+  // if (typeof child !== "movieclip") jump LOOP_START
+  buf.writeUInt8(0x96, off); off++;
+  buf.writeUInt16LE(2, off); off += 2;
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(3, off); off++;
+  off = opcode(buf, off, 0x44); // TypeOf
+  buf.writeUInt8(0x96, off); off++;
+  const movieclipStr = 'movieclip';
+  buf.writeUInt16LE(1 + movieclipStr.length + 1, off); off += 2;
+  buf.writeUInt8(0x00, off); off++; buf.write(movieclipStr, off, 'ascii'); off += movieclipStr.length; buf.writeUInt8(0x00, off); off++;
+  off = opcode(buf, off, 0x49); // Equals2
+  off = opcode(buf, off, 0x12); // Not
+  // If (true=not movieclip → skip recursion) — placeholder
+  buf.writeUInt8(0x9d, off); off++;
+  buf.writeUInt16LE(2, off); off += 2;
+  const ifSkipOffset = off;
+  buf.writeInt16LE(0, off); off += 2; // placeholder
+
+  // stopAll(child) — push reg:3, push 1 (arg count), push 'stopAll', CallFunction, Pop
+  buf.writeUInt8(0x96, off); off++;
+  buf.writeUInt16LE(2 + 5 + 1 + 7 + 1, off); off += 2;
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(3, off); off++; // reg:3
+  buf.writeUInt8(0x07, off); off++; buf.writeInt32LE(1, off); off += 4; // i32:1
+  buf.writeUInt8(0x00, off); off++; buf.write('stopAll', off, 'ascii'); off += 7; buf.writeUInt8(0x00, off); off++;
   off = opcode(buf, off, 0x3d); // CallFunction
   off = opcode(buf, off, 0x17); // Pop
-  // endAnim() — stops the talking animation
-  off = pushInt(buf, off, 0);
-  off = pushString(buf, off, 'endAnim');
+
+  // SKIP_LABEL: jump to LOOP_START
+  const skipLabel = off;
+  buf.writeUInt8(0x99, off); off++;
+  buf.writeUInt16LE(2, off); off += 2;
+  buf.writeInt16LE(loopStart - (off + 2), off); off += 2; // jump back
+
+  // LOOP_END:
+  const loopEnd = off;
+  // Patch the If offsets: they jump from end of If action to target
+  // ifEndJumpOffset points to the offset bytes; after the If action ends (offset+2)
+  buf.writeInt16LE(loopEnd - (ifEndJumpOffset + 2), ifEndJumpOffset);
+  buf.writeInt16LE(skipLabel - (ifSkipOffset + 2), ifSkipOffset);
+
+  // End of function body
+  off = opcode(buf, off, 0x00);
+  buf.writeUInt16LE(off - fnBodyStart, codeSizeOff);
+
+  // SetVariable: pops value (function) + name ('stopAll') from stack
+  off = opcode(buf, off, 0x1d); // SetVariable
+
+  // Now call stopAll(_root)
+  off = pushString(buf, off, '_root');
+  off = opcode(buf, off, 0x1c); // GetVariable
+  off = pushInt(buf, off, 1);
+  off = pushString(buf, off, 'stopAll');
   off = opcode(buf, off, 0x3d); // CallFunction
   off = opcode(buf, off, 0x17); // Pop
+
   // stop()
   off = opcode(buf, off, 0x07);
   // trace("APPLY-DONE")
