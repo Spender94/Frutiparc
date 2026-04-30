@@ -18,7 +18,8 @@
     height: 100%;
   }
   #player-container ruffle-player,
-  #player-container ruffle-embed {
+  #player-container ruffle-embed,
+  #player-container ruffle-object {
     width: 100% !important;
     height: 100% !important;
     display: block !important;
@@ -34,7 +35,8 @@
     upgradeToHttps: false,
     splashScreen: false,
     preferredRenderer: "canvas",
-    backgroundColor: "#ADE76C"
+    backgroundColor: "#ADE76C",
+    logLevel: "warn"
   };
 </script>
 <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
@@ -45,11 +47,23 @@
 (function () {
   var params = new URLSearchParams(window.location.search);
   var state = String(params.get("s") || "000000010000000000000000");
+  var mode = params.get("mode") || "loader";
 
-  // The patched loader_bouille_local.swf reads _root.s, sets up
-  // _global.colorSet + _global.generalPalette + FEMC, loads the
-  // appropriate /fbouille/familleN.swf, and calls apply(s) on it.
-  var loaderUrl = "/loader_bouille_local.swf";
+  function decode62(s) {
+    var result = 0, mult = 1;
+    for (var i = s.length - 1; i >= 0; i--) {
+      var c = s.charAt(i);
+      var v;
+      if (c === c.toLowerCase()) {
+        v = parseInt(c, 36);
+      } else {
+        v = parseInt(c.toLowerCase(), 36) + 26;
+      }
+      result += v * mult;
+      mult *= 62;
+    }
+    return result;
+  }
 
   window.addEventListener("DOMContentLoaded", async function () {
     try {
@@ -58,17 +72,30 @@
       player.style.width = "100%";
       player.style.height = "100%";
       document.getElementById("player-container").appendChild(player);
-      await player.load({
-        url: loaderUrl,
-        autoplay: "on",
-        allowScriptAccess: true,
-        quality: "high",
-        backgroundColor: "#ADE76C",
-        parameters: { s: state },
-        // Allow the loader to fetch /fbouille/famille*.swf from same origin
-        openUrlMode: "deny",
-        allowNetworking: "internal"
-      });
+
+      if (mode === "direct") {
+        var familyId = decode62(state.substring(0, 2));
+        var familleUrl = "/fbouille_patched/famille" + familyId + ".swf";
+        await player.load({
+          url: familleUrl,
+          autoplay: "on",
+          allowScriptAccess: true,
+          quality: "high",
+          backgroundColor: "#ADE76C",
+          parameters: { s: state },
+          allowNetworking: "all"
+        });
+      } else {
+        await player.load({
+          url: "/loader_bouille_local.swf",
+          autoplay: "on",
+          allowScriptAccess: true,
+          quality: "high",
+          backgroundColor: "#ADE76C",
+          parameters: { s: state },
+          allowNetworking: "all"
+        });
+      }
     } catch (e) {
       console.warn("[bouille] Ruffle load failed:", e);
     }
