@@ -68,12 +68,15 @@
   var famId = explicitFam !== null && explicitFam !== ""
     ? Number(explicitFam)
     : decode62(state.substring(0, 2));
-  // Use the patched famille SWFs in /fbouille_auto/. These are identical to
-  // the originals except they carry an extra DoAction that calls
-  // `apply(_root.s)` on frame 1, so the bouille customisation actually runs
-  // when the SWF is loaded standalone (without the Frutibouille wrapper from
-  // main.swf).
   var swfUrl = "/fbouille_auto/famille" + famId + ".swf";
+
+  // Pre-decode every 2-char pair so the injected decode62 shim in the
+  // patched SWF can look them up as _root["_dec_" + pair].
+  var flashParams = { s: state };
+  for (var i = 0; i < state.length; i += 2) {
+    var pair = state.substring(i, i + 2);
+    flashParams["_dec_" + pair] = String(decode62(pair));
+  }
 
   window.addEventListener("DOMContentLoaded", async function () {
     try {
@@ -88,26 +91,7 @@
         allowScriptAccess: true,
         quality: "high",
         backgroundColor: "#ADE76C",
-        // Pass the full bouille state plus split parts so the SWF can read
-        // them however it expects (root, _level0, FlashVars).
-        parameters: {
-          s: state,
-          fbouille: state,
-          state: state,
-          family: String(famId),
-          p1: state.substring(0, 2),
-          p2: state.substring(2, 4),
-          p3: state.substring(4, 6),
-          p4: state.substring(6, 8),
-          p5: state.substring(8, 10),
-          p6: state.substring(10, 12),
-          p7: state.substring(12, 14),
-          p8: state.substring(14, 16),
-          p9: state.substring(16, 18),
-          p10: state.substring(18, 20),
-          p11: state.substring(20, 22),
-          p12: state.substring(22, 24)
-        },
+        parameters: flashParams,
         openUrlMode: "deny",
         allowNetworking: "none"
       });
