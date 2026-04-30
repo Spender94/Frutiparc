@@ -45,38 +45,11 @@
 (function () {
   var params = new URLSearchParams(window.location.search);
   var state = String(params.get("s") || "000000010000000000000000");
-  // Allow override via ?fam= for debug; otherwise decode from state.
-  var explicitFam = params.get("fam");
 
-  function decode62(s) {
-    var r = 0, coef = 1;
-    for (var i = s.length - 1; i >= 0; i--) {
-      var c = s.charAt(i);
-      var t;
-      if (c === c.toLowerCase()) {
-        t = parseInt(c, 36);
-      } else {
-        t = parseInt(c.toLowerCase(), 36) + 26;
-      }
-      if (isNaN(t)) t = 0;
-      r += t * coef;
-      coef *= 62;
-    }
-    return r;
-  }
-
-  var famId = explicitFam !== null && explicitFam !== ""
-    ? Number(explicitFam)
-    : decode62(state.substring(0, 2));
-  var swfUrl = "/fbouille_auto/famille" + famId + ".swf";
-
-  // Pre-decode every 2-char pair so the injected decode62 shim in the
-  // patched SWF can look them up as _root["_dec_" + pair].
-  var flashParams = { s: state };
-  for (var i = 0; i < state.length; i += 2) {
-    var pair = state.substring(i, i + 2);
-    flashParams["_dec_" + pair] = String(decode62(pair));
-  }
+  // The patched loader_bouille_local.swf reads _root.s, sets up
+  // _global.colorSet + _global.generalPalette + FEMC, loads the
+  // appropriate /fbouille/familleN.swf, and calls apply(s) on it.
+  var loaderUrl = "/loader_bouille_local.swf";
 
   window.addEventListener("DOMContentLoaded", async function () {
     try {
@@ -86,14 +59,15 @@
       player.style.height = "100%";
       document.getElementById("player-container").appendChild(player);
       await player.load({
-        url: swfUrl,
+        url: loaderUrl,
         autoplay: "on",
         allowScriptAccess: true,
         quality: "high",
         backgroundColor: "#ADE76C",
-        parameters: flashParams,
+        parameters: { s: state },
+        // Allow the loader to fetch /fbouille/famille*.swf from same origin
         openUrlMode: "deny",
-        allowNetworking: "none"
+        allowNetworking: "internal"
       });
     } catch (e) {
       console.warn("[bouille] Ruffle load failed:", e);
