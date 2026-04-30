@@ -529,6 +529,15 @@ async function getMedalsForUser(username) {
   return rows;
 }
 
+async function getMedalsForUserByDay(username, day) {
+  const { rows } = await pool.query(
+    `SELECT ranking_id, game, rank, medal, awarded_day, created_at
+     FROM challenge_medals WHERE username = $1 AND awarded_day = $2 ORDER BY created_at DESC`,
+    [username, day]
+  );
+  return rows;
+}
+
 async function getMedalsByDay(day) {
   const { rows } = await pool.query(
     'SELECT username, ranking_id, game, rank, medal FROM challenge_medals WHERE awarded_day = $1',
@@ -930,6 +939,7 @@ module.exports = {
   addItem,
   saveMedal,
   getMedalsForUser,
+  getMedalsForUserByDay,
   getMedalsByDay,
   loadShopPacks,
   upsertShopPack,

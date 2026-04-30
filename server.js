@@ -6097,14 +6097,14 @@ case 'createchannel': {
         }
       }
       let allMedals = [];
+      const medalDay = yesterdayParisDayKey();
       if (process.env.DATABASE_URL) {
-        try { allMedals = await db.getMedalsForUser(targetUser); } catch (e) { /* ignore */ }
+        try { allMedals = await db.getMedalsForUserByDay(targetUser, medalDay); } catch (e) { /* ignore */ }
       }
       if (allMedals.length === 0) {
-        for (const [day, dayMedals] of Object.entries(challengeMedalsData.medalsByVisibleDay || {})) {
-          for (const m of (dayMedals[targetUser] || [])) {
-            allMedals.push({ game: m.game, ranking_id: m.rankingId, rank: m.rank, medal: m.medal, awarded_day: day });
-          }
+        const dayMedals = challengeMedalsData.medalsByVisibleDay[medalDay] || {};
+        for (const m of (dayMedals[targetUser] || [])) {
+          allMedals.push({ game: m.game, ranking_id: m.rankingId, rank: m.rank, medal: m.medal, awarded_day: medalDay });
         }
       }
       for (const medal of allMedals) {
