@@ -224,7 +224,10 @@ function patchSwf(inputPath, outputPath) {
   const rectBytes = Math.ceil((5 + nbits * 4) / 8);
   let off = rectBytes + 4;
 
-  // Find the LAST ShowFrame tag — that's the end of frame 2
+  // Find DoAction tags and ShowFrame tags
+  let firstDoActionOff = -1;
+  let firstDoActionHeaderSize = 0;
+  let firstDoActionLen = 0;
   let lastShowFrameOff = -1;
   let showFrameCount = 0;
   while (off < body.length) {
@@ -234,6 +237,11 @@ function patchSwf(inputPath, outputPath) {
     let headerSize = 2;
     if (tagLen === 0x3f) { tagLen = body.readUInt32LE(off + 2); headerSize = 6; }
     if (tagCode === 0) break;
+    if (tagCode === 12 && firstDoActionOff < 0) {
+      firstDoActionOff = off;
+      firstDoActionHeaderSize = headerSize;
+      firstDoActionLen = tagLen;
+    }
     if (tagCode === 1) {
       showFrameCount++;
       lastShowFrameOff = off;
@@ -243,6 +251,52 @@ function patchSwf(inputPath, outputPath) {
 
   if (showFrameCount < 1 || lastShowFrameOff < 0) {
     throw new Error(`Expected 1+ ShowFrames, found ${showFrameCount} in ${inputPath}`);
+  }
+
+  // For 2-frame SWFs: NOP out the stop() at end of frame 1's DoAction
+  // so the SWF plays through to frame 2 where our injection lives
+  if (showFrameCount >= 2 && firstDoActionOff >= 0) {
+    const actionStart = firstDoActionOff + firstDoActionHeaderSize;
+    const actionEnd = actionStart + firstDoActionLen;
+    // Walk backwards from End (0x00) to find the stop (0x07)
+    // Parse forward to find the last top-level stop
+    let pos = actionStart;
+    let lastStopPos = -1;
+    while (pos < actionEnd) {
+      const op = body[pos];
+      if (op === 0x00) break;
+      if (op === 0x07) lastStopPos = pos;
+      if (op >= 0x80) {
+        const len = body.readUInt16LE(pos + 1);
+        if (op === 0x8e) {
+          // DefineFunction2: skip header + body
+          let fpos = pos + 3;
+          while (body[fpos] !== 0) fpos++;
+          fpos++;
+          const numParams = body.readUInt16LE(fpos); fpos += 2;
+          fpos++; fpos += 2;
+          for (let p = 0; p < numParams; p++) {
+            fpos++;
+            while (body[fpos] !== 0) fpos++;
+            fpos++;
+          }
+          const codeSize = body.readUInt16LE(fpos); fpos += 2;
+          pos = fpos + codeSize;
+        } else {
+          pos += 3 + len;
+        }
+      } else {
+        pos++;
+      }
+    }
+    if (lastStopPos >= 0) {
+      // Replace stop() with ActionPush undefined + Pop (a 3-byte NOP equivalent)
+      // Actually simplest: just overwrite 0x07 with 0x17 (Pop with empty stack is harmless?
+      // No — safest: replace with 0x00... but that would be End.
+      // Simplest safe NOP: ActionToggleQuality (0x08) — a harmless 1-byte action
+      body[lastStopPos] = 0x08;
+      console.log(`  ${path.basename(inputPath)}: NOP'd stop() at bytecode offset ${lastStopPos}`);
+    }
   }
 
   console.log(`  ${path.basename(inputPath)}: inserting DoAction before ShowFrame #${showFrameCount} at ${lastShowFrameOff}`);
