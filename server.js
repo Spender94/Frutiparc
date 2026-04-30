@@ -890,17 +890,37 @@ function resetChallengeScoresInMemory() {
 async function rollDailyChallengeIfNeeded() {
   const today = parisDayKey();
   if (!challengeMedalsData.lastRollDay) {
-    // No prior state. Two cases: (a) truly fresh install with no scores, or
-    // (b) the medals JSON file was lost (redeploy with ephemeral data dir,
-    // corruption, etc.) and we have stranded in-memory/DB scores from a
-    // previous day. Setting lastRollDay = today would silently skip the
-    // roll and leave the stranded scores under "today" forever.
-    // Instead, set lastRollDay = yesterday so the next phase performs a
-    // proper roll: scores get archived under yesterday (best guess), or
-    // the archive INSERT is a no-op when there are no scores.
-    challengeMedalsData.lastRollDay = yesterdayParisDayKey();
+    // No prior state in challenge-medals.json (lost on redeploy with ephemeral
+    // disk, fresh install, etc.). Try to recover from the DB: the most recent
+    // archived day implies the last roll happened the day after it, so
+    // lastRollDay = (latest archive day + 1 day). If today already matches
+    // that recovered value, we skip the roll — preserving today's scores in
+    // the scores table that loadAllScores() just brought back.
+    let recovered = '';
+    if (process.env.DATABASE_URL) {
+      try {
+        const days = await db.getArchiveDays();
+        if (Array.isArray(days) && days.length > 0) {
+          const latest = days[0];
+          const next = new Date(latest + 'T12:00:00Z');
+          next.setUTCDate(next.getUTCDate() + 1);
+          recovered = parisDayKey(next);
+        }
+      } catch (e) {
+        console.error('[CHALLENGE] archive recovery error:', e.message);
+      }
+    }
+    if (recovered) {
+      challengeMedalsData.lastRollDay = recovered;
+      console.log(`[CHALLENGE] No prior state — recovered lastRollDay=${recovered} from latest archive day.`);
+    } else {
+      // No DB or no archive history. Safest assumption: any scores currently
+      // loaded belong to today — don't trigger a roll that would archive them
+      // as yesterday and wipe the scores table.
+      challengeMedalsData.lastRollDay = today;
+      console.log(`[CHALLENGE] No prior state and no archive history — seeded lastRollDay=${today} to preserve current scores.`);
+    }
     saveChallengeMedals();
-    console.log(`[CHALLENGE] No prior state — seeded lastRollDay=${challengeMedalsData.lastRollDay} (yesterday) so any stranded scores get archived on the next roll.`);
   }
   if (challengeMedalsData.lastRollDay === today) return;
   await performChallengeRoll(today);
@@ -4155,8 +4175,9 @@ app.get('/api/club/medalists', async (req, res) => {
     for (const m of medals) {
       const u = m.username;
       if (!counts[u]) counts[u] = { user: u, gold: 0, silver: 0, bronze: 0, total: 0 };
-      if (m.medal === 'gold') counts[u].gold++;
-      else if (m.medal === 'silver') counts[u].silver++;
+      // Medals are stored in French ('or', 'argent', 'bronze') by saveMedal.
+      if (m.medal === 'or' || m.medal === 'gold') counts[u].gold++;
+      else if (m.medal === 'argent' || m.medal === 'silver') counts[u].silver++;
       else if (m.medal === 'bronze') counts[u].bronze++;
       counts[u].total++;
     }
@@ -4169,21 +4190,56 @@ app.get('/api/club/medalists', async (req, res) => {
   }
 });
 
-app.get('/api/club/records', (req, res) => {
+app.get('/api/club/records', async (req, res) => {
   const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 10));
+
+  // Build per-(rankingId, user) best score across live scores + archive.
+  // bestByRanking[rkId] = { user -> { score, data, updatedAt } }
+  const bestByRanking = {};
+  const upsertBest = (rkId, user, score, data, updatedAt) => {
+    if (!RANKINGS[rkId]) return;
+    if (!bestByRanking[rkId]) bestByRanking[rkId] = {};
+    const cur = bestByRanking[rkId][user];
+    const lowerBetter = isLowerBetter(rkId);
+    const isBetter = !cur ||
+      (lowerBetter ? score < Number(cur.score) : score > Number(cur.score));
+    if (isBetter) {
+      bestByRanking[rkId][user] = { score, data: data || '', updatedAt: updatedAt || '' };
+    }
+  };
+
+  // Live scores (in-memory, also reflects current scores table after boot).
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+    if (!rlist) continue;
+    for (const [rkId, entry] of Object.entries(rlist)) {
+      if (!entry || !Number.isFinite(Number(entry.score))) continue;
+      upsertBest(rkId, u, Number(entry.score), entry.data, entry.updatedAt);
+    }
+  }
+
+  // Archive scores (historical days), so the records list survives daily resets.
+  if (process.env.DATABASE_URL) {
+    try {
+      const rows = await db.getAllTimeBestScores();
+      for (const r of rows) {
+        if (!Number.isFinite(Number(r.score))) continue;
+        const updatedAt = r.updated_at ? r.updated_at.toISOString() : '';
+        upsertBest(r.ranking_id, r.username, Number(r.score), r.data, updatedAt);
+      }
+    } catch (e) {
+      console.error('[CLUB] records archive query error:', e.message);
+    }
+  }
+
   const out = [];
   for (const [rkId, meta] of Object.entries(RANKINGS)) {
-    const all = [];
-    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
-      if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
-        all.push({
-          user: u,
-          score: Number(rlist[rkId].score),
-          data: rlist[rkId].data || '',
-          updatedAt: rlist[rkId].updatedAt || '',
-        });
-      }
-    }
+    const userMap = bestByRanking[rkId] || {};
+    const all = Object.entries(userMap).map(([user, v]) => ({
+      user,
+      score: Number(v.score),
+      data: v.data || '',
+      updatedAt: v.updatedAt || '',
+    }));
     const lowerBetter = isLowerBetter(rkId);
     all.sort((a, b) => lowerBetter ? a.score - b.score : b.score - a.score);
     out.push({

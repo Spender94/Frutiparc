@@ -690,6 +690,24 @@ async function getArchiveDays() {
   return rows.map(r => r.day_key);
 }
 
+// All-time best score per (ranking_id, username), combining the live scores
+// table with historical entries from challenge_score_archive. Used by the
+// "livre des records" view.
+async function getAllTimeBestScores() {
+  const { rows } = await pool.query(
+    `WITH combined AS (
+       SELECT s.ranking_id, u.username, s.score, s.data, s.updated_at
+         FROM scores s JOIN users u ON u.id = s.user_id
+       UNION ALL
+       SELECT a.ranking_id, a.username, a.score, a.data, a.updated_at
+         FROM challenge_score_archive a
+     )
+     SELECT ranking_id, username, score, data, updated_at
+       FROM combined`
+  );
+  return rows;
+}
+
 // ── Forum ──
 
 async function forumGetCategories() {
@@ -948,6 +966,7 @@ module.exports = {
   getArchivedScores,
   getArchivedScoresForDay,
   getArchiveDays,
+  getAllTimeBestScores,
   deleteMedalsByDay,
   getAllMedals,
   getMedalDays,
