@@ -134,12 +134,19 @@
     width: 80px;
     height: 80px;
     margin: 0 auto 6px auto;
+    background: #ADE76C;
     border: 1px solid #8bc55a;
     border-radius: 4px;
     overflow: hidden;
-    font-size: 32px;
-    color: #133200;
-    font-weight: bold;
+    position: relative;
+  }
+  .post .post-author .avatar iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+    pointer-events: none;
+    background: #ADE76C;
   }
   .post .post-author .username {
     font-weight: bold;
@@ -381,9 +388,17 @@
     height: 32px;
     border-radius: 4px;
     overflow: hidden;
+    background: #ADE76C;
     border: 1px solid #8bc55a;
   }
-  .row .icon .mini-bouille svg { display: block; }
+  .row .icon .mini-bouille iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+    pointer-events: none;
+    background: #ADE76C;
+  }
 </style>
 </head>
 <body>
@@ -447,59 +462,11 @@ function renderBBCode(s) {
   return out;
 }
 
-function decode62(s) {
-  var r = 0, coef = 1;
-  for (var i = s.length - 1; i >= 0; i--) {
-    var c = s.charAt(i);
-    var t = (c === c.toLowerCase()) ? parseInt(c, 36) : parseInt(c.toLowerCase(), 36) + 26;
-    if (isNaN(t)) t = 0;
-    r += t * coef;
-    coef *= 62;
-  }
-  return r;
-}
-
 function renderBouillAvatar(bouille, username) {
   var s = String(bouille || '').replace(/[^0-9a-zA-Z]/g, '');
-  if (!s || s.length < 6) s = '000000010000000000000000';
-  // Parse bouille state into visual components
-  var famId = decode62(s.substring(0, 2));
-  var v2 = decode62(s.substring(2, 4));
-  var v3 = decode62(s.substring(4, 6));
-  var v4 = decode62(s.substring(6, 8));
-  var v5 = decode62(s.substring(8, 10));
-
-  // Generate colors from the bouille values
-  var hue = (famId * 47 + v2 * 13) % 360;
-  var bodyH = hue;
-  var bodyS = 55 + (v3 % 30);
-  var bodyL = 50 + (v2 % 20);
-  var eyeH = (hue + 120 + v4 * 7) % 360;
-  var bgH = (hue + 30) % 360;
-
-  // Family determines base shape: 0 = round, 1+ = slightly different
-  var bodyRx = famId === 0 ? 28 : 24 + (famId % 8);
-  var bodyRy = famId === 0 ? 26 : 22 + (famId % 10);
-
-  // Build SVG
-  var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80">';
-  svg += '<rect width="80" height="80" fill="hsl(' + bgH + ',60%,85%)"/>';
-  // Body
-  svg += '<ellipse cx="40" cy="52" rx="' + bodyRx + '" ry="' + bodyRy + '" fill="hsl(' + bodyH + ',' + bodyS + '%,' + bodyL + '%)"/>';
-  // Head
-  var headR = 18 + (v3 % 4);
-  svg += '<circle cx="40" cy="28" r="' + headR + '" fill="hsl(' + bodyH + ',' + bodyS + '%,' + (bodyL + 8) + '%)"/>';
-  // Eyes
-  var eyeSpan = 6 + (v4 % 3);
-  svg += '<circle cx="' + (40 - eyeSpan) + '" cy="26" r="3" fill="hsl(' + eyeH + ',70%,35%)"/>';
-  svg += '<circle cx="' + (40 + eyeSpan) + '" cy="26" r="3" fill="hsl(' + eyeH + ',70%,35%)"/>';
-  svg += '<circle cx="' + (40 - eyeSpan) + '" cy="25.5" r="1.2" fill="#fff"/>';
-  svg += '<circle cx="' + (40 + eyeSpan) + '" cy="25.5" r="1.2" fill="#fff"/>';
-  // Mouth
-  var mouthW = 4 + (v5 % 5);
-  svg += '<ellipse cx="40" cy="34" rx="' + mouthW + '" ry="2" fill="hsl(' + bodyH + ',' + bodyS + '%,' + (bodyL - 15) + '%)"/>';
-  svg += '</svg>';
-  return svg;
+  if (!s || s.length < 2) s = '000000010000000000000000';
+  return '<iframe src="/bouille-preview.html?s=' + encodeURIComponent(s)
+    + '" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe>';
 }
 
 function formatDate(iso) {
