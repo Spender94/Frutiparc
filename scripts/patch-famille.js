@@ -163,17 +163,18 @@ function buildFrame2Action() {
   // Build {ra:0, ga:0, ba:0, rb:colorObj.r, gb:colorObj.g, bb:colorObj.b}
   off = pushMulti(buf, off, ['ra', 0, 'ga', 0, 'ba', 0]);
   off = pushString(buf, off, 'rb');
-  buf.writeUInt8(0x96, off); off++; buf.writeUInt16LE(4, off); off += 2;
+  // Push reg2 (colorObj) + String('r'): 0x04+UI8 (2 bytes) + 0x00+'r'+\0 (3 bytes) = 5 bytes
+  buf.writeUInt8(0x96, off); off++; buf.writeUInt16LE(5, off); off += 2;
   buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++;
   buf.writeUInt8(0x00, off); off++; buf.write('r', off, 'ascii'); off++; buf.writeUInt8(0x00, off); off++;
   off = opcode(buf, off, 0x4e); // GetMember
   off = pushString(buf, off, 'gb');
-  buf.writeUInt8(0x96, off); off++; buf.writeUInt16LE(4, off); off += 2;
+  buf.writeUInt8(0x96, off); off++; buf.writeUInt16LE(5, off); off += 2;
   buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++;
   buf.writeUInt8(0x00, off); off++; buf.write('g', off, 'ascii'); off++; buf.writeUInt8(0x00, off); off++;
   off = opcode(buf, off, 0x4e);
   off = pushString(buf, off, 'bb');
-  buf.writeUInt8(0x96, off); off++; buf.writeUInt16LE(4, off); off += 2;
+  buf.writeUInt8(0x96, off); off++; buf.writeUInt16LE(5, off); off += 2;
   buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++;
   buf.writeUInt8(0x00, off); off++; buf.write('b', off, 'ascii'); off++; buf.writeUInt8(0x00, off); off++;
   off = opcode(buf, off, 0x4e);
