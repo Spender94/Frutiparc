@@ -1478,6 +1478,16 @@ app.get('/legacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
+// Returns the current user's saved bouille (avatar state) so the Ruffle page
+// can launch the SWF with the up-to-date avatar instead of the URL default.
+app.get('/api/me/bouille', (req, res) => {
+  const sid = String(req.query.sid || '');
+  const username = resolveUsernameFromSid(sid);
+  if (!username) return res.status(401).json({ ok: false });
+  const bouille = bouilleOf(users[username], username);
+  res.json({ ok: true, fbouille: bouille });
+});
+
 app.get('/login', (req, res) => {
   res.sendFile(LOGIN_PAGE_PATH);
 });

@@ -318,7 +318,19 @@
                 const urlParams = new URLSearchParams(window.location.search);
 
                 const sid = urlParams.get("sid") || "";
-                const s = normalizeAvatarState(urlParams.get("s") || "000000000000000000000000");
+                // Fetch the user's saved bouille from the server so refreshes
+                // never silently revert to the URL/default value.
+                let savedBouille = "";
+                try {
+                    const r = await fetch("/api/me/bouille?sid=" + encodeURIComponent(sid));
+                    if (r.ok) {
+                        const data = await r.json();
+                        if (data && data.fbouille) savedBouille = String(data.fbouille);
+                    }
+                } catch (err) {
+                    console.warn("[Ruffle] bouille fetch failed:", err);
+                }
+                const s = normalizeAvatarState(savedBouille || urlParams.get("s") || "000000000000000000000000");
                 const e = normalizeExpression(urlParams.get("e") || "0");
 
                 console.log("[Ruffle] sid =", sid);
