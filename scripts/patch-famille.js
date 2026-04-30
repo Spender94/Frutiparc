@@ -243,7 +243,16 @@ function buildInjection() {
 
   off = opcode(buf, off, 0x4f); // SetMember: FEMC.setColor = function
 
-  // ── 4. apply(_root.s) ──
+  // ── 4. gotoAndStop("end") — jump to the frame with real content ──
+  // ActionGoToLabel "end"
+  buf.writeUInt8(0x8c, off); off++;
+  buf.writeUInt16LE(4, off); off += 2; // length = 4 ("end" + \0)
+  buf.write('end', off, 'ascii'); off += 3;
+  buf.writeUInt8(0x00, off); off++;
+  // ActionStop
+  off = opcode(buf, off, 0x07);
+
+  // ── 5. apply(_root.s) ──
   off = pushString(buf, off, 's');
   off = opcode(buf, off, 0x1c); // GetVariable → _root.s
   off = pushInt(buf, off, 1);     // 1 argument
