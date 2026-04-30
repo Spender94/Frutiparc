@@ -17,6 +17,26 @@
             width: 1920px;
             height: 1080px;
         }
+
+        #forum-btn {
+            position: fixed;
+            bottom: 18px;
+            right: 18px;
+            z-index: 9999;
+            background: #7ec43c;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 18px;
+            font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            transition: background 0.15s, transform 0.05s;
+        }
+        #forum-btn:hover { background: #6cb22a; }
+        #forum-btn:active { transform: translateY(1px); }
     </style>
 
     <script>
@@ -37,6 +57,7 @@
 </head>
 <body>
     <div id="player-container"></div>
+    <button id="forum-btn" onclick="openForum()">Forum</button>
 
     <script>
         (function () {
@@ -286,6 +307,12 @@
                 if (!Number.isFinite(n)) return "0";
                 return String(Math.max(0, Math.min(12, Math.floor(n))));
             }
+
+            window.openForum = function () {
+                var sid = new URLSearchParams(window.location.search).get("sid") || "";
+                var url = "/fb/?sid=" + encodeURIComponent(sid);
+                window.open(url, "frutiparc_forum", "width=860,height=640,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no");
+            };
 
             window.addEventListener("DOMContentLoaded", async () => {
                 const urlParams = new URLSearchParams(window.location.search);
