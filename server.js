@@ -3980,6 +3980,7 @@ app.get('/api/forum/board/:id', async (req, res) => {
     const { topics, total } = await db.forumGetTopics(boardId, page, 25);
     const topicsOut = topics.map(t => ({
       id: t.id, title: t.title, author: t.author_username,
+      authorBouille: bouilleOf(users[t.author_username], t.author_username),
       isSticky: t.is_sticky, isLocked: t.is_locked,
       viewCount: t.view_count, replyCount: Number(t.reply_count),
       lastPostAt: t.last_post_at, lastPostBy: t.last_post_by,
