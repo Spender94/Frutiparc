@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// Patches famille*.swf files to be self-contained bouille renderers.
+// Patches famille*.swf files by inserting a NEW DoAction tag on frame 2
+// (labeled "end") that calls apply(_root.s) + stop().
 //
-// Injects inside the existing DoAction body (before ActionEnd):
-//   1. _global.generalPalette — 53-entry color palette array
-//   2. _global.colorSet — color shade tables
-//   3. FEMC class with setColor method
-//   4. apply(_root.s) call
+// The famille SWFs have 2 frames:
+//   Frame 1: placeholder + function definitions (apply, decode62, etc.)
+//   Frame 2: real bouille content (labeled "end")
 //
-// IMPORTANT: Does NOT inject decode62 — the famille SWFs already define
-// String.prototype.decode62 internally.
+// Instead of trying to gotoAndStop("end") from frame 1 (which Ruffle
+// doesn't support mid-script), we let the SWF play naturally to frame 2
+// and execute apply(s) there.
 
 const fs = require('fs');
 const path = require('path');
@@ -58,11 +58,9 @@ function pushInt(buf, off, n) {
 }
 
 function pushMulti(buf, off, items) {
-  // Batch multiple pushes into a single ActionPush
-  const startOff = off;
   buf.writeUInt8(0x96, off); off++;
   const lenOff = off;
-  off += 2; // placeholder for length
+  off += 2;
   const payloadStart = off;
   for (const item of items) {
     if (typeof item === 'string') {
@@ -83,326 +81,186 @@ function opcode(buf, off, op) {
   return off + 1;
 }
 
-// ── Build MINIMAL injection (trace + gotoAndStop + apply only) ────────
-function buildInjection() {
-  const buf = Buffer.alloc(4096);
-  let off = 0;
-
-  // trace("INJECT-START")
-  off = pushString(buf, off, 'INJECT-START');
-  off = opcode(buf, off, 0x26); // Trace
-
-  // _root.gotoAndStop("end")
-  off = pushString(buf, off, 'end');
-  off = pushInt(buf, off, 1);
-  off = pushString(buf, off, '_root');
-  off = opcode(buf, off, 0x1c); // GetVariable
-  off = pushString(buf, off, 'gotoAndStop');
-  off = opcode(buf, off, 0x52); // CallMethod
-  off = opcode(buf, off, 0x17); // Pop
-
-  // trace("INJECT-FRAME=" + _root._currentframe)
-  off = pushString(buf, off, 'INJECT-FRAME=');
-  off = pushString(buf, off, '_root');
-  off = opcode(buf, off, 0x1c);
-  off = pushString(buf, off, '_currentframe');
-  off = opcode(buf, off, 0x4e); // GetMember
-  off = opcode(buf, off, 0x47); // Add2
-  off = opcode(buf, off, 0x26); // Trace
-
-  // trace("INJECT-S=" + s)
-  off = pushString(buf, off, 'INJECT-S=');
-  off = pushString(buf, off, 's');
-  off = opcode(buf, off, 0x1c); // GetVariable
-  off = opcode(buf, off, 0x47); // Add2
-  off = opcode(buf, off, 0x26); // Trace
-
-  // apply(s)
-  off = pushString(buf, off, 's');
-  off = opcode(buf, off, 0x1c); // GetVariable
-  off = pushInt(buf, off, 1);
-  off = pushString(buf, off, 'apply');
-  off = opcode(buf, off, 0x3d); // CallFunction
-  off = opcode(buf, off, 0x17); // Pop
-
-  // trace("INJECT-DONE")
-  off = pushString(buf, off, 'INJECT-DONE');
-  off = opcode(buf, off, 0x26); // Trace
-
-  return buf.slice(0, off);
-}
-
-/*
-// ── Full injection with palette/FEMC (disabled for debugging) ─────────
-function buildInjection_FULL() {
+// ── Build the frame-2 DoAction body ───────────────────────────────────
+function buildFrame2Action() {
   const buf = Buffer.alloc(16384);
   let off = 0;
 
-  // ── 1. _global.generalPalette = [ {r:N, g:N, b:N}, ... ] ──
+  // trace("F2-INJECT-START")
+  off = pushString(buf, off, 'F2-INJECT-START');
+  off = opcode(buf, off, 0x26); // Trace
+
+  // ── 1. _global.generalPalette ──
   off = pushString(buf, off, '_global');
   off = opcode(buf, off, 0x1c); // GetVariable
-
   off = pushString(buf, off, 'generalPalette');
-
-  // Build each palette entry as InitObject
   for (const [r, g, b] of GENERAL_PALETTE) {
     off = pushMulti(buf, off, ['r', r, 'g', g, 'b', b, 3]);
     off = opcode(buf, off, 0x43); // InitObject
   }
-
-  // InitArray with GENERAL_PALETTE.length entries
   off = pushInt(buf, off, GENERAL_PALETTE.length);
   off = opcode(buf, off, 0x42); // InitArray
+  off = opcode(buf, off, 0x4f); // SetMember
 
-  off = opcode(buf, off, 0x4f); // SetMember: _global.generalPalette = [...]
-
-  // ── 2. _global.colorSet = { white:{...}, green:{...}, ... } ──
+  // ── 2. _global.colorSet ──
   off = pushString(buf, off, '_global');
-  off = opcode(buf, off, 0x1c); // GetVariable
-
+  off = opcode(buf, off, 0x1c);
   off = pushString(buf, off, 'colorSet');
-
   const colorNames = Object.keys(COLOR_SET);
   for (const colorName of colorNames) {
     const shades = COLOR_SET[colorName];
-    // Build shade object: {lightest:V, lighter:V, ..., int:9} → InitObject
     const items = [];
     for (let i = 0; i < SHADE_NAMES.length; i++) {
       items.push(SHADE_NAMES[i], shades[i]);
     }
-    items.push(9); // property count
+    items.push(9);
     off = pushMulti(buf, off, [colorName]);
     off = pushMulti(buf, off, items);
     off = opcode(buf, off, 0x43); // InitObject
   }
-
   off = pushInt(buf, off, colorNames.length);
-  off = opcode(buf, off, 0x43); // InitObject (the outer colorSet)
-
-  off = opcode(buf, off, 0x4f); // SetMember: _global.colorSet = {...}
-
-  // ── 3. FEMC = { setColor: function(mc, colorObj) { ... } } ──
-  //
-  // _global.FEMC = {};
-  off = pushString(buf, off, '_global');
-  off = opcode(buf, off, 0x1c); // GetVariable
-  off = pushMulti(buf, off, ['FEMC', 0]);
-  off = opcode(buf, off, 0x43); // InitObject → {}
+  off = opcode(buf, off, 0x43); // InitObject
   off = opcode(buf, off, 0x4f); // SetMember
 
-  // _global.FEMC.setColor = function(mc, colorObj) {
-  //   var c = new Color(mc);
-  //   c.setTransform({ra:0, ga:0, ba:0, rb:colorObj.r, gb:colorObj.g, bb:colorObj.b});
-  // };
+  // ── 3. FEMC.setColor ──
   off = pushString(buf, off, '_global');
-  off = opcode(buf, off, 0x1c); // GetVariable
+  off = opcode(buf, off, 0x1c);
+  off = pushMulti(buf, off, ['FEMC', 0]);
+  off = opcode(buf, off, 0x43); // InitObject → {}
+  off = opcode(buf, off, 0x4f); // SetMember: _global.FEMC = {}
+
+  off = pushString(buf, off, '_global');
+  off = opcode(buf, off, 0x1c);
   off = pushString(buf, off, 'FEMC');
   off = opcode(buf, off, 0x4e); // GetMember → _global.FEMC
-
   off = pushString(buf, off, 'setColor');
 
-  // DefineFunction2 "" (anonymous, 2 params: r1=mc, r2=colorObj)
+  // DefineFunction2 ""(r1:mc, r2:colorObj) { new Color(mc).setTransform({...}) }
   const funcHeaderOff = off;
   buf.writeUInt8(0x8e, off); off++;
-  const funcLenOff = off;
-  off += 2; // placeholder for header length
+  const funcLenOff = off; off += 2;
   const funcHeaderStart = off;
-
-  buf.writeUInt8(0x00, off); off++; // empty name (anonymous)
+  buf.writeUInt8(0x00, off); off++; // empty name
   buf.writeUInt16LE(2, off); off += 2; // 2 params
   buf.writeUInt8(4, off); off++; // 4 registers
-  buf.writeUInt16LE(0x00, off); off += 2; // flags: none (no preloads)
-
-  // param 1: register 1 = "mc"
-  buf.writeUInt8(1, off); off++;
-  buf.write('mc', off, 'ascii'); off += 2;
-  buf.writeUInt8(0x00, off); off++;
-
-  // param 2: register 2 = "colorObj"
-  buf.writeUInt8(2, off); off++;
-  buf.write('colorObj', off, 'ascii'); off += 8;
-  buf.writeUInt8(0x00, off); off++;
-
-  const codeSizeOff = off;
-  off += 2; // placeholder for code size
-
-  buf.writeUInt16LE(off - funcHeaderStart, funcLenOff); // header length
+  buf.writeUInt16LE(0x00, off); off += 2; // flags
+  buf.writeUInt8(1, off); off++; buf.write('mc', off, 'ascii'); off += 2; buf.writeUInt8(0x00, off); off++;
+  buf.writeUInt8(2, off); off++; buf.write('colorObj', off, 'ascii'); off += 8; buf.writeUInt8(0x00, off); off++;
+  const codeSizeOff = off; off += 2;
+  buf.writeUInt16LE(off - funcHeaderStart, funcLenOff);
   const funcBodyStart = off;
 
-  // Function body:
-  // Push reg1 (mc), int:1, "Color"
+  // new Color(mc) → r3
   buf.writeUInt8(0x96, off); off++;
   buf.writeUInt16LE(2 + 5 + 7, off); off += 2;
-  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(1, off); off++; // reg1
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(1, off); off++; // reg1 (mc)
   buf.writeUInt8(0x07, off); off++; buf.writeInt32LE(1, off); off += 4; // int:1
-  buf.writeUInt8(0x00, off); off++; buf.write('Color', off, 'ascii'); off += 5; buf.writeUInt8(0x00, off); off++; // "Color"
-  // NewObject → new Color(mc)
-  off = opcode(buf, off, 0x40);
-  // StoreRegister r3
-  buf.writeUInt8(0x87, off); off++;
-  buf.writeUInt16LE(1, off); off += 2;
-  buf.writeUInt8(3, off); off++;
-  // Pop
-  off = opcode(buf, off, 0x17);
+  buf.writeUInt8(0x00, off); off++; buf.write('Color', off, 'ascii'); off += 5; buf.writeUInt8(0x00, off); off++;
+  off = opcode(buf, off, 0x40); // NewObject
+  buf.writeUInt8(0x87, off); off++; buf.writeUInt16LE(1, off); off += 2; buf.writeUInt8(3, off); off++; // StoreRegister r3
+  off = opcode(buf, off, 0x17); // Pop
 
-  // Build transform object: {ra:0, ga:0, ba:0, rb:colorObj.r, gb:colorObj.g, bb:colorObj.b}
-  // Push "ra", 0, "ga", 0, "ba", 0
+  // Build {ra:0, ga:0, ba:0, rb:colorObj.r, gb:colorObj.g, bb:colorObj.b}
   off = pushMulti(buf, off, ['ra', 0, 'ga', 0, 'ba', 0]);
-
-  // Push "rb" then get colorObj.r
   off = pushString(buf, off, 'rb');
-  // Push reg2 (colorObj), "r"
-  buf.writeUInt8(0x96, off); off++;
-  buf.writeUInt16LE(2 + 2, off); off += 2;
-  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++; // reg2
-  buf.writeUInt8(0x00, off); off++; buf.write('r', off, 'ascii'); off++; buf.writeUInt8(0x00, off); off++; // "r"
-  off = opcode(buf, off, 0x4e); // GetMember → colorObj.r
-
-  // Push "gb" then get colorObj.g
+  buf.writeUInt8(0x96, off); off++; buf.writeUInt16LE(4, off); off += 2;
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++;
+  buf.writeUInt8(0x00, off); off++; buf.write('r', off, 'ascii'); off++; buf.writeUInt8(0x00, off); off++;
+  off = opcode(buf, off, 0x4e); // GetMember
   off = pushString(buf, off, 'gb');
-  buf.writeUInt8(0x96, off); off++;
-  buf.writeUInt16LE(2 + 2, off); off += 2;
-  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++; // reg2
-  buf.writeUInt8(0x00, off); off++; buf.write('g', off, 'ascii'); off++; buf.writeUInt8(0x00, off); off++; // "g"
-  off = opcode(buf, off, 0x4e); // GetMember → colorObj.g
-
-  // Push "bb" then get colorObj.b
+  buf.writeUInt8(0x96, off); off++; buf.writeUInt16LE(4, off); off += 2;
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++;
+  buf.writeUInt8(0x00, off); off++; buf.write('g', off, 'ascii'); off++; buf.writeUInt8(0x00, off); off++;
+  off = opcode(buf, off, 0x4e);
   off = pushString(buf, off, 'bb');
-  buf.writeUInt8(0x96, off); off++;
-  buf.writeUInt16LE(2 + 2, off); off += 2;
-  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++; // reg2
-  buf.writeUInt8(0x00, off); off++; buf.write('b', off, 'ascii'); off++; buf.writeUInt8(0x00, off); off++; // "b"
-  off = opcode(buf, off, 0x4e); // GetMember → colorObj.b
-
-  // InitObject with 6 properties
+  buf.writeUInt8(0x96, off); off++; buf.writeUInt16LE(4, off); off += 2;
+  buf.writeUInt8(0x04, off); off++; buf.writeUInt8(2, off); off++;
+  buf.writeUInt8(0x00, off); off++; buf.write('b', off, 'ascii'); off++; buf.writeUInt8(0x00, off); off++;
+  off = opcode(buf, off, 0x4e);
   off = pushInt(buf, off, 6);
-  off = opcode(buf, off, 0x43); // InitObject → {ra:0, ga:0, ba:0, rb:r, gb:g, bb:b}
+  off = opcode(buf, off, 0x43); // InitObject
 
-  // CallMethod: r3.setTransform(transformObj)
-  // Stack: [transformObj, int:1, r3, "setTransform"]
-  buf.writeUInt8(0x96, off); off++;
-  buf.writeUInt16LE(5 + 2, off); off += 2;
+  // r3.setTransform(obj)
+  buf.writeUInt8(0x96, off); off++; buf.writeUInt16LE(7, off); off += 2;
   buf.writeUInt8(0x07, off); off++; buf.writeInt32LE(1, off); off += 4; // int:1
   buf.writeUInt8(0x04, off); off++; buf.writeUInt8(3, off); off++; // reg3
   off = pushString(buf, off, 'setTransform');
   off = opcode(buf, off, 0x52); // CallMethod
   off = opcode(buf, off, 0x17); // Pop
 
-  const funcBodyEnd = off;
-  buf.writeUInt16LE(funcBodyEnd - funcBodyStart, codeSizeOff);
+  buf.writeUInt16LE(off - funcBodyStart, codeSizeOff);
+  off = opcode(buf, off, 0x4f); // SetMember: FEMC.setColor = func
 
-  off = opcode(buf, off, 0x4f); // SetMember: FEMC.setColor = function
-
-  // ── 4. trace + gotoAndStop("end") + apply(_root.s) ──
-
-  // trace("INJECT: s=" + _root.s)
-  off = pushString(buf, off, 'INJECT: s=');
+  // ── 4. apply(s) ──
   off = pushString(buf, off, 's');
   off = opcode(buf, off, 0x1c); // GetVariable → _root.s
-  off = opcode(buf, off, 0x47); // Add2 → "INJECT: s=" + s
-  off = opcode(buf, off, 0x26); // Trace
-
-  // _root.gotoAndStop("end")  — method call instead of ActionGoToLabel
-  off = pushString(buf, off, 'end');    // arg: "end"
-  off = pushInt(buf, off, 1);           // nargs: 1
-  off = pushString(buf, off, '_root');
-  off = opcode(buf, off, 0x1c);         // GetVariable → _root
-  off = pushString(buf, off, 'gotoAndStop');
-  off = opcode(buf, off, 0x52);         // CallMethod → _root.gotoAndStop("end")
-  off = opcode(buf, off, 0x17);         // Pop
-
-  // trace("INJECT: after gotoAndStop, _currentframe=" + _root._currentframe)
-  off = pushString(buf, off, 'INJECT: frame=');
-  off = pushString(buf, off, '_root');
-  off = opcode(buf, off, 0x1c); // GetVariable
-  off = pushString(buf, off, '_currentframe');
-  off = opcode(buf, off, 0x4e); // GetMember
-  off = opcode(buf, off, 0x47); // Add2
-  off = opcode(buf, off, 0x26); // Trace
-
-  // apply(_root.s)
-  off = pushString(buf, off, 's');
-  off = opcode(buf, off, 0x1c); // GetVariable → _root.s
-  off = pushInt(buf, off, 1);     // 1 argument
+  off = pushInt(buf, off, 1);
   off = pushString(buf, off, 'apply');
   off = opcode(buf, off, 0x3d); // CallFunction
   off = opcode(buf, off, 0x17); // Pop
 
-  // trace("INJECT: after apply, done")
-  off = pushString(buf, off, 'INJECT: apply done');
+  // ── 5. stop() ──
+  off = opcode(buf, off, 0x07); // ActionStop
+
+  // trace("F2-INJECT-DONE")
+  off = pushString(buf, off, 'F2-INJECT-DONE');
   off = opcode(buf, off, 0x26); // Trace
+
+  // ActionEnd
+  off = opcode(buf, off, 0x00);
 
   return buf.slice(0, off);
 }
-*/
 
-// ── SWF patching ──────────────────────────────────────────────────────
+// ── SWF patching (insert DoAction on frame 2) ────────────────────────
 function patchSwf(inputPath, outputPath) {
   const buf = fs.readFileSync(inputPath);
   const sig = buf.slice(0, 3).toString('ascii');
-  if (sig !== 'CWS' && sig !== 'FWS') {
-    throw new Error(`Unsupported SWF format: ${sig}`);
-  }
+  if (sig !== 'CWS' && sig !== 'FWS') throw new Error(`Unsupported: ${sig}`);
   const version = buf[3];
-  let body;
-  if (sig === 'CWS') {
-    body = zlib.inflateSync(buf.slice(8));
-  } else {
-    body = buf.slice(8);
-  }
+  let body = sig === 'CWS' ? zlib.inflateSync(buf.slice(8)) : Buffer.from(buf.slice(8));
 
   const nbits = (body[0] >> 3) & 0x1f;
-  const rectBits = 5 + nbits * 4;
-  const rectBytes = Math.ceil(rectBits / 8);
+  const rectBytes = Math.ceil((5 + nbits * 4) / 8);
   let off = rectBytes + 4;
 
-  let doActionOff = -1;
-  let doActionHeaderSize = 0;
-  let doActionBodyLen = 0;
+  // Find the LAST ShowFrame tag — that's the end of frame 2
+  let lastShowFrameOff = -1;
+  let showFrameCount = 0;
   while (off < body.length) {
     const tagHeader = body.readUInt16LE(off);
     const tagCode = tagHeader >> 6;
     let tagLen = tagHeader & 0x3f;
     let headerSize = 2;
-    if (tagLen === 0x3f) {
-      tagLen = body.readUInt32LE(off + 2);
-      headerSize = 6;
-    }
+    if (tagLen === 0x3f) { tagLen = body.readUInt32LE(off + 2); headerSize = 6; }
     if (tagCode === 0) break;
-    if (tagCode === 12) {
-      doActionOff = off;
-      doActionHeaderSize = headerSize;
-      doActionBodyLen = tagLen;
-      break;
+    if (tagCode === 1) {
+      showFrameCount++;
+      lastShowFrameOff = off;
     }
     off += headerSize + tagLen;
   }
-  if (doActionOff < 0) {
-    throw new Error(`No DoAction tag found in ${inputPath}`);
+
+  if (showFrameCount < 1 || lastShowFrameOff < 0) {
+    throw new Error(`Expected 1+ ShowFrames, found ${showFrameCount} in ${inputPath}`);
   }
 
-  const bodyStart = doActionOff + doActionHeaderSize;
-  const bodyEnd = bodyStart + doActionBodyLen;
+  console.log(`  ${path.basename(inputPath)}: inserting DoAction before ShowFrame #${showFrameCount} at ${lastShowFrameOff}`);
 
-  if (body[bodyEnd - 1] !== 0x00) {
-    throw new Error(`DoAction body does not end with ActionEnd (0x00) in ${inputPath}`);
-  }
+  // Build the DoAction tag to insert
+  const actionBody = buildFrame2Action();
+  const doActionTag = Buffer.alloc(6 + actionBody.length);
+  // Long-form tag header: code=12, length as UI32
+  doActionTag.writeUInt16LE((12 << 6) | 0x3f, 0);
+  doActionTag.writeUInt32LE(actionBody.length, 2);
+  actionBody.copy(doActionTag, 6);
 
-  const injection = buildInjection();
-  const insertPos = bodyEnd - 1; // before final ActionEnd
-
+  // Insert before the last ShowFrame
   const newBody = Buffer.concat([
-    body.slice(0, insertPos),
-    injection,
-    body.slice(insertPos),
+    body.slice(0, lastShowFrameOff),
+    doActionTag,
+    body.slice(lastShowFrameOff)
   ]);
-
-  const newBodyLen = doActionBodyLen + injection.length;
-  if (doActionHeaderSize === 6) {
-    newBody.writeUInt32LE(newBodyLen, doActionOff + 2);
-  } else {
-    throw new Error(`Unexpected short-form DoAction in ${inputPath}`);
-  }
 
   const newFileLen = 8 + newBody.length;
   const compressed = zlib.deflateSync(newBody);
@@ -413,7 +271,7 @@ function patchSwf(inputPath, outputPath) {
   compressed.copy(out, 8);
 
   fs.writeFileSync(outputPath, out);
-  return { insertedAt: insertPos, addedBytes: injection.length, newSize: out.length };
+  return { tagSize: doActionTag.length, newSize: out.length };
 }
 
 const inDir = path.resolve(__dirname, '..', 'public', 'fbouille');
@@ -424,8 +282,8 @@ const files = fs.readdirSync(inDir).filter(f => /^famille\d+\.swf$/.test(f));
 for (const f of files) {
   try {
     const r = patchSwf(path.join(inDir, f), path.join(outDir, f));
-    console.log(`patched ${f} -> ${path.join(outDir, f)} (inserted ${r.addedBytes} bytes at ${r.insertedAt}, new size ${r.newSize})`);
+    console.log(`  patched → ${f} (DoAction tag ${r.tagSize} bytes, total ${r.newSize})`);
   } catch (e) {
-    console.error(`SKIP ${f}: ${e.message}`);
+    console.error(`  SKIP ${f}: ${e.message}`);
   }
 }
