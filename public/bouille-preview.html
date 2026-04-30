@@ -72,6 +72,24 @@
     if (d) d.textContent += msg + "\n";
   }
 
+  // Capture Ruffle trace() output
+  var origLog = console.log;
+  var origWarn = console.warn;
+  console.log = function() {
+    var msg = Array.prototype.join.call(arguments, " ");
+    if (msg.indexOf("INJECT:") >= 0 || msg.indexOf("trace:") >= 0) {
+      log("TRACE: " + msg);
+    }
+    origLog.apply(console, arguments);
+  };
+  console.warn = function() {
+    var msg = Array.prototype.join.call(arguments, " ");
+    if (msg.indexOf("INJECT:") >= 0 || msg.indexOf("trace:") >= 0 || msg.indexOf("Error") >= 0 || msg.indexOf("error") >= 0) {
+      log("WARN: " + msg);
+    }
+    origWarn.apply(console, arguments);
+  };
+
   window.addEventListener("DOMContentLoaded", async function () {
     var familyId = decode62(state.substring(0, 2));
     log("state=" + state + " familyId=" + familyId + " mode=" + mode);

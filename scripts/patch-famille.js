@@ -243,22 +243,44 @@ function buildInjection() {
 
   off = opcode(buf, off, 0x4f); // SetMember: FEMC.setColor = function
 
-  // ── 4. gotoAndStop("end") — jump to the frame with real content ──
-  // ActionGoToLabel "end"
-  buf.writeUInt8(0x8c, off); off++;
-  buf.writeUInt16LE(4, off); off += 2; // length = 4 ("end" + \0)
-  buf.write('end', off, 'ascii'); off += 3;
-  buf.writeUInt8(0x00, off); off++;
-  // ActionStop
-  off = opcode(buf, off, 0x07);
+  // ── 4. trace + gotoAndStop("end") + apply(_root.s) ──
 
-  // ── 5. apply(_root.s) ──
+  // trace("INJECT: s=" + _root.s)
+  off = pushString(buf, off, 'INJECT: s=');
+  off = pushString(buf, off, 's');
+  off = opcode(buf, off, 0x1c); // GetVariable → _root.s
+  off = opcode(buf, off, 0x47); // Add2 → "INJECT: s=" + s
+  off = opcode(buf, off, 0x26); // Trace
+
+  // _root.gotoAndStop("end")  — method call instead of ActionGoToLabel
+  off = pushString(buf, off, 'end');    // arg: "end"
+  off = pushInt(buf, off, 1);           // nargs: 1
+  off = pushString(buf, off, '_root');
+  off = opcode(buf, off, 0x1c);         // GetVariable → _root
+  off = pushString(buf, off, 'gotoAndStop');
+  off = opcode(buf, off, 0x52);         // CallMethod → _root.gotoAndStop("end")
+  off = opcode(buf, off, 0x17);         // Pop
+
+  // trace("INJECT: after gotoAndStop, _currentframe=" + _root._currentframe)
+  off = pushString(buf, off, 'INJECT: frame=');
+  off = pushString(buf, off, '_root');
+  off = opcode(buf, off, 0x1c); // GetVariable
+  off = pushString(buf, off, '_currentframe');
+  off = opcode(buf, off, 0x4e); // GetMember
+  off = opcode(buf, off, 0x47); // Add2
+  off = opcode(buf, off, 0x26); // Trace
+
+  // apply(_root.s)
   off = pushString(buf, off, 's');
   off = opcode(buf, off, 0x1c); // GetVariable → _root.s
   off = pushInt(buf, off, 1);     // 1 argument
   off = pushString(buf, off, 'apply');
   off = opcode(buf, off, 0x3d); // CallFunction
   off = opcode(buf, off, 0x17); // Pop
+
+  // trace("INJECT: after apply, done")
+  off = pushString(buf, off, 'INJECT: apply done');
+  off = opcode(buf, off, 0x26); // Trace
 
   return buf.slice(0, off);
 }
