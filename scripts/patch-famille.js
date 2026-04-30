@@ -78,6 +78,11 @@ function buildApplyTag() {
   off = pushString(buf, off, 'apply');
   off = opcode(buf, off, 0x3d); // CallFunction
   off = opcode(buf, off, 0x17); // Pop
+  // endAnim() — stops the talking animation
+  off = pushInt(buf, off, 0);
+  off = pushString(buf, off, 'endAnim');
+  off = opcode(buf, off, 0x3d); // CallFunction
+  off = opcode(buf, off, 0x17); // Pop
   // stop()
   off = opcode(buf, off, 0x07);
   // trace("APPLY-DONE")
