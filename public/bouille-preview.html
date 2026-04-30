@@ -68,7 +68,12 @@
   var famId = explicitFam !== null && explicitFam !== ""
     ? Number(explicitFam)
     : decode62(state.substring(0, 2));
-  var swfUrl = "/fbouille/famille" + famId + ".swf";
+  // Use the patched famille SWFs in /fbouille_auto/. These are identical to
+  // the originals except they carry an extra DoAction that calls
+  // `apply(_root.s)` on frame 1, so the bouille customisation actually runs
+  // when the SWF is loaded standalone (without the Frutibouille wrapper from
+  // main.swf).
+  var swfUrl = "/fbouille_auto/famille" + famId + ".swf";
 
   window.addEventListener("DOMContentLoaded", async function () {
     try {
