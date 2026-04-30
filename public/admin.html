@@ -671,10 +671,25 @@ async function loadChallengeStatus() {
   try {
     const r = await fetch('/api/admin/challenge/status', { headers: hdr() });
     const d = await r.json();
-    let html = `<table style="max-width:500px;margin-bottom:16px">
+    const archiveDays = d.archiveDays || [];
+    const lastArchive = archiveDays[0] || '';
+    const yesterday = (() => {
+      const t = new Date();
+      t.setDate(t.getDate() - 1);
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(t);
+    })();
+    const archiveOk = lastArchive === yesterday;
+    const archiveColor = archiveOk ? '#27ae60' : '#e94560';
+    const archiveNote = archiveOk
+      ? '✓ archive d\'hier présente'
+      : `⚠ archive d'hier (${yesterday}) manquante — clique « Terminer le cycle » pour archiver les scores en cours sous ${yesterday}`;
+    let html = `<table style="max-width:600px;margin-bottom:16px">
       <tr><td>Aujourd'hui (Paris)</td><td><strong>${esc(d.today)}</strong></td></tr>
-      <tr><td>Dernier cycle terminé</td><td><strong>${esc(d.lastRollDay || 'jamais')}</strong></td></tr>
-    </table>`;
+      <tr><td>Hier (Paris)</td><td><strong>${esc(yesterday)}</strong></td></tr>
+      <tr><td>Dernier rollover effectué (lastRollDay)</td><td><strong>${esc(d.lastRollDay || 'jamais')}</strong></td></tr>
+      <tr><td>Dernier jour archivé</td><td><strong style="color:${archiveColor}">${esc(lastArchive || 'aucun')}</strong></td></tr>
+    </table>
+    <div style="font-size:12px;color:${archiveColor};margin-bottom:12px">${archiveNote}</div>`;
     $('#challenge-status').innerHTML = html;
 
     let scoresHtml = '';

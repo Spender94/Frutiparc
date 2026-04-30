@@ -890,10 +890,17 @@ function resetChallengeScoresInMemory() {
 async function rollDailyChallengeIfNeeded() {
   const today = parisDayKey();
   if (!challengeMedalsData.lastRollDay) {
-    challengeMedalsData.lastRollDay = today;
+    // No prior state. Two cases: (a) truly fresh install with no scores, or
+    // (b) the medals JSON file was lost (redeploy with ephemeral data dir,
+    // corruption, etc.) and we have stranded in-memory/DB scores from a
+    // previous day. Setting lastRollDay = today would silently skip the
+    // roll and leave the stranded scores under "today" forever.
+    // Instead, set lastRollDay = yesterday so the next phase performs a
+    // proper roll: scores get archived under yesterday (best guess), or
+    // the archive INSERT is a no-op when there are no scores.
+    challengeMedalsData.lastRollDay = yesterdayParisDayKey();
     saveChallengeMedals();
-    console.log(`[CHALLENGE] First boot — set lastRollDay=${today}, no roll`);
-    return;
+    console.log(`[CHALLENGE] No prior state — seeded lastRollDay=${challengeMedalsData.lastRollDay} (yesterday) so any stranded scores get archived on the next roll.`);
   }
   if (challengeMedalsData.lastRollDay === today) return;
   await performChallengeRoll(today);
