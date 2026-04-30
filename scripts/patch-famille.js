@@ -83,9 +83,59 @@ function opcode(buf, off, op) {
   return off + 1;
 }
 
-// ── Build injection bytecode ──────────────────────────────────────────
+// ── Build MINIMAL injection (trace + gotoAndStop + apply only) ────────
 function buildInjection() {
-  const buf = Buffer.alloc(16384); // generous allocation
+  const buf = Buffer.alloc(4096);
+  let off = 0;
+
+  // trace("INJECT-START")
+  off = pushString(buf, off, 'INJECT-START');
+  off = opcode(buf, off, 0x26); // Trace
+
+  // _root.gotoAndStop("end")
+  off = pushString(buf, off, 'end');
+  off = pushInt(buf, off, 1);
+  off = pushString(buf, off, '_root');
+  off = opcode(buf, off, 0x1c); // GetVariable
+  off = pushString(buf, off, 'gotoAndStop');
+  off = opcode(buf, off, 0x52); // CallMethod
+  off = opcode(buf, off, 0x17); // Pop
+
+  // trace("INJECT-FRAME=" + _root._currentframe)
+  off = pushString(buf, off, 'INJECT-FRAME=');
+  off = pushString(buf, off, '_root');
+  off = opcode(buf, off, 0x1c);
+  off = pushString(buf, off, '_currentframe');
+  off = opcode(buf, off, 0x4e); // GetMember
+  off = opcode(buf, off, 0x47); // Add2
+  off = opcode(buf, off, 0x26); // Trace
+
+  // trace("INJECT-S=" + s)
+  off = pushString(buf, off, 'INJECT-S=');
+  off = pushString(buf, off, 's');
+  off = opcode(buf, off, 0x1c); // GetVariable
+  off = opcode(buf, off, 0x47); // Add2
+  off = opcode(buf, off, 0x26); // Trace
+
+  // apply(s)
+  off = pushString(buf, off, 's');
+  off = opcode(buf, off, 0x1c); // GetVariable
+  off = pushInt(buf, off, 1);
+  off = pushString(buf, off, 'apply');
+  off = opcode(buf, off, 0x3d); // CallFunction
+  off = opcode(buf, off, 0x17); // Pop
+
+  // trace("INJECT-DONE")
+  off = pushString(buf, off, 'INJECT-DONE');
+  off = opcode(buf, off, 0x26); // Trace
+
+  return buf.slice(0, off);
+}
+
+/*
+// ── Full injection with palette/FEMC (disabled for debugging) ─────────
+function buildInjection_FULL() {
+  const buf = Buffer.alloc(16384);
   let off = 0;
 
   // ── 1. _global.generalPalette = [ {r:N, g:N, b:N}, ... ] ──
@@ -284,6 +334,7 @@ function buildInjection() {
 
   return buf.slice(0, off);
 }
+*/
 
 // ── SWF patching ──────────────────────────────────────────────────────
 function patchSwf(inputPath, outputPath) {
