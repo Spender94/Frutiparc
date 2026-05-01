@@ -18,7 +18,7 @@
     border-radius: 7px;
     overflow: hidden;
     padding: 6px;
-    border: 1.5px solid #2E3C1E;
+    border: 1.125px solid #2E3C1E;
     box-shadow: inset 0 0 0 1px #DEDEDF;
   }
   a { color: #2C4A0F; text-decoration: none; }
@@ -757,16 +757,6 @@ function bouilleSelHtml(formId) {
   html += getBouillePreviewHtml(myBouille);
   html += '</div>';
   html += '<div class="bouille-options">';
-
-  html += '<div class="bouille-option-group">';
-  html += '<label>Expression :</label>';
-  html += '<div class="expression-grid">';
-  for (var i = 0; i < EXPRESSIONS.length; i++) {
-    var e = EXPRESSIONS[i];
-    var cls = e.id === 0 ? 'expr-btn active' : 'expr-btn';
-    html += '<button type="button" class="' + cls + '" data-id="' + e.id + '" onclick="bouilleSetExpression(\'' + formId + '\',' + e.id + ')">' + escapeHtml(e.name) + '</button>';
-  }
-  html += '</div></div>';
 
   html += '<div class="bouille-option-group">';
   html += '<label>Accessoires :</label>';

@@ -34,7 +34,10 @@ function readSwfBody(filePath) {
 // Verified offsets via tag-walker:
 //   Main DoAction:    tag @131, hdr 6, body @137, len 8461
 //                     init() call begins at body offset (8539-137)=8402
-//   DoInitAction (sprite 3): tag @8668, hdr 6, sprite ID @8674, action body @8676, len 5994
+//   DoInitAction (sprite 3, FEMC):     tag @8668,  body @8676,  len 5994
+//   DoInitAction (sprite 4, MTNumber): tag @14721, body @14729, len 770
+//   DoInitAction (sprite 5, FENumber): tag @15543, body @15551, len 1674
+//   DoInitAction (sprite 6, FEObject): tag @17269, body @17277, len 693
 function extractLoaderChunks(loaderPath) {
   const body = readSwfBody(loaderPath);
   // Main DoAction body: keep [137, 8539), then append End (0x00)
@@ -42,9 +45,12 @@ function extractLoaderChunks(loaderPath) {
     body.slice(137, 8539),
     Buffer.from([0x00])
   ]);
-  // DoInitAction body: [8676, 14670) — already ends with End
-  const femcBytes = body.slice(8676, 14670);
-  return { setupBytes, femcBytes };
+  // DoInitAction bytecodes (skip 6-byte tag header + 2-byte sprite ID = 8 bytes from tag start)
+  const femcBytes     = body.slice(8676,  14670);
+  const mtnumberBytes = body.slice(14729, 15501);
+  const fenumberBytes = body.slice(15551, 17227);
+  const feobjectBytes = body.slice(17277, 17972);
+  return { setupBytes, femcBytes, mtnumberBytes, fenumberBytes, feobjectBytes };
 }
 
 // ── Bytecode helpers for the apply() trampoline ─────────────────────
@@ -298,12 +304,17 @@ function patchSwf(inputPath, outputPath, loaderChunks) {
     }
   }
 
-  // Build the three new DoAction tags
-  const setupTag = makeDoActionTag(loaderChunks.setupBytes);
-  const femcTag = makeDoActionTag(loaderChunks.femcBytes);
-  const applyTag = makeDoActionTag(buildApplyTag());
+  // Build the new DoAction tags. Order matters: setup first (defines _global
+  // utilities), then the engine classes (MTNumber → FENumber → FEObject →
+  // FEMC), finally the apply() trampoline.
+  const setupTag    = makeDoActionTag(loaderChunks.setupBytes);
+  const mtnumberTag = makeDoActionTag(loaderChunks.mtnumberBytes);
+  const fenumberTag = makeDoActionTag(loaderChunks.fenumberBytes);
+  const feobjectTag = makeDoActionTag(loaderChunks.feobjectBytes);
+  const femcTag     = makeDoActionTag(loaderChunks.femcBytes);
+  const applyTag    = makeDoActionTag(buildApplyTag());
 
-  const inserted = Buffer.concat([setupTag, femcTag, applyTag]);
+  const inserted = Buffer.concat([setupTag, mtnumberTag, fenumberTag, feobjectTag, femcTag, applyTag]);
 
   const newBody = Buffer.concat([
     body.slice(0, lastShowFrameOff),
@@ -320,19 +331,27 @@ function patchSwf(inputPath, outputPath, loaderChunks) {
   compressed.copy(out, 8);
 
   fs.writeFileSync(outputPath, out);
-  return { setupSize: setupTag.length, femcSize: femcTag.length, applySize: applyTag.length, newSize: out.length };
+  return {
+    setupSize: setupTag.length,
+    mtnumberSize: mtnumberTag.length,
+    fenumberSize: fenumberTag.length,
+    feobjectSize: feobjectTag.length,
+    femcSize: femcTag.length,
+    applySize: applyTag.length,
+    newSize: out.length,
+  };
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
 fs.mkdirSync(OUT_DIR, { recursive: true });
 const loaderChunks = extractLoaderChunks(LOADER_PATH);
-console.log(`Loader chunks: setup=${loaderChunks.setupBytes.length}B, femc=${loaderChunks.femcBytes.length}B`);
+console.log(`Loader chunks: setup=${loaderChunks.setupBytes.length}B, mtnumber=${loaderChunks.mtnumberBytes.length}B, fenumber=${loaderChunks.fenumberBytes.length}B, feobject=${loaderChunks.feobjectBytes.length}B, femc=${loaderChunks.femcBytes.length}B`);
 
 const files = fs.readdirSync(IN_DIR).filter(f => /^famille\d+\.swf$/.test(f));
 for (const f of files) {
   try {
     const r = patchSwf(path.join(IN_DIR, f), path.join(OUT_DIR, f), loaderChunks);
-    console.log(`  ${f}: setup=${r.setupSize} femc=${r.femcSize} apply=${r.applySize} → ${r.newSize}B`);
+    console.log(`  ${f}: setup=${r.setupSize} mt=${r.mtnumberSize} fenum=${r.fenumberSize} feo=${r.feobjectSize} femc=${r.femcSize} apply=${r.applySize} → ${r.newSize}B`);
   } catch (e) {
     console.error(`  SKIP ${f}: ${e.message}`);
   }
