@@ -162,6 +162,25 @@ function normalizeBouilleState(value) {
   return s;
 }
 
+const PROFANITY_REPLACEMENTS = [
+  [/\bcon\b/gi, 'blonk'],
+  [/\bconne\b/gi, 'blonk'],
+  [/\bputain\b/gi, 'margotton'],
+  [/\bpute\b/gi, 'ribaude'],
+  [/\bcontent\b/gi, 'youpi-banane'],
+  [/\bcontente\b/gi, 'youpi-banane'],
+  [/\bmignon\b/gi, 'youpi-framboise'],
+  [/\bmignonne\b/gi, 'youpi-framboise'],
+  [/\bserveur\b/gi, 'gros cube noir et lourd qui ventile fort'],
+];
+
+function censorProfanity(text) {
+  if (!text) return text;
+  let out = String(text);
+  for (const [re, repl] of PROFANITY_REPLACEMENTS) out = out.replace(re, repl);
+  return out;
+}
+
 const bouilleCache = {};
 
 function bouilleOf(user, username) {
@@ -4040,8 +4059,8 @@ app.post('/api/forum/topic', async (req, res) => {
   if (!username) return res.status(401).json({ error: 'auth_required' });
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
   const boardId = Number(req.body.boardId);
-  const title = String(req.body.title || '').trim();
-  const content = String(req.body.content || '').trim();
+  const title = censorProfanity(String(req.body.title || '').trim());
+  const content = censorProfanity(String(req.body.content || '').trim());
   const postBouille = req.body.bouille ? normalizeBouilleState(req.body.bouille) : null;
   if (!title || !content) return res.status(400).json({ error: 'title and content required' });
   if (title.length > 200) return res.status(400).json({ error: 'title too long' });
@@ -4056,7 +4075,7 @@ app.post('/api/forum/post', async (req, res) => {
   if (!username) return res.status(401).json({ error: 'auth_required' });
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
   const topicId = Number(req.body.topicId);
-  const content = String(req.body.content || '').trim();
+  const content = censorProfanity(String(req.body.content || '').trim());
   const postBouille = req.body.bouille ? normalizeBouilleState(req.body.bouille) : null;
   if (!content) return res.status(400).json({ error: 'content required' });
   try {
@@ -4072,7 +4091,7 @@ app.put('/api/forum/post/:id', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
-  const content = String(req.body.content || '').trim();
+  const content = censorProfanity(String(req.body.content || '').trim());
   if (!content) return res.status(400).json({ error: 'content required' });
   try {
     const { rows } = await db.pool.query('SELECT * FROM forum_posts WHERE id = $1', [req.params.id]);
@@ -5034,10 +5053,24 @@ function getMuteValue(user) {
   return raw.includes('.') ? raw.replace('.', ' ') : raw;
 }
 
-function getStatusCode(user) {
+function getStatusCode(user, username) {
   const muteVal = getMuteValue(user);
-  const emote = muteVal === '0000-00-00 00:00:00' ? 0 : 7;
-  return `${encode62(0, 1)}${encode62(0, 2)}${encode62(emote, 1)}`;
+  const muteEmote = muteVal === '0000-00-00 00:00:00' ? 0 : 7;
+  // Pull the live status (external/internal/emote) the user last broadcast.
+  // Fall back to all-zero when the user is offline or hasn't sent one yet.
+  let ext = 0, internal = 0, emote = muteEmote;
+  if (username) {
+    for (const [, cl] of xmlSocketClients) {
+      if (cl && cl.username === username && cl.statusStr) {
+        const s = cl.statusStr;
+        ext      = decode62(s.substring(0, 1)) || 0;
+        internal = decode62(s.substring(1, 3)) || 0;
+        if (muteEmote === 0) emote = decode62(s.substring(3, 4)) || 0;
+        break;
+      }
+    }
+  }
+  return `${encode62(ext, 1)}${encode62(internal, 2)}${encode62(emote, 1)}`;
 }
 
 function buildChannelListXml() {
@@ -5329,7 +5362,7 @@ case 'join': {
 
   for (const u of userArr) {
     const ud = users[u] || {};
-    userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+    userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
   }
 
   const timeAttrs = buildChatTimeAttrs();
@@ -5352,7 +5385,7 @@ case 'join': {
     let traceXml = '';
     for (const u of userArr) {
       const ud = users[u] || {};
-      traceXml += `<u u="${escapeXml(u)}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+      traceXml += `<u u="${escapeXml(u)}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
     }
     sendToClient(socket, `<${CMD.trace}>${traceXml}</${CMD.trace}>`);
   }
@@ -5360,7 +5393,7 @@ case 'join': {
   // 4. Notification aux autres + trace du nouvel arrivant pour leurs FrutiScreen
   {
     const joinerUd = users[client.username] || {};
-    const joinerTrace = `<${CMD.trace}><u u="${escapeXml(client.username)}" p="1" s="${getStatusCode(joinerUd)}" mu="${getMuteValue(joinerUd)}" f="${bouilleOf(joinerUd)}" /></${CMD.trace}>`;
+    const joinerTrace = `<${CMD.trace}><u u="${escapeXml(client.username)}" p="1" s="${getStatusCode(joinerUd, client.username)}" mu="${getMuteValue(joinerUd)}" f="${bouilleOf(joinerUd)}" /></${CMD.trace}>`;
     broadcastToChannel(g, `<${CMD.userjoined} u="${escapeXml(client.username)}" g="${g}" />`, socket);
     broadcastToChannel(g, joinerTrace, socket);
   }
@@ -5390,7 +5423,7 @@ case 'join': {
       let userXml = '';
       for (const u of userArr) {
         const ud = users[u] || {};
-        userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+        userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
       }
       sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
       break;
@@ -5658,15 +5691,16 @@ case 'send': {
 
     let safeText = escapeXml(text);
 
-    // Moderator "!" prefix: send message in red bold (admin shout)
+    // Moderator "!" prefix: route through chat.msg_admin (patched to render the
+    // entire line in #812F0A; $h stays normal-weight, $m gets <b>).
+    // Body carries "<pseudo>: <message>" — the username then sits inside <b>
+    // and shows in red bold alongside the message.
     if (isModerator(client.username) && text.startsWith('!')) {
       const shout = text.substring(1).trim();
       if (shout) {
-        // Wrap HTML in CDATA so the XML parser treats it as text content,
-        // not as child XML elements. Flash TextField then renders the HTML.
-        const redText = `<![CDATA[<b><font color="#FF0000">${shout}</font></b>]]>`;
+        const body = escapeXml(client.username + ': ' + shout);
         broadcastToChannel(g,
-          `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${redText}</${CMD.send}>`
+          `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`
         );
         break;
       }
@@ -5735,7 +5769,7 @@ case 'send': {
         // There is no native chat.usermuted handler — this is the closest
         // thing to a "natural" chat notice without modifying main.swf.
         broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(targetUser)} a été totoché</${CMD.send}>`);
-        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
+        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
       }
       break;
     }
@@ -5755,7 +5789,7 @@ case 'send': {
       sendToClient(socket, `<${CMD.unmute} u="${escapeXml(targetUser)}" />`);
       const g = pickActiveChannel(client, msg.attrs);
       if (g) {
-        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
+        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
       }
       break;
     }
@@ -5771,7 +5805,7 @@ case 'trace': {
       const u = child.attrs.u;
       const ud = users[u] || {};
       const pVal = getSocketsForUsername(u).length > 0 ? 1 : 0;
-      inner += `<u u="${u}" p="${pVal}" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, u)}" />`;
+      inner += `<u u="${u}" p="${pVal}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, u)}" />`;
     }
 
     sendToClient(socket, `<${CMD.trace}>${inner}</${CMD.trace}>`);
@@ -5787,7 +5821,7 @@ case 'trace': {
     const pVal = getSocketsForUsername(targetUser).length > 0 ? 1 : 0;
     sendToClient(
       socket,
-      `<${CMD.trace} u="${targetUser}" p="${pVal}" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, targetUser)}" />`
+      `<${CMD.trace} u="${targetUser}" p="${pVal}" s="${getStatusCode(ud, targetUser)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, targetUser)}" />`
     );
   }
   break;
@@ -5828,9 +5862,21 @@ case 'trace': {
 
     // ── status: update user status ──
     case 'status': {
-      // Broadcast status to trackers — simplified: just echo back
-      const s = msg.attrs.s || '00000';
+      // Persist on the live client so getStatusCode() can pick it up,
+      // then broadcast a trace update to every channel the user is in.
+      // The "internal" digit drives the icon (forum/snake3/kaluga/...) shown
+      // next to the pseudo in the userlist and in the contacts bar.
+      const s = String(msg.attrs.s || '0000');
+      client.statusStr = s;
+      // Echo back so the sender's own onStatus updates _global.me's traced entry.
       sendToClient(socket, `<${CMD.status} s="${s}" />`);
+      if (client.username && client.logged) {
+        const ud = users[client.username] || {};
+        const traceXml = `<${CMD.trace} u="${escapeXml(client.username)}" p="1" s="${getStatusCode(ud, client.username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, client.username)}" />`;
+        for (const ch of client.channels || []) {
+          broadcastToChannel(ch, traceXml, socket);
+        }
+      }
       break;
     }
 
@@ -5988,7 +6034,7 @@ case 'createchannel': {
 
   sendToClient(
     socket,
-    `<${CMD.trace} u="${escapeXml(otherUser)}" p="${getSocketsForUsername(otherUser).length > 0 ? 1 : 0}" s="${getStatusCode(ud)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, otherUser)}" />`
+    `<${CMD.trace} u="${escapeXml(otherUser)}" p="${getSocketsForUsername(otherUser).length > 0 ? 1 : 0}" s="${getStatusCode(ud, otherUser)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, otherUser)}" />`
   );
 
   // Si l'autre utilisateur est connecté, il reçoit aussi l'invitation.
