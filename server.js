@@ -2052,6 +2052,7 @@ app.get('/api/picto/:itemName', (req, res) => {
 app.get('/api/pictos', (req, res) => {
   const sid = getSidFromRequest(req, req.query);
   const username = resolveUsernameFromSid(sid);
+  console.log(`[PICTOS] /api/pictos sid=${sid ? sid.slice(0,8) + '…' : '(none)'} user=${username || '(none)'} gameItems=${username && users[username] ? (users[username].gameItems || []).length : 'N/A'}`);
   if (!username || !users[username]) return res.json([]);
   const user = users[username];
   const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
@@ -2603,7 +2604,7 @@ function extractGameItemsFromSlot(username, game, dataStr) {
         if (tz[i]) addIfNew('$tz' + i);
       }
     }
-  } else if (game === 'miniwave') {
+  } else if (game === 'miniwave2' || game === 'miniwave') {
     // MiniWave2: $ship array, $badsKill array (kill counts ≥ limit → item)
     const ship = parsed.$ship;
     if (Array.isArray(ship)) {
@@ -2952,7 +2953,8 @@ function requireAuthBySid(sid, res, responseType = 'text/plain') {
 
 function getSidFromParams(source) {
   if (!source) return '';
-  return source.sid || source.c || '';
+  const raw = source.sid || source.c || '';
+  return Array.isArray(raw) ? raw[0] : raw;
 }
 
 function getSidFromRequest(req, source = null) {

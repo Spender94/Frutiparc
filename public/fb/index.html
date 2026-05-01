@@ -1278,7 +1278,7 @@ var _pictoCache = null;
 async function fetchPictos() {
   if (_pictoCache) return _pictoCache;
   try {
-    var data = await apiFetch('/api/pictos?sid=' + SID);
+    var data = await apiFetch('/api/pictos');
     _pictoCache = Array.isArray(data) ? data : [];
   } catch (e) {
     _pictoCache = [];
