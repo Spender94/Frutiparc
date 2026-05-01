@@ -11,6 +11,14 @@
     font-size: 11px;
     background: #E8E3D4;
     color: #133200;
+    padding: 12px;
+  }
+  .forum-shell {
+    background: #fff;
+    border: 1px solid #000;
+    border-radius: 10px;
+    box-shadow: 4px 4px 12px rgba(0,0,0,0.35);
+    overflow: hidden;
   }
   a { color: #133200; text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -143,12 +151,7 @@
   /* Posts — phpBB 2.x style table layout */
   .post {
     display: flex;
-    background: #fff;
-    border: 1px solid #c0e6a0;
-    border-top: none;
-  }
-  .post:first-of-type {
-    border-top: 1px solid #c0e6a0;
+    background: #D7F8B6;
   }
   .post .post-author {
     width: 150px;
@@ -156,16 +159,13 @@
     padding: 10px 8px;
     text-align: center;
     background: #D7F8B6;
-    border-right: 1px solid #c0e6a0;
     vertical-align: top;
   }
   .post .post-author .avatar {
     width: 90px;
     height: 90px;
     margin: 0 auto 6px auto;
-    background: #ADE76C;
-    border: 1px solid #8bc55a;
-    border-radius: 4px;
+    background: #E8F8D3;
     overflow: hidden;
     position: relative;
   }
@@ -175,7 +175,7 @@
     border: none;
     display: block;
     pointer-events: none;
-    background: #ADE76C;
+    background: #E8F8D3;
   }
   .post .post-author .username {
     font-weight: bold;
@@ -187,7 +187,7 @@
   .post .post-body {
     flex: 1;
     padding: 0;
-    background: #fff;
+    background: #D7F8B6;
   }
   .post .post-header {
     display: flex;
@@ -195,7 +195,6 @@
     align-items: center;
     padding: 4px 8px;
     background: #D7F8B6;
-    border-bottom: 1px solid #c0e6a0;
     font-size: 10px;
     color: #133200;
     min-height: 28px;
@@ -536,18 +535,20 @@
 </head>
 <body>
 
-<div class="topbar">
-  <div class="user-info" id="user-info"></div>
-  <button class="close-btn" onclick="closeForum()">Fermer</button>
+<div class="forum-shell">
+  <div class="topbar">
+    <div class="user-info" id="user-info"></div>
+    <button class="close-btn" onclick="closeForum()">Fermer</button>
+  </div>
+  <div class="breadcrumb" id="breadcrumb">
+    <span class="bc-icon"></span>
+    <a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a>
+  </div>
+  <div id="app">
+    <div class="loading">Chargement du forum...</div>
+  </div>
+  <div class="forum-footer">Frutiparc.com &copy; Motion Twin</div>
 </div>
-<div class="breadcrumb" id="breadcrumb">
-  <span class="bc-icon"></span>
-  <a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a>
-</div>
-<div id="app">
-  <div class="loading">Chargement du forum...</div>
-</div>
-<div class="forum-footer">Frutiparc.com &copy; Motion Twin</div>
 
 <script>
 const params = new URLSearchParams(window.location.search);
