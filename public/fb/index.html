@@ -63,11 +63,6 @@
   .breadcrumb a { color: #E57568; font-weight: bold; }
   .breadcrumb .bc-icon {
     display: inline-block;
-    width: 14px;
-    height: 12px;
-    background: #ADE76C;
-    border: 1px solid #7ec43c;
-    border-radius: 2px;
     vertical-align: middle;
     margin-right: 4px;
   }
@@ -514,27 +509,13 @@
     border: 1px solid #c0e6a0;
   }
 
-  /* Peach icon (CSS-only fallback) */
-  .peach-icon {
+  /* Folder icon for listing */
+  .folder-icon {
     display: inline-block;
     width: 28px;
     height: 28px;
-    background: #f29630;
-    border-radius: 50% 50% 50% 45%;
-    position: relative;
+    vertical-align: middle;
   }
-  .peach-icon::after {
-    content: '';
-    position: absolute;
-    top: -3px;
-    right: 4px;
-    width: 8px;
-    height: 6px;
-    background: #5a8030;
-    border-radius: 0 60% 0 60%;
-    transform: rotate(-20deg);
-  }
-  .peach-icon.pink { background: #f29ba0; }
 
   /* Mini bouille in topic list */
   .row .icon .mini-bouille {
@@ -563,7 +544,7 @@
     <button class="close-btn" onclick="closeForum()">Fermer</button>
   </div>
   <div class="breadcrumb" id="breadcrumb">
-    <span class="bc-icon"></span>
+    <img class="bc-icon" src="/fb/ico.gif" alt="">
     <a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a>
   </div>
   <div id="app">
@@ -649,7 +630,7 @@ async function apiFetch(url, opts) {
 }
 
 function setBreadcrumb(parts) {
-  var html = '<span class="bc-icon"></span> <a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
+  var html = '<img class="bc-icon" src="/fb/ico.gif" alt=""> <a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
   for (var i = 0; i < parts.length; i++) {
     var p = parts[i];
     html += ' &gt; ';
@@ -703,7 +684,7 @@ async function loadIndex() {
     for (var bi = 0; bi < cat.boards.length; bi++) {
       var b = cat.boards[bi];
       html += '<div class="row">';
-      html += '<div class="icon"><div class="peach-icon"></div></div>';
+      html += '<div class="icon"><img class="folder-icon" src="/fb/folder_big.gif" alt=""></div>';
       html += '<div class="info">';
       html += '<div class="title"><a href="#" onclick="navigate(\'board\',' + b.id + ');return false">' + escapeHtml(b.name) + '</a></div>';
       html += '<div class="desc">' + escapeHtml(b.description) + '</div>';
@@ -713,7 +694,7 @@ async function loadIndex() {
       html += '<div class="col-last">';
       if (b.lastActivity) {
         html += formatDateShort(b.lastActivity);
-        if (b.lastActivityBy) html += '<br><a href="#">' + escapeHtml(b.lastActivityBy) + '</a>';
+        if (b.lastActivityBy) html += '<br><a href="#">' + escapeHtml(b.lastActivityBy) + '</a> <img src="/fb/icon_latest_reply.gif" alt="" style="vertical-align:middle">';
       } else { html += '-'; }
       html += '</div>';
       html += '</div>';
@@ -761,7 +742,7 @@ async function loadBoard(boardId, page) {
     html += '<div class="col-num">' + t.viewCount + '</div>';
     html += '<div class="col-last">';
     html += formatDateShort(t.lastPostAt);
-    if (t.lastPostBy) html += '<br><a href="#">' + escapeHtml(t.lastPostBy) + '</a>';
+    if (t.lastPostBy) html += '<br><a href="#">' + escapeHtml(t.lastPostBy) + '</a> <img src="/fb/icon_latest_reply.gif" alt="" style="vertical-align:middle">';
     html += '</div>';
     html += '</div>';
   }
