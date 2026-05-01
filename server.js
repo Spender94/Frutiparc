@@ -5115,6 +5115,12 @@ const CMD_REV = {};
 for (const [name, code] of Object.entries(CMD)) {
   CMD_REV[code] = name;
 }
+// Frusion games use FrutiCard tags fa-fe (offset from main client's ea-ee)
+CMD_REV['fa'] = 'fcardgetpublicslot';
+CMD_REV['fb'] = 'fcardlistslots';
+CMD_REV['fc'] = 'fcardloadslot';
+CMD_REV['fd'] = 'fcardupdateslot';
+CMD_REV['fe'] = 'fcardclearslot';
 
 // Simple XML builder/parser for the CBee protocol
 function xmlTag(name, attrs = {}, content = '') {
@@ -6607,13 +6613,117 @@ case 'createchannel': {
       break;
     }
 
-    // ── fcardgetpublicslot (ea): return an empty public FrutiCard slot ──
+    // ── fcardgetpublicslot (ea/fa): return an empty public FrutiCard slot ──
     case 'fcardgetpublicslot': {
       const reqId = msg.attrs.r || '';
       const game = msg.attrs.g || '';
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       const gAttr = game ? ` g="${escapeXml(String(game))}"` : '';
-      sendToClient(socket, `<${CMD.fcardgetpublicslot}${rAttr}${gAttr}></${CMD.fcardgetpublicslot}>`);
+      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}></${msg.tag}>`);
+      break;
+    }
+
+    // ── fcardlistslots (eb/fb): list available slots for a game ──
+    case 'fcardlistslots': {
+      const reqId = msg.attrs.r || '';
+      const game = msg.attrs.g || '';
+      const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+      const gAttr = game ? ` g="${escapeXml(String(game))}"` : '';
+      const username = client.username || '';
+      let slotNodes = '';
+      if (username && users[username]) {
+        const u = users[username];
+        if (u.frutiSlots && u.frutiSlots[game]) {
+          for (const sid of Object.keys(u.frutiSlots[game])) {
+            slotNodes += `<s i="${escapeXml(sid)}"/>`;
+          }
+        } else if (u._dbId) {
+          try {
+            const dbSlots = await db.getFrutiSlots(u._dbId, game);
+            if (Object.keys(dbSlots).length > 0) {
+              if (!u.frutiSlots) u.frutiSlots = {};
+              u.frutiSlots[game] = dbSlots;
+              for (const sid of Object.keys(dbSlots)) {
+                slotNodes += `<s i="${escapeXml(sid)}"/>`;
+              }
+            }
+          } catch (e) { /* ignore */ }
+        }
+      }
+      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}>${slotNodes}</${msg.tag}>`);
+      console.log(`[FCARD] listSlots user=${username} game=${game} slots=${slotNodes || '(none)'}`);
+      break;
+    }
+
+    // ── fcardloadslot (ec/fc): load a slot for a game ──
+    case 'fcardloadslot': {
+      const reqId = msg.attrs.r || '';
+      const game = msg.attrs.g || '';
+      const slotId = msg.attrs.s || '0';
+      const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+      const gAttr = game ? ` g="${escapeXml(String(game))}"` : '';
+      const sAttr = ` s="${escapeXml(String(slotId))}"`;
+      let slotData = '';
+      const username = client.username || '';
+      if (username && users[username]) {
+        const u = users[username];
+        if (u.frutiSlots && u.frutiSlots[game] && u.frutiSlots[game][slotId] !== undefined) {
+          slotData = u.frutiSlots[game][slotId];
+        } else if (u._dbId) {
+          try {
+            const dbSlots = await db.getFrutiSlots(u._dbId, game);
+            if (Object.keys(dbSlots).length > 0) {
+              if (!u.frutiSlots) u.frutiSlots = {};
+              u.frutiSlots[game] = dbSlots;
+              if (dbSlots[slotId] !== undefined) slotData = dbSlots[slotId];
+            }
+          } catch (e) { /* ignore */ }
+        }
+        // Extract pictos from slot 0 on load
+        if (slotId === '0' && slotData) {
+          try { extractGameItemsFromSlot(username, game, slotData); } catch (e) { /* ignore */ }
+        }
+      }
+      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}>${slotData}</${msg.tag}>`);
+      console.log(`[FCARD] loadSlot user=${username} game=${game} slot=${slotId} len=${slotData.length}`);
+      break;
+    }
+
+    // ── fcardupdateslot (ed/fd): save/update a slot for a game ──
+    case 'fcardupdateslot': {
+      const reqId = msg.attrs.r || '';
+      const game = msg.attrs.g || '';
+      const slotId = msg.attrs.s || '0';
+      const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+      const gAttr = game ? ` g="${escapeXml(String(game))}"` : '';
+      const sAttr = ` s="${escapeXml(String(slotId))}"`;
+      const slotData = msg.content || '';
+      const username = client.username || '';
+      if (username && users[username]) {
+        const u = users[username];
+        if (!u.frutiSlots) u.frutiSlots = {};
+        if (!u.frutiSlots[game]) u.frutiSlots[game] = {};
+        u.frutiSlots[game][slotId] = slotData;
+        if (u._dbId) db.upsertFrutiSlot(u._dbId, game, Number(slotId), slotData).catch(() => {});
+        // Extract pictos from slot 0
+        if (slotId === '0' && slotData) {
+          try { extractGameItemsFromSlot(username, game, slotData); } catch (e) { /* ignore */ }
+        }
+      }
+      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
+      const preview = slotData.length > 120 ? slotData.slice(0, 120) + '…' : slotData;
+      console.log(`[FCARD] updateSlot user=${username} game=${game} slot=${slotId} len=${slotData.length}: ${preview}`);
+      break;
+    }
+
+    // ── fcardclearslot (ee/fe): clear a slot ──
+    case 'fcardclearslot': {
+      const reqId = msg.attrs.r || '';
+      const game = msg.attrs.g || '';
+      const slotId = msg.attrs.s || '0';
+      const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
+      sendToClient(socket, `<${msg.tag}${rAttr}></${msg.tag}>`);
+      console.log(`[FCARD] clearSlot user=${client.username || '?'} game=${game} slot=${slotId}`);
       break;
     }
 
