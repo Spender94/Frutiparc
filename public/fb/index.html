@@ -234,8 +234,8 @@
     background: url('/fb/icon_minipost.gif') no-repeat center center;
     flex-shrink: 0;
   }
-  .post .post-header .actions { display: flex; gap: 4px; }
-  .post .post-header .actions .act-btn {
+  .post .post-header .actions { display: flex; gap: 4px; margin-top: 5px; }
+  .act-btn {
     display: inline-block;
     padding: 2px 8px;
     font-size: 9px;
@@ -427,16 +427,31 @@
     flex-wrap: wrap;
     gap: 6px;
     color: #2C4A0F;
+    border-radius: 0 0 7px 7px;
   }
-  /* Shell zone below bottom bar: pagination + reply + mod buttons */
+  /* Shell zone below bottom bar: reply (left) + pagination (center) + mod buttons (right) */
   .shell-actions {
     display: flex;
-    justify-content: flex-start;
+    justify-content: space-between;
     align-items: center;
     padding: 8px 10px;
     background: #fff;
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .shell-actions .shell-left,
+  .shell-actions .shell-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+  }
+  .shell-actions .shell-right { justify-content: flex-end; }
+  .shell-actions .shell-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex: 1;
   }
   .shell-actions .pagination {
     padding: 0;
@@ -744,11 +759,14 @@ async function loadBoard(boardId, page) {
   }
 
   html += '<div class="shell-actions">';
-  html += pagination(data.total, data.perPage, data.page, 'boardPage');
-  html += '<span>';
+  html += '<div class="shell-left">';
   if (currentUser) html += '<a href="#" onclick="navigate(\'newTopic\',' + boardId + ');return false" class="img-btn"><img src="/fb/post.gif" alt="Nouveau sujet"></a>';
   else html += '<span style="font-size:10px;color:#888">Connecte-toi depuis Frutiparc pour poster</span>';
-  html += '</span>';
+  html += '</div>';
+  html += '<div class="shell-center">';
+  html += pagination(data.total, data.perPage, data.page, 'boardPage');
+  html += '</div>';
+  html += '<div class="shell-right"></div>';
   html += '</div>';
   app.innerHTML = html;
 }
@@ -810,17 +828,21 @@ async function loadTopic(topicId, page) {
 
   // Shell zone: pagination on left, action buttons on right
   html += '<div class="shell-actions">';
+  html += '<div class="shell-left">';
+  if (currentUser && !data.topic.isLocked) html += '<a href="#" onclick="showReplyForm();return false" class="img-btn"><img src="/fb/reply.gif" alt="Répondre"></a>';
+  html += '</div>';
+  html += '<div class="shell-center">';
   html += pagination(data.total, data.perPage, data.page, 'topicPage');
-  html += '<span>';
-  if (currentUser && !data.topic.isLocked) html += '<a href="#" onclick="showReplyForm();return false" class="img-btn"><img src="/fb/reply.gif" alt="Répondre"></a> ';
+  html += '</div>';
+  html += '<div class="shell-right">';
   if (data.currentIsMod) {
-    html += '<a href="#" class="act-btn act-btn-red" onclick="toggleSticky();return false">' + (data.topic.isSticky ? 'Retirer Post-it' : 'Post-it') + '</a> ';
-    html += '<a href="#" class="act-btn act-btn-red" onclick="toggleLock();return false">' + (data.topic.isLocked ? 'Déverrouiller' : 'Verrouiller') + '</a> ';
+    html += '<a href="#" class="act-btn act-btn-red" onclick="toggleSticky();return false">' + (data.topic.isSticky ? 'Retirer Post-it' : 'Post-it') + '</a>';
+    html += '<a href="#" class="act-btn act-btn-red" onclick="toggleLock();return false">' + (data.topic.isLocked ? 'Déverrouiller' : 'Verrouiller') + '</a>';
   }
   if (currentUser && (data.topic.author === currentUser || data.currentIsMod)) {
     html += '<a href="#" class="act-btn act-btn-red" onclick="deleteTopic();return false">Supprimer</a>';
   }
-  html += '</span>';
+  html += '</div>';
   html += '</div>';
 
   if (currentUser && !data.topic.isLocked) {
