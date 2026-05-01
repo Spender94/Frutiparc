@@ -72,15 +72,7 @@
   }
   .forum-header .title-link:hover { text-decoration: none; }
 
-  /* Bottom green band */
-  .green-band {
-    background: #D6F7B5;
-    height: 6px;
-    line-height: 6px;
-    font-size: 1px;
-  }
-
-  /* Breadcrumb (legacy — kept for the old top-of-page breadcrumb but now hidden) */
+  /* Breadcrumb (legacy — hidden) */
   .breadcrumb { display: none; }
 
   /* Column header (coral subSilver — th.thTop / thCornerL/R) */
@@ -98,8 +90,8 @@
     border-radius: 7px 7px 0 0;
   }
   .tbl-header .col-author {
-    width: 130px;
-    min-width: 130px;
+    width: 110px;
+    min-width: 110px;
     text-align: center;
     padding: 0 4px;
   }
@@ -180,9 +172,9 @@
     background: #D6F7B5;
   }
   .post .post-author {
-    width: 130px;
-    min-width: 130px;
-    padding: 10px 4px 10px 0;
+    width: 110px;
+    min-width: 110px;
+    padding: 6px 0;
     text-align: center;
     background: #D6F7B5;
     vertical-align: top;
@@ -194,6 +186,7 @@
     background: transparent;
     overflow: hidden;
     position: relative;
+    border-radius: 10px;
   }
   .post .post-author .avatar iframe {
     width: 100%;
@@ -202,6 +195,7 @@
     display: block;
     pointer-events: none;
     background: transparent;
+    border-radius: 10px;
   }
   .post .post-author .username {
     font-weight: bold;
@@ -230,6 +224,7 @@
     font-size: 10px;
     color: #335511;
     min-height: 28px;
+    border-bottom: 1px solid #2C4A0F;
   }
   .post .post-header .post-info {
     display: flex;
@@ -238,10 +233,9 @@
   }
   .post .post-header .post-icon {
     display: inline-block;
-    width: 10px;
-    height: 10px;
-    background: #E3756A;
-    border-radius: 2px;
+    width: 12px;
+    height: 13px;
+    background: url('/fb/icon_minipost.gif') no-repeat center center;
     flex-shrink: 0;
   }
   .post .post-header .actions { display: flex; gap: 4px; }
@@ -270,7 +264,7 @@
     color: #335511;
     white-space: pre-wrap;
     word-wrap: break-word;
-    padding: 10px 12px;
+    padding: 6px 8px;
   }
   .post .post-edited {
     margin-top: 6px;
@@ -299,22 +293,6 @@
   }
   .post-content a { color: #2C4A0F; text-decoration: none; }
   .post-content a:hover { text-decoration: underline; }
-  .post-author .post-count {
-    font-size: 10px;
-    color: #335511;
-    margin-top: 2px;
-  }
-  .post-author .role-badge {
-    display: inline-block;
-    background: #E3756A;
-    color: #fff;
-    font-size: 9px;
-    font-weight: bold;
-    padding: 1px 5px;
-    border-radius: 2px;
-    margin-top: 3px;
-    text-transform: uppercase;
-  }
 
   /* Toolbar above textareas (formatting buttons) */
   .bbcode-toolbar {
@@ -570,7 +548,6 @@
   <div id="app">
     <div class="loading">Chargement du forum...</div>
   </div>
-  <div class="green-band">&nbsp;</div>
   <div class="breadcrumb" id="breadcrumb"></div>
 </div>
 <div class="forum-footer">
@@ -810,8 +787,6 @@ async function loadTopic(topicId, page) {
     html += '<div class="post-author">';
     html += '<div class="avatar">' + renderBouillAvatar(p.bouille, p.author) + '</div>';
     html += '<div class="username">' + escapeHtml(p.author) + '</div>';
-    if (p.isModerator) html += '<div class="role-badge">Modérateur</div>';
-    if (typeof p.postCount === 'number') html += '<div class="post-count">Messages : ' + p.postCount + '</div>';
     html += '</div>';
     html += '<div class="post-body">';
     html += '<div class="post-header">';
