@@ -3696,9 +3696,8 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     for (const itemName of gi) {
       const displayName = getGameItemDisplayName(itemName);
       const gameName = getGameItemGame(itemName);
-      const gifPath = resolveGameItemGif(itemName);
-      const gifUrl = gifPath ? `/api/picto/${encodeURIComponent(itemName)}` : '';
-      nodes += `<e u="${escapeXml(itemName)}" t="picto" s="10" d="0" a="0">${escapeXml(displayName)}\r\n${escapeXml(gameName)}\r\n${escapeXml(gifUrl)}</e>`;
+      const viewerUrl = `/picto-view.html?item=${encodeURIComponent(itemName)}&name=${encodeURIComponent(displayName)}&game=${encodeURIComponent(gameName)}`;
+      nodes += `<e u="${escapeXml(itemName)}" t="url" s="10" d="0" a="0">${escapeXml(displayName)}\r\njavascript:fp_openPopup('${escapeXml(viewerUrl)}','Picto','width=400,height=450')\r\n</e>`;
     }
     return res.type('text/xml').send(`<f u="inv_pictos">${nodes || '<i />'}</f>`);
   }

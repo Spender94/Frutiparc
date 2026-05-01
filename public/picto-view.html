@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Picto Frutiparc</title>
+<style>
+body {
+  margin: 0;
+  background: #b5e46a;
+  font-family: Verdana, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: #2C4A0F;
+}
+.card {
+  background: #fff;
+  border: 2px solid #8fc63f;
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  max-width: 360px;
+}
+.card img {
+  max-width: 200px;
+  max-height: 200px;
+  image-rendering: auto;
+  margin: 12px 0;
+}
+.card h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.card .game {
+  font-size: 12px;
+  color: #5a8a20;
+  margin-bottom: 8px;
+}
+.card .bbcode {
+  font-size: 11px;
+  background: #f4fbe8;
+  border: 1px solid #d0e8a0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: monospace;
+  cursor: pointer;
+  user-select: all;
+}
+.card .bbcode-label {
+  font-size: 10px;
+  color: #888;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.no-image {
+  width: 120px;
+  height: 120px;
+  background: #eee;
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 12px auto;
+  color: #999;
+  font-size: 40px;
+}
+</style>
+</head>
+<body>
+<div class="card" id="card">Chargement...</div>
+<script>
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var item = params.get('item') || '';
+  var name = params.get('name') || item.replace(/^\$/, '');
+  var game = params.get('game') || '';
+
+  var card = document.getElementById('card');
+  if (!item) {
+    card.textContent = 'Picto introuvable.';
+    return;
+  }
+
+  document.title = name + ' - Picto Frutiparc';
+  var imgUrl = '/api/picto/' + encodeURIComponent(item);
+
+  var html = '<h2>' + esc(name) + '</h2>';
+  if (game) html += '<div class="game">' + esc(game) + '</div>';
+
+  var img = new Image();
+  img.onload = function() {
+    card.innerHTML = html
+      + '<img src="' + esc(imgUrl) + '" alt="' + esc(name) + '">'
+      + '<div class="bbcode-label">Code forum :</div>'
+      + '<div class="bbcode">[picto=' + esc(item) + ']</div>';
+  };
+  img.onerror = function() {
+    card.innerHTML = html
+      + '<div class="no-image">?</div>'
+      + '<div class="bbcode-label">Code forum :</div>'
+      + '<div class="bbcode">[picto=' + esc(item) + ']</div>';
+  };
+  img.src = imgUrl;
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+})();
+</script>
+</body>
+</html>
