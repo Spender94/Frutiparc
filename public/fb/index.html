@@ -9,7 +9,7 @@
   body {
     font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
     font-size: 11px;
-    background: #fff;
+    background: #E8E3D4;
     color: #133200;
   }
   a { color: #133200; text-decoration: none; }
@@ -43,27 +43,46 @@
   }
   .topbar .close-btn:hover { background: #d56558; }
 
-  /* Breadcrumb (subtle, integrated into the page) */
+  /* Breadcrumb */
   .breadcrumb {
     padding: 6px 14px;
     font-size: 11px;
     background: #fff;
     color: #133200;
+    border-bottom: 1px solid #c0e6a0;
   }
   .breadcrumb a { color: #133200; font-weight: bold; }
+  .breadcrumb .bc-icon {
+    display: inline-block;
+    width: 14px;
+    height: 12px;
+    background: #ADE76C;
+    border: 1px solid #7ec43c;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-right: 4px;
+  }
 
-  /* Column header (pink/coral) */
+  /* Column header (coral/salmon — phpBB-style) */
   .tbl-header {
     background: #E57568;
     color: #fff;
     font-weight: bold;
     font-size: 11px;
     display: flex;
-    padding: 6px 10px;
+    padding: 5px 0;
+    border: 1px solid #c04040;
+    border-bottom: none;
   }
-  .tbl-header .col-main { flex: 1; text-align: center; }
-  .tbl-header .col-num { width: 75px; text-align: center; }
-  .tbl-header .col-last { width: 180px; text-align: center; }
+  .tbl-header .col-author {
+    width: 150px;
+    min-width: 150px;
+    text-align: center;
+    padding: 2px 0;
+  }
+  .tbl-header .col-main { flex: 1; text-align: center; padding: 2px 0; }
+  .tbl-header .col-num { width: 75px; text-align: center; padding: 2px 0; }
+  .tbl-header .col-last { width: 180px; text-align: center; padding: 2px 0; }
 
   /* Category header (light green) */
   .cat-header {
@@ -72,6 +91,8 @@
     font-size: 12px;
     font-weight: bold;
     color: #133200;
+    border: 1px solid #7ec43c;
+    border-top: none;
   }
 
   /* Rows */
@@ -80,7 +101,8 @@
     align-items: center;
     padding: 8px 10px;
     background: #D7F8B6;
-    border-bottom: 1px solid #c0e6a0;
+    border: 1px solid #c0e6a0;
+    border-top: none;
     min-height: 44px;
   }
   .row .icon { width: 38px; min-width: 38px; text-align: center; }
@@ -118,21 +140,28 @@
   }
   .topic-row .info .author a { color: #133200; text-decoration: underline; }
 
-  /* Posts */
+  /* Posts — phpBB 2.x style table layout */
   .post {
     display: flex;
-    background: #D7F8B6;
-    border-bottom: 1px solid #c0e6a0;
+    background: #fff;
+    border: 1px solid #c0e6a0;
+    border-top: none;
+  }
+  .post:first-of-type {
+    border-top: 1px solid #c0e6a0;
   }
   .post .post-author {
-    width: 130px;
-    min-width: 130px;
-    padding: 12px 8px;
+    width: 150px;
+    min-width: 150px;
+    padding: 10px 8px;
     text-align: center;
+    background: #D7F8B6;
+    border-right: 1px solid #c0e6a0;
+    vertical-align: top;
   }
   .post .post-author .avatar {
-    width: 80px;
-    height: 80px;
+    width: 90px;
+    height: 90px;
     margin: 0 auto 6px auto;
     background: #ADE76C;
     border: 1px solid #8bc55a;
@@ -153,49 +182,88 @@
     font-size: 11px;
     color: #133200;
     word-break: break-all;
+    margin-top: 4px;
   }
   .post .post-body {
     flex: 1;
-    padding: 8px 12px;
-    border-left: 1px solid #c0e6a0;
+    padding: 0;
+    background: #fff;
   }
   .post .post-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 6px;
-    margin-bottom: 6px;
+    padding: 4px 8px;
+    background: #D7F8B6;
+    border-bottom: 1px solid #c0e6a0;
     font-size: 10px;
     color: #133200;
+    min-height: 28px;
   }
-  .post .post-header .actions { display: flex; gap: 6px; }
+  .post .post-header .post-info {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .post .post-header .post-icon {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background: #E57568;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .post .post-header .actions { display: flex; gap: 4px; }
+  .post .post-header .actions .act-btn {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 9px;
+    font-weight: bold;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    text-decoration: none;
+    color: #fff;
+    font-family: Verdana, sans-serif;
+    line-height: 1.4;
+  }
+  .act-btn-red { background: #E57568; }
+  .act-btn-red:hover { background: #d56558; color: #fff; text-decoration: none; }
+  .act-btn-green { background: #7ec43c; }
+  .act-btn-green:hover { background: #6cb22a; color: #fff; text-decoration: none; }
+  .act-btn-blue { background: #6b9fd4; }
+  .act-btn-blue:hover { background: #5a8ec3; color: #fff; text-decoration: none; }
   .post .post-content {
     font-size: 12px;
-    line-height: 1.5;
+    line-height: 1.6;
     color: #133200;
     white-space: pre-wrap;
     word-wrap: break-word;
-    padding: 4px 0;
+    padding: 10px 12px;
   }
   .post .post-edited {
     margin-top: 6px;
+    padding: 0 12px 8px;
     font-size: 10px;
     font-style: italic;
     color: #5a8030;
   }
+
+  /* Blockquote — phpBB-style gray/beige */
   .post-content blockquote.quote {
-    background: #ADE76C;
-    border-left: 3px solid #7ec43c;
-    margin: 6px 0;
-    padding: 6px 10px;
+    background: #E8E3D4;
+    border: 1px solid #c8c0aa;
+    margin: 8px 4px;
+    padding: 8px 12px;
     font-size: 11px;
     color: #133200;
+    white-space: pre-wrap;
   }
   .post-content blockquote.quote .quote-author {
     font-weight: bold;
-    font-size: 10px;
+    font-size: 11px;
     margin-bottom: 4px;
-    color: #5a8030;
+    color: #133200;
   }
   .post-content a { color: #2d5e0c; text-decoration: underline; }
   .post-author .post-count {
@@ -214,6 +282,7 @@
     margin-top: 3px;
     text-transform: uppercase;
   }
+
   /* Toolbar above textareas (formatting buttons) */
   .bbcode-toolbar {
     display: flex;
@@ -236,6 +305,7 @@
   .bbcode-toolbar button.b { font-weight: bold; }
   .bbcode-toolbar button.i { font-style: italic; }
   .bbcode-toolbar button.u { text-decoration: underline; }
+
   /* Inline edit area */
   .post-edit-area textarea {
     width: 100%;
@@ -272,7 +342,7 @@
 
   /* Pagination */
   .pagination {
-    padding: 8px 14px;
+    padding: 6px 14px;
     font-size: 11px;
     color: #133200;
     background: #fff;
@@ -280,7 +350,8 @@
     justify-content: center;
     align-items: center;
     gap: 4px;
-    border-top: 1px solid #c0e6a0;
+    border: 1px solid #c0e6a0;
+    border-top: none;
   }
   .pagination a, .pagination span {
     display: inline-block;
@@ -301,6 +372,7 @@
     background: #D7F8B6;
     padding: 14px;
     margin: 10px 0;
+    border: 1px solid #c0e6a0;
   }
   .form-area h3 {
     color: #133200;
@@ -341,7 +413,66 @@
     align-items: center;
     padding: 8px 14px;
     background: #fff;
+    border: 1px solid #c0e6a0;
+    border-bottom: none;
   }
+
+  /* Bottom filter/sort bar (phpBB-style) */
+  .bottom-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    background: #D7F8B6;
+    border: 1px solid #c0e6a0;
+    border-top: none;
+    font-size: 10px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .bottom-bar select {
+    font-size: 10px;
+    font-family: Verdana, sans-serif;
+    padding: 1px 3px;
+    border: 1px solid #8bc55a;
+    background: #fff;
+    color: #133200;
+  }
+  .bottom-bar .go-btn {
+    background: #ADE76C;
+    border: 1px solid #8bc55a;
+    padding: 2px 10px;
+    font-size: 10px;
+    cursor: pointer;
+    font-family: Verdana, sans-serif;
+    color: #133200;
+    border-radius: 2px;
+  }
+
+  /* Moderation bar */
+  .mod-bar {
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px;
+    background: #fff;
+    border: 1px solid #c0e6a0;
+    border-top: none;
+    flex-wrap: wrap;
+  }
+  .mod-bar .mod-btn {
+    display: inline-block;
+    padding: 3px 10px;
+    font-size: 9px;
+    font-weight: bold;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    text-decoration: none;
+    color: #fff;
+    font-family: Verdana, sans-serif;
+    background: #7ec43c;
+  }
+  .mod-bar .mod-btn:hover { background: #6cb22a; }
 
   .forum-footer {
     text-align: center;
@@ -359,6 +490,7 @@
     color: #5a8030;
     font-style: italic;
     background: #fff;
+    border: 1px solid #c0e6a0;
   }
 
   /* Peach icon (CSS-only fallback) */
@@ -382,6 +514,7 @@
     transform: rotate(-20deg);
   }
   .peach-icon.pink { background: #f29ba0; }
+
   /* Mini bouille in topic list */
   .row .icon .mini-bouille {
     width: 32px;
@@ -408,6 +541,7 @@
   <button class="close-btn" onclick="closeForum()">Fermer</button>
 </div>
 <div class="breadcrumb" id="breadcrumb">
+  <span class="bc-icon"></span>
   <a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a>
 </div>
 <div id="app">
@@ -436,28 +570,27 @@ function escapeHtml(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-// Minimal BBCode → HTML. Escapes first, then unescapes the recognised tags.
 function renderBBCode(s) {
   let out = escapeHtml(s);
-  // [b], [i], [u], [s]
   out = out.replace(/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong>$1</strong>');
   out = out.replace(/\[i\]([\s\S]*?)\[\/i\]/gi, '<em>$1</em>');
   out = out.replace(/\[u\]([\s\S]*?)\[\/u\]/gi, '<u>$1</u>');
   out = out.replace(/\[s\]([\s\S]*?)\[\/s\]/gi, '<s>$1</s>');
-  // [url=…]…[/url] and [url]…[/url]
+  out = out.replace(/\[color=([^\]]+)\]([\s\S]*?)\[\/color\]/gi, '<span style="color:$1">$2</span>');
+  out = out.replace(/\[size=(\d+)\]([\s\S]*?)\[\/size\]/gi, function(m, sz, txt) {
+    var px = Math.min(Math.max(parseInt(sz, 10), 8), 32);
+    return '<span style="font-size:' + px + 'px">' + txt + '</span>';
+  });
   out = out.replace(/\[url=(https?:\/\/[^\s\]]+)\]([\s\S]*?)\[\/url\]/gi,
     '<a href="$1" target="_blank" rel="noopener">$2</a>');
   out = out.replace(/\[url\](https?:\/\/[^\s\[]+)\[\/url\]/gi,
     '<a href="$1" target="_blank" rel="noopener">$1</a>');
-  // [citation=author]…[/citation] and [quote=author]…[/quote]
   out = out.replace(/\[(?:citation|quote)=([^\]]+)\]([\s\S]*?)\[\/(?:citation|quote)\]/gi,
-    '<blockquote class="quote"><div class="quote-author">$1 a écrit :</div>$2</blockquote>');
+    '<blockquote class="quote"><div class="quote-author">$1 a dit :</div>$2</blockquote>');
   out = out.replace(/\[(?:citation|quote)\]([\s\S]*?)\[\/(?:citation|quote)\]/gi,
     '<blockquote class="quote">$1</blockquote>');
-  // Auto-link bare URLs that weren't already caught
   out = out.replace(/(^|[\s>])(https?:\/\/[^\s<]+)/g,
     '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
-  // Newlines → <br>
   out = out.replace(/\n/g, '<br>');
   return out;
 }
@@ -471,31 +604,32 @@ function renderBouillAvatar(bouille, username) {
 
 function formatDate(iso) {
   if (!iso) return '';
-  const d = new Date(iso);
-  const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  const months = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-  const pad = n => n < 10 ? '0' + n : '' + n;
+  var d = new Date(iso);
+  var days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  var months = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
   return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
 function formatDateShort(iso) {
   if (!iso) return '';
-  const d = new Date(iso);
-  const pad = n => n < 10 ? '0' + n : '' + n;
-  const months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
+  var d = new Date(iso);
+  var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+  var months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
   return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + '<br>' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
 async function apiFetch(url, opts) {
-  const sep = url.includes('?') ? '&' : '?';
-  const r = await fetch(url + sep + 'sid=' + encodeURIComponent(SID), opts);
+  var sep = url.includes('?') ? '&' : '?';
+  var r = await fetch(url + sep + 'sid=' + encodeURIComponent(SID), opts);
   return r.json();
 }
 
 function setBreadcrumb(parts) {
-  let html = '<a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
-  for (const p of parts) {
-    html += ' &raquo; ';
+  var html = '<span class="bc-icon"></span> <a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    html += ' &gt; ';
     if (p.href) html += '<a href="#" onclick="' + escapeHtml(p.href) + '">' + escapeHtml(p.text) + '</a>';
     else html += escapeHtml(p.text);
   }
@@ -510,12 +644,12 @@ function navigate(view, id, extra) {
 }
 
 function pagination(total, perPage, currentPage, onclick) {
-  const pages = Math.ceil(total / perPage);
-  if (pages <= 1) return '';
-  let html = '<div class="pagination">';
+  var pages = Math.ceil(total / perPage);
+  if (pages <= 1) return '<div class="pagination">Page 1 sur 1</div>';
+  var html = '<div class="pagination">';
   html += 'Page ' + currentPage + ' sur ' + pages + '&nbsp;&mdash;&nbsp;';
   if (currentPage > 1) html += '<a href="#" onclick="' + onclick + '(' + (currentPage - 1) + ');return false">&laquo;</a>';
-  for (let i = 1; i <= pages; i++) {
+  for (var i = 1; i <= pages; i++) {
     if (i === currentPage) html += '<span class="current">' + i + '</span>';
     else if (i <= 3 || i >= pages - 2 || Math.abs(i - currentPage) <= 2)
       html += '<a href="#" onclick="' + onclick + '(' + i + ');return false">' + i + '</a>';
@@ -528,21 +662,23 @@ function pagination(total, perPage, currentPage, onclick) {
 }
 
 async function loadIndex() {
-  const app = document.getElementById('app');
+  var app = document.getElementById('app');
   app.innerHTML = '<div class="loading">Chargement...</div>';
   setBreadcrumb([]);
 
-  const data = await apiFetch('/api/forum/index');
+  var data = await apiFetch('/api/forum/index');
   if (!data.categories || data.categories.length === 0) {
     app.innerHTML = '<div class="empty">Le forum est vide pour le moment.</div>';
     return;
   }
 
-  let html = '<div class="tbl-header"><span class="col-main">Forums</span><span class="col-num">Sujets</span><span class="col-num">Messages</span><span class="col-last">Dernier message</span></div>';
+  var html = '<div class="tbl-header"><span class="col-main">Forums</span><span class="col-num">Sujets</span><span class="col-num">Messages</span><span class="col-last">Dernier message</span></div>';
 
-  for (const cat of data.categories) {
+  for (var ci = 0; ci < data.categories.length; ci++) {
+    var cat = data.categories[ci];
     html += '<div class="cat-header">' + escapeHtml(cat.name) + '</div>';
-    for (const b of cat.boards) {
+    for (var bi = 0; bi < cat.boards.length; bi++) {
+      var b = cat.boards[bi];
       html += '<div class="row">';
       html += '<div class="icon"><div class="peach-icon"></div></div>';
       html += '<div class="info">';
@@ -563,19 +699,19 @@ async function loadIndex() {
   app.innerHTML = html;
 }
 
-let currentBoardId = null;
+var currentBoardId = null;
 async function loadBoard(boardId, page) {
   page = page || 1;
   currentBoardId = boardId;
-  const app = document.getElementById('app');
+  var app = document.getElementById('app');
   app.innerHTML = '<div class="loading">Chargement...</div>';
 
-  const data = await apiFetch('/api/forum/board/' + boardId + '?page=' + page);
+  var data = await apiFetch('/api/forum/board/' + boardId + '?page=' + page);
   if (!data.board) { app.innerHTML = '<div class="empty">Forum introuvable.</div>'; return; }
 
   setBreadcrumb([{ text: data.board.name }]);
 
-  let html = '<div class="toolbar">';
+  var html = '<div class="toolbar">';
   if (currentUser) html += '<a href="#" class="btn btn-green" onclick="navigate(\'newTopic\',' + boardId + ');return false">Nouveau sujet</a>';
   else html += '<span style="font-size:10px;color:#888">Connecte-toi depuis Frutiparc pour poster</span>';
   html += '<span style="font-size:10px;color:#5a8030">' + escapeHtml(data.board.name) + '</span>';
@@ -586,7 +722,8 @@ async function loadBoard(boardId, page) {
   if (data.topics.length === 0) {
     html += '<div class="empty">Aucun sujet dans ce forum.</div>';
   }
-  for (const t of data.topics) {
+  for (var ti = 0; ti < data.topics.length; ti++) {
+    var t = data.topics[ti];
     html += '<div class="row topic-row">';
     html += '<div class="icon"><div class="mini-bouille">' + renderBouillAvatar(t.authorBouille || '', t.author) + '</div></div>';
     html += '<div class="info">';
@@ -611,15 +748,15 @@ async function loadBoard(boardId, page) {
 }
 function boardPage(p) { loadBoard(currentBoardId, p); }
 
-let currentTopicId = null;
-let currentTopicData = null;
+var currentTopicId = null;
+var currentTopicData = null;
 async function loadTopic(topicId, page) {
   page = page || 1;
   currentTopicId = topicId;
-  const app = document.getElementById('app');
+  var app = document.getElementById('app');
   app.innerHTML = '<div class="loading">Chargement...</div>';
 
-  const data = await apiFetch('/api/forum/topic/' + topicId + '?page=' + page);
+  var data = await apiFetch('/api/forum/topic/' + topicId + '?page=' + page);
   currentTopicData = data;
   if (!data.topic) { app.innerHTML = '<div class="empty">Sujet introuvable.</div>'; return; }
 
@@ -628,25 +765,14 @@ async function loadTopic(topicId, page) {
     { text: data.topic.title },
   ]);
 
-  let html = '<div class="toolbar">';
-  html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
-  if (currentUser && !data.topic.isLocked) html += '<a href="#" class="btn btn-green" onclick="showReplyForm();return false">Répondre</a>';
-  // Moderator tools
-  if (data.currentIsMod) {
-    html += '<a href="#" class="btn btn-orange btn-sm" onclick="toggleSticky();return false">' + (data.topic.isSticky ? 'Retirer Post-it' : 'Mettre en Post-it') + '</a>';
-    html += '<a href="#" class="btn btn-orange btn-sm" onclick="toggleLock();return false">' + (data.topic.isLocked ? 'Déverrouiller' : 'Verrouiller') + '</a>';
-  }
-  // Author or moderator can delete the topic
-  if (currentUser && (data.topic.author === currentUser || data.currentIsMod)) {
-    html += '<a href="#" class="btn btn-orange btn-sm" onclick="deleteTopic();return false">Supprimer</a>';
-  }
-  html += '</div>';
-  html += '<span style="font-size:11px;font-weight:bold;color:#133200">' + escapeHtml(data.topic.title) + '</span>';
-  html += '</div>';
+  // Column header: Auteur | Message
+  var html = '<div class="tbl-header"><span class="col-author">Auteur</span><span class="col-main">Message</span></div>';
 
-  for (const p of data.posts) {
-    const canEdit = currentUser && (p.author === currentUser);
-    const canDelete = currentUser && (p.author === currentUser || data.currentIsMod);
+  for (var pi = 0; pi < data.posts.length; pi++) {
+    var p = data.posts[pi];
+    var isFirstPost = (pi === 0 && data.page === 1);
+    var canEdit = currentUser && (p.author === currentUser);
+    var canDelete = currentUser && (p.author === currentUser || data.currentIsMod);
     html += '<div class="post" id="post-' + p.id + '">';
     html += '<div class="post-author">';
     html += '<div class="avatar">' + renderBouillAvatar(p.bouille, p.author) + '</div>';
@@ -656,11 +782,13 @@ async function loadTopic(topicId, page) {
     html += '</div>';
     html += '<div class="post-body">';
     html += '<div class="post-header">';
-    html += '<span>Posté le ' + formatDate(p.createdAt) + '</span>';
+    html += '<div class="post-info"><span class="post-icon"></span> Posté le ' + formatDate(p.createdAt);
+    if (isFirstPost) html += '&nbsp;&nbsp; Sujet du message: ' + escapeHtml(data.topic.title);
+    html += '</div>';
     html += '<div class="actions">';
-    if (currentUser && !data.topic.isLocked) html += '<a href="#" class="btn btn-orange btn-sm" onclick="quotePost(' + p.id + ',\'' + escapeHtml(p.author).replace(/'/g,"\\'") + '\');return false">citer</a>';
-    if (canEdit) html += ' <a href="#" class="btn btn-orange btn-sm" onclick="editPost(' + p.id + ');return false">éditer</a>';
-    if (canDelete) html += ' <a href="#" class="btn btn-orange btn-sm" onclick="deletePost(' + p.id + ');return false">supprimer</a>';
+    if (canDelete) html += '<a href="#" class="act-btn act-btn-red" onclick="deletePost(' + p.id + ');return false">supprimer</a>';
+    if (canEdit) html += '<a href="#" class="act-btn act-btn-green" onclick="editPost(' + p.id + ');return false">editer</a>';
+    if (currentUser && !data.topic.isLocked) html += '<a href="#" class="act-btn act-btn-blue" onclick="quotePost(' + p.id + ',\'' + escapeHtml(p.author).replace(/'/g,"\\'") + '\');return false">citer</a>';
     html += '</div>';
     html += '</div>';
     html += '<div class="post-content" id="post-content-' + p.id + '" data-raw="' + escapeHtml(p.content) + '">' + renderBBCode(p.content) + '</div>';
@@ -670,6 +798,23 @@ async function loadTopic(topicId, page) {
   }
 
   html += pagination(data.total, data.perPage, data.page, 'topicPage');
+
+  // Bottom filter bar (phpBB-style)
+  html += '<div class="bottom-bar">';
+  html += '<span>Montrer les messages depuis: <select><option>Tous</option></select>';
+  html += ' <select><option>Le plus ancien en premier</option><option>Le plus récent en premier</option></select>';
+  html += ' <button class="go-btn">Aller</button></span>';
+  html += '<span>';
+  if (currentUser && !data.topic.isLocked) html += '<a href="#" class="btn btn-green btn-sm" onclick="showReplyForm();return false">Répondre</a> ';
+  if (data.currentIsMod) {
+    html += '<a href="#" class="act-btn act-btn-red" onclick="toggleSticky();return false">' + (data.topic.isSticky ? 'Retirer Post-it' : 'Post-it') + '</a> ';
+    html += '<a href="#" class="act-btn act-btn-red" onclick="toggleLock();return false">' + (data.topic.isLocked ? 'Déverrouiller' : 'Verrouiller') + '</a> ';
+  }
+  if (currentUser && (data.topic.author === currentUser || data.currentIsMod)) {
+    html += '<a href="#" class="act-btn act-btn-red" onclick="deleteTopic();return false">Supprimer</a>';
+  }
+  html += '</span>';
+  html += '</div>';
 
   if (currentUser && !data.topic.isLocked) {
     html += '<div class="form-area" id="reply-form" style="display:none">';
@@ -685,36 +830,35 @@ async function loadTopic(topicId, page) {
 function topicPage(p) { loadTopic(currentTopicId, p); }
 
 function showReplyForm() {
-  const f = document.getElementById('reply-form');
+  var f = document.getElementById('reply-form');
   if (f) { f.style.display = 'block'; document.getElementById('reply-content').focus(); }
 }
 
 function quotePost(postId, author) {
-  const el = document.getElementById('post-content-' + postId);
+  var el = document.getElementById('post-content-' + postId);
   if (!el) return;
-  // Quote the raw BBCode so the original formatting is preserved.
-  const raw = el.getAttribute('data-raw') || el.textContent;
-  const tmp = document.createElement('textarea');
+  var raw = el.getAttribute('data-raw') || el.textContent;
+  var tmp = document.createElement('textarea');
   tmp.innerHTML = raw;
-  const text = tmp.value;
+  var text = tmp.value;
   showReplyForm();
-  const ta = document.getElementById('reply-content');
+  var ta = document.getElementById('reply-content');
   ta.value = '[quote=' + author + ']\n' + text.trim() + '\n[/quote]\n\n';
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
 async function submitReply() {
-  const content = document.getElementById('reply-content').value.trim();
+  var content = document.getElementById('reply-content').value.trim();
   if (!content) return;
-  const data = await apiFetch('/api/forum/post', {
+  var data = await apiFetch('/api/forum/post', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ topicId: currentTopicId, content: content, sid: SID }),
   });
   if (data.ok) {
-    const totalAfter = (currentTopicData ? currentTopicData.total : 0) + 1;
-    const lastPage = Math.ceil(totalAfter / 15);
+    var totalAfter = (currentTopicData ? currentTopicData.total : 0) + 1;
+    var lastPage = Math.ceil(totalAfter / 15);
     loadTopic(currentTopicId, lastPage);
   } else {
     alert('Erreur : ' + (data.error || 'inconnue'));
@@ -729,47 +873,75 @@ function bbcodeToolbarHtml(targetId) {
     + '<button type="button" onclick="bbWrap(\'' + targetId + '\',\'s\')" title="Barré">S</button>'
     + '<button type="button" onclick="bbWrap(\'' + targetId + '\',\'quote\')" title="Citation">&laquo;&raquo;</button>'
     + '<button type="button" onclick="bbInsertUrl(\'' + targetId + '\')" title="Lien">URL</button>'
+    + '<button type="button" onclick="bbInsertColor(\'' + targetId + '\')" title="Couleur">Couleur</button>'
+    + '<button type="button" onclick="bbInsertSize(\'' + targetId + '\')" title="Taille">Taille</button>'
     + '</div>';
 }
 
 function bbWrap(targetId, tag) {
-  const ta = document.getElementById(targetId);
+  var ta = document.getElementById(targetId);
   if (!ta) return;
-  const start = ta.selectionStart, end = ta.selectionEnd;
-  const sel = ta.value.substring(start, end);
-  const open = '[' + tag + ']', close = '[/' + tag + ']';
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var sel = ta.value.substring(start, end);
+  var open = '[' + tag + ']', close = '[/' + tag + ']';
   ta.value = ta.value.substring(0, start) + open + sel + close + ta.value.substring(end);
   ta.focus();
-  const cursor = start + open.length + sel.length;
+  var cursor = start + open.length + sel.length;
   ta.setSelectionRange(cursor, cursor);
 }
 
 function bbInsertUrl(targetId) {
-  const url = prompt('URL :', 'https://');
+  var url = prompt('URL :', 'https://');
   if (!url) return;
-  const ta = document.getElementById(targetId);
+  var ta = document.getElementById(targetId);
   if (!ta) return;
-  const start = ta.selectionStart, end = ta.selectionEnd;
-  const sel = ta.value.substring(start, end) || url;
-  const insert = '[url=' + url + ']' + sel + '[/url]';
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var sel = ta.value.substring(start, end) || url;
+  var insert = '[url=' + url + ']' + sel + '[/url]';
   ta.value = ta.value.substring(0, start) + insert + ta.value.substring(end);
   ta.focus();
   ta.setSelectionRange(start + insert.length, start + insert.length);
 }
 
-function editPost(postId) {
-  const contentEl = document.getElementById('post-content-' + postId);
-  if (!contentEl) return;
-  // If already in edit mode, do nothing.
-  if (document.getElementById('edit-area-' + postId)) return;
-  const raw = contentEl.getAttribute('data-raw') || contentEl.textContent;
-  // Decode the data-raw attribute (was HTML-escaped on render).
-  const tmp = document.createElement('textarea');
-  tmp.innerHTML = raw;
-  const original = tmp.value;
+function bbInsertColor(targetId) {
+  var color = prompt('Couleur (ex: red, #FF0000) :', 'red');
+  if (!color) return;
+  var ta = document.getElementById(targetId);
+  if (!ta) return;
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var sel = ta.value.substring(start, end);
+  var open = '[color=' + color + ']', close = '[/color]';
+  ta.value = ta.value.substring(0, start) + open + sel + close + ta.value.substring(end);
+  ta.focus();
+  var cursor = start + open.length + sel.length;
+  ta.setSelectionRange(cursor, cursor);
+}
 
-  const taId = 'edit-textarea-' + postId;
-  const wrap = document.createElement('div');
+function bbInsertSize(targetId) {
+  var size = prompt('Taille (8-32) :', '18');
+  if (!size) return;
+  var ta = document.getElementById(targetId);
+  if (!ta) return;
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var sel = ta.value.substring(start, end);
+  var open = '[size=' + size + ']', close = '[/size]';
+  ta.value = ta.value.substring(0, start) + open + sel + close + ta.value.substring(end);
+  ta.focus();
+  var cursor = start + open.length + sel.length;
+  ta.setSelectionRange(cursor, cursor);
+}
+
+function editPost(postId) {
+  var contentEl = document.getElementById('post-content-' + postId);
+  if (!contentEl) return;
+  if (document.getElementById('edit-area-' + postId)) return;
+  var raw = contentEl.getAttribute('data-raw') || contentEl.textContent;
+  var tmp = document.createElement('textarea');
+  tmp.innerHTML = raw;
+  var original = tmp.value;
+
+  var taId = 'edit-textarea-' + postId;
+  var wrap = document.createElement('div');
   wrap.className = 'post-edit-area';
   wrap.id = 'edit-area-' + postId;
   wrap.innerHTML = bbcodeToolbarHtml(taId)
@@ -785,18 +957,18 @@ function editPost(postId) {
 }
 
 function cancelEdit(postId) {
-  const wrap = document.getElementById('edit-area-' + postId);
+  var wrap = document.getElementById('edit-area-' + postId);
   if (wrap) wrap.remove();
-  const contentEl = document.getElementById('post-content-' + postId);
+  var contentEl = document.getElementById('post-content-' + postId);
   if (contentEl) contentEl.style.display = '';
 }
 
 async function submitEdit(postId) {
-  const ta = document.getElementById('edit-textarea-' + postId);
+  var ta = document.getElementById('edit-textarea-' + postId);
   if (!ta) return;
-  const newContent = ta.value.trim();
+  var newContent = ta.value.trim();
   if (!newContent) { alert('Le message ne peut pas être vide.'); return; }
-  const data = await apiFetch('/api/forum/post/' + postId, {
+  var data = await apiFetch('/api/forum/post/' + postId, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: newContent, sid: SID }),
@@ -807,21 +979,21 @@ async function submitEdit(postId) {
 
 async function deletePost(postId) {
   if (!confirm('Supprimer ce message ?')) return;
-  const data = await apiFetch('/api/forum/post/' + postId, { method: 'DELETE' });
+  var data = await apiFetch('/api/forum/post/' + postId, { method: 'DELETE' });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
   else alert('Erreur : ' + (data.error || 'inconnue'));
 }
 
 async function toggleSticky() {
   if (!currentTopicId) return;
-  const data = await apiFetch('/api/forum/topic/' + currentTopicId + '/sticky', { method: 'POST' });
+  var data = await apiFetch('/api/forum/topic/' + currentTopicId + '/sticky', { method: 'POST' });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
   else alert('Erreur : ' + (data.error || 'inconnue'));
 }
 
 async function toggleLock() {
   if (!currentTopicId) return;
-  const data = await apiFetch('/api/forum/topic/' + currentTopicId + '/lock', { method: 'POST' });
+  var data = await apiFetch('/api/forum/topic/' + currentTopicId + '/lock', { method: 'POST' });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
   else alert('Erreur : ' + (data.error || 'inconnue'));
 }
@@ -829,15 +1001,15 @@ async function toggleLock() {
 async function deleteTopic() {
   if (!currentTopicId) return;
   if (!confirm('Supprimer ce sujet et tous ses messages ?')) return;
-  const data = await apiFetch('/api/forum/topic/' + currentTopicId, { method: 'DELETE' });
+  var data = await apiFetch('/api/forum/topic/' + currentTopicId, { method: 'DELETE' });
   if (data.ok) navigate('board', data.boardId || (currentTopicData && currentTopicData.topic.boardId));
   else alert('Erreur : ' + (data.error || 'inconnue'));
 }
 
 function showNewTopicForm(boardId) {
   setBreadcrumb([{ text: 'Nouveau sujet' }]);
-  const app = document.getElementById('app');
-  let html = '<div class="form-area">';
+  var app = document.getElementById('app');
+  var html = '<div class="form-area">';
   html += '<h3>Nouveau sujet</h3>';
   html += '<label>Titre :</label>';
   html += '<input type="text" id="new-topic-title" maxlength="200" placeholder="Titre du sujet">';
@@ -853,10 +1025,10 @@ function showNewTopicForm(boardId) {
 }
 
 async function submitNewTopic(boardId) {
-  const title = document.getElementById('new-topic-title').value.trim();
-  const content = document.getElementById('new-topic-content').value.trim();
+  var title = document.getElementById('new-topic-title').value.trim();
+  var content = document.getElementById('new-topic-content').value.trim();
   if (!title || !content) { alert('Titre et message requis.'); return; }
-  const data = await apiFetch('/api/forum/topic', {
+  var data = await apiFetch('/api/forum/topic', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ boardId: boardId, title: title, content: content, sid: SID }),
@@ -867,8 +1039,8 @@ async function submitNewTopic(boardId) {
 
 async function init() {
   try {
-    const r = await fetch('/api/forum/me?sid=' + encodeURIComponent(SID));
-    const data = await r.json();
+    var r = await fetch('/api/forum/me?sid=' + encodeURIComponent(SID));
+    var data = await r.json();
     if (data && data.user) {
       currentUser = data.user;
       document.getElementById('user-info').textContent = 'Connecté : ' + currentUser;
@@ -876,7 +1048,7 @@ async function init() {
       document.getElementById('user-info').textContent = 'Non connecté';
     }
   } catch (e) {
-    document.getElementById('user-info').textContent = 'Erreur d\'authentification';
+    document.getElementById('user-info').textContent = "Erreur d'authentification";
   }
   loadIndex();
 }
