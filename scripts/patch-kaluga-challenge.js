@@ -1,18 +1,49 @@
 #!/usr/bin/env node
-// Patches Games/kaluga/full.swf so that only Kaluga's "Challenge" mode
-// (kaluga.game.Classic, type == "$classic") sends a score to the server.
+// Patches Games/kaluga/full.swf so that:
+//   1. Only Kaluga's "Challenge" mode (kaluga.game.Classic, type == "$classic")
+//      sends a score to the daily-challenge ranking. Other sub-modes still play
+//      and end normally — they just don't pollute the leaderboard.
+//   2. The "Rejouer ?" panel shows after every Kaluga game ends, regardless of
+//      mode and regardless of isWhite(). (Original behavior only offered it for
+//      $train + isWhite(), which made replays inaccessible for normal users.)
 //
-// In Game.as line 902 the original condition is:
-//   if (this.type != "$train" && this.tournament == undefined) { saveScore(...) }
+// Game.as has two `$train` tests in the kaluga.Game DoInitAction:
 //
-// Compiled into AVM1 bytecode as:
-//   Push CP["type"]; GetMember; Push CP["$train"]; Equals2; Not; If(...)
+//   Line 254 (initEndPanelList, "single" case):
+//     if (this.mng.client.isWhite() || this.type == "$train") {
+//         this.addReplayPanel();
+//     } else {
+//         this.endPanelEnd.push("kill");
+//     }
+//   → bytecode pattern:
+//       Push CP[98]; Equals2; Not; If <25>     (5-byte If branches to "kill")
 //
-// We rewrite the constant-pool entry "$train" (idx 98) to "$classic" and
-// replace the trailing `Not` (0x12) opcode with `ToggleQuality` (0x08, a
-// 1-byte side-effect-light opcode) — effectively flipping `!=` to `==`.
-// After the patch the test is `this.type == "$classic"`, so saveScore only
-// fires for the actual Challenge mode (slot 0 in Menu.as).
+//   Line 902 (initEndGame, saveScore guard):
+//     if (this.type != "$train" && this.tournament == undefined) {
+//         this.saveScore(this.score);
+//     }
+//   → bytecode pattern:
+//       Push CP[98]; Equals2; Not; PushDup; Not; If <17>; Pop; …
+//                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+//                                  &&-short-circuit
+//
+// Patch strategy:
+//   • Rewrite CP[98] from "$train" to "$classic" (the test now references the
+//     mode we actually want to compare against).
+//   • Line 902: replace the first `Not` (right after Equals2) with
+//     `ToggleQuality` (0x08, a side-effect-light no-op). The combined effect
+//     turns `(type != $train) && (tournament == undefined)` into
+//     `(type == $classic) && (tournament == undefined)`.
+//   • Line 254: change the If's signed jump offset from 25 to 0 — the If still
+//     pops the boolean off the stack, but falls through to the addReplayPanel
+//     branch unconditionally. The "kill" branch becomes dead code.
+//
+// All edits are length-preserving except the CP entry rewrite ("$train" → 7
+// bytes including null → "$classic" + null = 9 bytes, +2 bytes). The CP
+// payload length, the DoInitAction tag length, and the SWF body grow by 2.
+// Bytecode references CP entries by index, so existing Push CP[98] sites
+// stay valid; relative jumps inside the action are unaffected because the
+// entire bytecode block shifts uniformly.
 
 const fs = require('fs');
 const path = require('path');
@@ -50,12 +81,11 @@ function writeSwf(outPath, sig, version, newBody) {
 
 const { sig, version, body } = readSwf(IN_PATH);
 
-// 1) Locate the kaluga.Game DoInitAction containing "$train" in its CP.
+// 1) Locate the kaluga.Game DoInitAction (tag 59) containing "$train".
 const needle = Buffer.from(OLD_STR + '\0', 'ascii');
 const strOff = body.indexOf(needle);
 if (strOff < 0) throw new Error('"$train" not found in SWF');
 
-// Walk top-level tags to find the enclosing DoInitAction (tag 59)
 const nbits = (body[0] >> 3) & 0x1f;
 const rectBytes = Math.ceil((5 + nbits * 4) / 8);
 let off = rectBytes + 4;
@@ -75,68 +105,86 @@ while (off < body.length) {
 }
 if (initActionOff < 0) throw new Error('Enclosing DoInitAction not found');
 
-// First action in the body must be ConstantPool (0x88). Body layout:
-//   sprite_id (2 bytes) | constant pool action ...
-const cpActionOff = initActionOff + initActionHdrSize + 2;
+const cpActionOff = initActionOff + initActionHdrSize + 2; // skip 2-byte sprite ID
 if (body[cpActionOff] !== 0x88) throw new Error('Expected ConstantPool action');
 const cpPayloadLen = body.readUInt16LE(cpActionOff + 1);
 
 console.log('Found DoInitAction at', initActionOff, 'len', initActionLen);
-console.log('Constant pool payload length:', cpPayloadLen);
-console.log('"$train" at offset', strOff);
+console.log('"$train" at offset', strOff, '— constant pool payload len', cpPayloadLen);
 
-// 2) Both Game.as $train tests compile to Push CP[98]; Equals2; Not; ...
-//    We flip "!=" to "==" by replacing the Not (0x12) with ToggleQuality (0x08).
-//    Combined with the CP entry rewrite ($train → $classic) below, the test
-//    becomes `type == "$classic"`.
-//
-//    Side effect for line 254 (`if isWhite() || type == "$train"` shows the
-//    "Rejouer ?" panel): the panel now shows for $classic instead of $train.
-//    That's acceptable — a Challenge-mode replay button is a fine UX trade.
-const notPattern = Buffer.from([0x96, 0x02, 0x00, 0x08, 0x62, 0x49, 0x12]);
-const notOffsets = [];
+// 2) Catalog every Push(CP[98]) site by pattern, distinguishing the two cases.
+//    We need to apply different fixups to each.
+const pushCp98       = Buffer.from([0x96, 0x02, 0x00, 0x08, 0x62]); // Push CP[98]
+const ifAfterNot     = 0x9d; // If (line 254 — Equals2 Not If)
+const pushDupAfterNot = 0x4c; // PushDup (line 902 — Equals2 Not PushDup Not If)
+
+const sites = []; // { pushOff, equalsOff, notOff, kind: 'replay' | 'savescore' }
 let scan = initActionOff + initActionHdrSize;
 const scanEnd = initActionOff + initActionHdrSize + initActionLen;
 while (scan < scanEnd) {
-  const idx = body.indexOf(notPattern, scan);
+  const idx = body.indexOf(pushCp98, scan);
   if (idx < 0 || idx >= scanEnd) break;
-  notOffsets.push(idx + 6);
-  scan = idx + notPattern.length;
+  const equalsOff = idx + 5;
+  const notOff    = idx + 6;
+  if (body[equalsOff] !== 0x49) {
+    scan = idx + pushCp98.length;
+    continue;
+  }
+  if (body[notOff] !== 0x12) {
+    scan = idx + pushCp98.length;
+    continue;
+  }
+  const after = body[notOff + 1];
+  if (after === ifAfterNot) {
+    sites.push({ pushOff: idx, equalsOff, notOff, kind: 'replay' });
+  } else if (after === pushDupAfterNot) {
+    sites.push({ pushOff: idx, equalsOff, notOff, kind: 'savescore' });
+  } else {
+    console.warn('Unrecognised pattern after Not at', notOff, '→ 0x' + after.toString(16));
+  }
+  scan = idx + pushCp98.length;
 }
-if (notOffsets.length === 0) {
-  throw new Error('Could not find Push(CP[98]); Equals2; Not pattern');
+console.log('Sites:', sites.map(s => `${s.kind}@${s.pushOff}`).join(', '));
+
+if (!sites.some(s => s.kind === 'savescore')) {
+  throw new Error('saveScore guard pattern (line 902) not found');
 }
-console.log('Found Not opcodes at offsets:', notOffsets);
 
-// 3) Build the new body:
-//    - Replace "$train\0" (7 bytes) with "$classic\0" (9 bytes) — grows by 2
-//    - For each Not offset, after the CP shift add DELTA. Replace 0x12 with 0x08.
-//    - Update CP payload length (UI16 at cpActionOff + 1)
-//    - Update DoInitAction tag body length (UI32 at initActionOff + 2)
-
+// 3) Rewrite the constant pool entry $train → $classic (+2 bytes).
 const before = body.slice(0, strOff);
 const after  = body.slice(strOff + needle.length);
 const inserted = Buffer.from(NEW_STR + '\0', 'ascii');
 let newBody = Buffer.concat([before, inserted, after]);
 
-// Update CP payload length
 const newCpLen = cpPayloadLen + DELTA;
 if (newCpLen > 0xFFFF) throw new Error('CP payload would overflow UI16');
 newBody.writeUInt16LE(newCpLen, cpActionOff + 1);
 
-// Update DoInitAction tag length (UI32, long form)
 if (initActionHdrSize !== 6) throw new Error('DoInitAction must be long-form');
 newBody.writeUInt32LE(initActionLen + DELTA, initActionOff + 2);
 
-// Replace each Not opcode with ToggleQuality (0x08) at shifted offsets
-for (const noOff of notOffsets) {
-  const adjusted = noOff + (noOff > strOff ? DELTA : 0);
-  if (newBody[adjusted] !== 0x12) {
-    throw new Error('Expected Not (0x12) at shifted offset ' + adjusted +
-                    ', got 0x' + newBody[adjusted].toString(16));
+// 4) Apply per-site fixups. All site offsets are pre-shift; anything past the
+//    CP modification needs +DELTA.
+function shift(o) { return o + (o > strOff ? DELTA : 0); }
+
+for (const site of sites) {
+  if (site.kind === 'savescore') {
+    // Replace the first Not after Equals2 with ToggleQuality so the test
+    // becomes `(type == $classic)` instead of `(type != $train)`.
+    const at = shift(site.notOff);
+    if (newBody[at] !== 0x12) throw new Error('savescore Not missing at ' + at);
+    newBody[at] = 0x08;
+    console.log('saveScore: Not @', at, '→ ToggleQuality');
+  } else if (site.kind === 'replay') {
+    // The bytecode shape is: Push CP[98]; Equals2; Not; If <25>.
+    // The If at notOff+1 has a 5-byte form: 0x9d 0x02 0x00 lo hi.
+    // We patch the signed offset (lo,hi) to 0 so it never branches to the
+    // "kill" arm — falls through to addReplayPanel for every mode.
+    const ifAt = shift(site.notOff + 1);
+    if (newBody[ifAt] !== 0x9d) throw new Error('replay If missing at ' + ifAt);
+    newBody.writeInt16LE(0, ifAt + 3);
+    console.log('replay: If offset @', ifAt + 3, '→ 0 (always fall through to addReplayPanel)');
   }
-  newBody[adjusted] = 0x08;
-  console.log('Replaced Not -> ToggleQuality at offset', adjusted);
 }
 
 const newSize = writeSwf(OUT_PATH, sig, version, newBody);

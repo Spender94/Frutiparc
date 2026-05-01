@@ -251,13 +251,11 @@ class kaluga.Game extends kaluga.Slot{//}
 		switch(this.mode){
 		
 				case "single":
-					// Replay panel is now offered for the Challenge mode (was $train).
-					// See the bytecode patch in scripts/patch-kaluga-challenge.js.
-					if( this.mng.client.isWhite() || this.type=="$classic" ){
-						this.addReplayPanel()
-					}else{
-						this.endPanelEnd.push("kill")
-					}
+					// Replay panel is offered for every mode now — the bytecode
+					// patch in scripts/patch-kaluga-challenge.js neutralises the
+					// branch to "kill". (Original limited replay to $train +
+					// isWhite(), which made it inaccessible for normal players.)
+					this.addReplayPanel()
 					break;
 				case "triathlon":
 					var max = 2
