@@ -3941,9 +3941,21 @@ app.get('/api/forum/me', (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.json({ user: null });
   const u = users[username] || {};
+  const accessories = (u.customAccessories || [])
+    .filter(a => a && !a.v?.startsWith('wp:'))
+    .map(a => ({ id: a.id, name: a.n, value: a.v }));
+  const defaults = [
+    { id: 'bananocle', name: 'Bananocle', suffix: '6010k0w0g' },
+    { id: 'beaute',    name: 'Beauté',    suffix: 'b000k0w0g' },
+    { id: 'normal',    name: 'Normal',    suffix: '000000000' },
+    { id: 'Kiwix',     name: 'Kiwix',     suffix: '30x000000' },
+  ];
   res.json({
     user: username,
     isModerator: !!u.isModerator,
+    bouille: bouilleOf(u, username),
+    accessories: accessories,
+    defaultAccessories: defaults,
   });
 });
 
@@ -4007,7 +4019,7 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     const postsOut = posts.map(p => ({
       id: p.id, author: p.author_username, content: p.content,
       createdAt: p.created_at, updatedAt: p.updated_at,
-      bouille: bouilleOf(users[p.author_username], p.author_username),
+      bouille: p.bouille || bouilleOf(users[p.author_username], p.author_username),
       postCount: postCounts[p.author_username] || 0,
       isModerator: !!(users[p.author_username] && users[p.author_username].isModerator),
     }));
@@ -4030,10 +4042,11 @@ app.post('/api/forum/topic', async (req, res) => {
   const boardId = Number(req.body.boardId);
   const title = String(req.body.title || '').trim();
   const content = String(req.body.content || '').trim();
+  const postBouille = req.body.bouille ? normalizeBouilleState(req.body.bouille) : null;
   if (!title || !content) return res.status(400).json({ error: 'title and content required' });
   if (title.length > 200) return res.status(400).json({ error: 'title too long' });
   try {
-    const topic = await db.forumCreateTopic(boardId, username, title, content);
+    const topic = await db.forumCreateTopic(boardId, username, title, content, postBouille);
     res.json({ ok: true, topicId: topic.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -4044,12 +4057,13 @@ app.post('/api/forum/post', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
   const topicId = Number(req.body.topicId);
   const content = String(req.body.content || '').trim();
+  const postBouille = req.body.bouille ? normalizeBouilleState(req.body.bouille) : null;
   if (!content) return res.status(400).json({ error: 'content required' });
   try {
     const topic = await db.forumGetTopic(topicId);
     if (!topic) return res.status(404).json({ error: 'topic not found' });
     if (topic.is_locked) return res.status(403).json({ error: 'topic locked' });
-    const post = await db.forumCreatePost(topicId, username, content);
+    const post = await db.forumCreatePost(topicId, username, content, postBouille);
     res.json({ ok: true, postId: post.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

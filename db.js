@@ -223,10 +223,13 @@ async function initSchema() {
         topic_id        INTEGER REFERENCES forum_topics(id) ON DELETE CASCADE,
         author_username TEXT NOT NULL,
         content         TEXT NOT NULL,
+        bouille         TEXT,
         created_at      TIMESTAMPTZ DEFAULT now(),
         updated_at      TIMESTAMPTZ
       );
       CREATE INDEX IF NOT EXISTS idx_forum_posts_topic ON forum_posts(topic_id, created_at ASC);
+
+      ALTER TABLE forum_posts ADD COLUMN IF NOT EXISTS bouille TEXT;
 
       -- Internal mailbox
       CREATE TABLE IF NOT EXISTS user_mails (
@@ -761,7 +764,7 @@ async function forumGetPosts(topicId, page, perPage) {
   return { posts: rows, total: Number(countRows[0].total) };
 }
 
-async function forumCreateTopic(boardId, username, title, content) {
+async function forumCreateTopic(boardId, username, title, content, bouille) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -772,9 +775,9 @@ async function forumCreateTopic(boardId, username, title, content) {
     );
     const topic = tRows[0];
     await client.query(
-      `INSERT INTO forum_posts (topic_id, author_username, content)
-       VALUES ($1, $2, $3)`,
-      [topic.id, username, content]
+      `INSERT INTO forum_posts (topic_id, author_username, content, bouille)
+       VALUES ($1, $2, $3, $4)`,
+      [topic.id, username, content, bouille || null]
     );
     await client.query('COMMIT');
     return topic;
@@ -786,11 +789,11 @@ async function forumCreateTopic(boardId, username, title, content) {
   }
 }
 
-async function forumCreatePost(topicId, username, content) {
+async function forumCreatePost(topicId, username, content, bouille) {
   const { rows } = await pool.query(
-    `INSERT INTO forum_posts (topic_id, author_username, content)
-     VALUES ($1, $2, $3) RETURNING *`,
-    [topicId, username, content]
+    `INSERT INTO forum_posts (topic_id, author_username, content, bouille)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [topicId, username, content, bouille || null]
   );
   await pool.query(
     'UPDATE forum_topics SET last_post_at = now(), last_post_by = $2 WHERE id = $1',

@@ -18,6 +18,8 @@
     border-radius: 7px;
     overflow: hidden;
     padding: 6px;
+    border: 1.5px solid #2E3C1E;
+    box-shadow: inset 0 0 0 1px #DEDEDF;
   }
   a { color: #2C4A0F; text-decoration: none; }
   a:hover { text-decoration: underline; color: #2C4A0F; }
@@ -408,6 +410,92 @@
     gap: 8px;
   }
 
+  /* Bouille selector */
+  .bouille-selector {
+    margin-bottom: 10px;
+  }
+  .bouille-selector label {
+    margin-bottom: 6px;
+  }
+  .bouille-selector-body {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .bouille-preview-box {
+    width: 90px;
+    height: 90px;
+    border: 1.5px solid #2E3C1E;
+    border-radius: 4px;
+    background: #E8F8D3;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .bouille-preview-box iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+  }
+  .bouille-options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+  }
+  .bouille-option-group label {
+    font-size: 10px;
+    margin-bottom: 2px;
+    font-weight: bold;
+    color: #2C4A0F;
+  }
+  .expression-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .expression-grid .expr-btn {
+    padding: 2px 7px;
+    font-size: 10px;
+    font-family: Verdana, Arial, sans-serif;
+    background: #C3EF93;
+    border: 1px solid #2E3C1E;
+    color: #2C4A0F;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .expression-grid .expr-btn:hover {
+    background: #ADE76B;
+  }
+  .expression-grid .expr-btn.active {
+    background: #E3756A;
+    color: #fff;
+    border-color: #c05040;
+  }
+  .acc-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .acc-grid .acc-btn {
+    padding: 2px 7px;
+    font-size: 10px;
+    font-family: Verdana, Arial, sans-serif;
+    background: #C3EF93;
+    border: 1px solid #2E3C1E;
+    color: #2C4A0F;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .acc-grid .acc-btn:hover {
+    background: #ADE76B;
+  }
+  .acc-grid .acc-btn.active {
+    background: #E3756A;
+    color: #fff;
+    border-color: #c05040;
+  }
+
   .toolbar {
     display: flex;
     justify-content: space-between;
@@ -570,6 +658,141 @@
 const params = new URLSearchParams(window.location.search);
 const SID = params.get('sid') || '';
 let currentUser = null;
+let myBouille = null;
+let myAccessories = [];
+let myDefaultAccessories = [];
+
+const EXPRESSIONS = [
+  { id: 0, name: 'Normal' },
+  { id: 1, name: 'Souriant' },
+  { id: 2, name: 'Triste' },
+  { id: 3, name: 'Fâché' },
+  { id: 4, name: 'Surpris' },
+  { id: 5, name: 'Coquin' },
+  { id: 6, name: 'Gêné' },
+  { id: 7, name: 'Endormi' },
+  { id: 8, name: 'Amoureux' },
+  { id: 9, name: 'Malade' },
+  { id: 10, name: 'Boudeur' },
+  { id: 11, name: 'Pensif' },
+];
+
+function encode62(n, len) {
+  if (!len) len = 2;
+  var chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  if (n === 0) { var r = ''; while (r.length < len) r = '0' + r; return r; }
+  var ret = '';
+  while (n > 0) {
+    ret = chars[n % 62] + ret;
+    n = Math.floor(n / 62);
+  }
+  while (ret.length < len) ret = '0' + ret;
+  return ret;
+}
+
+function decode62(s) {
+  var r = 0, m = 1;
+  for (var i = s.length - 1; i >= 0; i--) {
+    var c = s.charAt(i);
+    var v = c === c.toLowerCase() ? parseInt(c, 36) : parseInt(c.toLowerCase(), 36) + 26;
+    r += v * m; m *= 62;
+  }
+  return r;
+}
+
+function buildBouilleState(base, mouthId, accSuffix9) {
+  var s = String(base || '000000010000000000000000');
+  while (s.length < 24) s += '0';
+  var prefix = s.substring(0, 8);
+  var mouth = encode62(mouthId, 2);
+  var mid = s.substring(10, 15);
+  var acc = accSuffix9 || s.substring(15, 24);
+  return prefix + mouth + mid + acc;
+}
+
+function getBouillePreviewHtml(state) {
+  var s = String(state || '').replace(/[^0-9a-zA-Z]/g, '');
+  if (!s || s.length < 2) s = '000000010000000000000000';
+  return '<iframe src="/bouille-preview.html?s=' + encodeURIComponent(s) +
+    '" sandbox="allow-scripts allow-same-origin"></iframe>';
+}
+
+var _activeBouilleSel = {};
+
+function bouilleSetExpression(formId, mouthId) {
+  _activeBouilleSel[formId] = _activeBouilleSel[formId] || {};
+  _activeBouilleSel[formId].mouthId = mouthId;
+  refreshBouillePreview(formId);
+  var btns = document.querySelectorAll('#bouille-sel-' + formId + ' .expr-btn');
+  btns.forEach(function(b) {
+    b.classList.toggle('active', Number(b.dataset.id) === mouthId);
+  });
+}
+
+function bouilleSetAccessory(formId, suffix9, btnEl) {
+  _activeBouilleSel[formId] = _activeBouilleSel[formId] || {};
+  _activeBouilleSel[formId].accSuffix9 = suffix9;
+  refreshBouillePreview(formId);
+  var btns = document.querySelectorAll('#bouille-sel-' + formId + ' .acc-btn');
+  btns.forEach(function(b) { b.classList.toggle('active', b === btnEl); });
+}
+
+function refreshBouillePreview(formId) {
+  var sel = _activeBouilleSel[formId] || {};
+  var state = buildBouilleState(myBouille, sel.mouthId || 0, sel.accSuffix9);
+  var box = document.getElementById('bouille-preview-' + formId);
+  if (box) box.innerHTML = getBouillePreviewHtml(state);
+}
+
+function getCurrentBouilleState(formId) {
+  var sel = _activeBouilleSel[formId] || {};
+  return buildBouilleState(myBouille, sel.mouthId || 0, sel.accSuffix9);
+}
+
+function bouilleSelHtml(formId) {
+  var html = '<div class="bouille-selector" id="bouille-sel-' + formId + '">';
+  html += '<label>Votre Frutibouille :</label>';
+  html += '<div class="bouille-selector-body">';
+  html += '<div class="bouille-preview-box" id="bouille-preview-' + formId + '">';
+  html += getBouillePreviewHtml(myBouille);
+  html += '</div>';
+  html += '<div class="bouille-options">';
+
+  html += '<div class="bouille-option-group">';
+  html += '<label>Expression :</label>';
+  html += '<div class="expression-grid">';
+  for (var i = 0; i < EXPRESSIONS.length; i++) {
+    var e = EXPRESSIONS[i];
+    var cls = e.id === 0 ? 'expr-btn active' : 'expr-btn';
+    html += '<button type="button" class="' + cls + '" data-id="' + e.id + '" onclick="bouilleSetExpression(\'' + formId + '\',' + e.id + ')">' + escapeHtml(e.name) + '</button>';
+  }
+  html += '</div></div>';
+
+  html += '<div class="bouille-option-group">';
+  html += '<label>Accessoires :</label>';
+  html += '<div class="acc-grid">';
+  var allAcc = [];
+  for (var j = 0; j < myDefaultAccessories.length; j++) {
+    allAcc.push({ name: myDefaultAccessories[j].name, suffix: myDefaultAccessories[j].suffix });
+  }
+  for (var k = 0; k < myAccessories.length; k++) {
+    var a = myAccessories[k];
+    if (a.value && a.value.length === 24) {
+      allAcc.push({ name: a.name, suffix: a.value.substring(15, 24) });
+    }
+  }
+  for (var m = 0; m < allAcc.length; m++) {
+    var ac = allAcc[m];
+    var isDefault = ac.suffix === '000000000';
+    var cls2 = isDefault ? 'acc-btn active' : 'acc-btn';
+    html += '<button type="button" class="' + cls2 + '" onclick="bouilleSetAccessory(\'' + formId + '\',\'' + escapeHtml(ac.suffix) + '\',this)">' + escapeHtml(ac.name) + '</button>';
+  }
+  html += '</div></div>';
+
+  html += '</div></div></div>';
+  _activeBouilleSel[formId] = { mouthId: 0, accSuffix9: null };
+  return html;
+}
 
 function closeForum() {
   try {
@@ -850,6 +1073,7 @@ async function loadTopic(topicId, page) {
     html += '<label>Répondre :</label>';
     html += bbcodeToolbarHtml('reply-content');
     html += '<textarea id="reply-content" placeholder="Votre message..."></textarea>';
+    if (myBouille) html += bouilleSelHtml('reply');
     html += '<div class="form-actions"><button class="btn btn-green" onclick="submitReply()">Envoyer</button> <button class="btn btn-orange" onclick="document.getElementById(\'reply-form\').style.display=\'none\'">Annuler</button></div>';
     html += '</div>';
   }
@@ -880,10 +1104,11 @@ function quotePost(postId, author) {
 async function submitReply() {
   var content = document.getElementById('reply-content').value.trim();
   if (!content) return;
+  var bouille = myBouille ? getCurrentBouilleState('reply') : undefined;
   var data = await apiFetch('/api/forum/post', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topicId: currentTopicId, content: content, sid: SID }),
+    body: JSON.stringify({ topicId: currentTopicId, content: content, bouille: bouille, sid: SID }),
   });
   if (data.ok) {
     var totalAfter = (currentTopicData ? currentTopicData.total : 0) + 1;
@@ -1045,6 +1270,7 @@ function showNewTopicForm(boardId) {
   html += '<label>Message :</label>';
   html += bbcodeToolbarHtml('new-topic-content');
   html += '<textarea id="new-topic-content" placeholder="Votre message..." style="height:160px"></textarea>';
+  if (myBouille) html += bouilleSelHtml('newtopic');
   html += '<div class="form-actions">';
   html += '<button class="btn btn-green" onclick="submitNewTopic(' + boardId + ')">Créer le sujet</button>';
   html += ' <button class="btn btn-orange" onclick="navigate(\'board\',' + boardId + ')">Annuler</button>';
@@ -1057,10 +1283,11 @@ async function submitNewTopic(boardId) {
   var title = document.getElementById('new-topic-title').value.trim();
   var content = document.getElementById('new-topic-content').value.trim();
   if (!title || !content) { alert('Titre et message requis.'); return; }
+  var bouille = myBouille ? getCurrentBouilleState('newtopic') : undefined;
   var data = await apiFetch('/api/forum/topic', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ boardId: boardId, title: title, content: content, sid: SID }),
+    body: JSON.stringify({ boardId: boardId, title: title, content: content, bouille: bouille, sid: SID }),
   });
   if (data.ok) navigate('topic', data.topicId);
   else alert('Erreur : ' + (data.error || 'inconnue'));
@@ -1072,6 +1299,9 @@ async function init() {
     var data = await r.json();
     if (data && data.user) {
       currentUser = data.user;
+      myBouille = data.bouille || null;
+      myAccessories = data.accessories || [];
+      myDefaultAccessories = data.defaultAccessories || [];
       document.getElementById('user-info').textContent = 'Connecté : ' + currentUser;
     } else {
       document.getElementById('user-info').textContent = 'Non connecté';
