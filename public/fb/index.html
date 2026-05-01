@@ -17,7 +17,7 @@
     background: #fff;
     border-radius: 7px;
     overflow: hidden;
-    padding: 0;
+    padding: 6px;
   }
   a { color: #2C4A0F; text-decoration: none; }
   a:hover { text-decoration: underline; color: #2C4A0F; }
@@ -72,13 +72,6 @@
   }
   .forum-header .title-link:hover { text-decoration: none; }
 
-  /* Coral separator band */
-  .coral-band {
-    background: #E3756A;
-    height: 6px;
-    line-height: 6px;
-    font-size: 1px;
-  }
   /* Bottom green band */
   .green-band {
     background: #D6F7B5;
@@ -102,6 +95,7 @@
     height: 25px;
     align-items: center;
     border: none;
+    border-radius: 7px 7px 0 0;
   }
   .tbl-header .col-author {
     width: 130px;
@@ -573,7 +567,6 @@
     <img class="bc-icon" src="/fb/ico.gif" alt="" width="18" height="18">
     <a class="title-link" href="#" id="header-title" onclick="navigate('index');return false">Forum Frutiparc.com</a>
   </div>
-  <div class="coral-band">&nbsp;</div>
   <div id="app">
     <div class="loading">Chargement du forum...</div>
   </div>
