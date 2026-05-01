@@ -307,6 +307,49 @@
   .bbcode-toolbar button.i { font-style: italic; }
   .bbcode-toolbar button.u { text-decoration: underline; }
 
+  /* Inline pictos in posts */
+  .picto-inline {
+    display: inline-block;
+    vertical-align: middle;
+    max-width: 40px;
+    max-height: 40px;
+    margin: 0 2px;
+  }
+  /* Picto picker popup */
+  .picto-picker {
+    position: absolute;
+    z-index: 100;
+    background: #FFF9E5;
+    border: 2px solid #2C4A0F;
+    border-radius: 6px;
+    padding: 8px;
+    max-width: 340px;
+    max-height: 260px;
+    overflow-y: auto;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.25);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .picto-picker img {
+    width: 36px;
+    height: 36px;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background: #fff;
+    object-fit: contain;
+  }
+  .picto-picker img:hover {
+    border-color: #2C4A0F;
+    background: #E8F5D4;
+  }
+  .picto-picker .picto-empty {
+    font-size: 11px;
+    color: #666;
+    padding: 8px;
+  }
+
   /* Inline edit area */
   .post-edit-area textarea {
     width: 100%;
@@ -811,6 +854,11 @@ function renderBBCode(s) {
     '<blockquote class="quote">$1</blockquote>');
   out = out.replace(/(^|[\s>])(https?:\/\/[^\s<]+)/g,
     '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  out = out.replace(/\[picto=([^\]]+)\]/gi, function(m, id) {
+    var safeId = id.replace(/[<>"'&]/g, '');
+    var url = '/api/picto/' + encodeURIComponent(safeId);
+    return '<img class="picto-inline" src="' + url + '" alt="' + safeId + '" title="' + safeId + '">';
+  });
   out = out.replace(/\n/g, '<br>');
   return out;
 }
@@ -1109,6 +1157,7 @@ function bbcodeToolbarHtml(targetId) {
     + '<button type="button" onclick="bbInsertUrl(\'' + targetId + '\')" title="Lien">URL</button>'
     + '<button type="button" onclick="bbInsertColor(\'' + targetId + '\')" title="Couleur">Couleur</button>'
     + '<button type="button" onclick="bbInsertSize(\'' + targetId + '\')" title="Taille">Taille</button>'
+    + '<button type="button" onclick="bbTogglePictos(\'' + targetId + '\', this)" title="Pictos">Pictos</button>'
     + '</div>';
 }
 
@@ -1164,6 +1213,60 @@ function bbInsertSize(targetId) {
   var cursor = start + open.length + sel.length;
   ta.setSelectionRange(cursor, cursor);
 }
+
+var _pictoCache = null;
+async function fetchPictos() {
+  if (_pictoCache) return _pictoCache;
+  try {
+    var data = await apiFetch('/api/pictos?sid=' + SID);
+    _pictoCache = Array.isArray(data) ? data : [];
+  } catch (e) {
+    _pictoCache = [];
+  }
+  return _pictoCache;
+}
+
+async function bbTogglePictos(targetId, btn) {
+  var existing = btn.parentNode.querySelector('.picto-picker');
+  if (existing) { existing.remove(); return; }
+  // Close any other open pickers
+  document.querySelectorAll('.picto-picker').forEach(function(el) { el.remove(); });
+  var picker = document.createElement('div');
+  picker.className = 'picto-picker';
+  picker.innerHTML = '<span class="picto-empty">Chargement...</span>';
+  btn.parentNode.style.position = 'relative';
+  btn.parentNode.appendChild(picker);
+  var pictos = await fetchPictos();
+  picker.innerHTML = '';
+  if (pictos.length === 0) {
+    picker.innerHTML = '<span class="picto-empty">Aucun picto. Jouez aux jeux pour en collecter !</span>';
+    return;
+  }
+  pictos.forEach(function(p) {
+    var img = document.createElement('img');
+    img.src = p.url;
+    img.alt = p.name;
+    img.title = p.name + ' (' + p.game + ')';
+    img.onclick = function() {
+      var ta = document.getElementById(targetId);
+      if (!ta) return;
+      var tag = '[picto=' + p.id + ']';
+      var start = ta.selectionStart;
+      ta.value = ta.value.substring(0, start) + tag + ta.value.substring(ta.selectionEnd);
+      ta.focus();
+      ta.setSelectionRange(start + tag.length, start + tag.length);
+      picker.remove();
+    };
+    picker.appendChild(img);
+  });
+}
+
+// Close picto pickers on outside click
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.picto-picker') && !e.target.closest('.bbcode-toolbar button')) {
+    document.querySelectorAll('.picto-picker').forEach(function(el) { el.remove(); });
+  }
+});
 
 function editPost(postId) {
   var contentEl = document.getElementById('post-content-' + postId);

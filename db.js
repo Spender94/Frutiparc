@@ -108,6 +108,13 @@ async function initSchema() {
 
       CREATE INDEX IF NOT EXISTS idx_user_accessories_user ON user_accessories(user_id);
 
+      CREATE TABLE IF NOT EXISTS user_game_items (
+        user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        item_name  TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (user_id, item_name)
+      );
+
       CREATE TABLE IF NOT EXISTS contacts (
         user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
         contact_name TEXT NOT NULL,
@@ -593,6 +600,21 @@ async function addItem(userId, itemId) {
   );
 }
 
+async function getUserGameItems(userId) {
+  const { rows } = await pool.query(
+    'SELECT item_name FROM user_game_items WHERE user_id = $1 ORDER BY created_at',
+    [userId]
+  );
+  return rows.map((r) => r.item_name);
+}
+
+async function addGameItem(userId, itemName) {
+  await pool.query(
+    'INSERT INTO user_game_items (user_id, item_name) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [userId, itemName]
+  );
+}
+
 async function loadShopPacks() {
   const { rows } = await pool.query('SELECT * FROM shop_packs ORDER BY id');
   return rows.map(r => {
@@ -958,6 +980,8 @@ module.exports = {
   deleteAccessory,
   deleteItem,
   addItem,
+  getUserGameItems,
+  addGameItem,
   saveMedal,
   getMedalsForUser,
   getMedalsForUserByDay,

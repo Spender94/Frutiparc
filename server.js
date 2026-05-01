@@ -181,6 +181,162 @@ function censorProfanity(text) {
   return out;
 }
 
+// ─────────────────────────────────────────────
+// Game Titems/Pictos — mapping item names to display info + GIF paths
+// ─────────────────────────────────────────────
+const GAME_ITEM_INFO = {
+  // Kaluga
+  '$butterfly0': { name: 'Papillon vert',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/papillonVert.gif' },
+  '$butterfly1': { name: 'Papillon jaune',      game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/papillonJaune.gif' },
+  '$butterfly2': { name: 'Papillon rose',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/papillonRose.gif' },
+  '$butterfly3': { name: 'Papillon violet',     game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/papillonViolet.gif' },
+  '$smiley0':    { name: 'Drapeau blanc',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/drapeauBlanc.gif' },
+  '$smiley1':    { name: 'Drapeau rouge',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/drapeauRouge.gif' },
+  '$smiley2':    { name: 'Gong de piste',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/gongPiste.gif' },
+  '$smiley3':    { name: 'Heptathlon',          game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/heptathlon.gif' },
+  '$tz1':        { name: 'Piwali',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/midPiwali.gif' },
+  '$tz2':        { name: 'Nalika',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/midNalika.gif' },
+  '$tz3':        { name: 'Makulo',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/midMakulo.gif' },
+  '$tz4':        { name: 'Gomola',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/midGomola.gif' },
+  '$basket':     { name: 'Panier',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/panier.gif' },
+  '$bird':       { name: 'Corbeau',             game: 'Kaluga', gif: 'Games/kaluga/Titems/corbeau.gif' },
+  '$ring':       { name: 'Kaluga Spécial',      game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/kalugaSpecial.gif' },
+  '$ant':        { name: 'Fourmi',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/fourmi.gif' },
+  '$kagulga':    { name: 'Kagulga',             game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/midKaluga.gif' },
+  // Swapou2
+  '$sel':        { name: 'Sel',                 game: 'Swapou', gif: 'Games/swapou2/images/titems/item_sel.gif' },
+  '$poivre':     { name: 'Poivre',              game: 'Swapou', gif: 'Games/swapou2/images/titems/item_poivre.gif' },
+  '$epee':       { name: 'Dague',               game: 'Swapou', gif: 'Games/swapou2/images/titems/item_dague.gif' },
+  '$piment':     { name: 'Piment',              game: 'Swapou', gif: 'Games/swapou2/images/titems/item_piment.gif' },
+  '$dent':       { name: 'Dent',                game: 'Swapou', gif: 'Games/swapou2/images/titems/item_dent.gif' },
+  '$sucre':      { name: 'Sucre',               game: 'Swapou', gif: 'Games/swapou2/images/titems/item_sucre.gif' },
+  '$metal01':    { name: 'Métal 1',             game: 'Swapou', gif: 'Games/swapou2/images/titems/metal_01.gif' },
+  '$metal02':    { name: 'Métal 2',             game: 'Swapou', gif: 'Games/swapou2/images/titems/metal_02.gif' },
+  '$metal03':    { name: 'Métal 3',             game: 'Swapou', gif: 'Games/swapou2/images/titems/metal_03.gif' },
+  '$ice01':      { name: 'Glace 1',             game: 'Swapou', gif: 'Games/swapou2/images/titems/frozen_01.gif' },
+  '$ice02':      { name: 'Glace 2',             game: 'Swapou', gif: 'Games/swapou2/images/titems/frozen_02.gif' },
+  '$ice03':      { name: 'Glace 3',             game: 'Swapou', gif: 'Games/swapou2/images/titems/frozen_03.gif' },
+  '$star01':     { name: 'Étoile 1',            game: 'Swapou', gif: 'Games/swapou2/images/titems/star_01.gif' },
+  '$star02':     { name: 'Étoile 2',            game: 'Swapou', gif: 'Games/swapou2/images/titems/star_02.gif' },
+  '$star03':     { name: 'Étoile 3',            game: 'Swapou', gif: 'Games/swapou2/images/titems/star_03.gif' },
+  '$fruit01':    { name: 'Fruit 1',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_01.gif' },
+  '$fruit02':    { name: 'Fruit 2',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_02.gif' },
+  '$fruit03':    { name: 'Fruit 3',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_03.gif' },
+  '$fruit04':    { name: 'Fruit 4',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_04.gif' },
+  '$fruit05':    { name: 'Fruit 5',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_05.gif' },
+  '$fruit06':    { name: 'Fruit 6',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_06.gif' },
+  '$fruit07':    { name: 'Fruit 7',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_07.gif' },
+  '$fruit08':    { name: 'Fruit 8',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_08.gif' },
+  '$fruit09':    { name: 'Fruit 9',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_09.gif' },
+  '$fruit10':    { name: 'Fruit 10',            game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_10.gif' },
+  '$fruit11':    { name: 'Fruit 11',            game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_11.gif' },
+  '$combo01':    { name: 'Combo 1',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_01.gif' },
+  '$combo02':    { name: 'Combo 2',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_02.gif' },
+  '$combo03':    { name: 'Combo 3',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_03.gif' },
+  '$combo04':    { name: 'Combo 4',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_04.gif' },
+  '$combo05':    { name: 'Combo 5',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_05.gif' },
+  '$combo06':    { name: 'Combo 6',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_06.gif' },
+  '$combo07':    { name: 'Combo 7',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_07.gif' },
+  '$combo08':    { name: 'Combo 8',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_08.gif' },
+  '$combo09':    { name: 'Combo 9',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_09.gif' },
+  '$combo10':    { name: 'Combo 10',            game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_10.gif' },
+  '$combo11':    { name: 'Combo 11',            game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_11.gif' },
+  '$photo01':    { name: 'Photo Sel',           game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_sel.gif' },
+  '$photo02':    { name: 'Photo Moutarde',      game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_moutarde.gif' },
+  '$photo03':    { name: 'Photo Dimitri',       game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_dimitri.gif' },
+  '$photo04':    { name: 'Photo Natacha',       game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_natacha.gif' },
+  '$photo05':    { name: 'Photo Poivre',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_poivre.gif' },
+  '$photo06':    { name: 'Photo Tomtom',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_tomtom.gif' },
+  '$photo07':    { name: 'Photo Wasabi',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_wasabi.gif' },
+  '$photo08':    { name: 'Photo Piment',        game: 'Swapou', gif: 'Games/swapou2/images/titems/item_piment.gif' },
+  // MotionBall2
+  '$c1or':       { name: 'Balle jaune or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballJauneOr.gif' },
+  '$c1argent':   { name: 'Balle jaune argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballJauneArgent.gif' },
+  '$c1':         { name: 'Balle jaune bronze',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballJauneBronze.gif' },
+  '$c2or':       { name: 'Balle verte or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVerteOr.gif' },
+  '$c2argent':   { name: 'Balle verte argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVerteArgent.gif' },
+  '$c2':         { name: 'Balle verte bronze',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVerteBronze.gif' },
+  '$c3or':       { name: 'Balle rouge or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballRougeOr.gif' },
+  '$c3argent':   { name: 'Balle rouge argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballRougeArgent.gif' },
+  '$c3':         { name: 'Balle rouge bronze',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballRougeBronze.gif' },
+  '$c4or':       { name: 'Balle orange or',     game: 'MotionBall', gif: 'Games/motionBall2/picto/ballOrangeOr.gif' },
+  '$c4argent':   { name: 'Balle orange argent', game: 'MotionBall', gif: 'Games/motionBall2/picto/ballOrangeArgent.gif' },
+  '$c4':         { name: 'Balle orange bronze', game: 'MotionBall', gif: 'Games/motionBall2/picto/ballOrangeBronze.gif' },
+  '$c5or':       { name: 'Balle bleue or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballBleueOr.gif' },
+  '$c5argent':   { name: 'Balle bleue argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballBleueArgent.gif' },
+  '$c5':         { name: 'Balle bleue bronze',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballBleueBronze.gif' },
+  '$c6or':       { name: 'Balle métal or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballMetalOr.gif' },
+  '$c6argent':   { name: 'Balle métal argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballMetalArgent.gif' },
+  '$c6':         { name: 'Balle métal bronze',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballMetalBronze.gif' },
+  '$c7or':       { name: 'Balle violette or',   game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVioletteOr.gif' },
+  '$c7argent':   { name: 'Balle violette argent', game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVioletteArgent.gif' },
+  '$c7':         { name: 'Balle violette bronze', game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVioletteBronze.gif' },
+  '$bfacettes':  { name: 'Balle à facettes',    game: 'MotionBall', gif: 'Games/motionBall2/picto/ballaFacettes.gif' },
+  '$bnormal':    { name: 'Bumper normal',       game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperNormal.gif' },
+  '$btime':      { name: 'Bumper du temps',     game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperDuTemp.gif' },
+  '$bdeath':     { name: 'Bumper de la mort',   game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperDeLaMort.gif' },
+  '$bmagnet':    { name: 'Bumper magnétique',   game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperMagnetic.gif' },
+  '$bshadow':    { name: 'Bumper invisible',    game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperInvisible.gif' },
+  '$oeil':       { name: "Oeil du poulpe",      game: 'MotionBall', gif: 'Games/motionBall2/picto/oeilDuPoulpe.gif' },
+  '$masque':     { name: 'Masque de TB',        game: 'MotionBall', gif: 'Games/motionBall2/picto/maskDeTB.gif' },
+  '$eca0':       { name: 'Écaille verte',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleVerte.gif' },
+  '$eca1':       { name: 'Écaille rouge',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleRouge.gif' },
+  '$eca2':       { name: 'Écaille bleue',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleBleue.gif' },
+  '$eca3':       { name: 'Écaille marron',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleMarron.gif' },
+  '$symb0':      { name: 'Logo eau',            game: 'MotionBall', gif: 'Games/motionBall2/picto/logoEau.gif' },
+  '$symb1':      { name: 'Logo feu',            game: 'MotionBall', gif: 'Games/motionBall2/picto/logoFeu.gif' },
+  '$symb2':      { name: 'Logo vent',           game: 'MotionBall', gif: 'Games/motionBall2/picto/logoVent.gif' },
+  '$symb3':      { name: 'Logo terre',          game: 'MotionBall', gif: 'Games/motionBall2/picto/logoTerre.gif' },
+  // MiniWave2
+  '$ship00':     { name: 'Vaisseau 0',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  '$ship01':     { name: 'Vaisseau 1',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship01.gif' },
+  '$ship02':     { name: 'Vaisseau 2',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship02.gif' },
+  '$ship03':     { name: 'Vaisseau 3',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship03.gif' },
+  '$ship04':     { name: 'Vaisseau 4',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship04.gif' },
+  '$ship05':     { name: 'Vaisseau 5',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship05.gif' },
+  '$arcade':     { name: 'Arcade Boss',         game: 'MiniWave', gif: 'Games/miniWave2/titem/pictoBoss.gif' },
+};
+
+// Build MiniWave2 bads (bad00..bad50) and missions (mis0..mis4)
+for (let i = 0; i <= 50; i++) {
+  const pad = String(i).padStart(2, '0');
+  GAME_ITEM_INFO[`$bads${i}`] = { name: `Monstre ${i}`, game: 'MiniWave', gif: `Games/miniWave2/titem/gif/bad${pad}.gif` };
+}
+for (let i = 0; i <= 4; i++) {
+  GAME_ITEM_INFO[`$mis${i}`] = { name: `Mission ${i}`, game: 'MiniWave', gif: `Games/miniWave2/titem/gif/mis${i}.gif` };
+}
+
+function resolveGameItemGif(itemName) {
+  const info = GAME_ITEM_INFO[itemName];
+  if (info && info.gif) {
+    const abs = path.join(__dirname, info.gif);
+    try { if (fs.statSync(abs).isFile()) return abs; } catch {}
+  }
+  // Snake3: "Fruit N" → snakeFruitNNNN.gif
+  const snakeMatch = /^Fruit (\d+)$/.exec(itemName);
+  if (snakeMatch) {
+    const pad = String(snakeMatch[1]).padStart(4, '0');
+    const abs = path.join(__dirname, 'Games', 'snake3', 'gif', `snakeFruit${pad}.gif`);
+    try { if (fs.statSync(abs).isFile()) return abs; } catch {}
+  }
+  return null;
+}
+
+function getGameItemDisplayName(itemName) {
+  const info = GAME_ITEM_INFO[itemName];
+  if (info) return info.name;
+  const snakeMatch = /^Fruit (\d+)$/.exec(itemName);
+  if (snakeMatch) return `Fruit ${snakeMatch[1]}`;
+  return itemName.replace(/^\$/, '');
+}
+
+function getGameItemGame(itemName) {
+  const info = GAME_ITEM_INFO[itemName];
+  if (info) return info.game;
+  if (/^Fruit \d+$/.test(itemName)) return 'Frutisnake';
+  return '';
+}
+
 const bouilleCache = {};
 
 function bouilleOf(user, username) {
@@ -678,6 +834,7 @@ function createDefaultUser(pass) {
     kikooz: 60,
     fbouille: DEFAULT_BOUILLE_STATE,
     items: [],
+    gameItems: [],
     contacts: [],
     blacklist: [],
     gender: 'M',
@@ -710,6 +867,7 @@ function dbUserToMemory(row) {
     kikooz: row.kikooz ?? 60,
     fbouille: row.fbouille || DEFAULT_BOUILLE_STATE,
     items: withDefaultPens([]),
+    gameItems: [],
     contacts: [],
     blacklist: [],
     gender: row.gender || 'M',
@@ -742,17 +900,19 @@ function dbUserToMemory(row) {
 
 async function hydrateUserFromDb(username, dbUser) {
   users[username] = dbUserToMemory(dbUser);
-  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails] = await Promise.all([
+  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails, dbGameItems] = await Promise.all([
     db.getUserItems(dbUser.id),
     db.getUserAccessories(dbUser.id),
     db.loadScoresForUser(dbUser.id),
     db.getContacts(dbUser.id),
     db.getBlacklist(dbUser.id),
     db.getMailsForUser(dbUser.id).catch(() => []),
+    db.getUserGameItems(dbUser.id).catch(() => []),
   ]);
 
   if (items.length > 0) users[username].items = withDefaultPens(items);
   if (accs.length > 0) users[username].customAccessories = accs;
+  if (dbGameItems.length > 0) users[username].gameItems = dbGameItems;
   users[username].contacts = Array.isArray(dbContacts) ? dbContacts : [];
   users[username].blacklist = Array.isArray(dbBlacklist) ? dbBlacklist : [];
   users[username].mails = Array.isArray(dbMails) ? dbMails : [];
@@ -1472,6 +1632,7 @@ const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbo
   <f u="inventory" n="Inventaire" t="inventory">
     <f u="inv_accessories" n="Accessoires" t="inventory" />
     <f u="inv_wallpapers" n="Fonds d&apos;écran" t="inventory" />
+    <f u="inv_pictos" n="Pictos" t="inventory" />
   </f>
   <f u="shop" n="Boutique" t="shop">
     <f u="accessories" n="Accessoires" t="accessories" />
@@ -1867,6 +2028,55 @@ app.delete('/api/admin/users/:username/items/:itemId', adminAuth, async (req, re
     }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
+// Picto image endpoint — serves GIF images for collected game items
+// ─────────────────────────────────────────────
+app.get('/api/picto/:itemName', (req, res) => {
+  const itemName = decodeURIComponent(req.params.itemName);
+  const gifPath = resolveGameItemGif(itemName);
+  if (!gifPath) return res.status(404).send('Not found');
+  res.type('image/gif').sendFile(gifPath);
+});
+
+// List all available pictos (for forum picto picker)
+app.get('/api/pictos', (req, res) => {
+  const sid = getSidFromRequest(req, req.query);
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.json([]);
+  const user = users[username];
+  const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
+  const result = gi.map((itemName) => ({
+    id: itemName,
+    name: getGameItemDisplayName(itemName),
+    game: getGameItemGame(itemName),
+    url: `/api/picto/${encodeURIComponent(itemName)}`,
+  }));
+  res.json(result);
+});
+
+// Admin: list user's game items
+app.get('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => {
+  const user = users[req.params.username];
+  if (!user) return res.status(404).json({ error: 'not found' });
+  res.json(Array.isArray(user.gameItems) ? user.gameItems : []);
+});
+
+// Admin: add a game item to a user
+app.post('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => {
+  const username = req.params.username;
+  const user = users[username];
+  if (!user) return res.status(404).json({ error: 'not found' });
+  const itemName = String(req.body.itemName || '').trim();
+  if (!itemName) return res.status(400).json({ error: 'missing itemName' });
+  if (!Array.isArray(user.gameItems)) user.gameItems = [];
+  if (!user.gameItems.includes(itemName)) {
+    user.gameItems.push(itemName);
+    const dbId = user._dbId;
+    if (dbId) await db.addGameItem(dbId, itemName).catch(() => {});
+  }
+  res.json({ ok: true, gameItems: user.gameItems });
 });
 
 // ── Admin: Shop pack management ──
@@ -3322,6 +3532,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
       `<f u="inventory">` +
       `<f u="inv_accessories" n="Accessoires" t="folder" />` +
       `<f u="inv_wallpapers" n="Fonds d'écran" t="folder" />` +
+      `<f u="inv_pictos" n="Pictos" t="folder" />` +
       `</f>`
     );
   }
@@ -3347,6 +3558,19 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
       }
     }
     return res.type('text/xml').send(`<f u="inv_wallpapers">${nodes || '<i />'}</f>`);
+  }
+
+  if (uid === 'inv_pictos') {
+    const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
+    let nodes = '';
+    for (const itemName of gi) {
+      const displayName = getGameItemDisplayName(itemName);
+      const gameName = getGameItemGame(itemName);
+      const gifPath = resolveGameItemGif(itemName);
+      const gifUrl = gifPath ? `/api/picto/${encodeURIComponent(itemName)}` : '';
+      nodes += `<e u="${escapeXml(itemName)}" t="picto" s="10" d="0" a="0">${escapeXml(displayName)}\n${escapeXml(gameName)}\n${escapeXml(gifUrl)}</e>`;
+    }
+    return res.type('text/xml').send(`<f u="inv_pictos">${nodes || '<i />'}</f>`);
   }
 
   if (uid === 'shop') {
@@ -6262,6 +6486,34 @@ case 'createchannel': {
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       const gAttr = game ? ` g="${escapeXml(String(game))}"` : '';
       sendToClient(socket, `<${CMD.fcardgetpublicslot}${rAttr}${gAttr}></${CMD.fcardgetpublicslot}>`);
+      break;
+    }
+
+    // ── refuse (x): chat invite refusal / FrutiScore giveItem ──
+    case 'refuse': {
+      // FrutiScore giveItem: wire 'x' with item name (i= attribute or content).
+      // Chat refuse: wire 'x' with u= and g= attributes (invite rejection).
+      if (msg.attrs.u && msg.attrs.g) {
+        // Chat invite refusal — no-op, just acknowledge silently.
+        break;
+      }
+      // Treat as FrutiScore giveItem.
+      const itemName = msg.attrs.i || msg.attrs.n || msg.attrs.t || msg.content || '';
+      if (!itemName || !client.username) {
+        console.log(`[FSCORE] giveItem: no item name or user — raw=${JSON.stringify(msg.attrs)} content=${msg.content || ''}`);
+        break;
+      }
+      const user = users[client.username];
+      if (!user) break;
+      if (!Array.isArray(user.gameItems)) user.gameItems = [];
+      if (!user.gameItems.includes(itemName)) {
+        user.gameItems.push(itemName);
+        const dbId = user._dbId;
+        if (dbId) db.addGameItem(dbId, itemName).catch((e) => console.error('[DB] addGameItem error:', e.message));
+        console.log(`[FSCORE] giveItem user=${client.username} item=${itemName} total=${user.gameItems.length}`);
+      } else {
+        console.log(`[FSCORE] giveItem user=${client.username} item=${itemName} (already owned)`);
+      }
       break;
     }
 
