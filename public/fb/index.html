@@ -233,12 +233,12 @@
     font-family: Verdana, sans-serif;
     line-height: 1.4;
   }
-  .act-btn-red { background: #E57568; }
-  .act-btn-red:hover { background: #d56558; color: #fff; text-decoration: none; }
-  .act-btn-green { background: #7ec43c; }
-  .act-btn-green:hover { background: #6cb22a; color: #fff; text-decoration: none; }
-  .act-btn-blue { background: #6b9fd4; }
-  .act-btn-blue:hover { background: #5a8ec3; color: #fff; text-decoration: none; }
+  .act-btn-red,
+  .act-btn-green,
+  .act-btn-blue { background: #E57568; }
+  .act-btn-red:hover,
+  .act-btn-green:hover,
+  .act-btn-blue:hover { background: #d56558; color: #fff; text-decoration: none; }
   .post .post-content {
     font-size: 12px;
     line-height: 1.6;
@@ -340,8 +340,8 @@
     color: #fff;
     font-family: Verdana, sans-serif;
   }
-  .btn-green { background: #7ec43c; }
-  .btn-green:hover { background: #6cb22a; text-decoration: none; color: #fff; }
+  .btn-green { background: #E57568; }
+  .btn-green:hover { background: #d56558; text-decoration: none; color: #fff; }
   .btn-orange { background: #E57568; }
   .btn-orange:hover { background: #d56558; text-decoration: none; color: #fff; }
   .btn-sm { padding: 3px 9px; font-size: 10px; }
@@ -426,15 +426,30 @@
   /* Bottom filter/sort bar (phpBB-style) */
   .bottom-bar {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     padding: 6px 10px;
-    background: #D7F8B6;
+    background: #ade76c;
     border: 1px solid #c0e6a0;
     border-top: none;
     font-size: 10px;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 6px;
+  }
+  /* Shell zone below bottom bar: pagination + reply + mod buttons */
+  .shell-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    background: #fff;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .shell-actions .pagination {
+    padding: 0;
+    border: none;
+    background: transparent;
   }
   .bottom-bar select {
     font-size: 10px;
@@ -476,9 +491,9 @@
     text-decoration: none;
     color: #fff;
     font-family: Verdana, sans-serif;
-    background: #7ec43c;
+    background: #E57568;
   }
-  .mod-bar .mod-btn:hover { background: #6cb22a; }
+  .mod-bar .mod-btn:hover { background: #d56558; }
 
   .forum-footer {
     text-align: center;
@@ -805,15 +820,18 @@ async function loadTopic(topicId, page) {
     html += '</div>';
   }
 
-  html += pagination(data.total, data.perPage, data.page, 'topicPage');
-
-  // Bottom filter bar (phpBB-style)
+  // Bottom filter bar (phpBB-style) — centered on green
   html += '<div class="bottom-bar">';
   html += '<span>Montrer les messages depuis: <select><option>Tous</option></select>';
   html += ' <select><option>Le plus ancien en premier</option><option>Le plus récent en premier</option></select>';
   html += ' <button class="go-btn">Aller</button></span>';
+  html += '</div>';
+
+  // Shell zone: pagination on left, action buttons on right
+  html += '<div class="shell-actions">';
+  html += pagination(data.total, data.perPage, data.page, 'topicPage');
   html += '<span>';
-  if (currentUser && !data.topic.isLocked) html += '<a href="#" class="btn btn-green btn-sm" onclick="showReplyForm();return false">Répondre</a> ';
+  if (currentUser && !data.topic.isLocked) html += '<a href="#" class="act-btn act-btn-red" onclick="showReplyForm();return false">Répondre</a> ';
   if (data.currentIsMod) {
     html += '<a href="#" class="act-btn act-btn-red" onclick="toggleSticky();return false">' + (data.topic.isSticky ? 'Retirer Post-it' : 'Post-it') + '</a> ';
     html += '<a href="#" class="act-btn act-btn-red" onclick="toggleLock();return false">' + (data.topic.isLocked ? 'Déverrouiller' : 'Verrouiller') + '</a> ';
