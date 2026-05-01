@@ -381,6 +381,14 @@ async function getFrutiSlots(userId, game) {
   return slots;
 }
 
+async function getAllFrutiSlot0(userId) {
+  const { rows } = await pool.query(
+    'SELECT game, data FROM fruti_slots WHERE user_id = $1 AND slot_id = 0',
+    [userId]
+  );
+  return rows;
+}
+
 async function addAccessory(userId, acc) {
   await pool.query(
     `INSERT INTO user_accessories (user_id, acc_id, shop_id, name, value, quantity, price)
@@ -960,6 +968,7 @@ module.exports = {
   getScores,
   upsertFrutiSlot,
   getFrutiSlots,
+  getAllFrutiSlot0,
   addAccessory,
   getUserAccessories,
   hasAccessoryByShopId,

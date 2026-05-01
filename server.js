@@ -917,6 +917,14 @@ async function hydrateUserFromDb(username, dbUser) {
   users[username].blacklist = Array.isArray(dbBlacklist) ? dbBlacklist : [];
   users[username].mails = Array.isArray(dbMails) ? dbMails : [];
 
+  // Extract pictos from existing slot 0 data (backfill for users who played before this feature)
+  try {
+    const allSlot0 = await db.getAllFrutiSlot0(dbUser.id);
+    for (const row of allSlot0) {
+      try { extractGameItemsFromSlot(username, row.game, row.data); } catch (e) { /* ignore */ }
+    }
+  } catch (e) { /* ignore */ }
+
   if (Object.keys(dbScores).length > 0) {
     if (!scoresData.users[username]) scoresData.users[username] = {};
     const rollDone = challengeMedalsData.lastRollDay === parisDayKey();
@@ -2517,6 +2525,112 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
 // ENDPOINT: /api/saveFrutiSlot — Persist FrutiCard slot data (modes, prefs, stats).
 // POST params: sid, game, slotId, data (JSON string).
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Extract game items (pictos/titems) from FrutiCard slot 0 data.
+// Each game stores unlock state differently in its slot JSON.
+// We parse it and register new items in user.gameItems.
+// ─────────────────────────────────────────────
+const SWAPOU2_TITEMS = [
+  '$sel','','$poivre','$epee','$piment','$dent','$sucre',
+  '$metal01','$metal02','$metal03','$ice01','$ice02','$ice03','$star01','$star02','$star03',
+  '$fruit01','$fruit02','$fruit03','$fruit04','$fruit05','$fruit06','$fruit07','$fruit08','$fruit09','$fruit10','$fruit11',
+  '$combo01','$combo02','$combo03','$combo04','$combo05','$combo06','$combo07','$combo08','$combo09','$combo10','$combo11',
+  '$photo01','$photo02','$photo03','$photo04','$photo05','$photo06','$photo07','$photo08',
+];
+const MB2_TITEMS = [
+  '$c1or','$c1argent','$c1','$c2or','$c2argent','$c2','$c3or','$c3argent','$c3',
+  '$c4or','$c4argent','$c4','$c5or','$c5argent','$c5','$c6or','$c6argent','$c6',
+  '$c7or','$c7argent','$c7',
+  '$bfacettes','$bnormal','$btime','$bdeath','$bmagnet','$bshadow',
+  '$oeil','$masque',
+  '$eca0','$eca1','$eca2','$eca3','$symb0','$symb1','$symb2','$symb3',
+];
+
+function extractGameItemsFromSlot(username, game, dataStr) {
+  let parsed;
+  try { parsed = JSON.parse(dataStr); } catch { return; }
+  if (!parsed || typeof parsed !== 'object') return;
+  const user = users[username];
+  if (!user) return;
+  if (!Array.isArray(user.gameItems)) user.gameItems = [];
+
+  const newItems = [];
+  function addIfNew(name) {
+    if (!name || user.gameItems.includes(name)) return;
+    user.gameItems.push(name);
+    newItems.push(name);
+  }
+
+  if (game === 'swapou2') {
+    const items = parsed.$items;
+    if (Array.isArray(items)) {
+      for (let i = 0; i < items.length && i < SWAPOU2_TITEMS.length; i++) {
+        if (items[i] && SWAPOU2_TITEMS[i]) addIfNew(SWAPOU2_TITEMS[i]);
+      }
+    }
+  } else if (game === 'mb2') {
+    const items = parsed.$items;
+    if (Array.isArray(items)) {
+      for (let i = 0; i < items.length && i < MB2_TITEMS.length; i++) {
+        if (items[i] && MB2_TITEMS[i]) addIfNew(MB2_TITEMS[i]);
+      }
+    }
+  } else if (game === 'kaluga') {
+    // Kaluga: $mode[n][level] tracks mode unlocks, $tz[id] tracks tzongres
+    // mode indices 2-5 correspond to the 4 playable types (n=2..5)
+    // level 0→butterfly, level 1→smiley, level 2→tz, level 3→special item
+    const mode = parsed.$mode;
+    const tz = parsed.$tz;
+    if (Array.isArray(mode)) {
+      for (let n = 2; n <= 5; n++) {
+        const sub = mode[n];
+        if (!Array.isArray(sub)) continue;
+        if (sub[0]) addIfNew('$butterfly' + (n - 2));
+        if (sub[1]) addIfNew('$smiley' + (n - 2));
+        if (sub[2]) {
+          const tzUnlockList = [1, 4, 3, 2];
+          const tzId = tzUnlockList[n - 2];
+          addIfNew('$tz' + tzId);
+        }
+        if (sub[3]) {
+          const specials = ['$basket', '$bird', '$ring', '$ant'];
+          addIfNew(specials[n - 2]);
+        }
+      }
+    }
+    if (Array.isArray(tz)) {
+      for (let i = 1; i < tz.length; i++) {
+        if (tz[i]) addIfNew('$tz' + i);
+      }
+    }
+  } else if (game === 'miniwave') {
+    // MiniWave2: $ship array, $badsKill array (kill counts ≥ limit → item)
+    const ship = parsed.$ship;
+    if (Array.isArray(ship)) {
+      for (let i = 0; i < ship.length; i++) {
+        if (ship[i]) addIfNew('$ship0' + i);
+      }
+    }
+    const badsKill = parsed.$badsKill;
+    if (Array.isArray(badsKill)) {
+      for (let i = 0; i < badsKill.length; i++) {
+        if (badsKill[i] && badsKill[i] >= 1) addIfNew('$bads' + i);
+      }
+    }
+    if (parsed.$arcade && parsed.$arcade.$bestLevel > 0) addIfNew('$arcade');
+  }
+
+  if (newItems.length > 0) {
+    const dbId = user._dbId;
+    if (dbId) {
+      for (const item of newItems) {
+        db.addGameItem(dbId, item).catch((e) => console.error('[DB] addGameItem:', e.message));
+      }
+    }
+    console.log(`[SLOT]  extracted ${newItems.length} new pictos for ${username}/${game}: ${newItems.join(', ')}`);
+  }
+}
+
 app.post('/api/saveFrutiSlot', (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
@@ -2545,6 +2659,14 @@ app.post('/api/saveFrutiSlot', (req, res) => {
   users[username].frutiSlots[game][slotId] = data;
   const dbId = users[username] && users[username]._dbId;
   if (dbId) db.upsertFrutiSlot(dbId, game, Number(slotId), data).catch(() => {});
+
+  // Extract game items (pictos/titems) from slot 0 data
+  if (slotId === '0' && data) {
+    try { extractGameItemsFromSlot(username, game, data); } catch (e) {
+      console.log(`[SLOT]  item extraction error for ${game}: ${e.message}`);
+    }
+  }
+
   const preview = data.length > 200 ? data.slice(0, 200) + '…' : data;
   console.log(`[SLOT]  save ${username}/${game}/slot${slotId} (${data.length} chars): ${preview}`);
   res.type('text/plain').send('ok=1');
@@ -2599,6 +2721,12 @@ app.post('/api/loadFrutiSlots', async (req, res) => {
 
     if (users[username].frutiSlots && users[username].frutiSlots[game]) {
       const slots = users[username].frutiSlots[game];
+      // Extract pictos from slot 0 on load (catches items from before this feature existed)
+      if (slots['0']) {
+        try { extractGameItemsFromSlot(username, game, slots['0']); } catch (e) {
+          console.log(`[SLOT]  load-extract error for ${game}: ${e.message}`);
+        }
+      }
       for (const [key, val] of Object.entries(slots)) {
         response += `&slot${key}=${encodeURIComponent(val)}`;
       }
