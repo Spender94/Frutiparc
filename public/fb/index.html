@@ -9,7 +9,7 @@
   body {
     font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
     font-size: 11px;
-    background: #E8E3D4;
+    background: #AAEA66;
     color: #133200;
     padding: 12px;
   }
@@ -190,6 +190,11 @@
     flex: 1;
     padding: 0;
     background: #D7F8B6;
+  }
+  .post.post-alt .post-body,
+  .post.post-alt .post-author,
+  .post.post-alt .post-header {
+    background: #C2EF92;
   }
   .post .post-header {
     display: flex;
@@ -776,7 +781,7 @@ async function loadTopic(topicId, page) {
     var isFirstPost = (pi === 0 && data.page === 1);
     var canEdit = currentUser && (p.author === currentUser);
     var canDelete = currentUser && (p.author === currentUser || data.currentIsMod);
-    html += '<div class="post" id="post-' + p.id + '">';
+    html += '<div class="post' + (pi % 2 === 1 ? ' post-alt' : '') + '" id="post-' + p.id + '">';
     html += '<div class="post-author">';
     html += '<div class="avatar">' + renderBouillAvatar(p.bouille, p.author) + '</div>';
     html += '<div class="username">' + escapeHtml(p.author) + '</div>';
