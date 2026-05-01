@@ -350,6 +350,64 @@
     padding: 8px;
   }
 
+  /* Pictos gallery page */
+  .picto-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 0;
+  }
+  .picto-card {
+    width: 80px;
+    text-align: center;
+    background: #FFF9E5;
+    border: 1px solid #C8D89D;
+    border-radius: 6px;
+    padding: 6px;
+  }
+  .picto-card img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto 4px;
+  }
+  .picto-card .picto-name {
+    font-size: 10px;
+    color: #2C4A0F;
+    word-break: break-word;
+    line-height: 1.2;
+  }
+  .picto-card .picto-game {
+    font-size: 9px;
+    color: #888;
+  }
+  .picto-gallery-section {
+    margin-bottom: 14px;
+  }
+  .picto-gallery-section h4 {
+    margin: 8px 0 4px;
+    color: #2C4A0F;
+    font-size: 12px;
+    border-bottom: 1px solid #C8D89D;
+    padding-bottom: 2px;
+  }
+  .picto-bbcode-hint {
+    font-size: 11px;
+    color: #555;
+    background: #F5F0DC;
+    border: 1px solid #DDD7B5;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin: 8px 0;
+  }
+  .picto-bbcode-hint code {
+    background: #fff;
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 11px;
+  }
+
   /* Inline edit area */
   .post-edit-area textarea {
     width: 100%;
@@ -673,6 +731,7 @@
 <div class="forum-shell">
   <div class="topbar">
     <div class="user-info" id="user-info"></div>
+    <a href="#" id="pictos-link" onclick="navigate('pictos');return false" style="color:#2C4A0F;font-weight:bold;font-size:11px;margin-right:10px;text-decoration:none;display:none">Mes Pictos</a>
     <button class="close-btn" onclick="closeForum()">Fermer</button>
   </div>
   <div class="forum-header" id="forum-header">
@@ -909,6 +968,7 @@ function navigate(view, id, extra) {
   else if (view === 'board') loadBoard(id, extra);
   else if (view === 'topic') loadTopic(id, extra);
   else if (view === 'newTopic') showNewTopicForm(id);
+  else if (view === 'pictos') loadPictos();
 }
 
 function pagination(total, perPage, currentPage, onclick) {
@@ -1376,6 +1436,41 @@ async function submitNewTopic(boardId) {
   else alert('Erreur : ' + (data.error || 'inconnue'));
 }
 
+async function loadPictos() {
+  setBreadcrumb([{ text: 'Mes Pictos' }]);
+  var app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">Chargement...</div>';
+  _pictoCache = null;
+  var pictos = await fetchPictos();
+  if (pictos.length === 0) {
+    app.innerHTML = '<div class="empty">Vous n\'avez aucun picto. Jouez aux jeux pour en collecter !</div>';
+    return;
+  }
+  var byGame = {};
+  for (var i = 0; i < pictos.length; i++) {
+    var g = pictos[i].game || 'Autre';
+    if (!byGame[g]) byGame[g] = [];
+    byGame[g].push(pictos[i]);
+  }
+  var html = '<div class="picto-bbcode-hint">Vous avez <b>' + pictos.length + '</b> picto' + (pictos.length > 1 ? 's' : '')
+    + '. Pour utiliser un picto dans un message, insérez <code>[picto=nom]</code> ou cliquez sur le bouton <b>Pictos</b> dans la barre d\'édition.</div>';
+  var games = Object.keys(byGame);
+  for (var gi = 0; gi < games.length; gi++) {
+    var gameName = games[gi];
+    var items = byGame[gameName];
+    html += '<div class="picto-gallery-section"><h4>' + escapeHtml(gameName) + ' (' + items.length + ')</h4><div class="picto-gallery">';
+    for (var j = 0; j < items.length; j++) {
+      var p = items[j];
+      html += '<div class="picto-card">'
+        + '<img src="' + escapeHtml(p.url) + '" alt="' + escapeHtml(p.name) + '" title="[picto=' + escapeHtml(p.id) + ']">'
+        + '<div class="picto-name">' + escapeHtml(p.name) + '</div>'
+        + '</div>';
+    }
+    html += '</div></div>';
+  }
+  app.innerHTML = html;
+}
+
 async function init() {
   try {
     var r = await fetch('/api/forum/me?sid=' + encodeURIComponent(SID));
@@ -1386,6 +1481,8 @@ async function init() {
       myAccessories = data.accessories || [];
       myDefaultAccessories = data.defaultAccessories || [];
       document.getElementById('user-info').textContent = 'Connecté : ' + currentUser;
+      var pl = document.getElementById('pictos-link');
+      if (pl) pl.style.display = 'inline';
     } else {
       document.getElementById('user-info').textContent = 'Non connecté';
     }

@@ -3696,7 +3696,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
       const gameName = getGameItemGame(itemName);
       const gifPath = resolveGameItemGif(itemName);
       const gifUrl = gifPath ? `/api/picto/${encodeURIComponent(itemName)}` : '';
-      nodes += `<e u="${escapeXml(itemName)}" t="picto" s="10" d="0" a="0">${escapeXml(displayName)}\n${escapeXml(gameName)}\n${escapeXml(gifUrl)}</e>`;
+      nodes += `<e u="${escapeXml(itemName)}" t="picto" s="10" d="0" a="0">${escapeXml(displayName)}\r\n${escapeXml(gameName)}\r\n${escapeXml(gifUrl)}</e>`;
     }
     return res.type('text/xml').send(`<f u="inv_pictos">${nodes || '<i />'}</f>`);
   }
