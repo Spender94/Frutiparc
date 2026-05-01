@@ -700,14 +700,12 @@ function decode62(s) {
   return r;
 }
 
-function buildBouilleState(base, mouthId, accSuffix9) {
+function buildBouilleState(base, accSuffix9) {
   var s = String(base || '000000010000000000000000');
   while (s.length < 24) s += '0';
-  var prefix = s.substring(0, 8);
-  var mouth = encode62(mouthId, 2);
-  var mid = s.substring(10, 15);
+  var prefix = s.substring(0, 15);
   var acc = accSuffix9 || s.substring(15, 24);
-  return prefix + mouth + mid + acc;
+  return prefix + acc;
 }
 
 function getBouillePreviewHtml(state) {
@@ -739,14 +737,14 @@ function bouilleSetAccessory(formId, suffix9, btnEl) {
 
 function refreshBouillePreview(formId) {
   var sel = _activeBouilleSel[formId] || {};
-  var state = buildBouilleState(myBouille, sel.mouthId || 0, sel.accSuffix9);
+  var state = buildBouilleState(myBouille, sel.accSuffix9);
   var box = document.getElementById('bouille-preview-' + formId);
   if (box) box.innerHTML = getBouillePreviewHtml(state);
 }
 
 function getCurrentBouilleState(formId) {
   var sel = _activeBouilleSel[formId] || {};
-  return buildBouilleState(myBouille, sel.mouthId || 0, sel.accSuffix9);
+  return buildBouilleState(myBouille, sel.accSuffix9);
 }
 
 function bouilleSelHtml(formId) {
@@ -780,7 +778,7 @@ function bouilleSelHtml(formId) {
   html += '</div></div>';
 
   html += '</div></div></div>';
-  _activeBouilleSel[formId] = { mouthId: 0, accSuffix9: null };
+  _activeBouilleSel[formId] = { accSuffix9: null };
   return html;
 }
 
