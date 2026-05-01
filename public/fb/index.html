@@ -7,22 +7,20 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
+    font-family: Verdana, Arial, Helvetica, sans-serif;
     font-size: 11px;
-    background: #AAEA66;
-    color: #133200;
+    background: #ADE76B;
+    color: #335511;
     padding: 12px;
   }
   .forum-shell {
     background: #fff;
-    border: 1px solid #000;
-    border-radius: 10px;
-    box-shadow: 4px 4px 12px rgba(0,0,0,0.35);
+    border-radius: 7px;
     overflow: hidden;
-    padding: 0 5px;
+    padding: 0;
   }
-  a { color: #133200; text-decoration: none; }
-  a:hover { text-decoration: underline; }
+  a { color: #2C4A0F; text-decoration: none; }
+  a:hover { text-decoration: underline; color: #2C4A0F; }
 
   /* Top close bar */
   .topbar {
@@ -36,126 +34,163 @@
   }
   .topbar .user-info {
     margin-right: auto;
-    color: #133200;
+    color: #2C4A0F;
     font-weight: bold;
+    font-size: 11px;
   }
   .topbar .close-btn {
-    background: #E57568;
+    background: #E3756A;
     color: #fff;
-    padding: 4px 12px;
+    padding: 3px 10px;
     border: none;
-    border-radius: 3px;
     cursor: pointer;
-    font-family: Verdana, sans-serif;
+    font-family: Verdana, Arial, sans-serif;
     font-size: 11px;
     font-weight: bold;
   }
-  .topbar .close-btn:hover { background: #d56558; }
+  .topbar .close-btn:hover { background: #d2645a; }
 
-  /* Breadcrumb */
-  .breadcrumb {
-    padding: 6px 14px;
-    font-size: 11px;
+  /* Forum-header (white zone with icon + orange title — phpBB subSilver style) */
+  .forum-header {
     background: #fff;
-    color: #E57568;
-    border-bottom: 1px solid #c0e6a0;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
-  .breadcrumb a { color: #E57568; font-weight: bold; }
-  .breadcrumb .bc-icon {
-    display: inline-block;
+  .forum-header .bc-icon {
+    width: 18px;
+    height: 18px;
     vertical-align: middle;
-    margin-right: 4px;
+  }
+  .forum-header .title-link {
+    color: #E3756A;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    font-weight: bold;
+    text-decoration: none;
+  }
+  .forum-header .title-link:hover { text-decoration: none; }
+
+  /* Coral separator band */
+  .coral-band {
+    background: #E3756A;
+    height: 6px;
+    line-height: 6px;
+    font-size: 1px;
+  }
+  /* Bottom green band */
+  .green-band {
+    background: #D6F7B5;
+    height: 6px;
+    line-height: 6px;
+    font-size: 1px;
   }
 
-  /* Column header (coral/salmon — phpBB-style) */
+  /* Breadcrumb (legacy — kept for the old top-of-page breadcrumb but now hidden) */
+  .breadcrumb { display: none; }
+
+  /* Column header (coral subSilver — th.thTop / thCornerL/R) */
   .tbl-header {
-    background: #E57568;
+    background: #E3756A;
     color: #fff;
     font-weight: bold;
-    font-size: 11px;
+    font-size: 12px;
+    font-family: Arial, Verdana, sans-serif;
     display: flex;
-    padding: 5px 0;
-    border: 1px solid #c04040;
-    border-bottom: none;
-    border-radius: 8px 8px 0 0;
+    padding: 0;
+    height: 25px;
+    align-items: center;
+    border: none;
   }
   .tbl-header .col-author {
     width: 130px;
     min-width: 130px;
     text-align: center;
-    padding: 2px 0;
+    padding: 0 4px;
   }
-  .tbl-header .col-main { flex: 1; text-align: center; padding: 2px 0; }
-  .tbl-header .col-num { width: 75px; text-align: center; padding: 2px 0; }
-  .tbl-header .col-last { width: 180px; text-align: center; padding: 2px 0; }
+  .tbl-header .col-main { flex: 1; text-align: left; padding: 0 8px; }
+  .tbl-header .col-num { width: 60px; text-align: center; padding: 0 4px; white-space: nowrap; }
+  .tbl-header .col-last { width: 170px; text-align: center; padding: 0 4px; white-space: nowrap; }
 
-  /* Category header (light green) */
+  /* Category header (catLeft — green) */
   .cat-header {
-    background: #ADE76C;
-    padding: 5px 14px;
+    background: #ADE76B;
+    padding: 6px 10px;
     font-size: 12px;
     font-weight: bold;
-    color: #133200;
-    border: 1px solid #7ec43c;
-    border-top: none;
+    color: #2C4A0F;
+    height: 28px;
+    line-height: 16px;
+    letter-spacing: 1px;
   }
+  .cat-header a { color: #2C4A0F; text-decoration: none; }
+  .cat-header a:hover { color: #2C4A0F; text-decoration: underline; }
 
-  /* Rows */
+  /* Rows — D6F7B5 default; .row.row-alt for alternation */
   .row {
     display: flex;
     align-items: center;
-    padding: 8px 10px;
-    background: #D7F8B6;
-    border: 1px solid #c0e6a0;
-    border-top: none;
-    min-height: 44px;
+    padding: 4px 6px;
+    background: #D6F7B5;
+    min-height: 50px;
   }
+  .row.row-alt { background: #C3EF93; }
   .row .icon { width: 56px; min-width: 56px; text-align: center; }
   .row .icon img.peach { width: 28px; height: 28px; vertical-align: middle; }
   .row .info { flex: 1; padding: 0 10px; }
-  .row .info .title { font-weight: bold; font-size: 12px; }
-  .row .info .title a { color: #133200; }
+  .row .info .title { font-weight: bold; font-size: 12px; color: #2C4A0F; }
+  .row .info .title a { color: #2C4A0F; text-decoration: none; }
+  .row .info .title a:hover { color: #2C4A0F; text-decoration: underline; }
   .row .info .desc {
-    color: #133200;
+    color: #335511;
     font-size: 11px;
     margin-top: 2px;
     font-weight: normal;
   }
+  .row .info .moderator {
+    color: #335511;
+    font-size: 10px;
+    margin-top: 2px;
+  }
   .row .col-num {
-    width: 75px;
+    width: 60px;
     text-align: center;
-    font-size: 11px;
-    color: #133200;
+    font-size: 10px;
+    color: #335511;
   }
   .row .col-last {
-    width: 180px;
+    width: 170px;
     font-size: 10px;
-    color: #133200;
+    color: #335511;
     text-align: center;
-    line-height: 1.4;
+    line-height: 1.5;
+    white-space: nowrap;
   }
-  .row .col-last a { color: #133200; text-decoration: underline; }
-  .row .sticky-tag { color: #133200; font-weight: bold; }
+  .row .col-last a { color: #2C4A0F; text-decoration: none; }
+  .row .col-last a:hover { color: #2C4A0F; text-decoration: underline; }
+  .row .sticky-tag { color: #2C4A0F; font-weight: bold; }
   .row .locked-tag { color: #888; }
 
   .topic-row .info .author {
     font-size: 10px;
-    color: #133200;
+    color: #335511;
     margin-top: 1px;
   }
-  .topic-row .info .author a { color: #133200; text-decoration: underline; }
+  .topic-row .info .author a { color: #2C4A0F; text-decoration: none; }
+  .topic-row .info .author a:hover { text-decoration: underline; }
 
-  /* Posts — phpBB 2.x style table layout */
+  /* Posts — phpBB 2.x subSilver style */
   .post {
     display: flex;
-    background: #D7F8B6;
+    background: #D6F7B5;
   }
   .post .post-author {
     width: 130px;
     min-width: 130px;
     padding: 10px 4px 10px 0;
     text-align: center;
-    background: #D7F8B6;
+    background: #D6F7B5;
     vertical-align: top;
   }
   .post .post-author .avatar {
@@ -177,28 +212,29 @@
   .post .post-author .username {
     font-weight: bold;
     font-size: 11px;
-    color: #133200;
+    color: #000;
     word-break: break-all;
     margin-top: 4px;
   }
   .post .post-body {
     flex: 1;
     padding: 0;
-    background: #D7F8B6;
+    background: #D6F7B5;
   }
+  .post.post-alt,
   .post.post-alt .post-body,
   .post.post-alt .post-author,
   .post.post-alt .post-header {
-    background: #C2EF92;
+    background: #C3EF93;
   }
   .post .post-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 4px 8px;
-    background: #D7F8B6;
+    background: #D6F7B5;
     font-size: 10px;
-    color: #133200;
+    color: #335511;
     min-height: 28px;
   }
   .post .post-header .post-info {
@@ -210,7 +246,7 @@
     display: inline-block;
     width: 10px;
     height: 10px;
-    background: #E57568;
+    background: #E3756A;
     border-radius: 2px;
     flex-shrink: 0;
   }
@@ -230,14 +266,14 @@
   }
   .act-btn-red,
   .act-btn-green,
-  .act-btn-blue { background: #E57568; }
+  .act-btn-blue { background: #E3756A; }
   .act-btn-red:hover,
   .act-btn-green:hover,
-  .act-btn-blue:hover { background: #d56558; color: #fff; text-decoration: none; }
+  .act-btn-blue:hover { background: #d2645a; color: #fff; text-decoration: none; }
   .post .post-content {
     font-size: 12px;
     line-height: 1.6;
-    color: #133200;
+    color: #335511;
     white-space: pre-wrap;
     word-wrap: break-word;
     padding: 10px 12px;
@@ -250,31 +286,33 @@
     color: #5a8030;
   }
 
-  /* Blockquote — phpBB-style gray/beige */
+  /* Blockquote — phpBB subSilver: light green tint, no border */
   .post-content blockquote.quote {
-    background: #E8E3D4;
-    border: 1px solid #c8c0aa;
+    background: #EDFBDD;
+    border: none;
     margin: 8px 4px;
     padding: 8px 12px;
     font-size: 11px;
-    color: #133200;
+    color: #335511;
+    line-height: 125%;
     white-space: pre-wrap;
   }
   .post-content blockquote.quote .quote-author {
     font-weight: bold;
     font-size: 11px;
     margin-bottom: 4px;
-    color: #133200;
+    color: #2C4A0F;
   }
-  .post-content a { color: #2d5e0c; text-decoration: underline; }
+  .post-content a { color: #2C4A0F; text-decoration: none; }
+  .post-content a:hover { text-decoration: underline; }
   .post-author .post-count {
     font-size: 10px;
-    color: #5a8030;
+    color: #335511;
     margin-top: 2px;
   }
   .post-author .role-badge {
     display: inline-block;
-    background: #E57568;
+    background: #E3756A;
     color: #fff;
     font-size: 9px;
     font-weight: bold;
@@ -292,9 +330,9 @@
     flex-wrap: wrap;
   }
   .bbcode-toolbar button {
-    background: #ADE76C;
-    border: 1px solid #8bc55a;
-    color: #133200;
+    background: #ADE76B;
+    border: 1px solid #2C4A0F;
+    color: #2C4A0F;
     padding: 3px 8px;
     font-size: 11px;
     cursor: pointer;
@@ -302,7 +340,7 @@
     border-radius: 2px;
     min-width: 28px;
   }
-  .bbcode-toolbar button:hover { background: #8bc55a; }
+  .bbcode-toolbar button:hover { background: #C3EF93; }
   .bbcode-toolbar button.b { font-weight: bold; }
   .bbcode-toolbar button.i { font-style: italic; }
   .bbcode-toolbar button.u { text-decoration: underline; }
@@ -316,8 +354,8 @@
     border: 1px solid #8bc55a;
     border-radius: 3px;
     font-family: Verdana, sans-serif;
-    background: #fff;
-    color: #133200;
+    background: #C3EF93;
+    color: #2C4A0F;
     margin-bottom: 6px;
   }
   .post-edit-area .form-actions { display: flex; gap: 6px; }
@@ -325,7 +363,7 @@
   /* Buttons */
   .btn {
     display: inline-block;
-    padding: 6px 14px;
+    padding: 5px 12px;
     font-size: 11px;
     font-weight: bold;
     border: none;
@@ -333,57 +371,52 @@
     cursor: pointer;
     text-decoration: none;
     color: #fff;
-    font-family: Verdana, sans-serif;
+    font-family: Verdana, Arial, sans-serif;
   }
-  .btn-green { background: #E57568; }
-  .btn-green:hover { background: #d56558; text-decoration: none; color: #fff; }
-  .btn-orange { background: #E57568; }
-  .btn-orange:hover { background: #d56558; text-decoration: none; color: #fff; }
+  .btn-green { background: #E3756A; }
+  .btn-green:hover { background: #d2645a; text-decoration: none; color: #fff; }
+  .btn-orange { background: #E3756A; }
+  .btn-orange:hover { background: #d2645a; text-decoration: none; color: #fff; }
   .btn-sm { padding: 3px 9px; font-size: 10px; }
 
   /* Pagination */
   .pagination {
-    padding: 6px 14px;
     font-size: 11px;
-    color: #133200;
-    background: #fff;
+    color: #2C4A0F;
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 4px;
-    border: 1px solid #c0e6a0;
-    border-top: none;
   }
   .pagination a, .pagination span {
     display: inline-block;
-    padding: 2px 7px;
-    border: 1px solid #ADE76C;
-    background: #fff;
-    border-radius: 2px;
-    color: #133200;
+    padding: 1px 6px;
+    border: 1px solid #2C4A0F;
+    background: #D6F7B5;
+    color: #2C4A0F;
+    text-decoration: none;
   }
   .pagination span.current {
-    background: #ADE76C;
-    color: #133200;
+    background: #C3EF93;
+    color: #2C4A0F;
     font-weight: bold;
   }
 
   /* Form */
   .form-area {
-    background: #D7F8B6;
+    background: #D6F7B5;
     padding: 14px;
-    margin: 10px 0;
-    border: 1px solid #c0e6a0;
   }
   .form-area h3 {
-    color: #133200;
+    color: #2C4A0F;
     margin-bottom: 10px;
     font-size: 14px;
+    font-family: Arial, sans-serif;
   }
   .form-area label {
     font-weight: bold;
     font-size: 11px;
-    color: #133200;
+    color: #2C4A0F;
     display: block;
     margin-bottom: 4px;
   }
@@ -392,12 +425,11 @@
     width: 100%;
     padding: 5px 7px;
     font-size: 12px;
-    border: 1px solid #8bc55a;
-    border-radius: 3px;
+    border: none;
     margin-bottom: 10px;
-    font-family: Verdana, sans-serif;
-    background: #fff;
-    color: #133200;
+    font-family: Verdana, Arial, sans-serif;
+    background: #C3EF93;
+    color: #2C4A0F;
   }
   .form-area textarea {
     height: 130px;
@@ -414,8 +446,6 @@
     align-items: center;
     padding: 8px 14px;
     background: #fff;
-    border: 1px solid #c0e6a0;
-    border-bottom: none;
   }
 
   /* Bottom filter/sort bar (phpBB-style) */
@@ -424,12 +454,11 @@
     justify-content: center;
     align-items: center;
     padding: 6px 10px;
-    background: #ade76c;
-    border: 1px solid #c0e6a0;
-    border-top: none;
+    background: #ADE76B;
     font-size: 10px;
     flex-wrap: wrap;
     gap: 6px;
+    color: #2C4A0F;
   }
   /* Shell zone below bottom bar: pagination + reply + mod buttons */
   .shell-actions {
@@ -450,19 +479,19 @@
     font-size: 10px;
     font-family: Verdana, sans-serif;
     padding: 1px 3px;
-    border: 1px solid #8bc55a;
-    background: #fff;
-    color: #133200;
+    border: none;
+    background: #C3EF93;
+    color: #2C4A0F;
   }
   .bottom-bar .go-btn {
-    background: #ADE76C;
-    border: 1px solid #8bc55a;
+    background: #E3756A;
+    color: #fff;
+    border: none;
     padding: 2px 10px;
     font-size: 10px;
     cursor: pointer;
     font-family: Verdana, sans-serif;
-    color: #133200;
-    border-radius: 2px;
+    font-weight: bold;
   }
 
   /* Moderation bar */
@@ -471,8 +500,6 @@
     gap: 4px;
     padding: 6px 10px;
     background: #fff;
-    border: 1px solid #c0e6a0;
-    border-top: none;
     flex-wrap: wrap;
   }
   .mod-bar .mod-btn {
@@ -486,27 +513,28 @@
     text-decoration: none;
     color: #fff;
     font-family: Verdana, sans-serif;
-    background: #E57568;
+    background: #E3756A;
   }
-  .mod-bar .mod-btn:hover { background: #d56558; }
+  .mod-bar .mod-btn:hover { background: #d2645a; }
 
   .forum-footer {
     text-align: center;
-    padding: 12px;
+    padding: 8px;
     font-size: 10px;
-    color: #5a8030;
-    background: #fff;
-    border-top: 1px solid #ADE76C;
+    font-family: Verdana, Arial, sans-serif;
+    color: #2C4A0F;
+    background: #CCF599;
     margin-top: 10px;
+    border-radius: 7px;
   }
+  .forum-footer a { color: #444; text-decoration: underline; }
 
   .loading, .empty {
     text-align: center;
     padding: 24px;
-    color: #5a8030;
+    color: #335511;
     font-style: italic;
     background: #fff;
-    border: 1px solid #c0e6a0;
   }
 
   /* Folder icon for listing */
@@ -541,14 +569,20 @@
     <div class="user-info" id="user-info"></div>
     <button class="close-btn" onclick="closeForum()">Fermer</button>
   </div>
-  <div class="breadcrumb" id="breadcrumb">
-    <img class="bc-icon" src="/fb/ico.gif" alt="">
-    <a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a>
+  <div class="forum-header" id="forum-header">
+    <img class="bc-icon" src="/fb/ico.gif" alt="" width="18" height="18">
+    <a class="title-link" href="#" id="header-title" onclick="navigate('index');return false">Forum Frutiparc.com</a>
   </div>
+  <div class="coral-band">&nbsp;</div>
   <div id="app">
     <div class="loading">Chargement du forum...</div>
   </div>
-  <div class="forum-footer">Frutiparc.com &copy; Motion Twin</div>
+  <div class="green-band">&nbsp;</div>
+  <div class="breadcrumb" id="breadcrumb"></div>
+</div>
+<div class="forum-footer">
+  Forum cr&eacute;&eacute; par <a href="https://www.phpbb.com">phpBB</a> &copy; 2001-2007.<br>
+  Design Frutiparc &copy; <a href="https://www.motiontwin.com">Motion Twin</a>
 </div>
 
 <script>
@@ -628,14 +662,14 @@ async function apiFetch(url, opts) {
 }
 
 function setBreadcrumb(parts) {
-  var html = '<img class="bc-icon" src="/fb/ico.gif" alt=""> <a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
+  // Update the forum-header title (subSilver style: "Forum Frutiparc.com > Section > Topic")
+  var titleHtml = 'Forum Frutiparc.com';
   for (var i = 0; i < parts.length; i++) {
-    var p = parts[i];
-    html += ' &gt; ';
-    if (p.href) html += '<a href="#" onclick="' + escapeHtml(p.href) + '">' + escapeHtml(p.text) + '</a>';
-    else html += escapeHtml(p.text);
+    titleHtml += ' &gt; ' + escapeHtml(parts[i].text);
   }
-  document.getElementById('breadcrumb').innerHTML = html;
+  var headerTitle = document.getElementById('header-title');
+  if (headerTitle) headerTitle.innerHTML = titleHtml;
+  document.getElementById('breadcrumb').innerHTML = '';
 }
 
 function navigate(view, id, extra) {
@@ -720,7 +754,7 @@ async function loadBoard(boardId, page) {
   }
   for (var ti = 0; ti < data.topics.length; ti++) {
     var t = data.topics[ti];
-    html += '<div class="row topic-row">';
+    html += '<div class="row topic-row' + (ti % 2 === 1 ? ' row-alt' : '') + '">';
     var topicIcon = 'folder.gif';
     if (t.isLocked) topicIcon = 'folder_lock.gif';
     else if (t.isSticky) topicIcon = 'folder_sticky.gif';
