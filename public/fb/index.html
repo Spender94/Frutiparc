@@ -392,6 +392,62 @@
     border-bottom: 1px solid #C8D89D;
     padding-bottom: 2px;
   }
+
+  /* Consecration banner */
+  .consecration-banner {
+    background: linear-gradient(135deg, #f0fbe0, #d8efb1);
+    border: 1px solid #8fc63f;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+  }
+  .consecration-banner .conse-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: #2C4A0F;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .consecration-banner .conse-pct {
+    font-size: 18px;
+    color: #4a7a10;
+  }
+  .consecration-banner .conse-bar {
+    height: 10px;
+    background: #fff;
+    border: 1px solid #8fc63f;
+    border-radius: 5px;
+    overflow: hidden;
+    margin: 6px 0 8px;
+  }
+  .consecration-banner .conse-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #8fc63f, #4a7a10);
+    transition: width .4s ease;
+  }
+  .consecration-banner .conse-games {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 11px;
+  }
+  .consecration-banner .conse-game {
+    background: #fff;
+    border: 1px solid #c8d89d;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #2C4A0F;
+  }
+  .consecration-banner .conse-game b {
+    color: #4a7a10;
+  }
+  .consecration-banner .conse-note {
+    font-size: 10px;
+    color: #5a8a20;
+    margin-top: 6px;
+    font-style: italic;
+  }
   .picto-bbcode-hint {
     font-size: 11px;
     color: #555;
@@ -1436,14 +1492,39 @@ async function submitNewTopic(boardId) {
   else alert('Erreur : ' + (data.error || 'inconnue'));
 }
 
+function renderConsecrationBanner(conse) {
+  if (!conse || !conse.enabledCount) return '';
+  var pct = Number(conse.overall) || 0;
+  var html = '<div class="consecration-banner">'
+    + '<div class="conse-title"><span>Score de consécration</span>'
+    + '<span class="conse-pct">' + pct.toFixed(2) + ' %</span></div>'
+    + '<div class="conse-bar"><div class="conse-fill" style="width:' + Math.min(pct, 100) + '%"></div></div>'
+    + '<div class="conse-games">';
+  for (var i = 0; i < conse.games.length; i++) {
+    var g = conse.games[i];
+    var label = g.mode === 'completion'
+      ? (g.unlocked ? 'joué' : 'non joué')
+      : (g.unlocked + ' / ' + g.total);
+    html += '<span class="conse-game">' + escapeHtml(g.name) + ' : <b>' + escapeHtml(label) + '</b> (' + g.contribution.toFixed(2) + ' %)</span>';
+  }
+  html += '</div>';
+  html += '<div class="conse-note">Chaque jeu finalisé vaut ' + conse.perGameMax.toFixed(2) + ' % du score total.</div>';
+  html += '</div>';
+  return html;
+}
+
 async function loadPictos() {
   setBreadcrumb([{ text: 'Mes Pictos' }]);
   var app = document.getElementById('app');
   app.innerHTML = '<div class="loading">Chargement...</div>';
   _pictoCache = null;
   var pictos = await fetchPictos();
+  var conse = null;
+  try { conse = await apiFetch('/api/consecration'); } catch (e) {}
+  var banner = renderConsecrationBanner(conse);
+
   if (pictos.length === 0) {
-    app.innerHTML = '<div class="empty">Vous n\'avez aucun picto. Jouez aux jeux pour en collecter !</div>';
+    app.innerHTML = banner + '<div class="empty">Vous n\'avez aucun picto. Jouez aux jeux pour en collecter !</div>';
     return;
   }
   var byGame = {};
@@ -1452,7 +1533,7 @@ async function loadPictos() {
     if (!byGame[g]) byGame[g] = [];
     byGame[g].push(pictos[i]);
   }
-  var html = '<div class="picto-bbcode-hint">Vous avez <b>' + pictos.length + '</b> picto' + (pictos.length > 1 ? 's' : '')
+  var html = banner + '<div class="picto-bbcode-hint">Vous avez <b>' + pictos.length + '</b> picto' + (pictos.length > 1 ? 's' : '')
     + '. Pour utiliser un picto dans un message, insérez <code>[picto=nom]</code> ou cliquez sur le bouton <b>Pictos</b> dans la barre d\'édition.</div>';
   var games = Object.keys(byGame);
   for (var gi = 0; gi < games.length; gi++) {

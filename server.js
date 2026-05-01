@@ -306,6 +306,112 @@ for (let i = 0; i <= 4; i++) {
   GAME_ITEM_INFO[`$mis${i}`] = { name: `Mission ${i}`, game: 'MiniWave', gif: `Games/miniWave2/titem/gif/mis${i}.gif` };
 }
 
+// ─────────────────────────────────────────────
+// Consecration: per-game progression registry
+// Set `enabled: false` for games not yet finalised; the score auto-rebalances.
+// ─────────────────────────────────────────────
+const GAME_PROGRESS_REGISTRY = [
+  {
+    id: 'kaluga',
+    name: 'Kaluga',
+    enabled: true,
+    matchGame: 'Kaluga', // matches getGameItemGame() value
+  },
+  {
+    id: 'swapou',
+    name: 'Swapou',
+    enabled: true,
+    matchGame: 'Swapou',
+  },
+  {
+    id: 'snake3',
+    name: 'Frutisnake',
+    enabled: true,
+    matchGame: 'Frutisnake',
+    totalPictos: 322, // dynamic "Fruit N" pictos — fixed total used as denominator
+  },
+  {
+    id: 'bkiwi',
+    name: 'Burning Kiwi',
+    enabled: true,
+    // No pictos: "completion" = user has a Burning Kiwi score
+    completionCheck: (username) => {
+      const ud = scoresData.users && scoresData.users[username];
+      return !!(ud && (ud.bkiwi_classic || ud.bkiwi_challenge));
+    },
+  },
+  {
+    id: 'mb2',
+    name: 'MotionBall',
+    enabled: false,
+    matchGame: 'MotionBall',
+  },
+  {
+    id: 'miniwave',
+    name: 'MiniWave',
+    enabled: false,
+    matchGame: 'MiniWave',
+  },
+  {
+    id: 'jamajama',
+    name: 'JamaJama',
+    enabled: false,
+  },
+  {
+    id: 'pixiz',
+    name: 'MiniPixiz',
+    enabled: false,
+  },
+];
+
+// Returns { id, name, unlocked, total, percent, gameContribution } per enabled game
+// plus an overall percent.
+function computeConsecration(username) {
+  const user = users[username];
+  const enabled = GAME_PROGRESS_REGISTRY.filter((g) => g.enabled);
+  const perGameMax = enabled.length > 0 ? 100 / enabled.length : 0;
+
+  const breakdown = enabled.map((g) => {
+    let unlocked = 0;
+    let total = 0;
+    let mode = 'pictos';
+    if (g.completionCheck) {
+      mode = 'completion';
+      unlocked = g.completionCheck(username) ? 1 : 0;
+      total = 1;
+    } else if (g.matchGame) {
+      const gi = (user && Array.isArray(user.gameItems)) ? user.gameItems : [];
+      const ownedForGame = gi.filter((it) => getGameItemGame(it) === g.matchGame);
+      unlocked = ownedForGame.length;
+      if (typeof g.totalPictos === 'number') {
+        total = g.totalPictos;
+      } else {
+        // count entries in GAME_ITEM_INFO matching this game
+        total = Object.values(GAME_ITEM_INFO).filter((info) => info.game === g.matchGame).length;
+      }
+    }
+    const ratio = total > 0 ? Math.min(unlocked / total, 1) : 0;
+    const gameContribution = ratio * perGameMax;
+    return {
+      id: g.id,
+      name: g.name,
+      mode,
+      unlocked,
+      total,
+      percent: Math.round(ratio * 100 * 100) / 100,
+      contribution: Math.round(gameContribution * 100) / 100,
+    };
+  });
+
+  const overall = breakdown.reduce((sum, b) => sum + b.contribution, 0);
+  return {
+    overall: Math.round(overall * 100) / 100,
+    perGameMax: Math.round(perGameMax * 100) / 100,
+    enabledCount: enabled.length,
+    games: breakdown,
+  };
+}
+
 function resolveGameItemGif(itemName) {
   const info = GAME_ITEM_INFO[itemName];
   if (info && info.gif) {
@@ -2063,6 +2169,14 @@ app.get('/api/pictos', (req, res) => {
     url: `/api/picto/${encodeURIComponent(itemName)}`,
   }));
   res.json(result);
+});
+
+// Consecration score: percentage of game completion across all enabled games.
+app.get('/api/consecration', (req, res) => {
+  const sid = getSidFromRequest(req, req.query);
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.json({ overall: 0, games: [], enabledCount: 0, perGameMax: 0 });
+  res.json(computeConsecration(username));
 });
 
 // Admin: list user's game items
