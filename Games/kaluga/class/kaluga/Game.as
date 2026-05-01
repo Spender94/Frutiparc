@@ -251,11 +251,13 @@ class kaluga.Game extends kaluga.Slot{//}
 		switch(this.mode){
 		
 				case "single":
-					if( this.mng.client.isWhite() || this.type=="$train" ){
+					// Replay panel is now offered for the Challenge mode (was $train).
+					// See the bytecode patch in scripts/patch-kaluga-challenge.js.
+					if( this.mng.client.isWhite() || this.type=="$classic" ){
 						this.addReplayPanel()
 					}else{
 						this.endPanelEnd.push("kill")
-					}		
+					}
 					break;
 				case "triathlon":
 					var max = 2
@@ -704,7 +706,7 @@ class kaluga.Game extends kaluga.Slot{//}
 			var mc = this.particuleList[i]
 			var death = false;
 			switch(mc.mode){
-				case 0:	//¨PLUME
+				case 0:	//ï¿½PLUME
 					//_root.test+="mc.vity("+mc.vity+")\n"
 					if(mc.flGround!=true){
 						mc.vity += 0.2;	
@@ -899,7 +901,11 @@ class kaluga.Game extends kaluga.Slot{//}
 		//_root.test+="[GAME] initEndGame //saveScore("+this.score+",{tz:"+this.tzongreInfo.id+"})\n"
 		//_root.test+=" - ("+this.mng.client.saveScore+")\n"
 		
-		if(this.type!="$train" && this.tournament == undefined ){
+		// Only the actual "Challenge" mode (slot 0 in Menu.as â†’ kaluga.game.Classic
+		// â†’ type "$classic") submits a score to the daily-challenge ranking.
+		// Other sub-modes (Olympique, Chrono, Survie, Invasion, Piste, Sequence,
+		// PrÃ©paration/$train) play locally without polluting the ranking.
+		if(this.type=="$classic" && this.tournament == undefined ){
 			this.saveScore(this.score);
 		}
 		this.mng.client.saveSlot(0);
@@ -954,7 +960,7 @@ class kaluga.Game extends kaluga.Slot{//}
 					list:[
 						{
 							type:"congrat",
-							text:"Vous avez débloqué le mode "+this.mng.difNameList[this.level+1]+"!!\n",
+							text:"Vous avez dï¿½bloquï¿½ le mode "+this.mng.difNameList[this.level+1]+"!!\n",
 							id:10
 						}
 					]
@@ -978,7 +984,7 @@ class kaluga.Game extends kaluga.Slot{//}
 						list:[
 							{
 								type:"congrat",
-								text:"Vous avez débloqué une nouvelle tzongre : "+this.mng.tzInfo[id].name+"!!\n",
+								text:"Vous avez dï¿½bloquï¿½ une nouvelle tzongre : "+this.mng.tzInfo[id].name+"!!\n",
 								id:id
 							}
 						]
@@ -1020,7 +1026,7 @@ class kaluga.Game extends kaluga.Slot{//}
 			list:[
 				{
 					type:"congrat",
-					text:"Vous avez gagné la kagulga !\nEn véritable cuir de Tzongre, cette cagoule vous permettra de garder la fruticlasse en toutes circonstances !",
+					text:"Vous avez gagnï¿½ la kagulga !\nEn vï¿½ritable cuir de Tzongre, cette cagoule vous permettra de garder la fruticlasse en toutes circonstances !",
 					id:14
 				}
 			]

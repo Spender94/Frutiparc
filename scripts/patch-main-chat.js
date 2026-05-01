@@ -12,7 +12,7 @@
 // <font> tag (timestamp red but not bold; rest red+bold via <b>).
 //
 // Old: $h<i>$m</i>                                   (12 bytes)
-// New: <font color="#812F0A">$h<b>$m</b></font>     (40 bytes, delta +28)
+// New: <font color="#C10000">$h<b>$m</b></font>     (40 bytes, delta +28)
 //
 // The patch updates:
 //   - the constant pool blob
@@ -26,7 +26,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 const OLD_STR = '$h<i>$m</i>';
-const NEW_STR = '<font color="#812F0A">$h<b>$m</b></font>';
+const NEW_STR = '<font color="#C10000">$h<b>$m</b></font>';
 const DELTA = NEW_STR.length - OLD_STR.length;
 
 const IN_PATH  = path.resolve(__dirname, '..', 'legacy', 'main.swf');
