@@ -17,26 +17,6 @@
             width: 1920px;
             height: 1080px;
         }
-
-        #forum-btn {
-            position: fixed;
-            bottom: 18px;
-            right: 18px;
-            z-index: 9999;
-            background: #7ec43c;
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            padding: 10px 18px;
-            font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
-            font-size: 13px;
-            font-weight: bold;
-            cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-            transition: background 0.15s, transform 0.05s;
-        }
-        #forum-btn:hover { background: #6cb22a; }
-        #forum-btn:active { transform: translateY(1px); }
     </style>
 
     <script>
@@ -57,7 +37,6 @@
 </head>
 <body>
     <div id="player-container"></div>
-    <button id="forum-btn" onclick="openForum()">Forum</button>
 
     <script>
         (function () {
@@ -217,8 +196,73 @@
                 return _origXHRSend.call(this, body);
             };
 
-            window.fp_goURLResize = function (_url, _mode, _w, _h) {
-                console.log("[Frusion] fp_goURLResize", _url, _w, _h);
+            // ─── Forum popup (Flash desktop "Forum" icon) ───
+            // FPForumSlot.as flow:
+            //   init()        → fp_goURLResize('/fb/?sid=...', 1)  // stash URL
+            //   onActivate()  → fp_activatePopupForum()            // open/focus popup
+            //   close()       → fp_closePopupForum()               // close popup
+            //
+            // Note: `fp_goURLResize` is ONLY called by FPForumSlot — games use
+            // `fp_goURLNewWin`, so this code path does not affect game launching.
+            var __forumUrl = null;
+            var __forumPopup = null;
+
+            function buildForumUrl(rawUrl) {
+                var sid = new URLSearchParams(window.location.search).get("sid") || "";
+                if (rawUrl) {
+                    var rewritten = rewriteLegacyUrl(rawUrl);
+                    try {
+                        var parsed = new URL(rewritten, window.location.origin);
+                        if (!parsed.searchParams.get("sid") && sid) {
+                            parsed.searchParams.set("sid", sid);
+                        }
+                        return parsed.toString();
+                    } catch (e) {}
+                    return rewritten;
+                }
+                return "/fb/?sid=" + encodeURIComponent(sid);
+            }
+
+            function openForumPopup() {
+                var url = __forumUrl || buildForumUrl(null);
+                if (__forumPopup && !__forumPopup.closed) {
+                    try { __forumPopup.focus(); } catch (e) {}
+                    return __forumPopup;
+                }
+                var feat = "width=860,height=640,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no";
+                __forumPopup = window.open(url, "frutiparc_forum", feat);
+                return __forumPopup;
+            }
+
+            window.fp_goURLResize = function (url, mode, w, h) {
+                console.log("[FP] fp_goURLResize", url, mode, w, h);
+                __forumUrl = buildForumUrl(url);
+                return true;
+            };
+
+            window.fp_activatePopupForum = function () {
+                console.log("[FP] fp_activatePopupForum");
+                openForumPopup();
+                return true;
+            };
+
+            window.fp_closePopupForum = function () {
+                console.log("[FP] fp_closePopupForum");
+                if (__forumPopup && !__forumPopup.closed) {
+                    try { __forumPopup.close(); } catch (e) {}
+                }
+                __forumPopup = null;
+                return true;
+            };
+
+            // Stubs for iframe mode (cwm == "1") — not used here but called by Flash
+            window.fp_resizeMe = function (mode) {
+                console.log("[FP] fp_resizeMe", mode);
+                return true;
+            };
+
+            window.fp_closeFrame = function (id) {
+                console.log("[FP] fp_closeFrame", id);
                 return true;
             };
 
@@ -307,12 +351,6 @@
                 if (!Number.isFinite(n)) return "0";
                 return String(Math.max(0, Math.min(12, Math.floor(n))));
             }
-
-            window.openForum = function () {
-                var sid = new URLSearchParams(window.location.search).get("sid") || "";
-                var url = "/fb/?sid=" + encodeURIComponent(sid);
-                window.open(url, "frutiparc_forum", "width=860,height=640,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no");
-            };
 
             window.addEventListener("DOMContentLoaded", async () => {
                 const urlParams = new URLSearchParams(window.location.search);
