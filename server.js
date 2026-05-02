@@ -575,7 +575,7 @@ const LEGACY_RANKINGS = [
   // Section L = "Championnat" in front-end — only Frutibandas and Grapiz
   { rk: '7', internal: 'bandas_challenge',  ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: 'grapiz_challenge',  ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
-  { rk: '9', internal: 'consecration',     ty: 'percent',     rn: 'Consécration', gs: '9', g: 'consecration', section: 'C' },
+  { rk: '9', internal: 'consecration',     ty: 'percent',     rn: 'Class. consécration', gs: '9', g: 'consecration', section: 'C' },
 ];
 const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.rk, r.internal])
