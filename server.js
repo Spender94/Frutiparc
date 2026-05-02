@@ -935,11 +935,25 @@ function getUserScore(username, rankingId) {
   return { score: Number(ud[rankingId].score) || 0, pos: computePosition(rankingId, username) };
 }
 
-function getConsecrationLeaderboard() {
+async function getConsecrationLeaderboard() {
+  const seen = new Set();
   const results = [];
   for (const username of Object.keys(users)) {
+    seen.add(username);
     const c = computeConsecration(username);
     if (c.overall > 0) results.push({ u: username, s: c.overall });
+  }
+  if (process.env.DATABASE_URL) {
+    try {
+      const rows = await db.listAllUsers();
+      for (const row of rows) {
+        const uname = row.username;
+        if (seen.has(uname)) continue;
+        await hydrateUserFromDb(uname, row);
+        const c = computeConsecration(uname);
+        if (c.overall > 0) results.push({ u: uname, s: c.overall });
+      }
+    } catch (e) { console.error('[CONSECRATION] leaderboard DB error:', e.message); }
   }
   results.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
   return results;
@@ -4923,7 +4937,7 @@ app.get('/api/club/consecration', async (req, res) => {
       if (!users[username] && process.env.DATABASE_URL) {
         try {
           const row = await db.findUserByUsername(username);
-          if (row) users[username] = dbUserToMemory(row);
+          if (row) await hydrateUserFromDb(username, row);
         } catch (e) { /* ignore */ }
       }
       const c = computeConsecration(username);
@@ -6639,7 +6653,7 @@ case 'trace': {
       if (msg.attrs.s !== undefined || msg.attrs.l !== undefined) {
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 10) || 10;
-        const all = getConsecrationLeaderboard();
+        const all = await getConsecrationLeaderboard();
         const slice = all.slice(start, start + limit);
         let inner = '';
         for (const e of slice) {
