@@ -287,6 +287,15 @@ const GAME_ITEM_INFO = {
   '$symb1':      { name: 'Logo feu',            game: 'MotionBall', gif: 'Games/motionBall2/picto/logoFeu.gif' },
   '$symb2':      { name: 'Logo vent',           game: 'MotionBall', gif: 'Games/motionBall2/picto/logoVent.gif' },
   '$symb3':      { name: 'Logo terre',          game: 'MotionBall', gif: 'Games/motionBall2/picto/logoTerre.gif' },
+  // Burning Kiwi
+  '$fruticup':   { name: 'Fruticoupe Argent',   game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/fruticupSilver.gif' },
+  '$fruticupxl': { name: 'Fruticoupe Or',       game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/fruticup.gif' },
+  '$elite':      { name: 'Elite Argent',        game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/eliteSilver.gif' },
+  '$elitexl':    { name: 'Elite Or',            game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/elite.gif' },
+  '$logo01':     { name: 'Écurie UWE Wing',     game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamUWE.gif' },
+  '$logo02':     { name: 'Écurie Fury Hun',     game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamFury.gif' },
+  '$logo03':     { name: 'Écurie Sonic Brain',  game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamSonic.gif' },
+  '$logo04':     { name: 'Écurie KiwiX',        game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamKiwix.gif' },
   // MiniWave2
   '$ship00':     { name: 'Vaisseau 0',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
   '$ship01':     { name: 'Vaisseau 1',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship01.gif' },
@@ -334,11 +343,7 @@ const GAME_PROGRESS_REGISTRY = [
     id: 'bkiwi',
     name: 'Burning Kiwi',
     enabled: true,
-    // No pictos: "completion" = user has a Burning Kiwi score
-    completionCheck: (username) => {
-      const ud = scoresData.users && scoresData.users[username];
-      return !!(ud && (ud.bkiwi_classic || ud.bkiwi_challenge));
-    },
+    matchGame: 'Burning Kiwi',
   },
   {
     id: 'mb2',
