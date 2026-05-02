@@ -1034,6 +1034,7 @@ function dbUserToMemory(row) {
     displayName: row.display_name || row.username || '',
     frutiSign: row.fruti_sign ?? -1,
     frutiSignB: row.fruti_sign_b ?? -1,
+    createdAt: row.created_at ? (row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)) : '',
     customAccessories: [],
     kikoozLog: [],
     userLog: [],
@@ -1465,6 +1466,20 @@ function getFrutizJob(username, user) {
   if (isDebugNotUser(username)) return 'Frutiz';
   if (user && user.isModerator) return 'Modérateur';
   return 'Frutiz';
+}
+
+// Format the "ft" attribute: subscription date in YYYY-MM-DD HH:MM:SS format.
+// Read by Flash client (FrutizInfo.as:421-422) for "subday" + "frutiAge" display.
+function getFrutizSubscribeDate(user) {
+  const raw = user && user.createdAt ? user.createdAt : '';
+  if (!raw) return '2005-01-01 12:00:00';
+  // Already SQL-style?
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) return raw;
+  try {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return '2005-01-01 12:00:00';
+    return d.toISOString().replace('T', ' ').substring(0, 19);
+  } catch { return '2005-01-01 12:00:00'; }
 }
 
 // ─────────────────────────────────────────────
@@ -3611,11 +3626,10 @@ app.get('/do/onident', (req, res) => {
 
   // The "f" attribute, when present, forces the SWF to open the editbouille
   // window with the listed part families. Used for first-time avatar setup.
-  // Families 0-8 are the main customizable parts (capuche, yeux, bouche, etc.)
-  const fAttr = user.needsBouille ? ' f="0,1,2,3,4,5,6,7,8"' : '';
-  if (user.needsBouille) {
-    user.needsBouille = false; // Only force once per session
-  }
+  // The editor opens as long as the user still has the DEFAULT bouille.
+  // Once they save anything else, it NEVER opens again.
+  const hasDefaultBouille = !user.fbouille || user.fbouille === DEFAULT_BOUILLE_STATE;
+  const fAttr = hasDefaultBouille ? ' f="0,1,2,3,4,5,6,7,8"' : '';
 
   const userLogXml = buildUserLogXml(user.userLog);
   const siteLogXml = buildUserLogXml(user.siteLog);
@@ -6741,7 +6755,7 @@ case 'trace': {
       if (!ud) ud = {};
       const consUserA = computeConsecration(u);
       sendToClient(socket,
-        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" fr="${consUserA.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" fr="${consUserA.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : 0}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : 0}" />`
       );
       break;
     }
@@ -6875,7 +6889,7 @@ case 'createchannel': {
   const consOtherUser = computeConsecration(otherUser);
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fr="${consOtherUser.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fr="${consOtherUser.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : 0}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : 0}" />`
   );
 
   sendToClient(
