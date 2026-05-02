@@ -296,6 +296,12 @@ const GAME_ITEM_INFO = {
   '$logo02':     { name: 'Écurie Fury Hun',     game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamFury.gif' },
   '$logo03':     { name: 'Écurie Sonic Brain',  game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamSonic.gif' },
   '$logo04':     { name: 'Écurie KiwiX',        game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamKiwix.gif' },
+  '$logo05':     { name: 'Écurie Ultra',        game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamUltra.gif' },
+  '$car01':      { name: 'Bolide UWE Wing',     game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/carUWE.gif' },
+  '$car02':      { name: 'Bolide Fury Hun',     game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/carFury.gif' },
+  '$car03':      { name: 'Bolide Sonic Brain',  game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/carSonic.gif' },
+  '$car04':      { name: 'Bolide KiwiX',        game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/carKiwix.gif' },
+  '$car05':      { name: 'Bolide Ultra',         game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/carUltra.gif' },
   // MiniWave2
   '$ship00':     { name: 'Vaisseau 0',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
   '$ship01':     { name: 'Vaisseau 1',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship01.gif' },
