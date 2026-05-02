@@ -2156,12 +2156,22 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
       }
       fields.display_name = dn;
     }
+    if (body.fruti_sign !== undefined) {
+      const v = Number(body.fruti_sign);
+      fields.fruti_sign = (v >= 0 && v <= 9) ? v : -1;
+    }
+    if (body.fruti_sign_b !== undefined) {
+      const v = Number(body.fruti_sign_b);
+      fields.fruti_sign_b = (v >= 0 && v <= 9) ? v : -1;
+    }
     if (Object.keys(fields).length > 0) {
       await db.updateUser(u, fields);
       if (users[u]) {
         Object.assign(users[u], fields);
         if (fields.is_moderator !== undefined) users[u].isModerator = fields.is_moderator;
         if (fields.display_name !== undefined) users[u].displayName = fields.display_name;
+        if (fields.fruti_sign !== undefined) users[u].frutiSign = fields.fruti_sign;
+        if (fields.fruti_sign_b !== undefined) users[u].frutiSignB = fields.fruti_sign_b;
       }
     }
     console.log(`[ADMIN] Updated user ${u}: ${Object.keys(fields).join(', ')}`);
@@ -5580,15 +5590,13 @@ users.mdamirma = {
   frutiSignB: 5,
   displayName: 'mdamirma',
 };
-CONNECTED_NPCS.add('mdamirma');
-
 let mdamirmaCurrentChannel = null;
 
 function mdamirmaPickChannel() {
   let best = null;
   let bestCount = 0;
   for (const [name, ch] of Object.entries(channels)) {
-    const realUsers = [...ch.users].filter(u => !CONNECTED_NPCS.has(u));
+    const realUsers = [...ch.users].filter(u => !CONNECTED_NPCS.has(u) && u !== 'mdamirma');
     if (realUsers.length > bestCount) {
       bestCount = realUsers.length;
       best = name;
@@ -5602,7 +5610,6 @@ function mdamirmaJoin(channelName) {
     const oldCh = channels[mdamirmaCurrentChannel];
     if (oldCh) {
       oldCh.users.delete('mdamirma');
-      const timeAttrs = buildChatTimeAttrs();
       broadcastToChannel(mdamirmaCurrentChannel,
         `<${CMD.userleaved} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(mdamirmaCurrentChannel)}" />`
       );
@@ -5640,7 +5647,7 @@ function mdamirmaPickTarget(channelName) {
   const ch = channels[channelName];
   if (!ch) return null;
   const candidates = [...ch.users].filter(u => {
-    if (CONNECTED_NPCS.has(u)) return false;
+    if (CONNECTED_NPCS.has(u) || u === 'mdamirma') return false;
     const ud = users[u];
     if (!ud) return false;
     return ud.frutiSign < 0 || ud.frutiSignB < 0;

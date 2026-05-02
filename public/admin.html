@@ -73,7 +73,7 @@
     <span id="user-count"></span>
   </div>
   <table>
-    <thead><tr><th>Pseudo</th><th>XP</th><th>Kikooz</th><th>Bouille</th><th>Genre</th><th>Modo</th><th>Inscrit le</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Pseudo</th><th>XP</th><th>Kikooz</th><th>Bouille</th><th>Genre</th><th>FrutiSigne</th><th>Modo</th><th>Inscrit le</th><th>Actions</th></tr></thead>
     <tbody id="users-body"></tbody>
   </table>
 </div>
@@ -215,6 +215,24 @@
     <label><span>XP :</span> <input id="edit-xp" type="number"></label>
     <label><span>Kikooz :</span> <input id="edit-kikooz" type="number"></label>
     <label><span>Mot de passe :</span> <input id="edit-password" placeholder="(laisser vide = inchangé)"></label>
+    <label><span>FrutiSigne :</span>
+      <select id="edit-frutisign" style="width:120px">
+        <option value="-1">— non révélé —</option>
+        <option value="0">pomme</option><option value="1">abricot</option><option value="2">poire</option>
+        <option value="3">fraise</option><option value="4">citron</option><option value="5">kiwi</option>
+        <option value="6">raisin</option><option value="7">orange</option><option value="8">cerise</option>
+        <option value="9">banane</option>
+      </select>
+    </label>
+    <label><span>Ascendant :</span>
+      <select id="edit-frutisignb" style="width:120px">
+        <option value="-1">— non révélé —</option>
+        <option value="0">pomme</option><option value="1">abricot</option><option value="2">poire</option>
+        <option value="3">fraise</option><option value="4">citron</option><option value="5">kiwi</option>
+        <option value="6">raisin</option><option value="7">orange</option><option value="8">cerise</option>
+        <option value="9">banane</option>
+      </select>
+    </label>
     <div class="actions">
       <button class="btn" onclick="closeModal('modal-edit-user')">Annuler</button>
       <button class="btn-danger" onclick="saveEditUser()">Sauvegarder</button>
@@ -302,6 +320,12 @@ function switchTab(name) {
 
 function closeModal(id) { $(`#${id}`).classList.remove('open'); }
 
+const SIGN_NAMES = ['pomme','abricot','poire','fraise','citron','kiwi','raisin','orange','cerise','banane'];
+function signLabel(v) {
+  const n = Number(v);
+  return n >= 0 && n <= 9 ? SIGN_NAMES[n] : '<span style="color:#667">non révélé</span>';
+}
+
 function esc(s) {
   const d = document.createElement('div');
   d.textContent = s;
@@ -327,23 +351,26 @@ async function loadUsers() {
       <td>${u.kikooz || 0}</td>
       <td><code style="font-size:11px">${esc((u.fbouille||'').substring(0,12))}…</code></td>
       <td>${esc(u.gender || 'M')}</td>
+      <td style="font-size:11px">${signLabel(u.fruti_sign)}${u.fruti_sign >= 0 && u.fruti_sign_b >= 0 ? ' / ' + signLabel(u.fruti_sign_b) : ''}</td>
       <td><span class="badge ${u.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u.username)}',${!u.is_moderator})" title="Cliquer pour changer">${u.is_moderator ? 'Modo' : '-'}</span></td>
       <td>${fmtDate(u.created_at)}</td>
       <td>
-        <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}','${esc(u.display_name||u.username)}')">Modifier</button>
+        <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}','${esc(u.display_name||u.username)}',${u.fruti_sign ?? -1},${u.fruti_sign_b ?? -1})">Modifier</button>
         <button class="btn-danger btn-sm" onclick="deleteUser('${esc(u.username)}')">Supprimer</button>
       </td>
     </tr>`).join('');
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
-function editUser(name, xp, kikooz, fb, dn) {
+function editUser(name, xp, kikooz, fb, dn, fs, fsb) {
   $('#edit-user-name').textContent = name;
   $('#edit-user-name').dataset.name = name;
   $('#edit-displayname').value = dn || name;
   $('#edit-fbouille').value = fb;
   $('#edit-xp').value = xp;
   $('#edit-kikooz').value = kikooz;
+  $('#edit-frutisign').value = fs ?? -1;
+  $('#edit-frutisignb').value = fsb ?? -1;
   $('#edit-password').value = '';
   $('#modal-edit-user').classList.add('open');
 }
@@ -355,6 +382,8 @@ async function saveEditUser() {
   if (dn) body.display_name = dn;
   const pw = $('#edit-password').value;
   if (pw) body.password = pw;
+  body.fruti_sign = Number($('#edit-frutisign').value);
+  body.fruti_sign_b = Number($('#edit-frutisignb').value);
   const r = await fetch(`/api/admin/users/${encodeURIComponent(name)}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify(body) });
   if (!r.ok) { const d = await r.json().catch(() => ({})); toast('Erreur: ' + (d.error || 'inconnu')); return; }
   closeModal('modal-edit-user');
@@ -468,6 +497,8 @@ async function loadDetail() {
       <tr><td>Modérateur</td><td><span class="badge ${user.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u)}',${!user.is_moderator});setTimeout(loadDetail,500)" style="cursor:pointer">${user.is_moderator ? 'Oui' : 'Non'}</span></td></tr>
       <tr><td>Anniversaire</td><td>${fmtDate(user.birthday)}</td></tr>
       <tr><td>Inscrit le</td><td>${fmtDate(user.created_at)}</td></tr>
+      <tr><td>FrutiSigne</td><td>${signLabel(user.fruti_sign)}</td></tr>
+      <tr><td>Ascendant</td><td>${signLabel(user.fruti_sign_b)}</td></tr>
     </table>`;
 
     // Scores
