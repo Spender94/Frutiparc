@@ -1098,6 +1098,90 @@ function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {
   if (user.siteLog.length > 200) user.siteLog.length = 200;
 }
 
+// ─────────────────────────────────────────────
+// XP System — daily activity tracking & levelling
+// ─────────────────────────────────────────────
+// Tracks daily actions per user. Reset each day when XP is awarded.
+// Keys: login, chatMsg, forumTopic, forumPost, gamePlayed
+const dailyXpActions = {}; // username -> { login:N, chatMsg:N, forumTopic:N, forumPost:N, gamePlayed:N }
+
+function getXpActions(username) {
+  if (!dailyXpActions[username]) {
+    dailyXpActions[username] = { login: 0, chatMsg: 0, forumTopic: 0, forumPost: 0, gamePlayed: 0 };
+  }
+  return dailyXpActions[username];
+}
+
+function trackXpAction(username, action) {
+  getXpActions(username)[action] = (getXpActions(username)[action] || 0) + 1;
+}
+
+// XP reward formula per action type (with daily caps).
+// Flash formula: level N needs (N-1)^2 * 10000 XP total.
+// Lv2=10k, Lv3=40k, Lv4=90k, Lv5=160k.
+// Max ~700 XP/day → lv2 in ~14 days of max activity.
+const XP_REWARDS = {
+  login:      { base: 100, cap: 1  },  // 100 XP once per day
+  chatMsg:    { base: 5,   cap: 50 },  // 5 XP per message, max 250/day
+  forumTopic: { base: 50,  cap: 3  },  // 50 XP per topic, max 150/day
+  forumPost:  { base: 25,  cap: 8  },  // 25 XP per reply, max 200/day
+  gamePlayed: { base: 20,  cap: 10 },  // 20 XP per game finished, max 200/day
+};
+
+function computeDailyXpGain(username) {
+  const actions = dailyXpActions[username];
+  if (!actions) return 0;
+  let total = 0;
+  for (const [action, cfg] of Object.entries(XP_REWARDS)) {
+    const count = Math.min(actions[action] || 0, cfg.cap);
+    total += count * cfg.base;
+  }
+  return total;
+}
+
+// Match the Flash client formula (UserMng.as):
+// level = floor(sqrt(xp / 10000) + 1)
+// levelToXp(n) = (n - 1)^2 * 10000
+function xpForLevel(level) {
+  return Math.pow(Math.max(1, level) - 1, 2) * 10000;
+}
+
+function getLevelForXp(xp) {
+  return Math.floor(Math.sqrt(Math.max(0, xp) / 10000) + 1);
+}
+
+// Award XP to all active users (called at midnight rollover)
+async function awardDailyXp() {
+  const usernames = Object.keys(dailyXpActions);
+  let awarded = 0;
+  for (const username of usernames) {
+    const gain = computeDailyXpGain(username);
+    if (gain <= 0) continue;
+    const user = users[username];
+    if (!user) continue;
+    const oldXp = user.xp || 0;
+    const oldLevel = getLevelForXp(oldXp);
+    user.xp = oldXp + gain;
+    const newLevel = getLevelForXp(user.xp);
+    if (newLevel > oldLevel) {
+      addUserHistoryEntry(user, {
+        type: 20,
+        content: `Bravo ! Tu passes au niveau ${newLevel} ! (${user.xp} XP)`,
+        flNew: true,
+      });
+    }
+    if (user._dbId) {
+      db.updateUser(username, { xp: user.xp }).catch(e => {
+        console.error(`[XP] DB update failed for ${username}:`, e.message);
+      });
+    }
+    awarded++;
+  }
+  console.log(`[XP] Daily XP awarded to ${awarded} user(s)`);
+  // Reset all daily counters
+  for (const key of Object.keys(dailyXpActions)) delete dailyXpActions[key];
+}
+
 function buildUserLogXml(entries) {
   const list = Array.isArray(entries) ? entries : [];
   return list.map((e) => {
@@ -1286,6 +1370,11 @@ async function performChallengeRoll(today) {
   }
 
   resetChallengeScoresInMemory();
+
+  // Award daily XP based on accumulated actions
+  try { await awardDailyXp(); } catch (e) {
+    console.error('[XP] awardDailyXp error:', e.message);
+  }
 }
 
 function applyPendingChallengeNotifications(username, user) {
@@ -1933,6 +2022,7 @@ async function handleSaveScore(req, res) {
   }
 
   const result = persistScore(username, rankingId, scoreVal, scoreData);
+  trackXpAction(username, 'gamePlayed');
   console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated}`);
   return res.json({
     ok: true,
@@ -2678,6 +2768,7 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
     return res.type('text/plain').send('ok=0');
   }
   const result = persistScore(username, rankingId, scoreVal, '');
+  trackXpAction(username, 'gamePlayed');
   console.log(`[SWF-SCORE] ${username} ${gameName} ${scoreVal} -> ${rankingId} mode=${swfMode} updated=${result.updated}`);
   res.type('text/plain').send('ok=1');
 });
@@ -4579,6 +4670,7 @@ app.post('/api/forum/topic', async (req, res) => {
   if (title.length > 200) return res.status(400).json({ error: 'title too long' });
   try {
     const topic = await db.forumCreateTopic(boardId, username, title, content, postBouille);
+    trackXpAction(username, 'forumTopic');
     res.json({ ok: true, topicId: topic.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -4596,6 +4688,7 @@ app.post('/api/forum/post', async (req, res) => {
     if (!topic) return res.status(404).json({ error: 'topic not found' });
     if (topic.is_locked) return res.status(403).json({ error: 'topic locked' });
     const post = await db.forumCreatePost(topicId, username, content, postBouille);
+    trackXpAction(username, 'forumPost');
     res.json({ ok: true, postId: post.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -5797,6 +5890,7 @@ async function handleCBeeMessage(socket, rawXml) {
 
       const user = users[effectiveLogin];
       applyPendingChallengeNotifications(effectiveLogin, user);
+      trackXpAction(effectiveLogin, 'login');
       if (user.hasWelcomeUserLog !== true) {
         addUserHistoryEntry(user, {
           type: 1,
@@ -6286,6 +6380,7 @@ case 'send': {
 
     const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
+    trackXpAction(client.username, 'chatMsg');
 } else if (msg.attrs.u) {
   const targetUser = msg.attrs.u;
   const safeText = escapeXml(text);
