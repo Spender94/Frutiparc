@@ -559,6 +559,7 @@ const RANKINGS = {
   miniwave2_challenge:{ name: 'MiniWave - Challenge',     game: 'miniwave2',type: 'L' },
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
   grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L' },
+  consecration:       { name: 'Consécration',             game: 'consecration', type: 'C', virtual: true },
 };
 
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
@@ -574,6 +575,7 @@ const LEGACY_RANKINGS = [
   // Section L = "Championnat" in front-end — only Frutibandas and Grapiz
   { rk: '7', internal: 'bandas_challenge',  ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: 'grapiz_challenge',  ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
+  { rk: '9', internal: 'consecration',     ty: 'percent',     rn: 'Consécration', gs: '9', g: 'consecration', section: 'C' },
 ];
 const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.rk, r.internal])
@@ -930,9 +932,25 @@ function computePosition(rankingId, username) {
 }
 
 function getUserScore(username, rankingId) {
+  if (rankingId === 'consecration') {
+    const c = computeConsecration(username);
+    const ranking = getConsecrationLeaderboard();
+    const idx = ranking.findIndex((e) => e.u === username);
+    return { score: c.overall, pos: idx < 0 ? 0 : idx + 1 };
+  }
   const ud = scoresData.users[username];
   if (!ud || !ud[rankingId]) return { score: 0, pos: 0 };
   return { score: Number(ud[rankingId].score) || 0, pos: computePosition(rankingId, username) };
+}
+
+function getConsecrationLeaderboard() {
+  const results = [];
+  for (const username of Object.keys(users)) {
+    const c = computeConsecration(username);
+    if (c.overall > 0) results.push({ u: username, s: c.overall });
+  }
+  results.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
+  return results;
 }
 
 loadScores();
@@ -1095,7 +1113,7 @@ function buildUserLogXml(entries) {
 // Note: section L = "Championnat" in front-end; those rankings (currently
 // only bandas_challenge and grapiz_challenge) are NOT reset daily.
 const DAILY_RESET_RANKING_SET = new Set(
-  LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal).map(r => r.internal)
+  LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal && !(RANKINGS[r.internal] && RANKINGS[r.internal].virtual)).map(r => r.internal)
 );
 
 function challengeRankingIds() {
@@ -4749,6 +4767,7 @@ app.get('/api/club/records', async (req, res) => {
 
   const out = [];
   for (const [rkId, meta] of Object.entries(RANKINGS)) {
+    if (meta.virtual) continue;
     const userMap = bestByRanking[rkId] || {};
     const all = Object.entries(userMap).map(([user, v]) => ({
       user,
@@ -6112,7 +6131,9 @@ broadcastToChannel(
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
         let all = [];
-        if (isHistorical) {
+        if (internalId === 'consecration') {
+          all = getConsecrationLeaderboard().map((e) => ({ u: e.u, s: e.s, d: '', at: '' }));
+        } else if (isHistorical) {
           try {
             const archived = await db.getArchivedScores(internalId, dtIn);
             for (const row of archived) {
