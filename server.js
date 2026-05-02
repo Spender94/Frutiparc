@@ -559,7 +559,6 @@ const RANKINGS = {
   miniwave2_challenge:{ name: 'MiniWave - Challenge',     game: 'miniwave2',type: 'L' },
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
   grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L' },
-  consecration:       { name: 'Consécration',             game: 'consecration', type: 'C', virtual: true },
 };
 
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
@@ -575,7 +574,6 @@ const LEGACY_RANKINGS = [
   // Section L = "Championnat" in front-end — only Frutibandas and Grapiz
   { rk: '7', internal: 'bandas_challenge',  ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: 'grapiz_challenge',  ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
-  { rk: '9', internal: 'consecration',     ty: 'percent',     rn: 'Class. consécration', gs: '9', g: 'consecration', section: 'C' },
 ];
 const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.rk, r.internal])
@@ -932,12 +930,6 @@ function computePosition(rankingId, username) {
 }
 
 function getUserScore(username, rankingId) {
-  if (rankingId === 'consecration') {
-    const c = computeConsecration(username);
-    const ranking = getConsecrationLeaderboard();
-    const idx = ranking.findIndex((e) => e.u === username);
-    return { score: c.overall, pos: idx < 0 ? 0 : idx + 1 };
-  }
   const ud = scoresData.users[username];
   if (!ud || !ud[rankingId]) return { score: 0, pos: 0 };
   return { score: Number(ud[rankingId].score) || 0, pos: computePosition(rankingId, username) };
@@ -1203,7 +1195,7 @@ function buildUserLogXml(entries) {
 // Note: section L = "Championnat" in front-end; those rankings (currently
 // only bandas_challenge and grapiz_challenge) are NOT reset daily.
 const DAILY_RESET_RANKING_SET = new Set(
-  LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal && !(RANKINGS[r.internal] && RANKINGS[r.internal].virtual)).map(r => r.internal)
+  LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal).map(r => r.internal)
 );
 
 function challengeRankingIds() {
@@ -4597,7 +4589,7 @@ app.get('/api/forum/index', async (req, res) => {
       boardsByCategory[b.category_id].push({
         id: b.id, name: b.name, description: b.description,
         topicCount: Number(b.topic_count), postCount: Number(b.post_count),
-        lastActivity: b.last_activity, lastActivityBy: b.last_activity_by,
+        lastActivity: b.last_activity, lastActivityBy: getDisplayName(b.last_activity_by),
       });
     }
     res.json({
@@ -4622,7 +4614,7 @@ app.get('/api/forum/board/:id', async (req, res) => {
       authorBouille: bouilleOf(users[t.author_username], t.author_username),
       isSticky: t.is_sticky, isLocked: t.is_locked,
       viewCount: t.view_count, replyCount: Number(t.reply_count),
-      lastPostAt: t.last_post_at, lastPostBy: t.last_post_by,
+      lastPostAt: t.last_post_at, lastPostBy: getDisplayName(t.last_post_by),
       createdAt: t.created_at,
     }));
     res.json({ board: { id: board.id, name: board.name, description: board.description }, topics: topicsOut, total, page, perPage: 25 });
@@ -4887,10 +4879,9 @@ app.get('/api/club/records', async (req, res) => {
 
   const out = [];
   for (const [rkId, meta] of Object.entries(RANKINGS)) {
-    if (meta.virtual) continue;
     const userMap = bestByRanking[rkId] || {};
     const all = Object.entries(userMap).map(([user, v]) => ({
-      user,
+      user: getDisplayName(user),
       score: Number(v.score),
       data: v.data || '',
       updatedAt: v.updatedAt || '',
@@ -4937,7 +4928,7 @@ app.get('/api/club/consecration', async (req, res) => {
       }
       const c = computeConsecration(username);
       players.push({
-        user: username,
+        user: getDisplayName(username),
         overall: c.overall,
         enabledCount: c.enabledCount,
         perGameMax: c.perGameMax,
@@ -5981,7 +5972,7 @@ async function handleCBeeMessage(socket, rawXml) {
   for (const targetSock of getSocketsForUsername(invTargetName)) {
     sendToClient(
       targetSock,
-      `<${CMD.invite} u="${escapeXml(inviter)}" g="${escapeXml(invGroup)}" p="${escapeXml(invPass)}">${escapeXml(invTopic)}</${CMD.invite}>`
+      `<${CMD.invite} u="${escapeXml(getDisplayName(inviter))}" g="${escapeXml(invGroup)}" p="${escapeXml(invPass)}">${escapeXml(invTopic)}</${CMD.invite}>`
     );
   }
 
@@ -6406,9 +6397,7 @@ broadcastToChannel(
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 20) || 20;
         let all = [];
-        if (internalId === 'consecration') {
-          all = getConsecrationLeaderboard().map((e) => ({ u: e.u, s: e.s, d: '', at: '' }));
-        } else if (isHistorical) {
+        if (isHistorical) {
           try {
             const archived = await db.getArchivedScores(internalId, dtIn);
             for (const row of archived) {
@@ -6622,7 +6611,7 @@ case 'trace': {
       const u = child.attrs.u;
       const ud = users[u] || {};
       const pVal = getSocketsForUsername(u).length > 0 ? 1 : 0;
-      inner += `<u u="${u}" p="${pVal}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, u)}" />`;
+      inner += `<u u="${escapeXml(getDisplayName(u))}" p="${pVal}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, u)}" />`;
     }
 
     sendToClient(socket, `<${CMD.trace}>${inner}</${CMD.trace}>`);
@@ -6638,7 +6627,7 @@ case 'trace': {
     const pVal = getSocketsForUsername(targetUser).length > 0 ? 1 : 0;
     sendToClient(
       socket,
-      `<${CMD.trace} u="${targetUser}" p="${pVal}" s="${getStatusCode(ud, targetUser)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, targetUser)}" />`
+      `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="${pVal}" s="${getStatusCode(ud, targetUser)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, targetUser)}" />`
     );
   }
   break;
@@ -6646,32 +6635,19 @@ case 'trace': {
     // ── stoptrace: stop tracking users / FrutiScore rateranking ──
     case 'stoptrace': {
       // FrutiScore overlap: rateranking uses wire code "aa" with s/l attrs.
+      // Serves the "Class. consécration" ranking (computed on the fly from pictos).
       if (msg.attrs.s !== undefined || msg.attrs.l !== undefined) {
         const start = Number(msg.attrs.s || 0) || 0;
         const limit = Number(msg.attrs.l || 10) || 10;
-        const merged = new Map();
-        try {
-          const dbUsers = await db.listAllUsers();
-          for (const row of dbUsers) {
-            if (row.xp > 0) merged.set(row.username, row.xp);
-          }
-        } catch (e) { console.error('[FSCORE] rateranking DB error:', e.message); }
-        for (const [u, ud] of Object.entries(users)) {
-          if (ud && Number.isFinite(ud.xp) && ud.xp > 0) {
-            merged.set(u, ud.xp);
-          }
-        }
-        const all = [];
-        for (const [u, s] of merged) all.push({ u, s });
-        all.sort((a, b) => b.s - a.s);
+        const all = getConsecrationLeaderboard();
         const slice = all.slice(start, start + limit);
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${e.s}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+          inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
         }
         sendToClient(socket, `<${CMD.stoptrace}>${inner}</${CMD.stoptrace}>`);
-        console.log(`[FSCORE] rateranking: ${slice.length}/${all.length} entries`);
+        console.log(`[FSCORE] rateranking (consecration): ${slice.length}/${all.length} entries`);
         break;
       }
       break;
@@ -6860,7 +6836,7 @@ case 'createchannel': {
   for (const targetSock of getSocketsForUsername(otherUser)) {
     sendToClient(
       targetSock,
-      `<${CMD.invitechat} u="${escapeXml(requester)}" g="${privateGroup}" p="${privatePass}" />`
+      `<${CMD.invitechat} u="${escapeXml(getDisplayName(requester))}" g="${privateGroup}" p="${privatePass}" />`
     );
   }
 
@@ -6885,7 +6861,7 @@ case 'createchannel': {
       for (const targetSock of getSocketsForUsername(targetUser)) {
         sendToClient(
           targetSock,
-          `<${CMD.invitechat} u="${escapeXml(requester)}" g="${g}" p="${pass}" />`
+          `<${CMD.invitechat} u="${escapeXml(getDisplayName(requester))}" g="${g}" p="${pass}" />`
         );
       }
       break;
@@ -6918,7 +6894,7 @@ case 'createchannel': {
       let inner = '';
       for (const name of results) {
         const ud = users[name] || {};
-        inner += `<u u="${name}" f="${bouilleOf(ud, name)}" x="${ud.xp || 0}" />`;
+        inner += `<u u="${escapeXml(getDisplayName(name))}" f="${bouilleOf(ud, name)}" x="${ud.xp || 0}" />`;
       }
       sendToClient(socket, `<${CMD.searchuser}>${inner}</${CMD.searchuser}>`);
       break;
@@ -7283,7 +7259,7 @@ const xmlSocketServer = net.createServer((socket) => {
         if (channels[g]) {
           channels[g].users.delete(client.username);
           broadcastToChannel(g,
-            `<${CMD.userleaved} g="${g}" u="${client.username}" />`
+            `<${CMD.userleaved} g="${g}" u="${escapeXml(getDisplayName(client.username))}" />`
           );
         }
       }
