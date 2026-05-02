@@ -1119,13 +1119,13 @@ function trackXpAction(username, action) {
 // XP reward formula per action type (with daily caps).
 // Flash formula: level N needs (N-1)^2 * 10000 XP total.
 // Lv2=10k, Lv3=40k, Lv4=90k, Lv5=160k.
-// Max ~700 XP/day → lv2 in ~14 days of max activity.
+// Max 10000 XP/day → Lv2 in 1-2j, Lv2→3 in 3-6j.
 const XP_REWARDS = {
-  login:      { base: 100, cap: 1  },  // 100 XP once per day
-  chatMsg:    { base: 5,   cap: 50 },  // 5 XP per message, max 250/day
-  forumTopic: { base: 50,  cap: 3  },  // 50 XP per topic, max 150/day
-  forumPost:  { base: 25,  cap: 8  },  // 25 XP per reply, max 200/day
-  gamePlayed: { base: 20,  cap: 10 },  // 20 XP per game finished, max 200/day
+  login:      { base: 1000, cap: 1  },  // 1000 XP once per day
+  chatMsg:    { base: 50,   cap: 50 },  // 50 XP per message, max 2500/day
+  forumTopic: { base: 500,  cap: 3  },  // 500 XP per topic, max 1500/day
+  forumPost:  { base: 250,  cap: 8  },  // 250 XP per reply, max 2000/day
+  gamePlayed: { base: 300,  cap: 10 },  // 300 XP per game, max 3000/day
 };
 
 function computeDailyXpGain(username) {
