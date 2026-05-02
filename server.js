@@ -1101,6 +1101,22 @@ function addUserHistoryEntry(user, { type = 1, content = '', flNew = false } = {
   if (user.userLog.length > 200) user.userLog.length = 200;
 }
 
+function notifyNewUserLog(username, entry) {
+  if (typeof CMD === 'undefined') return;
+  for (const sock of getSocketsForUsername(username)) {
+    sendToClient(sock,
+      `<${CMD.newuserlog} date="${escapeXml(entry.d || nowSqlTimestamp())}" type="${escapeXml(String(entry.t || 1))}">${escapeXml(entry.c || '')}</${CMD.newuserlog}>`
+    );
+  }
+}
+
+function addAndNotifyUserLog(username, { type = 1, content = '', flNew = true } = {}) {
+  const user = users[username];
+  if (!user) return;
+  addUserHistoryEntry(user, { type, content, flNew });
+  notifyNewUserLog(username, user.userLog[0]);
+}
+
 function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
   if (!user) return;
   if (!Array.isArray(user.siteLog)) user.siteLog = [];
@@ -1180,11 +1196,7 @@ async function awardDailyXp() {
     user.xp = oldXp + gain;
     const newLevel = getLevelForXp(user.xp);
     if (newLevel > oldLevel) {
-      addUserHistoryEntry(user, {
-        type: 20,
-        content: `Bravo ! Tu passes au niveau ${newLevel} ! (${user.xp} XP)`,
-        flNew: true,
-      });
+      addAndNotifyUserLog(username, { type: 20, content: `Bravo ! Tu passes au niveau ${newLevel} ! (${user.xp} XP)` });
     }
     if (user._dbId) {
       db.updateUser(username, { xp: user.xp }).catch(e => {
@@ -2906,6 +2918,12 @@ function extractGameItemsFromSlot(username, game, dataStr) {
       }
     }
     console.log(`[SLOT]  extracted ${newItems.length} new pictos for ${username}/${game}: ${newItems.join(', ')}`);
+    for (const item of newItems) {
+      const info = GAME_ITEM_INFO[item];
+      const label = info ? info.name : item;
+      const gameName = info ? info.game : game;
+      addAndNotifyUserLog(username, { type: 20, content: `Nouveau picto débloqué sur ${gameName} : ${label} !` });
+    }
   }
 }
 
@@ -5775,6 +5793,11 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
     }
   }
 
+  if (!CONNECTED_NPCS.has(targetUser)) {
+    const actionLabel = isBan ? 'banni' : 'expulsé';
+    addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été ${actionLabel} du salon ${channelName} par ${getDisplayName(byUser)}.` });
+  }
+
   // Respawn connected PNJ after 5 seconds if one is kicked
   if (CONNECTED_NPCS.has(targetUser)) {
     setTimeout(() => {
@@ -6517,6 +6540,7 @@ case 'send': {
         for (const targetSock of getSocketsForUsername(targetUser)) {
           sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
         }
+        addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
       }
       break;
     }
