@@ -60,6 +60,8 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS site_url TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS comment TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT DEFAULT NULL;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS fruti_sign INTEGER DEFAULT -1;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS fruti_sign_b INTEGER DEFAULT -1;
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
 

@@ -978,6 +978,8 @@ function createDefaultUser(pass) {
     siteLog: [],        // Entries displayed in "Evènements" (/do/onident <sl>)
     mails: [],          // Internal mailbox; each entry: {uid, from, fromAddr, to, toAddrs, subject, body, folder, date, read}
     displayName: '',
+    frutiSign: -1,
+    frutiSignB: -1,
     hasWelcomeUserLog: false,
     hasWelcomeSiteLog: false,
   };
@@ -1018,6 +1020,8 @@ function dbUserToMemory(row) {
     siteUrl: row.site_url || '',
     comment: row.comment || '',
     displayName: row.display_name || row.username || '',
+    frutiSign: row.fruti_sign ?? -1,
+    frutiSignB: row.fruti_sign_b ?? -1,
     customAccessories: [],
     kikoozLog: [],
     userLog: [],
@@ -5535,6 +5539,160 @@ users.Gaspard = {
   siteUrl: '',
 };
 
+// ── mdamirma — FrutiSigne bot ──
+const FRUTI_SIGN_NAMES = ['pomme','abricot','poire','fraise','citron','kiwi','raisin','orange','cerise','banane'];
+
+users.mdamirma = {
+  pass: '',
+  xp: 777777,
+  kikooz: 0,
+  fbouille: '0g0000020000000000000000',
+  items: withDefaultPens([]),
+  contacts: [],
+  blacklist: [],
+  gender: 'F',
+  birthday: '1999-09-09',
+  country: 'FR',
+  region: 'IDF',
+  countryIndex: '1',
+  regionIndex: '1',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  city: 'Les astres',
+  realJob: 'Voyante',
+  firstName: 'Mme',
+  lastName: 'Irma',
+  comment: "J'vois tout, j'sais tout !",
+  siteUrl: '',
+  frutiSign: 8,
+  frutiSignB: 5,
+  displayName: 'mdamirma',
+};
+CONNECTED_NPCS.add('mdamirma');
+
+let mdamirmaCurrentChannel = null;
+
+function mdamirmaPickChannel() {
+  let best = null;
+  let bestCount = 0;
+  for (const [name, ch] of Object.entries(channels)) {
+    const realUsers = [...ch.users].filter(u => !CONNECTED_NPCS.has(u));
+    if (realUsers.length > bestCount) {
+      bestCount = realUsers.length;
+      best = name;
+    }
+  }
+  return bestCount > 0 ? best : null;
+}
+
+function mdamirmaJoin(channelName) {
+  if (mdamirmaCurrentChannel) {
+    const oldCh = channels[mdamirmaCurrentChannel];
+    if (oldCh) {
+      oldCh.users.delete('mdamirma');
+      const timeAttrs = buildChatTimeAttrs();
+      broadcastToChannel(mdamirmaCurrentChannel,
+        `<${CMD.userleaved} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(mdamirmaCurrentChannel)}" />`
+      );
+    }
+  }
+  mdamirmaCurrentChannel = channelName;
+  const ch = channels[channelName];
+  if (!ch) return;
+  ch.users.add('mdamirma');
+  broadcastToChannel(channelName,
+    `<${CMD.userjoined} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(channelName)}" />`
+  );
+}
+
+function mdamirmaLeave() {
+  if (!mdamirmaCurrentChannel) return;
+  const ch = channels[mdamirmaCurrentChannel];
+  if (ch) {
+    ch.users.delete('mdamirma');
+    broadcastToChannel(mdamirmaCurrentChannel,
+      `<${CMD.userleaved} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(mdamirmaCurrentChannel)}" />`
+    );
+  }
+  mdamirmaCurrentChannel = null;
+}
+
+function mdamirmaSay(channelName, text) {
+  const timeAttrs = buildChatTimeAttrs();
+  broadcastToChannel(channelName,
+    `<${CMD.send} u="${escapeXml(getDisplayName('mdamirma'))}" t="m" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(text)}</${CMD.send}>`
+  );
+}
+
+function mdamirmaPickTarget(channelName) {
+  const ch = channels[channelName];
+  if (!ch) return null;
+  const candidates = [...ch.users].filter(u => {
+    if (CONNECTED_NPCS.has(u)) return false;
+    const ud = users[u];
+    if (!ud) return false;
+    return ud.frutiSign < 0 || ud.frutiSignB < 0;
+  });
+  if (candidates.length === 0) return null;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+async function mdamirmaReveal() {
+  const channelName = mdamirmaPickChannel();
+  if (!channelName) return;
+
+  mdamirmaJoin(channelName);
+
+  const target = mdamirmaPickTarget(channelName);
+  if (!target) {
+    setTimeout(() => {
+      mdamirmaSay(channelName, "Hmm... je ne vois personne à éclairer ici...");
+      setTimeout(() => mdamirmaLeave(), 5000 + Math.random() * 5000);
+    }, 2000 + Math.random() * 3000);
+    return;
+  }
+
+  const sign = Math.floor(Math.random() * 10);
+  const signB = Math.floor(Math.random() * 10);
+  const ud = users[target];
+  ud.frutiSign = sign;
+  ud.frutiSignB = signB;
+
+  if (ud._dbId) {
+    db.updateUser(target, { fruti_sign: sign, fruti_sign_b: signB }).catch(e => {
+      console.error('[MDAMIRMA] DB update failed:', e.message);
+    });
+  }
+
+  const displayTarget = getDisplayName(target);
+  const signName = FRUTI_SIGN_NAMES[sign];
+  const signBName = FRUTI_SIGN_NAMES[signB];
+
+  setTimeout(() => {
+    mdamirmaSay(channelName,
+      `Pué possib' ! Mon petit ${displayTarget} est ${signName} ascendant ${signBName} !`
+    );
+    addUserHistoryEntry(ud, {
+      type: 20,
+      content: `mdamirma a révélé ton FrutiSigne : ${signName} ascendant ${signBName} !`,
+      flNew: true,
+    });
+    setTimeout(() => mdamirmaLeave(), 8000 + Math.random() * 7000);
+  }, 3000 + Math.random() * 4000);
+}
+
+function scheduleMdamirma() {
+  const delayMin = 10 * 60 * 1000;  // 10 min
+  const delayMax = 45 * 60 * 1000;  // 45 min
+  const delay = delayMin + Math.random() * (delayMax - delayMin);
+  setTimeout(() => {
+    mdamirmaReveal();
+    scheduleMdamirma();
+  }, delay);
+}
+scheduleMdamirma();
+
 for (const npc of CONNECTED_NPCS) {
   channels.pomme.users.add(npc);
 }
@@ -6556,7 +6714,7 @@ case 'trace': {
       if (!ud) ud = {};
       const consUserA = computeConsecration(u);
       sendToClient(socket,
-        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" fr="${consUserA.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" fr="${consUserA.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" />`
       );
       break;
     }
@@ -6690,7 +6848,7 @@ case 'createchannel': {
   const consOtherUser = computeConsecration(otherUser);
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fr="${consOtherUser.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fr="${consOtherUser.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" />`
   );
 
   sendToClient(
