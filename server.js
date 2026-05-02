@@ -4770,6 +4770,48 @@ app.get('/api/club/records', async (req, res) => {
   res.json({ rankings: out });
 });
 
+// Consecration ranking: every known player sorted by overall consecration score.
+app.get('/api/club/consecration', async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
+    const seen = new Set();
+
+    // Pull every username we know about: in-memory + DB.
+    for (const u of Object.keys(users)) seen.add(u);
+    if (process.env.DATABASE_URL) {
+      try {
+        const rows = await db.listAllUsers();
+        for (const r of rows) if (r && r.username) seen.add(r.username);
+      } catch (e) { /* ignore */ }
+    }
+    // Also include anyone with stored scores (covers historical players).
+    for (const u of Object.keys(scoresData.users || {})) seen.add(u);
+
+    const players = [];
+    for (const username of seen) {
+      // Make sure we have an in-memory record so computeConsecration finds gameItems.
+      if (!users[username] && process.env.DATABASE_URL) {
+        try {
+          const row = await db.findUserByUsername(username);
+          if (row) users[username] = dbUserToMemory(row);
+        } catch (e) { /* ignore */ }
+      }
+      const c = computeConsecration(username);
+      players.push({
+        user: username,
+        overall: c.overall,
+        enabledCount: c.enabledCount,
+        perGameMax: c.perGameMax,
+        games: c.games,
+      });
+    }
+    players.sort((a, b) => b.overall - a.overall || a.user.localeCompare(b.user));
+    res.json({ players: players.slice(0, limit), totalPlayers: players.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─────────────────────────────────────────────
 // Serve static files AFTER API routes so our endpoints take priority
 // ─────────────────────────────────────────────
@@ -6373,8 +6415,9 @@ case 'trace': {
         } catch (e) { /* ignore */ }
       }
       if (!ud) ud = {};
+      const consUserA = computeConsecration(u);
       sendToClient(socket,
-        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" fr="${consUserA.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
       );
       break;
     }
@@ -6505,9 +6548,10 @@ case 'createchannel': {
   // On pousse aussi les infos connues sur l’autre user
   const ud = users[otherUser] || createDefaultUser('');
 
+  const consOtherUser = computeConsecration(otherUser);
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fr="${consOtherUser.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
   );
 
   sendToClient(

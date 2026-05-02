@@ -248,6 +248,46 @@
     background: #fff;
   }
 
+  /* Consecration ranking */
+  .conse-info {
+    background: #ADE76B;
+    color: #2C4A0F;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+  }
+  .conse-score {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 140px;
+  }
+  .conse-pct-val {
+    font-weight: bold;
+    color: #2C4A0F;
+    font-family: "Courier New", monospace;
+  }
+  .conse-bar-mini {
+    width: 140px;
+    height: 8px;
+    background: #fff;
+    border: 1px solid #8bc55a;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .conse-fill-mini {
+    height: 100%;
+    background: linear-gradient(to right, #8fc63f, #E3756A);
+    transition: width 0.3s;
+  }
+  .conse-detail {
+    font-size: 10px;
+    color: #5a8030;
+    line-height: 1.5;
+  }
+
   /* Footer matches forum-footer */
   .club-footer {
     text-align: center;
@@ -273,6 +313,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="medalists">Top médaillés</button>
     <button class="tab" data-tab="records">Records par jeu</button>
+    <button class="tab" data-tab="consecration">Consécration</button>
   </div>
 
   <div id="panel-medalists" class="panel">
@@ -303,6 +344,21 @@
     </div>
     <div id="records-content" class="loading">Chargement…</div>
   </div>
+
+  <div id="panel-consecration" class="panel hidden">
+    <div class="toolbar">
+      <button class="btn" onclick="loadConsecration()">Actualiser</button>
+      <label>Top&nbsp;:
+        <select id="conse-limit" onchange="loadConsecration()">
+          <option value="20">20</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+        </select>
+      </label>
+      <span id="conse-summary" class="summary"></span>
+    </div>
+    <div id="consecration-content" class="loading">Chargement…</div>
+  </div>
 </div>
 <div class="club-footer">
   Club Frutiparc &copy; <a href="https://www.motiontwin.com">Motion Twin</a>
@@ -310,6 +366,7 @@
 
 <script>
   let recordsData = null;
+  let consecrationData = null;
 
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -318,7 +375,9 @@
       const tab = btn.getAttribute('data-tab');
       document.getElementById('panel-medalists').classList.toggle('hidden', tab !== 'medalists');
       document.getElementById('panel-records').classList.toggle('hidden', tab !== 'records');
+      document.getElementById('panel-consecration').classList.toggle('hidden', tab !== 'consecration');
       if (tab === 'records' && !recordsData) loadRecords();
+      if (tab === 'consecration' && !consecrationData) loadConsecration();
     });
   });
 
@@ -452,6 +511,71 @@
       });
       html += '</div>';
     }
+    root.innerHTML = html;
+  }
+
+  async function loadConsecration() {
+    const root = document.getElementById('consecration-content');
+    root.className = 'loading';
+    root.textContent = 'Chargement…';
+    const limit = document.getElementById('conse-limit').value || 50;
+    try {
+      const r = await fetch('/api/club/consecration?limit=' + limit);
+      consecrationData = await r.json();
+      renderConsecration();
+    } catch (e) {
+      root.className = 'loading';
+      root.textContent = 'Erreur de chargement: ' + e.message;
+    }
+  }
+
+  function renderConsecration() {
+    const root = document.getElementById('consecration-content');
+    const players = (consecrationData && consecrationData.players) || [];
+    const summary = document.getElementById('conse-summary');
+    summary.textContent = (consecrationData && consecrationData.totalPlayers != null)
+      ? (consecrationData.totalPlayers + ' joueur' + (consecrationData.totalPlayers > 1 ? 's' : ''))
+      : '';
+
+    if (!players.length) {
+      root.className = 'loading';
+      root.textContent = 'Aucun joueur à classer pour le moment.';
+      return;
+    }
+    const perGameMax = players[0].perGameMax || 0;
+    const enabledCount = players[0].enabledCount || 0;
+    let html = '<div class="conse-info">'
+      + enabledCount + ' jeu' + (enabledCount > 1 ? 'x' : '') + ' pris en compte — '
+      + 'chaque jeu finalisé vaut ' + perGameMax.toFixed(2) + ' % du score total.'
+      + '</div>';
+    html += '<table><thead><tr>'
+      + '<th class="num">#</th>'
+      + '<th>Joueur</th>'
+      + '<th>Score</th>'
+      + '<th>Détail par jeu</th>'
+      + '</tr></thead><tbody>';
+    players.forEach((p, i) => {
+      const rk = i + 1;
+      const rkClass = rk <= 3 ? 'rank-cell r' + rk : 'rank-cell';
+      const pct = Number(p.overall) || 0;
+      const detail = (p.games || []).map(g => {
+        const label = g.mode === 'completion'
+          ? (g.unlocked ? 'joué' : '—')
+          : (g.unlocked + '/' + g.total);
+        return escapeHtml(g.name) + ' ' + label;
+      }).join(' · ');
+      html += '<tr>'
+        + '<td class="' + rkClass + '">' + rk + '</td>'
+        + '<td><span class="username">' + escapeHtml(p.user) + '</span></td>'
+        + '<td><div class="conse-score">'
+        +   '<span class="conse-pct-val">' + pct.toFixed(2) + ' %</span>'
+        +   '<div class="conse-bar-mini"><div class="conse-fill-mini" style="width:' + Math.min(pct, 100) + '%"></div></div>'
+        + '</div></td>'
+        + '<td class="conse-detail">' + detail + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+    root.className = 'records-area';
     root.innerHTML = html;
   }
 
