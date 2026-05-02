@@ -628,7 +628,7 @@ function buildLegacyRankingResultPayload(rkInput, reqId = '', cAttr = '') {
 
 function buildLegacyUserResultPayload(user, reqId = '') {
   const r = reqId ? ` r="${escapeXml(reqId)}"` : '';
-  const u = escapeXml(String(user || 'DebugBot'));
+  const u = escapeXml(getDisplayName(String(user || 'DebugBot')));
   return `<n${r} u="${u}"></n>`;
 }
 
@@ -977,6 +977,7 @@ function createDefaultUser(pass) {
     userLog: [],        // Entries displayed in "Mon historique" (/do/onident <ul>)
     siteLog: [],        // Entries displayed in "Evènements" (/do/onident <sl>)
     mails: [],          // Internal mailbox; each entry: {uid, from, fromAddr, to, toAddrs, subject, body, folder, date, read}
+    displayName: '',
     hasWelcomeUserLog: false,
     hasWelcomeSiteLog: false,
   };
@@ -1016,6 +1017,7 @@ function dbUserToMemory(row) {
     departmentIndex: row.department_index || '1',
     siteUrl: row.site_url || '',
     comment: row.comment || '',
+    displayName: row.display_name || row.username || '',
     customAccessories: [],
     kikoozLog: [],
     userLog: [],
@@ -1185,7 +1187,7 @@ function buildPodiumXml(rankingId) {
   let xml = `<podium day="${escapeXml(yesterday)}">`;
   for (const p of podium) {
     const ud = users[p.u] || {};
-    xml += `<m u="${escapeXml(p.u)}" r="${p.rank}" f="${escapeXml(bouilleOf(ud, p.u))}" />`;
+    xml += `<m u="${escapeXml(getDisplayName(p.u))}" r="${p.rank}" f="${escapeXml(bouilleOf(ud, p.u))}" />`;
   }
   xml += '</podium>';
   return xml;
@@ -1325,7 +1327,13 @@ function getLaunchIdFromReq(req) {
 }
 
 function isValidUsername(username) {
-  return /^[a-z0-9_]{3,20}$/.test(username);
+  return /^[a-zA-Z0-9_]{3,20}$/.test(username);
+}
+
+function getDisplayName(username) {
+  const key = String(username || '').toLowerCase();
+  const u = users[key];
+  return (u && u.displayName) || username;
 }
 
 function isValidPassword(password) {
@@ -1814,11 +1822,12 @@ app.get('/', (req, res) => {
 });
 
 app.post('/api/auth/register', async (req, res) => {
-  const username = normalizeUsername(req.body && req.body.username);
+  const rawName = String((req.body && req.body.username) || '').trim();
+  const username = rawName.toLowerCase();
   const password = String((req.body && req.body.password) || '');
 
-  if (!isValidUsername(username)) {
-    return res.status(400).json({ ok: false, error: 'username_invalid', message: 'Username: 3-20 chars [a-z0-9_].' });
+  if (!isValidUsername(rawName)) {
+    return res.status(400).json({ ok: false, error: 'username_invalid', message: 'Pseudo : 3-20 caractères [a-zA-Z0-9_], pas d\'accents.' });
   }
   if (!isValidPassword(password)) {
     return res.status(400).json({ ok: false, error: 'password_invalid', message: 'Password: 6-80 chars.' });
@@ -1834,12 +1843,15 @@ app.post('/api/auth/register', async (req, res) => {
     }
     users[username] = createDefaultUser(password);
     users[username]._dbId = dbUser.id;
+    users[username].displayName = rawName;
     await db.setUserItems(dbUser.id, users[username].items);
-    return res.json({ ok: true, username });
+    await db.updateUser(username, { display_name: rawName });
+    return res.json({ ok: true, username: rawName });
   } catch (e) {
     console.error('[DB] register error:', e.message);
     users[username] = createDefaultUser(password);
-    return res.json({ ok: true, username });
+    users[username].displayName = rawName;
+    return res.json({ ok: true, username: rawName });
   }
 });
 
@@ -1879,7 +1891,7 @@ app.post('/api/auth/login', async (req, res) => {
   if (userId) {
     db.createSession(sid, userId).catch((e) => console.error('[DB] session save error:', e.message));
   }
-  return res.json({ ok: true, sid, username, redirect: `/legacy?sid=${encodeURIComponent(sid)}` });
+  return res.json({ ok: true, sid, username: getDisplayName(username), redirect: `/legacy?sid=${encodeURIComponent(sid)}` });
 });
 
 // ─────────────────────────────────────────────
@@ -2028,11 +2040,22 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     if (body.kikooz !== undefined) fields.kikooz = Number(body.kikooz);
     if (body.password !== undefined) fields.password = body.password;
     if (body.is_moderator !== undefined) fields.is_moderator = !!body.is_moderator;
+    if (body.display_name !== undefined) {
+      const dn = String(body.display_name).trim();
+      if (!isValidUsername(dn)) {
+        return res.status(400).json({ error: 'Pseudo invalide : 3-20 caractères [a-zA-Z0-9_], pas d\'accents.' });
+      }
+      if (dn.toLowerCase() !== u.toLowerCase()) {
+        return res.status(400).json({ error: 'Le pseudo doit correspondre au même identifiant (même lettres, casse différente autorisée).' });
+      }
+      fields.display_name = dn;
+    }
     if (Object.keys(fields).length > 0) {
       await db.updateUser(u, fields);
       if (users[u]) {
         Object.assign(users[u], fields);
         if (fields.is_moderator !== undefined) users[u].isModerator = fields.is_moderator;
+        if (fields.display_name !== undefined) users[u].displayName = fields.display_name;
       }
     }
     console.log(`[ADMIN] Updated user ${u}: ${Object.keys(fields).join(', ')}`);
@@ -4460,7 +4483,7 @@ app.get('/api/forum/me', (req, res) => {
     { id: 'Kiwix',     name: 'Kiwix',     suffix: '30x000000' },
   ];
   res.json({
-    user: username,
+    user: getDisplayName(username),
     isModerator: !!u.isModerator,
     bouille: bouilleOf(u, username),
     accessories: accessories,
@@ -4500,7 +4523,7 @@ app.get('/api/forum/board/:id', async (req, res) => {
     if (!board) return res.status(404).json({ error: 'board not found' });
     const { topics, total } = await db.forumGetTopics(boardId, page, 25);
     const topicsOut = topics.map(t => ({
-      id: t.id, title: t.title, author: t.author_username,
+      id: t.id, title: t.title, author: getDisplayName(t.author_username),
       authorBouille: bouilleOf(users[t.author_username], t.author_username),
       isSticky: t.is_sticky, isLocked: t.is_locked,
       viewCount: t.view_count, replyCount: Number(t.reply_count),
@@ -4526,7 +4549,7 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     const currentUser = forumAuth(req);
     const currentIsMod = currentUser && users[currentUser] && users[currentUser].isModerator;
     const postsOut = posts.map(p => ({
-      id: p.id, author: p.author_username, content: p.content,
+      id: p.id, author: getDisplayName(p.author_username), content: p.content,
       createdAt: p.created_at, updatedAt: p.updated_at,
       bouille: p.bouille || bouilleOf(users[p.author_username], p.author_username),
       postCount: postCounts[p.author_username] || 0,
@@ -4534,7 +4557,7 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     }));
     res.json({
       topic: {
-        id: topic.id, title: topic.title, author: topic.author_username,
+        id: topic.id, title: topic.title, author: getDisplayName(topic.author_username),
         boardId: topic.board_id, boardName: board ? board.name : '',
         isSticky: topic.is_sticky, isLocked: topic.is_locked,
       },
@@ -4708,7 +4731,7 @@ app.get('/api/club/medalists', async (req, res) => {
     const counts = {};
     for (const m of medals) {
       const u = m.username;
-      if (!counts[u]) counts[u] = { user: u, gold: 0, silver: 0, bronze: 0, total: 0 };
+      if (!counts[u]) counts[u] = { user: getDisplayName(u), gold: 0, silver: 0, bronze: 0, total: 0 };
       // Medals are stored in French ('or', 'argent', 'bronze') by saveMedal.
       if (m.medal === 'or' || m.medal === 'gold') counts[u].gold++;
       else if (m.medal === 'argent' || m.medal === 'silver') counts[u].silver++;
@@ -5468,7 +5491,7 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   // and detect self-kick via `u == _global.me.name`.
   const isBan = (reason === 'totoch' || reason === 'ban');
   const wire = isBan ? CMD.onban : CMD.onkick;
-  const notif = `<${wire} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" by="${escapeXml(byUser)}" r="${escapeXml(reason)}" />`;
+  const notif = `<${wire} u="${escapeXml(getDisplayName(targetUser))}" g="${escapeXml(channelName)}" by="${escapeXml(getDisplayName(byUser))}" r="${escapeXml(reason)}" />`;
 
   // Broadcast BEFORE removing the user from the channel — broadcastToChannel
   // iterates client.channels, so we need the target user to still be a member
@@ -5489,7 +5512,7 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
       if (channels[channelName]) {
         channels[channelName].users.add(targetUser);
         // Broadcast userjoined so other clients see PNJ reappear
-        broadcastToChannel(channelName, `<${CMD.userjoined} u="${escapeXml(targetUser)}" g="${escapeXml(channelName)}" />`);
+        broadcastToChannel(channelName, `<${CMD.userjoined} u="${escapeXml(getDisplayName(targetUser))}" g="${escapeXml(channelName)}" />`);
       }
     }, 5000);
   }
@@ -5796,7 +5819,7 @@ async function handleCBeeMessage(socket, rawXml) {
       client.sid = sid;
       client.logged = true;
 
-      sendToClient(socket, `<${CMD.ident} l="${effectiveLogin}" x="${user.xp}" f="${bouilleOf(user)}" />`);
+      sendToClient(socket, `<${CMD.ident} l="${escapeXml(getDisplayName(effectiveLogin))}" x="${user.xp}" f="${bouilleOf(user)}" />`);
       if (user.userLog && user.userLog.length > 0 && user.userLog[0].n) {
         const entry = user.userLog[0];
         sendToClient(
@@ -5901,7 +5924,7 @@ case 'join': {
 
   for (const u of userArr) {
     const ud = users[u] || {};
-    userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+    userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
   }
 
   const timeAttrs = buildChatTimeAttrs();
@@ -5924,7 +5947,7 @@ case 'join': {
     let traceXml = '';
     for (const u of userArr) {
       const ud = users[u] || {};
-      traceXml += `<u u="${escapeXml(u)}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+      traceXml += `<u u="${escapeXml(getDisplayName(u))}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
     }
     sendToClient(socket, `<${CMD.trace}>${traceXml}</${CMD.trace}>`);
   }
@@ -5932,8 +5955,8 @@ case 'join': {
   // 4. Notification aux autres + trace du nouvel arrivant pour leurs FrutiScreen
   {
     const joinerUd = users[client.username] || {};
-    const joinerTrace = `<${CMD.trace}><u u="${escapeXml(client.username)}" p="1" s="${getStatusCode(joinerUd, client.username)}" mu="${getMuteValue(joinerUd)}" f="${bouilleOf(joinerUd)}" /></${CMD.trace}>`;
-    broadcastToChannel(g, `<${CMD.userjoined} u="${escapeXml(client.username)}" g="${g}" />`, socket);
+    const joinerTrace = `<${CMD.trace}><u u="${escapeXml(getDisplayName(client.username))}" p="1" s="${getStatusCode(joinerUd, client.username)}" mu="${getMuteValue(joinerUd)}" f="${bouilleOf(joinerUd)}" /></${CMD.trace}>`;
+    broadcastToChannel(g, `<${CMD.userjoined} u="${escapeXml(getDisplayName(client.username))}" g="${g}" />`, socket);
     broadcastToChannel(g, joinerTrace, socket);
   }
   break;
@@ -5962,7 +5985,7 @@ case 'join': {
       let userXml = '';
       for (const u of userArr) {
         const ud = users[u] || {};
-        userXml += `<u u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+        userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
       }
       sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
       break;
@@ -5993,7 +6016,7 @@ case 'join': {
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          inner += `<score u="${escapeXml(e.u)}" x="${e.s}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+          inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${e.s}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
         }
         sendToClient(socket, `<${CMD.part}>${inner}</${CMD.part}>`);
         console.log(`[FSCORE] xpranking: ${slice.length}/${all.length} entries`);
@@ -6005,7 +6028,7 @@ case 'join': {
         client.channels.delete(g);
 broadcastToChannel(
   g,
-  `<${CMD.userleaved} u="${escapeXml(client.username)}" g="${g}" />`
+  `<${CMD.userleaved} u="${escapeXml(getDisplayName(client.username))}" g="${g}" />`
 );
       }
       break;
@@ -6060,7 +6083,7 @@ broadcastToChannel(
           const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
           const displayData = formatRankingExtraData(internalId, e.d);
           const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
-          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
+          inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
@@ -6111,7 +6134,7 @@ broadcastToChannel(
       const targetUser = resolveModerationTarget(msg);
       if (!g || !targetUser) break;
       kickUserFromChannel(g, targetUser, client.username, 'kick');
-      sendToClient(socket, `<${CMD.kick} u="${escapeXml(targetUser)}" g="${escapeXml(g)}" />`);
+      sendToClient(socket, `<${CMD.kick} u="${escapeXml(getDisplayName(targetUser))}" g="${escapeXml(g)}" />`);
       break;
     }
 
@@ -6155,7 +6178,7 @@ broadcastToChannel(
           const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
           const displayData = formatRankingExtraData(internalId, e.d);
           const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
-          inner += `<score u="${escapeXml(e.u)}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
+          inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
@@ -6180,7 +6203,7 @@ broadcastToChannel(
       if (!channel.banned) channel.banned = new Set();
       channel.banned.add(targetUser);
       kickUserFromChannel(g, targetUser, client.username, 'totoch');
-      sendToClient(socket, `<${CMD.ban} u="${escapeXml(targetUser)}" g="${escapeXml(g)}" />`);
+      sendToClient(socket, `<${CMD.ban} u="${escapeXml(getDisplayName(targetUser))}" g="${escapeXml(g)}" />`);
       break;
     }
 
@@ -6202,7 +6225,7 @@ case 'send': {
   const senderData = users[client.username] || {};
   const mutedUntil = senderData.mutedUntil ? new Date(senderData.mutedUntil) : null;
   if (mutedUntil && !Number.isNaN(mutedUntil.getTime()) && mutedUntil.getTime() > Date.now()) {
-    sendToClient(socket, `<${CMD.onmute} u="${escapeXml(client.username)}" mt="${escapeXml(senderData.mutedUntil)}" mu="${escapeXml(senderData.mutedUntil)}" />`);
+    sendToClient(socket, `<${CMD.onmute} u="${escapeXml(getDisplayName(client.username))}" mt="${escapeXml(senderData.mutedUntil)}" mu="${escapeXml(senderData.mutedUntil)}" />`);
     break;
   }
 
@@ -6224,7 +6247,7 @@ case 'send': {
         const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
         target.mutedUntil = until;
         for (const targetSock of getSocketsForUsername(targetUser)) {
-          sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
+          sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
         }
       }
       break;
@@ -6255,13 +6278,13 @@ case 'send': {
       const gChild = msg.children.find((c) => c.tag === 'g');
       if (gChild) {
         const childXml = `<g k="${escapeXml(gChild.attrs.k || '')}" u="${escapeXml(gChild.attrs.u || '')}" />`;
-        const giftXml = `<${CMD.send} u="${escapeXml(client.username)}" t="g" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${childXml}</${CMD.send}>`;
+        const giftXml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="g" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${childXml}</${CMD.send}>`;
         broadcastToChannel(g, giftXml);
         break;
       }
     }
 
-    const xml = `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
+    const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
 } else if (msg.attrs.u) {
   const targetUser = msg.attrs.u;
@@ -6270,7 +6293,7 @@ case 'send': {
   // Echo au sender, indispensable pour afficher sa propre ligne
   sendToClient(
     socket,
-    `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
+    `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}" p="${pen}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
   );
 
   // Envoi au destinataire
@@ -6278,7 +6301,7 @@ case 'send': {
     if (cl.username === targetUser) {
       sendToClient(
         sock,
-        `<${CMD.send} u="${escapeXml(client.username)}" t="${type}" p="${pen}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
+        `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}" p="${pen}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
       );
     }
   }
@@ -6298,9 +6321,9 @@ case 'send': {
       const until = msg.attrs.e || new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
       target.mutedUntil = until;
       for (const targetSock of getSocketsForUsername(targetUser)) {
-        sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
+        sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       }
-      sendToClient(socket, `<${CMD.mute} u="${escapeXml(targetUser)}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
+      sendToClient(socket, `<${CMD.mute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       const g = pickActiveChannel(client, msg.attrs);
       if (g) {
         const timeAttrs = buildChatTimeAttrs();
@@ -6309,8 +6332,8 @@ case 'send': {
         // the "Serveur:" username prefix and keeps it visually italic.
         // There is no native chat.usermuted handler — this is the closest
         // thing to a "natural" chat notice without modifying main.swf.
-        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(targetUser)} a été totoché</${CMD.send}>`);
-        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
+        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(getDisplayName(targetUser))} a été totoché</${CMD.send}>`);
+        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
       }
       break;
     }
@@ -6325,12 +6348,12 @@ case 'send': {
       if (!targetUser || !target) break;
       delete target.mutedUntil;
       for (const targetSock of getSocketsForUsername(targetUser)) {
-        sendToClient(targetSock, `<${CMD.endmute} u="${escapeXml(targetUser)}" />`);
+        sendToClient(targetSock, `<${CMD.endmute} u="${escapeXml(getDisplayName(targetUser))}" />`);
       }
-      sendToClient(socket, `<${CMD.unmute} u="${escapeXml(targetUser)}" />`);
+      sendToClient(socket, `<${CMD.unmute} u="${escapeXml(getDisplayName(targetUser))}" />`);
       const g = pickActiveChannel(client, msg.attrs);
       if (g) {
-        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(targetUser)}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
+        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
       }
       break;
     }
@@ -6392,7 +6415,7 @@ case 'trace': {
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          inner += `<score u="${escapeXml(e.u)}" x="${e.s}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+          inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${e.s}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
         }
         sendToClient(socket, `<${CMD.stoptrace}>${inner}</${CMD.stoptrace}>`);
         console.log(`[FSCORE] rateranking: ${slice.length}/${all.length} entries`);
@@ -6413,7 +6436,7 @@ case 'trace': {
       sendToClient(socket, `<${CMD.status} s="${s}" />`);
       if (client.username && client.logged) {
         const ud = users[client.username] || {};
-        const traceXml = `<${CMD.trace} u="${escapeXml(client.username)}" p="1" s="${getStatusCode(ud, client.username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, client.username)}" />`;
+        const traceXml = `<${CMD.trace} u="${escapeXml(getDisplayName(client.username))}" p="1" s="${getStatusCode(ud, client.username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, client.username)}" />`;
         for (const ch of client.channels || []) {
           broadcastToChannel(ch, traceXml, socket);
         }
@@ -6438,7 +6461,7 @@ case 'trace': {
       if (!ud) ud = {};
       const consUserA = computeConsecration(u);
       sendToClient(socket,
-        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(u)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" fr="${consUserA.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" fr="${consUserA.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
       );
       break;
     }
@@ -6557,13 +6580,13 @@ case 'createchannel': {
   // Accusé de réception de l’ouverture de la discussion privée
   sendToClient(
     socket,
-    `<${CMD.createchannel} u="${escapeXml(otherUser)}" g="${privateGroup}" p="${privatePass}">${escapeXml(privateTitle)}</${CMD.createchannel}>`
+    `<${CMD.createchannel} u="${escapeXml(getDisplayName(otherUser))}" g="${privateGroup}" p="${privatePass}">${escapeXml(privateTitle)}</${CMD.createchannel}>`
   );
 
   // Invite "privée" envoyée au demandeur pour ouvrir immédiatement la box
   sendToClient(
     socket,
-    `<${CMD.invitechat} u="${escapeXml(otherUser)}" g="${privateGroup}" p="${privatePass}" />`
+    `<${CMD.invitechat} u="${escapeXml(getDisplayName(otherUser))}" g="${privateGroup}" p="${privatePass}" />`
   );
 
   // On pousse aussi les infos connues sur l’autre user
@@ -6572,12 +6595,12 @@ case 'createchannel': {
   const consOtherUser = computeConsecration(otherUser);
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(otherUser)}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fr="${consOtherUser.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fr="${consOtherUser.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" />`
   );
 
   sendToClient(
     socket,
-    `<${CMD.trace} u="${escapeXml(otherUser)}" p="${getSocketsForUsername(otherUser).length > 0 ? 1 : 0}" s="${getStatusCode(ud, otherUser)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, otherUser)}" />`
+    `<${CMD.trace} u="${escapeXml(getDisplayName(otherUser))}" p="${getSocketsForUsername(otherUser).length > 0 ? 1 : 0}" s="${getStatusCode(ud, otherUser)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, otherUser)}" />`
   );
 
   // Si l'autre utilisateur est connecté, il reçoit aussi l'invitation.
@@ -6705,7 +6728,7 @@ case 'createchannel': {
         if (!inner) {
           sendToClient(socket, buildLegacyUserResultPayload(targetUser, reqId));
         } else {
-          sendToClient(socket, `<${CMD.unban}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.unban}>`);
+          sendToClient(socket, `<${CMD.unban}${rAttr} u="${escapeXml(getDisplayName(targetUser))}">${inner}</${CMD.unban}>`);
         }
         console.log(`[FSCORE] userResult user=${targetUser} rankings=[${rkList.join(',')}]`);
         break;
@@ -6735,7 +6758,7 @@ case 'createchannel': {
         podium.sort((a, b) => a.rank - b.rank);
         console.log(`[FSCORE-DEBUG] awardgame g=${gameName} rkId=${rkId} game=${game} yesterday=${yesterday} podium=${JSON.stringify(podium)}`);
         for (const p of podium) {
-          inner += `<a v="${p.rank}" u="${escapeXml(p.u)}" d="1" />`;
+          inner += `<a v="${p.rank}" u="${escapeXml(getDisplayName(p.u))}" d="1" />`;
         }
       } else if (rkId) {
         const all = [];
@@ -6782,7 +6805,7 @@ case 'createchannel': {
         const medalName = MEDAL_DISPLAY_NAMES[medal.medal] || medal.medal;
         inner += `<a g="${escapeXml(medal.game)}" n="${escapeXml(`Médaille ${medalName} - ${gameName} (${medal.awarded_day})`)}" v="${medal.rank}" d="1" />`;
       }
-      sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(targetUser)}">${inner}</${CMD.awarduser}>`);
+      sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(getDisplayName(targetUser))}">${inner}</${CMD.awarduser}>`);
       const medalSummary = allMedals.map(m => `${m.game}:rank${m.rank}=${m.medal}`).join(',');
       console.log(`[FSCORE] awarduser user=${targetUser}: ${allMedals.length} medals [${medalSummary}]`);
       break;

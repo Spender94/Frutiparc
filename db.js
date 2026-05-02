@@ -59,6 +59,7 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS department_index TEXT DEFAULT '1';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS site_url TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS comment TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT DEFAULT NULL;
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
 
@@ -580,7 +581,7 @@ async function clearAllChallengeData() {
 
 async function listAllUsers() {
   const { rows } = await pool.query(
-    'SELECT id, username, xp, kikooz, fbouille, gender, is_moderator, created_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, display_name, xp, kikooz, fbouille, gender, is_moderator, created_at FROM users ORDER BY created_at DESC'
   );
   return rows;
 }

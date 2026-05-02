@@ -210,6 +210,7 @@
 <div class="modal-bg" id="modal-edit-user">
   <div class="modal">
     <h3>Modifier le joueur <span id="edit-user-name"></span></h3>
+    <label><span>Pseudo :</span> <input id="edit-displayname" placeholder="Casse uniquement (ex: MonPseudo)"></label>
     <label><span>Bouille :</span> <input id="edit-fbouille"></label>
     <label><span>XP :</span> <input id="edit-xp" type="number"></label>
     <label><span>Kikooz :</span> <input id="edit-kikooz" type="number"></label>
@@ -321,7 +322,7 @@ async function loadUsers() {
     $('#user-count').innerHTML = `<span class="count">${data.length}</span> joueurs`;
     const tb = $('#users-body');
     tb.innerHTML = data.map(u => `<tr>
-      <td><a href="#" onclick="viewUser('${esc(u.username)}');return false" style="color:#4fc3f7">${esc(u.username)}</a></td>
+      <td><a href="#" onclick="viewUser('${esc(u.username)}');return false" style="color:#4fc3f7">${esc(u.display_name || u.username)}</a></td>
       <td>${u.xp || 0}</td>
       <td>${u.kikooz || 0}</td>
       <td><code style="font-size:11px">${esc((u.fbouille||'').substring(0,12))}…</code></td>
@@ -329,16 +330,17 @@ async function loadUsers() {
       <td><span class="badge ${u.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u.username)}',${!u.is_moderator})" title="Cliquer pour changer">${u.is_moderator ? 'Modo' : '-'}</span></td>
       <td>${fmtDate(u.created_at)}</td>
       <td>
-        <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}')">Modifier</button>
+        <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}','${esc(u.display_name||u.username)}')">Modifier</button>
         <button class="btn-danger btn-sm" onclick="deleteUser('${esc(u.username)}')">Supprimer</button>
       </td>
     </tr>`).join('');
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
-function editUser(name, xp, kikooz, fb) {
+function editUser(name, xp, kikooz, fb, dn) {
   $('#edit-user-name').textContent = name;
   $('#edit-user-name').dataset.name = name;
+  $('#edit-displayname').value = dn || name;
   $('#edit-fbouille').value = fb;
   $('#edit-xp').value = xp;
   $('#edit-kikooz').value = kikooz;
@@ -349,9 +351,12 @@ function editUser(name, xp, kikooz, fb) {
 async function saveEditUser() {
   const name = $('#edit-user-name').dataset.name;
   const body = { fbouille: $('#edit-fbouille').value, xp: $('#edit-xp').value, kikooz: $('#edit-kikooz').value };
+  const dn = $('#edit-displayname').value.trim();
+  if (dn) body.display_name = dn;
   const pw = $('#edit-password').value;
   if (pw) body.password = pw;
-  await fetch(`/api/admin/users/${encodeURIComponent(name)}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify(body) });
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(name)}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify(body) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); toast('Erreur: ' + (d.error || 'inconnu')); return; }
   closeModal('modal-edit-user');
   toast(`${name} mis à jour`);
   loadUsers();
@@ -452,9 +457,10 @@ async function loadDetail() {
     if (!r.ok) { dc.innerHTML = '<p class="empty">Joueur non trouvé</p>'; return; }
     const d = await r.json();
     const user = d.user;
-    let html = `<h3 style="color:#e94560;margin:12px 0">${esc(u)}</h3>`;
+    let html = `<h3 style="color:#e94560;margin:12px 0">${esc(user.display_name || u)}</h3>`;
     html += `<table style="max-width:400px;margin-bottom:24px">
       <tr><td>ID</td><td>${user.id}</td></tr>
+      <tr><td>Pseudo (display)</td><td>${esc(user.display_name || u)}</td></tr>
       <tr><td>XP</td><td>${user.xp}</td></tr>
       <tr><td>Kikooz</td><td>${user.kikooz}</td></tr>
       <tr><td>Bouille</td><td><code>${esc(user.fbouille||'')}</code></td></tr>
