@@ -1048,7 +1048,7 @@ function dbUserToMemory(row) {
 
 async function hydrateUserFromDb(username, dbUser) {
   users[username] = dbUserToMemory(dbUser);
-  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails, dbGameItems] = await Promise.all([
+  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails, dbGameItems, dbUserLog, dbSiteLog] = await Promise.all([
     db.getUserItems(dbUser.id),
     db.getUserAccessories(dbUser.id),
     db.loadScoresForUser(dbUser.id),
@@ -1056,6 +1056,8 @@ async function hydrateUserFromDb(username, dbUser) {
     db.getBlacklist(dbUser.id),
     db.getMailsForUser(dbUser.id).catch(() => []),
     db.getUserGameItems(dbUser.id).catch(() => []),
+    db.getUserLogEntries(dbUser.id, 'user', 200).catch(() => []),
+    db.getUserLogEntries(dbUser.id, 'site', 200).catch(() => []),
   ]);
 
   if (items.length > 0) users[username].items = withDefaultPens(items);
@@ -1064,6 +1066,27 @@ async function hydrateUserFromDb(username, dbUser) {
   users[username].contacts = Array.isArray(dbContacts) ? dbContacts : [];
   users[username].blacklist = Array.isArray(dbBlacklist) ? dbBlacklist : [];
   users[username].mails = Array.isArray(dbMails) ? dbMails : [];
+
+  // Restore persistent history (userLog + siteLog) from DB
+  const toMemoryEntry = (row) => {
+    const e = {
+      d: row.created_at instanceof Date
+        ? row.created_at.toISOString().replace('T', ' ').substring(0, 19)
+        : String(row.created_at || nowSqlTimestamp()).substring(0, 19),
+      t: Number(row.entry_type) || 1,
+      c: String(row.content || ''),
+    };
+    if (row.is_new) e.n = 1;
+    return e;
+  };
+  if (Array.isArray(dbUserLog) && dbUserLog.length > 0) {
+    users[username].userLog = dbUserLog.map(toMemoryEntry);
+    users[username].hasWelcomeUserLog = true;
+  }
+  if (Array.isArray(dbSiteLog) && dbSiteLog.length > 0) {
+    users[username].siteLog = dbSiteLog.map(toMemoryEntry);
+    users[username].hasWelcomeSiteLog = true;
+  }
 
   // Extract pictos from existing slot 0 data (backfill for users who played before this feature)
   try {
@@ -1100,6 +1123,13 @@ function addUserHistoryEntry(user, { type = 1, content = '', flNew = false } = {
   if (flNew) entry.n = 1;
   user.userLog.unshift(entry);
   if (user.userLog.length > 200) user.userLog.length = 200;
+
+  // Persist to DB so history survives server restarts.
+  if (user._dbId) {
+    db.addUserLogEntry(user._dbId, 'user', entry.t, entry.c, !!flNew)
+      .then(() => db.pruneUserLog(user._dbId, 'user', 200))
+      .catch((e) => console.error('[DB] addUserLogEntry user error:', e.message));
+  }
 }
 
 function notifyNewUserLog(username, entry) {
@@ -1129,6 +1159,12 @@ function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {
   if (flNew) entry.n = 1;
   user.siteLog.unshift(entry);
   if (user.siteLog.length > 200) user.siteLog.length = 200;
+
+  if (user._dbId) {
+    db.addUserLogEntry(user._dbId, 'site', entry.t, entry.c, !!flNew)
+      .then(() => db.pruneUserLog(user._dbId, 'site', 200))
+      .catch((e) => console.error('[DB] addUserLogEntry site error:', e.message));
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -3656,6 +3692,11 @@ app.get('/do/onident', (req, res) => {
   clearTransientNewFlag(user.userLog);
   clearTransientNewFlag(user.siteLog);
 
+  if (user._dbId) {
+    db.clearUserLogNewFlag(user._dbId, 'user').catch(() => {});
+    db.clearUserLogNewFlag(user._dbId, 'site').catch(() => {});
+  }
+
   res.type('text/xml').send(xml);
 });
 
@@ -6070,7 +6111,10 @@ async function handleCBeeMessage(socket, rawXml) {
       const sessionUser = sid && sessions[sid] && sessions[sid].user ? sessions[sid].user : '';
 
       // Priority: sid-bound user (real logged account) > explicit login.
-      const effectiveLogin = sessionUser || login;
+      // Always normalize to lowercase for storage; the original casing is
+      // preserved separately via users[].displayName.
+      const rawLogin = sessionUser || login;
+      const effectiveLogin = String(rawLogin || '').toLowerCase();
       if (!effectiveLogin) {
         sendToClient(socket, `<${CMD.ident} k="401" />`);
         break;

@@ -626,6 +626,51 @@ async function addGameItem(userId, itemName) {
   );
 }
 
+// ── Persistent user history (user_logs table) ──
+async function addUserLogEntry(userId, logType, entryType, content, isNew) {
+  if (!userId) return;
+  await pool.query(
+    `INSERT INTO user_logs (user_id, log_type, entry_type, content, is_new)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [userId, logType, entryType || 1, String(content || ''), !!isNew]
+  );
+}
+
+async function getUserLogEntries(userId, logType, limit = 200) {
+  if (!userId) return [];
+  const { rows } = await pool.query(
+    `SELECT id, entry_type, content, is_new, created_at
+     FROM user_logs
+     WHERE user_id = $1 AND log_type = $2
+     ORDER BY created_at DESC
+     LIMIT $3`,
+    [userId, logType, limit]
+  );
+  return rows;
+}
+
+async function clearUserLogNewFlag(userId, logType) {
+  if (!userId) return;
+  await pool.query(
+    `UPDATE user_logs SET is_new = false WHERE user_id = $1 AND log_type = $2 AND is_new = true`,
+    [userId, logType]
+  );
+}
+
+async function pruneUserLog(userId, logType, keep = 200) {
+  if (!userId) return;
+  await pool.query(
+    `DELETE FROM user_logs
+     WHERE id IN (
+       SELECT id FROM user_logs
+       WHERE user_id = $1 AND log_type = $2
+       ORDER BY created_at DESC
+       OFFSET $3
+     )`,
+    [userId, logType, keep]
+  );
+}
+
 async function loadShopPacks() {
   const { rows } = await pool.query('SELECT * FROM shop_packs ORDER BY id');
   return rows.map(r => {
@@ -994,6 +1039,10 @@ module.exports = {
   addItem,
   getUserGameItems,
   addGameItem,
+  addUserLogEntry,
+  getUserLogEntries,
+  clearUserLogNewFlag,
+  pruneUserLog,
   saveMedal,
   getMedalsForUser,
   getMedalsForUserByDay,
