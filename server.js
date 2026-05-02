@@ -2908,6 +2908,19 @@ function extractGameItemsFromSlot(username, game, dataStr) {
         if (tz[i]) addIfNew('$tz' + i);
       }
     }
+  } else if (game === 'bkiwi') {
+    // Burning Kiwi: vs.$wc/$wcs/$ws/$wss are boolean flags for cup wins.
+    // availableCars[i] (i=0..4) tracks defeated DUEL adversaries → unlocks team logo.
+    if (parsed.$wc)  addIfNew('$fruticupxl');
+    if (parsed.$wcs) addIfNew('$fruticup');
+    if (parsed.$ws)  addIfNew('$elitexl');
+    if (parsed.$wss) addIfNew('$elite');
+    const availableCars = parsed.availableCars || parsed.$availableCars;
+    if (Array.isArray(availableCars)) {
+      for (let i = 0; i < availableCars.length && i < 5; i++) {
+        if (availableCars[i]) addIfNew('$logo0' + (i + 1));
+      }
+    }
   } else if (game === 'miniwave2' || game === 'miniwave') {
     // MiniWave2: $ship array, $badsKill array (kill counts ≥ limit → item)
     const ship = parsed.$ship;
@@ -7251,6 +7264,10 @@ case 'createchannel': {
         const dbId = user._dbId;
         if (dbId) db.addGameItem(dbId, itemName).catch((e) => console.error('[DB] addGameItem error:', e.message));
         console.log(`[FSCORE] giveItem user=${client.username} item=${itemName} total=${user.gameItems.length}`);
+        const info = GAME_ITEM_INFO[itemName];
+        const label = info ? info.name : itemName;
+        const gameName = info ? info.game : 'jeu';
+        addAndNotifyUserLog(client.username, { type: 20, content: `Nouveau picto débloqué sur ${gameName} : ${label} !` });
       } else {
         console.log(`[FSCORE] giveItem user=${client.username} item=${itemName} (already owned)`);
       }
