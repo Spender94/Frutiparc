@@ -1390,7 +1390,7 @@ function collectTop3ForRanking(rankingId) {
 
 const GAME_DISPLAY_NAMES = {
   bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', kaluga: 'Kaluga',
-  swapou2: 'Swapou', miniwave2: 'MiniWave', mb2: 'MotionBall',
+  swapou2: 'Swapou', miniwave2: 'MiniWave', miniwave: 'MiniWave', mb2: 'MotionBall',
   bandas: 'Frutibandas', grapiz: 'Grapiz',
 };
 const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
@@ -3907,11 +3907,11 @@ const GAME_DISCS = {
   miniwave1: {
     discType: '0',
     playMode: 'single',
-    swfName: 'miniwave2',
-    gameId: 'games/miniWave2/miniWave2.swf',
+    swfName: 'miniwave',
+    gameId: 'games/miniWave2/miniwave.swf',
     props: 'w=550;h=400;m=i',
     files: [
-      { u: 'games/miniWave2/miniWave2.swf' },
+      { u: 'games/miniWave2/miniwave.swf' },
     ],
   },
   snake3: {

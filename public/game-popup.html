@@ -40,6 +40,38 @@
 <body>
   <div id="player-wrap"></div>
 <script>
+// Block legacy Frusion "burst disc" auto-close: some SWFs (MiniWave, etc.)
+// call getURL("javascript:self.close()", "_self") on init or end-of-game,
+// which Ruffle relays via window.location, closing the popup before the
+// user can play. Override close() and intercept javascript: navigations.
+(function() {
+  var _close = window.close;
+  window.close = function() {
+    console.log("[Game] window.close() blocked (use the X button)");
+  };
+  // Some Ruffle versions navigate via location.assign for getURL with target=_self.
+  // Override location.assign / location.replace / href setter to block javascript:
+  // URLs that would run self.close().
+  try {
+    var origAssign = window.location.assign.bind(window.location);
+    var origReplace = window.location.replace.bind(window.location);
+    window.location.assign = function(u) {
+      if (/^javascript:.*close/i.test(String(u || ""))) {
+        console.log("[Game] javascript:self.close() navigation blocked:", u);
+        return;
+      }
+      return origAssign(u);
+    };
+    window.location.replace = function(u) {
+      if (/^javascript:.*close/i.test(String(u || ""))) {
+        console.log("[Game] javascript:self.close() navigation blocked:", u);
+        return;
+      }
+      return origReplace(u);
+    };
+  } catch (e) { /* location may be readonly in some browsers */ }
+})();
+
 // Intercept getURL calls from patched game SWFs that save scores.
 // Ruffle routes getURL(url, target) through window.open when target is non-empty.
 // The patched SWF calls getURL("s"+score, true) — we catch that here,
@@ -48,6 +80,11 @@
   var _open = window.open;
   window.open = function(url, target) {
     var u = String(url || "");
+    // Block javascript:self.close() opened in a new window (defensive)
+    if (/^javascript:.*close/i.test(u)) {
+      console.log("[Game] window.open(javascript:close) blocked");
+      return null;
+    }
     if (/(?:^|\/)s\d+$/.test(u)) {
       var full = u.startsWith("/") ? u : new URL(u, document.baseURI).href;
       try {
