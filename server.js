@@ -3030,6 +3030,9 @@ function extractGameItemsFromSlot(username, game, dataStr) {
   let parsed;
   try { parsed = JSON.parse(dataStr); } catch { return; }
   if (!parsed || typeof parsed !== 'object') return;
+  if (game === 'bkiwi') {
+    console.log(`[SLOT]  bkiwi extraction for ${username}: $wc=${parsed.$wc} $wcs=${parsed.$wcs} $ws=${parsed.$ws} $wss=${parsed.$wss} $ac=${JSON.stringify(parsed.$ac)}`);
+  }
   const user = users[username];
   if (!user) return;
   if (!Array.isArray(user.gameItems)) user.gameItems = [];
@@ -3084,16 +3087,18 @@ function extractGameItemsFromSlot(username, game, dataStr) {
       }
     }
   } else if (game === 'bkiwi') {
-    // Burning Kiwi: vs.$wc/$wcs/$ws/$wss are boolean flags for cup wins.
-    // availableCars[i] (i=0..4) tracks defeated DUEL adversaries → unlocks team logo.
+    // Burning Kiwi slot 0 layout (savePublic in code.as):
+    //   $ws/$wss/$wc/$wcs — boolean cup-win flags
+    //   $ac — array[5] of defeated duel adversaries (the game variable "availableCars")
+    //   $ts — per-track stats (not used for pictos)
     if (parsed.$wc)  addIfNew('$fruticupxl');
     if (parsed.$wcs) addIfNew('$fruticup');
     if (parsed.$ws)  addIfNew('$elitexl');
     if (parsed.$wss) addIfNew('$elite');
-    const availableCars = parsed.availableCars || parsed.$availableCars;
-    if (Array.isArray(availableCars)) {
-      for (let i = 0; i < availableCars.length && i < 5; i++) {
-        if (availableCars[i]) {
+    const ac = parsed.$ac || parsed.availableCars || parsed.$availableCars;
+    if (Array.isArray(ac)) {
+      for (let i = 0; i < ac.length && i < 5; i++) {
+        if (ac[i]) {
           addIfNew('$logo0' + (i + 1));
           addIfNew('$car0' + (i + 1));
         }
