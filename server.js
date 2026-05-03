@@ -3799,10 +3799,10 @@ const GAME_DISCS = {
     discType: '0',
     playMode: 'single',
     swfName: 'mb2',
-    gameId: 'games/motionBall2/mb2.swf',
+    gameId: 'games/motionBall2/motionball.swf',
     props: 'w=550;h=400;m=i',
     files: [
-      { u: 'games/motionBall2/mb2.swf' },
+      { u: 'games/motionBall2/motionball.swf' },
     ],
   },
 };
@@ -4676,6 +4676,7 @@ app.use('/games', (req, res, next) => {
 app.use('/swf/games/burningKiwi', express.static(path.join(__dirname, 'Games', 'burningKiwi')));
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
+app.use('/swf/games/motionBall2', express.static(path.join(__dirname, 'Games', 'motionBall2')));
 app.use('/swf/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3')));
 app.use('/swf/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2')));
 // Fallback: Frusion constructs URLs as baseURL+swfId (e.g. "/games/kaluga/kaluga.swf")
@@ -4683,6 +4684,7 @@ app.use('/swf/games/swapou2', express.static(path.join(__dirname, 'Games', 'swap
 app.use('/games/burningKiwi', express.static(path.join(__dirname, 'Games', 'burningKiwi')));
 app.use('/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
+app.use('/games/motionBall2', express.static(path.join(__dirname, 'Games', 'motionBall2')));
 app.use('/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3')));
 app.use('/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
