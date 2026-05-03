@@ -1451,7 +1451,7 @@ function collectTop3ForRanking(rankingId) {
 const GAME_DISPLAY_NAMES = {
   bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', kaluga: 'Kaluga',
   swapou2: 'Swapou', miniwave2: 'MiniWave', miniwave: 'MiniWave', mb2: 'MotionBall',
-  bandas: 'Frutibandas', grapiz: 'Grapiz',
+  bandas: 'Frutibandas', grapiz: 'Grapiz', minipixiz: 'MiniPixiz',
 };
 const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
 
@@ -4008,6 +4008,16 @@ const GAME_DISCS = {
       { u: 'games/miniWave2/miniwave.swf' },
     ],
   },
+  minipixiz1: {
+    discType: '0',
+    playMode: 'single',
+    swfName: 'minipixiz',
+    gameId: 'games/miniTroll/minipixiz.swf',
+    props: 'w=240;h=240;m=i',
+    files: [
+      { u: 'games/miniTroll/minipixiz.swf' },
+    ],
+  },
   snake3: {
     discType: '0',
     playMode: 'single',
@@ -4902,6 +4912,7 @@ app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'mi
 app.use('/swf/games/motionBall2', express.static(path.join(__dirname, 'Games', 'motionBall2')));
 app.use('/swf/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3')));
 app.use('/swf/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2')));
+app.use('/swf/games/miniTroll', express.static(path.join(__dirname, 'Games', 'miniTroll')));
 // Fallback: Frusion constructs URLs as baseURL+swfId (e.g. "/games/kaluga/kaluga.swf")
 // without the /swf/ prefix.  Serve them from the same location.
 app.use('/games/burningKiwi', express.static(path.join(__dirname, 'Games', 'burningKiwi')));
@@ -4910,6 +4921,7 @@ app.use('/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWa
 app.use('/games/motionBall2', express.static(path.join(__dirname, 'Games', 'motionBall2')));
 app.use('/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3')));
 app.use('/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2')));
+app.use('/games/miniTroll', express.static(path.join(__dirname, 'Games', 'miniTroll')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
