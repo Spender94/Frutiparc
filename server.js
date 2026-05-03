@@ -360,7 +360,7 @@ const GAME_PROGRESS_REGISTRY = [
   {
     id: 'miniwave',
     name: 'MiniWave',
-    enabled: false,
+    enabled: true,
     matchGame: 'MiniWave',
   },
   {
@@ -5814,7 +5814,7 @@ users.mdamirma = {
   pass: '',
   xp: 777777,
   kikooz: 0,
-  fbouille: '0g0000020000000000000000',
+  fbouille: '0004060h040700030j070008',
   items: withDefaultPens([]),
   contacts: [],
   blacklist: [],
