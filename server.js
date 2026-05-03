@@ -771,32 +771,50 @@ function extractBkiwiTrack(rawData) {
 function bkiwiRankingId(rawData, mode, hintedTrack) {
   // BKiwi's saveScore misc payload is [carName, perfectsRank, posRank] — track
   // is NOT in the data. Prefer the track captured from the most recent slot 0
-  // savePublic() (which always runs before saveScore in mainFinal.as), and fall
-  // back to parsing the raw data for legacy compatibility.
-  const t = (Number.isFinite(hintedTrack) && hintedTrack >= 0 && hintedTrack <= 5)
-    ? hintedTrack
-    : extractBkiwiTrack(rawData);
+  // savePublic(), then fall back to today's daily track (since standalone
+  // players are almost always on the daily challenge), and only resort to
+  // extractBkiwiTrack for legacy data with track embedded.
+  let t;
+  if (Number.isFinite(hintedTrack) && hintedTrack >= 0 && hintedTrack <= 5) {
+    t = hintedTrack;
+  } else if (rawData && /:/.test(String(rawData))) {
+    t = extractBkiwiTrack(rawData);
+  } else {
+    t = getBkiwiDailyTrack();
+  }
   const suffix = mode === 1 ? 'challenge' : 'classic';
   return `bkiwi_track${t}_${suffix}`;
 }
 
 // Compare two BKiwi slot 0 JSON payloads and return the track index (0-5)
-// whose $ts entry just changed — used to know which circuit the player just
-// raced when their score arrives without an embedded track id.
+// whose stats just changed — used to know which circuit the player just
+// raced when their score arrives without an embedded track id. Tries
+// multiple field layouts since the obfuscated SWF mixes nested $ts arrays
+// with flat per-track fields (lapCar_0..5, totalCar_0..5).
 function detectBkiwiTrackFromSlotDiff(prevDataStr, newDataStr) {
   try {
     const prev = prevDataStr ? JSON.parse(prevDataStr) : {};
     const next = newDataStr ? JSON.parse(newDataStr) : {};
+
+    // Strategy 1: nested $ts array
     const prevTs = Array.isArray(prev.$ts) ? prev.$ts : [];
     const nextTs = Array.isArray(next.$ts) ? next.$ts : [];
-    if (!nextTs.length) return null;
-    for (let i = 0; i < Math.min(nextTs.length, 6); i++) {
-      const p = prevTs[i] || {};
-      const n = nextTs[i] || {};
-      if (n.$fcLap !== p.$fcLap || n.$fcTotal !== p.$fcTotal ||
-          n.$lapCar !== p.$lapCar || n.$totalCar !== p.$totalCar) {
-        return i;
+    if (nextTs.length) {
+      for (let i = 0; i < Math.min(nextTs.length, 6); i++) {
+        if (JSON.stringify(prevTs[i] || null) !== JSON.stringify(nextTs[i] || null)) {
+          return i;
+        }
       }
+    }
+
+    // Strategy 2: any field whose name ends with _0 through _5
+    const allKeys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+    for (const key of allKeys) {
+      const m = key.match(/_([0-5])$/);
+      if (!m) continue;
+      const a = JSON.stringify(prev[key] === undefined ? null : prev[key]);
+      const b = JSON.stringify(next[key] === undefined ? null : next[key]);
+      if (a !== b) return parseInt(m[1], 10);
     }
   } catch (e) { /* malformed JSON */ }
   return null;
@@ -2258,18 +2276,28 @@ async function handleSaveScore(req, res) {
   if (!rankingId) {
     return res.status(400).json({ ok: false, error: 'unknown_game', game: gameName });
   }
+  let extraResult = null;
+  let extraRankingId = null;
   if (rankingId.startsWith('bkiwi_')) {
     const hint = users[username] && Number.isFinite(users[username].bkiwiCurrentTrack)
       ? users[username].bkiwiCurrentTrack : undefined;
-    if (mode === 0 && Number.isFinite(hint) && hint === getBkiwiDailyTrack()) {
-      mode = 1;
-    }
-    rankingId = bkiwiRankingId(scoreData, mode, hint);
+    const daily = getBkiwiDailyTrack();
+    // Per-track classic record: use hint if known, else assume daily (most likely).
+    const trackForClassic = Number.isFinite(hint) ? hint : daily;
+    rankingId = `bkiwi_track${trackForClassic}_classic`;
+    // Always also save to today's daily challenge ranking, so the score appears
+    // in scores journaliers regardless of slot-diff timing/staleness.
+    extraRankingId = `bkiwi_track${daily}_challenge`;
+    console.log(`[HTTP]  bkiwi route hint=${hint} daily=${daily} -> classic:${rankingId} challenge:${extraRankingId}`);
   }
 
   const result = persistScore(username, rankingId, scoreVal, scoreData);
+  if (extraRankingId) {
+    extraResult = persistScore(username, extraRankingId, scoreVal, scoreData);
+    console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ${scoreVal} updated=${extraResult.updated} (challenge)`);
+  }
   trackXpAction(username, 'gamePlayed');
-  console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated} dailyTrack=${getBkiwiDailyTrack()}`);
+  console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated}`);
   return res.json({
     ok: true,
     updated: result.updated,
@@ -3228,6 +3256,12 @@ app.post('/api/saveFrutiSlot', (req, res) => {
     if (t !== null) {
       users[username].bkiwiCurrentTrack = t;
       console.log(`[SLOT]  bkiwi current track for ${username} = ${t}`);
+    } else {
+      const prevPreview = String(prevSlotData || '').slice(0, 300);
+      const newPreview = String(data || '').slice(0, 300);
+      console.log(`[SLOT]  bkiwi track detection FAILED for ${username}`);
+      console.log(`[SLOT]    prev: ${prevPreview}`);
+      console.log(`[SLOT]    new:  ${newPreview}`);
     }
   }
 
@@ -6428,20 +6462,25 @@ async function handleCBeeMessage(socket, rawXml) {
         console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" mode=${scoreMode} children=${JSON.stringify(msg.children || [])}`);
         let rankingId = rankingIdForGame(discId, scoreMode);
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
-        let effectiveScoreMode = scoreMode;
+        let extraRankingId = null;
         if (rankingId && rankingId.startsWith('bkiwi_')) {
           const hint = username && users[username] && Number.isFinite(users[username].bkiwiCurrentTrack)
             ? users[username].bkiwiCurrentTrack : undefined;
-          if (effectiveScoreMode === 0 && Number.isFinite(hint) && hint === getBkiwiDailyTrack()) {
-            effectiveScoreMode = 1;
-          }
-          rankingId = bkiwiRankingId(scoreData, effectiveScoreMode, hint);
+          const daily = getBkiwiDailyTrack();
+          const trackForClassic = Number.isFinite(hint) ? hint : daily;
+          rankingId = `bkiwi_track${trackForClassic}_classic`;
+          extraRankingId = `bkiwi_track${daily}_challenge`;
+          console.log(`[FSCORE] bkiwi route hint=${hint} daily=${daily} -> classic:${rankingId} challenge:${extraRankingId}`);
         }
         // Persist if we have a valid ranking + user.
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
         if (username && rankingId) {
           res = persistScore(username, rankingId, scoreVal, scoreData);
           console.log(`[FSCORE] ${username} ${rankingId}: ${res.oldScore} -> ${res.newScore} (updated=${res.updated}, pos ${res.oldPos}->${res.newPos})`);
+          if (extraRankingId) {
+            const r2 = persistScore(username, extraRankingId, scoreVal, scoreData);
+            console.log(`[FSCORE] ${username} ${extraRankingId}: ${r2.oldScore} -> ${r2.newScore} (updated=${r2.updated}, challenge)`);
+          }
         } else {
           console.log(`[FSCORE] skip persist (user="${username}" rankingId="${rankingId}")`);
         }
@@ -7543,6 +7582,12 @@ case 'createchannel': {
           if (t !== null) {
             u.bkiwiCurrentTrack = t;
             console.log(`[FCARD] bkiwi current track for ${username} = ${t}`);
+          } else {
+            const prevPreview = String(prevSlotData || '').slice(0, 300);
+            const newPreview = String(slotData || '').slice(0, 300);
+            console.log(`[FCARD] bkiwi track detection FAILED for ${username}`);
+            console.log(`[FCARD]   prev: ${prevPreview}`);
+            console.log(`[FCARD]   new:  ${newPreview}`);
           }
         }
       }
