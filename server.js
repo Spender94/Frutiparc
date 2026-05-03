@@ -621,9 +621,10 @@ const LEGACY_RANKINGS = [
 const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.rk, r.internal])
 );
-const INTERNAL_TO_LEGACY_RK = Object.fromEntries(
-  LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.internal, r.rk])
-);
+const INTERNAL_TO_LEGACY_RK = Object.fromEntries([
+  ...LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.internal, r.rk]),
+  ...Array.from({ length: 6 }, (_, i) => [`bkiwi_track${i}_challenge`, '0']),
+]);
 const HARDCODED_FRUTIZ = {
   DebugBot: { x: 1337, f: '000000010000000000000000' },
 };
@@ -633,10 +634,14 @@ function hardcodedMeAttrs(name) {
   return `x="${d.x}" f="${escapeXml(d.f)}"`;
 }
 
-function resolveInternalRankingId(rkLike) {
+function resolveInternalRankingId(rkLike, refDate) {
   const raw = String(rkLike || '').trim();
   if (!raw) return null;
   if (RANKINGS[raw]) return raw;
+  if (raw === '0') {
+    const d = refDate ? new Date(refDate + 'T12:00:00Z') : new Date();
+    return `bkiwi_track${getBkiwiDailyTrack(d)}_challenge`;
+  }
   if (LEGACY_RK_TO_INTERNAL[raw]) return LEGACY_RK_TO_INTERNAL[raw];
   return null;
 }
@@ -795,6 +800,13 @@ function detectBkiwiTrackFromSlotDiff(prevDataStr, newDataStr) {
     }
   } catch (e) { /* malformed JSON */ }
   return null;
+}
+
+function getBkiwiDailyTrack(date = new Date()) {
+  const paris = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+  const startOfYear = new Date(paris.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((paris - startOfYear) / 86400000);
+  return dayOfYear % 6;
 }
 
 function formatRankingExtraData(rankingId, rawData) {
@@ -1389,13 +1401,14 @@ function buildUserLogXml(entries) {
 }
 
 // Daily-reset rankings = rankings displayed in the front-end "Challenge"
-// tab (section C of LEGACY_RANKINGS).  Internally these IDs end with
-// "_classic" (the suffix used when a user plays in default mode).
-// Note: section L = "Championnat" in front-end; those rankings (currently
-// only bandas_challenge and grapiz_challenge) are NOT reset daily.
-const DAILY_RESET_RANKING_SET = new Set(
-  LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal).map(r => r.internal)
-);
+// tab (section C of LEGACY_RANKINGS) plus all BKiwi per-track challenge
+// rankings (which rotate daily based on dayOfYear % 6).
+// BKiwi classic was previously the daily proxy; replaced by proper _challenge
+// rankings so we exclude it to avoid duplicate medal awards.
+const DAILY_RESET_RANKING_SET = new Set([
+  ...LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal && r.internal !== 'bkiwi_track5_classic').map(r => r.internal),
+  ...Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_challenge`),
+]);
 
 function challengeRankingIds() {
   return Array.from(DAILY_RESET_RANKING_SET);
@@ -2248,12 +2261,15 @@ async function handleSaveScore(req, res) {
   if (rankingId.startsWith('bkiwi_')) {
     const hint = users[username] && Number.isFinite(users[username].bkiwiCurrentTrack)
       ? users[username].bkiwiCurrentTrack : undefined;
+    if (mode === 0 && Number.isFinite(hint) && hint === getBkiwiDailyTrack()) {
+      mode = 1;
+    }
     rankingId = bkiwiRankingId(scoreData, mode, hint);
   }
 
   const result = persistScore(username, rankingId, scoreVal, scoreData);
   trackXpAction(username, 'gamePlayed');
-  console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated}`);
+  console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated} dailyTrack=${getBkiwiDailyTrack()}`);
   return res.json({
     ok: true,
     updated: result.updated,
@@ -6412,10 +6428,14 @@ async function handleCBeeMessage(socket, rawXml) {
         console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" mode=${scoreMode} children=${JSON.stringify(msg.children || [])}`);
         let rankingId = rankingIdForGame(discId, scoreMode);
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
+        let effectiveScoreMode = scoreMode;
         if (rankingId && rankingId.startsWith('bkiwi_')) {
           const hint = username && users[username] && Number.isFinite(users[username].bkiwiCurrentTrack)
             ? users[username].bkiwiCurrentTrack : undefined;
-          rankingId = bkiwiRankingId(scoreData, scoreMode, hint);
+          if (effectiveScoreMode === 0 && Number.isFinite(hint) && hint === getBkiwiDailyTrack()) {
+            effectiveScoreMode = 1;
+          }
+          rankingId = bkiwiRankingId(scoreData, effectiveScoreMode, hint);
         }
         // Persist if we have a valid ranking + user.
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
@@ -6617,7 +6637,8 @@ broadcastToChannel(
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
         const dtExplicit = msg.attrs.dt !== undefined ? String(msg.attrs.dt).slice(0, 10) : '';
-        const internalId = resolveInternalRankingId(rkInput);
+        const dtHint = dtExplicit || (client.selectedDt || '');
+        const internalId = resolveInternalRankingId(rkInput, dtHint || undefined);
         const dtIn = dtExplicit || (internalId && isDailyResetRanking(internalId) ? (client.selectedDt || '') : '');
         if (internalId) {
           const memoryEntries = [];
@@ -6716,7 +6737,7 @@ broadcastToChannel(
         console.log(`[FSCORE-DEBUG] rankingResult (wire m) attrs=${JSON.stringify(msg.attrs)} selectedDt=${client && client.selectedDt}`);
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
-        const internalId = resolveInternalRankingId(rkInput);
+        const internalId = resolveInternalRankingId(rkInput, client.selectedDt || undefined);
         const dtInRaw = internalId && isDailyResetRanking(internalId) ? (client.selectedDt || '') : '';
         const dtIn = dtInRaw ? dtInRaw.slice(0, 10) : '';
         const isHistorical = dtIn && dtIn !== parisDayKey() && internalId && isDailyResetRanking(internalId) && process.env.DATABASE_URL;
