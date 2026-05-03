@@ -3799,10 +3799,10 @@ const GAME_DISCS = {
     discType: '0',
     playMode: 'single',
     swfName: 'mb2',
-    gameId: 'games/motionBall2/motionball.swf',
+    gameId: 'games/motionBall2/full.swf',
     props: 'w=550;h=400;m=i',
     files: [
-      { u: 'games/motionBall2/motionball.swf' },
+      { u: 'games/motionBall2/full.swf' },
     ],
   },
 };
