@@ -576,25 +576,25 @@ function saveChallengeMedals() {
 // Registered ranking IDs (one per game, mode 0 = classic).
 // name = human-readable, game = disc/game name (for client display).
 const BKIWI_TRACK_NAMES = [
-  'Circuit 1', 'Circuit 2', 'Circuit 3', 'Circuit 4', 'Circuit 5', 'Circuit 6',
+  'Green Hill', 'Banana Derby', 'Terre Grise', 'Solstice', 'Jupiter IV', 'Mistral Kiwi',
 ];
 const RANKINGS = {
-  bkiwi_track0_classic: { name: 'Burning Kiwi - Circuit 1', game: 'bkiwi', type: 'C', lowerIsBetter: true },
-  bkiwi_track1_classic: { name: 'Burning Kiwi - Circuit 2', game: 'bkiwi', type: 'C', lowerIsBetter: true },
-  bkiwi_track2_classic: { name: 'Burning Kiwi - Circuit 3', game: 'bkiwi', type: 'C', lowerIsBetter: true },
-  bkiwi_track3_classic: { name: 'Burning Kiwi - Circuit 4', game: 'bkiwi', type: 'C', lowerIsBetter: true },
-  bkiwi_track4_classic: { name: 'Burning Kiwi - Circuit 5', game: 'bkiwi', type: 'C', lowerIsBetter: true },
-  bkiwi_track5_classic: { name: 'Burning Kiwi - Circuit 6', game: 'bkiwi', type: 'C', lowerIsBetter: true },
+  bkiwi_track0_classic: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 0 },
+  bkiwi_track1_classic: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 1 },
+  bkiwi_track2_classic: { name: 'Burning Kiwi - Terre Grise', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 2 },
+  bkiwi_track3_classic: { name: 'Burning Kiwi - Solstice', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 3 },
+  bkiwi_track4_classic: { name: 'Burning Kiwi - Jupiter IV', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 4 },
+  bkiwi_track5_classic: { name: 'Burning Kiwi - Mistral Kiwi', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 5 },
   snake3_classic:   { name: 'Frutisnake - Classique',  game: 'snake3',   type: 'C' },
   kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
   mb2_classic:      { name: 'MotionBall - Classique',  game: 'mb2',      type: 'C' },
-  bkiwi_track0_challenge: { name: 'Burning Kiwi - Circuit 1', game: 'bkiwi', type: 'L', lowerIsBetter: true },
-  bkiwi_track1_challenge: { name: 'Burning Kiwi - Circuit 2', game: 'bkiwi', type: 'L', lowerIsBetter: true },
-  bkiwi_track2_challenge: { name: 'Burning Kiwi - Circuit 3', game: 'bkiwi', type: 'L', lowerIsBetter: true },
-  bkiwi_track3_challenge: { name: 'Burning Kiwi - Circuit 4', game: 'bkiwi', type: 'L', lowerIsBetter: true },
-  bkiwi_track4_challenge: { name: 'Burning Kiwi - Circuit 5', game: 'bkiwi', type: 'L', lowerIsBetter: true },
-  bkiwi_track5_challenge: { name: 'Burning Kiwi - Circuit 6', game: 'bkiwi', type: 'L', lowerIsBetter: true },
+  bkiwi_track0_challenge: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 0 },
+  bkiwi_track1_challenge: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 1 },
+  bkiwi_track2_challenge: { name: 'Burning Kiwi - Terre Grise', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 2 },
+  bkiwi_track3_challenge: { name: 'Burning Kiwi - Solstice', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 3 },
+  bkiwi_track4_challenge: { name: 'Burning Kiwi - Jupiter IV', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 4 },
+  bkiwi_track5_challenge: { name: 'Burning Kiwi - Mistral Kiwi', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 5 },
   snake3_challenge:   { name: 'Frutisnake - Challenge',   game: 'snake3',   type: 'L' },
   kaluga_challenge:   { name: 'Kaluga - Challenge',       game: 'kaluga',   type: 'L' },
   swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
@@ -5140,14 +5140,16 @@ app.get('/api/club/records', async (req, res) => {
     }));
     const lowerBetter = isLowerBetter(rkId);
     all.sort((a, b) => lowerBetter ? a.score - b.score : b.score - a.score);
-    out.push({
+    const entry = {
       id: rkId,
       name: meta.name,
       game: meta.game,
       type: meta.type,
       lowerIsBetter: !!meta.lowerIsBetter,
       scores: all.slice(0, limit),
-    });
+    };
+    if (meta.bkiwiTrack !== undefined) entry.bkiwiTrack = meta.bkiwiTrack;
+    out.push(entry);
   }
   res.json({ rankings: out });
 });

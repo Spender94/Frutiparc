@@ -205,6 +205,17 @@
     padding: 5px 8px;
     border-bottom: 1px solid #8bc55a;
   }
+  .bkiwi-track-select {
+    font-size: 11px;
+    font-family: Arial, Verdana, sans-serif;
+    margin-left: 4px;
+    padding: 1px 2px;
+    border: 1px solid #8bc55a;
+    border-radius: 3px;
+    background: #D6F7B5;
+    color: #2C4A0F;
+    cursor: pointer;
+  }
   .ranking-card .empty {
     color: #5a8030;
     font-style: italic;
@@ -461,11 +472,58 @@
     }
   }
 
+  var bkiwiSelectedTrack = { C: 0, L: 0 };
+
+  function renderScoreRows(rk) {
+    if (!rk.scores || !rk.scores.length) {
+      return '<div class="empty">Aucun score enregistré</div>';
+    }
+    var html = '';
+    rk.scores.forEach(function(s, i) {
+      var pos = i + 1;
+      var cls = pos <= 3 ? ('score-row r' + pos) : 'score-row';
+      html += '<div class="' + cls + '">'
+        + '<span class="pos">' + pos + '.</span>'
+        + '<span class="pname">' + escapeHtml(s.user) + '</span>'
+        + '<span class="pscore">' + escapeHtml(formatScore(s.score, rk)) + '</span>'
+        + '</div>';
+    });
+    return html;
+  }
+
+  function switchBkiwiTrack(type, track) {
+    bkiwiSelectedTrack[type] = track;
+    var container = document.getElementById('bkiwi-scores-' + type);
+    if (!container || !recordsData) return;
+    var rankings = recordsData.rankings || [];
+    var suffix = type === 'L' ? '_challenge' : '_classic';
+    var rk = rankings.find(function(r) { return r.id === 'bkiwi_track' + track + suffix; });
+    container.innerHTML = rk ? renderScoreRows(rk) : '<div class="empty">Aucun score enregistré</div>';
+  }
+
+  function renderBkiwiCard(bkiwiRankings, type) {
+    var selected = bkiwiSelectedTrack[type] || 0;
+    var suffix = type === 'L' ? '_challenge' : '_classic';
+    var current = bkiwiRankings.find(function(r) { return r.bkiwiTrack === selected; });
+    var html = '<div class="ranking-card">';
+    html += '<h3>Burning Kiwi <select class="bkiwi-track-select" onchange="switchBkiwiTrack(\'' + type + '\', Number(this.value))">';
+    bkiwiRankings.slice().sort(function(a,b) { return a.bkiwiTrack - b.bkiwiTrack; }).forEach(function(rk) {
+      var sel = rk.bkiwiTrack === selected ? ' selected' : '';
+      var label = rk.name.replace('Burning Kiwi - ', '');
+      html += '<option value="' + rk.bkiwiTrack + '"' + sel + '>' + escapeHtml(label) + '</option>';
+    });
+    html += '</select></h3>';
+    html += '<div id="bkiwi-scores-' + type + '">';
+    html += current ? renderScoreRows(current) : '<div class="empty">Aucun score enregistré</div>';
+    html += '</div></div>';
+    return html;
+  }
+
   function renderRecords() {
     if (!recordsData) return;
-    const root = document.getElementById('records-content');
-    const filter = document.getElementById('record-filter').value;
-    const rankings = (recordsData.rankings || []).filter(rk => {
+    var root = document.getElementById('records-content');
+    var filter = document.getElementById('record-filter').value;
+    var rankings = (recordsData.rankings || []).filter(function(rk) {
       if (filter === 'all') return true;
       return rk.type === filter;
     });
@@ -476,37 +534,31 @@
     }
     root.className = 'records-area';
 
-    const groups = { C: [], L: [] };
-    rankings.forEach(rk => {
+    var groups = { C: [], L: [] };
+    rankings.forEach(function(rk) {
       if (groups[rk.type]) groups[rk.type].push(rk);
-      else (groups.other = groups.other || []).push(rk);
+      else { groups.other = groups.other || []; groups.other.push(rk); }
     });
-    const groupLabels = { C: 'Challenge (Classique)', L: 'Championnat', other: 'Autres' };
+    var groupLabels = { C: 'Challenge (Classique)', L: 'Championnat', other: 'Autres' };
 
-    let html = '';
-    for (const key of ['C', 'L', 'other']) {
-      const arr = groups[key];
+    var html = '';
+    for (var ki = 0; ki < 3; ki++) {
+      var key = ['C', 'L', 'other'][ki];
+      var arr = groups[key];
       if (!arr || !arr.length) continue;
       if (filter === 'all') {
         html += '<div class="group-title">' + groupLabels[key] + '</div>';
       }
       html += '<div class="ranking-list">';
-      arr.forEach(rk => {
+      var bkiwiGroup = arr.filter(function(rk) { return rk.bkiwiTrack !== undefined; });
+      var otherRankings = arr.filter(function(rk) { return rk.bkiwiTrack === undefined; });
+      if (bkiwiGroup.length) {
+        html += renderBkiwiCard(bkiwiGroup, key);
+      }
+      otherRankings.forEach(function(rk) {
         html += '<div class="ranking-card">';
         html += '<h3>' + escapeHtml(rk.name) + '</h3>';
-        if (!rk.scores || !rk.scores.length) {
-          html += '<div class="empty">Aucun score enregistré</div>';
-        } else {
-          rk.scores.forEach((s, i) => {
-            const pos = i + 1;
-            const cls = pos <= 3 ? ('score-row r' + pos) : 'score-row';
-            html += '<div class="' + cls + '">'
-              + '<span class="pos">' + pos + '.</span>'
-              + '<span class="pname">' + escapeHtml(s.user) + '</span>'
-              + '<span class="pscore">' + escapeHtml(formatScore(s.score, rk)) + '</span>'
-              + '</div>';
-          });
-        }
+        html += renderScoreRows(rk);
         html += '</div>';
       });
       html += '</div>';
