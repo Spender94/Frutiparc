@@ -1066,9 +1066,10 @@ function computePosition(rankingId, username) {
 }
 
 function getUserScore(username, rankingId) {
-  const ud = scoresData.users[username];
+  const key = String(username || '').toLowerCase();
+  const ud = scoresData.users[key];
   if (!ud || !ud[rankingId]) return { score: 0, pos: 0 };
-  return { score: Number(ud[rankingId].score) || 0, pos: computePosition(rankingId, username) };
+  return { score: Number(ud[rankingId].score) || 0, pos: computePosition(rankingId, key) };
 }
 
 async function getConsecrationLeaderboard() {
@@ -6997,7 +6998,7 @@ case 'trace': {
     let inner = '';
 
     for (const child of traceChildren) {
-      const u = child.attrs.u;
+      const u = String(child.attrs.u).toLowerCase();
       const ud = users[u] || {};
       const pVal = getSocketsForUsername(u).length > 0 ? 1 : 0;
       inner += `<u u="${escapeXml(getDisplayName(u))}" p="${pVal}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, u)}" />`;
@@ -7007,7 +7008,7 @@ case 'trace': {
     break;
   }
 
-  const targetUser = msg.attrs.u;
+  const targetUser = String(msg.attrs.u || '').toLowerCase();
   if (targetUser) {
     if (client.sid && sessions[client.sid]) {
       sessions[client.sid].lastTraceUser = targetUser;
@@ -7064,7 +7065,7 @@ case 'trace': {
 
     // ── userinfo: get user info ──
     case 'userinfo': {
-      const u = msg.attrs.u;
+      const u = String(msg.attrs.u || '').toLowerCase();
       const r = msg.attrs.r || '';
       if (client.sid && sessions[client.sid]) {
         sessions[client.sid].lastProfileUser = u;
@@ -7326,21 +7327,52 @@ case 'createchannel': {
         const rkList = String(msg.attrs.rs || '').split(',').map((s) => s.trim()).filter(Boolean);
         const reqId = msg.attrs.r || '';
         // Target user is carried as a <u u=".."/> child (per FrutizInfo.as:290-293).
+        // Normalize to lowercase for score lookups (scores stored under lowercase keys).
         let targetUser = client.username || '';
         if (Array.isArray(msg.children)) {
           const uChild = msg.children.find((c) => c.tag === 'u' && c.attrs && c.attrs.u);
-          if (uChild) targetUser = uChild.attrs.u;
+          if (uChild) targetUser = String(uChild.attrs.u).toLowerCase();
         }
         let inner = '';
+        const debugParts = [];
         for (const rkAny of rkList) {
+          const legacyDesc = legacyDescriptorFromRkLike(rkAny);
+          // BKiwi rk '0': aggregate best score across all 6 classic tracks
+          // (+ today's challenge) so the profile always shows the user's best time.
+          if (rkAny === '0') {
+            let bestInfo = { score: 0, pos: 0 };
+            let bestRanking = null;
+            for (let t = 0; t < 6; t++) {
+              const classicId = `bkiwi_track${t}_classic`;
+              const ci = getUserScore(targetUser, classicId);
+              if (ci.score > 0 && (!bestRanking || ci.score < bestInfo.score)) {
+                bestInfo = ci;
+                bestRanking = classicId;
+              }
+            }
+            const dailyId = `bkiwi_track${getBkiwiDailyTrack()}_challenge`;
+            const di = getUserScore(targetUser, dailyId);
+            if (di.score > 0 && (!bestRanking || di.score < bestInfo.score)) {
+              bestInfo = di;
+              bestRanking = dailyId;
+            }
+            if (bestInfo.score > 0) {
+              const tAttr = legacyDesc && legacyDesc.ty && legacyDesc.ty !== 'point' ? ` t="${escapeXml(legacyDesc.ty)}"` : '';
+              inner += `<rk rk="0" p="${bestInfo.pos}" s="${bestInfo.score}"${tAttr} />`;
+              debugParts.push(`0->${bestRanking}:s=${bestInfo.score},p=${bestInfo.pos}`);
+            } else {
+              debugParts.push('0->none');
+            }
+            continue;
+          }
           const internalId = resolveInternalRankingId(rkAny);
-          if (!internalId) continue;
-          const legacyDesc = legacyDescriptorFromRkLike(rkAny) || legacyDescriptorFromRkLike(internalId);
+          if (!internalId) { debugParts.push(`${rkAny}->unresolved`); continue; }
           const info = getUserScore(targetUser, internalId);
-          if (info.score <= 0 && info.pos <= 0) continue;
+          if (info.score <= 0 && info.pos <= 0) { debugParts.push(`${rkAny}->${internalId}:empty`); continue; }
           const rkOut = INTERNAL_TO_LEGACY_RK[internalId] || rkAny || internalId;
           const tAttr = legacyDesc && legacyDesc.ty && legacyDesc.ty !== 'point' ? ` t="${escapeXml(legacyDesc.ty)}"` : '';
           inner += `<rk rk="${escapeXml(rkOut)}" p="${info.pos}" s="${info.score}"${tAttr} />`;
+          debugParts.push(`${rkAny}->${internalId}:s=${info.score},p=${info.pos}`);
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         if (!inner) {
@@ -7348,7 +7380,7 @@ case 'createchannel': {
         } else {
           sendToClient(socket, `<${CMD.unban}${rAttr} u="${escapeXml(getDisplayName(targetUser))}">${inner}</${CMD.unban}>`);
         }
-        console.log(`[FSCORE] userResult user=${targetUser} rankings=[${rkList.join(',')}]`);
+        console.log(`[FSCORE] userResult user=${targetUser} rankings=[${rkList.join(',')}] results=[${debugParts.join(', ')}]`);
         break;
       }
       // Chat unban path (moderator lifts a ban) — not implemented yet.
@@ -7398,7 +7430,7 @@ case 'createchannel': {
     // ── awarduser (hb): list trophies/awards a user has earned ──
     case 'awarduser': {
       const reqId = msg.attrs.r || '';
-      const targetUser = msg.attrs.u || client.username || '';
+      const targetUser = String(msg.attrs.u || client.username || '').toLowerCase();
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       let inner = '';
       for (const [rkId, rk] of Object.entries(RANKINGS)) {
@@ -7432,9 +7464,9 @@ case 'createchannel': {
     // ── fcardlist (ef): games for which a user has a public FrutiCard ──
     case 'fcardlist': {
       const reqId = msg.attrs.r || '';
-      const targetUser = msg.attrs.u || client.username || '';
+      const targetUser = String(msg.attrs.u || client.username || '').toLowerCase();
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
-      const uAttr = targetUser ? ` u="${escapeXml(String(targetUser))}"` : '';
+      const uAttr = targetUser ? ` u="${escapeXml(getDisplayName(targetUser))}"` : '';
       let gameNodes = '';
       const tu = users[targetUser];
       if (tu && tu.frutiSlots) {
@@ -7464,10 +7496,10 @@ case 'createchannel': {
     case 'fcardgetpublicslot': {
       const reqId = msg.attrs.r || '';
       const game = msg.attrs.g || '';
-      const targetUser = msg.attrs.u || client.username || '';
+      const targetUser = String(msg.attrs.u || client.username || '').toLowerCase();
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       const gAttr = game ? ` g="${escapeXml(String(game))}"` : '';
-      const uAttr = targetUser ? ` u="${escapeXml(String(targetUser))}"` : '';
+      const uAttr = targetUser ? ` u="${escapeXml(getDisplayName(targetUser))}"` : '';
       let slotData = '';
       const tu = users[targetUser];
       if (tu) {
