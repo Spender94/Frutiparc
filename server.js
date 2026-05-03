@@ -354,7 +354,7 @@ const GAME_PROGRESS_REGISTRY = [
   {
     id: 'mb2',
     name: 'MotionBall',
-    enabled: false,
+    enabled: true,
     matchGame: 'MotionBall',
   },
   {
@@ -558,11 +558,13 @@ const RANKINGS = {
   kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
   miniwave2_classic:{ name: 'MiniWave - Classique',    game: 'miniwave2',type: 'C' },
+  mb2_classic:      { name: 'MotionBall - Classique',  game: 'mb2',      type: 'C' },
   bkiwi_challenge:    { name: 'Burning Kiwi - Challenge', game: 'bkiwi',    type: 'L', lowerIsBetter: true },
   snake3_challenge:   { name: 'Frutisnake - Challenge',   game: 'snake3',   type: 'L' },
   kaluga_challenge:   { name: 'Kaluga - Challenge',       game: 'kaluga',   type: 'L' },
   swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
   miniwave2_challenge:{ name: 'MiniWave - Challenge',     game: 'miniwave2',type: 'L' },
+  mb2_challenge:      { name: 'MotionBall - Challenge',   game: 'mb2',      type: 'L' },
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
   grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L' },
 };
@@ -572,7 +574,7 @@ const LEGACY_RANKINGS = [
   // Section C = "Challenge" in front-end
   { rk: '0', internal: 'bkiwi_classic',    ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi',  section: 'C' },
   { rk: '1', internal: 'snake3_classic',   ty: 'point',       rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'C' },
-  { rk: '2', internal: null,               ty: 'ptmb2',       rn: 'Motion Ball 2',gs: '2', g: 'mb2',    section: 'C' },
+  { rk: '2', internal: 'mb2_classic',      ty: 'ptmb2',       rn: 'Motion Ball 2',gs: '2', g: 'mb2',    section: 'C' },
   { rk: '3', internal: 'swapou2_classic',  ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
   { rk: '4', internal: 'kaluga_classic',   ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'C' },
   { rk: '5', internal: null,               ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
@@ -1288,7 +1290,7 @@ function collectTop3ForRanking(rankingId) {
 
 const GAME_DISPLAY_NAMES = {
   bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', kaluga: 'Kaluga',
-  swapou2: 'Swapou', miniwave2: 'MiniWave',
+  swapou2: 'Swapou', miniwave2: 'MiniWave', mb2: 'MotionBall',
   bandas: 'Frutibandas', grapiz: 'Grapiz',
 };
 const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
@@ -3791,6 +3793,16 @@ const GAME_DISCS = {
     props: 'w=700;h=480;m=i',
     files: [
       { u: 'games/snake3/snake3.swf' },
+    ],
+  },
+  mb2: {
+    discType: '0',
+    playMode: 'single',
+    swfName: 'mb2',
+    gameId: 'games/motionBall2/mb2.swf',
+    props: 'w=550;h=400;m=i',
+    files: [
+      { u: 'games/motionBall2/mb2.swf' },
     ],
   },
 };
@@ -7179,22 +7191,61 @@ case 'createchannel': {
     }
 
     // ── fcardlist (ef): games for which a user has a public FrutiCard ──
-    // Empty list is a valid response; FrutizInfo needs this to unblock the
-    // "scores" state machine (updateStateFromInt requires fcardlist == 2).
     case 'fcardlist': {
       const reqId = msg.attrs.r || '';
+      const targetUser = msg.attrs.u || client.username || '';
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
-      sendToClient(socket, `<${CMD.fcardlist}${rAttr}></${CMD.fcardlist}>`);
+      const uAttr = targetUser ? ` u="${escapeXml(String(targetUser))}"` : '';
+      let gameNodes = '';
+      const tu = users[targetUser];
+      if (tu && tu.frutiSlots) {
+        for (const g of Object.keys(tu.frutiSlots)) {
+          if (tu.frutiSlots[g] && tu.frutiSlots[g]['0']) {
+            gameNodes += `<g g="${escapeXml(g)}" />`;
+          }
+        }
+      } else if (tu && tu._dbId) {
+        try {
+          const rows = await db.getAllFrutiSlot0(tu._dbId);
+          if (rows && rows.length > 0) {
+            if (!tu.frutiSlots) tu.frutiSlots = {};
+            for (const row of rows) {
+              if (!tu.frutiSlots[row.game]) tu.frutiSlots[row.game] = {};
+              tu.frutiSlots[row.game]['0'] = row.data;
+              gameNodes += `<g g="${escapeXml(row.game)}" />`;
+            }
+          }
+        } catch (e) { /* ignore */ }
+      }
+      sendToClient(socket, `<${CMD.fcardlist}${rAttr}${uAttr}>${gameNodes}</${CMD.fcardlist}>`);
       break;
     }
 
-    // ── fcardgetpublicslot (ea/fa): return an empty public FrutiCard slot ──
+    // ── fcardgetpublicslot (ea/fa): return public FrutiCard slot data ──
     case 'fcardgetpublicslot': {
       const reqId = msg.attrs.r || '';
       const game = msg.attrs.g || '';
+      const targetUser = msg.attrs.u || client.username || '';
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       const gAttr = game ? ` g="${escapeXml(String(game))}"` : '';
-      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}></${msg.tag}>`);
+      const uAttr = targetUser ? ` u="${escapeXml(String(targetUser))}"` : '';
+      let slotData = '';
+      const tu = users[targetUser];
+      if (tu) {
+        if (tu.frutiSlots && tu.frutiSlots[game] && tu.frutiSlots[game]['0']) {
+          slotData = tu.frutiSlots[game]['0'];
+        } else if (tu._dbId) {
+          try {
+            const dbSlots = await db.getFrutiSlots(tu._dbId, game);
+            if (dbSlots && dbSlots['0']) {
+              if (!tu.frutiSlots) tu.frutiSlots = {};
+              tu.frutiSlots[game] = dbSlots;
+              slotData = dbSlots['0'];
+            }
+          } catch (e) { /* ignore */ }
+        }
+      }
+      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${uAttr}>${slotData}</${msg.tag}>`);
       break;
     }
 
