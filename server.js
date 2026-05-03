@@ -4001,7 +4001,7 @@ const GAME_DISCS = {
     playMode: 'single',
     swfName: 'miniwave',
     gameId: 'games/miniWave2/miniwave.swf',
-    props: 'w=550;h=400;m=i',
+    props: 'w=600;h=240;m=i',
     files: [
       { u: 'games/miniWave2/miniwave.swf' },
     ],
