@@ -494,6 +494,29 @@ function loadScores() {
     console.error(`[SCORES] load failed: ${e.message}`);
     scoresData = { users: {} };
   }
+  migrateOldBkiwiScores();
+}
+
+function migrateOldBkiwiScores() {
+  let migrated = 0;
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+    for (const oldKey of ['bkiwi_classic', 'bkiwi_challenge']) {
+      if (!rlist[oldKey]) continue;
+      const entry = rlist[oldKey];
+      const track = extractBkiwiTrack(entry.data);
+      const suffix = oldKey.endsWith('_challenge') ? 'challenge' : 'classic';
+      const newKey = `bkiwi_track${track}_${suffix}`;
+      if (!rlist[newKey]) {
+        rlist[newKey] = entry;
+        migrated++;
+      }
+      delete rlist[oldKey];
+    }
+  }
+  if (migrated > 0) {
+    console.log(`[SCORES] Migrated ${migrated} old bkiwi scores to per-track rankings`);
+    saveScoresFile();
+  }
 }
 
 function saveScoresFile() {
@@ -552,18 +575,29 @@ function saveChallengeMedals() {
 
 // Registered ranking IDs (one per game, mode 0 = classic).
 // name = human-readable, game = disc/game name (for client display).
+const BKIWI_TRACK_NAMES = [
+  'Circuit 1', 'Circuit 2', 'Circuit 3', 'Circuit 4', 'Circuit 5', 'Circuit 6',
+];
 const RANKINGS = {
-  bkiwi_classic:    { name: 'Burning Kiwi - Classique', game: 'bkiwi',    type: 'C', lowerIsBetter: true },
+  bkiwi_track0_classic: { name: 'Burning Kiwi - Circuit 1', game: 'bkiwi', type: 'C', lowerIsBetter: true },
+  bkiwi_track1_classic: { name: 'Burning Kiwi - Circuit 2', game: 'bkiwi', type: 'C', lowerIsBetter: true },
+  bkiwi_track2_classic: { name: 'Burning Kiwi - Circuit 3', game: 'bkiwi', type: 'C', lowerIsBetter: true },
+  bkiwi_track3_classic: { name: 'Burning Kiwi - Circuit 4', game: 'bkiwi', type: 'C', lowerIsBetter: true },
+  bkiwi_track4_classic: { name: 'Burning Kiwi - Circuit 5', game: 'bkiwi', type: 'C', lowerIsBetter: true },
+  bkiwi_track5_classic: { name: 'Burning Kiwi - Circuit 6', game: 'bkiwi', type: 'C', lowerIsBetter: true },
   snake3_classic:   { name: 'Frutisnake - Classique',  game: 'snake3',   type: 'C' },
   kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
-  miniwave2_classic:{ name: 'MiniWave - Classique',    game: 'miniwave2',type: 'C' },
   mb2_classic:      { name: 'MotionBall - Classique',  game: 'mb2',      type: 'C' },
-  bkiwi_challenge:    { name: 'Burning Kiwi - Challenge', game: 'bkiwi',    type: 'L', lowerIsBetter: true },
+  bkiwi_track0_challenge: { name: 'Burning Kiwi - Circuit 1', game: 'bkiwi', type: 'L', lowerIsBetter: true },
+  bkiwi_track1_challenge: { name: 'Burning Kiwi - Circuit 2', game: 'bkiwi', type: 'L', lowerIsBetter: true },
+  bkiwi_track2_challenge: { name: 'Burning Kiwi - Circuit 3', game: 'bkiwi', type: 'L', lowerIsBetter: true },
+  bkiwi_track3_challenge: { name: 'Burning Kiwi - Circuit 4', game: 'bkiwi', type: 'L', lowerIsBetter: true },
+  bkiwi_track4_challenge: { name: 'Burning Kiwi - Circuit 5', game: 'bkiwi', type: 'L', lowerIsBetter: true },
+  bkiwi_track5_challenge: { name: 'Burning Kiwi - Circuit 6', game: 'bkiwi', type: 'L', lowerIsBetter: true },
   snake3_challenge:   { name: 'Frutisnake - Challenge',   game: 'snake3',   type: 'L' },
   kaluga_challenge:   { name: 'Kaluga - Challenge',       game: 'kaluga',   type: 'L' },
   swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
-  miniwave2_challenge:{ name: 'MiniWave - Challenge',     game: 'miniwave2',type: 'L' },
   mb2_challenge:      { name: 'MotionBall - Challenge',   game: 'mb2',      type: 'L' },
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
   grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L' },
@@ -572,7 +606,8 @@ const RANKINGS = {
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
 const LEGACY_RANKINGS = [
   // Section C = "Challenge" in front-end
-  { rk: '0', internal: 'bkiwi_classic',    ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi',  section: 'C' },
+  // BKiwi uses per-track rankings; legacy rk '0' maps to track 5 (the default challenge track)
+  { rk: '0', internal: 'bkiwi_track5_classic', ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi',  section: 'C' },
   { rk: '1', internal: 'snake3_classic',   ty: 'point',       rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'C' },
   { rk: '2', internal: 'mb2_classic',      ty: 'ptmb2',       rn: 'Motion Ball 2',gs: '2', g: 'mb2',    section: 'C' },
   { rk: '3', internal: 'swapou2_classic',  ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
@@ -704,16 +739,46 @@ function parseKalugaTzId(raw) {
   return null;
 }
 
+function extractBkiwiTrack(rawData) {
+  const raw = String(rawData || '').trim();
+  if (raw.includes(':')) {
+    const parts = raw.split(':');
+    if (parts.length >= 2) {
+      const t = Number(parts[1]);
+      if (Number.isFinite(t) && t >= 0 && t <= 5) return t;
+    }
+  }
+  if (raw.includes(',')) {
+    const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const t = Number(parts[1]);
+      if (Number.isFinite(t) && t >= 0 && t <= 5) return t;
+    }
+  }
+  const arr = parseMtSerializedArray(raw);
+  if (arr && arr.length >= 2) {
+    const t = Number(arr[1]);
+    if (Number.isFinite(t) && t >= 0 && t <= 5) return t;
+  }
+  return 5;
+}
+
+function bkiwiRankingId(rawData, mode) {
+  const track = extractBkiwiTrack(rawData);
+  const suffix = mode === 1 ? 'challenge' : 'classic';
+  return `bkiwi_track${track}_${suffix}`;
+}
+
 function formatRankingExtraData(rankingId, rawData) {
   const raw = String(rawData || '').trim();
   if (!raw) {
-    if (rankingId === 'bkiwi_classic') return 'Skiwix:5:1:';
+    if (rankingId.startsWith('bkiwi_track')) return 'Skiwix:5:1:';
     if (rankingId === 'swapou2_classic') return 'S0:';
     if (rankingId === 'kaluga_classic') return 'Skaluga:';
     return '';
   }
 
-  if (rankingId === 'bkiwi_classic') {
+  if (rankingId.startsWith('bkiwi_track')) {
     if (raw.includes(':')) return raw;
     if (raw.includes(',')) {
       const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
@@ -814,12 +879,15 @@ function rankingIdForGame(gameName, modeRaw = 0) {
   const mode = Number(modeRaw);
   const suffix = mode === 1 ? 'challenge' : 'classic';
   if (!key) return null;
+  if (key === 'bkiwi') return `bkiwi_track5_${suffix}`;
   const direct = `${key}_${suffix}`;
   if (RANKINGS[direct]) return direct;
   // Accept Frutiparc disc uids directly (kaluga1, snake3, swapou1, miniwave1).
   const directDisc = GAME_DISCS && GAME_DISCS[key];
   if (directDisc && directDisc.swfName) {
-    const via = `${String(directDisc.swfName).toLowerCase()}_${suffix}`;
+    const swfLower = String(directDisc.swfName).toLowerCase();
+    if (swfLower === 'bkiwi') return `bkiwi_track5_${suffix}`;
+    const via = `${swfLower}_${suffix}`;
     if (RANKINGS[via]) return via;
   }
 
@@ -836,6 +904,9 @@ function rankingIdForGame(gameName, modeRaw = 0) {
   for (const [discUid, disc] of Object.entries(GAME_DISCS || {})) {
     const swfName = String((disc && disc.swfName) || '').toLowerCase();
     if (swfName) {
+      if (swfName === 'bkiwi' && (normalizedCandidates.has(swfName) || normalizedCandidates.has(String(discUid).toLowerCase()))) {
+        return `bkiwi_track5_${suffix}`;
+      }
       const via = `${swfName}_${suffix}`;
       if (RANKINGS[via] && (normalizedCandidates.has(swfName) || normalizedCandidates.has(String(discUid).toLowerCase()))) {
         return via;
@@ -851,7 +922,8 @@ function rankingIdForGame(gameName, modeRaw = 0) {
       }
     }
 
-    if (swfName && RANKINGS[`${swfName}_${suffix}`]) {
+    const hasRanking = swfName && (swfName === 'bkiwi' || RANKINGS[`${swfName}_${suffix}`]);
+    if (hasRanking) {
       for (const p of filePaths) {
         const pathVariants = [
           p,
@@ -860,13 +932,11 @@ function rankingIdForGame(gameName, modeRaw = 0) {
           `/swf/${p}`,
         ];
         if (pathVariants.some((v) => normalizedCandidates.has(v))) {
-          return `${swfName}_${suffix}`;
+          return swfName === 'bkiwi' ? `bkiwi_track5_${suffix}` : `${swfName}_${suffix}`;
         }
-        // Check if input matches a directory segment of the game path
-        // (e.g. input='burningKiwi' matches 'games/burningKiwi/burningkiwi.swf')
         const segs = p.split('/').filter(Boolean);
         if (segs.some((seg) => normalizedCandidates.has(seg.toLowerCase()))) {
-          return `${swfName}_${suffix}`;
+          return swfName === 'bkiwi' ? `bkiwi_track5_${suffix}` : `${swfName}_${suffix}`;
         }
       }
     }
@@ -985,12 +1055,13 @@ function createDefaultUser(pass) {
     country: 'FR',
     region: 'IDF',
     prefs: '',
-    isModerator: true,
+    isModerator: false,
     needsBouille: true, // Force editbouille on first login
     kikoozLog: [],      // Entries displayed in box.KikoozLog (/ft/log)
     userLog: [],        // Entries displayed in "Mon historique" (/do/onident <ul>)
     siteLog: [],        // Entries displayed in "Evènements" (/do/onident <sl>)
     mails: [],          // Internal mailbox; each entry: {uid, from, fromAddr, to, toAddrs, subject, body, folder, date, read}
+    realJob: 'Frutiz',
     displayName: '',
     frutiSign: -1,
     frutiSignB: -1,
@@ -1171,10 +1242,37 @@ function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {
 
 // ─────────────────────────────────────────────
 // XP System — daily activity tracking & levelling
-// ─────────────────────────────────────────────
-// Tracks daily actions per user. Reset each day when XP is awarded.
+// ─────────────────────────��───────────────────
+// Tracks daily actions per user. Persisted to disk so it survives restarts.
 // Keys: login, chatMsg, forumTopic, forumPost, gamePlayed
-const dailyXpActions = {}; // username -> { login:N, chatMsg:N, forumTopic:N, forumPost:N, gamePlayed:N }
+const XP_ACTIONS_FILE = path.join(SCORES_DIR, 'xp-actions.json');
+let dailyXpActions = {}; // username -> { login:N, chatMsg:N, forumTopic:N, forumPost:N, gamePlayed:N }
+
+function loadXpActions() {
+  try {
+    if (fs.existsSync(XP_ACTIONS_FILE)) {
+      const raw = fs.readFileSync(XP_ACTIONS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') dailyXpActions = parsed;
+    }
+  } catch (e) {
+    console.error('[XP] Failed to load xp-actions.json:', e.message);
+  }
+}
+loadXpActions();
+
+let _xpSaveTimer = null;
+function saveXpActions() {
+  if (_xpSaveTimer) return;
+  _xpSaveTimer = setTimeout(() => {
+    _xpSaveTimer = null;
+    try {
+      fs.writeFileSync(XP_ACTIONS_FILE, JSON.stringify(dailyXpActions), 'utf8');
+    } catch (e) {
+      console.error('[XP] Failed to save xp-actions.json:', e.message);
+    }
+  }, 2000);
+}
 
 function getXpActions(username) {
   if (!dailyXpActions[username]) {
@@ -1185,6 +1283,7 @@ function getXpActions(username) {
 
 function trackXpAction(username, action) {
   getXpActions(username)[action] = (getXpActions(username)[action] || 0) + 1;
+  saveXpActions();
 }
 
 // XP reward formula per action type (with daily caps).
@@ -1247,6 +1346,7 @@ async function awardDailyXp() {
   console.log(`[XP] Daily XP awarded to ${awarded} user(s)`);
   // Reset all daily counters
   for (const key of Object.keys(dailyXpActions)) delete dailyXpActions[key];
+  saveXpActions();
 }
 
 function buildUserLogXml(entries) {
@@ -2113,9 +2213,12 @@ async function handleSaveScore(req, res) {
     return res.status(401).json({ ok: false, error: 'not_authenticated' });
   }
 
-  const rankingId = rankingIdForGame(gameName, mode);
+  let rankingId = rankingIdForGame(gameName, mode);
   if (!rankingId) {
     return res.status(400).json({ ok: false, error: 'unknown_game', game: gameName });
+  }
+  if (rankingId.startsWith('bkiwi_')) {
+    rankingId = bkiwiRankingId(scoreData, mode);
   }
 
   const result = persistScore(username, rankingId, scoreVal, scoreData);
@@ -2972,7 +3075,10 @@ function extractGameItemsFromSlot(username, game, dataStr) {
     const availableCars = parsed.availableCars || parsed.$availableCars;
     if (Array.isArray(availableCars)) {
       for (let i = 0; i < availableCars.length && i < 5; i++) {
-        if (availableCars[i]) addIfNew('$logo0' + (i + 1));
+        if (availableCars[i]) {
+          addIfNew('$logo0' + (i + 1));
+          addIfNew('$car0' + (i + 1));
+        }
       }
     }
   } else if (game === 'miniwave2' || game === 'miniwave') {
@@ -6240,6 +6346,9 @@ async function handleCBeeMessage(socket, rawXml) {
         console.log(`[FSCORE] saveScore from "${username}" attrs=${JSON.stringify(msg.attrs)} data="${scoreData}" mode=${scoreMode} children=${JSON.stringify(msg.children || [])}`);
         let rankingId = rankingIdForGame(discId, scoreMode);
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
+        if (rankingId && rankingId.startsWith('bkiwi_')) {
+          rankingId = bkiwiRankingId(scoreData, scoreMode);
+        }
         // Persist if we have a valid ranking + user.
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
         if (username && rankingId) {
