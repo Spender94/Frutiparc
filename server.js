@@ -804,7 +804,7 @@ function detectBkiwiTrackFromSlotDiff(prevDataStr, newDataStr) {
 
 function getBkiwiDailyTrack(date = new Date()) {
   const paris = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
-  const startOfYear = new Date(paris.getFullYear(), 0, 1);
+  const startOfYear = new Date(paris.getFullYear(), 0, 0);
   const dayOfYear = Math.floor((paris - startOfYear) / 86400000);
   return dayOfYear % 6;
 }
