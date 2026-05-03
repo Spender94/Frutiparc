@@ -4001,7 +4001,9 @@ const GAME_DISCS = {
     playMode: 'single',
     swfName: 'miniwave',
     gameId: 'games/miniWave2/miniwave.swf',
-    props: 'w=600;h=240;m=i',
+    // Visible game area is 240x240; SWF stage is 600x240 (leftmost 240 = play area,
+    // remaining 360 = persistent _root.test debug log TextField hardcoded into the FLA)
+    props: 'w=240;h=240;sw=600;sh=240;m=i',
     files: [
       { u: 'games/miniWave2/miniwave.swf' },
     ],

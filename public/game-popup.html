@@ -18,6 +18,13 @@
     #player-wrap {
       background: #000;
       box-shadow: 0 0 0 1px rgba(255,255,255,.15);
+      overflow: hidden;
+      position: relative;
+    }
+    #player-wrap > * {
+      position: absolute;
+      left: 0;
+      top: 0;
     }
   </style>
   <script>
@@ -122,6 +129,12 @@
 
   const width  = parseInt(qs.get("width") || qs.get("w") || "640", 10) || 640;
   const height = parseInt(qs.get("height") || qs.get("h") || "480", 10) || 480;
+  // Optional SWF natural stage size (e.g. MiniWave: visible 240x240 but SWF stage is 600x240
+  // because the original Flash file leaves a debug log TextField permanently visible to the right
+  // of the play area). When sw/sh differ from width/height, render the player at the SWF stage
+  // size and let the wrap's overflow:hidden clip the non-game area.
+  const swfWidth  = parseInt(qs.get("sw") || "0", 10) || width;
+  const swfHeight = parseInt(qs.get("sh") || "0", 10) || height;
 
   // Challenge mode: set server-side flag so scores route to _challenge rankings
   const isChallenge = qs.get("mode") === "challenge" || qs.get("c") === "2";
@@ -142,8 +155,8 @@
 
   const ruffle = window.RufflePlayer.newest();
   const player = ruffle.createPlayer();
-  player.style.width  = width + "px";
-  player.style.height = height + "px";
+  player.style.width  = swfWidth + "px";
+  player.style.height = swfHeight + "px";
   wrap.appendChild(player);
 
   // Derive base URL from SWF path so relative loads resolve
@@ -197,7 +210,7 @@
     }
   });
 
-  console.log("[Game] Loaded", swfPath, "standalone at", width + "x" + height);
+  console.log("[Game] Loaded", swfPath, "standalone at", width + "x" + height, "(SWF stage " + swfWidth + "x" + swfHeight + ")");
 })();
 </script>
 </body>

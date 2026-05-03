@@ -122,7 +122,9 @@
                             swf: swfUrl,
                             name: gameName,
                             width: parseInt(parsedProps.w) || 640,
-                            height: parseInt(parsedProps.h) || 480
+                            height: parseInt(parsedProps.h) || 480,
+                            swfWidth: parseInt(parsedProps.sw) || 0,
+                            swfHeight: parseInt(parsedProps.sh) || 0
                         };
                         console.log("[FRUSION] Pending game:", JSON.stringify(window.__pendingGame));
                     }
@@ -301,6 +303,8 @@
                         + "&height=" + game.height
                         + "&game=" + encodeURIComponent(game.name)
                         + "&sid=" + encodeURIComponent(sid);
+                    if (game.swfWidth)  popupUrl += "&sw=" + game.swfWidth;
+                    if (game.swfHeight) popupUrl += "&sh=" + game.swfHeight;
                     console.log("[Frusion] Opening standalone game:", popupUrl);
                     var gw = game.width + 32;
                     var gh = game.height + 32;
