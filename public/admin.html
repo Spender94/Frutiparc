@@ -280,6 +280,17 @@
   </div>
 </div>
 
+<div class="modal-bg" id="modal-add-gameitem">
+  <div class="modal">
+    <h3>Ajouter un picto</h3>
+    <label><span>Nom (ex: $fruticup) :</span> <input id="gameitem-name" type="text"></label>
+    <div class="actions">
+      <button class="btn" onclick="closeModal('modal-add-gameitem')">Annuler</button>
+      <button class="btn-danger" onclick="saveAddGameItem()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -542,12 +553,26 @@ async function loadDetail() {
       html += '<p class="empty">Aucun item</p>';
     }
 
+    // Game Items (Pictos)
+    html += `<h4 style="color:#4fc3f7;margin:12px 0">Pictos (Game Items) <button class="btn btn-sm" onclick="openAddGameItem()">+ Ajouter</button> <button class="btn-success btn-sm" onclick="addAllBkiwiPictos()">+ Tous BKiwi</button></h4>`;
+    const gameItems = d.gameItems || [];
+    if (gameItems.length) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px">';
+      gameItems.forEach(name => {
+        html += `<span class="badge" style="display:inline-flex;align-items:center;gap:4px"><img src="/api/picto/${encodeURIComponent(name)}" style="height:16px;vertical-align:middle" onerror="this.style.display='none'">${esc(name)} <button class="btn-danger btn-sm" onclick="deleteGameItem('${esc(name)}')" style="margin-left:4px;padding:0 4px">&times;</button></span>`;
+      });
+      html += '</div>';
+    } else {
+      html += '<p class="empty">Aucun picto</p>';
+    }
+
     dc.innerHTML = html;
   } catch (e) { dc.innerHTML = `<p class="empty">Erreur: ${e.message}</p>`; }
 }
 
 function openAddAcc() { $('#modal-add-acc').classList.add('open'); }
 function openAddItem() { $('#modal-add-item').classList.add('open'); }
+function openAddGameItem() { $('#modal-add-gameitem').classList.add('open'); }
 
 async function saveAddAcc() {
   await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/accessories`, {
@@ -573,6 +598,39 @@ async function deleteAcc(rowId) {
   if (!confirm('Supprimer cet accessoire ?')) return;
   await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/accessories/${encodeURIComponent(rowId)}`, { method: 'DELETE', headers: hdr() });
   toast('Accessoire supprimé');
+  loadDetail();
+}
+
+async function saveAddGameItem() {
+  const name = $('#gameitem-name').value.trim();
+  if (!name) return;
+  await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems`, {
+    method: 'POST', headers: hdr(),
+    body: JSON.stringify({ itemName: name })
+  });
+  closeModal('modal-add-gameitem');
+  toast('Picto ajouté: ' + name);
+  loadDetail();
+}
+
+async function deleteGameItem(name) {
+  if (!confirm('Supprimer le picto ' + name + ' ?')) return;
+  await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems/${encodeURIComponent(name)}`, { method: 'DELETE', headers: hdr() });
+  toast('Picto supprimé');
+  loadDetail();
+}
+
+const BKIWI_ALL_PICTOS = ['$fruticup','$fruticupxl','$elite','$elitexl','$logo01','$logo02','$logo03','$logo04','$logo05','$car01','$car02','$car03','$car04','$car05'];
+
+async function addAllBkiwiPictos() {
+  if (!currentDetailUser) return;
+  for (const name of BKIWI_ALL_PICTOS) {
+    await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems`, {
+      method: 'POST', headers: hdr(),
+      body: JSON.stringify({ itemName: name })
+    });
+  }
+  toast('14 pictos Burning Kiwi ajoutés');
   loadDetail();
 }
 

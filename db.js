@@ -626,6 +626,13 @@ async function addGameItem(userId, itemName) {
   );
 }
 
+async function removeGameItem(userId, itemName) {
+  await pool.query(
+    'DELETE FROM user_game_items WHERE user_id = $1 AND item_name = $2',
+    [userId, itemName]
+  );
+}
+
 // ── Persistent user history (user_logs table) ──
 async function addUserLogEntry(userId, logType, entryType, content, isNew) {
   if (!userId) return;
@@ -1039,6 +1046,7 @@ module.exports = {
   addItem,
   getUserGameItems,
   addGameItem,
+  removeGameItem,
   addUserLogEntry,
   getUserLogEntries,
   clearUserLogNewFlag,

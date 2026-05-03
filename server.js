@@ -2294,7 +2294,8 @@ app.get('/api/admin/users/:username', adminAuth, async (req, res) => {
     const items = await db.getUserItems(row.id);
     const accs = await db.getUserAccessories(row.id);
     const scores = await db.loadScoresForUser(row.id);
-    res.json({ user: row, items, accessories: accs, scores });
+    const gameItems = (users[u] && Array.isArray(users[u].gameItems)) ? users[u].gameItems : [];
+    res.json({ user: row, items, accessories: accs, scores, gameItems });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2546,6 +2547,23 @@ app.post('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => 
     if (dbId) await db.addGameItem(dbId, itemName).catch(() => {});
   }
   res.json({ ok: true, gameItems: user.gameItems });
+});
+
+// Admin: remove a game item from a user
+app.delete('/api/admin/users/:username/gameitems/:itemName', adminAuth, async (req, res) => {
+  const username = req.params.username;
+  const user = users[username];
+  if (!user) return res.status(404).json({ error: 'not found' });
+  const itemName = decodeURIComponent(req.params.itemName);
+  if (Array.isArray(user.gameItems)) {
+    const idx = user.gameItems.indexOf(itemName);
+    if (idx >= 0) {
+      user.gameItems.splice(idx, 1);
+      const dbId = user._dbId;
+      if (dbId) await db.removeGameItem(dbId, itemName).catch(() => {});
+    }
+  }
+  res.json({ ok: true, gameItems: user.gameItems || [] });
 });
 
 // ── Admin: Shop pack management ──
