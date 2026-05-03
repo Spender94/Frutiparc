@@ -310,6 +310,25 @@ const GAME_ITEM_INFO = {
   '$ship04':     { name: 'Vaisseau 4',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship04.gif' },
   '$ship05':     { name: 'Vaisseau 5',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship05.gif' },
   '$arcade':     { name: 'Arcade Boss',         game: 'MiniWave', gif: 'Games/miniWave2/titem/pictoBoss.gif' },
+  // MiniPixiz (miniTroll) — picto milestones (slot 0 layout from Card.mt)
+  '$pixiz_first':       { name: 'Première Aventure',   game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/banana0.gif' },
+  '$pixiz_pond':        { name: 'Étang découvert',     game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_70.gif' },
+  '$pixiz_dungeon':     { name: 'Donjon débloqué',     game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_31.gif' },
+  '$pixiz_rainbow':     { name: 'Arc-en-ciel',         game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_46.gif' },
+  '$pixiz_tree':        { name: 'Arbre des fées',      game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_47.gif' },
+  '$pixiz_diam1':       { name: 'Diamant cuivre',      game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/diam/diam1.gif' },
+  '$pixiz_diam2':       { name: 'Diamant argent',      game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/diam/diam2.gif' },
+  '$pixiz_diam3':       { name: 'Diamant or',          game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/diam/diam3.gif' },
+  '$pixiz_diam4':       { name: 'Diamant rubis',       game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/diam/diam4.gif' },
+  '$pixiz_diam5':       { name: 'Diamant éclat',       game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/diam/diam5.gif' },
+  '$pixiz_key10':       { name: 'Maître des clés',     game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_32.gif' },
+  '$pixiz_dungeon10':   { name: 'Donjon niveau 10',    game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_45.gif' },
+  '$pixiz_dungeon20':   { name: 'Donjon niveau 20',    game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_44.gif' },
+  '$pixiz_faerie5':     { name: 'Cinq fées',           game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_42.gif' },
+  '$pixiz_faerie_lvl20':{ name: 'Fée niveau 20',       game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_43.gif' },
+  '$pixiz_treeMax20':   { name: 'Arbre - Score 20',    game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_41.gif' },
+  '$pixiz_mis20':       { name: 'Vingt missions',      game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_71.gif' },
+  '$pixiz_mis50':       { name: 'Cinquante missions',  game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_72.gif' },
 };
 
 // Build MiniWave2 bads (bad00..bad50) and missions (mis0..mis4)
@@ -371,7 +390,8 @@ const GAME_PROGRESS_REGISTRY = [
   {
     id: 'pixiz',
     name: 'MiniPixiz',
-    enabled: false,
+    enabled: true,
+    matchGame: 'MiniPixiz',
   },
 ];
 
@@ -3194,6 +3214,32 @@ function extractGameItemsFromSlot(username, game, dataStr) {
       }
     }
     if (parsed.$arcade && parsed.$arcade.$bestLevel > 0) addIfNew('$arcade');
+  } else if (game === 'minipixiz' || game === 'minitroll') {
+    // MiniPixiz (miniTroll) — milestone-based pictos derived from Card.mt
+    const stat = parsed.$stat || {};
+    const games = Array.isArray(stat.$game) ? stat.$game : [];
+    if ((stat.$run || 0) >= 1) addIfNew('$pixiz_first');
+    if ((games[1] || 0) >= 1) addIfNew('$pixiz_pond');
+    if (parsed.$dungeon && parsed.$dungeon.$f) addIfNew('$pixiz_dungeon');
+    if (parsed.$rainbow && parsed.$rainbow.$f) addIfNew('$pixiz_rainbow');
+    if ((games[4] || 0) >= 1) addIfNew('$pixiz_tree');
+    const diam = Number(parsed.$diam) || 0;
+    if (diam >= 1)  addIfNew('$pixiz_diam1');
+    if (diam >= 5)  addIfNew('$pixiz_diam2');
+    if (diam >= 10) addIfNew('$pixiz_diam3');
+    if (diam >= 25) addIfNew('$pixiz_diam4');
+    if (diam >= 50) addIfNew('$pixiz_diam5');
+    if ((Number(parsed.$key) || 0) >= 10) addIfNew('$pixiz_key10');
+    const dungeonLvl = (parsed.$dungeon && Number(parsed.$dungeon.$lvl)) || 0;
+    if (dungeonLvl >= 10) addIfNew('$pixiz_dungeon10');
+    if (dungeonLvl >= 20) addIfNew('$pixiz_dungeon20');
+    const faeries = Array.isArray(parsed.$faerie) ? parsed.$faerie : [];
+    if (faeries.length >= 5) addIfNew('$pixiz_faerie5');
+    if (faeries.some((f) => f && Number(f.$level) >= 20)) addIfNew('$pixiz_faerie_lvl20');
+    if ((Number(stat.$treeMax) || 0) >= 20) addIfNew('$pixiz_treeMax20');
+    const misNum = Number(stat.$misNum) || 0;
+    if (misNum >= 20) addIfNew('$pixiz_mis20');
+    if (misNum >= 50) addIfNew('$pixiz_mis50');
   }
 
   if (newItems.length > 0) {
