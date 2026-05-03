@@ -763,10 +763,38 @@ function extractBkiwiTrack(rawData) {
   return 5;
 }
 
-function bkiwiRankingId(rawData, mode) {
-  const track = extractBkiwiTrack(rawData);
+function bkiwiRankingId(rawData, mode, hintedTrack) {
+  // BKiwi's saveScore misc payload is [carName, perfectsRank, posRank] — track
+  // is NOT in the data. Prefer the track captured from the most recent slot 0
+  // savePublic() (which always runs before saveScore in mainFinal.as), and fall
+  // back to parsing the raw data for legacy compatibility.
+  const t = (Number.isFinite(hintedTrack) && hintedTrack >= 0 && hintedTrack <= 5)
+    ? hintedTrack
+    : extractBkiwiTrack(rawData);
   const suffix = mode === 1 ? 'challenge' : 'classic';
-  return `bkiwi_track${track}_${suffix}`;
+  return `bkiwi_track${t}_${suffix}`;
+}
+
+// Compare two BKiwi slot 0 JSON payloads and return the track index (0-5)
+// whose $ts entry just changed — used to know which circuit the player just
+// raced when their score arrives without an embedded track id.
+function detectBkiwiTrackFromSlotDiff(prevDataStr, newDataStr) {
+  try {
+    const prev = prevDataStr ? JSON.parse(prevDataStr) : {};
+    const next = newDataStr ? JSON.parse(newDataStr) : {};
+    const prevTs = Array.isArray(prev.$ts) ? prev.$ts : [];
+    const nextTs = Array.isArray(next.$ts) ? next.$ts : [];
+    if (!nextTs.length) return null;
+    for (let i = 0; i < Math.min(nextTs.length, 6); i++) {
+      const p = prevTs[i] || {};
+      const n = nextTs[i] || {};
+      if (n.$fcLap !== p.$fcLap || n.$fcTotal !== p.$fcTotal ||
+          n.$lapCar !== p.$lapCar || n.$totalCar !== p.$totalCar) {
+        return i;
+      }
+    }
+  } catch (e) { /* malformed JSON */ }
+  return null;
 }
 
 function formatRankingExtraData(rankingId, rawData) {
@@ -2218,7 +2246,9 @@ async function handleSaveScore(req, res) {
     return res.status(400).json({ ok: false, error: 'unknown_game', game: gameName });
   }
   if (rankingId.startsWith('bkiwi_')) {
-    rankingId = bkiwiRankingId(scoreData, mode);
+    const hint = users[username] && Number.isFinite(users[username].bkiwiCurrentTrack)
+      ? users[username].bkiwiCurrentTrack : undefined;
+    rankingId = bkiwiRankingId(scoreData, mode, hint);
   }
 
   const result = persistScore(username, rankingId, scoreVal, scoreData);
@@ -3163,6 +3193,7 @@ app.post('/api/saveFrutiSlot', (req, res) => {
 
   if (!users[username].frutiSlots) users[username].frutiSlots = {};
   if (!users[username].frutiSlots[game]) users[username].frutiSlots[game] = {};
+  const prevSlotData = users[username].frutiSlots[game][slotId];
   users[username].frutiSlots[game][slotId] = data;
   const dbId = users[username] && users[username]._dbId;
   if (dbId) db.upsertFrutiSlot(dbId, game, Number(slotId), data).catch(() => {});
@@ -3171,6 +3202,16 @@ app.post('/api/saveFrutiSlot', (req, res) => {
   if (slotId === '0' && data) {
     try { extractGameItemsFromSlot(username, game, data); } catch (e) {
       console.log(`[SLOT]  item extraction error for ${game}: ${e.message}`);
+    }
+  }
+
+  // BKiwi: capture the track the player just raced (savePublic runs before
+  // saveScore), so we can route the score to the correct per-track ranking.
+  if (game === 'bkiwi' && slotId === '0') {
+    const t = detectBkiwiTrackFromSlotDiff(prevSlotData || '', data);
+    if (t !== null) {
+      users[username].bkiwiCurrentTrack = t;
+      console.log(`[SLOT]  bkiwi current track for ${username} = ${t}`);
     }
   }
 
@@ -6372,7 +6413,9 @@ async function handleCBeeMessage(socket, rawXml) {
         let rankingId = rankingIdForGame(discId, scoreMode);
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
         if (rankingId && rankingId.startsWith('bkiwi_')) {
-          rankingId = bkiwiRankingId(scoreData, scoreMode);
+          const hint = username && users[username] && Number.isFinite(users[username].bkiwiCurrentTrack)
+            ? users[username].bkiwiCurrentTrack : undefined;
+          rankingId = bkiwiRankingId(scoreData, scoreMode, hint);
         }
         // Persist if we have a valid ranking + user.
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
@@ -7465,11 +7508,21 @@ case 'createchannel': {
         const u = users[username];
         if (!u.frutiSlots) u.frutiSlots = {};
         if (!u.frutiSlots[game]) u.frutiSlots[game] = {};
+        const prevSlotData = u.frutiSlots[game][slotId];
         u.frutiSlots[game][slotId] = slotData;
         if (u._dbId) db.upsertFrutiSlot(u._dbId, game, Number(slotId), slotData).catch(() => {});
         // Extract pictos from slot 0
         if (slotId === '0' && slotData) {
           try { extractGameItemsFromSlot(username, game, slotData); } catch (e) { /* ignore */ }
+        }
+        // BKiwi: capture the track the player just raced (slot 0 savePublic
+        // always runs before saveScore) for per-track ranking routing.
+        if (game === 'bkiwi' && slotId === '0') {
+          const t = detectBkiwiTrackFromSlotDiff(prevSlotData || '', slotData);
+          if (t !== null) {
+            u.bkiwiCurrentTrack = t;
+            console.log(`[FCARD] bkiwi current track for ${username} = ${t}`);
+          }
         }
       }
       sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
