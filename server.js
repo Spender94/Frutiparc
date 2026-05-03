@@ -6812,7 +6812,7 @@ case 'trace': {
       if (!ud) ud = {};
       const consUserA = computeConsecration(u);
       sendToClient(socket,
-        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" fr="${consUserA.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" fr="${consUserA.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" firstsign="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" secondsign="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" />`
       );
       break;
     }
@@ -6946,7 +6946,7 @@ case 'createchannel': {
   const consOtherUser = computeConsecration(otherUser);
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fr="${consOtherUser.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fr="${consOtherUser.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" firstsign="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" secondsign="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" />`
   );
 
   sendToClient(
