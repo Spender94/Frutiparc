@@ -1504,18 +1504,34 @@ function getFrutizJob(username, user) {
   return 'Frutiz';
 }
 
-// Format the "ft" attribute: subscription date in YYYY-MM-DD HH:MM:SS format.
-// Read by Flash client (FrutizInfo.as:421-422) for "subday" + "frutiAge" display.
-function getFrutizSubscribeDate(user) {
-  const raw = user && user.createdAt ? user.createdAt : '';
-  if (!raw) return '2005-01-01 12:00:00';
-  // Already SQL-style?
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) return raw;
+// Format a date for the "bd" / "ft" XML attributes: YYYY-MM-DD.HH:MM:SS
+// Native Frutiparc format uses a DOT between date and time (FEDate.newFromString
+// reads positions 0-9 for date and 11+ for time, ignoring the separator at pos 10).
+function formatFrutizDate(raw, fallback) {
+  fallback = fallback || '2005-01-01.00:00:00';
+  if (!raw) return fallback;
+  // Normalise: accept space, T or dot separator.
+  const m = String(raw).match(/^(\d{4}-\d{2}-\d{2})[ T.](\d{2}:\d{2}:\d{2})/);
+  if (m) return m[1] + '.' + m[2];
+  // Date-only?
+  const d2 = String(raw).match(/^(\d{4}-\d{2}-\d{2})$/);
+  if (d2) return d2[1] + '.00:00:00';
   try {
     const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return '2005-01-01 12:00:00';
-    return d.toISOString().replace('T', ' ').substring(0, 19);
-  } catch { return '2005-01-01 12:00:00'; }
+    if (Number.isNaN(d.getTime())) return fallback;
+    return d.toISOString().substring(0, 10) + '.' + d.toISOString().substring(11, 19);
+  } catch { return fallback; }
+}
+
+// Format the "ft" attribute: subscription date in YYYY-MM-DD.HH:MM:SS format.
+// Read by Flash client (FrutizInfo.as:421-422) for "subday" + "frutiAge" display.
+function getFrutizSubscribeDate(user) {
+  return formatFrutizDate(user && user.createdAt, '2005-01-01.00:00:00');
+}
+
+// Format birthday for "bd" attribute in DOT format.
+function getFrutizBirthday(user, fallback) {
+  return formatFrutizDate(user && user.birthday, fallback || '2000-01-01.00:00:00');
 }
 
 // ─────────────────────────────────────────────
@@ -6812,7 +6828,7 @@ case 'trace': {
       if (!ud) ud = {};
       const consUserA = computeConsecration(u);
       sendToClient(socket,
-        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(u, ud))}" fr="${consUserA.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" firstsign="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" secondsign="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(getFrutizBirthday(ud, ''))}" fj="${escapeXml(getFrutizJob(u, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consUserA.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
       );
       break;
     }
@@ -6946,7 +6962,7 @@ case 'createchannel': {
   const consOtherUser = computeConsecration(otherUser);
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(ud.birthday || '2000-01-01')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fr="${consOtherUser.overall || 0}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" firstsign="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" secondsign="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(getFrutizBirthday(ud, '2000-01-01.00:00:00'))}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consOtherUser.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
   );
 
   sendToClient(
