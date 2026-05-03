@@ -310,25 +310,6 @@ const GAME_ITEM_INFO = {
   '$ship04':     { name: 'Vaisseau 4',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship04.gif' },
   '$ship05':     { name: 'Vaisseau 5',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship05.gif' },
   '$arcade':     { name: 'Arcade Boss',         game: 'MiniWave', gif: 'Games/miniWave2/titem/pictoBoss.gif' },
-  // MiniPixiz (miniTroll) — picto milestones (slot 0 layout from Card.mt)
-  '$pixiz_first':       { name: 'Première Aventure',   game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/banana0.gif' },
-  '$pixiz_pond':        { name: 'Étang découvert',     game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_70.gif' },
-  '$pixiz_dungeon':     { name: 'Donjon débloqué',     game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_31.gif' },
-  '$pixiz_rainbow':     { name: 'Arc-en-ciel',         game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_46.gif' },
-  '$pixiz_tree':        { name: 'Arbre des fées',      game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_47.gif' },
-  '$pixiz_diam1':       { name: 'Diamant cuivre',      game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/diam/diam1.gif' },
-  '$pixiz_diam2':       { name: 'Diamant argent',      game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/diam/diam2.gif' },
-  '$pixiz_diam3':       { name: 'Diamant or',          game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/diam/diam3.gif' },
-  '$pixiz_diam4':       { name: 'Diamant rubis',       game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/diam/diam4.gif' },
-  '$pixiz_diam5':       { name: 'Diamant éclat',       game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/diam/diam5.gif' },
-  '$pixiz_key10':       { name: 'Maître des clés',     game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_32.gif' },
-  '$pixiz_dungeon10':   { name: 'Donjon niveau 10',    game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_45.gif' },
-  '$pixiz_dungeon20':   { name: 'Donjon niveau 20',    game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_44.gif' },
-  '$pixiz_faerie5':     { name: 'Cinq fées',           game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_42.gif' },
-  '$pixiz_faerie_lvl20':{ name: 'Fée niveau 20',       game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_43.gif' },
-  '$pixiz_treeMax20':   { name: 'Arbre - Score 20',    game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_41.gif' },
-  '$pixiz_mis20':       { name: 'Vingt missions',      game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_71.gif' },
-  '$pixiz_mis50':       { name: 'Cinquante missions',  game: 'MiniPixiz', gif: 'Games/miniTroll/bmp/titems/GIF/item/item_72.gif' },
 };
 
 // Build MiniWave2 bads (bad00..bad50) and missions (mis0..mis4)
@@ -338,6 +319,136 @@ for (let i = 0; i <= 50; i++) {
 }
 for (let i = 0; i <= 4; i++) {
   GAME_ITEM_INFO[`$mis${i}`] = { name: `Mission ${i}`, game: 'MiniWave', gif: `Games/miniWave2/titem/gif/mis${i}.gif` };
+}
+
+// ─── MiniPixiz (miniTroll) titems ─────────────────────────────────────────────
+// itemList from Games/miniTroll/src/Item.mt (item ID → name).
+// In the assets folder the GIF file index is item_id + 1
+// (e.g. item ID 0 = GANTS+1 → bmp/titems/GIF/item/item_1.gif).
+const PIXIZ_ITEM_NAMES = {
+  // CARAC (gloves/boots/heart/diadem/idol/pearl) +1/+2/+3
+  0: 'Gants +1', 1: 'Gants +2', 2: 'Gants +3',
+  5: 'Bottes +1', 6: 'Bottes +2', 7: 'Bottes +3',
+  10: 'Cœur +1', 11: 'Cœur +2', 12: 'Cœur +3',
+  15: 'Diadème +1', 16: 'Diadème +2', 17: 'Diadème +3',
+  20: 'Idole +1', 21: 'Idole +2', 22: 'Idole +3',
+  25: 'Perle +1', 26: 'Perle +2', 27: 'Perle +3',
+  // Utility
+  30: 'Flasque', 31: 'Clé',
+  // Special powers
+  40: 'Invisibilité', 41: 'Masque de peur', 42: 'Régénération de vie',
+  43: 'Régénération de mana', 44: 'Plus d\'expérience', 45: 'Casque à corne',
+  46: 'Totoche',
+  // Carac all (50-55)
+  50: 'Globe +1 - Force', 51: 'Globe +1 - Agilité', 52: 'Globe +1 - Vie',
+  53: 'Globe +1 - Charisme', 54: 'Globe +1 - Magie', 55: 'Globe +1 - Sagesse',
+  // Coloration (60-69)
+  60: 'Coloration 1', 61: 'Coloration 2', 62: 'Coloration 3', 63: 'Coloration 4',
+  64: 'Coloration 5', 65: 'Coloration 6', 66: 'Coloration 7', 67: 'Coloration 8',
+  68: 'Coloration 9', 69: 'Coloration 10',
+  // Potions (70-72)
+  70: 'Petite potion', 71: 'Potion moyenne', 72: 'Grosse potion',
+  // Bags (80-83)
+  80: 'Sac +1', 81: 'Sac +2', 82: 'Sac +3', 83: 'Sac +4',
+};
+const PIXIZ_SPELL_NAMES = {
+  1: 'Creuser', 2: 'Mineur', 3: 'Massif', 4: 'Mangeur d\'étoiles',
+  5: 'Décompression', 6: 'Fossilisation', 7: 'Ascension', 8: 'Berserk',
+  9: 'Tranche', 10: 'Silence', 11: 'Destruction', 12: 'Bouclier',
+  13: 'Nova', 14: 'Bannissement', 15: 'Foudre', 16: 'Peinture',
+  20: 'Boule de lumière', 21: 'Rayon de lumière', 22: 'Solero',
+  23: 'Feu follet', 24: 'Glu', 25: 'Flamme', 26: 'Boule sacrée',
+  27: 'Fantôme',
+};
+// Scrolls (id 100+spell.id) and Books (id 200+spell.id)
+for (const [spellId, spellName] of Object.entries(PIXIZ_SPELL_NAMES)) {
+  PIXIZ_ITEM_NAMES[100 + Number(spellId)] = `Parchemin de ${spellName}`;
+  PIXIZ_ITEM_NAMES[200 + Number(spellId)] = `Livre de ${spellName}`;
+}
+// Build picto entries for each item that has a GIF on disk.
+// GIF filename = item_${id+1}.gif under bmp/titems/GIF/item/.
+for (const [idStr, itemName] of Object.entries(PIXIZ_ITEM_NAMES)) {
+  const id = Number(idStr);
+  const gifIdx = id + 1;
+  const gif = `Games/miniTroll/bmp/titems/GIF/item/item_${gifIdx}.gif`;
+  if (fs.existsSync(path.join(__dirname, gif))) {
+    GAME_ITEM_INFO[`$pixiz_item${id}`] = { name: itemName, game: 'MiniPixiz', gif };
+  }
+}
+// Foods — slot data tracks $stat.$eat[foodId] and food IDs are 300..354 (every 3).
+// GIFs are indexed sequentially: food_1.gif → ID 300, food_2.gif → ID 301, ..., food_57.gif → ID 356.
+const PIXIZ_FOOD_BASE_NAMES = [
+  'Banane','Cerise','Champignon','Poire','Mure',
+  'Carotte','Orange','Citron','Fraise','Tomate',
+  'Pomme','Brioche','Œuf','Statue','Gouda',
+  'Poireau','Pâtisserie','Raisin','Melon',
+];
+for (let i = 0; i < 57; i++) {
+  const id = 300 + i;
+  const baseName = PIXIZ_FOOD_BASE_NAMES[Math.floor(i / 3)] || `Aliment ${i}`;
+  const variant = ['petit', 'moyen', 'grand'][i % 3] || '';
+  const gif = `Games/miniTroll/bmp/titems/GIF/food/food_${i + 1}.gif`;
+  if (fs.existsSync(path.join(__dirname, gif))) {
+    GAME_ITEM_INFO[`$pixiz_food${id}`] = { name: `${baseName} (${variant})`.trim(), game: 'MiniPixiz', gif };
+  }
+}
+// Diamonds (5 colors)
+const PIXIZ_DIAM_NAMES = ['cuivre', 'argent', 'or', 'rubis', 'éclat'];
+for (let i = 1; i <= 5; i++) {
+  GAME_ITEM_INFO[`$pixiz_diam${i}`] = {
+    name: `Diamant ${PIXIZ_DIAM_NAMES[i - 1]}`,
+    game: 'MiniPixiz',
+    gif: `Games/miniTroll/bmp/titems/GIF/diam/diam${i}.gif`,
+  };
+}
+// Game-state milestone pictos (zone unlocks, kill counts, missions, levels, etc.)
+const PIXIZ_MILESTONES = {
+  '$pixiz_first':        { name: 'Première aventure',  gif: 'Games/miniTroll/bmp/titems/GIF/banana0.gif' },
+  '$pixiz_forest':       { name: 'Forêt',              gif: 'Games/miniTroll/bmp/titems/GIF/item/item_2.gif' },
+  '$pixiz_pond':         { name: 'Étang',              gif: 'Games/miniTroll/bmp/titems/GIF/item/item_42.gif' },
+  '$pixiz_castle':       { name: 'Château',            gif: 'Games/miniTroll/bmp/titems/GIF/item/item_22.gif' },
+  '$pixiz_rainbow':      { name: 'Arc-en-ciel',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_46.gif' },
+  '$pixiz_tree':         { name: 'Arbre des fées',     gif: 'Games/miniTroll/bmp/titems/GIF/item/item_47.gif' },
+  '$pixiz_dungeon':      { name: 'Donjon débloqué',    gif: 'Games/miniTroll/bmp/titems/GIF/item/item_32.gif' },
+  '$pixiz_dungeon10':    { name: 'Donjon niveau 10',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_45.gif' },
+  '$pixiz_dungeon20':    { name: 'Donjon niveau 20',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_44.gif' },
+  '$pixiz_dungeon30':    { name: 'Donjon niveau 30',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_43.gif' },
+  '$pixiz_dungeon50':    { name: 'Donjon niveau 50',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_41.gif' },
+  '$pixiz_pond_quest':   { name: 'Quête de l\'étang',  gif: 'Games/miniTroll/bmp/titems/GIF/item/item_31.gif' },
+  '$pixiz_run10':        { name: '10 parties',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_61.gif' },
+  '$pixiz_run50':        { name: '50 parties',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_62.gif' },
+  '$pixiz_run100':       { name: '100 parties',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_63.gif' },
+  '$pixiz_run500':       { name: '500 parties',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_64.gif' },
+  '$pixiz_star10':       { name: '10 étoiles',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_65.gif' },
+  '$pixiz_star100':      { name: '100 étoiles',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_66.gif' },
+  '$pixiz_star1000':     { name: '1000 étoiles',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_67.gif' },
+  '$pixiz_key5':         { name: '5 clés',             gif: 'Games/miniTroll/bmp/titems/GIF/item/item_68.gif' },
+  '$pixiz_key25':        { name: '25 clés',            gif: 'Games/miniTroll/bmp/titems/GIF/item/item_69.gif' },
+  '$pixiz_faerie3':      { name: '3 fées',             gif: 'Games/miniTroll/bmp/titems/GIF/item/item_51.gif' },
+  '$pixiz_faerie5':      { name: '5 fées',             gif: 'Games/miniTroll/bmp/titems/GIF/item/item_52.gif' },
+  '$pixiz_faerie10':     { name: '10 fées',            gif: 'Games/miniTroll/bmp/titems/GIF/item/item_53.gif' },
+  '$pixiz_faerie_lvl10': { name: 'Fée niveau 10',      gif: 'Games/miniTroll/bmp/titems/GIF/item/item_54.gif' },
+  '$pixiz_faerie_lvl30': { name: 'Fée niveau 30',      gif: 'Games/miniTroll/bmp/titems/GIF/item/item_55.gif' },
+  '$pixiz_faerie_lvl50': { name: 'Fée niveau 50',      gif: 'Games/miniTroll/bmp/titems/GIF/item/item_56.gif' },
+  '$pixiz_treeMax20':    { name: 'Arbre - Score 20',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_3.gif' },
+  '$pixiz_treeMax50':    { name: 'Arbre - Score 50',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_8.gif' },
+  '$pixiz_treeMax100':   { name: 'Arbre - Score 100',  gif: 'Games/miniTroll/bmp/titems/GIF/item/item_13.gif' },
+  '$pixiz_forestMax5':   { name: 'Forêt niveau 5',     gif: 'Games/miniTroll/bmp/titems/GIF/item/item_18.gif' },
+  '$pixiz_forestMax10':  { name: 'Forêt niveau 10',    gif: 'Games/miniTroll/bmp/titems/GIF/item/item_23.gif' },
+  '$pixiz_forestMax20':  { name: 'Forêt niveau 20',    gif: 'Games/miniTroll/bmp/titems/GIF/item/item_28.gif' },
+  '$pixiz_mis10':        { name: '10 missions',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_6.gif' },
+  '$pixiz_mis25':        { name: '25 missions',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_7.gif' },
+  '$pixiz_mis50':        { name: '50 missions',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_11.gif' },
+  '$pixiz_mis100':       { name: '100 missions',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_12.gif' },
+  '$pixiz_kill100':      { name: '100 imps vaincus',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_16.gif' },
+  '$pixiz_kill500':      { name: '500 imps vaincus',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_17.gif' },
+  '$pixiz_bag2':         { name: 'Sac niveau 2',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_82.gif' },
+  '$pixiz_bag3':         { name: 'Sac niveau 3',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_83.gif' },
+  '$pixiz_bag_max':      { name: 'Sac maximal',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_84.gif' },
+  '$pixiz_frog':         { name: 'Grenouille',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_21.gif' },
+};
+for (const [id, info] of Object.entries(PIXIZ_MILESTONES)) {
+  GAME_ITEM_INFO[id] = { name: info.name, game: 'MiniPixiz', gif: info.gif };
 }
 
 // ─────────────────────────────────────────────
@@ -3215,31 +3326,117 @@ function extractGameItemsFromSlot(username, game, dataStr) {
     }
     if (parsed.$arcade && parsed.$arcade.$bestLevel > 0) addIfNew('$arcade');
   } else if (game === 'minipixiz' || game === 'minitroll') {
-    // MiniPixiz (miniTroll) — milestone-based pictos derived from Card.mt
+    // MiniPixiz (miniTroll) — slot 0 layout from Card.mt:
+    //   $stat.$item:Array<bool>   discovered items (indexed by item id)
+    //   $stat.$eat:Array<int>     eaten foods    (indexed by food id, count value)
+    //   $stat.$kill:Array<int>    imp kills per level
+    //   $stat.$run:int            game runs
+    //   $stat.$game:Array<int>    plays per zone [forest, pond, castle, rainbow, tree]
+    //   $stat.$forestMax:int $stat.$treeMax:int $stat.$misNum:int
+    //   $diam, $key, $star, $bag (counters)
+    //   $dungeon.{$lvl,$f}, $rainbow.{$f}, $pond.{$d,$q}, $frog (booleans)
+    //   $faerie:Array<FaerieSeed>  (each has $level, $skin, $spell, ...)
     const stat = parsed.$stat || {};
+
+    // 1) Per-item pictos (read $stat.$item array — bool per item id)
+    const items = Array.isArray(stat.$item) ? stat.$item : [];
+    for (let id = 0; id < items.length; id++) {
+      if (items[id] && GAME_ITEM_INFO[`$pixiz_item${id}`]) {
+        addIfNew(`$pixiz_item${id}`);
+      }
+    }
+    // 2) Per-food pictos (read $stat.$eat array — count per food id, food ids start at 300)
+    const eats = Array.isArray(stat.$eat) ? stat.$eat : [];
+    for (let id = 0; id < eats.length; id++) {
+      if ((eats[id] || 0) >= 1 && GAME_ITEM_INFO[`$pixiz_food${id}`]) {
+        addIfNew(`$pixiz_food${id}`);
+      }
+    }
+
+    // 3) Game-state milestones
     const games = Array.isArray(stat.$game) ? stat.$game : [];
-    if ((stat.$run || 0) >= 1) addIfNew('$pixiz_first');
-    if ((games[1] || 0) >= 1) addIfNew('$pixiz_pond');
-    if (parsed.$dungeon && parsed.$dungeon.$f) addIfNew('$pixiz_dungeon');
-    if (parsed.$rainbow && parsed.$rainbow.$f) addIfNew('$pixiz_rainbow');
-    if ((games[4] || 0) >= 1) addIfNew('$pixiz_tree');
+    if ((stat.$run || 0) >= 1)   addIfNew('$pixiz_first');
+    if ((games[0] || 0) >= 1)    addIfNew('$pixiz_forest');
+    if ((games[1] || 0) >= 1)    addIfNew('$pixiz_pond');
+    if ((games[2] || 0) >= 1)    addIfNew('$pixiz_castle');
+    if ((games[3] || 0) >= 1)    addIfNew('$pixiz_rainbow');
+    if ((games[4] || 0) >= 1)    addIfNew('$pixiz_tree');
+    if ((stat.$run || 0) >= 10)  addIfNew('$pixiz_run10');
+    if ((stat.$run || 0) >= 50)  addIfNew('$pixiz_run50');
+    if ((stat.$run || 0) >= 100) addIfNew('$pixiz_run100');
+    if ((stat.$run || 0) >= 500) addIfNew('$pixiz_run500');
+
+    // 4) Diamond tier pictos (one per color) — $diam is total count
     const diam = Number(parsed.$diam) || 0;
-    if (diam >= 1)  addIfNew('$pixiz_diam1');
-    if (diam >= 5)  addIfNew('$pixiz_diam2');
-    if (diam >= 10) addIfNew('$pixiz_diam3');
-    if (diam >= 25) addIfNew('$pixiz_diam4');
-    if (diam >= 50) addIfNew('$pixiz_diam5');
-    if ((Number(parsed.$key) || 0) >= 10) addIfNew('$pixiz_key10');
+    if (diam >= 1)   addIfNew('$pixiz_diam1');
+    if (diam >= 5)   addIfNew('$pixiz_diam2');
+    if (diam >= 15)  addIfNew('$pixiz_diam3');
+    if (diam >= 50)  addIfNew('$pixiz_diam4');
+    if (diam >= 150) addIfNew('$pixiz_diam5');
+
+    // 5) Star milestones
+    const star = Number(parsed.$star) || 0;
+    if (star >= 10)   addIfNew('$pixiz_star10');
+    if (star >= 100)  addIfNew('$pixiz_star100');
+    if (star >= 1000) addIfNew('$pixiz_star1000');
+
+    // 6) Key milestones
+    const key = Number(parsed.$key) || 0;
+    if (key >= 5)  addIfNew('$pixiz_key5');
+    if (key >= 25) addIfNew('$pixiz_key25');
+
+    // 7) Dungeon
+    if (parsed.$dungeon && parsed.$dungeon.$f) addIfNew('$pixiz_dungeon');
     const dungeonLvl = (parsed.$dungeon && Number(parsed.$dungeon.$lvl)) || 0;
     if (dungeonLvl >= 10) addIfNew('$pixiz_dungeon10');
     if (dungeonLvl >= 20) addIfNew('$pixiz_dungeon20');
+    if (dungeonLvl >= 30) addIfNew('$pixiz_dungeon30');
+    if (dungeonLvl >= 50) addIfNew('$pixiz_dungeon50');
+
+    // 8) Pond quest completed (when $q is set)
+    if (parsed.$pond && (Number(parsed.$pond.$q) || 0) >= 1) addIfNew('$pixiz_pond_quest');
+
+    // 9) Faeries
     const faeries = Array.isArray(parsed.$faerie) ? parsed.$faerie : [];
-    if (faeries.length >= 5) addIfNew('$pixiz_faerie5');
-    if (faeries.some((f) => f && Number(f.$level) >= 20)) addIfNew('$pixiz_faerie_lvl20');
-    if ((Number(stat.$treeMax) || 0) >= 20) addIfNew('$pixiz_treeMax20');
+    if (faeries.length >= 3)  addIfNew('$pixiz_faerie3');
+    if (faeries.length >= 5)  addIfNew('$pixiz_faerie5');
+    if (faeries.length >= 10) addIfNew('$pixiz_faerie10');
+    const maxFaerieLvl = faeries.reduce((m, f) => Math.max(m, Number(f && f.$level) || 0), 0);
+    if (maxFaerieLvl >= 10) addIfNew('$pixiz_faerie_lvl10');
+    if (maxFaerieLvl >= 30) addIfNew('$pixiz_faerie_lvl30');
+    if (maxFaerieLvl >= 50) addIfNew('$pixiz_faerie_lvl50');
+
+    // 10) Per-zone scores
+    const treeMax = Number(stat.$treeMax) || 0;
+    if (treeMax >= 20)  addIfNew('$pixiz_treeMax20');
+    if (treeMax >= 50)  addIfNew('$pixiz_treeMax50');
+    if (treeMax >= 100) addIfNew('$pixiz_treeMax100');
+    const forestMax = Number(stat.$forestMax) || 0;
+    if (forestMax >= 5)  addIfNew('$pixiz_forestMax5');
+    if (forestMax >= 10) addIfNew('$pixiz_forestMax10');
+    if (forestMax >= 20) addIfNew('$pixiz_forestMax20');
+
+    // 11) Missions
     const misNum = Number(stat.$misNum) || 0;
-    if (misNum >= 20) addIfNew('$pixiz_mis20');
-    if (misNum >= 50) addIfNew('$pixiz_mis50');
+    if (misNum >= 10)  addIfNew('$pixiz_mis10');
+    if (misNum >= 25)  addIfNew('$pixiz_mis25');
+    if (misNum >= 50)  addIfNew('$pixiz_mis50');
+    if (misNum >= 100) addIfNew('$pixiz_mis100');
+
+    // 12) Total kills (sum over all imp levels)
+    const kills = Array.isArray(stat.$kill) ? stat.$kill : [];
+    const totalKills = kills.reduce((a, b) => a + (Number(b) || 0), 0);
+    if (totalKills >= 100) addIfNew('$pixiz_kill100');
+    if (totalKills >= 500) addIfNew('$pixiz_kill500');
+
+    // 13) Bag upgrades ($bag is current size: 0..3)
+    const bag = Number(parsed.$bag) || 0;
+    if (bag >= 1) addIfNew('$pixiz_bag2');
+    if (bag >= 2) addIfNew('$pixiz_bag3');
+    if (bag >= 3) addIfNew('$pixiz_bag_max');
+
+    // 14) Frog
+    if (parsed.$frog) addIfNew('$pixiz_frog');
   }
 
   if (newItems.length > 0) {
