@@ -3127,6 +3127,7 @@ app.post('/api/admin/broadcast', adminAuth, (req, res) => {
 
   // Persistent: append to every known user's siteLog so it shows up after relog too.
   // We tag the entry with `bid` so it can later be removed by event id.
+  // Also persist to DB so events survive server restarts.
   let historyCount = 0;
   for (const username of Object.keys(users)) {
     const user = users[username];
@@ -3140,6 +3141,11 @@ app.post('/api/admin/broadcast', adminAuth, (req, res) => {
       bid: eventId,
     });
     if (user.siteLog.length > 200) user.siteLog.length = 200;
+    if (user._dbId) {
+      db.addUserLogEntry(user._dbId, 'site', type, message, true)
+        .then(() => db.pruneUserLog(user._dbId, 'site', 200))
+        .catch((e) => console.error('[DB] broadcast addUserLogEntry site error:', e.message));
+    }
     historyCount++;
   }
 
@@ -3181,7 +3187,9 @@ app.delete('/api/admin/broadcast/:id', adminAuth, (req, res) => {
     if (user.siteLog.length !== before) removed++;
   }
 
-  console.log(`[ADMIN] Delete event ${id} → removed from ${removed} users (siteLog). Connected users see deletion on next login.`);
+  db.deleteSiteLogByContent(evt.message).catch((e) => console.error('[DB] deleteSiteLogByContent:', e.message));
+
+  console.log(`[ADMIN] Delete event ${id} → removed from ${removed} users (siteLog+DB). Connected users see deletion on next login.`);
   res.json({ ok: true, removed, event: evt });
 });
 
@@ -7220,15 +7228,13 @@ case 'send': {
         sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       }
       sendToClient(socket, `<${CMD.mute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
+      addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
       const g = pickActiveChannel(client, msg.attrs);
       if (g) {
         const timeAttrs = buildChatTimeAttrs();
-        // Use u="admin" so box.Chat.onSend renders via chat.msg_admin
-        // ($h<i>$m</i>) instead of chat.msg ($h<b>$u</b>: $m). That drops
-        // the "Serveur:" username prefix and keeps it visually italic.
-        // There is no native chat.usermuted handler — this is the closest
-        // thing to a "natural" chat notice without modifying main.swf.
-        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(getDisplayName(targetUser))} a été totoché</${CMD.send}>`);
+        // Send as a regular message (not u="admin" which renders red bold).
+        // Using empty username avoids the admin formatting path in the client.
+        broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(getDisplayName(targetUser))} a été totoché</${CMD.send}>`);
         broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
       }
       break;

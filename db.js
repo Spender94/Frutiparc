@@ -678,6 +678,13 @@ async function pruneUserLog(userId, logType, keep = 200) {
   );
 }
 
+async function deleteSiteLogByContent(content) {
+  await pool.query(
+    `DELETE FROM user_logs WHERE log_type = 'site' AND content = $1`,
+    [String(content || '')]
+  );
+}
+
 async function loadShopPacks() {
   const { rows } = await pool.query('SELECT * FROM shop_packs ORDER BY id');
   return rows.map(r => {
@@ -1051,6 +1058,7 @@ module.exports = {
   getUserLogEntries,
   clearUserLogNewFlag,
   pruneUserLog,
+  deleteSiteLogByContent,
   saveMedal,
   getMedalsForUser,
   getMedalsForUserByDay,
