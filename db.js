@@ -392,6 +392,19 @@ async function getAllFrutiSlot0(userId) {
   return rows;
 }
 
+async function getAllFrutiSlots(userId) {
+  const { rows } = await pool.query(
+    'SELECT game, slot_id, data FROM fruti_slots WHERE user_id = $1',
+    [userId]
+  );
+  const result = {};
+  for (const r of rows) {
+    if (!result[r.game]) result[r.game] = {};
+    result[r.game][r.slot_id] = r.data;
+  }
+  return result;
+}
+
 async function addAccessory(userId, acc) {
   await pool.query(
     `INSERT INTO user_accessories (user_id, acc_id, shop_id, name, value, quantity, price)
@@ -1031,6 +1044,7 @@ module.exports = {
   upsertFrutiSlot,
   getFrutiSlots,
   getAllFrutiSlot0,
+  getAllFrutiSlots,
   addAccessory,
   getUserAccessories,
   hasAccessoryByShopId,

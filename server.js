@@ -1351,11 +1351,17 @@ async function hydrateUserFromDb(username, dbUser) {
     users[username].hasWelcomeSiteLog = true;
   }
 
-  // Extract pictos from existing slot 0 data (backfill for users who played before this feature)
+  // Pre-load all frutiSlots from DB so game progress survives server restarts
   try {
-    const allSlot0 = await db.getAllFrutiSlot0(dbUser.id);
-    for (const row of allSlot0) {
-      try { extractGameItemsFromSlot(username, row.game, row.data); } catch (e) { /* ignore */ }
+    const allSlots = await db.getAllFrutiSlots(dbUser.id);
+    if (Object.keys(allSlots).length > 0) {
+      users[username].frutiSlots = allSlots;
+      for (const game of Object.keys(allSlots)) {
+        const s0 = allSlots[game]['0'] || allSlots[game][0];
+        if (s0) {
+          try { extractGameItemsFromSlot(username, game, s0); } catch (e) { /* ignore */ }
+        }
+      }
     }
   } catch (e) { /* ignore */ }
 
