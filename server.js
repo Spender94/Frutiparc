@@ -7180,8 +7180,8 @@ case 'send': {
       break;
     }
 
-    // ── /stat, /stats, /statistiques, /statistics: channel stats ──
-    if (/^\/(stat|stats|statistiques|statistics)$/i.test(text)) {
+    // ── /stat, /stats, /statut, /status, /statistiques, /statistics: channel stats ──
+    if (/^\/(stat|stats|statut|status|statistiques|statistics)$/i.test(text)) {
       const userCount = channel.users.size;
       const userList = [...channel.users].map(u => getDisplayName(u)).join(', ');
       const topicStr = channel.topic || '(aucun sujet)';
