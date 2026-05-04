@@ -345,6 +345,7 @@
     <button class="tab" data-tab="shop" onclick="switchTab('shop')">Boutique</button>
     <button class="tab" data-tab="challenge" onclick="switchTab('challenge')">Challenge</button>
     <button class="tab" data-tab="events" onclick="switchTab('events')">Événements</button>
+    <button class="tab" data-tab="channels" onclick="switchTab('channels')">Salons</button>
   </div>
 
 <div class="content" id="tab-users">
@@ -473,10 +474,34 @@
   </table>
 </div>
 
+<div class="content" id="tab-channels" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadChannels()">Rafraîchir</button>
+    <span id="channel-count"></span>
+  </div>
+  <table>
+    <thead><tr><th>ID</th><th>Nom affiché</th><th>Sujet</th><th>En ligne</th><th>Actions</th></tr></thead>
+    <tbody id="channels-body"></tbody>
+  </table>
+</div>
+
 </div><!-- /.admin-shell -->
 
 <div class="admin-footer">
   Frutiparc Admin &copy; <a href="https://www.motiontwin.com">Motion Twin</a>
+</div>
+
+<div class="modal-bg" id="modal-edit-channel">
+  <div class="modal">
+    <h3>Modifier le salon <span id="edit-channel-name"></span></h3>
+    <input type="hidden" id="edit-channel-id">
+    <label><span>Nom affiché :</span> <input id="edit-channel-label" maxlength="100" placeholder="Salon Pomme"></label>
+    <label><span>Sujet :</span> <input id="edit-channel-topic" maxlength="200" placeholder="Bienvenue !"></label>
+    <div class="actions">
+      <button class="btn" onclick="closeModal('modal-edit-channel')">Annuler</button>
+      <button class="btn-danger" onclick="saveEditChannel()">Enregistrer</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal-bg" id="modal-add-pack">
@@ -609,7 +634,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','shop','challenge','events'].forEach(t => {
+  ['users','scores','detail','shop','challenge','events','channels'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -617,6 +642,7 @@ function switchTab(name) {
   if (name === 'shop' && !$('#shop-body').dataset.loaded) loadShop();
   if (name === 'challenge') loadChallengeStatus();
   if (name === 'events') loadEvents();
+  if (name === 'channels') loadChannels();
 }
 
 function closeModal(id) { $(`#${id}`).classList.remove('open'); }
@@ -1310,6 +1336,56 @@ async function loadArchive() {
       </tr>`).join('');
     }
     $('#archive-table').style.display = '';
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ── Channels ──
+
+async function loadChannels() {
+  try {
+    const r = await fetch('/api/admin/channels', { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    const list = d.channels || [];
+    $('#channel-count').textContent = `${list.length} salon(s)`;
+    const tb = $('#channels-body');
+    if (list.length === 0) {
+      tb.innerHTML = '<tr><td colspan="5" class="empty">Aucun salon</td></tr>';
+      return;
+    }
+    tb.innerHTML = list.map(ch => `<tr>
+      <td><code>${esc(ch.name)}</code></td>
+      <td>${esc(ch.label)}</td>
+      <td>${esc(ch.topic)}</td>
+      <td>${ch.users}</td>
+      <td><button class="btn" onclick="editChannel('${esc(ch.name)}','${esc(ch.label).replace(/'/g,"\\'")}','${esc(ch.topic).replace(/'/g,"\\'")}')">Modifier</button></td>
+    </tr>`).join('');
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+function editChannel(name, label, topic) {
+  $('#edit-channel-id').value = name;
+  $('#edit-channel-name').textContent = name;
+  $('#edit-channel-label').value = label;
+  $('#edit-channel-topic').value = topic;
+  $('#modal-edit-channel').classList.add('open');
+}
+
+async function saveEditChannel() {
+  const name = $('#edit-channel-id').value;
+  const body = {
+    label: $('#edit-channel-label').value.trim(),
+    topic: $('#edit-channel-topic').value.trim(),
+  };
+  try {
+    const r = await fetch(`/api/admin/channels/${encodeURIComponent(name)}`, {
+      method: 'PATCH', headers: hdr(), body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    toast('Salon mis à jour');
+    closeModal('modal-edit-channel');
+    loadChannels();
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 </script>

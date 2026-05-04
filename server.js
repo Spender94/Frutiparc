@@ -3108,6 +3108,46 @@ function genEventId() {
   return `evt_${Date.now().toString(36)}_${pushedEventSeq}`;
 }
 
+// ── Admin: Channels ──
+
+app.get('/api/admin/channels', adminAuth, (req, res) => {
+  const list = [];
+  for (const [name, ch] of Object.entries(channels)) {
+    if (ch.private) continue;
+    list.push({ name, label: ch.desc || '', topic: ch.topic || '', users: ch.users.size });
+  }
+  res.json({ ok: true, channels: list });
+});
+
+app.patch('/api/admin/channels/:name', adminAuth, async (req, res) => {
+  const name = req.params.name;
+  const ch = channels[name];
+  if (!ch) return res.status(404).json({ ok: false, error: 'Salon introuvable' });
+
+  const body = req.body || {};
+  let changed = false;
+
+  if (body.label !== undefined) {
+    const label = String(body.label).trim().slice(0, 100);
+    ch.desc = label;
+    changed = true;
+  }
+
+  if (body.topic !== undefined) {
+    const topic = String(body.topic).trim().slice(0, 200);
+    ch.topic = topic;
+    broadcastToChannel(name, `<${CMD.topic} g="${escapeXml(name)}">${escapeXml(topic)}</${CMD.topic}>`);
+    changed = true;
+  }
+
+  if (changed && process.env.DATABASE_URL) {
+    try { await db.upsertChannel(name, ch.desc || '', ch.topic || ''); }
+    catch (e) { console.error('[DB] channel save error:', e.message); }
+  }
+
+  res.json({ ok: true });
+});
+
 app.post('/api/admin/broadcast', adminAuth, (req, res) => {
   const message = String(req.body.message || '').trim();
   if (!message) return res.status(400).json({ ok: false, error: 'message required' });
@@ -5695,6 +5735,18 @@ async function boot() {
           console.log(`[FORUM] ${forumCats.length} categories already in DB`);
         }
       } catch (e) { console.error('[FORUM] Seed error:', e.message); }
+      try {
+        const dbChannels = await db.loadChannels();
+        let count = 0;
+        for (const [name, data] of Object.entries(dbChannels)) {
+          if (channels[name]) {
+            if (data.topic) channels[name].topic = data.topic;
+            if (data.label) channels[name].desc = data.label;
+          }
+          count++;
+        }
+        console.log(`[DB] Loaded ${count} channel overrides from database`);
+      } catch (e) { console.error('[DB] Channel load error:', e.message); }
     } catch (e) {
       console.error('[DB] Init failed (running without persistence):', e.message);
     }
@@ -6115,17 +6167,17 @@ function parseXmlAttrs(xmlStr) {
 // CBee client state
 // ─────────────────────────────────────────────
 const channels = {
-  pomme:     { topic: 'Bienvenue sur le salon Pomme !', users: new Set() },
-  abricot:   { topic: 'Salon Abricot', users: new Set() },
-  poire:     { topic: 'Salon Poire', users: new Set() },
-  fraise:    { topic: 'Salon Fraise', users: new Set() },
-  citron:    { topic: 'Salon Citron', users: new Set() },
-  kiwi:      { topic: 'Salon Kiwi', users: new Set() },
-  raisin:    { topic: 'Salon Raisin', users: new Set() },
-  orange:    { topic: 'Salon Orange', users: new Set() },
-  cerise:    { topic: 'Salon Cerise', users: new Set() },
-  banane:    { topic: 'Salon Banane', users: new Set() },
-  bienvenue: { topic: 'Bienvenue sur Frutiparc !', users: new Set() },
+  pomme:     { desc: 'Salon Pomme',     topic: 'Bienvenue sur le salon Pomme !', users: new Set() },
+  abricot:   { desc: 'Salon Abricot',   topic: 'Salon Abricot', users: new Set() },
+  poire:     { desc: 'Salon Poire',     topic: 'Salon Poire', users: new Set() },
+  fraise:    { desc: 'Salon Fraise',    topic: 'Salon Fraise', users: new Set() },
+  citron:    { desc: 'Salon Citron',    topic: 'Salon Citron', users: new Set() },
+  kiwi:      { desc: 'Salon Kiwi',      topic: 'Salon Kiwi', users: new Set() },
+  raisin:    { desc: 'Salon Raisin',    topic: 'Salon Raisin', users: new Set() },
+  orange:    { desc: 'Salon Orange',    topic: 'Salon Orange', users: new Set() },
+  cerise:    { desc: 'Salon Cerise',    topic: 'Salon Cerise', users: new Set() },
+  banane:    { desc: 'Salon Banane',    topic: 'Salon Banane', users: new Set() },
+  bienvenue: { desc: 'Bienvenue',       topic: 'Bienvenue sur Frutiparc !', users: new Set() },
 };
 
 // ── Virtual users / PNJ (always connected on pomme) ──
@@ -7176,6 +7228,7 @@ case 'send': {
       if (newTopic) {
         channel.topic = newTopic;
         broadcastToChannel(g, `<${CMD.topic} g="${escapeXml(g)}">${escapeXml(newTopic)}</${CMD.topic}>`);
+        if (process.env.DATABASE_URL) db.updateChannelTopic(g, newTopic).catch(e => console.error('[DB] topic save error:', e.message));
       }
       break;
     }

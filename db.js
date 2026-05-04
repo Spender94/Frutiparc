@@ -257,6 +257,13 @@ async function initSchema() {
         created_at   TIMESTAMPTZ DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_user_mails_user_folder ON user_mails(user_id, folder, date_str DESC);
+
+      CREATE TABLE IF NOT EXISTS channels (
+        name         TEXT PRIMARY KEY,
+        label        TEXT DEFAULT '',
+        topic        TEXT DEFAULT '',
+        updated_at   TIMESTAMPTZ DEFAULT now()
+      );
     `);
     console.log('[DB] Schema initialized');
   } finally {
@@ -1029,6 +1036,33 @@ async function forumGetPostCounts(usernames) {
   return map;
 }
 
+// ── Channels ──
+
+async function loadChannels() {
+  const { rows } = await pool.query('SELECT name, label, topic FROM channels');
+  const result = {};
+  for (const r of rows) {
+    result[r.name] = { label: r.label || '', topic: r.topic || '' };
+  }
+  return result;
+}
+
+async function upsertChannel(name, label, topic) {
+  await pool.query(
+    `INSERT INTO channels (name, label, topic, updated_at) VALUES ($1, $2, $3, now())
+     ON CONFLICT (name) DO UPDATE SET label = $2, topic = $3, updated_at = now()`,
+    [name, label || '', topic || '']
+  );
+}
+
+async function updateChannelTopic(name, topic) {
+  await pool.query(
+    `INSERT INTO channels (name, topic, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (name) DO UPDATE SET topic = $2, updated_at = now()`,
+    [name, topic || '']
+  );
+}
+
 module.exports = {
   pool,
   initSchema,
@@ -1111,4 +1145,7 @@ module.exports = {
   updateMailFolder,
   updateMailRead,
   deleteMails,
+  loadChannels,
+  upsertChannel,
+  updateChannelTopic,
 };
