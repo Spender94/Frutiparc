@@ -7166,6 +7166,63 @@ case 'send': {
       break;
     }
 
+    // ── /topic, /sujet: change channel topic ──
+    if (text.startsWith('/topic ') || text.startsWith('/sujet ')) {
+      const newTopic = text.replace(/^\/(topic|sujet)\s+/, '').trim();
+      if (newTopic.length > 200) {
+        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Le sujet est trop long (200 caractères max).</${CMD.send}>`);
+        break;
+      }
+      if (newTopic) {
+        channel.topic = newTopic;
+        broadcastToChannel(g, `<${CMD.topic} g="${escapeXml(g)}">${escapeXml(newTopic)}</${CMD.topic}>`);
+      }
+      break;
+    }
+
+    // ── /stat, /stats, /statistiques, /statistics: channel stats ──
+    if (/^\/(stat|stats|statistiques|statistics)$/i.test(text)) {
+      const userCount = channel.users.size;
+      const userList = [...channel.users].map(u => getDisplayName(u)).join(', ');
+      const topicStr = channel.topic || '(aucun sujet)';
+      const lines = [
+        `--- Statistiques du salon ${g} ---`,
+        `Utilisateurs connectés : ${userCount}`,
+        `Liste : ${userList}`,
+        `Sujet : ${topicStr}`,
+      ];
+      for (const line of lines) {
+        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(line)}</${CMD.send}>`);
+      }
+      break;
+    }
+
+    // ── /image, /img, /testimage, /testimg: embed image in chat ──
+    if (/^\/(test)?(image|img)\s/i.test(text)) {
+      const isTest = /^\/test/i.test(text);
+      const args = text.replace(/^\/(test)?(image|img)\s+/i, '').split(/\s+/);
+      const w = parseInt(args[0]) || 0;
+      const h = parseInt(args[1]) || 0;
+      const url = args[2] || '';
+      const title = args.slice(3).join(' ');
+      if (!w || !h || !url || !/^https?:\/\//i.test(url)) {
+        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe: /image largeur hauteur url titre')}</${CMD.send}>`);
+        break;
+      }
+      const cw = Math.min(Math.max(w, 10), 500);
+      const ch = Math.min(Math.max(h, 10), 500);
+      const safeUrl = escapeXml(url);
+      const safeTitle = title ? ' ' + escapeXml(title) : '';
+      const imgBody = `<img src="${safeUrl}" width="${cw}" height="${ch}">${safeTitle}`;
+      const imgXml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="${pen}" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${imgBody}]]></${CMD.send}>`;
+      if (isTest) {
+        sendToClient(socket, imgXml);
+      } else {
+        broadcastToChannel(g, imgXml);
+      }
+      break;
+    }
+
     let safeText = escapeXml(text);
 
     // Moderator "!" prefix: route through chat.msg_admin (patched to render the
