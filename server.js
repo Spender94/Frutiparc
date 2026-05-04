@@ -2555,6 +2555,9 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
       const v = Number(body.fruti_sign_b);
       fields.fruti_sign_b = (v >= 0 && v <= 9) ? v : -1;
     }
+    if (body.real_job !== undefined) {
+      fields.real_job = String(body.real_job || '').slice(0, 80);
+    }
     if (Object.keys(fields).length > 0) {
       await db.updateUser(u, fields);
       if (users[u]) {
@@ -2563,6 +2566,7 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
         if (fields.display_name !== undefined) users[u].displayName = fields.display_name;
         if (fields.fruti_sign !== undefined) users[u].frutiSign = fields.fruti_sign;
         if (fields.fruti_sign_b !== undefined) users[u].frutiSignB = fields.fruti_sign_b;
+        if (fields.real_job !== undefined) users[u].realJob = fields.real_job;
       }
     }
     console.log(`[ADMIN] Updated user ${u}: ${Object.keys(fields).join(', ')}`);
