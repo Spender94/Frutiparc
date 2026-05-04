@@ -2772,6 +2772,13 @@ app.delete('/api/admin/users/:username/gameitems/:itemName', adminAuth, async (r
   res.json({ ok: true, gameItems: user.gameItems || [] });
 });
 
+app.get('/api/admin/availableGameItems', adminAuth, (req, res) => {
+  const items = Object.entries(GAME_ITEM_INFO).map(([key, info]) => ({
+    id: key, name: info.name, game: info.game,
+  }));
+  res.json(items);
+});
+
 // ── Admin: Shop pack management ──
 app.get('/api/admin/shop', adminAuth, (req, res) => {
   res.json(SHOP_PACKS);

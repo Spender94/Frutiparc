@@ -571,7 +571,8 @@
 <div class="modal-bg" id="modal-add-gameitem">
   <div class="modal">
     <h3>Ajouter un picto</h3>
-    <label><span>Nom (ex: $fruticup) :</span> <input id="gameitem-name" type="text"></label>
+    <label><span>Nom :</span> <input id="gameitem-name" type="text" list="gameitem-list" placeholder="$pixiz_first, $fruticup..."></label>
+    <datalist id="gameitem-list"></datalist>
     <div class="actions">
       <button class="btn" onclick="closeModal('modal-add-gameitem')">Annuler</button>
       <button class="btn-danger" onclick="saveAddGameItem()">Ajouter</button>
@@ -842,7 +843,7 @@ async function loadDetail() {
     }
 
     // Game Items (Pictos)
-    html += `<h4>Pictos (Game Items) <span style="margin-left:auto;display:flex;gap:6px"><button class="btn btn-sm" onclick="openAddGameItem()">+ Ajouter</button><button class="btn-success btn-sm" onclick="addAllBkiwiPictos()">+ Tous BKiwi</button></span></h4>`;
+    html += `<h4>Pictos (Game Items) <span style="margin-left:auto;display:flex;gap:6px"><button class="btn btn-sm" onclick="openAddGameItem()">+ Ajouter</button><button class="btn-success btn-sm" onclick="addAllBkiwiPictos()">+ Tous BKiwi</button><button class="btn-success btn-sm" onclick="addAllPixizPictos()">+ Tous MiniPixiz</button></span></h4>`;
     const gameItems = d.gameItems || [];
     if (gameItems.length) {
       html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px">';
@@ -860,7 +861,19 @@ async function loadDetail() {
 
 function openAddAcc() { $('#modal-add-acc').classList.add('open'); }
 function openAddItem() { $('#modal-add-item').classList.add('open'); }
-function openAddGameItem() { $('#modal-add-gameitem').classList.add('open'); }
+let _gameItemListLoaded = false;
+async function openAddGameItem() {
+  $('#modal-add-gameitem').classList.add('open');
+  if (!_gameItemListLoaded) {
+    try {
+      const r = await fetch('/api/admin/availableGameItems', { headers: hdr() });
+      const items = await r.json();
+      const dl = $('#gameitem-list');
+      dl.innerHTML = items.map(i => `<option value="${esc(i.id)}">${esc(i.name)} (${esc(i.game)})</option>`).join('');
+      _gameItemListLoaded = true;
+    } catch (e) { /* ignore */ }
+  }
+}
 
 async function saveAddAcc() {
   await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/accessories`, {
@@ -919,6 +932,31 @@ async function addAllBkiwiPictos() {
     });
   }
   toast('14 pictos Burning Kiwi ajoutés');
+  loadDetail();
+}
+
+const PIXIZ_ALL_PICTOS = [
+  '$pixiz_first','$pixiz_forest','$pixiz_pond','$pixiz_castle','$pixiz_rainbow','$pixiz_tree',
+  '$pixiz_dungeon','$pixiz_dungeon10','$pixiz_dungeon20','$pixiz_dungeon30','$pixiz_dungeon50',
+  '$pixiz_pond_quest','$pixiz_run10','$pixiz_run50','$pixiz_run100','$pixiz_run500',
+  '$pixiz_star10','$pixiz_star100','$pixiz_star1000','$pixiz_key5','$pixiz_key25',
+  '$pixiz_faerie3','$pixiz_faerie5','$pixiz_faerie10','$pixiz_faerie_lvl10','$pixiz_faerie_lvl30','$pixiz_faerie_lvl50',
+  '$pixiz_treeMax20','$pixiz_treeMax50','$pixiz_treeMax100',
+  '$pixiz_forestMax5','$pixiz_forestMax10','$pixiz_forestMax20',
+  '$pixiz_mis10','$pixiz_mis25','$pixiz_mis50','$pixiz_mis100',
+  '$pixiz_kill100','$pixiz_kill500','$pixiz_bag2','$pixiz_bag3','$pixiz_bag_max','$pixiz_frog',
+  '$pixiz_diam1','$pixiz_diam2','$pixiz_diam3','$pixiz_diam4','$pixiz_diam5'
+];
+
+async function addAllPixizPictos() {
+  if (!currentDetailUser) return;
+  for (const name of PIXIZ_ALL_PICTOS) {
+    await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems`, {
+      method: 'POST', headers: hdr(),
+      body: JSON.stringify({ itemName: name })
+    });
+  }
+  toast(PIXIZ_ALL_PICTOS.length + ' pictos MiniPixiz ajoutés');
   loadDetail();
 }
 
