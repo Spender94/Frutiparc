@@ -7671,15 +7671,19 @@ case 'createchannel': {
     // ── searchuser: search for a user ──
     case 'searchuser': {
       const u = msg.attrs.u || '';
-      const results = Object.keys(users)
-        .filter(name => name.toLowerCase().includes(u.toLowerCase()))
-        .slice(0, 20);
+      const start = Number(msg.attrs.s || 0) || 0;
+      const limit = Number(msg.attrs.l || 20) || 20;
+      const allResults = Object.keys(users)
+        .filter(name => name.toLowerCase().includes(u.toLowerCase()));
+      const total = allResults.length;
+      const page = allResults.slice(start, start + limit);
       let inner = '';
-      for (const name of results) {
+      for (const name of page) {
         const ud = users[name] || {};
-        inner += `<u u="${escapeXml(getDisplayName(name))}" f="${bouilleOf(ud, name)}" x="${ud.xp || 0}" />`;
+        const online = getSocketsForUsername(name).length > 0 ? 1 : 0;
+        inner += `<u u="${escapeXml(getDisplayName(name))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="${online}" s="${getStatusCode(ud, name)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, name)}" />`;
       }
-      sendToClient(socket, `<${CMD.searchuser}>${inner}</${CMD.searchuser}>`);
+      sendToClient(socket, `<${CMD.searchuser} s="${start}" l="${limit}" t="${total}">${inner}</${CMD.searchuser}>`);
       break;
     }
 
