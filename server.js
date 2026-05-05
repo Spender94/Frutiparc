@@ -1252,6 +1252,7 @@ function createDefaultUser(pass) {
     siteLog: [],        // Entries displayed in "Evènements" (/do/onident <sl>)
     mails: [],          // Internal mailbox; each entry: {uid, from, fromAddr, to, toAddrs, subject, body, folder, date, read}
     realJob: 'Frutiz',
+    frutijob: '',
     displayName: '',
     frutiSign: -1,
     frutiSignB: -1,
@@ -1288,6 +1289,7 @@ function dbUserToMemory(row) {
     lastName: row.last_name || '',
     lastNamePublic: row.last_name_public || 'Y',
     realJob: row.real_job || '',
+    frutijob: row.frutijob || '',
     city: row.city || '',
     countryIndex: row.country_index || '1',
     regionIndex: row.region_index || '1',
@@ -1798,6 +1800,7 @@ function isDebugNotUser(username) {
 }
 
 function getFrutizJob(username, user) {
+  if (user && typeof user.frutijob === 'string' && user.frutijob.trim()) return user.frutijob.trim();
   if (isDebugNotUser(username)) return 'Frutiz';
   if (user && user.isModerator) return 'Modérateur';
   return 'Frutiz';
@@ -2564,6 +2567,9 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     if (body.real_job !== undefined) {
       fields.real_job = String(body.real_job || '').slice(0, 80);
     }
+    if (body.frutijob !== undefined) {
+      fields.frutijob = String(body.frutijob || '').slice(0, 80);
+    }
     if (Object.keys(fields).length > 0) {
       await db.updateUser(u, fields);
       if (users[u]) {
@@ -2573,6 +2579,7 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
         if (fields.fruti_sign !== undefined) users[u].frutiSign = fields.fruti_sign;
         if (fields.fruti_sign_b !== undefined) users[u].frutiSignB = fields.fruti_sign_b;
         if (fields.real_job !== undefined) users[u].realJob = fields.real_job;
+        if (fields.frutijob !== undefined) users[u].frutijob = fields.frutijob;
       }
     }
     console.log(`[ADMIN] Updated user ${u}: ${Object.keys(fields).join(', ')}`);

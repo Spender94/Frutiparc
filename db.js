@@ -62,6 +62,7 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT DEFAULT NULL;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS fruti_sign INTEGER DEFAULT -1;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS fruti_sign_b INTEGER DEFAULT -1;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS frutijob TEXT DEFAULT '';
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
 
@@ -603,7 +604,7 @@ async function clearAllChallengeData() {
 
 async function listAllUsers() {
   const { rows } = await pool.query(
-    'SELECT id, username, display_name, xp, kikooz, fbouille, gender, is_moderator, fruti_sign, fruti_sign_b, real_job, created_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, display_name, xp, kikooz, fbouille, gender, is_moderator, fruti_sign, fruti_sign_b, real_job, frutijob, created_at FROM users ORDER BY created_at DESC'
   );
   return rows;
 }

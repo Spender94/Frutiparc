@@ -527,7 +527,7 @@
     <label><span>Bouille :</span> <input id="edit-fbouille"></label>
     <label><span>XP :</span> <input id="edit-xp" type="number"></label>
     <label><span>Kikooz :</span> <input id="edit-kikooz" type="number"></label>
-    <label><span>FrutiJob :</span> <input id="edit-realjob" maxlength="80" placeholder="Frutiz"></label>
+    <label><span>FrutiJob :</span> <input id="edit-frutijob" maxlength="80" placeholder="Frutiz"></label>
     <label><span>Mot de passe :</span> <input id="edit-password" placeholder="(laisser vide = inchangé)"></label>
     <label><span>FrutiSigne :</span>
       <select id="edit-frutisign" style="width:120px">
@@ -682,21 +682,21 @@ async function loadUsers() {
       <td><span class="badge ${u.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u.username)}',${!u.is_moderator})" title="Cliquer pour changer">${u.is_moderator ? 'Modo' : '-'}</span></td>
       <td>${fmtDate(u.created_at)}</td>
       <td>
-        <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}','${esc(u.display_name||u.username)}',${u.fruti_sign ?? -1},${u.fruti_sign_b ?? -1},'${esc(u.real_job||'')}')">Modifier</button>
+        <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}','${esc(u.display_name||u.username)}',${u.fruti_sign ?? -1},${u.fruti_sign_b ?? -1},'${esc(u.frutijob||'')}')">Modifier</button>
         <button class="btn-danger btn-sm" onclick="deleteUser('${esc(u.username)}')">Supprimer</button>
       </td>
     </tr>`).join('');
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
-function editUser(name, xp, kikooz, fb, dn, fs, fsb, rj) {
+function editUser(name, xp, kikooz, fb, dn, fs, fsb, fj) {
   $('#edit-user-name').textContent = name;
   $('#edit-user-name').dataset.name = name;
   $('#edit-displayname').value = dn || name;
   $('#edit-fbouille').value = fb;
   $('#edit-xp').value = xp;
   $('#edit-kikooz').value = kikooz;
-  $('#edit-realjob').value = rj || '';
+  $('#edit-frutijob').value = fj || '';
   $('#edit-frutisign').value = fs ?? -1;
   $('#edit-frutisignb').value = fsb ?? -1;
   $('#edit-password').value = '';
@@ -708,7 +708,7 @@ async function saveEditUser() {
   const body = { fbouille: $('#edit-fbouille').value, xp: $('#edit-xp').value, kikooz: $('#edit-kikooz').value };
   const dn = $('#edit-displayname').value.trim();
   if (dn) body.display_name = dn;
-  body.real_job = $('#edit-realjob').value.trim();
+  body.frutijob = $('#edit-frutijob').value.trim();
   const pw = $('#edit-password').value;
   if (pw) body.password = pw;
   body.fruti_sign = Number($('#edit-frutisign').value);
