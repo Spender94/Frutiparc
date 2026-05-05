@@ -194,16 +194,22 @@ function findPropertyDF2(buf, searchStart, searchEnd, cpIdx) {
 // Called during gameplay (not DoInitAction), so ExternalInterface is safe.
 
 function buildSaveSlotBody(CP) {
-  // flags=0x29: r1=this, r2=n (param), r3=data (param)
+  // flags=0x29: r1=this, r2=n (param), r3=data (param, ignored)
   // r4 = temp (SharedObject)
   //
-  //   flash.external.ExternalInterface.call("saveSlotData", "miniwave", n, this.slots[n])
+  //   ExternalInterface.call("saveSlotData", "miniwave", n, this.mng.fc[n])
   //   SharedObject.getLocal("miniWave2/card").flush()
+  //
+  // Note: data is read from this.mng.fc[n] (miniwave.Manager.fc), not
+  // this.slots[n], because in STANDALONE mode the Manager doesn't update
+  // client.slots — the actual fruticard data lives in Manager.fc.
 
-  // Part 1: ExternalInterface.call("saveSlotData", "miniwave", n, this.slots[n])
+  // Part 1: ExternalInterface.call("saveSlotData", "miniwave", n, this.mng.fc[n])
   const eiCall = Buffer.concat([
-    // arg4: this.slots[n]
-    actionPush(pushReg(1), pushCp(CP.slots)),
+    // arg4: this.mng.fc[n]
+    actionPush(pushReg(1), pushCp(CP.mng)),
+    GET_MEMBER,
+    actionPush(pushCp(CP.fc)),
     GET_MEMBER,
     actionPush(pushReg(2)),
     GET_MEMBER,
@@ -215,13 +221,9 @@ function buildSaveSlotBody(CP) {
     actionPush(pushCp(CP.saveSlotData)),
     // argCount = 4
     actionPush(pushInt(4)),
-    // Get flash.external.ExternalInterface
-    actionPush(pushCp(CP.flash)),
-    GET_VARIABLE,
-    actionPush(pushCp(CP.external)),
-    GET_MEMBER,
+    // Get ExternalInterface (top-level, not flash.external.ExternalInterface)
     actionPush(pushCp(CP.ExternalInterface)),
-    GET_MEMBER,
+    GET_VARIABLE,
     // Call method "call"
     actionPush(pushCp(CP.call)),
     CALL_METHOD,
@@ -278,11 +280,11 @@ function patchClientTagBody(tagBody) {
     'getLocal',             // +1
     'miniWave2/card',       // +2
     'flush',                // +3
-    'flash',                // +4
-    'external',             // +5
-    'ExternalInterface',    // +6
-    'call',                 // +7
-    'saveSlotData',         // +8
+    'ExternalInterface',    // +4
+    'call',                 // +5
+    'saveSlotData',         // +6
+    'mng',                  // +7
+    'fc',                   // +8
   ];
 
   let newCpData = Buffer.alloc(0);
@@ -315,11 +317,11 @@ function patchClientTagBody(tagBody) {
     getLocal: newCpBase + 1,
     miniWave2Card: newCpBase + 2,
     flush: newCpBase + 3,
-    flash: newCpBase + 4,
-    external: newCpBase + 5,
-    ExternalInterface: newCpBase + 6,
-    call: newCpBase + 7,
-    saveSlotData: newCpBase + 8,
+    ExternalInterface: newCpBase + 4,
+    call: newCpBase + 5,
+    saveSlotData: newCpBase + 6,
+    mng: newCpBase + 7,
+    fc: newCpBase + 8,
   };
 
   // Flip STANDALONE = true (in case any other code checks it)
@@ -353,6 +355,74 @@ function patchClientTagBody(tagBody) {
   ]);
 
   return tagBody;
+}
+
+// ─── Build a DoAction tag that injects _root.loadData = SharedObject.getLocal ───
+// MiniWave's Manager.loadFruticard() calls _root.loadData("miniWave2/card") which
+// is normally defined by the Frusion launcher SWF. In standalone mode that launcher
+// doesn't run, so _root.loadData is undefined and SharedObject persistence breaks.
+// This tag, inserted before the first ShowFrame, sets _root.loadData = SharedObject.getLocal
+// (an alias) so loadFruticard returns a real SharedObject.
+
+function buildLoadDataInjectorTag() {
+  function pushStringInline(s) {
+    return Buffer.concat([
+      Buffer.from([0x00]),
+      Buffer.from(s, 'latin1'),
+      Buffer.from([0x00]),
+    ]);
+  }
+  function actionPushRaw(payload) {
+    const hdr = Buffer.alloc(3);
+    hdr[0] = 0x96;
+    hdr.writeUInt16LE(payload.length, 1);
+    return Buffer.concat([hdr, payload]);
+  }
+  // _root.loadData = SharedObject.getLocal
+  const code = Buffer.concat([
+    actionPushRaw(pushStringInline('_root')),
+    Buffer.from([0x1C]),                          // GetVariable → _root
+    actionPushRaw(pushStringInline('loadData')),  // member name
+    actionPushRaw(pushStringInline('SharedObject')),
+    Buffer.from([0x1C]),                          // GetVariable → SharedObject
+    actionPushRaw(pushStringInline('getLocal')),
+    Buffer.from([0x4E]),                          // GetMember → SharedObject.getLocal
+    Buffer.from([0x4F]),                          // SetMember → _root.loadData = ...
+    Buffer.from([0x00]),                          // End
+  ]);
+  // DoAction (code=12) tag with short header (length fits in 6 bits)
+  if (code.length >= 0x3F) throw new Error('Injector tag too large for short header');
+  const tagHdr = Buffer.alloc(2);
+  tagHdr.writeUInt16LE((12 << 6) | code.length, 0);
+  return Buffer.concat([tagHdr, code]);
+}
+
+// ─── Insert injector tag before the first ShowFrame ───
+
+function insertLoadDataInjector(buf) {
+  const tags = findTags(buf);
+  let firstShowFrame = -1;
+  for (const t of tags) {
+    if (t.code === 1) { firstShowFrame = t.offset; break; }
+  }
+  if (firstShowFrame < 0) throw new Error('No ShowFrame found');
+  // Skip if injector already present (idempotent re-runs)
+  for (const t of tags) {
+    if (t.code !== 12) continue;
+    const start = t.offset + t.hdrSize;
+    const slice = buf.slice(start, start + Math.min(t.length, 80));
+    if (slice.includes(Buffer.from('SharedObject', 'latin1'))) {
+      console.log('LoadData injector already present — skipping');
+      return buf;
+    }
+  }
+  const injector = buildLoadDataInjectorTag();
+  console.log(`Inserting loadData injector tag (${injector.length} bytes) before ShowFrame at ${firstShowFrame}`);
+  return Buffer.concat([
+    buf.slice(0, firstShowFrame),
+    injector,
+    buf.slice(firstShowFrame),
+  ]);
 }
 
 // ─── Main ───
@@ -415,6 +485,9 @@ for (const { tag, spriteId } of clientTagInfos) {
 
   console.log(`  Tag length: ${tag.length} → ${newTagBody.length} (delta=${newTagBody.length - tag.length})`);
 }
+
+// Insert loadData injector tag so _root.loadData is defined for Manager.loadFruticard
+buf = insertLoadDataInjector(buf);
 
 // Write output
 const outSize = writeSwf(SWF_PATH, sig, version, buf);
