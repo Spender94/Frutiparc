@@ -314,7 +314,7 @@ function buildOnLoadBody() {
 
   // Jump offsets
   const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
-    slot0Assign.length + callOnServiceConnect.length;
+    slot0Assign.length;
   const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length;
   const slot0NullSkipSize = slot0Assign.length;
 
