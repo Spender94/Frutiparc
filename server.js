@@ -757,11 +757,11 @@ const INTERNAL_TO_LEGACY_RK = Object.fromEntries([
   ...Array.from({ length: 6 }, (_, i) => [`bkiwi_track${i}_challenge`, '0']),
 ]);
 const HARDCODED_FRUTIZ = {
-  DebugBot: { x: 1337, f: '000000010000000000000000' },
+  Gaspard: { x: 9999999, f: '0n0000000000000000000000' },
 };
 
 function hardcodedMeAttrs(name) {
-  const d = HARDCODED_FRUTIZ[String(name || '')] || HARDCODED_FRUTIZ.DebugBot;
+  const d = HARDCODED_FRUTIZ[String(name || '')] || HARDCODED_FRUTIZ.Gaspard;
   return `x="${d.x}" f="${escapeXml(d.f)}"`;
 }
 
@@ -805,7 +805,7 @@ function buildLegacyRankingResultPayload(rkInput, reqId = '', cAttr = '') {
 
 function buildLegacyUserResultPayload(user, reqId = '') {
   const r = reqId ? ` r="${escapeXml(reqId)}"` : '';
-  const u = escapeXml(getDisplayName(String(user || 'DebugBot')));
+  const u = escapeXml(getDisplayName(String(user || 'Gaspard')));
   return `<n${r} u="${u}"></n>`;
 }
 
@@ -4600,7 +4600,6 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
         <f u="disccollector" t="disccollector" />
         <f u="inventory" t="inventory" />
         <f u="mycontact" t="mycontact" />
-        <e u="DebugBot" t="contact" s="10" d="0" a="0">DebugBot@frutiparc.com</e>
         <f u="recyclebin" t="recyclebin" />
       </f>`
     );
@@ -6199,31 +6198,8 @@ const channels = {
 
 // ── Virtual users / PNJ (always connected on pomme) ──
 const CONNECTED_NPCS = new Set([
-  'DebugBot',
   'Gaspard',
 ]);
-
-users.DebugBot = {
-  pass: '',
-  xp: 1000000,
-  kikooz: 100,
-  fbouille: '000000020000000000000000',
-  items: withDefaultPens([1, 2, 3]),
-  contacts: [],
-  blacklist: [],
-  gender: 'M',
-  birthday: '2000-01-01',
-  country: 'FR',
-  region: 'IDF',
-  prefs: '',
-  isModerator: false,
-  needsBouille: false,
-  city: 'Frutiparc',
-  realJob: 'Bot de debug',
-  firstName: 'Debug',
-  lastName: 'Bot',
-  comment: 'Bot de test connecté en permanence.',
-};
 
 users.Gaspard = {
   pass: '',
@@ -6552,15 +6528,20 @@ function formatDateTime(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}.${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
+function formatDateTimeParis(d) {
+  const p = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+  return `${p.getFullYear()}-${pad2(p.getMonth() + 1)}-${pad2(p.getDate())}.${pad2(p.getHours())}:${pad2(p.getMinutes())}:${pad2(p.getSeconds())}`;
+}
+
 function formatChatTimePrefix(d) {
   return `[${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}] `;
 }
 
 function buildChatTimeAttrs(date = new Date()) {
+  const paris = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
   return {
-    h: formatChatTimePrefix(date),
-    // Some legacy paths rebuild "$h" from a raw datetime field.
-    d: formatDateTime(date),
+    h: formatChatTimePrefix(paris),
+    d: formatDateTime(paris),
   };
 }
 
@@ -7063,7 +7044,7 @@ broadcastToChannel(
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
+          const ts = e.at ? formatDateTimeParis(new Date(e.at)) : formatDateTimeParis(new Date());
           const displayData = formatRankingExtraData(internalId, e.d);
           const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
           inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
@@ -7156,7 +7137,7 @@ broadcastToChannel(
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          const ts = e.at ? formatDateTime(new Date(e.at)) : formatDateTime(new Date());
+          const ts = e.at ? formatDateTimeParis(new Date(e.at)) : formatDateTimeParis(new Date());
           const displayData = formatRankingExtraData(internalId, e.d);
           const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
           inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
@@ -7281,9 +7262,7 @@ case 'send': {
       }
       const cw = Math.min(Math.max(w, 10), 500);
       const ch = Math.min(Math.max(h, 10), 500);
-      const safeUrl = escapeXml(url);
-      const safeTitle = title ? ' ' + escapeXml(title) : '';
-      const imgBody = `<img src="${safeUrl}" width="${cw}" height="${ch}">${safeTitle}`;
+      const imgBody = `<img src="${url}" width="${cw}" height="${ch}" />${title || ''}`;
       const imgXml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="${pen}" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${imgBody}]]></${CMD.send}>`;
       if (isTest) {
         sendToClient(socket, imgXml);
