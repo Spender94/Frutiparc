@@ -189,151 +189,216 @@ function findPropertyDF2(buf, searchStart, searchEnd, cpIdx) {
 }
 
 // ─── Build new function bodies ───
-// Uses ExternalInterface to call JavaScript for save/load, avoiding
-// the nested-callback stack underflows that broke the previous LoadVars approach
-// in Ruffle's DoInitAction context.
+
+function buildOnLoadBody(CP) {
+  // r1=this (LoadVars response), r2=success (param)
+  // r3=client, r4=parsed slot object
+  const getClient = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP._client)), GET_MEMBER, storeReg(3), POP,
+  ]);
+
+  const checkSuccess = Buffer.concat([
+    actionPush(pushReg(2)), NOT,
+  ]);
+
+  const slot0Check = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
+    actionPush(pushUndef()), EQUALS2, NOT, NOT,
+  ]);
+
+  const slot0Load = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
+    actionPush(pushInt(1)),
+    actionPush(pushReg(3), pushCp(CP.fromJSON)),
+    CALL_METHOD, storeReg(4), POP,
+  ]);
+
+  const slot0NullCheck = Buffer.concat([
+    actionPush(pushReg(4), pushNull()), EQUALS2, NOT, NOT,
+  ]);
+
+  const slot0Assign = Buffer.concat([
+    actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
+    actionPush(pushInt(0)),
+    actionPush(pushReg(4)),
+    SET_MEMBER,
+  ]);
+
+  const callOnServiceConnect = Buffer.concat([
+    actionPush(pushInt(0)),
+    actionPush(pushReg(3), pushCp(CP.onServiceConnect)),
+    CALL_METHOD, POP,
+  ]);
+
+  const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
+    slot0Assign.length;
+  const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length;
+  const slot0NullSkipSize = slot0Assign.length;
+
+  return Buffer.concat([
+    getClient,
+    checkSuccess,
+    actionIf(afterSuccessCheck),
+    slot0Check,
+    actionIf(slot0SkipSize),
+    slot0Load,
+    slot0NullCheck,
+    actionIf(slot0NullSkipSize),
+    slot0Assign,
+    callOnServiceConnect,
+  ]);
+}
 
 function buildServiceConnectBody(CP) {
-  // flags=0x29: r1=this, regCount=6
-  // r4 = EI return value (temp), r5 = SharedObject (temp)
+  // flags=0x29: r1=this, r2=super, r3=_parent
+  // r4,r5 = local vars
   //
   //   this.slots = []
-  //   var s0 = flash.external.ExternalInterface.call("loadSlotData", "slot0")
-  //   if (s0 != null) this.slots[0] = s0
-  //   var s1 = flash.external.ExternalInterface.call("loadSlotData", "slot1")
-  //   if (s1 != null) this.slots[1] = s1
-  //   if (this.slots[0] == undefined) this.slots[0] = {}
-  //   SharedObject.getLocal("miniWave2/card").data.fruticard = this.slots
-  //   this.onServiceConnect()
+  //   this.slots[0] = {}
+  //   var lv = new LoadVars()         → r4
+  //   lv.game = "miniwave"
+  //   lv.sid = _root.sid
+  //   var result = new LoadVars()     → r5
+  //   result._client = this
+  //   result.onLoad = function(success) { ... }
+  //   lv.sendAndLoad("/api/loadFrutiSlots", result, "POST")
 
-  // 1. this.slots = []
   const initSlots = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots), pushInt(0)),
     INIT_ARRAY,
     SET_MEMBER,
   ]);
 
-  // Helper: ExternalInterface.call("loadSlotData", slotKey) → r4
-  function eiLoad(slotKeyCp) {
-    return Buffer.concat([
-      actionPush(pushCp(slotKeyCp)),
-      actionPush(pushCp(CP.loadSlotData)),
-      actionPush(pushInt(2)),
-      actionPush(pushCp(CP.flash)),
-      GET_VARIABLE,
-      actionPush(pushCp(CP.external)),
-      GET_MEMBER,
-      actionPush(pushCp(CP.ExternalInterface)),
-      GET_MEMBER,
-      actionPush(pushCp(CP.call)),
-      CALL_METHOD,
-      storeReg(4),
-      POP,
-    ]);
-  }
-
-  // Helper: if (r4 != null) this.slots[idx] = r4
-  function assignIfNotNull(idx) {
-    const assign = Buffer.concat([
-      actionPush(pushReg(1), pushCp(CP.slots)),
-      GET_MEMBER,
-      actionPush(pushInt(idx)),
-      actionPush(pushReg(4)),
-      SET_MEMBER,
-    ]);
-    return Buffer.concat([
-      actionPush(pushReg(4), pushNull()),
-      EQUALS2,
-      actionIf(assign.length),
-      assign,
-    ]);
-  }
-
-  // 2-3. Load slot0 from JS, assign if not null
-  const loadSlot0 = Buffer.concat([eiLoad(CP.slot0), assignIfNotNull(0)]);
-
-  // 4-5. Load slot1 from JS, assign if not null
-  const loadSlot1 = Buffer.concat([eiLoad(CP.slot1), assignIfNotNull(1)]);
-
-  // 6. if (this.slots[0] == undefined) this.slots[0] = {}
-  const initSlot0Body = Buffer.concat([
+  const initSlot0 = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots)),
     GET_MEMBER,
     actionPush(pushInt(0), pushInt(0)),
     INIT_OBJECT,
     SET_MEMBER,
   ]);
-  const ensureSlot0 = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slots)),
-    GET_MEMBER,
-    actionPush(pushInt(0)),
-    GET_MEMBER,
-    actionPush(pushUndef()),
-    EQUALS2,
-    NOT,
-    actionIf(initSlot0Body.length),
-    initSlot0Body,
+
+  const createLv = Buffer.concat([
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(4),
+    POP,
   ]);
 
-  // 7. SharedObject.getLocal("miniWave2/card").data.fruticard = this.slots
-  const linkSO = Buffer.concat([
-    actionPush(pushCp(CP.miniWave2Card)),
-    actionPush(pushInt(1)),
-    actionPush(pushCp(CP.SharedObject)),
+  const setGame = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.game), pushCp(CP.miniwave)),
+    SET_MEMBER,
+  ]);
+
+  const setSid = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.sid)),
+    actionPush(pushStr('_root')),
     GET_VARIABLE,
-    actionPush(pushCp(CP.getLocal)),
-    CALL_METHOD,
-    storeReg(5),
-    POP,
-    actionPush(pushReg(5), pushCp(CP.data)),
-    GET_MEMBER,
-    actionPush(pushCp(CP.fruticard)),
-    actionPush(pushReg(1), pushCp(CP.slots)),
+    actionPush(pushCp(CP.sid)),
     GET_MEMBER,
     SET_MEMBER,
   ]);
 
-  // 8. this.onServiceConnect()
-  const callOSC = Buffer.concat([
-    actionPush(pushInt(0)),
-    actionPush(pushReg(1), pushCp(CP.onServiceConnect)),
+  const createResult = Buffer.concat([
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(5),
+    POP,
+  ]);
+
+  const setClient = Buffer.concat([
+    actionPush(pushReg(5), pushCp(CP._client), pushReg(1)),
+    SET_MEMBER,
+  ]);
+
+  const onLoadBodyBytes = buildOnLoadBody(CP);
+  const onLoadFunc = buildDefineFunction2('', [[2, 'success']], 5, 0x29, onLoadBodyBytes);
+  const setOnLoad = Buffer.concat([
+    actionPush(pushReg(5), pushCp(CP.onLoad)),
+    onLoadFunc,
+    SET_MEMBER,
+  ]);
+
+  const sendAndLoad = Buffer.concat([
+    actionPush(pushCp(CP.POST)),
+    actionPush(pushReg(5)),
+    actionPush(pushCp(CP.loadFrutiSlots)),
+    actionPush(pushInt(3)),
+    actionPush(pushReg(4), pushCp(CP.sendAndLoad)),
     CALL_METHOD,
     POP,
   ]);
 
-  return Buffer.concat([initSlots, loadSlot0, loadSlot1, ensureSlot0, linkSO, callOSC]);
+  return Buffer.concat([
+    initSlots, initSlot0,
+    createLv, setGame, setSid,
+    createResult, setClient, setOnLoad,
+    sendAndLoad,
+  ]);
 }
 
 function buildSaveSlotBody(CP) {
-  // flags=0x29: r1=this, r2=n (slotId param), r3=data (ignored)
+  // flags=0x29: r1=this, r2=n (param), r3=data (param)
+  // r4,r5 = local vars
   //
-  //   flash.external.ExternalInterface.call("saveSlotData", "miniwave", n, this.slots[n])
+  //   var lv = new LoadVars()        → r4
+  //   lv.game = "miniwave"
+  //   lv.sid = _root.sid
+  //   lv.slotId = n                  (r2)
+  //   lv.data = data                 (r3)
+  //   var resp = new LoadVars()      → r5
+  //   lv.sendAndLoad("/api/saveFrutiSlot", resp, "POST")
 
-  return Buffer.concat([
-    // arg4: this.slots[n]
-    actionPush(pushReg(1), pushCp(CP.slots)),
-    GET_MEMBER,
-    actionPush(pushReg(2)),
-    GET_MEMBER,
-    // arg3: n
-    actionPush(pushReg(2)),
-    // arg2: "miniwave"
-    actionPush(pushCp(CP.miniwave)),
-    // arg1: "saveSlotData"
-    actionPush(pushCp(CP.saveSlotData)),
-    // arg count
-    actionPush(pushInt(4)),
-    // Get ExternalInterface
-    actionPush(pushCp(CP.flash)),
+  const createLv = Buffer.concat([
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(4),
+    POP,
+  ]);
+
+  const setGame = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.game), pushCp(CP.miniwave)),
+    SET_MEMBER,
+  ]);
+
+  const setSid = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.sid)),
+    actionPush(pushStr('_root')),
     GET_VARIABLE,
-    actionPush(pushCp(CP.external)),
+    actionPush(pushCp(CP.sid)),
     GET_MEMBER,
-    actionPush(pushCp(CP.ExternalInterface)),
-    GET_MEMBER,
-    // Call
-    actionPush(pushCp(CP.call)),
+    SET_MEMBER,
+  ]);
+
+  const setSlotId = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.slotId), pushReg(2)),
+    SET_MEMBER,
+  ]);
+
+  const setData = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.data), pushReg(3)),
+    SET_MEMBER,
+  ]);
+
+  const createResp = Buffer.concat([
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(5),
+    POP,
+  ]);
+
+  const sendAndLoad = Buffer.concat([
+    actionPush(pushCp(CP.POST)),
+    actionPush(pushReg(5)),
+    actionPush(pushCp(CP.saveFrutiSlot)),
+    actionPush(pushInt(3)),
+    actionPush(pushReg(4), pushCp(CP.sendAndLoad)),
     CALL_METHOD,
     POP,
+  ]);
+
+  return Buffer.concat([
+    createLv, setGame, setSid, setSlotId, setData,
+    createResp, sendAndLoad,
   ]);
 }
 
@@ -362,19 +427,19 @@ function patchClientTagBody(tagBody) {
   // Add new CP entries
   const newCpBase = cp.count;
   const newStrings = [
-    'SharedObject',         // +0
-    'getLocal',             // +1
-    'miniWave2/card',       // +2
-    'data',                 // +3
-    'fruticard',            // +4
-    'flash',                // +5
-    'external',             // +6
-    'ExternalInterface',    // +7
-    'call',                 // +8
-    'saveSlotData',         // +9
-    'loadSlotData',         // +10
-    'slot0',                // +11
-    'slot1',                // +12
+    'LoadVars',             // +0
+    'game',                 // +1
+    'sid',                  // +2
+    '_client',              // +3
+    'onLoad',               // +4
+    'slot0',                // +5
+    'fromJSON',             // +6
+    'POST',                 // +7
+    '/api/loadFrutiSlots',  // +8
+    'sendAndLoad',          // +9
+    'slotId',               // +10
+    '/api/saveFrutiSlot',   // +11
+    'data',                 // +12
   ];
 
   let newCpData = Buffer.alloc(0);
@@ -403,19 +468,19 @@ function patchClientTagBody(tagBody) {
     onServiceConnect: oscIdx,
     slots: slotsIdx,
     miniwave: 1,
-    SharedObject: newCpBase + 0,
-    getLocal: newCpBase + 1,
-    miniWave2Card: newCpBase + 2,
-    data: newCpBase + 3,
-    fruticard: newCpBase + 4,
-    flash: newCpBase + 5,
-    external: newCpBase + 6,
-    ExternalInterface: newCpBase + 7,
-    call: newCpBase + 8,
-    saveSlotData: newCpBase + 9,
-    loadSlotData: newCpBase + 10,
-    slot0: newCpBase + 11,
-    slot1: newCpBase + 12,
+    LoadVars: newCpBase + 0,
+    game: newCpBase + 1,
+    sid: newCpBase + 2,
+    _client: newCpBase + 3,
+    onLoad: newCpBase + 4,
+    slot0: newCpBase + 5,
+    fromJSON: newCpBase + 6,
+    POST: newCpBase + 7,
+    loadFrutiSlots: newCpBase + 8,
+    sendAndLoad: newCpBase + 9,
+    slotId: newCpBase + 10,
+    saveFrutiSlot: newCpBase + 11,
+    data: newCpBase + 12,
   };
 
   // Flip STANDALONE = true (in case any other code checks it)
@@ -428,35 +493,24 @@ function patchClientTagBody(tagBody) {
     }
   }
 
-  // Find both serviceConnect and saveSlot DF2s
-  const scDF2 = findPropertyDF2(tagBody, newCpDataEnd, tagBody.length, scIdx);
-  if (!scDF2) throw new Error('serviceConnect DF2 not found');
-  console.log(`  serviceConnect DF2 at ${scDF2.df2Start}, body ${scDF2.bodyStart}-${scDF2.bodyEnd} (${scDF2.bodyEnd - scDF2.bodyStart} bytes)`);
-
-  const ssDF2 = findPropertyDF2(tagBody, scDF2.df2End + 1, tagBody.length, ssIdx);
+  // Find saveSlot DF2 (first match after CP) — only saveSlot is replaced.
+  // serviceConnect is left intact: STANDALONE=true makes the original code
+  // work correctly (creates empty slots + setInterval to onServiceConnect).
+  // Replacing serviceConnect with HTTP-based code caused the game to hang
+  // on its loading screen in Ruffle (stack underflow in DoInitAction context).
+  const ssDF2 = findPropertyDF2(tagBody, newCpDataEnd, tagBody.length, ssIdx);
   if (!ssDF2) throw new Error('saveSlot DF2 not found');
   console.log(`  saveSlot DF2 at ${ssDF2.df2Start}, body ${ssDF2.bodyStart}-${ssDF2.bodyEnd} (${ssDF2.bodyEnd - ssDF2.bodyStart} bytes)`);
 
-  // Build new function bodies
-  const newScBody = buildServiceConnectBody(CP);
-  const newScDF2 = buildDefineFunction2('', [], 6, 0x29, newScBody);
-  console.log(`  serviceConnect: ${scDF2.df2End - scDF2.df2Start} → ${newScDF2.length} bytes`);
-
   const newSsBody = buildSaveSlotBody(CP);
   const newSsDF2 = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 6, 0x29, newSsBody);
+
   console.log(`  saveSlot: ${ssDF2.df2End - ssDF2.df2Start} → ${newSsDF2.length} bytes`);
 
-  // Replace from last to first so earlier offsets stay valid
   tagBody = Buffer.concat([
     tagBody.slice(0, ssDF2.df2Start),
     newSsDF2,
     tagBody.slice(ssDF2.df2End),
-  ]);
-
-  tagBody = Buffer.concat([
-    tagBody.slice(0, scDF2.df2Start),
-    newScDF2,
-    tagBody.slice(scDF2.df2End),
   ]);
 
   return tagBody;

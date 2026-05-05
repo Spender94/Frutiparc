@@ -153,52 +153,6 @@
 
   document.title = "Frutiparc - " + (qs.get("game") || "Game");
 
-  // Derive game's internal SWF name for slot persistence (e.g., "miniwave" from ".../miniwave.swf")
-  var gameSwfName = swfPath.substring(swfPath.lastIndexOf("/") + 1).replace(/\.swf$/, "");
-
-  // Pre-fetch slot data from the server so the SWF can load it synchronously via ExternalInterface
-  window._slotData = {};
-  if (popupSid && gameSwfName) {
-    try {
-      var slotResp = await fetch("/api/loadFrutiSlots", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "sid=" + encodeURIComponent(popupSid) + "&game=" + encodeURIComponent(gameSwfName)
-      });
-      var slotText = await slotResp.text();
-      var slotParts = new URLSearchParams(slotText);
-      for (var entry of slotParts) {
-        if (entry[0].startsWith("slot") && entry[1]) {
-          try { window._slotData[entry[0]] = JSON.parse(entry[1]); } catch(e) {}
-        }
-      }
-      console.log("[Game] Pre-fetched slots for " + gameSwfName + ":", Object.keys(window._slotData));
-    } catch (e) {
-      console.log("[Game] Pre-fetch slots failed:", e);
-    }
-  }
-
-  // ExternalInterface callbacks for SWF save/load
-  window.loadSlotData = function(slotKey) {
-    var d = window._slotData[slotKey];
-    return (d !== undefined && d !== null) ? d : null;
-  };
-  window.saveSlotData = function(game, slotId, data) {
-    var sid = new URLSearchParams(window.location.search).get("sid") || "";
-    if (!sid) return;
-    var jsonData;
-    try { jsonData = JSON.stringify(data); } catch(e) { return; }
-    console.log("[Game] saveSlot " + game + "/slot" + slotId + " (" + jsonData.length + " chars)");
-    fetch("/api/saveFrutiSlot", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "sid=" + encodeURIComponent(sid) +
-            "&game=" + encodeURIComponent(game) +
-            "&slotId=" + encodeURIComponent(String(slotId)) +
-            "&data=" + encodeURIComponent(jsonData)
-    }).catch(function(e) { console.log("[Game] saveSlot error:", e); });
-  };
-
   const ruffle = window.RufflePlayer.newest();
   const player = ruffle.createPlayer();
   player.style.width  = swfWidth + "px";
