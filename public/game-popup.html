@@ -153,6 +153,26 @@
 
   document.title = "Frutiparc - " + (qs.get("game") || "Game");
 
+  // Derive game's internal SWF name for slot persistence (e.g., "miniwave" from ".../miniwave.swf")
+  var gameSwfName = swfPath.substring(swfPath.lastIndexOf("/") + 1).replace(/\.swf$/, "");
+
+  // ExternalInterface callback for SWF save — receives AS2 objects auto-serialized to JS
+  window.saveSlotData = function(game, slotId, data) {
+    var sid = new URLSearchParams(window.location.search).get("sid") || "";
+    if (!sid) return;
+    var jsonData;
+    try { jsonData = JSON.stringify(data); } catch(e) { return; }
+    console.log("[Game] saveSlot " + game + "/slot" + slotId + " (" + jsonData.length + " chars)");
+    fetch("/api/saveFrutiSlot", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "sid=" + encodeURIComponent(sid) +
+            "&game=" + encodeURIComponent(game) +
+            "&slotId=" + encodeURIComponent(String(slotId)) +
+            "&data=" + encodeURIComponent(jsonData)
+    }).catch(function(e) { console.log("[Game] saveSlot error:", e); });
+  };
+
   const ruffle = window.RufflePlayer.newest();
   const player = ruffle.createPlayer();
   player.style.width  = swfWidth + "px";
