@@ -357,72 +357,170 @@ function patchClientTagBody(tagBody) {
   return tagBody;
 }
 
-// ─── Build a DoAction tag that injects _root.loadData = SharedObject.getLocal ───
+// ─── Patch Manager DoInitAction: replace _root.loadData with SharedObject.getLocal ───
 // MiniWave's Manager.loadFruticard() calls _root.loadData("miniWave2/card") which
 // is normally defined by the Frusion launcher SWF. In standalone mode that launcher
 // doesn't run, so _root.loadData is undefined and SharedObject persistence breaks.
-// This tag, inserted before the first ShowFrame, sets _root.loadData = SharedObject.getLocal
-// (an alias) so loadFruticard returns a real SharedObject.
+// Instead of injecting a runtime shim (which broke menus), we patch the bytecode
+// directly: replace the _root.loadData(name) call with SharedObject.getLocal(name).
+// This is the same approach MiniPixiz uses and is proven reliable.
 
-function buildLoadDataInjectorTag() {
-  function pushStringInline(s) {
-    return Buffer.concat([
-      Buffer.from([0x00]),
-      Buffer.from(s, 'latin1'),
-      Buffer.from([0x00]),
-    ]);
+function patchManagerTagBody(tagBody) {
+  const spriteId = tagBody.readUInt16LE(0);
+
+  const cp = parseConstantPool(tagBody, 2);
+  if (!cp) throw new Error('Cannot parse Manager constant pool');
+  if (cp.entries[3] !== 'Manager') throw new Error(`Expected Manager at CP[3], got '${cp.entries[3]}'`);
+
+  const loadDataIdx = cp.entries.indexOf('loadData');
+  const miniWave2Idx = cp.entries.indexOf('miniWave2/card');
+  const soIdx = cp.entries.indexOf('so');
+
+  if (loadDataIdx < 0 || miniWave2Idx < 0 || soIdx < 0) {
+    throw new Error('Missing required CP entries in Manager tag');
   }
-  function actionPushRaw(payload) {
-    const hdr = Buffer.alloc(3);
-    hdr[0] = 0x96;
-    hdr.writeUInt16LE(payload.length, 1);
-    return Buffer.concat([hdr, payload]);
+
+  console.log(`  Sprite ${spriteId}: CP count=${cp.count}, loadData=CP[${loadDataIdx}], miniWave2/card=CP[${miniWave2Idx}], so=CP[${soIdx}]`);
+
+  // Add 'SharedObject' and 'getLocal' to the constant pool
+  const newCpBase = cp.count;
+  const newStrings = ['SharedObject', 'getLocal'];
+  let newCpData = Buffer.alloc(0);
+  for (const s of newStrings) {
+    newCpData = Buffer.concat([newCpData, Buffer.from(s + '\0', 'latin1')]);
   }
-  // _root.loadData = SharedObject.getLocal
-  const code = Buffer.concat([
-    actionPushRaw(pushStringInline('_root')),
-    Buffer.from([0x1C]),                          // GetVariable → _root
-    actionPushRaw(pushStringInline('loadData')),  // member name
-    actionPushRaw(pushStringInline('SharedObject')),
-    Buffer.from([0x1C]),                          // GetVariable → SharedObject
-    actionPushRaw(pushStringInline('getLocal')),
-    Buffer.from([0x4E]),                          // GetMember → SharedObject.getLocal
-    Buffer.from([0x4F]),                          // SetMember → _root.loadData = ...
-    Buffer.from([0x00]),                          // End
+  const cpDelta = newCpData.length;
+
+  tagBody = Buffer.concat([
+    tagBody.slice(0, cp.dataEnd),
+    newCpData,
+    tagBody.slice(cp.dataEnd),
   ]);
-  // DoAction (code=12) tag with short header (length fits in 6 bits)
-  if (code.length >= 0x3F) throw new Error('Injector tag too large for short header');
-  const tagHdr = Buffer.alloc(2);
-  tagHdr.writeUInt16LE((12 << 6) | code.length, 0);
-  return Buffer.concat([tagHdr, code]);
-}
+  tagBody.writeUInt16LE(cp.payloadLen + cpDelta, 3);
+  tagBody.writeUInt16LE(cp.count + newStrings.length, 5);
 
-// ─── Insert injector tag before the first ShowFrame ───
+  const sharedObjectCpIdx = newCpBase + 0;
+  const getLocalCpIdx = newCpBase + 1;
 
-function insertLoadDataInjector(buf) {
-  const tags = findTags(buf);
-  let firstShowFrame = -1;
-  for (const t of tags) {
-    if (t.code === 1) { firstShowFrame = t.offset; break; }
-  }
-  if (firstShowFrame < 0) throw new Error('No ShowFrame found');
-  // Skip if injector already present (idempotent re-runs)
-  for (const t of tags) {
-    if (t.code !== 12) continue;
-    const start = t.offset + t.hdrSize;
-    const slice = buf.slice(start, start + Math.min(t.length, 80));
-    if (slice.includes(Buffer.from('SharedObject', 'latin1'))) {
-      console.log('LoadData injector already present — skipping');
-      return buf;
+  console.log(`  Added SharedObject=CP[${sharedObjectCpIdx}], getLocal=CP[${getLocalCpIdx}] (+${cpDelta} bytes)`);
+
+  // Find the _root.loadData("miniWave2/card") call pattern in the bytecode.
+  // Original bytes (20 bytes total):
+  //   96 0f 00  04 01 08 XX 08 YY 07 01000000 04 02 08 ZZ  52  4f
+  //   Push(15): r1, CP[so], CP[miniWave2/card], int(1), r2(_root), CP[loadData]
+  //   CallMethod
+  //   SetMember
+  //
+  // Where XX=soIdx, YY=miniWave2Idx, ZZ=loadDataIdx (after CP expansion, indices unchanged
+  // because new entries are appended at the end).
+  //
+  // Replacement (24 bytes total):
+  //   96 0d 00  04 01 08 XX 08 YY 07 01000000 08 AA       Push(13): r1, CP[so], CP[miniWave2/card], int(1), CP[SharedObject]
+  //   1C                                                   GetVariable
+  //   96 02 00  08 BB                                      Push(2): CP[getLocal]
+  //   52                                                   CallMethod
+  //   4f                                                   SetMember
+  //
+  // This is 4 bytes larger. We need to:
+  //   1. Update the DF2 codeSize field (+4)
+  //   2. Update the If jump at func body @15 that crosses the patch point (+4 to offset)
+
+  // Build search pattern for the original 20-byte sequence
+  const soIdxByte = soIdx < 256 ? Buffer.from([0x08, soIdx]) : Buffer.from([0x09, soIdx & 0xff, (soIdx >> 8) & 0xff]);
+  const mw2IdxByte = miniWave2Idx < 256 ? Buffer.from([0x08, miniWave2Idx]) : Buffer.from([0x09, miniWave2Idx & 0xff, (miniWave2Idx >> 8) & 0xff]);
+  const ldIdxByte = loadDataIdx < 256 ? Buffer.from([0x08, loadDataIdx]) : Buffer.from([0x09, loadDataIdx & 0xff, (loadDataIdx >> 8) & 0xff]);
+
+  // Search for: Push ... r2 CP[loadData] CallMethod(0x52)
+  // Specifically the full 20-byte pattern
+  const searchPattern = Buffer.concat([
+    Buffer.from([0x96, 0x0f, 0x00]),   // Push, payload=15
+    Buffer.from([0x04, 0x01]),          // r1
+    soIdxByte,                          // CP[so]
+    mw2IdxByte,                         // CP[miniWave2/card]
+    Buffer.from([0x07, 0x01, 0x00, 0x00, 0x00]),  // int(1)
+    Buffer.from([0x04, 0x02]),          // r2 (_root)
+    ldIdxByte,                          // CP[loadData]
+    Buffer.from([0x52]),                // CallMethod
+    Buffer.from([0x4f]),                // SetMember
+  ]);
+
+  const patchOffset = tagBody.indexOf(searchPattern, cp.dataEnd + cpDelta);
+  if (patchOffset < 0) throw new Error('Could not find _root.loadData call pattern in Manager bytecode');
+
+  console.log(`  Found _root.loadData pattern at tag offset ${patchOffset}`);
+
+  // Build replacement (24 bytes)
+  const shCpByte = sharedObjectCpIdx < 256 ? Buffer.from([0x08, sharedObjectCpIdx]) : Buffer.from([0x09, sharedObjectCpIdx & 0xff, (sharedObjectCpIdx >> 8) & 0xff]);
+  const glCpByte = getLocalCpIdx < 256 ? Buffer.from([0x08, getLocalCpIdx]) : Buffer.from([0x09, getLocalCpIdx & 0xff, (getLocalCpIdx >> 8) & 0xff]);
+
+  const replacement = Buffer.concat([
+    Buffer.from([0x96, 0x0d, 0x00]),   // Push, payload=13
+    Buffer.from([0x04, 0x01]),          // r1
+    soIdxByte,                          // CP[so]
+    mw2IdxByte,                         // CP[miniWave2/card]
+    Buffer.from([0x07, 0x01, 0x00, 0x00, 0x00]),  // int(1)
+    shCpByte,                           // CP[SharedObject]
+    Buffer.from([0x1c]),                // GetVariable
+    Buffer.from([0x96, 0x02, 0x00]),    // Push, payload=2
+    glCpByte,                           // CP[getLocal]
+    Buffer.from([0x52]),                // CallMethod
+    Buffer.from([0x4f]),                // SetMember
+  ]);
+
+  if (replacement.length !== 24) throw new Error('Replacement should be 24 bytes, got ' + replacement.length);
+
+  // Splice replacement into tagBody
+  tagBody = Buffer.concat([
+    tagBody.slice(0, patchOffset),
+    replacement,
+    tagBody.slice(patchOffset + 20),
+  ]);
+
+  // Now fix up the DF2 that contains this code (loadFruticard).
+  // The DF2's codeSize field needs +4.
+  // Also the If jump at func body offset @15 (which jumps over the STANDALONE block) needs +4.
+
+  // Find the DF2 header that precedes patchOffset.
+  // The loadFruticard DF2 is assigned to prototype, so it's: Push CP[loadFruticard] ... DF2 ... SetMember
+  // We look backwards from patchOffset for 0x8E (DefineFunction2 opcode)
+  let df2HeaderOff = -1;
+  for (let i = patchOffset - 1; i >= patchOffset - 100 && i >= 0; i--) {
+    if (tagBody[i] === 0x8E) {
+      df2HeaderOff = i;
+      break;
     }
   }
-  const injector = buildLoadDataInjectorTag();
-  console.log(`Inserting loadData injector tag (${injector.length} bytes) before ShowFrame at ${firstShowFrame}`);
-  return Buffer.concat([
-    buf.slice(0, firstShowFrame),
-    injector,
-    buf.slice(firstShowFrame),
-  ]);
+  if (df2HeaderOff < 0) throw new Error('Cannot find DF2 header for loadFruticard');
+
+  // Parse DF2 header to find codeSize field offset
+  let df2Off = df2HeaderOff + 3; // skip opcode + innerLen(2)
+  const nameEnd = tagBody.indexOf(0, df2Off);
+  df2Off = nameEnd + 1;
+  const numParams = tagBody.readUInt16LE(df2Off); df2Off += 2;
+  df2Off += 1; // regCount
+  df2Off += 2; // flags
+  for (let p = 0; p < numParams; p++) {
+    df2Off += 1; // reg
+    const pe = tagBody.indexOf(0, df2Off);
+    df2Off = pe + 1;
+  }
+  // df2Off now points to codeSize (2 bytes)
+  const oldCodeSize = tagBody.readUInt16LE(df2Off);
+  tagBody.writeUInt16LE(oldCodeSize + 4, df2Off);
+  console.log(`  Updated DF2 codeSize: ${oldCodeSize} → ${oldCodeSize + 4} (at tag offset ${df2Off})`);
+
+  // The function body starts right after codeSize (at df2Off + 2).
+  const funcBodyStart = df2Off + 2;
+
+  // Fix the If jump at func body @15 (5 bytes before the patch point within the func body).
+  // The If instruction is at funcBodyStart + 15.
+  const ifOff = funcBodyStart + 15;
+  if (tagBody[ifOff] !== 0x9d) throw new Error('Expected If (0x9D) at func body @15, got 0x' + tagBody[ifOff].toString(16));
+  const oldJumpOffset = tagBody.readInt16LE(ifOff + 3);
+  tagBody.writeInt16LE(oldJumpOffset + 4, ifOff + 3);
+  console.log(`  Updated If @15 jump offset: ${oldJumpOffset} → ${oldJumpOffset + 4}`);
+
+  return tagBody;
 }
 
 // ─── Main ───
@@ -456,25 +554,44 @@ for (const tag of tags) {
 if (clientTagInfos.length === 0) throw new Error('No Client DoInitAction tags found');
 console.log(`Found ${clientTagInfos.length} Client tag(s): sprites ${clientTagInfos.map(t => t.spriteId).join(', ')}`);
 
-// Process tags from last to first (so earlier offsets aren't affected by later replacements)
-clientTagInfos.sort((a, b) => b.tag.offset - a.tag.offset);
+// Find Manager DoInitAction tags (code=59, CP[3]='Manager', has 'loadFruticard')
+const managerTagInfos = [];
+for (const tag of tags) {
+  if (tag.code !== 59) continue;
+  const bodyStart = tag.offset + tag.hdrSize;
+  const spriteId = buf.readUInt16LE(bodyStart);
+  const cpStart = bodyStart + 2;
+  const cp = parseConstantPool(buf, cpStart);
+  if (!cp) continue;
+  if (cp.entries[3] === 'Manager' && cp.entries.indexOf('loadFruticard') >= 0 && cp.entries.indexOf('loadData') >= 0) {
+    managerTagInfos.push({ tag, spriteId });
+  }
+}
 
-for (const { tag, spriteId } of clientTagInfos) {
-  console.log(`\nPatching Client tag for sprite ${spriteId} at offset ${tag.offset}:`);
+if (managerTagInfos.length === 0) throw new Error('No Manager DoInitAction tags found');
+console.log(`Found ${managerTagInfos.length} Manager tag(s): sprites ${managerTagInfos.map(t => t.spriteId).join(', ')}`);
 
-  // Extract original tag body
+// Process ALL tags from last to first (so earlier offsets aren't affected by later replacements)
+const allTagInfos = [
+  ...clientTagInfos.map(t => ({ ...t, type: 'client' })),
+  ...managerTagInfos.map(t => ({ ...t, type: 'manager' })),
+];
+allTagInfos.sort((a, b) => b.tag.offset - a.tag.offset);
+
+for (const { tag, spriteId, type } of allTagInfos) {
+  console.log(`\nPatching ${type === 'client' ? 'Client' : 'Manager'} tag for sprite ${spriteId} at offset ${tag.offset}:`);
+
   const bodyStart = tag.offset + tag.hdrSize;
   const origTagBody = buf.slice(bodyStart, bodyStart + tag.length);
 
-  // Patch the tag body
-  const newTagBody = patchClientTagBody(Buffer.from(origTagBody));
+  const newTagBody = type === 'client'
+    ? patchClientTagBody(Buffer.from(origTagBody))
+    : patchManagerTagBody(Buffer.from(origTagBody));
 
-  // Rebuild tag header (always long form since the tag is > 63 bytes)
   const newTagHdr = Buffer.alloc(6);
   newTagHdr.writeUInt16LE((tag.code << 6) | 0x3f, 0);
   newTagHdr.writeUInt32LE(newTagBody.length, 2);
 
-  // Replace in main buffer
   const tagEnd = tag.offset + tag.hdrSize + tag.length;
   buf = Buffer.concat([
     buf.slice(0, tag.offset),
@@ -485,9 +602,6 @@ for (const { tag, spriteId } of clientTagInfos) {
 
   console.log(`  Tag length: ${tag.length} → ${newTagBody.length} (delta=${newTagBody.length - tag.length})`);
 }
-
-// Insert loadData injector tag so _root.loadData is defined for Manager.loadFruticard
-buf = insertLoadDataInjector(buf);
 
 // Write output
 const outSize = writeSwf(SWF_PATH, sig, version, buf);
