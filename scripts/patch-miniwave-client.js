@@ -493,37 +493,24 @@ function patchClientTagBody(tagBody) {
     }
   }
 
-  // Find serviceConnect DF2 (first match after CP)
-  const scDF2 = findPropertyDF2(tagBody, newCpDataEnd, tagBody.length, scIdx);
-  if (!scDF2) throw new Error('serviceConnect DF2 not found');
-  console.log(`  serviceConnect DF2 at ${scDF2.df2Start}, body ${scDF2.bodyStart}-${scDF2.bodyEnd} (${scDF2.bodyEnd - scDF2.bodyStart} bytes)`);
-
-  // Find saveSlot DF2 (first match after CP)
+  // Find saveSlot DF2 (first match after CP) — only saveSlot is replaced.
+  // serviceConnect is left intact: STANDALONE=true makes the original code
+  // work correctly (creates empty slots + setInterval to onServiceConnect).
+  // Replacing serviceConnect with HTTP-based code caused the game to hang
+  // on its loading screen in Ruffle (stack underflow in DoInitAction context).
   const ssDF2 = findPropertyDF2(tagBody, newCpDataEnd, tagBody.length, ssIdx);
   if (!ssDF2) throw new Error('saveSlot DF2 not found');
   console.log(`  saveSlot DF2 at ${ssDF2.df2Start}, body ${ssDF2.bodyStart}-${ssDF2.bodyEnd} (${ssDF2.bodyEnd - ssDF2.bodyStart} bytes)`);
 
-  // Build replacement functions
-  const newScBody = buildServiceConnectBody(CP);
-  const newScDF2 = buildDefineFunction2('', [], 5, 0x29, newScBody);
-
   const newSsBody = buildSaveSlotBody(CP);
   const newSsDF2 = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 6, 0x29, newSsBody);
 
-  console.log(`  serviceConnect: ${scDF2.df2End - scDF2.df2Start} → ${newScDF2.length} bytes`);
   console.log(`  saveSlot: ${ssDF2.df2End - ssDF2.df2Start} → ${newSsDF2.length} bytes`);
 
-  // Replace saveSlot first (later offset), then serviceConnect
   tagBody = Buffer.concat([
     tagBody.slice(0, ssDF2.df2Start),
     newSsDF2,
     tagBody.slice(ssDF2.df2End),
-  ]);
-
-  tagBody = Buffer.concat([
-    tagBody.slice(0, scDF2.df2Start),
-    newScDF2,
-    tagBody.slice(scDF2.df2End),
   ]);
 
   return tagBody;
