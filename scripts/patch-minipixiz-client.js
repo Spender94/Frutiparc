@@ -172,22 +172,19 @@ console.log('CP verification passed');
 // ─── Step 2: Add new CP entries ───
 
 const newStrings = [
-  'LoadVars',             // newCpBase + 0
-  'game',                 // newCpBase + 1
-  'sid',                  // newCpBase + 2
-  '_client',              // newCpBase + 3
-  'onLoad',               // newCpBase + 4
-  'slot0',                // newCpBase + 5
-  'fromJSON',             // newCpBase + 6
-  'POST',                 // newCpBase + 7
-  '/api/loadFrutiSlots',  // newCpBase + 8
-  'sendAndLoad',          // newCpBase + 9
-  '_saveSlotHTTP',        // newCpBase + 10
-  'slotId',               // newCpBase + 11
-  '/api/saveFrutiSlot',   // newCpBase + 12
-  'result',               // newCpBase + 13
-  'minipixiz',            // newCpBase + 14
-  'send',                 // newCpBase + 15
+  'SharedObject',         // newCpBase + 0
+  'getLocal',             // newCpBase + 1
+  'miniPixiz/card',       // newCpBase + 2
+  'flash',                // newCpBase + 3
+  'external',             // newCpBase + 4
+  'ExternalInterface',    // newCpBase + 5
+  'call',                 // newCpBase + 6
+  'saveSlotData',         // newCpBase + 7
+  'loadSlotData',         // newCpBase + 8
+  'slot0',                // newCpBase + 9
+  'slot1',                // newCpBase + 10
+  'fruticard',            // newCpBase + 11
+  'minipixiz',            // newCpBase + 12
 ];
 
 const newCpBase = origCpCount;
@@ -244,198 +241,129 @@ const CP = {
   onServiceConnect: 584,
   data: 754,
   slots: 756,
-  LoadVars: newCpBase + 0,
-  game: newCpBase + 1,
-  sid: newCpBase + 2,
-  _client: newCpBase + 3,
-  onLoad: newCpBase + 4,
-  slot0: newCpBase + 5,
-  fromJSON: newCpBase + 6,
-  POST: newCpBase + 7,
-  loadFrutiSlots: newCpBase + 8,
-  sendAndLoad: newCpBase + 9,
-  _saveSlotHTTP: newCpBase + 10,
-  slotId: newCpBase + 11,
-  saveFrutiSlot: newCpBase + 12,
-  result: newCpBase + 13,
-  minipixiz: newCpBase + 14,
-  send: newCpBase + 15,
+  SharedObject: newCpBase + 0,
+  getLocal: newCpBase + 1,
+  miniPixizCard: newCpBase + 2,
+  flash: newCpBase + 3,
+  external: newCpBase + 4,
+  ExternalInterface: newCpBase + 5,
+  call: newCpBase + 6,
+  saveSlotData: newCpBase + 7,
+  loadSlotData: newCpBase + 8,
+  slot0: newCpBase + 9,
+  slot1: newCpBase + 10,
+  fruticard: newCpBase + 11,
+  minipixiz: newCpBase + 12,
 };
 
-// Build the onLoad callback for serviceConnect:
-// function(success) {           // r2 = success
-//   var client = this._client;  // r3 = client
-//   if (!success) { client.onServiceConnect(); return; }
-//   if (this.slot0 !== undefined) {
-//     var obj = client.fromJSON(this.slot0);  // r4 = obj
-//     if (obj !== null) client.slots[0] = obj;
-//   }
-//   client.onServiceConnect();
-// }
-
-function buildOnLoadBody() {
-  // r1=this, r2=success (param)
-  const getClient = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP._client)), GET_MEMBER, storeReg(3), POP,
-  ]);
-
-  const checkSuccess = Buffer.concat([
-    actionPush(pushReg(2)), NOT,
-  ]);
-
-  const slot0Check = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
-    actionPush(pushUndef()), EQUALS2, NOT, NOT,
-  ]);
-
-  const slot0Load = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
-    actionPush(pushInt(1)),
-    actionPush(pushReg(3), pushCp(CP.fromJSON)),
-    CALL_METHOD, storeReg(4), POP,
-  ]);
-
-  const slot0NullCheck = Buffer.concat([
-    actionPush(pushReg(4), pushNull()), EQUALS2, NOT, NOT,
-  ]);
-
-  const slot0Assign = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
-    actionPush(pushInt(0)),
-    actionPush(pushReg(4)),
-    SET_MEMBER,
-  ]);
-
-  const callOnServiceConnect = Buffer.concat([
-    actionPush(pushInt(0)),
-    actionPush(pushReg(3), pushCp(CP.onServiceConnect)),
-    CALL_METHOD, POP,
-  ]);
-
-  // Jump offsets
-  const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
-    slot0Assign.length;
-  const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length;
-  const slot0NullSkipSize = slot0Assign.length;
-
-  return Buffer.concat([
-    getClient,
-    checkSuccess,
-    actionIf(afterSuccessCheck),
-    slot0Check,
-    actionIf(slot0SkipSize),
-    slot0Load,
-    slot0NullCheck,
-    actionIf(slot0NullSkipSize),
-    slot0Assign,
-    callOnServiceConnect,
-  ]);
-}
-
-const onLoadBodyBytes = buildOnLoadBody();
-
-// Build the main serviceConnect function body:
-// flags=0x29: r1=this. We use GetVariable("_root") for _root access.
-//
+// Build new serviceConnect using ExternalInterface (no nested callbacks):
 //   this.slots = []
-//   this.slots[0] = {}
-//   var lv = new LoadVars()        → r3 (we'll use StoreRegister)
-//   lv.game = "minipixiz"
-//   lv.sid = _root.sid
-//   var result = new LoadVars()    → r4
-//   result._client = this
-//   result.onLoad = function(success) { ... }
-//   lv.sendAndLoad("/api/loadFrutiSlots", result, "POST")
+//   var s0 = flash.external.ExternalInterface.call("loadSlotData", "slot0")
+//   if (s0 != null) this.slots[0] = s0
+//   var s1 = flash.external.ExternalInterface.call("loadSlotData", "slot1")
+//   if (s1 != null) this.slots[1] = s1
+//   if (this.slots[0] == undefined) this.slots[0] = {}
+//   SharedObject.getLocal("miniPixiz/card").data.fruticard = this.slots
+//   this.onServiceConnect()
 
 function buildServiceConnectBody() {
+  // flags=0x29: r1=this, regCount=6. r4,r5 = temps
+
   const initSlots = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots), pushInt(0)),
     INIT_ARRAY,
     SET_MEMBER,
   ]);
 
-  const initSlot0 = Buffer.concat([
+  function eiLoad(slotKeyCp) {
+    return Buffer.concat([
+      actionPush(pushCp(slotKeyCp)),
+      actionPush(pushCp(CP.loadSlotData)),
+      actionPush(pushInt(2)),
+      actionPush(pushCp(CP.flash)),
+      GET_VARIABLE,
+      actionPush(pushCp(CP.external)),
+      GET_MEMBER,
+      actionPush(pushCp(CP.ExternalInterface)),
+      GET_MEMBER,
+      actionPush(pushCp(CP.call)),
+      CALL_METHOD,
+      storeReg(4),
+      POP,
+    ]);
+  }
+
+  function assignIfNotNull(idx) {
+    const assign = Buffer.concat([
+      actionPush(pushReg(1), pushCp(CP.slots)),
+      GET_MEMBER,
+      actionPush(pushInt(idx)),
+      actionPush(pushReg(4)),
+      SET_MEMBER,
+    ]);
+    return Buffer.concat([
+      actionPush(pushReg(4), pushNull()),
+      EQUALS2,
+      actionIf(assign.length),
+      assign,
+    ]);
+  }
+
+  const loadSlot0 = Buffer.concat([eiLoad(CP.slot0), assignIfNotNull(0)]);
+  const loadSlot1 = Buffer.concat([eiLoad(CP.slot1), assignIfNotNull(1)]);
+
+  const initSlot0Body = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots)),
     GET_MEMBER,
     actionPush(pushInt(0), pushInt(0)),
     INIT_OBJECT,
     SET_MEMBER,
   ]);
-
-  // var lv = new LoadVars()
-  const createLv = Buffer.concat([
-    actionPush(pushInt(0), pushCp(CP.LoadVars)),
-    NEW_OBJECT,
-    storeReg(3),
-    POP,
+  const ensureSlot0 = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.slots)),
+    GET_MEMBER,
+    actionPush(pushInt(0)),
+    GET_MEMBER,
+    actionPush(pushUndef()),
+    EQUALS2,
+    NOT,
+    actionIf(initSlot0Body.length),
+    initSlot0Body,
   ]);
 
-  // lv.game = "minipixiz"
-  const setGame = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.game), pushCp(CP.minipixiz)),
-    SET_MEMBER,
-  ]);
-
-  // lv.sid = _root.sid
-  // We need _root → Push "_root", GetVariable
-  const setSid = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.sid)),
-    actionPush(pushStr('_root')),
+  const linkSO = Buffer.concat([
+    actionPush(pushCp(CP.miniPixizCard)),
+    actionPush(pushInt(1)),
+    actionPush(pushCp(CP.SharedObject)),
     GET_VARIABLE,
-    actionPush(pushCp(CP.sid)),
+    actionPush(pushCp(CP.getLocal)),
+    CALL_METHOD,
+    storeReg(5),
+    POP,
+    actionPush(pushReg(5), pushCp(CP.data)),
+    GET_MEMBER,
+    actionPush(pushCp(CP.fruticard)),
+    actionPush(pushReg(1), pushCp(CP.slots)),
     GET_MEMBER,
     SET_MEMBER,
   ]);
 
-  // var result = new LoadVars()
-  const createResult = Buffer.concat([
-    actionPush(pushInt(0), pushCp(CP.LoadVars)),
-    NEW_OBJECT,
-    storeReg(4),
-    POP,
-  ]);
-
-  // result._client = this
-  const setClient = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP._client), pushReg(1)),
-    SET_MEMBER,
-  ]);
-
-  // result.onLoad = function(success) { ... }
-  // Inner function: params=[(r2, 'success')], regcount=5, flags=0x29 (preloadThis→r1)
-  const onLoadFunc = buildDefineFunction2('', [[2, 'success']], 5, 0x29, onLoadBodyBytes);
-  const setOnLoad = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.onLoad)),
-    onLoadFunc,
-    SET_MEMBER,
-  ]);
-
-  // lv.sendAndLoad("/api/loadFrutiSlots", result, "POST")
-  const sendAndLoad = Buffer.concat([
-    actionPush(pushCp(CP.POST)),
-    actionPush(pushReg(4)),
-    actionPush(pushCp(CP.loadFrutiSlots)),
-    actionPush(pushInt(3)),
-    actionPush(pushReg(3), pushCp(CP.sendAndLoad)),
+  const callOSC = Buffer.concat([
+    actionPush(pushInt(0)),
+    actionPush(pushReg(1), pushCp(CP.onServiceConnect)),
     CALL_METHOD,
     POP,
   ]);
 
-  return Buffer.concat([
-    initSlots, initSlot0,
-    createLv, setGame, setSid,
-    createResult, setClient, setOnLoad,
-    sendAndLoad,
-  ]);
+  return Buffer.concat([initSlots, loadSlot0, loadSlot1, ensureSlot0, linkSO, callOSC]);
 }
 
 const serviceConnectBody = buildServiceConnectBody();
 
 // Build the new serviceConnect DefineFunction2
 // Original: params=0, regs=2, flags=0x29, codeSize=155
-// New: params=0, regs=5, flags=0x29
-// flags 0x29 = preloadThis(r1) + suppressArguments + suppressSuper
-const newServiceConnectFunc = buildDefineFunction2('', [], 5, 0x29, serviceConnectBody);
+// New: params=0, regs=6, flags=0x29
+const newServiceConnectFunc = buildDefineFunction2('', [], 6, 0x29, serviceConnectBody);
 
 // Find and replace the old serviceConnect DefineFunction2
 // Push before DF2 is at original offset 1287515, DF2 at 1287521, SetMember at 1287687
@@ -483,77 +411,35 @@ if (buf[origSaveSlotEnd] !== 0x4F) {
   throw new Error(`Expected SetMember (0x4F) after saveSlot at ${origSaveSlotEnd}, got 0x${buf[origSaveSlotEnd].toString(16)}`);
 }
 
-// Build new saveSlot body:
-// Original params: r2=n, r3=data (from DefineFunction2 with preloadThis→r1)
-// flags=0x29: r1=this, params (n→r2, data→r3), regCount≥5 for temps
-//
-//   var lv = new LoadVars()         → r4
-//   lv.game = "minipixiz"
-//   lv.sid = _root.sid
-//   lv.slotId = n                   (r2)
-//   lv.data = data                  (r3)
-//   var result = new LoadVars()     → r5
-//   lv.sendAndLoad("/api/saveFrutiSlot", result, "POST")
+// Build new saveSlot body using ExternalInterface:
+//   flash.external.ExternalInterface.call("saveSlotData", "minipixiz", n, this.slots[n])
 
 function buildSaveSlotBody() {
-  // var lv = new LoadVars()
-  const createLv = Buffer.concat([
-    actionPush(pushInt(0), pushCp(CP.LoadVars)),
-    NEW_OBJECT,
-    storeReg(4),
-    POP,
-  ]);
-
-  // lv.game = "minipixiz"
-  const setGame = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.game), pushCp(CP.minipixiz)),
-    SET_MEMBER,
-  ]);
-
-  // lv.sid = _root.sid
-  const setSid = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.sid)),
-    actionPush(pushStr('_root')),
-    GET_VARIABLE,
-    actionPush(pushCp(CP.sid)),
+  return Buffer.concat([
+    // arg4: this.slots[n]
+    actionPush(pushReg(1), pushCp(CP.slots)),
     GET_MEMBER,
-    SET_MEMBER,
-  ]);
-
-  // lv.slotId = n (r2)
-  const setSlotId = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.slotId), pushReg(2)),
-    SET_MEMBER,
-  ]);
-
-  // lv.data = data (r3)
-  const setData = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.data), pushReg(3)),
-    SET_MEMBER,
-  ]);
-
-  // var result = new LoadVars()
-  const createResult = Buffer.concat([
-    actionPush(pushInt(0), pushCp(CP.LoadVars)),
-    NEW_OBJECT,
-    storeReg(5),
-    POP,
-  ]);
-
-  // lv.sendAndLoad("/api/saveFrutiSlot", result, "POST")
-  const sendAndLoad = Buffer.concat([
-    actionPush(pushCp(CP.POST)),
-    actionPush(pushReg(5)),
-    actionPush(pushCp(CP.saveFrutiSlot)),
-    actionPush(pushInt(3)),
-    actionPush(pushReg(4), pushCp(CP.sendAndLoad)),
+    actionPush(pushReg(2)),
+    GET_MEMBER,
+    // arg3: n
+    actionPush(pushReg(2)),
+    // arg2: "minipixiz"
+    actionPush(pushCp(CP.minipixiz)),
+    // arg1: "saveSlotData"
+    actionPush(pushCp(CP.saveSlotData)),
+    // arg count
+    actionPush(pushInt(4)),
+    // Get ExternalInterface
+    actionPush(pushCp(CP.flash)),
+    GET_VARIABLE,
+    actionPush(pushCp(CP.external)),
+    GET_MEMBER,
+    actionPush(pushCp(CP.ExternalInterface)),
+    GET_MEMBER,
+    // Call
+    actionPush(pushCp(CP.call)),
     CALL_METHOD,
     POP,
-  ]);
-
-  return Buffer.concat([
-    createLv, setGame, setSid, setSlotId, setData,
-    createResult, sendAndLoad,
   ]);
 }
 
