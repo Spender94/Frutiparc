@@ -7669,21 +7669,83 @@ case 'createchannel': {
     }
 
     // ── searchuser: search for a user ──
+    // Flash client (box.Search.onSearch) reads:
+    //   root attrs: s (echoed start), n (total count)
+    //   each <u>: u, x, sx, bd, co, rg, ct, f, p, s
     case 'searchuser': {
-      const u = msg.attrs.u || '';
       const start = Number(msg.attrs.s || 0) || 0;
       const limit = Number(msg.attrs.l || 20) || 20;
-      const allResults = Object.keys(users)
-        .filter(name => name.toLowerCase().includes(u.toLowerCase()));
-      const total = allResults.length;
-      const page = allResults.slice(start, start + limit);
-      let inner = '';
-      for (const name of page) {
-        const ud = users[name] || {};
-        const online = getSocketsForUsername(name).length > 0 ? 1 : 0;
-        inner += `<u u="${escapeXml(getDisplayName(name))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="${online}" s="${getStatusCode(ud, name)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, name)}" />`;
+      const fU = String(msg.attrs.u || '').toLowerCase();
+      const fSx = String(msg.attrs.sx || '');
+      const fCt = String(msg.attrs.ct || '').toLowerCase();
+      const fCo = String(msg.attrs.co || '');
+      const fRg = String(msg.attrs.rg || '');
+      const fBd = String(msg.attrs.bd || '');   // birthday max → minimum age
+      const fBdm = String(msg.attrs.bdm || ''); // birthday min → maximum age
+
+      // Merge in-memory users (logged-in + NPCs) with DB rows for offline users.
+      const candidates = new Map(); // username (lowercase) -> profile snapshot
+      for (const [uname, ud] of Object.entries(users)) {
+        candidates.set(uname.toLowerCase(), {
+          username: uname,
+          displayName: getDisplayName(uname),
+          xp: ud.xp || 0,
+          gender: ud.gender || 'M',
+          birthday: ud.birthday || '2000-01-01',
+          country: ud.country || 'FR',
+          region: ud.region || '',
+          city: ud.city || '',
+          fbouille: bouilleOf(ud, uname),
+          status: getStatusCode(ud, uname),
+        });
       }
-      sendToClient(socket, `<${CMD.searchuser} s="${start}" l="${limit}" t="${total}">${inner}</${CMD.searchuser}>`);
+      if (process.env.DATABASE_URL) {
+        try {
+          const rows = await db.listAllUsers();
+          for (const row of rows) {
+            const key = row.username.toLowerCase();
+            if (candidates.has(key)) continue;
+            let bday = '2000-01-01';
+            if (row.birthday instanceof Date) bday = row.birthday.toISOString().substring(0, 10);
+            else if (typeof row.birthday === 'string' && row.birthday.length >= 10) bday = row.birthday.substring(0, 10);
+            candidates.set(key, {
+              username: row.username,
+              displayName: row.display_name || row.username,
+              xp: row.xp || 0,
+              gender: row.gender || 'M',
+              birthday: bday,
+              country: row.country || 'FR',
+              region: row.region || '',
+              city: row.city || '',
+              fbouille: row.fbouille || DEFAULT_BOUILLE_STATE,
+              status: '0000',
+            });
+          }
+        } catch (e) { console.error('[SEARCH] DB error:', e.message); }
+      }
+
+      const all = [];
+      for (const c of candidates.values()) {
+        if (fU && !c.username.toLowerCase().includes(fU) && !c.displayName.toLowerCase().includes(fU)) continue;
+        if (fSx && c.gender !== fSx) continue;
+        if (fCt && !c.city.toLowerCase().includes(fCt)) continue;
+        if (fCo && c.country !== fCo) continue;
+        if (fRg && c.region !== fRg) continue;
+        // Age filters: bdm = oldest birthday allowed (max age); bd = newest birthday allowed (min age)
+        if (fBdm && c.birthday < fBdm) continue;
+        if (fBd && c.birthday > fBd) continue;
+        all.push(c);
+      }
+      all.sort((a, b) => a.username.localeCompare(b.username));
+      const total = all.length;
+      const page = all.slice(start, start + limit);
+      let inner = '';
+      for (const c of page) {
+        const online = getSocketsForUsername(c.username).length > 0 ? 1 : 0;
+        const bdAttr = c.birthday.length >= 10 ? c.birthday + '.00:00:00' : '2000-01-01.00:00:00';
+        inner += `<u u="${escapeXml(c.displayName)}" x="${c.xp}" sx="${escapeXml(c.gender)}" bd="${escapeXml(bdAttr)}" co="${escapeXml(c.country)}" rg="${escapeXml(c.region)}" ct="${escapeXml(c.city)}" p="${online}" s="${escapeXml(c.status)}" f="${escapeXml(c.fbouille)}" />`;
+      }
+      sendToClient(socket, `<${CMD.searchuser} s="${start}" l="${limit}" n="${total}">${inner}</${CMD.searchuser}>`);
       break;
     }
 
