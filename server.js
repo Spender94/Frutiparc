@@ -3547,6 +3547,23 @@ app.post('/api/saveFrutiSlot', (req, res) => {
   if (!users[username].frutiSlots) users[username].frutiSlots = {};
   if (!users[username].frutiSlots[game]) users[username].frutiSlots[game] = {};
   const prevSlotData = users[username].frutiSlots[game][slotId];
+
+  // Safeguard: when the SWF can't load saved slots on startup (miniwave),
+  // the game may auto-save empty initial data and clobber real progress.
+  // Refuse saves where the new payload is dramatically smaller than the
+  // stored one for slot 0 of games where load-on-startup is disabled.
+  const SAVE_GUARDED_GAMES = new Set(['miniwave', 'miniwave2']);
+  if (
+    SAVE_GUARDED_GAMES.has(game) &&
+    slotId === '0' &&
+    prevSlotData &&
+    data &&
+    data.length < prevSlotData.length * 0.5
+  ) {
+    console.log(`[SLOT]  save REJECTED — new data (${data.length}) much smaller than existing (${prevSlotData.length}) for ${username}/${game}/slot${slotId}`);
+    return res.type('text/plain').send('ok=1'); // pretend success so SWF doesn't retry
+  }
+
   users[username].frutiSlots[game][slotId] = data;
   const dbId = users[username] && users[username]._dbId;
   if (dbId) db.upsertFrutiSlot(dbId, game, Number(slotId), data).catch(() => {});
