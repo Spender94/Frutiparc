@@ -3509,6 +3509,18 @@ function extractGameItemsFromSlot(username, game, dataStr) {
 
     // 14) Frog
     if (parsed.$frog) addIfNew('$pixiz_frog');
+  } else if (game === 'snake3') {
+    // FrutiSnake: $fruits is an object/array mapping fruit ID → collection count.
+    // A fruit is unlocked when collected >= 20 times (FRUIT_DEBLOK).
+    const fruits = parsed.$fruits;
+    if (fruits && typeof fruits === 'object') {
+      for (const k of Object.keys(fruits)) {
+        const count = Number(fruits[k]) || 0;
+        if (count >= 20) {
+          addIfNew('Fruit ' + k);
+        }
+      }
+    }
   }
 
   if (newItems.length > 0) {
