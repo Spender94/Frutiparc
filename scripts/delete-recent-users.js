@@ -1,17 +1,18 @@
 #!/usr/bin/env node
-// Deletes users created in the last N hours (default: 5).
+// Deletes all users created on a given date, with optional exclusions.
 // Usage:
-//   node scripts/delete-recent-users.js          # dry-run (lists only)
-//   node scripts/delete-recent-users.js --confirm  # actually deletes
-//   HOURS=3 node scripts/delete-recent-users.js --confirm
+//   node scripts/delete-recent-users.js                    # dry-run
+//   node scripts/delete-recent-users.js --confirm          # actually deletes
 //
-// Foreign keys on users(id) all use ON DELETE CASCADE, so related rows
-// (sessions, items, scores, slots, accessories, logs, contacts, forum
-// posts/topics, etc.) are removed automatically.
+// Env overrides:
+//   TARGET_DATE=2026-05-06  (default: 2026-05-06)
+//   EXCLUDE=PascalProud,OtherUser  (comma-separated, case-insensitive)
 
 const { Pool } = require('pg');
 
-const HOURS = Number(process.env.HOURS || 5);
+const TARGET_DATE = process.env.TARGET_DATE || '2026-05-06';
+const EXCLUDE = (process.env.EXCLUDE || 'PascalProud')
+  .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const CONFIRM = process.argv.includes('--confirm');
 
 const pool = new Pool({
@@ -21,22 +22,21 @@ const pool = new Pool({
 });
 
 async function main() {
-  const cutoff = `NOW() - INTERVAL '${HOURS} hours'`;
-
   const { rows: targets } = await pool.query(
     `SELECT id, username, created_at
      FROM users
-     WHERE created_at > ${cutoff}
-     ORDER BY created_at ASC`
+     WHERE created_at::date = $1
+       AND LOWER(username) != ALL($2)
+     ORDER BY created_at ASC`,
+    [TARGET_DATE, EXCLUDE]
   );
 
-  console.log(`Found ${targets.length} users created in the last ${HOURS} hours.`);
+  console.log(`Found ${targets.length} users created on ${TARGET_DATE} (excluding: ${EXCLUDE.join(', ')}).`);
   if (targets.length === 0) {
     await pool.end();
     return;
   }
 
-  // Show first 10 and last 10 for sanity-checking
   const preview = (rows, label) => {
     console.log(`\n--- ${label} ---`);
     for (const r of rows) {
@@ -56,7 +56,10 @@ async function main() {
 
   console.log(`\nDeleting ${targets.length} users (CASCADE will remove related rows)…`);
   const { rowCount } = await pool.query(
-    `DELETE FROM users WHERE created_at > ${cutoff}`
+    `DELETE FROM users
+     WHERE created_at::date = $1
+       AND LOWER(username) != ALL($2)`,
+    [TARGET_DATE, EXCLUDE]
   );
   console.log(`Deleted ${rowCount} rows from users.`);
 
