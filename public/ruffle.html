@@ -390,10 +390,11 @@
                 function fitToViewport() {
                     const vw = window.innerWidth;
                     const vh = window.innerHeight;
-                    const scale = Math.min(vw / STAGE_W, vh / STAGE_H);
-                    container.style.transform = `scale(${scale})`;
-                    container.style.left = ((vw - STAGE_W * scale) / 2) + "px";
-                    container.style.top = ((vh - STAGE_H * scale) / 2) + "px";
+                    const scaleX = vw / STAGE_W;
+                    const scaleY = vh / STAGE_H;
+                    container.style.transform = `scale(${scaleX}, ${scaleY})`;
+                    container.style.left = "0";
+                    container.style.top = "0";
                 }
                 fitToViewport();
                 window.addEventListener("resize", fitToViewport);
