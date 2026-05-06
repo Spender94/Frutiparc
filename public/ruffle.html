@@ -22,7 +22,6 @@
     <script>
         window.RufflePlayer = window.RufflePlayer || {};
         window.RufflePlayer.config = {
-            scale: "noScale",
             fontSources: [
                 `${window.location.origin}/legacy/fonts.swf`
             ],
@@ -382,7 +381,7 @@
 
                 const ruffle = window.RufflePlayer.newest();
                 const player = ruffle.createPlayer();
-                player.style.width = "1920px";
+                player.style.width = "1024px";
                 player.style.height = "768px";
                 document.getElementById("player-container").appendChild(player);
 
