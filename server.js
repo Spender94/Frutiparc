@@ -4494,6 +4494,7 @@ const GAME_DISCS = {
     discType: '0',
     playMode: 'single',
     swfName: 'jamajama',
+    iconName: 'jama',
     gameId: 'games/poulpi/game.swf',
     props: 'w=384;h=384;m=i',
     files: [
@@ -4827,7 +4828,8 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     // disc format: content = "discType\ngameName"
     let discNodes = '';
     for (const [id, disc] of Object.entries(GAME_DISCS)) {
-      discNodes += `<e u="${escapeXml(id)}" t="disc" s="10" d="0" a="0">${disc.discType}\n${escapeXml(disc.swfName)}</e>`;
+      const displayName = disc.iconName || disc.swfName;
+      discNodes += `<e u="${escapeXml(id)}" t="disc" s="10" d="0" a="0">${disc.discType}\n${escapeXml(displayName)}</e>`;
     }
     return res.type('text/xml').send(`<f u="disccollector">${discNodes || '<i />'}</f>`);
   }
