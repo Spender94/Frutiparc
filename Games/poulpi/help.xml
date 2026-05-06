@@ -1,0 +1,339 @@
+<!-- Aide du jeu JamaJama réécrite par Toad06. -->
+<help>
+	<stylesheet>
+	<![CDATA[
+		p, ul {
+			font-family: Verdana, sans-serif;
+			font-size: 14px;
+		}
+		.title {
+			font-size: 16px;
+			font-weight: bold;
+			text-align: center;
+			leading: 12px;
+		}
+		.subtitle {
+			font-weight: bold;
+		}
+	]]>
+	</stylesheet>
+	<!-- Aide principale. -->
+	<section name="index">
+		<p class="title">Bienvenue dans JamaJama !</p>
+		<p><img src="images/help_illuspictos1_upgraded.jpg" width="114" height="112" />Au sein de niveaux essentiellement créés par les joueurs, vous devez aider Tiki le petit fantôme à se frayer un chemin jusqu'à la sortie tout en évitant les embûches.</p>
+		<p>Pour apprendre les bases du jeu, la série <i>Premiers pas</i> du mode <i>Aventure</i> est conseillée.<img src="images/help_illuspictos2_upgraded.jpg" width="290" height="30" /></p>
+		<br /><br /><br />
+		<p>Plusieurs sections composent cette aide, n'hésitez pas à les consulter par le biais des boutons ci-dessous.</p>
+	</section>
+	<section name="index_controls">
+		<p class="title">Les contrôles</p>
+		<p>En cours de partie, les commandes au clavier suivantes sont disponibles.</p>
+		<ul>
+			<li><b>Touches directionnelles :</b> Déplacer Tiki ou son esprit.</li>
+			<li><b>Barre Espace :</b> Prendre le contrôle de l'esprit de Tiki ou le faire revenir à lui.</li>
+			<li><b>Touche Échap :</b> Quitter le niveau.</li>
+		</ul>
+		<p>Dans les menus, les commandes au clavier suivantes sont disponibles.</p>
+		<ul>
+			<li><b>Touche Échap :</b> Revenir au menu précédent ou à l'écran-titre.</li>
+			<li><b>Touche CTRL :</b> Dans les menus avec pagination, maintenir cette touche enfoncée tout en cliquant sur les boutons de navigation (page suivante ou précédente) permet de sauter 10 pages à la fois.</li>
+		</ul>
+		<p>Enfin, la version de ce jeu offre la possibilité d'afficher à tout moment les informations de débogage.</p>
+		<ul>
+			<li><b>Touche F1 :</b> Activer ou désactiver le mode de débogage.</li>
+			<li><b>Touche D :</b> Afficher ou masquer les informations de débogage (il est possible de les faire défiler à l'aide de la molette de la souris).</li>
+			<li><b>Touche Suppr :</b> Effacer l'historique des informations de débogage (uniquement quand elles sont affichées à l'écran).</li>
+		</ul>
+		<!-- Note : Si le mode de débogage est activé lors de l'édition d'un niveau, tous les éléments (fruits, caisses, etc.) sont rendus disponibles. Dans cette version du jeu, ils le sont de toute façon tous par défaut. -->
+	</section>
+	<section name="index_adventure">
+		<p class="title">Le mode Aventure</p>
+		<p>Les niveaux du mode Aventure sont répartis en plusieurs séries que vous débloquez au fur et à mesure de vos succès.</p>
+		<p>Seuls les douze premiers niveaux de la série <i>Premiers pas</i> ont été imaginés par l'équipe Motion-Twin : le mode Aventure ne disposait en effet d'aucune autre série supplémentaire...</p>
+		<p>Les niveaux ajoutés dans cette version du jeu sont une sélection de niveaux créés par les joueurs et crédités dans la dernière section de cette aide.</p>
+		<br />
+		<p class="subtitle">Les niveaux</p>
+		<p>Vous pouvez passer d'un niveau à l'autre en cliquant sur les flèches stylisées.</p>
+		<p>Si un niveau vous pose problème, il est possible de le passer tant qu'il reste des flammes bleues allumées à l'écran de sélection : tout niveau passé de la sorte en éteint une.</p>
+		<p>Le dernier niveau d'une série doit toutefois être obligatoirement réussi pour que l'accès à la série suivante soit débloqué.</p>
+		<br />
+		<p class="subtitle">Le statut d'un niveau</p>
+		<p>Pour chaque niveau, une icône vous indique son statut : un niveau que vous avez réussi affiche Tiki, un niveau pas encore joué ou perdu affiche une étoile verte.</p>
+	</section>
+	<section name="index_tournament">
+		<p class="title">Le mode Tournoi</p>
+		<p>Les niveaux du mode Tournoi sont ceux imaginés et validés depuis le mode Édition par l'ensemble des joueurs ayant fait le choix de partager leurs créations. Vos propres niveaux validés y figurent également.</p>
+		<p>Pour démarrer un niveau, il suffit d'effectuer un double-clic sur son titre.</p>
+		<br />
+		<p class="subtitle">Le statut</p>
+		<p>Devant le nom de chaque niveau, une icône indique votre meilleur résultat.</p>
+		<ul>
+			<li><b>Étoile verte :</b> Vous n'avez encore jamais joué à ce niveau.</li>
+			<li><b>Croix tombale :</b> Vous avez abandonné la partie ou Tiki y a trouvé la mort.</li>
+			<li><b>Tiki blanc :</b> Vous avez réussi à terminer ce niveau.</li>
+			<li><b>Tiki d'or :</b> Vous avez terminé ce niveau en effectuant un score égal ou inférieur à celui de son créateur.</li>
+		</ul>
+		<p class="subtitle">La difficulté</p>
+		<p>Dans cette version du jeu, la difficulté est calculée en fonction du score effectué par le créateur du niveau : plus le nombre de déplacements de Tiki est élevé, plus l'indice de difficulté est lui aussi élevé.</p>
+		<br />
+		<p class="subtitle">Le record</p>
+		<p>Le record correspond tout simplement au meilleur score que vous avez réalisé sur le niveau, c'est-à-dire au nombre de déplacements effectués par Tiki : plus ce nombre est faible, meilleur est votre score.</p>
+		<br />
+		<p class="subtitle">Les autres informations</p>
+		<p>Il est également possible de connaître l'auteur d'un niveau, sa date de création, ainsi que le nombre de vos parties jouées et de vos réussites : pour cela, cliquez sur la ligne du niveau qui vous intéresse, puis sur le bouton « ? » en bas de l'écran.</p>
+	</section>
+	<section name="index_tournament_2">
+		<p class="title">Le mode Tournoi (suite)</p>
+		<p>Sous la liste des niveaux figurent plusieurs options qui vous sont détaillées ici.</p>
+		<br />
+		<p class="subtitle">Le tri des niveaux</p>
+		<p>Le bouton « ↑↓ » vous permet de personnaliser l'ordre d'affichage des niveaux, en choisissant une priorité entre les différents éléments et leur tri  : « + » pour le tri par ordre alphabétique et croissant, « - » pour l'ordre inverse.</p>
+		<br />
+		<p class="subtitle">La recherche</p>
+		<p>La requête saisie dans le champ prévu à cet effet vous permet d'effectuer une recherche insensible à la casse parmi les noms des niveaux et ceux de leurs auteurs.</p>
+		<br />
+		<p class="subtitle">L'ajout de niveaux</p>
+		<p>Cette version du jeu n'envoyant aucune donnée au serveur, les niveaux créés et partagés sont directement ajoutés au code source lors des mises à jour du jeu.</p>
+		<p>Il a toutefois été implémenté pour tout utilisateur la possibilité d'ajouter des niveaux créés par des tiers : il suffit pour cela de copier le code du niveau (nœud XML) qui vous a été partagé dans le champ de recherche et de valider. Si le code saisi est correct, le niveau est alors immédiatement ajouté.</p>
+		<br />
+		<p class="subtitle">La suppression de niveaux</p>
+		<p>La suppression de niveaux fonctionne selon le même principe que l'ajout détaillé précédemment. La différence est que la valeur du nœud XML (la partie du code comprise entre les caractères &amp;gt; et &amp;lt;) doit être intégralement supprimée.</p>
+		<p>Si vous ne disposez plus du code du nœud XML d'origine, suivez les instructions suivantes pour le retrouver.</p>
+		<ul>
+			<li>Activez le mode de débogage.</li>
+			<li>Lancez une partie du niveau que vous souhaitez supprimer.</li>
+			<li>Affichez les informations de débogage à l'écran : l'un des messages commence par <i>LevelData</i>, suivi du code du niveau.</li>
+			<br />
+			<p><i><u>Note :</u> Si vous êtes l'auteur du niveau, celui-ci ne sera pas supprimé mais simplement  invalidé : vous pourrez ainsi le modifier à nouveau via le mode Édition.</i></p>
+		</ul>
+	</section>
+	<section name="index_edition">
+		<p class="title">Le mode Édition</p>
+		<p>Les niveaux du mode Édition sont... les vôtres. La liste des niveaux existant dans cette partie du jeu ne dépend ainsi que de votre esprit créatif.</p>
+		<p>Pour créer ou reprendre l'édition d'un niveau, il suffit respectivement d'effectuer un double-clic sur un espace « ... vide ... » ou son titre.</p>
+		<br />
+		<p class="subtitle">Le statut</p>
+		<p>Devant le nom de chaque niveau, une icône indique si celui-ci a été validé ou non.</p>
+		<ul>
+			<li><b>Étoile verte :</b> Vous n'avez pas encore validé ce niveau. Son édition est toujours possible.</li>
+			<li><b>Tiki d'or :</b> Vous avez validé ce niveau. Il n'est plus possible de l'éditer, ni même de le tester. Vous pouvez seulement y jouer en passant par le mode Tournoi.</li>
+			<br />
+			<p><i><u>Note :</u> Cette version du jeu offre la possibilité d'annuler la validation d'un niveau : consultez la page précédente de cette aide pour plus d'informations.</i></p>
+		</ul>
+		<p class="subtitle">La difficulté et le record</p>
+		<p>Ces deux valeurs ne sont calculées qu'au moment de la validation du niveau.</p>
+		<ul>
+			<li><b>Le record :</b> Il correspond au nombre de déplacements effectués par Tiki durant la partie de validation. Évitez tant que possible les déplacements inutiles afin de rendre moins facile l'obtention du Tiki d'or par les autres joueurs : pour le mériter, ils devront en effet égaler ou battre votre record.</li>
+			<li><b>La difficulté :</b> Dans cette version du jeu, elle est calculée en fonction de votre record. Plus ce dernier a une valeur élevée, plus le niveau est réputé difficile.</li>
+		</ul>
+		<p class="subtitle">Les autres options</p>
+		<p>En bas de l'écran figurent plusieurs boutons. Ceux-ci n'ont d'effet que si vous cliquez au préalable sur l'un des niveaux de la liste.</p>
+		<ul>
+			<li><b>Bouton de lecture :</b> Il n'a aucun effet. :)</li>
+			<li><b>Bouton de clé à molette :</b> Il permet de créer ou reprendre l'édition du niveau, tant qu'il n'a pas encore été validé.</li>
+			<li><b>Bouton de croix :</b> Il permet de supprimer le niveau.</li>
+			<li><b>Bouton de point d'interrogation :</b> Si le niveau n'a pas encore été validé, il permet de modifier le titre du niveau ; autrement, il fournit des informations sur le niveau identiques à celles de ce même bouton en mode Tournoi.</li>
+		</ul>
+	</section>
+	<section name="index_edition_2">
+		<p class="title">Le mode Édition (suite)</p>
+		<p>Après avoir choisi le nom et les dimensions du niveau, vous pouvez commencer à placer les différents éléments qui le composeront.</p>
+		<p>Au bas de l'écran figurent quatre boutons.</p>
+		<ul>
+			<li>Les trois à droite vous permettent respectivement de placer un nouvel objet de l'élément sélectionné (par défaut la sortie), de déplacer ou de supprimer n'importe quel objet.</li>
+			<li>Celui à gauche permet d'afficher la liste de l'ensemble des éléments disponibles, ainsi que d'autres options.</li>
+		</ul>
+		<p class="subtitle">Les éléments</p>
+		<p>Il existe 22 éléments différents. Dans cette version du jeu, tous sont accessibles dès la création de votre premier niveau.</p>
+		<p>Il suffit d'utiliser les flèches sur les bords de l'écran pour faire défiler les éléments : celui entouré au centre correspond à l'élément actuellement sélectionné, qu'il est donc possible de placer.</p>
+		<ul>
+			<li><b>Le bouton « ? » :</b> Il fournit une aide contextuelle sur l'élément.</li>
+			<li><b>Le bouton « → » :</b> Il permet de changer les caractéristiques de l'élément (uniquement pour le fruit et la bombe).</li>
+			<li><b>Le bouton « Π » :</b> Il fait pivoter l'élément (uniquement pour Tiki, la trappe de sortie, les voies à sens unique, les aimants, Kohl et le lurker).</li>
+		</ul>
+		<p class="subtitle">Du test à la validation</p>
+		<ul>
+			<li>À tout moment de la phase de création, vous pouvez <b>tester</b> votre niveau.</li>
+			<li>Vous pouvez interrompre et reprendre l'édition du niveau ultérieurement, à condition de <b>sauvegarder</b>.</li>
+			<li>Quand le niveau vous plaît, vous pouvez le <b>valider</b> : vous devez pour cela réussir à mener Tiki à la sortie.</li>
+			<br />
+			<p>Une fois cette dernière étape accomplie, un code (nœud XML) contenant toutes les données du niveau vous est communiqué : vous avez le loisir de le partager avec les autres joueurs pour qu'ils puissent l'essayer.</p>
+		</ul>
+		<p class="subtitle">Les raccourcis clavier</p>
+		<ul>
+			<li><b>Barre Espace :</b> Déployer ou réduire le menu des éléments.</li>
+			<li><b>Touche Inser :</b> Passer à l'état de déplacement d'éléments.</li>
+			<li><b>Touche Suppr :</b> Passer à l'état de suppression d'éléments.</li>
+			<li><b>Touche Fin :</b> Passer à l'état d'ajout d'éléments.</li>
+			<li><b>Touches de défilement ↑ et ↓ :</b> Aller à l'élément suivant ou précédent de la liste.</li>
+			<li><b>Touches directionnelles :</b> Faire pointer l'élément dans la direction indiquée (ou Haut et Bas pour changer les caractéristiques de l'élément - uniquement pour le fruit et la bombe).</li>
+		</ul>
+		<p class="subtitle">À considérer : De l'importance de l'ordre de placement des éléments</p>
+		<p>Un élément peut avoir un comportement différent selon le moment où il a été inséré dans le niveau. Par exemple, si vous positionnez plusieurs trappes de sortie, celles-ci s'ouvriront, l'une après l'autre, dans l'ordre dans lequel vous les avez placées. Si cet ordre ne vous satisfait pas, il vous suffit de sélectionner chaque trappe et de la repositionner.</p>
+		<p>Dans ce cas simple, les conséquences sont anodines mais restent révélatrices d'un comportement dont il faut avoir conscience pour gérer des situations plus complexes.</p>
+		<p>Que se passe-t-il, par exemple, lorsque Tiki arrive à l'intersection de deux aimants respectivement placés de manière à l'attirer vers le haut et vers la gauche ? Autrement dit, Tiki se dirigera-t-il en haut ou à gauche ? La réponse : Tiki ira vers le haut, uniquement si cet aimant a été placé avant celui l'attirant vers la gauche.</p>
+		<p>Si vous souhaitez créer des niveaux complexes et cohérents, l'ordre de placement des éléments doit donc être vérifié et réfléchi.</p>
+	</section>
+	<section name="index_stats">
+		<p class="title">Les Statistiques</p>
+		<p>Cette version du jeu n'étant pas connectée au réseau, les statistiques fournies ne sont qu'un récapitulatif de vos propres scores.</p>
+		<p>Les statistiques des onglets "Joueurs" et "Créateurs" ne sont donc pas disponibles.</p>
+		<br />
+		<p>L'onglet "Niveaux" dresse la liste des scores que vous avez réalisés sur les niveaux des autres créateurs.</p>
+		<ul>
+			<li>Le nom de l'auteur précède le titre du niveau.</li>
+			<li>Si aucun score n'est enregistré, le nombre de parties jouées est affiché à la place.</li>
+		</ul>
+		<p>L'onglet "Mes niveaux" dresse la liste des scores que vous avez réalisés en tant que joueur sur vos propres niveaux.</p>
+		<ul>
+			<li>Si aucun score n'est enregistré, le nombre de parties jouées est affiché à la place.</li>
+		</ul>
+	</section>
+	<section name="index_credits">
+		<p class="title">Crédits</p>
+		<p>Jeu original créé en février 2005 par <b>yota</b> et <b>bumdum</b> de l'équipe Motion-Twin.</p>
+		<p>Adapté pour un fonctionnement local en octobre 2024 par <b>Toad06</b>, avec quelques autres changements n'affectant pas la jouabilité, ainsi que la réécriture de l'aide.</p>
+		<br />
+		<p class="subtitle">Auteurs des niveaux du mode Aventure</p>
+		<ul>
+			<li>Motion-Twin : 12 premiers niveaux.</li>
+			<li>Toad06<img src="images/help_illuspictos3_upgraded.jpg" width="290" height="45" /></li>
+		</ul>
+		<br /><br /><br />
+	</section>
+	<section name="index_annex">
+		<p class="title">Annexe : Détails des éléments</p>
+		<p>Cette page vous présente les 22 éléments que vous pouvez rencontrer en cours de partie.</p>
+		<p>Il s'agit des mêmes descriptions que celles présentes individuellement dans l'aide contextuelle du mode Édition.</p>
+		<!-- La suite du texte est complétée automatiquement avec les noeuds ci-dessous. -->
+	</section>
+	<!-- Aide des différents éléments lors de l'édition d'un niveau. -->
+	<section name="Exit">
+		<p class="subtitle">La trappe de sortie</p>
+		<p>C'est par celle-ci que Tiki s'échappe pour terminer le niveau : il doit donc en exister au moins une.</p>
+		<p>Une trappe reste fermée tant que tous les fruits (s'il y en a) n'ont pas disparu. Elle ne s'ouvre qu'après cette étape, devenant accessible sur trois des quatre côtés selon son positionnement initial.</p>
+	</section>
+	<section name="Hero">
+		<p class="subtitle">Tiki</p>
+		<p>Héros malgré lui, le petit fantôme malheureux et maladroit est l'unique survivant de son espèce.</p>
+		<p>Il peut toutefois compter sur son esprit, invisible aux yeux de la plupart des ennemis, pour s'affranchir de certaines contraintes et aller prendre possession du corps d'autres espèces.</p>
+		<p>Pour remporter le niveau, Tiki doit atteindre la trappe de sortie.</p>
+	</section>
+	<section name="Fruit">
+		<p class="subtitle">Les fruits</p>
+		<p>De l'orange à la banane, il en existe cinq sortes différentes.</p>
+		<p>Pour que la trappe de sortie s'ouvre, Tiki doit faire disparaître tous les fruits, en les regroupant par paire de même sorte ou en usant d'astuces pour provoquer leur destruction.</p>
+	</section>
+	<section name="Box">
+		<p class="subtitle">La caisse</p>
+		<p>La caisse est un petit obstacle que Tiki est capable de pousser. La faire tomber à l'eau permet de créer un passage.</p>
+		<p>Elle peut également être avalée par Louki ou détruite par l'explosion d'une BoBombe.</p>
+	</section>
+	<section name="Wall">
+		<p class="subtitle">Le mur</p>
+		<p>Sans surprise, le mur est un obstacle infranchissable.</p>
+		<p>Il peut cependant être avalé par Louki ou détruit par l'explosion d'une BoBombe.</p>
+	</section>
+	<section name="Water">
+		<p class="subtitle">L'eau</p>
+		<p>L'eau est un obstacle infranchissable pour tous les personnages, sauf Winkle.</p>
+		<p>Pousser une caisse à l'eau permet de créer un passage.</p>
+	</section>
+	<section name="Bridge">
+		<p class="subtitle">Le pont foutu</p>
+		<p>Ce petit pont de bois ne tient plus guère que par un grand mystère et deux piquets tout droits.</p>
+		<p>Il s'écroule aussitôt après le passage de Tiki, révélant l'étendue d'eau en dessous.</p>
+		<p>L'explosion d'une BoBombe cause également la destruction du pont.</p>
+	</section>
+	<section name="Peeble">
+		<p class="subtitle">Les cailloux</p>
+		<p>Les cailloux représentent un obstacle que seuls Kohl et l'esprit de Tiki sont capables de franchir.</p>
+		<p>Si Kohl se trouve sur des cailloux lorsque l'esprit de Tiki quitte son corps, Tiki prend sa place mais n'est pas en mesure de se déplacer sur les cailloux des cases adjacentes.</p>
+	</section>
+	<section name="Rune">
+		<p class="subtitle">La rune</p>
+		<p>La rune n'est qu'une dalle au sol. Mais son côté mystique la rend infranchissable par l'esprit de Tiki.</p>
+	</section>
+	<section name="OneWay">
+		<p class="subtitle">La voie à sens unique</p>
+		<p>Une fois engagé sur une voie à sens unique, le personnage ne peut plus se déplacer dans le sens contraire indiqué par les flèches au sol, sauf si la case suivante ne contient pas une obligation de déplacement identique.</p>
+		<p>Le déplacement latéral reste également possible.</p>
+		<p>Seul l'esprit de Tiki est capable de contourner ces restrictions.</p>
+	</section>
+	<section name="OneWayStrict">
+		<p class="subtitle">La voie à sens unique strict</p>
+		<p>Une fois engagé sur une voie à sens unique strict, le personnage n'a pas d'autre solution que de se déplacer dans le sens indiqué par les flèches au sol.</p>
+		<p>L'entrée dans la voie doit également se faire dans le sens indiqué.</p>
+		<p>Seul l'esprit de Tiki est capable de contourner ces restrictions.</p>
+	</section>
+	<section name="Magnet">
+		<p class="subtitle">L'aimant gris</p>
+		<p>Il attire à lui tous les éléments mobiles. Aucun des personnages en dehors de l'esprit de Tiki ne résiste à sa force magnétique.</p>
+		<p>L'aimant gris est toutefois incapable d'attirer plus d'un élément à la fois, tout comme ceux positionnés derrière un mur ou un autre élément statique.</p>
+	</section>
+	<section name="GoldMagnet">
+		<p class="subtitle">L'aimant en or</p>
+		<p>Il attire à lui tous les éléments mobiles. Aucun des personnages en dehors de l'esprit de Tiki ne résiste à sa force magnétique.</p>
+		<p>L'aimant en or a une telle puissance qu'il est même capable d'attirer ceux positionnés derrière un élément statique comme un mur.</p>
+	</section>
+	<section name="Bomb">
+		<p class="subtitle">La BoBombe</p>
+		<p>Tant qu'elle reste à sa position initiale, la BoBombe est totalement inoffensive.</p>
+		<p>Dans le cas contraire, elle finit par exploser au bout du nombre de déplacements indiqué, en détruisant sur son passage les fruits, caisses, murs, ponts, statues de Jade et personnages rencontrés ; seuls Winkle et l'esprit de Tiki savent y résister.</p>
+		<p>Tiki et Winkle sont les seuls personnages capables de déplacer une BoBombe.</p>
+	</section>
+	<section name="Louki">
+		<p class="subtitle">Louki</p>
+		<p>Lorsque l'esprit de Tiki prend possession du corps de Louki, ce dernier n'est qu'une infime particule.</p>
+		<p>Louki prend sa forme finale après avoir englouti une caisse, une partie d'un mur ou... l'un de ses congénères. Il est alors aussitôt remplacé par l'objet avalé dès que l'esprit de Tiki quitte son corps.</p>
+		<p>Il peut également passer sur un pont sans le faire s'écrouler.</p>
+	</section>
+	<section name="Kohl">
+		<p class="subtitle">Kohl</p>
+		<p>Lorsque l'esprit de Tiki prend possession du corps de Kohl, la simple petite boule noire qu'il représente s'enflamme immédiatement.</p>
+		<p>Kohl a la capacité de franchir les zones avec des cailloux et de passer sur un pont sans le faire s'écrouler.</p>
+		<p>Mais il est surtout doté d'un certain pouvoir de téléportation : lorsque l'esprit de Tiki quitte son corps, sa position et celle de Tiki sont inversées.</p>
+	</section>
+	<section name="Winkle">
+		<p class="subtitle">Winkle</p>
+		<p>L'esprit de Tiki peut prendre possession du corps de Winkle.</p>
+		<p>Ce petit bigorneau est très résistant : il peut déplacer les BoBombes et est insensible à leur explosion.</p>
+		<p>Il sait également franchir l'eau, marcher sur un pont sans le faire s'écrouler et passer sous le radar de tous les ennemis !</p>
+	</section>
+	<section name="Archer">
+		<p class="subtitle">L'Électrificator</p>
+		<p>Les décharges électriques de l'Électrificator sont mortelles.</p>
+		<p>Si un personnage autre que Winkle ou l'esprit de Tiki se trouve sur sa trajectoire horizontale ou verticale, il en fait alors les frais.</p>
+	</section>
+	<section name="Spider">
+		<p class="subtitle">L'araignée</p>
+		<p>Enveloppée dans son cocon, l'araignée n'en sort qu'une fois que tous les fruits du niveau ont disparu.</p>
+		<p>Si un personnage autre que Winkle ou l'esprit de Tiki se trouve sur sa trajectoire horizontale ou verticale, elle n'en fait alors qu'une bouchée.</p>
+		<p>Son intérêt tout particulier pour Tiki peut toutefois lui faire manquer certaines opportunités.</p>
+	</section>
+	<section name="Lurker">
+		<p class="subtitle">Le lurker</p>
+		<p>Se confondant presque avec le décor, la discrétion du lurker fait sa force.</p>
+		<p>Il ne déclenche cependant son attaque que si un personnage autre que Winkle ou l'esprit de Tiki ne se trouve face à lui.</p>
+	</section>
+	<section name="Jade">
+		<p class="subtitle">La statue de Jade</p>
+		<p>Les quatre tourelles de la statue de Jade ne laissent planer aucun doute quant à la nature de son danger.</p>
+		<p>Si un personnage autre que Winkle ou l'esprit de Tiki se trouve sur une case qui lui est adjacente en diagonale, il en subit les conséquences.</p>
+		<p>Légère et fragile, elle peut cependant être déplacée par Tiki et détruite par l'explosion d'une BoBombe.</p>
+	</section>
+	<section name="Eye">
+		<p class="subtitle">Le Zoeil</p>
+		<p>Toujours fermé, le Zoeil ne s'ouvre que pour observer les déplacements de l'esprit de Tiki.</p>
+		<p>Si Tiki ou son esprit se trouve sur la trajectoire horizontale ou verticale du Zoeil ouvert, il en paie inévitablement le prix.</p>
+	</section>
+	<!-- Éléments non disponibles dans l'aide. -->
+	<section name="Ghost">
+		<p class="subtitle">L'esprit de Tiki</p>
+		<p>Non présent car il s'agit simplement d'un état différent de Tiki.</p>
+	</section>
+	<section name="Pin">
+		<p class="subtitle">L'interrupteur</p>
+		<p>Élément semblant avoir été abandonné pendant le développement du jeu.</p>
+	</section>
+</help>
