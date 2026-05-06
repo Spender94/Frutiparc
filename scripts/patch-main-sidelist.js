@@ -4,19 +4,20 @@
 //
 // 1) butContact (the contact bar tab / "languette"):
 //    Original: this.butContact._y = _global.mch   (768 — right at the bottom edge)
-//    Patched:  this.butContact._y = NEW_Y
+//    Patched:  this.butContact._y = targetY
 //    Bytecode: 11 bytes at body offset 0x9fe6e
 //
 // 2) butSearch (the "rechercher" button):
 //    Original: this.butSearch._y = _global.mch - this.hSearch + 3
-//    Patched:  this.butSearch._y = NEW_Y
+//    Patched:  this.butSearch._y = targetY
 //    Bytecode: 37 bytes at two locations (onStageResize + activate)
 
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const NEW_Y = 670;
+const CONTACT_Y = 670;
+const SEARCH_Y  = 640;
 
 const IN_PATH  = path.resolve(__dirname, '..', 'legacy', 'main.swf');
 const OUT_PATH = IN_PATH;
@@ -109,7 +110,7 @@ function writeSwf(outPath, sig, version, newBody) {
 
 // --- Patching logic ---
 
-function patchPattern(body, label, oldBytes, patchedPrefix, buildFn) {
+function patchPattern(body, label, oldBytes, patchedPrefix, buildFn, targetY) {
   let offset = body.indexOf(oldBytes);
   if (offset >= 0) {
     if (body.indexOf(oldBytes, offset + 1) >= 0) {
@@ -122,16 +123,16 @@ function patchPattern(body, label, oldBytes, patchedPrefix, buildFn) {
         offsets.push(pos);
         search = pos + 1;
       }
-      const newBytes = buildFn(NEW_Y);
+      const newBytes = buildFn(targetY);
       for (const off of offsets) {
         newBytes.copy(body, off);
-        console.log(`[main-sidelist] Patched ${label} at body offset 0x${off.toString(16)} -> y=${NEW_Y}`);
+        console.log(`[main-sidelist] Patched ${label} at body offset 0x${off.toString(16)} -> y=${targetY}`);
       }
       return;
     }
-    const newBytes = buildFn(NEW_Y);
+    const newBytes = buildFn(targetY);
     newBytes.copy(body, offset);
-    console.log(`[main-sidelist] Patched ${label} at body offset 0x${offset.toString(16)} -> y=${NEW_Y}`);
+    console.log(`[main-sidelist] Patched ${label} at body offset 0x${offset.toString(16)} -> y=${targetY}`);
     return;
   }
 
@@ -148,22 +149,22 @@ function patchPattern(body, label, oldBytes, patchedPrefix, buildFn) {
     throw new Error(`${label}: original bytecode pattern not found`);
   }
   const oldY = body.readInt32LE(offsets[0] + patchedPrefix.length);
-  if (offsets.every(off => body.readInt32LE(off + patchedPrefix.length) === NEW_Y)) {
-    console.log(`[main-sidelist] ${label} already patched with y=${NEW_Y} — skipping.`);
+  if (offsets.every(off => body.readInt32LE(off + patchedPrefix.length) === targetY)) {
+    console.log(`[main-sidelist] ${label} already patched with y=${targetY} — skipping.`);
     return;
   }
-  const newBytes = buildFn(NEW_Y);
+  const newBytes = buildFn(targetY);
   for (const off of offsets) {
     newBytes.copy(body, off);
-    console.log(`[main-sidelist] Re-patched ${label} at body offset 0x${off.toString(16)} -> y=${NEW_Y} (was ${body.readInt32LE(off + patchedPrefix.length) || oldY})`);
+    console.log(`[main-sidelist] Re-patched ${label} at body offset 0x${off.toString(16)} -> y=${targetY} (was ${body.readInt32LE(off + patchedPrefix.length) || oldY})`);
   }
 }
 
 function patch() {
   const { sig, version, body } = readSwf(IN_PATH);
 
-  patchPattern(body, 'butContact._y', CONTACT_OLD, CONTACT_PATCHED_PREFIX, buildContactPatch);
-  patchPattern(body, 'butSearch._y', SEARCH_OLD, SEARCH_PATCHED_PREFIX, buildSearchPatch);
+  patchPattern(body, 'butContact._y', CONTACT_OLD, CONTACT_PATCHED_PREFIX, buildContactPatch, CONTACT_Y);
+  patchPattern(body, 'butSearch._y', SEARCH_OLD, SEARCH_PATCHED_PREFIX, buildSearchPatch, SEARCH_Y);
 
   const totalLen = writeSwf(OUT_PATH, sig, version, body);
   console.log(`[main-sidelist] Wrote ${OUT_PATH} (${totalLen} bytes)`);
