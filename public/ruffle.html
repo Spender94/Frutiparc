@@ -4,22 +4,18 @@
     <meta charset="UTF-8">
     <title>Frutiparc - Ruffle</title>
     <style>
-        html, body {
+        body {
             margin: 0;
-            padding: 0;
-            background: #000;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
+            background: #ade76b;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
         }
 
         #player-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 1024px;
-            height: 795px;
-            transform-origin: top left;
+            width: 1920px;
+            height: 1080px;
         }
     </style>
 
@@ -383,34 +379,17 @@
                 console.log("[Ruffle] s   =", s);
                 console.log("[Ruffle] e   =", e);
 
-                const STAGE_W = 1024;
-                const STAGE_H = 795;
-
-                const container = document.getElementById("player-container");
-                function fitToViewport() {
-                    const vw = window.innerWidth;
-                    const vh = window.innerHeight;
-                    const scale = Math.min(vw / STAGE_W, vh / STAGE_H);
-                    container.style.transform = `scale(${scale})`;
-                    container.style.left = ((vw - STAGE_W * scale) / 2) + "px";
-                    container.style.top = ((vh - STAGE_H * scale) / 2) + "px";
-                }
-                fitToViewport();
-                window.addEventListener("resize", fitToViewport);
-
                 const ruffle = window.RufflePlayer.newest();
                 const player = ruffle.createPlayer();
-                player.style.width = STAGE_W + "px";
-                player.style.height = STAGE_H + "px";
-                container.appendChild(player);
+                player.style.width = "1024px";
+                player.style.height = "768px";
+                document.getElementById("player-container").appendChild(player);
 
                 await player.load({
                     url: "/legacy/main.swf",
                     autoplay: "on",
                     allowScriptAccess: true,
                     quality: "high",
-                    scale: "noScale",
-                    letterbox: "off",
                     parameters: {
                         sid: sid,
                         domain: `${window.location.host}/./`,
