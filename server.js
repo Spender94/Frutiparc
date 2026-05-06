@@ -451,6 +451,45 @@ for (const [id, info] of Object.entries(PIXIZ_MILESTONES)) {
   GAME_ITEM_INFO[id] = { name: info.name, game: 'MiniPixiz', gif: info.gif };
 }
 
+// JamaJama (Poulpi) — milestone pictos awarded based on number of saved
+// scores (= levels completed/abandoned). The game's source SWF has no
+// native giveItem mechanism, so pictos are derived from server-side
+// signals (saveScore, slot save) by counting plays.
+const JAMA_MILESTONES = {
+  '$jama_first':       { name: 'Premier coup de Tiki',    threshold: 1 },
+  '$jama_play10':      { name: '10 niveaux joués',         threshold: 10 },
+  '$jama_play25':      { name: '25 niveaux joués',         threshold: 25 },
+  '$jama_play50':      { name: '50 niveaux joués',         threshold: 50 },
+  '$jama_play100':     { name: '100 niveaux joués',        threshold: 100 },
+  '$jama_play250':     { name: '250 niveaux joués',        threshold: 250 },
+  '$jama_play500':     { name: '500 niveaux joués',        threshold: 500 },
+  '$jama_play1000':    { name: '1000 niveaux joués',       threshold: 1000 },
+};
+for (const [id, info] of Object.entries(JAMA_MILESTONES)) {
+  // Reuse the JamaJama disc icon as fallback gif (resolveGameItemGif also
+  // tolerates missing files — the picto still appears in inventory by name).
+  GAME_ITEM_INFO[id] = { name: info.name, game: 'JamaJama', gif: 'Games/poulpi/images/intro.jpg' };
+}
+
+// Award JamaJama milestone pictos based on the cumulative number of saved
+// scores (= attempted/finished levels). Called from both the HTTP and
+// XMLSocket score-save paths.
+function awardJamaPictosOnScore(username) {
+  const user = users[username];
+  if (!user) return;
+  user.jamaPlayCount = (Number(user.jamaPlayCount) || 0) + 1;
+  if (!Array.isArray(user.gameItems)) user.gameItems = [];
+  const dbId = user._dbId;
+  for (const [id, info] of Object.entries(JAMA_MILESTONES)) {
+    if (user.jamaPlayCount >= info.threshold && !user.gameItems.includes(id)) {
+      user.gameItems.push(id);
+      if (dbId) db.addGameItem(dbId, id).catch((e) => console.error('[DB] addGameItem jama:', e.message));
+      addAndNotifyUserLog(username, { type: 20, content: `Nouveau picto débloqué sur JamaJama : ${info.name} !` });
+      console.log(`[JAMA]  picto ${id} for ${username} (plays=${user.jamaPlayCount})`);
+    }
+  }
+}
+
 // ─────────────────────────────────────────────
 // Consecration: per-game progression registry
 // Set `enabled: false` for games not yet finalised; the score auto-rebalances.
@@ -496,7 +535,9 @@ const GAME_PROGRESS_REGISTRY = [
   {
     id: 'jamajama',
     name: 'JamaJama',
-    enabled: false,
+    enabled: true,
+    matchGame: 'JamaJama',
+    totalPictos: Object.keys(JAMA_MILESTONES).length,
   },
   {
     id: 'pixiz',
@@ -720,6 +761,7 @@ const RANKINGS = {
   kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
   mb2_classic:      { name: 'MotionBall - Classique',  game: 'mb2',      type: 'C' },
+  jamajama_classic: { name: 'JamaJama - Classique',    game: 'jamajama', type: 'C', lowerIsBetter: true },
   bkiwi_track0_challenge: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 0 },
   bkiwi_track1_challenge: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 1 },
   bkiwi_track2_challenge: { name: 'Burning Kiwi - Terre Grise', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 2 },
@@ -1328,6 +1370,15 @@ async function hydrateUserFromDb(username, dbUser) {
   if (items.length > 0) users[username].items = withDefaultPens(items);
   if (accs.length > 0) users[username].customAccessories = accs;
   if (dbGameItems.length > 0) users[username].gameItems = dbGameItems;
+
+  // Restore JamaJama play count from highest owned milestone picto so
+  // future score saves resume from the right threshold.
+  let jamaCount = 0;
+  for (const id of users[username].gameItems || []) {
+    const m = JAMA_MILESTONES[id];
+    if (m && m.threshold > jamaCount) jamaCount = m.threshold;
+  }
+  users[username].jamaPlayCount = jamaCount;
   users[username].contacts = Array.isArray(dbContacts) ? dbContacts : [];
   users[username].blacklist = Array.isArray(dbBlacklist) ? dbBlacklist : [];
   users[username].mails = Array.isArray(dbMails) ? dbMails : [];
@@ -2492,6 +2543,9 @@ async function handleSaveScore(req, res) {
     console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ${scoreVal} updated=${extraResult.updated} (challenge)`);
   }
   trackXpAction(username, 'gamePlayed');
+  if (rankingId === 'jamajama_classic' || rankingId === 'jamajama_challenge') {
+    awardJamaPictosOnScore(username);
+  }
   console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated}`);
   return res.json({
     ok: true,
@@ -4436,6 +4490,19 @@ const GAME_DISCS = {
       { u: 'games/motionBall2/full.swf' },
     ],
   },
+  jamajama: {
+    discType: '0',
+    playMode: 'single',
+    swfName: 'jamajama',
+    gameId: 'games/poulpi/game.swf',
+    props: 'w=384;h=384;m=i',
+    files: [
+      { u: 'games/poulpi/game.swf' },
+      { u: 'games/poulpi/levels.xml' },
+      { u: 'games/poulpi/help.xml' },
+      { u: 'games/poulpi/extension.swf' },
+    ],
+  },
 };
 
 // ─────────────────────────────────────────────
@@ -5310,6 +5377,7 @@ app.use('/swf/games/motionBall2', express.static(path.join(__dirname, 'Games', '
 app.use('/swf/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3')));
 app.use('/swf/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2')));
 app.use('/swf/games/miniTroll', express.static(path.join(__dirname, 'Games', 'miniTroll')));
+app.use('/swf/games/poulpi', express.static(path.join(__dirname, 'Games', 'poulpi')));
 // Fallback: Frusion constructs URLs as baseURL+swfId (e.g. "/games/kaluga/kaluga.swf")
 // without the /swf/ prefix.  Serve them from the same location.
 app.use('/games/burningKiwi', express.static(path.join(__dirname, 'Games', 'burningKiwi')));
@@ -5319,6 +5387,7 @@ app.use('/games/motionBall2', express.static(path.join(__dirname, 'Games', 'moti
 app.use('/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3')));
 app.use('/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2')));
 app.use('/games/miniTroll', express.static(path.join(__dirname, 'Games', 'miniTroll')));
+app.use('/games/poulpi', express.static(path.join(__dirname, 'Games', 'poulpi')));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────
@@ -6886,6 +6955,9 @@ async function handleCBeeMessage(socket, rawXml) {
           if (extraRankingId) {
             const r2 = persistScore(username, extraRankingId, scoreVal, scoreData);
             console.log(`[FSCORE] ${username} ${extraRankingId}: ${r2.oldScore} -> ${r2.newScore} (updated=${r2.updated}, challenge)`);
+          }
+          if (rankingId === 'jamajama_classic' || rankingId === 'jamajama_challenge') {
+            awardJamaPictosOnScore(username);
           }
         } else {
           console.log(`[FSCORE] skip persist (user="${username}" rankingId="${rankingId}")`);
