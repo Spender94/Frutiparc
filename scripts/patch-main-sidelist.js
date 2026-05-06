@@ -24,7 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const NEW_Y = 680;
+const NEW_Y = 650;
 
 const IN_PATH  = path.resolve(__dirname, '..', 'legacy', 'main.swf');
 const OUT_PATH = IN_PATH;
@@ -69,15 +69,22 @@ function writeSwf(outPath, sig, version, newBody) {
 function patch() {
   const { sig, version, body } = readSwf(IN_PATH);
 
-  const offset = body.indexOf(OLD_BYTES);
+  let offset = body.indexOf(OLD_BYTES);
   if (offset < 0) {
-    // Maybe already patched — check for the new pattern prefix
+    // Maybe already patched with a different Y — find the new-style prefix and re-patch
     const partial = Buffer.from([0x96, 0x07, 0x00, 0x08, 0x2a, 0x07]);
-    if (body.indexOf(partial) >= 0) {
-      console.log('[main-sidelist] Already patched — skipping.');
-      return;
+    const partialOff = body.indexOf(partial);
+    if (partialOff >= 0) {
+      const oldY = body.readInt32LE(partialOff + 6);
+      if (oldY === NEW_Y) {
+        console.log(`[main-sidelist] Already patched with y=${NEW_Y} — skipping.`);
+        return;
+      }
+      console.log(`[main-sidelist] Re-patching from y=${oldY} to y=${NEW_Y}`);
+      offset = partialOff;
+    } else {
+      throw new Error('Original butContact._y bytecode pattern not found');
     }
-    throw new Error('Original butContact._y bytecode pattern not found');
   }
   // Sanity: make sure pattern only appears once
   if (body.indexOf(OLD_BYTES, offset + 1) >= 0) {
