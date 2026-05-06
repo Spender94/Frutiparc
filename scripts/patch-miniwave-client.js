@@ -278,7 +278,7 @@ function patchClientTagBody(tagBody) {
   const newStrings = [
     'SharedObject',         // +0
     'getLocal',             // +1
-    'miniWave2/card',       // +2
+    'miniWave2/card2',      // +2  ← NEW key to bypass stale localStorage from broken versions
     'flush',                // +3
     'ExternalInterface',    // +4
     'call',                 // +5
@@ -382,9 +382,10 @@ function patchManagerTagBody(tagBody) {
 
   console.log(`  Sprite ${spriteId}: CP count=${cp.count}, loadData=CP[${loadDataIdx}], miniWave2/card=CP[${miniWave2Idx}], so=CP[${soIdx}]`);
 
-  // Add 'SharedObject' and 'getLocal' to the constant pool
+  // Add 'SharedObject', 'getLocal', and a NEW SO key 'miniWave2/card2' to the constant pool.
+  // Using a new key bypasses any stale/corrupt localStorage data from prior broken patch attempts.
   const newCpBase = cp.count;
-  const newStrings = ['SharedObject', 'getLocal'];
+  const newStrings = ['SharedObject', 'getLocal', 'miniWave2/card2'];
   let newCpData = Buffer.alloc(0);
   for (const s of newStrings) {
     newCpData = Buffer.concat([newCpData, Buffer.from(s + '\0', 'latin1')]);
@@ -401,8 +402,9 @@ function patchManagerTagBody(tagBody) {
 
   const sharedObjectCpIdx = newCpBase + 0;
   const getLocalCpIdx = newCpBase + 1;
+  const newKeyCpIdx = newCpBase + 2;
 
-  console.log(`  Added SharedObject=CP[${sharedObjectCpIdx}], getLocal=CP[${getLocalCpIdx}] (+${cpDelta} bytes)`);
+  console.log(`  Added SharedObject=CP[${sharedObjectCpIdx}], getLocal=CP[${getLocalCpIdx}], miniWave2/card2=CP[${newKeyCpIdx}] (+${cpDelta} bytes)`);
 
   // Find the _root.loadData("miniWave2/card") call pattern in the bytecode.
   // Original bytes (20 bytes total):
@@ -449,15 +451,17 @@ function patchManagerTagBody(tagBody) {
 
   console.log(`  Found _root.loadData pattern at tag offset ${patchOffset}`);
 
-  // Build replacement (24 bytes)
+  // Build replacement (24 bytes). Use the NEW SO key 'miniWave2/card2' (CP[newKeyCpIdx])
+  // instead of the original 'miniWave2/card' to bypass stale localStorage.
   const shCpByte = sharedObjectCpIdx < 256 ? Buffer.from([0x08, sharedObjectCpIdx]) : Buffer.from([0x09, sharedObjectCpIdx & 0xff, (sharedObjectCpIdx >> 8) & 0xff]);
   const glCpByte = getLocalCpIdx < 256 ? Buffer.from([0x08, getLocalCpIdx]) : Buffer.from([0x09, getLocalCpIdx & 0xff, (getLocalCpIdx >> 8) & 0xff]);
+  const newKeyByte = newKeyCpIdx < 256 ? Buffer.from([0x08, newKeyCpIdx]) : Buffer.from([0x09, newKeyCpIdx & 0xff, (newKeyCpIdx >> 8) & 0xff]);
 
   const replacement = Buffer.concat([
     Buffer.from([0x96, 0x0d, 0x00]),   // Push, payload=13
     Buffer.from([0x04, 0x01]),          // r1
     soIdxByte,                          // CP[so]
-    mw2IdxByte,                         // CP[miniWave2/card]
+    newKeyByte,                         // CP[miniWave2/card2]  ← NEW KEY
     Buffer.from([0x07, 0x01, 0x00, 0x00, 0x00]),  // int(1)
     shCpByte,                           // CP[SharedObject]
     Buffer.from([0x1c]),                // GetVariable

@@ -127,14 +127,21 @@
     swfPath = "/swf" + swfPath;
   }
 
-  const width  = parseInt(qs.get("width") || qs.get("w") || "640", 10) || 640;
-  const height = parseInt(qs.get("height") || qs.get("h") || "480", 10) || 480;
+  let width  = parseInt(qs.get("width") || qs.get("w") || "640", 10) || 640;
+  let height = parseInt(qs.get("height") || qs.get("h") || "480", 10) || 480;
   // Optional SWF natural stage size (e.g. MiniWave: visible 240x240 but SWF stage is 600x240
   // because the original Flash file leaves a debug log TextField permanently visible to the right
   // of the play area). When sw/sh differ from width/height, render the player at the SWF stage
   // size and let the wrap's overflow:hidden clip the non-game area.
   const swfWidth  = parseInt(qs.get("sw") || "0", 10) || width;
   const swfHeight = parseInt(qs.get("sh") || "0", 10) || height;
+
+  // Debug mode: expand the wrap to the full SWF stage so internal _root.test logs are visible.
+  if (qs.get("debug") === "1") {
+    width = swfWidth;
+    height = swfHeight;
+    console.log("[Game] Debug mode ON: showing full SWF stage", swfWidth + "x" + swfHeight);
+  }
 
   // Challenge mode: set server-side flag so scores route to _challenge rankings
   const isChallenge = qs.get("mode") === "challenge" || qs.get("c") === "2";
