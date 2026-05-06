@@ -66,7 +66,13 @@ function patch() {
   // Locate the OLD string in the body (it's null-terminated inside the CP)
   const needle = Buffer.from(OLD_STR + '\0', 'ascii');
   const strOff = body.indexOf(needle);
-  if (strOff < 0) throw new Error('chat.msg_admin format string not found');
+  if (strOff < 0) {
+    if (body.indexOf(Buffer.from(NEW_STR, 'ascii')) >= 0) {
+      console.log('[main-chat] Already patched — skipping.');
+      return;
+    }
+    throw new Error('chat.msg_admin format string not found');
+  }
 
   // Walk top-level tags to find the DefineSprite that contains strOff
   const nbits = (body[0] >> 3) & 0x1f;
