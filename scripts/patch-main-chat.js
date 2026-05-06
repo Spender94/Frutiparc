@@ -63,6 +63,13 @@ function writeSwf(outPath, sig, version, newBody) {
 function patch() {
   const { sig, version, body } = readSwf(IN_PATH);
 
+  // Check if already patched
+  const alreadyNeedle = Buffer.from(NEW_STR + '\0', 'ascii');
+  if (body.indexOf(alreadyNeedle) >= 0) {
+    console.log('chat.msg_admin already patched — skipping.');
+    return;
+  }
+
   // Locate the OLD string in the body (it's null-terminated inside the CP)
   const needle = Buffer.from(OLD_STR + '\0', 'ascii');
   const strOff = body.indexOf(needle);

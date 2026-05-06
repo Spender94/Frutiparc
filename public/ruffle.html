@@ -7,15 +7,12 @@
         body {
             margin: 0;
             background: #ade76b;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+            overflow: hidden;
         }
 
         #player-container {
             width: 1920px;
-            height: 1080px;
+            height: 768px;
         }
     </style>
 
@@ -29,7 +26,9 @@
                 sans: ["Verdana", "verdana"],
                 serif: ["Times New Roman", "TimesNewRoman"],
                 typewriter: ["Verdana", "verdana"]
-            }
+            },
+            scale: "noScale",
+            salign: "TL"
         };
     </script>
 
@@ -381,7 +380,7 @@
 
                 const ruffle = window.RufflePlayer.newest();
                 const player = ruffle.createPlayer();
-                player.style.width = "1024px";
+                player.style.width = "1920px";
                 player.style.height = "768px";
                 document.getElementById("player-container").appendChild(player);
 
