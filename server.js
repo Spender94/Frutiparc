@@ -1785,6 +1785,51 @@ function isValidUsername(username) {
   return /^[a-zA-Z0-9_]{3,20}$/.test(username);
 }
 
+// Per-IP rate limiter for /api/auth/register.
+// Sliding window: at most REGISTER_MAX attempts per REGISTER_WINDOW_MS,
+// plus a hard cap of REGISTER_DAILY_MAX successful registrations per day.
+const REGISTER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const REGISTER_MAX = 5;                    // 5 attempts/hour/IP
+const REGISTER_DAILY_MAX = 10;             // 10 successful regs/day/IP
+const registerAttempts = new Map(); // ip -> { attempts: number[], successDay: string, successCount: number }
+
+function checkRegisterRateLimit(ip) {
+  const now = Date.now();
+  const todayKey = new Date(now).toISOString().slice(0, 10);
+  let rec = registerAttempts.get(ip);
+  if (!rec) {
+    rec = { attempts: [], successDay: todayKey, successCount: 0 };
+    registerAttempts.set(ip, rec);
+  }
+  // Drop attempts older than the window
+  rec.attempts = rec.attempts.filter((t) => now - t < REGISTER_WINDOW_MS);
+  // Reset daily success counter if the day rolled over
+  if (rec.successDay !== todayKey) {
+    rec.successDay = todayKey;
+    rec.successCount = 0;
+  }
+  if (rec.attempts.length >= REGISTER_MAX) return false;
+  if (rec.successCount >= REGISTER_DAILY_MAX) return false;
+  rec.attempts.push(now);
+  return true;
+}
+
+function recordSuccessfulRegister(ip) {
+  const rec = registerAttempts.get(ip);
+  if (rec) rec.successCount++;
+}
+
+// Periodically prune empty entries to keep the map bounded.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, rec] of registerAttempts) {
+    rec.attempts = rec.attempts.filter((t) => now - t < REGISTER_WINDOW_MS);
+    if (rec.attempts.length === 0 && rec.successCount === 0) {
+      registerAttempts.delete(ip);
+    }
+  }
+}, 10 * 60 * 1000).unref();
+
 function getDisplayName(username) {
   const key = String(username || '').toLowerCase();
   const u = users[key];
@@ -2308,6 +2353,12 @@ app.get('/', (req, res) => {
 });
 
 app.post('/api/auth/register', async (req, res) => {
+  const ip = getClientIp(req) || 'unknown';
+  if (!checkRegisterRateLimit(ip)) {
+    console.warn(`[REGISTER] rate-limit blocked ip=${ip}`);
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessayez plus tard.' });
+  }
+
   const rawName = String((req.body && req.body.username) || '').trim();
   const username = rawName.toLowerCase();
   const password = String((req.body && req.body.password) || '');
@@ -2332,11 +2383,14 @@ app.post('/api/auth/register', async (req, res) => {
     users[username].displayName = rawName;
     await db.setUserItems(dbUser.id, users[username].items);
     await db.updateUser(username, { display_name: rawName });
+    recordSuccessfulRegister(ip);
+    console.log(`[REGISTER] ok ip=${ip} user=${rawName}`);
     return res.json({ ok: true, username: rawName });
   } catch (e) {
     console.error('[DB] register error:', e.message);
     users[username] = createDefaultUser(password);
     users[username].displayName = rawName;
+    recordSuccessfulRegister(ip);
     return res.json({ ok: true, username: rawName });
   }
 });
