@@ -18,9 +18,9 @@ const path = require('path');
 const zlib = require('zlib');
 
 // Configurable values
-const NEW_MCW = 1260;       // _global.mcw target
+const NEW_MCW = 1265;       // _global.mcw target
 const NEW_MCH = 768;        // _global.mch target (unchanged)
-const NEW_FRUSION_X = 1255; // frusion.pos.x target (MainBar 1250 + 5px gap)
+const NEW_FRUSION_X = 1260; // frusion.pos.x target (MainBar 1257 + 3px gap)
 
 const IN_PATH  = path.resolve(__dirname, '..', 'legacy', 'main.swf');
 const OUT_PATH = IN_PATH;

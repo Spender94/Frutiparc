@@ -25,7 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const HARDCODED_WIDTH = 1250;
+const HARDCODED_WIDTH = 1257;
 
 const IN_PATH  = path.resolve(__dirname, '..', 'legacy', 'main.swf');
 const OUT_PATH = IN_PATH;

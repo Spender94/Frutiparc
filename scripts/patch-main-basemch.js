@@ -14,7 +14,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 const OLD_MCW = 1920;
-const NEW_MCW = 1260;
+const NEW_MCW = 1265;
 const OLD_MCH = 1080;
 const NEW_MCH = 768;
 
