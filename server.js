@@ -2654,7 +2654,10 @@ app.get('/api/admin/users/:username', adminAuth, async (req, res) => {
     const items = await db.getUserItems(row.id);
     const accs = await db.getUserAccessories(row.id);
     const scores = await db.loadScoresForUser(row.id);
-    const gameItems = (users[u] && Array.isArray(users[u].gameItems)) ? users[u].gameItems : [];
+    let gameItems = (users[u] && Array.isArray(users[u].gameItems)) ? users[u].gameItems : null;
+    if (!gameItems) {
+      try { gameItems = await db.getUserGameItems(row.id) || []; } catch { gameItems = []; }
+    }
     res.json({ user: row, items, accessories: accs, scores, gameItems });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2896,25 +2899,46 @@ app.get('/api/consecration', (req, res) => {
 
 // Admin: list user's game items
 app.get('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => {
-  const user = users[req.params.username];
-  if (!user) return res.status(404).json({ error: 'not found' });
-  res.json(Array.isArray(user.gameItems) ? user.gameItems : []);
+  const username = req.params.username;
+  const memUser = users[username];
+  if (memUser && Array.isArray(memUser.gameItems)) {
+    return res.json(memUser.gameItems);
+  }
+  if (process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(username);
+      if (row) {
+        const items = await db.getUserGameItems(row.id);
+        return res.json(items || []);
+      }
+    } catch (e) { /* fall through */ }
+  }
+  res.status(404).json({ error: 'not found' });
 });
 
-// Admin: add a game item to a user
+// Admin: add a game item to a user (works even if user is offline)
 app.post('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => {
   const username = req.params.username;
-  const user = users[username];
-  if (!user) return res.status(404).json({ error: 'not found' });
   const itemName = String(req.body.itemName || '').trim();
   if (!itemName) return res.status(400).json({ error: 'missing itemName' });
-  if (!Array.isArray(user.gameItems)) user.gameItems = [];
-  if (!user.gameItems.includes(itemName)) {
-    user.gameItems.push(itemName);
-    const dbId = user._dbId;
-    if (dbId) await db.addGameItem(dbId, itemName).catch(() => {});
+
+  const memUser = users[username];
+  let dbId = memUser ? memUser._dbId : null;
+  if (!dbId && process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(username);
+      if (row) dbId = row.id;
+    } catch (e) { /* ignore */ }
   }
-  res.json({ ok: true, gameItems: user.gameItems });
+  if (!dbId && !memUser) return res.status(404).json({ error: 'not found' });
+
+  if (memUser) {
+    if (!Array.isArray(memUser.gameItems)) memUser.gameItems = [];
+    if (!memUser.gameItems.includes(itemName)) memUser.gameItems.push(itemName);
+  }
+  if (dbId) await db.addGameItem(dbId, itemName).catch(() => {});
+  const gameItems = memUser ? memUser.gameItems : await db.getUserGameItems(dbId).catch(() => []);
+  res.json({ ok: true, gameItems });
 });
 
 // Admin: re-extract pictos from a user's saved slot data (idempotent).
@@ -2960,21 +2984,26 @@ app.post('/api/admin/users/:username/reextractPictos', adminAuth, async (req, re
   res.json({ added, scanned, total: localUser.gameItems.length });
 });
 
-// Admin: remove a game item from a user
+// Admin: remove a game item from a user (works even if user is offline)
 app.delete('/api/admin/users/:username/gameitems/:itemName', adminAuth, async (req, res) => {
   const username = req.params.username;
-  const user = users[username];
-  if (!user) return res.status(404).json({ error: 'not found' });
+  const memUser = users[username];
   const itemName = decodeURIComponent(req.params.itemName);
-  if (Array.isArray(user.gameItems)) {
-    const idx = user.gameItems.indexOf(itemName);
-    if (idx >= 0) {
-      user.gameItems.splice(idx, 1);
-      const dbId = user._dbId;
-      if (dbId) await db.removeGameItem(dbId, itemName).catch(() => {});
-    }
+  let dbId = memUser ? memUser._dbId : null;
+  if (!dbId && process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(username);
+      if (row) dbId = row.id;
+    } catch (e) { /* ignore */ }
   }
-  res.json({ ok: true, gameItems: user.gameItems || [] });
+  if (!dbId && !memUser) return res.status(404).json({ error: 'not found' });
+  if (memUser && Array.isArray(memUser.gameItems)) {
+    const idx = memUser.gameItems.indexOf(itemName);
+    if (idx >= 0) memUser.gameItems.splice(idx, 1);
+  }
+  if (dbId) await db.removeGameItem(dbId, itemName).catch(() => {});
+  const gameItems = memUser ? (memUser.gameItems || []) : await db.getUserGameItems(dbId).catch(() => []);
+  res.json({ ok: true, gameItems });
 });
 
 app.get('/api/admin/availableGameItems', adminAuth, (req, res) => {

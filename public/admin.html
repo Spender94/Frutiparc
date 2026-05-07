@@ -954,13 +954,17 @@ const BKIWI_ALL_PICTOS = ['$fruticup','$fruticupxl','$elite','$elitexl','$logo01
 
 async function addAllBkiwiPictos() {
   if (!currentDetailUser) return;
+  let ok = 0, fail = 0;
   for (const name of BKIWI_ALL_PICTOS) {
-    await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems`, {
-      method: 'POST', headers: hdr(),
-      body: JSON.stringify({ itemName: name })
-    });
+    try {
+      const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems`, {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify({ itemName: name })
+      });
+      if (r.ok) ok++; else fail++;
+    } catch { fail++; }
   }
-  toast('14 pictos Burning Kiwi ajoutés');
+  toast(`${ok}/${BKIWI_ALL_PICTOS.length} pictos Burning Kiwi ajoutés` + (fail ? ` (${fail} erreurs)` : ''));
   loadDetail();
 }
 
@@ -979,13 +983,17 @@ const PIXIZ_ALL_PICTOS = [
 
 async function addAllPixizPictos() {
   if (!currentDetailUser) return;
+  let ok = 0, fail = 0;
   for (const name of PIXIZ_ALL_PICTOS) {
-    await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems`, {
-      method: 'POST', headers: hdr(),
-      body: JSON.stringify({ itemName: name })
-    });
+    try {
+      const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems`, {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify({ itemName: name })
+      });
+      if (r.ok) ok++; else fail++;
+    } catch { fail++; }
   }
-  toast(PIXIZ_ALL_PICTOS.length + ' pictos MiniPixiz ajoutés');
+  toast(`${ok}/${PIXIZ_ALL_PICTOS.length} pictos MiniPixiz ajoutés` + (fail ? ` (${fail} erreurs)` : ''));
   loadDetail();
 }
 
@@ -999,13 +1007,17 @@ const MINIWAVE_ALL_PICTOS = (() => {
 async function addAllMiniwavePictos() {
   if (!currentDetailUser) return;
   if (!confirm(`Ajouter les ${MINIWAVE_ALL_PICTOS.length} pictos MiniWave à ${currentDetailUser} ?`)) return;
+  let ok = 0, fail = 0;
   for (const name of MINIWAVE_ALL_PICTOS) {
-    await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems`, {
-      method: 'POST', headers: hdr(),
-      body: JSON.stringify({ itemName: name })
-    });
+    try {
+      const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems`, {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify({ itemName: name })
+      });
+      if (r.ok) ok++; else fail++;
+    } catch { fail++; }
   }
-  toast(MINIWAVE_ALL_PICTOS.length + ' pictos MiniWave ajoutés');
+  toast(`${ok}/${MINIWAVE_ALL_PICTOS.length} pictos MiniWave ajoutés` + (fail ? ` (${fail} erreurs)` : ''));
   loadDetail();
 }
 
