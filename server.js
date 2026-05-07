@@ -3605,6 +3605,11 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
     //   $arcade:{$bestScore,$bestLevel} — arcade boss mode
     //   $cons:{$main,$bonus:Array<0..100>,$letter} — consecration %
     //   $shop:Array<0|1>        — shop items (1=available, 0=purchased)
+    const bk = parsed.$badsKill;
+    const bkSummary = Array.isArray(bk)
+      ? bk.map((v, i) => v >= 200 ? `${i}=${v}` : null).filter(Boolean).join(',')
+      : 'not-array';
+    console.log(`[SLOT]  miniwave extraction for ${username}: $ship=${JSON.stringify(parsed.$ship)} $badsKill≥200=[${bkSummary}] $arcade.$bestLevel=${parsed.$arcade && parsed.$arcade.$bestLevel} $cons.$letter=${parsed.$cons && parsed.$cons.$letter} $cons.$bonus=${JSON.stringify(parsed.$cons && parsed.$cons.$bonus)} $shop=${JSON.stringify(parsed.$shop)}`);
     const ship = parsed.$ship;
     if (Array.isArray(ship)) {
       for (let i = 0; i < ship.length; i++) {
@@ -8374,6 +8379,9 @@ case 'createchannel': {
       const sAttr = ` s="${escapeXml(String(slotId))}"`;
       const slotData = msg.content || '';
       const username = client.username || '';
+      if (!username || !users[username]) {
+        console.log(`[FCARD] updateSlot REJECTED (no auth) game=${game} slot=${slotId} len=${slotData.length} client.username="${username}" client.logged=${!!client.logged}`);
+      }
       if (username && users[username]) {
         const u = users[username];
         if (!u.frutiSlots) u.frutiSlots = {};
@@ -8438,10 +8446,18 @@ case 'createchannel': {
         // Chat invite refusal — no-op, just acknowledge silently.
         break;
       }
-      // Treat as FrutiScore giveItem.
-      const itemName = msg.attrs.i || msg.attrs.n || msg.attrs.t || msg.content || '';
+      // Treat as FrutiScore giveItem. Try every attribute we've seen the
+      // compiled GameClient use (i, n, t, item, name, c) plus inner content.
+      let itemName = msg.attrs.i || msg.attrs.n || msg.attrs.t || msg.attrs.item || msg.attrs.name || msg.attrs.c || msg.content || '';
+      // Some implementations wrap the item in a child <i name="$xxx"/>
+      if (!itemName && Array.isArray(msg.children) && msg.children.length > 0) {
+        const c0 = msg.children[0];
+        if (c0 && c0.attrs) itemName = c0.attrs.n || c0.attrs.name || c0.attrs.i || c0.content || '';
+      }
+      itemName = String(itemName || '').trim();
+      console.log(`[FSCORE] giveItem RECEIVED user="${client.username || ''}" item="${itemName}" attrs=${JSON.stringify(msg.attrs)} content="${msg.content || ''}" children=${JSON.stringify(msg.children || [])}`);
       if (!itemName || !client.username) {
-        console.log(`[FSCORE] giveItem: no item name or user — raw=${JSON.stringify(msg.attrs)} content=${msg.content || ''}`);
+        console.log(`[FSCORE] giveItem REJECTED: no item name or user`);
         break;
       }
       const user = users[client.username];
