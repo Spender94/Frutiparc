@@ -7133,12 +7133,13 @@ async function handleCBeeMessage(socket, rawXml) {
         }
         // Persist if we have a valid ranking + user.
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
+        let challengeRes = null;
         if (username && rankingId) {
           res = persistScore(username, rankingId, scoreVal, scoreData);
           console.log(`[FSCORE] ${username} ${rankingId}: ${res.oldScore} -> ${res.newScore} (updated=${res.updated}, pos ${res.oldPos}->${res.newPos})`);
           if (extraRankingId) {
-            const r2 = persistScore(username, extraRankingId, scoreVal, scoreData);
-            console.log(`[FSCORE] ${username} ${extraRankingId}: ${r2.oldScore} -> ${r2.newScore} (updated=${r2.updated}, challenge)`);
+            challengeRes = persistScore(username, extraRankingId, scoreVal, scoreData);
+            console.log(`[FSCORE] ${username} ${extraRankingId}: ${challengeRes.oldScore} -> ${challengeRes.newScore} (updated=${challengeRes.updated}, challenge)`);
           }
           if (rankingId === 'jamajama_classic' || rankingId === 'jamajama_challenge') {
             awardJamaPictosOnScore(username);
@@ -7151,11 +7152,14 @@ async function handleCBeeMessage(socket, rawXml) {
         // os (oldScore), op (oldPos), s (bestScore). Without a child node the
         // GameClient leaves ranking.bestScorePos undefined — which propagates
         // into the UI as "Votre classement : undefined".
-        const rkInfo = rankingId ? (RANKINGS[rankingId] || {}) : {};
+        // For BKiwi, use the challenge result for the response (daily competition).
+        const displayRes = challengeRes || res;
+        const displayRankingId = extraRankingId || rankingId;
+        const rkInfo = displayRankingId ? (RANKINGS[displayRankingId] || {}) : {};
         const rnAttr = rkInfo.name ? ` rn="${escapeXml(rkInfo.name)}"` : '';
-        const rankingDataForClient = rankingId ? formatRankingExtraData(rankingId, scoreData) : scoreData;
+        const rankingDataForClient = displayRankingId ? formatRankingExtraData(displayRankingId, scoreData) : scoreData;
         const rAttr = rankingDataForClient ? ` r="${escapeXml(rankingDataForClient)}"` : ' r=""';
-        const subAttrs = `${rnAttr}${rAttr} p="${res.newPos}" os="${res.oldScore}" op="${res.oldPos}" s="${res.newScore}"`;
+        const subAttrs = `${rnAttr}${rAttr} p="${displayRes.newPos}" os="${displayRes.oldScore}" op="${displayRes.oldPos}" s="${displayRes.newScore}"`;
         sendToClient(socket, `<${CMD.channellist} k="0"><rk${subAttrs}/></${CMD.channellist}>`);
         break;
       }
@@ -8118,29 +8122,15 @@ case 'createchannel': {
         const debugParts = [];
         for (const rkAny of rkList) {
           const legacyDesc = legacyDescriptorFromRkLike(rkAny);
-          // BKiwi rk '0': aggregate best score across all 6 classic tracks
-          // (+ today's challenge) so the profile always shows the user's best time.
+          // BKiwi rk '0': return today's daily challenge score/position
+          // (matches rankingResult which also resolves '0' to today's challenge).
           if (rkAny === '0') {
-            let bestInfo = { score: 0, pos: 0 };
-            let bestRanking = null;
-            for (let t = 0; t < 6; t++) {
-              const classicId = `bkiwi_track${t}_classic`;
-              const ci = getUserScore(targetUser, classicId);
-              if (ci.score > 0 && (!bestRanking || ci.score < bestInfo.score)) {
-                bestInfo = ci;
-                bestRanking = classicId;
-              }
-            }
-            const dailyId = `bkiwi_track${getBkiwiDailyTrack()}_challenge`;
-            const di = getUserScore(targetUser, dailyId);
-            if (di.score > 0 && (!bestRanking || di.score < bestInfo.score)) {
-              bestInfo = di;
-              bestRanking = dailyId;
-            }
-            if (bestInfo.score > 0) {
+            const dailyId = resolveInternalRankingId('0');
+            const info = getUserScore(targetUser, dailyId);
+            if (info.score > 0) {
               const tAttr = legacyDesc && legacyDesc.ty && legacyDesc.ty !== 'point' ? ` t="${escapeXml(legacyDesc.ty)}"` : '';
-              inner += `<rk rk="0" p="${bestInfo.pos}" s="${bestInfo.score}"${tAttr} />`;
-              debugParts.push(`0->${bestRanking}:s=${bestInfo.score},p=${bestInfo.pos}`);
+              inner += `<rk rk="0" p="${info.pos}" s="${info.score}"${tAttr} />`;
+              debugParts.push(`0->${dailyId}:s=${info.score},p=${info.pos}`);
             } else {
               debugParts.push('0->none');
             }
