@@ -3448,14 +3448,14 @@ const MB2_TITEMS = [
   '$eca0','$eca1','$eca2','$eca3','$symb0','$symb1','$symb2','$symb3',
 ];
 
-function extractGameItemsFromSlot(username, game, dataStr) {
+function extractGameItemsFromSlot(username, game, dataStr, { silent = false, userOverride = null } = {}) {
   let parsed;
   try { parsed = JSON.parse(dataStr); } catch { return; }
   if (!parsed || typeof parsed !== 'object') return;
   if (game === 'bkiwi') {
     console.log(`[SLOT]  bkiwi extraction for ${username}: $wc=${parsed.$wc} $wcs=${parsed.$wcs} $ws=${parsed.$ws} $wss=${parsed.$wss} $ac=${JSON.stringify(parsed.$ac)}`);
   }
-  const user = users[username];
+  const user = userOverride || users[username];
   if (!user) return;
   if (!Array.isArray(user.gameItems)) user.gameItems = [];
 
@@ -3699,11 +3699,13 @@ function extractGameItemsFromSlot(username, game, dataStr) {
       }
     }
     console.log(`[SLOT]  extracted ${newItems.length} new pictos for ${username}/${game}: ${newItems.join(', ')}`);
-    for (const item of newItems) {
-      const info = GAME_ITEM_INFO[item];
-      const label = info ? info.name : item;
-      const gameName = info ? info.game : game;
-      addAndNotifyUserLog(username, { type: 20, content: `Nouveau picto débloqué sur ${gameName} : ${label} !` });
+    if (!silent) {
+      for (const item of newItems) {
+        const info = GAME_ITEM_INFO[item];
+        const label = info ? info.name : item;
+        const gameName = info ? info.game : game;
+        addAndNotifyUserLog(username, { type: 20, content: `Nouveau picto débloqué sur ${gameName} : ${label} !` });
+      }
     }
   }
 }
@@ -6112,78 +6114,46 @@ const server = app.listen(port, '0.0.0.0', () => {
       }
     })();
 
-    // Retroactive backfill: re-extract pictos from saved miniwave slot data
-    // for ALL users in DB. Catches items that weren't extracted before
-    // because the extraction logic was incomplete (missions, letter, etc).
+    // Retroactive backfill: re-extract pictos from ALL saved slot data
+    // for ALL users in DB. Uses extractGameItemsFromSlot with userOverride
+    // so we never touch the live `users` object (avoids race conditions
+    // with concurrent logins). Idempotent — runs every startup.
     (async () => {
       try {
         const allUsers = await db.listAllUsers();
-        let scanned = 0;
-        let added = 0;
+        let totalAdded = 0;
+        let usersScanned = 0;
         for (const u of allUsers) {
-          for (const game of ['miniwave', 'miniwave2']) {
-            let slot0;
+          let allSlots;
+          try { allSlots = await db.getAllFrutiSlots(u.id); } catch { continue; }
+          if (!allSlots || Object.keys(allSlots).length === 0) continue;
+          usersScanned++;
+          let existingItems;
+          try { existingItems = await db.getUserGameItems(u.id); } catch { existingItems = []; }
+          const localUser = { gameItems: existingItems || [], _dbId: u.id };
+          const beforeCount = localUser.gameItems.length;
+          for (const game of Object.keys(allSlots)) {
+            const s0 = allSlots[game]['0'] || allSlots[game][0];
+            if (!s0) continue;
             try {
-              const slots = await db.getFrutiSlots(u.id, game);
-              slot0 = slots && (slots['0'] || slots[0]);
-            } catch { continue; }
-            if (!slot0) continue;
-            scanned++;
-            let parsed;
-            try { parsed = JSON.parse(slot0); } catch { continue; }
-            if (!parsed || typeof parsed !== 'object') continue;
-            const candidates = [];
-            if (Array.isArray(parsed.$ship)) {
-              for (let i = 0; i < parsed.$ship.length; i++) {
-                if (parsed.$ship[i]) candidates.push('$ship0' + i);
+              extractGameItemsFromSlot(u.username, game, s0, { silent: true, userOverride: localUser });
+            } catch { /* ignore */ }
+          }
+          const newCount = localUser.gameItems.length - beforeCount;
+          if (newCount > 0) {
+            totalAdded += newCount;
+            // Also push to in-memory user if they happen to be logged in
+            const memUser = users[u.username];
+            if (memUser && Array.isArray(memUser.gameItems)) {
+              for (const item of localUser.gameItems) {
+                if (!memUser.gameItems.includes(item)) memUser.gameItems.push(item);
               }
-            }
-            if (Array.isArray(parsed.$badsKill)) {
-              for (let i = 0; i < parsed.$badsKill.length; i++) {
-                if (parsed.$badsKill[i] >= 200) candidates.push('$bads' + i);
-              }
-            }
-            if (parsed.$arcade && parsed.$arcade.$bestLevel > 0) candidates.push('$arcade');
-            if (parsed.$cons) {
-              if (Array.isArray(parsed.$cons.$bonus)) {
-                for (let i = 0; i < parsed.$cons.$bonus.length && i <= 4; i++) {
-                  if (parsed.$cons.$bonus[i] >= 100) candidates.push('$mis' + i);
-                }
-              }
-              if (parsed.$cons.$letter >= 100) candidates.push('$letter');
-            }
-            if (Array.isArray(parsed.$shop)) {
-              const shopMap = [
-                [10, '$smiley_love'], [11, '$smiley_laugh'], [12, '$smiley_twirl'],
-                [13, '$wpMinistar'], [14, '$wpNostromo'],
-              ];
-              for (const [idx, itemId] of shopMap) {
-                if (parsed.$shop[idx] === 0) candidates.push(itemId);
-              }
-            }
-            if (candidates.length === 0) continue;
-            let existing;
-            try { existing = new Set(await db.getUserGameItems(u.id)); } catch { existing = new Set(); }
-            for (const item of candidates) {
-              if (existing.has(item)) continue;
-              try {
-                await db.addGameItem(u.id, item);
-                existing.add(item);
-                added++;
-                const memUser = users[u.username];
-                if (memUser) {
-                  if (!Array.isArray(memUser.gameItems)) memUser.gameItems = [];
-                  if (!memUser.gameItems.includes(item)) memUser.gameItems.push(item);
-                }
-              } catch { /* ignore */ }
             }
           }
         }
-        if (scanned > 0) {
-          console.log(`[BACKFILL] miniwave pictos: scanned ${scanned} slot(s), added ${added} new item(s)`);
-        }
+        console.log(`[BACKFILL] pictos: scanned ${usersScanned} user(s), added ${totalAdded} new item(s)`);
       } catch (e) {
-        console.error('[BACKFILL] miniwave error:', e.message);
+        console.error('[BACKFILL] picto extraction error:', e.message);
       }
     })();
   }
