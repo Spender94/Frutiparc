@@ -221,7 +221,7 @@ function buildSaveSlotBody(CP) {
     actionPush(pushCp(CP.saveSlotData)),
     // argCount = 4
     actionPush(pushInt(4)),
-    // Get ExternalInterface (top-level, not flash.external.ExternalInterface)
+    // Get flash.external.ExternalInterface (full dotted path; AVM1 resolves via _global)
     actionPush(pushCp(CP.ExternalInterface)),
     GET_VARIABLE,
     // Call method "call"
@@ -280,7 +280,7 @@ function patchClientTagBody(tagBody) {
     'getLocal',             // +1
     'miniWave2/card2',      // +2  ← NEW key to bypass stale localStorage from broken versions
     'flush',                // +3
-    'ExternalInterface',    // +4
+    'flash.external.ExternalInterface',    // +4
     'call',                 // +5
     'saveSlotData',         // +6
     'mng',                  // +7

@@ -165,10 +165,14 @@
 
   // ExternalInterface callback for SWF save — receives AS2 objects auto-serialized to JS
   window.saveSlotData = function(game, slotId, data) {
+    console.log("[Game] saveSlotData CALLED game=" + game + " slot=" + slotId + " dataType=" + typeof data);
     var sid = new URLSearchParams(window.location.search).get("sid") || "";
-    if (!sid) return;
+    if (!sid) { console.log("[Game] saveSlotData SKIPPED: no sid"); return; }
     var jsonData;
-    try { jsonData = JSON.stringify(data); } catch(e) { return; }
+    try { jsonData = JSON.stringify(data); } catch(e) {
+      console.log("[Game] saveSlotData JSON.stringify FAILED:", e);
+      return;
+    }
     console.log("[Game] saveSlot " + game + "/slot" + slotId + " (" + jsonData.length + " chars)");
     fetch("/api/saveFrutiSlot", {
       method: "POST",
@@ -177,6 +181,8 @@
             "&game=" + encodeURIComponent(game) +
             "&slotId=" + encodeURIComponent(String(slotId)) +
             "&data=" + encodeURIComponent(jsonData)
+    }).then(function(r) {
+      console.log("[Game] saveSlot response:", r.status);
     }).catch(function(e) { console.log("[Game] saveSlot error:", e); });
   };
 
