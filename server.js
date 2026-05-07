@@ -1544,15 +1544,28 @@ const XP_REWARDS = {
   chatMsg:    { base: 50,   cap: 50 },  // 50 XP per message, max 2500/day
   forumTopic: { base: 500,  cap: 3  },  // 500 XP per topic, max 1500/day
   forumPost:  { base: 250,  cap: 8  },  // 250 XP per reply, max 2000/day
-  gamePlayed: { base: 300,  cap: 10 },  // 300 XP per game, max 3000/day
+  gamePlayed: { base: 300,  cap: 10 },  // 300 XP per challenge score, max 3000/day
 };
 
+function countChallengeScores(username) {
+  const rlist = scoresData.users[username];
+  if (!rlist) return 0;
+  let count = 0;
+  for (const rkId of Object.keys(rlist)) {
+    if (isDailyResetRanking(rkId) && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+      count++;
+    }
+  }
+  return count;
+}
+
 function computeDailyXpGain(username) {
-  const actions = dailyXpActions[username];
-  if (!actions) return 0;
+  const actions = dailyXpActions[username] || {};
+  const challengeScores = countChallengeScores(username);
   let total = 0;
   for (const [action, cfg] of Object.entries(XP_REWARDS)) {
-    const count = Math.min(actions[action] || 0, cfg.cap);
+    const raw = action === 'gamePlayed' ? challengeScores : (actions[action] || 0);
+    const count = Math.min(raw, cfg.cap);
     total += count * cfg.base;
   }
   return total;
@@ -1569,14 +1582,33 @@ function getLevelForXp(xp) {
   return Math.floor(Math.sqrt(Math.max(0, xp) / 10000) + 1);
 }
 
-// Award XP to all active users (called at midnight rollover)
+// Award XP to all active users (called during midnight rollover,
+// before challenge scores are cleared from memory)
 async function awardDailyXp() {
-  const usernames = Object.keys(dailyXpActions);
+  const candidates = new Set(Object.keys(dailyXpActions));
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+    if (!rlist) continue;
+    for (const rkId of Object.keys(rlist)) {
+      if (isDailyResetRanking(rkId) && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+        candidates.add(u);
+        break;
+      }
+    }
+  }
   let awarded = 0;
-  for (const username of usernames) {
+  for (const username of candidates) {
     const gain = computeDailyXpGain(username);
     if (gain <= 0) continue;
-    const user = users[username];
+    let user = users[username];
+    if (!user && process.env.DATABASE_URL) {
+      try {
+        const row = await db.findUserByUsername(username);
+        if (row) {
+          user = dbUserToMemory(row);
+          users[username] = user;
+        }
+      } catch (e) { /* ignore */ }
+    }
     if (!user) continue;
     const oldXp = user.xp || 0;
     const oldLevel = getLevelForXp(oldXp);
@@ -1590,10 +1622,10 @@ async function awardDailyXp() {
         console.error(`[XP] DB update failed for ${username}:`, e.message);
       });
     }
+    console.log(`[XP]  ${username}: +${gain} XP (total=${user.xp})`);
     awarded++;
   }
   console.log(`[XP] Daily XP awarded to ${awarded} user(s)`);
-  // Reset all daily counters
   for (const key of Object.keys(dailyXpActions)) delete dailyXpActions[key];
   saveXpActions();
 }
@@ -1774,6 +1806,11 @@ async function performChallengeRoll(today) {
   challengeMedalsData.lastRollDay = today;
   saveChallengeMedals();
 
+  // Award daily XP while challenge scores are still in memory
+  try { await awardDailyXp(); } catch (e) {
+    console.error('[XP] awardDailyXp error:', e.message);
+  }
+
   if (process.env.DATABASE_URL) {
     const rankingIds = challengeRankingIds();
     try {
@@ -1787,11 +1824,6 @@ async function performChallengeRoll(today) {
   }
 
   resetChallengeScoresInMemory();
-
-  // Award daily XP based on accumulated actions
-  try { await awardDailyXp(); } catch (e) {
-    console.error('[XP] awardDailyXp error:', e.message);
-  }
 }
 
 function applyPendingChallengeNotifications(username, user) {
@@ -2542,7 +2574,6 @@ async function handleSaveScore(req, res) {
     extraResult = persistScore(username, extraRankingId, scoreVal, scoreData);
     console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ${scoreVal} updated=${extraResult.updated} (challenge)`);
   }
-  trackXpAction(username, 'gamePlayed');
   if (rankingId === 'jamajama_classic' || rankingId === 'jamajama_challenge') {
     awardJamaPictosOnScore(username);
   }
@@ -3382,7 +3413,6 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
     return res.type('text/plain').send('ok=0');
   }
   const result = persistScore(username, rankingId, scoreVal, '');
-  trackXpAction(username, 'gamePlayed');
   console.log(`[SWF-SCORE] ${username} ${gameName} ${scoreVal} -> ${rankingId} mode=${swfMode} updated=${result.updated}`);
   res.type('text/plain').send('ok=1');
 });
