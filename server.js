@@ -8037,20 +8037,6 @@ case 'createchannel': {
       const targetUser = String(msg.attrs.u || client.username || '').toLowerCase();
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       let inner = '';
-      const bestRecordByGame = {};
-      for (const [rkId, rk] of Object.entries(RANKINGS)) {
-        if (!isDailyResetRanking(rkId)) continue;
-        const info = getUserScore(targetUser, rkId);
-        if (info.pos === 1 && info.score > 0) {
-          const prev = bestRecordByGame[rk.game];
-          if (!prev || info.score > prev.score) {
-            bestRecordByGame[rk.game] = { name: rk.name, score: info.score };
-          }
-        }
-      }
-      for (const [game, rec] of Object.entries(bestRecordByGame)) {
-        inner += `<a g="${escapeXml(game)}" n="${escapeXml(rec.name)}" v="${rec.score}" d="0" />`;
-      }
       let allMedals = [];
       const medalDay = yesterdayParisDayKey();
       if (process.env.DATABASE_URL) {
@@ -8072,7 +8058,7 @@ case 'createchannel': {
       }
       sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(getDisplayName(targetUser))}">${inner}</${CMD.awarduser}>`);
       const medalSummary = allMedals.map(m => `${m.game}:rank${m.rank}=${m.medal}`).join(',');
-      console.log(`[FSCORE] awarduser user=${targetUser}: records=${Object.keys(bestRecordByGame).length} medals=${seenMedalGame.size} [${medalSummary}]`);
+      console.log(`[FSCORE] awarduser user=${targetUser}: medals=${seenMedalGame.size} [${medalSummary}]`);
       break;
     }
 
