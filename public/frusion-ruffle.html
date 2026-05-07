@@ -128,6 +128,31 @@
     };
   }
 
+  // ExternalInterface callback for patched game SWFs (e.g. MiniWave STANDALONE mode).
+  // The game calls ExternalInterface.call("saveSlotData", game, slotId, data)
+  // to persist slot data via HTTP instead of the Frusion XMLSocket wire protocol.
+  window.saveSlotData = function(game, slotId, data) {
+    console.log('[FRUSION] saveSlotData CALLED game=' + game + ' slot=' + slotId + ' dataType=' + typeof data);
+    var sid = params.get('sid') || '';
+    if (!sid) { console.log('[FRUSION] saveSlotData SKIPPED: no sid'); return; }
+    var jsonData;
+    try { jsonData = JSON.stringify(data); } catch(e) {
+      console.log('[FRUSION] saveSlotData JSON.stringify FAILED:', e);
+      return;
+    }
+    console.log('[FRUSION] saveSlot ' + game + '/slot' + slotId + ' (' + jsonData.length + ' chars)');
+    fetch('/api/saveFrutiSlot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'sid=' + encodeURIComponent(sid) +
+            '&game=' + encodeURIComponent(game) +
+            '&slotId=' + encodeURIComponent(String(slotId)) +
+            '&data=' + encodeURIComponent(jsonData)
+    }).then(function(r) {
+      console.log('[FRUSION] saveSlot response:', r.status);
+    }).catch(function(e) { console.log('[FRUSION] saveSlot error:', e); });
+  };
+
   const ruffle = window.RufflePlayer.newest();
   const player = ruffle.createPlayer();
 
