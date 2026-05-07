@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-// Patches Games/miniWave2/miniwave.swf:
-//   - Bumps fcVersion from 0.93 to 0.94 so patchFruticard() triggers on
-//     startup for existing cards, sending accumulated progress to the server
-//     via the normal Frusion protocol (giveItem + saveSlot through XMLSocket).
+// Patches Games/miniWave2/miniwave.swf so that:
+//   1. STANDALONE is set to true (game runs without Frusion LocalConnection)
+//   2. loadFruticard uses SharedObject.getLocal instead of _root.loadData
+//   3. saveSlot serializes slot data to a pipe-delimited string and sends
+//      via ExternalInterface.call (Ruffle can't serialize AS2 objects, but
+//      strings pass through fine)
+//   4. fcVersion bumped 0.93 → 0.94 so patchFruticard triggers on startup
 //
-// The game runs in non-STANDALONE mode through game-popup.html, where
-// GameClient connects via XMLSocket (Ruffle socket proxy) exactly like
-// Swapou, Kaluga, Snake3, etc.  No ExternalInterface or SharedObject hacks
-// are needed.
+// The game runs in game-popup.html.  Local persistence is handled by
+// SharedObject.flush().  Server persistence + picto extraction is handled
+// by the ExternalInterface path sending a string to JavaScript, which
+// reconstructs the JSON and POSTs to /api/saveFrutiSlot.
 
 const fs = require('fs');
 const path = require('path');
@@ -79,15 +82,466 @@ function parseConstantPool(buf, cpStart) {
   return { payloadLen, count, entries, dataEnd: cpStart + 3 + payloadLen };
 }
 
+// ─── Bytecode builder helpers ───
+
+function pushReg(r) { return Buffer.from([0x04, r]); }
+function pushCp(i) {
+  if (i < 256) return Buffer.from([0x08, i]);
+  return Buffer.from([0x09, i & 0xff, (i >> 8) & 0xff]);
+}
+function pushInt(v) {
+  const b = Buffer.alloc(5); b[0] = 0x07; b.writeUInt32LE(v, 1); return b;
+}
+function pushStr(s) {
+  return Buffer.concat([Buffer.from([0x00]), Buffer.from(s + '\0', 'latin1')]);
+}
+function pushBool(v) { return Buffer.from([0x05, v ? 1 : 0]); }
+
+function actionPush(...items) {
+  const payload = Buffer.concat(items);
+  const hdr = Buffer.alloc(3);
+  hdr[0] = 0x96;
+  hdr.writeUInt16LE(payload.length, 1);
+  return Buffer.concat([hdr, payload]);
+}
+function simpleAction(op) { return Buffer.from([op]); }
+
+const POP = simpleAction(0x17);
+const ADD2 = simpleAction(0x47);
+const GET_MEMBER = simpleAction(0x4E);
+const SET_MEMBER = simpleAction(0x4F);
+const GET_VARIABLE = simpleAction(0x1C);
+const CALL_METHOD = simpleAction(0x52);
+
+function storeReg(r) { return Buffer.from([0x87, 0x01, 0x00, r]); }
+
+function buildDefineFunction2(name, params, regcount, flags, bodyBytes) {
+  const nameBytes = Buffer.from(name + '\0', 'latin1');
+  let paramBytes = Buffer.alloc(0);
+  for (const [reg, pname] of params) {
+    paramBytes = Buffer.concat([paramBytes, Buffer.from([reg]), Buffer.from(pname + '\0', 'latin1')]);
+  }
+  const innerLen = nameBytes.length + 2 + 1 + 2 + paramBytes.length + 2;
+  const hdr = Buffer.alloc(3 + innerLen);
+  hdr[0] = 0x8E;
+  hdr.writeUInt16LE(innerLen, 1);
+  let off = 3;
+  nameBytes.copy(hdr, off); off += nameBytes.length;
+  hdr.writeUInt16LE(params.length, off); off += 2;
+  hdr[off] = regcount; off += 1;
+  hdr.writeUInt16LE(flags, off); off += 2;
+  if (paramBytes.length) { paramBytes.copy(hdr, off); off += paramBytes.length; }
+  hdr.writeUInt16LE(bodyBytes.length, off);
+  return Buffer.concat([hdr, bodyBytes]);
+}
+
+function findPropertyDF2(buf, searchStart, searchEnd, cpIdx) {
+  for (let i = searchStart; i < searchEnd - 10; i++) {
+    if (buf[i] !== 0x96) continue;
+    const pushLen = buf.readUInt16LE(i + 1);
+    if (pushLen < 1 || pushLen > 50) continue;
+    const payload = buf.slice(i + 3, i + 3 + pushLen);
+    let found = false;
+    for (let p = 0; p < payload.length; p++) {
+      if (payload[p] === 0x08 && cpIdx < 256 && p + 1 < payload.length && payload[p + 1] === cpIdx) { found = true; break; }
+      if (payload[p] === 0x09 && p + 2 < payload.length && payload.readUInt16LE(p + 1) === cpIdx) { found = true; break; }
+    }
+    if (!found) continue;
+    const afterPush = i + 3 + pushLen;
+    for (let look = afterPush; look < afterPush + 5 && look < searchEnd; look++) {
+      if (buf[look] !== 0x8E) continue;
+      let off = look + 3;
+      const nameEnd = buf.indexOf(0, off); if (nameEnd < 0) break;
+      off = nameEnd + 1;
+      const numParams = buf.readUInt16LE(off); off += 2;
+      off += 1; off += 2;
+      for (let p = 0; p < numParams; p++) { off += 1; const pe = buf.indexOf(0, off); off = pe + 1; }
+      const codeSize = buf.readUInt16LE(off); off += 2;
+      const bodyEnd = off + codeSize;
+      if (bodyEnd < searchEnd && buf[bodyEnd] === 0x4F) {
+        return { pushStart: i, df2Start: look, bodyStart: off, bodyEnd, df2End: bodyEnd };
+      }
+      break;
+    }
+  }
+  return null;
+}
+
+// ─── Build new saveSlot function body ───
+// Serializes fc[n] to a pipe-delimited string of primitive values and arrays,
+// then sends via ExternalInterface.call (strings pass through Ruffle fine).
+// Also flushes SharedObject for local persistence.
+
+function buildSaveSlotBody(CP) {
+  // r1=this, r2=n, r3=fc[n], r4=SharedObject temp, r5=string accumulator
+
+  // Helper: get a simple property from r3, convert to string, append "|"
+  function appendSimpleProp(propCp) {
+    return Buffer.concat([
+      actionPush(pushReg(3), pushCp(propCp)), GET_MEMBER,
+      actionPush(pushStr('')), ADD2, // convert to string
+      ADD2, // append to accumulator on stack
+      actionPush(pushStr('|')), ADD2,
+    ]);
+  }
+
+  // Helper: get a nested property from r3, convert to string, append "|"
+  function appendNestedProp(prop1Cp, prop2Cp) {
+    return Buffer.concat([
+      actionPush(pushReg(3), pushCp(prop1Cp)), GET_MEMBER,
+      actionPush(pushCp(prop2Cp)), GET_MEMBER,
+      actionPush(pushStr('')), ADD2,
+      ADD2,
+      actionPush(pushStr('|')), ADD2,
+    ]);
+  }
+
+  // Helper: get doubly-nested property
+  function appendDeepProp(prop1Cp, prop2Cp, prop3Cp) {
+    return Buffer.concat([
+      actionPush(pushReg(3), pushCp(prop1Cp)), GET_MEMBER,
+      actionPush(pushCp(prop2Cp)), GET_MEMBER,
+      actionPush(pushCp(prop3Cp)), GET_MEMBER,
+      actionPush(pushStr('')), ADD2,
+      ADD2,
+      actionPush(pushStr('|')), ADD2,
+    ]);
+  }
+
+  // Helper: get array element by index
+  function appendArrayElement(propCp, idx) {
+    return Buffer.concat([
+      actionPush(pushReg(3), pushCp(propCp)), GET_MEMBER,
+      actionPush(pushInt(idx)), GET_MEMBER,
+      actionPush(pushStr('')), ADD2,
+      ADD2,
+      actionPush(pushStr('|')), ADD2,
+    ]);
+  }
+
+  // Part 1: Get fc[n] → r3
+  const getFc = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.mng)), GET_MEMBER,
+    actionPush(pushCp(CP.fc)), GET_MEMBER,
+    actionPush(pushReg(2)), GET_MEMBER,
+    storeReg(3), POP,
+  ]);
+
+  // Part 2: Build serialized string on stack
+  // Format: ship|badsKill|arcadeBestLevel|consBonus|consLetter|shop|vs
+  // Fields 0-5 are picto-relevant, field 6 is version.
+  // Arrays use Array.toString() which joins with commas.
+  const buildStr = Buffer.concat([
+    actionPush(pushStr('')), // start with empty string on stack
+
+    // Field 0: $ship (array → "1,0,0,0,0,0")
+    appendSimpleProp(CP.$ship),
+
+    // Field 1: $badsKill (array → "0,0,...,200,...")
+    appendSimpleProp(CP.$badsKill),
+
+    // Field 2: $arcade.$bestLevel (number)
+    appendNestedProp(CP.$arcade, CP.$bestLevel),
+
+    // Field 3: $cons.$bonus (array → "0,0,0,0,0,0,0,0")
+    appendNestedProp(CP.$cons, CP.$bonus),
+
+    // Field 4: $cons.$letter (number)
+    appendNestedProp(CP.$cons, CP.$letter),
+
+    // Field 5: $shop (array → "1,1,...,1")
+    appendSimpleProp(CP.$shop),
+
+    // Field 6: $vs (number — no trailing |)
+    actionPush(pushReg(3), pushCp(CP.$vs)), GET_MEMBER,
+    actionPush(pushStr('')), ADD2,
+    ADD2,
+  ]);
+
+  // Part 3: Store result string in r5, call ExternalInterface
+  const eiCall = Buffer.concat([
+    storeReg(5), POP,
+
+    // ExternalInterface.call("saveSlotData", "miniwave", n, r5)
+    // Stack order: arg4, arg3, arg2, arg1, argc, object, method
+    actionPush(pushReg(5)),      // arg4: serialized string
+    actionPush(pushReg(2)),      // arg3: slot index n
+    actionPush(pushCp(CP.miniwave)), // arg2: game name
+    actionPush(pushCp(CP.saveSlotData)), // arg1: function name
+    actionPush(pushInt(4)),      // argc = 4
+    actionPush(pushCp(CP.ExternalInterface)), GET_VARIABLE,
+    actionPush(pushCp(CP.call)),
+    CALL_METHOD, POP,
+  ]);
+
+  // Part 4: SharedObject.getLocal("miniWave2/card2").flush()
+  const soFlush = Buffer.concat([
+    actionPush(pushCp(CP.miniWave2Card)),
+    actionPush(pushInt(1)),
+    actionPush(pushCp(CP.SharedObject)), GET_VARIABLE,
+    actionPush(pushCp(CP.getLocal)),
+    CALL_METHOD,
+    storeReg(4), POP,
+    actionPush(pushInt(0)),
+    actionPush(pushReg(4), pushCp(CP.flush)),
+    CALL_METHOD, POP,
+  ]);
+
+  return Buffer.concat([getFc, buildStr, eiCall, soFlush]);
+}
+
+// ─── Patch Client DoInitAction ───
+
+function patchClientTagBody(tagBody) {
+  const spriteId = tagBody.readUInt16LE(0);
+  const cp = parseConstantPool(tagBody, 2);
+  if (!cp) throw new Error('Cannot parse constant pool');
+  if (cp.entries[3] !== 'Client') throw new Error(`Expected Client at CP[3], got '${cp.entries[3]}'`);
+
+  const ssIdx = cp.entries.indexOf('saveSlot');
+  const standaloneIdx = cp.entries.indexOf('STANDALONE');
+
+  if (ssIdx < 0) throw new Error('Missing saveSlot in CP');
+
+  console.log(`  Sprite ${spriteId}: CP count=${cp.count}, saveSlot=CP[${ssIdx}]`);
+
+  // Add new CP entries
+  const newCpBase = cp.count;
+  const newStrings = [
+    'SharedObject',                     // +0
+    'getLocal',                         // +1
+    'miniWave2/card2',                  // +2
+    'flush',                            // +3
+    'flash.external.ExternalInterface', // +4
+    'call',                             // +5
+    'saveSlotData',                     // +6
+    'mng',                              // +7
+    'fc',                               // +8
+    '$ship',                            // +9
+    '$badsKill',                        // +10
+    '$arcade',                          // +11
+    '$bestLevel',                       // +12
+    '$cons',                            // +13
+    '$bonus',                           // +14
+    '$letter',                          // +15
+    '$shop',                            // +16
+    '$vs',                              // +17
+  ];
+
+  let newCpData = Buffer.alloc(0);
+  for (const s of newStrings) {
+    newCpData = Buffer.concat([newCpData, Buffer.from(s + '\0', 'latin1')]);
+  }
+  const cpDelta = newCpData.length;
+
+  tagBody = Buffer.concat([
+    tagBody.slice(0, cp.dataEnd),
+    newCpData,
+    tagBody.slice(cp.dataEnd),
+  ]);
+  tagBody.writeUInt16LE(cp.payloadLen + cpDelta, 3);
+  tagBody.writeUInt16LE(cp.count + newStrings.length, 5);
+
+  console.log(`  Added ${newStrings.length} CP entries (+${cpDelta} bytes)`);
+
+  const CP = {
+    saveSlot: ssIdx,
+    miniwave: 1, // "miniwave" is already at CP[1] in the Client constant pool
+    SharedObject: newCpBase + 0,
+    getLocal: newCpBase + 1,
+    miniWave2Card: newCpBase + 2,
+    flush: newCpBase + 3,
+    ExternalInterface: newCpBase + 4,
+    call: newCpBase + 5,
+    saveSlotData: newCpBase + 6,
+    mng: newCpBase + 7,
+    fc: newCpBase + 8,
+    $ship: newCpBase + 9,
+    $badsKill: newCpBase + 10,
+    $arcade: newCpBase + 11,
+    $bestLevel: newCpBase + 12,
+    $cons: newCpBase + 13,
+    $bonus: newCpBase + 14,
+    $letter: newCpBase + 15,
+    $shop: newCpBase + 16,
+    $vs: newCpBase + 17,
+  };
+
+  // Verify "miniwave" is at CP[1]
+  if (cp.entries[1] !== 'miniwave') {
+    // Find it or add it
+    const mwIdx = cp.entries.indexOf('miniwave');
+    if (mwIdx >= 0) {
+      CP.miniwave = mwIdx;
+    } else {
+      throw new Error('"miniwave" not found in Client CP');
+    }
+  }
+
+  const newCpDataEnd = cp.dataEnd + cpDelta;
+
+  // Flip STANDALONE = true
+  if (standaloneIdx >= 0) {
+    const needle = Buffer.from([0x08, standaloneIdx, 0x05, 0x00, 0x4f]);
+    const idx = tagBody.indexOf(needle, newCpDataEnd);
+    if (idx >= 0) {
+      tagBody[idx + 3] = 0x01;
+      console.log(`  Set STANDALONE=true at tag-relative offset ${idx + 3}`);
+    }
+  }
+
+  // Replace saveSlot DF2
+  const ssDF2 = findPropertyDF2(tagBody, newCpDataEnd, tagBody.length, ssIdx);
+  if (!ssDF2) throw new Error('saveSlot DF2 not found');
+  console.log(`  saveSlot DF2 at ${ssDF2.df2Start}, body ${ssDF2.bodyStart}-${ssDF2.bodyEnd} (${ssDF2.bodyEnd - ssDF2.bodyStart} bytes)`);
+
+  const newSsBody = buildSaveSlotBody(CP);
+  const newSsDF2 = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 6, 0x29, newSsBody);
+
+  console.log(`  saveSlot: ${ssDF2.df2End - ssDF2.df2Start} → ${newSsDF2.length} bytes`);
+
+  tagBody = Buffer.concat([
+    tagBody.slice(0, ssDF2.df2Start),
+    newSsDF2,
+    tagBody.slice(ssDF2.df2End),
+  ]);
+
+  return tagBody;
+}
+
+// ─── Patch Manager DoInitAction ───
+
+function patchManagerTagBody(tagBody) {
+  const spriteId = tagBody.readUInt16LE(0);
+  const cp = parseConstantPool(tagBody, 2);
+  if (!cp) throw new Error('Cannot parse Manager constant pool');
+  if (cp.entries[3] !== 'Manager') throw new Error(`Expected Manager at CP[3], got '${cp.entries[3]}'`);
+
+  const loadDataIdx = cp.entries.indexOf('loadData');
+  const miniWave2Idx = cp.entries.indexOf('miniWave2/card');
+  const soIdx = cp.entries.indexOf('so');
+
+  if (loadDataIdx < 0 || miniWave2Idx < 0 || soIdx < 0) {
+    throw new Error('Missing required CP entries in Manager tag');
+  }
+
+  console.log(`  Sprite ${spriteId}: CP count=${cp.count}`);
+
+  // Add SharedObject, getLocal, miniWave2/card2 to CP
+  const newCpBase = cp.count;
+  const newStrings = ['SharedObject', 'getLocal', 'miniWave2/card2'];
+  let newCpData = Buffer.alloc(0);
+  for (const s of newStrings) {
+    newCpData = Buffer.concat([newCpData, Buffer.from(s + '\0', 'latin1')]);
+  }
+  const cpDelta = newCpData.length;
+
+  tagBody = Buffer.concat([
+    tagBody.slice(0, cp.dataEnd),
+    newCpData,
+    tagBody.slice(cp.dataEnd),
+  ]);
+  tagBody.writeUInt16LE(cp.payloadLen + cpDelta, 3);
+  tagBody.writeUInt16LE(cp.count + newStrings.length, 5);
+
+  const sharedObjectCpIdx = newCpBase + 0;
+  const getLocalCpIdx = newCpBase + 1;
+  const newKeyCpIdx = newCpBase + 2;
+
+  // Replace _root.loadData("miniWave2/card") with SharedObject.getLocal("miniWave2/card2")
+  const soIdxByte = soIdx < 256 ? Buffer.from([0x08, soIdx]) : Buffer.from([0x09, soIdx & 0xff, (soIdx >> 8) & 0xff]);
+  const mw2IdxByte = miniWave2Idx < 256 ? Buffer.from([0x08, miniWave2Idx]) : Buffer.from([0x09, miniWave2Idx & 0xff, (miniWave2Idx >> 8) & 0xff]);
+  const ldIdxByte = loadDataIdx < 256 ? Buffer.from([0x08, loadDataIdx]) : Buffer.from([0x09, loadDataIdx & 0xff, (loadDataIdx >> 8) & 0xff]);
+
+  const searchPattern = Buffer.concat([
+    Buffer.from([0x96, 0x0f, 0x00]),
+    Buffer.from([0x04, 0x01]),
+    soIdxByte, mw2IdxByte,
+    Buffer.from([0x07, 0x01, 0x00, 0x00, 0x00]),
+    Buffer.from([0x04, 0x02]),
+    ldIdxByte,
+    Buffer.from([0x52]),
+    Buffer.from([0x4f]),
+  ]);
+
+  const patchOffset = tagBody.indexOf(searchPattern, cp.dataEnd + cpDelta);
+  if (patchOffset < 0) throw new Error('Could not find _root.loadData call pattern');
+
+  const shCpByte = sharedObjectCpIdx < 256 ? Buffer.from([0x08, sharedObjectCpIdx]) : Buffer.from([0x09, sharedObjectCpIdx & 0xff, (sharedObjectCpIdx >> 8) & 0xff]);
+  const glCpByte = getLocalCpIdx < 256 ? Buffer.from([0x08, getLocalCpIdx]) : Buffer.from([0x09, getLocalCpIdx & 0xff, (getLocalCpIdx >> 8) & 0xff]);
+  const newKeyByte = newKeyCpIdx < 256 ? Buffer.from([0x08, newKeyCpIdx]) : Buffer.from([0x09, newKeyCpIdx & 0xff, (newKeyCpIdx >> 8) & 0xff]);
+
+  const replacement = Buffer.concat([
+    Buffer.from([0x96, 0x0d, 0x00]),
+    Buffer.from([0x04, 0x01]),
+    soIdxByte, newKeyByte,
+    Buffer.from([0x07, 0x01, 0x00, 0x00, 0x00]),
+    shCpByte,
+    Buffer.from([0x1c]),
+    Buffer.from([0x96, 0x02, 0x00]),
+    glCpByte,
+    Buffer.from([0x52]),
+    Buffer.from([0x4f]),
+  ]);
+
+  tagBody = Buffer.concat([
+    tagBody.slice(0, patchOffset),
+    replacement,
+    tagBody.slice(patchOffset + 20),
+  ]);
+
+  // Fix DF2 codeSize (+4) and If jump (+4)
+  let df2HeaderOff = -1;
+  for (let i = patchOffset - 1; i >= patchOffset - 100 && i >= 0; i--) {
+    if (tagBody[i] === 0x8E) { df2HeaderOff = i; break; }
+  }
+  if (df2HeaderOff < 0) throw new Error('Cannot find DF2 header for loadFruticard');
+
+  let df2Off = df2HeaderOff + 3;
+  const nameEnd = tagBody.indexOf(0, df2Off); df2Off = nameEnd + 1;
+  const numParams = tagBody.readUInt16LE(df2Off); df2Off += 2;
+  df2Off += 1; df2Off += 2;
+  for (let p = 0; p < numParams; p++) { df2Off += 1; const pe = tagBody.indexOf(0, df2Off); df2Off = pe + 1; }
+  const oldCodeSize = tagBody.readUInt16LE(df2Off);
+  tagBody.writeUInt16LE(oldCodeSize + 4, df2Off);
+
+  const funcBodyStart = df2Off + 2;
+  const ifOff = funcBodyStart + 15;
+  if (tagBody[ifOff] !== 0x9d) throw new Error('Expected If at func body @15');
+  const oldJump = tagBody.readInt16LE(ifOff + 3);
+  tagBody.writeInt16LE(oldJump + 4, ifOff + 3);
+
+  console.log(`  Patched loadFruticard: loadData → SharedObject.getLocal`);
+
+  // Bump fcVersion 0.93 → 0.94
+  const fcVersionIdx = cp.entries.indexOf('fcVersion');
+  if (fcVersionIdx < 0) throw new Error('fcVersion not found in Manager CP');
+  const fcIdxByte = fcVersionIdx < 256 ? Buffer.from([0x08, fcVersionIdx]) : Buffer.from([0x09, fcVersionIdx & 0xff, (fcVersionIdx >> 8) & 0xff]);
+  const avm1_093 = Buffer.from('8fc2ed3fc3f5285c', 'hex');
+  const avm1_094 = Buffer.from('7a14ee3f14ae47e1', 'hex');
+  const initPattern = Buffer.concat([
+    Buffer.from([0x96, 0x0d, 0x00, 0x04, 0x01]),
+    fcIdxByte,
+    Buffer.from([0x06]),
+    avm1_093,
+    Buffer.from([0x4f]),
+  ]);
+  const initIdx = tagBody.indexOf(initPattern, cp.dataEnd + cpDelta);
+  if (initIdx < 0) throw new Error('fcVersion=0.93 init pattern not found');
+  const doubleOffset = initIdx + 5 + fcIdxByte.length + 1;
+  avm1_094.copy(tagBody, doubleOffset);
+  console.log(`  Bumped fcVersion 0.93 → 0.94`);
+
+  return tagBody;
+}
+
 // ─── Main ───
 
-// Back up original
 if (!fs.existsSync(BACKUP_PATH)) {
   fs.copyFileSync(SWF_PATH, BACKUP_PATH);
   console.log('Backed up original to', BACKUP_PATH);
 }
 
-// Always restore from backup to apply patches cleanly
 fs.copyFileSync(BACKUP_PATH, SWF_PATH);
 console.log('Restored from backup');
 
@@ -97,68 +551,63 @@ const tags = findTags(buf);
 
 console.log(`SWF: ${sig} v${version}, decompressed ${buf.length} bytes, ${tags.length} tags`);
 
-// Find Manager DoInitAction tags (code=59, CP[3]='Manager', has 'fcVersion')
+// Find Client DoInitAction tags
+const clientTagInfos = [];
+for (const tag of tags) {
+  if (tag.code !== 59) continue;
+  const bodyStart = tag.offset + tag.hdrSize;
+  const cpStart = bodyStart + 2;
+  const cp = parseConstantPool(buf, cpStart);
+  if (!cp) continue;
+  if (cp.entries[3] === 'Client' && cp.entries.indexOf('serviceConnect') >= 0 && cp.entries.indexOf('STANDALONE') >= 0) {
+    clientTagInfos.push({ tag, spriteId: buf.readUInt16LE(bodyStart) });
+  }
+}
+
+// Find Manager DoInitAction tags
 const managerTagInfos = [];
 for (const tag of tags) {
   if (tag.code !== 59) continue;
   const bodyStart = tag.offset + tag.hdrSize;
-  const spriteId = buf.readUInt16LE(bodyStart);
   const cpStart = bodyStart + 2;
   const cp = parseConstantPool(buf, cpStart);
   if (!cp) continue;
-  if (cp.entries[3] === 'Manager' && cp.entries.indexOf('fcVersion') >= 0) {
-    managerTagInfos.push({ tag, spriteId });
+  if (cp.entries[3] === 'Manager' && cp.entries.indexOf('loadFruticard') >= 0 && cp.entries.indexOf('loadData') >= 0) {
+    managerTagInfos.push({ tag, spriteId: buf.readUInt16LE(bodyStart) });
   }
 }
 
+if (clientTagInfos.length === 0) throw new Error('No Client DoInitAction tags found');
 if (managerTagInfos.length === 0) throw new Error('No Manager DoInitAction tags found');
-console.log(`Found ${managerTagInfos.length} Manager tag(s): sprites ${managerTagInfos.map(t => t.spriteId).join(', ')}`);
 
-// Bump fcVersion 0.93 → 0.94 in each Manager tag (in-place, no size change)
-// AVM1 doubles have swapped 32-bit halves vs normal IEEE 754 LE.
-const avm1_093 = Buffer.from('8fc2ed3fc3f5285c', 'hex');
-const avm1_094 = Buffer.from('7a14ee3f14ae47e1', 'hex');
+console.log(`Found ${clientTagInfos.length} Client tag(s), ${managerTagInfos.length} Manager tag(s)`);
 
-let patchCount = 0;
-for (const { tag, spriteId } of managerTagInfos) {
+// Process from last to first
+const allTagInfos = [
+  ...clientTagInfos.map(t => ({ ...t, type: 'client' })),
+  ...managerTagInfos.map(t => ({ ...t, type: 'manager' })),
+];
+allTagInfos.sort((a, b) => b.tag.offset - a.tag.offset);
+
+for (const { tag, spriteId, type } of allTagInfos) {
+  console.log(`\nPatching ${type} tag for sprite ${spriteId}:`);
   const bodyStart = tag.offset + tag.hdrSize;
-  const cp = parseConstantPool(buf, bodyStart + 2);
+  const origTagBody = buf.slice(bodyStart, bodyStart + tag.length);
+  const newTagBody = type === 'client'
+    ? patchClientTagBody(Buffer.from(origTagBody))
+    : patchManagerTagBody(Buffer.from(origTagBody));
 
-  const fcVersionIdx = cp.entries.indexOf('fcVersion');
-  if (fcVersionIdx < 0) throw new Error('fcVersion not found in Manager CP');
-  const fcIdxByte = fcVersionIdx < 256
-    ? Buffer.from([0x08, fcVersionIdx])
-    : Buffer.from([0x09, fcVersionIdx & 0xff, (fcVersionIdx >> 8) & 0xff]);
+  const newTagHdr = Buffer.alloc(6);
+  newTagHdr.writeUInt16LE((tag.code << 6) | 0x3f, 0);
+  newTagHdr.writeUInt32LE(newTagBody.length, 2);
 
-  // Pattern: Push(r1, CP[fcVersion], double_0.93) SetMember
-  const initPattern = Buffer.concat([
-    Buffer.from([0x96, 0x0d, 0x00, 0x04, 0x01]),
-    fcIdxByte,
-    Buffer.from([0x06]),
-    avm1_093,
-    Buffer.from([0x4f]),
-  ]);
-
-  const searchStart = bodyStart + 2 + 3 + cp.payloadLen;
-  const idx = buf.indexOf(initPattern, searchStart);
-  if (idx < 0) throw new Error(`fcVersion=0.93 init pattern not found in Manager sprite ${spriteId}`);
-
-  const doubleOffset = idx + 5 + fcIdxByte.length + 1;
-  avm1_094.copy(buf, doubleOffset);
-  patchCount++;
-  console.log(`  Sprite ${spriteId}: bumped fcVersion 0.93 → 0.94 at offset ${doubleOffset}`);
+  const tagEnd = tag.offset + tag.hdrSize + tag.length;
+  buf = Buffer.concat([buf.slice(0, tag.offset), newTagHdr, newTagBody, buf.slice(tagEnd)]);
+  console.log(`  Tag: ${tag.length} → ${newTagBody.length} bytes`);
 }
 
-// Also bump the two condition checks (< 0.92 and < 0.93) so patchFruticard
-// doesn't re-run its old patches.  These are comparison doubles, not init
-// assignments, so we leave them at 0.93 — they only guard older patches that
-// have already run.  The init at 0.94 ensures patchFruticard() fires and
-// calls saveSlot(0) at the end, which sends the current state to the server.
-
-// Write output
 const outSize = writeSwf(SWF_PATH, sig, version, buf);
 console.log(`\nWrote ${SWF_PATH} (${outSize} bytes)`);
-
 fs.copyFileSync(SWF_PATH, FULL_PATH);
 console.log(`Copied to ${FULL_PATH}`);
-console.log(`Done! Patched ${patchCount} Manager tag(s), fcVersion 0.93 → 0.94`);
+console.log('Done!');

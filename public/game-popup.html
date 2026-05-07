@@ -169,9 +169,34 @@
     var sid = new URLSearchParams(window.location.search).get("sid") || "";
     if (!sid) { console.log("[Game] saveSlotData SKIPPED: no sid"); return; }
     var jsonData;
-    try { jsonData = JSON.stringify(data); } catch(e) {
-      console.log("[Game] saveSlotData JSON.stringify FAILED:", e);
-      return;
+    // MiniWave: Ruffle's EI can't serialize AS2 objects (they arrive as null).
+    // The patched SWF sends a pipe-delimited string of primitives instead.
+    // Format: ship|badsKill|arcadeBestLevel|consBonus|consLetter|shop|vs
+    if (game === "miniwave" && typeof data === "string" && data.indexOf("|") >= 0) {
+      try {
+        var parts = data.split("|");
+        var obj = {
+          "$ship": parts[0] ? parts[0].split(",").map(function(v) { return v === "true"; }) : [],
+          "$badsKill": parts[1] ? parts[1].split(",").map(Number) : [],
+          "$arcade": { "$bestLevel": Number(parts[2]) || 0 },
+          "$cons": {
+            "$bonus": parts[3] ? parts[3].split(",").map(Number) : [],
+            "$letter": Number(parts[4]) || 0
+          },
+          "$shop": parts[5] ? parts[5].split(",").map(Number) : [],
+          "$vs": Number(parts[6]) || 0
+        };
+        jsonData = JSON.stringify(obj);
+        console.log("[Game] miniwave pipe-parsed → " + jsonData.length + " chars");
+      } catch(e) {
+        console.log("[Game] miniwave pipe parse FAILED:", e);
+        return;
+      }
+    } else {
+      try { jsonData = JSON.stringify(data); } catch(e) {
+        console.log("[Game] saveSlotData JSON.stringify FAILED:", e);
+        return;
+      }
     }
     console.log("[Game] saveSlot " + game + "/slot" + slotId + " (" + jsonData.length + " chars)");
     fetch("/api/saveFrutiSlot", {
