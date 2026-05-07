@@ -2917,6 +2917,49 @@ app.post('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => 
   res.json({ ok: true, gameItems: user.gameItems });
 });
 
+// Admin: re-extract pictos from a user's saved slot data (idempotent).
+// Use to recover items that were unlocked in-game but not registered.
+app.post('/api/admin/users/:username/reextractPictos', adminAuth, async (req, res) => {
+  const username = req.params.username;
+  const memUser = users[username];
+  let dbId = memUser ? memUser._dbId : null;
+  if (!dbId) {
+    try {
+      const dbUser = await db.findUserByUsername(username);
+      if (dbUser) dbId = dbUser.id;
+    } catch (e) { /* ignore */ }
+  }
+  if (!dbId) return res.status(404).json({ error: 'user not found' });
+
+  let allSlots;
+  try { allSlots = await db.getAllFrutiSlots(dbId); } catch (e) { return res.status(500).json({ error: 'slot load failed' }); }
+  if (!allSlots || Object.keys(allSlots).length === 0) {
+    return res.json({ added: 0, scanned: 0, message: 'no slot data' });
+  }
+
+  let existingItems;
+  try { existingItems = await db.getUserGameItems(dbId); } catch { existingItems = []; }
+  const localUser = { gameItems: existingItems || [], _dbId: dbId };
+  const beforeCount = localUser.gameItems.length;
+  let scanned = 0;
+  for (const game of Object.keys(allSlots)) {
+    const s0 = allSlots[game]['0'] || allSlots[game][0];
+    if (!s0) continue;
+    scanned++;
+    try {
+      extractGameItemsFromSlot(username, game, s0, { silent: true, userOverride: localUser });
+    } catch (e) { /* ignore per-game errors */ }
+  }
+  const added = localUser.gameItems.length - beforeCount;
+  // Sync the in-memory user if loaded
+  if (memUser && Array.isArray(memUser.gameItems)) {
+    for (const item of localUser.gameItems) {
+      if (!memUser.gameItems.includes(item)) memUser.gameItems.push(item);
+    }
+  }
+  res.json({ added, scanned, total: localUser.gameItems.length });
+});
+
 // Admin: remove a game item from a user
 app.delete('/api/admin/users/:username/gameitems/:itemName', adminAuth, async (req, res) => {
   const username = req.params.username;

@@ -872,7 +872,7 @@ async function loadDetail() {
     }
 
     // Game Items (Pictos)
-    html += `<h4>Pictos (Game Items) <span style="margin-left:auto;display:flex;gap:6px"><button class="btn btn-sm" onclick="openAddGameItem()">+ Ajouter</button><button class="btn-success btn-sm" onclick="addAllBkiwiPictos()">+ Tous BKiwi</button><button class="btn-success btn-sm" onclick="addAllPixizPictos()">+ Tous MiniPixiz</button></span></h4>`;
+    html += `<h4>Pictos (Game Items) <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm" onclick="openAddGameItem()">+ Ajouter</button><button class="btn-success btn-sm" onclick="reextractPictos()">↻ Réextraire</button><button class="btn-success btn-sm" onclick="addAllBkiwiPictos()">+ Tous BKiwi</button><button class="btn-success btn-sm" onclick="addAllPixizPictos()">+ Tous MiniPixiz</button><button class="btn-success btn-sm" onclick="addAllMiniwavePictos()">+ Tous MiniWave</button></span></h4>`;
     const gameItems = d.gameItems || [];
     if (gameItems.length) {
       html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px">';
@@ -987,6 +987,40 @@ async function addAllPixizPictos() {
   }
   toast(PIXIZ_ALL_PICTOS.length + ' pictos MiniPixiz ajoutés');
   loadDetail();
+}
+
+const MINIWAVE_ALL_PICTOS = (() => {
+  const list = ['$ship00','$ship01','$ship02','$ship03','$ship04','$ship05','$arcade','$letter','$smiley_love','$smiley_laugh','$smiley_twirl','$wpMinistar','$wpNostromo'];
+  for (let i = 0; i <= 50; i++) list.push('$bads' + i);
+  for (let i = 0; i <= 4; i++) list.push('$mis' + i);
+  return list;
+})();
+
+async function addAllMiniwavePictos() {
+  if (!currentDetailUser) return;
+  if (!confirm(`Ajouter les ${MINIWAVE_ALL_PICTOS.length} pictos MiniWave à ${currentDetailUser} ?`)) return;
+  for (const name of MINIWAVE_ALL_PICTOS) {
+    await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems`, {
+      method: 'POST', headers: hdr(),
+      body: JSON.stringify({ itemName: name })
+    });
+  }
+  toast(MINIWAVE_ALL_PICTOS.length + ' pictos MiniWave ajoutés');
+  loadDetail();
+}
+
+async function reextractPictos() {
+  if (!currentDetailUser) return;
+  if (!confirm(`Réextraire les pictos depuis les slot data sauvegardés pour ${currentDetailUser} ?`)) return;
+  try {
+    const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/reextractPictos`, {
+      method: 'POST', headers: hdr()
+    });
+    const data = await r.json();
+    if (data.error) { toast('Erreur: ' + data.error); return; }
+    toast(`${data.added || 0} nouveaux picto(s) extrait(s) (${data.scanned || 0} jeu(x) scanné(s))`);
+    loadDetail();
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 
 async function deleteItem(itemId) {
