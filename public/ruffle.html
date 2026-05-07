@@ -78,6 +78,10 @@
                         }
                     }
 
+                    if (host === APP_HOST && parsed.origin !== APP_ORIGIN) {
+                        return APP_ORIGIN + parsed.pathname + parsed.search;
+                    }
+
                     if (parsed.origin === APP_ORIGIN) {
                         if (parsed.pathname.startsWith("/games/")) {
                             return APP_ORIGIN + "/swf" + parsed.pathname + parsed.search;
