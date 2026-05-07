@@ -310,6 +310,12 @@ const GAME_ITEM_INFO = {
   '$ship04':     { name: 'Vaisseau 4',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship04.gif' },
   '$ship05':     { name: 'Vaisseau 5',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship05.gif' },
   '$arcade':     { name: 'Arcade Boss',         game: 'MiniWave', gif: 'Games/miniWave2/titem/pictoBoss.gif' },
+  '$letter':     { name: 'Letter Invader',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/letter.gif' },
+  '$smiley_love':  { name: 'Smiley Love',      game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  '$smiley_laugh': { name: 'Smiley Laugh',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  '$smiley_twirl': { name: 'Smiley Twirl',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  '$wpMinistar':   { name: 'Arme Ministar',    game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  '$wpNostromo':   { name: 'Arme Nostromo',    game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
 };
 
 // Build MiniWave2 bads (bad00..bad50) and missions (mis0..mis4)
@@ -3521,7 +3527,12 @@ function extractGameItemsFromSlot(username, game, dataStr) {
       }
     }
   } else if (game === 'miniwave2' || game === 'miniwave') {
-    // MiniWave2: $ship array, $badsKill array (kill counts ≥ limit → item)
+    // MiniWave2 slot 0 layout (from Manager.as formatFruticard):
+    //   $ship:Array<bool>       — unlocked ships (index 0..5)
+    //   $badsKill:Array<int>    — kill count per monster (titemKillLimit=200 in SWF)
+    //   $arcade:{$bestScore,$bestLevel} — arcade boss mode
+    //   $cons:{$main,$bonus:Array<0..100>,$letter} — consecration %
+    //   $shop:Array<0|1>        — shop items (1=available, 0=purchased)
     const ship = parsed.$ship;
     if (Array.isArray(ship)) {
       for (let i = 0; i < ship.length; i++) {
@@ -3531,10 +3542,29 @@ function extractGameItemsFromSlot(username, game, dataStr) {
     const badsKill = parsed.$badsKill;
     if (Array.isArray(badsKill)) {
       for (let i = 0; i < badsKill.length; i++) {
-        if (badsKill[i] && badsKill[i] >= 1) addIfNew('$bads' + i);
+        if (badsKill[i] && badsKill[i] >= 200) addIfNew('$bads' + i);
       }
     }
     if (parsed.$arcade && parsed.$arcade.$bestLevel > 0) addIfNew('$arcade');
+    const cons = parsed.$cons;
+    if (cons) {
+      if (Array.isArray(cons.$bonus)) {
+        for (let i = 0; i < cons.$bonus.length && i <= 4; i++) {
+          if (cons.$bonus[i] >= 100) addIfNew('$mis' + i);
+        }
+      }
+      if (cons.$letter >= 100) addIfNew('$letter');
+    }
+    const shop = parsed.$shop;
+    if (Array.isArray(shop)) {
+      const shopItems = [
+        [10, '$smiley_love'], [11, '$smiley_laugh'], [12, '$smiley_twirl'],
+        [13, '$wpMinistar'], [14, '$wpNostromo'],
+      ];
+      for (const [idx, itemId] of shopItems) {
+        if (shop[idx] === 0) addIfNew(itemId);
+      }
+    }
   } else if (game === 'minipixiz' || game === 'minitroll') {
     // MiniPixiz (miniTroll) — slot 0 layout from Card.mt:
     //   $stat.$item:Array<bool>   discovered items (indexed by item id)
@@ -8232,6 +8262,18 @@ case 'createchannel': {
         if (!u.frutiSlots) u.frutiSlots = {};
         if (!u.frutiSlots[game]) u.frutiSlots[game] = {};
         const prevSlotData = u.frutiSlots[game][slotId];
+        const WIRE_SAVE_GUARDED_GAMES = new Set(['miniwave', 'miniwave2']);
+        if (
+          WIRE_SAVE_GUARDED_GAMES.has(game) &&
+          slotId === '0' &&
+          prevSlotData &&
+          slotData &&
+          slotData.length < prevSlotData.length * 0.5
+        ) {
+          console.log(`[FCARD] save REJECTED (clobber guard) — new data (${slotData.length}) much smaller than existing (${prevSlotData.length}) for ${username}/${game}/slot${slotId}`);
+          sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
+          break;
+        }
         u.frutiSlots[game][slotId] = slotData;
         if (u._dbId) db.upsertFrutiSlot(u._dbId, game, Number(slotId), slotData).catch(() => {});
         // Extract pictos from slot 0
