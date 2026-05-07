@@ -3013,6 +3013,104 @@ app.get('/api/admin/availableGameItems', adminAuth, (req, res) => {
   res.json(items);
 });
 
+// Admin: MiniWave picto status for a user — shows what they have, what they
+// should have based on slot data, and allows bulk-granting missing earned pictos.
+app.get('/api/admin/users/:username/miniwave-pictos', adminAuth, async (req, res) => {
+  const username = req.params.username.toLowerCase();
+  const memUser = users[username];
+  let dbId = memUser ? memUser._dbId : null;
+  if (!dbId && process.env.DATABASE_URL) {
+    try { const row = await db.findUserByUsername(username); if (row) dbId = row.id; } catch {}
+  }
+  if (!dbId && !memUser) return res.status(404).json({ error: 'user not found' });
+
+  const owned = new Set(memUser && Array.isArray(memUser.gameItems) ? memUser.gameItems : (dbId ? await db.getUserGameItems(dbId).catch(() => []) : []));
+
+  let slotData = null;
+  let earned = [];
+  if (memUser && memUser.frutiSlots && memUser.frutiSlots.miniwave && memUser.frutiSlots.miniwave['0']) {
+    slotData = memUser.frutiSlots.miniwave['0'];
+  } else if (dbId) {
+    try { const slots = await db.getAllFrutiSlots(dbId); if (slots && slots.miniwave && slots.miniwave['0']) slotData = slots.miniwave['0']; } catch {}
+  }
+
+  let parsed = null;
+  if (slotData) {
+    try { parsed = JSON.parse(slotData); } catch {}
+  }
+  if (parsed && typeof parsed === 'object') {
+    if (Array.isArray(parsed.$ship)) {
+      for (let i = 0; i < parsed.$ship.length; i++) { if (parsed.$ship[i]) earned.push('$ship0' + i); }
+    }
+    if (Array.isArray(parsed.$badsKill)) {
+      for (let i = 0; i < parsed.$badsKill.length; i++) { if (parsed.$badsKill[i] >= 200) earned.push('$bads' + i); }
+    }
+    if (parsed.$arcade && parsed.$arcade.$bestLevel > 0) earned.push('$arcade');
+    if (parsed.$cons) {
+      if (Array.isArray(parsed.$cons.$bonus)) {
+        for (let i = 0; i < parsed.$cons.$bonus.length && i <= 4; i++) { if (parsed.$cons.$bonus[i] >= 100) earned.push('$mis' + i); }
+      }
+      if (parsed.$cons.$letter >= 100) earned.push('$letter');
+    }
+    if (Array.isArray(parsed.$shop)) {
+      const shopItems = [[10, '$smiley_love'], [11, '$smiley_laugh'], [12, '$smiley_twirl'], [13, '$wpMinistar'], [14, '$wpNostromo']];
+      for (const [idx, itemId] of shopItems) { if (parsed.$shop[idx] === 0) earned.push(itemId); }
+    }
+  }
+
+  const allMwPictos = Object.entries(GAME_ITEM_INFO).filter(([, info]) => info.game === 'MiniWave').map(([id, info]) => ({
+    id, name: info.name, owned: owned.has(id), earned: earned.includes(id),
+  }));
+
+  const missing = earned.filter(id => !owned.has(id));
+
+  res.json({
+    username,
+    hasSlotData: !!parsed,
+    pictos: allMwPictos,
+    earned,
+    missing,
+    summary: `${owned.size} owned, ${earned.length} earned from slot data, ${missing.length} missing`,
+  });
+});
+
+// Admin: bulk-grant missing MiniWave pictos for a user based on slot data
+app.post('/api/admin/users/:username/miniwave-pictos/grant-earned', adminAuth, async (req, res) => {
+  const username = req.params.username.toLowerCase();
+  const memUser = users[username];
+  let dbId = memUser ? memUser._dbId : null;
+  if (!dbId && process.env.DATABASE_URL) {
+    try { const row = await db.findUserByUsername(username); if (row) dbId = row.id; } catch {}
+  }
+  if (!dbId && !memUser) return res.status(404).json({ error: 'user not found' });
+
+  const user = memUser || { gameItems: dbId ? await db.getUserGameItems(dbId).catch(() => []) : [], _dbId: dbId };
+  if (!Array.isArray(user.gameItems)) user.gameItems = [];
+  const before = user.gameItems.length;
+
+  let slotData = null;
+  if (memUser && memUser.frutiSlots && memUser.frutiSlots.miniwave && memUser.frutiSlots.miniwave['0']) {
+    slotData = memUser.frutiSlots.miniwave['0'];
+  } else if (dbId) {
+    try { const slots = await db.getAllFrutiSlots(dbId); if (slots && slots.miniwave && slots.miniwave['0']) slotData = slots.miniwave['0']; } catch {}
+  }
+  if (!slotData) return res.json({ granted: 0, message: 'no miniwave slot data found' });
+
+  try {
+    extractGameItemsFromSlot(username, 'miniwave', slotData, { silent: false, userOverride: memUser ? undefined : user });
+  } catch (e) {
+    return res.status(500).json({ error: 'extraction failed: ' + e.message });
+  }
+
+  if (!memUser && user.gameItems.length > before) {
+    for (const item of user.gameItems) {
+      if (dbId) await db.addGameItem(dbId, item).catch(() => {});
+    }
+  }
+
+  res.json({ granted: user.gameItems.length - before, total: user.gameItems.length });
+});
+
 // ── Admin: Shop pack management ──
 app.get('/api/admin/shop', adminAuth, (req, res) => {
   res.json(SHOP_PACKS);
