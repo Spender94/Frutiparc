@@ -8006,8 +8006,13 @@ case 'createchannel': {
         }
         podium.sort((a, b) => a.rank - b.rank);
         console.log(`[FSCORE-DEBUG] awardgame g=${gameName} rkId=${rkId} game=${game} yesterday=${yesterday} podium=${JSON.stringify(podium)}`);
-        for (const p of podium) {
-          inner += `<a v="${p.rank}" u="${escapeXml(getDisplayName(p.u))}" d="1" />`;
+        if (podium.length > 0) {
+          const byRank = {};
+          for (const p of podium) byRank[p.rank] = p.u;
+          for (let r = 1; r <= 3; r++) {
+            const u = byRank[r] || '';
+            inner += `<a v="${r}" u="${escapeXml(u ? getDisplayName(u) : '')}" d="1" />`;
+          }
         }
       } else if (rkId) {
         const all = [];
@@ -8032,11 +8037,19 @@ case 'createchannel': {
       const targetUser = String(msg.attrs.u || client.username || '').toLowerCase();
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       let inner = '';
+      const bestRecordByGame = {};
       for (const [rkId, rk] of Object.entries(RANKINGS)) {
+        if (!isDailyResetRanking(rkId)) continue;
         const info = getUserScore(targetUser, rkId);
         if (info.pos === 1 && info.score > 0) {
-          inner += `<a g="${escapeXml(rk.game)}" n="${escapeXml(rk.name)}" v="${info.score}" d="0" />`;
+          const prev = bestRecordByGame[rk.game];
+          if (!prev || info.score > prev.score) {
+            bestRecordByGame[rk.game] = { name: rk.name, score: info.score };
+          }
         }
+      }
+      for (const [game, rec] of Object.entries(bestRecordByGame)) {
+        inner += `<a g="${escapeXml(game)}" n="${escapeXml(rec.name)}" v="${rec.score}" d="0" />`;
       }
       let allMedals = [];
       const medalDay = yesterdayParisDayKey();
@@ -8049,14 +8062,17 @@ case 'createchannel': {
           allMedals.push({ game: m.game, ranking_id: m.rankingId, rank: m.rank, medal: m.medal, awarded_day: medalDay });
         }
       }
+      const seenMedalGame = new Set();
       for (const medal of allMedals) {
+        if (seenMedalGame.has(medal.game)) continue;
+        seenMedalGame.add(medal.game);
         const gameName = GAME_DISPLAY_NAMES[medal.game] || medal.game;
         const medalName = MEDAL_DISPLAY_NAMES[medal.medal] || medal.medal;
         inner += `<a g="${escapeXml(medal.game)}" n="${escapeXml(`Médaille ${medalName} - ${gameName} (${medal.awarded_day})`)}" v="${medal.rank}" d="1" />`;
       }
       sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(getDisplayName(targetUser))}">${inner}</${CMD.awarduser}>`);
       const medalSummary = allMedals.map(m => `${m.game}:rank${m.rank}=${m.medal}`).join(',');
-      console.log(`[FSCORE] awarduser user=${targetUser}: ${allMedals.length} medals [${medalSummary}]`);
+      console.log(`[FSCORE] awarduser user=${targetUser}: records=${Object.keys(bestRecordByGame).length} medals=${seenMedalGame.size} [${medalSummary}]`);
       break;
     }
 
