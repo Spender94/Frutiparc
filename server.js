@@ -8165,7 +8165,11 @@ case 'createchannel': {
       const gameName = msg.attrs.g || '';
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       let inner = '';
-      const rkId = rankingIdForGame(gameName);
+      let rkId = rankingIdForGame(gameName);
+      if (rkId && !isDailyResetRanking(rkId)) {
+        const challengeId = rankingIdForGame(gameName, 1);
+        if (challengeId && isDailyResetRanking(challengeId)) rkId = challengeId;
+      }
       if (rkId && isDailyResetRanking(rkId)) {
         const yesterday = yesterdayParisDayKey();
         const dayMedals = challengeMedalsData.medalsByVisibleDay[yesterday] || {};
