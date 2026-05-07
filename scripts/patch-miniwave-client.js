@@ -524,6 +524,28 @@ function patchManagerTagBody(tagBody) {
   tagBody.writeInt16LE(oldJumpOffset + 4, ifOff + 3);
   console.log(`  Updated If @15 jump offset: ${oldJumpOffset} → ${oldJumpOffset + 4}`);
 
+  // Bump fcVersion from 0.93 to 0.94 so patchFruticard() triggers on startup
+  // for existing cards, sending accumulated progress to the server.
+  // AVM1 doubles have swapped 32-bit halves vs normal IEEE 754 LE.
+  const fcVersionIdx = cp.entries.indexOf('fcVersion');
+  if (fcVersionIdx < 0) throw new Error('fcVersion not found in Manager CP');
+  const fcIdxByte = fcVersionIdx < 256 ? Buffer.from([0x08, fcVersionIdx]) : Buffer.from([0x09, fcVersionIdx & 0xff, (fcVersionIdx >> 8) & 0xff]);
+  // Pattern: Push(r1, CP[fcVersion], double_0.93) SetMember
+  const avm1_093 = Buffer.from('8fc2ed3fc3f5285c', 'hex');
+  const avm1_094 = Buffer.from('7a14ee3f14ae47e1', 'hex');
+  const initPattern = Buffer.concat([
+    Buffer.from([0x96, 0x0d, 0x00, 0x04, 0x01]), // Push(13), r1
+    fcIdxByte,                                      // CP[fcVersion]
+    Buffer.from([0x06]),                            // type=double
+    avm1_093,                                       // 0.93
+    Buffer.from([0x4f]),                            // SetMember
+  ]);
+  const initIdx = tagBody.indexOf(initPattern, cp.dataEnd + cpDelta);
+  if (initIdx < 0) throw new Error('fcVersion=0.93 init pattern not found in Manager bytecode');
+  const doubleOffset = initIdx + 5 + fcIdxByte.length + 1; // skip Push header + r1 + cpIdx + type byte
+  avm1_094.copy(tagBody, doubleOffset);
+  console.log(`  Bumped fcVersion 0.93 → 0.94 at tag offset ${doubleOffset}`);
+
   return tagBody;
 }
 
