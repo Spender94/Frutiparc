@@ -396,7 +396,10 @@ function patchClientTagBody(tagBody) {
   console.log(`  saveSlot DF2 at ${ssDF2.df2Start}, body ${ssDF2.bodyStart}-${ssDF2.bodyEnd} (${ssDF2.bodyEnd - ssDF2.bodyStart} bytes)`);
 
   const newSsBody = buildSaveSlotBody(CP);
-  const newSsDF2 = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 6, 0x29, newSsBody);
+  // flags 0x94 = PreloadThis(r1) | SuppressSuper | SuppressArguments
+  // Original saveSlot had flags 0x5a (r1=_root, r2=super, r3=n, r4=data).
+  // We need this→r1 to access this.mng.fc[n].
+  const newSsDF2 = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 6, 0x94, newSsBody);
 
   console.log(`  saveSlot: ${ssDF2.df2End - ssDF2.df2Start} → ${newSsDF2.length} bytes`);
 
