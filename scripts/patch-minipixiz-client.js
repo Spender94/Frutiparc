@@ -2,7 +2,8 @@
 // Patches Games/miniTroll/minipixiz.swf so that:
 //   1. STANDALONE is set to true (was false in the compiled SWF)
 //   2. serviceConnect loads slots via HTTP (/api/loadFrutiSlots)
-//   3. saveSlot persists via HTTP POST (/api/saveFrutiSlot)
+//   3. saveSlot serializes slot data to a pipe-delimited string and sends
+//      via getURL2 → window.open (same proven mechanism as MiniWave/scores)
 //
 // This makes the game work in game-popup.html without the Frusion
 // LocalConnection infrastructure, and ensures slot data persists
@@ -84,11 +85,19 @@ const RETURN = simpleAction(0x3E);
 const NOT = simpleAction(0x12);
 const EQUALS2 = simpleAction(0x49);
 const ADD2 = simpleAction(0x47);
+const LESS2 = simpleAction(0x48);
 
 function storeReg(r) { return Buffer.from([0x87, 0x01, 0x00, r]); }
 function actionIf(offset) {
   const b = Buffer.alloc(5);
   b[0] = 0x9D;
+  b.writeUInt16LE(2, 1);
+  b.writeInt16LE(offset, 3);
+  return b;
+}
+function actionJump(offset) {
+  const b = Buffer.alloc(5);
+  b[0] = 0x99;
   b.writeUInt16LE(2, 1);
   b.writeInt16LE(offset, 3);
   return b;
@@ -116,17 +125,18 @@ function buildDefineFunction2(name, params, regcount, flags, bodyBytes) {
 
 // ─── Main ───
 
-const { sig, version, body } = readSwf(SWF_PATH);
-let buf = Buffer.from(body);
-
-// Back up original
+// Always restore from backup so patcher is idempotent
 if (!fs.existsSync(BACKUP_PATH)) {
   fs.copyFileSync(SWF_PATH, BACKUP_PATH);
   console.log('Backed up original to', BACKUP_PATH);
 }
+fs.copyFileSync(BACKUP_PATH, SWF_PATH);
+console.log('Restored from backup');
+
+const { sig, version, body } = readSwf(SWF_PATH);
+let buf = Buffer.from(body);
 
 // ─── Step 0: Find the DoAction tag ───
-// The main code is in DoAction (code=12) at offset 1051659
 
 const DOACTION_OFFSET = 1051659;
 const tagHdr = buf.readUInt16LE(DOACTION_OFFSET);
@@ -151,7 +161,6 @@ const origCpCount = buf.readUInt16LE(cpStart + 3);
 const cpDataEnd = cpStart + 3 + origCpPayloadLen;
 console.log(`CP: ${origCpCount} entries, payload=${origCpPayloadLen}, dataEnd=${cpDataEnd}`);
 
-// Verify key CP entries by parsing
 let pos = cpStart + 5;
 const cpEntries = [];
 while (cpEntries.length < origCpCount) {
@@ -160,7 +169,6 @@ while (cpEntries.length < origCpCount) {
   pos = end + 1;
 }
 
-// Verify known entries
 const verify = { 174: 'saveSlot', 521: 'serviceConnect', 584: 'onServiceConnect', 756: 'slots', 754: 'data' };
 for (const [idx, expected] of Object.entries(verify)) {
   if (cpEntries[idx] !== expected) {
@@ -172,22 +180,48 @@ console.log('CP verification passed');
 // ─── Step 2: Add new CP entries ───
 
 const newStrings = [
-  'LoadVars',             // newCpBase + 0
-  'game',                 // newCpBase + 1
-  'sid',                  // newCpBase + 2
-  '_client',              // newCpBase + 3
-  'onLoad',               // newCpBase + 4
-  'slot0',                // newCpBase + 5
-  'fromJSON',             // newCpBase + 6
-  'POST',                 // newCpBase + 7
-  '/api/loadFrutiSlots',  // newCpBase + 8
-  'sendAndLoad',          // newCpBase + 9
-  '_saveSlotHTTP',        // newCpBase + 10
-  'slotId',               // newCpBase + 11
-  '/api/saveFrutiSlot',   // newCpBase + 12
-  'result',               // newCpBase + 13
-  'minipixiz',            // newCpBase + 14
-  'send',                 // newCpBase + 15
+  // Used by serviceConnect (LoadVars-based slot loading)
+  'LoadVars',             // +0
+  'game',                 // +1
+  'sid',                  // +2
+  '_client',              // +3
+  'onLoad',               // +4
+  'slot0',                // +5
+  'fromJSON',             // +6
+  'POST',                 // +7
+  '/api/loadFrutiSlots',  // +8
+  'sendAndLoad',          // +9
+  '_saveSlotHTTP',        // +10
+  'slotId',               // +11
+  '/api/saveFrutiSlot',   // +12
+  'result',               // +13
+  'minipixiz',            // +14
+  'send',                 // +15
+  // Used by saveSlot (pipe-delimited getURL2)
+  '$stat',                // +16
+  '$item',                // +17
+  '$eat',                 // +18
+  '$kill',                // +19
+  '$run',                 // +20
+  '$game',                // +21
+  '$forestMax',           // +22
+  '$treeMax',             // +23
+  '$misNum',              // +24
+  '$diam',                // +25
+  '$key',                 // +26
+  '$star',                // +27
+  '$bag',                 // +28
+  '$dungeon',             // +29
+  '$lvl',                 // +30
+  '$f',                   // +31
+  '$rainbow',             // +32
+  '$pond',                // +33
+  '$q',                   // +34
+  '$frog',                // +35
+  '$faerie',              // +36
+  '$level',               // +37
+  'length',               // +38
+  '$vs',                  // +39
 ];
 
 const newCpBase = origCpCount;
@@ -198,18 +232,15 @@ for (const s of newStrings) {
 }
 const cpDelta = newCpData.length;
 
-// Insert new CP data right before end of existing CP
 const beforeCpEnd = buf.slice(0, cpDataEnd);
 const afterCpEnd = buf.slice(cpDataEnd);
 buf = Buffer.concat([beforeCpEnd, newCpData, afterCpEnd]);
 
-// Update CP header
 const newCpPayloadLen = origCpPayloadLen + cpDelta;
 const newCpCount = origCpCount + newStrings.length;
 buf.writeUInt16LE(newCpPayloadLen, cpStart + 1);
 buf.writeUInt16LE(newCpCount, cpStart + 3);
 
-// Update DoAction tag length
 if (tagHdrSize !== 6) throw new Error('Expected long-form DoAction tag');
 const newTagLen = origTagLen + cpDelta;
 buf.writeUInt32LE(newTagLen, DOACTION_OFFSET + 2);
@@ -218,7 +249,6 @@ console.log(`Added ${newStrings.length} CP entries (+${cpDelta} bytes)`);
 console.log(`CP: ${origCpPayloadLen} → ${newCpPayloadLen}, count: ${origCpCount} → ${newCpCount}`);
 console.log(`Tag length: ${origTagLen} → ${newTagLen}`);
 
-// All offsets after cpDataEnd shift by cpDelta
 const shift = (o) => o >= cpDataEnd ? o + cpDelta : o;
 
 // ─── Step 3: Patch STANDALONE = true ───
@@ -234,9 +264,8 @@ if (buf[standaloneOffset] === 0x00) {
 }
 
 // ─── Step 4: Replace serviceConnect function body ───
-// Original: @1287521 (before shift), DefineFunction2 '', params=0, regs=2, flags=0x29, codeSize=155
-// The Push before it is at @1287515 (before shift)
-// After the function body: SetMember (0x4F) at 1287687 (before shift)
+// Uses LoadVars.sendAndLoad to load slot data from /api/loadFrutiSlots.
+// (LoadVars works for receiving data; the issue was only with saving.)
 
 const CP = {
   saveSlot: 174,
@@ -260,21 +289,35 @@ const CP = {
   result: newCpBase + 13,
   minipixiz: newCpBase + 14,
   send: newCpBase + 15,
+  $stat: newCpBase + 16,
+  $item: newCpBase + 17,
+  $eat: newCpBase + 18,
+  $kill: newCpBase + 19,
+  $run: newCpBase + 20,
+  $game: newCpBase + 21,
+  $forestMax: newCpBase + 22,
+  $treeMax: newCpBase + 23,
+  $misNum: newCpBase + 24,
+  $diam: newCpBase + 25,
+  $key: newCpBase + 26,
+  $star: newCpBase + 27,
+  $bag: newCpBase + 28,
+  $dungeon: newCpBase + 29,
+  $lvl: newCpBase + 30,
+  $f: newCpBase + 31,
+  $rainbow: newCpBase + 32,
+  $pond: newCpBase + 33,
+  $q: newCpBase + 34,
+  $frog: newCpBase + 35,
+  $faerie: newCpBase + 36,
+  $level: newCpBase + 37,
+  length: newCpBase + 38,
+  $vs: newCpBase + 39,
 };
 
-// Build the onLoad callback for serviceConnect:
-// function(success) {           // r2 = success
-//   var client = this._client;  // r3 = client
-//   if (!success) { client.onServiceConnect(); return; }
-//   if (this.slot0 !== undefined) {
-//     var obj = client.fromJSON(this.slot0);  // r4 = obj
-//     if (obj !== null) client.slots[0] = obj;
-//   }
-//   client.onServiceConnect();
-// }
+// ── serviceConnect onLoad callback ──
 
 function buildOnLoadBody() {
-  // r1=this, r2=success (param)
   const getClient = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP._client)), GET_MEMBER, storeReg(3), POP,
   ]);
@@ -312,7 +355,6 @@ function buildOnLoadBody() {
     CALL_METHOD, POP,
   ]);
 
-  // Jump offsets
   const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
     slot0Assign.length;
   const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length;
@@ -334,19 +376,6 @@ function buildOnLoadBody() {
 
 const onLoadBodyBytes = buildOnLoadBody();
 
-// Build the main serviceConnect function body:
-// flags=0x29: r1=this. We use GetVariable("_root") for _root access.
-//
-//   this.slots = []
-//   this.slots[0] = {}
-//   var lv = new LoadVars()        → r3 (we'll use StoreRegister)
-//   lv.game = "minipixiz"
-//   lv.sid = _root.sid
-//   var result = new LoadVars()    → r4
-//   result._client = this
-//   result.onLoad = function(success) { ... }
-//   lv.sendAndLoad("/api/loadFrutiSlots", result, "POST")
-
 function buildServiceConnectBody() {
   const initSlots = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots), pushInt(0)),
@@ -362,7 +391,6 @@ function buildServiceConnectBody() {
     SET_MEMBER,
   ]);
 
-  // var lv = new LoadVars()
   const createLv = Buffer.concat([
     actionPush(pushInt(0), pushCp(CP.LoadVars)),
     NEW_OBJECT,
@@ -370,14 +398,11 @@ function buildServiceConnectBody() {
     POP,
   ]);
 
-  // lv.game = "minipixiz"
   const setGame = Buffer.concat([
     actionPush(pushReg(3), pushCp(CP.game), pushCp(CP.minipixiz)),
     SET_MEMBER,
   ]);
 
-  // lv.sid = _root.sid
-  // We need _root → Push "_root", GetVariable
   const setSid = Buffer.concat([
     actionPush(pushReg(3), pushCp(CP.sid)),
     actionPush(pushStr('_root')),
@@ -387,7 +412,6 @@ function buildServiceConnectBody() {
     SET_MEMBER,
   ]);
 
-  // var result = new LoadVars()
   const createResult = Buffer.concat([
     actionPush(pushInt(0), pushCp(CP.LoadVars)),
     NEW_OBJECT,
@@ -395,14 +419,11 @@ function buildServiceConnectBody() {
     POP,
   ]);
 
-  // result._client = this
   const setClient = Buffer.concat([
     actionPush(pushReg(4), pushCp(CP._client), pushReg(1)),
     SET_MEMBER,
   ]);
 
-  // result.onLoad = function(success) { ... }
-  // Inner function: params=[(r2, 'success')], regcount=5, flags=0x29 (preloadThis→r1)
   const onLoadFunc = buildDefineFunction2('', [[2, 'success']], 5, 0x29, onLoadBodyBytes);
   const setOnLoad = Buffer.concat([
     actionPush(pushReg(4), pushCp(CP.onLoad)),
@@ -410,7 +431,6 @@ function buildServiceConnectBody() {
     SET_MEMBER,
   ]);
 
-  // lv.sendAndLoad("/api/loadFrutiSlots", result, "POST")
   const sendAndLoad = Buffer.concat([
     actionPush(pushCp(CP.POST)),
     actionPush(pushReg(4)),
@@ -430,15 +450,8 @@ function buildServiceConnectBody() {
 }
 
 const serviceConnectBody = buildServiceConnectBody();
-
-// Build the new serviceConnect DefineFunction2
-// Original: params=0, regs=2, flags=0x29, codeSize=155
-// New: params=0, regs=5, flags=0x29
-// flags 0x29 = preloadThis(r1) + suppressArguments + suppressSuper
 const newServiceConnectFunc = buildDefineFunction2('', [], 5, 0x29, serviceConnectBody);
 
-// Find and replace the old serviceConnect DefineFunction2
-// Push before DF2 is at original offset 1287515, DF2 at 1287521, SetMember at 1287687
 const origFuncStart = shift(1287521);
 const origFuncEnd = shift(1287687);
 
@@ -454,24 +467,41 @@ console.log(`Old serviceConnect: ${oldScFuncBytes} bytes at ${origFuncStart}`);
 console.log(`New serviceConnect: ${newServiceConnectFunc.length} bytes`);
 
 const scDelta = newServiceConnectFunc.length - oldScFuncBytes;
-
-// Replace the function
 let beforeSc = buf.slice(0, origFuncStart);
 let afterSc = buf.slice(origFuncEnd);
 buf = Buffer.concat([beforeSc, newServiceConnectFunc, afterSc]);
 
-// Update tag length
 let currentTagLen = buf.readUInt32LE(DOACTION_OFFSET + 2);
 buf.writeUInt32LE(currentTagLen + scDelta, DOACTION_OFFSET + 2);
 console.log(`Tag length: ${currentTagLen} → ${currentTagLen + scDelta} (scDelta=${scDelta})`);
 
-// All offsets after origFuncStart shift by scDelta
 const shift2 = (o) => o >= origFuncStart ? o + scDelta : o;
 
 // ─── Step 5: Replace Client.saveSlot function body ───
-// Original Client.saveSlot at @1288275 (before shift), params=2, regs=4, flags=0x29, codeSize=86
-// Push before DF2 at @1288270, SetMember at 1288381
-// After cpDelta shift + scDelta shift:
+// New approach: serialize slot data to pipe-delimited string, send via
+// getURL2("slot:minipixiz:N:PIPEDATA", "_blank"). Ruffle routes this
+// through window.open(), intercepted by game-popup.html.
+//
+// Pipe format (19 fields):
+//   0: $stat.$item     (comma-sep bools)
+//   1: $stat.$eat      (comma-sep ints)
+//   2: $stat.$kill     (comma-sep ints)
+//   3: $stat.$run      (int)
+//   4: $stat.$game     (comma-sep ints)
+//   5: $stat.$forestMax (int)
+//   6: $stat.$treeMax   (int)
+//   7: $stat.$misNum    (int)
+//   8: $diam            (int)
+//   9: $key             (int)
+//  10: $star            (int)
+//  11: $bag             (int)
+//  12: $dungeon.$lvl    (int)
+//  13: $dungeon.$f      (bool)
+//  14: $rainbow.$f      (bool)
+//  15: $pond.$q         (int)
+//  16: $frog            (bool)
+//  17: faerie_levels    (comma-sep ints, trailing comma ok)
+//  18: $vs              (float, last field)
 
 const origSaveSlotStart = shift2(shift(1288275));
 const origSaveSlotEnd = shift2(shift(1288381));
@@ -483,98 +513,155 @@ if (buf[origSaveSlotEnd] !== 0x4F) {
   throw new Error(`Expected SetMember (0x4F) after saveSlot at ${origSaveSlotEnd}, got 0x${buf[origSaveSlotEnd].toString(16)}`);
 }
 
-// Build new saveSlot body:
-// Original params: r2=n, r3=data (from DefineFunction2 with preloadThis→r1)
-// flags=0x29: r1=this, params (n→r2, data→r3), regCount≥5 for temps
-//
-//   var lv = new LoadVars()         → r4
-//   lv.game = "minipixiz"
-//   lv.sid = _root.sid
-//   lv.slotId = n                   (r2)
-//   lv.data = data                  (r3)
-//   var result = new LoadVars()     → r5
-//   lv.sendAndLoad("/api/saveFrutiSlot", result, "POST")
-
 function buildSaveSlotBody() {
-  // var lv = new LoadVars()
-  const createLv = Buffer.concat([
-    actionPush(pushInt(0), pushCp(CP.LoadVars)),
-    NEW_OBJECT,
-    storeReg(4),
-    POP,
+  // DF2 params: r2=n, r3=data (unused). flags=0x29 → r1=this (Client).
+  // r3 repurposed for card object. r4=temp parent. r5=faerie array. r6=loop index.
+
+  function appendFromR4(propIdx) {
+    return Buffer.concat([
+      actionPush(pushReg(4), pushCp(propIdx)), GET_MEMBER,
+      actionPush(pushStr('')), ADD2,
+      ADD2,
+      actionPush(pushStr('|')), ADD2,
+    ]);
+  }
+
+  function appendFromR3(propIdx) {
+    return Buffer.concat([
+      actionPush(pushReg(3), pushCp(propIdx)), GET_MEMBER,
+      actionPush(pushStr('')), ADD2,
+      ADD2,
+      actionPush(pushStr('|')), ADD2,
+    ]);
+  }
+
+  function setR4(propIdx) {
+    return Buffer.concat([
+      actionPush(pushReg(3), pushCp(propIdx)), GET_MEMBER,
+      storeReg(4), POP,
+    ]);
+  }
+
+  // Part 1: card = this.slots[n] → r3
+  const getCard = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
+    actionPush(pushReg(2)), GET_MEMBER,
+    storeReg(3), POP,
   ]);
 
-  // lv.game = "minipixiz"
-  const setGame = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.game), pushCp(CP.minipixiz)),
-    SET_MEMBER,
+  // Part 2: Build pipe string on stack
+  const buildStr = Buffer.concat([
+    actionPush(pushStr('')),
+
+    setR4(CP.$stat),
+    appendFromR4(CP.$item),       // 0
+    appendFromR4(CP.$eat),        // 1
+    appendFromR4(CP.$kill),       // 2
+    appendFromR4(CP.$run),        // 3
+    appendFromR4(CP.$game),       // 4
+    appendFromR4(CP.$forestMax),  // 5
+    appendFromR4(CP.$treeMax),    // 6
+    appendFromR4(CP.$misNum),     // 7
+
+    appendFromR3(CP.$diam),       // 8
+    appendFromR3(CP.$key),        // 9
+    appendFromR3(CP.$star),       // 10
+    appendFromR3(CP.$bag),        // 11
+
+    setR4(CP.$dungeon),
+    appendFromR4(CP.$lvl),        // 12
+    appendFromR4(CP.$f),          // 13
+
+    setR4(CP.$rainbow),
+    appendFromR4(CP.$f),          // 14
+
+    setR4(CP.$pond),
+    appendFromR4(CP.$q),          // 15
+
+    appendFromR3(CP.$frog),       // 16
+
+    // Prepare faerie array → r5
+    actionPush(pushReg(3), pushCp(CP.$faerie)), GET_MEMBER,
+    storeReg(5), POP,
   ]);
 
-  // lv.sid = _root.sid
-  const setSid = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.sid)),
-    actionPush(pushStr('_root')),
-    GET_VARIABLE,
-    actionPush(pushCp(CP.sid)),
-    GET_MEMBER,
-    SET_MEMBER,
+  // Part 3: Faerie levels loop
+  // Appends "level1,level2,...," with trailing comma (parser handles it)
+  const loopInit = Buffer.concat([
+    actionPush(pushInt(0)), storeReg(6), POP,
   ]);
 
-  // lv.slotId = n (r2)
-  const setSlotId = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.slotId), pushReg(2)),
-    SET_MEMBER,
+  const loopCond = Buffer.concat([
+    actionPush(pushReg(6)),
+    actionPush(pushReg(5), pushCp(CP.length)), GET_MEMBER,
+    LESS2, // r6 < length?
+    NOT,   // r6 >= length?
   ]);
 
-  // lv.data = data (r3)
-  const setData = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.data), pushReg(3)),
-    SET_MEMBER,
+  const loopBody = Buffer.concat([
+    actionPush(pushReg(5), pushReg(6)), GET_MEMBER,
+    actionPush(pushCp(CP.$level)), GET_MEMBER,
+    actionPush(pushStr('')), ADD2,
+    ADD2,
+    actionPush(pushStr(',')), ADD2,
   ]);
 
-  // var result = new LoadVars()
-  const createResult = Buffer.concat([
-    actionPush(pushInt(0), pushCp(CP.LoadVars)),
-    NEW_OBJECT,
-    storeReg(5),
-    POP,
+  const loopIncr = Buffer.concat([
+    actionPush(pushReg(6), pushInt(1)),
+    ADD2,
+    storeReg(6), POP,
   ]);
 
-  // lv.sendAndLoad("/api/saveFrutiSlot", result, "POST")
-  const sendAndLoad = Buffer.concat([
-    actionPush(pushCp(CP.POST)),
-    actionPush(pushReg(5)),
-    actionPush(pushCp(CP.saveFrutiSlot)),
-    actionPush(pushInt(3)),
-    actionPush(pushReg(4), pushCp(CP.sendAndLoad)),
-    CALL_METHOD,
-    POP,
+  const fwdJumpDist = loopBody.length + loopIncr.length + 5; // 5 = backJump
+  const backJumpDist = -(loopCond.length + 5 + loopBody.length + loopIncr.length + 5);
+
+  const faerieLoop = Buffer.concat([
+    loopInit,
+    loopCond,
+    actionIf(fwdJumpDist),
+    loopBody,
+    loopIncr,
+    actionJump(backJumpDist),
   ]);
 
-  return Buffer.concat([
-    createLv, setGame, setSid, setSlotId, setData,
-    createResult, sendAndLoad,
+  // After loop: separator + $vs (last field, no trailing |)
+  const afterLoop = Buffer.concat([
+    actionPush(pushStr('|')), ADD2,
+    actionPush(pushReg(3), pushCp(CP.$vs)), GET_MEMBER,
+    actionPush(pushStr('')), ADD2,
+    ADD2,
   ]);
+
+  // Part 4: getURL2("slot:minipixiz:N:PIPEDATA", "_blank")
+  const GETURL2 = Buffer.from([0x9A, 0x01, 0x00, 0x00]);
+  const getUrlCall = Buffer.concat([
+    storeReg(4), POP, // save pipe string to r4
+
+    actionPush(pushStr('slot:minipixiz:')),
+    actionPush(pushReg(2), pushStr('')), ADD2,
+    ADD2,
+    actionPush(pushStr(':')), ADD2,
+    actionPush(pushReg(4)), ADD2,
+
+    actionPush(pushStr('_blank')),
+    GETURL2,
+  ]);
+
+  return Buffer.concat([getCard, buildStr, faerieLoop, afterLoop, getUrlCall]);
 }
 
 const saveSlotBody = buildSaveSlotBody();
-
-// Build new DefineFunction2 for saveSlot
-// params: [(r2, 'n'), (r3, 'data')], regCount=6, flags=0x29
-const newSaveSlotFunc = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 6, 0x29, saveSlotBody);
+const newSaveSlotFunc = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 7, 0x29, saveSlotBody);
 
 const oldSsFuncBytes = origSaveSlotEnd - origSaveSlotStart;
 console.log(`Old Client.saveSlot: ${oldSsFuncBytes} bytes at ${origSaveSlotStart}`);
 console.log(`New Client.saveSlot: ${newSaveSlotFunc.length} bytes`);
 
 const ssDelta = newSaveSlotFunc.length - oldSsFuncBytes;
-
-// Replace
 const beforeSs = buf.slice(0, origSaveSlotStart);
 const afterSs = buf.slice(origSaveSlotEnd);
 buf = Buffer.concat([beforeSs, newSaveSlotFunc, afterSs]);
 
-// Update tag length
 currentTagLen = buf.readUInt32LE(DOACTION_OFFSET + 2);
 buf.writeUInt32LE(currentTagLen + ssDelta, DOACTION_OFFSET + 2);
 console.log(`Tag length: ${currentTagLen} → ${currentTagLen + ssDelta} (ssDelta=${ssDelta})`);

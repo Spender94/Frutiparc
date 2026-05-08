@@ -3909,6 +3909,42 @@ function parseMiniwavePipe(s) {
   };
 }
 
+// MiniPixiz pipe format (19 fields):
+//   0:$stat.$item 1:$stat.$eat 2:$stat.$kill 3:$stat.$run 4:$stat.$game
+//   5:$stat.$forestMax 6:$stat.$treeMax 7:$stat.$misNum
+//   8:$diam 9:$key 10:$star 11:$bag
+//   12:$dungeon.$lvl 13:$dungeon.$f 14:$rainbow.$f 15:$pond.$q
+//   16:$frog 17:faerie_levels(comma-sep) 18:$vs
+function parseMinipixizPipe(s) {
+  const parts = String(s).split('|');
+  if (parts.length < 19) return null;
+  function parseNumArr(p) { return p ? p.split(',').map(v => v === '' ? 0 : Number(v) || 0) : []; }
+  function parseBoolArr(p) { return p ? p.split(',').map(v => v === 'true') : []; }
+  const faerieLevels = (parts[17] || '').replace(/,$/, '').split(',').filter(v => v !== '');
+  return {
+    $stat: {
+      $item: parseBoolArr(parts[0]),
+      $eat: parseNumArr(parts[1]),
+      $kill: parseNumArr(parts[2]),
+      $run: Number(parts[3]) || 0,
+      $game: parseNumArr(parts[4]),
+      $forestMax: Number(parts[5]) || 0,
+      $treeMax: Number(parts[6]) || 0,
+      $misNum: Number(parts[7]) || 0,
+    },
+    $diam: Number(parts[8]) || 0,
+    $key: Number(parts[9]) || 0,
+    $star: Number(parts[10]) || 0,
+    $bag: Number(parts[11]) || 0,
+    $dungeon: { $lvl: Number(parts[12]) || 0, $f: parts[13] === 'true' },
+    $rainbow: { $f: parts[14] === 'true' },
+    $pond: { $q: Number(parts[15]) || 0 },
+    $frog: parts[16] === 'true',
+    $faerie: faerieLevels.map(v => ({ $level: Number(v) || 0 })),
+    $vs: Number(parts[18]) || 0,
+  };
+}
+
 app.post('/api/saveFrutiSlot', (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
@@ -3922,6 +3958,15 @@ app.post('/api/saveFrutiSlot', (req, res) => {
     if (obj) {
       data = JSON.stringify(obj);
       console.log(`[SLOT]  miniwave pipe → JSON (${data.length} chars)`);
+    }
+  }
+
+  // MiniPixiz: pipe-delimited string → JSON
+  if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0' && data.indexOf('|') >= 0 && data[0] !== '{') {
+    const obj = parseMinipixizPipe(data);
+    if (obj) {
+      data = JSON.stringify(obj);
+      console.log(`[SLOT]  minipixiz pipe → JSON (${data.length} chars)`);
     }
   }
 
