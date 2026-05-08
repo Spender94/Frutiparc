@@ -92,6 +92,31 @@
       console.log("[Game] window.open(javascript:close) blocked");
       return null;
     }
+    // Slot save via getURL: "slot:GAME:SLOTID:PIPEDATA"
+    var slotMatch = u.match(/slot:([\w]+):(\d+):(.+)/);
+    if (slotMatch) {
+      var slotGame = slotMatch[1];
+      var slotNum = slotMatch[2];
+      var slotPipe = slotMatch[3];
+      console.log("[Game] slot save intercepted: game=" + slotGame + " slot=" + slotNum + " data=" + slotPipe.length + " chars");
+      var slotSid = new URLSearchParams(window.location.search).get("sid") || "";
+      if (slotSid) {
+        fetch("/api/saveFrutiSlot", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "sid=" + encodeURIComponent(slotSid) +
+                "&game=" + encodeURIComponent(slotGame) +
+                "&slotId=" + encodeURIComponent(slotNum) +
+                "&data=" + encodeURIComponent(slotPipe)
+        }).then(function(r) {
+          console.log("[Game] slot save response:", r.status);
+          return r.text();
+        }).then(function(t) {
+          console.log("[Game] slot save body:", t);
+        }).catch(function(e) { console.log("[Game] slot save error:", e); });
+      }
+      return null;
+    }
     if (/(?:^|\/)s\d+$/.test(u)) {
       var full = u.startsWith("/") ? u : new URL(u, document.baseURI).href;
       try {
