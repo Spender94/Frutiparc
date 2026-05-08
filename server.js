@@ -3885,12 +3885,45 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
   }
 }
 
+// MiniWave: SWF sends slot data as a pipe-delimited string of primitives
+// because Ruffle AVM1's ExternalInterface can't serialize AS2 objects.
+// Format: ship|badsKill|arcadeBestLevel|consBonus|consLetter|shop|vs
+// where arrays are comma-joined (Array.toString output).
+function parseMiniwavePipe(s) {
+  const parts = String(s).split('|');
+  if (parts.length < 7) return null;
+  function parseArr(p) { return p ? p.split(',').map(Number) : []; }
+  function parseShipArr(p) {
+    return p ? p.split(',').map(v => v === 'true' || Number(v) > 0) : [];
+  }
+  return {
+    $ship: parseShipArr(parts[0]),
+    $badsKill: parseArr(parts[1]),
+    $arcade: { $bestLevel: Number(parts[2]) || 0 },
+    $cons: {
+      $bonus: parseArr(parts[3]),
+      $letter: Number(parts[4]) || 0,
+    },
+    $shop: parseArr(parts[5]),
+    $vs: Number(parts[6]) || 0,
+  };
+}
+
 app.post('/api/saveFrutiSlot', (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
   const game = String(params.game || '');
   const slotId = String(params.slotId || '0');
-  const data = String(params.data || '');
+  let data = String(params.data || '');
+
+  // MiniWave: pipe-delimited string → JSON (only for slot 0; slot 1 is prefs)
+  if (game === 'miniwave' && slotId === '0' && data.indexOf('|') >= 0 && data[0] !== '{') {
+    const obj = parseMiniwavePipe(data);
+    if (obj) {
+      data = JSON.stringify(obj);
+      console.log(`[SLOT]  miniwave pipe → JSON (${data.length} chars)`);
+    }
+  }
 
   let username = '';
   if (sid && sessions[sid]) username = sessions[sid].user || '';

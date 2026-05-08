@@ -112,6 +112,7 @@ const GET_MEMBER = simpleAction(0x4E);
 const SET_MEMBER = simpleAction(0x4F);
 const GET_VARIABLE = simpleAction(0x1C);
 const CALL_METHOD = simpleAction(0x52);
+const NEW_OBJECT = simpleAction(0x40);
 
 function storeReg(r) { return Buffer.from([0x87, 0x01, 0x00, r]); }
 
@@ -168,12 +169,16 @@ function findPropertyDF2(buf, searchStart, searchEnd, cpIdx) {
 }
 
 // ─── Build new saveSlot function body ───
-// Serializes fc[n] to a pipe-delimited string of primitive values and arrays,
-// then sends via ExternalInterface.call (strings pass through Ruffle fine).
+// Serializes _root.mng.fc[n] to a pipe-delimited string of primitive values
+// and arrays, then POSTs to /api/saveFrutiSlot via LoadVars.sendAndLoad
+// (proven to work in Ruffle AVM1 — used by MiniPixiz patcher).
 // Also flushes SharedObject for local persistence.
+//
+// Uses _root.mng.fc[n] (not this.mng.fc[n]) to avoid any DF2 register
+// quirks. _root is fetched via GetVariable("_root") which is portable.
 
 function buildSaveSlotBody(CP) {
-  // r1=this, r2=n, r3=fc[n], r4=SharedObject temp, r5=string accumulator
+  // r2=n (param), r3=fc[n] (computed), r4=LoadVars/SO temp, r5=string accumulator
 
   // Helper: get a simple property from r3, convert to string, append "|"
   function appendSimpleProp(propCp) {
@@ -196,32 +201,11 @@ function buildSaveSlotBody(CP) {
     ]);
   }
 
-  // Helper: get doubly-nested property
-  function appendDeepProp(prop1Cp, prop2Cp, prop3Cp) {
-    return Buffer.concat([
-      actionPush(pushReg(3), pushCp(prop1Cp)), GET_MEMBER,
-      actionPush(pushCp(prop2Cp)), GET_MEMBER,
-      actionPush(pushCp(prop3Cp)), GET_MEMBER,
-      actionPush(pushStr('')), ADD2,
-      ADD2,
-      actionPush(pushStr('|')), ADD2,
-    ]);
-  }
-
-  // Helper: get array element by index
-  function appendArrayElement(propCp, idx) {
-    return Buffer.concat([
-      actionPush(pushReg(3), pushCp(propCp)), GET_MEMBER,
-      actionPush(pushInt(idx)), GET_MEMBER,
-      actionPush(pushStr('')), ADD2,
-      ADD2,
-      actionPush(pushStr('|')), ADD2,
-    ]);
-  }
-
-  // Part 1: Get fc[n] → r3
+  // Part 1: Get _root.mng.fc[n] → r3
+  // Uses GetVariable("_root") instead of pushReg(1) for portability.
   const getFc = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.mng)), GET_MEMBER,
+    actionPush(pushStr('_root')), GET_VARIABLE,
+    actionPush(pushCp(CP.mng)), GET_MEMBER,
     actionPush(pushCp(CP.fc)), GET_MEMBER,
     actionPush(pushReg(2)), GET_MEMBER,
     storeReg(3), POP,
@@ -229,52 +213,77 @@ function buildSaveSlotBody(CP) {
 
   // Part 2: Build serialized string on stack
   // Format: ship|badsKill|arcadeBestLevel|consBonus|consLetter|shop|vs
-  // Fields 0-5 are picto-relevant, field 6 is version.
-  // Arrays use Array.toString() which joins with commas.
+  // Arrays use Array.toString() (triggered by ADD2 with empty string).
   const buildStr = Buffer.concat([
     actionPush(pushStr('')), // start with empty string on stack
 
-    // Field 0: $ship (array → "1,0,0,0,0,0")
-    appendSimpleProp(CP.$ship),
-
-    // Field 1: $badsKill (array → "0,0,...,200,...")
-    appendSimpleProp(CP.$badsKill),
-
-    // Field 2: $arcade.$bestLevel (number)
-    appendNestedProp(CP.$arcade, CP.$bestLevel),
-
-    // Field 3: $cons.$bonus (array → "0,0,0,0,0,0,0,0")
-    appendNestedProp(CP.$cons, CP.$bonus),
-
-    // Field 4: $cons.$letter (number)
-    appendNestedProp(CP.$cons, CP.$letter),
-
-    // Field 5: $shop (array → "1,1,...,1")
-    appendSimpleProp(CP.$shop),
+    appendSimpleProp(CP.$ship),                      // Field 0
+    appendSimpleProp(CP.$badsKill),                  // Field 1
+    appendNestedProp(CP.$arcade, CP.$bestLevel),     // Field 2
+    appendNestedProp(CP.$cons, CP.$bonus),           // Field 3
+    appendNestedProp(CP.$cons, CP.$letter),          // Field 4
+    appendSimpleProp(CP.$shop),                      // Field 5
 
     // Field 6: $vs (number — no trailing |)
     actionPush(pushReg(3), pushCp(CP.$vs)), GET_MEMBER,
     actionPush(pushStr('')), ADD2,
     ADD2,
+
+    storeReg(5), POP,  // r5 = pipe string
   ]);
 
-  // Part 3: Store result string in r5, call ExternalInterface
-  const eiCall = Buffer.concat([
-    storeReg(5), POP,
+  // Part 3: Create LoadVars and POST to server
+  // var lv = new LoadVars()    → r4
+  const createLv = Buffer.concat([
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(4), POP,
+  ]);
 
-    // ExternalInterface.call("saveSlotData", "miniwave", n, r5)
-    // Stack order: arg4, arg3, arg2, arg1, argc, object, method
-    actionPush(pushReg(5)),      // arg4: serialized string
-    actionPush(pushReg(2)),      // arg3: slot index n
-    actionPush(pushCp(CP.miniwave)), // arg2: game name
-    actionPush(pushCp(CP.saveSlotData)), // arg1: function name
-    actionPush(pushInt(4)),      // argc = 4
-    actionPush(pushCp(CP.ExternalInterface)), GET_VARIABLE,
-    actionPush(pushCp(CP.call)),
+  // lv.sid = _root.sid
+  const setSid = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.sid)),
+    actionPush(pushStr('_root')), GET_VARIABLE,
+    actionPush(pushCp(CP.sid)), GET_MEMBER,
+    SET_MEMBER,
+  ]);
+
+  // lv.game = "miniwave"
+  const setGame = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.game), pushCp(CP.miniwave)),
+    SET_MEMBER,
+  ]);
+
+  // lv.slotId = n (r2)
+  const setSlotId = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.slotId), pushReg(2)),
+    SET_MEMBER,
+  ]);
+
+  // lv.data = pipeString (r5)
+  const setData = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.data), pushReg(5)),
+    SET_MEMBER,
+  ]);
+
+  // var result = new LoadVars()  → r5 (reuse — pipe string is already in lv.data)
+  const createResult = Buffer.concat([
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(5), POP,
+  ]);
+
+  // lv.sendAndLoad("/api/saveFrutiSlot", result, "POST")
+  const sendAndLoadCall = Buffer.concat([
+    actionPush(pushCp(CP.POST)),                  // arg3
+    actionPush(pushReg(5)),                        // arg2 (result LV)
+    actionPush(pushCp(CP.saveFrutiSlotUrl)),      // arg1 (url)
+    actionPush(pushInt(3)),                        // argc
+    actionPush(pushReg(4), pushCp(CP.sendAndLoad)),
     CALL_METHOD, POP,
   ]);
 
-  // Part 4: SharedObject.getLocal("miniWave2/card2").flush()
+  // Part 4: SharedObject.getLocal("miniWave2/card2").flush() (overwrite r4)
   const soFlush = Buffer.concat([
     actionPush(pushCp(CP.miniWave2Card)),
     actionPush(pushInt(1)),
@@ -287,7 +296,12 @@ function buildSaveSlotBody(CP) {
     CALL_METHOD, POP,
   ]);
 
-  return Buffer.concat([getFc, buildStr, eiCall, soFlush]);
+  return Buffer.concat([
+    getFc, buildStr,
+    createLv, setSid, setGame, setSlotId, setData,
+    createResult, sendAndLoadCall,
+    soFlush,
+  ]);
 }
 
 // ─── Patch Client DoInitAction ───
@@ -308,24 +322,29 @@ function patchClientTagBody(tagBody) {
   // Add new CP entries
   const newCpBase = cp.count;
   const newStrings = [
-    'SharedObject',                     // +0
-    'getLocal',                         // +1
-    'miniWave2/card2',                  // +2
-    'flush',                            // +3
-    'flash.external.ExternalInterface', // +4
-    'call',                             // +5
-    'saveSlotData',                     // +6
-    'mng',                              // +7
-    'fc',                               // +8
-    '$ship',                            // +9
-    '$badsKill',                        // +10
-    '$arcade',                          // +11
-    '$bestLevel',                       // +12
-    '$cons',                            // +13
-    '$bonus',                           // +14
-    '$letter',                          // +15
-    '$shop',                            // +16
-    '$vs',                              // +17
+    'SharedObject',           // +0
+    'getLocal',                // +1
+    'miniWave2/card2',         // +2
+    'flush',                   // +3
+    'mng',                     // +4
+    'fc',                      // +5
+    '$ship',                   // +6
+    '$badsKill',               // +7
+    '$arcade',                 // +8
+    '$bestLevel',              // +9
+    '$cons',                   // +10
+    '$bonus',                  // +11
+    '$letter',                 // +12
+    '$shop',                   // +13
+    '$vs',                     // +14
+    'LoadVars',                // +15
+    'sid',                     // +16
+    'game',                    // +17
+    'slotId',                  // +18
+    'data',                    // +19
+    'sendAndLoad',             // +20
+    '/api/saveFrutiSlot',      // +21
+    'POST',                    // +22
   ];
 
   let newCpData = Buffer.alloc(0);
@@ -351,20 +370,25 @@ function patchClientTagBody(tagBody) {
     getLocal: newCpBase + 1,
     miniWave2Card: newCpBase + 2,
     flush: newCpBase + 3,
-    ExternalInterface: newCpBase + 4,
-    call: newCpBase + 5,
-    saveSlotData: newCpBase + 6,
-    mng: newCpBase + 7,
-    fc: newCpBase + 8,
-    $ship: newCpBase + 9,
-    $badsKill: newCpBase + 10,
-    $arcade: newCpBase + 11,
-    $bestLevel: newCpBase + 12,
-    $cons: newCpBase + 13,
-    $bonus: newCpBase + 14,
-    $letter: newCpBase + 15,
-    $shop: newCpBase + 16,
-    $vs: newCpBase + 17,
+    mng: newCpBase + 4,
+    fc: newCpBase + 5,
+    $ship: newCpBase + 6,
+    $badsKill: newCpBase + 7,
+    $arcade: newCpBase + 8,
+    $bestLevel: newCpBase + 9,
+    $cons: newCpBase + 10,
+    $bonus: newCpBase + 11,
+    $letter: newCpBase + 12,
+    $shop: newCpBase + 13,
+    $vs: newCpBase + 14,
+    LoadVars: newCpBase + 15,
+    sid: newCpBase + 16,
+    game: newCpBase + 17,
+    slotId: newCpBase + 18,
+    data: newCpBase + 19,
+    sendAndLoad: newCpBase + 20,
+    saveFrutiSlotUrl: newCpBase + 21,
+    POST: newCpBase + 22,
   };
 
   // Verify "miniwave" is at CP[1]
@@ -396,10 +420,10 @@ function patchClientTagBody(tagBody) {
   console.log(`  saveSlot DF2 at ${ssDF2.df2Start}, body ${ssDF2.bodyStart}-${ssDF2.bodyEnd} (${ssDF2.bodyEnd - ssDF2.bodyStart} bytes)`);
 
   const newSsBody = buildSaveSlotBody(CP);
-  // flags 0x94 = PreloadThis(r1) | SuppressSuper | SuppressArguments
-  // Original saveSlot had flags 0x5a (r1=_root, r2=super, r3=n, r4=data).
-  // We need this→r1 to access this.mng.fc[n].
-  const newSsDF2 = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 6, 0x94, newSsBody);
+  // flags 0x29 (LSB=PreloadThis convention used by Ruffle):
+  //   bit0=PreloadThis(r1=this) + bit3=SuppressArgs + bit5=SuppressSuper
+  // We don't actually use r1 in the body — _root is fetched via GetVariable.
+  const newSsDF2 = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 6, 0x29, newSsBody);
 
   console.log(`  saveSlot: ${ssDF2.df2End - ssDF2.df2Start} → ${newSsDF2.length} bytes`);
 

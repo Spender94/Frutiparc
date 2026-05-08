@@ -238,8 +238,10 @@
   // We still provide socketProxy + domain so that calls to super.serviceConnect()
   // (triggered e.g. by SnakeClient before the STANDALONE branch) don't crash
   // when the game tries to set up its XMLSocket against the CBee server.
+  // Append cache-buster: ensures patched SWFs are fetched fresh after a deploy.
+  var loadUrl = swfPath + (swfPath.indexOf("?") >= 0 ? "&" : "?") + "v=" + Date.now();
   await player.load({
-    url: swfPath,
+    url: loadUrl,
     autoplay: "on",
     allowScriptAccess: true,
     allowNetworking: "all",
