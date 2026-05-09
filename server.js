@@ -20,6 +20,7 @@ const PUBLIC_HOST = (process.env.PUBLIC_HOST || '').trim();
 const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
 const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
 const VERBOSE_FRUSION_LOGS = process.env.VERBOSE_FRUSION_LOGS === '1';
+const VERBOSE_WS_LOGS = process.env.VERBOSE_WS_LOGS === '1';
 const FRUSION_CLIENT_SWF = (process.env.FRUSION_CLIENT_SWF || '').trim();
 const ALLOW_FRUSION_SERVER_SWF = process.env.ALLOW_FRUSION_SERVER_SWF === '1';
 
@@ -6372,7 +6373,9 @@ async function boot() {
     }
   }
 
-  console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${today}`);
+  if (VERBOSE_HTTP_LOGS) {
+    console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${today}`);
+  }
 }
 
 boot();
@@ -6525,8 +6528,10 @@ wssChat.on('connection', (ws) => {
 
   ws.on('message', (msg) => {
     const buf = Buffer.isBuffer(msg) ? msg : Buffer.from(msg);
-    const str = buf.toString('utf8');
-    console.log('[WS→TCP] WS→TCP:', str.replace(/\0/g, '').substring(0, 200));
+    if (VERBOSE_WS_LOGS) {
+      const str = buf.toString('utf8');
+      console.log('[WS→TCP] WS→TCP:', str.replace(/\0/g, '').substring(0, 200));
+    }
     if (buf.length > 0 && buf[buf.length - 1] === 0x00) {
       tcp.write(buf);
     } else {
@@ -6535,10 +6540,12 @@ wssChat.on('connection', (ws) => {
   });
 
   tcp.on('data', (data) => {
-    const str = data.toString('utf8');
-    const parts = str.split('\0').filter(s => s.trim().length > 0);
-    for (const part of parts) {
-      console.log('[WS→TCP] TCP→WS:', part.substring(0, 200));
+    if (VERBOSE_WS_LOGS) {
+      const str = data.toString('utf8');
+      const parts = str.split('\0').filter(s => s.trim().length > 0);
+      for (const part of parts) {
+        console.log('[WS→TCP] TCP→WS:', part.substring(0, 200));
+      }
     }
     ws.send(data);
   });
@@ -6579,8 +6586,10 @@ wssScore.on('connection', (ws) => {
 
   ws.on('message', (msg) => {
     const buf = Buffer.isBuffer(msg) ? msg : Buffer.from(msg);
-    const str = buf.toString('utf8');
-    console.log('[FSCORE-WS] WS→TCP:', str.replace(/\0/g, '').substring(0, 200));
+    if (VERBOSE_WS_LOGS) {
+      const str = buf.toString('utf8');
+      console.log('[FSCORE-WS] WS→TCP:', str.replace(/\0/g, '').substring(0, 200));
+    }
     if (buf.length > 0 && buf[buf.length - 1] === 0x00) {
       tcp.write(buf);
     } else {
@@ -6589,10 +6598,12 @@ wssScore.on('connection', (ws) => {
   });
 
   tcp.on('data', (data) => {
-    const str = data.toString('utf8');
-    const parts = str.split('\0').filter(s => s.trim().length > 0);
-    for (const part of parts) {
-      console.log('[FSCORE-WS] TCP→WS:', part.substring(0, 200));
+    if (VERBOSE_WS_LOGS) {
+      const str = data.toString('utf8');
+      const parts = str.split('\0').filter(s => s.trim().length > 0);
+      for (const part of parts) {
+        console.log('[FSCORE-WS] TCP→WS:', part.substring(0, 200));
+      }
     }
     ws.send(data);
   });

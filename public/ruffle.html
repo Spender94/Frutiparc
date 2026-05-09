@@ -28,8 +28,14 @@
                 typewriter: ["Verdana", "verdana"]
             },
             scale: "noScale",
-            salign: "TL"
+            salign: "TL",
+            logLevel: "warn"
         };
+
+        // Gate verbose legacy-bridge logs behind ?debug=1 to avoid CPU
+        // pressure from console I/O during normal gameplay.
+        window.__FRUSION_DEBUG = new URLSearchParams(window.location.search).get("debug") === "1";
+        window.__dlog = window.__FRUSION_DEBUG ? console.log.bind(console) : function () {};
     </script>
 
     <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
@@ -129,7 +135,7 @@
                             swfWidth: parseInt(parsedProps.sw) || 0,
                             swfHeight: parseInt(parsedProps.sh) || 0
                         };
-                        console.log("[FRUSION] Pending game:", JSON.stringify(window.__pendingGame));
+                        window.__dlog("[FRUSION] Pending game:", JSON.stringify(window.__pendingGame));
                     }
                 } catch (e) {
                     console.warn("[FRUSION] /do/ld parse error:", e);
@@ -145,7 +151,7 @@
                         : (input && input.url ? input.url : String(input));
 
                 const rewritten = rewriteLegacyUrl(rawUrl);
-                console.log("[FETCH]", rawUrl, "->", rewritten);
+                window.__dlog("[FETCH]", rawUrl, "->", rewritten);
 
                 var isDoLd = false;
                 try {
@@ -160,7 +166,7 @@
                     return doFetch.then(function (response) {
                         var cloned = response.clone();
                         cloned.text().then(function (text) {
-                            console.log("[FRUSION] /do/ld fetch response:", text);
+                            window.__dlog("[FRUSION] /do/ld fetch response:", text);
                             parseDoLdResponse(text);
                         });
                         return response;
@@ -185,7 +191,7 @@
                     isDoLd = u.pathname === "/do/ld";
                 } catch (e) {}
                 this.__frusionIsDoLd = isDoLd;
-                console.log("[FRUSION XHR]", url, "->", rewritten);
+                window.__dlog("[FRUSION XHR]", url, "->", rewritten);
                 return _origXHROpen.call(this, method, rewritten, arguments[2], arguments[3], arguments[4]);
             };
             XMLHttpRequest.prototype.send = function (body) {
@@ -193,7 +199,7 @@
                     var xhr = this;
                     xhr.addEventListener("load", function () {
                         if (xhr.status >= 200 && xhr.status < 300 && xhr.responseText) {
-                            console.log("[FRUSION] /do/ld XHR response:", xhr.responseText);
+                            window.__dlog("[FRUSION] /do/ld XHR response:", xhr.responseText);
                             parseDoLdResponse(xhr.responseText);
                         }
                     });
@@ -392,7 +398,7 @@
                     url: "/legacy/main.swf",
                     autoplay: "on",
                     allowScriptAccess: true,
-                    quality: "high",
+                    quality: "medium",
                     parameters: {
                         sid: sid,
                         domain: `${window.location.host}/./`,
