@@ -315,66 +315,10 @@ const CP = {
   $vs: newCpBase + 39,
 };
 
-// ── serviceConnect onLoad callback ──
-
-function buildOnLoadBody() {
-  const getClient = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP._client)), GET_MEMBER, storeReg(3), POP,
-  ]);
-
-  const checkSuccess = Buffer.concat([
-    actionPush(pushReg(2)), NOT,
-  ]);
-
-  const slot0Check = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
-    actionPush(pushUndef()), EQUALS2, NOT, NOT,
-  ]);
-
-  const slot0Load = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
-    actionPush(pushInt(1)),
-    actionPush(pushReg(3), pushCp(CP.fromJSON)),
-    CALL_METHOD, storeReg(4), POP,
-  ]);
-
-  const slot0NullCheck = Buffer.concat([
-    actionPush(pushReg(4), pushNull()), EQUALS2, NOT, NOT,
-  ]);
-
-  const slot0Assign = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
-    actionPush(pushInt(0)),
-    actionPush(pushReg(4)),
-    SET_MEMBER,
-  ]);
-
-  const callOnServiceConnect = Buffer.concat([
-    actionPush(pushInt(0)),
-    actionPush(pushReg(3), pushCp(CP.onServiceConnect)),
-    CALL_METHOD, POP,
-  ]);
-
-  const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
-    slot0Assign.length;
-  const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length;
-  const slot0NullSkipSize = slot0Assign.length;
-
-  return Buffer.concat([
-    getClient,
-    checkSuccess,
-    actionIf(afterSuccessCheck),
-    slot0Check,
-    actionIf(slot0SkipSize),
-    slot0Load,
-    slot0NullCheck,
-    actionIf(slot0NullSkipSize),
-    slot0Assign,
-    callOnServiceConnect,
-  ]);
-}
-
-const onLoadBodyBytes = buildOnLoadBody();
+// ── serviceConnect body ──
+// No server loading — SharedObject is the primary store (same as MiniWave).
+// After onServiceConnect (which triggers Cm.loadFruticard), sync slots[0]
+// from SharedObject so saveSlot serializes the correct card data.
 
 function buildServiceConnectBody() {
   const initSlots = Buffer.concat([
@@ -391,61 +335,48 @@ function buildServiceConnectBody() {
     SET_MEMBER,
   ]);
 
-  const createLv = Buffer.concat([
-    actionPush(pushInt(0), pushCp(CP.LoadVars)),
-    NEW_OBJECT,
-    storeReg(3),
-    POP,
+  const callOnServiceConnect = Buffer.concat([
+    actionPush(pushInt(0)),
+    actionPush(pushReg(1), pushCp(CP.onServiceConnect)),
+    CALL_METHOD, POP,
   ]);
 
-  const setGame = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.game), pushCp(CP.minipixiz)),
-    SET_MEMBER,
-  ]);
-
-  const setSid = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.sid)),
-    actionPush(pushStr('_root')),
-    GET_VARIABLE,
-    actionPush(pushCp(CP.sid)),
-    GET_MEMBER,
-    SET_MEMBER,
-  ]);
-
-  const createResult = Buffer.concat([
-    actionPush(pushInt(0), pushCp(CP.LoadVars)),
-    NEW_OBJECT,
-    storeReg(4),
-    POP,
-  ]);
-
-  const setClient = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP._client), pushReg(1)),
-    SET_MEMBER,
-  ]);
-
-  const onLoadFunc = buildDefineFunction2('', [[2, 'success']], 5, 0x29, onLoadBodyBytes);
-  const setOnLoad = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.onLoad)),
-    onLoadFunc,
-    SET_MEMBER,
-  ]);
-
-  const sendAndLoad = Buffer.concat([
-    actionPush(pushCp(CP.POST)),
-    actionPush(pushReg(4)),
-    actionPush(pushCp(CP.loadFrutiSlots)),
-    actionPush(pushInt(3)),
-    actionPush(pushReg(3), pushCp(CP.sendAndLoad)),
+  // r3 = SharedObject.getLocal("miniPixiz/card")
+  const getSO = Buffer.concat([
+    actionPush(pushStr('miniPixiz/card'), pushInt(1)),
+    actionPush(pushStr('SharedObject')), GET_VARIABLE,
+    actionPush(pushStr('getLocal')),
     CALL_METHOD,
-    POP,
+    storeReg(3), POP,
+  ]);
+
+  // r4 = r3.data.fruticard
+  const getFruticard = Buffer.concat([
+    actionPush(pushReg(3), pushStr('data')), GET_MEMBER,
+    actionPush(pushStr('fruticard')), GET_MEMBER,
+    storeReg(4), POP,
+  ]);
+
+  // Skip sync if fruticard is falsy (first run — SharedObject empty)
+  const checkFruticard = Buffer.concat([
+    actionPush(pushReg(4)), NOT,
+  ]);
+
+  // this.slots[0] = r4[0]  (Cm.card and SO.data.fruticard[0] are the same ref)
+  const syncSlot0 = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
+    actionPush(pushInt(0)),
+    actionPush(pushReg(4), pushInt(0)), GET_MEMBER,
+    SET_MEMBER,
   ]);
 
   return Buffer.concat([
     initSlots, initSlot0,
-    createLv, setGame, setSid,
-    createResult, setClient, setOnLoad,
-    sendAndLoad,
+    callOnServiceConnect,
+    getSO, getFruticard,
+    checkFruticard,
+    actionIf(syncSlot0.length),
+    syncSlot0,
   ]);
 }
 
@@ -647,7 +578,19 @@ function buildSaveSlotBody() {
     GETURL2,
   ]);
 
-  return Buffer.concat([getCard, buildStr, faerieLoop, afterLoop, getUrlCall]);
+  // Part 5: flush SharedObject for local persistence
+  const soFlush = Buffer.concat([
+    actionPush(pushStr('miniPixiz/card'), pushInt(1)),
+    actionPush(pushStr('SharedObject')), GET_VARIABLE,
+    actionPush(pushStr('getLocal')),
+    CALL_METHOD,
+    storeReg(4), POP,
+    actionPush(pushInt(0)),
+    actionPush(pushReg(4), pushStr('flush')),
+    CALL_METHOD, POP,
+  ]);
+
+  return Buffer.concat([getCard, buildStr, faerieLoop, afterLoop, getUrlCall, soFlush]);
 }
 
 const saveSlotBody = buildSaveSlotBody();
