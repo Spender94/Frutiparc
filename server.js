@@ -8255,6 +8255,12 @@ case 'createchannel': {
     channels[privateGroup].users.add(otherUser);
   }
 
+  // Auto-subscribe the requester so broadcastToChannel reaches them right
+  // away.  Without this, messages sent before the AS2 client manages to
+  // issue an explicit `join` are silently dropped, which produces the
+  // double-click-to-open and "empty chat" symptoms.
+  client.channels.add(privateGroup);
+
   // Accusé de réception de l’ouverture de la discussion privée
   sendToClient(
     socket,
@@ -8266,6 +8272,23 @@ case 'createchannel': {
     socket,
     `<${CMD.invitechat} u="${escapeXml(getDisplayName(otherUser))}" g="${privateGroup}" p="${privatePass}" />`
   );
+
+  // Push the channel userlist + trace so the freshly opened chat box has
+  // both participants visible immediately (mirrors what `join` sends for
+  // public channels).
+  {
+    const participantNames = [requester, otherUser];
+    let userXml = '';
+    let traceXml = '';
+    for (const u of participantNames) {
+      const ud = users[u] || {};
+      const present = getSocketsForUsername(u).length > 0 ? 1 : 0;
+      userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+      traceXml += `<u u="${escapeXml(getDisplayName(u))}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+    }
+    sendToClient(socket, `<${CMD.userlist} g="${privateGroup}">${userXml}</${CMD.userlist}>`);
+    sendToClient(socket, `<${CMD.trace}>${traceXml}</${CMD.trace}>`);
+  }
 
   // On pousse aussi les infos connues sur l’autre user
   const ud = users[otherUser] || createDefaultUser('');
@@ -8281,14 +8304,20 @@ case 'createchannel': {
     `<${CMD.trace} u="${escapeXml(getDisplayName(otherUser))}" p="${getSocketsForUsername(otherUser).length > 0 ? 1 : 0}" s="${getStatusCode(ud, otherUser)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, otherUser)}" />`
   );
 
-  // Si l'autre utilisateur est connecté, il reçoit aussi l'invitation.
+  // Si l'autre utilisateur est connecté, il reçoit aussi l'invitation et
+  // est lui aussi auto-inscrit côté serveur — sinon il ne recevrait pas
+  // les messages tant que son client AS2 n'a pas eu le temps d'envoyer
+  // son propre `join`.
   for (const targetSock of getSocketsForUsername(otherUser)) {
+    const targetClient = xmlSocketClients.get(targetSock);
+    if (targetClient) targetClient.channels.add(privateGroup);
     sendToClient(
       targetSock,
       `<${CMD.invitechat} u="${escapeXml(getDisplayName(requester))}" g="${privateGroup}" p="${privatePass}" />`
     );
   }
 
+  console.log(`[CBee]  Private channel "${privateGroup}" opened by ${requester} with ${otherUser}`);
   break;
 }
 
