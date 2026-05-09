@@ -3111,6 +3111,82 @@ app.post('/api/admin/users/:username/miniwave-pictos/grant-earned', adminAuth, a
   res.json({ granted: user.gameItems.length - before, total: user.gameItems.length });
 });
 
+// ── Admin: Inspect MiniPixiz slot data + earned pictos ──
+app.get('/api/admin/users/:username/minipixiz-pictos', adminAuth, async (req, res) => {
+  const username = req.params.username.toLowerCase();
+  const memUser = users[username];
+  let dbId = memUser ? memUser._dbId : null;
+  if (!dbId && process.env.DATABASE_URL) {
+    try { const row = await db.findUserByUsername(username); if (row) dbId = row.id; } catch {}
+  }
+  if (!dbId && !memUser) return res.status(404).json({ error: 'user not found' });
+
+  const owned = new Set(memUser && Array.isArray(memUser.gameItems) ? memUser.gameItems : (dbId ? await db.getUserGameItems(dbId).catch(() => []) : []));
+
+  let slotData = null;
+  if (memUser && memUser.frutiSlots && memUser.frutiSlots.minipixiz && memUser.frutiSlots.minipixiz['0']) {
+    slotData = memUser.frutiSlots.minipixiz['0'];
+  } else if (dbId) {
+    try { const slots = await db.getAllFrutiSlots(dbId); if (slots && slots.minipixiz && slots.minipixiz['0']) slotData = slots.minipixiz['0']; } catch {}
+  }
+
+  let parsed = null;
+  if (slotData) {
+    try { parsed = JSON.parse(slotData); } catch {}
+  }
+
+  const allPictos = Object.entries(GAME_ITEM_INFO)
+    .filter(([, info]) => info.game === 'MiniPixiz')
+    .map(([id, info]) => ({ id, name: info.name, owned: owned.has(id) }));
+
+  res.json({
+    username,
+    hasSlotData: !!slotData,
+    slotDataLength: slotData ? slotData.length : 0,
+    slotDataPreview: slotData ? slotData.substring(0, 500) : null,
+    parsed,
+    pictosOwnedCount: allPictos.filter(p => p.owned).length,
+    pictosTotal: allPictos.length,
+    pictos: allPictos,
+  });
+});
+
+app.post('/api/admin/users/:username/minipixiz-pictos/grant-earned', adminAuth, async (req, res) => {
+  const username = req.params.username.toLowerCase();
+  const memUser = users[username];
+  let dbId = memUser ? memUser._dbId : null;
+  if (!dbId && process.env.DATABASE_URL) {
+    try { const row = await db.findUserByUsername(username); if (row) dbId = row.id; } catch {}
+  }
+  if (!dbId && !memUser) return res.status(404).json({ error: 'user not found' });
+
+  const user = memUser || { gameItems: dbId ? await db.getUserGameItems(dbId).catch(() => []) : [], _dbId: dbId };
+  if (!Array.isArray(user.gameItems)) user.gameItems = [];
+  const before = user.gameItems.length;
+
+  let slotData = null;
+  if (memUser && memUser.frutiSlots && memUser.frutiSlots.minipixiz && memUser.frutiSlots.minipixiz['0']) {
+    slotData = memUser.frutiSlots.minipixiz['0'];
+  } else if (dbId) {
+    try { const slots = await db.getAllFrutiSlots(dbId); if (slots && slots.minipixiz && slots.minipixiz['0']) slotData = slots.minipixiz['0']; } catch {}
+  }
+  if (!slotData) return res.json({ granted: 0, message: 'no minipixiz slot data found' });
+
+  try {
+    extractGameItemsFromSlot(username, 'minipixiz', slotData, { silent: false, userOverride: memUser ? undefined : user });
+  } catch (e) {
+    return res.status(500).json({ error: 'extraction failed: ' + e.message });
+  }
+
+  if (!memUser && user.gameItems.length > before) {
+    for (const item of user.gameItems) {
+      if (dbId) await db.addGameItem(dbId, item).catch(() => {});
+    }
+  }
+
+  res.json({ granted: user.gameItems.length - before, total: user.gameItems.length });
+});
+
 // ── Admin: Shop pack management ──
 app.get('/api/admin/shop', adminAuth, (req, res) => {
   res.json(SHOP_PACKS);
