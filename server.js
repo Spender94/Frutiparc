@@ -56,12 +56,17 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // Ruffle's LoadVars.sendAndLoad may send POST bodies as text/plain or
-// with no Content-Type at all. Capture any unparsed body as raw text.
-app.use(express.text({ type: '*/*' }));
+// with no Content-Type at all. Capture any unparsed body as raw text,
+// but ONLY when the previous parsers didn't already handle it.
+app.use(express.text({
+  type: (req) => !req.body || (typeof req.body === 'object' && Object.keys(req.body).length === 0)
+}));
 app.use((req, res, next) => {
   if (typeof req.body === 'string' && req.body.includes('=')) {
-    const parsed = Object.fromEntries(new URLSearchParams(req.body));
-    req.body = parsed;
+    try {
+      const parsed = Object.fromEntries(new URLSearchParams(req.body));
+      req.body = parsed;
+    } catch (e) {}
   }
   next();
 });
