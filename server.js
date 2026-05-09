@@ -2687,6 +2687,78 @@ app.delete('/api/admin/users/:username', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Bulk-delete users created on a given Paris-local date.
+// Query params:
+//   date     YYYY-MM-DD (required)
+//   exclude  comma-separated usernames to keep (case-insensitive, default empty)
+// GET previews; DELETE actually removes.  CASCADE drops dependent rows.
+async function selectUsersByParisDate(date, excludeList) {
+  const { rows } = await db.pool.query(
+    `SELECT id, username, created_at
+     FROM users
+     WHERE (created_at AT TIME ZONE 'Europe/Paris')::date = $1
+       AND LOWER(username) <> ALL($2)
+     ORDER BY created_at ASC`,
+    [date, excludeList]
+  );
+  return rows;
+}
+
+app.get('/api/admin/users-by-date', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  const date = String(req.query.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+  }
+  const exclude = String(req.query.exclude || '')
+    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  try {
+    const rows = await selectUsersByParisDate(date, exclude);
+    res.json({
+      ok: true,
+      date,
+      exclude,
+      count: rows.length,
+      users: rows.map((r) => ({
+        id: r.id,
+        username: r.username,
+        created_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+      })),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/users-by-date', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  const date = String(req.query.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+  }
+  const exclude = String(req.query.exclude || '')
+    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  try {
+    const rows = await selectUsersByParisDate(date, exclude);
+    const usernames = rows.map((r) => r.username);
+    const ids = rows.map((r) => r.id);
+    if (ids.length === 0) {
+      return res.json({ ok: true, deleted: 0, usernames: [] });
+    }
+    const r = await db.pool.query('DELETE FROM users WHERE id = ANY($1)', [ids]);
+    // Mirror cleanup in the in-memory caches
+    for (const u of usernames) {
+      if (users[u]) delete users[u];
+      for (const [sid, s] of Object.entries(sessions)) {
+        if (s.user === u) delete sessions[sid];
+      }
+      if (scoresData.users[u]) delete scoresData.users[u];
+      delete bouilleCache[u];
+    }
+    saveScoresFile();
+    console.log(`[ADMIN] Bulk-deleted ${r.rowCount} users for date ${date}: ${usernames.join(', ')}`);
+    res.json({ ok: true, deleted: r.rowCount, usernames });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
   const u = req.params.username;
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
