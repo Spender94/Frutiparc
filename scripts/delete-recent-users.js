@@ -25,7 +25,7 @@ async function main() {
   const { rows: targets } = await pool.query(
     `SELECT id, username, created_at
      FROM users
-     WHERE created_at::date = $1
+     WHERE (created_at AT TIME ZONE 'Europe/Paris')::date = $1
        AND LOWER(username) != ALL($2)
      ORDER BY created_at ASC`,
     [TARGET_DATE, EXCLUDE]
@@ -57,7 +57,7 @@ async function main() {
   console.log(`\nDeleting ${targets.length} users (CASCADE will remove related rows)…`);
   const { rowCount } = await pool.query(
     `DELETE FROM users
-     WHERE created_at::date = $1
+     WHERE (created_at AT TIME ZONE 'Europe/Paris')::date = $1
        AND LOWER(username) != ALL($2)`,
     [TARGET_DATE, EXCLUDE]
   );
