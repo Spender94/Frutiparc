@@ -132,9 +132,11 @@
     };
   }
 
-  // ExternalInterface callback for patched game SWFs (e.g. MiniWave STANDALONE mode).
-  // The game calls ExternalInterface.call("saveSlotData", game, slotId, data)
-  // to persist slot data via HTTP instead of the Frusion XMLSocket wire protocol.
+  // ExternalInterface callback: JSON parser for game SWFs that call client.fromJSON().
+  window.parseJSON = function(str) {
+    try { return JSON.parse(str); } catch(e) { console.log('[FRUSION] parseJSON error:', e); return null; }
+  };
+
   window.saveSlotData = function(game, slotId, data) {
     console.log('[FRUSION] saveSlotData CALLED game=' + game + ' slot=' + slotId + ' dataType=' + typeof data);
     var sid = params.get('sid') || '';
