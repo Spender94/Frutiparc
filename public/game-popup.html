@@ -188,6 +188,13 @@
   // Derive game's internal SWF name for slot persistence (e.g., "miniwave" from ".../miniwave.swf")
   var gameSwfName = swfPath.substring(swfPath.lastIndexOf("/") + 1).replace(/\.swf$/, "");
 
+  // ExternalInterface callback: JSON parser for game SWFs that call client.fromJSON().
+  // motionball.swf (mb2) is patched to call ExternalInterface.call("parseJSON", str)
+  // via mb2.Client.prototype.fromJSON, so the menu can read slot0 ($challenge/$classic/...).
+  window.parseJSON = function(str) {
+    try { return JSON.parse(str); } catch(e) { console.log("[Game] parseJSON error:", e); return null; }
+  };
+
   // ExternalInterface callback for SWF save — receives AS2 objects auto-serialized to JS
   window.saveSlotData = function(game, slotId, data) {
     console.log("[Game] saveSlotData CALLED game=" + game + " slot=" + slotId + " dataType=" + typeof data);
