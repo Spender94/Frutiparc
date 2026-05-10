@@ -4200,7 +4200,7 @@ app.post('/api/saveFrutiSlot', (req, res) => {
 // ENDPOINT: /api/loadFrutiSlots — Load all FrutiCard slots for a game.
 // Returns LoadVars format: slot0=<json>&slot1=<json>&slot2=<json>
 // ─────────────────────────────────────────────
-app.post('/api/loadFrutiSlots', async (req, res) => {
+app.all('/api/loadFrutiSlots', async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
   const game = String(params.game || '');
@@ -4243,6 +4243,40 @@ app.post('/api/loadFrutiSlots', async (req, res) => {
       }
     }
 
+    // MB2 (MotionBall 2): slot0 = game card (modes, scores, items),
+    // slot1 = preferences. Defaults match mb2/Card.as constructor.
+    if (game === 'mb2') {
+      if (!users[username].frutiSlots) users[username].frutiSlots = {};
+      if (!users[username].frutiSlots[game]) users[username].frutiSlots[game] = {};
+      const gs = users[username].frutiSlots[game];
+      if (gs['0'] === undefined) {
+        const cpuTimes = (t1, t2, t3) => [{"$t": t1, "$c": true}, {"$t": t2, "$c": true}, {"$t": t3, "$c": true}];
+        const time = (m, s) => (m * 60 + s) * 100;
+        gs['0'] = JSON.stringify({
+          "$items": [],
+          "$challenge": true,
+          "$classic": true,
+          "$dungeons": [true, true, true, true],
+          "$dungeons_done": [],
+          "$courses": [true],
+          "$classic_score": 0,
+          "$dtimes": [],
+          "$records": [
+            cpuTimes(time(3,0),  time(3,40), time(4,20)),
+            cpuTimes(time(4,0),  time(4,40), time(5,20)),
+            cpuTimes(time(4,30), time(5,15), time(6,0)),
+            cpuTimes(time(2,30), time(3,0),  time(3,30)),
+            cpuTimes(time(3,0),  time(3,30), time(4,0)),
+            cpuTimes(time(4,0),  time(4,40), time(5,20)),
+            cpuTimes(time(4,0),  time(4,40), time(5,20))
+          ]
+        });
+      }
+      if (gs['1'] === undefined) {
+        gs['1'] = JSON.stringify({"$music": true, "$sounds": true});
+      }
+    }
+
     if (users[username].frutiSlots && users[username].frutiSlots[game]) {
       const slots = users[username].frutiSlots[game];
       // Extract pictos from slot 0 on load (catches items from before this feature existed)
@@ -4256,6 +4290,29 @@ app.post('/api/loadFrutiSlots', async (req, res) => {
       }
     }
   }
+  // Fallback: even without a logged-in user, MB2 needs valid slot data so
+  // the menu enables all game modes (Challenge, Course, Adventure, Classic).
+  if (game === 'mb2' && !response.includes('slot0=')) {
+    const cpuTimes = (t1, t2, t3) => [{"$t": t1, "$c": true}, {"$t": t2, "$c": true}, {"$t": t3, "$c": true}];
+    const time = (m, s) => (m * 60 + s) * 100;
+    const defaultCard = JSON.stringify({
+      "$items": [], "$challenge": true, "$classic": true,
+      "$dungeons": [true, true, true, true], "$dungeons_done": [],
+      "$courses": [true], "$classic_score": 0, "$dtimes": [],
+      "$records": [
+        cpuTimes(time(3,0), time(3,40), time(4,20)),
+        cpuTimes(time(4,0), time(4,40), time(5,20)),
+        cpuTimes(time(4,30), time(5,15), time(6,0)),
+        cpuTimes(time(2,30), time(3,0), time(3,30)),
+        cpuTimes(time(3,0), time(3,30), time(4,0)),
+        cpuTimes(time(4,0), time(4,40), time(5,20)),
+        cpuTimes(time(4,0), time(4,40), time(5,20))
+      ]
+    });
+    const defaultPrefs = JSON.stringify({"$music": true, "$sounds": true});
+    response += `&slot0=${encodeURIComponent(defaultCard)}&slot1=${encodeURIComponent(defaultPrefs)}`;
+  }
+
   // Log the slot keys + first chars of each value so we can see what the
   // game has saved (or hasn't) when diagnosing missing-character issues.
   const slotKeys = (username && users[username] && users[username].frutiSlots && users[username].frutiSlots[game])
