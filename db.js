@@ -63,6 +63,7 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS fruti_sign INTEGER DEFAULT -1;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS fruti_sign_b INTEGER DEFAULT -1;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS frutijob TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS is_animator BOOLEAN DEFAULT false;
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
 

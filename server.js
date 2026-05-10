@@ -1300,6 +1300,7 @@ function createDefaultUser(pass) {
     region: 'IDF',
     prefs: '',
     isModerator: false,
+    isAnimator: false,
     needsBouille: true, // Force editbouille on first login
     kikoozLog: [],      // Entries displayed in box.KikoozLog (/ft/log)
     userLog: [],        // Entries displayed in "Mon historique" (/do/onident <ul>)
@@ -1338,6 +1339,7 @@ function dbUserToMemory(row) {
     region: row.region || 'IDF',
     prefs: row.prefs || '',
     isModerator: row.is_moderator || false,
+    isAnimator: row.is_animator || false,
     needsBouille: row.needs_bouille !== false,
     firstName: row.first_name || '',
     lastName: row.last_name || '',
@@ -2772,6 +2774,7 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     if (body.kikooz !== undefined) fields.kikooz = Number(body.kikooz);
     if (body.password !== undefined) fields.password = body.password;
     if (body.is_moderator !== undefined) fields.is_moderator = !!body.is_moderator;
+    if (body.is_animator !== undefined) fields.is_animator = !!body.is_animator;
     if (body.display_name !== undefined) {
       const dn = String(body.display_name).trim();
       if (!isValidUsername(dn)) {
@@ -2801,6 +2804,7 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
       if (users[u]) {
         Object.assign(users[u], fields);
         if (fields.is_moderator !== undefined) users[u].isModerator = fields.is_moderator;
+        if (fields.is_animator !== undefined) users[u].isAnimator = fields.is_animator;
         if (fields.display_name !== undefined) users[u].displayName = fields.display_name;
         if (fields.fruti_sign !== undefined) users[u].frutiSign = fields.fruti_sign;
         if (fields.fruti_sign_b !== undefined) users[u].frutiSignB = fields.fruti_sign_b;
@@ -7081,6 +7085,20 @@ function isModerator(username) {
   return !!(username && users[username] && users[username].isModerator);
 }
 
+function isAnimator(username) {
+  return !!(username && users[username] && users[username].isAnimator);
+}
+
+const ANIM_CHANNEL = 'bienvenue';
+
+// Per-channel quiz state (ephemeral — lost on restart).
+// { channelName: { question, points: Map<username, number>, active } }
+const quizState = {};
+
+// Per-client blue-bold toggle for animators.
+// Set<socketKey> — we store the username to look up.
+const blueModeUsers = new Set();
+
 function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   const channel = channels[channelName];
   if (!channel) return false;
@@ -7870,7 +7888,10 @@ case 'send': {
       sendToClient(socket, `<${CMD.error} k="220" />`);
       break;
     }
-    if (isModerator(client.username) && text.startsWith('/kick ')) {
+    const canModHere = isModerator(client.username) || (isAnimator(client.username) && g === ANIM_CHANNEL);
+    const canAnimHere = isAnimator(client.username) && g === ANIM_CHANNEL;
+
+    if (canModHere && text.startsWith('/kick ')) {
       const targetUser = resolveKnownUsername(text.substring(6).trim());
       if (targetUser) kickUserFromChannel(g, targetUser, client.username, 'kick');
       break;
@@ -7886,6 +7907,84 @@ case 'send': {
         }
         addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
       }
+      break;
+    }
+
+    // ── Animator blue mode: /blueon, /blueoff ──
+    if (/^\/blueon$/i.test(text)) {
+      if (canAnimHere || isModerator(client.username)) {
+        blueModeUsers.add(client.username);
+        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Mode bleu activé.</${CMD.send}>`);
+      }
+      break;
+    }
+    if (/^\/blueoff$/i.test(text)) {
+      blueModeUsers.delete(client.username);
+      sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Mode bleu désactivé.</${CMD.send}>`);
+      break;
+    }
+
+    // ── Quiz commands (animator on anim channel, or moderator anywhere) ──
+    if ((canAnimHere || isModerator(client.username)) && /^\/initpoint/i.test(text)) {
+      const question = text.replace(/^\/initpoint\s*/i, '').trim();
+      quizState[g] = { question: question || '', points: new Map(), active: true };
+      const announce = question
+        ? `<![CDATA[<b><font color="#0066CC">Quiz lancé par ${escapeXml(getDisplayName(client.username))} : ${escapeXml(question)}</font></b>]]>`
+        : `<![CDATA[<b><font color="#0066CC">Quiz lancé par ${escapeXml(getDisplayName(client.username))} !</font></b>]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${announce}</${CMD.send}>`);
+      break;
+    }
+
+    if ((canAnimHere || isModerator(client.username)) && /^\/point\s/i.test(text)) {
+      const args = text.replace(/^\/point\s+/i, '').trim().split(/\s+/);
+      const target = resolveKnownUsername(args[0]);
+      const amount = Math.max(1, Math.min(parseInt(args[1]) || 1, 100));
+      if (!target) {
+        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Utilisateur introuvable.</${CMD.send}>`);
+        break;
+      }
+      if (!quizState[g]) quizState[g] = { question: '', points: new Map(), active: true };
+      const cur = quizState[g].points.get(target) || 0;
+      quizState[g].points.set(target, cur + amount);
+      const msg2 = `<![CDATA[<b><font color="#0066CC">+${amount} point${amount > 1 ? 's' : ''} pour ${escapeXml(getDisplayName(target))} (total : ${cur + amount})</font></b>]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
+      break;
+    }
+
+    if ((canAnimHere || isModerator(client.username)) && /^\/removepoint\s/i.test(text)) {
+      const args = text.replace(/^\/removepoint\s+/i, '').trim().split(/\s+/);
+      const target = resolveKnownUsername(args[0]);
+      const amount = Math.max(1, Math.min(parseInt(args[1]) || 1, 100));
+      if (!target || !quizState[g]) { break; }
+      const cur = quizState[g].points.get(target) || 0;
+      quizState[g].points.set(target, Math.max(0, cur - amount));
+      const msg2 = `<![CDATA[<b><font color="#0066CC">-${amount} point${amount > 1 ? 's' : ''} pour ${escapeXml(getDisplayName(target))} (total : ${Math.max(0, cur - amount)})</font></b>]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
+      break;
+    }
+
+    if ((canAnimHere || isModerator(client.username)) && /^\/(showpoint|classement)$/i.test(text)) {
+      const qs = quizState[g];
+      if (!qs || qs.points.size === 0) {
+        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Aucun point distribué.</${CMD.send}>`);
+        break;
+      }
+      const sorted = [...qs.points.entries()].sort((a, b) => b[1] - a[1]);
+      const lines = sorted.map(([u, pts], i) => `${i + 1}. ${getDisplayName(u)} — ${pts} pt${pts > 1 ? 's' : ''}`);
+      const header = qs.question ? `Classement — ${escapeXml(qs.question)}` : 'Classement';
+      const body = `<![CDATA[<b><font color="#0066CC">${header}</font></b><br/>${lines.map(l => escapeXml(l)).join('<br/>')}]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
+      break;
+    }
+
+    if ((canAnimHere || isModerator(client.username)) && /^\/(resetpoint|stoppoint|endpoint)$/i.test(text)) {
+      if (quizState[g] && quizState[g].points.size > 0) {
+        const sorted = [...quizState[g].points.entries()].sort((a, b) => b[1] - a[1]);
+        const lines = sorted.map(([u, pts], i) => `${i + 1}. ${getDisplayName(u)} — ${pts} pt${pts > 1 ? 's' : ''}`);
+        const body = `<![CDATA[<b><font color="#0066CC">Fin du quiz ! Classement final :</font></b><br/>${lines.map(l => escapeXml(l)).join('<br/>')}]]>`;
+        broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
+      }
+      delete quizState[g];
       break;
     }
 
@@ -7974,6 +8073,16 @@ case 'send': {
         broadcastToChannel(g, giftXml);
         break;
       }
+    }
+
+    // Animator/moderator blue mode — wraps the whole line in blue bold
+    if (blueModeUsers.has(client.username) && (isAnimator(client.username) || isModerator(client.username))) {
+      const blueBody = `<![CDATA[<b><font color="#0066CC">${escapeXml(getDisplayName(client.username))}: ${safeText}</font></b>]]>`;
+      broadcastToChannel(g,
+        `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${blueBody}</${CMD.send}>`
+      );
+      trackXpAction(client.username, 'chatMsg');
+      break;
     }
 
     const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
