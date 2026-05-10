@@ -7095,105 +7095,126 @@ const ANIM_CHANNEL = 'bienvenue';
 // Excludes grapiz and bandas (not implemented yet).
 const FCARD_GAMES = ['bkiwi', 'snake3', 'swapou2', 'kaluga', 'mb2', 'miniwave', 'jamajama', 'minipixiz'];
 
-// Build default slot 0 data for a game when the user hasn't saved one yet.
-// Populates with real score data when available.
-function buildDefaultSlot0(username, game) {
+// Patch slot 0 data: merge existing saved data with defaults to fill missing
+// fields, and inject real score data. This prevents "undefined" in card display.
+function patchSlot0(username, game, existingData) {
   const ud = users[username] || {};
   const scores = scoresData.users[username] || {};
+  let saved = {};
+  if (existingData) {
+    try { saved = JSON.parse(existingData); } catch { saved = {}; }
+    if (!saved || typeof saved !== 'object') saved = {};
+  }
+
   switch (game) {
     case 'bkiwi': {
-      const ts = {};
+      if (saved.$ws === undefined) saved.$ws = false;
+      if (saved.$wss === undefined) saved.$wss = false;
+      if (saved.$wc === undefined) saved.$wc = false;
+      if (saved.$wcs === undefined) saved.$wcs = false;
+      if (!Array.isArray(saved.$ac)) saved.$ac = [false, false, false, false, false];
+      if (!saved.$ts || typeof saved.$ts !== 'object') saved.$ts = {};
       for (let t = 0; t < 6; t++) {
+        const key = `$t${t}`;
+        if (!saved.$ts[key] || typeof saved.$ts[key] !== 'object') saved.$ts[key] = {};
         const rkC = scores[`bkiwi_track${t}_classic`];
         const rkL = scores[`bkiwi_track${t}_challenge`];
-        ts[`$t${t}`] = {
-          $bc: rkC ? rkC.score : 0,
-          $bl: rkL ? rkL.score : 0,
-        };
+        if (saved.$ts[key].$bc === undefined) saved.$ts[key].$bc = rkC ? rkC.score : 0;
+        if (saved.$ts[key].$bl === undefined) saved.$ts[key].$bl = rkL ? rkL.score : 0;
       }
-      return JSON.stringify({
-        $ws: false, $wss: false, $wc: false, $wcs: false,
-        $ac: [false, false, false, false, false],
-        $ts: ts,
-      });
+      return JSON.stringify(saved);
     }
     case 'snake3': {
-      const gi = Array.isArray(ud.gameItems) ? ud.gameItems : [];
-      const fruits = gi.filter(it => /^Fruit \d+$/.test(it)).map(it => Number(it.replace('Fruit ', '')));
-      const rkC = scores.snake3_classic;
-      return JSON.stringify({
-        $fruits: fruits,
-        $record: rkC ? rkC.score : 0,
-      });
+      if (!Array.isArray(saved.$fruits)) {
+        const gi = Array.isArray(ud.gameItems) ? ud.gameItems : [];
+        saved.$fruits = gi.filter(it => /^Fruit \d+$/.test(it)).map(it => Number(it.replace('Fruit ', '')));
+      }
+      if (saved.$record === undefined || saved.$record === null) {
+        const rkC = scores.snake3_classic;
+        saved.$record = rkC ? rkC.score : 0;
+      }
+      return JSON.stringify(saved);
     }
     case 'swapou2': {
-      const rkC = scores.swapou2_classic;
-      return JSON.stringify({
-        $chars: [true, true, false, false, false, false, false, false, false],
-        $record: rkC ? rkC.score : 0,
-        $classic_record: 0,
-        $swap: 0,
-        $items: [],
-        $combos: [],
-      });
+      if (!Array.isArray(saved.$chars)) saved.$chars = [true, true, false, false, false, false, false, false, false];
+      if (saved.$record === undefined || saved.$record === null) {
+        const rkC = scores.swapou2_classic;
+        saved.$record = rkC ? rkC.score : 0;
+      }
+      if (saved.$classic_record === undefined) saved.$classic_record = 0;
+      if (saved.$swap === undefined) saved.$swap = 0;
+      if (!Array.isArray(saved.$items)) saved.$items = [];
+      if (!Array.isArray(saved.$combos)) saved.$combos = [];
+      return JSON.stringify(saved);
     }
     case 'kaluga': {
-      return JSON.stringify({
-        $mode: [null, null, [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-        $tz: {},
-      });
+      if (!Array.isArray(saved.$mode)) saved.$mode = [null, null, [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+      if (!saved.$tz || typeof saved.$tz !== 'object') saved.$tz = {};
+      return JSON.stringify(saved);
     }
     case 'mb2': {
-      const rkC = scores.mb2_classic;
-      return JSON.stringify({
-        $items: [],
-        $challenge: true,
-        $classic: true,
-        $dungeons: [true, true, true, true],
-        $dungeons_done: [],
-        $courses: [true],
-        $classic_score: rkC ? rkC.score : 0,
-        $dtimes: [],
-        $records: [],
-      });
+      if (!Array.isArray(saved.$items)) saved.$items = [];
+      if (saved.$challenge === undefined) saved.$challenge = true;
+      if (saved.$classic === undefined) saved.$classic = true;
+      if (!Array.isArray(saved.$dungeons)) saved.$dungeons = [true, true, true, true];
+      if (!Array.isArray(saved.$dungeons_done)) saved.$dungeons_done = [];
+      if (!Array.isArray(saved.$courses)) saved.$courses = [true];
+      if (saved.$classic_score === undefined || saved.$classic_score === null) {
+        const rkC = scores.mb2_classic;
+        saved.$classic_score = rkC ? rkC.score : 0;
+      }
+      if (!Array.isArray(saved.$dtimes)) saved.$dtimes = [];
+      if (!Array.isArray(saved.$records)) saved.$records = [];
+      return JSON.stringify(saved);
     }
     case 'miniwave':
     case 'miniwave2': {
-      return JSON.stringify({
-        $vs: 0,
-        $ship: [1, 0, 0, 0, 0, 0],
-        $mode: [1, [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0], 1, 1],
-        $arcade: { $bestScore: 0, $bestLevel: 0 },
-        $letter: 0,
-        $survival: 0,
-        $time: 0,
-        $bonus: [0, 0, 0, 0, 0, 0, 0, 0],
-        $cons: { $main: 0, $bonus: [0, 0, 0, 0, 0, 0, 0, 0], $letter: 0 },
-        $badsKill: [],
-        $saucerKill: 0,
-        $credit: 0,
-        $shop: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        $lvl: 0,
-        $stats: { $play: { $main: 0, $mission: 0, $survival: 0, $letter: 0 }, $buy: [] },
-      });
+      if (saved.$vs === undefined) saved.$vs = 0;
+      if (!Array.isArray(saved.$ship)) saved.$ship = [1, 0, 0, 0, 0, 0];
+      if (!Array.isArray(saved.$mode)) saved.$mode = [1, [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0], 1, 1];
+      if (!saved.$arcade || typeof saved.$arcade !== 'object') saved.$arcade = { $bestScore: 0, $bestLevel: 0 };
+      if (saved.$arcade.$bestScore === undefined) saved.$arcade.$bestScore = 0;
+      if (saved.$arcade.$bestLevel === undefined) saved.$arcade.$bestLevel = 0;
+      if (saved.$letter === undefined) saved.$letter = 0;
+      if (saved.$survival === undefined) saved.$survival = 0;
+      if (saved.$time === undefined) saved.$time = 0;
+      if (!Array.isArray(saved.$bonus)) saved.$bonus = [0, 0, 0, 0, 0, 0, 0, 0];
+      if (!saved.$cons || typeof saved.$cons !== 'object') saved.$cons = { $main: 0, $bonus: [0, 0, 0, 0, 0, 0, 0, 0], $letter: 0 };
+      if (saved.$cons.$main === undefined) saved.$cons.$main = 0;
+      if (!Array.isArray(saved.$cons.$bonus)) saved.$cons.$bonus = [0, 0, 0, 0, 0, 0, 0, 0];
+      if (saved.$cons.$letter === undefined) saved.$cons.$letter = 0;
+      if (!Array.isArray(saved.$badsKill)) saved.$badsKill = [];
+      if (saved.$saucerKill === undefined) saved.$saucerKill = 0;
+      if (saved.$credit === undefined) saved.$credit = 0;
+      if (!Array.isArray(saved.$shop)) saved.$shop = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+      if (saved.$lvl === undefined) saved.$lvl = 0;
+      if (!saved.$stats || typeof saved.$stats !== 'object') saved.$stats = { $play: { $main: 0, $mission: 0, $survival: 0, $letter: 0 }, $buy: [] };
+      return JSON.stringify(saved);
     }
     case 'jamajama': {
-      const rkC = scores.jamajama_classic;
-      return JSON.stringify({
-        $best: rkC ? rkC.score : 0,
-        $plays: ud.jamaPlayCount || 0,
-      });
+      if (saved.$best === undefined || saved.$best === null) {
+        const rkC = scores.jamajama_classic;
+        saved.$best = rkC ? rkC.score : 0;
+      }
+      if (saved.$plays === undefined) saved.$plays = ud.jamaPlayCount || 0;
+      return JSON.stringify(saved);
     }
     case 'minipixiz':
     case 'minitroll': {
-      return JSON.stringify({
-        $stat: { $item: [], $eat: [], $kill: [], $game: [] },
-        $diam: 0, $key: 0, $star: 0, $bag: 0,
-        $faerie: [],
-      });
+      if (!saved.$stat || typeof saved.$stat !== 'object') saved.$stat = {};
+      if (!Array.isArray(saved.$stat.$item)) saved.$stat.$item = [];
+      if (!Array.isArray(saved.$stat.$eat)) saved.$stat.$eat = [];
+      if (!Array.isArray(saved.$stat.$kill)) saved.$stat.$kill = [];
+      if (!Array.isArray(saved.$stat.$game)) saved.$stat.$game = [];
+      if (saved.$diam === undefined) saved.$diam = 0;
+      if (saved.$key === undefined) saved.$key = 0;
+      if (saved.$star === undefined) saved.$star = 0;
+      if (saved.$bag === undefined) saved.$bag = 0;
+      if (!Array.isArray(saved.$faerie)) saved.$faerie = [];
+      return JSON.stringify(saved);
     }
     default:
-      return JSON.stringify({});
+      return existingData || JSON.stringify({});
   }
 }
 
@@ -8878,12 +8899,8 @@ case 'createchannel': {
             }
           } catch (e) { /* ignore */ }
         }
-        if (!slotData) {
-          slotData = buildDefaultSlot0(targetUser, game);
-        }
-      } else {
-        slotData = buildDefaultSlot0(targetUser, game);
       }
+      slotData = patchSlot0(targetUser, game, slotData);
       sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${uAttr}>${slotData}</${msg.tag}>`);
       break;
     }
