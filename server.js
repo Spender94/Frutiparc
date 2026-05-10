@@ -7095,60 +7095,40 @@ const ANIM_CHANNEL = 'bienvenue';
 // Excludes grapiz and bandas (not implemented yet).
 const FCARD_GAMES = ['bkiwi', 'snake3', 'swapou2', 'kaluga', 'mb2', 'miniwave', 'jamajama', 'minipixiz'];
 
-// Convert a JSON string (or JS value) to Haxe serialization format.
-// MTSerialization.unserialize in the AS2 profile viewer expects this format,
-// NOT standard JSON.
-function jsonToHaxeSerial(jsonStr) {
+// Convert a JSON string (or JS value) to Motion-Twin serialization format (2004).
+// MTSerialization.unserialize in the AS2 profile viewer expects this format.
+// Format: N<num>, S<str>, B0/B1, U, [elem;elem;], {key:val;key:val;}
+function jsonToMTSerial(jsonStr) {
   let obj;
   if (typeof jsonStr === 'string') {
     try { obj = JSON.parse(jsonStr); } catch { return jsonStr; }
   } else {
     obj = jsonStr;
   }
-  const stringCache = [];
-
-  function serString(s) {
-    const idx = stringCache.indexOf(s);
-    if (idx >= 0) return `R${idx}`;
-    stringCache.push(s);
-    return `y${s.length}:${s}`;
-  }
 
   function ser(val) {
-    if (val === null || val === undefined) return 'n';
-    if (val === true) return 't';
-    if (val === false) return 'f';
-    if (typeof val === 'number') {
-      if (Number.isInteger(val)) return val === 0 ? 'z' : `i${val}`;
-      if (val !== val) return 'k'; // NaN
-      return `d${val}`;
-    }
-    if (typeof val === 'string') return serString(val);
+    if (val === null || val === undefined) return 'U';
+    if (val === true) return 'B1';
+    if (val === false) return 'B0';
+    if (typeof val === 'number') return `N${val}`;
+    if (typeof val === 'string') return `S${val}`;
     if (Array.isArray(val)) {
-      let r = 'a';
-      let nullCount = 0;
+      let r = '[';
       for (let i = 0; i < val.length; i++) {
-        if (val[i] === null || val[i] === undefined) {
-          nullCount++;
-        } else {
-          if (nullCount > 0) { r += `u${nullCount}`; nullCount = 0; }
-          r += ser(val[i]);
-        }
+        r += ser(val[i]) + ';';
       }
-      if (nullCount > 0) r += `u${nullCount}`;
-      r += 'h';
+      r += ']';
       return r;
     }
     if (typeof val === 'object') {
-      let r = 'o';
+      let r = '{';
       for (const key of Object.keys(val)) {
-        r += serString(key);
-        r += ser(val[key]);
+        r += key + ':' + ser(val[key]) + ';';
       }
-      r += 'g';
+      r += '}';
       return r;
     }
-    return 'n';
+    return 'U';
   }
 
   return ser(obj);
@@ -8964,8 +8944,9 @@ case 'createchannel': {
       } catch (e) {
         console.log(`[FCARD] patchSlot0 ERROR: ${e.message}`);
       }
-      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} slot=${slotData.substring(0, 300)}`);
-      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${uAttr}><![CDATA[${slotData}]]></${msg.tag}>`);
+      const mtData = jsonToMTSerial(slotData);
+      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} mt=${mtData.substring(0, 300)}`);
+      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${uAttr}>${mtData}</${msg.tag}>`);
       break;
     }
 
