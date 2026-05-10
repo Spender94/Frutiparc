@@ -8964,9 +8964,8 @@ case 'createchannel': {
       } catch (e) {
         console.log(`[FCARD] patchSlot0 ERROR: ${e.message}`);
       }
-      const haxeData = jsonToHaxeSerial(slotData);
-      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} haxe=${haxeData.substring(0, 300)}`);
-      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${uAttr}>${haxeData}</${msg.tag}>`);
+      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} slot=${slotData.substring(0, 300)}`);
+      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${uAttr}><![CDATA[${slotData}]]></${msg.tag}>`);
       break;
     }
 
