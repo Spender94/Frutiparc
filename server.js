@@ -7911,16 +7911,16 @@ case 'send': {
     }
 
     // ── Animator blue mode: /blueon, /blueoff ──
-    if (/^\/blueon$/i.test(text)) {
+    if (/^\/blueon\s*$/i.test(text)) {
       if (canAnimHere || isModerator(client.username)) {
         blueModeUsers.add(client.username);
-        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Mode bleu activé.</${CMD.send}>`);
+        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(getDisplayName(client.username))} active le mode bleu.</${CMD.send}>`);
       }
       break;
     }
-    if (/^\/blueoff$/i.test(text)) {
+    if (/^\/blueoff\s*$/i.test(text)) {
       blueModeUsers.delete(client.username);
-      sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Mode bleu désactivé.</${CMD.send}>`);
+      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(getDisplayName(client.username))} désactive le mode bleu.</${CMD.send}>`);
       break;
     }
 
@@ -7929,9 +7929,9 @@ case 'send': {
       const question = text.replace(/^\/initpoint\s*/i, '').trim();
       quizState[g] = { question: question || '', points: new Map(), active: true };
       const announce = question
-        ? `<![CDATA[<b><font color="#0066CC">Quiz lancé par ${escapeXml(getDisplayName(client.username))} : ${escapeXml(question)}</font></b>]]>`
-        : `<![CDATA[<b><font color="#0066CC">Quiz lancé par ${escapeXml(getDisplayName(client.username))} !</font></b>]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${announce}</${CMD.send}>`);
+        ? `<![CDATA[<b><font color="#0066CC">Quiz lancé par ${getDisplayName(client.username)} : ${question}</font></b>]]>`
+        : `<![CDATA[<b><font color="#0066CC">Quiz lancé par ${getDisplayName(client.username)} !</font></b>]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${announce}</${CMD.send}>`);
       break;
     }
 
@@ -7940,14 +7940,14 @@ case 'send': {
       const target = resolveKnownUsername(args[0]);
       const amount = Math.max(1, Math.min(parseInt(args[1]) || 1, 100));
       if (!target) {
-        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Utilisateur introuvable.</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Utilisateur introuvable.</${CMD.send}>`);
         break;
       }
       if (!quizState[g]) quizState[g] = { question: '', points: new Map(), active: true };
       const cur = quizState[g].points.get(target) || 0;
       quizState[g].points.set(target, cur + amount);
-      const msg2 = `<![CDATA[<b><font color="#0066CC">+${amount} point${amount > 1 ? 's' : ''} pour ${escapeXml(getDisplayName(target))} (total : ${cur + amount})</font></b>]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
+      const msg2 = `<![CDATA[<b><font color="#0066CC">+${amount} point${amount > 1 ? 's' : ''} pour ${getDisplayName(target)} (total : ${cur + amount})</font></b>]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
       break;
     }
 
@@ -7958,31 +7958,31 @@ case 'send': {
       if (!target || !quizState[g]) { break; }
       const cur = quizState[g].points.get(target) || 0;
       quizState[g].points.set(target, Math.max(0, cur - amount));
-      const msg2 = `<![CDATA[<b><font color="#0066CC">-${amount} point${amount > 1 ? 's' : ''} pour ${escapeXml(getDisplayName(target))} (total : ${Math.max(0, cur - amount)})</font></b>]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
+      const msg2 = `<![CDATA[<b><font color="#0066CC">-${amount} point${amount > 1 ? 's' : ''} pour ${getDisplayName(target)} (total : ${Math.max(0, cur - amount)})</font></b>]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
       break;
     }
 
-    if ((canAnimHere || isModerator(client.username)) && /^\/(showpoint|classement)$/i.test(text)) {
+    if ((canAnimHere || isModerator(client.username)) && /^\/(showpoint|classement)\s*$/i.test(text)) {
       const qs = quizState[g];
       if (!qs || qs.points.size === 0) {
-        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Aucun point distribué.</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Aucun point distribué.</${CMD.send}>`);
         break;
       }
       const sorted = [...qs.points.entries()].sort((a, b) => b[1] - a[1]);
       const lines = sorted.map(([u, pts], i) => `${i + 1}. ${getDisplayName(u)} — ${pts} pt${pts > 1 ? 's' : ''}`);
-      const header = qs.question ? `Classement — ${escapeXml(qs.question)}` : 'Classement';
-      const body = `<![CDATA[<b><font color="#0066CC">${header}</font></b><br/>${lines.map(l => escapeXml(l)).join('<br/>')}]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
+      const header = qs.question ? `Classement — ${qs.question}` : 'Classement';
+      const body = `<![CDATA[<b><font color="#0066CC">${header}</font></b><br/>${lines.join('<br/>')}]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
       break;
     }
 
-    if ((canAnimHere || isModerator(client.username)) && /^\/(resetpoint|stoppoint|endpoint)$/i.test(text)) {
+    if ((canAnimHere || isModerator(client.username)) && /^\/(resetpoint|stoppoint|endpoint)\s*$/i.test(text)) {
       if (quizState[g] && quizState[g].points.size > 0) {
         const sorted = [...quizState[g].points.entries()].sort((a, b) => b[1] - a[1]);
         const lines = sorted.map(([u, pts], i) => `${i + 1}. ${getDisplayName(u)} — ${pts} pt${pts > 1 ? 's' : ''}`);
-        const body = `<![CDATA[<b><font color="#0066CC">Fin du quiz ! Classement final :</font></b><br/>${lines.map(l => escapeXml(l)).join('<br/>')}]]>`;
-        broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
+        const body = `<![CDATA[<b><font color="#0066CC">Fin du quiz ! Classement final :</font></b><br/>${lines.join('<br/>')}]]>`;
+        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
       }
       delete quizState[g];
       break;
@@ -7992,7 +7992,7 @@ case 'send': {
     if (text.startsWith('/topic ') || text.startsWith('/sujet ')) {
       const newTopic = text.replace(/^\/(topic|sujet)\s+/, '').trim();
       if (newTopic.length > 200) {
-        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Le sujet est trop long (200 caractères max).</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Le sujet est trop long (200 caractères max).</${CMD.send}>`);
         break;
       }
       if (newTopic) {
@@ -8004,7 +8004,7 @@ case 'send': {
     }
 
     // ── /stat, /stats, /statut, /status, /statistiques, /statistics: channel stats ──
-    if (/^\/(stat|stats|statut|status|statistiques|statistics)$/i.test(text)) {
+    if (/^\/(stat|stats|statut|status|statistiques|statistics)\s*$/i.test(text)) {
       const userCount = channel.users.size;
       const userList = [...channel.users].map(u => getDisplayName(u)).join(', ');
       const topicStr = channel.topic || '(aucun sujet)';
@@ -8015,7 +8015,7 @@ case 'send': {
         `Sujet : ${topicStr}`,
       ];
       for (const line of lines) {
-        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(line)}</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(line)}</${CMD.send}>`);
       }
       break;
     }
@@ -8029,7 +8029,7 @@ case 'send': {
       const url = args[2] || '';
       const title = args.slice(3).join(' ');
       if (!w || !h || !url || !/^https?:\/\//i.test(url)) {
-        sendToClient(socket, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe: /image largeur hauteur url titre')}</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe: /image largeur hauteur url titre')}</${CMD.send}>`);
         break;
       }
       const cw = Math.min(Math.max(w, 10), 500);
@@ -8077,7 +8077,8 @@ case 'send': {
 
     // Animator/moderator blue mode — wraps the whole line in blue bold
     if (blueModeUsers.has(client.username) && (isAnimator(client.username) || isModerator(client.username))) {
-      const blueBody = `<![CDATA[<b><font color="#0066CC">${escapeXml(getDisplayName(client.username))}: ${safeText}</font></b>]]>`;
+      const rawText = text.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+      const blueBody = `<![CDATA[<b><font color="#0066CC">${getDisplayName(client.username)}: ${rawText}</font></b>]]>`;
       broadcastToChannel(g,
         `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${blueBody}</${CMD.send}>`
       );
