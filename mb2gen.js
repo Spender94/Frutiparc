@@ -1082,21 +1082,16 @@ function computeRoomTbl(ctbl, spos) {
   // and immediately updates m[x][y] so re-entry is prevented.
   // We replicate this by checking the condition at push time AND at pop time.
   {
-    if (m[spos.x][spos.y] === -1) {
-      // Blocked starting position - just return (no reachable cells)
+    const startVal = m[spos.x][spos.y];
+    if ((startVal & BIT_MASK) !== 0) {
+      // Starting cell is blocked or already visited
       return m;
     }
     const stack = [[spos.x, spos.y, 0]];
     while (stack.length > 0) {
       const [x, y, inAcc] = stack.pop();
-      // Check if already visited (value's lower bits are no longer 0)
-      if ((m[x][y] & BIT_MASK) !== 0 && m[x][y] !== -1) continue;
-      // If m[x][y] == -1 (blocked), it shouldn't have been pushed.
-      // Actually the initial push is spos which should be 0.
-      // The check at push time ensures we only push cells with (val & BIT_MASK) == 0,
-      // but by the time we pop, it might have been visited already.
       const b = m[x][y];
-      if ((b & BIT_MASK) !== 0) continue; // already processed
+      if ((b & BIT_MASK) !== 0) continue; // already processed or blocked
       const acc = inAcc | (b & (HOLE_MASK | BLOCK_MASK));
       m[x][y] = (b + 1) | acc;
       if ((m[x - 1][y] & BIT_MASK) === 0) stack.push([x - 1, y, acc]);
