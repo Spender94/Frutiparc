@@ -1012,6 +1012,15 @@ function getBkiwiDailyTrack(date = new Date()) {
   return dayOfYear % 6;
 }
 
+// Format a centisecond duration as "MM:SS.CC" (e.g. 12345 → "2:03.45").
+function formatMb2Time(centisec) {
+  const cs = Math.max(0, Math.trunc(Number(centisec) || 0));
+  const m = Math.floor(cs / 6000);
+  const s = Math.floor((cs % 6000) / 100);
+  const c = cs % 100;
+  return `${m}:${String(s).padStart(2, '0')}.${String(c).padStart(2, '0')}`;
+}
+
 function formatRankingExtraData(rankingId, rawData) {
   const raw = String(rawData || '').trim();
   if (!raw) {
@@ -1063,6 +1072,30 @@ function formatRankingExtraData(rankingId, rawData) {
     }
     const v = parseMtSerializedPrimitive(raw);
     if (typeof v === 'string' && v) return `S${v.toLowerCase()}:`;
+    return raw;
+  }
+
+  // MotionBall 2: challenge score is stored as time (centiseconds), and the
+  // companion `data` field carries the completion percentage. The score table
+  // shows "time°percentage". `s` already holds the time and gets formatted
+  // client-side; we render the data attribute as the trailing "°NN%" suffix
+  // so it appears next to the time. Percentage is also accepted as a 0–1
+  // float (e.g. "0.85"), an integer 0–100 ("85"), or raw "85%".
+  if (rankingId === 'mb2_challenge' || rankingId === 'mb2_classic') {
+    let pct = NaN;
+    const mPct = raw.match(/^-?(\d+(?:\.\d+)?)\s*%?$/);
+    if (mPct) {
+      const n = Number(mPct[1]);
+      if (Number.isFinite(n)) pct = n > 1 ? n : n * 100;
+    } else {
+      const v = parseMtSerializedPrimitive(raw);
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        pct = v > 1 ? v : v * 100;
+      }
+    }
+    if (Number.isFinite(pct)) {
+      return `°${Math.round(pct)}%`;
+    }
     return raw;
   }
 

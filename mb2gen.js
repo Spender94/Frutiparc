@@ -605,8 +605,15 @@ function checkDifficulty(d) {
   loop([], 0, d.dstart);
   d.dist_table = m;
   const [dist, objList] = distObjectsMin(d, d.dexit);
-  if (dist < d.dwidth * d.dheight * 40 / 100) throw new RetryError('not enough difficulty');
+  // Original OCaml threshold is 40 % of the room count, but a 40 %-deep
+  // shortest path produced a dungeon that "didn't feel like a challenge"
+  // (per user feedback). Raise the floor so the start→exit detour is at
+  // least 60 % of the grid, matching the difficulty most challenge maps
+  // demand.
+  const challengeThresholdRooms = Math.ceil(d.dwidth * d.dheight * 60 / 100);
+  if (dist < challengeThresholdRooms) throw new RetryError('not enough difficulty');
   if (objList.length !== OBJECTS_COUNT) throw new RetryError('not enough objects for ending level');
+  return dist;
 }
 
 function genObjectsFinal(d) {
@@ -743,7 +750,8 @@ function genDungeon(w, h) {
   }
   if (!genObjSuccess) throw new RetryError('gen_objects failed after 50 retries');
 
-  checkDifficulty(d);
+  const dist = checkDifficulty(d);
+  d.dist = dist;
   genObjectsFinal(d);
   return d;
 }
@@ -1538,7 +1546,7 @@ function levelMake() {
     encodeRoomContent(b, roomContent);
   });
 
-  return b.toString();
+  return { data: b.toString(), dist: ddata.dist, totalRooms: FIXED_WIDTH * FIXED_HEIGHT };
 }
 
 // ============================================================================
@@ -1847,9 +1855,10 @@ async function generateMB2Maps() {
         rng.init(seed);
         loadBumpers();
         const ddata = levelMake();
-        const output = `dseed=${seed}&ddata=${ddata}\n`;
+        const output = `dseed=${seed}&ddata=${ddata.data}\n`;
         fs.writeFileSync(path.join(outputDir, 'mb2data.dat'), output);
-        log.push(`Generated mb2data.dat (challenge mode, seed=${seed})`);
+        const pct = Math.round(ddata.dist * 100 / ddata.totalRooms);
+        log.push(`Generated mb2data.dat (challenge mode, seed=${seed}, dist=${ddata.dist}/${ddata.totalRooms} rooms = ${pct}%)`);
         generated = true;
       } catch (e) {
         if (attempt === 9) throw e;

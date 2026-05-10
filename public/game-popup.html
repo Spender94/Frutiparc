@@ -79,12 +79,48 @@
   } catch (e) { /* location may be readonly in some browsers */ }
 })();
 
-// Intercept getURL calls from patched game SWFs that save scores.
+// Intercept getURL calls from patched game SWFs that save scores or slots.
 // Ruffle routes getURL(url, target) through window.open when target is non-empty.
-// The patched SWF calls getURL("s"+score, true) — we catch that here,
-// fire a background fetch to persist the score, and suppress the popup.
+//
+// Patterns we recognise:
+//   "slot:GAME:SLOTID:PIPEDATA"                  → POST /api/saveFrutiSlot
+//   "score:GAME:MODE:SCOREVAL[:DATA]"            → POST /api/saveScore
+//   "s<score>"                                   → POST /api/saveScore (legacy)
+//   "s<score>*<data>"                            → POST /api/saveScore (legacy w/ data)
 (function() {
   var _open = window.open;
+  function popupSid() {
+    return new URLSearchParams(window.location.search).get("sid") || "";
+  }
+  function popupGame() {
+    var swfPath = new URLSearchParams(window.location.search).get("swf") || "";
+    var base = swfPath.substring(swfPath.lastIndexOf("/") + 1).replace(/\.swf$/, "");
+    return base || (new URLSearchParams(window.location.search).get("game") || "");
+  }
+  function popupMode() {
+    var qs = new URLSearchParams(window.location.search);
+    return (qs.get("mode") === "challenge" || qs.get("c") === "2") ? 1 : 0;
+  }
+  function postSaveScore(game, mode, score, data) {
+    var sid = popupSid();
+    if (!sid) { console.log("[Game] score save SKIPPED: no sid"); return; }
+    var body = "sid=" + encodeURIComponent(sid) +
+               "&game=" + encodeURIComponent(game) +
+               "&m=" + encodeURIComponent(String(mode)) +
+               "&score=" + encodeURIComponent(String(score)) +
+               "&data=" + encodeURIComponent(data || "");
+    console.log("[Game] score save: game=" + game + " mode=" + mode + " score=" + score + " data=" + (data || ""));
+    fetch("/api/saveScore", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body
+    }).then(function(r) {
+      console.log("[Game] score save response:", r.status);
+      return r.text();
+    }).then(function(t) {
+      console.log("[Game] score save body:", t);
+    }).catch(function(e) { console.log("[Game] score save error:", e); });
+  }
   window.open = function(url, target) {
     var u = String(url || "");
     // Block javascript:self.close() opened in a new window (defensive)
@@ -93,13 +129,13 @@
       return null;
     }
     // Slot save via getURL: "slot:GAME:SLOTID:PIPEDATA"
-    var slotMatch = u.match(/slot:([\w]+):(\d+):(.+)/);
+    var slotMatch = u.match(/^slot:([\w]+):(\d+):(.+)/);
     if (slotMatch) {
       var slotGame = slotMatch[1];
       var slotNum = slotMatch[2];
       var slotPipe = slotMatch[3];
       console.log("[Game] slot save intercepted: game=" + slotGame + " slot=" + slotNum + " data=" + slotPipe.length + " chars");
-      var slotSid = new URLSearchParams(window.location.search).get("sid") || "";
+      var slotSid = popupSid();
       if (slotSid) {
         fetch("/api/saveFrutiSlot", {
           method: "POST",
@@ -117,17 +153,16 @@
       }
       return null;
     }
-    if (/(?:^|\/)s\d+$/.test(u)) {
-      var full = u.startsWith("/") ? u : new URL(u, document.baseURI).href;
-      try {
-        var sid = new URLSearchParams(window.location.search).get("sid") || "";
-        if (sid) {
-          var saveUrl = new URL(full, window.location.origin);
-          if (!saveUrl.searchParams.get("sid")) saveUrl.searchParams.set("sid", sid);
-          full = saveUrl.toString();
-        }
-      } catch (e) {}
-      fetch(full).catch(function() {});
+    // Explicit score save: "score:GAME:MODE:SCORE[:DATA]"
+    var scoreMatch = u.match(/^score:([\w]+):(\d+):(-?\d+)(?::(.*))?$/);
+    if (scoreMatch) {
+      postSaveScore(scoreMatch[1], Number(scoreMatch[2]) || 0, Number(scoreMatch[3]) || 0, scoreMatch[4] || "");
+      return null;
+    }
+    // Legacy: "s<score>" or "s<score>*<data>"
+    var legacyMatch = u.match(/^(?:.*\/)?s(\d+)(?:\*(.*))?$/);
+    if (legacyMatch) {
+      postSaveScore(popupGame(), popupMode(), Number(legacyMatch[1]) || 0, legacyMatch[2] || "");
       return null;
     }
     return _open.apply(window, arguments);
