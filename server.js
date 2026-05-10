@@ -8900,10 +8900,16 @@ case 'createchannel': {
           } catch (e) { /* ignore */ }
         }
       }
-      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} rawSlot=${slotData ? slotData.substring(0, 200) : '(empty)'}`);
-      slotData = patchSlot0(targetUser, game, slotData);
-      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} patched=${slotData ? slotData.substring(0, 200) : '(empty)'}`);
-      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${uAttr}>${slotData}</${msg.tag}>`);
+      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} rawSlot=${slotData ? slotData.substring(0, 500) : '(empty)'}`);
+      try {
+        slotData = patchSlot0(targetUser, game, slotData);
+      } catch (e) {
+        console.log(`[FCARD] patchSlot0 ERROR: ${e.message}`);
+      }
+      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} patched=${slotData ? slotData.substring(0, 500) : '(empty)'}`);
+      const responseXml = `<${msg.tag}${rAttr}${gAttr}${uAttr}>${slotData}</${msg.tag}>`;
+      console.log(`[FCARD] RESPONSE: ${responseXml.substring(0, 600)}`);
+      sendToClient(socket, responseXml);
       break;
     }
 
