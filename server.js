@@ -4954,7 +4954,7 @@ const GAME_DISCS = {
     ],
   },
   mb2: {
-    discType: '0',
+    discType: '1',
     playMode: 'single',
     swfName: 'mb2',
     gameId: 'games/motionBall2/full.swf',
