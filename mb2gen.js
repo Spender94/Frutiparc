@@ -1040,7 +1040,6 @@ function fillDoors(r, ctbl) {
   fillBlock(r.rup, 0, 1, wallXmax, 1);
   fillBlock(r.rdown, 0, wallYmax - 1, wallXmax, wallYmax - 1);
 
-  if (spos.x === -1) throw new Error('fillDoors: spos not set');
   return [spos, blist];
 }
 
@@ -1120,7 +1119,6 @@ function checkRed(p, mtbl, obj) {
   }
 }
 
-let _debugRedblue = 0;
 function putRedblue(mtbl, ctbl, obj) {
   for (let n = 0; n < 100; n++) {
     const p = genPos(ctbl, levelRedCtbl, 'redblue');
@@ -1132,19 +1130,6 @@ function putRedblue(mtbl, ctbl, obj) {
       if (e instanceof RetryError) continue;
       throw e;
     }
-  }
-  if (_debugRedblue < 3) {
-    _debugRedblue++;
-    // Count cells reachable
-    let reachable = 0, total = 0;
-    const mask = calcMask(obj);
-    for (let x = 0; x < levelCwidth; x++) {
-      for (let y = 0; y < levelCheight; y++) {
-        total++;
-        if ((mtbl[x][y] & mask) === 1) reachable++;
-      }
-    }
-    console.error(`putRedblue fail: reachable=${reachable}/${total}, obj=${obj}, classic=${levelClassic}`);
   }
   throw new RetryError('put redblue');
 }
@@ -1457,7 +1442,6 @@ function genRoomContent(dp, lvl, r) {
 }
 
 function genRoomRec(dp, dist, r, maxCount) {
-  let lastErr = '';
   for (let count = 0; count < maxCount; count++) {
     try {
       let lvl;
@@ -1466,24 +1450,23 @@ function genRoomRec(dp, dist, r, maxCount) {
       else lvl = 1 + random2(Math.floor(dist * 2 / 3), dist);
       return genRoomContent(dp, lvl, r);
     } catch (e) {
-      if (e instanceof RetryError) { lastErr = e.message; continue; }
+      if (e instanceof RetryError) continue;
       throw e;
     }
   }
-  throw new Error(`Aborted at room generation (dist=${dist}, rtype=${JSON.stringify(r.rtype)}, last=${lastErr})`);
+  throw new Error('Aborted at room generation');
 }
 
 function genRoomLvlRec(dp, lvl, r, maxCount) {
-  let lastErr = '';
   for (let count = 0; count < maxCount; count++) {
     try {
       return genRoomContent(dp, lvl, r);
     } catch (e) {
-      if (e instanceof RetryError) { lastErr = e.message; continue; }
+      if (e instanceof RetryError) continue;
       throw e;
     }
   }
-  throw new Error(`Aborted at room generation (lvl=${lvl}, rtype=${JSON.stringify(r.rtype)}, last=${lastErr})`);
+  throw new Error('Aborted at room generation (classic)');
 }
 
 function encodeRoomContent(b, r) {
@@ -1563,6 +1546,19 @@ function levelMake() {
 function randomExit() {
   const xmax = Math.floor((levelCwidth - levelCborder * 2) / 10) - 1;
   const ymax = Math.floor((levelCheight - levelCborder * 2) / 10) - 1;
+  // Ensure exit doesn't overlap with the spos (enter + 5) region
+  // spos = (enter.x + 5, enter.y + 5); exit occupies (ex..ex+9, ey..ey+9)
+  // Overlap when ex <= spos.x <= ex+9 AND ey <= spos.y <= ey+9
+  const sposX = levelClassicEnter.x + 5;
+  const sposY = levelClassicEnter.y + 5;
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const px = levelCborder + random2(0, xmax) * 10;
+    const py = levelCborder + random2(0, ymax) * 10;
+    // Check if spos would be inside the exit's 10x10 area
+    if (sposX >= px && sposX <= px + 9 && sposY >= py && sposY <= py + 9) continue;
+    return pos(px, py);
+  }
+  // Fallback: just pick any position
   const px = levelCborder + random2(0, xmax) * 10;
   const py = levelCborder + random2(0, ymax) * 10;
   return pos(px, py);
@@ -1836,32 +1832,47 @@ async function generateMB2Maps() {
   const dungeonDir = path.join(outputDir, 'dungeon');
   const log = [];
 
-  // Load bumpers
+  // Load bumpers collision tables
   loadBumpers();
-  log.push(`Loaded bumpers: delta=${levelDelta}, cwidth=${levelCwidth}, cheight=${levelCheight}, cborder=${levelCborder}, pos_nbits=${levelPosNbits}`);
 
   // 1. Generate random dungeon (challenge mode): mb2data.dat
-  rng.selfInit();
-  const seed = rng.int(0x3FFFFFFF);
-  rng.init(seed);
-  loadBumpers(); // reload after re-init
   {
-    const ddata = levelMake();
-    const output = `dseed=${seed}&ddata=${ddata}\n`;
-    fs.writeFileSync(path.join(outputDir, 'mb2data.dat'), output);
-    log.push(`Generated mb2data.dat (challenge mode, seed=${seed})`);
+    let generated = false;
+    for (let attempt = 0; attempt < 10 && !generated; attempt++) {
+      try {
+        rng.selfInit();
+        const seed = rng.int(0x3FFFFFFF);
+        rng.init(seed);
+        loadBumpers();
+        const ddata = levelMake();
+        const output = `dseed=${seed}&ddata=${ddata}\n`;
+        fs.writeFileSync(path.join(outputDir, 'mb2data.dat'), output);
+        log.push(`Generated mb2data.dat (challenge mode, seed=${seed})`);
+        generated = true;
+      } catch (e) {
+        if (attempt === 9) throw e;
+      }
+    }
   }
 
   // 2. Generate classic mode: mb2classic.dat
-  rng.selfInit();
-  const classicSeed = rng.int(0x3FFFFFFF);
-  rng.init(classicSeed);
-  loadBumpers(); // reload after re-init
   {
-    const ddata = levelMakeClassic(5);
-    const output = `dseed=${classicSeed}&ddata=${ddata}\n`;
-    fs.writeFileSync(path.join(outputDir, 'mb2classic.dat'), output);
-    log.push(`Generated mb2classic.dat (classic mode, seed=${classicSeed}, 100 levels x 5 rooms)`);
+    let generated = false;
+    for (let attempt = 0; attempt < 10 && !generated; attempt++) {
+      try {
+        rng.selfInit();
+        const classicSeed = rng.int(0x3FFFFFFF);
+        rng.init(classicSeed);
+        loadBumpers();
+        const ddata = levelMakeClassic(5);
+        const output = `dseed=${classicSeed}&ddata=${ddata}\n`;
+        fs.writeFileSync(path.join(outputDir, 'mb2classic.dat'), output);
+        log.push(`Generated mb2classic.dat (classic mode, seed=${classicSeed}, 100 levels x 5 rooms)`);
+        generated = true;
+      } catch (e) {
+        if (attempt === 9) throw e;
+      }
+    }
   }
 
   // 3. Generate tutorial: mb2tuto.dat
