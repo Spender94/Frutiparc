@@ -7136,9 +7136,12 @@ function jsonToMTSerial(jsonStr) {
 
 // Patch slot 0 data: merge existing saved data with defaults to fill missing
 // fields, and inject real score data. This prevents "undefined" in card display.
-function patchSlot0(username, game, existingData) {
-  const ud = users[username] || {};
-  const scores = scoresData.users[username] || {};
+// ctx (optional): { gameItems: string[], scores: Object, jamaPlayCount: number }
+//   - falls back to in-memory users[username] / scoresData.users[username]
+//   - pass an explicit ctx for offline (disconnected) users loaded from DB
+function patchSlot0(username, game, existingData, ctx) {
+  const ud = ctx || users[username] || {};
+  const scores = (ctx && ctx.scores) || scoresData.users[username] || {};
   let saved = {};
   if (existingData) {
     try { saved = JSON.parse(existingData); } catch { saved = {}; }
@@ -8924,6 +8927,7 @@ case 'createchannel': {
       const gAttr = game ? ` g="${escapeXml(String(game))}"` : '';
       const uAttr = targetUser ? ` u="${escapeXml(getDisplayName(targetUser))}"` : '';
       let slotData = '';
+      let ctx = null;
       const tu = users[targetUser];
       if (tu) {
         if (tu.frutiSlots && tu.frutiSlots[game] && tu.frutiSlots[game]['0']) {
@@ -8938,9 +8942,25 @@ case 'createchannel': {
             }
           } catch (e) { /* ignore */ }
         }
+      } else {
+        // Offline user: load slot + score + gameItems from DB
+        try {
+          const row = await db.findUserByUsername(targetUser);
+          if (row && row.id) {
+            const [dbSlots, dbScores, dbGameItems] = await Promise.all([
+              db.getFrutiSlots(row.id, game).catch(() => null),
+              db.loadScoresForUser(row.id).catch(() => ({})),
+              db.getUserGameItems(row.id).catch(() => []),
+            ]);
+            if (dbSlots && dbSlots['0']) slotData = dbSlots['0'];
+            ctx = { gameItems: dbGameItems || [], scores: dbScores || {}, jamaPlayCount: 0 };
+          }
+        } catch (e) {
+          console.log(`[FCARD] offline-load ERROR: ${e.message}`);
+        }
       }
       try {
-        slotData = patchSlot0(targetUser, game, slotData);
+        slotData = patchSlot0(targetUser, game, slotData, ctx);
       } catch (e) {
         console.log(`[FCARD] patchSlot0 ERROR: ${e.message}`);
       }
