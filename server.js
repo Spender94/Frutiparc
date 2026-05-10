@@ -8900,7 +8900,9 @@ case 'createchannel': {
           } catch (e) { /* ignore */ }
         }
       }
+      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} rawSlot=${slotData ? slotData.substring(0, 200) : '(empty)'}`);
       slotData = patchSlot0(targetUser, game, slotData);
+      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} patched=${slotData ? slotData.substring(0, 200) : '(empty)'}`);
       sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${uAttr}>${slotData}</${msg.tag}>`);
       break;
     }
