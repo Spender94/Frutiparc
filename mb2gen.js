@@ -355,13 +355,14 @@ function almostClose(d, p) {
 }
 
 function randomRoom(d, rt) {
-  while (true) {
+  for (let _i = 0; _i < 10000; _i++) {
     const p = randPos(d);
     if (dungeonRtype(d, p) === RTYPE_NONE) {
       d.dmap[p.x][p.y].rtype = rt;
       return p;
     }
   }
+  throw new RetryError('randomRoom: no empty room found after 10000 attempts');
 }
 
 function genRoom(d, p) {
@@ -391,7 +392,7 @@ function genRoom(d, p) {
 }
 
 function genPath(d, s) {
-  while (true) {
+  for (let _i = 0; _i < 10000; _i++) {
     const p = randPos(d);
     if (dungeonRtype(d, p) === RTYPE_NONE) continue;
     const dirs = shuffle([DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT]);
@@ -748,7 +749,7 @@ function genDungeon(w, h) {
 }
 
 function genDungeonRec(w, h) {
-  while (true) {
+  for (let _i = 0; _i < 500; _i++) {
     try {
       return genDungeon(w, h);
     } catch (e) {
@@ -756,6 +757,7 @@ function genDungeonRec(w, h) {
       throw e;
     }
   }
+  throw new Error('genDungeonRec: failed after 500 attempts');
 }
 
 function makeEmptyDungeon(w, h) {

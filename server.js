@@ -6515,13 +6515,20 @@ async function boot() {
     console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${today}`);
   }
 
-  // Generate MB2 (MotionBall 2) map data files if missing
+  // Generate MB2 (MotionBall 2) map data files if missing (non-blocking)
   try {
     const mb2Dir = path.join(__dirname, 'Games', 'motionBall2');
     if (!fs.existsSync(path.join(mb2Dir, 'mb2data.dat'))) {
-      const { generateMB2Maps } = require('./mb2gen');
-      const log = await generateMB2Maps();
-      console.log(`[MB2] ${log}`);
+      console.log('[MB2] Map files missing, will generate in background after server starts');
+      setImmediate(async () => {
+        try {
+          const { generateMB2Maps } = require('./mb2gen');
+          const log = await generateMB2Maps();
+          console.log(`[MB2] ${log}`);
+        } catch (e) {
+          console.error('[MB2] Map generation error:', e.message);
+        }
+      });
     } else {
       console.log('[MB2] Map files already exist');
     }
