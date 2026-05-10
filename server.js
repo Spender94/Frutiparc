@@ -7914,13 +7914,13 @@ case 'send': {
     if (/^\/blueon\s*$/i.test(text)) {
       if (canAnimHere || isModerator(client.username)) {
         blueModeUsers.add(client.username);
-        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(getDisplayName(client.username))} active le mode bleu.</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Mode bleu activé.</i>]]></${CMD.send}>`);
       }
       break;
     }
     if (/^\/blueoff\s*$/i.test(text)) {
       blueModeUsers.delete(client.username);
-      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(getDisplayName(client.username))} désactive le mode bleu.</${CMD.send}>`);
+      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Mode bleu désactivé.</i>]]></${CMD.send}>`);
       break;
     }
 
