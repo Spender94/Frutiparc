@@ -7091,6 +7091,112 @@ function isAnimator(username) {
 
 const ANIM_CHANNEL = 'bienvenue';
 
+// All games that should always show a FrutiCard on user profiles.
+// Excludes grapiz and bandas (not implemented yet).
+const FCARD_GAMES = ['bkiwi', 'snake3', 'swapou2', 'kaluga', 'mb2', 'miniwave', 'jamajama', 'minipixiz'];
+
+// Build default slot 0 data for a game when the user hasn't saved one yet.
+// Populates with real score data when available.
+function buildDefaultSlot0(username, game) {
+  const ud = users[username] || {};
+  const scores = scoresData.users[username] || {};
+  switch (game) {
+    case 'bkiwi': {
+      const ts = {};
+      for (let t = 0; t < 6; t++) {
+        const rkC = scores[`bkiwi_track${t}_classic`];
+        const rkL = scores[`bkiwi_track${t}_challenge`];
+        ts[`$t${t}`] = {
+          $bc: rkC ? rkC.score : 0,
+          $bl: rkL ? rkL.score : 0,
+        };
+      }
+      return JSON.stringify({
+        $ws: false, $wss: false, $wc: false, $wcs: false,
+        $ac: [false, false, false, false, false],
+        $ts: ts,
+      });
+    }
+    case 'snake3': {
+      const gi = Array.isArray(ud.gameItems) ? ud.gameItems : [];
+      const fruits = gi.filter(it => /^Fruit \d+$/.test(it)).map(it => Number(it.replace('Fruit ', '')));
+      const rkC = scores.snake3_classic;
+      return JSON.stringify({
+        $fruits: fruits,
+        $record: rkC ? rkC.score : 0,
+      });
+    }
+    case 'swapou2': {
+      const rkC = scores.swapou2_classic;
+      return JSON.stringify({
+        $chars: [true, true, false, false, false, false, false, false, false],
+        $record: rkC ? rkC.score : 0,
+        $classic_record: 0,
+        $swap: 0,
+        $items: [],
+        $combos: [],
+      });
+    }
+    case 'kaluga': {
+      return JSON.stringify({
+        $mode: [null, null, [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+        $tz: {},
+      });
+    }
+    case 'mb2': {
+      const rkC = scores.mb2_classic;
+      return JSON.stringify({
+        $items: [],
+        $challenge: true,
+        $classic: true,
+        $dungeons: [true, true, true, true],
+        $dungeons_done: [],
+        $courses: [true],
+        $classic_score: rkC ? rkC.score : 0,
+        $dtimes: [],
+        $records: [],
+      });
+    }
+    case 'miniwave':
+    case 'miniwave2': {
+      return JSON.stringify({
+        $vs: 0,
+        $ship: [1, 0, 0, 0, 0, 0],
+        $mode: [1, [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0], 1, 1],
+        $arcade: { $bestScore: 0, $bestLevel: 0 },
+        $letter: 0,
+        $survival: 0,
+        $time: 0,
+        $bonus: [0, 0, 0, 0, 0, 0, 0, 0],
+        $cons: { $main: 0, $bonus: [0, 0, 0, 0, 0, 0, 0, 0], $letter: 0 },
+        $badsKill: [],
+        $saucerKill: 0,
+        $credit: 0,
+        $shop: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        $lvl: 0,
+        $stats: { $play: { $main: 0, $mission: 0, $survival: 0, $letter: 0 }, $buy: [] },
+      });
+    }
+    case 'jamajama': {
+      const rkC = scores.jamajama_classic;
+      return JSON.stringify({
+        $best: rkC ? rkC.score : 0,
+        $plays: ud.jamaPlayCount || 0,
+      });
+    }
+    case 'minipixiz':
+    case 'minitroll': {
+      return JSON.stringify({
+        $stat: { $item: [], $eat: [], $kill: [], $game: [] },
+        $diam: 0, $key: 0, $star: 0, $bag: 0,
+        $faerie: [],
+      });
+    }
+    default:
+      return JSON.stringify({});
+  }
+}
+
 // Per-channel quiz state (ephemeral — lost on restart).
 // { channelName: { question, points: Map<username, number>, active } }
 const quizState = {};
@@ -8723,27 +8829,28 @@ case 'createchannel': {
       const targetUser = String(msg.attrs.u || client.username || '').toLowerCase();
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       const uAttr = targetUser ? ` u="${escapeXml(getDisplayName(targetUser))}"` : '';
+
+      // Always list all implemented games (except grapiz/bandas)
       let gameNodes = '';
+      for (const gid of FCARD_GAMES) {
+        gameNodes += `<g g="${escapeXml(gid)}" />`;
+      }
+
+      // Ensure in-memory slot cache is populated from DB for this user
       const tu = users[targetUser];
-      if (tu && tu.frutiSlots) {
-        for (const g of Object.keys(tu.frutiSlots)) {
-          if (tu.frutiSlots[g] && tu.frutiSlots[g]['0']) {
-            gameNodes += `<g g="${escapeXml(g)}" />`;
-          }
-        }
-      } else if (tu && tu._dbId) {
+      if (tu && !tu.frutiSlots && tu._dbId) {
         try {
           const rows = await db.getAllFrutiSlot0(tu._dbId);
           if (rows && rows.length > 0) {
-            if (!tu.frutiSlots) tu.frutiSlots = {};
+            tu.frutiSlots = {};
             for (const row of rows) {
               if (!tu.frutiSlots[row.game]) tu.frutiSlots[row.game] = {};
               tu.frutiSlots[row.game]['0'] = row.data;
-              gameNodes += `<g g="${escapeXml(row.game)}" />`;
             }
           }
         } catch (e) { /* ignore */ }
       }
+
       sendToClient(socket, `<${CMD.fcardlist}${rAttr}${uAttr}>${gameNodes}</${CMD.fcardlist}>`);
       break;
     }
@@ -8771,6 +8878,11 @@ case 'createchannel': {
             }
           } catch (e) { /* ignore */ }
         }
+        if (!slotData) {
+          slotData = buildDefaultSlot0(targetUser, game);
+        }
+      } else {
+        slotData = buildDefaultSlot0(targetUser, game);
       }
       sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${uAttr}>${slotData}</${msg.tag}>`);
       break;
