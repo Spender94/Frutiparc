@@ -506,14 +506,37 @@
 </div>
 
 <div class="modal-bg" id="modal-add-pack">
-  <div class="modal">
+  <div class="modal" style="max-width:700px">
     <h3 id="pack-modal-title">Nouvel accessoire boutique</h3>
-    <label><span>ID :</span> <input id="pack-id" type="number" placeholder="105"></label>
-    <label><span>Nom :</span> <input id="pack-name" placeholder="Lunettes de soleil"></label>
-    <label><span>Catégorie :</span> <input id="pack-category" value="Accessoires"></label>
-    <label><span>Prix (Kikooz) :</span> <input id="pack-price" type="number" value="60"></label>
-    <label><span>Suffix9 :</span> <input id="pack-suffix9" placeholder="a0b0c0d0e" maxlength="9"></label>
-    <label><span>Description :</span> <input id="pack-desc" placeholder="Description de l'accessoire"></label>
+    <div style="display:flex;gap:16px;align-items:flex-start">
+      <div style="flex:1">
+        <label><span>ID :</span> <input id="pack-id" type="number" placeholder="105"></label>
+        <label><span>Nom :</span> <input id="pack-name" placeholder="Lunettes de soleil"></label>
+        <label><span>Catégorie :</span> <input id="pack-category" value="Accessoires"></label>
+        <label><span>Prix (Kikooz) :</span> <input id="pack-price" type="number" value="60"></label>
+        <label><span>Suffix9 :</span> <input id="pack-suffix9" placeholder="a0b0c0d0e" maxlength="9" oninput="updatePackPreview()"></label>
+        <label><span>Description :</span> <input id="pack-desc" placeholder="Description de l'accessoire"></label>
+        <div style="margin-top:8px">
+          <label style="font-size:11px"><span>Base (15 chars) :</span> <select id="pack-base" onchange="updatePackPreview()" style="width:160px">
+            <option value="000000010000000">Famille 0 (défaut)</option>
+            <option value="010000010000000">Famille 1</option>
+            <option value="020000010000000">Famille 2</option>
+            <option value="030000010000000">Famille 3</option>
+            <option value="040000010000000">Famille 4</option>
+            <option value="050000010000000">Famille 5</option>
+          </select></label>
+        </div>
+      </div>
+      <div style="flex:0 0 180px;text-align:center">
+        <div id="pack-preview-box" style="width:160px;height:180px;border:2px solid #b5d68a;border-radius:8px;overflow:hidden;background:#E8F8D3;margin:0 auto">
+          <iframe id="pack-preview-iframe" src="/bouille-preview.html?s=000000010000000000000000" style="width:100%;height:100%;border:none" sandbox="allow-scripts allow-same-origin"></iframe>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#666">Aperçu en direct</div>
+        <div id="pack-suffix-controls" style="margin-top:8px;display:grid;grid-template-columns:repeat(9,1fr);gap:2px">
+        </div>
+        <div style="margin-top:6px;display:flex;gap:4px;justify-content:center;flex-wrap:wrap" id="pack-char-btns"></div>
+      </div>
+    </div>
     <div class="actions">
       <button class="btn" onclick="closeModal('modal-add-pack')">Annuler</button>
       <button class="btn-danger" id="pack-save-btn" onclick="saveAddPack()">Créer</button>
@@ -1096,8 +1119,53 @@ async function loadShop() {
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
+// ── Bouille preview for pack editor ──
+const SUFFIX_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+let packSelectedPos = -1;
+
+function updatePackPreview() {
+  const base = $('#pack-base').value || '000000010000000';
+  let suffix = ($('#pack-suffix9').value || '').padEnd(9, '0').substring(0, 9);
+  const state = base + suffix;
+  $('#pack-preview-iframe').src = '/bouille-preview.html?s=' + encodeURIComponent(state);
+  renderSuffixGrid(suffix);
+}
+
+function renderSuffixGrid(suffix) {
+  const grid = $('#pack-suffix-controls');
+  grid.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const cell = document.createElement('div');
+    cell.style.cssText = 'width:16px;height:22px;line-height:22px;text-align:center;font-size:11px;font-family:monospace;border:1px solid #ccc;border-radius:3px;cursor:pointer;background:' + (i === packSelectedPos ? '#0066CC' : '#fff') + ';color:' + (i === packSelectedPos ? '#fff' : '#333');
+    cell.textContent = suffix[i] || '0';
+    cell.title = 'Position ' + i;
+    cell.onclick = () => { packSelectedPos = i; renderSuffixGrid(suffix); renderCharButtons(); };
+    grid.appendChild(cell);
+  }
+}
+
+function renderCharButtons() {
+  const box = $('#pack-char-btns');
+  if (packSelectedPos < 0) { box.innerHTML = '<span style="font-size:11px;color:#999">Cliquez une position ci-dessus</span>'; return; }
+  let html = '';
+  for (let i = 0; i < SUFFIX_CHARS.length; i++) {
+    const c = SUFFIX_CHARS[i];
+    html += `<button style="width:20px;height:20px;font-size:10px;padding:0;border:1px solid #bbb;border-radius:3px;cursor:pointer;background:#f9f9f9" onclick="setPackChar('${c}')">${c}</button>`;
+  }
+  box.innerHTML = html;
+}
+
+function setPackChar(c) {
+  if (packSelectedPos < 0) return;
+  let suffix = ($('#pack-suffix9').value || '').padEnd(9, '0').substring(0, 9);
+  suffix = suffix.substring(0, packSelectedPos) + c + suffix.substring(packSelectedPos + 1);
+  $('#pack-suffix9').value = suffix;
+  updatePackPreview();
+}
+
 function openAddPack() {
   editingPackId = null;
+  packSelectedPos = -1;
   $('#pack-modal-title').textContent = 'Nouvel accessoire boutique';
   $('#pack-id').value = '';
   $('#pack-id').disabled = false;
@@ -1109,12 +1177,15 @@ function openAddPack() {
   $('#pack-save-btn').textContent = 'Créer';
   $('#pack-save-btn').onclick = saveAddPack;
   $('#modal-add-pack').classList.add('open');
+  updatePackPreview();
+  renderCharButtons();
 }
 
 function editPack(id) {
   const p = shopPacks.find(x => x.id === id);
   if (!p) return;
   editingPackId = id;
+  packSelectedPos = -1;
   $('#pack-modal-title').textContent = `Modifier : ${p.name}`;
   $('#pack-id').value = p.id;
   $('#pack-id').disabled = true;
@@ -1126,6 +1197,8 @@ function editPack(id) {
   $('#pack-save-btn').textContent = 'Sauvegarder';
   $('#pack-save-btn').onclick = saveEditPack;
   $('#modal-add-pack').classList.add('open');
+  updatePackPreview();
+  renderCharButtons();
 }
 
 async function saveAddPack() {
