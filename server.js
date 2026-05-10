@@ -7095,6 +7095,65 @@ const ANIM_CHANNEL = 'bienvenue';
 // Excludes grapiz and bandas (not implemented yet).
 const FCARD_GAMES = ['bkiwi', 'snake3', 'swapou2', 'kaluga', 'mb2', 'miniwave', 'jamajama', 'minipixiz'];
 
+// Convert a JSON string (or JS value) to Haxe serialization format.
+// MTSerialization.unserialize in the AS2 profile viewer expects this format,
+// NOT standard JSON.
+function jsonToHaxeSerial(jsonStr) {
+  let obj;
+  if (typeof jsonStr === 'string') {
+    try { obj = JSON.parse(jsonStr); } catch { return jsonStr; }
+  } else {
+    obj = jsonStr;
+  }
+  const stringCache = [];
+
+  function serString(s) {
+    const idx = stringCache.indexOf(s);
+    if (idx >= 0) return `R${idx}`;
+    stringCache.push(s);
+    return `y${s.length}:${s}`;
+  }
+
+  function ser(val) {
+    if (val === null || val === undefined) return 'n';
+    if (val === true) return 't';
+    if (val === false) return 'f';
+    if (typeof val === 'number') {
+      if (Number.isInteger(val)) return val === 0 ? 'z' : `i${val}`;
+      if (val !== val) return 'k'; // NaN
+      return `d${val}`;
+    }
+    if (typeof val === 'string') return serString(val);
+    if (Array.isArray(val)) {
+      let r = 'a';
+      let nullCount = 0;
+      for (let i = 0; i < val.length; i++) {
+        if (val[i] === null || val[i] === undefined) {
+          nullCount++;
+        } else {
+          if (nullCount > 0) { r += `u${nullCount}`; nullCount = 0; }
+          r += ser(val[i]);
+        }
+      }
+      if (nullCount > 0) r += `u${nullCount}`;
+      r += 'h';
+      return r;
+    }
+    if (typeof val === 'object') {
+      let r = 'o';
+      for (const key of Object.keys(val)) {
+        r += serString(key);
+        r += ser(val[key]);
+      }
+      r += 'g';
+      return r;
+    }
+    return 'n';
+  }
+
+  return ser(obj);
+}
+
 // Patch slot 0 data: merge existing saved data with defaults to fill missing
 // fields, and inject real score data. This prevents "undefined" in card display.
 function patchSlot0(username, game, existingData) {
@@ -8900,16 +8959,14 @@ case 'createchannel': {
           } catch (e) { /* ignore */ }
         }
       }
-      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} rawSlot=${slotData ? slotData.substring(0, 500) : '(empty)'}`);
       try {
         slotData = patchSlot0(targetUser, game, slotData);
       } catch (e) {
         console.log(`[FCARD] patchSlot0 ERROR: ${e.message}`);
       }
-      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} patched=${slotData ? slotData.substring(0, 500) : '(empty)'}`);
-      const responseXml = `<${msg.tag}${rAttr}${gAttr}${uAttr}>${slotData}</${msg.tag}>`;
-      console.log(`[FCARD] RESPONSE: ${responseXml.substring(0, 600)}`);
-      sendToClient(socket, responseXml);
+      const haxeData = jsonToHaxeSerial(slotData);
+      console.log(`[FCARD] getPublicSlot user=${targetUser} game=${game} haxe=${haxeData.substring(0, 300)}`);
+      sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${uAttr}>${haxeData}</${msg.tag}>`);
       break;
     }
 
