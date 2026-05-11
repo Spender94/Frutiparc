@@ -151,6 +151,20 @@ function decode62(s) {
   return r;
 }
 
+// StatusMng.internalList from the SWF — index → activity name. The "internal"
+// 2-char base62 portion of the status string is `1 + indexOf(name)` (set by
+// setInternal in StatusMng), or 0 when no internal status is active. This
+// drives the icon shown next to the pseudo on the user card / userlist.
+const STATUS_INTERNAL_LIST = [
+  'miniwave', 'kaluga', 'grapiz', 'bandas', 'snake3',
+  'swapou2', 'mb2', 'bkiwi', 'forum',
+];
+function statusInternalCode(name) {
+  if (!name) return 0;
+  const i = STATUS_INTERNAL_LIST.indexOf(name);
+  return i < 0 ? 0 : i + 1;
+}
+
 const DEFAULT_BOUILLE_STATE = '000000010000000000000000';
 const ALL_PEN_ITEM_IDS = [315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 599, 600, 601, 602];
 
@@ -7721,6 +7735,39 @@ function getStatusCode(user, username) {
   return `${encode62(ext, 1)}${encode62(internal, 2)}${encode62(emote, 1)}`;
 }
 
+// Update the "internal" portion of a user's status string (used for the
+// game/forum icon shown next to the pseudo). Updates every chat socket the
+// user has, echoes the new status to those sockets, and broadcasts a trace
+// update to all channels they're in. Pass internalIdx=0 to clear.
+function setUserInternalStatus(username, internalIdx) {
+  if (!username) return;
+  const internalStr = encode62(internalIdx | 0, 2);
+  const ud = users[username] || {};
+  const updatedSockets = [];
+  for (const [sock, cl] of xmlSocketClients) {
+    if (!cl || cl.username !== username) continue;
+    if (!cl.channels || cl.channels.size === 0) continue;
+    const old = cl.statusStr || '0000';
+    const ext = old.charAt(0) || '0';
+    const emote = old.charAt(3) || '0';
+    cl.statusStr = `${ext}${internalStr}${emote}`;
+    updatedSockets.push(sock);
+    sendToClient(sock, `<${CMD.status} s="${cl.statusStr}" />`);
+  }
+  if (updatedSockets.length === 0) return;
+  const traceXml = `<${CMD.trace} u="${escapeXml(getDisplayName(username))}" p="1" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, username)}" />`;
+  const channelsBroadcast = new Set();
+  for (const sock of updatedSockets) {
+    const cl = xmlSocketClients.get(sock);
+    if (!cl) continue;
+    for (const ch of cl.channels) {
+      if (channelsBroadcast.has(ch)) continue;
+      channelsBroadcast.add(ch);
+      broadcastToChannel(ch, traceXml);
+    }
+  }
+}
+
 function buildChannelListXml() {
   let inner = '';
   for (const [name, ch] of Object.entries(channels)) {
@@ -7997,6 +8044,13 @@ case 'join': {
       sessions[client.sid].challengeMode = gameMode === 1;
     }
     console.log(`[FSCORE] startGame disc=${discId} mode=${gameMode} user=${client.username || '-'}`);
+    // Show the game icon in place of the presence indicator on the user
+    // card by updating the "internal" portion of the status string.
+    if (client.username) {
+      const disc = GAME_DISCS[discId];
+      const internal = statusInternalCode(disc && disc.swfName);
+      if (internal > 0) setUserInternalStatus(client.username, internal);
+    }
     sendToClient(socket, `<${CMD.join} d="${escapeXml(discId)}" k="0" />`);
     break;
   }
@@ -9516,9 +9570,21 @@ const xmlSocketServer = net.createServer((socket) => {
           );
         }
       }
+      // If this was a game socket (FrutiScore startGame had been received),
+      // clear the game icon on the user's chat sockets so the presence dot
+      // comes back. The chat socket is the one with channels.
+      const wasGameSocket = client.currentGame &&
+        (!client.channels || client.channels.size === 0);
+      if (wasGameSocket && client.username) {
+        xmlSocketClients.delete(socket);
+        setUserInternalStatus(client.username, 0);
+      } else {
+        xmlSocketClients.delete(socket);
+      }
       console.log(`[CBee]  Client disconnected: ${client.username || 'anonymous'}`);
+    } else {
+      xmlSocketClients.delete(socket);
     }
-    xmlSocketClients.delete(socket);
   });
 
   socket.on('error', (err) => {
