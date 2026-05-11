@@ -135,6 +135,14 @@ async function initSchema() {
         PRIMARY KEY (user_id, blocked_name)
       );
 
+      CREATE TABLE IF NOT EXISTS contact_folders (
+        user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        folder_uid  TEXT NOT NULL,
+        folder_name TEXT NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (user_id, folder_uid)
+      );
+
       CREATE TABLE IF NOT EXISTS user_logs (
         id         SERIAL PRIMARY KEY,
         user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -449,13 +457,55 @@ async function hasAccessoryByShopId(userId, shopId) {
 
 async function getContacts(userId) {
   const { rows } = await pool.query(
-    `SELECT contact_name
+    `SELECT contact_name, folder
      FROM contacts
      WHERE user_id = $1
      ORDER BY created_at ASC`,
     [userId]
   );
-  return rows.map((r) => r.contact_name).filter(Boolean);
+  return rows
+    .filter((r) => r.contact_name)
+    .map((r) => ({ addr: r.contact_name, folder: r.folder || 'mycontact' }));
+}
+
+async function getContactFolders(userId) {
+  const { rows } = await pool.query(
+    `SELECT folder_uid, folder_name
+     FROM contact_folders
+     WHERE user_id = $1
+     ORDER BY created_at ASC`,
+    [userId]
+  );
+  return rows.map((r) => ({ uid: r.folder_uid, name: r.folder_name }));
+}
+
+async function addContactFolder(userId, folderUid, folderName) {
+  await pool.query(
+    `INSERT INTO contact_folders (user_id, folder_uid, folder_name)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, folder_uid) DO UPDATE SET folder_name = EXCLUDED.folder_name`,
+    [userId, folderUid, folderName]
+  );
+}
+
+async function removeContactFolder(userId, folderUid) {
+  await pool.query(
+    `UPDATE contacts SET folder = 'mycontact'
+     WHERE user_id = $1 AND folder = $2`,
+    [userId, folderUid]
+  );
+  await pool.query(
+    'DELETE FROM contact_folders WHERE user_id = $1 AND folder_uid = $2',
+    [userId, folderUid]
+  );
+}
+
+async function updateContactFolder(userId, contactName, folder) {
+  await pool.query(
+    `UPDATE contacts SET folder = $3
+     WHERE user_id = $1 AND contact_name = $2`,
+    [userId, contactName, folder]
+  );
 }
 
 async function getBlacklist(userId) {
@@ -469,12 +519,12 @@ async function getBlacklist(userId) {
   return rows.map((r) => r.blocked_name).filter(Boolean);
 }
 
-async function addContact(userId, contactName) {
+async function addContact(userId, contactName, folder = 'mycontact') {
   await pool.query(
     `INSERT INTO contacts (user_id, contact_name, folder)
-     VALUES ($1, $2, 'mycontact')
-     ON CONFLICT (user_id, contact_name) DO NOTHING`,
-    [userId, contactName]
+     VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, contact_name) DO UPDATE SET folder = EXCLUDED.folder`,
+    [userId, contactName, folder]
   );
 }
 
@@ -1090,6 +1140,10 @@ module.exports = {
   removeContact,
   addBlacklist,
   removeBlacklist,
+  getContactFolders,
+  addContactFolder,
+  removeContactFolder,
+  updateContactFolder,
   loadScoresForUser,
   loadAllScores,
   loadAllBouilles,

@@ -1402,7 +1402,7 @@ function dbUserToMemory(row) {
 
 async function hydrateUserFromDb(username, dbUser) {
   users[username] = dbUserToMemory(dbUser);
-  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails, dbGameItems, dbUserLog, dbSiteLog] = await Promise.all([
+  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails, dbGameItems, dbUserLog, dbSiteLog, dbContactFolders] = await Promise.all([
     db.getUserItems(dbUser.id),
     db.getUserAccessories(dbUser.id),
     db.loadScoresForUser(dbUser.id),
@@ -1412,6 +1412,7 @@ async function hydrateUserFromDb(username, dbUser) {
     db.getUserGameItems(dbUser.id).catch(() => []),
     db.getUserLogEntries(dbUser.id, 'user', 200).catch(() => []),
     db.getUserLogEntries(dbUser.id, 'site', 200).catch(() => []),
+    db.getContactFolders(dbUser.id).catch(() => []),
   ]);
 
   if (items.length > 0) users[username].items = withDefaultPens(items);
@@ -1426,7 +1427,19 @@ async function hydrateUserFromDb(username, dbUser) {
     if (m && m.threshold > jamaCount) jamaCount = m.threshold;
   }
   users[username].jamaPlayCount = jamaCount;
-  users[username].contacts = Array.isArray(dbContacts) ? dbContacts : [];
+  // dbContacts is now [{addr, folder}, ...]; keep user.contacts as a flat
+  // address list and track per-contact folder assignment separately.
+  const contactRows = Array.isArray(dbContacts) ? dbContacts : [];
+  users[username].contacts = contactRows.map((c) =>
+    typeof c === 'string' ? c : c.addr
+  ).filter(Boolean);
+  users[username].contactFolderMap = {};
+  for (const c of contactRows) {
+    if (c && typeof c === 'object' && c.folder && c.folder !== 'mycontact') {
+      users[username].contactFolderMap[c.addr] = c.folder;
+    }
+  }
+  users[username].contactFolders = Array.isArray(dbContactFolders) ? dbContactFolders : [];
   users[username].blacklist = Array.isArray(dbBlacklist) ? dbBlacklist : [];
   users[username].mails = Array.isArray(dbMails) ? dbMails : [];
 
@@ -2067,6 +2080,20 @@ function encodePrefString(parsed) {
 function ensureContactLists(user) {
   if (!Array.isArray(user.contacts)) user.contacts = [];
   if (!Array.isArray(user.blacklist)) user.blacklist = [];
+  if (!Array.isArray(user.contactFolders)) user.contactFolders = [];
+  if (!user.contactFolderMap || typeof user.contactFolderMap !== 'object') {
+    user.contactFolderMap = {};
+  }
+}
+
+function getContactFolder(user, addr) {
+  return (user.contactFolderMap && user.contactFolderMap[addr]) || 'mycontact';
+}
+
+function isCustomContactFolder(user, uid) {
+  if (!uid || uid === 'mycontact' || uid === 'blacklist') return false;
+  return Array.isArray(user.contactFolders) &&
+         user.contactFolders.some((f) => f.uid === uid);
 }
 
 // ─────────────────────────────────────────────
@@ -5434,11 +5461,29 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 
 
   if (uid === 'mycontact') {
-    const nodes = user.contacts.map((addr) => {
-      const local = String(addr).split('@')[0];
-      return `<e u="${escapeXml(local)}" t="contact" s="10" d="0" a="0">${escapeXml(addr)}</e>`;
-    }).join('');
-    return res.type('text/xml').send(`<f u="mycontact">${nodes || '<i />'}</f>`);
+    const folderNodes = (user.contactFolders || [])
+      .map((f) => `<e u="${escapeXml(f.uid)}" t="folder" s="10" d="0" a="0">${escapeXml(f.name)}\nfolder</e>`)
+      .join('');
+    const contactNodes = user.contacts
+      .filter((addr) => getContactFolder(user, addr) === 'mycontact')
+      .map((addr) => {
+        const local = String(addr).split('@')[0];
+        return `<e u="${escapeXml(local)}" t="contact" s="10" d="0" a="0">${escapeXml(addr)}</e>`;
+      })
+      .join('');
+    const body = folderNodes + contactNodes;
+    return res.type('text/xml').send(`<f u="mycontact">${body || '<i />'}</f>`);
+  }
+
+  if (isCustomContactFolder(user, uid)) {
+    const contactNodes = user.contacts
+      .filter((addr) => getContactFolder(user, addr) === uid)
+      .map((addr) => {
+        const local = String(addr).split('@')[0];
+        return `<e u="${escapeXml(local)}" t="contact" s="10" d="0" a="0">${escapeXml(addr)}</e>`;
+      })
+      .join('');
+    return res.type('text/xml').send(`<f u="${escapeXml(uid)}">${contactNodes || '<i />'}</f>`);
   }
 
   if (uid === 'blacklist') {
@@ -5620,6 +5665,19 @@ app.all(['/ff/mk', '/mk'], async (req, res) => {
     );
   }
 
+  // Persistent sub-folder inside "Mes contacts"
+  if (type === 'folder' && folder === 'mycontact') {
+    const folderName = String(desc.split('\n')[0] || '').trim() || 'Nouveau dossier';
+    user.contactFolders.push({ uid: newUid, name: folderName });
+    if (user._dbId) {
+      db.addContactFolder(user._dbId, newUid, folderName)
+        .catch((e) => console.error('[DB] contact folder save error:', e.message));
+    }
+    return res.type('text/xml').send(
+      `<r u="${newUid}" t="folder" d="${now}" f="${escapeXml(folder)}">${escapeXml(folderName)}\nfolder</r>`
+    );
+  }
+
   res.type('text/xml').send(`<r u="${newUid}" t="${escapeXml(type)}" d="${now}" f="${escapeXml(folder)}">${escapeXml(desc)}</r>`);
 });
 
@@ -5644,9 +5702,13 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     'root', 'messages', 'inbox', 'outbox', 'blackbox', 'draftbox',
     'disccollector', 'inventory', 'inv_accessories', 'inv_wallpapers', 'inv_pictos',
     'shop', 'accessories', 'mycontact', 'recyclebin', 'blacklist',
+    'linkForum', 'linkChat', 'linkHisto', 'linkPreference',
+    'linkScore', 'linkShop', 'linkBlogs', 'linkClub',
   ]);
-  if (PROTECTED_UIDS.has(file)) {
-    return res.type('text/xml').send('<r k="403" />');
+  if (PROTECTED_UIDS.has(file) || /^link/.test(file)) {
+    return res.type('text/xml').send(
+      `<r k="403"><f u="${escapeXml(file)}" k="403" /></r>`
+    );
   }
 
   // Mail moves — file uid starts with 'm'
@@ -5678,6 +5740,29 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
   }
 
   let oldFolder = String(source.p || req.query.p || 'root');
+
+  // Custom contact sub-folder being moved to trash:
+  // delete the folder, but keep its contacts (move them back to mycontact).
+  if (folder === 'recyclebin' && isCustomContactFolder(user, file)) {
+    for (const addr of user.contacts) {
+      if (getContactFolder(user, addr) === file) {
+        delete user.contactFolderMap[addr];
+        if (user._dbId) {
+          db.updateContactFolder(user._dbId, addr, 'mycontact')
+            .catch((e) => console.error('[DB] contact folder move error:', e.message));
+        }
+      }
+    }
+    user.contactFolders = user.contactFolders.filter((f) => f.uid !== file);
+    if (user._dbId) {
+      db.removeContactFolder(user._dbId, file)
+        .catch((e) => console.error('[DB] contact folder remove error:', e.message));
+    }
+    return res.type('text/xml').send(
+      `<r f="recyclebin"><f n="${escapeXml(file)}" u="${escapeXml(file)}" t="folder" d="${now}" p="mycontact">${escapeXml(file)}\nfolder</f></r>`
+    );
+  }
+
   const local = file.split('@')[0];
   const normalizedFileAddr = normalizeContactAddress(file);
 
@@ -5686,8 +5771,9 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
 
   if (folder === 'recyclebin') {
     if (inContacts) {
+      oldFolder = getContactFolder(user, inContacts);
       user.contacts = user.contacts.filter((a) => a !== inContacts);
-      oldFolder = 'mycontact';
+      delete user.contactFolderMap[inContacts];
       if (user._dbId) db.removeContact(user._dbId, inContacts).catch((e) => console.error('[DB] contact remove error:', e.message));
     } else if (inBlacklist) {
       user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
@@ -5697,8 +5783,9 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
   } else if (folder === 'blacklist') {
     const addr = inContacts || normalizedFileAddr || file;
     if (inContacts) {
+      oldFolder = getContactFolder(user, inContacts);
       user.contacts = user.contacts.filter((a) => a !== inContacts);
-      oldFolder = 'mycontact';
+      delete user.contactFolderMap[inContacts];
       if (user._dbId) db.removeContact(user._dbId, inContacts).catch((e) => console.error('[DB] contact move error:', e.message));
     }
     if (addr && !user.blacklist.includes(addr)) {
@@ -5706,15 +5793,34 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
       if (user._dbId) db.addBlacklist(user._dbId, addr).catch((e) => console.error('[DB] blacklist add error:', e.message));
     }
   } else if (folder === 'mycontact') {
-    const addr = inBlacklist || normalizedFileAddr || file;
+    const addr = inBlacklist || inContacts || normalizedFileAddr || file;
     if (inBlacklist) {
       user.blacklist = user.blacklist.filter((a) => a !== inBlacklist);
       oldFolder = 'blacklist';
       if (user._dbId) db.removeBlacklist(user._dbId, inBlacklist).catch((e) => console.error('[DB] blacklist move error:', e.message));
+    } else if (inContacts) {
+      oldFolder = getContactFolder(user, inContacts);
     }
     if (addr && !user.contacts.includes(addr)) {
       user.contacts.push(addr);
-      if (user._dbId) db.addContact(user._dbId, addr).catch((e) => console.error('[DB] contact add error:', e.message));
+      if (user._dbId) db.addContact(user._dbId, addr, 'mycontact').catch((e) => console.error('[DB] contact add error:', e.message));
+    } else if (addr && user.contactFolderMap[addr] !== undefined) {
+      // Moving a contact from a sub-folder back to mycontact root
+      delete user.contactFolderMap[addr];
+      if (user._dbId) db.updateContactFolder(user._dbId, addr, 'mycontact').catch((e) => console.error('[DB] contact folder update error:', e.message));
+    }
+  } else if (isCustomContactFolder(user, folder)) {
+    // Moving a contact into a custom sub-folder of "Mes contacts"
+    const addr = inContacts || normalizedFileAddr || file;
+    if (inContacts) {
+      oldFolder = getContactFolder(user, inContacts);
+    } else if (addr && !user.contacts.includes(addr)) {
+      user.contacts.push(addr);
+      if (user._dbId) db.addContact(user._dbId, addr, folder).catch((e) => console.error('[DB] contact add error:', e.message));
+    }
+    if (addr) {
+      user.contactFolderMap[addr] = folder;
+      if (user._dbId) db.updateContactFolder(user._dbId, addr, folder).catch((e) => console.error('[DB] contact folder update error:', e.message));
     }
   }
 
