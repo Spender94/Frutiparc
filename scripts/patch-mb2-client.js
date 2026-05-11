@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Patches Games/motionBall2/motionball.swf so that:
 //   1. STANDALONE is set to true (was false in the compiled SWF)
-//   2. serviceConnect builds proper slot defaults and calls onServiceConnect directly
+//   2. serviceConnect initialises slots=[], overrides disc-type methods
+//      (isBlack→false, isWhite→true) to enable all game modes + menu return,
+//      overrides saveScore to use getURL for score persistence via game-popup.html,
+//      overrides endGame to set gameRunning=false, then calls onServiceConnect
 //      (no super.serviceConnect → no XMLSocket connection attempts)
-//   3. saveScore is overridden to use getURL for score persistence via game-popup.html
-//   4. endGame is overridden to set gameRunning=false and call onEndGame directly
 //
 // This makes the game work in game-popup.html without XMLSocket/Frusion infrastructure.
 
@@ -164,6 +165,7 @@ console.log(`Constant pool: ${cp.count} entries, payload ${cp.payloadLen} bytes`
 
 // Verify expected CP entries
 const expectedCp = {
+  9: 'isBlack',
   17: 'serviceConnect',
   18: 'slots',
   19: 'onServiceConnect',
@@ -175,14 +177,10 @@ const expectedCp = {
   37: 'rankingData',
   38: 'ranking',
   39: 'onSaveScore',
-  41: '$classic_score',
-  47: '$challenge',
-  49: '$classic',
-  51: '$courses',
-  53: '$dungeons',
   57: 'bestScorePos',
   58: 'oldPos',
   59: 'oldScore',
+  62: 'isWhite',
   63: 'gameRunning',
 };
 for (const [idx, expected] of Object.entries(expectedCp)) {
@@ -243,6 +241,7 @@ console.log(`Set STANDALONE = true at offset ${standaloneOffset}`);
 
 // Constant pool index map (existing + new entries)
 const CP = {
+  isBlack: 9,
   serviceConnect: 17,
   slots: 18,
   onServiceConnect: 19,
@@ -254,16 +253,12 @@ const CP = {
   rankingData: 37,
   ranking: 38,
   onSaveScore: 39,
-  $classic_score: 41,
-  $challenge: 47,
-  $classic: 49,
-  $courses: 51,
-  $dungeons: 53,
   bestScorePos: 57,
   oldPos: 58,
   oldScore: 59,
+  isWhite: 62,
   gameRunning: 63,
-  scorePrefix: newCpBase + 0,  // 69: 'score:mb2:1:'
+  scorePrefix: newCpBase + 0,  // 69: 'score:mb2:0:'
   _blank: newCpBase + 1,       // 70: '_blank'
 };
 
@@ -324,38 +319,39 @@ function buildEndGameBody() {
   return Buffer.concat([clearGameRunning, callOnEndGame]);
 }
 
+const RETURN = simpleAction(0x3E);
+
 // Outer function: serviceConnect()
 // DefineFunction2 flags 0x29: preloadThis | suppressArguments | suppressSuper
 // r1=this, r2-r3=temps (no super call needed)
 function buildServiceConnectBody() {
   // this.slots = []
+  // slots[0] is left undefined so onServiceConnect creates a new mb2.Card()
+  // which properly initialises $items, $dtimes, $records and all mode flags.
   const initSlots = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots), pushInt(0)),
     INIT_ARRAY,
     SET_MEMBER,
   ]);
 
-  // Build slot0 object with all game mode defaults:
-  // { $challenge:true, $classic:true, $courses:[true], $dungeons:[true,true,true,true], $classic_score:0 }
-  // InitObject pops count, then (value, name) pairs from top of stack
-  const buildSlot0 = Buffer.concat([
-    actionPush(pushCp(CP.$challenge), pushBool(true)),
-    actionPush(pushCp(CP.$classic), pushBool(true)),
-    actionPush(pushCp(CP.$courses)),
-    actionPush(pushBool(true), pushInt(1)),
-    INIT_ARRAY,  // [true] for courses
-    actionPush(pushCp(CP.$dungeons)),
-    actionPush(pushBool(true), pushBool(true), pushBool(true), pushBool(true), pushInt(4)),
-    INIT_ARRAY,  // [true,true,true,true] for dungeons
-    actionPush(pushCp(CP.$classic_score), pushInt(0)),
-    actionPush(pushInt(5)),
-    INIT_OBJECT,
-    storeReg(2),
-    POP,
-    // this.slots[0] = r2
-    actionPush(pushReg(1), pushCp(CP.slots)),
-    GET_MEMBER,
-    actionPush(pushInt(0), pushReg(2)),
+  // this.isBlack = function() { return false; }
+  // The STANDALONE constructor patches isBlack→true (challenge-disc mode).
+  // We override it to false so isChallengeDisc() returns false, enabling
+  // Course, Adventure and Classic menu entries.
+  const isBlackBody = Buffer.concat([actionPush(pushBool(false)), RETURN]);
+  const overrideIsBlack = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.isBlack)),
+    buildDefineFunction2('', [], 1, 0x28, isBlackBody),
+    SET_MEMBER,
+  ]);
+
+  // this.isWhite = function() { return true; }
+  // Manager.gameFinished() checks isWhite() — only the "white" path returns
+  // to the menu; the else-branch calls closeService() which exits the game.
+  const isWhiteBody = Buffer.concat([actionPush(pushBool(true)), RETURN]);
+  const overrideIsWhite = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.isWhite)),
+    buildDefineFunction2('', [], 1, 0x28, isWhiteBody),
     SET_MEMBER,
   ]);
 
@@ -384,7 +380,7 @@ function buildServiceConnectBody() {
     POP,
   ]);
 
-  return Buffer.concat([initSlots, buildSlot0, overrideSaveScore, overrideEndGame, callOnServiceConnect]);
+  return Buffer.concat([initSlots, overrideIsBlack, overrideIsWhite, overrideSaveScore, overrideEndGame, callOnServiceConnect]);
 }
 
 const serviceConnectBody = buildServiceConnectBody();
