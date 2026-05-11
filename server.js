@@ -8692,6 +8692,15 @@ case 'createchannel': {
     break;
   }
 
+  // Native protocol: error code 201 is also returned when the target user is
+  // offline. The AS2 client's Lang dictionary maps chat.nouser to "$u n'est
+  // pas connecté actuellement mais vous pouvez lui envoyer un e-mail.", and
+  // the onCreateChannel handler offers an email shortcut alongside the alert.
+  if (getSocketsForUsername(otherUser).length === 0) {
+    sendToClient(socket, `<${CMD.createchannel} k="201" u="${escapeXml(getDisplayName(otherUser))}" r="${escapeXml(reqId)}" />`);
+    break;
+  }
+
   const sortedUsers = [requester.toLowerCase(), otherUser.toLowerCase()].sort();
   const privateGroup = buildPrivateGroupName(sortedUsers[0], sortedUsers[1]);
   const privatePass = `pw_${sortedUsers[0].slice(0, 4)}_${sortedUsers[1].slice(0, 4)}`;
