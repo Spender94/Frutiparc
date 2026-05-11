@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-// Patches legacy/main.swf to fix desktop icon drag & drop in Ruffle.
+// Patches legacy/main.swf to fix icon drag & drop in Ruffle.
 //
-// FPDesktop.displayIconList creates the icon list with flMask: true, which
+// Two icon list components create their content with flMask:true, which
 // causes Component.initMask to call content.setMask(mcMask). In Ruffle,
-// setMask blocks mouse events on the masked content, preventing icon onPress
-// handlers from firing — so icons can't be dragged.
+// setMask blocks mouse events on the masked content — preventing icon
+// onPress handlers from firing for the desktop, and preventing _droptarget
+// from resolving to the icon list area for folder windows.
 //
-// The fix changes the boolean Push value for flMask from true (0x01) to
-// false (0x00). This is a single-byte patch with no size changes.
+// We flip the flMask boolean from true (0x01) to false (0x00) in:
+//   1. FPDesktop.displayIconList  — fixes desktop icon drag (and rearrange)
+//   2. win.Explorer  fileIconList — fixes drop onto an open folder window
 //
-// The relevant ActionPush instruction in FPDesktop.displayIconList pushes:
-//   "textColor", reg12, "margin", reg7, "flTrace", true, "flMask", true, 7
-// We change the second true (flMask's value) to false.
+// Each is a single-byte patch (value flip; no size changes).
 
 const fs = require('fs');
 const path = require('path');
@@ -48,41 +48,50 @@ function writeSwf(outPath, sig, version, body) {
   return out.length;
 }
 
+// Patches a single byte. Pattern must uniquely identify the location of the
+// flag inside the SWF body. boolByteOffset is the offset (within the matched
+// pattern) of the bool value byte to flip from 0x01 to 0x00.
+function flipFlMask(body, name, patternBytes, boolByteOffset) {
+  const pattern = Buffer.from(patternBytes);
+  // Build the "already patched" pattern (same bytes but bool byte = 0x00)
+  const patchedPattern = Buffer.from(pattern);
+  patchedPattern[boolByteOffset] = 0x00;
+
+  const off = body.indexOf(pattern);
+  if (off < 0) {
+    if (body.indexOf(patchedPattern) >= 0) {
+      console.log('[' + name + '] already patched — skipping.');
+      return;
+    }
+    throw new Error('[' + name + '] flMask pattern not found');
+  }
+
+  // Verify the pattern appears exactly once
+  if (body.indexOf(pattern, off + 1) >= 0) {
+    throw new Error('[' + name + '] pattern is not unique');
+  }
+
+  const boolOff = off + boolByteOffset;
+  console.log('[' + name + '] flMask=true at decompressed offset', boolOff,
+              '(was 0x' + body[boolOff].toString(16) + ')');
+  body[boolOff] = 0x00;
+}
+
 function patch() {
   const { sig, version, body } = readSwf(IN_PATH);
 
-  // Locate the FPDesktop constant pool (contains "flMask" at index 152)
-  // Search for the signature: constant8 push of index 152 ("flMask") followed
-  // by boolean true — the pattern is bytes 0x08 0x98 0x05 0x01
-  const pattern = Buffer.from([0x08, 0x98, 0x05, 0x01]);
-  const patchOff = body.indexOf(pattern);
-  if (patchOff < 0) {
-    // Check if already patched (0x08 0x98 0x05 0x00)
-    const patched = Buffer.from([0x08, 0x98, 0x05, 0x00]);
-    if (body.indexOf(patched) >= 0) {
-      console.log('FPDesktop flMask already patched — skipping.');
-      return;
-    }
-    throw new Error('flMask pattern not found');
-  }
+  // 1) FPDesktop.displayIconList — flMask at CP index 152 (0x98)
+  //    Surrounding: Push flTrace(0x97) TRUE flMask(0x98) TRUE
+  //    Pattern: 08 97 05 01 08 98 05 01  → flip last byte
+  flipFlMask(body, 'FPDesktop.iconList',
+    [0x08, 0x97, 0x05, 0x01, 0x08, 0x98, 0x05, 0x01], 7);
 
-  // Verify context: should be preceded by flTrace (index 151) + true
-  // Pattern: 0x08 0x97 0x05 0x01 0x08 0x98 0x05 0x01
-  const contextPattern = Buffer.from([0x08, 0x97, 0x05, 0x01, 0x08, 0x98, 0x05, 0x01]);
-  const contextOff = body.indexOf(contextPattern);
-  if (contextOff < 0 || contextOff + 4 !== patchOff) {
-    throw new Error('Context verification failed — unexpected byte sequence around flMask');
-  }
+  // 2) win.Explorer fileIconList — flMask at CP index 60 (0x3c)
+  //    Push len=9 [Const8 flMask, Bool TRUE, Int 1] then InitObject
+  //    Pattern: 96 09 00 08 3c 05 01 07 01 00 00 00 43  → flip byte at idx 6
+  flipFlMask(body, 'win.Explorer.fileIconList',
+    [0x96, 0x09, 0x00, 0x08, 0x3c, 0x05, 0x01, 0x07, 0x01, 0x00, 0x00, 0x00, 0x43], 6);
 
-  const boolOff = patchOff + 3; // offset of the 0x01 byte (true)
-  console.log('Found flMask=true at decompressed offset', boolOff);
-  console.log('  Byte value before patch:', body[boolOff].toString(16));
-
-  // Patch: change true (0x01) to false (0x00)
-  body[boolOff] = 0x00;
-  console.log('  Byte value after  patch:', body[boolOff].toString(16));
-
-  // Write back (no size changes, just a value byte flip)
   const outSize = writeSwf(OUT_PATH, sig, version, body);
   console.log('Wrote', OUT_PATH, '(' + outSize + ' bytes)');
 }
