@@ -5266,8 +5266,19 @@ app.get(['/ff/tree', '/tree'], (req, res) => {
   const username = resolveUsernameFromSid(sid);
   let xml = FILE_TREE_XML;
   if (username && users[username]) {
-    const m = unreadInboxCount(users[username]);
+    const user = users[username];
+    const m = unreadInboxCount(user);
     xml = xml.replace(/m="0"/, `m="${m}"`);
+    ensureContactLists(user);
+    if (user.contactFolders && user.contactFolders.length > 0) {
+      const subXml = user.contactFolders
+        .map((f) => `<f u="${escapeXml(f.uid)}" n="${escapeXml(f.name)}" t="mycontact" />`)
+        .join('');
+      xml = xml.replace(
+        '<f u="mycontact" n="Mes contacts" t="mycontact" />',
+        `<f u="mycontact" n="Mes contacts" t="mycontact">${subXml}</f>`
+      );
+    }
   }
   res.type('text/xml').send(xml);
 });
@@ -5786,6 +5797,15 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
   }
 
   let oldFolder = String(source.p || req.query.p || 'root');
+
+  // Disc moves — game discs should never create contacts
+  if (GAME_DISCS[file]) {
+    const disc = GAME_DISCS[file];
+    const discDesc = `${disc.discType}\n${disc.swfName}`;
+    return res.type('text/xml').send(
+      `<r f="${escapeXml(folder || 'root')}"><f n="${escapeXml(file)}" u="${escapeXml(file)}" t="disc" d="${now}" p="${escapeXml(oldFolder)}">${escapeXml(discDesc)}</f></r>`
+    );
+  }
 
   // Custom contact sub-folder being moved to trash:
   // delete the folder, but keep its contacts (move them back to mycontact).
