@@ -4533,6 +4533,22 @@ app.get('/frusion', (req, res) => {
   if (VERBOSE_FRUSION_LOGS) {
     console.log(`[FRUSION] launch redirect launch_id=${params.get('launch_id')} sid=${params.get('sid') || ''} game=${params.get('gameName') || ''} u=${params.get('u') || ''}`);
   }
+  // Set the game icon on the user's presence indicator via the chat socket.
+  // The SWF's FPFrusionSlot.setInternal never fires in Ruffle (LocalConnection
+  // between Ruffle instances is broken), so we trigger it server-side here.
+  const frusionSid = params.get('sid') || '';
+  const gameName = params.get('gameName') || '';
+  if (frusionSid && gameName) {
+    const sess = sessions[frusionSid];
+    const frusionUser = sess && sess.user;
+    if (frusionUser) {
+      const internalCode = statusInternalCode(gameName);
+      if (internalCode > 0) {
+        setUserInternalStatus(frusionUser, internalCode);
+        console.log(`[FRUSION] Set internal status ${gameName}(${internalCode}) for ${frusionUser}`);
+      }
+    }
+  }
   res.redirect(`/frusion-ruffle.html?${params.toString()}`);
 });
 
@@ -5720,8 +5736,13 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     'linkScore', 'linkShop', 'linkBlogs', 'linkClub',
   ]);
   if (PROTECTED_UIDS.has(file) || /^link/.test(file)) {
+    // Return a no-op "move" back to the source folder so the SWF client
+    // restores the icon. The AS2 client doesn't handle 403 errors — it
+    // optimistically removes the icon from the display, and a 403 would
+    // leave it missing until the next refresh.
+    const origFolder = String(source.p || req.query.p || 'root');
     return res.type('text/xml').send(
-      `<r k="403"><f u="${escapeXml(file)}" k="403" /></r>`
+      `<r f="${escapeXml(origFolder)}"><f u="${escapeXml(file)}" t="folder" d="${now}" p="${escapeXml(origFolder)}">${escapeXml(file)}</f></r>`
     );
   }
 
@@ -7382,6 +7403,45 @@ function getSocketsForUsername(username) {
   return sockets;
 }
 
+// Trace subscriptions: when socket A asks for user B's trace, A is subscribed
+// to real-time presence/status updates for B — independent of shared channels.
+const traceSubscriptions = new Map(); // targetUsername → Set<socket>
+
+function subscribeTrace(socket, targetUsername) {
+  if (!targetUsername) return;
+  const key = targetUsername.toLowerCase();
+  let subs = traceSubscriptions.get(key);
+  if (!subs) {
+    subs = new Set();
+    traceSubscriptions.set(key, subs);
+  }
+  subs.add(socket);
+}
+
+function unsubscribeAllTrace(socket) {
+  for (const [, subs] of traceSubscriptions) {
+    subs.delete(socket);
+  }
+}
+
+function notifyTraceSubscribers(username, excludeSocket = null) {
+  if (!username) return;
+  const key = username.toLowerCase();
+  const subs = traceSubscriptions.get(key);
+  if (!subs || subs.size === 0) return;
+  const ud = users[key] || {};
+  const pVal = getSocketsForUsername(key).length > 0 ? 1 : 0;
+  const traceXml = `<${CMD.trace} u="${escapeXml(getDisplayName(key))}" p="${pVal}" s="${getStatusCode(ud, key)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, key)}" />`;
+  for (const sock of subs) {
+    if (sock === excludeSocket) continue;
+    if (!xmlSocketClients.has(sock)) {
+      subs.delete(sock);
+      continue;
+    }
+    sendToClient(sock, traceXml);
+  }
+}
+
 function isModerator(username) {
   if (isDebugNotUser(username)) return false;
   return !!(username && users[username] && users[username].isModerator);
@@ -7595,6 +7655,7 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
       cl.channels.delete(channelName);
     }
   }
+  notifyTraceSubscribers(targetUser);
 
   if (!CONNECTED_NPCS.has(targetUser)) {
     const actionLabel = isBan ? 'banni' : 'expulsé';
@@ -7766,6 +7827,7 @@ function setUserInternalStatus(username, internalIdx) {
       broadcastToChannel(ch, traceXml);
     }
   }
+  notifyTraceSubscribers(username);
 }
 
 function buildChannelListXml() {
@@ -8043,13 +8105,16 @@ case 'join': {
     if (client.sid && sessions[client.sid]) {
       sessions[client.sid].challengeMode = gameMode === 1;
     }
-    console.log(`[FSCORE] startGame disc=${discId} mode=${gameMode} user=${client.username || '-'}`);
+    // Resolve the user — the game socket may have authenticated via SID
+    const gameUser = client.username ||
+      (client.sid && sessions[client.sid] && sessions[client.sid].user) || null;
+    console.log(`[FSCORE] startGame disc=${discId} mode=${gameMode} user=${gameUser || '-'}`);
     // Show the game icon in place of the presence indicator on the user
     // card by updating the "internal" portion of the status string.
-    if (client.username) {
+    if (gameUser) {
       const disc = GAME_DISCS[discId];
       const internal = statusInternalCode(disc && disc.swfName);
-      if (internal > 0) setUserInternalStatus(client.username, internal);
+      if (internal > 0) setUserInternalStatus(gameUser, internal);
     }
     sendToClient(socket, `<${CMD.join} d="${escapeXml(discId)}" k="0" />`);
     break;
@@ -8127,6 +8192,8 @@ case 'join': {
     broadcastToChannel(g, `<${CMD.userjoined} u="${escapeXml(getDisplayName(client.username))}" g="${g}" />`, socket);
     broadcastToChannel(g, joinerTrace, socket);
   }
+  // Notify trace subscribers (cross-channel) that this user is online
+  notifyTraceSubscribers(client.username, socket);
   break;
 }
 
@@ -8194,10 +8261,11 @@ case 'join': {
       if (channels[g]) {
         channels[g].users.delete(client.username);
         client.channels.delete(g);
-broadcastToChannel(
-  g,
-  `<${CMD.userleaved} u="${escapeXml(getDisplayName(client.username))}" g="${g}" />`
-);
+        broadcastToChannel(
+          g,
+          `<${CMD.userleaved} u="${escapeXml(getDisplayName(client.username))}" g="${g}" />`
+        );
+        notifyTraceSubscribers(client.username);
       }
       break;
     }
@@ -8682,6 +8750,7 @@ case 'trace': {
 
     for (const child of traceChildren) {
       const u = String(child.attrs.u).toLowerCase();
+      subscribeTrace(socket, u);
       const ud = users[u] || {};
       const pVal = getSocketsForUsername(u).length > 0 ? 1 : 0;
       inner += `<u u="${escapeXml(getDisplayName(u))}" p="${pVal}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, u)}" />`;
@@ -8693,6 +8762,7 @@ case 'trace': {
 
   const targetUser = String(msg.attrs.u || '').toLowerCase();
   if (targetUser) {
+    subscribeTrace(socket, targetUser);
     if (client.sid && sessions[client.sid]) {
       sessions[client.sid].lastTraceUser = targetUser;
     }
@@ -8742,6 +8812,7 @@ case 'trace': {
         for (const ch of client.channels || []) {
           broadcastToChannel(ch, traceXml, socket);
         }
+        notifyTraceSubscribers(client.username, socket);
       }
       break;
     }
@@ -9575,15 +9646,28 @@ const xmlSocketServer = net.createServer((socket) => {
       // comes back. The chat socket is the one with channels.
       const wasGameSocket = client.currentGame &&
         (!client.channels || client.channels.size === 0);
-      if (wasGameSocket && client.username) {
+      // Resolve the username — game sockets may have authenticated via SID
+      const disconnectUser = client.username ||
+        (client.sid && sessions[client.sid] && sessions[client.sid].user) || null;
+      if (wasGameSocket && disconnectUser) {
         xmlSocketClients.delete(socket);
-        setUserInternalStatus(client.username, 0);
+        setUserInternalStatus(disconnectUser, 0);
       } else {
         xmlSocketClients.delete(socket);
       }
-      console.log(`[CBee]  Client disconnected: ${client.username || 'anonymous'}`);
+      // Clean up trace subscriptions this socket held
+      unsubscribeAllTrace(socket);
+      // Notify anyone subscribed to this user's presence (they may now be offline)
+      if (disconnectUser) {
+        const stillOnline = getSocketsForUsername(disconnectUser).length > 0;
+        if (!stillOnline) {
+          notifyTraceSubscribers(disconnectUser);
+        }
+      }
+      console.log(`[CBee]  Client disconnected: ${disconnectUser || 'anonymous'}`);
     } else {
       xmlSocketClients.delete(socket);
+      unsubscribeAllTrace(socket);
     }
   });
 
