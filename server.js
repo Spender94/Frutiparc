@@ -2672,6 +2672,10 @@ async function handleSaveScore(req, res) {
     awardJamaPictosOnScore(username);
   }
   console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated}`);
+
+  // Clear game presence icon now that the game round is over
+  setUserInternalStatus(username, 0);
+
   return res.json({
     ok: true,
     updated: result.updated,
@@ -5239,6 +5243,17 @@ app.get('/do/ld', (req, res) => {
   if (VERBOSE_FRUSION_LOGS) {
     console.log(`[FRUSION] do/ld hit launch_id=${launchId || '-'} u=${discUid} resolved=${resolvedDiscUid} -> ${disc.gameId} props=${disc.props}`);
   }
+
+  // Set game presence icon when a game is launched
+  if (sid) {
+    const gameUser = resolveUsernameFromSid(sid);
+    const internalCode = statusInternalCode(disc.swfName);
+    if (gameUser && internalCode > 0) {
+      console.log(`[FRUSION] do/ld setting game status for ${gameUser} game=${disc.swfName} internal=${internalCode}`);
+      setUserInternalStatus(gameUser, internalCode);
+    }
+  }
+
   res.type('text/xml').send(xml);
 });
 
