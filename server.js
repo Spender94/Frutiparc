@@ -8719,7 +8719,7 @@ case 'createchannel': {
   // Accusé de réception de l’ouverture de la discussion privée
   sendToClient(
     socket,
-    `<${CMD.createchannel} u="${escapeXml(getDisplayName(otherUser))}" g="${privateGroup}" p="${privatePass}">${escapeXml(privateTitle)}</${CMD.createchannel}>`
+    `<${CMD.createchannel} u="${escapeXml(getDisplayName(otherUser))}" g="${privateGroup}" p="${privatePass}" r="${escapeXml(reqId)}">${escapeXml(privateTitle)}</${CMD.createchannel}>`
   );
 
   // Invite "privée" envoyée au demandeur pour ouvrir immédiatement la box
