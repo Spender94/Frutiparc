@@ -92,6 +92,9 @@ function pushInt(v) {
   return b;
 }
 function pushBool(v) { return Buffer.from([0x05, v ? 1 : 0]); }
+function pushStr(s) {
+  return Buffer.concat([Buffer.from([0x00]), Buffer.from(s + '\0', 'latin1')]);
+}
 
 function actionPush(...items) {
   const payload = Buffer.concat(items);
@@ -113,6 +116,13 @@ function storeReg(r) { return Buffer.from([0x87, 0x01, 0x00, r]); }
 
 function actionGetURL2(flags) {
   return Buffer.from([0x9A, 0x01, 0x00, flags]);
+}
+function actionIf(offset) {
+  const b = Buffer.alloc(5);
+  b[0] = 0x9D;
+  b.writeUInt16LE(2, 1);
+  b.writeInt16LE(offset, 3);
+  return b;
 }
 
 function buildDefineFunction2(name, params, regcount, flags, bodyBytes) {
@@ -248,6 +258,7 @@ const CP = {
   emptyStr: 22,
   endGame: 24,
   onEndGame: 25,
+  saveSlot: 34,
   saveScore: 35,
   rankingScore: 36,
   rankingData: 37,
@@ -321,6 +332,64 @@ function buildEndGameBody() {
 
 const RETURN = simpleAction(0x3E);
 
+// Inner function: saveSlot(n, cb)
+// DefineFunction2 flags 0x29: preloadThis | suppressArguments | suppressSuper
+// r1=this, r2=n(param), r3=cb(param), r4=card, r5=pipe-string
+// Only persists slot 0 (the Card). Other slots (prefs) are no-ops here —
+// the server stores the slot raw and extracts pictos from $items on slot 0.
+function buildSaveSlotBody() {
+  // r4 = this.slots[0]
+  const getCard = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
+    actionPush(pushInt(0)), GET_MEMBER,
+    storeReg(4), POP,
+  ]);
+
+  // Helper: append card.<prop> (coerced to string) to the running stack-top string
+  function appendValue(propStr) {
+    return Buffer.concat([
+      actionPush(pushReg(4), pushStr(propStr)), GET_MEMBER,
+      actionPush(pushStr('')), ADD2,   // forces value→string (arrays use toString = join(','))
+      ADD2,                             // concat onto running string
+    ]);
+  }
+  function appendLiteral(piece) {
+    return Buffer.concat([actionPush(pushStr(piece)), ADD2]);
+  }
+
+  // Build pipe-delimited string: items|challenge|classic|courses|dungeons|dungeons_done|classic_score|dtimes
+  const buildPipe = Buffer.concat([
+    actionPush(pushStr('')),
+    appendValue('$items'),
+    appendLiteral('|'), appendValue('$challenge'),
+    appendLiteral('|'), appendValue('$classic'),
+    appendLiteral('|'), appendValue('$courses'),
+    appendLiteral('|'), appendValue('$dungeons'),
+    appendLiteral('|'), appendValue('$dungeons_done'),
+    appendLiteral('|'), appendValue('$classic_score'),
+    appendLiteral('|'), appendValue('$dtimes'),
+    storeReg(5), POP,
+  ]);
+
+  // getURL("slot:mb2:0:" + r5, "_blank")
+  // Ruffle routes getURL with target to window.open → intercepted by game-popup.html
+  const doGetURL = Buffer.concat([
+    actionPush(pushStr('slot:mb2:0:'), pushReg(5)), ADD2,
+    actionPush(pushCp(CP._blank)),
+    actionGetURL2(0x00),
+  ]);
+
+  const bodyWhenSlot0 = Buffer.concat([getCard, buildPipe, doGetURL]);
+
+  // if (n != 0) skip body. ActionIf jumps forward if popped value is truthy.
+  // Push n: when n=0 falls through to body; when n!=0 jumps over body.
+  return Buffer.concat([
+    actionPush(pushReg(2)),
+    actionIf(bodyWhenSlot0.length),
+    bodyWhenSlot0,
+  ]);
+}
+
 // Outer function: serviceConnect()
 // DefineFunction2 flags 0x29: preloadThis | suppressArguments | suppressSuper
 // r1=this, r2-r3=temps (no super call needed)
@@ -373,6 +442,17 @@ function buildServiceConnectBody() {
     SET_MEMBER,
   ]);
 
+  // this.saveSlot = function(n, cb) { ... }
+  // Persists slot 0 (Card) via getURL → /api/saveFrutiSlot, which triggers
+  // server-side picto extraction with userLog notification.
+  const saveSlotInner = buildSaveSlotBody();
+  const saveSlotFunc = buildDefineFunction2('', [[2, ''], [3, '']], 6, 0x29, saveSlotInner);
+  const overrideSaveSlot = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.saveSlot)),
+    saveSlotFunc,
+    SET_MEMBER,
+  ]);
+
   // this.onServiceConnect()
   const callOnServiceConnect = Buffer.concat([
     actionPush(pushInt(0), pushReg(1), pushCp(CP.onServiceConnect)),
@@ -380,7 +460,7 @@ function buildServiceConnectBody() {
     POP,
   ]);
 
-  return Buffer.concat([initSlots, overrideIsBlack, overrideIsWhite, overrideSaveScore, overrideEndGame, callOnServiceConnect]);
+  return Buffer.concat([initSlots, overrideIsBlack, overrideIsWhite, overrideSaveScore, overrideEndGame, overrideSaveSlot, callOnServiceConnect]);
 }
 
 const serviceConnectBody = buildServiceConnectBody();

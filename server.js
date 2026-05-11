@@ -4142,6 +4142,39 @@ function parseMinipixizPipe(s) {
   };
 }
 
+// MotionBall 2 slot 0 pipe format (8 fields, slot 0 = Card state):
+//   0:$items        bool csv (37 picto flags from TItems.TITEMS)
+//   1:$challenge    "true"/"false"
+//   2:$classic      "true"/"false"
+//   3:$courses      bool csv (course unlocks)
+//   4:$dungeons     bool csv (dungeon unlocks)
+//   5:$dungeons_done bool csv (dungeon completions)
+//   6:$classic_score number (best classic score)
+//   7:$dtimes       number csv (best time per dungeon)
+// Sparse array entries (undefined slots) come through as empty strings — treated as false/0.
+function parseMb2Pipe(s) {
+  const parts = String(s).split('|');
+  if (parts.length < 8) return null;
+  function parseBoolArr(p) {
+    if (!p) return [];
+    return p.split(',').map(v => v === 'true');
+  }
+  function parseNumArr(p) {
+    if (!p) return [];
+    return p.split(',').map(v => v === '' ? 0 : Number(v) || 0);
+  }
+  return {
+    $items: parseBoolArr(parts[0]),
+    $challenge: parts[1] === 'true',
+    $classic: parts[2] === 'true',
+    $courses: parseBoolArr(parts[3]),
+    $dungeons: parseBoolArr(parts[4]),
+    $dungeons_done: parseBoolArr(parts[5]),
+    $classic_score: Number(parts[6]) || 0,
+    $dtimes: parseNumArr(parts[7]),
+  };
+}
+
 app.post('/api/saveFrutiSlot', (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
@@ -4164,6 +4197,15 @@ app.post('/api/saveFrutiSlot', (req, res) => {
     if (obj) {
       data = JSON.stringify(obj);
       console.log(`[SLOT]  minipixiz pipe → JSON (${data.length} chars)`);
+    }
+  }
+
+  // MotionBall 2: pipe-delimited string → JSON (slot 0 only)
+  if (game === 'mb2' && slotId === '0' && data.indexOf('|') >= 0 && data[0] !== '{') {
+    const obj = parseMb2Pipe(data);
+    if (obj) {
+      data = JSON.stringify(obj);
+      console.log(`[SLOT]  mb2 pipe → JSON (${data.length} chars)`);
     }
   }
 
