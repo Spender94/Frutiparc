@@ -280,218 +280,7 @@ function actionIf(offset) {
   return b;
 }
 
-// Build the onLoad callback function body
-// function(success) {
-//   var client = this._client;
-//   if (!success) return;
-//   if (this.slot0 !== undefined) {
-//     var obj = client.fromJSON(this.slot0);
-//     if (obj !== null) client.slots[0] = obj;
-//   }
-//   if (this.slot1 !== undefined) {
-//     var obj2 = client.fromJSON(this.slot1);
-//     if (obj2 !== null) client.slots[1] = obj2;
-//   }
-//   client.onServiceConnect();
-// }
-
-// Build onLoad body bytecode
-const onLoadBody = Buffer.concat([
-  // var client = this._client; → r3
-  actionPush(pushReg(1), pushCp(CP._client)),
-  GET_MEMBER,
-  storeReg(3),
-  POP,
-
-  // if (!success) return; (success is in r2)
-  actionPush(pushReg(2)),
-  NOT,
-  actionIf(0), // placeholder - we'll fix the jump offset
-  // >>> jump target will be end of function
-
-  // if (this.slot0 !== undefined) {
-  actionPush(pushReg(1), pushCp(CP.slot0)),
-  GET_MEMBER,
-  actionPush(pushUndef()),
-  EQUALS2,
-  NOT,
-  NOT,
-  actionIf(0), // placeholder - jump past slot0 block
-
-  //   var obj = client.fromJSON(this.slot0);
-  actionPush(pushReg(1), pushCp(CP.slot0)),
-  GET_MEMBER,
-  actionPush(pushInt(1)),
-  actionPush(pushReg(3), pushCp(CP.fromJSON)),
-  CALL_METHOD,
-  storeReg(4),
-  POP,
-
-  //   if (obj !== null) client.slots[0] = obj;
-  actionPush(pushReg(4), pushNull()),
-  EQUALS2,
-  NOT,
-  NOT,
-  actionIf(0), // placeholder
-
-  actionPush(pushReg(3), pushCp(CP.slots)),
-  GET_MEMBER,
-  actionPush(pushInt(0)),
-  actionPush(pushReg(4)),
-  SET_MEMBER,
-
-  // } // end slot0 block
-  // if (this.slot1 !== undefined) {
-  actionPush(pushReg(1), pushCp(CP.slot1)),
-  GET_MEMBER,
-  actionPush(pushUndef()),
-  EQUALS2,
-  NOT,
-  NOT,
-  actionIf(0), // placeholder
-
-  //   var obj2 = client.fromJSON(this.slot1);
-  actionPush(pushReg(1), pushCp(CP.slot1)),
-  GET_MEMBER,
-  actionPush(pushInt(1)),
-  actionPush(pushReg(3), pushCp(CP.fromJSON)),
-  CALL_METHOD,
-  storeReg(5),
-  POP,
-
-  //   if (obj2 !== null) client.slots[1] = obj2;
-  actionPush(pushReg(5), pushNull()),
-  EQUALS2,
-  NOT,
-  NOT,
-  actionIf(0), // placeholder
-
-  actionPush(pushReg(3), pushCp(CP.slots)),
-  GET_MEMBER,
-  actionPush(pushInt(1)),
-  actionPush(pushReg(5)),
-  SET_MEMBER,
-
-  // } // end slot1 block
-  // client.onServiceConnect();
-  actionPush(pushInt(0)),
-  actionPush(pushReg(3), pushCp(CP.onServiceConnect)),
-  CALL_METHOD,
-  POP,
-]);
-
-// Now we need to fix the If jump offsets in onLoadBody.
-// Let's find each actionIf and calculate the correct offsets.
-// We'll rebuild piece by piece with correct jumps.
-
-function buildOnLoadBody() {
-  // Build each section and calculate sizes for jump offsets
-  const getClient = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP._client)), GET_MEMBER, storeReg(3), POP,
-  ]);
-
-  const checkSuccess = Buffer.concat([
-    actionPush(pushReg(2)), NOT,
-  ]);
-
-  const slot0Check = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
-    actionPush(pushUndef()), EQUALS2, NOT, NOT,
-  ]);
-
-  const slot0Load = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
-    actionPush(pushInt(1)),
-    actionPush(pushReg(3), pushCp(CP.fromJSON)),
-    CALL_METHOD, storeReg(4), POP,
-  ]);
-
-  const slot0NullCheck = Buffer.concat([
-    actionPush(pushReg(4), pushNull()), EQUALS2, NOT, NOT,
-  ]);
-
-  const slot0Assign = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
-    actionPush(pushInt(0)),
-    actionPush(pushReg(4)),
-    SET_MEMBER,
-  ]);
-
-  const slot1Check = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot1)), GET_MEMBER,
-    actionPush(pushUndef()), EQUALS2, NOT, NOT,
-  ]);
-
-  const slot1Load = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot1)), GET_MEMBER,
-    actionPush(pushInt(1)),
-    actionPush(pushReg(3), pushCp(CP.fromJSON)),
-    CALL_METHOD, storeReg(5), POP,
-  ]);
-
-  const slot1NullCheck = Buffer.concat([
-    actionPush(pushReg(5), pushNull()), EQUALS2, NOT, NOT,
-  ]);
-
-  const slot1Assign = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
-    actionPush(pushInt(1)),
-    actionPush(pushReg(5)),
-    SET_MEMBER,
-  ]);
-
-  const callOnServiceConnect = Buffer.concat([
-    actionPush(pushInt(0)),
-    actionPush(pushReg(3), pushCp(CP.onServiceConnect)),
-    CALL_METHOD, POP,
-  ]);
-
-  // Calculate If jump offsets:
-  // if (!success) jump to end
-  const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
-    slot0Assign.length + slot1Check.length + 5 + slot1Load.length + slot1NullCheck.length + 5 +
-    slot1Assign.length + callOnServiceConnect.length;
-
-  // slot0 check: jump past slot0Load + slot0NullCheck + If + slot0Assign
-  const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length;
-
-  // slot0 null check: jump past slot0Assign
-  const slot0NullSkipSize = slot0Assign.length;
-
-  // slot1 check: jump past slot1Load + slot1NullCheck + If + slot1Assign
-  const slot1SkipSize = slot1Load.length + slot1NullCheck.length + 5 + slot1Assign.length;
-
-  // slot1 null check: jump past slot1Assign
-  const slot1NullSkipSize = slot1Assign.length;
-
-  return Buffer.concat([
-    getClient,
-    checkSuccess,
-    actionIf(afterSuccessCheck),
-    slot0Check,
-    actionIf(slot0SkipSize),
-    slot0Load,
-    slot0NullCheck,
-    actionIf(slot0NullSkipSize),
-    slot0Assign,
-    slot1Check,
-    actionIf(slot1SkipSize),
-    slot1Load,
-    slot1NullCheck,
-    actionIf(slot1NullSkipSize),
-    slot1Assign,
-    callOnServiceConnect,
-  ]);
-}
-
-const onLoadBodyBytes = buildOnLoadBody();
-
-// Build the DefineFunction2 for onLoad callback
-// params: [r2:success], regcount=6, flags=0x29
 function buildDefineFunction2(name, params, regcount, flags, bodyBytes) {
-  // DefineFunction2 format:
-  // 0x8E, length(UI16), name(STRING\0), numParams(UI16), regCount(UI8), flags(UI16),
-  // params(register:UI8, name:STRING\0)..., codeSize(UI16), body...
   const nameBytes = Buffer.from(name + '\0', 'latin1');
   let paramBytes = Buffer.alloc(0);
   for (const [reg, pname] of params) {
@@ -511,8 +300,23 @@ function buildDefineFunction2(name, params, regcount, flags, bodyBytes) {
   return Buffer.concat([hdr, bodyBytes]);
 }
 
-// Build the main serviceConnect function body
+// Build the main serviceConnect function body.
+// Matches original MB2 Client.as STANDALONE pattern:
+//   super.serviceConnect();
+//   slots = [];
+//   onServiceConnect();
+// super.serviceConnect() establishes XMLSocket to FrutiScore for score saving + endGame.
+// Empty slots trigger Card constructor in onServiceConnect() which provides defaults.
+// Register allocation (flags 0x59): r1=this, r2=super, r3=_root
 function buildServiceConnectBody() {
+  // super.serviceConnect()
+  const callSuper = Buffer.concat([
+    actionPush(pushInt(0)),
+    actionPush(pushReg(2), pushCp(CP.serviceConnect)),
+    CALL_METHOD,
+    POP,
+  ]);
+
   // this.slots = []
   const initSlots = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots), pushInt(0)),
@@ -520,111 +324,23 @@ function buildServiceConnectBody() {
     SET_MEMBER,
   ]);
 
-  // this.slots[0] = {}
-  const initSlot0 = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slots)),
-    GET_MEMBER,
-    actionPush(pushInt(0), pushInt(0)),
-    INIT_OBJECT,
-    SET_MEMBER,
-  ]);
-
-  // this.slots[1] = undefined
-  const initSlot1 = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slots)),
-    GET_MEMBER,
-    actionPush(pushInt(1), pushUndef()),
-    SET_MEMBER,
-  ]);
-
-  // var lv = new LoadVars(); → r3
-  const createLv = Buffer.concat([
-    actionPush(pushInt(0), pushCp(CP.LoadVars)),
-    NEW_OBJECT,
-    storeReg(3),
-    POP,
-  ]);
-
-  // lv.game = "mb2"
-  const setGame = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.game), pushStr('mb2')),
-    SET_MEMBER,
-  ]);
-
-  // lv.sid = _root.sid
-  const setSid = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.sid)),
-    actionPush(pushReg(2), pushCp(CP.sid)),
-    GET_MEMBER,
-    SET_MEMBER,
-  ]);
-
-  // var result = new LoadVars(); → r4
-  const createResult = Buffer.concat([
-    actionPush(pushInt(0), pushCp(CP.LoadVars)),
-    NEW_OBJECT,
-    storeReg(4),
-    POP,
-  ]);
-
-  // result._client = this
-  const setClient = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP._client), pushReg(1)),
-    SET_MEMBER,
-  ]);
-
-  // result.onLoad = function(success) { ... }
-  const onLoadFunc = buildDefineFunction2('', [[2, 'success']], 6, 0x29, onLoadBodyBytes);
-  const setOnLoad = Buffer.concat([
-    actionPush(pushReg(4), pushCp(CP.onLoad)),
-    onLoadFunc,
-    SET_MEMBER,
-  ]);
-
-  // lv.sendAndLoad("/api/loadFrutiSlots", result, "POST")
-  const sendAndLoad = Buffer.concat([
-    actionPush(pushCp(CP.POST)),
-    actionPush(pushReg(4)),
-    actionPush(pushCp(CP.loadFrutiSlots)),
-    actionPush(pushInt(3)),
-    actionPush(pushReg(3), pushCp(CP.sendAndLoad)),
+  // this.onServiceConnect()
+  const callOnServiceConnect = Buffer.concat([
+    actionPush(pushInt(0)),
+    actionPush(pushReg(1), pushCp(CP.onServiceConnect)),
     CALL_METHOD,
     POP,
   ]);
 
-  return Buffer.concat([
-    initSlots, initSlot0, initSlot1,
-    createLv, setGame, setSid,
-    createResult, setClient, setOnLoad,
-    sendAndLoad,
-  ]);
+  return Buffer.concat([callSuper, initSlots, callOnServiceConnect]);
 }
 
 const serviceConnectBody = buildServiceConnectBody();
 
 // Now build the complete new serviceConnect DefineFunction2
-// Original: DefineFunction2 '' params=[] regcount=3 flags=0x19 codesize=78
-// New: regcount=6 (we use r1-r5), flags=0x69 (preloadThis=r1, suppressSuper, preloadRoot=r2)
-// flags 0x69 = preloadThis(bit0) | suppressSuper(bit3) | preloadRoot(bit5) | preloadParent(bit6)
-// Actually let me match snake3: flags=0x69
-// 0x69 = 0b01101001
-// bit 0 (0x01): preload this → r1
-// bit 3 (0x08): suppress super
-// bit 5 (0x20): preload root → r2
-// bit 6 (0x40): preload parent → r3... wait that uses r3 which we also use for LoadVars
-// Let me use flags=0x19 like the original but with more registers
-// 0x19 = 0b00011001
-// bit 0 (0x01): preload this → r1
-// bit 3 (0x08): suppress super
-// bit 4 (0x10): preload super → r2... we need _root for sid
-// Actually in the original, r2 = super. But _root.sid needs to work differently.
-// Let me use flags that give us:
-//   r1 = this
-//   r2 = _root (preloadRoot)
-// flags = 0x01 (preloadThis→r1) | 0x08 (suppressSuper) | 0x20 (preloadRoot→r2) = 0x29
-// But snake3 uses 0x69 which adds 0x40 (preloadParent→r3). We don't need parent.
-// Let's use 0x29 to keep r1=this, r2=_root, r3+ free for LoadVars
-const newServiceConnectFunc = buildDefineFunction2('', [], 6, 0x69, serviceConnectBody);
+// flags 0x59 = preloadThis(0x01) | suppressArguments(0x08) | preloadSuper(0x10) | preloadRoot(0x40)
+// Register allocation: r1=this, r2=super, r3=_root
+const newServiceConnectFunc = buildDefineFunction2('', [], 4, 0x59, serviceConnectBody);
 
 // Find and replace the old serviceConnect DefineFunction2 in the buffer
 // Original pattern (shifted by cpDelta):
@@ -663,11 +379,11 @@ buf.writeUInt32LE(currentTagLen + funcDelta, targetTag.offset + 2);
 
 console.log(`Tag length: ${currentTagLen} -> ${currentTagLen + funcDelta} (delta ${funcDelta})`);
 
-// Step 4: Also add _saveSlotHTTP method for slot persistence
-// We'll add this as an additional method assignment after onGameReset.
-// For now, we rely on the STANDALONE flag + loadFrutiSlots for initial load.
-// The saveSlot calls in standalone mode go through super.saveSlot which
-// may not persist — but at least the game is playable.
+// Step 4: super.serviceConnect() is now called in the patched body, which
+// establishes the XMLSocket to CBee/FrutiScore. This enables:
+//   - super.saveScore() → score is sent via XMLSocket to FrutiScore server
+//   - super.endGame() → proper end-of-game flow with server callback
+//   - super.saveSlot() → slot persistence via socket protocol
 
 // Step 5: Write the patched SWF
 const outSize = writeSwf(OUT_PATH, sig, version, buf);

@@ -783,7 +783,7 @@ const RANKINGS = {
   snake3_challenge:   { name: 'Frutisnake - Challenge',   game: 'snake3',   type: 'L' },
   kaluga_challenge:   { name: 'Kaluga - Challenge',       game: 'kaluga',   type: 'L' },
   swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
-  mb2_challenge:      { name: 'MotionBall - Challenge',   game: 'mb2',      type: 'L' },
+  mb2_challenge:      { name: 'MotionBall - Challenge',   game: 'mb2',      type: 'L', lowerIsBetter: true },
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
   grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L' },
 };
