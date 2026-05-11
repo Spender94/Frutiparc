@@ -5547,7 +5547,7 @@ app.all(['/ff/mk', '/mk'], async (req, res) => {
   const desc = String(source.d || req.query.d || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const isContactFolder = folder === 'mycontact' || folder === 'blacklist';
-  const isContactCreate = type === 'contact' || isContactFolder;
+  const isContactCreate = type === 'contact' || (isContactFolder && type !== 'folder');
 
   if (isContactCreate && !folder) {
     folder = 'mycontact';
@@ -5639,6 +5639,15 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
   const folder = String(source.folder || req.query.folder || '');
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
   console.log(`[FF/MV] file="${file}" folder="${folder}" method=${req.method} query=${JSON.stringify(req.query)}`);
+
+  const PROTECTED_UIDS = new Set([
+    'root', 'messages', 'inbox', 'outbox', 'blackbox', 'draftbox',
+    'disccollector', 'inventory', 'inv_accessories', 'inv_wallpapers', 'inv_pictos',
+    'shop', 'accessories', 'mycontact', 'recyclebin', 'blacklist',
+  ]);
+  if (PROTECTED_UIDS.has(file)) {
+    return res.type('text/xml').send('<r k="403" />');
+  }
 
   // Mail moves — file uid starts with 'm'
   if (file && file.charAt(0) === 'm') {
