@@ -4152,6 +4152,9 @@ function parseMinipixizPipe(s) {
 //   6:$classic_score number (best classic score)
 //   7:$dtimes       number csv (best time per dungeon)
 // Sparse array entries (undefined slots) come through as empty strings — treated as false/0.
+// $records (CPU race times) is not serialised by the SWF because of its
+// nested-object shape; we re-inject the Card.as defaults so course mode works
+// after reload. Player-set course records are NOT persisted across sessions.
 function parseMb2Pipe(s) {
   const parts = String(s).split('|');
   if (parts.length < 8) return null;
@@ -4163,6 +4166,8 @@ function parseMb2Pipe(s) {
     if (!p) return [];
     return p.split(',').map(v => v === '' ? 0 : Number(v) || 0);
   }
+  const cpuTimes = (t1, t2, t3) => [{ $t: t1, $c: true }, { $t: t2, $c: true }, { $t: t3, $c: true }];
+  const time = (m, sec) => (m * 60 + sec) * 100;
   return {
     $items: parseBoolArr(parts[0]),
     $challenge: parts[1] === 'true',
@@ -4172,6 +4177,15 @@ function parseMb2Pipe(s) {
     $dungeons_done: parseBoolArr(parts[5]),
     $classic_score: Number(parts[6]) || 0,
     $dtimes: parseNumArr(parts[7]),
+    $records: [
+      cpuTimes(time(3, 0),  time(3, 40), time(4, 20)),
+      cpuTimes(time(4, 0),  time(4, 40), time(5, 20)),
+      cpuTimes(time(4, 30), time(5, 15), time(6, 0)),
+      cpuTimes(time(2, 30), time(3, 0),  time(3, 30)),
+      cpuTimes(time(3, 0),  time(3, 30), time(4, 0)),
+      cpuTimes(time(4, 0),  time(4, 40), time(5, 20)),
+      cpuTimes(time(4, 0),  time(4, 40), time(5, 20)),
+    ],
   };
 }
 

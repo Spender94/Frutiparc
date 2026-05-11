@@ -3,9 +3,12 @@
 //   1. STANDALONE is set to true (was false in the compiled SWF)
 //   2. serviceConnect initialises slots=[], overrides disc-type methods
 //      (isBlack→false, isWhite→true) to enable all game modes + menu return,
-//      overrides saveScore to use getURL for score persistence via game-popup.html,
-//      overrides endGame to set gameRunning=false, then calls onServiceConnect
-//      (no super.serviceConnect → no XMLSocket connection attempts)
+//      overrides saveScore (getURL → /api/saveScore),
+//      overrides saveSlot (pipe-delimited getURL → /api/saveFrutiSlot),
+//      overrides endGame to set gameRunning=false,
+//      then LOADS slot0 from /api/loadFrutiSlots via LoadVars.sendAndLoad and
+//      defers onServiceConnect to the async onLoad callback so progression
+//      restored from DB before the menu paints (no XMLSocket connections).
 //
 // This makes the game work in game-popup.html without XMLSocket/Frusion infrastructure.
 
@@ -203,8 +206,24 @@ for (const [idx, expected] of Object.entries(expectedCp)) {
 const newStrings = [
   // Mode 0 routes to mb2_classic (visible in fiche as rk=2); the server
   // mirrors the score to mb2_challenge for the daily Championnat ranking.
-  'score:mb2:0:',  // CP[69] - getURL score URL prefix
-  '_blank',        // CP[70] - getURL target window
+  'score:mb2:0:',         // CP[69] - getURL score URL prefix
+  '_blank',                // CP[70] - getURL target window
+  // Slot load mechanism (LoadVars + ExternalInterface.call('parseJSON', …))
+  'LoadVars',              // CP[71]
+  'game',                  // CP[72]
+  'sid',                   // CP[73]
+  'mb2',                   // CP[74]
+  '_client',               // CP[75]
+  'onLoad',                // CP[76]
+  'slot0',                 // CP[77]
+  'POST',                  // CP[78]
+  '/api/loadFrutiSlots',   // CP[79]
+  'sendAndLoad',           // CP[80]
+  'parseJSON',             // CP[81]
+  'flash',                 // CP[82]
+  'external',              // CP[83]
+  'ExternalInterface',     // CP[84]
+  'call',                  // CP[85]
 ];
 
 const newCpBase = cp.count; // 69
@@ -269,8 +288,23 @@ const CP = {
   oldScore: 59,
   isWhite: 62,
   gameRunning: 63,
-  scorePrefix: newCpBase + 0,  // 69: 'score:mb2:0:'
-  _blank: newCpBase + 1,       // 70: '_blank'
+  scorePrefix: newCpBase + 0,        // 69: 'score:mb2:0:'
+  _blank: newCpBase + 1,             // 70: '_blank'
+  LoadVars: newCpBase + 2,            // 71
+  game: newCpBase + 3,                // 72
+  sid: newCpBase + 4,                 // 73
+  mb2: newCpBase + 5,                 // 74
+  _client: newCpBase + 6,             // 75
+  onLoad: newCpBase + 7,              // 76
+  slot0: newCpBase + 8,               // 77
+  POST: newCpBase + 9,                // 78
+  loadUrl: newCpBase + 10,            // 79
+  sendAndLoad: newCpBase + 11,        // 80
+  parseJSON: newCpBase + 12,          // 81
+  flash: newCpBase + 13,              // 82
+  external: newCpBase + 14,           // 83
+  ExternalInterface: newCpBase + 15,  // 84
+  call: newCpBase + 16,               // 85
 };
 
 // Inner function: saveScore(score, data)
@@ -331,6 +365,12 @@ function buildEndGameBody() {
 }
 
 const RETURN = simpleAction(0x3E);
+const GET_VARIABLE = simpleAction(0x1C);
+const NEW_OBJECT = simpleAction(0x40);
+const EQUALS2 = simpleAction(0x49);
+const NOT = simpleAction(0x12);
+function pushNull() { return Buffer.from([0x02]); }
+function pushUndef() { return Buffer.from([0x03]); }
 
 // Inner function: saveSlot(n, cb)
 // DefineFunction2 flags 0x29: preloadThis | suppressArguments | suppressSuper
@@ -390,9 +430,69 @@ function buildSaveSlotBody() {
   ]);
 }
 
+// Inner function: result.onLoad(success)
+// DefineFunction2 flags 0x29: r1=this (result LoadVars), r2=success(param), r3=client, r4=slot0_then_parsed
+// Restores slot0 from server response (if any) then calls client.onServiceConnect()
+function buildOnLoadBody() {
+  // r3 = this._client
+  const getClient = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP._client)), GET_MEMBER,
+    storeReg(3), POP,
+  ]);
+
+  // client.slots[0] = r4 (the parsed object)
+  const doAssign = Buffer.concat([
+    actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
+    actionPush(pushInt(0), pushReg(4)),
+    SET_MEMBER,
+  ]);
+
+  // Parse JSON via ExternalInterface.call('parseJSON', r4_slot0_string), then maybe assign
+  const parseAndMaybeAssign = Buffer.concat([
+    // Push args + argcount + object + method for ExternalInterface.call("parseJSON", slot0Str)
+    actionPush(pushReg(4)),                                   // arg1 = slot0 string
+    actionPush(pushCp(CP.parseJSON)),                          // arg0 (JS function name)
+    actionPush(pushInt(2)),                                    // argcount
+    actionPush(pushCp(CP.flash)), GET_VARIABLE,               // flash
+    actionPush(pushCp(CP.external)), GET_MEMBER,              // .external
+    actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,     // .ExternalInterface
+    actionPush(pushCp(CP.call)),                               // method "call"
+    CALL_METHOD,
+    storeReg(4), POP,                                          // r4 = parsed (or null)
+    // if (r4 == null) skip doAssign
+    actionPush(pushReg(4), pushNull()), EQUALS2,
+    actionIf(doAssign.length),
+    doAssign,
+  ]);
+
+  // Slot0 check block: get this.slot0; if not undefined, parseAndMaybeAssign
+  const slot0CheckBlock = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
+    storeReg(4), POP,
+    actionPush(pushReg(4), pushUndef()), EQUALS2,
+    actionIf(parseAndMaybeAssign.length),
+    parseAndMaybeAssign,
+  ]);
+
+  // Always: client.onServiceConnect()
+  const callOnServiceConnect = Buffer.concat([
+    actionPush(pushInt(0), pushReg(3), pushCp(CP.onServiceConnect)),
+    CALL_METHOD, POP,
+  ]);
+
+  // Top-level: if (!success) skip slot0CheckBlock; always call onServiceConnect
+  return Buffer.concat([
+    getClient,
+    actionPush(pushReg(2)), NOT,
+    actionIf(slot0CheckBlock.length),
+    slot0CheckBlock,
+    callOnServiceConnect,
+  ]);
+}
+
 // Outer function: serviceConnect()
 // DefineFunction2 flags 0x29: preloadThis | suppressArguments | suppressSuper
-// r1=this, r2-r3=temps (no super call needed)
+// r1=this, r2=lv (LoadVars request), r3=result (LoadVars response)
 function buildServiceConnectBody() {
   // this.slots = []
   // slots[0] is left undefined so onServiceConnect creates a new mb2.Card()
@@ -453,14 +553,59 @@ function buildServiceConnectBody() {
     SET_MEMBER,
   ]);
 
-  // this.onServiceConnect()
-  const callOnServiceConnect = Buffer.concat([
-    actionPush(pushInt(0), pushReg(1), pushCp(CP.onServiceConnect)),
+  // Async slot load: var lv = new LoadVars(); lv.game="mb2"; lv.sid=_root.sid;
+  // var result = new LoadVars(); result._client = this;
+  // result.onLoad = function(success) { ... parse slot0 ... call client.onServiceConnect() };
+  // lv.sendAndLoad("/api/loadFrutiSlots", result, "POST");
+
+  const createLv = Buffer.concat([
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(2), POP,
+  ]);
+  const setGame = Buffer.concat([
+    actionPush(pushReg(2), pushCp(CP.game), pushCp(CP.mb2)),
+    SET_MEMBER,
+  ]);
+  const setSid = Buffer.concat([
+    actionPush(pushReg(2), pushCp(CP.sid)),
+    actionPush(pushStr('_root')), GET_VARIABLE,
+    actionPush(pushCp(CP.sid)), GET_MEMBER,
+    SET_MEMBER,
+  ]);
+  const createResult = Buffer.concat([
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(3), POP,
+  ]);
+  const setResultClient = Buffer.concat([
+    actionPush(pushReg(3), pushCp(CP._client), pushReg(1)),
+    SET_MEMBER,
+  ]);
+  const onLoadFunc = buildDefineFunction2('', [[2, '']], 6, 0x29, buildOnLoadBody());
+  const setOnLoad = Buffer.concat([
+    actionPush(pushReg(3), pushCp(CP.onLoad)),
+    onLoadFunc,
+    SET_MEMBER,
+  ]);
+  const sendAndLoad = Buffer.concat([
+    actionPush(pushCp(CP.POST)),       // arg3 (method)
+    actionPush(pushReg(3)),             // arg2 (target = result)
+    actionPush(pushCp(CP.loadUrl)),    // arg1 (url)
+    actionPush(pushInt(3)),
+    actionPush(pushReg(2), pushCp(CP.sendAndLoad)),
     CALL_METHOD,
     POP,
   ]);
 
-  return Buffer.concat([initSlots, overrideIsBlack, overrideIsWhite, overrideSaveScore, overrideEndGame, overrideSaveSlot, callOnServiceConnect]);
+  return Buffer.concat([
+    initSlots,
+    overrideIsBlack, overrideIsWhite,
+    overrideSaveScore, overrideEndGame, overrideSaveSlot,
+    createLv, setGame, setSid,
+    createResult, setResultClient, setOnLoad,
+    sendAndLoad,
+  ]);
 }
 
 const serviceConnectBody = buildServiceConnectBody();
