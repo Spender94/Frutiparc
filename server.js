@@ -4538,16 +4538,12 @@ app.get('/frusion', (req, res) => {
   // between Ruffle instances is broken), so we trigger it server-side here.
   const frusionSid = params.get('sid') || '';
   const gameName = params.get('gameName') || '';
-  if (frusionSid && gameName) {
-    const sess = sessions[frusionSid];
-    const frusionUser = sess && sess.user;
-    if (frusionUser) {
-      const internalCode = statusInternalCode(gameName);
-      if (internalCode > 0) {
-        setUserInternalStatus(frusionUser, internalCode);
-        console.log(`[FRUSION] Set internal status ${gameName}(${internalCode}) for ${frusionUser}`);
-      }
-    }
+  const sess = frusionSid ? sessions[frusionSid] : null;
+  const frusionUser = sess && sess.user;
+  const internalCode = statusInternalCode(gameName);
+  console.log(`[FRUSION] launch sid=${frusionSid} game=${gameName} user=${frusionUser || '-'} internal=${internalCode}`);
+  if (frusionUser && internalCode > 0) {
+    setUserInternalStatus(frusionUser, internalCode);
   }
   res.redirect(`/frusion-ruffle.html?${params.toString()}`);
 });
@@ -7805,9 +7801,12 @@ function setUserInternalStatus(username, internalIdx) {
   const internalStr = encode62(internalIdx | 0, 2);
   const ud = users[username] || {};
   const updatedSockets = [];
+  // Update statusStr on every logged socket of this user. The chat socket
+  // is what we really care about (it drives getStatusCode and the trace),
+  // but the user might not have joined any channel yet at game launch
+  // time — so we no longer require channels.size > 0.
   for (const [sock, cl] of xmlSocketClients) {
-    if (!cl || cl.username !== username) continue;
-    if (!cl.channels || cl.channels.size === 0) continue;
+    if (!cl || cl.username !== username || !cl.logged) continue;
     const old = cl.statusStr || '0000';
     const ext = old.charAt(0) || '0';
     const emote = old.charAt(3) || '0';
@@ -7815,6 +7814,7 @@ function setUserInternalStatus(username, internalIdx) {
     updatedSockets.push(sock);
     sendToClient(sock, `<${CMD.status} s="${cl.statusStr}" />`);
   }
+  console.log(`[STATUS] setUserInternalStatus ${username} internal=${internalIdx} sockets=${updatedSockets.length}`);
   if (updatedSockets.length === 0) return;
   const traceXml = `<${CMD.trace} u="${escapeXml(getDisplayName(username))}" p="1" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, username)}" />`;
   const channelsBroadcast = new Set();
