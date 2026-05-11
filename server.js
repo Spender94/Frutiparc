@@ -772,7 +772,7 @@ const RANKINGS = {
   snake3_classic:   { name: 'Frutisnake - Classique',  game: 'snake3',   type: 'C' },
   kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
-  mb2_classic:      { name: 'MotionBall - Classique',  game: 'mb2',      type: 'C' },
+  mb2_classic:      { name: 'MotionBall - Classique',  game: 'mb2',      type: 'C', lowerIsBetter: true },
   jamajama_classic: { name: 'JamaJama - Classique',    game: 'jamajama', type: 'C', lowerIsBetter: true },
   bkiwi_track0_challenge: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 0 },
   bkiwi_track1_challenge: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 1 },
@@ -2614,6 +2614,12 @@ async function handleSaveScore(req, res) {
     // in scores journaliers regardless of slot-diff timing/staleness.
     extraRankingId = `bkiwi_track${daily}_challenge`;
     console.log(`[HTTP]  bkiwi route hint=${hint} daily=${daily} -> classic:${rankingId} challenge:${extraRankingId}`);
+  } else if (rankingId === 'mb2_classic' || rankingId === 'mb2_challenge') {
+    // MB2 stores the same packed time+pct (ptmb2) score in both rankings:
+    // mb2_classic is the all-time record (visible in fiche via rk=2),
+    // mb2_challenge is the daily-reset Championnat ranking.
+    rankingId = 'mb2_classic';
+    extraRankingId = 'mb2_challenge';
   }
 
   const result = persistScore(username, rankingId, scoreVal, scoreData);
@@ -7768,6 +7774,9 @@ async function handleCBeeMessage(socket, rawXml) {
           rankingId = `bkiwi_track${trackForClassic}_classic`;
           extraRankingId = `bkiwi_track${daily}_challenge`;
           console.log(`[FSCORE] bkiwi route hint=${hint} daily=${daily} -> classic:${rankingId} challenge:${extraRankingId}`);
+        } else if (rankingId === 'mb2_classic' || rankingId === 'mb2_challenge') {
+          rankingId = 'mb2_classic';
+          extraRankingId = 'mb2_challenge';
         }
         // Persist if we have a valid ranking + user.
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };

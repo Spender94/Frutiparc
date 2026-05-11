@@ -193,7 +193,9 @@ for (const [idx, expected] of Object.entries(expectedCp)) {
 
 // Step 1: Add new strings to constant pool
 const newStrings = [
-  'score:mb2:1:',  // CP[69] - getURL score URL prefix
+  // Mode 0 routes to mb2_classic (visible in fiche as rk=2); the server
+  // mirrors the score to mb2_challenge for the daily Championnat ranking.
+  'score:mb2:0:',  // CP[69] - getURL score URL prefix
   '_blank',        // CP[70] - getURL target window
 ];
 
