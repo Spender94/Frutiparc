@@ -31,6 +31,7 @@
     window.RufflePlayer = window.RufflePlayer || {};
     window.RufflePlayer.config = {
       autoplay: "on",
+      publicPath: "/ruffle/",
       logLevel: "info",
       fontSources: [
         window.location.origin + "/legacy/fonts.swf"
@@ -42,7 +43,7 @@
       }
     };
   </script>
-  <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+  <script src="/ruffle/ruffle.js"></script>
 </head>
 <body>
   <div id="player-wrap"></div>

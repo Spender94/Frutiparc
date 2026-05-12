@@ -14,6 +14,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@ruffle-rs/ruffle": "^0.2.0-nightly.2026.5.12",
     "express": "^5.1.0",
     "pg": "^8.20.0",
     "ws": "^8.18.2"

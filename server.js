@@ -6231,6 +6231,10 @@ app.use('/games', (req, res, next) => {
   }
   next();
 });
+app.use('/ruffle', express.static(path.join(__dirname, 'node_modules', '@ruffle-rs', 'ruffle'), {
+  maxAge: '7d',
+  immutable: true,
+}));
 app.use('/swf/games/burningKiwi', express.static(path.join(__dirname, 'Games', 'burningKiwi')));
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));

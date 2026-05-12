@@ -27,6 +27,7 @@
                 serif: ["Times New Roman", "TimesNewRoman"],
                 typewriter: ["Verdana", "verdana"]
             },
+            publicPath: "/ruffle/",
             scale: "noScale",
             salign: "TL",
             logLevel: "warn"
@@ -38,7 +39,7 @@
         window.__dlog = window.__FRUSION_DEBUG ? console.log.bind(console) : function () {};
     </script>
 
-    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+    <script src="/ruffle/ruffle.js"></script>
 </head>
 <body>
     <div id="player-container"></div>
