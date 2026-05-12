@@ -2538,6 +2538,20 @@ app.get('/', (req, res) => {
   res.sendFile(LOGIN_BIS_PAGE_PATH);
 });
 
+// Hard-coded in the legacy SWF (openFunctions.as: _global.logout): the desktop
+// "Se déconnecter" menu navigates here.  Tear down the session and bounce to
+// the home page.
+app.get('/light/logout', (req, res) => {
+  const sid = String(req.query.sid || '');
+  if (sid) {
+    const username = sessions[sid] && sessions[sid].user;
+    delete sessions[sid];
+    db.deleteSession(sid).catch((e) => console.error('[DB] deleteSession error:', e.message));
+    if (username) console.log(`[AUTH] logout user=${username} sid=${sid.slice(0, 8)}…`);
+  }
+  res.redirect('/');
+});
+
 app.post('/api/auth/register', async (req, res) => {
   const ip = getClientIp(req) || 'unknown';
   if (!checkRegisterRateLimit(ip)) {

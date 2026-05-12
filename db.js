@@ -329,6 +329,10 @@ async function getSessionUser(sid) {
   return rows[0] || null;
 }
 
+async function deleteSession(sid) {
+  await pool.query(`DELETE FROM sessions WHERE sid = $1`, [sid]);
+}
+
 async function getUserItems(userId) {
   const { rows } = await pool.query(
     'SELECT item_id FROM user_items WHERE user_id = $1',
@@ -1131,6 +1135,7 @@ module.exports = {
   updateUser,
   createSession,
   getSessionUser,
+  deleteSession,
   getUserItems,
   setUserItems,
   upsertScore,
