@@ -3862,7 +3862,14 @@ const MB2_TITEMS = [
 
 function extractGameItemsFromSlot(username, game, dataStr, { silent = false, userOverride = null } = {}) {
   let parsed;
-  try { parsed = JSON.parse(dataStr); } catch { return; }
+  try { parsed = JSON.parse(dataStr); } catch {
+    if (dataStr && dataStr.indexOf('|') >= 0) {
+      if (game === 'miniwave' || game === 'miniwave2') parsed = parseMiniwavePipe(dataStr);
+      else if (game === 'minipixiz' || game === 'minitroll') parsed = parseMinipixizPipe(dataStr);
+      else if (game === 'mb2') parsed = parseMb2Pipe(dataStr);
+    }
+    if (!parsed) return;
+  }
   if (!parsed || typeof parsed !== 'object') return;
   if (game === 'bkiwi') {
     console.log(`[SLOT]  bkiwi extraction for ${username}: $wc=${parsed.$wc} $wcs=${parsed.$wcs} $ws=${parsed.$ws} $wss=${parsed.$wss} $ac=${JSON.stringify(parsed.$ac)}`);
@@ -4002,12 +4009,16 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
         addIfNew(`$pixiz_item${id}`);
       }
     }
-    // 2) Per-food pictos (read $stat.$eat array — count per food id, food ids start at 300)
+    // 2) Per-food pictos (read $stat.$eat array — count per food type index n)
+    // Each food type has 3 GIF variants (grand/moyen/petit = bronze/silver/gold).
+    // Game awards: 1 eat → $food_{n*3+3} (grand), 5 → $food_{n*3+2} (moyen), 20 → $food_{n*3+1} (petit).
+    // GAME_ITEM_INFO uses $pixiz_food{300+i} where i = n*3 + variant_offset.
     const eats = Array.isArray(stat.$eat) ? stat.$eat : [];
-    for (let id = 0; id < eats.length; id++) {
-      if ((eats[id] || 0) >= 1 && GAME_ITEM_INFO[`$pixiz_food${id}`]) {
-        addIfNew(`$pixiz_food${id}`);
-      }
+    for (let n = 0; n < eats.length; n++) {
+      const count = eats[n] || 0;
+      if (count >= 1)  addIfNew(`$pixiz_food${300 + n * 3 + 2}`);
+      if (count >= 5)  addIfNew(`$pixiz_food${300 + n * 3 + 1}`);
+      if (count >= 20) addIfNew(`$pixiz_food${300 + n * 3}`);
     }
 
     // 3) Game-state milestones
@@ -4240,6 +4251,12 @@ app.post('/api/saveFrutiSlot', (req, res) => {
   const game = String(params.game || '');
   const slotId = String(params.slotId || '0');
   let data = String(params.data || '');
+
+  // saveSlotData JS bridge JSON.stringify's the data, which double-wraps strings in quotes.
+  // Unwrap if the data looks like a JSON-encoded string (starts/ends with ").
+  if (data.length >= 2 && data[0] === '"' && data[data.length - 1] === '"') {
+    try { const unwrapped = JSON.parse(data); if (typeof unwrapped === 'string') data = unwrapped; } catch {}
+  }
 
   // MiniWave: pipe-delimited string → JSON (only for slot 0; slot 1 is prefs)
   if (game === 'miniwave' && slotId === '0' && data.indexOf('|') >= 0 && data[0] !== '{') {
@@ -9529,11 +9546,23 @@ case 'createchannel': {
           sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
           break;
         }
-        u.frutiSlots[game][slotId] = slotData;
-        if (u._dbId) db.upsertFrutiSlot(u._dbId, game, Number(slotId), slotData).catch(() => {});
-        // Extract pictos from slot 0
-        if (slotId === '0' && slotData) {
-          try { extractGameItemsFromSlot(username, game, slotData); } catch (e) { /* ignore */ }
+        let normalizedSlotData = slotData;
+        if (slotId === '0' && slotData && slotData.indexOf('|') >= 0 && slotData[0] !== '{') {
+          if (game === 'miniwave' || game === 'miniwave2') {
+            const obj = parseMiniwavePipe(slotData);
+            if (obj) { normalizedSlotData = JSON.stringify(obj); }
+          } else if (game === 'minipixiz' || game === 'minitroll') {
+            const obj = parseMinipixizPipe(slotData);
+            if (obj) { normalizedSlotData = JSON.stringify(obj); }
+          } else if (game === 'mb2') {
+            const obj = parseMb2Pipe(slotData);
+            if (obj) { normalizedSlotData = JSON.stringify(obj); }
+          }
+        }
+        u.frutiSlots[game][slotId] = normalizedSlotData;
+        if (u._dbId) db.upsertFrutiSlot(u._dbId, game, Number(slotId), normalizedSlotData).catch(() => {});
+        if (slotId === '0' && normalizedSlotData) {
+          try { extractGameItemsFromSlot(username, game, normalizedSlotData); } catch (e) { /* ignore */ }
         }
         // BKiwi: capture the track the player just raced (slot 0 savePublic
         // always runs before saveScore) for per-track ranking routing.
@@ -9585,6 +9614,13 @@ case 'createchannel': {
         if (c0 && c0.attrs) itemName = c0.attrs.n || c0.attrs.name || c0.attrs.i || c0.content || '';
       }
       itemName = String(itemName || '').trim();
+      // MiniPixiz giveItem names use $item_N, $food_N, $diam_N — normalize to $pixiz_* convention
+      const itemMatch = itemName.match(/^\$item_(\d+)$/);
+      if (itemMatch) itemName = `$pixiz_item${Number(itemMatch[1]) - 1}`;
+      const foodMatch = itemName.match(/^\$food_(\d+)$/);
+      if (foodMatch) itemName = `$pixiz_food${299 + Number(foodMatch[1])}`;
+      const diamMatch = itemName.match(/^\$diam_(\d+)$/);
+      if (diamMatch) itemName = `$pixiz_diam${Number(diamMatch[1]) + 1}`;
       console.log(`[FSCORE] giveItem RECEIVED user="${client.username || ''}" item="${itemName}" attrs=${JSON.stringify(msg.attrs)} content="${msg.content || ''}" children=${JSON.stringify(msg.children || [])}`);
       if (!itemName || !client.username) {
         console.log(`[FSCORE] giveItem REJECTED: no item name or user`);
