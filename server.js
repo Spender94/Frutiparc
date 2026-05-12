@@ -2392,6 +2392,74 @@ const SHOP_PACKS_DEFAULT = [
 ];
 const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
 
+// Moderator-only accessory automatically granted with the role and revoked
+// when the role is taken away.  Not purchasable (shopId stays 0) so it never
+// appears in the shop tree.
+const MOD_ACCESSORY_ID = 'mod_badge';
+const MOD_ACCESSORY_SUFFIX9 = '30i0e0j03';
+const MOD_ACCESSORY_NAME = 'Badge Modérateur';
+
+async function grantModeratorAccessory(username, dbUserRow) {
+  const u = users[username];
+  const userId = (u && u._dbId) || (dbUserRow && dbUserRow.id);
+  if (!userId || !process.env.DATABASE_URL) return;
+  try {
+    const existing = await db.getUserAccessories(userId);
+    if (existing.some((a) => a && a.id === MOD_ACCESSORY_ID)) return;
+    const fbouille = (u && u.fbouille) || (dbUserRow && dbUserRow.fbouille) || DEFAULT_BOUILLE_STATE;
+    const acc = {
+      id: MOD_ACCESSORY_ID,
+      shopId: 0,
+      n: MOD_ACCESSORY_NAME,
+      v: fbouille.substring(0, 15) + MOD_ACCESSORY_SUFFIX9,
+      q: '1',
+      p: '0',
+    };
+    await db.addAccessory(userId, acc);
+    if (u) u.customAccessories = await db.getUserAccessories(userId);
+    console.log(`[MOD-BADGE] granted to ${username}`);
+  } catch (e) { console.error('[MOD-BADGE] grant DB error:', e.message); }
+}
+
+async function revokeModeratorAccessory(username, dbUserRow) {
+  const u = users[username];
+  const userId = (u && u._dbId) || (dbUserRow && dbUserRow.id);
+  if (!userId || !process.env.DATABASE_URL) return;
+  try {
+    const existing = await db.getUserAccessories(userId);
+    const target = existing.find((a) => a && a.id === MOD_ACCESSORY_ID);
+    if (!target) return;
+    await db.deleteAccessory(target.dbRowId);
+    if (u) u.customAccessories = await db.getUserAccessories(userId);
+    console.log(`[MOD-BADGE] revoked from ${username}`);
+  } catch (e) { console.error('[MOD-BADGE] revoke DB error:', e.message); }
+}
+
+async function syncAllModeratorAccessories() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const rows = await db.listAllUsers();
+    let granted = 0;
+    let revoked = 0;
+    for (const row of rows) {
+      if (row.is_moderator) {
+        const existing = await db.getUserAccessories(row.id);
+        if (!existing.some((a) => a && a.id === MOD_ACCESSORY_ID)) {
+          await grantModeratorAccessory(row.username, row);
+          granted++;
+        }
+      } else {
+        const existing = await db.getUserAccessories(row.id);
+        if (existing.some((a) => a && a.id === MOD_ACCESSORY_ID)) {
+          await revokeModeratorAccessory(row.username, row);
+          revoked++;
+        }
+      }
+    }
+    console.log(`[MOD-BADGE] startup sync — ${granted} granted, ${revoked} revoked`);
+  } catch (e) { console.error('[MOD-BADGE] startup sync error:', e.message); }
+}
+
 function getShopPack(id) {
   const num = Number(id);
   return SHOP_PACKS.find((p) => p.id === num);
@@ -2932,6 +3000,10 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
         if (fields.fruti_sign_b !== undefined) users[u].frutiSignB = fields.fruti_sign_b;
         if (fields.real_job !== undefined) users[u].realJob = fields.real_job;
         if (fields.frutijob !== undefined) users[u].frutijob = fields.frutijob;
+      }
+      if (fields.is_moderator !== undefined) {
+        if (fields.is_moderator) await grantModeratorAccessory(u, row);
+        else await revokeModeratorAccessory(u, row);
       }
     }
     console.log(`[ADMIN] Updated user ${u}: ${Object.keys(fields).join(', ')}`);
@@ -6914,6 +6986,11 @@ const server = app.listen(port, '0.0.0.0', () => {
   }
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT} (chat) / FRUTISCORE_PORT=${FRUTISCORE_PORT} (scores)`);
 
+  // Reconcile the moderator badge inventory with each user's current role.
+  syncAllModeratorAccessories().catch((e) =>
+    console.error('[MOD-BADGE] startup sync failed:', e.message),
+  );
+
   // Auto-seed forum categories/boards and demo content on first run
   if (process.env.DATABASE_URL) {
     (async () => {
@@ -8603,7 +8680,7 @@ case 'send': {
       const target = users[targetUser];
       if (targetUser && target) {
         if (getSocketsForUsername(targetUser).length === 0) {
-          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="" d="">Impossible de totocher ${escapeXml(getDisplayName(targetUser))} : cet utilisateur n'est pas connecté.</${CMD.send}>`);
+          sendToClient(socket, `<${CMD.ban} k="214" u="${escapeXml(getDisplayName(targetUser))}" />`);
           break;
         }
         const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
@@ -8612,6 +8689,12 @@ case 'send': {
           sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
         }
         addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
+        const announceTotoche = `<![CDATA[<i>${escapeXml(getDisplayName(targetUser))} a été totoché</i>]]>`;
+        for (const [chanName, channel] of Object.entries(channels)) {
+          if (channel && channel.users && channel.users.has(targetUser)) {
+            broadcastToChannel(chanName, `<${CMD.send} u="" t="m" p="" g="${escapeXml(chanName)}" h="" d="">${announceTotoche}</${CMD.send}>`);
+          }
+        }
       }
       break;
     }
@@ -8828,14 +8911,14 @@ case 'send': {
       const target = users[targetUser];
       if (!targetUser || !target) break;
 
-      // Reject totoche on offline users — has no practical effect since the
-      // mute window expires before they reconnect.  Send a discreet feedback
-      // message to the moderator in the active channel.
+      // Reject totoche on offline users.  Reuse the existing <ban k="..." />
+      // error path (onBan in listener/main.as) — it opens a popup alert with
+      // "Une erreur a eu lieu durant le ban : Cet utilisateur n'est pas
+      // connecté.", which matches the popup-on-forbidden-action UX the
+      // moderator expects.  Error code 214 maps to error.cbee.214 in the
+      // French lang dictionary.
       if (getSocketsForUsername(targetUser).length === 0) {
-        const gFeedback = pickActiveChannel(client, msg.attrs);
-        if (gFeedback) {
-          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(gFeedback)}" h="" d="">Impossible de totocher ${escapeXml(getDisplayName(targetUser))} : cet utilisateur n'est pas connecté.</${CMD.send}>`);
-        }
+        sendToClient(socket, `<${CMD.ban} k="214" u="${escapeXml(getDisplayName(targetUser))}" />`);
         break;
       }
       const until = msg.attrs.e || new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
@@ -8845,13 +8928,17 @@ case 'send': {
       }
       sendToClient(socket, `<${CMD.mute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
-      const g = pickActiveChannel(client, msg.attrs);
-      if (g) {
-        // u="admin" routes to chat.msg_admin ($h<i>$m</i>) — italic, no
-        // username prefix, default color.  Empty h drops the timestamp so it
-        // matches the kick announcement format.
-        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="" d="">${escapeXml(getDisplayName(targetUser))} a été totoché</${CMD.send}>`);
-        broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
+
+      // Announce in EVERY channel where the muted user is present, formatted
+      // to match the kick announcement (italic, no timestamp, default color).
+      // u="" avoids the red+bold admin styling; the CDATA <i>…</i> wrapper
+      // produces an italic message regardless of the active chat template.
+      const announceTotoche = `<![CDATA[<i>${escapeXml(getDisplayName(targetUser))} a été totoché</i>]]>`;
+      for (const [chanName, channel] of Object.entries(channels)) {
+        if (channel && channel.users && channel.users.has(targetUser)) {
+          broadcastToChannel(chanName, `<${CMD.send} u="" t="m" p="" g="${escapeXml(chanName)}" h="" d="">${announceTotoche}</${CMD.send}>`);
+          broadcastToChannel(chanName, `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
+        }
       }
       break;
     }
