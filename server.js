@@ -8832,10 +8832,10 @@ case 'send': {
       addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
       const g = pickActiveChannel(client, msg.attrs);
       if (g) {
-        const timeAttrs = buildChatTimeAttrs();
-        // Send as a regular message (not u="admin" which renders red bold).
-        // Using empty username avoids the admin formatting path in the client.
-        broadcastToChannel(g, `<${CMD.send} u="" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(getDisplayName(targetUser))} a été totoché</${CMD.send}>`);
+        // u="admin" routes to chat.msg_admin ($h<i>$m</i>) — italic, no
+        // username prefix, default color.  Empty h drops the timestamp so it
+        // matches the kick announcement format.
+        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="" d="">${escapeXml(getDisplayName(targetUser))} a été totoché</${CMD.send}>`);
         broadcastToChannel(g, `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
       }
       break;
