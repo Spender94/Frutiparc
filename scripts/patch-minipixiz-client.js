@@ -621,17 +621,42 @@ function buildSaveSlotBody() {
     ]);
   }
 
-  // Part 1: card = _global.Cm.card → r3
-  // Reading from this.slots[n] is unreliable: formatPref calls saveSlot(1, ...)
-  // with prefs in slots[1], and formatFruticard's `slots[0] = Std.cast(card)` may
-  // resolve to null (Haxe runtime cast on a typeless object literal). Cm.card is
-  // always the up-to-date card object after loadFruticard runs.
+  // Part 1: card = ??? → r3
+  // _global.Cm.card resolves to undefined — Haxe doesn't expose the class
+  // there.  Try several paths in order and log each so we can see which one
+  // returns a real object.
   const getCard = Buffer.concat([
     trace('[MINIPIXIZ-DEBUG] saveSlot entered'),
-    actionPush(pushCp(CP.Cm)), GET_VARIABLE,
-    actionPush(pushCp(CP.card)), GET_MEMBER,
+
+    // Try A: eval("Cm.card") via dotted GET_VARIABLE
+    actionPush(pushStr('Cm.card')), GET_VARIABLE,
     storeReg(3), POP,
-    actionPush(pushStr('[MINIPIXIZ-DEBUG] Cm.card type=')),
+    actionPush(pushStr('[MINIPIXIZ-DEBUG] A: eval(Cm.card)=')),
+    actionPush(pushReg(3)),
+    actionPush(pushStr('')), ADD2,
+    ADD2,
+    TRACE,
+
+    // Try B: this.slots[0]
+    actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
+    actionPush(pushInt(0)), GET_MEMBER,
+    storeReg(3), POP,
+    actionPush(pushStr('[MINIPIXIZ-DEBUG] B: this.slots[0]=')),
+    actionPush(pushReg(3)),
+    actionPush(pushStr('')), ADD2,
+    ADD2,
+    TRACE,
+
+    // Try C: SharedObject.getLocal("miniPixiz/card").data.fruticard[0]
+    actionPush(pushStr('miniPixiz/card'), pushInt(1)),
+    actionPush(pushStr('SharedObject')), GET_VARIABLE,
+    actionPush(pushStr('getLocal')),
+    CALL_METHOD,
+    actionPush(pushStr('data')), GET_MEMBER,
+    actionPush(pushStr('fruticard')), GET_MEMBER,
+    actionPush(pushInt(0)), GET_MEMBER,
+    storeReg(3), POP,
+    actionPush(pushStr('[MINIPIXIZ-DEBUG] C: SO.fruticard[0]=')),
     actionPush(pushReg(3)),
     actionPush(pushStr('')), ADD2,
     ADD2,
