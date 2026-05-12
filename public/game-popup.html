@@ -262,6 +262,10 @@
         console.log("[Game] miniwave pipe parse FAILED:", e);
         return;
       }
+    } else if ((game === "minipixiz" || game === "minitroll") && typeof data === "string" && data.indexOf("|") >= 0) {
+      // MiniPixiz: same approach — pipe-delimited string, server converts via parseMinipixizPipe
+      jsonData = data;
+      console.log("[Game] minipixiz pipe → " + data.length + " chars");
     } else {
       try { jsonData = JSON.stringify(data); } catch(e) {
         console.log("[Game] saveSlotData JSON.stringify FAILED:", e);

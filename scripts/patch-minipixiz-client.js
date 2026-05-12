@@ -677,19 +677,22 @@ function buildSaveSlotBody() {
     ADD2,
   ]);
 
-  // Part 4: getURL2("slot:minipixiz:N:PIPEDATA", "_blank")
-  const GETURL2 = Buffer.from([0x9A, 0x01, 0x00, 0x00]);
-  const getUrlCall = Buffer.concat([
+  // Part 4: ExternalInterface.call("saveSlotData", "minipixiz", n, pipeString)
+  // getURL2 may not be routed through window.open by all Ruffle versions.
+  // ExternalInterface.call is a proven path (used by parseJSON, other games).
+  const eiCall = Buffer.concat([
     storeReg(4), POP, // save pipe string to r4
 
-    actionPush(pushStr('slot:minipixiz:')),
-    actionPush(pushReg(2), pushStr('')), ADD2,
-    ADD2,
-    actionPush(pushStr(':')), ADD2,
-    actionPush(pushReg(4)), ADD2,
-
-    actionPush(pushStr('_blank')),
-    GETURL2,
+    actionPush(pushReg(4)),                          // arg 4: pipe string
+    actionPush(pushReg(2)),                          // arg 3: slot number
+    actionPush(pushStr('minipixiz')),                // arg 2: game name
+    actionPush(pushStr('saveSlotData')),             // arg 1: JS callback name
+    actionPush(pushInt(4)),                          // 4 arguments
+    actionPush(pushStr('flash.external.ExternalInterface')),
+    GET_VARIABLE,
+    actionPush(pushStr('call')),
+    CALL_METHOD,
+    POP,
   ]);
 
   // Part 5: flush SharedObject for local persistence
@@ -704,7 +707,7 @@ function buildSaveSlotBody() {
     CALL_METHOD, POP,
   ]);
 
-  return Buffer.concat([getCard, buildStr, faerieLoop, afterLoop, getUrlCall, soFlush]);
+  return Buffer.concat([getCard, buildStr, faerieLoop, afterLoop, eiCall, soFlush]);
 }
 
 const saveSlotBody = buildSaveSlotBody();
