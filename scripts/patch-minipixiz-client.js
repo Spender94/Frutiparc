@@ -197,7 +197,7 @@ const newStrings = [
   'result',               // +13
   'minipixiz',            // +14
   'send',                 // +15
-  // Used by saveSlot (pipe-delimited getURL2)
+  // Used by saveSlot (pipe-delimited)
   '$stat',                // +16
   '$item',                // +17
   '$eat',                 // +18
@@ -222,6 +222,14 @@ const newStrings = [
   '$level',               // +37
   'length',               // +38
   '$vs',                  // +39
+  // Used by saveSlot for ExternalInterface (split form, like mb2 patcher)
+  'flash',                // +40
+  'external',             // +41
+  'ExternalInterface',    // +42
+  'call',                 // +43
+  'saveSlotData',         // +44
+  'Cm',                   // +45
+  'card',                 // +46
 ];
 
 const newCpBase = origCpCount;
@@ -313,6 +321,13 @@ const CP = {
   $level: newCpBase + 37,
   length: newCpBase + 38,
   $vs: newCpBase + 39,
+  flash: newCpBase + 40,
+  external: newCpBase + 41,
+  ExternalInterface: newCpBase + 42,
+  call: newCpBase + 43,
+  saveSlotData: newCpBase + 44,
+  Cm: newCpBase + 45,
+  card: newCpBase + 46,
 };
 
 // ── serviceConnect onLoad callback ──
@@ -601,12 +616,19 @@ function buildSaveSlotBody() {
     ]);
   }
 
-  // Part 1: card = this.slots[n] → r3
+  // Part 1: card = _global.Cm.card → r3
+  // Reading from this.slots[n] is unreliable: formatPref calls saveSlot(1, ...)
+  // with prefs in slots[1], and formatFruticard's `slots[0] = Std.cast(card)` may
+  // resolve to null (Haxe runtime cast on a typeless object literal). Cm.card is
+  // always the up-to-date card object after loadFruticard runs.
   const getCard = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
-    actionPush(pushReg(2)), GET_MEMBER,
+    actionPush(pushCp(CP.Cm)), GET_VARIABLE,
+    actionPush(pushCp(CP.card)), GET_MEMBER,
     storeReg(3), POP,
   ]);
+
+  // Skip serialization entirely if Cm.card is undefined/null (e.g., before loadFruticard)
+  // We'll wrap the body in an if-guard at the end.
 
   // Part 2: Build pipe string on stack
   const buildStr = Buffer.concat([
@@ -691,20 +713,23 @@ function buildSaveSlotBody() {
     ADD2,
   ]);
 
-  // Part 4: ExternalInterface.call("saveSlotData", "minipixiz", n, pipeString)
-  // getURL2 may not be routed through window.open by all Ruffle versions.
-  // ExternalInterface.call is a proven path (used by parseJSON, other games).
+  // Part 4: ExternalInterface.call("saveSlotData", "minipixiz", 0, pipeString)
+  // Use the SPLIT form (push "flash"; GetVar; push "external"; GetMember; ...)
+  // — same as the mb2 patcher. The dotted "flash.external.ExternalInterface"
+  // form via ActionGetVariable is unreliable in Ruffle.
+  // Always pass slotId=0: we always serialize Cm.card, so it's always slot 0.
   const eiCall = Buffer.concat([
     storeReg(4), POP, // save pipe string to r4
 
-    actionPush(pushReg(4)),                          // arg 4: pipe string
-    actionPush(pushReg(2)),                          // arg 3: slot number
-    actionPush(pushStr('minipixiz')),                // arg 2: game name
-    actionPush(pushStr('saveSlotData')),             // arg 1: JS callback name
-    actionPush(pushInt(4)),                          // 4 arguments
-    actionPush(pushStr('flash.external.ExternalInterface')),
-    GET_VARIABLE,
-    actionPush(pushStr('call')),
+    actionPush(pushReg(4)),                                   // arg 4: pipe string
+    actionPush(pushInt(0)),                                   // arg 3: slot number (always 0)
+    actionPush(pushCp(CP.minipixiz)),                         // arg 2: game name
+    actionPush(pushCp(CP.saveSlotData)),                      // arg 1: JS callback name
+    actionPush(pushInt(4)),                                   // 4 arguments
+    actionPush(pushCp(CP.flash)), GET_VARIABLE,               // _global.flash
+    actionPush(pushCp(CP.external)), GET_MEMBER,              // .external
+    actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,     // .ExternalInterface
+    actionPush(pushCp(CP.call)),                              // method name "call"
     CALL_METHOD,
     POP,
   ]);
@@ -721,7 +746,17 @@ function buildSaveSlotBody() {
     CALL_METHOD, POP,
   ]);
 
-  return Buffer.concat([getCard, buildStr, faerieLoop, afterLoop, eiCall, soFlush]);
+  // Wrap everything except getCard in a guard: skip the whole serialization
+  // when Cm.card is null/undefined (e.g., before loadFruticard runs). This
+  // prevents writing "undefined|undefined|..." pipes that clobber server data.
+  const guardedBody = Buffer.concat([buildStr, faerieLoop, afterLoop, eiCall, soFlush]);
+  const skipIfNull = Buffer.concat([
+    actionPush(pushReg(3)),
+    NOT,                                            // !card → true if null/undefined/0/""
+    actionIf(guardedBody.length),
+  ]);
+
+  return Buffer.concat([getCard, skipIfNull, guardedBody]);
 }
 
 const saveSlotBody = buildSaveSlotBody();
