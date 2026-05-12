@@ -1,3 +1,12 @@
+// Force unbuffered stdout/stderr so console.log appears instantly in Render's
+// log viewer (pipes default to 4KB block buffering, hiding logs until full).
+if (process.stdout._handle && process.stdout._handle.setBlocking) {
+  process.stdout._handle.setBlocking(true);
+}
+if (process.stderr._handle && process.stderr._handle.setBlocking) {
+  process.stderr._handle.setBlocking(true);
+}
+
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const net = require('net');
