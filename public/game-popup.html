@@ -43,7 +43,13 @@
       }
     };
   </script>
-  <script src="/ruffle/ruffle.js"></script>
+  <script src="/ruffle/ruffle.js" onerror="
+      console.warn('[Ruffle] Local load failed, falling back to CDN');
+      window.RufflePlayer.config.publicPath = undefined;
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/@ruffle-rs/ruffle';
+      document.head.appendChild(s);
+  "></script>
 </head>
 <body>
   <div id="player-wrap"></div>

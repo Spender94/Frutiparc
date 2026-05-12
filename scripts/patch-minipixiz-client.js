@@ -713,23 +713,46 @@ function buildSaveSlotBody() {
     ADD2,
   ]);
 
-  // Part 4: ExternalInterface.call("saveSlotData", "minipixiz", 0, pipeString)
-  // Use the SPLIT form (push "flash"; GetVar; push "external"; GetMember; ...)
-  // — same as the mb2 patcher. The dotted "flash.external.ExternalInterface"
-  // form via ActionGetVariable is unreliable in Ruffle.
-  // Always pass slotId=0: we always serialize Cm.card, so it's always slot 0.
-  const eiCall = Buffer.concat([
+  // Part 4: POST pipe string to /api/saveFrutiSlot via LoadVars.
+  // LoadVars.sendAndLoad is the same mechanism used by serviceConnect and is
+  // proven to work in Ruffle.  ExternalInterface.call was unreliable.
+  const lvSave = Buffer.concat([
     storeReg(4), POP, // save pipe string to r4
 
-    actionPush(pushReg(4)),                                   // arg 4: pipe string
-    actionPush(pushInt(0)),                                   // arg 3: slot number (always 0)
-    actionPush(pushCp(CP.minipixiz)),                         // arg 2: game name
-    actionPush(pushCp(CP.saveSlotData)),                      // arg 1: JS callback name
-    actionPush(pushInt(4)),                                   // 4 arguments
-    actionPush(pushCp(CP.flash)), GET_VARIABLE,               // _global.flash
-    actionPush(pushCp(CP.external)), GET_MEMBER,              // .external
-    actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,     // .ExternalInterface
-    actionPush(pushCp(CP.call)),                              // method name "call"
+    // r5 = new LoadVars()
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(5), POP,
+
+    // r5.game = "minipixiz"
+    actionPush(pushReg(5), pushCp(CP.game), pushCp(CP.minipixiz)),
+    SET_MEMBER,
+
+    // r5.sid = _root.sid
+    actionPush(pushReg(5), pushCp(CP.sid)),
+    actionPush(pushStr('_root')), GET_VARIABLE,
+    actionPush(pushCp(CP.sid)), GET_MEMBER,
+    SET_MEMBER,
+
+    // r5.slotId = "0"
+    actionPush(pushReg(5), pushCp(CP.slotId), pushStr('0')),
+    SET_MEMBER,
+
+    // r5.data = r4 (pipe string)
+    actionPush(pushReg(5), pushCp(CP.data), pushReg(4)),
+    SET_MEMBER,
+
+    // r6 = new LoadVars() — result receiver
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(6), POP,
+
+    // r5.sendAndLoad("/api/saveFrutiSlot", r6, "POST")
+    actionPush(pushCp(CP.POST)),
+    actionPush(pushReg(6)),
+    actionPush(pushCp(CP.saveFrutiSlot)),
+    actionPush(pushInt(3)),
+    actionPush(pushReg(5), pushCp(CP.sendAndLoad)),
     CALL_METHOD,
     POP,
   ]);
@@ -749,7 +772,7 @@ function buildSaveSlotBody() {
   // Wrap everything except getCard in a guard: skip the whole serialization
   // when Cm.card is null/undefined (e.g., before loadFruticard runs). This
   // prevents writing "undefined|undefined|..." pipes that clobber server data.
-  const guardedBody = Buffer.concat([buildStr, faerieLoop, afterLoop, eiCall, soFlush]);
+  const guardedBody = Buffer.concat([buildStr, faerieLoop, afterLoop, lvSave, soFlush]);
   const skipIfNull = Buffer.concat([
     actionPush(pushReg(3)),
     NOT,                                            // !card → true if null/undefined/0/""

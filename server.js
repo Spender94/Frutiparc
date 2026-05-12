@@ -6231,10 +6231,13 @@ app.use('/games', (req, res, next) => {
   }
   next();
 });
-app.use('/ruffle', express.static(path.join(__dirname, 'node_modules', '@ruffle-rs', 'ruffle'), {
-  maxAge: '7d',
-  immutable: true,
-}));
+const ruffleDir = path.join(__dirname, 'node_modules', '@ruffle-rs', 'ruffle');
+if (fs.existsSync(ruffleDir)) {
+  app.use('/ruffle', express.static(ruffleDir, { maxAge: '7d', immutable: true }));
+  console.log('[STARTUP] Ruffle served from local npm package');
+} else {
+  console.log('[STARTUP] Ruffle npm package not found — HTML pages will fall back to CDN');
+}
 app.use('/swf/games/burningKiwi', express.static(path.join(__dirname, 'Games', 'burningKiwi')));
 app.use('/swf/games/kaluga', express.static(path.join(__dirname, 'Games', 'kaluga')));
 app.use('/swf/games/miniWave2', express.static(path.join(__dirname, 'Games', 'miniWave2')));
