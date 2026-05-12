@@ -8602,6 +8602,10 @@ case 'send': {
       const targetUser = resolveKnownUsername(text.substring(8).trim());
       const target = users[targetUser];
       if (targetUser && target) {
+        if (getSocketsForUsername(targetUser).length === 0) {
+          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="" d="">Impossible de totocher ${escapeXml(getDisplayName(targetUser))} : cet utilisateur n'est pas connecté.</${CMD.send}>`);
+          break;
+        }
         const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
         target.mutedUntil = until;
         for (const targetSock of getSocketsForUsername(targetUser)) {
@@ -8823,6 +8827,17 @@ case 'send': {
       const targetUser = resolveModerationTarget(msg);
       const target = users[targetUser];
       if (!targetUser || !target) break;
+
+      // Reject totoche on offline users — has no practical effect since the
+      // mute window expires before they reconnect.  Send a discreet feedback
+      // message to the moderator in the active channel.
+      if (getSocketsForUsername(targetUser).length === 0) {
+        const gFeedback = pickActiveChannel(client, msg.attrs);
+        if (gFeedback) {
+          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(gFeedback)}" h="" d="">Impossible de totocher ${escapeXml(getDisplayName(targetUser))} : cet utilisateur n'est pas connecté.</${CMD.send}>`);
+        }
+        break;
+      }
       const until = msg.attrs.e || new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
       target.mutedUntil = until;
       for (const targetSock of getSocketsForUsername(targetUser)) {
