@@ -4321,6 +4321,23 @@ app.post('/api/saveFrutiSlot', (req, res) => {
     return res.type('text/plain').send('ok=1'); // pretend success so SWF doesn't retry
   }
 
+  // MiniPixiz: loadFruticard() creates fresh defaults when SharedObject is empty
+  // (Ruffle doesn't persist SO between sessions), then saves them — clobbering
+  // real progress. Block saves that look like formatFruticard() defaults when the
+  // existing data contains real gameplay.
+  if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0' && prevSlotData && data) {
+    try {
+      const newObj = JSON.parse(data);
+      const oldObj = JSON.parse(prevSlotData);
+      const oldRun = oldObj.$stat && oldObj.$stat.$run || 0;
+      const newRun = newObj.$stat && newObj.$stat.$run || 0;
+      if (oldRun > 0 && newRun === 0) {
+        console.log(`[SLOT]  BLOCKED minipixiz default clobber for ${username} (existing $run=${oldRun})`);
+        return res.type('text/plain').send('ok=1');
+      }
+    } catch {}
+  }
+
   users[username].frutiSlots[game][slotId] = data;
   const dbId = users[username] && users[username]._dbId;
   if (dbId) db.upsertFrutiSlot(dbId, game, Number(slotId), data).catch(() => {});

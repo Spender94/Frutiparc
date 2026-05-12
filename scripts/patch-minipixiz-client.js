@@ -349,6 +349,25 @@ function buildOnLoadBody() {
     SET_MEMBER,
   ]);
 
+  // Seed SharedObject from server data BEFORE onServiceConnect runs.
+  // loadFruticard() reads from SharedObject, not slots[0]. Without this,
+  // an empty SharedObject (Ruffle doesn't persist between sessions) causes
+  // formatFruticard() to create defaults that clobber the server data.
+  const seedSO = Buffer.concat([
+    // r5 = SharedObject.getLocal("miniPixiz/card")
+    actionPush(pushStr('miniPixiz/card'), pushInt(1)),
+    actionPush(pushStr('SharedObject')), GET_VARIABLE,
+    actionPush(pushStr('getLocal')),
+    CALL_METHOD,
+    storeReg(5), POP,
+    // r5.data.fruticard = [r4]
+    actionPush(pushReg(5), pushStr('data')), GET_MEMBER,
+    actionPush(pushStr('fruticard')),
+    actionPush(pushReg(4), pushInt(1)),
+    INIT_ARRAY,
+    SET_MEMBER,
+  ]);
+
   const callOnServiceConnect = Buffer.concat([
     actionPush(pushInt(0)),
     actionPush(pushReg(3), pushCp(CP.onServiceConnect)),
@@ -356,8 +375,8 @@ function buildOnLoadBody() {
   ]);
 
   // After onServiceConnect → loadFruticard, sync slots[0] from SharedObject.
-  // In STANDALONE mode, Cm.card = SO.data.fruticard[0] but slots[0] may be
-  // a different object. saveSlot reads from slots[0], so they must match.
+  // loadFruticard sets Cm.card = so.data.fruticard[0]; saveSlot reads from
+  // slots[0], so they must reference the same object.
   const syncSlot0Assign = Buffer.concat([
     actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
     actionPush(pushInt(0)),
@@ -380,9 +399,9 @@ function buildOnLoadBody() {
   ]);
 
   const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
-    slot0Assign.length;
-  const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length;
-  const slot0NullSkipSize = slot0Assign.length;
+    slot0Assign.length + seedSO.length;
+  const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length + seedSO.length;
+  const slot0NullSkipSize = slot0Assign.length + seedSO.length;
 
   return Buffer.concat([
     getClient,
@@ -394,6 +413,7 @@ function buildOnLoadBody() {
     slot0NullCheck,
     actionIf(slot0NullSkipSize),
     slot0Assign,
+    seedSO,
     callOnServiceConnect,
     syncSlots,
   ]);
