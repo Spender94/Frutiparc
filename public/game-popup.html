@@ -123,6 +123,9 @@
   }
   window.open = function(url, target) {
     var u = String(url || "");
+    // Diagnostic: log every window.open so we can tell if getURL2 from
+    // patched SWFs (slot/score saves) is actually reaching the JS layer.
+    console.log("[Game] window.open:", u.length > 120 ? u.slice(0, 120) + "…" : u, "target=", target);
     // Block javascript:self.close() opened in a new window (defensive)
     if (/^javascript:.*close/i.test(u)) {
       console.log("[Game] window.open(javascript:close) blocked");
