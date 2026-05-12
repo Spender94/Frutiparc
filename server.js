@@ -5798,12 +5798,15 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
 
   let oldFolder = String(source.p || req.query.p || 'root');
 
-  // Disc moves — game discs should never create contacts
+  // Disc moves — game discs should never create contacts.
+  // Format mirrors the disccollector listing (same desc/attrs), so the
+  // client renders the right disc visual after the move.
   if (GAME_DISCS[file]) {
     const disc = GAME_DISCS[file];
-    const discDesc = `${disc.discType}\n${disc.swfName}`;
+    const displayName = disc.iconName || disc.swfName;
+    const discDesc = `${disc.discType}\r\n${displayName}`;
     return res.type('text/xml').send(
-      `<r f="${escapeXml(folder || 'root')}"><f n="${escapeXml(file)}" u="${escapeXml(file)}" t="disc" d="${now}" p="${escapeXml(oldFolder)}">${escapeXml(discDesc)}</f></r>`
+      `<r f="${escapeXml(folder || 'root')}"><f n="${escapeXml(file)}" u="${escapeXml(file)}" t="disc" s="10" d="${now}" a="0" p="${escapeXml(oldFolder)}">${escapeXml(discDesc)}</f></r>`
     );
   }
 
