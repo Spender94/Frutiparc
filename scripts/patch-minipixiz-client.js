@@ -351,9 +351,11 @@ function buildOnLoadBody() {
 
   // Seed SharedObject from server data BEFORE onServiceConnect runs.
   // loadFruticard() reads from SharedObject, not slots[0]. Without this,
-  // an empty SharedObject (Ruffle doesn't persist between sessions) causes
-  // formatFruticard() to create defaults that clobber the server data.
-  const seedSO = Buffer.concat([
+  // an empty SharedObject causes formatFruticard() to create defaults that
+  // clobber server data. BUT only seed if server has real progress ($run>0),
+  // because Ruffle may persist SharedObject locally with better data than
+  // the server (if saves weren't reaching the server before).
+  const seedSOBody = Buffer.concat([
     // r5 = SharedObject.getLocal("miniPixiz/card")
     actionPush(pushStr('miniPixiz/card'), pushInt(1)),
     actionPush(pushStr('SharedObject')), GET_VARIABLE,
@@ -367,6 +369,18 @@ function buildOnLoadBody() {
     INIT_ARRAY,
     SET_MEMBER,
   ]);
+
+  // Guard: only seed if r4.$stat.$run > 0 (real gameplay on server)
+  const seedSOCheck = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.$stat)), GET_MEMBER,
+    actionPush(pushCp(CP.$run)), GET_MEMBER,
+    actionPush(pushInt(0)),
+    LESS2,       // 0 < $run → true if $run > 0
+    NOT,         // negate for actionIf (skip if $run <= 0)
+    actionIf(seedSOBody.length),
+  ]);
+
+  const seedSO = Buffer.concat([seedSOCheck, seedSOBody]);
 
   const callOnServiceConnect = Buffer.concat([
     actionPush(pushInt(0)),
