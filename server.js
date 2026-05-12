@@ -1706,7 +1706,12 @@ async function awardDailyXp() {
 
 function buildUserLogXml(entries) {
   const list = Array.isArray(entries) ? entries : [];
-  return list.map((e) => {
+  const sorted = list.slice().sort((a, b) => {
+    const da = a && a.d ? a.d : '';
+    const db = b && b.d ? b.d : '';
+    return da < db ? 1 : da > db ? -1 : 0;
+  });
+  return sorted.map((e) => {
     const d = escapeXml(e && e.d ? e.d : '');
     const t = Number(e && e.t);
     const c = escapeXml(e && e.c ? e.c : '');
@@ -2004,7 +2009,8 @@ function isDebugNotUser(username) {
 function getFrutizJob(username, user) {
   if (user && typeof user.frutijob === 'string' && user.frutijob.trim()) return user.frutijob.trim();
   if (isDebugNotUser(username)) return 'Frutiz';
-  if (user && user.isModerator) return 'Modérateur';
+  if (user && user.isModerator) return user.gender === 'F' ? 'Modératrice' : 'Modérateur';
+  if (user && user.isAnimator) return user.gender === 'F' ? 'Animatrice' : 'Animateur';
   return 'Frutiz';
 }
 
@@ -2883,6 +2889,15 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     if (body.frutijob !== undefined) {
       fields.frutijob = String(body.frutijob || '').slice(0, 80);
     }
+    // Auto-set frutijob when promoting to moderator/animator
+    if (fields.is_moderator === true && body.frutijob === undefined) {
+      const gender = (users[u] && users[u].gender) || row.gender || 'M';
+      fields.frutijob = gender === 'F' ? 'Modératrice' : 'Modérateur';
+    }
+    if (fields.is_animator === true && !fields.is_moderator && body.frutijob === undefined) {
+      const gender = (users[u] && users[u].gender) || row.gender || 'M';
+      fields.frutijob = gender === 'F' ? 'Animatrice' : 'Animateur';
+    }
     if (Object.keys(fields).length > 0) {
       await db.updateUser(u, fields);
       if (users[u]) {
@@ -3741,7 +3756,6 @@ app.post('/api/admin/broadcast', adminAuth, (req, res) => {
 
   // Persistent: append to every known user's siteLog so it shows up after relog too.
   // We tag the entry with `bid` so it can later be removed by event id.
-  // Also persist to DB so events survive server restarts.
   let historyCount = 0;
   for (const username of Object.keys(users)) {
     const user = users[username];
@@ -3755,12 +3769,14 @@ app.post('/api/admin/broadcast', adminAuth, (req, res) => {
       bid: eventId,
     });
     if (user.siteLog.length > 200) user.siteLog.length = 200;
-    if (user._dbId) {
-      db.addUserLogEntry(user._dbId, 'site', type, message, true)
-        .then(() => db.pruneUserLog(user._dbId, 'site', 200))
-        .catch((e) => console.error('[DB] broadcast addUserLogEntry site error:', e.message));
-    }
     historyCount++;
+  }
+
+  // Persist to DB for ALL registered users (including those not in memory).
+  // Single bulk INSERT reaches offline users who will see it on next login.
+  if (process.env.DATABASE_URL) {
+    db.broadcastSiteLogToAllUsers(type, message)
+      .catch((e) => console.error('[DB] broadcast bulk site log error:', e.message));
   }
 
   // Optional: also shout in every chat channel (red bold)
@@ -8091,12 +8107,14 @@ async function handleCBeeMessage(socket, rawXml) {
       client.logged = true;
 
       sendToClient(socket, `<${CMD.ident} l="${escapeXml(getDisplayName(effectiveLogin))}" x="${user.xp}" f="${bouilleOf(user)}" />`);
-      if (user.userLog && user.userLog.length > 0 && user.userLog[0].n) {
-        const entry = user.userLog[0];
-        sendToClient(
-          socket,
-          `<${CMD.newuserlog} date="${escapeXml(entry.d || nowSqlTimestamp())}" type="${escapeXml(String(entry.t || 8))}">${escapeXml(entry.c || '')}</${CMD.newuserlog}>`,
-        );
+      if (user.userLog && user.userLog.length > 0) {
+        for (const entry of user.userLog) {
+          if (!entry || !entry.n) continue;
+          sendToClient(
+            socket,
+            `<${CMD.newuserlog} date="${escapeXml(entry.d || nowSqlTimestamp())}" type="${escapeXml(String(entry.t || 8))}">${escapeXml(entry.c || '')}</${CMD.newuserlog}>`,
+          );
+        }
       }
       console.log(`[CBee]  User "${effectiveLogin}" logged in (sid=${sid})`);
       break;

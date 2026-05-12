@@ -757,6 +757,14 @@ async function deleteSiteLogByContent(content) {
   );
 }
 
+async function broadcastSiteLogToAllUsers(entryType, content) {
+  await pool.query(
+    `INSERT INTO user_logs (user_id, log_type, entry_type, content, is_new)
+     SELECT id, 'site', $1, $2, true FROM users`,
+    [entryType || 1, String(content || '')]
+  );
+}
+
 async function loadShopPacks() {
   const { rows } = await pool.query('SELECT * FROM shop_packs ORDER BY id');
   return rows.map(r => {
@@ -1163,6 +1171,7 @@ module.exports = {
   clearUserLogNewFlag,
   pruneUserLog,
   deleteSiteLogByContent,
+  broadcastSiteLogToAllUsers,
   saveMedal,
   getMedalsForUser,
   getMedalsForUserByDay,
