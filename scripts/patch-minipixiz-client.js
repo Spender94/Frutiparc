@@ -86,6 +86,11 @@ const NOT = simpleAction(0x12);
 const EQUALS2 = simpleAction(0x49);
 const ADD2 = simpleAction(0x47);
 const LESS2 = simpleAction(0x48);
+const TRACE = simpleAction(0x26);
+
+function trace(literal) {
+  return Buffer.concat([actionPush(pushStr(literal)), TRACE]);
+}
 
 function storeReg(r) { return Buffer.from([0x87, 0x01, 0x00, r]); }
 function actionIf(offset) {
@@ -622,9 +627,15 @@ function buildSaveSlotBody() {
   // resolve to null (Haxe runtime cast on a typeless object literal). Cm.card is
   // always the up-to-date card object after loadFruticard runs.
   const getCard = Buffer.concat([
+    trace('[MINIPIXIZ-DEBUG] saveSlot entered'),
     actionPush(pushCp(CP.Cm)), GET_VARIABLE,
     actionPush(pushCp(CP.card)), GET_MEMBER,
     storeReg(3), POP,
+    actionPush(pushStr('[MINIPIXIZ-DEBUG] Cm.card type=')),
+    actionPush(pushReg(3)),
+    actionPush(pushStr('')), ADD2,
+    ADD2,
+    TRACE,
   ]);
 
   // Skip serialization entirely if Cm.card is undefined/null (e.g., before loadFruticard)
@@ -718,6 +729,10 @@ function buildSaveSlotBody() {
   // proven to work in Ruffle.  ExternalInterface.call was unreliable.
   const lvSave = Buffer.concat([
     storeReg(4), POP, // save pipe string to r4
+    actionPush(pushStr('[MINIPIXIZ-DEBUG] pipe=')),
+    actionPush(pushReg(4)),
+    ADD2,
+    TRACE,
 
     // r5 = new LoadVars()
     actionPush(pushInt(0), pushCp(CP.LoadVars)),
@@ -748,6 +763,7 @@ function buildSaveSlotBody() {
     storeReg(6), POP,
 
     // r5.sendAndLoad("/api/saveFrutiSlot", r6, "POST")
+    trace('[MINIPIXIZ-DEBUG] about to sendAndLoad /api/saveFrutiSlot'),
     actionPush(pushCp(CP.POST)),
     actionPush(pushReg(6)),
     actionPush(pushCp(CP.saveFrutiSlot)),
@@ -755,6 +771,7 @@ function buildSaveSlotBody() {
     actionPush(pushReg(5), pushCp(CP.sendAndLoad)),
     CALL_METHOD,
     POP,
+    trace('[MINIPIXIZ-DEBUG] sendAndLoad returned'),
   ]);
 
   // Part 5: flush SharedObject for local persistence
