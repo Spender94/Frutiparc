@@ -64,6 +64,7 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS fruti_sign_b INTEGER DEFAULT -1;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS frutijob TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS is_animator BOOLEAN DEFAULT false;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
 
@@ -319,6 +320,13 @@ async function updateUser(username, fields) {
   await pool.query(
     `UPDATE users SET ${sets.join(', ')} WHERE username = $1`,
     [username, ...values]
+  );
+}
+
+async function recordLogin(username) {
+  await pool.query(
+    `UPDATE users SET last_login = now() WHERE username = $1`,
+    [username]
   );
 }
 
@@ -1158,6 +1166,7 @@ module.exports = {
   findUserByUsername,
   createUser,
   updateUser,
+  recordLogin,
   createSession,
   getSessionUser,
   deleteSession,

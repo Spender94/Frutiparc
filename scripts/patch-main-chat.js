@@ -1,18 +1,22 @@
 #!/usr/bin/env node
-// Patches legacy/main.swf to make moderator "!" shouts appear in red bold
-// across the whole chat line (timestamp + pseudo + message).
+// Patches legacy/main.swf to neutralize the chat.msg_admin format string so
+// that server-side admin broadcasts (totoche announcements, moderator "!"
+// shouts, quiz, blue mode, etc.) carry their own HTML styling end-to-end.
 //
-// The chat panel uses two format strings stored in an ActionConstantPool inside
-// a DefineSprite > DoAction tag:
+// Background: the chat panel uses two format strings stored in an
+// ActionConstantPool inside a DefineSprite > DoAction tag:
 //   chat.msg       = $h<b><a href="asfunction:win.box.openFrutizInfo,$u">$u</a>: </b>$m
-//   chat.msg_admin = $h<i>$m</i>
+//   chat.msg_admin = $h<i>$m</i>     (original SWF value)
 //
-// The server sends moderator shouts via u="admin" t="m" — that triggers the
-// admin format. We rewrite that format so the whole line is wrapped in a red
-// <font> tag (timestamp red but not bold; rest red+bold via <b>).
+// A previous revision of this script overrode chat.msg_admin with
+// <font color="#C10000">$h<b>$m</b></font> to render the entire admin line
+// in red bold.  That coloring is now applied per-message by the server
+// (which lets totoche/quiz/blue-mode use their own styles), so we revert
+// chat.msg_admin back to $h<i>$m</i>.  The server inlines a red bold <font>
+// inside the moderator-shout body to preserve the shout look.
 //
-// Old: $h<i>$m</i>                                   (12 bytes)
-// New: <font color="#C10000">$h<b>$m</b></font>     (40 bytes, delta +28)
+// Old: <font color="#C10000">$h<b>$m</b></font>     (40 bytes)
+// New: $h<i>$m</i>                                   (11 bytes, delta -29)
 //
 // The patch updates:
 //   - the constant pool blob
@@ -25,8 +29,8 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const OLD_STR = '$h<i>$m</i>';
-const NEW_STR = '<font color="#C10000">$h<b>$m</b></font>';
+const OLD_STR = '<font color="#C10000">$h<b>$m</b></font>';
+const NEW_STR = '$h<i>$m</i>';
 const DELTA = NEW_STR.length - OLD_STR.length;
 
 const IN_PATH  = path.resolve(__dirname, '..', 'legacy', 'main.swf');
@@ -65,8 +69,8 @@ function patch() {
 
   // Check if already patched
   const alreadyNeedle = Buffer.from(NEW_STR + '\0', 'ascii');
-  if (body.indexOf(alreadyNeedle) >= 0) {
-    console.log('chat.msg_admin already patched — skipping.');
+  if (body.indexOf(alreadyNeedle) >= 0 && body.indexOf(Buffer.from(OLD_STR + '\0', 'ascii')) < 0) {
+    console.log('chat.msg_admin already at expected value — skipping.');
     return;
   }
 

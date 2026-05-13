@@ -686,6 +686,11 @@ function fmtDate(s) {
   try { return new Date(s).toLocaleDateString('fr-FR'); } catch { return s; }
 }
 
+function fmtDateTime(s) {
+  if (!s) return '-';
+  try { return new Date(s).toLocaleString('fr-FR'); } catch { return s; }
+}
+
 // ── Users ──
 async function loadUsers() {
   try {
@@ -839,19 +844,32 @@ async function loadDetail() {
     const d = await r.json();
     const user = d.user;
     let html = `<h3>${esc(user.display_name || u)}</h3>`;
-    html += `<table style="max-width:400px;margin-bottom:24px">
+    html += `<table style="max-width:500px;margin-bottom:24px">
       <tr><td>ID</td><td>${user.id}</td></tr>
+      <tr><td>Login</td><td><code>${esc(user.username || u)}</code></td></tr>
       <tr><td>Pseudo (display)</td><td>${esc(user.display_name || u)}</td></tr>
       <tr><td>XP</td><td>${user.xp}</td></tr>
       <tr><td>Kikooz</td><td>${user.kikooz}</td></tr>
       <tr><td>Bouille</td><td><code>${esc(user.fbouille||'')}</code></td></tr>
+      <tr><td>Besoin bouille</td><td>${user.needs_bouille ? 'Oui' : 'Non'}</td></tr>
       <tr><td>Genre</td><td>${user.gender||'M'}</td></tr>
       <tr><td>Modérateur</td><td><span class="badge ${user.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u)}',${!user.is_moderator});setTimeout(loadDetail,500)" style="cursor:pointer">${user.is_moderator ? 'Oui' : 'Non'}</span></td></tr>
       <tr><td>Animateur</td><td><span class="badge ${user.is_animator ? 'badge-anim' : 'badge-no-mod'}" onclick="toggleAnim('${esc(u)}',${!user.is_animator});setTimeout(loadDetail,500)" style="cursor:pointer">${user.is_animator ? 'Oui' : 'Non'}</span></td></tr>
       <tr><td>Anniversaire</td><td>${fmtDate(user.birthday)}</td></tr>
-      <tr><td>Inscrit le</td><td>${fmtDate(user.created_at)}</td></tr>
       <tr><td>FrutiSigne</td><td>${signLabel(user.fruti_sign)}</td></tr>
       <tr><td>Ascendant</td><td>${signLabel(user.fruti_sign_b)}</td></tr>
+      <tr><td>FrutiJob</td><td>${esc(user.frutijob || '-')}</td></tr>
+      <tr><td>Prénom</td><td>${esc(user.first_name || '-')}</td></tr>
+      <tr><td>Nom</td><td>${esc(user.last_name || '-')}${user.last_name_public === 'N' ? ' <span class="badge">privé</span>' : ''}</td></tr>
+      <tr><td>Métier réel</td><td>${esc(user.real_job || '-')}</td></tr>
+      <tr><td>Ville</td><td>${esc(user.city || '-')}</td></tr>
+      <tr><td>Région</td><td>${esc(user.region || '-')} <span style="color:#888">(pays=${esc(user.country_index||'-')}/région=${esc(user.region_index||'-')}/dép=${esc(user.department_index||'-')})</span></td></tr>
+      <tr><td>Site web</td><td>${user.site_url ? `<a href="${esc(user.site_url)}" target="_blank">${esc(user.site_url)}</a>` : '-'}</td></tr>
+      <tr><td>Commentaire</td><td>${esc(user.comment || '-')}</td></tr>
+      <tr><td>Préférences</td><td><code style="font-size:11px;word-break:break-all">${esc(user.prefs || '-')}</code></td></tr>
+      <tr><td>Inscrit le</td><td>${fmtDateTime(user.created_at)}</td></tr>
+      <tr><td>Profil mis à jour</td><td>${fmtDateTime(user.updated_at)}</td></tr>
+      <tr><td>Dernière connexion</td><td>${fmtDateTime(user.last_login)}</td></tr>
     </table>`;
 
     // Scores

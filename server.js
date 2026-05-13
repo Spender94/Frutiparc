@@ -2678,6 +2678,7 @@ app.post('/api/auth/login', async (req, res) => {
       }
       users[username]._dbId = dbUser.id;
       applyPendingChallengeNotifications(username, users[username]);
+      db.recordLogin(username).catch((e) => console.error('[DB] recordLogin error:', e.message));
     } else {
       const user = users[username];
       if (!user || user.pass !== password) {
@@ -8231,6 +8232,10 @@ async function handleCBeeMessage(socket, rawXml) {
       client.sid = sid;
       client.logged = true;
 
+      if (process.env.DATABASE_URL && user._dbId) {
+        db.recordLogin(effectiveLogin).catch((e) => console.error('[DB] recordLogin error:', e.message));
+      }
+
       sendToClient(socket, `<${CMD.ident} l="${escapeXml(getDisplayName(effectiveLogin))}" x="${user.xp}" f="${bouilleOf(user)}" />`);
       if (user.userLog && user.userLog.length > 0) {
         for (const entry of user.userLog) {
@@ -8708,6 +8713,9 @@ case 'send': {
         }
         addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
         if (process.env.DATABASE_URL) db.addModerationLog(targetUser, client.username, 'totoche', `10 min`).catch(e => console.error('[DB] modlog error:', e.message));
+        // Render exactly like userkicked/userjoined/userleaved: plain italic,
+        // no timestamp, default color.  chat.msg_admin = "$h<i>$m</i>" so we
+        // pass empty h/d and a plain body — the SWF wraps it in <i>…</i>.
         const announceTotoche = `<![CDATA[${escapeXml(getDisplayName(targetUser))} a été totoché]]>`;
         for (const [chanName, channel] of Object.entries(channels)) {
           if (channel && channel.users && channel.users.has(targetUser)) {
@@ -8854,14 +8862,14 @@ case 'send': {
 
     let safeText = escapeXml(text);
 
-    // Moderator "!" prefix: route through chat.msg_admin (patched to render the
-    // entire line in #812F0A; $h stays normal-weight, $m gets <b>).
-    // Body carries "<pseudo>: <message>" — the username then sits inside <b>
-    // and shows in red bold alongside the message.
+    // Moderator "!" prefix: route through chat.msg_admin ("$h<i>$m</i>") and
+    // inline a red bold <font> in the body so the username + message appear
+    // in red bold while the timestamp keeps the default chat styling.
     if (isModerator(client.username) && text.startsWith('!')) {
       const shout = text.substring(1).trim();
       if (shout) {
-        const body = escapeXml(client.username + ': ' + shout);
+        const inner = escapeXml(getDisplayName(client.username) + ': ' + shout);
+        const body = `<![CDATA[<font color="#C10000"><b>${inner}</b></font>]]>`;
         broadcastToChannel(g,
           `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`
         );
