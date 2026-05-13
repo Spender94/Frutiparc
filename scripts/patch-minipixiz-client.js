@@ -621,46 +621,16 @@ function buildSaveSlotBody() {
     ]);
   }
 
-  // Part 1: card = ??? → r3
-  // _global.Cm.card resolves to undefined — Haxe doesn't expose the class
-  // there.  Try several paths in order and log each so we can see which one
-  // returns a real object.
+  // Part 1: card = this.slots[0] → r3
+  // Cm.card and Manager.client.slots[0] reference the same Card object
+  // (set in Cm.loadFruticard / formatFruticard). MTASC-compiled classes
+  // aren't on _global, so Cm.card is inaccessible from patched bytecode.
+  // SharedObject may not be in sync yet when saveSlot runs. this.slots[0]
+  // is the only reliable path.
   const getCard = Buffer.concat([
-    trace('[MINIPIXIZ-DEBUG] saveSlot entered'),
-
-    // Try A: eval("Cm.card") via dotted GET_VARIABLE
-    actionPush(pushStr('Cm.card')), GET_VARIABLE,
-    storeReg(3), POP,
-    actionPush(pushStr('[MINIPIXIZ-DEBUG] A: eval(Cm.card)=')),
-    actionPush(pushReg(3)),
-    actionPush(pushStr('')), ADD2,
-    ADD2,
-    TRACE,
-
-    // Try B: this.slots[0]
     actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
     actionPush(pushInt(0)), GET_MEMBER,
     storeReg(3), POP,
-    actionPush(pushStr('[MINIPIXIZ-DEBUG] B: this.slots[0]=')),
-    actionPush(pushReg(3)),
-    actionPush(pushStr('')), ADD2,
-    ADD2,
-    TRACE,
-
-    // Try C: SharedObject.getLocal("miniPixiz/card").data.fruticard[0]
-    actionPush(pushStr('miniPixiz/card'), pushInt(1)),
-    actionPush(pushStr('SharedObject')), GET_VARIABLE,
-    actionPush(pushStr('getLocal')),
-    CALL_METHOD,
-    actionPush(pushStr('data')), GET_MEMBER,
-    actionPush(pushStr('fruticard')), GET_MEMBER,
-    actionPush(pushInt(0)), GET_MEMBER,
-    storeReg(3), POP,
-    actionPush(pushStr('[MINIPIXIZ-DEBUG] C: SO.fruticard[0]=')),
-    actionPush(pushReg(3)),
-    actionPush(pushStr('')), ADD2,
-    ADD2,
-    TRACE,
   ]);
 
   // Skip serialization entirely if Cm.card is undefined/null (e.g., before loadFruticard)
@@ -754,10 +724,6 @@ function buildSaveSlotBody() {
   // proven to work in Ruffle.  ExternalInterface.call was unreliable.
   const lvSave = Buffer.concat([
     storeReg(4), POP, // save pipe string to r4
-    actionPush(pushStr('[MINIPIXIZ-DEBUG] pipe=')),
-    actionPush(pushReg(4)),
-    ADD2,
-    TRACE,
 
     // r5 = new LoadVars()
     actionPush(pushInt(0), pushCp(CP.LoadVars)),
@@ -788,7 +754,6 @@ function buildSaveSlotBody() {
     storeReg(6), POP,
 
     // r5.sendAndLoad("/api/saveFrutiSlot", r6, "POST")
-    trace('[MINIPIXIZ-DEBUG] about to sendAndLoad /api/saveFrutiSlot'),
     actionPush(pushCp(CP.POST)),
     actionPush(pushReg(6)),
     actionPush(pushCp(CP.saveFrutiSlot)),
@@ -796,7 +761,6 @@ function buildSaveSlotBody() {
     actionPush(pushReg(5), pushCp(CP.sendAndLoad)),
     CALL_METHOD,
     POP,
-    trace('[MINIPIXIZ-DEBUG] sendAndLoad returned'),
   ]);
 
   // Part 5: flush SharedObject for local persistence
@@ -811,9 +775,8 @@ function buildSaveSlotBody() {
     CALL_METHOD, POP,
   ]);
 
-  // Wrap everything except getCard in a guard: skip the whole serialization
-  // when Cm.card is null/undefined (e.g., before loadFruticard runs). This
-  // prevents writing "undefined|undefined|..." pipes that clobber server data.
+  // Guard: skip serialization when slots[0] is null/undefined (before
+  // loadFruticard runs) to prevent clobbering server data with empty pipes.
   const guardedBody = Buffer.concat([buildStr, faerieLoop, afterLoop, lvSave, soFlush]);
   const skipIfNull = Buffer.concat([
     actionPush(pushReg(3)),
