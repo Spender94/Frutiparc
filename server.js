@@ -2871,6 +2871,26 @@ app.delete('/api/admin/users/:username', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Wipe a single game's FrutiCard slot data for one user (DB + in-memory).
+// The SWF will hit formatFruticard on next load. Useful for clearing
+// pathological/corrupted slots (e.g. minipixiz scalar-field cycle).
+app.post('/api/admin/users/:username/reset-game-slot/:game', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  const game = String(req.params.game || '').trim();
+  if (!game) return res.status(400).json({ error: 'game required' });
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  try {
+    const row = await db.findUserByUsername(u);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    await db.deleteFrutiSlotsForGame(row.id, game);
+    if (users[u] && users[u].frutiSlots && users[u].frutiSlots[game]) {
+      delete users[u].frutiSlots[game];
+    }
+    console.log(`[ADMIN] Reset ${game} slots for user ${u}`);
+    res.json({ ok: true, username: u, game });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Bulk-delete users created on a given Paris-local date.
 // Query params:
 //   date     YYYY-MM-DD (required)
@@ -4282,6 +4302,55 @@ function parseMiniwavePipe(s) {
   };
 }
 
+// Fresh MiniPixiz slot 0 — mirrors Cm.formatFruticard() output for the
+// 19 fields the patched saveSlot serialises. Used to auto-repair slots
+// that were corrupted by a prior buggy save cycle (arrays written as
+// scalars, then re-parsed as 1-element arrays, then re-saved as scalars,
+// forever losing in-game updates because gameplay tries to mutate
+// `$stat.$item[n] = true` on what has become a boolean primitive).
+const FRESH_MINIPIXIZ_SLOT0 = JSON.stringify({
+  $stat: {
+    $item: [],
+    $eat: [],
+    $kill: [0, 0, 0, 0, 0],
+    $run: 0,
+    $game: [0, 0, 0, 0, 0],
+    $forestMax: 0,
+    $treeMax: 0,
+    $misNum: 0,
+  },
+  $diam: 0,
+  $key: 0,
+  $star: 0,
+  $bag: 0,
+  $dungeon: { $lvl: 0, $f: false },
+  $rainbow: { $f: false },
+  $pond: { $q: 0 },
+  $frog: false,
+  $faerie: [],
+  $vs: 1.1,
+});
+
+// MiniPixiz corruption signature: `$stat.$kill` and `$stat.$game` are
+// always created with 5 zeros by formatFruticard() and can only grow
+// during gameplay (Imp.mt: `$kill[level]++`, base/*.mt: `$game[zone]++`),
+// so length < 5 is impossible for healthy data and unambiguously means
+// the slot was scalar-corrupted upstream.
+function isMinipixizSlot0Corrupted(jsonStr) {
+  if (!jsonStr) return false;
+  try {
+    const obj = JSON.parse(jsonStr);
+    if (!obj || typeof obj !== 'object') return false;
+    const stat = obj.$stat;
+    if (!stat || typeof stat !== 'object') return false;
+    if (!Array.isArray(stat.$kill) || stat.$kill.length < 5) return true;
+    if (!Array.isArray(stat.$game) || stat.$game.length < 5) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 // MiniPixiz pipe format (19 fields):
 //   0:$stat.$item 1:$stat.$eat 2:$stat.$kill 3:$stat.$run 4:$stat.$game
 //   5:$stat.$forestMax 6:$stat.$treeMax 7:$stat.$misNum
@@ -4394,6 +4463,14 @@ app.post('/api/saveFrutiSlot', (req, res) => {
       data = JSON.stringify(obj);
       console.log(`[SLOT]  minipixiz pipe → JSON (${data.length} chars)`);
     }
+  }
+
+  // MiniPixiz: drop corrupted saves so they can't re-establish the cycle.
+  // The SWF still in a corrupted session may keep posting scalar fields
+  // until the user refreshes; we silently ack (ok=1) without storing.
+  if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0' && isMinipixizSlot0Corrupted(data)) {
+    console.log(`[SLOT]  REJECT corrupted ${game} save for sid=${sid}: scalar $kill/$game/$item, not persisting`);
+    return res.type('text/plain').send('ok=1');
   }
 
   // MotionBall 2: pipe-delimited string → JSON (slot 0 only)
@@ -4573,6 +4650,16 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
 
     if (users[username].frutiSlots && users[username].frutiSlots[game]) {
       const slots = users[username].frutiSlots[game];
+      // Auto-repair: corrupted minipixiz slot 0 (scalar fields where arrays
+      // are expected) loops forever via save→load, so reset to formatFruticard
+      // defaults before serving to the SWF. The "progress" lost was already
+      // unreachable because gameplay writes to primitives were silently dropped.
+      if ((game === 'minipixiz' || game === 'minitroll') && slots['0'] && isMinipixizSlot0Corrupted(slots['0'])) {
+        console.log(`[SLOT]  REPAIR ${game} slot0 for ${username}: corrupted scalar fields detected, replacing with fresh defaults`);
+        slots['0'] = FRESH_MINIPIXIZ_SLOT0;
+        const dbId = users[username]._dbId;
+        if (dbId) db.upsertFrutiSlot(dbId, game, 0, FRESH_MINIPIXIZ_SLOT0).catch((e) => console.error('[DB] repair upsert error:', e.message));
+      }
       // Extract pictos from slot 0 on load (catches items from before this feature existed)
       if (slots['0']) {
         try { extractGameItemsFromSlot(username, game, slots['0']); } catch (e) {

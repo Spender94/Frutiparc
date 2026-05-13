@@ -914,7 +914,7 @@ async function loadDetail() {
     }
 
     // Game Items (Pictos)
-    html += `<h4>Pictos (Game Items) <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm" onclick="openAddGameItem()">+ Ajouter</button><button class="btn-success btn-sm" onclick="reextractPictos()">↻ Réextraire</button><button class="btn-success btn-sm" onclick="addAllBkiwiPictos()">+ Tous BKiwi</button><button class="btn-success btn-sm" onclick="addAllPixizPictos()">+ Tous MiniPixiz</button><button class="btn-success btn-sm" onclick="addAllMiniwavePictos()">+ Tous MiniWave</button></span></h4>`;
+    html += `<h4>Pictos (Game Items) <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm" onclick="openAddGameItem()">+ Ajouter</button><button class="btn-success btn-sm" onclick="reextractPictos()">↻ Réextraire</button><button class="btn-danger btn-sm" onclick="resetGameSlot('minipixiz')">⟲ Reset MiniPixiz slot</button><button class="btn-success btn-sm" onclick="addAllBkiwiPictos()">+ Tous BKiwi</button><button class="btn-success btn-sm" onclick="addAllPixizPictos()">+ Tous MiniPixiz</button><button class="btn-success btn-sm" onclick="addAllMiniwavePictos()">+ Tous MiniWave</button></span></h4>`;
     const gameItems = d.gameItems || [];
     if (gameItems.length) {
       html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px">';
@@ -1009,6 +1009,14 @@ async function deleteGameItem(name) {
   await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/gameitems/${encodeURIComponent(name)}`, { method: 'DELETE', headers: hdr() });
   toast('Picto supprimé');
   loadDetail();
+}
+
+async function resetGameSlot(game) {
+  if (!currentDetailUser) return;
+  if (!confirm(`Réinitialiser le slot ${game} de ${currentDetailUser} ?\n\nLes données de carte (progression, items en jeu) seront effacées et le joueur repartira d'une carte fraîche au prochain chargement du jeu. Les pictos déjà débloqués ne sont PAS affectés.`)) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/reset-game-slot/${encodeURIComponent(game)}`, { method: 'POST', headers: hdr() });
+  if (r.ok) toast(`Slot ${game} réinitialisé`);
+  else toast(`Erreur: ${r.status}`);
 }
 
 const BKIWI_ALL_PICTOS = ['$fruticup','$fruticupxl','$elite','$elitexl','$logo01','$logo02','$logo03','$logo04','$logo05','$car01','$car02','$car03','$car04','$car05'];

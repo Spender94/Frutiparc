@@ -411,6 +411,13 @@ async function upsertFrutiSlot(userId, game, slotId, data) {
   );
 }
 
+async function deleteFrutiSlotsForGame(userId, game) {
+  await pool.query(
+    `DELETE FROM fruti_slots WHERE user_id = $1 AND game = $2`,
+    [userId, game]
+  );
+}
+
 async function getFrutiSlots(userId, game) {
   const { rows } = await pool.query(
     'SELECT slot_id, data FROM fruti_slots WHERE user_id = $1 AND game = $2',
@@ -1175,6 +1182,7 @@ module.exports = {
   upsertScore,
   getScores,
   upsertFrutiSlot,
+  deleteFrutiSlotsForGame,
   getFrutiSlots,
   getAllFrutiSlot0,
   getAllFrutiSlots,
