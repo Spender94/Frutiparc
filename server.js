@@ -3463,6 +3463,14 @@ app.post('/api/admin/users/:username/minipixiz-pictos/grant-earned', adminAuth, 
   res.json({ granted: user.gameItems.length - before, total: user.gameItems.length });
 });
 
+app.get('/api/admin/users/:username/modlogs', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json([]);
+  try {
+    const logs = await db.getModerationLogs(req.params.username.toLowerCase(), 100);
+    res.json(logs);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Admin: Shop pack management ──
 app.get('/api/admin/shop', adminAuth, (req, res) => {
   res.json(SHOP_PACKS);
@@ -7851,6 +7859,7 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   if (!CONNECTED_NPCS.has(targetUser)) {
     const actionLabel = isBan ? 'banni' : 'expulsé';
     addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été ${actionLabel} du salon ${channelName} par ${getDisplayName(byUser)}.` });
+    if (process.env.DATABASE_URL) db.addModerationLog(targetUser, byUser, reason, `salon ${channelName}`).catch(e => console.error('[DB] modlog error:', e.message));
   }
 
   // Respawn connected PNJ after 5 seconds if one is kicked
@@ -8689,10 +8698,11 @@ case 'send': {
           sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
         }
         addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
-        const announceTotoche = `<![CDATA[<i>${escapeXml(getDisplayName(targetUser))} a été totoché</i>]]>`;
+        if (process.env.DATABASE_URL) db.addModerationLog(targetUser, client.username, 'totoche', `10 min`).catch(e => console.error('[DB] modlog error:', e.message));
+        const announceTotoche = `<![CDATA[${escapeXml(getDisplayName(targetUser))} a été totoché]]>`;
         for (const [chanName, channel] of Object.entries(channels)) {
           if (channel && channel.users && channel.users.has(targetUser)) {
-            broadcastToChannel(chanName, `<${CMD.send} u="" t="m" p="" g="${escapeXml(chanName)}" h="" d="">${announceTotoche}</${CMD.send}>`);
+            broadcastToChannel(chanName, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(chanName)}" h="" d="">${announceTotoche}</${CMD.send}>`);
           }
         }
       }
@@ -8928,15 +8938,12 @@ case 'send': {
       }
       sendToClient(socket, `<${CMD.mute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
+      if (process.env.DATABASE_URL) db.addModerationLog(targetUser, client.username, 'totoche', `10 min`).catch(e => console.error('[DB] modlog error:', e.message));
 
-      // Announce in EVERY channel where the muted user is present, formatted
-      // to match the kick announcement (italic, no timestamp, default color).
-      // u="" avoids the red+bold admin styling; the CDATA <i>…</i> wrapper
-      // produces an italic message regardless of the active chat template.
-      const announceTotoche = `<![CDATA[<i>${escapeXml(getDisplayName(targetUser))} a été totoché</i>]]>`;
+      const announceTotoche = `<![CDATA[${escapeXml(getDisplayName(targetUser))} a été totoché]]>`;
       for (const [chanName, channel] of Object.entries(channels)) {
         if (channel && channel.users && channel.users.has(targetUser)) {
-          broadcastToChannel(chanName, `<${CMD.send} u="" t="m" p="" g="${escapeXml(chanName)}" h="" d="">${announceTotoche}</${CMD.send}>`);
+          broadcastToChannel(chanName, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(chanName)}" h="" d="">${announceTotoche}</${CMD.send}>`);
           broadcastToChannel(chanName, `<${CMD.trace} u="${escapeXml(getDisplayName(targetUser))}" p="1" s="${getStatusCode(target, targetUser)}" mu="${getMuteValue(target)}" f="${bouilleOf(target)}" />`);
         }
       }

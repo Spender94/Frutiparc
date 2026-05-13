@@ -274,6 +274,16 @@ async function initSchema() {
         topic        TEXT DEFAULT '',
         updated_at   TIMESTAMPTZ DEFAULT now()
       );
+
+      CREATE TABLE IF NOT EXISTS moderation_logs (
+        id              SERIAL PRIMARY KEY,
+        target_username TEXT NOT NULL,
+        moderator       TEXT NOT NULL,
+        action          TEXT NOT NULL,
+        detail          TEXT DEFAULT '',
+        created_at      TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_moderation_logs_target ON moderation_logs(target_username, created_at DESC);
     `);
     console.log('[DB] Schema initialized');
   } finally {
@@ -769,6 +779,21 @@ async function broadcastSiteLogToAllUsers(entryType, content) {
   );
 }
 
+async function addModerationLog(targetUsername, moderator, action, detail) {
+  await pool.query(
+    `INSERT INTO moderation_logs (target_username, moderator, action, detail) VALUES ($1, $2, $3, $4)`,
+    [targetUsername, moderator, action, detail || '']
+  );
+}
+
+async function getModerationLogs(targetUsername, limit = 50) {
+  const { rows } = await pool.query(
+    `SELECT * FROM moderation_logs WHERE target_username = $1 ORDER BY created_at DESC LIMIT $2`,
+    [targetUsername, limit]
+  );
+  return rows;
+}
+
 async function loadShopPacks() {
   const { rows } = await pool.query('SELECT * FROM shop_packs ORDER BY id');
   return rows.map(r => {
@@ -1218,4 +1243,6 @@ module.exports = {
   loadChannels,
   upsertChannel,
   updateChannelTopic,
+  addModerationLog,
+  getModerationLogs,
 };

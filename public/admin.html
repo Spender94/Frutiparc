@@ -908,6 +908,25 @@ async function loadDetail() {
       html += '<p class="empty">Aucun picto</p>';
     }
 
+    // Moderation Logs
+    try {
+      const mlr = await fetch(`/api/admin/users/${encodeURIComponent(u)}/modlogs`, { headers: hdr() });
+      if (mlr.ok) {
+        const modlogs = await mlr.json();
+        html += `<h4>Historique modération</h4>`;
+        if (modlogs.length) {
+          html += '<table style="max-width:700px;margin-bottom:24px"><thead><tr><th>Date</th><th>Action</th><th>Modérateur</th><th>Détail</th></tr></thead><tbody>';
+          modlogs.forEach(l => {
+            const dt = l.created_at ? new Date(l.created_at).toLocaleString('fr-FR') : '-';
+            html += `<tr><td style="white-space:nowrap">${dt}</td><td><span class="badge">${esc(l.action)}</span></td><td>${esc(l.moderator)}</td><td>${esc(l.detail||'')}</td></tr>`;
+          });
+          html += '</tbody></table>';
+        } else {
+          html += '<p class="empty">Aucun événement de modération</p>';
+        }
+      }
+    } catch {}
+
     dc.innerHTML = html;
   } catch (e) { dc.innerHTML = `<p class="empty">Erreur: ${e.message}</p>`; }
 }
