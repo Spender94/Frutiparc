@@ -7478,7 +7478,7 @@ function mdamirmaJoin(channelName) {
   if (!ch) return;
   ch.users.add('mdamirma');
   broadcastToChannel(channelName,
-    `<${CMD.userjoined} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(channelName)}" />`
+    `<${CMD.userjoined} ${buildUserAttrs('mdamirma')} g="${escapeXml(channelName)}" />`
   );
 }
 
@@ -7868,7 +7868,7 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
       if (channels[channelName]) {
         channels[channelName].users.add(targetUser);
         // Broadcast userjoined so other clients see PNJ reappear
-        broadcastToChannel(channelName, `<${CMD.userjoined} u="${escapeXml(getDisplayName(targetUser))}" g="${escapeXml(channelName)}" />`);
+        broadcastToChannel(channelName, `<${CMD.userjoined} ${buildUserAttrs(targetUser)} g="${escapeXml(channelName)}" />`);
       }
     }, 5000);
   }
@@ -7994,6 +7994,15 @@ function getStatusCode(user, username) {
     }
   }
   return `${encode62(ext, 1)}${encode62(internal, 2)}${encode62(emote, 1)}`;
+}
+
+// Build the <u> attribute set the SWF's UserMng.formatInfoBasic expects.
+// Used both for the initial userlist dump and for <userjoined> broadcasts —
+// without these attrs, the chat shows the user with a black pseudo and the
+// info card falls back to "NN"/"inconnue"/level 0.
+function buildUserAttrs(username, present = '1') {
+  const ud = users[username] || {};
+  return `u="${escapeXml(getDisplayName(username))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="${present}" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"`;
 }
 
 // Update the "internal" portion of a user's status string (used for the
@@ -8395,7 +8404,7 @@ case 'join': {
   {
     const joinerUd = users[client.username] || {};
     const joinerTrace = `<${CMD.trace}><u u="${escapeXml(getDisplayName(client.username))}" p="1" s="${getStatusCode(joinerUd, client.username)}" mu="${getMuteValue(joinerUd)}" f="${bouilleOf(joinerUd)}" /></${CMD.trace}>`;
-    broadcastToChannel(g, `<${CMD.userjoined} u="${escapeXml(getDisplayName(client.username))}" g="${g}" />`, socket);
+    broadcastToChannel(g, `<${CMD.userjoined} ${buildUserAttrs(client.username)} g="${g}" />`, socket);
     broadcastToChannel(g, joinerTrace, socket);
   }
   // Notify trace subscribers (cross-channel) that this user is online
