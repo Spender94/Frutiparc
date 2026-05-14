@@ -9,8 +9,30 @@ const pool = new Pool({
   query_timeout: 5000,
 });
 
+// pg pool emits 'error' on background failures (e.g. idle client lost,
+// network hiccup, server restart). We log loudly so Render's logs show
+// the issue, and we increment a counter; if errors burst above a
+// sensible threshold we exit the process so Render's supervisor
+// restarts us with a fresh pool, rather than serving requests against
+// a wedged connection set.
+let _poolErrorBurst = 0;
+let _poolErrorBurstStart = 0;
+const POOL_ERROR_BURST_WINDOW_MS = 60 * 1000; // 1 min
+const POOL_ERROR_BURST_MAX = 10;
 pool.on('error', (err) => {
-  console.error('[DB] Unexpected pool error:', err.message);
+  const msg = (err && err.message) ? err.message : String(err);
+  console.error('[DB] Unexpected pool error: ' + msg);
+  const now = Date.now();
+  if (now - _poolErrorBurstStart > POOL_ERROR_BURST_WINDOW_MS) {
+    _poolErrorBurstStart = now;
+    _poolErrorBurst = 0;
+  }
+  if (++_poolErrorBurst >= POOL_ERROR_BURST_MAX) {
+    console.error('[DB] Pool error burst: ' + _poolErrorBurst + ' errors in ' +
+      Math.round((now - _poolErrorBurstStart) / 1000) + 's — exiting so the supervisor can restart with a fresh pool');
+    // Defer the exit one tick so the current log line flushes.
+    setTimeout(() => process.exit(1), 100);
+  }
 });
 
 async function initSchema() {

@@ -19,6 +19,16 @@ const fs = require('fs');
 const db = require('./db');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
+// Standard error sink for fire-and-forget DB writes. Replaces the
+// `.catch(() => {})` pattern that used to swallow Postgres failures
+// silently — every dropped medal, accessory, game item or mail-state
+// change now leaves a trace in the logs so we can detect persistent
+// DB issues instead of just losing data quietly.
+const dbErr = (op) => (e) => {
+  const msg = e && e.message ? e.message : String(e);
+  console.error('[DB] ' + op + ' failed: ' + msg);
+};
+
 
 
 const app = express();
@@ -33,6 +43,11 @@ const VERBOSE_HTTP_LOGS = process.env.VERBOSE_HTTP_LOGS === '1';
 const VERBOSE_SWF_LOGS = process.env.VERBOSE_SWF_LOGS === '1';
 const VERBOSE_FRUSION_LOGS = process.env.VERBOSE_FRUSION_LOGS === '1';
 const VERBOSE_WS_LOGS = process.env.VERBOSE_WS_LOGS === '1';
+// Set VERBOSE_FSCORE=1 to see the verbose [FSCORE-DEBUG] traces
+// (rankingResult requests, memory snapshots, awardgame podiums…).
+// Disabled in prod by default — kept the call sites in place so we
+// can re-enable per-incident without redeploying code.
+const VERBOSE_FSCORE = process.env.VERBOSE_FSCORE === '1';
 const FRUSION_CLIENT_SWF = (process.env.FRUSION_CLIENT_SWF || '').trim();
 const ALLOW_FRUSION_SERVER_SWF = process.env.ALLOW_FRUSION_SERVER_SWF === '1';
 
@@ -1851,11 +1866,11 @@ function notifyChallengeWinners(winnersByUser, visibleDay) {
         challengeMedalsData.pendingNotifications[username].push({ type: USER_LOG_TYPE.MEDAL, content: text });
       }
       if (user && user._dbId) {
-        db.saveMedal(user._dbId, username, m.rankingId, m.game, m.rank, m.medal, visibleDay).catch(() => {});
+        db.saveMedal(user._dbId, username, m.rankingId, m.game, m.rank, m.medal, visibleDay).catch(dbErr('saveMedal'));
       } else if (process.env.DATABASE_URL) {
         db.findUserByUsername(username).then((row) => {
-          if (row) db.saveMedal(row.id, username, m.rankingId, m.game, m.rank, m.medal, visibleDay).catch(() => {});
-        }).catch(() => {});
+          if (row) db.saveMedal(row.id, username, m.rankingId, m.game, m.rank, m.medal, visibleDay).catch(dbErr('saveMedal'));
+        }).catch(dbErr('saveMedal'));
       }
     }
   }
@@ -2879,12 +2894,58 @@ app.post('/api/admin/clearScores', async (req, res) => {
 // ─────────────────────────────────────────────
 // Admin panel & API
 // ─────────────────────────────────────────────
-const ADMIN_KEY = process.env.ADMIN_KEY || 'sorbetcitron';
-function adminAuth(req, res, next) {
-  if (ADMIN_KEY) {
-    const k = req.headers['x-admin-key'] || req.query.key || '';
-    if (k !== ADMIN_KEY) return res.status(403).json({ ok: false, error: 'forbidden' });
+// ADMIN_KEY MUST be set via environment for any admin endpoint to work.
+// Historically there was a hardcoded fallback ('sorbetcitron') which is
+// committed in git history — anyone with the source could elevate, so
+// the fallback has been removed. If the env var is missing in prod, all
+// admin endpoints return 503 instead of accepting requests with a known
+// default value.
+const ADMIN_KEY = process.env.ADMIN_KEY || '';
+if (!ADMIN_KEY) {
+  console.warn('[ADMIN] ADMIN_KEY env var is empty — admin endpoints will refuse every request. Set ADMIN_KEY in production.');
+}
+
+// Per-IP rate limiter for admin endpoints. Far tighter than the
+// register limit (40 requests / 10 min) — admins are humans clicking
+// a UI, not a script, so a few dozen requests per window is plenty,
+// and the cap means a brute-force attacker who somehow obtained the
+// key still can't iterate fast. Failed-auth attempts AND successful
+// requests both count, so we also throttle accidental hot-loops.
+const ADMIN_RL_WINDOW_MS = 10 * 60 * 1000;
+const ADMIN_RL_MAX = 40;
+const adminAttempts = new Map(); // ip -> number[] (timestamps)
+
+function checkAdminRateLimit(ip) {
+  const now = Date.now();
+  let arr = adminAttempts.get(ip);
+  if (!arr) { arr = []; adminAttempts.set(ip, arr); }
+  // Drop expired entries
+  while (arr.length && now - arr[0] >= ADMIN_RL_WINDOW_MS) arr.shift();
+  if (arr.length >= ADMIN_RL_MAX) return false;
+  arr.push(now);
+  return true;
+}
+
+// Periodically prune empty buckets to keep the map bounded.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, arr] of adminAttempts) {
+    while (arr.length && now - arr[0] >= ADMIN_RL_WINDOW_MS) arr.shift();
+    if (arr.length === 0) adminAttempts.delete(ip);
   }
+}, ADMIN_RL_WINDOW_MS).unref?.();
+
+function adminAuth(req, res, next) {
+  if (!ADMIN_KEY) {
+    return res.status(503).json({ ok: false, error: 'admin_disabled', message: 'ADMIN_KEY not configured' });
+  }
+  const ip = getClientIp(req) || 'unknown';
+  if (!checkAdminRateLimit(ip)) {
+    console.warn('[ADMIN] rate-limit blocked ip=' + ip);
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de requêtes, réessayez plus tard.' });
+  }
+  const k = req.headers['x-admin-key'] || req.query.key || '';
+  if (k !== ADMIN_KEY) return res.status(403).json({ ok: false, error: 'forbidden' });
   next();
 }
 
@@ -3351,7 +3412,7 @@ app.post('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => 
     if (!Array.isArray(memUser.gameItems)) memUser.gameItems = [];
     if (!memUser.gameItems.includes(itemName)) memUser.gameItems.push(itemName);
   }
-  if (dbId) await db.addGameItem(dbId, itemName).catch(() => {});
+  if (dbId) await db.addGameItem(dbId, itemName).catch(dbErr('addGameItem'));
   const gameItems = memUser ? memUser.gameItems : await db.getUserGameItems(dbId).catch(() => []);
   res.json({ ok: true, gameItems });
 });
@@ -3416,7 +3477,7 @@ app.delete('/api/admin/users/:username/gameitems/:itemName', adminAuth, async (r
     const idx = memUser.gameItems.indexOf(itemName);
     if (idx >= 0) memUser.gameItems.splice(idx, 1);
   }
-  if (dbId) await db.removeGameItem(dbId, itemName).catch(() => {});
+  if (dbId) await db.removeGameItem(dbId, itemName).catch(dbErr('removeGameItem'));
   const gameItems = memUser ? (memUser.gameItems || []) : await db.getUserGameItems(dbId).catch(() => []);
   res.json({ ok: true, gameItems });
 });
@@ -3519,7 +3580,7 @@ app.post('/api/admin/users/:username/miniwave-pictos/grant-earned', adminAuth, a
 
   if (!memUser && user.gameItems.length > before) {
     for (const item of user.gameItems) {
-      if (dbId) await db.addGameItem(dbId, item).catch(() => {});
+      if (dbId) await db.addGameItem(dbId, item).catch(dbErr('addGameItem'));
     }
   }
 
@@ -3595,7 +3656,7 @@ app.post('/api/admin/users/:username/minipixiz-pictos/grant-earned', adminAuth, 
 
   if (!memUser && user.gameItems.length > before) {
     for (const item of user.gameItems) {
-      if (dbId) await db.addGameItem(dbId, item).catch(() => {});
+      if (dbId) await db.addGameItem(dbId, item).catch(dbErr('addGameItem'));
     }
   }
 
@@ -5210,7 +5271,7 @@ app.get('/do/prefsave', (req, res) => {
   if (session && session.user && users[session.user]) {
     users[session.user].prefs = req.query.s || '';
     const dbId = users[session.user]._dbId;
-    if (dbId) db.updateUser(session.user, { prefs: req.query.s || '' }).catch(() => {});
+    if (dbId) db.updateUser(session.user, { prefs: req.query.s || '' }).catch(dbErr('updateUser'));
   }
   res.type('text/plain').send('state=0');
 });
@@ -5288,7 +5349,7 @@ app.all('/do/eb', (req, res) => {
 
   auth.user.fbouille = bouille;
   bouilleCache[auth.username] = bouille;
-  if (auth.user._dbId) db.updateUser(auth.username, { fbouille: bouille, needs_bouille: false }).catch(() => {});
+  if (auth.user._dbId) db.updateUser(auth.username, { fbouille: bouille, needs_bouille: false }).catch(dbErr('updateUser'));
 
   console.log(`[do/eb] Saved bouille for ${auth.username}: ${bouille}`);
   // Legacy callers consume LoadVars here; include k=0 to avoid error.http.undefined
@@ -5335,8 +5396,8 @@ app.all('/do/give', (req, res) => {
 
   user.kikooz -= amount;
   target.kikooz = (typeof target.kikooz === 'number' ? target.kikooz : 0) + amount;
-  if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(() => {});
-  if (target._dbId) db.updateUser(targetName, { kikooz: target.kikooz }).catch(() => {});
+  if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser'));
+  if (target._dbId) db.updateUser(targetName, { kikooz: target.kikooz }).catch(dbErr('updateUser'));
 
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
@@ -5373,7 +5434,7 @@ function handleNewBouille(req, res) {
 
   if (!Array.isArray(user.customAccessories)) user.customAccessories = [];
   user.customAccessories.push(entry);
-  if (user._dbId) db.addAccessory(user._dbId, entry).catch(() => {});
+  if (user._dbId) db.addAccessory(user._dbId, entry).catch(dbErr('addAccessory'));
 
   res
     .type('text/plain')
@@ -5478,7 +5539,7 @@ function saveMyInfo(req, res) {
       department_index: user.departmentIndex || '1',
       site_url: user.siteUrl || '',
       comment: user.comment || '',
-    }).catch(() => {});
+    }).catch(dbErr('updateUser/info'));
   }
 
   return res.type('text/xml').send('<r />');
@@ -5510,7 +5571,7 @@ app.get('/do/prefsavepartial', (req, res) => {
           parsed[prefId] = rawVal;
         }
         user.prefs = encodePrefString(parsed);
-        if (user._dbId) db.updateUser(session.user, { prefs: user.prefs }).catch(() => {});
+        if (user._dbId) db.updateUser(session.user, { prefs: user.prefs }).catch(dbErr('updateUser'));
       }
     }
   }
@@ -5629,8 +5690,8 @@ app.get('/do/onident', (req, res) => {
   clearTransientNewFlag(user.siteLog);
 
   if (user._dbId) {
-    db.clearUserLogNewFlag(user._dbId, 'user').catch(() => {});
-    db.clearUserLogNewFlag(user._dbId, 'site').catch(() => {});
+    db.clearUserLogNewFlag(user._dbId, 'user').catch(dbErr('clearUserLogNewFlag'));
+    db.clearUserLogNewFlag(user._dbId, 'site').catch(dbErr('clearUserLogNewFlag'));
   }
 
   res.type('text/xml').send(xml);
@@ -5914,7 +5975,7 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
   }
 
   user.kikooz -= pack.price;
-  if (user._dbId) db.updateUser(auth.username, { kikooz: user.kikooz }).catch(() => {});
+  if (user._dbId) db.updateUser(auth.username, { kikooz: user.kikooz }).catch(dbErr('updateUser'));
 
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const isWallpaper = !!pack.wallpaperId;
@@ -5931,7 +5992,7 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
     at: nowStr,
   };
   user.customAccessories.push(accEntry);
-  if (user._dbId) db.addAccessory(user._dbId, accEntry).catch(() => {});
+  if (user._dbId) db.addAccessory(user._dbId, accEntry).catch(dbErr('addAccessory'));
 
   // Record a "buy" entry in the kikooz history (box.KikoozLog / /ft/log)
   if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
@@ -6151,7 +6212,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
       // Mark as read once opened (only inbox mails are "unread")
       if (mail.folder === 'inbox' && !mail.read) {
         mail.read = true;
-        if (user._dbId) db.updateMailRead(mail.uid, true).catch(() => {});
+        if (user._dbId) db.updateMailRead(mail.uid, true).catch(dbErr('updateMailRead'));
       }
       return res.type('text/xml').send(`<f u="${escapeXml(mail.folder)}">${buildMailElementXml(mail)}</f>`);
     }
@@ -6186,7 +6247,7 @@ app.all('/ff/get', (req, res) => {
     if (mail) {
       if (mail.folder === 'inbox' && !mail.read) {
         mail.read = true;
-        if (user._dbId) db.updateMailRead(mail.uid, true).catch(() => {});
+        if (user._dbId) db.updateMailRead(mail.uid, true).catch(dbErr('updateMailRead'));
       }
       payload = '0000' + (mail.body || '');
       console.log('[ff/get] found mail', uid, 'body length:', (mail.body || '').length, 'payload first 60 chars:', JSON.stringify(payload.substring(0, 60)));
@@ -6358,12 +6419,12 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
       if (oldF === 'draftbox' && targetFolder === 'outbox') {
         mail.folder = 'outbox';
         mail.date = now;
-        if (user._dbId) db.updateMailFolder(mail.uid, 'outbox').catch(() => {});
+        if (user._dbId) db.updateMailFolder(mail.uid, 'outbox').catch(dbErr('updateMailFolder'));
         deliverMailToRecipients(mail, auth.username).catch((e) =>
           console.error('[Mail] deliver error:', e.message));
       } else {
         mail.folder = targetFolder;
-        if (user._dbId) db.updateMailFolder(mail.uid, targetFolder).catch(() => {});
+        if (user._dbId) db.updateMailFolder(mail.uid, targetFolder).catch(dbErr('updateMailFolder'));
       }
 
       const desc = encodeMailDesc(mail);
@@ -7295,10 +7356,10 @@ async function boot() {
         console.log(`[DB] Loaded ${dbPacks.length} shop packs from database`);
         for (const p of SHOP_PACKS) {
           if (!dbPacks.find(d => d.id === p.id)) {
-            db.upsertShopPack(p).catch(() => {});
+            db.upsertShopPack(p).catch(dbErr('upsertShopPack'));
           } else if (p.wallpaperId) {
             const dbP = dbPacks.find(d => d.id === p.id);
-            if (dbP && !dbP.wallpaperId) db.upsertShopPack(p).catch(() => {});
+            if (dbP && !dbP.wallpaperId) db.upsertShopPack(p).catch(dbErr('upsertShopPack'));
           }
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
@@ -9041,7 +9102,7 @@ case 'join': {
       // "rk" attr (ranking id) which listRankings never carries.
       // Respond with wire "m" so the client dispatches to onRankingResult.
       if (msg.attrs.rk !== undefined) {
-        console.log(`[FSCORE-DEBUG] rankingResult request attrs=${JSON.stringify(msg.attrs)} selectedDt=${client && client.selectedDt}`);
+        if (VERBOSE_FSCORE) console.log(`[FSCORE-DEBUG] rankingResult request attrs=${JSON.stringify(msg.attrs)} selectedDt=${client && client.selectedDt}`);
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
         const dtExplicit = msg.attrs.dt !== undefined ? String(msg.attrs.dt).slice(0, 10) : '';
@@ -9053,7 +9114,7 @@ case 'join': {
           for (const [u, rlist] of Object.entries(scoresData.users || {})) {
             if (rlist && rlist[internalId]) memoryEntries.push(`${u}:${rlist[internalId].score}`);
           }
-          console.log(`[FSCORE-DEBUG] memory has ${memoryEntries.length} entries under ${internalId}: [${memoryEntries.join(', ')}]`);
+          if (VERBOSE_FSCORE) console.log(`[FSCORE-DEBUG] memory has ${memoryEntries.length} entries under ${internalId}: [${memoryEntries.join(', ')}]`);
         }
         const legacyDesc = legacyDescriptorFromRkLike(rkInput);
         const reqId = msg.attrs.r || '';
@@ -9142,7 +9203,7 @@ case 'join': {
     case 'ban': {
       // FrutiScore overlap: rankingResult uses wire code "m" with rk attr.
       if (msg.attrs.rk !== undefined) {
-        console.log(`[FSCORE-DEBUG] rankingResult (wire m) attrs=${JSON.stringify(msg.attrs)} selectedDt=${client && client.selectedDt}`);
+        if (VERBOSE_FSCORE) console.log(`[FSCORE-DEBUG] rankingResult (wire m) attrs=${JSON.stringify(msg.attrs)} selectedDt=${client && client.selectedDt}`);
         const rkInput = String(msg.attrs.rk);
         const cAttrIn = String(msg.attrs.c || '');
         const internalId = resolveInternalRankingId(rkInput, client.selectedDt || undefined);
@@ -10043,7 +10104,7 @@ case 'createchannel': {
           }
         }
         podium.sort((a, b) => a.rank - b.rank);
-        console.log(`[FSCORE-DEBUG] awardgame g=${gameName} rkId=${rkId} game=${game} yesterday=${yesterday} podium=${JSON.stringify(podium)}`);
+        if (VERBOSE_FSCORE) console.log(`[FSCORE-DEBUG] awardgame g=${gameName} rkId=${rkId} game=${game} yesterday=${yesterday} podium=${JSON.stringify(podium)}`);
         if (podium.length > 0) {
           const byRank = {};
           for (const p of podium) byRank[p.rank] = p.u;
