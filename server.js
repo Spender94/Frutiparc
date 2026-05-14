@@ -5760,22 +5760,31 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 
 
   if (uid === 'mycontact') {
-    // The AS2 client splits desc on CRLF (`\r\n`), so the name/subtype
-    // separator MUST be `\r\n`, not `\n`. With a bare `\n`, the folder
-    // name comes through as "amigos\nfolder" and the subtype is lost,
-    // which breaks the icon-rendering path (folder ends up displayed
-    // like a contact icon).
+    // Sub-folders are nested as <f u="...">{their contacts}</f> rather than
+    // flat <e t="folder">, so the client's analyseXml recurses into them
+    // and the resulting ContactList has its `list` populated with the
+    // contacts of that sub-folder. Without recursion, analyseXml pushed
+    // the sub-folder as a plain object with no `list`, the recursive
+    // ContactList stayed empty, and SideList had nothing to render under
+    // the sub-folder header (no expand/collapse effect).
+    const contactsByFolder = {};
+    for (const addr of user.contacts) {
+      const f = getContactFolder(user, addr);
+      if (!contactsByFolder[f]) contactsByFolder[f] = [];
+      contactsByFolder[f].push(addr);
+    }
+    const renderContact = (addr) => {
+      const local = String(addr).split('@')[0];
+      return `<e u="${escapeXml(local)}" t="contact" s="10" d="0" a="0">${escapeXml(addr)}</e>`;
+    };
     const folderNodes = (user.contactFolders || [])
-      .map((f) => `<e u="${escapeXml(f.uid)}" t="folder" s="10" d="0" a="0">${escapeXml(f.name)}\r\nfolder</e>`)
-      .join('');
-    const contactNodes = user.contacts
-      .filter((addr) => getContactFolder(user, addr) === 'mycontact')
-      .map((addr) => {
-        const local = String(addr).split('@')[0];
-        return `<e u="${escapeXml(local)}" t="contact" s="10" d="0" a="0">${escapeXml(addr)}</e>`;
+      .map((f) => {
+        const sub = (contactsByFolder[f.uid] || []).map(renderContact).join('');
+        return `<f u="${escapeXml(f.uid)}" n="${escapeXml(f.name)}" t="folder">${sub}</f>`;
       })
       .join('');
-    const body = folderNodes + contactNodes;
+    const rootContactNodes = (contactsByFolder['mycontact'] || []).map(renderContact).join('');
+    const body = folderNodes + rootContactNodes;
     return res.type('text/xml').send(`<f u="mycontact">${body || '<i />'}</f>`);
   }
 
@@ -6058,6 +6067,18 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     const disc = GAME_DISCS[file];
     const displayName = disc.iconName || disc.swfName;
     const discDesc = `${disc.discType}\r\n${displayName}`;
+    // disccollector is a static catalog: /ff/ls?uid=disccollector already
+    // lists every known disc unconditionally. If we answered an eject-back
+    // with the disc as a fresh <f> child, the client's onMove handler would
+    // fire addFile on the disccollector listener and render the SAME disc
+    // a second time — exactly the "doubled disc after eject" bug. Targeting
+    // a non-existent folder UID makes callListeners no-op silently while
+    // still letting rmUid clean the source (Frusion / desktop slot).
+    if (folder === 'disccollector') {
+      return res.type('text/xml').send(
+        `<r f="__discnoop__"><f n="${escapeXml(file)}" u="${escapeXml(file)}" t="disc" s="10" d="${now}" a="0" p="${escapeXml(oldFolder)}">${escapeXml(discDesc)}</f></r>`
+      );
+    }
     return res.type('text/xml').send(
       `<r f="${escapeXml(folder || 'root')}"><f n="${escapeXml(file)}" u="${escapeXml(file)}" t="disc" s="10" d="${now}" a="0" p="${escapeXml(oldFolder)}">${escapeXml(discDesc)}</f></r>`
     );
