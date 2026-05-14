@@ -2903,6 +2903,24 @@ app.post('/api/admin/users/:username/reset-game-slot/:game', adminAuth, async (r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Diagnostic: force an arbitrary internal-status code (sprite 246 frame
+// number, 0..36) on a user's broadcast presence so the icon at that frame
+// can be observed in chat / userlist / contact card. Lets us discover which
+// frame holds each game's icon when the StatusMng FrameLabels in
+// legacy/main.swf no longer match the visual content placed on each frame.
+// Usage: POST /api/admin/users/:username/set-internal/:n   (n = 0..36)
+app.post('/api/admin/users/:username/set-internal/:n', adminAuth, (req, res) => {
+  const u = req.params.username;
+  const n = Number(req.params.n);
+  if (!Number.isFinite(n) || n < 0 || n > 99) {
+    return res.status(400).json({ error: 'n must be 0..99' });
+  }
+  if (!users[u]) return res.status(404).json({ error: 'user not in memory (must be online)' });
+  setUserInternalStatus(u, n);
+  console.log(`[ADMIN] set-internal ${u} → ${n}`);
+  res.json({ ok: true, username: u, internal: n });
+});
+
 // Bulk-delete users created on a given Paris-local date.
 // Query params:
 //   date     YYYY-MM-DD (required)

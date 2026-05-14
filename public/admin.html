@@ -870,6 +870,7 @@ async function loadDetail() {
       <tr><td>Inscrit le</td><td>${fmtDateTime(user.created_at)}</td></tr>
       <tr><td>Profil mis à jour</td><td>${fmtDateTime(user.updated_at)}</td></tr>
       <tr><td>Dernière connexion</td><td>${fmtDateTime(user.last_login)}</td></tr>
+      <tr><td>Icône d'activité (debug)</td><td><button class="btn btn-sm" onclick="promptSetInternal()">Forcer internal=N</button> <span style="color:#888;font-size:11px">(test des frames sprite 246, 0=aucune)</span></td></tr>
     </table>`;
 
     // Scores
@@ -1017,6 +1018,23 @@ async function resetGameSlot(game) {
   const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/reset-game-slot/${encodeURIComponent(game)}`, { method: 'POST', headers: hdr() });
   if (r.ok) toast(`Slot ${game} réinitialisé`);
   else toast(`Erreur: ${r.status}`);
+}
+
+// Diagnostic helper: force the user's presence "internal" code (sprite 246
+// frame number) so we can scan which frame shows which game icon. Pass 0
+// to clear back to no game.
+async function setInternalCode(n) {
+  if (!currentDetailUser) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/set-internal/${encodeURIComponent(n)}`, { method: 'POST', headers: hdr() });
+  if (r.ok) toast(`internal=${n} forcé sur ${currentDetailUser}`);
+  else toast(`Erreur: ${r.status}`);
+}
+async function promptSetInternal() {
+  const v = prompt(`Forcer internal=N sur ${currentDetailUser} (0..36, 0=aucune icône) :`, '1');
+  if (v === null) return;
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 99) { toast('Valeur invalide'); return; }
+  await setInternalCode(n);
 }
 
 const BKIWI_ALL_PICTOS = ['$fruticup','$fruticupxl','$elite','$elitexl','$logo01','$logo02','$logo03','$logo04','$logo05','$car01','$car02','$car03','$car04','$car05'];
