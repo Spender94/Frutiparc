@@ -118,17 +118,30 @@ const STR = [
   'FP_FOLDERS_INSTALL',       // 7  emitted once when DoAction runs
   'FP_FOLDERS_HOOKED',        // 8  emitted when the prototype is patched
   'FP_FOLDERS_TICK Component=', // 9  emitted on every enterFrame
-  // checkScrollNeed hook
+  // checkScrollNeed hook (Component-side)
   'checkScrollNeed',          // 10
   '__fpOrigCheck',            // 11
   'FP_FOLDERS CHECK this=',   // 12
   ' flScrollable=',           // 13
+  // IconFileBox-side diagnostic
+  'IconFileBox',              // 14
+  'displayList',              // 15
+  '__fpOrigDisplay',          // 16
+  'FP_FOLDERS_DISPLAY this=', // 17
+  ' csn=',                    // 18
+  ' addSB=',                  // 19
+  ' parent=',                 // 20
+  'addScrollBar',             // 21
+  '_parent',                  // 22
 ];
 const CP = {
   MARKER:0, _ROOT:1, ON_ENTER_FRAME:2, COMPONENT:3, PROTOTYPE:4,
   FOLDER_INIT:5, FL_SCROLLABLE:6,
   T_INSTALL:7, T_HOOKED:8, T_TICK:9,
   CHECK_NEED:10, ORIG_CHECK:11, T_CHECK:12, T_FLAG:13,
+  ICON_BOX:14, DISPLAY_LIST:15, ORIG_DISPLAY:16,
+  T_DISPLAY:17, T_CSN:18, T_ADDSB:19, T_PARENT:20,
+  ADD_SB:21, P_PARENT:22,
 };
 
 function buildConstantPool() {
@@ -181,6 +194,35 @@ function buildOnEnterFrameBody() {
   ]);
   const checkFn = buildDefineFunction2(checkBody, 2, 0x0001); // PreloadThisFlag
 
+  // Inner function: IconFileBox.prototype.displayList wrapper. Traces
+  // what's on the instance (in particular whether checkScrollNeed and
+  // addScrollBar are reachable through the prototype chain) and what
+  // the parent looks like, then delegates to the original.
+  //
+  //   function () {
+  //     trace("FP_FOLDERS_DISPLAY this=" + this
+  //           + " csn=" + this.checkScrollNeed
+  //           + " addSB=" + this.addScrollBar
+  //           + " parent=" + this._parent);
+  //     this.__fpOrigDisplay();
+  //   }
+  const displayBody = Buffer.concat([
+    actionPush(pushCp8(CP.T_DISPLAY), pushReg(1)),                   ADD2,
+    actionPush(pushCp8(CP.T_CSN)),                                   ADD2,
+    actionPush(pushReg(1), pushCp8(CP.CHECK_NEED)), GET_MEMBER,      ADD2,
+    actionPush(pushCp8(CP.T_ADDSB)),                                 ADD2,
+    actionPush(pushReg(1), pushCp8(CP.ADD_SB)),    GET_MEMBER,       ADD2,
+    actionPush(pushCp8(CP.T_PARENT)),                                ADD2,
+    actionPush(pushReg(1), pushCp8(CP.P_PARENT)),  GET_MEMBER,       ADD2,
+    TRACE,
+    // this.__fpOrigDisplay()
+    actionPush(pushInt(0), pushReg(1), pushCp8(CP.ORIG_DISPLAY)),
+    CALL_METHOD,
+    POP,
+    END,
+  ]);
+  const displayFn = buildDefineFunction2(displayBody, 2, 0x0001);
+
   const setMembers = Buffer.concat([
     // Component.prototype.__fpFolderInit = true
     actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
@@ -207,6 +249,20 @@ function buildOnEnterFrameBody() {
     actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
     actionPush(pushCp8(CP.CHECK_NEED)),
     checkFn,
+    SET_MEMBER,
+    // IconFileBox.prototype.__fpOrigDisplay = IconFileBox.prototype.displayList
+    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.ORIG_DISPLAY)),
+    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.DISPLAY_LIST)), GET_MEMBER,
+    SET_MEMBER,
+    // IconFileBox.prototype.displayList = <wrapper>
+    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.DISPLAY_LIST)),
+    displayFn,
     SET_MEMBER,
     // trace("FP_FOLDERS_HOOKED")
     actionPush(pushCp8(CP.T_HOOKED)),
@@ -246,6 +302,17 @@ function buildOnEnterFrameBody() {
     actionIf(guard1Body.length),   // skip when undefined
   ]);
 
+  // Guard 0: IconFileBox != undefined (we hook both classes' prototypes
+  // in the same block, so wait for both to be registered before
+  // proceeding).
+  const guard0Body = Buffer.concat([guard1, guard1Body]);
+  const guard0 = Buffer.concat([
+    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
+    actionPush(pushUndef()),
+    EQUALS2,
+    actionIf(guard0Body.length),
+  ]);
+
   // Debug trace at the very top of the handler — fires every frame
   // until the hook self-removes via `delete _root.onEnterFrame`.
   // Format: "FP_FOLDERS_TICK Component=<value>" so we can tell
@@ -258,7 +325,7 @@ function buildOnEnterFrameBody() {
     TRACE,
   ]);
 
-  return Buffer.concat([tick, guard1, guard1Body, END]);
+  return Buffer.concat([tick, guard0, guard0Body, END]);
 }
 
 function buildDefineFunction2(funcBody, numRegs = 1, flags = 0) {
