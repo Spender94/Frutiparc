@@ -30,7 +30,10 @@
             publicPath: "/ruffle/",
             scale: "noScale",
             salign: "TL",
-            logLevel: "warn"
+            // Temporarily bumped for the folder-scrollbar diagnostic
+            // (FP_FOLDERS_KICK etc.). Will revert to "warn" once the
+            // scrollbar appears.
+            logLevel: "info"
         };
 
         // Gate verbose legacy-bridge logs behind ?debug=1 to avoid CPU
