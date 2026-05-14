@@ -133,6 +133,12 @@ const STR = [
   ' parent=',                 // 20
   'addScrollBar',             // 21
   '_parent',                  // 22
+  // addFile hook + post-install verification
+  'addFile',                  // 23
+  '__fpOrigAddFile',          // 24
+  'FP_FOLDERS_ADDFILE this=', // 25
+  'FP_FOLDERS_VERIFY display=', // 26
+  ' addFile=',                // 27
 ];
 const CP = {
   MARKER:0, _ROOT:1, ON_ENTER_FRAME:2, COMPONENT:3, PROTOTYPE:4,
@@ -142,6 +148,7 @@ const CP = {
   ICON_BOX:14, DISPLAY_LIST:15, ORIG_DISPLAY:16,
   T_DISPLAY:17, T_CSN:18, T_ADDSB:19, T_PARENT:20,
   ADD_SB:21, P_PARENT:22,
+  ADD_FILE:23, ORIG_ADDFILE:24, T_ADDFILE:25, T_VERIFY_D:26, T_VERIFY_A:27,
 };
 
 function buildConstantPool() {
@@ -223,6 +230,20 @@ function buildOnEnterFrameBody() {
   ]);
   const displayFn = buildDefineFunction2(displayBody, 2, 0x0001);
 
+  // IconFileBox.prototype.addFile wrapper — fires per-item, much more
+  // likely to surface than displayList if the inventory uses a
+  // different code path for opening folders.
+  const addFileBody = Buffer.concat([
+    actionPush(pushCp8(CP.T_ADDFILE), pushReg(1)),
+    ADD2,
+    TRACE,
+    actionPush(pushInt(0), pushReg(1), pushCp8(CP.ORIG_ADDFILE)),
+    CALL_METHOD,
+    POP,
+    END,
+  ]);
+  const addFileFn = buildDefineFunction2(addFileBody, 2, 0x0001);
+
   const setMembers = Buffer.concat([
     // Component.prototype.__fpFolderInit = true
     actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
@@ -264,6 +285,34 @@ function buildOnEnterFrameBody() {
     actionPush(pushCp8(CP.DISPLAY_LIST)),
     displayFn,
     SET_MEMBER,
+    // IconFileBox.prototype.__fpOrigAddFile = IconFileBox.prototype.addFile
+    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.ORIG_ADDFILE)),
+    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.ADD_FILE)), GET_MEMBER,
+    SET_MEMBER,
+    // IconFileBox.prototype.addFile = <wrapper>
+    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.ADD_FILE)),
+    addFileFn,
+    SET_MEMBER,
+    // Verification trace: dump what we actually stored on the prototype.
+    // If displayList / addFile come back as undefined, our hooks weren't
+    // actually installed (e.g. IconFileBox.prototype is in an odd state).
+    actionPush(pushCp8(CP.T_VERIFY_D)),
+    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.DISPLAY_LIST)), GET_MEMBER,
+    ADD2,
+    actionPush(pushCp8(CP.T_VERIFY_A)),                 ADD2,
+    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.ADD_FILE)), GET_MEMBER,
+    ADD2,
+    TRACE,
     // trace("FP_FOLDERS_HOOKED")
     actionPush(pushCp8(CP.T_HOOKED)),
     TRACE,
