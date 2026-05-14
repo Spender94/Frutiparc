@@ -1064,10 +1064,7 @@ async function loadIndex() {
     for (var bi = 0; bi < cat.boards.length; bi++) {
       var b = cat.boards[bi];
       html += '<div class="row">';
-      // folder_new.gif is the 19×18 "unread" badge; the .folder-icon class
-      // stretches it to 46×51 so the visual weight matches folder_big.gif.
-      var boardIcon = b.unread ? 'folder_new.gif' : 'folder_big.gif';
-      html += '<div class="icon"><img class="folder-icon" src="/fb/' + boardIcon + '" alt=""></div>';
+      html += '<div class="icon"><img class="folder-icon" src="/fb/folder_big.gif" alt=""></div>';
       html += '<div class="info">';
       html += '<div class="title"><a href="#" onclick="navigate(\'board\',' + b.id + ');return false">' + escapeHtml(b.name) + '</a></div>';
       html += '<div class="desc">' + escapeHtml(b.description) + '</div>';
