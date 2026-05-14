@@ -104,8 +104,21 @@ const STR = [
   'input',            // 7
   'scrollH',          // 8
   'maxhscroll',       // 9
+  // Debug-only trace strings — output goes through trace() and shows up
+  // in the JS console when Ruffle's logLevel is "info" or lower.
+  'FP_KICK_INSTALL',  // 10
+  'FP_KICK FOCUS=',   // 11
+  'FP_KICK INPUT scrollH=', // 12
+  ' maxh=',           // 13
 ];
-const CP = { MARKER:0, _ROOT:1, ON_ENTER_FRAME:2, SELECTION:3, GET_FOCUS:4, EVAL:5, TYPE:6, INPUT:7, SCROLL_H:8, MAX_HS:9 };
+const CP = {
+  MARKER:0, _ROOT:1, ON_ENTER_FRAME:2, SELECTION:3, GET_FOCUS:4,
+  EVAL:5, TYPE:6, INPUT:7, SCROLL_H:8, MAX_HS:9,
+  TRACE_INSTALL:10, TRACE_FOCUS:11, TRACE_INPUT:12, TRACE_MAXH:13,
+};
+
+const TRACE = Buffer.from([0x26]); // ActionTrace — pops top of stack and logs it
+const ADD2  = Buffer.from([0x47]);
 
 function buildConstantPool() {
   // ActionConstantPool: 0x88, UI16 payloadLen, UI16 count, then null-
@@ -182,6 +195,28 @@ function buildFunctionBody() {
     POP,
   ]);
 
+  // Debug trace, every frame: trace("FP_KICK FOCUS=" + r1)
+  const traceFocus = Buffer.concat([
+    actionPush(pushCp8(CP.TRACE_FOCUS), pushReg(1)),
+    ADD2,
+    TRACE,
+  ]);
+
+  // Debug trace inside the input branch (right before the assignment):
+  // trace("FP_KICK INPUT scrollH=" + r2.scrollH + " maxh=" + r2.maxhscroll)
+  const traceInput = Buffer.concat([
+    actionPush(pushCp8(CP.TRACE_INPUT)),
+    actionPush(pushReg(2), pushCp8(CP.SCROLL_H)),
+    GET_MEMBER,
+    ADD2,
+    actionPush(pushCp8(CP.TRACE_MAXH)),
+    ADD2,
+    actionPush(pushReg(2), pushCp8(CP.MAX_HS)),
+    GET_MEMBER,
+    ADD2,
+    TRACE,
+  ]);
+
   // Now we wire the If branches. The If skips OVER the subsequent block
   // when its boolean argument is true. We want:
   //   - if (r1 == null)    skip [evalCall + r2NullCheck + If2 + typeCheck + If3 + setScrollH]
@@ -191,11 +226,15 @@ function buildFunctionBody() {
   // Build from the bottom up so each If offset can use the actual size of
   // its subsequent block.
 
-  // If3: after typeCheck, skip setScrollH
-  const if3 = actionIf(setScrollH.length);
+  // The traceInput debug block sits between if3 and setScrollH, so when
+  // the user is typing in an input we see both that we reached the
+  // assignment branch and the scrollH/maxhscroll values.
+  const inputBranch = Buffer.concat([traceInput, setScrollH]);
 
-  // typeBlockAfterIf3 = typeCheck + if3 + setScrollH
-  const typeBlock = Buffer.concat([typeCheck, if3, setScrollH]);
+  // If3: after typeCheck, skip traceInput + setScrollH
+  const if3 = actionIf(inputBranch.length);
+  // typeBlockAfterIf3 = typeCheck + if3 + inputBranch
+  const typeBlock = Buffer.concat([typeCheck, if3, inputBranch]);
 
   // If2: after r2NullCheck, skip (typeBlock)
   const if2 = actionIf(typeBlock.length);
@@ -207,6 +246,9 @@ function buildFunctionBody() {
 
   const body = Buffer.concat([
     getFocusCall,
+    traceFocus,    // every-frame trace BEFORE the null check so we see
+                   // "FOCUS=null" too — helps diagnose if focus detection
+                   // is the failure mode rather than the assignment.
     r1NullCheck,
     if1,
     evalAndR2,
@@ -249,7 +291,14 @@ function buildDoActionBody() {
   const cp = buildConstantPool();
   const funcBody = buildFunctionBody();
   const defFunc = buildDefineFunction2(funcBody);
+  const installTrace = Buffer.concat([
+    actionPush(pushCp8(CP.TRACE_INSTALL)),
+    TRACE,
+  ]);
   const assign = Buffer.concat([
+    installTrace,   // logs "FP_KICK_INSTALL" on first frame so we can
+                    // verify in the JS console that the patched SWF is
+                    // the one actually running.
     // Stack: push _root, getVariable → _root object
     actionPush(pushCp8(CP._ROOT)),
     GET_VARIABLE,
