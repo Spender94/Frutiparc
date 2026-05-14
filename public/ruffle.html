@@ -596,23 +596,43 @@
                 // scrollH so the caret slides out of view and you can't
                 // see what you're writing. Flash Player's native handler
                 // for the End key explicitly sets scrollH to maxhscroll,
-                // which Ruffle *does* implement — so after each character
-                // keystroke we dispatch a synthetic End keydown/keyup at
-                // the player container. It's a no-op when no TextField
-                // has focus, and it leaves real End presses alone
-                // (printable-character filter + the `synthetic` tag so we
-                // never recurse on our own events).
+                // which Ruffle's End handler also implements — so after
+                // each character keystroke we re-dispatch a synthetic
+                // End at the actual Ruffle player element.
                 //
-                // If this turns out to misbehave (e.g. fights with the
-                // game's own keyboard handlers in some screen), it's
-                // self-contained: removing this block restores the
-                // previous behaviour without any other knock-on effects.
-                const playerEl = document.getElementById("player-container");
-                playerEl.addEventListener("keydown", (e) => {
+                // First attempt routed the synthetic events to the
+                // container <div>; Ruffle's keyboard listeners live on
+                // the <ruffle-player> shadow host itself (and bubble
+                // through document), so the events never reached the
+                // engine. Dispatch to the player element + document and
+                // fall back to the container so all three plausible
+                // listener mounts get a chance. Each event is marked
+                // __fpEndKick to prevent recursion on our own emits.
+                const playerHost = player;
+                const playerContainerEl = document.getElementById("player-container");
+                function kickEnd() {
+                    function build(type) {
+                        const ev = new KeyboardEvent(type, {
+                            key: "End", code: "End",
+                            keyCode: 35, which: 35,
+                            bubbles: true, cancelable: true,
+                        });
+                        ev.__fpEndKick = true;
+                        return ev;
+                    }
+                    // Fan out across the spots Ruffle plausibly listens
+                    // on: the player element (shadow host), document
+                    // (capture-phase listeners), and the container as a
+                    // last-resort.
+                    for (const target of [playerHost, document, playerContainerEl]) {
+                        try {
+                            target.dispatchEvent(build("keydown"));
+                            target.dispatchEvent(build("keyup"));
+                        } catch {}
+                    }
+                }
+                function maybeKick(e) {
                     if (e.__fpEndKick) return;
-                    // Only act on keys that *add* a character or remove
-                    // one — anything else is navigation/control and
-                    // shouldn't trigger an End-jump.
                     const isPrintable =
                         e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
                     const isErase = e.key === "Backspace" || e.key === "Delete";
@@ -620,21 +640,13 @@
                     // Defer to the next microtask so the character we
                     // just pressed is already inserted into the
                     // TextField before we ask it to scroll to the end.
-                    setTimeout(() => {
-                        const kd = new KeyboardEvent("keydown", {
-                            key: "End", code: "End",
-                            keyCode: 35, which: 35, bubbles: true,
-                        });
-                        const ku = new KeyboardEvent("keyup", {
-                            key: "End", code: "End",
-                            keyCode: 35, which: 35, bubbles: true,
-                        });
-                        kd.__fpEndKick = true;
-                        ku.__fpEndKick = true;
-                        playerEl.dispatchEvent(kd);
-                        playerEl.dispatchEvent(ku);
-                    }, 0);
-                }, true);
+                    setTimeout(kickEnd, 0);
+                }
+                // Listen on the player element AND on document to catch
+                // events Ruffle handles before they bubble to the
+                // container.
+                playerHost.addEventListener("keydown", maybeKick, true);
+                document.addEventListener("keydown", maybeKick, true);
             });
         })();
     </script>
