@@ -111,6 +111,7 @@ const POP          = simple(0x17);
 const END          = simple(0x00);
 const TRACE        = simple(0x26);
 const SUBTRACT     = simple(0x0b);
+const ADD2         = simple(0x47);
 const LESS2        = simple(0x48);
 const EQUALS2      = simple(0x49);
 const NOT          = simple(0x12);
@@ -179,13 +180,24 @@ function buildOnChangedBody() {
     actionIf(capture.length),      // skip capture when already defined
   ]);
 
-  // r2 = this.textWidth - this._width
+  // r2 = this.textWidth - (this._width + RIGHT_PADDING)
+  //
+  // RIGHT_PADDING delays the start of the shift by a few pixels so
+  // the caret stays glued to the right edge of the VISIBLE bar
+  // rather than the TextField's own bounds. Without it the shift
+  // started a couple of px early, because the bar's chrome is
+  // wider than the TextField inside it (gutter + chrome padding).
+  // 8 is a reasonable first guess; tweak if user reports it still
+  // shifts too early/late.
+  const RIGHT_PADDING = 8;
   const computeOvf = Buffer.concat([
     actionPush(pushReg(1), pushCp8(CP.TEXT_WIDTH)),
     GET_MEMBER,
     actionPush(pushReg(1), pushCp8(CP._WIDTH)),
     GET_MEMBER,
-    SUBTRACT,
+    actionPush(pushInt(RIGHT_PADDING)),
+    ADD2,                              // → _width + RIGHT_PADDING
+    SUBTRACT,                          // → textWidth - (_width + RIGHT_PADDING)
     storeReg(2), POP,
   ]);
 
