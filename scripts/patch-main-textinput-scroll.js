@@ -109,18 +109,16 @@ const STR = [
   'FP_KICK_PROTO_SET',                 // 7
   'FP_KICK CHANGED scrollH=',          // 8
   ' maxh=',                            // 9
-  // Repaint trick: setTextFormat(getTextFormat()) is semantically a
-  // no-op (we feed the field its current format back) but it forces
-  // Ruffle to re-layout the field, which is what makes the scrollH
-  // change actually take effect visually.
-  'getTextFormat',                     // 10
-  'setTextFormat',                     // 11
+  // The Ruffle-bug workaround: shift the TextField's own _x left by
+  // maxhscroll so its parent mask reveals the tail of the text. See
+  // the shiftX block in buildOnChangedBody() for the rationale.
+  '_x',                                // 10
 ];
 const CP = {
   MARKER:0, TEXT_FIELD:1, PROTOTYPE:2, ON_CHANGED:3,
   SCROLL_H:4, MAX_HS:5,
   T_INSTALL:6, T_PROTO:7, T_CHANGED:8, T_MAXH:9,
-  GET_TF:10, SET_TF:11,
+  _X:10,
 };
 
 function buildConstantPool() {
@@ -152,35 +150,49 @@ function buildOnChangedBody() {
     ADD2,
     TRACE,
   ]);
-  // this.scrollH = this.maxhscroll
+  // this.scrollH = this.maxhscroll (kept in case some other AS code
+  // reads scrollH, e.g. a scrollbar widget — even though Ruffle does
+  // not actually use it for rendering)
   const assign = Buffer.concat([
     actionPush(pushReg(1), pushCp8(CP.SCROLL_H),
                pushReg(1), pushCp8(CP.MAX_HS)),
     GET_MEMBER,    // → this.maxhscroll
     SET_MEMBER,    // this.scrollH = (top of stack)
   ]);
-  // Force a layout repaint by feeding the current TextFormat back to
-  // the field. Production traces showed scrollH is being stored
-  // correctly but Ruffle isn't invalidating the field's render — so
-  // the caret stayed off-screen even though the property had the
-  // right value. setTextFormat triggers re-layout without modifying
-  // any content, and it does NOT re-fire onChanged (only text-value
-  // changes do), so we can't loop on ourselves.
+  // Ruffle stores scrollH/maxhscroll correctly but its EditText
+  // renderer ignores scrollH when laying out content — confirmed
+  // from production traces (scrollH tracks maxhscroll on every
+  // keystroke yet the caret still slides off the right edge).
+  // setTextFormat() to force an invalidation didn't help either.
   //
-  // Bytecode for: this.setTextFormat(this.getTextFormat())
-  //   Push 0 (argCount), this, "getTextFormat" → CallMethod  → fmt
-  //   Push 1 (argCount), this, "setTextFormat" → CallMethod  → undefined
-  //   Pop
-  const repaint = Buffer.concat([
-    // fmt = this.getTextFormat()
-    actionPush(pushInt(0), pushReg(1), pushCp8(CP.GET_TF)),
-    CALL_METHOD,                                       // stack: [fmt]
-    // this.setTextFormat(fmt)
-    actionPush(pushInt(1), pushReg(1), pushCp8(CP.SET_TF)),
-    CALL_METHOD,                                       // stack: [undefined]
-    POP,
+  // Sidestep the engine bug entirely by physically shifting the
+  // TextField inside its parent: this._x = -this.maxhscroll. The
+  // chat say-bar (and most Flash input components) lives inside a
+  // wrapper MovieClip with a mask clipping it to the visible width,
+  // so moving the field left by maxhscroll pushes the early text
+  // off the LEFT side of the mask and reveals the caret on the
+  // right — matching the Flash-native scroll behaviour visually.
+  //
+  // maxhscroll is 0 when the text fits, so _x stays at its layout
+  // origin (0 by convention for child clips); only once the text
+  // overflows does _x go negative.
+  //
+  // Bytecode for: this._x = 0 - this.maxhscroll
+  //   Push this, "_x"             → [this, "_x"]
+  //   Push 0                       → [this, "_x", 0]
+  //   Push this, "maxhscroll"      → [this, "_x", 0, this, "maxhscroll"]
+  //   GetMember                    → [this, "_x", 0, maxhscroll]
+  //   Subtract (0x0B): pops top    → [this, "_x", -maxhscroll]
+  //   SetMember                    → []
+  const SUBTRACT = Buffer.from([0x0B]);
+  const shiftX = Buffer.concat([
+    actionPush(pushReg(1), pushCp8(CP._X)),
+    actionPush(pushInt(0), pushReg(1), pushCp8(CP.MAX_HS)),
+    GET_MEMBER,
+    SUBTRACT,
+    SET_MEMBER,
   ]);
-  return Buffer.concat([traceCall, assign, repaint, END]);
+  return Buffer.concat([traceCall, assign, shiftX, END]);
 }
 
 function buildDefineFunction2(funcBody) {
