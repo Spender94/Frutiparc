@@ -182,14 +182,20 @@ function buildOnChangedBody() {
 
   // r2 = this.textWidth - (this._width + RIGHT_PADDING)
   //
-  // RIGHT_PADDING delays the start of the shift by a few pixels so
-  // the caret stays glued to the right edge of the VISIBLE bar
-  // rather than the TextField's own bounds. Without it the shift
-  // started a couple of px early, because the bar's chrome is
-  // wider than the TextField inside it (gutter + chrome padding).
-  // 8 is a reasonable first guess; tweak if user reports it still
-  // shifts too early/late.
-  const RIGHT_PADDING = 8;
+  // RIGHT_PADDING is the amount of chrome at the right side of the
+  // chat input bar that visually obscures any text rendered there.
+  // The chat bar has some decoration in its rightmost ~30 px that
+  // sits on top of the TextField, so positioning the caret at the
+  // field's actual right edge ends up underneath that chrome and
+  // the last few characters become invisible.
+  //
+  // A *negative* padding pulls the post-shift caret back from the
+  // field's right edge by that many pixels, keeping the typed text
+  // entirely inside the visible (non-occluded) portion of the bar.
+  // -30 matches the user's eyeball measurement; reduce towards 0
+  // if the bar looks like it has unused space on the right, or go
+  // further negative if some chrome is still obscuring text.
+  const RIGHT_PADDING = -30;
   const computeOvf = Buffer.concat([
     actionPush(pushReg(1), pushCp8(CP.TEXT_WIDTH)),
     GET_MEMBER,
