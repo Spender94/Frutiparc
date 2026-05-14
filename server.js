@@ -68,7 +68,25 @@ app.use((req, res, next) => {
 // gzip text responses (HTML, XML, JSON, plain text). Binary SWFs are already
 // compressed (CWS = zlib) so compression skips them via the default filter.
 if (compression) {
-  app.use(compression({ threshold: 1024 }));
+  // SWFs (.swf) are already zlib-compressed inside the CWS container, so a
+  // second gzip pass wastes CPU and — more importantly — switches the
+  // response to chunked transfer encoding without a usable Content-Length.
+  // Reports of main.swf stalling at ~9% (i.e. ~36 KB of 400 KB delivered)
+  // match the pattern of a chunked gzip stream getting truncated mid-flight
+  // by Render's free-tier worker recycling. Exclude application/x-shockwave-flash
+  // so SWFs go out raw, with a real Content-Length and no intermediate
+  // re-encoding to break.
+  const defaultFilter = compression.filter;
+  app.use(compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      const type = res.getHeader('Content-Type');
+      if (typeof type === 'string' && type.indexOf('application/x-shockwave-flash') !== -1) {
+        return false;
+      }
+      return defaultFilter(req, res);
+    },
+  }));
 }
 
 app.use(express.json());
@@ -4963,31 +4981,58 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
   res.type('text/plain').send(response);
 });
 
-// Compute and cache an ETag for main.swf at boot. The SWF only changes when
-// a patch-main-*.js script rewrites the binary on disk, which is rare and
-// always followed by a deploy / restart — so a one-shot hash at startup is
-// fine. With must-revalidate the browser re-validates on every load but
-// receives a 304 (zero body) when nothing changed, instead of redownloading
-// the full ~400 KB binary like the previous `no-store` setup forced.
+// main.swf is hot-pathed by every page load. Cache it in memory at boot —
+// reports of "stuck at 9%" came from a combination of three things:
+//   1. sendFile re-reads the file from disk on every request (slow on
+//      Render's free-tier ephemeral storage),
+//   2. the compression middleware was gzip-ing the already-compressed SWF
+//      bytes into a chunked transfer-encoded response with no Content-Length,
+//   3. when Render's worker recycles mid-stream, the browser sees a partial
+//      response and never recovers — the Ruffle loader bar freezes wherever
+//      it was (commonly ~36 KB = ~9% of the 400 KB SWF).
+// Serving from a pre-loaded buffer with an explicit Content-Length gives the
+// loader a real progress total and ships the bytes in one shot, so a single
+// dropped TCP connection is the worst case (and the browser retries that).
+// The compression middleware now also skips application/x-shockwave-flash
+// so no chunked re-encoding can interrupt the transfer.
 const MAIN_SWF_PATH = path.join(__dirname, 'legacy', 'main.swf');
+let MAIN_SWF_BUF = null;
 let MAIN_SWF_ETAG = null;
-try {
-  const buf = fs.readFileSync(MAIN_SWF_PATH);
-  MAIN_SWF_ETAG = '"' + crypto.createHash('sha1').update(buf).digest('hex') + '"';
-} catch (e) { /* file missing — etag stays null, browser will always 200 */ }
+function loadMainSwfFromDisk() {
+  try {
+    MAIN_SWF_BUF = fs.readFileSync(MAIN_SWF_PATH);
+    MAIN_SWF_ETAG = '"' + crypto.createHash('sha1').update(MAIN_SWF_BUF).digest('hex') + '"';
+    console.log(`[MAIN.SWF] cached ${MAIN_SWF_BUF.length} bytes, etag=${MAIN_SWF_ETAG}`);
+  } catch (e) {
+    MAIN_SWF_BUF = null;
+    MAIN_SWF_ETAG = null;
+    console.error(`[MAIN.SWF] failed to read ${MAIN_SWF_PATH}: ${e.message}`);
+  }
+}
+loadMainSwfFromDisk();
 
 app.get('/legacy/main.swf', (req, res) => {
-  if (MAIN_SWF_ETAG) {
-    res.set('ETag', MAIN_SWF_ETAG);
-    if (req.headers['if-none-match'] === MAIN_SWF_ETAG) {
-      return res.status(304).end();
+  if (!MAIN_SWF_BUF) {
+    // Defensive fallback — should never happen after a successful boot,
+    // but if the buffer is somehow gone, retry from disk one time so a
+    // post-deploy hot-swap of legacy/main.swf still works without a
+    // process restart.
+    loadMainSwfFromDisk();
+    if (!MAIN_SWF_BUF) {
+      return res.status(503).type('text/plain').send('main.swf unavailable');
     }
   }
-  // must-revalidate forces an If-None-Match round-trip every visit, but the
-  // 304 path keeps it under 1 KB. Bytecode patches still deploy on the very
-  // next reload because the ETag changes with the file content.
-  res.set('Cache-Control', 'no-cache, must-revalidate');
-  res.sendFile(MAIN_SWF_PATH);
+  if (MAIN_SWF_ETAG && req.headers['if-none-match'] === MAIN_SWF_ETAG) {
+    return res.status(304).end();
+  }
+  if (MAIN_SWF_ETAG) res.set('ETag', MAIN_SWF_ETAG);
+  // no-transform tells any intermediary (and the compression middleware) not
+  // to re-encode; we want the raw SWF bytes to arrive byte-for-byte so
+  // Ruffle's loader sees a stable Content-Length and a clean stream.
+  res.set('Cache-Control', 'no-cache, must-revalidate, no-transform');
+  res.set('Content-Type', 'application/x-shockwave-flash');
+  res.set('Content-Length', String(MAIN_SWF_BUF.length));
+  res.end(MAIN_SWF_BUF);
 });
 
 app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
