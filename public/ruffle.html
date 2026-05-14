@@ -30,7 +30,11 @@
             publicPath: "/ruffle/",
             scale: "noScale",
             salign: "TL",
-            logLevel: "warn"
+            // Temporarily bumped to "info" so trace() output from the
+            // patch-main-folders-scrollbar.js handler shows up in the
+            // JS console. Will revert to "warn" once the scrollbar fix
+            // is confirmed.
+            logLevel: "info"
         };
 
         // Gate verbose legacy-bridge logs behind ?debug=1 to avoid CPU

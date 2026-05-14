@@ -94,6 +94,7 @@ const TRACE        = simple(0x26);
 const EQUALS2      = simple(0x49);
 const NOT          = simple(0x12);
 const DELETE       = simple(0x3a);
+const ADD2         = simple(0x47);
 
 // ── Constant pool ─────────────────────────────────────────────────────────
 
@@ -108,11 +109,12 @@ const STR = [
   // Debug
   'FP_FOLDERS_INSTALL',       // 7  emitted once when DoAction runs
   'FP_FOLDERS_HOOKED',        // 8  emitted when the prototype is patched
+  'FP_FOLDERS_TICK Component=', // 9  emitted on every enterFrame
 ];
 const CP = {
   MARKER:0, _ROOT:1, ON_ENTER_FRAME:2, COMPONENT:3, PROTOTYPE:4,
   FOLDER_INIT:5, FL_SCROLLABLE:6,
-  T_INSTALL:7, T_HOOKED:8,
+  T_INSTALL:7, T_HOOKED:8, T_TICK:9,
 };
 
 function buildConstantPool() {
@@ -191,7 +193,19 @@ function buildOnEnterFrameBody() {
     actionIf(guard1Body.length),   // skip when undefined
   ]);
 
-  return Buffer.concat([guard1, guard1Body, END]);
+  // Debug trace at the very top of the handler — fires every frame
+  // until the hook self-removes via `delete _root.onEnterFrame`.
+  // Format: "FP_FOLDERS_TICK Component=<value>" so we can tell
+  // from a single line whether the global lookup is even returning
+  // anything.
+  const tick = Buffer.concat([
+    actionPush(pushCp8(CP.T_TICK)),
+    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
+    ADD2,
+    TRACE,
+  ]);
+
+  return Buffer.concat([tick, guard1, guard1Body, END]);
 }
 
 function buildDefineFunction2(funcBody, numRegs = 1, flags = 0) {
