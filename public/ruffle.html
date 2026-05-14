@@ -547,14 +547,14 @@
                     window.location.reload();
                 });
                 document.body.appendChild(refreshOverlay);
-                // 45 s gives the SWF preloader, any WASM cold-compile and
-                // the user's own reaction time plenty of room. After that
-                // we fade it out — players who got through don't keep a
-                // permanent "refresh" prompt cluttering the corner.
+                // 15 s covers the typical wedge-detection window: the
+                // 9 % bar freezes within a few seconds, so 15 is enough
+                // for the user to notice + click while keeping the
+                // "refresh" prompt from lingering once they're playing.
                 setTimeout(() => {
                     refreshOverlay.style.opacity = "0";
                     setTimeout(() => refreshOverlay.remove(), 400);
-                }, 45000);
+                }, 15000);
 
                 await player.load({
                     url: "/legacy/main.swf",
