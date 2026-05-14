@@ -2,38 +2,27 @@
 // Patches legacy/main.swf to re-enable the scrollbar inside folder
 // windows (Inventaire, Pictos, Accessoires, Mes contacts, …).
 //
-// The SWF already ships the full scroll machinery (Component class
-// with addScrollBar / checkScrollNeed / getContentBounds, ScrollBar
-// widget at _global.ScrollBar, IconFileBox extends Component). The
-// scrollbar normally appears when `instance.flScrollable === true`
-// — but on Ruffle the bar never shows up, suggesting that flag is
-// either never set or being reset somewhere along the init chain.
+// Iteration history:
+//   1. Force Component.prototype.flScrollable = true → no visible
+//      effect. checkScrollNeed traces showed the flag is honoured
+//      on Component instances inside winChat/winAlert/winDebug
+//      (their .component799 child), but those are text frames, not
+//      icon folders.
+//   2. Hook IconFileBox.prototype.displayList / addFile → installed
+//      cleanly (post-install verify showed [type Function]) but
+//      never fire on inventory opens. IconFileBox is the FILE
+//      collection class, not the icon-render component.
+//   3. Class dump revealed cp.IconList (and variants
+//      cp.IconListBasic / cp.IconListFile / cp.DragIconList) — those
+//      extend Component and own the visual icon grid. Hooking
+//      cp.IconList.prototype.build (called once per population)
+//      and force-calling checkScrollNeed after the layout settles
+//      should make Component's own scrollbar machinery kick in.
 //
-// First-attempt fix: force `Component.prototype.flScrollable = true`
-// so every instance inherits the flag by default. If the prototype
-// assignment alone isn't enough (e.g. constructors explicitly set
-// `this.flScrollable = false`, or checkScrollNeed is failing for a
-// different reason such as getBounds returning zero), we'll escalate
-// — but this single line is the smallest possible kick and worth
-// trying first.
-//
-// Because `_global.Component` is registered lazily (its __Packages
-// init runs from a DoInitAction tag, not necessarily before our
-// frame-1 DoAction), we poll for it via `_root.onEnterFrame`:
-//
-//     _root.onEnterFrame = function () {
-//       if (_global.Component != undefined
-//           && _global.Component.prototype != undefined
-//           && !_global.Component.prototype.__fpFolderInit) {
-//         _global.Component.prototype.__fpFolderInit = true;
-//         _global.Component.prototype.flScrollable = true;
-//         // self-destruct: no point polling forever
-//         delete _root.onEnterFrame;
-//       }
-//     };
-//
-// One-shot, idempotent via the marker "__fpFolderScroll__" in the
-// const pool.
+// This script keeps the Component flag flip but trades the unused
+// IconFileBox hooks for a build wrapper on cp.IconList. The trace
+// on the wrapper also surfaces whether build is actually called
+// when opening Inventaire (vs needing to hook a subclass too).
 
 const fs = require('fs');
 const path = require('path');
@@ -80,6 +69,7 @@ function actionPush(...items) {
   return Buffer.concat([hdr, data]);
 }
 function simple(op) { return Buffer.from([op]); }
+function storeReg(r) { return Buffer.from([0x87, 0x01, 0x00, r & 0xff]); }
 function actionIf(off) {
   const b = Buffer.alloc(5);
   b[0] = 0x9d;
@@ -100,55 +90,36 @@ const NOT          = simple(0x12);
 const DELETE       = simple(0x3a);
 const ADD2         = simple(0x47);
 
-function storeReg(r) {
-  return Buffer.from([0x87, 0x01, 0x00, r & 0xff]);
-}
-
 // ── Constant pool ─────────────────────────────────────────────────────────
 
 const STR = [
-  '__fpFolderScroll__',       // 0 marker (never accessed)
-  '_root',                    // 1
-  'onEnterFrame',             // 2
-  'Component',                // 3
-  'prototype',                // 4
-  '__fpFolderInit',           // 5
-  'flScrollable',             // 6
+  '__fpFolderScroll__',         // 0 marker
+  '_root',                      // 1
+  'onEnterFrame',               // 2
+  '_global',                    // 3
+  'Component',                  // 4
+  'cp',                         // 5
+  'IconList',                   // 6
+  'prototype',                  // 7
+  '__fpFolderInit',             // 8
+  'flScrollable',               // 9
+  'build',                      // 10
+  '__fpOrigBuild',              // 11
+  'checkScrollNeed',            // 12
   // Debug
-  'FP_FOLDERS_INSTALL',       // 7  emitted once when DoAction runs
-  'FP_FOLDERS_HOOKED',        // 8  emitted when the prototype is patched
-  'FP_FOLDERS_TICK Component=', // 9  emitted on every enterFrame
-  // checkScrollNeed hook (Component-side)
-  'checkScrollNeed',          // 10
-  '__fpOrigCheck',            // 11
-  'FP_FOLDERS CHECK this=',   // 12
-  ' flScrollable=',           // 13
-  // IconFileBox-side diagnostic
-  'IconFileBox',              // 14
-  'displayList',              // 15
-  '__fpOrigDisplay',          // 16
-  'FP_FOLDERS_DISPLAY this=', // 17
-  ' csn=',                    // 18
-  ' addSB=',                  // 19
-  ' parent=',                 // 20
-  'addScrollBar',             // 21
-  '_parent',                  // 22
-  // addFile hook + post-install verification
-  'addFile',                  // 23
-  '__fpOrigAddFile',          // 24
-  'FP_FOLDERS_ADDFILE this=', // 25
-  'FP_FOLDERS_VERIFY display=', // 26
-  ' addFile=',                // 27
+  'FP_FOLDERS_INSTALL',         // 13
+  'FP_FOLDERS_HOOKED',          // 14
+  'FP_FOLDERS_TICK Component=', // 15
+  ' IconList=',                 // 16
+  'FP_FOLDERS_VERIFY build=',   // 17
+  'FP_FOLDERS_BUILD this=',     // 18
 ];
 const CP = {
-  MARKER:0, _ROOT:1, ON_ENTER_FRAME:2, COMPONENT:3, PROTOTYPE:4,
-  FOLDER_INIT:5, FL_SCROLLABLE:6,
-  T_INSTALL:7, T_HOOKED:8, T_TICK:9,
-  CHECK_NEED:10, ORIG_CHECK:11, T_CHECK:12, T_FLAG:13,
-  ICON_BOX:14, DISPLAY_LIST:15, ORIG_DISPLAY:16,
-  T_DISPLAY:17, T_CSN:18, T_ADDSB:19, T_PARENT:20,
-  ADD_SB:21, P_PARENT:22,
-  ADD_FILE:23, ORIG_ADDFILE:24, T_ADDFILE:25, T_VERIFY_D:26, T_VERIFY_A:27,
+  MARKER:0, _ROOT:1, ON_ENTER_FRAME:2, _GLOBAL:3, COMPONENT:4,
+  CP_NS:5, ICONLIST:6, PROTOTYPE:7, FOLDER_INIT:8, FL_SCROLLABLE:9,
+  BUILD:10, ORIG_BUILD:11, CHECK_NEED:12,
+  T_INSTALL:13, T_HOOKED:14, T_TICK:15, T_TICK_ICONLIST:16,
+  T_VERIFY:17, T_BUILD:18,
 };
 
 function buildConstantPool() {
@@ -161,226 +132,65 @@ function buildConstantPool() {
   return Buffer.concat([hdr, payload]);
 }
 
-// Body of the onEnterFrame handler. Uses no registers (besides what
-// DefineFunction2 reserves), so numRegs = 1.
+// Helpers to push values used in many places below.
+function pushGlobalMember(memberCp) {
+  // Pushes _global.<member> onto the stack.
+  return Buffer.concat([
+    actionPush(pushCp8(CP._GLOBAL)), GET_VARIABLE,
+    actionPush(pushCp8(memberCp)), GET_MEMBER,
+  ]);
+}
+function pushCpIconList() {
+  // Pushes _global.cp.IconList onto the stack.
+  return Buffer.concat([
+    actionPush(pushCp8(CP._GLOBAL)), GET_VARIABLE,
+    actionPush(pushCp8(CP.CP_NS)), GET_MEMBER,
+    actionPush(pushCp8(CP.ICONLIST)), GET_MEMBER,
+  ]);
+}
+function pushCpIconListProto() {
+  return Buffer.concat([
+    pushCpIconList(),
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+  ]);
+}
+
+// ── cp.IconList.prototype.build wrapper ───────────────────────────────────
 //
-// Logic:
-//   1. If Component is undefined → return.
-//   2. If Component.prototype is undefined → return.
-//   3. If Component.prototype.__fpFolderInit is truthy → return.
-//   4. Set Component.prototype.__fpFolderInit = true.
-//   5. Set Component.prototype.flScrollable = true.
-//   6. trace("FP_FOLDERS_HOOKED").
-//   7. delete _root.onEnterFrame (one-shot).
-function buildOnEnterFrameBody() {
-  // Each early-return tests a value, NOTs it, and ActionIfs past the
-  // remainder of the function. Build the post-checks block first so
-  // we can compute the jump offsets.
-  // Inner function: the new Component.prototype.checkScrollNeed. With
-  // PreloadThisFlag, register 1 holds `this` (the Component instance).
-  //
-  //   function () {
-  //     trace("FP_FOLDERS CHECK this=" + this + " flScrollable=" + this.flScrollable);
-  //     this.__fpOrigCheck();
-  //   }
-  const checkBody = Buffer.concat([
-    // Build trace string in pieces
-    actionPush(pushCp8(CP.T_CHECK), pushReg(1)),
-    ADD2,                                          // "FP_FOLDERS CHECK this=" + this
-    actionPush(pushCp8(CP.T_FLAG)),
-    ADD2,                                          // + " flScrollable="
-    actionPush(pushReg(1), pushCp8(CP.FL_SCROLLABLE)),
-    GET_MEMBER,                                    // → this.flScrollable
+//   function () {
+//     this.__fpOrigBuild();
+//     trace("FP_FOLDERS_BUILD this=" + this);
+//     this.flScrollable = true;
+//     this.checkScrollNeed();
+//   }
+//
+// With PreloadThisFlag, register 1 holds `this` (the cp.IconList
+// instance). build() takes no parameters that we need to preserve.
+function buildBuildWrapperBody() {
+  return Buffer.concat([
+    // this.__fpOrigBuild()
+    actionPush(pushInt(0), pushReg(1), pushCp8(CP.ORIG_BUILD)),
+    CALL_METHOD,
+    POP,
+    // trace("FP_FOLDERS_BUILD this=" + this)
+    actionPush(pushCp8(CP.T_BUILD), pushReg(1)),
     ADD2,
     TRACE,
-    // this.__fpOrigCheck()
-    actionPush(pushInt(0), pushReg(1), pushCp8(CP.ORIG_CHECK)),
+    // this.flScrollable = true
+    actionPush(pushReg(1), pushCp8(CP.FL_SCROLLABLE), pushBool(true)),
+    SET_MEMBER,
+    // this.checkScrollNeed()
+    actionPush(pushInt(0), pushReg(1), pushCp8(CP.CHECK_NEED)),
     CALL_METHOD,
     POP,
     END,
   ]);
-  const checkFn = buildDefineFunction2(checkBody, 2, 0x0001); // PreloadThisFlag
-
-  // Inner function: IconFileBox.prototype.displayList wrapper. Traces
-  // what's on the instance (in particular whether checkScrollNeed and
-  // addScrollBar are reachable through the prototype chain) and what
-  // the parent looks like, then delegates to the original.
-  //
-  //   function () {
-  //     trace("FP_FOLDERS_DISPLAY this=" + this
-  //           + " csn=" + this.checkScrollNeed
-  //           + " addSB=" + this.addScrollBar
-  //           + " parent=" + this._parent);
-  //     this.__fpOrigDisplay();
-  //   }
-  const displayBody = Buffer.concat([
-    actionPush(pushCp8(CP.T_DISPLAY), pushReg(1)),                   ADD2,
-    actionPush(pushCp8(CP.T_CSN)),                                   ADD2,
-    actionPush(pushReg(1), pushCp8(CP.CHECK_NEED)), GET_MEMBER,      ADD2,
-    actionPush(pushCp8(CP.T_ADDSB)),                                 ADD2,
-    actionPush(pushReg(1), pushCp8(CP.ADD_SB)),    GET_MEMBER,       ADD2,
-    actionPush(pushCp8(CP.T_PARENT)),                                ADD2,
-    actionPush(pushReg(1), pushCp8(CP.P_PARENT)),  GET_MEMBER,       ADD2,
-    TRACE,
-    // this.__fpOrigDisplay()
-    actionPush(pushInt(0), pushReg(1), pushCp8(CP.ORIG_DISPLAY)),
-    CALL_METHOD,
-    POP,
-    END,
-  ]);
-  const displayFn = buildDefineFunction2(displayBody, 2, 0x0001);
-
-  // IconFileBox.prototype.addFile wrapper — fires per-item, much more
-  // likely to surface than displayList if the inventory uses a
-  // different code path for opening folders.
-  const addFileBody = Buffer.concat([
-    actionPush(pushCp8(CP.T_ADDFILE), pushReg(1)),
-    ADD2,
-    TRACE,
-    actionPush(pushInt(0), pushReg(1), pushCp8(CP.ORIG_ADDFILE)),
-    CALL_METHOD,
-    POP,
-    END,
-  ]);
-  const addFileFn = buildDefineFunction2(addFileBody, 2, 0x0001);
-
-  const setMembers = Buffer.concat([
-    // Component.prototype.__fpFolderInit = true
-    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.FOLDER_INIT)),
-    actionPush(pushBool(true)),
-    SET_MEMBER,
-    // Component.prototype.flScrollable = true
-    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.FL_SCROLLABLE)),
-    actionPush(pushBool(true)),
-    SET_MEMBER,
-    // Component.prototype.__fpOrigCheck = Component.prototype.checkScrollNeed
-    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.ORIG_CHECK)),
-    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.CHECK_NEED)), GET_MEMBER,
-    SET_MEMBER,
-    // Component.prototype.checkScrollNeed = <new function>
-    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.CHECK_NEED)),
-    checkFn,
-    SET_MEMBER,
-    // IconFileBox.prototype.__fpOrigDisplay = IconFileBox.prototype.displayList
-    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.ORIG_DISPLAY)),
-    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.DISPLAY_LIST)), GET_MEMBER,
-    SET_MEMBER,
-    // IconFileBox.prototype.displayList = <wrapper>
-    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.DISPLAY_LIST)),
-    displayFn,
-    SET_MEMBER,
-    // IconFileBox.prototype.__fpOrigAddFile = IconFileBox.prototype.addFile
-    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.ORIG_ADDFILE)),
-    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.ADD_FILE)), GET_MEMBER,
-    SET_MEMBER,
-    // IconFileBox.prototype.addFile = <wrapper>
-    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.ADD_FILE)),
-    addFileFn,
-    SET_MEMBER,
-    // Verification trace: dump what we actually stored on the prototype.
-    // If displayList / addFile come back as undefined, our hooks weren't
-    // actually installed (e.g. IconFileBox.prototype is in an odd state).
-    actionPush(pushCp8(CP.T_VERIFY_D)),
-    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.DISPLAY_LIST)), GET_MEMBER,
-    ADD2,
-    actionPush(pushCp8(CP.T_VERIFY_A)),                 ADD2,
-    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.ADD_FILE)), GET_MEMBER,
-    ADD2,
-    TRACE,
-    // trace("FP_FOLDERS_HOOKED")
-    actionPush(pushCp8(CP.T_HOOKED)),
-    TRACE,
-    // delete _root.onEnterFrame
-    actionPush(pushCp8(CP._ROOT)), GET_VARIABLE,
-    actionPush(pushCp8(CP.ON_ENTER_FRAME)),
-    DELETE,
-  ]);
-
-  // Guard 3: Component.prototype.__fpFolderInit is truthy
-  //   push value, ActionIf(end) → jumps over setMembers if truthy
-  const guard3 = Buffer.concat([
-    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushCp8(CP.FOLDER_INIT)), GET_MEMBER,
-    actionIf(setMembers.length),
-  ]);
-
-  // Guard 2: Component.prototype != undefined
-  //   push Component.prototype == undefined → ActionIf jumps if true
-  const guard2Body = Buffer.concat([guard3, setMembers]);
-  const guard2 = Buffer.concat([
-    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
-    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
-    actionPush(pushUndef()),
-    EQUALS2,                       // → prototype == undefined
-    actionIf(guard2Body.length),   // skip when undefined
-  ]);
-
-  // Guard 1: Component != undefined
-  const guard1Body = Buffer.concat([guard2, guard2Body]);
-  const guard1 = Buffer.concat([
-    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
-    actionPush(pushUndef()),
-    EQUALS2,                       // → Component == undefined
-    actionIf(guard1Body.length),   // skip when undefined
-  ]);
-
-  // Guard 0: IconFileBox != undefined (we hook both classes' prototypes
-  // in the same block, so wait for both to be registered before
-  // proceeding).
-  const guard0Body = Buffer.concat([guard1, guard1Body]);
-  const guard0 = Buffer.concat([
-    actionPush(pushCp8(CP.ICON_BOX)), GET_VARIABLE,
-    actionPush(pushUndef()),
-    EQUALS2,
-    actionIf(guard0Body.length),
-  ]);
-
-  // Debug trace at the very top of the handler — fires every frame
-  // until the hook self-removes via `delete _root.onEnterFrame`.
-  // Format: "FP_FOLDERS_TICK Component=<value>" so we can tell
-  // from a single line whether the global lookup is even returning
-  // anything.
-  const tick = Buffer.concat([
-    actionPush(pushCp8(CP.T_TICK)),
-    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
-    ADD2,
-    TRACE,
-  ]);
-
-  return Buffer.concat([tick, guard0, guard0Body, END]);
 }
 
 function buildDefineFunction2(funcBody, numRegs = 1, flags = 0) {
   const nameTerm = Buffer.from([0x00]);
   const hdr = Buffer.alloc(2 + 1 + 2);
-  hdr.writeUInt16LE(0, 0);           // numParams
+  hdr.writeUInt16LE(0, 0);
   hdr[2] = numRegs;
   hdr.writeUInt16LE(flags, 3);
   const codeSize = Buffer.alloc(2);
@@ -392,12 +202,106 @@ function buildDefineFunction2(funcBody, numRegs = 1, flags = 0) {
   return Buffer.concat([tagHdr, payload, funcBody]);
 }
 
+// ── onEnterFrame body ─────────────────────────────────────────────────────
+
+function buildOnEnterFrameBody() {
+  const buildFn = buildDefineFunction2(buildBuildWrapperBody(), 2, 0x0001);
+
+  const setMembers = Buffer.concat([
+    // Component.prototype.__fpFolderInit = true
+    pushGlobalMember(CP.COMPONENT),
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.FOLDER_INIT), pushBool(true)),
+    SET_MEMBER,
+    // Component.prototype.flScrollable = true
+    pushGlobalMember(CP.COMPONENT),
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.FL_SCROLLABLE), pushBool(true)),
+    SET_MEMBER,
+    // cp.IconList.prototype.__fpOrigBuild = cp.IconList.prototype.build
+    pushCpIconListProto(),
+    actionPush(pushCp8(CP.ORIG_BUILD)),
+    pushCpIconListProto(),
+    actionPush(pushCp8(CP.BUILD)), GET_MEMBER,
+    SET_MEMBER,
+    // cp.IconList.prototype.build = <wrapper>
+    pushCpIconListProto(),
+    actionPush(pushCp8(CP.BUILD)),
+    buildFn,
+    SET_MEMBER,
+    // Verification trace: dump whether build is now our wrapper.
+    actionPush(pushCp8(CP.T_VERIFY)),
+    pushCpIconListProto(),
+    actionPush(pushCp8(CP.BUILD)), GET_MEMBER,
+    ADD2,
+    TRACE,
+    // trace("FP_FOLDERS_HOOKED")
+    actionPush(pushCp8(CP.T_HOOKED)),
+    TRACE,
+    // delete _root.onEnterFrame (self-destruct)
+    actionPush(pushCp8(CP._ROOT)), GET_VARIABLE,
+    actionPush(pushCp8(CP.ON_ENTER_FRAME)),
+    DELETE,
+  ]);
+
+  // Diagnostic tick on every frame until the hooks fire. Shows what
+  // _global.Component and _global.cp.IconList currently resolve to,
+  // so we can tell whether the polling is waiting on Component, on
+  // cp.IconList, or on something else.
+  const tick = Buffer.concat([
+    actionPush(pushCp8(CP.T_TICK)),
+    pushGlobalMember(CP.COMPONENT),
+    ADD2,
+    actionPush(pushCp8(CP.T_TICK_ICONLIST)),
+    ADD2,
+    pushCpIconList(),
+    ADD2,
+    TRACE,
+  ]);
+
+  // Guards: don't proceed until both Component and cp.IconList are
+  // registered, and the prototype hooks haven't yet been installed.
+  const guardInit = Buffer.concat([
+    pushGlobalMember(CP.COMPONENT),
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.FOLDER_INIT)), GET_MEMBER,
+    actionIf(setMembers.length),    // skip if already initialised
+  ]);
+
+  const guardedSection = Buffer.concat([guardInit, setMembers]);
+
+  // Need to ensure both Component and cp.IconList exist before
+  // setMembers runs.
+  const guardIconList = Buffer.concat([
+    pushCpIconList(),
+    actionPush(pushUndef()),
+    EQUALS2,
+    actionIf(guardedSection.length),
+  ]);
+
+  const guardComponent = Buffer.concat([
+    pushGlobalMember(CP.COMPONENT),
+    actionPush(pushUndef()),
+    EQUALS2,
+    actionIf(guardIconList.length + guardedSection.length),
+  ]);
+
+  return Buffer.concat([
+    tick,
+    guardComponent,
+    guardIconList,
+    guardedSection,
+    END,
+  ]);
+}
+
+// ── Top-level DoAction body ───────────────────────────────────────────────
+
 function buildDoActionBody() {
   const cp = buildConstantPool();
   const enterFrameFn = buildDefineFunction2(buildOnEnterFrameBody(), 1, 0);
   const install = Buffer.concat([
     actionPush(pushCp8(CP.T_INSTALL)), TRACE,
-    // _root.onEnterFrame = function () { ... }
     actionPush(pushCp8(CP._ROOT)), GET_VARIABLE,
     actionPush(pushCp8(CP.ON_ENTER_FRAME)),
     enterFrameFn,
