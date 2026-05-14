@@ -160,6 +160,24 @@ function decode62(s) {
   return r;
 }
 
+// Frame number in the events-icon sprite (sprite id=533) for each user-log /
+// site-log entry type. Mapped empirically via the /test-log-icon admin scan.
+// Drives the icon shown next to each <l type="N"> entry in the user's
+// "Mon historique" and "Évènements" desktop windows.
+const USER_LOG_TYPE = {
+  KICK:        1,    // user ejected from a channel
+  BAN:         2,    // user banned
+  TOTOCHE:     3,    // user muted (totoché) by a moderator
+  // 4: reserved (no visual)
+  PICTO:       10,   // unlocked a new game picto / titem
+  CHAT:        20,   // chat-related notification (NPC reveal, etc.)
+  LEVEL_UP:    30,
+  LEVEL_DOWN:  31,
+  INSCRIPTION: 40,   // first entry on a freshly-registered account
+  GODSON:      50,   // new godson recruited
+  MEDAL:       60,   // won a daily-challenge medal
+};
+
 // Frame number in the activity-icon sprite (sprite id=246 inside the "status"
 // sprite at the "internal" label) for each game. The SWF renders the icon via
 // gotoAndStop(internal) where `internal` is the 2-char base62 value broadcast
@@ -530,7 +548,7 @@ function awardJamaPictosOnScore(username) {
     if (user.jamaPlayCount >= info.threshold && !user.gameItems.includes(id)) {
       user.gameItems.push(id);
       if (dbId) db.addGameItem(dbId, id).catch((e) => console.error('[DB] addGameItem jama:', e.message));
-      addAndNotifyUserLog(username, { type: 20, content: `Nouveau picto débloqué sur JamaJama : ${info.name} !` });
+      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: `Nouveau picto débloqué sur JamaJama : ${info.name} !` });
       console.log(`[JAMA]  picto ${id} for ${username} (plays=${user.jamaPlayCount})`);
     }
   }
@@ -1709,7 +1727,7 @@ async function awardDailyXp() {
     user.xp = oldXp + gain;
     const newLevel = getLevelForXp(user.xp);
     if (newLevel > oldLevel) {
-      addAndNotifyUserLog(username, { type: 20, content: `Bravo ! Tu passes au niveau ${newLevel} ! (${user.xp} XP)` });
+      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.LEVEL_UP, content: `Bravo ! Tu passes au niveau ${newLevel} ! (${user.xp} XP)` });
     }
     if (user._dbId) {
       db.updateUser(username, { xp: user.xp }).catch(e => {
@@ -1784,12 +1802,12 @@ function notifyChallengeWinners(winnersByUser, visibleDay) {
       const text = `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} ! (${visibleDay})`;
       const user = users[username];
       if (user) {
-        addUserHistoryEntry(user, { type: 1, content: text, flNew: true });
+        addUserHistoryEntry(user, { type: USER_LOG_TYPE.MEDAL, content: text, flNew: true });
       } else {
         if (!challengeMedalsData.pendingNotifications[username]) {
           challengeMedalsData.pendingNotifications[username] = [];
         }
-        challengeMedalsData.pendingNotifications[username].push({ type: 1, content: text });
+        challengeMedalsData.pendingNotifications[username].push({ type: USER_LOG_TYPE.MEDAL, content: text });
       }
       if (user && user._dbId) {
         db.saveMedal(user._dbId, username, m.rankingId, m.game, m.rank, m.medal, visibleDay).catch(() => {});
@@ -4323,7 +4341,7 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
         const info = GAME_ITEM_INFO[item];
         const label = info ? info.name : item;
         const gameName = info ? info.game : game;
-        addAndNotifyUserLog(username, { type: 20, content: `Nouveau picto débloqué sur ${gameName} : ${label} !` });
+        addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: `Nouveau picto débloqué sur ${gameName} : ${label} !` });
       }
     }
   }
@@ -7738,7 +7756,7 @@ async function mdamirmaReveal() {
       `Pué possib' ! Mon petit ${displayTarget} est ${signName} ascendant ${signBName} !`
     );
     addUserHistoryEntry(ud, {
-      type: 20,
+      type: USER_LOG_TYPE.CHAT,
       content: `mdamirma a révélé ton FrutiSigne : ${signName} ascendant ${signBName} !`,
       flNew: true,
     });
@@ -8046,7 +8064,10 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
 
   if (!CONNECTED_NPCS.has(targetUser)) {
     const actionLabel = isBan ? 'banni' : 'expulsé';
-    addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été ${actionLabel} du salon ${channelName} par ${getDisplayName(byUser)}.` });
+    addAndNotifyUserLog(targetUser, {
+      type: isBan ? USER_LOG_TYPE.BAN : USER_LOG_TYPE.KICK,
+      content: `Tu as été ${actionLabel} du salon ${channelName} par ${getDisplayName(byUser)}.`,
+    });
     if (process.env.DATABASE_URL) db.addModerationLog(targetUser, byUser, reason, `salon ${channelName}`).catch(e => console.error('[DB] modlog error:', e.message));
   }
 
@@ -8399,7 +8420,7 @@ async function handleCBeeMessage(socket, rawXml) {
       trackXpAction(effectiveLogin, 'login');
       if (user.hasWelcomeUserLog !== true) {
         addUserHistoryEntry(user, {
-          type: 1,
+          type: USER_LOG_TYPE.INSCRIPTION,
           content: "Bienvenue sur Frutiparc Revival ! Tu n'as donc rien de mieux à faire ?!",
           flNew: true,
         });
@@ -8407,7 +8428,7 @@ async function handleCBeeMessage(socket, rawXml) {
       }
       if (user.hasWelcomeSiteLog !== true) {
         addSiteHistoryEntry(user, {
-          type: 1,
+          type: USER_LOG_TYPE.INSCRIPTION,
           content: "Évènement: ton compte Frutiparc Revival vient d'être activé.",
           flNew: true,
         });
@@ -8898,7 +8919,7 @@ case 'send': {
         for (const targetSock of getSocketsForUsername(targetUser)) {
           sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
         }
-        addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
+        addAndNotifyUserLog(targetUser, { type: USER_LOG_TYPE.TOTOCHE, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
         if (process.env.DATABASE_URL) db.addModerationLog(targetUser, client.username, 'totoche', `10 min`).catch(e => console.error('[DB] modlog error:', e.message));
         // Render exactly like userkicked/userjoined/userleaved: plain italic,
         // no timestamp, default color.  chat.msg_admin = "$h<i>$m</i>" so we
@@ -9141,7 +9162,7 @@ case 'send': {
         sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       }
       sendToClient(socket, `<${CMD.mute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
-      addAndNotifyUserLog(targetUser, { type: 11, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
+      addAndNotifyUserLog(targetUser, { type: USER_LOG_TYPE.TOTOCHE, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
       if (process.env.DATABASE_URL) db.addModerationLog(targetUser, client.username, 'totoche', `10 min`).catch(e => console.error('[DB] modlog error:', e.message));
 
       const announceTotoche = `<![CDATA[${escapeXml(getDisplayName(targetUser))} a été totoché]]>`;
@@ -10015,7 +10036,7 @@ case 'createchannel': {
         const info = GAME_ITEM_INFO[itemName];
         const label = info ? info.name : itemName;
         const gameName = info ? info.game : 'jeu';
-        addAndNotifyUserLog(client.username, { type: 20, content: `Nouveau picto débloqué sur ${gameName} : ${label} !` });
+        addAndNotifyUserLog(client.username, { type: USER_LOG_TYPE.PICTO, content: `Nouveau picto débloqué sur ${gameName} : ${label} !` });
       } else {
         console.log(`[FSCORE] giveItem user=${client.username} item=${itemName} (already owned)`);
       }
