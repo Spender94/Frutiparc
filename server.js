@@ -5966,6 +5966,7 @@ app.all(['/ff/mk', '/mk'], async (req, res) => {
       db.addContactFolder(user._dbId, newUid, folderName)
         .catch((e) => console.error('[DB] contact folder save error:', e.message));
     }
+    console.log(`[FF/MK] ${auth.username} created mycontact sub-folder "${folderName}" (uid=${newUid})`);
     return res.type('text/xml').send(
       `<r u="${newUid}" t="folder" d="${now}" f="${escapeXml(folder)}">${escapeXml(folderName)}\nfolder</r>`
     );
