@@ -427,22 +427,33 @@
                 player.style.height = "768px";
                 document.getElementById("player-container").appendChild(player);
 
-                // Pre-fetch the SWF ourselves with retry/timeout instead of
-                // letting Ruffle do it via the `url:` parameter. Reports of
-                // the loader bar stalling at ~9% (~36 KB of 400 KB delivered)
-                // and players having to refresh 5+ times all match the
-                // pattern of a single transfer getting truncated mid-stream
-                // — either by Render's free-tier worker recycling, a flaky
-                // mobile/Wi-Fi link, or an intermediate proxy dropping the
-                // connection. Ruffle has no built-in retry, so once its
-                // internal fetch hangs the user has to refresh manually.
+                // Pre-flight the SWF ourselves with retry + size validation
+                // before letting Ruffle do its own fetch. Reports of the
+                // loader bar stalling at ~9% (~36 KB of 400 KB delivered)
+                // and players having to refresh 5+ times match a transfer
+                // being truncated mid-stream — Render's free-tier worker
+                // recycling, a flaky link, or an in-the-middle proxy. The
+                // browser still caches whatever it got, so Ruffle's later
+                // url-based load would happily replay a corrupt half-SWF.
                 //
-                // With fetchSwfWithRetry we abort after a generous timeout,
-                // back off, and try again; only after several failed
-                // attempts do we surface the error. The buffered ArrayBuffer
-                // is then handed to Ruffle via `data:` so the loader has
-                // the full byte length up front and can't stall partway.
-                async function fetchSwfWithRetry(url, { attempts = 4, timeoutMs = 25000 } = {}) {
+                // The pre-flight does two things:
+                //   1. Bursts past transient failures with retry/backoff
+                //      so a single dropped connection doesn't force the
+                //      user to F5 manually.
+                //   2. Cross-checks Content-Length vs received bytes so a
+                //      silently-truncated response is rejected and retried
+                //      instead of being handed off to Ruffle (which would
+                //      then surface as 0x… avm errors and character-id
+                //      collisions when it tries to parse half a binary).
+                //
+                // The fetched bytes themselves are discarded — we hand
+                // Ruffle the same URL afterwards so the SWF knows its own
+                // origin (loaded-via-`data:` strips `_url`, which any AS
+                // code doing `this._url + "/foo"` turns into a real
+                // /undefined GET → 404). The browser cache replays the
+                // pre-flight response via a fast 304 thanks to no-cache +
+                // must-revalidate on the server side.
+                async function preflightSwf(url, { attempts = 4, timeoutMs = 25000 } = {}) {
                     for (let i = 1; i <= attempts; i++) {
                         const controller = new AbortController();
                         const t = setTimeout(() => controller.abort(), timeoutMs);
@@ -451,33 +462,37 @@
                             clearTimeout(t);
                             if (!res.ok) throw new Error("HTTP " + res.status);
                             const buf = await res.arrayBuffer();
-                            // Sanity: a CWS / FWS / ZWS header means the
-                            // body is the SWF and not a truncated proxy
-                            // error page. Anything below 64 KB for main.swf
-                            // is almost certainly an interrupted transfer
-                            // we want to retry rather than feed to Ruffle.
-                            if (buf.byteLength < 65536) throw new Error("short body " + buf.byteLength);
+                            // Validate that the body actually has the
+                            // bytes the server promised. fetch() can
+                            // resolve with a short body when a chunked
+                            // stream is cut off without a clean error.
+                            const expected = Number(res.headers.get("Content-Length") || 0);
+                            if (expected > 0 && buf.byteLength !== expected) {
+                                throw new Error("short body " + buf.byteLength + " / " + expected);
+                            }
+                            if (buf.byteLength < 65536) {
+                                throw new Error("body too small " + buf.byteLength);
+                            }
                             const sig = new Uint8Array(buf, 0, 3);
                             const tag = String.fromCharCode(sig[0], sig[1], sig[2]);
                             if (tag !== "CWS" && tag !== "FWS" && tag !== "ZWS") {
                                 throw new Error("bad swf header: " + tag);
                             }
-                            window.__dlog("[Ruffle] main.swf fetched (" + buf.byteLength + " bytes, attempt " + i + ")");
-                            return buf;
+                            window.__dlog("[Ruffle] main.swf preflight OK (" + buf.byteLength + " bytes, attempt " + i + ")");
+                            return;
                         } catch (err) {
                             clearTimeout(t);
-                            console.warn("[Ruffle] main.swf attempt " + i + "/" + attempts + " failed:", err.message || err);
+                            console.warn("[Ruffle] main.swf preflight " + i + "/" + attempts + " failed:", err.message || err);
                             if (i === attempts) throw err;
-                            // Exponential backoff: 1s, 2s, 4s. Cap to keep
-                            // first-paint latency bounded even on slow links.
+                            // Exponential backoff: 1s, 2s, 4s. Cap so the
+                            // first paint stays bounded even on slow links.
                             await new Promise((r) => setTimeout(r, Math.min(4000, 1000 * Math.pow(2, i - 1))));
                         }
                     }
                 }
 
-                let swfData;
                 try {
-                    swfData = await fetchSwfWithRetry("/legacy/main.swf");
+                    await preflightSwf("/legacy/main.swf");
                 } catch (err) {
                     console.error("[Ruffle] giving up on main.swf:", err);
                     document.getElementById("player-container").innerHTML =
@@ -488,7 +503,8 @@
                     return;
                 }
 
-                const loadCommon = {
+                await player.load({
+                    url: "/legacy/main.swf",
                     autoplay: "on",
                     allowScriptAccess: true,
                     quality: "medium",
@@ -519,20 +535,7 @@
                     openUrlMode: "allow",
                     allowNetworking: "all",
                     base: `${window.location.origin}/`
-                };
-
-                // Prefer feeding Ruffle the buffer we just validated so the
-                // pre-fetched bytes are used directly (no second HTTP hit).
-                // Older Ruffle builds only accept `url:` — if data: throws
-                // we fall back to a normal url load; thanks to the no-cache
-                // round-trip the browser still has the bytes hot, so this
-                // path resolves via 304 in well under a second.
-                try {
-                    await player.load({ data: swfData, ...loadCommon });
-                } catch (err) {
-                    console.warn("[Ruffle] data: load rejected, falling back to url:", err);
-                    await player.load({ url: "/legacy/main.swf", ...loadCommon });
-                }
+                });
             });
         })();
     </script>
