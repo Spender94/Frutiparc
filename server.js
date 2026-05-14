@@ -160,18 +160,30 @@ function decode62(s) {
   return r;
 }
 
-// StatusMng.internalList from the SWF — index → activity name. The "internal"
-// 2-char base62 portion of the status string is `1 + indexOf(name)` (set by
-// setInternal in StatusMng), or 0 when no internal status is active. This
-// drives the icon shown next to the pseudo on the user card / userlist.
-const STATUS_INTERNAL_LIST = [
-  'miniwave', 'kaluga', 'grapiz', 'bandas', 'snake3',
-  'swapou2', 'mb2', 'bkiwi', 'forum',
-];
+// Frame number in the activity-icon sprite (sprite id=246 inside the "status"
+// sprite at the "internal" label) for each game. The SWF renders the icon via
+// gotoAndStop(internal) where `internal` is the 2-char base62 value broadcast
+// in the user's status string. Note: the sprite has been reordered since it
+// was authored and its FrameLabels no longer match the visual content at each
+// frame — these numbers were validated empirically from the icons users see
+// when launching each game. Returning 0 hides the icon (no internal status).
+const STATUS_INTERNAL_FRAME = {
+  bkiwi:     2,   // verified: Kaluga (internal=2) was showing the BKiwi visual
+  snake3:    5,   // verified: Snake (internal=5) already shows the right visual
+  bandas:    6,   // verified: Swapou (internal=6) was showing the Frutibandas visual
+  grapiz:    7,   // verified: MB2 (internal=7) was showing the Grapiz visual
+  kaluga:    8,   // verified: BKiwi (internal=8) was showing the Kaluga visual
+  // Best-guess from sprite FrameLabels for games never validated against
+  // their visual content. Confirm/correct based on what users actually see.
+  miniwave:  14,
+  minipixiz: 15,
+  forum:     36,
+  // Unknown frames for the games whose icons we still need to locate:
+  //   swapou2, mb2, jamajama  → currently no icon (returns 0).
+};
 function statusInternalCode(name) {
   if (!name) return 0;
-  const i = STATUS_INTERNAL_LIST.indexOf(name);
-  return i < 0 ? 0 : i + 1;
+  return STATUS_INTERNAL_FRAME[name] || 0;
 }
 
 const DEFAULT_BOUILLE_STATE = '000000010000000000000000';
