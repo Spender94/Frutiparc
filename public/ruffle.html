@@ -30,11 +30,7 @@
             publicPath: "/ruffle/",
             scale: "noScale",
             salign: "TL",
-            // Temporarily bumped to "info" so trace() output from our
-            // injected scroll-kick handler (patch-main-textinput-scroll)
-            // shows up in the JS console. Will revert to "warn" once
-            // we've confirmed the chat input auto-scroll is fixed.
-            logLevel: "info"
+            logLevel: "warn"
         };
 
         // Gate verbose legacy-bridge logs behind ?debug=1 to avoid CPU
