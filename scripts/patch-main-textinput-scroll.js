@@ -164,13 +164,19 @@ function buildFunctionBody() {
   ]);
 
   // type-check block: if (r2.type != "input") bail to end
-  const typeCheck = Buffer.concat([
-    actionPush(pushReg(2), pushCp8(CP.TYPE)),
-    GET_MEMBER,
-    actionPush(pushCp8(CP.INPUT)),
-    EQUALS2,
-    NOT,
-  ]);
+  // Currently disabled: production traces showed Selection.getFocus()
+  // returns the right TextField path but the assignment branch never
+  // fires — so something between eval(path) and `f.type == "input"` is
+  // failing. We bypass the type filter entirely; setting scrollH on a
+  // dynamic TextField (the only other possibility for an EditText) is
+  // harmless. Diagnostic trace below replaces the gate.
+  // const typeCheck = Buffer.concat([
+  //   actionPush(pushReg(2), pushCp8(CP.TYPE)),
+  //   GET_MEMBER,
+  //   actionPush(pushCp8(CP.INPUT)),
+  //   EQUALS2,
+  //   NOT,
+  // ]);
 
   // null-check block for r2: if (r2 == null) bail to end
   const r2NullCheck = Buffer.concat([
@@ -243,19 +249,15 @@ function buildFunctionBody() {
   // Build from the bottom up so each If offset can use the actual size of
   // its subsequent block.
 
-  // The traceInput debug block sits between if3 and setScrollH, so when
-  // the user is typing in an input we see both that we reached the
-  // assignment branch and the scrollH/maxhscroll values.
+  // After r2 = eval(r1) succeeds we go straight to traceInput +
+  // setScrollH (no type filter). The trace runs every frame we have a
+  // focused TextField — that's how we'll confirm we actually reach
+  // the assignment in production.
   const inputBranch = Buffer.concat([traceInput, setScrollH]);
 
-  // If3: after typeCheck, skip traceInput + setScrollH
-  const if3 = actionIf(inputBranch.length);
-  // typeBlockAfterIf3 = typeCheck + if3 + inputBranch
-  const typeBlock = Buffer.concat([typeCheck, if3, inputBranch]);
-
-  // If2: after r2NullCheck, skip (typeBlock)
-  const if2 = actionIf(typeBlock.length);
-  const r2Block = Buffer.concat([r2NullCheck, if2, typeBlock]);
+  // If2: after r2NullCheck, skip (inputBranch)
+  const if2 = actionIf(inputBranch.length);
+  const r2Block = Buffer.concat([r2NullCheck, if2, inputBranch]);
 
   // If1: after r1NullCheck, skip (evalCall + r2Block)
   const evalAndR2 = Buffer.concat([evalCall, r2Block]);
