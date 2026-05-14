@@ -503,7 +503,7 @@
                     return;
                 }
 
-                await player.load({
+                const loadOpts = {
                     url: "/legacy/main.swf",
                     autoplay: "on",
                     allowScriptAccess: true,
@@ -535,7 +535,65 @@
                     openUrlMode: "allow",
                     allowNetworking: "all",
                     base: `${window.location.origin}/`
-                });
+                };
+
+                // Race player.load() against a hard timeout. Network logs
+                // confirmed cases where main.swf is fully delivered in
+                // <300 ms but the Ruffle loader bar still freezes at ~9% —
+                // a Ruffle WebWorker / WASM init has hung (we see it as a
+                // blob: script left in "(unknown)" state in DevTools). The
+                // load Promise then never resolves, leaving the player
+                // staring at a static progress bar forever.
+                //
+                // On timeout we recycle the player and retry with the
+                // canvas renderer (Ruffle's most compatible fallback —
+                // bypasses wgpu / WebGL2 driver issues that occasionally
+                // wedge worker init on certain Chrome / mobile browsers).
+                async function loadPlayerWithRetry(opts) {
+                    const HARD_TIMEOUT_MS = 22000;
+                    function withTimeout(promise) {
+                        let to;
+                        const timeout = new Promise((_, reject) => {
+                            to = setTimeout(() => reject(new Error("player.load timed out")), HARD_TIMEOUT_MS);
+                        });
+                        return Promise.race([promise, timeout]).finally(() => clearTimeout(to));
+                    }
+                    try {
+                        await withTimeout(player.load(opts));
+                        return;
+                    } catch (err) {
+                        console.warn("[Ruffle] primary load failed:", err.message || err);
+                    }
+                    // Recreate the player with a more compatible renderer.
+                    // RufflePlayer.config.preferredRenderer changes the
+                    // backend Ruffle picks; "canvas" is the safest path
+                    // when wgpu-webgl wedges.
+                    try { player.remove(); } catch {}
+                    const container = document.getElementById("player-container");
+                    container.innerHTML = "";
+                    window.RufflePlayer.config = Object.assign(
+                        {},
+                        window.RufflePlayer.config || {},
+                        { preferredRenderer: "canvas" }
+                    );
+                    const ruffle2 = window.RufflePlayer.newest();
+                    const player2 = ruffle2.createPlayer();
+                    player2.style.width = "1920px";
+                    player2.style.height = "768px";
+                    container.appendChild(player2);
+                    await withTimeout(player2.load(opts));
+                }
+
+                try {
+                    await loadPlayerWithRetry(loadOpts);
+                } catch (err) {
+                    console.error("[Ruffle] player.load() failed permanently:", err);
+                    document.getElementById("player-container").innerHTML =
+                        '<div style="color:#fff;font-family:Verdana;padding:24px;text-align:center">' +
+                        'Frutiparc n’a pas pu démarrer. Vide le cache puis ' +
+                        '<a href="javascript:location.reload()" style="color:#ade76b">recharge la page</a>.' +
+                        '</div>';
+                }
             });
         })();
     </script>
