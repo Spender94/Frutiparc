@@ -168,10 +168,15 @@ function buildFunctionBody() {
   ]);
 
   // Selection.getFocus() call → r1
+  // CallMethod's stack expectation (top → bottom):
+  //     method_name, object, argCount, args...
+  // so the *push* order must be: args first (none here), then argCount,
+  // then the object, then the method name.
   const getFocusCall = Buffer.concat([
+    actionPush(pushInt(0)),                  // argCount = 0 (bottom)
     actionPush(pushCp8(CP.SELECTION)),
-    GET_VARIABLE,
-    actionPush(pushInt(0), pushCp8(CP.GET_FOCUS)),
+    GET_VARIABLE,                            // Selection object (middle)
+    actionPush(pushCp8(CP.GET_FOCUS)),       // method name (top)
     CALL_METHOD,
     storeReg(1),
     POP,
