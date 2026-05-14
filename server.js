@@ -1744,10 +1744,15 @@ async function awardDailyXp() {
 
 function buildUserLogXml(entries) {
   const list = Array.isArray(entries) ? entries : [];
+  // Ascending sort (oldest first). The AS2 client iterates the <l> children
+  // of <ul>/<sl> via firstChild → nextSibling and prepends each entry to its
+  // display list, which reverses the visible order. Returning oldest-first
+  // therefore lands newest-first on screen, which is what users expect from
+  // "Mon historique" and "Évènements".
   const sorted = list.slice().sort((a, b) => {
     const da = a && a.d ? a.d : '';
     const db = b && b.d ? b.d : '';
-    return da < db ? 1 : da > db ? -1 : 0;
+    return da < db ? -1 : da > db ? 1 : 0;
   });
   return sorted.map((e) => {
     const d = escapeXml(e && e.d ? e.d : '');
@@ -2400,15 +2405,9 @@ const SHOP_PACKS_DEFAULT = [
     suffix9: 'a0b0a080m',
     comment: 'Prêt à dévaler les pistes ! Ce masque coloré complètera votre tenue hivernale à merveille.',
   },
-      {
-    id: 104,
-    name: 'Casquette Anim',
-    category: 'Accessoires',
-    price: 20,
-    description: 'Pour faire régner la loi dans les contrées de Legumia. Un classique indémodable de la panoplie du justicier.',
-    suffix9: '30y0t0j00',
-    comment: 'Édition test',
-  },
+  // Casquette Anim (suffix9 30y0t0j00) is no longer purchasable — it is now
+  // auto-granted to users with is_animator=true via grantAnimatorAccessory
+  // (mirroring the Badge Modérateur flow). See ANIM_ACCESSORY_* constants.
   // Wallpapers
   { id: 201, name: 'Chevalier moutarde',    category: "Fonds d'écran", price: 0, description: 'Un fond chevaleresque aux tons moutarde.',     suffix9: '000000000', wallpaperId: 'moutarde' },
   { id: 202, name: 'Chorale Frutiparc',     category: "Fonds d'écran", price: 0, description: 'La grande chorale de Frutiparc !',             suffix9: '000000000', wallpaperId: 'chorale' },
@@ -2428,65 +2427,75 @@ const MOD_ACCESSORY_ID = 'mod_badge';
 const MOD_ACCESSORY_SUFFIX9 = '30i0e0j03';
 const MOD_ACCESSORY_NAME = 'Badge Modérateur';
 
-async function grantModeratorAccessory(username, dbUserRow) {
+const ANIM_ACCESSORY_ID = 'anim_cap';
+const ANIM_ACCESSORY_SUFFIX9 = '30y0t0j00';   // Casquette Anim suffix
+const ANIM_ACCESSORY_NAME = 'Casquette Anim';
+
+async function grantAccessory(username, dbUserRow, accId, accSuffix9, accName, logTag) {
   const u = users[username];
   const userId = (u && u._dbId) || (dbUserRow && dbUserRow.id);
   if (!userId || !process.env.DATABASE_URL) return;
   try {
     const existing = await db.getUserAccessories(userId);
-    if (existing.some((a) => a && a.id === MOD_ACCESSORY_ID)) return;
+    if (existing.some((a) => a && a.id === accId)) return;
     const fbouille = (u && u.fbouille) || (dbUserRow && dbUserRow.fbouille) || DEFAULT_BOUILLE_STATE;
     const acc = {
-      id: MOD_ACCESSORY_ID,
+      id: accId,
       shopId: 0,
-      n: MOD_ACCESSORY_NAME,
-      v: fbouille.substring(0, 15) + MOD_ACCESSORY_SUFFIX9,
+      n: accName,
+      v: fbouille.substring(0, 15) + accSuffix9,
       q: '1',
       p: '0',
     };
     await db.addAccessory(userId, acc);
     if (u) u.customAccessories = await db.getUserAccessories(userId);
-    console.log(`[MOD-BADGE] granted to ${username}`);
-  } catch (e) { console.error('[MOD-BADGE] grant DB error:', e.message); }
+    console.log(`[${logTag}] granted to ${username}`);
+  } catch (e) { console.error(`[${logTag}] grant DB error:`, e.message); }
 }
 
-async function revokeModeratorAccessory(username, dbUserRow) {
+async function revokeAccessory(username, dbUserRow, accId, logTag) {
   const u = users[username];
   const userId = (u && u._dbId) || (dbUserRow && dbUserRow.id);
   if (!userId || !process.env.DATABASE_URL) return;
   try {
     const existing = await db.getUserAccessories(userId);
-    const target = existing.find((a) => a && a.id === MOD_ACCESSORY_ID);
+    const target = existing.find((a) => a && a.id === accId);
     if (!target) return;
     await db.deleteAccessory(target.dbRowId);
     if (u) u.customAccessories = await db.getUserAccessories(userId);
-    console.log(`[MOD-BADGE] revoked from ${username}`);
-  } catch (e) { console.error('[MOD-BADGE] revoke DB error:', e.message); }
+    console.log(`[${logTag}] revoked from ${username}`);
+  } catch (e) { console.error(`[${logTag}] revoke DB error:`, e.message); }
 }
 
-async function syncAllModeratorAccessories() {
+function grantModeratorAccessory(username, dbUserRow) {
+  return grantAccessory(username, dbUserRow, MOD_ACCESSORY_ID, MOD_ACCESSORY_SUFFIX9, MOD_ACCESSORY_NAME, 'MOD-BADGE');
+}
+function revokeModeratorAccessory(username, dbUserRow) {
+  return revokeAccessory(username, dbUserRow, MOD_ACCESSORY_ID, 'MOD-BADGE');
+}
+function grantAnimatorAccessory(username, dbUserRow) {
+  return grantAccessory(username, dbUserRow, ANIM_ACCESSORY_ID, ANIM_ACCESSORY_SUFFIX9, ANIM_ACCESSORY_NAME, 'ANIM-CAP');
+}
+function revokeAnimatorAccessory(username, dbUserRow) {
+  return revokeAccessory(username, dbUserRow, ANIM_ACCESSORY_ID, 'ANIM-CAP');
+}
+
+async function syncAllRoleAccessories() {
   if (!process.env.DATABASE_URL) return;
   try {
     const rows = await db.listAllUsers();
-    let granted = 0;
-    let revoked = 0;
+    let modGranted = 0, modRevoked = 0, animGranted = 0, animRevoked = 0;
     for (const row of rows) {
-      if (row.is_moderator) {
-        const existing = await db.getUserAccessories(row.id);
-        if (!existing.some((a) => a && a.id === MOD_ACCESSORY_ID)) {
-          await grantModeratorAccessory(row.username, row);
-          granted++;
-        }
-      } else {
-        const existing = await db.getUserAccessories(row.id);
-        if (existing.some((a) => a && a.id === MOD_ACCESSORY_ID)) {
-          await revokeModeratorAccessory(row.username, row);
-          revoked++;
-        }
-      }
+      const existing = await db.getUserAccessories(row.id);
+      const hasMod = existing.some((a) => a && a.id === MOD_ACCESSORY_ID);
+      const hasAnim = existing.some((a) => a && a.id === ANIM_ACCESSORY_ID);
+      if (row.is_moderator && !hasMod) { await grantModeratorAccessory(row.username, row); modGranted++; }
+      else if (!row.is_moderator && hasMod) { await revokeModeratorAccessory(row.username, row); modRevoked++; }
+      if (row.is_animator && !hasAnim) { await grantAnimatorAccessory(row.username, row); animGranted++; }
+      else if (!row.is_animator && hasAnim) { await revokeAnimatorAccessory(row.username, row); animRevoked++; }
     }
-    console.log(`[MOD-BADGE] startup sync — ${granted} granted, ${revoked} revoked`);
-  } catch (e) { console.error('[MOD-BADGE] startup sync error:', e.message); }
+    console.log(`[ROLE-ACC] startup sync — mod: +${modGranted}/-${modRevoked}, anim: +${animGranted}/-${animRevoked}`);
+  } catch (e) { console.error('[ROLE-ACC] startup sync error:', e.message); }
 }
 
 function getShopPack(id) {
@@ -3094,6 +3103,10 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
       if (fields.is_moderator !== undefined) {
         if (fields.is_moderator) await grantModeratorAccessory(u, row);
         else await revokeModeratorAccessory(u, row);
+      }
+      if (fields.is_animator !== undefined) {
+        if (fields.is_animator) await grantAnimatorAccessory(u, row);
+        else await revokeAnimatorAccessory(u, row);
       }
     }
     console.log(`[ADMIN] Updated user ${u}: ${Object.keys(fields).join(', ')}`);
@@ -7200,9 +7213,9 @@ const server = app.listen(port, '0.0.0.0', () => {
   }
   console.log(`[BOOT]  XMLSOCKET_PORT=${XMLSOCKET_PORT} (chat) / FRUTISCORE_PORT=${FRUTISCORE_PORT} (scores)`);
 
-  // Reconcile the moderator badge inventory with each user's current role.
-  syncAllModeratorAccessories().catch((e) =>
-    console.error('[MOD-BADGE] startup sync failed:', e.message),
+  // Reconcile mod-badge and anim-cap inventories with each user's role.
+  syncAllRoleAccessories().catch((e) =>
+    console.error('[ROLE-ACC] startup sync failed:', e.message),
   );
 
   // Auto-seed forum categories/boards and demo content on first run
