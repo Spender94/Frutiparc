@@ -89,6 +89,7 @@ function storeReg(r) {
 const GET_VARIABLE = simple(0x1c);
 const GET_MEMBER   = simple(0x4e);
 const SET_MEMBER   = simple(0x4f);
+const CALL_METHOD  = simple(0x52);
 const POP          = simple(0x17);
 const END          = simple(0x00);
 const TRACE        = simple(0x26);
@@ -108,11 +109,18 @@ const STR = [
   'FP_KICK_PROTO_SET',                 // 7
   'FP_KICK CHANGED scrollH=',          // 8
   ' maxh=',                            // 9
+  // Repaint trick: setTextFormat(getTextFormat()) is semantically a
+  // no-op (we feed the field its current format back) but it forces
+  // Ruffle to re-layout the field, which is what makes the scrollH
+  // change actually take effect visually.
+  'getTextFormat',                     // 10
+  'setTextFormat',                     // 11
 ];
 const CP = {
   MARKER:0, TEXT_FIELD:1, PROTOTYPE:2, ON_CHANGED:3,
   SCROLL_H:4, MAX_HS:5,
   T_INSTALL:6, T_PROTO:7, T_CHANGED:8, T_MAXH:9,
+  GET_TF:10, SET_TF:11,
 };
 
 function buildConstantPool() {
@@ -151,7 +159,28 @@ function buildOnChangedBody() {
     GET_MEMBER,    // → this.maxhscroll
     SET_MEMBER,    // this.scrollH = (top of stack)
   ]);
-  return Buffer.concat([traceCall, assign, END]);
+  // Force a layout repaint by feeding the current TextFormat back to
+  // the field. Production traces showed scrollH is being stored
+  // correctly but Ruffle isn't invalidating the field's render — so
+  // the caret stayed off-screen even though the property had the
+  // right value. setTextFormat triggers re-layout without modifying
+  // any content, and it does NOT re-fire onChanged (only text-value
+  // changes do), so we can't loop on ourselves.
+  //
+  // Bytecode for: this.setTextFormat(this.getTextFormat())
+  //   Push 0 (argCount), this, "getTextFormat" → CallMethod  → fmt
+  //   Push 1 (argCount), this, "setTextFormat" → CallMethod  → undefined
+  //   Pop
+  const repaint = Buffer.concat([
+    // fmt = this.getTextFormat()
+    actionPush(pushInt(0), pushReg(1), pushCp8(CP.GET_TF)),
+    CALL_METHOD,                                       // stack: [fmt]
+    // this.setTextFormat(fmt)
+    actionPush(pushInt(1), pushReg(1), pushCp8(CP.SET_TF)),
+    CALL_METHOD,                                       // stack: [undefined]
+    POP,
+  ]);
+  return Buffer.concat([traceCall, assign, repaint, END]);
 }
 
 function buildDefineFunction2(funcBody) {
