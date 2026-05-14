@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Frutiparc — Réinitialiser le stockage local d'un jeu</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; line-height: 1.45; color: #222; }
+    h1 { font-size: 22px; }
+    code { background: #f1f1f1; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+    .ok { color: #197a30; }
+    .warn { color: #8a5a00; }
+    .err { color: #b00020; }
+    button { font-size: 14px; padding: 8px 14px; cursor: pointer; margin-right: 8px; }
+    pre { background: #fafafa; border: 1px solid #ddd; padding: 8px; border-radius: 4px; font-size: 12px; overflow: auto; max-height: 220px; }
+  </style>
+</head>
+<body>
+  <h1>Réinitialiser le stockage local d'un jeu</h1>
+  <p>
+    Cette page efface les <em>SharedObject</em> Flash que Ruffle stocke dans le
+    <code>localStorage</code> de ton navigateur, par jeu. À utiliser quand
+    ta partie locale est désynchronisée de la sauvegarde serveur (cas
+    typique : ancienne partie corrompue qui survit en mode classique alors
+    qu'une nouvelle session marche en navigation privée).
+  </p>
+  <p>
+    Les autres données du site (cookie de session, clé admin, etc.) ne sont
+    PAS touchées.
+  </p>
+
+  <p><strong>Choisis un jeu :</strong></p>
+  <p>
+    <button onclick="wipe(['minipixiz','minitroll','miniPixiz','miniTroll'])">Mini-Pixiz</button>
+    <button onclick="wipe(['miniwave','miniWave'])">Mini-Wave</button>
+    <button onclick="wipe(['kaluga'])">Kaluga</button>
+    <button onclick="wipe(['burningkiwi','burningKiwi','bkiwi'])">Burning Kiwi</button>
+    <button onclick="wipe(['swapou','swapou2'])">Swapou</button>
+    <button onclick="wipe(['mb2','motionball','motionBall'])">MotionBall</button>
+    <button onclick="wipe(['snake','snake3'])">Snake</button>
+    <button onclick="wipe(['poulpi','jamajama'])">JamaJama</button>
+  </p>
+  <p>
+    <button onclick="listKeys()">Lister toutes les clés localStorage</button>
+    <button onclick="wipeAllRuffle()" style="background:#fee">Effacer TOUS les SharedObject Ruffle</button>
+  </p>
+
+  <div id="result"></div>
+  <pre id="dump" style="display:none"></pre>
+
+  <p style="margin-top:32px;color:#888;font-size:12px">
+    Une fois la purge effectuée, retourne sur
+    <a href="/">/</a> et relance le jeu — il repartira d'une carte vierge
+    générée à partir des données du serveur.
+  </p>
+
+<script>
+function looksLikeRuffleKey(key) {
+  if (!key) return false;
+  // Ruffle's local-storage backend prefixes keys with a Ruffle-specific
+  // marker; older versions used "RUFFLE-LOCALSAVE-" / "ruffle-shared-",
+  // newer ones store under "localPath" beginning with the SWF origin.
+  // We match defensively on any of these markers OR on the embedded SO
+  // path tokens passed in.
+  return /ruffle|RufflePlayer|SharedObject|LOCALSAVE/i.test(key);
+}
+
+function wipe(tokens) {
+  const removed = [];
+  const kept = [];
+  const keys = Object.keys(localStorage);
+  for (const k of keys) {
+    const matched = tokens.some(t => k.indexOf(t) >= 0);
+    if (matched && looksLikeRuffleKey(k)) {
+      localStorage.removeItem(k);
+      removed.push(k);
+    } else if (matched) {
+      // Token matches but doesn't look like a Ruffle SO key. Remove anyway,
+      // since these are typically SharedObject entries even when Ruffle's
+      // prefix is missing in older builds.
+      localStorage.removeItem(k);
+      removed.push(k + ' (forced)');
+    } else {
+      kept.push(k);
+    }
+  }
+  const r = document.getElementById('result');
+  if (removed.length === 0) {
+    r.innerHTML = '<p class="warn">Aucune clé localStorage ne correspond à ' +
+                  tokens.map(t => '<code>'+t+'</code>').join(', ') +
+                  '. Rien à effacer.</p>';
+  } else {
+    r.innerHTML = '<p class="ok">' + removed.length + ' clé(s) supprimée(s) :</p>' +
+                  '<pre>' + removed.map(k => '- ' + k).join('\n') + '</pre>';
+  }
+}
+
+function wipeAllRuffle() {
+  if (!confirm('Effacer TOUS les SharedObject Ruffle (tous les jeux) ?')) return;
+  const removed = [];
+  for (const k of Object.keys(localStorage)) {
+    if (looksLikeRuffleKey(k)) {
+      localStorage.removeItem(k);
+      removed.push(k);
+    }
+  }
+  const r = document.getElementById('result');
+  r.innerHTML = '<p class="ok">' + removed.length +
+                ' clé(s) Ruffle supprimée(s).</p><pre>' +
+                removed.map(k => '- ' + k).join('\n') + '</pre>';
+}
+
+function listKeys() {
+  const dump = document.getElementById('dump');
+  const keys = Object.keys(localStorage);
+  if (keys.length === 0) {
+    dump.textContent = '(localStorage vide)';
+  } else {
+    dump.textContent = keys.map(k => {
+      const v = localStorage.getItem(k) || '';
+      return k + '  (' + v.length + ' chars)';
+    }).join('\n');
+  }
+  dump.style.display = 'block';
+}
+</script>
+</body>
+</html>
