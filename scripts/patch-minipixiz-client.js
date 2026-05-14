@@ -235,6 +235,13 @@ const newStrings = [
   'saveSlotData',         // +44
   'Cm',                   // +45
   'card',                 // +46
+  // Ruffle bug workaround: Array.prototype.toString() (invoked implicitly
+  // by `array + ""`) returns "" for AS2 arrays bridged from JSON. Use an
+  // explicit `array.join(",")` for the four $stat array fields so each
+  // element is serialised in the pipe and parseMinipixizPipe sees a real
+  // length-5 array instead of corruption-rejecting an empty string.
+  'join',                 // +47
+  ',',                    // +48
 ];
 
 const newCpBase = origCpCount;
@@ -333,6 +340,8 @@ const CP = {
   saveSlotData: newCpBase + 44,
   Cm: newCpBase + 45,
   card: newCpBase + 46,
+  join: newCpBase + 47,
+  comma: newCpBase + 48,
 };
 
 // ── serviceConnect onLoad callback ──
@@ -603,6 +612,31 @@ function buildSaveSlotBody() {
     ]);
   }
 
+  // Array variant. Ruffle's AS2 Array.toString() returns "" for arrays
+  // round-tripped through JSON.parse / ExternalInterface, so the implicit
+  // toString from `array + ""` silently destroys $item / $eat / $kill /
+  // $game in the pipe save. Force an explicit `array.join(",")` call so
+  // each element is emitted and parseMinipixizPipe sees the correct
+  // length-N array instead of rejecting the save as corrupted.
+  //
+  // Bytecode shape (CALL_METHOD pops: methodName, this, argCount, …args):
+  //   push ","            (separator argument)
+  //   push 1              (arg count)
+  //   push r4[propIdx]    (the array — becomes `this`)
+  //   push "join"         (method name)
+  //   CALL_METHOD         → result is "elt0,elt1,…" on stack
+  function appendArrayFromR4(propIdx) {
+    return Buffer.concat([
+      actionPush(pushCp(CP.comma)),                          // ","
+      actionPush(pushInt(1)),                                // argCount=1
+      actionPush(pushReg(4), pushCp(propIdx)), GET_MEMBER,   // r4[propIdx]
+      actionPush(pushCp(CP.join)),                           // "join"
+      CALL_METHOD,                                           // → joined string
+      ADD2,                                                  // accum + joined
+      actionPush(pushStr('|')), ADD2,                        // accum + "|"
+    ]);
+  }
+
   function setR4(propIdx) {
     return Buffer.concat([
       actionPush(pushReg(3), pushCp(propIdx)), GET_MEMBER,
@@ -630,11 +664,11 @@ function buildSaveSlotBody() {
     actionPush(pushStr('')),
 
     setR4(CP.$stat),
-    appendFromR4(CP.$item),       // 0
-    appendFromR4(CP.$eat),        // 1
-    appendFromR4(CP.$kill),       // 2
-    appendFromR4(CP.$run),        // 3
-    appendFromR4(CP.$game),       // 4
+    appendArrayFromR4(CP.$item),  // 0 — bool array, Ruffle-toString hostile
+    appendArrayFromR4(CP.$eat),   // 1 — int array
+    appendArrayFromR4(CP.$kill),  // 2 — int array (5 elements)
+    appendFromR4(CP.$run),        // 3 — scalar int
+    appendArrayFromR4(CP.$game),  // 4 — int array (5 elements)
     appendFromR4(CP.$forestMax),  // 5
     appendFromR4(CP.$treeMax),    // 6
     appendFromR4(CP.$misNum),     // 7
