@@ -169,17 +169,16 @@ function decode62(s) {
 // when launching each game. Returning 0 hides the icon (no internal status).
 const STATUS_INTERNAL_FRAME = {
   bkiwi:     2,   // verified: Kaluga (internal=2) was showing the BKiwi visual
+  mb2:       3,   // verified empirically via /set-internal scan
+  swapou2:   4,   // verified empirically via /set-internal scan
   snake3:    5,   // verified: Snake (internal=5) already shows the right visual
   bandas:    6,   // verified: Swapou (internal=6) was showing the Frutibandas visual
   grapiz:    7,   // verified: MB2 (internal=7) was showing the Grapiz visual
   kaluga:    8,   // verified: BKiwi (internal=8) was showing the Kaluga visual
-  // Best-guess from sprite FrameLabels for games never validated against
-  // their visual content. Confirm/correct based on what users actually see.
-  miniwave:  14,
-  minipixiz: 15,
+  miniwave:  9,   // verified empirically via /set-internal scan
+  // Not yet located in the sprite (frame number unknown): minipixiz, jamajama.
+  // forum visual is at frame 36 per FrameLabels.
   forum:     36,
-  // Unknown frames for the games whose icons we still need to locate:
-  //   swapou2, mb2, jamajama  → currently no icon (returns 0).
 };
 function statusInternalCode(name) {
   if (!name) return 0;
@@ -2919,6 +2918,28 @@ app.post('/api/admin/users/:username/set-internal/:n', adminAuth, (req, res) => 
   setUserInternalStatus(u, n);
   console.log(`[ADMIN] set-internal ${u} → ${n}`);
   res.json({ ok: true, username: u, internal: n });
+});
+
+// Diagnostic: emit a transient <newuserlog> / <newsitelog> with an arbitrary
+// `type` so the icon the SWF renders for that type (sprite 533 frame) can be
+// observed in the user's "Mon historique" or "Événements" desktop windows.
+// Does NOT persist to DB or to user.userLog/siteLog — pure broadcast.
+// Usage: POST /api/admin/users/:username/test-log-icon/:type?kind=user|site
+app.post('/api/admin/users/:username/test-log-icon/:type', adminAuth, (req, res) => {
+  const u = req.params.username;
+  const t = Number(req.params.type);
+  const kind = (req.query.kind === 'site') ? 'site' : 'user';
+  if (!Number.isFinite(t) || t < 0 || t > 999) {
+    return res.status(400).json({ error: 'type must be 0..999' });
+  }
+  if (!users[u]) return res.status(404).json({ error: 'user not in memory (must be online)' });
+  const sockets = getSocketsForUsername(u);
+  if (sockets.length === 0) return res.status(409).json({ error: 'user has no active chat socket' });
+  const cmd = (kind === 'site') ? CMD.newsitelog : CMD.newuserlog;
+  const xml = `<${cmd} date="${escapeXml(nowSqlTimestamp())}" type="${t}">${escapeXml(`[scan icon type=${t}]`)}</${cmd}>`;
+  for (const sock of sockets) sendToClient(sock, xml);
+  console.log(`[ADMIN] test-log-icon ${u} kind=${kind} type=${t} → ${sockets.length} socket(s)`);
+  res.json({ ok: true, username: u, kind, type: t, sockets: sockets.length });
 });
 
 // Bulk-delete users created on a given Paris-local date.

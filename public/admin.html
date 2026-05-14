@@ -870,7 +870,8 @@ async function loadDetail() {
       <tr><td>Inscrit le</td><td>${fmtDateTime(user.created_at)}</td></tr>
       <tr><td>Profil mis à jour</td><td>${fmtDateTime(user.updated_at)}</td></tr>
       <tr><td>Dernière connexion</td><td>${fmtDateTime(user.last_login)}</td></tr>
-      <tr><td>Icône d'activité (debug)</td><td><button class="btn btn-sm" onclick="promptSetInternal()">Forcer internal=N</button> <span style="color:#888;font-size:11px">(test des frames sprite 246, 0=aucune)</span></td></tr>
+      <tr><td>Icône d'activité (debug)</td><td><button class="btn btn-sm" onclick="promptSetInternal()">Forcer internal=N</button> <span style="color:#888;font-size:11px">(test frames sprite 246, 0=aucune)</span></td></tr>
+      <tr><td>Icône historique (debug)</td><td><button class="btn btn-sm" onclick="promptTestLogIcon('user')">Test &lt;newuserlog type=N&gt;</button> <button class="btn btn-sm" onclick="promptTestLogIcon('site')">Test &lt;newsitelog type=N&gt;</button> <span style="color:#888;font-size:11px">(test frames sprite 533 events)</span></td></tr>
     </table>`;
 
     // Scores
@@ -1035,6 +1036,18 @@ async function promptSetInternal() {
   const n = parseInt(v, 10);
   if (!Number.isFinite(n) || n < 0 || n > 99) { toast('Valeur invalide'); return; }
   await setInternalCode(n);
+}
+
+async function promptTestLogIcon(kind) {
+  if (!currentDetailUser) return;
+  const cmdName = (kind === 'site') ? 'newsitelog' : 'newuserlog';
+  const v = prompt(`Émettre un <${cmdName} type=N> transitoire à ${currentDetailUser} (1..65 typique) :`, '1');
+  if (v === null) return;
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 999) { toast('Valeur invalide'); return; }
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/test-log-icon/${encodeURIComponent(n)}?kind=${kind}`, { method: 'POST', headers: hdr() });
+  if (r.ok) toast(`<${cmdName} type=${n}> envoyé`);
+  else { const j = await r.json().catch(() => ({})); toast(`Erreur: ${j.error || r.status}`); }
 }
 
 const BKIWI_ALL_PICTOS = ['$fruticup','$fruticupxl','$elite','$elitexl','$logo01','$logo02','$logo03','$logo04','$logo05','$car01','$car02','$car03','$car04','$car05'];
