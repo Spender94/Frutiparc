@@ -503,96 +503,83 @@
                     return;
                 }
 
-                const loadOpts = {
-                    url: "/legacy/main.swf",
-                    autoplay: "on",
-                    allowScriptAccess: true,
-                    quality: "medium",
-                    parameters: {
-                        sid: sid,
-                        domain: `${window.location.host}/./`,
-                        s: s,
-                        e: e
-                    },
-                    socketProxy: [
-                        // FrutiChat (port % 1000 == 0 → chat cmdList).
-                        { host: "localhost", port: 5000, proxyUrl: WS_ORIGIN },
-                        { host: window.location.hostname, port: 5000, proxyUrl: WS_ORIGIN },
-                        { host: "www.beta.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
-                        { host: "www.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
-                        // FrutiScore (port % 1000 == 1 → score cmdList).
-                        // Uses /score path so Ruffle opens a separate WebSocket.
-                        { host: "localhost", port: 5001, proxyUrl: WS_ORIGIN + "/score" },
-                        { host: window.location.hostname, port: 5001, proxyUrl: WS_ORIGIN + "/score" },
-                        { host: "www.beta.frutiparc.com", port: 5001, proxyUrl: WS_ORIGIN + "/score" },
-                        { host: "www.frutiparc.com", port: 5001, proxyUrl: WS_ORIGIN + "/score" },
-                        // Legacy port 2000 (kept for compatibility).
-                        { host: "www.beta.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },
-                        { host: "www.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },
-                        { host: "localhost", port: 2000, proxyUrl: WS_ORIGIN },
-                        { host: window.location.hostname, port: 2000, proxyUrl: WS_ORIGIN }
-                    ],
-                    openUrlMode: "allow",
-                    allowNetworking: "all",
-                    base: `${window.location.origin}/`
-                };
-
-                // Race player.load() against a hard timeout. Network logs
-                // confirmed cases where main.swf is fully delivered in
-                // <300 ms but the Ruffle loader bar still freezes at ~9% —
-                // a Ruffle WebWorker / WASM init has hung (we see it as a
-                // blob: script left in "(unknown)" state in DevTools). The
-                // load Promise then never resolves, leaving the player
-                // staring at a static progress bar forever.
-                //
-                // On timeout we recycle the player and retry with the
-                // canvas renderer (Ruffle's most compatible fallback —
-                // bypasses wgpu / WebGL2 driver issues that occasionally
-                // wedge worker init on certain Chrome / mobile browsers).
-                async function loadPlayerWithRetry(opts) {
-                    const HARD_TIMEOUT_MS = 22000;
-                    function withTimeout(promise) {
-                        let to;
-                        const timeout = new Promise((_, reject) => {
-                            to = setTimeout(() => reject(new Error("player.load timed out")), HARD_TIMEOUT_MS);
-                        });
-                        return Promise.race([promise, timeout]).finally(() => clearTimeout(to));
-                    }
-                    try {
-                        await withTimeout(player.load(opts));
-                        return;
-                    } catch (err) {
-                        console.warn("[Ruffle] primary load failed:", err.message || err);
-                    }
-                    // Recreate the player with a more compatible renderer.
-                    // RufflePlayer.config.preferredRenderer changes the
-                    // backend Ruffle picks; "canvas" is the safest path
-                    // when wgpu-webgl wedges.
-                    try { player.remove(); } catch {}
-                    const container = document.getElementById("player-container");
-                    container.innerHTML = "";
-                    window.RufflePlayer.config = Object.assign(
-                        {},
-                        window.RufflePlayer.config || {},
-                        { preferredRenderer: "canvas" }
-                    );
-                    const ruffle2 = window.RufflePlayer.newest();
-                    const player2 = ruffle2.createPlayer();
-                    player2.style.width = "1920px";
-                    player2.style.height = "768px";
-                    container.appendChild(player2);
-                    await withTimeout(player2.load(opts));
-                }
+                // Some browsers / sessions hit a Ruffle-side WASM/worker
+                // wedge that keeps the loader bar pinned around 9% with
+                // no error and no progress. We can't reliably detect or
+                // unwedge it from JS — wrapping player.load() in a
+                // timeout + canvas-renderer retry made it WORSE in
+                // practice (some loads are just slow on first cold WASM
+                // compile and need to be left alone). So we just stop
+                // trying to be clever and surface a visible "Bloqué(e) à
+                // 9% ? Actualise !" button overlaid on the player while
+                // the SWF is loading. The overlay is anchored to the
+                // player container, sits on top of Ruffle's own progress
+                // bar without hiding it, and removes itself as soon as
+                // the load() promise resolves. If load() never resolves,
+                // the user has a one-click recovery instead of needing
+                // to find the browser refresh button.
+                const refreshOverlay = document.createElement("div");
+                refreshOverlay.style.cssText = [
+                    "position:fixed",
+                    "left:50%",
+                    "bottom:18px",
+                    "transform:translateX(-50%)",
+                    "z-index:2147483647",
+                    "background:rgba(0,0,0,0.78)",
+                    "color:#fff",
+                    "font-family:Verdana,sans-serif",
+                    "font-size:12px",
+                    "padding:10px 14px",
+                    "border-radius:6px",
+                    "box-shadow:0 2px 8px rgba(0,0,0,0.35)",
+                    "display:flex",
+                    "align-items:center",
+                    "gap:10px",
+                ].join(";");
+                refreshOverlay.innerHTML =
+                    '<span>Bloqué(e) à 9 % ? Actualise !</span>' +
+                    '<button type="button" style="background:#ade76b;color:#1b2a08;border:none;border-radius:4px;padding:5px 10px;font:bold 11px Verdana,sans-serif;cursor:pointer">Actualiser</button>';
+                refreshOverlay.querySelector("button").addEventListener("click", () => {
+                    window.location.reload();
+                });
+                document.body.appendChild(refreshOverlay);
 
                 try {
-                    await loadPlayerWithRetry(loadOpts);
-                } catch (err) {
-                    console.error("[Ruffle] player.load() failed permanently:", err);
-                    document.getElementById("player-container").innerHTML =
-                        '<div style="color:#fff;font-family:Verdana;padding:24px;text-align:center">' +
-                        'Frutiparc n’a pas pu démarrer. Vide le cache puis ' +
-                        '<a href="javascript:location.reload()" style="color:#ade76b">recharge la page</a>.' +
-                        '</div>';
+                    await player.load({
+                        url: "/legacy/main.swf",
+                        autoplay: "on",
+                        allowScriptAccess: true,
+                        quality: "medium",
+                        parameters: {
+                            sid: sid,
+                            domain: `${window.location.host}/./`,
+                            s: s,
+                            e: e
+                        },
+                        socketProxy: [
+                            // FrutiChat (port % 1000 == 0 → chat cmdList).
+                            { host: "localhost", port: 5000, proxyUrl: WS_ORIGIN },
+                            { host: window.location.hostname, port: 5000, proxyUrl: WS_ORIGIN },
+                            { host: "www.beta.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
+                            { host: "www.frutiparc.com", port: 5000, proxyUrl: WS_ORIGIN },
+                            // FrutiScore (port % 1000 == 1 → score cmdList).
+                            // Uses /score path so Ruffle opens a separate WebSocket.
+                            { host: "localhost", port: 5001, proxyUrl: WS_ORIGIN + "/score" },
+                            { host: window.location.hostname, port: 5001, proxyUrl: WS_ORIGIN + "/score" },
+                            { host: "www.beta.frutiparc.com", port: 5001, proxyUrl: WS_ORIGIN + "/score" },
+                            { host: "www.frutiparc.com", port: 5001, proxyUrl: WS_ORIGIN + "/score" },
+                            // Legacy port 2000 (kept for compatibility).
+                            { host: "www.beta.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },
+                            { host: "www.frutiparc.com", port: 2000, proxyUrl: WS_ORIGIN },
+                            { host: "localhost", port: 2000, proxyUrl: WS_ORIGIN },
+                            { host: window.location.hostname, port: 2000, proxyUrl: WS_ORIGIN }
+                        ],
+                        openUrlMode: "allow",
+                        allowNetworking: "all",
+                        base: `${window.location.origin}/`
+                    });
+                } finally {
+                    refreshOverlay.remove();
                 }
             });
         })();
