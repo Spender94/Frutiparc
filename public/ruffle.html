@@ -279,19 +279,19 @@
             }
 
             window.fp_goURLResize = function (url, mode, w, h) {
-                console.log("[FP] fp_goURLResize", url, mode, w, h);
+                window.__dlog("[FP] fp_goURLResize", url, mode, w, h);
                 __forumUrl = buildForumUrl(url);
                 return true;
             };
 
             window.fp_activatePopupForum = function () {
-                console.log("[FP] fp_activatePopupForum");
+                window.__dlog("[FP] fp_activatePopupForum");
                 openForumPopup();
                 return true;
             };
 
             window.fp_closePopupForum = function () {
-                console.log("[FP] fp_closePopupForum");
+                window.__dlog("[FP] fp_closePopupForum");
                 if (__forumPopup && !__forumPopup.closed) {
                     try { __forumPopup.close(); } catch (e) {}
                 }
@@ -301,18 +301,18 @@
 
             // Stubs for iframe mode (cwm == "1") — not used here but called by Flash
             window.fp_resizeMe = function (mode) {
-                console.log("[FP] fp_resizeMe", mode);
+                window.__dlog("[FP] fp_resizeMe", mode);
                 return true;
             };
 
             window.fp_closeFrame = function (id) {
-                console.log("[FP] fp_closeFrame", id);
+                window.__dlog("[FP] fp_closeFrame", id);
                 return true;
             };
 
             window.fp_goURLNewWin = function (url, mode, w, h) {
                 const rewritten = rewriteLegacyUrl(url);
-                console.log("[Frusion] fp_goURLNewWin", url, "->", rewritten);
+                window.__dlog("[Frusion] fp_goURLNewWin", url, "->", rewritten);
 
                 // Try to get game info from /do/ld interception first
                 var game = window.__pendingGame;
@@ -331,7 +331,7 @@
                                 width: w || 640,
                                 height: h || 480
                             };
-                            console.log("[Frusion] Extracted game info from URL:", JSON.stringify(game));
+                            window.__dlog("[Frusion] Extracted game info from URL:", JSON.stringify(game));
                         }
                     } catch (e) {}
                 }
@@ -347,7 +347,7 @@
                         + "&sid=" + encodeURIComponent(sid);
                     if (game.swfWidth)  popupUrl += "&sw=" + game.swfWidth;
                     if (game.swfHeight) popupUrl += "&sh=" + game.swfHeight;
-                    console.log("[Frusion] Opening standalone game:", popupUrl);
+                    window.__dlog("[Frusion] Opening standalone game:", popupUrl);
                     var gw = game.width + 32;
                     var gh = game.height + 32;
                     var feat = "width=" + gw + ",height=" + gh + ",resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no";
@@ -361,7 +361,7 @@
             };
 
             window.fp_closePopupFrusion = function () {
-                console.log("[Frusion] fp_closePopupFrusion");
+                window.__dlog("[Frusion] fp_closePopupFrusion");
                 return true;
             };
 
@@ -373,7 +373,7 @@
 
             window.fp_openPopup = function (url, title, features) {
                 const rewritten = rewriteLegacyUrl(url);
-                console.log("[FP] fp_openPopup", url, "->", rewritten);
+                window.__dlog("[FP] fp_openPopup", url, "->", rewritten);
                 window.open(rewritten, title || "frutiparc_popup", features || "width=700,height=500,resizable=yes,scrollbars=yes");
                 return true;
             };
@@ -417,9 +417,9 @@
                 const s = normalizeAvatarState(savedBouille || urlParams.get("s") || "000000000000000000000000");
                 const e = normalizeExpression(urlParams.get("e") || "0");
 
-                console.log("[Ruffle] sid =", sid);
-                console.log("[Ruffle] s   =", s);
-                console.log("[Ruffle] e   =", e);
+                window.__dlog("[Ruffle] sid =", sid);
+                window.__dlog("[Ruffle] s   =", s);
+                window.__dlog("[Ruffle] e   =", e);
 
                 const ruffle = window.RufflePlayer.newest();
                 const player = ruffle.createPlayer();

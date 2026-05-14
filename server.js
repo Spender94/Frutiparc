@@ -8,6 +8,9 @@ if (process.stderr._handle && process.stderr._handle.setBlocking) {
 }
 
 const express = require('express');
+let compression;
+try { compression = require('compression'); }
+catch { /* dependency optional — falls back to no compression */ }
 const { WebSocketServer } = require('ws');
 const net = require('net');
 const crypto = require('crypto');
@@ -61,6 +64,12 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// gzip text responses (HTML, XML, JSON, plain text). Binary SWFs are already
+// compressed (CWS = zlib) so compression skips them via the default filter.
+if (compression) {
+  app.use(compression({ threshold: 1024 }));
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -4791,14 +4800,31 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
   res.type('text/plain').send(response);
 });
 
+// Compute and cache an ETag for main.swf at boot. The SWF only changes when
+// a patch-main-*.js script rewrites the binary on disk, which is rare and
+// always followed by a deploy / restart — so a one-shot hash at startup is
+// fine. With must-revalidate the browser re-validates on every load but
+// receives a 304 (zero body) when nothing changed, instead of redownloading
+// the full ~400 KB binary like the previous `no-store` setup forced.
+const MAIN_SWF_PATH = path.join(__dirname, 'legacy', 'main.swf');
+let MAIN_SWF_ETAG = null;
+try {
+  const buf = fs.readFileSync(MAIN_SWF_PATH);
+  MAIN_SWF_ETAG = '"' + crypto.createHash('sha1').update(buf).digest('hex') + '"';
+} catch (e) { /* file missing — etag stays null, browser will always 200 */ }
+
 app.get('/legacy/main.swf', (req, res) => {
-  // SWF bytecode patches (chat msg_admin, ContactList.onDrop, etc.) ship
-  // inside this binary, so browsers MUST drop their cached copy each
-  // deploy or the bug fix has no effect.
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
+  if (MAIN_SWF_ETAG) {
+    res.set('ETag', MAIN_SWF_ETAG);
+    if (req.headers['if-none-match'] === MAIN_SWF_ETAG) {
+      return res.status(304).end();
+    }
+  }
+  // must-revalidate forces an If-None-Match round-trip every visit, but the
+  // 304 path keeps it under 1 KB. Bytecode patches still deploy on the very
+  // next reload because the ETag changes with the file content.
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  res.sendFile(MAIN_SWF_PATH);
 });
 
 app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
@@ -6578,6 +6604,9 @@ app.use('/games/snake3', express.static(path.join(__dirname, 'Games', 'snake3'))
 app.use('/games/swapou2', express.static(path.join(__dirname, 'Games', 'swapou2')));
 app.use('/games/miniTroll', express.static(path.join(__dirname, 'Games', 'miniTroll')));
 app.use('/games/poulpi', express.static(path.join(__dirname, 'Games', 'poulpi')));
+// Avatar parts (fbouille/*.swf) are stable assets that get hit on every
+// session — long cache to avoid redownload.
+app.use('/swf/fbouille', express.static(path.join(__dirname, 'public', 'swf', 'fbouille'), { maxAge: '7d', immutable: true }));
 app.use('/swf', express.static(path.join(__dirname, 'public', 'swf')));
 
 // ─────────────────────────────────────────────

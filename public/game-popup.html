@@ -32,7 +32,10 @@
     window.RufflePlayer.config = {
       autoplay: "on",
       publicPath: "/ruffle/",
-      logLevel: "info",
+      // logLevel was "info" — far too noisy for everyday play (the devtools
+      // log pane was eating real CPU). Bump to "warn" by default; users who
+      // need diagnostics can pass ?debug=1.
+      logLevel: "warn",
       fontSources: [
         window.location.origin + "/legacy/fonts.swf"
       ],
@@ -42,6 +45,11 @@
         typewriter: ["Verdana", "verdana"]
       }
     };
+
+    // Gate verbose "[Game]" / "[FRUSION]" logs behind ?debug=1. With the
+    // shim in place, idle gameplay no longer floods the JS console.
+    window.__FRUSION_DEBUG = new URLSearchParams(window.location.search).get("debug") === "1";
+    window.__dlog = window.__FRUSION_DEBUG ? console.log.bind(console) : function () {};
   </script>
   <script src="/ruffle/ruffle.js" onerror="
       console.warn('[Ruffle] Local load failed, falling back to CDN');
@@ -61,7 +69,7 @@
 (function() {
   var _close = window.close;
   window.close = function() {
-    console.log("[Game] window.close() blocked (use the X button)");
+    window.__dlog("[Game] window.close() blocked (use the X button)");
   };
   // Some Ruffle versions navigate via location.assign for getURL with target=_self.
   // Override location.assign / location.replace / href setter to block javascript:
@@ -71,14 +79,14 @@
     var origReplace = window.location.replace.bind(window.location);
     window.location.assign = function(u) {
       if (/^javascript:.*close/i.test(String(u || ""))) {
-        console.log("[Game] javascript:self.close() navigation blocked:", u);
+        window.__dlog("[Game] javascript:self.close() navigation blocked:", u);
         return;
       }
       return origAssign(u);
     };
     window.location.replace = function(u) {
       if (/^javascript:.*close/i.test(String(u || ""))) {
-        console.log("[Game] javascript:self.close() navigation blocked:", u);
+        window.__dlog("[Game] javascript:self.close() navigation blocked:", u);
         return;
       }
       return origReplace(u);
@@ -110,32 +118,32 @@
   }
   function postSaveScore(game, mode, score, data) {
     var sid = popupSid();
-    if (!sid) { console.log("[Game] score save SKIPPED: no sid"); return; }
+    if (!sid) { window.__dlog("[Game] score save SKIPPED: no sid"); return; }
     var body = "sid=" + encodeURIComponent(sid) +
                "&game=" + encodeURIComponent(game) +
                "&m=" + encodeURIComponent(String(mode)) +
                "&score=" + encodeURIComponent(String(score)) +
                "&data=" + encodeURIComponent(data || "");
-    console.log("[Game] score save: game=" + game + " mode=" + mode + " score=" + score + " data=" + (data || ""));
+    window.__dlog("[Game] score save: game=" + game + " mode=" + mode + " score=" + score + " data=" + (data || ""));
     fetch("/api/saveScore", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body
     }).then(function(r) {
-      console.log("[Game] score save response:", r.status);
+      window.__dlog("[Game] score save response:", r.status);
       return r.text();
     }).then(function(t) {
-      console.log("[Game] score save body:", t);
-    }).catch(function(e) { console.log("[Game] score save error:", e); });
+      window.__dlog("[Game] score save body:", t);
+    }).catch(function(e) { window.__dlog("[Game] score save error:", e); });
   }
   window.open = function(url, target) {
     var u = String(url || "");
     // Diagnostic: log every window.open so we can tell if getURL2 from
     // patched SWFs (slot/score saves) is actually reaching the JS layer.
-    console.log("[Game] window.open:", u.length > 120 ? u.slice(0, 120) + "…" : u, "target=", target);
+    window.__dlog("[Game] window.open:", u.length > 120 ? u.slice(0, 120) + "…" : u, "target=", target);
     // Block javascript:self.close() opened in a new window (defensive)
     if (/^javascript:.*close/i.test(u)) {
-      console.log("[Game] window.open(javascript:close) blocked");
+      window.__dlog("[Game] window.open(javascript:close) blocked");
       return null;
     }
     // Slot save via getURL: "slot:GAME:SLOTID:PIPEDATA"
@@ -144,7 +152,7 @@
       var slotGame = slotMatch[1];
       var slotNum = slotMatch[2];
       var slotPipe = slotMatch[3];
-      console.log("[Game] slot save intercepted: game=" + slotGame + " slot=" + slotNum + " data=" + slotPipe.length + " chars");
+      window.__dlog("[Game] slot save intercepted: game=" + slotGame + " slot=" + slotNum + " data=" + slotPipe.length + " chars");
       var slotSid = popupSid();
       if (slotSid) {
         fetch("/api/saveFrutiSlot", {
@@ -155,11 +163,11 @@
                 "&slotId=" + encodeURIComponent(slotNum) +
                 "&data=" + encodeURIComponent(slotPipe)
         }).then(function(r) {
-          console.log("[Game] slot save response:", r.status);
+          window.__dlog("[Game] slot save response:", r.status);
           return r.text();
         }).then(function(t) {
-          console.log("[Game] slot save body:", t);
-        }).catch(function(e) { console.log("[Game] slot save error:", e); });
+          window.__dlog("[Game] slot save body:", t);
+        }).catch(function(e) { window.__dlog("[Game] slot save error:", e); });
       }
       return null;
     }
@@ -210,7 +218,7 @@
   if (qs.get("debug") === "1") {
     width = swfWidth;
     height = swfHeight;
-    console.log("[Game] Debug mode ON: showing full SWF stage", swfWidth + "x" + swfHeight);
+    window.__dlog("[Game] Debug mode ON: showing full SWF stage", swfWidth + "x" + swfHeight);
   }
 
   // Challenge mode: set server-side flag so scores route to _challenge rankings
@@ -237,14 +245,14 @@
   // motionball.swf (mb2) is patched to call ExternalInterface.call("parseJSON", str)
   // via mb2.Client.prototype.fromJSON, so the menu can read slot0 ($challenge/$classic/...).
   window.parseJSON = function(str) {
-    try { return JSON.parse(str); } catch(e) { console.log("[Game] parseJSON error:", e); return null; }
+    try { return JSON.parse(str); } catch(e) { window.__dlog("[Game] parseJSON error:", e); return null; }
   };
 
   // ExternalInterface callback for SWF save — receives AS2 objects auto-serialized to JS
   window.saveSlotData = function(game, slotId, data) {
-    console.log("[Game] saveSlotData CALLED game=" + game + " slot=" + slotId + " dataType=" + typeof data);
+    window.__dlog("[Game] saveSlotData CALLED game=" + game + " slot=" + slotId + " dataType=" + typeof data);
     var sid = new URLSearchParams(window.location.search).get("sid") || "";
-    if (!sid) { console.log("[Game] saveSlotData SKIPPED: no sid"); return; }
+    if (!sid) { window.__dlog("[Game] saveSlotData SKIPPED: no sid"); return; }
     var jsonData;
     // MiniWave: Ruffle's EI can't serialize AS2 objects (they arrive as null).
     // The patched SWF sends a pipe-delimited string of primitives instead.
@@ -264,22 +272,22 @@
           "$vs": Number(parts[6]) || 0
         };
         jsonData = JSON.stringify(obj);
-        console.log("[Game] miniwave pipe-parsed → " + jsonData.length + " chars");
+        window.__dlog("[Game] miniwave pipe-parsed → " + jsonData.length + " chars");
       } catch(e) {
-        console.log("[Game] miniwave pipe parse FAILED:", e);
+        window.__dlog("[Game] miniwave pipe parse FAILED:", e);
         return;
       }
     } else if ((game === "minipixiz" || game === "minitroll") && typeof data === "string" && data.indexOf("|") >= 0) {
       // MiniPixiz: same approach — pipe-delimited string, server converts via parseMinipixizPipe
       jsonData = data;
-      console.log("[Game] minipixiz pipe → " + data.length + " chars");
+      window.__dlog("[Game] minipixiz pipe → " + data.length + " chars");
     } else {
       try { jsonData = JSON.stringify(data); } catch(e) {
-        console.log("[Game] saveSlotData JSON.stringify FAILED:", e);
+        window.__dlog("[Game] saveSlotData JSON.stringify FAILED:", e);
         return;
       }
     }
-    console.log("[Game] saveSlot " + game + "/slot" + slotId + " (" + jsonData.length + " chars)");
+    window.__dlog("[Game] saveSlot " + game + "/slot" + slotId + " (" + jsonData.length + " chars)");
     fetch("/api/saveFrutiSlot", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -288,8 +296,8 @@
             "&slotId=" + encodeURIComponent(String(slotId)) +
             "&data=" + encodeURIComponent(jsonData)
     }).then(function(r) {
-      console.log("[Game] saveSlot response:", r.status);
-    }).catch(function(e) { console.log("[Game] saveSlot error:", e); });
+      window.__dlog("[Game] saveSlot response:", r.status);
+    }).catch(function(e) { window.__dlog("[Game] saveSlot error:", e); });
   };
 
   const ruffle = window.RufflePlayer.newest();
@@ -308,11 +316,11 @@
   try {
     var headResp = await fetch(fullSwfPath, { method: "HEAD" });
     if (headResp.ok) {
-      console.log("[Game] Found full.swf, using it instead of", swfPath);
+      window.__dlog("[Game] Found full.swf, using it instead of", swfPath);
       swfPath = fullSwfPath;
     }
   } catch (e) {
-    console.log("[Game] No full.swf available, using original SWF");
+    window.__dlog("[Game] No full.swf available, using original SWF");
   }
 
   // Load the game SWF directly (standalone mode, no Frusion wrapper).
@@ -351,7 +359,7 @@
     }
   });
 
-  console.log("[Game] Loaded", swfPath, "standalone at", width + "x" + height, "(SWF stage " + swfWidth + "x" + swfHeight + ")");
+  window.__dlog("[Game] Loaded", swfPath, "standalone at", width + "x" + height, "(SWF stage " + swfWidth + "x" + swfHeight + ")");
 })();
 </script>
 </body>

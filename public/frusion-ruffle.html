@@ -29,8 +29,13 @@
     window.RufflePlayer = window.RufflePlayer || {};
     window.RufflePlayer.config = {
       ...(window.RufflePlayer.config || {}),
-      logLevel: "trace",
+      // logLevel was "trace" — every Ruffle internal event was being
+      // serialized into the JS console, which is the single biggest CPU
+      // hog when DevTools is open. "warn" keeps real errors visible.
+      logLevel: "warn",
     };
+    window.__FRUSION_DEBUG = new URLSearchParams(window.location.search).get("debug") === "1";
+    window.__dlog = window.__FRUSION_DEBUG ? console.log.bind(console) : function () {};
   </script>
   <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
 </head>
@@ -116,7 +121,7 @@
           : (input && input.url ? input.url : String(input));
 
       const rewritten = rewriteLegacyUrl(rawUrl);
-      console.log('[FRUSION FETCH]', rawUrl, '->', rewritten);
+      window.__dlog('[FRUSION FETCH]', rawUrl, '->', rewritten);
 
       if (input instanceof Request) {
         return originalFetch(new Request(rewritten, input), init);
@@ -127,26 +132,26 @@
     const originalXhrOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url, ...rest) {
       const rewritten = rewriteLegacyUrl(url);
-      console.log('[FRUSION XHR]', url, '->', rewritten);
+      window.__dlog('[FRUSION XHR]', url, '->', rewritten);
       return originalXhrOpen.call(this, method, rewritten, ...rest);
     };
   }
 
   // ExternalInterface callback: JSON parser for game SWFs that call client.fromJSON().
   window.parseJSON = function(str) {
-    try { return JSON.parse(str); } catch(e) { console.log('[FRUSION] parseJSON error:', e); return null; }
+    try { return JSON.parse(str); } catch(e) { window.__dlog('[FRUSION] parseJSON error:', e); return null; }
   };
 
   window.saveSlotData = function(game, slotId, data) {
-    console.log('[FRUSION] saveSlotData CALLED game=' + game + ' slot=' + slotId + ' dataType=' + typeof data);
+    window.__dlog('[FRUSION] saveSlotData CALLED game=' + game + ' slot=' + slotId + ' dataType=' + typeof data);
     var sid = params.get('sid') || '';
-    if (!sid) { console.log('[FRUSION] saveSlotData SKIPPED: no sid'); return; }
+    if (!sid) { window.__dlog('[FRUSION] saveSlotData SKIPPED: no sid'); return; }
     var jsonData;
     try { jsonData = JSON.stringify(data); } catch(e) {
-      console.log('[FRUSION] saveSlotData JSON.stringify FAILED:', e);
+      window.__dlog('[FRUSION] saveSlotData JSON.stringify FAILED:', e);
       return;
     }
-    console.log('[FRUSION] saveSlot ' + game + '/slot' + slotId + ' (' + jsonData.length + ' chars)');
+    window.__dlog('[FRUSION] saveSlot ' + game + '/slot' + slotId + ' (' + jsonData.length + ' chars)');
     fetch('/api/saveFrutiSlot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -155,8 +160,8 @@
             '&slotId=' + encodeURIComponent(String(slotId)) +
             '&data=' + encodeURIComponent(jsonData)
     }).then(function(r) {
-      console.log('[FRUSION] saveSlot response:', r.status);
-    }).catch(function(e) { console.log('[FRUSION] saveSlot error:', e); });
+      window.__dlog('[FRUSION] saveSlot response:', r.status);
+    }).catch(function(e) { window.__dlog('[FRUSION] saveSlot error:', e); });
   };
 
   const ruffle = window.RufflePlayer.newest();
