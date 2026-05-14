@@ -73,9 +73,26 @@ function actionPush(...items) {
   return Buffer.concat([hdr, data]);
 }
 function simple(op) { return Buffer.from([op]); }
-function storeReg(r) { return Buffer.from([0x87, r & 0xff]); }
+// AVM1 actions in the 0x80–0xFF range carry an explicit UI16 payload
+// length right after the opcode byte. StoreRegister's payload is the
+// single register index, and ActionIf's payload is the UI16 branch
+// offset — so:
+//   StoreRegister r:  0x87 0x01 0x00 <r>     (4 bytes total)
+//   ActionIf off:      0x9D 0x02 0x00 <off_lo> <off_hi>   (5 bytes)
+// Older patches in this repo emit a 2-byte StoreRegister and 3-byte
+// ActionIf, which Ruffle log-spams as "Length mismatch in AVM1 action".
+// The recovery is non-deterministic and was preventing the registers
+// from actually holding our getFocus() / eval() results — confirmed
+// from the production console output.
+function storeReg(r) {
+  return Buffer.from([0x87, 0x01, 0x00, r & 0xff]);
+}
 function actionIf(off) {
-  const b = Buffer.alloc(3); b[0] = 0x9d; b.writeInt16LE(off, 1); return b;
+  const b = Buffer.alloc(5);
+  b[0] = 0x9d;
+  b.writeUInt16LE(2, 1);     // payload length = 2
+  b.writeInt16LE(off, 3);    // branch offset
+  return b;
 }
 
 const GET_VARIABLE = simple(0x1c);
