@@ -8052,16 +8052,88 @@ function patchSlot0(username, game, existingData, ctx) {
     }
     case 'minipixiz':
     case 'minitroll': {
+      // The FrutiCard renderer baked into legacy/main.swf walks the full Card
+      // schema from Games/miniTroll/src/Card.mt — not just the 19 fields that
+      // the patched SWF round-trips through the pipe save. Missing top-level
+      // fields (e.g. $current, $time, $dungeon.$loop, faerie sub-objects)
+      // come back as `undefined` after MT-deserialization and whole card
+      // sections render empty. Pad every field the card touches with safe
+      // defaults so each section has something to draw.
       if (!saved.$stat || typeof saved.$stat !== 'object') saved.$stat = {};
-      if (!Array.isArray(saved.$stat.$item)) saved.$stat.$item = [];
-      if (!Array.isArray(saved.$stat.$eat)) saved.$stat.$eat = [];
-      if (!Array.isArray(saved.$stat.$kill)) saved.$stat.$kill = [];
-      if (!Array.isArray(saved.$stat.$game)) saved.$stat.$game = [];
+      if (!Array.isArray(saved.$stat.$item))  saved.$stat.$item = [];
+      if (!Array.isArray(saved.$stat.$eat))   saved.$stat.$eat = [];
+      // Card iterates fixed indices on $kill (5 monster types) and
+      // $game (5 zones); short arrays would leave those rows blank.
+      if (!Array.isArray(saved.$stat.$kill) || saved.$stat.$kill.length < 5) {
+        const k = Array.isArray(saved.$stat.$kill) ? saved.$stat.$kill : [];
+        saved.$stat.$kill = [0, 0, 0, 0, 0].map((d, i) => Number(k[i]) || d);
+      }
+      if (!Array.isArray(saved.$stat.$game) || saved.$stat.$game.length < 5) {
+        const g = Array.isArray(saved.$stat.$game) ? saved.$stat.$game : [];
+        saved.$stat.$game = [0, 0, 0, 0, 0].map((d, i) => Number(g[i]) || d);
+      }
+      if (saved.$stat.$run === undefined)        saved.$stat.$run = 0;
+      if (saved.$stat.$forestMax === undefined)  saved.$stat.$forestMax = 0;
+      if (saved.$stat.$treeMax === undefined)    saved.$stat.$treeMax = 0;
+      if (saved.$stat.$misNum === undefined)     saved.$stat.$misNum = 0;
+
       if (saved.$diam === undefined) saved.$diam = 0;
-      if (saved.$key === undefined) saved.$key = 0;
+      if (saved.$key  === undefined) saved.$key  = 0;
       if (saved.$star === undefined) saved.$star = 0;
-      if (saved.$bag === undefined) saved.$bag = 0;
+      if (saved.$bag  === undefined) saved.$bag  = 0;
+
+      // "jours de jeu" reads card.$time.$d — without $time the row stays
+      // empty. We don't have a real value to restore so seed with zero.
+      if (!saved.$time || typeof saved.$time !== 'object') {
+        saved.$time = { $t: 0, $d: 0, $s: 0 };
+      }
+      // $current is the current-zone string ("forest", "pond"…). The card
+      // shows a small badge near $star for it; null is the formatFruticard
+      // default and renders cleanly.
+      if (saved.$current === undefined) saved.$current = null;
+
+      if (!saved.$dungeon || typeof saved.$dungeon !== 'object') saved.$dungeon = {};
+      if (saved.$dungeon.$lvl  === undefined) saved.$dungeon.$lvl  = 0;
+      if (saved.$dungeon.$f    === undefined) saved.$dungeon.$f    = false;
+      if (saved.$dungeon.$loop === undefined) saved.$dungeon.$loop = 0;
+      if (saved.$dungeon.$day  === undefined) saved.$dungeon.$day  = 0;
+
+      if (!saved.$rainbow || typeof saved.$rainbow !== 'object') saved.$rainbow = {};
+      if (saved.$rainbow.$f   === undefined) saved.$rainbow.$f   = false;
+      if (saved.$rainbow.$day === undefined) saved.$rainbow.$day = null;
+      if (saved.$rainbow.$it  === undefined) saved.$rainbow.$it  = null;
+
+      if (!saved.$pond || typeof saved.$pond !== 'object') saved.$pond = {};
+      if (saved.$pond.$q  === undefined) saved.$pond.$q  = 0;
+      if (saved.$pond.$d  === undefined) saved.$pond.$d  = 0;
+      if (saved.$pond.$fs === undefined) saved.$pond.$fs = null;
+
+      if (saved.$frog === undefined) saved.$frog = false;
+
+      // Per Games/miniTroll/src/FaerieSeed.mt every faerie has $skin/$carac/
+      // $spell as Array<int> (the card display labels them col1/col2/col3
+      // for $skin and force/rapidité/vie/intel/sagesse/mana for $carac).
+      // The pipe save only preserves $level, so seed the rest with neutral
+      // defaults; otherwise the per-faerie row reads `undefined` for every
+      // stat and the column renders empty.
       if (!Array.isArray(saved.$faerie)) saved.$faerie = [];
+      saved.$faerie = saved.$faerie.map((f) => {
+        const fc = f && typeof f === 'object' ? f : {};
+        if (fc.$level === undefined) fc.$level = 0;
+        // [num, col1, col2, col3] — pick a visible default colour
+        if (!Array.isArray(fc.$skin) || fc.$skin.length < 4) {
+          fc.$skin = [0, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF];
+        }
+        // [force, rapidité, vie, intel, sagesse, mana]
+        if (!Array.isArray(fc.$carac) || fc.$carac.length < 6) {
+          fc.$carac = [0, 0, 0, 0, 0, 0];
+        }
+        if (!Array.isArray(fc.$spell)) fc.$spell = [];
+        return fc;
+      });
+
+      if (saved.$vs === undefined) saved.$vs = 1.1;
+
       return JSON.stringify(saved);
     }
     default:
