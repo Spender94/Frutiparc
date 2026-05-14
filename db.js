@@ -252,6 +252,17 @@ async function initSchema() {
 
       ALTER TABLE forum_posts ADD COLUMN IF NOT EXISTS bouille TEXT;
 
+      -- Per-user read tracking for forum topics. A topic is "unread" for a
+      -- given username when forum_topics.last_post_at > read_at — or when
+      -- no row exists at all (the user has never opened it).
+      CREATE TABLE IF NOT EXISTS forum_topic_reads (
+        username   TEXT NOT NULL,
+        topic_id   INTEGER NOT NULL REFERENCES forum_topics(id) ON DELETE CASCADE,
+        read_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (username, topic_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_forum_topic_reads_user ON forum_topic_reads(username);
+
       -- Internal mailbox
       CREATE TABLE IF NOT EXISTS user_mails (
         uid          TEXT PRIMARY KEY,
@@ -936,31 +947,72 @@ async function forumGetCategories() {
   return rows;
 }
 
-async function forumGetBoards() {
+async function forumGetBoards(username = null) {
+  // unreadSubquery returns TRUE if any topic in the board has a
+  // last_post_at newer than the user's last read mark (or no read mark
+  // at all). Anonymous viewers always get FALSE so the UI keeps the
+  // base folder_big.gif.
+  const unreadSql = username
+    ? `EXISTS (
+         SELECT 1 FROM forum_topics t
+         LEFT JOIN forum_topic_reads r
+           ON r.topic_id = t.id AND r.username = $1
+         WHERE t.board_id = b.id
+           AND t.last_post_at > COALESCE(r.read_at, 'epoch'::timestamptz)
+       )`
+    : 'FALSE';
+  const params = username ? [username] : [];
   const { rows } = await pool.query(`
     SELECT b.*,
+      ${unreadSql} AS unread,
       (SELECT COUNT(*) FROM forum_topics t WHERE t.board_id = b.id) AS topic_count,
       (SELECT COUNT(*) FROM forum_posts p JOIN forum_topics t ON t.id = p.topic_id WHERE t.board_id = b.id) AS post_count,
       (SELECT t2.last_post_at FROM forum_topics t2 WHERE t2.board_id = b.id ORDER BY t2.last_post_at DESC LIMIT 1) AS last_activity,
       (SELECT t2.last_post_by FROM forum_topics t2 WHERE t2.board_id = b.id ORDER BY t2.last_post_at DESC LIMIT 1) AS last_activity_by
     FROM forum_boards b ORDER BY b.sort_order, b.id
-  `);
+  `, params);
   return rows;
 }
 
-async function forumGetTopics(boardId, page, perPage) {
+async function forumGetTopics(boardId, page, perPage, username = null) {
   const offset = (page - 1) * perPage;
+  // Same unread logic per row: TRUE when last_post_at > read_at, also TRUE
+  // when there's no read row yet (user has never opened the topic).
+  const unreadSelect = username
+    ? `(t.last_post_at > COALESCE(r.read_at, 'epoch'::timestamptz)) AS unread`
+    : 'FALSE AS unread';
+  const unreadJoin = username
+    ? `LEFT JOIN forum_topic_reads r ON r.topic_id = t.id AND r.username = $4`
+    : '';
+  const params = username
+    ? [boardId, perPage, offset, username]
+    : [boardId, perPage, offset];
   const { rows } = await pool.query(`
     SELECT t.*,
+      ${unreadSelect},
       (SELECT COUNT(*) FROM forum_posts p WHERE p.topic_id = t.id) - 1 AS reply_count
-    FROM forum_topics t WHERE t.board_id = $1
+    FROM forum_topics t
+    ${unreadJoin}
+    WHERE t.board_id = $1
     ORDER BY t.is_sticky DESC, t.last_post_at DESC
     LIMIT $2 OFFSET $3
-  `, [boardId, perPage, offset]);
+  `, params);
   const { rows: countRows } = await pool.query(
     'SELECT COUNT(*) AS total FROM forum_topics WHERE board_id = $1', [boardId]
   );
   return { topics: rows, total: Number(countRows[0].total) };
+}
+
+// Marks a topic as read for the given user. Called whenever the topic page
+// is opened — if the user later returns and no new post has arrived, the
+// topic stays "read" because last_post_at has not changed.
+async function forumMarkTopicRead(username, topicId) {
+  await pool.query(
+    `INSERT INTO forum_topic_reads (username, topic_id, read_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (username, topic_id) DO UPDATE SET read_at = now()`,
+    [username, topicId]
+  );
 }
 
 async function forumGetTopic(topicId) {
@@ -1245,6 +1297,7 @@ module.exports = {
   forumUpdatePost,
   forumDeletePost,
   forumIncrementViews,
+  forumMarkTopicRead,
   forumGetBoard,
   forumCreateBoard,
   forumCreateCategory,

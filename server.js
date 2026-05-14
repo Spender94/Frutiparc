@@ -6855,8 +6855,9 @@ app.get('/api/forum/me', (req, res) => {
 app.get('/api/forum/index', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ categories: [], boards: [] });
   try {
+    const currentUser = forumAuth(req);
     const categories = await db.forumGetCategories();
-    const boards = await db.forumGetBoards();
+    const boards = await db.forumGetBoards(currentUser);
     const boardsByCategory = {};
     for (const b of boards) {
       if (!boardsByCategory[b.category_id]) boardsByCategory[b.category_id] = [];
@@ -6864,6 +6865,7 @@ app.get('/api/forum/index', async (req, res) => {
         id: b.id, name: b.name, description: b.description,
         topicCount: Number(b.topic_count), postCount: Number(b.post_count),
         lastActivity: b.last_activity, lastActivityBy: getDisplayName(b.last_activity_by),
+        unread: !!b.unread,
       });
     }
     res.json({
@@ -6878,11 +6880,12 @@ app.get('/api/forum/index', async (req, res) => {
 app.get('/api/forum/board/:id', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ board: null, topics: [], total: 0 });
   try {
+    const currentUser = forumAuth(req);
     const boardId = Number(req.params.id);
     const page = Math.max(1, Number(req.query.page) || 1);
     const board = await db.forumGetBoard(boardId);
     if (!board) return res.status(404).json({ error: 'board not found' });
-    const { topics, total } = await db.forumGetTopics(boardId, page, 25);
+    const { topics, total } = await db.forumGetTopics(boardId, page, 25, currentUser);
     const topicsOut = topics.map(t => ({
       id: t.id, title: t.title, author: getDisplayName(t.author_username),
       authorBouille: bouilleOf(users[t.author_username], t.author_username),
@@ -6890,6 +6893,7 @@ app.get('/api/forum/board/:id', async (req, res) => {
       viewCount: t.view_count, replyCount: Number(t.reply_count),
       lastPostAt: t.last_post_at, lastPostBy: getDisplayName(t.last_post_by),
       createdAt: t.created_at,
+      unread: !!t.unread,
     }));
     res.json({ board: { id: board.id, name: board.name, description: board.description }, topics: topicsOut, total, page, perPage: 25 });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -6908,6 +6912,15 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     const authorNames = [...new Set(posts.map(p => p.author_username))];
     const postCounts = await db.forumGetPostCounts(authorNames);
     const currentUser = forumAuth(req);
+    // Stamp the read marker for the viewer so the topic (and its parent
+    // board) flip back to "no unread" once they've actually loaded it.
+    // Fire-and-forget — never let a stuck read write block the topic
+    // response.
+    if (currentUser) {
+      db.forumMarkTopicRead(currentUser, topicId).catch((e) => {
+        console.error(`[FORUM] forumMarkTopicRead(${currentUser}, ${topicId}) failed: ${e.message}`);
+      });
+    }
     const currentIsMod = currentUser && users[currentUser] && users[currentUser].isModerator;
     const postsOut = posts.map(p => ({
       id: p.id, author: getDisplayName(p.author_username), content: p.content,

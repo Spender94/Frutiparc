@@ -1064,7 +1064,10 @@ async function loadIndex() {
     for (var bi = 0; bi < cat.boards.length; bi++) {
       var b = cat.boards[bi];
       html += '<div class="row">';
-      html += '<div class="icon"><img class="folder-icon" src="/fb/folder_big.gif" alt=""></div>';
+      // folder_new.gif is the 19×18 "unread" badge; the .folder-icon class
+      // stretches it to 46×51 so the visual weight matches folder_big.gif.
+      var boardIcon = b.unread ? 'folder_new.gif' : 'folder_big.gif';
+      html += '<div class="icon"><img class="folder-icon" src="/fb/' + boardIcon + '" alt=""></div>';
       html += '<div class="info">';
       html += '<div class="title"><a href="#" onclick="navigate(\'board\',' + b.id + ');return false">' + escapeHtml(b.name) + '</a></div>';
       html += '<div class="desc">' + escapeHtml(b.description) + '</div>';
@@ -1103,7 +1106,10 @@ async function loadBoard(boardId, page) {
   for (var ti = 0; ti < data.topics.length; ti++) {
     var t = data.topics[ti];
     html += '<div class="row topic-row' + (ti % 2 === 1 ? ' row-alt' : '') + '">';
-    var topicIcon = 'folder.gif';
+    // Unread topics use folder_new.gif. Lock/sticky/announce keep their own
+    // icon because there are no _new variants to swap to and the status
+    // markers are more important to surface than the unread state.
+    var topicIcon = t.unread ? 'folder_new.gif' : 'folder.gif';
     if (t.isLocked) topicIcon = 'folder_lock.gif';
     else if (t.isSticky) topicIcon = 'folder_sticky.gif';
     else if (t.isAnnounce) topicIcon = 'folder_announce.gif';
