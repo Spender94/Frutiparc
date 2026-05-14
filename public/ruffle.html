@@ -589,64 +589,12 @@
                     allowNetworking: "all",
                     base: `${window.location.origin}/`
                 });
-
-                // Workaround for Ruffle's incomplete TextField input scroll:
-                // when typing past the visible width of an input field
-                // (chat say-bar, mostly), Ruffle doesn't auto-advance
-                // scrollH so the caret slides out of view and you can't
-                // see what you're writing. Flash Player's native handler
-                // for the End key explicitly sets scrollH to maxhscroll,
-                // which Ruffle's End handler also implements — so after
-                // each character keystroke we re-dispatch a synthetic
-                // End at the actual Ruffle player element.
-                //
-                // First attempt routed the synthetic events to the
-                // container <div>; Ruffle's keyboard listeners live on
-                // the <ruffle-player> shadow host itself (and bubble
-                // through document), so the events never reached the
-                // engine. Dispatch to the player element + document and
-                // fall back to the container so all three plausible
-                // listener mounts get a chance. Each event is marked
-                // __fpEndKick to prevent recursion on our own emits.
-                const playerHost = player;
-                const playerContainerEl = document.getElementById("player-container");
-                function kickEnd() {
-                    function build(type) {
-                        const ev = new KeyboardEvent(type, {
-                            key: "End", code: "End",
-                            keyCode: 35, which: 35,
-                            bubbles: true, cancelable: true,
-                        });
-                        ev.__fpEndKick = true;
-                        return ev;
-                    }
-                    // Fan out across the spots Ruffle plausibly listens
-                    // on: the player element (shadow host), document
-                    // (capture-phase listeners), and the container as a
-                    // last-resort.
-                    for (const target of [playerHost, document, playerContainerEl]) {
-                        try {
-                            target.dispatchEvent(build("keydown"));
-                            target.dispatchEvent(build("keyup"));
-                        } catch {}
-                    }
-                }
-                function maybeKick(e) {
-                    if (e.__fpEndKick) return;
-                    const isPrintable =
-                        e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
-                    const isErase = e.key === "Backspace" || e.key === "Delete";
-                    if (!isPrintable && !isErase) return;
-                    // Defer to the next microtask so the character we
-                    // just pressed is already inserted into the
-                    // TextField before we ask it to scroll to the end.
-                    setTimeout(kickEnd, 0);
-                }
-                // Listen on the player element AND on document to catch
-                // events Ruffle handles before they bubble to the
-                // container.
-                playerHost.addEventListener("keydown", maybeKick, true);
-                document.addEventListener("keydown", maybeKick, true);
+                // Auto-scroll for chat input is now handled inside main.swf
+                // itself via an injected onEnterFrame handler in
+                // scripts/patch-main-textinput-scroll.js. Synthetic
+                // keyboard events from JS were rejected by Ruffle
+                // (isTrusted=false), so the JS workaround that used to
+                // live here is gone and the fix moved into the SWF.
             });
         })();
     </script>
