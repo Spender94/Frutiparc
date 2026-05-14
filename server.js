@@ -4710,6 +4710,12 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
 });
 
 app.get('/legacy/main.swf', (req, res) => {
+  // SWF bytecode patches (chat msg_admin, ContactList.onDrop, etc.) ship
+  // inside this binary, so browsers MUST drop their cached copy each
+  // deploy or the bug fix has no effect.
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   res.sendFile(path.join(__dirname, 'legacy', 'main.swf'));
 });
 
@@ -5754,8 +5760,13 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 
 
   if (uid === 'mycontact') {
+    // The AS2 client splits desc on CRLF (`\r\n`), so the name/subtype
+    // separator MUST be `\r\n`, not `\n`. With a bare `\n`, the folder
+    // name comes through as "amigos\nfolder" and the subtype is lost,
+    // which breaks the icon-rendering path (folder ends up displayed
+    // like a contact icon).
     const folderNodes = (user.contactFolders || [])
-      .map((f) => `<e u="${escapeXml(f.uid)}" t="folder" s="10" d="0" a="0">${escapeXml(f.name)}\nfolder</e>`)
+      .map((f) => `<e u="${escapeXml(f.uid)}" t="folder" s="10" d="0" a="0">${escapeXml(f.name)}\r\nfolder</e>`)
       .join('');
     const contactNodes = user.contacts
       .filter((addr) => getContactFolder(user, addr) === 'mycontact')
@@ -5968,7 +5979,7 @@ app.all(['/ff/mk', '/mk'], async (req, res) => {
     }
     console.log(`[FF/MK] ${auth.username} created mycontact sub-folder "${folderName}" (uid=${newUid})`);
     return res.type('text/xml').send(
-      `<r u="${newUid}" t="folder" d="${now}" f="${escapeXml(folder)}">${escapeXml(folderName)}\nfolder</r>`
+      `<r u="${newUid}" t="folder" d="${now}" f="${escapeXml(folder)}">${escapeXml(folderName)}\r\nfolder</r>`
     );
   }
 
@@ -6070,7 +6081,23 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
         .catch((e) => console.error('[DB] contact folder remove error:', e.message));
     }
     return res.type('text/xml').send(
-      `<r f="recyclebin"><f n="${escapeXml(file)}" u="${escapeXml(file)}" t="folder" d="${now}" p="mycontact">${escapeXml(file)}\nfolder</f></r>`
+      `<r f="recyclebin"><f n="${escapeXml(file)}" u="${escapeXml(file)}" t="folder" d="${now}" p="mycontact">${escapeXml(file)}\r\nfolder</f></r>`
+    );
+  }
+
+  // The thing being moved is itself a contact sub-folder. The recyclebin
+  // case above handled deletion; for any other target we no-op (sub-folders
+  // can only live directly under "mycontact" — no nesting, no moving to the
+  // desktop), and we echo the folder back with t="folder" so the SWF keeps
+  // rendering it as a folder. The previous fall-through treated the folder
+  // UID as a contact address (`fXXX@frutiparc.com`), wrote it to
+  // user.contacts, and answered t="contact" — which is why the icon turned
+  // into a user.
+  if (isCustomContactFolder(user, file)) {
+    const folderEntry = user.contactFolders.find((f) => f.uid === file);
+    const folderName = folderEntry ? folderEntry.name : file;
+    return res.type('text/xml').send(
+      `<r f="mycontact"><f n="${escapeXml(file)}" u="${escapeXml(file)}" t="folder" d="${now}" p="mycontact">${escapeXml(folderName)}\r\nfolder</f></r>`
     );
   }
 
