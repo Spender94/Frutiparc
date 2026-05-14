@@ -1,32 +1,39 @@
 #!/usr/bin/env node
-// Patches legacy/main.swf so that input TextFields keep the caret in view
-// while the user types — the Flash-native behaviour of a single-line input
-// (auto-advance scrollH so the cursor stays visible past the field width)
-// is not implemented in Ruffle's AVM1 TextField, so typing a long chat
-// message scrolls the typed text off the right edge with no way to see
-// what you're writing.
+// Patches legacy/main.swf so chat (and any other) input TextFields keep
+// the caret in view while the user types — the Flash-native scrollH
+// auto-advance behaviour is missing from Ruffle's AVM1 TextField.
 //
-// We don't have the AS source. The fix is to inject a small DoAction at
-// the very end of frame 1 of the root timeline that installs:
+// First attempt (commits e04ca08 → 9bed1fd) installed _root.onEnterFrame
+// and used `eval(Selection.getFocus())` to resolve the focused field.
+// Production traces confirmed the handler runs and that
+// Selection.getFocus() returns the right path string, but
+// `eval("_level0.main.slotListMc.…field")` returned null/undefined —
+// Ruffle's eval() doesn't appear to walk multi-segment paths. The
+// assignment branch therefore never fired.
 //
-//   _root.onEnterFrame = function () {
-//     var p = Selection.getFocus();
-//     if (p == null) return;
-//     var f = eval(p);
-//     if (f == null) return;
-//     if (f.type == "input") {
-//       f.scrollH = f.maxhscroll;
-//     }
-//   };
+// Second approach (this file): hook TextField.prototype.onChanged
+// instead. AS2 fires this method whenever a TextField's contents
+// change (typing, programmatic setText, …) with `this` bound to the
+// changed field — no path resolution needed.
 //
-// Ruffle implements Selection.getFocus(), eval(), TextField.type / scrollH /
-// maxhscroll correctly — it's only the implicit "auto-track caret" that's
-// missing. Polling every frame and pinning scrollH to its maximum keeps the
-// caret pinned to the right edge while typing, which is the practical
-// behaviour Flash Player had natively.
+//     TextField.prototype.onChanged = function () {
+//       this.scrollH = this.maxhscroll;
+//     };
 //
-// Idempotent: a marker constant ("__fpScrollKick__") in the injected
-// ActionConstantPool lets us detect a prior run and skip.
+// `this` reaches the function via DefineFunction2's PreloadThisFlag
+// (flags bit 0 of byte 1 = 0x01) — Ruffle puts the calling instance
+// in the first register after any declared params; with 0 params,
+// that's register 1.
+//
+// Three diagnostic trace() calls remain so the console immediately
+// tells us whether each step works:
+//   * "FP_KICK_INSTALL"      — emitted once when the DoAction runs.
+//   * "FP_KICK_PROTO_SET"    — emitted once after we assign onChanged.
+//   * "FP_KICK CHANGED …"    — emitted on every onChanged firing.
+// Ruffle's logLevel is set to "info" in ruffle.html temporarily so
+// these traces reach the JS console.
+//
+// Idempotent via the marker "__fpScrollKick__" in the const pool.
 
 const fs = require('fs');
 const path = require('path');
@@ -56,8 +63,7 @@ function writeSwf(outPath, sig, version, body) {
   return out.length;
 }
 
-// ── AS2 bytecode primitives (matching the conventions used by
-//    patch-minipixiz-client.js so behaviour is consistent across patches) ──
+// ── AS2 bytecode primitives (spec-correct payload-length form) ────────────
 
 function pushCp8(i)  { return Buffer.from([0x08, i & 0xff]); }
 function pushReg(r)  { return Buffer.from([0x04, r & 0xff]); }
@@ -73,277 +79,135 @@ function actionPush(...items) {
   return Buffer.concat([hdr, data]);
 }
 function simple(op) { return Buffer.from([op]); }
-// AVM1 actions in the 0x80–0xFF range carry an explicit UI16 payload
-// length right after the opcode byte. StoreRegister's payload is the
-// single register index, and ActionIf's payload is the UI16 branch
-// offset — so:
-//   StoreRegister r:  0x87 0x01 0x00 <r>     (4 bytes total)
-//   ActionIf off:      0x9D 0x02 0x00 <off_lo> <off_hi>   (5 bytes)
-// Older patches in this repo emit a 2-byte StoreRegister and 3-byte
-// ActionIf, which Ruffle log-spams as "Length mismatch in AVM1 action".
-// The recovery is non-deterministic and was preventing the registers
-// from actually holding our getFocus() / eval() results — confirmed
-// from the production console output.
 function storeReg(r) {
+  // 0x87 needs its UI16 payload-length even though the payload is a
+  // single byte (the register index). Without it Ruffle log-spams
+  // "Length mismatch in AVM1 action: StoreRegister".
   return Buffer.from([0x87, 0x01, 0x00, r & 0xff]);
-}
-function actionIf(off) {
-  const b = Buffer.alloc(5);
-  b[0] = 0x9d;
-  b.writeUInt16LE(2, 1);     // payload length = 2
-  b.writeInt16LE(off, 3);    // branch offset
-  return b;
 }
 
 const GET_VARIABLE = simple(0x1c);
-const CALL_METHOD  = simple(0x52);
-const CALL_FUNCTION= simple(0x3d);
-const POP          = simple(0x17);
-const EQUALS2      = simple(0x49);
-const NOT          = simple(0x12);
 const GET_MEMBER   = simple(0x4e);
 const SET_MEMBER   = simple(0x4f);
+const POP          = simple(0x17);
 const END          = simple(0x00);
+const TRACE        = simple(0x26);
+const ADD2         = simple(0x47);
 
-// ── Build the injected DoAction tag body ──────────────────────────────────
+// ── Build the injected DoAction body ──────────────────────────────────────
 
-// Strings used inside the new DoAction. The first one ("__fpScrollKick__")
-// is purely a marker so we can detect that the patch has already been
-// applied on a subsequent run and skip; the AS code never references it.
 const STR = [
-  '__fpScrollKick__', // 0 (marker, never used at runtime)
-  '_root',            // 1
-  'onEnterFrame',     // 2
-  'Selection',        // 3
-  'getFocus',         // 4
-  'eval',             // 5
-  'type',             // 6
-  'input',            // 7
-  'scrollH',          // 8
-  'maxhscroll',       // 9
-  // Debug-only trace strings — output goes through trace() and shows up
-  // in the JS console when Ruffle's logLevel is "info" or lower.
-  'FP_KICK_INSTALL',  // 10
-  'FP_KICK FOCUS=',   // 11
-  'FP_KICK INPUT scrollH=', // 12
-  ' maxh=',           // 13
+  '__fpScrollKick__',                  // 0 marker (never accessed)
+  'TextField',                         // 1
+  'prototype',                         // 2
+  'onChanged',                         // 3
+  'scrollH',                           // 4
+  'maxhscroll',                        // 5
+  // Debug traces (Ruffle logLevel: info)
+  'FP_KICK_INSTALL',                   // 6
+  'FP_KICK_PROTO_SET',                 // 7
+  'FP_KICK CHANGED scrollH=',          // 8
+  ' maxh=',                            // 9
 ];
 const CP = {
-  MARKER:0, _ROOT:1, ON_ENTER_FRAME:2, SELECTION:3, GET_FOCUS:4,
-  EVAL:5, TYPE:6, INPUT:7, SCROLL_H:8, MAX_HS:9,
-  TRACE_INSTALL:10, TRACE_FOCUS:11, TRACE_INPUT:12, TRACE_MAXH:13,
+  MARKER:0, TEXT_FIELD:1, PROTOTYPE:2, ON_CHANGED:3,
+  SCROLL_H:4, MAX_HS:5,
+  T_INSTALL:6, T_PROTO:7, T_CHANGED:8, T_MAXH:9,
 };
 
-const TRACE = Buffer.from([0x26]); // ActionTrace — pops top of stack and logs it
-const ADD2  = Buffer.from([0x47]);
-
 function buildConstantPool() {
-  // ActionConstantPool: 0x88, UI16 payloadLen, UI16 count, then null-
-  // terminated UTF-8 strings.
   const strBytes = Buffer.concat(STR.map(s => Buffer.concat([Buffer.from(s, 'utf8'), Buffer.from([0])])));
-  const payload = Buffer.concat([
-    (() => { const b = Buffer.alloc(2); b.writeUInt16LE(STR.length, 0); return b; })(),
-    strBytes,
-  ]);
+  const countLE = Buffer.alloc(2); countLE.writeUInt16LE(STR.length, 0);
+  const payload = Buffer.concat([countLE, strBytes]);
   const hdr = Buffer.alloc(3);
   hdr[0] = 0x88;
   hdr.writeUInt16LE(payload.length, 1);
   return Buffer.concat([hdr, payload]);
 }
 
-// Build the function body bytecode. The body uses 2 free registers:
-//   r1 = Selection.getFocus() — the focus path string
-//   r2 = eval(r1)             — the resolved TextField object
-function buildFunctionBody() {
-  // Build the post-bail-out tail FIRST so we know the bytes between each
-  // If and the End opcode.
-  const setScrollH = Buffer.concat([
-    actionPush(pushReg(2), pushCp8(CP.SCROLL_H), pushReg(2), pushCp8(CP.MAX_HS)),
-    GET_MEMBER,    // → r2.maxhscroll on stack
-    SET_MEMBER,    // r2.scrollH = (top of stack)
-  ]);
-
-  // type-check block: if (r2.type != "input") bail to end
-  // Currently disabled: production traces showed Selection.getFocus()
-  // returns the right TextField path but the assignment branch never
-  // fires — so something between eval(path) and `f.type == "input"` is
-  // failing. We bypass the type filter entirely; setting scrollH on a
-  // dynamic TextField (the only other possibility for an EditText) is
-  // harmless. Diagnostic trace below replaces the gate.
-  // const typeCheck = Buffer.concat([
-  //   actionPush(pushReg(2), pushCp8(CP.TYPE)),
-  //   GET_MEMBER,
-  //   actionPush(pushCp8(CP.INPUT)),
-  //   EQUALS2,
-  //   NOT,
-  // ]);
-
-  // null-check block for r2: if (r2 == null) bail to end
-  const r2NullCheck = Buffer.concat([
-    actionPush(pushReg(2), pushNull()),
-    EQUALS2,
-    NOT,
-    NOT,
-  ]);
-
-  // null-check block for r1: same shape
-  const r1NullCheck = Buffer.concat([
-    actionPush(pushReg(1), pushNull()),
-    EQUALS2,
-    NOT,
-    NOT,
-  ]);
-
-  // Build the eval() call: r2 = eval(r1)
-  const evalCall = Buffer.concat([
-    // Push args (path string) THEN argCount, THEN the function-name lookup
-    actionPush(pushReg(1), pushInt(1), pushCp8(CP.EVAL)),
-    CALL_FUNCTION,
-    storeReg(2),
-    POP,
-  ]);
-
-  // Selection.getFocus() call → r1
-  // CallMethod's stack expectation (top → bottom):
-  //     method_name, object, argCount, args...
-  // so the *push* order must be: args first (none here), then argCount,
-  // then the object, then the method name.
-  const getFocusCall = Buffer.concat([
-    actionPush(pushInt(0)),                  // argCount = 0 (bottom)
-    actionPush(pushCp8(CP.SELECTION)),
-    GET_VARIABLE,                            // Selection object (middle)
-    actionPush(pushCp8(CP.GET_FOCUS)),       // method name (top)
-    CALL_METHOD,
-    storeReg(1),
-    POP,
-  ]);
-
-  // Debug trace, every frame: trace("FP_KICK FOCUS=" + r1)
-  const traceFocus = Buffer.concat([
-    actionPush(pushCp8(CP.TRACE_FOCUS), pushReg(1)),
+// Body of the onChanged handler. PreloadThisFlag puts `this` in register
+// 1 (no params declared). The body is:
+//
+//   trace("FP_KICK CHANGED scrollH=" + this.scrollH + " maxh=" + this.maxhscroll)
+//   this.scrollH = this.maxhscroll
+//
+function buildOnChangedBody() {
+  // Build the trace string by concatenating prefix, this.scrollH,
+  // " maxh=", this.maxhscroll.
+  const traceCall = Buffer.concat([
+    actionPush(pushCp8(CP.T_CHANGED)),                   // "FP_KICK CHANGED scrollH="
+    actionPush(pushReg(1), pushCp8(CP.SCROLL_H)), GET_MEMBER,
+    ADD2,
+    actionPush(pushCp8(CP.T_MAXH)),                      // " maxh="
+    ADD2,
+    actionPush(pushReg(1), pushCp8(CP.MAX_HS)), GET_MEMBER,
     ADD2,
     TRACE,
   ]);
-
-  // Debug trace inside the input branch (right before the assignment):
-  // trace("FP_KICK INPUT scrollH=" + r2.scrollH + " maxh=" + r2.maxhscroll)
-  const traceInput = Buffer.concat([
-    actionPush(pushCp8(CP.TRACE_INPUT)),
-    actionPush(pushReg(2), pushCp8(CP.SCROLL_H)),
-    GET_MEMBER,
-    ADD2,
-    actionPush(pushCp8(CP.TRACE_MAXH)),
-    ADD2,
-    actionPush(pushReg(2), pushCp8(CP.MAX_HS)),
-    GET_MEMBER,
-    ADD2,
-    TRACE,
+  // this.scrollH = this.maxhscroll
+  const assign = Buffer.concat([
+    actionPush(pushReg(1), pushCp8(CP.SCROLL_H),
+               pushReg(1), pushCp8(CP.MAX_HS)),
+    GET_MEMBER,    // → this.maxhscroll
+    SET_MEMBER,    // this.scrollH = (top of stack)
   ]);
-
-  // Now we wire the If branches. The If skips OVER the subsequent block
-  // when its boolean argument is true. We want:
-  //   - if (r1 == null)    skip [evalCall + r2NullCheck + If2 + typeCheck + If3 + setScrollH]
-  //   - if (r2 == null)    skip [typeCheck + If3 + setScrollH]
-  //   - if (r2.type != "input") skip [setScrollH]
-  //
-  // Build from the bottom up so each If offset can use the actual size of
-  // its subsequent block.
-
-  // After r2 = eval(r1) succeeds we go straight to traceInput +
-  // setScrollH (no type filter). The trace runs every frame we have a
-  // focused TextField — that's how we'll confirm we actually reach
-  // the assignment in production.
-  const inputBranch = Buffer.concat([traceInput, setScrollH]);
-
-  // If2: after r2NullCheck, skip (inputBranch)
-  const if2 = actionIf(inputBranch.length);
-  const r2Block = Buffer.concat([r2NullCheck, if2, inputBranch]);
-
-  // If1: after r1NullCheck, skip (evalCall + r2Block)
-  const evalAndR2 = Buffer.concat([evalCall, r2Block]);
-  const if1 = actionIf(evalAndR2.length);
-
-  const body = Buffer.concat([
-    getFocusCall,
-    traceFocus,    // every-frame trace BEFORE the null check so we see
-                   // "FOCUS=null" too — helps diagnose if focus detection
-                   // is the failure mode rather than the assignment.
-    r1NullCheck,
-    if1,
-    evalAndR2,
-    END, // function-body terminator
-  ]);
-  return body;
+  return Buffer.concat([traceCall, assign, END]);
 }
 
 function buildDefineFunction2(funcBody) {
-  // DefineFunction2 (0x8E): name (null-term), UI16 numParams, UI8 numRegs,
-  // UI16 flags, parameter list, UI16 codeSize, code body.
-  // We use:
-  //   name = ""
-  //   numParams = 0
-  //   numRegs = 3 (we use r1 and r2 — r0 is unused, register list is
-  //               sized to fit the highest index we reference)
-  //   flags = 0 (no auto-preload of this/args/super/_root/_parent/_global)
+  // DefineFunction2 (0x8E):
+  //   name (null-term) + numParams(UI16) + numRegs(UI8) + flags(UI16) +
+  //   parameters + codeSize(UI16)
+  // Flags byte-1 bit-0 = PreloadThisFlag → put `this` in register 1.
   const nameTerm = Buffer.from([0x00]);
-  const hdr = Buffer.alloc(2 + 1 + 2); // numParams + numRegs + flags
-  hdr.writeUInt16LE(0, 0);   // numParams
-  hdr[2] = 3;                // numRegisters
-  hdr.writeUInt16LE(0, 3);   // flags
-  // (no parameter entries because numParams = 0)
+  const hdr = Buffer.alloc(2 + 1 + 2);
+  hdr.writeUInt16LE(0, 0);     // numParams
+  hdr[2] = 2;                   // numRegisters (r0 + r1=this)
+  hdr.writeUInt16LE(0x0001, 3); // flags: PreloadThisFlag
   const codeSize = Buffer.alloc(2);
   codeSize.writeUInt16LE(funcBody.length, 0);
-
   const payload = Buffer.concat([nameTerm, hdr, codeSize]);
-
-  // Now wrap the whole DefineFunction2 in its tag header.
   const tagHdr = Buffer.alloc(3);
   tagHdr[0] = 0x8e;
   tagHdr.writeUInt16LE(payload.length, 1);
-  // The function body bytes follow the DefineFunction2 tag in the bytecode
-  // stream (the codeSize in the header tells AVM how many bytes belong to
-  // the function); they are NOT part of payload itself.
   return Buffer.concat([tagHdr, payload, funcBody]);
 }
 
 function buildDoActionBody() {
   const cp = buildConstantPool();
-  const funcBody = buildFunctionBody();
-  const defFunc = buildDefineFunction2(funcBody);
-  const installTrace = Buffer.concat([
-    actionPush(pushCp8(CP.TRACE_INSTALL)),
-    TRACE,
-  ]);
-  const assign = Buffer.concat([
-    installTrace,   // logs "FP_KICK_INSTALL" on first frame so we can
-                    // verify in the JS console that the patched SWF is
-                    // the one actually running.
-    // Stack: push _root, getVariable → _root object
-    actionPush(pushCp8(CP._ROOT)),
-    GET_VARIABLE,
-    // Push "onEnterFrame" member name
-    actionPush(pushCp8(CP.ON_ENTER_FRAME)),
-    // Function definition (pushes function reference onto stack)
-    defFunc,
-    // _root.onEnterFrame = <function>
-    SET_MEMBER,
+  const onChangedFn = buildDefineFunction2(buildOnChangedBody());
+
+  const install = Buffer.concat([
+    // Trace: "FP_KICK_INSTALL"
+    actionPush(pushCp8(CP.T_INSTALL)), TRACE,
+
+    // TextField.prototype.onChanged = function () { ... }
+    actionPush(pushCp8(CP.TEXT_FIELD)), GET_VARIABLE,          // TextField
+    actionPush(pushCp8(CP.PROTOTYPE)),  GET_MEMBER,            // .prototype
+    actionPush(pushCp8(CP.ON_CHANGED)),                        // "onChanged"
+    onChangedFn,                                                // function on stack
+    SET_MEMBER,                                                 // assign
+
+    // Trace: "FP_KICK_PROTO_SET" — fires only if SetMember succeeded
+    // without throwing, confirming TextField.prototype was reachable.
+    actionPush(pushCp8(CP.T_PROTO)), TRACE,
+
     END,
   ]);
-  return Buffer.concat([cp, assign]);
+
+  return Buffer.concat([cp, install]);
 }
 
 function buildDoActionTag(body) {
-  // DoAction is tag code 12. We always use the long-form (UI32 length) for
-  // safety regardless of size, so the tag length field is wide enough for
-  // any future growth.
-  const tagCodeAndShort = Buffer.alloc(2);
-  tagCodeAndShort.writeUInt16LE((12 << 6) | 0x3f, 0);
-  const longLen = Buffer.alloc(4);
-  longLen.writeUInt32LE(body.length, 0);
-  return Buffer.concat([tagCodeAndShort, longLen, body]);
+  // DoAction is tag code 12. Long-form length so we can grow freely.
+  const head = Buffer.alloc(2);
+  head.writeUInt16LE((12 << 6) | 0x3f, 0);
+  const len = Buffer.alloc(4);
+  len.writeUInt32LE(body.length, 0);
+  return Buffer.concat([head, len, body]);
 }
 
-// ── Tag-walker: locate the first ShowFrame at the root timeline ───────────
+// ── Locate first root ShowFrame to inject before ──────────────────────────
 
 function findFirstShowFrameOffset(body) {
   const nbits = (body[0] >> 3) & 0x1f;
@@ -362,27 +226,18 @@ function findFirstShowFrameOffset(body) {
   return -1;
 }
 
-// ── Idempotency check: scan for the marker string ─────────────────────────
-
 function alreadyPatched(body) {
-  const needle = Buffer.from('__fpScrollKick__\0', 'latin1');
-  return body.indexOf(needle) >= 0;
+  return body.indexOf(Buffer.from('__fpScrollKick__\0', 'latin1')) >= 0;
 }
-
-// ── Run ───────────────────────────────────────────────────────────────────
 
 function patch() {
   const { sig, version, body } = readSwf(SWF_PATH);
-
   if (alreadyPatched(body)) {
     console.log('[textinput-scroll] Marker found — already patched, skipping.');
     return;
   }
-
   const showFrameOff = findFirstShowFrameOffset(body);
-  if (showFrameOff < 0) {
-    throw new Error('Could not locate first root ShowFrame');
-  }
+  if (showFrameOff < 0) throw new Error('Could not locate first root ShowFrame');
 
   const newDoActionBody = buildDoActionBody();
   const newTag = buildDoActionTag(newDoActionBody);
@@ -391,7 +246,6 @@ function patch() {
   console.log('[textinput-scroll] Injecting DoAction tag: '
     + newTag.length + ' bytes (body=' + newDoActionBody.length + ')');
 
-  // Splice the new tag in just before the ShowFrame.
   const before = body.slice(0, showFrameOff);
   const after  = body.slice(showFrameOff);
   const newBody = Buffer.concat([before, newTag, after]);
