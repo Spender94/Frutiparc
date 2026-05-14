@@ -141,6 +141,9 @@ const STR = [
   '__fpMask_',                         // 21  prefix concatenated with this._name
   'FP_KICK_INSTALL',                   // 22
   'FP_KICK_PROTO_SET',                 // 23
+  '_visible',                          // 24  used to hide the mask MovieClip;
+                                       //     Ruffle doesn't auto-hide masks
+                                       //     the way Flash native does.
 ];
 const CP = {
   MARKER:0, TEXT_FIELD:1, PROTOTYPE:2, ON_CHANGED:3,
@@ -148,7 +151,7 @@ const CP = {
   _WIDTH:7, _HEIGHT:8, _X:9, _Y:10, _NAME:11, _PARENT:12,
   CREATE_EMC:13, BEGIN_FILL:14, MOVE_TO:15, LINE_TO:16, END_FILL:17, SET_MASK:18,
   MASK_INIT:19, ORIG_X:20, MASK_PREFIX:21,
-  T_INSTALL:22, T_PROTO:23,
+  T_INSTALL:22, T_PROTO:23, _VISIBLE:24,
 };
 
 function buildConstantPool() {
@@ -274,10 +277,19 @@ function buildMaskInit() {
     CALL_METHOD,
     POP,
   ]);
+  // r3._visible = false — Ruffle doesn't honour the native Flash
+  // convention that a MovieClip set as a mask becomes invisible. If
+  // we don't force _visible=false here, the black-filled rectangle
+  // shows up as a visible bar on top of the chat input chrome.
+  const hideMask = Buffer.concat([
+    actionPush(pushReg(3), pushCp8(CP._VISIBLE),
+               Buffer.from([0x05, 0x00])),  // pushBool false
+    SET_MEMBER,
+  ]);
   return Buffer.concat([
     setInit, setOrigX, loadParent, createMask,
     beginFill, moveTo, lineTo1, lineTo2, lineTo3, endFill,
-    setMask,
+    setMask, hideMask,
   ]);
 }
 
