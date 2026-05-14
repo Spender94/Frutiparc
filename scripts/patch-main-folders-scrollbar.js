@@ -69,6 +69,9 @@ function pushCp8(i)  { return Buffer.from([0x08, i & 0xff]); }
 function pushReg(r)  { return Buffer.from([0x04, r & 0xff]); }
 function pushUndef() { return Buffer.from([0x03]); }
 function pushBool(v) { return Buffer.from([0x05, v ? 0x01 : 0x00]); }
+function pushInt(v)  {
+  const b = Buffer.alloc(5); b[0] = 0x07; b.writeInt32LE(v, 1); return b;
+}
 function actionPush(...items) {
   const data = Buffer.concat(items);
   const hdr = Buffer.alloc(3);
@@ -88,6 +91,7 @@ function actionIf(off) {
 const GET_VARIABLE = simple(0x1c);
 const GET_MEMBER   = simple(0x4e);
 const SET_MEMBER   = simple(0x4f);
+const CALL_METHOD  = simple(0x52);
 const POP          = simple(0x17);
 const END          = simple(0x00);
 const TRACE        = simple(0x26);
@@ -95,6 +99,10 @@ const EQUALS2      = simple(0x49);
 const NOT          = simple(0x12);
 const DELETE       = simple(0x3a);
 const ADD2         = simple(0x47);
+
+function storeReg(r) {
+  return Buffer.from([0x87, 0x01, 0x00, r & 0xff]);
+}
 
 // ── Constant pool ─────────────────────────────────────────────────────────
 
@@ -110,11 +118,17 @@ const STR = [
   'FP_FOLDERS_INSTALL',       // 7  emitted once when DoAction runs
   'FP_FOLDERS_HOOKED',        // 8  emitted when the prototype is patched
   'FP_FOLDERS_TICK Component=', // 9  emitted on every enterFrame
+  // checkScrollNeed hook
+  'checkScrollNeed',          // 10
+  '__fpOrigCheck',            // 11
+  'FP_FOLDERS CHECK this=',   // 12
+  ' flScrollable=',           // 13
 ];
 const CP = {
   MARKER:0, _ROOT:1, ON_ENTER_FRAME:2, COMPONENT:3, PROTOTYPE:4,
   FOLDER_INIT:5, FL_SCROLLABLE:6,
   T_INSTALL:7, T_HOOKED:8, T_TICK:9,
+  CHECK_NEED:10, ORIG_CHECK:11, T_CHECK:12, T_FLAG:13,
 };
 
 function buildConstantPool() {
@@ -142,6 +156,31 @@ function buildOnEnterFrameBody() {
   // Each early-return tests a value, NOTs it, and ActionIfs past the
   // remainder of the function. Build the post-checks block first so
   // we can compute the jump offsets.
+  // Inner function: the new Component.prototype.checkScrollNeed. With
+  // PreloadThisFlag, register 1 holds `this` (the Component instance).
+  //
+  //   function () {
+  //     trace("FP_FOLDERS CHECK this=" + this + " flScrollable=" + this.flScrollable);
+  //     this.__fpOrigCheck();
+  //   }
+  const checkBody = Buffer.concat([
+    // Build trace string in pieces
+    actionPush(pushCp8(CP.T_CHECK), pushReg(1)),
+    ADD2,                                          // "FP_FOLDERS CHECK this=" + this
+    actionPush(pushCp8(CP.T_FLAG)),
+    ADD2,                                          // + " flScrollable="
+    actionPush(pushReg(1), pushCp8(CP.FL_SCROLLABLE)),
+    GET_MEMBER,                                    // → this.flScrollable
+    ADD2,
+    TRACE,
+    // this.__fpOrigCheck()
+    actionPush(pushInt(0), pushReg(1), pushCp8(CP.ORIG_CHECK)),
+    CALL_METHOD,
+    POP,
+    END,
+  ]);
+  const checkFn = buildDefineFunction2(checkBody, 2, 0x0001); // PreloadThisFlag
+
   const setMembers = Buffer.concat([
     // Component.prototype.__fpFolderInit = true
     actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
@@ -154,6 +193,20 @@ function buildOnEnterFrameBody() {
     actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
     actionPush(pushCp8(CP.FL_SCROLLABLE)),
     actionPush(pushBool(true)),
+    SET_MEMBER,
+    // Component.prototype.__fpOrigCheck = Component.prototype.checkScrollNeed
+    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.ORIG_CHECK)),
+    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.CHECK_NEED)), GET_MEMBER,
+    SET_MEMBER,
+    // Component.prototype.checkScrollNeed = <new function>
+    actionPush(pushCp8(CP.COMPONENT)), GET_VARIABLE,
+    actionPush(pushCp8(CP.PROTOTYPE)), GET_MEMBER,
+    actionPush(pushCp8(CP.CHECK_NEED)),
+    checkFn,
     SET_MEMBER,
     // trace("FP_FOLDERS_HOOKED")
     actionPush(pushCp8(CP.T_HOOKED)),
