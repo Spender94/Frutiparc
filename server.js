@@ -1525,7 +1525,12 @@ async function hydrateUserFromDb(username, dbUser) {
     users[username].hasWelcomeSiteLog = true;
   }
 
-  // Pre-load all frutiSlots from DB so game progress survives server restarts
+  // Pre-load all frutiSlots from DB so game progress survives server restarts.
+  // A silent failure here was the #1 reason MiniPixiz progression vanished
+  // overnight: the in-memory clobber-guard relies on prevSlotData, and if the
+  // hydrate errored we'd happily accept fresh formatFruticard() defaults from
+  // the SWF and overwrite real progress. Log loudly so issues surface; the
+  // saveFrutiSlot path now also re-checks the DB before clobber as a backstop.
   try {
     const allSlots = await db.getAllFrutiSlots(dbUser.id);
     if (Object.keys(allSlots).length > 0) {
@@ -1533,11 +1538,15 @@ async function hydrateUserFromDb(username, dbUser) {
       for (const game of Object.keys(allSlots)) {
         const s0 = allSlots[game]['0'] || allSlots[game][0];
         if (s0) {
-          try { extractGameItemsFromSlot(username, game, s0); } catch (e) { /* ignore */ }
+          try { extractGameItemsFromSlot(username, game, s0); } catch (e) {
+            console.error(`[HYDRATE] extract pictos ${username}/${game} failed: ${e.message}`);
+          }
         }
       }
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    console.error(`[HYDRATE] getAllFrutiSlots(${dbUser.id}) failed for ${username}: ${e.message}`);
+  }
 
   if (Object.keys(dbScores).length > 0) {
     if (!scoresData.users[username]) scoresData.users[username] = {};
@@ -4422,6 +4431,55 @@ const FRESH_MINIPIXIZ_SLOT0 = JSON.stringify({
   $vs: 1.1,
 });
 
+// Heuristic: does this MiniPixiz save look like a fresh formatFruticard()
+// dump rather than real gameplay? Triggered when the SWF was unable to seed
+// its in-memory card from server data (e.g. ExternalInterface.parseJSON
+// returned null, or /api/loadFrutiSlots came back empty due to a transient
+// DB hiccup) and fell through to formatFruticard() → saveSlot(defaults).
+// We use it as a second line of defence behind the in-memory clobber guard
+// for the case where the in-memory cache itself is missing (e.g. hydrate
+// errored silently at login).
+function looksLikeMinipixizDefault(jsonStr) {
+  if (!jsonStr) return false;
+  try {
+    const o = JSON.parse(jsonStr);
+    if (!o || typeof o !== 'object') return false;
+    const s = o.$stat;
+    if (!s || typeof s !== 'object') return false;
+    const runZero    = !s.$run || s.$run === 0;
+    const itemEmpty  = !Array.isArray(s.$item) || s.$item.every((v) => !v);
+    const eatEmpty   = !Array.isArray(s.$eat)  || s.$eat.every((v) => !v);
+    const noFaerie   = !Array.isArray(o.$faerie) || o.$faerie.length === 0;
+    const noDiam     = !o.$diam;
+    const noStar     = !o.$star;
+    const noDungeon  = !o.$dungeon || !o.$dungeon.$lvl;
+    return runZero && itemEmpty && eatEmpty && noFaerie && noDiam && noStar && noDungeon;
+  } catch {
+    return false;
+  }
+}
+
+// Healthy MiniPixiz slot? Used to authoritatively detect when stored DB
+// data already contains real progress and must not be clobbered by a
+// fresh-defaults save coming in from a broken load cycle.
+function isMinipixizSlotHealthy(jsonStr) {
+  if (!jsonStr) return false;
+  try {
+    const o = JSON.parse(jsonStr);
+    if (!o || typeof o !== 'object') return false;
+    const s = o.$stat || {};
+    if (Number(s.$run) > 0) return true;
+    if (Array.isArray(s.$item) && s.$item.some((v) => v)) return true;
+    if (Array.isArray(s.$eat)  && s.$eat.some((v) => Number(v) > 0)) return true;
+    if (Array.isArray(o.$faerie) && o.$faerie.length > 0) return true;
+    if (Number(o.$diam) > 0 || Number(o.$star) > 0 || Number(o.$key) > 0) return true;
+    if (o.$dungeon && Number(o.$dungeon.$lvl) > 0) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 // MiniPixiz corruption signature: `$stat.$kill` and `$stat.$game` are
 // always created with 5 zeros by formatFruticard() and can only grow
 // during gameplay (Imp.mt: `$kill[level]++`, base/*.mt: `$game[zone]++`),
@@ -4525,7 +4583,7 @@ function parseMb2Pipe(s) {
   };
 }
 
-app.post('/api/saveFrutiSlot', (req, res) => {
+app.post('/api/saveFrutiSlot', async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
   const game = String(params.game || '');
@@ -4592,6 +4650,7 @@ app.post('/api/saveFrutiSlot', (req, res) => {
   if (!users[username].frutiSlots) users[username].frutiSlots = {};
   if (!users[username].frutiSlots[game]) users[username].frutiSlots[game] = {};
   const prevSlotData = users[username].frutiSlots[game][slotId];
+  const dbId = users[username] && users[username]._dbId;
 
   // Safeguard: when the SWF can't load saved slots on startup (miniwave),
   // the game may auto-save empty initial data and clobber real progress.
@@ -4609,26 +4668,49 @@ app.post('/api/saveFrutiSlot', (req, res) => {
     return res.type('text/plain').send('ok=1'); // pretend success so SWF doesn't retry
   }
 
-  // MiniPixiz: loadFruticard() creates fresh defaults when SharedObject is empty
-  // (Ruffle doesn't persist SO between sessions), then saves them — clobbering
-  // real progress. Block saves that look like formatFruticard() defaults when the
-  // existing data contains real gameplay.
-  if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0' && prevSlotData && data) {
-    try {
-      const newObj = JSON.parse(data);
-      const oldObj = JSON.parse(prevSlotData);
-      const oldRun = oldObj.$stat && oldObj.$stat.$run || 0;
-      const newRun = newObj.$stat && newObj.$stat.$run || 0;
-      if (oldRun > 0 && newRun === 0) {
-        console.log(`[SLOT]  BLOCKED minipixiz default clobber for ${username} (existing $run=${oldRun})`);
-        return res.type('text/plain').send('ok=1');
+  // MiniPixiz: loadFruticard() creates fresh defaults when SharedObject is
+  // empty (Ruffle doesn't persist SO between sessions, and the patched bytecode
+  // depends on ExternalInterface.call("parseJSON", …) succeeding to seed
+  // slots[0] from server data — if it returns null OR /api/loadFrutiSlots was
+  // empty, the SWF falls through to formatFruticard() and saves the defaults).
+  // We block any save that looks like fresh defaults whenever ANY prior healthy
+  // data exists, checking memory first then DB as a fallback for the case
+  // where hydrateUserFromDb errored silently at login.
+  if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0' && data && looksLikeMinipixizDefault(data)) {
+    let healthy = isMinipixizSlotHealthy(prevSlotData);
+    if (!healthy && dbId) {
+      // In-memory cache is empty or non-healthy — check DB authoritatively
+      // before we let a defaults save clobber yesterday's progress.
+      try {
+        const dbSlots = await db.getFrutiSlots(dbId, game);
+        const dbSlot0 = dbSlots && (dbSlots['0'] || dbSlots[0]);
+        if (isMinipixizSlotHealthy(dbSlot0)) {
+          healthy = true;
+          // Re-populate in-memory so subsequent reads (fcardloadslot etc.)
+          // see the real progression and don't trigger another defaults
+          // round-trip.
+          users[username].frutiSlots[game]['0'] = dbSlot0;
+        }
+      } catch (e) {
+        console.error(`[SLOT]  DB clobber-guard lookup failed for ${username}/${game}: ${e.message}`);
       }
-    } catch {}
+    }
+    if (healthy) {
+      console.log(`[SLOT]  BLOCKED minipixiz default-clobber for ${username} — existing progress detected (mem=${!!prevSlotData}, dbId=${dbId || 'none'})`);
+      return res.type('text/plain').send('ok=1');
+    }
   }
 
   users[username].frutiSlots[game][slotId] = data;
-  const dbId = users[username] && users[username]._dbId;
-  if (dbId) db.upsertFrutiSlot(dbId, game, Number(slotId), data).catch(() => {});
+  if (dbId) {
+    // Surface DB errors instead of swallowing them — silent catch here was
+    // how progression vanished overnight (memory-only save, then Render's
+    // free tier slept and wiped the process). If the upsert truly is
+    // failing, we want loud logs, not silent data loss.
+    db.upsertFrutiSlot(dbId, game, Number(slotId), data).catch((e) => {
+      console.error(`[SLOT]  DB upsert FAILED for ${username}/${game}/slot${slotId}: ${e.message}`);
+    });
+  }
 
   // Extract game items (pictos/titems) from slot 0 data
   if (slotId === '0' && data) {
@@ -4686,7 +4768,16 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
             if (!users[username].frutiSlots) users[username].frutiSlots = {};
             users[username].frutiSlots[game] = dbSlots;
           }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          // Critical: a silent failure here is what makes the SWF think the
+          // user has no save data, run formatFruticard() and clobber. We
+          // signal the failure so the SWF won't seed a fresh card from an
+          // empty response — saveFrutiSlot's clobber-guard will still catch
+          // it as a second line of defence, but surfacing the error makes
+          // the root cause visible in logs.
+          console.error(`[LOAD] getFrutiSlots(${dbId},${game}) failed for ${username}: ${e.message}`);
+          return res.type('text/plain').status(503).send('ok=0&error=db_unavailable');
+        }
       }
     }
 
@@ -10072,10 +10163,44 @@ case 'createchannel': {
             if (obj) { normalizedSlotData = JSON.stringify(obj); }
           }
         }
+        // Mirror the /api/saveFrutiSlot MiniPixiz default-clobber guard on
+        // the wire path: refuse a fresh-formatFruticard()-shaped save when
+        // there is healthy progress in memory or in DB.
+        if (
+          (game === 'minipixiz' || game === 'minitroll') &&
+          slotId === '0' &&
+          normalizedSlotData &&
+          looksLikeMinipixizDefault(normalizedSlotData)
+        ) {
+          let healthy = isMinipixizSlotHealthy(prevSlotData);
+          if (!healthy && u._dbId) {
+            try {
+              const dbSlots = await db.getFrutiSlots(u._dbId, game);
+              const dbSlot0 = dbSlots && (dbSlots['0'] || dbSlots[0]);
+              if (isMinipixizSlotHealthy(dbSlot0)) {
+                healthy = true;
+                u.frutiSlots[game]['0'] = dbSlot0;
+              }
+            } catch (e) {
+              console.error(`[FCARD] DB clobber-guard lookup failed for ${username}/${game}: ${e.message}`);
+            }
+          }
+          if (healthy) {
+            console.log(`[FCARD] BLOCKED minipixiz default-clobber for ${username} (wire path, existing progress preserved)`);
+            sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
+            break;
+          }
+        }
         u.frutiSlots[game][slotId] = normalizedSlotData;
-        if (u._dbId) db.upsertFrutiSlot(u._dbId, game, Number(slotId), normalizedSlotData).catch(() => {});
+        if (u._dbId) {
+          db.upsertFrutiSlot(u._dbId, game, Number(slotId), normalizedSlotData).catch((e) => {
+            console.error(`[FCARD] DB upsert FAILED for ${username}/${game}/slot${slotId}: ${e.message}`);
+          });
+        }
         if (slotId === '0' && normalizedSlotData) {
-          try { extractGameItemsFromSlot(username, game, normalizedSlotData); } catch (e) { /* ignore */ }
+          try { extractGameItemsFromSlot(username, game, normalizedSlotData); } catch (e) {
+            console.error(`[FCARD] item extraction failed for ${username}/${game}: ${e.message}`);
+          }
         }
         // BKiwi: capture the track the player just raced (slot 0 savePublic
         // always runs before saveScore) for per-track ranking routing.
