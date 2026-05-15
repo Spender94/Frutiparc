@@ -4671,18 +4671,39 @@ function isMinipixizSlot0Corrupted(jsonStr) {
   }
 }
 
-// MiniPixiz pipe format (19 fields):
+// MiniPixiz pipe format (22 fields — the original was 19, but $inv,
+// $current, $checkpoint were added to keep the in-game bag UI visible
+// across sessions; the SWF hides the bag widget when $inv is empty):
 //   0:$stat.$item 1:$stat.$eat 2:$stat.$kill 3:$stat.$run 4:$stat.$game
 //   5:$stat.$forestMax 6:$stat.$treeMax 7:$stat.$misNum
 //   8:$diam 9:$key 10:$star 11:$bag
 //   12:$dungeon.$lvl 13:$dungeon.$f 14:$rainbow.$f 15:$pond.$q
 //   16:$frog 17:faerie_levels(comma-sep) 18:$vs
+//   19:$inv (csv) 20:$current 21:$checkpoint
 function parseMinipixizPipe(s) {
   const parts = String(s).split('|');
   if (parts.length < 19) return null;
   function parseNumArr(p) { return p ? p.split(',').map(v => v === '' ? 0 : Number(v) || 0) : []; }
   function parseBoolArr(p) { return p ? p.split(',').map(v => v === 'true') : []; }
+  // $inv: CSV of item IDs, empty entries → null (sparse slot, not 0
+  // which could collide with a valid item id 0).
+  function parseInvArr(p) {
+    if (!p) return [];
+    return p.split(',').map(v => v === '' ? null : (Number(v) || 0));
+  }
   const faerieLevels = (parts[17] || '').replace(/,$/, '').split(',').filter(v => v !== '');
+  const inv = parts.length >= 20 ? parseInvArr(parts[19]) : [];
+  // $current: null when nothing selected, numeric otherwise. Empty
+  // string from pipe → null. 'undefined' from a Ruffle bridge gap →
+  // also null (defensive).
+  let cur = null;
+  if (parts.length >= 21) {
+    const c = parts[20];
+    if (c === '' || c === 'null' || c === 'undefined') cur = null;
+    else cur = Number(c);
+    if (Number.isNaN(cur)) cur = null;
+  }
+  const checkpoint = parts.length >= 22 ? (Number(parts[21]) || 0) : 0;
   return {
     $stat: {
       $item: parseBoolArr(parts[0]),
@@ -4704,6 +4725,9 @@ function parseMinipixizPipe(s) {
     $frog: parts[16] === 'true',
     $faerie: faerieLevels.map(v => ({ $level: Number(v) || 0 })),
     $vs: Number(parts[18]) || 0,
+    $inv: inv,
+    $current: cur,
+    $checkpoint: checkpoint,
   };
 }
 

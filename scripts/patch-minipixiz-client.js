@@ -337,6 +337,12 @@ const CP = {
   // GetMem, push cp791="$stat", GetMem` (i.e. Cm.card.$stat accesses).
   Cm_obf:  106,
   card_obf: 107,
+  // Additional Card fields needed for the save pipe extension (fields
+  // 19, 20, 21) — these are original CP entries reused.
+  $inv:        777,
+  $current:    762,
+  $checkpoint: 774,
+  $mission:    789,
   slots: 756,
   LoadVars: newCpBase + 0,
   game: newCpBase + 1,
@@ -1195,10 +1201,35 @@ function buildSaveSlotBody() {
     actionJump(backJumpDist),
   ]);
 
-  // After loop: separator + $vs (last field, no trailing |)
+  // After loop: separator + $vs (field 18) + $inv (field 19, CSV) +
+  // $current (field 20, scalar) + $checkpoint (field 21, scalar).
+  //
+  // $inv contents (the in-game bag inventory) MUST be persisted across
+  // sessions: when empty the SWF doesn't render the bag UI element at
+  // all, so an empty $inv on reload makes the bag invisible even though
+  // $bag (the size scalar) is preserved. Same for $current (currently
+  // selected faerie/zone) and $checkpoint (dungeon checkpoint).
   const afterLoop = Buffer.concat([
     actionPush(pushStr('|')), ADD2,
     actionPush(pushReg(3), pushCp(CP.$vs)), GET_MEMBER,
+    actionPush(pushStr('')), ADD2,
+    ADD2,
+    // |<inv-csv>
+    actionPush(pushStr('|')), ADD2,
+    actionPush(pushCp(CP.comma)),                          // ","
+    actionPush(pushInt(1)),                                // argCount=1
+    actionPush(pushReg(3), pushCp(CP.$inv)), GET_MEMBER,   // r3.$inv
+    actionPush(pushCp(CP.join)),                           // "join"
+    CALL_METHOD,                                           // → joined string
+    ADD2,                                                  // accum + joined
+    // |<current>
+    actionPush(pushStr('|')), ADD2,
+    actionPush(pushReg(3), pushCp(CP.$current)), GET_MEMBER,
+    actionPush(pushStr('')), ADD2,
+    ADD2,
+    // |<checkpoint>
+    actionPush(pushStr('|')), ADD2,
+    actionPush(pushReg(3), pushCp(CP.$checkpoint)), GET_MEMBER,
     actionPush(pushStr('')), ADD2,
     ADD2,
   ]);
