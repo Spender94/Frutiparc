@@ -700,6 +700,15 @@ function buildOnLoadBody() {
     actionPush(pushReg(4), pushInt(1)),
     INIT_ARRAY,
     SET_MEMBER,
+    // Flush the SO so loadFruticard (called from onServiceConnect below)
+    // sees our seeded data via its own getLocal/getMember chain. Without
+    // flush() under Ruffle, the write may stay in a per-call buffer that
+    // doesn't sync to the data the next getLocal() call returns —
+    // confirmed empirically by gameplay still starting from formatFruticard
+    // defaults despite our seedSO.data.fruticard = [r4] write.
+    actionPush(pushInt(0)),
+    actionPush(pushReg(9), pushStr('flush')),
+    CALL_METHOD, POP,
   ]);
   const callOnServiceConnect = Buffer.concat([
     actionPush(pushInt(0)),
