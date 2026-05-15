@@ -4487,6 +4487,16 @@ function parseMiniwavePipe(s) {
 // scalars, then re-parsed as 1-element arrays, then re-saved as scalars,
 // forever losing in-game updates because gameplay tries to mutate
 // `$stat.$item[n] = true` on what has become a boolean primitive).
+// Full Card structure expected by MiniPixiz SWF. We derived this by
+// comparing what a working Ruffle-hosted server returns vs. the
+// truncated payload we used to ship. The MTASC fromJSON parser tolerates
+// missing scalar fields but rejects the Card as "unloadable" when the
+// nested sub-objects are missing fields it expects ($dungeon needs
+// $loop/$day, $rainbow needs $day/$it, $pond needs $d/$fs), and when
+// top-level Card fields like $inv/$current/$help/$mis/$wind/$god/$time/
+// $mission/$checkpoint are absent. With a complete payload, the SWF's
+// native onLoad → fromJSON → Cm.card assignment succeeds and gameplay
+// reads/writes our DB state from the start of the session.
 const FRESH_MINIPIXIZ_SLOT0 = JSON.stringify({
   $stat: {
     $item: [],
@@ -4502,13 +4512,85 @@ const FRESH_MINIPIXIZ_SLOT0 = JSON.stringify({
   $key: 0,
   $star: 0,
   $bag: 0,
-  $dungeon: { $lvl: 0, $f: false },
-  $rainbow: { $f: false },
-  $pond: { $q: 0 },
+  $dungeon: { $lvl: 0, $f: false, $loop: 0, $day: 0 },
+  $rainbow: { $f: false, $day: 0, $it: 0 },
+  $pond: { $q: 0, $d: 0, $fs: null },
   $frog: false,
   $faerie: [],
-  $vs: 1.1,
+  $vs: 1.2,
+  $inv: [],
+  $current: 0,
+  $help: [],
+  $mis: [],
+  $wind: 0,
+  $god: [false, false, false],
+  $time: { $t: 0, $d: 0, $s: 0 },
+  $mission: [],
+  $checkpoint: 0,
 });
+
+// Normalise a stored MiniPixiz slot0 to the full Card structure before
+// sending it back to the SWF. Migrations from older saves may lack the
+// extra sub-object fields ($dungeon.$loop, $rainbow.$day/$it, $pond.$d/$fs)
+// and top-level fields ($inv/$current/$help/$mis/$wind/$god/$time/$mission/
+// $checkpoint), which prevents the SWF's fromJSON from accepting the
+// payload — anchor Cm.card on formatFruticard() defaults and the UI
+// appears reset every session. This function pads in those defaults
+// without disturbing any value the player has already accumulated.
+function padMinipixizSlot0(jsonStr) {
+  if (!jsonStr || typeof jsonStr !== 'string') return jsonStr;
+  let obj;
+  try { obj = JSON.parse(jsonStr); } catch { return jsonStr; }
+  if (!obj || typeof obj !== 'object') return jsonStr;
+  // Stat sub-object
+  if (!obj.$stat || typeof obj.$stat !== 'object') obj.$stat = {};
+  const s = obj.$stat;
+  if (!Array.isArray(s.$item)) s.$item = [];
+  if (!Array.isArray(s.$eat))  s.$eat  = [];
+  if (!Array.isArray(s.$kill) || s.$kill.length < 5) s.$kill = [0, 0, 0, 0, 0];
+  if (!Array.isArray(s.$game) || s.$game.length < 5) s.$game = [0, 0, 0, 0, 0];
+  if (typeof s.$run        !== 'number') s.$run        = 0;
+  if (typeof s.$forestMax  !== 'number') s.$forestMax  = 0;
+  if (typeof s.$treeMax    !== 'number') s.$treeMax    = 0;
+  if (typeof s.$misNum     !== 'number') s.$misNum     = 0;
+  // Top-level scalars
+  if (typeof obj.$diam !== 'number') obj.$diam = 0;
+  if (typeof obj.$key  !== 'number') obj.$key  = 0;
+  if (typeof obj.$star !== 'number') obj.$star = 0;
+  if (typeof obj.$bag  !== 'number') obj.$bag  = 0;
+  if (typeof obj.$vs   !== 'number') obj.$vs   = 1.2;
+  if (typeof obj.$frog !== 'boolean') obj.$frog = false;
+  // Nested progress containers — pad missing fields with defaults
+  if (!obj.$dungeon || typeof obj.$dungeon !== 'object') obj.$dungeon = {};
+  if (typeof obj.$dungeon.$lvl  !== 'number')  obj.$dungeon.$lvl  = 0;
+  if (typeof obj.$dungeon.$f    !== 'boolean') obj.$dungeon.$f    = false;
+  if (typeof obj.$dungeon.$loop !== 'number')  obj.$dungeon.$loop = 0;
+  if (typeof obj.$dungeon.$day  !== 'number')  obj.$dungeon.$day  = 0;
+  if (!obj.$rainbow || typeof obj.$rainbow !== 'object') obj.$rainbow = {};
+  if (typeof obj.$rainbow.$f   !== 'boolean') obj.$rainbow.$f   = false;
+  if (typeof obj.$rainbow.$day !== 'number')  obj.$rainbow.$day = 0;
+  if (typeof obj.$rainbow.$it  !== 'number')  obj.$rainbow.$it  = 0;
+  if (!obj.$pond || typeof obj.$pond !== 'object') obj.$pond = {};
+  if (typeof obj.$pond.$q !== 'number') obj.$pond.$q = 0;
+  if (typeof obj.$pond.$d !== 'number') obj.$pond.$d = 0;
+  if (obj.$pond.$fs === undefined) obj.$pond.$fs = null;
+  // Faerie array — leave as-is (SWF handles empty)
+  if (!Array.isArray(obj.$faerie)) obj.$faerie = [];
+  // Top-level fields the SWF expects but our older saves lack
+  if (!Array.isArray(obj.$inv))     obj.$inv     = [];
+  if (typeof obj.$current !== 'number') obj.$current = 0;
+  if (!Array.isArray(obj.$help))    obj.$help    = [];
+  if (!Array.isArray(obj.$mis))     obj.$mis     = [];
+  if (typeof obj.$wind !== 'number')obj.$wind    = 0;
+  if (!Array.isArray(obj.$god) || obj.$god.length < 3) obj.$god = [false, false, false];
+  if (!obj.$time || typeof obj.$time !== 'object') obj.$time = { $t: 0, $d: 0, $s: 0 };
+  if (typeof obj.$time.$t !== 'number') obj.$time.$t = 0;
+  if (typeof obj.$time.$d !== 'number') obj.$time.$d = 0;
+  if (typeof obj.$time.$s !== 'number') obj.$time.$s = 0;
+  if (!Array.isArray(obj.$mission)) obj.$mission = [];
+  if (typeof obj.$checkpoint !== 'number') obj.$checkpoint = 0;
+  return JSON.stringify(obj);
+}
 
 // Heuristic: does this MiniPixiz save look like a fresh formatFruticard()
 // dump rather than real gameplay? Triggered when the SWF was unable to seed
@@ -5123,7 +5205,16 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
         }
       }
       for (const [key, val] of Object.entries(slots)) {
-        response += `&slot${key}=${encodeURIComponent(val)}`;
+        // MiniPixiz: pad slot0 with the full Card structure (incl.
+        // $inv/$current/$help/$mis/$wind/$god/$time/$mission/$checkpoint
+        // and the extra sub-object fields). Without this padding the SWF's
+        // fromJSON treats the payload as malformed and Cm.card falls back
+        // to formatFruticard defaults, hiding loaded progress in-game.
+        let outVal = val;
+        if ((game === 'minipixiz' || game === 'minitroll') && key === '0') {
+          outVal = padMinipixizSlot0(val);
+        }
+        response += `&slot${key}=${encodeURIComponent(outVal)}`;
       }
 
       // MiniPixiz flat fields: Ruffle's eval()-based JSON parse in the SWF's
