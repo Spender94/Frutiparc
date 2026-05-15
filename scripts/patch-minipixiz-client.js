@@ -941,11 +941,16 @@ function buildSaveSlotBody() {
     actionPush(pushInt(0)), GET_MEMBER,
     storeReg(3), POP,
   ]);
+  // actionIf jumps when the condition is TRUE. We want to SKIP the
+  // fallback when Cm.card was truthy (use Cm.card) and EXECUTE the
+  // fallback when Cm.card was falsy — so the condition is `r3 truthy`,
+  // i.e. no NOT here. Previous version inverted this, making the save
+  // either silently use slots[0] or crash on undefined.card lookups.
   const getCard = Buffer.concat([
     actionPush(pushCp(CP.Cm)), GET_VARIABLE,
     actionPush(pushCp(CP.card)), GET_MEMBER,
     storeReg(3), POP,
-    actionPush(pushReg(3)), NOT,
+    actionPush(pushReg(3)),
     actionIf(slotsFallback.length),
     slotsFallback,
   ]);
