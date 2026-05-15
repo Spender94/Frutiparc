@@ -700,22 +700,12 @@ function buildOnLoadBody() {
     syncSlot0Assign,
   ]);
 
-  // After loadFruticard runs inside onServiceConnect, the SWF's gameplay
-  // code holds Cm.card as a static reference; mutations like
-  // `Cm.card.$stat.$run++` land on whatever object Cm.card points to.
-  // loadFruticard re-anchors Cm.card to either SharedObject.data.fruticard[0]
-  // or formatFruticard() defaults — neither path reliably ends up at our r4
-  // under Ruffle (SharedObject.getLocal returns a fresh instance each call,
-  // so the seedSO write didn't reach loadFruticard's read). Force-set
-  // Cm.card = r4 here so gameplay reads/writes our loaded Card and the
-  // existing slots[0] = r4 reference stays in lockstep with mutations.
-  const forceCmCard = Buffer.concat([
-    actionPush(pushCp(CP.Cm)), GET_VARIABLE,
-    actionPush(pushCp(CP.card), pushReg(4)),
-    SET_MEMBER,
-  ]);
-
   // === Wrap with success check ===
+  // The previous forceCmCard step (Cm.card = r4) is gone — "Cm" doesn't
+  // exist as a symbol in the original SWF's const pool, so the lookup
+  // never resolved and the SET_MEMBER was a no-op. saveSlot now reads
+  // directly from the `data` parameter (the live Card gameplay passes
+  // in at call time), so we don't need to anchor anything globally.
   const afterSuccessBody = Buffer.concat([
     initStat, statScalars, statArrays,
     initCard, assignStat, cardScalars,
@@ -723,7 +713,6 @@ function buildOnLoadBody() {
     slot0Assign, seedSO,
     callOnServiceConnect,
     syncSlots,
-    forceCmCard,
   ]);
 
   const successCheck = Buffer.concat([
@@ -931,26 +920,30 @@ function buildSaveSlotBody() {
     ]);
   }
 
-  // Part 1: card = Cm.card → r3, fall back to this.slots[0] when Cm is
-  // unreachable. Gameplay mutates Cm.card in place ($stat.$run++, $kill[i]++,
-  // etc.), so reading from it gives us the live state. The onLoad patch
-  // now force-sets Cm.card = our reconstructed Card so progress reads
-  // through here.
+  // Part 1: pick the Card object to serialise (→ r3).
+  //
+  // Originally we tried Cm.card via GET_VARIABLE on "Cm" — but inspection
+  // of the un-patched SWF shows the "Cm" symbol doesn't exist in the
+  // const pool at all (MTASC inlined class refs), so that lookup always
+  // returns undefined under Ruffle.
+  //
+  // Better candidate: r3 is the saveSlot(n, data) `data` parameter as
+  // passed by gameplay's call site. If gameplay passes the live Card
+  // object (most likely since it owns the state being persisted), we
+  // can read live mutations from there directly. We check `r3.$stat` to
+  // confirm it's a Card before keeping it. If r3 is missing/scalar/string,
+  // fall back to the loaded snapshot stored in this.slots[0] — a stale
+  // floor, but at least preserves user progress (server merge takes max).
   const slotsFallback = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
     actionPush(pushInt(0)), GET_MEMBER,
     storeReg(3), POP,
   ]);
-  // actionIf jumps when the condition is TRUE. We want to SKIP the
-  // fallback when Cm.card was truthy (use Cm.card) and EXECUTE the
-  // fallback when Cm.card was falsy — so the condition is `r3 truthy`,
-  // i.e. no NOT here. Previous version inverted this, making the save
-  // either silently use slots[0] or crash on undefined.card lookups.
   const getCard = Buffer.concat([
-    actionPush(pushCp(CP.Cm)), GET_VARIABLE,
-    actionPush(pushCp(CP.card)), GET_MEMBER,
-    storeReg(3), POP,
-    actionPush(pushReg(3)),
+    // Push r3.$stat. If truthy, actionIf jumps over the fallback —
+    // r3 keeps gameplay's Card. If falsy, fallback executes and r3
+    // becomes slots[0].
+    actionPush(pushReg(3), pushCp(CP.$stat)), GET_MEMBER,
     actionIf(slotsFallback.length),
     slotsFallback,
   ]);
