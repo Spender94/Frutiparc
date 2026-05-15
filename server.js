@@ -4743,52 +4743,79 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
     try {
       const parsedNew = JSON.parse(data);
       const newStat = parsedNew.$stat || {};
-      const hasScalarProgress = Number(newStat.$run) > 0
-        || Number(parsedNew.$diam) > 0
-        || Number(parsedNew.$star) > 0
-        || Number(parsedNew.$key) > 0;
-      if (hasScalarProgress) {
-        let prevJson = prevSlotData;
-        if (!isMinipixizSlotHealthy(prevJson) && dbId) {
-          try {
-            const dbSlots = await db.getFrutiSlots(dbId, game);
-            const dbSlot0 = dbSlots && (dbSlots['0'] || dbSlots[0]);
-            if (isMinipixizSlotHealthy(dbSlot0)) {
-              prevJson = dbSlot0;
-              users[username].frutiSlots[game]['0'] = dbSlot0;
-            }
-          } catch (e) {
-            console.error(`[SLOT]  Ruffle-loss DB lookup failed for ${username}/${game}: ${e.message}`);
+      // Look up prev DB whenever the new save is corrupted — we used to
+      // gate on hasScalarProgress, but that misses the common case where
+      // the SWF posts $run=0 right after a Ruffle-side parseJSON glitch
+      // wiped its in-memory arrays. If prev DB has real progress we'd
+      // rather merge prev arrays in than reject and let the user grind
+      // forever without unlocking pictos.
+      let prevJson = prevSlotData;
+      if (!isMinipixizSlotHealthy(prevJson) && dbId) {
+        try {
+          const dbSlots = await db.getFrutiSlots(dbId, game);
+          const dbSlot0 = dbSlots && (dbSlots['0'] || dbSlots[0]);
+          if (isMinipixizSlotHealthy(dbSlot0)) {
+            prevJson = dbSlot0;
+            users[username].frutiSlots[game]['0'] = dbSlot0;
           }
+        } catch (e) {
+          console.error(`[SLOT]  Ruffle-loss DB lookup failed for ${username}/${game}: ${e.message}`);
         }
-        if (isMinipixizSlotHealthy(prevJson)) {
-          try {
-            const prev = JSON.parse(prevJson);
-            const prevStat = prev.$stat || {};
-            const merged = JSON.parse(JSON.stringify(parsedNew));
-            if (!merged.$stat) merged.$stat = {};
-            // Keep prev arrays — they only grow during gameplay, so the
-            // prev snapshot is a safe floor while the SWF can't transmit
-            // its current state.
-            for (const k of ['$item', '$eat', '$kill', '$game']) {
-              const pv = prevStat[k];
-              const nv = merged.$stat[k];
-              if (Array.isArray(pv) && pv.length > 0 && (!Array.isArray(nv) || nv.length < pv.length)) {
-                merged.$stat[k] = pv;
-              }
+      }
+      if (isMinipixizSlotHealthy(prevJson)) {
+        try {
+          const prev = JSON.parse(prevJson);
+          const prevStat = prev.$stat || {};
+          const merged = JSON.parse(JSON.stringify(parsedNew));
+          if (!merged.$stat) merged.$stat = {};
+          // Keep prev arrays — they only grow during gameplay, so the
+          // prev snapshot is a safe floor while the SWF can't transmit
+          // its current state.
+          for (const k of ['$item', '$eat', '$kill', '$game']) {
+            const pv = prevStat[k];
+            const nv = merged.$stat[k];
+            if (Array.isArray(pv) && pv.length > 0 && (!Array.isArray(nv) || nv.length < pv.length)) {
+              merged.$stat[k] = pv;
             }
-            // Same idea for faeries: collection that can grow; if the
-            // new save dropped them, restore from prev.
-            if (Array.isArray(prev.$faerie) && prev.$faerie.length > 0
-                && (!Array.isArray(merged.$faerie) || merged.$faerie.length === 0)) {
-              merged.$faerie = prev.$faerie;
-            }
-            data = JSON.stringify(merged);
-            console.log(`[SLOT]  RECOVERED minipixiz Ruffle-loss save for ${username} — kept prev arrays, applied new scalars ($run=${newStat.$run}, $diam=${parsedNew.$diam}, $star=${parsedNew.$star})`);
-          } catch (e) {
-            console.error(`[SLOT]  Ruffle-loss merge failed for ${username}/${game}: ${e.message}`);
           }
+          // Scalars: prefer the larger of new vs prev (they only grow).
+          // The SWF may post 0 when its in-memory copy was lost, but the
+          // user's real progress lives in prev. Taking the max preserves
+          // both forward progress this session and historical totals.
+          for (const k of ['$run', '$forestMax', '$treeMax', '$misNum']) {
+            const pv = Number(prevStat[k]) || 0;
+            const nv = Number(merged.$stat[k]) || 0;
+            if (pv > nv) merged.$stat[k] = pv;
+          }
+          for (const k of ['$diam', '$key', '$star', '$bag']) {
+            const pv = Number(prev[k]) || 0;
+            const nv = Number(merged[k]) || 0;
+            if (pv > nv) merged[k] = pv;
+          }
+          // Same idea for faeries: collection that can grow; if the
+          // new save dropped them, restore from prev.
+          if (Array.isArray(prev.$faerie) && prev.$faerie.length > 0
+              && (!Array.isArray(merged.$faerie) || merged.$faerie.length === 0)) {
+            merged.$faerie = prev.$faerie;
+          }
+          // Nested progress containers — keep prev when new is missing/empty.
+          if (prev.$dungeon && Number(prev.$dungeon.$lvl) > Number((merged.$dungeon || {}).$lvl || 0)) {
+            merged.$dungeon = prev.$dungeon;
+          }
+          if (prev.$pond && Number(prev.$pond.$q) > Number((merged.$pond || {}).$q || 0)) {
+            merged.$pond = prev.$pond;
+          }
+          if (prev.$rainbow && prev.$rainbow.$f && !(merged.$rainbow && merged.$rainbow.$f)) {
+            merged.$rainbow = prev.$rainbow;
+          }
+          if (prev.$frog && !merged.$frog) merged.$frog = true;
+          data = JSON.stringify(merged);
+          console.log(`[SLOT]  RECOVERED minipixiz Ruffle-loss save for ${username} — merged prev arrays/scalars (new $run=${newStat.$run} prev $run=${prevStat.$run||0}, new $diam=${parsedNew.$diam} prev $diam=${prev.$diam||0})`);
+        } catch (e) {
+          console.error(`[SLOT]  Ruffle-loss merge failed for ${username}/${game}: ${e.message}`);
         }
+      } else {
+        console.log(`[SLOT]  Ruffle-loss: no healthy prev for ${username}/${game} — cannot recover (new $run=${newStat.$run}, $kill.len=${Array.isArray(newStat.$kill)?newStat.$kill.length:'?'}, $game.len=${Array.isArray(newStat.$game)?newStat.$game.length:'?'})`);
       }
     } catch (e) {
       console.error(`[SLOT]  Ruffle-loss parse failed for ${username}/${game}: ${e.message}`);
@@ -4799,7 +4826,8 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
   // The SWF still in a corrupted session may keep posting scalar fields
   // until the user refreshes; we silently ack (ok=1) without storing.
   if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0' && isMinipixizSlot0Corrupted(data)) {
-    console.log(`[SLOT]  REJECT corrupted ${game} save for sid=${sid}: scalar $kill/$game/$item, not persisting`);
+    const sample = data.length > 220 ? data.slice(0, 220) + '…' : data;
+    console.log(`[SLOT]  REJECT corrupted ${game} save for sid=${sid}: scalar $kill/$game/$item, not persisting — sample=${sample}`);
     return res.type('text/plain').send('ok=1');
   }
 
