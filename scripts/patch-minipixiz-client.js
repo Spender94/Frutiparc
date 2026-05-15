@@ -753,11 +753,17 @@ function buildOnLoadBody() {
   ]);
 
   // === Wrap with success check ===
+  // forceCmCard runs in TWO places:
+  //  - Before callOnServiceConnect so loadFruticard sees r4 instead of
+  //    SO defaults (anchors Cm.card before any init reads it).
+  //  - After callOnServiceConnect too, in case loadFruticard
+  //    unconditionally reassigns Cm.card during its own setup.
   const afterSuccessBody = Buffer.concat([
     initStat, statScalars, statArrays,
     initCard, assignStat, cardScalars,
     dungeonObj, rainbowObj, pondObj, faerieAssign,
     slot0Assign, seedSO,
+    forceCmCard,
     callOnServiceConnect,
     syncSlots,
     forceCmCard,
@@ -1032,6 +1038,16 @@ function buildSaveSlotBody() {
     r7Fallback,
   ]);
 
+  // Re-anchor Cm.card on whichever Card we ended up with (r3). If gameplay
+  // had a fresh formatFruticard reference, after this assignment future
+  // reads of Cm.card hit OUR Card — propagating loaded state (bag, run,
+  // items) into the runtime. Idempotent if r3 was already Cm.card.
+  const reanchorCmCard = Buffer.concat([
+    actionPush(pushCp(CP.Cm_obf)), GET_VARIABLE,
+    actionPush(pushCp(CP.card_obf), pushReg(3)),
+    SET_MEMBER,
+  ]);
+
   // Skip serialization entirely if Cm.card is undefined/null (e.g., before loadFruticard)
   // We'll wrap the body in an if-guard at the end.
 
@@ -1183,7 +1199,7 @@ function buildSaveSlotBody() {
     actionIf(guardedBody.length),
   ]);
 
-  return Buffer.concat([getCard, skipIfNull, guardedBody]);
+  return Buffer.concat([getCard, reanchorCmCard, skipIfNull, guardedBody]);
 }
 
 const saveSlotBody = buildSaveSlotBody();
