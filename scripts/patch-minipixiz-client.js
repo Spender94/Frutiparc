@@ -700,6 +700,21 @@ function buildOnLoadBody() {
     syncSlot0Assign,
   ]);
 
+  // After loadFruticard runs inside onServiceConnect, the SWF's gameplay
+  // code holds Cm.card as a static reference; mutations like
+  // `Cm.card.$stat.$run++` land on whatever object Cm.card points to.
+  // loadFruticard re-anchors Cm.card to either SharedObject.data.fruticard[0]
+  // or formatFruticard() defaults — neither path reliably ends up at our r4
+  // under Ruffle (SharedObject.getLocal returns a fresh instance each call,
+  // so the seedSO write didn't reach loadFruticard's read). Force-set
+  // Cm.card = r4 here so gameplay reads/writes our loaded Card and the
+  // existing slots[0] = r4 reference stays in lockstep with mutations.
+  const forceCmCard = Buffer.concat([
+    actionPush(pushCp(CP.Cm)), GET_VARIABLE,
+    actionPush(pushCp(CP.card), pushReg(4)),
+    SET_MEMBER,
+  ]);
+
   // === Wrap with success check ===
   const afterSuccessBody = Buffer.concat([
     initStat, statScalars, statArrays,
@@ -708,6 +723,7 @@ function buildOnLoadBody() {
     slot0Assign, seedSO,
     callOnServiceConnect,
     syncSlots,
+    forceCmCard,
   ]);
 
   const successCheck = Buffer.concat([
@@ -915,16 +931,23 @@ function buildSaveSlotBody() {
     ]);
   }
 
-  // Part 1: card = this.slots[0] → r3
-  // Cm.card and Manager.client.slots[0] reference the same Card object
-  // (set in Cm.loadFruticard / formatFruticard). MTASC-compiled classes
-  // aren't on _global, so Cm.card is inaccessible from patched bytecode.
-  // SharedObject may not be in sync yet when saveSlot runs. this.slots[0]
-  // is the only reliable path.
-  const getCard = Buffer.concat([
+  // Part 1: card = Cm.card → r3, fall back to this.slots[0] when Cm is
+  // unreachable. Gameplay mutates Cm.card in place ($stat.$run++, $kill[i]++,
+  // etc.), so reading from it gives us the live state. The onLoad patch
+  // now force-sets Cm.card = our reconstructed Card so progress reads
+  // through here.
+  const slotsFallback = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
     actionPush(pushInt(0)), GET_MEMBER,
     storeReg(3), POP,
+  ]);
+  const getCard = Buffer.concat([
+    actionPush(pushCp(CP.Cm)), GET_VARIABLE,
+    actionPush(pushCp(CP.card)), GET_MEMBER,
+    storeReg(3), POP,
+    actionPush(pushReg(3)), NOT,
+    actionIf(slotsFallback.length),
+    slotsFallback,
   ]);
 
   // Skip serialization entirely if Cm.card is undefined/null (e.g., before loadFruticard)
