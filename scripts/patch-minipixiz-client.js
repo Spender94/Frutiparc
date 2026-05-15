@@ -298,14 +298,26 @@ console.log(`Tag length: ${origTagLen} → ${newTagLen}`);
 
 const shift = (o) => o >= cpDataEnd ? o + cpDelta : o;
 
-// ─── Step 3: Patch STANDALONE = true ───
-
+// ─── Step 3: Leave STANDALONE = false (the original compile-time value) ───
+//
+// The first iteration of this patch flipped STANDALONE to true so the SWF
+// used SharedObject as its persistence layer (no original network endpoint
+// was available). That worked but means gameplay's per-run saveFruticard
+// only writes to SO and never calls _client.saveSlot — gameplay progress
+// stays locked in Cm.card's runtime state and our HTTP save path captures
+// only the formatFruticard initial defaults.
+//
+// Reverting to STANDALONE=false makes gameplay's saveFruticard call
+// _client.saveSlot(0, Cm.card) as part of its normal flow. Our patched
+// saveSlot now correctly extracts r3 = the live Card (we verified this
+// via the 67-char init saves that emitted the gameplay-live state), so
+// each game-end save propagates real progress to the server.
 const standaloneOffset = shift(1287500);
-if (buf[standaloneOffset] === 0x00) {
-  buf[standaloneOffset] = 0x01;
-  console.log(`Set STANDALONE = true at offset ${standaloneOffset}`);
-} else if (buf[standaloneOffset] === 0x01) {
-  console.log('STANDALONE already true');
+if (buf[standaloneOffset] === 0x01) {
+  buf[standaloneOffset] = 0x00;
+  console.log(`Set STANDALONE = false at offset ${standaloneOffset}`);
+} else if (buf[standaloneOffset] === 0x00) {
+  console.log('STANDALONE already false');
 } else {
   throw new Error(`Unexpected byte at STANDALONE offset: 0x${buf[standaloneOffset].toString(16)}`);
 }
