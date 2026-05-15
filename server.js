@@ -5032,6 +5032,48 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
       for (const [key, val] of Object.entries(slots)) {
         response += `&slot${key}=${encodeURIComponent(val)}`;
       }
+
+      // MiniPixiz flat fields: Ruffle's eval()-based JSON parse in the SWF's
+      // _client.fromJSON returns null, so onLoad's fromJSON branch can't
+      // populate slots[0] and Cm.card ends up empty. Emit each Card field
+      // as a separate LoadVars property so the patched onLoad can rebuild
+      // the Card object manually without invoking fromJSON. Field naming:
+      // mpx_<key> for scalars, mpx_<key> for CSV-encoded arrays.
+      if ((game === 'minipixiz' || game === 'minitroll') && slots['0']) {
+        try {
+          const c = JSON.parse(slots['0']);
+          const s = c.$stat || {};
+          const boolArr = (a) => Array.isArray(a) ? a.map((v) => v ? '1' : '0').join(',') : '';
+          const numArr  = (a) => Array.isArray(a) ? a.map((v) => Number(v) || 0).join(',') : '';
+          const faerieArr = (a) => Array.isArray(a) ? a.map((f) => Number(f && f.$level) || 0).join(',') : '';
+          const flat = {
+            mpx_run:        Number(s.$run) || 0,
+            mpx_forestMax:  Number(s.$forestMax) || 0,
+            mpx_treeMax:    Number(s.$treeMax) || 0,
+            mpx_misNum:     Number(s.$misNum) || 0,
+            mpx_item:       boolArr(s.$item),
+            mpx_eat:        numArr(s.$eat),
+            mpx_kill:       numArr(s.$kill),
+            mpx_game:       numArr(s.$game),
+            mpx_diam:       Number(c.$diam) || 0,
+            mpx_key:        Number(c.$key) || 0,
+            mpx_star:       Number(c.$star) || 0,
+            mpx_bag:        Number(c.$bag) || 0,
+            mpx_dungeonLvl: Number(c.$dungeon && c.$dungeon.$lvl) || 0,
+            mpx_dungeonF:   (c.$dungeon && c.$dungeon.$f) ? '1' : '0',
+            mpx_rainbowF:   (c.$rainbow && c.$rainbow.$f) ? '1' : '0',
+            mpx_pondQ:      Number(c.$pond && c.$pond.$q) || 0,
+            mpx_frog:       c.$frog ? '1' : '0',
+            mpx_faerie:     faerieArr(c.$faerie),
+            mpx_vs:         (typeof c.$vs === 'number') ? c.$vs : 1.1,
+          };
+          for (const [k, v] of Object.entries(flat)) {
+            response += `&${k}=${encodeURIComponent(String(v))}`;
+          }
+        } catch (e) {
+          console.log(`[SLOT]  minipixiz flat-emit failed for ${username}: ${e.message}`);
+        }
+      }
     }
   }
   // Fallback: even without a logged-in user, MB2 needs valid slot data so
