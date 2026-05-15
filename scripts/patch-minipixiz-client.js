@@ -242,6 +242,33 @@ const newStrings = [
   // length-5 array instead of corruption-rejecting an empty string.
   'join',                 // +47
   ',',                    // +48
+
+  // Flat LoadVars field names emitted by /api/loadFrutiSlots for minipixiz.
+  // Ruffle's eval()-based _client.fromJSON returns null on the slot0 JSON
+  // payload, so we rebuild Card manually from these per-field properties
+  // and bypass fromJSON entirely.
+  'mpx_run',              // +49
+  'mpx_diam',             // +50
+  'mpx_key',              // +51
+  'mpx_star',             // +52
+  'mpx_bag',              // +53
+  'mpx_forestMax',        // +54
+  'mpx_treeMax',          // +55
+  'mpx_misNum',           // +56
+  'mpx_item',             // +57
+  'mpx_eat',              // +58
+  'mpx_kill',             // +59
+  'mpx_game',             // +60
+  'mpx_dungeonLvl',       // +61
+  'mpx_dungeonF',         // +62
+  'mpx_rainbowF',         // +63
+  'mpx_pondQ',            // +64
+  'mpx_frog',             // +65
+  'mpx_faerie',           // +66
+  'mpx_vs',               // +67
+  'Number',               // +68
+  'split',                // +69
+  '1',                    // +70   bool truthy marker (mpx_frog == "1" etc.)
 ];
 
 const newCpBase = origCpCount;
@@ -342,112 +369,356 @@ const CP = {
   card: newCpBase + 46,
   join: newCpBase + 47,
   comma: newCpBase + 48,
+  mpx_run:        newCpBase + 49,
+  mpx_diam:       newCpBase + 50,
+  mpx_key:        newCpBase + 51,
+  mpx_star:       newCpBase + 52,
+  mpx_bag:        newCpBase + 53,
+  mpx_forestMax:  newCpBase + 54,
+  mpx_treeMax:    newCpBase + 55,
+  mpx_misNum:     newCpBase + 56,
+  mpx_item:       newCpBase + 57,
+  mpx_eat:        newCpBase + 58,
+  mpx_kill:       newCpBase + 59,
+  mpx_game:       newCpBase + 60,
+  mpx_dungeonLvl: newCpBase + 61,
+  mpx_dungeonF:   newCpBase + 62,
+  mpx_rainbowF:   newCpBase + 63,
+  mpx_pondQ:      newCpBase + 64,
+  mpx_frog:       newCpBase + 65,
+  mpx_faerie:     newCpBase + 66,
+  mpx_vs:         newCpBase + 67,
+  Number:         newCpBase + 68,
+  split:          newCpBase + 69,
+  one:            newCpBase + 70,
 };
 
+// Add ActionGetVariable and ActionCallFunction opcodes (not yet declared).
+const CALL_FUNCTION = simpleAction(0x3D);
+
 // ── serviceConnect onLoad callback ──
+//
+// Receives the response from /api/loadFrutiSlots. The server emits flat
+// LoadVars fields (mpx_run, mpx_diam, mpx_item, mpx_kill, …) alongside
+// the legacy slot0=<json> payload. We bypass _client.fromJSON entirely
+// (it returns null under Ruffle because its eval()-based JSON parser
+// fails on object literals) and rebuild the Card object manually from
+// the flat fields. Result: r3.slots[0] = a fully-formed Card whose
+// gameplay updates propagate through to saveSlot.
+//
+// Register layout (regcount=10):
+//   r1 = this (LoadVars receiver, preloaded)
+//   r2 = success (named param)
+//   r3 = _client
+//   r4 = card (Card object being built)
+//   r5 = stat ($stat subobject)
+//   r6 = split-result array (CSV parse scratch)
+//   r7 = loop index (CSV parse scratch)
+//   r8 = parsed array (output of csv→array helpers, then transferred to r4/r5)
+//   r9 = SharedObject handle / fruticard array (last steps)
 
 function buildOnLoadBody() {
+  // target[propCp] = Number(this[srcLvCp])
+  function setNumFromLv(targetReg, propCp, srcLvCp) {
+    return Buffer.concat([
+      actionPush(pushReg(targetReg), pushCp(propCp)),
+      actionPush(pushReg(1), pushCp(srcLvCp)), GET_MEMBER,
+      actionPush(pushInt(1)),
+      actionPush(pushCp(CP.Number)),
+      CALL_FUNCTION,
+      SET_MEMBER,
+    ]);
+  }
+
+  // target[propCp] = (this[srcLvCp] == "1")
+  function setBoolFromLv(targetReg, propCp, srcLvCp) {
+    return Buffer.concat([
+      actionPush(pushReg(targetReg), pushCp(propCp)),
+      actionPush(pushReg(1), pushCp(srcLvCp)), GET_MEMBER,
+      actionPush(pushCp(CP.one)),
+      EQUALS2,
+      SET_MEMBER,
+    ]);
+  }
+
+  // outReg = [Number(x) for x in this[srcLvCp].split(",")] (or boolean variant).
+  // The split is unconditional — Number("") = 0 in AS2 (ECMAScript-1), so an
+  // empty source field yields [0], not a crash. parseFaerieCsv keeps the
+  // truthy-only guard because faerie wraps each level in an object literal
+  // and an extraneous {$level:0} entry would falsely register a faerie.
+  function buildCsvLoop(srcLvCp, outReg, bodyBuilder, tmpSplit = 6, tmpIdx = 7) {
+    const init = Buffer.concat([
+      actionPush(pushInt(0)), INIT_ARRAY,
+      storeReg(outReg), POP,
+    ]);
+    const split = Buffer.concat([
+      actionPush(pushCp(CP.comma)),
+      actionPush(pushInt(1)),
+      actionPush(pushReg(1), pushCp(srcLvCp)), GET_MEMBER,
+      actionPush(pushCp(CP.split)),
+      CALL_METHOD,
+      storeReg(tmpSplit), POP,
+    ]);
+    const loopInit = Buffer.concat([
+      actionPush(pushInt(0)), storeReg(tmpIdx), POP,
+    ]);
+    const loopCond = Buffer.concat([
+      actionPush(pushReg(tmpIdx)),
+      actionPush(pushReg(tmpSplit), pushCp(CP.length)), GET_MEMBER,
+      LESS2, NOT,
+    ]);
+    const loopBody = bodyBuilder(outReg, tmpSplit, tmpIdx);
+    const loopIncr = Buffer.concat([
+      actionPush(pushReg(tmpIdx), pushInt(1)), ADD2,
+      storeReg(tmpIdx), POP,
+    ]);
+    const ifFwd = loopBody.length + loopIncr.length + 5;
+    const jBack = -(loopCond.length + 5 + loopBody.length + loopIncr.length + 5);
+    const loop = Buffer.concat([
+      loopCond, actionIf(ifFwd),
+      loopBody, loopIncr,
+      actionJump(jBack),
+    ]);
+    return Buffer.concat([init, split, loopInit, loop]);
+  }
+
+  // outReg[idx] = Number(splitArr[idx])
+  const numBody = (outReg, tmpSplit, tmpIdx) => Buffer.concat([
+    actionPush(pushReg(outReg), pushReg(tmpIdx)),
+    actionPush(pushReg(tmpSplit), pushReg(tmpIdx)), GET_MEMBER,
+    actionPush(pushInt(1)),
+    actionPush(pushCp(CP.Number)),
+    CALL_FUNCTION,
+    SET_MEMBER,
+  ]);
+
+  // outReg[idx] = (splitArr[idx] == "1")
+  const boolBody = (outReg, tmpSplit, tmpIdx) => Buffer.concat([
+    actionPush(pushReg(outReg), pushReg(tmpIdx)),
+    actionPush(pushReg(tmpSplit), pushReg(tmpIdx)), GET_MEMBER,
+    actionPush(pushCp(CP.one)),
+    EQUALS2,
+    SET_MEMBER,
+  ]);
+
+  // outReg[idx] = {$level: Number(splitArr[idx])}
+  // INIT_OBJECT pops count, then (value, name) pairs — top of stack popped
+  // first. Stack before INIT_OBJECT (bottom→top): name, value, count=1.
+  const faerieBody = (outReg, tmpSplit, tmpIdx) => Buffer.concat([
+    actionPush(pushReg(outReg), pushReg(tmpIdx)),       // target, idx (for SET_MEMBER)
+    actionPush(pushCp(CP.$level)),                       // name
+    actionPush(pushReg(tmpSplit), pushReg(tmpIdx)), GET_MEMBER,
+    actionPush(pushInt(1)),
+    actionPush(pushCp(CP.Number)),
+    CALL_FUNCTION,                                       // value = Number(split[idx])
+    actionPush(pushInt(1)),                              // pair count
+    INIT_OBJECT,
+    SET_MEMBER,
+  ]);
+
+  const parseFaerieCsvToArr = (srcLvCp, outReg, tmpSplit = 6, tmpIdx = 7) => {
+    // Guard: only parse when mpx_faerie is truthy — otherwise leave outReg = [].
+    // numBody/boolBody are safe on empty strings (Number("") = 0,
+    // "" == "1" → false), but an empty faerie CSV would yield
+    // [{$level: 0}] (length 1) and falsely register a faerie.
+    const initEmpty = Buffer.concat([
+      actionPush(pushInt(0)), INIT_ARRAY,
+      storeReg(outReg), POP,
+    ]);
+    const split = Buffer.concat([
+      actionPush(pushCp(CP.comma)),
+      actionPush(pushInt(1)),
+      actionPush(pushReg(1), pushCp(srcLvCp)), GET_MEMBER,
+      actionPush(pushCp(CP.split)),
+      CALL_METHOD,
+      storeReg(tmpSplit), POP,
+    ]);
+    const loopInit = Buffer.concat([
+      actionPush(pushInt(0)), storeReg(tmpIdx), POP,
+    ]);
+    const loopCond = Buffer.concat([
+      actionPush(pushReg(tmpIdx)),
+      actionPush(pushReg(tmpSplit), pushCp(CP.length)), GET_MEMBER,
+      LESS2, NOT,
+    ]);
+    const loopBody = faerieBody(outReg, tmpSplit, tmpIdx);
+    const loopIncr = Buffer.concat([
+      actionPush(pushReg(tmpIdx), pushInt(1)), ADD2,
+      storeReg(tmpIdx), POP,
+    ]);
+    const ifFwd = loopBody.length + loopIncr.length + 5;
+    const jBack = -(loopCond.length + 5 + loopBody.length + loopIncr.length + 5);
+    const loop = Buffer.concat([
+      loopCond, actionIf(ifFwd),
+      loopBody, loopIncr,
+      actionJump(jBack),
+    ]);
+    const fillBlock = Buffer.concat([split, loopInit, loop]);
+    const guard = Buffer.concat([
+      actionPush(pushReg(1), pushCp(srcLvCp)), GET_MEMBER, NOT,
+      actionIf(fillBlock.length),
+    ]);
+    return Buffer.concat([initEmpty, guard, fillBlock]);
+  };
+
+  // === r3 = this._client ===
   const getClient = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP._client)), GET_MEMBER, storeReg(3), POP,
   ]);
 
-  const checkSuccess = Buffer.concat([
-    actionPush(pushReg(2)), NOT,
+  // === Build $stat → r5 ===
+  const initStat = Buffer.concat([
+    actionPush(pushInt(0)), INIT_OBJECT,
+    storeReg(5), POP,
+  ]);
+  const statScalars = Buffer.concat([
+    setNumFromLv(5, CP.$run,        CP.mpx_run),
+    setNumFromLv(5, CP.$forestMax,  CP.mpx_forestMax),
+    setNumFromLv(5, CP.$treeMax,    CP.mpx_treeMax),
+    setNumFromLv(5, CP.$misNum,     CP.mpx_misNum),
+  ]);
+  // Helper: parse mpx_<arr> → r8, then stat[$prop] = r8
+  const parseAndAssign = (srcLvCp, statPropCp, body) => Buffer.concat([
+    buildCsvLoop(srcLvCp, 8, body),
+    actionPush(pushReg(5), pushCp(statPropCp), pushReg(8)),
+    SET_MEMBER,
+  ]);
+  const statArrays = Buffer.concat([
+    parseAndAssign(CP.mpx_item, CP.$item, boolBody),
+    parseAndAssign(CP.mpx_eat,  CP.$eat,  numBody),
+    parseAndAssign(CP.mpx_kill, CP.$kill, numBody),
+    parseAndAssign(CP.mpx_game, CP.$game, numBody),
   ]);
 
-  const slot0Check = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
-    actionPush(pushUndef()), EQUALS2, NOT, NOT,
+  // === Build Card → r4 ===
+  const initCard = Buffer.concat([
+    actionPush(pushInt(0)), INIT_OBJECT,
+    storeReg(4), POP,
+  ]);
+  const assignStat = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.$stat), pushReg(5)),
+    SET_MEMBER,
+  ]);
+  const cardScalars = Buffer.concat([
+    setNumFromLv(4, CP.$diam, CP.mpx_diam),
+    setNumFromLv(4, CP.$key,  CP.mpx_key),
+    setNumFromLv(4, CP.$star, CP.mpx_star),
+    setNumFromLv(4, CP.$bag,  CP.mpx_bag),
+    setNumFromLv(4, CP.$vs,   CP.mpx_vs),
+    setBoolFromLv(4, CP.$frog, CP.mpx_frog),
   ]);
 
-  const slot0Load = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
+  // card.$dungeon = {$lvl: Number(mpx_dungeonLvl), $f: (mpx_dungeonF == "1")}
+  const dungeonObj = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.$dungeon)),
+    actionPush(pushCp(CP.$lvl)),
+    actionPush(pushReg(1), pushCp(CP.mpx_dungeonLvl)), GET_MEMBER,
     actionPush(pushInt(1)),
-    actionPush(pushReg(3), pushCp(CP.fromJSON)),
-    CALL_METHOD, storeReg(4), POP,
+    actionPush(pushCp(CP.Number)),
+    CALL_FUNCTION,
+    actionPush(pushCp(CP.$f)),
+    actionPush(pushReg(1), pushCp(CP.mpx_dungeonF)), GET_MEMBER,
+    actionPush(pushCp(CP.one)),
+    EQUALS2,
+    actionPush(pushInt(2)),
+    INIT_OBJECT,
+    SET_MEMBER,
+  ]);
+  // card.$rainbow = {$f: (mpx_rainbowF == "1")}
+  const rainbowObj = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.$rainbow)),
+    actionPush(pushCp(CP.$f)),
+    actionPush(pushReg(1), pushCp(CP.mpx_rainbowF)), GET_MEMBER,
+    actionPush(pushCp(CP.one)),
+    EQUALS2,
+    actionPush(pushInt(1)),
+    INIT_OBJECT,
+    SET_MEMBER,
+  ]);
+  // card.$pond = {$q: Number(mpx_pondQ)}
+  const pondObj = Buffer.concat([
+    actionPush(pushReg(4), pushCp(CP.$pond)),
+    actionPush(pushCp(CP.$q)),
+    actionPush(pushReg(1), pushCp(CP.mpx_pondQ)), GET_MEMBER,
+    actionPush(pushInt(1)),
+    actionPush(pushCp(CP.Number)),
+    CALL_FUNCTION,
+    actionPush(pushInt(1)),
+    INIT_OBJECT,
+    SET_MEMBER,
+  ]);
+  // card.$faerie = parsed faerie array
+  const faerieAssign = Buffer.concat([
+    parseFaerieCsvToArr(CP.mpx_faerie, 8),
+    actionPush(pushReg(4), pushCp(CP.$faerie), pushReg(8)),
+    SET_MEMBER,
   ]);
 
-  const slot0NullCheck = Buffer.concat([
-    actionPush(pushReg(4), pushNull()), EQUALS2, NOT, NOT,
-  ]);
-
+  // === r3.slots[0] = r4 and seed SharedObject so loadFruticard sees it ===
   const slot0Assign = Buffer.concat([
     actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
     actionPush(pushInt(0)),
     actionPush(pushReg(4)),
     SET_MEMBER,
   ]);
-
-  // Seed SharedObject from server data BEFORE onServiceConnect runs.
-  // loadFruticard() reads from SharedObject (STANDALONE=true), not slots[0].
-  // We MUST seed SharedObject with server data so loadFruticard ends up using
-  // the same object that ends up in slots[0] via syncSlots. Otherwise Cm.card
-  // and slots[0] diverge: Cm.card points to SharedObject's (possibly stale)
-  // data, while slots[0] points to JSON-loaded server data. Gameplay updates
-  // Cm.card but saveSlot reads slots[0] → progress is never persisted.
   const seedSO = Buffer.concat([
-    // r5 = SharedObject.getLocal("miniPixiz/card")
     actionPush(pushStr('miniPixiz/card'), pushInt(1)),
     actionPush(pushStr('SharedObject')), GET_VARIABLE,
     actionPush(pushStr('getLocal')),
     CALL_METHOD,
-    storeReg(5), POP,
-    // r5.data.fruticard = [r4]
-    actionPush(pushReg(5), pushStr('data')), GET_MEMBER,
+    storeReg(9), POP,
+    actionPush(pushReg(9), pushStr('data')), GET_MEMBER,
     actionPush(pushStr('fruticard')),
     actionPush(pushReg(4), pushInt(1)),
     INIT_ARRAY,
     SET_MEMBER,
   ]);
-
   const callOnServiceConnect = Buffer.concat([
     actionPush(pushInt(0)),
     actionPush(pushReg(3), pushCp(CP.onServiceConnect)),
     CALL_METHOD, POP,
   ]);
 
-  // After onServiceConnect → loadFruticard, sync slots[0] from SharedObject.
-  // loadFruticard sets Cm.card = so.data.fruticard[0]; saveSlot reads from
-  // slots[0], so they must reference the same object.
+  // === Sync slots[0] from SharedObject post-loadFruticard ===
   const syncSlot0Assign = Buffer.concat([
     actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
     actionPush(pushInt(0)),
-    actionPush(pushReg(5), pushInt(0)), GET_MEMBER,
+    actionPush(pushReg(9), pushInt(0)), GET_MEMBER,
     SET_MEMBER,
   ]);
-
   const syncSlots = Buffer.concat([
     actionPush(pushStr('miniPixiz/card'), pushInt(1)),
     actionPush(pushStr('SharedObject')), GET_VARIABLE,
     actionPush(pushStr('getLocal')),
     CALL_METHOD,
-    storeReg(4), POP,
-    actionPush(pushReg(4), pushStr('data')), GET_MEMBER,
+    storeReg(9), POP,
+    actionPush(pushReg(9), pushStr('data')), GET_MEMBER,
     actionPush(pushStr('fruticard')), GET_MEMBER,
-    storeReg(5), POP,
-    actionPush(pushReg(5)), NOT,
+    storeReg(9), POP,
+    actionPush(pushReg(9)), NOT,
     actionIf(syncSlot0Assign.length),
     syncSlot0Assign,
   ]);
 
-  const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
-    slot0Assign.length + seedSO.length;
-  const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length + seedSO.length;
-  const slot0NullSkipSize = slot0Assign.length + seedSO.length;
+  // === Wrap with success check ===
+  const afterSuccessBody = Buffer.concat([
+    initStat, statScalars, statArrays,
+    initCard, assignStat, cardScalars,
+    dungeonObj, rainbowObj, pondObj, faerieAssign,
+    slot0Assign, seedSO,
+    callOnServiceConnect,
+    syncSlots,
+  ]);
+
+  const successCheck = Buffer.concat([
+    actionPush(pushReg(2)), NOT,
+    actionIf(afterSuccessBody.length),
+  ]);
 
   return Buffer.concat([
     getClient,
-    checkSuccess,
-    actionIf(afterSuccessCheck),
-    slot0Check,
-    actionIf(slot0SkipSize),
-    slot0Load,
-    slot0NullCheck,
-    actionIf(slot0NullSkipSize),
-    slot0Assign,
-    seedSO,
-    callOnServiceConnect,
-    syncSlots,
+    successCheck,
+    afterSuccessBody,
   ]);
 }
 
@@ -501,7 +772,7 @@ function buildServiceConnectBody() {
     SET_MEMBER,
   ]);
 
-  const onLoadFunc = buildDefineFunction2('', [[2, 'success']], 6, 0x29, onLoadBodyBytes);
+  const onLoadFunc = buildDefineFunction2('', [[2, 'success']], 10, 0x29, onLoadBodyBytes);
   const setOnLoad = Buffer.concat([
     actionPush(pushReg(4), pushCp(CP.onLoad)),
     onLoadFunc,
