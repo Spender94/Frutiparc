@@ -743,39 +743,74 @@ function buildOnLoadBody() {
   // never resolved and the SET_MEMBER was a no-op. saveSlot now reads
   // directly from the `data` parameter (the live Card gameplay passes
   // in at call time), so we don't need to anchor anything globally.
-  // === Force Cm.card = r4 via deobfuscated CP names ===
+  // After loadFruticard runs inside onServiceConnect, the SWF's gameplay
+  // code holds Cm.card as a static reference; mutations like
+  // `Cm.card.$stat.$run++` land on whatever object Cm.card points to.
+  // loadFruticard re-anchors Cm.card to either SharedObject.data.fruticard[0]
+  // or formatFruticard() defaults — neither path reliably ends up at our r4
+  // under Ruffle (SharedObject.getLocal returns a fresh instance each call,
+  // so the seedSO write didn't reach loadFruticard's read).
   //
-  // Under Ruffle, SharedObject seeding doesn't reliably reach
-  // loadFruticard, so onServiceConnect → loadFruticard → Cm.card =
-  // formatFruticard() defaults: gameplay then mutates a fresh blank Card
-  // and the UX appears to wipe historical progress (bag, run, items
-  // collected etc. invisible in-game even though the DB has them).
+  // Earlier attempt: `]q.4d(* = r4` (replace the static reference). This
+  // doesn't work because `4d(*` is read 237x in the bytecode but NEVER
+  // written by name — it's defined via some mechanism (getter, prototype
+  // chain, frame-action init) that our SetMember can't override. Gameplay's
+  // reads of `]q.4d(*` continue returning the original Card object.
   //
-  // Now that decompilation revealed Cm = "]q" (CP[106]) and .card =
-  // "4d(*" (CP[107]), we can SetMember directly to point Cm.card at
-  // our reconstructed r4. Subsequent gameplay reads `Cm.card.$run`,
-  // `Cm.card.$bag`, etc. and finds the loaded historical state.
-  const forceCmCard = Buffer.concat([
-    actionPush(pushCp(CP.Cm_obf)), GET_VARIABLE,        // ]q (Cm class)
-    actionPush(pushCp(CP.card_obf), pushReg(4)),         // .card = r4
-    SET_MEMBER,
-  ]);
+  // New approach: mutate the EXISTING Cm.card object IN PLACE. Read the
+  // current Cm.card into r8, then SetMember each property with the
+  // corresponding value from our reconstructed r4. The Card object's
+  // identity stays the same (so the getter/setter trick is irrelevant),
+  // but its data now reflects the loaded DB state.
+  const mutateCmCard = (() => {
+    // r8 = Cm.card (whatever the SWF set it to)
+    const fetchCard = Buffer.concat([
+      actionPush(pushCp(CP.Cm_obf)), GET_VARIABLE,
+      actionPush(pushCp(CP.card_obf)), GET_MEMBER,
+      storeReg(8), POP,
+    ]);
+    // Skip mutation if r8 is null/undefined (Cm.card not yet initialised
+    // — would happen if loadFruticard hasn't run; we'd hit this when our
+    // onLoad fires before the SWF's own init completes).
+    const skipGuard = Buffer.concat([
+      actionPush(pushReg(8)), NOT,
+    ]);
+    // Helper: r8[prop] = r4[prop]
+    const copy = (propCp) => Buffer.concat([
+      actionPush(pushReg(8), pushCp(propCp)),
+      actionPush(pushReg(4), pushCp(propCp)), GET_MEMBER,
+      SET_MEMBER,
+    ]);
+    const mutateBody = Buffer.concat([
+      copy(CP.$stat),    // whole $stat sub-object reference
+      copy(CP.$diam),
+      copy(CP.$key),
+      copy(CP.$star),
+      copy(CP.$bag),
+      copy(CP.$vs),
+      copy(CP.$frog),
+      copy(CP.$dungeon),
+      copy(CP.$rainbow),
+      copy(CP.$pond),
+      copy(CP.$faerie),
+    ]);
+    return Buffer.concat([fetchCard, skipGuard, actionIf(mutateBody.length), mutateBody]);
+  })();
 
   // === Wrap with success check ===
-  // forceCmCard runs in TWO places:
-  //  - Before callOnServiceConnect so loadFruticard sees r4 instead of
-  //    SO defaults (anchors Cm.card before any init reads it).
-  //  - After callOnServiceConnect too, in case loadFruticard
-  //    unconditionally reassigns Cm.card during its own setup.
+  // mutateCmCard runs AFTER callOnServiceConnect so loadFruticard has set
+  // up its (stale) Card, then we mutate that object's fields in place with
+  // our loaded r4 data. Property mutation works even if `4d(*` is a getter
+  // we can't override — the object Cm.card returns is the same, its
+  // properties are now ours.
   const afterSuccessBody = Buffer.concat([
     initStat, statScalars, statArrays,
     initCard, assignStat, cardScalars,
     dungeonObj, rainbowObj, pondObj, faerieAssign,
     slot0Assign, seedSO,
-    forceCmCard,
     callOnServiceConnect,
     syncSlots,
-    forceCmCard,
+    mutateCmCard,
   ]);
 
   const successCheck = Buffer.concat([
@@ -1047,15 +1082,40 @@ function buildSaveSlotBody() {
     r7Fallback,
   ]);
 
-  // Re-anchor Cm.card on whichever Card we ended up with (r3). If gameplay
-  // had a fresh formatFruticard reference, after this assignment future
-  // reads of Cm.card hit OUR Card — propagating loaded state (bag, run,
-  // items) into the runtime. Idempotent if r3 was already Cm.card.
-  const reanchorCmCard = Buffer.concat([
-    actionPush(pushCp(CP.Cm_obf)), GET_VARIABLE,
-    actionPush(pushCp(CP.card_obf), pushReg(3)),
-    SET_MEMBER,
-  ]);
+  // Mutate Cm.card's properties from r3 IN PLACE (instead of reassigning
+  // the static). Reassignment doesn't propagate because `]q.4d(*` is a
+  // getter we can't override; mutating the object the getter returns
+  // works regardless. Idempotent when r3 already IS Cm.card (the loop
+  // copies field-to-itself, harmless).
+  const reanchorCmCard = (() => {
+    const fetchCard = Buffer.concat([
+      actionPush(pushCp(CP.Cm_obf)), GET_VARIABLE,
+      actionPush(pushCp(CP.card_obf)), GET_MEMBER,
+      storeReg(8), POP,
+    ]);
+    const skipGuard = Buffer.concat([
+      actionPush(pushReg(8)), NOT,
+    ]);
+    const copy = (propCp) => Buffer.concat([
+      actionPush(pushReg(8), pushCp(propCp)),
+      actionPush(pushReg(3), pushCp(propCp)), GET_MEMBER,
+      SET_MEMBER,
+    ]);
+    const mutateBody = Buffer.concat([
+      copy(CP.$stat),
+      copy(CP.$diam),
+      copy(CP.$key),
+      copy(CP.$star),
+      copy(CP.$bag),
+      copy(CP.$vs),
+      copy(CP.$frog),
+      copy(CP.$dungeon),
+      copy(CP.$rainbow),
+      copy(CP.$pond),
+      copy(CP.$faerie),
+    ]);
+    return Buffer.concat([fetchCard, skipGuard, actionIf(mutateBody.length), mutateBody]);
+  })();
 
   // Skip serialization entirely if Cm.card is undefined/null (e.g., before loadFruticard)
   // We'll wrap the body in an if-guard at the end.
