@@ -298,26 +298,22 @@ console.log(`Tag length: ${origTagLen} → ${newTagLen}`);
 
 const shift = (o) => o >= cpDataEnd ? o + cpDelta : o;
 
-// ─── Step 3: Leave STANDALONE = false (the original compile-time value) ───
+// ─── Step 3: Patch STANDALONE = true ───
 //
-// The first iteration of this patch flipped STANDALONE to true so the SWF
-// used SharedObject as its persistence layer (no original network endpoint
-// was available). That worked but means gameplay's per-run saveFruticard
-// only writes to SO and never calls _client.saveSlot — gameplay progress
-// stays locked in Cm.card's runtime state and our HTTP save path captures
-// only the formatFruticard initial defaults.
-//
-// Reverting to STANDALONE=false makes gameplay's saveFruticard call
-// _client.saveSlot(0, Cm.card) as part of its normal flow. Our patched
-// saveSlot now correctly extracts r3 = the live Card (we verified this
-// via the 67-char init saves that emitted the gameplay-live state), so
-// each game-end save propagates real progress to the server.
+// We bounced this between true and false during diagnosis. With
+// STANDALONE=false the SWF's gameplay tries to persist via the original
+// network path (ExternalInterface/LocalConnection — neither works in our
+// Ruffle setup), so progress never reaches our patched saveSlot and we
+// see no saves after init. STANDALONE=true keeps the SharedObject
+// persistence layer that gameplay reliably writes to in this engine
+// build, and getCard now reads from SO as an intermediate fallback so
+// we can still HTTP-export the live state from periodic sync triggers.
 const standaloneOffset = shift(1287500);
-if (buf[standaloneOffset] === 0x01) {
-  buf[standaloneOffset] = 0x00;
-  console.log(`Set STANDALONE = false at offset ${standaloneOffset}`);
-} else if (buf[standaloneOffset] === 0x00) {
-  console.log('STANDALONE already false');
+if (buf[standaloneOffset] === 0x00) {
+  buf[standaloneOffset] = 0x01;
+  console.log(`Set STANDALONE = true at offset ${standaloneOffset}`);
+} else if (buf[standaloneOffset] === 0x01) {
+  console.log('STANDALONE already true');
 } else {
   throw new Error(`Unexpected byte at STANDALONE offset: 0x${buf[standaloneOffset].toString(16)}`);
 }
@@ -944,30 +940,51 @@ function buildSaveSlotBody() {
 
   // Part 1: pick the Card object to serialise (→ r3).
   //
-  // Originally we tried Cm.card via GET_VARIABLE on "Cm" — but inspection
-  // of the un-patched SWF shows the "Cm" symbol doesn't exist in the
-  // const pool at all (MTASC inlined class refs), so that lookup always
-  // returns undefined under Ruffle.
+  // Three sources, tried in order:
   //
-  // Better candidate: r3 is the saveSlot(n, data) `data` parameter as
-  // passed by gameplay's call site. If gameplay passes the live Card
-  // object (most likely since it owns the state being persisted), we
-  // can read live mutations from there directly. We check `r3.$stat` to
-  // confirm it's a Card before keeping it. If r3 is missing/scalar/string,
-  // fall back to the loaded snapshot stored in this.slots[0] — a stale
-  // floor, but at least preserves user progress (server merge takes max).
+  //   1. r3 (data param) — gameplay's init/formatFruticard saves pass the
+  //      live Card here. Verified by the 67-char init pipes that emitted
+  //      the live runtime state ($vs=1.2, fresh formatFruticard defaults).
+  //      If r3.$stat is a truthy object we keep it.
+  //
+  //   2. SharedObject.data.fruticard[0] — in STANDALONE=true mode gameplay
+  //      writes Cm.card into SO via saveFruticard. Periodic sync triggers
+  //      call _client.saveSlot(0) without a data arg (r3=undefined here),
+  //      and the SO read gives us the gameplay-mutated Card. This is the
+  //      capture path for in-game progress ($run++, $game[zone]++, picto
+  //      unlocks, $bag upgrades).
+  //
+  //   3. this.slots[0] — our reconstructed r4 from onLoad, the stale
+  //      floor. If both r3 and SO are empty (very early init, or SO
+  //      reset by the SWF), we use this so the server merge still sees
+  //      preserved historical progress instead of all-undefined.
   const slotsFallback = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
     actionPush(pushInt(0)), GET_MEMBER,
     storeReg(3), POP,
   ]);
-  const getCard = Buffer.concat([
-    // Push r3.$stat. If truthy, actionIf jumps over the fallback —
-    // r3 keeps gameplay's Card. If falsy, fallback executes and r3
-    // becomes slots[0].
+  // SO fallback: read SharedObject.getLocal("miniPixiz/card").data.fruticard[0]
+  // into r3, check r3.$stat truthy → if yes skip slotsFallback; else fall
+  // through to slotsFallback.
+  const soFallback = Buffer.concat([
+    actionPush(pushStr('miniPixiz/card'), pushInt(1)),
+    actionPush(pushStr('SharedObject')), GET_VARIABLE,
+    actionPush(pushStr('getLocal')),
+    CALL_METHOD,
+    actionPush(pushStr('data')), GET_MEMBER,
+    actionPush(pushStr('fruticard')), GET_MEMBER,
+    actionPush(pushInt(0)), GET_MEMBER,
+    storeReg(3), POP,
+    // r3 = SO card (or undefined if path broken)
     actionPush(pushReg(3), pushCp(CP.$stat)), GET_MEMBER,
     actionIf(slotsFallback.length),
     slotsFallback,
+  ]);
+  const getCard = Buffer.concat([
+    // First check r3.$stat (data param from gameplay).
+    actionPush(pushReg(3), pushCp(CP.$stat)), GET_MEMBER,
+    actionIf(soFallback.length),
+    soFallback,
   ]);
 
   // Skip serialization entirely if Cm.card is undefined/null (e.g., before loadFruticard)
