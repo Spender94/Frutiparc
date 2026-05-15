@@ -4836,6 +4836,96 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
     return res.type('text/plain').send('ok=1');
   }
 
+  // MiniPixiz: normal-save merge. Cm.card resets to formatFruticard()
+  // defaults on each session ($run=0, sparse arrays), so a session that
+  // plays less than the prev session's totals would clobber DB.$run and
+  // friends downward. Take max(prev,new) for monotonically-growing scalars
+  // and union the bool/num arrays so historical $item picto state survives.
+  // Skipped when prev DB is empty (first-ever save) or new save is the
+  // freshly-blocked default-clobber payload.
+  if (
+    (game === 'minipixiz' || game === 'minitroll') &&
+    slotId === '0' &&
+    data && data[0] === '{' &&
+    !looksLikeMinipixizDefault(data)
+  ) {
+    try {
+      const parsedNew = JSON.parse(data);
+      let prevJson = prevSlotData;
+      if (!isMinipixizSlotHealthy(prevJson) && dbId) {
+        try {
+          const dbSlots = await db.getFrutiSlots(dbId, game);
+          const dbSlot0 = dbSlots && (dbSlots['0'] || dbSlots[0]);
+          if (isMinipixizSlotHealthy(dbSlot0)) {
+            prevJson = dbSlot0;
+            users[username].frutiSlots[game]['0'] = dbSlot0;
+          }
+        } catch (e) {
+          console.error(`[SLOT]  forward-merge DB lookup failed for ${username}/${game}: ${e.message}`);
+        }
+      }
+      if (isMinipixizSlotHealthy(prevJson)) {
+        const prev = JSON.parse(prevJson);
+        const prevStat = prev.$stat || {};
+        const merged = parsedNew;
+        if (!merged.$stat) merged.$stat = {};
+        // Scalars: take max so a fresh-formatFruticard session can't pull
+        // historical totals down.
+        for (const k of ['$run', '$forestMax', '$treeMax', '$misNum']) {
+          const pv = Number(prevStat[k]) || 0;
+          const nv = Number(merged.$stat[k]) || 0;
+          if (pv > nv) merged.$stat[k] = pv;
+        }
+        for (const k of ['$diam', '$key', '$star', '$bag']) {
+          const pv = Number(prev[k]) || 0;
+          const nv = Number(merged[k]) || 0;
+          if (pv > nv) merged[k] = pv;
+        }
+        // Bool array: $item — OR the entries so picto unlocks stick.
+        const pi = Array.isArray(prevStat.$item) ? prevStat.$item : [];
+        const ni = Array.isArray(merged.$stat.$item) ? merged.$stat.$item : [];
+        if (pi.length || ni.length) {
+          const maxLen = Math.max(pi.length, ni.length);
+          const out = new Array(maxLen);
+          for (let i = 0; i < maxLen; i++) out[i] = Boolean(pi[i]) || Boolean(ni[i]);
+          merged.$stat.$item = out;
+        }
+        // Num arrays: $eat / $kill / $game — element-wise max.
+        for (const k of ['$eat', '$kill', '$game']) {
+          const pv = Array.isArray(prevStat[k]) ? prevStat[k] : [];
+          const nv = Array.isArray(merged.$stat[k]) ? merged.$stat[k] : [];
+          if (pv.length || nv.length) {
+            const maxLen = Math.max(pv.length, nv.length);
+            const out = new Array(maxLen).fill(0);
+            for (let i = 0; i < maxLen; i++) {
+              out[i] = Math.max(Number(pv[i]) || 0, Number(nv[i]) || 0);
+            }
+            merged.$stat[k] = out;
+          }
+        }
+        // Faerie: keep prev when new is empty/shorter (faeries can be lost
+        // during play but never below the historical max).
+        const pf = Array.isArray(prev.$faerie) ? prev.$faerie : [];
+        const nf = Array.isArray(merged.$faerie) ? merged.$faerie : [];
+        if (pf.length > nf.length) merged.$faerie = pf;
+        // Nested progress containers — keep prev when new dropped.
+        if (prev.$dungeon && Number(prev.$dungeon.$lvl) > Number((merged.$dungeon || {}).$lvl || 0)) {
+          merged.$dungeon = prev.$dungeon;
+        }
+        if (prev.$pond && Number(prev.$pond.$q) > Number((merged.$pond || {}).$q || 0)) {
+          merged.$pond = prev.$pond;
+        }
+        if (prev.$rainbow && prev.$rainbow.$f && !(merged.$rainbow && merged.$rainbow.$f)) {
+          merged.$rainbow = prev.$rainbow;
+        }
+        if (prev.$frog && !merged.$frog) merged.$frog = true;
+        data = JSON.stringify(merged);
+      }
+    } catch (e) {
+      console.error(`[SLOT]  forward-merge failed for ${username}/${game}: ${e.message}`);
+    }
+  }
+
   // Safeguard: when the SWF can't load saved slots on startup (miniwave),
   // the game may auto-save empty initial data and clobber real progress.
   // Refuse saves where the new payload is dramatically smaller than the
