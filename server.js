@@ -4686,10 +4686,12 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
 
   // MiniPixiz: pipe-delimited string → JSON
   if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0' && data.indexOf('|') >= 0 && data[0] !== '{') {
+    const rawPipe = data;
     const obj = parseMinipixizPipe(data);
     if (obj) {
       data = JSON.stringify(obj);
-      console.log(`[SLOT]  minipixiz pipe → JSON (${data.length} chars)`);
+      const pipeSample = rawPipe.length > 300 ? rawPipe.slice(0, 300) + '…' : rawPipe;
+      console.log(`[SLOT]  minipixiz pipe (${rawPipe.length} chars) → JSON (${data.length} chars) raw=${pipeSample}`);
     }
   }
 
@@ -5061,9 +5063,15 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
     ? Object.keys(users[username].frutiSlots[game]) : [];
   console.log(`[SLOT]  load sid=${sid} user=${username || '(none)'} game=${game} slots=[${slotKeys.join(',')}] respLen=${response.length}`);
   if (slotKeys.length) {
+    const isMinipixiz = game === 'minipixiz' || game === 'minitroll';
     for (const k of slotKeys) {
       const v = users[username].frutiSlots[game][k];
-      const prev = String(v).length > 200 ? String(v).slice(0, 200) + '…' : v;
+      // For minipixiz slot0 we dump the full value so we can audit exactly
+      // what the SWF's fromJSON parser receives — truncation was hiding the
+      // tail of the JSON ($run/$diam/$faerie etc.) which is critical to
+      // diagnose runtime-state drift between server data and Cm.card.
+      const limit = (isMinipixiz && k === '0') ? 4000 : 200;
+      const prev = String(v).length > limit ? String(v).slice(0, limit) + '…' : v;
       console.log(`[SLOT]    slot${k}=${prev}`);
     }
   }
