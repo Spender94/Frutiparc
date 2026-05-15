@@ -327,6 +327,16 @@ const CP = {
   serviceConnect: 521,
   onServiceConnect: 584,
   data: 754,
+  // The MTASC compile of MiniPixiz obfuscated every class/method name. By
+  // disassembling the const pool + bytecode of the un-patched SWF we
+  // recovered the mapping for the Cm class and its `card` static var:
+  //   Cm    → CP[106] = "]q"
+  //   .card → CP[107] = "4d(*"
+  // So `Cm.card` in source compiles to `eval("]q").4d(*` — verified by
+  // finding multiple bytecode sites that do `push cp106, GetVar, push cp107,
+  // GetMem, push cp791="$stat", GetMem` (i.e. Cm.card.$stat accesses).
+  Cm_obf:  106,
+  card_obf: 107,
   slots: 756,
   LoadVars: newCpBase + 0,
   game: newCpBase + 1,
@@ -940,32 +950,34 @@ function buildSaveSlotBody() {
 
   // Part 1: pick the Card object to serialise (→ r3).
   //
-  // Three sources, tried in order:
+  // Four sources, tried in order:
   //
-  //   1. r3 (data param) — gameplay's init/formatFruticard saves pass the
-  //      live Card here. Verified by the 67-char init pipes that emitted
-  //      the live runtime state ($vs=1.2, fresh formatFruticard defaults).
-  //      If r3.$stat is a truthy object we keep it.
+  //   1. eval("]q").4d(*  — the OBFUSCATED Cm.card. MTASC renamed the Cm
+  //      class to "]q" (CP[106]) and the .card static to "4d(*" (CP[107]).
+  //      This is the LIVE Card gameplay mutates every frame. Discovered
+  //      by disassembling the un-patched SWF: every Cm.card.$stat.$X
+  //      access compiles to `pushCp(106), GetVariable, pushCp(107),
+  //      GetMember, push "$X", GetMember`. This is the authoritative
+  //      source — wins over any other if present.
   //
-  //   2. SharedObject.data.fruticard[0] — in STANDALONE=true mode gameplay
-  //      writes Cm.card into SO via saveFruticard. Periodic sync triggers
-  //      call _client.saveSlot(0) without a data arg (r3=undefined here),
-  //      and the SO read gives us the gameplay-mutated Card. This is the
-  //      capture path for in-game progress ($run++, $game[zone]++, picto
-  //      unlocks, $bag upgrades).
+  //   2. r3 (data param) — gameplay's init/formatFruticard saves pass
+  //      the live Card here too (the 67-char init pipes). Backup for
+  //      cases where Cm.card isn't yet initialised.
   //
-  //   3. this.slots[0] — our reconstructed r4 from onLoad, the stale
-  //      floor. If both r3 and SO are empty (very early init, or SO
-  //      reset by the SWF), we use this so the server merge still sees
-  //      preserved historical progress instead of all-undefined.
+  //   3. SharedObject.data.fruticard[0] — SO-persisted Card (rarely
+  //      populated in Ruffle).
+  //
+  //   4. this.slots[0] — frozen historical floor from onLoad's r4.
+  // Source priority for r3:
+  //   1. Cm.card (obfuscated `]q.4d(*`) — gameplay's live state
+  //   2. Original data param (we save it to r5 before any overwrite)
+  //   3. SharedObject.data.fruticard[0] — rare in Ruffle but try anyway
+  //   4. this.slots[0] — frozen floor from onLoad
   const slotsFallback = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
     actionPush(pushInt(0)), GET_MEMBER,
     storeReg(3), POP,
   ]);
-  // SO fallback: read SharedObject.getLocal("miniPixiz/card").data.fruticard[0]
-  // into r3, check r3.$stat truthy → if yes skip slotsFallback; else fall
-  // through to slotsFallback.
   const soFallback = Buffer.concat([
     actionPush(pushStr('miniPixiz/card'), pushInt(1)),
     actionPush(pushStr('SharedObject')), GET_VARIABLE,
@@ -975,16 +987,29 @@ function buildSaveSlotBody() {
     actionPush(pushStr('fruticard')), GET_MEMBER,
     actionPush(pushInt(0)), GET_MEMBER,
     storeReg(3), POP,
-    // r3 = SO card (or undefined if path broken)
     actionPush(pushReg(3), pushCp(CP.$stat)), GET_MEMBER,
     actionIf(slotsFallback.length),
     slotsFallback,
   ]);
-  const getCard = Buffer.concat([
-    // First check r3.$stat (data param from gameplay).
+  // r7 holds the saved original `data` arg (r4-r6 are reserved later in
+  // saveSlot for pipe string + LoadVars params/receiver). If Cm.card was
+  // empty but r7.$stat is a real Card, use that. Else fall through.
+  const r7Fallback = Buffer.concat([
+    actionPush(pushReg(7)),
+    storeReg(3), POP,
     actionPush(pushReg(3), pushCp(CP.$stat)), GET_MEMBER,
     actionIf(soFallback.length),
     soFallback,
+  ]);
+  const getCard = Buffer.concat([
+    actionPush(pushReg(3)),
+    storeReg(7), POP,
+    actionPush(pushCp(CP.Cm_obf)), GET_VARIABLE,
+    actionPush(pushCp(CP.card_obf)), GET_MEMBER,
+    storeReg(3), POP,
+    actionPush(pushReg(3), pushCp(CP.$stat)), GET_MEMBER,
+    actionIf(r7Fallback.length),
+    r7Fallback,
   ]);
 
   // Skip serialization entirely if Cm.card is undefined/null (e.g., before loadFruticard)
@@ -1142,7 +1167,7 @@ function buildSaveSlotBody() {
 }
 
 const saveSlotBody = buildSaveSlotBody();
-const newSaveSlotFunc = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 7, 0x29, saveSlotBody);
+const newSaveSlotFunc = buildDefineFunction2('', [[2, 'n'], [3, 'data']], 8, 0x29, saveSlotBody);
 
 const oldSsFuncBytes = origSaveSlotEnd - origSaveSlotStart;
 console.log(`Old Client.saveSlot: ${oldSsFuncBytes} bytes at ${origSaveSlotStart}`);
