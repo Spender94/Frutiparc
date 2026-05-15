@@ -667,6 +667,16 @@ function buildOnLoadBody() {
     actionPush(pushStr('getLocal')),
     CALL_METHOD,
     storeReg(9), POP,
+    // SO.clear() — wipe stale state from prior sessions BEFORE writing our
+    // seed. The patched game ran first in private-browsing mode (empty SO,
+    // our seed took effect, gameplay anchored on r4 → progress flowed
+    // through saveSlot). Switching to normal browsing surfaced a stale
+    // SO whose fruticard array overrode our seed inside loadFruticard,
+    // so Cm.card pointed at the persisted-but-stale Card and slots[0] = r4
+    // diverged. Clearing first guarantees our seed wins.
+    actionPush(pushInt(0)),
+    actionPush(pushReg(9), pushStr('clear')),
+    CALL_METHOD, POP,
     actionPush(pushReg(9), pushStr('data')), GET_MEMBER,
     actionPush(pushStr('fruticard')),
     actionPush(pushReg(4), pushInt(1)),
