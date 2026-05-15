@@ -4545,7 +4545,16 @@ function padMinipixizSlot0(jsonStr) {
   // Stat sub-object
   if (!obj.$stat || typeof obj.$stat !== 'object') obj.$stat = {};
   const s = obj.$stat;
+  // $item: SWF expects sparse array of length 222 with null for unset
+  // and true for unlocked — NEVER false. Older saves stored false
+  // everywhere; convert to null + pad up to 222.
   if (!Array.isArray(s.$item)) s.$item = [];
+  const ITEM_LEN = 222;
+  const fixedItem = new Array(ITEM_LEN).fill(null);
+  for (let i = 0; i < Math.min(s.$item.length, ITEM_LEN); i++) {
+    fixedItem[i] = s.$item[i] === true ? true : null;
+  }
+  s.$item = fixedItem;
   if (!Array.isArray(s.$eat))  s.$eat  = [];
   if (!Array.isArray(s.$kill) || s.$kill.length < 5) s.$kill = [0, 0, 0, 0, 0];
   if (!Array.isArray(s.$game) || s.$game.length < 5) s.$game = [0, 0, 0, 0, 0];
@@ -4560,7 +4569,7 @@ function padMinipixizSlot0(jsonStr) {
   if (typeof obj.$bag  !== 'number') obj.$bag  = 0;
   if (typeof obj.$vs   !== 'number') obj.$vs   = 1.2;
   if (typeof obj.$frog !== 'boolean') obj.$frog = false;
-  // Nested progress containers — pad missing fields with defaults
+  // Nested progress containers
   if (!obj.$dungeon || typeof obj.$dungeon !== 'object') obj.$dungeon = {};
   if (typeof obj.$dungeon.$lvl  !== 'number')  obj.$dungeon.$lvl  = 0;
   if (typeof obj.$dungeon.$f    !== 'boolean') obj.$dungeon.$f    = false;
@@ -4571,20 +4580,21 @@ function padMinipixizSlot0(jsonStr) {
   if (typeof obj.$rainbow.$day !== 'number')  obj.$rainbow.$day = 0;
   if (typeof obj.$rainbow.$it  !== 'number')  obj.$rainbow.$it  = 0;
   if (!obj.$pond || typeof obj.$pond !== 'object') obj.$pond = {};
-  if (typeof obj.$pond.$q !== 'number') obj.$pond.$q = 0;
+  // $pond.$q is null when no active quest, number when active
+  if (obj.$pond.$q === undefined) obj.$pond.$q = null;
   if (typeof obj.$pond.$d !== 'number') obj.$pond.$d = 0;
   if (obj.$pond.$fs === undefined) obj.$pond.$fs = null;
-  // Faerie array — leave as-is (SWF handles empty)
   if (!Array.isArray(obj.$faerie)) obj.$faerie = [];
-  // Top-level fields the SWF expects but our older saves lack
   if (!Array.isArray(obj.$inv))     obj.$inv     = [];
-  if (typeof obj.$current !== 'number') obj.$current = 0;
-  if (!Array.isArray(obj.$help))    obj.$help    = [];
+  // $current is null when nothing is selected (not 0)
+  if (obj.$current === undefined) obj.$current = null;
+  // $help defaults to [true,true,true] (all three hints enabled for new users)
+  if (!Array.isArray(obj.$help) || obj.$help.length < 3) obj.$help = [true, true, true];
   if (!Array.isArray(obj.$mis))     obj.$mis     = [];
   if (typeof obj.$wind !== 'number')obj.$wind    = 0;
   if (!Array.isArray(obj.$god) || obj.$god.length < 3) obj.$god = [false, false, false];
-  if (!obj.$time || typeof obj.$time !== 'object') obj.$time = { $t: 0, $d: 0, $s: 0 };
-  if (typeof obj.$time.$t !== 'number') obj.$time.$t = 0;
+  if (!obj.$time || typeof obj.$time !== 'object') obj.$time = { $t: Date.now(), $d: 0, $s: 0 };
+  if (typeof obj.$time.$t !== 'number') obj.$time.$t = Date.now();
   if (typeof obj.$time.$d !== 'number') obj.$time.$d = 0;
   if (typeof obj.$time.$s !== 'number') obj.$time.$s = 0;
   if (!Array.isArray(obj.$mission)) obj.$mission = [];
