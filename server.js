@@ -4690,8 +4690,11 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
     const obj = parseMinipixizPipe(data);
     if (obj) {
       data = JSON.stringify(obj);
-      const pipeSample = rawPipe.length > 300 ? rawPipe.slice(0, 300) + '…' : rawPipe;
-      console.log(`[SLOT]  minipixiz pipe (${rawPipe.length} chars) → JSON (${data.length} chars) raw=${pipeSample}`);
+      // Show the TAIL of the pipe (scalar fields after the big $item array)
+      // — the head is just 80 booleans we already see, the meaningful
+      // progress markers live at the end.
+      const pipeTail = rawPipe.length > 280 ? '…' + rawPipe.slice(-280) : rawPipe;
+      console.log(`[SLOT]  minipixiz pipe (${rawPipe.length} chars) → JSON (${data.length} chars) tail=${pipeTail}`);
     }
   }
 
