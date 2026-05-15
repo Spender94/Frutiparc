@@ -734,6 +734,25 @@ function buildOnLoadBody() {
   // never resolved and the SET_MEMBER was a no-op. saveSlot now reads
   // directly from the `data` parameter (the live Card gameplay passes
   // in at call time), so we don't need to anchor anything globally.
+  // === Force Cm.card = r4 via deobfuscated CP names ===
+  //
+  // Under Ruffle, SharedObject seeding doesn't reliably reach
+  // loadFruticard, so onServiceConnect → loadFruticard → Cm.card =
+  // formatFruticard() defaults: gameplay then mutates a fresh blank Card
+  // and the UX appears to wipe historical progress (bag, run, items
+  // collected etc. invisible in-game even though the DB has them).
+  //
+  // Now that decompilation revealed Cm = "]q" (CP[106]) and .card =
+  // "4d(*" (CP[107]), we can SetMember directly to point Cm.card at
+  // our reconstructed r4. Subsequent gameplay reads `Cm.card.$run`,
+  // `Cm.card.$bag`, etc. and finds the loaded historical state.
+  const forceCmCard = Buffer.concat([
+    actionPush(pushCp(CP.Cm_obf)), GET_VARIABLE,        // ]q (Cm class)
+    actionPush(pushCp(CP.card_obf), pushReg(4)),         // .card = r4
+    SET_MEMBER,
+  ]);
+
+  // === Wrap with success check ===
   const afterSuccessBody = Buffer.concat([
     initStat, statScalars, statArrays,
     initCard, assignStat, cardScalars,
@@ -741,6 +760,7 @@ function buildOnLoadBody() {
     slot0Assign, seedSO,
     callOnServiceConnect,
     syncSlots,
+    forceCmCard,
   ]);
 
   const successCheck = Buffer.concat([
