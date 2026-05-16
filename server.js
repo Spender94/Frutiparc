@@ -3297,6 +3297,96 @@ app.delete('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
   }
 });
 
+// ───────── Public Gaspard help endpoints (consumed by main.swf) ─────────
+// The SWF's win.box.Help class calls two URLs (discovered by string-matching
+// the compiled SWF):
+//   /fh/search?s=<query>   — text search across topics
+//   /fh/get?i=<id>         — fetch a single topic's body + sub-links
+// Response is XML. Format reverse-engineered from the parser strings:
+//   firstChild.attributes.n/nb/m/list/nextSibling for search,
+//   c.nodeValue + l.id.content.links.back for get.
+
+function escapeXmlText(s) {
+  return String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function gaspardTopicLinksXml(parentId, allTopics) {
+  // Children of `parentId` (or root entries when parentId is null) ordered
+  // by sort_order. Each emitted as <l id="N" n="Title"/> per the SWF's
+  // displayContent path which reads l.id and treats body text as the
+  // title between tags.
+  const children = allTopics
+    .filter((t) => (t.parent_id || null) === (parentId || null))
+    .sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
+  return children.map((c) =>
+    `<l id="${c.id}">${escapeXmlText(c.title)}</l>`
+  ).join('');
+}
+
+app.get('/fh/get', async (req, res) => {
+  const idRaw = req.query.i || req.query.k || req.query.id || '';
+  const id = parseInt(String(idRaw), 10);
+  try {
+    const all = await db.listGaspardHelpTopics();
+    let topic = null;
+    if (Number.isInteger(id)) {
+      topic = all.find((t) => t.id === id) || null;
+    }
+    if (!topic) {
+      // No id (or unknown) → serve the index (root entries listed as links)
+      const links = gaspardTopicLinksXml(null, all);
+      const indexBody = `Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.`;
+      return res.type('text/xml').send(
+        `<r><c><![CDATA[${indexBody}]]></c>${links}</r>`
+      );
+    }
+    const subLinks = gaspardTopicLinksXml(topic.id, all);
+    // Wrap body in CDATA so it can contain HTML/asfunction without
+    // double-escaping. Parent id (if any) is exposed via back="..." for
+    // the SWF's back-button path.
+    const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
+    return res.type('text/xml').send(
+      `<r id="${topic.id}"${backAttr}><h>${escapeXmlText(topic.title)}</h><c><![CDATA[${topic.body || ''}]]></c>${subLinks}</r>`
+    );
+  } catch (e) {
+    console.error('[GASPARD] /fh/get error:', e.message);
+    res.type('text/xml').status(500).send('<r error="server"/>');
+  }
+});
+
+app.get('/fh/search', async (req, res) => {
+  const query = String(req.query.s || '').trim().toLowerCase();
+  if (!query) {
+    return res.type('text/xml').send('<r nb="0" m="exact"/>');
+  }
+  try {
+    const all = await db.listGaspardHelpTopics();
+    const tokens = query.split(/\s+/).filter(Boolean);
+    const matchesExact = (t) => {
+      const hay = ((t.title || '') + ' ' + (t.keywords || '')).toLowerCase();
+      return tokens.every((tok) => hay.includes(tok));
+    };
+    const matchesSimilar = (t) => {
+      const hay = ((t.title || '') + ' ' + (t.keywords || '') + ' ' + (t.body || '')).toLowerCase();
+      return tokens.some((tok) => hay.includes(tok));
+    };
+    let mode = 'exact';
+    let hits = all.filter(matchesExact);
+    if (hits.length === 0) {
+      mode = 'similar';
+      hits = all.filter(matchesSimilar);
+    }
+    const items = hits.slice(0, 50)
+      .map((t) => `<i id="${t.id}" n="${escapeXmlText(t.title)}"/>`).join('');
+    return res.type('text/xml').send(
+      `<r nb="${hits.length}" m="${mode}">${items}</r>`
+    );
+  } catch (e) {
+    console.error('[GASPARD] /fh/search error:', e.message);
+    res.type('text/xml').status(500).send('<r error="server"/>');
+  }
+});
+
 app.get('/api/admin/scores', adminAuth, (req, res) => {
   const ranking = req.query.ranking || '';
   const result = [];
@@ -7819,6 +7909,59 @@ async function boot() {
           console.log(`[FORUM] ${forumCats.length} categories already in DB`);
         }
       } catch (e) { console.error('[FORUM] Seed error:', e.message); }
+      try {
+        const existingTopics = await db.listGaspardHelpTopics();
+        if (existingTopics.length === 0) {
+          // Seed the starter help content the SWF's hardcoded text used to
+          // reference. Once persisted, every entry is editable via the
+          // admin UI (admin.html → "Aide Gaspard" tab), and new entries can
+          // be created freely.
+          const seeds = [
+            {
+              title: 'Qui est Gaspard ?',
+              keywords: 'gaspard qui hote presentation',
+              sort_order: 0,
+              body: 'Bonjour ! Je suis <b>Gaspard</b>, votre h&#244;te sur Frutiparc.<br/><br/>Mon r&#244;le est de vous accompagner dans la d&#233;couverte du site : si vous avez une question, cliquez sur mon ic&#244;ne sur le bureau ou tapez <i>/aide</i> dans le chat, et je ferai de mon mieux pour vous r&#233;pondre.<br/><br/>Bonne visite chez les Frutiz !',
+            },
+            {
+              title: 'Comment fonctionne le site ?',
+              keywords: 'site fonctionnement navigation desktop bureau',
+              sort_order: 1,
+              body: 'Frutiparc s&#8217;organise autour d&#8217;un bureau virtuel.<br/><br/><b>Ic&#244;nes du bureau :</b><br/>&#8226; <i>Mes disques</i> : votre collection de jeux<br/>&#8226; <i>Inventaire</i> : vos accessoires, fonds d&#8217;&#233;cran et pictos<br/>&#8226; <i>Boite aux lettres</i> : vos mails entrants<br/>&#8226; <i>Mes contacts</i> : vos amis Frutiz<br/><br/>Pour jouer, faites glisser un disque sur la console Frusion. Pour &#233;jecter, cliquez sur le bouton &#233;jecter ou rangez le disque.',
+            },
+            {
+              title: 'Le chat et les salons',
+              keywords: 'chat salon pomme conversation',
+              sort_order: 2,
+              body: 'Pour discuter avec les autres Frutiz, rejoignez un salon en cliquant sur sa pomme color&#233;e en haut &#224; gauche.<br/><br/>Vous pouvez choisir votre couleur de feutre via la palette, et utiliser des commandes :<br/>&#8226; <i>/aide</i> ou <i>/help</i> : ouvre cette fen&#234;tre<br/>&#8226; <i>/topic ...</i> : change le sujet du salon (mod&#233;rateurs)<br/>&#8226; <i>/fiche pseudo</i> : affiche la fiche d&#8217;un Frutiz',
+            },
+            {
+              title: 'Les Titems et les pictos',
+              keywords: 'titem pictos cartes recompense jeux',
+              sort_order: 3,
+              body: 'Les <b>titems</b> (ou <b>pictos</b>) sont les r&#233;compenses que vous gagnez en jouant.<br/><br/>Chaque jeu propose ses propres pictos &#224; d&#233;bloquer en atteignant certains objectifs : finir un niveau, battre un score, collecter un objet, etc.<br/><br/>Tous vos pictos s&#8217;affichent dans votre <i>Inventaire &#8594; Pictos</i>, et sur votre <i>FrutiCard</i> que les autres Frutiz peuvent consulter.',
+            },
+            {
+              title: 'Mon Frutibouille',
+              keywords: 'bouille avatar frutibouille apparence personnalisation',
+              sort_order: 4,
+              body: 'Votre <b>Frutibouille</b> est votre avatar sur Frutiparc.<br/><br/>Pour le personnaliser, cliquez sur votre propre fiche et utilisez l&#8217;&#233;diteur de bouille : cheveux, yeux, peau, v&#234;tements et accessoires sont tous modifiables.<br/><br/>De nouveaux &#233;l&#233;ments cosm&#233;tiques se d&#233;bloquent en jouant ou s&#8217;ach&#232;tent &#224; la <i>Boutique</i> avec des Kikooz.',
+            },
+            {
+              title: 'Les Kikooz',
+              keywords: 'kikooz monnaie boutique cadeau donne',
+              sort_order: 5,
+              body: 'Les <b>Kikooz</b> sont la monnaie virtuelle de Frutiparc.<br/><br/>Vous en gagnez en jouant, en participant au chat et en relevant des d&#233;fis quotidiens. Vous pouvez les d&#233;penser &#224; la <i>Boutique</i> ou les offrir &#224; un autre Frutiz via la commande <i>/donne pseudo nombre</i> dans le chat.',
+            },
+          ];
+          for (const s of seeds) {
+            await db.createGaspardHelpTopic({ ...s, parent_id: null });
+          }
+          console.log(`[GASPARD] Seeded ${seeds.length} starter help topics`);
+        } else {
+          console.log(`[GASPARD] ${existingTopics.length} help topic(s) already in DB`);
+        }
+      } catch (e) { console.error('[GASPARD] Seed error:', e.message); }
       try {
         const dbChannels = await db.loadChannels();
         let count = 0;
