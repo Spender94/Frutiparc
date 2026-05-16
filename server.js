@@ -3370,11 +3370,14 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     // visible but tags came through literal.)
     const renderBodyHtml = (rawBody, parentIdForLinks) => {
       const bodyEsc = escapeXmlText(rawBody || '');
-      // The header line is rendered separately via the SWF's title bar
-      // (n= attribute on root). We could include a duplicated header
-      // inside the body too, but for now keep the body to just the
-      // topic's content + child-links footer.
-      return bodyEsc + buildLinksHtml(parentIdForLinks);
+      const titleSafe = parentIdForLinks
+        ? escapeXmlText((all.find((t) => t.id === parentIdForLinks) || {}).title || '')
+        : 'Index de l\'aide';
+      // Repeat the title as an &lt;h&gt; styled header inside the body so
+      // the SWF's TextField shows a consistent heading even if the title
+      // bar (n= attr) isn't picked up the same way.
+      const heading = `&lt;h&gt;${escapeXmlText(titleSafe)}&lt;/h&gt;`;
+      return heading + bodyEsc + buildLinksHtml(parentIdForLinks);
     };
     if (!topic) {
       const indexBody = 'Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.';
