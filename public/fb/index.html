@@ -780,6 +780,348 @@
   .img-btn:hover { text-decoration: none; opacity: 0.85; }
   .img-btn img { display: inline-block; vertical-align: middle; border: none; }
 
+  /* === Forum post editor (matches the original SubSilver/Frutiparc layout) === */
+  .editor-area {
+    padding: 0;
+    background: #D6F7B5;
+  }
+  .editor-preview-wrap {
+    background: #D6F7B5;
+    padding: 6px 0 0;
+  }
+  .editor-preview-header {
+    background: #ADE76B;
+    color: #2C4A0F;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-bottom: 1px solid #8bc55a;
+  }
+  .editor-preview-header .post-icon {
+    display: inline-block;
+    width: 12px;
+    height: 13px;
+    background: url('/fb/icon_minipost.gif') no-repeat center center;
+    flex-shrink: 0;
+  }
+  .editor-preview-body {
+    display: flex;
+    background: #D6F7B5;
+    padding: 8px 4px 16px;
+    min-height: 110px;
+  }
+  .editor-preview-author {
+    width: 110px;
+    text-align: center;
+    padding: 4px 0;
+  }
+  .editor-preview-author .avatar {
+    width: 90px;
+    height: 90px;
+    margin: 0 auto 4px;
+    overflow: hidden;
+    border-radius: 10px;
+  }
+  .editor-preview-author .avatar iframe {
+    width: 100%; height: 100%;
+    border: none; display: block;
+    pointer-events: none;
+    background: transparent;
+    border-radius: 10px;
+  }
+  .editor-preview-author .username {
+    font-weight: bold;
+    font-size: 11px;
+    color: #2C4A0F;
+    word-break: break-all;
+  }
+  .editor-preview-content {
+    flex: 1;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: #335511;
+    line-height: 1.5;
+    word-wrap: break-word;
+  }
+
+  .editor-form {
+    display: table;
+    width: 100%;
+    border-collapse: collapse;
+    background: #D6F7B5;
+  }
+  .editor-row {
+    display: table-row;
+  }
+  .editor-label-cell,
+  .editor-value-cell {
+    display: table-cell;
+    vertical-align: top;
+    padding: 5px 10px;
+    font-size: 11px;
+    color: #2C4A0F;
+  }
+  .editor-label-cell {
+    width: 180px;
+    font-weight: bold;
+    white-space: nowrap;
+  }
+  .editor-value-cell { width: auto; }
+  .editor-input {
+    width: 100%;
+    max-width: 420px;
+    padding: 2px 4px;
+    font-size: 12px;
+    font-family: Verdana, Arial, sans-serif;
+    background: #fff;
+    color: #2C4A0F;
+    border: 1px solid #2C4A0F;
+  }
+
+  /* Bouille pagination links */
+  .bouille-nav {
+    text-align: center;
+    font-size: 11px;
+    color: #2C4A0F;
+    padding: 2px 0;
+  }
+  .bouille-nav a {
+    color: #2C4A0F;
+    text-decoration: underline;
+    margin: 0 6px;
+  }
+  .bouille-nav a:hover { color: #4a7a10; }
+  .bouille-nav .disabled {
+    color: #8aa770;
+    margin: 0 6px;
+    text-decoration: none;
+    cursor: default;
+  }
+
+  /* Bouille grid — 8 thumbnails in a row */
+  .bouille-grid {
+    display: flex;
+    gap: 4px;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    padding-top: 2px;
+  }
+  .bouille-item {
+    flex: 0 0 80px;
+    text-align: center;
+    cursor: pointer;
+  }
+  .bouille-item .b-thumb {
+    width: 72px;
+    height: 60px;
+    margin: 0 auto;
+    overflow: hidden;
+    background: transparent;
+    position: relative;
+  }
+  .bouille-item .b-thumb iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+    pointer-events: none;
+    background: transparent;
+  }
+  .bouille-item .b-name {
+    font-size: 10px;
+    color: #2C4A0F;
+    line-height: 1.2;
+    margin: 2px 0;
+    word-break: break-word;
+  }
+  .bouille-item .b-radio {
+    margin: 0;
+  }
+
+  /* Expression dropdown */
+  .editor-select {
+    font-size: 11px;
+    font-family: Verdana, Arial, sans-serif;
+    background: #fff;
+    color: #2C4A0F;
+    border: 1px solid #2C4A0F;
+    padding: 1px 2px;
+    min-width: 110px;
+  }
+
+  /* Comprehensive BBCode toolbar */
+  .editor-bbcode-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+  }
+  .editor-bbcode-toolbar .bb-btn {
+    background: linear-gradient(180deg, #fafafa 0%, #d4d4d4 100%);
+    border: 1px solid #888;
+    color: #000;
+    font-size: 11px;
+    font-family: Verdana, Arial, sans-serif;
+    padding: 2px 10px;
+    cursor: pointer;
+    border-radius: 2px;
+    line-height: 1.4;
+    min-width: 36px;
+  }
+  .editor-bbcode-toolbar .bb-btn:hover {
+    background: linear-gradient(180deg, #fff 0%, #e5e5e5 100%);
+  }
+  .editor-bbcode-toolbar .bb-btn:active {
+    background: linear-gradient(180deg, #d4d4d4 0%, #fafafa 100%);
+  }
+  .editor-bbcode-toolbar .bb-select {
+    font-size: 11px;
+    font-family: Verdana, Arial, sans-serif;
+    background: linear-gradient(180deg, #fafafa 0%, #d4d4d4 100%);
+    border: 1px solid #888;
+    color: #000;
+    padding: 2px 4px;
+    cursor: pointer;
+    border-radius: 2px;
+    min-width: 70px;
+  }
+
+  /* Hint bar (with "Fermer les balises") */
+  .editor-hint-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    padding: 4px 6px;
+    background: #C3EF93;
+    border: 1px solid #8bc55a;
+  }
+  .editor-hint-row .hint-text {
+    flex: 1;
+    font-size: 10px;
+    color: #2C4A0F;
+    font-style: italic;
+  }
+  .editor-hint-row .close-tags-btn {
+    background: linear-gradient(180deg, #fafafa 0%, #d4d4d4 100%);
+    border: 1px solid #888;
+    font-size: 10px;
+    font-family: Verdana, Arial, sans-serif;
+    padding: 2px 8px;
+    cursor: pointer;
+    border-radius: 2px;
+    color: #000;
+    font-weight: bold;
+  }
+  .editor-hint-row .close-tags-btn:hover {
+    background: linear-gradient(180deg, #fff 0%, #e5e5e5 100%);
+  }
+
+  /* Emoticons */
+  .emoticons-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 2px 0;
+  }
+  .emoticons-row .emo-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 1px;
+    cursor: pointer;
+    border-radius: 3px;
+    line-height: 0;
+  }
+  .emoticons-row .emo-btn:hover {
+    border-color: #2C4A0F;
+    background: #E8F5D4;
+  }
+  .emo-img {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: inline-block;
+    background: radial-gradient(circle at 35% 35%, #fffacc, #f6c700 75%, #c69b00);
+    box-shadow: inset 0 -2px 2px rgba(0,0,0,0.25);
+    position: relative;
+    vertical-align: middle;
+  }
+  .emo-img::before {
+    content: '';
+    position: absolute;
+    inset: 3px 4px;
+    color: #000;
+    font-size: 12px;
+    line-height: 12px;
+    text-align: center;
+    font-family: Arial, sans-serif;
+    font-weight: bold;
+  }
+  .emo-img.emo-smile::before { content: '\263A'; font-size: 14px; top: 1px; }
+  .emo-img.emo-grin::before  { content: ':D'; }
+  .emo-img.emo-sad::before   { content: ':('; }
+  .emo-img.emo-wink::before  { content: ';)'; }
+
+  /* Editor textarea */
+  .editor-textarea {
+    width: 100%;
+    height: 180px;
+    padding: 6px;
+    font-size: 12px;
+    font-family: Verdana, Arial, sans-serif;
+    background: #fff;
+    color: #2C4A0F;
+    border: 1px solid #2C4A0F;
+    resize: vertical;
+    margin-top: 3px;
+  }
+
+  /* Editor action bar */
+  .editor-actions {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 10px;
+    background: #D6F7B5;
+  }
+  .editor-actions .edit-btn {
+    background: #E3756A;
+    color: #fff;
+    border: none;
+    padding: 5px 18px;
+    font-size: 11px;
+    font-weight: bold;
+    font-family: Verdana, Arial, sans-serif;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .editor-actions .edit-btn:hover { background: #d2645a; }
+
+  /* List rendering for [liste] tag */
+  .post-content ul.bb-list {
+    margin: 6px 0 6px 22px;
+    padding: 0;
+    list-style: disc;
+  }
+  .post-content ul.bb-list li { margin: 1px 0; }
+  /* Code block */
+  .post-content pre.bb-code {
+    background: #F5F5DC;
+    border: 1px solid #C8D89D;
+    padding: 6px 8px;
+    margin: 6px 4px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 11px;
+    color: #333;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  /* Inline emoticons in rendered posts */
+  .post-content .emo-img,
+  .editor-preview-content .emo-img { vertical-align: middle; margin: 0 1px; }
 </style>
 </head>
 <body>
@@ -816,7 +1158,7 @@ const EXPRESSIONS = [
   { id: 0, name: 'Normal' },
   { id: 1, name: 'Souriant' },
   { id: 2, name: 'Triste' },
-  { id: 3, name: 'Fâché' },
+  { id: 3, name: 'Méchant' },
   { id: 4, name: 'Surpris' },
   { id: 5, name: 'Coquin' },
   { id: 6, name: 'Gêné' },
@@ -871,64 +1213,169 @@ function bouilleSetExpression(formId, mouthId) {
   _activeBouilleSel[formId] = _activeBouilleSel[formId] || {};
   _activeBouilleSel[formId].mouthId = mouthId;
   refreshBouillePreview(formId);
-  var btns = document.querySelectorAll('#bouille-sel-' + formId + ' .expr-btn');
-  btns.forEach(function(b) {
-    b.classList.toggle('active', Number(b.dataset.id) === mouthId);
-  });
+  // Re-render the grid so each thumbnail also shows the new mouth.
+  var grid = document.getElementById('bouille-grid-' + formId);
+  if (grid) grid.innerHTML = renderBouilleGrid(formId);
+  // Keep the dropdown in sync (also when called programmatically).
+  var sel = document.getElementById('expr-sel-' + formId);
+  if (sel && sel.value !== String(mouthId)) sel.value = String(mouthId);
 }
 
-function bouilleSetAccessory(formId, suffix9, btnEl) {
-  _activeBouilleSel[formId] = _activeBouilleSel[formId] || {};
-  _activeBouilleSel[formId].accSuffix9 = suffix9;
-  refreshBouillePreview(formId);
-  var btns = document.querySelectorAll('#bouille-sel-' + formId + ' .acc-btn');
-  btns.forEach(function(b) { b.classList.toggle('active', b === btnEl); });
+// Build the merged accessory list (defaults + custom) for a form.
+function getAllAccessories() {
+  var allAcc = [];
+  var seen = {};
+  // Make sure "Normal" appears first.
+  var normal = null;
+  for (var j = 0; j < myDefaultAccessories.length; j++) {
+    var d = myDefaultAccessories[j];
+    if (d.suffix === '000000000' || /normal/i.test(d.name)) {
+      normal = { name: 'Normal', suffix: d.suffix || '000000000' };
+    } else {
+      allAcc.push({ name: d.name, suffix: d.suffix });
+    }
+    seen[d.suffix] = true;
+  }
+  if (!normal) normal = { name: 'Normal', suffix: '000000000' };
+  for (var k = 0; k < myAccessories.length; k++) {
+    var a = myAccessories[k];
+    if (a.value && a.value.length === 24) {
+      var sfx = a.value.substring(15, 24);
+      if (!seen[sfx]) { allAcc.push({ name: a.name, suffix: sfx }); seen[sfx] = true; }
+    }
+  }
+  return [normal].concat(allAcc);
+}
+
+// Track bouille selector pagination per-form.
+var BOUILLE_PER_PAGE = 8;
+var _bouillePage = {};
+
+// Mouth/expression state for previews.
+function _applyExpression(baseState, expressionId) {
+  var s = String(baseState || '');
+  while (s.length < 24) s += '0';
+  if (expressionId == null) return s;
+  // The mouth-id slot in the bouille state is the 4th character (index 3),
+  // matching the original Frutibouille encoding.
+  var ch = encode62(expressionId, 1);
+  return s.substring(0, 3) + ch + s.substring(4);
 }
 
 function refreshBouillePreview(formId) {
   var sel = _activeBouilleSel[formId] || {};
   var state = buildBouilleState(myBouille, sel.accSuffix9);
+  if (sel.mouthId != null) state = _applyExpression(state, sel.mouthId);
   var box = document.getElementById('bouille-preview-' + formId);
   if (box) box.innerHTML = getBouillePreviewHtml(state);
+  // Update inline preview avatar at the top of the editor too
+  var preview = document.getElementById('editor-preview-avatar-' + formId);
+  if (preview) preview.innerHTML = getBouillePreviewHtml(state);
 }
 
 function getCurrentBouilleState(formId) {
   var sel = _activeBouilleSel[formId] || {};
-  return buildBouilleState(myBouille, sel.accSuffix9);
+  var state = buildBouilleState(myBouille, sel.accSuffix9);
+  if (sel.mouthId != null) state = _applyExpression(state, sel.mouthId);
+  return state;
+}
+
+function bouilleNavPage(formId, delta) {
+  var all = getAllAccessories();
+  var pages = Math.max(1, Math.ceil(all.length / BOUILLE_PER_PAGE));
+  var cur = _bouillePage[formId] || 0;
+  cur = Math.max(0, Math.min(pages - 1, cur + delta));
+  _bouillePage[formId] = cur;
+  var grid = document.getElementById('bouille-grid-' + formId);
+  if (grid) grid.innerHTML = renderBouilleGrid(formId);
+  var nav = document.getElementById('bouille-nav-' + formId);
+  if (nav) nav.innerHTML = renderBouilleNavLinks(formId);
+}
+
+function renderBouilleNavLinks(formId) {
+  var all = getAllAccessories();
+  var pages = Math.max(1, Math.ceil(all.length / BOUILLE_PER_PAGE));
+  var cur = _bouillePage[formId] || 0;
+  var prev = cur > 0
+    ? '<a href="#" onclick="bouilleNavPage(\'' + formId + '\',-1);return false">&lt; bouilles précédentes</a>'
+    : '<span class="disabled">&lt; bouilles précédentes</span>';
+  var next = cur < pages - 1
+    ? '<a href="#" onclick="bouilleNavPage(\'' + formId + '\',1);return false">bouilles suivantes &gt;</a>'
+    : '<span class="disabled">bouilles suivantes &gt;</span>';
+  return prev + ' | ' + next;
+}
+
+function renderBouilleGrid(formId) {
+  var all = getAllAccessories();
+  var cur = _bouillePage[formId] || 0;
+  var slice = all.slice(cur * BOUILLE_PER_PAGE, (cur + 1) * BOUILLE_PER_PAGE);
+  var sel = _activeBouilleSel[formId] || {};
+  var selectedSuffix = sel.accSuffix9 != null ? sel.accSuffix9 : '000000000';
+  var html = '';
+  for (var i = 0; i < slice.length; i++) {
+    var ac = slice[i];
+    var thumbState = buildBouilleState(myBouille, ac.suffix);
+    if (sel.mouthId != null) thumbState = _applyExpression(thumbState, sel.mouthId);
+    var checked = (ac.suffix === selectedSuffix) ? ' checked' : '';
+    var radioId = 'bouille-r-' + formId + '-' + i;
+    html += '<label class="bouille-item" for="' + radioId + '">';
+    html += '<div class="b-thumb">' + getBouillePreviewHtml(thumbState) + '</div>';
+    html += '<div class="b-name">' + escapeHtml(ac.name) + '</div>';
+    html += '<input type="radio" class="b-radio" id="' + radioId + '" name="bouille-' + formId + '" '
+      + 'onchange="bouilleSetAccessoryRadio(\'' + formId + '\',\'' + escapeHtml(ac.suffix) + '\')"' + checked + '>';
+    html += '</label>';
+  }
+  return html;
+}
+
+function bouilleSetAccessoryRadio(formId, suffix9) {
+  _activeBouilleSel[formId] = _activeBouilleSel[formId] || {};
+  _activeBouilleSel[formId].accSuffix9 = suffix9;
+  refreshBouillePreview(formId);
+}
+
+// Expression dropdown that mirrors the original "Méchant / Souriant / …" menu.
+function expressionSelectHtml(formId) {
+  var sel = _activeBouilleSel[formId] || {};
+  var current = sel.mouthId != null ? sel.mouthId : 1;
+  var html = '<select class="editor-select" id="expr-sel-' + formId + '" '
+    + 'onchange="bouilleSetExpression(\'' + formId + '\', Number(this.value))">';
+  for (var i = 0; i < EXPRESSIONS.length; i++) {
+    var e = EXPRESSIONS[i];
+    var s = (Number(current) === e.id) ? ' selected' : '';
+    html += '<option value="' + e.id + '"' + s + '>' + escapeHtml(e.name) + '</option>';
+  }
+  html += '</select>';
+  return html;
 }
 
 function bouilleSelHtml(formId) {
-  var html = '<div class="bouille-selector" id="bouille-sel-' + formId + '">';
-  html += '<label>Votre Frutibouille :</label>';
-  html += '<div class="bouille-selector-body">';
-  html += '<div class="bouille-preview-box" id="bouille-preview-' + formId + '">';
-  html += getBouillePreviewHtml(myBouille);
-  html += '</div>';
-  html += '<div class="bouille-options">';
+  _bouillePage[formId] = 0;
+  _activeBouilleSel[formId] = { accSuffix9: '000000000', mouthId: null };
+  var all = getAllAccessories();
+  var html = '';
 
-  html += '<div class="bouille-option-group">';
-  html += '<label>Accessoires :</label>';
-  html += '<div class="acc-grid">';
-  var allAcc = [];
-  for (var j = 0; j < myDefaultAccessories.length; j++) {
-    allAcc.push({ name: myDefaultAccessories[j].name, suffix: myDefaultAccessories[j].suffix });
-  }
-  for (var k = 0; k < myAccessories.length; k++) {
-    var a = myAccessories[k];
-    if (a.value && a.value.length === 24) {
-      allAcc.push({ name: a.name, suffix: a.value.substring(15, 24) });
-    }
-  }
-  for (var m = 0; m < allAcc.length; m++) {
-    var ac = allAcc[m];
-    var isDefault = ac.suffix === '000000000';
-    var cls2 = isDefault ? 'acc-btn active' : 'acc-btn';
-    html += '<button type="button" class="' + cls2 + '" onclick="bouilleSetAccessory(\'' + formId + '\',\'' + escapeHtml(ac.suffix) + '\',this)">' + escapeHtml(ac.name) + '</button>';
-  }
+  // Sujet row is rendered by the caller; this returns the rows below it.
+  // Bouille pagination links (separate row between Sujet and Frutibouille).
+  html += '<div class="editor-row">';
+  html += '<div class="editor-label-cell">&nbsp;</div>';
+  html += '<div class="editor-value-cell">';
+  html += '<div class="bouille-nav" id="bouille-nav-' + formId + '">' + renderBouilleNavLinks(formId) + '</div>';
   html += '</div></div>';
 
-  html += '</div></div></div>';
-  _activeBouilleSel[formId] = { accSuffix9: null };
+  // Frutibouille (N) row with grid of 8 thumbnails.
+  html += '<div class="editor-row">';
+  html += '<div class="editor-label-cell">Frutibouille (' + all.length + ')</div>';
+  html += '<div class="editor-value-cell">';
+  html += '<div class="bouille-grid" id="bouille-grid-' + formId + '">' + renderBouilleGrid(formId) + '</div>';
+  html += '</div></div>';
+
+  // Expression de la bouille
+  html += '<div class="editor-row">';
+  html += '<div class="editor-label-cell">Expression de la bouille</div>';
+  html += '<div class="editor-value-cell">' + expressionSelectHtml(formId) + '</div>';
+  html += '</div>';
+
   return html;
 }
 
@@ -955,10 +1402,13 @@ function renderBBCode(s) {
   out = out.replace(/\[u\]([\s\S]*?)\[\/u\]/gi, '<u>$1</u>');
   out = out.replace(/\[s\]([\s\S]*?)\[\/s\]/gi, '<s>$1</s>');
   out = out.replace(/\[color=([^\]]+)\]([\s\S]*?)\[\/color\]/gi, '<span style="color:$1">$2</span>');
-  out = out.replace(/\[size=(\d+)\]([\s\S]*?)\[\/size\]/gi, function(m, sz, txt) {
+  // Support both English [size=N] and French [taille=N], like the original.
+  var sizeReplacer = function(m, sz, txt) {
     var px = Math.min(Math.max(parseInt(sz, 10), 8), 32);
     return '<span style="font-size:' + px + 'px">' + txt + '</span>';
-  });
+  };
+  out = out.replace(/\[size=(\d+)\]([\s\S]*?)\[\/size\]/gi, sizeReplacer);
+  out = out.replace(/\[taille=(\d+)\]([\s\S]*?)\[\/taille\]/gi, sizeReplacer);
   out = out.replace(/\[url=(https?:\/\/[^\s\]]+)\]([\s\S]*?)\[\/url\]/gi,
     '<a href="$1" target="_blank" rel="noopener">$2</a>');
   out = out.replace(/\[url\](https?:\/\/[^\s\[]+)\[\/url\]/gi,
@@ -967,6 +1417,15 @@ function renderBBCode(s) {
     '<blockquote class="quote"><div class="quote-author">$1 a dit :</div>$2</blockquote>');
   out = out.replace(/\[(?:citation|quote)\]([\s\S]*?)\[\/(?:citation|quote)\]/gi,
     '<blockquote class="quote">$1</blockquote>');
+  // [code] blocks — handled before linkification so URLs inside stay literal.
+  out = out.replace(/\[code\]([\s\S]*?)\[\/code\]/gi, function(m, txt) {
+    return '<pre class="bb-code">' + txt + '</pre>';
+  });
+  // [liste]...[/liste] with [*] items.
+  out = out.replace(/\[liste\]([\s\S]*?)\[\/liste\]/gi, function(m, body) {
+    var items = body.split(/\s*\[\*\]\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
+    return '<ul class="bb-list">' + items.map(function(it) { return '<li>' + it + '</li>'; }).join('') + '</ul>';
+  });
   out = out.replace(/(^|[\s>])(https?:\/\/[^\s<]+)/g,
     '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
   out = out.replace(/\[picto=([^\]]+)\]/gi, function(m, id) {
@@ -974,6 +1433,16 @@ function renderBBCode(s) {
     var url = '/api/picto/' + encodeURIComponent(safeId);
     return '<img class="picto-inline" src="' + url + '" alt="' + safeId + '" title="' + safeId + '">';
   });
+  // Inline emoticons (whitespace-bounded). Order matters: longer first.
+  var emoMap = [
+    [/(^|\s):D(?=\s|$)/g,  'emo-grin'],
+    [/(^|\s);\)(?=\s|$)/g, 'emo-wink'],
+    [/(^|\s):\)(?=\s|$)/g, 'emo-smile'],
+    [/(^|\s):\((?=\s|$)/g, 'emo-sad'],
+  ];
+  for (var ei = 0; ei < emoMap.length; ei++) {
+    out = out.replace(emoMap[ei][0], '$1<span class="emo-img ' + emoMap[ei][1] + '"></span>');
+  }
   out = out.replace(/\n/g, '<br>');
   return out;
 }
@@ -1215,23 +1684,33 @@ async function loadTopic(topicId, page) {
   html += '</div>';
   html += '</div>';
 
-  if (currentUser && !data.topic.isLocked) {
-    html += '<div class="form-area" id="reply-form" style="display:none">';
-    html += '<label>Répondre :</label>';
-    html += bbcodeToolbarHtml('reply-content');
-    html += '<textarea id="reply-content" placeholder="Votre message..."></textarea>';
-    if (myBouille) html += bouilleSelHtml('reply');
-    html += '<div class="form-actions"><button class="btn btn-green" onclick="submitReply()">Envoyer</button> <button class="btn btn-orange" onclick="document.getElementById(\'reply-form\').style.display=\'none\'">Annuler</button></div>';
-    html += '</div>';
-  }
-
   app.innerHTML = html;
 }
 function topicPage(p) { loadTopic(currentTopicId, p); }
 
-function showReplyForm() {
-  var f = document.getElementById('reply-form');
-  if (f) { f.style.display = 'block'; document.getElementById('reply-content').focus(); }
+// Render the reply editor as a dedicated page (like the original post.php?m=reply).
+function showReplyForm(initialContent) {
+  if (!currentTopicData || !currentTopicData.topic) return;
+  var topic = currentTopicData.topic;
+  setBreadcrumb([
+    { text: topic.boardName, href: "navigate('board'," + topic.boardId + ");return false" },
+    { text: 'Répondre à un message' },
+  ]);
+  var app = document.getElementById('app');
+  app.innerHTML = renderEditor({
+    mode: 'reply',
+    formId: 'reply',
+    title: 'Re: ' + topic.title,
+    content: initialContent || '',
+    onSubmit: 'submitReply()',
+    onCancel: 'loadTopic(' + currentTopicId + ', currentTopicData ? currentTopicData.page : 1)',
+    submitLabel: 'Envoyer',
+  });
+  var ta = document.getElementById('reply-content');
+  if (ta) {
+    ta.focus();
+    if (initialContent) ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
 }
 
 function quotePost(postId, author) {
@@ -1241,16 +1720,14 @@ function quotePost(postId, author) {
   var tmp = document.createElement('textarea');
   tmp.innerHTML = raw;
   var text = tmp.value;
-  showReplyForm();
-  var ta = document.getElementById('reply-content');
-  ta.value = '[quote=' + author + ']\n' + text.trim() + '\n[/quote]\n\n';
-  ta.focus();
-  ta.setSelectionRange(ta.value.length, ta.value.length);
+  showReplyForm('[quote=' + author + ']\n' + text.trim() + '\n[/quote]\n\n');
 }
 
 async function submitReply() {
-  var content = document.getElementById('reply-content').value.trim();
-  if (!content) return;
+  var ta = document.getElementById('reply-content');
+  if (!ta) return;
+  var content = ta.value.trim();
+  if (!content) { alert('Le message ne peut pas être vide.'); return; }
   var bouille = myBouille ? getCurrentBouilleState('reply') : undefined;
   var data = await apiFetch('/api/forum/post', {
     method: 'POST',
@@ -1266,18 +1743,94 @@ async function submitReply() {
   }
 }
 
+// Comprehensive BBCode toolbar matching the original Frutiparc editor.
+// Two rows: Gras|Italique|Souligné|Taille▼|Couleur▼|Liste|Code
+//           Citation|Lien|Pictos
 function bbcodeToolbarHtml(targetId) {
-  return '<div class="bbcode-toolbar">'
-    + '<button type="button" class="b" onclick="bbWrap(\'' + targetId + '\',\'b\')" title="Gras">B</button>'
-    + '<button type="button" class="i" onclick="bbWrap(\'' + targetId + '\',\'i\')" title="Italique">I</button>'
-    + '<button type="button" class="u" onclick="bbWrap(\'' + targetId + '\',\'u\')" title="Souligné">U</button>'
-    + '<button type="button" onclick="bbWrap(\'' + targetId + '\',\'s\')" title="Barré">S</button>'
-    + '<button type="button" onclick="bbWrap(\'' + targetId + '\',\'quote\')" title="Citation">&laquo;&raquo;</button>'
-    + '<button type="button" onclick="bbInsertUrl(\'' + targetId + '\')" title="Lien">URL</button>'
-    + '<button type="button" onclick="bbInsertColor(\'' + targetId + '\')" title="Couleur">Couleur</button>'
-    + '<button type="button" onclick="bbInsertSize(\'' + targetId + '\')" title="Taille">Taille</button>'
-    + '<button type="button" onclick="bbTogglePictos(\'' + targetId + '\', this)" title="Pictos">Pictos</button>'
+  var sizeOpts = [
+    { v: '', label: 'Taille' },
+    { v: 8,  label: '8 (très petit)' },
+    { v: 10, label: '10 (petit)' },
+    { v: 12, label: '12 (normal)' },
+    { v: 14, label: '14 (grand)' },
+    { v: 18, label: '18 (très grand)' },
+    { v: 24, label: '24 (énorme)' },
+    { v: 30, label: '30 (gigantesque)' },
+  ];
+  var colorOpts = [
+    { v: '',          label: 'Couleur' },
+    { v: 'red',       label: 'Rouge' },
+    { v: 'orange',    label: 'Orange' },
+    { v: 'yellow',    label: 'Jaune' },
+    { v: 'green',     label: 'Vert' },
+    { v: 'blue',      label: 'Bleu' },
+    { v: 'darkblue',  label: 'Bleu foncé' },
+    { v: 'purple',    label: 'Violet' },
+    { v: 'pink',      label: 'Rose' },
+    { v: 'brown',     label: 'Marron' },
+    { v: 'gray',      label: 'Gris' },
+    { v: 'black',     label: 'Noir' },
+    { v: 'white',     label: 'Blanc' },
+  ];
+
+  function selHtml(name, opts, onChange) {
+    var s = '<select class="bb-select" onchange="' + onChange + '">';
+    for (var i = 0; i < opts.length; i++) {
+      s += '<option value="' + opts[i].v + '">' + escapeHtml(opts[i].label) + '</option>';
+    }
+    return s + '</select>';
+  }
+
+  var html = '<div class="editor-bbcode-toolbar">';
+  html += '<button type="button" class="bb-btn" style="font-weight:bold" onclick="bbToggleTag(\'' + targetId + '\',\'b\')" title="Gras">Gras</button>';
+  html += '<button type="button" class="bb-btn" style="font-style:italic" onclick="bbToggleTag(\'' + targetId + '\',\'i\')" title="Italique">Italique</button>';
+  html += '<button type="button" class="bb-btn" style="text-decoration:underline" onclick="bbToggleTag(\'' + targetId + '\',\'u\')" title="Souligné">Souligné</button>';
+  html += selHtml('size',  sizeOpts,  'bbInsertSizeFromSelect(\'' + targetId + '\', this)');
+  html += selHtml('color', colorOpts, 'bbInsertColorFromSelect(\'' + targetId + '\', this)');
+  html += '<button type="button" class="bb-btn" onclick="bbInsertList(\'' + targetId + '\')" title="Liste">Liste</button>';
+  html += '<button type="button" class="bb-btn" onclick="bbInsertCode(\'' + targetId + '\')" title="Code">Code</button>';
+  html += '</div>';
+  html += '<div class="editor-bbcode-toolbar" style="margin-top:3px">';
+  html += '<button type="button" class="bb-btn" onclick="bbToggleTag(\'' + targetId + '\',\'citation\')" title="Citation">Citation</button>';
+  html += '<button type="button" class="bb-btn" onclick="bbInsertUrl(\'' + targetId + '\')" title="Lien">Lien</button>';
+  html += '<button type="button" class="bb-btn" onclick="bbTogglePictos(\'' + targetId + '\', this)" title="Pictos">Pictos</button>';
+  html += '</div>';
+  return html;
+}
+
+// Hint row with help text + "Fermer les balises" button.
+function editorHintRowHtml(targetId) {
+  return '<div class="editor-hint-row">'
+    + '<span class="hint-text">Sélectionnez votre texte pour lui appliquer une mise en forme</span>'
+    + '<button type="button" class="close-tags-btn" onclick="bbCloseAllTags(\'' + targetId + '\')">Fermer les balises</button>'
     + '</div>';
+}
+
+// Emoticons row using inline BBCode aliases.
+var EMOTICONS = [
+  { code: ':)',     cls: 'emo-smile', title: 'Sourire' },
+  { code: ':D',     cls: 'emo-grin',  title: 'Hilare' },
+  { code: ':(',     cls: 'emo-sad',   title: 'Triste' },
+  { code: ';)',     cls: 'emo-wink',  title: 'Clin d\'oeil' },
+];
+function emoticonsRowHtml(targetId) {
+  var html = '<div class="emoticons-row">';
+  for (var i = 0; i < EMOTICONS.length; i++) {
+    var e = EMOTICONS[i];
+    html += '<button type="button" class="emo-btn" title="' + escapeHtml(e.title) + '" '
+      + 'onclick="bbInsertText(\'' + targetId + '\',\' ' + escapeHtml(e.code) + ' \')">'
+      + '<span class="emo-img ' + e.cls + '"></span></button>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// Track tags that were opened via single-click (no selection); used by "Fermer les balises".
+var _openTagStacks = {};
+
+function _ensureStack(targetId) {
+  if (!_openTagStacks[targetId]) _openTagStacks[targetId] = [];
+  return _openTagStacks[targetId];
 }
 
 function bbWrap(targetId, tag) {
@@ -1290,6 +1843,48 @@ function bbWrap(targetId, tag) {
   ta.focus();
   var cursor = start + open.length + sel.length;
   ta.setSelectionRange(cursor, cursor);
+}
+
+// Insert open tag only at cursor (push to stack) or wrap selection if any.
+function bbToggleTag(targetId, tag) {
+  var ta = document.getElementById(targetId);
+  if (!ta) return;
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  if (start !== end) {
+    bbWrap(targetId, tag);
+    return;
+  }
+  var open = '[' + tag + ']';
+  ta.value = ta.value.substring(0, start) + open + ta.value.substring(end);
+  ta.focus();
+  ta.setSelectionRange(start + open.length, start + open.length);
+  _ensureStack(targetId).push(tag);
+}
+
+// Pop all pending opened tags and append their closing tags at the cursor.
+function bbCloseAllTags(targetId) {
+  var ta = document.getElementById(targetId);
+  if (!ta) return;
+  var stack = _ensureStack(targetId);
+  if (stack.length === 0) {
+    ta.focus();
+    return;
+  }
+  var pos = ta.selectionStart;
+  var closes = '';
+  while (stack.length > 0) closes += '[/' + stack.pop() + ']';
+  ta.value = ta.value.substring(0, pos) + closes + ta.value.substring(ta.selectionEnd);
+  ta.focus();
+  ta.setSelectionRange(pos + closes.length, pos + closes.length);
+}
+
+function bbInsertText(targetId, text) {
+  var ta = document.getElementById(targetId);
+  if (!ta) return;
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  ta.value = ta.value.substring(0, start) + text + ta.value.substring(end);
+  ta.focus();
+  ta.setSelectionRange(start + text.length, start + text.length);
 }
 
 function bbInsertUrl(targetId) {
@@ -1305,32 +1900,79 @@ function bbInsertUrl(targetId) {
   ta.setSelectionRange(start + insert.length, start + insert.length);
 }
 
-function bbInsertColor(targetId) {
-  var color = prompt('Couleur (ex: red, #FF0000) :', 'red');
-  if (!color) return;
+// Color dropdown handler — applies [color=value]...[/color] to selection
+// or opens a tag at cursor and pushes onto the close-tags stack.
+function bbInsertColorFromSelect(targetId, sel) {
+  if (!sel || !sel.value) return;
+  var color = sel.value;
   var ta = document.getElementById(targetId);
-  if (!ta) return;
+  if (!ta) { sel.selectedIndex = 0; return; }
   var start = ta.selectionStart, end = ta.selectionEnd;
-  var sel = ta.value.substring(start, end);
-  var open = '[color=' + color + ']', close = '[/color]';
-  ta.value = ta.value.substring(0, start) + open + sel + close + ta.value.substring(end);
+  var s = ta.value.substring(start, end);
+  if (s) {
+    var open = '[color=' + color + ']', close = '[/color]';
+    ta.value = ta.value.substring(0, start) + open + s + close + ta.value.substring(end);
+    var cursor = start + open.length + s.length;
+    ta.setSelectionRange(cursor, cursor);
+  } else {
+    var open2 = '[color=' + color + ']';
+    ta.value = ta.value.substring(0, start) + open2 + ta.value.substring(end);
+    ta.setSelectionRange(start + open2.length, start + open2.length);
+    _ensureStack(targetId).push('color');
+  }
   ta.focus();
-  var cursor = start + open.length + sel.length;
-  ta.setSelectionRange(cursor, cursor);
+  sel.selectedIndex = 0;
 }
 
-function bbInsertSize(targetId) {
-  var size = prompt('Taille (8-32) :', '18');
-  if (!size) return;
+// Size dropdown handler — uses the French [taille=N] tag like the original.
+function bbInsertSizeFromSelect(targetId, sel) {
+  if (!sel || !sel.value) return;
+  var size = sel.value;
+  var ta = document.getElementById(targetId);
+  if (!ta) { sel.selectedIndex = 0; return; }
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var s = ta.value.substring(start, end);
+  if (s) {
+    var open = '[taille=' + size + ']', close = '[/taille]';
+    ta.value = ta.value.substring(0, start) + open + s + close + ta.value.substring(end);
+    var cursor = start + open.length + s.length;
+    ta.setSelectionRange(cursor, cursor);
+  } else {
+    var open2 = '[taille=' + size + ']';
+    ta.value = ta.value.substring(0, start) + open2 + ta.value.substring(end);
+    ta.setSelectionRange(start + open2.length, start + open2.length);
+    _ensureStack(targetId).push('taille');
+  }
+  ta.focus();
+  sel.selectedIndex = 0;
+}
+
+function bbInsertList(targetId) {
   var ta = document.getElementById(targetId);
   if (!ta) return;
   var start = ta.selectionStart, end = ta.selectionEnd;
   var sel = ta.value.substring(start, end);
-  var open = '[size=' + size + ']', close = '[/size]';
-  ta.value = ta.value.substring(0, start) + open + sel + close + ta.value.substring(end);
+  var body = sel ? sel : 'Premier élément\n[*]Deuxième élément';
+  var insert = '[liste]\n[*]' + body + '\n[/liste]';
+  ta.value = ta.value.substring(0, start) + insert + ta.value.substring(end);
   ta.focus();
-  var cursor = start + open.length + sel.length;
-  ta.setSelectionRange(cursor, cursor);
+  ta.setSelectionRange(start + insert.length, start + insert.length);
+}
+
+function bbInsertCode(targetId) {
+  var ta = document.getElementById(targetId);
+  if (!ta) return;
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var sel = ta.value.substring(start, end);
+  var insert = '[code]' + sel + '[/code]';
+  ta.value = ta.value.substring(0, start) + insert + ta.value.substring(end);
+  ta.focus();
+  if (sel) {
+    var cursor = start + insert.length;
+    ta.setSelectionRange(cursor, cursor);
+  } else {
+    ta.setSelectionRange(start + 6, start + 6);
+  }
 }
 
 var _pictoCache = null;
@@ -1382,7 +2024,7 @@ async function bbTogglePictos(targetId, btn) {
 
 // Close picto pickers on outside click
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('.picto-picker') && !e.target.closest('.bbcode-toolbar button')) {
+  if (!e.target.closest('.picto-picker') && !e.target.closest('.editor-bbcode-toolbar')) {
     document.querySelectorAll('.picto-picker').forEach(function(el) { el.remove(); });
   }
 });
@@ -1401,8 +2043,10 @@ function editPost(postId) {
   wrap.className = 'post-edit-area';
   wrap.id = 'edit-area-' + postId;
   wrap.innerHTML = bbcodeToolbarHtml(taId)
+    + emoticonsRowHtml(taId)
+    + editorHintRowHtml(taId)
     + '<textarea id="' + taId + '"></textarea>'
-    + '<div class="form-actions">'
+    + '<div class="form-actions" style="margin-top:6px">'
     + '<button class="btn btn-green" onclick="submitEdit(' + postId + ')">Enregistrer</button>'
     + '<button class="btn btn-orange" onclick="cancelEdit(' + postId + ')">Annuler</button>'
     + '</div>';
@@ -1462,28 +2106,117 @@ async function deleteTopic() {
   else alert('Erreur : ' + (data.error || 'inconnue'));
 }
 
-function showNewTopicForm(boardId) {
-  setBreadcrumb([{ text: 'Nouveau sujet' }]);
-  var app = document.getElementById('app');
-  var html = '<div class="form-area">';
-  html += '<h3>Nouveau sujet</h3>';
-  html += '<label>Titre :</label>';
-  html += '<input type="text" id="new-topic-title" maxlength="200" placeholder="Titre du sujet">';
-  html += '<label>Message :</label>';
-  html += bbcodeToolbarHtml('new-topic-content');
-  html += '<textarea id="new-topic-content" placeholder="Votre message..." style="height:160px"></textarea>';
-  if (myBouille) html += bouilleSelHtml('newtopic');
-  html += '<div class="form-actions">';
-  html += '<button class="btn btn-green" onclick="submitNewTopic(' + boardId + ')">Créer le sujet</button>';
-  html += ' <button class="btn btn-orange" onclick="navigate(\'board\',' + boardId + ')">Annuler</button>';
+// Shared editor renderer used for new topics and replies.
+// opts: { mode: 'new'|'reply', formId, title?, content?, onSubmit, onCancel, submitLabel }
+function renderEditor(opts) {
+  var formId = opts.formId;
+  var taId = formId + '-content';
+  var titleId = formId + '-title';
+  var showTitle = opts.mode === 'new';
+  var initialTitle = opts.title || '';
+  var initialContent = opts.content || '';
+  var submitLabel = opts.submitLabel || (showTitle ? 'Envoyer' : 'Envoyer');
+
+  var html = '<div class="form-area editor-area" id="editor-' + formId + '">';
+
+  // Preview slot (filled by previewEditor)
+  html += '<div id="editor-preview-' + formId + '"></div>';
+
+  html += '<div class="editor-form">';
+
+  // Sujet row (always shown — read-only for replies, editable for new topics).
+  html += '<div class="editor-row">';
+  html += '<div class="editor-label-cell">Sujet</div>';
+  html += '<div class="editor-value-cell">';
+  if (showTitle) {
+    html += '<input type="text" class="editor-input" id="' + titleId + '" maxlength="200" value="' + escapeHtml(initialTitle) + '">';
+  } else {
+    html += '<input type="text" class="editor-input" id="' + titleId + '" value="' + escapeHtml(initialTitle) + '" readonly style="background:#E8F5D4">';
+  }
   html += '</div></div>';
-  app.innerHTML = html;
-  document.getElementById('new-topic-title').focus();
+
+  // Bouille selector rows (nav + grid + expression). Only if user has a bouille.
+  if (myBouille) {
+    html += bouilleSelHtml(formId);
+  }
+
+  // Corps du message row
+  html += '<div class="editor-row">';
+  html += '<div class="editor-label-cell">Corps du message</div>';
+  html += '<div class="editor-value-cell">';
+  html += bbcodeToolbarHtml(taId);
+  html += '</div></div>';
+
+  // Emoticons row
+  html += '<div class="editor-row">';
+  html += '<div class="editor-label-cell">Emoticons</div>';
+  html += '<div class="editor-value-cell">';
+  html += emoticonsRowHtml(taId);
+  html += editorHintRowHtml(taId);
+  html += '<textarea class="editor-textarea" id="' + taId + '" placeholder="Votre message...">'
+    + escapeHtml(initialContent) + '</textarea>';
+  html += '</div></div>';
+
+  html += '</div>'; // .editor-form
+
+  // Action buttons
+  html += '<div class="editor-actions">';
+  html += '<button type="button" class="edit-btn" onclick="' + opts.onSubmit + '">' + escapeHtml(submitLabel) + '</button>';
+  html += '<button type="button" class="edit-btn" onclick="previewEditor(\'' + formId + '\',' + showTitle + ')">Prévisualiser</button>';
+  html += '<button type="button" class="edit-btn" onclick="' + opts.onCancel + '">Annuler</button>';
+  html += '</div>';
+
+  html += '</div>'; // .editor-area
+  return html;
+}
+
+// Render the post preview at the top of the editor (mirrors a real post layout).
+function previewEditor(formId, hasTitle) {
+  var taId = formId + '-content';
+  var titleId = formId + '-title';
+  var content = (document.getElementById(taId) || {}).value || '';
+  var title = (document.getElementById(titleId) || {}).value || '';
+  var state = myBouille ? getCurrentBouilleState(formId) : '000000010000000000000000';
+
+  var html = '<div class="editor-preview-wrap">';
+  html += '<div class="editor-preview-header"><span class="post-icon"></span>Aperçu de votre message.</div>';
+  html += '<div class="editor-preview-body">';
+  html += '<div class="editor-preview-author">';
+  html += '<div class="avatar" id="editor-preview-avatar-' + formId + '">' + getBouillePreviewHtml(state) + '</div>';
+  html += '<div class="username">' + escapeHtml(currentUser || '') + '</div>';
+  html += '</div>';
+  html += '<div class="editor-preview-content">';
+  if (hasTitle && title) {
+    html += '<div style="font-weight:bold;color:#E3756A;margin-bottom:6px">' + escapeHtml(title) + '</div>';
+  }
+  html += renderBBCode(content);
+  html += '</div>';
+  html += '</div></div>';
+
+  var slot = document.getElementById('editor-preview-' + formId);
+  if (slot) slot.innerHTML = html;
+  // Scroll to top so the user actually sees the preview, like the original.
+  if (slot && slot.scrollIntoView) slot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function showNewTopicForm(boardId) {
+  setBreadcrumb([{ text: 'Poster un nouveau message' }]);
+  var app = document.getElementById('app');
+  app.innerHTML = renderEditor({
+    mode: 'new',
+    formId: 'newtopic',
+    onSubmit: 'submitNewTopic(' + boardId + ')',
+    onCancel: 'navigate(\'board\',' + boardId + ')',
+    submitLabel: 'Envoyer',
+  });
+  var t = document.getElementById('newtopic-title');
+  if (t) t.focus();
 }
 
 async function submitNewTopic(boardId) {
-  var title = document.getElementById('new-topic-title').value.trim();
-  var content = document.getElementById('new-topic-content').value.trim();
+  var title = (document.getElementById('newtopic-title') || {}).value || '';
+  var content = (document.getElementById('newtopic-content') || {}).value || '';
+  title = title.trim(); content = content.trim();
   if (!title || !content) { alert('Titre et message requis.'); return; }
   var bouille = myBouille ? getCurrentBouilleState('newtopic') : undefined;
   var data = await apiFetch('/api/forum/topic', {
