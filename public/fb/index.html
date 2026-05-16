@@ -1476,7 +1476,7 @@ function formatDateShort(iso) {
   var d = new Date(iso);
   var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
   var months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
-  return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + '<br>' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
 async function apiFetch(url, opts) {
