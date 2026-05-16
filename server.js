@@ -3354,18 +3354,25 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     // directly inside the root, not wrapped in <c>. Links go inline as
     // <a href="asfunction:win.box.getContent,ID"> entries — the same
     // pattern the SWF's own i18n strings use.
-    // <l> link types match the SWF's i18n keys: cat_ls is "Dans cette
-    // rubrique :" (children of the current topic), cat_tree is "Rubriques :"
-    // (top-level index), seealso is "Voir également :". For sub-topic
-    // children we emit cat_ls.
+    // The SWF determines link type from the CONTAINER element name, not
+    // an attribute on <l>. Matches the i18n keys observed in the SWF:
+    //   <cat_tree> → "Rubriques :"       (top-level index)
+    //   <cat_ls>   → "Dans cette rubrique :" (children of current topic)
+    //   <seealso>  → "Voir également :"
+    // <l> elements inside the container carry only id + n. No text content
+    // (previous attempt put the title as both attribute n= AND element
+    // text — the SWF read the text and tried Number(text) → NaN when
+    // clicked).
     const buildLinksXml = (parentId) => {
       const children = all
         .filter((t) => (t.parent_id || null) === (parentId || null))
         .sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
-      const type = parentId == null ? 'cat_tree' : 'cat_ls';
-      return children.map((c) =>
-        `<l id="${c.id}" k="${c.id}" i="${c.id}" type="${type}" t="${type}" n="${escapeXmlText(c.title)}">${escapeXmlText(c.title)}</l>`
+      if (children.length === 0) return '';
+      const container = parentId == null ? 'cat_tree' : 'cat_ls';
+      const items = children.map((c) =>
+        `<l id="${c.id}" n="${escapeXmlText(c.title)}"/>`
       ).join('');
+      return `<${container}>${items}</${container}>`;
     };
     if (!topic) {
       const indexBody = 'Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.';
