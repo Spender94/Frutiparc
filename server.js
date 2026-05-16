@@ -6009,6 +6009,30 @@ function swfSizeForUrlPath(urlPath) {
   return '0';
 }
 
+// recentlyEjected tracks "user X ejected game Y" events from /ff/mv so the
+// standalone game popup (game-popup.html) can poll and close itself when
+// its disc is no longer in the console. Required because Ruffle's WASM
+// networking bypasses window.fetch and XMLHttpRequest interceptors — the
+// popup can't observe the eject directly. Entries are cleared on read so
+// the next mount of the same game starts clean.
+const recentlyEjected = new Map();
+
+app.get('/api/check-ejected', (req, res) => {
+  const sid = String(req.query.sid || '');
+  const game = String(req.query.game || '');
+  if (!sid || !game) return res.json({ ejected: false });
+  const key = `${sid}::${game}`;
+  const ts = recentlyEjected.get(key);
+  if (ts && Date.now() - ts < 120000) {
+    // Consume the entry so the response only fires once per eject.
+    recentlyEjected.delete(key);
+    return res.json({ ejected: true });
+  }
+  // Older than 2 minutes — stale, drop it.
+  if (ts) recentlyEjected.delete(key);
+  return res.json({ ejected: false });
+});
+
 const GAME_DISCS = {
   bkiwi1: {
     discType: '0',
@@ -6740,6 +6764,20 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     const disc = GAME_DISCS[file];
     const displayName = disc.iconName || disc.swfName;
     const discDesc = `${disc.discType}\r\n${displayName}`;
+    // Track eject events so the standalone game popup can poll and
+    // close itself. Ruffle's WASM networking bypasses both window.fetch
+    // and XMLHttpRequest wrappers, so the only reliable signal back to
+    // the popup is the server marking the eject and the popup asking.
+    // Keyed by sid::swfName because that's what the popup knows about
+    // itself (URL ?game=<swfName>). Stash a timestamp; the popup poll
+    // endpoint clears it on read so the next mount of the same game
+    // isn't immediately closed.
+    if (folder === 'disccollector') {
+      recentlyEjected.set(`${sid}::${disc.swfName}`, Date.now());
+    } else {
+      // Re-mount: any pending eject for this game is stale.
+      recentlyEjected.delete(`${sid}::${disc.swfName}`);
+    }
     // disccollector is a static catalog: /ff/ls?uid=disccollector already
     // lists every known disc unconditionally. If we answered an eject-back
     // with the disc as a fresh <f> child, the client's onMove handler would

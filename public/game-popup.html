@@ -241,6 +241,31 @@
   // Derive game's internal SWF name for slot persistence (e.g., "miniwave" from ".../miniwave.swf")
   var gameSwfName = swfPath.substring(swfPath.lastIndexOf("/") + 1).replace(/\.swf$/, "");
 
+  // Poll the server for eject events. The Frusion console SWF in the
+  // parent tab signals "disc ejected" by moving the disc back to
+  // disccollector (server logs [FF/MV] folder=disccollector); the server
+  // marks the eject in recentlyEjected and we close ourselves on the next
+  // poll. Required because Ruffle's WASM networking bypasses window.fetch
+  // and XMLHttpRequest wrappers in the parent tab, so we can't catch the
+  // eject signal there.
+  (function pollEjectStatus() {
+    var sidArg = new URLSearchParams(window.location.search).get("sid") || "";
+    var gameArg = new URLSearchParams(window.location.search).get("game") || gameSwfName;
+    if (!sidArg || !gameArg) return;
+    setInterval(function () {
+      fetch("/api/check-ejected?sid=" + encodeURIComponent(sidArg)
+            + "&game=" + encodeURIComponent(gameArg))
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.ejected) {
+            window.__dlog("[Game] disc ejected by parent — closing popup");
+            try { window.close(); } catch (e) {}
+          }
+        })
+        .catch(function () {});
+    }, 1500);
+  })();
+
   // ExternalInterface callback: JSON parser for game SWFs that call client.fromJSON().
   // motionball.swf (mb2) is patched to call ExternalInterface.call("parseJSON", str)
   // via mb2.Client.prototype.fromJSON, so the menu can read slot0 ($challenge/$classic/...).
