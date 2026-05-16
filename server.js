@@ -3369,17 +3369,14 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     // entities back into rendered HTML tags. (Tried CDATA — text was
     // visible but tags came through literal.)
     const renderBodyHtml = (rawBody, parentIdForLinks) => {
+      // Pure text body, no inner heading. AS2 TextField.htmlText does
+      // NOT recognise &lt;h&gt; — when we previously emitted it the
+      // heading rendered (maroon, bold) but everything after seemed to
+      // be eaten by the &lt;h&gt; block. Drop the heading from the body
+      // entirely (title bar already shows it via the n= attr) and emit
+      // only the editable content + child-topic links footer.
       const bodyEsc = escapeXmlText(rawBody || '');
-      const titleSafe = parentIdForLinks
-        ? escapeXmlText((all.find((t) => t.id === parentIdForLinks) || {}).title || '')
-        : 'Index de l\'aide';
-      // Repeat the title as an &lt;h&gt; styled header inside the body, then
-      // a couple of &lt;br/&gt; so the body text doesn't get absorbed into
-      // the heading box (AS2 TextField.htmlText needs explicit breaks
-      // between &lt;h&gt; blocks and trailing text).
-      const heading = `&lt;h&gt;${escapeXmlText(titleSafe)}&lt;/h&gt;`;
-      const spacer = '&lt;br/&gt;';
-      return heading + spacer + bodyEsc + buildLinksHtml(parentIdForLinks);
+      return bodyEsc + buildLinksHtml(parentIdForLinks);
     };
     if (!topic) {
       const indexBody = 'Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.';
