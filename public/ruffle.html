@@ -411,6 +411,15 @@
 
             window.fp_closePopupFrusion = function () {
                 window.__dlog("[Frusion] fp_closePopupFrusion");
+                // The Frusion SWF calls this callback when the user clicks
+                // the Eject button on the console UI. Close the standalone
+                // game popup so the now-ejected SWF stops running (and stops
+                // posting saves) instead of lingering until the user closes
+                // it manually.
+                if (window.__gamePopup && !window.__gamePopup.closed) {
+                    try { window.__gamePopup.close(); } catch (e) {}
+                }
+                window.__gamePopup = null;
                 return true;
             };
 
