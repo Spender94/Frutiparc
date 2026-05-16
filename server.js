@@ -7676,27 +7676,82 @@ app.delete('/api/forum/topic/:id', async (req, res) => {
 });
 
 // Admin: manage forum structure
+// Canonical forum layout used by every seed/migration code path so the
+// structure stays in sync. Updating this list automatically backfills
+// any missing rubrique on the next startup via ensureForumBoardsExist().
+const FORUM_DEFAULT_STRUCTURE = [
+  { name: 'Gestion du site', boards: [
+    { name: 'Animateur', description: "De l'animation, ses principes généraux, ses dernières nouveautées, ..." },
+    { name: 'Modération-Animation', description: 'Ho ! Ca rime !' },
+  ]},
+  { name: 'Frutiparc', boards: [
+    { name: 'Annonces', description: "Les annonces officielles de l'équipe Frutiparc" },
+    { name: 'Animations officielles', description: 'Les annonces des prochaines animations organisées par des animateurs à venir' },
+    { name: 'Animations Frutiz', description: 'Les annonces des prochaines animations organisées par des frutiz à venir' },
+    { name: 'Jeux Frutiparc', description: 'Les jeux de Frutiparc, parlez-en !' },
+    { name: 'Frutiz', description: 'Pour parler de la vie des Frutiz, population de frutiparc !' },
+    { name: 'Clans', description: 'Tous les clans Frutiparc.' },
+  ]},
+  { name: 'La vie Frutiz', boards: [
+    { name: 'Jeux Vidéos', description: 'Pour parler de votre passion, les jeux vidéos ;)' },
+    { name: 'Créations littéraires', description: 'Pour tous vos poèmes, textes et histoires qui sortent tout droit de votre imagination, à vos plumes !' },
+    { name: 'Créations graphiques', description: 'Pour tous vos dessins, trucages et gribouillis qui sortent tout droit de votre imagination, à vos crayons !' },
+    { name: 'Musique', description: "Car votre passion, c'est la zique, parce que vous voulez partager avec vos amis frutiz..." },
+    { name: 'Vie non Frutiz', description: 'Pour parler de la vie... en dehors de Frutiparc. Si si, elle existe !' },
+  ]},
+];
+
+// Backfill any category/board from FORUM_DEFAULT_STRUCTURE that isn't already
+// present in the DB. Matches by name, never renames or deletes anything, so
+// existing topics keep their board. New boards are appended at the end of
+// their category (sort_order = current max + 1).
+async function ensureForumBoardsExist() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const categories = await db.forumGetCategories();
+    const boards = await db.forumGetBoards();
+    const catByName = {};
+    for (const c of categories) catByName[c.name] = c;
+    const boardsByCat = {};
+    for (const b of boards) {
+      const cid = b.categoryId != null ? b.categoryId : b.category_id;
+      if (!boardsByCat[cid]) boardsByCat[cid] = [];
+      boardsByCat[cid].push(b);
+    }
+    let added = 0;
+    for (let ci = 0; ci < FORUM_DEFAULT_STRUCTURE.length; ci++) {
+      const wantCat = FORUM_DEFAULT_STRUCTURE[ci];
+      let cat = catByName[wantCat.name];
+      if (!cat) {
+        cat = await db.forumCreateCategory(wantCat.name, categories.length + ci);
+        catByName[wantCat.name] = cat;
+        boardsByCat[cat.id] = [];
+      }
+      const existingBoards = boardsByCat[cat.id] || [];
+      const existingNames = new Set(existingBoards.map(b => b.name));
+      let nextSort = existingBoards.reduce(
+        (m, b) => Math.max(m, (b.sortOrder != null ? b.sortOrder : b.sort_order) || 0),
+        -1,
+      ) + 1;
+      for (const b of wantCat.boards) {
+        if (!existingNames.has(b.name)) {
+          await db.forumCreateBoard(cat.id, b.name, b.description, nextSort++);
+          added++;
+        }
+      }
+    }
+    if (added > 0) console.log(`[FORUM] Backfilled ${added} missing rubrique(s)`);
+  } catch (e) {
+    console.error('[FORUM] ensureForumBoardsExist error:', e.message);
+  }
+}
+
 app.post('/api/admin/forum/seed', adminAuth, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
   try {
     const existing = await db.forumGetCategories();
     if (existing.length > 0) return res.json({ ok: true, message: 'already seeded' });
-    const cats = [
-      { name: 'Gestion du site', boards: [
-        { name: 'Annonces', description: "Les annonces officielles de l'équipe Frutiparc" },
-      ]},
-      { name: 'Frutiparc', boards: [
-        { name: 'Animations', description: 'Les annonces des prochaines animations' },
-        { name: 'Jeux Frutiparc', description: 'Les jeux de Frutiparc, parlez-en !' },
-        { name: 'Frutiz', description: 'Pour parler de la vie des Frutiz, population de Frutiparc !' },
-      ]},
-      { name: 'La vie Frutiz', boards: [
-        { name: 'Jeux Vidéos', description: 'Pour parler de votre passion, les jeux vidéos ;)' },
-        { name: 'Créations littéraires', description: "Pour tous vos poèmes, textes et histoires, à vos plumes !" },
-        { name: 'Créations graphiques', description: "Pour tous vos dessins, trucages et gribouillis, à vos crayons !" },
-        { name: 'Musique', description: 'Car votre passion, c\'est la zique !' },
-      ]},
-    ];
+    const cats = FORUM_DEFAULT_STRUCTURE;
     for (let ci = 0; ci < cats.length; ci++) {
       const cat = await db.forumCreateCategory(cats[ci].name, ci);
       for (let bi = 0; bi < cats[ci].boards.length; bi++) {
@@ -7931,22 +7986,7 @@ async function boot() {
       try {
         const forumCats = await db.forumGetCategories();
         if (forumCats.length === 0) {
-          const defaultForum = [
-            { name: 'Gestion du site', boards: [
-              { name: 'Annonces', description: "Les annonces officielles de l'équipe Frutiparc" },
-            ]},
-            { name: 'Frutiparc', boards: [
-              { name: 'Animations', description: 'Les annonces des prochaines animations' },
-              { name: 'Jeux Frutiparc', description: 'Les jeux de Frutiparc, parlez-en !' },
-              { name: 'Frutiz', description: 'Pour parler de la vie des Frutiz, population de Frutiparc !' },
-            ]},
-            { name: 'La vie Frutiz', boards: [
-              { name: 'Jeux Vidéos', description: 'Pour parler de votre passion, les jeux vidéos ;)' },
-              { name: 'Créations littéraires', description: 'Pour tous vos poèmes, textes et histoires, à vos plumes !' },
-              { name: 'Créations graphiques', description: 'Pour tous vos dessins, trucages et gribouillis, à vos crayons !' },
-              { name: 'Musique', description: "Car votre passion, c'est la zique !" },
-            ]},
-          ];
+          const defaultForum = FORUM_DEFAULT_STRUCTURE;
           for (let ci = 0; ci < defaultForum.length; ci++) {
             const cat = await db.forumCreateCategory(defaultForum[ci].name, ci);
             for (let bi = 0; bi < defaultForum[ci].boards.length; bi++) {
@@ -7957,6 +7997,9 @@ async function boot() {
           console.log('[FORUM] Seeded default categories and boards');
         } else {
           console.log(`[FORUM] ${forumCats.length} categories already in DB`);
+          // Backfill any rubriques that didn't exist when the DB was first
+          // seeded so the listing matches the canonical screenshot layout.
+          await ensureForumBoardsExist();
         }
       } catch (e) { console.error('[FORUM] Seed error:', e.message); }
       try {
@@ -8154,22 +8197,7 @@ const server = app.listen(port, '0.0.0.0', () => {
         const cats = await db.forumGetCategories();
         if (cats.length === 0) {
           console.log('[FORUM] Seeding forum structure...');
-          const seedCats = [
-            { name: 'Gestion du site', boards: [
-              { name: 'Annonces', description: "Les annonces officielles de l'équipe Frutiparc" },
-            ]},
-            { name: 'Frutiparc', boards: [
-              { name: 'Animations', description: 'Les annonces des prochaines animations' },
-              { name: 'Jeux Frutiparc', description: 'Les jeux de Frutiparc, parlez-en !' },
-              { name: 'Frutiz', description: 'Pour parler de la vie des Frutiz, population de Frutiparc !' },
-            ]},
-            { name: 'La vie Frutiz', boards: [
-              { name: 'Jeux Vidéos', description: 'Pour parler de votre passion, les jeux vidéos ;)' },
-              { name: 'Créations littéraires', description: "Pour tous vos poèmes, textes et histoires, à vos plumes !" },
-              { name: 'Créations graphiques', description: "Pour tous vos dessins, trucages et gribouillis, à vos crayons !" },
-              { name: 'Musique', description: 'Car votre passion, c\'est la zique !' },
-            ]},
-          ];
+          const seedCats = FORUM_DEFAULT_STRUCTURE;
           const boardIds = [];
           for (let ci = 0; ci < seedCats.length; ci++) {
             const cat = await db.forumCreateCategory(seedCats[ci].name, ci);
