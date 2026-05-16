@@ -250,6 +250,44 @@
             // `fp_goURLNewWin`, so this code path does not affect game launching.
             var __forumUrl = null;
             var __forumPopup = null;
+            // Track the standalone game popup so we can close it on disc
+            // eject and prevent the previous game's SWF from racing the
+            // newer one on saveSlot writes.
+            window.__gamePopup = null;
+
+            // Intercept Frusion's /ff/mv calls (file move). When a game disc
+            // moves back to "disccollector" that's the eject signal — the
+            // popup window is now stale and should close so it can't keep
+            // writing saves that conflict with the user's next game session.
+            // We wrap fetch (Ruffle's LoadVars in modern builds uses fetch
+            // under the hood). XHR isn't separately wrapped — if Ruffle ever
+            // switches back to XHR we'll need to mirror this there.
+            (function wrapFetchForEject() {
+                var origFetch = window.fetch.bind(window);
+                window.fetch = function (input, init) {
+                    var url = typeof input === "string" ? input : (input && input.url) || "";
+                    // /ff/mv is the move endpoint. Params can be in the query
+                    // string (GET-ish) or the form body (POST). We just need
+                    // to detect "folder=disccollector" — that's eject.
+                    var isMove = url.indexOf("/ff/mv") !== -1;
+                    var ejectHint = false;
+                    if (isMove) {
+                        if (url.indexOf("folder=disccollector") !== -1) ejectHint = true;
+                        else if (init && typeof init.body === "string"
+                                 && init.body.indexOf("folder=disccollector") !== -1) {
+                            ejectHint = true;
+                        }
+                    }
+                    if (ejectHint) {
+                        window.__dlog("[Frusion] disc eject detected → closing game popup");
+                        if (window.__gamePopup && !window.__gamePopup.closed) {
+                            try { window.__gamePopup.close(); } catch (e) {}
+                        }
+                        window.__gamePopup = null;
+                    }
+                    return origFetch(input, init);
+                };
+            })();
 
             function buildForumUrl(rawUrl) {
                 var sid = new URLSearchParams(window.location.search).get("sid") || "";
@@ -351,12 +389,23 @@
                     var gw = game.width + 32;
                     var gh = game.height + 32;
                     var feat = "width=" + gw + ",height=" + gh + ",resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no";
-                    window.open(popupUrl, "frutiparc_game", feat);
+                    // Close any previous game popup before opening the new one —
+                    // if the user ejected the previous disc but the popup stayed
+                    // open, the two SWFs would race on saveSlot writes and the
+                    // newer game's state could overwrite the older one's. Closing
+                    // first guarantees a single live game popup at a time.
+                    if (window.__gamePopup && !window.__gamePopup.closed) {
+                        try { window.__gamePopup.close(); } catch (e) {}
+                    }
+                    window.__gamePopup = window.open(popupUrl, "frutiparc_game", feat);
                     return true;
                 }
 
                 const features = `width=${w || 640},height=${h || 480},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`;
-                window.open(rewritten, "frutiparc_game", features);
+                if (window.__gamePopup && !window.__gamePopup.closed) {
+                    try { window.__gamePopup.close(); } catch (e) {}
+                }
+                window.__gamePopup = window.open(rewritten, "frutiparc_game", features);
                 return true;
             };
 
