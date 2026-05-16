@@ -9613,17 +9613,7 @@ case 'send': {
   const g = msg.attrs.g;
   const text = msg.content || '';
   const type = msg.attrs.t || 'm';
-  let pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
-  // Black isn't in the feutre palette — when the SWF client sends p=000000
-  // (or any other "value is zero" encoding) it means the user picked no
-  // colour, not actual black. Relaying it verbatim makes the receiver
-  // render the pseudo + text in black, which is visually wrong. Normalise
-  // every zero-equivalent to the empty string so receivers fall back to
-  // their configured default-color path.
-  if (typeof pen === 'string') {
-    const norm = pen.trim().toLowerCase().replace(/^0x/, '').replace(/^#/, '');
-    if (norm === '' || /^0+$/.test(norm)) pen = '';
-  }
+  const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
   const timeAttrs = buildChatTimeAttrs();
   const senderData = users[client.username] || {};
   const mutedUntil = senderData.mutedUntil ? new Date(senderData.mutedUntil) : null;
