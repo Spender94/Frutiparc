@@ -9849,7 +9849,7 @@ case 'send': {
       break;
     }
 
-    const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}" p="${pen}" g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
+    const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
     trackXpAction(client.username, 'chatMsg');
 } else if (msg.attrs.u) {
