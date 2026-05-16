@@ -3402,7 +3402,7 @@ app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
   const query = String(params.s || '').trim().toLowerCase();
   console.log(`[GASPARD] /fh/search method=${req.method} s=${JSON.stringify(query)} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
   if (!query) {
-    return res.type('text/xml').send('<r nb="0" m="exact"/>');
+    return res.type('text/xml').send('<r n="no_result" nb="0" m="exact"/>');
   }
   try {
     const all = await db.listGaspardHelpTopics();
@@ -3421,14 +3421,20 @@ app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
       mode = 'similar';
       hits = all.filter(matchesSimilar);
     }
+    if (hits.length === 0) {
+      return res.type('text/xml').send('<r n="no_result" nb="0" m="exact"/>');
+    }
+    // Cover the likely attribute-name variations for the id (id / k / i)
+    // and emit the title as both n= attribute and element text so whatever
+    // path the SWF takes resolves.
     const items = hits.slice(0, 50)
-      .map((t) => `<i id="${t.id}" n="${escapeXmlText(t.title)}"/>`).join('');
+      .map((t) => `<i id="${t.id}" k="${t.id}" i="${t.id}" n="${escapeXmlText(t.title)}">${escapeXmlText(t.title)}</i>`).join('');
     return res.type('text/xml').send(
-      `<r nb="${hits.length}" m="${mode}">${items}</r>`
+      `<r n="result" nb="${hits.length}" m="${mode}">${items}</r>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/search error:', e.message);
-    res.type('text/xml').status(200).send('<r error="server"/>');
+    res.type('text/xml').status(200).send('<r n="no_result" nb="0" m="exact"/>');
   }
 });
 
