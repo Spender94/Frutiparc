@@ -8345,10 +8345,18 @@ const channels = {
 
 // ── Virtual users / PNJ (always connected on pomme) ──
 const CONNECTED_NPCS = new Set([
-  'Gaspard',
+  'gaspard',
 ]);
 
-users.Gaspard = {
+// Gaspard is the welcome-bot NPC. Stored under the lowercase key
+// `users.gaspard` like every other user (getDisplayName, trace and
+// bouilleOf all index `users[username.toLowerCase()]`); the
+// displayName field preserves the visible capitalisation. Previously
+// the user record was stored as `users.Gaspard` which meant the
+// case-insensitive lookups missed it — the desktop contact icon
+// rendered with DEFAULT_BOUILLE_STATE instead of Gaspard's actual
+// bouille '0n0000000000000000000000'.
+users.gaspard = {
   pass: '',
   xp: 9999999,
   kikooz: 100,
@@ -8371,6 +8379,7 @@ users.Gaspard = {
   lastName: '',
   comment: '',
   siteUrl: '',
+  displayName: 'Gaspard',
 };
 
 // ── mdamirma — FrutiSigne bot ──
