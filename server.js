@@ -3354,50 +3354,37 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     // directly inside the root, not wrapped in <c>. Links go inline as
     // <a href="asfunction:win.box.getContent,ID"> entries — the same
     // pattern the SWF's own i18n strings use.
-    const buildLinksHtml = (parentId) => {
+    // Build <l> sub-topic links to embed inside the <h> payload.
+    const buildLinksXml = (parentId) => {
       const children = all
         .filter((t) => (t.parent_id || null) === (parentId || null))
         .sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
-      if (children.length === 0) return '';
-      const items = children.map((c) =>
-        `&lt;li&gt;&lt;a href=&quot;asfunction:win.box.getContent,${c.id}&quot;&gt;${escapeXmlText(c.title)}&lt;/a&gt;&lt;/li&gt;`
+      return children.map((c) =>
+        `<l id="${c.id}" k="${c.id}" i="${c.id}" n="${escapeXmlText(c.title)}">${escapeXmlText(c.title)}</l>`
       ).join('');
-      return `&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Voir aussi :&lt;/b&gt;&lt;ul&gt;${items}&lt;/ul&gt;`;
     };
-    // We entity-encode the whole body so the SWF's XML parser sees a
-    // single text-node child, then the htmlText renderer decodes the
-    // entities back into rendered HTML tags. (Tried CDATA — text was
-    // visible but tags came through literal.)
-    const renderBodyHtml = (rawBody, parentIdForLinks) => {
-      // Pure text body, no inner heading. AS2 TextField.htmlText does
-      // NOT recognise &lt;h&gt; — when we previously emitted it the
-      // heading rendered (maroon, bold) but everything after seemed to
-      // be eaten by the &lt;h&gt; block. Drop the heading from the body
-      // entirely (title bar already shows it via the n= attr) and emit
-      // only the editable content + child-topic links footer.
-      const bodyEsc = escapeXmlText(rawBody || '');
-      return bodyEsc + buildLinksHtml(parentIdForLinks);
-    };
+    // Wrap the help payload in <r><h>...</h></r>. The parser strings hint
+    // that the SWF reads firstChild and tests nodeName == "h", so root.h
+    // (rather than root being h itself) is the structure to try next:
+    //   <r>
+    //     <h id n>
+    //       Body text (text node directly inside)
+    //       <l id n>Sub-topic A</l>
+    //       <l id n>Sub-topic B</l>
+    //     </h>
+    //   </r>
     if (!topic) {
       const indexBody = 'Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.';
-      const html = renderBodyHtml(indexBody, null);
-      const cAttr = escapeXmlText(indexBody);
-      // Emit the body through multiple channels at once so whichever the
-      // SWF's parser reads from will resolve:
-      //   - c= root attribute
-      //   - <c>…</c> child element with the body text
-      //   - inline HTML text directly inside the root (entity-encoded so
-      //     it goes through htmlText)
+      const links = buildLinksXml(null);
       return res.type('text/xml').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide" c="${cAttr}"><c>${cAttr}</c>${html}</h>`
+        `<?xml version="1.0" encoding="UTF-8"?>\n<r><h id="0" n="Index de l'aide">${escapeXmlText(indexBody)}${links}</h></r>`
       );
     }
     const safeTitle = escapeXmlText(topic.title);
     const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
-    const html = renderBodyHtml(topic.body, topic.id);
-    const cAttr = escapeXmlText(topic.body || '');
+    const links = buildLinksXml(topic.id);
     return res.type('text/xml').send(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}" c="${cAttr}"${backAttr}><c>${cAttr}</c>${html}</h>`
+      `<?xml version="1.0" encoding="UTF-8"?>\n<r><h id="${topic.id}" n="${safeTitle}"${backAttr}>${escapeXmlText(topic.body || '')}${links}</h></r>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/get error:', e.message);
