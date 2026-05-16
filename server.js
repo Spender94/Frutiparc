@@ -3343,18 +3343,21 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     }
     if (!topic) {
       const links = gaspardTopicLinksXml(null, all);
+      // Title text duplicated as attribute (t, n, title) and as <h> child
+      // to cover whichever the SWF parser picks up.
       return res.type('text/xml').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0"><h>Index de l'aide</h><c>Choisissez un sujet ci-dessous, ou utilisez la recherche.</c>${links}</h>`
+        `<r id="0" t="Index de l'aide" n="Index de l'aide" title="Index de l'aide"><h>Index de l'aide</h><c>Choisissez un sujet ci-dessous, ou utilisez la recherche.</c>${links}</r>`
       );
     }
     const subLinks = gaspardTopicLinksXml(topic.id, all);
     const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
+    const safeTitle = escapeXmlText(topic.title);
     return res.type('text/xml').send(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}"${backAttr}><h>${escapeXmlText(topic.title)}</h><c>${gaspardBodyXml(topic.body)}</c>${subLinks}</h>`
+      `<r id="${topic.id}" t="${safeTitle}" n="${safeTitle}" title="${safeTitle}"${backAttr}><h>${safeTitle}</h><c>${gaspardBodyXml(topic.body)}</c>${subLinks}</r>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/get error:', e.message);
-    res.type('text/xml').status(200).send('<?xml version="1.0"?>\n<h><c>Erreur serveur</c></h>');
+    res.type('text/xml').status(200).send('<r><h>Erreur</h><c>Erreur serveur</c></r>');
   }
 });
 
