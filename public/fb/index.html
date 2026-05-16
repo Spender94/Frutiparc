@@ -118,6 +118,14 @@
   .row.row-alt { background: #C3EF93; }
   .row .icon { width: 56px; min-width: 56px; text-align: center; }
   .row .icon img.peach { width: 28px; height: 28px; vertical-align: middle; }
+  /* Topic rows: tight icon column, no extra padding around the folder icon. */
+  .topic-row .icon {
+    width: 25px;
+    min-width: 25px;
+    padding: 0;
+    text-align: left;
+  }
+  .topic-row .info { padding-left: 4px; }
   .row .info { flex: 1; padding: 0 10px; }
   .row .info .title { font-weight: bold; font-size: 12px; color: #2C4A0F; }
   .row .info .title a { color: #2C4A0F; text-decoration: none; }
@@ -1533,7 +1541,8 @@ async function loadIndex() {
     for (var bi = 0; bi < cat.boards.length; bi++) {
       var b = cat.boards[bi];
       html += '<div class="row">';
-      html += '<div class="icon"><img class="folder-icon" src="/fb/folder_big.gif" alt=""></div>';
+      var boardIcon = b.unread ? 'folder_big_new.png' : 'folder_big.gif';
+      html += '<div class="icon"><img class="folder-icon" src="/fb/' + boardIcon + '" alt=""></div>';
       html += '<div class="info">';
       html += '<div class="title"><a href="#" onclick="navigate(\'board\',' + b.id + ');return false">' + escapeHtml(b.name) + '</a></div>';
       html += '<div class="desc">' + escapeHtml(b.description) + '</div>';
