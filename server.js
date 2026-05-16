@@ -3378,14 +3378,17 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
       const indexBody = 'Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.';
       const links = buildLinksXml(null);
       return res.type('text/xml').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide">${escapeXmlText(indexBody)}${links}</h>`
+        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide"><c>${escapeXmlText(indexBody)}</c>${links}</h>`
       );
     }
     const safeTitle = escapeXmlText(topic.title);
     const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
     const links = buildLinksXml(topic.id);
+    // Body content wrapped in <c> element child of <h>, link containers
+    // (cat_ls / cat_tree) come after. Parser strings show c is read before
+    // l, suggesting it expects <c> as a distinct child element.
     return res.type('text/xml').send(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}"${backAttr}>${escapeXmlText(topic.body || '')}${links}</h>`
+      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}"${backAttr}><c>${escapeXmlText(topic.body || '')}</c>${links}</h>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/get error:', e.message);
