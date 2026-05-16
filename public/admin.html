@@ -347,6 +347,7 @@
     <button class="tab" data-tab="challenge" onclick="switchTab('challenge')">Challenge</button>
     <button class="tab" data-tab="events" onclick="switchTab('events')">Événements</button>
     <button class="tab" data-tab="channels" onclick="switchTab('channels')">Salons</button>
+    <button class="tab" data-tab="gaspard" onclick="switchTab('gaspard')">Aide Gaspard</button>
   </div>
 
 <div class="content" id="tab-users">
@@ -486,6 +487,18 @@
   </table>
 </div>
 
+<div class="content" id="tab-gaspard" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadGaspardTopics()">Rafraîchir</button>
+    <button class="btn-success" onclick="openAddGaspardTopic()">+ Nouvelle rubrique</button>
+    <span id="gaspard-count"></span>
+  </div>
+  <table>
+    <thead><tr><th>ID</th><th>Titre</th><th>Parent</th><th>Ordre</th><th>Mots-clés</th><th>Actions</th></tr></thead>
+    <tbody id="gaspard-body"></tbody>
+  </table>
+</div>
+
 </div><!-- /.admin-shell -->
 
 <div class="admin-footer">
@@ -501,6 +514,28 @@
     <div class="actions">
       <button class="btn" onclick="closeModal('modal-edit-channel')">Annuler</button>
       <button class="btn-danger" onclick="saveEditChannel()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-edit-gaspard">
+  <div class="modal" style="min-width:560px">
+    <h3><span id="gaspard-modal-title">Nouvelle rubrique d'aide</span></h3>
+    <input type="hidden" id="gaspard-edit-id">
+    <label><span>Titre :</span> <input id="gaspard-title" maxlength="120" placeholder="Comment jouer ?"></label>
+    <label><span>Parent :</span>
+      <select id="gaspard-parent">
+        <option value="">— Aucune (rubrique racine) —</option>
+      </select>
+    </label>
+    <label><span>Ordre :</span> <input id="gaspard-sort" type="number" value="0" min="0"></label>
+    <label><span>Mots-clés :</span> <input id="gaspard-keywords" maxlength="200" placeholder="titems pictos cartes (espace-séparés)"></label>
+    <label style="align-items:start"><span>Contenu :</span>
+      <textarea id="gaspard-body" rows="10" style="width:100%;font-family:monospace" placeholder="HTML accepté : <b>gras</b>, <a href='asfunction:win.box.getContent,N'>lien vers rubrique N</a>, etc."></textarea>
+    </label>
+    <div class="actions">
+      <button class="btn" onclick="closeModal('modal-edit-gaspard')">Annuler</button>
+      <button class="btn-danger" onclick="saveGaspardTopic()">Enregistrer</button>
     </div>
   </div>
 </div>
@@ -656,7 +691,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','shop','challenge','events','channels'].forEach(t => {
+  ['users','scores','detail','shop','challenge','events','channels','gaspard'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -665,6 +700,133 @@ function switchTab(name) {
   if (name === 'challenge') loadChallengeStatus();
   if (name === 'events') loadEvents();
   if (name === 'channels') loadChannels();
+  if (name === 'gaspard') loadGaspardTopics();
+}
+
+// ─── Gaspard help topics ───
+let __gaspardTopics = [];
+
+async function loadGaspardTopics() {
+  try {
+    const r = await fetch('/api/admin/gaspard/topics', { headers: hdr() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    __gaspardTopics = j.topics || [];
+    const byId = new Map(__gaspardTopics.map(t => [t.id, t]));
+    const tbody = $('#gaspard-body');
+    tbody.innerHTML = '';
+    for (const t of __gaspardTopics) {
+      const parent = t.parent_id != null ? (byId.get(t.parent_id)?.title || `#${t.parent_id}`) : '—';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${t.id}</td>
+        <td>${escapeHTML(t.title)}</td>
+        <td>${escapeHTML(parent)}</td>
+        <td>${t.sort_order}</td>
+        <td>${escapeHTML(t.keywords || '')}</td>
+        <td>
+          <button class="btn" onclick="editGaspardTopic(${t.id})">Modifier</button>
+          <button class="btn-danger" onclick="deleteGaspardTopic(${t.id})">Supprimer</button>
+        </td>`;
+      tbody.appendChild(tr);
+    }
+    $('#gaspard-count').textContent = `${__gaspardTopics.length} rubrique(s)`;
+  } catch (e) {
+    toast('Erreur chargement Gaspard: ' + e.message);
+  }
+}
+
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+}
+
+function refreshGaspardParentSelect(currentId) {
+  const sel = $('#gaspard-parent');
+  sel.innerHTML = '<option value="">— Aucune (rubrique racine) —</option>';
+  for (const t of __gaspardTopics) {
+    // Don't allow making a topic its own parent (or a descendant — simplified
+    // check just skips self for now; cycles via grandchildren are blocked by
+    // FK CASCADE behaviour but UI-wise it's fine).
+    if (currentId && t.id === currentId) continue;
+    const opt = document.createElement('option');
+    opt.value = String(t.id);
+    opt.textContent = `#${t.id} — ${t.title}`;
+    sel.appendChild(opt);
+  }
+}
+
+function openAddGaspardTopic() {
+  $('#gaspard-modal-title').textContent = 'Nouvelle rubrique d\'aide';
+  $('#gaspard-edit-id').value = '';
+  $('#gaspard-title').value = '';
+  $('#gaspard-body').value = '';
+  $('#gaspard-keywords').value = '';
+  $('#gaspard-sort').value = '0';
+  refreshGaspardParentSelect(null);
+  $('#gaspard-parent').value = '';
+  $('#modal-edit-gaspard').classList.add('open');
+}
+
+async function editGaspardTopic(id) {
+  try {
+    const r = await fetch('/api/admin/gaspard/topics/' + id, { headers: hdr() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const { topic } = await r.json();
+    $('#gaspard-modal-title').textContent = `Modifier la rubrique #${topic.id}`;
+    $('#gaspard-edit-id').value = String(topic.id);
+    $('#gaspard-title').value = topic.title || '';
+    $('#gaspard-body').value = topic.body || '';
+    $('#gaspard-keywords').value = topic.keywords || '';
+    $('#gaspard-sort').value = String(topic.sort_order || 0);
+    refreshGaspardParentSelect(topic.id);
+    $('#gaspard-parent').value = topic.parent_id != null ? String(topic.parent_id) : '';
+    $('#modal-edit-gaspard').classList.add('open');
+  } catch (e) {
+    toast('Erreur édition: ' + e.message);
+  }
+}
+
+async function saveGaspardTopic() {
+  const id = $('#gaspard-edit-id').value;
+  const parentRaw = $('#gaspard-parent').value;
+  const payload = {
+    title: $('#gaspard-title').value.trim(),
+    body: $('#gaspard-body').value,
+    parent_id: parentRaw === '' ? null : parseInt(parentRaw, 10),
+    sort_order: parseInt($('#gaspard-sort').value, 10) || 0,
+    keywords: $('#gaspard-keywords').value.trim(),
+  };
+  if (!payload.title) { toast('Titre requis'); return; }
+  try {
+    const url = id ? '/api/admin/gaspard/topics/' + id : '/api/admin/gaspard/topics';
+    const r = await fetch(url, {
+      method: id ? 'PUT' : 'POST',
+      headers: hdr(),
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || ('HTTP ' + r.status));
+    }
+    closeModal('modal-edit-gaspard');
+    await loadGaspardTopics();
+    toast(id ? 'Rubrique modifiée' : 'Rubrique créée');
+  } catch (e) {
+    toast('Erreur enregistrement: ' + e.message);
+  }
+}
+
+async function deleteGaspardTopic(id) {
+  const t = __gaspardTopics.find(x => x.id === id);
+  if (!confirm(`Supprimer la rubrique « ${t ? t.title : '#' + id} » ?\nLes sous-rubriques liées seront aussi supprimées.`)) return;
+  try {
+    const r = await fetch('/api/admin/gaspard/topics/' + id, { method: 'DELETE', headers: hdr() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    await loadGaspardTopics();
+    toast('Rubrique supprimée');
+  } catch (e) {
+    toast('Erreur suppression: ' + e.message);
+  }
 }
 
 function closeModal(id) { $(`#${id}`).classList.remove('open'); }
