@@ -9614,6 +9614,15 @@ case 'send': {
   const text = msg.content || '';
   const type = msg.attrs.t || 'm';
   const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
+  // Temporary diagnostic for the intermittent "messages render in black"
+  // chat bug. Logs every pen value we receive (including empty) so we can
+  // see which encoding ('000000', '', '0xRRGGBB', omitted etc.) renders
+  // OK vs which renders as black. Remove once the right default-pen
+  // canonical form is identified.
+  if (type === 'm' || type === undefined) {
+    const rawP = msg.attrs.p === undefined ? '(omitted)' : JSON.stringify(msg.attrs.p);
+    console.log(`[CHAT-PEN] user=${client.username} g=${g} pen_raw=${rawP} text=${JSON.stringify((text || '').slice(0, 40))}`);
+  }
   const timeAttrs = buildChatTimeAttrs();
   const senderData = users[client.username] || {};
   const mutedUntil = senderData.mutedUntil ? new Date(senderData.mutedUntil) : null;
