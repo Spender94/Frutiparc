@@ -6383,11 +6383,16 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   const { user } = auth;
   ensureContactLists(user);
   if (uid === 'root' || uid === 'desktop') {
+    // Gaspard is the welcome-bot NPC; re-expose its contact icon on the
+    // desktop so users can mail/chat with it without first adding it to
+    // their contacts. The original entry was removed in c81ced8's cleanup
+    // pass — user reported the absence.
     return res.type('text/xml').send(
       `<f u="root">
         <f u="inbox" t="inbox" p="normal" />
         <f u="disccollector" t="disccollector" />
         <f u="inventory" t="inventory" />
+        <e u="Gaspard" t="contact" s="10" d="0" a="0">Gaspard@frutiparc.com</e>
         <f u="mycontact" t="mycontact" />
         <f u="recyclebin" t="recyclebin" />
       </f>`
@@ -9810,15 +9815,18 @@ case 'send': {
     let safeText = escapeXml(text);
 
     // Moderator "!" prefix: route through chat.msg_admin ("$h<i>$m</i>") and
-    // inline a red bold <font> in the body so the username + message appear
-    // in red bold while the timestamp keeps the default chat styling.
+    // inline a red bold <font> in BOTH the timestamp (h attr) and message
+    // body — the SWF renders the resulting concatenation through an HTML
+    // TextField, so wrapping the timestamp in <font color> turns it red
+    // alongside the message text.
     if (isModerator(client.username) && text.startsWith('!')) {
       const shout = text.substring(1).trim();
       if (shout) {
         const inner = escapeXml(getDisplayName(client.username) + ': ' + shout);
         const body = `<![CDATA[<font color="#C10000"><b>${inner}</b></font>]]>`;
+        const redStamp = `<font color="#C10000">${timeAttrs.h.trim()}</font> `;
         broadcastToChannel(g,
-          `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`
+          `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${escapeXml(redStamp)}" d="${timeAttrs.d}">${body}</${CMD.send}>`
         );
         break;
       }
