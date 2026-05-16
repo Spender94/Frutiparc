@@ -3322,12 +3322,18 @@ function gaspardTopicLinksXml(parentId, allTopics) {
   ).join('');
 }
 
-// Format the topic body for the SWF's TextField. Ruffle's XML parser
-// sometimes mishandles CDATA when the content has nested angle brackets;
-// emit the body escaped as plain text content under <c>, the SWF's
-// htmlText renderer accepts entity-encoded HTML tags identically.
+// Format the topic body for the SWF's TextField. CDATA wrapping makes
+// the body a single text-node child of <c>, so c.firstChild.nodeValue
+// resolves cleanly regardless of HTML markup inside. Entity-encoded
+// content didn't render in-game in an earlier attempt — likely because
+// the SWF reads c.firstChild.nodeValue and Ruffle's entity decoding in
+// that path is partial; CDATA bypasses the issue.
 function gaspardBodyXml(body) {
-  return escapeXmlText(body || '');
+  const raw = String(body || '');
+  // Split on the CDATA close marker and re-wrap each fragment so the
+  // payload stays well-formed even if a user types `]]>` in the body.
+  const parts = raw.split(']]>');
+  return parts.map((p) => `<![CDATA[${p}]]>`).join(']]&gt;');
 }
 
 app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
