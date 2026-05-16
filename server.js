@@ -7472,16 +7472,36 @@ app.get('/api/forum/me', (req, res) => {
   res.json({
     user: getDisplayName(username),
     isModerator: !!u.isModerator,
+    isAnimator: !!u.isAnimator,
     bouille: bouilleOf(u, username),
     accessories: accessories,
     defaultAccessories: defaults,
   });
 });
 
+// Categories restricted to staff members (moderators + animators). Their
+// boards are hidden from the index for everyone else and direct API access
+// is denied so guessing board/topic IDs leaks nothing.
+const STAFF_ONLY_FORUM_CATEGORIES = new Set(['Gestion du site']);
+function isForumStaff(username) {
+  if (!username) return false;
+  const u = users[username];
+  return !!(u && (u.isModerator || u.isAnimator));
+}
+async function isStaffOnlyBoard(boardId) {
+  const board = await db.forumGetBoard(boardId);
+  if (!board) return { exists: false, staffOnly: false, board: null };
+  const cats = await db.forumGetCategories();
+  const cat = cats.find(c => c.id === board.category_id);
+  const staffOnly = !!(cat && STAFF_ONLY_FORUM_CATEGORIES.has(cat.name));
+  return { exists: true, staffOnly, board };
+}
+
 app.get('/api/forum/index', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ categories: [], boards: [] });
   try {
     const currentUser = forumAuth(req);
+    const staff = isForumStaff(currentUser);
     const categories = await db.forumGetCategories();
     const boards = await db.forumGetBoards(currentUser);
     const boardsByCategory = {};
@@ -7494,8 +7514,11 @@ app.get('/api/forum/index', async (req, res) => {
         unread: !!b.unread,
       });
     }
+    const visibleCats = categories.filter(c =>
+      staff || !STAFF_ONLY_FORUM_CATEGORIES.has(c.name)
+    );
     res.json({
-      categories: categories.map(c => ({
+      categories: visibleCats.map(c => ({
         id: c.id, name: c.name,
         boards: boardsByCategory[c.id] || [],
       })),
@@ -7511,6 +7534,10 @@ app.get('/api/forum/board/:id', async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const board = await db.forumGetBoard(boardId);
     if (!board) return res.status(404).json({ error: 'board not found' });
+    const { staffOnly } = await isStaffOnlyBoard(boardId);
+    if (staffOnly && !isForumStaff(currentUser)) {
+      return res.status(404).json({ error: 'board not found' });
+    }
     const { topics, total } = await db.forumGetTopics(boardId, page, 25, currentUser);
     const topicsOut = topics.map(t => ({
       id: t.id, title: t.title, author: getDisplayName(t.author_username),
@@ -7532,6 +7559,11 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const topic = await db.forumGetTopic(topicId);
     if (!topic) return res.status(404).json({ error: 'topic not found' });
+    const currentUserForGate = forumAuth(req);
+    const { staffOnly } = await isStaffOnlyBoard(topic.board_id);
+    if (staffOnly && !isForumStaff(currentUserForGate)) {
+      return res.status(404).json({ error: 'topic not found' });
+    }
     await db.forumIncrementViews(topicId);
     const board = await db.forumGetBoard(topic.board_id);
     const { posts, total } = await db.forumGetPosts(topicId, page, 15);
@@ -7578,6 +7610,8 @@ app.post('/api/forum/topic', async (req, res) => {
   if (!title || !content) return res.status(400).json({ error: 'title and content required' });
   if (title.length > 200) return res.status(400).json({ error: 'title too long' });
   try {
+    const { staffOnly } = await isStaffOnlyBoard(boardId);
+    if (staffOnly && !isForumStaff(username)) return res.status(403).json({ error: 'forbidden' });
     const topic = await db.forumCreateTopic(boardId, username, title, content, postBouille);
     trackXpAction(username, 'forumTopic');
     res.json({ ok: true, topicId: topic.id });
@@ -7595,6 +7629,8 @@ app.post('/api/forum/post', async (req, res) => {
   try {
     const topic = await db.forumGetTopic(topicId);
     if (!topic) return res.status(404).json({ error: 'topic not found' });
+    const { staffOnly } = await isStaffOnlyBoard(topic.board_id);
+    if (staffOnly && !isForumStaff(username)) return res.status(403).json({ error: 'forbidden' });
     if (topic.is_locked) return res.status(403).json({ error: 'topic locked' });
     const post = await db.forumCreatePost(topicId, username, content, postBouille);
     trackXpAction(username, 'forumPost');
