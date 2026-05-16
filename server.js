@@ -3373,11 +3373,13 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
       const titleSafe = parentIdForLinks
         ? escapeXmlText((all.find((t) => t.id === parentIdForLinks) || {}).title || '')
         : 'Index de l\'aide';
-      // Repeat the title as an &lt;h&gt; styled header inside the body so
-      // the SWF's TextField shows a consistent heading even if the title
-      // bar (n= attr) isn't picked up the same way.
+      // Repeat the title as an &lt;h&gt; styled header inside the body, then
+      // a couple of &lt;br/&gt; so the body text doesn't get absorbed into
+      // the heading box (AS2 TextField.htmlText needs explicit breaks
+      // between &lt;h&gt; blocks and trailing text).
       const heading = `&lt;h&gt;${escapeXmlText(titleSafe)}&lt;/h&gt;`;
-      return heading + bodyEsc + buildLinksHtml(parentIdForLinks);
+      const spacer = '&lt;br/&gt;';
+      return heading + spacer + bodyEsc + buildLinksHtml(parentIdForLinks);
     };
     if (!topic) {
       const indexBody = 'Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.';
