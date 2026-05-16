@@ -3354,7 +3354,12 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     // directly inside the root, not wrapped in <c>. Links go inline as
     // <a href="asfunction:win.box.getContent,ID"> entries — the same
     // pattern the SWF's own i18n strings use.
-    // Build <l> sub-topic links to embed inside the <h> payload.
+    // <r> root triggers an HTTP error in the SWF (probably distinguishes
+    // response types by root tag: <r> = search, <h> = get). So root MUST
+    // be <h>. Body text goes directly as text content of the root, then
+    // <l> link children follow as siblings — the parser reads
+    // root.firstChild.nodeValue for the body, then iterates nextSibling
+    // for the links.
     const buildLinksXml = (parentId) => {
       const children = all
         .filter((t) => (t.parent_id || null) === (parentId || null))
@@ -3363,28 +3368,18 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
         `<l id="${c.id}" k="${c.id}" i="${c.id}" n="${escapeXmlText(c.title)}">${escapeXmlText(c.title)}</l>`
       ).join('');
     };
-    // Wrap the help payload in <r><h>...</h></r>. The parser strings hint
-    // that the SWF reads firstChild and tests nodeName == "h", so root.h
-    // (rather than root being h itself) is the structure to try next:
-    //   <r>
-    //     <h id n>
-    //       Body text (text node directly inside)
-    //       <l id n>Sub-topic A</l>
-    //       <l id n>Sub-topic B</l>
-    //     </h>
-    //   </r>
     if (!topic) {
       const indexBody = 'Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.';
       const links = buildLinksXml(null);
       return res.type('text/xml').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<r><h id="0" n="Index de l'aide">${escapeXmlText(indexBody)}${links}</h></r>`
+        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide">${escapeXmlText(indexBody)}${links}</h>`
       );
     }
     const safeTitle = escapeXmlText(topic.title);
     const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
     const links = buildLinksXml(topic.id);
     return res.type('text/xml').send(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<r><h id="${topic.id}" n="${safeTitle}"${backAttr}>${escapeXmlText(topic.body || '')}${links}</h></r>`
+      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}"${backAttr}>${escapeXmlText(topic.body || '')}${links}</h>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/get error:', e.message);
