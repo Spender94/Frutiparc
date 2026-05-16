@@ -3381,15 +3381,23 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     if (!topic) {
       const indexBody = 'Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.';
       const html = renderBodyHtml(indexBody, null);
+      const cAttr = escapeXmlText(indexBody);
+      // Emit the body through multiple channels at once so whichever the
+      // SWF's parser reads from will resolve:
+      //   - c= root attribute
+      //   - <c>…</c> child element with the body text
+      //   - inline HTML text directly inside the root (entity-encoded so
+      //     it goes through htmlText)
       return res.type('text/xml').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide">${html}</h>`
+        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide" c="${cAttr}"><c>${cAttr}</c>${html}</h>`
       );
     }
     const safeTitle = escapeXmlText(topic.title);
     const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
     const html = renderBodyHtml(topic.body, topic.id);
+    const cAttr = escapeXmlText(topic.body || '');
     return res.type('text/xml').send(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}"${backAttr}>${html}</h>`
+      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}" c="${cAttr}"${backAttr}><c>${cAttr}</c>${html}</h>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/get error:', e.message);
