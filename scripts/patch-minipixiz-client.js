@@ -803,16 +803,48 @@ function buildOnLoadBody() {
     return Buffer.concat([fetchCard, skipGuard, actionIf(mutateBody.length), mutateBody]);
   })();
 
+  // Try Frusion's GameClient.fromJSON path: inherited via Cm's prototype
+  // chain and implemented as ExternalInterface.call("parseJSON", str)
+  // which routes through window.parseJSON in our hosting page. If it
+  // succeeds the result is a fully-parsed Card (every field including
+  // $inv/$faerie/$mission/$checkpoint/etc., not just our 11-field manual
+  // rebuild). We then prefer it over r4 for slot0Assign and Cm.card
+  // mutation — gameplay sees the full historical state.
+  const tryFromJSON = (() => {
+    // r9 = _client.fromJSON(this.slot0)
+    const call = Buffer.concat([
+      actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,   // this.slot0 (the JSON string)
+      actionPush(pushInt(1)),                                  // argCount
+      actionPush(pushReg(3), pushStr('fromJSON')),             // r3=_client, method
+      CALL_METHOD,
+      storeReg(9), POP,
+    ]);
+    // If r9.$stat is truthy, override r4 ← r9 so downstream uses the
+    // JSON-parsed full Card.
+    const swap = Buffer.concat([
+      actionPush(pushReg(9)),
+      storeReg(4), POP,
+    ]);
+    const guard = Buffer.concat([
+      actionPush(pushReg(9), pushCp(CP.$stat)), GET_MEMBER,
+      NOT,
+      actionIf(swap.length),
+      swap,
+    ]);
+    return Buffer.concat([call, guard]);
+  })();
+
   // === Wrap with success check ===
-  // mutateCmCard runs AFTER callOnServiceConnect so loadFruticard has set
-  // up its (stale) Card, then we mutate that object's fields in place with
-  // our loaded r4 data. Property mutation works even if `4d(*` is a getter
-  // we can't override — the object Cm.card returns is the same, its
-  // properties are now ours.
+  // Order:
+  //  1. Build manual r4 from flat fields (always valid baseline)
+  //  2. Try fromJSON → r9; if successful, override r4 = r9 (full Card)
+  //  3. slot0Assign + seedSO + callOnServiceConnect + syncSlots
+  //  4. mutateCmCard with whichever r4 we have (full or partial)
   const afterSuccessBody = Buffer.concat([
     initStat, statScalars, statArrays,
     initCard, assignStat, cardScalars,
     dungeonObj, rainbowObj, pondObj, faerieAssign,
+    tryFromJSON,
     slot0Assign, seedSO,
     callOnServiceConnect,
     syncSlots,
