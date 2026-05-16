@@ -3323,9 +3323,11 @@ function gaspardTopicLinksXml(parentId, allTopics) {
   ).join('');
 }
 
-app.get('/fh/get', async (req, res) => {
-  const idRaw = req.query.i || req.query.k || req.query.id || '';
+app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  const idRaw = params.i || params.k || params.id || '';
   const id = parseInt(String(idRaw), 10);
+  console.log(`[GASPARD] /fh/get method=${req.method} id=${idRaw || '(index)'} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
   try {
     const all = await db.listGaspardHelpTopics();
     let topic = null;
@@ -3341,21 +3343,20 @@ app.get('/fh/get', async (req, res) => {
       );
     }
     const subLinks = gaspardTopicLinksXml(topic.id, all);
-    // Wrap body in CDATA so it can contain HTML/asfunction without
-    // double-escaping. Parent id (if any) is exposed via back="..." for
-    // the SWF's back-button path.
     const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
     return res.type('text/xml').send(
       `<r id="${topic.id}"${backAttr}><h>${escapeXmlText(topic.title)}</h><c><![CDATA[${topic.body || ''}]]></c>${subLinks}</r>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/get error:', e.message);
-    res.type('text/xml').status(500).send('<r error="server"/>');
+    res.type('text/xml').status(200).send('<r error="server"/>');
   }
 });
 
-app.get('/fh/search', async (req, res) => {
-  const query = String(req.query.s || '').trim().toLowerCase();
+app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  const query = String(params.s || '').trim().toLowerCase();
+  console.log(`[GASPARD] /fh/search method=${req.method} s=${JSON.stringify(query)} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
   if (!query) {
     return res.type('text/xml').send('<r nb="0" m="exact"/>');
   }
@@ -3383,7 +3384,7 @@ app.get('/fh/search', async (req, res) => {
     );
   } catch (e) {
     console.error('[GASPARD] /fh/search error:', e.message);
-    res.type('text/xml').status(500).send('<r error="server"/>');
+    res.type('text/xml').status(200).send('<r error="server"/>');
   }
 });
 
