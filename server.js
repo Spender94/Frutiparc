@@ -3347,21 +3347,51 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     if (Number.isInteger(id)) {
       topic = all.find((t) => t.id === id) || null;
     }
+    // The SWF feeds the entire inner HTML of the root <h> into htmlText
+    // — observed empirically: the inner <h>...</h> we emitted shows up
+    // styled as the body header, while siblings we wrapped in <c>...</c>
+    // got dropped as unknown HTML tags. So the body HTML must live
+    // directly inside the root, not wrapped in <c>. Links go inline as
+    // <a href="asfunction:win.box.getContent,ID"> entries — the same
+    // pattern the SWF's own i18n strings use.
+    const buildLinksHtml = (parentId) => {
+      const children = all
+        .filter((t) => (t.parent_id || null) === (parentId || null))
+        .sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
+      if (children.length === 0) return '';
+      const items = children.map((c) =>
+        `&lt;li&gt;&lt;a href=&quot;asfunction:win.box.getContent,${c.id}&quot;&gt;${escapeXmlText(c.title)}&lt;/a&gt;&lt;/li&gt;`
+      ).join('');
+      return `&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Voir aussi :&lt;/b&gt;&lt;ul&gt;${items}&lt;/ul&gt;`;
+    };
+    // We entity-encode the whole body so the SWF's XML parser sees a
+    // single text-node child, then the htmlText renderer decodes the
+    // entities back into rendered HTML tags. (Tried CDATA — text was
+    // visible but tags came through literal.)
+    const renderBodyHtml = (rawBody, parentIdForLinks) => {
+      const bodyEsc = escapeXmlText(rawBody || '');
+      // The header line is rendered separately via the SWF's title bar
+      // (n= attribute on root). We could include a duplicated header
+      // inside the body too, but for now keep the body to just the
+      // topic's content + child-links footer.
+      return bodyEsc + buildLinksHtml(parentIdForLinks);
+    };
     if (!topic) {
-      const links = gaspardTopicLinksXml(null, all);
+      const indexBody = 'Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.';
+      const html = renderBodyHtml(indexBody, null);
       return res.type('text/xml').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide"><h>Index de l'aide</h><c>Choisissez un sujet ci-dessous, ou utilisez la recherche.</c>${links}</h>`
+        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide">${html}</h>`
       );
     }
-    const subLinks = gaspardTopicLinksXml(topic.id, all);
-    const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
     const safeTitle = escapeXmlText(topic.title);
+    const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
+    const html = renderBodyHtml(topic.body, topic.id);
     return res.type('text/xml').send(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}"${backAttr}><h>${safeTitle}</h><c>${gaspardBodyXml(topic.body)}</c>${subLinks}</h>`
+      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}"${backAttr}>${html}</h>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/get error:', e.message);
-    res.type('text/xml').status(200).send('<?xml version="1.0"?>\n<h><c>Erreur serveur</c></h>');
+    res.type('text/xml').status(200).send('<?xml version="1.0"?>\n<h n="Erreur">Erreur serveur</h>');
   }
 });
 
