@@ -259,33 +259,39 @@
             // moves back to "disccollector" that's the eject signal — the
             // popup window is now stale and should close so it can't keep
             // writing saves that conflict with the user's next game session.
-            // We wrap fetch (Ruffle's LoadVars in modern builds uses fetch
-            // under the hood). XHR isn't separately wrapped — if Ruffle ever
-            // switches back to XHR we'll need to mirror this there.
+            // We wrap BOTH fetch and XMLHttpRequest — Ruffle's networking
+            // layer can go through either depending on the SWF's API choice
+            // (LoadVars vs getURL2 vs URLRequest etc.) and the build.
+            function __maybeEject(url, body) {
+                if (!url || url.indexOf("/ff/mv") === -1) return;
+                var hit = url.indexOf("folder=disccollector") !== -1
+                       || (body && typeof body === "string"
+                           && body.indexOf("folder=disccollector") !== -1);
+                if (!hit) return;
+                window.__dlog("[Frusion] disc eject detected → closing game popup");
+                if (window.__gamePopup && !window.__gamePopup.closed) {
+                    try { window.__gamePopup.close(); } catch (e) {}
+                }
+                window.__gamePopup = null;
+            }
             (function wrapFetchForEject() {
                 var origFetch = window.fetch.bind(window);
                 window.fetch = function (input, init) {
                     var url = typeof input === "string" ? input : (input && input.url) || "";
-                    // /ff/mv is the move endpoint. Params can be in the query
-                    // string (GET-ish) or the form body (POST). We just need
-                    // to detect "folder=disccollector" — that's eject.
-                    var isMove = url.indexOf("/ff/mv") !== -1;
-                    var ejectHint = false;
-                    if (isMove) {
-                        if (url.indexOf("folder=disccollector") !== -1) ejectHint = true;
-                        else if (init && typeof init.body === "string"
-                                 && init.body.indexOf("folder=disccollector") !== -1) {
-                            ejectHint = true;
-                        }
-                    }
-                    if (ejectHint) {
-                        window.__dlog("[Frusion] disc eject detected → closing game popup");
-                        if (window.__gamePopup && !window.__gamePopup.closed) {
-                            try { window.__gamePopup.close(); } catch (e) {}
-                        }
-                        window.__gamePopup = null;
-                    }
+                    __maybeEject(url, init && init.body);
                     return origFetch(input, init);
+                };
+            })();
+            (function wrapXHRForEject() {
+                var origOpen = XMLHttpRequest.prototype.open;
+                var origSend = XMLHttpRequest.prototype.send;
+                XMLHttpRequest.prototype.open = function (method, url) {
+                    this.__ejectUrl = url;
+                    return origOpen.apply(this, arguments);
+                };
+                XMLHttpRequest.prototype.send = function (body) {
+                    __maybeEject(this.__ejectUrl || "", body);
+                    return origSend.apply(this, arguments);
                 };
             })();
 
