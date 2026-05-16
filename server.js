@@ -3312,15 +3312,22 @@ function escapeXmlText(s) {
 
 function gaspardTopicLinksXml(parentId, allTopics) {
   // Children of `parentId` (or root entries when parentId is null) ordered
-  // by sort_order. Each emitted as <l id="N" n="Title"/> per the SWF's
-  // displayContent path which reads l.id and treats body text as the
-  // title between tags.
+  // by sort_order. Each emitted as <l id="N">Title</l> per the SWF's
+  // displayContent path which reads l.id and l.firstChild.nodeValue.
   const children = allTopics
     .filter((t) => (t.parent_id || null) === (parentId || null))
     .sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
   return children.map((c) =>
     `<l id="${c.id}">${escapeXmlText(c.title)}</l>`
   ).join('');
+}
+
+// Format the topic body for the SWF's TextField. Ruffle's XML parser
+// sometimes mishandles CDATA when the content has nested angle brackets;
+// emit the body escaped as plain text content under <c>, the SWF's
+// htmlText renderer accepts entity-encoded HTML tags identically.
+function gaspardBodyXml(body) {
+  return escapeXmlText(body || '');
 }
 
 app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
@@ -3335,21 +3342,19 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
       topic = all.find((t) => t.id === id) || null;
     }
     if (!topic) {
-      // No id (or unknown) → serve the index (root entries listed as links)
       const links = gaspardTopicLinksXml(null, all);
-      const indexBody = `Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.`;
       return res.type('text/xml').send(
-        `<r><c><![CDATA[${indexBody}]]></c>${links}</r>`
+        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0"><h>Index de l'aide</h><c>Choisissez un sujet ci-dessous, ou utilisez la recherche.</c>${links}</h>`
       );
     }
     const subLinks = gaspardTopicLinksXml(topic.id, all);
     const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
     return res.type('text/xml').send(
-      `<r id="${topic.id}"${backAttr}><h>${escapeXmlText(topic.title)}</h><c><![CDATA[${topic.body || ''}]]></c>${subLinks}</r>`
+      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}"${backAttr}><h>${escapeXmlText(topic.title)}</h><c>${gaspardBodyXml(topic.body)}</c>${subLinks}</h>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/get error:', e.message);
-    res.type('text/xml').status(200).send('<r error="server"/>');
+    res.type('text/xml').status(200).send('<?xml version="1.0"?>\n<h><c>Erreur serveur</c></h>');
   }
 });
 
