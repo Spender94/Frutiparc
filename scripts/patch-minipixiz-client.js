@@ -803,24 +803,27 @@ function buildOnLoadBody() {
     return Buffer.concat([fetchCard, skipGuard, actionIf(mutateBody.length), mutateBody]);
   })();
 
-  // Try Frusion's GameClient.fromJSON path: inherited via Cm's prototype
-  // chain and implemented as ExternalInterface.call("parseJSON", str)
-  // which routes through window.parseJSON in our hosting page. If it
-  // succeeds the result is a fully-parsed Card (every field including
-  // $inv/$faerie/$mission/$checkpoint/etc., not just our 11-field manual
-  // rebuild). We then prefer it over r4 for slot0Assign and Cm.card
-  // mutation — gameplay sees the full historical state.
+  // Direct ExternalInterface.call("parseJSON", slot0_string) — bypasses
+  // the Frusion GameClient.fromJSON prototype chain (which doesn't even
+  // exist in our hosting since frusion_client.swf isn't loaded). The JS
+  // host page registers window.parseJSON = JSON.parse, so this round-trip
+  // through ExternalInterface gives us the FULL parsed Card object back
+  // (every field — $inv, $faerie, $mission, $checkpoint, $time,
+  // $dungeon.$day, etc., not just the 11-field manual rebuild). If the
+  // bridge fails (returns null/undefined), we keep the manual r4.
   const tryFromJSON = (() => {
-    // r9 = _client.fromJSON(this.slot0)
+    // r9 = flash.external.ExternalInterface.call("parseJSON", this.slot0)
     const call = Buffer.concat([
-      actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,   // this.slot0 (the JSON string)
-      actionPush(pushInt(1)),                                  // argCount
-      actionPush(pushReg(3), pushStr('fromJSON')),             // r3=_client, method
+      actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,        // this.slot0 (arg2)
+      actionPush(pushStr('parseJSON')),                              // arg1
+      actionPush(pushInt(2)),                                        // argCount
+      actionPush(pushStr('flash')), GET_VARIABLE,                    // flash
+      actionPush(pushStr('external')), GET_MEMBER,                   // .external
+      actionPush(pushStr('ExternalInterface')), GET_MEMBER,          // .ExternalInterface
+      actionPush(pushStr('call')),                                   // method name
       CALL_METHOD,
       storeReg(9), POP,
     ]);
-    // If r9.$stat is truthy, override r4 ← r9 so downstream uses the
-    // JSON-parsed full Card.
     const swap = Buffer.concat([
       actionPush(pushReg(9)),
       storeReg(4), POP,
