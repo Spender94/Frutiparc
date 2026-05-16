@@ -3211,6 +3211,92 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ───────────── Admin: Gaspard help topics CRUD ─────────────
+// Endpoint set for managing the in-game help content Gaspard serves.
+// All routes require adminAuth (which already rate-limits and rejects
+// when ADMIN_KEY is unset). Topic shape:
+//   { id, title, body, parent_id, sort_order, keywords }
+// parent_id = null means "top-level entry shown in the help index";
+// nested entries become sub-topics under their parent. sort_order is
+// the display position within a parent. keywords feeds the in-game
+// search box (space-separated tokens; matching is server-side).
+
+app.get('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
+  try {
+    const rows = await db.listGaspardHelpTopics();
+    res.json({ topics: rows });
+  } catch (e) {
+    console.error('[ADMIN-AIDE] list error:', e.message);
+    res.status(500).json({ error: 'list_failed' });
+  }
+});
+
+app.get('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'bad_id' });
+  try {
+    const row = await db.getGaspardHelpTopic(id);
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    res.json({ topic: row });
+  } catch (e) {
+    console.error('[ADMIN-AIDE] get error:', e.message);
+    res.status(500).json({ error: 'get_failed' });
+  }
+});
+
+app.post('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
+  const { title, body, parent_id, sort_order, keywords } = req.body || {};
+  if (!title || typeof title !== 'string' || title.trim() === '') {
+    return res.status(400).json({ error: 'title_required' });
+  }
+  try {
+    const row = await db.createGaspardHelpTopic({
+      title: String(title).trim(),
+      body: typeof body === 'string' ? body : '',
+      parent_id: parent_id != null ? parseInt(parent_id, 10) : null,
+      sort_order: sort_order != null ? parseInt(sort_order, 10) : 0,
+      keywords: typeof keywords === 'string' ? keywords : '',
+    });
+    res.status(201).json({ topic: row });
+  } catch (e) {
+    console.error('[ADMIN-AIDE] create error:', e.message);
+    res.status(500).json({ error: 'create_failed', detail: e.message });
+  }
+});
+
+app.put('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'bad_id' });
+  const { title, body, parent_id, sort_order, keywords } = req.body || {};
+  try {
+    const row = await db.updateGaspardHelpTopic(id, {
+      title: title !== undefined ? String(title) : null,
+      body: body !== undefined ? String(body) : null,
+      parent_id: parent_id !== undefined ? (parent_id == null ? null : parseInt(parent_id, 10)) : null,
+      sort_order: sort_order !== undefined ? parseInt(sort_order, 10) : null,
+      keywords: keywords !== undefined ? String(keywords) : null,
+    });
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    res.json({ topic: row });
+  } catch (e) {
+    console.error('[ADMIN-AIDE] update error:', e.message);
+    res.status(500).json({ error: 'update_failed', detail: e.message });
+  }
+});
+
+app.delete('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'bad_id' });
+  try {
+    const ok = await db.deleteGaspardHelpTopic(id);
+    if (!ok) return res.status(404).json({ error: 'not_found' });
+    res.json({ deleted: true });
+  } catch (e) {
+    console.error('[ADMIN-AIDE] delete error:', e.message);
+    res.status(500).json({ error: 'delete_failed', detail: e.message });
+  }
+});
+
 app.get('/api/admin/scores', adminAuth, (req, res) => {
   const ranking = req.query.ranking || '';
   const result = [];

@@ -317,6 +317,22 @@ async function initSchema() {
         detail          TEXT DEFAULT '',
         created_at      TIMESTAMPTZ DEFAULT now()
       );
+
+      -- Gaspard help topics. Hierarchical (parent_id null = top-level index
+      -- entry); each topic has a short title shown in the index list and a
+      -- body (HTML/AS2 textfield-style markup) rendered inside Gaspard's
+      -- help window. sort_order controls display position within a parent.
+      CREATE TABLE IF NOT EXISTS gaspard_help_topics (
+        id          SERIAL PRIMARY KEY,
+        title       TEXT NOT NULL,
+        body        TEXT NOT NULL DEFAULT '',
+        parent_id   INTEGER REFERENCES gaspard_help_topics(id) ON DELETE CASCADE,
+        sort_order  INTEGER NOT NULL DEFAULT 0,
+        keywords    TEXT NOT NULL DEFAULT '',
+        created_at  TIMESTAMPTZ DEFAULT now(),
+        updated_at  TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_gaspard_help_parent ON gaspard_help_topics(parent_id, sort_order);
       CREATE INDEX IF NOT EXISTS idx_moderation_logs_target ON moderation_logs(target_username, created_at DESC);
     `);
     console.log('[DB] Schema initialized');
@@ -1241,6 +1257,54 @@ async function updateChannelTopic(name, topic) {
   );
 }
 
+// Gaspard help topics CRUD
+async function listGaspardHelpTopics() {
+  const r = await pool.query(
+    `SELECT id, title, body, parent_id, sort_order, keywords,
+            created_at, updated_at
+     FROM gaspard_help_topics
+     ORDER BY COALESCE(parent_id, 0), sort_order, id`
+  );
+  return r.rows;
+}
+async function getGaspardHelpTopic(id) {
+  const r = await pool.query(
+    `SELECT id, title, body, parent_id, sort_order, keywords
+     FROM gaspard_help_topics WHERE id = $1`,
+    [id]
+  );
+  return r.rows[0] || null;
+}
+async function createGaspardHelpTopic({ title, body, parent_id, sort_order, keywords }) {
+  const r = await pool.query(
+    `INSERT INTO gaspard_help_topics (title, body, parent_id, sort_order, keywords)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, title, body, parent_id, sort_order, keywords`,
+    [title, body || '', parent_id || null, sort_order || 0, keywords || '']
+  );
+  return r.rows[0];
+}
+async function updateGaspardHelpTopic(id, { title, body, parent_id, sort_order, keywords }) {
+  const r = await pool.query(
+    `UPDATE gaspard_help_topics
+     SET title = COALESCE($2, title),
+         body = COALESCE($3, body),
+         parent_id = $4,
+         sort_order = COALESCE($5, sort_order),
+         keywords = COALESCE($6, keywords),
+         updated_at = now()
+     WHERE id = $1
+     RETURNING id, title, body, parent_id, sort_order, keywords`,
+    [id, title, body, parent_id === undefined ? null : parent_id,
+     sort_order, keywords]
+  );
+  return r.rows[0] || null;
+}
+async function deleteGaspardHelpTopic(id) {
+  const r = await pool.query(`DELETE FROM gaspard_help_topics WHERE id = $1`, [id]);
+  return r.rowCount > 0;
+}
+
 module.exports = {
   pool,
   initSchema,
@@ -1337,4 +1401,9 @@ module.exports = {
   updateChannelTopic,
   addModerationLog,
   getModerationLogs,
+  listGaspardHelpTopics,
+  getGaspardHelpTopic,
+  createGaspardHelpTopic,
+  updateGaspardHelpTopic,
+  deleteGaspardHelpTopic,
 };
