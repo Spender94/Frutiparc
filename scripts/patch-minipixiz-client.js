@@ -1313,13 +1313,34 @@ function buildSaveSlotBody() {
     POP,
   ]);
 
-  // Part 5: flush SharedObject for local persistence
+  // Part 5: persist the live Card (r3) to SharedObject for cross-session
+  // load — so next time onLoad runs, loadFruticard's SO read finds the
+  // data and Cm.card boots up with the player's actual state rather than
+  // formatFruticard defaults.
+  //
+  // Without this step our HTTP saves go to the server but SO stays empty,
+  // and at next session the SWF can't initialise Cm.card from SO → UI
+  // shows fresh state even though the DB has full progress. The user
+  // confirmed scenario 2 (private browsing) worked because each session
+  // started fresh AND the SO seed in onLoad took effect; in normal
+  // browsing the seed doesn't survive but a save-side SO write fills
+  // the SO during gameplay so subsequent loads find the data.
   const soFlush = Buffer.concat([
     actionPush(pushStr('miniPixiz/card'), pushInt(1)),
     actionPush(pushStr('SharedObject')), GET_VARIABLE,
     actionPush(pushStr('getLocal')),
     CALL_METHOD,
     storeReg(4), POP,
+    // SO.data.fruticard = [r3] — write our live Card into the slot the
+    // SWF's loadFruticard reads on next boot. We allocate the array
+    // inline rather than mutating any existing one to avoid Ruffle's
+    // SO-array bridge quirks.
+    actionPush(pushReg(4), pushStr('data')), GET_MEMBER,
+    actionPush(pushStr('fruticard')),
+    actionPush(pushReg(3), pushInt(1)),
+    INIT_ARRAY,
+    SET_MEMBER,
+    // SO.flush()
     actionPush(pushInt(0)),
     actionPush(pushReg(4), pushStr('flush')),
     CALL_METHOD, POP,
