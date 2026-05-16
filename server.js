@@ -3354,18 +3354,17 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     // directly inside the root, not wrapped in <c>. Links go inline as
     // <a href="asfunction:win.box.getContent,ID"> entries — the same
     // pattern the SWF's own i18n strings use.
-    // <r> root triggers an HTTP error in the SWF (probably distinguishes
-    // response types by root tag: <r> = search, <h> = get). So root MUST
-    // be <h>. Body text goes directly as text content of the root, then
-    // <l> link children follow as siblings — the parser reads
-    // root.firstChild.nodeValue for the body, then iterates nextSibling
-    // for the links.
+    // <l> link types match the SWF's i18n keys: cat_ls is "Dans cette
+    // rubrique :" (children of the current topic), cat_tree is "Rubriques :"
+    // (top-level index), seealso is "Voir également :". For sub-topic
+    // children we emit cat_ls.
     const buildLinksXml = (parentId) => {
       const children = all
         .filter((t) => (t.parent_id || null) === (parentId || null))
         .sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
+      const type = parentId == null ? 'cat_tree' : 'cat_ls';
       return children.map((c) =>
-        `<l id="${c.id}" k="${c.id}" i="${c.id}" n="${escapeXmlText(c.title)}">${escapeXmlText(c.title)}</l>`
+        `<l id="${c.id}" k="${c.id}" i="${c.id}" type="${type}" t="${type}" n="${escapeXmlText(c.title)}">${escapeXmlText(c.title)}</l>`
       ).join('');
     };
     if (!topic) {

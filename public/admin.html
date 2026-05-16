@@ -531,7 +531,7 @@
     <label><span>Ordre :</span> <input id="gaspard-sort" type="number" value="0" min="0"></label>
     <label><span>Mots-clés :</span> <input id="gaspard-keywords" maxlength="200" placeholder="titems pictos cartes (espace-séparés)"></label>
     <label style="align-items:start"><span>Contenu :</span>
-      <textarea id="gaspard-body" rows="10" style="width:100%;font-family:monospace" placeholder="HTML accepté : <b>gras</b>, <a href='asfunction:win.box.getContent,N'>lien vers rubrique N</a>, etc."></textarea>
+      <textarea id="gaspard-content-body" rows="10" style="width:100%;font-family:monospace" placeholder="HTML accepté : <b>gras</b>, <a href='asfunction:win.box.getContent,N'>lien vers rubrique N</a>, etc."></textarea>
     </label>
     <div class="actions">
       <button class="btn" onclick="closeModal('modal-edit-gaspard')">Annuler</button>
@@ -759,7 +759,7 @@ function openAddGaspardTopic() {
   $('#gaspard-modal-title').textContent = 'Nouvelle rubrique d\'aide';
   $('#gaspard-edit-id').value = '';
   $('#gaspard-title').value = '';
-  $('#gaspard-body').value = '';
+  $('#gaspard-content-body').value = '';
   $('#gaspard-keywords').value = '';
   $('#gaspard-sort').value = '0';
   refreshGaspardParentSelect(null);
@@ -775,7 +775,7 @@ async function editGaspardTopic(id) {
     $('#gaspard-modal-title').textContent = `Modifier la rubrique #${topic.id}`;
     $('#gaspard-edit-id').value = String(topic.id);
     $('#gaspard-title').value = topic.title || '';
-    $('#gaspard-body').value = topic.body || '';
+    $('#gaspard-content-body').value = topic.body || '';
     $('#gaspard-keywords').value = topic.keywords || '';
     $('#gaspard-sort').value = String(topic.sort_order || 0);
     refreshGaspardParentSelect(topic.id);
@@ -791,7 +791,7 @@ async function saveGaspardTopic() {
   const parentRaw = $('#gaspard-parent').value;
   const payload = {
     title: $('#gaspard-title').value.trim(),
-    body: $('#gaspard-body').value,
+    body: $('#gaspard-content-body').value,
     parent_id: parentRaw === '' ? null : parseInt(parentRaw, 10),
     sort_order: parseInt($('#gaspard-sort').value, 10) || 0,
     keywords: $('#gaspard-keywords').value.trim(),
