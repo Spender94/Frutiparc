@@ -1137,6 +1137,45 @@ async function forumCreateBoard(categoryId, name, description, sortOrder) {
   return rows[0];
 }
 
+// Used by the startup layout-enforcement migration to move a board into its
+// canonical category and slot it at the right sort_order without losing the
+// topics that already live in it.
+async function forumUpdateBoard(boardId, fields) {
+  const sets = [];
+  const params = [];
+  if (fields.category_id !== undefined) {
+    params.push(fields.category_id);
+    sets.push(`category_id = $${params.length}`);
+  }
+  if (fields.sort_order !== undefined) {
+    params.push(fields.sort_order);
+    sets.push(`sort_order = $${params.length}`);
+  }
+  if (fields.description !== undefined) {
+    params.push(fields.description);
+    sets.push(`description = $${params.length}`);
+  }
+  if (sets.length === 0) return;
+  params.push(boardId);
+  await pool.query(
+    `UPDATE forum_boards SET ${sets.join(', ')} WHERE id = $${params.length}`,
+    params,
+  );
+}
+
+// Reassign every topic of `fromBoardId` to `toBoardId`. The migration uses
+// this when collapsing duplicate boards so no topic gets orphaned.
+async function forumMoveTopicsBetweenBoards(fromBoardId, toBoardId) {
+  await pool.query(
+    'UPDATE forum_topics SET board_id = $1 WHERE board_id = $2',
+    [toBoardId, fromBoardId],
+  );
+}
+
+async function forumDeleteBoard(boardId) {
+  await pool.query('DELETE FROM forum_boards WHERE id = $1', [boardId]);
+}
+
 async function forumCreateCategory(name, sortOrder) {
   const { rows } = await pool.query(
     'INSERT INTO forum_categories (name, sort_order) VALUES ($1, $2) RETURNING *',
@@ -1386,6 +1425,9 @@ module.exports = {
   forumMarkTopicRead,
   forumGetBoard,
   forumCreateBoard,
+  forumUpdateBoard,
+  forumMoveTopicsBetweenBoards,
+  forumDeleteBoard,
   forumCreateCategory,
   forumToggleSticky,
   forumToggleLocked,

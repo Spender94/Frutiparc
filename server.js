@@ -7737,46 +7737,63 @@ const FORUM_DEFAULT_STRUCTURE = [
   ]},
 ];
 
-// Backfill any category/board from FORUM_DEFAULT_STRUCTURE that isn't already
-// present in the DB. Matches by name, never renames or deletes anything, so
-// existing topics keep their board. New boards are appended at the end of
-// their category (sort_order = current max + 1).
+// Enforce FORUM_DEFAULT_STRUCTURE as the canonical layout on every startup:
+//   - missing categories/boards are created
+//   - a canonical board found in the wrong category is moved
+//   - duplicates (same name in another category) have their topics merged
+//     into the canonical board, then the empty duplicate is dropped
+//   - sort_order is rewritten so the visible order matches the spec
+// Boards whose name doesn't appear in FORUM_DEFAULT_STRUCTURE (legacy or
+// custom rubriques) are left alone.
 async function ensureForumBoardsExist() {
   if (!process.env.DATABASE_URL) return;
   try {
     const categories = await db.forumGetCategories();
-    const boards = await db.forumGetBoards();
     const catByName = {};
     for (const c of categories) catByName[c.name] = c;
-    const boardsByCat = {};
-    for (const b of boards) {
-      const cid = b.categoryId != null ? b.categoryId : b.category_id;
-      if (!boardsByCat[cid]) boardsByCat[cid] = [];
-      boardsByCat[cid].push(b);
+    // Ensure every canonical category exists.
+    for (let ci = 0; ci < FORUM_DEFAULT_STRUCTURE.length; ci++) {
+      const want = FORUM_DEFAULT_STRUCTURE[ci];
+      if (!catByName[want.name]) {
+        const cat = await db.forumCreateCategory(want.name, categories.length + ci);
+        catByName[want.name] = cat;
+      }
     }
-    let added = 0;
+    let added = 0, moved = 0, merged = 0;
     for (let ci = 0; ci < FORUM_DEFAULT_STRUCTURE.length; ci++) {
       const wantCat = FORUM_DEFAULT_STRUCTURE[ci];
-      let cat = catByName[wantCat.name];
-      if (!cat) {
-        cat = await db.forumCreateCategory(wantCat.name, categories.length + ci);
-        catByName[wantCat.name] = cat;
-        boardsByCat[cat.id] = [];
-      }
-      const existingBoards = boardsByCat[cat.id] || [];
-      const existingNames = new Set(existingBoards.map(b => b.name));
-      let nextSort = existingBoards.reduce(
-        (m, b) => Math.max(m, (b.sortOrder != null ? b.sortOrder : b.sort_order) || 0),
-        -1,
-      ) + 1;
-      for (const b of wantCat.boards) {
-        if (!existingNames.has(b.name)) {
-          await db.forumCreateBoard(cat.id, b.name, b.description, nextSort++);
+      const targetCatId = catByName[wantCat.name].id;
+      for (let bi = 0; bi < wantCat.boards.length; bi++) {
+        const wantBoard = wantCat.boards[bi];
+        const boards = await db.forumGetBoards();
+        const matches = boards.filter(b => b.name === wantBoard.name);
+        let canonical = matches.find(b => b.category_id === targetCatId) || null;
+        const others = matches.filter(b => b !== canonical);
+        if (!canonical && others.length > 0) {
+          // Promote the first stray board into the canonical slot.
+          canonical = others.shift();
+          await db.forumUpdateBoard(canonical.id, {
+            category_id: targetCatId,
+            sort_order: bi,
+          });
+          moved++;
+        } else if (!canonical) {
+          canonical = await db.forumCreateBoard(targetCatId, wantBoard.name, wantBoard.description, bi);
           added++;
         }
+        // Collapse any remaining duplicates into the canonical board.
+        for (const dup of others) {
+          await db.forumMoveTopicsBetweenBoards(dup.id, canonical.id);
+          await db.forumDeleteBoard(dup.id);
+          merged++;
+        }
+        // Always re-sync sort_order in case the seed order changed.
+        await db.forumUpdateBoard(canonical.id, { sort_order: bi });
       }
     }
-    if (added > 0) console.log(`[FORUM] Backfilled ${added} missing rubrique(s)`);
+    if (added || moved || merged) {
+      console.log(`[FORUM] Layout enforced: +${added} added, ${moved} moved, ${merged} duplicates merged`);
+    }
   } catch (e) {
     console.error('[FORUM] ensureForumBoardsExist error:', e.message);
   }
@@ -8020,23 +8037,10 @@ async function boot() {
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
       try {
-        const forumCats = await db.forumGetCategories();
-        if (forumCats.length === 0) {
-          const defaultForum = FORUM_DEFAULT_STRUCTURE;
-          for (let ci = 0; ci < defaultForum.length; ci++) {
-            const cat = await db.forumCreateCategory(defaultForum[ci].name, ci);
-            for (let bi = 0; bi < defaultForum[ci].boards.length; bi++) {
-              const b = defaultForum[ci].boards[bi];
-              await db.forumCreateBoard(cat.id, b.name, b.description, bi);
-            }
-          }
-          console.log('[FORUM] Seeded default categories and boards');
-        } else {
-          console.log(`[FORUM] ${forumCats.length} categories already in DB`);
-          // Backfill any rubriques that didn't exist when the DB was first
-          // seeded so the listing matches the canonical screenshot layout.
-          await ensureForumBoardsExist();
-        }
+        // ensureForumBoardsExist() creates missing rubriques, moves
+        // misplaced ones, merges duplicates, and re-syncs sort_order — so
+        // a single call covers both fresh-install seeding and migration.
+        await ensureForumBoardsExist();
       } catch (e) { console.error('[FORUM] Seed error:', e.message); }
       try {
         const existingTopics = await db.listGaspardHelpTopics();
@@ -8230,31 +8234,32 @@ const server = app.listen(port, '0.0.0.0', () => {
   if (process.env.DATABASE_URL) {
     (async () => {
       try {
-        const cats = await db.forumGetCategories();
-        if (cats.length === 0) {
-          console.log('[FORUM] Seeding forum structure...');
-          const seedCats = FORUM_DEFAULT_STRUCTURE;
-          const boardIds = [];
-          for (let ci = 0; ci < seedCats.length; ci++) {
-            const cat = await db.forumCreateCategory(seedCats[ci].name, ci);
-            for (let bi = 0; bi < seedCats[ci].boards.length; bi++) {
-              const b = seedCats[ci].boards[bi];
-              const board = await db.forumCreateBoard(cat.id, b.name, b.description, bi);
-              boardIds.push(board.id);
-            }
-          }
-          // Seed demo topics so the forum isn't empty on first visit
+        const before = await db.forumGetCategories();
+        const wasEmpty = before.length === 0;
+        // Always run the layout enforcer — it both seeds an empty DB and
+        // backfills/moves rubriques on an existing one.
+        await ensureForumBoardsExist();
+        if (wasEmpty) {
+          // Drop a couple of demo topics so the forum isn't empty on the
+          // very first visit.
+          const allBoards = await db.forumGetBoards();
           const demoUser = 'Frutiparc';
           if (!users[demoUser]) users[demoUser] = { isModerator: true };
-          const t1 = await db.forumCreateTopic(boardIds[0], demoUser,
-            'Bienvenue sur le forum Frutiparc !',
-            "[b]Bienvenue à tous sur le forum de Frutiparc ![/b]\n\nIci vous pouvez discuter avec les autres Frutiz, partager vos scores et vos créations.\n\nBonne visite !");
-          const t2 = await db.forumCreateTopic(boardIds[2], demoUser,
-            'Quel est votre jeu préféré ?',
-            "Salut les Frutiz ! :)\n\nDites-moi, quel est votre jeu préféré sur Frutiparc ?\n\nPersonnellement j'adore [b]Swapou[/b], le mode duel est super fun !");
-          await db.forumCreatePost(t2.id, demoUser,
-            "J'oubliais, [i]Kaluga[/i] est pas mal non plus pour se détendre.");
-          console.log('[FORUM] Seed complete (' + boardIds.length + ' boards, 2 demo topics)');
+          const annonces = allBoards.find(b => b.name === 'Annonces');
+          const frutiz = allBoards.find(b => b.name === 'Frutiz');
+          if (annonces) {
+            await db.forumCreateTopic(annonces.id, demoUser,
+              'Bienvenue sur le forum Frutiparc !',
+              "[b]Bienvenue à tous sur le forum de Frutiparc ![/b]\n\nIci vous pouvez discuter avec les autres Frutiz, partager vos scores et vos créations.\n\nBonne visite !");
+          }
+          if (frutiz) {
+            const t2 = await db.forumCreateTopic(frutiz.id, demoUser,
+              'Quel est votre jeu préféré ?',
+              "Salut les Frutiz ! :)\n\nDites-moi, quel est votre jeu préféré sur Frutiparc ?\n\nPersonnellement j'adore [b]Swapou[/b], le mode duel est super fun !");
+            await db.forumCreatePost(t2.id, demoUser,
+              "J'oubliais, [i]Kaluga[/i] est pas mal non plus pour se détendre.");
+          }
+          console.log('[FORUM] Seed complete with demo topics');
         }
       } catch (e) {
         console.error('[FORUM] Seed error:', e.message);
