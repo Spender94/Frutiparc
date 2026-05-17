@@ -42,4 +42,17 @@ function statusInternalCode(name) {
   return STATUS_INTERNAL_FRAME[name] || 0;
 }
 
-module.exports = { USER_LOG_TYPE, STATUS_INTERNAL_FRAME, statusInternalCode };
+// Available SiteLog icons (frame numbers in icoSiteLog sprite 576). Used
+// by admin /api/admin/broadcast for the "Événements" notification stream:
+//   1  = info générale (default)
+//   11 = info technique
+//   20 = nouveauté
+//   21 = nouveau jeu
+const SITE_LOG_ICONS = [1, 11, 20, 21];
+
+module.exports = {
+  USER_LOG_TYPE,
+  STATUS_INTERNAL_FRAME,
+  statusInternalCode,
+  SITE_LOG_ICONS,
+};

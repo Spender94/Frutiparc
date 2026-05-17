@@ -38,6 +38,7 @@ const {
   USER_LOG_TYPE,
   STATUS_INTERNAL_FRAME,
   statusInternalCode,
+  SITE_LOG_ICONS,
 } = require('./src/constants/user-log');
 const {
   DEFAULT_BOUILLE_STATE,
@@ -46,7 +47,13 @@ const {
   normalizeBouilleState,
 } = require('./src/constants/bouille');
 const { PROFANITY_REPLACEMENTS, censorProfanity } = require('./src/constants/profanity');
-const { CMD, CMD_REV, CONNECTED_NPCS } = require('./src/constants/cbee');
+const {
+  CMD,
+  CMD_REV,
+  CONNECTED_NPCS,
+  FRUTI_SIGN_NAMES,
+  ANIM_CHANNEL,
+} = require('./src/constants/cbee');
 const {
   GAME_ITEM_INFO,
   PIXIZ_ITEM_NAMES,
@@ -60,6 +67,59 @@ const {
   getGameItemGame,
 } = require('./src/constants/game-items');
 const { GAME_PROGRESS_REGISTRY } = require('./src/constants/consecration');
+const {
+  BKIWI_TRACK_NAMES,
+  RANKINGS,
+  LEGACY_RANKINGS,
+  LEGACY_RK_TO_INTERNAL,
+  INTERNAL_TO_LEGACY_RK,
+  DAILY_RESET_RANKING_SET,
+  GAME_DISPLAY_NAMES,
+  MEDAL_DISPLAY_NAMES,
+  challengeRankingIds,
+  isDailyResetRanking,
+  legacyDescriptorFromRkLike,
+  buildLegacyGameScoreInfo,
+  buildLegacyRankingResultPayload,
+} = require('./src/constants/rankings');
+const {
+  KALUGA_TZONGRE_BY_ID,
+  parseKalugaTzId,
+  HARDCODED_FRUTIZ,
+  hardcodedMeAttrs,
+  GAME_DISCS,
+  FCARD_GAMES,
+} = require('./src/constants/games');
+const {
+  prefDefs,
+  buildPrefDefString,
+  parsePrefString,
+  encodePrefString,
+} = require('./src/constants/prefs');
+const {
+  DEFAULT_WALLPAPERS,
+  WALLPAPER_BY_ID,
+  DEFAULT_BOUILLE_LIST,
+  DEFAULT_ACCESSORIES,
+  SHOP_PACKS_DEFAULT,
+  SHOP_PACKS,
+  MOD_ACCESSORY_ID,
+  MOD_ACCESSORY_SUFFIX9,
+  MOD_ACCESSORY_NAME,
+  ANIM_ACCESSORY_ID,
+  ANIM_ACCESSORY_SUFFIX9,
+  ANIM_ACCESSORY_NAME,
+  getShopPack,
+  userOwnsShopPack,
+  getAccessoryWallpaper,
+  buildShopTreeXml,
+} = require('./src/constants/shop');
+const { FILE_TREE_XML, MAIL_FOLDERS } = require('./src/constants/files');
+const {
+  STAFF_ONLY_FORUM_CATEGORIES,
+  FORUM_DEFAULT_STRUCTURE,
+  LEGACY_FORUM_BOARDS,
+} = require('./src/constants/forum');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
 
@@ -375,68 +435,6 @@ function saveChallengeMedals() {
   }
 }
 
-// Registered ranking IDs (one per game, mode 0 = classic).
-// name = human-readable, game = disc/game name (for client display).
-const BKIWI_TRACK_NAMES = [
-  'Green Hill', 'Banana Derby', 'Terre Grise', 'Solstice', 'Jupiter IV', 'Mistral Kiwi',
-];
-const RANKINGS = {
-  bkiwi_track0_classic: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 0 },
-  bkiwi_track1_classic: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 1 },
-  bkiwi_track2_classic: { name: 'Burning Kiwi - Terre Grise', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 2 },
-  bkiwi_track3_classic: { name: 'Burning Kiwi - Solstice', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 3 },
-  bkiwi_track4_classic: { name: 'Burning Kiwi - Jupiter IV', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 4 },
-  bkiwi_track5_classic: { name: 'Burning Kiwi - Mistral Kiwi', game: 'bkiwi', type: 'C', lowerIsBetter: true, bkiwiTrack: 5 },
-  snake3_classic:   { name: 'Frutisnake - Classique',  game: 'snake3',   type: 'C' },
-  kaluga_classic:   { name: 'Kaluga - Classique',      game: 'kaluga',   type: 'C' },
-  swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
-  mb2_classic:      { name: 'MotionBall - Classique',  game: 'mb2',      type: 'C', lowerIsBetter: true },
-  jamajama_classic: { name: 'JamaJama - Classique',    game: 'jamajama', type: 'C', lowerIsBetter: true },
-  bkiwi_track0_challenge: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 0 },
-  bkiwi_track1_challenge: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 1 },
-  bkiwi_track2_challenge: { name: 'Burning Kiwi - Terre Grise', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 2 },
-  bkiwi_track3_challenge: { name: 'Burning Kiwi - Solstice', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 3 },
-  bkiwi_track4_challenge: { name: 'Burning Kiwi - Jupiter IV', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 4 },
-  bkiwi_track5_challenge: { name: 'Burning Kiwi - Mistral Kiwi', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 5 },
-  snake3_challenge:   { name: 'Frutisnake - Challenge',   game: 'snake3',   type: 'L' },
-  kaluga_challenge:   { name: 'Kaluga - Challenge',       game: 'kaluga',   type: 'L' },
-  swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
-  mb2_challenge:      { name: 'MotionBall - Challenge',   game: 'mb2',      type: 'L', lowerIsBetter: true },
-  bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
-  grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L' },
-};
-
-// Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
-const LEGACY_RANKINGS = [
-  // Section C = "Challenge" in front-end
-  // BKiwi uses per-track rankings; legacy rk '0' maps to track 5 (the default challenge track)
-  { rk: '0', internal: 'bkiwi_track5_classic', ty: 'millisecond', rn: 'Burning kiwi', gs: '0', g: 'bkiwi',  section: 'C' },
-  { rk: '1', internal: 'snake3_classic',   ty: 'point',       rn: 'Frutisnake 2', gs: '1', g: 'snake3', section: 'C' },
-  { rk: '2', internal: 'mb2_classic',      ty: 'ptmb2',       rn: 'Motion Ball 2',gs: '2', g: 'mb2',    section: 'C' },
-  { rk: '3', internal: 'swapou2_classic',  ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
-  { rk: '4', internal: 'kaluga_classic',   ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'C' },
-  { rk: '5', internal: null,               ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
-  { rk: '6', internal: null,               ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
-  // Section L = "Championnat" in front-end — only Frutibandas and Grapiz
-  { rk: '7', internal: 'bandas_challenge',  ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
-  { rk: '8', internal: 'grapiz_challenge',  ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
-];
-const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
-  LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.rk, r.internal])
-);
-const INTERNAL_TO_LEGACY_RK = Object.fromEntries([
-  ...LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.internal, r.rk]),
-  ...Array.from({ length: 6 }, (_, i) => [`bkiwi_track${i}_challenge`, '0']),
-]);
-const HARDCODED_FRUTIZ = {
-  Gaspard: { x: 9999999, f: '0n0000000000000000000000' },
-};
-
-function hardcodedMeAttrs(name) {
-  const d = HARDCODED_FRUTIZ[String(name || '')] || HARDCODED_FRUTIZ.Gaspard;
-  return `x="${d.x}" f="${escapeXml(d.f)}"`;
-}
-
 function resolveInternalRankingId(rkLike, refDate) {
   const raw = String(rkLike || '').trim();
   if (!raw) return null;
@@ -460,59 +458,10 @@ function resolveInternalRankingIdForRequest(rkLike, cAttr = '') {
   return base;
 }
 
-function legacyDescriptorFromRkLike(rkLike) {
-  const raw = String(rkLike || '').trim();
-  if (!raw) return null;
-  return LEGACY_RANKINGS.find((r) => r.rk === raw || r.internal === raw) || null;
-}
-
-function buildLegacyRankingResultPayload(rkInput, reqId = '', cAttr = '') {
-  const rk = String(rkInput || '');
-  const r = reqId ? ` r="${escapeXml(reqId)}"` : '';
-  const c = cAttr ? ` c="${escapeXml(cAttr)}"` : '';
-  const legacyDesc = legacyDescriptorFromRkLike(rk);
-  const ty = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
-  return `<m${r}${ty} rk="${escapeXml(rk)}"${c}></m>`;
-}
-
 function buildLegacyUserResultPayload(user, reqId = '') {
   const r = reqId ? ` r="${escapeXml(reqId)}"` : '';
   const u = escapeXml(getDisplayName(String(user || 'Gaspard')));
   return `<n${r} u="${u}"></n>`;
-}
-
-function buildLegacyGameScoreInfo(gs) {
-  const game = Number(gs);
-  let inner = '';
-  if (game === 0) {
-    inner += '<desc n="Ecurie" t="s" w="60">bkiwi_team</desc>';
-    inner += '<desc n="Rang" t="s" w="60">bkiwi_rank</desc>';
-  } else if (game === 3) {
-    inner += '<desc n="Perso" t="s" w="45">swapou_score_chars</desc>';
-  } else if (game === 4) {
-    inner += '<desc n="Tzongre" t="s" w="60">kaluga_tz</desc>';
-  }
-  return `<w gs="${Number.isFinite(game) ? game : 0}"><ds>${inner}</ds></w>`;
-}
-
-const KALUGA_TZONGRE_BY_ID = {
-  0: 'kaluga',
-  1: 'piwali',
-  2: 'nalika',
-  3: 'gomola',
-  4: 'makulo',
-};
-
-function parseKalugaTzId(raw) {
-  const s = String(raw || '').trim();
-  if (!s) return null;
-  const directNum = Number(s);
-  if (Number.isFinite(directNum)) return directNum;
-  const mtNum = parseMtSerializedPrimitive(s);
-  if (typeof mtNum === 'number' && Number.isFinite(mtNum)) return mtNum;
-  const mtObj = s.match(/\$?tz[^0-9-]*N?(-?\d+)/i);
-  if (mtObj) return Number(mtObj[1]);
-  return null;
 }
 
 function extractBkiwiTrack(rawData) {
@@ -1376,19 +1325,6 @@ function buildUserLogXml(entries) {
 // rankings (which rotate daily based on dayOfYear % 6).
 // BKiwi classic was previously the daily proxy; replaced by proper _challenge
 // rankings so we exclude it to avoid duplicate medal awards.
-const DAILY_RESET_RANKING_SET = new Set([
-  ...LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal && r.internal !== 'bkiwi_track5_classic').map(r => r.internal),
-  ...Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_challenge`),
-]);
-
-function challengeRankingIds() {
-  return Array.from(DAILY_RESET_RANKING_SET);
-}
-
-function isDailyResetRanking(rkId) {
-  return DAILY_RESET_RANKING_SET.has(rkId);
-}
-
 function collectTop3ForRanking(rankingId) {
   const all = [];
   for (const [u, rlist] of Object.entries(scoresData.users || {})) {
@@ -1400,12 +1336,6 @@ function collectTop3ForRanking(rankingId) {
   return all.slice(0, 3);
 }
 
-const GAME_DISPLAY_NAMES = {
-  bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', kaluga: 'Kaluga',
-  swapou2: 'Swapou', miniwave2: 'MiniWave', miniwave: 'MiniWave', mb2: 'MotionBall',
-  bandas: 'Frutibandas', grapiz: 'Grapiz', minipixiz: 'MiniPixiz',
-};
-const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
 
 function notifyChallengeWinners(winnersByUser, visibleDay) {
   for (const [username, medals] of Object.entries(winnersByUser || {})) {
@@ -1665,59 +1595,6 @@ function getFrutizJob(username, user) {
   return 'Frutiz';
 }
 
-// ─────────────────────────────────────────────
-// Preference definitions
-// Built like the original: id(2 base62) + type(1 char) + nameLen(2 base62) + name + defaultLen(2 base62) + default
-// ─────────────────────────────────────────────
-const prefDefs = [
-  { id: 1,  type: 'i', name: 'default_channel',          def: encode62(2) },
-  { id: 2,  type: 'b', name: 'dsp_newmail_alert',        def: 'Y' },
-  { id: 3,  type: 'i', name: 'invite_channel_behavior',  def: encode62(1) },
-  { id: 4,  type: 'i', name: 'invite_chat_behavior',     def: encode62(1) },
-  { id: 5,  type: 's', name: 'wallpaper',                def: '' },
-  { id: 6,  type: 'i', name: 'cache_length',             def: encode62(30) },
-  { id: 7,  type: 'b', name: 'cl_open',                  def: 'Y' },
-  { id: 8,  type: 'b', name: 'win_flMoveAnim',           def: 'Y' },
-  { id: 9,  type: 'b', name: 'ch_dsp_h',                 def: 'Y' },
-  { id: 10, type: 'b', name: 'ch_dsp_join',              def: 'Y' },
-  { id: 11, type: 'b', name: 'ch_dsp_leave',             def: 'Y' },
-  { id: 12, type: 'b', name: 'ch_dsp_kick',              def: 'Y' },
-  { id: 13, type: 'b', name: 'ch_dsp_ban',               def: 'Y' },
-];
-
-function buildPrefDefString() {
-  let r = '';
-  for (const p of prefDefs) {
-    r += encode62(p.id, 2);
-    r += p.type;
-    r += encode62(p.name.length, 2) + p.name;
-    r += encode62(p.def.length, 2) + p.def;
-  }
-  return r;
-}
-
-function parsePrefString(str) {
-  const result = {};
-  let pos = 0;
-  while (pos + 4 <= str.length) {
-    const id = decode62(str.substring(pos, pos + 2));
-    const len = decode62(str.substring(pos + 2, pos + 4));
-    const val = str.substring(pos + 4, pos + 4 + len);
-    pos += 4 + len;
-    result[id] = val;
-  }
-  return result;
-}
-
-function encodePrefString(parsed) {
-  let r = '';
-  for (const [id, val] of Object.entries(parsed)) {
-    const v = String(val);
-    r += encode62(Number(id), 2) + encode62(v.length, 2) + v;
-  }
-  return r;
-}
-
 function ensureContactLists(user) {
   if (!Array.isArray(user.contacts)) user.contacts = [];
   if (!Array.isArray(user.blacklist)) user.blacklist = [];
@@ -1743,8 +1620,6 @@ function isCustomContactFolder(user, uid) {
 // body, folder, date, read}]. Folders: inbox|outbox|draftbox|blackbox|
 // recyclebin. Sender keeps a copy in outbox; recipients get one in inbox.
 // ─────────────────────────────────────────────
-const MAIL_FOLDERS = new Set(['inbox', 'outbox', 'draftbox', 'blackbox', 'recyclebin']);
-
 function ensureMails(user) {
   if (!Array.isArray(user.mails)) user.mails = [];
 }
@@ -1919,96 +1794,6 @@ function extractContactCandidateFromDesc(desc) {
   return '';
 }
 
-const DEFAULT_BOUILLE_LIST = [
-  { b: '000503000000111010000000', n: 'Classique' },
-  { b: '000503000000111011000000', n: 'Classique 2' },
-  { b: '000503000000111012000000', n: 'Classique 3' },
-  { b: '010503000000111010000000', n: 'Famille 1' },
-];
-
-const DEFAULT_WALLPAPERS = [
-  { u: 'moutarde',       n: 'Chevalier moutarde',    url: 'wal/ch.jpg', color: '4E5464;' },
-  { u: 'chorale',        n: 'Chorale Frutiparc',     url: 'wal/fp.jpg', color: 'ADE76B;' },
-  { u: 'pixizchristmas', n: 'Noël Pixiz',            url: 'wal/ma.jpg', color: 'ADE76B;' },
-  { u: 'snakechristmas', n: 'Noël Frutisnake',       url: 'wal/no.jpg', color: 'ADE76B;' },
-  { u: 'pixiz',          n: 'Mini-Pixiz',            url: 'wal/pi.jpg', color: 'F9D190;' },
-  { u: 'nostromo',       n: 'Mini-Wave Nostromo',    url: 'wal/pl.jpg', color: '000044;' },
-  { u: 'ministar',       n: 'Mini-Wave Mini-Star',   url: 'wal/va.jpg', color: '000044;' },
-  { u: 'utopiz',         n: 'Utopiz',                url: 'wal/ut.jpg', color: 'F6AFA9;' },
-];
-const WALLPAPER_BY_ID = Object.fromEntries(DEFAULT_WALLPAPERS.map(w => [w.u, w]));
-
-// Accessories = last 9 chars of a 24-char bouille string.
-// The first 15 chars are filled from the user's current bouille at serve time.
-const DEFAULT_ACCESSORIES = [
-  { u: 'bananocle', n: 'Bananocle', suffix: '6010k0w0g' },
-  { u: 'beaute',    n: 'Beauté',    suffix: 'b000k0w0g' },
-  { u: 'normal',    n: 'Normal',    suffix: '000000000' },
-  { u: 'Kiwix',    n: 'Kiwix',    suffix: '30x000000' },
-];
-
-// ─────────────────────────────────────────────
-// Shop catalog — used by /ft/tree, /ft/pack, /ft/buy
-// The AS2 box.Shop expects a <c> (category) tree with <p> (product) leaves.
-// Each product, once purchased, is appended to user.customAccessories so it
-// appears in the Inventaire/Accessoires folder and can be worn by the avatar.
-// suffix9 = last 9 chars of a 24-char bouille string (prefix is taken from
-// the user's current bouille at serve time).
-// ─────────────────────────────────────────────
-const SHOP_PACKS_DEFAULT = [
-  {
-    id: 101,
-    name: 'Bonnet de nuit',
-    category: 'Accessoires',
-    price: 60,
-    description: 'Un bonnet douillet pour les Frutiz qui aiment rêvasser sur le chat. Parfait pour afficher une ambiance cosy !',
-    suffix9: '9020t0a00',
-    comment: 'Un bonnet douillet pour les Frutiz qui aiment rêvasser sur le chat. Parfait pour afficher une ambiance cosy !',
-  },
-  {
-    id: 102,
-    name: 'Chapeau de shérif',
-    category: 'Accessoires',
-    price: 60,
-    description: 'Pour faire régner la loi dans les contrées de Legumia. Un classique indémodable de la panoplie du justicier.',
-    suffix9: '4020B0000',
-    comment: 'Pour faire régner la loi dans les contrées de Legumia. Un classique indémodable de la panoplie du justicier.',
-  },
-  {
-    id: 103,
-    name: 'Masque de ski',
-    category: 'Accessoires',
-    price: 60,
-    description: 'Prêt à dévaler les pistes ! Ce masque coloré complètera votre tenue hivernale à merveille.',
-    suffix9: 'a0b0a080m',
-    comment: 'Prêt à dévaler les pistes ! Ce masque coloré complètera votre tenue hivernale à merveille.',
-  },
-  // Casquette Anim (suffix9 30y0t0j00) is no longer purchasable — it is now
-  // auto-granted to users with is_animator=true via grantAnimatorAccessory
-  // (mirroring the Badge Modérateur flow). See ANIM_ACCESSORY_* constants.
-  // Wallpapers
-  { id: 201, name: 'Chevalier moutarde',    category: "Fonds d'écran", price: 0, description: 'Un fond chevaleresque aux tons moutarde.',     suffix9: '000000000', wallpaperId: 'moutarde' },
-  { id: 202, name: 'Chorale Frutiparc',     category: "Fonds d'écran", price: 0, description: 'La grande chorale de Frutiparc !',             suffix9: '000000000', wallpaperId: 'chorale' },
-  { id: 203, name: 'Noël Pixiz',            category: "Fonds d'écran", price: 0, description: 'Ambiance de Noël avec les Pixiz.',              suffix9: '000000000', wallpaperId: 'pixizchristmas' },
-  { id: 204, name: 'Noël Frutisnake',       category: "Fonds d'écran", price: 0, description: 'Frutisnake en mode fêtes de fin d\'année.',     suffix9: '000000000', wallpaperId: 'snakechristmas' },
-  { id: 205, name: 'Mini-Pixiz',            category: "Fonds d'écran", price: 0, description: 'Les petits Pixiz en action.',                   suffix9: '000000000', wallpaperId: 'pixiz' },
-  { id: 206, name: 'Mini-Wave Nostromo',    category: "Fonds d'écran", price: 0, description: 'Le vaisseau Nostromo de Mini-Wave.',             suffix9: '000000000', wallpaperId: 'nostromo' },
-  { id: 207, name: 'Mini-Wave Mini-Star',   category: "Fonds d'écran", price: 0, description: 'La planète Mini-Star de Mini-Wave.',             suffix9: '000000000', wallpaperId: 'ministar' },
-  { id: 208, name: 'Utopiz',                category: "Fonds d'écran", price: 0, description: 'Le monde coloré d\'Utopiz.',                    suffix9: '000000000', wallpaperId: 'utopiz' },
-];
-const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
-
-// Moderator-only accessory automatically granted with the role and revoked
-// when the role is taken away.  Not purchasable (shopId stays 0) so it never
-// appears in the shop tree.
-const MOD_ACCESSORY_ID = 'mod_badge';
-const MOD_ACCESSORY_SUFFIX9 = '30i0e0j03';
-const MOD_ACCESSORY_NAME = 'Badge Modérateur';
-
-const ANIM_ACCESSORY_ID = 'anim_cap';
-const ANIM_ACCESSORY_SUFFIX9 = '30y0t0j00';   // Casquette Anim suffix
-const ANIM_ACCESSORY_NAME = 'Casquette Anim';
-
 async function grantAccessory(username, dbUserRow, accId, accSuffix9, accName, logTag) {
   const u = users[username];
   const userId = (u && u._dbId) || (dbUserRow && dbUserRow.id);
@@ -2076,55 +1861,6 @@ async function syncAllRoleAccessories() {
   } catch (e) { console.error('[ROLE-ACC] startup sync error:', e.message); }
 }
 
-function getShopPack(id) {
-  const num = Number(id);
-  return SHOP_PACKS.find((p) => p.id === num);
-}
-
-// Returns the wallpaper definition tied to an accessory entry, or null.
-// Recognizes both the canonical "wp:url:color" value format and legacy
-// entries where only the shopId is reliable (older purchases stored as
-// regular bouille values before the wallpaper format was introduced).
-function getAccessoryWallpaper(acc) {
-  if (!acc) return null;
-  const v = acc.v || '';
-  if (typeof v === 'string' && v.startsWith('wp:')) {
-    const parts = v.split(':');
-    return { url: parts[1] || '', color: parts.slice(2).join(':') || '' };
-  }
-  if (acc.shopId) {
-    const pack = SHOP_PACKS.find((p) => p.id === Number(acc.shopId));
-    if (pack && pack.wallpaperId) {
-      const wp = WALLPAPER_BY_ID[pack.wallpaperId];
-      if (wp) return { url: wp.url, color: wp.color };
-    }
-  }
-  return null;
-}
-
-function userOwnsShopPack(user, id) {
-  if (!Array.isArray(user.customAccessories)) return false;
-  return user.customAccessories.some((a) => a && a.shopId === Number(id));
-}
-
-function buildShopTreeXml(user) {
-  // Group packs by category.
-  const byCategory = new Map();
-  for (const pack of SHOP_PACKS) {
-    if (!byCategory.has(pack.category)) byCategory.set(pack.category, []);
-    byCategory.get(pack.category).push(pack);
-  }
-  const defaultId = SHOP_PACKS.length ? SHOP_PACKS[0].id : '';
-  let inner = '';
-  for (const [cat, packs] of byCategory) {
-    const prods = packs
-      .map((p) => `<p i="${p.id}" n="${escapeXml(p.name)}"/>`)
-      .join('');
-    inner += `<c n="${escapeXml(cat)}">${prods}</c>`;
-  }
-  return `<c n="Boutique" d="${defaultId}">${inner}</c>`;
-}
-
 function buildShopPackXml(pack, user) {
   const alreadyBuy = userOwnsShopPack(user, pack.id) ? '1' : '0';
   if (pack.wallpaperId) {
@@ -2160,33 +1896,6 @@ function buildBouilleListXml() {
     .map((o) => `<b b="${escapeXml(normalizeBouilleState(o.b))}">${escapeXml(o.n)}</b>`)
     .join('');
 }
-
-// ─────────────────────────────────────────────
-// File system tree (virtual)
-// b = "messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin"
-// The AS2 client (FFileMng) reads bFolder[7]=mycontact, bFolder[8]=recyclebin.
-// Do NOT insert extra entries before mycontact/recyclebin or the indices shift.
-// ─────────────────────────────────────────────
-const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin;blacklist">
-  <f u="messages" n="Messages" t="messages">
-    <f u="inbox" n="Boîte de réception" t="inbox" />
-    <f u="outbox" n="Messages envoyés" t="outbox" />
-    <f u="blackbox" n="Spams" t="blackbox" />
-    <f u="draftbox" n="Brouillons" t="draftbox" />
-  </f>
-  <f u="disccollector" n="Mes disques" t="disccollector" />
-  <f u="inventory" n="Inventaire" t="inventory">
-    <f u="inv_accessories" n="Accessoires" t="inventory" />
-    <f u="inv_wallpapers" n="Fonds d&apos;écran" t="inventory" />
-    <f u="inv_pictos" n="Pictos" t="inventory" />
-  </f>
-  <f u="shop" n="Boutique" t="shop">
-    <f u="accessories" n="Accessoires" t="accessories" />
-  </f>
-  <f u="mycontact" n="Mes contacts" t="mycontact" />
-  <f u="recyclebin" n="Corbeille" t="recyclebin" />
-  <f u="blacklist" n="Liste noire" t="blacklist" />
-</s>`;
 
 // ─────────────────────────────────────────────
 // Serve static files from public/ (AFTER API routes, so our
@@ -3741,12 +3450,6 @@ app.post('/api/admin/challenge/regenerate-medals', adminAuth, async (req, res) =
 });
 
 // ── Admin: broadcast event to all users (Événements window) ──
-// Available SiteLog icons (frame numbers in icoSiteLog sprite 576):
-//   1  = info générale (default)
-//   11 = info technique
-//   20 = nouveauté
-//   21 = nouveau jeu
-const SITE_LOG_ICONS = [1, 11, 20, 21];
 const pushedEvents = []; // { id, message, type, time, chat }
 let pushedEventSeq = 0;
 
@@ -5798,105 +5501,6 @@ app.get('/api/check-ejected', (req, res) => {
   return res.json({ ejected: false });
 });
 
-const GAME_DISCS = {
-  bkiwi1: {
-    discType: '0',
-    playMode: 'single',
-    swfName: 'bkiwi',
-    gameId: 'games/burningKiwi/burningkiwi.swf',
-    props: 'w=350;h=350;m=i',
-    files: [
-      { u: 'games/burningKiwi/burningkiwi.swf' },
-    ],
-  },
-  kaluga1: {
-    discType: '0',
-    playMode: 'single',
-    swfName: 'kaluga',
-    gameId: 'games/kaluga/full.swf',
-    props: 'w=640;h=480;m=i',
-    files: [
-      { u: 'games/kaluga/full.swf' },
-    ],
-  },
-  kalugademo: {
-    discType: '3',
-    playMode: 'preview',
-    swfName: 'kaluga',
-    gameId: 'games/kaluga/full.swf',
-    props: 'w=640;h=480;m=i',
-    files: [
-      { u: 'games/kaluga/full.swf' },
-    ],
-  },
-  swapou1: {
-    discType: '0',
-    playMode: 'single',
-    swfName: 'swapou2',
-    gameId: 'games/swapou2/swapou.swf',
-    props: 'w=640;h=480;m=i',
-    files: [
-      { u: 'games/swapou2/swapou.swf' },
-    ],
-  },
-  miniwave1: {
-    discType: '0',
-    playMode: 'single',
-    swfName: 'miniwave',
-    gameId: 'games/miniWave2/miniwave.swf',
-    // Visible game area is 240x240; SWF stage is 600x240 (leftmost 240 = play area,
-    // remaining 360 = persistent _root.test debug log TextField hardcoded into the FLA)
-    props: 'w=240;h=240;sw=600;sh=240;m=i',
-    files: [
-      { u: 'games/miniWave2/miniwave.swf' },
-    ],
-  },
-  minipixiz1: {
-    discType: '0',
-    playMode: 'single',
-    swfName: 'minipixiz',
-    gameId: 'games/miniTroll/minipixiz.swf',
-    props: 'w=240;h=240;m=i',
-    files: [
-      { u: 'games/miniTroll/minipixiz.swf' },
-    ],
-  },
-  snake3: {
-    discType: '0',
-    playMode: 'single',
-    swfName: 'snake3',
-    gameId: 'games/snake3/snake3.swf',
-    props: 'w=700;h=480;m=i',
-    files: [
-      { u: 'games/snake3/snake3.swf' },
-    ],
-  },
-  mb2: {
-    discType: '1',
-    playMode: 'single',
-    swfName: 'mb2',
-    gameId: 'games/motionBall2/full.swf',
-    props: 'w=550;h=400;m=i',
-    files: [
-      { u: 'games/motionBall2/full.swf' },
-    ],
-  },
-  jamajama: {
-    discType: '0',
-    playMode: 'single',
-    swfName: 'jamajama',
-    iconName: 'jama',
-    gameId: 'games/poulpi/game.swf',
-    props: 'w=384;h=384;m=i',
-    files: [
-      { u: 'games/poulpi/game.swf' },
-      { u: 'games/poulpi/levels.xml' },
-      { u: 'games/poulpi/help.xml' },
-      { u: 'games/poulpi/extension.swf' },
-    ],
-  },
-};
-
 // ─────────────────────────────────────────────
 // ENDPOINT: do/ld — Game disc loading
 // ─────────────────────────────────────────────
@@ -7018,10 +6622,6 @@ app.get('/api/forum/me', (req, res) => {
   });
 });
 
-// Categories restricted to staff members (moderators + animators). Their
-// boards are hidden from the index for everyone else and direct API access
-// is denied so guessing board/topic IDs leaks nothing.
-const STAFF_ONLY_FORUM_CATEGORIES = new Set(['Gestion du site']);
 function isForumStaff(username) {
   if (!username) return false;
   const u = users[username];
@@ -7249,45 +6849,6 @@ app.delete('/api/forum/topic/:id', async (req, res) => {
     res.json({ ok: true, boardId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// Admin: manage forum structure
-// Canonical forum layout used by every seed/migration code path so the
-// structure stays in sync. Updating this list automatically backfills
-// any missing rubrique on the next startup via ensureForumBoardsExist().
-const FORUM_DEFAULT_STRUCTURE = [
-  { name: 'Gestion du site', boards: [
-    { name: 'Animateur', description: "De l'animation, ses principes généraux, ses dernières nouveautées, ..." },
-    { name: 'Modération-Animation', description: 'Ho ! Ca rime !' },
-  ]},
-  { name: 'Frutiparc', boards: [
-    { name: 'Annonces', description: "Les annonces officielles de l'équipe Frutiparc" },
-    { name: 'Animations officielles', description: 'Les annonces des prochaines animations organisées par des animateurs à venir' },
-    { name: 'Animations Frutiz', description: 'Les annonces des prochaines animations organisées par des frutiz à venir' },
-    { name: 'Jeux Frutiparc', description: 'Les jeux de Frutiparc, parlez-en !' },
-    { name: 'Frutiz', description: 'Pour parler de la vie des Frutiz, population de frutiparc !' },
-    { name: 'Clans', description: 'Tous les clans Frutiparc.' },
-  ]},
-  { name: 'La vie Frutiz', boards: [
-    { name: 'Jeux Vidéos', description: 'Pour parler de votre passion, les jeux vidéos ;)' },
-    { name: 'Créations littéraires', description: 'Pour tous vos poèmes, textes et histoires qui sortent tout droit de votre imagination, à vos plumes !' },
-    { name: 'Créations graphiques', description: 'Pour tous vos dessins, trucages et gribouillis qui sortent tout droit de votre imagination, à vos crayons !' },
-    { name: 'Musique', description: "Car votre passion, c'est la zique, parce que vous voulez partager avec vos amis frutiz..." },
-    { name: 'Vie non Frutiz', description: 'Pour parler de la vie... en dehors de Frutiparc. Si si, elle existe !' },
-  ]},
-];
-
-// Legacy boards that have been renamed/replaced in FORUM_DEFAULT_STRUCTURE.
-// On startup their topics are merged into the canonical replacement, then
-// the empty legacy board is deleted. Listed by name to handle both fresh
-// installs and DBs migrated from an older seed.
-const LEGACY_FORUM_BOARDS = [
-  // The original seed had a single "Animations" / "Animation" board which
-  // was split into "Animations officielles" + "Animations Frutiz". Topics
-  // are funneled into "Animations officielles".
-  { name: 'Animations',  mergeInto: 'Animations officielles' },
-  { name: 'Animation',   mergeInto: 'Animations officielles' },
-];
-
 // Enforce FORUM_DEFAULT_STRUCTURE as the canonical layout on every startup:
 //   - missing categories/boards are created
 //   - a canonical board found in the wrong category is moved
@@ -8175,7 +7736,6 @@ users.gaspard = {
 };
 
 // ── mdamirma — FrutiSigne bot ──
-const FRUTI_SIGN_NAMES = ['pomme','abricot','poire','fraise','citron','kiwi','raisin','orange','cerise','banane'];
 
 users.mdamirma = {
   pass: '',
@@ -8405,12 +7965,6 @@ function isModerator(username) {
 function isAnimator(username) {
   return !!(username && users[username] && users[username].isAnimator);
 }
-
-const ANIM_CHANNEL = 'bienvenue';
-
-// All games that should always show a FrutiCard on user profiles.
-// Excludes grapiz and bandas (not implemented yet).
-const FCARD_GAMES = ['bkiwi', 'snake3', 'swapou2', 'kaluga', 'mb2', 'miniwave', 'jamajama', 'minipixiz'];
 
 // Convert a JSON string (or JS value) to Motion-Twin serialization format (2004).
 // Patch slot 0 data: merge existing saved data with defaults to fill missing
