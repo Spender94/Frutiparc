@@ -535,7 +535,14 @@
     </label>
     <label><span>Mots-clés :</span> <input id="gaspard-keywords" maxlength="200" placeholder="titems pictos cartes (espace-séparés)"></label>
     <label style="align-items:start"><span>Contenu :</span>
-      <textarea id="gaspard-content-body" rows="10" style="width:100%;font-family:monospace" placeholder="HTML accepté : <b>gras</b>, <a href='asfunction:win.box.getContent,N'>lien vers rubrique N</a>, etc."></textarea>
+      <div style="flex:1;width:100%">
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+          <select id="gaspard-insert-link" onchange="insertGaspardLink()" style="flex:1;font-size:12px">
+            <option value="">— Insérer un lien vers une rubrique… —</option>
+          </select>
+        </div>
+        <textarea id="gaspard-content-body" rows="10" style="width:100%;font-family:monospace" placeholder="HTML accepté : <b>gras</b>, <a href='asfunction:win.box.getContent,N'>lien vers rubrique N</a>, etc."></textarea>
+      </div>
     </label>
     <div class="actions">
       <button class="btn" onclick="closeModal('modal-edit-gaspard')">Annuler</button>
@@ -761,6 +768,43 @@ function refreshGaspardParentSelect(currentId) {
   }
 }
 
+// Populate the "Insérer un lien" dropdown with every available topic and
+// reset its selection. Called by openAddGaspardTopic + editGaspardTopic.
+function refreshGaspardInsertLinkSelect(currentId) {
+  const sel = $('#gaspard-insert-link');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Insérer un lien vers une rubrique… —</option>';
+  for (const t of __gaspardTopics) {
+    // No point linking a topic to itself.
+    if (currentId && t.id === currentId) continue;
+    const opt = document.createElement('option');
+    opt.value = String(t.id);
+    opt.dataset.title = t.title;
+    opt.textContent = `#${t.id} — ${t.title}`;
+    sel.appendChild(opt);
+  }
+}
+
+// Insert <a href='asfunction:win.box.getContent,N'>Title</a> at the cursor.
+// If the user has text selected in the textarea, that text becomes the link
+// label instead of the rubrique title.
+function insertGaspardLink() {
+  const sel = $('#gaspard-insert-link');
+  const ta = $('#gaspard-content-body');
+  if (!sel || !ta || !sel.value) return;
+  const id = sel.value;
+  const title = sel.options[sel.selectedIndex].dataset.title || `Rubrique ${id}`;
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const sub = ta.value.substring(start, end);
+  const label = sub || title;
+  const snippet = `<a href='asfunction:win.box.getContent,${id}'>${label}</a>`;
+  ta.value = ta.value.substring(0, start) + snippet + ta.value.substring(end);
+  const cursor = start + snippet.length;
+  ta.focus();
+  ta.setSelectionRange(cursor, cursor);
+  sel.selectedIndex = 0;
+}
+
 function openAddGaspardTopic() {
   $('#gaspard-modal-title').textContent = 'Nouvelle rubrique d\'aide';
   $('#gaspard-edit-id').value = '';
@@ -770,6 +814,7 @@ function openAddGaspardTopic() {
   $('#gaspard-sort').value = '0';
   $('#gaspard-is-index').checked = false;
   refreshGaspardParentSelect(null);
+  refreshGaspardInsertLinkSelect(null);
   $('#gaspard-parent').value = '';
   $('#modal-edit-gaspard').classList.add('open');
 }
@@ -787,6 +832,7 @@ async function editGaspardTopic(id) {
     $('#gaspard-sort').value = String(topic.sort_order || 0);
     $('#gaspard-is-index').checked = !!topic.is_index;
     refreshGaspardParentSelect(topic.id);
+    refreshGaspardInsertLinkSelect(topic.id);
     $('#gaspard-parent').value = topic.parent_id != null ? String(topic.parent_id) : '';
     $('#modal-edit-gaspard').classList.add('open');
   } catch (e) {
