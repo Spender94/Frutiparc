@@ -120,62 +120,6 @@ const {
   FORUM_DEFAULT_STRUCTURE,
   LEGACY_FORUM_BOARDS,
 } = require('./src/constants/forum');
-const { sessions, recentSidByIp } = require('./src/state/sessions');
-const { users } = require('./src/state/users');
-const { bouilleCache, bouilleOf } = require('./src/state/bouille-cache');
-const {
-  scoresData,
-  SCORES_DIR,
-  SCORES_FILE,
-  loadScores,
-  saveScoresFile,
-  migrateOldBkiwiScores,
-  extractBkiwiTrack,
-} = require('./src/state/scores');
-const {
-  challengeMedalsData,
-  CHALLENGE_MEDALS_FILE,
-  loadChallengeMedals,
-  saveChallengeMedals,
-} = require('./src/state/challenge-medals');
-const {
-  dailyXpActions,
-  XP_ACTIONS_FILE,
-  XP_REWARDS,
-  loadXpActions,
-  saveXpActions,
-  getXpActions,
-  trackXpAction,
-} = require('./src/state/xp');
-const {
-  REGISTER_WINDOW_MS,
-  REGISTER_MAX,
-  REGISTER_DAILY_MAX,
-  registerAttempts,
-  checkRegisterRateLimit,
-  recordSuccessfulRegister,
-} = require('./src/state/register-rl');
-const {
-  ADMIN_RL_WINDOW_MS,
-  ADMIN_RL_MAX,
-  adminAttempts,
-  checkAdminRateLimit,
-} = require('./src/state/admin-rl');
-const { pushedEvents, genEventId } = require('./src/state/push-events');
-const {
-  MAIN_SWF_PATH,
-  mainSwfCache,
-  loadMainSwfFromDisk,
-} = require('./src/state/swf-cache');
-const {
-  channels,
-  xmlSocketClients,
-  traceSubscriptions,
-  quizState,
-  blueModeUsers,
-  mdamirmaState,
-  recentlyEjected,
-} = require('./src/state/cbee-clients');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
 
@@ -390,10 +334,106 @@ function computeConsecration(username) {
 }
 
 
+const bouilleCache = {};
+
+function bouilleOf(user, username) {
+  if (user && user.fbouille) return normalizeBouilleState(user.fbouille);
+  if (username && bouilleCache[username]) return normalizeBouilleState(bouilleCache[username]);
+  return DEFAULT_BOUILLE_STATE;
+}
+
+// ─────────────────────────────────────────────
+// In-memory state
+// ─────────────────────────────────────────────
+const sessions = {};       // sid -> { user, createdAt }
+const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
+const recentSidByIp = new Map(); // ip -> sid fallback for legacy calls missing sid
 const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
 const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
 
-// score / medal persistence moved to src/state/scores.js + challenge-medals.js
+// ─────────────────────────────────────────────
+// FrutiScore persistence (data/scores.json)
+// Shape: { users: { [username]: { [rankingId]: { score, data, updatedAt } } } }
+// One ranking per game; ranking id = <gameName>_classic for mode 0.
+// ─────────────────────────────────────────────
+const SCORES_DIR = path.join(__dirname, 'data');
+const SCORES_FILE = path.join(SCORES_DIR, 'scores.json');
+const CHALLENGE_MEDALS_FILE = path.join(SCORES_DIR, 'challenge-medals.json');
+let scoresData = { users: {} };
+let challengeMedalsData = { lastRollDay: '', medalsByVisibleDay: {}, pendingNotifications: {} };
+function loadScores() {
+  try {
+    if (fs.existsSync(SCORES_FILE)) {
+      const raw = fs.readFileSync(SCORES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && parsed.users) {
+        scoresData = parsed;
+      }
+    }
+  } catch (e) {
+    console.error(`[SCORES] load failed: ${e.message}`);
+    scoresData = { users: {} };
+  }
+  migrateOldBkiwiScores();
+}
+
+function migrateOldBkiwiScores() {
+  let migrated = 0;
+  for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+    for (const oldKey of ['bkiwi_classic', 'bkiwi_challenge']) {
+      if (!rlist[oldKey]) continue;
+      const entry = rlist[oldKey];
+      const track = extractBkiwiTrack(entry.data);
+      const suffix = oldKey.endsWith('_challenge') ? 'challenge' : 'classic';
+      const newKey = `bkiwi_track${track}_${suffix}`;
+      if (!rlist[newKey]) {
+        rlist[newKey] = entry;
+        migrated++;
+      }
+      delete rlist[oldKey];
+    }
+  }
+  if (migrated > 0) {
+    console.log(`[SCORES] Migrated ${migrated} old bkiwi scores to per-track rankings`);
+    saveScoresFile();
+  }
+}
+
+function saveScoresFile() {
+  try {
+    if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
+    fs.writeFileSync(SCORES_FILE, JSON.stringify(scoresData, null, 2), 'utf8');
+  } catch (e) {
+    console.error(`[SCORES] save failed: ${e.message}`);
+  }
+}
+
+function loadChallengeMedals() {
+  try {
+    if (fs.existsSync(CHALLENGE_MEDALS_FILE)) {
+      const raw = fs.readFileSync(CHALLENGE_MEDALS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        challengeMedalsData = {
+          lastRollDay: String(parsed.lastRollDay || ''),
+          medalsByVisibleDay: parsed.medalsByVisibleDay || {},
+          pendingNotifications: parsed.pendingNotifications || {},
+        };
+      }
+    }
+  } catch (e) {
+    console.error('[CHALLENGE] medal load failed:', e.message);
+  }
+}
+
+function saveChallengeMedals() {
+  try {
+    if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
+    fs.writeFileSync(CHALLENGE_MEDALS_FILE, JSON.stringify(challengeMedalsData, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[CHALLENGE] medal save failed:', e.message);
+  }
+}
 
 function resolveInternalRankingId(rkLike, refDate) {
   const raw = String(rkLike || '').trim();
@@ -422,6 +462,30 @@ function buildLegacyUserResultPayload(user, reqId = '') {
   const r = reqId ? ` r="${escapeXml(reqId)}"` : '';
   const u = escapeXml(getDisplayName(String(user || 'Gaspard')));
   return `<n${r} u="${u}"></n>`;
+}
+
+function extractBkiwiTrack(rawData) {
+  const raw = String(rawData || '').trim();
+  if (raw.includes(':')) {
+    const parts = raw.split(':');
+    if (parts.length >= 2) {
+      const t = Number(parts[1]);
+      if (Number.isFinite(t) && t >= 0 && t <= 5) return t;
+    }
+  }
+  if (raw.includes(',')) {
+    const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const t = Number(parts[1]);
+      if (Number.isFinite(t) && t >= 0 && t <= 5) return t;
+    }
+  }
+  const arr = parseMtSerializedArray(raw);
+  if (arr && arr.length >= 2) {
+    const t = Number(arr[1]);
+    if (Number.isFinite(t) && t >= 0 && t <= 5) return t;
+  }
+  return 5;
 }
 
 function bkiwiRankingId(rawData, mode, hintedTrack) {
@@ -1094,8 +1158,63 @@ function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {
   }
 }
 
-// XP state + tracker moved to src/state/xp.js — load on boot.
+// ─────────────────────────────────────────────
+// XP System — daily activity tracking & levelling
+// ─────────────────────────��───────────────────
+// Tracks daily actions per user. Persisted to disk so it survives restarts.
+// Keys: login, chatMsg, forumTopic, forumPost, gamePlayed
+const XP_ACTIONS_FILE = path.join(SCORES_DIR, 'xp-actions.json');
+let dailyXpActions = {}; // username -> { login:N, chatMsg:N, forumTopic:N, forumPost:N, gamePlayed:N }
+
+function loadXpActions() {
+  try {
+    if (fs.existsSync(XP_ACTIONS_FILE)) {
+      const raw = fs.readFileSync(XP_ACTIONS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') dailyXpActions = parsed;
+    }
+  } catch (e) {
+    console.error('[XP] Failed to load xp-actions.json:', e.message);
+  }
+}
 loadXpActions();
+
+let _xpSaveTimer = null;
+function saveXpActions() {
+  if (_xpSaveTimer) return;
+  _xpSaveTimer = setTimeout(() => {
+    _xpSaveTimer = null;
+    try {
+      fs.writeFileSync(XP_ACTIONS_FILE, JSON.stringify(dailyXpActions), 'utf8');
+    } catch (e) {
+      console.error('[XP] Failed to save xp-actions.json:', e.message);
+    }
+  }, 2000);
+}
+
+function getXpActions(username) {
+  if (!dailyXpActions[username]) {
+    dailyXpActions[username] = { login: 0, chatMsg: 0, forumTopic: 0, forumPost: 0, gamePlayed: 0 };
+  }
+  return dailyXpActions[username];
+}
+
+function trackXpAction(username, action) {
+  getXpActions(username)[action] = (getXpActions(username)[action] || 0) + 1;
+  saveXpActions();
+}
+
+// XP reward formula per action type (with daily caps).
+// Flash formula: level N needs (N-1)^2 * 10000 XP total.
+// Lv2=10k, Lv3=40k, Lv4=90k, Lv5=160k.
+// Max 10000 XP/day → Lv2 in 1-2j, Lv2→3 in 3-6j.
+const XP_REWARDS = {
+  login:      { base: 1000, cap: 1  },  // 1000 XP once per day
+  chatMsg:    { base: 50,   cap: 50 },  // 50 XP per message, max 2500/day
+  forumTopic: { base: 500,  cap: 3  },  // 500 XP per topic, max 1500/day
+  forumPost:  { base: 250,  cap: 8  },  // 250 XP per reply, max 2000/day
+  gamePlayed: { base: 300,  cap: 10 },  // 300 XP per challenge score, max 3000/day
+};
 
 function countChallengeScores(username) {
   const rlist = scoresData.users[username];
@@ -1409,7 +1528,50 @@ function isValidUsername(username) {
   return /^[a-zA-Z0-9_]{3,20}$/.test(username);
 }
 
-// Register rate limiter moved to src/state/register-rl.js.
+// Per-IP rate limiter for /api/auth/register.
+// Sliding window: at most REGISTER_MAX attempts per REGISTER_WINDOW_MS,
+// plus a hard cap of REGISTER_DAILY_MAX successful registrations per day.
+const REGISTER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const REGISTER_MAX = 5;                    // 5 attempts/hour/IP
+const REGISTER_DAILY_MAX = 10;             // 10 successful regs/day/IP
+const registerAttempts = new Map(); // ip -> { attempts: number[], successDay: string, successCount: number }
+
+function checkRegisterRateLimit(ip) {
+  const now = Date.now();
+  const todayKey = new Date(now).toISOString().slice(0, 10);
+  let rec = registerAttempts.get(ip);
+  if (!rec) {
+    rec = { attempts: [], successDay: todayKey, successCount: 0 };
+    registerAttempts.set(ip, rec);
+  }
+  // Drop attempts older than the window
+  rec.attempts = rec.attempts.filter((t) => now - t < REGISTER_WINDOW_MS);
+  // Reset daily success counter if the day rolled over
+  if (rec.successDay !== todayKey) {
+    rec.successDay = todayKey;
+    rec.successCount = 0;
+  }
+  if (rec.attempts.length >= REGISTER_MAX) return false;
+  if (rec.successCount >= REGISTER_DAILY_MAX) return false;
+  rec.attempts.push(now);
+  return true;
+}
+
+function recordSuccessfulRegister(ip) {
+  const rec = registerAttempts.get(ip);
+  if (rec) rec.successCount++;
+}
+
+// Periodically prune empty entries to keep the map bounded.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, rec] of registerAttempts) {
+    rec.attempts = rec.attempts.filter((t) => now - t < REGISTER_WINDOW_MS);
+    if (rec.attempts.length === 0 && rec.successCount === 0) {
+      registerAttempts.delete(ip);
+    }
+  }
+}, 10 * 60 * 1000).unref();
 
 function getDisplayName(username) {
   const key = String(username || '').toLowerCase();
@@ -1979,7 +2141,35 @@ if (!ADMIN_KEY) {
   console.warn('[ADMIN] ADMIN_KEY env var is empty — admin endpoints will refuse every request. Set ADMIN_KEY in production.');
 }
 
-// Admin rate limiter moved to src/state/admin-rl.js.
+// Per-IP rate limiter for admin endpoints. Far tighter than the
+// register limit (40 requests / 10 min) — admins are humans clicking
+// a UI, not a script, so a few dozen requests per window is plenty,
+// and the cap means a brute-force attacker who somehow obtained the
+// key still can't iterate fast. Failed-auth attempts AND successful
+// requests both count, so we also throttle accidental hot-loops.
+const ADMIN_RL_WINDOW_MS = 10 * 60 * 1000;
+const ADMIN_RL_MAX = 40;
+const adminAttempts = new Map(); // ip -> number[] (timestamps)
+
+function checkAdminRateLimit(ip) {
+  const now = Date.now();
+  let arr = adminAttempts.get(ip);
+  if (!arr) { arr = []; adminAttempts.set(ip, arr); }
+  // Drop expired entries
+  while (arr.length && now - arr[0] >= ADMIN_RL_WINDOW_MS) arr.shift();
+  if (arr.length >= ADMIN_RL_MAX) return false;
+  arr.push(now);
+  return true;
+}
+
+// Periodically prune empty buckets to keep the map bounded.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, arr] of adminAttempts) {
+    while (arr.length && now - arr[0] >= ADMIN_RL_WINDOW_MS) arr.shift();
+    if (arr.length === 0) adminAttempts.delete(ip);
+  }
+}, ADMIN_RL_WINDOW_MS).unref?.();
 
 function adminAuth(req, res, next) {
   if (!ADMIN_KEY) {
@@ -3260,7 +3450,13 @@ app.post('/api/admin/challenge/regenerate-medals', adminAuth, async (req, res) =
 });
 
 // ── Admin: broadcast event to all users (Événements window) ──
-// pushedEvents + genEventId moved to src/state/push-events.js.
+const pushedEvents = []; // { id, message, type, time, chat }
+let pushedEventSeq = 0;
+
+function genEventId() {
+  pushedEventSeq += 1;
+  return `evt_${Date.now().toString(36)}_${pushedEventSeq}`;
+}
 
 // ── Admin: Channels ──
 
@@ -4624,31 +4820,44 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
 // dropped TCP connection is the worst case (and the browser retries that).
 // The compression middleware now also skips application/x-shockwave-flash
 // so no chunked re-encoding can interrupt the transfer.
-// main.swf cache state lives in src/state/swf-cache.js. Pre-load now.
+const MAIN_SWF_PATH = path.join(__dirname, 'legacy', 'main.swf');
+let MAIN_SWF_BUF = null;
+let MAIN_SWF_ETAG = null;
+function loadMainSwfFromDisk() {
+  try {
+    MAIN_SWF_BUF = fs.readFileSync(MAIN_SWF_PATH);
+    MAIN_SWF_ETAG = '"' + crypto.createHash('sha1').update(MAIN_SWF_BUF).digest('hex') + '"';
+    console.log(`[MAIN.SWF] cached ${MAIN_SWF_BUF.length} bytes, etag=${MAIN_SWF_ETAG}`);
+  } catch (e) {
+    MAIN_SWF_BUF = null;
+    MAIN_SWF_ETAG = null;
+    console.error(`[MAIN.SWF] failed to read ${MAIN_SWF_PATH}: ${e.message}`);
+  }
+}
 loadMainSwfFromDisk();
 
 app.get('/legacy/main.swf', (req, res) => {
-  if (!mainSwfCache.buf) {
+  if (!MAIN_SWF_BUF) {
     // Defensive fallback — should never happen after a successful boot,
     // but if the buffer is somehow gone, retry from disk one time so a
     // post-deploy hot-swap of legacy/main.swf still works without a
     // process restart.
     loadMainSwfFromDisk();
-    if (!mainSwfCache.buf) {
+    if (!MAIN_SWF_BUF) {
       return res.status(503).type('text/plain').send('main.swf unavailable');
     }
   }
-  if (mainSwfCache.etag && req.headers['if-none-match'] === mainSwfCache.etag) {
+  if (MAIN_SWF_ETAG && req.headers['if-none-match'] === MAIN_SWF_ETAG) {
     return res.status(304).end();
   }
-  if (mainSwfCache.etag) res.set('ETag', mainSwfCache.etag);
+  if (MAIN_SWF_ETAG) res.set('ETag', MAIN_SWF_ETAG);
   // no-transform tells any intermediary (and the compression middleware) not
   // to re-encode; we want the raw SWF bytes to arrive byte-for-byte so
   // Ruffle's loader sees a stable Content-Length and a clean stream.
   res.set('Cache-Control', 'no-cache, must-revalidate, no-transform');
   res.set('Content-Type', 'application/x-shockwave-flash');
-  res.set('Content-Length', String(mainSwfCache.buf.length));
-  res.end(mainSwfCache.buf);
+  res.set('Content-Length', String(MAIN_SWF_BUF.length));
+  res.end(MAIN_SWF_BUF);
 });
 
 app.get(['/fonts.swf', '/legacy/fonts.swf', '/sw/fonts.swf'], (req, res) => {
@@ -5274,7 +5483,7 @@ function swfSizeForUrlPath(urlPath) {
 // networking bypasses window.fetch and XMLHttpRequest interceptors — the
 // popup can't observe the eject directly. Entries are cleared on read so
 // the next mount of the same game starts clean.
-// recentlyEjected moved to src/state/cbee-clients.js.
+const recentlyEjected = new Map();
 
 app.get('/api/check-ejected', (req, res) => {
   const sid = String(req.query.sid || '');
@@ -7478,7 +7687,19 @@ wssScore.on('connection', (ws) => {
 // ─────────────────────────────────────────────
 // CBee client state
 // ─────────────────────────────────────────────
-// channels registry moved to src/state/cbee-clients.js.
+const channels = {
+  pomme:     { desc: 'Salon Pomme',     topic: 'Bienvenue sur le salon Pomme !', users: new Set() },
+  abricot:   { desc: 'Salon Abricot',   topic: 'Salon Abricot', users: new Set() },
+  poire:     { desc: 'Salon Poire',     topic: 'Salon Poire', users: new Set() },
+  fraise:    { desc: 'Salon Fraise',    topic: 'Salon Fraise', users: new Set() },
+  citron:    { desc: 'Salon Citron',    topic: 'Salon Citron', users: new Set() },
+  kiwi:      { desc: 'Salon Kiwi',      topic: 'Salon Kiwi', users: new Set() },
+  raisin:    { desc: 'Salon Raisin',    topic: 'Salon Raisin', users: new Set() },
+  orange:    { desc: 'Salon Orange',    topic: 'Salon Orange', users: new Set() },
+  cerise:    { desc: 'Salon Cerise',    topic: 'Salon Cerise', users: new Set() },
+  banane:    { desc: 'Salon Banane',    topic: 'Salon Banane', users: new Set() },
+  bienvenue: { desc: 'Bienvenue',       topic: 'Bienvenue sur Frutiparc !', users: new Set() },
+};
 
 // Gaspard is the welcome-bot NPC. Stored under the lowercase key
 // `users.gaspard` like every other user (getDisplayName, trace and
@@ -7543,7 +7764,7 @@ users.mdamirma = {
   frutiSignB: 5,
   displayName: 'mdamirma',
 };
-// mdamirmaState.currentChannel lives on mdamirmaState.currentChannel (state/cbee-clients).
+let mdamirmaCurrentChannel = null;
 
 function mdamirmaPickChannel() {
   let best = null;
@@ -7559,16 +7780,16 @@ function mdamirmaPickChannel() {
 }
 
 function mdamirmaJoin(channelName) {
-  if (mdamirmaState.currentChannel) {
-    const oldCh = channels[mdamirmaState.currentChannel];
+  if (mdamirmaCurrentChannel) {
+    const oldCh = channels[mdamirmaCurrentChannel];
     if (oldCh) {
       oldCh.users.delete('mdamirma');
-      broadcastToChannel(mdamirmaState.currentChannel,
-        `<${CMD.userleaved} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(mdamirmaState.currentChannel)}" />`
+      broadcastToChannel(mdamirmaCurrentChannel,
+        `<${CMD.userleaved} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(mdamirmaCurrentChannel)}" />`
       );
     }
   }
-  mdamirmaState.currentChannel = channelName;
+  mdamirmaCurrentChannel = channelName;
   const ch = channels[channelName];
   if (!ch) return;
   ch.users.add('mdamirma');
@@ -7578,15 +7799,15 @@ function mdamirmaJoin(channelName) {
 }
 
 function mdamirmaLeave() {
-  if (!mdamirmaState.currentChannel) return;
-  const ch = channels[mdamirmaState.currentChannel];
+  if (!mdamirmaCurrentChannel) return;
+  const ch = channels[mdamirmaCurrentChannel];
   if (ch) {
     ch.users.delete('mdamirma');
-    broadcastToChannel(mdamirmaState.currentChannel,
-      `<${CMD.userleaved} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(mdamirmaState.currentChannel)}" />`
+    broadcastToChannel(mdamirmaCurrentChannel,
+      `<${CMD.userleaved} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(mdamirmaCurrentChannel)}" />`
     );
   }
-  mdamirmaState.currentChannel = null;
+  mdamirmaCurrentChannel = null;
 }
 
 function mdamirmaSay(channelName, text) {
@@ -7668,7 +7889,7 @@ for (const npc of CONNECTED_NPCS) {
   channels.pomme.users.add(npc);
 }
 
-// xmlSocketClients map moved to src/state/cbee-clients.js.
+const xmlSocketClients = new Map(); // socket -> { sid, username, logged, channels: Set }
 
 function sendToClient(socket, data) {
   try {
@@ -7699,7 +7920,7 @@ function getSocketsForUsername(username) {
 
 // Trace subscriptions: when socket A asks for user B's trace, A is subscribed
 // to real-time presence/status updates for B — independent of shared channels.
-// traceSubscriptions map moved to src/state/cbee-clients.js.
+const traceSubscriptions = new Map(); // targetUsername → Set<socket>
 
 function subscribeTrace(socket, targetUsername) {
   if (!targetUsername) return;
@@ -7944,7 +8165,13 @@ function patchSlot0(username, game, existingData, ctx) {
   }
 }
 
-// quizState + blueModeUsers moved to src/state/cbee-clients.js.
+// Per-channel quiz state (ephemeral — lost on restart).
+// { channelName: { question, points: Map<username, number>, active } }
+const quizState = {};
+
+// Per-client blue-bold toggle for animators.
+// Set<socketKey> — we store the username to look up.
+const blueModeUsers = new Set();
 
 function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   const channel = channels[channelName];
