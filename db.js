@@ -916,7 +916,7 @@ async function getArchivedScores(rankingId, dayKey) {
 
 async function getArchivedScoresForDay(dayKey) {
   const { rows } = await pool.query(
-    'SELECT ranking_id, username, score FROM challenge_score_archive WHERE day_key = $1',
+    'SELECT ranking_id, username, score, data FROM challenge_score_archive WHERE day_key = $1',
     [dayKey]
   );
   return rows;

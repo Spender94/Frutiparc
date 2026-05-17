@@ -1326,8 +1326,73 @@ function isLowerBetter(rankingId) {
   return !!(RANKINGS[rankingId] && RANKINGS[rankingId].lowerIsBetter);
 }
 
+// MotionBall 2 challenge ranking hierarchy (confirmed by spender94):
+//   1. Players who beat the final boss come above everyone else, regardless
+//      of map %.
+//   2. Among boss-beaters, the player with more time on the counter wins —
+//      i.e. lower elapsed time (s = centiseconds) is better.
+//   3. Among players who did NOT beat the boss, a higher map % (stored in
+//      `data`) wins.
+// A player has beaten the boss iff a time was recorded (s > 0). When no
+// time is recorded the game does not display one, which is the "% only"
+// row that we treat as the lower tier.
+function mb2PctFromData(d) {
+  if (d == null) return 0;
+  const s = String(d).trim().replace(/^°/, '').replace(/%$/, '');
+  const n = Number(s);
+  if (!Number.isFinite(n)) return 0;
+  return n > 1 ? n : n * 100;
+}
+function mb2HasBoss(s) {
+  return Number.isFinite(Number(s)) && Number(s) > 0;
+}
+// Pick up the percentage payload regardless of the field name used by the
+// caller (`data`, `d`, or `pct`). Different code paths historically used
+// different keys.
+function mb2DataOf(entry) {
+  if (!entry) return '';
+  if (entry.data != null) return entry.data;
+  if (entry.d != null) return entry.d;
+  if (entry.pct != null) return entry.pct;
+  return '';
+}
+function mb2Comparator(a, b) {
+  const aBoss = mb2HasBoss(a.s);
+  const bBoss = mb2HasBoss(b.s);
+  if (aBoss !== bBoss) return aBoss ? -1 : 1;
+  if (aBoss) {
+    // both beat the boss → lower elapsed time wins
+    const d = Number(a.s) - Number(b.s);
+    if (d !== 0) return d;
+    // tie-breaker on the map % when both beat the boss in identical times
+    return mb2PctFromData(mb2DataOf(b)) - mb2PctFromData(mb2DataOf(a));
+  }
+  // neither beat the boss → higher % wins
+  return mb2PctFromData(mb2DataOf(b)) - mb2PctFromData(mb2DataOf(a));
+}
+function isMb2Ranking(rankingId) {
+  return rankingId === 'mb2_challenge' || rankingId === 'mb2_classic';
+}
+
 function scoreComparator(rankingId) {
+  if (isMb2Ranking(rankingId)) return mb2Comparator;
   return isLowerBetter(rankingId) ? (a, b) => a.s - b.s : (a, b) => b.s - a.s;
+}
+
+// "Is the new (score, data) tuple better than the existing one for this
+// ranking?" Defers to mb2Comparator for MB2 so the boss-beaten/% hierarchy
+// is honored when deciding whether to persist a new attempt.
+function isScoreBetter(rankingId, newScore, newData, oldScore, oldData) {
+  if (isMb2Ranking(rankingId)) {
+    const cmp = mb2Comparator(
+      { s: newScore, data: newData },
+      { s: oldScore, data: oldData },
+    );
+    return cmp < 0;
+  }
+  return isLowerBetter(rankingId)
+    ? (oldScore === 0 || newScore < oldScore)
+    : (newScore > oldScore);
 }
 
 // Save a score for user+ranking. Returns { updated, newScore, oldScore, oldPos, newPos }.
@@ -1343,12 +1408,12 @@ function persistScore(username, rankingId, score, data) {
   const newData = (data === undefined || data === null) ? '' : String(data);
   const oldPos = computePosition(rankingId, username);
   let updated = false;
-  const scoreImproved = isLowerBetter(rankingId) ? (oldScore === 0 || n < oldScore) : (n > oldScore);
+  const scoreImproved = isScoreBetter(rankingId, n, newData, oldScore, oldData);
   const shouldBackfillData = !oldData && !!newData && n === oldScore;
   if (scoreImproved || shouldBackfillData) {
     scoresData.users[username][rankingId] = {
       score: scoreImproved ? n : oldScore,
-      data: newData || oldData,
+      data: (scoreImproved || !oldData) ? newData : oldData,
       updatedAt: new Date().toISOString(),
     };
     updated = true;
@@ -1369,7 +1434,7 @@ function computePosition(rankingId, username) {
   const all = [];
   for (const [u, rlist] of Object.entries(scoresData.users || {})) {
     if (rlist && rlist[rankingId] && Number.isFinite(Number(rlist[rankingId].score))) {
-      all.push({ u, s: Number(rlist[rankingId].score) });
+      all.push({ u, s: Number(rlist[rankingId].score), data: rlist[rankingId].data });
     }
   }
   all.sort(scoreComparator(rankingId));
@@ -1836,7 +1901,7 @@ function collectTop3ForRanking(rankingId) {
   const all = [];
   for (const [u, rlist] of Object.entries(scoresData.users || {})) {
     if (rlist && rlist[rankingId] && Number.isFinite(Number(rlist[rankingId].score))) {
-      all.push({ u, s: Number(rlist[rankingId].score) });
+      all.push({ u, s: Number(rlist[rankingId].score), data: rlist[rankingId].data });
     }
   }
   all.sort(scoreComparator(rankingId));
@@ -4005,7 +4070,7 @@ app.get('/api/admin/challenge/status', adminAuth, async (req, res) => {
     const all = [];
     for (const [u, rlist] of Object.entries(scoresData.users || {})) {
       if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
-        all.push({ u, s: Number(rlist[rkId].score) });
+        all.push({ u, s: Number(rlist[rkId].score), data: rlist[rkId].data });
       }
     }
     all.sort(scoreComparator(rkId));
@@ -4118,7 +4183,7 @@ app.get('/api/admin/challenge/debug', adminAuth, async (req, res) => {
     const all = [];
     for (const [u, rlist] of Object.entries(scoresData.users || {})) {
       if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
-        all.push({ u, s: Number(rlist[rkId].score) });
+        all.push({ u, s: Number(rlist[rkId].score), data: rlist[rkId].data });
       }
     }
     all.sort(scoreComparator(rkId));
@@ -4165,7 +4230,7 @@ app.post('/api/admin/challenge/regenerate-medals', adminAuth, async (req, res) =
     const byRanking = {};
     for (const r of rows) {
       if (!byRanking[r.ranking_id]) byRanking[r.ranking_id] = [];
-      byRanking[r.ranking_id].push({ u: r.username, s: Number(r.score) });
+      byRanking[r.ranking_id].push({ u: r.username, s: Number(r.score), data: r.data });
     }
     const winnersByUser = {};
     const details = {};
@@ -8184,7 +8249,7 @@ async function boot() {
             const byRanking = {};
             for (const r of rows) {
               if (!byRanking[r.ranking_id]) byRanking[r.ranking_id] = [];
-              byRanking[r.ranking_id].push({ u: r.username, s: Number(r.score) });
+              byRanking[r.ranking_id].push({ u: r.username, s: Number(r.score), data: r.data });
             }
             const winnersByUser = {};
             for (const rkId of challengeRankingIds()) {
@@ -10861,7 +10926,7 @@ case 'createchannel': {
         const all = [];
         for (const [u, rlist] of Object.entries(scoresData.users || {})) {
           if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
-            all.push({ u, s: Number(rlist[rkId].score) });
+            all.push({ u, s: Number(rlist[rkId].score), data: rlist[rkId].data });
           }
         }
         all.sort(scoreComparator(rkId));
