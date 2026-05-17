@@ -17,50 +17,17 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
-const { encode62, decode62 } = require('./src/util/base62');
-const { dbErr } = require('./src/util/db-error');
-const {
-  utcDayKey,
-  parisDayKey,
-  yesterdayParisDayKey,
-  yesterdayDayKey,
-  formatFrutizDate,
-  getFrutizSubscribeDate,
-  getFrutizBirthday,
-} = require('./src/util/dates');
-const { escapeXml, escapeXmlText, parseXmlAttrs, xmlTag } = require('./src/util/xml');
-const {
-  jsonToMTSerial,
-  parseMtSerializedArray,
-  parseMtSerializedPrimitive,
-} = require('./src/util/mt-serialization');
-const {
-  USER_LOG_TYPE,
-  STATUS_INTERNAL_FRAME,
-  statusInternalCode,
-} = require('./src/constants/user-log');
-const {
-  DEFAULT_BOUILLE_STATE,
-  ALL_PEN_ITEM_IDS,
-  withDefaultPens,
-  normalizeBouilleState,
-} = require('./src/constants/bouille');
-const { PROFANITY_REPLACEMENTS, censorProfanity } = require('./src/constants/profanity');
-const { CMD, CMD_REV, CONNECTED_NPCS } = require('./src/constants/cbee');
-const {
-  GAME_ITEM_INFO,
-  PIXIZ_ITEM_NAMES,
-  PIXIZ_SPELL_NAMES,
-  PIXIZ_FOOD_BASE_NAMES,
-  PIXIZ_DIAM_NAMES,
-  PIXIZ_MILESTONES,
-  JAMA_MILESTONES,
-  resolveGameItemGif,
-  getGameItemDisplayName,
-  getGameItemGame,
-} = require('./src/constants/game-items');
-const { GAME_PROGRESS_REGISTRY } = require('./src/constants/consecration');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
+
+// Standard error sink for fire-and-forget DB writes. Replaces the
+// `.catch(() => {})` pattern that used to swallow Postgres failures
+// silently — every dropped medal, accessory, game item or mail-state
+// change now leaves a trace in the logs so we can detect persistent
+// DB issues instead of just losing data quietly.
+const dbErr = (op) => (e) => {
+  const msg = e && e.message ? e.message : String(e);
+  console.error('[DB] ' + op + ' failed: ' + msg);
+};
 
 
 
@@ -205,6 +172,410 @@ function warnIfStubSwfAssets() {
   }
 }
 
+// ─────────────────────────────────────────────
+// Helpers: base62 encode/decode (matches FEString/FENumber in AS2)
+// ─────────────────────────────────────────────
+const BASE62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+function encode62(n, minLen = 1) {
+  if (n === 0) return '0'.padStart(minLen, '0');
+  let result = '';
+  let num = n;
+  while (num > 0) {
+    result = BASE62[num % 62] + result;
+    num = Math.floor(num / 62);
+  }
+  return result.padStart(minLen, '0');
+}
+
+function decode62(s) {
+  let r = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    let v;
+    if (c >= '0' && c <= '9') v = c.charCodeAt(0) - 48;
+    else if (c >= 'a' && c <= 'z') v = c.charCodeAt(0) - 87;
+    else if (c >= 'A' && c <= 'Z') v = c.charCodeAt(0) - 29;
+    else v = 0;
+    r = r * 62 + v;
+  }
+  return r;
+}
+
+// Frame number in the events-icon sprite (sprite id=533) for each user-log /
+// site-log entry type. Mapped empirically via the /test-log-icon admin scan.
+// Drives the icon shown next to each <l type="N"> entry in the user's
+// "Mon historique" and "Évènements" desktop windows.
+const USER_LOG_TYPE = {
+  KICK:        1,    // user ejected from a channel
+  BAN:         2,    // user banned
+  TOTOCHE:     3,    // user muted (totoché) by a moderator
+  // 4: reserved (no visual)
+  PICTO:       10,   // unlocked a new game picto / titem
+  CHAT:        20,   // chat-related notification (NPC reveal, etc.)
+  LEVEL_UP:    30,
+  LEVEL_DOWN:  31,
+  INSCRIPTION: 40,   // first entry on a freshly-registered account
+  GODSON:      50,   // new godson recruited
+  MEDAL:       60,   // won a daily-challenge medal
+};
+
+// Frame number in the activity-icon sprite (sprite id=246 inside the "status"
+// sprite at the "internal" label) for each game. The SWF renders the icon via
+// gotoAndStop(internal) where `internal` is the 2-char base62 value broadcast
+// in the user's status string. Note: the sprite has been reordered since it
+// was authored and its FrameLabels no longer match the visual content at each
+// frame — these numbers were validated empirically from the icons users see
+// when launching each game. Returning 0 hides the icon (no internal status).
+const STATUS_INTERNAL_FRAME = {
+  bkiwi:     2,   // verified: Kaluga (internal=2) was showing the BKiwi visual
+  mb2:       3,   // verified empirically via /set-internal scan
+  swapou2:   4,   // verified empirically via /set-internal scan
+  snake3:    5,   // verified: Snake (internal=5) already shows the right visual
+  bandas:    6,   // verified: Swapou (internal=6) was showing the Frutibandas visual
+  grapiz:    7,   // verified: MB2 (internal=7) was showing the Grapiz visual
+  kaluga:    8,   // verified: BKiwi (internal=8) was showing the Kaluga visual
+  miniwave:  9,   // verified empirically via /set-internal scan
+  // Not yet located in the sprite (frame number unknown): minipixiz, jamajama.
+  // forum visual is at frame 36 per FrameLabels.
+  forum:     36,
+};
+function statusInternalCode(name) {
+  if (!name) return 0;
+  return STATUS_INTERNAL_FRAME[name] || 0;
+}
+
+const DEFAULT_BOUILLE_STATE = '000000010000000000000000';
+const ALL_PEN_ITEM_IDS = [315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 599, 600, 601, 602];
+
+function withDefaultPens(items = []) {
+  return Array.from(new Set([...(items || []), ...ALL_PEN_ITEM_IDS]));
+}
+
+function normalizeBouilleState(value) {
+  // Frutibouille uses base62 tokens (0-9, a-z, A-Z), not only digits.
+  let s = String(value || '').replace(/[^0-9a-zA-Z]/g, '');
+
+  if (s.length === 0) return DEFAULT_BOUILLE_STATE;
+  if (s.length > 24) s = s.slice(0, 24);
+
+  return s;
+}
+
+const PROFANITY_REPLACEMENTS = [
+  [/\bcon\b/gi, 'blonk'],
+  [/\bconne\b/gi, 'blonk'],
+  [/\bputain\b/gi, 'margotton'],
+  [/\bpute\b/gi, 'ribaude'],
+  [/\bcontent\b/gi, 'youpi-banane'],
+  [/\bcontente\b/gi, 'youpi-banane'],
+  [/\bmignon\b/gi, 'youpi-framboise'],
+  [/\bmignonne\b/gi, 'youpi-framboise'],
+  [/\bserveur\b/gi, 'gros cube noir et lourd qui ventile fort'],
+];
+
+function censorProfanity(text) {
+  if (!text) return text;
+  let out = String(text);
+  for (const [re, repl] of PROFANITY_REPLACEMENTS) out = out.replace(re, repl);
+  return out;
+}
+
+// ─────────────────────────────────────────────
+// Game Titems/Pictos — mapping item names to display info + GIF paths
+// ─────────────────────────────────────────────
+const GAME_ITEM_INFO = {
+  // Kaluga
+  '$butterfly0': { name: 'Papillon vert',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/papillonVert.gif' },
+  '$butterfly1': { name: 'Papillon jaune',      game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/papillonJaune.gif' },
+  '$butterfly2': { name: 'Papillon rose',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/papillonRose.gif' },
+  '$butterfly3': { name: 'Papillon violet',     game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/papillonViolet.gif' },
+  '$smiley0':    { name: 'Drapeau blanc',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/drapeauBlanc.gif' },
+  '$smiley1':    { name: 'Drapeau rouge',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/drapeauRouge.gif' },
+  '$smiley2':    { name: 'Gong de piste',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/gongPiste.gif' },
+  '$smiley3':    { name: 'Heptathlon',          game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/heptathlon.gif' },
+  '$tz1':        { name: 'Piwali',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/midPiwali.gif' },
+  '$tz2':        { name: 'Nalika',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/midNalika.gif' },
+  '$tz3':        { name: 'Makulo',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/midMakulo.gif' },
+  '$tz4':        { name: 'Gomola',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/midGomola.gif' },
+  '$basket':     { name: 'Panier',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/panier.gif' },
+  '$bird':       { name: 'Corbeau',             game: 'Kaluga', gif: 'Games/kaluga/Titems/corbeau.gif' },
+  '$ring':       { name: 'Kaluga Spécial',      game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/kalugaSpecial.gif' },
+  '$ant':        { name: 'Fourmi',              game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/fourmi.gif' },
+  '$kagulga':    { name: 'Kagulga',             game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/midKaluga.gif' },
+  // Swapou2
+  '$sel':        { name: 'Sel',                 game: 'Swapou', gif: 'Games/swapou2/images/titems/item_sel.gif' },
+  '$poivre':     { name: 'Poivre',              game: 'Swapou', gif: 'Games/swapou2/images/titems/item_poivre.gif' },
+  '$epee':       { name: 'Dague',               game: 'Swapou', gif: 'Games/swapou2/images/titems/item_dague.gif' },
+  '$piment':     { name: 'Piment',              game: 'Swapou', gif: 'Games/swapou2/images/titems/item_piment.gif' },
+  '$dent':       { name: 'Dent',                game: 'Swapou', gif: 'Games/swapou2/images/titems/item_dent.gif' },
+  '$sucre':      { name: 'Sucre',               game: 'Swapou', gif: 'Games/swapou2/images/titems/item_sucre.gif' },
+  '$metal01':    { name: 'Métal 1',             game: 'Swapou', gif: 'Games/swapou2/images/titems/metal_01.gif' },
+  '$metal02':    { name: 'Métal 2',             game: 'Swapou', gif: 'Games/swapou2/images/titems/metal_02.gif' },
+  '$metal03':    { name: 'Métal 3',             game: 'Swapou', gif: 'Games/swapou2/images/titems/metal_03.gif' },
+  '$ice01':      { name: 'Glace 1',             game: 'Swapou', gif: 'Games/swapou2/images/titems/frozen_01.gif' },
+  '$ice02':      { name: 'Glace 2',             game: 'Swapou', gif: 'Games/swapou2/images/titems/frozen_02.gif' },
+  '$ice03':      { name: 'Glace 3',             game: 'Swapou', gif: 'Games/swapou2/images/titems/frozen_03.gif' },
+  '$star01':     { name: 'Étoile 1',            game: 'Swapou', gif: 'Games/swapou2/images/titems/star_01.gif' },
+  '$star02':     { name: 'Étoile 2',            game: 'Swapou', gif: 'Games/swapou2/images/titems/star_02.gif' },
+  '$star03':     { name: 'Étoile 3',            game: 'Swapou', gif: 'Games/swapou2/images/titems/star_03.gif' },
+  '$fruit01':    { name: 'Fruit 1',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_01.gif' },
+  '$fruit02':    { name: 'Fruit 2',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_02.gif' },
+  '$fruit03':    { name: 'Fruit 3',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_03.gif' },
+  '$fruit04':    { name: 'Fruit 4',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_04.gif' },
+  '$fruit05':    { name: 'Fruit 5',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_05.gif' },
+  '$fruit06':    { name: 'Fruit 6',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_06.gif' },
+  '$fruit07':    { name: 'Fruit 7',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_07.gif' },
+  '$fruit08':    { name: 'Fruit 8',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_08.gif' },
+  '$fruit09':    { name: 'Fruit 9',             game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_09.gif' },
+  '$fruit10':    { name: 'Fruit 10',            game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_10.gif' },
+  '$fruit11':    { name: 'Fruit 11',            game: 'Swapou', gif: 'Games/swapou2/images/titems/fruit_11.gif' },
+  '$combo01':    { name: 'Combo 1',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_01.gif' },
+  '$combo02':    { name: 'Combo 2',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_02.gif' },
+  '$combo03':    { name: 'Combo 3',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_03.gif' },
+  '$combo04':    { name: 'Combo 4',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_04.gif' },
+  '$combo05':    { name: 'Combo 5',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_05.gif' },
+  '$combo06':    { name: 'Combo 6',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_06.gif' },
+  '$combo07':    { name: 'Combo 7',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_07.gif' },
+  '$combo08':    { name: 'Combo 8',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_08.gif' },
+  '$combo09':    { name: 'Combo 9',             game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_09.gif' },
+  '$combo10':    { name: 'Combo 10',            game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_10.gif' },
+  '$combo11':    { name: 'Combo 11',            game: 'Swapou', gif: 'Games/swapou2/images/titems/combo_11.gif' },
+  '$photo01':    { name: 'Photo Sel',           game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_sel.gif' },
+  '$photo02':    { name: 'Photo Moutarde',      game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_moutarde.gif' },
+  '$photo03':    { name: 'Photo Dimitri',       game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_dimitri.gif' },
+  '$photo04':    { name: 'Photo Natacha',       game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_natacha.gif' },
+  '$photo05':    { name: 'Photo Poivre',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_poivre.gif' },
+  '$photo06':    { name: 'Photo Tomtom',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_tomtom.gif' },
+  '$photo07':    { name: 'Photo Wasabi',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_wasabi.gif' },
+  '$photo08':    { name: 'Photo Piment',        game: 'Swapou', gif: 'Games/swapou2/images/titems/item_piment.gif' },
+  // MotionBall2
+  '$c1or':       { name: 'Balle jaune or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballJauneOr.gif' },
+  '$c1argent':   { name: 'Balle jaune argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballJauneArgent.gif' },
+  '$c1':         { name: 'Balle jaune bronze',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballJauneBronze.gif' },
+  '$c2or':       { name: 'Balle verte or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVerteOr.gif' },
+  '$c2argent':   { name: 'Balle verte argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVerteArgent.gif' },
+  '$c2':         { name: 'Balle verte bronze',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVerteBronze.gif' },
+  '$c3or':       { name: 'Balle rouge or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballRougeOr.gif' },
+  '$c3argent':   { name: 'Balle rouge argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballRougeArgent.gif' },
+  '$c3':         { name: 'Balle rouge bronze',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballRougeBronze.gif' },
+  '$c4or':       { name: 'Balle orange or',     game: 'MotionBall', gif: 'Games/motionBall2/picto/ballOrangeOr.gif' },
+  '$c4argent':   { name: 'Balle orange argent', game: 'MotionBall', gif: 'Games/motionBall2/picto/ballOrangeArgent.gif' },
+  '$c4':         { name: 'Balle orange bronze', game: 'MotionBall', gif: 'Games/motionBall2/picto/ballOrangeBronze.gif' },
+  '$c5or':       { name: 'Balle bleue or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballBleueOr.gif' },
+  '$c5argent':   { name: 'Balle bleue argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballBleueArgent.gif' },
+  '$c5':         { name: 'Balle bleue bronze',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballBleueBronze.gif' },
+  '$c6or':       { name: 'Balle métal or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballMetalOr.gif' },
+  '$c6argent':   { name: 'Balle métal argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballMetalArgent.gif' },
+  '$c6':         { name: 'Balle métal bronze',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballMetalBronze.gif' },
+  '$c7or':       { name: 'Balle violette or',   game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVioletteOr.gif' },
+  '$c7argent':   { name: 'Balle violette argent', game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVioletteArgent.gif' },
+  '$c7':         { name: 'Balle violette bronze', game: 'MotionBall', gif: 'Games/motionBall2/picto/ballVioletteBronze.gif' },
+  '$bfacettes':  { name: 'Balle à facettes',    game: 'MotionBall', gif: 'Games/motionBall2/picto/ballaFacettes.gif' },
+  '$bnormal':    { name: 'Bumper normal',       game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperNormal.gif' },
+  '$btime':      { name: 'Bumper du temps',     game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperDuTemp.gif' },
+  '$bdeath':     { name: 'Bumper de la mort',   game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperDeLaMort.gif' },
+  '$bmagnet':    { name: 'Bumper magnétique',   game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperMagnetic.gif' },
+  '$bshadow':    { name: 'Bumper invisible',    game: 'MotionBall', gif: 'Games/motionBall2/picto/bumperInvisible.gif' },
+  '$oeil':       { name: "Oeil du poulpe",      game: 'MotionBall', gif: 'Games/motionBall2/picto/oeilDuPoulpe.gif' },
+  '$masque':     { name: 'Masque de TB',        game: 'MotionBall', gif: 'Games/motionBall2/picto/maskDeTB.gif' },
+  '$eca0':       { name: 'Écaille verte',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleVerte.gif' },
+  '$eca1':       { name: 'Écaille rouge',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleRouge.gif' },
+  '$eca2':       { name: 'Écaille bleue',       game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleBleue.gif' },
+  '$eca3':       { name: 'Écaille marron',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ecailleMarron.gif' },
+  '$symb0':      { name: 'Logo eau',            game: 'MotionBall', gif: 'Games/motionBall2/picto/logoEau.gif' },
+  '$symb1':      { name: 'Logo feu',            game: 'MotionBall', gif: 'Games/motionBall2/picto/logoFeu.gif' },
+  '$symb2':      { name: 'Logo vent',           game: 'MotionBall', gif: 'Games/motionBall2/picto/logoVent.gif' },
+  '$symb3':      { name: 'Logo terre',          game: 'MotionBall', gif: 'Games/motionBall2/picto/logoTerre.gif' },
+  // Burning Kiwi
+  '$fruticup':   { name: 'Fruticoupe Argent',   game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/fruticupSilver.gif' },
+  '$fruticupxl': { name: 'Fruticoupe Or',       game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/fruticup.gif' },
+  '$elite':      { name: 'Elite Argent',        game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/eliteSilver.gif' },
+  '$elitexl':    { name: 'Elite Or',            game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/elite.gif' },
+  '$logo01':     { name: 'Écurie UWE Wing',     game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamUWE.gif' },
+  '$logo02':     { name: 'Écurie Fury Hun',     game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamFury.gif' },
+  '$logo03':     { name: 'Écurie Sonic Brain',  game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamSonic.gif' },
+  '$logo04':     { name: 'Écurie KiwiX',        game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamKiwix.gif' },
+  '$logo05':     { name: 'Écurie Ultra',        game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/teamUltra.gif' },
+  '$car01':      { name: 'Bolide UWE Wing',     game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/carUWE.gif' },
+  '$car02':      { name: 'Bolide Fury Hun',     game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/carFury.gif' },
+  '$car03':      { name: 'Bolide Sonic Brain',  game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/carSonic.gif' },
+  '$car04':      { name: 'Bolide KiwiX',        game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/carKiwix.gif' },
+  '$car05':      { name: 'Bolide Ultra',         game: 'Burning Kiwi', gif: 'Games/burningKiwi/forum/carUltra.gif' },
+  // MiniWave2
+  '$ship00':     { name: 'Vaisseau 0',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  '$ship01':     { name: 'Vaisseau 1',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship01.gif' },
+  '$ship02':     { name: 'Vaisseau 2',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship02.gif' },
+  '$ship03':     { name: 'Vaisseau 3',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship03.gif' },
+  '$ship04':     { name: 'Vaisseau 4',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship04.gif' },
+  '$ship05':     { name: 'Vaisseau 5',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship05.gif' },
+  '$arcade':     { name: 'Arcade Boss',         game: 'MiniWave', gif: 'Games/miniWave2/titem/pictoBoss.gif' },
+  '$letter':     { name: 'Letter Invader',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/letter.gif' },
+  '$smiley_love':  { name: 'Smiley Love',      game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  '$smiley_laugh': { name: 'Smiley Laugh',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  '$smiley_twirl': { name: 'Smiley Twirl',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  '$wpMinistar':   { name: 'Arme Ministar',    game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  '$wpNostromo':   { name: 'Arme Nostromo',    game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+};
+
+// Build MiniWave2 bads (bad00..bad50) and missions (mis0..mis4)
+for (let i = 0; i <= 50; i++) {
+  const pad = String(i).padStart(2, '0');
+  GAME_ITEM_INFO[`$bads${i}`] = { name: `Monstre ${i}`, game: 'MiniWave', gif: `Games/miniWave2/titem/gif/bad${pad}.gif` };
+}
+for (let i = 0; i <= 4; i++) {
+  GAME_ITEM_INFO[`$mis${i}`] = { name: `Mission ${i}`, game: 'MiniWave', gif: `Games/miniWave2/titem/gif/mis${i}.gif` };
+}
+
+// ─── MiniPixiz (miniTroll) titems ─────────────────────────────────────────────
+// itemList from Games/miniTroll/src/Item.mt (item ID → name).
+// In the assets folder the GIF file index is item_id + 1
+// (e.g. item ID 0 = GANTS+1 → bmp/titems/GIF/item/item_1.gif).
+const PIXIZ_ITEM_NAMES = {
+  // CARAC (gloves/boots/heart/diadem/idol/pearl) +1/+2/+3
+  0: 'Gants +1', 1: 'Gants +2', 2: 'Gants +3',
+  5: 'Bottes +1', 6: 'Bottes +2', 7: 'Bottes +3',
+  10: 'Cœur +1', 11: 'Cœur +2', 12: 'Cœur +3',
+  15: 'Diadème +1', 16: 'Diadème +2', 17: 'Diadème +3',
+  20: 'Idole +1', 21: 'Idole +2', 22: 'Idole +3',
+  25: 'Perle +1', 26: 'Perle +2', 27: 'Perle +3',
+  // Utility
+  30: 'Flasque', 31: 'Clé',
+  // Special powers
+  40: 'Invisibilité', 41: 'Masque de peur', 42: 'Régénération de vie',
+  43: 'Régénération de mana', 44: 'Plus d\'expérience', 45: 'Casque à corne',
+  46: 'Totoche',
+  // Carac all (50-55)
+  50: 'Globe +1 - Force', 51: 'Globe +1 - Agilité', 52: 'Globe +1 - Vie',
+  53: 'Globe +1 - Charisme', 54: 'Globe +1 - Magie', 55: 'Globe +1 - Sagesse',
+  // Coloration (60-69)
+  60: 'Coloration 1', 61: 'Coloration 2', 62: 'Coloration 3', 63: 'Coloration 4',
+  64: 'Coloration 5', 65: 'Coloration 6', 66: 'Coloration 7', 67: 'Coloration 8',
+  68: 'Coloration 9', 69: 'Coloration 10',
+  // Potions (70-72)
+  70: 'Petite potion', 71: 'Potion moyenne', 72: 'Grosse potion',
+  // Bags (80-83)
+  80: 'Sac +1', 81: 'Sac +2', 82: 'Sac +3', 83: 'Sac +4',
+};
+const PIXIZ_SPELL_NAMES = {
+  1: 'Creuser', 2: 'Mineur', 3: 'Massif', 4: 'Mangeur d\'étoiles',
+  5: 'Décompression', 6: 'Fossilisation', 7: 'Ascension', 8: 'Berserk',
+  9: 'Tranche', 10: 'Silence', 11: 'Destruction', 12: 'Bouclier',
+  13: 'Nova', 14: 'Bannissement', 15: 'Foudre', 16: 'Peinture',
+  20: 'Boule de lumière', 21: 'Rayon de lumière', 22: 'Solero',
+  23: 'Feu follet', 24: 'Glu', 25: 'Flamme', 26: 'Boule sacrée',
+  27: 'Fantôme',
+};
+// Scrolls (id 100+spell.id) and Books (id 200+spell.id)
+for (const [spellId, spellName] of Object.entries(PIXIZ_SPELL_NAMES)) {
+  PIXIZ_ITEM_NAMES[100 + Number(spellId)] = `Parchemin de ${spellName}`;
+  PIXIZ_ITEM_NAMES[200 + Number(spellId)] = `Livre de ${spellName}`;
+}
+// Build picto entries for each item that has a GIF on disk.
+// GIF filename = item_${id+1}.gif under bmp/titems/GIF/item/.
+for (const [idStr, itemName] of Object.entries(PIXIZ_ITEM_NAMES)) {
+  const id = Number(idStr);
+  const gifIdx = id + 1;
+  const gif = `Games/miniTroll/bmp/titems/GIF/item/item_${gifIdx}.gif`;
+  if (fs.existsSync(path.join(__dirname, gif))) {
+    GAME_ITEM_INFO[`$pixiz_item${id}`] = { name: itemName, game: 'MiniPixiz', gif };
+  }
+}
+// Foods — slot data tracks $stat.$eat[foodId] and food IDs are 300..354 (every 3).
+// GIFs are indexed sequentially: food_1.gif → ID 300, food_2.gif → ID 301, ..., food_57.gif → ID 356.
+const PIXIZ_FOOD_BASE_NAMES = [
+  'Banane','Cerise','Champignon','Poire','Mure',
+  'Carotte','Orange','Citron','Fraise','Tomate',
+  'Pomme','Brioche','Œuf','Statue','Gouda',
+  'Poireau','Pâtisserie','Raisin','Melon',
+];
+for (let i = 0; i < 57; i++) {
+  const id = 300 + i;
+  const baseName = PIXIZ_FOOD_BASE_NAMES[Math.floor(i / 3)] || `Aliment ${i}`;
+  const variant = ['petit', 'moyen', 'grand'][i % 3] || '';
+  const gif = `Games/miniTroll/bmp/titems/GIF/food/food_${i + 1}.gif`;
+  if (fs.existsSync(path.join(__dirname, gif))) {
+    GAME_ITEM_INFO[`$pixiz_food${id}`] = { name: `${baseName} (${variant})`.trim(), game: 'MiniPixiz', gif };
+  }
+}
+// Diamonds (5 colors)
+const PIXIZ_DIAM_NAMES = ['cuivre', 'argent', 'or', 'rubis', 'éclat'];
+for (let i = 1; i <= 5; i++) {
+  GAME_ITEM_INFO[`$pixiz_diam${i}`] = {
+    name: `Diamant ${PIXIZ_DIAM_NAMES[i - 1]}`,
+    game: 'MiniPixiz',
+    gif: `Games/miniTroll/bmp/titems/GIF/diam/diam${i}.gif`,
+  };
+}
+// Game-state milestone pictos (zone unlocks, kill counts, missions, levels, etc.)
+const PIXIZ_MILESTONES = {
+  '$pixiz_first':        { name: 'Première aventure',  gif: 'Games/miniTroll/bmp/titems/GIF/banana0.gif' },
+  '$pixiz_forest':       { name: 'Forêt',              gif: 'Games/miniTroll/bmp/titems/GIF/item/item_2.gif' },
+  '$pixiz_pond':         { name: 'Étang',              gif: 'Games/miniTroll/bmp/titems/GIF/item/item_42.gif' },
+  '$pixiz_castle':       { name: 'Château',            gif: 'Games/miniTroll/bmp/titems/GIF/item/item_22.gif' },
+  '$pixiz_rainbow':      { name: 'Arc-en-ciel',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_46.gif' },
+  '$pixiz_tree':         { name: 'Arbre des fées',     gif: 'Games/miniTroll/bmp/titems/GIF/item/item_47.gif' },
+  '$pixiz_dungeon':      { name: 'Donjon débloqué',    gif: 'Games/miniTroll/bmp/titems/GIF/item/item_32.gif' },
+  '$pixiz_dungeon10':    { name: 'Donjon niveau 10',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_45.gif' },
+  '$pixiz_dungeon20':    { name: 'Donjon niveau 20',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_44.gif' },
+  '$pixiz_dungeon30':    { name: 'Donjon niveau 30',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_43.gif' },
+  '$pixiz_dungeon50':    { name: 'Donjon niveau 50',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_41.gif' },
+  '$pixiz_pond_quest':   { name: 'Quête de l\'étang',  gif: 'Games/miniTroll/bmp/titems/GIF/item/item_31.gif' },
+  '$pixiz_run10':        { name: '10 parties',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_61.gif' },
+  '$pixiz_run50':        { name: '50 parties',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_62.gif' },
+  '$pixiz_run100':       { name: '100 parties',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_63.gif' },
+  '$pixiz_run500':       { name: '500 parties',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_64.gif' },
+  '$pixiz_star10':       { name: '10 étoiles',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_65.gif' },
+  '$pixiz_star100':      { name: '100 étoiles',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_66.gif' },
+  '$pixiz_star1000':     { name: '1000 étoiles',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_67.gif' },
+  '$pixiz_key5':         { name: '5 clés',             gif: 'Games/miniTroll/bmp/titems/GIF/item/item_68.gif' },
+  '$pixiz_key25':        { name: '25 clés',            gif: 'Games/miniTroll/bmp/titems/GIF/item/item_69.gif' },
+  '$pixiz_faerie3':      { name: '3 fées',             gif: 'Games/miniTroll/bmp/titems/GIF/item/item_51.gif' },
+  '$pixiz_faerie5':      { name: '5 fées',             gif: 'Games/miniTroll/bmp/titems/GIF/item/item_52.gif' },
+  '$pixiz_faerie10':     { name: '10 fées',            gif: 'Games/miniTroll/bmp/titems/GIF/item/item_53.gif' },
+  '$pixiz_faerie_lvl10': { name: 'Fée niveau 10',      gif: 'Games/miniTroll/bmp/titems/GIF/item/item_54.gif' },
+  '$pixiz_faerie_lvl30': { name: 'Fée niveau 30',      gif: 'Games/miniTroll/bmp/titems/GIF/item/item_55.gif' },
+  '$pixiz_faerie_lvl50': { name: 'Fée niveau 50',      gif: 'Games/miniTroll/bmp/titems/GIF/item/item_56.gif' },
+  '$pixiz_treeMax20':    { name: 'Arbre - Score 20',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_3.gif' },
+  '$pixiz_treeMax50':    { name: 'Arbre - Score 50',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_8.gif' },
+  '$pixiz_treeMax100':   { name: 'Arbre - Score 100',  gif: 'Games/miniTroll/bmp/titems/GIF/item/item_13.gif' },
+  '$pixiz_forestMax5':   { name: 'Forêt niveau 5',     gif: 'Games/miniTroll/bmp/titems/GIF/item/item_18.gif' },
+  '$pixiz_forestMax10':  { name: 'Forêt niveau 10',    gif: 'Games/miniTroll/bmp/titems/GIF/item/item_23.gif' },
+  '$pixiz_forestMax20':  { name: 'Forêt niveau 20',    gif: 'Games/miniTroll/bmp/titems/GIF/item/item_28.gif' },
+  '$pixiz_mis10':        { name: '10 missions',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_6.gif' },
+  '$pixiz_mis25':        { name: '25 missions',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_7.gif' },
+  '$pixiz_mis50':        { name: '50 missions',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_11.gif' },
+  '$pixiz_mis100':       { name: '100 missions',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_12.gif' },
+  '$pixiz_kill100':      { name: '100 imps vaincus',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_16.gif' },
+  '$pixiz_kill500':      { name: '500 imps vaincus',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_17.gif' },
+  '$pixiz_bag2':         { name: 'Sac niveau 2',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_82.gif' },
+  '$pixiz_bag3':         { name: 'Sac niveau 3',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_83.gif' },
+  '$pixiz_bag_max':      { name: 'Sac maximal',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_84.gif' },
+  '$pixiz_frog':         { name: 'Grenouille',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_21.gif' },
+};
+for (const [id, info] of Object.entries(PIXIZ_MILESTONES)) {
+  GAME_ITEM_INFO[id] = { name: info.name, game: 'MiniPixiz', gif: info.gif };
+}
+
+// JamaJama (Poulpi) — milestone pictos awarded based on number of saved
+// scores (= levels completed/abandoned). The game's source SWF has no
+// native giveItem mechanism, so pictos are derived from server-side
+// signals (saveScore, slot save) by counting plays.
+const JAMA_MILESTONES = {
+  '$jama_first':       { name: 'Premier coup de Tiki',    threshold: 1 },
+  '$jama_play10':      { name: '10 niveaux joués',         threshold: 10 },
+  '$jama_play25':      { name: '25 niveaux joués',         threshold: 25 },
+  '$jama_play50':      { name: '50 niveaux joués',         threshold: 50 },
+  '$jama_play100':     { name: '100 niveaux joués',        threshold: 100 },
+  '$jama_play250':     { name: '250 niveaux joués',        threshold: 250 },
+  '$jama_play500':     { name: '500 niveaux joués',        threshold: 500 },
+  '$jama_play1000':    { name: '1000 niveaux joués',       threshold: 1000 },
+};
+for (const [id, info] of Object.entries(JAMA_MILESTONES)) {
+  // Reuse the JamaJama disc icon as fallback gif (resolveGameItemGif also
+  // tolerates missing files — the picto still appears in inventory by name).
+  GAME_ITEM_INFO[id] = { name: info.name, game: 'JamaJama', gif: 'Games/poulpi/images/intro.jpg' };
+}
 
 // Award JamaJama milestone pictos based on the cumulative number of saved
 // scores (= attempted/finished levels). Called from both the HTTP and
@@ -224,6 +595,63 @@ function awardJamaPictosOnScore(username) {
     }
   }
 }
+
+// ─────────────────────────────────────────────
+// Consecration: per-game progression registry
+// Set `enabled: false` for games not yet finalised; the score auto-rebalances.
+// ─────────────────────────────────────────────
+const GAME_PROGRESS_REGISTRY = [
+  {
+    id: 'kaluga',
+    name: 'Kaluga',
+    enabled: true,
+    matchGame: 'Kaluga', // matches getGameItemGame() value
+  },
+  {
+    id: 'swapou',
+    name: 'Swapou',
+    enabled: true,
+    matchGame: 'Swapou',
+  },
+  {
+    id: 'snake3',
+    name: 'Frutisnake',
+    enabled: true,
+    matchGame: 'Frutisnake',
+    totalPictos: 322, // dynamic "Fruit N" pictos — fixed total used as denominator
+  },
+  {
+    id: 'bkiwi',
+    name: 'Burning Kiwi',
+    enabled: true,
+    matchGame: 'Burning Kiwi',
+  },
+  {
+    id: 'mb2',
+    name: 'MotionBall',
+    enabled: true,
+    matchGame: 'MotionBall',
+  },
+  {
+    id: 'miniwave',
+    name: 'MiniWave',
+    enabled: true,
+    matchGame: 'MiniWave',
+  },
+  {
+    id: 'jamajama',
+    name: 'JamaJama',
+    enabled: true,
+    matchGame: 'JamaJama',
+    totalPictos: Object.keys(JAMA_MILESTONES).length,
+  },
+  {
+    id: 'pixiz',
+    name: 'MiniPixiz',
+    enabled: true,
+    matchGame: 'MiniPixiz',
+  },
+];
 
 // Returns { id, name, unlocked, total, percent, gameContribution } per enabled game
 // plus an overall percent.
@@ -273,6 +701,36 @@ function computeConsecration(username) {
   };
 }
 
+function resolveGameItemGif(itemName) {
+  const info = GAME_ITEM_INFO[itemName];
+  if (info && info.gif) {
+    const abs = path.join(__dirname, info.gif);
+    try { if (fs.statSync(abs).isFile()) return abs; } catch {}
+  }
+  // Snake3: "Fruit N" → snakeFruitNNNN.gif
+  const snakeMatch = /^Fruit (\d+)$/.exec(itemName);
+  if (snakeMatch) {
+    const pad = String(snakeMatch[1]).padStart(4, '0');
+    const abs = path.join(__dirname, 'Games', 'snake3', 'gif', `snakeFruit${pad}.gif`);
+    try { if (fs.statSync(abs).isFile()) return abs; } catch {}
+  }
+  return null;
+}
+
+function getGameItemDisplayName(itemName) {
+  const info = GAME_ITEM_INFO[itemName];
+  if (info) return info.name;
+  const snakeMatch = /^Fruit (\d+)$/.exec(itemName);
+  if (snakeMatch) return `Fruit ${snakeMatch[1]}`;
+  return itemName.replace(/^\$/, '');
+}
+
+function getGameItemGame(itemName) {
+  const info = GAME_ITEM_INFO[itemName];
+  if (info) return info.game;
+  if (/^Fruit \d+$/.test(itemName)) return 'Frutisnake';
+  return '';
+}
 
 const bouilleCache = {};
 
@@ -346,6 +804,24 @@ function saveScoresFile() {
   } catch (e) {
     console.error(`[SCORES] save failed: ${e.message}`);
   }
+}
+
+function utcDayKey(d = new Date()) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function parisDayKey(d = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+function yesterdayParisDayKey() {
+  return parisDayKey(new Date(Date.now() - 86400000));
+}
+function yesterdayDayKey() {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - 1);
+  return utcDayKey(d);
 }
 
 function loadChallengeMedals() {
@@ -502,6 +978,38 @@ const KALUGA_TZONGRE_BY_ID = {
   3: 'gomola',
   4: 'makulo',
 };
+
+function parseMtSerializedArray(raw) {
+  const s = String(raw || '').trim();
+  if (!s.startsWith('[') || !s.endsWith(']')) return null;
+  const items = [];
+  const body = s.slice(1, -1);
+  const tokenRe = /([SNB])([^;]*);/g;
+  let m;
+  while ((m = tokenRe.exec(body)) !== null) {
+    const ty = m[1];
+    const payload = m[2] || '';
+    if (ty === 'N') {
+      const n = Number(payload);
+      items.push(Number.isFinite(n) ? n : 0);
+    } else if (ty === 'B') {
+      items.push(payload === '1' || /^true$/i.test(payload));
+    } else {
+      items.push(payload);
+    }
+  }
+  return items.length > 0 ? items : null;
+}
+
+function parseMtSerializedPrimitive(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const strMatch = s.match(/^S([^;]*)$/);
+  if (strMatch) return strMatch[1];
+  const numMatch = s.match(/^N(-?\d+(?:\.\d+)?)$/);
+  if (numMatch) return Number(numMatch[1]);
+  return null;
+}
 
 function parseKalugaTzId(raw) {
   const s = String(raw || '').trim();
@@ -1663,6 +2171,36 @@ function getFrutizJob(username, user) {
   if (user && user.isModerator) return user.gender === 'F' ? 'Modératrice' : 'Modérateur';
   if (user && user.isAnimator) return user.gender === 'F' ? 'Animatrice' : 'Animateur';
   return 'Frutiz';
+}
+
+// Format a date for the "bd" / "ft" XML attributes: YYYY-MM-DD.HH:MM:SS
+// Native Frutiparc format uses a DOT between date and time (FEDate.newFromString
+// reads positions 0-9 for date and 11+ for time, ignoring the separator at pos 10).
+function formatFrutizDate(raw, fallback) {
+  fallback = fallback || '2005-01-01.00:00:00';
+  if (!raw) return fallback;
+  // Normalise: accept space, T or dot separator.
+  const m = String(raw).match(/^(\d{4}-\d{2}-\d{2})[ T.](\d{2}:\d{2}:\d{2})/);
+  if (m) return m[1] + '.' + m[2];
+  // Date-only?
+  const d2 = String(raw).match(/^(\d{4}-\d{2}-\d{2})$/);
+  if (d2) return d2[1] + '.00:00:00';
+  try {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return fallback;
+    return d.toISOString().substring(0, 10) + '.' + d.toISOString().substring(11, 19);
+  } catch { return fallback; }
+}
+
+// Format the "ft" attribute: subscription date in YYYY-MM-DD.HH:MM:SS format.
+// Read by Flash client (FrutizInfo.as:421-422) for "subday" + "frutiAge" display.
+function getFrutizSubscribeDate(user) {
+  return formatFrutizDate(user && user.createdAt, '2005-01-01.00:00:00');
+}
+
+// Format birthday for "bd" attribute in DOT format.
+function getFrutizBirthday(user, fallback) {
+  return formatFrutizDate(user && user.birthday, fallback || '2000-01-01.00:00:00');
 }
 
 // ─────────────────────────────────────────────
@@ -2834,6 +3372,10 @@ app.delete('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
 // Response is XML. Format reverse-engineered from the parser strings:
 //   firstChild.attributes.n/nb/m/list/nextSibling for search,
 //   c.nodeValue + l.id.content.links.back for get.
+
+function escapeXmlText(s) {
+  return String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
 
 function gaspardTopicLinksXml(parentId, allTopics) {
   // Children of `parentId` (or root entries when parentId is null) ordered
@@ -8123,6 +8665,137 @@ wssScore.on('connection', (ws) => {
 // The server must also send null-terminated XML.
 // ═════════════════════════════════════════════
 
+// Command name <-> wire code mappings (from cmdList.as / cmdList2.as)
+const CMD = {
+  // Global
+  error:       'a',
+  serviceinfo: 'b',
+  time:        'c',
+  ip:          'd',
+  ping:        'e',
+  ident:       'k',
+  // FrutiChat
+  kick:             'l',
+  ban:              'm',
+  unban:            'n',
+  join:             'o',
+  userlist:         'p',
+  channellist:      'q',
+  createchannel:    'r',
+  invitechat:       's',
+  send:             't',
+  userleaved:       'u',
+  userjoined:       'v',
+  channelclosed:    'w',
+  refuse:           'x',
+  part:             'y',
+  trace:            'z',
+  stoptrace:        'aa',
+  invite:           'ab',
+  givexp:           'ac',
+  stealxp:          'ad',
+  fbouille:         'ae',
+  status:           'af',
+  onkick:           'ag',
+  onban:            'ah',
+  onunban:          'ai',
+  tracecallback:    'aj',
+  invisible:        'ak',
+  xpreceived:       'al',
+  xpstolen:         'am',
+  topic:            'an',
+  bannedusers:      'ao',
+  adminsend:        'ap',
+  userinfo:         'aq',
+  listbouilles:     'ar',
+  addmoderator:     'as',
+  delmoderator:     'at',
+  changebg:         'au',
+  activatefeat:     'av',
+  newuserlog:       'aw',
+  newmail:          'ax',
+  newforummsg:      'ay',
+  newsitelog:       'bl',
+  mute:             'az',
+  unmute:           'ba',
+  onmute:           'bb',
+  endmute:          'bc',
+  xpflag:           'bg',
+  senduserongroup:  'bk',
+  awardgame:        'ha',
+  awarduser:        'hb',
+  xpposition:       'bm',
+  searchuser:       'bn',
+  callmoderator:    'bo',
+  moderatorcalled:  'bp',
+  // FrutiCard (slot storage)
+  fcardgetpublicslot: 'ea',
+  fcardlistslots:     'eb',
+  fcardloadslot:      'ec',
+  fcardupdateslot:    'ed',
+  fcardclearslot:     'ee',
+  fcardlist:          'ef',
+  statusobj:          'statusobj',
+};
+
+// Reverse lookup: wire code -> command name
+const CMD_REV = {};
+for (const [name, code] of Object.entries(CMD)) {
+  CMD_REV[code] = name;
+}
+// Frusion games use FrutiCard tags fa-fe (offset from main client's ea-ee)
+CMD_REV['fa'] = 'fcardgetpublicslot';
+CMD_REV['fb'] = 'fcardlistslots';
+CMD_REV['fc'] = 'fcardloadslot';
+CMD_REV['fd'] = 'fcardupdateslot';
+CMD_REV['fe'] = 'fcardclearslot';
+
+// Simple XML builder/parser for the CBee protocol
+function xmlTag(name, attrs = {}, content = '') {
+  const a = Object.entries(attrs).map(([k, v]) => ` ${k}="${escapeXml(String(v))}"`).join('');
+  if (content) return `<${name}${a}>${content}</${name}>`;
+  return `<${name}${a} />`;
+}
+
+function escapeXml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Minimal XML attribute parser (good enough for CBee messages)
+function parseXmlAttrs(xmlStr) {
+  const result = { tag: '', attrs: {}, content: '', children: [] };
+  // Get tag name
+  const tagMatch = xmlStr.match(/^<(\w+)/);
+  if (!tagMatch) return result;
+  result.tag = tagMatch[1];
+  // Get attributes
+  const attrRegex = /(\w+)="([^"]*)"/g;
+  let m;
+  while ((m = attrRegex.exec(xmlStr)) !== null) {
+    result.attrs[m[1]] = m[2];
+  }
+  // Get text content between > and </
+  const contentMatch = xmlStr.match(/>([^<]*)</);
+  if (contentMatch) result.content = contentMatch[1];
+  // Get child elements (one level deep)
+  const childRegex = /<(\w+)([^>]*?)(?:\/>|>([^<]*)<\/\1>)/g;
+  // Skip the root tag — find children inside
+  const innerMatch = xmlStr.match(/^<[^>]+>([\s\S]*)<\/[^>]+>$/);
+  if (innerMatch) {
+    let cm;
+    while ((cm = childRegex.exec(innerMatch[1])) !== null) {
+      const childAttrs = {};
+      let ca;
+      const caRegex = /(\w+)="([^"]*)"/g;
+      while ((ca = caRegex.exec(cm[2])) !== null) {
+        childAttrs[ca[1]] = ca[2];
+      }
+      result.children.push({ tag: cm[1], attrs: childAttrs, content: cm[3] || '' });
+    }
+  }
+  return result;
+}
+
 // ─────────────────────────────────────────────
 // CBee client state
 // ─────────────────────────────────────────────
@@ -8139,6 +8812,11 @@ const channels = {
   banane:    { desc: 'Salon Banane',    topic: 'Salon Banane', users: new Set() },
   bienvenue: { desc: 'Bienvenue',       topic: 'Bienvenue sur Frutiparc !', users: new Set() },
 };
+
+// ── Virtual users / PNJ (always connected on pomme) ──
+const CONNECTED_NPCS = new Set([
+  'gaspard',
+]);
 
 // Gaspard is the welcome-bot NPC. Stored under the lowercase key
 // `users.gaspard` like every other user (getDisplayName, trace and
@@ -8413,6 +9091,44 @@ const ANIM_CHANNEL = 'bienvenue';
 const FCARD_GAMES = ['bkiwi', 'snake3', 'swapou2', 'kaluga', 'mb2', 'miniwave', 'jamajama', 'minipixiz'];
 
 // Convert a JSON string (or JS value) to Motion-Twin serialization format (2004).
+// MTSerialization.unserialize in the AS2 profile viewer expects this format.
+// Format: N<num>, S<str>, B0/B1, U, [elem;elem;], {key:val;key:val;}
+function jsonToMTSerial(jsonStr) {
+  let obj;
+  if (typeof jsonStr === 'string') {
+    try { obj = JSON.parse(jsonStr); } catch { return jsonStr; }
+  } else {
+    obj = jsonStr;
+  }
+
+  function ser(val) {
+    if (val === null || val === undefined) return 'U';
+    if (val === true) return 'B1';
+    if (val === false) return 'B0';
+    if (typeof val === 'number') return `N${val}`;
+    if (typeof val === 'string') return `S${val}`;
+    if (Array.isArray(val)) {
+      let r = '[';
+      for (let i = 0; i < val.length; i++) {
+        r += ser(val[i]) + ';';
+      }
+      r += ']';
+      return r;
+    }
+    if (typeof val === 'object') {
+      let r = '{';
+      for (const key of Object.keys(val)) {
+        r += key + ':' + ser(val[key]) + ';';
+      }
+      r += '}';
+      return r;
+    }
+    return 'U';
+  }
+
+  return ser(obj);
+}
+
 // Patch slot 0 data: merge existing saved data with defaults to fill missing
 // fields, and inject real score data. This prevents "undefined" in card display.
 // ctx (optional): { gameItems: string[], scores: Object, jamaPlayCount: number }
