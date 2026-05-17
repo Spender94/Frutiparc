@@ -88,20 +88,4 @@ CMD_REV['fe'] = 'fcardclearslot';
 // welcome channel and exposed in userlist broadcasts.
 const CONNECTED_NPCS = new Set(['gaspard']);
 
-// Fruit-themed channel names — used for the channel list and as ids in
-// the SWF's channel UI. Order matters: index = channel sign frame.
-const FRUTI_SIGN_NAMES = [
-  'pomme', 'abricot', 'poire', 'fraise', 'citron',
-  'kiwi', 'raisin', 'orange', 'cerise', 'banane',
-];
-
-// Animator-only chat channel (welcome bots, mod/anim coordination).
-const ANIM_CHANNEL = 'bienvenue';
-
-module.exports = {
-  CMD,
-  CMD_REV,
-  CONNECTED_NPCS,
-  FRUTI_SIGN_NAMES,
-  ANIM_CHANNEL,
-};
+module.exports = { CMD, CMD_REV, CONNECTED_NPCS };
