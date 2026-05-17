@@ -7737,6 +7737,18 @@ const FORUM_DEFAULT_STRUCTURE = [
   ]},
 ];
 
+// Legacy boards that have been renamed/replaced in FORUM_DEFAULT_STRUCTURE.
+// On startup their topics are merged into the canonical replacement, then
+// the empty legacy board is deleted. Listed by name to handle both fresh
+// installs and DBs migrated from an older seed.
+const LEGACY_FORUM_BOARDS = [
+  // The original seed had a single "Animations" / "Animation" board which
+  // was split into "Animations officielles" + "Animations Frutiz". Topics
+  // are funneled into "Animations officielles".
+  { name: 'Animations',  mergeInto: 'Animations officielles' },
+  { name: 'Animation',   mergeInto: 'Animations officielles' },
+];
+
 // Enforce FORUM_DEFAULT_STRUCTURE as the canonical layout on every startup:
 //   - missing categories/boards are created
 //   - a canonical board found in the wrong category is moved
@@ -7793,6 +7805,30 @@ async function ensureForumBoardsExist() {
     }
     if (added || moved || merged) {
       console.log(`[FORUM] Layout enforced: +${added} added, ${moved} moved, ${merged} duplicates merged`);
+    }
+
+    // Drop legacy boards that have been replaced by canonical ones. Their
+    // topics are merged into the canonical target so nothing is lost.
+    let legacyMerged = 0, legacyDeleted = 0;
+    const finalBoards = await db.forumGetBoards();
+    for (const legacy of LEGACY_FORUM_BOARDS) {
+      const oldBoards = finalBoards.filter(b => b.name === legacy.name);
+      if (oldBoards.length === 0) continue;
+      const target = finalBoards.find(b => b.name === legacy.mergeInto);
+      if (!target) {
+        console.warn(`[FORUM] Legacy board "${legacy.name}" has no target "${legacy.mergeInto}" — skipped`);
+        continue;
+      }
+      for (const old of oldBoards) {
+        if (old.id === target.id) continue;
+        await db.forumMoveTopicsBetweenBoards(old.id, target.id);
+        await db.forumDeleteBoard(old.id);
+        legacyMerged++;
+        legacyDeleted++;
+      }
+    }
+    if (legacyDeleted) {
+      console.log(`[FORUM] Legacy cleanup: ${legacyDeleted} rubrique(s) supprimée(s), ${legacyMerged} fusion(s)`);
     }
   } catch (e) {
     console.error('[FORUM] ensureForumBoardsExist error:', e.message);
