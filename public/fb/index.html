@@ -1048,30 +1048,12 @@
     background: #E8F5D4;
   }
   .emo-img {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
+    width: 19px;
+    height: 19px;
     display: inline-block;
-    background: radial-gradient(circle at 35% 35%, #fffacc, #f6c700 75%, #c69b00);
-    box-shadow: inset 0 -2px 2px rgba(0,0,0,0.25);
-    position: relative;
     vertical-align: middle;
+    image-rendering: -webkit-optimize-contrast;
   }
-  .emo-img::before {
-    content: '';
-    position: absolute;
-    inset: 3px 4px;
-    color: #000;
-    font-size: 12px;
-    line-height: 12px;
-    text-align: center;
-    font-family: Arial, sans-serif;
-    font-weight: bold;
-  }
-  .emo-img.emo-smile::before { content: '\263A'; font-size: 14px; top: 1px; }
-  .emo-img.emo-grin::before  { content: ':D'; }
-  .emo-img.emo-sad::before   { content: ':('; }
-  .emo-img.emo-wink::before  { content: ';)'; }
 
   /* Editor textarea */
   .editor-textarea {
@@ -1441,16 +1423,11 @@ function renderBBCode(s) {
     var url = '/api/picto/' + encodeURIComponent(safeId);
     return '<img class="picto-inline" src="' + url + '" alt="' + safeId + '" title="' + safeId + '">';
   });
-  // Inline emoticons (whitespace-bounded). Order matters: longer first.
-  var emoMap = [
-    [/(^|\s):D(?=\s|$)/g,  'emo-grin'],
-    [/(^|\s);\)(?=\s|$)/g, 'emo-wink'],
-    [/(^|\s):\)(?=\s|$)/g, 'emo-smile'],
-    [/(^|\s):\((?=\s|$)/g, 'emo-sad'],
-  ];
-  for (var ei = 0; ei < emoMap.length; ei++) {
-    out = out.replace(emoMap[ei][0], '$1<span class="emo-img ' + emoMap[ei][1] + '"></span>');
-  }
+  // Inline emoticons (whitespace-bounded). Built lazily from EMOTICONS so the
+  // editor button row and the post renderer stay in sync. Order matters:
+  // longer codes are matched first so ":smile:" doesn't get partially eaten
+  // by a shorter alternative.
+  out = replaceEmoticonsInline(out);
   out = out.replace(/\n/g, '<br>');
   return out;
 }
@@ -1815,23 +1792,84 @@ function editorHintRowHtml(targetId) {
     + '</div>';
 }
 
-// Emoticons row using inline BBCode aliases.
+// Emoticons — 28 GIF-based smileys served from /fb/.
+// `code`     : canonical shortcut inserted by the editor button (also matched in posts).
+// `alts`     : additional shortcuts also matched in posts (no editor button for them).
+// All alts and codes are matched whitespace-bounded in renderPostContent below,
+// so ":)" inside a URL or word boundary won't trigger.
 var EMOTICONS = [
-  { code: ':)',     cls: 'emo-smile', title: 'Sourire' },
-  { code: ':D',     cls: 'emo-grin',  title: 'Hilare' },
-  { code: ':(',     cls: 'emo-sad',   title: 'Triste' },
-  { code: ';)',     cls: 'emo-wink',  title: 'Clin d\'oeil' },
+  { file: 'smile.gif',     code: ':)',         alts: [':smile:'],       title: 'Sourire' },
+  { file: 'wink.gif',      code: ';)',         alts: [':wink:'],        title: 'Clin d\'œil' },
+  { file: 'biggrin.gif',   code: ':D',         alts: [':biggrin:'],     title: 'Hilare' },
+  { file: 'frown.gif',     code: ':(',         alts: [':frown:'],       title: 'Triste' },
+  { file: 'tongue.gif',    code: ':P',         alts: [':tongue:', ':p'],title: 'Tire la langue' },
+  { file: 'surprised.gif', code: ':o',         alts: [':surprised:'],   title: 'Surpris' },
+  { file: 'cool.gif',      code: '8)',         alts: [':cool:'],        title: 'Cool' },
+  { file: 'rolleyes.gif',  code: ':roll:',     alts: [':rolleyes:'],    title: 'Yeux au ciel' },
+  { file: 'eek.gif',       code: ':eek:',      alts: [],                title: 'Hyper surpris' },
+  { file: 'confused.gif',  code: ':?',         alts: [':confused:'],    title: 'Confus' },
+  { file: 'huh.gif',       code: ':huh:',      alts: [],                title: 'Perplexe' },
+  { file: 'cry.gif',       code: ':cry:',      alts: [],                title: 'En pleurs' },
+  { file: 'mad.gif',       code: ':mad:',      alts: [':@'],            title: 'Fâché' },
+  { file: 'evil.gif',      code: ':evil:',     alts: [],                title: 'Démon' },
+  { file: 'twisted.gif',   code: ':twisted:',  alts: [],                title: 'Sourire diabolique' },
+  { file: 'redface.gif',   code: ':oops:',     alts: [':redface:'],     title: 'Rougit' },
+  { file: 'idea.gif',      code: ':idea:',     alts: [],                title: 'Idée' },
+  { file: 'arrow.gif',     code: ':arrow:',    alts: [],                title: 'Flèche' },
+  { file: 'question.gif',  code: ':?:',        alts: [':question:'],    title: 'Question' },
+  { file: 'exclaim.gif',   code: ':!:',        alts: [':exclaim:'],     title: 'Exclamation' },
+  { file: 'lol.gif',       code: ':lol:',      alts: [],                title: 'Mort de rire' },
+  { file: 'yeah.gif',      code: ':yeah:',     alts: [],                title: 'Ouais !' },
+  { file: 'keepcool.gif',  code: ':keepcool:', alts: [],                title: 'Garde ton calme' },
+  { file: 'wink2.gif',     code: ':wink2:',    alts: [],                title: 'Clin d\'œil (variante)' },
+  { file: 'dontcare.gif',  code: ':dontcare:', alts: [],                title: 'On s\'en fiche' },
+  { file: 'nooo.gif',      code: ':nooo:',     alts: [':noo:'],         title: 'NON !' },
+  { file: 'cross.gif',     code: ':cross:',    alts: [],                title: 'Croix' },
+  { file: 'chart.gif',     code: ':chart:',    alts: [],                title: 'Graphique' },
 ];
+
 function emoticonsRowHtml(targetId) {
   var html = '<div class="emoticons-row">';
   for (var i = 0; i < EMOTICONS.length; i++) {
     var e = EMOTICONS[i];
-    html += '<button type="button" class="emo-btn" title="' + escapeHtml(e.title) + '" '
+    html += '<button type="button" class="emo-btn" title="' + escapeHtml(e.title)
+      + ' (' + escapeHtml(e.code) + ')" '
       + 'onclick="bbInsertText(\'' + targetId + '\',\' ' + escapeHtml(e.code) + ' \')">'
-      + '<span class="emo-img ' + e.cls + '"></span></button>';
+      + '<img class="emo-img" src="/fb/' + e.file + '" alt="' + escapeHtml(e.code) + '"></button>';
   }
   html += '</div>';
   return html;
+}
+
+// Build the inline-replacement table once, sorted by length descending so
+// `:smile:` is matched before `:s` would have a chance to clip something.
+// Matches are whitespace-bounded: a code only triggers if surrounded by
+// whitespace / start / end, which avoids hijacking URLs and emails.
+var _emoSubsList = null;
+function _buildEmoSubs() {
+  var entries = [];
+  for (var i = 0; i < EMOTICONS.length; i++) {
+    var e = EMOTICONS[i];
+    entries.push({ code: e.code, file: e.file });
+    for (var j = 0; j < (e.alts || []).length; j++) {
+      entries.push({ code: e.alts[j], file: e.file });
+    }
+  }
+  entries.sort(function(a, b) { return b.code.length - a.code.length; });
+  return entries;
+}
+function _escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function replaceEmoticonsInline(text) {
+  if (!_emoSubsList) _emoSubsList = _buildEmoSubs();
+  var out = text;
+  for (var i = 0; i < _emoSubsList.length; i++) {
+    var ent = _emoSubsList[i];
+    var re = new RegExp('(^|\\s)' + _escapeRegex(ent.code) + '(?=\\s|$)', 'g');
+    out = out.replace(re, '$1<img class="emo-img" src="/fb/' + ent.file + '" alt="' + ent.code.replace(/"/g, '&quot;') + '">');
+  }
+  return out;
 }
 
 // Track tags that were opened via single-click (no selection); used by "Fermer les balises".
