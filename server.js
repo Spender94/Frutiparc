@@ -3310,7 +3310,7 @@ app.get('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
 });
 
 app.post('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
-  const { title, body, parent_id, sort_order, keywords } = req.body || {};
+  const { title, body, parent_id, sort_order, keywords, is_index } = req.body || {};
   if (!title || typeof title !== 'string' || title.trim() === '') {
     return res.status(400).json({ error: 'title_required' });
   }
@@ -3321,6 +3321,7 @@ app.post('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
       parent_id: parent_id != null ? parseInt(parent_id, 10) : null,
       sort_order: sort_order != null ? parseInt(sort_order, 10) : 0,
       keywords: typeof keywords === 'string' ? keywords : '',
+      is_index: !!is_index,
     });
     res.status(201).json({ topic: row });
   } catch (e) {
@@ -3332,7 +3333,7 @@ app.post('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
 app.put('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'bad_id' });
-  const { title, body, parent_id, sort_order, keywords } = req.body || {};
+  const { title, body, parent_id, sort_order, keywords, is_index } = req.body || {};
   try {
     const row = await db.updateGaspardHelpTopic(id, {
       title: title !== undefined ? String(title) : null,
@@ -3340,6 +3341,7 @@ app.put('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
       parent_id: parent_id !== undefined ? (parent_id == null ? null : parseInt(parent_id, 10)) : null,
       sort_order: sort_order !== undefined ? parseInt(sort_order, 10) : null,
       keywords: keywords !== undefined ? String(keywords) : null,
+      is_index: is_index !== undefined ? !!is_index : undefined,
     });
     if (!row) return res.status(404).json({ error: 'not_found' });
     res.json({ topic: row });
@@ -3405,55 +3407,58 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const idRaw = params.i || params.k || params.id || '';
   const id = parseInt(String(idRaw), 10);
-  console.log(`[GASPARD] /fh/get method=${req.method} id=${idRaw || '(index)'} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
+  console.log(`[GASPARD] /fh/get method=${req.method} idRaw=${JSON.stringify(idRaw)} parsedId=${Number.isInteger(id) ? id : '(none)'} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
   try {
     const all = await db.listGaspardHelpTopics();
-    let topic = null;
-    if (Number.isInteger(id)) {
-      topic = all.find((t) => t.id === id) || null;
-    }
-    // The SWF feeds the entire inner HTML of the root <h> into htmlText
-    // — observed empirically: the inner <h>...</h> we emitted shows up
-    // styled as the body header, while siblings we wrapped in <c>...</c>
-    // got dropped as unknown HTML tags. So the body HTML must live
-    // directly inside the root, not wrapped in <c>. Links go inline as
-    // <a href="asfunction:win.box.getContent,ID"> entries — the same
-    // pattern the SWF's own i18n strings use.
-    // The SWF determines link type from the CONTAINER element name, not
-    // an attribute on <l>. Matches the i18n keys observed in the SWF:
-    //   <cat_tree> → "Rubriques :"       (top-level index)
-    //   <cat_ls>   → "Dans cette rubrique :" (children of current topic)
-    //   <seealso>  → "Voir également :"
-    // <l> elements inside the container carry only id + n. No text content
-    // (previous attempt put the title as both attribute n= AND element
-    // text — the SWF read the text and tried Number(text) → NaN when
-    // clicked).
-    const buildLinksXml = (parentId) => {
+    const buildLinksXml = (parentId, container) => {
+      // Build a <cat_tree> (root) or <cat_ls> (children) container. Children
+      // are filtered by parent_id and ordered by (sort_order, id). The SWF
+      // determines link type from the container element name and reads
+      // l.id + l.n (the title) — no text content inside <l>.
       const children = all
         .filter((t) => (t.parent_id || null) === (parentId || null))
         .sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
       if (children.length === 0) return '';
-      const container = parentId == null ? 'cat_tree' : 'cat_ls';
       const items = children.map((c) =>
         `<l id="${c.id}" n="${escapeXmlText(c.title)}"/>`
       ).join('');
       return `<${container}>${items}</${container}>`;
     };
+
+    // Pick the topic to display. Priority:
+    //   1. Explicit id provided in the request → that exact topic.
+    //   2. No id (or id=0) → the admin-flagged is_index topic if any.
+    //   3. Fallback → synthetic welcome page.
+    let topic = null;
+    if (Number.isInteger(id) && id > 0) {
+      topic = all.find((t) => t.id === id) || null;
+    }
     if (!topic) {
-      const indexBody = 'Bienvenue ! Choisissez un sujet ci-dessous, ou utilisez la recherche.';
-      const links = buildLinksXml(null);
+      topic = all.find((t) => t.is_index) || null;
+    }
+
+    // Always include the root category list so the user can navigate back
+    // from any topic. cat_ls (children of the current topic) is added only
+    // when the topic has sub-rubriques.
+    const rootTree = buildLinksXml(null, 'cat_tree');
+
+    if (!topic) {
+      // No admin-defined index → emit a generated welcome so the SWF still
+      // has something to render with the root nav.
+      const indexBody = "Bienvenue ! Choisissez une rubrique ci-dessous, ou utilisez la recherche.";
       return res.type('text/xml').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide"><c>${escapeXmlText(indexBody)}</c>${links}</h>`
+        `<?xml version="1.0" encoding="UTF-8"?>\n<h id="0" n="Index de l'aide"><c>${escapeXmlText(indexBody)}</c>${rootTree}</h>`
       );
     }
+
     const safeTitle = escapeXmlText(topic.title);
     const backAttr = topic.parent_id != null ? ` back="${topic.parent_id}"` : '';
-    const links = buildLinksXml(topic.id);
-    // Body content wrapped in <c> element child of <h>, link containers
-    // (cat_ls / cat_tree) come after. Parser strings show c is read before
-    // l, suggesting it expects <c> as a distinct child element.
+    const children = buildLinksXml(topic.id, 'cat_ls');
+    // For the index topic itself, drop cat_ls (its sub-rubriques would
+    // duplicate the cat_tree we already emit) and only show the root nav.
+    const navXml = topic.is_index ? rootTree : (children + rootTree);
     return res.type('text/xml').send(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}"${backAttr}><c>${escapeXmlText(topic.body || '')}</c>${links}</h>`
+      `<?xml version="1.0" encoding="UTF-8"?>\n<h id="${topic.id}" n="${safeTitle}"${backAttr}><c>${escapeXmlText(topic.body || '')}</c>${navXml}</h>`
     );
   } catch (e) {
     console.error('[GASPARD] /fh/get error:', e.message);
@@ -8146,52 +8151,143 @@ async function boot() {
       try {
         const existingTopics = await db.listGaspardHelpTopics();
         if (existingTopics.length === 0) {
-          // Seed the starter help content the SWF's hardcoded text used to
-          // reference. Once persisted, every entry is editable via the
-          // admin UI (admin.html → "Aide Gaspard" tab), and new entries can
-          // be created freely.
-          const seeds = [
+          // Hierarchical seed: one is_index landing page + a handful of
+          // categories (parent_id=null) with sub-rubriques. Admins can
+          // restructure freely via admin.html → "Aide Gaspard".
+          const seedTree = [
             {
-              title: 'Qui est Gaspard ?',
-              keywords: 'gaspard qui hote presentation',
+              title: "Bienvenue chez Gaspard",
+              keywords: 'index accueil bienvenue gaspard sommaire',
               sort_order: 0,
-              body: 'Bonjour ! Je suis <b>Gaspard</b>, votre h&#244;te sur Frutiparc.<br/><br/>Mon r&#244;le est de vous accompagner dans la d&#233;couverte du site : si vous avez une question, cliquez sur mon ic&#244;ne sur le bureau ou tapez <i>/aide</i> dans le chat, et je ferai de mon mieux pour vous r&#233;pondre.<br/><br/>Bonne visite chez les Frutiz !',
+              is_index: true,
+              body: "Bonjour ! Je suis <b>Gaspard</b>, votre h&#244;te sur Frutiparc.<br/><br/>"
+                + "Choisissez une rubrique ci-dessous pour explorer le site, ou tapez votre question dans la zone de recherche.<br/><br/>"
+                + "Si vous d&#233;butez, je vous conseille de commencer par <i>Sur le bureau</i> puis <i>Le chat</i>.<br/><br/>"
+                + "Bonne visite chez les Frutiz !",
             },
             {
-              title: 'Comment fonctionne le site ?',
-              keywords: 'site fonctionnement navigation desktop bureau',
-              sort_order: 1,
-              body: 'Frutiparc s&#8217;organise autour d&#8217;un bureau virtuel.<br/><br/><b>Ic&#244;nes du bureau :</b><br/>&#8226; <i>Mes disques</i> : votre collection de jeux<br/>&#8226; <i>Inventaire</i> : vos accessoires, fonds d&#8217;&#233;cran et pictos<br/>&#8226; <i>Boite aux lettres</i> : vos mails entrants<br/>&#8226; <i>Mes contacts</i> : vos amis Frutiz<br/><br/>Pour jouer, faites glisser un disque sur la console Frusion. Pour &#233;jecter, cliquez sur le bouton &#233;jecter ou rangez le disque.',
+              title: "Sur le bureau",
+              keywords: 'bureau desktop icone navigation',
+              sort_order: 10,
+              body: "Le bureau de Frutiparc est l&#8217;&#233;cran d&#8217;accueil sur lequel vous arrivez apr&#232;s vous &#234;tre connect&#233;.<br/><br/>"
+                + "Vous y trouvez plusieurs ic&#244;nes qui ouvrent chacune une fen&#234;tre&#160;: vos disques, votre inventaire, votre bo&#238;te aux lettres, vos contacts, et bien d&#8217;autres.<br/><br/>"
+                + "Cliquez sur une sous-rubrique ci-dessous pour en savoir plus.",
+              children: [
+                {
+                  title: "Les ic&#244;nes du bureau",
+                  keywords: 'icones bureau disque inventaire mail contact',
+                  body: "Les ic&#244;nes principales du bureau&#160;:<br/>"
+                    + "&#8226; <i>Mes disques</i>&#160;: votre collection de jeux<br/>"
+                    + "&#8226; <i>Inventaire</i>&#160;: vos accessoires, fonds d&#8217;&#233;cran et pictos<br/>"
+                    + "&#8226; <i>Bo&#238;te aux lettres</i>&#160;: vos mails entrants<br/>"
+                    + "&#8226; <i>Mes contacts</i>&#160;: vos amis Frutiz<br/>"
+                    + "&#8226; <i>Boutique</i>&#160;: accessoires et fonds d&#8217;&#233;cran &#224; acheter avec des Kikooz",
+                },
+                {
+                  title: "La console Frusion",
+                  keywords: 'frusion console disque jeux jouer ejecter',
+                  body: "La <b>console Frusion</b> est l&#8217;appareil sur lequel vous lancez vos jeux.<br/><br/>"
+                    + "Pour jouer, faites glisser un disque depuis <i>Mes disques</i> sur la console. Pour arr&#234;ter, cliquez sur le bouton &#233;jecter ou rangez le disque dans son boitier.",
+                },
+              ],
             },
             {
-              title: 'Le chat et les salons',
-              keywords: 'chat salon pomme conversation',
-              sort_order: 2,
-              body: 'Pour discuter avec les autres Frutiz, rejoignez un salon en cliquant sur sa pomme color&#233;e en haut &#224; gauche.<br/><br/>Vous pouvez choisir votre couleur de feutre via la palette, et utiliser des commandes :<br/>&#8226; <i>/aide</i> ou <i>/help</i> : ouvre cette fen&#234;tre<br/>&#8226; <i>/topic ...</i> : change le sujet du salon (mod&#233;rateurs)<br/>&#8226; <i>/fiche pseudo</i> : affiche la fiche d&#8217;un Frutiz',
+              title: "Le chat",
+              keywords: 'chat salon pomme conversation commande',
+              sort_order: 20,
+              body: "Le chat de Frutiparc se compose de plusieurs salons color&#233;s, repr&#233;sent&#233;s par des pommes en haut &#224; gauche du bureau.<br/><br/>"
+                + "Cliquez sur une pomme pour rejoindre le salon correspondant. Choisissez ensuite votre couleur de feutre dans la palette pour discuter avec les autres Frutiz.",
+              children: [
+                {
+                  title: "Rejoindre un salon",
+                  keywords: 'salon rejoindre pomme couleur',
+                  body: "Pour rejoindre un salon, cliquez simplement sur une des pommes color&#233;es en haut &#224; gauche du bureau. Chaque pomme correspond &#224; un salon th&#233;matique.",
+                },
+                {
+                  title: "Les commandes de chat",
+                  keywords: 'commande slash aide topic fiche donne kick',
+                  body: "Quelques commandes utiles dans le chat&#160;:<br/>"
+                    + "&#8226; <i>/aide</i> ou <i>/help</i>&#160;: ouvre cette fen&#234;tre<br/>"
+                    + "&#8226; <i>/fiche pseudo</i>&#160;: affiche la fiche d&#8217;un Frutiz<br/>"
+                    + "&#8226; <i>/donne pseudo nombre</i>&#160;: offre des Kikooz<br/>"
+                    + "&#8226; <i>/topic ...</i>&#160;: change le sujet du salon (mod&#233;rateurs)",
+                },
+              ],
             },
             {
-              title: 'Les Titems et les pictos',
-              keywords: 'titem pictos cartes recompense jeux',
-              sort_order: 3,
-              body: 'Les <b>titems</b> (ou <b>pictos</b>) sont les r&#233;compenses que vous gagnez en jouant.<br/><br/>Chaque jeu propose ses propres pictos &#224; d&#233;bloquer en atteignant certains objectifs : finir un niveau, battre un score, collecter un objet, etc.<br/><br/>Tous vos pictos s&#8217;affichent dans votre <i>Inventaire &#8594; Pictos</i>, et sur votre <i>FrutiCard</i> que les autres Frutiz peuvent consulter.',
+              title: "Mon profil",
+              keywords: 'profil fiche bouille frutibouille accessoires',
+              sort_order: 30,
+              body: "Votre profil est l&#8217;identit&#233; que les autres Frutiz voient de vous.<br/><br/>"
+                + "Il comprend votre <i>Frutibouille</i> (votre avatar), votre fiche, vos accessoires et vos pictos. Vous pouvez tout personnaliser.",
+              children: [
+                {
+                  title: "Ma Frutibouille",
+                  keywords: 'bouille frutibouille avatar apparence personnalisation editeur',
+                  body: "Votre <b>Frutibouille</b> est votre avatar sur Frutiparc.<br/><br/>"
+                    + "Pour la personnaliser, cliquez sur votre propre fiche et utilisez l&#8217;&#233;diteur de bouille&#160;: cheveux, yeux, peau, v&#234;tements et accessoires sont tous modifiables.",
+                },
+                {
+                  title: "Les accessoires",
+                  keywords: 'accessoire boutique inventaire wallpaper fond ecran',
+                  body: "Vos accessoires sont rang&#233;s dans votre <i>Inventaire</i>. Vous pouvez les utiliser pour habiller votre Frutibouille.<br/><br/>"
+                    + "De nouveaux accessoires se d&#233;bloquent en jouant ou s&#8217;ach&#232;tent &#224; la <i>Boutique</i> avec des Kikooz.",
+                },
+                {
+                  title: "Mes pictos",
+                  keywords: 'pictos titem recompense fiche carte fruticard',
+                  body: "Les <b>pictos</b> (ou <b>titems</b>) sont les r&#233;compenses que vous gagnez en jouant.<br/><br/>"
+                    + "Chaque jeu propose ses propres pictos &#224; d&#233;bloquer en atteignant certains objectifs. Tous vos pictos s&#8217;affichent dans votre <i>Inventaire &#8594; Pictos</i> et sur votre <i>FrutiCard</i>.",
+                },
+              ],
             },
             {
-              title: 'Mon Frutibouille',
-              keywords: 'bouille avatar frutibouille apparence personnalisation',
-              sort_order: 4,
-              body: 'Votre <b>Frutibouille</b> est votre avatar sur Frutiparc.<br/><br/>Pour le personnaliser, cliquez sur votre propre fiche et utilisez l&#8217;&#233;diteur de bouille : cheveux, yeux, peau, v&#234;tements et accessoires sont tous modifiables.<br/><br/>De nouveaux &#233;l&#233;ments cosm&#233;tiques se d&#233;bloquent en jouant ou s&#8217;ach&#232;tent &#224; la <i>Boutique</i> avec des Kikooz.',
+              title: "Les jeux",
+              keywords: 'jeux disque score challenge medaille pictos',
+              sort_order: 40,
+              body: "Frutiparc propose une dizaine de jeux Flash que vous pouvez lancer depuis vos disques.<br/><br/>"
+                + "Chaque jeu poss&#232;de ses propres pictos, son classement classique (records perso) et son d&#233;fi journalier (Challenge).",
+              children: [
+                {
+                  title: "Lancer un jeu",
+                  keywords: 'jeu disque console frusion lancer',
+                  body: "Glissez un disque depuis <i>Mes disques</i> sur la console Frusion. Le jeu se lance dans une fen&#234;tre d&#233;di&#233;e.<br/><br/>"
+                    + "Pour ranger le jeu, cliquez sur le bouton &#233;jecter de la console ou fermez la fen&#234;tre.",
+                },
+                {
+                  title: "Les scores et le challenge",
+                  keywords: 'score classement challenge medaille or argent bronze daily',
+                  body: "Vos scores se s&#233;parent en deux familles&#160;:<br/>"
+                    + "&#8226; <b>Classique</b>&#160;: votre meilleur score historique sur le jeu<br/>"
+                    + "&#8226; <b>Challenge</b>&#160;: votre meilleur score du jour, remis &#224; z&#233;ro chaque nuit<br/><br/>"
+                    + "Les trois meilleurs joueurs du Challenge gagnent chaque jour une m&#233;daille d&#8217;or, d&#8217;argent ou de bronze.",
+                },
+              ],
             },
             {
-              title: 'Les Kikooz',
+              title: "Les Kikooz",
               keywords: 'kikooz monnaie boutique cadeau donne',
-              sort_order: 5,
-              body: 'Les <b>Kikooz</b> sont la monnaie virtuelle de Frutiparc.<br/><br/>Vous en gagnez en jouant, en participant au chat et en relevant des d&#233;fis quotidiens. Vous pouvez les d&#233;penser &#224; la <i>Boutique</i> ou les offrir &#224; un autre Frutiz via la commande <i>/donne pseudo nombre</i> dans le chat.',
+              sort_order: 50,
+              body: "Les <b>Kikooz</b> sont la monnaie virtuelle de Frutiparc.<br/><br/>"
+                + "Vous en gagnez en jouant, en participant au chat et en relevant des d&#233;fis quotidiens. Vous pouvez les d&#233;penser &#224; la <i>Boutique</i> ou les offrir &#224; un autre Frutiz via la commande <i>/donne pseudo nombre</i>.",
             },
           ];
-          for (const s of seeds) {
-            await db.createGaspardHelpTopic({ ...s, parent_id: null });
+
+          let seeded = 0;
+          for (const cat of seedTree) {
+            const { children = [], ...catFields } = cat;
+            const root = await db.createGaspardHelpTopic({ ...catFields, parent_id: null });
+            seeded++;
+            for (let i = 0; i < children.length; i++) {
+              await db.createGaspardHelpTopic({
+                ...children[i],
+                parent_id: root.id,
+                sort_order: (i + 1) * 10,
+              });
+              seeded++;
+            }
           }
-          console.log(`[GASPARD] Seeded ${seeds.length} starter help topics`);
+          console.log(`[GASPARD] Seeded ${seeded} help topic(s) — hierarchy with is_index landing page`);
         } else {
           console.log(`[GASPARD] ${existingTopics.length} help topic(s) already in DB`);
         }

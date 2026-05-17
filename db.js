@@ -329,10 +329,15 @@ async function initSchema() {
         parent_id   INTEGER REFERENCES gaspard_help_topics(id) ON DELETE CASCADE,
         sort_order  INTEGER NOT NULL DEFAULT 0,
         keywords    TEXT NOT NULL DEFAULT '',
+        is_index    BOOLEAN NOT NULL DEFAULT FALSE,
         created_at  TIMESTAMPTZ DEFAULT now(),
         updated_at  TIMESTAMPTZ DEFAULT now()
       );
+      ALTER TABLE gaspard_help_topics ADD COLUMN IF NOT EXISTS is_index BOOLEAN NOT NULL DEFAULT FALSE;
       CREATE INDEX IF NOT EXISTS idx_gaspard_help_parent ON gaspard_help_topics(parent_id, sort_order);
+      -- Only one topic can act as the help-window landing page.
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_gaspard_help_one_index
+        ON gaspard_help_topics (is_index) WHERE is_index;
       CREATE INDEX IF NOT EXISTS idx_moderation_logs_target ON moderation_logs(target_username, created_at DESC);
     `);
     console.log('[DB] Schema initialized');
@@ -1299,7 +1304,7 @@ async function updateChannelTopic(name, topic) {
 // Gaspard help topics CRUD
 async function listGaspardHelpTopics() {
   const r = await pool.query(
-    `SELECT id, title, body, parent_id, sort_order, keywords,
+    `SELECT id, title, body, parent_id, sort_order, keywords, is_index,
             created_at, updated_at
      FROM gaspard_help_topics
      ORDER BY COALESCE(parent_id, 0), sort_order, id`
@@ -1308,22 +1313,40 @@ async function listGaspardHelpTopics() {
 }
 async function getGaspardHelpTopic(id) {
   const r = await pool.query(
-    `SELECT id, title, body, parent_id, sort_order, keywords
+    `SELECT id, title, body, parent_id, sort_order, keywords, is_index
      FROM gaspard_help_topics WHERE id = $1`,
     [id]
   );
   return r.rows[0] || null;
 }
-async function createGaspardHelpTopic({ title, body, parent_id, sort_order, keywords }) {
+async function getGaspardIndexTopic() {
   const r = await pool.query(
-    `INSERT INTO gaspard_help_topics (title, body, parent_id, sort_order, keywords)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, title, body, parent_id, sort_order, keywords`,
-    [title, body || '', parent_id || null, sort_order || 0, keywords || '']
+    `SELECT id, title, body, parent_id, sort_order, keywords, is_index
+     FROM gaspard_help_topics WHERE is_index = TRUE LIMIT 1`,
+  );
+  return r.rows[0] || null;
+}
+async function createGaspardHelpTopic({ title, body, parent_id, sort_order, keywords, is_index }) {
+  // Marking a new topic as the index automatically clears the flag on every
+  // other row so the unique partial index never trips.
+  if (is_index) {
+    await pool.query('UPDATE gaspard_help_topics SET is_index = FALSE WHERE is_index');
+  }
+  const r = await pool.query(
+    `INSERT INTO gaspard_help_topics (title, body, parent_id, sort_order, keywords, is_index)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, title, body, parent_id, sort_order, keywords, is_index`,
+    [title, body || '', parent_id || null, sort_order || 0, keywords || '', !!is_index]
   );
   return r.rows[0];
 }
-async function updateGaspardHelpTopic(id, { title, body, parent_id, sort_order, keywords }) {
+async function updateGaspardHelpTopic(id, { title, body, parent_id, sort_order, keywords, is_index }) {
+  if (is_index === true) {
+    await pool.query(
+      'UPDATE gaspard_help_topics SET is_index = FALSE WHERE is_index AND id <> $1',
+      [id],
+    );
+  }
   const r = await pool.query(
     `UPDATE gaspard_help_topics
      SET title = COALESCE($2, title),
@@ -1331,11 +1354,12 @@ async function updateGaspardHelpTopic(id, { title, body, parent_id, sort_order, 
          parent_id = $4,
          sort_order = COALESCE($5, sort_order),
          keywords = COALESCE($6, keywords),
+         is_index = COALESCE($7, is_index),
          updated_at = now()
      WHERE id = $1
-     RETURNING id, title, body, parent_id, sort_order, keywords`,
+     RETURNING id, title, body, parent_id, sort_order, keywords, is_index`,
     [id, title, body, parent_id === undefined ? null : parent_id,
-     sort_order, keywords]
+     sort_order, keywords, is_index === undefined ? null : !!is_index]
   );
   return r.rows[0] || null;
 }
@@ -1445,6 +1469,7 @@ module.exports = {
   getModerationLogs,
   listGaspardHelpTopics,
   getGaspardHelpTopic,
+  getGaspardIndexTopic,
   createGaspardHelpTopic,
   updateGaspardHelpTopic,
   deleteGaspardHelpTopic,

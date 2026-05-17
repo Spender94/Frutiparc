@@ -494,7 +494,7 @@
     <span id="gaspard-count"></span>
   </div>
   <table>
-    <thead><tr><th>ID</th><th>Titre</th><th>Parent</th><th>Ordre</th><th>Mots-clés</th><th>Actions</th></tr></thead>
+    <thead><tr><th>ID</th><th>Titre</th><th>Parent</th><th>Ordre</th><th>Index</th><th>Mots-clés</th><th>Actions</th></tr></thead>
     <tbody id="gaspard-body"></tbody>
   </table>
 </div>
@@ -529,6 +529,10 @@
       </select>
     </label>
     <label><span>Ordre :</span> <input id="gaspard-sort" type="number" value="0" min="0"></label>
+    <label style="display:flex;gap:8px;align-items:center"><span>Page d'index ?</span>
+      <input id="gaspard-is-index" type="checkbox" style="width:auto;height:auto">
+      <span style="font-size:11px;color:#666">Cocher pour faire de cette rubrique la page d'accueil de Gaspard (une seule page d'index possible).</span>
+    </label>
     <label><span>Mots-clés :</span> <input id="gaspard-keywords" maxlength="200" placeholder="titems pictos cartes (espace-séparés)"></label>
     <label style="align-items:start"><span>Contenu :</span>
       <textarea id="gaspard-content-body" rows="10" style="width:100%;font-family:monospace" placeholder="HTML accepté : <b>gras</b>, <a href='asfunction:win.box.getContent,N'>lien vers rubrique N</a>, etc."></textarea>
@@ -717,12 +721,14 @@ async function loadGaspardTopics() {
     tbody.innerHTML = '';
     for (const t of __gaspardTopics) {
       const parent = t.parent_id != null ? (byId.get(t.parent_id)?.title || `#${t.parent_id}`) : '—';
+      const indexCell = t.is_index ? '<b style="color:#0a7">★ index</b>' : '';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${t.id}</td>
         <td>${escapeHTML(t.title)}</td>
         <td>${escapeHTML(parent)}</td>
         <td>${t.sort_order}</td>
+        <td>${indexCell}</td>
         <td>${escapeHTML(t.keywords || '')}</td>
         <td>
           <button class="btn" onclick="editGaspardTopic(${t.id})">Modifier</button>
@@ -762,6 +768,7 @@ function openAddGaspardTopic() {
   $('#gaspard-content-body').value = '';
   $('#gaspard-keywords').value = '';
   $('#gaspard-sort').value = '0';
+  $('#gaspard-is-index').checked = false;
   refreshGaspardParentSelect(null);
   $('#gaspard-parent').value = '';
   $('#modal-edit-gaspard').classList.add('open');
@@ -778,6 +785,7 @@ async function editGaspardTopic(id) {
     $('#gaspard-content-body').value = topic.body || '';
     $('#gaspard-keywords').value = topic.keywords || '';
     $('#gaspard-sort').value = String(topic.sort_order || 0);
+    $('#gaspard-is-index').checked = !!topic.is_index;
     refreshGaspardParentSelect(topic.id);
     $('#gaspard-parent').value = topic.parent_id != null ? String(topic.parent_id) : '';
     $('#modal-edit-gaspard').classList.add('open');
@@ -795,6 +803,7 @@ async function saveGaspardTopic() {
     parent_id: parentRaw === '' ? null : parseInt(parentRaw, 10),
     sort_order: parseInt($('#gaspard-sort').value, 10) || 0,
     keywords: $('#gaspard-keywords').value.trim(),
+    is_index: $('#gaspard-is-index').checked,
   };
   if (!payload.title) { toast('Titre requis'); return; }
   try {
