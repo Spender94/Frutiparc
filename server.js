@@ -3403,6 +3403,12 @@ function gaspardBodyXml(body) {
   return parts.map((p) => `<![CDATA[${p}]]>`).join(']]&gt;');
 }
 
+// The SWF asks for /fh/get?i=1 every time the help window opens. In the
+// original Frutiparc DB id=1 was the welcome topic, but ours auto-assigns
+// SERIAL ids — so we treat "i=1" as "open the home page" and route it to
+// whichever topic the admin has flagged as is_index, regardless of id.
+const GASPARD_HOME_ID = 1;
+
 app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const idRaw = params.i || params.k || params.id || '';
@@ -3425,16 +3431,21 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
       return `<${container}>${items}</${container}>`;
     };
 
+    const indexTopic = all.find((t) => t.is_index) || null;
+    const isHomeRequest = !Number.isInteger(id) || id <= 0 || id === GASPARD_HOME_ID;
+
     // Pick the topic to display. Priority:
-    //   1. Explicit id provided in the request → that exact topic.
-    //   2. No id (or id=0) → the admin-flagged is_index topic if any.
-    //   3. Fallback → synthetic welcome page.
+    //   1. Explicit id > GASPARD_HOME_ID → that exact topic (with cat_tree
+    //      still emitted so the user can navigate elsewhere).
+    //   2. "Home" trigger (no id, id<=0, or the magic id=1 that the SWF
+    //      sends on open) → the is_index topic if any, else synthetic.
+    //   3. Explicit id == GASPARD_HOME_ID and no is_index topic → fall back
+    //      to topic id=1 in DB if it exists, else synthetic welcome.
     let topic = null;
-    if (Number.isInteger(id) && id > 0) {
-      topic = all.find((t) => t.id === id) || null;
-    }
-    if (!topic) {
-      topic = all.find((t) => t.is_index) || null;
+    if (isHomeRequest) {
+      topic = indexTopic || all.find((t) => t.id === GASPARD_HOME_ID) || null;
+    } else {
+      topic = all.find((t) => t.id === id) || indexTopic || null;
     }
 
     // Always include the root category list so the user can navigate back
