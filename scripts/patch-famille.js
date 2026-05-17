@@ -72,7 +72,7 @@ function pushInt(buf, off, n) {
 function opcode(buf, off, op) { buf.writeUInt8(op, off); return off + 1; }
 
 function buildApplyTag() {
-  const buf = Buffer.alloc(256);
+  const buf = Buffer.alloc(512);
   let off = 0;
   // trace("INVOKE-APPLY")
   off = pushString(buf, off, 'INVOKE-APPLY');
@@ -85,13 +85,32 @@ function buildApplyTag() {
   off = opcode(buf, off, 0x3d);
   off = opcode(buf, off, 0x17);
 
-  // Only stop the root timeline so the SWF parks on the apply()'d frame.
-  // Crucially we DO NOT recurse into child MovieClips here: the accessory
-  // animations (santa hat tassel, sunglasses sparkle, etc.) live on their
-  // own nested timelines and need to keep playing to look like they do in
-  // main.swf. The earlier defensive `stopAll(_root)` froze every nested
-  // MovieClip and was the reason animated accessories appeared static on
-  // the forum avatars.
+  // Park the face's *expression* timelines on their idle frame (frame 1)
+  // without touching the rest of the avatar:
+  //   _root.face            — the 169-frame parle/rire/mdr/… reel
+  //   _root.face.b.b        — the inner mouth (parle0/parle1/… loops)
+  //   _root.face.oa.o       — the inner left eye  (normal/mecontent/…)
+  //   _root.face.ob.o       — the inner right eye
+  // Other children of `face` (cb / pb / pa / ca / m / hat / hair) stay
+  // free to animate so accessory loops keep playing, matching main.swf.
+  const expressionPaths = [
+    '_root.face',
+    '_root.face.b.b',
+    '_root.face.oa.o',
+    '_root.face.ob.o',
+  ];
+  for (const path of expressionPaths) {
+    // Stack-for-CallMethod (top→bottom): methodName, object, numArgs.
+    // AVM1's GetVariable resolves dotted paths.
+    off = pushInt(buf, off, 0);
+    off = pushString(buf, off, path);
+    off = opcode(buf, off, 0x1c); // GetVariable
+    off = pushString(buf, off, 'stop');
+    off = opcode(buf, off, 0x52); // CallMethod
+    off = opcode(buf, off, 0x17); // Pop
+  }
+
+  // stop() on the root timeline so the SWF parks on the apply()'d frame.
   off = opcode(buf, off, 0x07);
   // trace("APPLY-DONE")
   off = pushString(buf, off, 'APPLY-DONE');
