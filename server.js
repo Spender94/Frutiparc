@@ -1115,13 +1115,15 @@ function formatMb2Time(centisec) {
   return `${m}:${String(s).padStart(2, '0')}.${String(c).padStart(2, '0')}`;
 }
 
-function formatRankingExtraData(rankingId, rawData) {
+function formatRankingExtraData(rankingId, rawData, scoreHint) {
   const raw = String(rawData || '').trim();
   if (!raw) {
     if (rankingId.startsWith('bkiwi_track')) return 'Skiwix:5:1:';
     if (rankingId === 'swapou2_classic') return 'S0:';
     if (rankingId === 'kaluga_classic') return 'Skaluga:';
-    return '';
+    // MB2 falls through to the body so the score-derived pct (computed at
+    // the bottom from scoreHint) is emitted even when no `data` was stored.
+    if (rankingId !== 'mb2_challenge' && rankingId !== 'mb2_classic') return '';
   }
 
   if (rankingId.startsWith('bkiwi_track')) {
@@ -1169,23 +1171,33 @@ function formatRankingExtraData(rankingId, rawData) {
     return raw;
   }
 
-  // MotionBall 2: challenge score is stored as time (centiseconds), and the
-  // companion `data` field carries the completion percentage. The score table
-  // shows "time°percentage". `s` already holds the time and gets formatted
-  // client-side; we render the data attribute as the trailing "°NN%" suffix
-  // so it appears next to the time. Percentage is also accepted as a 0–1
-  // float (e.g. "0.85"), an integer 0–100 ("85"), or raw "85%".
+  // MotionBall 2: the score itself is the AS2 client's combined value
+  // (Games/motionBall2/mb2/Game.as `calcScore`):
+  //
+  //     score = (vrooms*100/trooms - 1) + [int(curtime/100)*100 if boss]
+  //
+  // → completion % = (score % 100) + 1  for any score, boss or not.
+  // The `data` field is empty in normal play; we keep parsing it for
+  // legacy rows where an explicit "N%" was persisted, and fall back on
+  // the score-derived pct when nothing is stored. The score table shows
+  // "time°percentage", so we always emit a "°NN%" suffix.
   if (rankingId === 'mb2_challenge' || rankingId === 'mb2_classic') {
     let pct = NaN;
-    const mPct = raw.match(/^-?(\d+(?:\.\d+)?)\s*%?$/);
-    if (mPct) {
-      const n = Number(mPct[1]);
-      if (Number.isFinite(n)) pct = n > 1 ? n : n * 100;
-    } else {
-      const v = parseMtSerializedPrimitive(raw);
-      if (typeof v === 'number' && Number.isFinite(v)) {
-        pct = v > 1 ? v : v * 100;
+    if (raw) {
+      const mPct = raw.match(/^-?(\d+(?:\.\d+)?)\s*%?$/);
+      if (mPct) {
+        const n = Number(mPct[1]);
+        if (Number.isFinite(n)) pct = n > 1 ? n : n * 100;
+      } else {
+        const v = parseMtSerializedPrimitive(raw);
+        if (typeof v === 'number' && Number.isFinite(v)) {
+          pct = v > 1 ? v : v * 100;
+        }
       }
+    }
+    if (!Number.isFinite(pct) && Number.isFinite(scoreHint)) {
+      const sNum = Math.max(0, Math.trunc(Number(scoreHint)));
+      pct = (sNum % 100) + 1;
     }
     if (Number.isFinite(pct)) {
       return `°${Math.round(pct)}%`;
@@ -1333,18 +1345,35 @@ function isLowerBetter(rankingId) {
 //      i.e. lower elapsed time (s = centiseconds) is better.
 //   3. Among players who did NOT beat the boss, a higher map % (stored in
 //      `data`) wins.
-// A player has beaten the boss iff a time was recorded (s > 0). When no
-// time is recorded the game does not display one, which is the "% only"
-// row that we treat as the lower tier.
+//
+// The MB2 client (Games/motionBall2/mb2/Game.as `calcScore`) packs both
+// the exploration % and the boss-time into a single number:
+//
+//     score = int(vrooms*100/trooms) - 1                 ← when boss NOT beaten
+//                                                          (range -1..99,
+//                                                           i.e. pct-1)
+//
+//     score = int(vrooms*100/trooms) - 1                 ← when boss beaten
+//             + int(curtime/100) * 100                     (≥ 99 + 100 = 199
+//                                                          for any sub-100ms
+//                                                          boss kill, which
+//                                                          is physically
+//                                                          impossible)
+//
+// So the boss-beaten test is `score >= 100`, NOT `score > 0` (which is the
+// historical bug that surfaced as "MotionBall classement à l'envers": with
+// the wrong threshold every exploration score 1..99 was treated as a
+// boss-killer time-in-cs and was sorted *before* real boss-killers whose
+// scores are 199+).
+function mb2HasBoss(s) {
+  return Number.isFinite(Number(s)) && Number(s) >= 100;
+}
 function mb2PctFromData(d) {
   if (d == null) return 0;
   const s = String(d).trim().replace(/^°/, '').replace(/%$/, '');
   const n = Number(s);
   if (!Number.isFinite(n)) return 0;
   return n > 1 ? n : n * 100;
-}
-function mb2HasBoss(s) {
-  return Number.isFinite(Number(s)) && Number(s) > 0;
 }
 // Pick up the percentage payload regardless of the field name used by the
 // caller (`data`, `d`, or `pct`). Different code paths historically used
@@ -1361,13 +1390,16 @@ function mb2Comparator(a, b) {
   const bBoss = mb2HasBoss(b.s);
   if (aBoss !== bBoss) return aBoss ? -1 : 1;
   if (aBoss) {
-    // both beat the boss → lower elapsed time wins
-    const d = Number(a.s) - Number(b.s);
-    if (d !== 0) return d;
-    // tie-breaker on the map % when both beat the boss in identical times
-    return mb2PctFromData(mb2DataOf(b)) - mb2PctFromData(mb2DataOf(a));
+    // both beat the boss → lower combined score wins. The MB2 formula bakes
+    // exploration % into the low-order digits of the time component so a
+    // straight numerical compare on s already does the right thing.
+    return Number(a.s) - Number(b.s);
   }
-  // neither beat the boss → higher % wins
+  // neither beat the boss → higher score wins (more rooms visited). For
+  // legacy rows that stored an explicit `data` percentage, fall back to it
+  // when both scores happen to tie at zero.
+  const ds = Number(b.s) - Number(a.s);
+  if (ds !== 0) return ds;
   return mb2PctFromData(mb2DataOf(b)) - mb2PctFromData(mb2DataOf(a));
 }
 function isMb2Ranking(rankingId) {
@@ -9920,7 +9952,9 @@ async function handleCBeeMessage(socket, rawXml) {
         const displayRankingId = extraRankingId || rankingId;
         const rkInfo = displayRankingId ? (RANKINGS[displayRankingId] || {}) : {};
         const rnAttr = rkInfo.name ? ` rn="${escapeXml(rkInfo.name)}"` : '';
-        const rankingDataForClient = displayRankingId ? formatRankingExtraData(displayRankingId, scoreData) : scoreData;
+        const rankingDataForClient = displayRankingId
+          ? formatRankingExtraData(displayRankingId, scoreData, displayRes.newScore)
+          : scoreData;
         const rAttr = rankingDataForClient ? ` r="${escapeXml(rankingDataForClient)}"` : ' r=""';
         const subAttrs = `${rnAttr}${rAttr} p="${displayRes.newPos}" os="${displayRes.oldScore}" op="${displayRes.oldPos}" s="${displayRes.newScore}"`;
         sendToClient(socket, `<${CMD.channellist} k="0"><rk${subAttrs}/></${CMD.channellist}>`);
@@ -10154,7 +10188,7 @@ case 'join': {
         for (const e of slice) {
           const ud = users[e.u] || {};
           const ts = e.at ? formatDateTimeParis(new Date(e.at)) : formatDateTimeParis(new Date());
-          const displayData = formatRankingExtraData(internalId, e.d);
+          const displayData = formatRankingExtraData(internalId, e.d, e.s);
           const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
           inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
@@ -10247,7 +10281,7 @@ case 'join': {
         for (const e of slice) {
           const ud = users[e.u] || {};
           const ts = e.at ? formatDateTimeParis(new Date(e.at)) : formatDateTimeParis(new Date());
-          const displayData = formatRankingExtraData(internalId, e.d);
+          const displayData = formatRankingExtraData(internalId, e.d, e.s);
           const dAttr = displayData ? ` d="${escapeXml(displayData)}"` : '';
           inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${ts}"${dAttr} />`;
         }
