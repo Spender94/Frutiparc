@@ -7537,6 +7537,25 @@ function forumAuth(req) {
   return resolveUsernameFromSid(sid);
 }
 
+// Returns { muted: bool, until: string|null, untilDisplay: string|null }
+// for the given username. Source of truth = users[].mutedUntil (set by the
+// chat 'mute' command). The same lockout that prevents chat messages also
+// blocks forum posting, so the rule stays consistent across the site.
+function getMuteInfoForUser(username) {
+  const u = username && users[username];
+  if (!u || !u.mutedUntil) return { muted: false, until: null, untilDisplay: null };
+  const raw = String(u.mutedUntil);
+  const d = new Date(raw.replace('.', ' '));
+  if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) {
+    return { muted: false, until: null, untilDisplay: null };
+  }
+  // Friendly FR-style display: "17/05/2026 à 14h30" — short, locale-aware.
+  const pad = (n) => String(n).padStart(2, '0');
+  const display = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`
+    + ` à ${pad(d.getHours())}h${pad(d.getMinutes())}`;
+  return { muted: true, until: raw, untilDisplay: display };
+}
+
 app.get('/api/forum/me', (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.json({ user: null });
@@ -7550,6 +7569,11 @@ app.get('/api/forum/me', (req, res) => {
     { id: 'normal',    name: 'Normal',    suffix: '000000000' },
     { id: 'Kiwix',     name: 'Kiwix',     suffix: '30x000000' },
   ];
+  // Expose mute status to the frontend so the topic page can pre-disable
+  // the "Répondre" button rather than letting the user compose a message
+  // that will be rejected on POST. The server still enforces the lockout
+  // — this is purely a UX hint.
+  const mute = getMuteInfoForUser(username);
   res.json({
     user: getDisplayName(username),
     isModerator: !!u.isModerator,
@@ -7557,6 +7581,9 @@ app.get('/api/forum/me', (req, res) => {
     bouille: bouilleOf(u, username),
     accessories: accessories,
     defaultAccessories: defaults,
+    muted: mute.muted,
+    mutedUntil: mute.until,
+    mutedUntilDisplay: mute.untilDisplay,
   });
 });
 
@@ -7673,6 +7700,9 @@ app.get('/api/forum/topic/:id', async (req, res) => {
         id: topic.id, title: topic.title, author: getDisplayName(topic.author_username),
         boardId: topic.board_id, boardName: board ? board.name : '',
         isSticky: topic.is_sticky, isLocked: topic.is_locked,
+        // Lowercase to align with the username comparison the frontend
+        // does against currentUser (also lowercase from /api/forum/me).
+        lastPostBy: String(topic.last_post_by || '').toLowerCase(),
       },
       posts: postsOut, total, page, perPage: 15,
       currentIsMod: !!currentIsMod,
@@ -7684,6 +7714,16 @@ app.post('/api/forum/topic', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  // Mute lockout: same window as the chat /totoche command. Applies even
+  // to moderators so the consequence is consistent across the site.
+  const mute = getMuteInfoForUser(username);
+  if (mute.muted) {
+    return res.status(403).json({
+      error: 'muted',
+      mutedUntil: mute.until,
+      message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas poster sur le forum tant que la sanction dure.`,
+    });
+  }
   const boardId = Number(req.body.boardId);
   const title = censorProfanity(String(req.body.title || '').trim());
   const content = censorProfanity(String(req.body.content || '').trim());
@@ -7703,6 +7743,14 @@ app.post('/api/forum/post', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  const mute = getMuteInfoForUser(username);
+  if (mute.muted) {
+    return res.status(403).json({
+      error: 'muted',
+      mutedUntil: mute.until,
+      message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas poster sur le forum tant que la sanction dure.`,
+    });
+  }
   const topicId = Number(req.body.topicId);
   const content = censorProfanity(String(req.body.content || '').trim());
   const postBouille = req.body.bouille ? normalizeBouilleState(req.body.bouille) : null;
@@ -7713,6 +7761,16 @@ app.post('/api/forum/post', async (req, res) => {
     const { staffOnly } = await isStaffOnlyBoard(topic.board_id);
     if (staffOnly && !isForumStaff(username)) return res.status(403).json({ error: 'forbidden' });
     if (topic.is_locked) return res.status(403).json({ error: 'topic locked' });
+    // Anti double-post: a user can't be the author of two consecutive
+    // messages on the same topic. They must edit their previous post or
+    // wait for someone else to reply first. `last_post_by` is maintained
+    // by forumCreateTopic + forumCreatePost so it stays in sync.
+    if (String(topic.last_post_by || '').toLowerCase() === String(username).toLowerCase()) {
+      return res.status(403).json({
+        error: 'double_post',
+        message: "Tu ne peux pas poster deux messages d'affilée sur le même sujet. Édite ton message précédent ou attends qu'un autre Frutiz réponde.",
+      });
+    }
     const post = await db.forumCreatePost(topicId, username, content, postBouille);
     trackXpAction(username, 'forumPost');
     res.json({ ok: true, postId: post.id });

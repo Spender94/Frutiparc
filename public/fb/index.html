@@ -788,6 +788,21 @@
   .img-btn:hover { text-decoration: none; opacity: 0.85; }
   .img-btn img { display: inline-block; vertical-align: middle; border: none; }
 
+  /* Notice shown in place of the "Répondre" button when the current user
+     can't post — either because they're muted or because they were the
+     last replier on this topic (anti-double-post). */
+  .reply-blocked {
+    display: inline-block;
+    padding: 4px 8px;
+    background: #FFE9DA;
+    border: 1px solid #E3756A;
+    border-radius: 3px;
+    color: #2C4A0F;
+    font-size: 11px;
+    font-style: italic;
+    cursor: help;
+  }
+
   /* === Forum post editor (matches the original SubSilver/Frutiparc layout) === */
   .editor-area {
     padding: 0;
@@ -1143,6 +1158,11 @@ let currentUser = null;
 let myBouille = null;
 let myAccessories = [];
 let myDefaultAccessories = [];
+// Mute status (totoche) for the logged-in user. When true, the topic page
+// and editor pre-disable the "Répondre" button so users don't compose a
+// message that will be rejected on submit. Server still enforces.
+let myMuted = false;
+let myMutedUntilDisplay = null;
 
 const EXPRESSIONS = [
   { id: 0, name: 'Normal' },
@@ -1585,7 +1605,15 @@ async function loadBoard(boardId, page) {
 
   html += '<div class="shell-actions">';
   html += '<div class="shell-left">';
-  if (currentUser) html += '<a href="#" onclick="navigate(\'newTopic\',' + boardId + ');return false" class="img-btn"><img src="/fb/post.gif" alt="Nouveau sujet"></a>';
+  if (currentUser) {
+    if (myMuted) {
+      html += '<span class="reply-blocked" title="Tu es totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + '">'
+        + 'Totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + ' — nouveau sujet impossible'
+        + '</span>';
+    } else {
+      html += '<a href="#" onclick="navigate(\'newTopic\',' + boardId + ');return false" class="img-btn"><img src="/fb/post.gif" alt="Nouveau sujet"></a>';
+    }
+  }
   else html += '<span style="font-size:10px;color:#888">Connecte-toi depuis Frutiparc pour poster</span>';
   html += '</div>';
   html += '<div class="shell-center">';
@@ -1654,7 +1682,23 @@ async function loadTopic(topicId, page) {
   // Shell zone: pagination on left, action buttons on right
   html += '<div class="shell-actions">';
   html += '<div class="shell-left">';
-  if (currentUser && !data.topic.isLocked) html += '<a href="#" onclick="showReplyForm();return false" class="img-btn"><img src="/fb/reply.gif" alt="Répondre"></a>';
+  if (currentUser && !data.topic.isLocked) {
+    if (myMuted) {
+      html += '<span class="reply-blocked" title="Tu es totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + '">'
+        + 'Totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + ' — réponse impossible'
+        + '</span>';
+    } else if (data.topic.lastPostBy && currentUser
+               && data.topic.lastPostBy === String(currentUser).toLowerCase()) {
+      // The current user is already the author of the most recent post on
+      // this topic — they have to edit it (or wait for someone else to
+      // reply) rather than double-posting.
+      html += '<span class="reply-blocked" title="Tu as déjà posté le dernier message — édite-le ou attends une autre réponse">'
+        + 'Tu as déjà répondu — édite ton message ou attends une autre réponse'
+        + '</span>';
+    } else {
+      html += '<a href="#" onclick="showReplyForm();return false" class="img-btn"><img src="/fb/reply.gif" alt="Répondre"></a>';
+    }
+  }
   html += '</div>';
   html += '<div class="shell-center">';
   html += pagination(data.total, data.perPage, data.page, 'topicPage');
@@ -1725,7 +1769,7 @@ async function submitReply() {
     var lastPage = Math.ceil(totalAfter / 15);
     loadTopic(currentTopicId, lastPage);
   } else {
-    alert('Erreur : ' + (data.error || 'inconnue'));
+    alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
   }
 }
 
@@ -2121,28 +2165,28 @@ async function submitEdit(postId) {
     body: JSON.stringify({ content: newContent, sid: SID }),
   });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
-  else alert('Erreur : ' + (data.error || 'inconnue'));
+  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
 }
 
 async function deletePost(postId) {
   if (!confirm('Supprimer ce message ?')) return;
   var data = await apiFetch('/api/forum/post/' + postId, { method: 'DELETE' });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
-  else alert('Erreur : ' + (data.error || 'inconnue'));
+  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
 }
 
 async function toggleSticky() {
   if (!currentTopicId) return;
   var data = await apiFetch('/api/forum/topic/' + currentTopicId + '/sticky', { method: 'POST' });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
-  else alert('Erreur : ' + (data.error || 'inconnue'));
+  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
 }
 
 async function toggleLock() {
   if (!currentTopicId) return;
   var data = await apiFetch('/api/forum/topic/' + currentTopicId + '/lock', { method: 'POST' });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
-  else alert('Erreur : ' + (data.error || 'inconnue'));
+  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
 }
 
 async function deleteTopic() {
@@ -2150,7 +2194,7 @@ async function deleteTopic() {
   if (!confirm('Supprimer ce sujet et tous ses messages ?')) return;
   var data = await apiFetch('/api/forum/topic/' + currentTopicId, { method: 'DELETE' });
   if (data.ok) navigate('board', data.boardId || (currentTopicData && currentTopicData.topic.boardId));
-  else alert('Erreur : ' + (data.error || 'inconnue'));
+  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
 }
 
 // Shared editor renderer used for new topics and replies.
@@ -2272,7 +2316,7 @@ async function submitNewTopic(boardId) {
     body: JSON.stringify({ boardId: boardId, title: title, content: content, bouille: bouille, sid: SID }),
   });
   if (data.ok) navigate('topic', data.topicId);
-  else alert('Erreur : ' + (data.error || 'inconnue'));
+  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
 }
 
 function renderConsecrationBanner(conse) {
@@ -2344,6 +2388,8 @@ async function init() {
       myBouille = data.bouille || null;
       myAccessories = data.accessories || [];
       myDefaultAccessories = data.defaultAccessories || [];
+      myMuted = !!data.muted;
+      myMutedUntilDisplay = data.mutedUntilDisplay || null;
       document.getElementById('user-info').textContent = 'Connecté : ' + currentUser;
       var pl = document.getElementById('pictos-link');
       if (pl) pl.style.display = 'inline';
