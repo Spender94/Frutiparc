@@ -1690,11 +1690,8 @@ async function loadTopic(topicId, page) {
     } else if (data.topic.lastPostBy && currentUser
                && data.topic.lastPostBy === String(currentUser).toLowerCase()) {
       // The current user is already the author of the most recent post on
-      // this topic — they have to edit it (or wait for someone else to
-      // reply) rather than double-posting.
-      html += '<span class="reply-blocked" title="Tu as déjà posté le dernier message — édite-le ou attends une autre réponse">'
-        + 'Tu as déjà répondu — édite ton message ou attends une autre réponse'
-        + '</span>';
+      // this topic — hide the Répondre button silently. They can edit
+      // their previous post or wait for someone else to reply.
     } else {
       html += '<a href="#" onclick="showReplyForm();return false" class="img-btn"><img src="/fb/reply.gif" alt="Répondre"></a>';
     }
