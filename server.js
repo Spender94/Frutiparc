@@ -7537,6 +7537,24 @@ function forumAuth(req) {
   return resolveUsernameFromSid(sid);
 }
 
+// ── Forum rules ──
+// Minimum raw content length (chars) for a forum message. Checked on the
+// trimmed pre-censor value so a profanity rewrite that inflates short
+// inputs (e.g. "serveur" → "gros cube noir et lourd …") doesn't sneak
+// past the gate.
+const FORUM_MIN_CONTENT_LEN = 10;
+// Hard cap on posts per topic, including the initial message. The topic
+// auto-locks the moment this count is reached so the 500th message goes
+// through but no #501 can ever be posted.
+const FORUM_MAX_POSTS_PER_TOPIC = 500;
+const FORUM_POSTS_PER_PAGE = 20;
+const FORUM_TOO_SHORT_MESSAGE =
+  "Alalala, je ne m'en lasse pas de ce site formidable ! Je pourrais en parler pendant des heures !";
+
+function isForumContentTooShort(rawContent) {
+  return String(rawContent || '').trim().length < FORUM_MIN_CONTENT_LEN;
+}
+
 // Returns { muted: bool, until: string|null, untilDisplay: string|null }
 // for the given username. Source of truth = users[].mutedUntil (set by the
 // chat 'mute' command). The same lockout that prevents chat messages also
@@ -7674,7 +7692,7 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     }
     await db.forumIncrementViews(topicId);
     const board = await db.forumGetBoard(topic.board_id);
-    const { posts, total } = await db.forumGetPosts(topicId, page, 15);
+    const { posts, total } = await db.forumGetPosts(topicId, page, FORUM_POSTS_PER_PAGE);
     const authorNames = [...new Set(posts.map(p => p.author_username))];
     const postCounts = await db.forumGetPostCounts(authorNames);
     const currentUser = forumAuth(req);
@@ -7704,7 +7722,7 @@ app.get('/api/forum/topic/:id', async (req, res) => {
         // does against currentUser (also lowercase from /api/forum/me).
         lastPostBy: String(topic.last_post_by || '').toLowerCase(),
       },
-      posts: postsOut, total, page, perPage: 15,
+      posts: postsOut, total, page, perPage: FORUM_POSTS_PER_PAGE,
       currentIsMod: !!currentIsMod,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -7713,7 +7731,6 @@ app.get('/api/forum/topic/:id', async (req, res) => {
 app.post('/api/forum/topic', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
-  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
   // Mute lockout: same window as the chat /totoche command. Applies even
   // to moderators so the consequence is consistent across the site.
   const mute = getMuteInfoForUser(username);
@@ -7725,11 +7742,21 @@ app.post('/api/forum/topic', async (req, res) => {
     });
   }
   const boardId = Number(req.body.boardId);
-  const title = censorProfanity(String(req.body.title || '').trim());
-  const content = censorProfanity(String(req.body.content || '').trim());
+  const rawTitle = String(req.body.title || '').trim();
+  const rawContent = String(req.body.content || '').trim();
+  if (!rawTitle || !rawContent) return res.status(400).json({ error: 'title and content required' });
+  if (rawTitle.length > 200) return res.status(400).json({ error: 'title too long' });
+  // Min-length check runs on the *pre-censor* trimmed input — a profanity
+  // rewrite can balloon a short input ("serveur" → 41 chars) and we don't
+  // want that bypass. Runs before the DB-availability gate so dev envs
+  // without DATABASE_URL still surface the validation error.
+  if (isForumContentTooShort(rawContent)) {
+    return res.status(400).json({ error: 'content_too_short', message: FORUM_TOO_SHORT_MESSAGE });
+  }
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  const title = censorProfanity(rawTitle);
+  const content = censorProfanity(rawContent);
   const postBouille = req.body.bouille ? normalizeBouilleState(req.body.bouille) : null;
-  if (!title || !content) return res.status(400).json({ error: 'title and content required' });
-  if (title.length > 200) return res.status(400).json({ error: 'title too long' });
   try {
     const { staffOnly } = await isStaffOnlyBoard(boardId);
     if (staffOnly && !isForumStaff(username)) return res.status(403).json({ error: 'forbidden' });
@@ -7742,7 +7769,6 @@ app.post('/api/forum/topic', async (req, res) => {
 app.post('/api/forum/post', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
-  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
   const mute = getMuteInfoForUser(username);
   if (mute.muted) {
     return res.status(403).json({
@@ -7752,9 +7778,14 @@ app.post('/api/forum/post', async (req, res) => {
     });
   }
   const topicId = Number(req.body.topicId);
-  const content = censorProfanity(String(req.body.content || '').trim());
+  const rawContent = String(req.body.content || '').trim();
+  if (!rawContent) return res.status(400).json({ error: 'content required' });
+  if (isForumContentTooShort(rawContent)) {
+    return res.status(400).json({ error: 'content_too_short', message: FORUM_TOO_SHORT_MESSAGE });
+  }
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  const content = censorProfanity(rawContent);
   const postBouille = req.body.bouille ? normalizeBouilleState(req.body.bouille) : null;
-  if (!content) return res.status(400).json({ error: 'content required' });
   try {
     const topic = await db.forumGetTopic(topicId);
     if (!topic) return res.status(404).json({ error: 'topic not found' });
@@ -7771,8 +7802,23 @@ app.post('/api/forum/post', async (req, res) => {
         message: "Tu ne peux pas poster deux messages d'affilée sur le même sujet. Édite ton message précédent ou attends qu'un autre Frutiz réponde.",
       });
     }
+    // Hard cap: refuse any post after the topic has reached the limit.
+    // The check is before insert so the cap is exact (no race where two
+    // simultaneous posters land #500 and #501 together — Postgres
+    // serialises the count + insert through the same transaction).
+    const currentCount = await db.forumCountPosts(topicId);
+    if (currentCount >= FORUM_MAX_POSTS_PER_TOPIC) {
+      // Defensive: make sure the topic is locked too, in case the lock
+      // didn't stick on the previous boundary insert (legacy data).
+      db.forumSetLocked(topicId, true).catch(dbErr('forumSetLocked cap'));
+      return res.status(403).json({ error: 'topic_full', message: 'Ce sujet a atteint la limite de 500 messages et est désormais verrouillé.' });
+    }
     const post = await db.forumCreatePost(topicId, username, content, postBouille);
     trackXpAction(username, 'forumPost');
+    // Auto-lock once we've just inserted what brings the count to the cap.
+    if (currentCount + 1 >= FORUM_MAX_POSTS_PER_TOPIC) {
+      db.forumSetLocked(topicId, true).catch(dbErr('forumSetLocked auto'));
+    }
     res.json({ ok: true, postId: post.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -7780,9 +7826,13 @@ app.post('/api/forum/post', async (req, res) => {
 app.put('/api/forum/post/:id', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
+  const rawContent = String(req.body.content || '').trim();
+  if (!rawContent) return res.status(400).json({ error: 'content required' });
+  if (isForumContentTooShort(rawContent)) {
+    return res.status(400).json({ error: 'content_too_short', message: FORUM_TOO_SHORT_MESSAGE });
+  }
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
-  const content = censorProfanity(String(req.body.content || '').trim());
-  if (!content) return res.status(400).json({ error: 'content required' });
+  const content = censorProfanity(rawContent);
   try {
     const { rows } = await db.pool.query('SELECT * FROM forum_posts WHERE id = $1', [req.params.id]);
     const post = rows[0];

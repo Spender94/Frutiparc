@@ -1197,6 +1197,19 @@ async function forumToggleLocked(topicId) {
   await pool.query('UPDATE forum_topics SET is_locked = NOT is_locked WHERE id = $1', [topicId]);
 }
 
+// Absolute setter, used when locking automatically (e.g. at the 500-post
+// cap) rather than via the moderator's toggle.
+async function forumSetLocked(topicId, locked) {
+  await pool.query('UPDATE forum_topics SET is_locked = $2 WHERE id = $1', [topicId, !!locked]);
+}
+
+async function forumCountPosts(topicId) {
+  const { rows } = await pool.query(
+    'SELECT COUNT(*)::int AS total FROM forum_posts WHERE topic_id = $1', [topicId]
+  );
+  return rows[0] ? Number(rows[0].total) : 0;
+}
+
 async function forumDeleteTopic(topicId) {
   await pool.query('DELETE FROM forum_posts WHERE topic_id = $1', [topicId]);
   await pool.query('DELETE FROM forum_topics WHERE id = $1', [topicId]);
@@ -1455,6 +1468,8 @@ module.exports = {
   forumCreateCategory,
   forumToggleSticky,
   forumToggleLocked,
+  forumSetLocked,
+  forumCountPosts,
   forumDeleteTopic,
   forumGetPostCounts,
   saveMail,
