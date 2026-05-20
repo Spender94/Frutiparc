@@ -16,8 +16,8 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const CONTACT_Y = 700;
-const SEARCH_Y  = 670;
+const CONTACT_Y = 670;
+const SEARCH_Y  = 640;
 
 const IN_PATH  = path.resolve(__dirname, '..', 'legacy', 'main.swf');
 const OUT_PATH = IN_PATH;

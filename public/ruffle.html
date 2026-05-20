@@ -13,24 +13,10 @@
         #player-container {
             width: 1920px;
             height: 768px;
-            transform: scale(1.5);
-            transform-origin: top left;
         }
     </style>
 
     <script>
-        // Force the perceived devicePixelRatio higher so Ruffle rasterises
-        // its canvas at 1.5x the CSS size. The #player-container is then
-        // visually scaled back up by `transform: scale(1.5)`, giving a
-        // pixel-perfect 1:1 mapping (physical canvas pixels ↔ screen
-        // pixels) instead of a bilinear stretch of a 1920×768 canvas to
-        // 2880×1152, which was noticeably blurry on text and HUD icons.
-        const _origDPR = window.devicePixelRatio || 1;
-        Object.defineProperty(window, "devicePixelRatio", {
-            configurable: true,
-            get: function () { return _origDPR * 1.5; }
-        });
-
         window.RufflePlayer = window.RufflePlayer || {};
         window.RufflePlayer.config = {
             fontSources: [
