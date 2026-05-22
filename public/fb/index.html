@@ -272,10 +272,10 @@
     color: #5a8030;
   }
 
-  /* Blockquote — phpBB subSilver: light green tint, no border */
+  /* Blockquote — light green tint, soft border, author bolded above */
   .post-content blockquote.quote {
-    background: #EDFBDD;
-    border: none;
+    background: #E2FACA;
+    border: 1px solid #B6DD8B;
     margin: 8px 4px;
     padding: 8px 12px;
     font-size: 11px;
@@ -283,11 +283,11 @@
     line-height: 125%;
     white-space: pre-wrap;
   }
-  .post-content blockquote.quote .quote-author {
+  .post-content .quote-author {
     font-weight: bold;
     font-size: 11px;
-    margin-bottom: 4px;
-    color: #2C4A0F;
+    margin: 8px 4px 2px;
+    color: #143500;
   }
   .post-content a { color: #2C4A0F; text-decoration: none; }
   .post-content a:hover { text-decoration: underline; }
@@ -1424,7 +1424,7 @@ function renderBBCode(s) {
   out = out.replace(/\[url\](https?:\/\/[^\s\[]+)\[\/url\]/gi,
     '<a href="$1" target="_blank" rel="noopener">$1</a>');
   out = out.replace(/\[(?:citation|quote)=([^\]]+)\]([\s\S]*?)\[\/(?:citation|quote)\]/gi,
-    '<blockquote class="quote"><div class="quote-author">$1 a dit :</div>$2</blockquote>');
+    '<div class="quote-author">$1 a dit :</div><blockquote class="quote">$2</blockquote>');
   out = out.replace(/\[(?:citation|quote)\]([\s\S]*?)\[\/(?:citation|quote)\]/gi,
     '<blockquote class="quote">$1</blockquote>');
   // [code] blocks — handled before linkification so URLs inside stay literal.
@@ -1784,20 +1784,27 @@ function bbcodeToolbarHtml(targetId) {
     { v: 24, label: '24 (énorme)' },
     { v: 30, label: '30 (gigantesque)' },
   ];
+  // Frutiz feutres — RGB values extracted from loader_bouille.swf (_global.penList).
+  // Order matches penItemList (item ids 315..327, 599..602).
   var colorOpts = [
-    { v: '',          label: 'Couleur' },
-    { v: 'red',       label: 'Rouge' },
-    { v: 'orange',    label: 'Orange' },
-    { v: 'yellow',    label: 'Jaune' },
-    { v: 'green',     label: 'Vert' },
-    { v: 'blue',      label: 'Bleu' },
-    { v: 'darkblue',  label: 'Bleu foncé' },
-    { v: 'purple',    label: 'Violet' },
-    { v: 'pink',      label: 'Rose' },
-    { v: 'brown',     label: 'Marron' },
-    { v: 'gray',      label: 'Gris' },
-    { v: 'black',     label: 'Noir' },
-    { v: 'white',     label: 'Blanc' },
+    { v: '',         label: 'Couleur' },
+    { v: '#FF6600',  label: 'Orange' },
+    { v: '#6666CC',  label: 'Bleu' },
+    { v: '#5EA523',  label: 'Vert foncé' },
+    { v: '#962761',  label: 'Bordeaux' },
+    { v: '#F986E2',  label: 'Rose' },
+    { v: '#EBB601',  label: 'Jaune' },
+    { v: '#20D251',  label: 'Vert clair' },
+    { v: '#47B9C9',  label: 'Turquoise' },
+    { v: '#472899',  label: 'Bleu foncé' },
+    { v: '#A0752E',  label: 'Marron' },
+    { v: '#66451E',  label: 'Marron foncé' },
+    { v: '#729236',  label: 'Kaki' },
+    { v: '#408877',  label: 'Bleu pétrole' },
+    { v: '#5B944B',  label: 'Vert' },
+    { v: '#264859',  label: 'Bleu pétrole foncé' },
+    { v: '#C8400D',  label: 'Orange foncé' },
+    { v: '#6E3C8D',  label: 'Violet' },
   ];
 
   function selHtml(name, opts, onChange) {

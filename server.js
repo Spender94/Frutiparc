@@ -746,7 +746,6 @@ function bouilleOf(user, username) {
 const sessions = {};       // sid -> { user, createdAt }
 const users = {};          // username -> { pass, xp, kikooz, fbouille, items, prefs }
 const recentSidByIp = new Map(); // ip -> sid fallback for legacy calls missing sid
-const LOGIN_PAGE_PATH = path.join(__dirname, 'public', 'login.html');
 const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
 
 // ─────────────────────────────────────────────
@@ -2769,7 +2768,7 @@ const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbo
 app.get('/legacy', (req, res) => {
   const sid = req.query.sid;
   if (!resolveUsernameFromSid(sid)) {
-    return res.redirect('/login');
+    return res.redirect('/');
   }
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
@@ -2785,7 +2784,7 @@ app.get('/api/me/bouille', (req, res) => {
 });
 
 app.get('/login', (req, res) => {
-  res.sendFile(LOGIN_PAGE_PATH);
+  res.redirect('/');
 });
 
 app.get('/', (req, res) => {
