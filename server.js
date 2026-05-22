@@ -2388,10 +2388,22 @@ function findMail(user, uid) {
   return user.mails.find((m) => m.uid === uid) || null;
 }
 
+// FEDate.newFromString in the SWF strictly reads "YYYY-MM-DD HH:MM:SS" by
+// fixed offsets. Convert legacy French dates ("DD/MM/YYYY HH:MM:SS") that were
+// written by an older sendmail handler so the Detail view's date column can
+// format them.
+function normalizeMailDate(s) {
+  if (!s) return '';
+  const m = String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})[ ,]+(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return s;
+  return `${m[3]}-${m[2]}-${m[1]} ${m[4]}:${m[5]}:${m[6] || '00'}`;
+}
+
 function buildMailElementXml(mail) {
   const desc = encodeMailDesc(mail);
   const access = mail.read ? '1' : '0';
-  return `<e u="${escapeXml(mail.uid)}" t="mail" s="${desc.length}" d="${escapeXml(mail.date || '')}" a="${access}">${escapeXml(desc)}</e>`;
+  const date = normalizeMailDate(mail.date);
+  return `<e u="${escapeXml(mail.uid)}" t="mail" s="${desc.length}" d="${escapeXml(date)}" a="${access}">${escapeXml(desc)}</e>`;
 }
 
 function unreadInboxCount(user) {
@@ -2738,10 +2750,10 @@ function buildBouilleListXml() {
 // ─────────────────────────────────────────────
 const FILE_TREE_XML = `<s u="root" n="Bureau" t="desktop" m="0" b="messages;inbox;outbox;blackbox;draftbox;disccollector;inventory;mycontact;recyclebin;blacklist">
   <f u="messages" n="Messages" t="messages">
-    <f u="inbox" n="Boîte de réception" t="inbox" />
-    <f u="outbox" n="Messages envoyés" t="outbox" />
-    <f u="blackbox" n="Spams" t="blackbox" />
-    <f u="draftbox" n="Brouillons" t="draftbox" />
+    <f u="inbox" n="Boîte de réception" t="inbox" p="mail" />
+    <f u="outbox" n="Messages envoyés" t="outbox" p="mail" />
+    <f u="blackbox" n="Spams" t="blackbox" p="mail" />
+    <f u="draftbox" n="Brouillons" t="draftbox" p="mail" />
   </f>
   <f u="disccollector" n="Mes disques" t="disccollector" />
   <f u="inventory" n="Inventaire" t="inventory">
@@ -7388,7 +7400,10 @@ app.post('/fm/sendmail', async (req, res) => {
     return res.type('text/xml').send('<r k="1"><e>to_empty</e></r>');
   }
 
-  const now = new Date().toLocaleString('fr-FR');
+  // Format expected by FEDate.newFromString in the SWF: "YYYY-MM-DD HH:MM:SS".
+  // toLocaleString('fr-FR') produced "DD/MM/YYYY HH:MM:SS" which the AS2
+  // parser couldn't decode, so the Detail view rendered NaN in its date column.
+  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const fromAddr = username + '@frutiparc.com';
   const toAddrs = parseRecipients(to);
 
@@ -7439,7 +7454,8 @@ app.post('/fm/sd', async (req, res) => {
   const content = String(req.body.c || req.body.content || '');
   const existingUid = String(req.body.u || '');
 
-  const now = new Date().toLocaleString('fr-FR');
+  // Use ISO-like "YYYY-MM-DD HH:MM:SS" so FEDate.newFromString can parse it.
+  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const fromAddr = username + '@frutiparc.com';
   const toAddrs = parseRecipients(to);
 
