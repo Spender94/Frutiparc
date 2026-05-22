@@ -275,13 +275,14 @@
   /* Blockquote — light green tint, soft border, author bolded above */
   .post-content blockquote.quote {
     background: #E2FACA;
-    border: 1px solid #B6DD8B;
-    margin: 8px 4px;
+    border: 1.5px solid #B6DD8B;
+    /* margin: 8px 4px; */
     padding: 8px 12px;
     font-size: 11px;
     color: #335511;
     line-height: 125%;
     white-space: pre-wrap;
+    border-radius: 5px;
   }
   .post-content .quote-author {
     font-weight: bold;
@@ -1423,9 +1424,13 @@ function renderBBCode(s) {
     '<a href="$1" target="_blank" rel="noopener">$2</a>');
   out = out.replace(/\[url\](https?:\/\/[^\s\[]+)\[\/url\]/gi,
     '<a href="$1" target="_blank" rel="noopener">$1</a>');
-  out = out.replace(/\[(?:citation|quote)=([^\]]+)\]([\s\S]*?)\[\/(?:citation|quote)\]/gi,
+  // Trim the newline right after [quote] and right before [/quote] so the
+  // \n→<br> pass below doesn't add an empty line at the top/bottom of the
+  // blockquote. Also swallow the first newline after [/quote] so the
+  // blockquote isn't followed by a hardcoded <br>.
+  out = out.replace(/\[(?:citation|quote)=([^\]]+)\]\n?([\s\S]*?)\n?\[\/(?:citation|quote)\]\n?/gi,
     '<div class="quote-author">$1 a dit :</div><blockquote class="quote">$2</blockquote>');
-  out = out.replace(/\[(?:citation|quote)\]([\s\S]*?)\[\/(?:citation|quote)\]/gi,
+  out = out.replace(/\[(?:citation|quote)\]\n?([\s\S]*?)\n?\[\/(?:citation|quote)\]\n?/gi,
     '<blockquote class="quote">$1</blockquote>');
   // [code] blocks — handled before linkification so URLs inside stay literal.
   out = out.replace(/\[code\]([\s\S]*?)\[\/code\]/gi, function(m, txt) {
