@@ -3173,6 +3173,66 @@ function mergeImportedSlot(game, slotId, existingJson, incomingObj) {
       $fruits: fruits,
     };
   }
+
+  // MiniPixiz / MiniTroll slot 0: mirror the per-field merge rules already
+  // applied in /api/saveFrutiSlot's forward-merge guard so an import follows
+  // the same "progress is monotonic" semantics as a normal save: scalars and
+  // counters take max(), $stat.$item is OR-ed, $eat/$kill/$game are
+  // element-wise max, nested progress containers ($faerie, $dungeon, $pond,
+  // $rainbow, $frog) keep prev when it's strictly better.
+  if ((game === 'minipixiz' || game === 'minitroll') && slotId === 0) {
+    let existing = {};
+    if (existingJson) { try { existing = JSON.parse(existingJson); } catch {} }
+    const merged = JSON.parse(JSON.stringify(incomingObj));
+    if (!merged.$stat) merged.$stat = {};
+    const eStat = existing.$stat || {};
+
+    for (const k of ['$run', '$forestMax', '$treeMax', '$misNum']) {
+      const ev = Number(eStat[k]) || 0;
+      const nv = Number(merged.$stat[k]) || 0;
+      if (ev > nv) merged.$stat[k] = ev;
+    }
+    for (const k of ['$diam', '$key', '$star', '$bag']) {
+      const ev = Number(existing[k]) || 0;
+      const nv = Number(merged[k]) || 0;
+      if (ev > nv) merged[k] = ev;
+    }
+    const eItem = Array.isArray(eStat.$item) ? eStat.$item : [];
+    const nItem = Array.isArray(merged.$stat.$item) ? merged.$stat.$item : [];
+    if (eItem.length || nItem.length) {
+      const len = Math.max(eItem.length, nItem.length);
+      const out = new Array(len);
+      for (let i = 0; i < len; i++) out[i] = Boolean(eItem[i]) || Boolean(nItem[i]);
+      merged.$stat.$item = out;
+    }
+    for (const k of ['$eat', '$kill', '$game']) {
+      const ev = Array.isArray(eStat[k]) ? eStat[k] : [];
+      const nv = Array.isArray(merged.$stat[k]) ? merged.$stat[k] : [];
+      if (ev.length || nv.length) {
+        const len = Math.max(ev.length, nv.length);
+        const out = new Array(len).fill(0);
+        for (let i = 0; i < len; i++) {
+          out[i] = Math.max(Number(ev[i]) || 0, Number(nv[i]) || 0);
+        }
+        merged.$stat[k] = out;
+      }
+    }
+    const ef = Array.isArray(existing.$faerie) ? existing.$faerie : [];
+    const nf = Array.isArray(merged.$faerie) ? merged.$faerie : [];
+    if (ef.length > nf.length) merged.$faerie = ef;
+    if (existing.$dungeon && Number(existing.$dungeon.$lvl) > Number((merged.$dungeon || {}).$lvl || 0)) {
+      merged.$dungeon = existing.$dungeon;
+    }
+    if (existing.$pond && Number(existing.$pond.$q) > Number((merged.$pond || {}).$q || 0)) {
+      merged.$pond = existing.$pond;
+    }
+    if (existing.$rainbow && existing.$rainbow.$f && !(merged.$rainbow && merged.$rainbow.$f)) {
+      merged.$rainbow = existing.$rainbow;
+    }
+    if (existing.$frog && !merged.$frog) merged.$frog = true;
+    return merged;
+  }
+
   // Default: incoming overwrites. Add per-game branches as more games go live.
   return incomingObj;
 }
