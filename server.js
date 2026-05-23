@@ -498,7 +498,12 @@ for (let i = 0; i < 57; i++) {
     GAME_ITEM_INFO[`$pixiz_food${id}`] = { name: `${baseName} (${variant})`.trim(), game: 'MiniPixiz', gif };
   }
 }
-// Diamonds (5 colors)
+// Diamonds (5 colors) — earned by completing each Dungeon difficulty level
+// (Games/miniTroll/src/base/Dungeon.mt: `diam.skin.gotoAndStop(string(difficulty+1))`
+// where difficulty = card.$dungeon.$lvl). The 5 GIFs in bmp/titems/GIF/diam/
+// are real album pictos — they bring MiniPixiz to its canonical total of
+// 162 slots (100 items + 57 foods + 5 diamonds), of which 5 are reserved
+// and unobtainable (la clé de donjon and the 4 base spells' parchemins/grimoires).
 const PIXIZ_DIAM_NAMES = ['cuivre', 'argent', 'or', 'rubis', 'éclat'];
 for (let i = 1; i <= 5; i++) {
   GAME_ITEM_INFO[`$pixiz_diam${i}`] = {
@@ -506,55 +511,6 @@ for (let i = 1; i <= 5; i++) {
     game: 'MiniPixiz',
     gif: `Games/miniTroll/bmp/titems/GIF/diam/diam${i}.gif`,
   };
-}
-// Game-state milestone pictos (zone unlocks, kill counts, missions, levels, etc.)
-const PIXIZ_MILESTONES = {
-  '$pixiz_first':        { name: 'Première aventure',  gif: 'Games/miniTroll/bmp/titems/GIF/banana0.gif' },
-  '$pixiz_forest':       { name: 'Forêt',              gif: 'Games/miniTroll/bmp/titems/GIF/item/item_2.gif' },
-  '$pixiz_pond':         { name: 'Étang',              gif: 'Games/miniTroll/bmp/titems/GIF/item/item_42.gif' },
-  '$pixiz_castle':       { name: 'Château',            gif: 'Games/miniTroll/bmp/titems/GIF/item/item_22.gif' },
-  '$pixiz_rainbow':      { name: 'Arc-en-ciel',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_46.gif' },
-  '$pixiz_tree':         { name: 'Arbre des fées',     gif: 'Games/miniTroll/bmp/titems/GIF/item/item_47.gif' },
-  '$pixiz_dungeon':      { name: 'Donjon débloqué',    gif: 'Games/miniTroll/bmp/titems/GIF/item/item_32.gif' },
-  '$pixiz_dungeon10':    { name: 'Donjon niveau 10',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_45.gif' },
-  '$pixiz_dungeon20':    { name: 'Donjon niveau 20',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_44.gif' },
-  '$pixiz_dungeon30':    { name: 'Donjon niveau 30',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_43.gif' },
-  '$pixiz_dungeon50':    { name: 'Donjon niveau 50',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_41.gif' },
-  '$pixiz_pond_quest':   { name: 'Quête de l\'étang',  gif: 'Games/miniTroll/bmp/titems/GIF/item/item_31.gif' },
-  '$pixiz_run10':        { name: '10 parties',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_61.gif' },
-  '$pixiz_run50':        { name: '50 parties',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_62.gif' },
-  '$pixiz_run100':       { name: '100 parties',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_63.gif' },
-  '$pixiz_run500':       { name: '500 parties',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_64.gif' },
-  '$pixiz_star10':       { name: '10 étoiles',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_65.gif' },
-  '$pixiz_star100':      { name: '100 étoiles',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_66.gif' },
-  '$pixiz_star1000':     { name: '1000 étoiles',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_67.gif' },
-  '$pixiz_key5':         { name: '5 clés',             gif: 'Games/miniTroll/bmp/titems/GIF/item/item_68.gif' },
-  '$pixiz_key25':        { name: '25 clés',            gif: 'Games/miniTroll/bmp/titems/GIF/item/item_69.gif' },
-  '$pixiz_faerie3':      { name: '3 fées',             gif: 'Games/miniTroll/bmp/titems/GIF/item/item_51.gif' },
-  '$pixiz_faerie5':      { name: '5 fées',             gif: 'Games/miniTroll/bmp/titems/GIF/item/item_52.gif' },
-  '$pixiz_faerie10':     { name: '10 fées',            gif: 'Games/miniTroll/bmp/titems/GIF/item/item_53.gif' },
-  '$pixiz_faerie_lvl10': { name: 'Fée niveau 10',      gif: 'Games/miniTroll/bmp/titems/GIF/item/item_54.gif' },
-  '$pixiz_faerie_lvl30': { name: 'Fée niveau 30',      gif: 'Games/miniTroll/bmp/titems/GIF/item/item_55.gif' },
-  '$pixiz_faerie_lvl50': { name: 'Fée niveau 50',      gif: 'Games/miniTroll/bmp/titems/GIF/item/item_56.gif' },
-  '$pixiz_treeMax20':    { name: 'Arbre - Score 20',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_3.gif' },
-  '$pixiz_treeMax50':    { name: 'Arbre - Score 50',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_8.gif' },
-  '$pixiz_treeMax100':   { name: 'Arbre - Score 100',  gif: 'Games/miniTroll/bmp/titems/GIF/item/item_13.gif' },
-  '$pixiz_forestMax5':   { name: 'Forêt niveau 5',     gif: 'Games/miniTroll/bmp/titems/GIF/item/item_18.gif' },
-  '$pixiz_forestMax10':  { name: 'Forêt niveau 10',    gif: 'Games/miniTroll/bmp/titems/GIF/item/item_23.gif' },
-  '$pixiz_forestMax20':  { name: 'Forêt niveau 20',    gif: 'Games/miniTroll/bmp/titems/GIF/item/item_28.gif' },
-  '$pixiz_mis10':        { name: '10 missions',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_6.gif' },
-  '$pixiz_mis25':        { name: '25 missions',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_7.gif' },
-  '$pixiz_mis50':        { name: '50 missions',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_11.gif' },
-  '$pixiz_mis100':       { name: '100 missions',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_12.gif' },
-  '$pixiz_kill100':      { name: '100 imps vaincus',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_16.gif' },
-  '$pixiz_kill500':      { name: '500 imps vaincus',   gif: 'Games/miniTroll/bmp/titems/GIF/item/item_17.gif' },
-  '$pixiz_bag2':         { name: 'Sac niveau 2',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_82.gif' },
-  '$pixiz_bag3':         { name: 'Sac niveau 3',       gif: 'Games/miniTroll/bmp/titems/GIF/item/item_83.gif' },
-  '$pixiz_bag_max':      { name: 'Sac maximal',        gif: 'Games/miniTroll/bmp/titems/GIF/item/item_84.gif' },
-  '$pixiz_frog':         { name: 'Grenouille',         gif: 'Games/miniTroll/bmp/titems/GIF/item/item_21.gif' },
-};
-for (const [id, info] of Object.entries(PIXIZ_MILESTONES)) {
-  GAME_ITEM_INFO[id] = { name: info.name, game: 'MiniPixiz', gif: info.gif };
 }
 
 // JamaJama (Poulpi) — milestone pictos awarded based on number of saved
@@ -4979,26 +4935,24 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
       }
     }
   } else if (game === 'minipixiz' || game === 'minitroll') {
-    // MiniPixiz (miniTroll) — slot 0 layout from Card.mt:
-    //   $stat.$item:Array<bool>   discovered items (indexed by item id)
-    //   $stat.$eat:Array<int>     eaten foods    (indexed by food id, count value)
+    // MiniPixiz (miniTroll) album = 162 picto slots total :
+    //   • 100 items   from bmp/titems/GIF/item/  (indices 1..228 with gaps)
+    //                 unlocked via $stat.$item[id]=true (Card.mt schema)
+    //   •  57 foods   from bmp/titems/GIF/food/  (3 variants per food type)
+    //                 unlocked via $stat.$eat[n] count thresholds (1/5/20)
+    //   •   5 diamants from bmp/titems/GIF/diam/ (1 par couleur de donjon)
+    //                 unlocked via $dungeon.$lvl/$f/$loop (base/Dungeon.mt)
+    //   = 162, dont 5 réservés inaccessibles (clé de donjon $item[31],
+    //     parchemins+grimoires des sorts de base des fées $item[100/116/200/216])
+    //   → 157 obtenables.
     //
-    // The original SWF only has TWO picto categories: 100 item GIFs in
-    // bmp/titems/GIF/item/ (file indices 1..228 with documented gaps) and
-    // 57 food GIFs in bmp/titems/GIF/food/. Total obtainable = 157 ;
-    // plus 5 reserved/locked slots in the album (la clé de donjon at
-    // $item[31], and the parchemins/grimoires des sorts de base des fées
-    // at $item[100], [116], [200], [216]) = 162 album slots.
-    //
-    // Other slot fields ($run, $diam, $faerie, $dungeon, $treeMax, $bag,
-    // $frog, $game, $kill, $misNum…) are GAMEPLAY STATE, not pictos —
-    // they don't appear in the player's album. A previous version of
-    // this extractor minted fake $pixiz_first/$pixiz_dungeon/$pixiz_faerieN
-    // /$pixiz_treeMax/$pixiz_run/$pixiz_diam/$pixiz_star/$pixiz_key/
-    // $pixiz_bag/$pixiz_frog "milestones" ; none of those had an entry in
-    // GAME_ITEM_INFO so they didn't render in the album, but they bloated
-    // user.gameItems and made the total picto count look inflated
-    // (acgi import: 181 instead of the expected ≤157).
+    // Other slot fields ($run, $star, $key, $faerie, $treeMax, $bag, $frog,
+    // $game, $kill, $misNum…) are pure gameplay state — they appear nowhere
+    // in the album. A previous version of this extractor minted 47 fake
+    // $pixiz_first/$pixiz_dungeon/$pixiz_faerieN/$pixiz_treeMax/$pixiz_run/
+    // $pixiz_star/$pixiz_key/$pixiz_bag/$pixiz_frog/etc. "milestones" with
+    // reused item GIFs, polluting the album to 209 slots. Removed (and the
+    // /minipixiz-pictos/cleanup-fakes endpoint scrubs them retroactively).
     const stat = (parsed.$stat && typeof parsed.$stat === 'object' && !Array.isArray(parsed.$stat)) ? parsed.$stat : {};
 
     // 1) Per-item pictos (read $stat.$item array — bool per item id)
@@ -5018,6 +4972,19 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
       if (count >= 1)  addIfNew(`$pixiz_food${300 + n * 3 + 2}`);
       if (count >= 5)  addIfNew(`$pixiz_food${300 + n * 3 + 1}`);
       if (count >= 20) addIfNew(`$pixiz_food${300 + n * 3}`);
+    }
+    // 3) Diamond pictos (5 colors) — earned by completing each Dungeon
+    // difficulty tier. Source: Games/miniTroll/src/base/Dungeon.mt — the
+    // diamond skin gotoAndStop(difficulty+1) where difficulty = $dungeon.$lvl
+    // at the start of each run. So completing level N drops a diamant of
+    // color N+1. $dungeon.$lvl tracks the latest difficulty done and
+    // $dungeon.$loop > 0 means at least one full cycle (all 5 colors).
+    const dungeon = (parsed.$dungeon && typeof parsed.$dungeon === 'object') ? parsed.$dungeon : null;
+    if (dungeon) {
+      const lvl = Number(dungeon.$lvl) || 0;
+      const loop = Number(dungeon.$loop) || 0;
+      const completed = Math.min(5, loop > 0 ? 5 : (lvl + (dungeon.$f ? 1 : 0)));
+      for (let k = 1; k <= completed; k++) addIfNew(`$pixiz_diam${k}`);
     }
   } else if (game === 'snake3') {
     // FrutiSnake: $fruits is an object/array mapping fruit ID → collection count.
