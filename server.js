@@ -3134,6 +3134,159 @@ app.post('/api/admin/users/:username/reset-game-slot/:game', adminAuth, async (r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─────────────────────────────────────────────
+// ENDPOINT: /api/admin/users/:username/import-slots/:game — Migrate progression
+// from another Frutiengine instance.
+//
+// Body: { slots: { "0": <json|obj>, "1": <json|obj>, ... } }
+//       or { data: <json|obj> } as shorthand for slot 0.
+//
+// Per-game merge: for games where progression is monotonic (snake3 fruits,
+// records) we take max() per field so an admin import never regresses what
+// the player already did on this instance. For other games we currently fall
+// back to "incoming wins" — extend mergeImportedSlot when adding them.
+//
+// Pictos: re-runs extractGameItemsFromSlot on the merged slot 0 so unlocks
+// derived from the imported data (e.g. snake3 fruits ≥ 20) are granted.
+//
+// Score (snake3 only for now): pushes $record to snake3_classic ranking
+// ("Records" tab in Club) via persistScore (which itself only updates if the
+// score improves). Challenge ranking is NOT touched.
+// ─────────────────────────────────────────────
+function mergeImportedSlot(game, slotId, existingJson, incomingObj) {
+  if (game === 'snake3' && slotId === 0) {
+    let existing = {};
+    if (existingJson) { try { existing = JSON.parse(existingJson); } catch {} }
+    const eFruits = Array.isArray(existing.$fruits) ? existing.$fruits : [];
+    const iFruits = Array.isArray(incomingObj.$fruits) ? incomingObj.$fruits : [];
+    const len = Math.max(eFruits.length, iFruits.length);
+    const fruits = new Array(len);
+    for (let i = 0; i < len; i++) {
+      const a = eFruits[i], b = iFruits[i];
+      const aNum = (a == null) ? -1 : Number(a);
+      const bNum = (b == null) ? -1 : Number(b);
+      const m = Math.max(aNum, bNum);
+      fruits[i] = (m < 0) ? null : m;
+    }
+    return {
+      $record: Math.max(Number(existing.$record) || 0, Number(incomingObj.$record) || 0),
+      $fruits: fruits,
+    };
+  }
+  // Default: incoming overwrites. Add per-game branches as more games go live.
+  return incomingObj;
+}
+
+app.post('/api/admin/users/:username/import-slots/:game', adminAuth, async (req, res) => {
+  const username = req.params.username;
+  const game = String(req.params.game || '').trim();
+  if (!game) return res.status(400).json({ error: 'game required' });
+
+  let slots = {};
+  if (req.body) {
+    if (req.body.slots && typeof req.body.slots === 'object' && !Array.isArray(req.body.slots)) {
+      slots = req.body.slots;
+    } else if (req.body.data !== undefined) {
+      slots = { 0: req.body.data };
+    }
+  }
+  if (Object.keys(slots).length === 0) {
+    return res.status(400).json({ error: 'missing slots or data in body' });
+  }
+
+  const memUser = users[username];
+  let dbId = memUser ? memUser._dbId : null;
+  if (!dbId && process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(username);
+      if (row) dbId = row.id;
+    } catch { /* ignore */ }
+  }
+  if (!dbId && !memUser) return res.status(404).json({ error: 'user not found' });
+
+  let existing = {};
+  if (dbId) {
+    try { existing = await db.getFrutiSlots(dbId, game); } catch { existing = {}; }
+  } else if (memUser && memUser.frutiSlots && memUser.frutiSlots[game]) {
+    existing = memUser.frutiSlots[game];
+  }
+
+  const report = { ok: true, username, game, slots: [], pictosGranted: 0, scoreUpdated: false };
+  let mergedSlot0Json = null;
+
+  for (const [slotIdStr, incomingRaw] of Object.entries(slots)) {
+    const slotId = Number(slotIdStr);
+    if (!Number.isInteger(slotId) || slotId < 0 || slotId > 9) {
+      report.slots.push({ slotId: slotIdStr, status: 'invalid_id' });
+      continue;
+    }
+    let incomingObj;
+    if (typeof incomingRaw === 'string') {
+      try { incomingObj = JSON.parse(incomingRaw); }
+      catch (e) { report.slots.push({ slotId, status: 'invalid_json', error: e.message }); continue; }
+    } else if (incomingRaw && typeof incomingRaw === 'object') {
+      incomingObj = incomingRaw;
+    } else {
+      report.slots.push({ slotId, status: 'invalid_type' }); continue;
+    }
+
+    const existingJson = existing[String(slotId)] || existing[slotId] || null;
+    const merged = mergeImportedSlot(game, slotId, existingJson, incomingObj);
+    const mergedJson = JSON.stringify(merged);
+    if (slotId === 0) mergedSlot0Json = mergedJson;
+
+    if (dbId) {
+      try { await db.upsertFrutiSlot(dbId, game, slotId, mergedJson); }
+      catch (e) { report.slots.push({ slotId, status: 'db_error', error: e.message }); continue; }
+    }
+
+    if (memUser) {
+      if (!memUser.frutiSlots) memUser.frutiSlots = {};
+      if (!memUser.frutiSlots[game]) memUser.frutiSlots[game] = {};
+      memUser.frutiSlots[game][String(slotId)] = mergedJson;
+    }
+    report.slots.push({ slotId, status: 'imported', size: mergedJson.length, mergedWithExisting: !!existingJson });
+  }
+
+  if (mergedSlot0Json) {
+    try {
+      let existingItems = [];
+      if (dbId) {
+        try { existingItems = await db.getUserGameItems(dbId); } catch { /* ignore */ }
+      } else if (memUser && Array.isArray(memUser.gameItems)) {
+        existingItems = memUser.gameItems.slice();
+      }
+      const localUser = { gameItems: [...existingItems], _dbId: dbId };
+      extractGameItemsFromSlot(username, game, mergedSlot0Json, { silent: true, userOverride: localUser });
+      report.pictosGranted = localUser.gameItems.length - existingItems.length;
+      if (memUser && Array.isArray(memUser.gameItems)) {
+        for (const item of localUser.gameItems) {
+          if (!memUser.gameItems.includes(item)) memUser.gameItems.push(item);
+        }
+      }
+    } catch (e) {
+      console.error(`[IMPORT] picto extraction failed for ${username}/${game}: ${e.message}`);
+    }
+  }
+
+  if (game === 'snake3' && mergedSlot0Json) {
+    try {
+      const obj = JSON.parse(mergedSlot0Json);
+      const record = Number(obj.$record) || 0;
+      if (record > 0) {
+        const r = persistScore(username, 'snake3_classic', record, '');
+        report.scoreUpdated = r.updated;
+        report.classicScore = { newScore: r.newScore, oldScore: r.oldScore };
+      }
+    } catch (e) {
+      console.error(`[IMPORT] score push failed for ${username}/${game}: ${e.message}`);
+    }
+  }
+
+  console.log(`[ADMIN] import-slots ${username}/${game}: slots=${report.slots.length} pictos=+${report.pictosGranted} scoreUpdated=${report.scoreUpdated}`);
+  res.json(report);
+});
+
 // Diagnostic: force an arbitrary internal-status code (sprite 246 frame
 // number, 0..36) on a user's broadcast presence so the icon at that frame
 // can be observed in chat / userlist / contact card. Lets us discover which

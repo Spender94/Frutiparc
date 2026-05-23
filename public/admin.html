@@ -674,6 +674,35 @@
   </div>
 </div>
 
+<div class="modal-bg" id="modal-import-slots">
+  <div class="modal" style="max-width:700px">
+    <h3>Importer une progression de jeu</h3>
+    <label><span>Jeu :</span>
+      <select id="import-slots-game">
+        <option value="snake3">Frutisnake (snake3)</option>
+        <option value="bkiwi">Burning Kiwi (bkiwi)</option>
+        <option value="mb2">MotionBall 2 (mb2)</option>
+        <option value="miniwave">MiniWave (miniwave)</option>
+        <option value="minipixiz">MiniPixiz (minipixiz)</option>
+        <option value="kaluga">Kaluga (kaluga)</option>
+        <option value="swapou2">Swapou 2 (swapou2)</option>
+      </select>
+    </label>
+    <label><span>JSON (collez ici le contenu) :</span>
+      <textarea id="import-slots-json" rows="14" style="width:100%;font-family:monospace;font-size:11px" placeholder='{"$record":1194440,"$fruits":[null,122,130,...]}'></textarea>
+    </label>
+    <p style="margin:6px 0;font-size:12px;color:#666">
+      Si le JSON contient un seul slot (objet direct), il est appliqué au slot 0.
+      Pour plusieurs slots, utilisez la forme <code>{"slots":{"0":...,"1":...}}</code>.<br>
+      <b>Snake3 :</b> fusionne en prenant le max par fruit et le max du record. Les pictos « Fruit N » ≥ 20 sont auto-débloqués. Le record est aussi poussé dans le classement Records (Classique), pas dans Challenge.
+    </p>
+    <div class="actions">
+      <button class="btn" onclick="closeModal('modal-import-slots')">Annuler</button>
+      <button class="btn-success" onclick="submitImportSlots()">Importer</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1133,7 +1162,7 @@ async function loadDetail() {
     }
 
     // Game Items (Pictos)
-    html += `<h4>Pictos (Game Items) <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm" onclick="openAddGameItem()">+ Ajouter</button><button class="btn-success btn-sm" onclick="reextractPictos()">↻ Réextraire</button><button class="btn-danger btn-sm" onclick="resetGameSlot('minipixiz')">⟲ Reset MiniPixiz slot</button><button class="btn-success btn-sm" onclick="addAllBkiwiPictos()">+ Tous BKiwi</button><button class="btn-success btn-sm" onclick="addAllPixizPictos()">+ Tous MiniPixiz</button><button class="btn-success btn-sm" onclick="addAllMiniwavePictos()">+ Tous MiniWave</button></span></h4>`;
+    html += `<h4>Pictos (Game Items) <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm" onclick="openAddGameItem()">+ Ajouter</button><button class="btn-success btn-sm" onclick="reextractPictos()">↻ Réextraire</button><button class="btn-success btn-sm" onclick="openImportSlots()">↑ Importer progression</button><button class="btn-danger btn-sm" onclick="resetGameSlot('minipixiz')">⟲ Reset MiniPixiz slot</button><button class="btn-success btn-sm" onclick="addAllBkiwiPictos()">+ Tous BKiwi</button><button class="btn-success btn-sm" onclick="addAllPixizPictos()">+ Tous MiniPixiz</button><button class="btn-success btn-sm" onclick="addAllMiniwavePictos()">+ Tous MiniWave</button></span></h4>`;
     const gameItems = d.gameItems || [];
     if (gameItems.length) {
       html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px">';
@@ -1236,6 +1265,50 @@ async function resetGameSlot(game) {
   const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/reset-game-slot/${encodeURIComponent(game)}`, { method: 'POST', headers: hdr() });
   if (r.ok) toast(`Slot ${game} réinitialisé`);
   else toast(`Erreur: ${r.status}`);
+}
+
+function openImportSlots() {
+  if (!currentDetailUser) return;
+  $('#import-slots-json').value = '';
+  $('#modal-import-slots').classList.add('open');
+}
+
+async function submitImportSlots() {
+  if (!currentDetailUser) return;
+  const game = $('#import-slots-game').value;
+  const raw = $('#import-slots-json').value.trim();
+  if (!raw) { toast('Coller le JSON'); return; }
+  let parsed;
+  try { parsed = JSON.parse(raw); }
+  catch (e) { toast('JSON invalide: ' + e.message); return; }
+
+  // Body shape: { slots: {...} } | { data: ... } | bare slot 0 object → wrap as { data }
+  let body;
+  if (parsed && typeof parsed === 'object' && parsed.slots && typeof parsed.slots === 'object') {
+    body = { slots: parsed.slots };
+  } else if (parsed && typeof parsed === 'object' && parsed.data !== undefined) {
+    body = { data: parsed.data };
+  } else {
+    body = { data: parsed };
+  }
+
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/import-slots/${encodeURIComponent(game)}`, {
+    method: 'POST',
+    headers: { ...hdr(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  let data = {};
+  try { data = await r.json(); } catch {}
+  if (!r.ok) { toast(`Erreur ${r.status}: ${data.error || r.statusText}`); return; }
+
+  closeModal('modal-import-slots');
+  const parts = [];
+  parts.push(`${data.slots ? data.slots.length : 0} slot(s) importé(s)`);
+  if (data.pictosGranted) parts.push(`+${data.pictosGranted} picto(s)`);
+  if (data.scoreUpdated && data.classicScore) parts.push(`record: ${data.classicScore.oldScore} → ${data.classicScore.newScore}`);
+  else if (data.classicScore) parts.push(`record inchangé (déjà ${data.classicScore.oldScore})`);
+  toast('Import OK — ' + parts.join(', '));
+  loadDetail();
 }
 
 // Diagnostic helper: force the user's presence "internal" code (sprite 246
