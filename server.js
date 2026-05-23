@@ -4267,6 +4267,72 @@ app.post('/api/admin/users/:username/minipixiz-pictos/grant-earned', adminAuth, 
   res.json({ granted: user.gameItems.length - before, total: user.gameItems.length });
 });
 
+// ─── Cleanup: remove fake "milestone" pixiz pictos accidentally minted by
+// an earlier extractor (now removed — see extractGameItemsFromSlot).
+// The official MiniPixiz picto album only contains the 100 item GIFs in
+// bmp/titems/GIF/item/ and the 57 food GIFs in bmp/titems/GIF/food/.
+// Everything else this list enumerates was a fabricated $pixiz_* id that
+// had no entry in GAME_ITEM_INFO (so it never rendered) but still sat in
+// user.gameItems inflating per-game counts. Idempotent.
+const PIXIZ_FAKE_MILESTONE_IDS = [
+  '$pixiz_first',
+  '$pixiz_forest', '$pixiz_pond', '$pixiz_castle', '$pixiz_rainbow', '$pixiz_tree',
+  '$pixiz_run10', '$pixiz_run50', '$pixiz_run100', '$pixiz_run500',
+  '$pixiz_diam1', '$pixiz_diam2', '$pixiz_diam3', '$pixiz_diam4', '$pixiz_diam5',
+  '$pixiz_star10', '$pixiz_star100', '$pixiz_star1000',
+  '$pixiz_key5', '$pixiz_key25',
+  '$pixiz_dungeon', '$pixiz_dungeon10', '$pixiz_dungeon20', '$pixiz_dungeon30', '$pixiz_dungeon50',
+  '$pixiz_pond_quest',
+  '$pixiz_faerie3', '$pixiz_faerie5', '$pixiz_faerie10',
+  '$pixiz_faerie_lvl10', '$pixiz_faerie_lvl30', '$pixiz_faerie_lvl50',
+  '$pixiz_treeMax20', '$pixiz_treeMax50', '$pixiz_treeMax100',
+  '$pixiz_forestMax5', '$pixiz_forestMax10', '$pixiz_forestMax20',
+  '$pixiz_mis10', '$pixiz_mis25', '$pixiz_mis50', '$pixiz_mis100',
+  '$pixiz_kill100', '$pixiz_kill500',
+  '$pixiz_bag2', '$pixiz_bag3', '$pixiz_bag_max',
+  '$pixiz_frog',
+];
+
+app.post('/api/admin/users/:username/minipixiz-pictos/cleanup-fakes', adminAuth, async (req, res) => {
+  const username = req.params.username.toLowerCase();
+  const memUser = users[username];
+  let dbId = memUser ? memUser._dbId : null;
+  if (!dbId && process.env.DATABASE_URL) {
+    try { const row = await db.findUserByUsername(username); if (row) dbId = row.id; } catch {}
+  }
+  if (!dbId && !memUser) return res.status(404).json({ error: 'user not found' });
+
+  const fakeSet = new Set(PIXIZ_FAKE_MILESTONE_IDS);
+  const removed = [];
+
+  if (memUser && Array.isArray(memUser.gameItems)) {
+    const kept = [];
+    for (const item of memUser.gameItems) {
+      if (fakeSet.has(item)) removed.push(item);
+      else kept.push(item);
+    }
+    memUser.gameItems = kept;
+  }
+
+  if (dbId) {
+    let dbItems = [];
+    try { dbItems = await db.getUserGameItems(dbId); } catch (e) {
+      return res.status(500).json({ error: 'getUserGameItems failed: ' + e.message });
+    }
+    for (const item of dbItems) {
+      if (fakeSet.has(item)) {
+        if (!removed.includes(item)) removed.push(item);
+        try { await db.removeGameItem(dbId, item); } catch (e) {
+          console.error(`[CLEANUP] removeGameItem(${dbId}, ${item}) failed: ${e.message}`);
+        }
+      }
+    }
+  }
+
+  console.log(`[ADMIN] minipixiz cleanup-fakes ${username}: removed ${removed.length} fake pictos`);
+  res.json({ ok: true, username, removed, removedCount: removed.length });
+});
+
 app.get('/api/admin/users/:username/modlogs', adminAuth, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
@@ -4916,14 +4982,24 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
     // MiniPixiz (miniTroll) — slot 0 layout from Card.mt:
     //   $stat.$item:Array<bool>   discovered items (indexed by item id)
     //   $stat.$eat:Array<int>     eaten foods    (indexed by food id, count value)
-    //   $stat.$kill:Array<int>    imp kills per level
-    //   $stat.$run:int            game runs
-    //   $stat.$game:Array<int>    plays per zone [forest, pond, castle, rainbow, tree]
-    //   $stat.$forestMax:int $stat.$treeMax:int $stat.$misNum:int
-    //   $diam, $key, $star, $bag (counters)
-    //   $dungeon.{$lvl,$f}, $rainbow.{$f}, $pond.{$d,$q}, $frog (booleans)
-    //   $faerie:Array<FaerieSeed>  (each has $level, $skin, $spell, ...)
-    const stat = parsed.$stat || {};
+    //
+    // The original SWF only has TWO picto categories: 100 item GIFs in
+    // bmp/titems/GIF/item/ (file indices 1..228 with documented gaps) and
+    // 57 food GIFs in bmp/titems/GIF/food/. Total obtainable = 157 ;
+    // plus 5 reserved/locked slots in the album (la clé de donjon at
+    // $item[31], and the parchemins/grimoires des sorts de base des fées
+    // at $item[100], [116], [200], [216]) = 162 album slots.
+    //
+    // Other slot fields ($run, $diam, $faerie, $dungeon, $treeMax, $bag,
+    // $frog, $game, $kill, $misNum…) are GAMEPLAY STATE, not pictos —
+    // they don't appear in the player's album. A previous version of
+    // this extractor minted fake $pixiz_first/$pixiz_dungeon/$pixiz_faerieN
+    // /$pixiz_treeMax/$pixiz_run/$pixiz_diam/$pixiz_star/$pixiz_key/
+    // $pixiz_bag/$pixiz_frog "milestones" ; none of those had an entry in
+    // GAME_ITEM_INFO so they didn't render in the album, but they bloated
+    // user.gameItems and made the total picto count look inflated
+    // (acgi import: 181 instead of the expected ≤157).
+    const stat = (parsed.$stat && typeof parsed.$stat === 'object' && !Array.isArray(parsed.$stat)) ? parsed.$stat : {};
 
     // 1) Per-item pictos (read $stat.$item array — bool per item id)
     const items = Array.isArray(stat.$item) ? stat.$item : [];
@@ -4943,91 +5019,6 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
       if (count >= 5)  addIfNew(`$pixiz_food${300 + n * 3 + 1}`);
       if (count >= 20) addIfNew(`$pixiz_food${300 + n * 3}`);
     }
-
-    // 3) Game-state milestones
-    const games = Array.isArray(stat.$game) ? stat.$game : [];
-    if ((stat.$run || 0) >= 1)   addIfNew('$pixiz_first');
-    if ((games[0] || 0) >= 1)    addIfNew('$pixiz_forest');
-    if ((games[1] || 0) >= 1)    addIfNew('$pixiz_pond');
-    if ((games[2] || 0) >= 1)    addIfNew('$pixiz_castle');
-    if ((games[3] || 0) >= 1)    addIfNew('$pixiz_rainbow');
-    if ((games[4] || 0) >= 1)    addIfNew('$pixiz_tree');
-    if ((stat.$run || 0) >= 10)  addIfNew('$pixiz_run10');
-    if ((stat.$run || 0) >= 50)  addIfNew('$pixiz_run50');
-    if ((stat.$run || 0) >= 100) addIfNew('$pixiz_run100');
-    if ((stat.$run || 0) >= 500) addIfNew('$pixiz_run500');
-
-    // 4) Diamond tier pictos (one per color) — $diam is total count
-    const diam = Number(parsed.$diam) || 0;
-    if (diam >= 1)   addIfNew('$pixiz_diam1');
-    if (diam >= 5)   addIfNew('$pixiz_diam2');
-    if (diam >= 15)  addIfNew('$pixiz_diam3');
-    if (diam >= 50)  addIfNew('$pixiz_diam4');
-    if (diam >= 150) addIfNew('$pixiz_diam5');
-
-    // 5) Star milestones
-    const star = Number(parsed.$star) || 0;
-    if (star >= 10)   addIfNew('$pixiz_star10');
-    if (star >= 100)  addIfNew('$pixiz_star100');
-    if (star >= 1000) addIfNew('$pixiz_star1000');
-
-    // 6) Key milestones
-    const key = Number(parsed.$key) || 0;
-    if (key >= 5)  addIfNew('$pixiz_key5');
-    if (key >= 25) addIfNew('$pixiz_key25');
-
-    // 7) Dungeon
-    if (parsed.$dungeon && parsed.$dungeon.$f) addIfNew('$pixiz_dungeon');
-    const dungeonLvl = (parsed.$dungeon && Number(parsed.$dungeon.$lvl)) || 0;
-    if (dungeonLvl >= 10) addIfNew('$pixiz_dungeon10');
-    if (dungeonLvl >= 20) addIfNew('$pixiz_dungeon20');
-    if (dungeonLvl >= 30) addIfNew('$pixiz_dungeon30');
-    if (dungeonLvl >= 50) addIfNew('$pixiz_dungeon50');
-
-    // 8) Pond quest completed (when $q is set)
-    if (parsed.$pond && (Number(parsed.$pond.$q) || 0) >= 1) addIfNew('$pixiz_pond_quest');
-
-    // 9) Faeries
-    const faeries = Array.isArray(parsed.$faerie) ? parsed.$faerie : [];
-    if (faeries.length >= 3)  addIfNew('$pixiz_faerie3');
-    if (faeries.length >= 5)  addIfNew('$pixiz_faerie5');
-    if (faeries.length >= 10) addIfNew('$pixiz_faerie10');
-    const maxFaerieLvl = faeries.reduce((m, f) => Math.max(m, Number(f && f.$level) || 0), 0);
-    if (maxFaerieLvl >= 10) addIfNew('$pixiz_faerie_lvl10');
-    if (maxFaerieLvl >= 30) addIfNew('$pixiz_faerie_lvl30');
-    if (maxFaerieLvl >= 50) addIfNew('$pixiz_faerie_lvl50');
-
-    // 10) Per-zone scores
-    const treeMax = Number(stat.$treeMax) || 0;
-    if (treeMax >= 20)  addIfNew('$pixiz_treeMax20');
-    if (treeMax >= 50)  addIfNew('$pixiz_treeMax50');
-    if (treeMax >= 100) addIfNew('$pixiz_treeMax100');
-    const forestMax = Number(stat.$forestMax) || 0;
-    if (forestMax >= 5)  addIfNew('$pixiz_forestMax5');
-    if (forestMax >= 10) addIfNew('$pixiz_forestMax10');
-    if (forestMax >= 20) addIfNew('$pixiz_forestMax20');
-
-    // 11) Missions
-    const misNum = Number(stat.$misNum) || 0;
-    if (misNum >= 10)  addIfNew('$pixiz_mis10');
-    if (misNum >= 25)  addIfNew('$pixiz_mis25');
-    if (misNum >= 50)  addIfNew('$pixiz_mis50');
-    if (misNum >= 100) addIfNew('$pixiz_mis100');
-
-    // 12) Total kills (sum over all imp levels)
-    const kills = Array.isArray(stat.$kill) ? stat.$kill : [];
-    const totalKills = kills.reduce((a, b) => a + (Number(b) || 0), 0);
-    if (totalKills >= 100) addIfNew('$pixiz_kill100');
-    if (totalKills >= 500) addIfNew('$pixiz_kill500');
-
-    // 13) Bag upgrades ($bag is current size: 0..3)
-    const bag = Number(parsed.$bag) || 0;
-    if (bag >= 1) addIfNew('$pixiz_bag2');
-    if (bag >= 2) addIfNew('$pixiz_bag3');
-    if (bag >= 3) addIfNew('$pixiz_bag_max');
-
-    // 14) Frog
-    if (parsed.$frog) addIfNew('$pixiz_frog');
   } else if (game === 'snake3') {
     // FrutiSnake: $fruits is an object/array mapping fruit ID → collection count.
     // A fruit is unlocked when collected >= 20 times (FRUIT_DEBLOK).
