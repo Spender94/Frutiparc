@@ -3160,9 +3160,17 @@ app.post('/api/admin/users/:username/reset-game-slot/:game', adminAuth, async (r
 // PATCH /api/admin/scores/:user/:ranking afterwards to backfill manually.
 // ─────────────────────────────────────────────
 function mergeImportedSlot(game, slotId, existingJson, incomingObj) {
+  if (!incomingObj || typeof incomingObj !== 'object' || Array.isArray(incomingObj)) {
+    throw new Error(`incoming slot ${slotId} must be a JSON object, got ${incomingObj === null ? 'null' : typeof incomingObj}`);
+  }
   if (game === 'snake3' && slotId === 0) {
     let existing = {};
-    if (existingJson) { try { existing = JSON.parse(existingJson); } catch {} }
+    if (existingJson) {
+      try {
+        const parsed = JSON.parse(existingJson);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) existing = parsed;
+      } catch { /* keep {} */ }
+    }
     const eFruits = Array.isArray(existing.$fruits) ? existing.$fruits : [];
     const iFruits = Array.isArray(incomingObj.$fruits) ? incomingObj.$fruits : [];
     const len = Math.max(eFruits.length, iFruits.length);
@@ -3188,10 +3196,18 @@ function mergeImportedSlot(game, slotId, existingJson, incomingObj) {
   // $rainbow, $frog) keep prev when it's strictly better.
   if ((game === 'minipixiz' || game === 'minitroll') && slotId === 0) {
     let existing = {};
-    if (existingJson) { try { existing = JSON.parse(existingJson); } catch {} }
+    if (existingJson) {
+      try {
+        const parsed = JSON.parse(existingJson);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) existing = parsed;
+      } catch { /* keep {} */ }
+    }
+    if (!incomingObj || typeof incomingObj !== 'object' || Array.isArray(incomingObj)) {
+      throw new Error('incoming slot 0 must be a JSON object');
+    }
     const merged = JSON.parse(JSON.stringify(incomingObj));
-    if (!merged.$stat) merged.$stat = {};
-    const eStat = existing.$stat || {};
+    if (!merged.$stat || typeof merged.$stat !== 'object' || Array.isArray(merged.$stat)) merged.$stat = {};
+    const eStat = (existing.$stat && typeof existing.$stat === 'object' && !Array.isArray(existing.$stat)) ? existing.$stat : {};
 
     for (const k of ['$run', '$forestMax', '$treeMax', '$misNum']) {
       const ev = Number(eStat[k]) || 0;
