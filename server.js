@@ -3142,16 +3142,22 @@ app.post('/api/admin/users/:username/reset-game-slot/:game', adminAuth, async (r
 //       or { data: <json|obj> } as shorthand for slot 0.
 //
 // Per-game merge: for games where progression is monotonic (snake3 fruits,
-// records) we take max() per field so an admin import never regresses what
-// the player already did on this instance. For other games we currently fall
-// back to "incoming wins" — extend mergeImportedSlot when adding them.
+// records / minipixiz items, faeries, counters) we take max() / OR per field
+// so an admin import never regresses what the player already did on this
+// instance. For other games we currently fall back to "incoming wins" —
+// extend mergeImportedSlot when adding them.
 //
 // Pictos: re-runs extractGameItemsFromSlot on the merged slot 0 so unlocks
-// derived from the imported data (e.g. snake3 fruits ≥ 20) are granted.
+// derived from the imported data (e.g. snake3 fruits ≥ 20, minipixiz items
+// flagged true in $stat.$item) are granted.
 //
-// Score (snake3 only for now): pushes $record to snake3_classic ranking
-// ("Records" tab in Club) via persistScore (which itself only updates if the
-// score improves). Challenge ranking is NOT touched.
+// Scores: NOT pushed to any ranking. The historical record stays in the
+// merged slot 0 (e.g. snake3 $record, minipixiz $stat.$treeMax) and the SWF
+// reads it locally as the player's personal best. The "Classique" rankings
+// (snake3_classic, mb2_classic, …) are in DAILY_RESET_RANKING_SET — they
+// represent today's competition, not all-time bests, so pushing a 2-year-old
+// import there would steal medals and get cleared at midnight. Use
+// PATCH /api/admin/scores/:user/:ranking afterwards to backfill manually.
 // ─────────────────────────────────────────────
 function mergeImportedSlot(game, slotId, existingJson, incomingObj) {
   if (game === 'snake3' && slotId === 0) {
@@ -3238,113 +3244,132 @@ function mergeImportedSlot(game, slotId, existingJson, incomingObj) {
 }
 
 app.post('/api/admin/users/:username/import-slots/:game', adminAuth, async (req, res) => {
-  const username = req.params.username;
-  const game = String(req.params.game || '').trim();
-  if (!game) return res.status(400).json({ error: 'game required' });
+  try {
+    const username = req.params.username;
+    const game = String(req.params.game || '').trim();
+    if (!game) return res.status(400).json({ error: 'game required' });
 
-  let slots = {};
-  if (req.body) {
-    if (req.body.slots && typeof req.body.slots === 'object' && !Array.isArray(req.body.slots)) {
-      slots = req.body.slots;
-    } else if (req.body.data !== undefined) {
-      slots = { 0: req.body.data };
-    }
-  }
-  if (Object.keys(slots).length === 0) {
-    return res.status(400).json({ error: 'missing slots or data in body' });
-  }
-
-  const memUser = users[username];
-  let dbId = memUser ? memUser._dbId : null;
-  if (!dbId && process.env.DATABASE_URL) {
-    try {
-      const row = await db.findUserByUsername(username);
-      if (row) dbId = row.id;
-    } catch { /* ignore */ }
-  }
-  if (!dbId && !memUser) return res.status(404).json({ error: 'user not found' });
-
-  let existing = {};
-  if (dbId) {
-    try { existing = await db.getFrutiSlots(dbId, game); } catch { existing = {}; }
-  } else if (memUser && memUser.frutiSlots && memUser.frutiSlots[game]) {
-    existing = memUser.frutiSlots[game];
-  }
-
-  const report = { ok: true, username, game, slots: [], pictosGranted: 0, scoreUpdated: false };
-  let mergedSlot0Json = null;
-
-  for (const [slotIdStr, incomingRaw] of Object.entries(slots)) {
-    const slotId = Number(slotIdStr);
-    if (!Number.isInteger(slotId) || slotId < 0 || slotId > 9) {
-      report.slots.push({ slotId: slotIdStr, status: 'invalid_id' });
-      continue;
-    }
-    let incomingObj;
-    if (typeof incomingRaw === 'string') {
-      try { incomingObj = JSON.parse(incomingRaw); }
-      catch (e) { report.slots.push({ slotId, status: 'invalid_json', error: e.message }); continue; }
-    } else if (incomingRaw && typeof incomingRaw === 'object') {
-      incomingObj = incomingRaw;
-    } else {
-      report.slots.push({ slotId, status: 'invalid_type' }); continue;
-    }
-
-    const existingJson = existing[String(slotId)] || existing[slotId] || null;
-    const merged = mergeImportedSlot(game, slotId, existingJson, incomingObj);
-    const mergedJson = JSON.stringify(merged);
-    if (slotId === 0) mergedSlot0Json = mergedJson;
-
-    if (dbId) {
-      try { await db.upsertFrutiSlot(dbId, game, slotId, mergedJson); }
-      catch (e) { report.slots.push({ slotId, status: 'db_error', error: e.message }); continue; }
-    }
-
-    if (memUser) {
-      if (!memUser.frutiSlots) memUser.frutiSlots = {};
-      if (!memUser.frutiSlots[game]) memUser.frutiSlots[game] = {};
-      memUser.frutiSlots[game][String(slotId)] = mergedJson;
-    }
-    report.slots.push({ slotId, status: 'imported', size: mergedJson.length, mergedWithExisting: !!existingJson });
-  }
-
-  if (mergedSlot0Json) {
-    try {
-      let existingItems = [];
-      if (dbId) {
-        try { existingItems = await db.getUserGameItems(dbId); } catch { /* ignore */ }
-      } else if (memUser && Array.isArray(memUser.gameItems)) {
-        existingItems = memUser.gameItems.slice();
+    let slots = {};
+    if (req.body) {
+      if (req.body.slots && typeof req.body.slots === 'object' && !Array.isArray(req.body.slots)) {
+        slots = req.body.slots;
+      } else if (req.body.data !== undefined) {
+        slots = { 0: req.body.data };
       }
-      const localUser = { gameItems: [...existingItems], _dbId: dbId };
-      extractGameItemsFromSlot(username, game, mergedSlot0Json, { silent: true, userOverride: localUser });
-      report.pictosGranted = localUser.gameItems.length - existingItems.length;
-      if (memUser && Array.isArray(memUser.gameItems)) {
-        for (const item of localUser.gameItems) {
-          if (!memUser.gameItems.includes(item)) memUser.gameItems.push(item);
+    }
+    if (Object.keys(slots).length === 0) {
+      return res.status(400).json({ error: 'missing slots or data in body' });
+    }
+
+    const memUser = users[username];
+    let dbId = memUser ? memUser._dbId : null;
+    if (!dbId && process.env.DATABASE_URL) {
+      try {
+        const row = await db.findUserByUsername(username);
+        if (row) dbId = row.id;
+      } catch (e) {
+        console.error(`[IMPORT] findUserByUsername failed for ${username}: ${e.message}`);
+      }
+    }
+    if (!dbId && !memUser) return res.status(404).json({ error: 'user not found' });
+
+    let existing = {};
+    if (dbId) {
+      try { existing = await db.getFrutiSlots(dbId, game); }
+      catch (e) {
+        console.error(`[IMPORT] getFrutiSlots(${dbId},${game}) failed for ${username}: ${e.message}`);
+        existing = {};
+      }
+    } else if (memUser && memUser.frutiSlots && memUser.frutiSlots[game]) {
+      existing = memUser.frutiSlots[game];
+    }
+
+    const report = { ok: true, username, game, slots: [], pictosGranted: 0 };
+    let mergedSlot0Json = null;
+
+    for (const [slotIdStr, incomingRaw] of Object.entries(slots)) {
+      const slotId = Number(slotIdStr);
+      if (!Number.isInteger(slotId) || slotId < 0 || slotId > 9) {
+        report.slots.push({ slotId: slotIdStr, status: 'invalid_id' });
+        continue;
+      }
+      let incomingObj;
+      if (typeof incomingRaw === 'string') {
+        try { incomingObj = JSON.parse(incomingRaw); }
+        catch (e) { report.slots.push({ slotId, status: 'invalid_json', error: e.message }); continue; }
+      } else if (incomingRaw && typeof incomingRaw === 'object') {
+        incomingObj = incomingRaw;
+      } else {
+        report.slots.push({ slotId, status: 'invalid_type' }); continue;
+      }
+
+      const existingJson = existing[String(slotId)] || existing[slotId] || null;
+      let merged;
+      try { merged = mergeImportedSlot(game, slotId, existingJson, incomingObj); }
+      catch (e) {
+        console.error(`[IMPORT] merge failed for ${username}/${game}/${slotId}: ${e.message}`);
+        report.slots.push({ slotId, status: 'merge_error', error: e.message });
+        continue;
+      }
+      const mergedJson = JSON.stringify(merged);
+      if (slotId === 0) mergedSlot0Json = mergedJson;
+
+      if (dbId) {
+        try { await db.upsertFrutiSlot(dbId, game, slotId, mergedJson); }
+        catch (e) {
+          console.error(`[IMPORT] upsertFrutiSlot failed for ${username}/${game}/${slotId}: ${e.message}`);
+          report.slots.push({ slotId, status: 'db_error', error: e.message });
+          continue;
         }
       }
-    } catch (e) {
-      console.error(`[IMPORT] picto extraction failed for ${username}/${game}: ${e.message}`);
-    }
-  }
 
-  if (game === 'snake3' && mergedSlot0Json) {
-    try {
-      const obj = JSON.parse(mergedSlot0Json);
-      const record = Number(obj.$record) || 0;
-      if (record > 0) {
-        const r = persistScore(username, 'snake3_classic', record, '');
-        report.scoreUpdated = r.updated;
-        report.classicScore = { newScore: r.newScore, oldScore: r.oldScore };
+      if (memUser) {
+        if (!memUser.frutiSlots) memUser.frutiSlots = {};
+        if (!memUser.frutiSlots[game]) memUser.frutiSlots[game] = {};
+        memUser.frutiSlots[game][String(slotId)] = mergedJson;
       }
-    } catch (e) {
-      console.error(`[IMPORT] score push failed for ${username}/${game}: ${e.message}`);
+      report.slots.push({ slotId, status: 'imported', size: mergedJson.length, mergedWithExisting: !!existingJson });
     }
-  }
 
-  console.log(`[ADMIN] import-slots ${username}/${game}: slots=${report.slots.length} pictos=+${report.pictosGranted} scoreUpdated=${report.scoreUpdated}`);
-  res.json(report);
+    if (mergedSlot0Json) {
+      try {
+        let existingItems = [];
+        if (dbId) {
+          try { existingItems = await db.getUserGameItems(dbId); } catch (e) {
+            console.error(`[IMPORT] getUserGameItems failed for ${username}: ${e.message}`);
+          }
+        } else if (memUser && Array.isArray(memUser.gameItems)) {
+          existingItems = memUser.gameItems.slice();
+        }
+        const localUser = { gameItems: [...existingItems], _dbId: dbId };
+        extractGameItemsFromSlot(username, game, mergedSlot0Json, { silent: true, userOverride: localUser });
+        report.pictosGranted = localUser.gameItems.length - existingItems.length;
+        if (memUser && Array.isArray(memUser.gameItems)) {
+          for (const item of localUser.gameItems) {
+            if (!memUser.gameItems.includes(item)) memUser.gameItems.push(item);
+          }
+        }
+      } catch (e) {
+        console.error(`[IMPORT] picto extraction failed for ${username}/${game}: ${e.message}`);
+      }
+    }
+
+    // No automatic ranking push. The historical record stays in slot 0's
+    // $record (snake3) / equivalent field — the SWF reads it on game start
+    // and shows it as the player's personal best in-game. Pushing into the
+    // "Classique" ranking is undesirable because that ranking is in the
+    // DAILY_RESET_RANKING_SET (server.js:1918): a fresh import would put
+    // the old score into today's competition leaderboard, win medals it
+    // didn't earn, and get cleared at midnight. The admin can use
+    // PATCH /api/admin/scores/:user/:ranking afterwards if they want to
+    // backfill a specific score.
+
+    console.log(`[ADMIN] import-slots ${username}/${game}: slots=${report.slots.length} pictos=+${report.pictosGranted}`);
+    res.json(report);
+  } catch (e) {
+    console.error(`[IMPORT] unhandled error: ${e.stack || e.message}`);
+    res.status(500).json({ ok: false, error: e.message, stack: process.env.NODE_ENV === 'production' ? undefined : (e.stack || '').split('\n').slice(0, 6).join('\n') });
+  }
 });
 
 // Diagnostic: force an arbitrary internal-status code (sprite 246 frame

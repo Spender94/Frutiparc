@@ -694,7 +694,7 @@
     <p style="margin:6px 0;font-size:12px;color:#666">
       Si le JSON contient un seul slot (objet direct), il est appliqué au slot 0.
       Pour plusieurs slots, utilisez la forme <code>{"slots":{"0":...,"1":...}}</code>.<br>
-      <b>Snake3 :</b> fusionne en prenant le max par fruit et le max du record. Les pictos « Fruit N » ≥ 20 sont auto-débloqués. Le record est aussi poussé dans le classement Records (Classique), pas dans Challenge.
+      <b>Snake3 / MiniPixiz :</b> merge monotone (max() / OR par champ), les pictos sont auto-débloqués depuis la progression importée. <b>Aucun score n'est poussé dans les classements</b> — le record reste dans le slot 0 et le SWF l'affiche en jeu comme record perso. Pour backfiller un classement, utiliser ensuite l'éditeur de score (icône <i>✎</i> dans la liste des scores du joueur).
     </p>
     <div class="actions">
       <button class="btn" onclick="closeModal('modal-import-slots')">Annuler</button>
@@ -1299,14 +1299,21 @@ async function submitImportSlots() {
   });
   let data = {};
   try { data = await r.json(); } catch {}
-  if (!r.ok) { toast(`Erreur ${r.status}: ${data.error || r.statusText}`); return; }
+  if (!r.ok) {
+    const msg = data.error || r.statusText;
+    const stack = data.stack ? '\n' + data.stack : '';
+    console.error('[import-slots] ' + r.status, data);
+    alert(`Erreur ${r.status}\n${msg}${stack}\n\nVérifier les logs serveur pour plus de détails.`);
+    return;
+  }
 
   closeModal('modal-import-slots');
   const parts = [];
-  parts.push(`${data.slots ? data.slots.length : 0} slot(s) importé(s)`);
+  const importedSlots = (data.slots || []).filter(s => s.status === 'imported');
+  parts.push(`${importedSlots.length}/${(data.slots || []).length} slot(s) importé(s)`);
   if (data.pictosGranted) parts.push(`+${data.pictosGranted} picto(s)`);
-  if (data.scoreUpdated && data.classicScore) parts.push(`record: ${data.classicScore.oldScore} → ${data.classicScore.newScore}`);
-  else if (data.classicScore) parts.push(`record inchangé (déjà ${data.classicScore.oldScore})`);
+  const failed = (data.slots || []).filter(s => s.status !== 'imported');
+  if (failed.length) parts.push(`${failed.length} erreur(s): ${failed.map(s => s.status).join(', ')}`);
   toast('Import OK — ' + parts.join(', '));
   loadDetail();
 }
