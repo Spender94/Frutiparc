@@ -139,7 +139,27 @@
 
   // ExternalInterface callback: JSON parser for game SWFs that call client.fromJSON().
   window.parseJSON = function(str) {
-    try { return JSON.parse(str); } catch(e) { window.__dlog('[FRUSION] parseJSON error:', e); return null; }
+    var len = (str == null) ? -1 : String(str).length;
+    console.log('[parseJSON] CALLED — input length=' + len + ' type=' + typeof str);
+    if (str == null || len === 0) {
+      console.log('[parseJSON] NULL/EMPTY input → returning null');
+      return null;
+    }
+    try {
+      var parsed = JSON.parse(str);
+      var summary = 'type=' + typeof parsed;
+      if (parsed && typeof parsed === 'object') {
+        var keys = Object.keys(parsed);
+        summary += ' keys=' + keys.length + ' [' + keys.slice(0, 8).join(',') + ']';
+        if (Array.isArray(parsed.$faerie)) summary += ' $faerie.length=' + parsed.$faerie.length;
+        if (parsed.$pond && parsed.$pond.$fs) summary += ' pond.fs=' + parsed.$pond.$fs.$name;
+      }
+      console.log('[parseJSON] OK — ' + summary);
+      return parsed;
+    } catch(e) {
+      console.log('[parseJSON] error:', e, 'input head=', String(str).slice(0, 200));
+      return null;
+    }
   };
 
   window.saveSlotData = function(game, slotId, data) {
