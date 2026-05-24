@@ -3223,17 +3223,58 @@ function mergeImportedSlot(game, slotId, existingJson, incomingObj) {
         merged.$stat[k] = out;
       }
     }
+    // Faerie merge — same per-field strategy as saveFrutiSlot's
+    // forward-merge: when both sides have the same fairy slot, incoming
+    // wins per field, but anything missing falls back to existing.
+    // Symmetric to saveSlot/parseMinipixizPipe: the SWF only ever sends
+    // {$level: N} stubs, so a re-import after gameplay restores the
+    // rich fields (name/skin/spells/carac/inv/taste/etc.) while still
+    // honouring the imported levels.
     const ef = Array.isArray(existing.$faerie) ? existing.$faerie : [];
     const nf = Array.isArray(merged.$faerie) ? merged.$faerie : [];
-    if (ef.length > nf.length) merged.$faerie = ef;
-    if (existing.$dungeon && Number(existing.$dungeon.$lvl) > Number((merged.$dungeon || {}).$lvl || 0)) {
-      merged.$dungeon = existing.$dungeon;
+    if (ef.length > nf.length) {
+      merged.$faerie = ef;
+    } else if (nf.length > 0 && ef.length > 0) {
+      const out = [];
+      for (let i = 0; i < nf.length; i++) {
+        const e = ef[i];
+        const n = nf[i];
+        if (e && typeof e === 'object' && !Array.isArray(e) &&
+            n && typeof n === 'object' && !Array.isArray(n)) {
+          out.push(Object.assign({}, e, n));
+        } else {
+          out.push(n || e);
+        }
+      }
+      merged.$faerie = out;
     }
-    if (existing.$pond && Number(existing.$pond.$q) > Number((merged.$pond || {}).$q || 0)) {
-      merged.$pond = existing.$pond;
+    // Same fill-in-missing approach for nested progress containers.
+    if (existing.$dungeon && typeof existing.$dungeon === 'object') {
+      if (!merged.$dungeon || typeof merged.$dungeon !== 'object') merged.$dungeon = {};
+      if (Number(existing.$dungeon.$lvl) > Number(merged.$dungeon.$lvl || 0)) {
+        merged.$dungeon = Object.assign({}, existing.$dungeon, merged.$dungeon);
+      }
+      if (merged.$dungeon.$day  === undefined && existing.$dungeon.$day  !== undefined) merged.$dungeon.$day  = existing.$dungeon.$day;
+      if (merged.$dungeon.$loop === undefined && existing.$dungeon.$loop !== undefined) merged.$dungeon.$loop = existing.$dungeon.$loop;
     }
-    if (existing.$rainbow && existing.$rainbow.$f && !(merged.$rainbow && merged.$rainbow.$f)) {
-      merged.$rainbow = existing.$rainbow;
+    if (existing.$pond && typeof existing.$pond === 'object') {
+      if (!merged.$pond || typeof merged.$pond !== 'object') merged.$pond = {};
+      if (Number(existing.$pond.$q) > Number(merged.$pond.$q || 0)) {
+        merged.$pond = Object.assign({}, existing.$pond, merged.$pond);
+      }
+      if (merged.$pond.$d  === undefined && existing.$pond.$d  !== undefined) merged.$pond.$d  = existing.$pond.$d;
+      if (merged.$pond.$fs === undefined && existing.$pond.$fs !== undefined) merged.$pond.$fs = existing.$pond.$fs;
+    }
+    if (existing.$rainbow && typeof existing.$rainbow === 'object') {
+      if (!merged.$rainbow || typeof merged.$rainbow !== 'object') merged.$rainbow = {};
+      if (existing.$rainbow.$f && !merged.$rainbow.$f) {
+        merged.$rainbow = Object.assign({}, existing.$rainbow, merged.$rainbow);
+      }
+      if (merged.$rainbow.$day === undefined && existing.$rainbow.$day !== undefined) merged.$rainbow.$day = existing.$rainbow.$day;
+      if (merged.$rainbow.$it  === undefined && existing.$rainbow.$it  !== undefined) merged.$rainbow.$it  = existing.$rainbow.$it;
+    }
+    for (const k of ['$mission', '$mis', '$help', '$time', '$god', '$wind']) {
+      if (merged[k] === undefined && existing[k] !== undefined) merged[k] = existing[k];
     }
     if (existing.$frog && !merged.$frog) merged.$frog = true;
     return merged;
@@ -5609,20 +5650,78 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
             merged.$stat[k] = out;
           }
         }
-        // Faerie: keep prev when new is empty/shorter (faeries can be lost
-        // during play but never below the historical max).
+        // Faerie: the pipe save format (patch-minipixiz-client.js field
+        // 17) only carries each fairy's $level — name, skin, spells,
+        // carac, inv, taste, humor, exp, life, mana, hunger, moral,
+        // mission, behaviour, mood, next, spellCoef, bagMax, shot, pos
+        // are ALL dropped. Without this merge, the first SWF auto-save
+        // after a rich import (or simply after gameplay) replaces the
+        // full FaerieSeed objects with bare {$level: N} stubs → fairies
+        // vanish from the in-game Fruticard and field rendering.
+        //
+        // Strategy: field-by-field merge per fairy index. Take $level
+        // from new (it's the one field the pipe actually updates) and
+        // keep every other field from prev. If the SWF later starts
+        // transporting more fields, Object.assign lets the new value
+        // win automatically — but until then, prev is the only source
+        // of truth for everything except $level.
         const pf = Array.isArray(prev.$faerie) ? prev.$faerie : [];
         const nf = Array.isArray(merged.$faerie) ? merged.$faerie : [];
-        if (pf.length > nf.length) merged.$faerie = pf;
-        // Nested progress containers — keep prev when new dropped.
-        if (prev.$dungeon && Number(prev.$dungeon.$lvl) > Number((merged.$dungeon || {}).$lvl || 0)) {
-          merged.$dungeon = prev.$dungeon;
+        if (pf.length > nf.length) {
+          // SWF dropped a fairy slot — keep prev entirely (faeries
+          // don't disappear mid-game).
+          merged.$faerie = pf;
+        } else if (nf.length > 0 && pf.length > 0) {
+          const out = [];
+          for (let i = 0; i < nf.length; i++) {
+            const p = pf[i];
+            const n = nf[i];
+            if (p && typeof p === 'object' && !Array.isArray(p) &&
+                n && typeof n === 'object' && !Array.isArray(n)) {
+              out.push(Object.assign({}, p, n));
+            } else {
+              out.push(n || p);
+            }
+          }
+          merged.$faerie = out;
         }
-        if (prev.$pond && Number(prev.$pond.$q) > Number((merged.$pond || {}).$q || 0)) {
-          merged.$pond = prev.$pond;
+        // Nested progress containers — the pipe save only carries a few
+        // fields per container; preserve the dropped sub-fields from prev.
+        // $dungeon: pipe transports $lvl and $f; $day and $loop are lost.
+        if (prev.$dungeon && typeof prev.$dungeon === 'object') {
+          if (!merged.$dungeon || typeof merged.$dungeon !== 'object') merged.$dungeon = {};
+          // Keep the existing "prev wins when lvl is higher" guard…
+          if (Number(prev.$dungeon.$lvl) > Number(merged.$dungeon.$lvl || 0)) {
+            merged.$dungeon = Object.assign({}, prev.$dungeon, merged.$dungeon);
+          }
+          // …and always fill in fields the pipe dropped.
+          if (merged.$dungeon.$day === undefined  && prev.$dungeon.$day !== undefined)  merged.$dungeon.$day  = prev.$dungeon.$day;
+          if (merged.$dungeon.$loop === undefined && prev.$dungeon.$loop !== undefined) merged.$dungeon.$loop = prev.$dungeon.$loop;
         }
-        if (prev.$rainbow && prev.$rainbow.$f && !(merged.$rainbow && merged.$rainbow.$f)) {
-          merged.$rainbow = prev.$rainbow;
+        // $pond: pipe transports $q only; $d and $fs (the active pond
+        // fairy — a full FaerieSeed) are lost. Without preserving $fs,
+        // a fairy growing in the pond vanishes on the next save.
+        if (prev.$pond && typeof prev.$pond === 'object') {
+          if (!merged.$pond || typeof merged.$pond !== 'object') merged.$pond = {};
+          if (Number(prev.$pond.$q) > Number(merged.$pond.$q || 0)) {
+            merged.$pond = Object.assign({}, prev.$pond, merged.$pond);
+          }
+          if (merged.$pond.$d === undefined  && prev.$pond.$d !== undefined)  merged.$pond.$d  = prev.$pond.$d;
+          if (merged.$pond.$fs === undefined && prev.$pond.$fs !== undefined) merged.$pond.$fs = prev.$pond.$fs;
+        }
+        // $rainbow: pipe transports $f only; $day and $it are lost.
+        if (prev.$rainbow && typeof prev.$rainbow === 'object') {
+          if (!merged.$rainbow || typeof merged.$rainbow !== 'object') merged.$rainbow = {};
+          if (prev.$rainbow.$f && !merged.$rainbow.$f) {
+            merged.$rainbow = Object.assign({}, prev.$rainbow, merged.$rainbow);
+          }
+          if (merged.$rainbow.$day === undefined && prev.$rainbow.$day !== undefined) merged.$rainbow.$day = prev.$rainbow.$day;
+          if (merged.$rainbow.$it  === undefined && prev.$rainbow.$it  !== undefined) merged.$rainbow.$it  = prev.$rainbow.$it;
+        }
+        // Top-level fields the pipe drops entirely: $mission, $mis,
+        // $help, $time, $god, $wind. Keep prev whenever new is missing.
+        for (const k of ['$mission', '$mis', '$help', '$time', '$god', '$wind']) {
+          if (merged[k] === undefined && prev[k] !== undefined) merged[k] = prev[k];
         }
         if (prev.$frog && !merged.$frog) merged.$frog = true;
         data = JSON.stringify(merged);
