@@ -348,7 +348,11 @@ const GAME_ITEM_INFO = {
   '$photo05':    { name: 'Photo Poivre',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_poivre.gif' },
   '$photo06':    { name: 'Photo Tomtom',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_tomtom.gif' },
   '$photo07':    { name: 'Photo Wasabi',        game: 'Swapou', gif: 'Games/swapou2/images/titems/photo_wasabi.gif' },
-  '$photo08':    { name: 'Photo Piment',        game: 'Swapou', gif: 'Games/swapou2/images/titems/item_piment.gif' },
+  // $photo08 (slot 45 in TItem.as TITEMS) — unobtainable: duelItem() awards
+  // PHOTO_TITEMS + Data.players[1] where players[1] is the AI opponent
+  // index, and Swapou2 only has 7 AI characters (character/bitmap/{sel,
+  // poivre, dimitri, natacha, tomtom, wasabi, piment}). Reserved slot.
+  // Total: 45 SWF slots − 1 reserved − 1 empty (TITEMS[1]) = 44 obtenables.
   // MotionBall2
   '$c1or':       { name: 'Balle jaune or',      game: 'MotionBall', gif: 'Games/motionBall2/picto/ballJauneOr.gif' },
   '$c1argent':   { name: 'Balle jaune argent',  game: 'MotionBall', gif: 'Games/motionBall2/picto/ballJauneArgent.gif' },
@@ -457,7 +461,13 @@ const PIXIZ_ITEM_NAMES = {
   // Bags (80-83)
   80: 'Sac +1', 81: 'Sac +2', 82: 'Sac +3', 83: 'Sac +4',
 };
+// Spell ids 0..27 per Games/miniTroll/src/Spell.mt newSpell() switch.
+// 0 (Swap) and 20 (Boule de lumière) are base spells every faerie starts
+// with — their parchemins/grimoires ($item[100/200/120/220]) are listed
+// in the album but never granted (4 of the 5 réservés ; the 5th is the
+// dungeon key at $item[31]).
 const PIXIZ_SPELL_NAMES = {
+  0: 'Échange',
   1: 'Creuser', 2: 'Mineur', 3: 'Massif', 4: 'Mangeur d\'étoiles',
   5: 'Décompression', 6: 'Fossilisation', 7: 'Ascension', 8: 'Berserk',
   9: 'Tranche', 10: 'Silence', 11: 'Destruction', 12: 'Bouclier',
@@ -568,6 +578,9 @@ const GAME_PROGRESS_REGISTRY = [
     name: 'Swapou',
     enabled: true,
     matchGame: 'Swapou',
+    // Canonical Swapou2 album count per Games/swapou2/swapou2/TItem.as
+    // (46 TITEMS slots − 1 empty at index 1 − 1 reserved $photo08) = 44.
+    totalPictos: 44,
   },
   {
     id: 'snake3',
@@ -599,13 +612,28 @@ const GAME_PROGRESS_REGISTRY = [
     name: 'JamaJama',
     enabled: true,
     matchGame: 'JamaJama',
-    totalPictos: Object.keys(JAMA_MILESTONES).length,
+    // The original Frutiparc album for JamaJama held 28 pictos (player
+    // memory, "quasi-sûr"). JamaJama's SWF (Games/poulpi/inc/{code,main}.as,
+    // levels.xml) has NO native picto system — the album was a Frutiparc
+    // server-side construct keyed off level/pack accomplishments. The
+    // exact 28-item composition is lost ; the 7 adventure packs ×
+    // (something ≤ 4) is the most natural fit but unconfirmed. Until
+    // someone surfaces the original list, we expose 28 as the canonical
+    // denominator and award only the 8 JAMA_MILESTONES we currently track.
+    // TODO(jama-pictos): recover the original 28-picto list and replace
+    // JAMA_MILESTONES with the canonical set.
+    totalPictos: 28,
   },
   {
     id: 'pixiz',
     name: 'MiniPixiz',
     enabled: true,
     matchGame: 'MiniPixiz',
+    // 100 items (bmp/titems/GIF/item/) + 57 foods + 5 diamants
+    // = 162 emplacements d'album dont 5 réservés inaccessibles
+    // (clé de donjon + parchemins/grimoires des sorts de base des fées
+    // Swap & Boule de lumière) → 157 obtenables. Voir PIXIZ_SPELL_NAMES.
+    totalPictos: 162,
   },
 ];
 
