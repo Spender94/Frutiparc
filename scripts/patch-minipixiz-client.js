@@ -242,6 +242,13 @@ const newStrings = [
   // length-5 array instead of corruption-rejecting an empty string.
   'join',                 // +47
   ',',                    // +48
+  // ExternalInterface bridge for slot0 JSON parsing on load. The
+  // MTASC-compiled `_client.fromJSON` uses an AS2 eval()-based parser
+  // that returns null in Ruffle for any non-trivial payload, so the
+  // patched onLoad uses ExternalInterface.call("parseJSON", str)
+  // instead — same pattern as patch-mb2-client.js. game-popup.html and
+  // frusion-ruffle.html both expose `window.parseJSON = JSON.parse`.
+  'parseJSON',            // +49
 ];
 
 const newCpBase = origCpCount;
@@ -342,6 +349,7 @@ const CP = {
   card: newCpBase + 46,
   join: newCpBase + 47,
   comma: newCpBase + 48,
+  parseJSON: newCpBase + 49,
 };
 
 // ── serviceConnect onLoad callback ──
@@ -360,11 +368,25 @@ function buildOnLoadBody() {
     actionPush(pushUndef()), EQUALS2, NOT, NOT,
   ]);
 
+  // Parse slot0 JSON via ExternalInterface.call("parseJSON", str) — same
+  // mechanism as mb2 (patch-mb2-client.js:451-466). The native MTASC
+  // _client.fromJSON uses AS2 eval() which returns null in Ruffle for
+  // non-trivial payloads, so Cm.card would fall back to formatFruticard
+  // defaults — fairies, dungeon state, $pond.$fs, $mission, $help, $inv
+  // all stay invisible in-game even when the server holds rich data.
+  // game-popup.html exposes `window.parseJSON = JSON.parse`, so this
+  // returns a proper object graph (incl. nested arrays / sparse nulls)
+  // that the SWF can drop straight into slots[0] and SharedObject.
   const slot0Load = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
-    actionPush(pushInt(1)),
-    actionPush(pushReg(3), pushCp(CP.fromJSON)),
-    CALL_METHOD, storeReg(4), POP,
+    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,     // arg1 = r1.slot0
+    actionPush(pushCp(CP.parseJSON)),                           // arg0 = "parseJSON"
+    actionPush(pushInt(2)),                                     // argcount = 2
+    actionPush(pushCp(CP.flash)), GET_VARIABLE,                // flash
+    actionPush(pushCp(CP.external)), GET_MEMBER,               // .external
+    actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,      // .ExternalInterface
+    actionPush(pushCp(CP.call)),                                // method "call"
+    CALL_METHOD,
+    storeReg(4), POP,                                           // r4 = parsed (or null)
   ]);
 
   const slot0NullCheck = Buffer.concat([
