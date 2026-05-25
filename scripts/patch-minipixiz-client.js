@@ -452,9 +452,9 @@ function buildOnLoadBody() {
     actionPush(pushStr('getLocal')),
     CALL_METHOD,
     storeReg(5), POP,
-    // r5.data.fruticard = [r4]
+    // r5.data["]D,mH("] = [r4]   (native minified slots field, NOT "fruticard")
     actionPush(pushReg(5), pushStr('data')), GET_MEMBER,
-    actionPush(pushStr('fruticard')),
+    actionPush(pushStr(']D,mH(')),
     actionPush(pushReg(4), pushInt(1)),
     INIT_ARRAY,
     SET_MEMBER,
@@ -483,7 +483,7 @@ function buildOnLoadBody() {
     CALL_METHOD,
     storeReg(4), POP,
     actionPush(pushReg(4), pushStr('data')), GET_MEMBER,
-    actionPush(pushStr('fruticard')), GET_MEMBER,
+    actionPush(pushStr(']D,mH(')), GET_MEMBER,
     storeReg(5), POP,
     actionPush(pushReg(5)), NOT,
     actionIf(syncSlot0Assign.length),
@@ -630,7 +630,7 @@ function buildServiceConnectBody() {
 // in this Ruffle, and the patched flow's onServiceConnect call never reached
 // the native SharedObject read, so the game always fell back to formatFruticard.
 // Leaving serviceConnect native lets the proven load path run untouched.
-const PATCH_SERVICE_CONNECT = false;
+const PATCH_SERVICE_CONNECT = true;
 
 const origFuncStart = shift(1287521);
 const origFuncEnd = shift(1287687);
