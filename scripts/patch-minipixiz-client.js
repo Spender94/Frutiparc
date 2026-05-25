@@ -86,6 +86,7 @@ const NOT = simpleAction(0x12);
 const EQUALS2 = simpleAction(0x49);
 const ADD2 = simpleAction(0x47);
 const LESS2 = simpleAction(0x48);
+const TYPEOF = simpleAction(0x44);
 const TRACE = simpleAction(0x26);
 
 function trace(literal) {
@@ -355,6 +356,29 @@ const CP = {
 // ── serviceConnect onLoad callback ──
 
 function buildOnLoadBody() {
+  // ── TEMP DIAGNOSTIC ── fire an EI marker the instant onLoad runs, encoding
+  // success (r2) and typeof this.slot0 (r1.slot0). Since EI.call works in this
+  // Ruffle (mb2 proves it), this marker MUST appear in console if onLoad fires.
+  // It pins down whether onLoad fires at all, and whether LoadVars populated
+  // slot0 — the real parseJSON call (with the 3.4 KB payload) never reaches JS,
+  // so we need to know where execution diverges.
+  const diagMarker = Buffer.concat([
+    actionPush(pushStr('ONLOAD|s=')),
+    actionPush(pushReg(2)), ADD2,                              // + success
+    actionPush(pushStr('|t=')), ADD2,
+    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER, TYPEOF, ADD2,  // + typeof this.slot0
+    actionPush(pushStr('|len=')), ADD2,
+    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
+    actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,          // + this.slot0.length
+    actionPush(pushCp(CP.parseJSON)),                          // arg0 = "parseJSON"
+    actionPush(pushInt(2)),                                    // argcount
+    actionPush(pushCp(CP.flash)), GET_VARIABLE,
+    actionPush(pushCp(CP.external)), GET_MEMBER,
+    actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,
+    actionPush(pushCp(CP.call)),
+    CALL_METHOD, POP,
+  ]);
+
   const getClient = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP._client)), GET_MEMBER, storeReg(3), POP,
   ]);
@@ -458,6 +482,7 @@ function buildOnLoadBody() {
   const slot0NullSkipSize = slot0Assign.length + seedSO.length;
 
   return Buffer.concat([
+    diagMarker,
     getClient,
     checkSuccess,
     actionIf(afterSuccessCheck),
