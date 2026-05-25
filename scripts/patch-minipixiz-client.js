@@ -622,8 +622,15 @@ function buildServiceConnectBody() {
   ]);
 }
 
-const serviceConnectBody = buildServiceConnectBody();
-const newServiceConnectFunc = buildDefineFunction2('', [], 11, 0x29, serviceConnectBody);
+// serviceConnect: REVERTED to native. The native standalone serviceConnect
+// (slots=[]; setInterval(onServiceConnect,500)) drives the native loadFruticard,
+// which reads SharedObject.getLocal("miniPixiz/card").data["]D,mH("] — the slot
+// graph we now seed from game-popup.html. Overriding serviceConnect with
+// sendAndLoad/onLoad + ExternalInterface was a dead end: EI returns undefined
+// in this Ruffle, and the patched flow's onServiceConnect call never reached
+// the native SharedObject read, so the game always fell back to formatFruticard.
+// Leaving serviceConnect native lets the proven load path run untouched.
+const PATCH_SERVICE_CONNECT = false;
 
 const origFuncStart = shift(1287521);
 const origFuncEnd = shift(1287687);
@@ -635,20 +642,25 @@ if (buf[origFuncEnd] !== 0x4F) {
   throw new Error(`Expected SetMember (0x4F) at ${origFuncEnd}, got 0x${buf[origFuncEnd].toString(16)}`);
 }
 
-const oldScFuncBytes = origFuncEnd - origFuncStart;
-console.log(`Old serviceConnect: ${oldScFuncBytes} bytes at ${origFuncStart}`);
-console.log(`New serviceConnect: ${newServiceConnectFunc.length} bytes`);
-
-const scDelta = newServiceConnectFunc.length - oldScFuncBytes;
-let beforeSc = buf.slice(0, origFuncStart);
-let afterSc = buf.slice(origFuncEnd);
-buf = Buffer.concat([beforeSc, newServiceConnectFunc, afterSc]);
-
-let currentTagLen = buf.readUInt32LE(DOACTION_OFFSET + 2);
-buf.writeUInt32LE(currentTagLen + scDelta, DOACTION_OFFSET + 2);
-console.log(`Tag length: ${currentTagLen} → ${currentTagLen + scDelta} (scDelta=${scDelta})`);
-
-const shift2 = (o) => o >= origFuncStart ? o + scDelta : o;
+let scDelta = 0;
+let shift2 = (o) => o;
+if (PATCH_SERVICE_CONNECT) {
+  const serviceConnectBody = buildServiceConnectBody();
+  const newServiceConnectFunc = buildDefineFunction2('', [], 11, 0x29, serviceConnectBody);
+  const oldScFuncBytes = origFuncEnd - origFuncStart;
+  console.log(`Old serviceConnect: ${oldScFuncBytes} bytes at ${origFuncStart}`);
+  console.log(`New serviceConnect: ${newServiceConnectFunc.length} bytes`);
+  scDelta = newServiceConnectFunc.length - oldScFuncBytes;
+  const beforeSc = buf.slice(0, origFuncStart);
+  const afterSc = buf.slice(origFuncEnd);
+  buf = Buffer.concat([beforeSc, newServiceConnectFunc, afterSc]);
+  const currentTagLen = buf.readUInt32LE(DOACTION_OFFSET + 2);
+  buf.writeUInt32LE(currentTagLen + scDelta, DOACTION_OFFSET + 2);
+  console.log(`Tag length: ${currentTagLen} → ${currentTagLen + scDelta} (scDelta=${scDelta})`);
+  shift2 = (o) => o >= origFuncStart ? o + scDelta : o;
+} else {
+  console.log('serviceConnect: REVERTED to native (not patched) — reads seeded SharedObject');
+}
 
 // ─── Step 5: Replace Client.saveSlot function body ───
 // New approach: serialize slot data to pipe-delimited string, send via
