@@ -509,6 +509,13 @@ function buildOnLoadBody() {
     actionPush(pushReg(6), pushCp(CP.$stat)), GET_MEMBER, actionPush(pushCp(CP.$treeMax)), GET_MEMBER, ADD2,
     actionPush(pushStr('|itm=')), ADD2,
     actionPush(pushReg(6), pushCp(CP.$stat)), GET_MEMBER, actionPush(pushCp(CP.$item)), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
+    // Also report Manager["4d(*"] (cp106=']q' var, cp107='4d(*' card) — the ref
+    // the world-build likely reads. If mcfl=undefined, Manager.card is unset in
+    // our flow (only slots[0] is) → that's the gap.
+    actionPush(pushStr('|mcfl=')), ADD2,
+    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER, actionPush(pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
+    actionPush(pushStr('|mctree=')), ADD2,
+    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER, actionPush(pushCp(CP.$stat)), GET_MEMBER, actionPush(pushCp(CP.$treeMax)), GET_MEMBER, ADD2,
   ]));
 
   const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
