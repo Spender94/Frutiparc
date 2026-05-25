@@ -384,10 +384,14 @@
   // Ruffle-written SharedObject dump.
 
   // Per-game SharedObject config: `name` = full path passed to getLocal()
-  // (also the localStorage key suffix), `field` = the data property holding
-  // the slots array, `base` = the .sol internal name (last path segment).
+  // (also the localStorage key suffix), `base` = the .sol internal name (last
+  // path segment), `fields` = the data propert(ies) holding the slots array.
+  // NOTE: the native minipixiz load reads `SharedObject.data["]D,mH("]` — a
+  // MINIFIED field name (verified by disassembly), NOT "fruticard". We seed
+  // both the minified native field (read by the game) and "fruticard" (read by
+  // our patched syncSlots step) so either path picks up the card.
   var SHARED_OBJECT_GAMES = {
-    minipixiz: { name: "miniPixiz/card", base: "card", field: "fruticard" }
+    minipixiz: { name: "miniPixiz/card", base: "card", fields: ["]D,mH(", "fruticard"] }
   };
 
   function amfRawStr(s, out) { var b = Array.from(new TextEncoder().encode(s)); out.push((b.length >> 8) & 0xff, b.length & 0xff); for (var i = 0; i < b.length; i++) out.push(b[i]); }
@@ -425,7 +429,7 @@
       var slot0 = params.get("slot0");
       if (!slot0 || slot0 === "null") { window.__dlog("[Seed] no slot0 — leaving SharedObject untouched"); return; }
       var card = JSON.parse(slot0);
-      var data = {}; data[cfg.field] = [card];
+      var data = {}; cfg.fields.forEach(function (f) { data[f] = [card]; });
       var b64 = bytesToB64(buildSol(cfg.base, data));
       var key = window.location.host + swfLoadPath + "/#" + cfg.name;
       localStorage.setItem(key, b64);
