@@ -372,6 +372,73 @@
     window.__dlog("[Game] No full.swf available, using original SWF");
   }
 
+  // ── Seed Ruffle's SharedObject from server data ──
+  // The native game loads its slot as a NATIVE AS2 object graph from
+  // SharedObject.getLocal("miniPixiz/card").data.fruticard[0] (AMF0), NOT by
+  // parsing JSON. ExternalInterface.call returns undefined in this Ruffle (EI
+  // is dead for AS2 SWFs here), so the SWF cannot parse the server's JSON
+  // itself. Instead we encode the server's card into the EXACT .sol/AMF0 byte
+  // format the game itself writes, and drop it into localStorage under Ruffle's
+  // SharedObject key BEFORE the SWF starts. The native onServiceConnect then
+  // reads it like any locally-saved game. Verified byte-for-byte against a real
+  // Ruffle-written SharedObject dump.
+
+  // Per-game SharedObject config: `name` = full path passed to getLocal()
+  // (also the localStorage key suffix), `field` = the data property holding
+  // the slots array, `base` = the .sol internal name (last path segment).
+  var SHARED_OBJECT_GAMES = {
+    minipixiz: { name: "miniPixiz/card", base: "card", field: "fruticard" }
+  };
+
+  function amfRawStr(s, out) { var b = Array.from(new TextEncoder().encode(s)); out.push((b.length >> 8) & 0xff, b.length & 0xff); for (var i = 0; i < b.length; i++) out.push(b[i]); }
+  function amfPushU32(n, out) { out.push((n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff); }
+  function amf0Encode(v, out) {
+    if (v === null) { out.push(0x05); return; }
+    if (v === undefined) { out.push(0x06); return; }
+    var t = typeof v;
+    if (t === "number") { out.push(0x00); var b = new Uint8Array(8); new DataView(b.buffer).setFloat64(0, v, false); for (var i = 0; i < 8; i++) out.push(b[i]); return; }
+    if (t === "boolean") { out.push(0x01, v ? 1 : 0); return; }
+    if (t === "string") { out.push(0x02); amfRawStr(v, out); return; }
+    if (Array.isArray(v)) { out.push(0x08); amfPushU32(v.length, out); for (var i = 0; i < v.length; i++) { amfRawStr(String(i), out); amf0Encode(v[i], out); } out.push(0, 0, 9); return; }
+    if (t === "object") { out.push(0x03); for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) { amfRawStr(k, out); amf0Encode(v[k], out); } out.push(0, 0, 9); return; }
+    out.push(0x06);
+  }
+  function buildSol(name, data) {
+    var body = [];
+    Array.from(new TextEncoder().encode("TCSO")).forEach(function (x) { body.push(x); });
+    [0x00, 0x04, 0x00, 0x00, 0x00, 0x00].forEach(function (x) { body.push(x); });
+    amfRawStr(name, body);
+    [0, 0, 0, 0].forEach(function (x) { body.push(x); });
+    for (var k in data) if (Object.prototype.hasOwnProperty.call(data, k)) { amfRawStr(k, body); amf0Encode(data[k], body); }
+    var head = [0x00, 0xBF]; amfPushU32(body.length, head);
+    return head.concat(body);
+  }
+  function bytesToB64(arr) { var s = ""; for (var i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]); return btoa(s); }
+
+  async function seedSharedObjectFromServer(game, swfLoadPath, sid) {
+    var cfg = SHARED_OBJECT_GAMES[game];
+    if (!cfg || !sid) return;
+    try {
+      var resp = await fetch("/api/loadFrutiSlots?sid=" + encodeURIComponent(sid) + "&game=" + encodeURIComponent(game), { method: "POST" });
+      if (!resp.ok) { window.__dlog("[Seed] loadFrutiSlots HTTP " + resp.status); return; }
+      var params = new URLSearchParams(await resp.text());
+      var slot0 = params.get("slot0");
+      if (!slot0 || slot0 === "null") { window.__dlog("[Seed] no slot0 — leaving SharedObject untouched"); return; }
+      var card = JSON.parse(slot0);
+      var data = {}; data[cfg.field] = [card];
+      var b64 = bytesToB64(buildSol(cfg.base, data));
+      var key = window.location.host + swfLoadPath + "/#" + cfg.name;
+      localStorage.setItem(key, b64);
+      // console.log (not __dlog) so the seed result is visible without ?debug=1
+      // during rollout — this is the load path users most often report broken.
+      console.log("[Seed] OK " + key + " — " + b64.length + " b64 chars, $faerie=" + (Array.isArray(card.$faerie) ? card.$faerie.length : "?") + " $treeMax=" + (card.$stat && card.$stat.$treeMax));
+    } catch (e) {
+      console.log("[Seed] FAILED: " + (e && e.message ? e.message : e));
+    }
+  }
+
+  await seedSharedObjectFromServer(qs.get("game") || "", swfPath, qs.get("sid") || "");
+
   // Load the game SWF directly (standalone mode, no Frusion wrapper).
   // We still provide socketProxy + domain so that calls to super.serviceConnect()
   // (triggered e.g. by SnakeClient before the STANDALONE branch) don't crash
