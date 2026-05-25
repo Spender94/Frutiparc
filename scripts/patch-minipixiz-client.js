@@ -251,6 +251,13 @@ const newStrings = [
   // frusion-ruffle.html both expose `window.parseJSON = JSON.parse`.
   'parseJSON',            // +49
   '/api/diag',            // +50 — TEMP diagnostic endpoint (sendAndLoad channel)
+  // Save-pipe fields 19–21. parseMinipixizPipe (server) expects a 22-field
+  // pipe, but the SWF used to emit only 19 (stopping at $vs), so $inv (bag),
+  // $current (selected item) and $checkpoint were parsed as empty/null/0 and
+  // wiped on every autosave — the in-game bag UI then hides itself.
+  '$inv',                 // +51
+  '$current',             // +52
+  '$checkpoint',          // +53
 ];
 
 const newCpBase = origCpCount;
@@ -353,6 +360,9 @@ const CP = {
   comma: newCpBase + 48,
   parseJSON: newCpBase + 49,
   diagUrl: newCpBase + 50,
+  $inv: newCpBase + 51,
+  $current: newCpBase + 52,
+  $checkpoint: newCpBase + 53,
 };
 
 // Build a diagnostic beacon: POST `data=<msg>` to /api/diag via
@@ -505,14 +515,20 @@ function buildOnLoadBody() {
     LESS2, NOT,
   ]);
   const cf_body = Buffer.concat([
-    // Manager.card.$faerie  (target object), index r6
+    // SET_MEMBER target: Manager.card.$faerie, member r6
     actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER,
     actionPush(pushCp(CP.$faerie)), GET_MEMBER,
     actionPush(pushReg(6)),
-    // value = Manager."}Dz3)"(Manager.card.$faerie[r6], 1)
+    // value = Manager."}Dz3)"(data, 1)
+    // AS2 ActionCallMethod pops args in REVERSE order (arg1 is just below the
+    // arg-count on the stack, i.e. pushed LAST). The previous code pushed the
+    // faerie data first and the literal 1 last, so the call was actually
+    // }Dz3)(1, data) — the wrap built a fairy from the number 1, producing an
+    // empty instance ($name/$skin/$level all undefined → Gromelin "no fairies",
+    // diag n0=undefined). Push 1 (arg2) first, the data (arg1) last.
+    actionPush(pushInt(1)),
     actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER,
     actionPush(pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushReg(6)), GET_MEMBER,
-    actionPush(pushInt(1)),
     actionPush(pushInt(2)),
     actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(811)),
     CALL_METHOD,
@@ -738,7 +754,7 @@ if (PATCH_SERVICE_CONNECT) {
 // getURL2("slot:minipixiz:N:PIPEDATA", "_blank"). Ruffle routes this
 // through window.open(), intercepted by game-popup.html.
 //
-// Pipe format (19 fields):
+// Pipe format (22 fields):
 //   0: $stat.$item     (comma-sep bools)
 //   1: $stat.$eat      (comma-sep ints)
 //   2: $stat.$kill     (comma-sep ints)
@@ -757,7 +773,10 @@ if (PATCH_SERVICE_CONNECT) {
 //  15: $pond.$q         (int)
 //  16: $frog            (bool)
 //  17: faerie_levels    (comma-sep ints, trailing comma ok)
-//  18: $vs              (float, last field)
+//  18: $vs              (float)
+//  19: $inv             (comma-sep item ids — the bag; empty entries kept)
+//  20: $current         (int or empty/"null" → null; the selected item)
+//  21: $checkpoint      (int, last field)
 
 const origSaveSlotStart = shift2(shift(1288275));
 const origSaveSlotEnd = shift2(shift(1288381));
@@ -913,10 +932,34 @@ function buildSaveSlotBody() {
     actionJump(backJumpDist),
   ]);
 
-  // After loop: separator + $vs (last field, no trailing |)
+  // After loop: $vs (field 18), then $inv/$current/$checkpoint (fields 19–21).
+  // These three used to be omitted; parseMinipixizPipe expects a 22-field pipe,
+  // so it parsed them as []/null/0 and the bag (+ selection + checkpoint) was
+  // wiped on every autosave. Each field is prefixed with "|" (no trailing
+  // separator after the last). $inv is an array → join(",") because Ruffle's
+  // AS2 Array.toString returns "" for JSON-bridged arrays (same workaround as
+  // the $stat arrays above).
   const afterLoop = Buffer.concat([
     actionPush(pushStr('|')), ADD2,
     actionPush(pushReg(3), pushCp(CP.$vs)), GET_MEMBER,
+    actionPush(pushStr('')), ADD2,
+    ADD2,                                                   // 18: $vs
+    // 19: $inv (csv via join)
+    actionPush(pushStr('|')), ADD2,
+    actionPush(pushCp(CP.comma)),
+    actionPush(pushInt(1)),
+    actionPush(pushReg(3), pushCp(CP.$inv)), GET_MEMBER,
+    actionPush(pushCp(CP.join)),
+    CALL_METHOD,
+    ADD2,
+    // 20: $current
+    actionPush(pushStr('|')), ADD2,
+    actionPush(pushReg(3), pushCp(CP.$current)), GET_MEMBER,
+    actionPush(pushStr('')), ADD2,
+    ADD2,
+    // 21: $checkpoint
+    actionPush(pushStr('|')), ADD2,
+    actionPush(pushReg(3), pushCp(CP.$checkpoint)), GET_MEMBER,
     actionPush(pushStr('')), ADD2,
     ADD2,
   ]);

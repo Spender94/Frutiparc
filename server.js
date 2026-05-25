@@ -5723,6 +5723,21 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
         for (const k of ['$mission', '$mis', '$help', '$time', '$god', '$wind']) {
           if (merged[k] === undefined && prev[k] !== undefined) merged[k] = prev[k];
         }
+        // $inv / $current / $checkpoint: the patched SWF now emits these (pipe
+        // fields 19–21), but a stale 19-field SWF or a Ruffle array glitch can
+        // still drop them (→ []/null/0). Keep prev's non-empty bag, selection
+        // and checkpoint so an imported inventory survives the first autosave.
+        if ((!Array.isArray(merged.$inv) || merged.$inv.length === 0) &&
+            Array.isArray(prev.$inv) && prev.$inv.length > 0) {
+          merged.$inv = prev.$inv;
+        }
+        if ((merged.$current === null || merged.$current === undefined) &&
+            prev.$current !== null && prev.$current !== undefined) {
+          merged.$current = prev.$current;
+        }
+        if ((Number(prev.$checkpoint) || 0) > (Number(merged.$checkpoint) || 0)) {
+          merged.$checkpoint = prev.$checkpoint;
+        }
         if (prev.$frog && !merged.$frog) merged.$frog = true;
         data = JSON.stringify(merged);
       }
