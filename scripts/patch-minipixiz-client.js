@@ -565,7 +565,44 @@ function buildServiceConnectBody() {
     POP,
   ]);
 
+  // ── TEMP DIAGNOSTIC ── runs at the very start of serviceConnect (which we
+  // KNOW executes — the server receives the loadFrutiSlots request). Tests
+  // whether Ruffle can marshal a NESTED object returned by EI back to AS2.
+  // Parses {"a":[10,20,{"b":33}]} via EI then echoes typeof + a[2].b + a.length.
+  //   "MARSHAL|type=object|a2b=33|alen=3"  → nested marshalling WORKS
+  //   "MARSHAL|type=undefined|a2b=undefined…" → EI return value is lost
+  // This determines the whole architecture: if marshalling works, we can
+  // pre-fetch slot0 in JS and inject it synchronously via EI (no onLoad,
+  // no AMF); if it fails, we must seed Ruffle's SharedObject directly.
+  const diagMarshal = Buffer.concat([
+    actionPush(pushStr('{"a":[10,20,{"b":33}]}')),
+    actionPush(pushCp(CP.parseJSON)),
+    actionPush(pushInt(2)),
+    actionPush(pushCp(CP.flash)), GET_VARIABLE,
+    actionPush(pushCp(CP.external)), GET_MEMBER,
+    actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,
+    actionPush(pushCp(CP.call)),
+    CALL_METHOD, storeReg(4), POP,
+    actionPush(pushStr('MARSHAL|type=')),
+    actionPush(pushReg(4)), TYPEOF, ADD2,
+    actionPush(pushStr('|a2b=')), ADD2,
+    actionPush(pushReg(4), pushStr('a')), GET_MEMBER,
+    actionPush(pushInt(2)), GET_MEMBER,
+    actionPush(pushStr('b')), GET_MEMBER, ADD2,
+    actionPush(pushStr('|alen=')), ADD2,
+    actionPush(pushReg(4), pushStr('a')), GET_MEMBER,
+    actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
+    actionPush(pushCp(CP.parseJSON)),
+    actionPush(pushInt(2)),
+    actionPush(pushCp(CP.flash)), GET_VARIABLE,
+    actionPush(pushCp(CP.external)), GET_MEMBER,
+    actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,
+    actionPush(pushCp(CP.call)),
+    CALL_METHOD, POP,
+  ]);
+
   return Buffer.concat([
+    diagMarshal,
     initSlots, initSlot0,
     createLv, setGame, setSid,
     createResult, setClient, setOnLoad,
