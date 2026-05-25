@@ -349,12 +349,6 @@
     }).catch(function(e) { window.__dlog("[Game] saveSlot error:", e); });
   };
 
-  const ruffle = window.RufflePlayer.newest();
-  const player = ruffle.createPlayer();
-  player.style.width  = swfWidth + "px";
-  player.style.height = swfHeight + "px";
-  wrap.appendChild(player);
-
   // Derive base URL from SWF path so relative loads resolve
   // to the game's own directory instead of the site root.
   var swfDir = swfPath.substring(0, swfPath.lastIndexOf("/") + 1);
@@ -446,6 +440,16 @@
   }
 
   await seedSharedObjectFromServer(qs.get("game") || "", swfPath, qs.get("sid") || "");
+
+  // Create the Ruffle player AFTER seeding the SharedObject. Ruffle's local
+  // storage backend snapshots localStorage when the player/movie initializes,
+  // so the seed must already be in place before createPlayer()/load() — doing
+  // it after caused getLocal() to read the pre-seed (empty/stale) value.
+  const ruffle = window.RufflePlayer.newest();
+  const player = ruffle.createPlayer();
+  player.style.width  = swfWidth + "px";
+  player.style.height = swfHeight + "px";
+  wrap.appendChild(player);
 
   // Load the game SWF directly (standalone mode, no Frusion wrapper).
   // We still provide socketProxy + domain so that calls to super.serviceConnect()
