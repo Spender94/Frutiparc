@@ -439,7 +439,11 @@
     }
   }
 
-  await seedSharedObjectFromServer(qs.get("game") || "", swfPath, qs.get("sid") || "");
+  if (qs.get("noseed") !== "1") {
+    await seedSharedObjectFromServer(qs.get("game") || "", swfPath, qs.get("sid") || "");
+  } else {
+    console.log("[Seed] SKIPPED (noseed=1)");
+  }
 
   // Create the Ruffle player AFTER seeding the SharedObject. Ruffle's local
   // storage backend snapshots localStorage when the player/movie initializes,
