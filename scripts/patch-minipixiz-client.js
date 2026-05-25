@@ -500,52 +500,16 @@ function buildOnLoadBody() {
     syncSlot0Assign,
   ]);
 
-  // ── Fairy instance reconstruction ──
-  // The forest/pond sprite code needs card.$faerie[i] to be Fairy CLASS
-  // INSTANCES, not the plain AMF data objects we load. The game wraps data via
-  // Manager."}Dz3)"(data, 1) (= new FairyClass(); inst.init(data,1); return inst)
-  // when a fairy is caught, but never re-wraps on load (upkeep builds temp
-  // instances and discards them). So after the card is loaded we walk
-  // Manager.card.$faerie and replace each plain entry with a real instance.
-  // cp106=']q' (Manager), cp107='4d(*' (card), cp811='}Dz3)' (wrap fn).
-  const cf_cond = Buffer.concat([
-    actionPush(pushReg(6)),
-    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER,
-    actionPush(pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushStr('length')), GET_MEMBER,
-    LESS2, NOT,
-  ]);
-  const cf_body = Buffer.concat([
-    // SET_MEMBER target: Manager.card.$faerie, member r6
-    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER,
-    actionPush(pushCp(CP.$faerie)), GET_MEMBER,
-    actionPush(pushReg(6)),
-    // value = Manager."}Dz3)"(data, 1)
-    // AS2 ActionCallMethod pops args in REVERSE order (arg1 is just below the
-    // arg-count on the stack, i.e. pushed LAST). The previous code pushed the
-    // faerie data first and the literal 1 last, so the call was actually
-    // }Dz3)(1, data) — the wrap built a fairy from the number 1, producing an
-    // empty instance ($name/$skin/$level all undefined → Gromelin "no fairies",
-    // diag n0=undefined). Push 1 (arg2) first, the data (arg1) last.
-    actionPush(pushInt(1)),
-    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER,
-    actionPush(pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushReg(6)), GET_MEMBER,
-    actionPush(pushInt(2)),
-    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(811)),
-    CALL_METHOD,
-    SET_MEMBER,
-  ]);
-  const cf_incr = Buffer.concat([
-    actionPush(pushReg(6), pushInt(1)), ADD2, storeReg(6), POP,
-  ]);
-  const cf_back = -(cf_cond.length + 5 + cf_body.length + cf_incr.length + 5);
-  const convertFaerie = Buffer.concat([
-    actionPush(pushInt(0)), storeReg(6), POP,
-    cf_cond,
-    actionIf(cf_body.length + cf_incr.length + 5),
-    cf_body,
-    cf_incr,
-    actionJump(cf_back),
-  ]);
+  // ── NO fairy instance reconstruction ──
+  // Earlier builds wrapped each card.$faerie[i] into a Fairy class instance via
+  // Manager."}Dz3)". Disassembly proved that's wrong: card.$faerie ALWAYS holds
+  // plain AMF data in normal play. The per-frame upkeep (Manager."-wzL7(",
+  // logs "upkeep!!") rebuilds *temporary* instances from card.$faerie every
+  // cycle — if card.$faerie held instances it would double-wrap forever. And
+  // }Dz3) → [Zu(Q stores the data under a private member "*7" (this["*7"]=data),
+  // so an instance's .$name/.$level/.$skin are undefined — which is exactly why
+  // the bag showed an undefined fairy with a cycling sprite. So we leave
+  // card.$faerie as the loaded plain data; the game wraps/renders it itself.
 
   // ── TEMP DIAGNOSTIC ── after the card is in slots[0], report what the GAME
   // actually sees (via the working /api/diag channel), to tell "data corrupt"
@@ -594,7 +558,6 @@ function buildOnLoadBody() {
     seedSO,
     syncSlots,
     callOnServiceConnect,
-    convertFaerie,
     diagFaerie,
   ]);
 }
