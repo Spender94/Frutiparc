@@ -490,6 +490,27 @@ function buildOnLoadBody() {
     syncSlot0Assign,
   ]);
 
+  // ── TEMP DIAGNOSTIC ── after the card is in slots[0], report what the GAME
+  // actually sees (via the working /api/diag channel), to tell "data corrupt"
+  // apart from "render-only". Reads client.slots[0] → fairy[0] name/skin/level,
+  // tree, item-count.
+  const diagFaerie = diagBeacon(Buffer.concat([
+    actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
+    actionPush(pushInt(0)), GET_MEMBER, storeReg(6), POP,
+    actionPush(pushStr('FAERIE|fl=')),
+    actionPush(pushReg(6), pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
+    actionPush(pushStr('|n0=')), ADD2,
+    actionPush(pushReg(6), pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushInt(0)), GET_MEMBER, actionPush(pushStr('$name')), GET_MEMBER, ADD2,
+    actionPush(pushStr('|sk=')), ADD2,
+    actionPush(pushReg(6), pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushInt(0)), GET_MEMBER, actionPush(pushStr('$skin')), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
+    actionPush(pushStr('|lv=')), ADD2,
+    actionPush(pushReg(6), pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushInt(0)), GET_MEMBER, actionPush(pushCp(CP.$level)), GET_MEMBER, ADD2,
+    actionPush(pushStr('|tree=')), ADD2,
+    actionPush(pushReg(6), pushCp(CP.$stat)), GET_MEMBER, actionPush(pushCp(CP.$treeMax)), GET_MEMBER, ADD2,
+    actionPush(pushStr('|itm=')), ADD2,
+    actionPush(pushReg(6), pushCp(CP.$stat)), GET_MEMBER, actionPush(pushCp(CP.$item)), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
+  ]));
+
   const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
     slot0Assign.length + seedSO.length;
   const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length + seedSO.length;
@@ -507,8 +528,9 @@ function buildOnLoadBody() {
     actionIf(slot0NullSkipSize),
     slot0Assign,
     seedSO,
-    callOnServiceConnect,
     syncSlots,
+    callOnServiceConnect,
+    diagFaerie,
   ]);
 }
 
