@@ -51,13 +51,10 @@
     window.__FRUSION_DEBUG = new URLSearchParams(window.location.search).get("debug") === "1";
     window.__dlog = window.__FRUSION_DEBUG ? console.log.bind(console) : function () {};
   </script>
-  <script src="/ruffle/ruffle.js" onerror="
-      console.warn('[Ruffle] Local load failed, falling back to CDN');
-      window.RufflePlayer.config.publicPath = undefined;
-      var s = document.createElement('script');
-      s.src = 'https://unpkg.com/@ruffle-rs/ruffle';
-      document.head.appendChild(s);
-  "></script>
+  <!-- ruffle.js is loaded dynamically from the main script AFTER the SharedObject
+       seed runs. Ruffle snapshots localStorage into memory at engine init, so a
+       static <script src> here would init (and snapshot) before we seed, and our
+       injected save would be invisible to getLocal. See loadRuffleScript(). -->
 </head>
 <body>
   <div id="player-wrap"></div>
@@ -439,16 +436,50 @@
     }
   }
 
+  // Dynamically load the Ruffle engine (with the same local→CDN fallback the
+  // old static <script> tag used). Called only AFTER the seed so Ruffle's
+  // localStorage snapshot includes our injected SharedObject. Resolves once
+  // window.RufflePlayer.newest is actually callable (the polyfill can install
+  // a tick after the script's onload fires).
+  function loadRuffleScript() {
+    function ready() { return window.RufflePlayer && typeof window.RufflePlayer.newest === "function"; }
+    function waitReady(resolve) {
+      if (ready()) { resolve(); return; }
+      var tries = 0;
+      var iv = setInterval(function () {
+        if (ready() || ++tries > 150) { clearInterval(iv); resolve(); }
+      }, 20);
+    }
+    return new Promise(function (resolve) {
+      if (ready()) { resolve(); return; }
+      var s = document.createElement("script");
+      s.src = "/ruffle/ruffle.js";
+      s.onload = function () { waitReady(resolve); };
+      s.onerror = function () {
+        console.warn("[Ruffle] Local load failed, falling back to CDN");
+        window.RufflePlayer.config.publicPath = undefined;
+        var c = document.createElement("script");
+        c.src = "https://unpkg.com/@ruffle-rs/ruffle";
+        c.onload = function () { waitReady(resolve); };
+        c.onerror = function () { resolve(); };
+        document.head.appendChild(c);
+      };
+      document.head.appendChild(s);
+    });
+  }
+
   if (qs.get("noseed") !== "1") {
     await seedSharedObjectFromServer(qs.get("game") || "", swfPath, qs.get("sid") || "");
   } else {
     console.log("[Seed] SKIPPED (noseed=1)");
   }
 
-  // Create the Ruffle player AFTER seeding the SharedObject. Ruffle's local
-  // storage backend snapshots localStorage when the player/movie initializes,
-  // so the seed must already be in place before createPlayer()/load() — doing
-  // it after caused getLocal() to read the pre-seed (empty/stale) value.
+  // Load the Ruffle engine NOW — strictly after the SharedObject seed. Ruffle's
+  // localStorage backend snapshots storage into memory at engine init; loading
+  // ruffle.js before the seed (e.g. via a static <script src>) meant getLocal()
+  // served the pre-seed snapshot and never saw our injected save.
+  await loadRuffleScript();
+
   const ruffle = window.RufflePlayer.newest();
   const player = ruffle.createPlayer();
   player.style.width  = swfWidth + "px";
