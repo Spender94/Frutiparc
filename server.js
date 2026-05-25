@@ -5820,6 +5820,19 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: /api/diag — TEMP diagnostic sink. The SWF posts here via
+// LoadVars.sendAndLoad (the ONE SWF→server channel proven to work in Ruffle;
+// ExternalInterface is unreliable for these AS2 SWFs). Lets us trace whether
+// in-SWF code paths (e.g. the sendAndLoad onLoad callback) actually execute,
+// since EI-based console markers never surface.
+app.all('/api/diag', (req, res) => {
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  let msg = params.data != null ? params.data : params.msg;
+  if (msg == null && typeof req.body === 'string') msg = req.body;
+  console.log('[DIAG] ' + String(msg == null ? '(no data)' : msg).slice(0, 600));
+  res.type('text/plain').send('ok=1');
+});
+
 // ENDPOINT: /api/loadFrutiSlots — Load all FrutiCard slots for a game.
 // Returns LoadVars format: slot0=<json>&slot1=<json>&slot2=<json>
 // ─────────────────────────────────────────────

@@ -250,6 +250,7 @@ const newStrings = [
   // instead — same pattern as patch-mb2-client.js. game-popup.html and
   // frusion-ruffle.html both expose `window.parseJSON = JSON.parse`.
   'parseJSON',            // +49
+  '/api/diag',            // +50 — TEMP diagnostic endpoint (sendAndLoad channel)
 ];
 
 const newCpBase = origCpCount;
@@ -351,18 +352,38 @@ const CP = {
   join: newCpBase + 47,
   comma: newCpBase + 48,
   parseJSON: newCpBase + 49,
+  diagUrl: newCpBase + 50,
 };
+
+// Build a diagnostic beacon: POST `data=<msg>` to /api/diag via
+// LoadVars.sendAndLoad — the SWF→server channel that actually works under
+// Ruffle (ExternalInterface is unreliable). msgBytecode must leave exactly
+// one string on the stack. Uses scratch registers r9 (LoadVars) and r10
+// (result receiver) so it never collides with the host function's regs.
+function diagBeacon(msgBytecode) {
+  return Buffer.concat([
+    actionPush(pushInt(0), pushCp(CP.LoadVars)), NEW_OBJECT, storeReg(9), POP,
+    actionPush(pushReg(9), pushCp(CP.data)),
+    msgBytecode,
+    SET_MEMBER,
+    actionPush(pushInt(0), pushCp(CP.LoadVars)), NEW_OBJECT, storeReg(10), POP,
+    actionPush(pushCp(CP.POST)),
+    actionPush(pushReg(10)),
+    actionPush(pushCp(CP.diagUrl)),
+    actionPush(pushInt(3)),
+    actionPush(pushReg(9), pushCp(CP.sendAndLoad)),
+    CALL_METHOD, POP,
+  ]);
+}
 
 // ── serviceConnect onLoad callback ──
 
 function buildOnLoadBody() {
-  // ── TEMP DIAGNOSTIC ── fire an EI marker the instant onLoad runs, encoding
-  // success (r2) and typeof this.slot0 (r1.slot0). Since EI.call works in this
-  // Ruffle (mb2 proves it), this marker MUST appear in console if onLoad fires.
-  // It pins down whether onLoad fires at all, and whether LoadVars populated
-  // slot0 — the real parseJSON call (with the 3.4 KB payload) never reaches JS,
-  // so we need to know where execution diverges.
-  const diagMarker = Buffer.concat([
+  // ── TEMP DIAGNOSTIC ── the instant onLoad runs, beacon to /api/diag via the
+  // WORKING sendAndLoad channel (EI is unreliable, so the old EI marker proved
+  // nothing). Encodes success (r2) and typeof/len of this.slot0. If onLoad
+  // fires, the server logs "[DIAG] ONLOAD|s=…"; if it never fires, nothing.
+  const diagMarker = diagBeacon(Buffer.concat([
     actionPush(pushStr('ONLOAD|s=')),
     actionPush(pushReg(2)), ADD2,                              // + success
     actionPush(pushStr('|t=')), ADD2,
@@ -370,14 +391,7 @@ function buildOnLoadBody() {
     actionPush(pushStr('|len=')), ADD2,
     actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
     actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,          // + this.slot0.length
-    actionPush(pushCp(CP.parseJSON)),                          // arg0 = "parseJSON"
-    actionPush(pushInt(2)),                                    // argcount
-    actionPush(pushCp(CP.flash)), GET_VARIABLE,
-    actionPush(pushCp(CP.external)), GET_MEMBER,
-    actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,
-    actionPush(pushCp(CP.call)),
-    CALL_METHOD, POP,
-  ]);
+  ]));
 
   const getClient = Buffer.concat([
     actionPush(pushReg(1), pushCp(CP._client)), GET_MEMBER, storeReg(3), POP,
@@ -548,7 +562,7 @@ function buildServiceConnectBody() {
     SET_MEMBER,
   ]);
 
-  const onLoadFunc = buildDefineFunction2('', [[2, 'success']], 6, 0x29, onLoadBodyBytes);
+  const onLoadFunc = buildDefineFunction2('', [[2, 'success']], 11, 0x29, onLoadBodyBytes);
   const setOnLoad = Buffer.concat([
     actionPush(pushReg(4), pushCp(CP.onLoad)),
     onLoadFunc,
@@ -566,15 +580,18 @@ function buildServiceConnectBody() {
   ]);
 
   // ── TEMP DIAGNOSTIC ── runs at the very start of serviceConnect (which we
-  // KNOW executes — the server receives the loadFrutiSlots request). Tests
-  // whether Ruffle can marshal a NESTED object returned by EI back to AS2.
-  // Parses {"a":[10,20,{"b":33}]} via EI then echoes typeof + a[2].b + a.length.
-  //   "MARSHAL|type=object|a2b=33|alen=3"  → nested marshalling WORKS
-  //   "MARSHAL|type=undefined|a2b=undefined…" → EI return value is lost
-  // This determines the whole architecture: if marshalling works, we can
-  // pre-fetch slot0 in JS and inject it synchronously via EI (no onLoad,
-  // no AMF); if it fails, we must seed Ruffle's SharedObject directly.
+  // KNOW executes — the server receives the loadFrutiSlots request). Two jobs:
+  //  (1) baseline "SC_RAN" confirms the /api/diag beacon channel itself works;
+  //  (2) tests whether Ruffle can marshal a NESTED object returned by EI back
+  //      to AS2 — parses {"a":[10,20,{"b":33}]} via EI, echoes a[2].b + a.length.
+  // Result is reported over sendAndLoad (works), NOT EI (unreliable):
+  //   "[DIAG] MARSHAL|type=object|a2b=33|alen=3"  → EI marshalling WORKS
+  //   "[DIAG] MARSHAL|type=undefined|a2b=undefined…" → EI return value is lost
+  // Decides the architecture: if EI marshalling works we can inject slot0
+  // synchronously via EI; if not we must seed Ruffle's SharedObject (AMF).
   const diagMarshal = Buffer.concat([
+    diagBeacon(Buffer.concat([actionPush(pushStr('SC_RAN'))])),
+    // r4 = ExternalInterface.call("parseJSON", '{"a":[10,20,{"b":33}]}')
     actionPush(pushStr('{"a":[10,20,{"b":33}]}')),
     actionPush(pushCp(CP.parseJSON)),
     actionPush(pushInt(2)),
@@ -583,22 +600,17 @@ function buildServiceConnectBody() {
     actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,
     actionPush(pushCp(CP.call)),
     CALL_METHOD, storeReg(4), POP,
-    actionPush(pushStr('MARSHAL|type=')),
-    actionPush(pushReg(4)), TYPEOF, ADD2,
-    actionPush(pushStr('|a2b=')), ADD2,
-    actionPush(pushReg(4), pushStr('a')), GET_MEMBER,
-    actionPush(pushInt(2)), GET_MEMBER,
-    actionPush(pushStr('b')), GET_MEMBER, ADD2,
-    actionPush(pushStr('|alen=')), ADD2,
-    actionPush(pushReg(4), pushStr('a')), GET_MEMBER,
-    actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
-    actionPush(pushCp(CP.parseJSON)),
-    actionPush(pushInt(2)),
-    actionPush(pushCp(CP.flash)), GET_VARIABLE,
-    actionPush(pushCp(CP.external)), GET_MEMBER,
-    actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,
-    actionPush(pushCp(CP.call)),
-    CALL_METHOD, POP,
+    diagBeacon(Buffer.concat([
+      actionPush(pushStr('MARSHAL|type=')),
+      actionPush(pushReg(4)), TYPEOF, ADD2,
+      actionPush(pushStr('|a2b=')), ADD2,
+      actionPush(pushReg(4), pushStr('a')), GET_MEMBER,
+      actionPush(pushInt(2)), GET_MEMBER,
+      actionPush(pushStr('b')), GET_MEMBER, ADD2,
+      actionPush(pushStr('|alen=')), ADD2,
+      actionPush(pushReg(4), pushStr('a')), GET_MEMBER,
+      actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
+    ])),
   ]);
 
   return Buffer.concat([
@@ -611,7 +623,7 @@ function buildServiceConnectBody() {
 }
 
 const serviceConnectBody = buildServiceConnectBody();
-const newServiceConnectFunc = buildDefineFunction2('', [], 5, 0x29, serviceConnectBody);
+const newServiceConnectFunc = buildDefineFunction2('', [], 11, 0x29, serviceConnectBody);
 
 const origFuncStart = shift(1287521);
 const origFuncEnd = shift(1287687);
