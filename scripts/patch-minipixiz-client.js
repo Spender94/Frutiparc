@@ -511,32 +511,35 @@ function buildOnLoadBody() {
   // the bag showed an undefined fairy with a cycling sprite. So we leave
   // card.$faerie as the loaded plain data; the game wraps/renders it itself.
 
-  // ── TEMP DIAGNOSTIC ── after the card is in slots[0], report what the GAME
-  // actually sees (via the working /api/diag channel), to tell "data corrupt"
-  // apart from "render-only". Reads client.slots[0] → fairy[0] name/skin/level,
-  // tree, item-count.
+  // ── TEMP DIAGNOSTIC ── decisive structure probe of Manager.card.$faerie[0],
+  // reported in ONE beacon (beacons arrive out of order, so a single line is
+  // the only reliable read). Distinguishes the two hypotheses:
+  //   • data lost in AMF seed → nm AND w7 both undefined (and lv/sk show where
+  //     the AMF stream desynced: lv=50 but sk=undefined ⇒ broke after $level).
+  //   • native wrap into a Fairy instance → nm=undefined but w7=<name> (data
+  //     lives under the private "*7" member).
+  //   • intact raw data → t=object, nm=<name>, lv=50, sk=4.
+  // sk vs sk0: if sk(=.$skin.length)=undefined but sk0(=.$skin[0]) has a value,
+  // $skin came through as an ECMA object (no .length), not a real Array.
   const diagFaerie = diagBeacon(Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
-    actionPush(pushInt(0)), GET_MEMBER, storeReg(6), POP,
-    actionPush(pushStr('FAERIE|fl=')),
-    actionPush(pushReg(6), pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
-    actionPush(pushStr('|n0=')), ADD2,
-    actionPush(pushReg(6), pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushInt(0)), GET_MEMBER, actionPush(pushStr('$name')), GET_MEMBER, ADD2,
-    actionPush(pushStr('|sk=')), ADD2,
-    actionPush(pushReg(6), pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushInt(0)), GET_MEMBER, actionPush(pushStr('$skin')), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
+    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER,
+    actionPush(pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushInt(0)), GET_MEMBER, storeReg(5), POP,
+    actionPush(pushStr('FAERIE|t=')),
+    actionPush(pushReg(5)), TYPEOF, ADD2,
+    actionPush(pushStr('|nm=')), ADD2,
+    actionPush(pushReg(5), pushStr('$name')), GET_MEMBER, ADD2,
+    actionPush(pushStr('|w7=')), ADD2,
+    actionPush(pushReg(5), pushStr('*7')), GET_MEMBER, actionPush(pushStr('$name')), GET_MEMBER, ADD2,
     actionPush(pushStr('|lv=')), ADD2,
-    actionPush(pushReg(6), pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushInt(0)), GET_MEMBER, actionPush(pushCp(CP.$level)), GET_MEMBER, ADD2,
-    actionPush(pushStr('|tree=')), ADD2,
-    actionPush(pushReg(6), pushCp(CP.$stat)), GET_MEMBER, actionPush(pushCp(CP.$treeMax)), GET_MEMBER, ADD2,
-    actionPush(pushStr('|itm=')), ADD2,
-    actionPush(pushReg(6), pushCp(CP.$stat)), GET_MEMBER, actionPush(pushCp(CP.$item)), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
-    // Also report Manager["4d(*"] (cp106=']q' var, cp107='4d(*' card) — the ref
-    // the world-build likely reads. If mcfl=undefined, Manager.card is unset in
-    // our flow (only slots[0] is) → that's the gap.
-    actionPush(pushStr('|mcfl=')), ADD2,
-    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER, actionPush(pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
-    actionPush(pushStr('|mctree=')), ADD2,
-    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER, actionPush(pushCp(CP.$stat)), GET_MEMBER, actionPush(pushCp(CP.$treeMax)), GET_MEMBER, ADD2,
+    actionPush(pushReg(5), pushCp(CP.$level)), GET_MEMBER, ADD2,
+    actionPush(pushStr('|sk=')), ADD2,
+    actionPush(pushReg(5), pushStr('$skin')), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
+    actionPush(pushStr('|sk0=')), ADD2,
+    actionPush(pushReg(5), pushStr('$skin')), GET_MEMBER, actionPush(pushInt(0)), GET_MEMBER, ADD2,
+    actionPush(pushStr('|taste=')), ADD2,
+    actionPush(pushReg(5), pushStr('$taste')), GET_MEMBER, actionPush(pushCp(CP.length)), GET_MEMBER, ADD2,
+    actionPush(pushStr('|exp=')), ADD2,
+    actionPush(pushReg(5), pushStr('$exp')), GET_MEMBER, ADD2,
   ]));
 
   const afterSuccessCheck = slot0Check.length + 5 + slot0Load.length + slot0NullCheck.length + 5 +
