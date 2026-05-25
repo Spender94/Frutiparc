@@ -490,6 +490,47 @@ function buildOnLoadBody() {
     syncSlot0Assign,
   ]);
 
+  // ── Fairy instance reconstruction ──
+  // The forest/pond sprite code needs card.$faerie[i] to be Fairy CLASS
+  // INSTANCES, not the plain AMF data objects we load. The game wraps data via
+  // Manager."}Dz3)"(data, 1) (= new FairyClass(); inst.init(data,1); return inst)
+  // when a fairy is caught, but never re-wraps on load (upkeep builds temp
+  // instances and discards them). So after the card is loaded we walk
+  // Manager.card.$faerie and replace each plain entry with a real instance.
+  // cp106=']q' (Manager), cp107='4d(*' (card), cp811='}Dz3)' (wrap fn).
+  const cf_cond = Buffer.concat([
+    actionPush(pushReg(6)),
+    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER,
+    actionPush(pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushStr('length')), GET_MEMBER,
+    LESS2, NOT,
+  ]);
+  const cf_body = Buffer.concat([
+    // Manager.card.$faerie  (target object), index r6
+    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER,
+    actionPush(pushCp(CP.$faerie)), GET_MEMBER,
+    actionPush(pushReg(6)),
+    // value = Manager."}Dz3)"(Manager.card.$faerie[r6], 1)
+    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(107)), GET_MEMBER,
+    actionPush(pushCp(CP.$faerie)), GET_MEMBER, actionPush(pushReg(6)), GET_MEMBER,
+    actionPush(pushInt(1)),
+    actionPush(pushInt(2)),
+    actionPush(pushCp(106)), GET_VARIABLE, actionPush(pushCp(811)),
+    CALL_METHOD,
+    SET_MEMBER,
+  ]);
+  const cf_incr = Buffer.concat([
+    actionPush(pushReg(6), pushInt(1)), ADD2, storeReg(6), POP,
+  ]);
+  const cf_back = -(cf_cond.length + 5 + cf_body.length + cf_incr.length + 5);
+  const convertFaerie = Buffer.concat([
+    actionPush(pushInt(0)), storeReg(6), POP,
+    cf_cond,
+    actionIf(cf_body.length + cf_incr.length + 5),
+    cf_body,
+    cf_incr,
+    actionJump(cf_back),
+  ]);
+
   // ── TEMP DIAGNOSTIC ── after the card is in slots[0], report what the GAME
   // actually sees (via the working /api/diag channel), to tell "data corrupt"
   // apart from "render-only". Reads client.slots[0] → fairy[0] name/skin/level,
@@ -537,6 +578,7 @@ function buildOnLoadBody() {
     seedSO,
     syncSlots,
     callOnServiceConnect,
+    convertFaerie,
     diagFaerie,
   ]);
 }
