@@ -228,9 +228,11 @@ async function initSchema() {
         suffix9     TEXT NOT NULL,
         comment     TEXT DEFAULT '',
         wallpaper_id TEXT DEFAULT NULL,
+        picto       TEXT DEFAULT NULL,
         created_at  TIMESTAMPTZ DEFAULT now()
       );
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS wallpaper_id TEXT DEFAULT NULL;
+      ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS picto TEXT DEFAULT NULL;
 
       -- Forum tables
       CREATE TABLE IF NOT EXISTS forum_categories (
@@ -876,17 +878,18 @@ async function loadShopPacks() {
       comment: r.comment || r.description || '',
     };
     if (r.wallpaper_id) p.wallpaperId = r.wallpaper_id;
+    if (r.picto) p.picto = r.picto;
     return p;
   });
 }
 
 async function upsertShopPack(pack) {
   await pool.query(
-    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id, picto)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (id) DO UPDATE SET
-       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8`,
-    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null]
+       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8, picto = $9`,
+    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null, pack.picto || null]
   );
 }
 

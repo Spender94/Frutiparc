@@ -2520,6 +2520,48 @@ const DEFAULT_ACCESSORIES = [
 // suffix9 = last 9 chars of a 24-char bouille string (prefix is taken from
 // the user's current bouille at serve time).
 // ─────────────────────────────────────────────
+// Game packs (rubrique "Packs") — full games, granted to everyone by default
+// on this server, so they show as "déjà possédé". Sourced from the original
+// boutique captures in public/ft/game-pack/. picto "pack,N" is the sprite key
+// the client renders; suffix9 is unused for these (kept for the DB NOT NULL).
+const SHOP_GAME_PACKS_DEFAULT = [
+  ['pack,10', 10, 'Pack de Motion Ball 2',         'Jouez les célèbres balles pour vaincre le célèbre Tournéboulé !',                  "Bénéficiez du jeux complet et d'un pass journalier"],
+  ['pack,12', 11, 'Pack de Frutisnake',            'Jouez un serpent de manière illimité pour manger le plus de fruits possible.',    "Bénéficiez du jeux complet et d'un pass journalier"],
+  ['pack,13', 12, 'Pack de Burning Kiwi',          'Devenez le roi du circuit de manière illimité en activant des turbo survitaminés.', "Bénéficiez du jeux complet et d'un pass journalier"],
+  ['pack,14', 13, 'Pack de Swapou 2',              'Jouez Dimitri ou Natacha pour vaincre le redoutable Wasabii !',                   "Bénéficiez du jeux complet et d'un pass journalier"],
+  ['pack,15', 14, 'Pack de Frutibandas',           'Affrontez les meilleurs joueurs à Frutibandas et entrainez-vous de manière illimitée.', "Bénéficiez du jeux complet et d'un pass journalier"],
+  ['pack,16', 15, 'Pack de Grapiz',                'Affrontez les meilleurs joueurs à Grapiz et entrainez-vous de manière illimitée.',  "Bénéficiez du jeux complet et d'un pass journalier"],
+  ['pack,17', 16, 'Pack de Kaluga',                'Jouez le célèbre Tzongre et ses amis dans des défis incroyables',                 "Bénéficiez du jeux complet et d'un pass journalier"],
+  ['pack,3',  17, 'Pack de Frutibandas et Grapiz', 'Jouez de manière illimitée aux deux jeux multijoueurs : Grapiz et Frutibandas',   "Bénéficiez des jeux complet et d'un pass journalier pour chaque jeu"],
+].map(([picto, id, name, description, comment]) => ({
+  id, name, category: 'Packs', price: 260, suffix9: '000000000', picto, description, comment,
+}));
+
+// Feutres (rubrique "Feutres") — chat-pen colours, also granted by default.
+// picto "feutre,N" matches the index table documented in public/ft/pack-pen.
+const FEUTRE_DESC = 'Personnalisez votre écriture avec ce magnifique feutre qui vous permettra de vous distinguer sur les salons';
+const SHOP_FEUTRES_DEFAULT = [
+  ['feutre,0',  315, 'Feutre orange',             'Couleur orange ISO'],
+  ['feutre,1',  316, 'Feutre bleu',               'Couleur bleue ISO'],
+  ['feutre,2',  317, 'Feutre vert foncé',         'Couleur verte foncée ISO'],
+  ['feutre,3',  318, 'Feutre Bordeaux',           'Couleur Bordeaux ISO'],
+  ['feutre,4',  319, 'Feutre rose',               'Couleur rose ISO'],
+  ['feutre,5',  320, 'Feutre jaune',              'Couleur jaune ISO'],
+  ['feutre,6',  321, 'Feutre vert clair',         'Couleur verte claire ISO'],
+  ['feutre,7',  322, 'Feutre cyan',               'Couleur cyan ISO'],
+  ['feutre,8',  323, 'Feutre bleu foncé',         'Couleur bleue foncée ISO'],
+  ['feutre,9',  324, 'Feutre marron',             'Couleur marron ISO'],
+  ['feutre,10', 325, 'Feutre marron foncé',       'Couleur marron foncé ISO'],
+  ['feutre,11', 326, 'Feutre vert kaki',          'Couleur vert kaki ISO'],
+  ['feutre,12', 327, 'Feutre bleu pétrole',       'Couleur bleue pétrole ISO'],
+  ['feutre,13', 599, 'Feutre vert',               'Couleur verte ISO'],
+  ['feutre,14', 600, 'Feutre bleu pétrole foncé', 'Couleur bleue pétrole foncée ISO'],
+  ['feutre,15', 601, 'Feutre orange foncé',       'Couleur orange foncée ISO'],
+  ['feutre,16', 602, 'Feutre violet',             'Couleur violette ISO'],
+].map(([picto, id, name, comment]) => ({
+  id, name, category: 'Feutres', price: 10, suffix9: '000000000', picto, description: FEUTRE_DESC, comment,
+}));
+
 const SHOP_PACKS_DEFAULT = [
   {
     id: 101,
@@ -2560,6 +2602,8 @@ const SHOP_PACKS_DEFAULT = [
   { id: 206, name: 'Mini-Wave Nostromo',    category: "Fonds d'écran", price: 0, description: 'Le vaisseau Nostromo de Mini-Wave.',             suffix9: '000000000', wallpaperId: 'nostromo' },
   { id: 207, name: 'Mini-Wave Mini-Star',   category: "Fonds d'écran", price: 0, description: 'La planète Mini-Star de Mini-Wave.',             suffix9: '000000000', wallpaperId: 'ministar' },
   { id: 208, name: 'Utopiz',                category: "Fonds d'écran", price: 0, description: 'Le monde coloré d\'Utopiz.',                    suffix9: '000000000', wallpaperId: 'utopiz' },
+  ...SHOP_GAME_PACKS_DEFAULT,
+  ...SHOP_FEUTRES_DEFAULT,
 ];
 const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
 
@@ -2760,6 +2804,22 @@ function buildShopPackXml(pack, user) {
       ` p="${escapeXml(picto)}" q="-1" h="${alreadyBuy}">` +
       `<d>${escapeXml(pack.description)}</d>` +
       `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
+      `</p>`
+    );
+  }
+  if (pack.picto) {
+    // Game packs ("pack,N") and feutres ("feutre,N"): the original boutique
+    // wrapped the blurb in <desc>, and packs additionally carried two game
+    // screenshots. picto is the raw sprite key the client renders.
+    const screens = pack.picto.startsWith('pack,')
+      ? `<s n="Capture d'écran du jeu"><b u="wal/pi.jpg" w="150" h="150" /><t u="wal/pl.jpg" w="150" h="150" /></s>`
+      : '';
+    return (
+      `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
+      ` p="${escapeXml(pack.picto)}" h="${alreadyBuy}">` +
+      `<d><desc>${escapeXml(pack.description)}</desc></d>` +
+      `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
+      screens +
       `</p>`
     );
   }
@@ -8816,6 +8876,7 @@ async function boot() {
         for (const p of dbPacks) {
           const def = defaultById[p.id];
           if (def && def.wallpaperId && !p.wallpaperId) p.wallpaperId = def.wallpaperId;
+          if (def && def.picto && !p.picto) p.picto = def.picto;
           if (existingIds.has(p.id)) {
             const idx = SHOP_PACKS.findIndex(x => x.id === p.id);
             SHOP_PACKS[idx] = p;
