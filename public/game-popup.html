@@ -20,11 +20,48 @@
       box-shadow: 0 0 0 1px rgba(255,255,255,.15);
       overflow: hidden;
       position: relative;
+      transform-origin: center center;
+      transition: transform .12s ease-out;
     }
     #player-wrap > * {
       position: absolute;
       left: 0;
       top: 0;
+    }
+    #zoom-bar {
+      position: fixed;
+      right: 10px;
+      bottom: 10px;
+      z-index: 99999;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      font: 12px Verdana, sans-serif;
+      color: #fff;
+      background: rgba(0,0,0,.55);
+      padding: 4px 6px;
+      border-radius: 6px;
+      user-select: none;
+      opacity: .35;
+      transition: opacity .15s;
+    }
+    #zoom-bar:hover { opacity: 1; }
+    #zoom-bar button {
+      width: 22px;
+      height: 22px;
+      border: 0;
+      border-radius: 4px;
+      background: #ade76b;
+      color: #14320a;
+      font: bold 14px Verdana, sans-serif;
+      line-height: 1;
+      cursor: pointer;
+    }
+    #zoom-bar button:hover { background: #c4f08a; }
+    #zoom-bar .z-label {
+      min-width: 40px;
+      text-align: center;
+      cursor: default;
     }
   </style>
   <script>
@@ -523,6 +560,83 @@
   });
 
   window.__dlog("[Game] Loaded", swfPath, "standalone at", width + "x" + height, "(SWF stage " + swfWidth + "x" + swfHeight + ")");
+
+  // ── Zoom control ──────────────────────────────────────────────────
+  // These games were tiny by design (period-authentic). Offer an optional
+  // magnifier: we scale the clipping wrap with a CSS transform — which works
+  // for every game regardless of its internal Stage.scaleMode (resizing the
+  // player only zooms games that scale to stage) — and grow the popup window
+  // to match, falling back to scroll once we hit the screen edge. Slightly
+  // soft when upscaled, but guaranteed to enlarge any game. Remembered per game.
+  (function setupZoom() {
+    var ZMIN = 1, ZMAX = 4, STEP = 0.25;
+    var baseW = width, baseH = height;
+    var zoomKey = "frutiparc:zoom:" + gameSwfName;
+    var zoom = 1;
+    try {
+      var saved = parseFloat(localStorage.getItem(zoomKey));
+      if (saved >= ZMIN && saved <= ZMAX) zoom = saved;
+    } catch (e) {}
+
+    var bar = document.createElement("div");
+    bar.id = "zoom-bar";
+    bar.innerHTML =
+      '<button type="button" data-z="out" title="Dézoomer (Ctrl+molette)">−</button>' +
+      '<span class="z-label"></span>' +
+      '<button type="button" data-z="in" title="Zoomer (Ctrl+molette)">+</button>' +
+      '<button type="button" data-z="reset" title="Taille d\'origine (Ctrl+0)">1:1</button>';
+    document.body.appendChild(bar);
+    var label = bar.querySelector(".z-label");
+
+    function clamp(v) { return Math.min(ZMAX, Math.max(ZMIN, Math.round(v / STEP) * STEP)); }
+
+    function fitWindow() {
+      try {
+        var chromeW = Math.max(0, window.outerWidth - window.innerWidth);
+        var chromeH = Math.max(0, window.outerHeight - window.innerHeight);
+        var wantW = Math.ceil(baseW * zoom) + chromeW;
+        var wantH = Math.ceil(baseH * zoom) + chromeH;
+        var maxW = screen.availWidth || 1920;
+        var maxH = screen.availHeight || 1080;
+        window.resizeTo(Math.min(wantW, maxW), Math.min(wantH, maxH));
+        var fits = wantW <= maxW && wantH <= maxH;
+        document.documentElement.style.overflow = fits ? "hidden" : "auto";
+        document.body.style.overflow = fits ? "hidden" : "auto";
+      } catch (e) { window.__dlog("[Game] zoom resize failed:", e && e.message); }
+    }
+
+    function apply(z, resizeWin) {
+      zoom = clamp(z);
+      wrap.style.transform = "scale(" + zoom + ")";
+      label.textContent = Math.round(zoom * 100) + "%";
+      try { localStorage.setItem(zoomKey, String(zoom)); } catch (e) {}
+      if (resizeWin) fitWindow();
+    }
+
+    bar.addEventListener("click", function (ev) {
+      var btn = ev.target.closest("button");
+      if (!btn) return;
+      var act = btn.getAttribute("data-z");
+      if (act === "in") apply(zoom + STEP, true);
+      else if (act === "out") apply(zoom - STEP, true);
+      else if (act === "reset") apply(1, true);
+    });
+
+    window.addEventListener("wheel", function (ev) {
+      if (!ev.ctrlKey) return;
+      ev.preventDefault();
+      apply(zoom + (ev.deltaY < 0 ? STEP : -STEP), true);
+    }, { passive: false });
+
+    window.addEventListener("keydown", function (ev) {
+      if (!ev.ctrlKey) return;
+      if (ev.key === "+" || ev.key === "=") { ev.preventDefault(); apply(zoom + STEP, true); }
+      else if (ev.key === "-") { ev.preventDefault(); apply(zoom - STEP, true); }
+      else if (ev.key === "0") { ev.preventDefault(); apply(1, true); }
+    });
+
+    apply(zoom, zoom !== 1);
+  })();
 })();
 </script>
 </body>
