@@ -7190,6 +7190,9 @@ app.get('/do/ld', (req, res) => {
 app.get(['/ff/tree', '/tree'], (req, res) => {
   const sid = req.query.sid;
   const username = resolveUsernameFromSid(sid);
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   let xml = FILE_TREE_XML;
   if (username && users[username]) {
     const user = users[username];
@@ -7364,6 +7367,12 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user } = auth;
+  // Flash's XML loader caches by URL — without no-store the folder tree sticks
+  // on the first response it ever fetched (e.g. a stale "Undefined" picto
+  // listing) until a full reload. Force a fresh fetch on every open.
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   ensureContactLists(user);
   if (uid === 'root' || uid === 'desktop') {
     // Gaspard is the welcome-bot NPC; re-expose its contact icon on the
