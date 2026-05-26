@@ -724,6 +724,14 @@ function pictoGameSlug(gameName) {
   return s || 'autre';
 }
 
+// One inventory <e> for a picto: clicking it opens the single-picto popup.
+function renderPictoEntryXml(itemName) {
+  const displayName = getGameItemDisplayName(itemName);
+  const gameName = getGameItemGame(itemName) || 'Autre';
+  const viewerUrl = `/picto-view.html?item=${encodeURIComponent(itemName)}&name=${encodeURIComponent(displayName)}&game=${encodeURIComponent(gameName)}`;
+  return `<e u="${escapeXml(itemName)}" t="url" s="10" d="0" a="0">${escapeXml(displayName)}\r\njavascript:fp_openPopup('${escapeXml(viewerUrl)}','Picto','width=400,height=450')\r\n</e>`;
+}
+
 const bouilleCache = {};
 
 function bouilleOf(user, username) {
@@ -7407,37 +7415,37 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     return res.type('text/xml').send(`<f u="inv_wallpapers">${nodes || '<i />'}</f>`);
   }
 
-  // Pictos folder → one navigable sub-folder per game. The client lazily
-  // fetches each game's contents via /ff/ls?uid=inv_pictos_<slug>.
+  // Pictos folder → one sub-folder per game, each with that game's pictos
+  // inlined as children. The children MUST be present: the client's analyseXml
+  // only builds a named, expandable folder when it can recurse into one — an
+  // empty <f/> is pushed as a nameless "Undefined" node (same reason the
+  // contact sub-folders below inline their contacts).
   if (uid === 'inv_pictos') {
     const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
-    const seen = new Map(); // slug -> display game name (first wins)
+    const byGame = new Map(); // slug -> { name, items: [] }
     for (const itemName of gi) {
       const gameName = getGameItemGame(itemName) || 'Autre';
       const slug = pictoGameSlug(gameName);
-      if (!seen.has(slug)) seen.set(slug, gameName);
+      if (!byGame.has(slug)) byGame.set(slug, { name: gameName, items: [] });
+      byGame.get(slug).items.push(itemName);
     }
-    if (seen.size === 0) return res.type('text/xml').send('<f u="inv_pictos"><i /></f>');
-    const folders = [...seen.entries()]
-      .sort((a, b) => a[1].localeCompare(b[1], 'fr'))
-      .map(([slug, gameName]) => `<f u="inv_pictos_${slug}" n="${escapeXml(gameName)}" t="folder" />`)
+    if (byGame.size === 0) return res.type('text/xml').send('<f u="inv_pictos"><i /></f>');
+    const folders = [...byGame.entries()]
+      .sort((a, b) => a[1].name.localeCompare(b[1].name, 'fr'))
+      .map(([slug, g]) => `<f u="inv_pictos_${slug}" n="${escapeXml(g.name)}" t="folder">${g.items.map(renderPictoEntryXml).join('')}</f>`)
       .join('');
     return res.type('text/xml').send(`<f u="inv_pictos">${folders}</f>`);
   }
 
-  // Contents of a per-game Pictos sub-folder: that game's pictos, each opening
-  // its individual picto-view popup (same entry as before, just grouped).
+  // Direct open/refresh of one game's Pictos sub-folder (if the client
+  // lazy-loads on click rather than using the inlined children above).
   if (uid.startsWith('inv_pictos_')) {
     const slug = uid.slice('inv_pictos_'.length);
     const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
-    let nodes = '';
-    for (const itemName of gi) {
-      const gameName = getGameItemGame(itemName) || 'Autre';
-      if (pictoGameSlug(gameName) !== slug) continue;
-      const displayName = getGameItemDisplayName(itemName);
-      const viewerUrl = `/picto-view.html?item=${encodeURIComponent(itemName)}&name=${encodeURIComponent(displayName)}&game=${encodeURIComponent(gameName)}`;
-      nodes += `<e u="${escapeXml(itemName)}" t="url" s="10" d="0" a="0">${escapeXml(displayName)}\r\njavascript:fp_openPopup('${escapeXml(viewerUrl)}','Picto','width=400,height=450')\r\n</e>`;
-    }
+    const nodes = gi
+      .filter((itemName) => pictoGameSlug(getGameItemGame(itemName) || 'Autre') === slug)
+      .map(renderPictoEntryXml)
+      .join('');
     return res.type('text/xml').send(`<f u="${escapeXml(uid)}">${nodes || '<i />'}</f>`);
   }
 
