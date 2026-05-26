@@ -2563,6 +2563,31 @@ const SHOP_PACKS_DEFAULT = [
 ];
 const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
 
+// Default accessory description — the two paragraphs the original Frutiparc
+// showed for every accessory. win.Shop.displayItemPage runs
+// FEString.replaceBackSlashN on the <d> text and lays it out across two style
+// blocks (s="4" bold catchphrase, s="3" regular blurb), and the client parses
+// the shop XML with ignoreWhite=true — so a single LITERAL "\n" (backslash-n,
+// which survives ignoreWhite and is what replaceBackSlashN converts) separates
+// the bold line 1 from the regular line 2. A single-line <d> is exactly why
+// line 2 is currently missing in the shop.
+const DEFAULT_ACCESSORY_DESC_L1 =
+  "Hier, j'ai regardé ma bouille et je la trouvais rigolote, aujourd'hui avec mon accessoire, youpi-kiwi, elle est trop formidable !";
+const DEFAULT_ACCESSORY_DESC_L2 =
+  "Si toi aussi tu veux avoir une formida-bouille, alors c'est facile, choisi un accessoire et pose le sur ta bouille ! Un jour aventurier, un jour citadin, tu vas pouvoir changer de look quand bon te semble. Et pour que tu conserves ta touche personnelle, tous les accessoires sont en quantité limitée";
+const DEFAULT_ACCESSORY_DESC = DEFAULT_ACCESSORY_DESC_L1 + "\\n" + DEFAULT_ACCESSORY_DESC_L2;
+// Auto-seeded placeholder descriptions from earlier builds — treated as "no
+// override" so the shared default applies to those accessories too. Admins can
+// still set a real custom description (anything else, non-empty) and it wins.
+const LEGACY_ACCESSORY_DESCRIPTIONS = new Set(
+  SHOP_PACKS_DEFAULT.filter((p) => !p.wallpaperId && p.description).map((p) => p.description)
+);
+function resolveAccessoryDescription(pack) {
+  const d = (pack && pack.description ? String(pack.description) : '').trim();
+  if (!d || LEGACY_ACCESSORY_DESCRIPTIONS.has(d)) return DEFAULT_ACCESSORY_DESC;
+  return pack.description;
+}
+
 // Moderator-only accessory automatically granted with the role and revoked
 // when the role is taken away.  Not purchasable (shopId stays 0) so it never
 // appears in the shop tree.
@@ -2714,7 +2739,7 @@ function buildShopPackXml(pack, user) {
   return (
     `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
     ` p="bouille,${escapeXml(pictoSuffix10)}" q="-1" h="${alreadyBuy}">` +
-    `<d>${escapeXml(pack.description)}</d>` +
+    `<d>${escapeXml(resolveAccessoryDescription(pack))}</d>` +
     `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
     `</p>`
   );
