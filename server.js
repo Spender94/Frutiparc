@@ -7417,13 +7417,17 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     return res.type('text/xml').send(`<f u="inv_wallpapers">${nodes || '<i />'}</f>`);
   }
 
-  // Pictos folder → flat list of all the user's pictos; each opens its
-  // individual picto-view popup. (Per-game sub-folders were attempted but the
-  // SWF inventory window rendered them as nameless "Undefined" nodes.)
+  // Pictos folder → a "Voir tous mes pictos" entry that opens an HTML gallery
+  // popup (native browser scrollbar, grouped by game — the SWF icon list can't
+  // scroll), followed by the flat list of pictos (each opens its picto-view
+  // popup). Per-game sub-folders were tried but rendered as "Undefined" nodes.
   if (uid === 'inv_pictos') {
     const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
-    const nodes = gi.map(renderPictoEntryXml).join('');
-    return res.type('text/xml').send(`<f u="inv_pictos">${nodes || '<i />'}</f>`);
+    if (gi.length === 0) return res.type('text/xml').send('<f u="inv_pictos"><i /></f>');
+    const galleryUrl = `/pictos-gallery.html?sid=${encodeURIComponent(sid || '')}`;
+    const galleryEntry = `<e u="__pictos_gallery__" t="url" s="10" d="0" a="0">Voir tous mes pictos\r\njavascript:fp_openPopup('${escapeXml(galleryUrl)}','Mes Pictos','width=760,height=620,resizable=yes,scrollbars=yes')\r\n</e>`;
+    const nodes = galleryEntry + gi.map(renderPictoEntryXml).join('');
+    return res.type('text/xml').send(`<f u="inv_pictos">${nodes}</f>`);
   }
 
   if (uid === 'shop') {

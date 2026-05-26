@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Mes Pictos - Frutiparc</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #b5e46a;
+    font-family: Verdana, sans-serif;
+    color: #2C4A0F;
+    padding: 14px 16px 28px;
+  }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  .count { font-size: 11px; color: #5a8a20; margin-bottom: 12px; }
+  .picto-gallery-section { margin-bottom: 16px; }
+  .picto-gallery-section h4 {
+    margin: 10px 0 6px;
+    font-size: 13px;
+    color: #2C4A0F;
+    border-bottom: 1px solid #8fc63f;
+    padding-bottom: 3px;
+  }
+  .picto-gallery { display: flex; flex-wrap: wrap; gap: 10px; }
+  .picto-card {
+    width: 86px;
+    text-align: center;
+    background: #FFF9E5;
+    border: 1px solid #C8D89D;
+    border-radius: 6px;
+    padding: 8px 6px;
+  }
+  .picto-card img {
+    width: 52px;
+    height: 52px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto 5px;
+  }
+  .picto-card .picto-name {
+    font-size: 10px;
+    word-break: break-word;
+    line-height: 1.2;
+  }
+  .state { padding: 24px; text-align: center; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="app"><div class="state">Chargement...</div></div>
+<script>
+(function () {
+  var sid = new URLSearchParams(window.location.search).get('sid') || '';
+  var app = document.getElementById('app');
+  function esc(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
+
+  fetch('/api/pictos?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (pictos) {
+      if (!Array.isArray(pictos) || pictos.length === 0) {
+        app.innerHTML = '<div class="state">Aucun picto pour le moment.<br>Joue aux jeux pour en collecter !</div>';
+        return;
+      }
+      var byGame = {};
+      pictos.forEach(function (p) {
+        var g = p.game || 'Autre';
+        (byGame[g] = byGame[g] || []).push(p);
+      });
+      var games = Object.keys(byGame).sort(function (a, b) { return a.localeCompare(b, 'fr'); });
+      var html = '<h1>Mes Pictos</h1><div class="count">' + pictos.length + ' picto' + (pictos.length > 1 ? 's' : '') + '</div>';
+      games.forEach(function (g) {
+        var items = byGame[g];
+        html += '<div class="picto-gallery-section"><h4>' + esc(g) + ' (' + items.length + ')</h4><div class="picto-gallery">';
+        items.forEach(function (p) {
+          html += '<div class="picto-card" title="[picto=' + esc(p.id) + ']">'
+            + '<img src="' + esc(p.url) + '" alt="' + esc(p.name) + '" loading="lazy">'
+            + '<div class="picto-name">' + esc(p.name) + '</div>'
+            + '</div>';
+        });
+        html += '</div></div>';
+      });
+      app.innerHTML = html;
+      document.title = 'Mes Pictos (' + pictos.length + ') - Frutiparc';
+    })
+    .catch(function () {
+      app.innerHTML = '<div class="state">Erreur de chargement des pictos.</div>';
+    });
+})();
+</script>
+</body>
+</html>
