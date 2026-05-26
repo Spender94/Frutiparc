@@ -37,6 +37,30 @@
         // pressure from console I/O during normal gameplay.
         window.__FRUSION_DEBUG = new URLSearchParams(window.location.search).get("debug") === "1";
         window.__dlog = window.__FRUSION_DEBUG ? console.log.bind(console) : function () {};
+
+        // ── Render-resolution cap ───────────────────────────────────
+        // Ruffle sizes its backing canvas at (cssPixels × devicePixelRatio).
+        // The salon stage is a fixed 1920×768, so on a HiDPI/Retina screen
+        // (DPR 2) Ruffle rasterises ~3840×1536 ≈ 5.9 M px every frame and
+        // quality:"high" antialiases all of it — the dominant GPU cost. This
+        // page hosts nothing but the player, so we cap the DPR Ruffle sees
+        // before its engine boots. 1.5 ≈ 1.8× fewer pixels than 2.0 with only
+        // mild softening; 1.0 = max savings, ≥2.0 = no cap. Tunable.
+        (function () {
+            var RENDER_DPR_CAP = 1.5;
+            try {
+                var real = window.devicePixelRatio || 1;
+                if (real > RENDER_DPR_CAP) {
+                    Object.defineProperty(window, "devicePixelRatio", {
+                        configurable: true,
+                        get: function () { return RENDER_DPR_CAP; }
+                    });
+                    window.__dlog("[Ruffle] devicePixelRatio capped " + real + " -> " + RENDER_DPR_CAP);
+                }
+            } catch (e) {
+                console.warn("[Ruffle] devicePixelRatio cap failed:", e && e.message);
+            }
+        })();
     </script>
 
     <script src="/ruffle/ruffle.js" onerror="
@@ -659,6 +683,30 @@
                 // keyboard events from JS were rejected by Ruffle
                 // (isTrusted=false), so the JS workaround that used to
                 // live here is gone and the fix moved into the SWF.
+
+                // ── Pause playback while the tab stays hidden ──
+                // No point running the 30 fps AVM+render loop for a salon the
+                // user can't see. We wait out a short grace so a quick glance
+                // at another tab doesn't churn the chat socket — while paused
+                // the client heartbeat stops, so a backgrounded tab relies on
+                // the server/proxy not reaping an idle connection. Resume is
+                // immediate on return.
+                var HIDDEN_PAUSE_GRACE_MS = 20000;
+                var __pauseTimer = null;
+                function __setPlaying(on) {
+                    try {
+                        if (on && typeof player.play === "function") player.play();
+                        else if (!on && typeof player.pause === "function") player.pause();
+                    } catch (e) { window.__dlog("[Ruffle] play/pause failed:", e && e.message); }
+                }
+                document.addEventListener("visibilitychange", function () {
+                    if (document.hidden) {
+                        __pauseTimer = setTimeout(function () { __setPlaying(false); }, HIDDEN_PAUSE_GRACE_MS);
+                    } else {
+                        if (__pauseTimer) { clearTimeout(__pauseTimer); __pauseTimer = null; }
+                        __setPlaying(true);
+                    }
+                });
             });
         })();
     </script>
