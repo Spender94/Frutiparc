@@ -2804,6 +2804,19 @@ function buildShopTreeXml(user) {
   return `<c n="Boutique" d="${defaultId}">${inner}</c>`;
 }
 
+// Real in-game artwork shown as the pack's screenshot (clickable thumbnail in
+// the item page). Looked up by pack id at render time, so it needs no DB column
+// and survives the shop-pack persistence round-trip. Served via the existing
+// /swf/games/<game> static mounts. Games without a raster asset (Frutibandas,
+// Grapiz) keep just the game-disc picto.
+const PACK_SCREENSHOT_BY_ID = {
+  10: '/swf/games/motionBall2/goodies/title/title.png', // Motion Ball 2
+  11: '/swf/games/snake3/book/images/cover.jpg',         // Frutisnake
+  12: '/swf/games/burningKiwi/images/intro.jpg',         // Burning Kiwi
+  13: '/swf/games/swapou2/images/logo.png',              // Swapou 2
+  16: '/swf/games/kaluga/miniScreenshots/challenge1.png', // Kaluga
+};
+
 function buildShopPackXml(pack, user) {
   const alreadyBuy = (shopCategoryOwnedByDefault(pack.category) || userOwnsShopPack(user, pack.id)) ? '1' : '0';
   if (pack.wallpaperId) {
@@ -2823,11 +2836,16 @@ function buildShopPackXml(pack, user) {
     // the <d> TEXT node as doc-markup, so the description must sit directly in
     // <d> — a <desc> child element leaves the text node empty and nothing
     // renders. q="-1" mirrors the buyable rubriques (unlimited quantity).
+    const shotUrl = PACK_SCREENSHOT_BY_ID[pack.id];
+    const shot = shotUrl
+      ? `<s n="Capture d'écran du jeu"><b u="${escapeXml(shotUrl)}" w="150" h="150" /><t u="${escapeXml(shotUrl)}" w="150" h="150" /></s>`
+      : '';
     return (
       `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
       ` p="${escapeXml(pack.picto)}" q="-1" h="${alreadyBuy}">` +
       `<d>${escapeXml(buildBlurbDescMarkup(pack.description))}</d>` +
       `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
+      shot +
       `</p>`
     );
   }
