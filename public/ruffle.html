@@ -30,7 +30,10 @@
             publicPath: "/ruffle/",
             scale: "noScale",
             salign: "TL",
-            logLevel: "warn"
+            // ?debug=1 bumps to "info" so Ruffle logs which renderer it picked
+            // ("Using WebGL/WebGPU/Canvas renderer") — a silent canvas2d
+            // fallback would be 3-5× slower than GPU and is worth ruling out.
+            logLevel: new URLSearchParams(window.location.search).get("debug") === "1" ? "info" : "warn"
         };
 
         // Gate verbose legacy-bridge logs behind ?debug=1 to avoid CPU
@@ -50,6 +53,7 @@
             var RENDER_DPR_CAP = 1.5;
             try {
                 var real = window.devicePixelRatio || 1;
+                window.__dlog("[Ruffle] real devicePixelRatio =", real, "(cap " + RENDER_DPR_CAP + ")");
                 if (real > RENDER_DPR_CAP) {
                     Object.defineProperty(window, "devicePixelRatio", {
                         configurable: true,
