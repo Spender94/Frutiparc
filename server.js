@@ -16,6 +16,7 @@ const net = require('net');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib');
 const db = require('./db');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
@@ -6289,11 +6290,41 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
 // The compression middleware now also skips application/x-shockwave-flash
 // so no chunked re-encoding can interrupt the transfer.
 const MAIN_SWF_PATH = path.join(__dirname, 'legacy', 'main.swf');
+// legacy/main.swf ships at 100 fps. Ruffle honours that literally and re-runs
+// the whole AVM + re-tessellates every animated bouille 100×/s, which is the
+// main CPU/GPU drain in chat rooms (native Flash on period hardware never
+// sustained it). We rewrite the 2-byte frame-rate field in the served buffer
+// down to this cap — disk file untouched, tunable here.
+const MAIN_SWF_FPS_CAP = 45;
 let MAIN_SWF_BUF = null;
 let MAIN_SWF_ETAG = null;
+// Rewrite a SWF's header frame-rate down to capFps (no-op if already ≤ cap or
+// not a CWS/FWS SWF). Returns a new buffer; the uncompressed length is
+// unchanged (only 2 bytes flip) so the file-length header stays valid.
+function capSwfFrameRate(buf, capFps) {
+  try {
+    const sig = buf.toString('ascii', 0, 3);
+    let body, compressed;
+    if (sig === 'CWS') { body = zlib.inflateSync(buf.slice(8)); compressed = true; }
+    else if (sig === 'FWS') { body = Buffer.from(buf.slice(8)); compressed = false; }
+    else return buf; // ZWS/LZMA or non-SWF — leave untouched
+    const nbits = body[0] >> 3;            // RECT: top 5 bits of first byte
+    const off = Math.ceil((5 + 4 * nbits) / 8); // bytes consumed by the RECT
+    const curFps = body[off + 1] + body[off] / 256; // FIXED8, little-endian
+    if (!(curFps > capFps)) return buf;
+    body[off] = 0;                 // fractional part
+    body[off + 1] = capFps & 0xFF; // integer part
+    const payload = compressed ? zlib.deflateSync(body) : body;
+    console.log(`[MAIN.SWF] frame-rate ${Math.round(curFps)}fps -> ${capFps}fps`);
+    return Buffer.concat([buf.slice(0, 8), payload]); // header (incl. uncompressed length) unchanged
+  } catch (e) {
+    console.error('[MAIN.SWF] frame-rate cap failed, serving original:', e.message);
+    return buf;
+  }
+}
 function loadMainSwfFromDisk() {
   try {
-    MAIN_SWF_BUF = fs.readFileSync(MAIN_SWF_PATH);
+    MAIN_SWF_BUF = capSwfFrameRate(fs.readFileSync(MAIN_SWF_PATH), MAIN_SWF_FPS_CAP);
     MAIN_SWF_ETAG = '"' + crypto.createHash('sha1').update(MAIN_SWF_BUF).digest('hex') + '"';
     console.log(`[MAIN.SWF] cached ${MAIN_SWF_BUF.length} bytes, etag=${MAIN_SWF_ETAG}`);
   } catch (e) {
