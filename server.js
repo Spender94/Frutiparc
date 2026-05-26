@@ -5409,6 +5409,68 @@ function parseMb2Pipe(s) {
   };
 }
 
+// ── MiniPixiz fairy/inventory safety net ──────────────────────────────────
+// The rich FaerieSeed fields (name, skin, spells, carac, per-fairy inv…) and
+// the item bag ($inv) NEVER travel in the save pipe — it only carries fairy
+// levels and a CSV of bag ids. Those full objects live solely in the stored
+// slot, so the forward-merge above is normally what re-grafts them onto each
+// autosave. But that merge is skipped when the in-memory prev looks unhealthy
+// and is abandoned wholesale if any step throws before its final stringify —
+// either way a raw pipe save downgrades fairies to {$level} stubs and empties
+// the bag (scalars, carried in the pipe, survive). That is the exact "only the
+// fairy/inventory resets on restart" failure. The helpers below back an
+// unconditional, exception-proof last line of defence applied just before the
+// slot is persisted.
+function minipixizFaerieIsRich(f) {
+  if (!f || typeof f !== 'object' || Array.isArray(f)) return false;
+  for (const k in f) {
+    if (k !== '$level' && Object.prototype.hasOwnProperty.call(f, k)) return true;
+  }
+  return false;
+}
+function minipixizHasRichFaerie(obj) {
+  return !!(obj && Array.isArray(obj.$faerie) && obj.$faerie.some(minipixizFaerieIsRich));
+}
+// Graft rich fairy objects + non-empty bag/selection/checkpoint from prev onto
+// cur (mutates cur). Fairy $level from cur always wins; every other fairy field
+// falls back to prev. Returns true when something was grafted.
+function minipixizGraftRichState(cur, prev) {
+  if (!cur || typeof cur !== 'object' || !prev || typeof prev !== 'object') return false;
+  let changed = false;
+  const pf = Array.isArray(prev.$faerie) ? prev.$faerie : [];
+  const cf = Array.isArray(cur.$faerie) ? cur.$faerie : [];
+  if (minipixizHasRichFaerie(prev)) {
+    const curRich = cf.filter(minipixizFaerieIsRich).length;
+    const prevRich = pf.filter(minipixizFaerieIsRich).length;
+    if (cf.length < pf.length || curRich < prevRich) {
+      const out = [];
+      const n = Math.max(pf.length, cf.length);
+      for (let i = 0; i < n; i++) {
+        const p = pf[i], c = cf[i];
+        if (p && typeof p === 'object' && !Array.isArray(p)) {
+          const m = Object.assign({}, p);
+          if (c && typeof c === 'object' && c.$level !== undefined) m.$level = c.$level;
+          out.push(m);
+        } else {
+          out.push(c || p);
+        }
+      }
+      cur.$faerie = out;
+      changed = true;
+    }
+  }
+  if ((!Array.isArray(cur.$inv) || cur.$inv.length === 0) && Array.isArray(prev.$inv) && prev.$inv.length > 0) {
+    cur.$inv = prev.$inv; changed = true;
+  }
+  if ((cur.$current === null || cur.$current === undefined) && prev.$current !== null && prev.$current !== undefined) {
+    cur.$current = prev.$current; changed = true;
+  }
+  if ((Number(prev.$checkpoint) || 0) > (Number(cur.$checkpoint) || 0)) {
+    cur.$checkpoint = prev.$checkpoint; changed = true;
+  }
+  return changed;
+}
+
 app.post('/api/saveFrutiSlot', async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
@@ -5792,6 +5854,41 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
     if (healthy) {
       console.log(`[SLOT]  BLOCKED minipixiz default-clobber for ${username} — existing progress detected (mem=${!!prevSlotData}, dbId=${dbId || 'none'})`);
       return res.type('text/plain').send('ok=1');
+    }
+  }
+
+  // MiniPixiz: exception-proof fairy/inventory safety net. Runs whether or not
+  // the forward-merge above executed, was skipped (unhealthy in-memory prev),
+  // or threw before its stringify. Re-grafts rich FaerieSeed objects + bag /
+  // selection / checkpoint from the best available prev (memory → DB) so a
+  // pipe-only autosave can never downgrade them to level stubs or an empty bag.
+  if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0' && data && data[0] === '{') {
+    try {
+      const cur = JSON.parse(data);
+      let prevForGraft = null;
+      try { if (prevSlotData) prevForGraft = JSON.parse(prevSlotData); } catch { /* ignore */ }
+      // In-memory prev may itself be a stub (a prior bad save) — consult DB for
+      // the authoritative rich state before grafting.
+      if (!minipixizHasRichFaerie(prevForGraft) && dbId) {
+        try {
+          const dbSlots = await db.getFrutiSlots(dbId, game);
+          const dbSlot0 = dbSlots && (dbSlots['0'] || dbSlots[0]);
+          if (dbSlot0) {
+            const dbObj = JSON.parse(dbSlot0);
+            if (minipixizHasRichFaerie(dbObj) || (Array.isArray(dbObj.$inv) && dbObj.$inv.length > 0)) {
+              prevForGraft = dbObj;
+            }
+          }
+        } catch (e) {
+          console.error(`[SLOT]  faerie-safety DB lookup failed for ${username}/${game}: ${e.message}`);
+        }
+      }
+      if (prevForGraft && minipixizGraftRichState(cur, prevForGraft)) {
+        data = JSON.stringify(cur);
+        console.log(`[SLOT]  faerie-safety re-grafted rich fairy/bag for ${username} (faerie=${Array.isArray(cur.$faerie) ? cur.$faerie.length : 0}, inv=${Array.isArray(cur.$inv) ? cur.$inv.length : 0})`);
+      }
+    } catch (e) {
+      console.error(`[SLOT]  faerie-safety failed for ${username}/${game}: ${e.message}`);
     }
   }
 
