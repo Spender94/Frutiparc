@@ -16,7 +16,6 @@ const net = require('net');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
-const zlib = require('zlib');
 const db = require('./db');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
@@ -2538,33 +2537,32 @@ const SHOP_GAME_PACKS_DEFAULT = [
   id, name, category: 'Packs', price: 260, suffix9: '000000000', picto, description, comment,
 }));
 
-// Feutres (rubrique "Feutres") — chat-pen colours, also granted by default.
-// The shop client has no "feutre" picto type (only item/bouille/wallpaper/
-// disc/none/pack), so each feutre is shown as a solid-colour swatch served at
-// /wal/pen/<hex>.png and referenced through the supported "wallpaper" picto.
-// [id, name, hex colour, comment]; hex/order from _global.penList (loader_bouille).
+// Feutres (rubrique "Feutres") — chat-pen colours, granted by default.
+// picto "feutre,N" (N = index 0..16) is the original boutique format,
+// documented in public/ft/pack-pen. Order matches penItemList (ids 315..327,
+// 599..602), so the array index is the picto id.
 const FEUTRE_DESC = 'Personnalisez votre écriture avec ce magnifique feutre qui vous permettra de vous distinguer sur les salons';
 const SHOP_FEUTRES_DEFAULT = [
-  [315, 'Feutre orange',             'FF6600', 'Couleur orange ISO'],
-  [316, 'Feutre bleu',               '6666CC', 'Couleur bleue ISO'],
-  [317, 'Feutre vert foncé',         '5EA523', 'Couleur verte foncée ISO'],
-  [318, 'Feutre Bordeaux',           '962761', 'Couleur Bordeaux ISO'],
-  [319, 'Feutre rose',               'F986E2', 'Couleur rose ISO'],
-  [320, 'Feutre jaune',              'EBB601', 'Couleur jaune ISO'],
-  [321, 'Feutre vert clair',         '20D251', 'Couleur verte claire ISO'],
-  [322, 'Feutre cyan',               '47B9C9', 'Couleur cyan ISO'],
-  [323, 'Feutre bleu foncé',         '472899', 'Couleur bleue foncée ISO'],
-  [324, 'Feutre marron',             'A0752E', 'Couleur marron ISO'],
-  [325, 'Feutre marron foncé',       '66451E', 'Couleur marron foncé ISO'],
-  [326, 'Feutre vert kaki',          '729236', 'Couleur vert kaki ISO'],
-  [327, 'Feutre bleu pétrole',       '408877', 'Couleur bleue pétrole ISO'],
-  [599, 'Feutre vert',               '5B944B', 'Couleur verte ISO'],
-  [600, 'Feutre bleu pétrole foncé', '264859', 'Couleur bleue pétrole foncée ISO'],
-  [601, 'Feutre orange foncé',       'C8400D', 'Couleur orange foncée ISO'],
-  [602, 'Feutre violet',             '6E3C8D', 'Couleur violette ISO'],
-].map(([id, name, hex, comment]) => ({
+  [315, 'Feutre orange',             'Couleur orange ISO'],
+  [316, 'Feutre bleu',               'Couleur bleue ISO'],
+  [317, 'Feutre vert foncé',         'Couleur verte foncée ISO'],
+  [318, 'Feutre Bordeaux',           'Couleur Bordeaux ISO'],
+  [319, 'Feutre rose',               'Couleur rose ISO'],
+  [320, 'Feutre jaune',              'Couleur jaune ISO'],
+  [321, 'Feutre vert clair',         'Couleur verte claire ISO'],
+  [322, 'Feutre cyan',               'Couleur cyan ISO'],
+  [323, 'Feutre bleu foncé',         'Couleur bleue foncée ISO'],
+  [324, 'Feutre marron',             'Couleur marron ISO'],
+  [325, 'Feutre marron foncé',       'Couleur marron foncé ISO'],
+  [326, 'Feutre vert kaki',          'Couleur vert kaki ISO'],
+  [327, 'Feutre bleu pétrole',       'Couleur bleue pétrole ISO'],
+  [599, 'Feutre vert',               'Couleur verte ISO'],
+  [600, 'Feutre bleu pétrole foncé', 'Couleur bleue pétrole foncée ISO'],
+  [601, 'Feutre orange foncé',       'Couleur orange foncée ISO'],
+  [602, 'Feutre violet',             'Couleur violette ISO'],
+].map(([id, name, comment], i) => ({
   id, name, category: 'Feutres', price: 10, suffix9: '000000000',
-  picto: `wallpaper,wal/pen/${hex}.png`, description: FEUTRE_DESC, comment,
+  picto: `feutre,${i}`, description: FEUTRE_DESC, comment,
 }));
 
 const SHOP_PACKS_DEFAULT = [
@@ -2661,11 +2659,6 @@ function buildAccessoryDescMarkup(pack) {
   let m = `<l><t s="${ACC_DESC_STYLE_L1}">${docEscapeText(l1)}</t></l>`;
   if (l2 && String(l2).trim()) m += `<l><t s="${ACC_DESC_STYLE_L2}">${docEscapeText(l2)}</t></l>`;
   return m;
-}
-// Single-paragraph blurb for packs/feutres, in the same doc-markup the client
-// expects inside <d> (a styled <l><t> line — raw text alone does not render).
-function buildBlurbDescMarkup(text) {
-  return `<l><t s="${ACC_DESC_STYLE_L1}">${docEscapeText(text)}</t></l>`;
 }
 
 // Moderator-only accessory automatically granted with the role and revoked
@@ -2804,19 +2797,6 @@ function buildShopTreeXml(user) {
   return `<c n="Boutique" d="${defaultId}">${inner}</c>`;
 }
 
-// Real in-game artwork shown as the pack's screenshot (clickable thumbnail in
-// the item page). Looked up by pack id at render time, so it needs no DB column
-// and survives the shop-pack persistence round-trip. Served via the existing
-// /swf/games/<game> static mounts. Games without a raster asset (Frutibandas,
-// Grapiz) keep just the game-disc picto.
-const PACK_SCREENSHOT_BY_ID = {
-  10: '/swf/games/motionBall2/goodies/title/title.png', // Motion Ball 2
-  11: '/swf/games/snake3/book/images/cover.jpg',         // Frutisnake
-  12: '/swf/games/burningKiwi/images/intro.jpg',         // Burning Kiwi
-  13: '/swf/games/swapou2/images/logo.png',              // Swapou 2
-  16: '/swf/games/kaluga/miniScreenshots/challenge1.png', // Kaluga
-};
-
 function buildShopPackXml(pack, user) {
   const alreadyBuy = (shopCategoryOwnedByDefault(pack.category) || userOwnsShopPack(user, pack.id)) ? '1' : '0';
   if (pack.wallpaperId) {
@@ -2831,21 +2811,17 @@ function buildShopPackXml(pack, user) {
     );
   }
   if (pack.picto) {
-    // Game packs ("pack,N") and feutres (a colour swatch via "wallpaper,…"):
-    // same <p> shape as wallpapers/accessories. win.Shop.displayItemPage reads
-    // the <d> TEXT node as doc-markup, so the description must sit directly in
-    // <d> — a <desc> child element leaves the text node empty and nothing
-    // renders. q="-1" mirrors the buyable rubriques (unlimited quantity).
-    const shotUrl = PACK_SCREENSHOT_BY_ID[pack.id];
-    const shot = shotUrl
-      ? `<s n="Capture d'écran du jeu"><b u="${escapeXml(shotUrl)}" w="150" h="150" /><t u="${escapeXml(shotUrl)}" w="150" h="150" /></s>`
+    // Game packs ("pack,N") and feutres ("feutre,N") — exact original boutique
+    // format: blurb wrapped in <desc>, and packs carry a screenshot block.
+    const screens = pack.picto.startsWith('pack,')
+      ? `<s n="Capture d'écran du jeu"><b u="wal/pi.jpg" w="150" h="150" /><t u="wal/pl.jpg" w="150" h="150" /></s>`
       : '';
     return (
       `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
-      ` p="${escapeXml(pack.picto)}" q="-1" h="${alreadyBuy}">` +
-      `<d>${escapeXml(buildBlurbDescMarkup(pack.description))}</d>` +
+      ` p="${escapeXml(pack.picto)}" h="${alreadyBuy}">` +
+      `<d><desc>${escapeXml(pack.description)}</desc></d>` +
       `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
-      shot +
+      screens +
       `</p>`
     );
   }
@@ -7208,61 +7184,6 @@ app.get('/ft/tree', (req, res) => {
   if (!auth) return;
   const { user } = auth;
   sendShopXml(res, buildShopTreeXml(user));
-});
-
-// ─────────────────────────────────────────────
-// ─────────────────────────────────────────────
-// Solid-colour PNG generator — feutre colour swatches. The shop client has no
-// "feutre" picto type, so each feutre references /wal/pen/<hex>.png through the
-// supported "wallpaper" picto. Hand-rolled PNG (8-bit truecolour) keeps it
-// dependency-free.
-// ─────────────────────────────────────────────
-const PEN_CRC_TABLE = (() => {
-  const t = new Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-function pngCrc32(buf) {
-  let crc = 0xFFFFFFFF;
-  for (let i = 0; i < buf.length; i++) crc = PEN_CRC_TABLE[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
-  return (crc ^ 0xFFFFFFFF) >>> 0;
-}
-const _penSwatchCache = new Map();
-function solidColorPng(hex, size) {
-  size = size || 80;
-  const key = hex + ':' + size;
-  if (_penSwatchCache.has(key)) return _penSwatchCache.get(key);
-  const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
-  const row = Buffer.alloc(1 + size * 3); // leading filter byte (0) + RGB pixels
-  for (let x = 0; x < size; x++) { row[1 + x * 3] = r; row[1 + x * 3 + 1] = g; row[1 + x * 3 + 2] = b; }
-  const rows = []; for (let y = 0; y < size; y++) rows.push(row);
-  const idat = zlib.deflateSync(Buffer.concat(rows));
-  const chunk = (type, data) => {
-    const len = Buffer.alloc(4); len.writeUInt32BE(data.length, 0);
-    const t = Buffer.from(type, 'ascii');
-    const crc = Buffer.alloc(4); crc.writeUInt32BE(pngCrc32(Buffer.concat([t, data])), 0);
-    return Buffer.concat([len, t, data, crc]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; ihdr[9] = 2; // bit depth 8, colour type 2 (truecolour RGB)
-  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  const png = Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
-  _penSwatchCache.set(key, png);
-  return png;
-}
-
-// ENDPOINT: /wal/pen/<hex>.png — generated feutre colour swatch (see SHOP_FEUTRES_DEFAULT)
-app.get('/wal/pen/:file', (req, res) => {
-  const m = /^([0-9a-fA-F]{6})\.png$/.exec(String(req.params.file || ''));
-  if (!m) return res.status(404).end();
-  res.set('Content-Type', 'image/png');
-  res.set('Cache-Control', 'public, max-age=86400');
-  res.send(solidColorPng(m[1].toUpperCase()));
 });
 
 // ─────────────────────────────────────────────
