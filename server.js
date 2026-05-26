@@ -717,13 +717,6 @@ function getGameItemGame(itemName) {
   return '';
 }
 
-// Stable, URL/XML-safe folder-uid slug for a picto's game, used to build the
-// per-game sub-folders under Inventaire → Pictos (inv_pictos_<slug>).
-function pictoGameSlug(gameName) {
-  const s = String(gameName || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-  return s || 'autre';
-}
-
 // One inventory <e> for a picto: clicking it opens the single-picto popup.
 function renderPictoEntryXml(itemName) {
   const displayName = getGameItemDisplayName(itemName);
@@ -7424,38 +7417,13 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     return res.type('text/xml').send(`<f u="inv_wallpapers">${nodes || '<i />'}</f>`);
   }
 
-  // Pictos folder → one sub-folder per game, each with that game's pictos
-  // inlined as children. The children MUST be present: the client's analyseXml
-  // only builds a named, expandable folder when it can recurse into one — an
-  // empty <f/> is pushed as a nameless "Undefined" node (same reason the
-  // contact sub-folders below inline their contacts).
+  // Pictos folder → flat list of all the user's pictos; each opens its
+  // individual picto-view popup. (Per-game sub-folders were attempted but the
+  // SWF inventory window rendered them as nameless "Undefined" nodes.)
   if (uid === 'inv_pictos') {
     const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
-    const byGame = new Map(); // slug -> { name, items: [] }
-    for (const itemName of gi) {
-      const gameName = getGameItemGame(itemName) || 'Autre';
-      const slug = pictoGameSlug(gameName);
-      if (!byGame.has(slug)) byGame.set(slug, { name: gameName, items: [] });
-      byGame.get(slug).items.push(itemName);
-    }
-    if (byGame.size === 0) return res.type('text/xml').send('<f u="inv_pictos"><i /></f>');
-    const folders = [...byGame.entries()]
-      .sort((a, b) => a[1].name.localeCompare(b[1].name, 'fr'))
-      .map(([slug, g]) => `<f u="inv_pictos_${slug}" n="${escapeXml(g.name)}" t="folder">${g.items.map(renderPictoEntryXml).join('')}</f>`)
-      .join('');
-    return res.type('text/xml').send(`<f u="inv_pictos">${folders}</f>`);
-  }
-
-  // Direct open/refresh of one game's Pictos sub-folder (if the client
-  // lazy-loads on click rather than using the inlined children above).
-  if (uid.startsWith('inv_pictos_')) {
-    const slug = uid.slice('inv_pictos_'.length);
-    const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
-    const nodes = gi
-      .filter((itemName) => pictoGameSlug(getGameItemGame(itemName) || 'Autre') === slug)
-      .map(renderPictoEntryXml)
-      .join('');
-    return res.type('text/xml').send(`<f u="${escapeXml(uid)}">${nodes || '<i />'}</f>`);
+    const nodes = gi.map(renderPictoEntryXml).join('');
+    return res.type('text/xml').send(`<f u="inv_pictos">${nodes || '<i />'}</f>`);
   }
 
   if (uid === 'shop') {
@@ -7735,7 +7703,7 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     'linkForum', 'linkChat', 'linkHisto', 'linkPreference',
     'linkScore', 'linkShop', 'linkBlogs', 'linkClub',
   ]);
-  if (PROTECTED_UIDS.has(file) || /^link/.test(file) || /^inv_pictos_/.test(file)) {
+  if (PROTECTED_UIDS.has(file) || /^link/.test(file)) {
     // Return a no-op "move" back to the source folder so the SWF client
     // restores the icon. The AS2 client doesn't handle 403 errors — it
     // optimistically removes the icon from the display, and a 403 would
