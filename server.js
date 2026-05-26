@@ -2723,6 +2723,15 @@ function userOwnsShopPack(user, id) {
   return user.customAccessories.some((a) => a && a.shopId === Number(id));
 }
 
+// Rubriques granted to everyone by default (full games, feutres, titems,
+// packs…). Everything that is NOT a buyable rubrique — Accessoires or
+// Fonds d'écran — is shown as "vous possédez déjà ce produit" and can't be
+// re-purchased. Accent/case-insensitive so DB category labels match.
+function shopCategoryOwnedByDefault(category) {
+  const n = String(category || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  return !(n.startsWith('accessoir') || n.startsWith('fond'));
+}
+
 function buildShopTreeXml(user) {
   // Group packs by category.
   const byCategory = new Map();
@@ -2742,7 +2751,7 @@ function buildShopTreeXml(user) {
 }
 
 function buildShopPackXml(pack, user) {
-  const alreadyBuy = userOwnsShopPack(user, pack.id) ? '1' : '0';
+  const alreadyBuy = (shopCategoryOwnedByDefault(pack.category) || userOwnsShopPack(user, pack.id)) ? '1' : '0';
   if (pack.wallpaperId) {
     const wp = WALLPAPER_BY_ID[pack.wallpaperId];
     const picto = wp ? `wallpaper,${wp.url}` : 'wallpaper,wal/ch.jpg';
@@ -7149,8 +7158,9 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
   if (!pack) {
     return sendShopXml(res, '<r k="1" />');
   }
-  if (userOwnsShopPack(user, pack.id)) {
-    // Already owned — return a "dup" error.
+  if (userOwnsShopPack(user, pack.id) || shopCategoryOwnedByDefault(pack.category)) {
+    // Already owned, or a rubrique granted to everyone by default — return a
+    // "dup" error so no kikooz are deducted for content the player already has.
     return sendShopXml(res, '<r k="2" />');
   }
   if (typeof user.kikooz !== 'number') user.kikooz = 0;
