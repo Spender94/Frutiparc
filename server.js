@@ -717,6 +717,13 @@ function getGameItemGame(itemName) {
   return '';
 }
 
+// Stable, URL/XML-safe folder-uid slug for a picto's game, used to build the
+// per-game sub-folders under Inventaire → Pictos (inv_pictos_<slug>).
+function pictoGameSlug(gameName) {
+  const s = String(gameName || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return s || 'autre';
+}
+
 const bouilleCache = {};
 
 function bouilleOf(user, username) {
@@ -7400,16 +7407,38 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     return res.type('text/xml').send(`<f u="inv_wallpapers">${nodes || '<i />'}</f>`);
   }
 
+  // Pictos folder → one navigable sub-folder per game. The client lazily
+  // fetches each game's contents via /ff/ls?uid=inv_pictos_<slug>.
   if (uid === 'inv_pictos') {
+    const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
+    const seen = new Map(); // slug -> display game name (first wins)
+    for (const itemName of gi) {
+      const gameName = getGameItemGame(itemName) || 'Autre';
+      const slug = pictoGameSlug(gameName);
+      if (!seen.has(slug)) seen.set(slug, gameName);
+    }
+    if (seen.size === 0) return res.type('text/xml').send('<f u="inv_pictos"><i /></f>');
+    const folders = [...seen.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], 'fr'))
+      .map(([slug, gameName]) => `<f u="inv_pictos_${slug}" n="${escapeXml(gameName)}" t="folder" />`)
+      .join('');
+    return res.type('text/xml').send(`<f u="inv_pictos">${folders}</f>`);
+  }
+
+  // Contents of a per-game Pictos sub-folder: that game's pictos, each opening
+  // its individual picto-view popup (same entry as before, just grouped).
+  if (uid.startsWith('inv_pictos_')) {
+    const slug = uid.slice('inv_pictos_'.length);
     const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
     let nodes = '';
     for (const itemName of gi) {
+      const gameName = getGameItemGame(itemName) || 'Autre';
+      if (pictoGameSlug(gameName) !== slug) continue;
       const displayName = getGameItemDisplayName(itemName);
-      const gameName = getGameItemGame(itemName);
       const viewerUrl = `/picto-view.html?item=${encodeURIComponent(itemName)}&name=${encodeURIComponent(displayName)}&game=${encodeURIComponent(gameName)}`;
       nodes += `<e u="${escapeXml(itemName)}" t="url" s="10" d="0" a="0">${escapeXml(displayName)}\r\njavascript:fp_openPopup('${escapeXml(viewerUrl)}','Picto','width=400,height=450')\r\n</e>`;
     }
-    return res.type('text/xml').send(`<f u="inv_pictos">${nodes || '<i />'}</f>`);
+    return res.type('text/xml').send(`<f u="${escapeXml(uid)}">${nodes || '<i />'}</f>`);
   }
 
   if (uid === 'shop') {
@@ -7689,7 +7718,7 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     'linkForum', 'linkChat', 'linkHisto', 'linkPreference',
     'linkScore', 'linkShop', 'linkBlogs', 'linkClub',
   ]);
-  if (PROTECTED_UIDS.has(file) || /^link/.test(file)) {
+  if (PROTECTED_UIDS.has(file) || /^link/.test(file) || /^inv_pictos_/.test(file)) {
     // Return a no-op "move" back to the source folder so the SWF client
     // restores the icon. The AS2 client doesn't handle 403 errors — it
     // optimistically removes the icon from the display, and a 403 would
