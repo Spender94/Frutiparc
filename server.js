@@ -2575,17 +2575,43 @@ const DEFAULT_ACCESSORY_DESC_L1 =
   "Hier, j'ai regardé ma bouille et je la trouvais rigolote, aujourd'hui avec mon accessoire, youpi-kiwi, elle est trop formidable !";
 const DEFAULT_ACCESSORY_DESC_L2 =
   "Si toi aussi tu veux avoir une formida-bouille, alors c'est facile, choisi un accessoire et pose le sur ta bouille ! Un jour aventurier, un jour citadin, tu vas pouvoir changer de look quand bon te semble. Et pour que tu conserves ta touche personnelle, tous les accessoires sont en quantité limitée";
-const DEFAULT_ACCESSORY_DESC = DEFAULT_ACCESSORY_DESC_L1 + "\\n" + DEFAULT_ACCESSORY_DESC_L2;
-// Auto-seeded placeholder descriptions from earlier builds — treated as "no
-// override" so the shared default applies to those accessories too. Admins can
-// still set a real custom description (anything else, non-empty) and it wins.
-const LEGACY_ACCESSORY_DESCRIPTIONS = new Set(
-  SHOP_PACKS_DEFAULT.filter((p) => !p.wallpaperId && p.description).map((p) => p.description)
-);
-function resolveAccessoryDescription(pack) {
-  const d = (pack && pack.description ? String(pack.description) : '').trim();
-  if (!d || LEGACY_ACCESSORY_DESCRIPTIONS.has(d)) return DEFAULT_ACCESSORY_DESC;
-  return pack.description;
+// win.Shop.displayItemPage inserts the <d> text as RAW doc-markup between the
+// title (<l><t s="4">) and the price line, so each level must carry its own
+// style block. Per frutiparc/Standard.as getDocStyle: s="2" = size 12 bold,
+// s="1" = size 11 regular — so level 1 is bold and level 2 smaller and not bold.
+const ACC_DESC_STYLE_L1 = 2;
+const ACC_DESC_STYLE_L2 = 1;
+// Per-accessory override: stored in `description` as JSON {"l1":…,"l2":…}. Any
+// non-JSON (legacy plain text) or empty description means "no override" → the
+// shared default applies. This restores the common default for every existing
+// accessory without mutating stored data, while letting the admin set a custom
+// description per accessory.
+function resolveAccessoryLevels(pack) {
+  const raw = pack && pack.description ? String(pack.description).trim() : '';
+  if (raw.charAt(0) === '{') {
+    try {
+      const o = JSON.parse(raw);
+      if (o && typeof o === 'object' && !Array.isArray(o)) {
+        const l1 = (o.l1 != null && String(o.l1).trim()) ? String(o.l1) : DEFAULT_ACCESSORY_DESC_L1;
+        const l2 = (o.l2 != null) ? String(o.l2) : DEFAULT_ACCESSORY_DESC_L2;
+        return { l1, l2 };
+      }
+    } catch { /* fall through to default */ }
+  }
+  return { l1: DEFAULT_ACCESSORY_DESC_L1, l2: DEFAULT_ACCESSORY_DESC_L2 };
+}
+// Escape text for the inner doc-markup layer (& < >). The whole markup string is
+// escaped again by escapeXml for XML transport; the SWF unescapes once when it
+// reads the <d> text node, then the doc renderer parses the markup — so the two
+// layers of escaping are intentional.
+function docEscapeText(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function buildAccessoryDescMarkup(pack) {
+  const { l1, l2 } = resolveAccessoryLevels(pack);
+  let m = `<l><t s="${ACC_DESC_STYLE_L1}">${docEscapeText(l1)}</t></l>`;
+  if (l2 && String(l2).trim()) m += `<l><t s="${ACC_DESC_STYLE_L2}">${docEscapeText(l2)}</t></l>`;
+  return m;
 }
 
 // Moderator-only accessory automatically granted with the role and revoked
@@ -2739,8 +2765,8 @@ function buildShopPackXml(pack, user) {
   return (
     `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
     ` p="bouille,${escapeXml(pictoSuffix10)}" q="-1" h="${alreadyBuy}">` +
-    `<d>${escapeXml(resolveAccessoryDescription(pack))}</d>` +
-    `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
+    `<d>${escapeXml(buildAccessoryDescMarkup(pack))}</d>` +
+    `<r p="${pack.price}"></r>` +
     `</p>`
   );
 }

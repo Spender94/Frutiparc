@@ -561,7 +561,8 @@
         <label><span>Catégorie :</span> <input id="pack-category" value="Accessoires"></label>
         <label><span>Prix (Kikooz) :</span> <input id="pack-price" type="number" value="60"></label>
         <label><span>Suffix9 :</span> <input id="pack-suffix9" placeholder="a0b0c0d0e" maxlength="9" oninput="updatePackPreview()"></label>
-        <label><span>Description :</span> <input id="pack-desc" placeholder="Description de l'accessoire"></label>
+        <label><span>Desc. niveau 1 (gras) :</span> <input id="pack-desc1" placeholder="Vide = texte commun par défaut"></label>
+        <label><span>Desc. niveau 2 (petit) :</span> <input id="pack-desc2" placeholder="Vide = texte commun par défaut"></label>
         <div style="margin-top:8px">
           <label style="font-size:11px"><span>Base aperçu :</span> <select id="pack-base" onchange="updatePackPreview()" style="width:160px">
             <option value="0004060h0407000">Kasparov (défaut)</option>
@@ -1559,7 +1560,8 @@ function openAddPack() {
   $('#pack-category').value = 'Accessoires';
   $('#pack-price').value = 60;
   $('#pack-suffix9').value = '';
-  $('#pack-desc').value = '';
+  $('#pack-desc1').value = '';
+  $('#pack-desc2').value = '';
   $('#pack-save-btn').textContent = 'Créer';
   $('#pack-save-btn').onclick = saveAddPack;
   $('#modal-add-pack').classList.add('open');
@@ -1578,11 +1580,32 @@ function editPack(id) {
   $('#pack-category').value = p.category || 'Accessoires';
   $('#pack-price').value = p.price;
   $('#pack-suffix9').value = p.suffix9;
-  $('#pack-desc').value = p.description || '';
+  (function () {
+    let d1 = '', d2 = '';
+    const raw = (p.description || '').trim();
+    if (p.wallpaperId) {
+      d1 = p.description || '';
+    } else if (raw.charAt(0) === '{') {
+      try { const o = JSON.parse(raw); if (o && typeof o === 'object') { d1 = o.l1 || ''; d2 = o.l2 || ''; } } catch (e) {}
+    }
+    $('#pack-desc1').value = d1;
+    $('#pack-desc2').value = d2;
+  })();
   $('#pack-save-btn').textContent = 'Sauvegarder';
   $('#pack-save-btn').onclick = saveEditPack;
   $('#modal-add-pack').classList.add('open');
   updatePackPreview();
+}
+
+// Accessory descriptions carry two levels (bold line 1 + smaller line 2),
+// stored in `description` as JSON {l1,l2}. Empty fields → "" so the shared
+// default applies. Wallpapers keep a single plain description.
+function packDescFromFields(isWallpaper) {
+  const d1 = $('#pack-desc1').value || '';
+  const d2 = $('#pack-desc2').value || '';
+  if (isWallpaper) return d1;
+  if (d1.trim() || d2.trim()) return JSON.stringify({ l1: d1, l2: d2 });
+  return '';
 }
 
 async function saveAddPack() {
@@ -1592,7 +1615,7 @@ async function saveAddPack() {
     category: $('#pack-category').value,
     price: Number($('#pack-price').value),
     suffix9: $('#pack-suffix9').value,
-    description: $('#pack-desc').value,
+    description: packDescFromFields(false),
   };
   if (!body.id || !body.name || !body.suffix9) { toast('ID, nom et suffix9 requis'); return; }
   const r = await fetch('/api/admin/shop', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
@@ -1609,7 +1632,7 @@ async function saveEditPack() {
     category: $('#pack-category').value,
     price: Number($('#pack-price').value),
     suffix9: $('#pack-suffix9').value,
-    description: $('#pack-desc').value,
+    description: packDescFromFields(!!(shopPacks.find(x => x.id === editingPackId) || {}).wallpaperId),
   };
   const r = await fetch(`/api/admin/shop/${editingPackId}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify(body) });
   if (!r.ok) { toast('Erreur'); return; }
