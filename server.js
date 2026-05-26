@@ -2662,6 +2662,11 @@ function buildAccessoryDescMarkup(pack) {
   if (l2 && String(l2).trim()) m += `<l><t s="${ACC_DESC_STYLE_L2}">${docEscapeText(l2)}</t></l>`;
   return m;
 }
+// Single-paragraph blurb for packs/feutres, in the same doc-markup the client
+// expects inside <d> (a styled <l><t> line — raw text alone does not render).
+function buildBlurbDescMarkup(text) {
+  return `<l><t s="${ACC_DESC_STYLE_L1}">${docEscapeText(text)}</t></l>`;
+}
 
 // Moderator-only accessory automatically granted with the role and revoked
 // when the role is taken away.  Not purchasable (shopId stays 0) so it never
@@ -2821,7 +2826,7 @@ function buildShopPackXml(pack, user) {
     return (
       `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
       ` p="${escapeXml(pack.picto)}" q="-1" h="${alreadyBuy}">` +
-      `<d>${escapeXml(pack.description)}</d>` +
+      `<d>${escapeXml(buildBlurbDescMarkup(pack.description))}</d>` +
       `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
       `</p>`
     );
