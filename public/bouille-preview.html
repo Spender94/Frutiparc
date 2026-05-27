@@ -49,11 +49,18 @@
 (function () {
   var params = new URLSearchParams(window.location.search);
   var state = String(params.get("s") || "000000010000000000000000");
-  // Mood / "humeur" (emote 0-7) — a SEPARATE flashvar from the bouille string,
-  // exactly like main.swf. The patched famille SWF forwards it to its own
-  // emote() function. Default "0" = the normal/idle face (no regression for
-  // previews that don't pass `e`).
+  // Mood / "humeur" — a SEPARATE input from the bouille string `s`, like
+  // main.swf's emote. We do the emoteList lookup HERE and hand the patched
+  // famille SWF the 1-based eye/mouth frame numbers (fe/fm) to gotoAndStop, so
+  // it doesn't depend on the SWF's own (non-root-callable) emote() function.
+  // emoteList[e] = [eyeIndex, mouthIndex]; eye frames: 1=normal 2=mecontent
+  // 3=triste 4=content. e=7 == the totoché face. Absent/0 == normal.
   var emote = String(params.get("e") || "0");
+  var EMOTE_LIST = [[0,0],[1,2],[2,1],[0,3],[3,4],[1,4],[2,3],[2,6]];
+  var _ei = parseInt(emote, 10);
+  if (!(_ei >= 0 && _ei < EMOTE_LIST.length)) _ei = 0;
+  var feFrame = String(EMOTE_LIST[_ei][0] + 1);
+  var fmFrame = String(EMOTE_LIST[_ei][1] + 1);
 
   function decode62(s) {
     var result = 0, mult = 1;
@@ -80,12 +87,12 @@
     player.style.height = "100%";
     document.getElementById("player-container").appendChild(player);
     await player.load({
-      url: "/fbouille_patched/famille" + familyId + ".swf?v=2",
+      url: "/fbouille_patched/famille" + familyId + ".swf?v=3",
       autoplay: "on",
       allowScriptAccess: true,
       quality: "low",
       backgroundColor: "#E8F8D3",
-      parameters: { s: state, e: emote },
+      parameters: { s: state, e: emote, fe: feFrame, fm: fmFrame },
       allowNetworking: "all"
     });
   });

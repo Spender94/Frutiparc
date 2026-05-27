@@ -110,27 +110,39 @@ function buildApplyTag() {
     off = opcode(buf, off, 0x17); // Pop
   }
 
-  // DIAG (temporary): trace the received mood so that — with bouille-preview's
-  // ?debug=1 (logLevel "info") — we can confirm in the browser console that
-  // THIS re-patched SWF is live and see the value of _root.e it received.
-  off = pushString(buf, off, 'FE-EMOTE=');
-  off = pushString(buf, off, 'e');
-  off = opcode(buf, off, 0x1c); // GetVariable → _root.e
+  // DIAG (temporary): trace the eye frame we received so that — with
+  // bouille-preview's ?debug=1 (logLevel "info") — we can confirm in the
+  // console that THIS re-patched SWF is live and what _root.fe it got.
+  off = pushString(buf, off, 'FE-fe=');
+  off = pushString(buf, off, 'fe');
+  off = opcode(buf, off, 0x1c); // GetVariable → _root.fe
   off = opcode(buf, off, 0x47); // Add2 (string concat)
   off = opcode(buf, off, 0x26); // Trace
 
-  // Apply the *mood* (humeur) after parking the idle reels. The mood is NOT
-  // part of the bouille string `s` — it's a separate `e` flashvar (0-7), like
-  // main.swf's emote. The famille's own global emote() fn (defined in its
-  // frame-1 setup, same scope as apply()) maps e → eye/mouth frames via its
-  // built-in emoteList, so we just forward _root.e. emote("0")/absent == the
-  // normal idle face, so previews without `e` look unchanged.
-  off = pushString(buf, off, 'e');
-  off = opcode(buf, off, 0x1c); // GetVariable → _root.e
-  off = pushInt(buf, off, 1);   // numArgs
-  off = pushString(buf, off, 'emote');
-  off = opcode(buf, off, 0x3d); // CallFunction
-  off = opcode(buf, off, 0x17); // Pop
+  // Apply the *mood* (humeur) by jumping the eye/mouth clips to the frames
+  // computed from the emote index. The famille's own emote() is NOT a
+  // root-callable free function here (a bare emote() call resolved to undefined
+  // and no-op'd), so bouille-preview.html does the emoteList lookup and hands us
+  // 1-based frame numbers as _root.fe (eyes) / _root.fm (mouth); we gotoAndStop
+  // those via the SAME CallMethod path the stop() calls above already use.
+  // Number() coerces the flashvar string; absent → NaN → gotoAndStop no-ops, so
+  // the clips stay idle (no regression for previews that don't pass fe/fm).
+  const moodFrames = [
+    ['_root.face.oa.o', 'fe'],
+    ['_root.face.ob.o', 'fe'],
+    ['_root.face.b.b',  'fm'],
+  ];
+  for (const [mcPath, varName] of moodFrames) {
+    off = pushString(buf, off, varName);
+    off = opcode(buf, off, 0x1c); // GetVariable → _root.<varName>
+    off = opcode(buf, off, 0x4a); // ToNumber
+    off = pushInt(buf, off, 1);   // numArgs
+    off = pushString(buf, off, mcPath);
+    off = opcode(buf, off, 0x1c); // GetVariable → clip
+    off = pushString(buf, off, 'gotoAndStop');
+    off = opcode(buf, off, 0x52); // CallMethod
+    off = opcode(buf, off, 0x17); // Pop
+  }
 
   // stop() on the root timeline so the SWF parks on the apply()'d frame.
   off = opcode(buf, off, 0x07);
