@@ -48,11 +48,11 @@
         // (DPR 2) Ruffle still rasterises ~4× that every frame and
         // quality:"high" antialiases all of it — the dominant GPU cost. This
         // page hosts nothing but the player, so we cap the DPR Ruffle sees
-        // before its engine boots. 1.0 = render at logical resolution (max
-        // savings, mild upscaling blur); raise toward the screen's DPR for a
-        // sharper image with more pixels; ≥ DPR = no cap. Tunable.
+        // before its engine boots. The salon's real cost is CPU (AVM + vector
+        // tessellation), not GPU fill-rate, so lowering this mostly just blurs;
+        // kept at 1.5 to spare true-retina (DPR≥2) screens. Tunable.
         (function () {
-            var RENDER_DPR_CAP = 1.0;
+            var RENDER_DPR_CAP = 1.5;
             try {
                 var real = window.devicePixelRatio || 1;
                 window.__dlog("[Ruffle] real devicePixelRatio =", real, "(cap " + RENDER_DPR_CAP + ")");
