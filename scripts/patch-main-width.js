@@ -22,8 +22,9 @@ const IN_PATH = path.resolve(__dirname, '..', 'legacy', 'main.swf');
 
 // Each: rewrite `Push int32(from) ; SetMember` -> `Push int32(to) ; SetMember`.
 const PATCHES = [
-  { name: 'mcw',         from: 1265, to: 1920 },
+  { name: 'mcw',           from: 1265, to: 1920 },
   { name: 'frusion.pos.x', from: 1260, to: 1915 },
+  { name: 'mch',           from: 768,  to: 1000 },
 ];
 
 function pushSetMember(v) {
