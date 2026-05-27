@@ -738,7 +738,12 @@ if (PATCH_SERVICE_CONNECT) {
 //  14: $rainbow.$f      (bool)
 //  15: $pond.$q         (int)
 //  16: $frog            (bool)
-//  17: faerie_levels    (comma-sep ints, trailing comma ok)
+//  17: faeries          ("$name:$level," per fairy, trailing comma ok). The
+//                        name lets the server merge fairies by identity
+//                        instead of by array index — fixing the "fairy turned
+//                        into a copy of another / stats reset" bug when the
+//                        bocal is reordered. Server (parseFaerieField) still
+//                        accepts the legacy bare-int form from cached SWFs.
 //  18: $vs              (float)
 //  19: $inv             (comma-sep item ids — the bag; empty entries kept)
 //  20: $current         (int or empty/"null" → null; the selected item)
@@ -859,8 +864,12 @@ function buildSaveSlotBody() {
     storeReg(5), POP,
   ]);
 
-  // Part 3: Faerie levels loop
-  // Appends "level1,level2,...," with trailing comma (parser handles it)
+  // Part 3: Faerie loop
+  // Appends "$name1:$level1,$name2:$level2,...," with trailing comma (parser
+  // handles it). $name is read straight off the plain AMF data in
+  // card.$faerie[i] — the diagnostic above confirmed .$name is populated
+  // there (no instance wrapping). The name is what lets the server graft each
+  // fairy's rich state back by identity instead of by array index.
   const loopInit = Buffer.concat([
     actionPush(pushInt(0)), storeReg(6), POP,
   ]);
@@ -873,10 +882,19 @@ function buildSaveSlotBody() {
   ]);
 
   const loopBody = Buffer.concat([
+    // accum + faerie[i].$name
+    actionPush(pushReg(5), pushReg(6)), GET_MEMBER,
+    actionPush(pushStr('$name')), GET_MEMBER,
+    actionPush(pushStr('')), ADD2,
+    ADD2,
+    // + ':'
+    actionPush(pushStr(':')), ADD2,
+    // + faerie[i].$level
     actionPush(pushReg(5), pushReg(6)), GET_MEMBER,
     actionPush(pushCp(CP.$level)), GET_MEMBER,
     actionPush(pushStr('')), ADD2,
     ADD2,
+    // + ','
     actionPush(pushStr(',')), ADD2,
   ]);
 
