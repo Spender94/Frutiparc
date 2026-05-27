@@ -5,7 +5,7 @@
 // onResize): _global.mcw = <W> and main.frusion.pos.x = <W-5>. The whole
 // desktop keys off mcw (MainBar, wallpaper/desktop area width, frusion
 // position). We rewrite them so the client lays out for the target area;
-// ruffle.html sizes the Ruffle player to match (1380×719) and CSS-fits it to
+// ruffle.html sizes the Ruffle player to match (1380×800) and CSS-fits it to
 // the viewport (crisp downscale on smaller screens). Because we only swap one
 // int32 for another (same byte length), no action/tag offsets or jumps move —
 // safe, reversible.
@@ -24,7 +24,7 @@ const IN_PATH = path.resolve(__dirname, '..', 'legacy', 'main.swf');
 const PATCHES = [
   { name: 'mcw',           from: 1670, to: 1380 },
   { name: 'frusion.pos.x', from: 1665, to: 1375 },
-  { name: 'mch',           from: 870,  to: 719 },
+  { name: 'mch',           from: 719,  to: 800 },
 ];
 
 function pushSetMember(v) {

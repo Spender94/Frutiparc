@@ -15,7 +15,7 @@
             top: 50%;
             left: 50%;
             width: 1380px;
-            height: 719px;
+            height: 800px;
             transform-origin: center center;
             transform: translate(-50%, -50%) scale(1);
         }
@@ -48,9 +48,9 @@
 
         // ── Backing-canvas resolution (effective DPR) ───────────────
         // Ruffle rasterises its canvas at (cssPixels × devicePixelRatio).
-        // The salon player has a FIXED css box (1380×719, matched to the
+        // The salon player has a FIXED css box (1380×800, matched to the
         // SWF's patched mcw/mch) and is then CSS-transform-scaled by
-        // `fit = min(winW/1380, winH/719)` to fill the viewport (see
+        // `fit = min(winW/1380, winH/800)` to fill the viewport (see
         // fitFrutiparc below). That transform is a *bitmap* scale of Ruffle's
         // canvas, so at the browser's 100% zoom (DPR 1) on a window wider
         // than 1380 the 1380-px canvas is stretched up to ~1920 physical px
@@ -67,7 +67,7 @@
         // (AVM + tessellation), and past ~2× the extra GPU fill buys little.
         // LAYOUT_W/H must stay equal to the player size + fit divisors below.
         (function () {
-            var LAYOUT_W = 1380, LAYOUT_H = 719;
+            var LAYOUT_W = 1380, LAYOUT_H = 800;
             var MAX_EFF_DPR = 2.0;
             var realDPR = window.devicePixelRatio || 1;
             function effectiveDpr() {
@@ -107,7 +107,7 @@
         (function () {
             var c = document.getElementById("player-container");
             function fitFrutiparc() {
-                var s = Math.min(window.innerWidth / 1380, window.innerHeight / 719);
+                var s = Math.min(window.innerWidth / 1380, window.innerHeight / 800);
                 c.style.transform = "translate(-50%, -50%) scale(" + s + ")";
             }
             window.addEventListener("resize", fitFrutiparc);
@@ -553,7 +553,7 @@
                 const ruffle = window.RufflePlayer.newest();
                 const player = ruffle.createPlayer();
                 player.style.width = "1380px";
-                player.style.height = "719px";
+                player.style.height = "800px";
                 document.getElementById("player-container").appendChild(player);
 
                 // Pre-flight the SWF ourselves with retry + size validation
