@@ -1221,6 +1221,23 @@ function buildBouilleState(base, accSuffix9) {
   return prefix + acc;
 }
 
+// An "incarnation" is an owned accessory whose stored value is a FULL 24-char
+// bouille with a non-standard family (chars 0-1 ≠ "00"/"01", i.e. famille ≥ 2).
+// A normal accessory only swaps the last 9 chars onto the user's own bouille;
+// selecting an incarnation replaces the whole bouille — family included — so it
+// renders via /fbouille_patched/famille<N>.swf.
+function isIncarnationValue(v) {
+  return typeof v === 'string' && v.length === 24
+    && v.substring(0, 2) !== '00' && v.substring(0, 2) !== '01';
+}
+
+// State for the current selection: a full incarnation when one is picked,
+// otherwise the user's base bouille + the chosen accessory suffix.
+function resolveBouilleState(sel) {
+  if (sel && sel.fullState) return String(sel.fullState);
+  return buildBouilleState(myBouille, sel && sel.accSuffix9);
+}
+
 function getBouillePreviewHtml(state) {
   var s = String(state || '').replace(/[^0-9a-zA-Z]/g, '');
   if (!s || s.length < 2) s = '000000010000000000000000';
@@ -1260,7 +1277,15 @@ function getAllAccessories() {
   if (!normal) normal = { name: 'Normal', suffix: '000000000' };
   for (var k = 0; k < myAccessories.length; k++) {
     var a = myAccessories[k];
-    if (a.value && a.value.length === 24) {
+    if (!a.value || a.value.length !== 24) continue;
+    if (isIncarnationValue(a.value)) {
+      // Keyed by the full value (not the suffix) so an incarnation isn't
+      // deduped against a normal accessory that shares the same suffix.
+      if (!seen['inc:' + a.value]) {
+        allAcc.push({ name: a.name, suffix: a.value.substring(15, 24), fullState: a.value });
+        seen['inc:' + a.value] = true;
+      }
+    } else {
       var sfx = a.value.substring(15, 24);
       if (!seen[sfx]) { allAcc.push({ name: a.name, suffix: sfx }); seen[sfx] = true; }
     }
@@ -1285,7 +1310,7 @@ function _applyExpression(baseState, expressionId) {
 
 function refreshBouillePreview(formId) {
   var sel = _activeBouilleSel[formId] || {};
-  var state = buildBouilleState(myBouille, sel.accSuffix9);
+  var state = resolveBouilleState(sel);
   if (sel.mouthId != null) state = _applyExpression(state, sel.mouthId);
   var box = document.getElementById('bouille-preview-' + formId);
   if (box) box.innerHTML = getBouillePreviewHtml(state);
@@ -1296,7 +1321,7 @@ function refreshBouillePreview(formId) {
 
 function getCurrentBouilleState(formId) {
   var sel = _activeBouilleSel[formId] || {};
-  var state = buildBouilleState(myBouille, sel.accSuffix9);
+  var state = resolveBouilleState(sel);
   if (sel.mouthId != null) state = _applyExpression(state, sel.mouthId);
   return state;
 }
@@ -1335,23 +1360,27 @@ function renderBouilleGrid(formId) {
   var html = '';
   for (var i = 0; i < slice.length; i++) {
     var ac = slice[i];
-    var thumbState = buildBouilleState(myBouille, ac.suffix);
+    var thumbState = ac.fullState ? ac.fullState : buildBouilleState(myBouille, ac.suffix);
     if (sel.mouthId != null) thumbState = _applyExpression(thumbState, sel.mouthId);
-    var checked = (ac.suffix === selectedSuffix) ? ' checked' : '';
+    var isSel = ac.fullState
+      ? (ac.fullState === sel.fullState)
+      : (!sel.fullState && ac.suffix === selectedSuffix);
+    var checked = isSel ? ' checked' : '';
     var radioId = 'bouille-r-' + formId + '-' + i;
     html += '<label class="bouille-item" for="' + radioId + '">';
     html += '<div class="b-thumb">' + getBouillePreviewHtml(thumbState) + '</div>';
     html += '<div class="b-name">' + escapeHtml(ac.name) + '</div>';
     html += '<input type="radio" class="b-radio" id="' + radioId + '" name="bouille-' + formId + '" '
-      + 'onchange="bouilleSetAccessoryRadio(\'' + formId + '\',\'' + escapeHtml(ac.suffix) + '\')"' + checked + '>';
+      + 'onchange="bouilleSetAccessoryRadio(\'' + formId + '\',\'' + escapeHtml(ac.suffix) + '\',\'' + escapeHtml(ac.fullState || '') + '\')"' + checked + '>';
     html += '</label>';
   }
   return html;
 }
 
-function bouilleSetAccessoryRadio(formId, suffix9) {
+function bouilleSetAccessoryRadio(formId, suffix9, fullState) {
   _activeBouilleSel[formId] = _activeBouilleSel[formId] || {};
   _activeBouilleSel[formId].accSuffix9 = suffix9;
+  _activeBouilleSel[formId].fullState = fullState || null;
   refreshBouillePreview(formId);
 }
 
@@ -1372,7 +1401,7 @@ function expressionSelectHtml(formId) {
 
 function bouilleSelHtml(formId) {
   _bouillePage[formId] = 0;
-  _activeBouilleSel[formId] = { accSuffix9: '000000000', mouthId: null };
+  _activeBouilleSel[formId] = { accSuffix9: '000000000', mouthId: null, fullState: null };
   var all = getAllAccessories();
   var html = '';
 
