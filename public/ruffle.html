@@ -46,30 +46,43 @@
         window.__FRUSION_DEBUG = new URLSearchParams(window.location.search).get("debug") === "1";
         window.__dlog = window.__FRUSION_DEBUG ? console.log.bind(console) : function () {};
 
-        // ── Render-resolution cap ───────────────────────────────────
-        // Ruffle sizes its backing canvas at (cssPixels × devicePixelRatio).
-        // The salon player is 1380×719 (matched to the SWF's patched layout
-        // width — beyond that is empty stage), so on a HiDPI/Retina screen
-        // (DPR 2) Ruffle still rasterises ~4× that every frame and
-        // quality:"high" antialiases all of it — the dominant GPU cost. This
-        // page hosts nothing but the player, so we cap the DPR Ruffle sees
-        // before its engine boots. The salon's real cost is CPU (AVM + vector
-        // tessellation), not GPU fill-rate, so lowering this mostly just blurs;
-        // kept at 1.5 to spare true-retina (DPR≥2) screens. Tunable.
+        // ── Backing-canvas resolution (effective DPR) ───────────────
+        // Ruffle rasterises its canvas at (cssPixels × devicePixelRatio).
+        // The salon player has a FIXED css box (1380×719, matched to the
+        // SWF's patched mcw/mch) and is then CSS-transform-scaled by
+        // `fit = min(winW/1380, winH/719)` to fill the viewport (see
+        // fitFrutiparc below). That transform is a *bitmap* scale of Ruffle's
+        // canvas, so at the browser's 100% zoom (DPR 1) on a window wider
+        // than 1380 the 1380-px canvas is stretched up to ~1920 physical px
+        // → visibly blurry. (At 150% OS scale DPR happened to be 1.5, giving
+        // a 2070-px canvas that downscaled crisply — which is why only 100%
+        // looked soft.)
+        //
+        // Fix: report an effective DPR of (realDPR × fit), recomputed on each
+        // read, so Ruffle rasterises the canvas at the exact resolution it is
+        // displayed at — crisp at any OS/browser scale, with no wasted pixels
+        // (at 150% scale realDPR 1.5 × fit 0.93 ≈ 1.4, *cheaper* than the old
+        // flat 1.5 cap). Clamped to MAX_EFF_DPR so 4K/retina screens don't
+        // rasterise an enormous canvas — the salon's dominant cost is CPU
+        // (AVM + tessellation), and past ~2× the extra GPU fill buys little.
+        // LAYOUT_W/H must stay equal to the player size + fit divisors below.
         (function () {
-            var RENDER_DPR_CAP = 1.5;
+            var LAYOUT_W = 1380, LAYOUT_H = 719;
+            var MAX_EFF_DPR = 2.0;
+            var realDPR = window.devicePixelRatio || 1;
+            function effectiveDpr() {
+                var fit = Math.min(window.innerWidth / LAYOUT_W, window.innerHeight / LAYOUT_H);
+                if (!(fit > 0) || !isFinite(fit)) fit = 1;
+                return Math.min(MAX_EFF_DPR, Math.max(1, realDPR * fit));
+            }
             try {
-                var real = window.devicePixelRatio || 1;
-                window.__dlog("[Ruffle] real devicePixelRatio =", real, "(cap " + RENDER_DPR_CAP + ")");
-                if (real > RENDER_DPR_CAP) {
-                    Object.defineProperty(window, "devicePixelRatio", {
-                        configurable: true,
-                        get: function () { return RENDER_DPR_CAP; }
-                    });
-                    window.__dlog("[Ruffle] devicePixelRatio capped " + real + " -> " + RENDER_DPR_CAP);
-                }
+                Object.defineProperty(window, "devicePixelRatio", {
+                    configurable: true,
+                    get: effectiveDpr
+                });
+                window.__dlog("[Ruffle] effective DPR override active (real " + realDPR + ", now " + effectiveDpr().toFixed(3) + ")");
             } catch (e) {
-                console.warn("[Ruffle] devicePixelRatio cap failed:", e && e.message);
+                console.warn("[Ruffle] devicePixelRatio override failed:", e && e.message);
             }
         })();
     </script>
