@@ -160,6 +160,36 @@
       padding: 0 8px;
     }
 
+    /* Register bar: the login top-bar's 28px sliver can't fit three
+       text-labelled fields, so widen slightly, let it grow vertically, and
+       flex the inputs (e-mail widest) so nothing wraps and its placeholder
+       shows in full. Login bar is left untouched. */
+    #register-form {
+      width: min(1040px, 100%);
+      height: auto;
+      min-height: 30px;
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+    #register-form .login-form {
+      gap: 8px;
+      flex-wrap: nowrap;
+    }
+    #register-form .login-form > strong,
+    #register-form .login-form label {
+      color: #4f7d1e;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    #register-form .login-form input {
+      flex: 1 1 0;
+      min-width: 0;
+      width: auto;
+    }
+    #register-form #reg-email {
+      flex: 2.4 1 0;
+    }
+
     .layout {
       width: min(880px, 100%);
       display: grid;
