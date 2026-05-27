@@ -110,6 +110,15 @@ function buildApplyTag() {
     off = opcode(buf, off, 0x17); // Pop
   }
 
+  // DIAG (temporary): trace the received mood so that — with bouille-preview's
+  // ?debug=1 (logLevel "info") — we can confirm in the browser console that
+  // THIS re-patched SWF is live and see the value of _root.e it received.
+  off = pushString(buf, off, 'FE-EMOTE=');
+  off = pushString(buf, off, 'e');
+  off = opcode(buf, off, 0x1c); // GetVariable → _root.e
+  off = opcode(buf, off, 0x47); // Add2 (string concat)
+  off = opcode(buf, off, 0x26); // Trace
+
   // Apply the *mood* (humeur) after parking the idle reels. The mood is NOT
   // part of the bouille string `s` — it's a separate `e` flashvar (0-7), like
   // main.swf's emote. The famille's own global emote() fn (defined in its
