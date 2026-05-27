@@ -19,6 +19,7 @@ const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
 const db = require('./db');
+const { faerieIsRich, parseFaerieField, mergeFaerieByIdentity } = require('./minipixizFaerie');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
 // Standard error sink for fire-and-forget DB writes. Replaces the
@@ -3410,31 +3411,10 @@ function mergeImportedSlot(game, slotId, existingJson, incomingObj) {
         merged.$stat[k] = out;
       }
     }
-    // Faerie merge — same per-field strategy as saveFrutiSlot's
-    // forward-merge: when both sides have the same fairy slot, incoming
-    // wins per field, but anything missing falls back to existing.
-    // Symmetric to saveSlot/parseMinipixizPipe: the SWF only ever sends
-    // {$level: N} stubs, so a re-import after gameplay restores the
-    // rich fields (name/skin/spells/carac/inv/taste/etc.) while still
-    // honouring the imported levels.
-    const ef = Array.isArray(existing.$faerie) ? existing.$faerie : [];
-    const nf = Array.isArray(merged.$faerie) ? merged.$faerie : [];
-    if (ef.length > nf.length) {
-      merged.$faerie = ef;
-    } else if (nf.length > 0 && ef.length > 0) {
-      const out = [];
-      for (let i = 0; i < nf.length; i++) {
-        const e = ef[i];
-        const n = nf[i];
-        if (e && typeof e === 'object' && !Array.isArray(e) &&
-            n && typeof n === 'object' && !Array.isArray(n)) {
-          out.push(Object.assign({}, e, n));
-        } else {
-          out.push(n || e);
-        }
-      }
-      merged.$faerie = out;
-    }
+    // Faerie merge — same identity-aware strategy as saveFrutiSlot's
+    // forward-merge: match by $name when present (else by index), incoming
+    // wins per field, missing fields fall back to existing, no fairy dropped.
+    merged.$faerie = mergeFaerieByIdentity(existing.$faerie, merged.$faerie);
     // Same fill-in-missing approach for nested progress containers.
     if (existing.$dungeon && typeof existing.$dungeon === 'object') {
       if (!merged.$dungeon || typeof merged.$dungeon !== 'object') merged.$dungeon = {};
@@ -5512,7 +5492,7 @@ function parseMinipixizPipe(s) {
     if (!p) return [];
     return p.split(',').map(v => v === '' ? null : (Number(v) || 0));
   }
-  const faerieLevels = (parts[17] || '').replace(/,$/, '').split(',').filter(v => v !== '');
+  const faerie = parseFaerieField(parts[17]);
   const inv = parts.length >= 20 ? parseInvArr(parts[19]) : [];
   // $current: null when nothing selected, numeric otherwise. Empty
   // string from pipe → null. 'undefined' from a Ruffle bridge gap →
@@ -5544,7 +5524,7 @@ function parseMinipixizPipe(s) {
     $rainbow: { $f: parts[14] === 'true' },
     $pond: { $q: Number(parts[15]) || 0 },
     $frog: parts[16] === 'true',
-    $faerie: faerieLevels.map(v => ({ $level: Number(v) || 0 })),
+    $faerie: faerie,
     $vs: Number(parts[18]) || 0,
     $inv: inv,
     $current: cur,
@@ -5611,13 +5591,10 @@ function parseMb2Pipe(s) {
 // fairy/inventory resets on restart" failure. The helpers below back an
 // unconditional, exception-proof last line of defence applied just before the
 // slot is persisted.
-function minipixizFaerieIsRich(f) {
-  if (!f || typeof f !== 'object' || Array.isArray(f)) return false;
-  for (const k in f) {
-    if (k !== '$level' && Object.prototype.hasOwnProperty.call(f, k)) return true;
-  }
-  return false;
-}
+// Delegates to the tested module. NOTE: excludes both $level AND $name, so a
+// {$name,$level} stub from the new pipe format is correctly treated as NOT
+// rich (otherwise the name field would mask a fairy that lost its real state).
+function minipixizFaerieIsRich(f) { return faerieIsRich(f); }
 function minipixizHasRichFaerie(obj) {
   return !!(obj && Array.isArray(obj.$faerie) && obj.$faerie.some(minipixizFaerieIsRich));
 }
@@ -5633,19 +5610,8 @@ function minipixizGraftRichState(cur, prev) {
     const curRich = cf.filter(minipixizFaerieIsRich).length;
     const prevRich = pf.filter(minipixizFaerieIsRich).length;
     if (cf.length < pf.length || curRich < prevRich) {
-      const out = [];
-      const n = Math.max(pf.length, cf.length);
-      for (let i = 0; i < n; i++) {
-        const p = pf[i], c = cf[i];
-        if (p && typeof p === 'object' && !Array.isArray(p)) {
-          const m = Object.assign({}, p);
-          if (c && typeof c === 'object' && c.$level !== undefined) m.$level = c.$level;
-          out.push(m);
-        } else {
-          out.push(c || p);
-        }
-      }
-      cur.$faerie = out;
+      // Match by $name when available (else by index) and never drop a fairy.
+      cur.$faerie = mergeFaerieByIdentity(pf, cf);
       changed = true;
     }
   }
@@ -5911,32 +5877,14 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
         // full FaerieSeed objects with bare {$level: N} stubs → fairies
         // vanish from the in-game Fruticard and field rendering.
         //
-        // Strategy: field-by-field merge per fairy index. Take $level
-        // from new (it's the one field the pipe actually updates) and
-        // keep every other field from prev. If the SWF later starts
-        // transporting more fields, Object.assign lets the new value
-        // win automatically — but until then, prev is the only source
-        // of truth for everything except $level.
-        const pf = Array.isArray(prev.$faerie) ? prev.$faerie : [];
-        const nf = Array.isArray(merged.$faerie) ? merged.$faerie : [];
-        if (pf.length > nf.length) {
-          // SWF dropped a fairy slot — keep prev entirely (faeries
-          // don't disappear mid-game).
-          merged.$faerie = pf;
-        } else if (nf.length > 0 && pf.length > 0) {
-          const out = [];
-          for (let i = 0; i < nf.length; i++) {
-            const p = pf[i];
-            const n = nf[i];
-            if (p && typeof p === 'object' && !Array.isArray(p) &&
-                n && typeof n === 'object' && !Array.isArray(n)) {
-              out.push(Object.assign({}, p, n));
-            } else {
-              out.push(n || p);
-            }
-          }
-          merged.$faerie = out;
-        }
+        // Strategy: delegate to mergeFaerieByIdentity. When the save carries
+        // fairy names (new pipe format) it matches by $name — robust against
+        // reordering/freeing, which is the root cause of the "fairy became a
+        // copy of another" and "fairy stats reset" bugs. Otherwise it falls
+        // back to the legacy per-index merge. Either way $level (and any field
+        // the pipe starts sending) wins from new, prev supplies the rich
+        // fields, and no fairy is ever dropped or duplicated.
+        merged.$faerie = mergeFaerieByIdentity(prev.$faerie, merged.$faerie);
         // Nested progress containers — the pipe save only carries a few
         // fields per container; preserve the dropped sub-fields from prev.
         // $dungeon: pipe transports $lvl and $f; $day and $loop are lost.
