@@ -1543,6 +1543,7 @@ function dbUserToMemory(row) {
   }
   return {
     pass: row.password,
+    email: row.email || '',
     xp: row.xp ?? 1,
     kikooz: row.kikooz ?? 60,
     fbouille: row.fbouille || DEFAULT_BOUILLE_STATE,
@@ -2210,6 +2211,13 @@ async function verifyPassword(stored, plain) {
   }
   const ok = stored === String(plain);
   return { ok, upgrade: ok ? await hashPassword(plain) : null };
+}
+
+// Optional recovery email. Empty/absent is allowed (column stays NULL); when
+// present it must look like an address and is stored lowercased so the reset
+// flow can look it up case-insensitively.
+function isValidEmail(s) {
+  return typeof s === 'string' && s.length <= 120 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
 function isDebugNotUser(username) {
@@ -2976,19 +2984,28 @@ app.post('/api/auth/register', async (req, res) => {
   if (!isValidPassword(password)) {
     return res.status(400).json({ ok: false, error: 'password_invalid', message: 'Password: 6-80 chars.' });
   }
+  const rawEmail = String((req.body && req.body.email) || '').trim();
+  let email = null;
+  if (rawEmail) {
+    if (!isValidEmail(rawEmail)) {
+      return res.status(400).json({ ok: false, error: 'email_invalid', message: 'E-mail invalide.' });
+    }
+    email = rawEmail.toLowerCase();
+  }
   if (users[username]) {
     return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
   }
 
   const passwordHash = await hashPassword(password);
   try {
-    const dbUser = await db.createUser(username, passwordHash);
+    const dbUser = await db.createUser(username, passwordHash, email);
     if (!dbUser) {
       return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
     }
     users[username] = createDefaultUser(passwordHash);
     users[username]._dbId = dbUser.id;
     users[username].displayName = rawName;
+    users[username].email = email || '';
     await db.setUserItems(dbUser.id, users[username].items);
     await db.updateUser(username, { display_name: rawName });
     recordSuccessfulRegister(ip);
@@ -2998,6 +3015,7 @@ app.post('/api/auth/register', async (req, res) => {
     console.error('[DB] register error:', e.message);
     users[username] = createDefaultUser(passwordHash);
     users[username].displayName = rawName;
+    users[username].email = email || '';
     recordSuccessfulRegister(ip);
     return res.json({ ok: true, username: rawName });
   }

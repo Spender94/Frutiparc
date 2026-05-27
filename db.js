@@ -87,6 +87,7 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS frutijob TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS is_animator BOOLEAN DEFAULT false;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT NULL;
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
 
@@ -356,13 +357,13 @@ async function findUserByUsername(username) {
   return rows[0] || null;
 }
 
-async function createUser(username, password) {
+async function createUser(username, password, email = null) {
   const { rows } = await pool.query(
-    `INSERT INTO users (username, password)
-     VALUES ($1, $2)
+    `INSERT INTO users (username, password, email)
+     VALUES ($1, $2, $3)
      ON CONFLICT (username) DO NOTHING
      RETURNING *`,
-    [username, password]
+    [username, password, email]
   );
   return rows[0] || null;
 }
