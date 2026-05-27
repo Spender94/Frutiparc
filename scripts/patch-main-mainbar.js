@@ -25,7 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const HARDCODED_WIDTH = 1660; // ~5px before the frusion (frusion.pos.x = 1665, set in patch-main-width.js)
+const HARDCODED_WIDTH = 1370; // ~5px before the frusion (frusion.pos.x = 1375, set in patch-main-width.js)
 
 const IN_PATH  = path.resolve(__dirname, '..', 'legacy', 'main.swf');
 const OUT_PATH = IN_PATH;
