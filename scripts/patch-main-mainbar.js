@@ -25,7 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const HARDCODED_WIDTH = 1257;
+const HARDCODED_WIDTH = 1910; // ~5px before the frusion (frusion.pos.x = 1915, set in patch-main-width.js)
 
 const IN_PATH  = path.resolve(__dirname, '..', 'legacy', 'main.swf');
 const OUT_PATH = IN_PATH;
@@ -136,16 +136,33 @@ function patch() {
   newPattern[10] = 0x4c; // PushDup
   newPattern[11] = 0x17; // Pop
 
-  // Check already patched
+  // Check already patched to the desired value
   let off = body.indexOf(newPattern, dataStart);
   if (off >= 0 && off < dataEnd) {
     console.log('[mainbar] Already patched: hardcoded ' + HARDCODED_WIDTH + ' at 0x' + off.toString(16) + ' — skipping.');
     return;
   }
 
+  // Re-runnable: if already hardcoded to a DIFFERENT value (Push int32 + the
+  // PushDup/Pop filler this script injects), just rewrite the int32 in place
+  // (length-neutral). The 4c 17 4c 17 tail is our unique signature.
+  const filler = Buffer.from([0x4c, 0x17, 0x4c, 0x17]);
+  for (let s = dataStart; s < dataEnd - 12; s++) {
+    if (body[s] === 0x96 && body[s + 1] === 0x05 && body[s + 2] === 0x00 && body[s + 3] === 0x07
+        && body.slice(s + 8, s + 12).equals(filler)) {
+      const cur = body.readInt32LE(s + 4);
+      body.writeInt32LE(HARDCODED_WIDTH, s + 4);
+      console.log('[mainbar] Re-patched hardcoded width ' + cur + ' -> ' + HARDCODED_WIDTH + ' at 0x' + s.toString(16));
+      const totalLen = writeSwf(OUT_PATH, sig, version, body);
+      console.log('[mainbar] Wrote ' + OUT_PATH + ' (' + totalLen + ' bytes)');
+      return;
+    }
+  }
+
+  // First run: replace the original Stage.width read.
   off = body.indexOf(oldPattern, dataStart);
   if (off < 0 || off >= dataEnd) {
-    throw new Error('Stage.width pattern not found in MainBar.update()');
+    throw new Error('Neither hardcoded-width filler nor Stage.width pattern found in MainBar.update()');
   }
 
   console.log('[mainbar] Found Stage.width at body offset 0x' + off.toString(16));
