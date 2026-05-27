@@ -28,13 +28,14 @@
   <script>
     // ?debug=1 raises Ruffle's logLevel to "info" so it logs which renderer it
     // picked (WebGPU/WebGL = GPU, Canvas = CPU software rendering) plus any perf
-    // warnings. Default stays "warn": a verbose logLevel is itself a big CPU hog
-    // with DevTools open (it was "trace" before).
+    // warnings. Default "error" (was "warn", was "trace"): a verbose logLevel is
+    // itself a big CPU hog — the AVM's continuous WARN spam costs CPU to format
+    // and ship to the console even with DevTools closed.
     window.__FRUSION_DEBUG = new URLSearchParams(window.location.search).get("debug") === "1";
     window.RufflePlayer = window.RufflePlayer || {};
     window.RufflePlayer.config = {
       ...(window.RufflePlayer.config || {}),
-      logLevel: window.__FRUSION_DEBUG ? "info" : "warn",
+      logLevel: window.__FRUSION_DEBUG ? "info" : "error",
     };
     window.__dlog = window.__FRUSION_DEBUG ? console.log.bind(console) : function () {};
   </script>

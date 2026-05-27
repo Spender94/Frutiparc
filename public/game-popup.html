@@ -69,10 +69,10 @@
     window.RufflePlayer.config = {
       autoplay: "on",
       publicPath: "/ruffle/",
-      // logLevel was "info" — far too noisy for everyday play (the devtools
-      // log pane was eating real CPU). Bump to "warn" by default; users who
-      // need diagnostics can pass ?debug=1.
-      logLevel: "warn",
+      // logLevel was "info" then "warn" — still noisy for everyday play (the
+      // AVM's WARN spam costs CPU to format + ship to the console). Default
+      // "error"; users who need diagnostics can pass ?debug=1.
+      logLevel: "error",
       fontSources: [
         window.location.origin + "/legacy/fonts.swf"
       ],

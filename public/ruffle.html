@@ -38,7 +38,12 @@
             // ?debug=1 bumps to "info" so Ruffle logs which renderer it picked
             // ("Using WebGL/WebGPU/Canvas renderer") — a silent canvas2d
             // fallback would be 3-5× slower than GPU and is worth ruling out.
-            logLevel: new URLSearchParams(window.location.search).get("debug") === "1" ? "info" : "warn"
+            // Default "error" (was "warn"): main.swf's AVM emits a continuous
+            // WARN flood ("Cannot enumerate Undefined" / "Unable to attach
+            // butDocumentResize" dozens of times per burst); formatting each +
+            // the WASM→JS console call is wasted CPU in normal play. Genuine
+            // errors still surface, and ?debug=1 restores full logs.
+            logLevel: new URLSearchParams(window.location.search).get("debug") === "1" ? "info" : "error"
         };
 
         // Gate verbose legacy-bridge logs behind ?debug=1 to avoid CPU
