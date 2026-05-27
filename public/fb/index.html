@@ -553,10 +553,10 @@
     width: 100%;
     padding: 5px 7px;
     font-size: 12px;
-    border: none;
+    border: 1px solid #555;
     margin-bottom: 10px;
     font-family: Verdana, Arial, sans-serif;
-    background: #C3EF93;
+    background: #ffffff;
     color: #2C4A0F;
   }
   .form-area textarea {
@@ -1083,6 +1083,31 @@
     border: 1px solid #2C4A0F;
     resize: vertical;
     margin-top: 3px;
+  }
+
+  /* Compose layout: emoticon palette (4-wide grid) sits to the LEFT of the
+     body textarea, which flexes to match the palette's height. */
+  .editor-compose-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .editor-compose-row .emoticons-row {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    align-content: flex-start;
+    flex: 0 0 auto;
+  }
+  .editor-compose-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .editor-compose-main .editor-textarea {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 130px;
   }
 
   /* Editor action bar */
@@ -2247,14 +2272,18 @@ function renderEditor(opts) {
   html += bbcodeToolbarHtml(taId);
   html += '</div></div>';
 
-  // Emoticons row
+  // Emoticons + body: emoticon palette (4-wide) to the LEFT of the textarea.
   html += '<div class="editor-row">';
   html += '<div class="editor-label-cell">Emoticons</div>';
   html += '<div class="editor-value-cell">';
+  html += '<div class="editor-compose-row">';
   html += emoticonsRowHtml(taId);
+  html += '<div class="editor-compose-main">';
   html += editorHintRowHtml(taId);
   html += '<textarea class="editor-textarea" id="' + taId + '" placeholder="Votre message...">'
     + escapeHtml(initialContent) + '</textarea>';
+  html += '</div>';
+  html += '</div>';
   html += '</div></div>';
 
   html += '</div>'; // .editor-form
