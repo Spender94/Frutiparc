@@ -6309,8 +6309,17 @@ const MAIN_SWF_PATH = path.join(__dirname, 'legacy', 'main.swf');
 // the whole AVM + re-tessellates every animated bouille 100×/s, which is the
 // main CPU/GPU drain in chat rooms (native Flash on period hardware never
 // sustained it). We rewrite the 2-byte frame-rate field in the served buffer
-// down to this cap — disk file untouched, tunable here.
-const MAIN_SWF_FPS_CAP = 30;
+// down to this cap — disk file untouched.
+//
+// Trade-off: the game's animations are frame-based, so a lower cap also makes
+// them play slower. 30 fps was too slow; 45 is the chosen middle ground. Tune
+// at runtime via the MAIN_SWF_FPS_CAP env var (clamped 1–100, e.g. on Render)
+// — just a restart, no redeploy. Higher = faster/smoother motion but more
+// client-side CPU (so it can worsen low-end "moulinage": opposite lever).
+const MAIN_SWF_FPS_CAP = (() => {
+  const v = Number(process.env.MAIN_SWF_FPS_CAP);
+  return Number.isFinite(v) && v >= 1 && v <= 100 ? v : 45;
+})();
 let MAIN_SWF_BUF = null;
 let MAIN_SWF_ETAG = null;
 // Rewrite a SWF's header frame-rate down to capFps (no-op if already ≤ cap or
