@@ -6303,7 +6303,7 @@ const MAIN_SWF_PATH = path.join(__dirname, 'legacy', 'main.swf');
 // main CPU/GPU drain in chat rooms (native Flash on period hardware never
 // sustained it). We rewrite the 2-byte frame-rate field in the served buffer
 // down to this cap — disk file untouched, tunable here.
-const MAIN_SWF_FPS_CAP = 24;
+const MAIN_SWF_FPS_CAP = 30;
 let MAIN_SWF_BUF = null;
 let MAIN_SWF_ETAG = null;
 // Rewrite a SWF's header frame-rate down to capFps (no-op if already ≤ cap or

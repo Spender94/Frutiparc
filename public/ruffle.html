@@ -11,7 +11,7 @@
         }
 
         #player-container {
-            width: 1920px;
+            width: 1265px;
             height: 768px;
         }
     </style>
@@ -43,8 +43,9 @@
 
         // ── Render-resolution cap ───────────────────────────────────
         // Ruffle sizes its backing canvas at (cssPixels × devicePixelRatio).
-        // The salon stage is a fixed 1920×768, so on a HiDPI/Retina screen
-        // (DPR 2) Ruffle rasterises ~3840×1536 ≈ 5.9 M px every frame and
+        // The salon player is 1265×768 (matched to the SWF's patched layout
+        // width — beyond that is empty stage), so on a HiDPI/Retina screen
+        // (DPR 2) Ruffle still rasterises ~4× that every frame and
         // quality:"high" antialiases all of it — the dominant GPU cost. This
         // page hosts nothing but the player, so we cap the DPR Ruffle sees
         // before its engine boots. 1.5 ≈ 1.8× fewer pixels than 2.0 with only
@@ -515,7 +516,7 @@
 
                 const ruffle = window.RufflePlayer.newest();
                 const player = ruffle.createPlayer();
-                player.style.width = "1920px";
+                player.style.width = "1265px";
                 player.style.height = "768px";
                 document.getElementById("player-container").appendChild(player);
 
