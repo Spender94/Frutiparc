@@ -1085,29 +1085,14 @@
     margin-top: 3px;
   }
 
-  /* Compose layout: emoticon palette (4-wide grid) sits to the LEFT of the
-     body textarea, which flexes to match the palette's height. */
-  .editor-compose-row {
-    display: flex;
-    align-items: stretch;
-    gap: 8px;
-  }
-  .editor-compose-row .emoticons-row {
+  /* Emoticon palette: a 4-wide grid under the "Emoticons" label (left column).
+     editPost's wider wrap layout is untouched. */
+  .editor-label-cell .emoticons-row {
     display: grid;
     grid-template-columns: repeat(4, auto);
-    align-content: flex-start;
-    flex: 0 0 auto;
-  }
-  .editor-compose-main {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .editor-compose-main .editor-textarea {
-    flex: 1 1 auto;
-    height: auto;
-    min-height: 130px;
+    justify-content: start;
+    gap: 2px;
+    margin-top: 4px;
   }
 
   /* Editor action bar */
@@ -2272,18 +2257,14 @@ function renderEditor(opts) {
   html += bbcodeToolbarHtml(taId);
   html += '</div></div>';
 
-  // Emoticons + body: emoticon palette (4-wide) to the LEFT of the textarea.
+  // Emoticons under the "Emoticons" label (left column); the body (hint +
+  // textarea) fills the value cell on the right.
   html += '<div class="editor-row">';
-  html += '<div class="editor-label-cell">Emoticons</div>';
+  html += '<div class="editor-label-cell">Emoticons' + emoticonsRowHtml(taId) + '</div>';
   html += '<div class="editor-value-cell">';
-  html += '<div class="editor-compose-row">';
-  html += emoticonsRowHtml(taId);
-  html += '<div class="editor-compose-main">';
   html += editorHintRowHtml(taId);
   html += '<textarea class="editor-textarea" id="' + taId + '" placeholder="Votre message...">'
     + escapeHtml(initialContent) + '</textarea>';
-  html += '</div>';
-  html += '</div>';
   html += '</div></div>';
 
   html += '</div>'; // .editor-form
