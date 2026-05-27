@@ -14,6 +14,7 @@ catch { /* dependency optional — falls back to no compression */ }
 const { WebSocketServer } = require('ws');
 const net = require('net');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
@@ -2185,6 +2186,32 @@ function isValidPassword(password) {
   return typeof password === 'string' && password.length >= 6 && password.length <= 80;
 }
 
+// ─── Password hashing (bcrypt) with lazy migration ───
+// Accounts created before hashing was introduced have a plaintext `password`
+// in the DB (and in the in-memory `users` cache). verifyPassword accepts both:
+// a bcrypt hash is checked with bcrypt.compare; a legacy plaintext value is
+// compared directly and, on a match, returns an `upgrade` hash for the caller
+// to persist so the account is silently migrated on its next successful login.
+// New accounts and every password change always store a bcrypt hash, so the
+// plaintext path drains over time. Backward-compatible: nobody is locked out.
+const BCRYPT_COST = 10;
+function looksHashed(s) {
+  return typeof s === 'string' && /^\$2[aby]\$\d{2}\$/.test(s);
+}
+function hashPassword(plain) {
+  return bcrypt.hash(String(plain), BCRYPT_COST);
+}
+async function verifyPassword(stored, plain) {
+  if (typeof stored !== 'string' || stored.length === 0) return { ok: false, upgrade: null };
+  if (looksHashed(stored)) {
+    let ok = false;
+    try { ok = await bcrypt.compare(String(plain), stored); } catch { ok = false; }
+    return { ok, upgrade: null };
+  }
+  const ok = stored === String(plain);
+  return { ok, upgrade: ok ? await hashPassword(plain) : null };
+}
+
 function isDebugNotUser(username) {
   return String(username || '').toLowerCase() === 'debugnot';
 }
@@ -2953,12 +2980,13 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
   }
 
+  const passwordHash = await hashPassword(password);
   try {
-    const dbUser = await db.createUser(username, password);
+    const dbUser = await db.createUser(username, passwordHash);
     if (!dbUser) {
       return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
     }
-    users[username] = createDefaultUser(password);
+    users[username] = createDefaultUser(passwordHash);
     users[username]._dbId = dbUser.id;
     users[username].displayName = rawName;
     await db.setUserItems(dbUser.id, users[username].items);
@@ -2968,7 +2996,7 @@ app.post('/api/auth/register', async (req, res) => {
     return res.json({ ok: true, username: rawName });
   } catch (e) {
     console.error('[DB] register error:', e.message);
-    users[username] = createDefaultUser(password);
+    users[username] = createDefaultUser(passwordHash);
     users[username].displayName = rawName;
     recordSuccessfulRegister(ip);
     return res.json({ ok: true, username: rawName });
@@ -2982,28 +3010,38 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const dbUser = await db.findUserByUsername(username);
     if (dbUser) {
-      if (dbUser.password !== password) {
+      const { ok, upgrade } = await verifyPassword(dbUser.password, password);
+      if (!ok) {
         return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+      }
+      if (upgrade) {
+        dbUser.password = upgrade;
+        db.updateUser(username, { password: upgrade }).catch((e) => console.error('[DB] password upgrade error:', e.message));
       }
       if (!users[username]) {
         await hydrateUserFromDb(username, dbUser);
       }
       users[username]._dbId = dbUser.id;
+      users[username].pass = dbUser.password;
       applyPendingChallengeNotifications(username, users[username]);
       db.recordLogin(username).catch((e) => console.error('[DB] recordLogin error:', e.message));
     } else {
       const user = users[username];
-      if (!user || user.pass !== password) {
+      const { ok, upgrade } = await verifyPassword(user && user.pass, password);
+      if (!user || !ok) {
         return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
       }
+      if (upgrade) user.pass = upgrade;
       applyPendingChallengeNotifications(username, user);
     }
   } catch (e) {
     console.error('[DB] login lookup error:', e.message);
     const user = users[username];
-    if (!user || user.pass !== password) {
+    const { ok, upgrade } = await verifyPassword(user && user.pass, password);
+    if (!user || !ok) {
       return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
     }
+    if (upgrade) user.pass = upgrade;
   }
 
   const sid = crypto.randomBytes(16).toString('hex');
@@ -3667,7 +3705,10 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     if (body.fbouille !== undefined) { fields.fbouille = body.fbouille; bouilleCache[u] = body.fbouille; }
     if (body.xp !== undefined) fields.xp = Number(body.xp);
     if (body.kikooz !== undefined) fields.kikooz = Number(body.kikooz);
-    if (body.password !== undefined) fields.password = body.password;
+    if (body.password !== undefined) {
+      fields.password = await hashPassword(String(body.password));
+      if (users[u]) users[u].pass = fields.password;
+    }
     if (body.is_moderator !== undefined) fields.is_moderator = !!body.is_moderator;
     if (body.is_animator !== undefined) fields.is_animator = !!body.is_animator;
     if (body.display_name !== undefined) {
