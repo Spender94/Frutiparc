@@ -72,7 +72,7 @@ function pushInt(buf, off, n) {
 function opcode(buf, off, op) { buf.writeUInt8(op, off); return off + 1; }
 
 function buildApplyTag() {
-  const buf = Buffer.alloc(512);
+  const buf = Buffer.alloc(768);
   let off = 0;
   // trace("INVOKE-APPLY")
   off = pushString(buf, off, 'INVOKE-APPLY');
@@ -109,6 +109,19 @@ function buildApplyTag() {
     off = opcode(buf, off, 0x52); // CallMethod
     off = opcode(buf, off, 0x17); // Pop
   }
+
+  // Apply the *mood* (humeur) after parking the idle reels. The mood is NOT
+  // part of the bouille string `s` — it's a separate `e` flashvar (0-7), like
+  // main.swf's emote. The famille's own global emote() fn (defined in its
+  // frame-1 setup, same scope as apply()) maps e → eye/mouth frames via its
+  // built-in emoteList, so we just forward _root.e. emote("0")/absent == the
+  // normal idle face, so previews without `e` look unchanged.
+  off = pushString(buf, off, 'e');
+  off = opcode(buf, off, 0x1c); // GetVariable → _root.e
+  off = pushInt(buf, off, 1);   // numArgs
+  off = pushString(buf, off, 'emote');
+  off = opcode(buf, off, 0x3d); // CallFunction
+  off = opcode(buf, off, 0x17); // Pop
 
   // stop() on the root timeline so the SWF parks on the apply()'d frame.
   off = opcode(buf, off, 0x07);
