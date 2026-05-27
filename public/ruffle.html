@@ -11,8 +11,13 @@
         }
 
         #player-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
             width: 1265px;
             height: 768px;
+            transform-origin: center center;
+            transform: translate(-50%, -50%) scale(1);
         }
     </style>
 
@@ -79,6 +84,23 @@
 </head>
 <body>
     <div id="player-container"></div>
+    <script>
+        // Make the whole Frutiparc client responsive: scale it to fit the
+        // viewport, centered. Downscale-only (capped at 1) so it never upscales
+        // and blurs — small screens shrink to show everything (no clipping),
+        // large screens keep the native crisp size centered. Render cost stays
+        // bounded. To also fill large screens, drop the 1 from Math.min (mild
+        // upscale blur); a true crisp reflow would need a main.swf patch.
+        (function () {
+            var c = document.getElementById("player-container");
+            function fitFrutiparc() {
+                var s = Math.min(window.innerWidth / 1265, window.innerHeight / 768, 1);
+                c.style.transform = "translate(-50%, -50%) scale(" + s + ")";
+            }
+            window.addEventListener("resize", fitFrutiparc);
+            fitFrutiparc();
+        })();
+    </script>
 
     <script>
         (function () {
