@@ -85,16 +85,16 @@
 <body>
     <div id="player-container"></div>
     <script>
-        // Make the whole Frutiparc client responsive: scale it to fit the
-        // viewport, centered. Downscale-only (capped at 1) so it never upscales
-        // and blurs — small screens shrink to show everything (no clipping),
-        // large screens keep the native crisp size centered. Render cost stays
-        // bounded. To also fill large screens, drop the 1 from Math.min (mild
-        // upscale blur); a true crisp reflow would need a main.swf patch.
+        // Make the whole Frutiparc client responsive: scale it to fill the
+        // viewport, centered, preserving aspect (green letterbox bars on
+        // mismatched ratios). Scaling up softens the image a bit (bitmap
+        // upscale) — a crisp fill would require a main.swf reflow patch. Small
+        // screens scale down (no clipping); large screens scale up to use the
+        // space. Render cost stays bounded regardless of scale.
         (function () {
             var c = document.getElementById("player-container");
             function fitFrutiparc() {
-                var s = Math.min(window.innerWidth / 1265, window.innerHeight / 768, 1);
+                var s = Math.min(window.innerWidth / 1265, window.innerHeight / 768);
                 c.style.transform = "translate(-50%, -50%) scale(" + s + ")";
             }
             window.addEventListener("resize", fitFrutiparc);
