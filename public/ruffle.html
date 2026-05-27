@@ -13,11 +13,11 @@
         #player-container {
             position: absolute;
             top: 50%;
-            left: 50%;
+            left: 0;
             width: 1380px;
             height: 800px;
-            transform-origin: center center;
-            transform: translate(-50%, -50%) scale(1);
+            transform-origin: left center;
+            transform: translateY(-50%) scale(1);
         }
     </style>
 
@@ -99,8 +99,8 @@
     <div id="player-container"></div>
     <script>
         // Make the whole Frutiparc client responsive: scale it to fill the
-        // viewport, centered, preserving aspect (green letterbox bars on
-        // mismatched ratios). Scaling up softens the image a bit (bitmap
+        // viewport, left-aligned (any leftover space falls on the right),
+        // preserving aspect (green letterbox bars on mismatched ratios). Scaling up softens the image a bit (bitmap
         // upscale) — a crisp fill would require a main.swf reflow patch. Small
         // screens scale down (no clipping); large screens scale up to use the
         // space. Render cost stays bounded regardless of scale.
@@ -108,7 +108,7 @@
             var c = document.getElementById("player-container");
             function fitFrutiparc() {
                 var s = Math.min(window.innerWidth / 1380, window.innerHeight / 800);
-                c.style.transform = "translate(-50%, -50%) scale(" + s + ")";
+                c.style.transform = "translateY(-50%) scale(" + s + ")";
             }
             window.addEventListener("resize", fitFrutiparc);
             fitFrutiparc();
