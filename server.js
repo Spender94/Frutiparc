@@ -1710,6 +1710,15 @@ function nowSqlTimestamp() {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
+// Subtract one second from a "YYYY-MM-DD HH:MM:SS" (UTC) timestamp, same format
+// out. Used to build the onident previousTime just below the oldest unread log
+// entry so the client's date comparison flags it as new.
+function sqlTimestampMinus1s(ts) {
+  const d = new Date(String(ts || '').replace(' ', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return ts;
+  return new Date(d.getTime() - 1000).toISOString().replace('T', ' ').substring(0, 19);
+}
+
 function addUserHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
   if (!user) return;
   if (!Array.isArray(user.userLog)) user.userLog = [];
@@ -6994,7 +7003,19 @@ app.get('/do/onident', (req, res) => {
 
   const userLogXml = buildUserLogXml(user.userLog);
   const siteLogXml = buildUserLogXml(user.siteLog);
-  const xml = `<r k="${user.kikooz}" p="${now}" i="${items}"${modAttr}${fAttr}><mp><![CDATA[${myPref}]]></mp><ul>${userLogXml}</ul><sl>${siteLogXml}</sl><bl>${buildBouilleListXml()}</bl></r>`;
+  // previousTime (p=): the client flags an entry as "new" when its date is
+  // newer than this. Anchor it just before the OLDEST still-unread (is_new)
+  // entry so notifications raised while the user was offline reliably show as
+  // unread on this connect — even if the client ignores our explicit n="1"
+  // flag and relies on the date comparison (events/siteLog do). is_new is
+  // cleared right after, so unread entries are always the most recent → no
+  // stale read entry gets re-flagged. No unread → `now` (nothing new).
+  const unreadDates = [...(user.userLog || []), ...(user.siteLog || [])]
+    .filter((e) => e && Number(e.n) === 1 && e.d)
+    .map((e) => e.d)
+    .sort();
+  const previousTime = unreadDates.length ? sqlTimestampMinus1s(unreadDates[0]) : now;
+  const xml = `<r k="${user.kikooz}" p="${previousTime}" i="${items}"${modAttr}${fAttr}><mp><![CDATA[${myPref}]]></mp><ul>${userLogXml}</ul><sl>${siteLogXml}</sl><bl>${buildBouilleListXml()}</bl></r>`;
   const clearTransientNewFlag = (arr) => {
     if (!Array.isArray(arr)) return;
     for (let i = 0; i < arr.length; i += 1) {
