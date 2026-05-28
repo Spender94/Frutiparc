@@ -9954,6 +9954,17 @@ function isAnimator(username) {
 
 const ANIM_CHANNEL = 'bienvenue';
 
+// Order a channel's user list so staff float to the top: moderators always,
+// and animators only on the Anim ("bienvenue") channel where they act as mods.
+// Stable otherwise — everyone else keeps their existing (join) order.
+function orderChannelUsers(usernames, channelName) {
+  const isTop = (u) => isModerator(u) || (channelName === ANIM_CHANNEL && isAnimator(u));
+  const staff = [];
+  const others = [];
+  for (const u of usernames) (isTop(u) ? staff : others).push(u);
+  return staff.concat(others);
+}
+
 // All games that should always show a FrutiCard on user profiles.
 // Excludes grapiz and bandas (not implemented yet).
 const FCARD_GAMES = ['bkiwi', 'snake3', 'swapou2', 'kaluga', 'mb2', 'miniwave', 'jamajama', 'minipixiz'];
@@ -10750,7 +10761,7 @@ case 'join': {
   channel.users.add(client.username);
   client.channels.add(g);
 
-  const userArr = Array.from(channel.users);
+  const userArr = orderChannelUsers(Array.from(channel.users), g);
   let userXml = '';
 
   for (const u of userArr) {
@@ -10814,7 +10825,7 @@ case 'join': {
         sendToClient(socket, `<${CMD.userlist} g="${g}"></${CMD.userlist}>`);
         break;
       }
-      const userArr = Array.from(channel.users || []);
+      const userArr = orderChannelUsers(Array.from(channel.users || []), g);
       let userXml = '';
       for (const u of userArr) {
         const ud = users[u] || {};
