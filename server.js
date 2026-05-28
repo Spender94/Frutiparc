@@ -272,6 +272,20 @@ function normalizeForumMood(value) {
   return Number.isInteger(n) && n >= 0 && n <= 7 ? n : null;
 }
 
+// Chat auto-moderation: these words trigger an instant totoché. Matched on a
+// lowercased, accent-stripped copy of the message so "pétasse"/"petasse" and
+// "enculé"/"encule"/"enculer" all hit. Word boundaries avoid false positives
+// (e.g. "dispute" ≠ "pute", "pdf" ≠ "pd").
+const CHAT_BANNED_PATTERNS = [
+  /\bputains?\b/, /\bputes?\b/, /encul/, /\bsalopes?\b/, /\btapettes?\b/,
+  /\bpd\b/, /\bpetasses?\b/, /\bwhore\b/, /\bbitch\b/, /ferme\s+ta\s+gueule/,
+];
+function chatHasBannedWord(text) {
+  const s = String(text || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return CHAT_BANNED_PATTERNS.some((re) => re.test(s));
+}
+
 const PROFANITY_REPLACEMENTS = [
   [/\bcon\b/gi, 'blonk'],
   [/\bconne\b/gi, 'blonk'],
@@ -1727,9 +1741,21 @@ function notifyNewUserLog(username, entry) {
 
 function addAndNotifyUserLog(username, { type = 1, content = '', flNew = true } = {}) {
   const user = users[username];
-  if (!user) return;
-  addUserHistoryEntry(user, { type, content, flNew });
-  notifyNewUserLog(username, user.userLog[0]);
+  if (user) {
+    addUserHistoryEntry(user, { type, content, flNew });
+    notifyNewUserLog(username, user.userLog[0]);
+    return;
+  }
+  // Offline: write straight to the DB so the entry is restored as UNREAD on the
+  // user's next login (getUserLogEntries → toMemoryEntry sets n=1 when is_new).
+  // Without this, any notification raised while the user is disconnected (medal,
+  // picto, level-up, totoché…) was silently lost.
+  if (process.env.DATABASE_URL) {
+    db.findUserByUsername(username)
+      .then((row) => row && db.addUserLogEntry(row.id, 'user', type, content, !!flNew)
+        .then(() => db.pruneUserLog(row.id, 'user', 200)))
+      .catch((e) => console.error('[DB] offline userLog persist error:', e.message));
+  }
 }
 
 function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
@@ -1955,15 +1981,10 @@ function notifyChallengeWinners(winnersByUser, visibleDay) {
       const gameName = GAME_DISPLAY_NAMES[m.game] || m.game;
       const medalName = MEDAL_DISPLAY_NAMES[m.medal] || m.medal;
       const text = `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} ! (${visibleDay})`;
+      // Notify online (live + DB) AND offline (DB, shown unread on next login)
+      // through the unified path — no more "only if connected at push time".
+      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.MEDAL, content: text, flNew: true });
       const user = users[username];
-      if (user) {
-        addUserHistoryEntry(user, { type: USER_LOG_TYPE.MEDAL, content: text, flNew: true });
-      } else {
-        if (!challengeMedalsData.pendingNotifications[username]) {
-          challengeMedalsData.pendingNotifications[username] = [];
-        }
-        challengeMedalsData.pendingNotifications[username].push({ type: USER_LOG_TYPE.MEDAL, content: text });
-      }
       if (user && user._dbId) {
         db.saveMedal(user._dbId, username, m.rankingId, m.game, m.rank, m.medal, visibleDay).catch(dbErr('saveMedal'));
       } else if (process.env.DATABASE_URL) {
@@ -11018,6 +11039,25 @@ case 'send': {
   const mutedUntil = senderData.mutedUntil ? new Date(senderData.mutedUntil) : null;
   if (mutedUntil && !Number.isNaN(mutedUntil.getTime()) && mutedUntil.getTime() > Date.now()) {
     sendToClient(socket, `<${CMD.onmute} u="${escapeXml(getDisplayName(client.username))}" mt="${escapeXml(senderData.mutedUntil)}" mu="${escapeXml(senderData.mutedUntil)}" />`);
+    break;
+  }
+
+  // ── Auto-moderation: forbidden words → instant 10-min totoché ──
+  // Applies to normal chat lines (not slash-commands). The offending message
+  // is dropped (not broadcast); the author is muted, notified, and logged.
+  if (g && client.logged && (type === 'm' || type === undefined)
+      && !text.startsWith('/') && chatHasBannedWord(text)) {
+    const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
+    if (users[client.username]) users[client.username].mutedUntil = until;
+    for (const s of getSocketsForUsername(client.username)) {
+      sendToClient(s, `<${CMD.onmute} u="${escapeXml(getDisplayName(client.username))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
+    }
+    addAndNotifyUserLog(client.username, { type: USER_LOG_TYPE.TOTOCHE, content: 'Tu as été totoché 10 minutes pour propos interdits (auto-modération).' });
+    if (process.env.DATABASE_URL) db.addModerationLog(client.username, 'auto', 'totoche', 'mots interdits').catch(e => console.error('[DB] modlog error:', e.message));
+    const announce = `<![CDATA[${escapeXml(getDisplayName(client.username))} a été totoché]]>`;
+    if (channels[g] && channels[g].users && channels[g].users.has(client.username)) {
+      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="" d="">${announce}</${CMD.send}>`);
+    }
     break;
   }
 
