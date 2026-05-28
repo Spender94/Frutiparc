@@ -11077,7 +11077,7 @@ case 'send': {
   // Applies to normal chat lines (not slash-commands). The offending message
   // is dropped (not broadcast); the author is muted, notified, and logged.
   if (g && client.logged && (type === 'm' || type === undefined)
-      && !text.startsWith('/') && chatHasBannedWord(text)) {
+      && !text.startsWith('/') && !isModerator(client.username) && chatHasBannedWord(text)) {
     const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
     if (users[client.username]) users[client.username].mutedUntil = until;
     for (const s of getSocketsForUsername(client.username)) {
@@ -11112,6 +11112,11 @@ case 'send': {
       if (targetUser && target) {
         if (getSocketsForUsername(targetUser).length === 0) {
           sendToClient(socket, `<${CMD.ban} k="214" u="${escapeXml(getDisplayName(targetUser))}" />`);
+          break;
+        }
+        // Moderators are immune to totoché (animators are not).
+        if (isModerator(targetUser)) {
+          sendToClient(socket, `<${CMD.error} k="403" />`);
           break;
         }
         const until = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', '.').substring(0, 19);
@@ -11348,6 +11353,12 @@ case 'send': {
       const targetUser = resolveModerationTarget(msg);
       const target = users[targetUser];
       if (!targetUser || !target) break;
+
+      // Moderators are immune to totoché (animators are not).
+      if (isModerator(targetUser)) {
+        sendToClient(socket, `<${CMD.error} k="403" />`);
+        break;
+      }
 
       // Reject totoche on offline users.  Reuse the existing <ban k="..." />
       // error path (onBan in listener/main.as) — it opens a popup alert with
