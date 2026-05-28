@@ -6439,6 +6439,14 @@ app.get('/fileIcon.swf', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'fileIcon.swf'));
 });
 
+// Favicon — lives at the repo root (not public/), so express.static won't pick
+// it up; an explicit route is needed. Browsers auto-request /favicon.ico, so
+// this gives every served page a favicon without per-page <link> tags.
+app.get('/favicon.ico', (req, res) => {
+  res.type('image/x-icon');
+  res.sendFile(path.join(__dirname, 'favicon.ico'));
+});
+
 
 
 app.get(['/frusion_client.swf', '/swf/frusion_client.swf'], (req, res) => {
