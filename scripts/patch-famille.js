@@ -74,9 +74,6 @@ function opcode(buf, off, op) { buf.writeUInt8(op, off); return off + 1; }
 function buildApplyTag() {
   const buf = Buffer.alloc(768);
   let off = 0;
-  // trace("INVOKE-APPLY")
-  off = pushString(buf, off, 'INVOKE-APPLY');
-  off = opcode(buf, off, 0x26);
   // apply(_root.s)
   off = pushString(buf, off, 's');
   off = opcode(buf, off, 0x1c);
@@ -110,15 +107,6 @@ function buildApplyTag() {
     off = opcode(buf, off, 0x17); // Pop
   }
 
-  // DIAG (temporary): trace the eye frame we received so that — with
-  // bouille-preview's ?debug=1 (logLevel "info") — we can confirm in the
-  // console that THIS re-patched SWF is live and what _root.fe it got.
-  off = pushString(buf, off, 'FE-fe=');
-  off = pushString(buf, off, 'fe');
-  off = opcode(buf, off, 0x1c); // GetVariable → _root.fe
-  off = opcode(buf, off, 0x47); // Add2 (string concat)
-  off = opcode(buf, off, 0x26); // Trace
-
   // Apply the *mood* (humeur) by jumping the eye/mouth clips to the frames
   // computed from the emote index. The famille's own emote() is NOT a
   // root-callable free function here (a bare emote() call resolved to undefined
@@ -146,9 +134,6 @@ function buildApplyTag() {
 
   // stop() on the root timeline so the SWF parks on the apply()'d frame.
   off = opcode(buf, off, 0x07);
-  // trace("APPLY-DONE")
-  off = pushString(buf, off, 'APPLY-DONE');
-  off = opcode(buf, off, 0x26);
   off = opcode(buf, off, 0x00); // End
   return buf.slice(0, off);
 }

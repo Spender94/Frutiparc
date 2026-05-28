@@ -29,9 +29,6 @@
   window.RufflePlayer = window.RufflePlayer || {};
   window.RufflePlayer.config = {
     autoplay: "on",
-    // ?debug=1 surfaces Ruffle's console (trace() + errors) for diagnosing
-    // the emote/humeur rendering; silent otherwise.
-    logLevel: new URLSearchParams(window.location.search).get("debug") === "1" ? "info" : "error",
     unmuteOverlay: "hidden",
     contextMenu: "off",
     showSwfDownload: false,
@@ -87,7 +84,7 @@
     player.style.height = "100%";
     document.getElementById("player-container").appendChild(player);
     await player.load({
-      url: "/fbouille_patched/famille" + familyId + ".swf?v=3",
+      url: "/fbouille_patched/famille" + familyId + ".swf?v=4",
       autoplay: "on",
       allowScriptAccess: true,
       quality: "low",
