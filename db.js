@@ -270,12 +270,16 @@ async function initSchema() {
         author_username TEXT NOT NULL,
         content         TEXT NOT NULL,
         bouille         TEXT,
+        mood            SMALLINT,
         created_at      TIMESTAMPTZ DEFAULT now(),
         updated_at      TIMESTAMPTZ
       );
       CREATE INDEX IF NOT EXISTS idx_forum_posts_topic ON forum_posts(topic_id, created_at ASC);
 
       ALTER TABLE forum_posts ADD COLUMN IF NOT EXISTS bouille TEXT;
+      -- Mood ("humeur") = emote index 0-7, kept SEPARATE from the bouille
+      -- string (it's an animation/expression, not part of the avatar code).
+      ALTER TABLE forum_posts ADD COLUMN IF NOT EXISTS mood SMALLINT;
 
       -- Per-user read tracking for forum topics. A topic is "unread" for a
       -- given username when forum_topics.last_post_at > read_at — or when
@@ -1079,7 +1083,7 @@ async function forumGetPosts(topicId, page, perPage) {
   return { posts: rows, total: Number(countRows[0].total) };
 }
 
-async function forumCreateTopic(boardId, username, title, content, bouille) {
+async function forumCreateTopic(boardId, username, title, content, bouille, mood) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1090,9 +1094,9 @@ async function forumCreateTopic(boardId, username, title, content, bouille) {
     );
     const topic = tRows[0];
     await client.query(
-      `INSERT INTO forum_posts (topic_id, author_username, content, bouille)
-       VALUES ($1, $2, $3, $4)`,
-      [topic.id, username, content, bouille || null]
+      `INSERT INTO forum_posts (topic_id, author_username, content, bouille, mood)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [topic.id, username, content, bouille || null, mood == null ? null : mood]
     );
     await client.query('COMMIT');
     return topic;
@@ -1104,11 +1108,11 @@ async function forumCreateTopic(boardId, username, title, content, bouille) {
   }
 }
 
-async function forumCreatePost(topicId, username, content, bouille) {
+async function forumCreatePost(topicId, username, content, bouille, mood) {
   const { rows } = await pool.query(
-    `INSERT INTO forum_posts (topic_id, author_username, content, bouille)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [topicId, username, content, bouille || null]
+    `INSERT INTO forum_posts (topic_id, author_username, content, bouille, mood)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [topicId, username, content, bouille || null, mood == null ? null : mood]
   );
   await pool.query(
     'UPDATE forum_topics SET last_post_at = now(), last_post_by = $2 WHERE id = $1',

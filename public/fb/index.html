@@ -1175,19 +1175,18 @@ let myDefaultAccessories = [];
 let myMuted = false;
 let myMutedUntilDisplay = null;
 
+// Moods ("humeur") = the famille SWF's emoteList indices (0-7); see
+// bouille-preview.html. Each maps to an eye+mouth combo. Labels for 3/5/6/7
+// are best-guess from the shapes — adjust freely.
 const EXPRESSIONS = [
   { id: 0, name: 'Normal' },
-  { id: 1, name: 'Souriant' },
+  { id: 1, name: 'Fâché' },
   { id: 2, name: 'Triste' },
-  { id: 3, name: 'Méchant' },
-  { id: 4, name: 'Surpris' },
-  { id: 5, name: 'Coquin' },
-  { id: 6, name: 'Gêné' },
-  { id: 7, name: 'Endormi' },
-  { id: 8, name: 'Amoureux' },
-  { id: 9, name: 'Malade' },
-  { id: 10, name: 'Boudeur' },
-  { id: 11, name: 'Pensif' },
+  { id: 3, name: 'Surpris' },
+  { id: 4, name: 'Content' },
+  { id: 5, name: 'Narquois' },
+  { id: 6, name: 'Déçu' },
+  { id: 7, name: 'Boudeur' },
 ];
 
 function encode62(n, len) {
@@ -1238,10 +1237,12 @@ function resolveBouilleState(sel) {
   return buildBouilleState(myBouille, sel && sel.accSuffix9);
 }
 
-function getBouillePreviewHtml(state) {
+function getBouillePreviewHtml(state, emote) {
   var s = String(state || '').replace(/[^0-9a-zA-Z]/g, '');
   if (!s || s.length < 2) s = '000000010000000000000000';
-  return '<iframe src="/bouille-preview.html?s=' + encodeURIComponent(s) +
+  var q = 's=' + encodeURIComponent(s);
+  if (emote != null && Number(emote) > 0) q += '&e=' + encodeURIComponent(Number(emote));
+  return '<iframe src="/bouille-preview.html?' + q +
     '" sandbox="allow-scripts allow-same-origin"></iframe>';
 }
 
@@ -1297,33 +1298,28 @@ function getAllAccessories() {
 var BOUILLE_PER_PAGE = 8;
 var _bouillePage = {};
 
-// Mouth/expression state for previews.
-function _applyExpression(baseState, expressionId) {
-  var s = String(baseState || '');
-  while (s.length < 24) s += '0';
-  if (expressionId == null) return s;
-  // The mouth-id slot in the bouille state is the 4th character (index 3),
-  // matching the original Frutibouille encoding.
-  var ch = encode62(expressionId, 1);
-  return s.substring(0, 3) + ch + s.substring(4);
+// The mood ("humeur") is a SEPARATE input from the bouille string — an emote
+// (eye/mouth animation, 0-7) passed to bouille-preview as `e`, NOT baked into
+// the avatar code. _activeBouilleSel[formId].mouthId holds the chosen emote.
+function getCurrentMood(formId) {
+  var m = (_activeBouilleSel[formId] || {}).mouthId;
+  return (m != null && Number(m) >= 0) ? Number(m) : 0;
 }
 
 function refreshBouillePreview(formId) {
   var sel = _activeBouilleSel[formId] || {};
   var state = resolveBouilleState(sel);
-  if (sel.mouthId != null) state = _applyExpression(state, sel.mouthId);
   var box = document.getElementById('bouille-preview-' + formId);
-  if (box) box.innerHTML = getBouillePreviewHtml(state);
+  if (box) box.innerHTML = getBouillePreviewHtml(state, sel.mouthId);
   // Update inline preview avatar at the top of the editor too
   var preview = document.getElementById('editor-preview-avatar-' + formId);
-  if (preview) preview.innerHTML = getBouillePreviewHtml(state);
+  if (preview) preview.innerHTML = getBouillePreviewHtml(state, sel.mouthId);
 }
 
 function getCurrentBouilleState(formId) {
-  var sel = _activeBouilleSel[formId] || {};
-  var state = resolveBouilleState(sel);
-  if (sel.mouthId != null) state = _applyExpression(state, sel.mouthId);
-  return state;
+  // Just the 24-char avatar state; the mood travels separately (getCurrentMood)
+  // so it can't corrupt a physical-feature slot of the string.
+  return resolveBouilleState(_activeBouilleSel[formId] || {});
 }
 
 function bouilleNavPage(formId, delta) {
@@ -1361,14 +1357,13 @@ function renderBouilleGrid(formId) {
   for (var i = 0; i < slice.length; i++) {
     var ac = slice[i];
     var thumbState = ac.fullState ? ac.fullState : buildBouilleState(myBouille, ac.suffix);
-    if (sel.mouthId != null) thumbState = _applyExpression(thumbState, sel.mouthId);
     var isSel = ac.fullState
       ? (ac.fullState === sel.fullState)
       : (!sel.fullState && ac.suffix === selectedSuffix);
     var checked = isSel ? ' checked' : '';
     var radioId = 'bouille-r-' + formId + '-' + i;
     html += '<label class="bouille-item" for="' + radioId + '">';
-    html += '<div class="b-thumb">' + getBouillePreviewHtml(thumbState) + '</div>';
+    html += '<div class="b-thumb">' + getBouillePreviewHtml(thumbState, sel.mouthId) + '</div>';
     html += '<div class="b-name">' + escapeHtml(ac.name) + '</div>';
     html += '<input type="radio" class="b-radio" id="' + radioId + '" name="bouille-' + formId + '" '
       + 'onchange="bouilleSetAccessoryRadio(\'' + formId + '\',\'' + escapeHtml(ac.suffix) + '\',\'' + escapeHtml(ac.fullState || '') + '\')"' + checked + '>';
@@ -1387,7 +1382,7 @@ function bouilleSetAccessoryRadio(formId, suffix9, fullState) {
 // Expression dropdown that mirrors the original "Méchant / Souriant / …" menu.
 function expressionSelectHtml(formId) {
   var sel = _activeBouilleSel[formId] || {};
-  var current = sel.mouthId != null ? sel.mouthId : 1;
+  var current = sel.mouthId != null ? sel.mouthId : 0;
   var html = '<select class="editor-select" id="expr-sel-' + formId + '" '
     + 'onchange="bouilleSetExpression(\'' + formId + '\', Number(this.value))">';
   for (var i = 0; i < EXPRESSIONS.length; i++) {
@@ -1496,10 +1491,12 @@ function renderBBCode(s) {
   return out;
 }
 
-function renderBouillAvatar(bouille, username) {
+function renderBouillAvatar(bouille, username, mood) {
   var s = String(bouille || '').replace(/[^0-9a-zA-Z]/g, '');
   if (!s || s.length < 2) s = '000000010000000000000000';
-  return '<iframe src="/bouille-preview.html?s=' + encodeURIComponent(s)
+  var q = 's=' + encodeURIComponent(s);
+  if (mood != null && Number(mood) > 0) q += '&e=' + encodeURIComponent(Number(mood));
+  return '<iframe src="/bouille-preview.html?' + q
     + '" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe>';
 }
 
@@ -1696,7 +1693,7 @@ async function loadTopic(topicId, page) {
     var canDelete = currentUser && (p.author === currentUser || data.currentIsMod);
     html += '<div class="post' + (pi % 2 === 1 ? ' post-alt' : '') + '" id="post-' + p.id + '">';
     html += '<div class="post-author">';
-    html += '<div class="avatar">' + renderBouillAvatar(p.bouille, p.author) + '</div>';
+    html += '<div class="avatar">' + renderBouillAvatar(p.bouille, p.author, p.mood) + '</div>';
     html += '<div class="username">' + escapeHtml(p.author) + '</div>';
     html += '</div>';
     html += '<div class="post-body">';
@@ -1800,10 +1797,11 @@ async function submitReply() {
   var content = ta.value.trim();
   if (!content) { alert('Le message ne peut pas être vide.'); return; }
   var bouille = myBouille ? getCurrentBouilleState('reply') : undefined;
+  var mood = myBouille ? getCurrentMood('reply') : undefined;
   var data = await apiFetch('/api/forum/post', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topicId: currentTopicId, content: content, bouille: bouille, sid: SID }),
+    body: JSON.stringify({ topicId: currentTopicId, content: content, bouille: bouille, mood: mood, sid: SID }),
   });
   if (data.ok) {
     var totalAfter = (currentTopicData ? currentTopicData.total : 0) + 1;
@@ -2316,12 +2314,13 @@ function previewEditor(formId, hasTitle) {
   var content = (document.getElementById(taId) || {}).value || '';
   var title = (document.getElementById(titleId) || {}).value || '';
   var state = myBouille ? getCurrentBouilleState(formId) : '000000010000000000000000';
+  var mood = myBouille ? getCurrentMood(formId) : 0;
 
   var html = '<div class="editor-preview-wrap">';
   html += '<div class="editor-preview-header"><span class="post-icon"></span>Aperçu de votre message.</div>';
   html += '<div class="editor-preview-body">';
   html += '<div class="editor-preview-author">';
-  html += '<div class="avatar" id="editor-preview-avatar-' + formId + '">' + getBouillePreviewHtml(state) + '</div>';
+  html += '<div class="avatar" id="editor-preview-avatar-' + formId + '">' + getBouillePreviewHtml(state, mood) + '</div>';
   html += '<div class="username">' + escapeHtml(currentUser || '') + '</div>';
   html += '</div>';
   html += '<div class="editor-preview-content">';
@@ -2358,10 +2357,11 @@ async function submitNewTopic(boardId) {
   title = title.trim(); content = content.trim();
   if (!title || !content) { alert('Titre et message requis.'); return; }
   var bouille = myBouille ? getCurrentBouilleState('newtopic') : undefined;
+  var mood = myBouille ? getCurrentMood('newtopic') : undefined;
   var data = await apiFetch('/api/forum/topic', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ boardId: boardId, title: title, content: content, bouille: bouille, sid: SID }),
+    body: JSON.stringify({ boardId: boardId, title: title, content: content, bouille: bouille, mood: mood, sid: SID }),
   });
   if (data.ok) navigate('topic', data.topicId);
   else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));

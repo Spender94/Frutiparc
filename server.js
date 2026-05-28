@@ -265,6 +265,13 @@ function normalizeBouilleState(value) {
   return s;
 }
 
+// Forum mood ("humeur"): one of the famille SWF's 8 emote indices (0-7) that
+// the patched preview can render. Out of range / absent → null (normal face).
+function normalizeForumMood(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= 7 ? n : null;
+}
+
 const PROFANITY_REPLACEMENTS = [
   [/\bcon\b/gi, 'blonk'],
   [/\bconne\b/gi, 'blonk'],
@@ -8409,6 +8416,7 @@ app.get('/api/forum/topic/:id', async (req, res) => {
       id: p.id, author: getDisplayName(p.author_username), content: p.content,
       createdAt: p.created_at, updatedAt: p.updated_at,
       bouille: p.bouille || bouilleOf(users[p.author_username], p.author_username),
+      mood: p.mood == null ? null : Number(p.mood),
       postCount: postCounts[p.author_username] || 0,
       isModerator: !!(users[p.author_username] && users[p.author_username].isModerator),
     }));
@@ -8456,10 +8464,11 @@ app.post('/api/forum/topic', async (req, res) => {
   const title = censorProfanity(rawTitle);
   const content = censorProfanity(rawContent);
   const postBouille = req.body.bouille ? normalizeBouilleState(req.body.bouille) : null;
+  const postMood = normalizeForumMood(req.body.mood);
   try {
     const { staffOnly } = await isStaffOnlyBoard(boardId);
     if (staffOnly && !isForumStaff(username)) return res.status(403).json({ error: 'forbidden' });
-    const topic = await db.forumCreateTopic(boardId, username, title, content, postBouille);
+    const topic = await db.forumCreateTopic(boardId, username, title, content, postBouille, postMood);
     trackXpAction(username, 'forumTopic');
     res.json({ ok: true, topicId: topic.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -8485,6 +8494,7 @@ app.post('/api/forum/post', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
   const content = censorProfanity(rawContent);
   const postBouille = req.body.bouille ? normalizeBouilleState(req.body.bouille) : null;
+  const postMood = normalizeForumMood(req.body.mood);
   try {
     const topic = await db.forumGetTopic(topicId);
     if (!topic) return res.status(404).json({ error: 'topic not found' });
@@ -8512,7 +8522,7 @@ app.post('/api/forum/post', async (req, res) => {
       db.forumSetLocked(topicId, true).catch(dbErr('forumSetLocked cap'));
       return res.status(403).json({ error: 'topic_full', message: 'Ce sujet a atteint la limite de 500 messages et est désormais verrouillé.' });
     }
-    const post = await db.forumCreatePost(topicId, username, content, postBouille);
+    const post = await db.forumCreatePost(topicId, username, content, postBouille, postMood);
     trackXpAction(username, 'forumPost');
     // Auto-lock once we've just inserted what brings the count to the cap.
     if (currentCount + 1 >= FORUM_MAX_POSTS_PER_TOPIC) {
