@@ -11344,10 +11344,14 @@ case 'send': {
       break;
     }
 
-    // ── /image, /img, /testimage, /testimg: embed image in chat ──
-    if (/^\/(test)?(image|img)\s/i.test(text)) {
+    // ── /image, /img, /testimage, /testimg, /pic: embed image in chat ──
+    // /pic is a DIAGNOSTIC alias the SWF does NOT intercept (unlike /image),
+    // so it actually reaches the server. It proves two things at once:
+    // (1) unknown slash-commands fall through to the server as normal text,
+    // (2) whether Ruffle renders an inline <img> in the chat htmlText.
+    if (/^\/(test)?(image|img|pic)\s/i.test(text)) {
       const isTest = /^\/test/i.test(text);
-      const args = text.replace(/^\/(test)?(image|img)\s+/i, '').split(/\s+/);
+      const args = text.replace(/^\/(test)?(image|img|pic)\s+/i, '').split(/\s+/);
       const w = parseInt(args[0]) || 0;
       const h = parseInt(args[1]) || 0;
       const url = args[2] || '';
