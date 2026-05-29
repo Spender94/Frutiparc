@@ -9780,7 +9780,7 @@ function mdamirmaJoin(channelName) {
   if (!ch) return;
   ch.users.add('mdamirma');
   broadcastToChannel(channelName,
-    `<${CMD.userjoined} ${buildUserAttrs('mdamirma')} g="${escapeXml(channelName)}" />`
+    `<${CMD.userjoined} ${buildUserAttrs('mdamirma', '1', channelName)} g="${escapeXml(channelName)}" />`
   );
 }
 
@@ -9954,15 +9954,21 @@ function isAnimator(username) {
 
 const ANIM_CHANNEL = 'bienvenue';
 
-// Order a channel's user list so staff float to the top: moderators always,
-// and animators only on the Anim ("bienvenue") channel where they act as mods.
-// Stable otherwise — everyone else keeps their existing (join) order.
-function orderChannelUsers(usernames, channelName) {
-  const isTop = (u) => isModerator(u) || (channelName === ANIM_CHANNEL && isAnimator(u));
-  const staff = [];
-  const others = [];
-  for (const u of usernames) (isTop(u) ? staff : others).push(u);
-  return staff.concat(others);
+// Whether a user should be shown as staff in a given channel: moderators
+// everywhere, animators only on the Anim ("bienvenue") channel where they act
+// as moderators.
+function isChannelStaff(username, channelName) {
+  return isModerator(username) || (channelName === ANIM_CHANNEL && isAnimator(username));
+}
+
+// The m="1" attribute on a <u> element. The chat client (UserListMng) reads it
+// as flMode = (attributes.m == 1): it badges the user as a moderator AND sorts
+// them to the TOP of the channel user list (flMode first, then alphabetical).
+// Without it, everyone sorts alphabetically — which is why a moderator could
+// appear below a Frutiz like "Gaspard". channelName omitted → moderators only
+// (they are global; the animator badge is Anim-channel-specific).
+function modAttr(username, channelName) {
+  return isChannelStaff(username, channelName) ? ' m="1"' : '';
 }
 
 // All games that should always show a FrutiCard on user profiles.
@@ -10256,7 +10262,7 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
       if (channels[channelName]) {
         channels[channelName].users.add(targetUser);
         // Broadcast userjoined so other clients see PNJ reappear
-        broadcastToChannel(channelName, `<${CMD.userjoined} ${buildUserAttrs(targetUser)} g="${escapeXml(channelName)}" />`);
+        broadcastToChannel(channelName, `<${CMD.userjoined} ${buildUserAttrs(targetUser, '1', channelName)} g="${escapeXml(channelName)}" />`);
       }
     }, 5000);
   }
@@ -10388,9 +10394,9 @@ function getStatusCode(user, username) {
 // Used both for the initial userlist dump and for <userjoined> broadcasts —
 // without these attrs, the chat shows the user with a black pseudo and the
 // info card falls back to "NN"/"inconnue"/level 0.
-function buildUserAttrs(username, present = '1') {
+function buildUserAttrs(username, present = '1', channelName) {
   const ud = users[username] || {};
-  return `u="${escapeXml(getDisplayName(username))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="${present}" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"`;
+  return `u="${escapeXml(getDisplayName(username))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="${present}" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(username, channelName)}`;
 }
 
 // Update the "internal" portion of a user's status string (used for the
@@ -10761,12 +10767,12 @@ case 'join': {
   channel.users.add(client.username);
   client.channels.add(g);
 
-  const userArr = orderChannelUsers(Array.from(channel.users), g);
+  const userArr = Array.from(channel.users);
   let userXml = '';
 
   for (const u of userArr) {
     const ud = users[u] || {};
-    userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+    userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
   }
 
   const timeAttrs = buildChatTimeAttrs();
@@ -10789,7 +10795,7 @@ case 'join': {
     let traceXml = '';
     for (const u of userArr) {
       const ud = users[u] || {};
-      traceXml += `<u u="${escapeXml(getDisplayName(u))}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+      traceXml += `<u u="${escapeXml(getDisplayName(u))}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
     }
     sendToClient(socket, `<${CMD.trace}>${traceXml}</${CMD.trace}>`);
   }
@@ -10797,8 +10803,8 @@ case 'join': {
   // 4. Notification aux autres + trace du nouvel arrivant pour leurs FrutiScreen
   {
     const joinerUd = users[client.username] || {};
-    const joinerTrace = `<${CMD.trace}><u u="${escapeXml(getDisplayName(client.username))}" p="1" s="${getStatusCode(joinerUd, client.username)}" mu="${getMuteValue(joinerUd)}" f="${bouilleOf(joinerUd)}" /></${CMD.trace}>`;
-    broadcastToChannel(g, `<${CMD.userjoined} ${buildUserAttrs(client.username)} g="${g}" />`, socket);
+    const joinerTrace = `<${CMD.trace}><u u="${escapeXml(getDisplayName(client.username))}" p="1" s="${getStatusCode(joinerUd, client.username)}" mu="${getMuteValue(joinerUd)}" f="${bouilleOf(joinerUd)}"${modAttr(client.username, g)} /></${CMD.trace}>`;
+    broadcastToChannel(g, `<${CMD.userjoined} ${buildUserAttrs(client.username, '1', g)} g="${g}" />`, socket);
     broadcastToChannel(g, joinerTrace, socket);
   }
   // Notify trace subscribers (cross-channel) that this user is online
@@ -10825,11 +10831,11 @@ case 'join': {
         sendToClient(socket, `<${CMD.userlist} g="${g}"></${CMD.userlist}>`);
         break;
       }
-      const userArr = orderChannelUsers(Array.from(channel.users || []), g);
+      const userArr = Array.from(channel.users || []);
       let userXml = '';
       for (const u of userArr) {
         const ud = users[u] || {};
-        userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+        userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
       }
       sendToClient(socket, `<${CMD.userlist} g="${g}">${userXml}</${CMD.userlist}>`);
       break;
@@ -11421,7 +11427,7 @@ case 'trace': {
       subscribeTrace(socket, u);
       const ud = users[u] || {};
       const pVal = getSocketsForUsername(u).length > 0 ? 1 : 0;
-      inner += `<u u="${escapeXml(getDisplayName(u))}" p="${pVal}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, u)}" />`;
+      inner += `<u u="${escapeXml(getDisplayName(u))}" p="${pVal}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, u)}"${modAttr(u)} />`;
     }
 
     sendToClient(socket, `<${CMD.trace}>${inner}</${CMD.trace}>`);
@@ -11655,8 +11661,8 @@ case 'createchannel': {
     for (const u of participantNames) {
       const ud = users[u] || {};
       const present = getSocketsForUsername(u).length > 0 ? 1 : 0;
-      userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
-      traceXml += `<u u="${escapeXml(getDisplayName(u))}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}" />`;
+      userXml += `<u u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${ud.birthday || '2000-01-01.00:00:00'}" co="${ud.country || 'FR'}" rg="${ud.region || ''}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, privateGroup)} />`;
+      traceXml += `<u u="${escapeXml(getDisplayName(u))}" p="${present}" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, privateGroup)} />`;
     }
     sendToClient(socket, `<${CMD.userlist} g="${privateGroup}">${userXml}</${CMD.userlist}>`);
     sendToClient(socket, `<${CMD.trace}>${traceXml}</${CMD.trace}>`);
