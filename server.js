@@ -2983,6 +2983,64 @@ app.get('/api/me/bouille', (req, res) => {
   res.json({ ok: true, fbouille: bouille });
 });
 
+// Same-origin image proxy for the chat /image command. Flash/Ruffle can't load
+// an <img> (or loadMovie) from a foreign host without a crossdomain.xml on that
+// host — which arbitrary image hosts never have — so external images render
+// blank. Streaming them through our own origin removes the cross-domain barrier
+// (same-origin needs no policy file). SSRF guards: http(s) only, no
+// private/loopback/link-local hosts, image content-type only, size + time caps,
+// and redirects are refused (a redirect could bounce to an internal address).
+function isPrivateHost(hostname) {
+  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal')) return true;
+  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return true;
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true;            // link-local / cloud metadata
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+  }
+  return false;
+}
+
+app.get('/api/imgproxy', async (req, res) => {
+  const raw = String(req.query.url || '');
+  let parsed;
+  try { parsed = new URL(raw); } catch { return res.status(400).type('text/plain').send('bad url'); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return res.status(400).type('text/plain').send('bad scheme');
+  }
+  if (isPrivateHost(parsed.hostname)) {
+    return res.status(403).type('text/plain').send('forbidden host');
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const upstream = await fetch(parsed.toString(), {
+      redirect: 'error',          // a redirect could target an internal host
+      signal: controller.signal,
+      headers: { 'User-Agent': 'FrutiparcImageProxy/1.0', 'Accept': 'image/*' },
+    });
+    if (!upstream.ok) return res.status(502).type('text/plain').send('upstream ' + upstream.status);
+    const type = String(upstream.headers.get('content-type') || '');
+    if (!type.startsWith('image/')) return res.status(415).type('text/plain').send('not an image');
+    const len = Number(upstream.headers.get('content-length') || 0);
+    if (len && len > 5 * 1024 * 1024) return res.status(413).type('text/plain').send('too large');
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    if (buf.length > 5 * 1024 * 1024) return res.status(413).type('text/plain').send('too large');
+    res.set('Content-Type', type);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.set('Access-Control-Allow-Origin', '*');
+    res.end(buf);
+  } catch (e) {
+    res.status(502).type('text/plain').send('fetch failed');
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 app.get('/login', (req, res) => {
   res.redirect('/');
 });
@@ -11269,7 +11327,11 @@ case 'send': {
       }
       const cw = Math.min(Math.max(w, 10), 500);
       const ch = Math.min(Math.max(h, 10), 500);
-      const imgBody = `<img src="${url}" width="${cw}" height="${ch}" />${title || ''}`;
+      // Route through the same-origin proxy so Ruffle can load the bitmap (a
+      // foreign host has no crossdomain.xml → otherwise blank). Root-relative
+      // URL resolves against the SWF's app origin; single param → no & to escape.
+      const proxied = `/api/imgproxy?url=${encodeURIComponent(url)}`;
+      const imgBody = `<img src="${proxied}" width="${cw}" height="${ch}" />${title || ''}`;
       const imgXml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="${pen}" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${imgBody}]]></${CMD.send}>`;
       if (isTest) {
         sendToClient(socket, imgXml);
