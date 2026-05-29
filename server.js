@@ -11137,6 +11137,37 @@ case 'send': {
     break;
   }
 
+  // ── Image message (chat /image command) ──
+  // The SWF's /image sends a chat message of type "i" carrying an
+  //   <i w="W" h="H" u="URL">title</i>
+  // node (parseXmlAttrs flattens those into msg.attrs AND exposes the child).
+  // The server previously had no relay for it, so /image did nothing while the
+  // local-only /testimg worked. Broadcast it to the whole channel as a proxied
+  // inline <img> — the same render /testimg produces, but everyone sees it.
+  const imgChild = (msg.children || []).find((c) => c.tag === 'i' && c.attrs && c.attrs.u);
+  if (type === 'i' || imgChild) {
+    const xmlUnescape = (s) => String(s || '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+    const iw = parseInt((imgChild && imgChild.attrs.w) || msg.attrs.w, 10) || 0;
+    const ih = parseInt((imgChild && imgChild.attrs.h) || msg.attrs.h, 10) || 0;
+    const iu = xmlUnescape((imgChild && imgChild.attrs.u) || msg.attrs.u || '').trim();
+    const ititle = String((imgChild && imgChild.content) || '').replace(/\]\]>/g, '');
+    if (!g || !client.logged) break;
+    const channel = channels[g];
+    if (!channel || !channel.users.has(client.username)) break;
+    if (!iw || !ih || !/^https?:\/\//i.test(iu)) {
+      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe: /image largeur hauteur url titre')}</${CMD.send}>`);
+      break;
+    }
+    const cw = Math.min(Math.max(iw, 10), 500);
+    const ch = Math.min(Math.max(ih, 10), 500);
+    const proxied = `/api/imgproxy?url=${encodeURIComponent(iu)}`;
+    const imgBody = `<img src="${proxied}" width="${cw}" height="${ch}" />${ititle}`;
+    broadcastToChannel(g, `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="${pen}" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${imgBody}]]></${CMD.send}>`);
+    break;
+  }
+
   // ── Auto-moderation: forbidden words → instant 10-min totoché ──
   // Applies to normal chat lines (not slash-commands). The offending message
   // is dropped (not broadcast); the author is muted, notified, and logged.
