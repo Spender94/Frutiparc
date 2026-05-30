@@ -11368,6 +11368,19 @@ case 'send': {
       break;
     }
 
+    // ── Unknown slash command ──
+    // The SWF command dispatcher was patched (scripts/patch-main-anim-commands)
+    // to FORWARD unmatched slash commands here as plain text, instead of
+    // printing "commande inconnue" locally — that is what lets the server-side
+    // /blueon, /initpoint, /showpoint, … run. Anything that reached this point
+    // and still starts with "/" matched no handler above, so it is an unknown
+    // command: reject it (mirroring the old client behaviour) rather than
+    // broadcasting it to the salon as a chat line.
+    if (text.startsWith('/')) {
+      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Commande inconnue.</i>]]></${CMD.send}>`);
+      break;
+    }
+
     // NB: /image, /img, /testimg, /testimage are intercepted client-side by the
     // SWF (they never arrive here as text). /image broadcasts a desktop window
     // to the whole salon via the t="i" relay above; /testimg/-image stay local.
