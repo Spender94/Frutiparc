@@ -11344,32 +11344,6 @@ case 'send': {
       break;
     }
 
-    // ── [img] largeur hauteur url [titre] : image partagée à tout le salon ──
-    // Syntaxe NON-slash : le SWF n'intercepte que les commandes /xxx, donc
-    // "[img] ..." part au serveur comme un message normal (contrairement à
-    // /image, intercepté + cassé côté client). On diffuse à tout le salon le
-    // même <img> inline proxifié.
-    {
-      const mImg = text.match(/^\s*\[img\]\s+(\S+)\s+(\S+)\s+(\S+)\s*([\s\S]*)$/i);
-      if (mImg) {
-        const w = parseInt(mImg[1], 10) || 0;
-        const h = parseInt(mImg[2], 10) || 0;
-        const url = mImg[3] || '';
-        const title = (mImg[4] || '').trim();
-        if (!w || !h || !/^https?:\/\//i.test(url)) {
-          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe : [img] largeur hauteur url titre')}</${CMD.send}>`);
-          break;
-        }
-        const cw = Math.min(Math.max(w, 10), 500);
-        const ch = Math.min(Math.max(h, 10), 500);
-        const proxied = `/api/imgproxy?url=${encodeURIComponent(url)}`;
-        const safeTitle = escapeXml(title).replace(/\]\]>/g, '');
-        const imgBody = `<img src="${proxied}" width="${cw}" height="${ch}" />${safeTitle}`;
-        broadcastToChannel(g, `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="${pen}" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${imgBody}]]></${CMD.send}>`);
-        break;
-      }
-    }
-
     // ── /image, /img, /testimage, /testimg, /pic: embed image in chat ──
     // /pic is a DIAGNOSTIC alias the SWF does NOT intercept (unlike /image),
     // so it actually reaches the server. It proves two things at once:
