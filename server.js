@@ -11605,12 +11605,17 @@ case 'send': {
       }
     }
 
-    // Animator/moderator blue mode — wraps the whole line in blue bold
+    // Animator/moderator blue mode. We broadcast the line as a t="c" chat
+    // frame — the SAME type the game uses for the "X a gagné Y kikooz !"
+    // animator messages (sent via sendMsgAnimator → send("c", …)). The SWF
+    // renders t="c" with its built-in animator styling: colour = penBlueAnimator
+    // and <font size="14"><b>…</b></font>, and (since u ≠ "admin") prefixes the
+    // sender via the chat.msg template. So we just hand it u + the raw text and
+    // let the client apply the exact same typo/colour as kikooz — no hand-rolled
+    // <font color> (which never matched).
     if (blueModeUsers.has(client.username) && (isAnimator(client.username) || isModerator(client.username))) {
-      const rawText = text.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
-      const blueBody = `<![CDATA[<b><font color="#0066CC">${getDisplayName(client.username)}: ${rawText}</font></b>]]>`;
       broadcastToChannel(g,
-        `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${blueBody}</${CMD.send}>`
+        `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="c"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
       );
       trackXpAction(client.username, 'chatMsg');
       break;
