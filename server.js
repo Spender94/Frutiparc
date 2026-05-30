@@ -11214,7 +11214,11 @@ case 'send': {
       break;
     }
     const canModHere = isModerator(client.username) || (isAnimator(client.username) && g === ANIM_CHANNEL);
-    const canAnimHere = isAnimator(client.username) && g === ANIM_CHANNEL;
+    // Animator-style commands (/blueon, /blueoff, quiz) are usable by both
+    // animators and moderators, in any salon (not just ANIM_CHANNEL): the
+    // user explicitly asked moderators get the same powers and that they
+    // work everywhere.
+    const canAnimate = isAnimator(client.username) || isModerator(client.username);
 
     if (canModHere && text.startsWith('/kick ')) {
       const targetUser = resolveKnownUsername(text.substring(6).trim());
@@ -11254,9 +11258,9 @@ case 'send': {
       break;
     }
 
-    // ── Animator blue mode: /blueon, /blueoff ──
+    // ── Blue mode: /blueon, /blueoff (animators + moderators, any salon) ──
     if (/^\/blueon\s*$/i.test(text)) {
-      if (canAnimHere || isModerator(client.username)) {
+      if (canAnimate) {
         blueModeUsers.add(client.username);
         sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Mode bleu activé.</i>]]></${CMD.send}>`);
       }
@@ -11268,8 +11272,8 @@ case 'send': {
       break;
     }
 
-    // ── Quiz commands (animator on anim channel, or moderator anywhere) ──
-    if ((canAnimHere || isModerator(client.username)) && /^\/initpoint/i.test(text)) {
+    // ── Quiz commands (animators + moderators, any salon) ──
+    if (canAnimate && /^\/initpoint/i.test(text)) {
       const question = text.replace(/^\/initpoint\s*/i, '').trim();
       quizState[g] = { question: question || '', points: new Map(), active: true };
       const announce = question
@@ -11279,7 +11283,7 @@ case 'send': {
       break;
     }
 
-    if ((canAnimHere || isModerator(client.username)) && /^\/point\s/i.test(text)) {
+    if (canAnimate && /^\/point\s/i.test(text)) {
       const args = text.replace(/^\/point\s+/i, '').trim().split(/\s+/);
       const target = resolveKnownUsername(args[0]);
       const amount = Math.max(1, Math.min(parseInt(args[1]) || 1, 100));
@@ -11295,7 +11299,7 @@ case 'send': {
       break;
     }
 
-    if ((canAnimHere || isModerator(client.username)) && /^\/removepoint\s/i.test(text)) {
+    if (canAnimate && /^\/removepoint\s/i.test(text)) {
       const args = text.replace(/^\/removepoint\s+/i, '').trim().split(/\s+/);
       const target = resolveKnownUsername(args[0]);
       const amount = Math.max(1, Math.min(parseInt(args[1]) || 1, 100));
@@ -11307,7 +11311,7 @@ case 'send': {
       break;
     }
 
-    if ((canAnimHere || isModerator(client.username)) && /^\/(showpoint|classement)\s*$/i.test(text)) {
+    if (canAnimate && /^\/(showpoint|classement)\s*$/i.test(text)) {
       const qs = quizState[g];
       if (!qs || qs.points.size === 0) {
         sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Aucun point distribué.</${CMD.send}>`);
@@ -11321,7 +11325,7 @@ case 'send': {
       break;
     }
 
-    if ((canAnimHere || isModerator(client.username)) && /^\/(resetpoint|stoppoint|endpoint)\s*$/i.test(text)) {
+    if (canAnimate && /^\/(resetpoint|stoppoint|endpoint)\s*$/i.test(text)) {
       if (quizState[g] && quizState[g].points.size > 0) {
         const sorted = [...quizState[g].points.entries()].sort((a, b) => b[1] - a[1]);
         const lines = sorted.map(([u, pts], i) => `${i + 1}. ${getDisplayName(u)} — ${pts} pt${pts > 1 ? 's' : ''}`);
