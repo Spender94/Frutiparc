@@ -1834,6 +1834,34 @@ function assembleMake(filePath) {
 }
 
 // ============================================================================
+// Regenerate ONLY the challenge map (mb2data.dat). Used both by the daily
+// roll and by the initial boot. Writes atomically via tmp+rename so a player
+// loading the file mid-write never sees a torn dseed/ddata pair.
+async function generateMb2ChallengeMap() {
+  const outputDir = path.join(__dirname, 'Games', 'motionBall2');
+  loadBumpers();
+  let lastErr = null;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      rng.selfInit();
+      const seed = rng.int(0x3FFFFFFF);
+      rng.init(seed);
+      loadBumpers();
+      const ddata = levelMake();
+      const output = `dseed=${seed}&ddata=${ddata.data}\n`;
+      const finalPath = path.join(outputDir, 'mb2data.dat');
+      const tmpPath = finalPath + '.tmp';
+      fs.writeFileSync(tmpPath, output);
+      fs.renameSync(tmpPath, finalPath);
+      const pct = Math.round(ddata.dist * 100 / ddata.totalRooms);
+      return { seed, distPct: pct, log: `mb2data.dat (seed=${seed}, dist=${ddata.dist}/${ddata.totalRooms} rooms = ${pct}%)` };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('mb2data.dat generation failed after 10 attempts');
+}
+
 // Main: generateMB2Maps
 // ============================================================================
 
@@ -1847,23 +1875,8 @@ async function generateMB2Maps() {
 
   // 1. Generate random dungeon (challenge mode): mb2data.dat
   {
-    let generated = false;
-    for (let attempt = 0; attempt < 10 && !generated; attempt++) {
-      try {
-        rng.selfInit();
-        const seed = rng.int(0x3FFFFFFF);
-        rng.init(seed);
-        loadBumpers();
-        const ddata = levelMake();
-        const output = `dseed=${seed}&ddata=${ddata.data}\n`;
-        fs.writeFileSync(path.join(outputDir, 'mb2data.dat'), output);
-        const pct = Math.round(ddata.dist * 100 / ddata.totalRooms);
-        log.push(`Generated mb2data.dat (challenge mode, seed=${seed}, dist=${ddata.dist}/${ddata.totalRooms} rooms = ${pct}%)`);
-        generated = true;
-      } catch (e) {
-        if (attempt === 9) throw e;
-      }
-    }
+    const r = await generateMb2ChallengeMap();
+    log.push(`Generated ${r.log}`);
   }
 
   // 2. Generate classic mode: mb2classic.dat
@@ -1910,7 +1923,7 @@ async function generateMB2Maps() {
   return log.join('\n');
 }
 
-module.exports = { generateMB2Maps };
+module.exports = { generateMB2Maps, generateMb2ChallengeMap };
 
 // Run directly if executed as a script
 if (require.main === module) {

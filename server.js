@@ -2173,6 +2173,15 @@ async function performChallengeRoll(today) {
   }
 
   resetChallengeScoresInMemory();
+
+  // New day → new challenge map for MotionBall 2.
+  try {
+    const { generateMb2ChallengeMap } = require('./mb2gen');
+    const r = await generateMb2ChallengeMap();
+    console.log(`[MB2] Daily roll → regenerated ${r.log}`);
+  } catch (e) {
+    console.error('[MB2] Daily roll map regeneration error:', e.message);
+  }
 }
 
 function applyPendingChallengeNotifications(username, user) {
@@ -4943,6 +4952,42 @@ app.post('/api/admin/challenge/reset', adminAuth, async (req, res) => {
   }
   console.log('[ADMIN] Challenge data fully reset (memory + DB)');
   res.json({ ok: true });
+});
+
+app.post('/api/admin/mb2/regenerate-map', adminAuth, async (req, res) => {
+  try {
+    const { generateMb2ChallengeMap } = require('./mb2gen');
+    const r = await generateMb2ChallengeMap();
+    console.log(`[ADMIN] Manual MB2 map regeneration: ${r.log}`);
+    res.json({ ok: true, seed: r.seed, distPct: r.distPct, log: r.log });
+  } catch (e) {
+    console.error('[ADMIN] MB2 map regeneration error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/admin/mb2/map-info', adminAuth, (req, res) => {
+  const p = path.join(__dirname, 'Games', 'motionBall2', 'mb2data.dat');
+  if (!fs.existsSync(p)) return res.json({ exists: false });
+  const st = fs.statSync(p);
+  const mtime = st.mtime;
+  const mapDay = parisDayKey(mtime);
+  const today = parisDayKey();
+  // Extract dseed from the file header (small file, single line).
+  let seed = '';
+  try {
+    const head = fs.readFileSync(p, 'utf8').slice(0, 256);
+    const m = head.match(/dseed=(\d+)/);
+    if (m) seed = m[1];
+  } catch (_) {}
+  res.json({
+    exists: true,
+    seed,
+    mtime: mtime.toISOString(),
+    mapDay,
+    today,
+    stale: mapDay !== today,
+  });
 });
 
 app.get('/api/admin/challenge/archive', adminAuth, async (req, res) => {
@@ -9503,25 +9548,39 @@ async function boot() {
     console.log(`[CHALLENGE] lastRollDay=${challengeMedalsData.lastRollDay}, today=${today}`);
   }
 
-  // Generate MB2 (MotionBall 2) map data files if missing (non-blocking)
+  // MotionBall 2 daily challenge map (mb2data.dat). This file is gitignored:
+  // on a fresh deploy it is absent, so we regenerate it. On a same-day reboot
+  // it is present with today's mtime, so we leave it alone. If the container
+  // is still up across midnight Paris time, performChallengeRoll() also
+  // regenerates it. The classic / tutorial / adventure / course files stay
+  // tracked in git — they are fixed level sets and must NOT change between
+  // deploys (single-player progression depends on stable level layouts).
   try {
     const mb2Dir = path.join(__dirname, 'Games', 'motionBall2');
-    if (!fs.existsSync(path.join(mb2Dir, 'mb2data.dat'))) {
-      console.log('[MB2] Map files missing, will generate in background after server starts');
+    const dailyMapPath = path.join(mb2Dir, 'mb2data.dat');
+    let needsGen = false;
+    let reason = '';
+    if (!fs.existsSync(dailyMapPath)) { needsGen = true; reason = 'file missing'; }
+    else {
+      const mapDay = parisDayKey(fs.statSync(dailyMapPath).mtime);
+      const today = parisDayKey();
+      if (mapDay !== today) { needsGen = true; reason = `mtime day ${mapDay} ≠ today ${today}`; }
+      else console.log(`[MB2] Challenge map already up-to-date (${mapDay})`);
+    }
+    if (needsGen) {
+      console.log(`[MB2] Challenge map needs regeneration (${reason}) — generating in background`);
       setImmediate(async () => {
         try {
-          const { generateMB2Maps } = require('./mb2gen');
-          const log = await generateMB2Maps();
-          console.log(`[MB2] ${log}`);
+          const { generateMb2ChallengeMap } = require('./mb2gen');
+          const r = await generateMb2ChallengeMap();
+          console.log(`[MB2] Generated ${r.log}`);
         } catch (e) {
-          console.error('[MB2] Map generation error:', e.message);
+          console.error('[MB2] Challenge map generation error:', e.message);
         }
       });
-    } else {
-      console.log('[MB2] Map files already exist');
     }
   } catch (e) {
-    console.error('[MB2] Map generation error:', e.message);
+    console.error('[MB2] Map setup error:', e.message);
   }
 }
 

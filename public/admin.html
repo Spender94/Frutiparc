@@ -402,8 +402,10 @@
   <div class="toolbar">
     <button class="btn" onclick="loadChallengeStatus()">Rafraîchir</button>
     <button class="btn-danger" onclick="forceRoll()">Terminer le cycle (médailles + reset)</button>
+    <button class="btn-success" onclick="regenerateMb2Map()" title="Générer une nouvelle map challenge MotionBall 2">Régénérer la map MotionBall 2</button>
   </div>
   <div id="challenge-status" class="section-content" style="margin-bottom:8px"></div>
+  <div id="mb2-map-info" class="section-content" style="margin-bottom:8px;font-size:11px;color:#2C4A0F"></div>
   <h4>Scores actuels du cycle</h4>
   <div id="challenge-scores" class="section-content"></div>
   <h4>Archives</h4>
@@ -1723,6 +1725,7 @@ async function loadChallengeStatus() {
     </table>
     <div style="font-size:12px;color:${archiveColor};margin-bottom:12px">${archiveNote}</div>`;
     $('#challenge-status').innerHTML = html;
+    loadMb2MapInfo();
 
     let scoresHtml = '';
     for (const rkId of (d.challengeRankings || [])) {
@@ -1760,6 +1763,31 @@ async function loadChallengeStatus() {
     }
     if (prevRk) rkSel.value = prevRk;
     loadMedals();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function loadMb2MapInfo() {
+  try {
+    const r = await fetch('/api/admin/mb2/map-info', { headers: hdr() });
+    const d = await r.json();
+    const box = $('#mb2-map-info');
+    if (!d.exists) { box.innerHTML = '<b>MotionBall 2 :</b> aucune map challenge sur disque (sera générée au démarrage).'; return; }
+    const color = d.stale ? '#c03c30' : '#2C4A0F';
+    const status = d.stale
+      ? `⚠ map périmée — datée du ${esc(d.mapDay)}, attendue ${esc(d.today)} (clique « Régénérer » pour forcer un nouveau tirage)`
+      : `✓ map à jour (${esc(d.mapDay)})`;
+    box.innerHTML = `<b>MotionBall 2 :</b> seed=<code>${esc(d.seed)}</code> · générée le ${esc(d.mtime.replace('T',' ').slice(0,19))} UTC · <span style="color:${color}">${status}</span>`;
+  } catch (e) { /* silent */ }
+}
+
+async function regenerateMb2Map() {
+  if (!confirm('Tirer une nouvelle map challenge MotionBall 2 maintenant ?\nLa map en cours sera remplacée immédiatement.')) return;
+  try {
+    const r = await fetch('/api/admin/mb2/regenerate-map', { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    toast(`Map MB2 régénérée (seed=${d.seed}, ${d.distPct}% du donjon)`);
+    loadMb2MapInfo();
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
