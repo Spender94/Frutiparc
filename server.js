@@ -11137,34 +11137,54 @@ case 'send': {
     break;
   }
 
-  // ── Image message (chat /image command) ──
-  // The SWF's /image sends a chat message of type "i" carrying an
-  //   <i w="W" h="H" u="URL">title</i>
-  // node (parseXmlAttrs flattens those into msg.attrs AND exposes the child).
-  // The server previously had no relay for it, so /image did nothing while the
-  // local-only /testimg worked. Broadcast it to the whole channel as a proxied
-  // inline <img> — the same render /testimg produces, but everyone sees it.
+  // ── Image message (chat /image command) → desktop window for everyone ──
+  // /image runs the SWF's sendImage(), which transmits a normal "send" frame
+  // with t="i" whose *body* is an  <i w="W" h="H" u="URL">title</i>  child
+  // node. Every client already ships a built-in receive handler for t="i"
+  // (listener/main) that opens a DocScreen window on the desktop, reading
+  // firstChild.attributes.w/h/u plus the child text as the title. So the whole
+  // pipeline is client-side; the only missing link was the server relaying the
+  // frame. We rebroadcast it to the channel, preserving t="i" and the <i>
+  // child — and everyone, the sender included, gets the window. Mirrors the
+  // type "g" gift broadcast further down.
+  //
+  // The URL is routed through the same-origin image proxy. That fixes the
+  // "window opens but is empty" symptom for two independent reasons:
+  //   1. A foreign host has no crossdomain.xml, so Ruffle's loader blanks it;
+  //      the proxy serves the bytes same-origin.
+  //   2. The client rebuilds the document XML as  <u u="URL"/>  — a raw '&' in
+  //      the URL (query strings, CDNs…) would make that inner XML invalid and
+  //      yield an empty doc. encodeURIComponent turns '&' into %26, so the
+  //      proxied URL is always XML-attribute-safe.
   const imgChild = (msg.children || []).find((c) => c.tag === 'i' && c.attrs && c.attrs.u);
-  if (type === 'i' || imgChild) {
+  if (type === 'i' && imgChild) {
+    if (!g || !client.logged) break;
+    const channel = channels[g];
+    if (!channel || !client.channels.has(g) || !channel.users.has(client.username)) {
+      sendToClient(socket, `<${CMD.error} k="220" />`);
+      break;
+    }
+    // Broadcasting a desktop window to a whole salon is a staff power (the SWF
+    // itself gates /image behind flAnimator); defend it server-side too.
+    if (!isModerator(client.username) && !isAnimator(client.username)) break;
     const xmlUnescape = (s) => String(s || '')
       .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-    const iw = parseInt((imgChild && imgChild.attrs.w) || msg.attrs.w, 10) || 0;
-    const ih = parseInt((imgChild && imgChild.attrs.h) || msg.attrs.h, 10) || 0;
-    const iu = xmlUnescape((imgChild && imgChild.attrs.u) || msg.attrs.u || '').trim();
-    const ititle = String((imgChild && imgChild.content) || '').replace(/\]\]>/g, '');
-    if (!g || !client.logged) break;
-    const channel = channels[g];
-    if (!channel || !channel.users.has(client.username)) break;
+    const iw = parseInt(imgChild.attrs.w, 10) || 0;
+    const ih = parseInt(imgChild.attrs.h, 10) || 0;
+    const iu = xmlUnescape(imgChild.attrs.u).trim();
+    const ititle = xmlUnescape(imgChild.content || '');
     if (!iw || !ih || !/^https?:\/\//i.test(iu)) {
-      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe: /image largeur hauteur url titre')}</${CMD.send}>`);
+      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe : /image largeur hauteur url titre')}</${CMD.send}>`);
       break;
     }
-    const cw = Math.min(Math.max(iw, 10), 500);
-    const ch = Math.min(Math.max(ih, 10), 500);
+    const cw = Math.min(Math.max(iw, 10), 600);
+    const ch = Math.min(Math.max(ih, 10), 600);
     const proxied = `/api/imgproxy?url=${encodeURIComponent(iu)}`;
-    const imgBody = `<img src="${proxied}" width="${cw}" height="${ch}" />${ititle}`;
-    broadcastToChannel(g, `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="${pen}" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${imgBody}]]></${CMD.send}>`);
+    const childXml = `<i w="${cw}" h="${ch}" u="${escapeXml(proxied)}">${escapeXml(ititle)}</i>`;
+    const imgXml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="i"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${childXml}</${CMD.send}>`;
+    broadcastToChannel(g, imgXml);
+    trackXpAction(client.username, 'chatMsg');
     break;
   }
 
@@ -11344,37 +11364,11 @@ case 'send': {
       break;
     }
 
-    // ── /image, /img, /testimage, /testimg, /pic: embed image in chat ──
-    // /pic is a DIAGNOSTIC alias the SWF does NOT intercept (unlike /image),
-    // so it actually reaches the server. It proves two things at once:
-    // (1) unknown slash-commands fall through to the server as normal text,
-    // (2) whether Ruffle renders an inline <img> in the chat htmlText.
-    if (/^\/(test)?(image|img|pic)\s/i.test(text)) {
-      const isTest = /^\/test/i.test(text);
-      const args = text.replace(/^\/(test)?(image|img|pic)\s+/i, '').split(/\s+/);
-      const w = parseInt(args[0]) || 0;
-      const h = parseInt(args[1]) || 0;
-      const url = args[2] || '';
-      const title = args.slice(3).join(' ');
-      if (!w || !h || !url || !/^https?:\/\//i.test(url)) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe: /image largeur hauteur url titre')}</${CMD.send}>`);
-        break;
-      }
-      const cw = Math.min(Math.max(w, 10), 500);
-      const ch = Math.min(Math.max(h, 10), 500);
-      // Route through the same-origin proxy so Ruffle can load the bitmap (a
-      // foreign host has no crossdomain.xml → otherwise blank). Root-relative
-      // URL resolves against the SWF's app origin; single param → no & to escape.
-      const proxied = `/api/imgproxy?url=${encodeURIComponent(url)}`;
-      const imgBody = `<img src="${proxied}" width="${cw}" height="${ch}" />${title || ''}`;
-      const imgXml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="${pen}" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${imgBody}]]></${CMD.send}>`;
-      if (isTest) {
-        sendToClient(socket, imgXml);
-      } else {
-        broadcastToChannel(g, imgXml);
-      }
-      break;
-    }
+    // NB: /image, /img, /testimg, /testimage are intercepted client-side by the
+    // SWF (they never arrive here as text). /image broadcasts a desktop window
+    // to the whole salon via the t="i" relay above; /testimg/-image stay local.
+    // An earlier inline-<img> relay lived here, but Ruffle does not render <img>
+    // inside the chat htmlText, so it has been removed.
 
     let safeText = escapeXml(text);
 
