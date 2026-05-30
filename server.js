@@ -248,6 +248,31 @@ function statusInternalCode(name) {
   return STATUS_INTERNAL_FRAME[name] || 0;
 }
 
+// External ("absence") status. char 0 of the 4-char status string holds an
+// index into StatusMng.externalList, which the SWF builds (reversed InitArray
+// order, cross-checked against STATUS_INTERNAL_FRAME above) as:
+//   [ <none>, eat, work, zzz, phone, away ]   (indices 0..5)
+// The client (StatusMng.analyseStr / onStatus) swaps the online/offline
+// pastille for the matching absence icon. Index 0 clears it. We reproduce the
+// exact value StatusMng.setExternal used to put on the wire.
+const STATUS_EXTERNAL_INDEX = {
+  away: 5, phone: 4, zzz: 3, work: 2, eat: 1,
+};
+// Accepted command words (FR/EN synonyms) → canonical status, '' = clear.
+const STATUS_EXTERNAL_ALIASES = {
+  away: 'away', absent: 'away', afk: 'away', parti: 'away', pause: 'away',
+  phone: 'phone', tel: 'phone', telephone: 'phone', tph: 'phone', tel_: 'phone',
+  zzz: 'zzz', dodo: 'zzz', sleep: 'zzz', dors: 'zzz', sommeil: 'zzz',
+  work: 'work', boulot: 'work', taf: 'work', travail: 'work', bosse: 'work',
+  eat: 'eat', manger: 'eat', miam: 'eat', repas: 'eat', mange: 'eat',
+  off: '', dispo: '', online: '', none: '', actif: '', back: '', retour: '', enligne: '',
+};
+function statusExternalIndex(word) {
+  const canon = STATUS_EXTERNAL_ALIASES[String(word || '').toLowerCase()];
+  if (canon === undefined) return null;            // unknown word
+  return { canon, idx: canon ? (STATUS_EXTERNAL_INDEX[canon] || 0) : 0 };
+}
+
 const DEFAULT_BOUILLE_STATE = '000000010000000000000000';
 const ALL_PEN_ITEM_IDS = [315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 599, 600, 601, 602];
 
@@ -10738,6 +10763,42 @@ function setUserInternalStatus(username, internalIdx) {
   notifyTraceSubscribers(username);
 }
 
+// Update the external ("absence") char of the user's status string — the
+// same slot StatusMng.setExternal used to write client-side when the
+// original interface offered the away/phone/zzz/work/eat picker. The SWF's
+// onStatus → analyseStr → updateSortString chain swaps the online pastille
+// for the matching absence icon on every other connected client. Pass
+// externalIdx=0 to clear (back online).
+function setUserExternalStatus(username, externalIdx) {
+  if (!username) return;
+  const extStr = encode62(externalIdx | 0, 1);
+  const ud = users[username] || {};
+  const updatedSockets = [];
+  for (const [sock, cl] of xmlSocketClients) {
+    if (!cl || cl.username !== username || !cl.logged) continue;
+    const old = cl.statusStr || '0000';
+    const internal = old.substring(1, 3) || '00';
+    const emote = old.charAt(3) || '0';
+    cl.statusStr = `${extStr}${internal}${emote}`;
+    updatedSockets.push(sock);
+    sendToClient(sock, `<${CMD.status} s="${cl.statusStr}" />`);
+  }
+  console.log(`[STATUS] setUserExternalStatus ${username} external=${externalIdx} sockets=${updatedSockets.length}`);
+  if (updatedSockets.length === 0) return;
+  const traceXml = `<${CMD.trace} u="${escapeXml(getDisplayName(username))}" p="1" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, username)}" />`;
+  const channelsBroadcast = new Set();
+  for (const sock of updatedSockets) {
+    const cl = xmlSocketClients.get(sock);
+    if (!cl) continue;
+    for (const ch of cl.channels) {
+      if (channelsBroadcast.has(ch)) continue;
+      channelsBroadcast.add(ch);
+      broadcastToChannel(ch, traceXml);
+    }
+  }
+  notifyTraceSubscribers(username);
+}
+
 function buildChannelListXml() {
   let inner = '';
   for (const [name, ch] of Object.entries(channels)) {
@@ -11592,6 +11653,30 @@ case 'send': {
         if (process.env.DATABASE_URL) db.updateChannelTopic(g, newTopic).catch(e => console.error('[DB] topic save error:', e.message));
       }
       break;
+    }
+
+    // ── /status <word>, /statut <word>: absence pastille (away/phone/zzz/work/eat) ──
+    // Sets the "external" char (slot 0) of the user's 4-char status string.
+    // The SWF's StatusMng.onStatus → analyseStr → updateSortString chain
+    // swaps the green online dot for the matching absence icon on every
+    // viewer's userlist and contact bar — exactly the legacy behaviour. A
+    // bare-word version with no value (handled by the /stat block below)
+    // still shows channel stats; here we only fire when an argument follows.
+    {
+      const m = text.match(/^\/(?:status|statut)\s+(\S+)\s*$/i);
+      if (m) {
+        const r = statusExternalIndex(m[1]);
+        if (r === null) {
+          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Statut inconnu. Valeurs : away, phone, zzz, work, eat — ou off pour effacer.</i>]]></${CMD.send}>`);
+          break;
+        }
+        setUserExternalStatus(client.username, r.idx);
+        const msg2 = r.canon
+          ? `<i>Statut « ${r.canon} » activé.</i>`
+          : `<i>Statut effacé — de retour en ligne.</i>`;
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${msg2}]]></${CMD.send}>`);
+        break;
+      }
     }
 
     // ── /stat, /stats, /statut, /status, /statistiques, /statistics: channel stats ──
