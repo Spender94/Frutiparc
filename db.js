@@ -346,6 +346,22 @@ async function initSchema() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_gaspard_help_one_index
         ON gaspard_help_topics (is_index) WHERE is_index;
       CREATE INDEX IF NOT EXISTS idx_moderation_logs_target ON moderation_logs(target_username, created_at DESC);
+
+      -- Chat auto-moderation: words triggering an instant totoché. Matched
+      -- case-insensitively on the accent-stripped message, with word
+      -- boundaries (so "pdf" doesn't hit "pd"). Edited live from /admin.
+      CREATE TABLE IF NOT EXISTS chat_banned_words (
+        id   SERIAL PRIMARY KEY,
+        word TEXT NOT NULL UNIQUE
+      );
+
+      -- Forum censorship pairs (word -> replacement). Applied
+      -- case-insensitively with word boundaries to forum titles/posts.
+      CREATE TABLE IF NOT EXISTS forum_word_replacements (
+        id          SERIAL PRIMARY KEY,
+        word        TEXT NOT NULL UNIQUE,
+        replacement TEXT NOT NULL
+      );
     `);
     console.log('[DB] Schema initialized');
   } finally {
@@ -902,6 +918,54 @@ async function deleteShopPack(id) {
   await pool.query('DELETE FROM shop_packs WHERE id = $1', [id]);
 }
 
+// ── Chat banned words ──
+async function loadChatBannedWords() {
+  const { rows } = await pool.query('SELECT id, word FROM chat_banned_words ORDER BY id');
+  return rows;
+}
+async function addChatBannedWord(word) {
+  const { rows } = await pool.query(
+    'INSERT INTO chat_banned_words (word) VALUES ($1) ON CONFLICT (word) DO NOTHING RETURNING id, word',
+    [word],
+  );
+  return rows[0] || null;
+}
+async function updateChatBannedWord(id, word) {
+  const { rows } = await pool.query(
+    'UPDATE chat_banned_words SET word = $2 WHERE id = $1 RETURNING id, word',
+    [id, word],
+  );
+  return rows[0] || null;
+}
+async function deleteChatBannedWord(id) {
+  const r = await pool.query('DELETE FROM chat_banned_words WHERE id = $1', [id]);
+  return r.rowCount > 0;
+}
+
+// ── Forum word replacements ──
+async function loadForumWordReplacements() {
+  const { rows } = await pool.query('SELECT id, word, replacement FROM forum_word_replacements ORDER BY id');
+  return rows;
+}
+async function addForumWordReplacement(word, replacement) {
+  const { rows } = await pool.query(
+    'INSERT INTO forum_word_replacements (word, replacement) VALUES ($1, $2) ON CONFLICT (word) DO NOTHING RETURNING id, word, replacement',
+    [word, replacement],
+  );
+  return rows[0] || null;
+}
+async function updateForumWordReplacement(id, word, replacement) {
+  const { rows } = await pool.query(
+    'UPDATE forum_word_replacements SET word = $2, replacement = $3 WHERE id = $1 RETURNING id, word, replacement',
+    [id, word, replacement],
+  );
+  return rows[0] || null;
+}
+async function deleteForumWordReplacement(id) {
+  const r = await pool.query('DELETE FROM forum_word_replacements WHERE id = $1', [id]);
+  return r.rowCount > 0;
+}
+
 async function archiveChallengeScores(dayKey, rankingIds) {
   if (!Array.isArray(rankingIds) || rankingIds.length === 0) return;
   await pool.query(
@@ -1448,6 +1512,14 @@ module.exports = {
   loadShopPacks,
   upsertShopPack,
   deleteShopPack,
+  loadChatBannedWords,
+  addChatBannedWord,
+  updateChatBannedWord,
+  deleteChatBannedWord,
+  loadForumWordReplacements,
+  addForumWordReplacement,
+  updateForumWordReplacement,
+  deleteForumWordReplacement,
   archiveChallengeScores,
   getArchivedScores,
   getArchivedScoresForDay,

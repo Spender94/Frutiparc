@@ -272,36 +272,83 @@ function normalizeForumMood(value) {
   return Number.isInteger(n) && n >= 0 && n <= 7 ? n : null;
 }
 
-// Chat auto-moderation: these words trigger an instant totoché. Matched on a
-// lowercased, accent-stripped copy of the message so "pétasse"/"petasse" and
-// "enculé"/"encule"/"enculer" all hit. Word boundaries avoid false positives
-// (e.g. "dispute" ≠ "pute", "pdf" ≠ "pd").
-const CHAT_BANNED_PATTERNS = [
-  /\bputains?\b/, /\bputes?\b/, /encul/, /\bsalopes?\b/, /\btapettes?\b/,
-  /\bpd\b/, /\bpetasses?\b/, /\bwhore\b/, /\bbitch\b/, /ferme\s+ta\s+gueule/,
+// Chat auto-moderation + forum word censorship.
+// Both lists are seeded from these defaults on first startup (if the DB table
+// is empty), then edited live from /admin via the REST endpoints below. The
+// in-memory caches are the single source of truth used by chatHasBannedWord
+// and censorProfanity.
+//
+// Why the seeds matter: pre-DB releases had these baked in, so we keep the
+// same behaviour out of the box. After seeding, the admin can add/remove/
+// modify entries — including deleting any of these defaults.
+
+const CHAT_BANNED_WORDS_DEFAULT = [
+  'putain', 'putains', 'pute', 'putes',
+  'encule', 'encules', 'enculer', 'enculee', 'enculees',
+  'salope', 'salopes', 'tapette', 'tapettes',
+  'pd', 'petasse', 'petasses',
+  'whore', 'bitch',
+  'ferme ta gueule',
 ];
-function chatHasBannedWord(text) {
-  const s = String(text || '').toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '');
-  return CHAT_BANNED_PATTERNS.some((re) => re.test(s));
+
+const PROFANITY_REPLACEMENTS_DEFAULT = [
+  { word: 'con', replacement: 'blonk' },
+  { word: 'conne', replacement: 'blonk' },
+  { word: 'putain', replacement: 'margotton' },
+  { word: 'pute', replacement: 'ribaude' },
+  { word: 'content', replacement: 'youpi-banane' },
+  { word: 'contente', replacement: 'youpi-banane' },
+  { word: 'mignon', replacement: 'youpi-framboise' },
+  { word: 'mignonne', replacement: 'youpi-framboise' },
+  { word: 'serveur', replacement: 'gros cube noir et lourd qui ventile fort' },
+];
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const PROFANITY_REPLACEMENTS = [
-  [/\bcon\b/gi, 'blonk'],
-  [/\bconne\b/gi, 'blonk'],
-  [/\bputain\b/gi, 'margotton'],
-  [/\bpute\b/gi, 'ribaude'],
-  [/\bcontent\b/gi, 'youpi-banane'],
-  [/\bcontente\b/gi, 'youpi-banane'],
-  [/\bmignon\b/gi, 'youpi-framboise'],
-  [/\bmignonne\b/gi, 'youpi-framboise'],
-  [/\bserveur\b/gi, 'gros cube noir et lourd qui ventile fort'],
-];
+// Accent-strip + lowercase. Match Unicode combining marks (U+0300..U+036F).
+function normalizeChatText(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// Mutable caches. Entries: { id, word, regex } and { id, word, replacement, regex }.
+let chatBannedWords = [];
+let forumReplacements = [];
+
+function compileChatBannedWord(row) {
+  // Match the (lower, accent-stripped) word at word boundaries.
+  const norm = normalizeChatText(row.word);
+  const regex = new RegExp(`\\b${escapeRegex(norm)}\\b`, 'i');
+  return { id: row.id, word: row.word, regex };
+}
+
+function compileForumReplacement(row) {
+  const regex = new RegExp(`\\b${escapeRegex(row.word)}\\b`, 'gi');
+  return { id: row.id, word: row.word, replacement: row.replacement, regex };
+}
+
+function setChatBannedWords(rows) {
+  chatBannedWords = rows.map(compileChatBannedWord);
+}
+function setForumReplacements(rows) {
+  forumReplacements = rows.map(compileForumReplacement);
+}
+
+// Seed the defaults at boot. Replaced by DB rows once loadModerationConfig
+// runs; without a database, the defaults are the live list.
+setChatBannedWords(CHAT_BANNED_WORDS_DEFAULT.map((w, i) => ({ id: -(i + 1), word: w })));
+setForumReplacements(PROFANITY_REPLACEMENTS_DEFAULT.map((r, i) => ({ id: -(i + 1), word: r.word, replacement: r.replacement })));
+
+function chatHasBannedWord(text) {
+  const norm = normalizeChatText(text);
+  return chatBannedWords.some((p) => p.regex.test(norm));
+}
 
 function censorProfanity(text) {
   if (!text) return text;
   let out = String(text);
-  for (const [re, repl] of PROFANITY_REPLACEMENTS) out = out.replace(re, repl);
+  for (const p of forumReplacements) out = out.replace(p.regex, p.replacement);
   return out;
 }
 
@@ -4712,6 +4759,117 @@ app.post('/api/admin/shop/:id/push-all', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─────────────────────────────────────────────
+// Moderation word lists (chat banned words + forum censorship)
+//
+// Both lists live in DB tables (chat_banned_words, forum_word_replacements)
+// seeded on first start from the defaults. The in-memory caches
+// chatBannedWords / forumReplacements are recompiled on every change so
+// chatHasBannedWord and censorProfanity always read the live list.
+//
+// Word matching is case-insensitive with \b...\b boundaries. The chat list
+// is matched on the accent-stripped text, so a stored "petasse" hits
+// "Pétasse" and "petasse" alike. The forum list is accent-sensitive (the
+// historical behaviour).
+// ─────────────────────────────────────────────
+
+function normalizeAdminWord(s) {
+  return String(s || '').trim();
+}
+
+app.get('/api/admin/chat-banned-words', adminAuth, (req, res) => {
+  res.json(chatBannedWords.map((p) => ({ id: p.id, word: p.word })));
+});
+
+app.post('/api/admin/chat-banned-words', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no db' });
+  const word = normalizeAdminWord(req.body && req.body.word);
+  if (!word) return res.status(400).json({ error: 'word required' });
+  try {
+    const row = await db.addChatBannedWord(word);
+    if (!row) return res.status(409).json({ error: 'already exists' });
+    setChatBannedWords(await db.loadChatBannedWords());
+    console.log(`[ADMIN] Added chat banned word #${row.id} "${row.word}"`);
+    res.json({ ok: true, entry: row });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/chat-banned-words/:id', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no db' });
+  const word = normalizeAdminWord(req.body && req.body.word);
+  if (!word) return res.status(400).json({ error: 'word required' });
+  try {
+    const row = await db.updateChatBannedWord(Number(req.params.id), word);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    setChatBannedWords(await db.loadChatBannedWords());
+    console.log(`[ADMIN] Updated chat banned word #${row.id} -> "${row.word}"`);
+    res.json({ ok: true, entry: row });
+  } catch (e) {
+    // unique violation -> 23505
+    if (e && e.code === '23505') return res.status(409).json({ error: 'already exists' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/admin/chat-banned-words/:id', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no db' });
+  try {
+    const ok = await db.deleteChatBannedWord(Number(req.params.id));
+    if (!ok) return res.status(404).json({ error: 'not found' });
+    setChatBannedWords(await db.loadChatBannedWords());
+    console.log(`[ADMIN] Deleted chat banned word #${req.params.id}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/forum-replacements', adminAuth, (req, res) => {
+  res.json(forumReplacements.map((p) => ({ id: p.id, word: p.word, replacement: p.replacement })));
+});
+
+app.post('/api/admin/forum-replacements', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no db' });
+  const word = normalizeAdminWord(req.body && req.body.word);
+  const replacement = String((req.body && req.body.replacement) || '');
+  if (!word) return res.status(400).json({ error: 'word required' });
+  if (!replacement) return res.status(400).json({ error: 'replacement required' });
+  try {
+    const row = await db.addForumWordReplacement(word, replacement);
+    if (!row) return res.status(409).json({ error: 'already exists' });
+    setForumReplacements(await db.loadForumWordReplacements());
+    console.log(`[ADMIN] Added forum replacement #${row.id} "${row.word}" -> "${row.replacement}"`);
+    res.json({ ok: true, entry: row });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/forum-replacements/:id', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no db' });
+  const word = normalizeAdminWord(req.body && req.body.word);
+  const replacement = String((req.body && req.body.replacement) || '');
+  if (!word) return res.status(400).json({ error: 'word required' });
+  if (!replacement) return res.status(400).json({ error: 'replacement required' });
+  try {
+    const row = await db.updateForumWordReplacement(Number(req.params.id), word, replacement);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    setForumReplacements(await db.loadForumWordReplacements());
+    console.log(`[ADMIN] Updated forum replacement #${row.id} -> "${row.word}" / "${row.replacement}"`);
+    res.json({ ok: true, entry: row });
+  } catch (e) {
+    if (e && e.code === '23505') return res.status(409).json({ error: 'already exists' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/admin/forum-replacements/:id', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no db' });
+  try {
+    const ok = await db.deleteForumWordReplacement(Number(req.params.id));
+    if (!ok) return res.status(404).json({ error: 'not found' });
+    setForumReplacements(await db.loadForumWordReplacements());
+    console.log(`[ADMIN] Deleted forum replacement #${req.params.id}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/wallpapers/cleanup', adminAuth, async (req, res) => {
   for (const username of Object.keys(users)) {
     const u = users[username];
@@ -9079,6 +9237,32 @@ async function boot() {
           }
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
+      try {
+        // Chat banned words: on first run (empty table), seed defaults.
+        let bw = await db.loadChatBannedWords();
+        if (bw.length === 0) {
+          for (const w of CHAT_BANNED_WORDS_DEFAULT) {
+            await db.addChatBannedWord(w).catch(() => {});
+          }
+          bw = await db.loadChatBannedWords();
+          console.log(`[DB] Seeded ${bw.length} chat banned words`);
+        }
+        setChatBannedWords(bw);
+        console.log(`[DB] Loaded ${bw.length} chat banned words from database`);
+      } catch (e) { console.error('[DB] Chat banned words load error:', e.message); }
+      try {
+        // Forum word replacements: on first run, seed defaults.
+        let fr = await db.loadForumWordReplacements();
+        if (fr.length === 0) {
+          for (const r of PROFANITY_REPLACEMENTS_DEFAULT) {
+            await db.addForumWordReplacement(r.word, r.replacement).catch(() => {});
+          }
+          fr = await db.loadForumWordReplacements();
+          console.log(`[DB] Seeded ${fr.length} forum word replacements`);
+        }
+        setForumReplacements(fr);
+        console.log(`[DB] Loaded ${fr.length} forum word replacements from database`);
+      } catch (e) { console.error('[DB] Forum replacements load error:', e.message); }
       try {
         // ensureForumBoardsExist() creates missing rubriques, moves
         // misplaced ones, merges duplicates, and re-syncs sort_order — so

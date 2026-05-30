@@ -348,6 +348,8 @@
     <button class="tab" data-tab="events" onclick="switchTab('events')">Événements</button>
     <button class="tab" data-tab="channels" onclick="switchTab('channels')">Salons</button>
     <button class="tab" data-tab="gaspard" onclick="switchTab('gaspard')">Aide Gaspard</button>
+    <button class="tab" data-tab="banwords" onclick="switchTab('banwords')">Modération chat</button>
+    <button class="tab" data-tab="forumcensor" onclick="switchTab('forumcensor')">Censure forum</button>
   </div>
 
 <div class="content" id="tab-users">
@@ -496,6 +498,43 @@
   <table>
     <thead><tr><th>ID</th><th>Titre</th><th>Parent</th><th>Ordre</th><th>Index</th><th>Mots-clés</th><th>Actions</th></tr></thead>
     <tbody id="gaspard-body"></tbody>
+  </table>
+</div>
+
+<div class="content" id="tab-banwords" style="display:none">
+  <div style="font-size:11px;color:#5a8030;margin:8px 10px;padding:6px 8px;background:#D6F7B5;border-radius:4px">
+    Mots déclenchant un <b>totoché automatique</b> (10 min) quand un non-modérateur les écrit dans le chat.
+    Comparaison insensible à la casse et aux accents (« pétasse » et « petasse » sont équivalents),
+    avec frontière de mot (« <i>dispute</i> » ne matche pas « pute »).
+  </div>
+  <div class="toolbar">
+    <button class="btn" onclick="loadBanWords()">Rafraîchir</button>
+    <input id="banword-new" type="text" placeholder="Ajouter un mot ou une expression…" style="width:280px;padding:4px 6px" onkeydown="if(event.key==='Enter')addBanWord()">
+    <button class="btn-success" onclick="addBanWord()">+ Ajouter</button>
+    <span id="banword-count" style="margin-left:auto"></span>
+  </div>
+  <table>
+    <thead><tr><th style="width:60px">ID</th><th>Mot</th><th style="width:200px">Actions</th></tr></thead>
+    <tbody id="banword-body"></tbody>
+  </table>
+</div>
+
+<div class="content" id="tab-forumcensor" style="display:none">
+  <div style="font-size:11px;color:#5a8030;margin:8px 10px;padding:6px 8px;background:#D6F7B5;border-radius:4px">
+    Mots <b>remplacés</b> dans les titres et les messages du forum (« pute » → « ribaude »).
+    Comparaison insensible à la casse, avec frontière de mot.
+  </div>
+  <div class="toolbar">
+    <button class="btn" onclick="loadForumCensor()">Rafraîchir</button>
+    <input id="censor-new-word" type="text" placeholder="Mot à remplacer…" style="width:200px;padding:4px 6px">
+    <span style="font-weight:bold">→</span>
+    <input id="censor-new-repl" type="text" placeholder="Remplacement…" style="width:240px;padding:4px 6px" onkeydown="if(event.key==='Enter')addCensor()">
+    <button class="btn-success" onclick="addCensor()">+ Ajouter</button>
+    <span id="censor-count" style="margin-left:auto"></span>
+  </div>
+  <table>
+    <thead><tr><th style="width:60px">ID</th><th style="width:220px">Mot</th><th>Remplacement</th><th style="width:200px">Actions</th></tr></thead>
+    <tbody id="censor-body"></tbody>
   </table>
 </div>
 
@@ -732,7 +771,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','shop','challenge','events','channels','gaspard'].forEach(t => {
+  ['users','scores','detail','shop','challenge','events','channels','gaspard','banwords','forumcensor'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -742,6 +781,8 @@ function switchTab(name) {
   if (name === 'events') loadEvents();
   if (name === 'channels') loadChannels();
   if (name === 'gaspard') loadGaspardTopics();
+  if (name === 'banwords') loadBanWords();
+  if (name === 'forumcensor') loadForumCensor();
 }
 
 // ─── Gaspard help topics ───
@@ -1927,6 +1968,132 @@ async function saveEditChannel() {
     toast('Salon mis à jour');
     closeModal('modal-edit-channel');
     loadChannels();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ─── Chat banned words ──────────────────────────────────────────────
+async function loadBanWords() {
+  try {
+    const r = await fetch('/api/admin/chat-banned-words', { headers: hdr() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const list = await r.json();
+    $('#banword-count').innerHTML = `<span class="count">${list.length}</span> mots`;
+    const tb = $('#banword-body');
+    tb.innerHTML = list.map(w => `<tr data-id="${w.id}">
+      <td>${w.id}</td>
+      <td><input type="text" value="${esc(w.word)}" data-orig="${esc(w.word)}" style="width:90%;padding:3px 5px;font-family:inherit;font-size:11px"></td>
+      <td>
+        <button class="btn btn-sm" onclick="saveBanWord(${w.id}, this)">Enregistrer</button>
+        <button class="btn-danger btn-sm" onclick="deleteBanWord(${w.id}, ${JSON.stringify(w.word)})">Supprimer</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="3" style="text-align:center;padding:14px;color:#666">Aucun mot.</td></tr>';
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function addBanWord() {
+  const word = $('#banword-new').value.trim();
+  if (!word) { toast('Saisir un mot'); return; }
+  try {
+    const r = await fetch('/api/admin/chat-banned-words', {
+      method: 'POST', headers: hdr(), body: JSON.stringify({ word }),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    $('#banword-new').value = '';
+    toast('Mot ajouté');
+    loadBanWords();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function saveBanWord(id, btn) {
+  const input = btn.closest('tr').querySelector('input');
+  const word = input.value.trim();
+  if (!word) { toast('Mot vide'); return; }
+  if (word === input.dataset.orig) { toast('Aucun changement'); return; }
+  try {
+    const r = await fetch(`/api/admin/chat-banned-words/${id}`, {
+      method: 'PATCH', headers: hdr(), body: JSON.stringify({ word }),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    toast('Mot mis à jour');
+    loadBanWords();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function deleteBanWord(id, word) {
+  if (!confirm(`Supprimer "${word}" de la liste ?`)) return;
+  try {
+    const r = await fetch(`/api/admin/chat-banned-words/${id}`, { method: 'DELETE', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    toast('Supprimé');
+    loadBanWords();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ─── Forum word replacements ─────────────────────────────────────────
+async function loadForumCensor() {
+  try {
+    const r = await fetch('/api/admin/forum-replacements', { headers: hdr() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const list = await r.json();
+    $('#censor-count').innerHTML = `<span class="count">${list.length}</span> remplacements`;
+    const tb = $('#censor-body');
+    tb.innerHTML = list.map(p => `<tr data-id="${p.id}">
+      <td>${p.id}</td>
+      <td><input type="text" class="cw" value="${esc(p.word)}" data-orig="${esc(p.word)}" style="width:90%;padding:3px 5px;font-family:inherit;font-size:11px"></td>
+      <td><input type="text" class="cr" value="${esc(p.replacement)}" data-orig="${esc(p.replacement)}" style="width:95%;padding:3px 5px;font-family:inherit;font-size:11px"></td>
+      <td>
+        <button class="btn btn-sm" onclick="saveCensor(${p.id}, this)">Enregistrer</button>
+        <button class="btn-danger btn-sm" onclick="deleteCensor(${p.id}, ${JSON.stringify(p.word)})">Supprimer</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:14px;color:#666">Aucun remplacement.</td></tr>';
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function addCensor() {
+  const word = $('#censor-new-word').value.trim();
+  const replacement = $('#censor-new-repl').value.trim();
+  if (!word) { toast('Saisir le mot à remplacer'); return; }
+  if (!replacement) { toast('Saisir le remplacement'); return; }
+  try {
+    const r = await fetch('/api/admin/forum-replacements', {
+      method: 'POST', headers: hdr(), body: JSON.stringify({ word, replacement }),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    $('#censor-new-word').value = '';
+    $('#censor-new-repl').value = '';
+    toast('Remplacement ajouté');
+    loadForumCensor();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function saveCensor(id, btn) {
+  const tr = btn.closest('tr');
+  const word = tr.querySelector('.cw').value.trim();
+  const replacement = tr.querySelector('.cr').value.trim();
+  if (!word || !replacement) { toast('Mot et remplacement requis'); return; }
+  try {
+    const r = await fetch(`/api/admin/forum-replacements/${id}`, {
+      method: 'PATCH', headers: hdr(), body: JSON.stringify({ word, replacement }),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    toast('Remplacement mis à jour');
+    loadForumCensor();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+async function deleteCensor(id, word) {
+  if (!confirm(`Supprimer le remplacement de "${word}" ?`)) return;
+  try {
+    const r = await fetch(`/api/admin/forum-replacements/${id}`, { method: 'DELETE', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    toast('Supprimé');
+    loadForumCensor();
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 </script>
