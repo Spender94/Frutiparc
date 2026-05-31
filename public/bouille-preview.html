@@ -99,8 +99,10 @@
     player.style.height = "100%";
     document.getElementById("player-container").appendChild(player);
     await player.load({
-      // ?v=5 because the patched SWFs now carry the new anim-aware apply tag.
-      url: "/fbouille_patched/famille" + familyId + ".swf?v=5",
+      // ?v=6 because the patched SWFs now seed _root.face.compt before
+      // gotoAndPlay, so counter-driven animations (rire/mdr/pleurer/…) loop
+      // properly instead of bailing immediately.
+      url: "/fbouille_patched/famille" + familyId + ".swf?v=6",
       autoplay: "on",
       allowScriptAccess: true,
       quality: "low",

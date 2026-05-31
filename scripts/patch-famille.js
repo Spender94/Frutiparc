@@ -151,6 +151,23 @@ function buildApplyTag() {
 
   // ── PLAY block: _root.face.gotoAndPlay(_root.anim) ──
   const playBlockStart = off;
+  // _root.face.compt = 3
+  //
+  // Several face animations (rire, mdr, pleurer, rougir, …) loop via a frame
+  // script of the form:
+  //     compt--;
+  //     if (compt > 0) gotoAndPlay("<label>"); else <fall through>
+  // main.swf seeds this counter before calling gotoAndPlay. If we don't, the
+  // counter starts undefined → (undefined - 1) = NaN → NaN > 0 is false →
+  // animation exits after a single pass, which looks broken (or like the
+  // idle/parle state). Seeding it to 3 makes every counter-driven animation
+  // loop a few times before exiting, matching the real behaviour. Anims that
+  // do NOT use compt (parle, gum, sifflote, …) ignore the variable entirely,
+  // so this is harmless across the board.
+  off = pushString(buf, off, '_root.face.compt');
+  off = pushInt(buf, off, 3);
+  off = opcode(buf, off, 0x1d);           // SetVariable
+
   off = pushString(buf, off, 'anim');
   off = opcode(buf, off, 0x1c);           // GetVariable -> _root.anim (the arg)
   off = pushInt(buf, off, 1);             // numArgs

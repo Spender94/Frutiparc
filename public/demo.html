@@ -496,39 +496,59 @@
   });
 
   // ── Frusion ── (anim générique + frusion_client.swf avec disc inséré)
+  // The animFrusion SWF is small and self-contained, so we embed it directly.
+  // frusion_client.swf, however, expects the URL-rewriting and socketProxy
+  // setup that /frusion-ruffle.html already wires up (legacy host rewrites,
+  // ExternalInterface bridges, etc.). Loading it bare turns Ruffle into a
+  // black box that never paints anything visible. So for that one we embed
+  // /frusion-ruffle.html in an iframe instead, with the launch params the
+  // real /frusion route uses.
   async function ensureFrusion() {
     var w = Math.max(240, parseInt($('#frusion-w').value, 10) || 640);
     var h = Math.max(240, parseInt($('#frusion-h').value, 10) || 480);
     var which = $('#frusion-which').value;
     var grid = $('#frusion-grid'); grid.innerHTML = '';
-    if (!window.RufflePlayer || !window.RufflePlayer.newest) return;
-    var ruffle = window.RufflePlayer.newest();
+    var ruffle = window.RufflePlayer && window.RufflePlayer.newest && window.RufflePlayer.newest();
 
-    var assets = [];
-    if (which === 'anim' || which === 'both') assets.push({ url: '/animfrusion.swf',   caption: 'animFrusion (générique)' });
-    if (which === 'client' || which === 'both') assets.push({ url: '/frusion_client.swf', caption: 'Frusion + disc inséré' });
-
-    for (var i = 0; i < assets.length; i++) {
-      var asset = assets[i];
+    function makeStage(caption) {
       var stage = document.createElement('div'); stage.className = 'swf-stage';
-      var cap = document.createElement('div'); cap.className = 'caption'; cap.textContent = asset.caption;
+      var cap = document.createElement('div'); cap.className = 'caption'; cap.textContent = caption;
       var mount = document.createElement('div');
       stage.appendChild(cap); stage.appendChild(mount); grid.appendChild(stage);
+      return mount;
+    }
+
+    if ((which === 'anim' || which === 'both') && ruffle) {
+      var mount = makeStage('animFrusion (générique)');
       var player = ruffle.createPlayer();
       player.style.width = w + 'px'; player.style.height = h + 'px'; player.style.display = 'block';
       mount.appendChild(player);
       try {
         await player.load({
-          url: asset.url, autoplay: 'on',
-          backgroundColor: '#ADE76B',
-          quality: 'high', letterbox: 'off',
-          // frusion_client expects flashvars; a minimal set keeps it from
-          // erroring out on a missing sid (it just won't connect to the
-          // socket layer — fine for a visual capture).
-          parameters: { sid: 'demo', launch_id: 'demo', domain: window.location.host + '/./' },
-          allowScriptAccess: true, allowNetworking: 'all',
+          url: '/animfrusion.swf', autoplay: 'on',
+          backgroundColor: '#ADE76B', quality: 'high', letterbox: 'off',
         });
       } catch (e) {}
+    }
+
+    if (which === 'client' || which === 'both') {
+      var mount2 = makeStage('Frusion + disc inséré');
+      var iframe = document.createElement('iframe');
+      iframe.style.border = '0';
+      iframe.style.width = w + 'px';
+      iframe.style.height = h + 'px';
+      iframe.style.display = 'block';
+      iframe.style.background = '#ADE76B';
+      // Same params /frusion uses, minus a real sid so we don't hijack a
+      // session; gameName is left empty -> frusion shows its idle disc.
+      var qs = new URLSearchParams({
+        sid: 'demo',
+        launch_id: 'demo-' + Date.now().toString(36),
+        domain: window.location.host + '/./',
+        width: String(w), height: String(h),
+      });
+      iframe.src = '/frusion-ruffle.html?' + qs.toString();
+      mount2.appendChild(iframe);
     }
   }
   $('#btn-frusion-apply').addEventListener('click', ensureFrusion);
