@@ -3107,6 +3107,34 @@ app.get('/legacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
+// Zoom-friendly variant of /legacy: serves the SAME Ruffle page (identical
+// socket-proxy / URL-rewrite / fp_* bridge) but renders main.swf at its native
+// 1380×800 with page scrolling instead of fitting it to the viewport, so the
+// browser's own zoom (Ctrl +/-) magnifies the client crisply. We inject
+// window.__FP_ZOOM = true before the page's inline scripts run; they branch on
+// it (see public/ruffle.html). Same query params as /legacy (sid required).
+let __ruffleZoomHtmlCache = null;
+app.get('/legacy-zoom', (req, res) => {
+  const sid = req.query.sid;
+  if (!resolveUsernameFromSid(sid)) {
+    return res.redirect('/');
+  }
+  try {
+    if (__ruffleZoomHtmlCache === null) {
+      const raw = fs.readFileSync(path.join(__dirname, 'public', 'ruffle.html'), 'utf8');
+      const flag = '<script>window.__FP_ZOOM = true;</script>';
+      // Inject right after <head> so the flag is set before any page script.
+      __ruffleZoomHtmlCache = raw.includes('<head>')
+        ? raw.replace('<head>', '<head>\n    ' + flag)
+        : flag + raw;
+    }
+    res.type('html').send(__ruffleZoomHtmlCache);
+  } catch (e) {
+    console.error('[ZOOM] failed to serve /legacy-zoom:', e.message);
+    res.status(500).send('zoom page error');
+  }
+});
+
 // Returns the current user's saved bouille (avatar state) so the Ruffle page
 // can launch the SWF with the up-to-date avatar instead of the URL default.
 app.get('/api/me/bouille', (req, res) => {

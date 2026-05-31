@@ -20,6 +20,18 @@
             transform-origin: left center;
             transform: translateY(-50%) scale(1);
         }
+
+        /* Zoom mode (/legacy-zoom): render main.swf at its native 1380×800 and
+           let the page scroll, so the browser's own zoom (Ctrl +/-) magnifies
+           the client — crisply — and you can pan around. Disables the
+           fit-to-viewport transform + overflow clipping the default salon uses. */
+        html.zoom-mode, html.zoom-mode body { overflow: auto; }
+        html.zoom-mode #player-container {
+            position: static;
+            top: auto;
+            transform: none;
+            margin: 0;
+        }
     </style>
 
     <script>
@@ -52,6 +64,14 @@
         window.__FRUSION_DEBUG = new URLSearchParams(window.location.search).get("debug") === "1";
         window.__dlog = window.__FRUSION_DEBUG ? console.log.bind(console) : function () {};
 
+        // Zoom mode: the page is served at /legacy-zoom (the server injects
+        // window.__FP_ZOOM = true just before this script). In that mode we
+        // render main.swf at its native 1380×800 and let the BROWSER's own zoom
+        // (Ctrl +/-) magnify it, instead of CSS-fitting it to the viewport.
+        // That means we must NOT override devicePixelRatio and NOT run the
+        // fit-to-viewport transform below.
+        window.__FP_ZOOM = window.__FP_ZOOM === true;
+
         // ── Backing-canvas resolution (effective DPR) ───────────────
         // Ruffle rasterises its canvas at (cssPixels × devicePixelRatio).
         // The salon player has a FIXED css box (1380×800, matched to the
@@ -73,6 +93,9 @@
         // (AVM + tessellation), and past ~2× the extra GPU fill buys little.
         // LAYOUT_W/H must stay equal to the player size + fit divisors below.
         (function () {
+            // In zoom mode keep the native devicePixelRatio: the browser zoom
+            // already raises it, so Ruffle rasterises crisply on its own.
+            if (window.__FP_ZOOM) return;
             var LAYOUT_W = 1380, LAYOUT_H = 800;
             var MAX_EFF_DPR = 2.0;
             var realDPR = window.devicePixelRatio || 1;
@@ -111,6 +134,13 @@
         // screens scale down (no clipping); large screens scale up to use the
         // space. Render cost stays bounded regardless of scale.
         (function () {
+            // Zoom mode: skip the fit-to-viewport transform entirely and mark
+            // the document so the CSS above renders main.swf at native size
+            // with page scrolling, so browser zoom (Ctrl +/-) drives the size.
+            if (window.__FP_ZOOM) {
+                document.documentElement.classList.add("zoom-mode");
+                return;
+            }
             var c = document.getElementById("player-container");
             function fitFrutiparc() {
                 var s = Math.min(window.innerWidth / 1380, window.innerHeight / 800);
