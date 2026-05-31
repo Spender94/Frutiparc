@@ -88,6 +88,9 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS is_animator BOOLEAN DEFAULT false;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT NULL;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_by TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_reason TEXT DEFAULT '';
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
 
@@ -761,7 +764,7 @@ async function clearAllChallengeData() {
 
 async function listAllUsers() {
   const { rows } = await pool.query(
-    'SELECT id, username, display_name, email, xp, kikooz, fbouille, gender, is_moderator, is_animator, fruti_sign, fruti_sign_b, real_job, frutijob, birthday, country, region, city, created_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, display_name, email, xp, kikooz, fbouille, gender, is_moderator, is_animator, fruti_sign, fruti_sign_b, real_job, frutijob, birthday, country, region, city, created_at, banned_until FROM users ORDER BY created_at DESC'
   );
   return rows;
 }

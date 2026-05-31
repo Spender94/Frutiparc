@@ -991,7 +991,7 @@ async function loadUsers() {
     $('#user-count').innerHTML = `<span class="count">${data.length}</span> joueurs`;
     const tb = $('#users-body');
     tb.innerHTML = data.map(u => `<tr>
-      <td><a href="#" onclick="viewUser('${esc(u.username)}');return false" class="uname">${esc(u.display_name || u.username)}</a></td>
+      <td><a href="#" onclick="viewUser('${esc(u.username)}');return false" class="uname">${esc(u.display_name || u.username)}</a>${u.banned_until && new Date(u.banned_until).getTime() > Date.now() ? ' <span class="badge" style="background:#c10000;color:#fff" title="Banni">banni</span>' : ''}</td>
       <td style="font-size:11px">${u.email ? esc(u.email) : '<span style="color:#c03c30" title="Aucun email — le reset password ne marchera pas">— aucun —</span>'}</td>
       <td>${u.xp || 0}</td>
       <td>${u.kikooz || 0}</td>
@@ -1176,6 +1176,32 @@ async function loadDetail() {
       <tr><td>Icône d'activité (debug)</td><td><button class="btn btn-sm" onclick="promptSetInternal()">Forcer internal=N</button> <span style="color:#888;font-size:11px">(test frames sprite 246, 0=aucune)</span></td></tr>
       <tr><td>Icône historique (debug)</td><td><button class="btn btn-sm" onclick="promptTestLogIcon('user')">Test &lt;newuserlog type=N&gt;</button> <button class="btn btn-sm" onclick="promptTestLogIcon('site')">Test &lt;newsitelog type=N&gt;</button> <span style="color:#888;font-size:11px">(test frames sprite 533 events)</span></td></tr>
     </table>`;
+
+    // Bannissement (sanction de compte : bloque salons publics + forum)
+    const ban = d.ban || { banned: false };
+    html += `<h4>Bannissement</h4>`;
+    html += `<div style="max-width:600px;margin-bottom:24px">`;
+    if (ban.banned) {
+      html += `<p style="margin:0 0 8px"><span class="badge" style="background:#c10000;color:#fff">BANNI</span> `
+        + (ban.permanent ? 'définitivement' : `jusqu'au ${esc(ban.untilDisplay || '')}`)
+        + (user.banned_by ? ` <span style="color:#888">(par ${esc(user.banned_by)})</span>` : '')
+        + `</p>`;
+      if (user.banned_reason) html += `<p style="margin:0 0 8px;color:#888">Motif : ${esc(user.banned_reason)}</p>`;
+      html += `<button class="btn-success btn-sm" onclick="unbanUser('${esc(u)}')">Lever le ban</button>`;
+    } else {
+      html += `<p style="margin:0 0 8px"><span class="badge badge-no-mod">Non banni</span></p>`;
+    }
+    html += `<div style="margin-top:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <select id="ban-duration" style="padding:4px 6px">
+        <option value="1d">1 jour</option>
+        <option value="1w" selected>1 semaine</option>
+        <option value="1m">1 mois</option>
+        <option value="1y">1 an</option>
+        <option value="perm">Permanent</option>
+      </select>
+      <input id="ban-reason" type="text" placeholder="Motif (optionnel)" style="padding:4px 6px;width:220px" maxlength="200">
+      <button class="btn-danger btn-sm" onclick="banUser('${esc(u)}')">${ban.banned ? 'Re-bannir' : 'Bannir'}</button>
+    </div></div>`;
 
     // Scores
     html += `<h4>Scores</h4>`;
@@ -1506,6 +1532,31 @@ async function toggleMod(username, setMod) {
   });
   toast(setMod ? `${username} est maintenant modérateur` : `${username} n'est plus modérateur`);
   loadUsers();
+}
+
+// ── Ban / unban ──
+async function banUser(username) {
+  const sel = $('#ban-duration');
+  const duration = (sel && sel.value) || '1w';
+  const reasonEl = $('#ban-reason');
+  const reason = (reasonEl && reasonEl.value.trim()) || '';
+  const labels = { '1d': '1 jour', '1w': '1 semaine', '1m': '1 mois', '1y': '1 an', 'perm': 'PERMANENT' };
+  if (!confirm(`Bannir ${username} pour ${labels[duration] || duration} ?`)) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}/ban`, {
+    method: 'POST', headers: hdr(), body: JSON.stringify({ duration, reason })
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { alert('Erreur : ' + (d.error || r.status)); return; }
+  toast(`${username} banni (${labels[duration] || duration})`);
+  loadDetail();
+}
+
+async function unbanUser(username) {
+  if (!confirm(`Lever le ban de ${username} ?`)) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}/unban`, { method: 'POST', headers: hdr() });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); alert('Erreur : ' + (d.error || r.status)); return; }
+  toast(`Ban de ${username} levé`);
+  loadDetail();
 }
 
 // ── Animator toggle ──

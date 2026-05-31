@@ -1700,6 +1700,11 @@ function dbUserToMemory(row) {
     prefs: row.prefs || '',
     isModerator: row.is_moderator || false,
     isAnimator: row.is_animator || false,
+    bannedUntil: row.banned_until
+      ? (row.banned_until instanceof Date ? row.banned_until.toISOString() : String(row.banned_until))
+      : null,
+    bannedBy: row.banned_by || '',
+    bannedReason: row.banned_reason || '',
     needsBouille: row.needs_bouille !== false,
     firstName: row.first_name || '',
     lastName: row.last_name || '',
@@ -3489,7 +3494,43 @@ app.get('/api/admin/users/:username', adminAuth, async (req, res) => {
     if (!gameItems) {
       try { gameItems = await db.getUserGameItems(row.id) || []; } catch { gameItems = []; }
     }
-    res.json({ user: row, items, accessories: accs, scores, gameItems });
+    res.json({ user: row, items, accessories: accs, scores, gameItems, ban: banInfoFromUntil(row.banned_until) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Ban a user account-wide (blocks public chat salons + forum posting). Duration
+// is a BAN_DURATIONS key: 1d / 1w / 1m / 1y / perm. (The chat fiche button uses
+// a fixed 1-week ban; the admin panel chooses the length here.)
+app.post('/api/admin/users/:username/ban', adminAuth, async (req, res) => {
+  try {
+    let u = resolveKnownUsername(req.params.username);
+    if (!users[u] && process.env.DATABASE_URL) {
+      const row = await db.findUserByUsername(req.params.username);
+      if (row) { await hydrateUserFromDb(row.username, row); u = row.username; }
+    }
+    if (!users[u]) return res.status(404).json({ error: 'user_not_found' });
+    const duration = String((req.body && req.body.duration) || '1w');
+    const ms = BAN_DURATIONS[duration];
+    if (!ms) return res.status(400).json({ error: 'invalid_duration', allowed: Object.keys(BAN_DURATIONS) });
+    const reason = String((req.body && req.body.reason) || '').slice(0, 200) || 'ban via admin';
+    applyBan(u, 'admin', new Date(Date.now() + ms), reason);
+    console.log(`[ADMIN] Banned ${u} for ${duration}`);
+    res.json({ ok: true, ban: getBanInfoForUser(u) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Lift a user's ban.
+app.post('/api/admin/users/:username/unban', adminAuth, async (req, res) => {
+  try {
+    let u = resolveKnownUsername(req.params.username);
+    if (!users[u] && process.env.DATABASE_URL) {
+      const row = await db.findUserByUsername(req.params.username);
+      if (row) { await hydrateUserFromDb(row.username, row); u = row.username; }
+    }
+    if (!users[u]) return res.status(404).json({ error: 'user_not_found' });
+    liftBan(u, 'admin');
+    console.log(`[ADMIN] Unbanned ${u}`);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -8698,6 +8739,109 @@ function getMuteInfoForUser(username) {
   return { muted: true, until: raw, untilDisplay: display };
 }
 
+// ─────────────────────────────────────────────
+// Account ban (global). Unlike totoche (mute, in-memory, chat-only), a ban is
+// persisted (users.banned_until) and blocks PUBLIC chat salons + forum posting.
+// Private 1-to-1 rooms (pm_/pm2_) stay reachable — product decision. The chat
+// "ban" fiche button maps to a fixed 1-week ban; the admin panel picks the
+// duration and can lift it.
+// ─────────────────────────────────────────────
+const BAN_DURATIONS = {
+  '1d': 1 * 24 * 60 * 60 * 1000,
+  '1w': 7 * 24 * 60 * 60 * 1000,
+  '1m': 30 * 24 * 60 * 60 * 1000,
+  '1y': 365 * 24 * 60 * 60 * 1000,
+  'perm': 1000 * 365 * 24 * 60 * 60 * 1000, // sentinel far-future = permanent
+};
+
+function isPrivateChannel(name) {
+  const g = String(name || '');
+  return g.indexOf('pm_') === 0 || g.indexOf('pm2_') === 0;
+}
+
+// Normalize a stored ban expiry into { banned, until, untilDisplay, permanent }.
+// An expiry in the past (or absent) means "not banned".
+function banInfoFromUntil(raw) {
+  if (!raw) return { banned: false, until: null, untilDisplay: null, permanent: false };
+  const d = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) {
+    return { banned: false, until: null, untilDisplay: null, permanent: false };
+  }
+  const permanent = d.getTime() > Date.now() + 50 * 365 * 24 * 60 * 60 * 1000;
+  const pad = (n) => String(n).padStart(2, '0');
+  const untilDisplay = permanent
+    ? 'définitivement'
+    : `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} à ${pad(d.getHours())}h${pad(d.getMinutes())}`;
+  return { banned: true, until: d.toISOString(), untilDisplay, permanent };
+}
+
+function getBanInfoForUser(username) {
+  const u = username && users[username];
+  return banInfoFromUntil(u && u.bannedUntil);
+}
+
+// Ban a user until `expiry` (Date). Persists, kicks them out of every PUBLIC
+// salon they currently sit in, and drops a userlog. Returns false if unknown.
+function applyBan(targetUser, byUser, expiry, reason) {
+  const target = users[targetUser];
+  if (!target) return false;
+  const iso = (expiry instanceof Date ? expiry : new Date(expiry)).toISOString();
+  target.bannedUntil = iso;
+  target.bannedBy = byUser || '';
+  target.bannedReason = reason || '';
+  if (process.env.DATABASE_URL) {
+    db.updateUser(targetUser, { banned_until: iso, banned_by: byUser || '', banned_reason: reason || '' })
+      .catch((e) => console.error('[BAN] persist error:', e.message));
+    db.addModerationLog(targetUser, byUser || 'admin', 'ban', reason || '')
+      .catch((e) => console.error('[DB] modlog error:', e.message));
+  }
+  // Eject from every PUBLIC salon they're in (private pm_ rooms stay open).
+  // Mirrors kickUserFromChannel's wire events without its per-channel logs —
+  // the single global ban log below already explains the sanction.
+  for (const [chanName, channel] of Object.entries(channels)) {
+    if (!channel || !channel.users || !channel.users.has(targetUser)) continue;
+    if (isPrivateChannel(chanName)) continue;
+    broadcastToChannel(chanName, `<${CMD.onban} u="${escapeXml(getDisplayName(targetUser))}" g="${escapeXml(chanName)}" by="${escapeXml(getDisplayName(byUser || 'admin'))}" r="ban" />`);
+    channel.users.delete(targetUser);
+    for (const [, cl] of xmlSocketClients) {
+      if (cl && cl.username === targetUser) cl.channels.delete(chanName);
+    }
+    notifyTraceSubscribers(targetUser);
+  }
+  const info = banInfoFromUntil(iso);
+  addAndNotifyUserLog(targetUser, {
+    type: USER_LOG_TYPE.BAN,
+    content: info.permanent
+      ? `Tu as été banni définitivement par ${getDisplayName(byUser || 'admin')}. Tu ne peux plus rejoindre les salons publics ni poster sur le forum.`
+      : `Tu as été banni jusqu'au ${info.untilDisplay} par ${getDisplayName(byUser || 'admin')}. Tu ne peux plus rejoindre les salons publics ni poster sur le forum.`,
+  });
+  console.log(`[BAN] ${targetUser} banned by ${byUser || 'admin'} until ${iso}${info.permanent ? ' (permanent)' : ''} — ${reason || ''}`);
+  return true;
+}
+
+// Lift a ban. Returns false if the user is unknown.
+function liftBan(targetUser, byUser) {
+  const target = users[targetUser];
+  if (!target) return false;
+  const wasBanned = !!target.bannedUntil;
+  delete target.bannedUntil;
+  target.bannedBy = '';
+  target.bannedReason = '';
+  if (process.env.DATABASE_URL) {
+    db.updateUser(targetUser, { banned_until: null, banned_by: '', banned_reason: '' })
+      .catch((e) => console.error('[BAN] unban persist error:', e.message));
+    if (wasBanned) {
+      db.addModerationLog(targetUser, byUser || 'admin', 'unban', '')
+        .catch((e) => console.error('[DB] modlog error:', e.message));
+    }
+  }
+  if (wasBanned) {
+    addAndNotifyUserLog(targetUser, { type: USER_LOG_TYPE.BAN, content: `Ton bannissement a été levé par ${getDisplayName(byUser || 'admin')}.` });
+  }
+  console.log(`[BAN] ${targetUser} unbanned by ${byUser || 'admin'}`);
+  return true;
+}
+
 app.get('/api/forum/me', (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.json({ user: null });
@@ -8716,6 +8860,7 @@ app.get('/api/forum/me', (req, res) => {
   // that will be rejected on POST. The server still enforces the lockout
   // — this is purely a UX hint.
   const mute = getMuteInfoForUser(username);
+  const ban = getBanInfoForUser(username);
   res.json({
     user: getDisplayName(username),
     isModerator: !!u.isModerator,
@@ -8726,6 +8871,10 @@ app.get('/api/forum/me', (req, res) => {
     muted: mute.muted,
     mutedUntil: mute.until,
     mutedUntilDisplay: mute.untilDisplay,
+    banned: ban.banned,
+    bannedUntil: ban.until,
+    bannedUntilDisplay: ban.untilDisplay,
+    bannedPermanent: ban.permanent,
   });
 });
 
@@ -8866,6 +9015,16 @@ app.post('/api/forum/topic', async (req, res) => {
       message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas poster sur le forum tant que la sanction dure.`,
     });
   }
+  const ban = getBanInfoForUser(username);
+  if (ban.banned) {
+    return res.status(403).json({
+      error: 'banned',
+      bannedUntil: ban.until,
+      message: ban.permanent
+        ? `Tu es banni définitivement, tu ne peux pas poster sur le forum.`
+        : `Tu es banni jusqu'au ${ban.untilDisplay}, tu ne peux pas poster sur le forum tant que la sanction dure.`,
+    });
+  }
   const boardId = Number(req.body.boardId);
   const rawTitle = String(req.body.title || '').trim();
   const rawContent = String(req.body.content || '').trim();
@@ -8901,6 +9060,16 @@ app.post('/api/forum/post', async (req, res) => {
       error: 'muted',
       mutedUntil: mute.until,
       message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas poster sur le forum tant que la sanction dure.`,
+    });
+  }
+  const ban = getBanInfoForUser(username);
+  if (ban.banned) {
+    return res.status(403).json({
+      error: 'banned',
+      bannedUntil: ban.until,
+      message: ban.permanent
+        ? `Tu es banni définitivement, tu ne peux pas poster sur le forum.`
+        : `Tu es banni jusqu'au ${ban.untilDisplay}, tu ne peux pas poster sur le forum tant que la sanction dure.`,
     });
   }
   const topicId = Number(req.body.topicId);
@@ -11247,6 +11416,15 @@ case 'join': {
   }
 
   const channel = channels[g];
+  // Global account ban: barred from PUBLIC salons (private pm_/pm2_ rooms stay
+  // reachable so a banned user can still hold a 1-to-1 conversation).
+  if (!isPrivateChannel(g)) {
+    const ban = getBanInfoForUser(client.username);
+    if (ban.banned) {
+      sendToClient(socket, `<${CMD.error} k="403" />`);
+      break;
+    }
+  }
   if (channel && channel.banned && channel.banned.has(client.username)) {
     sendToClient(socket, `<${CMD.error} k="403" />`);
     break;
@@ -11536,14 +11714,22 @@ case 'join': {
         sendToClient(socket, `<${CMD.error} k="403" />`);
         break;
       }
-      const g = pickActiveChannel(client, msg.attrs);
       const targetUser = resolveModerationTarget(msg);
-      const channel = channels[g];
-      if (!g || !targetUser || !channel) break;
-      if (!channel.banned) channel.banned = new Set();
-      channel.banned.add(targetUser);
-      kickUserFromChannel(g, targetUser, client.username, 'totoch');
-      sendToClient(socket, `<${CMD.ban} u="${escapeXml(getDisplayName(targetUser))}" g="${escapeXml(g)}" />`);
+      const target = users[targetUser];
+      if (!targetUser || !target) break;
+      // Moderators are immune to a fiche ban (mirrors totoche). The admin panel
+      // can still ban anyone, but a mod can't ban a peer from the chat card.
+      if (isModerator(targetUser)) {
+        sendToClient(socket, `<${CMD.error} k="403" />`);
+        break;
+      }
+      // Fiche "ban" = global account ban for one week: blocks public salons +
+      // forum posting. applyBan also ejects the target from every public salon
+      // they currently sit in.
+      const banExpiry = new Date(Date.now() + BAN_DURATIONS['1w']);
+      applyBan(targetUser, client.username, banExpiry, 'ban via fiche (1 semaine)');
+      const g = pickActiveChannel(client, msg.attrs);
+      sendToClient(socket, `<${CMD.ban} u="${escapeXml(getDisplayName(targetUser))}" g="${escapeXml(g || '')}" />`);
       break;
     }
 

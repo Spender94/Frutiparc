@@ -1175,6 +1175,9 @@ let myDefaultAccessories = [];
 // message that will be rejected on submit. Server still enforces.
 let myMuted = false;
 let myMutedUntilDisplay = null;
+let myBanned = false;
+let myBannedUntilDisplay = null;
+let myBannedPermanent = false;
 
 // Moods ("humeur") = the famille SWF's emoteList indices (0-7); see
 // bouille-preview.html. Each maps to an eye+mouth combo. Labels for 3/5/6/7
@@ -1648,7 +1651,10 @@ async function loadBoard(boardId, page) {
   html += '<div class="shell-actions">';
   html += '<div class="shell-left">';
   if (currentUser) {
-    if (myMuted) {
+    if (myBanned) {
+      var banTxtT = myBannedPermanent ? 'Banni définitivement' : ('Banni jusqu\'au ' + escapeHtml(myBannedUntilDisplay || ''));
+      html += '<span class="reply-blocked" title="' + banTxtT + '">' + banTxtT + ' — nouveau sujet impossible</span>';
+    } else if (myMuted) {
       html += '<span class="reply-blocked" title="Tu es totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + '">'
         + 'Totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + ' — nouveau sujet impossible'
         + '</span>';
@@ -1725,7 +1731,10 @@ async function loadTopic(topicId, page) {
   html += '<div class="shell-actions">';
   html += '<div class="shell-left">';
   if (currentUser && !data.topic.isLocked) {
-    if (myMuted) {
+    if (myBanned) {
+      var banTxtR = myBannedPermanent ? 'Banni définitivement' : ('Banni jusqu\'au ' + escapeHtml(myBannedUntilDisplay || ''));
+      html += '<span class="reply-blocked" title="' + banTxtR + '">' + banTxtR + ' — réponse impossible</span>';
+    } else if (myMuted) {
       html += '<span class="reply-blocked" title="Tu es totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + '">'
         + 'Totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + ' — réponse impossible'
         + '</span>';
@@ -2439,6 +2448,9 @@ async function init() {
       myDefaultAccessories = data.defaultAccessories || [];
       myMuted = !!data.muted;
       myMutedUntilDisplay = data.mutedUntilDisplay || null;
+      myBanned = !!data.banned;
+      myBannedUntilDisplay = data.bannedUntilDisplay || null;
+      myBannedPermanent = !!data.bannedPermanent;
       document.getElementById('user-info').textContent = 'Connecté : ' + currentUser;
       var pl = document.getElementById('pictos-link');
       if (pl) pl.style.display = 'inline';
