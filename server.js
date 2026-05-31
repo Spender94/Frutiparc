@@ -3876,7 +3876,14 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     if (!row) return res.status(404).json({ error: 'not found' });
     const fields = {};
     const body = req.body || {};
-    if (body.fbouille !== undefined) { fields.fbouille = body.fbouille; bouilleCache[u] = body.fbouille; }
+    if (body.fbouille !== undefined) {
+      // Normalize like the /do/eb editor does: strip non-base62 and clip to
+      // 24 chars. Prevents the admin field from saving stray whitespace or
+      // legacy characters that the legacy SWF would reject on read.
+      const fb = normalizeBouilleState(body.fbouille);
+      fields.fbouille = fb;
+      bouilleCache[u] = fb;
+    }
     if (body.xp !== undefined) fields.xp = Number(body.xp);
     if (body.kikooz !== undefined) fields.kikooz = Number(body.kikooz);
     if (body.password !== undefined) {
@@ -11998,13 +12005,32 @@ case 'trace': {
     }
 
 case 'fbouille': {
-  const f = normalizeBouilleState(msg.attrs.f || DEFAULT_BOUILLE_STATE);
-
-  if (client.username && users[client.username]) {
-    users[client.username].fbouille = f;
+  // The legacy chat SWF sends its locally-cached bouille on connect (and
+  // sometimes mid-session). That cache can be STALE — e.g. an admin
+  // changed the user's bouille via /admin while they were offline, or the
+  // FBouille editor (HTTP /do/eb) saved a new value the chat SWF hasn't
+  // refreshed yet. Blindly trusting `msg.attrs.f` would silently revert
+  // those changes in memory + bouilleCache, and visually overwrite them
+  // for everyone in the user's salon.
+  //
+  // Resolution: prefer the server-side canonical value when we have one.
+  // `users[u].fbouille` is loaded from DB at user hydration (and updated
+  // by /do/eb and the admin PATCH), so it's the source of truth. Echo it
+  // back so the chat SWF refreshes its display from the response.
+  const clientF = normalizeBouilleState(msg.attrs.f || DEFAULT_BOUILLE_STATE);
+  let f = clientF;
+  const mem = client.username ? users[client.username] : null;
+  if (mem && mem.fbouille) {
+    const serverF = normalizeBouilleState(mem.fbouille);
+    if (serverF !== clientF) {
+      console.log(`[fbouille] ${client.username}: client cached ${clientF.slice(0, 12)}… but server has ${serverF.slice(0, 12)}…; sending canonical value`);
+      f = serverF;
+    }
+  }
+  if (mem) {
+    mem.fbouille = f;
     bouilleCache[client.username] = f;
   }
-
   sendToClient(socket, `<${CMD.fbouille} f="${f}" />`);
   break;
 }
