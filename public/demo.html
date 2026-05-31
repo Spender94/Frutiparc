@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frutiparc — Démo (bande-annonce)</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: #0f1410;
+    color: #e8f8d3;
+    font-family: 'Verdana', Arial, sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar (H to hide during capture) ── */
+  #sidebar {
+    width: 244px;
+    background: #1b261a;
+    padding: 16px 14px;
+    border-right: 2px solid #2e3c1e;
+    overflow-y: auto;
+    flex-shrink: 0;
+    transition: transform 200ms ease, width 200ms ease, padding 200ms ease;
+  }
+  body.no-ui #sidebar { transform: translateX(-100%); width: 0; padding: 0; border: 0; }
+  body.no-ui #stage  { padding: 0; }
+
+  #sidebar h1 { color: #CFF599; font-size: 14px; margin: 0 0 3px; letter-spacing: .5px; }
+  #sidebar .tag { color: #7fb44a; font-size: 10px; margin-bottom: 16px; }
+
+  .tab {
+    display: block; width: 100%;
+    background: transparent; color: #cfe6a4;
+    border: 1px solid transparent; border-radius: 5px;
+    padding: 8px 10px; text-align: left; margin-bottom: 4px;
+    cursor: pointer; font-size: 12px; font-family: inherit;
+  }
+  .tab:hover { background: #233220; color: #fff; }
+  .tab.active { background: #94DB39; color: #1c2a10; border-color: #94DB39; font-weight: bold; }
+
+  .controls { margin-top: 14px; border-top: 1px solid #2e3c1e; padding-top: 12px; }
+  .controls h4 { font-size: 11px; color: #7fb44a; text-transform: uppercase; letter-spacing: .5px; margin: 0 0 6px; }
+  .controls label { display: block; font-size: 11px; color: #cfe6a4; margin: 8px 0 2px; }
+  .controls input, .controls select {
+    width: 100%; background: #0f1410; color: #e8f8d3;
+    border: 1px solid #4d6b2a; border-radius: 4px; padding: 4px 6px;
+    font-family: inherit; font-size: 11px;
+  }
+  .controls .row { display: flex; gap: 6px; }
+  .controls .row > * { flex: 1; }
+  .controls button {
+    background: #4f7b1f; color: #fff; border: 0; border-radius: 4px;
+    padding: 7px 10px; margin: 8px 0 0; font-family: inherit; font-size: 11px;
+    cursor: pointer; width: 100%;
+  }
+  .controls button:hover { background: #669d2b; }
+  .controls .help { color: #7fb44a; font-size: 10px; margin-top: 10px; line-height: 1.6; }
+  kbd {
+    display: inline-block; background: #0f1410; border: 1px solid #4d6b2a;
+    border-radius: 3px; padding: 1px 5px; font-family: 'Courier New', monospace;
+    font-size: 10px; color: #ade76b;
+  }
+
+  /* ── Stage ── */
+  #stage {
+    flex: 1; padding: 26px; overflow: auto;
+    background: radial-gradient(ellipse at top, #1f2c1c 0%, #0f1410 62%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .scene { display: none; width: 100%; }
+  .scene.active { display: block; }
+
+  /* Bouilles */
+  .bouille-row { display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; align-items: flex-end; }
+  .bouille-card {
+    text-align: center; background: #E8F8D3; border-radius: 18px;
+    padding: 16px 14px 16px;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 20px 44px rgba(0,0,0,.40);
+  }
+  .bouille-stack { position: relative; margin: 0 auto; }
+  .bouille-stack iframe {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    border: 0; background: #E8F8D3; border-radius: 12px;
+    opacity: 0; transition: opacity 450ms ease;
+  }
+  .bouille-stack iframe.show { opacity: 1; }
+  .bouille-card .label { color: #335511; font-weight: bold; margin-top: 12px; font-size: 15px; letter-spacing: .5px; }
+  .bouille-card .sub { color: #5a8a20; font-size: 11px; margin-top: 1px; }
+
+  /* Generic SWF stage (frusion, logos, wheel) */
+  .swf-stage {
+    background: #0a0f0a; border-radius: 14px; padding: 24px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 30px 60px rgba(0,0,0,.5);
+    display: inline-block;
+  }
+  .swf-stage .caption {
+    color: #ade76b; font-size: 12px; margin-bottom: 12px; text-align: center;
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+  .swf-grid {
+    display: grid; gap: 24px;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    justify-items: center; width: 100%; max-width: 1500px;
+  }
+
+  .title-banner {
+    position: absolute; top: 14px; right: 22px;
+    color: rgba(173,231,107,.32); font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; pointer-events: none; transition: opacity 180ms;
+  }
+  body.no-ui .title-banner { opacity: 0; }
+</style>
+<script>
+  // Shared Ruffle config for the frusion / logos / wheel scenes. The bouilles
+  // scene loads its own Ruffle inside /bouille-preview.html iframes, so it's
+  // independent of this. Same unpkg CDN build the rest of the site uses.
+  window.RufflePlayer = window.RufflePlayer || {};
+  window.RufflePlayer.config = {
+    autoplay: 'on', unmuteOverlay: 'hidden', contextMenu: 'off',
+    showSwfDownload: false, splashScreen: false,
+    backgroundColor: '#000000', logLevel: 'error',
+  };
+</script>
+<script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>Frutiparc — Démo</h1>
+  <div class="tag">bande-annonce · captures</div>
+
+  <button class="tab active" data-scene="bouilles">Bouilles animées</button>
+  <button class="tab"        data-scene="frusion">Frusion (disque)</button>
+  <button class="tab"        data-scene="logos">Logos animés</button>
+  <button class="tab"        data-scene="wheel">Roues fortune</button>
+
+  <div class="controls" id="ctrl-bouilles">
+    <h4>Bouilles</h4>
+    <label>Taille (px)</label>
+    <input type="number" id="bouille-size" min="200" max="640" step="20" value="380">
+    <label>Familles (IDs séparés par virgule)</label>
+    <input type="text" id="bouille-families" value="0,15,24">
+    <label>Cadence des humeurs (ms)</label>
+    <input type="number" id="bouille-interval" min="1200" max="6000" step="200" value="2200">
+    <div class="row">
+      <button id="btn-bouille-apply">Appliquer</button>
+      <button id="btn-bouille-pause">Pause</button>
+    </div>
+    <div class="help">
+      Les bouilles enchaînent les 8 humeurs en fondu (sans clignotement) :
+      Neutre, Colère, Triste, Sourire, Joie, Déterminé, Embarrassé, Totoché.
+    </div>
+  </div>
+
+  <div class="controls" id="ctrl-frusion" style="display:none">
+    <h4>Frusion</h4>
+    <label>Largeur (px)</label>
+    <input type="number" id="frusion-w" min="320" max="1280" step="40" value="960">
+    <label>Hauteur (px)</label>
+    <input type="number" id="frusion-h" min="240" max="960" step="40" value="720">
+    <button id="btn-frusion-apply">Recharger</button>
+    <div class="help">animfrusion = le disque Frutiz qui tourne.</div>
+  </div>
+
+  <div class="controls" id="ctrl-logos" style="display:none">
+    <h4>Logos</h4>
+    <label>Taille (px)</label>
+    <input type="number" id="logos-size" min="160" max="600" step="20" value="360">
+    <button id="btn-logos-apply">Recharger</button>
+  </div>
+
+  <div class="controls" id="ctrl-wheel" style="display:none">
+    <h4>Roues</h4>
+    <label>Taille (px)</label>
+    <input type="number" id="wheel-size" min="240" max="700" step="20" value="480">
+    <button id="btn-wheel-apply">Recharger</button>
+  </div>
+
+  <div class="controls">
+    <h4>Capture</h4>
+    <div class="help">
+      <kbd>H</kbd> masque la barre latérale.<br>
+      <kbd>F</kbd> plein écran.<br>
+      Fond noir profond pour incrustation facile.
+    </div>
+  </div>
+</div>
+
+<div id="stage">
+  <div class="title-banner">démo • capture</div>
+
+  <div class="scene active" data-scene="bouilles">
+    <div class="bouille-row" id="bouille-row"></div>
+  </div>
+
+  <div class="scene" data-scene="frusion">
+    <div class="swf-stage">
+      <div class="caption">animFrusion</div>
+      <div id="frusion-mount"></div>
+    </div>
+  </div>
+
+  <div class="scene" data-scene="logos">
+    <div class="swf-grid" id="logos-grid"></div>
+  </div>
+
+  <div class="scene" data-scene="wheel">
+    <div class="swf-grid" id="wheel-grid"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function $(s) { return document.querySelector(s); }
+  function $$(s) { return [].slice.call(document.querySelectorAll(s)); }
+
+  var AVAILABLE_FAMILIES = [0, 10, 11, 12, 13, 14, 15, 16, 23, 24];
+
+  // 8 moods, in the famille SWF's emote order (matches EXPRESSIONS in
+  // public/fb/index.html).
+  var MOODS = [
+    { e: 0, name: 'Neutre' }, { e: 1, name: 'Colère' }, { e: 2, name: 'Triste' },
+    { e: 3, name: 'Sourire' }, { e: 4, name: 'Joie' }, { e: 5, name: 'Déterminé' },
+    { e: 6, name: 'Embarrassé' }, { e: 7, name: 'Totoché' },
+  ];
+
+  var BASE_STATE = '000000010000000000000000';
+  function encode62TwoChar(n) {
+    var chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    var r = ''; while (n > 0) { r = chars[n % 62] + r; n = Math.floor(n / 62); }
+    while (r.length < 2) r = '0' + r; return r;
+  }
+  function previewUrl(familyId, emote) {
+    var state = encode62TwoChar(familyId) + BASE_STATE.substring(2);
+    return '/bouille-preview.html?s=' + encodeURIComponent(state) + '&e=' + emote;
+  }
+
+  // ── Scene switching ──
+  function switchScene(name) {
+    $$('.tab').forEach(function (t) { t.classList.toggle('active', t.dataset.scene === name); });
+    $$('.scene').forEach(function (s) { s.classList.toggle('active', s.dataset.scene === name); });
+    ['bouilles', 'frusion', 'logos', 'wheel'].forEach(function (n) {
+      var el = document.getElementById('ctrl-' + n);
+      if (el) el.style.display = (n === name) ? '' : 'none';
+    });
+    if (name === 'bouilles') ensureBouilles();
+    if (name === 'frusion')  ensureFrusion();
+    if (name === 'logos')    ensureLogos();
+    if (name === 'wheel')    ensureWheels();
+  }
+  $$('.tab').forEach(function (b) { b.addEventListener('click', function () { switchScene(b.dataset.scene); }); });
+
+  // ── Hide UI / fullscreen ──
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'h' || e.key === 'H') document.body.classList.toggle('no-ui');
+    else if (e.key === 'f' || e.key === 'F') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
+      else document.exitFullscreen().catch(function(){});
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Bouilles — smooth emote cycling with NO reload flash.
+  // Each bouille is a stack of 2 iframes. To change expression we load the
+  // next emote into the hidden iframe, wait for it to load + a Ruffle warm-up
+  // delay, then crossfade (opacity) to it. Because the famille SWF freezes
+  // each expression via gotoAndStop, reloading the visible iframe would blink;
+  // the crossfade hides that entirely.
+  // ────────────────────────────────────────────────────────────────────────
+  var RUFFLE_WARMUP_MS = 550;   // time for Ruffle to fetch+render after iframe onload
+  var bouilles = [];            // [{ family, frames:[a,b], front, emoteIdx, label, busy }]
+  var bouilleTimer = null;
+  var bouillePaused = false;
+
+  function buildBouilles() {
+    var size = Math.max(160, Math.min(800, parseInt($('#bouille-size').value, 10) || 380));
+    var families = ($('#bouille-families').value || '0,15,24').split(',')
+      .map(function (s) { return parseInt(s.trim(), 10); })
+      .filter(function (n) { return AVAILABLE_FAMILIES.indexOf(n) >= 0; });
+    if (!families.length) families = [0, 15, 24];
+
+    var row = $('#bouille-row');
+    row.innerHTML = '';
+    bouilles = [];
+
+    families.forEach(function (familyId) {
+      var card = document.createElement('div');
+      card.className = 'bouille-card';
+
+      var stack = document.createElement('div');
+      stack.className = 'bouille-stack';
+      stack.style.width = size + 'px';
+      stack.style.height = size + 'px';
+
+      var a = document.createElement('iframe');
+      var b = document.createElement('iframe');
+      a.scrolling = 'no'; b.scrolling = 'no';
+      stack.appendChild(a); stack.appendChild(b);
+      card.appendChild(stack);
+
+      var label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = MOODS[0].name;
+      card.appendChild(label);
+
+      var sub = document.createElement('div');
+      sub.className = 'sub';
+      sub.textContent = 'Famille ' + familyId;
+      card.appendChild(sub);
+
+      row.appendChild(card);
+
+      // Front iframe starts on Neutre and is shown.
+      a.src = previewUrl(familyId, MOODS[0].e);
+      a.classList.add('show');
+
+      bouilles.push({ family: familyId, frames: [a, b], front: 0, emoteIdx: 0, label: label, busy: false });
+    });
+
+    restartBouilleTimer();
+  }
+
+  function advanceBouille(bo) {
+    if (bo.busy) return;                 // previous transition still loading
+    bo.busy = true;
+    var next = (bo.emoteIdx + 1) % MOODS.length;
+    var mood = MOODS[next];
+    var backIdx = 1 - bo.front;
+    var backFrame = bo.frames[backIdx];
+    var frontFrame = bo.frames[bo.front];
+
+    var done = false;
+    function crossfade() {
+      if (done) return; done = true;
+      backFrame.classList.add('show');
+      frontFrame.classList.remove('show');
+      bo.label.textContent = mood.name;
+      bo.front = backIdx;
+      bo.emoteIdx = next;
+      bo.busy = false;
+    }
+    backFrame.onload = function () { setTimeout(crossfade, RUFFLE_WARMUP_MS); };
+    // Safety net if onload doesn't fire (cached): crossfade anyway.
+    setTimeout(crossfade, RUFFLE_WARMUP_MS + 1200);
+    backFrame.src = previewUrl(bo.family, mood.e);
+  }
+
+  function tickBouilles() {
+    if (bouillePaused) return;
+    bouilles.forEach(advanceBouille);
+  }
+
+  function restartBouilleTimer() {
+    if (bouilleTimer) clearInterval(bouilleTimer);
+    var interval = Math.max(1200, parseInt($('#bouille-interval').value, 10) || 2200);
+    bouilleTimer = setInterval(tickBouilles, interval);
+  }
+
+  function ensureBouilles() { if (!bouilles.length) buildBouilles(); }
+
+  $('#btn-bouille-apply').addEventListener('click', buildBouilles);
+  $('#btn-bouille-pause').addEventListener('click', function () {
+    bouillePaused = !bouillePaused;
+    this.textContent = bouillePaused ? 'Reprendre' : 'Pause';
+  });
+
+  // ── Frusion ──
+  async function ensureFrusion() {
+    var w = Math.max(240, parseInt($('#frusion-w').value, 10) || 960);
+    var h = Math.max(240, parseInt($('#frusion-h').value, 10) || 720);
+    var mount = $('#frusion-mount');
+    mount.innerHTML = '';
+    if (!window.RufflePlayer || !window.RufflePlayer.newest) return;
+    var player = window.RufflePlayer.newest().createPlayer();
+    player.style.width = w + 'px'; player.style.height = h + 'px'; player.style.display = 'block';
+    mount.appendChild(player);
+    try {
+      await player.load({ url: '/animfrusion.swf', autoplay: 'on', backgroundColor: '#000000', quality: 'high', letterbox: 'off' });
+    } catch (e) {}
+  }
+  $('#btn-frusion-apply').addEventListener('click', ensureFrusion);
+
+  // ── Logos ──
+  // Genuine logo/sign animations live under /swf/. The root-level
+  // /fcLogo.swf, /awards.swf, /frutiSign.swf are all duplicates of a famille
+  // avatar SWF (same 421847 bytes), and /swf/fcLogo.swf is a 17-byte stub —
+  // so we only show the two real assets: awards and frutiSign.
+  var LOGO_ASSETS = [
+    { url: '/swf/awards.swf', caption: 'Récompenses (awards)' },
+    { url: '/swf/frutiSign.swf', caption: 'FrutiSign' },
+  ];
+  async function ensureLogos() {
+    var size = Math.max(160, parseInt($('#logos-size').value, 10) || 360);
+    var grid = $('#logos-grid'); grid.innerHTML = '';
+    if (!window.RufflePlayer || !window.RufflePlayer.newest) return;
+    var ruffle = window.RufflePlayer.newest();
+    for (var i = 0; i < LOGO_ASSETS.length; i++) {
+      var asset = LOGO_ASSETS[i];
+      var stage = document.createElement('div'); stage.className = 'swf-stage';
+      var cap = document.createElement('div'); cap.className = 'caption'; cap.textContent = asset.caption;
+      var mount = document.createElement('div');
+      stage.appendChild(cap); stage.appendChild(mount); grid.appendChild(stage);
+      var player = ruffle.createPlayer();
+      player.style.width = size + 'px'; player.style.height = size + 'px'; player.style.display = 'block';
+      mount.appendChild(player);
+      try { await player.load({ url: asset.url, autoplay: 'on', backgroundColor: '#000000', quality: 'high' }); } catch (e) {}
+    }
+  }
+  $('#btn-logos-apply').addEventListener('click', ensureLogos);
+
+  // ── Wheel ──
+  var WHEEL_ASSETS = [
+    { url: '/swf/wheel/wheel0.swf', caption: 'wheel0' },
+    { url: '/swf/wheel/wheel1.swf', caption: 'wheel1' },
+  ];
+  async function ensureWheels() {
+    var size = Math.max(200, parseInt($('#wheel-size').value, 10) || 480);
+    var grid = $('#wheel-grid'); grid.innerHTML = '';
+    if (!window.RufflePlayer || !window.RufflePlayer.newest) return;
+    var ruffle = window.RufflePlayer.newest();
+    for (var i = 0; i < WHEEL_ASSETS.length; i++) {
+      var asset = WHEEL_ASSETS[i];
+      var stage = document.createElement('div'); stage.className = 'swf-stage';
+      var cap = document.createElement('div'); cap.className = 'caption'; cap.textContent = asset.caption;
+      var mount = document.createElement('div');
+      stage.appendChild(cap); stage.appendChild(mount); grid.appendChild(stage);
+      var player = ruffle.createPlayer();
+      player.style.width = size + 'px'; player.style.height = size + 'px'; player.style.display = 'block';
+      mount.appendChild(player);
+      try { await player.load({ url: asset.url, autoplay: 'on', backgroundColor: '#000000', quality: 'high' }); } catch (e) {}
+    }
+  }
+  $('#btn-wheel-apply').addEventListener('click', ensureWheels);
+
+  // ── Init ──
+  ensureBouilles();
+})();
+</script>
+</body>
+</html>

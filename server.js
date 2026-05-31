@@ -6794,6 +6794,13 @@ app.get('/frusion', (req, res) => {
   res.redirect(`/frusion-ruffle.html?${params.toString()}`);
 });
 
+// /demo — clean URL alias for the HD capture / promo-video demo page. The
+// page itself lives at /public/demo.html (served by the static middleware
+// further down) so this route is just for the nice short URL.
+app.get('/demo', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'demo.html'));
+});
+
 function sendAvatarFamily(res, fileName) {
   const absPath = path.join(__dirname, 'public', 'swf', 'fbouille', fileName);
 
