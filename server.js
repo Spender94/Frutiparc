@@ -3883,6 +3883,19 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
       fields.password = await hashPassword(String(body.password));
       if (users[u]) users[u].pass = fields.password;
     }
+    if (body.email !== undefined) {
+      // Empty/null clears it; otherwise validate the same way registration does.
+      // Useful when an account was created without an email and the user now
+      // needs the password-reset flow to work.
+      const raw = String(body.email || '').trim();
+      if (raw === '') {
+        fields.email = null;
+      } else if (!isValidEmail(raw)) {
+        return res.status(400).json({ error: 'Email invalide.' });
+      } else {
+        fields.email = raw.toLowerCase();
+      }
+    }
     if (body.is_moderator !== undefined) fields.is_moderator = !!body.is_moderator;
     if (body.is_animator !== undefined) fields.is_animator = !!body.is_animator;
     if (body.display_name !== undefined) {

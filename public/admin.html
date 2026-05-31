@@ -358,7 +358,7 @@
     <span id="user-count"></span>
   </div>
   <table>
-    <thead><tr><th>Pseudo</th><th>XP</th><th>Kikooz</th><th>Bouille</th><th>Genre</th><th>FrutiSigne</th><th>Modo</th><th>Anim</th><th>Inscrit le</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Pseudo</th><th>Email</th><th>XP</th><th>Kikooz</th><th>Bouille</th><th>Genre</th><th>FrutiSigne</th><th>Modo</th><th>Anim</th><th>Inscrit le</th><th>Actions</th></tr></thead>
     <tbody id="users-body"></tbody>
   </table>
 </div>
@@ -638,6 +638,7 @@
     <label><span>XP :</span> <input id="edit-xp" type="number"></label>
     <label><span>Kikooz :</span> <input id="edit-kikooz" type="number"></label>
     <label><span>FrutiJob :</span> <input id="edit-frutijob" maxlength="80" placeholder="Frutiz"></label>
+    <label><span>Email :</span> <input id="edit-email" type="email" maxlength="120" placeholder="vide = aucun email"></label>
     <label><span>Mot de passe :</span> <input id="edit-password" placeholder="(laisser vide = inchangé)"></label>
     <label><span>FrutiSigne :</span>
       <select id="edit-frutisign" style="width:120px">
@@ -991,6 +992,7 @@ async function loadUsers() {
     const tb = $('#users-body');
     tb.innerHTML = data.map(u => `<tr>
       <td><a href="#" onclick="viewUser('${esc(u.username)}');return false" class="uname">${esc(u.display_name || u.username)}</a></td>
+      <td style="font-size:11px">${u.email ? esc(u.email) : '<span style="color:#c03c30" title="Pas d\\'email — le reset password ne marchera pas">— aucun —</span>'}</td>
       <td>${u.xp || 0}</td>
       <td>${u.kikooz || 0}</td>
       <td><code style="font-size:11px">${esc((u.fbouille||'').substring(0,12))}…</code></td>
@@ -1000,14 +1002,14 @@ async function loadUsers() {
       <td><span class="badge ${u.is_animator ? 'badge-anim' : 'badge-no-mod'}" onclick="toggleAnim('${esc(u.username)}',${!u.is_animator})" title="Cliquer pour changer">${u.is_animator ? 'Anim' : '-'}</span></td>
       <td>${fmtDate(u.created_at)}</td>
       <td>
-        <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}','${esc(u.display_name||u.username)}',${u.fruti_sign ?? -1},${u.fruti_sign_b ?? -1},'${esc(u.frutijob||'')}')">Modifier</button>
+        <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}','${esc(u.display_name||u.username)}',${u.fruti_sign ?? -1},${u.fruti_sign_b ?? -1},'${esc(u.frutijob||'')}','${esc(u.email||'')}')">Modifier</button>
         <button class="btn-danger btn-sm" onclick="deleteUser('${esc(u.username)}')">Supprimer</button>
       </td>
     </tr>`).join('');
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
-function editUser(name, xp, kikooz, fb, dn, fs, fsb, fj) {
+function editUser(name, xp, kikooz, fb, dn, fs, fsb, fj, email) {
   $('#edit-user-name').textContent = name;
   $('#edit-user-name').dataset.name = name;
   $('#edit-displayname').value = dn || name;
@@ -1017,6 +1019,10 @@ function editUser(name, xp, kikooz, fb, dn, fs, fsb, fj) {
   $('#edit-frutijob').value = fj || '';
   $('#edit-frutisign').value = fs ?? -1;
   $('#edit-frutisignb').value = fsb ?? -1;
+  $('#edit-email').value = email || '';
+  // Remember the original so saveEditUser only PATCHes email if the admin
+  // actually changed it (avoids sending an empty string and clearing it).
+  $('#edit-email').dataset.orig = email || '';
   $('#edit-password').value = '';
   $('#modal-edit-user').classList.add('open');
 }
@@ -1031,6 +1037,13 @@ async function saveEditUser() {
   if (pw) body.password = pw;
   body.fruti_sign = Number($('#edit-frutisign').value);
   body.fruti_sign_b = Number($('#edit-frutisignb').value);
+  // Only send email if the admin actually edited it (otherwise we'd risk
+  // clearing it on save).
+  const emailField = $('#edit-email');
+  const emailNow = emailField.value.trim();
+  if (emailNow !== (emailField.dataset.orig || '')) {
+    body.email = emailNow;     // empty string -> server clears it
+  }
   const r = await fetch(`/api/admin/users/${encodeURIComponent(name)}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify(body) });
   if (!r.ok) { const d = await r.json().catch(() => ({})); toast('Erreur: ' + (d.error || 'inconnu')); return; }
   closeModal('modal-edit-user');
