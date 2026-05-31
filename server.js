@@ -7410,7 +7410,12 @@ const GAME_DISCS = {
     playMode: 'single',
     swfName: 'kaluga',
     gameId: 'games/kaluga/full.swf',
-    props: 'w=640;h=480;m=i',
+    // ct/cb crop the green decorative borders Kaluga draws at the top and
+    // bottom of its 640×480 stage. They're handled by game-popup.html: the
+    // wrap shrinks vertically and the player is offset upward, so the
+    // visible viewport "windows" into the middle of the SWF. Tunable from
+    // here if the values need adjusting after a SWF update.
+    props: 'w=640;h=480;ct=60;cb=40;m=i',
     files: [
       { u: 'games/kaluga/full.swf' },
     ],
@@ -7420,7 +7425,7 @@ const GAME_DISCS = {
     playMode: 'preview',
     swfName: 'kaluga',
     gameId: 'games/kaluga/full.swf',
-    props: 'w=640;h=480;m=i',
+    props: 'w=640;h=480;ct=60;cb=40;m=i',
     files: [
       { u: 'games/kaluga/full.swf' },
     ],

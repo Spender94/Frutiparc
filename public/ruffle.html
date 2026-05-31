@@ -211,7 +211,12 @@
                             width: parseInt(parsedProps.w) || 640,
                             height: parseInt(parsedProps.h) || 480,
                             swfWidth: parseInt(parsedProps.sw) || 0,
-                            swfHeight: parseInt(parsedProps.sh) || 0
+                            swfHeight: parseInt(parsedProps.sh) || 0,
+                            // ct / cb = vertical crop applied to the wrap (see
+                            // game-popup.html). Used by Kaluga to hide its
+                            // decorative top/bottom green borders.
+                            cropTop: parseInt(parsedProps.ct) || 0,
+                            cropBottom: parseInt(parsedProps.cb) || 0
                         };
                         window.__dlog("[FRUSION] Pending game:", JSON.stringify(window.__pendingGame));
                     }
@@ -462,9 +467,14 @@
                         + "&sid=" + encodeURIComponent(sid);
                     if (game.swfWidth)  popupUrl += "&sw=" + game.swfWidth;
                     if (game.swfHeight) popupUrl += "&sh=" + game.swfHeight;
+                    if (game.cropTop)    popupUrl += "&ct=" + game.cropTop;
+                    if (game.cropBottom) popupUrl += "&cb=" + game.cropBottom;
                     window.__dlog("[Frusion] Opening standalone game:", popupUrl);
+                    // Shrink the popup window itself by the crop amount so
+                    // there is no leftover body-bg strip below the game.
+                    var visibleH = Math.max(1, game.height - (game.cropTop || 0) - (game.cropBottom || 0));
                     var gw = game.width + 32;
-                    var gh = game.height + 32;
+                    var gh = visibleH + 32;
                     var feat = "width=" + gw + ",height=" + gh + ",resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no";
                     // Close any previous game popup before opening the new one —
                     // if the user ejected the previous disc but the popup stayed

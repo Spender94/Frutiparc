@@ -248,6 +248,13 @@
   // size and let the wrap's overflow:hidden clip the non-game area.
   const swfWidth  = parseInt(qs.get("sw") || "0", 10) || width;
   const swfHeight = parseInt(qs.get("sh") || "0", 10) || height;
+  // Optional vertical crop. Some games (e.g. Kaluga) include decorative green
+  // borders at the top and bottom of their stage that the popup must hide for
+  // a clean play view. The wrap is shrunk by (ct + cb) and the player is
+  // shifted up by ct so the wrap "windows" into the middle of the SWF.
+  const cropTop    = Math.max(0, parseInt(qs.get("ct") || "0", 10) || 0);
+  const cropBottom = Math.max(0, parseInt(qs.get("cb") || "0", 10) || 0);
+  const visibleHeight = Math.max(1, height - cropTop - cropBottom);
 
   // Debug mode: expand the wrap to the full SWF stage so internal _root.test logs are visible.
   if (qs.get("debug") === "1") {
@@ -269,7 +276,10 @@
 
   const wrap = document.getElementById("player-wrap");
   wrap.style.width  = width + "px";
-  wrap.style.height = height + "px";
+  // When ct/cb are set, the wrap is shorter than the SWF — the player below
+  // is positioned with top: -cropTop so the cropped band sits above the wrap
+  // and gets clipped by overflow:hidden.
+  wrap.style.height = visibleHeight + "px";
 
   document.title = "Frutiparc - " + (qs.get("game") || "Game");
 
@@ -522,6 +532,7 @@
   const player = ruffle.createPlayer();
   player.style.width  = swfWidth + "px";
   player.style.height = swfHeight + "px";
+  if (cropTop > 0) player.style.top = (-cropTop) + "px";
   wrap.appendChild(player);
 
   // Load the game SWF directly (standalone mode, no Frusion wrapper).
