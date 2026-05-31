@@ -1530,6 +1530,13 @@ function loadBumpers() {
 // ============================================================================
 
 function levelMake() {
+  // levelClassic is module-level state. In the original OCaml each mode ran
+  // in its own process, so the `classic` ref never leaked. Here the server
+  // is long-lived: if a previous levelMakeClassic() left the flag set (e.g.
+  // by throwing mid-generation), levelMake() would silently emit a CLASSIC
+  // map — sparse rooms plus classic-only items like ClassicExit. Challenge
+  // is never classic, so force it off at entry.
+  levelClassic = false;
   const ddata = genDungeonRec(FIXED_WIDTH, FIXED_HEIGHT);
   const [dists, dmoy] = computeDists(ddata);
   const b = createBitWriter();
@@ -1577,30 +1584,37 @@ function randomExit() {
 function levelMakeClassic(choiceRooms) {
   const nrooms = 100;
   levelClassic = true;
-  levelClassicEnter = pos(Math.floor(levelCwidth / 2) - 3, Math.floor(levelCheight / 2) - 3);
-  levelClassicExit = randomExit();
-
-  const ddata = makeEmptyDungeon(nrooms, choiceRooms);
-  const b = createBitWriter();
-  encodeDungeon(b, ddata);
-  b.flush();
-
-  for (let j = 0; j < nrooms; j++) {
-    for (let i = 0; i < choiceRooms; i++) {
-      const roomContent = genRoomLvlRec(
-        [ddata, pos(j, i)],
-        Math.floor(j / 2),
-        ddata.dmap[j][i],
-        1000
-      );
-      encodeRoomContent(b, roomContent);
-    }
-    levelClassicEnter = { ...levelClassicExit };
+  // try/finally so the module-level `levelClassic` flag is ALWAYS cleared,
+  // even if room generation throws — otherwise the next challenge
+  // levelMake() would inherit classic=true and emit a broken (classic-style)
+  // daily map.
+  try {
+    levelClassicEnter = pos(Math.floor(levelCwidth / 2) - 3, Math.floor(levelCheight / 2) - 3);
     levelClassicExit = randomExit();
-  }
 
-  levelClassic = false;
-  return b.toString();
+    const ddata = makeEmptyDungeon(nrooms, choiceRooms);
+    const b = createBitWriter();
+    encodeDungeon(b, ddata);
+    b.flush();
+
+    for (let j = 0; j < nrooms; j++) {
+      for (let i = 0; i < choiceRooms; i++) {
+        const roomContent = genRoomLvlRec(
+          [ddata, pos(j, i)],
+          Math.floor(j / 2),
+          ddata.dmap[j][i],
+          1000
+        );
+        encodeRoomContent(b, roomContent);
+      }
+      levelClassicEnter = { ...levelClassicExit };
+      levelClassicExit = randomExit();
+    }
+
+    return b.toString();
+  } finally {
+    levelClassic = false;
+  }
 }
 
 // ============================================================================
