@@ -1154,15 +1154,36 @@ function bkiwiRankingId(rawData, mode, hintedTrack) {
 
 // Compare two BKiwi slot 0 JSON payloads and return the track index (0-5)
 // whose stats just changed — used to know which circuit the player just
-// raced when their score arrives without an embedded track id. Tries
-// multiple field layouts since the obfuscated SWF mixes nested $ts arrays
-// with flat per-track fields (lapCar_0..5, totalCar_0..5).
+// raced when their score arrives without an embedded track id.
+//
+// The real slot-0 layout (see patchSlot0) keeps per-track bests in an OBJECT:
+//     $ts = { $t0: { $bc, $bl }, $t1: {…}, … $t5: {…} }
+// where $bc = best classic time and $bl = best challenge time for that track.
+// savePublic() rewrites $ts when the player beats a per-track best, so the
+// track whose $bc/$bl just moved is the one they raced. (The earlier code only
+// handled a nested ARRAY $ts and flat `name_0..5` fields — neither matches this
+// object layout, so detection always returned null and every score fell back
+// to the date-derived daily track. That is the "tout tagué en Green Hill" bug.)
 function detectBkiwiTrackFromSlotDiff(prevDataStr, newDataStr) {
   try {
     const prev = prevDataStr ? JSON.parse(prevDataStr) : {};
     const next = newDataStr ? JSON.parse(newDataStr) : {};
 
-    // Strategy 1: nested $ts array
+    // Strategy 0 (current format): $ts object keyed $t0..$t5 with { $bc, $bl }.
+    const isTsObj = (o) => o && typeof o.$ts === 'object' && !Array.isArray(o.$ts);
+    if (isTsObj(next)) {
+      const prevTsObj = isTsObj(prev) ? prev.$ts : {};
+      for (let i = 0; i < 6; i++) {
+        const key = `$t${i}`;
+        const a = (prevTsObj && prevTsObj[key]) || {};
+        const b = next.$ts[key] || {};
+        const aBc = Number(a.$bc) || 0, bBc = Number(b.$bc) || 0;
+        const aBl = Number(a.$bl) || 0, bBl = Number(b.$bl) || 0;
+        if (aBc !== bBc || aBl !== bBl) return i;
+      }
+    }
+
+    // Strategy 1 (legacy): nested $ts array
     const prevTs = Array.isArray(prev.$ts) ? prev.$ts : [];
     const nextTs = Array.isArray(next.$ts) ? next.$ts : [];
     if (nextTs.length) {
@@ -1173,7 +1194,7 @@ function detectBkiwiTrackFromSlotDiff(prevDataStr, newDataStr) {
       }
     }
 
-    // Strategy 2: any field whose name ends with _0 through _5
+    // Strategy 2 (legacy): any field whose name ends with _0 through _5
     const allKeys = new Set([...Object.keys(prev), ...Object.keys(next)]);
     for (const key of allKeys) {
       const m = key.match(/_([0-5])$/);
@@ -1184,6 +1205,28 @@ function detectBkiwiTrackFromSlotDiff(prevDataStr, newDataStr) {
     }
   } catch (e) { /* malformed JSON */ }
   return null;
+}
+
+// Extract the game's authoritative per-track bests from a BKiwi slot-0 payload.
+// Returns { classic: {trackIdx: ms}, challenge: {trackIdx: ms} } keeping only
+// real (> 0) times. This is the source of truth for per-circuit records: the
+// saveScore wire payload never carries a track, but the card always does.
+function bkiwiTrackBestsFromSlot0(slot0Str) {
+  let parsed;
+  try { parsed = JSON.parse(slot0Str); } catch { return null; }
+  const ts = parsed && parsed.$ts;
+  if (!ts || typeof ts !== 'object' || Array.isArray(ts)) return null;
+  const out = { classic: {}, challenge: {} };
+  let any = false;
+  for (let t = 0; t < 6; t++) {
+    const s = ts[`$t${t}`];
+    if (!s || typeof s !== 'object') continue;
+    const bc = Number(s.$bc);
+    const bl = Number(s.$bl);
+    if (Number.isFinite(bc) && bc > 0) { out.classic[t] = bc; any = true; }
+    if (Number.isFinite(bl) && bl > 0) { out.challenge[t] = bl; any = true; }
+  }
+  return any ? out : null;
 }
 
 function getBkiwiDailyTrack(date = new Date()) {
@@ -1428,30 +1471,34 @@ function isLowerBetter(rankingId) {
 // MotionBall 2 challenge ranking hierarchy (confirmed by spender94):
 //   1. Players who beat the final boss come above everyone else, regardless
 //      of map %.
-//   2. Among boss-beaters, the player with more time on the counter wins —
-//      i.e. lower elapsed time (s = centiseconds) is better.
-//   3. Among players who did NOT beat the boss, a higher map % (stored in
-//      `data`) wins.
+//   2. Among boss-beaters, the player who finished with MORE time left on the
+//      counter wins. curtime is a COUNTDOWN — Game.as starts it at
+//      TIME_CHALLENGE (15 min) and decrements it every frame — so more time
+//      remaining means a faster clear, which calcScore bakes into a HIGHER
+//      score. Higher score therefore wins (NOT lower).
+//   3. Among players who did NOT beat the boss, a higher map % (carried in the
+//      score, or in legacy `data`) wins.
 //
 // The MB2 client (Games/motionBall2/mb2/Game.as `calcScore`) packs both
-// the exploration % and the boss-time into a single number:
+// the exploration % and the remaining time into a single number:
 //
 //     score = int(vrooms*100/trooms) - 1                 ← when boss NOT beaten
 //                                                          (range -1..99,
 //                                                           i.e. pct-1)
 //
 //     score = int(vrooms*100/trooms) - 1                 ← when boss beaten
-//             + int(curtime/100) * 100                     (≥ 99 + 100 = 199
-//                                                          for any sub-100ms
-//                                                          boss kill, which
-//                                                          is physically
-//                                                          impossible)
+//             + int(curtime/100) * 100                     (the time-left term
+//                                                          dominates; the map %
+//                                                          rides the low two
+//                                                          digits as a tiebreak)
 //
-// So the boss-beaten test is `score >= 100`, NOT `score > 0` (which is the
-// historical bug that surfaced as "MotionBall classement à l'envers": with
-// the wrong threshold every exploration score 1..99 was treated as a
-// boss-killer time-in-cs and was sorted *before* real boss-killers whose
-// scores are 199+).
+// So the boss-beaten test is `score >= 100`, NOT `score > 0`: a real clear
+// keeps far more than 0.1% of the 15-min clock, so int(curtime/100) >= 1 and
+// the score lands at 100+, while a non-clear can never exceed 99 (pct-1).
+// Two historical bugs both surfaced as "MotionBall classement à l'envers":
+// the wrong >0 threshold (exploration scores 1..99 mistaken for boss times),
+// and sorting boss-beaters by LOWER score (which ranked the slowest clears —
+// least time left — first, e.g. a 3751-time/100% run above a 7379-time run).
 function mb2HasBoss(s) {
   return Number.isFinite(Number(s)) && Number(s) >= 100;
 }
@@ -1477,10 +1524,11 @@ function mb2Comparator(a, b) {
   const bBoss = mb2HasBoss(b.s);
   if (aBoss !== bBoss) return aBoss ? -1 : 1;
   if (aBoss) {
-    // both beat the boss → lower combined score wins. The MB2 formula bakes
-    // exploration % into the low-order digits of the time component so a
-    // straight numerical compare on s already does the right thing.
-    return Number(a.s) - Number(b.s);
+    // both beat the boss → MORE time left wins, i.e. the HIGHER combined score
+    // (curtime is a countdown, so a bigger int(curtime/100)*100 term = faster
+    // clear). The exploration % rides the low-order digits, acting as a natural
+    // tiebreaker when two clears land in the same time bucket.
+    return Number(b.s) - Number(a.s);
   }
   // neither beat the boss → higher score wins (more rooms visited). For
   // legacy rows that stored an explicit `data` percentage, fall back to it
@@ -3291,12 +3339,14 @@ async function handleSaveScore(req, res) {
     const hint = users[username] && Number.isFinite(users[username].bkiwiCurrentTrack)
       ? users[username].bkiwiCurrentTrack : undefined;
     const daily = getBkiwiDailyTrack();
-    // Per-track classic record: use hint if known, else assume daily (most likely).
-    const trackForClassic = Number.isFinite(hint) ? hint : daily;
-    rankingId = `bkiwi_track${trackForClassic}_classic`;
-    // Always also save to today's daily challenge ranking, so the score appears
-    // in scores journaliers regardless of slot-diff timing/staleness.
-    extraRankingId = `bkiwi_track${daily}_challenge`;
+    // Route both the all-time classic record AND the daily challenge to the
+    // circuit the player actually raced (detected from the slot-0 $ts diff).
+    // Fall back to today's daily track only when detection couldn't pin it —
+    // routing the challenge to `daily` unconditionally was tagging every result
+    // with the wrong circuit.
+    const track = Number.isFinite(hint) ? hint : daily;
+    rankingId = `bkiwi_track${track}_classic`;
+    extraRankingId = `bkiwi_track${track}_challenge`;
     console.log(`[HTTP]  bkiwi route hint=${hint} daily=${daily} -> classic:${rankingId} challenge:${extraRankingId}`);
   } else if (rankingId === 'mb2_classic' || rankingId === 'mb2_challenge') {
     // MB2 stores the same packed time+pct (ptmb2) score in both rankings:
@@ -9169,9 +9219,11 @@ app.get('/api/club/records', async (req, res) => {
     if (!RANKINGS[rkId]) return;
     if (!bestByRanking[rkId]) bestByRanking[rkId] = {};
     const cur = bestByRanking[rkId][user];
-    const lowerBetter = isLowerBetter(rkId);
+    // Defer to isScoreBetter so MB2's boss/time hierarchy is honored here too
+    // (a plain lower/higher compare would mis-rank MB2 clears). For every other
+    // ranking this is identical to the old lower/higher test.
     const isBetter = !cur ||
-      (lowerBetter ? score < Number(cur.score) : score > Number(cur.score));
+      isScoreBetter(rkId, score, data, Number(cur.score), cur.data);
     if (isBetter) {
       bestByRanking[rkId][user] = { score, data: data || '', updatedAt: updatedAt || '' };
     }
@@ -9200,6 +9252,48 @@ app.get('/api/club/records', async (req, res) => {
     }
   }
 
+  // Burning Kiwi: rebuild per-circuit records from each player's card.
+  // The saveScore wire payload carries no track, so live/archive rows were
+  // routed by a date-derived guess and piled up under the wrong circuit
+  // ("tout tagué en Green Hill"). The game itself keeps authoritative per-track
+  // bests in slot 0 ($ts.$t{N}.$bc = classic, $bl = challenge), so for every
+  // player we can read, we drop their mis-tagged bkiwi rows and replace them
+  // with the card's real per-circuit bests. Players whose card we can't read
+  // keep their existing rows (no data loss).
+  const getBkiwiSlot0 = async (username) => {
+    const mem = users[username];
+    const memSlot = mem && mem.frutiSlots && mem.frutiSlots.bkiwi && mem.frutiSlots.bkiwi['0'];
+    if (memSlot) return memSlot;
+    if (!process.env.DATABASE_URL) return null;
+    try {
+      let dbId = mem && mem._dbId;
+      if (!dbId) { const row = await db.findUserByUsername(username); dbId = row && row.id; }
+      if (dbId) { const slots = await db.getFrutiSlots(dbId, 'bkiwi'); return slots && slots['0']; }
+    } catch (e) { /* ignore this player */ }
+    return null;
+  };
+  // Only re-bucket players who already hold a bkiwi record (live or archive):
+  // that is exactly the set whose rows show up below, and it keeps this to a
+  // handful of card lookups instead of scanning the whole user base.
+  const bkiwiUsers = new Set();
+  for (const rkId of Object.keys(bestByRanking)) {
+    if (!rkId.startsWith('bkiwi_track')) continue;
+    for (const u of Object.keys(bestByRanking[rkId] || {})) bkiwiUsers.add(u);
+  }
+  for (const username of bkiwiUsers) {
+    const slot0 = await getBkiwiSlot0(username);
+    if (!slot0) continue;
+    const bests = bkiwiTrackBestsFromSlot0(slot0);
+    if (!bests) continue;
+    for (const rkId of Object.keys(bestByRanking)) {
+      if (rkId.startsWith('bkiwi_track') && bestByRanking[rkId]) delete bestByRanking[rkId][username];
+    }
+    for (let t = 0; t < 6; t++) {
+      if (bests.classic[t]) upsertBest(`bkiwi_track${t}_classic`, username, bests.classic[t], '', '');
+      if (bests.challenge[t]) upsertBest(`bkiwi_track${t}_challenge`, username, bests.challenge[t], '', '');
+    }
+  }
+
   const out = [];
   for (const [rkId, meta] of Object.entries(RANKINGS)) {
     const userMap = bestByRanking[rkId] || {};
@@ -9209,8 +9303,8 @@ app.get('/api/club/records', async (req, res) => {
       data: v.data || '',
       updatedAt: v.updatedAt || '',
     }));
-    const lowerBetter = isLowerBetter(rkId);
-    all.sort((a, b) => lowerBetter ? a.score - b.score : b.score - a.score);
+    const cmp = scoreComparator(rkId);
+    all.sort((a, b) => cmp({ s: a.score, data: a.data }, { s: b.score, data: b.data }));
     const entry = {
       id: rkId,
       name: meta.name,
@@ -11057,9 +11151,11 @@ async function handleCBeeMessage(socket, rawXml) {
           const hint = username && users[username] && Number.isFinite(users[username].bkiwiCurrentTrack)
             ? users[username].bkiwiCurrentTrack : undefined;
           const daily = getBkiwiDailyTrack();
-          const trackForClassic = Number.isFinite(hint) ? hint : daily;
-          rankingId = `bkiwi_track${trackForClassic}_classic`;
-          extraRankingId = `bkiwi_track${daily}_challenge`;
+          // Route classic record AND daily challenge to the circuit actually
+          // raced (slot-0 $ts diff); daily is only the last-resort fallback.
+          const track = Number.isFinite(hint) ? hint : daily;
+          rankingId = `bkiwi_track${track}_classic`;
+          extraRankingId = `bkiwi_track${track}_challenge`;
           console.log(`[FSCORE] bkiwi route hint=${hint} daily=${daily} -> classic:${rankingId} challenge:${extraRankingId}`);
         } else if (rankingId === 'mb2_classic' || rankingId === 'mb2_challenge') {
           rankingId = 'mb2_classic';
