@@ -99,6 +99,55 @@
   .bouille-card .label { color: #2C4A0F; font-weight: bold; margin-top: 12px; font-size: 15px; letter-spacing: .5px; }
   .bouille-card .sub { color: #5a8a20; font-size: 11px; margin-top: 1px; }
 
+  /* ── Salon (PNJ band) ── */
+  .salon-room { display: flex; justify-content: center; align-items: flex-start; width: 100%; position: relative; }
+  .salon-band {
+    background: #cdeb9d;
+    border: 2px solid #2C4A0F; border-radius: 14px;
+    padding: 14px 12px;
+    display: flex; flex-direction: column; gap: 16px; align-items: center;
+    overflow-y: auto; max-height: 90vh;
+    box-shadow: 0 12px 26px rgba(44,74,15,.25);
+    transition: transform 240ms ease, opacity 240ms ease;
+  }
+  .salon-band.band-hidden { transform: translateX(-130%); opacity: 0; pointer-events: none; }
+  .band-handle {
+    position: absolute; left: 0; top: 8px; z-index: 5;
+    background: #2C4A0F; color: #CFF599; border: 0; border-radius: 0 8px 8px 0;
+    width: 22px; height: 46px; cursor: pointer; font-size: 16px; line-height: 46px;
+    padding: 0; font-family: inherit;
+  }
+  .salon-npc { position: relative; text-align: center; }
+  .salon-npc .stack { position: relative; margin: 0 auto; }
+  .salon-npc .stack iframe {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    border: 0; border-radius: 10px; background: transparent;
+    opacity: 0; transition: opacity 300ms ease;
+  }
+  .salon-npc .stack iframe.show { opacity: 1; }
+  .salon-npc .nm { font-size: 12px; font-weight: bold; color: #2C4A0F; margin-top: 4px; letter-spacing: .3px; }
+  .salon-npc .act { font-size: 10px; color: #4f7b1f; min-height: 13px; }
+  .salon-npc .bubble {
+    position: absolute; top: -4px; right: -2px;
+    background: #fff; border: 1px solid #2C4A0F; border-radius: 10px;
+    font-size: 12px; line-height: 1; padding: 3px 7px; color: #2C4A0F;
+    opacity: 0; transform: scale(.6); transform-origin: bottom left;
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+  .salon-npc .bubble.on { opacity: 1; transform: scale(1); }
+
+  /* Editable NPC rows in the sidebar */
+  .salon-npc-row { display: flex; gap: 4px; margin-bottom: 5px; align-items: center; }
+  .salon-npc-row input { padding: 4px 5px; font-size: 10px; }
+  .salon-npc-row .npc-name   { flex: 0 0 52px; }
+  .salon-npc-row .npc-code   { flex: 1 1 90px; font-family: 'Courier New', monospace; }
+  .salon-npc-row .npc-script { flex: 1 1 130px; }
+  .salon-npc-row .npc-del {
+    flex: 0 0 22px; width: 22px; padding: 4px 0; margin: 0;
+    background: #b23b2e; color: #fff;
+  }
+  .salon-npc-row .npc-del:hover { background: #d34a3b; }
+
   /* Generic SWF stage (frusion, logos, wheel) */
   .swf-stage {
     background: #fff; border-radius: 14px; padding: 18px;
@@ -139,12 +188,60 @@
   <h1>Frutiparc — Démo</h1>
   <div class="tag">bande-annonce · captures</div>
 
-  <button class="tab active" data-scene="bouilles">Bouilles animées</button>
+  <button class="tab active" data-scene="salon">Salon (PNJ)</button>
+  <button class="tab"        data-scene="bouilles">Bouilles animées</button>
   <button class="tab"        data-scene="frusion">Frusion</button>
   <button class="tab"        data-scene="logos">Logos animés</button>
   <button class="tab"        data-scene="wheel">Roues fortune</button>
 
-  <div class="controls" id="ctrl-bouilles">
+  <div class="controls" id="ctrl-salon">
+    <h4>Salon — PNJ</h4>
+    <div class="row">
+      <div style="flex:0 0 90px">
+        <label style="margin-top:0">Nb de PNJ</label>
+        <input type="number" id="salon-count" min="1" max="12" value="4">
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button id="btn-salon-gen" style="margin:0">Générer</button>
+      </div>
+    </div>
+
+    <div id="salon-npc-list"></div>
+    <button id="btn-salon-add">+ Ajouter un PNJ</button>
+
+    <h4 style="margin-top:14px">Bande</h4>
+    <div class="row">
+      <div>
+        <label style="margin-top:0">Largeur (px)</label>
+        <input type="number" id="salon-bandw" min="120" max="460" step="10" value="240">
+      </div>
+      <div>
+        <label style="margin-top:0">Bouille (px)</label>
+        <input type="number" id="salon-size" min="70" max="320" step="10" value="150">
+      </div>
+    </div>
+    <button id="btn-salon-toggleband">Masquer la bande</button>
+
+    <h4 style="margin-top:14px">Séquence</h4>
+    <label>Tempo (ms par temps)</label>
+    <input type="number" id="salon-tempo" min="200" max="4000" step="100" value="900">
+    <div class="row">
+      <button id="btn-salon-play">▶ Jouer</button>
+      <button id="btn-salon-restart">⟲ Rejouer</button>
+    </div>
+    <div class="help">
+      Chaque PNJ a un <b>code bouille</b> et un <b>script</b> d'actions séparées
+      par des virgules, au format <code>action temps</code> :<br>
+      <code>parle 4, idle 2, rire 3, sifflote 5</code><br>
+      Le <i>temps</i> = nombre de « temps » (tempo ci-dessus). Les scripts
+      tournent en boucle, chacun à son rythme → plusieurs bouilles parlent en
+      même temps.<br>
+      Actions : parle · rire · mdr · gum · sifflote · langue · rougir ·
+      question · pleurer · regard · miam · idle.
+    </div>
+  </div>
+
+  <div class="controls" id="ctrl-bouilles" style="display:none">
     <h4>Bouilles</h4>
 
     <label>Mode</label>
@@ -248,7 +345,14 @@
 <div id="stage">
   <div class="title-banner">démo • capture</div>
 
-  <div class="scene active" data-scene="bouilles">
+  <div class="scene active" data-scene="salon">
+    <div class="salon-room" id="salon-room">
+      <button class="band-handle" id="salon-handle" title="Afficher / masquer la bande">‹</button>
+      <div class="salon-band" id="salon-band"></div>
+    </div>
+  </div>
+
+  <div class="scene" data-scene="bouilles">
     <div class="bouille-row" id="bouille-row"></div>
   </div>
 
@@ -280,21 +384,32 @@
     { e: 6, name: 'Embarrassé' }, { e: 7, name: 'Totoché' },
   ];
 
-  // Named animations the face sprite (id 1861, 169 frames) plays end-to-end.
-  // Each is a frame label; the sprite's frame scripts handle the loop / return.
+  // Animations played through the bouille's own playAnim(index) dispatcher
+  // (sprite 1861 reel + mouth sub-clip + eyes). `idx` is the playAnim index;
+  // bouille-preview forwards it as the `anim` flashvar. Using the dispatcher
+  // (instead of a bare face.gotoAndPlay) is what makes rire/sifflote/gum/…
+  // animate the MOUTH, not just the eyes.
   var ANIMATIONS = [
-    { id: 'parle',     name: 'Parler' },
-    { id: 'rire',      name: 'Rire' },
-    { id: 'mdr',       name: 'MDR' },
-    { id: 'gum',       name: 'Chewing-gum' },
-    { id: 'sifflote',  name: 'Sifflote' },
-    { id: 'langue',    name: 'Langue' },
-    { id: 'rougir',    name: 'Rougir' },
-    { id: 'question',  name: 'Question' },
-    { id: 'pleurer',   name: 'Pleurer' },
-    { id: 'regard',    name: 'Regard' },
-    { id: 'miam',      name: 'Miam' },
+    { id: 'parle',     name: 'Parler',      idx: 1 },
+    { id: 'rire',      name: 'Rire',        idx: 2 },
+    { id: 'mdr',       name: 'MDR',         idx: 3 },
+    { id: 'langue',    name: 'Langue',      idx: 4 },
+    { id: 'rougir',    name: 'Rougir',      idx: 5 },
+    { id: 'regard',    name: 'Regard',      idx: 6 },
+    { id: 'sifflote',  name: 'Sifflote',    idx: 7 },
+    { id: 'gum',       name: 'Chewing-gum', idx: 8 },
+    { id: 'question',  name: 'Question',    idx: 9 },
+    { id: 'miam',      name: 'Miam',        idx: 10 },
+    { id: 'pleurer',   name: 'Pleurer',     idx: 11 },
   ];
+  function animIndexOf(id) {
+    for (var i = 0; i < ANIMATIONS.length; i++) if (ANIMATIONS[i].id === id) return ANIMATIONS[i].idx;
+    return '';
+  }
+  function animNameOf(id) {
+    for (var i = 0; i < ANIMATIONS.length; i++) if (ANIMATIONS[i].id === id) return ANIMATIONS[i].name;
+    return id;
+  }
 
   var DEFAULT_STATE = '000000010000000000000000';
   function encode62TwoChar(n) {
@@ -302,12 +417,15 @@
     var r = ''; while (n > 0) { r = chars[n % 62] + r; n = Math.floor(n / 62); }
     while (r.length < 2) r = '0' + r; return r;
   }
-  function previewUrl(state, emote, anim) {
+  function previewUrl(state, emote, anim, bg) {
     var q = 's=' + encodeURIComponent(state) + '&e=' + emote;
-    if (anim) q += '&anim=' + encodeURIComponent(anim);
+    // `anim` is an animation id (e.g. 'rire'); forward its playAnim INDEX so the
+    // patched SWF drives the mouth via _root.playAnim(index).
+    var idx = anim ? animIndexOf(anim) : '';
+    if (idx) q += '&anim=' + idx;
     // Page-side bg is set inline by bouille-preview, but the iframe lives in
     // our green stage so a matching bg here avoids any flash during reload.
-    q += '&bg=ADE76B';
+    q += '&bg=' + (bg || 'ADE76B');
     return '/bouille-preview.html?' + q;
   }
 
@@ -315,10 +433,11 @@
   function switchScene(name) {
     $$('.tab').forEach(function (t) { t.classList.toggle('active', t.dataset.scene === name); });
     $$('.scene').forEach(function (s) { s.classList.toggle('active', s.dataset.scene === name); });
-    ['bouilles','frusion','logos','wheel'].forEach(function (n) {
+    ['salon','bouilles','frusion','logos','wheel'].forEach(function (n) {
       var el = document.getElementById('ctrl-' + n);
       if (el) el.style.display = (n === name) ? '' : 'none';
     });
+    if (name === 'salon')    ensureSalon();
     if (name === 'bouilles') ensureBouilles();
     if (name === 'frusion')  ensureFrusion();
     if (name === 'logos')    ensureLogos();
@@ -603,8 +722,194 @@
   }
   $('#btn-wheel-apply').addEventListener('click', ensureWheels);
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Salon — simulate a chat room's vertical bouille band. N PNJ, each with a
+  // bouille code and an action script that loops on its own clock, so several
+  // bouilles talk / whistle / laugh at the same time. Each PNJ is a 2-iframe
+  // crossfade stack (reusing bouille-preview) so swapping actions doesn't flash.
+  // ────────────────────────────────────────────────────────────────────────
+  var SALON_WARMUP_MS = 550;
+  var salonNpcs = [];
+  var salonTimer = null;
+  var salonPlaying = false;
+  var salonBuilt = false;
+
+  function salonDefaults(n) {
+    var fams = [0, 15, 24, 10, 13, 16, 14, 23];
+    var scripts = [
+      'parle 4, idle 2, rire 3, idle 2',
+      'idle 3, sifflote 5, idle 2',
+      'rire 3, idle 2, mdr 4, idle 2',
+      'idle 2, parle 5, langue 2, idle 2',
+      'gum 5, idle 3, parle 3',
+      'idle 2, question 3, parle 4, idle 2',
+      'miam 4, idle 2, rire 3',
+      'parle 3, idle 2, rougir 3, idle 2',
+    ];
+    var out = [];
+    for (var i = 0; i < n; i++) {
+      out.push({
+        name: 'PNJ ' + (i + 1),
+        code: encode62TwoChar(fams[i % fams.length]) + DEFAULT_STATE.substring(2),
+        script: scripts[i % scripts.length],
+      });
+    }
+    return out;
+  }
+
+  function parseScript(str) {
+    var ids = ANIMATIONS.map(function (a) { return a.id; });
+    var steps = (str || '').split(',').map(function (tok) {
+      var parts = tok.trim().split(/[\s:]+/);
+      var anim = (parts[0] || 'idle').toLowerCase();
+      if (anim !== 'idle' && ids.indexOf(anim) < 0) anim = 'idle';
+      var beats = Math.max(1, parseInt(parts[1], 10) || 2);
+      return { anim: anim, beats: beats };
+    }).filter(function (s) { return s; });
+    if (!steps.length) steps = [{ anim: 'idle', beats: 2 }];
+    return steps;
+  }
+
+  // ── Editable PNJ rows in the sidebar ──
+  function addNpcRow(cfg) {
+    var list = $('#salon-npc-list');
+    var row = document.createElement('div'); row.className = 'salon-npc-row';
+    row.innerHTML =
+      '<input class="npc-name" placeholder="Nom">' +
+      '<input class="npc-code" placeholder="code bouille">' +
+      '<input class="npc-script" placeholder="parle 4, idle 2">' +
+      '<button class="npc-del" title="Retirer">×</button>';
+    row.querySelector('.npc-name').value   = (cfg && cfg.name)   || ('PNJ ' + (list.children.length + 1));
+    row.querySelector('.npc-code').value   = (cfg && cfg.code)   || DEFAULT_STATE;
+    row.querySelector('.npc-script').value = (cfg && cfg.script) || 'parle 4, idle 2';
+    row.querySelector('.npc-del').addEventListener('click', function () { row.remove(); });
+    list.appendChild(row);
+  }
+  function renderNpcRows(cfgs) {
+    $('#salon-npc-list').innerHTML = '';
+    cfgs.forEach(function (c) { addNpcRow(c); });
+  }
+  function readNpcRows() {
+    return $$('#salon-npc-list .salon-npc-row').map(function (row) {
+      return {
+        name:   row.querySelector('.npc-name').value.trim() || 'PNJ',
+        code:   row.querySelector('.npc-code').value.trim().replace(/[^0-9A-Za-z]/g, '') || DEFAULT_STATE,
+        script: row.querySelector('.npc-script').value.trim() || 'idle 2',
+      };
+    });
+  }
+
+  // ── Build the on-stage band from the current rows ──
+  function buildBand() {
+    var cfgs = readNpcRows();
+    if (!cfgs.length) { cfgs = salonDefaults(1); renderNpcRows(cfgs); }
+    var size  = Math.max(60, Math.min(360, parseInt($('#salon-size').value, 10) || 150));
+    var bandW = Math.max(110, Math.min(520, parseInt($('#salon-bandw').value, 10) || 240));
+
+    var band = $('#salon-band');
+    band.style.width = bandW + 'px';
+    band.innerHTML = '';
+    salonNpcs = [];
+
+    cfgs.forEach(function (cfg) {
+      var npc = document.createElement('div'); npc.className = 'salon-npc';
+      var stack = document.createElement('div'); stack.className = 'stack';
+      stack.style.width = size + 'px'; stack.style.height = size + 'px';
+      var a = document.createElement('iframe'), b = document.createElement('iframe');
+      a.scrolling = 'no'; b.scrolling = 'no';
+      stack.appendChild(a); stack.appendChild(b);
+      var bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = '💬';
+      stack.appendChild(bubble);
+      var nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = cfg.name;
+      var act = document.createElement('div'); act.className = 'act'; act.textContent = '—';
+      npc.appendChild(stack); npc.appendChild(nm); npc.appendChild(act);
+      band.appendChild(npc);
+
+      var steps = parseScript(cfg.script);
+      var rt = {
+        code: cfg.code, name: cfg.name, steps: steps,
+        stepIdx: 0, beatsLeft: steps[0].beats,
+        frames: [a, b], front: 0, busy: false,
+        actEl: act, bubble: bubble,
+      };
+      npcShow(rt, steps[0].anim, true);
+      salonNpcs.push(rt);
+    });
+    salonBuilt = true;
+  }
+
+  // Crossfade a PNJ to an action (anim id or 'idle').
+  function npcShow(rt, animId, immediate) {
+    var back = immediate ? rt.front : (1 - rt.front);
+    var bf = rt.frames[back], ff = rt.frames[rt.front];
+    var url = previewUrl(rt.code, 0, animId === 'idle' ? '' : animId);
+    rt.actEl.textContent = (animId === 'idle') ? '—' : animNameOf(animId);
+    if (rt.bubble) rt.bubble.classList.toggle('on', animId === 'parle');
+    if (immediate) { bf.src = url; bf.classList.add('show'); return; }
+    if (rt.busy) return;
+    rt.busy = true;
+    var done = false;
+    function swap() { if (done) return; done = true; bf.classList.add('show'); ff.classList.remove('show'); rt.front = back; rt.busy = false; }
+    bf.onload = function () { setTimeout(swap, SALON_WARMUP_MS); };
+    setTimeout(swap, SALON_WARMUP_MS + 1600);
+    bf.src = url;
+  }
+
+  function salonTick() {
+    if (!salonPlaying) return;
+    salonNpcs.forEach(function (rt) {
+      rt.beatsLeft--;
+      if (rt.beatsLeft > 0) return;
+      rt.stepIdx = (rt.stepIdx + 1) % rt.steps.length;
+      var step = rt.steps[rt.stepIdx];
+      rt.beatsLeft = step.beats;
+      npcShow(rt, step.anim, false);
+    });
+  }
+  function restartSalonTimer() {
+    if (salonTimer) clearInterval(salonTimer);
+    var tempo = Math.max(200, parseInt($('#salon-tempo').value, 10) || 900);
+    salonTimer = setInterval(salonTick, tempo);
+  }
+
+  function ensureSalon() {
+    if (!salonBuilt) {
+      renderNpcRows(salonDefaults(parseInt($('#salon-count').value, 10) || 4));
+      buildBand();
+    }
+  }
+
+  // ── Salon wiring ──
+  $('#btn-salon-gen').addEventListener('click', function () {
+    var n = Math.max(1, Math.min(12, parseInt($('#salon-count').value, 10) || 4));
+    renderNpcRows(salonDefaults(n));
+    buildBand();
+  });
+  $('#btn-salon-add').addEventListener('click', function () { addNpcRow(); });
+  $('#btn-salon-play').addEventListener('click', function () {
+    if (!salonBuilt || !salonNpcs.length) buildBand();
+    salonPlaying = !salonPlaying;
+    this.textContent = salonPlaying ? '⏸ Pause' : '▶ Jouer';
+    if (salonPlaying) restartSalonTimer();
+    else if (salonTimer) { clearInterval(salonTimer); salonTimer = null; }
+  });
+  $('#btn-salon-restart').addEventListener('click', function () {
+    buildBand();
+    salonPlaying = true;
+    $('#btn-salon-play').textContent = '⏸ Pause';
+    restartSalonTimer();
+  });
+  $('#salon-tempo').addEventListener('change', function () { if (salonPlaying) restartSalonTimer(); });
+  function toggleBand() {
+    var hidden = $('#salon-band').classList.toggle('band-hidden');
+    $('#btn-salon-toggleband').textContent = hidden ? 'Afficher la bande' : 'Masquer la bande';
+    $('#salon-handle').textContent = hidden ? '›' : '‹';
+  }
+  $('#btn-salon-toggleband').addEventListener('click', toggleBand);
+  $('#salon-handle').addEventListener('click', toggleBand);
+
   // ── Init ──
-  ensureBouilles();
+  ensureSalon();
 })();
 </script>
 </body>

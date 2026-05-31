@@ -61,12 +61,16 @@
   if (!(_ei >= 0 && _ei < EMOTE_LIST.length)) _ei = 0;
   var feFrame = String(EMOTE_LIST[_ei][0] + 1);
   var fmFrame = String(EMOTE_LIST[_ei][1] + 1);
-  // anim — optional named animation from sprite 1861 (parle / rire / mdr /
-  // gum / sifflote / langue / pleurer / regard / miam / rougir / question).
-  // Forwarded as a flashvar; the patched famille SWF reads _root.anim and,
-  // when non-empty, calls _root.face.gotoAndPlay(anim) instead of freezing
-  // the expression. Absent → fall back to the mood freeze (legacy behaviour
-  // used by FBouille editor previews and chat-side bouille thumbnails).
+  // anim — optional animation INDEX for the bouille's own playAnim dispatcher:
+  //   1 parle · 2 rire · 3 mdr · 4 langue · 5 rougir · 6 regard
+  //   7 sifflote · 8 gum · 9 question · 10 miam · 11 pleurer
+  // Forwarded as a flashvar; the patched famille SWF reads _root.anim and, when
+  // non-empty, calls _root.playAnim(Number(_root.anim)). playAnim is the game's
+  // own routine — it plays the face reel AND drives the mouth sub-clip (rire→
+  // "rire0", sifflote→"siffle", …) AND the eyes, so animations render exactly
+  // like in chat (fixes the earlier "rire/sifflote bouche fermée" bug where we
+  // only played the reel). Absent → fall back to the mood freeze (legacy
+  // behaviour used by FBouille editor previews and chat-side thumbnails).
   var anim = String(params.get("anim") || "");
   // bg — page background colour. Default = light forum-card green
   // (#E8F8D3, used by the forum thumbnails and FBouille editor). The demo
@@ -103,10 +107,10 @@
     player.style.height = "100%";
     document.getElementById("player-container").appendChild(player);
     await player.load({
-      // ?v=6 because the patched SWFs now seed _root.face.compt before
-      // gotoAndPlay, so counter-driven animations (rire/mdr/pleurer/…) loop
-      // properly instead of bailing immediately.
-      url: "/fbouille_patched/famille" + familyId + ".swf?v=6",
+      // ?v=7 because the patched SWFs now route animations through the game's
+      // own _root.playAnim(index) dispatcher (drives the mouth + eyes, not just
+      // the face reel), fixing rire/sifflote rendering with a closed mouth.
+      url: "/fbouille_patched/famille" + familyId + ".swf?v=7",
       autoplay: "on",
       allowScriptAccess: true,
       quality: "low",

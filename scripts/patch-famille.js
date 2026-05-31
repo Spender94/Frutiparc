@@ -149,32 +149,42 @@ function buildApplyTag() {
   const jmpOffsetPos = off; off += 2;
   const afterJmp = off;
 
-  // ── PLAY block: _root.face.gotoAndPlay(_root.anim) ──
-  const playBlockStart = off;
-  // _root.face.compt = 3
+  // ── PLAY block: _root.playAnim(Number(_root.anim)) ──
   //
-  // Several face animations (rire, mdr, pleurer, rougir, …) loop via a frame
-  // script of the form:
-  //     compt--;
-  //     if (compt > 0) gotoAndPlay("<label>"); else <fall through>
-  // main.swf seeds this counter before calling gotoAndPlay. If we don't, the
-  // counter starts undefined → (undefined - 1) = NaN → NaN > 0 is false →
-  // animation exits after a single pass, which looks broken (or like the
-  // idle/parle state). Seeding it to 3 makes every counter-driven animation
-  // loop a few times before exiting, matching the real behaviour. Anims that
-  // do NOT use compt (parle, gum, sifflote, …) ignore the variable entirely,
-  // so this is harmless across the board.
+  // The face REEL (sprite 1861) only loops + chains; it does NOT drive the
+  // mouth sub-clip (_root.face.b.b) for most animations. The bouille's own
+  // dispatcher `playAnim(index)` is what plays the reel AND gotoAndPlay()s the
+  // matching mouth label (rire→"rire0", sifflote→"siffle", gum→"souffle", …)
+  // AND the eyes. The previous version called `_root.face.gotoAndPlay(anim)`
+  // directly, which played the reel but left the mouth frozen closed — that is
+  // the "rire/sifflement bouche fermée" bug. Calling the game's own playAnim
+  // reproduces the exact in-game rendering.
+  //
+  // `_root.anim` now carries the playAnim INDEX (a number as a string):
+  //   1 parle · 2 rire · 3 mdr · 4 langue · 5 rougir · 6 regard
+  //   7 sifflote · 8 gum · 9 question · 10 miam · 11 pleurer
+  // (index 0 = idle; the demo uses the mood-freeze ELSE branch for idle, so we
+  // never call playAnim(0) here.) Non-numeric / empty → ToNumber gives NaN/0,
+  // handled by the `anim != ""` guard above so we only land here with a real
+  // index.
+  const playBlockStart = off;
+  // _root.face.compt = 3  — the reel's loop frame does `compt--; if (compt>0)
+  // gotoAndPlay(label)`. Seeding it makes counter-driven anims (rire, mdr,
+  // pleurer, …) loop a few times before chaining to _root.next, instead of
+  // bailing after one pass (undefined-1 = NaN). Anims that ignore compt
+  // (parle, sifflote via siffloteLoop, gum, …) are unaffected.
   off = pushString(buf, off, '_root.face.compt');
   off = pushInt(buf, off, 3);
   off = opcode(buf, off, 0x1d);           // SetVariable
 
   off = pushString(buf, off, 'anim');
-  off = opcode(buf, off, 0x1c);           // GetVariable -> _root.anim (the arg)
+  off = opcode(buf, off, 0x1c);           // GetVariable -> _root.anim
+  off = opcode(buf, off, 0x4a);           // ToNumber    -> Number(_root.anim)  [arg]
   off = pushInt(buf, off, 1);             // numArgs
-  off = pushString(buf, off, '_root.face');
-  off = opcode(buf, off, 0x1c);           // GetVariable -> face clip
-  off = pushString(buf, off, 'gotoAndPlay');
-  off = opcode(buf, off, 0x52);           // CallMethod
+  off = pushString(buf, off, '_root');
+  off = opcode(buf, off, 0x1c);           // GetVariable -> _root  [object]
+  off = pushString(buf, off, 'playAnim');
+  off = opcode(buf, off, 0x52);           // CallMethod  -> _root.playAnim(idx)
   off = opcode(buf, off, 0x17);           // Pop
   const afterPlay = off;
 
