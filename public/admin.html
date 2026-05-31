@@ -992,7 +992,7 @@ async function loadUsers() {
     const tb = $('#users-body');
     tb.innerHTML = data.map(u => `<tr>
       <td><a href="#" onclick="viewUser('${esc(u.username)}');return false" class="uname">${esc(u.display_name || u.username)}</a></td>
-      <td style="font-size:11px">${u.email ? esc(u.email) : '<span style="color:#c03c30" title="Pas d\\'email — le reset password ne marchera pas">— aucun —</span>'}</td>
+      <td style="font-size:11px">${u.email ? esc(u.email) : '<span style="color:#c03c30" title="Aucun email — le reset password ne marchera pas">— aucun —</span>'}</td>
       <td>${u.xp || 0}</td>
       <td>${u.kikooz || 0}</td>
       <td><code style="font-size:11px">${esc((u.fbouille||'').substring(0,12))}…</code></td>

@@ -8,8 +8,10 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    /* Default — overridden inline from the ?bg= query param at boot. */
-    background: #ADE76B;
+    /* Light forum-card green by default (used by the forum bouille
+       thumbnails and the FBouille editor preview). The demo page passes
+       ?bg=ADE76B to override with the Frutiparc green for captures. */
+    background: #E8F8D3;
   }
   #player-container {
     position: absolute;
@@ -66,10 +68,12 @@
   // the expression. Absent → fall back to the mood freeze (legacy behaviour
   // used by FBouille editor previews and chat-side bouille thumbnails).
   var anim = String(params.get("anim") || "");
-  // bg — page background colour. Default Frutiparc green (#ADE76B), matching
-  // admin & forum. Override via ?bg= for transparent / chroma key.
-  var bg = String(params.get("bg") || "ADE76B").replace(/[^0-9A-Fa-f]/g, '');
-  if (!bg) bg = "ADE76B";
+  // bg — page background colour. Default = light forum-card green
+  // (#E8F8D3, used by the forum thumbnails and FBouille editor). The demo
+  // page passes ?bg=ADE76B to use the brighter Frutiparc green for HD
+  // captures. Hex only, no '#' in the query string.
+  var bg = String(params.get("bg") || "E8F8D3").replace(/[^0-9A-Fa-f]/g, '');
+  if (!bg) bg = "E8F8D3";
   var bgCss = "#" + bg;
   document.documentElement.style.background = bgCss;
   document.body.style.background = bgCss;
