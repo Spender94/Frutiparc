@@ -12010,31 +12010,26 @@ case 'trace': {
     }
 
 case 'fbouille': {
-  // The legacy chat SWF sends its locally-cached bouille on connect (and
-  // sometimes mid-session). That cache can be STALE — e.g. an admin
-  // changed the user's bouille via /admin while they were offline, or the
-  // FBouille editor (HTTP /do/eb) saved a new value the chat SWF hasn't
-  // refreshed yet. Blindly trusting `msg.attrs.f` would silently revert
-  // those changes in memory + bouilleCache, and visually overwrite them
-  // for everyone in the user's salon.
+  // The chat SWF asserts the user's current bouille via this message — both
+  // on inventory accessorize (the user clicked an accessory and the SWF
+  // computed a new state) and as a general "here's my state" assertion.
+  // Trust it: this is the inventory's save path. Without trusting it the
+  // user can no longer apply accessories from the chat inventory.
   //
-  // Resolution: prefer the server-side canonical value when we have one.
-  // `users[u].fbouille` is loaded from DB at user hydration (and updated
-  // by /do/eb and the admin PATCH), so it's the source of truth. Echo it
-  // back so the chat SWF refreshes its display from the response.
-  const clientF = normalizeBouilleState(msg.attrs.f || DEFAULT_BOUILLE_STATE);
-  let f = clientF;
-  const mem = client.username ? users[client.username] : null;
-  if (mem && mem.fbouille) {
-    const serverF = normalizeBouilleState(mem.fbouille);
-    if (serverF !== clientF) {
-      console.log(`[fbouille] ${client.username}: client cached ${clientF.slice(0, 12)}… but server has ${serverF.slice(0, 12)}…; sending canonical value`);
-      f = serverF;
-    }
-  }
-  if (mem) {
-    mem.fbouille = f;
+  // BUT we ALSO persist to DB here. The original handler only updated
+  // memory + bouilleCache, so any inventory change was lost on the next
+  // server restart and could even be silently reverted if the user happened
+  // to reconnect with a stale SWF cache (the in-memory state would diverge
+  // from DB). Persisting closes that gap: whatever the SWF asserts now is
+  // what DB will hold, and what the admin /admin page will read.
+  const f = normalizeBouilleState(msg.attrs.f || DEFAULT_BOUILLE_STATE);
+  if (client.username && users[client.username]) {
+    users[client.username].fbouille = f;
     bouilleCache[client.username] = f;
+    const u = users[client.username];
+    if (u._dbId) {
+      db.updateUser(client.username, { fbouille: f }).catch(dbErr('updateUser fbouille'));
+    }
   }
   sendToClient(socket, `<${CMD.fbouille} f="${f}" />`);
   break;
