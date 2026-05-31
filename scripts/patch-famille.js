@@ -70,9 +70,15 @@ function pushInt(buf, off, n) {
   return off;
 }
 function opcode(buf, off, op) { buf.writeUInt8(op, off); return off + 1; }
+function pushUndef(buf, off) {
+  buf.writeUInt8(0x96, off); off++;
+  buf.writeUInt16LE(1, off); off += 2;
+  buf.writeUInt8(0x03, off); off++;      // type 3 = undefined
+  return off;
+}
 
 function buildApplyTag() {
-  const buf = Buffer.alloc(768);
+  const buf = Buffer.alloc(1024);
   let off = 0;
   // apply(_root.s)
   off = pushString(buf, off, 's');
@@ -82,14 +88,31 @@ function buildApplyTag() {
   off = opcode(buf, off, 0x3d);
   off = opcode(buf, off, 0x17);
 
-  // Park the face's *expression* timelines on their idle frame (frame 1)
-  // without touching the rest of the avatar:
-  //   _root.face            — the 169-frame parle/rire/mdr/… reel
-  //   _root.face.b.b        — the inner mouth (parle0/parle1/… loops)
-  //   _root.face.oa.o       — the inner left eye  (normal/mecontent/…)
-  //   _root.face.ob.o       — the inner right eye
-  // Other children of `face` (cb / pb / pa / ca / m / hat / hair) stay
-  // free to animate so accessory loops keep playing, matching main.swf.
+  // ── Animation branch ────────────────────────────────────────────────
+  // The demo (bouille-preview.html ?anim=parle|rire|gum|sifflote|…) sets
+  // _root.anim to one of sprite 1861's frame labels. When present we let the
+  // face REEL PLAY that animation (the sprite's own frame scripts handle the
+  // loop/return-to-idle), instead of freezing the expression. When absent we
+  // fall through to the original freeze + mood logic, so existing previews
+  // (FBouille editor, chat) are unchanged.
+  //
+  //   if (_root.anim ne "") { _root.face.gotoAndPlay(_root.anim); }
+  //   else { <freeze + mood> }
+  //
+  // AVM1: push anim, push "", StringEquals -> true when empty/undef; Not ->
+  // true when a real anim is set; ActionIf jumps to the play block.
+  off = pushString(buf, off, 'anim');
+  off = opcode(buf, off, 0x1c);          // GetVariable -> _root.anim
+  off = pushString(buf, off, '');
+  off = opcode(buf, off, 0x13);          // StringEquals (anim == "")
+  off = opcode(buf, off, 0x12);          // Not          (anim != "")
+  // ActionIf <branchToPlay>: 0x9d, len=2, int16 offset (patched below).
+  buf.writeUInt8(0x9d, off); off++;
+  buf.writeUInt16LE(2, off); off += 2;
+  const ifOffsetPos = off; off += 2;     // reserve the int16 jump offset
+  const afterIf = off;                   // offset is measured from here
+
+  // ── ELSE block: freeze expression + apply mood (original behavior) ──
   const expressionPaths = [
     '_root.face',
     '_root.face.b.b',
@@ -97,8 +120,6 @@ function buildApplyTag() {
     '_root.face.ob.o',
   ];
   for (const path of expressionPaths) {
-    // Stack-for-CallMethod (top→bottom): methodName, object, numArgs.
-    // AVM1's GetVariable resolves dotted paths.
     off = pushInt(buf, off, 0);
     off = pushString(buf, off, path);
     off = opcode(buf, off, 0x1c); // GetVariable
@@ -106,15 +127,6 @@ function buildApplyTag() {
     off = opcode(buf, off, 0x52); // CallMethod
     off = opcode(buf, off, 0x17); // Pop
   }
-
-  // Apply the *mood* (humeur) by jumping the eye/mouth clips to the frames
-  // computed from the emote index. The famille's own emote() is NOT a
-  // root-callable free function here (a bare emote() call resolved to undefined
-  // and no-op'd), so bouille-preview.html does the emoteList lookup and hands us
-  // 1-based frame numbers as _root.fe (eyes) / _root.fm (mouth); we gotoAndStop
-  // those via the SAME CallMethod path the stop() calls above already use.
-  // Number() coerces the flashvar string; absent → NaN → gotoAndStop no-ops, so
-  // the clips stay idle (no regression for previews that don't pass fe/fm).
   const moodFrames = [
     ['_root.face.oa.o', 'fe'],
     ['_root.face.ob.o', 'fe'],
@@ -122,17 +134,39 @@ function buildApplyTag() {
   ];
   for (const [mcPath, varName] of moodFrames) {
     off = pushString(buf, off, varName);
-    off = opcode(buf, off, 0x1c); // GetVariable → _root.<varName>
+    off = opcode(buf, off, 0x1c); // GetVariable -> _root.<varName>
     off = opcode(buf, off, 0x4a); // ToNumber
     off = pushInt(buf, off, 1);   // numArgs
     off = pushString(buf, off, mcPath);
-    off = opcode(buf, off, 0x1c); // GetVariable → clip
+    off = opcode(buf, off, 0x1c); // GetVariable -> clip
     off = pushString(buf, off, 'gotoAndStop');
     off = opcode(buf, off, 0x52); // CallMethod
     off = opcode(buf, off, 0x17); // Pop
   }
+  // Jump over the play block to the final stop().
+  buf.writeUInt8(0x99, off); off++;       // ActionJump
+  buf.writeUInt16LE(2, off); off += 2;
+  const jmpOffsetPos = off; off += 2;
+  const afterJmp = off;
 
-  // stop() on the root timeline so the SWF parks on the apply()'d frame.
+  // ── PLAY block: _root.face.gotoAndPlay(_root.anim) ──
+  const playBlockStart = off;
+  off = pushString(buf, off, 'anim');
+  off = opcode(buf, off, 0x1c);           // GetVariable -> _root.anim (the arg)
+  off = pushInt(buf, off, 1);             // numArgs
+  off = pushString(buf, off, '_root.face');
+  off = opcode(buf, off, 0x1c);           // GetVariable -> face clip
+  off = pushString(buf, off, 'gotoAndPlay');
+  off = opcode(buf, off, 0x52);           // CallMethod
+  off = opcode(buf, off, 0x17);           // Pop
+  const afterPlay = off;
+
+  // Back-patch the two relative offsets (measured from the byte AFTER the
+  // 2-byte operand: SWF jump/if offsets are relative to the next instruction).
+  buf.writeInt16LE(playBlockStart - afterIf, ifOffsetPos);
+  buf.writeInt16LE(afterPlay - afterJmp, jmpOffsetPos);
+
+  // stop() on the root timeline so the SWF parks here.
   off = opcode(buf, off, 0x07);
   off = opcode(buf, off, 0x00); // End
   return buf.slice(0, off);
