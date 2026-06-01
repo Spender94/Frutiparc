@@ -53,16 +53,20 @@
      where the browser honours <option> colours (e.g. Android Chrome). */
   #topbar select option:nth-child(odd)  { background: #FEC9C9; }
   #topbar select option:nth-child(even) { background: #FFE4E4; }
-  /* Buttons: pink (#FEC9C9) with white glyphs/text. The three header icons are
-     PNGs centred inside the same pink chip. */
+  /* Buttons: pink (#FEABAB) with white glyphs/text (e.g. the hamburger ☰). */
   .icon-btn {
-    background: #FEC9C9; border: 1px solid #f3b0b0; border-radius: 7px;
-    font-size: 17px; line-height: 1; padding: 6px 8px; color: #fff; flex-shrink: 0;
+    background: #FEABAB; border: 0; border-radius: 7px;
+    font-size: 17px; line-height: 1; padding: 7px 10px; color: #fff; flex-shrink: 0;
     display: inline-flex; align-items: center; justify-content: center;
   }
   .icon-btn img { width: 22px; height: 22px; display: block; object-fit: contain; }
-  .icon-btn.on { background: #f7a9a9; box-shadow: inset 0 0 0 2px #D16767; }
-  .icon-btn.off { opacity: .4; }
+  /* The three header icons (feutres / bouilles / liste) are shown as bare PNGs:
+     no chip background or border, just the image. State lives on the image — a
+     subtle lift when active, dimmed when the toggle is "off". */
+  .icon-btn.bare { background: transparent; border: 0; padding: 3px; }
+  .icon-btn.bare img { width: 28px; height: 28px; }
+  .icon-btn.bare.on { transform: scale(1.08); filter: drop-shadow(0 1px 2px rgba(0,0,0,.3)); }
+  .icon-btn.bare.off { opacity: .35; }
   #menu-btn { font-size: 18px; }
 
   /* ── Hamburger menu drawer ── */
@@ -78,7 +82,7 @@
   /* Hamburger drawer in the same pink/white style: pink header (white text),
      white body with pink labels, grey #DDDDDD separators. */
   #menu-drawer .menu-head {
-    background: #FEC9C9; color: #fff; padding: 14px 16px; font-weight: bold;
+    background: #FEABAB; color: #fff; padding: 14px 16px; font-weight: bold;
     border-bottom: 1px solid #DDDDDD; display: flex; align-items: center; gap: 8px; font-size: 15px;
     text-shadow: 0 1px 1px rgba(196,80,64,.55);
   }
@@ -213,7 +217,7 @@
     border-radius: 20px; background: #fff; color: #2C4A0F;
   }
   .compose button {
-    background: #FEC9C9; color: #fff; border: 0; border-radius: 20px;
+    background: #FEABAB; color: #fff; border: 0; border-radius: 20px;
     padding: 0 18px; font-size: 14px; font-weight: bold;
   }
   .compose button:disabled { opacity: .5; }
@@ -327,13 +331,13 @@
   <header id="topbar">
     <button class="icon-btn" id="menu-btn" title="Menu" aria-label="Menu">☰</button>
     <select id="room-select" aria-label="Salon"></select>
-    <button class="icon-btn" id="pen-btn" title="Feutre" aria-label="Feutre">
+    <button class="icon-btn bare" id="pen-btn" title="Feutre" aria-label="Feutre">
       <img src="/fb/icone_feutres.png" alt="Feutre">
     </button>
-    <button class="icon-btn" id="bouille-toggle" title="Masquer les bouilles" aria-label="Afficher ou masquer les bouilles" aria-pressed="true">
+    <button class="icon-btn bare" id="bouille-toggle" title="Masquer les bouilles" aria-label="Afficher ou masquer les bouilles" aria-pressed="true">
       <img src="/fb/icone_bouille.png" alt="Bouilles">
     </button>
-    <button class="icon-btn" id="users-btn" title="Afficher / masquer les connectés" aria-label="Liste des connectés">
+    <button class="icon-btn bare" id="users-btn" title="Afficher / masquer les connectés" aria-label="Liste des connectés">
       <img src="/fb/icone_liste.png" alt="Connectés">
     </button>
   </header>
@@ -346,10 +350,10 @@
       <span id="who-name">—</span>
     </div>
     <button class="menu-item active" data-tab="chat">
-      <img class="menu-ico" src="/favicon.ico" alt="" onerror="this.replaceWith(document.createTextNode('💬'))"> Salons
+      <img class="menu-ico" src="/fb/icone_salon.png" alt="" onerror="this.replaceWith(document.createTextNode('💬'))"> Salons
     </button>
     <button class="menu-item" data-tab="forum">
-      <img class="menu-ico" src="/fb/ico.gif" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"> Forum
+      <img class="menu-ico" src="/fb/icone_forum.png" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"> Forum
     </button>
     <button class="menu-item" id="bouille-btn">
       <img class="menu-ico" src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"> Mon inventaire
@@ -851,10 +855,13 @@
     if (o.kind === "system") {
       row.textContent = o.body;
     } else {
+      // A feutre colour (o.pen) tints the WHOLE line — "[hh:mm:ss] pseudo :
+      // message" — not just the body. The pseudo stays bold (.from in CSS).
       var t = cleanTime(o.time);
-      if (t) { var ts = el("span", "time"); ts.textContent = t; row.appendChild(ts); }
+      if (t) { var ts = el("span", "time"); ts.textContent = t; if (o.pen) ts.style.color = o.pen; row.appendChild(ts); }
       var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
       fr.textContent = (o.from || "?") + " : ";
+      if (o.pen) fr.style.color = o.pen;
       row.appendChild(fr);
       var bd = el("span", o.emote ? "body emote" : "body");
       if (o.pen) bd.style.color = o.pen;     // feutre colour
