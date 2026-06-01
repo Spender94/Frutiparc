@@ -113,16 +113,16 @@
   #bouille-sheet-backdrop.show { display: block; }
   #bouille-sheet {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
-    background: #ADE76B; border-top: 2px solid #2C4A0F;
+    background: #F8F866; border: 1px solid #F8F866;
     border-radius: 16px 16px 0 0; max-height: 76vh; display: flex; flex-direction: column;
     transform: translateY(110%); transition: transform .25s ease;
-    box-shadow: 0 -8px 24px rgba(44,74,15,.3);
+    box-shadow: 0 0 0 1px #DDDDDD, 0 -8px 24px rgba(44,74,15,.3);
   }
   #bouille-sheet.show { transform: translateY(0); }
   #bouille-sheet .sheet-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 12px 16px; font-weight: bold; color: #2C4A0F;
-    border-bottom: 1px solid #5a8a20;
+    border-bottom: 1px solid #DDDDDD;
   }
   #bouille-sheet .sheet-head button {
     background: transparent; border: 0; font-size: 18px; color: #2C4A0F;
@@ -130,21 +130,28 @@
   #bouille-sheet .sheet-body { padding: 12px 14px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .sheet-preview { display: flex; justify-content: center; margin-bottom: 10px; }
   #bouille-sheet-preview {
-    width: 132px; height: 132px; background: #fff; border: 2px solid #2C4A0F;
+    width: 132px; height: 132px; background: #fff; border: 2px solid #DDDDDD;
     border-radius: 14px; overflow: hidden;
   }
-  #bouille-sheet-preview iframe { width: 100%; height: 100%; border: 0; display: block; background: #E8F8D3; }
+  #bouille-sheet-preview iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
   .sheet-hint { font-size: 12px; color: #2f5510; margin-bottom: 8px; font-weight: bold; }
-  .acc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  /* Accessory grid lives in a white card with light padding on the sides +
+     bottom; individual bouilles have NO frame or background — just the head and
+     its label, laid side by side (cf. the boutique "Accessoires" window). */
+  .acc-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    background: #fff; border-radius: 10px; padding: 0 10px 10px;
+  }
   .acc-item {
-    background: #fff; border: 2px solid transparent; border-radius: 12px;
-    padding: 6px; text-align: center; cursor: pointer;
+    background: transparent; border: 0; border-radius: 8px;
+    padding: 4px 2px; text-align: center; cursor: pointer;
     -webkit-user-select: none; user-select: none;
   }
-  .acc-item.sel { border-color: #2C4A0F; background: #eaf6d6; }
+  .acc-item.sel .thumb { box-shadow: 0 0 0 2px #D16767; }
+  .acc-item.sel .lbl { color: #D16767; }
   .acc-item .thumb {
     width: 100%; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden;
-    background: #E8F8D3; position: relative;
+    background: transparent; position: relative;
   }
   /* The Ruffle preview iframe must NOT eat the tap, otherwise the .acc-item
      click never fires and selection silently does nothing. pointer-events:none
@@ -217,8 +224,8 @@
     border-radius: 20px; background: #fff; color: #2C4A0F;
   }
   .compose button {
-    background: #FEABAB; color: #fff; border: 0; border-radius: 20px;
-    padding: 0 18px; font-size: 14px; font-weight: bold;
+    background: #FFAAAD; color: #660000; border: 1px solid #F48081; border-radius: 20px;
+    box-shadow: 0 0 0 1px #DDDDDD; padding: 0 18px; font-size: 14px; font-weight: bold;
   }
   .compose button:disabled { opacity: .5; }
 
@@ -287,10 +294,22 @@
      Verdana pseudos in deep indigo. */
   #users-drawer .list {
     flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    margin: 10px; padding: 0;
-    background: #e8f8d1; border: 4px solid #bff18d; border-radius: 24px 24px 0 0;
+    margin: 0 10px; padding: 0;
+    background: #e8f8d1; border: 4px solid #bff18d; border-radius: 24px;
     box-shadow: inset 0 0 0 2px rgba(255,255,255,.45), 0 0 4px rgba(126,220,80,.45);
   }
+  /* Pink scroll buttons (bouton_up.png) above AND below the list, same width as
+     the list. Tap to nudge, press-and-hold to keep scrolling; the art is
+     symmetric so the same image serves the top and the bottom. */
+  .users-scroll {
+    flex-shrink: 0; display: block; width: auto; margin: 6px 10px;
+    padding: 0; border: 0; background: transparent; cursor: pointer;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  .users-scroll.up { margin-top: 10px; }
+  .users-scroll.down { margin-bottom: 10px; }
+  .users-scroll img { width: 100%; height: 30px; display: block; object-fit: fill; }
+  .users-scroll:active img { filter: brightness(.95); }
   #users-drawer .u {
     min-height: 48px; padding: 6px 12px; background: #e8f8d1;
     display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -378,8 +397,6 @@
     <button class="menu-item" id="bouille-btn">
       <img class="menu-ico" src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"> Mon inventaire
     </button>
-    <div class="menu-spacer"></div>
-    <button class="menu-item danger" id="logout-btn"><span class="menu-ico-emoji">🚪</span> Quitter</button>
   </nav>
 
   <!-- Chat -->
@@ -404,7 +421,9 @@
     <div id="drawer-backdrop"></div>
     <div id="users-drawer">
       <h3>Connectés <span id="drawer-count"></span></h3>
+      <button class="users-scroll up" id="users-scroll-up" aria-label="Faire défiler vers le haut"><img src="/fb/bouton_up.png" alt=""></button>
       <div class="list" id="users-list"></div>
+      <button class="users-scroll down" id="users-scroll-down" aria-label="Faire défiler vers le bas"><img src="/fb/bouton_up.png" alt=""></button>
     </div>
   </section>
 
@@ -636,13 +655,7 @@
     });
   });
 
-  // ── Logout ──
-  $("#logout-btn").addEventListener("click", function () {
-    state.intentionalClose = true;
-    clearSession();
-    try { if (state.ws) state.ws.close(); } catch (e) {}
-    window.location.href = "/light/logout?sid=" + encodeURIComponent(state.sid);
-  });
+  // ── Logout ── (the "Quitter" menu item was removed from the light client.)
 
   // ── WebSocket (CBee bridge at "/") ──
   function wsUrl() {
@@ -941,6 +954,24 @@
   });
   $("#drawer-backdrop").addEventListener("click", function () { openDrawer(false); });
 
+  // Pink scroll buttons (top/bottom of the connected list): tap to nudge,
+  // press-and-hold to keep scrolling.
+  (function () {
+    var list = $("#users-list");
+    function bind(btn, dir) {
+      if (!btn || !list) return;
+      var timer = null;
+      function step() { list.scrollTop += dir * 48; }
+      function stop() { if (timer) { clearInterval(timer); timer = null; } }
+      function start(ev) { ev.preventDefault(); step(); stop(); timer = setInterval(step, 90); }
+      btn.addEventListener("mousedown", start);
+      btn.addEventListener("touchstart", start, { passive: false });
+      ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach(function (e) { btn.addEventListener(e, stop); });
+    }
+    bind($("#users-scroll-up"), -1);
+    bind($("#users-scroll-down"), 1);
+  })();
+
   // ── Bouille display toggle (header) ──────────────────────────────────────
   // Some users want a very "light" experience with no bouille animations popping
   // over the chat. The icon toggles them on/off; the choice persists across loads
@@ -1170,7 +1201,7 @@
   function previewIframe(state) {
     var s = String(state || DEFAULT_BOUILLE).replace(/[^0-9A-Za-z]/g, "");
     return '<iframe scrolling="no" sandbox="allow-scripts allow-same-origin" src="/bouille-preview.html?s='
-      + encodeURIComponent(s) + '"></iframe>';
+      + encodeURIComponent(s) + '&bg=transparent"></iframe>';
   }
 
   function openBouilleSheet() {
