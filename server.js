@@ -3245,7 +3245,7 @@ app.get('/api/online-count', (req, res) => {
   for (const [, cl] of xmlSocketClients) {
     const u = cl && cl.username;
     if (!u) continue;
-    if (CONNECTED_NPCS.has(u) || u === 'mdamirma') continue;
+    if (NPC_USERNAMES.has(u)) continue;
     online.add(String(u).toLowerCase());
   }
   res.setHeader('Cache-Control', 'no-store');
@@ -10678,6 +10678,10 @@ const channels = {
 const CONNECTED_NPCS = new Set([
   'gaspard',
 ]);
+// All bot/NPC accounts — the always-on Gaspard plus the transient visitors
+// (mdamirma, gromelin). Excluded from "real player" counts and from mdamirma's
+// FrutiSigne targeting, so bots never reveal/target each other.
+const NPC_USERNAMES = new Set(['gaspard', 'mdamirma', 'gromelin']);
 
 // Gaspard is the welcome-bot NPC. Stored under the lowercase key
 // `users.gaspard` like every other user (getDisplayName, trace and
@@ -10743,13 +10747,46 @@ users.mdamirma = {
   frutiSignB: 5,
   displayName: 'mdamirma',
 };
-let mdamirmaCurrentChannel = null;
+// ── gromelin — grumpy roaming visitor ──
+users.gromelin = {
+  pass: '',
+  xp: 66666,
+  kikooz: 0,
+  fbouille: '0d0000010000000000000000',
+  items: withDefaultPens([]),
+  contacts: [],
+  blacklist: [],
+  gender: 'M',
+  birthday: '1970-01-01',
+  country: 'FR',
+  region: 'IDF',
+  countryIndex: '1',
+  regionIndex: '1',
+  prefs: '',
+  isModerator: false,
+  needsBouille: false,
+  city: 'Légumia',
+  realJob: 'Ronchon',
+  firstName: 'Gromelin',
+  lastName: '',
+  comment: 'Grumpf.',
+  siteUrl: '',
+  frutiSign: 6,
+  frutiSignB: 6,
+  displayName: 'Gromelin',
+};
 
-function mdamirmaPickChannel() {
+// ── Generic transient-NPC plumbing (mdamirma, gromelin) ──
+// Each NPC tracks the one channel it is currently visiting; join/leave broadcast
+// the userlist change, say broadcasts a chat line, and saySequence delivers a
+// script line-by-line with a few seconds between each so it "breathes".
+const npcChannel = {}; // npc username -> current channel (null when away)
+
+function mostPopulatedChannel() {
   let best = null;
   let bestCount = 0;
   for (const [name, ch] of Object.entries(channels)) {
-    const realUsers = [...ch.users].filter(u => !CONNECTED_NPCS.has(u) && u !== 'mdamirma');
+    const realUsers = [...ch.users].filter(u => !NPC_USERNAMES.has(u));
     if (realUsers.length > bestCount) {
       bestCount = realUsers.length;
       best = name;
@@ -10758,49 +10795,56 @@ function mdamirmaPickChannel() {
   return bestCount > 0 ? best : null;
 }
 
-function mdamirmaJoin(channelName) {
-  if (mdamirmaCurrentChannel) {
-    const oldCh = channels[mdamirmaCurrentChannel];
-    if (oldCh) {
-      oldCh.users.delete('mdamirma');
-      broadcastToChannel(mdamirmaCurrentChannel,
-        `<${CMD.userleaved} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(mdamirmaCurrentChannel)}" />`
-      );
-    }
-  }
-  mdamirmaCurrentChannel = channelName;
+function npcJoin(npc, channelName) {
+  if (npcChannel[npc] && npcChannel[npc] !== channelName) npcLeave(npc);
+  npcChannel[npc] = channelName;
   const ch = channels[channelName];
   if (!ch) return;
-  ch.users.add('mdamirma');
+  ch.users.add(npc);
   broadcastToChannel(channelName,
-    `<${CMD.userjoined} ${buildUserAttrs('mdamirma', '1', channelName)} g="${escapeXml(channelName)}" />`
+    `<${CMD.userjoined} ${buildUserAttrs(npc, '1', channelName)} g="${escapeXml(channelName)}" />`
   );
 }
 
-function mdamirmaLeave() {
-  if (!mdamirmaCurrentChannel) return;
-  const ch = channels[mdamirmaCurrentChannel];
+function npcLeave(npc) {
+  const cur = npcChannel[npc];
+  if (!cur) return;
+  const ch = channels[cur];
   if (ch) {
-    ch.users.delete('mdamirma');
-    broadcastToChannel(mdamirmaCurrentChannel,
-      `<${CMD.userleaved} u="${escapeXml(getDisplayName('mdamirma'))}" g="${escapeXml(mdamirmaCurrentChannel)}" />`
+    ch.users.delete(npc);
+    broadcastToChannel(cur,
+      `<${CMD.userleaved} u="${escapeXml(getDisplayName(npc))}" g="${escapeXml(cur)}" />`
     );
   }
-  mdamirmaCurrentChannel = null;
+  npcChannel[npc] = null;
 }
 
-function mdamirmaSay(channelName, text) {
+function npcSay(npc, channelName, text) {
   const timeAttrs = buildChatTimeAttrs();
   broadcastToChannel(channelName,
-    `<${CMD.send} u="${escapeXml(getDisplayName('mdamirma'))}" t="m" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(text)}</${CMD.send}>`
+    `<${CMD.send} u="${escapeXml(getDisplayName(npc))}" t="m" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(text)}</${CMD.send}>`
   );
+}
+
+// Deliver `lines` one at a time (~2.5-5 s apart, after a short initial pause),
+// then call onDone. Bails if the NPC has meanwhile left or moved channel.
+function npcSaySequence(npc, channelName, lines, onDone) {
+  let i = 0;
+  function step() {
+    if (npcChannel[npc] !== channelName) return; // moved/left → stop talking
+    if (i >= lines.length) { if (onDone) onDone(); return; }
+    const line = lines[i++];
+    if (line) npcSay(npc, channelName, line);
+    setTimeout(step, 2500 + Math.random() * 2500);
+  }
+  setTimeout(step, 1500 + Math.random() * 1500);
 }
 
 function mdamirmaPickTarget(channelName) {
   const ch = channels[channelName];
   if (!ch) return null;
   const candidates = [...ch.users].filter(u => {
-    if (CONNECTED_NPCS.has(u) || u === 'mdamirma') return false;
+    if (NPC_USERNAMES.has(u)) return false;
     const ud = users[u];
     if (!ud) return false;
     return ud.frutiSign < 0 || ud.frutiSignB < 0;
@@ -10810,17 +10854,20 @@ function mdamirmaPickTarget(channelName) {
 }
 
 async function mdamirmaReveal() {
-  const channelName = mdamirmaPickChannel();
+  const channelName = mostPopulatedChannel();
   if (!channelName) return;
-
-  mdamirmaJoin(channelName);
+  npcJoin('mdamirma', channelName);
 
   const target = mdamirmaPickTarget(channelName);
   if (!target) {
-    setTimeout(() => {
-      mdamirmaSay(channelName, "Hmm... je ne vois personne à éclairer ici...");
-      setTimeout(() => mdamirmaLeave(), 5000 + Math.random() * 5000);
-    }, 2000 + Math.random() * 3000);
+    // Personne à éclairer : version courte, puis elle s'en va.
+    npcSaySequence('mdamirma', channelName, [
+      "B'nj'ur mes gentils petits frutiz.",
+      "Je souis m'dam Irma et je vais pé être rév'ler le FRUTISIGNE de l'un d'entre vous !",
+      "Véyons voir ce qué mé dit la Boule de Cristal...",
+      "Hmm... je ne vois personne à éclairer ici...",
+      "A b'entot lé' frutiz...",
+    ], () => setTimeout(() => npcLeave('mdamirma'), 3000 + Math.random() * 3000));
     return;
   }
 
@@ -10829,7 +10876,6 @@ async function mdamirmaReveal() {
   const ud = users[target];
   ud.frutiSign = sign;
   ud.frutiSignB = signB;
-
   if (ud._dbId) {
     db.updateUser(target, { fruti_sign: sign, fruti_sign_b: signB }).catch(e => {
       console.error('[MDAMIRMA] DB update failed:', e.message);
@@ -10839,18 +10885,25 @@ async function mdamirmaReveal() {
   const displayTarget = getDisplayName(target);
   const signName = FRUTI_SIGN_NAMES[sign];
   const signBName = FRUTI_SIGN_NAMES[signB];
+  addUserHistoryEntry(ud, {
+    type: USER_LOG_TYPE.CHAT,
+    content: `mdamirma a révélé ton FrutiSigne : ${signName} ascendant ${signBName} !`,
+    flNew: true,
+  });
 
-  setTimeout(() => {
-    mdamirmaSay(channelName,
-      `Pué possib' ! Mon petit ${displayTarget} est ${signName} ascendant ${signBName} !`
-    );
-    addUserHistoryEntry(ud, {
-      type: USER_LOG_TYPE.CHAT,
-      content: `mdamirma a révélé ton FrutiSigne : ${signName} ascendant ${signBName} !`,
-      flNew: true,
-    });
-    setTimeout(() => mdamirmaLeave(), 8000 + Math.random() * 7000);
-  }, 3000 + Math.random() * 4000);
+  // Révélation complète, ligne par ligne avec quelques secondes entre chaque.
+  npcSaySequence('mdamirma', channelName, [
+    "B'nj'ur mes gentils petits frutiz.",
+    "Je souis m'dam Irma et je vais pé être rév'ler le FRUTISIGNE de l'un d'entre vous !",
+    "Véyons voir ce qué mé dit la Boule de Cristal...",
+    "Hum oué ...",
+    "Ho ho",
+    "Ha",
+    "P'ué possible",
+    `Mé petit ${displayTarget} est ${signName} ascendant ${signBName} !`,
+    "Une b'nne configuration Frutale ça aure plein dé surprises sur lé site.",
+    "A b'entot lé' frutiz...",
+  ], () => setTimeout(() => npcLeave('mdamirma'), 4000 + Math.random() * 4000));
 }
 
 function scheduleMdamirma() {
@@ -10863,6 +10916,35 @@ function scheduleMdamirma() {
   }, delay);
 }
 scheduleMdamirma();
+
+// ── Gromelin — grumpy visitor, rarer than Irma: storms into the busiest room,
+// grumbles a few lines, and leaves. ──
+const GROMELIN_LINES = [
+  "Grumpf",
+  "Mmmmh, y a encore du monde ici ?",
+  "Vous n'avez rien de mieux à faire qu'à traîner sur ce site minable ?",
+  "Allez, du balais ! J'ai du boulot moi.",
+  "On est plus tranquille à Légumia...",
+];
+
+function gromelinVisit() {
+  const channelName = mostPopulatedChannel(); // the busiest room right now
+  if (!channelName) return;
+  npcJoin('gromelin', channelName);
+  npcSaySequence('gromelin', channelName, GROMELIN_LINES,
+    () => setTimeout(() => npcLeave('gromelin'), 2500 + Math.random() * 3000));
+}
+
+function scheduleGromelin() {
+  const delayMin = 35 * 60 * 1000;   // 35 min — clearly rarer than Irma
+  const delayMax = 120 * 60 * 1000;  // up to 2 h
+  const delay = delayMin + Math.random() * (delayMax - delayMin);
+  setTimeout(() => {
+    gromelinVisit();
+    scheduleGromelin();
+  }, delay);
+}
+scheduleGromelin();
 
 for (const npc of CONNECTED_NPCS) {
   channels.pomme.users.add(npc);
