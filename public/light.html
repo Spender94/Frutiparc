@@ -32,26 +32,46 @@
   a { color: #2f6b16; }
   button { font-family: inherit; cursor: pointer; }
 
-  /* ── Top bar ── */
-  header {
-    background: #84c640;
-    border-bottom: 2px solid #5a8a20;
-    padding: 8px 12px;
+  /* ── Single compact top bar ── */
+  #topbar {
+    background: #84c640; border-bottom: 2px solid #5a8a20;
+    padding: 6px 10px; display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  }
+  #topbar select {
+    flex: 1; min-width: 0; padding: 8px; font-size: 15px;
+    border: 1px solid #5a8a20; border-radius: 6px; background: #fff; color: #2C4A0F;
+  }
+  #topbar .count { font-size: 12px; color: #2f5510; white-space: nowrap; }
+  .icon-btn {
+    background: #fff; border: 1px solid #2C4A0F; border-radius: 7px;
+    font-size: 17px; line-height: 1; padding: 7px 10px; color: #2C4A0F; flex-shrink: 0;
+  }
+  #menu-btn { font-size: 18px; }
+
+  /* ── Hamburger menu drawer ── */
+  #menu-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 35; display: none; }
+  #menu-backdrop.show { display: block; }
+  #menu-drawer {
+    position: fixed; top: 0; left: 0; bottom: 0; width: 74%; max-width: 290px; z-index: 36;
+    background: #fff; border-right: 2px solid #2C4A0F; display: flex; flex-direction: column;
+    transform: translateX(-100%); transition: transform .22s ease;
+    box-shadow: 6px 0 18px rgba(44,74,15,.25);
+  }
+  #menu-drawer.open { transform: translateX(0); }
+  #menu-drawer .menu-head {
+    background: #84c640; color: #2C4A0F; padding: 14px 16px; font-weight: bold;
+    border-bottom: 1px solid #5a8a20; display: flex; align-items: center; gap: 8px; font-size: 15px;
+  }
+  #menu-drawer .menu-head .dot { width: 9px; height: 9px; border-radius: 50%; background: #c0392b; display: inline-block; }
+  #menu-drawer .menu-head .dot.on { background: #2ecc40; }
+  .menu-item {
+    background: transparent; border: 0; border-bottom: 1px solid #eef6e0;
+    text-align: left; padding: 14px 16px; font-size: 15px; color: #2C4A0F; font-weight: bold;
     display: flex; align-items: center; gap: 10px;
-    flex-shrink: 0;
   }
-  header h1 { font-size: 15px; margin: 0; color: #2C4A0F; letter-spacing: .5px; }
-  header .who { margin-left: auto; font-size: 11px; color: #2f5510; display: flex; align-items: center; gap: 8px; }
-  header .who .dot { width: 8px; height: 8px; border-radius: 50%; background: #c0392b; display: inline-block; }
-  header .who .dot.on { background: #2ecc40; }
-  header .logout {
-    background: transparent; border: 1px solid #2C4A0F; border-radius: 5px;
-    color: #2C4A0F; font-size: 11px; padding: 4px 8px;
-  }
-  header .hbtn {
-    background: #fff; border: 1px solid #2C4A0F; border-radius: 6px;
-    font-size: 15px; line-height: 1; padding: 3px 7px;
-  }
+  .menu-item.active { background: #eaf6d6; }
+  .menu-item.danger { color: #b23b2e; }
+  .menu-spacer { flex: 1; }
 
   /* ── Bouille bottom sheet ── */
   #bouille-sheet-backdrop {
@@ -86,26 +106,24 @@
   .acc-item {
     background: #fff; border: 2px solid transparent; border-radius: 12px;
     padding: 6px; text-align: center; cursor: pointer;
+    -webkit-user-select: none; user-select: none;
   }
   .acc-item.sel { border-color: #2C4A0F; background: #eaf6d6; }
-  .acc-item .thumb { width: 100%; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden; background: #E8F8D3; }
-  .acc-item .thumb iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .acc-item .thumb {
+    width: 100%; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden;
+    background: #E8F8D3; position: relative;
+  }
+  /* The Ruffle preview iframe must NOT eat the tap, otherwise the .acc-item
+     click never fires and selection silently does nothing. pointer-events:none
+     lets the tap fall through to the card. */
+  .acc-item .thumb iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
+  /* Transparent overlay above the iframe guarantees the whole tile is tappable
+     (belt-and-suspenders on browsers that still route touch to the iframe). */
+  .acc-item .thumb::after { content: ""; position: absolute; inset: 0; }
   .acc-item .lbl {
     font-size: 10px; color: #2C4A0F; margin-top: 4px; font-weight: bold;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-
-  /* ── Tabs ── */
-  nav.tabs {
-    display: flex; background: #94DB39; flex-shrink: 0;
-    border-bottom: 2px solid #5a8a20;
-  }
-  nav.tabs button {
-    flex: 1; background: transparent; border: 0; color: #2C4A0F;
-    padding: 10px 6px; font-size: 13px; font-weight: bold;
-    border-bottom: 3px solid transparent;
-  }
-  nav.tabs button.active { background: #ADE76B; border-bottom-color: #2C4A0F; }
 
   /* ── Generic panel ── */
   .panel { flex: 1; min-height: 0; display: none; flex-direction: column; }
@@ -137,19 +155,6 @@
 
   /* ── Chat ── */
   #chat-panel { }
-  .room-bar {
-    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
-    background: #cdeb9d; border-bottom: 1px solid #5a8a20; flex-shrink: 0;
-  }
-  .room-bar select {
-    flex: 1; padding: 8px; font-size: 14px; border: 1px solid #5a8a20;
-    border-radius: 6px; background: #fff; color: #2C4A0F;
-  }
-  .room-bar .count { font-size: 11px; color: #2f5510; white-space: nowrap; }
-  .room-bar .users-btn {
-    background: #fff; border: 1px solid #5a8a20; border-radius: 6px;
-    padding: 8px 10px; font-size: 13px; color: #2C4A0F;
-  }
 
   #messages {
     flex: 1; min-height: 0; overflow-y: auto; padding: 8px 10px;
@@ -263,28 +268,32 @@
 
 <!-- ───────── App (after login) ───────── -->
 <div id="app" class="hidden" style="display:flex;flex-direction:column;flex:1;min-height:0">
-  <header>
-    <h1>Frutiparc</h1>
-    <div class="who">
-      <span class="dot" id="conn-dot"></span>
-      <span id="who-name">—</span>
-      <button class="hbtn" id="bouille-btn" title="Ma bouille">🙂</button>
-      <button class="logout" id="logout-btn">Quitter</button>
-    </div>
+  <!-- Single compact top bar: hamburger · room selector · members.
+       Everything else (account, navigation, quitter) lives in the menu drawer
+       to keep vertical space for the conversation. -->
+  <header id="topbar">
+    <button class="icon-btn" id="menu-btn" title="Menu" aria-label="Menu">☰</button>
+    <select id="room-select" aria-label="Salon"></select>
+    <span class="count" id="room-count">0</span>
+    <button class="icon-btn" id="users-btn" title="Connectés">👥</button>
   </header>
 
-  <nav class="tabs">
-    <button data-tab="chat" class="active">Salons</button>
-    <button data-tab="forum">Forum</button>
+  <!-- Slide-in menu drawer (hamburger) -->
+  <div id="menu-backdrop"></div>
+  <nav id="menu-drawer">
+    <div class="menu-head">
+      <span class="dot" id="conn-dot"></span>
+      <span id="who-name">—</span>
+    </div>
+    <button class="menu-item active" data-tab="chat">💬 Salons</button>
+    <button class="menu-item" data-tab="forum">📋 Forum</button>
+    <button class="menu-item" id="bouille-btn">🙂 Ma bouille</button>
+    <div class="menu-spacer"></div>
+    <button class="menu-item danger" id="logout-btn">🚪 Quitter</button>
   </nav>
 
   <!-- Chat -->
   <section class="panel active" id="chat-panel" style="position:relative">
-    <div class="room-bar">
-      <select id="room-select"></select>
-      <span class="count" id="room-count">0</span>
-      <button class="users-btn" id="users-btn">👥</button>
-    </div>
     <div id="messages"></div>
 
     <!-- Bouille overlay: live Ruffle bouille (transparent) reacting to chat,
@@ -321,7 +330,7 @@
     </div>
     <div class="sheet-body">
       <div class="sheet-preview"><div id="bouille-sheet-preview"></div></div>
-      <div class="sheet-hint">Choisis un accessoire de ton inventaire :</div>
+      <div class="sheet-hint" id="bouille-sheet-hint">Choisis un accessoire de ton inventaire :</div>
       <div id="bouille-acc-grid" class="acc-grid"></div>
     </div>
   </div>
@@ -444,15 +453,24 @@
     connectWs();
   }
 
-  // ── Tabs ──
-  Array.prototype.forEach.call(document.querySelectorAll("nav.tabs button"), function (b) {
+  // ── Hamburger menu drawer ──
+  function openMenu(open) {
+    $("#menu-drawer").classList.toggle("open", open);
+    $("#menu-backdrop").classList.toggle("show", open);
+  }
+  $("#menu-btn").addEventListener("click", function () { openMenu(true); });
+  $("#menu-backdrop").addEventListener("click", function () { openMenu(false); });
+
+  // ── Navigation (menu items with data-tab) ──
+  Array.prototype.forEach.call(document.querySelectorAll(".menu-item[data-tab]"), function (b) {
     b.addEventListener("click", function () {
       var tab = b.getAttribute("data-tab");
-      Array.prototype.forEach.call(document.querySelectorAll("nav.tabs button"), function (x) {
+      Array.prototype.forEach.call(document.querySelectorAll(".menu-item[data-tab]"), function (x) {
         x.classList.toggle("active", x === b);
       });
       $("#chat-panel").classList.toggle("active", tab === "chat");
       $("#forum-panel").classList.toggle("active", tab === "forum");
+      openMenu(false);
     });
   });
 
@@ -831,6 +849,7 @@
   }
 
   function openBouilleSheet() {
+    openMenu(false); // close the hamburger if it was open
     var bd = $("#bouille-sheet-backdrop"), sheet = $("#bouille-sheet");
     bd.classList.add("show"); sheet.classList.add("show");
     loadAccessories();
@@ -907,19 +926,22 @@
   function pickAccessory(i) {
     var ac = accList[i]; if (!ac) return;
     accSel = { suffix: ac.suffix, fullState: ac.fullState || null };
+    var newState = buildState(myBase, accSel.suffix, accSel.fullState);
+    // Update locally first so the UI reacts instantly.
+    state.bouilleByUser[state.userLower] = newState;
     renderAccGrid();
     updateSheetPreview();
-    var newState = buildState(myBase, accSel.suffix, accSel.fullState);
-    // Persist to the account (same endpoint the SWF editor uses).
-    fetch("/do/eb?sid=" + encodeURIComponent(state.sid) + "&b=" + encodeURIComponent(newState), { cache: "no-store" })
-      .then(function () {
-        state.bouilleByUser[state.userLower] = newState;
-        // Re-broadcast our presence so others refresh our bouille: leave+rejoin
-        // the room is heavy; instead just update locally — the next time we talk,
-        // our reaction overlay uses the new state, and peers get it on their
-        // next userlist/trace refresh.
-      })
-      .catch(function () { /* keep local selection even if save failed */ });
+    var hint = $("#bouille-sheet-hint");
+    if (hint) { hint.textContent = "✓ " + (ac.name || "Accessoire") + " appliqué !"; }
+    // Persist over the open WebSocket via the fbouille command — the server
+    // saves it AND broadcasts a trace so peers see the new bouille live. Falls
+    // back to the HTTP editor endpoint if the socket isn't ready.
+    if (state.ws && state.ws.readyState === 1) {
+      wsSend('<ae f="' + xmlEscape(newState) + '" />');
+    } else {
+      fetch("/do/eb?sid=" + encodeURIComponent(state.sid) + "&b=" + encodeURIComponent(newState), { cache: "no-store" })
+        .catch(function () {});
+    }
   }
 
   // ── Mobile keyboard handling ─────────────────────────────────────────────

@@ -12635,6 +12635,15 @@ case 'fbouille': {
     if (u._dbId) {
       db.updateUser(client.username, { fbouille: f }).catch(dbErr('updateUser fbouille'));
     }
+    // Tell everyone sharing a room with this user about the new bouille so their
+    // user lists / reaction overlays refresh live (a trace frame carries f=).
+    // Without this, peers only saw the change on their next userlist refresh.
+    const traceXml = `<${CMD.trace}><u u="${escapeXml(getDisplayName(client.username))}" p="1" s="${getStatusCode(u, client.username)}" mu="${getMuteValue(u)}" f="${bouilleOf(u)}"${''} /></${CMD.trace}>`;
+    const seen = new Set();
+    for (const chanName of (client.channels || [])) {
+      if (seen.has(chanName)) continue; seen.add(chanName);
+      broadcastToChannel(chanName, traceXml, socket);
+    }
   }
   sendToClient(socket, `<${CMD.fbouille} f="${f}" />`);
   break;
