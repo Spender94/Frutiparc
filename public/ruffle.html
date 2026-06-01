@@ -126,6 +126,36 @@
 </head>
 <body>
     <div id="player-container"></div>
+
+    <!-- Live connected-players badge (overlay, top-right). Purely informational;
+         polls /api/online-count and never intercepts clicks on the SWF. -->
+    <div id="online-badge" style="position:fixed;top:8px;right:10px;z-index:2147483646;
+        background:rgba(44,74,15,.82);color:#CFF599;font:bold 12px Verdana,sans-serif;
+        padding:5px 10px;border-radius:14px;pointer-events:none;display:none;
+        box-shadow:0 2px 6px rgba(0,0,0,.25)">
+      <span id="online-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;
+        background:#2ecc40;margin-right:6px;vertical-align:middle"></span><span id="online-count">…</span> en ligne
+    </div>
+    <script>
+        // Poll the connected-players count and show it in the badge.
+        (function () {
+            var badge = document.getElementById("online-badge");
+            var label = document.getElementById("online-count");
+            function refresh() {
+                fetch("/api/online-count", { cache: "no-store" })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (d && typeof d.count === "number") {
+                            label.textContent = d.count;
+                            badge.style.display = "block";
+                        }
+                    })
+                    .catch(function () { /* keep last value */ });
+            }
+            refresh();
+            setInterval(refresh, 20000);
+        })();
+    </script>
     <script>
         // Make the whole Frutiparc client responsive: scale it to fill the
         // viewport, left-aligned (any leftover space falls on the right),

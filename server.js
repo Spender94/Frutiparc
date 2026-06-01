@@ -3204,6 +3204,20 @@ app.get('/api/me/bouille', (req, res) => {
   res.json({ ok: true, fbouille: bouille });
 });
 
+// Number of distinct connected players (chat sockets), excluding NPCs. Used by
+// the legacy Ruffle page + the mobile client to show a live "online" badge.
+app.get('/api/online-count', (req, res) => {
+  const online = new Set();
+  for (const [, cl] of xmlSocketClients) {
+    const u = cl && cl.username;
+    if (!u) continue;
+    if (CONNECTED_NPCS.has(u) || u === 'mdamirma') continue;
+    online.add(String(u).toLowerCase());
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, count: online.size });
+});
+
 // ─────────────────────────────────────────────
 // Bouille → image (PNG / animated GIF), with on-disk cache.
 //

@@ -1145,6 +1145,7 @@
 
 <div class="forum-shell">
   <div class="topbar">
+    <a href="#" id="back-chat-link" onclick="backToChat();return false" style="color:#2C4A0F;font-weight:bold;font-size:12px;margin-right:auto;text-decoration:none;display:none">‹ Salons</a>
     <div class="user-info" id="user-info"></div>
     <a href="#" id="pictos-link" onclick="navigate('pictos');return false" style="color:#2C4A0F;font-weight:bold;font-size:11px;margin-right:10px;text-decoration:none;display:none">Mes Pictos</a>
     <button class="close-btn" onclick="closeForum()">Fermer</button>
@@ -1428,6 +1429,14 @@ function bouilleSelHtml(formId) {
   return html;
 }
 
+// Navigate back to the mobile chat (/light), carrying the sid so the session
+// resumes without a new login. Used by the "‹ Salons" link shown when the
+// forum was opened from /light.
+function backToChat() {
+  var sid = new URLSearchParams(window.location.search).get('sid') || '';
+  window.location.href = '/light' + (sid ? ('?sid=' + encodeURIComponent(sid)) : '');
+}
+
 function closeForum() {
   try {
     if (window.parent && window.parent !== window && typeof window.parent.fp_closeFrame === 'function') {
@@ -1435,6 +1444,12 @@ function closeForum() {
       return;
     }
   } catch (e) {}
+  // If opened from the mobile chat, go back there instead of a no-op close
+  // (window.close() is ignored for normally-navigated tabs on mobile).
+  if (new URLSearchParams(window.location.search).get('from') === 'light') {
+    backToChat();
+    return;
+  }
   window.close();
 }
 
@@ -2459,6 +2474,11 @@ async function init() {
     }
   } catch (e) {
     document.getElementById('user-info').textContent = "Erreur d'authentification";
+  }
+  // Show the "‹ Salons" shortcut when the forum was opened from the mobile chat.
+  if (new URLSearchParams(window.location.search).get('from') === 'light') {
+    var bl = document.getElementById('back-chat-link');
+    if (bl) bl.style.display = 'inline';
   }
   loadIndex();
 }

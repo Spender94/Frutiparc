@@ -71,8 +71,15 @@
   }
   .menu-item.active { background: #eaf6d6; }
   .menu-item.danger { color: #b23b2e; }
-  .menu-item .menu-ico { width: 22px; height: 22px; object-fit: contain; image-rendering: auto; flex-shrink: 0; }
-  .menu-item .menu-ico-emoji { width: 22px; text-align: center; font-size: 18px; flex-shrink: 0; }
+  /* All menu glyphs occupy the same 24px square box and are centered, so the
+     favicon (16px), the forum ico (18px) and the inventory PNG (130px) all read
+     as the same visual size regardless of their native dimensions. */
+  .menu-item .menu-ico {
+    width: 24px; height: 24px; object-fit: contain; flex-shrink: 0;
+  }
+  .menu-item .menu-ico-emoji {
+    width: 24px; text-align: center; font-size: 19px; line-height: 24px; flex-shrink: 0;
+  }
   .menu-spacer { flex: 1; }
 
   /* ── Bouille bottom sheet ── */
@@ -314,7 +321,7 @@
       <img class="menu-ico" src="/fb/ico.gif" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"> Forum
     </button>
     <button class="menu-item" id="bouille-btn">
-      <span class="menu-ico-emoji">🎒</span> Mon inventaire
+      <img class="menu-ico" src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"> Mon inventaire
     </button>
     <div class="menu-spacer"></div>
     <button class="menu-item danger" id="logout-btn"><span class="menu-ico-emoji">🚪</span> Quitter</button>
@@ -405,9 +412,28 @@
     bouilleByUser: {}, // lowercased pseudo -> bouille state string "f"
     overlayTimer: null,
     pen: "",           // selected feutre index ("" = default colour)
+    roomCounts: {},    // room id -> participant count (from channellist <q>)
   };
 
   var DEFAULT_BOUILLE = "000000010000000000000000";
+
+  // (Re)build the room <option>s, appending the live participant count as
+  // "Pomme (3)". A count of 0 shows no parenthesis. Preserves the current
+  // selection. Called on startApp and whenever a channellist <q> arrives.
+  function renderRoomOptions() {
+    var sel = document.getElementById("room-select");
+    if (!sel) return;
+    var current = sel.value || (state && state.room) || ROOMS[0][0];
+    sel.innerHTML = "";
+    ROOMS.forEach(function (r) {
+      var n = state.roomCounts[r[0]] || 0;
+      var o = document.createElement("option");
+      o.value = r[0];
+      o.textContent = r[1] + (n > 0 ? " (" + n + ")" : "");
+      sel.appendChild(o);
+    });
+    sel.value = current;
+  }
 
   // ── XML helpers (CBee protocol) ──
   // For ATTRIBUTES (sid, room, pseudo): full escaping, incl. & and ".
@@ -445,6 +471,45 @@
   }
 
   // ── Login ──
+  // ── Session persistence (survive F5 / rotation reloads) ──
+  // The sid is the only thing needed to resume; we keep it in localStorage and
+  // re-validate it on load via /api/forum/me (returns {user} if still valid).
+  var SESS_KEY = "fp_light_session";
+  function saveSession() {
+    try { localStorage.setItem(SESS_KEY, JSON.stringify({ sid: state.sid, user: state.user })); } catch (e) {}
+  }
+  function clearSession() {
+    try { localStorage.removeItem(SESS_KEY); } catch (e) {}
+  }
+  function tryResumeSession(cb) {
+    // Prefer a sid already on state (set from ?sid= in the URL), else the one
+    // saved in localStorage.
+    var sid = state.sid;
+    if (!sid) {
+      var raw; try { raw = localStorage.getItem(SESS_KEY); } catch (e) { raw = null; }
+      if (raw) { try { sid = (JSON.parse(raw) || {}).sid; } catch (e) {} }
+    }
+    if (!sid) { cb(false); return; }
+    // Validate the sid server-side before skipping the login screen.
+    fetch("/api/forum/me?sid=" + encodeURIComponent(sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.user) {
+          state.sid = sid;
+          state.user = d.user;
+          state.userLower = String(d.user).toLowerCase();
+          saveSession();
+          startApp();
+          cb(true);
+        } else {
+          clearSession();
+          state.sid = "";
+          cb(false);
+        }
+      })
+      .catch(function () { cb(false); });
+  }
+
   var loginForm = $("#login-form");
   loginForm.addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -469,6 +534,7 @@
         state.sid = res.d.sid;
         state.user = res.d.username || user;
         state.userLower = String(state.user).toLowerCase();
+        saveSession();
         startApp();
       })
       .catch(function () {
@@ -482,14 +548,12 @@
     $("#login-screen").classList.add("hidden");
     $("#app").classList.remove("hidden");
     $("#who-name").textContent = state.user;
-    $("#forum-link").href = "/fb/?sid=" + encodeURIComponent(state.sid);
+    $("#forum-link").href = "/fb/?sid=" + encodeURIComponent(state.sid) + "&from=light";
 
-    // Build room selector
+    // Build room selector (labels get a "(n)" participant count, see
+    // renderRoomOptions / the channellist handler).
+    renderRoomOptions();
     var sel = $("#room-select");
-    sel.innerHTML = "";
-    ROOMS.forEach(function (r) {
-      var o = el("option"); o.value = r[0]; o.textContent = r[1]; sel.appendChild(o);
-    });
     sel.value = ROOMS[0][0];
     sel.addEventListener("change", function () { switchRoom(sel.value); });
 
@@ -520,6 +584,7 @@
   // ── Logout ──
   $("#logout-btn").addEventListener("click", function () {
     state.intentionalClose = true;
+    clearSession();
     try { if (state.ws) state.ws.close(); } catch (e) {}
     window.location.href = "/light/logout?sid=" + encodeURIComponent(state.sid);
   });
@@ -561,6 +626,17 @@
     try { if (state.ws && state.ws.readyState === 1) state.ws.send(xml); } catch (e) {}
   }
 
+  // Ask the server for the public room list (participant counts). Cheap; we
+  // poll it so the "(n)" stays roughly live without per-event chatter.
+  function requestChannelList() { wsSend("<q />"); }
+  var channelListTimer = null;
+  function startChannelListPolling() {
+    if (channelListTimer) return;
+    channelListTimer = setInterval(function () {
+      if (state.connected) requestChannelList();
+    }, 15000);
+  }
+
   // Incoming data may contain several \0-delimited frames.
   var rxBuffer = "";
   function onWsData(data) {
@@ -584,13 +660,28 @@
       case "k": // ident response
         if (attr(xml, "k") === "401") { systemLine("Connexion refusée (session expirée)."); return; }
         setConnected(true);
-        // ident OK → join the current/default room.
+        // ident OK → join the current/default room, then ask for the room list
+        // (participant counts) and refresh it periodically.
         switchRoom($("#room-select").value || ROOMS[0][0]);
+        requestChannelList();
+        startChannelListPolling();
         break;
 
       case "o": // join confirmed: <o g="room" p="">...</o>
         // nothing extra; userlist follows
         break;
+
+      case "q": { // channellist: <q><g g="pomme" n="3">…</g>…</q>
+        var gre = /<g\b([^>]*)>/g, gm, changed = false;
+        while ((gm = gre.exec(xml)) !== null) {
+          var gattr = "<g " + gm[1] + ">";
+          var gid = attr(gattr, "g");
+          var gn = parseInt(attr(gattr, "n"), 10);
+          if (gid) { state.roomCounts[gid] = Number.isFinite(gn) ? gn : 0; changed = true; }
+        }
+        if (changed) renderRoomOptions();
+        break;
+      }
 
       case "p": { // userlist for a room
         var room = attr(xml, "g");
@@ -760,6 +851,12 @@
     var names = Object.keys(set).sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
     $("#room-count").textContent = names.length + " 👤";
     $("#drawer-count").textContent = "(" + names.length + ")";
+    // Keep the selector's "(n)" for the current room fresh between polls.
+    if (state.room) {
+      var prev = state.roomCounts[state.room];
+      state.roomCounts[state.room] = names.length;
+      if (prev !== names.length) renderRoomOptions();
+    }
     var list = $("#users-list");
     list.innerHTML = "";
     names.forEach(function (n) {
@@ -1116,6 +1213,21 @@
     var inp = document.getElementById("compose-input");
     if (inp) inp.addEventListener("focus", function () {
       setTimeout(function () { applyViewport(); scrollDown(); }, 300);
+    });
+  })();
+
+  // On load, silently resume a stored session (so an F5 / rotation reload goes
+  // straight back into the chat instead of asking to log in again). Also accept
+  // a ?sid=… in the URL as a resume hint (e.g. arriving from another page).
+  (function () {
+    var urlSid = new URLSearchParams(window.location.search).get("sid");
+    if (urlSid) {
+      state.sid = urlSid; saveSession();
+    }
+    tryResumeSession(function (resumed) {
+      if (!resumed) {
+        var u = $("#li-user"); if (u) u.focus();
+      }
     });
   })();
 })();
