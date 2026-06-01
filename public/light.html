@@ -123,6 +123,27 @@
   }
   .compose button:disabled { opacity: .5; }
 
+  /* Bouille reaction overlay (floats above the messages, bottom-right) */
+  #bouille-overlay {
+    position: absolute; right: 10px; bottom: 64px; z-index: 20;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    pointer-events: none; opacity: 0; transform: translateY(8px) scale(.9);
+    transition: opacity .2s ease, transform .2s ease;
+  }
+  #bouille-overlay.show { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+  #bouille-overlay-img {
+    width: 132px; height: 132px; border-radius: 14px;
+    background: #E8F8D3; border: 2px solid #2C4A0F;
+    box-shadow: 0 8px 20px rgba(44,74,15,.3);
+    object-fit: contain;
+  }
+  #bouille-overlay-name {
+    font-size: 11px; font-weight: bold; color: #2C4A0F;
+    background: rgba(255,255,255,.9); border: 1px solid #5a8a20;
+    border-radius: 10px; padding: 2px 8px; max-width: 150px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
   /* User list drawer */
   #users-drawer {
     position: absolute; top: 0; right: 0; bottom: 0; width: 72%; max-width: 280px;
@@ -198,6 +219,13 @@
       <button class="users-btn" id="users-btn">👥</button>
     </div>
     <div id="messages"></div>
+
+    <!-- Bouille overlay: the speaker's avatar reacting to what they wrote. -->
+    <div id="bouille-overlay">
+      <img id="bouille-overlay-img" alt="">
+      <div id="bouille-overlay-name"></div>
+    </div>
+
     <form class="compose" id="compose-form">
       <input type="text" id="compose-input" placeholder="Message…" autocomplete="off" maxlength="300" disabled>
       <button type="submit" id="compose-send" disabled>Envoyer</button>
@@ -241,7 +269,11 @@
     reconnectTimer: null,
     intentionalClose: false,
     usersByRoom: {},   // room -> Set of display names
+    bouilleByUser: {}, // lowercased pseudo -> bouille state string "f"
+    overlayTimer: null,
   };
+
+  var DEFAULT_BOUILLE = "000000010000000000000000";
 
   // ── XML helpers (CBee protocol) ──
   // For ATTRIBUTES (sid, room, pseudo): full escaping, incl. & and ".
@@ -424,17 +456,28 @@
         var re = /<u\b([^>]*)\/>/g, mm;
         var inner = xml.replace(/^<p[^>]*>/, "").replace(/<\/p>$/, "");
         while ((mm = re.exec(inner)) !== null) {
-          var uname = attr("<u " + mm[1] + "/>", "u");
-          if (uname) set[uname] = true;
+          var frag = "<u " + mm[1] + "/>";
+          var uname = attr(frag, "u");
+          if (uname) { set[uname] = true; rememberBouille(uname, attr(frag, "f")); }
         }
         state.usersByRoom[room] = set;
         if (room === state.room) renderUsers();
         break;
       }
 
-      case "v": { // userjoined: <v u="..." ... g="room" />
+      case "z": { // trace push: <z><u u=".." f="<bouille>" .../></z> — bouille data
+        var zre = /<u\b([^>]*)\/>/g, zm;
+        while ((zm = zre.exec(xml)) !== null) {
+          var zf = "<u " + zm[1] + "/>";
+          rememberBouille(attr(zf, "u"), attr(zf, "f"));
+        }
+        break;
+      }
+
+      case "v": { // userjoined: <v u="..." f="<bouille>" g="room" />
         var rj = attr(xml, "g"); var uj = attr(xml, "u");
         if (rj && uj) {
+          rememberBouille(uj, attr(xml, "f"));
           if (!state.usersByRoom[rj]) state.usersByRoom[rj] = {};
           state.usersByRoom[rj][uj] = true;
           if (rj === state.room) { renderUsers(); systemLine(uj + " a rejoint le salon."); }
@@ -461,8 +504,11 @@
           addMessage({ from: from, time: h, body: ty === "i" ? "[image]" : "[cadeau]", kind: "system" });
           break;
         }
+        var text = xmlUnescape(body);
         var kind = (from === "admin") ? "admin" : "normal";
-        addMessage({ from: from, time: h, body: xmlUnescape(body), kind: kind });
+        addMessage({ from: from, time: h, body: text, kind: kind });
+        // Bouille overlay: show the speaker's avatar reacting to what they wrote.
+        if (from && from !== "admin") showBouilleOverlay(from, detectAnim(text));
         break;
       }
 
@@ -580,6 +626,63 @@
   }
   $("#users-btn").addEventListener("click", function () { openDrawer(true); });
   $("#drawer-backdrop").addEventListener("click", function () { openDrawer(false); });
+
+  // ── Bouille overlay ──────────────────────────────────────────────────────
+  // Remember each speaker's bouille state (carried by <p>/<v>/<z> frames), so
+  // when they talk we can render the right avatar.
+  function rememberBouille(pseudo, f) {
+    if (!pseudo || !f) return;
+    var clean = String(f).replace(/[^0-9A-Za-z]/g, "");
+    if (clean.length >= 4) state.bouilleByUser[String(pseudo).toLowerCase()] = clean;
+  }
+
+  // Map a chat line to a bouille animation id (subset accepted by /bouille-img:
+  // parle, rire, mdr, langue, rougir, regard, sifflote, gum, question, miam,
+  // pleurer). The default for any normal line is "parle" (talking).
+  function detectAnim(text) {
+    var t = " " + String(text || "").toLowerCase() + " ";
+    if (/\bm+d+r+\b|\bptdr\b|\blmao\b|\brofl\b|😂|🤣/.test(t)) return "mdr";
+    if (/\bl+o+l+\b|\bha+ha+\b|\bhe+he+\b|\beheh\b|😄|😁|😆|\bxd\b/.test(t)) return "rire";
+    if (/\bsnif\b|\bpleure?\b|\btriste\b|😢|😭|💧/.test(t)) return "pleurer";
+    if (/:p\b|:-p\b|😛|😜|🤪|\bnananère?\b/.test(t)) return "langue";
+    if (/\bmiam\b|\bmmh+\b|\bgloup\b|🤤|🍕|🍔|🍰/.test(t)) return "miam";
+    if (/\?\s*$|\bhein\b|\bquoi\b|\bpourquoi\b|❓|🤔/.test(t)) return "question";
+    if (/\brougi[rs]?\b|\bgêné?e?\b|\btimide\b|😳|☺️|🥰|❤️|<3/.test(t)) return "rougir";
+    if (/\bsiffl|🎵|🎶/.test(t)) return "sifflote";
+    if (/\bgum\b|\bchewing\b|\bbubble\b/.test(t)) return "gum";
+    return "parle";
+  }
+
+  function bouilleImgUrl(pseudo, anim, size) {
+    var f = state.bouilleByUser[String(pseudo).toLowerCase()] || DEFAULT_BOUILLE;
+    var qs = "s=" + encodeURIComponent(f) + "&e=0&size=" + (size || 160);
+    // "parle" can be a short loop; others are reaction GIFs. All as GIF so the
+    // avatar moves; /bouille-img builds + caches it on first use.
+    qs += "&anim=" + encodeURIComponent(anim || "parle") + "&fmt=gif";
+    return "/bouille-img?" + qs;
+  }
+
+  var OVERLAY_MS = 3500;
+  function showBouilleOverlay(pseudo, anim) {
+    var box = $("#bouille-overlay");
+    if (!box) return;
+    var img = $("#bouille-overlay-img");
+    var name = $("#bouille-overlay-name");
+    var labelMap = { parle: "parle", rire: "rigole", mdr: "explose de rire",
+      pleurer: "pleure", langue: "tire la langue", miam: "se régale",
+      question: "s'interroge", rougir: "rougit", sifflote: "sifflote", gum: "fait un chewing-gum" };
+    name.textContent = pseudo + " " + (labelMap[anim] || "parle");
+    // Force reload even if same src (cache-bust only the DOM, not the server).
+    img.src = bouilleImgUrl(pseudo, anim, 160);
+    box.classList.add("show");
+    if (state.overlayTimer) clearTimeout(state.overlayTimer);
+    state.overlayTimer = setTimeout(function () { box.classList.remove("show"); }, OVERLAY_MS);
+  }
+  // Tap the overlay to dismiss it immediately.
+  (function () {
+    var box = $("#bouille-overlay");
+    if (box) box.addEventListener("click", function () { box.classList.remove("show"); });
+  })();
 
   // Keep viewport stable when the mobile keyboard opens.
   window.addEventListener("resize", function () { if (nearBottom()) scrollDown(); });
