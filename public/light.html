@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#84c640">
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<title>Frutiparc — Mobile</title>
+<style>
+  /* Frutiparc green palette — same family as forum / admin / Club. */
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: #ADE76B;
+    color: #2C4A0F;
+    font-family: 'Verdana', Arial, sans-serif;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  a { color: #2f6b16; }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ── Top bar ── */
+  header {
+    background: #84c640;
+    border-bottom: 2px solid #5a8a20;
+    padding: 8px 12px;
+    display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 15px; margin: 0; color: #2C4A0F; letter-spacing: .5px; }
+  header .who { margin-left: auto; font-size: 11px; color: #2f5510; display: flex; align-items: center; gap: 8px; }
+  header .who .dot { width: 8px; height: 8px; border-radius: 50%; background: #c0392b; display: inline-block; }
+  header .who .dot.on { background: #2ecc40; }
+  header .logout {
+    background: transparent; border: 1px solid #2C4A0F; border-radius: 5px;
+    color: #2C4A0F; font-size: 11px; padding: 4px 8px;
+  }
+
+  /* ── Tabs ── */
+  nav.tabs {
+    display: flex; background: #94DB39; flex-shrink: 0;
+    border-bottom: 2px solid #5a8a20;
+  }
+  nav.tabs button {
+    flex: 1; background: transparent; border: 0; color: #2C4A0F;
+    padding: 10px 6px; font-size: 13px; font-weight: bold;
+    border-bottom: 3px solid transparent;
+  }
+  nav.tabs button.active { background: #ADE76B; border-bottom-color: #2C4A0F; }
+
+  /* ── Generic panel ── */
+  .panel { flex: 1; min-height: 0; display: none; flex-direction: column; }
+  .panel.active { display: flex; }
+
+  /* ── Login screen ── */
+  #login-screen {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; gap: 14px;
+  }
+  #login-screen .card {
+    background: #fff; border: 2px solid #2C4A0F; border-radius: 14px;
+    padding: 22px 18px; width: 100%; max-width: 340px;
+    box-shadow: 0 10px 22px rgba(44,74,15,.22);
+  }
+  #login-screen h2 { margin: 0 0 4px; font-size: 18px; text-align: center; }
+  #login-screen .tag { text-align: center; color: #5a8a20; font-size: 11px; margin-bottom: 16px; }
+  label { display: block; font-size: 12px; font-weight: bold; margin: 10px 0 4px; }
+  input[type=text], input[type=password] {
+    width: 100%; padding: 11px 10px; font-size: 16px;
+    border: 1px solid #5a8a20; border-radius: 7px; background: #fbfff5; color: #2C4A0F;
+  }
+  .btn-primary {
+    width: 100%; margin-top: 16px; padding: 12px; font-size: 15px; font-weight: bold;
+    background: #2C4A0F; color: #CFF599; border: 0; border-radius: 8px;
+  }
+  .btn-primary:disabled { opacity: .6; }
+  .err { color: #b23b2e; font-size: 12px; margin-top: 10px; text-align: center; min-height: 14px; }
+
+  /* ── Chat ── */
+  #chat-panel { }
+  .room-bar {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    background: #cdeb9d; border-bottom: 1px solid #5a8a20; flex-shrink: 0;
+  }
+  .room-bar select {
+    flex: 1; padding: 8px; font-size: 14px; border: 1px solid #5a8a20;
+    border-radius: 6px; background: #fff; color: #2C4A0F;
+  }
+  .room-bar .count { font-size: 11px; color: #2f5510; white-space: nowrap; }
+  .room-bar .users-btn {
+    background: #fff; border: 1px solid #5a8a20; border-radius: 6px;
+    padding: 8px 10px; font-size: 13px; color: #2C4A0F;
+  }
+
+  #messages {
+    flex: 1; min-height: 0; overflow-y: auto; padding: 8px 10px;
+    background: #f3fbe6; -webkit-overflow-scrolling: touch;
+  }
+  .msg { margin: 3px 0; line-height: 1.4; word-wrap: break-word; }
+  .msg .time { color: #8aa86a; font-size: 11px; margin-right: 4px; }
+  .msg .from { font-weight: bold; color: #2f6b16; }
+  .msg .from.me { color: #1b6ea8; }
+  .msg.system { color: #6b8a3f; font-style: italic; font-size: 12.5px; }
+  .msg.admin { color: #b23b2e; }
+  .msg .body { color: #2C4A0F; }
+
+  .compose {
+    display: flex; gap: 7px; padding: 8px; background: #cdeb9d;
+    border-top: 1px solid #5a8a20; flex-shrink: 0;
+  }
+  .compose input {
+    flex: 1; padding: 11px 12px; font-size: 16px; border: 1px solid #5a8a20;
+    border-radius: 20px; background: #fff; color: #2C4A0F;
+  }
+  .compose button {
+    background: #2C4A0F; color: #CFF599; border: 0; border-radius: 20px;
+    padding: 0 18px; font-size: 14px; font-weight: bold;
+  }
+  .compose button:disabled { opacity: .5; }
+
+  /* User list drawer */
+  #users-drawer {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 72%; max-width: 280px;
+    background: #fff; border-left: 2px solid #2C4A0F; z-index: 30;
+    transform: translateX(100%); transition: transform .22s ease;
+    display: flex; flex-direction: column; box-shadow: -6px 0 18px rgba(44,74,15,.25);
+  }
+  #users-drawer.open { transform: translateX(0); }
+  #users-drawer h3 { margin: 0; padding: 12px 14px; background: #84c640; color: #2C4A0F; font-size: 14px; border-bottom: 1px solid #5a8a20; }
+  #users-drawer .list { flex: 1; overflow-y: auto; padding: 6px 0; }
+  #users-drawer .u { padding: 9px 14px; border-bottom: 1px solid #eef6e0; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  #users-drawer .u .badge { font-size: 9px; background: #2C4A0F; color: #CFF599; border-radius: 3px; padding: 1px 5px; }
+  #drawer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.25); z-index: 25; display: none; }
+  #drawer-backdrop.show { display: block; }
+
+  /* ── Forum panel ── */
+  #forum-panel { align-items: center; justify-content: center; padding: 28px; text-align: center; gap: 14px; }
+  #forum-panel .big {
+    font-size: 16px; max-width: 300px; line-height: 1.5; color: #2f5510;
+  }
+  #forum-panel a.forum-link {
+    display: inline-block; background: #2C4A0F; color: #CFF599; text-decoration: none;
+    padding: 14px 22px; border-radius: 10px; font-weight: bold; font-size: 15px;
+    box-shadow: 0 8px 18px rgba(44,74,15,.22);
+  }
+
+  .hidden { display: none !important; }
+  .banner {
+    background: #fff3cd; color: #7a5b00; border-bottom: 1px solid #e0c97a;
+    font-size: 12px; padding: 7px 10px; text-align: center; flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- ───────── Login ───────── -->
+<div id="login-screen">
+  <div class="card">
+    <h2>Frutiparc</h2>
+    <div class="tag">version mobile · chat & forum</div>
+    <form id="login-form" autocomplete="on">
+      <label for="li-user">Pseudo</label>
+      <input type="text" id="li-user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+      <label for="li-pass">Mot de passe</label>
+      <input type="password" id="li-pass" autocomplete="current-password">
+      <button type="submit" class="btn-primary" id="li-btn">Se connecter</button>
+      <div class="err" id="li-err"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ───────── App (after login) ───────── -->
+<div id="app" class="hidden" style="display:flex;flex-direction:column;flex:1;min-height:0">
+  <header>
+    <h1>Frutiparc</h1>
+    <div class="who">
+      <span class="dot" id="conn-dot"></span>
+      <span id="who-name">—</span>
+      <button class="logout" id="logout-btn">Quitter</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="chat" class="active">Salons</button>
+    <button data-tab="forum">Forum</button>
+  </nav>
+
+  <!-- Chat -->
+  <section class="panel active" id="chat-panel" style="position:relative">
+    <div class="room-bar">
+      <select id="room-select"></select>
+      <span class="count" id="room-count">0</span>
+      <button class="users-btn" id="users-btn">👥</button>
+    </div>
+    <div id="messages"></div>
+    <form class="compose" id="compose-form">
+      <input type="text" id="compose-input" placeholder="Message…" autocomplete="off" maxlength="300" disabled>
+      <button type="submit" id="compose-send" disabled>Envoyer</button>
+    </form>
+
+    <div id="drawer-backdrop"></div>
+    <div id="users-drawer">
+      <h3>Connectés <span id="drawer-count"></span></h3>
+      <div class="list" id="users-list"></div>
+    </div>
+  </section>
+
+  <!-- Forum -->
+  <section class="panel" id="forum-panel">
+    <div class="big">Le forum complet s'ouvre dans une page dédiée, adaptée au mobile.</div>
+    <a class="forum-link" id="forum-link" href="#">Ouvrir le forum →</a>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  function $(s) { return document.querySelector(s); }
+  function el(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
+
+  // Public salons (mirror server-side `channels`). bienvenue first as default.
+  var ROOMS = [
+    ["bienvenue", "Bienvenue"], ["pomme", "Pomme"], ["abricot", "Abricot"],
+    ["poire", "Poire"], ["fraise", "Fraise"], ["citron", "Citron"],
+    ["kiwi", "Kiwi"], ["raisin", "Raisin"], ["orange", "Orange"],
+    ["cerise", "Cerise"], ["banane", "Banane"],
+  ];
+
+  var state = {
+    sid: "",
+    user: "",          // display name
+    userLower: "",
+    room: "",
+    ws: null,
+    connected: false,
+    reconnectTimer: null,
+    intentionalClose: false,
+    usersByRoom: {},   // room -> Set of display names
+  };
+
+  // ── XML helpers (CBee protocol) ──
+  // For ATTRIBUTES (sid, room, pseudo): full escaping, incl. & and ".
+  function xmlEscape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  // For the message BODY: the server's parser reads element content literally
+  // with /([^<]*)</ — it does NOT unescape entities and TRUNCATES at the first
+  // "<". So a literal "<" can't survive (the Flash client has the same limit),
+  // and pre-escaping to "&lt;" would be double-escaped on rebroadcast and shown
+  // as the raw entity. We therefore map "<"/">" to the look-alike guillemets
+  // ‹ › (not XML-special, visually near-identical). A literal "&" is safe: the
+  // server re-escapes it to "&amp;" and our xmlUnescape restores it.
+  function bodyEscape(s) {
+    return String(s == null ? "" : s).replace(/</g, "‹").replace(/>/g, "›");
+  }
+  function xmlUnescape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'").replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  }
+  function attr(xml, name) {
+    var m = xml.match(new RegExp("\\b" + name + '="([^"]*)"'));
+    return m ? m[1] : "";
+  }
+  function tagName(xml) {
+    var m = xml.match(/^<(\w+)/);
+    return m ? m[1] : "";
+  }
+  function bodyOf(xml) {
+    // text between the first '>' and the matching '</'
+    var m = xml.match(/^<[^>]*>([\s\S]*)<\/[^>]+>$/);
+    return m ? m[1] : "";
+  }
+
+  // ── Login ──
+  var loginForm = $("#login-form");
+  loginForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var user = $("#li-user").value.trim();
+    var pass = $("#li-pass").value;
+    var errEl = $("#li-err");
+    errEl.textContent = "";
+    if (!user || !pass) { errEl.textContent = "Pseudo et mot de passe requis."; return; }
+    var btn = $("#li-btn");
+    btn.disabled = true; btn.textContent = "Connexion…";
+    fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user, password: pass }),
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        btn.disabled = false; btn.textContent = "Se connecter";
+        if (!res.ok || !res.d || !res.d.ok) {
+          errEl.textContent = (res.d && res.d.message) || "Identifiants invalides.";
+          return;
+        }
+        state.sid = res.d.sid;
+        state.user = res.d.username || user;
+        state.userLower = String(state.user).toLowerCase();
+        startApp();
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = "Se connecter";
+        errEl.textContent = "Erreur réseau. Réessaie.";
+      });
+  });
+
+  // ── App start ──
+  function startApp() {
+    $("#login-screen").classList.add("hidden");
+    $("#app").classList.remove("hidden");
+    $("#who-name").textContent = state.user;
+    $("#forum-link").href = "/fb/?sid=" + encodeURIComponent(state.sid);
+
+    // Build room selector
+    var sel = $("#room-select");
+    sel.innerHTML = "";
+    ROOMS.forEach(function (r) {
+      var o = el("option"); o.value = r[0]; o.textContent = r[1]; sel.appendChild(o);
+    });
+    sel.value = ROOMS[0][0];
+    sel.addEventListener("change", function () { switchRoom(sel.value); });
+
+    connectWs();
+  }
+
+  // ── Tabs ──
+  Array.prototype.forEach.call(document.querySelectorAll("nav.tabs button"), function (b) {
+    b.addEventListener("click", function () {
+      var tab = b.getAttribute("data-tab");
+      Array.prototype.forEach.call(document.querySelectorAll("nav.tabs button"), function (x) {
+        x.classList.toggle("active", x === b);
+      });
+      $("#chat-panel").classList.toggle("active", tab === "chat");
+      $("#forum-panel").classList.toggle("active", tab === "forum");
+    });
+  });
+
+  // ── Logout ──
+  $("#logout-btn").addEventListener("click", function () {
+    state.intentionalClose = true;
+    try { if (state.ws) state.ws.close(); } catch (e) {}
+    window.location.href = "/light/logout?sid=" + encodeURIComponent(state.sid);
+  });
+
+  // ── WebSocket (CBee bridge at "/") ──
+  function wsUrl() {
+    var proto = window.location.protocol === "https:" ? "wss" : "ws";
+    return proto + "://" + window.location.host + "/";
+  }
+  function setConnected(on) {
+    state.connected = on;
+    $("#conn-dot").classList.toggle("on", on);
+    $("#compose-input").disabled = !on;
+    $("#compose-send").disabled = !on;
+  }
+  function connectWs() {
+    var ws;
+    try { ws = new WebSocket(wsUrl()); } catch (e) { scheduleReconnect(); return; }
+    state.ws = ws;
+    ws.onopen = function () {
+      // Identify with our session, then join the default room.
+      wsSend('<k l="' + xmlEscape(state.user) + '" s="' + xmlEscape(state.sid) + '" />');
+    };
+    ws.onmessage = function (ev) { onWsData(ev.data); };
+    ws.onclose = function () {
+      setConnected(false);
+      if (!state.intentionalClose) { systemLine("Connexion perdue. Reconnexion…"); scheduleReconnect(); }
+    };
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+  function scheduleReconnect() {
+    if (state.reconnectTimer) return;
+    state.reconnectTimer = setTimeout(function () {
+      state.reconnectTimer = null;
+      connectWs();
+    }, 2500);
+  }
+  function wsSend(xml) {
+    try { if (state.ws && state.ws.readyState === 1) state.ws.send(xml); } catch (e) {}
+  }
+
+  // Incoming data may contain several \0-delimited frames.
+  var rxBuffer = "";
+  function onWsData(data) {
+    if (typeof data !== "string") {
+      // Blob/ArrayBuffer → decode then re-handle.
+      if (data instanceof Blob) { data.text().then(onWsData); return; }
+      try { data = new TextDecoder("utf-8").decode(data); } catch (e) { return; }
+    }
+    rxBuffer += data;
+    var parts = rxBuffer.split("\0");
+    rxBuffer = parts.pop();
+    for (var i = 0; i < parts.length; i++) {
+      var frame = parts[i].trim();
+      if (frame) handleFrame(frame);
+    }
+  }
+
+  function handleFrame(xml) {
+    var tag = tagName(xml);
+    switch (tag) {
+      case "k": // ident response
+        if (attr(xml, "k") === "401") { systemLine("Connexion refusée (session expirée)."); return; }
+        setConnected(true);
+        // ident OK → join the current/default room.
+        switchRoom($("#room-select").value || ROOMS[0][0]);
+        break;
+
+      case "o": // join confirmed: <o g="room" p="">...</o>
+        // nothing extra; userlist follows
+        break;
+
+      case "p": { // userlist for a room
+        var room = attr(xml, "g");
+        if (!room) break;
+        var set = {};
+        var re = /<u\b([^>]*)\/>/g, mm;
+        var inner = xml.replace(/^<p[^>]*>/, "").replace(/<\/p>$/, "");
+        while ((mm = re.exec(inner)) !== null) {
+          var uname = attr("<u " + mm[1] + "/>", "u");
+          if (uname) set[uname] = true;
+        }
+        state.usersByRoom[room] = set;
+        if (room === state.room) renderUsers();
+        break;
+      }
+
+      case "v": { // userjoined: <v u="..." ... g="room" />
+        var rj = attr(xml, "g"); var uj = attr(xml, "u");
+        if (rj && uj) {
+          if (!state.usersByRoom[rj]) state.usersByRoom[rj] = {};
+          state.usersByRoom[rj][uj] = true;
+          if (rj === state.room) { renderUsers(); systemLine(uj + " a rejoint le salon."); }
+        }
+        break;
+      }
+
+      case "u": { // userleaved: <u u="..." g="room" />
+        var rl = attr(xml, "g"); var ul = attr(xml, "u");
+        if (rl && state.usersByRoom[rl]) {
+          delete state.usersByRoom[rl][ul];
+          if (rl === state.room) { renderUsers(); systemLine(ul + " a quitté le salon."); }
+        }
+        break;
+      }
+
+      case "t": { // chat message: <t u="from" t="m" h="[hh:mm:ss] " ...>body</t>
+        var from = attr(xml, "u");
+        var ty = attr(xml, "t") || "m";
+        var h = attr(xml, "h");
+        var body = bodyOf(xml);
+        // Image/gift frames carry a child node; show a placeholder rather than raw XML.
+        if (ty === "i" || ty === "g" || /^</.test(body.trim())) {
+          addMessage({ from: from, time: h, body: ty === "i" ? "[image]" : "[cadeau]", kind: "system" });
+          break;
+        }
+        var kind = (from === "admin") ? "admin" : "normal";
+        addMessage({ from: from, time: h, body: xmlUnescape(body), kind: kind });
+        break;
+      }
+
+      case "an": { // topic change — show as a system line
+        var t = bodyOf(xml);
+        if (t) systemLine("Sujet : " + xmlUnescape(t));
+        break;
+      }
+
+      case "bb": // onmute: <bb u=".." mu=".." />
+        systemLine("Tu as été réduit au silence (totoché).");
+        break;
+
+      case "ah": { // onban: kicked/banned from a room
+        var by = attr(xml, "by");
+        systemLine("Tu as été exclu du salon" + (by ? " par " + by : "") + ".");
+        // server removed us; refresh room membership
+        break;
+      }
+
+      case "a": { // error: <a k="403" />
+        var code = attr(xml, "k");
+        if (code === "403") systemLine("Accès refusé (tu es peut-être banni de ce salon).");
+        break;
+      }
+
+      default:
+        // ping (e), trace (z), and others — ignore for the light client.
+        break;
+    }
+  }
+
+  // ── Room switching ──
+  function switchRoom(room) {
+    if (!room) return;
+    if (state.room && state.room !== room) {
+      wsSend('<y g="' + xmlEscape(state.room) + '" />'); // part previous
+    }
+    state.room = room;
+    $("#room-select").value = room;
+    clearMessages();
+    var label = (ROOMS.filter(function (r) { return r[0] === room; })[0] || [room, room])[1];
+    systemLine("— Salon " + label + " —");
+    wsSend('<o g="' + xmlEscape(room) + '" />'); // join
+    renderUsers();
+  }
+
+  // ── Messages UI ──
+  var msgEl = $("#messages");
+  function nearBottom() {
+    return (msgEl.scrollHeight - msgEl.scrollTop - msgEl.clientHeight) < 60;
+  }
+  function scrollDown() { msgEl.scrollTop = msgEl.scrollHeight; }
+  function clearMessages() { msgEl.innerHTML = ""; }
+  function cleanTime(h) {
+    // server sends "[hh:mm:ss] " — keep hh:mm only, compact.
+    var m = String(h || "").match(/(\d{2}):(\d{2})/);
+    return m ? (m[1] + ":" + m[2]) : "";
+  }
+  function addMessage(o) {
+    var stick = nearBottom();
+    var row = el("div", "msg" + (o.kind === "system" ? " system" : o.kind === "admin" ? " admin" : ""));
+    if (o.kind === "system") {
+      row.textContent = o.body;
+    } else {
+      var t = cleanTime(o.time);
+      if (t) { var ts = el("span", "time"); ts.textContent = t; row.appendChild(ts); }
+      var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
+      fr.textContent = (o.from || "?") + " : ";
+      row.appendChild(fr);
+      var bd = el("span", "body");
+      bd.textContent = o.body;
+      row.appendChild(bd);
+    }
+    msgEl.appendChild(row);
+    // Cap DOM size for long sessions.
+    while (msgEl.childNodes.length > 400) msgEl.removeChild(msgEl.firstChild);
+    if (stick) scrollDown();
+  }
+  function systemLine(text) { addMessage({ kind: "system", body: text }); }
+
+  // ── Compose ──
+  $("#compose-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var inp = $("#compose-input");
+    var text = inp.value;
+    if (!text.trim() || !state.connected || !state.room) return;
+    // Send as a normal message frame; the body uses bodyEscape (see helper).
+    wsSend('<t g="' + xmlEscape(state.room) + '" t="m" p="">' + bodyEscape(text) + "</t>");
+    inp.value = "";
+    inp.focus();
+  });
+
+  // ── Users drawer ──
+  function renderUsers() {
+    var set = state.usersByRoom[state.room] || {};
+    var names = Object.keys(set).sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+    $("#room-count").textContent = names.length + " 👤";
+    $("#drawer-count").textContent = "(" + names.length + ")";
+    var list = $("#users-list");
+    list.innerHTML = "";
+    names.forEach(function (n) {
+      var u = el("div", "u");
+      var nm = el("span"); nm.textContent = n;
+      u.appendChild(nm);
+      if (n.toLowerCase() === state.userLower) {
+        var b = el("span", "badge"); b.textContent = "toi"; u.appendChild(b);
+      }
+      list.appendChild(u);
+    });
+  }
+  function openDrawer(open) {
+    $("#users-drawer").classList.toggle("open", open);
+    $("#drawer-backdrop").classList.toggle("show", open);
+  }
+  $("#users-btn").addEventListener("click", function () { openDrawer(true); });
+  $("#drawer-backdrop").addEventListener("click", function () { openDrawer(false); });
+
+  // Keep viewport stable when the mobile keyboard opens.
+  window.addEventListener("resize", function () { if (nearBottom()) scrollDown(); });
+})();
+</script>
+</body>
+</html>

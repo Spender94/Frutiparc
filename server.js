@@ -3107,7 +3107,18 @@ app.get('/legacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ruffle.html'));
 });
 
-// Zoom-friendly variant of /legacy: serves the SAME Ruffle page (identical
+// ─────────────────────────────────────────────
+// Light mobile client (chat + forum link), no Flash/bouilles.
+// Self-contained: its own login form, then a WebSocket chat that speaks the
+// same CBee XML protocol the SWF uses (bridged at "/"). Forum opens the
+// existing /fb/ page. Served at /light (note: /light/logout is a separate
+// sub-path handled above and does not conflict).
+// ─────────────────────────────────────────────
+app.get('/light', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'light.html'));
+});
+
+
 // socket-proxy / URL-rewrite / fp_* bridge) but renders main.swf at its native
 // 1380×800 with page scrolling instead of fitting it to the viewport, so the
 // browser's own zoom (Ctrl +/-) magnifies the client crisply. We inject
