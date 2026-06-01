@@ -71,6 +71,8 @@
   }
   .menu-item.active { background: #eaf6d6; }
   .menu-item.danger { color: #b23b2e; }
+  .menu-item .menu-ico { width: 22px; height: 22px; object-fit: contain; image-rendering: auto; flex-shrink: 0; }
+  .menu-item .menu-ico-emoji { width: 22px; text-align: center; font-size: 18px; flex-shrink: 0; }
   .menu-spacer { flex: 1; }
 
   /* ── Bouille bottom sheet ── */
@@ -167,6 +169,7 @@
   .msg.system { color: #6b8a3f; font-style: italic; font-size: 12.5px; }
   .msg.admin { color: #b23b2e; }
   .msg .body { color: #2C4A0F; }
+  .msg .body.emote { font-style: italic; color: #4f7b1f; }
 
   .compose {
     display: flex; gap: 7px; padding: 8px; background: #cdeb9d;
@@ -181,6 +184,25 @@
     padding: 0 18px; font-size: 14px; font-weight: bold;
   }
   .compose button:disabled { opacity: .5; }
+  .compose .icon-btn { padding: 9px 11px; font-size: 16px; }
+  .compose #pen-btn.on { background: #2C4A0F; }
+
+  /* Feutre swatch picker (horizontal scroll above the composer) */
+  #pen-bar {
+    display: none; gap: 7px; padding: 8px 10px; background: #cdeb9d;
+    border-top: 1px solid #5a8a20; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  #pen-bar.show { display: flex; }
+  .pen-swatch {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid #fff; box-shadow: 0 0 0 1px #5a8a20; cursor: pointer;
+  }
+  .pen-swatch.sel { box-shadow: 0 0 0 2px #2C4A0F; transform: scale(1.12); }
+  .pen-swatch.none {
+    background: #fff; color: #2C4A0F; font-size: 14px; line-height: 26px;
+    text-align: center; font-weight: bold;
+  }
 
   /* Bouille reaction overlay — a live Ruffle bouille (vector = crisp), centered
      over the messages with NO card/background. It slides in from the left edge
@@ -285,11 +307,17 @@
       <span class="dot" id="conn-dot"></span>
       <span id="who-name">—</span>
     </div>
-    <button class="menu-item active" data-tab="chat">💬 Salons</button>
-    <button class="menu-item" data-tab="forum">📋 Forum</button>
-    <button class="menu-item" id="bouille-btn">🙂 Ma bouille</button>
+    <button class="menu-item active" data-tab="chat">
+      <img class="menu-ico" src="/favicon.ico" alt="" onerror="this.replaceWith(document.createTextNode('💬'))"> Salons
+    </button>
+    <button class="menu-item" data-tab="forum">
+      <img class="menu-ico" src="/fb/ico.gif" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"> Forum
+    </button>
+    <button class="menu-item" id="bouille-btn">
+      <span class="menu-ico-emoji">🎒</span> Mon inventaire
+    </button>
     <div class="menu-spacer"></div>
-    <button class="menu-item danger" id="logout-btn">🚪 Quitter</button>
+    <button class="menu-item danger" id="logout-btn"><span class="menu-ico-emoji">🚪</span> Quitter</button>
   </nav>
 
   <!-- Chat -->
@@ -303,7 +331,11 @@
       <div id="bouille-overlay-name"></div>
     </div>
 
+    <!-- Feutre (pen) swatch picker, toggled by the ✏️ button below -->
+    <div id="pen-bar"></div>
+
     <form class="compose" id="compose-form">
+      <button type="button" class="icon-btn" id="pen-btn" title="Feutre">✏️</button>
       <input type="text" id="compose-input" placeholder="Message…" autocomplete="off" maxlength="300" disabled>
       <button type="submit" id="compose-send" disabled>Envoyer</button>
     </form>
@@ -349,6 +381,16 @@
     ["kiwi", "Kiwi"], ["raisin", "Raisin"], ["orange", "Orange"],
     ["cerise", "Cerise"], ["banane", "Banane"],
   ];
+  var ROOM_LABELS = {};
+  ROOMS.forEach(function (r) { ROOM_LABELS[r[0]] = r[1]; });
+  // Display name for a room id; falls back to a capitalised id (e.g. private
+  // "pm_a_b" rooms) so a raw id never shows in the UI.
+  function roomLabel(id) {
+    if (ROOM_LABELS[id]) return ROOM_LABELS[id];
+    var s = String(id || "");
+    if (s.indexOf("pm_") === 0 || s.indexOf("pm2_") === 0) return "Discussion privée";
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  }
 
   var state = {
     sid: "",
@@ -362,6 +404,7 @@
     usersByRoom: {},   // room -> Set of display names
     bouilleByUser: {}, // lowercased pseudo -> bouille state string "f"
     overlayTimer: null,
+    pen: "",           // selected feutre index ("" = default colour)
   };
 
   var DEFAULT_BOUILLE = "000000010000000000000000";
@@ -606,9 +649,18 @@
         }
         var text = xmlUnescape(body);
         var kind = (from === "admin") ? "admin" : "normal";
-        addMessage({ from: from, time: h, body: text, kind: kind });
+        var em = detectEmote(text);
+        var penColor = penColorFor(attr(xml, "p"));
+        // When the line is a recognised emote, display the action in italics
+        // ("kasparov : éclate de rire") instead of the raw text, while still
+        // animating the bouille. Otherwise show the message normally.
+        addMessage({
+          from: from, time: h,
+          body: em.isEmote ? em.label : text,
+          kind: kind, emote: em.isEmote, pen: em.isEmote ? null : penColor,
+        });
         // Bouille overlay: show the speaker's avatar reacting to what they wrote.
-        if (from && from !== "admin") showBouilleOverlay(from, detectAnim(text));
+        if (from && from !== "admin") showBouilleOverlay(from, em.anim);
         break;
       }
 
@@ -650,8 +702,7 @@
     state.room = room;
     $("#room-select").value = room;
     clearMessages();
-    var label = (ROOMS.filter(function (r) { return r[0] === room; })[0] || [room, room])[1];
-    systemLine("— Salon " + label + " —");
+    systemLine("— Salon " + roomLabel(room) + " —");
     wsSend('<o g="' + xmlEscape(room) + '" />'); // join
     renderUsers();
   }
@@ -679,7 +730,8 @@
       var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
       fr.textContent = (o.from || "?") + " : ";
       row.appendChild(fr);
-      var bd = el("span", "body");
+      var bd = el("span", o.emote ? "body emote" : "body");
+      if (o.pen) bd.style.color = o.pen;     // feutre colour
       bd.textContent = o.body;
       row.appendChild(bd);
     }
@@ -697,7 +749,7 @@
     var text = inp.value;
     if (!text.trim() || !state.connected || !state.room) return;
     // Send as a normal message frame; the body uses bodyEscape (see helper).
-    wsSend('<t g="' + xmlEscape(state.room) + '" t="m" p="">' + bodyEscape(text) + "</t>");
+    wsSend('<t g="' + xmlEscape(state.room) + '" t="m" p="' + xmlEscape(state.pen) + '">' + bodyEscape(text) + "</t>");
     inp.value = "";
     inp.focus();
   });
@@ -736,29 +788,117 @@
     if (clean.length >= 4) state.bouilleByUser[String(pseudo).toLowerCase()] = clean;
   }
 
-  // Map a chat line to a bouille animation id (subset accepted by /bouille-img:
-  // parle, rire, mdr, langue, rougir, regard, sifflote, gum, question, miam,
-  // pleurer). The default for any normal line is "parle" (talking).
-  function detectAnim(text) {
+  // Map a chat line to a bouille animation + a French label. Returns
+  // { anim, label, isEmote }. isEmote is true for a reaction (rire, mdr, …) and
+  // false for plain talking ("parle") — only reactions are shown in italics in
+  // the chat ("kasparov : éclate de rire") while the bouille animates.
+  var EMOTE_LABEL = {
+    rire: "rigole", mdr: "éclate de rire", pleurer: "pleure",
+    langue: "tire la langue", miam: "se régale", question: "s'interroge",
+    rougir: "rougit", sifflote: "siffle", gum: "fait un chewing-gum",
+  };
+  function detectEmote(text) {
     var t = " " + String(text || "").toLowerCase() + " ";
-    if (/\bm+d+r+\b|\bptdr\b|\blmao\b|\brofl\b|😂|🤣/.test(t)) return "mdr";
-    if (/\bl+o+l+\b|\bha+ha+\b|\bhe+he+\b|\beheh\b|😄|😁|😆|\bxd\b/.test(t)) return "rire";
-    if (/\bsnif\b|\bpleure?\b|\btriste\b|😢|😭|💧/.test(t)) return "pleurer";
-    if (/:p\b|:-p\b|😛|😜|🤪|\bnananère?\b/.test(t)) return "langue";
-    if (/\bmiam\b|\bmmh+\b|\bgloup\b|🤤|🍕|🍔|🍰/.test(t)) return "miam";
-    if (/\?\s*$|\bhein\b|\bquoi\b|\bpourquoi\b|❓|🤔/.test(t)) return "question";
-    if (/\brougi[rs]?\b|\bgêné?e?\b|\btimide\b|😳|☺️|🥰|❤️|<3/.test(t)) return "rougir";
-    if (/\bsiffl|🎵|🎶/.test(t)) return "sifflote";
-    if (/\bgum\b|\bchewing\b|\bbubble\b/.test(t)) return "gum";
-    return "parle";
+    var anim = "parle";
+    if (/\bm+d+r+\b|\bptdr\b|\blmao\b|\brofl\b|😂|🤣/.test(t)) anim = "mdr";
+    else if (/\bl+o+l+\b|\bha+ha+\b|\bhe+he+\b|\beheh\b|😄|😁|😆|\bxd\b/.test(t)) anim = "rire";
+    else if (/\bsnif\b|\bpleure?\b|\btriste\b|😢|😭|💧/.test(t)) anim = "pleurer";
+    else if (/:p\b|:-p\b|😛|😜|🤪|\bnananère?\b/.test(t)) anim = "langue";
+    else if (/\bmiam\b|\bmmh+\b|\bgloup\b|🤤|🍕|🍔|🍰/.test(t)) anim = "miam";
+    else if (/\?\s*$|\bhein\b|\bquoi\b|\bpourquoi\b|❓|🤔/.test(t)) anim = "question";
+    else if (/\brougi[rs]?\b|\bgêné?e?\b|\btimide\b|😳|☺️|🥰|❤️|<3/.test(t)) anim = "rougir";
+    else if (/\bsiffl|🎵|🎶/.test(t)) anim = "sifflote";
+    else if (/\bgum\b|\bchewing\b|\bbubble\b/.test(t)) anim = "gum";
+    // Replace the chat text with the italic action ONLY when the message is
+    // essentially just the trigger (e.g. "lol", "mdr", ":p", "miam !") — short
+    // and made mostly of the emote token. A real sentence that happens to match
+    // (e.g. "tu fais quoi demain ?") keeps its text; the bouille still animates.
+    var compact = String(text || "").trim();
+    var pure = anim !== "parle" && (compact.length <= 12 || /^[\s!?.…,;:)(-]*$/.test(
+      compact.toLowerCase()
+        .replace(/m+d+r+|ptdr|lmao|rofl|l+o+l+|ha+ha+|he+he+|eheh|xd|snif|pleure?|triste|miam|mmh+|gloup|hein|quoi|pourquoi|rougi[rs]?|gêné?e?|timide|siffl\w*|chewing[- ]?gum|gum|bubble|nananère?/g, "")
+        .replace(/[:;x][-]?[pdo3)(]/g, "")
+        .replace(/[😂🤣😄😁😆😢😭💧😛😜🤪🤤🍕🍔🍰❓🤔😳☺🥰❤🎵🎶]/gu, "")
+    ));
+    return { anim: anim, label: EMOTE_LABEL[anim] || null, isEmote: !!(pure && EMOTE_LABEL[anim]) };
   }
+
+  // ── Feutres (chat pens) ──────────────────────────────────────────────────
+  // The chat protocol carries a pen index in the message's p= attribute. By
+  // default every user owns all 17 boutique feutres (indices 0..16). The label
+  // order matches public/ft/pack-pen / the boutique FEUTRE list. Colours are the
+  // standard "ISO" feutre palette; tweak FEUTRES if a shade needs to match the
+  // Flash client exactly.
+  var FEUTRES = [
+    { i: 0,  name: "Orange",            color: "#E8732A" },
+    { i: 1,  name: "Bleu",              color: "#2A6FE8" },
+    { i: 2,  name: "Vert foncé",        color: "#1E6B2E" },
+    { i: 3,  name: "Bordeaux",          color: "#8C1F2F" },
+    { i: 4,  name: "Rose",              color: "#E84A9C" },
+    { i: 5,  name: "Jaune",             color: "#E8C81E" },
+    { i: 6,  name: "Vert clair",        color: "#6FBF3B" },
+    { i: 7,  name: "Cyan",              color: "#1FA8C0" },
+    { i: 8,  name: "Bleu foncé",        color: "#1E2F8C" },
+    { i: 9,  name: "Marron",            color: "#8C5A2B" },
+    { i: 10, name: "Marron foncé",      color: "#5A3A1E" },
+    { i: 11, name: "Vert kaki",         color: "#7A7A3A" },
+    { i: 12, name: "Bleu pétrole",      color: "#2A7A8C" },
+    { i: 13, name: "Vert",              color: "#2E8C3A" },
+    { i: 14, name: "Bleu pétrole foncé",color: "#1E4A55" },
+    { i: 15, name: "Orange foncé",      color: "#B85518" },
+    { i: 16, name: "Violet",            color: "#7A2AB8" },
+  ];
+  var FEUTRE_BY_INDEX = {};
+  FEUTRES.forEach(function (f) { FEUTRE_BY_INDEX[f.i] = f.color; });
+  // The user's currently selected pen index (default 0 = none/black-ish orange).
+  // null = no pen (default site colour).
+  function penColorFor(p) {
+    var n = parseInt(p, 10);
+    if (!Number.isFinite(n)) return null;
+    return FEUTRE_BY_INDEX[n] || null;
+  }
+
+  // Build the feutre swatch row once (a "none" chip + the 17 colours). Tapping a
+  // swatch sets state.pen and tints the composer text so the choice is obvious.
+  function buildPenBar() {
+    var bar = $("#pen-bar");
+    if (!bar || bar.childNodes.length) return;
+    var none = el("div", "pen-swatch none" + (state.pen === "" ? " sel" : ""));
+    none.textContent = "✕"; none.title = "Aucun feutre";
+    none.addEventListener("click", function () { selectPen(""); });
+    bar.appendChild(none);
+    FEUTRES.forEach(function (f) {
+      var sw = el("div", "pen-swatch" + (String(state.pen) === String(f.i) ? " sel" : ""));
+      sw.style.background = f.color; sw.title = f.name;
+      sw.setAttribute("data-pen", f.i);
+      sw.addEventListener("click", function () { selectPen(String(f.i)); });
+      bar.appendChild(sw);
+    });
+  }
+  function selectPen(idx) {
+    state.pen = idx;
+    Array.prototype.forEach.call(document.querySelectorAll("#pen-bar .pen-swatch"), function (sw) {
+      var v = sw.getAttribute("data-pen");
+      sw.classList.toggle("sel", (idx === "" && sw.classList.contains("none")) || (v != null && v === idx));
+    });
+    // Tint the input so you see your current feutre while typing.
+    var inp = $("#compose-input");
+    if (inp) inp.style.color = penColorFor(idx) || "#2C4A0F";
+  }
+  $("#pen-btn").addEventListener("click", function () {
+    buildPenBar();
+    var bar = $("#pen-bar");
+    var open = bar.classList.toggle("show");
+    this.classList.toggle("on", open);
+    if (open && nearBottom()) scrollDown();
+  });
 
   // anim id → playAnim index expected by bouille-preview.html (?anim=<index>).
   var ANIM_INDEX = { parle:1, rire:2, mdr:3, langue:4, rougir:5, regard:6,
     sifflote:7, gum:8, question:9, miam:10, pleurer:11 };
-  var ANIM_LABEL = { parle:"parle", rire:"rigole", mdr:"explose de rire",
+  var ANIM_LABEL = { parle:"parle", rire:"rigole", mdr:"éclate de rire",
     pleurer:"pleure", langue:"tire la langue", miam:"se régale",
-    question:"s'interroge", rougir:"rougit", sifflote:"sifflote",
+    question:"s'interroge", rougir:"rougit", sifflote:"siffle",
     gum:"fait un chewing-gum", regard:"regarde" };
 
   // Live-Ruffle overlay: instead of a captured GIF (latency + raster pixelation)
