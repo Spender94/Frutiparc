@@ -123,26 +123,38 @@
   }
   .compose button:disabled { opacity: .5; }
 
-  /* Bouille reaction overlay (floats above the messages, bottom-right) */
+  /* Bouille reaction overlay — a live Ruffle bouille (vector = crisp), centered
+     over the messages with NO card/background. It slides in from the left edge
+     of the chat and slides back out to the left. pointer-events stay off so the
+     chat underneath remains readable/scrollable. */
   #bouille-overlay {
-    position: absolute; right: 10px; bottom: 64px; z-index: 20;
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
-    pointer-events: none; opacity: 0; transform: translateY(8px) scale(.9);
-    transition: opacity .2s ease, transform .2s ease;
+    position: absolute; left: 0; top: 0; right: 0; bottom: 56px; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none; overflow: hidden;
   }
-  #bouille-overlay.show { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-  #bouille-overlay-img {
-    width: 132px; height: 132px; border-radius: 14px;
-    background: #E8F8D3; border: 2px solid #2C4A0F;
-    box-shadow: 0 8px 20px rgba(44,74,15,.3);
-    object-fit: contain;
+  #bouille-overlay-stage {
+    width: 200px; height: 200px; max-width: 56vw; max-height: 56vw;
+    /* Start fully off the left edge; .show brings it to center. */
+    transform: translateX(-130vw);
+    opacity: 0;
+    transition: transform .5s cubic-bezier(.22,.61,.36,1), opacity .3s ease;
+    will-change: transform, opacity;
   }
+  #bouille-overlay.show #bouille-overlay-stage { transform: translateX(0); opacity: 1; }
+  #bouille-overlay.leaving #bouille-overlay-stage { transform: translateX(-130vw); opacity: 0; }
+  #bouille-overlay-stage iframe {
+    width: 100%; height: 100%; border: 0; background: transparent; display: block;
+  }
+  /* Small floating caption so you still know who reacts, but unobtrusive. */
   #bouille-overlay-name {
+    position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);
     font-size: 11px; font-weight: bold; color: #2C4A0F;
-    background: rgba(255,255,255,.9); border: 1px solid #5a8a20;
-    border-radius: 10px; padding: 2px 8px; max-width: 150px;
+    background: rgba(255,255,255,.82); border: 1px solid #5a8a20;
+    border-radius: 10px; padding: 2px 9px; max-width: 78vw;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    opacity: 0; transition: opacity .3s ease;
   }
+  #bouille-overlay.show #bouille-overlay-name { opacity: 1; }
 
   /* User list drawer */
   #users-drawer {
@@ -220,9 +232,10 @@
     </div>
     <div id="messages"></div>
 
-    <!-- Bouille overlay: the speaker's avatar reacting to what they wrote. -->
+    <!-- Bouille overlay: live Ruffle bouille (transparent) reacting to chat,
+         centered over the messages, sliding in/out from the left. -->
     <div id="bouille-overlay">
-      <img id="bouille-overlay-img" alt="">
+      <div id="bouille-overlay-stage"></div>
       <div id="bouille-overlay-name"></div>
     </div>
 
@@ -653,120 +666,75 @@
     return "parle";
   }
 
-  // Query string describing one bouille image (state + emote + anim + size).
-  var OVERLAY_SIZE = 160;
-  function bouilleQs(pseudo, anim) {
+  // anim id → playAnim index expected by bouille-preview.html (?anim=<index>).
+  var ANIM_INDEX = { parle:1, rire:2, mdr:3, langue:4, rougir:5, regard:6,
+    sifflote:7, gum:8, question:9, miam:10, pleurer:11 };
+  var ANIM_LABEL = { parle:"parle", rire:"rigole", mdr:"explose de rire",
+    pleurer:"pleure", langue:"tire la langue", miam:"se régale",
+    question:"s'interroge", rougir:"rougit", sifflote:"sifflote",
+    gum:"fait un chewing-gum", regard:"regarde" };
+
+  // Live-Ruffle overlay: instead of a captured GIF (latency + raster pixelation)
+  // we embed bouille-preview.html in a transparent iframe — Ruffle renders the
+  // bouille as VECTORS (crisp at any size) and plays the animation directly,
+  // exactly like the forum avatars. The iframe slides in from the left, holds,
+  // then slides back out to the left.
+  //
+  // We keep ONE iframe and just reload its src per reaction; reusing it avoids a
+  // fresh Ruffle/WASM boot on every message after the first.
+  var overlayFrame = null;
+  function overlayIframe() {
+    if (overlayFrame) return overlayFrame;
+    overlayFrame = document.createElement("iframe");
+    overlayFrame.setAttribute("scrolling", "no");
+    overlayFrame.setAttribute("aria-hidden", "true");
+    // allow-scripts so Ruffle runs; allow-same-origin so it can fetch the SWF.
+    overlayFrame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+    $("#bouille-overlay-stage").appendChild(overlayFrame);
+    return overlayFrame;
+  }
+  function overlayUrl(pseudo, anim) {
     var f = state.bouilleByUser[String(pseudo).toLowerCase()] || DEFAULT_BOUILLE;
-    var qs = "s=" + encodeURIComponent(f) + "&e=0&size=" + OVERLAY_SIZE
-      + "&anim=" + encodeURIComponent(anim || "parle") + "&fmt=gif";
-    return qs;
+    var idx = ANIM_INDEX[anim] || 1; // default = parle
+    return "/bouille-preview.html?s=" + encodeURIComponent(f)
+      + "&e=0&anim=" + idx + "&bg=transparent";
   }
 
-  // Hidden iframe that runs /bouille-capture (a real document → Ruffle executes,
-  // renders the bouille, POSTs the GIF, fills the server cache). An <img> can't
-  // do this itself: <img src="/bouille-img?…"> only follows the 302 to the
-  // capture page and then fails (it's HTML, not an image). So we drive the
-  // capture in this iframe, poll the cache, then point <img> at the ready file.
-  var captureFrame = null;
-  function ensureCaptureFrame() {
-    if (captureFrame) return captureFrame;
-    captureFrame = document.createElement("iframe");
-    captureFrame.style.cssText = "position:fixed;left:-10000px;top:0;width:200px;height:200px;border:0;";
-    captureFrame.setAttribute("aria-hidden", "true");
-    document.body.appendChild(captureFrame);
-    return captureFrame;
-  }
-
-  // Track in-flight captures so two messages needing the same image don't spawn
-  // two capture loads.
-  var capturing = {};
-  var captureFailed = {};
-  // The capture iframe reports ok/error via postMessage; surface errors to the
-  // console so a never-appearing image is debuggable, and remember failures so
-  // we don't keep hammering a bouille Ruffle can't render.
-  window.addEventListener("message", function (ev) {
-    var d = ev && ev.data;
-    if (!d || !d.__bouilleCapture) return;
-    if (d.__bouilleCapture === "error") {
-      console.warn("[bouille] capture échouée:", d.detail, "anim=", d.anim, "fmt=", d.fmt);
-    } else if (d.__bouilleCapture === "ok") {
-      console.log("[bouille] capture ok (" + d.detail + " octets) anim=" + d.anim);
-    }
-  });
-  function requestCapture(qs) {
-    if (capturing[qs]) return;
-    capturing[qs] = true;
-    var frame = ensureCaptureFrame();
-    // Loading the capture page in the iframe runs Ruffle, renders the bouille,
-    // and POSTs the GIF to fill the server cache. We poll status separately.
-    frame.src = "/bouille-capture?" + qs;
-    // Safety: clear the in-flight flag after a while so a failed capture can be
-    // retried on a later message.
-    setTimeout(function () { delete capturing[qs]; }, 16000);
-  }
-
-  // Resolve the image: if cached, return its URL now; otherwise kick off a
-  // capture and poll until ready (or give up). Calls cb(url) on success.
-  function resolveBouilleImage(qs, cb) {
-    fetch("/api/bouille-img/status?" + qs, { cache: "no-store" })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d && d.cached) { cb("/bouille-img?" + qs + "&nocapture=1"); return; }
-        requestCapture(qs);
-        var tries = 0;
-        (function poll() {
-          if (tries++ > 30) return; // ~15s budget
-          setTimeout(function () {
-            fetch("/api/bouille-img/status?" + qs, { cache: "no-store" })
-              .then(function (r) { return r.json(); })
-              .then(function (d2) {
-                if (d2 && d2.cached) { delete capturing[qs]; cb("/bouille-img?" + qs + "&nocapture=1"); }
-                else poll();
-              })
-              .catch(poll);
-          }, 500);
-        })();
-      })
-      .catch(function () { /* status endpoint unreachable — skip silently */ });
-  }
-
-  var OVERLAY_MS = 4500;
-  var overlaySeq = 0;
+  var OVERLAY_HOLD_MS = 4200;
   function showBouilleOverlay(pseudo, anim) {
     var box = $("#bouille-overlay");
     if (!box) return;
-    var img = $("#bouille-overlay-img");
     var name = $("#bouille-overlay-name");
-    var labelMap = { parle: "parle", rire: "rigole", mdr: "explose de rire",
-      pleurer: "pleure", langue: "tire la langue", miam: "se régale",
-      question: "s'interroge", rougir: "rougit", sifflote: "sifflote",
-      gum: "fait un chewing-gum", regard: "regarde" };
-    var mySeq = ++overlaySeq;
-    name.textContent = pseudo + " " + (labelMap[anim] || "parle");
-    img.style.visibility = "hidden";   // show the frame immediately; image fills in
+    name.textContent = pseudo + " " + (ANIM_LABEL[anim] || "parle");
+
+    var frame = overlayIframe();
+    // Reload the bouille (force even if the URL is identical, so a repeated emote
+    // replays the animation from the start).
+    var url = overlayUrl(pseudo, anim);
+    frame.src = "about:blank";
+    // next tick → real src, so the browser registers a navigation/replay.
+    setTimeout(function () { frame.src = url; }, 20);
+
+    box.classList.remove("leaving");
+    // Force reflow so removing .show→adding works as a fresh slide-in even when
+    // a previous overlay is still on screen.
+    void box.offsetWidth;
     box.classList.add("show");
+
     if (state.overlayTimer) clearTimeout(state.overlayTimer);
-
-    var qs = bouilleQs(pseudo, anim);
-    resolveBouilleImage(qs, function (url) {
-      // A newer message may have superseded this overlay while we waited.
-      if (mySeq !== overlaySeq) return;
-      img.onload = function () { img.style.visibility = "visible"; };
-      img.onerror = function () { img.style.visibility = "hidden"; };
-      img.src = url;
-      // Restart the auto-hide once the image is actually shown.
-      if (state.overlayTimer) clearTimeout(state.overlayTimer);
-      state.overlayTimer = setTimeout(function () { box.classList.remove("show"); }, OVERLAY_MS);
-    });
-
-    // Even if the image never resolves, don't leave an empty frame forever.
-    state.overlayTimer = setTimeout(function () { box.classList.remove("show"); }, OVERLAY_MS + 11000);
+    state.overlayTimer = setTimeout(hideBouilleOverlay, OVERLAY_HOLD_MS);
   }
-  // Tap the overlay to dismiss it immediately.
-  (function () {
+  function hideBouilleOverlay() {
     var box = $("#bouille-overlay");
-    if (box) box.addEventListener("click", function () { box.classList.remove("show"); });
-  })();
+    if (!box) return;
+    // Trigger the slide-out, then fully hide so the iframe stops compositing.
+    box.classList.add("leaving");
+    box.classList.remove("show");
+    setTimeout(function () {
+      box.classList.remove("leaving");
+      if (overlayFrame) overlayFrame.src = "about:blank"; // stop Ruffle when idle
+    }, 520);
+  }
 
   // Keep viewport stable when the mobile keyboard opens.
   window.addEventListener("resize", function () { if (nearBottom()) scrollDown(); });

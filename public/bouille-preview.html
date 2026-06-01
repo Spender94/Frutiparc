@@ -75,12 +75,22 @@
   // bg — page background colour. Default = light forum-card green
   // (#E8F8D3, used by the forum thumbnails and FBouille editor). The demo
   // page passes ?bg=ADE76B to use the brighter Frutiparc green for HD
-  // captures. Hex only, no '#' in the query string.
-  var bg = String(params.get("bg") || "E8F8D3").replace(/[^0-9A-Fa-f]/g, '');
-  if (!bg) bg = "E8F8D3";
-  var bgCss = "#" + bg;
+  // captures. Hex only, no '#' in the query string. The special value
+  // ?bg=transparent makes Ruffle composite over a transparent page (wmode
+  // transparent) — used by the mobile /light overlay so the bouille floats with
+  // no card or background over the chat.
+  var bgRaw = String(params.get("bg") || "E8F8D3");
+  var transparent = /^transparent$/i.test(bgRaw);
+  var bg = transparent ? "" : bgRaw.replace(/[^0-9A-Fa-f]/g, '');
+  if (!transparent && !bg) bg = "E8F8D3";
+  var bgCss = transparent ? "transparent" : ("#" + bg);
   document.documentElement.style.background = bgCss;
   document.body.style.background = bgCss;
+  if (transparent) {
+    // Override the head config's solid backgroundColor with a transparent one.
+    window.RufflePlayer.config.backgroundColor = null;
+    window.RufflePlayer.config.wmode = "transparent";
+  }
 
   function decode62(s) {
     var result = 0, mult = 1;
@@ -113,8 +123,14 @@
       url: "/fbouille_patched/famille" + familyId + ".swf?v=7",
       autoplay: "on",
       allowScriptAccess: true,
-      quality: "low",
-      backgroundColor: bgCss,
+      // "high" keeps vector edges crisp (the cartoon bouille has lots of curves);
+      // "low" disabled anti-aliasing and looked pixelated, especially scaled up.
+      quality: "high",
+      // null background = transparent compositing for ?bg=transparent; otherwise
+      // the chosen solid colour. Passing the string "transparent" to Ruffle's
+      // backgroundColor is invalid, so map it to null + wmode transparent.
+      backgroundColor: transparent ? null : bgCss,
+      wmode: transparent ? "transparent" : undefined,
       parameters: { s: state, e: emote, fe: feFrame, fm: fmFrame, anim: anim },
       allowNetworking: "all"
     });
