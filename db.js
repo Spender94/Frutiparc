@@ -365,6 +365,19 @@ async function initSchema() {
         word        TEXT NOT NULL UNIQUE,
         replacement TEXT NOT NULL
       );
+
+      -- Password reset tokens. We store only a SHA-256 HASH of the token (never
+      -- the token itself), so a DB leak can't be used to reset accounts. One
+      -- row per request; expires after a short window and is single-use.
+      CREATE TABLE IF NOT EXISTS password_resets (
+        id          SERIAL PRIMARY KEY,
+        user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        token_hash  TEXT NOT NULL,
+        expires_at  TIMESTAMPTZ NOT NULL,
+        used_at     TIMESTAMPTZ,
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_password_resets_hash ON password_resets(token_hash);
     `);
     console.log('[DB] Schema initialized');
   } finally {
@@ -378,6 +391,47 @@ async function findUserByUsername(username) {
     [username]
   );
   return rows[0] || null;
+}
+
+// Case-insensitive email lookup for password reset. Returns the first match
+// (emails are stored lowercased on register, but be tolerant of legacy rows).
+async function findUserByEmail(email) {
+  const { rows } = await pool.query(
+    'SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+    [String(email || '')]
+  );
+  return rows[0] || null;
+}
+
+// ── Password reset tokens (token stored hashed; single-use; expiring) ──
+async function createPasswordReset(userId, tokenHash, expiresAt) {
+  await pool.query(
+    `INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+    [userId, tokenHash, expiresAt]
+  );
+}
+// Return a still-valid (unused, unexpired) reset row for this token hash, with
+// the owning username joined in.
+async function findValidPasswordReset(tokenHash) {
+  const { rows } = await pool.query(
+    `SELECT pr.id, pr.user_id, u.username
+       FROM password_resets pr JOIN users u ON u.id = pr.user_id
+      WHERE pr.token_hash = $1 AND pr.used_at IS NULL AND pr.expires_at > now()
+      LIMIT 1`,
+    [tokenHash]
+  );
+  return rows[0] || null;
+}
+async function markPasswordResetUsed(id) {
+  await pool.query(`UPDATE password_resets SET used_at = now() WHERE id = $1`, [id]);
+}
+// Invalidate any outstanding resets for a user (e.g. after a successful reset
+// or a new request) so old links can't be replayed.
+async function invalidateUserPasswordResets(userId) {
+  await pool.query(
+    `UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL`,
+    [userId]
+  );
 }
 
 async function createUser(username, password, email = null) {
@@ -1460,6 +1514,11 @@ module.exports = {
   pool,
   initSchema,
   findUserByUsername,
+  findUserByEmail,
+  createPasswordReset,
+  findValidPasswordReset,
+  markPasswordResetUsed,
+  invalidateUserPasswordResets,
   createUser,
   updateUser,
   recordLogin,

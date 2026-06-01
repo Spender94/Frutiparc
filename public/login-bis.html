@@ -373,7 +373,23 @@
   <div class="status" id="status" aria-live="polite"></div>
 
   <footer>
-    <div class="footer-top">Aide (Gaspard) · Oubli de code secret</div>
+    <div class="footer-top">Aide (Gaspard) · <a href="#" id="forgot-link" style="color:inherit;text-decoration:underline">Oubli de code secret</a></div>
+
+    <!-- Forgot-password inline form (revealed by the footer link) -->
+    <div id="forgot-box" class="hidden" style="max-width:360px;margin:10px auto 0;background:#fff;border:1px solid #5a8a20;border-radius:10px;padding:14px;text-align:left">
+      <strong style="display:block;margin-bottom:6px;color:#2C4A0F">Oubli de code secret</strong>
+      <p style="font-size:12px;color:#4f7b1f;margin:0 0 8px">Indique l'adresse e-mail de ton compte : on t'enverra un lien pour choisir un nouveau code secret.</p>
+      <form id="forgot-form" autocomplete="on">
+        <input id="forgot-email" type="email" placeholder="ton@email.com" autocomplete="email"
+          style="width:100%;padding:9px 10px;border:1px solid #5a8a20;border-radius:6px;font-size:15px;margin-bottom:8px" />
+        <div style="display:flex;gap:8px">
+          <button class="btn" type="submit" id="forgot-submit">Envoyer le lien</button>
+          <button class="btn btn-secondary" type="button" id="forgot-cancel">Annuler</button>
+        </div>
+        <div id="forgot-msg" style="font-size:12px;margin-top:8px;min-height:14px"></div>
+      </form>
+    </div>
+
     <div class="footer-bottom">© 2002-2007 Motion-Twin · Tous droits réservés · Frutiparc est une marque déposée de Motion Twin<br/>Partenaires : KadoKado · Dinoparc · Monlapin.net · Jeux Gratuits</div>
   </footer>
 
@@ -519,6 +535,45 @@
       void modeRingWrap.offsetWidth;
       modeRingWrap.classList.add('draw');
     });
+
+    // ── Forgot password (footer "Oubli de code secret") ──
+    const forgotLink = document.getElementById('forgot-link');
+    const forgotBox = document.getElementById('forgot-box');
+    const forgotForm = document.getElementById('forgot-form');
+    const forgotMsg = document.getElementById('forgot-msg');
+    if (forgotLink) {
+      forgotLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        forgotBox.classList.toggle('hidden');
+        if (!forgotBox.classList.contains('hidden')) {
+          forgotBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          document.getElementById('forgot-email').focus();
+        }
+      });
+      document.getElementById('forgot-cancel').addEventListener('click', () => {
+        forgotBox.classList.add('hidden');
+        forgotMsg.textContent = '';
+      });
+      forgotForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('forgot-email').value.trim();
+        const btn = document.getElementById('forgot-submit');
+        forgotMsg.style.color = '#4f7b1f';
+        if (!email) { forgotMsg.style.color = '#b31111'; forgotMsg.textContent = 'Indique ton adresse e-mail.'; return; }
+        btn.disabled = true; const prev = btn.textContent; btn.textContent = 'Envoi…';
+        try {
+          const data = await postJson('/api/auth/forgot', { email });
+          forgotMsg.style.color = '#334a14';
+          forgotMsg.textContent = data.message || "Si un compte existe, un e-mail vient d'être envoyé.";
+          document.getElementById('forgot-email').value = '';
+        } catch (err) {
+          forgotMsg.style.color = '#b31111';
+          forgotMsg.textContent = err.message || 'Erreur. Réessaie.';
+        } finally {
+          btn.disabled = false; btn.textContent = prev;
+        }
+      });
+    }
 
     renderGames();
   </script>

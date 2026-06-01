@@ -3469,6 +3469,162 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// Password reset ("Oubli de code secret")
+//
+// Flow:
+//   POST /api/auth/forgot {email}  → if an account has that email, create a
+//        single-use, expiring token (stored hashed) and email a reset link.
+//        Always responds 200 with a generic message (no account enumeration).
+//   GET  /reset?token=…            → serves the reset page (public/reset.html).
+//   POST /api/auth/reset {token,password} → validates the token, sets the new
+//        bcrypt password, invalidates the token + the session(s).
+//
+// Email delivery is provider-agnostic. If RESEND_API_KEY is set we POST to the
+// Resend HTTP API (no SMTP library needed); otherwise we log the link to the
+// server console so the flow still works in dev / when email isn't configured.
+// ─────────────────────────────────────────────
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const RESET_FROM = (process.env.RESET_FROM_EMAIL || 'Frutiparc <noreply@frutiparc.com>').trim();
+const RESEND_API_KEY = (process.env.RESEND_API_KEY || '').trim();
+
+function hashResetToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+function buildPublicBase(req) {
+  const fwdHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const host = PUBLIC_HOST || fwdHost || req.headers.host || 'localhost';
+  const proto = PUBLIC_HOST ? 'https'
+    : (String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || (req.secure ? 'https' : 'http'));
+  return `${proto}://${host}`;
+}
+
+// Send the reset email. Returns true if actually dispatched to a provider,
+// false if it only fell back to console logging (still a "success" for UX).
+async function sendResetEmail(toEmail, username, link) {
+  const subject = 'Frutiparc — réinitialise ton code secret';
+  const text =
+    `Salut ${username} !\n\n` +
+    `Tu as demandé à réinitialiser ton code secret Frutiparc.\n` +
+    `Clique sur ce lien (valable 1 heure) pour en choisir un nouveau :\n\n${link}\n\n` +
+    `Si tu n'es pas à l'origine de cette demande, ignore simplement cet e-mail : ` +
+    `ton code secret reste inchangé.\n\n— L'équipe Frutiparc`;
+  const html =
+    `<div style="font-family:Verdana,Arial,sans-serif;color:#2C4A0F">` +
+    `<p>Salut <b>${escapeXml(username)}</b> !</p>` +
+    `<p>Tu as demandé à réinitialiser ton <b>code secret</b> Frutiparc.</p>` +
+    `<p><a href="${escapeXml(link)}" style="display:inline-block;background:#2C4A0F;color:#CFF599;` +
+    `padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Choisir un nouveau code secret</a></p>` +
+    `<p style="font-size:12px;color:#5a8a20">Ce lien est valable 1 heure. Si tu n'es pas à l'origine de ` +
+    `cette demande, ignore cet e-mail — ton code secret reste inchangé.</p>` +
+    `<p style="font-size:12px;color:#5a8a20">Ou copie ce lien : <br>${escapeXml(link)}</p></div>`;
+
+  if (!RESEND_API_KEY) {
+    console.log(`[RESET] (no RESEND_API_KEY) reset link for ${username} <${toEmail}>: ${link}`);
+    return false;
+  }
+  try {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: RESET_FROM, to: [toEmail], subject, text, html }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      console.error(`[RESET] Resend send failed (${resp.status}): ${body.slice(0, 300)}`);
+      return false;
+    }
+    console.log(`[RESET] reset email sent to ${username} <${toEmail}>`);
+    return true;
+  } catch (e) {
+    console.error('[RESET] email dispatch error:', e.message);
+    return false;
+  }
+}
+
+// Reuse the register rate-limiter (same sliding window per IP) to throttle
+// reset requests — they hit the same abuse surface.
+app.post('/api/auth/forgot', async (req, res) => {
+  const ip = getClientIp(req) || 'unknown';
+  if (!checkRegisterRateLimit(ip)) {
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de demandes, réessaie plus tard.' });
+  }
+  const generic = { ok: true, message: "Si un compte est associé à cette adresse, un e-mail de réinitialisation vient d'être envoyé." };
+  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+  if (!isValidEmail(email)) {
+    // Don't reveal validity specifics — but a clearly invalid address is a
+    // client error worth flagging so the user fixes a typo.
+    return res.status(400).json({ ok: false, error: 'email_invalid', message: 'Adresse e-mail invalide.' });
+  }
+  if (!process.env.DATABASE_URL) {
+    console.warn('[RESET] no DATABASE_URL — reset unavailable');
+    return res.json(generic); // stay generic; nothing to do without a DB
+  }
+  try {
+    const row = await db.findUserByEmail(email);
+    if (row) {
+      await db.invalidateUserPasswordResets(row.id); // supersede older links
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+      await db.createPasswordReset(row.id, hashResetToken(token), expiresAt);
+      const link = `${buildPublicBase(req)}/reset?token=${token}`;
+      await sendResetEmail(row.email, getDisplayName(row.username), link);
+    } else {
+      console.log(`[RESET] forgot request for unknown email ${email} (no-op, generic response)`);
+    }
+  } catch (e) {
+    console.error('[RESET] forgot error:', e.message);
+  }
+  return res.json(generic); // identical response whether or not the email exists
+});
+
+// Serve the reset page (token is read client-side from the query string).
+app.get('/reset', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'reset.html'));
+});
+
+app.post('/api/auth/reset', async (req, res) => {
+  const ip = getClientIp(req) || 'unknown';
+  if (!checkRegisterRateLimit(ip)) {
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessaie plus tard.' });
+  }
+  const token = String((req.body && req.body.token) || '').trim();
+  const password = String((req.body && req.body.password) || '');
+  if (!token || !/^[0-9a-f]{64}$/i.test(token)) {
+    return res.status(400).json({ ok: false, error: 'bad_token', message: 'Lien invalide.' });
+  }
+  if (!isValidPassword(password)) {
+    return res.status(400).json({ ok: false, error: 'password_invalid', message: 'Code secret : 6 à 80 caractères.' });
+  }
+  if (!process.env.DATABASE_URL) {
+    return res.status(503).json({ ok: false, error: 'no_db', message: 'Réinitialisation indisponible.' });
+  }
+  try {
+    const row = await db.findValidPasswordReset(hashResetToken(token));
+    if (!row) {
+      return res.status(400).json({ ok: false, error: 'token_invalid', message: 'Ce lien est invalide ou expiré. Refais une demande.' });
+    }
+    const username = String(row.username).toLowerCase();
+    const newHash = await hashPassword(password);
+    await db.updateUser(username, { password: newHash });
+    if (users[username]) users[username].pass = newHash;
+    await db.markPasswordResetUsed(row.id);
+    await db.invalidateUserPasswordResets(row.user_id);
+    // Drop existing sessions for safety (force re-login with the new secret).
+    for (const [sid, sess] of Object.entries(sessions)) {
+      if (sess && String(sess.user || '').toLowerCase() === username) {
+        delete sessions[sid];
+        db.deleteSession(sid).catch(() => {});
+      }
+    }
+    console.log(`[RESET] password reset completed for ${username}`);
+    return res.json({ ok: true, message: 'Ton code secret a été changé. Tu peux te connecter.' });
+  } catch (e) {
+    console.error('[RESET] reset error:', e.message);
+    return res.status(500).json({ ok: false, error: 'server_error', message: 'Erreur serveur.' });
+  }
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: /api/saveScore — Game popup posts score here after game ends.
 // Accepts both GET (from SWF getURL) and POST (from popup JS fetch).
 // Query/body params: sid, game (disc name or id), score, data (optional).

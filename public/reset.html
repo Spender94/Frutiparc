@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<title>Frutiparc — Nouveau code secret</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: Verdana, Arial, sans-serif; color: #2C4A0F;
+    background: #ADE76B; display: flex; align-items: center; justify-content: center;
+    padding: 20px; min-height: 100vh;
+  }
+  .card {
+    background: #fff; border: 2px solid #2C4A0F; border-radius: 16px;
+    padding: 24px 20px; width: 100%; max-width: 380px;
+    box-shadow: 0 12px 26px rgba(44,74,15,.25);
+  }
+  h1 { font-size: 19px; margin: 0 0 4px; text-align: center; }
+  .tag { text-align: center; color: #5a8a20; font-size: 12px; margin-bottom: 18px; }
+  label { display: block; font-size: 12px; font-weight: bold; margin: 12px 0 4px; }
+  input[type=password] {
+    width: 100%; padding: 11px 10px; font-size: 16px;
+    border: 1px solid #5a8a20; border-radius: 7px; background: #fbfff5; color: #2C4A0F;
+  }
+  button {
+    width: 100%; margin-top: 18px; padding: 12px; font-size: 15px; font-weight: bold;
+    background: #2C4A0F; color: #CFF599; border: 0; border-radius: 8px;
+    cursor: pointer; font-family: inherit;
+  }
+  button:disabled { opacity: .6; }
+  .msg { font-size: 13px; margin-top: 12px; text-align: center; min-height: 16px; line-height: 1.4; }
+  .home { display: block; text-align: center; margin-top: 14px; color: #2f6b16; font-size: 13px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Nouveau code secret</h1>
+  <div class="tag">Frutiparc · réinitialisation</div>
+
+  <form id="reset-form">
+    <label for="pw1">Nouveau code secret</label>
+    <input id="pw1" type="password" autocomplete="new-password" minlength="6" maxlength="80" required>
+    <label for="pw2">Confirme le code secret</label>
+    <input id="pw2" type="password" autocomplete="new-password" minlength="6" maxlength="80" required>
+    <button type="submit" id="submit-btn">Changer mon code secret</button>
+    <div class="msg" id="msg"></div>
+  </form>
+
+  <div id="done" class="hidden">
+    <div class="msg" id="done-msg"></div>
+    <a class="home" href="/">→ Aller à la connexion</a>
+  </div>
+
+  <a class="home" href="/">Retour à l'accueil</a>
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var token = String(params.get("token") || "").trim();
+  var form = document.getElementById("reset-form");
+  var msg = document.getElementById("msg");
+  var btn = document.getElementById("submit-btn");
+
+  function setMsg(text, error) {
+    msg.textContent = text || "";
+    msg.style.color = error ? "#b31111" : "#334a14";
+  }
+
+  if (!/^[0-9a-fA-F]{64}$/.test(token)) {
+    form.classList.add("hidden");
+    var done = document.getElementById("done");
+    done.classList.remove("hidden");
+    document.getElementById("done-msg").textContent =
+      "Lien invalide ou incomplet. Refais une demande depuis la page d'accueil.";
+    return;
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var p1 = document.getElementById("pw1").value;
+    var p2 = document.getElementById("pw2").value;
+    if (p1.length < 6 || p1.length > 80) { setMsg("Le code secret doit faire 6 à 80 caractères.", true); return; }
+    if (p1 !== p2) { setMsg("Les deux codes ne correspondent pas.", true); return; }
+    btn.disabled = true; var prev = btn.textContent; btn.textContent = "Changement…";
+    fetch("/api/auth/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token, password: p1 }),
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.d || !res.d.ok) {
+          setMsg((res.d && res.d.message) || "Échec de la réinitialisation.", true);
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        form.classList.add("hidden");
+        var done = document.getElementById("done");
+        done.classList.remove("hidden");
+        document.getElementById("done-msg").textContent =
+          res.d.message || "Ton code secret a été changé. Tu peux te connecter.";
+      })
+      .catch(function () {
+        setMsg("Erreur réseau. Réessaie.", true);
+        btn.disabled = false; btn.textContent = prev;
+      });
+  });
+})();
+</script>
+</body>
+</html>
