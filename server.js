@@ -1284,6 +1284,36 @@ function getBkiwiDailyTrack(date = new Date()) {
   return dayOfYear % 6;
 }
 
+// Map a freshly-resolved BKiwi/MB2 ranking id to the concrete (classic,
+// challenge) pair to persist, so EVERY save path stays in sync: handleSaveScore
+// (/api/saveScore), the loadVariables SWF fallback (/games/<g>/s<score>), and the
+// FrutiScore WebSocket handler. Keeping this in ONE place is deliberate — these
+// three paths had drifted apart, which is how BKiwi daily scores ended up filed
+// under a circuit the fiche/table never read.
+//   • BKiwi: the all-time CLASSIC record follows the circuit actually raced
+//     (slot-0 diff `hint`, today's track as fallback). The daily CHALLENGE is
+//     ALWAYS today's track, because both the fiche and the ranking table read
+//     rk=0 as bkiwi_track{daily}_challenge — anchoring the save there keeps the
+//     score visible even when track detection is stale or biased.
+//   • MB2: the same packed time+pct score feeds the all-time and daily rankings.
+function routeRankingForSave(rankingId, username) {
+  if (rankingId && rankingId.startsWith('bkiwi_')) {
+    const u = users[username];
+    const hint = u && Number.isFinite(u.bkiwiCurrentTrack) ? u.bkiwiCurrentTrack : undefined;
+    const daily = getBkiwiDailyTrack();
+    const track = Number.isFinite(hint) ? hint : daily;
+    return {
+      rankingId: `bkiwi_track${track}_classic`,
+      extraRankingId: `bkiwi_track${daily}_challenge`,
+      hint, daily,
+    };
+  }
+  if (rankingId === 'mb2_classic' || rankingId === 'mb2_challenge') {
+    return { rankingId: 'mb2_classic', extraRankingId: 'mb2_challenge', hint: undefined, daily: undefined };
+  }
+  return { rankingId, extraRankingId: null, hint: undefined, daily: undefined };
+}
+
 // Format a centisecond duration as "MM:SS.CC" (e.g. 12345 → "2:03.45").
 function formatMb2Time(centisec) {
   const cs = Math.max(0, Math.trunc(Number(centisec) || 0));
@@ -3677,25 +3707,16 @@ async function handleSaveScore(req, res) {
   }
   let extraResult = null;
   let extraRankingId = null;
-  if (rankingId.startsWith('bkiwi_')) {
-    const hint = users[username] && Number.isFinite(users[username].bkiwiCurrentTrack)
-      ? users[username].bkiwiCurrentTrack : undefined;
-    const daily = getBkiwiDailyTrack();
-    // Route both the all-time classic record AND the daily challenge to the
-    // circuit the player actually raced (detected from the slot-0 $ts diff).
-    // Fall back to today's daily track only when detection couldn't pin it —
-    // routing the challenge to `daily` unconditionally was tagging every result
-    // with the wrong circuit.
-    const track = Number.isFinite(hint) ? hint : daily;
-    rankingId = `bkiwi_track${track}_classic`;
-    extraRankingId = `bkiwi_track${track}_challenge`;
-    console.log(`[HTTP]  bkiwi route hint=${hint} daily=${daily} -> classic:${rankingId} challenge:${extraRankingId}`);
-  } else if (rankingId === 'mb2_classic' || rankingId === 'mb2_challenge') {
-    // MB2 stores the same packed time+pct (ptmb2) score in both rankings:
-    // mb2_classic is the all-time record (visible in fiche via rk=2),
-    // mb2_challenge is the daily-reset Championnat ranking.
-    rankingId = 'mb2_classic';
-    extraRankingId = 'mb2_challenge';
+  {
+    // Single source of truth for BKiwi/MB2 routing (see routeRankingForSave):
+    // BKiwi daily challenge always lands on today's track so the fiche + table
+    // (both read rk=0 -> bkiwi_track{daily}_challenge) actually show the score.
+    const routed = routeRankingForSave(rankingId, username);
+    rankingId = routed.rankingId;
+    extraRankingId = routed.extraRankingId;
+    if (routed.daily !== undefined) {
+      console.log(`[HTTP]  bkiwi route hint=${routed.hint} daily=${routed.daily} -> classic:${rankingId} challenge:${extraRankingId}`);
+    }
   }
 
   const result = persistScore(username, rankingId, scoreVal, scoreData);
@@ -5780,13 +5801,19 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
   }
   const effectiveSid = sid || fallbackSid || '';
   const swfMode = (effectiveSid && sessions[effectiveSid] && sessions[effectiveSid].challengeMode) ? 1 : 0;
-  const rankingId = rankingIdForGame(gameName, swfMode);
+  let rankingId = rankingIdForGame(gameName, swfMode);
   if (!rankingId) {
     console.log(`[SWF-SCORE] unknown ranking game="${gameName}" sid="${effectiveSid}" user="${username}"`);
     return res.type('text/plain').send('ok=0');
   }
+  // Same BKiwi/MB2 routing as the other save paths (single source of truth), so
+  // a score arriving via this loadVariables fallback lands in the same rankings
+  // — including the daily challenge anchored to today's track.
+  const routed = routeRankingForSave(rankingId, username);
+  rankingId = routed.rankingId;
   const result = persistScore(username, rankingId, scoreVal, '');
-  console.log(`[SWF-SCORE] ${username} ${gameName} ${scoreVal} -> ${rankingId} mode=${swfMode} updated=${result.updated}`);
+  if (routed.extraRankingId) persistScore(username, routed.extraRankingId, scoreVal, '');
+  console.log(`[SWF-SCORE] ${username} ${gameName} ${scoreVal} -> ${rankingId}${routed.extraRankingId ? ' +' + routed.extraRankingId : ''} mode=${swfMode} updated=${result.updated}`);
   res.type('text/plain').send('ok=1');
 });
 
@@ -11653,19 +11680,16 @@ async function handleCBeeMessage(socket, rawXml) {
         let rankingId = rankingIdForGame(discId, scoreMode);
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
         let extraRankingId = null;
-        if (rankingId && rankingId.startsWith('bkiwi_')) {
-          const hint = username && users[username] && Number.isFinite(users[username].bkiwiCurrentTrack)
-            ? users[username].bkiwiCurrentTrack : undefined;
-          const daily = getBkiwiDailyTrack();
-          // Route classic record AND daily challenge to the circuit actually
-          // raced (slot-0 $ts diff); daily is only the last-resort fallback.
-          const track = Number.isFinite(hint) ? hint : daily;
-          rankingId = `bkiwi_track${track}_classic`;
-          extraRankingId = `bkiwi_track${track}_challenge`;
-          console.log(`[FSCORE] bkiwi route hint=${hint} daily=${daily} -> classic:${rankingId} challenge:${extraRankingId}`);
-        } else if (rankingId === 'mb2_classic' || rankingId === 'mb2_challenge') {
-          rankingId = 'mb2_classic';
-          extraRankingId = 'mb2_challenge';
+        {
+          // Single source of truth for BKiwi/MB2 routing (see
+          // routeRankingForSave). The daily challenge is anchored to today's
+          // track so it matches what the fiche + ranking table read (rk=0).
+          const routed = routeRankingForSave(rankingId, username);
+          rankingId = routed.rankingId;
+          extraRankingId = routed.extraRankingId;
+          if (routed.daily !== undefined) {
+            console.log(`[FSCORE] bkiwi route hint=${routed.hint} daily=${routed.daily} -> classic:${rankingId} challenge:${extraRankingId}`);
+          }
         }
         // Persist if we have a valid ranking + user.
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
