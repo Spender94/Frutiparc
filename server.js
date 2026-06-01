@@ -3074,15 +3074,19 @@ function shopCategoryOwnedByDefault(category) {
 }
 
 function buildShopTreeXml(user) {
-  // Group packs by category.
+  // Group packs by category. Disabled packs are hidden from the boutique tree
+  // (an admin can re-enable them); getShopPack still resolves them so a player
+  // who already owns a now-disabled accessory keeps seeing/wearing it.
+  const visible = SHOP_PACKS.filter((p) => !p.disabled);
   const byCategory = new Map();
-  for (const pack of SHOP_PACKS) {
+  for (const pack of visible) {
     if (!byCategory.has(pack.category)) byCategory.set(pack.category, []);
     byCategory.get(pack.category).push(pack);
   }
-  const defaultId = SHOP_PACKS.length ? SHOP_PACKS[0].id : '';
+  const defaultId = visible.length ? visible[0].id : '';
   let inner = '';
   for (const [cat, packs] of byCategory) {
+    if (packs.length === 0) continue;
     const prods = packs
       .map((p) => `<p i="${p.id}" n="${escapeXml(p.name)}"/>`)
       .join('');
@@ -5215,8 +5219,12 @@ app.patch('/api/admin/shop/:id', adminAuth, async (req, res) => {
   if (b.price !== undefined) pack.price = Number(b.price);
   if (b.description !== undefined) { pack.description = String(b.description); pack.comment = String(b.description); }
   if (b.suffix9 !== undefined) pack.suffix9 = String(b.suffix9);
+  // Soft enable/disable: a disabled pack is hidden from the boutique (and can't
+  // be bought) but is NOT removed — players who already own it keep it, and an
+  // admin can re-enable it at any time.
+  if (b.disabled !== undefined) pack.disabled = !!b.disabled;
   if (process.env.DATABASE_URL) db.upsertShopPack(pack).catch(e => console.error('[DB] shop pack save:', e.message));
-  console.log(`[ADMIN] Updated shop pack ${pack.id}: ${pack.name}`);
+  console.log(`[ADMIN] Updated shop pack ${pack.id}: ${pack.name}${b.disabled !== undefined ? ` (disabled=${pack.disabled})` : ''}`);
   res.json({ ok: true, pack });
 });
 
@@ -8085,7 +8093,7 @@ app.get('/ft/pack', (req, res) => {
   if (!auth) return;
   const { user } = auth;
   const pack = getShopPack(req.query.id);
-  if (!pack) {
+  if (!pack || pack.disabled) {
     return sendShopXml(res, '<r k="1" />');
   }
   sendShopXml(res, buildShopPackXml(pack, user));
@@ -8105,7 +8113,7 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
   const { user } = auth;
 
   const pack = getShopPack(source.i);
-  if (!pack) {
+  if (!pack || pack.disabled) {
     return sendShopXml(res, '<r k="1" />');
   }
   if (userOwnsShopPack(user, pack.id) || shopCategoryOwnedByDefault(pack.category)) {

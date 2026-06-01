@@ -1582,9 +1582,9 @@ async function loadShop() {
     $('#shop-body').dataset.loaded = '1';
     $('#shop-count').innerHTML = `<span class="count">${shopPacks.length}</span> accessoires`;
     const tb = $('#shop-body');
-    tb.innerHTML = shopPacks.map(p => `<tr>
+    tb.innerHTML = shopPacks.map(p => `<tr style="${p.disabled ? 'opacity:.5' : ''}">
       <td>${p.id}</td>
-      <td>${esc(p.name)}</td>
+      <td>${esc(p.name)}${p.disabled ? ' <span style="background:#999;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;vertical-align:middle">désactivé</span>' : ''}</td>
       <td>${esc(p.category || '')}</td>
       <td>${p.price} K</td>
       <td><code>${esc(p.suffix9)}</code></td>
@@ -1592,6 +1592,9 @@ async function loadShop() {
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="editPack(${p.id})">Modifier</button>
         <button class="btn-success btn-sm" onclick="pushPackAll(${p.id},'${esc(p.name)}')">Pousser à tous</button>
+        ${p.disabled
+          ? `<button class="btn-success btn-sm" onclick="toggleShopDisabled(${p.id},'${esc(p.name)}',false)">Réactiver</button>`
+          : `<button class="btn btn-sm" onclick="toggleShopDisabled(${p.id},'${esc(p.name)}',true)">Désactiver</button>`}
         <button class="btn-danger btn-sm" onclick="deletePack(${p.id},'${esc(p.name)}')">Supprimer</button>
       </td>
     </tr>`).join('');
@@ -1752,6 +1755,20 @@ async function deletePack(id, name) {
   if (!confirm(`Supprimer l'accessoire "${name}" (ID ${id}) du catalogue ?\nCela ne retire pas l'accessoire des joueurs qui l'ont déjà.`)) return;
   await fetch(`/api/admin/shop/${id}`, { method: 'DELETE', headers: hdr() });
   toast(`Accessoire "${name}" supprimé du catalogue`);
+  loadShop();
+}
+
+// Soft enable/disable: hides the article from the boutique without deleting it
+// (players who already own it keep it). Reversible via the same button.
+async function toggleShopDisabled(id, name, disabled) {
+  const verb = disabled ? 'Désactiver' : 'Réactiver';
+  const msg = disabled
+    ? `Désactiver "${name}" (ID ${id}) ?\nIl disparaîtra de la boutique mais restera chez les joueurs qui l'ont déjà. Réversible à tout moment.`
+    : `Réactiver "${name}" (ID ${id}) ?\nIl réapparaîtra dans la boutique.`;
+  if (!confirm(msg)) return;
+  const r = await fetch(`/api/admin/shop/${id}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify({ disabled }) });
+  if (!r.ok) { toast('Erreur lors de la mise à jour'); return; }
+  toast(`Accessoire "${name}" ${disabled ? 'désactivé' : 'réactivé'}`);
   loadShop();
 }
 
