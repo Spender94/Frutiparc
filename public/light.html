@@ -9,7 +9,7 @@
 <style>
   /* Frutiparc green palette — same family as forum / admin / Club. */
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; padding: 0; height: 100%; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
   body {
     background: #ADE76B;
     color: #2C4A0F;
@@ -17,9 +17,17 @@
     font-size: 14px;
     display: flex;
     flex-direction: column;
+    /* Height is driven by JS from window.visualViewport (the area NOT covered by
+       the mobile keyboard) via the --app-h custom property; the static values
+       are fallbacks for browsers without visualViewport. overflow:hidden on
+       html+body stops the whole page scrolling when the keyboard opens — only
+       the #messages list scrolls. */
     height: 100vh;
     height: 100dvh;
+    height: var(--app-h, 100dvh);
     overflow: hidden;
+    position: fixed;
+    left: 0; right: 0; top: 0;
   }
   a { color: #2f6b16; }
   button { font-family: inherit; cursor: pointer; }
@@ -39,6 +47,52 @@
   header .logout {
     background: transparent; border: 1px solid #2C4A0F; border-radius: 5px;
     color: #2C4A0F; font-size: 11px; padding: 4px 8px;
+  }
+  header .hbtn {
+    background: #fff; border: 1px solid #2C4A0F; border-radius: 6px;
+    font-size: 15px; line-height: 1; padding: 3px 7px;
+  }
+
+  /* ── Bouille bottom sheet ── */
+  #bouille-sheet-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; display: none;
+  }
+  #bouille-sheet-backdrop.show { display: block; }
+  #bouille-sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
+    background: #ADE76B; border-top: 2px solid #2C4A0F;
+    border-radius: 16px 16px 0 0; max-height: 76vh; display: flex; flex-direction: column;
+    transform: translateY(110%); transition: transform .25s ease;
+    box-shadow: 0 -8px 24px rgba(44,74,15,.3);
+  }
+  #bouille-sheet.show { transform: translateY(0); }
+  #bouille-sheet .sheet-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; font-weight: bold; color: #2C4A0F;
+    border-bottom: 1px solid #5a8a20;
+  }
+  #bouille-sheet .sheet-head button {
+    background: transparent; border: 0; font-size: 18px; color: #2C4A0F;
+  }
+  #bouille-sheet .sheet-body { padding: 12px 14px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .sheet-preview { display: flex; justify-content: center; margin-bottom: 10px; }
+  #bouille-sheet-preview {
+    width: 132px; height: 132px; background: #fff; border: 2px solid #2C4A0F;
+    border-radius: 14px; overflow: hidden;
+  }
+  #bouille-sheet-preview iframe { width: 100%; height: 100%; border: 0; display: block; background: #E8F8D3; }
+  .sheet-hint { font-size: 12px; color: #2f5510; margin-bottom: 8px; font-weight: bold; }
+  .acc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .acc-item {
+    background: #fff; border: 2px solid transparent; border-radius: 12px;
+    padding: 6px; text-align: center; cursor: pointer;
+  }
+  .acc-item.sel { border-color: #2C4A0F; background: #eaf6d6; }
+  .acc-item .thumb { width: 100%; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden; background: #E8F8D3; }
+  .acc-item .thumb iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .acc-item .lbl {
+    font-size: 10px; color: #2C4A0F; margin-top: 4px; font-weight: bold;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
   /* ── Tabs ── */
@@ -214,6 +268,7 @@
     <div class="who">
       <span class="dot" id="conn-dot"></span>
       <span id="who-name">—</span>
+      <button class="hbtn" id="bouille-btn" title="Ma bouille">🙂</button>
       <button class="logout" id="logout-btn">Quitter</button>
     </div>
   </header>
@@ -256,6 +311,20 @@
     <div class="big">Le forum complet s'ouvre dans une page dédiée, adaptée au mobile.</div>
     <a class="forum-link" id="forum-link" href="#">Ouvrir le forum →</a>
   </section>
+
+  <!-- Bouille / accessory picker (bottom sheet) -->
+  <div id="bouille-sheet-backdrop"></div>
+  <div id="bouille-sheet">
+    <div class="sheet-head">
+      <span>Ma bouille</span>
+      <button id="bouille-sheet-close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="sheet-preview"><div id="bouille-sheet-preview"></div></div>
+      <div class="sheet-hint">Choisis un accessoire de ton inventaire :</div>
+      <div id="bouille-acc-grid" class="acc-grid"></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -736,8 +805,157 @@
     }, 520);
   }
 
-  // Keep viewport stable when the mobile keyboard opens.
-  window.addEventListener("resize", function () { if (nearBottom()) scrollDown(); });
+  // ── Bouille / accessory picker ───────────────────────────────────────────
+  // Lets the user pick an accessory from their inventory (same model as the
+  // forum): a bouille is 24 base62 chars; a normal accessory swaps the last 9
+  // ("suffix") onto the user's base, while an "incarnation" (full value, family
+  // ≥ 2) replaces the whole bouille. We persist the choice via /do/eb so it
+  // sticks and everyone (incl. the reaction overlay) sees the new look.
+  var myBase = DEFAULT_BOUILLE;           // the user's own bouille (family 00/01)
+  var accList = [];                       // [{name, suffix, fullState?}]
+  var accSel = { suffix: "000000000", fullState: null };
+
+  function isIncarnation(v) {
+    return typeof v === "string" && v.length === 24
+      && v.substring(0, 2) !== "00" && v.substring(0, 2) !== "01";
+  }
+  function buildState(base, suffix9, fullState) {
+    if (fullState) return String(fullState);
+    var s = String(base || DEFAULT_BOUILLE); while (s.length < 24) s += "0";
+    return s.substring(0, 15) + (suffix9 || s.substring(15, 24));
+  }
+  function previewIframe(state) {
+    var s = String(state || DEFAULT_BOUILLE).replace(/[^0-9A-Za-z]/g, "");
+    return '<iframe scrolling="no" sandbox="allow-scripts allow-same-origin" src="/bouille-preview.html?s='
+      + encodeURIComponent(s) + '"></iframe>';
+  }
+
+  function openBouilleSheet() {
+    var bd = $("#bouille-sheet-backdrop"), sheet = $("#bouille-sheet");
+    bd.classList.add("show"); sheet.classList.add("show");
+    loadAccessories();
+  }
+  function closeBouilleSheet() {
+    $("#bouille-sheet-backdrop").classList.remove("show");
+    $("#bouille-sheet").classList.remove("show");
+  }
+  $("#bouille-btn").addEventListener("click", openBouilleSheet);
+  $("#bouille-sheet-close").addEventListener("click", closeBouilleSheet);
+  $("#bouille-sheet-backdrop").addEventListener("click", closeBouilleSheet);
+
+  function loadAccessories() {
+    fetch("/api/forum/me?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.bouille) {
+          // Keep the user's BASE (own family) so suffix swaps work; if their
+          // saved bouille is an incarnation we still expose it as the current.
+          if (!isIncarnation(d.bouille)) myBase = d.bouille;
+          state.bouilleByUser[state.userLower] = d.bouille;
+        }
+        accList = [];
+        var seen = {};
+        // Defaults (Normal, Bananocle, …) — suffix-only.
+        (d && d.defaultAccessories || []).forEach(function (def) {
+          var sfx = def.suffix || "000000000";
+          if (seen[sfx]) return; seen[sfx] = true;
+          accList.push({ name: def.name, suffix: sfx, fullState: null });
+        });
+        if (!seen["000000000"]) accList.unshift({ name: "Normal", suffix: "000000000", fullState: null });
+        // Owned accessories (value = full 24-char bouille).
+        (d && d.accessories || []).forEach(function (a) {
+          if (!a.value || a.value.length !== 24) return;
+          if (isIncarnation(a.value)) {
+            var k = "inc:" + a.value;
+            if (!seen[k]) { seen[k] = true; accList.push({ name: a.name, suffix: a.value.substring(15, 24), fullState: a.value }); }
+          } else {
+            var sfx2 = a.value.substring(15, 24);
+            if (!seen[sfx2]) { seen[sfx2] = true; accList.push({ name: a.name, suffix: sfx2, fullState: null }); }
+          }
+        });
+        // Mark the current selection from the saved bouille.
+        var cur = state.bouilleByUser[state.userLower] || DEFAULT_BOUILLE;
+        if (isIncarnation(cur)) accSel = { suffix: cur.substring(15, 24), fullState: cur };
+        else accSel = { suffix: cur.substring(15, 24), fullState: null };
+        renderAccGrid();
+        updateSheetPreview();
+      })
+      .catch(function () {
+        $("#bouille-acc-grid").innerHTML = '<div class="sheet-hint">Inventaire indisponible.</div>';
+      });
+  }
+
+  function isAccSelected(ac) {
+    return ac.fullState ? (ac.fullState === accSel.fullState)
+                        : (!accSel.fullState && ac.suffix === accSel.suffix);
+  }
+  function renderAccGrid() {
+    var grid = $("#bouille-acc-grid");
+    grid.innerHTML = "";
+    accList.forEach(function (ac, i) {
+      var st = ac.fullState ? ac.fullState : buildState(myBase, ac.suffix, null);
+      var item = el("div", "acc-item" + (isAccSelected(ac) ? " sel" : ""));
+      item.innerHTML = '<div class="thumb">' + previewIframe(st) + '</div><div class="lbl">' + (ac.name || "Accessoire") + '</div>';
+      item.addEventListener("click", function () { pickAccessory(i); });
+      grid.appendChild(item);
+    });
+  }
+  function updateSheetPreview() {
+    var st = buildState(myBase, accSel.suffix, accSel.fullState);
+    $("#bouille-sheet-preview").innerHTML = previewIframe(st);
+  }
+  function pickAccessory(i) {
+    var ac = accList[i]; if (!ac) return;
+    accSel = { suffix: ac.suffix, fullState: ac.fullState || null };
+    renderAccGrid();
+    updateSheetPreview();
+    var newState = buildState(myBase, accSel.suffix, accSel.fullState);
+    // Persist to the account (same endpoint the SWF editor uses).
+    fetch("/do/eb?sid=" + encodeURIComponent(state.sid) + "&b=" + encodeURIComponent(newState), { cache: "no-store" })
+      .then(function () {
+        state.bouilleByUser[state.userLower] = newState;
+        // Re-broadcast our presence so others refresh our bouille: leave+rejoin
+        // the room is heavy; instead just update locally — the next time we talk,
+        // our reaction overlay uses the new state, and peers get it on their
+        // next userlist/trace refresh.
+      })
+      .catch(function () { /* keep local selection even if save failed */ });
+  }
+
+  // ── Mobile keyboard handling ─────────────────────────────────────────────
+  // When the on-screen keyboard opens, the browser shrinks the "visual
+  // viewport" (and often scrolls the whole page so the focused input is
+  // visible, pushing the header/messages off-screen). We instead size the app
+  // to window.visualViewport.height and pin it to the visible region, so the
+  // header stays put, the messages list keeps the input just above the
+  // keyboard, and nothing scrolls off the top. Falls back gracefully where
+  // visualViewport is unavailable.
+  var vv = window.visualViewport || null;
+  function applyViewport() {
+    var h = vv ? vv.height : (window.innerHeight || document.documentElement.clientHeight);
+    document.documentElement.style.setProperty("--app-h", h + "px");
+    // Pin the fixed body to the top of the visual viewport (handles the case
+    // where the browser offsets the layout viewport under the keyboard).
+    document.body.style.transform = vv ? ("translateY(" + Math.round(vv.offsetTop) + "px)") : "";
+    // Keep the latest messages in view above the keyboard.
+    if (nearBottom()) scrollDown();
+  }
+  if (vv) {
+    vv.addEventListener("resize", applyViewport);
+    vv.addEventListener("scroll", applyViewport);
+  }
+  window.addEventListener("resize", applyViewport);
+  window.addEventListener("orientationchange", function () { setTimeout(applyViewport, 200); });
+  applyViewport();
+
+  // When the input gains focus (keyboard opening), snap to the bottom shortly
+  // after so the composer + last messages sit right above the keyboard.
+  (function () {
+    var inp = document.getElementById("compose-input");
+    if (inp) inp.addEventListener("focus", function () {
+      setTimeout(function () { applyViewport(); scrollDown(); }, 300);
+    });
+  })();
 })();
 </script>
 </body>
