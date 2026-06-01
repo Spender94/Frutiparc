@@ -307,23 +307,35 @@
 </head>
 <body>
   <style>
-    #mobile-suggest {
-      position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 10px;
-      background: #2C4A0F; color: #fff; padding: 9px 12px; font-size: 13px; font-weight: bold;
-      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    #mobile-popup {
+      position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.45); padding: 20px;
     }
-    #mobile-suggest.hidden { display: none; }
-    #mobile-suggest .ms-text { flex: 1; min-width: 0; }
-    #mobile-suggest .ms-go {
-      background: #CFF599; color: #2C4A0F; text-decoration: none; padding: 6px 12px;
-      border-radius: 16px; white-space: nowrap;
+    #mobile-popup.hidden { display: none; }
+    #mobile-popup .mp-card {
+      background: #fff; border: 2px solid #2C4A0F; border-radius: 16px; max-width: 360px; width: 100%;
+      padding: 22px 20px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,.35);
     }
-    #mobile-suggest .ms-close { background: transparent; border: 0; color: #fff; font-size: 16px; cursor: pointer; padding: 4px 6px; }
+    #mobile-popup .mp-emoji { font-size: 40px; line-height: 1; margin-bottom: 6px; }
+    #mobile-popup h3 { margin: 0 0 8px; color: #2C4A0F; font-size: 18px; }
+    #mobile-popup p { margin: 0 0 16px; color: #4f7b1f; font-size: 14px; line-height: 1.45; }
+    #mobile-popup .mp-go {
+      display: block; background: #2C4A0F; color: #CFF599; text-decoration: none; font-weight: bold;
+      padding: 12px; border-radius: 10px; font-size: 15px;
+    }
+    #mobile-popup .mp-stay {
+      display: block; width: 100%; margin-top: 10px; background: transparent; border: 0;
+      color: #2f6b16; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 8px;
+    }
   </style>
-  <div id="mobile-suggest" class="hidden" role="dialog" aria-label="Version mobile disponible">
-    <span class="ms-text">📱 Une version mobile plus adaptée est disponible.</span>
-    <a class="ms-go" href="/light">Y aller</a>
-    <button class="ms-close" type="button" id="mobile-suggest-close" aria-label="Fermer">✕</button>
+  <div id="mobile-popup" class="hidden" role="dialog" aria-modal="true" aria-label="Version mobile disponible">
+    <div class="mp-card">
+      <div class="mp-emoji">📱</div>
+      <h3>Version mobile disponible</h3>
+      <p>Frutiparc a une version <strong>mobile light</strong> (chat &amp; forum), plus rapide et adaptée à ton téléphone. Tu veux l'essayer ?</p>
+      <a class="mp-go" href="/light" id="mobile-popup-go">Passer en version mobile</a>
+      <button class="mp-stay" type="button" id="mobile-popup-stay">Rester sur la version classique</button>
+    </div>
   </div>
   <header class="topbar" id="topbar">
     <img class="logo" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/logo.gif" alt="Frutiparc" />
@@ -594,20 +606,21 @@
       });
     }
 
-    // Propose the mobile version on phones (dismissible, choice remembered).
+    // On arrival, a pop-up proposes the mobile "light" version. Dismissible and
+    // remembered (localStorage) so it shows once, not on every visit.
     (function () {
-      const banner = document.getElementById('mobile-suggest');
-      const closeBtn = document.getElementById('mobile-suggest-close');
-      if (!banner) return;
-      const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-        (window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+      const popup = document.getElementById('mobile-popup');
+      if (!popup) return;
       let dismissed = false;
-      try { dismissed = localStorage.getItem('fp_hide_mobile_suggest') === '1'; } catch (e) {}
-      if (isMobile && !dismissed) banner.classList.remove('hidden');
-      if (closeBtn) closeBtn.addEventListener('click', () => {
-        banner.classList.add('hidden');
-        try { localStorage.setItem('fp_hide_mobile_suggest', '1'); } catch (e) {}
-      });
+      try { dismissed = localStorage.getItem('fp_mobile_popup') === '1'; } catch (e) {}
+      function remember() { try { localStorage.setItem('fp_mobile_popup', '1'); } catch (e) {} }
+      function close() { popup.classList.add('hidden'); remember(); }
+      if (!dismissed) popup.classList.remove('hidden');
+      const stay = document.getElementById('mobile-popup-stay');
+      const go = document.getElementById('mobile-popup-go');
+      if (stay) stay.addEventListener('click', close);
+      if (go) go.addEventListener('click', remember);            // remember before navigating to /light
+      popup.addEventListener('click', (e) => { if (e.target === popup) close(); }); // click backdrop = dismiss
     })();
 
     renderGames();
