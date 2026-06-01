@@ -1851,14 +1851,36 @@ function assembleMake(filePath) {
 // Regenerate ONLY the challenge map (mb2data.dat). Used both by the daily
 // roll and by the initial boot. Writes atomically via tmp+rename so a player
 // loading the file mid-write never sees a torn dseed/ddata pair.
+//
+// The seed is derived deterministically from the Europe/Paris calendar day, so
+// the generated map is identical across server reboots within the same day —
+// mb2data.dat is gitignored and regenerated on every fresh container, which is
+// why a random seed made the "map of the day" change on each reboot. It only
+// rolls over at Paris midnight, in step with the challenge medals (see
+// parisDayKey in server.js).
+function dailyChallengeSeed(date) {
+  const dayKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date || new Date()); // "YYYY-MM-DD"
+  // FNV-1a 32-bit hash, reduced to the generator's 30-bit seed space.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < dayKey.length; i++) {
+    h = Math.imul(h ^ dayKey.charCodeAt(i), 0x01000193);
+  }
+  return (h >>> 0) & 0x3FFFFFFF;
+}
+
 async function generateMb2ChallengeMap() {
   const outputDir = path.join(__dirname, 'Games', 'motionBall2');
   loadBumpers();
   let lastErr = null;
+  const baseSeed = dailyChallengeSeed();
   for (let attempt = 0; attempt < 10; attempt++) {
     try {
-      rng.selfInit();
-      const seed = rng.int(0x3FFFFFFF);
+      // Deterministic per-day seed. The attempt offset (also deterministic) only
+      // matters when a seed fails level validation, so a reboot reproduces the
+      // exact same successful map instead of rolling a fresh random one.
+      const seed = (baseSeed + attempt * 7919) & 0x3FFFFFFF;
       rng.init(seed);
       loadBumpers();
       const ddata = levelMake();
