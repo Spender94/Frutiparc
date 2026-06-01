@@ -653,16 +653,85 @@
     return "parle";
   }
 
-  function bouilleImgUrl(pseudo, anim, size) {
+  // Query string describing one bouille image (state + emote + anim + size).
+  var OVERLAY_SIZE = 160;
+  function bouilleQs(pseudo, anim) {
     var f = state.bouilleByUser[String(pseudo).toLowerCase()] || DEFAULT_BOUILLE;
-    var qs = "s=" + encodeURIComponent(f) + "&e=0&size=" + (size || 160);
-    // "parle" can be a short loop; others are reaction GIFs. All as GIF so the
-    // avatar moves; /bouille-img builds + caches it on first use.
-    qs += "&anim=" + encodeURIComponent(anim || "parle") + "&fmt=gif";
-    return "/bouille-img?" + qs;
+    var qs = "s=" + encodeURIComponent(f) + "&e=0&size=" + OVERLAY_SIZE
+      + "&anim=" + encodeURIComponent(anim || "parle") + "&fmt=gif";
+    return qs;
   }
 
-  var OVERLAY_MS = 3500;
+  // Hidden iframe that runs /bouille-capture (a real document → Ruffle executes,
+  // renders the bouille, POSTs the GIF, fills the server cache). An <img> can't
+  // do this itself: <img src="/bouille-img?…"> only follows the 302 to the
+  // capture page and then fails (it's HTML, not an image). So we drive the
+  // capture in this iframe, poll the cache, then point <img> at the ready file.
+  var captureFrame = null;
+  function ensureCaptureFrame() {
+    if (captureFrame) return captureFrame;
+    captureFrame = document.createElement("iframe");
+    captureFrame.style.cssText = "position:fixed;left:-10000px;top:0;width:200px;height:200px;border:0;";
+    captureFrame.setAttribute("aria-hidden", "true");
+    document.body.appendChild(captureFrame);
+    return captureFrame;
+  }
+
+  // Track in-flight captures so two messages needing the same image don't spawn
+  // two capture loads.
+  var capturing = {};
+  var captureFailed = {};
+  // The capture iframe reports ok/error via postMessage; surface errors to the
+  // console so a never-appearing image is debuggable, and remember failures so
+  // we don't keep hammering a bouille Ruffle can't render.
+  window.addEventListener("message", function (ev) {
+    var d = ev && ev.data;
+    if (!d || !d.__bouilleCapture) return;
+    if (d.__bouilleCapture === "error") {
+      console.warn("[bouille] capture échouée:", d.detail, "anim=", d.anim, "fmt=", d.fmt);
+    } else if (d.__bouilleCapture === "ok") {
+      console.log("[bouille] capture ok (" + d.detail + " octets) anim=" + d.anim);
+    }
+  });
+  function requestCapture(qs) {
+    if (capturing[qs]) return;
+    capturing[qs] = true;
+    var frame = ensureCaptureFrame();
+    // Loading the capture page in the iframe runs Ruffle, renders the bouille,
+    // and POSTs the GIF to fill the server cache. We poll status separately.
+    frame.src = "/bouille-capture?" + qs;
+    // Safety: clear the in-flight flag after a while so a failed capture can be
+    // retried on a later message.
+    setTimeout(function () { delete capturing[qs]; }, 16000);
+  }
+
+  // Resolve the image: if cached, return its URL now; otherwise kick off a
+  // capture and poll until ready (or give up). Calls cb(url) on success.
+  function resolveBouilleImage(qs, cb) {
+    fetch("/api/bouille-img/status?" + qs, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.cached) { cb("/bouille-img?" + qs + "&nocapture=1"); return; }
+        requestCapture(qs);
+        var tries = 0;
+        (function poll() {
+          if (tries++ > 30) return; // ~15s budget
+          setTimeout(function () {
+            fetch("/api/bouille-img/status?" + qs, { cache: "no-store" })
+              .then(function (r) { return r.json(); })
+              .then(function (d2) {
+                if (d2 && d2.cached) { delete capturing[qs]; cb("/bouille-img?" + qs + "&nocapture=1"); }
+                else poll();
+              })
+              .catch(poll);
+          }, 500);
+        })();
+      })
+      .catch(function () { /* status endpoint unreachable — skip silently */ });
+  }
+
+  var OVERLAY_MS = 4500;
+  var overlaySeq = 0;
   function showBouilleOverlay(pseudo, anim) {
     var box = $("#bouille-overlay");
     if (!box) return;
@@ -670,13 +739,28 @@
     var name = $("#bouille-overlay-name");
     var labelMap = { parle: "parle", rire: "rigole", mdr: "explose de rire",
       pleurer: "pleure", langue: "tire la langue", miam: "se régale",
-      question: "s'interroge", rougir: "rougit", sifflote: "sifflote", gum: "fait un chewing-gum" };
+      question: "s'interroge", rougir: "rougit", sifflote: "sifflote",
+      gum: "fait un chewing-gum", regard: "regarde" };
+    var mySeq = ++overlaySeq;
     name.textContent = pseudo + " " + (labelMap[anim] || "parle");
-    // Force reload even if same src (cache-bust only the DOM, not the server).
-    img.src = bouilleImgUrl(pseudo, anim, 160);
+    img.style.visibility = "hidden";   // show the frame immediately; image fills in
     box.classList.add("show");
     if (state.overlayTimer) clearTimeout(state.overlayTimer);
-    state.overlayTimer = setTimeout(function () { box.classList.remove("show"); }, OVERLAY_MS);
+
+    var qs = bouilleQs(pseudo, anim);
+    resolveBouilleImage(qs, function (url) {
+      // A newer message may have superseded this overlay while we waited.
+      if (mySeq !== overlaySeq) return;
+      img.onload = function () { img.style.visibility = "visible"; };
+      img.onerror = function () { img.style.visibility = "hidden"; };
+      img.src = url;
+      // Restart the auto-hide once the image is actually shown.
+      if (state.overlayTimer) clearTimeout(state.overlayTimer);
+      state.overlayTimer = setTimeout(function () { box.classList.remove("show"); }, OVERLAY_MS);
+    });
+
+    // Even if the image never resolves, don't leave an empty frame forever.
+    state.overlayTimer = setTimeout(function () { box.classList.remove("show"); }, OVERLAY_MS + 11000);
   }
   // Tap the overlay to dismiss it immediately.
   (function () {

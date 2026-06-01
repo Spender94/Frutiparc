@@ -75,17 +75,29 @@
     return r;
   }
 
-  function fail(m) {
-    document.getElementById("msg").textContent = "Échec de la génération : " + m;
-    // As a fallback, send the viewer to the still proxy so an <img> isn't broken
-    // forever — but avoid an infinite loop by only doing it for GIFs.
-    setTimeout(function () {
-      if (fmt === "gif") {
-        var qs = new URLSearchParams({ s: state, e: emote, size: String(size), fmt: "png" });
-        window.location.replace("/bouille-img?" + qs.toString());
-      }
-    }, 50);
+  // Report status to the parent (the /light overlay drives us in an iframe) so
+  // failures are visible for debugging instead of silently never producing an
+  // image. Harmless when opened standalone.
+  function report(kind, detail) {
+    try { if (window.parent && window.parent !== window) window.parent.postMessage({ __bouilleCapture: kind, detail: detail || "", s: state, anim: animId, fmt: fmt }, "*"); } catch (e) {}
   }
+
+  var done = false;
+  function fail(m) {
+    if (done) return; done = true;
+    document.getElementById("msg").textContent = "Échec de la génération : " + m;
+    report("error", String(m));
+    // Fallback: a GIF that failed to capture retries as a still PNG so an <img>
+    // isn't broken forever (PNG path is simpler — single frame, no encoder).
+    if (fmt === "gif") {
+      var qs = new URLSearchParams({ s: state, e: emote, size: String(size), fmt: "png" });
+      setTimeout(function () { window.location.replace("/bouille-img?" + qs.toString()); }, 50);
+    }
+  }
+
+  // Global watchdog: if nothing succeeded within 14s, declare failure so the
+  // parent's poll loop can stop waiting and (for GIF) the PNG fallback kicks in.
+  setTimeout(function () { fail("timeout"); }, 14000);
 
   // Find Ruffle's <canvas> inside its open shadow root.
   function findCanvas(player) {
@@ -111,6 +123,7 @@
   }
 
   function postImage(blob) {
+    if (done) return;
     var qs = new URLSearchParams({ s: state, e: emote, size: String(size), fmt: fmt });
     if (animId) qs.set("anim", animId);
     var redirect = "/bouille-img?" + qs.toString();
@@ -118,9 +131,15 @@
       method: "POST",
       headers: { "Content-Type": fmt === "gif" ? "image/gif" : "image/png" },
       body: blob,
-    }).then(function () {
-      // Cache is filled; bounce to the static image.
-      window.location.replace(redirect);
+    }).then(function (r) {
+      if (!r.ok) { fail("POST " + r.status); return; }
+      done = true;
+      report("ok", String(blob.size || 0));
+      document.getElementById("msg").textContent = "Image générée ✓";
+      // Cache is filled. When driven in the overlay iframe the parent polls the
+      // status endpoint, so we don't need to navigate; navigating is only useful
+      // when this page is opened directly. Bounce only if we're the top window.
+      if (window.parent === window) window.location.replace(redirect);
     }).catch(function (e) {
       fail("envoi: " + (e && e.message || e));
     });

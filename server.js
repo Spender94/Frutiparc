@@ -3231,11 +3231,23 @@ app.get('/bouille-img', (req, res) => {
     return res.sendFile(file);
   }
   if (String(req.query.nocapture || '') === '1') {
+    // Not cached and capture suppressed → 404 that the browser must NOT cache,
+    // otherwise the <img> would keep replaying the 404 after the cache fills.
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(404).json({ ok: false, error: 'not_cached' });
   }
   const qs = new URLSearchParams({ s: p.s, e: p.e, size: String(p.size), fmt: p.fmt });
   if (p.anim) qs.set('anim', p.anim);
   return res.redirect(302, '/bouille-capture?' + qs.toString());
+});
+
+// Lightweight cache-existence probe (JSON), so the front-end can poll for a
+// freshly-captured image without fetching its bytes or following a redirect.
+app.get('/api/bouille-img/status', (req, res) => {
+  const p = normalizeBouilleImgParams(req.query);
+  const exists = fs.existsSync(bouilleImgPath(p));
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, cached: exists, key: bouilleImgKey(p), fmt: p.fmt });
 });
 
 const BOUILLE_IMG_MAX_BYTES = 4 * 1024 * 1024; // 4 MB cap per captured image
