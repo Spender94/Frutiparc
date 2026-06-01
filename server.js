@@ -10622,6 +10622,18 @@ function escapeXml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Reverse of escapeXml (incl. apostrophe forms). Used to normalise an incoming
+// chat body before re-escaping it for broadcast: Flash's XMLSocket escapes
+// apostrophes (l&apos;été), and escapeXml would otherwise re-escape that '&' to
+// '&amp;' — double-escaping it so every client shows the literal "&apos;".
+// Unescaping first, then escaping, keeps a single correct level. (&amp; is
+// undone last so a real "&amp;" the user typed isn't turned into a bare '&'.)
+function unescapeXml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#0*39;/g, "'").replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+}
+
 // Minimal XML attribute parser (good enough for CBee messages)
 function parseXmlAttrs(xmlStr) {
   const result = { tag: '', attrs: {}, content: '', children: [] };
@@ -12480,7 +12492,7 @@ case 'send': {
     // An earlier inline-<img> relay lived here, but Ruffle does not render <img>
     // inside the chat htmlText, so it has been removed.
 
-    let safeText = escapeXml(text);
+    let safeText = escapeXml(unescapeXml(text));
 
     // Moderator "!" prefix: route through chat.msg_admin ("$h<i>$m</i>") and
     // inline a red bold <font> in BOTH the timestamp (h attr) and message

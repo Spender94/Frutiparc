@@ -880,6 +880,22 @@
           addMessage({ from: from, time: h, body: ty === "i" ? "[image]" : "[cadeau]", kind: "system" });
           break;
         }
+        // Emote frame: the body is a bare bouille-anim index (e.g. "3" = mdr),
+        // exactly how the desktop transmits an emote. Render the italic action
+        // + the matching bouille animation — identical on both clients —
+        // instead of showing the raw number. (Index 1 = "parle" is the plain
+        // speak animation, not an emote, so it falls through to normal text.)
+        var emoteIdx = body.trim();
+        var emoteAnim = /^[0-9]+$/.test(emoteIdx) ? ANIM_BY_INDEX[emoteIdx] : null;
+        if (emoteAnim && emoteAnim !== "parle") {
+          addMessage({
+            from: from, time: h,
+            body: ANIM_LABEL[emoteAnim] || emoteAnim,
+            kind: (from === "admin") ? "admin" : "normal", emote: true, pen: null,
+          });
+          if (from && from !== "admin") showBouilleOverlay(from, emoteAnim);
+          break;
+        }
         var text = xmlUnescape(body);
         var kind = (from === "admin") ? "admin" : "normal";
         var em = detectEmote(text);
@@ -988,8 +1004,16 @@
     var inp = $("#compose-input");
     var text = inp.value;
     if (!text.trim() || !state.connected || !state.room) return;
-    // Send as a normal message frame; the body uses bodyEscape (see helper).
-    wsSend('<t g="' + xmlEscape(state.room) + '" t="m" p="' + xmlEscape(state.pen) + '">' + bodyEscape(text) + "</t>");
+    // Emotes ("mdr", "lol", ":p"…) are sent as a bare bouille-anim index — the
+    // same wire form the desktop uses — so BOTH clients show the action + the
+    // bouille animation (desktop no longer just sees the raw "mdr" text).
+    // Everything else is a normal message (body via bodyEscape).
+    var em = detectEmote(text);
+    if (em.isEmote && ANIM_INDEX[em.anim]) {
+      wsSend('<t g="' + xmlEscape(state.room) + '" t="m" p="">' + ANIM_INDEX[em.anim] + "</t>");
+    } else {
+      wsSend('<t g="' + xmlEscape(state.room) + '" t="m" p="' + xmlEscape(state.pen) + '">' + bodyEscape(text) + "</t>");
+    }
     inp.value = "";
     inp.focus();
   });
@@ -1189,6 +1213,10 @@
     pleurer:"pleure", langue:"tire la langue", miam:"se régale",
     question:"s'interroge", rougir:"rougit", sifflote:"siffle",
     gum:"fait un chewing-gum", regard:"regarde" };
+  // Reverse map (anim index -> name) for rendering emotes that travel as a bare
+  // bouille-anim index in the chat body (the desktop's wire form).
+  var ANIM_BY_INDEX = {};
+  Object.keys(ANIM_INDEX).forEach(function (a) { ANIM_BY_INDEX[ANIM_INDEX[a]] = a; });
 
   // Live-Ruffle overlay: instead of a captured GIF (latency + raster pixelation)
   // we embed bouille-preview.html in a transparent iframe — Ruffle renders the
