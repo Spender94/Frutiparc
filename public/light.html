@@ -275,15 +275,35 @@
   /* User list drawer */
   #users-drawer {
     position: absolute; top: 0; right: 0; bottom: 0; width: 72%; max-width: 280px;
-    background: #fff; border-left: 2px solid #2C4A0F; z-index: 30;
+    background: #fff; border-left: 1px solid #DDDDDD; z-index: 30;
     transform: translateX(100%); transition: transform .22s ease;
     display: flex; flex-direction: column; box-shadow: -6px 0 18px rgba(44,74,15,.25);
   }
   #users-drawer.open { transform: translateX(0); }
   #users-drawer h3 { margin: 0; padding: 12px 14px; background: #fff; color: #D16767; font-size: 14px; border-bottom: 1px solid #DDDDDD; }
-  #users-drawer .list { flex: 1; overflow-y: auto; padding: 6px 0; }
-  #users-drawer .u { padding: 9px 14px; border-bottom: 1px solid #DDDDDD; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-  #users-drawer .u .badge { font-size: 9px; background: #2C4A0F; color: #CFF599; border-radius: 3px; padding: 1px 5px; }
+  /* Connected-users list styled after the "score panel" mockup: a light-green
+     card (soft green border, rounded top, inner white highlight + green glow)
+     encapsulated in the white drawer; rows alternate two greens with big bold
+     Verdana pseudos in deep indigo. */
+  #users-drawer .list {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    margin: 10px; padding: 0;
+    background: #e8f8d1; border: 4px solid #bff18d; border-radius: 24px 24px 0 0;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.45), 0 0 4px rgba(126,220,80,.45);
+  }
+  #users-drawer .u {
+    min-height: 48px; padding: 6px 12px; background: #e8f8d1;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    color: #242169; font-family: 'Verdana', Arial, sans-serif; font-weight: 900;
+    font-size: 22px; line-height: 1; letter-spacing: -.7px;
+    text-shadow: 0 1px 0 rgba(255,255,255,.25);
+  }
+  #users-drawer .u:nth-child(odd) { background: #d6f7b5; }
+  #users-drawer .u > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #users-drawer .u .badge {
+    font-size: 10px; font-weight: bold; background: #242169; color: #fff;
+    border-radius: 8px; padding: 1px 6px; letter-spacing: 0; text-shadow: none; flex-shrink: 0;
+  }
   #drawer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.25); z-index: 25; display: none; }
   #drawer-backdrop.show { display: block; }
 
