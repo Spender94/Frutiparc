@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Frutiparc — capture bouille</title>
+<style>
+  html, body { margin: 0; background: #E8F8D3; }
+  /* The player is rendered off the visible area; users only ever see the
+     resulting <img>. Keep it on-screen (not display:none) so Ruffle actually
+     rasterises frames. */
+  #stage { position: fixed; left: -10000px; top: 0; }
+  #msg { font: 13px Verdana, sans-serif; color: #2C4A0F; padding: 16px; }
+</style>
+<script>
+  window.RufflePlayer = window.RufflePlayer || {};
+  window.RufflePlayer.config = {
+    autoplay: "on",
+    unmuteOverlay: "hidden",
+    contextMenu: "off",
+    showSwfDownload: false,
+    upgradeToHttps: false,
+    splashScreen: false,
+    preferredRenderer: "canvas",
+    publicPath: "/ruffle/",
+    backgroundColor: "#E8F8D3"
+  };
+</script>
+<script src="/ruffle/ruffle.js" onerror="
+  window.RufflePlayer.config.publicPath = undefined;
+  var s = document.createElement('script');
+  s.src = 'https://unpkg.com/@ruffle-rs/ruffle';
+  document.head.appendChild(s);
+"></script>
+<script src="/js/bouille-gif.js"></script>
+</head>
+<body>
+<div id="msg">Génération de l'image…</div>
+<div id="stage"></div>
+<script>
+(function () {
+  "use strict";
+  var params = new URLSearchParams(window.location.search);
+  var state = String(params.get("s") || "000000010000000000000000").replace(/[^0-9A-Za-z]/g, "").slice(0, 24);
+  if (state.length < 4) state = "000000010000000000000000";
+  var emote = String(params.get("e") || "0");
+  var animId = String(params.get("anim") || "").toLowerCase().replace(/[^a-z]/g, "");
+  var size = Math.max(48, Math.min(512, parseInt(params.get("size"), 10) || 160));
+  var fmt = String(params.get("fmt") || (animId ? "gif" : "png")).toLowerCase();
+  if (fmt !== "png" && fmt !== "gif") fmt = animId ? "gif" : "png";
+  if (fmt === "png") animId = "";
+
+  // emote → fe/fm frame numbers (mirrors bouille-preview.html).
+  var EMOTE_LIST = [[0,0],[1,2],[2,1],[0,3],[3,4],[1,4],[2,3],[2,6]];
+  var ei = parseInt(emote, 10); if (!(ei >= 0 && ei < EMOTE_LIST.length)) ei = 0;
+  var feFrame = String(EMOTE_LIST[ei][0] + 1);
+  var fmFrame = String(EMOTE_LIST[ei][1] + 1);
+
+  // anim id → playAnim index forwarded to the patched SWF.
+  var ANIM_INDEX = { parle:1, rire:2, mdr:3, langue:4, rougir:5, regard:6, sifflote:7, gum:8, question:9, miam:10, pleurer:11 };
+  var animFlash = animId ? String(ANIM_INDEX[animId] || "") : "";
+
+  // GIF capture tuning.
+  var GIF_FRAMES = 18;       // frames captured for an animation
+  var GIF_DELAY_CS = 6;      // centiseconds between frames (~16.6 fps)
+  var WARMUP_MS = 650;       // let Ruffle paint the first real frame
+  var FRAME_GAP_MS = 70;     // wall-clock gap between GIF captures
+
+  function decode62(s) {
+    var r = 0, mult = 1;
+    for (var i = s.length - 1; i >= 0; i--) {
+      var c = s.charAt(i);
+      var v = (c === c.toLowerCase()) ? parseInt(c, 36) : (parseInt(c.toLowerCase(), 36) + 26);
+      r += v * mult; mult *= 62;
+    }
+    return r;
+  }
+
+  function fail(m) {
+    document.getElementById("msg").textContent = "Échec de la génération : " + m;
+    // As a fallback, send the viewer to the still proxy so an <img> isn't broken
+    // forever — but avoid an infinite loop by only doing it for GIFs.
+    setTimeout(function () {
+      if (fmt === "gif") {
+        var qs = new URLSearchParams({ s: state, e: emote, size: String(size), fmt: "png" });
+        window.location.replace("/bouille-img?" + qs.toString());
+      }
+    }, 50);
+  }
+
+  // Find Ruffle's <canvas> inside its open shadow root.
+  function findCanvas(player) {
+    try {
+      var root = player.shadowRoot || player;
+      var c = root.querySelector("canvas");
+      return c || null;
+    } catch (e) { return null; }
+  }
+
+  // Copy the player canvas into a square `size`×`size` 2D canvas. Returns the
+  // 2D context (for getImageData) and the canvas (for toBlob).
+  function grab(player, dst, dctx) {
+    var src = findCanvas(player);
+    if (!src || !src.width || !src.height) return false;
+    dctx.clearRect(0, 0, size, size);
+    // Preserve aspect: letterbox the source into the square.
+    var scale = Math.min(size / src.width, size / src.height);
+    var w = Math.round(src.width * scale), h = Math.round(src.height * scale);
+    var ox = (size - w) >> 1, oy = (size - h) >> 1;
+    try { dctx.drawImage(src, ox, oy, w, h); } catch (e) { return false; }
+    return true;
+  }
+
+  function postImage(blob) {
+    var qs = new URLSearchParams({ s: state, e: emote, size: String(size), fmt: fmt });
+    if (animId) qs.set("anim", animId);
+    var redirect = "/bouille-img?" + qs.toString();
+    fetch("/api/bouille-img?" + qs.toString(), {
+      method: "POST",
+      headers: { "Content-Type": fmt === "gif" ? "image/gif" : "image/png" },
+      body: blob,
+    }).then(function () {
+      // Cache is filled; bounce to the static image.
+      window.location.replace(redirect);
+    }).catch(function (e) {
+      fail("envoi: " + (e && e.message || e));
+    });
+  }
+
+  function loadPlayer(onReady) {
+    if (!window.RufflePlayer || !window.RufflePlayer.newest) { fail("Ruffle indisponible"); return; }
+    var familyId = decode62(state.substring(0, 2));
+    var ruffle = window.RufflePlayer.newest();
+    var player = ruffle.createPlayer();
+    player.style.width = size + "px";
+    player.style.height = size + "px";
+    document.getElementById("stage").appendChild(player);
+    player.load({
+      url: "/fbouille_patched/famille" + familyId + ".swf?v=7",
+      autoplay: "on",
+      allowScriptAccess: true,
+      quality: "high",
+      backgroundColor: "#E8F8D3",
+      parameters: { s: state, e: emote, fe: feFrame, fm: fmFrame, anim: animFlash },
+      allowNetworking: "all"
+    }).then(function () { onReady(player); }).catch(function (e) { fail("chargement SWF: " + (e && e.message || e)); });
+  }
+
+  function captureStill(player) {
+    var dst = document.createElement("canvas"); dst.width = size; dst.height = size;
+    var dctx = dst.getContext("2d");
+    var tries = 0;
+    (function attempt() {
+      if (grab(player, dst, dctx)) {
+        dst.toBlob(function (blob) {
+          if (!blob) { fail("toBlob null"); return; }
+          postImage(blob);
+        }, "image/png");
+      } else if (++tries < 40) {
+        setTimeout(attempt, 60);
+      } else { fail("canvas introuvable"); }
+    })();
+  }
+
+  function captureAnim(player) {
+    var dst = document.createElement("canvas"); dst.width = size; dst.height = size;
+    var dctx = dst.getContext("2d");
+    var frames = [];
+    var grabbed = 0, tries = 0;
+    (function loop() {
+      if (frames.length >= GIF_FRAMES) { finish(); return; }
+      if (grab(player, dst, dctx)) {
+        try { frames.push(dctx.getImageData(0, 0, size, size).data); } catch (e) { fail("getImageData: " + e.message); return; }
+        grabbed++;
+        setTimeout(loop, FRAME_GAP_MS);
+      } else if (++tries < 40) {
+        setTimeout(loop, 60);
+      } else { fail("canvas introuvable"); }
+    })();
+
+    function finish() {
+      try {
+        // The famille SWF paints on the page background (#E8F8D3); make that
+        // colour transparent so the GIF sits cleanly on any surface.
+        var BG = [0xE8, 0xF8, 0xD3];
+        var rgbaFrames = frames.map(function (data) {
+          var out = new Uint8ClampedArray(data.length);
+          for (var i = 0; i < data.length; i += 4) {
+            var r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+            var near = Math.abs(r - BG[0]) <= 10 && Math.abs(g - BG[1]) <= 10 && Math.abs(b - BG[2]) <= 10;
+            if (a < 16 || near) { out[i + 3] = 0; }
+            else { out[i] = r; out[i + 1] = g; out[i + 2] = b; out[i + 3] = 255; }
+          }
+          return out;
+        });
+        var delays = []; for (var k = 0; k < rgbaFrames.length; k++) delays.push(GIF_DELAY_CS);
+        var gifBytes = window.BouilleGif.fromRGBAFrames(rgbaFrames, size, size, { delays: delays, loop: 0, maxColors: 256 });
+        postImage(new Blob([gifBytes], { type: "image/gif" }));
+      } catch (e) { fail("encodage GIF: " + (e && e.message || e)); }
+    }
+  }
+
+  function start() {
+    loadPlayer(function (player) {
+      setTimeout(function () {
+        if (fmt === "gif") captureAnim(player);
+        else captureStill(player);
+      }, WARMUP_MS);
+    });
+  }
+
+  // Ruffle may still be initialising when DOMContentLoaded fires; poll briefly.
+  var waited = 0;
+  (function waitRuffle() {
+    if (window.RufflePlayer && window.RufflePlayer.newest) { start(); return; }
+    if ((waited += 50) > 8000) { fail("Ruffle non chargé"); return; }
+    setTimeout(waitRuffle, 50);
+  })();
+})();
+</script>
+</body>
+</html>

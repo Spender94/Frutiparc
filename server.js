@@ -112,8 +112,15 @@ app.use(express.urlencoded({ extended: true }));
 // Ruffle's LoadVars.sendAndLoad may send POST bodies as text/plain or
 // with no Content-Type at all. Capture any unparsed body as raw text,
 // but ONLY when the previous parsers didn't already handle it.
+// Exclude image/* (and octet-stream) so binary uploads — e.g. captured bouille
+// PNG/GIF on POST /api/bouille-img — reach their route-level express.raw parser
+// intact instead of being mangled into a UTF-8 string here.
 app.use(express.text({
-  type: (req) => !req.body || (typeof req.body === 'object' && Object.keys(req.body).length === 0)
+  type: (req) => {
+    const ct = String(req.headers['content-type'] || '').toLowerCase();
+    if (ct.startsWith('image/') || ct.startsWith('application/octet-stream')) return false;
+    return !req.body || (typeof req.body === 'object' && Object.keys(req.body).length === 0);
+  }
 }));
 app.use((req, res, next) => {
   if (typeof req.body === 'string' && req.body.includes('=')) {
@@ -844,6 +851,47 @@ const LOGIN_BIS_PAGE_PATH = path.join(__dirname, 'public', 'login-bis.html');
 const SCORES_DIR = path.join(__dirname, 'data');
 const SCORES_FILE = path.join(SCORES_DIR, 'scores.json');
 const CHALLENGE_MEDALS_FILE = path.join(SCORES_DIR, 'challenge-medals.json');
+
+// ─────────────────────────────────────────────
+// Bouille → image cache (PNG / animated GIF).
+// A browser renders the Flash bouille via Ruffle (same-origin canvas), captures
+// the pixels and POSTs the encoded image here; we persist it under a content
+// key so later requests serve a static file with no Flash. Key is derived from
+// the visual inputs only (state + emote + animation + size + format), so the
+// same bouille shared by many users is captured once.
+// ─────────────────────────────────────────────
+const BOUILLE_IMG_DIR = path.join(SCORES_DIR, 'bouille-cache');
+// Animation id → playAnim index (mirrors bouille-preview / demo). '' = no anim.
+const BOUILLE_ANIMS = {
+  parle: 1, rire: 2, mdr: 3, langue: 4, rougir: 5, regard: 6,
+  sifflote: 7, gum: 8, question: 9, miam: 10, pleurer: 11,
+};
+function normalizeBouilleImgParams(q) {
+  // state: 24-char-ish alnum; keep it conservative.
+  let s = String(q.s || DEFAULT_BOUILLE_STATE).replace(/[^0-9A-Za-z]/g, '').slice(0, 24);
+  if (s.length < 4) s = DEFAULT_BOUILLE_STATE;
+  let e = String(q.e == null ? '0' : q.e).replace(/[^0-9]/g, '') || '0';
+  if (Number(e) < 0 || Number(e) > 12) e = '0';
+  let anim = String(q.anim || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (anim && !(anim in BOUILLE_ANIMS)) anim = '';
+  let size = Math.max(48, Math.min(512, parseInt(q.size, 10) || 160));
+  let fmt = String(q.fmt || (anim ? 'gif' : 'png')).toLowerCase();
+  if (fmt !== 'png' && fmt !== 'gif') fmt = anim ? 'gif' : 'png';
+  // A still PNG ignores anim in its key; a GIF keeps it.
+  if (fmt === 'png') anim = '';
+  return { s, e, anim, size, fmt };
+}
+function bouilleImgKey(p) {
+  const raw = [p.s, p.e, p.anim, p.size, p.fmt].join('|');
+  return crypto.createHash('sha1').update(raw).digest('hex');
+}
+function bouilleImgPath(p) {
+  return path.join(BOUILLE_IMG_DIR, bouilleImgKey(p) + '.' + p.fmt);
+}
+function ensureBouilleImgDir() {
+  try { if (!fs.existsSync(BOUILLE_IMG_DIR)) fs.mkdirSync(BOUILLE_IMG_DIR, { recursive: true }); }
+  catch (e) { console.error('[BOUILLE-IMG] mkdir failed:', e.message); }
+}
 let scoresData = { users: {} };
 let challengeMedalsData = { lastRollDay: '', medalsByVisibleDay: {}, pendingNotifications: {} };
 function loadScores() {
@@ -3154,6 +3202,74 @@ app.get('/api/me/bouille', (req, res) => {
   if (!username) return res.status(401).json({ ok: false });
   const bouille = bouilleOf(users[username], username);
   res.json({ ok: true, fbouille: bouille });
+});
+
+// ─────────────────────────────────────────────
+// Bouille → image (PNG / animated GIF), with on-disk cache.
+//
+//   GET  /bouille-img?s=&e=&anim=&size=&fmt=
+//        → 200 + image bytes if cached.
+//        → 302 redirect to /bouille-capture?... (a page that renders the
+//          bouille via Ruffle, captures it, POSTs it back, then redirects to
+//          the now-cached image). So an <img src="/bouille-img?..."> self-heals
+//          on first view: the capture page fills the cache, every later request
+//          is a static file. Pass &nocapture=1 to get a 404 instead of the
+//          redirect (used by the capture page itself to avoid a loop).
+//
+//   POST /api/bouille-img?s=&e=&anim=&size=&fmt=   (body = raw image bytes)
+//        → stores the captured image under the content key. No auth: the key is
+//          derived purely from public visual inputs, the payload is size-capped
+//          and only written for png/gif, and it can only ever populate a cache
+//          entry that GET would have produced anyway.
+// ─────────────────────────────────────────────
+app.get('/bouille-img', (req, res) => {
+  const p = normalizeBouilleImgParams(req.query);
+  const file = bouilleImgPath(p);
+  if (fs.existsSync(file)) {
+    res.type(p.fmt === 'gif' ? 'image/gif' : 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.sendFile(file);
+  }
+  if (String(req.query.nocapture || '') === '1') {
+    return res.status(404).json({ ok: false, error: 'not_cached' });
+  }
+  const qs = new URLSearchParams({ s: p.s, e: p.e, size: String(p.size), fmt: p.fmt });
+  if (p.anim) qs.set('anim', p.anim);
+  return res.redirect(302, '/bouille-capture?' + qs.toString());
+});
+
+const BOUILLE_IMG_MAX_BYTES = 4 * 1024 * 1024; // 4 MB cap per captured image
+app.post('/api/bouille-img', express.raw({ type: ['image/png', 'image/gif', 'application/octet-stream'], limit: BOUILLE_IMG_MAX_BYTES }), (req, res) => {
+  try {
+    const p = normalizeBouilleImgParams(req.query);
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length < 32) {
+      return res.status(400).json({ ok: false, error: 'empty_body' });
+    }
+    // Validate magic bytes match the declared format.
+    const isPng = body[0] === 0x89 && body[1] === 0x50 && body[2] === 0x4e && body[3] === 0x47;
+    const isGif = body[0] === 0x47 && body[1] === 0x49 && body[2] === 0x46; // "GIF"
+    if ((p.fmt === 'png' && !isPng) || (p.fmt === 'gif' && !isGif)) {
+      return res.status(400).json({ ok: false, error: 'format_mismatch' });
+    }
+    ensureBouilleImgDir();
+    const file = bouilleImgPath(p);
+    // Write atomically so a concurrent GET never sees a half-written file.
+    const tmp = file + '.' + crypto.randomBytes(4).toString('hex') + '.tmp';
+    fs.writeFileSync(tmp, body);
+    fs.renameSync(tmp, file);
+    console.log(`[BOUILLE-IMG] cached ${p.fmt} ${bouilleImgKey(p)} (${body.length} B) s=${p.s} e=${p.e} anim=${p.anim || '-'} size=${p.size}`);
+    res.json({ ok: true, bytes: body.length, key: bouilleImgKey(p) });
+  } catch (e) {
+    console.error('[BOUILLE-IMG] store error:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// The capture page: renders the bouille via Ruffle, grabs the canvas, POSTs the
+// image, then redirects to /bouille-img (now cached). Served statically.
+app.get('/bouille-capture', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'bouille-capture.html'));
 });
 
 // Same-origin image proxy for the chat /image command. Flash/Ruffle can't load
