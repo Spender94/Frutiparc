@@ -70,24 +70,27 @@
   #menu-backdrop.show { display: block; }
   #menu-drawer {
     position: fixed; top: 0; left: 0; bottom: 0; width: 74%; max-width: 290px; z-index: 36;
-    background: #fff; border-right: 2px solid #2C4A0F; display: flex; flex-direction: column;
+    background: #fff; border-right: 1px solid #DDDDDD; display: flex; flex-direction: column;
     transform: translateX(-100%); transition: transform .22s ease;
     box-shadow: 6px 0 18px rgba(44,74,15,.25);
   }
   #menu-drawer.open { transform: translateX(0); }
+  /* Hamburger drawer in the same pink/white style: pink header (white text),
+     white body with pink labels, grey #DDDDDD separators. */
   #menu-drawer .menu-head {
-    background: #84c640; color: #2C4A0F; padding: 14px 16px; font-weight: bold;
-    border-bottom: 1px solid #5a8a20; display: flex; align-items: center; gap: 8px; font-size: 15px;
+    background: #FEC9C9; color: #fff; padding: 14px 16px; font-weight: bold;
+    border-bottom: 1px solid #DDDDDD; display: flex; align-items: center; gap: 8px; font-size: 15px;
+    text-shadow: 0 1px 1px rgba(196,80,64,.55);
   }
-  #menu-drawer .menu-head .dot { width: 9px; height: 9px; border-radius: 50%; background: #c0392b; display: inline-block; }
+  #menu-drawer .menu-head .dot { width: 9px; height: 9px; border-radius: 50%; background: #c0392b; display: inline-block; box-shadow: 0 0 0 1px #fff; }
   #menu-drawer .menu-head .dot.on { background: #2ecc40; }
   .menu-item {
-    background: transparent; border: 0; border-bottom: 1px solid #eef6e0;
-    text-align: left; padding: 14px 16px; font-size: 15px; color: #2C4A0F; font-weight: bold;
+    background: transparent; border: 0; border-bottom: 1px solid #DDDDDD;
+    text-align: left; padding: 14px 16px; font-size: 15px; color: #D16767; font-weight: bold;
     display: flex; align-items: center; gap: 10px;
   }
-  .menu-item.active { background: #eaf6d6; }
-  .menu-item.danger { color: #b23b2e; }
+  .menu-item.active { background: #FFE4E4; color: #D16767; }
+  .menu-item.danger { color: #c05040; }
   /* All menu glyphs occupy the same 24px square box and are centered, so the
      favicon (16px), the forum ico (18px) and the inventory PNG (130px) all read
      as the same visual size regardless of their native dimensions. */
@@ -190,13 +193,15 @@
     border: 1px solid #ADE76B; border-radius: 5px;
     box-shadow: 0 0 0 1px #DDDDDD;
   }
-  .msg { margin: 3px 0; line-height: 1.4; word-wrap: break-word; }
-  .msg .time { color: #8aa86a; font-size: 11px; margin-right: 4px; }
-  .msg .from { font-weight: bold; color: #2f6b16; }
-  .msg .from.me { color: #1b6ea8; }
+  /* Messages render as "[hh:mm:ss] pseudo : message" in Verdana, reusing the
+     forum's post palette: dark-green author, slightly lighter green body. */
+  .msg { margin: 3px 0; line-height: 1.4; word-wrap: break-word; font-family: 'Verdana', Arial, sans-serif; }
+  .msg .time { color: #8aa770; font-size: 11px; margin-right: 4px; }
+  .msg .from { font-weight: bold; color: #2C4A0F; }
+  .msg .from.me { color: #E3756A; }
   .msg.system { color: #6b8a3f; font-style: italic; font-size: 12.5px; }
   .msg.admin { color: #b23b2e; }
-  .msg .body { color: #2C4A0F; }
+  .msg .body { color: #335511; }
   .msg .body.emote { font-style: italic; color: #4f7b1f; }
 
   .compose {
@@ -273,7 +278,7 @@
   #users-drawer.open { transform: translateX(0); }
   #users-drawer h3 { margin: 0; padding: 12px 14px; background: #fff; color: #D16767; font-size: 14px; border-bottom: 1px solid #DDDDDD; }
   #users-drawer .list { flex: 1; overflow-y: auto; padding: 6px 0; }
-  #users-drawer .u { padding: 9px 14px; border-bottom: 1px solid #eef6e0; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  #users-drawer .u { padding: 9px 14px; border-bottom: 1px solid #DDDDDD; font-size: 14px; display: flex; align-items: center; gap: 8px; }
   #users-drawer .u .badge { font-size: 9px; background: #2C4A0F; color: #CFF599; border-radius: 3px; padding: 1px 5px; }
   #drawer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.25); z-index: 25; display: none; }
   #drawer-backdrop.show { display: block; }
@@ -832,9 +837,13 @@
   function scrollDown() { msgEl.scrollTop = msgEl.scrollHeight; }
   function clearMessages() { msgEl.innerHTML = ""; }
   function cleanTime(h) {
-    // server sends "[hh:mm:ss] " — keep hh:mm only, compact.
-    var m = String(h || "").match(/(\d{2}):(\d{2})/);
-    return m ? (m[1] + ":" + m[2]) : "";
+    // server sends "[hh:mm:ss] " — show the full "[hh:mm:ss]" form so a line
+    // reads "[14:03:27] pseudo : message". Falls back to "[hh:mm]" if seconds
+    // are missing.
+    var m = String(h || "").match(/(\d{2}):(\d{2}):(\d{2})/);
+    if (m) return "[" + m[1] + ":" + m[2] + ":" + m[3] + "]";
+    var m2 = String(h || "").match(/(\d{2}):(\d{2})/);
+    return m2 ? "[" + m2[1] + ":" + m2[2] + "]" : "";
   }
   function addMessage(o) {
     var stick = nearBottom();
