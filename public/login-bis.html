@@ -306,6 +306,25 @@
   </style>
 </head>
 <body>
+  <style>
+    #mobile-suggest {
+      position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 10px;
+      background: #2C4A0F; color: #fff; padding: 9px 12px; font-size: 13px; font-weight: bold;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    #mobile-suggest.hidden { display: none; }
+    #mobile-suggest .ms-text { flex: 1; min-width: 0; }
+    #mobile-suggest .ms-go {
+      background: #CFF599; color: #2C4A0F; text-decoration: none; padding: 6px 12px;
+      border-radius: 16px; white-space: nowrap;
+    }
+    #mobile-suggest .ms-close { background: transparent; border: 0; color: #fff; font-size: 16px; cursor: pointer; padding: 4px 6px; }
+  </style>
+  <div id="mobile-suggest" class="hidden" role="dialog" aria-label="Version mobile disponible">
+    <span class="ms-text">📱 Une version mobile plus adaptée est disponible.</span>
+    <a class="ms-go" href="/light">Y aller</a>
+    <button class="ms-close" type="button" id="mobile-suggest-close" aria-label="Fermer">✕</button>
+  </div>
   <header class="topbar" id="topbar">
     <img class="logo" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/logo.gif" alt="Frutiparc" />
     <form id="login-form" class="login-form" autocomplete="on">
@@ -373,7 +392,7 @@
   <div class="status" id="status" aria-live="polite"></div>
 
   <footer>
-    <div class="footer-top">Aide (Gaspard) · <a href="#" id="forgot-link" style="color:inherit;text-decoration:underline">Oubli de code secret</a></div>
+    <div class="footer-top">Aide (Gaspard) · <a href="#" id="forgot-link" style="color:inherit;text-decoration:underline">Oubli de code secret</a> · <a href="/light" style="color:inherit;text-decoration:underline">Version mobile</a></div>
 
     <!-- Forgot-password inline form (revealed by the footer link) -->
     <div id="forgot-box" class="hidden" style="max-width:360px;margin:10px auto 0;background:#fff;border:1px solid #5a8a20;border-radius:10px;padding:14px;text-align:left">
@@ -574,6 +593,22 @@
         }
       });
     }
+
+    // Propose the mobile version on phones (dismissible, choice remembered).
+    (function () {
+      const banner = document.getElementById('mobile-suggest');
+      const closeBtn = document.getElementById('mobile-suggest-close');
+      if (!banner) return;
+      const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+        (window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+      let dismissed = false;
+      try { dismissed = localStorage.getItem('fp_hide_mobile_suggest') === '1'; } catch (e) {}
+      if (isMobile && !dismissed) banner.classList.remove('hidden');
+      if (closeBtn) closeBtn.addEventListener('click', () => {
+        banner.classList.add('hidden');
+        try { localStorage.setItem('fp_hide_mobile_suggest', '1'); } catch (e) {}
+      });
+    })();
 
     renderGames();
   </script>

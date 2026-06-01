@@ -169,20 +169,25 @@
   .panel { flex: 1; min-height: 0; display: none; flex-direction: column; }
   .panel.active { display: flex; }
 
-  /* ── Login screen ── */
+  /* ── Login / accueil screen (inspired by the desktop home) ── */
   #login-screen {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 24px; gap: 14px;
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: 22px 24px 28px; gap: 12px; overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
+  #login-screen .lg-logo { width: 220px; max-width: 76%; height: auto; display: block; margin: 4px auto 2px; }
   #login-screen .card {
     background: #fff; border: 2px solid #2C4A0F; border-radius: 14px;
-    padding: 22px 18px; width: 100%; max-width: 340px;
+    padding: 18px 18px 20px; width: 100%; max-width: 340px;
     box-shadow: 0 10px 22px rgba(44,74,15,.22);
   }
-  #login-screen h2 { margin: 0 0 4px; font-size: 18px; text-align: center; }
-  #login-screen .tag { text-align: center; color: #5a8a20; font-size: 11px; margin-bottom: 16px; }
+  #login-screen .lg-fruits { display: block; margin: 0 auto 6px; max-width: 200px; max-height: 120px; width: auto; height: auto; object-fit: contain; }
+  #login-screen .lg-intro {
+    text-align: center; color: #2f5510; font-size: 12.5px; line-height: 1.45;
+    font-weight: bold; margin: 0 0 12px;
+  }
   label { display: block; font-size: 12px; font-weight: bold; margin: 10px 0 4px; }
-  input[type=text], input[type=password] {
+  label .opt { font-weight: normal; color: #8aa86a; font-size: 11px; }
+  input[type=text], input[type=password], input[type=email] {
     width: 100%; padding: 11px 10px; font-size: 16px;
     border: 1px solid #5a8a20; border-radius: 7px; background: #fbfff5; color: #2C4A0F;
   }
@@ -191,6 +196,10 @@
     background: #2C4A0F; color: #CFF599; border: 0; border-radius: 8px;
   }
   .btn-primary:disabled { opacity: .6; }
+  .btn-link {
+    display: block; width: 100%; margin-top: 12px; padding: 8px; background: transparent;
+    border: 0; color: #2f6b16; font-size: 13px; font-weight: bold; text-decoration: underline; cursor: pointer;
+  }
   .err { color: #b23b2e; font-size: 12px; margin-top: 10px; text-align: center; min-height: 14px; }
 
   /* ── Chat ── */
@@ -348,17 +357,34 @@
 
 <!-- ───────── Login ───────── -->
 <div id="login-screen">
+  <img class="lg-logo" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/logo.gif" alt="Frutiparc" onerror="this.style.display='none'">
   <div class="card">
-    <h2>Frutiparc</h2>
-    <div class="tag">version mobile · chat & forum</div>
+    <img class="lg-fruits" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome.gif" alt="" onerror="this.style.display='none'">
+    <div class="lg-intro">Des fruits, des jeux, du chat !<br>Rejoins l'univers fruité de Frutiparc.</div>
+
+    <!-- Connexion -->
     <form id="login-form" autocomplete="on">
       <label for="li-user">Pseudo</label>
       <input type="text" id="li-user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
-      <label for="li-pass">Mot de passe</label>
+      <label for="li-pass">Code secret</label>
       <input type="password" id="li-pass" autocomplete="current-password">
       <button type="submit" class="btn-primary" id="li-btn">Se connecter</button>
       <div class="err" id="li-err"></div>
     </form>
+    <button type="button" class="btn-link" id="show-register">S'inscrire gratuitement</button>
+
+    <!-- Inscription (dès la page d'accueil) -->
+    <form id="register-form" class="hidden" autocomplete="on">
+      <label for="re-user">Pseudo</label>
+      <input type="text" id="re-user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" minlength="3" maxlength="20">
+      <label for="re-pass">Code secret</label>
+      <input type="password" id="re-pass" autocomplete="new-password" minlength="6" maxlength="80">
+      <label for="re-email">E-mail <span class="opt">— pour récupérer ton code</span></label>
+      <input type="email" id="re-email" autocomplete="email" maxlength="120" placeholder="(facultatif)">
+      <button type="submit" class="btn-primary" id="re-btn">Créer mon compte</button>
+      <div class="err" id="re-err"></div>
+    </form>
+    <button type="button" class="btn-link hidden" id="show-login">← J'ai déjà un compte</button>
   </div>
 </div>
 
@@ -584,25 +610,23 @@
       .catch(function () { cb(false); });
   }
 
-  var loginForm = $("#login-form");
-  loginForm.addEventListener("submit", function (ev) {
-    ev.preventDefault();
-    var user = $("#li-user").value.trim();
-    var pass = $("#li-pass").value;
-    var errEl = $("#li-err");
-    errEl.textContent = "";
-    if (!user || !pass) { errEl.textContent = "Pseudo et mot de passe requis."; return; }
-    var btn = $("#li-btn");
-    btn.disabled = true; btn.textContent = "Connexion…";
+  // Shared login: POST credentials then resume the app. Reused by the login
+  // form AND by the registration flow (auto-login right after sign-up).
+  function doLogin(user, pass, opts) {
+    opts = opts || {};
+    var errEl = opts.errEl, btn = opts.btn, label = opts.label || "Se connecter";
+    if (errEl) errEl.textContent = "";
+    if (!user || !pass) { if (errEl) errEl.textContent = "Pseudo et code secret requis."; return; }
+    if (btn) { btn.disabled = true; btn.textContent = "Connexion…"; }
     fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: user, password: pass }),
     }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
-        btn.disabled = false; btn.textContent = "Se connecter";
+        if (btn) { btn.disabled = false; btn.textContent = label; }
         if (!res.ok || !res.d || !res.d.ok) {
-          errEl.textContent = (res.d && res.d.message) || "Identifiants invalides.";
+          if (errEl) errEl.textContent = (res.d && res.d.message) || "Identifiants invalides.";
           return;
         }
         state.sid = res.d.sid;
@@ -612,7 +636,52 @@
         startApp();
       })
       .catch(function () {
-        btn.disabled = false; btn.textContent = "Se connecter";
+        if (btn) { btn.disabled = false; btn.textContent = label; }
+        if (errEl) errEl.textContent = "Erreur réseau. Réessaie.";
+      });
+  }
+
+  var loginForm = $("#login-form");
+  loginForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    doLogin($("#li-user").value.trim(), $("#li-pass").value, { errEl: $("#li-err"), btn: $("#li-btn"), label: "Se connecter" });
+  });
+
+  // ── Inscription depuis la page d'accueil ──
+  var registerForm = $("#register-form");
+  function setAuthMode(register) {
+    loginForm.classList.toggle("hidden", register);
+    $("#show-register").classList.toggle("hidden", register);
+    registerForm.classList.toggle("hidden", !register);
+    $("#show-login").classList.toggle("hidden", !register);
+    $("#li-err").textContent = ""; $("#re-err").textContent = "";
+  }
+  $("#show-register").addEventListener("click", function () { setAuthMode(true); var u = $("#re-user"); if (u) u.focus(); });
+  $("#show-login").addEventListener("click", function () { setAuthMode(false); var u = $("#li-user"); if (u) u.focus(); });
+  registerForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var user = $("#re-user").value.trim();
+    var pass = $("#re-pass").value;
+    var email = $("#re-email").value.trim();
+    var errEl = $("#re-err"); errEl.textContent = "";
+    if (!user || !pass) { errEl.textContent = "Pseudo et code secret requis."; return; }
+    var btn = $("#re-btn"); btn.disabled = true; btn.textContent = "Création…";
+    var body = { username: user, password: pass };
+    if (email) body.email = email;
+    fetch("/api/auth/register", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.d || !res.d.ok) {
+          btn.disabled = false; btn.textContent = "Créer mon compte";
+          errEl.textContent = (res.d && res.d.message) || "Inscription impossible.";
+          return;
+        }
+        // Compte créé → on connecte directement avec les mêmes identifiants.
+        doLogin(user, pass, { errEl: errEl, btn: btn, label: "Créer mon compte" });
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = "Créer mon compte";
         errEl.textContent = "Erreur réseau. Réessaie.";
       });
   });
