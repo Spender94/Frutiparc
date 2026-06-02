@@ -350,6 +350,7 @@
     <button class="tab" data-tab="gaspard" onclick="switchTab('gaspard')">Aide Gaspard</button>
     <button class="tab" data-tab="banwords" onclick="switchTab('banwords')">Modération chat</button>
     <button class="tab" data-tab="forumcensor" onclick="switchTab('forumcensor')">Censure forum</button>
+    <button class="tab" data-tab="kiloute" onclick="switchTab('kiloute')">Kiloute79</button>
   </div>
 
 <div class="content" id="tab-users">
@@ -396,6 +397,40 @@
     <thead><tr><th>ID</th><th>Nom</th><th>Catégorie</th><th>Prix</th><th>Suffix9</th><th>Description</th><th>Actions</th></tr></thead>
     <tbody id="shop-body"></tbody>
   </table>
+</div>
+
+<div class="content" id="tab-kiloute" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadKiloute()">Rafraîchir</button>
+    <button class="btn-success" onclick="kilouteRunNow()">▶ Lancer la question maintenant</button>
+    <span id="kiloute-count"></span>
+  </div>
+  <p style="font-size:12px;color:#666;max-width:760px">
+    Kiloute79 anime la « Question à 60 kikooz » chaque soir à 18h (heure de Paris) dans le salon le plus
+    fréquenté. Réponses acceptées séparées par des virgules ; la détection ignore accents, casse et ponctuation.
+  </p>
+
+  <h3 style="margin:14px 0 6px">Backlog de questions</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Question</th><th>Réponses acceptées</th><th>Réponse affichée</th><th>Actions</th></tr></thead>
+    <tbody id="kiloute-body"></tbody>
+  </table>
+
+  <h3 style="margin:18px 0 6px">Ajouter une question</h3>
+  <div style="max-width:760px;display:flex;flex-direction:column;gap:6px">
+    <input id="kq-question" placeholder="Question (ex : Quelle est la capitale de l'Italie ?)">
+    <input id="kq-answers" placeholder="Réponses acceptées, séparées par des virgules (ex : rome)">
+    <input id="kq-reveal" placeholder="Réponse affichée (ex : Rome) — vide = 1re réponse">
+    <div><button class="btn-success" onclick="addKilouteQuestion()">+ Ajouter la question</button></div>
+  </div>
+
+  <h3 style="margin:22px 0 6px">Poster au forum (avec le compte Kiloute79)</h3>
+  <div style="max-width:760px;display:flex;flex-direction:column;gap:6px">
+    <input id="kf-board" value="Animations officielles" placeholder="Rubrique du forum">
+    <input id="kf-title" placeholder="Titre du sujet">
+    <textarea id="kf-content" rows="6" placeholder="Contenu du message (présentation du concept…)" style="font:inherit;padding:8px;border:1px solid #ccc;border-radius:6px;resize:vertical"></textarea>
+    <div><button class="btn-success" onclick="kilouteForumPost()">Publier au forum</button></div>
+  </div>
 </div>
 
 <div class="content" id="tab-challenge" style="display:none">
@@ -774,7 +809,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','shop','challenge','events','channels','gaspard','banwords','forumcensor'].forEach(t => {
+  ['users','scores','detail','shop','challenge','events','channels','gaspard','banwords','forumcensor','kiloute'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -786,6 +821,68 @@ function switchTab(name) {
   if (name === 'gaspard') loadGaspardTopics();
   if (name === 'banwords') loadBanWords();
   if (name === 'forumcensor') loadForumCensor();
+  if (name === 'kiloute' && !$('#kiloute-body').dataset.loaded) loadKiloute();
+}
+
+// ─── Kiloute79 — "Question à 60 kikooz" ───
+let kilouteQuestions = [];
+async function loadKiloute() {
+  try {
+    const r = await fetch('/api/admin/kiloute/questions', { headers: hdr() });
+    kilouteQuestions = await r.json();
+    $('#kiloute-body').dataset.loaded = '1';
+    $('#kiloute-count').innerHTML = `<span class="count">${kilouteQuestions.length}</span> questions`;
+    $('#kiloute-body').innerHTML = kilouteQuestions.map(q => `<tr>
+      <td>${q.id}</td>
+      <td style="max-width:300px">${esc(q.q || '')}</td>
+      <td style="max-width:220px"><code style="font-size:11px">${esc((q.a || []).join(', '))}</code></td>
+      <td>${esc(q.r || '')}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="editKilouteQuestion(${q.id})">Modifier</button>
+        <button class="btn-danger btn-sm" onclick="deleteKilouteQuestion(${q.id})">Supprimer</button>
+      </td>
+    </tr>`).join('');
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function addKilouteQuestion() {
+  const body = { question: $('#kq-question').value, answers: $('#kq-answers').value, reveal: $('#kq-reveal').value };
+  if (!body.question.trim() || !body.answers.trim()) { toast('Question et réponses requises'); return; }
+  const r = await fetch('/api/admin/kiloute/questions', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+  $('#kq-question').value = ''; $('#kq-answers').value = ''; $('#kq-reveal').value = '';
+  toast('Question ajoutée'); loadKiloute();
+}
+async function editKilouteQuestion(id) {
+  const q = kilouteQuestions.find(x => x.id === id); if (!q) return;
+  const question = prompt('Question :', q.q); if (question === null) return;
+  const answers = prompt('Réponses acceptées (séparées par des virgules) :', (q.a || []).join(', ')); if (answers === null) return;
+  const reveal = prompt('Réponse affichée :', q.r || ''); if (reveal === null) return;
+  const r = await fetch(`/api/admin/kiloute/questions/${id}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify({ question, answers, reveal }) });
+  if (!r.ok) { toast('Erreur'); return; }
+  toast('Question modifiée'); loadKiloute();
+}
+async function deleteKilouteQuestion(id) {
+  if (!confirm('Supprimer cette question (ID ' + id + ') ?')) return;
+  const r = await fetch(`/api/admin/kiloute/questions/${id}`, { method: 'DELETE', headers: hdr() });
+  if (!r.ok) { toast('Erreur'); return; }
+  toast('Question supprimée'); loadKiloute();
+}
+async function kilouteRunNow() {
+  if (!confirm('Lancer la Question à 60 kikooz maintenant, dans le salon le plus fréquenté ?')) return;
+  const r = await fetch('/api/admin/kiloute/run', { method: 'POST', headers: hdr() });
+  const d = await r.json();
+  if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+  toast('Question lancée dans #' + d.channel);
+}
+async function kilouteForumPost() {
+  const body = { board: $('#kf-board').value, title: $('#kf-title').value, content: $('#kf-content').value };
+  if (!body.title.trim() || !body.content.trim()) { toast('Titre et contenu requis'); return; }
+  const r = await fetch('/api/admin/kiloute/forum-post', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+  $('#kf-title').value = ''; $('#kf-content').value = '';
+  toast('Sujet publié dans « ' + d.board + ' »');
 }
 
 // ─── Gaspard help topics ───

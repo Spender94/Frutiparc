@@ -239,6 +239,16 @@ async function initSchema() {
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS picto TEXT DEFAULT NULL;
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS disabled BOOLEAN DEFAULT FALSE;
 
+      -- Kiloute79 "Question à 60 kikooz" backlog (admin-managed)
+      CREATE TABLE IF NOT EXISTS kiloute_questions (
+        id          SERIAL PRIMARY KEY,
+        question    TEXT NOT NULL,
+        answers     TEXT NOT NULL DEFAULT '[]',
+        reveal      TEXT NOT NULL DEFAULT '',
+        sort_order  INTEGER DEFAULT 0,
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Forum tables
       CREATE TABLE IF NOT EXISTS forum_categories (
         id         SERIAL PRIMARY KEY,
@@ -977,6 +987,32 @@ async function deleteShopPack(id) {
   await pool.query('DELETE FROM shop_packs WHERE id = $1', [id]);
 }
 
+// ── Kiloute79 quiz questions ──
+function parseAnswersField(s) {
+  try { const v = JSON.parse(s); if (Array.isArray(v)) return v.map((x) => String(x)); } catch (e) { /* fall through */ }
+  return String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+}
+async function loadKilouteQuestions() {
+  const { rows } = await pool.query('SELECT * FROM kiloute_questions ORDER BY sort_order, id');
+  return rows.map((r) => ({ id: r.id, q: r.question, a: parseAnswersField(r.answers), r: r.reveal || '' }));
+}
+async function insertKilouteQuestion(question, answers, reveal, sortOrder) {
+  const { rows } = await pool.query(
+    'INSERT INTO kiloute_questions (question, answers, reveal, sort_order) VALUES ($1, $2, $3, $4) RETURNING id',
+    [question, JSON.stringify(answers || []), reveal || '', sortOrder || 0]
+  );
+  return rows[0].id;
+}
+async function updateKilouteQuestion(id, question, answers, reveal) {
+  await pool.query(
+    'UPDATE kiloute_questions SET question = $2, answers = $3, reveal = $4 WHERE id = $1',
+    [id, question, JSON.stringify(answers || []), reveal || '']
+  );
+}
+async function deleteKilouteQuestion(id) {
+  await pool.query('DELETE FROM kiloute_questions WHERE id = $1', [id]);
+}
+
 // ── Chat banned words ──
 async function loadChatBannedWords() {
   const { rows } = await pool.query('SELECT id, word FROM chat_banned_words ORDER BY id');
@@ -1576,6 +1612,10 @@ module.exports = {
   loadShopPacks,
   upsertShopPack,
   deleteShopPack,
+  loadKilouteQuestions,
+  insertKilouteQuestion,
+  updateKilouteQuestion,
+  deleteKilouteQuestion,
   loadChatBannedWords,
   addChatBannedWord,
   updateChatBannedWord,

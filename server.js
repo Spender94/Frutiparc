@@ -5237,6 +5237,92 @@ app.delete('/api/admin/shop/:id', adminAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Admin: Kiloute79 quiz (backlog de questions, lancer maintenant, post forum) ──
+function parseKilouteAnswers(input) {
+  if (Array.isArray(input)) return input.map((s) => String(s).trim()).filter(Boolean);
+  return String(input || '').split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+}
+
+app.get('/api/admin/kiloute/questions', adminAuth, (req, res) => {
+  res.json(KILOUTE_QUESTIONS);
+});
+
+app.post('/api/admin/kiloute/questions', adminAuth, async (req, res) => {
+  const b = req.body || {};
+  const question = String(b.question || '').trim();
+  const answers = parseKilouteAnswers(b.answers);
+  const reveal = String(b.reveal || '').trim() || answers[0] || '';
+  if (!question || answers.length === 0) return res.status(400).json({ error: 'Question et au moins une réponse requises.' });
+  let id = KILOUTE_QUESTIONS.reduce((m, q) => Math.max(m, q.id || 0), 0) + 1;
+  if (process.env.DATABASE_URL) {
+    try { id = await db.insertKilouteQuestion(question, answers, reveal, KILOUTE_QUESTIONS.length); }
+    catch (e) { console.error('[KILOUTE] db insert:', e.message); }
+  }
+  const q = { id, q: question, a: answers, r: reveal };
+  KILOUTE_QUESTIONS.push(q);
+  console.log(`[ADMIN] Kiloute question #${id} ajoutée`);
+  res.json({ ok: true, question: q });
+});
+
+app.patch('/api/admin/kiloute/questions/:id', adminAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const q = KILOUTE_QUESTIONS.find((x) => x.id === id);
+  if (!q) return res.status(404).json({ error: 'not found' });
+  const b = req.body || {};
+  if (b.question !== undefined) q.q = String(b.question).trim();
+  if (b.answers !== undefined) q.a = parseKilouteAnswers(b.answers);
+  if (b.reveal !== undefined) q.r = String(b.reveal).trim();
+  if (process.env.DATABASE_URL) {
+    try { await db.updateKilouteQuestion(id, q.q, q.a, q.r); }
+    catch (e) { console.error('[KILOUTE] db update:', e.message); }
+  }
+  console.log(`[ADMIN] Kiloute question #${id} modifiée`);
+  res.json({ ok: true, question: q });
+});
+
+app.delete('/api/admin/kiloute/questions/:id', adminAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const idx = KILOUTE_QUESTIONS.findIndex((x) => x.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  KILOUTE_QUESTIONS.splice(idx, 1);
+  if (process.env.DATABASE_URL) {
+    try { await db.deleteKilouteQuestion(id); }
+    catch (e) { console.error('[KILOUTE] db delete:', e.message); }
+  }
+  console.log(`[ADMIN] Kiloute question #${id} supprimée`);
+  res.json({ ok: true });
+});
+
+// Lancer la question maintenant (test hors 18h).
+app.post('/api/admin/kiloute/run', adminAuth, (req, res) => {
+  if (kilouteQuiz) return res.status(409).json({ error: 'Une question est déjà en cours.' });
+  const ch = mostPopulatedChannel();
+  if (!ch) return res.status(409).json({ error: 'Aucun salon fréquenté actuellement.' });
+  kilouteRun();
+  res.json({ ok: true, channel: ch });
+});
+
+// Poster un sujet au forum avec le compte Kiloute79 (par défaut "Animations officielles").
+app.post('/api/admin/kiloute/forum-post', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'Forum indisponible (pas de base de données).' });
+  const b = req.body || {};
+  const title = String(b.title || '').trim();
+  const content = String(b.content || '').trim();
+  const boardName = String(b.board || 'Animations officielles').trim();
+  if (!title || !content) return res.status(400).json({ error: 'Titre et contenu requis.' });
+  try {
+    const boards = await db.forumGetBoards();
+    const board = boards.find((x) => x.name === boardName) || boards.find((x) => x.name === 'Animations officielles');
+    if (!board) return res.status(404).json({ error: 'Board "Animations officielles" introuvable.' });
+    const topic = await db.forumCreateTopic(board.id, 'kiloute79', title, content, users.kiloute79.fbouille, null);
+    console.log(`[ADMIN] Kiloute a posté le sujet #${topic.id} dans "${board.name}"`);
+    res.json({ ok: true, topicId: topic.id, board: board.name });
+  } catch (e) {
+    console.error('[KILOUTE] forum post:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/admin/shop/:id/push-all', adminAuth, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
   const pack = SHOP_PACKS.find(p => p.id === Number(req.params.id));
@@ -9975,6 +10061,20 @@ async function boot() {
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
       try {
+        const dbq = await db.loadKilouteQuestions();
+        if (dbq.length === 0) {
+          for (let i = 0; i < KILOUTE_DEFAULT_QUESTIONS.length; i++) {
+            const q = KILOUTE_DEFAULT_QUESTIONS[i];
+            await db.insertKilouteQuestion(q.q, q.a, q.r, i);
+          }
+          KILOUTE_QUESTIONS = await db.loadKilouteQuestions();
+          console.log(`[DB] Seeded ${KILOUTE_QUESTIONS.length} Kiloute questions (defaults)`);
+        } else {
+          KILOUTE_QUESTIONS = dbq;
+          console.log(`[DB] Loaded ${KILOUTE_QUESTIONS.length} Kiloute questions`);
+        }
+      } catch (e) { console.error('[DB] Kiloute questions load error:', e.message); }
+      try {
         // Chat banned words: on first run (empty table), seed defaults.
         let bw = await db.loadChatBannedWords();
         if (bw.length === 0) {
@@ -10968,7 +11068,7 @@ users.kiloute79 = {
   gender: 'M', birthday: '1990-06-15', country: 'FR', region: 'IDF',
   countryIndex: '1', regionIndex: '1', prefs: '',
   isModerator: false, isAnimator: true, needsBouille: false,
-  city: 'Frutiparc', realJob: 'Animateur', firstName: 'Kiloute', lastName: '79',
+  city: 'Frutiparc', realJob: 'Animateur', frutijob: 'Animateur', firstName: 'Kiloute', lastName: '79',
   comment: 'La Question à 60 kikooz, tous les soirs à 18h !', siteUrl: '',
   frutiSign: 7, frutiSignB: 7,
   displayName: 'Kiloute79',
@@ -10977,7 +11077,7 @@ users.kiloute79 = {
 // Culture-générale backlog. { q: question, a: [réponses acceptées], r: réponse
 // affichée }. Le matching est insensible aux accents/casse/ponctuation et borné
 // aux mots (voir normalizeAnswer) ; on accepte plusieurs orthographes.
-const KILOUTE_QUESTIONS = [
+const KILOUTE_DEFAULT_QUESTIONS = [
   { q: "Quelle est la capitale de l'Australie ?", a: ["canberra"], r: "Canberra" },
   { q: "Quel océan borde la côte ouest de la France ?", a: ["atlantique", "ocean atlantique", "l atlantique"], r: "L'océan Atlantique" },
   { q: "Quel est le plus grand océan du monde ?", a: ["pacifique", "ocean pacifique"], r: "L'océan Pacifique" },
@@ -11010,6 +11110,11 @@ const KILOUTE_QUESTIONS = [
   { q: "Dans quelle ville se trouve la statue du Christ Rédempteur ?", a: ["rio", "rio de janeiro"], r: "Rio de Janeiro" },
 ];
 
+// Mutable, admin-managed at runtime. Loaded from DB at startup (seeded with the
+// defaults on first run); each entry carries an `id` for CRUD. Falls back to the
+// in-memory defaults when there is no database configured.
+let KILOUTE_QUESTIONS = KILOUTE_DEFAULT_QUESTIONS.map((q, i) => ({ id: i + 1, q: q.q, a: q.a.slice(), r: q.r }));
+
 function normalizeAnswer(s) {
   return String(s == null ? '' : s)
     .toLowerCase()
@@ -11021,6 +11126,7 @@ function normalizeAnswer(s) {
 
 // Today's question, deterministic so it rotates without repeating for ~a month.
 function kilouteQuestionOfTheDay() {
+  if (!KILOUTE_QUESTIONS.length) return null;
   const n = Number(parisDayKey().replace(/-/g, '')) || 0; // YYYYMMDD
   return KILOUTE_QUESTIONS[n % KILOUTE_QUESTIONS.length];
 }
@@ -11087,6 +11193,7 @@ function kilouteRun() {
   const channelName = mostPopulatedChannel();
   if (!channelName) { console.log('[KILOUTE] 18h — personne en ligne, on passe ce soir.'); return; }
   const q = kilouteQuestionOfTheDay();
+  if (!q) { console.log('[KILOUTE] backlog de questions vide — on passe.'); return; }
   npcJoin('kiloute79', channelName);
   console.log(`[KILOUTE] Question à 60 kikooz dans #${channelName}: ${q.q}`);
   kilouteQuiz = { channel: channelName, answers: q.a, display: q.r, answered: false, timeoutId: null };
