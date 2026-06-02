@@ -64,7 +64,7 @@
      no chip background or border, just the image. State lives on the image — a
      subtle lift when active, dimmed when the toggle is "off". */
   .icon-btn.bare { background: transparent; border: 0; padding: 3px; }
-  .icon-btn.bare img { width: 28px; height: 28px; }
+  .icon-btn.bare img { width: 40px; height: 40px; }
   .icon-btn.bare.on { transform: scale(1.08); filter: drop-shadow(0 1px 2px rgba(0,0,0,.3)); }
   .icon-btn.bare.off { opacity: .35; }
   #menu-btn { font-size: 18px; }
@@ -230,15 +230,21 @@
   .msg .body.emote { font-style: italic; color: #4f7b1f; }
 
   .compose {
-    display: flex; gap: 7px; padding: 8px; background: #fff;
+    display: flex; align-items: center; gap: 7px; padding: 8px; background: #fff;
     border-top: 1px solid #DDDDDD; flex-shrink: 0;
   }
+  /* Soft "inset" input: light-grey field, darker top border + inner highlight. */
   .compose input {
-    flex: 1; padding: 11px 12px; font-size: 16px; border: 1px solid #d9d9d9;
-    border-radius: 20px; background: #fff; color: #2C4A0F;
+    flex: 1; min-width: 0; height: 36px; box-sizing: border-box;
+    padding: 0 12px; font-size: 16px; color: #333333;
+    border-style: solid; border-width: 2px 1px 1px;
+    border-color: #cccccc #f2f2f2 #f6f6f6; border-radius: 8px;
+    background: #eeeeee; box-shadow: inset 0 1px 0 #e5e5e5;
+    outline: none; -webkit-appearance: none; appearance: none;
   }
   .compose button {
-    background: #FFAAAD; color: #660000; border: 1px solid #F48081; border-radius: 20px;
+    height: 36px; box-sizing: border-box; flex-shrink: 0;
+    background: #FFAAAD; color: #660000; border: 1px solid #F48081; border-radius: 8px;
     box-shadow: 0 0 0 1px #DDDDDD; padding: 0 18px; font-size: 14px; font-weight: bold;
   }
   .compose button:disabled { opacity: .5; }
@@ -322,7 +328,7 @@
   }
   .users-scroll.up { margin-top: 10px; }
   .users-scroll.down { margin-bottom: 10px; }
-  .users-scroll img { width: 100%; height: 30px; display: block; object-fit: fill; }
+  .users-scroll img { width: 100%; height: auto; display: block; }
   .users-scroll:active img { filter: brightness(.95); }
   #users-drawer .u {
     min-height: 48px; padding: 6px 12px; background: #e8f8d1;
