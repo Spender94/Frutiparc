@@ -10693,7 +10693,7 @@ const CONNECTED_NPCS = new Set([
 // All bot/NPC accounts — the always-on Gaspard plus the transient visitors
 // (mdamirma, gromelin). Excluded from "real player" counts and from mdamirma's
 // FrutiSigne targeting, so bots never reveal/target each other.
-const NPC_USERNAMES = new Set(['gaspard', 'mdamirma', 'gromelin']);
+const NPC_USERNAMES = new Set(['gaspard', 'mdamirma', 'gromelin', 'kiloute79']);
 
 // Gaspard is the welcome-bot NPC. Stored under the lowercase key
 // `users.gaspard` like every other user (getDisplayName, trace and
@@ -10831,22 +10831,23 @@ function npcLeave(npc) {
   npcChannel[npc] = null;
 }
 
-function npcSay(npc, channelName, text) {
+function npcSay(npc, channelName, text, type) {
   const timeAttrs = buildChatTimeAttrs();
   broadcastToChannel(channelName,
-    `<${CMD.send} u="${escapeXml(getDisplayName(npc))}" t="m" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(text)}</${CMD.send}>`
+    `<${CMD.send} u="${escapeXml(getDisplayName(npc))}" t="${type || 'm'}" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(text)}</${CMD.send}>`
   );
 }
 
 // Deliver `lines` one at a time (~2.5-5 s apart, after a short initial pause),
-// then call onDone. Bails if the NPC has meanwhile left or moved channel.
-function npcSaySequence(npc, channelName, lines, onDone) {
+// then call onDone. Bails if the NPC has meanwhile left or moved channel. The
+// optional `type` sets the chat sub-type ('c' = animator/blue styling).
+function npcSaySequence(npc, channelName, lines, onDone, type) {
   let i = 0;
   function step() {
     if (npcChannel[npc] !== channelName) return; // moved/left → stop talking
     if (i >= lines.length) { if (onDone) onDone(); return; }
     const line = lines[i++];
-    if (line) npcSay(npc, channelName, line);
+    if (line) npcSay(npc, channelName, line, type);
     setTimeout(step, 2500 + Math.random() * 2500);
   }
   setTimeout(step, 1500 + Math.random() * 1500);
@@ -10957,6 +10958,173 @@ function scheduleGromelin() {
   }, delay);
 }
 scheduleGromelin();
+
+// ── Kiloute79 — animateur "Question à 60 kikooz" (tous les soirs à 18h Paris) ──
+users.kiloute79 = {
+  pass: '', xp: 500000, kikooz: 0,
+  fbouille: '0f0000010000000000000000',
+  items: withDefaultPens([]),
+  contacts: [], blacklist: [],
+  gender: 'M', birthday: '1990-06-15', country: 'FR', region: 'IDF',
+  countryIndex: '1', regionIndex: '1', prefs: '',
+  isModerator: false, isAnimator: true, needsBouille: false,
+  city: 'Frutiparc', realJob: 'Animateur', firstName: 'Kiloute', lastName: '79',
+  comment: 'La Question à 60 kikooz, tous les soirs à 18h !', siteUrl: '',
+  frutiSign: 7, frutiSignB: 7,
+  displayName: 'Kiloute79',
+};
+
+// Culture-générale backlog. { q: question, a: [réponses acceptées], r: réponse
+// affichée }. Le matching est insensible aux accents/casse/ponctuation et borné
+// aux mots (voir normalizeAnswer) ; on accepte plusieurs orthographes.
+const KILOUTE_QUESTIONS = [
+  { q: "Quelle est la capitale de l'Australie ?", a: ["canberra"], r: "Canberra" },
+  { q: "Quel océan borde la côte ouest de la France ?", a: ["atlantique", "ocean atlantique", "l atlantique"], r: "L'océan Atlantique" },
+  { q: "Quel est le plus grand océan du monde ?", a: ["pacifique", "ocean pacifique"], r: "L'océan Pacifique" },
+  { q: "Qui a peint la Joconde ?", a: ["vinci", "leonard de vinci", "de vinci", "da vinci"], r: "Léonard de Vinci" },
+  { q: "En quelle année a eu lieu la prise de la Bastille ?", a: ["1789"], r: "1789" },
+  { q: "Quel est le symbole chimique de l'or ?", a: ["au"], r: "Au" },
+  { q: "Combien de minutes dure un match de football (temps réglementaire) ?", a: ["90"], r: "90 minutes" },
+  { q: "Quelle planète est surnommée la planète rouge ?", a: ["mars"], r: "Mars" },
+  { q: "Quelle est la monnaie du Japon ?", a: ["yen", "le yen"], r: "Le yen" },
+  { q: "Quel animal est surnommé le roi de la jungle ?", a: ["lion", "le lion"], r: "Le lion" },
+  { q: "Combien font 7 x 8 ?", a: ["56"], r: "56" },
+  { q: "Dans quel pays se trouve la tour de Pise ?", a: ["italie", "l italie"], r: "L'Italie" },
+  { q: "Quel gaz les plantes absorbent-elles pour la photosynthèse ?", a: ["dioxyde de carbone", "co2", "gaz carbonique"], r: "Le dioxyde de carbone (CO2)" },
+  { q: "Qui a écrit Les Misérables ?", a: ["hugo", "victor hugo"], r: "Victor Hugo" },
+  { q: "Sur quel continent se trouve l'Égypte ?", a: ["afrique", "l afrique"], r: "L'Afrique" },
+  { q: "Quelle est la capitale de l'Espagne ?", a: ["madrid"], r: "Madrid" },
+  { q: "Quel organe pompe le sang dans le corps humain ?", a: ["coeur", "le coeur"], r: "Le cœur" },
+  { q: "Quel est l'animal terrestre le plus rapide ?", a: ["guepard", "le guepard", "guépard"], r: "Le guépard" },
+  { q: "Quelle est la plus haute montagne du monde ?", a: ["everest", "l everest", "mont everest"], r: "L'Everest" },
+  { q: "Quel pays a offert la statue de la Liberté aux États-Unis ?", a: ["france", "la france"], r: "La France" },
+  { q: "Quel métal est liquide à température ambiante ?", a: ["mercure", "le mercure"], r: "Le mercure" },
+  { q: "Combien de touches a un piano standard ?", a: ["88"], r: "88" },
+  { q: "Quelle est la capitale du Canada ?", a: ["ottawa"], r: "Ottawa" },
+  { q: "Qui a développé la théorie de la relativité ?", a: ["einstein", "albert einstein"], r: "Albert Einstein" },
+  { q: "Quel est le plus petit pays du monde ?", a: ["vatican", "le vatican", "cite du vatican"], r: "Le Vatican" },
+  { q: "Quel fruit est associé à Newton et la gravité ?", a: ["pomme", "la pomme", "une pomme"], r: "La pomme" },
+  { q: "Quelle est la planète la plus proche du Soleil ?", a: ["mercure"], r: "Mercure" },
+  { q: "Quelle planète possède de magnifiques anneaux ?", a: ["saturne"], r: "Saturne" },
+  { q: "Quel est le plus long fleuve d'Afrique ?", a: ["nil", "le nil"], r: "Le Nil" },
+  { q: "Dans quelle ville se trouve la statue du Christ Rédempteur ?", a: ["rio", "rio de janeiro"], r: "Rio de Janeiro" },
+];
+
+function normalizeAnswer(s) {
+  return String(s == null ? '' : s)
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip accents
+    .replace(/[^a-z0-9\s]/g, ' ')                      // punctuation → spaces
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Today's question, deterministic so it rotates without repeating for ~a month.
+function kilouteQuestionOfTheDay() {
+  const n = Number(parisDayKey().replace(/-/g, '')) || 0; // YYYYMMDD
+  return KILOUTE_QUESTIONS[n % KILOUTE_QUESTIONS.length];
+}
+
+// Active quiz state (one room at a time), or null when idle.
+let kilouteQuiz = null;
+
+// Credit kikooz to the winner (memory + DB + history + kikooz log), like /do/give.
+function kilouteAwardKikooz(username, amount) {
+  const u = users[username];
+  if (!u) return;
+  u.kikooz = (typeof u.kikooz === 'number' ? u.kikooz : 0) + amount;
+  if (u._dbId) db.updateUser(username, { kikooz: u.kikooz }).catch((e) => console.error('[KILOUTE] kikooz save:', e.message));
+  if (!Array.isArray(u.kikoozLog)) u.kikoozLog = [];
+  u.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: amount, c: 'kiloute79' });
+  if (u.kikoozLog.length > 200) u.kikoozLog.length = 200;
+  addUserHistoryEntry(u, {
+    type: USER_LOG_TYPE.CHAT,
+    content: `Tu as gagné ${amount} kikooz à la Question à 60 kikooz de Kiloute79 !`,
+    flNew: true,
+  });
+}
+
+// All of Kiloute's lines go out in the animator/blue style (t="c").
+function kilouteSay(channelName, text) { npcSay('kiloute79', channelName, text, 'c'); }
+
+function kilouteLeave() {
+  if (kilouteQuiz && kilouteQuiz.timeoutId) clearTimeout(kilouteQuiz.timeoutId);
+  kilouteQuiz = null;
+  npcLeave('kiloute79');
+}
+
+// Called from the chat 'send' handler for every normal message: if a quiz is
+// running in that room and the message is the answer, Kiloute reacts + rewards.
+function kilouteCheckAnswer(channelName, username, rawText) {
+  const quiz = kilouteQuiz;
+  if (!quiz || quiz.answered || quiz.channel !== channelName) return;
+  if (NPC_USERNAMES.has(username)) return;
+  const norm = ' ' + normalizeAnswer(unescapeXml(rawText)) + ' ';
+  const hit = quiz.answers.some((a) => {
+    const na = normalizeAnswer(a);
+    return na && norm.indexOf(' ' + na + ' ') !== -1;
+  });
+  if (!hit) return;
+  quiz.answered = true;
+  if (quiz.timeoutId) clearTimeout(quiz.timeoutId);
+  const winner = getDisplayName(username);
+  kilouteSay(channelName, "Stoooooooooooop !");
+  setTimeout(() => {
+    kilouteSay(channelName, `Bravo ${winner} !!! La réponse était bien : ${quiz.display}`);
+    kilouteAwardKikooz(username, 60);
+    setTimeout(() => {
+      kilouteSay(channelName, `Et hop, 60 kikooz pour ${winner} !`);
+      setTimeout(() => {
+        kilouteSay(channelName, "Merci à tous d'avoir joué, vous êtes formidables ! À demain 18h pour une nouvelle Question à 60 kikooz !");
+        setTimeout(kilouteLeave, 3500);
+      }, 2500);
+    }, 2200);
+  }, 1800);
+}
+
+function kilouteRun() {
+  if (kilouteQuiz) return; // already running
+  const channelName = mostPopulatedChannel();
+  if (!channelName) { console.log('[KILOUTE] 18h — personne en ligne, on passe ce soir.'); return; }
+  const q = kilouteQuestionOfTheDay();
+  npcJoin('kiloute79', channelName);
+  console.log(`[KILOUTE] Question à 60 kikooz dans #${channelName}: ${q.q}`);
+  kilouteQuiz = { channel: channelName, answers: q.a, display: q.r, answered: false, timeoutId: null };
+  npcSaySequence('kiloute79', channelName, [
+    "Bonsoiiiir les Frutiz ! Kiloute79 est dans la place !",
+    "C'est l'heure de votre rendez-vous préféré : la QUESTION À 60 KIKOOZ !",
+    "Le premier qui donne la bonne réponse rafle les 60 kikooz ! Vous êtes prêts ?!",
+    "Alors attention, voici la question :",
+    q.q,
+  ], () => {
+    if (!kilouteQuiz || kilouteQuiz.answered) return;
+    // 3-minute window to answer; otherwise Kiloute reveals it and leaves.
+    kilouteQuiz.timeoutId = setTimeout(() => {
+      if (!kilouteQuiz || kilouteQuiz.answered) return;
+      npcSaySequence('kiloute79', channelName, [
+        "Oh ? Personne ? Vraiment ?! Quelle déception !",
+        `La bonne réponse était ${q.r}.`,
+        "À demain pour une nouvelle Question à 60 kikooz, ne manquez pas ce rendez-vous !",
+      ], () => setTimeout(kilouteLeave, 3000), 'c');
+    }, 3 * 60 * 1000);
+  }, 'c');
+}
+
+// Fire once a day at ~18:00 Europe/Paris. We poll each minute and trigger on the
+// first check inside 18:00–18:04 we haven't already fired today — DST-safe, as
+// the Paris hour/minute come straight from Intl.
+let kilouteLastDay = null;
+setInterval(() => {
+  try {
+    const hm = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+    const [hh, mm] = hm.split(':').map(Number);
+    const day = parisDayKey();
+    if (hh === 18 && mm < 5 && kilouteLastDay !== day) {
+      kilouteLastDay = day;
+      kilouteRun();
+    }
+  } catch (e) { console.error('[KILOUTE] scheduler error:', e.message); }
+}, 60 * 1000);
 
 for (const npc of CONNECTED_NPCS) {
   channels.pomme.users.add(npc);
@@ -12545,6 +12713,8 @@ case 'send': {
     const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
     trackXpAction(client.username, 'chatMsg');
+    // Kiloute79's "Question à 60 kikooz": react if this line is the answer.
+    kilouteCheckAnswer(g, client.username, text);
 } else if (msg.attrs.u) {
   const targetUser = msg.attrs.u;
   const safeText = escapeXml(text);
