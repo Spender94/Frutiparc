@@ -10916,6 +10916,13 @@ function npcJoin(npc, channelName) {
   broadcastToChannel(channelName,
     `<${CMD.userjoined} ${buildUserAttrs(npc, '1', channelName)} g="${escapeXml(channelName)}" />`
   );
+  // Push the NPC's bouille trace so every FrutiScreen can render it — without
+  // this, members already in the room get the "vider le cache" placeholder (the
+  // userjoined frame alone doesn't populate the trace cache).
+  const ud = users[npc] || {};
+  broadcastToChannel(channelName,
+    `<${CMD.trace}><u u="${escapeXml(getDisplayName(npc))}" p="1" s="${getStatusCode(ud, npc)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(npc, channelName)} /></${CMD.trace}>`
+  );
 }
 
 function npcLeave(npc) {
@@ -10941,16 +10948,16 @@ function npcSay(npc, channelName, text, type) {
 // Deliver `lines` one at a time (~2.5-5 s apart, after a short initial pause),
 // then call onDone. Bails if the NPC has meanwhile left or moved channel. The
 // optional `type` sets the chat sub-type ('c' = animator/blue styling).
-function npcSaySequence(npc, channelName, lines, onDone, type) {
+function npcSaySequence(npc, channelName, lines, onDone, type, gapMs) {
   let i = 0;
   function step() {
     if (npcChannel[npc] !== channelName) return; // moved/left → stop talking
     if (i >= lines.length) { if (onDone) onDone(); return; }
     const line = lines[i++];
     if (line) npcSay(npc, channelName, line, type);
-    setTimeout(step, 2500 + Math.random() * 2500);
+    setTimeout(step, gapMs ? (gapMs + Math.random() * gapMs * 0.5) : (2500 + Math.random() * 2500));
   }
-  setTimeout(step, 1500 + Math.random() * 1500);
+  setTimeout(step, (gapMs ? gapMs * 0.7 : 1500) + Math.random() * 1500);
 }
 
 function mdamirmaPickTarget(channelName) {
@@ -11182,10 +11189,10 @@ function kilouteCheckAnswer(channelName, username, rawText) {
       kilouteSay(channelName, `Et hop, 60 kikooz pour ${winner} !`);
       setTimeout(() => {
         kilouteSay(channelName, "Merci à tous d'avoir joué, vous êtes formidables ! À demain 18h pour une nouvelle Question à 60 kikooz !");
-        setTimeout(kilouteLeave, 3500);
-      }, 2500);
-    }, 2200);
-  }, 1800);
+        setTimeout(kilouteLeave, 4500);
+      }, 4000);
+    }, 3500);
+  }, 2500);
 }
 
 function kilouteRun() {
@@ -11212,9 +11219,9 @@ function kilouteRun() {
         "Oh ? Personne ? Vraiment ?! Quelle déception !",
         `La bonne réponse était ${q.r}.`,
         "À demain pour une nouvelle Question à 60 kikooz, ne manquez pas ce rendez-vous !",
-      ], () => setTimeout(kilouteLeave, 3000), 'c');
+      ], () => setTimeout(kilouteLeave, 3000), 'c', 5000);
     }, 3 * 60 * 1000);
-  }, 'c');
+  }, 'c', 5000);
 }
 
 // Fire once a day at ~18:00 Europe/Paris. We poll each minute and trigger on the

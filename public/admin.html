@@ -63,24 +63,31 @@
   /* Tab bar — coral header strip */
   .tabs {
     display: flex;
-    gap: 0;
+    flex-wrap: wrap;
+    gap: 8px 12px;
     background: #E3756A;
-    height: 25px;
-    align-items: stretch;
+    align-items: flex-end;
     border-radius: 7px 7px 0 0;
-    overflow: hidden;
+    padding: 6px 8px 0;
     margin-top: 4px;
   }
+  .tab-group { display: flex; flex-direction: column; gap: 2px; }
+  .tab-group > .lbl {
+    font-size: 9px; color: #ffe2dc; font-weight: bold;
+    text-transform: uppercase; letter-spacing: .4px; padding-left: 3px;
+  }
+  .tab-group > .grp { display: flex; gap: 2px; }
   .tab {
-    flex: 1;
-    background: transparent;
+    flex: 0 0 auto;
+    background: rgba(255, 255, 255, .14);
     color: #fff;
     border: none;
     cursor: pointer;
     font-family: Arial, Verdana, sans-serif;
     font-weight: bold;
     font-size: 12px;
-    padding: 0 12px;
+    padding: 5px 12px;
+    border-radius: 6px 6px 0 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -340,17 +347,23 @@
   </div>
 
   <div class="tabs">
-    <button class="tab active" data-tab="users" onclick="switchTab('users')">Joueurs</button>
-    <button class="tab" data-tab="scores" onclick="switchTab('scores')">Scores</button>
-    <button class="tab" data-tab="detail" onclick="switchTab('detail')">Détail joueur</button>
-    <button class="tab" data-tab="shop" onclick="switchTab('shop')">Boutique</button>
-    <button class="tab" data-tab="challenge" onclick="switchTab('challenge')">Challenge</button>
-    <button class="tab" data-tab="events" onclick="switchTab('events')">Événements</button>
-    <button class="tab" data-tab="channels" onclick="switchTab('channels')">Salons</button>
-    <button class="tab" data-tab="gaspard" onclick="switchTab('gaspard')">Aide Gaspard</button>
-    <button class="tab" data-tab="banwords" onclick="switchTab('banwords')">Modération chat</button>
-    <button class="tab" data-tab="forumcensor" onclick="switchTab('forumcensor')">Censure forum</button>
-    <button class="tab" data-tab="kiloute" onclick="switchTab('kiloute')">Kiloute79</button>
+    <div class="tab-group"><span class="lbl">Joueurs</span><div class="grp">
+      <button class="tab active" data-tab="users" onclick="switchTab('users')">Joueurs</button>
+      <button class="tab" data-tab="detail" onclick="switchTab('detail')">Détail joueur</button>
+      <button class="tab" data-tab="scores" onclick="switchTab('scores')">Scores</button>
+    </div></div>
+    <div class="tab-group"><span class="lbl">Animation &amp; contenu</span><div class="grp">
+      <button class="tab" data-tab="shop" onclick="switchTab('shop')">Boutique</button>
+      <button class="tab" data-tab="kiloute" onclick="switchTab('kiloute')">Kiloute79</button>
+      <button class="tab" data-tab="gaspard" onclick="switchTab('gaspard')">Aide Gaspard</button>
+      <button class="tab" data-tab="events" onclick="switchTab('events')">Événements</button>
+      <button class="tab" data-tab="challenge" onclick="switchTab('challenge')">Challenge</button>
+    </div></div>
+    <div class="tab-group"><span class="lbl">Modération</span><div class="grp">
+      <button class="tab" data-tab="channels" onclick="switchTab('channels')">Salons</button>
+      <button class="tab" data-tab="banwords" onclick="switchTab('banwords')">Modération chat</button>
+      <button class="tab" data-tab="forumcensor" onclick="switchTab('forumcensor')">Censure forum</button>
+    </div></div>
   </div>
 
 <div class="content" id="tab-users">
