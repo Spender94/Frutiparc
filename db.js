@@ -100,6 +100,15 @@ async function initSchema() {
         created_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- Usernames of deleted accounts. They stay reserved so a deleted user
+      -- can't recreate an account under the same pseudo (which would also let
+      -- them inherit the old account's forum posts, keyed by username).
+      CREATE TABLE IF NOT EXISTS deleted_usernames (
+        username    TEXT PRIMARY KEY,
+        deleted_by  TEXT DEFAULT '',
+        deleted_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       CREATE TABLE IF NOT EXISTS user_items (
         user_id   INTEGER REFERENCES users(id) ON DELETE CASCADE,
         item_id   INTEGER NOT NULL,
@@ -836,6 +845,35 @@ async function listAllUsers() {
 
 async function deleteUser(userId) {
   await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+}
+
+// Reserve a (now-deleted) username so it can never be re-registered.
+async function reserveUsername(username, deletedBy = '') {
+  const u = String(username || '').toLowerCase().trim();
+  if (!u) return;
+  await pool.query(
+    `INSERT INTO deleted_usernames (username, deleted_by) VALUES ($1, $2)
+     ON CONFLICT (username) DO NOTHING`,
+    [u, String(deletedBy || '')]
+  );
+}
+
+// True if the username belongs to a deleted account and is reserved.
+async function isUsernameReserved(username) {
+  const u = String(username || '').toLowerCase().trim();
+  if (!u) return false;
+  const { rows } = await pool.query(
+    'SELECT 1 FROM deleted_usernames WHERE username = $1 LIMIT 1',
+    [u]
+  );
+  return rows.length > 0;
+}
+
+// Free a previously reserved username (lets it be registered again).
+async function unreserveUsername(username) {
+  const u = String(username || '').toLowerCase().trim();
+  if (!u) return;
+  await pool.query('DELETE FROM deleted_usernames WHERE username = $1', [u]);
 }
 
 async function deleteScore(userId, rankingId) {
@@ -1592,6 +1630,9 @@ module.exports = {
   clearAllChallengeData,
   listAllUsers,
   deleteUser,
+  reserveUsername,
+  isUsernameReserved,
+  unreserveUsername,
   deleteScore,
   deleteAccessory,
   deleteItem,

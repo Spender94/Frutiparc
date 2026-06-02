@@ -1264,7 +1264,11 @@ async function loadDetail() {
       <tr><td>XP</td><td>${user.xp}</td></tr>
       <tr><td>Kikooz</td><td>${user.kikooz}</td></tr>
       <tr><td>Bouille</td><td><code>${esc(user.fbouille||'')}</code></td></tr>
-      <tr><td>Besoin bouille</td><td>${user.needs_bouille ? 'Oui' : 'Non'}</td></tr>
+      <tr><td>Éditeur bouille</td><td>
+        <span class="badge ${user.needs_bouille ? 'badge-mod' : 'badge-no-mod'}">${user.needs_bouille ? 'Ouvert' : 'Verrouillé'}</span>
+        <button class="btn btn-sm" onclick="toggleBouilleEdit('${esc(u)}',${!user.needs_bouille})">${user.needs_bouille ? 'Verrouiller la bouille' : 'Autoriser à refaire sa bouille'}</button>
+        <span style="color:#888;font-size:11px">${user.needs_bouille ? "(l'éditeur s'ouvrira à sa prochaine connexion)" : ''}</span>
+      </td></tr>
       <tr><td>Genre</td><td>${user.gender||'M'}</td></tr>
       <tr><td>Modérateur</td><td><span class="badge ${user.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u)}',${!user.is_moderator});setTimeout(loadDetail,500)" style="cursor:pointer">${user.is_moderator ? 'Oui' : 'Non'}</span></td></tr>
       <tr><td>Animateur</td><td><span class="badge ${user.is_animator ? 'badge-anim' : 'badge-no-mod'}" onclick="toggleAnim('${esc(u)}',${!user.is_animator});setTimeout(loadDetail,500)" style="cursor:pointer">${user.is_animator ? 'Oui' : 'Non'}</span></td></tr>
@@ -1679,6 +1683,26 @@ async function toggleAnim(username, setAnim) {
   });
   toast(setAnim ? `${username} est maintenant animateur` : `${username} n'est plus animateur`);
   loadUsers();
+}
+
+// ── Bouille editor unlock ──
+// Sets needs_bouille so the SWF re-opens the editbouille window on the user's
+// next connect. They pick a new bouille, it persists in DB and overwrites the
+// old one, then the flag clears automatically on save.
+async function toggleBouilleEdit(username, allow) {
+  const action = allow
+    ? `autoriser ${username} à refaire sa bouille`
+    : `verrouiller la bouille de ${username}`;
+  if (!confirm(`${action} ?`)) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, {
+    method: 'PATCH', headers: hdr(),
+    body: JSON.stringify({ needs_bouille: allow })
+  });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); alert('Erreur : ' + (d.error || r.status)); return; }
+  toast(allow
+    ? `${username} pourra refaire sa bouille à sa prochaine connexion`
+    : `Bouille de ${username} verrouillée`);
+  loadDetail();
 }
 
 // ── Shop / Boutique ──

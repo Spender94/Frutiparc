@@ -66,6 +66,12 @@
     text-decoration: none;
   }
   .forum-header .title-link:hover { text-decoration: none; }
+  /* Breadcrumb parts inside the header title: each level is its own link so
+     you can jump back to the sub-forum, not just the forum root. */
+  .forum-header .title-link a { color: #E3756A; text-decoration: none; }
+  .forum-header .title-link a:hover { text-decoration: underline; }
+  .forum-header .title-link .bc-sep { color: #E3756A; font-weight: bold; }
+  .forum-header .title-link .bc-current { color: #555; }
 
   /* Breadcrumb (legacy — hidden) */
   .breadcrumb { display: none; }
@@ -1152,7 +1158,7 @@
   </div>
   <div class="forum-header" id="forum-header">
     <img class="bc-icon" src="/fb/ico.gif" alt="" width="18" height="18">
-    <a class="title-link" href="#" id="header-title" onclick="navigate('index');return false">Forum Frutiparc.com</a>
+    <span class="title-link" id="header-title"><a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a></span>
   </div>
   <div id="app">
     <div class="loading">Chargement du forum...</div>
@@ -1543,14 +1549,26 @@ async function apiFetch(url, opts) {
 }
 
 function setBreadcrumb(parts) {
-  // Update the forum-header title (subSilver style: "Forum Frutiparc.com > Section > Topic")
-  var titleHtml = 'Forum Frutiparc.com';
-  for (var i = 0; i < parts.length; i++) {
-    titleHtml += ' &gt; ' + escapeHtml(parts[i].text);
-  }
+  // Render the forum-header title as a real breadcrumb (subSilver style:
+  // "Forum Frutiparc.com > Section > Topic"). Each part that carries an href
+  // is a clickable link — so clicking the sub-forum (e.g. "Frutiz") returns
+  // to THAT board's listing, not the forum root. The current/last level is
+  // plain text.
   var headerTitle = document.getElementById('header-title');
-  if (headerTitle) headerTitle.innerHTML = titleHtml;
-  document.getElementById('breadcrumb').innerHTML = '';
+  if (headerTitle) {
+    var html = '<a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
+    for (var i = 0; i < parts.length; i++) {
+      html += ' <span class="bc-sep">&gt;</span> ';
+      if (parts[i].href) {
+        html += '<a href="#" onclick="' + parts[i].href + '">' + escapeHtml(parts[i].text) + '</a>';
+      } else {
+        html += '<span class="bc-current">' + escapeHtml(parts[i].text) + '</span>';
+      }
+    }
+    headerTitle.innerHTML = html;
+  }
+  var bc = document.getElementById('breadcrumb');
+  if (bc) bc.innerHTML = '';
 }
 
 function navigate(view, id, extra) {
@@ -1673,6 +1691,8 @@ async function loadBoard(boardId, page) {
       html += '<span class="reply-blocked" title="Tu es totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + '">'
         + 'Totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + ' — nouveau sujet impossible'
         + '</span>';
+    } else if (data.board.postRestricted && !data.currentIsMod) {
+      html += '<span class="reply-blocked">Seuls les modérateurs peuvent publier dans ce forum.</span>';
     } else {
       html += '<a href="#" onclick="navigate(\'newTopic\',' + boardId + ');return false" class="img-btn"><img src="/fb/post.gif" alt="Nouveau sujet"></a>';
     }
@@ -1753,6 +1773,8 @@ async function loadTopic(topicId, page) {
       html += '<span class="reply-blocked" title="Tu es totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + '">'
         + 'Totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + ' — réponse impossible'
         + '</span>';
+    } else if (data.topic.postRestricted && !data.currentIsMod) {
+      html += '<span class="reply-blocked">Seuls les modérateurs peuvent répondre dans ce forum.</span>';
     } else if (data.topic.lastPostBy && currentUser
                && data.topic.lastPostBy === String(currentUser).toLowerCase()) {
       // The current user is already the author of the most recent post on

@@ -3440,6 +3440,16 @@ app.post('/api/auth/register', async (req, res) => {
   if (users[username]) {
     return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
   }
+  // A deleted account's pseudo stays reserved and can't be reused.
+  if (process.env.DATABASE_URL) {
+    try {
+      if (await db.isUsernameReserved(username)) {
+        return res.status(409).json({ ok: false, error: 'user_exists', message: 'Ce pseudo a été supprimé et ne peut plus être réutilisé.' });
+      }
+    } catch (e) {
+      console.error('[REGISTER] reserved-username check failed:', e.message);
+    }
+  }
 
   const passwordHash = await hashPassword(password);
   try {
@@ -3903,6 +3913,9 @@ app.delete('/api/admin/users/:username', adminAuth, async (req, res) => {
     const row = await db.findUserByUsername(u);
     if (!row) return res.status(404).json({ error: 'not found' });
     await db.deleteUser(row.id);
+    // Reserve the pseudo so the deleted account can't be recreated under the
+    // same name (which would also re-bind it to the old forum posts).
+    await db.reserveUsername(row.username, 'admin').catch(dbErr('reserveUsername'));
     if (users[u]) delete users[u];
     for (const [sid, s] of Object.entries(sessions)) {
       if (s.user === u) delete sessions[sid];
@@ -4336,7 +4349,13 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
       const fb = normalizeBouilleState(body.fbouille);
       fields.fbouille = fb;
       bouilleCache[u] = fb;
+      // Setting a bouille directly means the user has one → don't force the
+      // editor, unless this same request explicitly (re)opens it.
+      if (body.needs_bouille === undefined) fields.needs_bouille = false;
     }
+    // Re-open (or lock) the bouille editor for a user. Setting it true lets
+    // them redo their bouille on next connect; /do/eb clears it on save.
+    if (body.needs_bouille !== undefined) fields.needs_bouille = !!body.needs_bouille;
     if (body.xp !== undefined) fields.xp = Number(body.xp);
     if (body.kikooz !== undefined) fields.kikooz = Number(body.kikooz);
     if (body.password !== undefined) {
@@ -4397,6 +4416,7 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
         Object.assign(users[u], fields);
         if (fields.is_moderator !== undefined) users[u].isModerator = fields.is_moderator;
         if (fields.is_animator !== undefined) users[u].isAnimator = fields.is_animator;
+        if (fields.needs_bouille !== undefined) users[u].needsBouille = fields.needs_bouille;
         if (fields.display_name !== undefined) users[u].displayName = fields.display_name;
         if (fields.fruti_sign !== undefined) users[u].frutiSign = fields.fruti_sign;
         if (fields.fruti_sign_b !== undefined) users[u].frutiSignB = fields.fruti_sign_b;
@@ -7542,6 +7562,7 @@ app.all('/do/eb', (req, res) => {
   if (!auth) return;
 
   auth.user.fbouille = bouille;
+  auth.user.needsBouille = false; // confirmed a bouille → stop forcing the editor
   bouilleCache[auth.username] = bouille;
   if (auth.user._dbId) db.updateUser(auth.username, { fbouille: bouille, needs_bouille: false }).catch(dbErr('updateUser'));
 
@@ -7604,6 +7625,11 @@ app.all('/do/give', (req, res) => {
     c: username,
   });
   if (target.kikoozLog.length > 200) target.kikoozLog.length = 200;
+
+  // Push the new balances live so both parties' boutique/kikooz counters
+  // refresh without a manual reload (matches the original auto-update).
+  notifyKikoozUpdate(username, user.kikooz);
+  notifyKikoozUpdate(targetName, target.kikooz);
 
   console.log(`[do/give] ${username} → ${targetName}: ${amount} kikooz${reason ? ' ('+reason+')' : ''}`);
 
@@ -7866,10 +7892,12 @@ app.get('/do/onident', (req, res) => {
 
   // The "f" attribute, when present, forces the SWF to open the editbouille
   // window with the listed part families. Used for first-time avatar setup.
-  // The editor opens as long as the user still has the DEFAULT bouille.
-  // Once they save anything else, it NEVER opens again.
+  // The editor opens while the user still has the DEFAULT bouille, OR while
+  // their needsBouille flag is set — which an admin can re-enable to let a
+  // user redo their bouille. Saving via /do/eb clears the flag, so once they
+  // confirm a new bouille the editor stops re-opening.
   const hasDefaultBouille = !user.fbouille || user.fbouille === DEFAULT_BOUILLE_STATE;
-  const fAttr = hasDefaultBouille ? ' f="0,1,2,3,4,5,6,7,8"' : '';
+  const fAttr = (hasDefaultBouille || user.needsBouille === true) ? ' f="0,1,2,3,4,5,6,7,8"' : '';
 
   const userLogXml = buildUserLogXml(user.userLog);
   const siteLogXml = buildUserLogXml(user.siteLog);
@@ -9354,6 +9382,19 @@ async function isStaffOnlyBoard(boardId) {
   return { exists: true, staffOnly, board };
 }
 
+// Boards everyone can READ but only moderators can WRITE to (both new topics
+// and replies). Unlike STAFF_ONLY_FORUM_CATEGORIES this does not hide the
+// board or deny read access. "Annonces" = official team announcements.
+const MOD_POST_ONLY_FORUM_BOARDS = new Set(['Annonces']);
+function isModPostOnlyBoard(board) {
+  return !!(board && MOD_POST_ONLY_FORUM_BOARDS.has(board.name));
+}
+function isForumModerator(username) {
+  if (!username) return false;
+  const u = users[username];
+  return !!(u && u.isModerator);
+}
+
 app.get('/api/forum/index', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ categories: [], boards: [] });
   try {
@@ -9405,7 +9446,11 @@ app.get('/api/forum/board/:id', async (req, res) => {
       createdAt: t.created_at,
       unread: !!t.unread,
     }));
-    res.json({ board: { id: board.id, name: board.name, description: board.description }, topics: topicsOut, total, page, perPage: 25 });
+    res.json({
+      board: { id: board.id, name: board.name, description: board.description, postRestricted: isModPostOnlyBoard(board) },
+      topics: topicsOut, total, page, perPage: 25,
+      currentIsMod: isForumModerator(currentUser),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -9449,6 +9494,7 @@ app.get('/api/forum/topic/:id', async (req, res) => {
       topic: {
         id: topic.id, title: topic.title, author: getDisplayName(topic.author_username),
         boardId: topic.board_id, boardName: board ? board.name : '',
+        postRestricted: isModPostOnlyBoard(board),
         isSticky: topic.is_sticky, isLocked: topic.is_locked,
         // Lowercase to align with the username comparison the frontend
         // does against currentUser (also lowercase from /api/forum/me).
@@ -9501,8 +9547,11 @@ app.post('/api/forum/topic', async (req, res) => {
   const postBouille = req.body.bouille ? normalizeBouilleState(req.body.bouille) : null;
   const postMood = normalizeForumMood(req.body.mood);
   try {
-    const { staffOnly } = await isStaffOnlyBoard(boardId);
+    const { staffOnly, board } = await isStaffOnlyBoard(boardId);
     if (staffOnly && !isForumStaff(username)) return res.status(403).json({ error: 'forbidden' });
+    if (isModPostOnlyBoard(board) && !isForumModerator(username)) {
+      return res.status(403).json({ error: 'forbidden', message: 'Seuls les modérateurs peuvent publier dans le forum Annonces.' });
+    }
     const topic = await db.forumCreateTopic(boardId, username, title, content, postBouille, postMood);
     trackXpAction(username, 'forumTopic');
     res.json({ ok: true, topicId: topic.id });
@@ -9543,8 +9592,11 @@ app.post('/api/forum/post', async (req, res) => {
   try {
     const topic = await db.forumGetTopic(topicId);
     if (!topic) return res.status(404).json({ error: 'topic not found' });
-    const { staffOnly } = await isStaffOnlyBoard(topic.board_id);
+    const { staffOnly, board } = await isStaffOnlyBoard(topic.board_id);
     if (staffOnly && !isForumStaff(username)) return res.status(403).json({ error: 'forbidden' });
+    if (isModPostOnlyBoard(board) && !isForumModerator(username)) {
+      return res.status(403).json({ error: 'forbidden', message: 'Seuls les modérateurs peuvent répondre dans le forum Annonces.' });
+    }
     if (topic.is_locked) return res.status(403).json({ error: 'topic locked' });
     // Anti double-post: a user can't be the author of two consecutive
     // messages on the same topic. They must edit their previous post or
@@ -11271,6 +11323,19 @@ function getSocketsForUsername(username) {
     }
   }
   return sockets;
+}
+
+// Push a live kikooz-balance update to every connected socket of `username`.
+// The SWF's onActivateFeature handler ("ku") sets _global.me.kikooz, which in
+// turn refreshes any open boutique/kikooz display. Without this, a balance
+// change made outside the shop (e.g. receiving kikooz via /donne) only shows
+// up after a manual page refresh.
+function notifyKikoozUpdate(username, kikooz) {
+  if (typeof CMD === 'undefined') return;
+  const value = Math.max(0, Math.floor(Number(kikooz) || 0));
+  for (const sock of getSocketsForUsername(username)) {
+    sendToClient(sock, `<${CMD.activatefeat} command_name="ku">${value}</${CMD.activatefeat}>`);
+  }
 }
 
 // Trace subscriptions: when socket A asks for user B's trace, A is subscribed
