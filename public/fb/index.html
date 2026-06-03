@@ -1145,6 +1145,16 @@
   /* Inline emoticons in rendered posts */
   .post-content .emo-img,
   .editor-preview-content .emo-img { vertical-align: middle; margin: 0 1px; }
+  /* Inline images inserted via the [img] tag / image-upload button */
+  .post-content .bb-img,
+  .editor-preview-content .bb-img {
+    max-width: 100%;
+    max-height: 400px;
+    height: auto;
+    display: block;
+    margin: 6px 0;
+    border-radius: 4px;
+  }
 </style>
 </head>
 <body>
@@ -1483,6 +1493,12 @@ function renderBBCode(s) {
     '<a href="$1" target="_blank" rel="noopener">$2</a>');
   out = out.replace(/\[url\](https?:\/\/[^\s\[]+)\[\/url\]/gi,
     '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  // [img]URL[/img] → inline image. The URL is constrained to http(s) or a
+  // root-relative path (our own /forum-uploads/…); the content was already
+  // HTML-escaped above and the charset excludes quotes/brackets/angles, so the
+  // src can't break out of the attribute or smuggle a javascript: scheme.
+  out = out.replace(/\[img\]\s*((?:https?:\/\/|\/)[^\s\[\]"'<>]+?)\s*\[\/img\]/gi,
+    '<img class="bb-img" src="$1" alt="image" loading="lazy">');
   // Trim the newline right after [quote] and right before [/quote] so the
   // \n→<br> pass below doesn't add an empty line at the top/bottom of the
   // blockquote. Also swallow the first newline after [/quote] so the
@@ -1916,6 +1932,7 @@ function bbcodeToolbarHtml(targetId) {
   html += '<div class="editor-bbcode-toolbar" style="margin-top:3px">';
   html += '<button type="button" class="bb-btn" onclick="bbToggleTag(\'' + targetId + '\',\'citation\')" title="Citation">Citation</button>';
   html += '<button type="button" class="bb-btn" onclick="bbInsertUrl(\'' + targetId + '\')" title="Lien">Lien</button>';
+  html += '<button type="button" class="bb-btn" onclick="bbInsertImage(\'' + targetId + '\')" title="Insérer une image depuis ton ordinateur">Image</button>';
   html += '<button type="button" class="bb-btn" onclick="bbTogglePictos(\'' + targetId + '\', this)" title="Pictos">Pictos</button>';
   html += '</div>';
   return html;
@@ -2157,6 +2174,70 @@ function bbInsertCode(targetId) {
   } else {
     ta.setSelectionRange(start + 6, start + 6);
   }
+}
+
+// Image button: pick a local file, upload it to our server, then drop an
+// [img]<url>[/img] tag at the cursor — so users can add a picture without
+// hosting it on a third-party site first.
+function bbInsertImage(targetId) {
+  var ta = document.getElementById(targetId);
+  if (!ta) return;
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/png,image/jpeg,image/gif,image/webp';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', function () {
+    var file = input.files && input.files[0];
+    if (file) uploadForumImage(targetId, file);
+    if (input.parentNode) input.parentNode.removeChild(input);
+  });
+  input.click();
+}
+
+function uploadForumImage(targetId, file) {
+  var ta = document.getElementById(targetId);
+  if (!ta) return;
+  var MAX = 3 * 1024 * 1024;
+  if (file.size > MAX) {
+    alert('Image trop lourde (' + (Math.round(file.size / 1048576 * 10) / 10) + ' Mo). Maximum : 3 Mo.');
+    return;
+  }
+  // Drop a placeholder at the cursor and lock the field while it uploads.
+  var placeholder = '[…envoi de l\'image…]';
+  var at = ta.selectionStart;
+  ta.value = ta.value.substring(0, at) + placeholder + ta.value.substring(ta.selectionEnd);
+  ta.disabled = true;
+  function restore(replacement) {
+    ta.disabled = false;
+    var i = ta.value.indexOf(placeholder);
+    if (i >= 0) {
+      ta.value = ta.value.substring(0, i) + replacement + ta.value.substring(i + placeholder.length);
+      var caret = i + replacement.length;
+      ta.focus();
+      ta.setSelectionRange(caret, caret);
+    } else {
+      ta.focus();
+    }
+  }
+  fetch('/api/forum/upload-image?sid=' + encodeURIComponent(SID), {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
+    credentials: 'same-origin'
+  }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; });
+  }).then(function (res) {
+    if (res.ok && res.j && res.j.ok && res.j.url) {
+      restore('[img]' + res.j.url + '[/img]');
+    } else {
+      restore('');
+      alert((res.j && res.j.message) ? res.j.message : "Échec de l'envoi de l'image.");
+    }
+  }).catch(function () {
+    restore('');
+    alert("Échec de l'envoi de l'image (problème réseau).");
+  });
 }
 
 var _pictoCache = null;

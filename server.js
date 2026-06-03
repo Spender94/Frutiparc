@@ -9613,6 +9613,100 @@ app.post('/api/forum/topic', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Forum image upload ───────────────────────────────────────────────
+// A logged-in forum user picks a local image in the editor; the browser
+// POSTs the raw bytes here and we persist them under a content hash, then
+// return a URL on our own origin to drop inside an [img]…[/img] tag. This
+// removes the "host it on a third-party site first" chore. Files live under
+// data/forum-uploads (gitignored, like the bouille cache).
+const FORUM_UPLOAD_DIR = path.join(SCORES_DIR, 'forum-uploads');
+const FORUM_UPLOAD_MAX_BYTES = 3 * 1024 * 1024; // 3 MB per image
+function ensureForumUploadDir() {
+  try { if (!fs.existsSync(FORUM_UPLOAD_DIR)) fs.mkdirSync(FORUM_UPLOAD_DIR, { recursive: true }); }
+  catch (e) { console.error('[FORUM-UPLOAD] mkdir:', e.message); }
+}
+// Identify an image strictly from its magic bytes (never trust the declared
+// Content-Type). Returns { ext, mime } for a supported format, else null.
+function sniffForumImage(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 12) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47)
+    return { ext: 'png', mime: 'image/png' };                       // ‰PNG
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff)
+    return { ext: 'jpg', mime: 'image/jpeg' };                      // JPEG SOI
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46)
+    return { ext: 'gif', mime: 'image/gif' };                       // "GIF"
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50)
+    return { ext: 'webp', mime: 'image/webp' };                     // "RIFF"…"WEBP"
+  return null;
+}
+
+app.post('/api/forum/upload-image',
+  express.raw({ type: ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/octet-stream'], limit: FORUM_UPLOAD_MAX_BYTES }),
+  (req, res) => {
+    const username = forumAuth(req);
+    if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+    const mute = getMuteInfoForUser(username);
+    if (mute.muted) {
+      return res.status(403).json({ ok: false, error: 'muted',
+        message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas envoyer d'image.` });
+    }
+    const ban = getBanInfoForUser(username);
+    if (ban.banned) {
+      return res.status(403).json({ ok: false, error: 'banned',
+        message: ban.permanent
+          ? `Tu es banni définitivement, tu ne peux pas envoyer d'image.`
+          : `Tu es banni jusqu'au ${ban.untilDisplay}, tu ne peux pas envoyer d'image.` });
+    }
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length < 32) {
+      return res.status(400).json({ ok: false, error: 'empty_body', message: 'Image vide ou illisible.' });
+    }
+    const kind = sniffForumImage(body);
+    if (!kind) {
+      return res.status(415).json({ ok: false, error: 'unsupported_type',
+        message: 'Format non supporté. Accepté : PNG, JPEG, GIF, WEBP.' });
+    }
+    try {
+      ensureForumUploadDir();
+      // Content-addressed name → automatic dedupe and no user-controlled path.
+      const hash = crypto.createHash('sha256').update(body).digest('hex').slice(0, 32);
+      const fname = hash + '.' + kind.ext;
+      const file = path.join(FORUM_UPLOAD_DIR, fname);
+      if (!fs.existsSync(file)) {
+        // Atomic write so a concurrent GET never sees a half-written file.
+        const tmp = file + '.' + crypto.randomBytes(4).toString('hex') + '.tmp';
+        fs.writeFileSync(tmp, body);
+        fs.renameSync(tmp, file);
+      }
+      console.log(`[FORUM-UPLOAD] ${username} ${kind.ext} ${fname} (${body.length} B)`);
+      res.json({ ok: true, url: '/forum-uploads/' + fname, bytes: body.length });
+    } catch (e) {
+      console.error('[FORUM-UPLOAD] store error:', e.message);
+      res.status(500).json({ ok: false, error: 'store_failed', message: "Échec de l'enregistrement de l'image." });
+    }
+  }
+);
+
+// Serve uploaded forum images. Names are content hashes we minted above, so
+// the strict pattern both validates the request and blocks path traversal.
+app.get('/forum-uploads/:name', (req, res) => {
+  const name = String(req.params.name || '');
+  if (!/^[0-9a-f]{32}\.(png|jpe?g|gif|webp)$/i.test(name)) {
+    return res.status(400).type('text/plain').send('bad name');
+  }
+  const file = path.join(FORUM_UPLOAD_DIR, name);
+  if (!fs.existsSync(file)) return res.status(404).type('text/plain').send('not found');
+  const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+  const mime = ext === 'png' ? 'image/png'
+             : ext === 'gif' ? 'image/gif'
+             : ext === 'webp' ? 'image/webp'
+             : 'image/jpeg';
+  res.type(mime);
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.sendFile(file);
+});
+
 app.post('/api/forum/post', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
