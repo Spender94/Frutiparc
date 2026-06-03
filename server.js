@@ -1739,6 +1739,10 @@ function createDefaultUser(pass) {
     isModerator: false,
     isAnimator: false,
     needsBouille: true, // Force editbouille on first login
+    // Account creation time — drives the client-side "frutiAge" (FrutizInfo.as).
+    // Must be set from the start: without it the server falls back to a 2005
+    // sub-date and a brand-new account shows ~257 months instead of 0.
+    createdAt: new Date().toISOString(),
     kikoozLog: [],      // Entries displayed in box.KikoozLog (/ft/log)
     userLog: [],        // Entries displayed in "Mon historique" (/do/onident <ul>)
     siteLog: [],        // Entries displayed in "Evènements" (/do/onident <sl>)
@@ -3459,6 +3463,11 @@ app.post('/api/auth/register', async (req, res) => {
     }
     users[username] = createDefaultUser(passwordHash);
     users[username]._dbId = dbUser.id;
+    if (dbUser.created_at) {
+      users[username].createdAt = dbUser.created_at instanceof Date
+        ? dbUser.created_at.toISOString()
+        : String(dbUser.created_at);
+    }
     users[username].displayName = rawName;
     users[username].email = email || '';
     await db.setUserItems(dbUser.id, users[username].items);
