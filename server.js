@@ -1997,9 +1997,12 @@ function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {
 // XP System — daily activity tracking & levelling
 // ─────────────────────────��───────────────────
 // Tracks daily actions per user. Persisted to disk so it survives restarts.
-// Keys: login, chatMsg, forumTopic, forumPost, gamePlayed
+// Action counts: chatMsg, forumTopic, forumPost, gamePlayed (tallied at the
+// rollover). Also holds loginXpDay: the day key on which the once-per-day
+// connection bonus was already granted (login XP is paid immediately on ident,
+// not at the rollover).
 const XP_ACTIONS_FILE = path.join(SCORES_DIR, 'xp-actions.json');
-let dailyXpActions = {}; // username -> { login:N, chatMsg:N, forumTopic:N, forumPost:N, gamePlayed:N }
+let dailyXpActions = {}; // username -> { chatMsg:N, forumTopic:N, forumPost:N, gamePlayed:N, loginXpDay:'YYYY-MM-DD' }
 
 function loadXpActions() {
   try {
@@ -2039,17 +2042,23 @@ function trackXpAction(username, action) {
   saveXpActions();
 }
 
-// XP reward formula per action type (with daily caps).
-// Flash formula: level N needs (N-1)^2 * 10000 XP total.
-// Lv2=10k, Lv3=40k, Lv4=90k, Lv5=160k.
-// Max 10000 XP/day → Lv2 in 1-2j, Lv2→3 in 3-6j.
+// XP reward per action type (with daily caps), tallied at the midnight
+// rollover. The connection bonus is separate (LOGIN_XP_BONUS) and granted
+// immediately on ident so progression is felt right away.
+// Flash formula (FIXED client-side): level N needs (N-1)^2 * 10000 XP total.
+// Lv2=10k, Lv3=40k, Lv4=90k, Lv5=160k — we can only accelerate by handing out
+// more XP, not by changing the curve. Rewards bumped ~5x: an active player now
+// gains up to 45000 XP/day from actions (+5000 for connecting) and feels
+// several early levels per week instead of one level every week or two.
 const XP_REWARDS = {
-  login:      { base: 1000, cap: 1  },  // 1000 XP once per day
-  chatMsg:    { base: 50,   cap: 50 },  // 50 XP per message, max 2500/day
-  forumTopic: { base: 500,  cap: 3  },  // 500 XP per topic, max 1500/day
-  forumPost:  { base: 250,  cap: 8  },  // 250 XP per reply, max 2000/day
-  gamePlayed: { base: 300,  cap: 10 },  // 300 XP per challenge score, max 3000/day
+  chatMsg:    { base: 250,  cap: 50 },  // 250 XP per message, max 12500/day
+  forumTopic: { base: 2500, cap: 3  },  // 2500 XP per topic, max 7500/day
+  forumPost:  { base: 1250, cap: 8  },  // 1250 XP per reply, max 10000/day
+  gamePlayed: { base: 1500, cap: 10 },  // 1500 XP per challenge score, max 15000/day
 };
+// Once-per-day connection bonus, granted immediately on ident (see
+// awardDailyLoginXp) instead of being deferred to the rollover.
+const LOGIN_XP_BONUS = 5000;
 
 function countChallengeScores(username) {
   const rlist = scoresData.users[username];
@@ -2132,6 +2141,43 @@ async function awardDailyXp() {
   console.log(`[XP] Daily XP awarded to ${awarded} user(s)`);
   for (const key of Object.keys(dailyXpActions)) delete dailyXpActions[key];
   saveXpActions();
+}
+
+// Grant XP immediately (not deferred to the midnight rollover) and flag a
+// level-up. `notify` controls how the level-up reaches the client: true =
+// live push (addAndNotifyUserLog); false = just record the log entry, used
+// when the caller is the ident flow which already flushes new userLog entries
+// to the socket right after (so a live push would double the notification).
+function awardImmediateXp(username, gain, reason = '', { notify = true } = {}) {
+  if (!gain || gain <= 0) return;
+  const user = users[username];
+  if (!user) return;
+  const oldXp = user.xp || 0;
+  const oldLevel = getLevelForXp(oldXp);
+  user.xp = oldXp + gain;
+  const newLevel = getLevelForXp(user.xp);
+  if (user._dbId) db.updateUser(username, { xp: user.xp }).catch(dbErr('updateUser xp'));
+  if (newLevel > oldLevel) {
+    const content = `Bravo ! Tu passes au niveau ${newLevel} ! (${user.xp} XP)`;
+    if (notify) addAndNotifyUserLog(username, { type: USER_LOG_TYPE.LEVEL_UP, content });
+    else addUserHistoryEntry(user, { type: USER_LOG_TYPE.LEVEL_UP, content, flNew: true });
+  }
+  console.log(`[XP]  ${username}: +${gain} XP${reason ? ' (' + reason + ')' : ''} → total=${user.xp}`);
+}
+
+// Once-per-day connection bonus. The claim marker lives in dailyXpActions
+// (persisted on disk, cleared at the midnight rollover) so reconnecting can't
+// farm it and a restart within the same day won't re-grant it.
+function awardDailyLoginXp(username) {
+  if (!username) return;
+  const today = parisDayKey();
+  const acts = getXpActions(username);
+  if (acts.loginXpDay === today) return;
+  acts.loginXpDay = today;
+  saveXpActions();
+  // notify:false — the ident handler flushes new userLog entries to the socket
+  // immediately after this call, so it delivers any level-up exactly once.
+  awardImmediateXp(username, LOGIN_XP_BONUS, 'connexion quotidienne', { notify: false });
 }
 
 function buildUserLogXml(entries) {
@@ -12081,7 +12127,6 @@ async function handleCBeeMessage(socket, rawXml) {
 
       const user = users[effectiveLogin];
       applyPendingChallengeNotifications(effectiveLogin, user);
-      trackXpAction(effectiveLogin, 'login');
       if (user.hasWelcomeUserLog !== true) {
         addUserHistoryEntry(user, {
           type: USER_LOG_TYPE.INSCRIPTION,
@@ -12103,6 +12148,10 @@ async function handleCBeeMessage(socket, rawXml) {
       client.username = effectiveLogin;
       client.sid = sid;
       client.logged = true;
+
+      // Once-per-day connection bonus, granted immediately (now that the socket
+      // is registered, any level-up notification reaches the client).
+      awardDailyLoginXp(effectiveLogin);
 
       if (process.env.DATABASE_URL && user._dbId) {
         db.recordLogin(effectiveLogin).catch((e) => console.error('[DB] recordLogin error:', e.message));
