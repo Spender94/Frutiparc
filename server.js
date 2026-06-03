@@ -1738,7 +1738,7 @@ function createDefaultUser(pass) {
     prefs: '',
     isModerator: false,
     isAnimator: false,
-    needsBouille: true, // Force editbouille on first login
+    needsBouille: false, // admin "redo" flag only; first-time setup opens via the default-bouille check
     // Account creation time — drives the client-side "frutiAge" (FrutizInfo.as).
     // Must be set from the start: without it the server falls back to a 2005
     // sub-date and a brand-new account shows ~257 months instead of 0.
@@ -1787,7 +1787,7 @@ function dbUserToMemory(row) {
       : null,
     bannedBy: row.banned_by || '',
     bannedReason: row.banned_reason || '',
-    needsBouille: row.needs_bouille !== false,
+    needsBouille: row.needs_bouille === true,
     firstName: row.first_name || '',
     lastName: row.last_name || '',
     lastNamePublic: row.last_name_public || 'Y',
@@ -7947,10 +7947,11 @@ app.get('/do/onident', (req, res) => {
 
   // The "f" attribute, when present, forces the SWF to open the editbouille
   // window with the listed part families. Used for first-time avatar setup.
-  // The editor opens while the user still has the DEFAULT bouille, OR while
-  // their needsBouille flag is set — which an admin can re-enable to let a
-  // user redo their bouille. Saving via /do/eb clears the flag, so once they
-  // confirm a new bouille the editor stops re-opening.
+  // The editor opens while the user still has the DEFAULT bouille (first-time
+  // setup), OR while their needsBouille flag is set — which only an admin sets,
+  // to let a specific user redo their bouille (it defaults OFF). Confirming a
+  // real bouille — via /do/eb (mobile) or the in-client editor/inventory
+  // (socket 'fbouille') — clears the flag, so the editor stops re-opening.
   const hasDefaultBouille = !user.fbouille || user.fbouille === DEFAULT_BOUILLE_STATE;
   const fAttr = (hasDefaultBouille || user.needsBouille === true) ? ' f="0,1,2,3,4,5,6,7,8"' : '';
 
@@ -13282,11 +13283,24 @@ case 'fbouille': {
   // what DB will hold, and what the admin /admin page will read.
   const f = normalizeBouilleState(msg.attrs.f || DEFAULT_BOUILLE_STATE);
   if (client.username && users[client.username]) {
-    users[client.username].fbouille = f;
-    bouilleCache[client.username] = f;
     const u = users[client.username];
+    const prevBouille = u.fbouille;
+    u.fbouille = f;
+    bouilleCache[client.username] = f;
+    // Defining/redoing a real (non-default) bouille through the client clears
+    // the "force the editor open" flag, mirroring what /do/eb does for the
+    // mobile client. Without this, an admin-triggered redo (or any first-time
+    // setup that saved via this socket path instead of /do/eb) would re-open
+    // the editbouille editor on every later login. Gated on an actual CHANGE
+    // so the SWF's connect-time "here's my state" assertion can't prematurely
+    // clear a pending admin redo before the user touches anything.
+    const definedRealBouille = f && f !== DEFAULT_BOUILLE_STATE && f !== prevBouille;
+    const clearNeedsBouille = definedRealBouille && u.needsBouille !== false;
+    if (clearNeedsBouille) u.needsBouille = false;
     if (u._dbId) {
-      db.updateUser(client.username, { fbouille: f }).catch(dbErr('updateUser fbouille'));
+      const patch = { fbouille: f };
+      if (clearNeedsBouille) patch.needs_bouille = false;
+      db.updateUser(client.username, patch).catch(dbErr('updateUser fbouille'));
     }
     // Tell everyone sharing a room with this user about the new bouille so their
     // user lists / reaction overlays refresh live (a trace frame carries f=).

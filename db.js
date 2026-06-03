@@ -52,7 +52,7 @@ async function initSchema() {
         region           TEXT DEFAULT 'IDF',
         prefs            TEXT DEFAULT '',
         is_moderator     BOOLEAN DEFAULT false,
-        needs_bouille    BOOLEAN DEFAULT true,
+        needs_bouille    BOOLEAN DEFAULT false,
         first_name       TEXT DEFAULT '',
         last_name        TEXT DEFAULT '',
         last_name_public TEXT DEFAULT 'Y',
@@ -91,6 +91,12 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_by TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_reason TEXT DEFAULT '';
+        -- needs_bouille now means strictly "an admin asked this user to redo
+        -- their bouille". First-time setup is handled separately (the onident
+        -- gate opens the editor while the user still has the default bouille),
+        -- so the column must default OFF — a true-by-default re-opened the
+        -- editbouille editor on every login.
+        ALTER TABLE users ALTER COLUMN needs_bouille SET DEFAULT false;
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
 
@@ -398,7 +404,31 @@ async function initSchema() {
         created_at  TIMESTAMPTZ DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_password_resets_hash ON password_resets(token_hash);
+
+      -- Tracks one-off data migrations that can't be expressed as idempotent
+      -- DDL (e.g. a one-time UPDATE that must NOT re-run on later boots).
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        name        TEXT PRIMARY KEY,
+        applied_at  TIMESTAMPTZ DEFAULT now()
+      );
     `);
+
+    // One-time reconciliation: needs_bouille used to default to true, which —
+    // combined with the onident gate that force-opens the editor when the flag
+    // is set — re-opened the editbouille editor on EVERY login for essentially
+    // every user. The flag now means only "an admin asked this user to redo
+    // their bouille", so clear the historical blanket-true values once. Brand
+    // new accounts still get the editor on first connect via the separate
+    // default-bouille check, and admin re-triggers set after this runs are
+    // preserved (the migration is recorded and never re-runs).
+    const BOUILLE_FLAG_MIGRATION = 'needs_bouille_admin_only_2026_06';
+    const already = await client.query('SELECT 1 FROM schema_migrations WHERE name = $1', [BOUILLE_FLAG_MIGRATION]);
+    if (already.rowCount === 0) {
+      const res = await client.query('UPDATE users SET needs_bouille = false WHERE needs_bouille = true');
+      await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [BOUILLE_FLAG_MIGRATION]);
+      console.log(`[DB] migration ${BOUILLE_FLAG_MIGRATION}: cleared needs_bouille on ${res.rowCount} user(s)`);
+    }
+
     console.log('[DB] Schema initialized');
   } finally {
     client.release();
