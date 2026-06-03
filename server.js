@@ -12475,7 +12475,13 @@ case 'join': {
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
-        const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
+        // The legacy box.Score.onRanking reads this `c` attribute as the
+        // ranking's TOTAL result count to decide whether to show the
+        // "page suivante" button (XP/consecration tables page by row-count and
+        // don't need it). We used to echo back the classic/challenge request
+        // flag here, so the client saw "total ≈ 2" and challenge tables never
+        // paginated. Send the real total instead.
+        const cAttr = ` c="${all.length}"`;
         const dtAttr = dtIn ? ` dt="${escapeXml(dtIn)}"` : '';
         let responseXml;
         if (!inner) {
@@ -12568,7 +12574,13 @@ case 'join': {
         }
         const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
         const tyAttr = legacyDesc && legacyDesc.ty ? ` ty="${escapeXml(legacyDesc.ty)}"` : '';
-        const cAttr = cAttrIn ? ` c="${escapeXml(cAttrIn)}"` : '';
+        // The legacy box.Score.onRanking reads this `c` attribute as the
+        // ranking's TOTAL result count to decide whether to show the
+        // "page suivante" button (XP/consecration tables page by row-count and
+        // don't need it). We used to echo back the classic/challenge request
+        // flag here, so the client saw "total ≈ 2" and challenge tables never
+        // paginated. Send the real total instead.
+        const cAttr = ` c="${all.length}"`;
         const dtAttr2 = dtIn ? ` dt="${escapeXml(dtIn)}"` : '';
         if (!inner) {
           sendToClient(socket, buildLegacyRankingResultPayload(rkInput, reqId, cAttrIn));
