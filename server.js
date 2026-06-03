@@ -2650,6 +2650,15 @@ function genMailUid() {
   return 'm' + crypto.randomBytes(5).toString('hex');
 }
 
+// True only for an actual mail UID — 'm' followed by 10 hex chars (see
+// genMailUid). The file-system endpoints (ff/mv, ff/ls) must NOT treat every
+// uid starting with 'm' as mail, or contacts ("mdairma") and game discs
+// ("mb2", "minipixiz1", "miniwave1") get misrouted into the mail branch and
+// rejected with a bogus "mail not found".
+function isMailUid(s) {
+  return /^m[0-9a-f]{10}$/.test(String(s == null ? '' : s));
+}
+
 // desc[0]=from, desc[1]=subject, desc[2]=to, desc[3..]=body lines
 function parseMailDesc(d) {
   const lines = String(d || '').split(/\r?\n/);
@@ -8539,8 +8548,9 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     return res.type('text/xml').send(`<f u="${uid}">${nodes || '<i />'}</f>`);
   }
 
-  // Individual mail fetch (uid starts with 'm' and is in user's mailbox)
-  if (uid && uid.charAt(0) === 'm') {
+  // Individual mail fetch — real mail UIDs only ('m' + 10 hex), so a disc or
+  // contact whose uid merely starts with 'm' doesn't get probed as mail.
+  if (isMailUid(uid)) {
     ensureMails(user);
     const mail = user.mails.find((m) => m.uid === uid);
     if (mail) {
@@ -8576,7 +8586,7 @@ app.all('/ff/get', (req, res) => {
   const { user } = auth;
 
   let payload;
-  if (uid && uid.charAt(0) === 'm') {
+  if (isMailUid(uid)) {
     ensureMails(user);
     const mail = user.mails.find((m) => m.uid === uid);
     if (mail) {
@@ -8742,8 +8752,10 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     );
   }
 
-  // Mail moves — file uid starts with 'm'
-  if (file && file.charAt(0) === 'm') {
+  // Mail moves — only for real mail UIDs ('m' + 10 hex). Matching on the
+  // leading 'm' alone misrouted contacts like "mdairma" and discs like "mb2",
+  // "minipixiz1", "miniwave1" here, where they were rejected as missing mail.
+  if (isMailUid(file)) {
     ensureMails(user);
     const mail = user.mails.find((m) => m.uid === file);
     if (mail) {
