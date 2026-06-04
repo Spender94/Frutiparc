@@ -13365,29 +13365,27 @@ case 'createchannel': {
       creator: requester,
     };
 
-    // A salon created WITH a password is PRIVATE — it must NOT show up in the
-    // public salon list (it is reachable only by name / invitation). The
-    // original protocol carries the password in attribute `p` (same as
-    // join/invite/DM); a non-empty value flags a private salon. `cmode` /
-    // `priv` are honoured as fallbacks. The full attrs are logged below so the
-    // exact flag can be confirmed against the live client if ever needed.
+    // User-created salons are PRIVATE rooms. The client's "create salon" sends
+    // NO public/private flag — createchannel carries only r=<reqId> and the
+    // title (verified on the wire: attrs={"r":"bu"}), so a user has no way to
+    // create a PUBLIC salon. Only the official seeded salons (pomme, abricot…)
+    // are public. Mark every user-created salon private so it never shows up in
+    // the public salon list; it stays reachable by name / invitation (the
+    // creator hands the name out to whoever they want to let in).
+    channels[channelId].private = true;
     const salonPass = String(msg.attrs.p || msg.attrs.passwd || msg.attrs.pass || '');
-    const wantPrivate = salonPass !== '' || msg.attrs.cmode === 'private' || msg.attrs.priv === '1';
-    if (wantPrivate) {
-      channels[channelId].private = true;
-      channels[channelId].pass = salonPass;
-    }
+    if (salonPass) channels[channelId].pass = salonPass;
 
     // Auto-join the creator
     channels[channelId].users.add(requester);
     client.channels.add(channelId);
 
-    console.log(`[CBee]  Channel "${channelId}" created by ${requester} (${wantPrivate ? 'PRIVATE' : 'public'}; topic: ${title.trim()}; attrs=${JSON.stringify(msg.attrs)})`);
+    console.log(`[CBee]  Private salon "${channelId}" created by ${requester} (topic: ${title.trim()}; attrs=${JSON.stringify(msg.attrs)})`);
 
     // Response: <r g="channelId" [p="pass"] r="requestId">topic</r>
     sendToClient(
       socket,
-      `<${CMD.createchannel} g="${channelId}"${wantPrivate && salonPass ? ` p="${escapeXml(salonPass)}"` : ''} r="${escapeXml(reqId)}">${escapeXml(title.trim())}</${CMD.createchannel}>`
+      `<${CMD.createchannel} g="${channelId}"${salonPass ? ` p="${escapeXml(salonPass)}"` : ''} r="${escapeXml(reqId)}">${escapeXml(title.trim())}</${CMD.createchannel}>`
     );
     break;
   }
