@@ -1113,7 +1113,7 @@
   // the chat ("kasparov : éclate de rire") while the bouille animates.
   var EMOTE_LABEL = {
     rire: "rigole", mdr: "éclate de rire", pleurer: "pleure",
-    langue: "tire la langue", miam: "se régale", question: "s'interroge",
+    langue: "tire la langue", miam: "se régale", question: "se pose des questions",
     rougir: "rougit", sifflote: "siffle", gum: "fait un chewing-gum",
   };
   function detectEmote(text) {
@@ -1124,7 +1124,7 @@
     else if (/\bsnif\b|\bpleure?\b|\btriste\b|😢|😭|💧/.test(t)) anim = "pleurer";
     else if (/:p\b|:-p\b|😛|😜|🤪|\bnananère?\b/.test(t)) anim = "langue";
     else if (/\bmiam\b|\bmmh+\b|\bgloup\b|🤤|🍕|🍔|🍰/.test(t)) anim = "miam";
-    else if (/\?\s*$|\bhein\b|\bquoi\b|\bpourquoi\b|❓|🤔/.test(t)) anim = "question";
+    else if (/\bquestions?\b/.test(t)) anim = "question";
     else if (/\brougi[rs]?\b|\bgêné?e?\b|\btimide\b|😳|☺️|🥰|❤️|<3/.test(t)) anim = "rougir";
     else if (/\bsiffl|🎵|🎶/.test(t)) anim = "sifflote";
     else if (/\bgum\b|\bchewing\b|\bbubble\b/.test(t)) anim = "gum";
@@ -1135,7 +1135,7 @@
     var compact = String(text || "").trim();
     var pure = anim !== "parle" && (compact.length <= 12 || /^[\s!?.…,;:)(-]*$/.test(
       compact.toLowerCase()
-        .replace(/m+d+r+|ptdr|lmao|rofl|l+o+l+|ha+ha+|he+he+|eheh|xd|snif|pleure?|triste|miam|mmh+|gloup|hein|quoi|pourquoi|rougi[rs]?|gêné?e?|timide|siffl\w*|chewing[- ]?gum|gum|bubble|nananère?/g, "")
+        .replace(/m+d+r+|ptdr|lmao|rofl|l+o+l+|ha+ha+|he+he+|eheh|xd|snif|pleure?|triste|miam|mmh+|gloup|questions?|rougi[rs]?|gêné?e?|timide|siffl\w*|chewing[- ]?gum|gum|bubble|nananère?/g, "")
         .replace(/[:;x][-]?[pdo3)(]/g, "")
         .replace(/[😂🤣😄😁😆😢😭💧😛😜🤪🤤🍕🍔🍰❓🤔😳☺🥰❤🎵🎶]/gu, "")
     ));
@@ -1217,7 +1217,7 @@
     sifflote:7, gum:8, question:9, miam:10, pleurer:11 };
   var ANIM_LABEL = { parle:"parle", rire:"rigole", mdr:"éclate de rire",
     pleurer:"pleure", langue:"tire la langue", miam:"se régale",
-    question:"s'interroge", rougir:"rougit", sifflote:"siffle",
+    question:"se pose des questions", rougir:"rougit", sifflote:"siffle",
     gum:"fait un chewing-gum", regard:"regarde" };
   // Reverse map (anim index -> name) for rendering emotes that travel as a bare
   // bouille-anim index in the chat body (the desktop's wire form).
