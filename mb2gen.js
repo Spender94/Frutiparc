@@ -1103,10 +1103,16 @@ function computeRoomTbl(ctbl, spos) {
       if ((b & BIT_MASK) !== 0) continue; // already processed or blocked
       const acc = inAcc | (b & (HOLE_MASK | BLOCK_MASK));
       m[x][y] = (b + 1) | acc;
-      if ((m[x - 1][y] & BIT_MASK) === 0) stack.push([x - 1, y, acc]);
-      if ((m[x + 1][y] & BIT_MASK) === 0) stack.push([x + 1, y, acc]);
-      if ((m[x][y - 1] & BIT_MASK) === 0) stack.push([x, y - 1, acc]);
+      // OCaml recurses neighbours in L, R, U, D order (depth-first). A LIFO
+      // stack must be PUSHED in reverse (D, U, R, L) so it POPS in L, R, U, D —
+      // otherwise the traversal is mirrored, the "first path" that reaches each
+      // cell changes, and the accumulated HOLE/BLOCK masks (hence reachability
+      // used by check_doors / check_red) come out wrong → unsolvable rooms
+      // where the doors never open.
       if ((m[x][y + 1] & BIT_MASK) === 0) stack.push([x, y + 1, acc]);
+      if ((m[x][y - 1] & BIT_MASK) === 0) stack.push([x, y - 1, acc]);
+      if ((m[x + 1][y] & BIT_MASK) === 0) stack.push([x + 1, y, acc]);
+      if ((m[x - 1][y] & BIT_MASK) === 0) stack.push([x - 1, y, acc]);
     }
   }
   return m;
@@ -1334,7 +1340,7 @@ function genNormalRoom(dp, r, lvl, obj) {
 
   const bumpers = [];
   for (let i = 0; i < nbumpers; i++) {
-    if (rng.int(100) < lvl * 100 / 40) {
+    if (rng.int(100) < Math.floor(lvl * 100 / 40)) {
       if (availableMagnet > 0) {
         availableMagnet--;
         bumpers.push([ITEM_BMAGNET, levelBumpersTbl[3]]);
@@ -1370,13 +1376,17 @@ function genNormalRoom(dp, r, lvl, obj) {
   const maxReds = Math.floor(lvl * 2 / 3) + 1;
   const mtbl = computeRoomTbl(ctbl, spos);
 
+  // OCaml binds `let nblues, nreds = … , …` and evaluates tuple components
+  // RIGHT-to-LEFT, so the `nreds` expression is drawn BEFORE the two `nblues`
+  // draws. Match that order (drawing nblues first gave both counts the wrong
+  // random values and desynced the genRedblues draws that follow).
   let nblues, nreds;
   if (!levelClassic) {
-    nblues = Math.min(random2(0, 4), random2(0, 4)) - 1;
     nreds = Math.min(random2(minReds, maxReds), 10);
+    nblues = Math.min(random2(0, 4), random2(0, 4)) - 1;
   } else {
-    nblues = Math.min(random2(0, 3), random2(0, 3)) - 1;
     nreds = Math.min(random2(Math.floor(lvl * 2 / 3), lvl), 10);
+    nblues = Math.min(random2(0, 3), random2(0, 3)) - 1;
   }
 
   for (const [t, p] of blist) {
@@ -1454,11 +1464,14 @@ function genRoomContent(dp, lvl, r) {
 function genRoomRec(dp, dist, r, maxCount) {
   for (let count = 0; count < maxCount; count++) {
     try {
-      let lvl;
-      if (dist === -1) lvl = -1;
-      else if (dist === 0) lvl = 0;
-      else lvl = 1 + random2(Math.floor(dist * 2 / 3), dist);
-      return genRoomContent(dp, lvl, r);
+      // OCaml gen_room_rec computes `lvl` ONLY for its random2 side-effect (the
+      // PRNG draw) and then passes `dist` — not `lvl` — to gen_room. Passing the
+      // random `lvl` (≈ dist) here scrambled every level-scaled quantity in
+      // challenge rooms (bumper/red counts, separator spacing `5 - lvl/4`,
+      // special-bumper odds `lvl*100/40`). Keep the discarded draw for parity,
+      // but scale the room by `dist` like the original.
+      if (dist !== -1 && dist !== 0) random2(Math.floor(dist * 2 / 3), dist);
+      return genRoomContent(dp, dist, r);
     } catch (e) {
       if (e instanceof RetryError) continue;
       throw e;
@@ -1870,16 +1883,21 @@ function dailyChallengeSeed(date) {
   return (h >>> 0) & 0x3FFFFFFF;
 }
 
-async function generateMb2ChallengeMap() {
+async function generateMb2ChallengeMap(forceSeed) {
   const outputDir = path.join(__dirname, 'Games', 'motionBall2');
   loadBumpers();
   let lastErr = null;
-  const baseSeed = dailyChallengeSeed();
+  // Default: deterministic per-Paris-day seed (stable across reboots / fresh
+  // containers — see dailyChallengeSeed). A caller may pass forceSeed to roll a
+  // specific/random map instead (used by the admin "regenerate" override so a
+  // manual click always yields a different map).
+  const baseSeed = (forceSeed !== undefined && forceSeed !== null)
+    ? ((Number(forceSeed) >>> 0) & 0x3FFFFFFF)
+    : dailyChallengeSeed();
   for (let attempt = 0; attempt < 10; attempt++) {
     try {
-      // Deterministic per-day seed. The attempt offset (also deterministic) only
-      // matters when a seed fails level validation, so a reboot reproduces the
-      // exact same successful map instead of rolling a fresh random one.
+      // The attempt offset (deterministic) only matters when a seed fails level
+      // validation, so a reboot reproduces the same successful map.
       const seed = (baseSeed + attempt * 7919) & 0x3FFFFFFF;
       rng.init(seed);
       loadBumpers();

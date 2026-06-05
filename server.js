@@ -5629,8 +5629,13 @@ app.post('/api/admin/challenge/reset', adminAuth, async (req, res) => {
 app.post('/api/admin/mb2/regenerate-map', adminAuth, async (req, res) => {
   try {
     const { generateMb2ChallengeMap } = require('./mb2gen');
-    const r = await generateMb2ChallengeMap();
-    console.log(`[ADMIN] Manual MB2 map regeneration: ${r.log}`);
+    // A manual admin regenerate rolls a fresh RANDOM map, so clicking the button
+    // always produces a visibly different (and now correctly-generated) map —
+    // the previous deterministic-per-day seed made it look like "nothing
+    // happened". The automatic daily roll + boot still use the day seed.
+    const seed = crypto.randomBytes(4).readUInt32BE(0) & 0x3FFFFFFF;
+    const r = await generateMb2ChallengeMap(seed);
+    console.log(`[ADMIN] Manual MB2 map regeneration (random seed): ${r.log}`);
     res.json({ ok: true, seed: r.seed, distPct: r.distPct, log: r.log });
   } catch (e) {
     console.error('[ADMIN] MB2 map regeneration error:', e.message);
