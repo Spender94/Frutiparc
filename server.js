@@ -11000,6 +11000,41 @@ const channels = {
   bienvenue: { desc: 'Bienvenue',       topic: 'Bienvenue sur Frutiparc !', users: new Set() },
 };
 
+// ── Reconnect grace: keep a user in their salons across a brief socket drop ──
+// A transient WebSocket drop makes the SWF re-initialise ("connexion au serveur
+// en cours…") and re-ident. If we yanked the user out of their salons the
+// instant the old socket closed, the reconnected SWF would still SHOW the salon
+// but be unable to post (the server no longer has them in channel.users) and
+// they'd vanish from the user list — forcing a close & reopen. Instead we DEFER
+// the userleaved cleanup; an ident within the window cancels it and re-binds the
+// new socket. A genuine departure is cleaned up when the timer fires.
+const RECONNECT_GRACE_MS = 45 * 1000;
+const pendingChannelCleanup = new Map(); // username -> { channels: string[], timer }
+
+function cancelPendingChannelCleanup(username) {
+  const p = username ? pendingChannelCleanup.get(username) : null;
+  if (!p) return null;
+  clearTimeout(p.timer);
+  pendingChannelCleanup.delete(username);
+  return p;
+}
+
+function runChannelCleanup(username) {
+  pendingChannelCleanup.delete(username);
+  // Skip if the user came back: a live chat socket is bound to a salon.
+  const stillHere = getSocketsForUsername(username).some((s) => {
+    const c = xmlSocketClients.get(s);
+    return c && c.channels && c.channels.size > 0;
+  });
+  if (stillHere) return;
+  for (const g of Object.keys(channels)) {
+    if (channels[g].users && channels[g].users.has(username)) {
+      channels[g].users.delete(username);
+      broadcastToChannel(g, `<${CMD.userleaved} g="${g}" u="${escapeXml(getDisplayName(username))}" />`);
+    }
+  }
+}
+
 // ── Virtual users / PNJ (always connected on pomme) ──
 const CONNECTED_NPCS = new Set([
   'gaspard',
@@ -12261,6 +12296,20 @@ async function handleCBeeMessage(socket, rawXml) {
       // Once-per-day connection bonus, granted immediately (now that the socket
       // is registered, any level-up notification reaches the client).
       awardDailyLoginXp(effectiveLogin);
+
+      // Reconnect: if a previous socket dropped within the grace window, re-bind
+      // this new socket to the salons the user was in (they were never removed,
+      // so no re-join is needed) and cancel the deferred userleaved cleanup. The
+      // user keeps appearing in the salon and can post again immediately.
+      const reconnected = cancelPendingChannelCleanup(effectiveLogin);
+      if (reconnected) {
+        for (const g of reconnected.channels) {
+          if (channels[g]) {
+            channels[g].users.add(effectiveLogin);
+            client.channels.add(g);
+          }
+        }
+      }
 
       if (process.env.DATABASE_URL && user._dbId) {
         db.recordLogin(effectiveLogin).catch((e) => console.error('[DB] recordLogin error:', e.message));
@@ -14152,14 +14201,17 @@ const xmlSocketServer = net.createServer((socket) => {
   socket.on('close', () => {
     const client = xmlSocketClients.get(socket);
     if (client) {
-      // Remove from all channels
-      for (const g of client.channels) {
-        if (channels[g]) {
-          channels[g].users.delete(client.username);
-          broadcastToChannel(g,
-            `<${CMD.userleaved} g="${g}" u="${escapeXml(getDisplayName(client.username))}" />`
-          );
-        }
+      // Defer removal from the user's salons (grace period): a reconnecting SWF
+      // re-idents within seconds and we re-bind it (see the ident handler), so
+      // the user never visibly drops out and can keep posting. A real departure
+      // is cleaned up — with the userleaved broadcast — when the timer fires.
+      if (client.username && client.channels && client.channels.size > 0) {
+        cancelPendingChannelCleanup(client.username); // collapse any older pending set
+        const uname = client.username;
+        pendingChannelCleanup.set(uname, {
+          channels: Array.from(client.channels),
+          timer: setTimeout(() => runChannelCleanup(uname), RECONNECT_GRACE_MS),
+        });
       }
       // If this was a game socket (FrutiScore startGame had been received),
       // clear the game icon on the user's chat sockets so the presence dot
