@@ -9425,6 +9425,12 @@ app.get('/api/forum/me', (req, res) => {
     isModerator: !!u.isModerator,
     isAnimator: !!u.isAnimator,
     bouille: bouilleOf(u, username),
+    // Mirror the Flash client's editbouille gating (see the f="0,1,..." attr in
+    // onident) so the mobile client can force its own "Ma Frutibouille" editor
+    // open under the exact same conditions: the user still has the default
+    // bouille (first-time setup) OR an admin set the redo flag. Confirming a
+    // real bouille (via /do/eb or the 'ae' socket cmd) clears it.
+    needsBouille: (!u.fbouille || u.fbouille === DEFAULT_BOUILLE_STATE || u.needsBouille === true),
     accessories: accessories,
     defaultAccessories: defaults,
     muted: mute.muted,

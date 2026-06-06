@@ -170,6 +170,56 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
+  /* ── "Ma Frutibouille" : éditeur de visage (auto-affiché si needsBouille) ──
+     Look calqué sur l'editbouille de main.swf : cadre arrondi vert clair,
+     onglet-titre, preview, lignes yeux/iris/cheveux/bouche + barres couleur
+     encadrées de flèches roses, bouton "valider". Modal non fermable : le
+     joueur doit valider (= mirror du forçage côté Flash). */
+  #fb-editor-backdrop {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, .45);
+    display: none; z-index: 60;
+  }
+  #fb-editor-backdrop.show { display: block; }
+  #fb-editor {
+    position: fixed; z-index: 61; left: 50%; top: 50%;
+    transform: translate(-50%, -50%) scale(.96);
+    width: min(92vw, 320px); box-sizing: border-box;
+    background: #fff; border: 2px solid #aacf86; border-radius: 18px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .35);
+    padding: 12px 14px 18px; display: none; opacity: 0;
+    transition: opacity .18s ease, transform .18s ease;
+    font-family: Verdana, Geneva, sans-serif;
+  }
+  #fb-editor.show { display: block; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .fb-titletab {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: #2f8f86; font-weight: bold; font-size: 13px; margin: 0 0 8px 2px;
+  }
+  .fb-titletab img { width: 18px; height: 18px; display: block; }
+  .fb-preview {
+    width: 132px; height: 132px; margin: 2px auto 6px; border-radius: 14px;
+    overflow: hidden; background: #cfe6a3; border: 1px solid #aacf86;
+  }
+  .fb-preview iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .fb-rows { display: flex; flex-direction: column; gap: 9px; margin: 8px 2px 14px; }
+  .fb-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .fb-arrow {
+    flex: 0 0 auto; width: 48px; height: 26px; padding: 0;
+    border: 1px solid #e29b9b; border-radius: 9px; background: #f6bcbc;
+    color: #fff; font-size: 12px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-user-select: none; user-select: none;
+  }
+  .fb-arrow:active { background: #efa6a6; }
+  .fb-label { flex: 1 1 auto; text-align: center; color: #7b7b7b; font-size: 14px; }
+  .fb-bar { flex: 1 1 auto; height: 18px; border-radius: 9px; border: 1px solid rgba(0, 0, 0, .14); }
+  .fb-valider {
+    display: block; margin: 2px auto 0; padding: 7px 32px;
+    border: 1px solid #e29b9b; border-radius: 16px; background: #f3a9a9;
+    color: #b5455f; font-weight: bold; font-size: 14px; cursor: pointer;
+  }
+  .fb-valider:active { background: #ec9a9a; }
+
   /* ── Generic panel ── */
   .panel { flex: 1; min-height: 0; display: none; flex-direction: column; }
   .panel.active { display: flex; }
@@ -483,6 +533,16 @@
       <div id="bouille-acc-grid" class="acc-grid"></div>
     </div>
   </div>
+
+  <!-- "Ma Frutibouille" : éditeur de visage (auto-affiché tant que needsBouille).
+       Rows + valider sont construits/branchés en JS (openFbEditor). -->
+  <div id="fb-editor-backdrop"></div>
+  <div id="fb-editor" role="dialog" aria-modal="true" aria-label="Ma Frutibouille">
+    <div class="fb-titletab"><img src="/fb/icone_bouille.png" alt="">Ma Frutibouille</div>
+    <div class="fb-preview" id="fb-editor-preview"></div>
+    <div class="fb-rows" id="fb-editor-rows"></div>
+    <button class="fb-valider" id="fb-editor-valider" type="button">valider</button>
+  </div>
 </div>
 
 <script>
@@ -712,6 +772,10 @@
     sel.addEventListener("change", function () { switchRoom(sel.value); });
 
     connectWs();
+
+    // Premier passage (ou redo admin) : proposer l'éditeur de Frutibouille tant
+    // que la bouille n'est pas définie. Cf. maybeOpenFbEditor / needsBouille.
+    maybeOpenFbEditor();
   }
 
   // ── Hamburger menu drawer ──
@@ -1406,6 +1470,119 @@
       fetch("/do/eb?sid=" + encodeURIComponent(state.sid) + "&b=" + encodeURIComponent(newState), { cache: "no-store" })
         .catch(function () {});
     }
+  }
+
+  // ── "Ma Frutibouille" : éditeur de visage (chars 2-14 de l'état bouille) ───
+  // Auto-affiché à la connexion tant que le serveur signale needsBouille
+  // (bouille par défaut OU flag admin), comme l'editbouille de main.swf. Chaque
+  // ligne fait défiler UN caractère de l'état ; la preview Flash
+  // (bouille-preview.html) montre le rendu réel — c'est la vérité terrain.
+  // "valider" persiste via <ae>/​/do/eb, ce qui efface needsBouille côté serveur
+  // → l'éditeur ne se rouvre plus (sauf réactivation admin).
+  //
+  // MAPPING (best-guess). L'état = 24 car. base62 : [0-1]=famille, [2-14]=visage
+  // (paires de car. dont seul le poids faible — index impair — varie en
+  // pratique), [15-23]=accessoires. Si une ligne pilote la mauvaise partie au
+  // test, ajuster "pos" ; "max" = nb d'options-1 (le défilement boucle).
+  var FB_PARTS = [
+    { key: "yeux",    label: "yeux",    pos: 3,  max: 11 },
+    { key: "iris",    label: "iris",    pos: 5,  max: 11 },
+    { key: "cheveux", label: "cheveux", pos: 7,  max: 14 },
+    { key: "bouche",  label: "bouche",  pos: 9,  max: 11 },
+    // Les 2 barres = sélecteurs de couleur (peau / cheveux). La couleur de la
+    // barre est indicative (cf. screen) ; le vrai rendu est dans la preview,
+    // faute de table valeur→RGB côté client.
+    { key: "peau",    bar: "#5b3a24",   pos: 11, max: 14 },
+    { key: "colch",   bar: "#e7a6a6",   pos: 13, max: 14 },
+  ];
+  var fbState = DEFAULT_BOUILLE;   // l'état 24-car. en cours d'édition
+  var fbRowsBuilt = false;
+
+  // base62 char ↔ entier, aligné sur le decode62 de bouille-preview.html
+  // (0-9 → 0-9, a-z → 10-35, A-Z → 36-61).
+  function fbDecChar(c) {
+    if (c >= "0" && c <= "9") return c.charCodeAt(0) - 48;
+    if (c >= "a" && c <= "z") return c.charCodeAt(0) - 87;
+    if (c >= "A" && c <= "Z") return c.charCodeAt(0) - 29;
+    return 0;
+  }
+  function fbEncChar(n) {
+    n = ((n % 62) + 62) % 62;
+    if (n < 10) return String.fromCharCode(48 + n);
+    if (n < 36) return String.fromCharCode(87 + n);
+    return String.fromCharCode(29 + n);
+  }
+  function fbPad(s) { s = String(s || ""); while (s.length < 24) s += "0"; return s.substring(0, 24); }
+  function fbGet(pos) { return fbDecChar(fbState.charAt(pos) || "0"); }
+  function fbSet(pos, val) { fbState = fbState.substring(0, pos) + fbEncChar(val) + fbState.substring(pos + 1); }
+
+  function fbRenderPreview() { $("#fb-editor-preview").innerHTML = previewIframe(fbState); }
+  // Recharger l'iframe Flash recrée le player Ruffle (~lent) : on débounce pour
+  // ne rendre qu'une fois le défilement stabilisé (taps rapides → 1 seul reload).
+  var fbPrevTimer = null;
+  function fbRenderPreviewSoon() {
+    if (fbPrevTimer) clearTimeout(fbPrevTimer);
+    fbPrevTimer = setTimeout(fbRenderPreview, 120);
+  }
+  function fbCycle(part, dir) {
+    var span = (part.max || 0) + 1;
+    fbSet(part.pos, ((fbGet(part.pos) + dir) % span + span) % span);
+    fbRenderPreviewSoon();
+  }
+  function fbBuildRows() {
+    var rows = $("#fb-editor-rows");
+    rows.innerHTML = "";
+    FB_PARTS.forEach(function (part) {
+      var row = el("div", "fb-row");
+      var left = el("button", "fb-arrow"); left.type = "button"; left.innerHTML = "&#9664;";
+      var right = el("button", "fb-arrow"); right.type = "button"; right.innerHTML = "&#9654;";
+      var center;
+      if (part.bar) { center = el("div", "fb-bar"); center.style.background = part.bar; }
+      else { center = el("div", "fb-label"); center.textContent = part.label; }
+      left.addEventListener("click", function () { fbCycle(part, -1); });
+      right.addEventListener("click", function () { fbCycle(part, 1); });
+      row.appendChild(left); row.appendChild(center); row.appendChild(right);
+      rows.appendChild(row);
+    });
+    fbRowsBuilt = true;
+  }
+
+  function openFbEditor(initial) {
+    fbState = fbPad(initial && initial.length >= 15 ? initial : DEFAULT_BOUILLE);
+    if (!fbRowsBuilt) fbBuildRows();
+    fbRenderPreview();
+    $("#fb-editor-backdrop").classList.add("show");
+    $("#fb-editor").classList.add("show");
+  }
+  function closeFbEditor() {
+    $("#fb-editor-backdrop").classList.remove("show");
+    $("#fb-editor").classList.remove("show");
+  }
+  function fbValider() {
+    var st = fbPad(fbState);
+    // Reflète localement (overlay chat, sheet accessoires) avant la persistance.
+    state.bouilleByUser[state.userLower] = st;
+    if (!isIncarnation(st)) myBase = st;
+    // Même chemin que le picker : <ae> sur le socket (broadcast + efface
+    // needsBouille), fallback /do/eb. Une vraie bouille (≠ défaut) arrête le
+    // ré-affichage ; revalider le défaut inchangé le repropose (= comme Flash).
+    if (state.ws && state.ws.readyState === 1) {
+      wsSend('<ae f="' + xmlEscape(st) + '" />');
+    } else {
+      fetch("/do/eb?sid=" + encodeURIComponent(state.sid) + "&b=" + encodeURIComponent(st), { cache: "no-store" })
+        .catch(function () {});
+    }
+    closeFbEditor();
+  }
+  $("#fb-editor-valider").addEventListener("click", fbValider);
+
+  // Ouvre l'éditeur si le serveur réclame une bouille (réutilise /api/forum/me).
+  function maybeOpenFbEditor() {
+    if (!state.sid) return;
+    fetch("/api/forum/me?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.needsBouille) openFbEditor(d.bouille); })
+      .catch(function () {});
   }
 
   // ── Mobile keyboard handling ─────────────────────────────────────────────
