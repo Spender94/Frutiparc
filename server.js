@@ -12154,7 +12154,17 @@ async function handleCBeeMessage(socket, rawXml) {
 
     // ── time: server time ──
     case 'time': {
-      sendToClient(socket, `<${CMD.time}>${formatDateTime(new Date())}</${CMD.time}>`);
+      // Serve PARIS time, not the server's local clock. The frusion RunDate
+      // (_global.servTime) reproduces this wall-clock string for EVERY client
+      // regardless of their browser timezone, and Burning Kiwi derives its
+      // daily circuit from servTime. With server-local (often UTC) time the
+      // circuit rolled at the server's midnight (~1-2h after Paris midnight)
+      // while the ranking rolls at Paris midnight (getBkiwiDailyTrack) — so two
+      // circuits' times got merged in the window between (most visible for
+      // players awake then, e.g. Québec evenings). Paris time aligns the
+      // circuit roll with the ranking, and with the rest of the server which is
+      // Paris-based everywhere (XP rollover, MB2/medals, parisDayKey…).
+      sendToClient(socket, `<${CMD.time}>${formatDateTimeParis(new Date())}</${CMD.time}>`);
       break;
     }
 
@@ -12565,7 +12575,7 @@ case 'join': {
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${e.s}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+          inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${e.s}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTimeParis(new Date())}" />`;
         }
         sendToClient(socket, `<${CMD.part}>${inner}</${CMD.part}>`);
         console.log(`[FSCORE] xpranking: ${slice.length}/${all.length} entries`);
@@ -13261,7 +13271,7 @@ case 'trace': {
         let inner = '';
         for (const e of slice) {
           const ud = users[e.u] || {};
-          inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTime(new Date())}" />`;
+          inner += `<score u="${escapeXml(getDisplayName(e.u))}" x="${ud.xp || 0}" f="${escapeXml(bouilleOf(ud, e.u))}" s="${e.s}" t="${formatDateTimeParis(new Date())}" />`;
         }
         sendToClient(socket, `<${CMD.stoptrace}>${inner}</${CMD.stoptrace}>`);
         console.log(`[FSCORE] rateranking (consecration): ${slice.length}/${all.length} entries`);
