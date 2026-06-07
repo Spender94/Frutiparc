@@ -42,10 +42,18 @@ d'origine (absent du source). On doit les **reconstruire** côté server.js.
         confirmée) ou élimination, alternance. Tests : `game.test.js` (19).
       - [ ] Câblage serveur : transport, horloges par tour, persistance,
         timeout, multi 3-4 joueurs (rotation/élimination).
-- [ ] **Phase 3 — Appariements (zone manquante)** : protocole de
-      `NetworkController.as` (listRooms/joinRoom/createGame/challengePlayer/
-      getChallengerInfo/startGame/partGame/checkTimeout + erreurs 2005-2044),
-      salons & défis côté serveur, intégration au bridge frusion existant.
+- [~] **Phase 3 — Appariements + parties en réseau** :
+      - [x] Cœur `server/lobby.js` (`GrapizLobby`) : la *zone d'appariements* —
+        parties ouvertes (salons), défis directs, join/accept/decline, nettoyage
+        à la déconnexion, listings.
+      - [x] Cœur `server/session.js` (`GrapizSession`) : autorité d'une partie —
+        horloges par joueur, timeout, abandon, relais des coups (validés par
+        `GrapizGame`), snapshots. Horloge injectable.
+      - Tests : `server/server.test.js` (40).
+      - [ ] Câblage WebSocket dans `server.js` : lancement depuis le frutidisc
+        (`<ab d="grapiz">`), commandes lobby/coup, push des événements aux
+        sockets (sendToClient), tick des horloges, classement « Grapiz -
+        Challenge » en fin de partie. Multi 3-4 joueurs (rotation/élimination).
 - [ ] **Phase 4 — GUI client fidèle** : `gui/*` (Board, Token, AvailableSlot,
       MoveCursor, PlayerInfo, ChatPane, EndPane, Confirm) + `Convert` (logique↔
       pixels). Lancement depuis le frutidisc `public/ft/game/grapiz`.
