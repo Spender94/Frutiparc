@@ -519,6 +519,16 @@
                 // Open standalone game player (LocalConnection is broken in Ruffle)
                 if (game) {
                     var sid = new URLSearchParams(window.location.search).get("sid") || "";
+                    // Grapiz est un jeu NATIF (client web HTML), pas un SWF : on ouvre
+                    // /grapiz/ dans la fenêtre de jeu au lieu de game-popup.html + Ruffle.
+                    if ((game.name || "").toLowerCase() === "grapiz" || /grapiz/i.test(game.swf || "")) {
+                        var grapizUrl = "/grapiz/?sid=" + encodeURIComponent(sid);
+                        var grapizFeat = "width=1000,height=740,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no";
+                        window.__dlog("[Frusion] Opening native Grapiz client:", grapizUrl);
+                        if (window.__gamePopup && !window.__gamePopup.closed) { try { window.__gamePopup.close(); } catch (e) {} }
+                        window.__gamePopup = window.open(grapizUrl, "frutiparc_game", grapizFeat);
+                        return true;
+                    }
                     var popupUrl = "/game-popup.html"
                         + "?swf=" + encodeURIComponent(game.swf)
                         + "&width=" + game.width

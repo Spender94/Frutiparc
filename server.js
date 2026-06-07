@@ -8044,6 +8044,18 @@ app.get('/api/check-ejected', (req, res) => {
 });
 
 const GAME_DISCS = {
+  // Grapiz est un jeu NATIF (client web /grapiz/), pas un SWF : ruffle.html
+  // intercepte le lancement et ouvre le client web au lieu d'un SWF. gameId
+  // garde un nom reconnaissable ("grapiz") pour cette détection ; files vide.
+  grapiz1: {
+    discType: '0',
+    playMode: 'single',
+    swfName: 'grapiz',
+    iconName: 'Grapiz',
+    gameId: 'games/grapiz/grapiz.swf',
+    props: 'w=980;h=720;m=p',
+    files: [],
+  },
   bkiwi1: {
     discType: '0',
     playMode: 'single',
