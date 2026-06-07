@@ -31,6 +31,7 @@
     this.lobby = new L.GrapizLobby();
     this.sessions = {};                 // gameId → GrapizSession
     this.names = {};                    // username → displayName
+    this.bouilles = {};                 // username → état de frutibouille (24 car.)
     this.clock = opts.clock || function () { return Date.now(); };
     this.onResult = opts.onResult || function () {};   // hook classement
   }
@@ -51,7 +52,8 @@
     var snap = session.snapshot(this.clock());
     var toks = snap.board.map(function (t) { return '<t e="' + t.team + '" x="' + t.x + '" y="' + t.y + '"/>'; }).join("");
     var pls = snap.players.map(function (p) {
-      return '<p u="' + esc(p.id) + '" n="' + esc(p.name) + '" e="' + p.team + '" rt="' + p.remaining + '"/>';
+      return '<p u="' + esc(p.id) + '" n="' + esc(p.name) + '" e="' + p.team +
+        '" rt="' + p.remaining + '" f="' + esc(p.fb || "") + '"/>';
     }).join("");
     return '<gz e="' + evt + '" g="' + esc(snap.id) + '" turn="' + snap.currentTurn +
       '" sz="' + session.game.getBoard().getSize() + '"' +
@@ -71,7 +73,9 @@
 
   GrapizNet.prototype._startSession = function (game) {
     var self = this;
-    var players = game.players.map(function (uid) { return { id: uid, name: self.names[uid] || uid }; });
+    var players = game.players.map(function (uid) {
+      return { id: uid, name: self.names[uid] || uid, fb: self.bouilles[uid] || "" };
+    });
     var sess = new S.GrapizSession({ id: game.id, players: players, params: game.params, now: this.clock() });
     this.sessions[game.id] = sess;
     return [{ to: game.players.slice(), xml: this._stateXml(sess, "start") }];
@@ -94,6 +98,7 @@
     switch (a) {
       case "hello":
         this.names[username] = attrs.n || username;
+        if (attrs.f) this.bouilles[username] = attrs.f;     // état de frutibouille
         this.lobby.addPlayer(username, this.names[username]);
         return this._lobbyBroadcast();
 

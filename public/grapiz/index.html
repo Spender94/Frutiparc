@@ -39,8 +39,12 @@
   .tok.t1 { background:radial-gradient(circle at 35% 30%, #9fd0ff, #2f6fb0); }
   .tok.sel { box-shadow:0 0 0 3px #fff, 0 1px 2px #0006; }
   #players-bar { display:flex; gap:10px; justify-content:space-between; margin-bottom:8px; }
-  .pl { flex:1; background:#55603a; border-radius:9px; padding:6px 9px; font-size:13px; }
+  .pl { flex:1; display:flex; align-items:center; gap:8px; background:#55603a; border-radius:9px; padding:6px 9px; font-size:13px; }
   .pl.turn { outline:2px solid var(--green); }
+  .pl .av { width:40px; height:40px; flex:0 0 auto; border-radius:8px; overflow:hidden; background:#0003; }
+  .pl .av iframe { width:100%; height:100%; border:0; display:block; }
+  .pl .info { min-width:0; }
+  .pl .nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pl .clock { font-variant-numeric:tabular-nums; color:#fff; }
   .hidden { display:none; }
   #end-banner { text-align:center; font-size:16px; font-weight:bold; padding:10px; color:var(--green); }
@@ -91,12 +95,13 @@
     try { sid = (JSON.parse(localStorage.getItem("fp_light_session") || "{}") || {}).sid || ""; } catch (e) {}
   }
 
+  var DEFAULT_BOUILLE = "000000010000000000000000";
   var state = {
-    ws: null, user: "", gotLobby: false,
+    ws: null, user: "", myBouille: "", gotLobby: false,
     inGame: false, gameId: null, myTeam: -1, turn: -1, size: 4,
     tokens: [], players: [], ended: false,
     sel: null, targets: {},     // "x,y" → direction
-    helloTimer: null, clockTimer: null, lastTick: {},
+    helloTimer: null, clockTimer: null, lastTick: {}, _barSig: "",
   };
 
   function setStatus(s) { $("#status").textContent = s; }
@@ -109,6 +114,7 @@
       .then(function (d) {
         if (!d || !d.user) { setStatus("Session invalide."); return; }
         state.user = d.user;
+        state.myBouille = d.bouille || DEFAULT_BOUILLE;
         connect();
       })
       .catch(function () { setStatus("Réseau indisponible."); });
@@ -124,7 +130,7 @@
       // hello jusqu'à recevoir le lobby (l'identify serveur est asynchrone).
       state.helloTimer = setInterval(function () {
         if (state.gotLobby) { clearInterval(state.helloTimer); return; }
-        send('<gz a="hello" n="' + xml(state.user) + '" />');
+        send('<gz a="hello" n="' + xml(state.user) + '" f="' + xml(state.myBouille || DEFAULT_BOUILLE) + '" />');
       }, 600);
     };
     ws.onmessage = function (ev) { onData(ev.data); };
@@ -246,7 +252,7 @@
     });
     state.players = [];
     each(el.getElementsByTagName("p"), function (n) {
-      var pl = { u: n.getAttribute("u"), n: n.getAttribute("n"), e: +n.getAttribute("e"), rt: +n.getAttribute("rt") };
+      var pl = { u: n.getAttribute("u"), n: n.getAttribute("n"), e: +n.getAttribute("e"), rt: +n.getAttribute("rt"), f: n.getAttribute("f") };
       if (pl.u === state.user) state.myTeam = pl.e;
       state.players.push(pl);
     });
@@ -271,7 +277,7 @@
   }
 
   function leaveGame() {
-    state.inGame = false; state.gameId = null; state.myTeam = -1;
+    state.inGame = false; state.gameId = null; state.myTeam = -1; state._barSig = "";
     stopClocks();
     $("#game").classList.add("hidden");
     $("#end-banner").classList.add("hidden");
@@ -345,13 +351,30 @@
     state.sel = null; state.targets = {};
   }
 
+  // On (re)construit la barre — avec l'iframe de bouille — seulement quand
+  // l'ensemble des joueurs/bouilles change (sinon le Flash se rechargerait à
+  // chaque coup) ; sinon on ne met à jour que la surbrillance du tour.
   function renderPlayersBar() {
+    var sig = state.players.map(function (p) { return p.u + ":" + (p.f || ""); }).join("|");
+    if (sig !== state._barSig) { buildPlayersBar(); state._barSig = sig; }
+    updatePlayersBarTurn();
+  }
+  function buildPlayersBar() {
     var bar = $("#players-bar"); bar.innerHTML = "";
     state.players.forEach(function (p) {
-      var d = div("pl" + (p.e === state.turn && !state.ended ? " turn" : ""));
-      d.innerHTML = '<div>' + esc(p.n || p.u) + (p.e === state.myTeam ? " (toi)" : "") +
-        '</div><div class="clock" data-team="' + p.e + '">' + fmt(p.rt) + "</div>";
+      var fb = (p.f && p.f.length >= 15) ? p.f : DEFAULT_BOUILLE;
+      var d = div("pl"); d.dataset.team = p.e;
+      d.innerHTML =
+        '<div class="av"><iframe scrolling="no" sandbox="allow-scripts allow-same-origin" src="/bouille-preview.html?s=' +
+          encodeURIComponent(fb) + '&bg=transparent"></iframe></div>' +
+        '<div class="info"><div class="nm">' + esc(p.n || p.u) + (p.e === state.myTeam ? " (toi)" : "") + "</div>" +
+        '<div class="clock" data-team="' + p.e + '">' + fmt(p.rt) + "</div></div>";
       bar.appendChild(d);
+    });
+  }
+  function updatePlayersBarTurn() {
+    each(document.querySelectorAll("#players-bar .pl"), function (d) {
+      d.classList.toggle("turn", +d.dataset.team === state.turn && !state.ended);
     });
   }
 

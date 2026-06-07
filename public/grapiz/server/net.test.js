@@ -52,6 +52,16 @@ ok(mvMsg.xml.indexOf('turn="1"') >= 0, "move state reports turn 1");
 // non-joueur
 ok(find(net.handle("carol", { a: "move", x: "0", y: "0", d: "0" }), "err"), "stranger move → error");
 
+// ── Bouilles : transmises via hello → présentes dans l'état de partie ────────
+var nb = new N.GrapizNet({ clock: function () { return 0; } });
+nb.handle("u1", { a: "hello", n: "U1", f: "0d0000010000000000000000" });
+nb.handle("u2", { a: "hello", n: "U2", f: "0f0000010000000000000000" });
+nb.handle("u1", { a: "create" });
+var gidb = nb.lobby.listOpenGames()[0].id;
+var stb = find(nb.handle("u2", { a: "join", g: gidb }), "start");
+ok(stb && stb.xml.indexOf('f="0d0000010000000000000000"') >= 0, "start carries player 1 bouille");
+ok(stb && stb.xml.indexOf('f="0f0000010000000000000000"') >= 0, "start carries player 2 bouille");
+
 // ── Défi direct ─────────────────────────────────────────────────────────────
 var net2 = new N.GrapizNet({ clock: function () { return CLOCK; } });
 net2.handle("a", { a: "hello", n: "A" });
