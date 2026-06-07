@@ -149,10 +149,16 @@
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
-  // Trames \0-terminées ; on ne traite que les <gz ...>.
+  // Trames \0-terminées ; on ne traite que les <gz ...>. Le bridge WS renvoie
+  // des frames BINAIRES (Blob/ArrayBuffer) — il faut les décoder (comme le
+  // client light), sinon String(data) = "[object Blob]" et tout est perdu.
   var buf = "";
   function onData(data) {
-    buf += String(data);
+    if (typeof data !== "string") {
+      if (data instanceof Blob) { data.text().then(onData); return; }
+      try { data = new TextDecoder("utf-8").decode(data); } catch (e) { return; }
+    }
+    buf += data;
     var parts = buf.split("\0");
     buf = parts.pop();
     parts.forEach(function (p) {
