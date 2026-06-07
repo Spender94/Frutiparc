@@ -329,10 +329,12 @@
   function leaveGame() { state.gameId = null; state.myTeam = -1; state._barSig = ""; stopClocks(); showScreen("lobby"); renderLobby(); gz({ a: "list" }); }
 
   // Géométrie hexagonale FLAT-TOP, jointive : (x,y) → pixels, R = J·2/√3.
+  // Les cases valides occupent (y−x) ∈ [−size, size] (largeur 2·size·K) et
+  // (x+y) ∈ [0, 4·size] (hauteur 4·size·J) → contour ~carré (pointe haut/bas).
   var CELL = 36, K = CELL * 0.866, J = CELL * 0.5, PAD = 22, R = J * 2 / Math.sqrt(3), MR = 14;
-  function px(x, y) { return PAD + K * (state.size * 2) + K * (y - x); }
+  function px(x, y) { return PAD + K * state.size + K * (y - x); }
   function py(x, y) { return PAD + J * (x + y); }
-  function boardDim() { return { w: Math.round(PAD * 2 + K * (state.size * 4)), h: Math.round(PAD * 2 + J * (state.size * 4)) }; }
+  function boardDim() { return { w: Math.round(PAD * 2 + K * (state.size * 2)), h: Math.round(PAD * 2 + J * (state.size * 4)) }; }
   function hexPts(cx, cy) { var p = []; for (var i = 0; i < 6; i++) { var a = Math.PI / 180 * 60 * i; p.push((cx + R * Math.cos(a)).toFixed(1) + "," + (cy + R * Math.sin(a)).toFixed(1)); } return p.join(" "); }
   var BOARD_DEFS = '<defs>'
     + '<radialGradient id="mb-0" cx="35%" cy="28%" r="78%"><stop offset="0" stop-color="#ffe2e2"/><stop offset=".28" stop-color="#ff6b6b"/><stop offset=".7" stop-color="#e01b1b"/><stop offset="1" stop-color="#8c0606"/></radialGradient>'
