@@ -38,12 +38,14 @@
 
   // ── Sérialisation ──────────────────────────────────────────────────────────
   GrapizNet.prototype._lobbyXml = function () {
+    var self = this;
     var games = this.lobby.listOpenGames().map(function (g) {
       return '<game id="' + esc(g.id) + '" host="' + esc(g.host) + '" c="' + g.count +
         '" m="' + g.max + '" t="' + g.params.time + '" sz="' + g.params.boardSize + '"/>';
     }).join("");
     var players = this.lobby.listPlayers().map(function (p) {
-      return '<pl u="' + esc(p.id) + '" n="' + esc(p.name || p.id) + '" s="' + esc(p.status) + '"/>';
+      return '<pl u="' + esc(p.id) + '" n="' + esc(p.name || p.id) + '" s="' + esc(p.status) +
+        '" f="' + esc(self.bouilles[p.id] || "") + '"/>';
     }).join("");
     return "<gz e=\"lobby\">" + players + games + "</gz>";
   };
@@ -154,6 +156,19 @@
         }
         this.lobby.partGame(username);                              // partie ouverte → quitte
         return this._lobbyBroadcast();
+      }
+
+      case "say": {                                   // chat du lobby
+        if (!attrs.m) return [];
+        var to = this.lobby.listPlayers().filter(function (pl) { return pl.status !== "playing"; }).map(function (pl) { return pl.id; });
+        return [{ to: to, xml: '<gz e="chat" u="' + esc(this.names[username] || username) + '" m="' + esc(attrs.m) + '"/>' }];
+      }
+
+      case "gsay": {                                  // chat en partie (aux 2 joueurs)
+        if (!attrs.m) return [];
+        var gp = this.lobby.getPlayer(username);
+        if (!gp || !gp.gameId || !this.sessions[gp.gameId]) return [];
+        return [{ to: this._ids(this.sessions[gp.gameId]), xml: '<gz e="gchat" u="' + esc(this.names[username] || username) + '" m="' + esc(attrs.m) + '"/>' }];
       }
 
       default:
