@@ -139,23 +139,14 @@
         if (r.started) out = out.concat(this._startSession(r.game));
         return out.concat(this._lobbyBroadcast());
 
-      case "challenge":
-        r = this.lobby.challenge(username, attrs.u, params);
-        if (!r.ok) return [this._err(username, r.error)];
-        return [
-          { to: [attrs.u], xml: '<gz e="challenged" c="' + esc(r.challengeId) + '" u="' + esc(username) + '" n="' + esc(this.names[username] || username) + '"/>' },
-          { to: [username], xml: '<gz e="sent" u="' + esc(attrs.u) + '"/>' },
-        ];
-
-      case "accept":
-        r = this.lobby.acceptChallenge(username, attrs.c);
-        if (!r.ok) return [this._err(username, r.error)];
-        return this._startSession(r.game).concat(this._lobbyBroadcast());
-
-      case "decline":
-        r = this.lobby.declineChallenge(username, attrs.c);
-        if (!r.ok) return [this._err(username, r.error)];
-        return [{ to: r.notify, xml: '<gz e="declined" u="' + esc(username) + '"/>' }];
+      case "challenge": {
+        // Défier = lancer la partie DIRECTEMENT (pas de validation de l'adversaire).
+        var rc = this.lobby.challenge(username, attrs.u, params);
+        if (!rc.ok) return [this._err(username, rc.error)];
+        var ra = this.lobby.acceptChallenge(attrs.u, rc.challengeId);
+        if (!ra.ok) return [this._err(username, ra.error)];
+        return this._startSession(ra.game).concat(this._lobbyBroadcast());
+      }
 
       case "move": {
         var p = this.lobby.getPlayer(username);

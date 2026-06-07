@@ -62,16 +62,15 @@ var stb = find(nb.handle("u2", { a: "join", g: gidb }), "start");
 ok(stb && stb.xml.indexOf('f="0d0000010000000000000000"') >= 0, "start carries player 1 bouille");
 ok(stb && stb.xml.indexOf('f="0f0000010000000000000000"') >= 0, "start carries player 2 bouille");
 
-// ── Défi direct ─────────────────────────────────────────────────────────────
+// ── Défi direct → la partie démarre IMMÉDIATEMENT (sans validation) ─────────
 var net2 = new N.GrapizNet({ clock: function () { return CLOCK; } });
 net2.handle("a", { a: "hello", n: "A" });
 net2.handle("b", { a: "hello", n: "B" });
 var chal = net2.handle("a", { a: "challenge", u: "b" });
-var chMsg = find(chal, "challenged");
-ok(chMsg && toHas(chMsg, "b"), "challenge notifies the target");
-var cid = net2.lobby.challenges[Object.keys(net2.lobby.challenges)[0]].id;
-var acc = net2.handle("b", { a: "accept", c: cid });
-ok(find(acc, "start"), "accepting a challenge starts a game");
+var st2 = find(chal, "start");
+ok(st2, "challenge starts the game right away (no accept)");
+ok(st2 && toHas(st2, "a") && toHas(st2, "b"), "start sent to both players");
+ok(net2.lobby.getPlayer("a").status === "playing" && net2.lobby.getPlayer("b").status === "playing", "both players now playing");
 
 // ── Déconnexion en cours de partie → fin + nettoyage ────────────────────────
 var dc = net.onDisconnect("alice");

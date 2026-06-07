@@ -1027,10 +1027,12 @@ const LEGACY_RANKINGS = [
   { rk: '3', internal: 'swapou2_classic',  ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
   { rk: '4', internal: 'kaluga_classic',   ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'C' },
   { rk: '5', internal: null,               ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
-  { rk: '6', internal: null,               ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
-  // Section L = "Championnat" in front-end — only Frutibandas and Grapiz
+  // Grapiz : la série de victoires se classe en "Challenge" (section C), pas en
+  // "Championnat" (section L). On adosse donc rk '6' (section C) à grapiz_challenge.
+  { rk: '6', internal: 'grapiz_challenge', ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
+  // Section L = "Championnat" in front-end — only Frutibandas désormais
   { rk: '7', internal: 'bandas_challenge',  ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
-  { rk: '8', internal: 'grapiz_challenge',  ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
+  { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
 ];
 const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.rk, r.internal])
