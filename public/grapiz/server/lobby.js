@@ -148,6 +148,29 @@
     return { ok: true, notify: [ch.from] };
   };
 
+  // Quitter sa partie courante SANS se déconnecter du lobby. Pour une partie EN
+  // COURS, renvoie playingGameId (le transport abandonne via la Session) ; pour
+  // une partie ouverte, annule (hôte) ou retire le participant.
+  GrapizLobby.prototype.partGame = function (playerId) {
+    var p = this.players[playerId];
+    if (!p || !p.gameId) return { ok: false, error: "not-in-game" };
+    var g = this.games[p.gameId];
+    if (!g) { p.status = "idle"; p.gameId = null; return { ok: true, notify: [] }; }
+    if (g.status === "playing") return { ok: true, playingGameId: g.id };
+    var notify = {};
+    if (g.host === playerId) {
+      g.players.forEach(function (pid) {
+        if (this.players[pid]) { this.players[pid].status = "idle"; this.players[pid].gameId = null; if (pid !== playerId) notify[pid] = true; }
+      }, this);
+      g.status = "ended"; delete this.games[g.id];
+      return { ok: true, cancelledGameId: g.id, notify: Object.keys(notify) };
+    }
+    g.players = g.players.filter(function (pid) { return pid !== playerId; });
+    p.status = "idle"; p.gameId = null;
+    if (this.players[g.host]) notify[g.host] = true;
+    return { ok: true, notify: Object.keys(notify) };
+  };
+
   // ── Fin de partie : libère les joueurs ─────────────────────────────────────
   GrapizLobby.prototype.endGame = function (gameId) {
     var g = this.games[gameId];

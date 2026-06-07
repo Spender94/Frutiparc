@@ -11533,6 +11533,33 @@ function getSocketsForUsername(username) {
   return sockets;
 }
 
+// ─────────────────────────────────────────────
+// Grapiz (jeu natif) — pont multijoueur. La cervelle (lobby d'appariements +
+// sessions de partie) vit dans public/grapiz/server/net.js (logique pure,
+// testée) ; ici on ne fait que router les messages <gz> et pousser les
+// événements aux sockets concernés (identité = username).
+// ─────────────────────────────────────────────
+const { GrapizNet } = require('./public/grapiz/server/net.js');
+const grapizNet = new GrapizNet({
+  onResult: (session, winner, reason) => {
+    // TODO: enregistrer le classement « Grapiz - Challenge » en fin de partie.
+    console.log(`[grapiz] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
+  },
+});
+// Envoie chaque message { to:[usernames], xml } à tous les sockets de ces joueurs.
+function grapizFlush(messages) {
+  if (!messages || !messages.length) return;
+  for (const m of messages) {
+    for (const u of m.to) {
+      for (const sock of getSocketsForUsername(u)) sendToClient(sock, m.xml);
+    }
+  }
+}
+// Tick des horloges : termine les parties dont le temps est écoulé (1 Hz).
+setInterval(() => {
+  try { grapizFlush(grapizNet.tick()); } catch (e) { console.error('[grapiz] tick:', e.message); }
+}, 1000);
+
 // Push a live kikooz-balance update to every connected socket of `username`.
 // The SWF's onActivateFeature handler ("ku") sets _global.me.kikooz, which in
 // turn refreshes any open boutique/kikooz display. Without this, a balance
@@ -12233,6 +12260,15 @@ async function handleCBeeMessage(socket, rawXml) {
     // ── ping: just echo back ──
     case 'ping': {
       sendToClient(socket, `<${CMD.ping} />`);
+      break;
+    }
+
+    // ── gz: Grapiz (jeu natif) — appariements + coups. Tout est délégué au pont
+    //    grapizNet (pur/testé) ; on pousse les messages qu'il renvoie. ──
+    case 'gz': {
+      if (!client.username || !client.logged) { sendToClient(socket, '<gz e="err" m="not-logged"/>'); break; }
+      try { grapizFlush(grapizNet.handle(client.username, msg.attrs || {})); }
+      catch (e) { console.error('[grapiz] handle:', e.message); }
       break;
     }
 
@@ -14255,6 +14291,10 @@ const xmlSocketServer = net.createServer((socket) => {
         const stillOnline = getSocketsForUsername(disconnectUser).length > 0;
         if (!stillOnline) {
           notifyTraceSubscribers(disconnectUser);
+          // Grapiz : dernière socket du joueur fermée → abandon s'il est en
+          // partie, puis retrait du lobby (le pont renvoie les messages à pousser).
+          try { grapizFlush(grapizNet.onDisconnect(disconnectUser)); }
+          catch (e) { console.error('[grapiz] disconnect:', e.message); }
         }
       }
       console.log(`[CBee]  Client disconnected: ${disconnectUser || 'anonymous'}`);

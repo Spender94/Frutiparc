@@ -50,10 +50,14 @@ d'origine (absent du source). On doit les **reconstruire** côté server.js.
         horloges par joueur, timeout, abandon, relais des coups (validés par
         `GrapizGame`), snapshots. Horloge injectable.
       - Tests : `server/server.test.js` (40).
-      - [ ] Câblage WebSocket dans `server.js` : lancement depuis le frutidisc
-        (`<ab d="grapiz">`), commandes lobby/coup, push des événements aux
-        sockets (sendToClient), tick des horloges, classement « Grapiz -
-        Challenge » en fin de partie. Multi 3-4 joueurs (rotation/élimination).
+      - [x] Pont `server/net.js` (`GrapizNet`) : traduit chaque action client en
+        messages `{to,xml}` (lobby + sessions + sérialisation `<gz>`), pur/testé
+        (`net.test.js`, 21). Protocole `<gz a="…">` ↔ `<gz e="…">`.
+      - [x] Câblage WebSocket dans `server.js` : route `case 'gz'`, flush vers les
+        sockets (getSocketsForUsername), abandon à la déconnexion, tick 1 Hz.
+      - [ ] Restant : lancement depuis le frutidisc (`<ab d="grapiz">`),
+        classement « Grapiz - Challenge » en fin de partie (hook onResult prêt),
+        multi 3-4 joueurs (rotation/élimination).
 - [ ] **Phase 4 — GUI client fidèle** : `gui/*` (Board, Token, AvailableSlot,
       MoveCursor, PlayerInfo, ChatPane, EndPane, Confirm) + `Convert` (logique↔
       pixels). Lancement depuis le frutidisc `public/ft/game/grapiz`.
