@@ -36,8 +36,12 @@ d'origine (absent du source). On doit les **reconstruire** côté server.js.
       Direction / Coordinate / Token / Board (isValid, countTokensOnLine,
       canMove, move, availableMoves), plateau lambda. Tests : `engine.test.js`
       (57 assertions, `node public/grapiz/engine.test.js`). **Vérifié.**
-- [ ] **Phase 2 — Logique de partie serveur** : état autoritatif, validation des
-      coups (réutilise `engine.js`), tours + horloges, **condition de victoire**.
+- [~] **Phase 2 — Logique de partie** :
+      - [x] Cœur pur (`game.js`, `GrapizGame`) : validation d'une demande de
+        coup, application + capture, **victoire par connexion** (règle
+        confirmée) ou élimination, alternance. Tests : `game.test.js` (19).
+      - [ ] Câblage serveur : transport, horloges par tour, persistance,
+        timeout, multi 3-4 joueurs (rotation/élimination).
 - [ ] **Phase 3 — Appariements (zone manquante)** : protocole de
       `NetworkController.as` (listRooms/joinRoom/createGame/challengePlayer/
       getChallengerInfo/startGame/partGame/checkTimeout + erreurs 2005-2044),
@@ -50,11 +54,9 @@ d'origine (absent du source). On doit les **reconstruire** côté server.js.
 
 ## Questions ouvertes
 
-1. **Condition de victoire** (la règle à confirmer). Hypothèse LOA : une équipe
-   gagne quand TOUS ses jetons forment un seul groupe connexe (voisinage = 6
-   dirs hex) — voir `Board.teamConnected()`. Le descriptif « piéger votre
-   adversaire » pourrait aussi impliquer l'immobilisation / l'élimination. À
-   trancher avant la Phase 2.
+1. **Condition de victoire** — ✅ CONFIRMÉE : victoire par **connexion** (tous
+   ses jetons réunis en un seul groupe connexe, voisinage = 6 dirs hex). Codée
+   dans `Board.teamConnected()` + `GrapizGame` (victoire/élimination).
 2. Règles multi (3-4 joueurs) : ordre des tours, élimination, fin.
 3. Mapping exact des commandes `NetworkController` sur le bridge frusion actuel.
 
