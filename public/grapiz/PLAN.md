@@ -58,9 +58,14 @@ d'origine (absent du source). On doit les **reconstruire** côté server.js.
       - [ ] Restant : lancement depuis le frutidisc (`<ab d="grapiz">`),
         classement « Grapiz - Challenge » en fin de partie (hook onResult prêt),
         multi 3-4 joueurs (rotation/élimination).
-- [ ] **Phase 4 — GUI client fidèle** : `gui/*` (Board, Token, AvailableSlot,
-      MoveCursor, PlayerInfo, ChatPane, EndPane, Confirm) + `Convert` (logique↔
-      pixels). Lancement depuis le frutidisc `public/ft/game/grapiz`.
+- [~] **Phase 4 — GUI client** :
+      - [x] Client jouable minimal `public/grapiz/index.html` (placeholders) :
+        connexion WS + `?sid=`, lobby (créer/défier/rejoindre/accepter), plateau
+        hexagonal, surbrillance des coups via `engine.js`, horloges, fin de
+        partie. Accessible sur `/grapiz/?sid=<sid>`.
+      - [ ] Fidélité « look & feel » : assets vectoriels (jetons/plateau),
+        `gui/*` (MoveCursor, TokenAnim, EndPane…), `Convert` exact, lancement
+        depuis le frutidisc `public/ft/game/grapiz`.
 - [ ] **Phase 5 — Assets** : art vectoriel (jetons/plateau) à exporter du `.fla`
       ou à recréer ; bitmaps déjà récupérés (10 JPEG).
 

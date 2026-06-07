@@ -53,7 +53,8 @@
     var pls = snap.players.map(function (p) {
       return '<p u="' + esc(p.id) + '" n="' + esc(p.name) + '" e="' + p.team + '" rt="' + p.remaining + '"/>';
     }).join("");
-    return '<gz e="' + evt + '" g="' + esc(snap.id) + '" turn="' + snap.currentTurn + '"' +
+    return '<gz e="' + evt + '" g="' + esc(snap.id) + '" turn="' + snap.currentTurn +
+      '" sz="' + session.game.getBoard().getSize() + '"' +
       (extra || "") +
       (snap.ended ? ' end="1" w="' + snap.winner + '" r="' + esc(snap.endReason) + '"' : "") +
       ">" + pls + toks + "</gz>";
