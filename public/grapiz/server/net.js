@@ -32,8 +32,11 @@
     this.sessions = {};                 // gameId → GrapizSession
     this.names = {};                    // username → displayName
     this.bouilles = {};                 // username → état de frutibouille (24 car.)
+    this.streaks = {};                  // username → série de victoires EN COURS (le gros nombre doré)
     this.clock = opts.clock || function () { return Date.now(); };
-    this.onResult = opts.onResult || function () {};   // hook classement
+    this.onResult = opts.onResult || function () {};   // hook (game, winner, reason)
+    this.getStreak = opts.getStreak || null;           // username → série persistée (seed)
+    this.onStreak = opts.onStreak || null;             // (username, série, {series}) → persistance + classement
   }
 
   // ── Sérialisation ──────────────────────────────────────────────────────────
@@ -51,11 +54,12 @@
   };
 
   GrapizNet.prototype._stateXml = function (session, evt, extra) {
+    var self = this;
     var snap = session.snapshot(this.clock());
     var toks = snap.board.map(function (t) { return '<t e="' + t.team + '" x="' + t.x + '" y="' + t.y + '"/>'; }).join("");
     var pls = snap.players.map(function (p) {
       return '<p u="' + esc(p.id) + '" n="' + esc(p.name) + '" e="' + p.team +
-        '" rt="' + p.remaining + '" f="' + esc(p.fb || "") + '"/>';
+        '" rt="' + p.remaining + '" f="' + esc(p.fb || "") + '" sr="' + (self.streaks[p.id] || 0) + '"/>';
     }).join("");
     return '<gz e="' + evt + '" g="' + esc(snap.id) + '" turn="' + snap.currentTurn +
       '" sz="' + session.game.getBoard().getSize() + '"' +
@@ -83,12 +87,28 @@
     return [{ to: game.players.slice(), xml: this._stateXml(sess, "start") }];
   };
 
-  // Fin de partie : hook classement + libère le lobby + diffuse la nouvelle liste.
-  GrapizNet.prototype._finish = function (session) {
+  // Met à jour les séries (challenge) : le gagnant +1, le perdant enregistre sa
+  // série puis repart à 0. 2 joueurs uniquement (TODO multi).
+  GrapizNet.prototype._updateStreaks = function (session) {
+    if (session.winner == null || session.players.length !== 2) return;
+    var win = session.playerOfTeam(session.winner);
+    var lose = session.players.filter(function (p) { return p.team !== session.winner; })[0];
+    if (win) { var ws = (this.streaks[win.id] || 0) + 1; this.streaks[win.id] = ws; this._fireStreak(win.id, ws, ws); }
+    if (lose) { var ended = this.streaks[lose.id] || 0; this.streaks[lose.id] = 0; this._fireStreak(lose.id, 0, ended); }
+  };
+  GrapizNet.prototype._fireStreak = function (user, streak, series) {
+    if (this.onStreak) { try { this.onStreak(user, streak, { series: series }); } catch (e) {} }
+  };
+
+  // Conclut une partie : séries à jour → état final (cartes à jour) → hook
+  // classement → libère le lobby. Renvoie tous les messages à pousser.
+  GrapizNet.prototype._concludeGame = function (session) {
+    this._updateStreaks(session);
+    var msgs = [{ to: this._ids(session), xml: this._stateXml(session, "end") }];
     try { this.onResult(session, session.winner, session.endReason); } catch (e) {}
     this.lobby.endGame(session.id);
     delete this.sessions[session.id];
-    return this._lobbyBroadcast();
+    return msgs.concat(this._lobbyBroadcast());
   };
 
   // ── Dispatch d'une action client ────────────────────────────────────────────
@@ -101,6 +121,8 @@
       case "hello":
         this.names[username] = attrs.n || username;
         if (attrs.f) this.bouilles[username] = attrs.f;     // état de frutibouille
+        // série de départ : ne la seede qu'une fois (ne pas écraser une série en cours)
+        if (this.getStreak && this.streaks[username] === undefined) { try { this.streaks[username] = this.getStreak(username) || 0; } catch (e) {} }
         this.lobby.addPlayer(username, this.names[username]);
         return this._lobbyBroadcast();
 
@@ -141,18 +163,15 @@
         var sess = this.sessions[p.gameId];
         var res = sess.requestMove(username, num(attrs.x), num(attrs.y), num(attrs.d), this.clock());
         if (!res.ok) return [this._err(username, res.error)];
-        out.push({ to: this._ids(sess), xml: this._stateXml(sess, res.ended ? "end" : "move") });
-        if (res.ended) out = out.concat(this._finish(sess));
-        return out;
+        if (res.ended) return this._concludeGame(sess);            // série + état final + lobby
+        return [{ to: this._ids(sess), xml: this._stateXml(sess, "move") }];
       }
 
       case "part": {
         var pp = this.lobby.getPlayer(username);
-        if (pp && pp.gameId && this.sessions[pp.gameId]) {           // partie en cours → forfait
-          var s2 = this.sessions[pp.gameId];
-          s2.forfeit(username);
-          out.push({ to: this._ids(s2), xml: this._stateXml(s2, "end") });
-          return out.concat(this._finish(s2));
+        if (pp && pp.gameId && this.sessions[pp.gameId]) {           // partie en cours → forfait (= défaite)
+          this.sessions[pp.gameId].forfeit(username);
+          return this._concludeGame(this.sessions[pp.gameId]);
         }
         this.lobby.partGame(username);                              // partie ouverte → quitte
         return this._lobbyBroadcast();
@@ -176,34 +195,27 @@
     }
   };
 
-  // Déconnexion : abandon si en partie, puis nettoyage lobby.
+  // Déconnexion : abandon (= défaite, la série tombe) si en partie, puis nettoyage.
   GrapizNet.prototype.onDisconnect = function (username) {
-    var out = [];
     var rm = this.lobby.removePlayer(username);
-    if (!rm || !rm.ok) return out;
+    if (!rm || !rm.ok) return [];
     if (rm.playingGameId && this.sessions[rm.playingGameId]) {
-      var sess = this.sessions[rm.playingGameId];
-      sess.forfeit(username);
-      out.push({ to: this._ids(sess), xml: this._stateXml(sess, "end") });
-      try { this.onResult(sess, sess.winner, sess.endReason); } catch (e) {}
-      this.lobby.endGame(rm.playingGameId);
-      delete this.sessions[rm.playingGameId];
+      this.sessions[rm.playingGameId].forfeit(username);
+      return this._concludeGame(this.sessions[rm.playingGameId]);
     }
-    return out.concat(this._lobbyBroadcast());
+    return this._lobbyBroadcast();
   };
 
   // Tick périodique des horloges : termine les parties dont le temps est écoulé.
   GrapizNet.prototype.tick = function (now) {
     if (now === undefined) now = this.clock();
     var out = [];
-    for (var id in this.sessions) {
+    Object.keys(this.sessions).forEach(function (id) {       // snapshot : _concludeGame supprime de this.sessions
       var sess = this.sessions[id];
+      if (!sess) return;
       var to = sess.tick(now);
-      if (to && to.ended) {
-        out.push({ to: this._ids(sess), xml: this._stateXml(sess, "end") });
-        out = out.concat(this._finish(sess));
-      }
-    }
+      if (to && to.ended) out = out.concat(this._concludeGame(sess));
+    }, this);
     return out;
   };
 

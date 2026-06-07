@@ -91,5 +91,27 @@ var tick = net3.tick(4000);
 ok(find(tick, "end"), "tick ends a timed-out game");
 ok(!net3.sessions[gid3], "timed-out session cleaned up");
 
+// ── Séries de victoires (challenge) : +1 au gagnant, série enregistrée puis 0 ─
+var streakLog = [];
+var seeds = { w: 2, l: 5 };
+var ns = new N.GrapizNet({
+  clock: function () { return 0; },
+  getStreak: function (u) { return seeds[u] || 0; },
+  onStreak: function (u, s, info) { streakLog.push({ u: u, s: s, series: info.series }); },
+});
+ns.handle("w", { a: "hello" }); ns.handle("l", { a: "hello" });
+ns.handle("w", { a: "create" });
+var gidS = ns.lobby.listOpenGames()[0].id;
+ns.handle("l", { a: "join", g: gidS });          // partie démarre (w=équipe 0, l=équipe 1)
+var endMsgs = ns.handle("l", { a: "part" });      // l abandonne → w gagne
+ok(find(endMsgs, "end"), "forfeit conclut la partie");
+eq(ns.streaks["w"], 3, "série du gagnant +1 (2→3)");
+eq(ns.streaks["l"], 0, "série du perdant remise à 0");
+var wl = streakLog.filter(function (x) { return x.u === "w"; })[0];
+var ll = streakLog.filter(function (x) { return x.u === "l"; })[0];
+ok(wl && wl.s === 3, "onStreak gagnant : nouvelle série 3");
+ok(ll && ll.series === 5 && ll.s === 0, "onStreak perdant : série terminée 5 enregistrée, remise 0");
+ok(find(endMsgs, "end").xml.indexOf('sr="3"') >= 0, "l'état final porte la série à jour (sr=3)");
+
 console.log("\nGrapiz net: " + passed + " passed, " + fails + " failed.");
 process.exit(fails ? 1 : 0);

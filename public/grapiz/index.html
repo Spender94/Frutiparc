@@ -5,123 +5,109 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Grapiz</title>
 <!--
-  Client natif Grapiz. Look calqué sur le jeu d'origine (captures) — assets
-  approximés en CSS/SVG en attendant les vrais (phase 5). Protocole <gz> :
-  voir public/grapiz/server/net.js. Le moteur (engine.js, testé) sert au miroir
-  et à la surbrillance des coups jouables.
+  Client natif Grapiz. Look reproduit au plus près du jeu d'origine (captures),
+  assets approximés en CSS/SVG (billes glossy, hexagones, branding) en attendant
+  les vrais. Protocole <gz> : voir public/grapiz/server/net.js. engine.js (testé)
+  sert au miroir du plateau + à la surbrillance des coups jouables. Le gros
+  nombre doré des cartes = série de victoires consécutives (mode challenge).
 -->
 <style>
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { margin:0; height:100%; background:#fff; color:#333;
-    font-family:"Trebuchet MS",Verdana,sans-serif; }
-  #app { height:100%; }
+  html,body { margin:0; height:100%; background:#fff; color:#333; font-family:"Trebuchet MS",Verdana,sans-serif; }
   .screen { display:none; height:100%; }
   .screen.on { display:block; }
-  #status { position:fixed; top:8px; left:10px; font-size:12px; color:#999; }
-  .x { cursor:pointer; font-weight:bold; opacity:.8; }
-  .x:hover { opacity:1; }
+  #status { position:fixed; top:8px; left:10px; font-size:12px; color:#999; z-index:5; }
+  .x { cursor:pointer; font-weight:bold; opacity:.85; } .x:hover { opacity:1; }
 
-  /* ── Écran de sélection de mode ─────────────────────────────────────────── */
-  #screen-mode { display:none; }
+  /* ── Sélection de mode (fond blanc, cf. capture 1) ──────────────────────── */
   #screen-mode.on { display:flex; }
-  .mode-side { width:200px; flex:0 0 auto; padding:14px; }
-  .fc-logo { display:grid; grid-template-columns:repeat(3,18px); grid-auto-rows:18px; gap:2px; }
-  .fc-logo i { display:block; border-radius:2px; }
-  .fc-name { font-size:11px; letter-spacing:1px; color:#bbb; font-weight:bold; margin:4px 0 16px; }
-  .sphere-hex { width:150px; height:120px; display:flex; align-items:center; justify-content:center;
+  .mode-side { width:200px; flex:0 0 auto; padding:16px; }
+  .fc-logo { display:grid; grid-template-columns:repeat(3,16px); grid-auto-rows:16px; gap:3px; }
+  .fc-logo i { display:block; border-radius:2px; background:#e8e8e8; }
+  .fc-name { font-size:11px; letter-spacing:1px; color:#bbb; font-weight:bold; margin:5px 0 18px; }
+  .sphere-hex { width:150px; height:124px; display:flex; align-items:center; justify-content:center;
     clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);
-    background:repeating-linear-gradient(60deg,#f3f3f3,#f3f3f3 10px,#ececec 10px,#ececec 20px); }
+    background:repeating-linear-gradient(60deg,#f3f3f3,#f3f3f3 11px,#ececec 11px,#ececec 22px); }
   .sphere { width:64px; height:64px; border-radius:50%;
-    background:radial-gradient(circle at 35% 28%, #cfe0ff 0%, #3f72d8 38%, #16306e 100%);
-    box-shadow:0 3px 8px #0004; }
-  .grapiz-v { writing-mode:vertical-rl; transform:rotate(180deg); font-size:96px; font-weight:bold;
-    color:#e9e9e9; letter-spacing:-6px; margin-top:14px; user-select:none; }
-  .mode-list { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; }
-  .mode { width:460px; max-width:80vw; opacity:.65; }
+    background:radial-gradient(circle at 35% 28%, #cfe0ff 0%, #3f72d8 40%, #16306e 100%); box-shadow:0 3px 9px #0004; }
+  .grapiz-v { writing-mode:vertical-rl; transform:rotate(180deg); font-size:104px; font-weight:bold; color:#e9e9e9; letter-spacing:-7px; margin-top:12px; user-select:none; }
+  .mode-list { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; }
+  .mode { width:470px; max-width:80vw; opacity:.7; }
   .mode.active { opacity:1; cursor:pointer; }
-  .mode .mname { text-align:center; font-size:30px; font-weight:bold; letter-spacing:3px; color:#fff;
-    -webkit-text-stroke:1px #bdbdbd; padding:10px; background:#d8d8d8; border-radius:4px; }
-  .mode.active .mname { background:#f5c518; -webkit-text-stroke:1px #d59e00; text-shadow:0 1px 0 #d59e00; }
+  .mode .mname { text-align:center; font-size:30px; font-weight:bold; letter-spacing:3px; color:#fff; -webkit-text-stroke:1px #c2c2c2; padding:11px; background:#d8d8d8; border-radius:4px; }
+  .mode.active .mname { background:linear-gradient(#ffd23f,#f5b800); -webkit-text-stroke:1px #d59e00; text-shadow:0 1px 0 #d59e00; }
   .mode .mstats { display:flex; margin-top:3px; font-size:13px; font-weight:bold; color:#fff; }
-  .mode .mstats > div { flex:1; padding:5px 12px; display:flex; justify-content:space-between; background:#cfcfcf; }
-  .mode .mstats > div:first-child { border-radius:0 0 0 4px; }
-  .mode .mstats > div:last-child { border-radius:0 0 4px 0; }
-  .mode.active .mstats .j { background:#8cc63f; }
-  .mode.active .mstats .p { background:#f06d6d; }
+  .mode .mstats > div { flex:1; padding:6px 14px; display:flex; justify-content:space-between; background:#cfcfcf; }
+  .mode .mstats > div:first-child { border-radius:0 0 0 4px; } .mode .mstats > div:last-child { border-radius:0 0 4px 0; }
+  .mode.active .mstats .j { background:#8cc63f; } .mode.active .mstats .p { background:#f06d6d; }
 
-  /* ── Lobby (salon) ──────────────────────────────────────────────────────── */
+  /* ── Lobby ──────────────────────────────────────────────────────────────── */
   #screen-lobby { padding:14px; }
-  .lobby-window { max-width:740px; margin:0 auto; border:5px solid #a4d40c; border-radius:6px;
-    background:#fff; overflow:hidden; }
+  .lobby-window { max-width:740px; margin:0 auto; border:5px solid #a4d40c; border-radius:6px; background:#fff; overflow:hidden; }
   .lobby-bar { display:flex; align-items:center; gap:8px; padding:6px 8px; background:#fafafa; border-bottom:1px solid #eee; }
   .lobby-bar .title { font-weight:bold; color:#f5a200; letter-spacing:2px; flex:1; }
-  .lobby-bar button { font:inherit; font-weight:bold; border:0; border-radius:6px; padding:5px 10px;
-    background:#f5c518; color:#7a5800; cursor:pointer; }
-  .og { display:inline-flex; gap:6px; align-items:center; background:#fff3d0; border:1px solid #f0c14b;
-    border-radius:6px; padding:2px 6px; margin-left:6px; font-size:12px; }
+  .lobby-bar button { font:inherit; font-weight:bold; border:0; border-radius:6px; padding:5px 10px; background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; cursor:pointer; }
+  .og { display:inline-flex; gap:6px; align-items:center; background:#fff3d0; border:1px solid #f0c14b; border-radius:6px; padding:2px 6px; margin-left:6px; font-size:12px; }
   .og button { background:#8cc63f; color:#fff; padding:2px 8px; }
   .lobby-main { display:flex; height:380px; }
   .chat-panel { flex:1; display:flex; flex-direction:column; background:#f47c7c; }
-  .players-panel { width:210px; flex:0 0 auto; display:flex; flex-direction:column; background:#f47c7c; border-left:3px solid #fff5; }
-  .panel-head { display:flex; align-items:center; justify-content:space-between; padding:5px 8px;
-    color:#fff; font-weight:bold; background:#0001; }
-  .chat-log { flex:1; overflow-y:auto; padding:6px 8px; font-size:13px; line-height:1.45; }
-  .chat-log .ln { color:#fff; word-wrap:break-word; }
-  .chat-log .nk { font-weight:bold; }
+  .players-panel { width:210px; flex:0 0 auto; display:flex; flex-direction:column; background:#f47c7c; border-left:3px solid #ffffff55; }
+  .panel-head { padding:5px 9px; color:#fff; font-weight:bold; background:#00000014; }
+  .chat-log { flex:1; overflow-y:auto; padding:6px 9px; font-size:13px; line-height:1.45; color:#fff; }
   .players-list { flex:1; overflow-y:auto; padding:4px; }
-  .pli { display:flex; align-items:center; gap:7px; padding:4px 6px; border-radius:6px; cursor:default; }
-  .pli .sw { width:24px; height:24px; flex:0 0 auto; border-radius:4px; overflow:hidden; background:#fff6; }
+  .pli { display:flex; align-items:center; gap:7px; padding:4px 6px; border-radius:6px; }
+  .pli .sw { width:24px; height:24px; flex:0 0 auto; border-radius:4px; overflow:hidden; background:#ffffff66; }
   .pli .sw iframe { width:100%; height:100%; border:0; display:block; }
   .pli .nm { color:#fff; font-weight:bold; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .pli.can { cursor:pointer; }
-  .pli.can:hover { background:#fff3; }
-  .pli .busy { font-size:10px; color:#ffe; opacity:.8; margin-left:auto; }
-  .chat-input { display:flex; border-top:2px solid #fff6; }
+  .pli.can { cursor:pointer; } .pli.can:hover { background:#ffffff33; }
+  .pli .busy { font-size:10px; color:#ffeeee; opacity:.85; margin-left:auto; }
+  .chat-input { display:flex; border-top:2px solid #ffffff66; }
   .chat-input input { flex:1; border:0; padding:7px 9px; font:inherit; background:#fff; }
-  .chat-input button { border:0; background:#f5c518; color:#7a5800; font-weight:bold; padding:0 12px; cursor:pointer; }
+  .chat-input button { border:0; background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; font-weight:bold; padding:0 13px; cursor:pointer; font-size:16px; }
 
-  /* ── Partie (thème orange) ──────────────────────────────────────────────── */
-  #screen-game { padding:12px; }
-  .game-window { max-width:760px; margin:0 auto; }
-  .g-top { display:flex; gap:10px; margin-bottom:10px; }
-  .gcard { flex:1; display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px;
-    background:linear-gradient(#ffb43e,#f7941e); box-shadow:inset 0 0 0 2px #ffffff40; }
-  .gcard.active { box-shadow:inset 0 0 0 2px #fff, 0 0 0 2px #fff; }
-  .gc-av { width:54px; height:54px; flex:0 0 auto; border-radius:6px; overflow:hidden; background:#fff5; }
+  /* ── Partie (thème orange, cf. capture 3) ───────────────────────────────── */
+  #screen-game { padding:12px; background:radial-gradient(130% 110% at 50% 22%, #ffe1a6 0%, #ffc25e 38%, #f7941e 100%); }
+  .game-window { max-width:780px; margin:0 auto; }
+  .g-top { display:flex; gap:12px; margin-bottom:10px; }
+  .gcard { flex:1; display:flex; align-items:center; gap:11px; padding:8px 12px; border-radius:11px;
+    background:linear-gradient(180deg,#fff7e0 0%,#ffdc8c 14%,#ffb43e 52%,#f5990f 100%);
+    box-shadow:inset 0 0 0 2px #ffffffb0, 0 2px 4px #0000001f; }
+  .gcard.active { box-shadow:inset 0 0 0 2px #fff, 0 0 0 2px #ffe487, 0 2px 7px #00000033; }
+  .gc-av { width:54px; height:54px; flex:0 0 auto; border-radius:7px; overflow:hidden; background:#ffffff55; box-shadow:inset 0 0 0 1px #ffffffaa; }
   .gc-av iframe { width:100%; height:100%; border:0; display:block; }
-  .gc-info { min-width:0; }
-  .gc-name { color:#fff; font-weight:bold; font-size:15px; text-shadow:0 1px 0 #c96b00; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .gc-stars { color:#ffe680; font-size:13px; letter-spacing:1px; line-height:1; }
-  .gc-clock { color:#fff8; font-weight:bold; font-size:16px; font-variant-numeric:tabular-nums; }
-  .gcard.active .gc-clock { color:#fff; }
-  .g-main { display:flex; gap:10px; align-items:stretch; }
-  .g-board-wrap { position:relative; flex:0 0 auto; background:linear-gradient(#ffb43e,#f7941e);
-    border-radius:10px; padding:10px; }
-  .g-board-wrap .close { position:absolute; top:6px; right:8px; color:#fff; }
+  .gc-info { display:flex; flex-direction:column; gap:1px; min-width:0; }
+  .gc-name { color:#fff; font-weight:bold; font-size:14px; text-shadow:0 1px 1px #b5650a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .gc-line { display:flex; align-items:center; gap:7px; }
+  .gc-star { color:#ffe14d; font-size:17px; line-height:1; filter:drop-shadow(0 1px 0 #b5650a); }
+  .gc-streak { color:#ffe23a; font-weight:bold; font-size:26px; line-height:1; text-shadow:0 1px 0 #b5650a; }
+  .gc-clock { color:#ffffffb3; font-weight:bold; font-size:14px; font-variant-numeric:tabular-nums; margin-top:1px; }
+  .g-main { display:flex; gap:12px; align-items:stretch; }
+  .g-board-wrap { position:relative; flex:0 0 auto; border-radius:12px; padding:12px;
+    background:linear-gradient(180deg,#ffe1a6 0%,#ffc25e 45%,#f8a32e 100%);
+    box-shadow:inset 0 1px 0 #ffffffaa, inset 0 0 0 1px #ffffff55, 0 2px 5px #0000001f; }
+  .g-board-wrap .close { position:absolute; top:8px; right:9px; width:22px; height:22px; border-radius:6px;
+    background:linear-gradient(#ffd23f,#f0950e); box-shadow:inset 0 0 0 1px #fff8; color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:13px; }
   #board svg { display:block; }
-  .hex { fill:url(#hexg); stroke:#cfcfcf; stroke-width:1; }
-  .hex.target { fill:#d8f0c8; stroke:#5bbd3f; stroke-width:3; cursor:pointer; }
-  .mb { stroke:#0003; stroke-width:1; cursor:default; }
-  .mb.mine { cursor:pointer; }
-  .mb.sel { stroke:#fff; stroke-width:3; }
-  .g-side { flex:1; display:flex; flex-direction:column; background:#fffdf5; border:1px solid #f0d9a8; border-radius:8px; overflow:hidden; min-width:0; }
-  .g-warn { background:#fff4d6; color:#8a6d3b; font-size:11px; padding:7px 9px; border-bottom:1px solid #f0d9a8; }
-  .g-chat { flex:1; overflow-y:auto; padding:6px 9px; font-size:12.5px; line-height:1.4; }
-  .g-chat .nk { font-weight:bold; }
+  .hex { stroke:#cdcdcd; stroke-width:2; stroke-linejoin:round; }
+  .hex.target { stroke:#5bbd3f; stroke-width:3; cursor:pointer; }
+  .mb { stroke:#00000033; stroke-width:1; cursor:default; } .mb.mine { cursor:pointer; } .mb.sel { stroke:#fff; stroke-width:3; }
+  .g-side { flex:1; display:flex; flex-direction:column; background:#fffbf0; border:1px solid #f0d9a8; border-radius:10px; overflow:hidden; min-width:0; box-shadow:0 2px 5px #0000001a; }
+  .g-warn { background:#fff3d2; color:#9a4b1e; font-size:11px; line-height:1.35; padding:8px 10px; border-bottom:1px solid #f0d9a8; }
   .g-end { text-align:center; font-weight:bold; padding:8px; }
+  .g-chat { flex:1; overflow-y:auto; padding:7px 10px; font-size:12.5px; line-height:1.45; color:#444; }
+  .g-chat .nk { font-weight:bold; }
   .g-input { display:flex; border-top:1px solid #f0d9a8; }
-  .g-input input { flex:1; border:0; padding:7px 9px; font:inherit; }
-  .g-input button { border:0; background:#f7941e; color:#fff; font-weight:bold; padding:0 12px; cursor:pointer; }
+  .g-input input { flex:1; border:0; padding:7px 9px; font:inherit; background:#fff; }
+  .g-input button { border:0; background:linear-gradient(#ffb43e,#f5990f); color:#fff; font-weight:bold; padding:0 13px; cursor:pointer; font-size:16px; }
 </style>
 </head>
 <body>
-<div id="app">
   <div id="status">Connexion…</div>
 
-  <!-- Connexion -->
   <div id="screen-connect" class="screen on"></div>
 
-  <!-- Sélection de mode -->
+  <!-- Modes -->
   <div id="screen-mode" class="screen">
     <div class="mode-side">
       <div class="fc-logo"><i style="background:#f4554e"></i><i style="background:#8cc63f"></i><i></i><i></i><i style="background:#f5c518"></i><i style="background:#f4554e"></i></div>
@@ -140,19 +126,18 @@
   <div id="screen-lobby" class="screen">
     <div class="lobby-window">
       <div class="lobby-bar">
-        <span class="title">CHALLENGE</span>
-        <span id="open-games"></span>
+        <span class="title">CHALLENGE</span><span id="open-games"></span>
         <button id="btn-create">Créer une partie</button>
         <span class="x" id="lobby-back" title="Retour">✕</span>
       </div>
       <div class="lobby-main">
         <div class="chat-panel">
-          <div class="panel-head"><span>Chat</span></div>
+          <div class="panel-head">Chat</div>
           <div class="chat-log" id="lobby-chat"></div>
           <div class="chat-input"><input id="lobby-say" placeholder="Écris un message…" maxlength="200"><button id="lobby-send">»</button></div>
         </div>
         <div class="players-panel">
-          <div class="panel-head"><span>liste des joueurs</span></div>
+          <div class="panel-head">liste des joueurs</div>
           <div class="players-list" id="players"></div>
         </div>
       </div>
@@ -178,7 +163,6 @@
       </div>
     </div>
   </div>
-</div>
 
 <script src="engine.js"></script>
 <script>
@@ -200,12 +184,8 @@
     gameId: null, myTeam: -1, turn: -1, size: 4, tokens: [], players: [], ended: false,
     sel: null, targets: {}, helloTimer: null, clockTimer: null, lastTick: {}, _barSig: "",
   };
-
   function setStatus(s) { $("#status").textContent = s; }
-  function showScreen(name) {
-    state.screen = name;
-    each(document.querySelectorAll(".screen"), function (s) { s.classList.toggle("on", s.id === "screen-" + name); });
-  }
+  function showScreen(name) { state.screen = name; each(document.querySelectorAll(".screen"), function (s) { s.classList.toggle("on", s.id === "screen-" + name); }); }
 
   // ── Connexion ────────────────────────────────────────────────────────────
   function start() {
@@ -214,15 +194,13 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d || !d.user) { setStatus("Session invalide."); return; }
-        state.user = d.user; state.myBouille = d.bouille || DEFAULT_BOUILLE;
-        connect();
+        state.user = d.user; state.myBouille = d.bouille || DEFAULT_BOUILLE; connect();
       })
       .catch(function () { setStatus("Réseau indisponible."); });
   }
   function connect() {
     var proto = location.protocol === "https:" ? "wss" : "ws";
-    var ws = new WebSocket(proto + "://" + location.host + "/");
-    state.ws = ws;
+    var ws = new WebSocket(proto + "://" + location.host + "/"); state.ws = ws;
     ws.onopen = function () {
       setStatus("Identification…");
       send('<k l="' + xml(state.user) + '" s="' + xml(sid) + '" />');
@@ -245,8 +223,7 @@
       if (data instanceof Blob) { data.text().then(onData); return; }
       try { data = new TextDecoder("utf-8").decode(data); } catch (e) { return; }
     }
-    buf += data;
-    var parts = buf.split("\0"); buf = parts.pop();
+    buf += data; var parts = buf.split("\0"); buf = parts.pop();
     parts.forEach(function (p) { p = p.trim(); if (p.indexOf("<gz") === 0) handleGz(p); });
   }
   function handleGz(s) {
@@ -270,15 +247,14 @@
     lobbyPlayers = []; lobbyGames = [];
     each(el.getElementsByTagName("pl"), function (n) { lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f") }); });
     each(el.getElementsByTagName("game"), function (n) { lobbyGames.push({ id: n.getAttribute("id"), host: n.getAttribute("host"), c: +n.getAttribute("c"), m: +n.getAttribute("m") }); });
-    $("#ch-j").textContent = lobbyPlayers.length;
-    $("#ch-p").textContent = lobbyGames.length;
-    if (state.screen === "lobby") { renderPlayers(); renderOpenGames(); }
+    $("#ch-j").textContent = lobbyPlayers.length; $("#ch-p").textContent = lobbyGames.length;
+    if (state.screen === "lobby") renderLobby();
   }
+  function renderLobby() { renderPlayers(); renderOpenGames(); }
   function renderPlayers() {
     var box = $("#players"); box.innerHTML = "";
     lobbyPlayers.forEach(function (p) {
-      var fb = (p.f && p.f.length >= 15) ? p.f : DEFAULT_BOUILLE;
-      var idle = p.s === "idle" && p.u !== state.user;
+      var fb = (p.f && p.f.length >= 15) ? p.f : DEFAULT_BOUILLE, idle = p.s === "idle" && p.u !== state.user;
       var row = div("pli" + (idle ? " can" : ""));
       row.innerHTML = '<div class="sw"><iframe scrolling="no" sandbox="allow-scripts allow-same-origin" src="/bouille-preview.html?s=' + encodeURIComponent(fb) + '&bg=transparent"></iframe></div>'
         + '<div class="nm">' + esc(p.n || p.u) + (p.u === state.user ? " (toi)" : "") + "</div>"
@@ -291,26 +267,21 @@
     var box = $("#open-games"); box.innerHTML = "";
     lobbyGames.forEach(function (g) {
       if (g.host === state.user) return;
-      var chip = document.createElement("span"); chip.className = "og";
-      chip.innerHTML = "Partie de <b>" + esc(g.host) + "</b> ";
-      var b = document.createElement("button"); b.textContent = "Rejoindre";
-      b.onclick = function () { gz({ a: "join", g: g.id }); };
+      var chip = document.createElement("span"); chip.className = "og"; chip.innerHTML = "Partie de <b>" + esc(g.host) + "</b> ";
+      var b = document.createElement("button"); b.textContent = "Rejoindre"; b.onclick = function () { gz({ a: "join", g: g.id }); };
       chip.appendChild(b); box.appendChild(chip);
     });
   }
   function onChallenged(el) {
     var c = el.getAttribute("c"), from = el.getAttribute("n") || el.getAttribute("u");
+    if (state.screen === "mode") { showScreen("lobby"); renderLobby(); }
     var box = $("#challenge-box");
-    box.innerHTML = '<div class="lobby-window" style="margin-top:10px;padding:10px;text-align:center">'
-      + "<b>" + esc(from) + "</b> te défie ! &nbsp;"
+    box.innerHTML = '<div class="lobby-window" style="margin-top:10px;padding:10px;text-align:center"><b>' + esc(from) + "</b> te défie ! &nbsp;"
       + '<button id="ch-yes" style="background:#8cc63f;color:#fff;border:0;border-radius:6px;padding:5px 12px;font-weight:bold;cursor:pointer">Accepter</button> '
       + '<button id="ch-no" style="background:#f06d6d;color:#fff;border:0;border-radius:6px;padding:5px 12px;font-weight:bold;cursor:pointer">Refuser</button></div>';
-    if (state.screen === "mode") showScreen("lobby"), renderLobby();
     $("#ch-yes").onclick = function () { gz({ a: "accept", c: c }); box.innerHTML = ""; };
     $("#ch-no").onclick = function () { gz({ a: "decline", c: c }); box.innerHTML = ""; };
   }
-  function renderLobby() { renderPlayers(); renderOpenGames(); }
-
   $("#mode-chall").onclick = function () { showScreen("lobby"); renderLobby(); };
   $("#lobby-back").onclick = function () { showScreen("mode"); };
   $("#btn-create").onclick = function () { gz({ a: "create" }); };
@@ -322,83 +293,72 @@
   function sendLobbyChat() { var i = $("#lobby-say"); if (i.value.trim()) { gz({ a: "say", m: i.value.trim() }); i.value = ""; } }
   function sendGameChat() { var i = $("#game-say"); if (i.value.trim()) { gz({ a: "gsay", m: i.value.trim() }); i.value = ""; } }
 
-  var NICKCOL = ["#fff", "#7a2", "#26c", "#c26", "#a60", "#08a", "#a08"];
+  var NICKCOL = ["#ffe14d", "#8cdb4b", "#7fb4ff", "#ff9ed0", "#ffd089", "#9be0e0", "#d6a8ff"];
   function colorFor(n) { var h = 0; n = n || ""; for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) | 0; return NICKCOL[Math.abs(h) % NICKCOL.length]; }
   function addChat(log, user, msg) {
     if (!log) return;
     var atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
-    var ln = div("ln");
-    ln.innerHTML = '<span class="nk" style="color:' + colorFor(user) + '">' + esc(user) + "&gt;</span> " + esc(msg);
-    log.appendChild(ln);
-    if (atBottom) log.scrollTop = log.scrollHeight;
+    var ln = div("ln"); var col = log.id === "lobby-chat" ? colorFor(user) : "#c46a12";
+    ln.innerHTML = '<span class="nk" style="color:' + col + '">' + esc(user) + " &gt;</span> " + esc(msg);
+    log.appendChild(ln); if (atBottom) log.scrollTop = log.scrollHeight;
   }
 
   // ── Partie ───────────────────────────────────────────────────────────────
   function onGameState(el) {
     var fresh = state.gameId !== el.getAttribute("g");
-    state.gameId = el.getAttribute("g");
-    state.size = +el.getAttribute("sz") || 4;
-    state.turn = +el.getAttribute("turn");
-    state.ended = el.getAttribute("end") === "1";
+    state.gameId = el.getAttribute("g"); state.size = +el.getAttribute("sz") || 4;
+    state.turn = +el.getAttribute("turn"); state.ended = el.getAttribute("end") === "1";
     state.tokens = [];
     each(el.getElementsByTagName("t"), function (n) { state.tokens.push({ team: +n.getAttribute("e"), x: +n.getAttribute("x"), y: +n.getAttribute("y") }); });
     state.players = [];
     each(el.getElementsByTagName("p"), function (n) {
-      var pl = { u: n.getAttribute("u"), n: n.getAttribute("n"), e: +n.getAttribute("e"), rt: +n.getAttribute("rt"), f: n.getAttribute("f") };
+      var pl = { u: n.getAttribute("u"), n: n.getAttribute("n"), e: +n.getAttribute("e"), rt: +n.getAttribute("rt"), f: n.getAttribute("f"), sr: +n.getAttribute("sr") || 0 };
       if (pl.u === state.user) state.myTeam = pl.e;
       state.players.push(pl);
     });
     state.sel = null; state.targets = {};
     if (fresh) { $("#game-chat").innerHTML = ""; $("#g-end").style.display = "none"; }
-    showScreen("game");
-    renderPlayersBar(); renderBoard(); startClocks();
+    showScreen("game"); renderPlayersBar(); renderBoard(); startClocks();
     if (state.ended) {
-      var w = +el.getAttribute("w"), mine = w === state.myTeam;
-      var who = state.players.filter(function (p) { return p.e === w; })[0];
+      var w = +el.getAttribute("w"), mine = w === state.myTeam, who = state.players.filter(function (p) { return p.e === w; })[0];
       var b = $("#g-end"); b.style.display = "block";
-      b.textContent = mine ? "🏆 Victoire !" : ("Défaite — " + (who ? (who.n || who.u) : "équipe " + w) + " gagne");
-      b.style.color = mine ? "#2e7d32" : "#c62828";
-      stopClocks();
+      b.textContent = mine ? "🏆 Victoire ! Série en cours." : ("Défaite — " + (who ? (who.n || who.u) : "équipe " + w) + " gagne. Série remise à 0.");
+      b.style.color = mine ? "#2e7d32" : "#c62828"; stopClocks();
     }
   }
-  function leaveGame() {
-    state.gameId = null; state.myTeam = -1; state._barSig = ""; stopClocks();
-    showScreen("lobby"); renderLobby(); gz({ a: "list" });
-  }
+  function leaveGame() { state.gameId = null; state.myTeam = -1; state._barSig = ""; stopClocks(); showScreen("lobby"); renderLobby(); gz({ a: "list" }); }
 
-  // Géométrie hexagonale (flat-top) : (x,y) → pixels.
-  var CELL = 36, K = CELL * 0.866, J = CELL * 0.5, PAD = 22, R = 19.5, MR = 13;
+  // Géométrie hexagonale FLAT-TOP, jointive : (x,y) → pixels, R = J·2/√3.
+  var CELL = 36, K = CELL * 0.866, J = CELL * 0.5, PAD = 22, R = J * 2 / Math.sqrt(3), MR = 14;
   function px(x, y) { return PAD + K * (state.size * 2) + K * (y - x); }
   function py(x, y) { return PAD + J * (x + y); }
   function boardDim() { return { w: Math.round(PAD * 2 + K * (state.size * 4)), h: Math.round(PAD * 2 + J * (state.size * 4)) }; }
   function hexPts(cx, cy) { var p = []; for (var i = 0; i < 6; i++) { var a = Math.PI / 180 * 60 * i; p.push((cx + R * Math.cos(a)).toFixed(1) + "," + (cy + R * Math.sin(a)).toFixed(1)); } return p.join(" "); }
   var BOARD_DEFS = '<defs>'
-    + '<radialGradient id="mb-0" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#ffd2d2"/><stop offset=".3" stop-color="#ff5b5b"/><stop offset="1" stop-color="#a80f0f"/></radialGradient>'
-    + '<radialGradient id="mb-1" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#d4e7ff"/><stop offset=".3" stop-color="#5b9bff"/><stop offset="1" stop-color="#11349e"/></radialGradient>'
-    + '<radialGradient id="hexg" cx="50%" cy="32%" r="80%"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e7e7e7"/></radialGradient></defs>';
-
+    + '<radialGradient id="mb-0" cx="35%" cy="28%" r="78%"><stop offset="0" stop-color="#ffe2e2"/><stop offset=".28" stop-color="#ff6b6b"/><stop offset=".7" stop-color="#e01b1b"/><stop offset="1" stop-color="#8c0606"/></radialGradient>'
+    + '<radialGradient id="mb-1" cx="35%" cy="28%" r="78%"><stop offset="0" stop-color="#e6efff"/><stop offset=".28" stop-color="#6aa6ff"/><stop offset=".7" stop-color="#2b6fe0"/><stop offset="1" stop-color="#0a2a8c"/></radialGradient>'
+    + '<linearGradient id="hexg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dedede"/></linearGradient></defs>';
   function curBoard() { return E.Board.fromDefinition({ size: state.size, tokens: state.tokens.map(function (t) { return { t: t.team, x: t.x, y: t.y }; }) }); }
   function canControl() { return !state.ended && state.turn === state.myTeam; }
   function tokenAt(x, y) { for (var i = 0; i < state.tokens.length; i++) if (state.tokens[i].x === x && state.tokens[i].y === y) return state.tokens[i]; return null; }
-
   function renderBoard() {
     var b = curBoard(), dim = boardDim();
     var s = '<svg width="' + dim.w + '" height="' + dim.h + '" viewBox="0 0 ' + dim.w + ' ' + dim.h + '">' + BOARD_DEFS;
     for (var x = 0; x <= state.size * 2; x++) for (var y = 0; y <= state.size * 2; y++) {
       if (!b.isValid(new E.Coordinate(x, y))) continue;
       var t = state.targets[x + "," + y] !== undefined;
-      s += '<polygon class="hex' + (t ? " target" : "") + '" points="' + hexPts(px(x, y), py(x, y)) + '" data-x="' + x + '" data-y="' + y + '"/>';
+      s += '<polygon class="hex' + (t ? " target" : "") + '" fill="url(#hexg)" points="' + hexPts(px(x, y), py(x, y)) + '" data-x="' + x + '" data-y="' + y + '"/>';
     }
     state.tokens.forEach(function (tk) {
       var mine = canControl() && tk.team === state.myTeam, sel = state.sel && state.sel.x === tk.x && state.sel.y === tk.y;
-      s += '<circle class="mb' + (mine ? " mine" : "") + (sel ? " sel" : "") + '" cx="' + px(tk.x, tk.y).toFixed(1) + '" cy="' + py(tk.x, tk.y).toFixed(1) + '" r="' + MR + '" fill="url(#mb-' + tk.team + ')" data-x="' + tk.x + '" data-y="' + tk.y + '"/>';
+      var cx = px(tk.x, tk.y), cy = py(tk.x, tk.y);
+      s += '<circle class="mb' + (mine ? " mine" : "") + (sel ? " sel" : "") + '" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + MR + '" fill="url(#mb-' + tk.team + ')" data-x="' + tk.x + '" data-y="' + tk.y + '"/>'
+        + '<ellipse cx="' + (cx - MR * 0.28).toFixed(1) + '" cy="' + (cy - MR * 0.36).toFixed(1) + '" rx="' + (MR * 0.36).toFixed(1) + '" ry="' + (MR * 0.22).toFixed(1) + '" fill="#ffffffcc" pointer-events="none"/>';
     });
-    s += "</svg>";
-    $("#board").innerHTML = s;
+    $("#board").innerHTML = s + "</svg>";
   }
   $("#board").addEventListener("click", function (ev) {
-    var t = ev.target, ax = t.getAttribute && t.getAttribute("data-x");
-    if (ax == null) return;
+    var t = ev.target, ax = t.getAttribute && t.getAttribute("data-x"); if (ax == null) return;
     onBoardClick(+ax, +t.getAttribute("data-y"));
   });
   function onBoardClick(x, y) {
@@ -411,17 +371,12 @@
     curBoard().availableMoves(new E.Coordinate(x, y)).forEach(function (m) { state.targets[m.target.x + "," + m.target.y] = m.direction; });
     renderBoard();
   }
-  function doMove(x, y) {
-    if (!state.sel) return;
-    var d = state.targets[x + "," + y]; if (d === undefined) return;
-    gz({ a: "move", x: state.sel.x, y: state.sel.y, d: d });
-    state.sel = null; state.targets = {};
-  }
+  function doMove(x, y) { if (!state.sel) return; var d = state.targets[x + "," + y]; if (d === undefined) return; gz({ a: "move", x: state.sel.x, y: state.sel.y, d: d }); state.sel = null; state.targets = {}; }
 
   function renderPlayersBar() {
     var sig = state.players.map(function (p) { return p.u + ":" + (p.f || ""); }).join("|");
     if (sig !== state._barSig) { buildPlayersBar(); state._barSig = sig; }
-    updateTurn();
+    updateCards();
   }
   function buildPlayersBar() {
     var top = $("#g-top"); top.innerHTML = "";
@@ -430,12 +385,18 @@
       var c = div("gcard"); c.dataset.team = p.e;
       c.innerHTML = '<div class="gc-av"><iframe scrolling="no" sandbox="allow-scripts allow-same-origin" src="/bouille-preview.html?s=' + encodeURIComponent(fb) + '&bg=transparent"></iframe></div>'
         + '<div class="gc-info"><div class="gc-name">' + esc(p.n || p.u) + (p.e === state.myTeam ? " (toi)" : "") + "</div>"
-        + '<div class="gc-stars">★</div><div class="gc-clock clock" data-team="' + p.e + '">' + fmt(p.rt) + "</div></div>";
+        + '<div class="gc-line"><span class="gc-star">✦</span><span class="gc-streak" data-team="' + p.e + '">' + (p.sr || 0) + "</span></div>"
+        + '<div class="gc-clock clock" data-team="' + p.e + '">' + fmt(p.rt) + "</div></div>";
       top.appendChild(c);
     });
   }
-  function updateTurn() { each(document.querySelectorAll("#g-top .gcard"), function (c) { c.classList.toggle("active", +c.dataset.team === state.turn && !state.ended); }); }
-
+  function updateCards() {
+    state.players.forEach(function (p) {
+      var card = document.querySelector('#g-top .gcard[data-team="' + p.e + '"]'); if (!card) return;
+      card.classList.toggle("active", p.e === state.turn && !state.ended);
+      var sr = card.querySelector(".gc-streak"); if (sr) sr.textContent = p.sr || 0;
+    });
+  }
   function startClocks() {
     stopClocks(); state.lastTick = {}; state.players.forEach(function (p) { state.lastTick[p.e] = p.rt; });
     var t0 = Date.now();
@@ -448,7 +409,7 @@
     }, 250);
   }
   function stopClocks() { if (state.clockTimer) { clearInterval(state.clockTimer); state.clockTimer = null; } }
-  function fmt(ms) { ms = Math.max(0, ms | 0); var s = Math.floor(ms / 1000); return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2); }
+  function fmt(ms) { ms = Math.max(0, ms | 0); var s = Math.floor(ms / 1000); return ("0" + Math.floor(s / 60)).slice(-2) + ":" + ("0" + (s % 60)).slice(-2); }
 
   if (!E) setStatus("Moteur indisponible (engine.js)."); else start();
 })();

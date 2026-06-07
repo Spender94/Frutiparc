@@ -11542,8 +11542,15 @@ function getSocketsForUsername(username) {
 const { GrapizNet } = require('./public/grapiz/server/net.js');
 const grapizNet = new GrapizNet({
   onResult: (session, winner, reason) => {
-    // TODO: enregistrer le classement « Grapiz - Challenge » en fin de partie.
     console.log(`[grapiz] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
+  },
+  // Le gros nombre doré = la SÉRIE de victoires consécutives (mode challenge).
+  getStreak: (username) => (users[username] || {}).grapizStreak || 0,
+  onStreak: (username, streak, info) => {
+    if (users[username]) users[username].grapizStreak = streak;   // série en cours (mémoire serveur)
+    // À la fin d'une série (défaite/abandon/timeout), on enregistre sa longueur
+    // au classement « Grapiz - Challenge » (persistScore garde le meilleur).
+    if (info && info.series > 0) persistScore(username, 'grapiz_challenge', info.series);
   },
 });
 // Envoie chaque message { to:[usernames], xml } à tous les sockets de ces joueurs.
