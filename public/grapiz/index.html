@@ -84,7 +84,12 @@
   "use strict";
   var E = (window.Grapiz && window.Grapiz.engine);
   var $ = function (s) { return document.querySelector(s); };
+  // sid : priorité à ?sid=, sinon on réutilise la session du client light
+  // (même navigateur) pour tester sans copier le sid à la main.
   var sid = new URLSearchParams(location.search).get("sid") || "";
+  if (!sid) {
+    try { sid = (JSON.parse(localStorage.getItem("fp_light_session") || "{}") || {}).sid || ""; } catch (e) {}
+  }
 
   var state = {
     ws: null, user: "", gotLobby: false,
