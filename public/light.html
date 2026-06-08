@@ -612,15 +612,18 @@
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  // For the message BODY: the server's parser reads element content literally
-  // with /([^<]*)</ — it does NOT unescape entities and TRUNCATES at the first
-  // "<". So a literal "<" can't survive (the Flash client has the same limit),
-  // and pre-escaping to "&lt;" would be double-escaped on rebroadcast and shown
-  // as the raw entity. We therefore map "<"/">" to the look-alike guillemets
-  // ‹ › (not XML-special, visually near-identical). A literal "&" is safe: the
-  // server re-escapes it to "&amp;" and our xmlUnescape restores it.
+  // For the message BODY: escape "&", "<" and ">" as proper XML entities. The
+  // server normalises every incoming body with escapeXml(unescapeXml(body))
+  // before rebroadcasting — an idempotent single level of escaping — and BOTH
+  // clients unescape on receive (Flash's htmlText, and our xmlUnescape here). So
+  // "&lt;"/"&gt;" survive the round-trip and arrive as the literal "<"/">" on
+  // every client, with NO double-escaping. (We previously swapped "<"/">" for
+  // the look-alike guillemets ‹ › to dodge the server's content parser, which
+  // truncates at a *literal* "<" — but entities contain no literal "<", so they
+  // pass through cleanly and the real characters are preserved.)
   function bodyEscape(s) {
-    return String(s == null ? "" : s).replace(/</g, "‹").replace(/>/g, "›");
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function xmlUnescape(s) {
     return String(s == null ? "" : s)
@@ -950,22 +953,10 @@
           addMessage({ from: from, time: h, body: ty === "i" ? "[image]" : "[cadeau]", kind: "system" });
           break;
         }
-        // Emote frame: the body is a bare bouille-anim index (e.g. "3" = mdr),
-        // exactly how the desktop transmits an emote. Render the italic action
-        // + the matching bouille animation — identical on both clients —
-        // instead of showing the raw number. (Index 1 = "parle" is the plain
-        // speak animation, not an emote, so it falls through to normal text.)
-        var emoteIdx = body.trim();
-        var emoteAnim = /^[0-9]+$/.test(emoteIdx) ? ANIM_BY_INDEX[emoteIdx] : null;
-        if (emoteAnim && emoteAnim !== "parle") {
-          addMessage({
-            from: from, time: h,
-            body: ANIM_LABEL[emoteAnim] || emoteAnim,
-            kind: (from === "admin") ? "admin" : "normal", emote: true, pen: null,
-          });
-          if (from && from !== "admin") showBouilleOverlay(from, emoteAnim);
-          break;
-        }
+        // Emotes travel as ordinary text (e.g. "mdr"); detectEmote below turns a
+        // recognised reaction into the italic action + bouille animation. (A bare
+        // number is just a number — no longer special-cased, so typing "2" shows
+        // "2" instead of being mistaken for an emote index.)
         var text = xmlUnescape(body);
         var kind = (from === "admin") ? "admin" : "normal";
         var em = detectEmote(text);
@@ -1074,16 +1065,15 @@
     var inp = $("#compose-input");
     var text = inp.value;
     if (!text.trim() || !state.connected || !state.room) return;
-    // Emotes ("mdr", "lol", ":p"…) are sent as a bare bouille-anim index — the
-    // same wire form the desktop uses — so BOTH clients show the action + the
-    // bouille animation (desktop no longer just sees the raw "mdr" text).
-    // Everything else is a normal message (body via bodyEscape).
-    var em = detectEmote(text);
-    if (em.isEmote && ANIM_INDEX[em.anim]) {
-      wsSend('<t g="' + xmlEscape(state.room) + '" t="m" p="">' + ANIM_INDEX[em.anim] + "</t>");
-    } else {
-      wsSend('<t g="' + xmlEscape(state.room) + '" t="m" p="' + xmlEscape(state.pen) + '">' + bodyEscape(text) + "</t>");
-    }
+    // Always send the user's actual text. Each client detects emotes from the
+    // text itself and reacts locally (here via detectEmote on receive; the
+    // desktop SWF triggers its own emote icons/bouille the same way it does for
+    // a desktop user who types "mdr"). We used to convert an emote to a bare
+    // bouille-anim index, assuming that was the desktop's wire form — but the
+    // desktop has no "number = emote" convention, so it just printed the raw
+    // digit ("2"). Sending the text fixes mobile→desktop emotes and keeps
+    // mobile→mobile working (the receiver runs detectEmote on the same text).
+    wsSend('<t g="' + xmlEscape(state.room) + '" t="m" p="' + xmlEscape(state.pen) + '">' + bodyEscape(text) + "</t>");
     inp.value = "";
     inp.focus();
   });
@@ -1283,11 +1273,6 @@
     pleurer:"pleure", langue:"tire la langue", miam:"se régale",
     question:"se pose des questions", rougir:"rougit", sifflote:"siffle",
     gum:"fait un chewing-gum", regard:"regarde" };
-  // Reverse map (anim index -> name) for rendering emotes that travel as a bare
-  // bouille-anim index in the chat body (the desktop's wire form).
-  var ANIM_BY_INDEX = {};
-  Object.keys(ANIM_INDEX).forEach(function (a) { ANIM_BY_INDEX[ANIM_INDEX[a]] = a; });
-
   // Live-Ruffle overlay: instead of a captured GIF (latency + raster pixelation)
   // we embed bouille-preview.html in a transparent iframe — Ruffle renders the
   // bouille as VECTORS (crisp at any size) and plays the animation directly,

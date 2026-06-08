@@ -9293,6 +9293,51 @@ function isForumContentTooShort(rawContent) {
   return String(rawContent || '').trim().length < FORUM_MIN_CONTENT_LEN;
 }
 
+// ── Forum polls (sondages) ──
+// A poll is optional and attached to a topic at creation time. Single-choice,
+// classic phpBB-style: a question + 2..10 answers, one vote per user.
+const FORUM_POLL_MIN_OPTIONS = 2;
+const FORUM_POLL_MAX_OPTIONS = 10;
+const FORUM_POLL_MAX_QUESTION_LEN = 200;
+const FORUM_POLL_MAX_OPTION_LEN = 100;
+
+function forumPollErrorMessage(code) {
+  switch (code) {
+    case 'poll_no_question': return 'Le sondage doit avoir une question.';
+    case 'poll_question_too_long': return 'La question du sondage est trop longue (200 caractères max).';
+    case 'poll_option_too_long': return 'Une réponse du sondage est trop longue (100 caractères max).';
+    case 'poll_not_enough_options': return 'Le sondage doit proposer au moins 2 réponses.';
+    case 'poll_too_many_options': return 'Le sondage ne peut pas dépasser 10 réponses.';
+    default: return 'Sondage invalide.';
+  }
+}
+
+// Validate + normalize a poll payload from the new-topic form. Polls are
+// optional, so a blank payload is "no poll" (ok:true, poll:null). Otherwise
+// returns { ok, error? } or { ok:true, poll:{ question, options[] } } with
+// options de-duped (case-insensitive) and trimmed.
+function normalizeForumPoll(raw) {
+  if (!raw || typeof raw !== 'object') return { ok: true, poll: null };
+  const question = String(raw.question || '').trim();
+  let options = Array.isArray(raw.options) ? raw.options : [];
+  options = options.map((o) => String(o == null ? '' : o).trim()).filter(Boolean);
+  if (!question && options.length === 0) return { ok: true, poll: null };
+  if (!question) return { ok: false, error: 'poll_no_question' };
+  if (question.length > FORUM_POLL_MAX_QUESTION_LEN) return { ok: false, error: 'poll_question_too_long' };
+  const seen = new Set();
+  const deduped = [];
+  for (const o of options) {
+    if (o.length > FORUM_POLL_MAX_OPTION_LEN) return { ok: false, error: 'poll_option_too_long' };
+    const key = o.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(o);
+  }
+  if (deduped.length < FORUM_POLL_MIN_OPTIONS) return { ok: false, error: 'poll_not_enough_options' };
+  if (deduped.length > FORUM_POLL_MAX_OPTIONS) return { ok: false, error: 'poll_too_many_options' };
+  return { ok: true, poll: { question, options: deduped } };
+}
+
 // Returns { muted: bool, until: string|null, untilDisplay: string|null }
 // for the given username. Source of truth = users[].mutedUntil (set by the
 // chat 'mute' command). The same lockout that prevents chat messages also
@@ -9583,6 +9628,15 @@ app.get('/api/forum/topic/:id', async (req, res) => {
       postCount: postCounts[p.author_username] || 0,
       isModerator: !!(users[p.author_username] && users[p.author_username].isModerator),
     }));
+    // Poll ("sondage") attached to this topic, if any. Best-effort: a poll read
+    // error must never break the topic view. myOptionId reflects the viewer's
+    // own vote; canManagePoll lets the topic author or a moderator close it.
+    let poll = null;
+    try { poll = await db.forumGetPollByTopic(topicId, currentUser); }
+    catch (e) { console.error(`[FORUM] poll fetch error (topic ${topicId}): ${e.message}`); }
+    const canManagePoll = !!(poll && currentUser && (
+      String(topic.author_username).toLowerCase() === String(currentUser).toLowerCase() || currentIsMod
+    ));
     res.json({
       topic: {
         id: topic.id, title: topic.title, author: getDisplayName(topic.author_username),
@@ -9595,6 +9649,7 @@ app.get('/api/forum/topic/:id', async (req, res) => {
       },
       posts: postsOut, total, page, perPage: FORUM_POSTS_PER_PAGE,
       currentIsMod: !!currentIsMod,
+      poll, canManagePoll,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -9634,6 +9689,13 @@ app.post('/api/forum/topic', async (req, res) => {
   if (isForumContentTooShort(rawContent)) {
     return res.status(400).json({ error: 'content_too_short', message: FORUM_TOO_SHORT_MESSAGE });
   }
+  // Optional poll ("sondage") attached to the new topic. Validate before the
+  // DB gate so a malformed poll is reported cleanly and never leaves a topic
+  // created without it.
+  const pollNorm = normalizeForumPoll(req.body.poll);
+  if (!pollNorm.ok) {
+    return res.status(400).json({ error: pollNorm.error, message: forumPollErrorMessage(pollNorm.error) });
+  }
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
   const title = censorProfanity(rawTitle);
   const content = censorProfanity(rawContent);
@@ -9646,6 +9708,15 @@ app.post('/api/forum/topic', async (req, res) => {
       return res.status(403).json({ error: 'forbidden', message: 'Seuls les modérateurs peuvent publier dans le forum Annonces.' });
     }
     const topic = await db.forumCreateTopic(boardId, username, title, content, postBouille, postMood);
+    if (pollNorm.poll) {
+      // Censor the question + options just like post content. A poll failure
+      // must not lose the topic that was just created, so it's best-effort.
+      try {
+        const q = censorProfanity(pollNorm.poll.question);
+        const opts = pollNorm.poll.options.map((o) => censorProfanity(o));
+        await db.forumCreatePoll(topic.id, q, opts);
+      } catch (e) { console.error('[FORUM] poll create error:', e.message); }
+    }
     trackXpAction(username, 'forumTopic');
     res.json({ ok: true, topicId: topic.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -9890,6 +9961,59 @@ app.delete('/api/forum/topic/:id', async (req, res) => {
     const boardId = topic.board_id;
     await db.forumDeleteTopic(Number(req.params.id));
     res.json({ ok: true, boardId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Forum poll (sondage) voting ──
+// Cast a single vote. Requires login; votes can't be changed once cast
+// (enforced in the DB). Voting produces no public text, so muted/banned users
+// are allowed — the sanction is about posting, not reading/voting. Staff-only
+// board gating is still honoured. Returns the refreshed poll so the client can
+// flip straight to the results view.
+app.post('/api/forum/poll/:id/vote', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  const pollId = Number(req.params.id);
+  const optionId = Number(req.body.optionId);
+  if (!pollId || !optionId) return res.status(400).json({ error: 'bad_request' });
+  try {
+    const poll = await db.forumGetPoll(pollId);
+    if (!poll) return res.status(404).json({ error: 'poll_not_found' });
+    if (poll.is_closed) {
+      return res.status(403).json({ error: 'poll_closed', message: 'Ce sondage est clos, tu ne peux plus voter.' });
+    }
+    const topic = await db.forumGetTopic(poll.topic_id);
+    if (topic) {
+      const { staffOnly } = await isStaffOnlyBoard(topic.board_id);
+      if (staffOnly && !isForumStaff(username)) return res.status(403).json({ error: 'forbidden' });
+    }
+    const result = await db.forumVotePoll(pollId, optionId, username);
+    if (!result.ok) {
+      return res.status(400).json({ error: result.reason || 'vote_failed', message: 'Réponse de sondage invalide.' });
+    }
+    const updated = await db.forumGetPollByTopic(poll.topic_id, username);
+    res.json({ ok: true, poll: updated });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Close (or reopen) a poll. Only the topic author or a moderator can do this.
+app.post('/api/forum/poll/:id/close', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
+  const pollId = Number(req.params.id);
+  const close = req.body.close == null ? true : !!req.body.close;
+  try {
+    const poll = await db.forumGetPoll(pollId);
+    if (!poll) return res.status(404).json({ error: 'poll_not_found' });
+    const topic = await db.forumGetTopic(poll.topic_id);
+    const isAuthor = topic && String(topic.author_username).toLowerCase() === String(username).toLowerCase();
+    const isMod = users[username] && users[username].isModerator;
+    if (!isAuthor && !isMod) return res.status(403).json({ error: 'forbidden' });
+    await db.forumSetPollClosed(pollId, close);
+    const updated = await db.forumGetPollByTopic(poll.topic_id, username);
+    res.json({ ok: true, poll: updated });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -11317,7 +11441,7 @@ const GROMELIN_LINES = [
   "Grumpf",
   "Mmmmh, y a encore du monde ici ?",
   "Vous n'avez rien de mieux à faire qu'à traîner sur ce site minable ?",
-  "Allez, du balais ! J'ai du boulot moi.",
+  "Allez, du balai ! J'ai du boulot moi.",
   "On est plus tranquille à Légumia...",
 ];
 
@@ -12743,6 +12867,15 @@ case 'join': {
         let inner = '';
         const bySection = { C: [], L: [] };
         for (const d of LEGACY_RANKINGS) {
+          // Skip "ghost" descriptors with no backing ranking (internal: null).
+          // They have no score store, so the client would list a game whose
+          // table is always empty AND whose `c` (total count) comes back unset
+          // — which silently kills that table's pagination. This is exactly why
+          // Grapiz (listed both at rk '6' = Challenge with grapiz_challenge, and
+          // at the leftover rk '8' = Championnat with internal:null) paginated
+          // in one tab but not the other. Advertising only real rankings keeps
+          // each game in the single section where it actually has scores.
+          if (!d.internal) continue;
           const sec = d.section === 'L' ? 'L' : 'C';
           bySection[sec].push(d);
         }

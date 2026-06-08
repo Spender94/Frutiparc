@@ -321,6 +321,39 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_forum_topic_reads_user ON forum_topic_reads(username);
 
+      -- Forum polls ("sondages"). At most one poll per topic (enforced by the
+      -- unique index on topic_id). A poll is a question + a fixed set of
+      -- options; each user may cast a single vote, recorded in forum_poll_votes
+      -- (PRIMARY KEY (poll_id, voter_username) => one vote per user, and votes
+      -- can't be changed once cast — classic phpBB behaviour). The topic author
+      -- or a moderator can close the poll, which freezes voting and reveals the
+      -- results to everyone.
+      CREATE TABLE IF NOT EXISTS forum_polls (
+        id         SERIAL PRIMARY KEY,
+        topic_id   INTEGER NOT NULL REFERENCES forum_topics(id) ON DELETE CASCADE,
+        question   TEXT NOT NULL,
+        is_closed  BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_forum_polls_topic ON forum_polls(topic_id);
+
+      CREATE TABLE IF NOT EXISTS forum_poll_options (
+        id         SERIAL PRIMARY KEY,
+        poll_id    INTEGER NOT NULL REFERENCES forum_polls(id) ON DELETE CASCADE,
+        label      TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_forum_poll_options_poll ON forum_poll_options(poll_id, sort_order, id);
+
+      CREATE TABLE IF NOT EXISTS forum_poll_votes (
+        poll_id        INTEGER NOT NULL REFERENCES forum_polls(id) ON DELETE CASCADE,
+        option_id      INTEGER NOT NULL REFERENCES forum_poll_options(id) ON DELETE CASCADE,
+        voter_username TEXT NOT NULL,
+        created_at     TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (poll_id, voter_username)
+      );
+      CREATE INDEX IF NOT EXISTS idx_forum_poll_votes_option ON forum_poll_votes(option_id);
+
       -- Internal mailbox
       CREATE TABLE IF NOT EXISTS user_mails (
         uid          TEXT PRIMARY KEY,
@@ -1450,6 +1483,105 @@ async function forumDeleteTopic(topicId) {
   await pool.query('DELETE FROM forum_topics WHERE id = $1', [topicId]);
 }
 
+// ── Forum polls (sondages) ──
+
+// Create a poll attached to `topicId`. `options` is an array of label strings
+// (already trimmed/validated by the caller). Poll + options are written in a
+// single transaction so a topic never ends up with a half-built poll.
+async function forumCreatePoll(topicId, question, options) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'INSERT INTO forum_polls (topic_id, question) VALUES ($1, $2) RETURNING id',
+      [topicId, question]
+    );
+    const pollId = rows[0].id;
+    for (let i = 0; i < options.length; i++) {
+      await client.query(
+        'INSERT INTO forum_poll_options (poll_id, label, sort_order) VALUES ($1, $2, $3)',
+        [pollId, options[i], i]
+      );
+    }
+    await client.query('COMMIT');
+    return pollId;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Fetch the poll for a topic (or null). When `username` is given, the result
+// includes `myOptionId` = the option that user voted for (or null). Each
+// option carries its current vote count; `totalVotes` is the sum.
+async function forumGetPollByTopic(topicId, username = null) {
+  const { rows: pollRows } = await pool.query(
+    'SELECT id, question, is_closed, created_at FROM forum_polls WHERE topic_id = $1',
+    [topicId]
+  );
+  if (!pollRows.length) return null;
+  const poll = pollRows[0];
+  const { rows: optRows } = await pool.query(
+    `SELECT o.id, o.label,
+            (SELECT COUNT(*)::int FROM forum_poll_votes v WHERE v.option_id = o.id) AS votes
+       FROM forum_poll_options o
+      WHERE o.poll_id = $1
+      ORDER BY o.sort_order, o.id`,
+    [poll.id]
+  );
+  let myOptionId = null;
+  if (username) {
+    const { rows: myRows } = await pool.query(
+      'SELECT option_id FROM forum_poll_votes WHERE poll_id = $1 AND voter_username = $2',
+      [poll.id, username]
+    );
+    if (myRows.length) myOptionId = myRows[0].option_id;
+  }
+  const options = optRows.map((o) => ({ id: o.id, label: o.label, votes: Number(o.votes) }));
+  const totalVotes = options.reduce((s, o) => s + o.votes, 0);
+  return {
+    id: poll.id,
+    question: poll.question,
+    isClosed: poll.is_closed,
+    options,
+    totalVotes,
+    myOptionId,
+  };
+}
+
+async function forumGetPoll(pollId) {
+  const { rows } = await pool.query(
+    'SELECT id, topic_id, question, is_closed FROM forum_polls WHERE id = $1',
+    [pollId]
+  );
+  return rows[0] || null;
+}
+
+// Record a single vote. Validates that `optionId` belongs to `pollId`. Returns
+// { ok, reason }. The (poll_id, voter_username) primary key + ON CONFLICT
+// DO NOTHING means a user who already voted keeps their first choice (no
+// changing votes), without raising an error.
+async function forumVotePoll(pollId, optionId, username) {
+  const { rows: optRows } = await pool.query(
+    'SELECT 1 FROM forum_poll_options WHERE id = $1 AND poll_id = $2',
+    [optionId, pollId]
+  );
+  if (!optRows.length) return { ok: false, reason: 'bad_option' };
+  const r = await pool.query(
+    `INSERT INTO forum_poll_votes (poll_id, option_id, voter_username)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (poll_id, voter_username) DO NOTHING`,
+    [pollId, optionId, username]
+  );
+  return { ok: true, counted: r.rowCount > 0 };
+}
+
+async function forumSetPollClosed(pollId, closed) {
+  await pool.query('UPDATE forum_polls SET is_closed = $2 WHERE id = $1', [pollId, !!closed]);
+}
+
 // ── Mail ──
 
 async function saveMail(userId, mail) {
@@ -1727,6 +1859,11 @@ module.exports = {
   forumCountPosts,
   forumDeleteTopic,
   forumGetPostCounts,
+  forumCreatePoll,
+  forumGetPollByTopic,
+  forumGetPoll,
+  forumVotePoll,
+  forumSetPollClosed,
   saveMail,
   getMailsForUser,
   updateMailFolder,

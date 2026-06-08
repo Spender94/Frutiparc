@@ -1155,6 +1155,97 @@
     margin: 6px 0;
     border-radius: 4px;
   }
+
+  /* ── Forum polls (sondages) ── */
+  /* Poll box shown at the top of a topic (phpBB-style), matching the post
+     palette: coral header, light-green body, coral result bars. */
+  .poll-box {
+    margin: 0 0 2px;
+    background: #D6F7B5;
+    border-bottom: 1px solid #ADE76B;
+  }
+  .poll-box-header {
+    background: #E3756A;
+    color: #fff;
+    font-weight: bold;
+    font-size: 12px;
+    font-family: Arial, Verdana, sans-serif;
+    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .poll-box-header .poll-icon {
+    display: inline-block;
+    width: 12px; height: 13px;
+    background: url('/fb/icon_minipost.gif') no-repeat center center;
+    flex-shrink: 0;
+  }
+  .poll-box-body { padding: 10px 12px; }
+  .poll-question {
+    font-weight: bold;
+    font-size: 12px;
+    color: #2C4A0F;
+    margin-bottom: 8px;
+  }
+  .poll-vote-opt {
+    display: block;
+    padding: 3px 5px;
+    font-size: 11px;
+    color: #335511;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .poll-vote-opt:hover { background: #C3EF93; }
+  .poll-vote-opt input { margin-right: 6px; vertical-align: middle; }
+  .poll-vote-disabled { color: #6f8a55; cursor: default; }
+  .poll-vote-disabled:hover { background: transparent; }
+  .poll-actions { margin-top: 8px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .poll-vote-btn, .poll-close-btn {
+    background: #E3756A; color: #fff; border: none;
+    padding: 4px 16px; font-size: 11px; font-weight: bold;
+    font-family: Verdana, Arial, sans-serif; cursor: pointer; border-radius: 3px;
+  }
+  .poll-vote-btn:hover, .poll-close-btn:hover { background: #d2645a; }
+  .poll-peek-link, .poll-results-peek a { font-size: 10px; color: #2C4A0F; text-decoration: underline; }
+  .poll-result-row { margin: 5px 0; }
+  .poll-result-label { font-size: 11px; color: #2C4A0F; margin-bottom: 2px; }
+  .poll-result-label .poll-check { color: #E3756A; font-weight: bold; }
+  .poll-result-track {
+    background: #E2FACA; border: 1px solid #B6DD8B; border-radius: 3px;
+    height: 14px; overflow: hidden;
+  }
+  .poll-result-fill {
+    background: linear-gradient(180deg, #f08c80 0%, #E3756A 100%);
+    height: 100%; min-width: 1px;
+  }
+  .poll-result-num { font-size: 10px; color: #4a6a2e; margin-top: 1px; }
+  .poll-mine .poll-result-label { font-weight: bold; }
+  .poll-total { margin-top: 8px; font-size: 11px; font-weight: bold; color: #2C4A0F; }
+  .poll-closed-note { margin-top: 4px; font-size: 10px; font-style: italic; color: #8a5a52; }
+  .poll-login-note { font-size: 11px; font-style: italic; color: #6f8a55; margin-bottom: 6px; }
+  .poll-manage { margin-top: 8px; }
+
+  /* Poll editor (inside the new-topic form) */
+  .poll-optional { font-weight: normal; font-size: 10px; color: #6f8a55; }
+  .poll-enable { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #2C4A0F; cursor: pointer; }
+  .poll-fields { margin-top: 8px; padding: 8px; background: #C3EF93; border: 1px solid #8bc55a; border-radius: 4px; }
+  .poll-edit-q label, .poll-edit-opts-label { display: block; font-weight: bold; font-size: 11px; color: #2C4A0F; margin: 2px 0 3px; }
+  .poll-opt-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+  .poll-opt-input { flex: 1; max-width: 360px; }
+  .poll-del-btn {
+    background: #E3756A; color: #fff; border: none; width: 20px; height: 20px;
+    font-size: 13px; font-weight: bold; line-height: 1; cursor: pointer; border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .poll-del-btn:hover { background: #d2645a; }
+  .poll-add-btn {
+    background: linear-gradient(180deg, #fafafa 0%, #d4d4d4 100%); border: 1px solid #888;
+    font-size: 11px; font-family: Verdana, Arial, sans-serif; padding: 3px 10px;
+    cursor: pointer; border-radius: 2px; color: #000; margin-top: 2px;
+  }
+  .poll-add-btn:hover { background: linear-gradient(180deg, #fff 0%, #e5e5e5 100%); }
+  .poll-edit-hint { margin-top: 6px; font-size: 10px; font-style: italic; color: #4a6a2e; }
 </style>
 </head>
 <body>
@@ -1744,6 +1835,12 @@ async function loadTopic(topicId, page) {
   // Column header: Auteur | Message
   var html = '<div class="tbl-header"><span class="col-author">Auteur</span><span class="col-main">Message</span></div>';
 
+  // Poll ("sondage") sits at the very top of the topic, on its first page —
+  // exactly like the original phpBB layout.
+  if (data.poll && data.page === 1) {
+    html += renderPoll(data.poll, data.canManagePoll);
+  }
+
   for (var pi = 0; pi < data.posts.length; pi++) {
     var p = data.posts[pi];
     var isFirstPost = (pi === 0 && data.page === 1);
@@ -1818,6 +1915,112 @@ async function loadTopic(topicId, page) {
   app.innerHTML = html;
 }
 function topicPage(p) { loadTopic(currentTopicId, p); }
+
+// ── Forum polls (sondages) ──
+// Per-poll "show the results without voting" toggle (client-side only).
+var pollShowResults = {};
+
+// Render the poll box for a topic. Two states:
+//  - voting form: radio buttons + "Voter" (logged-in users who haven't voted)
+//  - results: horizontal bars with counts/percentages, the voter's own choice
+//    highlighted. Shown after voting, when the poll is closed, or on demand.
+function renderPoll(poll, canManage) {
+  if (!poll) return '';
+  var voted = poll.myOptionId != null;
+  var showResults = voted || poll.isClosed || pollShowResults[poll.id];
+  var html = '<div class="poll-box" id="poll-box-' + poll.id + '">';
+  html += '<div class="poll-box-header"><span class="poll-icon"></span>Sondage' + (poll.isClosed ? ' — clos' : '') + '</div>';
+  html += '<div class="poll-box-body">';
+  html += '<div class="poll-question">' + escapeHtml(poll.question) + '</div>';
+  if (showResults) {
+    var total = poll.totalVotes || 0;
+    for (var i = 0; i < poll.options.length; i++) {
+      var o = poll.options[i];
+      var pct = total > 0 ? Math.round((o.votes / total) * 100) : 0;
+      var mine = (poll.myOptionId === o.id);
+      html += '<div class="poll-result-row' + (mine ? ' poll-mine' : '') + '">';
+      html += '<div class="poll-result-label">' + escapeHtml(o.label)
+        + (mine ? ' <span class="poll-check">(ton vote)</span>' : '') + '</div>';
+      html += '<div class="poll-result-track"><div class="poll-result-fill" style="width:' + pct + '%"></div></div>';
+      html += '<div class="poll-result-num">' + o.votes + ' vote' + (o.votes > 1 ? 's' : '') + ' — ' + pct + '%</div>';
+      html += '</div>';
+    }
+    html += '<div class="poll-total">Total : ' + total + ' vote' + (total > 1 ? 's' : '') + '</div>';
+    if (poll.isClosed) {
+      html += '<div class="poll-closed-note">Ce sondage est clos, le vote n\'est plus possible.</div>';
+    } else if (!voted) {
+      html += '<div class="poll-results-peek"><a href="#" onclick="hidePollResults(' + poll.id + ');return false">&laquo; Revenir au vote</a></div>';
+    }
+    if (canManage && !poll.isClosed) {
+      html += '<div class="poll-manage"><button type="button" class="poll-close-btn" onclick="closePoll(' + poll.id + ')">Clore le sondage</button></div>';
+    }
+  } else if (!currentUser) {
+    html += '<div class="poll-login-note">Connecte-toi depuis Frutiparc pour participer au sondage.</div>';
+    for (var j = 0; j < poll.options.length; j++) {
+      html += '<div class="poll-vote-opt poll-vote-disabled">' + escapeHtml(poll.options[j].label) + '</div>';
+    }
+  } else {
+    for (var k = 0; k < poll.options.length; k++) {
+      var op = poll.options[k];
+      html += '<label class="poll-vote-opt"><input type="radio" name="poll-' + poll.id + '" value="' + op.id + '"> '
+        + escapeHtml(op.label) + '</label>';
+    }
+    html += '<div class="poll-actions">';
+    html += '<button type="button" class="poll-vote-btn" onclick="votePoll(' + poll.id + ')">Voter</button>';
+    html += '<a href="#" class="poll-peek-link" onclick="showPollResults(' + poll.id + ');return false">Voir les résultats</a>';
+    html += '</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+// Re-render just the poll box in place (after a vote / close), without
+// reloading the whole topic (keeps scroll position and the view count).
+function refreshPollBox(poll) {
+  var box = document.getElementById('poll-box-' + poll.id);
+  if (box) box.outerHTML = renderPoll(poll, currentTopicData ? currentTopicData.canManagePoll : false);
+}
+function showPollResults(pollId) {
+  pollShowResults[pollId] = true;
+  var poll = currentTopicData && currentTopicData.poll;
+  if (poll && poll.id === pollId) refreshPollBox(poll);
+}
+function hidePollResults(pollId) {
+  pollShowResults[pollId] = false;
+  var poll = currentTopicData && currentTopicData.poll;
+  if (poll && poll.id === pollId) refreshPollBox(poll);
+}
+
+async function votePoll(pollId) {
+  var sel = document.querySelector('input[name="poll-' + pollId + '"]:checked');
+  if (!sel) { alert('Choisis une réponse avant de voter.'); return; }
+  var data = await apiFetch('/api/forum/poll/' + pollId + '/vote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ optionId: Number(sel.value), sid: SID }),
+  });
+  if (data.ok && data.poll) {
+    if (currentTopicData) currentTopicData.poll = data.poll;
+    refreshPollBox(data.poll);
+  } else {
+    alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+  }
+}
+
+async function closePoll(pollId) {
+  if (!confirm('Clore ce sondage ? Plus personne ne pourra voter ensuite.')) return;
+  var data = await apiFetch('/api/forum/poll/' + pollId + '/close', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ close: true, sid: SID }),
+  });
+  if (data.ok && data.poll) {
+    if (currentTopicData) currentTopicData.poll = data.poll;
+    refreshPollBox(data.poll);
+  } else {
+    alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+  }
+}
 
 // Render the reply editor as a dedicated page (like the original post.php?m=reply).
 function showReplyForm(initialContent) {
@@ -2422,6 +2625,11 @@ function renderEditor(opts) {
     + escapeHtml(initialContent) + '</textarea>';
   html += '</div></div>';
 
+  // Sondage (optionnel) — proposé seulement à la création d'un sujet.
+  if (showTitle) {
+    html += pollEditorHtml(formId);
+  }
+
   html += '</div>'; // .editor-form
 
   // Action buttons
@@ -2433,6 +2641,72 @@ function renderEditor(opts) {
 
   html += '</div>'; // .editor-area
   return html;
+}
+
+// One answer row in the poll editor (text input + remove button).
+function pollOptionRowHtml(placeholder) {
+  return '<div class="poll-opt-row">'
+    + '<input type="text" class="editor-input poll-opt-input" maxlength="100" placeholder="' + escapeHtml(placeholder || 'Réponse') + '">'
+    + '<button type="button" class="poll-del-btn" onclick="removePollOption(this)" title="Retirer cette réponse">&times;</button>'
+    + '</div>';
+}
+
+// The collapsible "Sondage (optionnel)" block in the new-topic editor.
+function pollEditorHtml(formId) {
+  var html = '<div class="editor-row">';
+  html += '<div class="editor-label-cell">Sondage <span class="poll-optional">(optionnel)</span></div>';
+  html += '<div class="editor-value-cell">';
+  html += '<label class="poll-enable"><input type="checkbox" id="' + formId + '-poll-enable" onchange="togglePollFields(\'' + formId + '\')"> Ajouter un sondage à ce sujet</label>';
+  html += '<div id="' + formId + '-poll-fields" class="poll-fields" style="display:none">';
+  html += '<div class="poll-edit-q"><label>Question</label>';
+  html += '<input type="text" class="editor-input" id="' + formId + '-poll-question" maxlength="200" placeholder="Votre question..."></div>';
+  html += '<div class="poll-edit-opts-label">Réponses</div>';
+  html += '<div id="' + formId + '-poll-options">' + pollOptionRowHtml('Réponse 1') + pollOptionRowHtml('Réponse 2') + '</div>';
+  html += '<button type="button" class="poll-add-btn" onclick="addPollOption(\'' + formId + '\')">+ Ajouter une réponse</button>';
+  html += '<div class="poll-edit-hint">De 2 à 10 réponses. Chaque Frutiz ne vote qu\'une seule fois, et le vote est définitif.</div>';
+  html += '</div></div></div>';
+  return html;
+}
+
+function togglePollFields(formId) {
+  var cb = document.getElementById(formId + '-poll-enable');
+  var fields = document.getElementById(formId + '-poll-fields');
+  if (fields) fields.style.display = (cb && cb.checked) ? '' : 'none';
+}
+
+function addPollOption(formId) {
+  var box = document.getElementById(formId + '-poll-options');
+  if (!box) return;
+  var count = box.querySelectorAll('.poll-opt-row').length;
+  if (count >= 10) { alert('10 réponses maximum.'); return; }
+  var tmp = document.createElement('div');
+  tmp.innerHTML = pollOptionRowHtml('Réponse ' + (count + 1));
+  box.appendChild(tmp.firstChild);
+}
+
+function removePollOption(btn) {
+  var row = btn.parentNode;           // .poll-opt-row
+  var box = row.parentNode;           // #<form>-poll-options
+  if (box.querySelectorAll('.poll-opt-row').length <= 2) {
+    alert('Un sondage doit proposer au moins 2 réponses.');
+    return;
+  }
+  box.removeChild(row);
+}
+
+// Gather the poll payload from the editor, or undefined when the checkbox is
+// off. Blank answer rows are dropped; final validation is server-side.
+function getPollPayload(formId) {
+  var cb = document.getElementById(formId + '-poll-enable');
+  if (!cb || !cb.checked) return undefined;
+  var q = ((document.getElementById(formId + '-poll-question') || {}).value || '').trim();
+  var inputs = document.querySelectorAll('#' + formId + '-poll-options .poll-opt-input');
+  var options = [];
+  for (var i = 0; i < inputs.length; i++) {
+    var v = (inputs[i].value || '').trim();
+    if (v) options.push(v);
+  }
+  return { question: q, options: options };
 }
 
 // Render the post preview at the top of the editor (mirrors a real post layout).
@@ -2484,12 +2758,17 @@ async function submitNewTopic(boardId) {
   var content = (document.getElementById('newtopic-content') || {}).value || '';
   title = title.trim(); content = content.trim();
   if (!title || !content) { alert('Titre et message requis.'); return; }
+  var poll = getPollPayload('newtopic');
+  if (poll) {
+    if (!poll.question) { alert('Le sondage doit avoir une question.'); return; }
+    if (poll.options.length < 2) { alert('Le sondage doit proposer au moins 2 réponses.'); return; }
+  }
   var bouille = myBouille ? getCurrentBouilleState('newtopic') : undefined;
   var mood = myBouille ? getCurrentMood('newtopic') : undefined;
   var data = await apiFetch('/api/forum/topic', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ boardId: boardId, title: title, content: content, bouille: bouille, mood: mood, sid: SID }),
+    body: JSON.stringify({ boardId: boardId, title: title, content: content, bouille: bouille, mood: mood, poll: poll, sid: SID }),
   });
   if (data.ok) navigate('topic', data.topicId);
   else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
