@@ -29,7 +29,7 @@
   // Bots toujours disponibles. TOUS partagent la MÊME plage de niveau, tirée au
   // sort par partie : impossible de "repérer le plus faible" et de l'enchaîner.
   // (skill 0=faible … 1=fort, cf. bot.js.)
-  var BOT_SKILL = { lo: 0.12, hi: 0.85 };
+  var BOT_SKILL = { lo: 0.45, hi: 1.0 };
   var BOTS = [
     { id: "pepino", name: "Pépino", fb: "0006000U040L0N0000000000" },
     { id: "mirabo", name: "Mirabo", fb: "0006010Y040N0L0000000000" },
