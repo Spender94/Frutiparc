@@ -61,7 +61,6 @@
   .pli .nm { color:#fff; font-weight:bold; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pli.can { cursor:pointer; } .pli.can:hover { background:#ffffff33; }
   .pli .busy { font-size:10px; color:#ffeeee; opacity:.85; margin-left:auto; }
-  .pli .ia { font-size:9px; font-weight:bold; color:#fff; background:#3a8f86; border-radius:4px; padding:1px 5px; margin-left:6px; letter-spacing:.5px; }
   .pli .defi { margin-left:auto; font-size:11px; color:#fff; opacity:.85; }
   .chat-input { display:flex; border-top:2px solid #ffffff66; }
   .chat-input input { flex:1; border:0; padding:7px 9px; font:inherit; background:#fff; }
@@ -269,8 +268,7 @@
       var idle = p.s === "idle" && !isMe(p);
       var row = div("pli" + (idle ? " can" : ""));
       row.innerHTML = '<span class="dot' + (p.s === "playing" ? " busy" : "") + '"></span>'
-        + '<div class="nm">' + esc(p.n || p.u) + (isMe(p) ? " (toi)" : "") + "</div>"
-        + (p.bot ? '<span class="ia">IA</span>' : "")
+        + '<div class="nm">' + esc(p.n || p.u) + "</div>"
         + (p.s === "playing" ? '<span class="busy">en partie</span>' : (idle ? '<span class="defi">défier ▸</span>' : ""));
       if (idle) row.onclick = function () { gz({ a: "challenge", u: p.u }); };   // défi = démarrage direct
       box.appendChild(row);
@@ -407,7 +405,7 @@
       var c = div("gcard"); c.dataset.team = p.e;
       c.innerHTML = '<div class="gc-av"><iframe scrolling="no" sandbox="allow-scripts allow-same-origin" src="/bouille-preview.html?s=' + encodeURIComponent(fb) + '&bg=transparent"></iframe></div>'
         + '<div class="gc-info">'
-        + '<div class="gc-namerow"><span class="gc-sq" style="background:' + (p.e === 0 ? "#ff5151" : "#4f7cff") + '"></span><span class="gc-name">' + esc(p.n || p.u) + (p.e === state.myTeam ? " (toi)" : "") + "</span></div>"
+        + '<div class="gc-namerow"><span class="gc-sq" style="background:' + (p.e === 0 ? "#ff5151" : "#4f7cff") + '"></span><span class="gc-name">' + esc(p.n || p.u) + "</span></div>"
         + '<div class="gc-line"><span class="gc-star">' + STAR_SVG + '</span><span class="gc-streak" data-team="' + p.e + '">' + (p.sr || 0) + "</span></div>"
         + '<div class="gc-clock clock" data-team="' + p.e + '">' + fmt(p.rt) + "</div>"
         + "</div>";
