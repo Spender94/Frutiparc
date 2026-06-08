@@ -44,6 +44,7 @@
     this.names = {};                    // username → displayName
     this.bouilles = {};                 // username → état de frutibouille (24 car.)
     this.streaks = {};                  // username → série de victoires EN COURS (le gros nombre doré)
+    this._beaten = {};                  // username → { opponentId: true } battus PENDANT la série en cours (anti-farm)
     this.bots = {};                     // username → config bot ({lo,hi})
     this.clock = opts.clock || function () { return Date.now(); };
     this._rng = opts.rng || Math.random;
@@ -123,12 +124,38 @@
 
   // Met à jour les séries (challenge) : le gagnant +1, le perdant enregistre sa
   // série puis repart à 0. 2 joueurs uniquement (TODO multi).
+  //
+  // Anti-triche (la série classée ne doit pas être manipulable) :
+  //   1. SEULES les parties HUMAIN-contre-HUMAIN comptent. Battre un bot ne
+  //      classe rien — et perdre contre un bot ne casse pas la série (les bots
+  //      sont de l'entraînement, et ils sont explicitement marqués bot="1").
+  //   2. Pendant une série, chaque adversaire ne compte qu'UNE fois. Battre en
+  //      boucle le même compte (alt/complice qui abandonne) ne rapporte donc
+  //      qu'UN point : pour monter la série il faut enchaîner des adversaires
+  //      DIFFÉRENTS. Le set "déjà battus" est remis à zéro quand la série tombe.
   GrapizNet.prototype._updateStreaks = function (session) {
     if (session.winner == null || session.players.length !== 2) return;
     var win = session.playerOfTeam(session.winner);
     var lose = session.players.filter(function (p) { return p.team !== session.winner; })[0];
-    if (win) { var ws = (this.streaks[win.id] || 0) + 1; this.streaks[win.id] = ws; this._fireStreak(win.id, ws, ws); }
-    if (lose) { var ended = this.streaks[lose.id] || 0; this.streaks[lose.id] = 0; this._fireStreak(lose.id, 0, ended); }
+    if (!win || !lose) return;
+
+    // Partie d'entraînement (un bot est impliqué) → aucune incidence sur la série classée.
+    if (this.bots[win.id] || this.bots[lose.id]) return;
+
+    var beaten = this._beaten[win.id] || (this._beaten[win.id] = {});
+    if (!beaten[lose.id]) {
+      // Adversaire neuf pour cette série → la victoire compte.
+      beaten[lose.id] = true;
+      var ws = (this.streaks[win.id] || 0) + 1;
+      this.streaks[win.id] = ws;
+      this._fireStreak(win.id, ws, ws);
+    }
+    // (adversaire déjà battu pendant cette série → série inchangée, rien n'est classé)
+
+    var ended = this.streaks[lose.id] || 0;
+    this.streaks[lose.id] = 0;
+    this._beaten[lose.id] = {};            // le perdant repart sur une série vierge
+    this._fireStreak(lose.id, 0, ended);
   };
   GrapizNet.prototype._fireStreak = function (user, streak, series) {
     if (this.bots[user]) return;   // les bots ne sont pas persistés/classés
@@ -226,15 +253,17 @@
   // joueur est retiré du lobby et la liste rediffusée aux autres.
   GrapizNet.prototype.onDisconnect = function (username) {
     var rm = this.lobby.removePlayer(username);
-    if (!rm || !rm.ok) { delete this.streaks[username]; return []; }
+    if (!rm || !rm.ok) { delete this.streaks[username]; delete this._beaten[username]; return []; }
     if (rm.playingGameId && this.sessions[rm.playingGameId]) {
       this.sessions[rm.playingGameId].forfeit(username);          // défaite → la série tombe (via _concludeGame)
       var out = this._concludeGame(this.sessions[rm.playingGameId]);
       delete this.streaks[username];
+      delete this._beaten[username];
       return out;
     }
     if ((this.streaks[username] || 0) > 0) this._fireStreak(username, 0, this.streaks[username]);
     delete this.streaks[username];
+    delete this._beaten[username];
     return this._lobbyBroadcast();
   };
 

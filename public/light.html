@@ -578,18 +578,26 @@
   function $(s) { return document.querySelector(s); }
   function el(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
 
-  // Public salons (mirror server-side `channels`). bienvenue first as default.
+  // Public salons (mirror server-side `channels`), in display order. pomme
+  // (Salon Anim's) is FIRST so it's the salon the mobile client joins by default.
+  // The names below are just the initial labels: the live, admin-editable names
+  // arrive via the channellist <q><desc> and override them (see the "q" handler),
+  // so renaming a salon in /admin updates the mobile list automatically.
   var ROOMS = [
-    ["bienvenue", "Bienvenue"], ["pomme", "Pomme"], ["abricot", "Abricot"],
-    ["poire", "Poire"], ["fraise", "Fraise"], ["citron", "Citron"],
-    ["kiwi", "Kiwi"], ["raisin", "Raisin"], ["orange", "Orange"],
-    ["cerise", "Cerise"], ["banane", "Banane"],
+    ["pomme", "Salon Anim's"], ["abricot", "Temple du Grand Piquant"],
+    ["poire", "Montagne des Loups-Garous"], ["fraise", "Fruti-Théâtre"],
+    ["citron", "Marais d'Ornegon"], ["kiwi", "Laboratoire KiwiX"],
+    ["raisin", "Plage Banana-Nuit"], ["orange", "Taverne Far-Zest"],
+    ["cerise", "Île olympique de Môh"], ["banane", "Forêt Enchantée"],
+    ["bienvenue", "Nuage d'Égerie"],
   ];
   var ROOM_LABELS = {};
   ROOMS.forEach(function (r) { ROOM_LABELS[r[0]] = r[1]; });
-  // Display name for a room id; falls back to a capitalised id (e.g. private
-  // "pm_a_b" rooms) so a raw id never shows in the UI.
+  // Display name for a room id: prefer the live admin label (from the
+  // channellist), then the built-in label above, then a capitalised id (so a
+  // private "pm_a_b" room never shows a raw id).
   function roomLabel(id) {
+    if (state && state.roomLabels && state.roomLabels[id]) return state.roomLabels[id];
     if (ROOM_LABELS[id]) return ROOM_LABELS[id];
     var s = String(id || "");
     if (s.indexOf("pm_") === 0 || s.indexOf("pm2_") === 0) return "Discussion privée";
@@ -610,6 +618,7 @@
     overlayTimer: null,
     pen: "",           // selected feutre index ("" = default colour)
     roomCounts: {},    // room id -> participant count (from channellist <q>)
+    roomLabels: {},    // room id -> live admin label (from channellist <q><desc>)
     bouillesEnabled: true, // show the bouille reaction overlay (off = "light" mode)
   };
 
@@ -627,7 +636,7 @@
       var n = state.roomCounts[r[0]] || 0;
       var o = document.createElement("option");
       o.value = r[0];
-      o.textContent = r[1] + (n > 0 ? " (" + n + ")" : "");
+      o.textContent = roomLabel(r[0]) + (n > 0 ? " (" + n + ")" : "");
       sel.appendChild(o);
     });
     sel.value = current;
@@ -914,13 +923,20 @@
         // nothing extra; userlist follows
         break;
 
-      case "q": { // channellist: <q><g g="pomme" n="3">…</g>…</q>
-        var gre = /<g\b([^>]*)>/g, gm, changed = false;
+      case "q": { // channellist: <q><g g="pomme" n="3"><desc>Salon Anim's</desc></g>…</q>
+        var gre = /<g\b([^>]*)>([\s\S]*?)<\/g>/g, gm, changed = false;
         while ((gm = gre.exec(xml)) !== null) {
           var gattr = "<g " + gm[1] + ">";
           var gid = attr(gattr, "g");
           var gn = parseInt(attr(gattr, "n"), 10);
-          if (gid) { state.roomCounts[gid] = Number.isFinite(gn) ? gn : 0; changed = true; }
+          if (gid) {
+            state.roomCounts[gid] = Number.isFinite(gn) ? gn : 0;
+            // Pull the live, admin-set salon name from the <desc> child so the
+            // selector shows "Salon Anim's", not the id/built-in label.
+            var dm = gm[2].match(/<desc>([\s\S]*?)<\/desc>/);
+            if (dm) state.roomLabels[gid] = xmlUnescape(dm[1]);
+            changed = true;
+          }
         }
         if (changed) renderRoomOptions();
         break;

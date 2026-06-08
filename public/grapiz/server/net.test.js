@@ -143,5 +143,37 @@ ok(ses._botAt != null, "le coup du bot est planifié (délai naturel)");
 CL = 12000; nbot.tick(12000);                        // 2e tick : exécute le coup
 ok(!nbot.sessions[ses.id] || nbot.sessions[ses.id].game.currentTurn === 0, "le bot a joué (tour rendu au joueur) ou partie conclue");
 
+// ── Anti-triche de la série classée ─────────────────────────────────────────
+// (1) Battre un BOT ne fait pas monter la série classée (entraînement).
+var botLog = [];
+var nb = new N.GrapizNet({ clock: function () { return 0; }, onStreak: function (u, s, info) { botLog.push({ u: u, s: s, series: info.series }); } });
+nb.handle("cheater", { a: "hello", n: "Cheater" });
+nb.handle("cheater", { a: "challenge", u: "pepino", t: "60000" });   // partie contre le bot pepino
+nb.handle("pepino", { a: "part" });                                  // le bot "perd" → cheater gagne
+eq(nb.streaks["cheater"] || 0, 0, "battre un bot ne fait pas monter la série classée");
+ok(!botLog.some(function (x) { return x.u === "cheater"; }), "aucun classement enregistré pour une victoire contre un bot");
+
+// (2) Rebattre le MÊME humain ne compte qu'une fois ; il faut des adversaires différents.
+var nh = new N.GrapizNet({ clock: function () { return 0; }, withBots: false });
+nh.handle("pro", { a: "hello", n: "Pro" });
+nh.handle("victimA", { a: "hello", n: "VictimA" });
+nh.handle("victimB", { a: "hello", n: "VictimB" });
+function proBeats(loser) {
+  nh.handle("pro", { a: "create", t: "60000" });
+  var gid = nh.lobby.listOpenGames()[0].id;
+  nh.handle(loser, { a: "join", g: gid });   // la partie démarre (pro=équipe 0, loser=équipe 1)
+  nh.handle(loser, { a: "part" });           // loser abandonne → pro gagne
+}
+proBeats("victimA"); eq(nh.streaks["pro"], 1, "1re victoire (A neuf) → série 1");
+proBeats("victimA"); eq(nh.streaks["pro"], 1, "rebattre A → série inchangée (anti-farm alt/complice)");
+proBeats("victimB"); eq(nh.streaks["pro"], 2, "battre B (neuf) → série 2");
+// Après une défaite, le set des adversaires battus se vide : on peut rebattre A.
+nh.handle("victimB", { a: "create", t: "60000" });
+var gidLose = nh.lobby.listOpenGames()[0].id;
+nh.handle("pro", { a: "join", g: gidLose });
+nh.handle("pro", { a: "part" });             // pro abandonne → série de pro retombe à 0
+eq(nh.streaks["pro"], 0, "défaite → série de pro à 0");
+proBeats("victimA"); eq(nh.streaks["pro"], 1, "après reset, rebattre A compte de nouveau (série 1)");
+
 console.log("\nGrapiz net: " + passed + " passed, " + fails + " failed.");
 process.exit(fails ? 1 : 0);
