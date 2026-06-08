@@ -423,9 +423,35 @@
     fréquenté. Réponses acceptées séparées par des virgules ; la détection ignore accents, casse et ponctuation.
   </p>
 
-  <h3 style="margin:14px 0 6px">Backlog de questions</h3>
+  <h3 style="margin:18px 0 6px">Quiz en direct (événement animé par Kiloute79)</h3>
+  <p style="font-size:12px;color:#666;max-width:760px">
+    Kiloute79 anime un quiz complet : il enchaîne les questions <b>cochées</b> dans le backlog ci-dessous
+    (intro, fenêtre de réponse par question, révélation + gagnant), puis annonce le classement final.
+    Prépare tes questions à l'avance, coche-les, choisis le salon, et lance.
+  </p>
+  <div style="max-width:820px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:4px">
+    <label style="display:flex;flex-direction:column;gap:2px;font-size:12px">Salon
+      <select id="kqz-channel" style="padding:5px;min-width:220px"></select>
+    </label>
+    <label style="display:flex;flex-direction:column;gap:2px;font-size:12px">Kikooz / question
+      <input id="kqz-reward" type="number" value="60" min="1" max="10000" style="width:110px;padding:5px">
+    </label>
+    <label style="display:flex;flex-direction:column;gap:2px;font-size:12px">Temps de réponse (s)
+      <input id="kqz-window" type="number" value="90" min="10" max="600" style="width:110px;padding:5px">
+    </label>
+    <button class="btn-success" onclick="kilouteStartQuiz()">▶ Lancer le quiz</button>
+    <button class="btn-danger" onclick="kilouteStopQuiz()">⏹ Arrêter</button>
+  </div>
+  <div id="kqz-status" style="margin:4px 0 8px;font-size:13px;color:#2c4a0f"></div>
+
+  <h3 style="margin:14px 0 6px">Backlog de questions
+    <span style="font-size:12px;font-weight:normal;color:#666">— coche celles à inclure dans le quiz en direct</span>
+  </h3>
   <table>
-    <thead><tr><th>ID</th><th>Question</th><th>Réponses acceptées</th><th>Réponse affichée</th><th>Actions</th></tr></thead>
+    <thead><tr>
+      <th><input type="checkbox" id="kq-all" onclick="kilouteToggleAll(this)" checked title="Tout cocher / décocher"></th>
+      <th>ID</th><th>Question</th><th>Réponses acceptées</th><th>Réponse affichée</th><th>Actions</th>
+    </tr></thead>
     <tbody id="kiloute-body"></tbody>
   </table>
 
@@ -846,6 +872,7 @@ async function loadKiloute() {
     $('#kiloute-body').dataset.loaded = '1';
     $('#kiloute-count').innerHTML = `<span class="count">${kilouteQuestions.length}</span> questions`;
     $('#kiloute-body').innerHTML = kilouteQuestions.map(q => `<tr>
+      <td><input type="checkbox" class="kq-pick" value="${q.id}" checked></td>
       <td>${q.id}</td>
       <td style="max-width:300px">${esc(q.q || '')}</td>
       <td style="max-width:220px"><code style="font-size:11px">${esc((q.a || []).join(', '))}</code></td>
@@ -855,8 +882,67 @@ async function loadKiloute() {
         <button class="btn-danger btn-sm" onclick="deleteKilouteQuestion(${q.id})">Supprimer</button>
       </td>
     </tr>`).join('');
+    kilouteLoadSalons();
+    kilouteQuizStatus();
   } catch (e) { toast('Erreur: ' + e.message); }
 }
+
+// ─── Quiz en direct (événement) ───
+function kilouteToggleAll(cb) {
+  document.querySelectorAll('#kiloute-body .kq-pick').forEach(x => { x.checked = cb.checked; });
+}
+async function kilouteLoadSalons() {
+  try {
+    const r = await fetch('/api/admin/channels', { headers: hdr() });
+    const d = await r.json();
+    const sel = $('#kqz-channel'); if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Salon le plus fréquenté</option>' +
+      (d.channels || []).map(c => `<option value="${esc(c.name)}">${esc(c.label || c.name)} — ${c.users} en ligne</option>`).join('');
+    if (cur) sel.value = cur;
+  } catch (e) {}
+}
+async function kilouteStartQuiz() {
+  const ids = Array.from(document.querySelectorAll('#kiloute-body .kq-pick:checked')).map(x => Number(x.value));
+  if (!ids.length) { toast('Coche au moins une question à inclure.'); return; }
+  const body = {
+    channel: $('#kqz-channel').value,
+    questionIds: ids,
+    reward: Number($('#kqz-reward').value) || 60,
+    windowSec: Number($('#kqz-window').value) || 90,
+  };
+  if (!confirm(`Lancer le quiz maintenant avec ${ids.length} question(s) ?`)) return;
+  const r = await fetch('/api/admin/kiloute/session/start', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+  toast(`Quiz lancé dans #${d.channel} (${d.count} questions)`);
+  kilouteQuizStatus();
+}
+async function kilouteStopQuiz() {
+  if (!confirm('Arrêter le quiz en cours ?')) return;
+  const r = await fetch('/api/admin/kiloute/session/stop', { method: 'POST', headers: hdr() });
+  const d = await r.json();
+  if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+  toast('Quiz arrêté'); kilouteQuizStatus();
+}
+async function kilouteQuizStatus() {
+  try {
+    const r = await fetch('/api/admin/kiloute/session/status', { headers: hdr() });
+    const s = await r.json();
+    const el = $('#kqz-status'); if (!el) return;
+    if (!s.running) { el.innerHTML = '<span style="color:#888">Aucun quiz en direct en cours.</span>'; return; }
+    let h = `<b style="color:#2e7d32">● Quiz en cours</b> dans #${esc(s.channel)} — question <b>${s.current}/${s.total}</b> (${s.reward} kikooz/question)`;
+    if (s.ranking && s.ranking.length) {
+      h += '<br>Classement : ' + s.ranking.slice(0, 5).map(x => `${esc(x.user)} (${x.kikooz})`).join(' · ');
+    }
+    el.innerHTML = h;
+  } catch (e) {}
+}
+// Rafraîchit l'état du quiz en direct tant que l'onglet Kiloute est ouvert.
+setInterval(() => {
+  const t = document.getElementById('tab-kiloute');
+  if (t && t.style.display !== 'none') kilouteQuizStatus();
+}, 5000);
 async function addKilouteQuestion() {
   const body = { question: $('#kq-question').value, answers: $('#kq-answers').value, reveal: $('#kq-reveal').value };
   if (!body.question.trim() || !body.answers.trim()) { toast('Question et réponses requises'); return; }

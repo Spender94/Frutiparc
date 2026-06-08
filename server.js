@@ -5382,10 +5382,37 @@ app.delete('/api/admin/kiloute/questions/:id', adminAuth, async (req, res) => {
 // Lancer la question maintenant (test hors 18h).
 app.post('/api/admin/kiloute/run', adminAuth, (req, res) => {
   if (kilouteQuiz) return res.status(409).json({ error: 'Une question est déjà en cours.' });
+  if (kilouteSession) return res.status(409).json({ error: 'Un quiz event est en cours.' });
   const ch = mostPopulatedChannel();
   if (!ch) return res.status(409).json({ error: 'Aucun salon fréquenté actuellement.' });
   kilouteRun();
   res.json({ ok: true, channel: ch });
+});
+
+// ── Quiz event (session de plusieurs questions animée en direct) ──
+// Démarre un quiz : body { channel?, questionIds?:[], reward?, windowSec? }.
+// channel vide = salon le plus fréquenté ; questionIds vide = tout le backlog.
+app.post('/api/admin/kiloute/session/start', adminAuth, (req, res) => {
+  const b = req.body || {};
+  const r = kilouteStartSession({
+    channel: b.channel ? String(b.channel) : '',
+    questionIds: Array.isArray(b.questionIds) ? b.questionIds : null,
+    reward: b.reward,
+    windowSec: b.windowSec,
+  });
+  if (!r.ok) return res.status(409).json({ error: r.error });
+  console.log(`[ADMIN] Quiz event Kiloute lancé dans #${r.channel} (${r.count} questions)`);
+  res.json(r);
+});
+
+app.post('/api/admin/kiloute/session/stop', adminAuth, (req, res) => {
+  const r = kilouteStopSession();
+  if (!r.ok) return res.status(409).json({ error: r.error });
+  res.json(r);
+});
+
+app.get('/api/admin/kiloute/session/status', adminAuth, (req, res) => {
+  res.json(kilouteSessionStatus());
 });
 
 // Poster un sujet au forum avec le compte Kiloute79 (par défaut "Animations officielles").
@@ -11538,6 +11565,9 @@ function kilouteQuestionOfTheDay() {
 
 // Active quiz state (one room at a time), or null when idle.
 let kilouteQuiz = null;
+// Active QUIZ EVENT (a sequenced session of several questions hosted live by
+// Kiloute79), or null when idle. Mutually exclusive with kilouteQuiz.
+let kilouteSession = null;
 
 // Credit kikooz to the winner (memory + DB + history + kikooz log), like /do/give.
 function kilouteAwardKikooz(username, amount) {
@@ -11594,7 +11624,7 @@ function kilouteCheckAnswer(channelName, username, rawText) {
 }
 
 function kilouteRun() {
-  if (kilouteQuiz) return; // already running
+  if (kilouteQuiz || kilouteSession) return; // already running (single question or quiz event)
   const channelName = mostPopulatedChannel();
   if (!channelName) { console.log('[KILOUTE] 18h — personne en ligne, on passe ce soir.'); return; }
   const q = kilouteQuestionOfTheDay();
@@ -11620,6 +11650,163 @@ function kilouteRun() {
       ], () => setTimeout(kilouteLeave, 3000), 'c', 5000);
     }, 3 * 60 * 1000);
   }, 'c', 5000);
+}
+
+// ─────────────────────────────────────────────
+// Kiloute79 — QUIZ EVENT (session de plusieurs questions à la suite)
+// Lancé à la demande depuis l'admin : Kiloute anime un quiz complet (intro,
+// N questions enchaînées avec fenêtre de réponse + révélation + gagnant, puis
+// classement final), à partir du backlog de questions saisi à l'avance.
+// ─────────────────────────────────────────────
+
+// Démarre un quiz event. opts: { channel?, questionIds?[], reward?, windowSec? }.
+// Renvoie { ok, channel, count } ou { ok:false, error }.
+function kilouteStartSession(opts) {
+  opts = opts || {};
+  if (kilouteSession) return { ok: false, error: 'Un quiz est déjà en cours.' };
+  if (kilouteQuiz) return { ok: false, error: 'La Question à 60 kikooz est en cours, réessaie dans un moment.' };
+
+  let questions;
+  if (Array.isArray(opts.questionIds) && opts.questionIds.length) {
+    const byId = {};
+    KILOUTE_QUESTIONS.forEach((q) => { byId[q.id] = q; });
+    // Respecte l'ordre fourni par l'admin ; ignore les ids inconnus.
+    questions = opts.questionIds.map((id) => byId[Number(id)]).filter(Boolean);
+  } else {
+    questions = KILOUTE_QUESTIONS.slice(); // tout le backlog, dans l'ordre
+  }
+  // Snapshot des questions (l'édition du backlog en cours de quiz n'impacte pas la session).
+  questions = questions.map((q) => ({ q: q.q, a: q.a.slice(), r: q.r }));
+  if (!questions.length) return { ok: false, error: 'Aucune question sélectionnée (backlog vide ?).' };
+
+  const channel = (opts.channel && channels[opts.channel]) ? opts.channel : mostPopulatedChannel();
+  if (!channel) return { ok: false, error: 'Aucun salon disponible (personne en ligne ?).' };
+
+  const reward = Math.max(1, Math.min(10000, Math.round(Number(opts.reward) || 60)));
+  const windowMs = Math.max(10, Math.min(600, Math.round(Number(opts.windowSec) || 90))) * 1000;
+
+  kilouteSession = {
+    channel, questions, idx: 0, scores: {},
+    acceptingAnswers: false, ending: false, timeoutId: null,
+    reward, windowMs, betweenMs: 5000,
+  };
+  npcJoin('kiloute79', channel);
+  console.log(`[KILOUTE] Quiz event lancé dans #${channel} — ${questions.length} questions, ${reward} kikooz/question`);
+  npcSaySequence('kiloute79', channel, [
+    "Bonsoiiiir les Frutiz ! Kiloute79 débarque pour un GRAND QUIZ spécial !",
+    `Au programme : ${questions.length} question${questions.length > 1 ? 's' : ''}, et ${reward} kikooz pour chaque bonne réponse !`,
+    "Le premier qui donne la bonne réponse rafle la mise. Tenez-vous prêts...",
+    "C'est partiiii !",
+  ], () => kilouteSessionAsk(kilouteSession), 'c', 4000);
+  return { ok: true, channel, count: questions.length };
+}
+
+// Pose la question courante (ou clôt la session si on est au bout).
+function kilouteSessionAsk(s) {
+  if (!s || kilouteSession !== s) return;
+  if (s.idx >= s.questions.length) { kilouteSessionEnd(s); return; }
+  const q = s.questions[s.idx];
+  s.acceptingAnswers = false;   // aucune réponse acceptée tant que la question n'est pas affichée
+  if (s.timeoutId) { clearTimeout(s.timeoutId); s.timeoutId = null; }
+  const num = s.idx + 1, total = s.questions.length;
+  // 1) Préambule, 2) un petit suspense, 3) la question ET l'ouverture des
+  //    réponses AU MÊME INSTANT — pour que répondre dès l'affichage compte.
+  kilouteSay(s.channel, `Question ${num} sur ${total} — ${s.reward} kikooz à gagner !`);
+  s.timeoutId = setTimeout(() => {
+    if (kilouteSession !== s) return;
+    kilouteSay(s.channel, q.q);
+    s.acceptingAnswers = true;
+    // Fenêtre de réponse : sans bonne réponse, on révèle et on enchaîne.
+    s.timeoutId = setTimeout(() => {
+      if (kilouteSession !== s || !s.acceptingAnswers) return;
+      s.acceptingAnswers = false;
+      kilouteSay(s.channel, `Trop tard ! La réponse était : ${q.r}. Personne ne marque sur cette question !`);
+      setTimeout(() => kilouteSessionAdvance(s), 3500);
+    }, s.windowMs);
+  }, 3500);
+}
+
+// Passe à la question suivante après une courte pause.
+function kilouteSessionAdvance(s) {
+  if (kilouteSession !== s) return;
+  s.idx += 1;
+  setTimeout(() => { if (kilouteSession === s) kilouteSessionAsk(s); }, s.betweenMs);
+}
+
+// Appelé pour chaque message du salon : si une session tourne et que le message
+// est la bonne réponse à la question courante, Kiloute récompense puis enchaîne.
+function kilouteSessionCheckAnswer(channelName, username, rawText) {
+  const s = kilouteSession;
+  if (!s || !s.acceptingAnswers || s.channel !== channelName) return;
+  if (NPC_USERNAMES.has(username)) return;
+  const q = s.questions[s.idx];
+  if (!q) return;
+  const norm = ' ' + normalizeAnswer(unescapeXml(rawText)) + ' ';
+  const hit = q.a.some((a) => { const na = normalizeAnswer(a); return na && norm.indexOf(' ' + na + ' ') !== -1; });
+  if (!hit) return;
+  s.acceptingAnswers = false;
+  if (s.timeoutId) { clearTimeout(s.timeoutId); s.timeoutId = null; }
+  const winner = getDisplayName(username);
+  kilouteAwardKikooz(username, s.reward);
+  if (!s.scores[username]) s.scores[username] = { n: 0, kikooz: 0 };
+  s.scores[username].n += 1;
+  s.scores[username].kikooz += s.reward;
+  npcSaySequence('kiloute79', s.channel, [
+    `Stoooop ! Bravooo ${winner} !!! La réponse était bien : ${q.r}.`,
+    `+${s.reward} kikooz pour ${winner} ! (${s.scores[username].n} bonne${s.scores[username].n > 1 ? 's' : ''} réponse${s.scores[username].n > 1 ? 's' : ''} pour ${winner})`,
+  ], () => kilouteSessionAdvance(s), 'c', 3000);
+}
+
+// Clôt la session : classement final + remerciements, puis Kiloute s'en va.
+function kilouteSessionEnd(s) {
+  if (kilouteSession !== s) return;
+  if (s.timeoutId) { clearTimeout(s.timeoutId); s.timeoutId = null; }
+  s.acceptingAnswers = false;
+  s.ending = true; // plus aucune réponse ne compte pendant l'outro
+  const ranking = Object.keys(s.scores)
+    .map((u) => ({ u, n: s.scores[u].n, k: s.scores[u].kikooz }))
+    .sort((a, b) => b.k - a.k || b.n - a.n);
+  const lines = ["Et voilà, c'est la fin de notre grand quiz ! Quelle ambiance !"];
+  if (!ranking.length) {
+    lines.push("Personne n'a marqué cette fois-ci... ce sera pour la prochaine, j'en suis sûr !");
+  } else {
+    lines.push("Voici le classement de ce quiz :");
+    ranking.slice(0, 3).forEach((r, i) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+      lines.push(`${medal} ${getDisplayName(r.u)} — ${r.k} kikooz (${r.n} bonne${r.n > 1 ? 's' : ''})`);
+    });
+    lines.push(`Un immense bravo à ${getDisplayName(ranking[0].u)}, grand gagnant de ce quiz !`);
+  }
+  lines.push("Merci à toutes et à tous d'avoir joué, vous êtes formidables ! À très vite !");
+  npcSaySequence('kiloute79', s.channel, lines, () => {
+    setTimeout(() => { if (kilouteSession === s) { kilouteSession = null; npcLeave('kiloute79'); } }, 3000);
+  }, 'c', 4000);
+}
+
+// Interrompt une session en cours (bouton admin "Arrêter").
+function kilouteStopSession() {
+  const s = kilouteSession;
+  if (!s) return { ok: false, error: 'Aucun quiz en cours.' };
+  if (s.timeoutId) { clearTimeout(s.timeoutId); s.timeoutId = null; }
+  s.acceptingAnswers = false;
+  s.ending = true;
+  kilouteSay(s.channel, "Le quiz s'arrête ici ! Merci à tous d'avoir joué, à très bientôt !");
+  setTimeout(() => { if (kilouteSession === s) { kilouteSession = null; npcLeave('kiloute79'); } }, 3000);
+  return { ok: true };
+}
+
+// État de la session pour l'admin (live).
+function kilouteSessionStatus() {
+  const s = kilouteSession;
+  if (!s) return { running: false };
+  const ranking = Object.keys(s.scores)
+    .map((u) => ({ user: getDisplayName(u), n: s.scores[u].n, kikooz: s.scores[u].kikooz }))
+    .sort((a, b) => b.kikooz - a.kikooz || b.n - a.n);
+  return {
+    running: true, channel: s.channel,
+    current: Math.min(s.idx + 1, s.questions.length), total: s.questions.length,
+    reward: s.reward, ending: !!s.ending, ranking,
+  };
 }
 
 // Fire once a day at ~18:00 Europe/Paris. We poll each minute and trigger on the
@@ -13332,8 +13519,10 @@ case 'send': {
     const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
     trackXpAction(client.username, 'chatMsg');
-    // Kiloute79's "Question à 60 kikooz": react if this line is the answer.
+    // Kiloute79's "Question à 60 kikooz" (daily single) AND the live quiz event:
+    // react if this line is the answer to whichever is running.
     kilouteCheckAnswer(g, client.username, text);
+    kilouteSessionCheckAnswer(g, client.username, text);
 } else if (msg.attrs.u) {
   const targetUser = msg.attrs.u;
   const safeText = escapeXml(text);
