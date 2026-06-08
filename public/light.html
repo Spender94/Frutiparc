@@ -316,6 +316,27 @@
     text-align: center; font-weight: bold;
   }
 
+  /* Accent helper bar (above the composer), same toggle pattern as #pen-bar */
+  #accent-bar {
+    display: none; gap: 5px; padding: 8px 10px; background: #fff;
+    border-top: 1px solid #DDDDDD; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  #accent-bar.show { display: flex; }
+  .accent-key {
+    min-width: 36px; height: 36px; flex-shrink: 0; padding: 0 6px;
+    border: 1px solid #DDDDDD; border-radius: 8px; background: #f6f6f6;
+    color: #333333; font-size: 18px; cursor: pointer; box-shadow: 0 1px 0 #e5e5e5;
+  }
+  .accent-key:active { background: #e7e7e7; }
+  #accent-toggle {
+    height: 36px; width: 36px; flex-shrink: 0; box-sizing: border-box; padding: 0;
+    background: #fff; color: #660000; border: 1px solid #F48081; border-radius: 8px;
+    box-shadow: 0 0 0 1px #DDDDDD; font-size: 18px; font-weight: bold; cursor: pointer;
+  }
+  #accent-toggle.on { background: #FFAAAD; }
+  #accent-toggle:disabled { opacity: .5; }
+
   /* Bouille reaction overlay — a live Ruffle bouille (vector = crisp), centered
      over the messages with NO card/background. It slides in from the left edge
      of the chat and slides back out to the left. pointer-events stay off so the
@@ -500,7 +521,13 @@
     <!-- Feutre (pen) swatch picker, toggled by the feutres icon in the header -->
     <div id="pen-bar"></div>
 
+    <!-- Accent helper: taps insert French accents at the cursor, for keyboards
+         that have no easy way to type them (e.g. Finnish). Toggled by the "é"
+         button in the composer. -->
+    <div id="accent-bar"></div>
+
     <form class="compose" id="compose-form">
+      <button type="button" id="accent-toggle" title="Insérer un accent" aria-label="Insérer un accent" disabled>é</button>
       <input type="text" id="compose-input" placeholder="Message…" autocomplete="off" maxlength="300" disabled>
       <button type="submit" id="compose-send" disabled>Envoyer</button>
     </form>
@@ -814,6 +841,7 @@
     $("#conn-dot").classList.toggle("on", on);
     $("#compose-input").disabled = !on;
     $("#compose-send").disabled = !on;
+    var at = $("#accent-toggle"); if (at) at.disabled = !on;
   }
   function connectWs() {
     var ws;
@@ -1077,6 +1105,41 @@
     inp.value = "";
     inp.focus();
   });
+
+  // ── Accent helper ──
+  // A keyboard-independent way to enter French accents: tapping a key inserts
+  // the character at the caret in the composer. Built for users whose layout
+  // (e.g. Finnish) has no easy é/è/à/ç — no dead-key gymnastics required.
+  var ACCENT_KEYS = ["é","è","ê","ë","à","â","ä","ç","ù","û","ü","î","ï","ô","ö","œ","æ","«","»"];
+  function insertAtCursor(input, str) {
+    if (!input || input.disabled) return;
+    var v = input.value;
+    var start = (typeof input.selectionStart === "number") ? input.selectionStart : v.length;
+    var end = (typeof input.selectionEnd === "number") ? input.selectionEnd : v.length;
+    input.value = v.slice(0, start) + str + v.slice(end);
+    var pos = start + str.length;
+    try { input.setSelectionRange(pos, pos); } catch (e) {}
+    input.focus();
+  }
+  (function initAccentBar() {
+    var bar = $("#accent-bar");
+    var toggle = $("#accent-toggle");
+    if (!bar || !toggle) return;
+    ACCENT_KEYS.forEach(function (ch) {
+      var b = el("button", "accent-key");
+      b.type = "button";
+      b.textContent = ch;
+      // mousedown (not click) so the composer keeps focus / caret position.
+      b.addEventListener("mousedown", function (ev) { ev.preventDefault(); insertAtCursor($("#compose-input"), ch); });
+      bar.appendChild(b);
+    });
+    toggle.addEventListener("click", function () {
+      var showing = bar.classList.toggle("show");
+      toggle.classList.toggle("on", showing);
+      var pen = $("#pen-bar"); if (pen) pen.classList.remove("show"); // avoid stacking two bars
+      if (showing) $("#compose-input").focus();
+    });
+  })();
 
   // ── Users drawer ──
   function renderUsers() {
