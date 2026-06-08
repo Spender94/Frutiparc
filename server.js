@@ -12288,6 +12288,7 @@ async function handleCBeeMessage(socket, rawXml) {
     //    grapizNet (pur/testé) ; on pousse les messages qu'il renvoie. ──
     case 'gz': {
       if (!client.username || !client.logged) { sendToClient(socket, '<gz e="err" m="not-logged"/>'); break; }
+      client.grapiz = true; // marque cette socket comme client Grapiz (retrait du lobby à sa fermeture)
       try { grapizFlush(grapizNet.handle(client.username, msg.attrs || {})); }
       catch (e) { console.error('[grapiz] handle:', e.message); }
       break;
@@ -14310,13 +14311,14 @@ const xmlSocketServer = net.createServer((socket) => {
       // Notify anyone subscribed to this user's presence (they may now be offline)
       if (disconnectUser) {
         const stillOnline = getSocketsForUsername(disconnectUser).length > 0;
-        if (!stillOnline) {
-          notifyTraceSubscribers(disconnectUser);
-          // Grapiz : dernière socket du joueur fermée → abandon s'il est en
-          // partie, puis retrait du lobby (le pont renvoie les messages à pousser).
-          try { grapizFlush(grapizNet.onDisconnect(disconnectUser)); }
-          catch (e) { console.error('[grapiz] disconnect:', e.message); }
-        }
+        if (!stillOnline) notifyTraceSubscribers(disconnectUser);
+      }
+      // Grapiz : la fermeture de SA socket Grapiz retire le joueur du lobby (et
+      // clôt sa série), même s'il reste connecté ailleurs (chat / main.swf) —
+      // d'où une liste de joueurs qui s'actualise vraiment.
+      if (client.grapiz && client.username) {
+        try { grapizFlush(grapizNet.onDisconnect(client.username)); }
+        catch (e) { console.error('[grapiz] disconnect:', e.message); }
       }
       console.log(`[CBee]  Client disconnected: ${disconnectUser || 'anonymous'}`);
     } else {

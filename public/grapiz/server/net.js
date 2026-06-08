@@ -186,14 +186,20 @@
     }
   };
 
-  // Déconnexion : abandon (= défaite, la série tombe) si en partie, puis nettoyage.
+  // Déconnexion (= quitter Grapiz) : abandon si en partie ; sinon la série en
+  // cours prend fin (enregistrée + remise à 0 — pas de reprise plus tard). Le
+  // joueur est retiré du lobby et la liste rediffusée aux autres.
   GrapizNet.prototype.onDisconnect = function (username) {
     var rm = this.lobby.removePlayer(username);
-    if (!rm || !rm.ok) return [];
+    if (!rm || !rm.ok) { delete this.streaks[username]; return []; }
     if (rm.playingGameId && this.sessions[rm.playingGameId]) {
-      this.sessions[rm.playingGameId].forfeit(username);
-      return this._concludeGame(this.sessions[rm.playingGameId]);
+      this.sessions[rm.playingGameId].forfeit(username);          // défaite → la série tombe (via _concludeGame)
+      var out = this._concludeGame(this.sessions[rm.playingGameId]);
+      delete this.streaks[username];
+      return out;
     }
+    if ((this.streaks[username] || 0) > 0) this._fireStreak(username, 0, this.streaks[username]);
+    delete this.streaks[username];
     return this._lobbyBroadcast();
   };
 

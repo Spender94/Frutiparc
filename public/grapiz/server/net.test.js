@@ -112,5 +112,17 @@ ok(wl && wl.s === 3, "onStreak gagnant : nouvelle série 3");
 ok(ll && ll.series === 5 && ll.s === 0, "onStreak perdant : série terminée 5 enregistrée, remise 0");
 ok(find(endMsgs, "end").xml.indexOf('sr="3"') >= 0, "l'état final porte la série à jour (sr=3)");
 
+// ── Quitter Grapiz (hors partie) clôt la série + retire du lobby ─────────────
+var ended2 = null;
+var net4 = new N.GrapizNet({ clock: function () { return 0; }, getStreak: function () { return 4; }, onStreak: function (u, s, info) { ended2 = { u: u, s: s, series: info.series }; } });
+net4.handle("z", { a: "hello" });    // z arrive avec une série de 4
+net4.handle("w2", { a: "hello" });   // témoin (doit recevoir la liste à jour)
+eq(net4.streaks["z"], 4, "série de départ seedée (4)");
+var dc2 = net4.onDisconnect("z");    // z quitte (hors partie)
+ok(net4.streaks["z"] === undefined, "série mémoire nettoyée à la déconnexion");
+ok(ended2 && ended2.u === "z" && ended2.s === 0 && ended2.series === 4, "série clôturée : 4 enregistrée, remise à 0");
+ok(!net4.lobby.getPlayer("z"), "joueur retiré du lobby");
+ok(find(dc2, "lobby") && toHas(find(dc2, "lobby"), "w2"), "liste rediffusée aux autres joueurs");
+
 console.log("\nGrapiz net: " + passed + " passed, " + fails + " failed.");
 process.exit(fails ? 1 : 0);

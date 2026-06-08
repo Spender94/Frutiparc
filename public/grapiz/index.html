@@ -182,6 +182,12 @@
   function each(l, f) { Array.prototype.forEach.call(l, f); }
   function xml(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 
+  // "Moi" : le serveur met u=username (MINUSCULE) mais state.user = nom
+  // d'affichage (casse propre) → comparaison insensible à la casse, sinon
+  // myTeam reste -1 et le joueur ne peut pas jouer à son tour.
+  function sameUser(a, b) { return String(a == null ? "" : a).toLowerCase() === String(b == null ? "" : b).toLowerCase(); }
+  function isMe(p) { return !!p && (sameUser(p.u, state.user) || sameUser(p.n, state.user)); }
+
   var DEFAULT_BOUILLE = "000000010000000000000000";
   var sid = new URLSearchParams(location.search).get("sid") || "";
   if (!sid) { try { sid = (JSON.parse(localStorage.getItem("fp_light_session") || "{}") || {}).sid || ""; } catch (e) {} }
@@ -259,10 +265,10 @@
   function renderPlayers() {
     var box = $("#players"); box.innerHTML = "";
     lobbyPlayers.forEach(function (p) {
-      var idle = p.s === "idle" && p.u !== state.user;
+      var idle = p.s === "idle" && !isMe(p);
       var row = div("pli" + (idle ? " can" : ""));
       row.innerHTML = '<span class="dot' + (p.s === "playing" ? " busy" : "") + '"></span>'
-        + '<div class="nm">' + esc(p.n || p.u) + (p.u === state.user ? " (toi)" : "") + "</div>"
+        + '<div class="nm">' + esc(p.n || p.u) + (isMe(p) ? " (toi)" : "") + "</div>"
         + (p.s === "playing" ? '<span class="busy">en partie</span>' : (idle ? '<span class="defi">défier ▸</span>' : ""));
       if (idle) row.onclick = function () { gz({ a: "challenge", u: p.u }); };   // défi = démarrage direct
       box.appendChild(row);
@@ -308,7 +314,7 @@
     state.players = [];
     each(el.getElementsByTagName("p"), function (n) {
       var pl = { u: n.getAttribute("u"), n: n.getAttribute("n"), e: +n.getAttribute("e"), rt: +n.getAttribute("rt"), f: n.getAttribute("f"), sr: +n.getAttribute("sr") || 0 };
-      if (pl.u === state.user) state.myTeam = pl.e;
+      if (isMe(pl)) state.myTeam = pl.e;
       state.players.push(pl);
     });
     state.sel = null; state.targets = {};
