@@ -26,13 +26,14 @@
   }
   function num(v, dflt) { var n = parseInt(v, 10); return isNaN(n) ? dflt : n; }
 
-  // Bots toujours disponibles dans le lobby. Niveau aléatoire PAR PARTIE dans
-  // [lo,hi] → on n'affronte pas 20 fois le même adversaire prévisible. (skill
-  // 0=faible … 1=fort, cf. bot.js.)
+  // Bots toujours disponibles. TOUS partagent la MÊME plage de niveau, tirée au
+  // sort par partie : impossible de "repérer le plus faible" et de l'enchaîner.
+  // (skill 0=faible … 1=fort, cf. bot.js.)
+  var BOT_SKILL = { lo: 0.12, hi: 0.85 };
   var BOTS = [
-    { id: "botanik",  name: "Botanik",  fb: "0d0000010000000000000000", lo: 0.05, hi: 0.38 },
-    { id: "kiwina",   name: "Kiwina",   fb: "0f0000010000000000000000", lo: 0.28, hi: 0.62 },
-    { id: "grapibot", name: "Grapibot", fb: "0004060h040700030j070008", lo: 0.55, hi: 0.92 },
+    { id: "pepino", name: "Pépino", fb: "0006000U040L0N0000000000" },
+    { id: "mirabo", name: "Mirabo", fb: "0006010Y040N0L0000000000" },
+    { id: "cassis", name: "Cassis", fb: "00060a12040L0N0000000000" },
   ];
 
   // opts : { clock?, onResult?, getStreak?, onStreak?, rng?, withBots? }
@@ -55,7 +56,7 @@
   GrapizNet.prototype._registerBots = function () {
     var self = this;
     BOTS.forEach(function (b) {
-      self.bots[b.id] = { lo: b.lo, hi: b.hi };
+      self.bots[b.id] = true;
       self.names[b.id] = b.name;
       self.bouilles[b.id] = b.fb;
       self.streaks[b.id] = 0;
@@ -111,10 +112,9 @@
     // (affichée mais non classée) pour avoir l'air d'un vrai adversaire.
     sess._botSkill = {};
     game.players.forEach(function (uid) {
-      var b = self.bots[uid];
-      if (b) {
-        sess._botSkill[uid] = b.lo + self._rng() * (b.hi - b.lo);
-        self.streaks[uid] = Math.floor(self._rng() * 14);
+      if (self.bots[uid]) {
+        sess._botSkill[uid] = BOT_SKILL.lo + self._rng() * (BOT_SKILL.hi - BOT_SKILL.lo);
+        self.streaks[uid] = Math.floor(self._rng() * 14);   // série "vitrine" (non classée)
       }
     });
     this.sessions[game.id] = sess;
