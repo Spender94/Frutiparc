@@ -61,6 +61,7 @@
   .pli .nm { color:#fff; font-weight:bold; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pli.can { cursor:pointer; } .pli.can:hover { background:#ffffff33; }
   .pli .busy { font-size:10px; color:#ffeeee; opacity:.85; margin-left:auto; }
+  .pli .ia { font-size:9px; font-weight:bold; color:#fff; background:#3a8f86; border-radius:4px; padding:1px 5px; margin-left:6px; letter-spacing:.5px; }
   .pli .defi { margin-left:auto; font-size:11px; color:#fff; opacity:.85; }
   .chat-input { display:flex; border-top:2px solid #ffffff66; }
   .chat-input input { flex:1; border:0; padding:7px 9px; font:inherit; background:#fff; }
@@ -255,7 +256,7 @@
   function onLobby(el) {
     if (!state.gotLobby) { state.gotLobby = true; setStatus("Connecté — " + state.user); if (state.screen === "connect") showScreen("mode"); }
     lobbyPlayers = []; lobbyGames = [];
-    each(el.getElementsByTagName("pl"), function (n) { lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f") }); });
+    each(el.getElementsByTagName("pl"), function (n) { lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f"), bot: n.getAttribute("bot") === "1" }); });
     each(el.getElementsByTagName("game"), function (n) { lobbyGames.push({ id: n.getAttribute("id"), host: n.getAttribute("host"), c: +n.getAttribute("c"), m: +n.getAttribute("m") }); });
     $("#ch-j").textContent = lobbyPlayers.length; $("#ch-p").textContent = lobbyGames.length;
     if (state.screen === "lobby") renderLobby();
@@ -269,6 +270,7 @@
       var row = div("pli" + (idle ? " can" : ""));
       row.innerHTML = '<span class="dot' + (p.s === "playing" ? " busy" : "") + '"></span>'
         + '<div class="nm">' + esc(p.n || p.u) + (isMe(p) ? " (toi)" : "") + "</div>"
+        + (p.bot ? '<span class="ia">IA</span>' : "")
         + (p.s === "playing" ? '<span class="busy">en partie</span>' : (idle ? '<span class="defi">défier ▸</span>' : ""));
       if (idle) row.onclick = function () { gz({ a: "challenge", u: p.u }); };   // défi = démarrage direct
       box.appendChild(row);

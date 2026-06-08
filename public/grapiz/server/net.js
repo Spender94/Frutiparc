@@ -13,10 +13,11 @@
 (function (root, factory) {
   var L = (typeof require !== "undefined") ? require("./lobby.js") : (root.Grapiz && root.Grapiz.lobby);
   var S = (typeof require !== "undefined") ? require("./session.js") : (root.Grapiz && root.Grapiz.session);
-  var api = factory(L, S);
+  var B = (typeof require !== "undefined") ? require("./bot.js") : (root.Grapiz && root.Grapiz.bot);
+  var api = factory(L, S, B);
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else (root.Grapiz = root.Grapiz || {}).net = api;
-})(typeof self !== "undefined" ? self : this, function (L, S) {
+})(typeof self !== "undefined" ? self : this, function (L, S, Bot) {
   "use strict";
 
   function esc(s) {
@@ -25,7 +26,16 @@
   }
   function num(v, dflt) { var n = parseInt(v, 10); return isNaN(n) ? dflt : n; }
 
-  // opts : { clock?:()=>ms, onResult?:(game, winnerTeam, reason)=>void }
+  // Bots toujours disponibles dans le lobby. Niveau aléatoire PAR PARTIE dans
+  // [lo,hi] → on n'affronte pas 20 fois le même adversaire prévisible. (skill
+  // 0=faible … 1=fort, cf. bot.js.)
+  var BOTS = [
+    { id: "botanik",  name: "Botanik",  fb: "0d0000010000000000000000", lo: 0.05, hi: 0.38 },
+    { id: "kiwina",   name: "Kiwina",   fb: "0f0000010000000000000000", lo: 0.28, hi: 0.62 },
+    { id: "grapibot", name: "Grapibot", fb: "0004060h040700030j070008", lo: 0.55, hi: 0.92 },
+  ];
+
+  // opts : { clock?, onResult?, getStreak?, onStreak?, rng?, withBots? }
   function GrapizNet(opts) {
     opts = opts || {};
     this.lobby = new L.GrapizLobby();
@@ -33,11 +43,25 @@
     this.names = {};                    // username → displayName
     this.bouilles = {};                 // username → état de frutibouille (24 car.)
     this.streaks = {};                  // username → série de victoires EN COURS (le gros nombre doré)
+    this.bots = {};                     // username → config bot ({lo,hi})
     this.clock = opts.clock || function () { return Date.now(); };
+    this._rng = opts.rng || Math.random;
     this.onResult = opts.onResult || function () {};   // hook (game, winner, reason)
     this.getStreak = opts.getStreak || null;           // username → série persistée (seed)
     this.onStreak = opts.onStreak || null;             // (username, série, {series}) → persistance + classement
+    if (opts.withBots !== false) this._registerBots();
   }
+
+  GrapizNet.prototype._registerBots = function () {
+    var self = this;
+    BOTS.forEach(function (b) {
+      self.bots[b.id] = { lo: b.lo, hi: b.hi };
+      self.names[b.id] = b.name;
+      self.bouilles[b.id] = b.fb;
+      self.streaks[b.id] = 0;
+      self.lobby.addPlayer(b.id, b.name);   // toujours présent, toujours "idle" hors partie
+    });
+  };
 
   // ── Sérialisation ──────────────────────────────────────────────────────────
   GrapizNet.prototype._lobbyXml = function () {
@@ -48,7 +72,7 @@
     }).join("");
     var players = this.lobby.listPlayers().map(function (p) {
       return '<pl u="' + esc(p.id) + '" n="' + esc(p.name || p.id) + '" s="' + esc(p.status) +
-        '" f="' + esc(self.bouilles[p.id] || "") + '"/>';
+        '" f="' + esc(self.bouilles[p.id] || "") + '" bot="' + (self.bots[p.id] ? 1 : 0) + '"/>';
     }).join("");
     return "<gz e=\"lobby\">" + players + games + "</gz>";
   };
@@ -83,6 +107,16 @@
       return { id: uid, name: self.names[uid] || uid, fb: self.bouilles[uid] || "" };
     });
     var sess = new S.GrapizSession({ id: game.id, players: players, params: game.params, now: this.clock() });
+    // Bots : niveau effectif tiré au sort POUR CETTE PARTIE + série "vitrine"
+    // (affichée mais non classée) pour avoir l'air d'un vrai adversaire.
+    sess._botSkill = {};
+    game.players.forEach(function (uid) {
+      var b = self.bots[uid];
+      if (b) {
+        sess._botSkill[uid] = b.lo + self._rng() * (b.hi - b.lo);
+        self.streaks[uid] = Math.floor(self._rng() * 14);
+      }
+    });
     this.sessions[game.id] = sess;
     return [{ to: game.players.slice(), xml: this._stateXml(sess, "start") }];
   };
@@ -97,6 +131,7 @@
     if (lose) { var ended = this.streaks[lose.id] || 0; this.streaks[lose.id] = 0; this._fireStreak(lose.id, 0, ended); }
   };
   GrapizNet.prototype._fireStreak = function (user, streak, series) {
+    if (this.bots[user]) return;   // les bots ne sont pas persistés/classés
     if (this.onStreak) { try { this.onStreak(user, streak, { series: series }); } catch (e) {} }
   };
 
@@ -209,11 +244,28 @@
     var out = [];
     Object.keys(this.sessions).forEach(function (id) {       // snapshot : _concludeGame supprime de this.sessions
       var sess = this.sessions[id];
-      if (!sess) return;
-      var to = sess.tick(now);
-      if (to && to.ended) out = out.concat(this._concludeGame(sess));
+      if (!sess || sess.ended) return;
+      var to = sess.tick(now);                                // timeout d'horloge
+      if (to && to.ended) { out = out.concat(this._concludeGame(sess)); return; }
+      out = out.concat(this._tickBot(sess, now));             // coup d'un bot si c'est son tour
     }, this);
     return out;
+  };
+
+  // Fait jouer le bot quand c'est son tour, après un délai naturel (≈0,7-2,2 s).
+  GrapizNet.prototype._tickBot = function (sess, now) {
+    var p = sess.playerOfTeam(sess.game.currentTurn);
+    if (!p || !this.bots[p.id]) { sess._botAt = null; return []; }     // pas un bot → rien
+    if (!sess._botAt) { sess._botAt = now + 700 + Math.floor(this._rng() * 1500); return []; }
+    if (now < sess._botAt) return [];
+    sess._botAt = null;
+    var skill = (sess._botSkill && sess._botSkill[p.id]); if (skill == null) skill = 0.5;
+    var mv = Bot.chooseMove(sess.game.getBoard(), sess.game.currentTurn, skill, this._rng);
+    if (!mv) { sess.forfeit(p.id); return this._concludeGame(sess); }  // bloqué → le bot perd
+    var res = sess.requestMove(p.id, mv.from.x, mv.from.y, mv.direction, now);
+    if (!res.ok) { sess._botAt = now + 400; return []; }               // coup refusé → réessaie
+    if (res.ended) return this._concludeGame(sess);
+    return [{ to: this._ids(sess), xml: this._stateXml(sess, "move") }];
   };
 
   return { GrapizNet: GrapizNet };

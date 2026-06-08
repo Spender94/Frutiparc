@@ -12,7 +12,7 @@ function find(msgs, evt) { return msgs.find(function (m) { return m.xml.indexOf(
 function toHas(msg, u) { return msg && msg.to.indexOf(u) >= 0; }
 
 var CLOCK = 0;
-var net = new N.GrapizNet({ clock: function () { return CLOCK; } });
+var net = new N.GrapizNet({ clock: function () { return CLOCK; }, withBots: false });
 
 // hello des deux joueurs
 var h1 = net.handle("alice", { a: "hello", n: "Alice" });
@@ -53,7 +53,7 @@ ok(mvMsg.xml.indexOf('turn="1"') >= 0, "move state reports turn 1");
 ok(find(net.handle("carol", { a: "move", x: "0", y: "0", d: "0" }), "err"), "stranger move → error");
 
 // ── Bouilles : transmises via hello → présentes dans l'état de partie ────────
-var nb = new N.GrapizNet({ clock: function () { return 0; } });
+var nb = new N.GrapizNet({ clock: function () { return 0; }, withBots: false });
 nb.handle("u1", { a: "hello", n: "U1", f: "0d0000010000000000000000" });
 nb.handle("u2", { a: "hello", n: "U2", f: "0f0000010000000000000000" });
 nb.handle("u1", { a: "create" });
@@ -63,7 +63,7 @@ ok(stb && stb.xml.indexOf('f="0d0000010000000000000000"') >= 0, "start carries p
 ok(stb && stb.xml.indexOf('f="0f0000010000000000000000"') >= 0, "start carries player 2 bouille");
 
 // ── Défi direct → la partie démarre IMMÉDIATEMENT (sans validation) ─────────
-var net2 = new N.GrapizNet({ clock: function () { return CLOCK; } });
+var net2 = new N.GrapizNet({ clock: function () { return CLOCK; }, withBots: false });
 net2.handle("a", { a: "hello", n: "A" });
 net2.handle("b", { a: "hello", n: "B" });
 var chal = net2.handle("a", { a: "challenge", u: "b" });
@@ -79,7 +79,7 @@ ok(!net.sessions[gameId], "session cleaned up after disconnect");
 ok(net.lobby.getPlayer("bob") && net.lobby.getPlayer("bob").status === "idle", "opponent freed");
 
 // ── Timeout via tick ────────────────────────────────────────────────────────
-var net3 = new N.GrapizNet({ clock: function () { return CLOCK; } });
+var net3 = new N.GrapizNet({ clock: function () { return CLOCK; }, withBots: false });
 net3.handle("x", { a: "hello" }); net3.handle("y", { a: "hello" });
 CLOCK = 0;
 var g3 = net3.handle("x", { a: "create", t: "3000" });
@@ -94,7 +94,7 @@ ok(!net3.sessions[gid3], "timed-out session cleaned up");
 var streakLog = [];
 var seeds = { w: 2, l: 5 };
 var ns = new N.GrapizNet({
-  clock: function () { return 0; },
+  clock: function () { return 0; }, withBots: false,
   getStreak: function (u) { return seeds[u] || 0; },
   onStreak: function (u, s, info) { streakLog.push({ u: u, s: s, series: info.series }); },
 });
@@ -114,7 +114,7 @@ ok(find(endMsgs, "end").xml.indexOf('sr="3"') >= 0, "l'état final porte la sér
 
 // ── Quitter Grapiz (hors partie) clôt la série + retire du lobby ─────────────
 var ended2 = null;
-var net4 = new N.GrapizNet({ clock: function () { return 0; }, getStreak: function () { return 4; }, onStreak: function (u, s, info) { ended2 = { u: u, s: s, series: info.series }; } });
+var net4 = new N.GrapizNet({ clock: function () { return 0; }, withBots: false, getStreak: function () { return 4; }, onStreak: function (u, s, info) { ended2 = { u: u, s: s, series: info.series }; } });
 net4.handle("z", { a: "hello" });    // z arrive avec une série de 4
 net4.handle("w2", { a: "hello" });   // témoin (doit recevoir la liste à jour)
 eq(net4.streaks["z"], 4, "série de départ seedée (4)");
@@ -123,6 +123,25 @@ ok(net4.streaks["z"] === undefined, "série mémoire nettoyée à la déconnexio
 ok(ended2 && ended2.u === "z" && ended2.s === 0 && ended2.series === 4, "série clôturée : 4 enregistrée, remise à 0");
 ok(!net4.lobby.getPlayer("z"), "joueur retiré du lobby");
 ok(find(dc2, "lobby") && toHas(find(dc2, "lobby"), "w2"), "liste rediffusée aux autres joueurs");
+
+// ── Bots : présents au lobby, défi instantané, coups joués par le tick ──────
+var CL = 0;
+var nbot = new N.GrapizNet({ clock: function () { return CL; } });   // bots ACTIVÉS
+var bots = nbot.lobby.listPlayers().filter(function (p) { return nbot.bots[p.id]; });
+ok(bots.length >= 1, "des bots sont présents dans le lobby (" + bots.length + ")");
+ok(nbot._lobbyXml().indexOf('bot="1"') >= 0, "les bots sont marqués bot=1 dans la liste");
+nbot.handle("human", { a: "hello" });
+var st = find(nbot.handle("human", { a: "challenge", u: bots[0].id }), "start");
+ok(st, "défier un bot démarre la partie immédiatement");
+var ses = nbot.sessions[Object.keys(nbot.sessions)[0]];
+eq(ses.teamOf(bots[0].id), 1, "le bot est l'équipe 1");
+var lm = ses.game.legalMoves(0)[0];
+nbot.handle("human", { a: "move", x: String(lm.from.x), y: String(lm.from.y), d: String(lm.direction) });
+eq(ses.game.currentTurn, 1, "après le coup du joueur, c'est au tour du bot");
+CL = 5000; nbot.tick(5000);                          // 1er tick : planifie le coup du bot
+ok(ses._botAt != null, "le coup du bot est planifié (délai naturel)");
+CL = 12000; nbot.tick(12000);                        // 2e tick : exécute le coup
+ok(!nbot.sessions[ses.id] || nbot.sessions[ses.id].game.currentTurn === 0, "le bot a joué (tour rendu au joueur) ou partie conclue");
 
 console.log("\nGrapiz net: " + passed + " passed, " + fails + " failed.");
 process.exit(fails ? 1 : 0);
