@@ -11659,6 +11659,62 @@ function kilouteRun() {
 // classement final), à partir du backlog de questions saisi à l'avance.
 // ─────────────────────────────────────────────
 
+// Tirage aléatoire — pour que l'animation ne soit pas redondante sur un long
+// quiz (25 questions), Kiloute pioche ses phrases dans des banques variées.
+function kpick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// Phrases d'introduction (1re ligne du quiz, variée).
+const KILOUTE_INTRO_HELLO = [
+  "Bonsoiiiir les Frutiz ! Kiloute79 débarque pour un GRAND QUIZ spécial !",
+  "Salut la compagnie ! C'est Kiloute79, et c'est l'heure du QUIZ !",
+  "Ouvrez grand les oreilles, Frutiz : Kiloute79 lance son GRAND QUIZ !",
+  "Hé ho les champions ! Kiloute79 est là pour un quiz de folie !",
+];
+// Préambule annoncé avant chaque question (n = numéro, t = total, r = kikooz).
+const KILOUTE_PREAMBLE = [
+  (n, t, r) => `Question ${n} sur ${t} — ${r} kikooz à gagner !`,
+  (n, t, r) => `Allez, question ${n} ! ${r} kikooz pour le plus rapide !`,
+  (n, t, r) => `On passe à la question ${n} sur ${t}. ${r} kikooz en jeu !`,
+  (n, t, r) => `Voici la question numéro ${n} ! ${r} kikooz à la clé !`,
+  (n, t, r) => `Question ${n}... préparez vos doigts ! ${r} kikooz à rafler !`,
+];
+// Petites phrases de transition entre deux questions (détente / ambiance).
+const KILOUTE_TRANSITIONS = [
+  "On enchaîne, on enchaîne !",
+  "Allez, on ne relâche pas la pression !",
+  "Bien, bien, bien... la suite !",
+  "Concentration maximale pour celle-ci !",
+  "Attention les yeux, voici la prochaine !",
+  "Qui va prendre la tête ? On continue !",
+  "C'est reparti pour un tour !",
+  "Toujours dans le rythme ? On accélère !",
+  "Respirez un grand coup... et c'est parti !",
+  "Pas le temps de souffler, la voilà !",
+];
+// Réaction quand quelqu'un trouve (w = pseudo, r = réponse affichée).
+const KILOUTE_CORRECT = [
+  (w, r) => `Stoooop ! Bravooo ${w} !!! La réponse était bien : ${r}.`,
+  (w, r) => `Et c'est ${w} qui dégaine en premier ! C'était : ${r}. Magnifique !`,
+  (w, r) => `Ouiiii ! ${w} a tout bon : ${r} ! Quel flair !`,
+  (w, r) => `Excellent ${w} ! ${r}, évidemment ! Tu es en feu !`,
+  (w, r) => `Bien joué ${w} ! La bonne réponse était ${r}. Les autres, accrochez-vous !`,
+  (w, r) => `Imbattable ${w} ! ${r}, c'était ça ! Chapeau !`,
+];
+// Annonce du gain (w = pseudo, n = nb de bonnes réponses, k = kikooz).
+const KILOUTE_REWARD = [
+  (w, n, k) => `+${k} kikooz pour ${w} ! (${n} bonne${n > 1 ? 's' : ''} réponse${n > 1 ? 's' : ''} pour ${w})`,
+  (w, n, k) => `Et hop, ${k} kikooz qui tombent dans la poche de ${w} !`,
+  (w, n, k) => `${k} kikooz pour ${w}, déjà ${n} bonne${n > 1 ? 's' : ''} réponse${n > 1 ? 's' : ''} au compteur !`,
+  (w, n, k) => `Voilà ${k} kikooz bien mérités pour ${w} !`,
+];
+// Quand personne ne trouve dans le temps imparti (r = réponse affichée).
+const KILOUTE_TIMEOUT = [
+  (r) => `Trop tard ! La réponse était : ${r}. Personne ne marque sur cette question !`,
+  (r) => `Oh, personne ?! Dommage... c'était ${r}. On se rattrape à la suivante !`,
+  (r) => `Le temps est écoulé ! La réponse était ${r}. Pas de panique, ça continue !`,
+  (r) => `Aïe, celle-là vous a eus ! C'était ${r}. Allez, la prochaine est pour vous !`,
+];
+
 // Démarre un quiz event. opts: { channel?, questionIds?[], reward?, windowSec? }.
 // Renvoie { ok, channel, count } ou { ok:false, error }.
 function kilouteStartSession(opts) {
@@ -11693,7 +11749,7 @@ function kilouteStartSession(opts) {
   npcJoin('kiloute79', channel);
   console.log(`[KILOUTE] Quiz event lancé dans #${channel} — ${questions.length} questions, ${reward} kikooz/question`);
   npcSaySequence('kiloute79', channel, [
-    "Bonsoiiiir les Frutiz ! Kiloute79 débarque pour un GRAND QUIZ spécial !",
+    kpick(KILOUTE_INTRO_HELLO),
     `Au programme : ${questions.length} question${questions.length > 1 ? 's' : ''}, et ${reward} kikooz pour chaque bonne réponse !`,
     "Le premier qui donne la bonne réponse rafle la mise. Tenez-vous prêts...",
     "C'est partiiii !",
@@ -11709,10 +11765,13 @@ function kilouteSessionAsk(s) {
   s.acceptingAnswers = false;   // aucune réponse acceptée tant que la question n'est pas affichée
   if (s.timeoutId) { clearTimeout(s.timeoutId); s.timeoutId = null; }
   const num = s.idx + 1, total = s.questions.length;
-  // 1) Préambule, 2) un petit suspense, 3) la question ET l'ouverture des
-  //    réponses AU MÊME INSTANT — pour que répondre dès l'affichage compte.
-  kilouteSay(s.channel, `Question ${num} sur ${total} — ${s.reward} kikooz à gagner !`);
-  s.timeoutId = setTimeout(() => {
+  // Mise en bouche variée : une transition d'ambiance (~3 fois sur 5, jamais à
+  // la 1re question) puis le préambule. La QUESTION s'affiche ensuite et ouvre
+  // la fenêtre de réponse AU MÊME INSTANT (répondre dès l'affichage compte).
+  const lead = [];
+  if (s.idx > 0 && Math.random() < 0.6) lead.push(kpick(KILOUTE_TRANSITIONS));
+  lead.push(kpick(KILOUTE_PREAMBLE)(num, total, s.reward));
+  npcSaySequence('kiloute79', s.channel, lead, () => {
     if (kilouteSession !== s) return;
     kilouteSay(s.channel, q.q);
     s.acceptingAnswers = true;
@@ -11720,10 +11779,10 @@ function kilouteSessionAsk(s) {
     s.timeoutId = setTimeout(() => {
       if (kilouteSession !== s || !s.acceptingAnswers) return;
       s.acceptingAnswers = false;
-      kilouteSay(s.channel, `Trop tard ! La réponse était : ${q.r}. Personne ne marque sur cette question !`);
+      kilouteSay(s.channel, kpick(KILOUTE_TIMEOUT)(q.r));
       setTimeout(() => kilouteSessionAdvance(s), 3500);
     }, s.windowMs);
-  }, 3500);
+  }, 'c', 3000);
 }
 
 // Passe à la question suivante après une courte pause.
@@ -11752,8 +11811,8 @@ function kilouteSessionCheckAnswer(channelName, username, rawText) {
   s.scores[username].n += 1;
   s.scores[username].kikooz += s.reward;
   npcSaySequence('kiloute79', s.channel, [
-    `Stoooop ! Bravooo ${winner} !!! La réponse était bien : ${q.r}.`,
-    `+${s.reward} kikooz pour ${winner} ! (${s.scores[username].n} bonne${s.scores[username].n > 1 ? 's' : ''} réponse${s.scores[username].n > 1 ? 's' : ''} pour ${winner})`,
+    kpick(KILOUTE_CORRECT)(winner, q.r),
+    kpick(KILOUTE_REWARD)(winner, s.scores[username].n, s.reward),
   ], () => kilouteSessionAdvance(s), 'c', 3000);
 }
 

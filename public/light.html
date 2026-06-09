@@ -418,14 +418,10 @@
   #drawer-backdrop.show { display: block; }
 
   /* ── Forum panel ── */
-  #forum-panel { align-items: center; justify-content: center; padding: 28px; text-align: center; gap: 14px; }
-  #forum-panel .big {
-    font-size: 16px; max-width: 300px; line-height: 1.5; color: #2f5510;
-  }
-  #forum-panel a.forum-link {
-    display: inline-block; background: #2C4A0F; color: #CFF599; text-decoration: none;
-    padding: 14px 22px; border-radius: 10px; font-weight: bold; font-size: 15px;
-    box-shadow: 0 8px 18px rgba(44,74,15,.22);
+  #forum-panel { padding: 0; }
+  #forum-frame {
+    flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
+    border: 0; display: block; background: #ADE76B;
   }
 
   .hidden { display: none !important; }
@@ -541,10 +537,11 @@
     </div>
   </section>
 
-  <!-- Forum -->
+  <!-- Forum — intégré dans une iframe pour ne JAMAIS couper le chat. Tant qu'on
+       reste sur /light (l'iframe charge /fb à l'intérieur), la socket de chat de
+       la page parente reste vivante. -->
   <section class="panel" id="forum-panel">
-    <div class="big">Le forum complet s'ouvre dans une page dédiée, adaptée au mobile.</div>
-    <a class="forum-link" id="forum-link" href="#">Ouvrir le forum →</a>
+    <iframe id="forum-frame" title="Forum Frutiparc" referrerpolicy="no-referrer"></iframe>
   </section>
 
   <!-- Bouille / accessory picker (bottom sheet) -->
@@ -801,7 +798,6 @@
     $("#login-screen").classList.add("hidden");
     $("#app").classList.remove("hidden");
     $("#who-name").textContent = state.user;
-    $("#forum-link").href = "/fb/?sid=" + encodeURIComponent(state.sid) + "&from=light";
 
     // Build room selector (labels get a "(n)" participant count, see
     // renderRoomOptions / the channellist handler).
@@ -834,6 +830,15 @@
       });
       $("#chat-panel").classList.toggle("active", tab === "chat");
       $("#forum-panel").classList.toggle("active", tab === "forum");
+      // Charge le forum dans l'iframe à la 1re ouverture. On reste sur /light,
+      // donc la socket de chat de la page parente n'est jamais coupée pendant
+      // qu'on consulte le forum.
+      if (tab === "forum") {
+        var fr = $("#forum-frame");
+        if (fr && !fr.getAttribute("src") && state.sid) {
+          fr.setAttribute("src", "/fb/?sid=" + encodeURIComponent(state.sid) + "&from=light");
+        }
+      }
       openMenu(false);
     });
   });
@@ -874,6 +879,20 @@
       connectWs();
     }, 2500);
   }
+  // De retour au premier plan : si la socket est tombée (le navigateur mobile
+  // suspend les onglets/apps en arrière-plan, ce qui coupe la WebSocket), on se
+  // reconnecte TOUT DE SUITE sans attendre le backoff. Avec le « grace » serveur
+  // (45 s), changer d'onglet et revenir ne fait plus apparaître l'utilisateur
+  // comme déconnecté, et il retrouve son salon automatiquement.
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden || state.intentionalClose) return;
+    var rs = state.ws ? state.ws.readyState : 3; // 0=CONNECTING 1=OPEN 2=CLOSING 3=CLOSED
+    if (rs === 1) { requestChannelList(); return; }   // socket vivante : simple rafraîchissement
+    if (rs >= 2) {                                     // socket tombée : reconnexion immédiate
+      if (state.reconnectTimer) { clearTimeout(state.reconnectTimer); state.reconnectTimer = null; }
+      connectWs();
+    }
+  });
   function wsSend(xml) {
     try { if (state.ws && state.ws.readyState === 1) state.ws.send(xml); } catch (e) {}
   }
