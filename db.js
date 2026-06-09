@@ -297,6 +297,20 @@ async function initSchema() {
         created_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- Quizz (événements multi-questions animés par Kiloute79, lancés à la
+      -- demande) — distincts du backlog "Question à 60 kikooz" quotidien. Les
+      -- questions du quiz (avec réponses acceptées + image éventuelle) sont
+      -- stockées en JSON puisqu'un quiz s'édite et se joue comme un tout.
+      CREATE TABLE IF NOT EXISTS quizzes (
+        id          SERIAL PRIMARY KEY,
+        name        TEXT NOT NULL,
+        reward      INTEGER NOT NULL DEFAULT 60,
+        window_sec  INTEGER NOT NULL DEFAULT 90,
+        questions   TEXT NOT NULL DEFAULT '[]',
+        sort_order  INTEGER DEFAULT 0,
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Forum tables
       CREATE TABLE IF NOT EXISTS forum_categories (
         id         SERIAL PRIMARY KEY,
@@ -1191,6 +1205,32 @@ async function deleteKilouteQuestion(id) {
   await pool.query('DELETE FROM kiloute_questions WHERE id = $1', [id]);
 }
 
+// ── Quizz (événements multi-questions, distincts du backlog quotidien) ──
+function parseQuizQuestions(s) {
+  try { const v = JSON.parse(s); if (Array.isArray(v)) return v; } catch (e) { /* fall through */ }
+  return [];
+}
+async function loadQuizzes() {
+  const { rows } = await pool.query('SELECT * FROM quizzes ORDER BY sort_order, id');
+  return rows.map((r) => ({ id: r.id, name: r.name, reward: r.reward || 60, windowSec: r.window_sec || 90, questions: parseQuizQuestions(r.questions) }));
+}
+async function insertQuiz(name, reward, windowSec, questions, sortOrder) {
+  const { rows } = await pool.query(
+    'INSERT INTO quizzes (name, reward, window_sec, questions, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+    [name, reward || 60, windowSec || 90, JSON.stringify(questions || []), sortOrder || 0]
+  );
+  return rows[0].id;
+}
+async function updateQuiz(id, name, reward, windowSec, questions) {
+  await pool.query(
+    'UPDATE quizzes SET name = $2, reward = $3, window_sec = $4, questions = $5 WHERE id = $1',
+    [id, name, reward || 60, windowSec || 90, JSON.stringify(questions || [])]
+  );
+}
+async function deleteQuiz(id) {
+  await pool.query('DELETE FROM quizzes WHERE id = $1', [id]);
+}
+
 // ── Chat banned words ──
 async function loadChatBannedWords() {
   const { rows } = await pool.query('SELECT id, word FROM chat_banned_words ORDER BY id');
@@ -1904,6 +1944,10 @@ module.exports = {
   insertKilouteQuestion,
   updateKilouteQuestion,
   deleteKilouteQuestion,
+  loadQuizzes,
+  insertQuiz,
+  updateQuiz,
+  deleteQuiz,
   loadChatBannedWords,
   addChatBannedWord,
   updateChatBannedWord,

@@ -5626,7 +5626,7 @@ app.delete('/api/admin/kiloute/images/:id', adminAuth, async (req, res) => {
   }
 });
 
-// Lancer la question maintenant (test hors 18h). body { channel? } : salon
+// Lancer la question maintenant (test hors 19h). body { channel? } : salon
 // imposé (ex. un salon privé / où l'on est seul) sinon le plus fréquenté.
 app.post('/api/admin/kiloute/run', adminAuth, (req, res) => {
   if (kilouteQuiz) return res.status(409).json({ error: 'Une question est déjà en cours.' });
@@ -5638,19 +5638,19 @@ app.post('/api/admin/kiloute/run', adminAuth, (req, res) => {
   res.json({ ok: true, channel: ch });
 });
 
-// ── Quiz event (session de plusieurs questions animée en direct) ──
-// Démarre un quiz : body { channel?, questionIds?:[], reward?, windowSec? }.
-// channel vide = salon le plus fréquenté ; questionIds vide = tout le backlog.
+// ── Quizz (événements multi-questions animés en direct) ──
+// Démarre un quiz : body { quizId, channel?, reward?, windowSec? }.
+// channel vide = salon le plus fréquenté ; reward/window vides = valeurs du quiz.
 app.post('/api/admin/kiloute/session/start', adminAuth, (req, res) => {
   const b = req.body || {};
   const r = kilouteStartSession({
+    quizId: b.quizId,
     channel: b.channel ? String(b.channel) : '',
-    questionIds: Array.isArray(b.questionIds) ? b.questionIds : null,
     reward: b.reward,
     windowSec: b.windowSec,
   });
   if (!r.ok) return res.status(409).json({ error: r.error });
-  console.log(`[ADMIN] Quiz event Kiloute lancé dans #${r.channel} (${r.count} questions)`);
+  console.log(`[ADMIN] Quiz "${r.name}" lancé dans #${r.channel} (${r.count} questions)`);
   res.json(r);
 });
 
@@ -5662,6 +5662,72 @@ app.post('/api/admin/kiloute/session/stop', adminAuth, (req, res) => {
 
 app.get('/api/admin/kiloute/session/status', adminAuth, (req, res) => {
   res.json(kilouteSessionStatus());
+});
+
+// ── Quizz : CRUD (un quiz = nom + récompense + délai + questions) ──
+// Normalise une liste de questions reçue de l'admin → [{ q, a:[], r, image }].
+// Tolère { question/q, answers/a, reveal/r, image } ; retire les invalides.
+function normalizeQuizQuestions(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((it) => {
+    const q = String((it && (it.q !== undefined ? it.q : it.question)) || '').trim();
+    const a = parseKilouteAnswers(it && (it.a !== undefined ? it.a : it.answers));
+    const r = String((it && (it.r !== undefined ? it.r : it.reveal)) || '').trim() || a[0] || '';
+    const image = (it && it.image && QUIZ_IMAGES[String(it.image)]) ? String(it.image) : null;
+    return { q, a, r, image };
+  }).filter((x) => x.q && x.a.length);
+}
+
+app.get('/api/admin/kiloute/quizzes', adminAuth, (req, res) => {
+  res.json({ ok: true, quizzes: QUIZZES });
+});
+
+app.post('/api/admin/kiloute/quizzes', adminAuth, async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Nom du quiz requis.' });
+  const reward = Math.max(1, Math.min(10000, Math.round(Number(b.reward) || 60)));
+  const windowSec = Math.max(10, Math.min(600, Math.round(Number(b.windowSec) || 90)));
+  const questions = normalizeQuizQuestions(b.questions);
+  let id = QUIZZES.reduce((m, q) => Math.max(m, q.id || 0), 0) + 1;
+  if (process.env.DATABASE_URL) {
+    try { id = await db.insertQuiz(name, reward, windowSec, questions, QUIZZES.length); }
+    catch (e) { console.error('[KILOUTE] quiz insert:', e.message); }
+  }
+  const quiz = { id, name, reward, windowSec, questions };
+  QUIZZES.push(quiz);
+  console.log(`[ADMIN] Quiz #${id} "${name}" créé (${questions.length} questions)`);
+  res.json({ ok: true, quiz });
+});
+
+app.patch('/api/admin/kiloute/quizzes/:id', adminAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const quiz = QUIZZES.find((x) => x.id === id);
+  if (!quiz) return res.status(404).json({ error: 'not found' });
+  const b = req.body || {};
+  if (b.name !== undefined) quiz.name = String(b.name).trim() || quiz.name;
+  if (b.reward !== undefined) quiz.reward = Math.max(1, Math.min(10000, Math.round(Number(b.reward) || 60)));
+  if (b.windowSec !== undefined) quiz.windowSec = Math.max(10, Math.min(600, Math.round(Number(b.windowSec) || 90)));
+  if (b.questions !== undefined) quiz.questions = normalizeQuizQuestions(b.questions);
+  if (process.env.DATABASE_URL) {
+    try { await db.updateQuiz(id, quiz.name, quiz.reward, quiz.windowSec, quiz.questions); }
+    catch (e) { console.error('[KILOUTE] quiz update:', e.message); }
+  }
+  console.log(`[ADMIN] Quiz #${id} "${quiz.name}" modifié (${quiz.questions.length} questions)`);
+  res.json({ ok: true, quiz });
+});
+
+app.delete('/api/admin/kiloute/quizzes/:id', adminAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const idx = QUIZZES.findIndex((x) => x.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  const [removed] = QUIZZES.splice(idx, 1);
+  if (process.env.DATABASE_URL) {
+    try { await db.deleteQuiz(id); }
+    catch (e) { console.error('[KILOUTE] quiz delete:', e.message); }
+  }
+  console.log(`[ADMIN] Quiz #${id} "${removed.name}" supprimé`);
+  res.json({ ok: true });
 });
 
 // Poster un sujet au forum avec le compte Kiloute79 (par défaut "Animations officielles").
@@ -10782,6 +10848,10 @@ async function boot() {
         }
       } catch (e) { console.error('[DB] Kiloute questions load error:', e.message); }
       try {
+        QUIZZES = await db.loadQuizzes();
+        if (QUIZZES.length) console.log(`[DB] Loaded ${QUIZZES.length} quiz(zes)`);
+      } catch (e) { console.error('[DB] Quizzes load error:', e.message); }
+      try {
         // Chat banned words: on first run (empty table), seed defaults.
         let bw = await db.loadChatBannedWords();
         if (bw.length === 0) {
@@ -11808,7 +11878,7 @@ function scheduleGromelin() {
 }
 scheduleGromelin();
 
-// ── Kiloute79 — animateur "Question à 60 kikooz" (tous les soirs à 18h Paris) ──
+// ── Kiloute79 — animateur "Question à 60 kikooz" (tous les soirs à 19h Paris) ──
 users.kiloute79 = {
   pass: '', xp: 500000, kikooz: 0,
   fbouille: '0f0000010000000000000000',
@@ -11818,7 +11888,7 @@ users.kiloute79 = {
   countryIndex: '1', regionIndex: '1', prefs: '',
   isModerator: false, isAnimator: true, needsBouille: false,
   city: 'Frutiparc', realJob: 'Animateur', frutijob: 'Animateur', firstName: 'Kiloute', lastName: '79',
-  comment: 'La Question à 60 kikooz, tous les soirs à 18h !', siteUrl: '',
+  comment: 'La Question à 60 kikooz, tous les soirs à 19h !', siteUrl: '',
   frutiSign: 7, frutiSignB: 7,
   displayName: 'Kiloute79',
 };
@@ -11863,6 +11933,11 @@ const KILOUTE_DEFAULT_QUESTIONS = [
 // defaults on first run); each entry carries an `id` for CRUD. Falls back to the
 // in-memory defaults when there is no database configured.
 let KILOUTE_QUESTIONS = KILOUTE_DEFAULT_QUESTIONS.map((q, i) => ({ id: i + 1, q: q.q, a: q.a.slice(), r: q.r }));
+
+// Quizz (événements multi-questions, lancés à la demande) — gérés à part du
+// backlog quotidien ci-dessus. Chargés depuis la base au boot ; chaque entrée :
+// { id, name, reward, windowSec, questions: [{ q, a:[], r, image }] }.
+let QUIZZES = [];
 
 function normalizeAnswer(s) {
   return String(s == null ? '' : s)
@@ -11948,7 +12023,7 @@ function kilouteCheckAnswer(channelName, username, rawText) {
     setTimeout(() => {
       kilouteSay(channelName, `Et hop, 60 kikooz pour ${winner} !`);
       setTimeout(() => {
-        kilouteSay(channelName, "Merci à tous d'avoir joué, vous êtes formidables ! À demain 18h pour une nouvelle Question à 60 kikooz !");
+        kilouteSay(channelName, "Merci à tous d'avoir joué, vous êtes formidables ! À demain 19h pour une nouvelle Question à 60 kikooz !");
         setTimeout(kilouteLeave, 4500);
       }, 4000);
     }, 3500);
@@ -11957,9 +12032,9 @@ function kilouteCheckAnswer(channelName, username, rawText) {
 
 function kilouteRun(forcedChannel) {
   if (kilouteQuiz || kilouteSession) return; // already running (single question or quiz event)
-  // Salon imposé (test admin dans un salon précis) sinon le plus fréquenté (planif 18h).
+  // Salon imposé (test admin dans un salon précis) sinon le plus fréquenté (planif 19h).
   const channelName = (forcedChannel && channels[forcedChannel]) ? forcedChannel : mostPopulatedChannel();
-  if (!channelName) { console.log('[KILOUTE] 18h — personne en ligne, on passe ce soir.'); return; }
+  if (!channelName) { console.log('[KILOUTE] 19h — personne en ligne, on passe ce soir.'); return; }
   const q = kilouteQuestionOfTheDay();
   if (!q) { console.log('[KILOUTE] backlog de questions vide — on passe.'); return; }
   npcJoin('kiloute79', channelName);
@@ -12055,46 +12130,40 @@ const KILOUTE_TIMEOUT = [
   (r) => `Aïe, celle-là vous a eus ! C'était ${r}. Allez, la prochaine est pour vous !`,
 ];
 
-// Démarre un quiz event. opts: { channel?, questionIds?[], reward?, windowSec? }.
-// Renvoie { ok, channel, count } ou { ok:false, error }.
+// Démarre un quiz (événement multi-questions). opts: { quizId, channel?, reward?, windowSec? }.
+// Le quiz porte ses propres questions + récompense + délai ; channel/reward/window
+// sont surchargeables au lancement. Renvoie { ok, channel, count, name } ou { ok:false, error }.
 function kilouteStartSession(opts) {
   opts = opts || {};
   if (kilouteSession) return { ok: false, error: 'Un quiz est déjà en cours.' };
   if (kilouteQuiz) return { ok: false, error: 'La Question à 60 kikooz est en cours, réessaie dans un moment.' };
 
-  let questions;
-  if (Array.isArray(opts.questionIds) && opts.questionIds.length) {
-    const byId = {};
-    KILOUTE_QUESTIONS.forEach((q) => { byId[q.id] = q; });
-    // Respecte l'ordre fourni par l'admin ; ignore les ids inconnus.
-    questions = opts.questionIds.map((id) => byId[Number(id)]).filter(Boolean);
-  } else {
-    questions = KILOUTE_QUESTIONS.slice(); // tout le backlog, dans l'ordre
-  }
-  // Snapshot des questions (l'édition du backlog en cours de quiz n'impacte pas la session).
-  questions = questions.map((q) => ({ q: q.q, a: q.a.slice(), r: q.r, image: q.image || null }));
-  if (!questions.length) return { ok: false, error: 'Aucune question sélectionnée (backlog vide ?).' };
+  const quiz = QUIZZES.find((q) => q.id === Number(opts.quizId));
+  if (!quiz) return { ok: false, error: 'Quiz introuvable.' };
+  // Snapshot des questions (l'édition du quiz en cours de partie n'impacte pas la session live).
+  const questions = (quiz.questions || []).map((q) => ({ q: q.q, a: (q.a || []).slice(), r: q.r, image: q.image || null }));
+  if (!questions.length) return { ok: false, error: 'Ce quiz ne contient aucune question.' };
 
   const channel = (opts.channel && channels[opts.channel]) ? opts.channel : mostPopulatedChannel();
   if (!channel) return { ok: false, error: 'Aucun salon disponible (personne en ligne ?).' };
 
-  const reward = Math.max(1, Math.min(10000, Math.round(Number(opts.reward) || 60)));
-  const windowMs = Math.max(10, Math.min(600, Math.round(Number(opts.windowSec) || 90))) * 1000;
+  const reward = Math.max(1, Math.min(10000, Math.round(Number(opts.reward) || quiz.reward || 60)));
+  const windowMs = Math.max(10, Math.min(600, Math.round(Number(opts.windowSec) || quiz.windowSec || 90))) * 1000;
 
   kilouteSession = {
     channel, questions, idx: 0, scores: {},
     acceptingAnswers: false, ending: false, timeoutId: null,
-    reward, windowMs, betweenMs: 5000,
+    reward, windowMs, betweenMs: 5000, quizName: quiz.name,
   };
   npcJoin('kiloute79', channel);
-  console.log(`[KILOUTE] Quiz event lancé dans #${channel} — ${questions.length} questions, ${reward} kikooz/question`);
+  console.log(`[KILOUTE] Quiz "${quiz.name}" lancé dans #${channel} — ${questions.length} questions, ${reward} kikooz/question`);
   npcSaySequence('kiloute79', channel, [
     kpick(KILOUTE_INTRO_HELLO),
-    `Au programme : ${questions.length} question${questions.length > 1 ? 's' : ''}, et ${reward} kikooz pour chaque bonne réponse !`,
+    `Aujourd'hui, le quiz « ${quiz.name} » : ${questions.length} question${questions.length > 1 ? 's' : ''}, et ${reward} kikooz par bonne réponse !`,
     "Le premier qui donne la bonne réponse rafle la mise. Tenez-vous prêts...",
     "C'est partiiii !",
   ], () => kilouteSessionAsk(kilouteSession), 'c', 4000);
-  return { ok: true, channel, count: questions.length };
+  return { ok: true, channel, count: questions.length, name: quiz.name };
 }
 
 // Pose la question courante (ou clôt la session si on est au bout).
@@ -12210,14 +12279,14 @@ function kilouteSessionStatus() {
     .map((u) => ({ user: getDisplayName(u), n: s.scores[u].n, kikooz: s.scores[u].kikooz }))
     .sort((a, b) => b.kikooz - a.kikooz || b.n - a.n);
   return {
-    running: true, channel: s.channel,
+    running: true, channel: s.channel, name: s.quizName || '',
     current: Math.min(s.idx + 1, s.questions.length), total: s.questions.length,
     reward: s.reward, ending: !!s.ending, ranking,
   };
 }
 
-// Fire once a day at ~18:00 Europe/Paris. We poll each minute and trigger on the
-// first check inside 18:00–18:04 we haven't already fired today — DST-safe, as
+// Fire once a day at ~19:00 Europe/Paris. We poll each minute and trigger on the
+// first check inside 19:00–19:04 we haven't already fired today — DST-safe, as
 // the Paris hour/minute come straight from Intl.
 let kilouteLastDay = null;
 setInterval(() => {
@@ -12225,7 +12294,7 @@ setInterval(() => {
     const hm = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
     const [hh, mm] = hm.split(':').map(Number);
     const day = parisDayKey();
-    if (hh === 18 && mm < 5 && kilouteLastDay !== day) {
+    if (hh === 19 && mm < 5 && kilouteLastDay !== day) {
       kilouteLastDay = day;
       kilouteRun();
     }
