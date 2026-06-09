@@ -91,6 +91,8 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_by TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_reason TEXT DEFAULT '';
+        -- Rôle admin par compte (accès partiel à /admin). NULL = aucun accès admin.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role TEXT DEFAULT NULL;
         -- needs_bouille now means strictly "an admin asked this user to redo
         -- their bouille". First-time setup is handled separately (the onident
         -- gate opens the editor while the user still has the default bouille),

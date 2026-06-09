@@ -1784,6 +1784,7 @@ function dbUserToMemory(row) {
     prefs: row.prefs || '',
     isModerator: row.is_moderator || false,
     isAnimator: row.is_animator || false,
+    adminRole: row.admin_role || null,
     bannedUntil: row.banned_until
       ? (row.banned_until instanceof Date ? row.banned_until.toISOString() : String(row.banned_until))
       : null,
@@ -3932,6 +3933,106 @@ function adminAuth(req, res, next) {
   next();
 }
 
+// ─── Rôles admin par compte (accès partiel à /admin) ───────────────────────
+// L'ADMIN_KEY maître ouvre TOUT. En plus, on peut nommer un compte joueur sur un
+// rôle limité : il se connecte à /admin avec ses identifiants de jeu et n'a accès
+// qu'aux onglets de son rôle. Un rôle = un ensemble d'onglets autorisés.
+// L'admin reste fermé par défaut : seuls les endpoints explicitement passés en
+// `adminScope(...)` sont ouverts aux rôles ; tout le reste exige la clé maître.
+const ADMIN_ROLES = {
+  scores: { label: 'Responsable des scores', tabs: ['scores', 'challenge'] },
+};
+function adminRoleTabs(role) {
+  const r = ADMIN_ROLES[role];
+  return r ? r.tabs.slice() : [];
+}
+
+const ADMIN_TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 h
+const adminTokens = new Map(); // token -> { user, role, tabs, createdAt }
+function getAdminTokenSession(token) {
+  const s = token && adminTokens.get(token);
+  if (!s) return null;
+  if (Date.now() - s.createdAt > ADMIN_TOKEN_TTL_MS) { adminTokens.delete(token); return null; }
+  return s;
+}
+// Purge périodique des tokens expirés.
+setInterval(() => {
+  const now = Date.now();
+  for (const [t, s] of adminTokens) if (now - s.createdAt > ADMIN_TOKEN_TTL_MS) adminTokens.delete(t);
+}, ADMIN_TOKEN_TTL_MS).unref?.();
+
+// Identifie le demandeur : { full:true } pour la clé maître, { full:false, user,
+// role, tabs } pour un token de rôle valide, ou null si non authentifié.
+function resolveAdmin(req) {
+  const key = req.headers['x-admin-key'] || req.query.key || '';
+  if (ADMIN_KEY && key === ADMIN_KEY) return { full: true, tabs: null };
+  const token = req.headers['x-admin-token'] || req.query.token || '';
+  const s = getAdminTokenSession(token);
+  if (s) return { full: false, user: s.user, role: s.role, tabs: s.tabs };
+  return null;
+}
+
+// Middleware d'autorisation par onglet : accepte la clé maître (accès total) OU
+// un token de rôle dont les onglets autorisés couvrent l'un de `tabs`.
+function adminScope(...tabs) {
+  return function (req, res, next) {
+    if (!ADMIN_KEY) return res.status(503).json({ ok: false, error: 'admin_disabled', message: 'ADMIN_KEY not configured' });
+    const ip = getClientIp(req) || 'unknown';
+    if (!checkAdminRateLimit(ip)) return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de requêtes, réessayez plus tard.' });
+    const a = resolveAdmin(req);
+    if (a && (a.full || tabs.some((t) => a.tabs.includes(t)))) { req.admin = a; return next(); }
+    return res.status(403).json({ ok: false, error: 'forbidden' });
+  };
+}
+
+// Connexion d'un modérateur à l'admin avec ses identifiants de jeu. Renvoie un
+// token de rôle (et la liste de ses onglets) si le compte porte un rôle admin.
+app.post('/api/admin/login', async (req, res) => {
+  if (!ADMIN_KEY) return res.status(503).json({ ok: false, error: 'admin_disabled', message: 'ADMIN_KEY not configured' });
+  const ip = getClientIp(req) || 'unknown';
+  if (!checkAdminRateLimit(ip)) return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessayez plus tard.' });
+  const b = req.body || {};
+  const username = normalizeUsername(b.username);
+  const password = String(b.password || '');
+  // Réponse volontairement générique (ne révèle pas quels comptes ont un rôle).
+  const deny = () => res.status(403).json({ ok: false, error: 'forbidden', message: 'Identifiants invalides ou compte non autorisé.' });
+  if (!username || !password) return deny();
+  let role = null, passHash = null;
+  const mem = users[username];
+  if (mem && mem.adminRole) { role = mem.adminRole; passHash = mem.pass; }
+  else if (process.env.DATABASE_URL) {
+    try {
+      const dbUser = await db.findUserByUsername(username);
+      if (dbUser) { role = dbUser.admin_role || null; passHash = dbUser.password; }
+    } catch (e) { console.error('[ADMIN] login lookup error:', e.message); }
+  }
+  if (!role || !ADMIN_ROLES[role]) return deny();
+  const { ok } = await verifyPassword(passHash, password);
+  if (!ok) return deny();
+  const token = crypto.randomBytes(24).toString('hex');
+  const tabs = adminRoleTabs(role);
+  adminTokens.set(token, { user: username, role, tabs, createdAt: Date.now() });
+  console.log(`[ADMIN] connexion rôle "${role}" par ${username} (ip=${ip})`);
+  res.json({ ok: true, token, role, label: ADMIN_ROLES[role].label, tabs, user: getDisplayName(username) });
+});
+
+// Déconnexion (révoque le token courant).
+app.post('/api/admin/logout', (req, res) => {
+  const token = req.headers['x-admin-token'] || '';
+  if (token) adminTokens.delete(token);
+  res.json({ ok: true });
+});
+
+// Contexte courant : la clé maître renvoie full=true ; un token de rôle renvoie
+// ses onglets. Sert à l'UI pour n'afficher que les onglets autorisés.
+app.get('/api/admin/me', (req, res) => {
+  if (!ADMIN_KEY) return res.status(503).json({ ok: false, error: 'admin_disabled', message: 'ADMIN_KEY not configured' });
+  const a = resolveAdmin(req);
+  if (!a) return res.status(403).json({ ok: false, error: 'forbidden' });
+  if (a.full) return res.json({ ok: true, full: true, tabs: null });
+  res.json({ ok: true, full: false, user: getDisplayName(a.user), role: a.role, label: (ADMIN_ROLES[a.role] || {}).label || a.role, tabs: a.tabs });
+});
+
 app.post('/api/setChallengeMode', (req, res) => {
   const sid = String(req.body.sid || req.query.sid || '');
   const challenge = req.body.challenge === true || req.body.challenge === 'true' || req.query.challenge === 'true';
@@ -4477,6 +4578,10 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     }
     if (body.is_moderator !== undefined) fields.is_moderator = !!body.is_moderator;
     if (body.is_animator !== undefined) fields.is_animator = !!body.is_animator;
+    if (body.admin_role !== undefined) {
+      const role = String(body.admin_role || '').trim();
+      fields.admin_role = (role && ADMIN_ROLES[role]) ? role : null;
+    }
     if (body.display_name !== undefined) {
       const dn = String(body.display_name).trim();
       if (!isValidUsername(dn)) {
@@ -4516,6 +4621,11 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
         Object.assign(users[u], fields);
         if (fields.is_moderator !== undefined) users[u].isModerator = fields.is_moderator;
         if (fields.is_animator !== undefined) users[u].isAnimator = fields.is_animator;
+        if (fields.admin_role !== undefined) {
+          users[u].adminRole = fields.admin_role;
+          // Changement/retrait de rôle → révoque ses sessions admin en cours.
+          for (const [t, s] of adminTokens) if (s.user.toLowerCase() === String(u).toLowerCase()) adminTokens.delete(t);
+        }
         if (fields.needs_bouille !== undefined) users[u].needsBouille = fields.needs_bouille;
         if (fields.display_name !== undefined) users[u].displayName = fields.display_name;
         if (fields.fruti_sign !== undefined) users[u].frutiSign = fields.fruti_sign;
@@ -4779,7 +4889,7 @@ app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
   }
 });
 
-app.get('/api/admin/scores', adminAuth, (req, res) => {
+app.get('/api/admin/scores', adminScope('scores'), (req, res) => {
   const ranking = req.query.ranking || '';
   const result = [];
   for (const [u, rlist] of Object.entries(scoresData.users || {})) {
@@ -4795,7 +4905,7 @@ app.get('/api/admin/scores', adminAuth, (req, res) => {
   res.json({ rankings: Object.keys(RANKINGS), scores: result });
 });
 
-app.delete('/api/admin/scores/:username/:ranking', adminAuth, async (req, res) => {
+app.delete('/api/admin/scores/:username/:ranking', adminScope('scores'), async (req, res) => {
   const { username, ranking } = req.params;
   if (scoresData.users[username]) {
     delete scoresData.users[username][ranking];
@@ -4812,7 +4922,7 @@ app.delete('/api/admin/scores/:username/:ranking', adminAuth, async (req, res) =
   res.json({ ok: true });
 });
 
-app.patch('/api/admin/scores/:username/:ranking', adminAuth, async (req, res) => {
+app.patch('/api/admin/scores/:username/:ranking', adminScope('scores'), async (req, res) => {
   const { username, ranking } = req.params;
   const newScore = Number(req.body.score);
   const newData = req.body.data;
@@ -5914,7 +6024,7 @@ app.post('/api/admin/wallpapers/cleanup', adminAuth, async (req, res) => {
 });
 
 // ── Admin: Challenge cycle management ──
-app.get('/api/admin/challenge/status', adminAuth, async (req, res) => {
+app.get('/api/admin/challenge/status', adminScope('challenge'), async (req, res) => {
   const today = parisDayKey();
   const challengeIds = challengeRankingIds();
   const summary = {};
@@ -5938,7 +6048,7 @@ app.get('/api/admin/challenge/status', adminAuth, async (req, res) => {
   });
 });
 
-app.post('/api/admin/challenge/roll', adminAuth, async (req, res) => {
+app.post('/api/admin/challenge/roll', adminScope('challenge'), async (req, res) => {
   const today = parisDayKey();
   const hadScores = challengeRankingIds().some(rkId => {
     for (const [, rlist] of Object.entries(scoresData.users || {})) {
@@ -5955,7 +6065,7 @@ app.post('/api/admin/challenge/roll', adminAuth, async (req, res) => {
   res.json({ ok: true, rolledDay: today, hadScores });
 });
 
-app.post('/api/admin/challenge/reset', adminAuth, async (req, res) => {
+app.post('/api/admin/challenge/reset', adminScope('challenge'), async (req, res) => {
   resetChallengeScoresInMemory();
   challengeMedalsData.medalsByVisibleDay = {};
   challengeMedalsData.pendingNotifications = {};
@@ -5970,7 +6080,7 @@ app.post('/api/admin/challenge/reset', adminAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/admin/mb2/regenerate-map', adminAuth, async (req, res) => {
+app.post('/api/admin/mb2/regenerate-map', adminScope('challenge'), async (req, res) => {
   try {
     const { generateMb2ChallengeMap } = require('./mb2gen');
     // A manual admin regenerate rolls a fresh RANDOM map, so clicking the button
@@ -5987,7 +6097,7 @@ app.post('/api/admin/mb2/regenerate-map', adminAuth, async (req, res) => {
   }
 });
 
-app.get('/api/admin/mb2/map-info', adminAuth, (req, res) => {
+app.get('/api/admin/mb2/map-info', adminScope('challenge'), (req, res) => {
   const p = path.join(__dirname, 'Games', 'motionBall2', 'mb2data.dat');
   if (!fs.existsSync(p)) return res.json({ exists: false });
   const st = fs.statSync(p);
@@ -6011,7 +6121,7 @@ app.get('/api/admin/mb2/map-info', adminAuth, (req, res) => {
   });
 });
 
-app.get('/api/admin/challenge/archive', adminAuth, async (req, res) => {
+app.get('/api/admin/challenge/archive', adminScope('challenge'), async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ days: [], scores: [] });
   const day = String(req.query.day || '').trim();
   const ranking = String(req.query.ranking || '').trim();
@@ -6028,7 +6138,7 @@ app.get('/api/admin/challenge/archive', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/admin/challenge/medals', adminAuth, async (req, res) => {
+app.get('/api/admin/challenge/medals', adminScope('challenge'), async (req, res) => {
   if (!process.env.DATABASE_URL) {
     const out = [];
     for (const [day, dayMedals] of Object.entries(challengeMedalsData.medalsByVisibleDay || {})) {
@@ -6051,7 +6161,7 @@ app.get('/api/admin/challenge/medals', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/admin/challenge/medals', adminAuth, async (req, res) => {
+app.delete('/api/admin/challenge/medals', adminScope('challenge'), async (req, res) => {
   const day = String(req.query.day || req.body && req.body.day || '').trim();
   if (!day) return res.status(400).json({ error: 'day parameter required' });
   if (challengeMedalsData.medalsByVisibleDay) {
@@ -6067,7 +6177,7 @@ app.delete('/api/admin/challenge/medals', adminAuth, async (req, res) => {
 });
 
 // Diagnostic endpoint: returns full medal & score state for debugging.
-app.get('/api/admin/challenge/debug', adminAuth, async (req, res) => {
+app.get('/api/admin/challenge/debug', adminScope('challenge'), async (req, res) => {
   const today = parisDayKey();
   const yesterday = yesterdayParisDayKey();
 
@@ -6113,7 +6223,7 @@ app.get('/api/admin/challenge/debug', adminAuth, async (req, res) => {
   });
 });
 
-app.post('/api/admin/challenge/regenerate-medals', adminAuth, async (req, res) => {
+app.post('/api/admin/challenge/regenerate-medals', adminScope('challenge'), async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'No database' });
   const day = String(req.body.day || '').trim();
   if (!day) return res.status(400).json({ error: 'day parameter required (YYYY-MM-DD)' });

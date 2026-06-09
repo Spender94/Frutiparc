@@ -342,7 +342,13 @@
     <a class="title-link" href="#" onclick="return false">Frutiparc Admin</a>
     <div class="key-input">
       <span>Clé admin :</span>
-      <input type="password" id="adminKey" placeholder="ADMIN_KEY" oninput="localStorage.setItem('adminKey',this.value)">
+      <input type="password" id="adminKey" placeholder="ADMIN_KEY" oninput="localStorage.setItem('adminKey',this.value)" onchange="refreshAdminContext()">
+      <span style="margin:0 8px;color:#bbb">ou modérateur :</span>
+      <input id="admin-login-user" placeholder="pseudo" style="width:120px" autocomplete="username">
+      <input type="password" id="admin-login-pass" placeholder="mot de passe" style="width:120px" autocomplete="current-password" onkeydown="if(event.key==='Enter')adminLogin()">
+      <button class="btn btn-sm" onclick="adminLogin()">Se connecter</button>
+      <span id="admin-whoami" style="margin-left:10px;font-size:12px;color:#2c4a0f;font-weight:bold"></span>
+      <button id="admin-logout-btn" class="btn btn-sm" style="display:none;margin-left:6px" onclick="adminLogout()">Déconnexion</button>
     </div>
   </div>
 
@@ -915,16 +921,80 @@ const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 let currentDetailUser = '';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   $('#adminKey').value = localStorage.getItem('adminKey') || '';
-  loadUsers();
+  await refreshAdminContext();
+  // Plein accès (clé maître ou non authentifié) → onglet Joueurs par défaut.
+  // Accès limité (rôle) → refreshAdminContext a déjà ouvert le 1er onglet permis.
+  if (adminCtx.full) loadUsers();
 });
 
 function hdr() {
   const h = { 'Content-Type': 'application/json' };
   const k = $('#adminKey').value;
+  const tok = localStorage.getItem('adminToken') || '';
   if (k) h['X-Admin-Key'] = k;
+  else if (tok) h['X-Admin-Token'] = tok;
   return h;
+}
+
+// ─── Contexte admin (clé maître = tout ; token de rôle = onglets limités) ───
+let adminCtx = { full: true, tabs: null };
+async function refreshAdminContext() {
+  try {
+    const r = await fetch('/api/admin/me', { headers: hdr() });
+    if (r.ok) {
+      const d = await r.json();
+      adminCtx = d.full ? { full: true, tabs: null } : { full: false, tabs: d.tabs || [], label: d.label, user: d.user };
+    } else {
+      adminCtx = { full: true, tabs: null }; // pas (encore) authentifié → ne rien masquer
+    }
+  } catch (e) { adminCtx = { full: true, tabs: null }; }
+  applyTabVisibility();
+}
+function applyTabVisibility() {
+  const allowed = adminCtx.full ? null : (adminCtx.tabs || []);
+  $$('.tab').forEach(btn => {
+    const ok = !allowed || allowed.includes(btn.dataset.tab);
+    btn.style.display = ok ? '' : 'none';
+  });
+  // Masque les groupes d'onglets dont tous les boutons sont cachés.
+  $$('.tab-group').forEach(g => {
+    const anyVisible = Array.from(g.querySelectorAll('.tab')).some(b => b.style.display !== 'none');
+    g.style.display = anyVisible ? '' : 'none';
+  });
+  const who = $('#admin-whoami'), logoutBtn = $('#admin-logout-btn');
+  if (adminCtx.full) { if (who) who.textContent = ''; if (logoutBtn) logoutBtn.style.display = 'none'; }
+  else {
+    if (who) who.textContent = `${adminCtx.user} — ${adminCtx.label} (accès limité)`;
+    if (logoutBtn) logoutBtn.style.display = '';
+  }
+  // Si l'onglet actif n'est pas autorisé, bascule sur le 1er onglet permis.
+  if (allowed && allowed.length) {
+    const active = document.querySelector('.tab.active');
+    if (!active || !allowed.includes(active.dataset.tab)) switchTab(allowed[0]);
+  }
+}
+async function adminLogin() {
+  const username = ($('#admin-login-user').value || '').trim();
+  const password = $('#admin-login-pass').value || '';
+  if (!username || !password) { toast('Pseudo et mot de passe requis'); return; }
+  try {
+    const r = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    const d = await r.json();
+    if (!r.ok) { toast(d.message || 'Connexion refusée'); return; }
+    localStorage.setItem('adminToken', d.token);
+    localStorage.removeItem('adminKey'); $('#adminKey').value = '';
+    $('#admin-login-pass').value = '';
+    toast('Connecté : ' + d.label);
+    await refreshAdminContext();
+    if (d.tabs && d.tabs.length) switchTab(d.tabs[0]);
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function adminLogout() {
+  try { await fetch('/api/admin/logout', { method: 'POST', headers: hdr() }); } catch (e) {}
+  localStorage.removeItem('adminToken');
+  location.reload();
 }
 
 function toast(msg) {
@@ -1663,6 +1733,13 @@ async function loadDetail() {
       <tr><td>Genre</td><td>${user.gender||'M'}</td></tr>
       <tr><td>Modérateur</td><td><span class="badge ${user.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u)}',${!user.is_moderator});setTimeout(loadDetail,500)" style="cursor:pointer">${user.is_moderator ? 'Oui' : 'Non'}</span></td></tr>
       <tr><td>Animateur</td><td><span class="badge ${user.is_animator ? 'badge-anim' : 'badge-no-mod'}" onclick="toggleAnim('${esc(u)}',${!user.is_animator});setTimeout(loadDetail,500)" style="cursor:pointer">${user.is_animator ? 'Oui' : 'Non'}</span></td></tr>
+      <tr><td>Rôle admin</td><td>
+        <select onchange="setAdminRole('${esc(u)}', this.value)" style="padding:3px">
+          <option value=""${!user.admin_role ? ' selected' : ''}>— aucun —</option>
+          <option value="scores"${user.admin_role === 'scores' ? ' selected' : ''}>Responsable des scores (Scores + Challenge)</option>
+        </select>
+        <span style="color:#888;font-size:11px">accès limité à /admin avec ses identifiants Frutiparc</span>
+      </td></tr>
       <tr><td>Anniversaire</td><td>${fmtDate(user.birthday)}</td></tr>
       <tr><td>FrutiSigne</td><td>${signLabel(user.fruti_sign)}</td></tr>
       <tr><td>Ascendant</td><td>${signLabel(user.fruti_sign_b)}</td></tr>
@@ -2037,6 +2114,15 @@ async function toggleMod(username, setMod) {
   });
   toast(setMod ? `${username} est maintenant modérateur` : `${username} n'est plus modérateur`);
   loadUsers();
+}
+
+// ── Rôle admin (accès partiel à /admin) ──
+async function setAdminRole(username, role) {
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, {
+    method: 'PATCH', headers: hdr(), body: JSON.stringify({ admin_role: role })
+  });
+  if (!r.ok) { toast('Erreur lors du changement de rôle'); return; }
+  toast(role ? `${username} : rôle « ${role} » attribué` : `${username} : rôle admin retiré`);
 }
 
 // ── Ban / unban ──
