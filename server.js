@@ -3889,33 +3889,41 @@ if (!ADMIN_KEY) {
   console.warn('[ADMIN] ADMIN_KEY env var is empty — admin endpoints will refuse every request. Set ADMIN_KEY in production.');
 }
 
-// Per-IP rate limiter for admin endpoints. Far tighter than the
-// register limit (40 requests / 10 min) — admins are humans clicking
-// a UI, not a script, so a few dozen requests per window is plenty,
-// and the cap means a brute-force attacker who somehow obtained the
-// key still can't iterate fast. Failed-auth attempts AND successful
-// requests both count, so we also throttle accidental hot-loops.
+// Brute-force guard for admin auth. We throttle FAILED auth attempts per IP — NOT
+// successful (authenticated) requests. The admin UI legitimately makes many
+// authenticated calls (multi-resource tabs, a 5 s status poll on the Kiloute tab,
+// image uploads…), so counting successes would lock out a real admin. Only a
+// burst of wrong keys/passwords is blocked.
 const ADMIN_RL_WINDOW_MS = 10 * 60 * 1000;
-const ADMIN_RL_MAX = 40;
-const adminAttempts = new Map(); // ip -> number[] (timestamps)
+const ADMIN_RL_MAX_FAILS = 50;
+const adminAuthFails = new Map(); // ip -> number[] (failed-attempt timestamps)
 
-function checkAdminRateLimit(ip) {
+function adminAuthBlocked(ip) {
+  const arr = adminAuthFails.get(ip);
+  if (!arr) return false;
   const now = Date.now();
-  let arr = adminAttempts.get(ip);
-  if (!arr) { arr = []; adminAttempts.set(ip, arr); }
-  // Drop expired entries
   while (arr.length && now - arr[0] >= ADMIN_RL_WINDOW_MS) arr.shift();
-  if (arr.length >= ADMIN_RL_MAX) return false;
+  return arr.length >= ADMIN_RL_MAX_FAILS;
+}
+function recordAdminAuthFail(ip) {
+  const now = Date.now();
+  let arr = adminAuthFails.get(ip);
+  if (!arr) { arr = []; adminAuthFails.set(ip, arr); }
+  while (arr.length && now - arr[0] >= ADMIN_RL_WINDOW_MS) arr.shift();
   arr.push(now);
-  return true;
+}
+// True si la requête porte une clé ou un token admin : on ne compte un échec que
+// dans ce cas (un chargement de page SANS identifiant ne doit pas pénaliser).
+function adminCredsProvided(req) {
+  return !!(req.headers['x-admin-key'] || req.query.key || req.headers['x-admin-token'] || req.query.token);
 }
 
 // Periodically prune empty buckets to keep the map bounded.
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, arr] of adminAttempts) {
+  for (const [ip, arr] of adminAuthFails) {
     while (arr.length && now - arr[0] >= ADMIN_RL_WINDOW_MS) arr.shift();
-    if (arr.length === 0) adminAttempts.delete(ip);
+    if (arr.length === 0) adminAuthFails.delete(ip);
   }
 }, ADMIN_RL_WINDOW_MS).unref?.();
 
@@ -3924,12 +3932,12 @@ function adminAuth(req, res, next) {
     return res.status(503).json({ ok: false, error: 'admin_disabled', message: 'ADMIN_KEY not configured' });
   }
   const ip = getClientIp(req) || 'unknown';
-  if (!checkAdminRateLimit(ip)) {
-    console.warn('[ADMIN] rate-limit blocked ip=' + ip);
-    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de requêtes, réessayez plus tard.' });
+  if (adminAuthBlocked(ip)) {
+    console.warn('[ADMIN] brute-force guard blocked ip=' + ip);
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessayez plus tard.' });
   }
   const k = req.headers['x-admin-key'] || req.query.key || '';
-  if (k !== ADMIN_KEY) return res.status(403).json({ ok: false, error: 'forbidden' });
+  if (k !== ADMIN_KEY) { if (k) recordAdminAuthFail(ip); return res.status(403).json({ ok: false, error: 'forbidden' }); }
   next();
 }
 
@@ -3978,9 +3986,10 @@ function adminScope(...tabs) {
   return function (req, res, next) {
     if (!ADMIN_KEY) return res.status(503).json({ ok: false, error: 'admin_disabled', message: 'ADMIN_KEY not configured' });
     const ip = getClientIp(req) || 'unknown';
-    if (!checkAdminRateLimit(ip)) return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de requêtes, réessayez plus tard.' });
+    if (adminAuthBlocked(ip)) return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessayez plus tard.' });
     const a = resolveAdmin(req);
     if (a && (a.full || tabs.some((t) => a.tabs.includes(t)))) { req.admin = a; return next(); }
+    if (adminCredsProvided(req)) recordAdminAuthFail(ip);
     return res.status(403).json({ ok: false, error: 'forbidden' });
   };
 }
@@ -3990,12 +3999,13 @@ function adminScope(...tabs) {
 app.post('/api/admin/login', async (req, res) => {
   if (!ADMIN_KEY) return res.status(503).json({ ok: false, error: 'admin_disabled', message: 'ADMIN_KEY not configured' });
   const ip = getClientIp(req) || 'unknown';
-  if (!checkAdminRateLimit(ip)) return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessayez plus tard.' });
+  if (adminAuthBlocked(ip)) return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessayez plus tard.' });
   const b = req.body || {};
   const username = normalizeUsername(b.username);
   const password = String(b.password || '');
-  // Réponse volontairement générique (ne révèle pas quels comptes ont un rôle).
-  const deny = () => res.status(403).json({ ok: false, error: 'forbidden', message: 'Identifiants invalides ou compte non autorisé.' });
+  // Réponse volontairement générique (ne révèle pas quels comptes ont un rôle) ;
+  // chaque refus compte comme un échec d'auth (garde anti-brute-force).
+  const deny = () => { recordAdminAuthFail(ip); return res.status(403).json({ ok: false, error: 'forbidden', message: 'Identifiants invalides ou compte non autorisé.' }); };
   if (!username || !password) return deny();
   let role = null, passHash = null;
   const mem = users[username];
@@ -4027,8 +4037,10 @@ app.post('/api/admin/logout', (req, res) => {
 // ses onglets. Sert à l'UI pour n'afficher que les onglets autorisés.
 app.get('/api/admin/me', (req, res) => {
   if (!ADMIN_KEY) return res.status(503).json({ ok: false, error: 'admin_disabled', message: 'ADMIN_KEY not configured' });
+  const ip = getClientIp(req) || 'unknown';
+  if (adminAuthBlocked(ip)) return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessayez plus tard.' });
   const a = resolveAdmin(req);
-  if (!a) return res.status(403).json({ ok: false, error: 'forbidden' });
+  if (!a) { if (adminCredsProvided(req)) recordAdminAuthFail(ip); return res.status(403).json({ ok: false, error: 'forbidden' }); }
   if (a.full) return res.json({ ok: true, full: true, tabs: null });
   res.json({ ok: true, full: false, user: getDisplayName(a.user), role: a.role, label: (ADMIN_ROLES[a.role] || {}).label || a.role, tabs: a.tabs });
 });
