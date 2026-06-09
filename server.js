@@ -2857,6 +2857,17 @@ const DEFAULT_WALLPAPERS = [
   { u: 'utopiz',         n: 'Utopiz',                url: 'wal/ut.jpg', color: 'F6AFA9;' },
 ];
 const WALLPAPER_BY_ID = Object.fromEntries(DEFAULT_WALLPAPERS.map(w => [w.u, w]));
+// Wallpapers uploaded from the admin (vs the built-in DEFAULT_WALLPAPERS above).
+// Their image bytes live in the DB and are served by /wal-custom/:file; here we
+// keep only the resolved {url,color,name} so shop packs + inventory work like
+// the built-ins. CUSTOM_WALLPAPER_IDS marks which entries are admin-managed.
+const CUSTOM_WALLPAPER_IDS = new Set();
+const wallpaperImageCache = new Map(); // id -> { mime, buf } (avoid a DB hit per load)
+function registerCustomWallpaper(wp) {
+  const ext = wp.ext || 'jpg';
+  WALLPAPER_BY_ID[wp.id] = { u: wp.id, n: wp.name, url: `wal-custom/${wp.id}.${ext}`, color: wp.color };
+  CUSTOM_WALLPAPER_IDS.add(wp.id);
+}
 
 // Accessories = last 9 chars of a 24-char bouille string.
 // The first 15 chars are filled from the user's current bouille at serve time.
@@ -5321,6 +5332,131 @@ app.delete('/api/admin/shop/:id', adminAuth, async (req, res) => {
   if (process.env.DATABASE_URL) db.deleteShopPack(removed.id).catch(e => console.error('[DB] shop pack delete:', e.message));
   console.log(`[ADMIN] Deleted shop pack ${removed.id}: ${removed.name}`);
   res.json({ ok: true });
+});
+
+// ── Fonds d'écran (wallpapers) — upload + boutique depuis l'admin ──
+// Les images sont stockées en BASE (table wallpapers) pour survivre à un
+// redéploiement à disque éphémère, et servies à la demande par /wal-custom/:file.
+// Un upload peut créer/mettre à jour le pack boutique pour rendre le fond
+// achetable immédiatement (même mécanique que les fonds intégrés).
+const WALLPAPER_UPLOAD_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+
+// Normalise une couleur de fond ("#4E5464", "4e5464", "4E5464;") au format
+// attendu par le SWF : "RRGGBB;".
+function normalizeWallpaperColor(input) {
+  const hex = String(input || '').replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+  return hex.length === 6 ? hex.toUpperCase() + ';' : '000000;';
+}
+function isValidWallpaperId(id) {
+  return /^[a-z0-9][a-z0-9_-]{1,30}$/.test(String(id || ''));
+}
+
+// Sert l'image d'un fond personnalisé depuis la base. :file = "<id>.<ext>".
+app.get('/wal-custom/:file', async (req, res) => {
+  const id = String(req.params.file || '').replace(/\.[a-z0-9]+$/i, '');
+  if (!isValidWallpaperId(id)) return res.status(400).type('text/plain').send('bad id');
+  try {
+    let cached = wallpaperImageCache.get(id);
+    if (!cached) {
+      if (!process.env.DATABASE_URL) return res.status(404).type('text/plain').send('not found');
+      const img = await db.getWallpaperImage(id);
+      if (!img) return res.status(404).type('text/plain').send('not found');
+      cached = { mime: img.mime, buf: Buffer.isBuffer(img.data) ? img.data : Buffer.from(img.data) };
+      wallpaperImageCache.set(id, cached);
+    }
+    res.type(cached.mime);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(cached.buf);
+  } catch (e) {
+    console.error('[WALLPAPER] serve error:', e.message);
+    res.status(500).type('text/plain').send('error');
+  }
+});
+
+// Liste tous les fonds (intégrés + personnalisés) avec leur éventuel pack boutique.
+app.get('/api/admin/wallpapers', adminAuth, (req, res) => {
+  const packByWp = {};
+  for (const p of SHOP_PACKS) { if (p.wallpaperId) packByWp[p.wallpaperId] = p; }
+  const list = Object.values(WALLPAPER_BY_ID).map((w) => {
+    const pack = packByWp[w.u];
+    return {
+      id: w.u, name: w.n, url: w.url, color: w.color,
+      custom: CUSTOM_WALLPAPER_IDS.has(w.u),
+      shopId: pack ? pack.id : null,
+      price: pack ? pack.price : null,
+      disabled: pack ? !!pack.disabled : null,
+    };
+  });
+  res.json({ ok: true, wallpapers: list });
+});
+
+// Upload d'un fond. Image en corps brut ; métadonnées en query :
+//   ?id=&name=&color=&price=&makeShop=1
+app.post('/api/admin/wallpapers',
+  adminAuth,
+  express.raw({ type: ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/octet-stream'], limit: WALLPAPER_UPLOAD_MAX_BYTES }),
+  async (req, res) => {
+    if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: 'no_db', message: 'Base de données requise pour les fonds personnalisés.' });
+    const id = String(req.query.id || '').trim().toLowerCase();
+    const name = String(req.query.name || '').trim();
+    if (!isValidWallpaperId(id)) return res.status(400).json({ ok: false, error: 'bad_id', message: 'Id invalide (minuscules, chiffres, - et _, 2 à 31 caractères).' });
+    if (DEFAULT_WALLPAPERS.some((w) => w.u === id)) return res.status(409).json({ ok: false, error: 'reserved_id', message: "Cet id est celui d'un fond intégré, choisis-en un autre." });
+    if (!name) return res.status(400).json({ ok: false, error: 'no_name', message: 'Nom requis.' });
+    const color = normalizeWallpaperColor(req.query.color);
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length < 64) return res.status(400).json({ ok: false, error: 'empty', message: 'Image vide ou illisible.' });
+    const kind = sniffForumImage(body);
+    if (!kind) return res.status(415).json({ ok: false, error: 'unsupported', message: 'Format non supporté (PNG, JPEG, GIF, WEBP).' });
+    try {
+      await db.upsertWallpaper({ id, name, color, mime: kind.mime, ext: kind.ext, data: body });
+      registerCustomWallpaper({ id, name, color, ext: kind.ext });
+      wallpaperImageCache.set(id, { mime: kind.mime, buf: body });
+      // Pack boutique (optionnel, activé par défaut) pour rendre le fond achetable.
+      let pack = null;
+      const makeShop = req.query.makeShop === undefined ? true : (req.query.makeShop === '1' || req.query.makeShop === 'true');
+      if (makeShop) {
+        const price = Math.max(0, Math.round(Number(req.query.price) || 0));
+        pack = SHOP_PACKS.find((p) => p.wallpaperId === id);
+        if (pack) {
+          pack.name = name; pack.price = price; pack.category = "Fonds d'écran"; pack.disabled = false;
+        } else {
+          const newId = Math.max(299, ...SHOP_PACKS.map((p) => p.id)) + 1;
+          pack = { id: newId, name, category: "Fonds d'écran", price, description: '', suffix9: '000000000', wallpaperId: id };
+          SHOP_PACKS.push(pack);
+        }
+        db.upsertShopPack(pack).catch((e) => console.error('[WALLPAPER] pack save:', e.message));
+      }
+      console.log(`[ADMIN] Wallpaper "${id}" uploadé (${kind.ext}, ${body.length} B)${pack ? ` + pack #${pack.id} (${pack.price} kikooz)` : ''}`);
+      res.json({ ok: true, wallpaper: { id, name, color, url: WALLPAPER_BY_ID[id].url, custom: true }, pack: pack ? { id: pack.id, price: pack.price } : null });
+    } catch (e) {
+      console.error('[WALLPAPER] upload error:', e.message);
+      res.status(500).json({ ok: false, error: 'store_failed', message: e.message });
+    }
+  }
+);
+
+// Supprime un fond PERSONNALISÉ (et son pack boutique). Les fonds intégrés ne
+// sont pas supprimables.
+app.delete('/api/admin/wallpapers/:id', adminAuth, async (req, res) => {
+  const id = String(req.params.id || '').toLowerCase();
+  if (!CUSTOM_WALLPAPER_IDS.has(id)) return res.status(404).json({ ok: false, error: 'not_found', message: 'Fond personnalisé introuvable.' });
+  try {
+    for (let i = SHOP_PACKS.length - 1; i >= 0; i--) {
+      if (SHOP_PACKS[i].wallpaperId === id) {
+        const removed = SHOP_PACKS.splice(i, 1)[0];
+        if (process.env.DATABASE_URL) db.deleteShopPack(removed.id).catch((e) => console.error('[DB] shop pack delete:', e.message));
+      }
+    }
+    delete WALLPAPER_BY_ID[id];
+    CUSTOM_WALLPAPER_IDS.delete(id);
+    wallpaperImageCache.delete(id);
+    if (process.env.DATABASE_URL) await db.deleteWallpaper(id);
+    console.log(`[ADMIN] Wallpaper "${id}" supprimé`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[WALLPAPER] delete error:', e.message);
+    res.status(500).json({ ok: false, error: 'delete_failed', message: e.message });
+  }
 });
 
 // ── Admin: Kiloute79 quiz (backlog de questions, lancer maintenant, post forum) ──
@@ -10450,6 +10586,11 @@ async function boot() {
           }
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
+      try {
+        const wps = await db.loadWallpapers();
+        for (const wp of wps) registerCustomWallpaper(wp);
+        if (wps.length) console.log(`[DB] Loaded ${wps.length} custom wallpaper(s)`);
+      } catch (e) { console.error('[DB] Wallpapers load error:', e.message); }
       try {
         const dbq = await db.loadKilouteQuestions();
         if (dbq.length === 0) {

@@ -254,6 +254,20 @@ async function initSchema() {
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS picto TEXT DEFAULT NULL;
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS disabled BOOLEAN DEFAULT FALSE;
 
+      -- Custom wallpapers ("fonds d'écran") uploaded from the admin panel. The
+      -- image BYTES live in the DB (not on disk) so a bought wallpaper keeps
+      -- loading even after an ephemeral-filesystem redeploy. Served on demand by
+      -- the /wal-custom/:file route and registered in the in-memory wallpaper map.
+      CREATE TABLE IF NOT EXISTS wallpapers (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        color       TEXT NOT NULL DEFAULT '000000;',
+        mime        TEXT NOT NULL,
+        ext         TEXT NOT NULL DEFAULT 'jpg',
+        data        BYTEA NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Kiloute79 "Question à 60 kikooz" backlog (admin-managed)
       CREATE TABLE IF NOT EXISTS kiloute_questions (
         id          SERIAL PRIMARY KEY,
@@ -1088,6 +1102,28 @@ async function deleteShopPack(id) {
   await pool.query('DELETE FROM shop_packs WHERE id = $1', [id]);
 }
 
+// ── Custom wallpapers (fonds d'écran uploadés depuis l'admin) ──
+// Metadata only (no bytes) — feeds the in-memory wallpaper registry at boot.
+async function loadWallpapers() {
+  const { rows } = await pool.query('SELECT id, name, color, ext FROM wallpapers ORDER BY created_at');
+  return rows.map(r => ({ id: r.id, name: r.name, color: r.color, ext: r.ext || 'jpg' }));
+}
+async function getWallpaperImage(id) {
+  const { rows } = await pool.query('SELECT mime, data FROM wallpapers WHERE id = $1', [id]);
+  return rows[0] ? { mime: rows[0].mime, data: rows[0].data } : null;
+}
+async function upsertWallpaper(wp) {
+  await pool.query(
+    `INSERT INTO wallpapers (id, name, color, mime, ext, data)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO UPDATE SET name = $2, color = $3, mime = $4, ext = $5, data = $6`,
+    [wp.id, wp.name, wp.color, wp.mime, wp.ext, wp.data]
+  );
+}
+async function deleteWallpaper(id) {
+  await pool.query('DELETE FROM wallpapers WHERE id = $1', [id]);
+}
+
 // ── Kiloute79 quiz questions ──
 function parseAnswersField(s) {
   try { const v = JSON.parse(s); if (Array.isArray(v)) return v.map((x) => String(x)); } catch (e) { /* fall through */ }
@@ -1815,6 +1851,10 @@ module.exports = {
   loadShopPacks,
   upsertShopPack,
   deleteShopPack,
+  loadWallpapers,
+  getWallpaperImage,
+  upsertWallpaper,
+  deleteWallpaper,
   loadKilouteQuestions,
   insertKilouteQuestion,
   updateKilouteQuestion,
