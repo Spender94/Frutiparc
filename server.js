@@ -10971,6 +10971,15 @@ async function boot() {
       } catch (e) { console.error('[DB] Kiloute questions load error:', e.message); }
       try {
         QUIZZES = await db.loadQuizzes();
+        // Sème les quiz "prêts à l'emploi" absents (repérés par nom) — idempotent.
+        for (const dq of DEFAULT_QUIZZES) {
+          if (QUIZZES.some((q) => q.name === dq.name)) continue;
+          try {
+            const id = await db.insertQuiz(dq.name, dq.reward, dq.windowSec, dq.questions, QUIZZES.length);
+            QUIZZES.push({ id, name: dq.name, reward: dq.reward, windowSec: dq.windowSec, questions: dq.questions.map((x) => ({ q: x.q, a: x.a.slice(), r: x.r, image: x.image || null })) });
+            console.log(`[DB] Seeded default quiz "${dq.name}" (${dq.questions.length} questions)`);
+          } catch (e) { console.error('[DB] seed quiz error:', e.message); }
+        }
         if (QUIZZES.length) console.log(`[DB] Loaded ${QUIZZES.length} quiz(zes)`);
       } catch (e) { console.error('[DB] Quizzes load error:', e.message); }
       try {
@@ -12059,7 +12068,42 @@ let KILOUTE_QUESTIONS = KILOUTE_DEFAULT_QUESTIONS.map((q, i) => ({ id: i + 1, q:
 // Quizz (événements multi-questions, lancés à la demande) — gérés à part du
 // backlog quotidien ci-dessus. Chargés depuis la base au boot ; chaque entrée :
 // { id, name, reward, windowSec, questions: [{ q, a:[], r, image }] }.
-let QUIZZES = [];
+
+// Quiz "prêt à l'emploi" livré avec le serveur. Semé en base au boot s'il n'existe
+// pas déjà (repéré par son nom) — il apparaît donc tout seul dans l'admin, prêt à
+// lancer. Édite-le librement ensuite ; tant que tu gardes son nom, tes
+// modifications ne sont pas réécrasées au redémarrage.
+const DEFAULT_QUIZZES = [
+  {
+    name: 'Nostalgie années 2000',
+    reward: 60,
+    windowSec: 45,
+    questions: [
+      { q: "On démarre en douceur ! En quelle année l'euro est-il arrivé dans nos porte-monnaie (pièces et billets) ?", a: ['2002'], r: '2002' },
+      { q: "Quelle messagerie instantanée, avec ses « wizz » qui faisaient trembler l'écran, rythmait toutes nos soirées ?", a: ['msn', 'msn messenger', 'messenger', 'windows live messenger', 'live messenger'], r: 'MSN Messenger' },
+      { q: "Sur quelle plateforme de Skyrock teniez-vous votre blog, avec les fameux « lâche tes coms » ?", a: ['skyblog', 'skyblogs', 'sky blog'], r: 'Skyblog' },
+      { q: "Quel baladeur lancé par Apple en 2001, avec sa célèbre molette, a révolutionné la musique nomade ?", a: ['ipod', 'l ipod'], r: "L'iPod" },
+      { q: "Quelle console de Sony, sortie en 2000, est devenue la plus vendue de tous les temps ?", a: ['ps2', 'playstation 2', 'playstation2', 'la ps2', 'play station 2'], r: 'La PlayStation 2' },
+      { q: "Quelle émission a lancé la télé-réalité en France en 2001, en enfermant des candidats dans un loft ?", a: ['loft story', 'loft'], r: 'Loft Story' },
+      { q: "Quel télé-crochet de TF1 a révélé Jenifer, toute première gagnante en 2002 ?", a: ['star academy', 'star ac', 'starac', 'la star academy'], r: 'La Star Academy' },
+      { q: "Quel footballeur a marqué les esprits avec un coup de boule en finale de la Coupe du monde 2006 ?", a: ['zidane', 'zinedine zidane', 'zizou'], r: 'Zinedine Zidane' },
+      { q: "Quel jeu de simulation de vie, sorti en 2000, vous faisait bâtir des maisons et baragouiner le « simlish » ?", a: ['les sims', 'sims', 'the sims'], r: 'Les Sims' },
+      { q: "Quel site de partage de vidéos, fondé en 2005, a inventé le « buzz » et le « t'as vu cette vidéo ?! »", a: ['youtube', 'you tube'], r: 'YouTube' },
+      { q: "Quel réseau social créé en 2004 par Mark Zuckerberg a fini par détrôner Skyblog et MySpace ?", a: ['facebook', 'fb'], r: 'Facebook' },
+      { q: "Quel petit animal virtuel de poche fallait-il nourrir sans arrêt, sous peine de le voir... disparaître ?", a: ['tamagotchi', 'le tamagotchi'], r: 'Le Tamagotchi' },
+      { q: "Quel téléphone Nokia quasi incassable, livré avec le jeu Snake, trônait dans toutes les poches ?", a: ['3310', 'nokia 3310', 'le 3310'], r: 'Le Nokia 3310' },
+      { q: "Quelle chanteuse, idole des préados au début des années 2000, chantait « Près de moi » ?", a: ['lorie'], r: 'Lorie' },
+      { q: "Quelle émission d'aventure de TF1, présentée par Denis Brogniart, a débarqué en 2001 ?", a: ['koh lanta', 'kohlanta', 'koh-lanta'], r: 'Koh-Lanta' },
+      { q: "Pour finir : quelle trilogie de Peter Jackson, adaptée de Tolkien, a illuminé les cinémas de 2001 à 2003 ?", a: ['le seigneur des anneaux', 'seigneur des anneaux', 'lotr', 'lord of the rings'], r: 'Le Seigneur des Anneaux' },
+    ],
+  },
+];
+
+// En mode sans base, le quiz par défaut est chargé directement en mémoire (non
+// persistant) ; avec une base, il est chargé + semé au boot (voir plus bas).
+let QUIZZES = process.env.DATABASE_URL
+  ? []
+  : DEFAULT_QUIZZES.map((q, i) => ({ id: i + 1, name: q.name, reward: q.reward, windowSec: q.windowSec, questions: q.questions.map((x) => ({ q: x.q, a: x.a.slice(), r: x.r, image: x.image || null })) }));
 
 function normalizeAnswer(s) {
   return String(s == null ? '' : s)
