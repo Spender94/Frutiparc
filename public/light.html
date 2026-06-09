@@ -278,6 +278,14 @@
   .msg.admin { color: #b23b2e; }
   .msg .body { color: #335511; }
   .msg .body.emote { font-style: italic; color: #4f7b1f; }
+  /* Quiz / "/image" pictures: shown INLINE in the chat body on mobile (the
+     desktop SWF opens them in a separate window instead). */
+  .msg.img-msg .img-wrap { margin-top: 4px; }
+  .msg.img-msg .chat-img {
+    display: block; max-width: 100%; height: auto;
+    border-radius: 8px; border: 1px solid rgba(44,74,15,0.25); background: #fff;
+  }
+  .msg.img-msg .img-fail { font-size: 12px; color: #6b8a3f; font-style: italic; }
 
   .compose {
     display: flex; align-items: center; gap: 7px; padding: 8px; background: #fff;
@@ -1011,9 +1019,22 @@
         var ty = attr(xml, "t") || "m";
         var h = attr(xml, "h");
         var body = bodyOf(xml);
-        // Image/gift frames carry a child node; show a placeholder rather than raw XML.
-        if (ty === "i" || ty === "g" || /^</.test(body.trim())) {
-          addMessage({ from: from, time: h, body: ty === "i" ? "[image]" : "[cadeau]", kind: "system" });
+        // Image frames (the /image command + Kiloute79's image quizzes) carry an
+        // <i w h u="url">title</i> child. On mobile we render the picture INLINE
+        // in the chat body — the desktop SWF opens it in a separate window.
+        if (ty === "i") {
+          var iu = xmlUnescape(attr(body, "u"));
+          var ititle = xmlUnescape(bodyOf(body));
+          if (/^(\/|https?:\/\/)/.test(iu)) {
+            addImageMessage({ from: from, time: h, url: iu, w: parseInt(attr(body, "w"), 10) || 0, title: ititle });
+          } else {
+            addMessage({ from: from, time: h, body: "[image]", kind: "system" });
+          }
+          break;
+        }
+        // Other child-node frames (gifts…) — placeholder rather than raw XML.
+        if (ty === "g" || /^</.test(body.trim())) {
+          addMessage({ from: from, time: h, body: "[cadeau]", kind: "system" });
           break;
         }
         // Emotes travel as ordinary text (e.g. "mdr"); detectEmote below turns a
@@ -1121,6 +1142,32 @@
     if (stick) scrollDown();
   }
   function systemLine(text) { addMessage({ kind: "system", body: text }); }
+
+  // Render an image message inline: "[hh:mm:ss] pseudo : <title>" then the
+  // picture below it. Used for t="i" frames (/image + Kiloute79 image quizzes).
+  function addImageMessage(o) {
+    var stick = nearBottom();
+    var row = el("div", "msg img-msg");
+    var t = cleanTime(o.time);
+    if (t) { var ts = el("span", "time"); ts.textContent = t; row.appendChild(ts); }
+    var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
+    fr.textContent = (o.from || "?") + " : ";
+    row.appendChild(fr);
+    if (o.title) { var cap = el("span", "body"); cap.textContent = o.title; row.appendChild(cap); }
+    var wrap = el("div", "img-wrap");
+    var img = el("img", "chat-img");
+    img.alt = o.title || "image";
+    img.loading = "lazy";
+    if (o.w) img.style.maxWidth = Math.min(o.w, 320) + "px";
+    img.onerror = function () { var f = el("span", "img-fail"); f.textContent = "[image indisponible]"; wrap.innerHTML = ""; wrap.appendChild(f); };
+    img.addEventListener("load", function () { if (stick) scrollDown(); });
+    img.src = o.url;
+    wrap.appendChild(img);
+    row.appendChild(wrap);
+    msgEl.appendChild(row);
+    while (msgEl.childNodes.length > 400) msgEl.removeChild(msgEl.firstChild);
+    if (stick) scrollDown();
+  }
 
   // ── Compose ──
   $("#compose-form").addEventListener("submit", function (ev) {

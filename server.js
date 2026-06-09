@@ -2869,6 +2869,29 @@ function registerCustomWallpaper(wp) {
   CUSTOM_WALLPAPER_IDS.add(wp.id);
 }
 
+// ── Quiz images (Kiloute79 "image" quizzes, uploaded from the admin) ──
+// Same idea as custom wallpapers: bytes live in the DB, served same-origin by
+// /quiz-img/:file so BOTH the desktop SWF (Ruffle opens a window) and the
+// Light/mobile client (renders inline) can load them. QUIZ_IMAGES holds the
+// resolved metadata; quizImageCache avoids a DB round-trip on each fetch.
+const QUIZ_IMAGES = {};            // id -> { id, title, ext, mime, w, h }
+const quizImageCache = new Map();  // id -> { mime, buf }
+function registerQuizImage(meta) {
+  QUIZ_IMAGES[meta.id] = {
+    id: meta.id, title: meta.title || '', ext: meta.ext || 'jpg',
+    mime: meta.mime || 'image/jpeg', w: meta.w || 0, h: meta.h || 0,
+  };
+}
+// Resolve a quiz-image id to the fields Kiloute broadcasts in a t="i" frame, or
+// null if unknown. URL is same-origin (leading slash) so Ruffle loads it without
+// a crossdomain.xml and the browser <img> needs no CORS.
+function resolveQuizImage(id) {
+  if (!id) return null;
+  const m = QUIZ_IMAGES[id];
+  if (!m) return null;
+  return { url: `/quiz-img/${m.id}.${m.ext}`, w: m.w, h: m.h, title: m.title || '' };
+}
+
 // Accessories = last 9 chars of a 24-char bouille string.
 // The first 15 chars are filled from the user's current bouille at serve time.
 const DEFAULT_ACCESSORIES = [
@@ -5373,6 +5396,31 @@ app.get('/wal-custom/:file', async (req, res) => {
   }
 });
 
+// Sert une image de quiz (Kiloute79) depuis la base. :file = "<id>.<ext>".
+// Same-origin (et CORS ouvert) : chargée par Ruffle dans la fenêtre du bureau
+// comme par le <img> inline du client Light/mobile.
+app.get('/quiz-img/:file', async (req, res) => {
+  const id = String(req.params.file || '').replace(/\.[a-z0-9]+$/i, '');
+  if (!isValidWallpaperId(id)) return res.status(400).type('text/plain').send('bad id');
+  try {
+    let cached = quizImageCache.get(id);
+    if (!cached) {
+      if (!process.env.DATABASE_URL) return res.status(404).type('text/plain').send('not found');
+      const img = await db.getQuizImage(id);
+      if (!img) return res.status(404).type('text/plain').send('not found');
+      cached = { mime: img.mime, buf: Buffer.isBuffer(img.data) ? img.data : Buffer.from(img.data) };
+      quizImageCache.set(id, cached);
+    }
+    res.type(cached.mime);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(cached.buf);
+  } catch (e) {
+    console.error('[QUIZIMG] serve error:', e.message);
+    res.status(500).type('text/plain').send('error');
+  }
+});
+
 // Liste tous les fonds (intégrés + personnalisés) avec leur éventuel pack boutique.
 app.get('/api/admin/wallpapers', adminAuth, (req, res) => {
   const packByWp = {};
@@ -5474,13 +5522,15 @@ app.post('/api/admin/kiloute/questions', adminAuth, async (req, res) => {
   const question = String(b.question || '').trim();
   const answers = parseKilouteAnswers(b.answers);
   const reveal = String(b.reveal || '').trim() || answers[0] || '';
+  // An image is optional; only accept an id that maps to an uploaded quiz image.
+  const image = (b.image && QUIZ_IMAGES[String(b.image)]) ? String(b.image) : null;
   if (!question || answers.length === 0) return res.status(400).json({ error: 'Question et au moins une réponse requises.' });
   let id = KILOUTE_QUESTIONS.reduce((m, q) => Math.max(m, q.id || 0), 0) + 1;
   if (process.env.DATABASE_URL) {
-    try { id = await db.insertKilouteQuestion(question, answers, reveal, KILOUTE_QUESTIONS.length); }
+    try { id = await db.insertKilouteQuestion(question, answers, reveal, KILOUTE_QUESTIONS.length, image); }
     catch (e) { console.error('[KILOUTE] db insert:', e.message); }
   }
-  const q = { id, q: question, a: answers, r: reveal };
+  const q = { id, q: question, a: answers, r: reveal, image };
   KILOUTE_QUESTIONS.push(q);
   console.log(`[ADMIN] Kiloute question #${id} ajoutée`);
   res.json({ ok: true, question: q });
@@ -5494,8 +5544,9 @@ app.patch('/api/admin/kiloute/questions/:id', adminAuth, async (req, res) => {
   if (b.question !== undefined) q.q = String(b.question).trim();
   if (b.answers !== undefined) q.a = parseKilouteAnswers(b.answers);
   if (b.reveal !== undefined) q.r = String(b.reveal).trim();
+  if (b.image !== undefined) q.image = (b.image && QUIZ_IMAGES[String(b.image)]) ? String(b.image) : null;
   if (process.env.DATABASE_URL) {
-    try { await db.updateKilouteQuestion(id, q.q, q.a, q.r); }
+    try { await db.updateKilouteQuestion(id, q.q, q.a, q.r, q.image || null); }
     catch (e) { console.error('[KILOUTE] db update:', e.message); }
   }
   console.log(`[ADMIN] Kiloute question #${id} modifiée`);
@@ -5513,6 +5564,66 @@ app.delete('/api/admin/kiloute/questions/:id', adminAuth, async (req, res) => {
   }
   console.log(`[ADMIN] Kiloute question #${id} supprimée`);
   res.json({ ok: true });
+});
+
+// ── Images de quiz (upload + service same-origin pour les quizz "image") ──
+const QUIZ_IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+
+app.get('/api/admin/kiloute/images', adminAuth, (req, res) => {
+  const images = Object.values(QUIZ_IMAGES).map((m) => ({
+    id: m.id, title: m.title, ext: m.ext, w: m.w, h: m.h, url: `/quiz-img/${m.id}.${m.ext}`,
+  }));
+  res.json({ ok: true, images });
+});
+
+// Upload d'une image de quiz. Image en corps brut ; métadonnées en query :
+//   ?id=&title=
+app.post('/api/admin/kiloute/images',
+  adminAuth,
+  express.raw({ type: ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/octet-stream'], limit: QUIZ_IMAGE_UPLOAD_MAX_BYTES }),
+  async (req, res) => {
+    if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: 'no_db', message: 'Base de données requise pour les images de quiz.' });
+    const id = String(req.query.id || '').trim().toLowerCase();
+    const title = String(req.query.title || '').trim();
+    if (!isValidWallpaperId(id)) return res.status(400).json({ ok: false, error: 'bad_id', message: 'Id invalide (minuscules, chiffres, - et _, 2 à 31 caractères).' });
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length < 64) return res.status(400).json({ ok: false, error: 'empty', message: 'Image vide ou illisible.' });
+    const kind = sniffForumImage(body);
+    if (!kind) return res.status(415).json({ ok: false, error: 'unsupported', message: 'Format non supporté (PNG, JPEG, GIF, WEBP).' });
+    const dim = fitQuizDisplaySize(imageDimensions(body, kind.ext));
+    try {
+      await db.upsertQuizImage({ id, title, mime: kind.mime, ext: kind.ext, w: dim.w, h: dim.h, data: body });
+      registerQuizImage({ id, title, mime: kind.mime, ext: kind.ext, w: dim.w, h: dim.h });
+      quizImageCache.set(id, { mime: kind.mime, buf: body });
+      console.log(`[ADMIN] Image de quiz "${id}" uploadée (${kind.ext}, ${dim.w}x${dim.h}, ${body.length} B)`);
+      res.json({ ok: true, image: { id, title, ext: kind.ext, w: dim.w, h: dim.h, url: `/quiz-img/${id}.${kind.ext}` } });
+    } catch (e) {
+      console.error('[QUIZIMG] upload error:', e.message);
+      res.status(500).json({ ok: false, error: 'store_failed', message: e.message });
+    }
+  }
+);
+
+app.delete('/api/admin/kiloute/images/:id', adminAuth, async (req, res) => {
+  const id = String(req.params.id || '').toLowerCase();
+  if (!QUIZ_IMAGES[id]) return res.status(404).json({ ok: false, error: 'not_found', message: 'Image introuvable.' });
+  try {
+    delete QUIZ_IMAGES[id];
+    quizImageCache.delete(id);
+    if (process.env.DATABASE_URL) await db.deleteQuizImage(id);
+    // Détache l'image des questions qui l'utilisaient (mémoire + base).
+    for (const q of KILOUTE_QUESTIONS) {
+      if (q.image === id) {
+        q.image = null;
+        if (process.env.DATABASE_URL) db.updateKilouteQuestion(q.id, q.q, q.a, q.r, null).catch((e) => console.error('[QUIZIMG] detach:', e.message));
+      }
+    }
+    console.log(`[ADMIN] Image de quiz "${id}" supprimée`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[QUIZIMG] delete error:', e.message);
+    res.status(500).json({ ok: false, error: 'delete_failed', message: e.message });
+  }
 });
 
 // Lancer la question maintenant (test hors 18h).
@@ -9913,6 +10024,59 @@ function sniffForumImage(buf) {
   return null;
 }
 
+// Best-effort intrinsic pixel dimensions for the sniffed image formats. Returns
+// { w, h } or null (then a sensible default is used). Lets a quiz image keep its
+// aspect ratio when shown in the SWF window / Light client without any decoder.
+function imageDimensions(buf, ext) {
+  try {
+    if (!Buffer.isBuffer(buf) || buf.length < 24) return null;
+    if (ext === 'png') return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+    if (ext === 'gif') return { w: buf.readUInt16LE(6), h: buf.readUInt16LE(8) };
+    if (ext === 'jpg') {
+      let o = 2;
+      while (o + 9 < buf.length) {
+        if (buf[o] !== 0xff) { o++; continue; }
+        const marker = buf[o + 1];
+        // SOF0..SOF15 carry the frame size, except DHT(C4)/JPG(C8)/DAC(CC).
+        if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+          return { h: buf.readUInt16BE(o + 5), w: buf.readUInt16BE(o + 7) };
+        }
+        const len = buf.readUInt16BE(o + 2);
+        if (len < 2) break;
+        o += 2 + len;
+      }
+      return null;
+    }
+    if (ext === 'webp') {
+      const fourcc = buf.toString('ascii', 12, 16);
+      if (fourcc === 'VP8 ') return { w: buf.readUInt16LE(26) & 0x3fff, h: buf.readUInt16LE(28) & 0x3fff };
+      if (fourcc === 'VP8L') {
+        const b0 = buf[21], b1 = buf[22], b2 = buf[23], b3 = buf[24];
+        return { w: 1 + (((b1 & 0x3f) << 8) | b0), h: 1 + (((b3 & 0x0f) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6)) };
+      }
+      if (fourcc === 'VP8X') {
+        return { w: 1 + (buf[24] | (buf[25] << 8) | (buf[26] << 16)), h: 1 + (buf[27] | (buf[28] << 8) | (buf[29] << 16)) };
+      }
+      return null;
+    }
+  } catch (e) { /* malformed header → default size */ }
+  return null;
+}
+
+// Scale intrinsic dimensions down to a chat-friendly display size (longest side
+// ≤ 400, bounded to [10, 600] like the /image command). Falls back to 320×240.
+function fitQuizDisplaySize(dim) {
+  const MAX = 400, MIN = 10;
+  const w0 = (dim && Number(dim.w)) || 0;
+  const h0 = (dim && Number(dim.h)) || 0;
+  if (w0 <= 0 || h0 <= 0) return { w: 320, h: 240 };
+  const scale = Math.min(1, MAX / Math.max(w0, h0));
+  return {
+    w: Math.max(MIN, Math.min(600, Math.round(w0 * scale))),
+    h: Math.max(MIN, Math.min(600, Math.round(h0 * scale))),
+  };
+}
+
 app.post('/api/forum/upload-image',
   express.raw({ type: ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/octet-stream'], limit: FORUM_UPLOAD_MAX_BYTES }),
   (req, res) => {
@@ -10591,6 +10755,11 @@ async function boot() {
         for (const wp of wps) registerCustomWallpaper(wp);
         if (wps.length) console.log(`[DB] Loaded ${wps.length} custom wallpaper(s)`);
       } catch (e) { console.error('[DB] Wallpapers load error:', e.message); }
+      try {
+        const qimgs = await db.loadQuizImages();
+        for (const im of qimgs) registerQuizImage(im);
+        if (qimgs.length) console.log(`[DB] Loaded ${qimgs.length} quiz image(s)`);
+      } catch (e) { console.error('[DB] Quiz images load error:', e.message); }
       try {
         const dbq = await db.loadKilouteQuestions();
         if (dbq.length === 0) {
@@ -11729,6 +11898,21 @@ function kilouteAwardKikooz(username, amount) {
 // All of Kiloute's lines go out in the animator/blue style (t="c").
 function kilouteSay(channelName, text) { npcSay('kiloute79', channelName, text, 'c'); }
 
+// Broadcast an IMAGE frame (t="i") AS Kiloute79 — same wire format as the human
+// /image command, but server-initiated (no animator gate to clear). The desktop
+// SWF opens it in a window; the Light/mobile client renders it inline in the
+// chat body. `img` = { url, w, h, title } (see resolveQuizImage).
+function kilouteSayImage(channelName, img) {
+  if (!img || !img.url) return;
+  const cw = Math.min(Math.max(parseInt(img.w, 10) || 320, 10), 600);
+  const ch = Math.min(Math.max(parseInt(img.h, 10) || 240, 10), 600);
+  const timeAttrs = buildChatTimeAttrs();
+  const childXml = `<i w="${cw}" h="${ch}" u="${escapeXml(img.url)}">${escapeXml(img.title || '')}</i>`;
+  broadcastToChannel(channelName,
+    `<${CMD.send} u="${escapeXml(getDisplayName('kiloute79'))}" t="i" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${childXml}</${CMD.send}>`
+  );
+}
+
 function kilouteLeave() {
   if (kilouteQuiz && kilouteQuiz.timeoutId) clearTimeout(kilouteQuiz.timeoutId);
   kilouteQuiz = null;
@@ -11773,23 +11957,30 @@ function kilouteRun() {
   npcJoin('kiloute79', channelName);
   console.log(`[KILOUTE] Question à 60 kikooz dans #${channelName}: ${q.q}`);
   kilouteQuiz = { channel: channelName, answers: q.a, display: q.r, answered: false, timeoutId: null };
+  const qImage = resolveQuizImage(q.image);
   npcSaySequence('kiloute79', channelName, [
     "Bonsoiiiir les Frutiz ! Kiloute79 est dans la place !",
     "C'est l'heure de votre rendez-vous préféré : la QUESTION À 60 KIKOOZ !",
     "Le premier qui donne la bonne réponse rafle les 60 kikooz ! Vous êtes prêts ?!",
     "Alors attention, voici la question :",
-    q.q,
   ], () => {
     if (!kilouteQuiz || kilouteQuiz.answered) return;
-    // 3-minute window to answer; otherwise Kiloute reveals it and leaves.
-    kilouteQuiz.timeoutId = setTimeout(() => {
+    // Pose la question (précédée de son image le cas échéant) puis ouvre la
+    // fenêtre de 3 minutes ; sans bonne réponse, Kiloute révèle et s'en va.
+    const askAndArm = () => {
       if (!kilouteQuiz || kilouteQuiz.answered) return;
-      npcSaySequence('kiloute79', channelName, [
-        "Oh ? Personne ? Vraiment ?! Quelle déception !",
-        `La bonne réponse était ${q.r}.`,
-        "À demain pour une nouvelle Question à 60 kikooz, ne manquez pas ce rendez-vous !",
-      ], () => setTimeout(kilouteLeave, 3000), 'c', 5000);
-    }, 3 * 60 * 1000);
+      kilouteSay(channelName, q.q);
+      kilouteQuiz.timeoutId = setTimeout(() => {
+        if (!kilouteQuiz || kilouteQuiz.answered) return;
+        npcSaySequence('kiloute79', channelName, [
+          "Oh ? Personne ? Vraiment ?! Quelle déception !",
+          `La bonne réponse était ${q.r}.`,
+          "À demain pour une nouvelle Question à 60 kikooz, ne manquez pas ce rendez-vous !",
+        ], () => setTimeout(kilouteLeave, 3000), 'c', 5000);
+      }, 3 * 60 * 1000);
+    };
+    if (qImage) { kilouteSayImage(channelName, qImage); setTimeout(askAndArm, 2000); }
+    else askAndArm();
   }, 'c', 5000);
 }
 
@@ -11873,7 +12064,7 @@ function kilouteStartSession(opts) {
     questions = KILOUTE_QUESTIONS.slice(); // tout le backlog, dans l'ordre
   }
   // Snapshot des questions (l'édition du backlog en cours de quiz n'impacte pas la session).
-  questions = questions.map((q) => ({ q: q.q, a: q.a.slice(), r: q.r }));
+  questions = questions.map((q) => ({ q: q.q, a: q.a.slice(), r: q.r, image: q.image || null }));
   if (!questions.length) return { ok: false, error: 'Aucune question sélectionnée (backlog vide ?).' };
 
   const channel = (opts.channel && channels[opts.channel]) ? opts.channel : mostPopulatedChannel();
@@ -11914,15 +12105,23 @@ function kilouteSessionAsk(s) {
   lead.push(kpick(KILOUTE_PREAMBLE)(num, total, s.reward));
   npcSaySequence('kiloute79', s.channel, lead, () => {
     if (kilouteSession !== s) return;
-    kilouteSay(s.channel, q.q);
-    s.acceptingAnswers = true;
-    // Fenêtre de réponse : sans bonne réponse, on révèle et on enchaîne.
-    s.timeoutId = setTimeout(() => {
-      if (kilouteSession !== s || !s.acceptingAnswers) return;
-      s.acceptingAnswers = false;
-      kilouteSay(s.channel, kpick(KILOUTE_TIMEOUT)(q.r));
-      setTimeout(() => kilouteSessionAdvance(s), 3500);
-    }, s.windowMs);
+    const qImage = resolveQuizImage(q.image);
+    const ask = () => {
+      if (kilouteSession !== s) return;
+      kilouteSay(s.channel, q.q);
+      s.acceptingAnswers = true;
+      // Fenêtre de réponse : sans bonne réponse, on révèle et on enchaîne.
+      s.timeoutId = setTimeout(() => {
+        if (kilouteSession !== s || !s.acceptingAnswers) return;
+        s.acceptingAnswers = false;
+        kilouteSay(s.channel, kpick(KILOUTE_TIMEOUT)(q.r));
+        setTimeout(() => kilouteSessionAdvance(s), 3500);
+      }, s.windowMs);
+    };
+    // L'image (quiz "image") s'affiche juste avant la question : fenêtre sur le
+    // bureau (SWF), inline dans le chat en mode Light.
+    if (qImage) { kilouteSayImage(s.channel, qImage); setTimeout(ask, 2000); }
+    else ask();
   }, 'c', 3000);
 }
 

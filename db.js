@@ -277,6 +277,25 @@ async function initSchema() {
         sort_order  INTEGER DEFAULT 0,
         created_at  TIMESTAMPTZ DEFAULT now()
       );
+      -- Optional image attached to a question (id referencing quiz_images) — for
+      -- the "image" quizzes animated by Kiloute79.
+      ALTER TABLE kiloute_questions ADD COLUMN IF NOT EXISTS image TEXT DEFAULT NULL;
+
+      -- Quiz images uploaded from the admin panel. Like custom wallpapers, the
+      -- image BYTES live in the DB (not on disk) so they survive an ephemeral-
+      -- filesystem redeploy. Served same-origin by the /quiz-img/:file route, so
+      -- Ruffle can load them in the desktop SWF window AND the Light/mobile
+      -- client can render them inline in the chat body.
+      CREATE TABLE IF NOT EXISTS quiz_images (
+        id          TEXT PRIMARY KEY,
+        title       TEXT NOT NULL DEFAULT '',
+        mime        TEXT NOT NULL,
+        ext         TEXT NOT NULL DEFAULT 'jpg',
+        w           INTEGER DEFAULT 0,
+        h           INTEGER DEFAULT 0,
+        data        BYTEA NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
 
       -- Forum tables
       CREATE TABLE IF NOT EXISTS forum_categories (
@@ -1120,6 +1139,28 @@ async function upsertWallpaper(wp) {
     [wp.id, wp.name, wp.color, wp.mime, wp.ext, wp.data]
   );
 }
+// ── Quiz images (Kiloute79 "image" quizzes, uploaded from the admin) ──
+// Metadata only (no bytes) — feeds the in-memory quiz-image registry at boot.
+async function loadQuizImages() {
+  const { rows } = await pool.query('SELECT id, title, ext, mime, w, h FROM quiz_images ORDER BY created_at');
+  return rows.map((r) => ({ id: r.id, title: r.title || '', ext: r.ext || 'jpg', mime: r.mime, w: r.w || 0, h: r.h || 0 }));
+}
+async function getQuizImage(id) {
+  const { rows } = await pool.query('SELECT mime, data FROM quiz_images WHERE id = $1', [id]);
+  return rows[0] ? { mime: rows[0].mime, data: rows[0].data } : null;
+}
+async function upsertQuizImage(img) {
+  await pool.query(
+    `INSERT INTO quiz_images (id, title, mime, ext, w, h, data)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (id) DO UPDATE SET title = $2, mime = $3, ext = $4, w = $5, h = $6, data = $7`,
+    [img.id, img.title || '', img.mime, img.ext, img.w || 0, img.h || 0, img.data]
+  );
+}
+async function deleteQuizImage(id) {
+  await pool.query('DELETE FROM quiz_images WHERE id = $1', [id]);
+}
+
 async function deleteWallpaper(id) {
   await pool.query('DELETE FROM wallpapers WHERE id = $1', [id]);
 }
@@ -1131,19 +1172,19 @@ function parseAnswersField(s) {
 }
 async function loadKilouteQuestions() {
   const { rows } = await pool.query('SELECT * FROM kiloute_questions ORDER BY sort_order, id');
-  return rows.map((r) => ({ id: r.id, q: r.question, a: parseAnswersField(r.answers), r: r.reveal || '' }));
+  return rows.map((r) => ({ id: r.id, q: r.question, a: parseAnswersField(r.answers), r: r.reveal || '', image: r.image || null }));
 }
-async function insertKilouteQuestion(question, answers, reveal, sortOrder) {
+async function insertKilouteQuestion(question, answers, reveal, sortOrder, image) {
   const { rows } = await pool.query(
-    'INSERT INTO kiloute_questions (question, answers, reveal, sort_order) VALUES ($1, $2, $3, $4) RETURNING id',
-    [question, JSON.stringify(answers || []), reveal || '', sortOrder || 0]
+    'INSERT INTO kiloute_questions (question, answers, reveal, sort_order, image) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+    [question, JSON.stringify(answers || []), reveal || '', sortOrder || 0, image || null]
   );
   return rows[0].id;
 }
-async function updateKilouteQuestion(id, question, answers, reveal) {
+async function updateKilouteQuestion(id, question, answers, reveal, image) {
   await pool.query(
-    'UPDATE kiloute_questions SET question = $2, answers = $3, reveal = $4 WHERE id = $1',
-    [id, question, JSON.stringify(answers || []), reveal || '']
+    'UPDATE kiloute_questions SET question = $2, answers = $3, reveal = $4, image = $5 WHERE id = $1',
+    [id, question, JSON.stringify(answers || []), reveal || '', image || null]
   );
 }
 async function deleteKilouteQuestion(id) {
@@ -1855,6 +1896,10 @@ module.exports = {
   getWallpaperImage,
   upsertWallpaper,
   deleteWallpaper,
+  loadQuizImages,
+  getQuizImage,
+  upsertQuizImage,
+  deleteQuizImage,
   loadKilouteQuestions,
   insertKilouteQuestion,
   updateKilouteQuestion,
