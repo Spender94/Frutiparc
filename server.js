@@ -5626,13 +5626,15 @@ app.delete('/api/admin/kiloute/images/:id', adminAuth, async (req, res) => {
   }
 });
 
-// Lancer la question maintenant (test hors 18h).
+// Lancer la question maintenant (test hors 18h). body { channel? } : salon
+// imposé (ex. un salon privé / où l'on est seul) sinon le plus fréquenté.
 app.post('/api/admin/kiloute/run', adminAuth, (req, res) => {
   if (kilouteQuiz) return res.status(409).json({ error: 'Une question est déjà en cours.' });
   if (kilouteSession) return res.status(409).json({ error: 'Un quiz event est en cours.' });
-  const ch = mostPopulatedChannel();
-  if (!ch) return res.status(409).json({ error: 'Aucun salon fréquenté actuellement.' });
-  kilouteRun();
+  const requested = String((req.body && req.body.channel) || '').trim();
+  const ch = (requested && channels[requested]) ? requested : mostPopulatedChannel();
+  if (!ch) return res.status(409).json({ error: 'Aucun salon disponible (choisis un salon, ou attends qu\'il y ait du monde).' });
+  kilouteRun(ch);
   res.json({ ok: true, channel: ch });
 });
 
@@ -6109,10 +6111,15 @@ function genEventId() {
 // ── Admin: Channels ──
 
 app.get('/api/admin/channels', adminAuth, (req, res) => {
+  const includeAll = req.query.all === '1' || req.query.all === 'true';
   const list = [];
   for (const [name, ch] of Object.entries(channels)) {
-    if (ch.private) continue;
-    list.push({ name, label: ch.desc || '', topic: ch.topic || '', users: ch.users.size });
+    // Par défaut : salons PUBLICS uniquement (comportement historique). Avec
+    // ?all=1 (sélecteurs Kiloute), on ajoute aussi les salons créés par les
+    // joueurs (privés) — utile pour lancer un quiz de test dans un salon où l'on
+    // est seul — mais jamais les MP 1-à-1 (pm_/pm2_).
+    if (ch.private && !(includeAll && !isPrivateChannel(name))) continue;
+    list.push({ name, label: ch.desc || '', topic: ch.topic || '', users: ch.users.size, private: !!ch.private, locked: !!ch.pass });
   }
   res.json({ ok: true, channels: list });
 });
@@ -11948,9 +11955,10 @@ function kilouteCheckAnswer(channelName, username, rawText) {
   }, 2500);
 }
 
-function kilouteRun() {
+function kilouteRun(forcedChannel) {
   if (kilouteQuiz || kilouteSession) return; // already running (single question or quiz event)
-  const channelName = mostPopulatedChannel();
+  // Salon imposé (test admin dans un salon précis) sinon le plus fréquenté (planif 18h).
+  const channelName = (forcedChannel && channels[forcedChannel]) ? forcedChannel : mostPopulatedChannel();
   if (!channelName) { console.log('[KILOUTE] 18h — personne en ligne, on passe ce soir.'); return; }
   const q = kilouteQuestionOfTheDay();
   if (!q) { console.log('[KILOUTE] backlog de questions vide — on passe.'); return; }

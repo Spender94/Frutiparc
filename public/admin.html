@@ -455,12 +455,16 @@
 <div class="content" id="tab-kiloute" style="display:none">
   <div class="toolbar">
     <button class="btn" onclick="loadKiloute()">Rafraîchir</button>
+    <label style="font-size:12px">Salon :
+      <select id="krun-channel" style="padding:4px;min-width:220px"></select>
+    </label>
     <button class="btn-success" onclick="kilouteRunNow()">▶ Lancer la question maintenant</button>
     <span id="kiloute-count"></span>
   </div>
   <p style="font-size:12px;color:#666;max-width:760px">
     Kiloute79 anime la « Question à 60 kikooz » chaque soir à 18h (heure de Paris) dans le salon le plus
     fréquenté. Réponses acceptées séparées par des virgules ; la détection ignore accents, casse et ponctuation.
+    Pour <b>tester</b>, choisis un salon ci-dessus (y compris un 🔒 salon privé où tu es seul) avant de lancer.
   </p>
 
   <h3 style="margin:18px 0 6px">Quiz en direct (événement animé par Kiloute79)</h3>
@@ -1070,13 +1074,19 @@ function kilouteToggleAll(cb) {
 }
 async function kilouteLoadSalons() {
   try {
-    const r = await fetch('/api/admin/channels', { headers: hdr() });
+    // ?all=1 : inclut les salons privés créés par les joueurs (pour tester un
+    // quiz dans un salon où l'on est seul), en plus des salons publics.
+    const r = await fetch('/api/admin/channels?all=1', { headers: hdr() });
     const d = await r.json();
-    const sel = $('#kqz-channel'); if (!sel) return;
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">Salon le plus fréquenté</option>' +
-      (d.channels || []).map(c => `<option value="${esc(c.name)}">${esc(c.label || c.name)} — ${c.users} en ligne</option>`).join('');
-    if (cur) sel.value = cur;
+    const html = '<option value="">Salon le plus fréquenté (auto)</option>' +
+      (d.channels || []).map(c => {
+        const label = (c.private ? '🔒 ' : '') + (c.label || c.topic || c.name);
+        return `<option value="${esc(c.name)}">${esc(label)} — ${c.users} en ligne</option>`;
+      }).join('');
+    ['kqz-channel', 'krun-channel'].forEach(id => {
+      const sel = document.getElementById(id); if (!sel) return;
+      const cur = sel.value; sel.innerHTML = html; if (cur) sel.value = cur;
+    });
   } catch (e) {}
 }
 async function kilouteStartQuiz() {
@@ -1148,8 +1158,11 @@ async function deleteKilouteQuestion(id) {
   toast('Question supprimée'); loadKiloute();
 }
 async function kilouteRunNow() {
-  if (!confirm('Lancer la Question à 60 kikooz maintenant, dans le salon le plus fréquenté ?')) return;
-  const r = await fetch('/api/admin/kiloute/run', { method: 'POST', headers: hdr() });
+  const sel = document.getElementById('krun-channel');
+  const channel = sel ? sel.value : '';
+  const where = channel ? ('#' + channel) : 'le salon le plus fréquenté';
+  if (!confirm('Lancer la Question à 60 kikooz maintenant, dans ' + where + ' ?')) return;
+  const r = await fetch('/api/admin/kiloute/run', { method: 'POST', headers: hdr(), body: JSON.stringify({ channel }) });
   const d = await r.json();
   if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
   toast('Question lancée dans #' + d.channel);
