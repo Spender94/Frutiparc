@@ -431,6 +431,11 @@
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
     border: 0; display: block; background: #ADE76B;
   }
+  #grapiz-panel { padding: 0; }
+  #grapiz-frame {
+    flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
+    border: 0; display: block; background: #FFFEE2;
+  }
 
   .hidden { display: none !important; }
   .banner {
@@ -506,6 +511,9 @@
     <button class="menu-item" data-tab="forum">
       <img class="menu-ico" src="/fb/icone_forum.png" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"> Forum
     </button>
+    <button class="menu-item" data-tab="grapiz">
+      <img class="menu-ico" src="/fb/icone_grapiz.png" alt="" onerror="this.replaceWith(document.createTextNode('🎮'))"> Grapiz
+    </button>
     <button class="menu-item" id="bouille-btn">
       <img class="menu-ico" src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"> Mon inventaire
     </button>
@@ -550,6 +558,13 @@
        la page parente reste vivante. -->
   <section class="panel" id="forum-panel">
     <iframe id="forum-frame" title="Forum Frutiparc" referrerpolicy="no-referrer"></iframe>
+  </section>
+
+  <!-- Grapiz — jeu natif chargé en plein écran dans une iframe. On reste sur
+       /light (la socket de chat parente n'est jamais coupée) ; Grapiz ouvre sa
+       PROPRE socket via ?sid=, comme la popup desktop. -->
+  <section class="panel" id="grapiz-panel">
+    <iframe id="grapiz-frame" title="Grapiz" referrerpolicy="no-referrer"></iframe>
   </section>
 
   <!-- Bouille / accessory picker (bottom sheet) -->
@@ -838,6 +853,7 @@
       });
       $("#chat-panel").classList.toggle("active", tab === "chat");
       $("#forum-panel").classList.toggle("active", tab === "forum");
+      $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
       // Charge le forum dans l'iframe à la 1re ouverture. On reste sur /light,
       // donc la socket de chat de la page parente n'est jamais coupée pendant
       // qu'on consulte le forum.
@@ -845,6 +861,14 @@
         var fr = $("#forum-frame");
         if (fr && !fr.getAttribute("src") && state.sid) {
           fr.setAttribute("src", "/fb/?sid=" + encodeURIComponent(state.sid) + "&from=light");
+        }
+      }
+      // Idem pour Grapiz : chargé à la 1re ouverture, gardé en mémoire ensuite
+      // (on n'abandonne pas une partie en revenant au chat). Grapiz lit le sid.
+      if (tab === "grapiz") {
+        var gf = $("#grapiz-frame");
+        if (gf && !gf.getAttribute("src") && state.sid) {
+          gf.setAttribute("src", "/grapiz/?sid=" + encodeURIComponent(state.sid));
         }
       }
       openMenu(false);

@@ -168,6 +168,43 @@
   .g-input input { flex:0 0 auto; width:96%; border:0; border-radius:18px; padding:8px 14px; font:inherit; color:#6a4a10;
     background:linear-gradient(#F5BD19,#F8CC0D); box-shadow:inset 0 1px 2px #0000001f, 0 1px 0 #ffffff66; }
   .g-input input::placeholder { color:#a07c22; }
+
+  /* ─── Onglets du lobby (mobile uniquement) ─── */
+  .lobby-tabs { display:none; gap:4px; margin-bottom:6px; }
+  .lobby-tabs button { flex:1; font:inherit; font-weight:bold; border:0; border-radius:0; padding:9px 4px; background:#e7e7e7; color:#7a7a7a; cursor:pointer; }
+  .lobby-tabs button.on { background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; }
+
+  /* ───────────────────────────────────────────────────────────────────────
+     MOBILE (≤760px, version Light) : modes empilés, lobby en ONGLETS (un seul
+     panneau plein écran à la fois), écran de jeu EMPILÉ (cartes / plateau /
+     chat) avec plateau mis à l'échelle de la largeur (cf. chooseScale() en JS).
+     ─────────────────────────────────────────────────────────────────────── */
+  @media (max-width:760px) {
+    #screen-mode.on { flex-direction:column; }
+    .mode-side { width:100%; flex-direction:row; align-items:center; gap:14px; padding:10px 16px; }
+    .fc-logo, .fc-name { display:none; }
+    .sphere-hex { width:96px; height:80px; } .sphere { width:44px; height:44px; }
+    .grapiz-v { font-size:62px; margin:0; }
+    .mode-list { gap:12px; padding:8px 0 18px; justify-content:flex-start; }
+    .mode { width:100%; max-width:none; }
+
+    #screen-lobby { padding:6px; }
+    .lobby-window { max-width:none; }
+    .lobby-bar { margin-bottom:6px; }
+    .lobby-tabs { display:flex; }
+    .lobby-main { height:calc(100dvh - 116px); flex-direction:column; gap:0; }
+    .lpanel, .lpanel.green, .lpanel.yellow, .lpanel.pink { width:100% !important; flex:1 1 auto; }
+    .lpanel .lp-strip { display:none !important; }
+    .lpanel.collapsed .lp-full { display:flex !important; }
+    .lobby-main:not(.mt-defis) #panel-defis,
+    .lobby-main:not(.mt-chat) #panel-chat,
+    .lobby-main:not(.mt-players) #panel-players { display:none; }
+
+    #screen-game { padding:4px; }
+    .g-main { flex-direction:column; align-items:center; gap:6px; }
+    .g-board-wrap { flex:0 0 auto; }
+    .g-warn { display:none; }
+  }
 </style>
 </head>
 <body>
@@ -198,6 +235,11 @@
         <span class="sp"></span>
         <button id="btn-create">Créer une partie</button>
         <span class="x" id="lobby-back" title="Retour">✕</span>
+      </div>
+      <div class="lobby-tabs">
+        <button data-tab="players" class="on">Joueurs</button>
+        <button data-tab="chat">Chat</button>
+        <button data-tab="defis">Défis</button>
       </div>
       <div class="lobby-main">
         <!-- Vert : défis du joueur sélectionné (replié par défaut, s'ouvre au clic d'un joueur) -->
@@ -347,6 +389,7 @@
     $("#btn-create").textContent = (me && me.s === "waiting") ? "Annuler la partie" : "Créer une partie";
     if (lobbySel && !findPlayer(lobbySel)) lobbySel = null;   // joueur parti → désélection
     renderPlayers(); renderDefis();
+    if (isMobile() && $(".lobby-main") && !/\bmt-/.test($(".lobby-main").className)) setLobbyTab(state.lobbyTab || "players");
   }
   // Panneau ROSE : compteurs (qui jouent / en attente) puis les joueurs présents,
   // chacun avec son carré de statut. Clic = sélection → ouvre le panneau vert.
@@ -366,7 +409,7 @@
     });
   }
   function countRow(sq, label) { var r = div("pcount"); r.innerHTML = '<span class="sq ' + sq + '"></span><span class="nm">' + esc(label) + '</span>'; return r; }
-  function selectPlayer(uid) { lobbySel = uid; $("#panel-defis").classList.remove("collapsed"); renderPlayers(); renderDefis(); }
+  function selectPlayer(uid) { lobbySel = uid; $("#panel-defis").classList.remove("collapsed"); renderPlayers(); renderDefis(); if (isMobile()) setLobbyTab("defis"); }
   // Panneau VERT : « Liste des défis de [pseudo] (série) » + statut + bouton défier.
   function renderDefis() {
     var p = lobbySel ? findPlayer(lobbySel) : null;
@@ -399,6 +442,15 @@
     var exp = t.getAttribute && t.getAttribute("data-exp"); if (exp) { expandPanel(exp); return; }
     var col = t.getAttribute && t.getAttribute("data-col"); if (col) { collapsePanel(col); return; }
   });
+
+  // Onglets du lobby (mobile) : un seul panneau visible à la fois (Joueurs/Chat/Défis).
+  function setLobbyTab(t) {
+    state.lobbyTab = t;
+    var m = $(".lobby-main"); if (m) m.className = "lobby-main mt-" + t;
+    each(document.querySelectorAll(".lobby-tabs button"), function (b) { b.classList.toggle("on", b.getAttribute("data-tab") === t); });
+    if (t === "defis") { var pd = $("#panel-defis"); if (pd) pd.classList.remove("collapsed"); renderDefis(); }
+  }
+  each(document.querySelectorAll(".lobby-tabs button"), function (b) { b.addEventListener("click", function () { setLobbyTab(b.getAttribute("data-tab")); }); });
   $("#mode-chall").onclick = function () { lobbySel = null; $("#panel-defis").classList.add("collapsed"); showScreen("lobby"); renderLobby(); };
   $("#lobby-back").onclick = function () { showScreen("mode"); };
   $("#btn-create").onclick = function () { var me = lobbyPlayers.filter(isMe)[0]; if (me && me.s === "waiting") gz({ a: "part" }); else gz({ a: "create" }); };
@@ -454,16 +506,31 @@
   // dessus 201. La grille reprend ces proportions → cases JOINTIVES, et un fond
   // gris #B6B6B6 un peu plus grand sous chaque case masque les jointures.
   var HEX_W = 425, HEX_H = 382, HEX_FLAT = 201;
-  var SCALE = 0.15;                                    // échelle VERTICALE (≈ hauteur de case) — taille du plateau
   var WIDEN = 1.07;                                    // ⬅ élargissement horizontal des cases (+7 %), hauteur inchangée
-  var SX = SCALE * WIDEN;                              // échelle horizontale
-  var CELLW = Math.round(HEX_W * SX), CELLH = Math.round(HEX_H * SCALE);
-  var K = (HEX_W + HEX_FLAT) / 2 * SX;                 // pas horizontal (suit la largeur → reste jointif)
-  var J = HEX_H / 2 * SCALE;                           // demi-pas vertical (inchangé)
-  var PAD = Math.round(CELLW * 0.62);
-  var BALL = Math.round(CELLH * 0.82);                 // ⬅ bille : nettement < case (≈ 82 % de la hauteur de case)
-  var TGT = Math.round(CELLH * 0.5);                   // pastille verte de destination
   var CELLBG = 1.06;                                   // fond gris un peu plus grand que la case (masque les jointures)
+  var DEFAULT_SCALE = 0.15;                            // échelle desktop (≈ hauteur de case)
+  // Géométrie dérivée de l'échelle — recalculable pour s'adapter à la largeur (mobile).
+  var SCALE, SX, CELLW, CELLH, K, J, PAD, BALL, TGT;
+  function applyScale(scale) {
+    SCALE = scale; SX = SCALE * WIDEN;
+    CELLW = Math.round(HEX_W * SX); CELLH = Math.round(HEX_H * SCALE);
+    K = (HEX_W + HEX_FLAT) / 2 * SX; J = HEX_H / 2 * SCALE;
+    PAD = Math.round(CELLW * 0.62); BALL = Math.round(CELLH * 0.82); TGT = Math.round(CELLH * 0.5);
+  }
+  applyScale(DEFAULT_SCALE);
+  function isMobile() { return window.innerWidth <= 760; }
+  // Reproduit boardDim().h × 1.04 (côté du panneau carré) pour une échelle donnée.
+  function geomSide(scale) {
+    var sx = scale * WIDEN, cellw = Math.round(HEX_W * sx), pad = Math.round(cellw * 0.62), j = HEX_H / 2 * scale;
+    return Math.round(Math.round(pad * 2 + j * (state.size * 4)) * 1.04);
+  }
+  // Mobile : on réduit l'échelle pour que le plateau tienne dans la largeur dispo
+  // (bornée par la hauteur d'écran). Desktop : échelle fixe inchangée.
+  function chooseScale() {
+    if (!isMobile()) return DEFAULT_SCALE;
+    var avail = Math.min(window.innerWidth - 14, window.innerHeight * 0.6);
+    return Math.max(0.06, Math.min(DEFAULT_SCALE, DEFAULT_SCALE * avail / geomSide(DEFAULT_SCALE)));
+  }
   function px(x, y) { return PAD + K * state.size + K * (y - x); }
   function py(x, y) { return PAD + J * (x + y); }
   function boardDim() { return { w: Math.round(PAD * 2 + K * (state.size * 2)), h: Math.round(PAD * 2 + J * (state.size * 4)) }; }
@@ -481,6 +548,7 @@
   // la surface cliquable (chaque hex porte data-x/y). Les pièces sont au-dessus,
   // en pointer-events:none — donc cliquer une bille atteint l'hex en dessous.
   function setupBoard() {
+    applyScale(chooseScale());                          // adapte l'échelle à la largeur (mobile) avant de bâtir
     var dim = boardDim(), b = curBoard(), board = $("#board");
     board.style.width = dim.w + "px"; board.style.height = dim.h + "px";
     // Panneau de jeu CARRÉ (= image zone_de_jeu) : côté = hauteur du plateau (+ fine marge).
@@ -491,7 +559,10 @@
     board.style.top = Math.round((side - dim.h) / 2) + "px";
     // Panneau chat : MÊME hauteur que le plateau, largeur selon le ratio de zone_de_chat (900×1412).
     var sidePanel = document.querySelector(".g-side");
-    if (sidePanel) { sidePanel.style.height = side + "px"; sidePanel.style.width = Math.round(side * 900 / 1412) + "px"; }
+    if (sidePanel) {
+      if (isMobile()) { sidePanel.style.width = side + "px"; sidePanel.style.height = Math.max(150, Math.round(window.innerHeight * 0.30)) + "px"; }
+      else { sidePanel.style.height = side + "px"; sidePanel.style.width = Math.round(side * 900 / 1412) + "px"; }
+    }
     var bg = "", cells = "", hit = '<svg class="layer hit" width="' + dim.w + '" height="' + dim.h + '">';
     var bw = Math.round(CELLW * CELLBG), bh = Math.round(CELLH * CELLBG);
     for (var x = 0; x <= state.size * 2; x++) for (var y = 0; y <= state.size * 2; y++) {
@@ -504,7 +575,7 @@
       hit += '<polygon points="' + cellPoly(cx, cy) + '" data-x="' + x + '" data-y="' + y + '" fill="rgba(0,0,0,0)"/>';
     }
     board.innerHTML = '<div class="layer cellsbg">' + bg + '</div><div class="layer cells">' + cells + '</div><div class="layer pieces" id="pieces-layer"></div>' + hit + '</svg>';
-    board._size = state.size;
+    board._size = state.size; board._scale = SCALE;
   }
   function renderPieces() {
     var s = "";
@@ -520,7 +591,7 @@
     });
     var layer = $("#pieces-layer"); if (layer) layer.innerHTML = s;
   }
-  function renderBoard() { if ($("#board")._size !== state.size) setupBoard(); renderPieces(); }
+  function renderBoard() { var b = $("#board"); if (b._size !== state.size || b._scale !== chooseScale()) setupBoard(); renderPieces(); }
   $("#board").addEventListener("click", function (ev) {
     var t = ev.target, ax = t.getAttribute && t.getAttribute("data-x"); if (ax == null) return;
     onBoardClick(+ax, +t.getAttribute("data-y"));
@@ -577,6 +648,13 @@
   }
   function stopClocks() { if (state.clockTimer) { clearInterval(state.clockTimer); state.clockTimer = null; } }
   function fmt(ms) { ms = Math.max(0, ms | 0); var s = Math.floor(ms / 1000); return ("0" + Math.floor(s / 60)).slice(-2) + ":" + ("0" + (s % 60)).slice(-2); }
+
+  // Rotation / redimensionnement (mobile) : recalcule l'échelle du plateau en jeu.
+  var _rsz = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(_rsz);
+    _rsz = setTimeout(function () { var b = $("#board"); if (state.screen === "game" && b && b._size != null) renderBoard(); }, 160);
+  });
 
   if (!E) setStatus("Moteur indisponible (engine.js)."); else start();
 })();
