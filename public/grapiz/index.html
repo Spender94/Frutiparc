@@ -104,11 +104,11 @@
   #screen-game { padding:12px; background:radial-gradient(120% 100% at 42% 14%, #ffeaba 0%, #ffcd72 42%, #fba12a 80%, #f3900e 100%); }
   .game-window { max-width:800px; margin:0 auto; }
   .g-top { display:flex; gap:12px; margin-bottom:11px; }
-  /* Carte joueur : verre orange bi-ton (reflet clair en haut), liseré crème. */
-  .gcard { flex:1; display:flex; align-items:center; gap:11px; padding:8px 12px; border-radius:12px;
-    background:linear-gradient(180deg,#fff6d6 0%,#ffe28e 33%,#ffbb46 41%,#ffa92e 72%,#f5970f 100%);
-    box-shadow:inset 0 1px 0 #fff, inset 0 0 0 2px #ffffffb8, 0 2px 4px #0000002a; }
-  .gcard.active { box-shadow:inset 0 1px 0 #fff, inset 0 0 0 2px #fff, 0 0 0 2px #ffe187, 0 2px 7px #00000036; }
+  /* Carte joueur : fond = encart_joueur.png (avatar + pseudo + étoile/série +
+     horloge incrustés par-dessus). */
+  .gcard { flex:1; display:flex; align-items:center; gap:11px; padding:9px 16px; min-height:76px; border-radius:13px;
+    background:#f59a12 0 0/100% 100% no-repeat; background-image:url(encart_joueur.png); }
+  .gcard.active { box-shadow:0 0 0 2px #fff, 0 0 11px 1px #ffdf7a; }
   .gc-av { width:56px; height:56px; flex:0 0 auto; border-radius:7px; overflow:hidden; background:#ffffff66; box-shadow:inset 0 0 0 1px #ffffffcc, 0 1px 2px #00000026; }
   .gc-av iframe { width:100%; height:100%; border:0; display:block; }
   .gc-info { display:flex; flex-direction:column; min-width:0; gap:1px; }
@@ -140,12 +140,17 @@
   .ball { position:absolute; background:center/contain no-repeat; filter:drop-shadow(0 2px 2px rgba(70,25,0,.32)); }
   .ball.b0 { background-image:url(bille_rouge.png); }
   .ball.b1 { background-image:url(bille_bleue.png); }
-  .ball.sel { filter:drop-shadow(0 0 3px #fff) drop-shadow(0 0 5px #fff) drop-shadow(0 1px 2px rgba(70,25,0,.32)); }
+  .ball.sel { opacity:.45; }   /* pion sélectionné : baisse d'opacité (cf. jeu d'origine) */
   /* Destination jouable : pastille verte translucide. */
-  .tgt { position:absolute; border-radius:50%; background:radial-gradient(circle,rgba(150,222,95,.6),rgba(120,200,70,.18) 70%,rgba(120,200,70,0)); box-shadow:0 0 0 2px rgba(92,194,58,.7); }
-  .g-side { flex:1; align-self:stretch; display:flex; flex-direction:column; min-width:0; border-radius:11px; overflow:hidden;
-    background:linear-gradient(180deg,#fffdf6,#fff6e6); border:1px solid #f0d9a8; box-shadow:inset 0 1px 0 #fff, 0 2px 6px #0000001f; }
-  .g-warn { color:#5a5a5a; font-size:11px; line-height:1.4; padding:9px 11px; border-bottom:1px solid #f2e3c2; }
+  /* Surbrillance d'une case jouable : tout l'hexagone en cyan translucide, posé
+     SOUS la bille → un pion mangeable reste visible (halo cyan autour). */
+  .tgt { position:absolute; background:rgba(116,212,240,.62);
+    clip-path:polygon(0% 50%,26.4% 0%,73.6% 0%,100% 50%,73.6% 100%,26.4% 100%); }
+  /* Panneau chat : fond = zone_chat.png (cadre arrondi + dégradé) ; le contenu
+     (avertissement, messages, barre de saisie) est posé par-dessus, en retrait du cadre. */
+  .g-side { flex:1; align-self:stretch; display:flex; flex-direction:column; min-width:0; padding:16px 15px 14px; border-radius:16px;
+    background:#f7c93a 0 0/100% 100% no-repeat; background-image:url(zone_chat.png); }
+  .g-warn { color:#7a5510; font-size:11px; line-height:1.4; padding:2px 4px 8px; }
   .g-end { text-align:center; font-weight:bold; padding:8px; }
   .g-chat { flex:1; overflow-y:auto; padding:8px 11px; font-size:12.5px; line-height:1.5; color:#555; }
   .g-chat .nk { font-weight:bold; color:#c47b2e; }
@@ -492,7 +497,9 @@
     var s = "";
     Object.keys(state.targets).forEach(function (k) {
       var p = k.split(","), cx = px(+p[0], +p[1]), cy = py(+p[0], +p[1]);
-      s += '<div class="tgt" style="left:' + (cx - TGT / 2).toFixed(1) + 'px;top:' + (cy - TGT / 2).toFixed(1) + 'px;width:' + TGT + 'px;height:' + TGT + 'px"></div>';
+      // surbrillance = hexagone cyan À LA TAILLE DE LA CASE (dessous les billes) →
+      // un pion mangeable reste visible avec un halo cyan autour.
+      s += '<div class="tgt" style="left:' + (cx - CELLW / 2).toFixed(1) + 'px;top:' + (cy - CELLH / 2).toFixed(1) + 'px;width:' + CELLW + 'px;height:' + CELLH + 'px"></div>';
     });
     state.tokens.forEach(function (tk) {
       var cx = px(tk.x, tk.y), cy = py(tk.x, tk.y), sel = state.sel && state.sel.x === tk.x && state.sel.y === tk.y;
