@@ -999,9 +999,11 @@
       Manager.mode = g;
       switch (SW.Data.gameMode) {
         case SW.Data.CLASSIC: {
+          // Comme le SWF d'origine : le mode classique n'alimente AUCUN
+          // classement (swapou2_classic est le bucket du mode Challenge,
+          // cf. Client.as:doEndGame → saveScore mode 0). Seul le record
+          // personnel $classic_record est conservé sur la fruticard.
           const oldScore = Manager.client.saveClassicScore(score);
-          // alimente aussi le classement « Swapou - Classique »
-          Manager.client.saveScore(score, 0, function () {});
           g.scoreSaved(score, oldScore, 0, 0);
           break;
         }

@@ -113,7 +113,10 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     }
   };
   Client.prototype.giveItem = function () { /* le serveur extrait les titems du slot 0 */ };
-  // envoi d'un score au classement (m=1 challenge, m=0 classique)
+  // envoi d'un score au classement (m=1 challenge, m=0 classique).
+  // data = perso au format sérialisé Motion-Twin « S<charId>: » (colonne
+  // « Perso » du tableau, identique à ce que le serveur normalise) → lignes
+  // desktop (SWF) et mobile strictement interchangeables.
   Client.prototype.saveScore = function (score, mode, cb) {
     if (this.standalone || !this.sid) { cb(null); return; }
     const body = new URLSearchParams();
@@ -121,21 +124,27 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     body.set('game', 'swapou2');
     body.set('m', String(mode));
     body.set('score', String(score));
-    body.set('data', String(SW.Data.players[0]));
+    body.set('data', 'S' + SW.Data.players[0] + ':');
     fetch('/api/saveScore', { method: 'POST', body: body })
       .then(function (r) { return r.json(); })
       .then(function (j) { cb(j); })
       .catch(function () { cb(null); });
   };
-  // fin de partie challenge (Client.as:doEndGame)
+  // fin de partie challenge (Client.as:doEndGame).
+  // IMPORTANT : le mode « Challenge » du jeu se classe dans le ranking
+  // `swapou2_classic` (mode 0) — c'est le bucket que l'onglet « Challenge »
+  // du front-end affiche (LEGACY_RANKINGS rk 3) et celui où le SWF desktop
+  // écrit (son saveScore ne transmet pas de `m`, donc mode 0 par défaut).
+  // Envoyer m=1 enverrait vers `swapou2_challenge` (section « Championnat »,
+  // non surfacée) → scores invisibles. On reste donc en mode 0 pour être
+  // strictement interchangeable avec le desktop.
   Client.prototype.doEndGame = function (score) {
-    const me = this;
     const s = this.slots[0];
     const oldRecord = s.$record || 0;
     if (score > oldRecord) s.$record = score;
     s.$swap = this.nswaps;
     this.saveSlot(0);
-    this.saveScore(score, 1, function (j) {
+    this.saveScore(score, 0, function (j) {
       if (j && j.ok)
         SW.Manager.scoreSaved(score, j.oldScore || 0, j.oldPos || 0, j.newPos || 0);
       else

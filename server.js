@@ -932,6 +932,41 @@ function migrateOldBkiwiScores() {
   }
 }
 
+// Les premiers scores du portage mobile de Swapou (mode Challenge du jeu)
+// sont partis dans `swapou2_challenge` (section « Championnat », jamais
+// affichée) alors que le SWF desktop écrit en `swapou2_classic` — le bucket
+// que l'onglet « Challenge » du front lit (LEGACY_RANKINGS rk 3). On replie
+// les scores piégés dans le bon bucket (meilleur conservé), fichier ET DB.
+// Appelée depuis boot() APRÈS le merge des scores DB dans scoresData (sinon
+// les lignes DB referaient surface au boot suivant).
+async function migrateSwapouChallengeScores() {
+  let migrated = 0;
+  for (const [username, rlist] of Object.entries(scoresData.users || {})) {
+    const entry = rlist && rlist.swapou2_challenge;
+    if (!entry) continue;
+    const cur = rlist.swapou2_classic;
+    if (!cur || Number(entry.score) > Number(cur.score)) rlist.swapou2_classic = entry;
+    delete rlist.swapou2_challenge;
+    migrated++;
+    if (process.env.DATABASE_URL) {
+      try {
+        const row = await db.findUserByUsername(username);
+        if (row) {
+          const kept = rlist.swapou2_classic;
+          await db.upsertScore(row.id, 'swapou2_classic', Number(kept.score) || 0, kept.data || '');
+          await db.deleteScore(row.id, 'swapou2_challenge');
+        }
+      } catch (e) {
+        console.error(`[SCORES] migration swapou (${username}):`, e.message);
+      }
+    }
+  }
+  if (migrated > 0) {
+    console.log(`[SCORES] ${migrated} score(s) Swapou repliés de swapou2_challenge vers swapou2_classic`);
+    saveScoresFile();
+  }
+}
+
 function saveScoresFile() {
   try {
     if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
@@ -1329,7 +1364,7 @@ function formatRankingExtraData(rankingId, rawData, scoreHint) {
   const raw = String(rawData || '').trim();
   if (!raw) {
     if (rankingId.startsWith('bkiwi_track')) return 'Skiwix:5:1:';
-    if (rankingId === 'swapou2_classic') return 'S0:';
+    if (rankingId === 'swapou2_classic' || rankingId === 'swapou2_challenge') return 'S0:';
     if (rankingId === 'kaluga_classic') return 'Skaluga:';
     // MB2 falls through to the body so the score-derived pct (computed at
     // the bottom from scoreHint) is emitted even when no `data` was stored.
@@ -1349,7 +1384,10 @@ function formatRankingExtraData(rankingId, rawData, scoreHint) {
     return raw;
   }
 
-  if (rankingId === 'swapou2_classic') {
+  // Swapou « Perso » : même format sérialisé (S<charId>:) pour le classique
+  // ET le challenge, afin que les lignes desktop (SWF→WS) et mobile (portage
+  // JS→HTTP) s'affichent à l'identique quel que soit le transport.
+  if (rankingId === 'swapou2_classic' || rankingId === 'swapou2_challenge') {
     if (/^S\d+:?$/i.test(raw)) return raw.endsWith(':') ? raw : `${raw}:`;
     const v = parseMtSerializedPrimitive(raw);
     if (typeof v === 'number' && Number.isFinite(v)) return `S${Math.trunc(v)}:`;
@@ -11176,6 +11214,8 @@ async function boot() {
   } else {
     console.log('[DB] No DATABASE_URL — running in memory-only mode');
   }
+
+  await migrateSwapouChallengeScores();
 
   const today = parisDayKey();
   await rollDailyChallengeIfNeeded();
