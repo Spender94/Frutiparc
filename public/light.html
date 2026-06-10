@@ -436,6 +436,11 @@
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
     border: 0; display: block; background: #FFFEE2;
   }
+  #swapou-panel { padding: 0; }
+  #swapou-frame {
+    flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
+    border: 0; display: block; background: #24330e;
+  }
 
   .hidden { display: none !important; }
   .banner {
@@ -514,6 +519,9 @@
     <button class="menu-item" data-tab="grapiz">
       <img class="menu-ico" src="/fb/icone_grapiz.png" alt="" onerror="this.replaceWith(document.createTextNode('🎮'))"> Grapiz
     </button>
+    <button class="menu-item" data-tab="swapou">
+      <img class="menu-ico" src="/games/swapou2/images/fruits/pomme.png" alt="" onerror="this.replaceWith(document.createTextNode('🍎'))"> Swapou
+    </button>
     <button class="menu-item" id="bouille-btn">
       <img class="menu-ico" src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"> Mon inventaire
     </button>
@@ -565,6 +573,13 @@
        PROPRE socket via ?sid=, comme la popup desktop. -->
   <section class="panel" id="grapiz-panel">
     <iframe id="grapiz-frame" title="Grapiz" referrerpolicy="no-referrer"></iframe>
+  </section>
+
+  <!-- Swapou 2 — portage natif canvas chargé dans une iframe. Comme Grapiz :
+       on reste sur /light (socket de chat intacte), le jeu lit ?sid= pour la
+       persistance (scores, persos, titems). -->
+  <section class="panel" id="swapou-panel">
+    <iframe id="swapou-frame" title="Swapou 2" referrerpolicy="no-referrer"></iframe>
   </section>
 
   <!-- Bouille / accessory picker (bottom sheet) -->
@@ -854,6 +869,7 @@
       $("#chat-panel").classList.toggle("active", tab === "chat");
       $("#forum-panel").classList.toggle("active", tab === "forum");
       $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
+      $("#swapou-panel").classList.toggle("active", tab === "swapou");
       // Charge le forum dans l'iframe à la 1re ouverture. On reste sur /light,
       // donc la socket de chat de la page parente n'est jamais coupée pendant
       // qu'on consulte le forum.
@@ -869,6 +885,14 @@
         var gf = $("#grapiz-frame");
         if (gf && !gf.getAttribute("src") && state.sid) {
           gf.setAttribute("src", "/grapiz/?sid=" + encodeURIComponent(state.sid));
+        }
+      }
+      // Swapou : chargé à la 1re ouverture, gardé en mémoire ensuite (la
+      // partie en cours survit aux allers-retours vers le chat).
+      if (tab === "swapou") {
+        var sf = $("#swapou-frame");
+        if (sf && !sf.getAttribute("src") && state.sid) {
+          sf.setAttribute("src", "/swapou/?sid=" + encodeURIComponent(state.sid));
         }
       }
       openMenu(false);

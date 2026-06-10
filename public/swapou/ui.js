@@ -592,22 +592,28 @@ const SwapouUI = (function () {
     const bump = 1 + this.hoverFrame * 0.012;
     ctx.scale(this.scale * bump, this.scale * bump);
     const w = this.w, h = this.h;
-    const grad = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
-    if (this.isBack) {
-      grad.addColorStop(0, '#caa36b'); grad.addColorStop(0.5, '#9a7240'); grad.addColorStop(1, '#7a5527');
+    // plaque de bois (style levelBox), texte vert comme l'original
+    const plate = A.img('levelBox');
+    if (plate && plate.naturalWidth) {
+      const cap = 18;
+      ctx.drawImage(plate, 0, 0, cap, 46, -w / 2, -h / 2, cap, h);
+      ctx.drawImage(plate, cap, 0, 107 - cap * 2, 46, -w / 2 + cap, -h / 2, w - cap * 2, h);
+      ctx.drawImage(plate, 107 - cap, 0, cap, 46, w / 2 - cap, -h / 2, cap, h);
     } else {
+      const grad = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
       grad.addColorStop(0, '#e8b269'); grad.addColorStop(0.5, '#c08540'); grad.addColorStop(1, '#92602a');
+      roundRect(ctx, -w / 2, -h / 2, w, h, h / 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#5d3c14';
+      ctx.stroke();
     }
-    roundRect(ctx, -w / 2, -h / 2, w, h, h / 2);
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#5d3c14';
-    ctx.stroke();
-    roundRect(ctx, -w / 2 + 4, -h / 2 + 3, w - 8, h / 2 - 2, h / 4);
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.fill();
-    text(ctx, this.label, 0, 1, { size: 17, color: '#fff7e0', stroke: '#5d3c14', strokeWidth: 3 });
+    text(ctx, this.label, 0, 1, {
+      size: 17,
+      color: this.isBack ? '#2f6b16' : '#3a7a1a',
+      stroke: '#fff3d8', strokeWidth: 3,
+    });
     ctx.restore();
   };
 
@@ -646,15 +652,40 @@ const SwapouUI = (function () {
     this.menu.onFaceSelect(this.linkId, this.faceId);
   };
   RotatorFace.prototype.draw = function (ctx) {
+    // case verte arrondie (vide si perso verrouillé), cf. capture d'époque
     if (!this.visible) return;
     this.updatePos();
     ctx.save();
-    ctx.globalAlpha = 1;
     const bump = 1 + this.hoverFrame * 0.018;
-    const r = this.r * this.scale * bump;
-    drawFaceMedallion(ctx, this.faceId, this.curX, this.curY, r, { locked: !this.active });
-    if (!this.active)
-      text(ctx, '?', this.curX, this.curY, { size: Math.round(r * 1.1), color: '#cfd8ff', stroke: '#1a2030', strokeWidth: 3 });
+    const s = this.scale * bump;
+    ctx.translate(this.curX, this.curY);
+    ctx.scale(s, s);
+    const r = this.r + 2;
+    const grad = ctx.createLinearGradient(0, -r, 0, r);
+    if (this.active) {
+      grad.addColorStop(0, '#9ccb4a');
+      grad.addColorStop(1, '#5f9a23');
+    } else {
+      grad.addColorStop(0, '#86b13e');
+      grad.addColorStop(1, '#557f22');
+    }
+    roundRect(ctx, -r, -r, r * 2, r * 2, 9);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#c9a248';
+    ctx.stroke();
+    if (this.active) {
+      ctx.save();
+      roundRect(ctx, -r + 3, -r + 3, r * 2 - 6, r * 2 - 6, 7);
+      ctx.clip();
+      const img = A.img('face' + this.faceId + '_0');
+      if (img && img.naturalWidth) {
+        const sc = (r * 2 / img.naturalHeight) * 1.18;
+        ctx.drawImage(img, -img.naturalWidth * sc / 2, -r + 4, img.naturalWidth * sc, img.naturalHeight * sc);
+      }
+      ctx.restore();
+    }
     ctx.restore();
   };
 

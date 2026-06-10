@@ -68,10 +68,12 @@ const SwapouAssets = (function () {
     'coupeGlace', 'coupeAncestrale'];
   COMBO_IMGS.forEach(function (n, i) { MANIFEST['combo' + i] = 'images/combos/' + n + '.png'; });
   MANIFEST.comboClassic = 'images/combos/classic.png';
-  // visages 7 persos × 6 états
+  // visages 7 persos × 6 états (poivre : « peur » s'appelle sad.png)
   CHAR_DIRS.forEach(function (dir, ci) {
     CHAR_STATES.forEach(function (st, si) {
-      MANIFEST['face' + ci + '_' + si] = 'character/bitmap/' + dir + '/' + st + '.png';
+      let file = st;
+      if (dir === 'poivre' && st === 'fear') file = 'sad';
+      MANIFEST['face' + ci + '_' + si] = 'character/bitmap/' + dir + '/' + file + '.png';
     });
   });
   // cinématiques

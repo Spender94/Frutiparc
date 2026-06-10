@@ -211,5 +211,104 @@ pump(600, 1); // anim + résolution
 assert(!duel2.pl_lock || duel2.game_over_flag === true || duel2.player_special_combo === false,
   'la défense finit par rendre la main');
 
+// ── mode classique : min 2, couleurs limitées, montée de niveau ────────────
+SW.Data.gameMode = SW.Data.CLASSIC;
+SW.Data.players = [0, -1];
+Manager.mode.destroy();
+Manager.mode = new SW.Classic();
+const classic = Manager.mode;
+assert(classic.player.level.min_combo === 2, 'classique : paires autorisées');
+assert(classic.level === 0, 'niveau 0 au départ');
+{
+  let colorsOk = true;
+  const fr = classic.player.level.getFruits();
+  for (let x = 0; x < 12; x++)
+    for (let y = 0; y < 14; y++)
+      if (fr[x][y] != null && fr[x][y].t > 1) colorsOk = false;
+  assert(colorsOk, 'niveau 0 : 2 couleurs max');
+}
+classic.ncoups = E.CLASSIC_LEVELS[0] + 1; // force le passage de niveau
+pump(5, 1);
+assert(classic.level === 1, 'montée au niveau 1');
+assert(classic.lupShow > 0 || classic.lup != null, 'bannière « Niveau 1 »');
+
+// ── challenge : défense de Dimitri (EFFONDREMENT = pète la ligne du bas) ───
+SW.Data.gameMode = SW.Data.CHALLENGE;
+SW.Data.players = [0, -1];
+Manager.mode.destroy();
+Manager.mode = new SW.Challenge();
+const chal2 = Manager.mode;
+pump(5, 1);
+chal2.player.star_counter = 6;
+chal2.interf.pl[0].power = 6;
+const bottomBefore = [];
+for (let x = 0; x < 12; x++) bottomBefore.push(chal2.player.level.fruits[x][13]);
+assert(bottomBefore.some(Boolean), 'la ligne du bas est peuplée');
+chal2.interf.defend();
+assert(chal2.lock === true, 'défense : tour verrouillé');
+assert(chal2.special_power === true, 'défense = pouvoir spécial (pas de nouvelle ligne)');
+{
+  let g4 = 0;
+  while (chal2.lock && g4++ < 5000 && Manager.mode === chal2) pump(1, 1);
+  assert(g4 < 5000, 'la défense rend la main (' + g4 + ' frames)');
+}
+
+// ── pot au feu : phase 0 complète (dialogues → combat → victoire → suite) ──
+SW.Data.gameMode = SW.Data.HISTORY;
+SW.Data.histoPhase = 0;
+SW.Data.players = [0, -1];
+Manager.mode.destroy();
+Manager.mode = new SW.HistoMap();
+const map = Manager.mode;
+assert(SW.Data.players[1] === 2, 'adversaire phase 0 : Monsieur Sel');
+{
+  let g5 = 0;
+  while (Manager.mode === map && g5++ < 60000) {
+    if (!map.lock) map.onClickDown();
+    pump(2, 2);
+  }
+  assert(g5 < 60000, 'la carte débouche sur le combat');
+}
+assert(Manager.mode.constructor === SW.Duel, 'combat lancé depuis la carte');
+assert(SW.Data.difficulty === 2, 'difficulté histoire = 2');
+const histoDuel = Manager.mode;
+// victoire forcée du joueur
+histoDuel.ia.game_over_flag = true;
+histoDuel.turnDone(histoDuel.ia);
+assert(Manager.mode.constructor === SW.GameOver, 'écran de victoire');
+assert(Manager.mode.frame === 4, 'écran « personnage débloqué » (Sel inconnu)');
+assert(Manager.client.slots[0].$items[0] === true, 'titem $sel gagné');
+pump(120, 1);
+Manager.mode.onClickDown();
+assert(SW.Data.chars[2] === true, 'Monsieur Sel débloqué');
+assert(SW.Data.histoPhase === 1, 'phase suivante');
+assert(Manager.mode.constructor === SW.HistoMap, 'retour sur la carte');
+assert(SW.Data.players[1] === 1, 'phase 1 : la jumelle (Natacha)');
+
+// défaite en histoire → versus de défaite puis menu
+{
+  const map2 = Manager.mode;
+  let g6 = 0;
+  while (Manager.mode === map2 && g6++ < 60000) {
+    if (!map2.lock) map2.onClickDown();
+    pump(2, 2);
+  }
+  assert(Manager.mode.constructor === SW.Duel, 'combat phase 1');
+  const d3 = Manager.mode;
+  d3.player.game_over_flag = true;
+  d3.turnDone(d3.player);
+  assert(Manager.mode.constructor === SW.GameOver, 'défaite');
+  assert(Manager.mode.win_flag === false, 'win_flag false');
+  pump(120, 1);
+  Manager.mode.onClickDown(); // endGame(false) → versus de défaite
+  assert(Manager.mode.constructor === SW.Menu, 'menu en mode versus');
+  pump(5, 1); // la phase 40 attache le versus puis passe en 41
+  assert(Manager.mode.versus != null, 'versus de défaite affiché');
+  Manager.mode.onClickDown(); // clic pour fermer le versus
+  pump(60, 2);
+  assert(Manager.mode.constructor === SW.Menu, 'retour menu après versus');
+  assert(SW.Data.histoPhase === 0, 'histoPhase remise à zéro au menu');
+}
+
 console.log('OK — ' + nassert + ' assertions (client headless)');
 process.exit(0);
