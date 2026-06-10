@@ -57,7 +57,7 @@
      identique pour l'en-tête et le pied ; séparation = contour BLANC plein. Pas de
      coins arrondis, contour blanc plein autour du bloc. */
   .lpanel { display:flex; flex-direction:column; min-width:0; overflow:hidden;
-    color:#fff; border:1px solid #fff; }
+    color:#fff; border:2px solid #fff; }
   .lpanel.green  { background:#A0B723; width:340px; flex:0 0 auto; }
   .lpanel.yellow { background:#F7A932; flex:1 1 auto; }
   .lpanel.pink   { background:#F0626E; width:214px; flex:0 0 auto; }
@@ -67,16 +67,16 @@
   .lp-strip { flex:1; display:flex; align-items:flex-end; justify-content:center; padding-bottom:6px; font-weight:bold; font-size:15px; }
   .lp-full { flex:1; display:flex; flex-direction:column; min-height:0; }
   .lp-head { display:flex; align-items:stretch; gap:0; padding:0; font-weight:bold; font-size:13px;
-    border-bottom:1px solid #fff; }
+    border-bottom:2px solid #fff; }
   .lp-head .lp-title { flex:1; display:flex; align-items:center; padding:5px 9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #00000033; }
-  .lp-head .lp-x { cursor:pointer; opacity:.9; font-size:14px; display:flex; align-items:center; padding:0 9px; border-left:1px solid #fff; } .lp-head .lp-x:hover { opacity:1; }
+  .lp-head .lp-x { cursor:pointer; opacity:.9; font-size:14px; display:flex; align-items:center; padding:0 9px; border-left:2px solid #fff; } .lp-head .lp-x:hover { opacity:1; }
   .lp-body { flex:1; overflow-y:auto; padding:6px 8px; }
   .lp-foot { display:flex; align-items:center; gap:6px; padding:4px 6px; min-height:30px;
-    border-top:1px solid #fff; }
+    border-top:2px solid #fff; }
   .lp-foot .arrow { cursor:pointer; font-weight:bold; opacity:.9; padding:0 4px; margin-left:auto; } .lp-foot .arrow:hover { opacity:1; }
 
   /* Carrés de statut (couleurs EXACTES, contour blanc plein, sans coins arrondis) */
-  .sq { width:13px; height:13px; flex:0 0 auto; box-shadow:inset 0 0 0 1px #fff; }
+  .sq { width:13px; height:13px; flex:0 0 auto; box-shadow:inset 0 0 0 2px #fff; }
   .SQ-idle { background:#F4AA34; } .SQ-waiting { background:#99B516; } .SQ-playing { background:#EF6270; }
 
   /* Vert — défis du joueur sélectionné */
@@ -90,15 +90,22 @@
   .chat-log .ln { margin:1px 0; font-size:13px; line-height:1.45; text-shadow:0 1px 1px #00000026; }
   .chat-log .nk { font-weight:bold; }
   .lp-foot.chat-input { padding:4px; }
-  .chat-input input { flex:1; border:0; border-radius:4px; padding:6px 8px; font:inherit; background:#fff; color:#333; }
+  /* Saisie fondue dans le bloc chat : même fond que le panneau, aucun contour. */
+  .chat-input input { flex:1; border:0; border-radius:0; padding:6px 8px; font:inherit; background:transparent; color:#fff; }
+  .chat-input input::placeholder { color:#ffffffb0; }
   .chat-input button { border:0; border-radius:4px; background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; font-weight:bold; padding:0 11px; cursor:pointer; font-size:15px; }
 
-  /* Rose — liste des joueurs : grille jointive. Colonne carré de statut (bordée de
-     blanc plein) + libellé ; lignes flush, contours blancs, aucun coin arrondi/marge. */
+  /* Rose — liste des joueurs. Deux styles DISTINCTS pour différencier « case » et
+     « joueur » : les compteurs/légende (.pcount) = grande CASE de couleur bordée +
+     libellé ; les joueurs (.pli) = petit carré de statut bordé + PSEUDO en texte
+     simple, posé directement sur le panneau (pas de cellule pleine). */
   .players-list { padding:0; }
-  .pcount, .pli { display:flex; align-items:stretch; gap:0; padding:0; min-height:26px; border-bottom:1px solid #fff; font-weight:bold; font-size:13px; }
-  .players-list .sq { width:26px; height:auto; align-self:stretch; border-right:1px solid #fff; box-shadow:none; }
-  .pcount .nm, .pli .nm { flex:1; display:flex; align-items:center; padding:0 9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #0000002e; }
+  .pcount { display:flex; align-items:stretch; gap:0; padding:0; min-height:26px; border-bottom:2px solid #fff; font-weight:bold; font-size:13px; }
+  .pcount .sq { width:26px; height:auto; align-self:stretch; border-right:2px solid #fff; box-shadow:none; }
+  .pcount .nm { flex:1; display:flex; align-items:center; padding:0 9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #0000002e; }
+  .pli { display:flex; align-items:center; gap:9px; padding:5px 10px; border-bottom:2px solid #fff; }
+  .pli .sq { width:13px; height:13px; }
+  .pli .nm { flex:1; font-weight:bold; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #0000002e; }
   .psep { display:none; }
   .pli.can { cursor:pointer; } .pli.can:hover { background:#ffffff2e; }
   .pli.sel { background:#ffffff42; }
@@ -127,7 +134,7 @@
      incrustée). Elle REMPLIT le bloc sans rognage ; le bloc est rendu CARRÉ et le
      plateau centré dedans (dimensions fixées dans setupBoard). */
   .g-board-wrap { position:relative; flex:0 0 auto;
-    background:#f7a932 0 0/100% 100% no-repeat; background-image:url(zone_de_jeu.png); }
+    background:#FFFEE2 0 0/100% 100% no-repeat; background-image:url(zone_de_jeu.png); }
   /* Bouton ✕ pour abandonner (l'image n'a plus de croix incrustée). */
   .g-board-wrap .close { position:absolute; top:9px; right:10px; width:30px; height:30px; border-radius:8px; cursor:pointer; z-index:3;
     background:linear-gradient(#ffd152,#f3970d); box-shadow:inset 0 0 0 1px #ffffffcc, 0 1px 2px #0000003a;
@@ -154,7 +161,7 @@
   /* Panneau chat : fond = zone_de_chat.png (cadre arrondi + dégradé) ; le contenu
      (avertissement, messages, barre de saisie) est posé par-dessus, en retrait du cadre. */
   .g-side { flex:0 0 auto; display:flex; flex-direction:column; min-width:0; padding:18px 16px 16px;
-    background:#f7c93a 0 0/100% 100% no-repeat; background-image:url(zone_de_chat.png); }
+    background:#FFFEE2 0 0/100% 100% no-repeat; background-image:url(zone_de_chat.png); }
   .g-warn { color:#7a5510; font-size:11px; line-height:1.4; padding:2px 4px 8px; }
   .g-end { text-align:center; font-weight:bold; padding:8px; }
   .g-chat { flex:1; overflow-y:auto; padding:8px 11px; font-size:12.5px; line-height:1.5; color:#555; }
