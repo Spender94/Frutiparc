@@ -75,6 +75,32 @@ Puzzle d'échange de fruits sur grille (y=0 en haut) :
 - `/light` : onglet « Swapou » (iframe `/swapou/?sid=…`, chargée à la 1re
   ouverture — même patron que Grapiz).
 
+## Bot de Challenge (étude « jusqu'où peut-on aller ? »)
+
+`bot.js` (politique pure, testée par `bot.test.js` en équivalence exacte
+avec le moteur) + `bot.run.js` (harnais vm : le bot joue dans le VRAI
+client, RNG seedé, stats). **Hors-ligne uniquement** : client standalone,
+aucun score envoyé au classement.
+
+Architecture : simulateur de chaînes sur grille légère → énumération des
+~310 échanges + défense du perso → expectimax profondeur 2 (montée de
+ligne échantillonnée avec le vrai générateur — gel `random(130)<random(ncoups)`,
+métal, étoiles — puis meilleure riposte), élargissement panique quand le
+plateau dépasse h=11. Poids ajustables via `--weights` (JSON).
+
+Enseignements des expériences (graines fixes, 4-40 parties par config) :
+- le mur est un problème de DÉBIT : la ligne apporte 12 fruits/tour, vers
+  ncoups≈130 la moitié arrive gelée — il faut nettoyer ≥12 fruits/tour en
+  moyenne, donc des cascades, pas des petits combos ;
+- la gourmandise plate (récompenser les pièces nettoyées) RÉGRESSE — c'est
+  le poids du score (qui encode pieces×phase^0.8, donc les chaînes) qui
+  paie, mais seulement sous profondeur 2 (le 1-ply ne sait pas préparer) ;
+- TomTom (RAMOLLISSEMENT 5★) meurt avec 4★ en banque : défense
+  inatteignable en crise ; Dimitri (1★) et Natacha (2★) survivent le mieux.
+
+Exemple : `node public/swapou/bot.run.js --games 24 --char 1 --seed 500
+--depth2 --topk 12 --weights '{"score":1.5,"starsBoard":80}'`
+
 ## Correspondances sons (SWF id → linkage)
 
 | id | nom | id | nom |
