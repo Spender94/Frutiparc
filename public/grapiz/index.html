@@ -51,13 +51,14 @@
   .lobby-bar .sp { flex:1; }
   .lobby-bar button { font:inherit; font-weight:bold; border:0; border-radius:6px; padding:6px 12px; background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; cursor:pointer; }
   .lobby-bar .x { color:#bbb; font-size:16px; }
-  .lobby-main { display:flex; gap:6px; height:406px; }
+  .lobby-main { display:flex; gap:2px; height:406px; }
 
-  /* Un panneau = en-tête (titre + ✕) / corps / pied. Couleur EXACTE par panneau ;
-     en-tête & pied = même teinte assombrie par un calque noir translucide. */
-  .lpanel { display:flex; flex-direction:column; min-width:0; border-radius:3px; overflow:hidden;
-    color:#fff; box-shadow:0 1px 3px #00000026; }
-  .lpanel.green  { background:#A0B723; width:232px; flex:0 0 auto; }
+  /* Un panneau = en-tête (titre + ✕) / corps / pied. Couleur EXACTE par panneau,
+     identique pour l'en-tête et le pied ; séparation = contour BLANC plein. Pas de
+     coins arrondis, contour blanc plein autour du bloc. */
+  .lpanel { display:flex; flex-direction:column; min-width:0; overflow:hidden;
+    color:#fff; border:1px solid #fff; }
+  .lpanel.green  { background:#A0B723; width:340px; flex:0 0 auto; }
   .lpanel.yellow { background:#F7A932; flex:1 1 auto; }
   .lpanel.pink   { background:#F0626E; width:214px; flex:0 0 auto; }
   .lpanel.collapsed { width:20px !important; flex:0 0 auto; cursor:pointer; }
@@ -65,17 +66,17 @@
   .lpanel.collapsed .lp-full { display:none; }
   .lp-strip { flex:1; display:flex; align-items:flex-end; justify-content:center; padding-bottom:6px; font-weight:bold; font-size:15px; }
   .lp-full { flex:1; display:flex; flex-direction:column; min-height:0; }
-  .lp-head { display:flex; align-items:center; gap:6px; padding:4px 8px; font-weight:bold; font-size:13px;
-    background:rgba(0,0,0,.12); box-shadow:inset 0 -1px 0 #ffffff40; }
-  .lp-head .lp-title { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #00000033; }
-  .lp-head .lp-x { cursor:pointer; opacity:.9; font-size:14px; } .lp-head .lp-x:hover { opacity:1; }
+  .lp-head { display:flex; align-items:stretch; gap:0; padding:0; font-weight:bold; font-size:13px;
+    border-bottom:1px solid #fff; }
+  .lp-head .lp-title { flex:1; display:flex; align-items:center; padding:5px 9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #00000033; }
+  .lp-head .lp-x { cursor:pointer; opacity:.9; font-size:14px; display:flex; align-items:center; padding:0 9px; border-left:1px solid #fff; } .lp-head .lp-x:hover { opacity:1; }
   .lp-body { flex:1; overflow-y:auto; padding:6px 8px; }
   .lp-foot { display:flex; align-items:center; gap:6px; padding:4px 6px; min-height:30px;
-    background:rgba(0,0,0,.12); box-shadow:inset 0 1px 0 #ffffff40; }
+    border-top:1px solid #fff; }
   .lp-foot .arrow { cursor:pointer; font-weight:bold; opacity:.9; padding:0 4px; margin-left:auto; } .lp-foot .arrow:hover { opacity:1; }
 
-  /* Carrés de statut (couleurs EXACTES) */
-  .sq { width:13px; height:13px; border-radius:2px; flex:0 0 auto; box-shadow:inset 0 0 0 1px #ffffffcc, 0 1px 1px #0000003a; }
+  /* Carrés de statut (couleurs EXACTES, contour blanc plein, sans coins arrondis) */
+  .sq { width:13px; height:13px; flex:0 0 auto; box-shadow:inset 0 0 0 1px #fff; }
   .SQ-idle { background:#F4AA34; } .SQ-waiting { background:#99B516; } .SQ-playing { background:#EF6270; }
 
   /* Vert — défis du joueur sélectionné */
@@ -92,11 +93,13 @@
   .chat-input input { flex:1; border:0; border-radius:4px; padding:6px 8px; font:inherit; background:#fff; color:#333; }
   .chat-input button { border:0; border-radius:4px; background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; font-weight:bold; padding:0 11px; cursor:pointer; font-size:15px; }
 
-  /* Rose — liste des joueurs (compteurs + joueurs présents) */
-  .pcount { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:bold; padding:3px 3px; }
-  .psep { height:1px; background:#ffffff55; margin:5px 2px; }
-  .pli { display:flex; align-items:center; gap:8px; padding:4px 4px; border-radius:4px; }
-  .pli .nm { font-weight:bold; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #0000002e; }
+  /* Rose — liste des joueurs : grille jointive. Colonne carré de statut (bordée de
+     blanc plein) + libellé ; lignes flush, contours blancs, aucun coin arrondi/marge. */
+  .players-list { padding:0; }
+  .pcount, .pli { display:flex; align-items:stretch; gap:0; padding:0; min-height:26px; border-bottom:1px solid #fff; font-weight:bold; font-size:13px; }
+  .players-list .sq { width:26px; height:auto; align-self:stretch; border-right:1px solid #fff; box-shadow:none; }
+  .pcount .nm, .pli .nm { flex:1; display:flex; align-items:center; padding:0 9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #0000002e; }
+  .psep { display:none; }
   .pli.can { cursor:pointer; } .pli.can:hover { background:#ffffff2e; }
   .pli.sel { background:#ffffff42; }
 
@@ -158,7 +161,7 @@
   .g-chat .nk { font-weight:bold; color:#c47b2e; }
   /* Barre de chat : bandeau bien arrondi, centré, ~80 % de la largeur ; Entrée pour envoyer. */
   .g-input { display:flex; justify-content:center; padding:6px 0 2px; }
-  .g-input input { flex:0 0 auto; width:93%; border:0; border-radius:18px; padding:8px 14px; font:inherit; color:#6a4a10;
+  .g-input input { flex:0 0 auto; width:96%; border:0; border-radius:18px; padding:8px 14px; font:inherit; color:#6a4a10;
     background:linear-gradient(#F5BD19,#F8CC0D); box-shadow:inset 0 1px 2px #0000001f, 0 1px 0 #ffffff66; }
   .g-input input::placeholder { color:#a07c22; }
 </style>
@@ -358,7 +361,7 @@
       box.appendChild(row);
     });
   }
-  function countRow(sq, label) { var r = div("pcount"); r.innerHTML = '<span class="sq ' + sq + '"></span>' + esc(label); return r; }
+  function countRow(sq, label) { var r = div("pcount"); r.innerHTML = '<span class="sq ' + sq + '"></span><span class="nm">' + esc(label) + '</span>'; return r; }
   function selectPlayer(uid) { lobbySel = uid; $("#panel-defis").classList.remove("collapsed"); renderPlayers(); renderDefis(); }
   // Panneau VERT : « Liste des défis de [pseudo] (série) » + statut + bouton défier.
   function renderDefis() {
