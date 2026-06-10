@@ -41,30 +41,62 @@
   .mode .mstats > div:first-child { border-radius:0 0 0 4px; } .mode .mstats > div:last-child { border-radius:0 0 4px 0; }
   .mode.active .mstats .j { background:#8cc63f; } .mode.active .mstats .p { background:#f06d6d; }
 
-  /* ── Lobby ──────────────────────────────────────────────────────────────── */
-  #screen-lobby { padding:14px; }
-  .lobby-window { max-width:740px; margin:0 auto; border:5px solid #a4d40c; border-radius:6px; background:#fff; overflow:hidden; }
-  .lobby-bar { display:flex; align-items:center; gap:8px; padding:6px 8px; background:#fafafa; border-bottom:1px solid #eee; }
-  .lobby-bar .title { font-weight:bold; color:#f5a200; letter-spacing:2px; flex:1; }
-  .lobby-bar button { font:inherit; font-weight:bold; border:0; border-radius:6px; padding:5px 10px; background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; cursor:pointer; }
-  .og { display:inline-flex; gap:6px; align-items:center; background:#fff3d0; border:1px solid #f0c14b; border-radius:6px; padding:2px 6px; margin-left:6px; font-size:12px; }
-  .og button { background:#8cc63f; color:#fff; padding:2px 8px; }
-  .lobby-main { display:flex; height:380px; }
-  .chat-panel { flex:1; display:flex; flex-direction:column; background:#f47c7c; }
-  .players-panel { width:210px; flex:0 0 auto; display:flex; flex-direction:column; background:#f47c7c; border-left:3px solid #ffffff55; }
-  .panel-head { padding:5px 9px; color:#fff; font-weight:bold; background:#00000014; }
-  .chat-log { flex:1; overflow-y:auto; padding:6px 9px; font-size:13px; line-height:1.45; color:#fff; }
-  .players-list { flex:1; overflow-y:auto; padding:4px; }
-  .pli { display:flex; align-items:center; gap:8px; padding:5px 7px; border-radius:6px; }
-  .pli .dot { width:9px; height:9px; flex:0 0 auto; border-radius:50%; background:#8cdb4b; box-shadow:0 0 0 1px #ffffff77; }
-  .pli .dot.busy { background:#ffd84d; }
-  .pli .nm { color:#fff; font-weight:bold; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .pli.can { cursor:pointer; } .pli.can:hover { background:#ffffff33; }
-  .pli .busy { font-size:10px; color:#ffeeee; opacity:.85; margin-left:auto; }
-  .pli .defi { margin-left:auto; font-size:11px; color:#fff; opacity:.85; }
-  .chat-input { display:flex; border-top:2px solid #ffffff66; }
-  .chat-input input { flex:1; border:0; padding:7px 9px; font:inherit; background:#fff; }
-  .chat-input button { border:0; background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; font-weight:bold; padding:0 13px; cursor:pointer; font-size:16px; }
+  /* ── Lobby (3 panneaux : Défis / Chat / Joueurs — fidèle au jeu d'origine) ── */
+  #screen-lobby { padding:14px; background:#fff; }
+  .lobby-window { max-width:900px; margin:0 auto; }
+  .lobby-bar { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .lobby-bar .title { font-weight:bold; color:#f5a200; letter-spacing:2px; font-size:15px; }
+  .lobby-bar .sp { flex:1; }
+  .lobby-bar button { font:inherit; font-weight:bold; border:0; border-radius:6px; padding:6px 12px; background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; cursor:pointer; }
+  .lobby-bar .x { color:#bbb; font-size:16px; }
+  .lobby-main { display:flex; gap:6px; height:406px; }
+
+  /* Un panneau = en-tête (titre + ✕) / corps / pied. Couleur EXACTE par panneau ;
+     en-tête & pied = même teinte assombrie par un calque noir translucide. */
+  .lpanel { display:flex; flex-direction:column; min-width:0; border-radius:3px; overflow:hidden;
+    color:#fff; box-shadow:0 1px 3px #00000026; }
+  .lpanel.green  { background:#A0B723; width:232px; flex:0 0 auto; }
+  .lpanel.yellow { background:#F7A932; flex:1 1 auto; }
+  .lpanel.pink   { background:#F0626E; width:214px; flex:0 0 auto; }
+  .lpanel.collapsed { width:20px !important; flex:0 0 auto; cursor:pointer; }
+  .lpanel:not(.collapsed) .lp-strip { display:none; }
+  .lpanel.collapsed .lp-full { display:none; }
+  .lp-strip { flex:1; display:flex; align-items:flex-end; justify-content:center; padding-bottom:6px; font-weight:bold; font-size:15px; }
+  .lp-full { flex:1; display:flex; flex-direction:column; min-height:0; }
+  .lp-head { display:flex; align-items:center; gap:6px; padding:4px 8px; font-weight:bold; font-size:13px;
+    background:rgba(0,0,0,.12); box-shadow:inset 0 -1px 0 #ffffff40; }
+  .lp-head .lp-title { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #00000033; }
+  .lp-head .lp-x { cursor:pointer; opacity:.9; font-size:14px; } .lp-head .lp-x:hover { opacity:1; }
+  .lp-body { flex:1; overflow-y:auto; padding:6px 8px; }
+  .lp-foot { display:flex; align-items:center; gap:6px; padding:4px 6px; min-height:30px;
+    background:rgba(0,0,0,.12); box-shadow:inset 0 1px 0 #ffffff40; }
+  .lp-foot .arrow { cursor:pointer; font-weight:bold; opacity:.9; padding:0 4px; margin-left:auto; } .lp-foot .arrow:hover { opacity:1; }
+
+  /* Carrés de statut (couleurs EXACTES) */
+  .sq { width:13px; height:13px; border-radius:2px; flex:0 0 auto; box-shadow:inset 0 0 0 1px #ffffffcc, 0 1px 1px #0000003a; }
+  .SQ-idle { background:#F4AA34; } .SQ-waiting { background:#99B516; } .SQ-playing { background:#EF6270; }
+
+  /* Vert — défis du joueur sélectionné */
+  .defis-empty { font-size:12px; opacity:.9; padding:4px 2px; line-height:1.55; }
+  .defis-status { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:bold; padding:6px 2px; }
+  .btn-defier { font:inherit; font-weight:bold; border:0; border-radius:5px; padding:5px 12px; cursor:pointer;
+    background:#fff; color:#6b7d10; box-shadow:0 1px 2px #00000033; }
+  .btn-defier[disabled] { opacity:.6; cursor:default; color:#7a7a55; }
+
+  /* Jaune — chat */
+  .chat-log .ln { margin:1px 0; font-size:13px; line-height:1.45; text-shadow:0 1px 1px #00000026; }
+  .chat-log .nk { font-weight:bold; }
+  .lp-foot.chat-input { padding:4px; }
+  .chat-input input { flex:1; border:0; border-radius:4px; padding:6px 8px; font:inherit; background:#fff; color:#333; }
+  .chat-input button { border:0; border-radius:4px; background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; font-weight:bold; padding:0 11px; cursor:pointer; font-size:15px; }
+
+  /* Rose — liste des joueurs (compteurs + joueurs présents) */
+  .pcount { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:bold; padding:3px 3px; }
+  .psep { height:1px; background:#ffffff55; margin:5px 2px; }
+  .pli { display:flex; align-items:center; gap:8px; padding:4px 4px; border-radius:4px; }
+  .pli .nm { font-weight:bold; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #0000002e; }
+  .pli.can { cursor:pointer; } .pli.can:hover { background:#ffffff2e; }
+  .pli.sel { background:#ffffff42; }
 
   /* ── Partie (thème orange — reproduction fidèle de la capture HD) ────────── */
   #screen-game { padding:12px; background:radial-gradient(120% 100% at 42% 14%, #ffeaba 0%, #ffcd72 42%, #fba12a 80%, #f3900e 100%); }
@@ -133,23 +165,41 @@
   <div id="screen-lobby" class="screen">
     <div class="lobby-window">
       <div class="lobby-bar">
-        <span class="title">CHALLENGE</span><span id="open-games"></span>
+        <span class="title">CHALLENGE</span>
+        <span class="sp"></span>
         <button id="btn-create">Créer une partie</button>
         <span class="x" id="lobby-back" title="Retour">✕</span>
       </div>
       <div class="lobby-main">
-        <div class="chat-panel">
-          <div class="panel-head">Chat</div>
-          <div class="chat-log" id="lobby-chat"></div>
-          <div class="chat-input"><input id="lobby-say" placeholder="Écris un message…" maxlength="200"><button id="lobby-send">»</button></div>
+        <!-- Vert : défis du joueur sélectionné (replié par défaut, s'ouvre au clic d'un joueur) -->
+        <div class="lpanel green collapsed" id="panel-defis">
+          <div class="lp-strip" data-exp="defis" title="Déplier">»</div>
+          <div class="lp-full">
+            <div class="lp-head"><span class="lp-title" id="defis-title">Liste des défis</span><span class="lp-x" data-col="defis" title="Replier">✕</span></div>
+            <div class="lp-body" id="defis-body"></div>
+            <div class="lp-foot" id="defis-foot"></div>
+          </div>
         </div>
-        <div class="players-panel">
-          <div class="panel-head">liste des joueurs</div>
-          <div class="players-list" id="players"></div>
+        <!-- Jaune : chat du lobby -->
+        <div class="lpanel yellow" id="panel-chat">
+          <div class="lp-strip" data-exp="chat" title="Déplier">»</div>
+          <div class="lp-full">
+            <div class="lp-head"><span class="lp-title">Chat</span><span class="lp-x" data-col="chat" title="Replier">✕</span></div>
+            <div class="lp-body chat-log" id="lobby-chat"></div>
+            <div class="lp-foot chat-input"><input id="lobby-say" placeholder="Écris un message…" maxlength="200"><button id="lobby-send">»</button></div>
+          </div>
+        </div>
+        <!-- Rose : liste des joueurs -->
+        <div class="lpanel pink" id="panel-players">
+          <div class="lp-strip" data-exp="players" title="Déplier">»</div>
+          <div class="lp-full">
+            <div class="lp-head"><span class="lp-title">liste des joueurs</span><span class="lp-x" data-col="players" title="Replier">✕</span></div>
+            <div class="lp-body players-list" id="players"></div>
+            <div class="lp-foot"><span class="arrow" data-col="players" title="Replier">»</span></div>
+          </div>
         </div>
       </div>
     </div>
-    <div id="challenge-box"></div>
   </div>
 
   <!-- Partie -->
@@ -250,42 +300,79 @@
     if (e === "err") { setStatus("⚠ " + el.getAttribute("m")); return; }
   }
 
-  // ── Lobby ──────────────────────────────────────────────────────────────────
-  var lobbyPlayers = [], lobbyGames = [];
+  // ── Lobby (3 panneaux : Défis / Chat / Joueurs — fidèle au jeu d'origine) ────
+  var lobbyPlayers = [], lobbyGames = [], lobbySel = null;
+  var SQCLASS = { idle: "SQ-idle", waiting: "SQ-waiting", playing: "SQ-playing" };
+  var STATUSLABEL = { idle: "Disponible", waiting: "En attente", playing: "En partie" };
   function onLobby(el) {
     if (!state.gotLobby) { state.gotLobby = true; setStatus("Connecté — " + state.user); if (state.screen === "connect") showScreen("mode"); }
     lobbyPlayers = []; lobbyGames = [];
-    each(el.getElementsByTagName("pl"), function (n) { lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f"), bot: n.getAttribute("bot") === "1" }); });
+    each(el.getElementsByTagName("pl"), function (n) { lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f"), sr: +n.getAttribute("sr") || 0, bot: n.getAttribute("bot") === "1" }); });
     each(el.getElementsByTagName("game"), function (n) { lobbyGames.push({ id: n.getAttribute("id"), host: n.getAttribute("host"), c: +n.getAttribute("c"), m: +n.getAttribute("m") }); });
     $("#ch-j").textContent = lobbyPlayers.length; $("#ch-p").textContent = lobbyGames.length;
     if (state.screen === "lobby") renderLobby();
   }
-  function renderLobby() { renderPlayers(); renderOpenGames(); }
-  // Pas de bouilles au lobby (juste pendant les parties) : on liste les pseudos.
+  function findPlayer(uid) { for (var i = 0; i < lobbyPlayers.length; i++) if (lobbyPlayers[i].u === uid) return lobbyPlayers[i]; return null; }
+  function renderLobby() {
+    var me = lobbyPlayers.filter(isMe)[0];
+    $("#btn-create").textContent = (me && me.s === "waiting") ? "Annuler la partie" : "Créer une partie";
+    if (lobbySel && !findPlayer(lobbySel)) lobbySel = null;   // joueur parti → désélection
+    renderPlayers(); renderDefis();
+  }
+  // Panneau ROSE : compteurs (qui jouent / en attente) puis les joueurs présents,
+  // chacun avec son carré de statut. Clic = sélection → ouvre le panneau vert.
   function renderPlayers() {
     var box = $("#players"); box.innerHTML = "";
+    var playing = 0, waiting = 0;
+    lobbyPlayers.forEach(function (p) { if (p.s === "playing") playing++; else if (p.s === "waiting") waiting++; });
+    box.appendChild(countRow("SQ-playing", playing + (playing > 1 ? " qui jouent" : " qui joue")));
+    box.appendChild(countRow("SQ-waiting", waiting + " en attente"));
+    box.appendChild(div("psep"));
     lobbyPlayers.forEach(function (p) {
-      var idle = p.s === "idle" && !isMe(p);
-      var row = div("pli" + (idle ? " can" : ""));
-      row.innerHTML = '<span class="dot' + (p.s === "playing" ? " busy" : "") + '"></span>'
-        + '<div class="nm">' + esc(p.n || p.u) + "</div>"
-        + (p.s === "playing" ? '<span class="busy">en partie</span>' : (idle ? '<span class="defi">défier ▸</span>' : ""));
-      if (idle) row.onclick = function () { gz({ a: "challenge", u: p.u }); };   // défi = démarrage direct
+      if (isMe(p)) return;
+      var row = div("pli can" + (lobbySel === p.u ? " sel" : ""));
+      row.innerHTML = '<span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span><span class="nm">' + esc(p.n || p.u) + "</span>";
+      row.onclick = function () { selectPlayer(p.u); };
       box.appendChild(row);
     });
   }
-  function renderOpenGames() {
-    var box = $("#open-games"); box.innerHTML = "";
-    lobbyGames.forEach(function (g) {
-      if (g.host === state.user) return;
-      var chip = document.createElement("span"); chip.className = "og"; chip.innerHTML = "Partie de <b>" + esc(g.host) + "</b> ";
-      var b = document.createElement("button"); b.textContent = "Rejoindre"; b.onclick = function () { gz({ a: "join", g: g.id }); };
-      chip.appendChild(b); box.appendChild(chip);
-    });
+  function countRow(sq, label) { var r = div("pcount"); r.innerHTML = '<span class="sq ' + sq + '"></span>' + esc(label); return r; }
+  function selectPlayer(uid) { lobbySel = uid; $("#panel-defis").classList.remove("collapsed"); renderPlayers(); renderDefis(); }
+  // Panneau VERT : « Liste des défis de [pseudo] (série) » + statut + bouton défier.
+  function renderDefis() {
+    var p = lobbySel ? findPlayer(lobbySel) : null;
+    var title = $("#defis-title"), body = $("#defis-body"), foot = $("#defis-foot");
+    if (!p) {
+      title.textContent = "Liste des défis";
+      body.innerHTML = '<div class="defis-empty">Clique sur un joueur dans la liste de droite pour voir son statut et le défier.</div>';
+      foot.innerHTML = '<span class="arrow" data-col="defis" title="Replier">»</span>';
+      return;
+    }
+    var name = p.n || p.u;
+    title.textContent = "Liste des défis de " + name + " (" + (p.sr || 0) + ")";
+    body.innerHTML = '<div class="defis-status"><span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span>' + esc(STATUSLABEL[p.s] || "Disponible") + "</div>";
+    foot.innerHTML = "";
+    var btn = document.createElement("button"); btn.className = "btn-defier";
+    if (p.s === "idle") { btn.textContent = "Défier " + name; btn.onclick = function () { gz({ a: "challenge", u: p.u }); }; }
+    else if (p.s === "waiting") {
+      var g = lobbyGames.filter(function (x) { return x.host === p.u; })[0];
+      if (g) { btn.textContent = "Rejoindre " + name; btn.onclick = function () { gz({ a: "join", g: g.id }); }; }
+      else { btn.textContent = "Défier " + name; btn.disabled = true; }
+    } else { btn.textContent = name + " est en partie"; btn.disabled = true; }
+    foot.appendChild(btn);
+    var arr = document.createElement("span"); arr.className = "arrow"; arr.setAttribute("data-col", "defis"); arr.setAttribute("title", "Replier"); arr.textContent = "»"; foot.appendChild(arr);
   }
-  $("#mode-chall").onclick = function () { showScreen("lobby"); renderLobby(); };
+  // Replier (✕ en-tête / » du pied) ou déplier (» de la bande repliée) un panneau.
+  function collapsePanel(name) { var el = $("#panel-" + name); if (el) el.classList.add("collapsed"); if (name === "defis") { lobbySel = null; renderPlayers(); } }
+  function expandPanel(name) { var el = $("#panel-" + name); if (el) el.classList.remove("collapsed"); if (name === "defis") renderDefis(); }
+  $(".lobby-main").addEventListener("click", function (ev) {
+    var t = ev.target;
+    var exp = t.getAttribute && t.getAttribute("data-exp"); if (exp) { expandPanel(exp); return; }
+    var col = t.getAttribute && t.getAttribute("data-col"); if (col) { collapsePanel(col); return; }
+  });
+  $("#mode-chall").onclick = function () { lobbySel = null; $("#panel-defis").classList.add("collapsed"); showScreen("lobby"); renderLobby(); };
   $("#lobby-back").onclick = function () { showScreen("mode"); };
-  $("#btn-create").onclick = function () { gz({ a: "create" }); };
+  $("#btn-create").onclick = function () { var me = lobbyPlayers.filter(isMe)[0]; if (me && me.s === "waiting") gz({ a: "part" }); else gz({ a: "create" }); };
   $("#game-quit").onclick = function () { gz({ a: "part" }); leaveGame(); };
   $("#lobby-send").onclick = sendLobbyChat;
   $("#lobby-say").addEventListener("keydown", function (e) { if (e.key === "Enter") sendLobbyChat(); });

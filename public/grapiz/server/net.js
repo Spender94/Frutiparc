@@ -74,7 +74,8 @@
     }).join("");
     var players = this.lobby.listPlayers().map(function (p) {
       return '<pl u="' + esc(p.id) + '" n="' + esc(p.name || p.id) + '" s="' + esc(p.status) +
-        '" f="' + esc(self.bouilles[p.id] || "") + '" bot="' + (self.bots[p.id] ? 1 : 0) + '"/>';
+        '" f="' + esc(self.bouilles[p.id] || "") + '" sr="' + (self.streaks[p.id] || 0) +
+        '" bot="' + (self.bots[p.id] ? 1 : 0) + '"/>';
     }).join("");
     return "<gz e=\"lobby\">" + players + games + "</gz>";
   };
