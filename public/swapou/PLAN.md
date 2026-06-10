@@ -101,6 +101,18 @@ Enseignements des expériences (graines fixes, 4-40 parties par config) :
 Exemple : `node public/swapou/bot.run.js --games 24 --char 1 --seed 500
 --depth2 --topk 12 --weights '{"score":1.5,"starsBoard":80}'`
 
+Résultats (140 parties en profondeur 2, graines variées) :
+- 1-ply : médiane ≈ 11-13 k, ~130 tours (4 persos) ;
+- profondeur 2 + panique + poids score : **médiane ≈ 20 300**,
+  moyenne ≈ 19 900, ~170 tours ;
+- **record du bot : 37 315 points en 265 tours** (Natacha, graine 301922,
+  config `{"score":2.5,"starsBoard":80}`, ~141 pts/tour) — soit ~70 % du
+  record humain (~53 000), qui TIENT donc pour l'instant.
+- morts typiques : sécheresse de combos (mobilité 1-2) au bord du plafond
+  avec banque d'étoiles insuffisante, la glace recouvrant le plateau.
+Pistes au-delà : profondeur 3/MCTS (préparation de chaînes à 2 tours),
+optimisation automatique des poids (CMA-ES), ferme à chaînes dédiée.
+
 ## Correspondances sons (SWF id → linkage)
 
 | id | nom | id | nom |
