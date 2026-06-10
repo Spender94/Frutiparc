@@ -7,8 +7,13 @@
 <!--
   Swapou 2 — portage natif JS du jeu Flash d'origine (700×480 @40fps),
   fidèle au source AS2 (Games/swapou2/swapou2/*.as). Pensé pour mobile :
-  canvas redimensionné en letterbox, entrées tactiles, ?sid= pour la
-  persistance plateforme (slots, scores, titems).
+  - en portrait le canvas pivote de 90° (« paysage forcé » : on tient le
+    téléphone à l'horizontale), ce qui maximise la taille de jeu ;
+  - le canvas est rastérisé à la résolution physique (devicePixelRatio)
+    pour un rendu net ;
+  - tactile : l'appui montre le sélecteur de paire, le glissement l'ajuste,
+    le relâcher effectue l'échange (la souris garde le clic immédiat).
+  ?sid= pour la persistance plateforme (slots, scores, titems).
 -->
 <style>
   html, body {
@@ -23,6 +28,7 @@
   #stage {
     position: fixed;
     left: 50%; top: 50%;
+    width: 700px; height: 480px; /* taille CSS fixe : le buffer suit le DPR */
     transform-origin: 0 0;
     image-rendering: auto;
   }
@@ -31,7 +37,7 @@
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     color: #cfe8a0; font-family: Verdana, Arial, sans-serif;
-    gap: 14px;
+    gap: 14px; z-index: 10;
   }
   #loader .bar {
     width: 240px; height: 12px;
@@ -44,10 +50,23 @@
     transition: width .15s;
   }
   #loader .t { font-size: 13px; letter-spacing: 1px; }
+  /* invitation à tenir le téléphone à l'horizontale (mode portrait) */
+  #rotate-hint {
+    position: fixed; left: 50%; top: 14px;
+    transform: translateX(-50%);
+    background: rgba(20, 35, 8, 0.88);
+    color: #e8f7c0; font-family: Verdana, Arial, sans-serif;
+    font-size: 13px; padding: 9px 16px; border-radius: 18px;
+    border: 1px solid #9fce30;
+    display: none; z-index: 20; white-space: nowrap;
+    transition: opacity .6s;
+  }
+  #rotate-hint .ph { display: inline-block; transform: rotate(90deg); }
 </style>
 </head>
 <body>
 <canvas id="stage" width="700" height="480"></canvas>
+<div id="rotate-hint"><span class="ph">📱</span> Tournez votre téléphone</div>
 <div id="loader">
   <div class="t">SWAPOU 2</div>
   <div class="bar"><div id="loadbar"></div></div>
@@ -67,6 +86,7 @@
   var loader = document.getElementById('loader');
   var loadbar = document.getElementById('loadbar');
   var loadtxt = document.getElementById('loadtxt');
+  var rotateHint = document.getElementById('rotate-hint');
 
   // sid : ?sid=… puis session /light en secours (même logique que Grapiz)
   var sid = new URLSearchParams(location.search).get('sid') || '';
@@ -74,50 +94,103 @@
     try { sid = (JSON.parse(localStorage.getItem('fp_light_session') || '{}') || {}).sid || ''; } catch (e) {}
   }
 
-  // ── mise à l'échelle letterbox ──
+  // ── mise à l'échelle : letterbox + rotation 90° en portrait ──
   var scale = 1;
+  var rotated = false;
+  var hintDismissed = false;
   function resize() {
     var w = window.innerWidth, h = window.innerHeight;
-    scale = Math.min(w / 700, h / 480);
-    canvas.style.transform =
-      'translate(' + (-350 * scale) + 'px,' + (-240 * scale) + 'px) scale(' + scale + ')';
+    rotated = h > w; // portrait → le jeu pivote (téléphone tenu en paysage)
+    if (rotated) scale = Math.min(w / 480, h / 700);
+    else scale = Math.min(w / 700, h / 480);
+
+    // netteté : buffer canvas à la résolution physique réellement affichée
+    var dpr = window.devicePixelRatio || 1;
+    var k = Math.min(scale * dpr, 2.5); // plafonné (coût de remplissage)
+    if (k < 0.5) k = 0.5;
+    var bw = Math.round(700 * k), bh = Math.round(480 * k);
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
+    SW.setCanvasScale(k);
+
+    // le buffer est k× plus grand que les 700×480 CSS : on compense
+    var s = scale / k;
+    canvas.style.width = bw + 'px';
+    canvas.style.height = bh + 'px';
+    if (rotated)
+      canvas.style.transform = 'rotate(90deg) scale(' + s + ') translate(' + (-350 * k) + 'px,' + (-240 * k) + 'px)';
+    else
+      canvas.style.transform = 'scale(' + s + ') translate(' + (-350 * k) + 'px,' + (-240 * k) + 'px)';
+
+    rotateHint.style.display = (rotated && !hintDismissed) ? 'block' : 'none';
   }
   window.addEventListener('resize', resize);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
   resize();
+  // l'indication disparaît d'elle-même au bout de quelques secondes
+  setTimeout(function () { dismissHint(); }, 7000);
+  function dismissHint() {
+    if (hintDismissed) return;
+    hintDismissed = true;
+    rotateHint.style.opacity = '0';
+    setTimeout(function () { rotateHint.style.display = 'none'; }, 700);
+  }
 
+  // écran (client) → coordonnées logiques 700×480, rotation comprise
   function toLogical(clientX, clientY) {
-    var r = canvas.getBoundingClientRect();
-    return {
-      x: (clientX - r.left) / scale,
-      y: (clientY - r.top) / scale,
-    };
+    var dx = clientX - window.innerWidth / 2;
+    var dy = clientY - window.innerHeight / 2;
+    if (rotated)
+      return { x: 350 + dy / scale, y: 240 - dx / scale };
+    return { x: 350 + dx / scale, y: 240 + dy / scale };
   }
 
   // ── entrées ──
-  function onMove(e) {
+  var lastTouchTs = 0; // ignore les événements souris synthétiques post-tactile
+
+  canvas.addEventListener('mousemove', function (e) {
+    if (Date.now() - lastTouchTs < 800) return;
     var p = toLogical(e.clientX, e.clientY);
     SW.handleMouseMove(p.x, p.y);
-  }
-  function onDown(e) {
+  });
+  canvas.addEventListener('mousedown', function (e) {
+    if (Date.now() - lastTouchTs < 800) return;
     var p = toLogical(e.clientX, e.clientY);
     SW.handleMouseDown(p.x, p.y);
     e.preventDefault();
-  }
-  canvas.addEventListener('mousemove', onMove);
-  canvas.addEventListener('mousedown', onDown);
-  canvas.addEventListener('touchstart', function (e) {
+  });
+
+  // tactile : appui = aperçu du sélecteur, glissé = ajustement,
+  // relâcher = action (échange / clic)
+  window.addEventListener('touchstart', function (e) {
+    lastTouchTs = Date.now();
+    dismissHint();
     var t = e.changedTouches[0];
     var p = toLogical(t.clientX, t.clientY);
-    SW.handleMouseDown(p.x, p.y);
+    SW.handleTouchStart(p.x, p.y);
     e.preventDefault();
   }, { passive: false });
-  canvas.addEventListener('touchmove', function (e) {
+  window.addEventListener('touchmove', function (e) {
+    lastTouchTs = Date.now();
     var t = e.changedTouches[0];
     var p = toLogical(t.clientX, t.clientY);
     SW.handleMouseMove(p.x, p.y);
     e.preventDefault();
   }, { passive: false });
+  window.addEventListener('touchend', function (e) {
+    lastTouchTs = Date.now();
+    var t = e.changedTouches[0];
+    var p = toLogical(t.clientX, t.clientY);
+    SW.handleTouchEnd(p.x, p.y);
+    e.preventDefault();
+  }, { passive: false });
+  window.addEventListener('touchcancel', function () {
+    SW.mouse.touching = false;
+    SW.mouse.outside = true;
+  });
+
   window.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') SW.setEsc(true);
   });

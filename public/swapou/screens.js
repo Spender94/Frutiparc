@@ -1034,6 +1034,8 @@
 
   // ── Boucle + entrées ─────────────────────────────────────────────────────
   SW.escDown = false;
+  SW.canvasScale = 1; // résolution de rendu (devicePixelRatio × échelle CSS)
+  SW.setCanvasScale = function (k) { SW.canvasScale = k; };
   SW.boot = function (canvas, sid) {
     const ctx = canvas.getContext('2d');
     Manager.init(sid);
@@ -1047,6 +1049,8 @@
       SW.deltaT = dt;
       try {
         Manager.main(tmod, dt);
+        const k = SW.canvasScale;
+        ctx.setTransform(k, 0, 0, k, 0, 0);
         ctx.clearRect(0, 0, D.DOCWIDTH, D.DOCHEIGHT);
         Manager.draw(ctx);
       } catch (e) {
@@ -1062,20 +1066,38 @@
     SW.mouse.y = y;
     SW.mouse.outside = (x < 0 || y < 0 || x > D.DOCWIDTH || y > D.DOCHEIGHT);
   };
-  SW.handleMouseDown = function (x, y) {
-    SW.handleMouseMove(x, y);
-    A.unlock();
+  // action au point courant (clic souris ou relâcher tactile)
+  function dispatchPress() {
     const mode = Manager.mode;
     if (!mode) return;
     // bouton pause tactile (modes de jeu uniquement)
     if (mode.pause) {
       const r = SW.pauseBtnRect;
+      const x = SW.mouse.x, y = SW.mouse.y;
       if ((x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) || mode.pause.flag) {
         mode.pause.want = true;
         return;
       }
     }
     if (mode.onClickDown) mode.onClickDown();
+  }
+  SW.handleMouseDown = function (x, y) {
+    SW.handleMouseMove(x, y);
+    A.unlock();
+    dispatchPress();
+  };
+  // tactile : l'appui montre le sélecteur de paire (aperçu), le déplacement
+  // l'ajuste, le relâcher déclenche l'action — on « vise » avant d'échanger.
+  SW.handleTouchStart = function (x, y) {
+    SW.mouse.touching = true;
+    SW.handleMouseMove(x, y);
+    A.unlock();
+  };
+  SW.handleTouchEnd = function (x, y) {
+    SW.handleMouseMove(x, y);
+    dispatchPress();
+    SW.mouse.touching = false;
+    SW.mouse.outside = true; // pas de survol persistant après le relâcher
   };
   SW.setEsc = function (down) { SW.escDown = down; };
 })();

@@ -211,6 +211,39 @@ pump(600, 1); // anim + résolution
 assert(!duel2.pl_lock || duel2.game_over_flag === true || duel2.player_special_combo === false,
   'la défense finit par rendre la main');
 
+// ── tactile : appui = aperçu du sélecteur, relâcher = échange ──────────────
+SW.Data.gameMode = SW.Data.CHALLENGE;
+SW.Data.players = [0, -1];
+Manager.mode.destroy();
+Manager.mode = new SW.Challenge();
+const chalT = Manager.mode;
+pump(5, 1);
+{
+  const lvl = chalT.player.level;
+  let sw = null;
+  for (let x = 0; x < lvl.width - 1 && !sw; x++)
+    for (let y = 0; y < lvl.height && !sw; y++) {
+      const f1 = lvl.getFruit(x, y), f2 = lvl.getFruit(x + 1, y);
+      if (f1 && f2 && f1.canSwap() && f2.canSwap()) sw = { x: x, y: y };
+    }
+  assert(sw != null, 'paire tactile trouvée');
+  const info = chalT.player.animator.getInfos();
+  const px = info.px + sw.x * 35 + 30, py = info.py + sw.y * 35 + 17;
+  SW.handleTouchStart(px, py);
+  assert(SW.mouse.touching === true, 'appui : doigt posé');
+  pump(2, 1);
+  assert(chalT.lock === false, "l'appui seul n'échange pas (aperçu)");
+  assert(chalT.interf.rollover.visible === true, 'le sélecteur de paire est visible pendant l\'appui');
+  SW.handleTouchEnd(px, py);
+  assert(chalT.lock === true, 'le relâcher déclenche l\'échange');
+  assert(SW.mouse.outside === true, 'plus de survol après le relâcher');
+  pump(2, 1);
+  assert(chalT.interf.rollover.visible === false, 'sélecteur masqué après le relâcher');
+  // laisse le tour se résoudre avant la suite
+  let gT = 0;
+  while (chalT.lock && gT++ < 20000 && Manager.mode === chalT) pump(1, 1);
+}
+
 // ── mode classique : min 2, couleurs limitées, montée de niveau ────────────
 SW.Data.gameMode = SW.Data.CLASSIC;
 SW.Data.players = [0, -1];
