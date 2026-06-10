@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Grapiz</title>
 <!--
-  Client natif Grapiz. Look reproduit au plus près du jeu d'origine (captures),
-  assets approximés en CSS/SVG (billes glossy, hexagones, branding) en attendant
-  les vrais. Protocole <gz> : voir public/grapiz/server/net.js. engine.js (testé)
+  Client natif Grapiz. Look reproduit au plus près du jeu d'origine (captures).
+  Le PLATEAU utilise les vrais assets (case_hex.png + billes rouge/bleue, copiés
+  depuis Games/grapiz) ; cartes joueurs & branding restent en CSS. Protocole
+  <gz> : voir public/grapiz/server/net.js. engine.js (testé)
   sert au miroir du plateau + à la surbrillance des coups jouables. Le gros
   nombre doré des cartes = série de victoires consécutives (mode challenge).
 -->
@@ -125,11 +126,18 @@
     background:linear-gradient(#ffd152,#f3970d); box-shadow:inset 0 0 0 1px #ffffffcc, 0 1px 2px #0000003a;
     color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; z-index:2; }
   #board { position:relative; }
-  #board .layer { position:absolute; top:0; left:0; }
-  #board .pieces { pointer-events:none; }
-  .tgt-mark { fill:#bfe9a8; fill-opacity:.5; stroke:#5cc23a; stroke-width:2.5; stroke-linejoin:round; }
-  .mb { stroke:#00000030; stroke-width:1; }
-  .sel-ring { fill:none; stroke:#fff; stroke-width:3; }
+  #board .layer { position:absolute; top:0; left:0; width:100%; height:100%; }
+  #board .cells, #board .pieces { pointer-events:none; }
+  #board .hit polygon { cursor:pointer; }
+  /* Cases : vraie image case_hex.png (hexagone flat-top), centrée sans déformation. */
+  .cell { position:absolute; background:center/contain no-repeat; background-image:url(case_hex.png); }
+  /* Billes : bille_rouge/bleue.png, plus PETITES que la case (cf. BALL côté JS). */
+  .ball { position:absolute; background:center/contain no-repeat; filter:drop-shadow(0 2px 2px rgba(70,25,0,.32)); }
+  .ball.b0 { background-image:url(bille_rouge.png); }
+  .ball.b1 { background-image:url(bille_bleue.png); }
+  .ball.sel { filter:drop-shadow(0 0 3px #fff) drop-shadow(0 0 5px #fff) drop-shadow(0 1px 2px rgba(70,25,0,.32)); }
+  /* Destination jouable : pastille verte translucide. */
+  .tgt { position:absolute; border-radius:50%; background:radial-gradient(circle,rgba(150,222,95,.6),rgba(120,200,70,.18) 70%,rgba(120,200,70,0)); box-shadow:0 0 0 2px rgba(92,194,58,.7); }
   .g-side { flex:1; align-self:stretch; display:flex; flex-direction:column; min-width:0; border-radius:11px; overflow:hidden;
     background:linear-gradient(180deg,#fffdf6,#fff6e6); border:1px solid #f0d9a8; box-shadow:inset 0 1px 0 #fff, 0 2px 6px #0000001f; }
   .g-warn { color:#5a5a5a; font-size:11px; line-height:1.4; padding:9px 11px; border-bottom:1px solid #f2e3c2; }
@@ -423,16 +431,19 @@
 
   // Géométrie hexagonale FLAT-TOP : (x,y) → pixels. Cases valides : (y−x) ∈
   // [−size,size] (largeur 2·size·K), (x+y) ∈ [0,4·size] → contour ~carré.
-  var CELL = 36, K = CELL * 0.866, J = CELL * 0.5, PAD = 22, MR = 13;
-  var HEX_R = (J * 2 / Math.sqrt(3)) * 0.94;   // léger jeu entre hexes (ombre visible)
+  // Dimensions AJUSTABLES (px). CELL = pas de la grille (≈ hauteur d'une case).
+  // CELLW/CELLH = boîte de l'image de case ; BALL = diamètre des billes (plus
+  // PETIT que la case, mais en occupant une bonne partie) ; TGT = pastille verte.
+  var CELL = 50;
+  var K = CELL * 0.866, J = CELL * 0.5, PAD = 32;
+  var HEX_R = J * 2 / Math.sqrt(3);                                            // hexagone de remplissage (jointif) + zone de clic
+  var CELLW = Math.round(2 * HEX_R), CELLH = Math.round(Math.sqrt(3) * HEX_R); // boîte image d'une case (hexagone flat-top)
+  var BALL = Math.round(CELL * 0.86);                                          // ⬅ taille des billes : nettement < case (≈ 86 % du pas) — ajuste ici
+  var TGT = Math.round(CELL * 0.46);                                           // pastille de destination
   function px(x, y) { return PAD + K * state.size + K * (y - x); }
   function py(x, y) { return PAD + J * (x + y); }
   function boardDim() { return { w: Math.round(PAD * 2 + K * (state.size * 2)), h: Math.round(PAD * 2 + J * (state.size * 4)) }; }
   function hexPts(cx, cy, r) { var p = []; for (var i = 0; i < 6; i++) { var a = Math.PI / 180 * 60 * i; p.push((cx + r * Math.cos(a)).toFixed(1) + "," + (cy + r * Math.sin(a)).toFixed(1)); } return p.join(" "); }
-  var HEX_DEFS = '<defs><linearGradient id="hexg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#f7f7f7"/><stop offset="1" stop-color="#e6e6e6"/></linearGradient>'
-    + '<filter id="hsh" x="-60%" y="-60%" width="220%" height="240%"><feDropShadow dx="0" dy="1.4" stdDeviation="1.2" flood-color="#7a3d05" flood-opacity="0.32"/></filter></defs>';
-  var PIECE_DEFS = '<defs><radialGradient id="mb-0" cx="36%" cy="27%" r="80%"><stop offset="0" stop-color="#ffe6e6"/><stop offset=".26" stop-color="#ff6a6a"/><stop offset=".68" stop-color="#e11b1b"/><stop offset="1" stop-color="#8e0505"/></radialGradient>'
-    + '<radialGradient id="mb-1" cx="36%" cy="27%" r="80%"><stop offset="0" stop-color="#e9f1ff"/><stop offset=".26" stop-color="#6aa6ff"/><stop offset=".68" stop-color="#2a6ee0"/><stop offset="1" stop-color="#0a2888"/></radialGradient></defs>';
   function curBoard() { return E.Board.fromDefinition({ size: state.size, tokens: state.tokens.map(function (t) { return { t: t.team, x: t.x, y: t.y }; }) }); }
   function canControl() { return !state.ended && state.turn === state.myTeam; }
   function tokenAt(x, y) { for (var i = 0; i < state.tokens.length; i++) if (state.tokens[i].x === x && state.tokens[i].y === y) return state.tokens[i]; return null; }
@@ -443,24 +454,28 @@
   function setupBoard() {
     var dim = boardDim(), b = curBoard(), board = $("#board");
     board.style.width = dim.w + "px"; board.style.height = dim.h + "px";
-    var hx = '<svg class="layer" width="' + dim.w + '" height="' + dim.h + '">' + HEX_DEFS;
+    var cells = "", hit = '<svg class="layer hit" width="' + dim.w + '" height="' + dim.h + '">';
     for (var x = 0; x <= state.size * 2; x++) for (var y = 0; y <= state.size * 2; y++) {
       if (!b.isValid(new E.Coordinate(x, y))) continue;
-      hx += '<polygon class="hex" filter="url(#hsh)" fill="url(#hexg)" stroke="#e3e3e3" stroke-width="1" stroke-linejoin="round" points="' + hexPts(px(x, y), py(x, y), HEX_R) + '" data-x="' + x + '" data-y="' + y + '"/>';
+      var cx = px(x, y), cy = py(x, y);
+      cells += '<div class="cell" style="left:' + (cx - CELLW / 2).toFixed(1) + 'px;top:' + (cy - CELLH / 2).toFixed(1) + 'px;width:' + CELLW + 'px;height:' + CELLH + 'px"></div>';
+      // hexagone EXACT transparent, au-dessus, pour des clics précis (data-x/y).
+      hit += '<polygon points="' + hexPts(cx, cy, HEX_R) + '" data-x="' + x + '" data-y="' + y + '" fill="rgba(0,0,0,0)"/>';
     }
-    board.innerHTML = hx + '</svg><svg class="layer pieces" width="' + dim.w + '" height="' + dim.h + '"></svg>';
+    board.innerHTML = '<div class="layer cells">' + cells + '</div><div class="layer pieces" id="pieces-layer"></div>' + hit + '</svg>';
     board._size = state.size;
   }
   function renderPieces() {
     var s = "";
-    Object.keys(state.targets).forEach(function (k) { var p = k.split(","); s += '<polygon class="tgt-mark" points="' + hexPts(px(+p[0], +p[1]), py(+p[0], +p[1]), HEX_R * 0.8) + '"/>'; });
+    Object.keys(state.targets).forEach(function (k) {
+      var p = k.split(","), cx = px(+p[0], +p[1]), cy = py(+p[0], +p[1]);
+      s += '<div class="tgt" style="left:' + (cx - TGT / 2).toFixed(1) + 'px;top:' + (cy - TGT / 2).toFixed(1) + 'px;width:' + TGT + 'px;height:' + TGT + 'px"></div>';
+    });
     state.tokens.forEach(function (tk) {
       var cx = px(tk.x, tk.y), cy = py(tk.x, tk.y), sel = state.sel && state.sel.x === tk.x && state.sel.y === tk.y;
-      s += '<circle class="mb" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + MR + '" fill="url(#mb-' + tk.team + ')"/>'
-        + '<ellipse cx="' + (cx - MR * 0.28).toFixed(1) + '" cy="' + (cy - MR * 0.36).toFixed(1) + '" rx="' + (MR * 0.34).toFixed(1) + '" ry="' + (MR * 0.2).toFixed(1) + '" fill="#ffffffd6"/>'
-        + (sel ? '<circle class="sel-ring" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + (MR + 2.5) + '"/>' : "");
+      s += '<div class="ball b' + tk.team + (sel ? ' sel' : '') + '" style="left:' + (cx - BALL / 2).toFixed(1) + 'px;top:' + (cy - BALL / 2).toFixed(1) + 'px;width:' + BALL + 'px;height:' + BALL + 'px"></div>';
     });
-    var pieces = $("#board .pieces"); if (pieces) pieces.innerHTML = PIECE_DEFS + s;
+    var layer = $("#pieces-layer"); if (layer) layer.innerHTML = s;
   }
   function renderBoard() { if ($("#board")._size !== state.size) setupBoard(); renderPieces(); }
   $("#board").addEventListener("click", function (ev) {
