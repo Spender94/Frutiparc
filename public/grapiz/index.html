@@ -6,9 +6,9 @@
 <title>Grapiz</title>
 <!--
   Client natif Grapiz. Look reproduit au plus près du jeu d'origine (captures).
-  Le PLATEAU utilise les vrais assets (fond zone_de_jeu_grapiz, cases hex_grapiz
-  + fond gris #B6B6B6 sous les cases pour masquer les jointures, billes rouge/
-  bleue) ; cartes joueurs & branding restent en CSS. Protocole
+  Le PLATEAU utilise les vrais assets (fond zone_de_jeu, cases hex_grapiz + fond
+  gris #B6B6B6 sous les cases, billes rouge/bleue) ; cartes = encart_joueur ;
+  panneau chat = zone_de_chat ; fond d'écran #FFFEE2. Protocole
   <gz> : voir public/grapiz/server/net.js. engine.js (testé)
   sert au miroir du plateau + à la surbrillance des coups jouables. Le gros
   nombre doré des cartes = série de victoires consécutives (mode challenge).
@@ -101,8 +101,8 @@
   .pli.sel { background:#ffffff42; }
 
   /* ── Partie (thème orange — reproduction fidèle de la capture HD) ────────── */
-  #screen-game { padding:12px; background:radial-gradient(120% 100% at 42% 14%, #ffeaba 0%, #ffcd72 42%, #fba12a 80%, #f3900e 100%); }
-  .game-window { max-width:800px; margin:0 auto; }
+  #screen-game { padding:8px; background:#FFFEE2; display:flex; justify-content:center; align-items:flex-start; }
+  .game-window { display:flex; flex-direction:column; gap:9px; }
   .g-top { display:flex; gap:12px; margin-bottom:11px; }
   /* Carte joueur : fond = encart_joueur.png (avatar + pseudo + étoile/série +
      horloge incrustés par-dessus). */
@@ -124,9 +124,11 @@
      incrustée). Elle REMPLIT le bloc sans rognage ; le bloc est rendu CARRÉ et le
      plateau centré dedans (dimensions fixées dans setupBoard). */
   .g-board-wrap { position:relative; flex:0 0 auto;
-    background:#f7a932 0 0/100% 100% no-repeat; background-image:url(zone_de_jeu_grapiz.png); }
-  /* Zone de clic transparente posée sur la croix incrustée (coin haut-droit). */
-  .g-board-wrap .zone-x { position:absolute; top:0; right:0; width:11%; height:11%; cursor:pointer; z-index:3; }
+    background:#f7a932 0 0/100% 100% no-repeat; background-image:url(zone_de_jeu.png); }
+  /* Bouton ✕ pour abandonner (l'image n'a plus de croix incrustée). */
+  .g-board-wrap .close { position:absolute; top:9px; right:10px; width:30px; height:30px; border-radius:8px; cursor:pointer; z-index:3;
+    background:linear-gradient(#ffd152,#f3970d); box-shadow:inset 0 0 0 1px #ffffffcc, 0 1px 2px #0000003a;
+    color:#fff; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:bold; }
   #board { position:absolute; }
   #board .layer { position:absolute; top:0; left:0; width:100%; height:100%; }
   #board .cellsbg, #board .cells, #board .pieces { pointer-events:none; }
@@ -146,10 +148,10 @@
      SOUS la bille → un pion mangeable reste visible (halo cyan autour). */
   .tgt { position:absolute; background:rgba(116,212,240,.62);
     clip-path:polygon(0% 50%,26.4% 0%,73.6% 0%,100% 50%,73.6% 100%,26.4% 100%); }
-  /* Panneau chat : fond = zone_chat.png (cadre arrondi + dégradé) ; le contenu
+  /* Panneau chat : fond = zone_de_chat.png (cadre arrondi + dégradé) ; le contenu
      (avertissement, messages, barre de saisie) est posé par-dessus, en retrait du cadre. */
-  .g-side { flex:1; align-self:stretch; display:flex; flex-direction:column; min-width:0; padding:16px 15px 14px; border-radius:16px;
-    background:#f7c93a 0 0/100% 100% no-repeat; background-image:url(zone_chat.png); }
+  .g-side { flex:0 0 auto; display:flex; flex-direction:column; min-width:0; padding:18px 16px 16px;
+    background:#f7c93a 0 0/100% 100% no-repeat; background-image:url(zone_de_chat.png); }
   .g-warn { color:#7a5510; font-size:11px; line-height:1.4; padding:2px 4px 8px; }
   .g-end { text-align:center; font-weight:bold; padding:8px; }
   .g-chat { flex:1; overflow-y:auto; padding:8px 11px; font-size:12.5px; line-height:1.5; color:#555; }
@@ -227,7 +229,7 @@
       <div class="g-main">
         <div class="g-board-wrap">
           <div id="board"></div>
-          <span class="zone-x" id="game-quit" title="Quitter la partie"></span>
+          <span class="close x" id="game-quit" title="Abandonner la partie">✕</span>
         </div>
         <div class="g-side">
           <div class="g-warn">ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !</div>
@@ -444,7 +446,7 @@
   // dessus 201. La grille reprend ces proportions → cases JOINTIVES, et un fond
   // gris #B6B6B6 un peu plus grand sous chaque case masque les jointures.
   var HEX_W = 425, HEX_H = 382, HEX_FLAT = 201;
-  var SCALE = 0.14;                                    // échelle VERTICALE (≈ hauteur de case) — taille du plateau
+  var SCALE = 0.15;                                    // échelle VERTICALE (≈ hauteur de case) — taille du plateau
   var WIDEN = 1.07;                                    // ⬅ élargissement horizontal des cases (+7 %), hauteur inchangée
   var SX = SCALE * WIDEN;                              // échelle horizontale
   var CELLW = Math.round(HEX_W * SX), CELLH = Math.round(HEX_H * SCALE);
@@ -473,12 +475,15 @@
   function setupBoard() {
     var dim = boardDim(), b = curBoard(), board = $("#board");
     board.style.width = dim.w + "px"; board.style.height = dim.h + "px";
-    // Panneau CARRÉ (= image zone_de_jeu) : côté = hauteur du plateau + petite marge.
-    // Le plateau (plus étroit) est centré → marge orange autour, croix dégagée.
-    var wrap = board.parentNode, side = Math.round(dim.h * 1.05);
+    // Panneau de jeu CARRÉ (= image zone_de_jeu) : côté = hauteur du plateau (+ fine marge).
+    // Le plateau (plus étroit) est centré dedans.
+    var wrap = board.parentNode, side = Math.round(dim.h * 1.04);
     wrap.style.width = side + "px"; wrap.style.height = side + "px";
     board.style.left = Math.round((side - dim.w) / 2) + "px";
     board.style.top = Math.round((side - dim.h) / 2) + "px";
+    // Panneau chat : MÊME hauteur que le plateau, largeur selon le ratio de zone_de_chat (900×1412).
+    var sidePanel = document.querySelector(".g-side");
+    if (sidePanel) { sidePanel.style.height = side + "px"; sidePanel.style.width = Math.round(side * 900 / 1412) + "px"; }
     var bg = "", cells = "", hit = '<svg class="layer hit" width="' + dim.w + '" height="' + dim.h + '">';
     var bw = Math.round(CELLW * CELLBG), bh = Math.round(CELLH * CELLBG);
     for (var x = 0; x <= state.size * 2; x++) for (var y = 0; y <= state.size * 2; y++) {
