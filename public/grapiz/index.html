@@ -6,8 +6,9 @@
 <title>Grapiz</title>
 <!--
   Client natif Grapiz. Look reproduit au plus près du jeu d'origine (captures).
-  Le PLATEAU utilise les vrais assets (case_hex.png + billes rouge/bleue, copiés
-  depuis Games/grapiz) ; cartes joueurs & branding restent en CSS. Protocole
+  Le PLATEAU utilise les vrais assets (fond zone_de_jeu_grapiz, cases hex_grapiz
+  + fond gris #B6B6B6 sous les cases pour masquer les jointures, billes rouge/
+  bleue) ; cartes joueurs & branding restent en CSS. Protocole
   <gz> : voir public/grapiz/server/net.js. engine.js (testé)
   sert au miroir du plateau + à la surbrillance des coups jouables. Le gros
   nombre doré des cartes = série de victoires consécutives (mode challenge).
@@ -120,18 +121,20 @@
   .gc-clock { color:#fff3c0; font-weight:bold; font-size:17px; font-variant-numeric:tabular-nums; text-shadow:0 1px 1px #b5650a66; }
   .g-main { display:flex; gap:12px; align-items:stretch; }
   .g-board-wrap { position:relative; flex:0 0 auto; border-radius:12px; padding:13px;
-    background:linear-gradient(180deg,#ffe9bb 0%,#ffd27a 18%,#ffc25e 46%,#f9a52f 100%);
+    background:#f7a932 center/cover no-repeat; background-image:url(zone_de_jeu_grapiz.png);
     box-shadow:inset 0 1px 0 #ffffffcc, inset 0 0 0 1px #ffffff66, 0 2px 6px #00000024; }
   .g-board-wrap .close { position:absolute; top:9px; right:10px; width:24px; height:24px; border-radius:7px;
     background:linear-gradient(#ffd152,#f3970d); box-shadow:inset 0 0 0 1px #ffffffcc, 0 1px 2px #0000003a;
     color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; z-index:2; }
   #board { position:relative; }
   #board .layer { position:absolute; top:0; left:0; width:100%; height:100%; }
-  #board .cells, #board .pieces { pointer-events:none; }
+  #board .cellsbg, #board .cells, #board .pieces { pointer-events:none; }
   #board .hit polygon { cursor:pointer; }
-  /* Cases : image case_hex.png remplissant sa boîte (calée sur le ratio du PNG →
-     cases JOINTIVES, sans écart ni déformation). */
-  .cell { position:absolute; background:center/100% 100% no-repeat; background-image:url(case_hex.png); }
+  /* Fond GRIS sous chaque case (hexagone clippé, un peu plus grand que la case) →
+     masque les jointures : plus aucune trace orange entre les cases. */
+  .cellbg { position:absolute; background:#B6B6B6; clip-path:polygon(0% 50%,26.4% 0%,73.6% 0%,100% 50%,73.6% 100%,26.4% 100%); }
+  /* Cases : image hex_grapiz.png remplissant sa boîte (ratio du PNG → jointif, sans déformation). */
+  .cell { position:absolute; background:center/100% 100% no-repeat; background-image:url(hex_grapiz.png); }
   /* Billes : bille_rouge/bleue.png, plus PETITES que la case (cf. BALL côté JS). */
   .ball { position:absolute; background:center/contain no-repeat; filter:drop-shadow(0 2px 2px rgba(70,25,0,.32)); }
   .ball.b0 { background-image:url(bille_rouge.png); }
@@ -430,19 +433,19 @@
   function gotoHome() { state.gameId = null; state.myTeam = -1; state._barSig = ""; stopClocks(); showScreen("mode"); gz({ a: "list" }); }
   function leaveGame() { if (state._endTimer) { clearTimeout(state._endTimer); state._endTimer = null; } gotoLobby(); }
 
-  // Géométrie calée EXACTEMENT sur le PNG de case (hexagone FLAT-TOP, mesuré sur
-  // l'alpha) : largeur pointe-à-pointe 274, hauteur plat-à-plat 256, arête du
-  // dessus 128. La grille reprend ces proportions → cases JOINTIVES (aucun écart)
-  // et image non déformée. (Un hexagone "régulier" ferait 0.866 de ratio ; celui-
-  // ci est plus haut, 256/274 ≈ 0.94 — d'où le calage spécifique de K/J.)
-  var HEX_W = 274, HEX_H = 256, HEX_FLAT = 128;
-  var SCALE = 0.21;                                    // ⬅ taille du plateau (échelle de l'image de case)
+  // Géométrie calée EXACTEMENT sur hex_grapiz.png (hexagone FLAT-TOP, mesuré sur
+  // l'alpha) : largeur pointe-à-pointe 425, hauteur plat-à-plat 382, arête du
+  // dessus 201. La grille reprend ces proportions → cases JOINTIVES, et un fond
+  // gris #B6B6B6 un peu plus grand sous chaque case masque les jointures.
+  var HEX_W = 425, HEX_H = 382, HEX_FLAT = 201;
+  var SCALE = 0.14;                                    // ⬅ taille du plateau (échelle de l'image de case)
   var CELLW = Math.round(HEX_W * SCALE), CELLH = Math.round(HEX_H * SCALE);
   var K = (HEX_W + HEX_FLAT) / 2 * SCALE;              // pas horizontal entre colonnes (jointif)
   var J = HEX_H / 2 * SCALE;                           // demi-pas vertical
-  var PAD = 32;
+  var PAD = Math.round(CELLW * 0.62);
   var BALL = Math.round(CELLH * 0.82);                 // ⬅ bille : nettement < case (≈ 82 % de la hauteur de case)
   var TGT = Math.round(CELLH * 0.5);                   // pastille verte de destination
+  var CELLBG = 1.06;                                   // fond gris un peu plus grand que la case (masque les jointures)
   function px(x, y) { return PAD + K * state.size + K * (y - x); }
   function py(x, y) { return PAD + J * (x + y); }
   function boardDim() { return { w: Math.round(PAD * 2 + K * (state.size * 2)), h: Math.round(PAD * 2 + J * (state.size * 4)) }; }
@@ -462,15 +465,18 @@
   function setupBoard() {
     var dim = boardDim(), b = curBoard(), board = $("#board");
     board.style.width = dim.w + "px"; board.style.height = dim.h + "px";
-    var cells = "", hit = '<svg class="layer hit" width="' + dim.w + '" height="' + dim.h + '">';
+    var bg = "", cells = "", hit = '<svg class="layer hit" width="' + dim.w + '" height="' + dim.h + '">';
+    var bw = Math.round(CELLW * CELLBG), bh = Math.round(CELLH * CELLBG);
     for (var x = 0; x <= state.size * 2; x++) for (var y = 0; y <= state.size * 2; y++) {
       if (!b.isValid(new E.Coordinate(x, y))) continue;
       var cx = px(x, y), cy = py(x, y);
+      // fond gris (hexagone clippé), un peu plus grand que la case → masque les jointures.
+      bg += '<div class="cellbg" style="left:' + (cx - bw / 2).toFixed(1) + 'px;top:' + (cy - bh / 2).toFixed(1) + 'px;width:' + bw + 'px;height:' + bh + 'px"></div>';
       cells += '<div class="cell" style="left:' + (cx - CELLW / 2).toFixed(1) + 'px;top:' + (cy - CELLH / 2).toFixed(1) + 'px;width:' + CELLW + 'px;height:' + CELLH + 'px"></div>';
       // hexagone EXACT transparent, au-dessus, pour des clics précis (data-x/y).
       hit += '<polygon points="' + cellPoly(cx, cy) + '" data-x="' + x + '" data-y="' + y + '" fill="rgba(0,0,0,0)"/>';
     }
-    board.innerHTML = '<div class="layer cells">' + cells + '</div><div class="layer pieces" id="pieces-layer"></div>' + hit + '</svg>';
+    board.innerHTML = '<div class="layer cellsbg">' + bg + '</div><div class="layer cells">' + cells + '</div><div class="layer pieces" id="pieces-layer"></div>' + hit + '</svg>';
     board._size = state.size;
   }
   function renderPieces() {
