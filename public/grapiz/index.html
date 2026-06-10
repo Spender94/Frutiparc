@@ -95,17 +95,14 @@
   .chat-input input::placeholder { color:#ffffffb0; }
   .chat-input button { border:0; border-radius:4px; background:linear-gradient(#ffd23f,#f5b800); color:#7a5800; font-weight:bold; padding:0 11px; cursor:pointer; font-size:15px; }
 
-  /* Rose — liste des joueurs. Deux styles DISTINCTS pour différencier « case » et
-     « joueur » : les compteurs/légende (.pcount) = grande CASE de couleur bordée +
-     libellé ; les joueurs (.pli) = petit carré de statut bordé + PSEUDO en texte
-     simple, posé directement sur le panneau (pas de cellule pleine). */
+  /* Rose — liste des joueurs. Chaque ligne (compteur OU joueur, même style) : une
+     CASE de couleur dans la colonne de gauche, bordée de blanc (bord droit + bas ;
+     le bord gauche/haut vient du contour du panneau et de la case précédente), puis
+     le LIBELLÉ/PSEUDO posé directement sur le panneau, SANS aucune bordure. */
   .players-list { padding:0; }
-  .pcount { display:flex; align-items:stretch; gap:0; padding:0; min-height:26px; border-bottom:2px solid #fff; font-weight:bold; font-size:13px; }
-  .pcount .sq { width:26px; height:auto; align-self:stretch; border-right:2px solid #fff; box-shadow:none; }
-  .pcount .nm { flex:1; display:flex; align-items:center; padding:0 9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #0000002e; }
-  .pli { display:flex; align-items:center; gap:9px; padding:5px 10px; border-bottom:2px solid #fff; }
-  .pli .sq { width:13px; height:13px; }
-  .pli .nm { flex:1; font-weight:bold; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #0000002e; }
+  .pcount, .pli { display:flex; align-items:stretch; gap:0; padding:0; min-height:24px; font-weight:bold; font-size:13px; }
+  .players-list .sq { width:26px; height:auto; align-self:stretch; border-right:2px solid #fff; border-bottom:2px solid #fff; box-shadow:none; }
+  .pcount .nm, .pli .nm { flex:1; display:flex; align-items:center; padding:0 10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px #0000002e; }
   .psep { display:none; }
   .pli.can { cursor:pointer; } .pli.can:hover { background:#ffffff2e; }
   .pli.sel { background:#ffffff42; }
