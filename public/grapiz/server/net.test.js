@@ -143,15 +143,30 @@ ok(ses._botAt != null, "le coup du bot est planifié (délai naturel)");
 CL = 12000; nbot.tick(12000);                        // 2e tick : exécute le coup
 ok(!nbot.sessions[ses.id] || nbot.sessions[ses.id].game.currentTurn === 0, "le bot a joué (tour rendu au joueur) ou partie conclue");
 
-// ── Anti-triche de la série classée ─────────────────────────────────────────
-// (1) Battre un BOT ne fait pas monter la série classée (entraînement).
+// ── Règles de la série classée ───────────────────────────────────────────────
+// (1) Battre un BOT compte comme une vraie victoire, et c'est REJOUABLE
+//     (un bot n'est pas un complice). Perdre contre un bot casse la série.
 var botLog = [];
 var nb = new N.GrapizNet({ clock: function () { return 0; }, onStreak: function (u, s, info) { botLog.push({ u: u, s: s, series: info.series }); } });
-nb.handle("cheater", { a: "hello", n: "Cheater" });
-nb.handle("cheater", { a: "challenge", u: "pepino", t: "60000" });   // partie contre le bot pepino
-nb.handle("pepino", { a: "part" });                                  // le bot "perd" → cheater gagne
-eq(nb.streaks["cheater"] || 0, 0, "battre un bot ne fait pas monter la série classée");
-ok(!botLog.some(function (x) { return x.u === "cheater"; }), "aucun classement enregistré pour une victoire contre un bot");
+nb.handle("grimpeur", { a: "hello", n: "Grimpeur" });
+function beatsBot(bot) {
+  nb.handle("grimpeur", { a: "challenge", u: bot, t: "60000" });
+  nb.handle(bot, { a: "part" });                                  // le bot abandonne → victoire
+}
+beatsBot("pepino");
+eq(nb.streaks["grimpeur"], 1, "battre un bot fait monter la série (1)");
+ok(botLog.some(function (x) { return x.u === "grimpeur" && x.series === 1; }), "la victoire contre un bot est classée (series=1)");
+beatsBot("pepino");
+eq(nb.streaks["grimpeur"], 2, "REBATTRE LE MÊME bot compte encore (série 2)");
+beatsBot("mirabo");
+eq(nb.streaks["grimpeur"], 3, "battre un autre bot → série 3");
+ok(botLog.some(function (x) { return x.u === "grimpeur" && x.series === 3; }), "la série en cours alimente le classement (series=3)");
+// défaite contre un bot → la série s'enregistre puis tombe à 0
+nb.handle("grimpeur", { a: "challenge", u: "cassis", t: "60000" });
+nb.handle("grimpeur", { a: "part" });                              // le joueur abandonne → le bot gagne
+eq(nb.streaks["grimpeur"], 0, "perdre contre un bot remet la série à 0");
+ok(botLog.some(function (x) { return x.u === "grimpeur" && x.s === 0 && x.series === 3; }), "la série terminée (3) est enregistrée à la défaite");
+ok(!botLog.some(function (x) { return x.u === "pepino" || x.u === "mirabo" || x.u === "cassis"; }), "les séries des bots ne sont jamais persistées/classées");
 
 // (2) Rebattre le MÊME humain ne compte qu'une fois ; il faut des adversaires différents.
 var nh = new N.GrapizNet({ clock: function () { return 0; }, withBots: false });

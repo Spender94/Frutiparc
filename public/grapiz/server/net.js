@@ -126,33 +126,49 @@
   // Met à jour les séries (challenge) : le gagnant +1, le perdant enregistre sa
   // série puis repart à 0. 2 joueurs uniquement (TODO multi).
   //
-  // Anti-triche (la série classée ne doit pas être manipulable) :
-  //   1. SEULES les parties HUMAIN-contre-HUMAIN comptent. Battre un bot ne
-  //      classe rien — et perdre contre un bot ne casse pas la série (les bots
-  //      sont de l'entraînement, et ils sont explicitement marqués bot="1").
-  //   2. Pendant une série, chaque adversaire ne compte qu'UNE fois. Battre en
-  //      boucle le même compte (alt/complice qui abandonne) ne rapporte donc
-  //      qu'UN point : pour monter la série il faut enchaîner des adversaires
-  //      DIFFÉRENTS. Le set "déjà battus" est remis à zéro quand la série tombe.
+  // Règles de la série classée :
+  //   1. Battre un BOT compte comme une vraie victoire (les bots sont des
+  //      adversaires à part entière), et c'est REJOUABLE : un bot est contrôlé
+  //      par le serveur, il ne peut pas être un complice — l'anti-farm
+  //      « une fois par série » ne s'applique donc qu'aux humains.
+  //   2. Perdre contre un bot casse la série, comme contre un humain
+  //      (symétrique — sinon affronter les bots serait un farm sans risque).
+  //   3. Entre humains : pendant une série, chaque adversaire ne compte
+  //      qu'UNE fois. Battre en boucle le même compte (alt/complice qui
+  //      abandonne) ne rapporte qu'UN point ; pour monter il faut enchaîner
+  //      des adversaires DIFFÉRENTS. Le set "déjà battus" est remis à zéro
+  //      quand la série tombe.
   GrapizNet.prototype._updateStreaks = function (session) {
     if (session.winner == null || session.players.length !== 2) return;
     var win = session.playerOfTeam(session.winner);
     var lose = session.players.filter(function (p) { return p.team !== session.winner; })[0];
     if (!win || !lose) return;
+    if (this.bots[win.id] && this.bots[lose.id]) return;   // bot vs bot : rien
 
-    // Partie d'entraînement (un bot est impliqué) → aucune incidence sur la série classée.
-    if (this.bots[win.id] || this.bots[lose.id]) return;
-
-    var beaten = this._beaten[win.id] || (this._beaten[win.id] = {});
-    if (!beaten[lose.id]) {
-      // Adversaire neuf pour cette série → la victoire compte.
-      beaten[lose.id] = true;
-      var ws = (this.streaks[win.id] || 0) + 1;
-      this.streaks[win.id] = ws;
-      this._fireStreak(win.id, ws, ws);
+    // Victoire du gagnant.
+    if (this.bots[win.id]) {
+      // Gagnant bot : simple bump cosmétique de sa série "vitrine" (jamais
+      // persistée — _fireStreak ignore les bots), pour un écran de fin cohérent.
+      this.streaks[win.id] = (this.streaks[win.id] || 0) + 1;
+    } else {
+      var counts;
+      if (this.bots[lose.id]) {
+        counts = true;                       // bot battu → compte toujours
+      } else {
+        var beaten = this._beaten[win.id] || (this._beaten[win.id] = {});
+        counts = !beaten[lose.id];           // humain : une fois par série
+        if (counts) beaten[lose.id] = true;
+      }
+      if (counts) {
+        var ws = (this.streaks[win.id] || 0) + 1;
+        this.streaks[win.id] = ws;
+        this._fireStreak(win.id, ws, ws);
+      }
+      // (humain déjà battu pendant cette série → série inchangée)
     }
-    // (adversaire déjà battu pendant cette série → série inchangée, rien n'est classé)
 
+    // Défaite du perdant : la série tombe et s'enregistre. Pour un bot c'est
+    // purement cosmétique (sa série "vitrine" retombe ; _fireStreak l'ignore).
     var ended = this.streaks[lose.id] || 0;
     this.streaks[lose.id] = 0;
     this._beaten[lose.id] = {};            // le perdant repart sur une série vierge
