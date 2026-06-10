@@ -438,10 +438,12 @@
   // dessus 201. La grille reprend ces proportions → cases JOINTIVES, et un fond
   // gris #B6B6B6 un peu plus grand sous chaque case masque les jointures.
   var HEX_W = 425, HEX_H = 382, HEX_FLAT = 201;
-  var SCALE = 0.14;                                    // ⬅ taille du plateau (échelle de l'image de case)
-  var CELLW = Math.round(HEX_W * SCALE), CELLH = Math.round(HEX_H * SCALE);
-  var K = (HEX_W + HEX_FLAT) / 2 * SCALE;              // pas horizontal entre colonnes (jointif)
-  var J = HEX_H / 2 * SCALE;                           // demi-pas vertical
+  var SCALE = 0.14;                                    // échelle VERTICALE (≈ hauteur de case) — taille du plateau
+  var WIDEN = 1.10;                                    // ⬅ élargissement horizontal des cases (+10 %), hauteur inchangée
+  var SX = SCALE * WIDEN;                              // échelle horizontale
+  var CELLW = Math.round(HEX_W * SX), CELLH = Math.round(HEX_H * SCALE);
+  var K = (HEX_W + HEX_FLAT) / 2 * SX;                 // pas horizontal (suit la largeur → reste jointif)
+  var J = HEX_H / 2 * SCALE;                           // demi-pas vertical (inchangé)
   var PAD = Math.round(CELLW * 0.62);
   var BALL = Math.round(CELLH * 0.82);                 // ⬅ bille : nettement < case (≈ 82 % de la hauteur de case)
   var TGT = Math.round(CELLH * 0.5);                   // pastille verte de destination
@@ -451,7 +453,7 @@
   function boardDim() { return { w: Math.round(PAD * 2 + K * (state.size * 2)), h: Math.round(PAD * 2 + J * (state.size * 4)) }; }
   // Hexagone flat-top EXACT du PNG (zone de clic), centré en (cx,cy) → tuile sans trou.
   function cellPoly(cx, cy) {
-    var hw = CELLW / 2, hh = CELLH / 2, fe = HEX_FLAT * SCALE / 2;
+    var hw = CELLW / 2, hh = CELLH / 2, fe = HEX_FLAT * SX / 2;
     return [[cx - hw, cy], [cx - fe, cy - hh], [cx + fe, cy - hh], [cx + hw, cy], [cx + fe, cy + hh], [cx - fe, cy + hh]]
       .map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" ");
   }
