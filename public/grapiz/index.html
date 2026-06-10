@@ -120,13 +120,14 @@
   .gc-streak { color:#ffe536; font-weight:bold; font-size:25px; line-height:1; text-shadow:0 1px 0 #b5650a; }
   .gc-clock { color:#fff3c0; font-weight:bold; font-size:17px; font-variant-numeric:tabular-nums; text-shadow:0 1px 1px #b5650a66; }
   .g-main { display:flex; gap:12px; align-items:stretch; }
-  .g-board-wrap { position:relative; flex:0 0 auto; border-radius:12px; padding:13px;
-    background:#f7a932 center/cover no-repeat; background-image:url(zone_de_jeu_grapiz.png);
-    box-shadow:inset 0 1px 0 #ffffffcc, inset 0 0 0 1px #ffffff66, 0 2px 6px #00000024; }
-  .g-board-wrap .close { position:absolute; top:9px; right:10px; width:24px; height:24px; border-radius:7px;
-    background:linear-gradient(#ffd152,#f3970d); box-shadow:inset 0 0 0 1px #ffffffcc, 0 1px 2px #0000003a;
-    color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; z-index:2; }
-  #board { position:relative; }
+  /* Panneau de jeu = l'image zone_de_jeu (carré : cadre arrondi + dégradé + croix
+     incrustée). Elle REMPLIT le bloc sans rognage ; le bloc est rendu CARRÉ et le
+     plateau centré dedans (dimensions fixées dans setupBoard). */
+  .g-board-wrap { position:relative; flex:0 0 auto;
+    background:#f7a932 0 0/100% 100% no-repeat; background-image:url(zone_de_jeu_grapiz.png); }
+  /* Zone de clic transparente posée sur la croix incrustée (coin haut-droit). */
+  .g-board-wrap .zone-x { position:absolute; top:0; right:0; width:11%; height:11%; cursor:pointer; z-index:3; }
+  #board { position:absolute; }
   #board .layer { position:absolute; top:0; left:0; width:100%; height:100%; }
   #board .cellsbg, #board .cells, #board .pieces { pointer-events:none; }
   #board .hit polygon { cursor:pointer; }
@@ -220,8 +221,8 @@
       <div class="g-top" id="g-top"></div>
       <div class="g-main">
         <div class="g-board-wrap">
-          <span class="close x" id="game-quit" title="Quitter la partie">✕</span>
           <div id="board"></div>
+          <span class="zone-x" id="game-quit" title="Quitter la partie"></span>
         </div>
         <div class="g-side">
           <div class="g-warn">ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !</div>
@@ -439,7 +440,7 @@
   // gris #B6B6B6 un peu plus grand sous chaque case masque les jointures.
   var HEX_W = 425, HEX_H = 382, HEX_FLAT = 201;
   var SCALE = 0.14;                                    // échelle VERTICALE (≈ hauteur de case) — taille du plateau
-  var WIDEN = 1.10;                                    // ⬅ élargissement horizontal des cases (+10 %), hauteur inchangée
+  var WIDEN = 1.07;                                    // ⬅ élargissement horizontal des cases (+7 %), hauteur inchangée
   var SX = SCALE * WIDEN;                              // échelle horizontale
   var CELLW = Math.round(HEX_W * SX), CELLH = Math.round(HEX_H * SCALE);
   var K = (HEX_W + HEX_FLAT) / 2 * SX;                 // pas horizontal (suit la largeur → reste jointif)
@@ -467,6 +468,12 @@
   function setupBoard() {
     var dim = boardDim(), b = curBoard(), board = $("#board");
     board.style.width = dim.w + "px"; board.style.height = dim.h + "px";
+    // Panneau CARRÉ (= image zone_de_jeu) : côté = hauteur du plateau + petite marge.
+    // Le plateau (plus étroit) est centré → marge orange autour, croix dégagée.
+    var wrap = board.parentNode, side = Math.round(dim.h * 1.05);
+    wrap.style.width = side + "px"; wrap.style.height = side + "px";
+    board.style.left = Math.round((side - dim.w) / 2) + "px";
+    board.style.top = Math.round((side - dim.h) / 2) + "px";
     var bg = "", cells = "", hit = '<svg class="layer hit" width="' + dim.w + '" height="' + dim.h + '">';
     var bw = Math.round(CELLW * CELLBG), bh = Math.round(CELLH * CELLBG);
     for (var x = 0; x <= state.size * 2; x++) for (var y = 0; y <= state.size * 2; y++) {
