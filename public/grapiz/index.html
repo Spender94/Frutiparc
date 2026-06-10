@@ -129,8 +129,9 @@
   #board .layer { position:absolute; top:0; left:0; width:100%; height:100%; }
   #board .cells, #board .pieces { pointer-events:none; }
   #board .hit polygon { cursor:pointer; }
-  /* Cases : vraie image case_hex.png (hexagone flat-top), centrée sans déformation. */
-  .cell { position:absolute; background:center/contain no-repeat; background-image:url(case_hex.png); }
+  /* Cases : image case_hex.png remplissant sa boîte (calée sur le ratio du PNG →
+     cases JOINTIVES, sans écart ni déformation). */
+  .cell { position:absolute; background:center/100% 100% no-repeat; background-image:url(case_hex.png); }
   /* Billes : bille_rouge/bleue.png, plus PETITES que la case (cf. BALL côté JS). */
   .ball { position:absolute; background:center/contain no-repeat; filter:drop-shadow(0 2px 2px rgba(70,25,0,.32)); }
   .ball.b0 { background-image:url(bille_rouge.png); }
@@ -429,21 +430,28 @@
   function gotoHome() { state.gameId = null; state.myTeam = -1; state._barSig = ""; stopClocks(); showScreen("mode"); gz({ a: "list" }); }
   function leaveGame() { if (state._endTimer) { clearTimeout(state._endTimer); state._endTimer = null; } gotoLobby(); }
 
-  // Géométrie hexagonale FLAT-TOP : (x,y) → pixels. Cases valides : (y−x) ∈
-  // [−size,size] (largeur 2·size·K), (x+y) ∈ [0,4·size] → contour ~carré.
-  // Dimensions AJUSTABLES (px). CELL = pas de la grille (≈ hauteur d'une case).
-  // CELLW/CELLH = boîte de l'image de case ; BALL = diamètre des billes (plus
-  // PETIT que la case, mais en occupant une bonne partie) ; TGT = pastille verte.
-  var CELL = 50;
-  var K = CELL * 0.866, J = CELL * 0.5, PAD = 32;
-  var HEX_R = J * 2 / Math.sqrt(3);                                            // hexagone de remplissage (jointif) + zone de clic
-  var CELLW = Math.round(2 * HEX_R), CELLH = Math.round(Math.sqrt(3) * HEX_R); // boîte image d'une case (hexagone flat-top)
-  var BALL = Math.round(CELL * 0.86);                                          // ⬅ taille des billes : nettement < case (≈ 86 % du pas) — ajuste ici
-  var TGT = Math.round(CELL * 0.46);                                           // pastille de destination
+  // Géométrie calée EXACTEMENT sur le PNG de case (hexagone FLAT-TOP, mesuré sur
+  // l'alpha) : largeur pointe-à-pointe 274, hauteur plat-à-plat 256, arête du
+  // dessus 128. La grille reprend ces proportions → cases JOINTIVES (aucun écart)
+  // et image non déformée. (Un hexagone "régulier" ferait 0.866 de ratio ; celui-
+  // ci est plus haut, 256/274 ≈ 0.94 — d'où le calage spécifique de K/J.)
+  var HEX_W = 274, HEX_H = 256, HEX_FLAT = 128;
+  var SCALE = 0.21;                                    // ⬅ taille du plateau (échelle de l'image de case)
+  var CELLW = Math.round(HEX_W * SCALE), CELLH = Math.round(HEX_H * SCALE);
+  var K = (HEX_W + HEX_FLAT) / 2 * SCALE;              // pas horizontal entre colonnes (jointif)
+  var J = HEX_H / 2 * SCALE;                           // demi-pas vertical
+  var PAD = 32;
+  var BALL = Math.round(CELLH * 0.82);                 // ⬅ bille : nettement < case (≈ 82 % de la hauteur de case)
+  var TGT = Math.round(CELLH * 0.5);                   // pastille verte de destination
   function px(x, y) { return PAD + K * state.size + K * (y - x); }
   function py(x, y) { return PAD + J * (x + y); }
   function boardDim() { return { w: Math.round(PAD * 2 + K * (state.size * 2)), h: Math.round(PAD * 2 + J * (state.size * 4)) }; }
-  function hexPts(cx, cy, r) { var p = []; for (var i = 0; i < 6; i++) { var a = Math.PI / 180 * 60 * i; p.push((cx + r * Math.cos(a)).toFixed(1) + "," + (cy + r * Math.sin(a)).toFixed(1)); } return p.join(" "); }
+  // Hexagone flat-top EXACT du PNG (zone de clic), centré en (cx,cy) → tuile sans trou.
+  function cellPoly(cx, cy) {
+    var hw = CELLW / 2, hh = CELLH / 2, fe = HEX_FLAT * SCALE / 2;
+    return [[cx - hw, cy], [cx - fe, cy - hh], [cx + fe, cy - hh], [cx + hw, cy], [cx + fe, cy + hh], [cx - fe, cy + hh]]
+      .map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" ");
+  }
   function curBoard() { return E.Board.fromDefinition({ size: state.size, tokens: state.tokens.map(function (t) { return { t: t.team, x: t.x, y: t.y }; }) }); }
   function canControl() { return !state.ended && state.turn === state.myTeam; }
   function tokenAt(x, y) { for (var i = 0; i < state.tokens.length; i++) if (state.tokens[i].x === x && state.tokens[i].y === y) return state.tokens[i]; return null; }
@@ -460,7 +468,7 @@
       var cx = px(x, y), cy = py(x, y);
       cells += '<div class="cell" style="left:' + (cx - CELLW / 2).toFixed(1) + 'px;top:' + (cy - CELLH / 2).toFixed(1) + 'px;width:' + CELLW + 'px;height:' + CELLH + 'px"></div>';
       // hexagone EXACT transparent, au-dessus, pour des clics précis (data-x/y).
-      hit += '<polygon points="' + hexPts(cx, cy, HEX_R) + '" data-x="' + x + '" data-y="' + y + '" fill="rgba(0,0,0,0)"/>';
+      hit += '<polygon points="' + cellPoly(cx, cy) + '" data-x="' + x + '" data-y="' + y + '" fill="rgba(0,0,0,0)"/>';
     }
     board.innerHTML = '<div class="layer cells">' + cells + '</div><div class="layer pieces" id="pieces-layer"></div>' + hit + '</svg>';
     board._size = state.size;
