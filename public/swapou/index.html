@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Swapou 2</title>
+<!--
+  Swapou 2 — portage natif JS du jeu Flash d'origine (700×480 @40fps),
+  fidèle au source AS2 (Games/swapou2/swapou2/*.as). Pensé pour mobile :
+  canvas redimensionné en letterbox, entrées tactiles, ?sid= pour la
+  persistance plateforme (slots, scores, titems).
+-->
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #24330e;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #stage {
+    position: fixed;
+    left: 50%; top: 50%;
+    transform-origin: 0 0;
+    image-rendering: auto;
+  }
+  #loader {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: #cfe8a0; font-family: Verdana, Arial, sans-serif;
+    gap: 14px;
+  }
+  #loader .bar {
+    width: 240px; height: 12px;
+    border: 2px solid #cfe8a0; border-radius: 7px;
+    overflow: hidden;
+  }
+  #loader .bar > div {
+    height: 100%; width: 0%;
+    background: #9fce30;
+    transition: width .15s;
+  }
+  #loader .t { font-size: 13px; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="700" height="480"></canvas>
+<div id="loader">
+  <div class="t">SWAPOU 2</div>
+  <div class="bar"><div id="loadbar"></div></div>
+  <div class="t" id="loadtxt">chargement…</div>
+</div>
+
+<script src="engine.js"></script>
+<script src="assets.js"></script>
+<script src="ui.js"></script>
+<script src="data.js"></script>
+<script src="game.js"></script>
+<script src="screens.js"></script>
+<script>
+(function () {
+  'use strict';
+  var canvas = document.getElementById('stage');
+  var loader = document.getElementById('loader');
+  var loadbar = document.getElementById('loadbar');
+  var loadtxt = document.getElementById('loadtxt');
+
+  // sid : ?sid=… puis session /light en secours (même logique que Grapiz)
+  var sid = new URLSearchParams(location.search).get('sid') || '';
+  if (!sid) {
+    try { sid = (JSON.parse(localStorage.getItem('fp_light_session') || '{}') || {}).sid || ''; } catch (e) {}
+  }
+
+  // ── mise à l'échelle letterbox ──
+  var scale = 1;
+  function resize() {
+    var w = window.innerWidth, h = window.innerHeight;
+    scale = Math.min(w / 700, h / 480);
+    canvas.style.transform =
+      'translate(' + (-350 * scale) + 'px,' + (-240 * scale) + 'px) scale(' + scale + ')';
+  }
+  window.addEventListener('resize', resize);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+  resize();
+
+  function toLogical(clientX, clientY) {
+    var r = canvas.getBoundingClientRect();
+    return {
+      x: (clientX - r.left) / scale,
+      y: (clientY - r.top) / scale,
+    };
+  }
+
+  // ── entrées ──
+  function onMove(e) {
+    var p = toLogical(e.clientX, e.clientY);
+    SW.handleMouseMove(p.x, p.y);
+  }
+  function onDown(e) {
+    var p = toLogical(e.clientX, e.clientY);
+    SW.handleMouseDown(p.x, p.y);
+    e.preventDefault();
+  }
+  canvas.addEventListener('mousemove', onMove);
+  canvas.addEventListener('mousedown', onDown);
+  canvas.addEventListener('touchstart', function (e) {
+    var t = e.changedTouches[0];
+    var p = toLogical(t.clientX, t.clientY);
+    SW.handleMouseDown(p.x, p.y);
+    e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener('touchmove', function (e) {
+    var t = e.changedTouches[0];
+    var p = toLogical(t.clientX, t.clientY);
+    SW.handleMouseMove(p.x, p.y);
+    e.preventDefault();
+  }, { passive: false });
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') SW.setEsc(true);
+  });
+  window.addEventListener('keyup', function (e) {
+    if (e.key === 'Escape') SW.setEsc(false);
+  });
+  // premier geste → déverrouille l'audio (politique mobile)
+  window.addEventListener('pointerdown', function () { SwapouAssets.unlock(); }, { once: true });
+
+  // ── chargement puis démarrage ──
+  SwapouAssets.loadImages(function (n, total) {
+    loadbar.style.width = Math.round(n * 100 / total) + '%';
+    loadtxt.textContent = 'chargement… ' + n + '/' + total;
+  }).then(function () {
+    loader.style.display = 'none';
+    SW.boot(canvas, sid);
+  });
+})();
+</script>
+</body>
+</html>
