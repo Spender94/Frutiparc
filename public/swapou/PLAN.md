@@ -97,10 +97,15 @@ coupeAncestrale (paliers `COMBOS = [3,4,5,6,7,9,11,13,15,18,21]`).
 ## État
 
 - [x] Sons extraits et nommés.
-- [x] Moteur de règles pur + tests.
+- [x] Moteur de règles pur + tests (`engine.test.js`, 118 assertions).
 - [x] Client canvas : menu, options, challenge, classique, duel, pot au feu
       (carte + dialogues + cinématiques + versus), game over, pause.
 - [x] Persistance plateforme (slots, scores, titems, prefs).
 - [x] Onglet /light.
-- [ ] Finitions éventuelles après retours (positions pixel-perfect des
-      écrans annexes, sons des cinématiques sprite-embarqués).
+- [x] Tests d'intégration headless : `client.test.js` (parties réelles
+      jouées dans Node — menu, challenge, duel IA, attaques/défenses,
+      histoire phase 0 complète, classique) et `draw.test.js` (fumée du
+      rendu de tous les écrans avec un contexte 2D factice).
+- [ ] Finitions éventuelles après retours en conditions réelles (positions
+      pixel-perfect des écrans annexes, sons des cinématiques
+      sprite-embarqués type cri de Wasabii).

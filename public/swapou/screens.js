@@ -471,8 +471,8 @@
     }
     // versus
     if (this.versus) this.drawVersus(ctx);
-    // netBox
-    if (this.netLocked && this.animPhase !== 0) {
+    // netBox (visible seulement une fois le menu en place, cf. Menu.as)
+    if (this.netLocked && this.animPhase >= 16) {
       const img = A.img('netBox');
       if (img) U.drawCentered(ctx, img, D.DOCWIDTH / 2, D.DOCHEIGHT / 2, 1);
       U.text(ctx, 'connexion...', D.DOCWIDTH / 2, D.DOCHEIGHT / 2, { size: 15, color: '#5a3a10' });
