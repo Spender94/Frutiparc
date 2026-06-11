@@ -96,4 +96,84 @@ function mergeFaerieByIdentity(prev, next) {
   return out;
 }
 
-module.exports = { faerieIsRich, parseFaerieField, mergeFaerieByIdentity };
+// ── Synthèse des fées-stubs ──────────────────────────────────────────────
+// Les fées écloses à l'ère du pipe n'ont jamais eu d'état riche côté serveur
+// ({$name,$level} pour toujours). En jeu, ça donne : portrait qui cycle
+// entre des skins aléatoires ($skin manquant), stats fausses ($carac),
+// cases d'équipement absentes ($inv), fée immobile dans un coin
+// ($behaviour/$mood), nourrissage cassé ($taste). On complète ici chaque
+// champ manquant avec les défauts de Cm.genFaerieSeed (le créateur officiel,
+// Games/miniTroll/src/Cm.mt), en DÉTERMINISTE à partir du nom : la même fée
+// retrouve le même corps et les mêmes couleurs à chaque chargement.
+function faerieNameHash(name) {
+  let h = 5381;
+  const s = String(name == null ? '' : name);
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h >>> 0;
+}
+
+function synthesizeFaerieDefaults(f) {
+  if (!f || typeof f !== 'object' || Array.isArray(f)) return false;
+  const h = faerieNameHash(f.$name);
+  let changed = false;
+  function miss(k) { return f[k] === undefined || f[k] === null; }
+  function set(k, v) { if (miss(k)) { f[k] = v; changed = true; } }
+
+  // $pos : null est une VALEUR légitime (« en main ») — on ne touche qu'à
+  // undefined. Idem $mission (null = pas de mission en cours).
+  if (f.$pos === undefined) { f.$pos = null; changed = true; }
+  if (f.$mission === undefined) { f.$mission = null; changed = true; }
+
+  set('$level', 0);
+  set('$humor', h % 8);
+  set('$exp', 0);
+  set('$bagMax', 2);
+  set('$hunger', 4);
+  set('$moral', 10);
+  set('$shot', 0);
+  if (!Array.isArray(f.$carac) || f.$carac.length < 6) {
+    f.$carac = [1, 1, 1, 1, 1, 1];
+    changed = true;
+  }
+  if (!Array.isArray(f.$skin) || f.$skin.length < 4) {
+    // [corps 0-5, 3 couleurs 24 bits] — multiplicateurs de Knuth pour des
+    // couleurs stables et bien dispersées par nom.
+    f.$skin = [
+      h % 6,
+      (Math.imul(h, 2654435761) >>> 8) % 0xFFFFFF,
+      (Math.imul(h ^ 0x9e3779b9, 40503) >>> 4) % 0xFFFFFF,
+      (Math.imul(h + 0x85ebca6b, 2246822519) >>> 6) % 0xFFFFFF,
+    ];
+    changed = true;
+  }
+  if (!Array.isArray(f.$mood)) { f.$mood = []; changed = true; }
+  if (!Array.isArray(f.$next) || f.$next.length < 2) {
+    // état pré-setNextLevelUp d'un seed neuf (légitime dans le jeu)
+    f.$next = [0, 0];
+    changed = true;
+  }
+  if (!Array.isArray(f.$spell)) { f.$spell = [20, 0]; changed = true; }
+  if (!Array.isArray(f.$spellCoef)) { f.$spellCoef = []; changed = true; }
+  if (!Array.isArray(f.$behaviour)) { f.$behaviour = []; changed = true; }
+  if (!Array.isArray(f.$inv)) { f.$inv = []; changed = true; }
+  if (!Array.isArray(f.$taste) || f.$taste.length < 2) {
+    // 1 goût + 1 dégoût distincts, ids d'aliments 0..9 (it.Food)
+    const like = h % 10;
+    const dislike = (like + 1 + ((h >>> 4) % 9)) % 10;
+    f.$taste = [[like], [dislike]];
+    changed = true;
+  }
+  // $life/$mana dérivés des carac (genFaerieSeed) — minimum 1 PV pour ne
+  // jamais charger une fée morte-née.
+  if (typeof f.$life !== 'number' || Number.isNaN(f.$life) || f.$life <= 0) {
+    f.$life = Math.max(1, Math.ceil(Number(f.$carac[2]) || 1));
+    changed = true;
+  }
+  if (typeof f.$mana !== 'number' || Number.isNaN(f.$mana) || f.$mana < 0) {
+    f.$mana = (Number(f.$carac[5]) || 1) * 2;
+    changed = true;
+  }
+  return changed;
+}
+
+module.exports = { faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults, faerieNameHash };

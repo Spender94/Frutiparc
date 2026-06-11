@@ -19,7 +19,7 @@ const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
 const db = require('./db');
-const { faerieIsRich, parseFaerieField, mergeFaerieByIdentity } = require('./minipixizFaerie');
+const { faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults } = require('./minipixizFaerie');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
 // Standard error sink for fire-and-forget DB writes. Replaces the
@@ -596,11 +596,15 @@ for (const [idStr, itemName] of Object.entries(PIXIZ_ITEM_NAMES)) {
 }
 // Foods — slot data tracks $stat.$eat[foodId] and food IDs are 300..354 (every 3).
 // GIFs are indexed sequentially: food_1.gif → ID 300, food_2.gif → ID 301, ..., food_57.gif → ID 356.
+// ORDRE = la table it.Food.NAME du jeu (Games/miniTroll/src/it/Food.mt) :
+// food id n → gifs food_{n*3+1..n*3+3}. L'ancienne table ici était devinée
+// visuellement et FAUSSE (« je mange un pain, je débloque le picto banane »).
+// test/minipixizPersistence.test.js vérifie la synchro avec Food.mt.
 const PIXIZ_FOOD_BASE_NAMES = [
-  'Banane','Cerise','Champignon','Poire','Mure',
-  'Carotte','Orange','Citron','Fraise','Tomate',
-  'Pomme','Brioche','Œuf','Statue','Gouda',
-  'Poireau','Pâtisserie','Raisin','Melon',
+  'Pain','Raisin','Salade','Biscotte','Poire',
+  'Glace','Oeuf','Gouda','Banane','Brioche',
+  'Barbapapa','Nouilles chinoises','Poireau','Melon','Maïs',
+  'Cerise','Sushi','Tarte aux fruits','Yakitori',
 ];
 for (let i = 0; i < 57; i++) {
   const id = 300 + i;
@@ -6876,6 +6880,16 @@ function padMinipixizSlot0(jsonStr) {
   if (typeof obj.$pond.$d !== 'number') obj.$pond.$d = 0;
   if (obj.$pond.$fs === undefined) obj.$pond.$fs = null;
   if (!Array.isArray(obj.$faerie)) obj.$faerie = [];
+  // Répare les fées-stubs de l'ère pipe ({$name,$level} sans état riche) ET
+  // les fées partiellement riches : chaque champ manquant reçoit le défaut
+  // de genFaerieSeed, déterministe par nom (portrait stable, équipement,
+  // stats, goûts, suivi — cf. minipixizFaerie.synthesizeFaerieDefaults).
+  for (const f of obj.$faerie) {
+    try { synthesizeFaerieDefaults(f); } catch { /* fée malformée : inchangée */ }
+  }
+  if (obj.$pond && obj.$pond.$fs && typeof obj.$pond.$fs === 'object') {
+    try { synthesizeFaerieDefaults(obj.$pond.$fs); } catch { /* idem */ }
+  }
   if (!Array.isArray(obj.$inv))     obj.$inv     = [];
   // $current is null when nothing is selected (not 0)
   if (obj.$current === undefined) obj.$current = null;
@@ -6888,6 +6902,11 @@ function padMinipixizSlot0(jsonStr) {
   if (typeof obj.$time.$t !== 'number') obj.$time.$t = Date.now();
   if (typeof obj.$time.$d !== 'number') obj.$time.$d = 0;
   if (typeof obj.$time.$s !== 'number') obj.$time.$s = 0;
+  // Garde anti-horloge-future : un $t > maintenant (skew, donnée corrompue)
+  // rendrait et = now - $t NÉGATIF dans Cm.updateTime → $s négatif →
+  // getNightCoef() < 0 → ciel bloqué en nuit et missions désactivées.
+  if (obj.$time.$t > Date.now() + 60000) obj.$time.$t = Date.now();
+  if (obj.$time.$s < 0) obj.$time.$s = 0;
   if (!Array.isArray(obj.$mission)) obj.$mission = [];
   if (typeof obj.$checkpoint !== 'number') obj.$checkpoint = 0;
   return JSON.stringify(obj);
@@ -6962,25 +6981,49 @@ function isMinipixizSlot0Corrupted(jsonStr) {
   }
 }
 
-// MiniPixiz pipe format (22 fields — the original was 19, but $inv,
-// $current, $checkpoint were added to keep the in-game bag UI visible
-// across sessions; the SWF hides the bag widget when $inv is empty):
+// MiniPixiz pipe format (33 fields aujourd'hui — historiquement 19 puis 22) :
 //   0:$stat.$item 1:$stat.$eat 2:$stat.$kill 3:$stat.$run 4:$stat.$game
 //   5:$stat.$forestMax 6:$stat.$treeMax 7:$stat.$misNum
 //   8:$diam 9:$key 10:$star 11:$bag
 //   12:$dungeon.$lvl 13:$dungeon.$f 14:$rainbow.$f 15:$pond.$q
-//   16:$frog 17:faerie_levels(comma-sep) 18:$vs
+//   16:$frog 17:faerie(name:level,…) 18:$vs
 //   19:$inv (csv) 20:$current 21:$checkpoint
+//   ── extension « horloge » (la racine des bugs jour/nuit : sans $time
+//   persisté, getNightCoef()=$s/86400000 retombe à 0 (= minuit) à chaque
+//   session et upkeep() — fée du bassin, vent, donjon, arc-en-ciel — ne
+//   tourne JAMAIS) :
+//   22:$time.$t 23:$time.$d 24:$time.$s 25:$pond.$d
+//   26:$dungeon.$day 27:$dungeon.$loop 28:$rainbow.$day 29:$rainbow.$it
+//   30:$wind 31:$god (csv, trous préservés) 32:$help (csv, trous préservés —
+//   le jeu teste `$help[id]!=null` : false marquerait l'aide comme déjà vue)
 function parseMinipixizPipe(s) {
   const parts = String(s).split('|');
   if (parts.length < 19) return null;
   function parseNumArr(p) { return p ? p.split(',').map(v => v === '' ? 0 : Number(v) || 0) : []; }
   function parseBoolArr(p) { return p ? p.split(',').map(v => v === 'true') : []; }
-  // $inv: CSV of item IDs, empty entries → null (sparse slot, not 0
-  // which could collide with a valid item id 0).
+  // bool csv en préservant les trous : '' / 'undefined' / 'null' → null
+  // (sémantique sparse AS2 — cf. $help ci-dessus).
+  function parseSparseBoolArr(p) {
+    if (!p) return [];
+    return p.split(',').map(v => v === 'true' ? true : (v === 'false' ? false : null));
+  }
+  // $inv: CSV of item IDs — '' (trou de sac) ET tout token non numérique
+  // ('undefined' d'un join Ruffle sur une entrée sparse, 'null'…) → null.
+  // L'ancien `Number(v) || 0` transformait ces tokens en item id 0, qui est
+  // la potion « +1 force » (it.Carac type 0) : des potions fantômes
+  // apparaissaient dans le sac.
   function parseInvArr(p) {
     if (!p) return [];
-    return p.split(',').map(v => v === '' ? null : (Number(v) || 0));
+    return p.split(',').map(v => {
+      if (v === '' || v === 'null' || v === 'undefined') return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    });
+  }
+  function numOrNull(p) {
+    if (p === undefined || p === '' || p === 'null' || p === 'undefined') return null;
+    const n = Number(p);
+    return Number.isFinite(n) ? n : null;
   }
   const faerie = parseFaerieField(parts[17]);
   const inv = parts.length >= 20 ? parseInvArr(parts[19]) : [];
@@ -6995,7 +7038,7 @@ function parseMinipixizPipe(s) {
     if (Number.isNaN(cur)) cur = null;
   }
   const checkpoint = parts.length >= 22 ? (Number(parts[21]) || 0) : 0;
-  return {
+  const out = {
     $stat: {
       $item: parseBoolArr(parts[0]),
       $eat: parseNumArr(parts[1]),
@@ -7019,6 +7062,54 @@ function parseMinipixizPipe(s) {
     $inv: inv,
     $current: cur,
     $checkpoint: checkpoint,
+  };
+  // Extension horloge (pipe ≥ 25 champs) — absente sur les vieux SWF en
+  // cache : on n'émet alors PAS ces clés, le forward-merge conserve prev.
+  if (parts.length >= 25) {
+    const t = numOrNull(parts[22]);
+    const d = numOrNull(parts[23]);
+    const sec = numOrNull(parts[24]);
+    if (t !== null || d !== null || sec !== null)
+      out.$time = { $t: t || 0, $d: d || 0, $s: sec || 0 };
+  }
+  if (parts.length >= 26) {
+    const pd = numOrNull(parts[25]);
+    if (pd !== null) out.$pond.$d = pd;
+  }
+  if (parts.length >= 28) {
+    const dd = numOrNull(parts[26]);
+    const dl = numOrNull(parts[27]);
+    if (dd !== null) out.$dungeon.$day = dd;
+    if (dl !== null) out.$dungeon.$loop = dl;
+  }
+  if (parts.length >= 30) {
+    const rd = numOrNull(parts[28]);
+    const ri = numOrNull(parts[29]);
+    if (rd !== null) out.$rainbow.$day = rd;
+    if (ri !== null) out.$rainbow.$it = ri;
+  }
+  if (parts.length >= 31) {
+    const w = numOrNull(parts[30]);
+    if (w !== null) out.$wind = w;
+  }
+  if (parts.length >= 32) out.$god = parseSparseBoolArr(parts[31]);
+  if (parts.length >= 33) out.$help = parseSparseBoolArr(parts[32]);
+  return out;
+}
+
+// Préférences MiniPixiz (slot 1 — Pref.mt : {$mouse,$sound,$key}). Le moulin
+// (écran d'options) appelle saveSlot(1) ; le SWF patché poste ce mini-pipe :
+//   $mouse|$sound csv|$key csv
+function parseMinipixizPrefPipe(s) {
+  const parts = String(s).split('|');
+  if (parts.length < 3) return null;
+  function parseNumArr(p) { return p ? p.split(',').map(v => v === '' ? 0 : Number(v) || 0) : []; }
+  const key = parseNumArr(parts[2]);
+  if (key.length === 0) return null; // pas de touches → pipe invalide
+  return {
+    $mouse: parts[0] === 'true',
+    $sound: parseNumArr(parts[1]),
+    $key: key,
   };
 }
 
@@ -7150,6 +7241,19 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
       // progress markers live at the end.
       const pipeTail = rawPipe.length > 280 ? '…' + rawPipe.slice(-280) : rawPipe;
       console.log(`[SLOT]  minipixiz pipe (${rawPipe.length} chars) → JSON (${data.length} chars) tail=${pipeTail}`);
+    }
+  }
+
+  // MiniPixiz: préférences (slot 1) — mini-pipe $mouse|$sound|$key → JSON.
+  // Sans ça, le moulin (options) perdait les touches à chaque session.
+  if ((game === 'minipixiz' || game === 'minitroll') && slotId === '1' && data.indexOf('|') >= 0 && data[0] !== '{') {
+    const obj = parseMinipixizPrefPipe(data);
+    if (obj) {
+      data = JSON.stringify(obj);
+      console.log(`[SLOT]  minipixiz pref pipe → JSON (${data.length} chars): ${data}`);
+    } else {
+      console.log(`[SLOT]  minipixiz pref pipe INVALIDE — ignoré (${data.slice(0, 80)})`);
+      return res.type('text/plain').send('ok=1');
     }
   }
 
@@ -7408,10 +7512,18 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
           if (merged.$rainbow.$day === undefined && prev.$rainbow.$day !== undefined) merged.$rainbow.$day = prev.$rainbow.$day;
           if (merged.$rainbow.$it  === undefined && prev.$rainbow.$it  !== undefined) merged.$rainbow.$it  = prev.$rainbow.$it;
         }
-        // Top-level fields the pipe drops entirely: $mission, $mis,
-        // $help, $time, $god, $wind. Keep prev whenever new is missing.
+        // Top-level fields the OLD pipe dropped entirely: $mission, $mis,
+        // $help, $time, $god, $wind. Keep prev whenever new is missing
+        // (vieux SWF en cache → pipe court → on conserve l'existant).
         for (const k of ['$mission', '$mis', '$help', '$time', '$god', '$wind']) {
           if (merged[k] === undefined && prev[k] !== undefined) merged[k] = prev[k];
+        }
+        // $time est monotone : le compteur de jours ne recule jamais en jeu.
+        // Un pipe partiel/glitché qui annoncerait $d plus petit que l'acquis
+        // ferait rejouer les évènements quotidiens — on garde alors prev.
+        if (merged.$time && prev.$time &&
+            (Number(prev.$time.$d) || 0) > (Number(merged.$time.$d) || 0)) {
+          merged.$time = prev.$time;
         }
         // $inv / $current / $checkpoint: the patched SWF now emits these (pipe
         // fields 19–21), but a stale 19-field SWF or a Ruffle array glitch can

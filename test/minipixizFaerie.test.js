@@ -127,3 +127,73 @@ test('names propagate into a previously-nameless slot via index merge', () => {
   assert.equal(out[0].$name, 'A');
   assert.equal(out[0].$exp, 100);
 });
+
+// ── synthesizeFaerieDefaults : réparation des fées-stubs de l'ère pipe ──
+const { synthesizeFaerieDefaults, faerieNameHash } = require('../minipixizFaerie');
+
+test('synthesize: un stub {$name,$level} devient une fée complète et jouable', () => {
+  const f = { $name: 'Lumina', $level: 3 };
+  const changed = synthesizeFaerieDefaults(f);
+  assert.equal(changed, true);
+  assert.equal(f.$name, 'Lumina');
+  assert.equal(f.$level, 3);                      // les champs du pipe restent maîtres
+  assert.equal(f.$skin.length, 4);                // portrait stable (corps + 3 couleurs)
+  assert.ok(f.$skin[0] >= 0 && f.$skin[0] <= 5);
+  assert.deepEqual(f.$carac, [1, 1, 1, 1, 1, 1]); // stats de base genFaerieSeed
+  assert.deepEqual(f.$inv, []);                   // cases d'équipement présentes
+  assert.equal(f.$taste.length, 2);               // goûts/dégoûts pour le nourrissage
+  assert.notEqual(f.$taste[0][0], f.$taste[1][0]);
+  assert.ok(f.$taste[0][0] >= 0 && f.$taste[0][0] <= 9);
+  assert.ok(Array.isArray(f.$behaviour) && Array.isArray(f.$mood));
+  assert.ok(f.$life >= 1);                        // jamais morte-née
+  assert.ok(f.$mana >= 0);
+  assert.equal(f.$moral, 10);                     // ≠ 0 ($d % $moral dans upkeep)
+  assert.equal(f.$pos, null);                     // « en main »
+  assert.deepEqual(f.$next, [0, 0]);              // état pré-setNextLevelUp légitime
+});
+
+test('synthesize: déterministe par nom — même skin à chaque chargement', () => {
+  const a = { $name: 'Pigone', $level: 7 };
+  const b = { $name: 'Pigone', $level: 12 };
+  synthesizeFaerieDefaults(a);
+  synthesizeFaerieDefaults(b);
+  assert.deepEqual(a.$skin, b.$skin);
+  assert.deepEqual(a.$taste, b.$taste);
+  assert.equal(a.$humor, b.$humor);
+  // deux noms différents → skins différents (presque sûrement)
+  const c = { $name: 'Gamedea', $level: 7 };
+  synthesizeFaerieDefaults(c);
+  assert.notDeepEqual(a.$skin, c.$skin);
+});
+
+test('synthesize: ne touche JAMAIS un champ riche existant', () => {
+  const f = {
+    $name: 'Danicie', $level: 50, $skin: [2, 111, 222, 333],
+    $carac: [9, 8, 7, 6, 5, 4], $inv: [12, null], $taste: [[3], [8]],
+    $exp: 1035, $life: 7, $mana: 8, $moral: 0, $hunger: 17,
+    $pos: 4, $mission: 2, $behaviour: [], $mood: [1], $next: [5, 2],
+    $spell: [20, 3], $spellCoef: [1], $bagMax: 4, $humor: 6, $shot: 2,
+  };
+  const before = JSON.parse(JSON.stringify(f));
+  synthesizeFaerieDefaults(f);
+  assert.deepEqual(f, before);                    // riche → strictement inchangée
+});
+
+test('synthesize: complète les champs manquants un par un (fée semi-riche)', () => {
+  const f = { $name: 'Mira', $level: 5, $skin: [1, 10, 20, 30], $exp: 99 };
+  synthesizeFaerieDefaults(f);
+  assert.deepEqual(f.$skin, [1, 10, 20, 30]);     // skin existant conservé
+  assert.equal(f.$exp, 99);
+  assert.deepEqual(f.$carac, [1, 1, 1, 1, 1, 1]); // manquant → défaut
+});
+
+test('synthesize: entrées non-objet refusées sans crash', () => {
+  assert.equal(synthesizeFaerieDefaults(null), false);
+  assert.equal(synthesizeFaerieDefaults([1, 2]), false);
+  assert.equal(synthesizeFaerieDefaults('Pigone'), false);
+});
+
+test('faerieNameHash : stable et sans nom = 0 géré', () => {
+  assert.equal(faerieNameHash('Pigone'), faerieNameHash('Pigone'));
+  assert.equal(typeof faerieNameHash(undefined), 'number');
+});

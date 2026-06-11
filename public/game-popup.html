@@ -472,7 +472,18 @@
       var slot0 = params.get("slot0");
       if (!slot0 || slot0 === "null") { window.__dlog("[Seed] no slot0 — leaving SharedObject untouched"); return; }
       var card = JSON.parse(slot0);
-      var data = {}; cfg.fields.forEach(function (f) { data[f] = [card]; });
+      // slot1 = préférences (Pref.mt : {$mouse,$sound,$key}). Le jeu lit
+      // fruticard[1] ; sans lui, Cm.formatPref() réinitialise les touches du
+      // moulin à CHAQUE session. On le seed quand le serveur le connaît.
+      var slots = [card];
+      var slot1 = params.get("slot1");
+      if (slot1 && slot1 !== "null") {
+        try {
+          var pref = JSON.parse(slot1);
+          if (pref && typeof pref === "object" && Array.isArray(pref.$key) && pref.$key.length > 0) slots.push(pref);
+        } catch (e) { window.__dlog("[Seed] slot1 illisible — prefs ignorées"); }
+      }
+      var data = {}; cfg.fields.forEach(function (f) { data[f] = slots; });
       var b64 = bytesToB64(buildSol(cfg.base, data));
       var key = window.location.host + swfLoadPath + "/#" + cfg.name;
       localStorage.setItem(key, b64);

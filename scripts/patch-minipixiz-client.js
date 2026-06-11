@@ -547,8 +547,9 @@ function buildOnLoadBody() {
   const slot0SkipSize = slot0Load.length + slot0NullCheck.length + 5 + slot0Assign.length + seedSO.length;
   const slot0NullSkipSize = slot0Assign.length + seedSO.length;
 
+  // (balises /api/diag retirées : le canal avait livré son verdict — EI mort,
+  // données AMF intactes — et postait du bruit à chaque boot)
   return Buffer.concat([
-    diagMarker,
     getClient,
     checkSuccess,
     actionIf(afterSuccessCheck),
@@ -561,7 +562,6 @@ function buildOnLoadBody() {
     seedSO,
     syncSlots,
     callOnServiceConnect,
-    diagFaerie,
   ]);
 }
 
@@ -666,8 +666,8 @@ function buildServiceConnectBody() {
     ])),
   ]);
 
+  // (diagMarshal retiré — même nettoyage que les balises d'onLoad)
   return Buffer.concat([
-    diagMarshal,
     initSlots, initSlot0,
     createLv, setGame, setSid,
     createResult, setClient, setOnLoad,
@@ -747,7 +747,13 @@ if (PATCH_SERVICE_CONNECT) {
 //  18: $vs              (float)
 //  19: $inv             (comma-sep item ids — the bag; empty entries kept)
 //  20: $current         (int or empty/"null" → null; the selected item)
-//  21: $checkpoint      (int, last field)
+//  21: $checkpoint      (int)
+//  ── extension « horloge » (33 champs au total) ──
+//  22: $time.$t  23: $time.$d  24: $time.$s   (le cycle jour/nuit !)
+//  25: $pond.$d  26: $dungeon.$day  27: $dungeon.$loop
+//  28: $rainbow.$day  29: $rainbow.$it  30: $wind
+//  31: $god (csv)  32: $help (csv, dernier champ)
+//  + un second POST slotId=1 : prefs `$mouse|$sound csv|$key csv`
 
 const origSaveSlotStart = shift2(shift(1288275));
 const origSaveSlotEnd = shift2(shift(1288381));
@@ -778,6 +784,36 @@ function buildSaveSlotBody() {
       actionPush(pushStr('')), ADD2,
       ADD2,
       actionPush(pushStr('|')), ADD2,
+    ]);
+  }
+
+  // Variantes à littéral inline (pushStr) — pour les champs ajoutés après
+  // coup, sans étendre le pool de constantes (GET_MEMBER consomme le nom
+  // depuis la pile, quelle que soit sa source). Style « afterLoop » :
+  // séparateur AVANT la valeur ("|" + valeur), pas de séparateur final.
+  function appendSepFromReg(reg, name) {
+    return Buffer.concat([
+      actionPush(pushStr('|')), ADD2,
+      actionPush(pushReg(reg), pushStr(name)), GET_MEMBER,
+      actionPush(pushStr('')), ADD2,
+      ADD2,
+    ]);
+  }
+  function appendSepJoinFromReg(reg, name) {
+    return Buffer.concat([
+      actionPush(pushStr('|')), ADD2,
+      actionPush(pushCp(CP.comma)),
+      actionPush(pushInt(1)),
+      actionPush(pushReg(reg), pushStr(name)), GET_MEMBER,
+      actionPush(pushCp(CP.join)),
+      CALL_METHOD,
+      ADD2,
+    ]);
+  }
+  function setR4Str(name) {
+    return Buffer.concat([
+      actionPush(pushReg(3), pushStr(name)), GET_MEMBER,
+      storeReg(4), POP,
     ]);
   }
 
@@ -948,6 +984,29 @@ function buildSaveSlotBody() {
     ADD2,
   ]);
 
+  // Champs 22-32 : l'HORLOGE et les compteurs quotidiens. C'est la racine
+  // des bugs « les jours ne défilent pas / nuit permanente / jamais de fée
+  // au bassin » : sans $time persisté, Cm.updateTime repart de
+  // {$t:now,$d:0,$s:0} à chaque session → getNightCoef()=0 (minuit) et
+  // upkeep() (fée du bassin, vent, donjon, arc-en-ciel) ne tourne JAMAIS.
+  const clockFields = Buffer.concat([
+    setR4Str('$time'),
+    appendSepFromReg(4, '$t'),        // 22
+    appendSepFromReg(4, '$d'),        // 23
+    appendSepFromReg(4, '$s'),        // 24
+    setR4(CP.$pond),
+    appendSepFromReg(4, '$d'),        // 25 : jour du bassin
+    setR4(CP.$dungeon),
+    appendSepFromReg(4, '$day'),      // 26
+    appendSepFromReg(4, '$loop'),     // 27
+    setR4(CP.$rainbow),
+    appendSepFromReg(4, '$day'),      // 28
+    appendSepFromReg(4, '$it'),       // 29
+    appendSepFromReg(3, '$wind'),     // 30
+    appendSepJoinFromReg(3, '$god'),  // 31 (csv, trous préservés côté serveur)
+    appendSepJoinFromReg(3, '$help'), // 32 (csv — dernier champ, pas de "|")
+  ]);
+
   // Part 4: POST pipe string to /api/saveFrutiSlot via LoadVars.
   // LoadVars.sendAndLoad is the same mechanism used by serviceConnect and is
   // proven to work in Ruffle.  ExternalInterface.call was unreliable.
@@ -1004,16 +1063,109 @@ function buildSaveSlotBody() {
     CALL_METHOD, POP,
   ]);
 
-  // Guard: skip serialization when slots[0] is null/undefined (before
+  // ── Préférences (slot 1 — Pref.mt {$mouse,$sound,$key}) ──────────────────
+  // L'écran d'options (le moulin) appelle saveSlot(1) ; l'ancien patch
+  // ignorait l'index et ne postait que la carte → les touches étaient
+  // perdues à chaque session. On poste désormais TOUJOURS les prefs en plus
+  // de la carte (elles sont minuscules), au format `$mouse|$sound csv|$key
+  // csv` avec slotId=1 (parsé par parseMinipixizPrefPipe côté serveur).
+  //
+  // Source des prefs, dans l'ordre : this.slots[1] (posé par formatPref),
+  // sinon SharedObject fruticard[1] (posé par le seed de game-popup.html —
+  // Cm.pref pointe alors dans ce graphe et les changements de touches le
+  // mutent en place).
+  const getPrefSlots = Buffer.concat([
+    actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
+    actionPush(pushInt(1)), GET_MEMBER,
+    storeReg(3), POP,
+  ]);
+  const soPrefRead = Buffer.concat([
+    actionPush(pushStr('miniPixiz/card'), pushInt(1)),
+    actionPush(pushStr('SharedObject')), GET_VARIABLE,
+    actionPush(pushStr('getLocal')),
+    CALL_METHOD,
+    storeReg(4), POP,
+    actionPush(pushReg(4), pushStr('data')), GET_MEMBER,
+    actionPush(pushStr(']D,mH(')), GET_MEMBER,
+    actionPush(pushInt(1)), GET_MEMBER,
+    storeReg(3), POP,
+  ]);
+  // si slots[1] est déjà truthy, on saute la lecture SO
+  const tryPrefSources = Buffer.concat([
+    getPrefSlots,
+    actionPush(pushReg(3)),
+    actionIf(soPrefRead.length),
+    soPrefRead,
+  ]);
+
+  const prefBuild = Buffer.concat([
+    actionPush(pushStr('')),
+    actionPush(pushReg(3), pushStr('$mouse')), GET_MEMBER,
+    actionPush(pushStr('')), ADD2,
+    ADD2,
+    actionPush(pushStr('|')), ADD2,
+    actionPush(pushCp(CP.comma)),
+    actionPush(pushInt(1)),
+    actionPush(pushReg(3), pushStr('$sound')), GET_MEMBER,
+    actionPush(pushCp(CP.join)),
+    CALL_METHOD,
+    ADD2,
+    actionPush(pushStr('|')), ADD2,
+    actionPush(pushCp(CP.comma)),
+    actionPush(pushInt(1)),
+    actionPush(pushReg(3), pushCp(CP.$key)), GET_MEMBER,
+    actionPush(pushCp(CP.join)),
+    CALL_METHOD,
+    ADD2,
+  ]);
+
+  const prefPost = Buffer.concat([
+    storeReg(4), POP, // r4 = pipe prefs
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(5), POP,
+    actionPush(pushReg(5), pushCp(CP.game), pushCp(CP.minipixiz)),
+    SET_MEMBER,
+    actionPush(pushReg(5), pushCp(CP.sid)),
+    actionPush(pushStr('_root')), GET_VARIABLE,
+    actionPush(pushCp(CP.sid)), GET_MEMBER,
+    SET_MEMBER,
+    actionPush(pushReg(5), pushCp(CP.slotId), pushStr('1')),
+    SET_MEMBER,
+    actionPush(pushReg(5), pushCp(CP.data), pushReg(4)),
+    SET_MEMBER,
+    actionPush(pushInt(0), pushCp(CP.LoadVars)),
+    NEW_OBJECT,
+    storeReg(6), POP,
+    actionPush(pushCp(CP.POST)),
+    actionPush(pushReg(6)),
+    actionPush(pushCp(CP.saveFrutiSlot)),
+    actionPush(pushInt(3)),
+    actionPush(pushReg(5), pushCp(CP.sendAndLoad)),
+    CALL_METHOD,
+    POP,
+  ]);
+
+  const prefBody = Buffer.concat([prefBuild, prefPost]);
+  const prefsBlock = Buffer.concat([
+    tryPrefSources,
+    actionPush(pushReg(3)),
+    NOT,                                            // pas de prefs → on saute
+    actionIf(prefBody.length),
+    prefBody,
+  ]);
+
+  // Guard: skip CARD serialization when slots[0] is null/undefined (before
   // loadFruticard runs) to prevent clobbering server data with empty pipes.
-  const guardedBody = Buffer.concat([buildStr, faerieLoop, afterLoop, lvSave, soFlush]);
+  // Les prefs et le flush SO restent hors de cette garde.
+  const cardBlock = Buffer.concat([buildStr, faerieLoop, afterLoop, clockFields, lvSave]);
   const skipIfNull = Buffer.concat([
     actionPush(pushReg(3)),
     NOT,                                            // !card → true if null/undefined/0/""
-    actionIf(guardedBody.length),
+    actionIf(cardBlock.length),
   ]);
 
-  return Buffer.concat([getCard, skipIfNull, guardedBody]);
+  return Buffer.concat([getCard, skipIfNull, cardBlock, prefsBlock, soFlush]);
 }
 
 const saveSlotBody = buildSaveSlotBody();
