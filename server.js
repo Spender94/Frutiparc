@@ -3999,6 +3999,7 @@ function adminAuth(req, res, next) {
 // `adminScope(...)` sont ouverts aux rôles ; tout le reste exige la clé maître.
 const ADMIN_ROLES = {
   scores: { label: 'Responsable des scores', tabs: ['scores', 'challenge'] },
+  animateur: { label: 'Animateur', tabs: ['kiloute'] },
 };
 function adminRoleTabs(role) {
   const r = ADMIN_ROLES[role];
@@ -5730,11 +5731,11 @@ function parseKilouteAnswers(input) {
   return String(input || '').split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
 }
 
-app.get('/api/admin/kiloute/questions', adminAuth, (req, res) => {
+app.get('/api/admin/kiloute/questions', adminScope('kiloute'), (req, res) => {
   res.json(KILOUTE_QUESTIONS);
 });
 
-app.post('/api/admin/kiloute/questions', adminAuth, async (req, res) => {
+app.post('/api/admin/kiloute/questions', adminScope('kiloute'), async (req, res) => {
   const b = req.body || {};
   const question = String(b.question || '').trim();
   const answers = parseKilouteAnswers(b.answers);
@@ -5753,7 +5754,7 @@ app.post('/api/admin/kiloute/questions', adminAuth, async (req, res) => {
   res.json({ ok: true, question: q });
 });
 
-app.patch('/api/admin/kiloute/questions/:id', adminAuth, async (req, res) => {
+app.patch('/api/admin/kiloute/questions/:id', adminScope('kiloute'), async (req, res) => {
   const id = Number(req.params.id);
   const q = KILOUTE_QUESTIONS.find((x) => x.id === id);
   if (!q) return res.status(404).json({ error: 'not found' });
@@ -5770,7 +5771,7 @@ app.patch('/api/admin/kiloute/questions/:id', adminAuth, async (req, res) => {
   res.json({ ok: true, question: q });
 });
 
-app.delete('/api/admin/kiloute/questions/:id', adminAuth, async (req, res) => {
+app.delete('/api/admin/kiloute/questions/:id', adminScope('kiloute'), async (req, res) => {
   const id = Number(req.params.id);
   const idx = KILOUTE_QUESTIONS.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
@@ -5786,7 +5787,7 @@ app.delete('/api/admin/kiloute/questions/:id', adminAuth, async (req, res) => {
 // ── Images de quiz (upload + service same-origin pour les quizz "image") ──
 const QUIZ_IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
-app.get('/api/admin/kiloute/images', adminAuth, (req, res) => {
+app.get('/api/admin/kiloute/images', adminScope('kiloute'), (req, res) => {
   const images = Object.values(QUIZ_IMAGES).map((m) => ({
     id: m.id, title: m.title, ext: m.ext, w: m.w, h: m.h, url: `/quiz-img/${m.id}.${m.ext}`,
   }));
@@ -5796,7 +5797,7 @@ app.get('/api/admin/kiloute/images', adminAuth, (req, res) => {
 // Upload d'une image de quiz. Image en corps brut ; métadonnées en query :
 //   ?id=&title=
 app.post('/api/admin/kiloute/images',
-  adminAuth,
+  adminScope('kiloute'),
   express.raw({ type: ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/octet-stream'], limit: QUIZ_IMAGE_UPLOAD_MAX_BYTES }),
   async (req, res) => {
     if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: 'no_db', message: 'Base de données requise pour les images de quiz.' });
@@ -5821,7 +5822,7 @@ app.post('/api/admin/kiloute/images',
   }
 );
 
-app.delete('/api/admin/kiloute/images/:id', adminAuth, async (req, res) => {
+app.delete('/api/admin/kiloute/images/:id', adminScope('kiloute'), async (req, res) => {
   const id = String(req.params.id || '').toLowerCase();
   if (!QUIZ_IMAGES[id]) return res.status(404).json({ ok: false, error: 'not_found', message: 'Image introuvable.' });
   try {
@@ -5845,7 +5846,7 @@ app.delete('/api/admin/kiloute/images/:id', adminAuth, async (req, res) => {
 
 // Lancer la question maintenant (test hors 19h). body { channel? } : salon
 // imposé (ex. un salon privé / où l'on est seul) sinon le plus fréquenté.
-app.post('/api/admin/kiloute/run', adminAuth, (req, res) => {
+app.post('/api/admin/kiloute/run', adminScope('kiloute'), (req, res) => {
   if (kilouteQuiz) return res.status(409).json({ error: 'Une question est déjà en cours.' });
   if (kilouteSession) return res.status(409).json({ error: 'Un quiz event est en cours.' });
   const requested = String((req.body && req.body.channel) || '').trim();
@@ -5858,7 +5859,7 @@ app.post('/api/admin/kiloute/run', adminAuth, (req, res) => {
 // ── Quizz (événements multi-questions animés en direct) ──
 // Démarre un quiz : body { quizId, channel?, reward?, windowSec? }.
 // channel vide = salon le plus fréquenté ; reward/window vides = valeurs du quiz.
-app.post('/api/admin/kiloute/session/start', adminAuth, (req, res) => {
+app.post('/api/admin/kiloute/session/start', adminScope('kiloute'), (req, res) => {
   const b = req.body || {};
   const r = kilouteStartSession({
     quizId: b.quizId,
@@ -5871,13 +5872,13 @@ app.post('/api/admin/kiloute/session/start', adminAuth, (req, res) => {
   res.json(r);
 });
 
-app.post('/api/admin/kiloute/session/stop', adminAuth, (req, res) => {
+app.post('/api/admin/kiloute/session/stop', adminScope('kiloute'), (req, res) => {
   const r = kilouteStopSession();
   if (!r.ok) return res.status(409).json({ error: r.error });
   res.json(r);
 });
 
-app.get('/api/admin/kiloute/session/status', adminAuth, (req, res) => {
+app.get('/api/admin/kiloute/session/status', adminScope('kiloute'), (req, res) => {
   res.json(kilouteSessionStatus());
 });
 
@@ -5895,11 +5896,11 @@ function normalizeQuizQuestions(arr) {
   }).filter((x) => x.q && x.a.length);
 }
 
-app.get('/api/admin/kiloute/quizzes', adminAuth, (req, res) => {
+app.get('/api/admin/kiloute/quizzes', adminScope('kiloute'), (req, res) => {
   res.json({ ok: true, quizzes: QUIZZES });
 });
 
-app.post('/api/admin/kiloute/quizzes', adminAuth, async (req, res) => {
+app.post('/api/admin/kiloute/quizzes', adminScope('kiloute'), async (req, res) => {
   const b = req.body || {};
   const name = String(b.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Nom du quiz requis.' });
@@ -5917,7 +5918,7 @@ app.post('/api/admin/kiloute/quizzes', adminAuth, async (req, res) => {
   res.json({ ok: true, quiz });
 });
 
-app.patch('/api/admin/kiloute/quizzes/:id', adminAuth, async (req, res) => {
+app.patch('/api/admin/kiloute/quizzes/:id', adminScope('kiloute'), async (req, res) => {
   const id = Number(req.params.id);
   const quiz = QUIZZES.find((x) => x.id === id);
   if (!quiz) return res.status(404).json({ error: 'not found' });
@@ -5934,7 +5935,7 @@ app.patch('/api/admin/kiloute/quizzes/:id', adminAuth, async (req, res) => {
   res.json({ ok: true, quiz });
 });
 
-app.delete('/api/admin/kiloute/quizzes/:id', adminAuth, async (req, res) => {
+app.delete('/api/admin/kiloute/quizzes/:id', adminScope('kiloute'), async (req, res) => {
   const id = Number(req.params.id);
   const idx = QUIZZES.findIndex((x) => x.id === id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
@@ -5948,7 +5949,7 @@ app.delete('/api/admin/kiloute/quizzes/:id', adminAuth, async (req, res) => {
 });
 
 // Poster un sujet au forum avec le compte Kiloute79 (par défaut "Animations officielles").
-app.post('/api/admin/kiloute/forum-post', adminAuth, async (req, res) => {
+app.post('/api/admin/kiloute/forum-post', adminScope('kiloute'), async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'Forum indisponible (pas de base de données).' });
   const b = req.body || {};
   const title = String(b.title || '').trim();
