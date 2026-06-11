@@ -292,7 +292,7 @@
   }
 
   // Construit les animations d'un mouvement : fruits qui glissent (mv_/pushed_),
-  // fruits qui tombent (flying_), cases de bord qui se détruisent.
+  // fruits qui tombent (chute directionnelle), cases de bord qui se détruisent.
   function buildMoveAnims(before, cap, d) {
     var dirName = ["up", "right", "down", "left"][d];
     var moveDur = 480;
@@ -311,7 +311,7 @@
       GV.hiddenCells[key] = true;
       var fruit = FRUIT_OF_TEAM[team];
       var strip = fruit + "_" + (m.pushed ? "pushed_" : "mv_") + dirName;
-      GV.anims.push(spriteSlide(fruit, strip, m.from, dest, moveDur, died && isDeadCell(dest)));
+      GV.anims.push(spriteSlide(fruit, strip, d, m.from, dest, moveDur, died && isDeadCell(dest)));
     });
     if (cap.destroyed.length) {
       GV.anims.push(borderCrumble(cap.destroyed));
@@ -324,7 +324,7 @@
   function deathAt(c) { return isDeadCell(c); }
 
   // Fruit qui glisse d'une case (et meurt éventuellement à l'arrivée).
-  function spriteSlide(fruit, strip, from, to, dur, dies) {
+  function spriteSlide(fruit, strip, d, from, to, dur, dies) {
     var t = 0;
     return {
       from: from, to: to,
@@ -333,7 +333,7 @@
         if (t >= dur) {
           delete GV.hiddenCells[from.x + "," + from.y];
           delete GV.hiddenCells[to.x + "," + to.y];
-          if (dies) GV.effects.push(flyAway(fruit, to, strip.indexOf("left") >= 0 || strip.indexOf("up") >= 0 ? "left" : "right"));
+          if (dies) GV.effects.push(fallOff(fruit, strip, d, to));
           return false;
         }
         return true;
@@ -343,6 +343,29 @@
         var x = from.x + (to.x - from.x) * k;
         var y = from.y + (to.y - from.y) * k;
         drawFrame(ctx2, strip, Math.floor(k * (IMG[strip] ? IMG[strip].frames - 1 : 0)), x, y);
+      },
+    };
+  }
+
+  // Fruit qui tombe (du bord du plateau, dans un trou ou sur un piège) : il
+  // continue sur sa lancée DANS LA DIRECTION DU MOUVEMENT (la strip
+  // directionnelle continue de tourner), puis la gravité l'emporte et il
+  // disparaît en fondu. `delay` (ms) retarde le départ en figeant le fruit
+  // sur sa case (utilisé quand une bannière de carte passe d'abord).
+  function fallOff(fruit, strip, d, cell, delay) {
+    var dl = E.moved({ x: 0, y: 0 }, d);
+    var t = -(delay || 0), dur = 560;
+    return {
+      update: function (dt) { t += dt; return t < dur; },
+      draw: function (ctx2) {
+        if (t < 0) { drawCellImage(ctx2, "fruit_" + fruit, cell.x, cell.y); return; }
+        var k = Math.min(1, t / dur);
+        ctx2.globalAlpha = 1 - k * k;
+        var fr = IMG[strip] && IMG[strip].frames ? Math.floor(t / 26) % IMG[strip].frames : 0;
+        drawFrame(ctx2, strip, fr,
+          cell.x + dl.x * 0.85 * k,
+          cell.y + dl.y * 0.85 * k + 2.4 * k * k);   // gravité
+        ctx2.globalAlpha = 1;
       },
     };
   }
@@ -363,9 +386,10 @@
     };
   }
 
-  // Cases de bord qui s'émiettent (strip board, 34 frames).
-  function borderCrumble(cells) {
-    var t = 0, dur = 620;
+  // Cases de bord qui s'émiettent (strip board, 34 frames). Pendant le
+  // `delay`, les cases restent dessinées intactes (la bannière passe d'abord).
+  function borderCrumble(cells, delay) {
+    var t = -(delay || 0), dur = 620;
     cells.forEach(function (c) { GV.hiddenCells["t" + c.x + "," + c.y] = true; });
     return {
       update: function (dt) {
@@ -374,9 +398,12 @@
         return true;
       },
       draw: function (ctx2) {
-        var k = Math.min(1, t / dur);
+        var k = Math.max(0, Math.min(1, t / dur));
         var f = Math.floor(k * (IMG.boardAnim.frames - 1));
-        cells.forEach(function (c) { drawFrame(ctx2, "boardAnim", f, c.x, c.y); });
+        cells.forEach(function (c) {
+          if (t < 0) drawCellImage(ctx2, "tile", c.x, c.y);
+          else drawFrame(ctx2, "boardAnim", f, c.x, c.y);
+        });
       },
     };
   }
@@ -413,15 +440,18 @@
     }
     refreshPanes();
 
-    // bannière d'annonce (sauf… rien : même une pose cachée est annoncée à son poseur)
+    // bannière d'annonce (même une pose cachée est annoncée à son poseur),
+    // PUIS l'effet de la carte : comme les priorités d'animation du SWF
+    // d'origine (titre AVANT effet), l'effet démarre quand la bannière passe.
     banner(team, card);
+    var wait = EFFECT_DELAY;
 
     switch (card) {
-      case CARD.ENCLUME: anvilDrop({ x: x, y: y }); break;
-      case CARD.VACHETTE: cowCharge(x); break;
-      case CARD.PETRIFICATION: petrify({ x: x, y: y }); break;
-      case CARD.CONVERSION: convert({ x: x, y: y }); break;
-      case CARD.RENFORT: renfort(team, x, y); break;
+      case CARD.ENCLUME: anvilDrop({ x: x, y: y }, wait); break;
+      case CARD.VACHETTE: cowCharge(x, wait); break;
+      case CARD.PETRIFICATION: petrify({ x: x, y: y }, wait); break;
+      case CARD.CONVERSION: convert({ x: x, y: y }, wait); break;
+      case CARD.RENFORT: renfort(team, x, y, wait); break;
       case CARD.SOLO: {
         GV.soloPending = { team: team, c: { x: x, y: y } };
         if (team === GV.myTeam) GV.soloMark = { x: x, y: y };
@@ -432,7 +462,7 @@
           GV.board.setTrapped({ x: x, y: y });
           GV.myTraps[x + "," + y] = true;
         } else {                               // révélation : la case explose
-          trapReveal({ x: x, y: y });
+          trapReveal({ x: x, y: y }, wait);
         }
         break;
       case CARD.CELERITE:
@@ -447,6 +477,10 @@
     var i = GV.hands[team].indexOf(card);
     if (i >= 0) GV.hands[team].splice(i, 1);
   }
+
+  // Délai avant l'effet d'une carte : la bannière (1150 ms) est bien engagée,
+  // l'effet démarre pendant qu'elle s'efface.
+  var EFFECT_DELAY = 800;
 
   // bannière d'annonce de carte (advertiser/<carte>_<r|g>.png) qui traverse l'écran
   function banner(team, card) {
@@ -468,8 +502,9 @@
     });
   }
 
-  // enclume : chute + fracas + destruction de la case (et du bord éventuel)
-  function anvilDrop(c) {
+  // enclume : chute + fracas + destruction de la case (et du bord éventuel).
+  // Pendant `delay`, la case et son fruit restent affichés tels quels.
+  function anvilDrop(c, delay) {
     var before = snapshotCells();
     var cap = captureBoard(function () {
       GV.board.destroy(c);
@@ -477,7 +512,7 @@
     });
     GV.board.takeTrapHits();
     var fruit = before[c.x + "," + c.y] !== undefined ? FRUIT_OF_TEAM[before[c.x + "," + c.y]] : null;
-    var t = 0, fall = 420, smash = 600;
+    var t = -(delay || 0), fall = 420, smash = 600;
     GV.hiddenCells["t" + c.x + "," + c.y] = true;     // la case reste affichée pendant la chute
     var keepCell = { x: c.x, y: c.y };
     GV.anims.push({
@@ -495,10 +530,12 @@
       },
       draw: function (ctx2) {
         if (t < fall) {
-          var k = t / fall;
           drawCellImage(ctx2, "tile", keepCell.x, keepCell.y);
           if (fruit) drawCellImage(ctx2, "fruit_" + fruit, keepCell.x, keepCell.y);
-          drawFrame(ctx2, "anvil", 0, keepCell.x, keepCell.y - (1 - k * k) * 6);
+          if (t >= 0) {
+            var k = t / fall;
+            drawFrame(ctx2, "anvil", 0, keepCell.x, keepCell.y - (1 - k * k) * 6);
+          }
         } else {
           var k2 = (t - fall) / smash;
           drawFrame(ctx2, "anvilAnim", Math.floor(k2 * (IMG.anvilAnim.frames - 1)), keepCell.x, keepCell.y);
@@ -508,8 +545,9 @@
     delete GV.rocks[c.x + "," + c.y];
   }
 
-  // vachette : la vache descend la colonne, les fruits volent, la colonne se vide
-  function cowCharge(colX) {
+  // vachette : la vache descend la colonne, les fruits volent, la colonne se
+  // vide. Pendant `delay`, la colonne reste affichée intacte (bannière d'abord).
+  function cowCharge(colX, delay) {
     var col = [];
     for (var y = GV.board.minY; y <= GV.board.maxY; y++) {
       var e = GV.board.getElement({ x: colX, y: y });
@@ -529,17 +567,18 @@
       GV.board.removeEmptyBorders();
     });
     col.forEach(function (cell) { GV.hiddenCells[colX + "," + cell.y] = true; });
-    var t = 0;
+    var t = -(delay || 0);
     var side = 0;
     var thrown = {};
     GV.anims.push({
       update: function (dt) {
         t += dt;                       // t sert au cyclage des frames de la vache
+        if (t < 0) return true;        // bannière en cours : colonne figée
         return this._update(dt);
       },
       _row: minY - 1,
       _update: function (dt) {
-        this._row += dt * 0.004;            // ~4 cases/seconde
+        this._row += dt * 0.0028;           // ~2,8 cases/s (COW_SPEED d'origine ≈ 2,5)
         var rowNow = Math.floor(this._row);
         col.forEach(function (cell) {
           if (cell.team !== null && !thrown[cell.y] && rowNow >= cell.y) {
@@ -561,10 +600,6 @@
         return true;
       },
       draw: function (ctx2) {
-        var yPix = this._row * CELL;
-        // traînée de poussière
-        drawFrameAtPix(ctx2, "cowTrail", Math.floor((t / 50) % IMG.cowTrail.frames), colX * CELL, yPix - CELL * 0.8);
-        drawFrameAtPix(ctx2, "cow", Math.floor((t / 45) % IMG.cow.frames), colX * CELL, yPix);
         // les cases de la colonne pas encore atteintes restent dessinées
         col.forEach(function (cell) {
           if (GV.hiddenCells[colX + "," + cell.y]) {
@@ -574,12 +609,18 @@
             drawCellImage(ctx2, "tile", colX, cell.y);
           }
         });
+        if (t < 0) return;                    // bannière en cours : pas encore de vache
+        var yPix = this._row * CELL;
+        // traînée de poussière
+        drawFrameAtPix(ctx2, "cowTrail", Math.floor((Math.max(0, t) / 50) % IMG.cowTrail.frames), colX * CELL, yPix - CELL * 0.8);
+        drawFrameAtPix(ctx2, "cow", Math.floor((Math.max(0, t) / 45) % IMG.cow.frames), colX * CELL, yPix);
       },
     });
   }
 
-  // pétrification : le fruit joue sa strip et reste en pierre
-  function petrify(c) {
+  // pétrification : le fruit joue sa strip et reste en pierre. Pendant
+  // `delay`, la frame 0 (le fruit intact) reste affichée.
+  function petrify(c, delay) {
     var e = GV.board.getElement(c);
     var fruit = (e === 0 || e === 1) ? FRUIT_OF_TEAM[e] : "banane";
     var cap = captureBoard(function () {
@@ -590,7 +631,7 @@
     GV.board.takeTrapHits();
     GV.rocks[c.x + "," + c.y] = fruit;
     var strip = fruit + "_petrification";
-    var t = 0, dur = 700;
+    var t = -(delay || 0), dur = 700;
     GV.hiddenCells["r" + c.x + "," + c.y] = true;     // ne pas dessiner la pierre statique pendant l'anim
     GV.anims.push({
       update: function (dt) {
@@ -603,33 +644,55 @@
         return true;
       },
       draw: function (ctx2) {
-        drawFrame(ctx2, strip, Math.floor(Math.min(1, t / dur) * (IMG[strip].frames - 1)), c.x, c.y);
+        var k = Math.max(0, Math.min(1, t / dur));
+        drawFrame(ctx2, strip, Math.floor(k * (IMG[strip].frames - 1)), c.x, c.y);
       },
     });
   }
 
-  // conversion : flash blanc et le fruit change de camp
-  function convert(c) {
+  // conversion : le fruit change de camp SOUS NOS YEUX — l'ancien fruit
+  // s'écrase sur place, le nouveau surgit avec un petit rebond. Pendant
+  // `delay`, l'ancien fruit reste affiché tel quel (bannière d'abord).
+  function convert(c, delay) {
     var e = GV.board.getElement(c);
-    if (e === 0 || e === 1) {
-      GV.board.decTeamCounter(e);
-      GV.board.incTeamCounter(1 - e);
-      GV.board.setElement(c, 1 - e);
-    }
-    var t = 0, dur = 450;
+    if (!(e === 0 || e === 1)) return;
+    var oldFruit = FRUIT_OF_TEAM[e], newFruit = FRUIT_OF_TEAM[1 - e];
+    GV.board.decTeamCounter(e);
+    GV.board.incTeamCounter(1 - e);
+    GV.board.setElement(c, 1 - e);
+    var key = c.x + "," + c.y;
+    GV.hiddenCells[key] = true;                 // le statique attend la fin de l'anim
+    var t = -(delay || 0), dur = 640, swapAt = 0.42;
     GV.anims.push({
-      update: function (dt) { t += dt; return t < dur; },
+      update: function (dt) {
+        t += dt;
+        if (t >= dur) { delete GV.hiddenCells[key]; return false; }
+        return true;
+      },
       draw: function (ctx2) {
-        var k = Math.sin(Math.min(1, t / dur) * Math.PI);
-        ctx2.globalAlpha = k * 0.85;
-        drawCellImage(ctx2, "select", c.x, c.y);
-        ctx2.globalAlpha = 1;
+        if (t < 0) { drawCellImage(ctx2, "fruit_" + oldFruit, c.x, c.y); return; }
+        var k = Math.min(1, t / dur);
+        if (k < swapAt) {                       // l'ancien fruit s'écrase
+          var p = k / swapAt;
+          drawCellImageScaled(ctx2, "fruit_" + oldFruit, c.x, c.y, 1 - 0.8 * p);
+          ctx2.globalAlpha = 0.55 * p;
+          drawCellImage(ctx2, "select", c.x, c.y);
+          ctx2.globalAlpha = 1;
+        } else {                                // le nouveau surgit (rebond)
+          var p2 = (k - swapAt) / (1 - swapAt);
+          var s = 0.25 + 0.75 * p2 + 0.16 * Math.sin(p2 * Math.PI); // léger overshoot
+          drawCellImageScaled(ctx2, "fruit_" + newFruit, c.x, c.y, Math.min(1.16, s));
+          ctx2.globalAlpha = Math.max(0, 0.55 * (1 - p2));
+          drawCellImage(ctx2, "select", c.x, c.y);
+          ctx2.globalAlpha = 1;
+        }
       },
     });
   }
 
-  // renfort : décode les coordonnées (encodage Renfort.as) et fait pousser les fruits
-  function renfort(team, xsum, ysum) {
+  // renfort : décode les coordonnées (encodage Renfort.as) et fait pousser
+  // les fruits (échelonnés, après la bannière)
+  function renfort(team, xsum, ysum, delay) {
     var spots = [];
     if (xsum > 10000) {
       var x1 = Math.floor(xsum / 10000) - 1, y1 = Math.floor(ysum / 10000) - 1;
@@ -646,7 +709,7 @@
       GV.board.setElement(s, team);
       GV.board.incTeamCounter(team);
       GV.hiddenCells[s.x + "," + s.y] = true;
-      var t = -i * 140, dur = 330;
+      var t = -(delay || 0) - i * 140, dur = 330;
       GV.anims.push({
         update: function (dt) {
           t += dt;
@@ -663,10 +726,10 @@
     });
   }
 
-  // révélation d'un piège : flash + la case explose (détruit ce qui s'y trouve)
-  function trapReveal(c) {
+  // révélation d'un piège : la case explose et le fruit qui s'y trouvait
+  // TOMBE dans le trou (chute sur place, plus d'éjection latérale).
+  function trapReveal(c, delay) {
     var key = c.x + "," + c.y;
-    var mine = !!GV.myTraps[key];
     delete GV.myTraps[key];
     var before = snapshotCells();
     var cap = captureBoard(function () {
@@ -675,10 +738,13 @@
     });
     GV.board.takeTrapHits();
     var victim = before[key];
-    if (victim !== undefined) GV.effects.push(flyAway(FRUIT_OF_TEAM[victim], c, "right"));
+    if (victim !== undefined) {
+      var fruit = FRUIT_OF_TEAM[victim];
+      GV.anims.push(fallOff(fruit, fruit + "_mv_down", DIR.DOWN, c, delay));
+    }
     var cells = [{ x: c.x, y: c.y }];
     cap.destroyed.forEach(function (d2) { if (d2.x !== c.x || d2.y !== c.y) cells.push(d2); });
-    GV.anims.push(borderCrumble(cells));
+    GV.anims.push(borderCrumble(cells, delay));
   }
 
   // ── Boucle de rendu ────────────────────────────────────────────────────────

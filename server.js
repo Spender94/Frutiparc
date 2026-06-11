@@ -3999,6 +3999,8 @@ function adminAuth(req, res, next) {
 // `adminScope(...)` sont ouverts aux rôles ; tout le reste exige la clé maître.
 const ADMIN_ROLES = {
   scores: { label: 'Responsable des scores', tabs: ['scores', 'challenge'] },
+  // Attribué explicitement via le menu "Rôle admin", OU implicitement à tout
+  // compte portant le badge "Animateur" du chat (is_animator) — cf. /api/admin/login.
   animateur: { label: 'Animateur', tabs: ['kiloute'] },
 };
 function adminRoleTabs(role) {
@@ -4047,6 +4049,8 @@ function adminScope(...tabs) {
 
 // Connexion d'un modérateur à l'admin avec ses identifiants de jeu. Renvoie un
 // token de rôle (et la liste de ses onglets) si le compte porte un rôle admin.
+// Les comptes marqués "Animateur" (badge is_animator du chat) ont le rôle
+// `animateur` implicitement — un admin_role explicite reste prioritaire.
 app.post('/api/admin/login', async (req, res) => {
   if (!ADMIN_KEY) return res.status(503).json({ ok: false, error: 'admin_disabled', message: 'ADMIN_KEY not configured' });
   const ip = getClientIp(req) || 'unknown';
@@ -4055,21 +4059,33 @@ app.post('/api/admin/login', async (req, res) => {
   const username = normalizeUsername(b.username);
   const password = String(b.password || '');
   // Réponse volontairement générique (ne révèle pas quels comptes ont un rôle) ;
-  // chaque refus compte comme un échec d'auth (garde anti-brute-force).
-  const deny = () => { recordAdminAuthFail(ip); return res.status(403).json({ ok: false, error: 'forbidden', message: 'Identifiants invalides ou compte non autorisé.' }); };
-  if (!username || !password) return deny();
+  // chaque refus compte comme un échec d'auth (garde anti-brute-force). La
+  // raison précise part dans les logs serveur pour le diagnostic.
+  const deny = (why) => {
+    console.warn(`[ADMIN] connexion refusée pour "${username || '?'}" — ${why} (ip=${ip})`);
+    recordAdminAuthFail(ip);
+    return res.status(403).json({ ok: false, error: 'forbidden', message: 'Identifiants invalides ou compte non autorisé.' });
+  };
+  if (!username || !password) return deny('pseudo ou mot de passe manquant');
   let role = null, passHash = null;
   const mem = users[username];
-  if (mem && mem.adminRole) { role = mem.adminRole; passHash = mem.pass; }
-  else if (process.env.DATABASE_URL) {
+  if (mem) {
+    role = mem.adminRole || (mem.isAnimator ? 'animateur' : null);
+    passHash = mem.pass;
+  }
+  // Pas (ou plus) en mémoire, ou mémoire incomplète → la base fait foi.
+  if ((!role || !passHash) && process.env.DATABASE_URL) {
     try {
       const dbUser = await db.findUserByUsername(username);
-      if (dbUser) { role = dbUser.admin_role || null; passHash = dbUser.password; }
+      if (dbUser) {
+        if (!role) role = dbUser.admin_role || (dbUser.is_animator ? 'animateur' : null);
+        if (!passHash) passHash = dbUser.password;
+      }
     } catch (e) { console.error('[ADMIN] login lookup error:', e.message); }
   }
-  if (!role || !ADMIN_ROLES[role]) return deny();
+  if (!role || !ADMIN_ROLES[role]) return deny('aucun rôle admin sur ce compte (ni badge animateur)');
   const { ok } = await verifyPassword(passHash, password);
-  if (!ok) return deny();
+  if (!ok) return deny(`mot de passe invalide (rôle "${role}")`);
   const token = crypto.randomBytes(24).toString('hex');
   const tabs = adminRoleTabs(role);
   adminTokens.set(token, { user: username, role, tabs, createdAt: Date.now() });
@@ -4729,9 +4745,10 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
         Object.assign(users[u], fields);
         if (fields.is_moderator !== undefined) users[u].isModerator = fields.is_moderator;
         if (fields.is_animator !== undefined) users[u].isAnimator = fields.is_animator;
-        if (fields.admin_role !== undefined) {
-          users[u].adminRole = fields.admin_role;
-          // Changement/retrait de rôle → révoque ses sessions admin en cours.
+        if (fields.admin_role !== undefined || fields.is_animator === false) {
+          if (fields.admin_role !== undefined) users[u].adminRole = fields.admin_role;
+          // Changement/retrait de rôle (ou du badge animateur, qui donne le
+          // rôle admin "animateur" implicite) → révoque ses sessions admin.
           for (const [t, s] of adminTokens) if (s.user.toLowerCase() === String(u).toLowerCase()) adminTokens.delete(t);
         }
         if (fields.needs_bouille !== undefined) users[u].needsBouille = fields.needs_bouille;
@@ -8730,12 +8747,15 @@ const GAME_DISCS = {
     files: [],
   },
   // Frutibandas est lui aussi un jeu NATIF (client web /bandas/) — même
-  // mécanique d'interception dans ruffle.html.
+  // mécanique d'interception dans ruffle.html. iconName = libellé du disque
+  // ET sélecteur du visuel : fileIcon.swf ne connaît que le label "bandas"
+  // (comme "grapiz", "bkiwi"…) — tout autre nom retombe sur le visuel par
+  // défaut (celui du snake).
   bandas1: {
     discType: '0',
     playMode: 'single',
     swfName: 'bandas',
-    iconName: 'Frutibandas',
+    iconName: 'bandas',
     gameId: 'games/frutibandas/frutibandas.swf',
     props: 'w=1050;h=728;m=p',
     files: [],

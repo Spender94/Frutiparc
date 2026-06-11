@@ -1739,7 +1739,7 @@ async function loadDetail() {
           <option value="scores"${user.admin_role === 'scores' ? ' selected' : ''}>Responsable des scores (Scores + Challenge)</option>
           <option value="animateur"${user.admin_role === 'animateur' ? ' selected' : ''}>Animateur (Kiloute79)</option>
         </select>
-        <span style="color:#888;font-size:11px">accès limité à /admin avec ses identifiants Frutiparc</span>
+        <span style="color:#888;font-size:11px">accès limité à /admin avec ses identifiants Frutiparc — le badge « Animateur » ci-dessus donne déjà l'accès Kiloute79</span>
       </td></tr>
       <tr><td>Anniversaire</td><td>${fmtDate(user.birthday)}</td></tr>
       <tr><td>FrutiSigne</td><td>${signLabel(user.fruti_sign)}</td></tr>
