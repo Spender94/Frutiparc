@@ -1,0 +1,356 @@
+{
+ "strips": {
+  "anim/banane_mv_up.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/banane_mv_down.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/banane_mv_left.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/banane_mv_right.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/banane_pushed_up.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/banane_pushed_down.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/banane_pushed_left.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/banane_pushed_right.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/banane_flying_left.png": {
+   "frames": 15,
+   "w": 256,
+   "h": 256
+  },
+  "anim/banane_flying_right.png": {
+   "frames": 15,
+   "w": 256,
+   "h": 256
+  },
+  "anim/banane_petrification.png": {
+   "frames": 17,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_mv_up.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_mv_down.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_mv_left.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_mv_right.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_pushed_up.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_pushed_down.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_pushed_left.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_pushed_right.png": {
+   "frames": 22,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_flying_left.png": {
+   "frames": 15,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_flying_right.png": {
+   "frames": 15,
+   "w": 256,
+   "h": 256
+  },
+  "anim/orange_petrification.png": {
+   "frames": 13,
+   "w": 256,
+   "h": 256
+  },
+  "anim/board.png": {
+   "frames": 34,
+   "w": 256,
+   "h": 256
+  },
+  "anim/anvil.png": {
+   "frames": 12,
+   "w": 256,
+   "h": 256
+  },
+  "anim/cow.png": {
+   "frames": 17,
+   "w": 256,
+   "h": 256
+  },
+  "anim/cow_trail.png": {
+   "frames": 21,
+   "w": 256,
+   "h": 256
+  }
+ },
+ "images": {
+  "page/game.png": {
+   "w": 1050,
+   "h": 728
+  },
+  "page/board.png": {
+   "w": 256,
+   "h": 256
+  },
+  "page/banana.png": {
+   "w": 256,
+   "h": 256
+  },
+  "page/orange.png": {
+   "w": 256,
+   "h": 256
+  },
+  "page/empty.png": {
+   "w": 256,
+   "h": 256
+  },
+  "page/anvil.png": {
+   "w": 256,
+   "h": 256
+  },
+  "page/victory.png": {
+   "w": 667,
+   "h": 337
+  },
+  "page/defeat.png": {
+   "w": 667,
+   "h": 337
+  },
+  "page/give_up.png": {
+   "w": 120,
+   "h": 30
+  },
+  "page/give_up_hover.png": {
+   "w": 120,
+   "h": 30
+  },
+  "page/sound.png": {
+   "w": 91,
+   "h": 30
+  },
+  "page/sound_hover.png": {
+   "w": 91,
+   "h": 30
+  },
+  "page/sound_ctrl.png": {
+   "w": 20,
+   "h": 20
+  },
+  "page/sound_lvl.png": {
+   "w": 7,
+   "h": 100
+  },
+  "page/chat_input.png": {
+   "w": 578,
+   "h": 25
+  },
+  "page/chat_input_hover.png": {
+   "w": 578,
+   "h": 25
+  },
+  "page/arrow_up.png": {
+   "w": 105,
+   "h": 105
+  },
+  "page/arrow_up_hover.png": {
+   "w": 105,
+   "h": 105
+  },
+  "page/arrow_down.png": {
+   "w": 105,
+   "h": 105
+  },
+  "page/arrow_down_hover.png": {
+   "w": 105,
+   "h": 105
+  },
+  "page/arrow_left.png": {
+   "w": 105,
+   "h": 105
+  },
+  "page/arrow_left_hover.png": {
+   "w": 105,
+   "h": 105
+  },
+  "page/arrow_right.png": {
+   "w": 105,
+   "h": 105
+  },
+  "page/arrow_right_hover.png": {
+   "w": 105,
+   "h": 105
+  },
+  "common/ok.png": {
+   "w": 178,
+   "h": 78
+  },
+  "common/ok_hover.png": {
+   "w": 178,
+   "h": 78
+  },
+  "mouse/normal.png": {
+   "w": 32,
+   "h": 32
+  },
+  "mouse/hover.png": {
+   "w": 32,
+   "h": 32
+  },
+  "mouse/viseur.png": {
+   "w": 50,
+   "h": 50
+  },
+  "anim/board_select.png": {
+   "w": 256,
+   "h": 256
+  },
+  "cards/used.png": {
+   "w": 89,
+   "h": 115
+  },
+  "advertiser/celerite_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/celerite_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/charge_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/charge_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/confiscation_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/confiscation_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/conversion_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/conversion_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/desordre_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/desordre_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/enclume_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/enclume_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/entracte_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/entracte_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/petrification_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/petrification_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/piege_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/piege_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/renfort_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/renfort_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/solo_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/solo_r.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/vachette_g.png": {
+   "w": 1150,
+   "h": 60
+  },
+  "advertiser/vachette_r.png": {
+   "w": 1150,
+   "h": 60
+  }
+ }
+}

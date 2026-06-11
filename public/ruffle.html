@@ -529,6 +529,15 @@
                         window.__gamePopup = window.open(grapizUrl, "frutiparc_game", grapizFeat);
                         return true;
                     }
+                    // Frutibandas est lui aussi un jeu NATIF : même mécanique → /bandas/.
+                    if ((game.name || "").toLowerCase() === "bandas" || /frutibandas/i.test(game.swf || "")) {
+                        var bandasUrl = "/bandas/?sid=" + encodeURIComponent(sid);
+                        var bandasFeat = "width=1070,height=760,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no";
+                        window.__dlog("[Frusion] Opening native Frutibandas client:", bandasUrl);
+                        if (window.__gamePopup && !window.__gamePopup.closed) { try { window.__gamePopup.close(); } catch (e) {} }
+                        window.__gamePopup = window.open(bandasUrl, "frutiparc_game", bandasFeat);
+                        return true;
+                    }
                     var popupUrl = "/game-popup.html"
                         + "?swf=" + encodeURIComponent(game.swf)
                         + "&width=" + game.width

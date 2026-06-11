@@ -1066,12 +1066,13 @@ const LEGACY_RANKINGS = [
   { rk: '2', internal: 'mb2_classic',      ty: 'ptmb2',       rn: 'Motion Ball 2',gs: '2', g: 'mb2',    section: 'C' },
   { rk: '3', internal: 'swapou2_classic',  ty: 'point',       rn: 'Swapou 2',     gs: '3', g: 'swapou2',section: 'C' },
   { rk: '4', internal: 'kaluga_classic',   ty: 'point',       rn: 'Kaluga',       gs: '4', g: 'kaluga', section: 'C' },
-  { rk: '5', internal: null,               ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
-  // Grapiz : la série de victoires se classe en "Challenge" (section C), pas en
-  // "Championnat" (section L). On adosse donc rk '6' (section C) à grapiz_challenge.
+  // Frutibandas & Grapiz : la série de victoires se classe en "Challenge"
+  // (section C), pas en "Championnat" (section L). On adosse donc rk '5'/'6'
+  // (section C) à bandas_challenge/grapiz_challenge.
+  { rk: '5', internal: 'bandas_challenge', ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
   { rk: '6', internal: 'grapiz_challenge', ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
-  // Section L = "Championnat" in front-end — only Frutibandas désormais
-  { rk: '7', internal: 'bandas_challenge',  ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
+  // Section L = "Championnat" in front-end — plus aucun classement réel
+  { rk: '7', internal: null,                ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
 ];
 const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
@@ -8727,6 +8728,17 @@ const GAME_DISCS = {
     props: 'w=980;h=720;m=p',
     files: [],
   },
+  // Frutibandas est lui aussi un jeu NATIF (client web /bandas/) — même
+  // mécanique d'interception dans ruffle.html.
+  bandas1: {
+    discType: '0',
+    playMode: 'single',
+    swfName: 'bandas',
+    iconName: 'Frutibandas',
+    gameId: 'games/frutibandas/frutibandas.swf',
+    props: 'w=1050;h=728;m=p',
+    files: [],
+  },
   bkiwi1: {
     discType: '0',
     playMode: 'single',
@@ -12738,6 +12750,31 @@ setInterval(() => {
   try { grapizFlush(grapizNet.tick()); } catch (e) { console.error('[grapiz] tick:', e.message); }
 }, 1000);
 
+// ─────────────────────────────────────────────
+// Frutibandas (jeu natif) — pont multijoueur, même modèle que Grapiz. La
+// cervelle (lobby + sessions + règles du jeu) vit dans public/bandas/server/
+// (logique pure, testée) ; ici on route les messages <bd> et on pousse les
+// événements aux sockets concernés (identité = username).
+// ─────────────────────────────────────────────
+const { BandasNet } = require('./public/bandas/server/net.js');
+const bandasNet = new BandasNet({
+  onResult: (session, winner, reason) => {
+    console.log(`[bandas] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
+  },
+  // Le gros nombre doré = la SÉRIE de victoires consécutives (mode challenge).
+  getStreak: (username) => (users[username] || {}).bandasStreak || 0,
+  onStreak: (username, streak, info) => {
+    if (users[username]) users[username].bandasStreak = streak;    // série en cours (mémoire serveur)
+    // À la fin d'une série (défaite/abandon/timeout), on enregistre sa longueur
+    // au classement « Frutibandas - Challenge » (persistScore garde le meilleur).
+    if (info && info.series > 0) persistScore(username, 'bandas_challenge', info.series);
+  },
+});
+// Tick : horloges (timeout) + coups des bots (1 Hz).
+setInterval(() => {
+  try { grapizFlush(bandasNet.tick()); } catch (e) { console.error('[bandas] tick:', e.message); }
+}, 1000);
+
 // Push a live kikooz-balance update to every connected socket of `username`.
 // The SWF's onActivateFeature handler ("ku") sets _global.me.kikooz, which in
 // turn refreshes any open boutique/kikooz display. Without this, a balance
@@ -12819,7 +12856,8 @@ function modAttr(username, channelName) {
 }
 
 // All games that should always show a FrutiCard on user profiles.
-// Excludes grapiz and bandas (not implemented yet).
+// Excludes grapiz and bandas (native remakes — their challenge series live in
+// the score rankings, not in a FrutiCard slot).
 const FCARD_GAMES = ['bkiwi', 'snake3', 'swapou2', 'kaluga', 'mb2', 'miniwave', 'jamajama', 'minipixiz'];
 
 // Convert a JSON string (or JS value) to Motion-Twin serialization format (2004).
@@ -13448,6 +13486,15 @@ async function handleCBeeMessage(socket, rawXml) {
       client.grapiz = true; // marque cette socket comme client Grapiz (retrait du lobby à sa fermeture)
       try { grapizFlush(grapizNet.handle(client.username, msg.attrs || {})); }
       catch (e) { console.error('[grapiz] handle:', e.message); }
+      break;
+    }
+
+    // ── bd: Frutibandas (jeu natif) — même modèle que Grapiz. ──
+    case 'bd': {
+      if (!client.username || !client.logged) { sendToClient(socket, '<bd e="err" m="not-logged"/>'); break; }
+      client.bandas = true; // marque cette socket comme client Frutibandas
+      try { grapizFlush(bandasNet.handle(client.username, msg.attrs || {})); }
+      catch (e) { console.error('[bandas] handle:', e.message); }
       break;
     }
 
@@ -15487,6 +15534,11 @@ const xmlSocketServer = net.createServer((socket) => {
       if (client.grapiz && client.username) {
         try { grapizFlush(grapizNet.onDisconnect(client.username)); }
         catch (e) { console.error('[grapiz] disconnect:', e.message); }
+      }
+      // Frutibandas : même logique (abandon si en partie, série close).
+      if (client.bandas && client.username) {
+        try { grapizFlush(bandasNet.onDisconnect(client.username)); }
+        catch (e) { console.error('[bandas] disconnect:', e.message); }
       }
       console.log(`[CBee]  Client disconnected: ${disconnectUser || 'anonymous'}`);
     } else {
