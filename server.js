@@ -20,6 +20,7 @@ const fs = require('fs');
 const zlib = require('zlib');
 const db = require('./db');
 const { faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults } = require('./minipixizFaerie');
+const { extractRecordsFromSlot, pickRecordsToArchive } = require('./gameRecords');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
 // Standard error sink for fire-and-forget DB writes. Replaces the
@@ -4220,13 +4221,54 @@ app.post('/api/admin/users/:username/reset-game-slot/:game', adminAuth, async (r
 // derived from the imported data (e.g. snake3 fruits ≥ 20, minipixiz items
 // flagged true in $stat.$item) are granted.
 //
-// Scores: NOT pushed to any ranking. The historical record stays in the
-// merged slot 0 (e.g. snake3 $record, minipixiz $stat.$treeMax) and the SWF
-// reads it locally as the player's personal best. The "Classique" rankings
-// (snake3_classic, mb2_classic, …) are in DAILY_RESET_RANKING_SET — they
-// represent today's competition, not all-time bests, so pushing a 2-year-old
-// import there would steal medals and get cleared at midnight. Use
-// PATCH /api/admin/scores/:user/:ranking afterwards to backfill manually.
+// Scores: les records importés N'ENTRENT PAS dans la table `scores` live (=
+// le challenge du jour, remis à zéro à minuit avec médailles). Ils sont
+// injectés ANTIDATÉS dans l'archive (importBackdatedRecords ci-dessous) : le
+// livre des records du Club (getAllTimeBestScores = scores ∪ archive) les
+// affiche, mais le roll quotidien (qui ne lit que `scores`) ne les voit
+// jamais. Un record n'est écrit que s'il bat le meilleur déjà connu.
+// ─────────────────────────────────────────────
+
+// Journée d'archive « historique » réservée aux records importés. Antérieure
+// à toute vraie journée de challenge, donc invisible dans les vues datées et
+// sans effet sur la récupération de lastRollDay (qui prend la plus récente).
+const IMPORT_ARCHIVE_DAY = '2000-01-01';
+const IMPORT_ARCHIVE_TS = '2000-01-01T12:00:00.000Z';
+
+// extractRecordsFromSlot (carte → records) vit dans gameRecords.js (pur, testé).
+
+// Injecte dans l'archive antidatée les records de la carte importée qui
+// battent le meilleur déjà connu (live ∪ archive). Renvoie le nombre de
+// records effectivement écrits. No-op sans base de données (en mémoire pure,
+// records et challenge partagent le même store : pas de séparation possible).
+async function importBackdatedRecords(username, game, mergedSlot0Json) {
+  if (!process.env.DATABASE_URL) return { written: 0, records: [] };
+  let obj;
+  try { obj = JSON.parse(mergedSlot0Json); } catch { return { written: 0, records: [] }; }
+  const records = extractRecordsFromSlot(game, obj).filter((r) => RANKINGS[r.rankingId]);
+  if (records.length === 0) return { written: 0, records: [] };
+
+  const ukey = String(username).toLowerCase();
+  let archiveRows = [];
+  try {
+    archiveRows = await db.getArchivedScoresForUser(ukey);
+  } catch (e) {
+    console.error(`[IMPORT] getArchivedScoresForUser(${ukey}) failed: ${e.message}`);
+  }
+  // N'écrit que les records qui battent le meilleur déjà connu (live ∪ archive).
+  const toWrite = pickRecordsToArchive(records, scoresData.users[ukey] || {}, archiveRows, isScoreBetter);
+
+  const written = [];
+  for (const rec of toWrite) {
+    try {
+      await db.upsertArchivedScore(IMPORT_ARCHIVE_DAY, rec.rankingId, ukey, rec.score, rec.data, IMPORT_ARCHIVE_TS);
+      written.push(rec);
+    } catch (e) {
+      console.error(`[IMPORT] upsertArchivedScore ${ukey}/${rec.rankingId} failed: ${e.message}`);
+    }
+  }
+  return { written: written.length, records: written };
+}
 // ─────────────────────────────────────────────
 function mergeImportedSlot(game, slotId, existingJson, incomingObj) {
   if (!incomingObj || typeof incomingObj !== 'object' || Array.isArray(incomingObj)) {
@@ -4459,17 +4501,21 @@ app.post('/api/admin/users/:username/import-slots/:game', adminAuth, async (req,
       }
     }
 
-    // No automatic ranking push. The historical record stays in slot 0's
-    // $record (snake3) / equivalent field — the SWF reads it on game start
-    // and shows it as the player's personal best in-game. Pushing into the
-    // "Classique" ranking is undesirable because that ranking is in the
-    // DAILY_RESET_RANKING_SET (server.js:1918): a fresh import would put
-    // the old score into today's competition leaderboard, win medals it
-    // didn't earn, and get cleared at midnight. The admin can use
-    // PATCH /api/admin/scores/:user/:ranking afterwards if they want to
-    // backfill a specific score.
+    // Records → archive antidatée (livre des records du Club), JAMAIS dans le
+    // challenge du jour. N'écrit que ce qui bat le meilleur déjà connu.
+    report.recordsWritten = 0;
+    report.records = [];
+    if (mergedSlot0Json) {
+      try {
+        const rec = await importBackdatedRecords(username, game, mergedSlot0Json);
+        report.recordsWritten = rec.written;
+        report.records = rec.records.map((r) => ({ ranking: r.rankingId, score: r.score }));
+      } catch (e) {
+        console.error(`[IMPORT] backdated records failed for ${username}/${game}: ${e.message}`);
+      }
+    }
 
-    console.log(`[ADMIN] import-slots ${username}/${game}: slots=${report.slots.length} pictos=+${report.pictosGranted}`);
+    console.log(`[ADMIN] import-slots ${username}/${game}: slots=${report.slots.length} pictos=+${report.pictosGranted} records=+${report.recordsWritten}`);
     res.json(report);
   } catch (e) {
     console.error(`[IMPORT] unhandled error: ${e.stack || e.message}`);

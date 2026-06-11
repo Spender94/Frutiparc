@@ -1350,6 +1350,30 @@ async function getArchiveDays() {
   return rows.map(r => r.day_key);
 }
 
+// Toutes les lignes d'archive d'un joueur (toutes journées confondues). Sert à
+// l'import admin pour comparer un record importé au meilleur déjà connu.
+async function getArchivedScoresForUser(username) {
+  const { rows } = await pool.query(
+    'SELECT ranking_id, score, data FROM challenge_score_archive WHERE LOWER(username) = LOWER($1)',
+    [username]
+  );
+  return rows;
+}
+
+// Écrit/écrase UNE ligne d'archive (import admin de records antidatés). Le
+// day_key historique garantit que le score n'entre jamais dans le challenge
+// du jour (qui ne lit que la table `scores` live) tout en figurant dans le
+// livre des records (getAllTimeBestScores = scores ∪ archive).
+async function upsertArchivedScore(dayKey, rankingId, username, score, data, updatedAt) {
+  await pool.query(
+    `INSERT INTO challenge_score_archive (day_key, ranking_id, username, score, data, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (day_key, ranking_id, username) DO UPDATE
+       SET score = EXCLUDED.score, data = EXCLUDED.data, updated_at = EXCLUDED.updated_at`,
+    [dayKey, rankingId, username, Math.trunc(Number(score) || 0), data || '', updatedAt || null]
+  );
+}
+
 // All-time best score per (ranking_id, username), combining the live scores
 // table with historical entries from challenge_score_archive. Used by the
 // "livre des records" view.
@@ -1962,6 +1986,8 @@ module.exports = {
   getArchivedScores,
   getArchivedScoresForDay,
   getArchiveDays,
+  getArchivedScoresForUser,
+  upsertArchivedScore,
   getAllTimeBestScores,
   deleteMedalsByDay,
   getAllMedals,
