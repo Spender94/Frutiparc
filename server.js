@@ -2352,8 +2352,14 @@ async function rollDailyChallengeIfNeeded() {
     if (process.env.DATABASE_URL) {
       try {
         const days = await db.getArchiveDays();
-        if (Array.isArray(days) && days.length > 0) {
-          const latest = days[0];
+        // Exclut la journée synthétique des records importés (IMPORT_ARCHIVE_DAY,
+        // « 2000-01-01 ») : ce n'est pas une vraie journée de challenge, elle ne
+        // doit pas servir de base à la reprise de lastRollDay (sinon, si c'est
+        // la seule journée d'archive, on déclencherait un roll qui archiverait
+        // et viderait à tort les scores du jour).
+        const realDays = (Array.isArray(days) ? days : []).filter((d) => d > '2015-01-01');
+        if (realDays.length > 0) {
+          const latest = realDays[0];
           const next = new Date(latest + 'T12:00:00Z');
           next.setUTCDate(next.getUTCDate() + 1);
           recovered = parisDayKey(next);
