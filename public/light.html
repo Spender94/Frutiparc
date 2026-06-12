@@ -277,6 +277,10 @@
   .msg.system { color: #6b8a3f; font-style: italic; font-size: 12.5px; }
   .msg.admin { color: #b23b2e; }
   .msg .body { color: #335511; }
+  /* Emote line ("pseudo éclate de rire") — the whole row is italic, like desktop. */
+  .msg.emote { font-style: italic; color: #4f7b1f; }
+  .msg.emote .from { color: #4f7b1f; }
+  .msg.emote .from.me { color: #E3756A; }
   .msg .body.emote { font-style: italic; color: #4f7b1f; }
   /* Quiz / "/image" pictures: shown INLINE in the chat body on mobile (the
      desktop SWF opens them in a separate window instead). */
@@ -1147,16 +1151,19 @@
           break;
         }
         // Emotes travel as ordinary text (e.g. "mdr"). To keep the experience
-        // EXACTLY identical to desktop, we show the RAW text (the desktop never
-        // substitutes a French phrase) and animate the speaker's bouille using
-        // the SAME trigger words the desktop recognises (detectEmote).
+        // EXACTLY identical to desktop, when the WHOLE message is an emote
+        // trigger we replace the line with the same italic action the desktop
+        // shows ("pseudo éclate de rire", no colon) and animate the bouille.
         var text = xmlUnescape(stripped);
         var isAdmin = (from === "admin");
-        var em = detectEmote(text);
         var penColor = penColorFor(attr(xml, "p"));
-        addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor });
-        // Bouille overlay: show the speaker's avatar reacting to what they wrote.
-        if (from && !isAdmin) showBouilleOverlay(from, em.anim);
+        var em = isAdmin ? { isEmote: false, anim: "parle", label: null } : detectEmote(text);
+        if (em.isEmote) {
+          addEmoteMessage({ from: from, time: h, label: em.label });
+        } else {
+          addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor });
+        }
+        if (from && !isAdmin) showBouilleOverlay(from, em.anim, em.label);
         break;
       }
 
@@ -1258,6 +1265,25 @@
     if (stick) scrollDown();
   }
   function systemLine(text) { addMessage({ kind: "system", body: text }); }
+
+  // Emote line, identical to the desktop: "[hh:mm:ss] pseudo <phrase>" with the
+  // pseudo in bold and the whole line in italics, NO colon (e.g.
+  // "kasparov éclate de rire").
+  function addEmoteMessage(o) {
+    var stick = nearBottom();
+    var row = el("div", "msg emote");
+    var t = cleanTime(o.time);
+    if (t) { var ts = el("span", "time"); ts.textContent = t; row.appendChild(ts); }
+    var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
+    fr.textContent = o.from || "?";
+    row.appendChild(fr);
+    row.appendChild(document.createTextNode(" "));
+    var lb = el("span", "body"); lb.textContent = o.label;
+    row.appendChild(lb);
+    msgEl.appendChild(row);
+    while (msgEl.childNodes.length > 400) msgEl.removeChild(msgEl.firstChild);
+    if (stick) scrollDown();
+  }
 
   // Render an image message inline: "[hh:mm:ss] pseudo : <title>" then the
   // picture below it. Used for t="i" frames (/image + Kiloute79 image quizzes).
@@ -1422,42 +1448,34 @@
     if (clean.length >= 4) state.bouilleByUser[String(pseudo).toLowerCase()] = clean;
   }
 
-  // Map a chat line to a bouille animation, using the EXACT trigger words the
-  // desktop bouille recognises (extracted from the original loader_bouille SWF's
-  // actionInfo.keyTrig table) so the reaction is identical on every client. The
-  // chat text itself is always shown raw (the desktop never substitutes a
-  // phrase) — only the avatar animates. Each emote's desktop synonyms:
-  //   miam     : miam, régale, bave, slurp
-  //   rougir   : rougir, rougit, :#)  :">
-  //   langue   : langue, :d  :p  :P
-  //   mdr      : mdr, ptdr, lol, :D
-  //   rire     : rire, rigole, :))
-  //   pleurer  : larme, snif, pleure, ouin, ;(  :'(  ;((  :-"(
-  //   question : question, oO, curieux, :?
-  //   sifflote : siffle, sifflote, :-"
-  //   gum      : gum
-  // Emoticons are matched as literal tokens; words on boundaries. A few common
-  // emoji are mapped to the same anims as a harmless mobile bonus (the text is
-  // shown raw either way, so the conversation stays identical to desktop).
-  function hasTok(s, toks) {
-    for (var i = 0; i < toks.length; i++) if (s.indexOf(toks[i]) !== -1) return true;
-    return false;
-  }
+  // Emote detection — IDENTICAL to the desktop. Source of truth:
+  //   _global.actionInfo (FAMILLE 0) in frutiparc/global.as : token → emote id
+  //   _global.langText.chat.action[id] in frutiparc/lang_french.as : id → phrase
+  // The desktop (MeMng.fbouilleActionStr) matches the WHOLE message text against
+  // a trigger EXACTLY (case-sensitive — ":d" is the tongue, ":D" is laughing),
+  // then renders "<pseudo> <phrase>" in italics. We reproduce that exactly: same
+  // tokens, same phrases, same whole-message exact match. A sentence that merely
+  // contains a trigger ("je rigole bien") stays plain text, just like desktop.
+  var EMOTE_MAP = {};
+  (function () {
+    function add(anim, label, toks) { for (var i = 0; i < toks.length; i++) EMOTE_MAP[toks[i]] = { anim: anim, label: label }; }
+    add("rire", "rigole", [":))", "rigole"]);                                  // id 2
+    add("mdr", "éclate de rire", [":D", "mdr", "lol", "ptdr"]);                // id 3
+    add("langue", "tire la langue", [":p", ":P", ":d"]);                       // id 4
+    add("rougir", "rougit", [':">', ":#)", "rougit"]);                         // id 5
+    add("regard", "regarde ailleurs", ["regard", "regarde"]);                 // id 6
+    add("sifflote", "sifflote", [':-"', "siffle", "sifflote"]);               // id 7
+    add("gum", "fait une bulle de chewing-gum", ["gum"]);                      // id 8
+    add("question", "se pose des questions", [":?", "question", "curieux", "oO"]); // id 9
+    add("miam", "se régale", ["miam", "slurp", "bave", "regale"]);            // id 10
+    add("pleurer", "pleure", [':-"(', ";((", "pleure", "ouin"]);              // id 11
+    add("pleurer", "laisse couler une larme", [":'(", ";(", "larme", "snif"]); // id 12
+  })();
   function detectEmote(text) {
-    var raw = String(text || "");          // emoticons are CASE-sensitive (:d≠:D)
-    var low = raw.toLowerCase();           // words are matched case-insensitively
-    var t = " " + low + " ";
-    var anim = "parle";
-    if (/\bm+d+r+\b|\bptdr\b|\bl+o+l+\b/.test(t) || hasTok(raw, [":D"]) || /😂|🤣/.test(raw)) anim = "mdr";
-    else if (/\brire\b|\brigole\b/.test(t) || hasTok(raw, [":))"]) || /😄|😁|😆/.test(raw)) anim = "rire";
-    else if (/\blarme\b|\bsnif\b|\bpleures?\b|\bouin\b/.test(t) || hasTok(raw, [";((", ";(", ":'(", ':-"(']) || /😢|😭/.test(raw)) anim = "pleurer";
-    else if (/\blangue\b/.test(t) || hasTok(raw, [":d", ":p", ":P"]) || /😛|😜/.test(raw)) anim = "langue";
-    else if (/\bmiam\b|\br[ée]gale\b|\bbave\b|\bslurp\b/.test(t) || /🤤/.test(raw)) anim = "miam";
-    else if (/\bquestions?\b|\bcurieux\b/.test(t) || hasTok(raw, ["oO", ":?"]) || /🤔/.test(raw)) anim = "question";
-    else if (/\brougi[rt]\b/.test(t) || hasTok(raw, [":#)", ':">']) || /😳|🥰|❤/.test(raw)) anim = "rougir";
-    else if (/\bsiffl/.test(t) || hasTok(raw, [':-"']) || /🎵|🎶/.test(raw)) anim = "sifflote";
-    else if (/\bgum\b/.test(t)) anim = "gum";
-    return { anim: anim };
+    var key = String(text == null ? "" : text).trim();   // whole-message, case-sensitive
+    var hit = EMOTE_MAP[key];
+    if (hit) return { isEmote: true, anim: hit.anim, label: hit.label };
+    return { isEmote: false, anim: "parle", label: null };
   }
 
   // ── Feutres (chat pens) ──────────────────────────────────────────────────
@@ -1533,10 +1551,13 @@
   // anim id → playAnim index expected by bouille-preview.html (?anim=<index>).
   var ANIM_INDEX = { parle:1, rire:2, mdr:3, langue:4, rougir:5, regard:6,
     sifflote:7, gum:8, question:9, miam:10, pleurer:11 };
+  // Caption phrases for the bouille overlay — the EXACT desktop wording
+  // (lang_french.as chat.action). A specific emote can override this (the two
+  // cry emotes share the "pleurer" animation but read differently).
   var ANIM_LABEL = { parle:"parle", rire:"rigole", mdr:"éclate de rire",
     pleurer:"pleure", langue:"tire la langue", miam:"se régale",
-    question:"se pose des questions", rougir:"rougit", sifflote:"siffle",
-    gum:"fait un chewing-gum", regard:"regarde" };
+    question:"se pose des questions", rougir:"rougit", sifflote:"sifflote",
+    gum:"fait une bulle de chewing-gum", regard:"regarde ailleurs" };
   // Live-Ruffle overlay: instead of a captured GIF (latency + raster pixelation)
   // we embed bouille-preview.html in a transparent iframe — Ruffle renders the
   // bouille as VECTORS (crisp at any size) and plays the animation directly,
@@ -1564,12 +1585,12 @@
   }
 
   var OVERLAY_HOLD_MS = 4200;
-  function showBouilleOverlay(pseudo, anim) {
+  function showBouilleOverlay(pseudo, anim, labelOverride) {
     if (!state.bouillesEnabled) return; // "light" mode: no bouille animations
     var box = $("#bouille-overlay");
     if (!box) return;
     var name = $("#bouille-overlay-name");
-    name.textContent = pseudo + " " + (ANIM_LABEL[anim] || "parle");
+    name.textContent = pseudo + " " + (labelOverride || ANIM_LABEL[anim] || "parle");
 
     var frame = overlayIframe();
     // Reload the bouille (force even if the URL is identical, so a repeated emote
