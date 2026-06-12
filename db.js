@@ -704,6 +704,19 @@ async function getAllFrutiSlot0(userId) {
   return rows;
 }
 
+// Toutes les cartes slot 0 d'un jeu, avec le pseudo de leur propriétaire.
+// Sert au backfill des records du Club : re-balayer les progressions déjà
+// importées pour publier rétroactivement leurs records dans l'archive.
+async function getSlot0ForGame(game) {
+  const { rows } = await pool.query(
+    `SELECT u.username, fs.data
+       FROM fruti_slots fs JOIN users u ON u.id = fs.user_id
+      WHERE fs.game = $1 AND fs.slot_id = 0`,
+    [game]
+  );
+  return rows;
+}
+
 async function getAllFrutiSlots(userId) {
   const { rows } = await pool.query(
     'SELECT game, slot_id, data FROM fruti_slots WHERE user_id = $1',
@@ -1914,6 +1927,7 @@ module.exports = {
   deleteFrutiSlotsForGame,
   getFrutiSlots,
   getAllFrutiSlot0,
+  getSlot0ForGame,
   getAllFrutiSlots,
   addAccessory,
   getUserAccessories,

@@ -20,7 +20,7 @@ const fs = require('fs');
 const zlib = require('zlib');
 const db = require('./db');
 const { faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults } = require('./minipixizFaerie');
-const { extractRecordsFromSlot, pickRecordsToArchive } = require('./gameRecords');
+const { extractRecordsFromSlot, pickRecordsToArchive, RECORD_GAMES } = require('./gameRecords');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
 // Standard error sink for fire-and-forget DB writes. Replaces the
@@ -4544,6 +4544,50 @@ app.post('/api/admin/users/:username/import-slots/:game', adminAuth, async (req,
   } catch (e) {
     console.error(`[IMPORT] unhandled error: ${e.stack || e.message}`);
     res.status(500).json({ ok: false, error: e.message, stack: process.env.NODE_ENV === 'production' ? undefined : (e.stack || '').split('\n').slice(0, 6).join('\n') });
+  }
+});
+
+// ENDPOINT: /api/admin/records/backfill — Re-balaye TOUTES les cartes slot 0
+// déjà en base (progressions importées AVANT que l'import ne publie les
+// records, ou records arrivés par d'autres chemins) et rejoue exactement la
+// logique d'import : extraction du record de la carte → comparaison au
+// meilleur déjà connu (live ∪ archive) → écriture ANTIDATÉE dans l'archive
+// (IMPORT_ARCHIVE_DAY). Le livre des records du Club les voit ; le challenge
+// du jour (table `scores` live) n'est JAMAIS touché. Idempotent : un second
+// passage n'écrit rien (le record connu n'est plus battu).
+app.post('/api/admin/records/backfill', adminScope('scores'), async (req, res) => {
+  if (!process.env.DATABASE_URL) {
+    return res.status(503).json({ ok: false, error: 'no_db', message: 'Base de données requise (en mémoire pure, records et challenge partagent le même store).' });
+  }
+  const report = { ok: true, scanned: 0, written: 0, perGame: {}, records: [] };
+  try {
+    for (const game of RECORD_GAMES) {
+      let rows = [];
+      try { rows = await db.getSlot0ForGame(game); }
+      catch (e) { console.error(`[RECORDS] getSlot0ForGame(${game}) failed: ${e.message}`); continue; }
+      report.perGame[game] = { scanned: rows.length, written: 0 };
+      for (const row of rows) {
+        if (!row || !row.username || !row.data) continue;
+        report.scanned++;
+        try {
+          const rec = await importBackdatedRecords(row.username, game, row.data);
+          if (rec.written > 0) {
+            report.written += rec.written;
+            report.perGame[game].written += rec.written;
+            for (const r of rec.records) {
+              report.records.push({ user: row.username, ranking: r.rankingId, score: r.score });
+            }
+          }
+        } catch (e) {
+          console.error(`[RECORDS] backfill ${row.username}/${game} failed: ${e.message}`);
+        }
+      }
+    }
+    console.log(`[ADMIN] records backfill: ${report.scanned} cartes balayées, ${report.written} record(s) publié(s)`);
+    res.json(report);
+  } catch (e) {
+    console.error(`[RECORDS] backfill error: ${e.stack || e.message}`);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 

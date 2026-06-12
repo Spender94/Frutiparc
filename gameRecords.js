@@ -18,6 +18,11 @@
 //
 // Le caller valide chaque rankingId contre RANKINGS et ne publie un record
 // que s'il bat le meilleur déjà connu (live ∪ archive).
+// Jeux dont la carte (slot 0) porte un record classable — la même liste que
+// le switch d'extractRecordsFromSlot. Sert au backfill admin (re-balayer les
+// cartes déjà importées) sans dupliquer la connaissance des jeux ici et là.
+const RECORD_GAMES = ['snake3', 'swapou2', 'mb2', 'jamajama'];
+
 function extractRecordsFromSlot(game, obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return [];
   const out = [];
@@ -67,4 +72,4 @@ function pickRecordsToArchive(records, liveByRk, archiveRows, isBetter) {
   return out;
 }
 
-module.exports = { extractRecordsFromSlot, pickRecordsToArchive };
+module.exports = { extractRecordsFromSlot, pickRecordsToArchive, RECORD_GAMES };

@@ -391,6 +391,7 @@
     </select>
     <button class="btn" onclick="loadScores()">Rafraîchir</button>
     <button class="btn-danger" onclick="clearRanking()">Vider ce classement</button>
+    <button class="btn" onclick="backfillRecords()" title="Re-balaye les cartes (slot 0) déjà importées et publie leurs records dans le livre des records du Club (archive antidatée — n'entre jamais dans le challenge du jour)">Publier les records importés</button>
     <span id="score-count"></span>
   </div>
   <table>
@@ -1636,6 +1637,22 @@ function viewUser(name) {
 }
 
 // ── Scores ──
+// Backfill du livre des records : rejoue l'extraction de record sur TOUTES les
+// cartes slot 0 déjà en base (imports antérieurs à la publication automatique)
+// et écrit ce qui bat le meilleur connu dans l'archive antidatée. Ne touche
+// jamais au challenge du jour. Idempotent (relançable sans risque).
+async function backfillRecords() {
+  if (!confirm('Re-balayer toutes les cartes importées et publier leurs records dans le livre des records du Club ?')) return;
+  try {
+    const r = await fetch('/api/admin/records/backfill', { method: 'POST', headers: hdr() });
+    const data = await r.json();
+    if (!r.ok) { toast(data.message || data.error || 'Erreur backfill'); return; }
+    const detail = (data.records || []).slice(0, 8).map(x => `${x.user} (${x.ranking}: ${x.score})`).join(', ');
+    toast(`${data.scanned} cartes balayées — ${data.written} record(s) publié(s)` + (detail ? ` : ${detail}` : ''));
+    console.log('[backfill records]', data);
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
 async function loadScores() {
   const ranking = $('#ranking-select').value;
   try {
