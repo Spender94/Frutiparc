@@ -1054,10 +1054,14 @@
     });
     canvas.addEventListener("click", function (ev) { onBoardTap(ev.clientX, ev.clientY); });
     // clic ailleurs sur la page en mode visée = annulation (fidèle à l'original)
+    // clic sur le FOND de la page en mode visée = annulation (fidèle à
+    // l'original). Les contrôles (cartes, fiche mobile, bandeau de visée,
+    // croix, chat) ne doivent PAS annuler : le clic « Jouer » de la fiche
+    // remonte jusqu'ici et tuerait la visée qu'il vient d'armer.
     $("#page").addEventListener("click", function (ev) {
-      if (GV.targetCard !== null && ev.target !== canvas && !ev.target.closest(".cardslot")) {
-        cancelTarget("Vous avez cliqué hors du plateau, lancement de carte annulé !");
-      }
+      if (GV.targetCard === null) return;
+      if (ev.target.closest("#bd-canvas, .cardslot, #m-sheet, #m-sheet-backdrop, #m-hint, #m-dpad, #m-chatbtn, #chatwrap")) return;
+      cancelTarget("Vous avez cliqué hors du plateau, lancement de carte annulé !");
     });
     // cartes
     $("#slots0").addEventListener("click", onSlotClick);
