@@ -1818,12 +1818,17 @@ function boardPage(p) { loadBoard(currentBoardId, p); }
 var currentTopicId = null;
 var currentTopicData = null;
 async function loadTopic(topicId, page) {
-  page = page || 1;
+  // Opening a topic without an explicit page (from a board list / breadcrumb /
+  // new-topic redirect) jumps to the LAST page — where the most recent posts
+  // are — like a classic forum. The server resolves "last" from the real post
+  // count. Pagination clicks and post-action reloads pass a number, so they
+  // keep their exact page.
+  var pageParam = (page == null) ? 'last' : page;
   currentTopicId = topicId;
   var app = document.getElementById('app');
   app.innerHTML = '<div class="loading">Chargement...</div>';
 
-  var data = await apiFetch('/api/forum/topic/' + topicId + '?page=' + page);
+  var data = await apiFetch('/api/forum/topic/' + topicId + '?page=' + pageParam);
   currentTopicData = data;
   if (!data.topic) { app.innerHTML = '<div class="empty">Sujet introuvable.</div>'; return; }
 

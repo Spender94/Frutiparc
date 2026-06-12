@@ -729,6 +729,23 @@
     var m = xml.match(/^<[^>]*>([\s\S]*)<\/[^>]+>$/);
     return m ? m[1] : "";
   }
+  // Many admin/system chat frames carry their text inside a CDATA section, often
+  // wrapping a little HTML (e.g. "<![CDATA[<i>X a été totoché</i>]]>"). Peel the
+  // CDATA wrapper so we can render the announcement instead of "[cadeau]".
+  function stripCdata(s) {
+    var m = String(s == null ? "" : s).match(/^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/);
+    return m ? m[1] : s;
+  }
+  // Reduce the small HTML the server uses in admin announces (<i>, <b>,
+  // <font color>) to readable plain text for the mobile chat line.
+  function htmlToText(s) {
+    return xmlUnescape(String(s == null ? "" : s).replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "")).trim();
+  }
+  // Case-insensitive pseudo comparison (server sends display names; state.user
+  // may differ only by case).
+  function sameName(a, b) {
+    return String(a == null ? "" : a).toLowerCase() === String(b == null ? "" : b).toLowerCase();
+  }
 
   // ── Login ──
   // ── Session persistence (survive F5 / rotation reloads) ──
@@ -942,8 +959,10 @@
     try { ws = new WebSocket(wsUrl()); } catch (e) { scheduleReconnect(); return; }
     state.ws = ws;
     ws.onopen = function () {
-      // Identify with our session, then join the default room.
-      wsSend('<k l="' + xmlEscape(state.user) + '" s="' + xmlEscape(state.sid) + '" />');
+      // Identify with our session, then join the default room. lc="1" tells the
+      // server we're the light client and want the recent-chat-history replay on
+      // (re)join — so switching tabs on mobile no longer empties the salon.
+      wsSend('<k l="' + xmlEscape(state.user) + '" s="' + xmlEscape(state.sid) + '" lc="1" />');
     };
     ws.onmessage = function (ev) { onWsData(ev.data); };
     ws.onclose = function () {
@@ -1104,29 +1123,40 @@
           }
           break;
         }
-        // Other child-node frames (gifts…) — placeholder rather than raw XML.
-        if (ty === "g" || /^</.test(body.trim())) {
-          addMessage({ from: from, time: h, body: "[cadeau]", kind: "system" });
+        // Kikooz gift (/donne) — body is a <g k="amount" u="target"/> element.
+        // Show the same announcement the desktop does instead of "[cadeau]".
+        if (ty === "g") {
+          var gAmt = parseInt(attr(body, "k"), 10);
+          var gTo = xmlUnescape(attr(body, "u"));
+          addMessage({
+            from: from, time: h, kind: "admin", noFrom: true,
+            body: (from || "Quelqu'un") + " a donné " + (isFinite(gAmt) ? gAmt : attr(body, "k")) +
+              " kikooz à " + (gTo || "?") + ".",
+          });
           break;
         }
-        // Emotes travel as ordinary text (e.g. "mdr"); detectEmote below turns a
-        // recognised reaction into the italic action + bouille animation. (A bare
-        // number is just a number — no longer special-cased, so typing "2" shows
-        // "2" instead of being mistaken for an emote index.)
-        var text = xmlUnescape(body);
-        var kind = (from === "admin") ? "admin" : "normal";
+        // Admin / system announcements (totoche, mode bleu, cri "!", gains…) are
+        // sent as CDATA, sometimes wrapping a little HTML. Peel the CDATA and, if
+        // what remains is markup, render its text — this is what used to fall
+        // through to the "[cadeau]" placeholder. Plain CDATA text (e.g. "X a été
+        // totoché") drops through to the normal path below as an admin line.
+        var stripped = stripCdata(body);
+        if (/^\s*</.test(stripped)) {
+          var plain = htmlToText(stripped);
+          if (plain) addMessage({ from: from, time: h, kind: "admin", noFrom: true, body: plain });
+          break;
+        }
+        // Emotes travel as ordinary text (e.g. "mdr"). To keep the experience
+        // EXACTLY identical to desktop, we show the RAW text (the desktop never
+        // substitutes a French phrase) and animate the speaker's bouille using
+        // the SAME trigger words the desktop recognises (detectEmote).
+        var text = xmlUnescape(stripped);
+        var isAdmin = (from === "admin");
         var em = detectEmote(text);
         var penColor = penColorFor(attr(xml, "p"));
-        // When the line is a recognised emote, display the action in italics
-        // ("kasparov : éclate de rire") instead of the raw text, while still
-        // animating the bouille. Otherwise show the message normally.
-        addMessage({
-          from: from, time: h,
-          body: em.isEmote ? em.label : text,
-          kind: kind, emote: em.isEmote, pen: em.isEmote ? null : penColor,
-        });
+        addMessage({ from: from, time: h, body: text, kind: isAdmin ? "admin" : "normal", noFrom: isAdmin, pen: penColor });
         // Bouille overlay: show the speaker's avatar reacting to what they wrote.
-        if (from && from !== "admin") showBouilleOverlay(from, em.anim);
+        if (from && !isAdmin) showBouilleOverlay(from, em.anim);
         break;
       }
 
@@ -1140,10 +1170,20 @@
         systemLine("Tu as été réduit au silence (totoché).");
         break;
 
-      case "ah": { // onban: kicked/banned from a room
-        var by = attr(xml, "by");
-        systemLine("Tu as été exclu du salon" + (by ? " par " + by : "") + ".");
-        // server removed us; refresh room membership
+      // Kick (ag = onkick, /kick) and ban (ah = onban, fiche) are broadcast to
+      // the WHOLE salon — so everyone, not just the target, sees the action
+      // (the desktop shows it as a line). We also drop the target from the user
+      // list. The room-wide totoché notice arrives separately as an admin <t>.
+      case "ag": case "ah": {
+        var kWho = attr(xml, "u");
+        var kBy = attr(xml, "by");
+        var kVerb = (tag === "ah") ? "banni" : "expulsé";
+        if (sameName(kWho, state.user)) {
+          systemLine("Tu as été " + kVerb + " du salon" + (kBy ? " par " + kBy : "") + ".");
+        } else {
+          if (state.usersByRoom[state.room]) { delete state.usersByRoom[state.room][kWho]; renderUsers(); }
+          systemLine(kWho + " a été " + kVerb + " du salon" + (kBy ? " par " + kBy : "") + ".");
+        }
         break;
       }
 
@@ -1199,10 +1239,14 @@
       // message" — not just the body. The pseudo stays bold (.from in CSS).
       var t = cleanTime(o.time);
       if (t) { var ts = el("span", "time"); ts.textContent = t; if (o.pen) ts.style.color = o.pen; row.appendChild(ts); }
-      var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
-      fr.textContent = (o.from || "?") + " : ";
-      if (o.pen) fr.style.color = o.pen;
-      row.appendChild(fr);
+      // Admin/system ANNOUNCEMENTS (totoche, kikooz gift, mode bleu, kick…)
+      // carry no author prefix — the desktop renders them as a lone italic line.
+      if (!o.noFrom) {
+        var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
+        fr.textContent = (o.from || "?") + " : ";
+        if (o.pen) fr.style.color = o.pen;
+        row.appendChild(fr);
+      }
       var bd = el("span", o.emote ? "body emote" : "body");
       if (o.pen) bd.style.color = o.pen;     // feutre colour
       bd.textContent = o.body;
@@ -1378,39 +1422,42 @@
     if (clean.length >= 4) state.bouilleByUser[String(pseudo).toLowerCase()] = clean;
   }
 
-  // Map a chat line to a bouille animation + a French label. Returns
-  // { anim, label, isEmote }. isEmote is true for a reaction (rire, mdr, …) and
-  // false for plain talking ("parle") — only reactions are shown in italics in
-  // the chat ("kasparov : éclate de rire") while the bouille animates.
-  var EMOTE_LABEL = {
-    rire: "rigole", mdr: "éclate de rire", pleurer: "pleure",
-    langue: "tire la langue", miam: "se régale", question: "se pose des questions",
-    rougir: "rougit", sifflote: "siffle", gum: "fait un chewing-gum",
-  };
+  // Map a chat line to a bouille animation, using the EXACT trigger words the
+  // desktop bouille recognises (extracted from the original loader_bouille SWF's
+  // actionInfo.keyTrig table) so the reaction is identical on every client. The
+  // chat text itself is always shown raw (the desktop never substitutes a
+  // phrase) — only the avatar animates. Each emote's desktop synonyms:
+  //   miam     : miam, régale, bave, slurp
+  //   rougir   : rougir, rougit, :#)  :">
+  //   langue   : langue, :d  :p  :P
+  //   mdr      : mdr, ptdr, lol, :D
+  //   rire     : rire, rigole, :))
+  //   pleurer  : larme, snif, pleure, ouin, ;(  :'(  ;((  :-"(
+  //   question : question, oO, curieux, :?
+  //   sifflote : siffle, sifflote, :-"
+  //   gum      : gum
+  // Emoticons are matched as literal tokens; words on boundaries. A few common
+  // emoji are mapped to the same anims as a harmless mobile bonus (the text is
+  // shown raw either way, so the conversation stays identical to desktop).
+  function hasTok(s, toks) {
+    for (var i = 0; i < toks.length; i++) if (s.indexOf(toks[i]) !== -1) return true;
+    return false;
+  }
   function detectEmote(text) {
-    var t = " " + String(text || "").toLowerCase() + " ";
+    var raw = String(text || "");          // emoticons are CASE-sensitive (:d≠:D)
+    var low = raw.toLowerCase();           // words are matched case-insensitively
+    var t = " " + low + " ";
     var anim = "parle";
-    if (/\bm+d+r+\b|\bptdr\b|\blmao\b|\brofl\b|😂|🤣/.test(t)) anim = "mdr";
-    else if (/\bl+o+l+\b|\bha+ha+\b|\bhe+he+\b|\beheh\b|😄|😁|😆|\bxd\b/.test(t)) anim = "rire";
-    else if (/\bsnif\b|\bpleure?\b|\btriste\b|😢|😭|💧/.test(t)) anim = "pleurer";
-    else if (/:p\b|:-p\b|😛|😜|🤪|\bnananère?\b/.test(t)) anim = "langue";
-    else if (/\bmiam\b|\bmmh+\b|\bgloup\b|🤤|🍕|🍔|🍰/.test(t)) anim = "miam";
-    else if (/\bquestions?\b/.test(t)) anim = "question";
-    else if (/\brougi[rs]?\b|\bgêné?e?\b|\btimide\b|😳|☺️|🥰|❤️|<3/.test(t)) anim = "rougir";
-    else if (/\bsiffl|🎵|🎶/.test(t)) anim = "sifflote";
-    else if (/\bgum\b|\bchewing\b|\bbubble\b/.test(t)) anim = "gum";
-    // Replace the chat text with the italic action ONLY when the message is
-    // essentially just the trigger (e.g. "lol", "mdr", ":p", "miam !") — short
-    // and made mostly of the emote token. A real sentence that happens to match
-    // (e.g. "tu fais quoi demain ?") keeps its text; the bouille still animates.
-    var compact = String(text || "").trim();
-    var pure = anim !== "parle" && (compact.length <= 12 || /^[\s!?.…,;:)(-]*$/.test(
-      compact.toLowerCase()
-        .replace(/m+d+r+|ptdr|lmao|rofl|l+o+l+|ha+ha+|he+he+|eheh|xd|snif|pleure?|triste|miam|mmh+|gloup|questions?|rougi[rs]?|gêné?e?|timide|siffl\w*|chewing[- ]?gum|gum|bubble|nananère?/g, "")
-        .replace(/[:;x][-]?[pdo3)(]/g, "")
-        .replace(/[😂🤣😄😁😆😢😭💧😛😜🤪🤤🍕🍔🍰❓🤔😳☺🥰❤🎵🎶]/gu, "")
-    ));
-    return { anim: anim, label: EMOTE_LABEL[anim] || null, isEmote: !!(pure && EMOTE_LABEL[anim]) };
+    if (/\bm+d+r+\b|\bptdr\b|\bl+o+l+\b/.test(t) || hasTok(raw, [":D"]) || /😂|🤣/.test(raw)) anim = "mdr";
+    else if (/\brire\b|\brigole\b/.test(t) || hasTok(raw, [":))"]) || /😄|😁|😆/.test(raw)) anim = "rire";
+    else if (/\blarme\b|\bsnif\b|\bpleures?\b|\bouin\b/.test(t) || hasTok(raw, [";((", ";(", ":'(", ':-"(']) || /😢|😭/.test(raw)) anim = "pleurer";
+    else if (/\blangue\b/.test(t) || hasTok(raw, [":d", ":p", ":P"]) || /😛|😜/.test(raw)) anim = "langue";
+    else if (/\bmiam\b|\br[ée]gale\b|\bbave\b|\bslurp\b/.test(t) || /🤤/.test(raw)) anim = "miam";
+    else if (/\bquestions?\b|\bcurieux\b/.test(t) || hasTok(raw, ["oO", ":?"]) || /🤔/.test(raw)) anim = "question";
+    else if (/\brougi[rt]\b/.test(t) || hasTok(raw, [":#)", ':">']) || /😳|🥰|❤/.test(raw)) anim = "rougir";
+    else if (/\bsiffl/.test(t) || hasTok(raw, [':-"']) || /🎵|🎶/.test(raw)) anim = "sifflote";
+    else if (/\bgum\b/.test(t)) anim = "gum";
+    return { anim: anim };
   }
 
   // ── Feutres (chat pens) ──────────────────────────────────────────────────

@@ -10300,13 +10300,22 @@ app.get('/api/forum/topic/:id', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ topic: null, posts: [], total: 0 });
   try {
     const topicId = Number(req.params.id);
-    const page = Math.max(1, Number(req.query.page) || 1);
+    // page can be a number, or "last" to jump straight to the most recent page
+    // (default when opening a topic from a list — classic forum behaviour).
+    const pageParam = String(req.query.page || '');
     const topic = await db.forumGetTopic(topicId);
     if (!topic) return res.status(404).json({ error: 'topic not found' });
     const currentUserForGate = forumAuth(req);
     const { staffOnly } = await isStaffOnlyBoard(topic.board_id);
     if (staffOnly && !isForumStaff(currentUserForGate)) {
       return res.status(404).json({ error: 'topic not found' });
+    }
+    let page;
+    if (pageParam === 'last') {
+      const totalPosts = await db.forumCountPosts(topicId);
+      page = Math.max(1, Math.ceil(totalPosts / FORUM_POSTS_PER_PAGE));
+    } else {
+      page = Math.max(1, Number(pageParam) || 1);
     }
     await db.forumIncrementViews(topicId);
     const board = await db.forumGetBoard(topic.board_id);
@@ -12716,9 +12725,39 @@ function sendToClient(socket, data) {
   } catch (e) { /* ignore */ }
 }
 
+// Per-channel rolling chat history: the last few minutes of `<t>` content
+// frames (normal lines, gifts, images, admin announces…). Used to replay
+// recent context to a (re)joining LIGHT client so switching browser tabs on
+// mobile no longer wipes the conversation. Desktop is unaffected (replay is
+// opt-in, see client.wantsChatHistory).
+const CHAT_HISTORY_MAX_AGE_MS = 5 * 60 * 1000;
+const CHAT_HISTORY_MAX = 120;
+function recordChannelHistory(channelName, xmlStr) {
+  const channel = channels[channelName];
+  if (!channel) return;
+  // Only store actual chat content frames (CMD.send = `<t …>`), never
+  // joins/parts/traces/kicks — those are transient presence events.
+  if (!/^<t[\s>]/.test(xmlStr)) return;
+  if (!channel.history) channel.history = [];
+  const now = Date.now();
+  channel.history.push({ at: now, xml: xmlStr });
+  const cutoff = now - CHAT_HISTORY_MAX_AGE_MS;
+  while (channel.history.length && (channel.history[0].at < cutoff || channel.history.length > CHAT_HISTORY_MAX)) {
+    channel.history.shift();
+  }
+}
+// Recent (≤5 min) chat frames for a channel, oldest first.
+function getChannelHistory(channelName) {
+  const channel = channels[channelName];
+  if (!channel || !channel.history) return [];
+  const cutoff = Date.now() - CHAT_HISTORY_MAX_AGE_MS;
+  return channel.history.filter((e) => e.at >= cutoff).map((e) => e.xml);
+}
+
 function broadcastToChannel(channelName, xmlStr, excludeSocket = null) {
   const channel = channels[channelName];
   if (!channel) return;
+  recordChannelHistory(channelName, xmlStr);
   for (const [sock, client] of xmlSocketClients) {
     if (sock === excludeSocket) continue;
     if (client.channels.has(channelName)) {
@@ -13523,6 +13562,11 @@ async function handleCBeeMessage(socket, rawXml) {
     case 'ident': {
       const login = msg.attrs.l || '';
       const sid = msg.attrs.s || '';
+      // The light/mobile client identifies itself with lc="1": it opts into the
+      // recent-chat-history replay on (re)join, so flipping browser tabs no
+      // longer leaves it with an empty conversation. The desktop SWF never sets
+      // this, so its join behaviour is unchanged.
+      if (msg.attrs.lc === '1') client.wantsChatHistory = true;
       const sessionUser = sid && sessions[sid] && sessions[sid].user ? sessions[sid].user : '';
 
       // Priority: sid-bound user (real logged account) > explicit login.
@@ -13796,6 +13840,14 @@ case 'join': {
       traceXml += `<u u="${escapeXml(getDisplayName(u))}" p="1" s="${getStatusCode(ud, u)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud)}"${modAttr(u, g)} />`;
     }
     sendToClient(socket, `<${CMD.trace}>${traceXml}</${CMD.trace}>`);
+  }
+
+  // 3 bis. Rejoue les ~5 dernières minutes de messages au client LIGHT qui
+  //        (re)rejoint : sur mobile, changer d'onglet coupe la socket et vidait
+  //        le salon. On n'envoie qu'à cette socket, et seulement si elle a
+  //        demandé l'historique (lc="1") — le SWF desktop n'est pas concerné.
+  if (client.wantsChatHistory) {
+    for (const frame of getChannelHistory(g)) sendToClient(socket, frame);
   }
 
   // 4. Notification aux autres + trace du nouvel arrivant pour leurs FrutiScreen
