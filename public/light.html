@@ -436,6 +436,11 @@
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
     border: 0; display: block; background: #FFFEE2;
   }
+  #bandas-panel { padding: 0; }
+  #bandas-frame {
+    flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
+    border: 0; display: block; background: #92aa2e;
+  }
   #swapou-panel { padding: 0; }
   #swapou-frame {
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
@@ -519,6 +524,9 @@
     <button class="menu-item" data-tab="grapiz">
       <img class="menu-ico" src="/fb/icone_grapiz.png" alt="" onerror="this.replaceWith(document.createTextNode('🎮'))"> Grapiz
     </button>
+    <button class="menu-item" data-tab="bandas">
+      <img class="menu-ico" src="/fb/icone_bandas.png" alt="" onerror="this.replaceWith(document.createTextNode('🍊'))"> Frutibandas
+    </button>
     <button class="menu-item" data-tab="swapou">
       <img class="menu-ico" src="/games/swapou2/images/fruits/pomme.png" alt="" onerror="this.replaceWith(document.createTextNode('🍎'))"> Swapou
     </button>
@@ -573,6 +581,13 @@
        PROPRE socket via ?sid=, comme la popup desktop. -->
   <section class="panel" id="grapiz-panel">
     <iframe id="grapiz-frame" title="Grapiz" referrerpolicy="no-referrer"></iframe>
+  </section>
+
+  <!-- Frutibandas — jeu natif (version mobile) chargé dans une iframe. Comme
+       Grapiz : on reste sur /light (socket de chat intacte), le jeu ouvre sa
+       PROPRE socket via ?sid=. -->
+  <section class="panel" id="bandas-panel">
+    <iframe id="bandas-frame" title="Frutibandas" referrerpolicy="no-referrer"></iframe>
   </section>
 
   <!-- Swapou 2 — portage natif canvas chargé dans une iframe. Comme Grapiz :
@@ -869,6 +884,7 @@
       $("#chat-panel").classList.toggle("active", tab === "chat");
       $("#forum-panel").classList.toggle("active", tab === "forum");
       $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
+      $("#bandas-panel").classList.toggle("active", tab === "bandas");
       $("#swapou-panel").classList.toggle("active", tab === "swapou");
       // Charge le forum dans l'iframe à la 1re ouverture. On reste sur /light,
       // donc la socket de chat de la page parente n'est jamais coupée pendant
@@ -885,6 +901,14 @@
         var gf = $("#grapiz-frame");
         if (gf && !gf.getAttribute("src") && state.sid) {
           gf.setAttribute("src", "/grapiz/?sid=" + encodeURIComponent(state.sid));
+        }
+      }
+      // Frutibandas : même mécanique (1re ouverture, gardé en mémoire — la
+      // partie en cours survit aux allers-retours vers le chat).
+      if (tab === "bandas") {
+        var bf = $("#bandas-frame");
+        if (bf && !bf.getAttribute("src") && state.sid) {
+          bf.setAttribute("src", "/bandas/?sid=" + encodeURIComponent(state.sid));
         }
       }
       // Swapou : chargé à la 1re ouverture, gardé en mémoire ensuite (la

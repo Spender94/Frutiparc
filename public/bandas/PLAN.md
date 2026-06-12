@@ -87,13 +87,25 @@ même logique ici).
   confiscation (« au prochain tour »), génération du plateau (grille pleine
   moitié/moitié mélangée) et du pool (tirage uniforme avec doublons, comme le
   `c="3:3:3:3:3:7:8:9"` du source) sont **reconstruits** d'après le client.
-- Assets préparés en anglais (bannières « COW », panneaux « You won/lost the
-  match ! ») : ce sont les assets fournis ; les textes générés (chat,
-  descriptions des cartes au survol) reprennent les textes français du .fla.
+- Les assets préparés qui portaient du texte anglais (bannières
+  « advertiser », panneaux victoire/défaite, bouton « Sound ») ne sont PLUS
+  utilisés : bannières, panneau de fin et boutons sont rendus en DOM/CSS aux
+  couleurs des assets d'origine, avec les textes français du jeu (noms de
+  cartes, Texts.as). Les PNG restent dans `assets/` pour référence.
 - Après déclenchement d'un piège, le serveur garde la case `TRAPPED`
   (comportement exact de `Board.as`) alors que le client de la victime la
   voit `DESTROYED` — les deux sont léthales et comptent comme vides pour les
   bords : équivalent.
+
+## Mobile (/light)
+
+Le client est responsive (≤760 px) : lobby en onglets, écran de jeu empilé —
+barre joueurs, plateau pleine largeur (canvas resserré autour du plateau,
+**glisser le doigt = bouger**, croix directionnelle en appoint), main de
+cartes au toucher avec **fiche de confirmation** (art + description +
+Jouer/Fermer), visée par bandeau « Touche une case… », chat en surcouche
+(bouton flottant). Entrée du menu light : onglet « Frutibandas »
+(`/bandas/?sid=` en iframe, comme Grapiz).
 
 ## Relancer les tests
 

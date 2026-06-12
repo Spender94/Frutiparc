@@ -115,17 +115,139 @@
   #bd-input { left:236px; top:684px; width:578px; height:25px; border:0; font:12px Verdana; color:#5b6f1d; padding:0 30px 0 12px;
     background:url(assets/page/chat_input.png) 0 0/578px 25px no-repeat; outline:none; }
   #bd-input:hover, #bd-input:focus { background-image:url(assets/page/chat_input_hover.png); }
-  .pgbtn { cursor:url(assets/mouse/hover.png) 2 2, pointer; }
-  #bd-banner { left:0; top:250px; width:1050px; height:60px; object-fit:cover; object-position:center; display:none; pointer-events:none; }
-  #bd-end { display:none; left:191px; top:180px; width:667px; text-align:center; }
-  #bd-end img.panel { width:667px; height:337px; display:block; }
-  /* sous le texte incrusté du panneau ("You won/lost the match !") */
-  #bd-end .endtext { position:absolute; top:175px; left:0; width:100%; text-align:center; font-weight:bold; font-size:15px; color:#75812c; }
-  #bd-end img.okbtn { position:absolute; left:50%; top:240px; transform:translateX(-50%); width:119px; height:52px; cursor:pointer; }
+  /* Boutons de la page (Son / Abandon) — style des boutons olive du jeu */
+  .pgbtn-css { font:bold 13px Verdana; color:#fff; background:#75852A; border:0; border-radius:7px;
+    padding:7px 16px; cursor:url(assets/mouse/hover.png) 2 2, pointer; box-shadow:inset 0 1px 0 #ffffff44, 0 1px 2px #00000033; }
+  .pgbtn-css:hover { background:#8ba731; }
+  /* Bannière de carte : bande inclinée (couleurs exactes des assets d'origine :
+     rouge #db1f19 / vert #00b115) + nom FRANÇAIS en gras italique. */
+  #bd-banner { left:0; top:250px; width:1050px; height:60px; display:none; pointer-events:none;
+    align-items:center; justify-content:center;
+    clip-path:polygon(49px 0, 100% 0, calc(100% - 49px) 100%, 0 100%); }
+  #bd-banner.r { background:#db1f19; } #bd-banner.g { background:#00b115; }
+  #bd-banner span { color:#fff; font:italic bold 36px Verdana; letter-spacing:2px; text-shadow:0 2px 3px #00000040; }
+  /* Panneau de fin : style du panneau d'origine (dégradé vert pâle arrondi),
+     textes d'origine en français. */
+  #bd-end { display:none; left:191px; top:180px; width:667px; min-height:337px; text-align:center;
+    background:linear-gradient(#e8edc4,#d6dd8e 55%,#e1e4a6); border:3px solid #fff; border-radius:18px;
+    box-shadow:0 4px 18px #00000038; padding:22px 24px 90px; }
+  #bd-end .endtitle { font:bold 30px Verdana; color:#75852A; margin-bottom:42px; }
+  #bd-end .endtext { font:bold 17px Verdana; color:#5b6f1d; line-height:1.6; white-space:pre-line; }
+  #bd-end .endsub { font:bold 13px Verdana; color:#9a8a30; margin-top:10px; }
+  #bd-end img.okbtn { position:absolute; left:50%; bottom:22px; transform:translateX(-50%); width:119px; height:52px; cursor:pointer; }
   #bd-info { display:none; left:236px; top:560px; width:578px; height:160px; background:#f4f8e3; border:2px solid #c4d36a; border-radius:8px; padding:8px 10px; z-index:4; }
   #bd-info img { float:left; width:89px; height:115px; margin-right:10px; }
   #bd-info .iname { font-weight:bold; color:#75812c; font-size:14px; margin-bottom:6px; }
   #bd-info .idesc { font-size:12px; color:#5b6f1d; line-height:1.5; }
+  /* chatwrap : transparent sur bureau (les enfants se positionnent sur #page) */
+  #chatwrap { display:contents; }
+  /* éléments mobiles cachés sur bureau */
+  #m-bar, #m-dpad, #m-hint, #m-sheet, #m-sheet-backdrop, #m-chatbtn { display:none; }
+
+  /* ───────────────────────────────────────────────────────────────────────
+     MOBILE (≤760px, version Light) : modes empilés, lobby en ONGLETS, et
+     écran de jeu EMPILÉ : barre joueurs / plateau pleine largeur (glisser le
+     doigt = bouger) / croix directionnelle / main de cartes (fiche de
+     confirmation au toucher) / chat en surcouche.
+     ─────────────────────────────────────────────────────────────────────── */
+  @media (max-width:760px) {
+    #screen-mode.on { flex-direction:column; }
+    .mode-side { width:100%; display:flex; flex-direction:row; align-items:center; gap:14px; padding:10px 16px; }
+    .fc-logo, .fc-name { display:none; }
+    .fruits-duo { width:96px; height:80px; } .fruits-duo img { width:38px; height:38px; }
+    .bandas-v { font-size:34px; margin:0; letter-spacing:-2px; }
+    .mode-list { gap:12px; padding:8px 0 18px; justify-content:flex-start; }
+    .mode { width:100%; max-width:none; }
+
+    #screen-lobby { padding:6px; }
+    .lobby-window { max-width:none; }
+    .lobby-bar { margin-bottom:6px; }
+    .lobby-tabs { display:flex; }
+    .lobby-main { height:calc(100dvh - 116px); flex-direction:column; gap:0; }
+    .lpanel, .lpanel.green, .lpanel.yellow, .lpanel.pink { width:100% !important; flex:1 1 auto; }
+    .lpanel .lp-strip { display:none !important; }
+    .lpanel.collapsed .lp-full { display:flex !important; }
+    .lobby-main:not(.mt-defis) #panel-defis,
+    .lobby-main:not(.mt-chat) #panel-chat,
+    .lobby-main:not(.mt-players) #panel-players { display:none; }
+
+    /* ── Écran de jeu empilé ── */
+    #screen-game { overflow:auto; }
+    #page { position:relative; left:0; transform:none !important; width:100vw; height:auto;
+      min-height:100dvh; background:#92aa2e; display:flex; flex-direction:column;
+      align-items:center; gap:8px; padding:8px 0 14px; cursor:auto; }
+    /* tout repasse dans le flux (la règle bureau `#page .abs` est plus
+       spécifique qu'un simple #id : on la neutralise ici) */
+    #page .abs { position:static; }
+    /* éléments bureau retirés du flux mobile */
+    #pf0, #pf1, #pside0, #pside1, #pcount0, #pcount1, #pserie0, #pserie1,
+    .barrow, #btn-sound, #btn-giveup, #bd-info { display:none !important; }
+
+    #m-bar { display:flex; gap:8px; width:100%; padding:0 8px; order:1; }
+    .mchip { flex:1; display:flex; flex-direction:column; gap:2px; background:#7e9427; border-radius:10px;
+      padding:7px 10px; color:#fff; min-width:0; box-shadow:inset 0 1px 0 #ffffff2e; }
+    .mchip.active { background:#5b6f1d; box-shadow:0 0 0 2px #fff inset, 0 0 8px #ffffff66; }
+    .mchip .msq { width:10px; height:10px; border-radius:2px; position:absolute; }
+    .mchip .mname { font-weight:bold; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-left:16px; }
+    .mchip .mmeta { font-size:12px; opacity:.95; padding-left:16px; font-variant-numeric:tabular-nums; }
+    .mchip .mserie { color:#ffe14d; font-weight:bold; }
+
+    #bd-canvas { position:static; order:2; width:min(100vw, 70dvh); height:auto; touch-action:none; cursor:auto; }
+    #m-hint { order:3; display:none; width:calc(100% - 16px); background:#5b6f1d; color:#fff;
+      border-radius:9px; padding:9px 12px; font-size:13px; font-weight:bold;
+      justify-content:space-between; align-items:center; gap:8px; }
+    #m-hint.on { display:flex; }
+    #m-hint button { font:bold 13px Verdana; color:#5b6f1d; background:#fff; border:0; border-radius:6px; padding:6px 12px; }
+
+    #m-dpad { order:4; display:none; gap:8px; align-items:center; justify-content:center; width:100%; padding:0 8px; }
+    #m-dpad.on { display:flex; }
+    #m-dpad .mdir { width:52px; height:46px; font-size:20px; color:#fff; background:#75852A; border:0; border-radius:9px;
+      box-shadow:inset 0 1px 0 #ffffff44, 0 2px 0 #5b6f1d; }
+    #m-dpad .mdir:disabled { opacity:.45; }
+    #m-dpad .mdir:active { transform:translateY(1px); }
+    #m-dpad .pgbtn-css { padding:9px 10px; font-size:12px; }
+
+    /* mains de cartes : la mienne en grand, l'adverse en petit (dos) */
+    #slots0, #slots1 { position:static; display:flex; gap:6px; overflow-x:auto; max-width:100vw; padding:2px 8px; }
+    #slots0 .cardslot, #slots1 .cardslot { position:static !important; width:auto; height:auto; flex:0 0 auto; }
+    .slots-mine { order:5; min-height:88px; }
+    .slots-mine .cardslot img { width:64px; height:83px; border-radius:5px; }
+    .slots-theirs { order:6; min-height:42px; }
+    .slots-theirs .cardslot img { width:28px; height:36px; border-radius:3px; }
+    .cardslot:empty { display:none; }
+
+    #chatwrap { display:none; position:fixed; left:0; right:0; bottom:0; top:auto; z-index:30;
+      flex-direction:column; background:#f4f8e3; border-top:3px solid #aac32f;
+      border-radius:14px 14px 0 0; box-shadow:0 -4px 18px #0000004d; max-height:46dvh; padding:8px; }
+    body.chat-open #chatwrap { display:flex; }
+    body.chat-open #m-chatbtn { background:#5b6f1d; }
+    #chatwrap #bd-chatbox { position:static; flex:1; width:auto; height:auto; min-height:90px; overflow-y:auto; }
+    #chatwrap #bd-input { position:static; width:100%; background:#fff; border:2px solid #c4d36a; border-radius:14px; height:34px; }
+    #m-chatbtn { display:block; position:fixed; right:10px; bottom:12px; z-index:31; width:46px; height:46px;
+      border-radius:50%; border:0; background:#75852A; font-size:20px; box-shadow:0 3px 9px #00000059; }
+
+    #page #bd-banner { position:fixed; left:0; top:30dvh; width:100vw; height:48px;
+      clip-path:polygon(26px 0, 100% 0, calc(100% - 26px) 100%, 0 100%); z-index:20; }
+    #bd-banner span { font-size:22px; }
+    #page #bd-end { position:fixed; left:50%; top:50%; width:min(92vw, 480px); min-height:0;
+      transform:translate(-50%,-50%); padding:18px 16px 84px; z-index:25; }
+    #bd-end .endtitle { font-size:22px; margin-bottom:18px; }
+    #bd-end .endtext { font-size:15px; }
+
+    #m-sheet-backdrop { position:fixed; inset:0; background:#00000066; z-index:40; }
+    #m-sheet { position:fixed; left:0; right:0; bottom:0; z-index:41; background:#f4f8e3;
+      border-radius:16px 16px 0 0; box-shadow:0 -4px 18px #00000059; padding:14px;
+      gap:12px; align-items:flex-start; }
+    body.sheet-open #m-sheet { display:flex; }
+    body.sheet-open #m-sheet-backdrop { display:block; }
+    #m-sheet img { width:89px; height:115px; border-radius:6px; flex:0 0 auto; }
+    #m-sheet .ms-body { flex:1; min-width:0; }
+    #m-sheet .ms-name { font:bold 17px Verdana; color:#75812c; margin-bottom:6px; }
+    #m-sheet .ms-desc { font-size:13px; color:#5b6f1d; line-height:1.5; min-height:40px; }
+    #m-sheet .ms-actions { display:flex; gap:8px; margin-top:12px; }
+    #m-sheet .ms-play { flex:1; font:bold 15px Verdana; color:#fff; background:#75852A; border:0; border-radius:9px; padding:11px; }
+    #m-sheet .ms-close { font:bold 15px Verdana; color:#75852A; background:#fff; border:2px solid #c4d36a; border-radius:9px; padding:11px 14px; }
+  }
 </style>
 </head>
 <body>
@@ -191,7 +313,7 @@
     </div>
   </div>
 
-  <!-- Partie : page 1050x728 -->
+  <!-- Partie : page 1050x728 (bureau) / pile verticale (mobile) -->
   <div id="screen-game" class="screen">
     <div id="page">
       <iframe class="bouille abs" id="pf0" scrolling="no" sandbox="allow-scripts allow-same-origin" style="left:23px;top:25px;width:125px;height:125px"></iframe>
@@ -208,23 +330,72 @@
       <div class="pcountf abs" id="pcount1" style="left:815px;top:66px;width:60px;text-align:center"></div>
       <div class="pserie abs" id="pserie0" style="left:8px;top:128px;width:80px">★ 0</div>
       <div class="pserie abs" id="pserie1" style="left:962px;top:128px;width:80px">★ 0</div>
-      <div class="abs" id="slots0" style="left:0;top:0"></div>
-      <div class="abs" id="slots1" style="left:0;top:0"></div>
+
+      <!-- Barre joueurs mobile (cachée sur bureau, remplie par gameview) -->
+      <div id="m-bar">
+        <div class="mchip" id="mchip0">
+          <span class="msq" style="background:#e2421f"></span>
+          <span class="mname" id="m-name0"></span>
+          <span class="mmeta"><span id="m-count0"></span> · <span id="m-clock0">00:00</span> · <span class="mserie" id="m-serie0">★0</span></span>
+        </div>
+        <div class="mchip" id="mchip1">
+          <span class="msq" style="background:#3e9e16"></span>
+          <span class="mname" id="m-name1"></span>
+          <span class="mmeta"><span id="m-count1"></span> · <span id="m-clock1">00:00</span> · <span class="mserie" id="m-serie1">★0</span></span>
+        </div>
+      </div>
+
       <canvas class="abs" id="bd-canvas" width="587" height="560" style="left:231px;top:0"></canvas>
+
+      <!-- Bandeau d'aide mobile (visée d'une carte) -->
+      <div id="m-hint"><span id="m-hint-txt"></span><button id="m-hint-cancel">Annuler</button></div>
+
+      <!-- Croix directionnelle mobile + boutons -->
+      <div id="m-dpad">
+        <button class="pgbtn-css" id="m-sound">Son</button>
+        <button class="mdir" data-d="3">◀</button>
+        <button class="mdir" data-d="0">▲</button>
+        <button class="mdir" data-d="2">▼</button>
+        <button class="mdir" data-d="1">▶</button>
+        <button class="pgbtn-css" id="m-giveup">Abandon</button>
+      </div>
+
       <img class="abs barrow" id="arrow-up" src="assets/page/arrow_up.png" alt="">
       <img class="abs barrow" id="arrow-down" src="assets/page/arrow_down.png" alt="">
       <img class="abs barrow" id="arrow-left" src="assets/page/arrow_left.png" alt="">
       <img class="abs barrow" id="arrow-right" src="assets/page/arrow_right.png" alt="">
-      <div class="abs" id="bd-chatbox"></div>
-      <input class="abs" id="bd-input" placeholder="Discuter… (Entrée pour envoyer)" maxlength="200">
-      <img class="abs pgbtn" id="btn-sound" src="assets/page/sound.png" style="left:14px;top:694px;width:91px;height:30px" alt="Son">
-      <img class="abs pgbtn" id="btn-giveup" src="assets/page/give_up.png" style="left:921px;top:694px;width:120px;height:30px" alt="Abandon">
-      <img class="abs" id="bd-banner" src="" alt="">
+      <div class="abs" id="slots0"></div>
+      <div class="abs" id="slots1"></div>
+      <div id="chatwrap">
+        <div class="abs" id="bd-chatbox"></div>
+        <input class="abs" id="bd-input" placeholder="Discuter… (Entrée pour envoyer)" maxlength="200">
+      </div>
+      <button id="m-chatbtn" title="Chat">💬</button>
+      <button class="abs pgbtn-css" id="btn-sound" style="left:14px;top:692px">Son</button>
+      <button class="abs pgbtn-css" id="btn-giveup" style="left:947px;top:692px">Abandon</button>
+      <!-- bannière d'annonce de carte : bande inclinée + nom français -->
+      <div class="abs" id="bd-banner"><span id="bd-banner-txt"></span></div>
       <div class="abs" id="bd-info"></div>
+      <!-- panneau de fin (style du jeu, textes d'origine en français) -->
       <div class="abs" id="bd-end">
-        <img class="panel" src="assets/page/victory.png" alt="">
+        <div class="endtitle" id="bd-endtitle">Quitter la partie</div>
         <div class="endtext" id="bd-endtext"></div>
+        <div class="endsub" id="bd-endsub"></div>
         <img class="okbtn" id="bd-ok" src="assets/common/ok.png" alt="OK">
+      </div>
+
+      <!-- Fiche carte mobile (bottom sheet) : infos + confirmation -->
+      <div id="m-sheet-backdrop"></div>
+      <div id="m-sheet">
+        <img id="m-sheet-img" src="" alt="">
+        <div class="ms-body">
+          <div class="ms-name" id="m-sheet-name"></div>
+          <div class="ms-desc" id="m-sheet-desc"></div>
+          <div class="ms-actions">
+            <button class="ms-play" id="m-sheet-play">Jouer</button>
+            <button class="ms-close" id="m-sheet-close">Fermer</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

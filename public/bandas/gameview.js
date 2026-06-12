@@ -168,22 +168,32 @@
         if (GV.board.getElement({ x: x, y: y }) === E.TRAPPED) GV.myTraps[x + "," + y] = true;
       }
     }
-    GV.originX = Math.round((AREA_W - GV.size * CELL) / 2);
-    GV.originY = Math.round((AREA_H - GV.size * CELL) / 2);
     GV.started = true;
+    setupCanvas();
 
     $("#bd-chatbox").innerHTML = "";
     logLine("ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !");
     $("#bd-end").style.display = "none";
     $("#bd-banner").style.display = "none";
+    $("#m-hint").classList.remove("on");
+    closeSheet();
     players.sort(function (a, b2) { return a.e - b2.e; }).forEach(function (p) {
       var fb = (p.f && p.f.length >= 15) ? p.f : "000000010000000000000000";
       $("#pf" + p.e).src = "/bouille-preview.html?s=" + encodeURIComponent(fb) + "&bg=transparent";
       $("#pname" + p.e).textContent = p.n || p.u;
       $("#pserie" + p.e).textContent = "★ " + (p.sr || 0);
+      $("#m-name" + p.e).textContent = p.n || p.u;
+      $("#m-serie" + p.e).textContent = "★" + (p.sr || 0);
     });
+    // mobile : MA main en grand, celle de l'adversaire en petit (dos)
+    var mine = GV.myTeam === 1 ? 1 : 0;
+    $("#slots" + mine).classList.add("slots-mine");
+    $("#slots" + mine).classList.remove("slots-theirs");
+    $("#slots" + (1 - mine)).classList.add("slots-theirs");
+    $("#slots" + (1 - mine)).classList.remove("slots-mine");
     refreshPanes();
     refreshTurn();
+    refreshCounters();
     startMusic();
     GV.dirty = true;
     if (GV.ended) showEnd();
@@ -482,20 +492,22 @@
   // l'effet démarre pendant qu'elle s'efface.
   var EFFECT_DELAY = 800;
 
-  // bannière d'annonce de carte (advertiser/<carte>_<r|g>.png) qui traverse l'écran
+  // bannière d'annonce de carte : bande inclinée rouge (équipe 0) / verte
+  // (équipe 1) — couleurs des assets d'origine — avec le nom FRANÇAIS.
   function banner(team, card) {
-    var img = $("#bd-banner");
-    img.src = "assets/advertiser/" + CARD_KEYS[card] + "_" + (team === 0 ? "r" : "g") + ".png";
-    img.style.display = "block";
+    var el = $("#bd-banner");
+    el.className = "abs " + (team === 0 ? "r" : "g");
+    $("#bd-banner-txt").textContent = CARD_LABELS[card].toUpperCase();
+    el.style.display = "flex";
     var t = 0, dur = 1150;
     GV.anims.push({
       update: function (dt) {
         t += dt;
         var k = t / dur;
         var off = (k < 0.25) ? (1 - k / 0.25) : (k > 0.75 ? (k - 0.75) / 0.25 : 0);
-        img.style.transform = "translateX(" + Math.round(off * (t < dur / 2 ? -1 : 1) * 1100) + "px)";
-        img.style.opacity = String(1 - off);
-        if (t >= dur) { img.style.display = "none"; img.style.transform = ""; return false; }
+        el.style.transform = "translateX(" + Math.round(off * (t < dur / 2 ? -1 : 1) * 1100) + "px)";
+        el.style.opacity = String(1 - off);
+        if (t >= dur) { el.style.display = "none"; el.style.transform = ""; return false; }
         return true;
       },
       draw: function () {},
@@ -900,11 +912,15 @@
     if (!GV.board) return;
     $("#pcount0").textContent = "× " + GV.board.countSpritesOf(0);
     $("#pcount1").textContent = "× " + GV.board.countSpritesOf(1);
+    $("#m-count0").textContent = "🍊 " + GV.board.countSpritesOf(0);
+    $("#m-count1").textContent = "🍌 " + GV.board.countSpritesOf(1);
   }
 
   function refreshTurn() {
     [0, 1].forEach(function (t) {
-      $("#pside" + t).classList.toggle("active", t === GV.currentTeam && !GV.ended);
+      var active = t === GV.currentTeam && !GV.ended;
+      $("#pside" + t).classList.toggle("active", active);
+      $("#mchip" + t).classList.toggle("active", active);
     });
     if (GV.phase === 1 && GV.currentTeam === GV.myTeam && !GV.ended) logLine("Choisissez une carte");
   }
@@ -915,11 +931,12 @@
     ["up", "down", "left", "right"].forEach(function (d) {
       $("#arrow-" + d).classList.toggle("on", show);
     });
+    $("#m-dpad").classList.toggle("on", show);     // mobile : croix directionnelle
     positionArrows();
   }
 
   function positionArrows() {
-    if (!GV.board) return;
+    if (!GV.board || isMobileView()) return;
     var bx = PAGE_AREA_X + GV.originX, by = GV.originY;
     var bw = GV.size * CELL, bh = GV.size * CELL;
     var up = $("#arrow-up"), down = $("#arrow-down"), left = $("#arrow-left"), right = $("#arrow-right");
@@ -927,6 +944,21 @@
     down.style.left = (bx + bw / 2 - 52) + "px"; down.style.top = (by + bh - 22) + "px";
     left.style.left = (bx - 80) + "px"; left.style.top = (by + bh / 2 - 52) + "px";
     right.style.left = (bx + bw - 25) + "px"; right.style.top = (by + bh / 2 - 52) + "px";
+  }
+
+  // Taille interne du canvas : 587x560 sur bureau (la zone verte de la page),
+  // resserré autour du plateau sur mobile (cases plus grandes à l'écran).
+  function setupCanvas() {
+    if (!GV.started) return;
+    var mobile = isMobileView();
+    var w = mobile ? GV.size * CELL + 24 : AREA_W;
+    var h = mobile ? GV.size * CELL + 24 : AREA_H;
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    GV.originX = mobile ? 12 : Math.round((AREA_W - GV.size * CELL) / 2);
+    GV.originY = mobile ? 12 : Math.round((AREA_H - GV.size * CELL) / 2);
+    positionArrows();
+    GV.dirty = true;
   }
 
   function tickClocks() {
@@ -937,8 +969,8 @@
       if (GV.clockTurn === 0) c0 = Math.max(0, c0 - el); else c1 = Math.max(0, c1 - el);
     }
     var f0 = fmt(c0), f1 = fmt(c1);
-    if ($("#pclock0").textContent !== f0) $("#pclock0").textContent = f0;
-    if ($("#pclock1").textContent !== f1) $("#pclock1").textContent = f1;
+    if ($("#pclock0").textContent !== f0) { $("#pclock0").textContent = f0; $("#m-clock0").textContent = f0; }
+    if ($("#pclock1").textContent !== f1) { $("#pclock1").textContent = f1; $("#m-clock1").textContent = f1; }
   }
   function fmt(ms) {
     ms = Math.max(0, ms | 0);
@@ -963,35 +995,39 @@
     if (atBottom) box.scrollTop = box.scrollHeight;
   }
 
-  // ── Fin de partie ──────────────────────────────────────────────────────────
+  // ── Fin de partie (textes d'origine, en français) ─────────────────────────
   function showEnd() {
     var box = $("#bd-end");
-    var img = box.querySelector("img.panel");
     var mine = GV.winner === GV.myTeam;
     var draw = !(GV.winner === 0 || GV.winner === 1);
-    img.src = draw ? "assets/page/defeat.png" : (mine ? "assets/page/victory.png" : "assets/page/defeat.png");
-    $("#bd-endtext").textContent = draw
-      ? "Égalité ! La Vachette gagne… Vous avez encore vos chances sur le challenge."
-      : (mine ? "+1 à votre série !" : "La partie est terminée, " + nameOf(GV.winner) + " a gagné !");
+    if (draw) {
+      $("#bd-endtext").textContent = "Égalité ! La Vachette gagne…\nVous avez encore vos chances sur le challenge.";
+      $("#bd-endsub").textContent = "";
+    } else if (mine) {
+      $("#bd-endtext").textContent = "La partie est terminée, " + nameOf(GV.winner) + " a gagné !";
+      $("#bd-endsub").textContent = "+1 à votre série !";
+    } else {
+      $("#bd-endtext").textContent = "Vous avez perdu !\nÀ bientôt sur le challenge Frutibandas.";
+      $("#bd-endsub").textContent = nameOf(GV.winner) + " remporte la partie.";
+    }
     box.style.display = "block";
     refreshArrows();
   }
 
   // ── Entrées ────────────────────────────────────────────────────────────────
-  function pageScale() {
-    var page = $("#page");
-    var r = page.getBoundingClientRect();
-    return r.width / 1050;
-  }
-  function canvasCell(ev) {
+  // (clientX, clientY) → cellule du plateau. L'échelle est déduite du canvas
+  // lui-même (rect / taille interne) : valable bureau (transform scale du
+  // #page) comme mobile (largeur CSS 100 vw).
+  function cellAtClient(clientX, clientY) {
     var r = canvas.getBoundingClientRect();
-    var s = pageScale();
-    var cx = (ev.clientX - r.left) / s, cy = (ev.clientY - r.top) / s;
+    var s = r.width / canvas.width;
+    var cx = (clientX - r.left) / s, cy = (clientY - r.top) / s;
     var gx = Math.floor((cx - GV.originX) / CELL), gy = Math.floor((cy - GV.originY) / CELL);
     if (!GV.board) return null;
     var c = { x: gx, y: gy };
     return GV.board.isValid(c) ? c : null;
   }
+  function canvasCell(ev) { return cellAtClient(ev.clientX, ev.clientY); }
 
   function bindInputs() {
     // flèches (souris)
@@ -1016,17 +1052,7 @@
       if ((c && GV.hoverCell && (c.x !== GV.hoverCell.x || c.y !== GV.hoverCell.y)) || (!!c !== !!GV.hoverCell)) GV.dirty = true;
       GV.hoverCell = c;
     });
-    canvas.addEventListener("click", function (ev) {
-      if (GV.targetCard === null) return;
-      var c = canvasCell(ev);
-      if (!c) { cancelTarget("Vous avez cliqué hors du plateau, lancement de carte annulé !"); return; }
-      var err = validTarget(GV.targetCard, c);
-      if (err) { logLine(err); return; }
-      GV.send({ a: "play", c: GV.targetCard, x: c.x, y: c.y });
-      GV.targetCard = null;
-      canvas.classList.remove("target");
-      refreshArrows();
-    });
+    canvas.addEventListener("click", function (ev) { onBoardTap(ev.clientX, ev.clientY); });
     // clic ailleurs sur la page en mode visée = annulation (fidèle à l'original)
     $("#page").addEventListener("click", function (ev) {
       if (GV.targetCard !== null && ev.target !== canvas && !ev.target.closest(".cardslot")) {
@@ -1048,31 +1074,93 @@
         this.value = "";
       }
     });
-    // boutons
-    var giveup = $("#btn-giveup");
-    giveup.addEventListener("mouseenter", function () { giveup.src = "assets/page/give_up_hover.png"; });
-    giveup.addEventListener("mouseleave", function () { giveup.src = "assets/page/give_up.png"; });
-    giveup.addEventListener("click", function () {
+    // boutons (Abandon avec confirmation — texte d'origine)
+    function onGiveUp() {
       if (GV.ended) { if (GV.onEndClosed) GV.onEndClosed(); return; }
       if (window.confirm("Voulez-vous abandonner la partie ?")) { if (GV.onQuit) GV.onQuit(); }
-    });
-    var sound = $("#btn-sound");
-    sound.addEventListener("mouseenter", function () { sound.src = "assets/page/sound_hover.png"; });
-    sound.addEventListener("mouseleave", function () { sound.src = "assets/page/sound.png"; });
-    sound.addEventListener("click", toggleMusic);
+    }
+    $("#btn-giveup").addEventListener("click", onGiveUp);
+    $("#m-giveup").addEventListener("click", onGiveUp);
+    $("#btn-sound").addEventListener("click", toggleMusic);
+    $("#m-sound").addEventListener("click", toggleMusic);
     var okb = $("#bd-ok");
     okb.addEventListener("mouseenter", function () { okb.src = "assets/common/ok_hover.png"; });
     okb.addEventListener("mouseleave", function () { okb.src = "assets/common/ok.png"; });
     okb.addEventListener("click", function () { if (GV.onEndClosed) GV.onEndClosed(); });
+
+    // ── mobile : croix directionnelle, glisser sur le plateau, fiche carte,
+    //    chat en surcouche ──
+    each(document.querySelectorAll("#m-dpad .mdir"), function (b) {
+      b.addEventListener("click", function () { requestMove(+b.dataset.d); });
+    });
+    var touch = null;
+    canvas.addEventListener("touchstart", function (ev) {
+      if (!ev.touches.length) return;
+      touch = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
+      ev.preventDefault();
+    }, { passive: false });
+    canvas.addEventListener("touchmove", function (ev) { ev.preventDefault(); }, { passive: false });
+    canvas.addEventListener("touchend", function (ev) {
+      if (!touch) return;
+      var t0 = touch; touch = null;
+      var t = ev.changedTouches && ev.changedTouches[0];
+      if (!t) return;
+      ev.preventDefault();
+      var dx = t.clientX - t0.x, dy = t.clientY - t0.y;
+      if (Math.abs(dx) < 22 && Math.abs(dy) < 22) {        // toucher = clic plateau
+        onBoardTap(t.clientX, t.clientY);
+        return;
+      }
+      // glisser = bouger ses fruits dans la direction du geste
+      var d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? DIR.RIGHT : DIR.LEFT) : (dy > 0 ? DIR.DOWN : DIR.UP);
+      requestMove(d);
+    }, { passive: false });
+    $("#m-hint-cancel").addEventListener("click", function () { cancelTarget("Lancement de carte annulé."); });
+    $("#m-sheet-close").addEventListener("click", closeSheet);
+    $("#m-sheet-backdrop").addEventListener("click", closeSheet);
+    $("#m-sheet-play").addEventListener("click", function () {
+      var card = GV._sheetCard;
+      closeSheet();
+      if (card === undefined || card === null) return;
+      playFromHand(card);
+    });
+    $("#m-chatbtn").addEventListener("click", function () {
+      document.body.classList.toggle("chat-open");
+    });
+
     // mise à l'échelle de la page
-    window.addEventListener("resize", scalePage);
+    window.addEventListener("resize", function () { scalePage(); setupCanvas(); });
     scalePage();
+  }
+
+  function each(l, f) { Array.prototype.forEach.call(l, f); }
+  function isMobileView() { return window.matchMedia("(max-width:760px)").matches; }
+
+  // fiche carte mobile (confirmation avant de jouer / choisir)
+  function openSheet(card) {
+    GV._sheetCard = card;
+    $("#m-sheet-img").src = "assets/cards/" + CARD_KEYS[card] + ".png";
+    $("#m-sheet-name").textContent = CARD_LABELS[card];
+    $("#m-sheet-desc").textContent = CARD_DESCS[card];
+    $("#m-sheet-play").textContent = GV.phase === 1 ? "Choisir cette carte" : "Jouer";
+    document.body.classList.add("sheet-open");
+  }
+  function closeSheet() {
+    GV._sheetCard = null;
+    document.body.classList.remove("sheet-open");
   }
 
   function onSlotClick(ev) {
     var slot = ev.target.closest(".cardslot");
     if (!slot || !slot.classList.contains("play")) return;
     var card = +slot.dataset.card;
+    if (inputLocked() || GV.ended) return;
+    if (isMobileView()) { openSheet(card); return; }   // mobile : fiche de confirmation
+    playFromHand(card);
+  }
+
+  // Joue / choisit une carte de MA main (après confirmation sur mobile).
+  function playFromHand(card) {
     if (inputLocked() || GV.ended) return;
     if (GV.phase === 1) {                       // draft : choisir cette carte
       if (GV.currentTeam !== GV.myTeam) return;
@@ -1084,10 +1172,26 @@
       GV.targetCard = card;
       canvas.classList.add("target");
       logLine("Choisissez une cible pour « " + CARD_LABELS[card] + " » (Échap pour annuler)");
+      $("#m-hint-txt").textContent = "Touche une case pour « " + CARD_LABELS[card] + " »";
+      $("#m-hint").classList.add("on");
       refreshArrows();
     } else {
       GV.send({ a: "play", c: card });
     }
+  }
+
+  // Toucher / cliquer une case du plateau (mode visée d'une carte).
+  function onBoardTap(clientX, clientY) {
+    if (GV.targetCard === null) return;
+    var c = cellAtClient(clientX, clientY);
+    if (!c) { cancelTarget("Vous avez cliqué hors du plateau, lancement de carte annulé !"); return; }
+    var err = validTarget(GV.targetCard, c);
+    if (err) { logLine(err); if (isMobileView()) $("#m-hint-txt").textContent = err; return; }
+    GV.send({ a: "play", c: GV.targetCard, x: c.x, y: c.y });
+    GV.targetCard = null;
+    canvas.classList.remove("target");
+    $("#m-hint").classList.remove("on");
+    refreshArrows();
   }
 
   function validTarget(card, c) {
@@ -1101,6 +1205,7 @@
   function cancelTarget(msg) {
     GV.targetCard = null;
     canvas.classList.remove("target");
+    $("#m-hint").classList.remove("on");
     if (msg) logLine(msg);
     refreshArrows();
     GV.dirty = true;
@@ -1153,6 +1258,7 @@
 
   function scalePage() {
     var page = $("#page");
+    if (isMobileView()) { page.style.transform = ""; return; }   // pile verticale en CSS
     var s = Math.min(window.innerWidth / 1050, window.innerHeight / 728);
     page.style.transform = "translateX(-50%) scale(" + s + ")";
   }

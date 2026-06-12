@@ -210,6 +210,7 @@
     state.inGame = false;
     GV.started = false;
     GV.stopMusic();
+    document.body.classList.remove("chat-open", "sheet-open");
     // gagnant → retour au lobby (la série continue) ; perdant/égalité → écran d'accueil
     showScreen(mine ? "lobby" : "mode");
     if (mine) renderLobby();
