@@ -17,6 +17,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const { parseFaerieField } = require('../minipixizFaerie');
 
 const SWF = path.join(__dirname, '..', 'Games', 'miniTroll', 'minipixiz.swf');
 
@@ -208,7 +209,14 @@ function mockCard() {
     $rainbow: { $f: false, $day: 2, $it: 40 },
     $pond: { $q: 2, $d: 1, $fs: null },
     $frog: true,
-    $faerie: [{ $name: 'Lumina', $level: 3 }, { $name: 'Pigone', $level: 12 }],
+    // Fées RICHES : tout l'état doit être sérialisé dans le token (sinon le
+    // serveur resynthétise par défaut → bugs cheveux/goûts/carac/équipement…).
+    $faerie: [
+      { $name: 'Lumina', $level: 3, $humor: 3, $exp: 1287, $hunger: 9, $moral: 10, $bagMax: 4, $shot: 0, $life: 18, $mana: 6, $mission: null, $pos: 3,
+        $carac: [3, 1, 1, 1, 1, 1], $skin: [2, 111, 222, 333], $next: [0, 0], $inv: [5, null, 12], $spell: [20, 0, 7], $spellCoef: [1, 2], $mood: [8], $behaviour: [0], $taste: [[1, 3], [2, 9]] },
+      { $name: 'Pigone', $level: 12, $humor: 1, $exp: 50, $hunger: 4, $moral: 8, $bagMax: 2, $shot: 1, $life: 9, $mana: 4, $mission: 2, $pos: null,
+        $carac: [7, 7, 7, 7, 7, 8], $skin: [0, 1, 2, 3], $next: [1, 1], $inv: [], $spell: [20, 0], $spellCoef: [], $mood: [], $behaviour: [], $taste: [[5], [6]] },
+    ],
     $vs: 1.2,
     $inv: [5, null, 12], $current: null, $checkpoint: 2,
     $time: { $t: 1770000000000, $d: 9, $s: 3600000 },
@@ -233,15 +241,17 @@ const body = swfBody();
 const pool = readConstantPool(body);
 const code = findSaveSlotBody(body);
 
-const EXPECTED_CARD_PIPE = [
+// Champs du pipe carte HORS fées (index 17 = fées, vérifié séparément par
+// round-trip parse car le token riche est volumineux).
+const EXPECTED_PARTS = [
   'true,,true', '3,0,1', '1,2,3,4,5', '4242', '5,1,2,0,3', '900', '120', '2',
   '3', '2', '7', '4',
   '1', 'false', 'false', '2', 'true',
-  'Lumina:3,Pigone:12,', '1.2',
+  null, /* 17: fées (round-trip) */ '1.2',
   '5,,12', 'null', '2',
   '1770000000000', '9', '3600000', '1', '6', '0', '2', '40', '0.42',
   'false,,true', 'true,,true',
-].join('|');
+];
 
 test('saveSlot patché : pipe carte 33 champs + pipe prefs, exécutés depuis le SWF réel', () => {
   const env = runAvm1(code, pool, makeEnv());
@@ -252,8 +262,13 @@ test('saveSlot patché : pipe carte 33 champs + pipe prefs, exécutés depuis le
   assert.equal(cardPost.game, 'minipixiz');
   assert.equal(cardPost.sid, 'SIDTEST');
   assert.equal(cardPost.slotId, '0');
-  assert.equal(cardPost.data, EXPECTED_CARD_PIPE);
-  assert.equal(cardPost.data.split('|').length, 33, '33 champs');
+  const parts = cardPost.data.split('|');
+  assert.equal(parts.length, 33, '33 champs');
+  // tous les champs hors fées identiques
+  EXPECTED_PARTS.forEach((exp, i) => { if (exp !== null) assert.equal(parts[i], exp, 'champ ' + i); });
+  // champ 17 : le token RICHE reparse exactement vers l'état des fées (le vrai
+  // fix — équipement, faim, exp, carac, cheveux, goûts, sorts survivent).
+  assert.deepEqual(parseFaerieField(parts[17]), mockCard().$faerie, 'fées riches round-trip');
   const prefPost = env.posts[1];
   assert.equal(prefPost.slotId, '1');
   assert.equal(prefPost.data, 'false|1,1|37,39,32,40,38');
@@ -285,12 +300,20 @@ test('saveSlot patché : aucune pref nulle part → un seul POST (carte)', () =>
 });
 
 test('le pipe carte produit est accepté par le serveur (round-trip parse)', () => {
-  // reproduit parseMinipixizPipe minimalement : 33 champs, $time numérique
-  const parts = EXPECTED_CARD_PIPE.split('|');
+  const env = runAvm1(code, pool, makeEnv());
+  const parts = env.posts[0].data.split('|');
   assert.equal(parts.length, 33);
   assert.equal(Number(parts[22]), 1770000000000);
   assert.equal(Number(parts[23]), 9);
   assert.equal(parts[31], 'false,,true');
+  // les fées reparsent vers leur état riche complet
+  const fa = parseFaerieField(parts[17]);
+  assert.equal(fa.length, 2);
+  assert.equal(fa[0].$name, 'Lumina');
+  assert.deepEqual(fa[0].$inv, [5, null, 12]);
+  assert.deepEqual(fa[0].$carac, [3, 1, 1, 1, 1, 1]);
+  assert.equal(fa[1].$name, 'Pigone');
+  assert.equal(fa[1].$pos, null);
 });
 
 // ── validation structurelle des autres fonctions patchées ──────────────────

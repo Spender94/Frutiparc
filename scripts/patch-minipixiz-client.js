@@ -917,20 +917,65 @@ function buildSaveSlotBody() {
     NOT,   // r6 >= length?
   ]);
 
+  // ── Token RICHE par fée ──
+  // On émet tout l'état de la fée pour qu'il survive au save/load (équipement,
+  // faim, exp du niveau, carac choisies au level-up, cheveux, goûts, sorts…),
+  // au lieu de juste "nom:niveau" (le serveur resynthétisait le reste par
+  // défaut). Format d'un token : champs séparés par ":", tableaux joints par
+  // "~", fées toujours séparées par "," — voir parseFaerieToken (serveur).
+  //   name:level:humor:exp:hunger:moral:bagMax:shot:life:mana:mission:pos
+  //     :carac~:skin~:next~:inv~:spell~:spellCoef~:mood~:behaviour~:tasteLikes~:tasteDislikes~
+  // r4 = faerie[i] (mis en cache pour éviter de refaire faerie[i] à chaque
+  // champ). Les noms de champ sont poussés en littéral (GET_MEMBER lit le nom
+  // depuis la pile) ; "join" passe par le pool comme pour les tableaux $stat.
+  const FAERIE_SCALARS = ['$level', '$humor', '$exp', '$hunger', '$moral', '$bagMax', '$shot', '$life', '$mana', '$mission', '$pos'];
+  const FAERIE_ARRAYS = ['$carac', '$skin', '$next', '$inv', '$spell', '$spellCoef', '$mood', '$behaviour'];
+  function colonScalarR4(name) {
+    return Buffer.concat([
+      actionPush(pushStr(':')), ADD2,                                  // accum + ":"
+      actionPush(pushReg(4), pushStr(name)), GET_MEMBER,               // r4[name]
+      actionPush(pushStr('')), ADD2,                                   // + "" (→ string)
+      ADD2,                                                            // (accum+":") + str
+    ]);
+  }
+  function colonArrayR4(name) {
+    return Buffer.concat([
+      actionPush(pushStr(':')), ADD2,                                  // accum + ":"
+      actionPush(pushStr('~')),                                        // séparateur join
+      actionPush(pushInt(1)),                                          // argCount
+      actionPush(pushReg(4), pushStr(name)), GET_MEMBER,               // r4[name] (tableau = this)
+      actionPush(pushCp(CP.join)),                                     // "join"
+      CALL_METHOD,                                                     // → joint par "~"
+      ADD2,                                                            // (accum+":") + joint
+    ]);
+  }
+  function colonTasteR4(idx) {
+    return Buffer.concat([
+      actionPush(pushStr(':')), ADD2,
+      actionPush(pushStr('~')),
+      actionPush(pushInt(1)),
+      actionPush(pushReg(4), pushStr('$taste')), GET_MEMBER,
+      actionPush(pushInt(idx)), GET_MEMBER,                            // r4.$taste[idx]
+      actionPush(pushCp(CP.join)),
+      CALL_METHOD,
+      ADD2,
+    ]);
+  }
   const loopBody = Buffer.concat([
+    // r4 = faerie[i]
+    actionPush(pushReg(5), pushReg(6)), GET_MEMBER, storeReg(4), POP,
     // accum + faerie[i].$name
-    actionPush(pushReg(5), pushReg(6)), GET_MEMBER,
-    actionPush(pushStr('$name')), GET_MEMBER,
+    actionPush(pushReg(4), pushStr('$name')), GET_MEMBER,
     actionPush(pushStr('')), ADD2,
     ADD2,
-    // + ':'
-    actionPush(pushStr(':')), ADD2,
-    // + faerie[i].$level
-    actionPush(pushReg(5), pushReg(6)), GET_MEMBER,
-    actionPush(pushCp(CP.$level)), GET_MEMBER,
-    actionPush(pushStr('')), ADD2,
-    ADD2,
-    // + ','
+    // + ":"+level + ":"+humor + … (scalaires)
+    ...FAERIE_SCALARS.map(colonScalarR4),
+    // + ":"+carac~ + ":"+skin~ + … (tableaux)
+    ...FAERIE_ARRAYS.map(colonArrayR4),
+    // + ":"+goûts[0]~ + ":"+goûts[1]~
+    colonTasteR4(0),
+    colonTasteR4(1),
+    // + ","
     actionPush(pushStr(',')), ADD2,
   ]);
 
