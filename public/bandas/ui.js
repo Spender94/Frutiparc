@@ -43,20 +43,48 @@
   }
   function connect() {
     var proto = location.protocol === "https:" ? "wss" : "ws";
-    var ws = new WebSocket(proto + "://" + location.host + "/"); state.ws = ws;
+    var ws;
+    try { ws = new WebSocket(proto + "://" + location.host + "/"); } catch (e) { scheduleReconnect(); return; }
+    state.ws = ws;
     ws.onopen = function () {
       setStatus("Identification…");
+      state.gotLobby = false; // (re)connexion → on se ré-enregistre au lobby
       send('<k l="' + xml(state.user) + '" s="' + xml(sid) + '" />');
+      if (state.helloTimer) clearInterval(state.helloTimer);
       state.helloTimer = setInterval(function () {
         if (state.gotLobby) { clearInterval(state.helloTimer); return; }
         send('<bd a="hello" n="' + xml(state.user) + '" f="' + xml(state.myBouille || DEFAULT_BOUILLE) + '" />');
       }, 600);
     };
     ws.onmessage = function (ev) { onData(ev.data); };
-    ws.onclose = function () { setStatus("Connexion perdue."); };
-    ws.onerror = function () { setStatus("Erreur de connexion."); };
+    ws.onclose = function () { if (state.ws !== ws) return; setStatus("Reconnexion…"); scheduleReconnect(); };
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
   }
-  function send(s) { try { if (state.ws && state.ws.readyState === 1) state.ws.send(s + "\0"); } catch (e) {} }
+  // Reconnexion automatique. Sur mobile, passer l'app en arrière-plan (ou un
+  // creux réseau) ferme la WebSocket de l'iframe ; sans reconnexion le lobby
+  // restait affiché mais figé et « Défier » n'envoyait plus rien (socket morte
+  // → send() abandonne en silence). On rétablit la connexion, on se ré-identifie
+  // et on renvoie « hello » pour réintégrer le lobby (le serveur renvoie l'état
+  // de la partie en cours si on jouait).
+  var reconnectTimer = null;
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(function () { reconnectTimer = null; connect(); }, 1500);
+  }
+  function send(s) {
+    if (state.ws && state.ws.readyState === 1) {
+      try { state.ws.send(s + "\0"); return true; } catch (e) {}
+    }
+    scheduleReconnect(); // socket tombée → on rétablit, l'action sera rejouable
+    return false;
+  }
+  // De retour au premier plan : reconnexion immédiate si la socket est tombée.
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && (!state.ws || state.ws.readyState > 1)) {
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      connect();
+    }
+  });
   function bd(a) { var s = "<bd"; for (var k in a) s += " " + k + '="' + xml(a[k]) + '"'; send(s + " />"); }
 
   var buf = "";
