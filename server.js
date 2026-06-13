@@ -4228,6 +4228,36 @@ app.post('/api/admin/users/:username/reset-game-slot/:game', adminAuth, async (r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ENDPOINT: /api/admin/users/:username/slots — Export de la progression de jeu
+// (FrutiSlots) d'un joueur, en JSON lisible : { game: { slotId: <objet> } }.
+// Source = DB si disponible (vérité de persistance), sinon mémoire. Les valeurs
+// stockées en chaîne JSON sont reparsées pour un export propre (objets, pas des
+// chaînes échappées). Sert le « récupérer le JSON de progression » de l'admin.
+app.get('/api/admin/users/:username/slots', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  let raw = {};
+  if (process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(u);
+      if (!row) return res.status(404).json({ error: 'not found' });
+      raw = await db.getAllFrutiSlots(row.id);
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  } else if (users[u] && users[u].frutiSlots) {
+    raw = users[u].frutiSlots;
+  }
+  const slots = {};
+  for (const game of Object.keys(raw || {})) {
+    slots[game] = {};
+    for (const slotId of Object.keys(raw[game] || {})) {
+      const v = raw[game][slotId];
+      let parsed = v;
+      if (typeof v === 'string') { try { parsed = JSON.parse(v); } catch { /* garde la chaîne brute */ } }
+      slots[game][slotId] = parsed;
+    }
+  }
+  res.json({ username: getDisplayName(u), exportedAt: new Date().toISOString(), slots });
+});
+
 // ─────────────────────────────────────────────
 // ENDPOINT: /api/admin/users/:username/import-slots/:game — Migrate progression
 // from another Frutiengine instance.

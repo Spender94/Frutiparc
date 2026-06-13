@@ -180,11 +180,16 @@
     closeSheet();
     players.sort(function (a, b2) { return a.e - b2.e; }).forEach(function (p) {
       var fb = (p.f && p.f.length >= 15) ? p.f : "000000010000000000000000";
-      $("#pf" + p.e).src = "/bouille-preview.html?s=" + encodeURIComponent(fb) + "&bg=transparent";
+      var src = "/bouille-preview.html?s=" + encodeURIComponent(fb) + "&bg=transparent";
+      $("#pf" + p.e).src = src;
       $("#pname" + p.e).textContent = p.n || p.u;
       $("#pserie" + p.e).textContent = "★ " + (p.sr || 0);
       $("#m-name" + p.e).textContent = p.n || p.u;
       $("#m-serie" + p.e).textContent = "★" + (p.sr || 0);
+      // mobile : bouille du joueur dans l'encart (comme Grapiz). iframe créée
+      // une seule fois au démarrage (GV.start) → pas de rechargement Ruffle.
+      var av = $("#m-av" + p.e);
+      if (av) av.innerHTML = '<iframe scrolling="no" sandbox="allow-scripts allow-same-origin" src="' + src + '"></iframe>';
     });
     // mobile : MA main en grand, celle de l'adversaire en petit (dos)
     var mine = GV.myTeam === 1 ? 1 : 0;

@@ -1817,7 +1817,7 @@ async function loadDetail() {
     if (!r.ok) { dc.innerHTML = '<p class="empty">Joueur non trouvé</p>'; return; }
     const d = await r.json();
     const user = d.user;
-    let html = `<h3>${esc(user.display_name || u)}</h3>`;
+    let html = `<h3>${esc(user.display_name || u)} <button class="btn-success btn-sm" style="font-weight:normal;margin-left:8px" onclick="exportProgression()">⬇ Exporter la progression (JSON)</button></h3>`;
     html += `<table style="max-width:500px;margin-bottom:24px">
       <tr><td>ID</td><td>${user.id}</td></tr>
       <tr><td>Login</td><td><code>${esc(user.username || u)}</code></td></tr>
@@ -2031,6 +2031,27 @@ async function resetGameSlot(game) {
   const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/reset-game-slot/${encodeURIComponent(game)}`, { method: 'POST', headers: hdr() });
   if (r.ok) toast(`Slot ${game} réinitialisé`);
   else toast(`Erreur: ${r.status}`);
+}
+
+// Télécharge la progression complète (FrutiSlots, tous jeux) du joueur affiché,
+// en JSON. Le contenu d'un jeu donné est directement réimportable via « Importer
+// progression » (format { "0": {...}, "1": {...} } par jeu).
+async function exportProgression() {
+  if (!currentDetailUser) return;
+  try {
+    const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/slots`, { headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    const games = Object.keys(d.slots || {});
+    if (!games.length) { toast('Aucune progression enregistrée pour ce joueur'); return; }
+    const blob = new Blob([JSON.stringify(d.slots, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${currentDetailUser}_progression.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast(`Progression exportée (${games.length} jeu${games.length > 1 ? 'x' : ''})`);
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 
 function openImportSlots() {
