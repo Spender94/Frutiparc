@@ -196,6 +196,45 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
+  /* ── Boutique ── solde kikooz + cartes d'accessoires (aperçu, prix, achat) */
+  .shop-wallet {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 14px; color: #6b4a00; font-weight: bold; margin-bottom: 10px;
+    background: #FFF3B0; border: 1px solid #EAD93A; border-radius: 8px;
+    box-shadow: 0 0 0 1px #DDDDDD; padding: 9px 12px;
+  }
+  .shop-wallet strong { color: #2C4A0F; font-size: 16px; }
+  .shop-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+    background: #F8F866; border-radius: 10px; padding: 6px 10px 12px;
+  }
+  .shop-item {
+    background: #fff; border: 1px solid #EAD93A; border-radius: 8px;
+    padding: 8px 6px; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  }
+  .shop-item .thumb {
+    width: 86px; height: 86px; border-radius: 8px; overflow: hidden;
+    background: #fff; border: 1px solid #EEE; position: relative;
+  }
+  .shop-item .thumb iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
+  .shop-name {
+    font-size: 12px; font-weight: bold; color: #2C4A0F; text-align: center;
+    line-height: 1.2; min-height: 28px; display: flex; align-items: center;
+  }
+  .shop-price { font-size: 12px; font-weight: bold; color: #b06a00; }
+  .shop-buy {
+    width: 100%; padding: 7px 0; border: 1px solid #F48081; border-radius: 8px;
+    background: #FFAAAD; color: #660000; font-weight: bold; font-size: 13px;
+    box-shadow: 0 0 0 1px #DDDDDD; cursor: pointer;
+  }
+  .shop-buy:active { background: #ff9699; }
+  .shop-buy:disabled { opacity: .9; cursor: default; }
+  .shop-buy.owned {
+    background: #D6F7B5; border-color: #ADE76B; color: #2f6b16; box-shadow: none;
+  }
+  #shop-hint.ok { color: #2f6b16; }
+  #shop-hint.err { color: #b23b2e; }
+
   /* ── "Ma Frutibouille" : éditeur de visage (auto-affiché si needsBouille) ──
      Look calqué sur l'editbouille de main.swf : cadre arrondi vert clair,
      onglet-titre, preview, lignes yeux/iris/cheveux/bouche + barres couleur
@@ -642,6 +681,9 @@
     <button class="menu-item" data-tab="scores">
       <img class="menu-ico" src="/fb/icone_scores.png" alt="" onerror="this.replaceWith(document.createTextNode('🏆'))"> Scores
     </button>
+    <button class="menu-item" id="shop-btn">
+      <span class="menu-ico-emoji">🛍️</span> Boutique
+    </button>
     <button class="menu-item" id="bouille-btn">
       <img class="menu-ico" src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"> Mon inventaire
     </button>
@@ -744,6 +786,22 @@
     <div class="sheet-body">
       <div class="sheet-hint">Choisis un disque pour lancer le jeu :</div>
       <div id="disques-grid" class="fd-grid"></div>
+    </div>
+  </div>
+
+  <!-- Boutique (bottom sheet) — accessoires achetables + solde kikooz. Les fonds
+       d'écran ne sont pas affichés (non exploitables sur mobile). L'achat débite
+       les kikooz puis l'accessoire rejoint « Mon inventaire » pour être équipé. -->
+  <div id="shop-sheet-backdrop" class="sheet-backdrop"></div>
+  <div id="shop-sheet" class="sheet">
+    <div class="sheet-head">
+      <span>Boutique</span>
+      <button id="shop-sheet-close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="shop-wallet" id="shop-wallet">…</div>
+      <div class="sheet-hint" id="shop-hint">Accessoires disponibles :</div>
+      <div id="shop-grid" class="shop-grid"></div>
     </div>
   </div>
 
@@ -1118,6 +1176,103 @@
   $("#disques-btn").addEventListener("click", openDisquesSheet);
   $("#disques-sheet-close").addEventListener("click", closeDisquesSheet);
   $("#disques-sheet-backdrop").addEventListener("click", closeDisquesSheet);
+
+  // ── Boutique (achat d'accessoires) ──
+  // Solde de kikooz + accessoires achetables (sans fonds d'écran). L'aperçu pose
+  // l'accessoire sur la bouille du joueur (réutilise buildState/previewIframe).
+  // L'achat débite les kikooz ; l'accessoire devient ensuite équipable dans
+  // « Mon inventaire ».
+  var shopItems = [];
+  function setShopWallet(k) {
+    var w = $("#shop-wallet");
+    if (w) w.innerHTML = '🪙 <strong>' + (Number(k) || 0) + '</strong> kikooz';
+  }
+  function shopHint(msg, cls) {
+    var h = $("#shop-hint");
+    if (!h) return;
+    h.className = "sheet-hint" + (cls ? " " + cls : "");
+    h.textContent = msg;
+  }
+  function renderShop() {
+    var grid = $("#shop-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    if (!shopItems.length) {
+      grid.innerHTML = '<div class="sheet-hint">Aucun accessoire disponible pour le moment.</div>';
+      return;
+    }
+    shopItems.forEach(function (it, i) {
+      var st = buildState(myBase, it.suffix9, null);
+      var item = el("div", "shop-item");
+      item.innerHTML = '<div class="thumb">' + previewIframe(st) + '</div>'
+        + '<div class="shop-name">' + xmlEscape(it.name) + '</div>'
+        + '<div class="shop-price">' + (Number(it.price) || 0) + ' kikooz</div>'
+        + (it.owned
+            ? '<button class="shop-buy owned" disabled>Possédé</button>'
+            : '<button class="shop-buy" data-i="' + i + '">Acheter</button>');
+      grid.appendChild(item);
+    });
+    Array.prototype.forEach.call(grid.querySelectorAll(".shop-buy:not(.owned)"), function (b) {
+      b.addEventListener("click", function () { buyShopItem(Number(b.getAttribute("data-i")), b); });
+    });
+  }
+  function loadShop() {
+    setShopWallet(0);
+    shopHint("Accessoires disponibles :");
+    $("#shop-grid").innerHTML = '<div class="sheet-hint">Chargement…</div>';
+    fetch("/api/light/shop?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.bouille && !isIncarnation(d.bouille)) myBase = d.bouille;
+        setShopWallet(d && d.kikooz);
+        shopItems = (d && d.items) || [];
+        renderShop();
+      })
+      .catch(function () {
+        $("#shop-grid").innerHTML = '<div class="sheet-hint">Boutique indisponible.</div>';
+      });
+  }
+  function buyShopItem(i, btn) {
+    var it = shopItems[i];
+    if (!it || it.owned) return;
+    if (!window.confirm("Acheter « " + it.name + " » pour " + it.price + " kikooz ?")) return;
+    btn.disabled = true; btn.textContent = "…";
+    fetch("/api/light/shop/buy", {
+      method: "POST", cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sid: state.sid, id: it.id }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok) {
+          it.owned = true;
+          setShopWallet(d.kikooz);
+          renderShop();
+          shopHint("✓ « " + it.name + " » acheté ! Retrouve-le dans « Mon inventaire ».", "ok");
+        } else {
+          if (d && d.kikooz !== undefined) setShopWallet(d.kikooz);
+          renderShop();
+          shopHint((d && d.error) || "Achat impossible.", "err");
+        }
+      })
+      .catch(function () {
+        renderShop();
+        shopHint("Erreur réseau, réessaie.", "err");
+      });
+  }
+  function openShopSheet() {
+    openMenu(false);
+    $("#shop-sheet-backdrop").classList.add("show");
+    $("#shop-sheet").classList.add("show");
+    loadShop();
+  }
+  function closeShopSheet() {
+    $("#shop-sheet-backdrop").classList.remove("show");
+    $("#shop-sheet").classList.remove("show");
+  }
+  $("#shop-btn").addEventListener("click", openShopSheet);
+  $("#shop-sheet-close").addEventListener("click", closeShopSheet);
+  $("#shop-sheet-backdrop").addEventListener("click", closeShopSheet);
 
   // ── Scores du jour (Challenge) ──
   // Tableau en lecture seule alimenté par /api/light/challenge : un onglet (chip)

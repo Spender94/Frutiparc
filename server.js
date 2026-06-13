@@ -9051,30 +9051,22 @@ app.get('/ft/pack', (req, res) => {
 // accessory to user.customAccessories so it shows up in Inventaire/Accessoires.
 // Returns <r i="newKikoozBalance"><b b="bouille">name</b><f>accessories</f>...</r>
 // ─────────────────────────────────────────────
-app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
-  const source = req.method === 'POST' ? { ...req.query, ...(req.body || {}) } : req.query;
-  const sid = getSidFromRequest(req, source);
-  const auth = requireAuthBySid(sid, res, 'text/xml');
-  if (!auth) return;
-  const { user } = auth;
-
-  const pack = getShopPack(source.i);
-  if (!pack || pack.disabled) {
-    return sendShopXml(res, '<r k="1" />');
-  }
+// Coeur de l'achat boutique, partagé par /ft/buy (réponse XML, client Flash) et
+// /api/light/shop/buy (réponse JSON, client mobile). Débite les kikooz, ajoute
+// l'accessoire à customAccessories et journalise. Renvoie { ok:true, ... } ou
+// { ok:false, code } avec code 1=article invalide, 2=déjà possédé / rubrique
+// gratuite, 3=kikooz insuffisants.
+function purchaseShopPack(user, username, packIdRaw) {
+  const pack = getShopPack(packIdRaw);
+  if (!pack || pack.disabled) return { ok: false, code: 1 };
   if (userOwnsShopPack(user, pack.id) || shopCategoryOwnedByDefault(pack.category)) {
-    // Already owned, or a rubrique granted to everyone by default — return a
-    // "dup" error so no kikooz are deducted for content the player already has.
-    return sendShopXml(res, '<r k="2" />');
+    return { ok: false, code: 2 };
   }
   if (typeof user.kikooz !== 'number') user.kikooz = 0;
-  if (user.kikooz < pack.price) {
-    // Not enough kikooz.
-    return sendShopXml(res, '<r k="3" />');
-  }
+  if (user.kikooz < pack.price) return { ok: false, code: 3 };
 
   user.kikooz -= pack.price;
-  if (user._dbId) db.updateUser(auth.username, { kikooz: user.kikooz }).catch(dbErr('updateUser'));
+  if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser'));
 
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const isWallpaper = !!pack.wallpaperId;
@@ -9095,23 +9087,30 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
 
   // Record a "buy" entry in the kikooz history (box.KikoozLog / /ft/log)
   if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
-  user.kikoozLog.unshift({
-    type: 'b',
-    t: nowStr,
-    k: pack.price,
-    n: pack.name,
-  });
+  user.kikoozLog.unshift({ type: 'b', t: nowStr, k: pack.price, n: pack.name });
   if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+
+  console.log(`[ft/buy] ${username} bought pack #${pack.id} (${pack.name}) — kikooz now ${user.kikooz}`);
+  return { ok: true, kikooz: user.kikooz, bouille: bouilleStr, isWallpaper, pack, accEntry };
+}
+
+app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
+  const source = req.method === 'POST' ? { ...req.query, ...(req.body || {}) } : req.query;
+  const sid = getSidFromRequest(req, source);
+  const auth = requireAuthBySid(sid, res, 'text/xml');
+  if (!auth) return;
+
+  const r = purchaseShopPack(auth.user, auth.username, source.i);
+  if (!r.ok) return sendShopXml(res, `<r k="${r.code}" />`);
 
   // Build response: new kikooz balance, the bouille to push into bouilleList,
   // and folder refresh requests so Inventaire/Accessoires re-list contents.
   const xml =
-    `<r i="${user.kikooz}">` +
-    (isWallpaper ? '' : `<b b="${escapeXml(bouilleStr)}">${escapeXml(pack.name)}</b>`) +
+    `<r i="${r.kikooz}">` +
+    (r.isWallpaper ? '' : `<b b="${escapeXml(r.bouille)}">${escapeXml(r.pack.name)}</b>`) +
     `<f>inventory</f>` +
     `<f>accessories</f>` +
     `</r>`;
-  console.log(`[ft/buy] ${auth.username} bought pack #${pack.id} (${pack.name}) — kikooz now ${user.kikooz}`);
   sendShopXml(res, xml);
 });
 
@@ -11249,6 +11248,44 @@ app.get('/api/light/challenge', (req, res) => {
     };
   });
   res.json({ day: parisDayKey(), yesterday, games });
+});
+
+// Boutique mobile (/light) : accessoires achetables + solde kikooz. On expose
+// uniquement la rubrique « Accessoires » (les fonds d'écran ne sont pas
+// exploitables sur mobile, on les masque) et on signale ceux déjà possédés. La
+// bouille de base du joueur est renvoyée pour l'aperçu (accessoire posé dessus).
+app.get('/api/light/shop', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ error: 'auth' });
+  const user = users[username] || {};
+  const items = SHOP_PACKS
+    .filter((p) => !p.disabled && p.category === 'Accessoires')
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: Number(p.price) || 0,
+      description: p.description || '',
+      suffix9: p.suffix9 || '000000000',
+      owned: userOwnsShopPack(user, p.id),
+    }));
+  res.json({ kikooz: Number(user.kikooz) || 0, bouille: bouilleOf(user, username), items });
+});
+
+// Achat d'un accessoire depuis le mobile. Réutilise purchaseShopPack (mêmes
+// contrôles que /ft/buy) et renvoie le nouveau solde en JSON.
+app.post('/api/light/shop/buy', (req, res) => {
+  const sid = (req.body && req.body.sid) || req.query.sid || '';
+  const username = resolveUsernameFromSid(sid);
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username];
+  const r = purchaseShopPack(user, username, (req.body && req.body.id) || req.query.id);
+  if (!r.ok) {
+    const error = r.code === 3 ? 'Pas assez de kikooz.'
+      : r.code === 2 ? 'Tu possèdes déjà cet accessoire.'
+      : 'Article indisponible.';
+    return res.json({ ok: false, code: r.code, error, kikooz: Number(user.kikooz) || 0 });
+  }
+  res.json({ ok: true, kikooz: r.kikooz, bouille: r.bouille, name: r.pack.name });
 });
 
 // ─────────────────────────────────────────────
