@@ -303,6 +303,66 @@
     .footer-bottom { background: var(--green-dark); color: #fff; padding: 4px; }
 
     .hidden { display: none !important; }
+
+    /* ────────── Mobile : la home était 100% desktop (logo absolu, grilles
+       2 colonnes, largeurs/hauteurs fixes) → débordement horizontal qui cassait
+       tout, pop-up « version mobile » comprise. On empile tout proprement. ───── */
+    @media (max-width: 760px) {
+      html, body { overflow-x: hidden; }
+      body { padding: 14px 12px 28px; background-size: cover; }
+
+      /* Barres login/inscription : cartes blanches pleine largeur, logo recentré
+         au-dessus, contenu empilé. */
+      .topbar, #register-form {
+        width: 100%; height: auto; min-height: 0;
+        margin-top: 60px; padding: 12px;
+        flex-direction: column; align-items: stretch;
+        border-radius: 12px;
+      }
+      .logo { position: absolute; left: 50%; top: -52px; transform: translateX(-50%); width: 148px; }
+
+      .login-form { flex-wrap: wrap; gap: 8px 6px; font-size: 14px; align-items: center; }
+      .login-form input {
+        flex: 1 1 120px; min-width: 0; width: auto; height: 34px;
+        font-size: 16px; /* ≥16px = pas de zoom auto iOS au focus */
+      }
+      .login-form > label { flex: 0 0 auto; }
+      .label-img { height: 16px; }
+      /* spécificité > « .login-form > label » pour que la case MODE FRUTIZ
+         occupe bien sa propre ligne pleine largeur. */
+      .login-form > label.mode-inline { flex: 1 1 100%; justify-content: flex-start; font-size: 13px; letter-spacing: 0; }
+      .btn { padding: 11px 10px; font-size: 15px; line-height: 1; }
+      .btn-primary { flex: 1 1 100%; }
+      .btn-secondary { flex: 1 1 100%; margin-left: 0; padding: 8px; text-decoration: underline; }
+      #register-form .login-form > strong { flex: 1 1 100%; text-align: center; }
+      #register-form .login-form label { flex: 0 0 auto; }
+      #register-form .login-form input,
+      #register-form #reg-email { flex: 1 1 140px; }
+
+      /* Accueil : une seule colonne — panneau d'abord, jeux ensuite. */
+      .layout { width: 100%; grid-template-columns: 1fr; gap: 14px; margin-top: 16px; }
+      .main {
+        order: 1; height: auto; grid-template-columns: 1fr; gap: 12px;
+        padding: 14px; text-align: center;
+      }
+      .main h1 { font-size: 20px; }
+      .main p { text-align: left; }
+      .welcome-title { max-width: 90%; height: auto; }
+      .welcome {
+        height: auto; max-width: 72%; max-height: none;
+        padding-right: 0; justify-self: center; margin: 4px auto 0;
+      }
+      .cta { justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+
+      .games { order: 2; height: auto; max-height: 300px; overflow-y: auto; }
+      .game-card { width: 100%; }
+
+      .status, .loading { width: 100%; }
+
+      /* Footer dans le flux : plus de barre fixe qui recouvre le contenu. */
+      footer { position: static; margin-top: 18px; width: 100%; }
+      .footer-bottom { font-size: 10px; line-height: 1.45; }
+    }
   </style>
 </head>
 <body>
@@ -379,7 +439,7 @@
 
     <article class="main">
       <div>
-        <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
+        <img class="welcome-title" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
         <p><strong>Découvrez l'univers fruité de Frutiparc ! <span style="color:#d82222;">Inscrivez-vous</span></strong> et jouez à nos jeux fruités : réflexion, arcade et multijoueurs.</p>
         <p>Chaque jour, profitez de plusieurs parties gratuites pour battre les autres joueurs et grimper au classement.</p>
         <p>Frutiparc c'est aussi le mode Frutiz : e-mail, salons de discussions, forums et blog, dans une interface fruitée.</p>
