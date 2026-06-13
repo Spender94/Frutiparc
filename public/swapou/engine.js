@@ -206,6 +206,24 @@
     };
   };
 
+  // Variante « balayage » : la case vient du point d'appui (px,py), mais la
+  // direction du voisin (dx,dy ∈ {-1,0,1}) est imposée par le geste de glissé,
+  // pas déduite du quadrant. Beaucoup plus tolérant au doigt : on vise le fruit
+  // puis on glisse vers son voisin, sans devoir toucher pile le bon coin.
+  Level.prototype.getPairWithDir = function (x, y, dx, dy, geo) {
+    const fx = Math.floor((x - geo.px) / geo.sx);
+    const fy = Math.floor((y - geo.py) / geo.sy);
+    if (fx < 0 || fx >= this.width || fy < 0 || fy >= this.height) return null;
+    if (this.fruits[fx][fy] == null) return null;
+    if (!dx && !dy) return null;
+    const col2 = this.fruits[fx + dx];
+    return {
+      x: fx, y: fy, dx: dx, dy: dy,
+      f1: this.fruits[fx][fy],
+      f2: col2 ? (col2[fy + dy] === undefined ? null : col2[fy + dy]) : null,
+    };
+  };
+
   Level.prototype.swapPair = function (p) {
     if (p == null) return false;
     const y2 = p.y + p.dy;

@@ -1063,10 +1063,24 @@
     requestAnimationFrame(frame);
   };
 
+  // Seuil de balayage en coordonnées logiques (cases = 35 px) : au-delà, le
+  // glissé est interprété comme une direction de swap ; en deçà, c'est un appui.
+  var SWIPE_TH = 12;
   SW.handleMouseMove = function (x, y) {
     SW.mouse.x = x;
     SW.mouse.y = y;
     SW.mouse.outside = (x < 0 || y < 0 || x > D.DOCWIDTH || y > D.DOCHEIGHT);
+    // En tactile, on déduit la direction dominante du glissé depuis le point
+    // d'appui. La case de départ reste figée (sx,sy) : viser puis glisser.
+    if (SW.mouse.touching && SW.swipe.active) {
+      var ddx = x - SW.swipe.sx, ddy = y - SW.swipe.sy;
+      if (Math.abs(ddx) > SWIPE_TH || Math.abs(ddy) > SWIPE_TH) {
+        if (Math.abs(ddx) >= Math.abs(ddy)) { SW.swipe.dx = ddx > 0 ? 1 : -1; SW.swipe.dy = 0; }
+        else { SW.swipe.dx = 0; SW.swipe.dy = ddy > 0 ? 1 : -1; }
+      } else { SW.swipe.dx = 0; SW.swipe.dy = 0; }
+    } else if (!SW.mouse.touching) {
+      SW.swipe.dx = 0; SW.swipe.dy = 0; // souris : jamais de direction héritée
+    }
   };
   // action au point courant (clic souris ou relâcher tactile)
   function dispatchPress() {
@@ -1084,22 +1098,26 @@
     if (mode.onClickDown) mode.onClickDown();
   }
   SW.handleMouseDown = function (x, y) {
+    // souris : pas de balayage, on garde le ciblage par quadrant historique.
+    SW.swipe.active = false; SW.swipe.dx = 0; SW.swipe.dy = 0;
     SW.handleMouseMove(x, y);
     A.unlock();
     dispatchPress();
   };
-  // tactile : l'appui montre le sélecteur de paire (aperçu), le déplacement
-  // l'ajuste, le relâcher déclenche l'action — on « vise » avant d'échanger.
+  // tactile : l'appui fige la case de départ et montre le sélecteur de paire,
+  // le glissé choisit la direction du voisin, le relâcher effectue l'échange.
   SW.handleTouchStart = function (x, y) {
     SW.mouse.touching = true;
+    SW.swipe.active = true; SW.swipe.sx = x; SW.swipe.sy = y; SW.swipe.dx = 0; SW.swipe.dy = 0;
     SW.handleMouseMove(x, y);
     A.unlock();
   };
   SW.handleTouchEnd = function (x, y) {
-    SW.handleMouseMove(x, y);
-    dispatchPress();
+    SW.handleMouseMove(x, y);   // fige la direction finale du balayage
+    dispatchPress();            // onClickDown lit SW.swipe via SW.pickPair
     SW.mouse.touching = false;
-    SW.mouse.outside = true; // pas de survol persistant après le relâcher
+    SW.mouse.outside = true;    // pas de survol persistant après le relâcher
+    SW.swipe.active = false;    // après le dispatch : laisse pickPair lire la direction
   };
   SW.setEsc = function (down) { SW.escDown = down; };
 })();

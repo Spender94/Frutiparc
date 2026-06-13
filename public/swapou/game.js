@@ -20,8 +20,22 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
 
   // état d'entrée global (renseigné par index.html)
   SW.mouse = { x: -1000, y: -1000, touching: false };
+  // Geste de balayage tactile : (sx,sy) = point d'appui initial, (dx,dy) =
+  // direction dominante du glissé (∈ {-1,0,1}). Tant que dx=dy=0 c'est un simple
+  // appui (ciblage par quadrant). Renseigné par les handlers tactiles (screens.js).
+  SW.swipe = { active: false, sx: 0, sy: 0, dx: 0, dy: 0 };
   SW.tmod = 1;
   SW.deltaT = 1 / 40;
+
+  // Paire visée par l'entrée courante, partagée par tous les modes jouables.
+  // Si un balayage a donné une direction, on échange le fruit posé (sx,sy) avec
+  // son voisin dans cette direction (fiable au doigt) ; sinon on retombe sur le
+  // ciblage par quadrant au point courant (souris, ou simple tap).
+  SW.pickPair = function (player) {
+    if (SW.swipe.dx || SW.swipe.dy)
+      return player.getPairWithDir(SW.swipe.sx, SW.swipe.sy, SW.swipe.dx, SW.swipe.dy);
+    return player.getPair(SW.mouse.x, SW.mouse.y);
+  };
 
   // ── Données globales (Data.as globals) ───────────────────────────────────
   SW.Data = {
@@ -1253,6 +1267,9 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   Player.prototype.getPair = function (x, y) {
     return this.level.getPair(x, y, this.animator.getInfos());
   };
+  Player.prototype.getPairWithDir = function (x, y, dx, dy) {
+    return this.level.getPairWithDir(x, y, dx, dy, this.animator.getInfos());
+  };
 
   Player.prototype.swapPair = function (p) {
     if (this.horizontal_lock > 0 && p != null && p.dx !== 0) return false;
@@ -1994,7 +2011,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   Challenge.prototype.gameClick = function () {
     if (this.lock || this.pause.activated()) return;
     if (this.interf.handleClick(SW.mouse.x, SW.mouse.y)) return;
-    const fpair = this.player.getPair(SW.mouse.x, SW.mouse.y);
+    const fpair = SW.pickPair(this.player);
     if (this.player.swapPair(fpair)) {
       SW.Manager.client.nswaps++;
       this.ncoups++;
@@ -2014,7 +2031,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (this.pause.main()) return;
     let fpair = null;
     if (!this.lock && !SW.mouse.outside)
-      fpair = this.player.getPair(SW.mouse.x, SW.mouse.y);
+      fpair = SW.pickPair(this.player);
     this.interf.displayPair(fpair);
     this.player.main(tmod, deltaT);
     this.interf.main(tmod);
@@ -2272,7 +2289,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (this.pause.activated()) return;
     if (this.interf.handleClick(SW.mouse.x, SW.mouse.y)) return;
     if (this.pl_lock) return;
-    const fpair = this.player.getPair(SW.mouse.x, SW.mouse.y);
+    const fpair = SW.pickPair(this.player);
     if (this.player.swapPair(fpair)) {
       SW.Manager.client.nswaps++;
       this.setPlLock(true);
@@ -2344,7 +2361,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     }
     let fpair = null;
     if (!this.pl_lock && !SW.mouse.outside)
-      fpair = this.player.getPair(SW.mouse.x, SW.mouse.y);
+      fpair = SW.pickPair(this.player);
     this.interf.displayPair(fpair);
   };
   Duel.prototype.draw = function (ctx) {

@@ -126,7 +126,20 @@
 
     rotateHint.style.display = (rotated && !hintDismissed) ? 'block' : 'none';
   }
+  // Rotation de l'appareil : sur mobile, 'resize' / 'orientationchange' se
+  // déclenchent souvent AVANT que innerWidth/innerHeight ne reflètent la
+  // nouvelle orientation. Sans re-mesure différée, le canvas reste figé dans
+  // l'ancienne rotation — le jeu apparaît « à la verticale » une fois le
+  // téléphone tourné. On relance donc resize() plusieurs fois après l'évènement,
+  // le temps que les dimensions se stabilisent.
+  function resizeSoon() {
+    resize();
+    [60, 180, 360, 600].forEach(function (d) { setTimeout(resize, d); });
+  }
   window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resizeSoon);
+  if (window.screen && screen.orientation && screen.orientation.addEventListener)
+    screen.orientation.addEventListener('change', resizeSoon);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
   resize();
   // l'indication disparaît d'elle-même au bout de quelques secondes

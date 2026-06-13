@@ -244,6 +244,39 @@ pump(5, 1);
   while (chalT.lock && gT++ < 20000 && Manager.mode === chalT) pump(1, 1);
 }
 
+// ── tactile : balayage = échange dans la direction du glissé ───────────────
+// On pose le doigt n'importe où sur un fruit puis on glisse vers le voisin :
+// la direction du swap vient du geste, pas du quadrant touché.
+SW.Data.gameMode = SW.Data.CHALLENGE;
+SW.Data.players = [0, -1];
+Manager.mode.destroy();
+Manager.mode = new SW.Challenge();
+const chalS = Manager.mode;
+pump(5, 1);
+{
+  const lvl = chalS.player.level;
+  let sw = null;
+  for (let x = 0; x < lvl.width - 1 && !sw; x++)
+    for (let y = 0; y < lvl.height && !sw; y++) {
+      const f1 = lvl.getFruit(x, y), f2 = lvl.getFruit(x + 1, y);
+      if (f1 && f2 && f1.canSwap() && f2.canSwap()) sw = { x: x, y: y };
+    }
+  assert(sw != null, 'paire balayage trouvée');
+  const info = chalS.player.animator.getInfos();
+  // appui au centre de la case (sans viser de coin), puis glissé vers la droite
+  const cx = info.px + sw.x * 35 + 17, cy = info.py + sw.y * 35 + 17;
+  SW.handleTouchStart(cx, cy);
+  SW.handleMouseMove(cx + 22, cy); // glissé > seuil → direction droite
+  assert(SW.swipe.dx === 1 && SW.swipe.dy === 0, 'glissé horizontal → direction droite');
+  pump(1, 1);
+  const prev = chalS.interf.rollover;
+  assert(prev.visible === true, 'aperçu de paire visible pendant le balayage');
+  SW.handleTouchEnd(cx + 22, cy);
+  assert(chalS.lock === true, 'le balayage déclenche l\'échange avec le voisin de droite');
+  let gS = 0;
+  while (chalS.lock && gS++ < 20000 && Manager.mode === chalS) pump(1, 1);
+}
+
 // ── mode classique : min 2, couleurs limitées, montée de niveau ────────────
 SW.Data.gameMode = SW.Data.CLASSIC;
 SW.Data.players = [0, -1];
