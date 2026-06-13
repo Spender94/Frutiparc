@@ -963,7 +963,7 @@ async function clearAllChallengeData() {
 
 async function listAllUsers() {
   const { rows } = await pool.query(
-    'SELECT id, username, display_name, email, xp, kikooz, fbouille, gender, is_moderator, is_animator, fruti_sign, fruti_sign_b, real_job, frutijob, birthday, country, region, city, created_at, banned_until FROM users ORDER BY created_at DESC'
+    'SELECT id, username, display_name, email, xp, kikooz, fbouille, gender, is_moderator, is_animator, fruti_sign, fruti_sign_b, real_job, frutijob, birthday, country, region, city, created_at, last_login, banned_until FROM users ORDER BY created_at DESC'
   );
   return rows;
 }

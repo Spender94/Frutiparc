@@ -606,21 +606,39 @@
       });
     }
 
-    // On arrival, a pop-up proposes the mobile "light" version. Dismissible and
-    // remembered (localStorage) so it shows once, not on every visit.
+    // À l'arrivée, on propose la version mobile « light » — mais UNIQUEMENT sur
+    // petit écran / appareil tactile (inutile et hors sujet sur desktop, où la
+    // pop-in « s'affichait mal »). Mémorisée pour la session (sessionStorage) :
+    // elle réapparaît à chaque nouvelle visite mais ne harcèle pas dans la même
+    // session. Ré-évaluée après stabilisation du viewport et à la rotation, car
+    // certains navigateurs mobiles renvoient une largeur erronée au 1er rendu
+    // (ce qui faisait que la pop-in « ne s'affichait pas systématiquement »).
     (function () {
       const popup = document.getElementById('mobile-popup');
       if (!popup) return;
-      let dismissed = false;
-      try { dismissed = localStorage.getItem('fp_mobile_popup') === '1'; } catch (e) {}
-      function remember() { try { localStorage.setItem('fp_mobile_popup', '1'); } catch (e) {} }
+      function isMobileViewport() {
+        try {
+          return window.matchMedia('(max-width: 820px)').matches
+            || (window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(max-width: 1024px)').matches);
+        } catch (e) { return (window.innerWidth || 9999) <= 820; }
+      }
+      function dismissed() { try { return sessionStorage.getItem('fp_mobile_popup') === '1'; } catch (e) { return false; } }
+      function remember() { try { sessionStorage.setItem('fp_mobile_popup', '1'); } catch (e) {} }
       function close() { popup.classList.add('hidden'); remember(); }
-      if (!dismissed) popup.classList.remove('hidden');
+      let shown = false;
+      function maybeShow() {
+        if (shown || dismissed() || !isMobileViewport()) return;
+        shown = true;
+        popup.classList.remove('hidden');
+      }
       const stay = document.getElementById('mobile-popup-stay');
       const go = document.getElementById('mobile-popup-go');
       if (stay) stay.addEventListener('click', close);
-      if (go) go.addEventListener('click', remember);            // remember before navigating to /light
-      popup.addEventListener('click', (e) => { if (e.target === popup) close(); }); // click backdrop = dismiss
+      if (go) go.addEventListener('click', remember);            // mémorise avant d'aller sur /light
+      popup.addEventListener('click', (e) => { if (e.target === popup) close(); }); // clic sur le fond = fermer
+      maybeShow();
+      setTimeout(maybeShow, 400);                                 // viewport stabilisé
+      window.addEventListener('orientationchange', function () { setTimeout(maybeShow, 200); });
     })();
 
     renderGames();

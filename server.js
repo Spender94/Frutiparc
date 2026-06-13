@@ -5979,6 +5979,38 @@ app.post('/api/admin/kiloute/quizzes', adminScope('kiloute'), async (req, res) =
   res.json({ ok: true, quiz });
 });
 
+// Import en masse de quizz au format JSON. Accepte un quiz unique, un tableau de
+// quiz, ou { "quizzes": [...] }. Réutilise la même validation/normalisation que
+// la création unitaire ; renvoie le détail des créations et des entrées ignorées.
+app.post('/api/admin/kiloute/quizzes/import', adminScope('kiloute'), async (req, res) => {
+  const b = req.body || {};
+  const list = Array.isArray(b) ? b
+    : Array.isArray(b.quizzes) ? b.quizzes
+    : (b && b.name) ? [b] : null;
+  if (!Array.isArray(list) || !list.length) {
+    return res.status(400).json({ error: 'JSON attendu : un quiz, un tableau de quiz, ou { "quizzes": [...] }.' });
+  }
+  const created = [], errors = [];
+  for (let i = 0; i < list.length; i++) {
+    const q = list[i] || {};
+    const name = String(q.name || '').trim();
+    if (!name) { errors.push(`#${i + 1} : nom manquant`); continue; }
+    const reward = Math.max(1, Math.min(10000, Math.round(Number(q.reward) || 60)));
+    const windowSec = Math.max(10, Math.min(600, Math.round(Number(q.windowSec) || 90)));
+    const questions = normalizeQuizQuestions(q.questions);
+    if (!questions.length) { errors.push(`#${i + 1} « ${name} » : aucune question valide`); continue; }
+    let id = QUIZZES.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
+    if (process.env.DATABASE_URL) {
+      try { id = await db.insertQuiz(name, reward, windowSec, questions, QUIZZES.length); }
+      catch (e) { console.error('[KILOUTE] import insert:', e.message); errors.push(`#${i + 1} « ${name} » : erreur base de données`); continue; }
+    }
+    QUIZZES.push({ id, name, reward, windowSec, questions });
+    created.push({ id, name, questions: questions.length });
+  }
+  console.log(`[ADMIN] Import quizz : ${created.length} créé(s), ${errors.length} erreur(s)`);
+  res.json({ ok: true, count: created.length, created, errors });
+});
+
 app.patch('/api/admin/kiloute/quizzes/:id', adminScope('kiloute'), async (req, res) => {
   const id = Number(req.params.id);
   const quiz = QUIZZES.find((x) => x.id === id);

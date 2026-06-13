@@ -376,10 +376,16 @@
 <div class="content" id="tab-users">
   <div class="toolbar">
     <button class="btn" onclick="loadUsers()">Rafraîchir</button>
+    <label style="font-size:12px;display:flex;align-items:center;gap:4px">Trier&nbsp;:
+      <select id="user-sort" onchange="renderUsers()">
+        <option value="created">Inscription (récent)</option>
+        <option value="lastlogin">Dernière connexion (récent)</option>
+      </select>
+    </label>
     <span id="user-count"></span>
   </div>
   <table>
-    <thead><tr><th>Pseudo</th><th>Email</th><th>XP</th><th>Kikooz</th><th>Bouille</th><th>Genre</th><th>FrutiSigne</th><th>Modo</th><th>Anim</th><th>Inscrit le</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Pseudo</th><th>Email</th><th>XP</th><th>Kikooz</th><th>Bouille</th><th>Genre</th><th>FrutiSigne</th><th>Modo</th><th>Anim</th><th>Inscrit le</th><th>Dern. connexion</th><th>Actions</th></tr></thead>
     <tbody id="users-body"></tbody>
   </table>
 </div>
@@ -512,6 +518,37 @@
   <div id="kqz-status" style="margin:4px 0 8px;font-size:13px;color:#2c4a0f"></div>
   <div id="quiz-list" style="display:flex;flex-direction:column;gap:8px;max-width:880px"></div>
   <div style="margin:10px 0"><button class="btn-success" onclick="newQuiz()">+ Créer un quiz</button></div>
+
+  <!-- ───────── Import JSON de quizz ───────── -->
+  <div style="margin:10px 0;padding:12px;border:1px dashed #cdddb4;border-radius:8px;background:#fafdf4;max-width:880px">
+    <div style="font-weight:bold;margin-bottom:4px">📥 Importer des quizz (JSON)</div>
+    <div style="font-size:12px;color:#666;margin-bottom:6px">
+      Choisis un fichier <code>.json</code> ou colle le JSON ci-dessous. Formats acceptés : un quiz, un tableau de quiz, ou <code>{ "quizzes": [ … ] }</code>.
+      <a href="#" onclick="toggleQuizSpec();return false">Voir le format ▾</a>
+    </div>
+    <pre id="quiz-json-spec" style="display:none;font-size:11px;background:#23300f;color:#d6f7b5;padding:10px;border-radius:6px;overflow:auto;white-space:pre">[
+  {
+    "name": "Culture générale",        // requis
+    "reward": 60,                       // optionnel (kikooz, 1–10000, défaut 60)
+    "windowSec": 90,                    // optionnel (temps de réponse en s, 10–600, défaut 90)
+    "questions": [                      // requis (≥ 1 question valide)
+      {
+        "q": "Capitale de la France ?", // requis : l'énoncé
+        "a": ["Paris", "paris"],        // requis : réponses acceptées (tableau OU "a;b;c")
+        "r": "Paris",                   // optionnel : réponse affichée (défaut = 1re de "a")
+        "image": "drapeau_fr"           // optionnel : id d'une image de quiz déjà téléversée
+      }
+    ]
+  }
+]
+Notes : la comparaison des réponses ignore accents, casse et ponctuation. Les
+questions sans énoncé ou sans réponse sont ignorées. "image" doit correspondre
+à une image déjà téléversée ci-dessous (sinon ignorée).</pre>
+    <input type="file" id="quiz-import-file" accept=".json,application/json" onchange="quizImportFile(this)" style="font-size:12px;display:block;margin-bottom:6px">
+    <textarea id="quiz-import-text" placeholder='Colle ton JSON ici…' style="width:100%;box-sizing:border-box;min-height:90px;font-family:monospace;font-size:12px;padding:6px"></textarea>
+    <div style="margin-top:6px"><button class="btn-success" onclick="importQuizzes()">Importer</button>
+      <span id="quiz-import-msg" style="font-size:12px;margin-left:8px"></span></div>
+  </div>
 
   <!-- Éditeur de quiz (masqué par défaut) -->
   <div id="quiz-editor" style="display:none;max-width:900px;border:1px solid #cdddb4;border-radius:8px;padding:12px;background:#fafdf4">
@@ -1188,6 +1225,38 @@ async function loadQuizzes() {
     renderQuizList();
   } catch (e) {}
 }
+// ── Import JSON de quizz ──
+function toggleQuizSpec() {
+  const el = document.getElementById('quiz-json-spec');
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+function quizImportFile(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { document.getElementById('quiz-import-text').value = String(rd.result || ''); };
+  rd.readAsText(f);
+}
+async function importQuizzes() {
+  const msg = document.getElementById('quiz-import-msg');
+  const txt = document.getElementById('quiz-import-text').value.trim();
+  if (!txt) { toast('Colle du JSON ou choisis un fichier .json'); return; }
+  let data;
+  try { data = JSON.parse(txt); }
+  catch (e) { if (msg) { msg.style.color = '#b23b2e'; msg.textContent = 'JSON invalide : ' + e.message; } toast('JSON invalide'); return; }
+  try {
+    const r = await fetch('/api/admin/kiloute/quizzes/import', { method: 'POST', headers: hdr(), body: JSON.stringify(data) });
+    const d = await r.json();
+    if (!r.ok) { if (msg) { msg.style.color = '#b23b2e'; msg.textContent = d.error || 'Erreur'; } toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    const errN = (d.errors || []).length;
+    if (msg) {
+      msg.style.color = d.count ? '#2f6b16' : '#b23b2e';
+      msg.textContent = d.count + ' quiz importé(s)' + (errN ? (' · ' + errN + ' ignoré(s) : ' + d.errors.join(' ; ')) : '');
+    }
+    toast(d.count + ' quiz importé(s)' + (errN ? (', ' + errN + ' ignoré(s)') : ''));
+    if (d.count) { document.getElementById('quiz-import-text').value = ''; document.getElementById('quiz-import-file').value = ''; loadQuizzes(); }
+  } catch (e) { if (msg) { msg.style.color = '#b23b2e'; msg.textContent = 'Erreur réseau'; } toast('Erreur: ' + e.message); }
+}
 function renderQuizList() {
   const box = document.getElementById('quiz-list'); if (!box) return;
   if (!quizzes.length) { box.innerHTML = '<span style="font-size:12px;color:#888">Aucun quiz pour le moment. Clique « + Créer un quiz » ci-dessous.</span>'; return; }
@@ -1555,14 +1624,28 @@ function fmtDateTime(s) {
 }
 
 // ── Users ──
+let usersData = [];
 async function loadUsers() {
   try {
     const r = await fetch('/api/admin/users', { headers: hdr() });
     const data = await r.json();
     if (!Array.isArray(data)) { toast('Erreur: ' + JSON.stringify(data)); return; }
-    $('#user-count').innerHTML = `<span class="count">${data.length}</span> joueurs`;
-    const tb = $('#users-body');
-    tb.innerHTML = data.map(u => `<tr>
+    usersData = data;
+    renderUsers();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+function renderUsers() {
+  const sortSel = $('#user-sort');
+  const mode = sortSel ? sortSel.value : 'created';
+  const ts = (v) => { const t = v ? new Date(v).getTime() : 0; return Number.isFinite(t) ? t : 0; };
+  // Copie triée (sans muter usersData) : inscription récente, ou dernière
+  // connexion récente (les jamais-connectés finissent en bas).
+  const rows = usersData.slice().sort(mode === 'lastlogin'
+    ? (a, b) => ts(b.last_login) - ts(a.last_login)
+    : (a, b) => ts(b.created_at) - ts(a.created_at));
+  $('#user-count').innerHTML = `<span class="count">${rows.length}</span> joueurs`;
+  const tb = $('#users-body');
+  tb.innerHTML = rows.map(u => `<tr>
       <td><a href="#" onclick="viewUser('${esc(u.username)}');return false" class="uname">${esc(u.display_name || u.username)}</a>${u.banned_until && new Date(u.banned_until).getTime() > Date.now() ? ' <span class="badge" style="background:#c10000;color:#fff" title="Banni">banni</span>' : ''}</td>
       <td style="font-size:11px">${u.email ? esc(u.email) : '<span style="color:#c03c30" title="Aucun email — le reset password ne marchera pas">— aucun —</span>'}</td>
       <td>${u.xp || 0}</td>
@@ -1573,12 +1656,12 @@ async function loadUsers() {
       <td><span class="badge ${u.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u.username)}',${!u.is_moderator})" title="Cliquer pour changer">${u.is_moderator ? 'Modo' : '-'}</span></td>
       <td><span class="badge ${u.is_animator ? 'badge-anim' : 'badge-no-mod'}" onclick="toggleAnim('${esc(u.username)}',${!u.is_animator})" title="Cliquer pour changer">${u.is_animator ? 'Anim' : '-'}</span></td>
       <td>${fmtDate(u.created_at)}</td>
+      <td style="font-size:11px">${u.last_login ? fmtDateTime(u.last_login) : '<span style="color:#999">jamais</span>'}</td>
       <td>
         <button class="btn btn-sm" onclick="editUser('${esc(u.username)}',${u.xp||0},${u.kikooz||0},'${esc(u.fbouille||'')}','${esc(u.display_name||u.username)}',${u.fruti_sign ?? -1},${u.fruti_sign_b ?? -1},'${esc(u.frutijob||'')}','${esc(u.email||'')}')">Modifier</button>
         <button class="btn-danger btn-sm" onclick="deleteUser('${esc(u.username)}')">Supprimer</button>
       </td>
     </tr>`).join('');
-  } catch (e) { toast('Erreur: ' + e.message); }
 }
 
 function editUser(name, xp, kikooz, fb, dn, fs, fsb, fj, email) {
