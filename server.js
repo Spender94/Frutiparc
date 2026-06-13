@@ -11206,6 +11206,23 @@ app.get('/api/light/challenge', (req, res) => {
     { game: 'mb2',     ranking: 'mb2_classic' },
     { game: 'kaluga',  ranking: 'kaluga_classic' },
   ];
+  // Podium de la veille par jeu : on lit les médaillés déjà résolus en mémoire
+  // (medalsByVisibleDay[hier], alimenté au boot depuis la DB / le JSON puis à
+  // chaque roll). Médaille normalisée en gold/silver/bronze pour le client.
+  const yesterday = yesterdayParisDayKey();
+  const yMedals = challengeMedalsData.medalsByVisibleDay[yesterday] || {};
+  const normMedal = (m) => (m === 'or' || m === 'gold') ? 'gold'
+    : (m === 'argent' || m === 'silver') ? 'silver' : 'bronze';
+  const podiumFor = (game) => {
+    const pod = [];
+    for (const [username, medals] of Object.entries(yMedals)) {
+      for (const m of (medals || [])) {
+        if (m.game === game) pod.push({ user: getDisplayName(username), rank: m.rank, medal: normMedal(m.medal) });
+      }
+    }
+    pod.sort((a, b) => a.rank - b.rank);
+    return pod.slice(0, 3);
+  };
   const games = GAMES.map((g) => {
     const rkId = g.ranking;
     const all = [];
@@ -11228,9 +11245,10 @@ app.get('/api/light/challenge', (req, res) => {
       lowerIsBetter: !!(RANKINGS[rkId] && RANKINGS[rkId].lowerIsBetter),
       count: all.length,
       scores,
+      podium: podiumFor(g.game),
     };
   });
-  res.json({ day: parisDayKey(), games });
+  res.json({ day: parisDayKey(), yesterday, games });
 });
 
 // ─────────────────────────────────────────────

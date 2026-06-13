@@ -506,6 +506,23 @@
     font-size: 11.5px; color: #2f5510; font-weight: bold; text-align: center;
     margin: 2px 0 8px;
   }
+  /* Podium de la veille : bandeau clair en tête du tableau, médaillés côte à
+     côte. Les visuels de médaille (≈100 px à la source) sont fortement réduits. */
+  .podium {
+    display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: center;
+    background: #E9F8CE; border: 1px solid #ADE76B; border-radius: 6px;
+    box-shadow: 0 0 0 1px #DDDDDD; padding: 7px 10px 8px; margin-bottom: 10px;
+  }
+  .podium-title {
+    width: 100%; text-align: center; font-size: 11px; font-weight: bold;
+    color: #2f5510; margin-bottom: 3px;
+  }
+  .pod-item { display: inline-flex; align-items: center; gap: 5px; }
+  .pod-medal { width: 26px; height: 26px; object-fit: contain; flex: 0 0 auto; }
+  .pod-name {
+    font-size: 12px; font-weight: bold; color: #2C4A0F;
+    max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .scores-list {
     list-style: none; margin: 0; padding: 0; overflow: hidden;
     border: 1px solid #ADE76B; border-radius: 6px;
@@ -623,7 +640,7 @@
       <img class="menu-ico" src="/fb/icone_jeux.png" alt="" onerror="this.replaceWith(document.createTextNode('🎮'))"> Mes disques
     </button>
     <button class="menu-item" data-tab="scores">
-      <img class="menu-ico" src="/fb/icone_scores.png" alt="" onerror="this.replaceWith(document.createTextNode('🏆'))"> Scores du jour
+      <img class="menu-ico" src="/fb/icone_scores.png" alt="" onerror="this.replaceWith(document.createTextNode('🏆'))"> Scores
     </button>
     <button class="menu-item" id="bouille-btn">
       <img class="menu-ico" src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"> Mon inventaire
@@ -1136,25 +1153,42 @@
       tabs.appendChild(b);
     });
   }
+  // jeu (API) → suffixe des assets de médailles /fb/medal_{couleur}_{clé}.png
+  var MEDAL_ASSET_KEY = {
+    bandas: "bandas", grapiz: "grapiz", swapou2: "swapou",
+    bkiwi: "bk", snake3: "snake", mb2: "mb2", kaluga: "kaluga",
+  };
+  // Bandeau « médaillés d'hier » en tête du tableau d'un jeu (vide si aucun).
+  function podiumHtml(g) {
+    if (!g.podium || !g.podium.length) return "";
+    var ak = MEDAL_ASSET_KEY[g.game] || g.game;
+    var h = '<div class="podium"><div class="podium-title">Médaillés d\'hier</div>';
+    g.podium.forEach(function (p) {
+      h += '<span class="pod-item">'
+        + '<img class="pod-medal" src="/fb/medal_' + p.medal + '_' + ak + '.png" alt="'
+        + xmlEscape(p.medal) + '" onerror="this.style.display=\'none\'">'
+        + '<span class="pod-name">' + xmlEscape(p.user) + '</span></span>';
+    });
+    return h + '</div>';
+  }
   function renderScoresBody() {
     var body = $("#scores-body");
     if (!body || !challengeScores) return;
     var g = (challengeScores.games || [])[scoresGameIdx];
     if (!g) { body.innerHTML = ""; return; }
-    var html = '';
+    var html = podiumHtml(g); // podium de la veille en tête (le cas échéant)
     if (!g.scores || !g.scores.length) {
-      html = '<div class="scores-empty">Aucun score pour « ' + xmlEscape(g.name) + ' » aujourd\'hui.<br>'
+      html += '<div class="scores-empty">Aucun score pour « ' + xmlEscape(g.name) + ' » aujourd\'hui.<br>'
         + 'À toi de lancer la première partie&nbsp;!</div>';
     } else {
       var n = g.count || g.scores.length;
-      html = '<div class="scores-cap">' + xmlEscape(g.name) + ' — '
+      html += '<div class="scores-cap">' + xmlEscape(g.name) + ' — '
         + n + ' joueur' + (n > 1 ? 's' : '') + ' aujourd\'hui</div><ol class="scores-list">';
       g.scores.forEach(function (s, i) {
         var pos = i + 1;
         var cls = "score-row" + (pos <= 3 ? " r" + pos : "") + (s.isMe ? " me" : "");
-        var medal = pos === 1 ? "🥇" : pos === 2 ? "🥈" : pos === 3 ? "🥉" : String(pos);
         html += '<li class="' + cls + '">'
-          + '<span class="pos">' + medal + '</span>'
+          + '<span class="pos">' + pos + '</span>'
           + '<span class="pname">' + xmlEscape(s.user) + '</span>'
           + (s.isMe ? '<span class="me-badge">toi</span>' : '')
           + '<span class="pscore">' + xmlEscape(s.label) + '</span>'
