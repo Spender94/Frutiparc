@@ -169,6 +169,7 @@
       }
     }
     GV.started = true;
+    if (GV._endTimer) { clearTimeout(GV._endTimer); GV._endTimer = null; } // pas de minuteur de fin résiduel
     setupCanvas();
 
     $("#bd-chatbox").innerHTML = "";
@@ -1012,6 +1013,20 @@
     }
     box.style.display = "block";
     refreshArrows();
+    // Retour automatique au lobby (gagnant) / à l'accueil (défaite, égalité)
+    // après un court délai. Sur mobile, l'overlay de fin et son bouton OK
+    // peuvent être hors écran (il fallait scroller pour revenir) ; on enchaîne
+    // donc tout seul. Le bouton OK reste actif pour enchaîner immédiatement.
+    if (GV._endTimer) clearTimeout(GV._endTimer);
+    GV._endTimer = setTimeout(function () {
+      GV._endTimer = null;
+      if (GV.onEndClosed) GV.onEndClosed();
+    }, 2200);
+  }
+  // Ferme l'écran de fin (clic OK ou minuteur) une seule fois.
+  function closeEnd() {
+    if (GV._endTimer) { clearTimeout(GV._endTimer); GV._endTimer = null; }
+    if (GV.onEndClosed) GV.onEndClosed();
   }
 
   // ── Entrées ────────────────────────────────────────────────────────────────
@@ -1080,7 +1095,7 @@
     });
     // boutons (Abandon avec confirmation — texte d'origine)
     function onGiveUp() {
-      if (GV.ended) { if (GV.onEndClosed) GV.onEndClosed(); return; }
+      if (GV.ended) { closeEnd(); return; }
       if (window.confirm("Voulez-vous abandonner la partie ?")) { if (GV.onQuit) GV.onQuit(); }
     }
     $("#btn-giveup").addEventListener("click", onGiveUp);
@@ -1090,7 +1105,7 @@
     var okb = $("#bd-ok");
     okb.addEventListener("mouseenter", function () { okb.src = "assets/common/ok_hover.png"; });
     okb.addEventListener("mouseleave", function () { okb.src = "assets/common/ok.png"; });
-    okb.addEventListener("click", function () { if (GV.onEndClosed) GV.onEndClosed(); });
+    okb.addEventListener("click", function () { closeEnd(); });
 
     // ── mobile : croix directionnelle, glisser sur le plateau, fiche carte,
     //    chat en surcouche ──
