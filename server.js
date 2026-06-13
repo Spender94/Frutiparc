@@ -7120,8 +7120,15 @@ function isMinipixizSlot0Corrupted(jsonStr) {
     if (!obj || typeof obj !== 'object') return false;
     const stat = obj.$stat;
     if (!stat || typeof stat !== 'object') return false;
-    if (!Array.isArray(stat.$kill) || stat.$kill.length < 5) return true;
-    if (!Array.isArray(stat.$game) || stat.$game.length < 5) return true;
+    // Vraie corruption = $kill/$game ne sont PAS des tableaux (desync Ruffle qui
+    // renvoie "" ou un scalaire — le « scalar field cycle »). Un tableau COURT
+    // (< 5) n'est PAS corrompu : c'est un début de partie légitime (peu de
+    // monstres tués / mini-jeux joués). L'ancien test « length < 5 » rejetait en
+    // bloc la 1re sauvegarde d'un nouveau joueur — y compris sa première fée et
+    // son inventaire — d'où le « rollback total » remonté. Le forward-merge
+    // restaure de toute façon ces tableaux depuis le slot précédent s'il existe.
+    if (!Array.isArray(stat.$kill)) return true;
+    if (!Array.isArray(stat.$game)) return true;
     return false;
   } catch {
     return false;
