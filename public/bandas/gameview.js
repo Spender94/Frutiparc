@@ -918,8 +918,10 @@
     if (!GV.board) return;
     $("#pcount0").textContent = "× " + GV.board.countSpritesOf(0);
     $("#pcount1").textContent = "× " + GV.board.countSpritesOf(1);
-    $("#m-count0").textContent = "🍊 " + GV.board.countSpritesOf(0);
-    $("#m-count1").textContent = "🍌 " + GV.board.countSpritesOf(1);
+    // L'icône fruit (vrai sprite orange/banane) est dans le HTML du chip ;
+    // ici on ne met à jour que le nombre.
+    $("#m-count0").textContent = GV.board.countSpritesOf(0);
+    $("#m-count1").textContent = GV.board.countSpritesOf(1);
   }
 
   function refreshTurn() {

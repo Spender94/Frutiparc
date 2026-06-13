@@ -93,6 +93,8 @@ async function initSchema() {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_reason TEXT DEFAULT '';
         -- Rôle admin par compte (accès partiel à /admin). NULL = aucun accès admin.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role TEXT DEFAULT NULL;
+        -- Signature de forum (BBCode) affichée à la fin de tous les posts de l'auteur.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS forum_signature TEXT DEFAULT '';
         -- needs_bouille now means strictly "an admin asked this user to redo
         -- their bouille". First-time setup is handled separately (the onident
         -- gate opens the editor while the user still has the default bouille),
@@ -1810,6 +1812,19 @@ async function forumGetPostCounts(usernames) {
   return map;
 }
 
+// Signatures de forum (BBCode) pour un lot d'auteurs → { username: signature }.
+// Vide / absente → non incluse (le post n'affiche alors pas de signature).
+async function forumGetSignatures(usernames) {
+  if (!usernames.length) return {};
+  const { rows } = await pool.query(
+    `SELECT username, forum_signature FROM users WHERE username = ANY($1)`,
+    [usernames]
+  );
+  const map = {};
+  for (const r of rows) if (r.forum_signature) map[r.username] = r.forum_signature;
+  return map;
+}
+
 // ── Channels ──
 
 async function loadChannels() {
@@ -2030,6 +2045,7 @@ module.exports = {
   forumCountPosts,
   forumDeleteTopic,
   forumGetPostCounts,
+  forumGetSignatures,
   forumCreatePoll,
   forumGetPollByTopic,
   forumGetPoll,

@@ -1846,6 +1846,7 @@ function dbUserToMemory(row) {
     departmentIndex: row.department_index || '1',
     siteUrl: row.site_url || '',
     comment: row.comment || '',
+    forumSignature: row.forum_signature || '',
     displayName: row.display_name || row.username || '',
     frutiSign: row.fruti_sign ?? -1,
     frutiSignB: row.fruti_sign_b ?? -1,
@@ -10306,6 +10307,7 @@ app.get('/api/forum/me', (req, res) => {
     // bouille (first-time setup) OR an admin set the redo flag. Confirming a
     // real bouille (via /do/eb or the 'ae' socket cmd) clears it.
     needsBouille: (!u.fbouille || u.fbouille === DEFAULT_BOUILLE_STATE || u.needsBouille === true),
+    signature: u.forumSignature || '',
     accessories: accessories,
     defaultAccessories: defaults,
     muted: mute.muted,
@@ -10316,6 +10318,24 @@ app.get('/api/forum/me', (req, res) => {
     bannedUntilDisplay: ban.untilDisplay,
     bannedPermanent: ban.permanent,
   });
+});
+
+// Signature de forum : enregistre/édite la signature (BBCode) du joueur connecté.
+// Elle est affichée à la fin de TOUS ses posts (rendue par renderBBCode côté
+// client) et persistée (colonne users.forum_signature). Vider = pas de signature.
+app.post('/api/forum/signature', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  let sig = String((req.body && req.body.signature) || '');
+  // Limite raisonnable (forums d'époque) ; normalise les fins de ligne.
+  sig = sig.replace(/\r\n/g, '\n').slice(0, 600).replace(/\s+$/g, '');
+  if (users[username]) users[username].forumSignature = sig;
+  if (process.env.DATABASE_URL) {
+    try { await db.updateUser(username, { forum_signature: sig }); }
+    catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  console.log(`[FORUM] signature mise à jour pour ${username} (${sig.length} car.)`);
+  res.json({ ok: true, signature: sig });
 });
 
 // Categories restricted to staff members (moderators + animators). Their
@@ -10434,6 +10454,8 @@ app.get('/api/forum/topic/:id', async (req, res) => {
     const { posts, total } = await db.forumGetPosts(topicId, page, FORUM_POSTS_PER_PAGE);
     const authorNames = [...new Set(posts.map(p => p.author_username))];
     const postCounts = await db.forumGetPostCounts(authorNames);
+    // Signature courante de chaque auteur (affichée à la fin de ses posts).
+    const signatures = await db.forumGetSignatures(authorNames).catch(() => ({}));
     const currentUser = forumAuth(req);
     // Stamp the read marker for the viewer so the topic (and its parent
     // board) flip back to "no unread" once they've actually loaded it.
@@ -10452,6 +10474,7 @@ app.get('/api/forum/topic/:id', async (req, res) => {
       mood: p.mood == null ? null : Number(p.mood),
       postCount: postCounts[p.author_username] || 0,
       isModerator: !!(users[p.author_username] && users[p.author_username].isModerator),
+      signature: signatures[p.author_username] || '',
     }));
     // Poll ("sondage") attached to this topic, if any. Best-effort: a poll read
     // error must never break the topic view. myOptionId reflects the viewer's

@@ -278,6 +278,17 @@
     font-style: italic;
     color: #5a8030;
   }
+  /* Signature de l'auteur, sous le message, séparée par un filet (comme phpBB) */
+  .post .post-signature {
+    margin: 10px 12px 4px;
+    padding-top: 8px;
+    border-top: 1px solid #cfe0a8;
+    font-size: 11px;
+    color: #5a7030;
+    line-height: 1.4;
+    word-wrap: break-word;
+  }
+  .post .post-signature img.bb-img { max-height: 80px; }
 
   /* Blockquote — light green tint, soft border, author bolded above */
   .post-content blockquote.quote {
@@ -1276,6 +1287,7 @@ const params = new URLSearchParams(window.location.search);
 const SID = params.get('sid') || '';
 let currentUser = null;
 let myBouille = null;
+let mySignature = '';   // signature de forum (BBCode), éditable via le bouton « Ma signature »
 let myAccessories = [];
 let myDefaultAccessories = [];
 // Mute status (totoche) for the logged-in user. When true, the topic page
@@ -1868,6 +1880,8 @@ async function loadTopic(topicId, page) {
     html += '</div>';
     html += '</div>';
     html += '<div class="post-content" id="post-content-' + p.id + '" data-raw="' + escapeHtml(p.content) + '">' + renderBBCode(p.content) + '</div>';
+    // Signature de l'auteur (BBCode), à la fin du post — comme un forum d'époque.
+    if (p.signature) html += '<div class="post-signature">' + renderBBCode(p.signature) + '</div>';
     if (p.updatedAt) html += '<div class="post-edited">Ce message a été édité le ' + formatDate(p.updatedAt) + '</div>';
     html += '</div>';
     html += '</div>';
@@ -2641,11 +2655,71 @@ function renderEditor(opts) {
   html += '<div class="editor-actions">';
   html += '<button type="button" class="edit-btn" onclick="' + opts.onSubmit + '">' + escapeHtml(submitLabel) + '</button>';
   html += '<button type="button" class="edit-btn" onclick="previewEditor(\'' + formId + '\',' + showTitle + ')">Prévisualiser</button>';
+  html += '<button type="button" class="edit-btn" onclick="openSignatureEditor()" title="Ta signature s\'affiche à la fin de tous tes messages">✍️ Ma signature</button>';
   html += '<button type="button" class="edit-btn" onclick="' + opts.onCancel + '">Annuler</button>';
   html += '</div>';
 
   html += '</div>'; // .editor-area
   return html;
+}
+
+// ── Éditeur de signature (modal) ───────────────────────────────────────────
+// Ouvert depuis le bouton « Ma signature » de l'éditeur. Réutilise la toolbar
+// BBCode (bbcodeToolbarHtml) ciblée sur le textarea 'sig-content', avec un
+// aperçu live (rendu par renderBBCode). Enregistre via POST /api/forum/signature
+// SANS recharger la page (le brouillon de message en cours n'est pas perdu).
+function openSignatureEditor() {
+  if (!currentUser) { alert('Connecte-toi pour définir une signature.'); return; }
+  var old = document.getElementById('sig-modal');
+  if (old) old.remove();
+  var m = document.createElement('div');
+  m.id = 'sig-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML =
+    '<div style="background:#fff;border:2px solid #2C4A0F;border-radius:10px;max-width:560px;width:100%;padding:14px;box-shadow:0 12px 32px rgba(0,0,0,.35)">'
+    + '<h3 style="margin:0 0 6px;color:#2C4A0F">Ma signature</h3>'
+    + '<p style="margin:0 0 8px;font-size:11px;color:#5a8030">Affichée à la fin de tous tes messages. Codes utilisables&nbsp;: [b]gras[/b], [i]italique[/i], [u]souligné[/u], [color=#cc0000]couleur[/color], [size=14]taille[/size], [url]lien[/url]…</p>'
+    + bbcodeToolbarHtml('sig-content')
+    + '<textarea id="sig-content" class="editor-textarea" style="width:100%;min-height:84px;box-sizing:border-box" placeholder="Ta signature…" oninput="updateSigPreview()"></textarea>'
+    + '<div style="font-size:11px;color:#5a8030;margin:8px 0 2px">Aperçu&nbsp;:</div>'
+    + '<div id="sig-preview" class="post-signature" style="margin:0;border-top:1px solid #cfe0a8"></div>'
+    + '<div style="margin-top:12px;text-align:right">'
+    + '<button type="button" class="edit-btn" onclick="saveSignature()">Enregistrer</button> '
+    + '<button type="button" class="edit-btn" onclick="closeSignatureEditor()">Annuler</button>'
+    + '</div></div>';
+  document.body.appendChild(m);
+  m.addEventListener('click', function (e) { if (e.target === m) closeSignatureEditor(); });
+  var ta = document.getElementById('sig-content');
+  ta.value = mySignature || '';
+  updateSigPreview();
+  ta.focus();
+  // Les boutons de la toolbar modifient la valeur sans déclencher 'input' :
+  // on rafraîchit l'aperçu à intervalle court tant que la modale est ouverte.
+  m._sigTimer = setInterval(updateSigPreview, 350);
+}
+function closeSignatureEditor() {
+  var m = document.getElementById('sig-modal');
+  if (m) { if (m._sigTimer) clearInterval(m._sigTimer); m.remove(); }
+}
+function updateSigPreview() {
+  var ta = document.getElementById('sig-content'), pv = document.getElementById('sig-preview');
+  if (!ta || !pv || pv._last === ta.value) return;
+  pv._last = ta.value;
+  pv.innerHTML = ta.value.trim() ? renderBBCode(ta.value) : '<span style="color:#aaa;font-style:italic">(vide)</span>';
+}
+async function saveSignature() {
+  var ta = document.getElementById('sig-content');
+  if (!ta) return;
+  try {
+    var r = await fetch('/api/forum/signature', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: SID, signature: ta.value }),
+    });
+    var d = await r.json();
+    if (!r.ok) { alert('Erreur : ' + (d.error || 'inconnu')); return; }
+    mySignature = d.signature || '';
+    closeSignatureEditor();
+  } catch (e) { alert('Erreur réseau : ' + e.message); }
 }
 
 // One answer row in the poll editor (text input + remove button).
@@ -2846,6 +2920,7 @@ async function init() {
     if (data && data.user) {
       currentUser = data.user;
       myBouille = data.bouille || null;
+      mySignature = data.signature || '';
       myAccessories = data.accessories || [];
       myDefaultAccessories = data.defaultAccessories || [];
       myMuted = !!data.muted;
