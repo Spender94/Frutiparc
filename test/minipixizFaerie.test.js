@@ -35,6 +35,56 @@ test('parseFaerieField: undefined/empty name → level-only (disables identity f
   assert.deepEqual(parseFaerieField(null), []);
 });
 
+// ── parseFaerieField: format RICHE (nouveau patch — l'état complet voyage) ──
+test('parseFaerieField: token riche → tous les champs de la fée', () => {
+  // name:level:humor:exp:hunger:moral:bagMax:shot:life:mana:mission:pos
+  //  :carac~:skin~:next~:inv~:spell~:spellCoef~:mood~:behaviour~:tasteLikes~:tasteDislikes~
+  const tok = 'Lumina:4:3:1287:9:10:4:0:18:6::3'
+    + ':3~1~1~1~1~1:2~111~222~333:0~0:5~~12:20~0~7:1~2:8:0:1~3:2~9';
+  const [f] = parseFaerieField(tok + ',');
+  assert.equal(f.$name, 'Lumina');
+  assert.equal(f.$level, 4);
+  assert.equal(f.$humor, 3);
+  assert.equal(f.$exp, 1287);
+  assert.equal(f.$hunger, 9);
+  assert.equal(f.$moral, 10);
+  assert.equal(f.$bagMax, 4);
+  assert.equal(f.$shot, 0);
+  assert.equal(f.$life, 18);
+  assert.equal(f.$mana, 6);
+  assert.equal(f.$mission, null);     // champ vide → null
+  assert.equal(f.$pos, 3);
+  assert.deepEqual(f.$carac, [3, 1, 1, 1, 1, 1]);
+  assert.deepEqual(f.$skin, [2, 111, 222, 333]);
+  assert.deepEqual(f.$next, [0, 0]);
+  assert.deepEqual(f.$inv, [5, null, 12]);   // trou de sac → null
+  assert.deepEqual(f.$spell, [20, 0, 7]);    // inclut le crapaud si présent
+  assert.deepEqual(f.$spellCoef, [1, 2]);
+  assert.deepEqual(f.$mood, [8]);
+  assert.deepEqual(f.$behaviour, [0]);
+  assert.deepEqual(f.$taste, [[1, 3], [2, 9]]);
+});
+test('parseFaerieField: legacy et riche cohabitent dans le même champ', () => {
+  const out = parseFaerieField('Danicie:50,Lumina:4:3:1287:9:10:4:0:18:6::3:3~1~1~1~1~1:2~1~1~1::5:20~0:::::,');
+  assert.equal(out.length, 2);
+  assert.deepEqual(out[0], { $name: 'Danicie', $level: 50 });  // legacy intact
+  assert.equal(out[1].$name, 'Lumina');
+  assert.deepEqual(out[1].$carac, [3, 1, 1, 1, 1, 1]);
+  assert.deepEqual(out[1].$inv, [5]);
+});
+test('identity merge: un token riche ÉCRASE l\'ancien état synthétisé (le vrai fix 2/3/4)', () => {
+  const prev = [{ $name: 'Lumina', $level: 4, $skin: [0, 1, 1, 1], $carac: [1, 1, 1, 1, 1, 1], $inv: [], $hunger: 4, $exp: 0 }];
+  const next = parseFaerieField('Lumina:4:3:1287:9:10:4:0:18:6::3:3~1~1~1~1~1:2~111~222~333:0~0:5~12:20~0::::1~3:2~9,');
+  const [m] = mergeFaerieByIdentity(prev, next);
+  assert.equal(m.$name, 'Lumina');
+  assert.deepEqual(m.$skin, [2, 111, 222, 333]);   // valeur réelle conservée (cheveux)
+  assert.deepEqual(m.$carac, [3, 1, 1, 1, 1, 1]);  // carac choisie au level-up
+  assert.deepEqual(m.$inv, [5, 12]);               // équipement conservé
+  assert.equal(m.$hunger, 9);                       // faim conservée
+  assert.equal(m.$exp, 1287);                       // exp dans le niveau conservée
+  assert.deepEqual(m.$taste, [[1, 3], [2, 9]]);     // goûts conservés
+});
+
 // ── mergeFaerieByIdentity: acgi's real fairies ──
 // Danicie(50) and Gamedea(50) are healthy; Pigone(32) has degraded stats.
 const acgiPrev = [

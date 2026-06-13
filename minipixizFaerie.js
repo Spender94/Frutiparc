@@ -26,23 +26,73 @@ function faerieIsRich(f) {
   return false;
 }
 
-// Parse pipe field 17 into [{ $name?, $level }].
-//   new format: "Danicie:50,Gamedea:50,Pigone:32,"
-//   legacy:     "50,50,32,"
-// Trailing comma tolerated. A token whose name is missing/"undefined"/"null"
-// (a Ruffle AMF-desync edge) is treated as level-only — that way a single bad
-// name disables identity matching for the whole save and we fall back to the
-// long-standing index behaviour instead of mis-grafting.
+// Parse pipe field 17 into [{ $name?, $level, … }].
+//   legacy court : "50,50,32,"                    → [{$level}]
+//   legacy nommé : "Danicie:50,Gamedea:50,"        → [{$name,$level}]
+//   RICHE (nouveau patch) : chaque fée porte tout son état, en champs séparés
+//   par ":" et tableaux joints par "~" (les fées restent séparées par ","):
+//     name:level:humor:exp:hunger:moral:bagMax:shot:life:mana:mission:pos
+//       :carac~:skin~:next~:inv~:spell~:spellCoef~:mood~:behaviour~:tasteLikes~:tasteDislikes~
+// Un token à ≤ 2 segments ":" reste interprété comme legacy (rétro-compat avec
+// les SWF en cache). Un nom manquant/"undefined"/"null" désactive l'identité
+// pour ce token (fallback index dans mergeFaerieByIdentity), sans perdre le
+// reste de l'état riche.
 function parseFaerieField(part) {
   const toks = String(part == null ? '' : part).replace(/,$/, '').split(',').filter(v => v !== '');
-  return toks.map(tok => {
-    const ci = tok.indexOf(':');
-    if (ci < 0) return { $level: Number(tok) || 0 };
-    const name = tok.slice(0, ci);
-    const lvl = Number(tok.slice(ci + 1)) || 0;
+  return toks.map(parseFaerieToken);
+}
+
+function parseFaerieToken(tok) {
+  const parts = String(tok == null ? '' : tok).split(':');
+  // ── Legacy (inchangé) ──
+  if (parts.length <= 2) {
+    if (parts.length === 1) return { $level: Number(parts[0]) || 0 };
+    const name = parts[0];
+    const lvl = Number(parts[1]) || 0;
     if (name === '' || name === 'undefined' || name === 'null') return { $level: lvl };
     return { $name: name, $level: lvl };
-  });
+  }
+  // ── Riche ──
+  const num0 = (i) => { const n = Number(parts[i]); return Number.isFinite(n) ? n : 0; };
+  // null légitime ($mission/$pos : "" → null), sinon nombre.
+  const numN = (i) => {
+    const v = parts[i];
+    if (v === undefined || v === '' || v === 'null' || v === 'undefined') return null;
+    const n = Number(v); return Number.isFinite(n) ? n : null;
+  };
+  // tableau "a~b~c" → [a,b,c] ; "" → [] ; trou ("a~~c") → null (sac) ou 0.
+  const arr = (i, allowNull) => {
+    const v = parts[i];
+    if (v === undefined || v === '') return [];
+    return v.split('~').map((t) => {
+      if (t === '' || t === 'null' || t === 'undefined') return allowNull ? null : 0;
+      const n = Number(t); return Number.isFinite(n) ? n : (allowNull ? null : 0);
+    });
+  };
+  const f = {};
+  const name = parts[0];
+  if (name !== '' && name !== 'undefined' && name !== 'null') f.$name = name;
+  f.$level = num0(1);
+  if (parts.length > 2)  f.$humor   = num0(2);
+  if (parts.length > 3)  f.$exp     = num0(3);   // float toléré (Number)
+  if (parts.length > 4)  f.$hunger  = num0(4);
+  if (parts.length > 5)  f.$moral   = num0(5);
+  if (parts.length > 6)  f.$bagMax  = num0(6);
+  if (parts.length > 7)  f.$shot    = num0(7);
+  if (parts.length > 8)  f.$life    = num0(8);
+  if (parts.length > 9)  f.$mana    = num0(9);
+  if (parts.length > 10) f.$mission = numN(10);
+  if (parts.length > 11) f.$pos     = numN(11);
+  if (parts.length > 12) f.$carac     = arr(12, false);
+  if (parts.length > 13) f.$skin      = arr(13, false);
+  if (parts.length > 14) f.$next      = arr(14, false);
+  if (parts.length > 15) f.$inv       = arr(15, true);
+  if (parts.length > 16) f.$spell     = arr(16, false);
+  if (parts.length > 17) f.$spellCoef = arr(17, false);
+  if (parts.length > 18) f.$mood      = arr(18, false);
+  if (parts.length > 19) f.$behaviour = arr(19, false);
+  if (parts.length > 20) f.$taste     = [arr(20, false), arr(21, false)];
+  return f;
 }
 
 // Merge the previously-stored fairy array (prev, rich) with the array from a
