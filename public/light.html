@@ -106,30 +106,30 @@
   }
   .menu-spacer { flex: 1; }
 
-  /* ── Bouille bottom sheet ── */
-  #bouille-sheet-backdrop {
+  /* ── Bottom sheets (inventaire + Mes disques partagent ce châssis) ── */
+  .sheet-backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; display: none;
   }
-  #bouille-sheet-backdrop.show { display: block; }
-  #bouille-sheet {
+  .sheet-backdrop.show { display: block; }
+  .sheet {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
     background: #ffffff; border: 1px solid #6c6c6c;
     border-radius: 10px 10px 0 0; max-height: 76vh; display: flex; flex-direction: column;
     transform: translateY(110%); transition: transform .25s ease;
     box-shadow: 0 0 0 1px #DDDDDD, 0 -8px 24px rgba(44,74,15,.3);
   }
-  #bouille-sheet.show { transform: translateY(0); }
-  #bouille-sheet .sheet-head {
+  .sheet.show { transform: translateY(0); }
+  .sheet .sheet-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 12px 16px; font-weight: bold; color: #2C4A0F;
     border-bottom: 1px solid #DDDDDD;
   }
-  #bouille-sheet .sheet-head button {
+  .sheet .sheet-head button {
     background: transparent; border: 0; font-size: 18px; color: #2C4A0F;
   }
   /* Inventory body: a yellow card inset from the white sheet, framed by a
      yellow (#EAEA0E) border + a grey "sur-bordure". */
-  #bouille-sheet .sheet-body {
+  .sheet .sheet-body {
     padding: 12px 14px; margin: 0 5px; overflow-y: auto; -webkit-overflow-scrolling: touch;
     background: #F8F866; border: 1px solid #EAEA0E; border-radius: 6px;
     box-shadow: 0 0 0 1px #DDDDDD;
@@ -167,6 +167,30 @@
   .acc-item .thumb::after { content: ""; position: absolute; inset: 0; }
   .acc-item .lbl {
     font-size: 10px; color: #2C4A0F; margin-top: 4px; font-weight: bold;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Mes disques: same yellow inventory card as the accessory grid, but each tile
+     is a static FrusionDisc PNG that launches its game on tap. */
+  .fd-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    background: #F8F866; border-radius: 10px; padding: 6px 10px 12px;
+  }
+  .fd-item {
+    background: transparent; border: 0; padding: 4px 2px; text-align: center;
+    cursor: pointer; -webkit-user-select: none; user-select: none;
+  }
+  .fd-item .thumb {
+    width: 100%; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center;
+  }
+  .fd-item .thumb img {
+    width: 100%; height: 100%; object-fit: contain;
+    filter: drop-shadow(0 2px 3px rgba(44,74,15,.4));
+    transition: transform .1s ease;
+  }
+  .fd-item:active .thumb img { transform: scale(.92); }
+  .fd-item .lbl {
+    font-size: 11px; color: #2C4A0F; margin-top: 5px; font-weight: bold;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
@@ -451,6 +475,74 @@
     border: 0; display: block; background: #24330e;
   }
 
+  /* ── Scores du jour (Challenge) ──
+     Barre de jeux (chips) corail collée en haut + tableau vert scrollable,
+     dans la même palette que le chat. Lecture seule, rechargé à l'ouverture. */
+  #scores-panel { padding: 0; background: #CCF599; }
+  #scores-head {
+    flex-shrink: 0; background: #FEABAB; border-bottom: 1px solid #DDDDDD;
+    box-shadow: 0 1px 3px rgba(44,74,15,.18);
+  }
+  #scores-tabs {
+    display: flex; gap: 6px; padding: 8px 10px; overflow-x: auto;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  #scores-tabs::-webkit-scrollbar { display: none; }
+  .scores-tab {
+    flex: 0 0 auto; padding: 6px 13px; border: 0; border-radius: 14px;
+    background: rgba(255,255,255,.35); color: #7a1f1f; font-weight: bold;
+    font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  }
+  .scores-tab.active {
+    background: #fff; color: #D16767; box-shadow: 0 1px 2px rgba(44,74,15,.25);
+  }
+  #scores-body {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 8px 10px 16px;
+  }
+  .scores-cap {
+    font-size: 11.5px; color: #2f5510; font-weight: bold; text-align: center;
+    margin: 2px 0 8px;
+  }
+  .scores-list {
+    list-style: none; margin: 0; padding: 0; overflow: hidden;
+    border: 1px solid #ADE76B; border-radius: 6px;
+    box-shadow: 0 0 0 1px #DDDDDD; background: #D6F7B5;
+  }
+  .score-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    font-family: 'Verdana', Arial, sans-serif; font-size: 13px;
+    background: #D6F7B5; border-bottom: 1px solid #fff;
+  }
+  .score-row:last-child { border-bottom: 0; }
+  .score-row:nth-child(even) { background: #C3EF93; }
+  .score-row .pos {
+    flex: 0 0 auto; width: 26px; text-align: center; font-weight: bold;
+    color: #2C4A0F; font-size: 14px;
+  }
+  .score-row.r1 .pos, .score-row.r2 .pos, .score-row.r3 .pos { font-size: 17px; }
+  .score-row .pname {
+    flex: 1 1 auto; min-width: 0; color: #2C4A0F; font-weight: bold;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .score-row .pscore {
+    flex: 0 0 auto; color: #335511; font-weight: bold;
+    font-family: "Courier New", monospace; font-size: 13px;
+  }
+  /* Ligne du joueur courant : ressort en corail clair avec un badge « toi ». */
+  .score-row.me { background: #FFE4E4; }
+  .score-row.me .pname { color: #D16767; }
+  .score-row.me .pscore { color: #D16767; }
+  .me-badge {
+    flex: 0 0 auto; font-size: 9px; font-weight: bold; color: #fff;
+    background: #E3756A; border-radius: 7px; padding: 1px 6px;
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  .scores-loading, .scores-empty {
+    text-align: center; padding: 30px 16px; color: #4f7b1f;
+    font-style: italic; font-size: 13px; line-height: 1.6;
+  }
+
   .hidden { display: none !important; }
   .banner {
     background: #fff3cd; color: #7a5b00; border-bottom: 1px solid #e0c97a;
@@ -525,14 +617,11 @@
     <button class="menu-item" data-tab="forum">
       <img class="menu-ico" src="/fb/icone_forum.png" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"> Forum
     </button>
-    <button class="menu-item" data-tab="grapiz">
-      <img class="menu-ico" src="/fb/icone_grapiz.png" alt="" onerror="this.replaceWith(document.createTextNode('🎮'))"> Grapiz
+    <button class="menu-item" id="disques-btn">
+      <img class="menu-ico" src="/fb/icone_jeux.png" alt="" onerror="this.replaceWith(document.createTextNode('🎮'))"> Mes disques
     </button>
-    <button class="menu-item" data-tab="bandas">
-      <img class="menu-ico" src="/fb/icone_bandas.png" alt="" onerror="this.replaceWith(document.createTextNode('🍊'))"> Frutibandas
-    </button>
-    <button class="menu-item" data-tab="swapou">
-      <img class="menu-ico" src="/games/swapou2/images/fruits/pomme.png" alt="" onerror="this.replaceWith(document.createTextNode('🍎'))"> Swapou
+    <button class="menu-item" data-tab="scores">
+      <img class="menu-ico" src="/fb/icone_scores.png" alt="" onerror="this.replaceWith(document.createTextNode('🏆'))"> Scores du jour
     </button>
     <button class="menu-item" id="bouille-btn">
       <img class="menu-ico" src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"> Mon inventaire
@@ -601,9 +690,18 @@
     <iframe id="swapou-frame" title="Swapou 2" referrerpolicy="no-referrer"></iframe>
   </section>
 
+  <!-- Scores du jour — classement « Challenge » du jour, en lecture seule.
+       Panneau plein écran : barre de jeux (chips) collée en haut, tableau
+       scrollable en dessous. Rechargé à chaque ouverture (les scores évoluent
+       toute la journée), via /api/light/challenge. -->
+  <section class="panel" id="scores-panel">
+    <div id="scores-head"><div id="scores-tabs"></div></div>
+    <div id="scores-body"></div>
+  </section>
+
   <!-- Bouille / accessory picker (bottom sheet) -->
-  <div id="bouille-sheet-backdrop"></div>
-  <div id="bouille-sheet">
+  <div id="bouille-sheet-backdrop" class="sheet-backdrop"></div>
+  <div id="bouille-sheet" class="sheet">
     <div class="sheet-head">
       <span>Ma bouille</span>
       <button id="bouille-sheet-close">✕</button>
@@ -612,6 +710,21 @@
       <div class="sheet-preview"><div id="bouille-sheet-preview"></div></div>
       <div class="sheet-hint" id="bouille-sheet-hint">Choisis un accessoire de ton inventaire :</div>
       <div id="bouille-acc-grid" class="acc-grid"></div>
+    </div>
+  </div>
+
+  <!-- Mes disques (bottom sheet) — même habillage que l'inventaire d'accessoires,
+       mais à la place des bouilles on présente les FrusionDisc des jeux jouables
+       (Frutibandas, Grapiz, Swapou). Un clic sur un disque lance le jeu associé. -->
+  <div id="disques-sheet-backdrop" class="sheet-backdrop"></div>
+  <div id="disques-sheet" class="sheet">
+    <div class="sheet-head">
+      <span>Mes disques</span>
+      <button id="disques-sheet-close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="sheet-hint">Choisis un disque pour lancer le jeu :</div>
+      <div id="disques-grid" class="fd-grid"></div>
     </div>
   </div>
 
@@ -895,54 +1008,161 @@
   $("#menu-btn").addEventListener("click", function () { openMenu(true); });
   $("#menu-backdrop").addEventListener("click", function () { openMenu(false); });
 
-  // ── Navigation (menu items with data-tab) ──
+  // ── Navigation entre panneaux ──
+  // activateTab pilote l'affichage des panneaux ET l'état « actif » du menu. On
+  // l'appelle depuis les items de menu (Salons, Forum, Scores du jour) ET depuis
+  // la feuille « Mes disques » (qui lance grapiz / bandas / swapou). Les jeux
+  // n'ont plus d'entrée de menu propre : quand l'un d'eux est ouvert, c'est
+  // « Mes disques » qui s'allume.
+  var GAME_TABS = { grapiz: 1, bandas: 1, swapou: 1 };
+  function activateTab(tab) {
+    $("#chat-panel").classList.toggle("active", tab === "chat");
+    $("#forum-panel").classList.toggle("active", tab === "forum");
+    $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
+    $("#bandas-panel").classList.toggle("active", tab === "bandas");
+    $("#swapou-panel").classList.toggle("active", tab === "swapou");
+    $("#scores-panel").classList.toggle("active", tab === "scores");
+    // Chargements paresseux (1re ouverture, gardés en mémoire ensuite). On reste
+    // sur /light, donc la socket de chat de la page parente n'est jamais coupée
+    // pendant qu'on consulte le forum / joue / regarde les scores.
+    if (tab === "forum") {
+      var fr = $("#forum-frame");
+      if (fr && !fr.getAttribute("src") && state.sid) {
+        fr.setAttribute("src", "/fb/?sid=" + encodeURIComponent(state.sid) + "&from=light");
+      }
+    }
+    if (tab === "grapiz") {
+      var gf = $("#grapiz-frame");
+      if (gf && !gf.getAttribute("src") && state.sid) {
+        gf.setAttribute("src", "/grapiz/?sid=" + encodeURIComponent(state.sid));
+      }
+    }
+    if (tab === "bandas") {
+      var bf = $("#bandas-frame");
+      if (bf && !bf.getAttribute("src") && state.sid) {
+        bf.setAttribute("src", "/bandas/?sid=" + encodeURIComponent(state.sid));
+      }
+    }
+    if (tab === "swapou") {
+      var sf = $("#swapou-frame");
+      if (sf && !sf.getAttribute("src") && state.sid) {
+        sf.setAttribute("src", "/swapou/?sid=" + encodeURIComponent(state.sid));
+      }
+    }
+    // Les scores évoluent toute la journée : on rafraîchit à chaque ouverture.
+    if (tab === "scores") loadChallengeScores();
+    // État actif du menu : l'item data-tab correspondant, ou « Mes disques »
+    // lorsqu'on est dans un jeu.
+    Array.prototype.forEach.call(document.querySelectorAll(".menu-item[data-tab]"), function (x) {
+      x.classList.toggle("active", x.getAttribute("data-tab") === tab);
+    });
+    var dq = $("#disques-btn"); if (dq) dq.classList.toggle("active", !!GAME_TABS[tab]);
+  }
   Array.prototype.forEach.call(document.querySelectorAll(".menu-item[data-tab]"), function (b) {
     b.addEventListener("click", function () {
-      var tab = b.getAttribute("data-tab");
-      Array.prototype.forEach.call(document.querySelectorAll(".menu-item[data-tab]"), function (x) {
-        x.classList.toggle("active", x === b);
-      });
-      $("#chat-panel").classList.toggle("active", tab === "chat");
-      $("#forum-panel").classList.toggle("active", tab === "forum");
-      $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
-      $("#bandas-panel").classList.toggle("active", tab === "bandas");
-      $("#swapou-panel").classList.toggle("active", tab === "swapou");
-      // Charge le forum dans l'iframe à la 1re ouverture. On reste sur /light,
-      // donc la socket de chat de la page parente n'est jamais coupée pendant
-      // qu'on consulte le forum.
-      if (tab === "forum") {
-        var fr = $("#forum-frame");
-        if (fr && !fr.getAttribute("src") && state.sid) {
-          fr.setAttribute("src", "/fb/?sid=" + encodeURIComponent(state.sid) + "&from=light");
-        }
-      }
-      // Idem pour Grapiz : chargé à la 1re ouverture, gardé en mémoire ensuite
-      // (on n'abandonne pas une partie en revenant au chat). Grapiz lit le sid.
-      if (tab === "grapiz") {
-        var gf = $("#grapiz-frame");
-        if (gf && !gf.getAttribute("src") && state.sid) {
-          gf.setAttribute("src", "/grapiz/?sid=" + encodeURIComponent(state.sid));
-        }
-      }
-      // Frutibandas : même mécanique (1re ouverture, gardé en mémoire — la
-      // partie en cours survit aux allers-retours vers le chat).
-      if (tab === "bandas") {
-        var bf = $("#bandas-frame");
-        if (bf && !bf.getAttribute("src") && state.sid) {
-          bf.setAttribute("src", "/bandas/?sid=" + encodeURIComponent(state.sid));
-        }
-      }
-      // Swapou : chargé à la 1re ouverture, gardé en mémoire ensuite (la
-      // partie en cours survit aux allers-retours vers le chat).
-      if (tab === "swapou") {
-        var sf = $("#swapou-frame");
-        if (sf && !sf.getAttribute("src") && state.sid) {
-          sf.setAttribute("src", "/swapou/?sid=" + encodeURIComponent(state.sid));
-        }
-      }
+      activateTab(b.getAttribute("data-tab"));
       openMenu(false);
     });
   });
+
+  // ── Mes disques (feuille de lancement des jeux) ──
+  // Reprend le look de l'inventaire d'accessoires : un FrusionDisc par jeu
+  // jouable. Un clic ferme la feuille et bascule sur le panneau du jeu.
+  var DISCS = [
+    { tab: "bandas", img: "/fb/fd_bandas.png", name: "Frutibandas" },
+    { tab: "grapiz", img: "/fb/fd_grapiz.png", name: "Grapiz" },
+    { tab: "swapou", img: "/fb/fd_swapou.png", name: "Swapou" },
+  ];
+  function renderDiscs() {
+    var grid = $("#disques-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    DISCS.forEach(function (d) {
+      var item = el("div", "fd-item");
+      item.innerHTML = '<div class="thumb"><img src="' + d.img + '" alt="' + xmlEscape(d.name)
+        + '" onerror="this.replaceWith(document.createTextNode(\'💿\'))"></div>'
+        + '<div class="lbl">' + xmlEscape(d.name) + '</div>';
+      item.addEventListener("click", function () { closeDisquesSheet(); activateTab(d.tab); });
+      grid.appendChild(item);
+    });
+  }
+  function openDisquesSheet() {
+    openMenu(false);
+    renderDiscs();
+    $("#disques-sheet-backdrop").classList.add("show");
+    $("#disques-sheet").classList.add("show");
+  }
+  function closeDisquesSheet() {
+    $("#disques-sheet-backdrop").classList.remove("show");
+    $("#disques-sheet").classList.remove("show");
+  }
+  $("#disques-btn").addEventListener("click", openDisquesSheet);
+  $("#disques-sheet-close").addEventListener("click", closeDisquesSheet);
+  $("#disques-sheet-backdrop").addEventListener("click", closeDisquesSheet);
+
+  // ── Scores du jour (Challenge) ──
+  // Tableau en lecture seule alimenté par /api/light/challenge : un onglet (chip)
+  // par jeu, le classement du jour en dessous. La ligne du joueur courant (isMe)
+  // est mise en avant.
+  var challengeScores = null;   // dernière réponse de l'API
+  var scoresGameIdx = 0;        // jeu sélectionné dans la barre de chips
+  function loadChallengeScores() {
+    var body = $("#scores-body");
+    if (body && !challengeScores) body.innerHTML = '<div class="scores-loading">Chargement…</div>';
+    fetch("/api/light/challenge?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        challengeScores = d;
+        if (scoresGameIdx >= (d.games || []).length) scoresGameIdx = 0;
+        renderScoresTabs();
+        renderScoresBody();
+      })
+      .catch(function () {
+        if (body) body.innerHTML = '<div class="scores-empty">Scores indisponibles pour le moment.</div>';
+      });
+  }
+  function renderScoresTabs() {
+    var tabs = $("#scores-tabs");
+    if (!tabs || !challengeScores) return;
+    tabs.innerHTML = "";
+    (challengeScores.games || []).forEach(function (g, i) {
+      var b = el("button", "scores-tab" + (i === scoresGameIdx ? " active" : ""));
+      b.textContent = g.name;
+      b.addEventListener("click", function () {
+        scoresGameIdx = i; renderScoresTabs(); renderScoresBody();
+      });
+      tabs.appendChild(b);
+    });
+  }
+  function renderScoresBody() {
+    var body = $("#scores-body");
+    if (!body || !challengeScores) return;
+    var g = (challengeScores.games || [])[scoresGameIdx];
+    if (!g) { body.innerHTML = ""; return; }
+    var html = '';
+    if (!g.scores || !g.scores.length) {
+      html = '<div class="scores-empty">Aucun score pour « ' + xmlEscape(g.name) + ' » aujourd\'hui.<br>'
+        + 'À toi de lancer la première partie&nbsp;!</div>';
+    } else {
+      var n = g.count || g.scores.length;
+      html = '<div class="scores-cap">' + xmlEscape(g.name) + ' — '
+        + n + ' joueur' + (n > 1 ? 's' : '') + ' aujourd\'hui</div><ol class="scores-list">';
+      g.scores.forEach(function (s, i) {
+        var pos = i + 1;
+        var cls = "score-row" + (pos <= 3 ? " r" + pos : "") + (s.isMe ? " me" : "");
+        var medal = pos === 1 ? "🥇" : pos === 2 ? "🥈" : pos === 3 ? "🥉" : String(pos);
+        html += '<li class="' + cls + '">'
+          + '<span class="pos">' + medal + '</span>'
+          + '<span class="pname">' + xmlEscape(s.user) + '</span>'
+          + (s.isMe ? '<span class="me-badge">toi</span>' : '')
+          + '<span class="pscore">' + xmlEscape(s.label) + '</span>'
+          + '</li>';
+      });
+      html += '</ol>';
+    }
+    body.innerHTML = html;
+    body.scrollTop = 0;
+  }
 
   // ── Logout ── (the "Quitter" menu item was removed from the light client.)
 

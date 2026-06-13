@@ -11161,6 +11161,78 @@ app.get('/api/club/consecration', async (req, res) => {
   }
 });
 
+// Pretty, ready-to-render label for a challenge score (used by the mobile
+// scoreboard). Mirrors the club page's formatScore but lives server-side so the
+// /light client stays dumb: BKiwi is a chrono (ms → m:ss.cc), MotionBall packs
+// the completion % in its score (((score % 100) + 1)%), everything else is a
+// plain point total with a French thousands separator.
+function formatChallengeScoreLabel(rankingId, score) {
+  const meta = RANKINGS[rankingId] || {};
+  const n = Number(score);
+  if (!Number.isFinite(n)) return String(score == null ? '' : score);
+  if (meta.game === 'bkiwi') {
+    const pad = (x) => (x < 10 ? '0' + x : '' + x);
+    const minutes = Math.floor(n / 60000);
+    const seconds = Math.floor((n % 60000) / 1000);
+    const cs = Math.floor((n % 1000) / 10);
+    return minutes + ':' + pad(seconds) + '.' + pad(cs);
+  }
+  if (rankingId === 'mb2_classic' || rankingId === 'mb2_challenge') {
+    const pct = (Math.max(0, Math.trunc(n)) % 100) + 1;
+    return pct + '%';
+  }
+  return n.toLocaleString('fr-FR');
+}
+
+// Today's daily-challenge scoreboard for the mobile (/light) client. Returns the
+// same games as the desktop "Challenge" tab (section C of LEGACY_RANKINGS), but
+// as ready-to-render JSON: one entry per game with its ranked top scores for the
+// current Paris day. Scores live in memory (scoresData) and are wiped on the
+// daily roll, so this is always "aujourd'hui". The 3 mobile-playable games come
+// first; BKiwi resolves to today's rotating challenge track. sid is optional —
+// when present, the caller's own rows are flagged (isMe) so the UI can spotlight
+// them.
+app.get('/api/light/challenge', (req, res) => {
+  const me = resolveUsernameFromSid(req.query.sid || '');
+  const meLower = me ? String(me).toLowerCase() : '';
+  const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
+  const dailyTrack = getBkiwiDailyTrack();
+  const GAMES = [
+    { game: 'bandas',  ranking: 'bandas_challenge' },
+    { game: 'grapiz',  ranking: 'grapiz_challenge' },
+    { game: 'swapou2', ranking: 'swapou2_classic' },
+    { game: 'bkiwi',   ranking: `bkiwi_track${dailyTrack}_challenge` },
+    { game: 'snake3',  ranking: 'snake3_classic' },
+    { game: 'mb2',     ranking: 'mb2_classic' },
+    { game: 'kaluga',  ranking: 'kaluga_classic' },
+  ];
+  const games = GAMES.map((g) => {
+    const rkId = g.ranking;
+    const all = [];
+    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+      if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+        all.push({ u, s: Number(rlist[rkId].score), data: rlist[rkId].data });
+      }
+    }
+    all.sort(scoreComparator(rkId));
+    const scores = all.slice(0, limit).map((e) => ({
+      user: getDisplayName(e.u),
+      score: e.s,
+      label: formatChallengeScoreLabel(rkId, e.s),
+      isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
+    }));
+    return {
+      id: rkId,
+      game: g.game,
+      name: GAME_DISPLAY_NAMES[g.game] || g.game,
+      lowerIsBetter: !!(RANKINGS[rkId] && RANKINGS[rkId].lowerIsBetter),
+      count: all.length,
+      scores,
+    };
+  });
+  res.json({ day: parisDayKey(), games });
+});
+
 // ─────────────────────────────────────────────
 // Serve static files AFTER API routes so our endpoints take priority
 // ─────────────────────────────────────────────
