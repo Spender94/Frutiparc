@@ -628,20 +628,21 @@
      nouvel agencement). 4 zones : barres de progression (haut-gauche), trophée +
      rang (haut-centre), « NIV » + niveau (bas-gauche), raccourcis (bas-droite). */
   .mb-encart {
-    position: relative; flex: 0 0 72px; min-width: 0; border-radius: 8px;
+    position: relative; flex: 0 0 72px; min-width: 0; border-radius: 8px; overflow: hidden;
     background: linear-gradient(180deg, #d6f7a6 0%, #c6f098 52%, #b6ea84 100%);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 0 0 1px #93c168,
                 0 0 0 2px #dcdcdc, 0 1px 2px rgba(44,74,15,.22);
   }
-  /* Reflet (brillance) dans le coin SUPÉRIEUR DROIT de l'encart niveau. */
+  /* Reflet (brillance) dans le coin SUPÉRIEUR DROIT de l'encart niveau. Taillé
+     sur la HAUTEUR pour ne pas déborder (l'encart est en overflow:hidden). */
   .reflet-niv {
-    position: absolute; right: 3%; top: 5%; width: 40%; height: auto; z-index: 1;
+    position: absolute; right: 2%; top: 3%; height: 62%; width: auto; z-index: 1;
     pointer-events: none;
   }
   /* Ligne de séparation sous la coupe (sépare rang ↔ raccourcis), comme le SVG
      d'origine : trait vert + léger filet blanc dessous, côté droit de l'encart. */
   .enc-divider {
-    position: absolute; left: 27%; right: 4%; top: 47%; height: 1px; z-index: 1;
+    position: absolute; left: 26%; right: 4%; top: 47%; height: 1px; z-index: 1;
     background: #73b01e; box-shadow: 0 1px 0 rgba(255,255,255,.5);
   }
   /* Progression dans le niveau en cours : 9 barres courtes empilées. Chaque barre
@@ -659,9 +660,10 @@
     content: ""; display: block; height: 100%; width: var(--f, 0%);
     background: #3f6a14; transition: width .35s ease;
   }
-  /* Trophée + rang (classement général par XP, 1 = meilleur) — haut-centre. */
+  /* Trophée + rang (classement général par XP, 1 = meilleur). Calés à gauche, là
+     où commence la ligne de séparation. */
   .enc-trophy {
-    position: absolute; left: 41%; top: 6px; height: 24px; z-index: 2;
+    position: absolute; left: 26%; top: 6px; height: 24px; z-index: 2;
     display: flex; align-items: center; gap: 3px;
   }
   .enc-trophy .tro { height: 23px; width: auto; display: block; filter: drop-shadow(0 1px 0 rgba(255,255,255,.45)); }
@@ -686,9 +688,10 @@
     font-family: 'DSEG7', 'Courier New', monospace; font-weight: bold;
     font-size: 16px; line-height: 1; color: #3f6a14; text-shadow: 0 1px 0 rgba(255,255,255,.5);
   }
-  /* Raccourcis (mail, événement, historique…) — bas-droite, resserrés. */
+  /* Raccourcis (mail, événement, historique…) — calés à gauche (début du divider),
+     sous la ligne de séparation, resserrés. */
   .mb-shortcuts {
-    position: absolute; right: 6px; bottom: 7px; z-index: 2;
+    position: absolute; left: 26%; bottom: 7px; z-index: 2;
     display: flex; align-items: center;
   }
   .sc-btn {
@@ -1302,10 +1305,11 @@
     var bars = cont.querySelectorAll("i");
     var n = bars.length || 9;
     for (var i = 0; i < bars.length; i++) {
-      // Barre i = segment [i/n, (i+1)/n] du palier : elle se remplit ENTIÈREMENT
-      // (gauche → droite) avant que la suivante commence. À 58 % avec 9 barres :
-      // 5 pleines, la 6e à ~22 %, les autres vides. C'est le % « découpé » en n lignes.
-      var f = Math.max(0, Math.min(1, r * n - i));
+      // Remplissage du BAS vers le HAUT : la barre du bas (dernière du DOM) est la
+      // 1re à se remplir, celle du haut la dernière. Segment s = n-1-i ⇒ la barre
+      // se remplit ENTIÈREMENT (gauche → droite) avant que celle du dessus commence.
+      // À 58 % / 9 barres : les 5 du bas pleines, la 6e à ~22 %, les 3 du haut vides.
+      var f = Math.max(0, Math.min(1, r * n - (n - 1 - i)));
       bars[i].style.setProperty("--f", (f * 100).toFixed(1) + "%");
     }
   }
