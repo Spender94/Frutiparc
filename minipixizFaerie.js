@@ -213,13 +213,15 @@ function synthesizeFaerieDefaults(f) {
     f.$taste = [[like], [dislike]];
     changed = true;
   }
-  // $life/$mana dérivés des carac (genFaerieSeed) — minimum 1 PV pour ne
-  // jamais charger une fée morte-née.
-  if (typeof f.$life !== 'number' || Number.isNaN(f.$life) || f.$life <= 0) {
+  // $life/$mana dérivés des carac (genFaerieSeed) — on ne RÉGÉNÈRE que si la
+  // valeur est absente/illisible. 0 est LÉGITIME (fée morte de faim, cf.
+  // FaerieInfo « est morte de faim dans son bocal ») et doit être CONSERVÉ —
+  // sinon une fée morte « ressuscite » au rechargement.
+  if (typeof f.$life !== 'number' || Number.isNaN(f.$life)) {
     f.$life = Math.max(1, Math.ceil(Number(f.$carac[2]) || 1));
     changed = true;
   }
-  if (typeof f.$mana !== 'number' || Number.isNaN(f.$mana) || f.$mana < 0) {
+  if (typeof f.$mana !== 'number' || Number.isNaN(f.$mana)) {
     f.$mana = (Number(f.$carac[5]) || 1) * 2;
     changed = true;
   }

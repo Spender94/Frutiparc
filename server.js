@@ -7058,12 +7058,31 @@ function padMinipixizSlot0(jsonStr) {
   if (typeof obj.$pond.$d !== 'number') obj.$pond.$d = 0;
   if (obj.$pond.$fs === undefined) obj.$pond.$fs = null;
   if (!Array.isArray(obj.$faerie)) obj.$faerie = [];
+  // Dé-doublonnage par nom : la même fée ne doit JAMAIS apparaître deux fois.
+  // Filet anti-« dédoublement » (la fée se clonait à chaque bocal), cohérent
+  // avec l'identité-par-nom de mergeFaerieByIdentity. On garde la 1re occurrence
+  // (déjà fusionnée). Les fées sans nom (vieux stubs) sont conservées telles
+  // quelles (identité par index).
+  const seenFaerieNames = new Set();
+  obj.$faerie = obj.$faerie.filter((f) => {
+    const n = (f && typeof f === 'object') ? f.$name : undefined;
+    if (n === undefined || n === null || n === '') return true;
+    if (seenFaerieNames.has(n)) return false;
+    seenFaerieNames.add(n);
+    return true;
+  });
   // Répare les fées-stubs de l'ère pipe ({$name,$level} sans état riche) ET
   // les fées partiellement riches : chaque champ manquant reçoit le défaut
   // de genFaerieSeed, déterministe par nom (portrait stable, équipement,
   // stats, goûts, suivi — cf. minipixizFaerie.synthesizeFaerieDefaults).
   for (const f of obj.$faerie) {
     try { synthesizeFaerieDefaults(f); } catch { /* fée malformée : inchangée */ }
+    // $pos (emplacement en bocal de la fée) n'est PAS persisté : on recharge
+    // toujours les fées « en main » (null). Persister $pos faisait apparaître
+    // la même fée À LA FOIS dans son bocal ET dehors (duplication exploitable,
+    // « autant de fois que de bocaux »). Le reste de l'état (niveau, objets,
+    // faim, mana, carac, couleurs, goûts, exp) est bien conservé.
+    if (f && typeof f === 'object') f.$pos = null;
   }
   if (obj.$pond && obj.$pond.$fs && typeof obj.$pond.$fs === 'object') {
     try { synthesizeFaerieDefaults(obj.$pond.$fs); } catch { /* idem */ }
