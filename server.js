@@ -11363,6 +11363,48 @@ app.get('/api/light/challenge', (req, res) => {
   res.json({ day: parisDayKey(), yesterday, games });
 });
 
+// Profil mobile (/light) : tout ce qu'affiche la « main bar » de l'accueil —
+// la bouille du joueur (pour l'avatar), son niveau (dérivé de l'XP, même formule
+// que partout : getLevelForXp), son solde de kikooz et son total de trophées
+// (médailles du Challenge cumulées sur tous les jours archivés). Une seule
+// requête alimente l'encart « niveau / classement » du launcher.
+app.get('/api/light/profile', async (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ error: 'auth' });
+  const u = users[username] || {};
+  const xp = Number(u.xp) || 0;
+  // Rang au classement général par XP (1 = meilleur, rang « compétition »).
+  // En base : COUNT léger. En mémoire seule : on compte les joueurs chargés
+  // ayant strictement plus d'XP.
+  let rank = 1;
+  if (process.env.DATABASE_URL) {
+    try { rank = await db.getXpRank(xp); }
+    catch (e) { console.error('[LIGHT] getXpRank:', e.message); }
+  } else {
+    for (const other of Object.values(users)) {
+      if ((Number(other.xp) || 0) > xp) rank++;
+    }
+  }
+  // Total de médailles Challenge (or + argent + bronze) cumulées, conservé pour
+  // un usage éventuel côté client.
+  let medals = 0;
+  const byDay = challengeMedalsData.medalsByVisibleDay || {};
+  for (const day of Object.keys(byDay)) {
+    const list = byDay[day] && byDay[day][username];
+    if (Array.isArray(list)) medals += list.length;
+  }
+  res.json({
+    ok: true,
+    user: getDisplayName(username),
+    bouille: bouilleOf(u, username),
+    xp,
+    level: getLevelForXp(xp),
+    rank,
+    kikooz: Number(u.kikooz) || 0,
+    medals,
+  });
+});
+
 // Boutique mobile (/light) : accessoires achetables + solde kikooz. On expose
 // uniquement la rubrique « Accessoires » (les fonds d'écran ne sont pas
 // exploitables sur mobile, on les masque) et on signale ceux déjà possédés. La

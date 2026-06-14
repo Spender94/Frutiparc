@@ -974,6 +974,17 @@ async function deleteUser(userId) {
   await pool.query('DELETE FROM users WHERE id = $1', [userId]);
 }
 
+// Rang d'un joueur au classement général par XP (1 = meilleur). On compte les
+// joueurs ayant strictement plus d'XP et on ajoute 1 (rang « compétition »).
+// Requête légère (COUNT sur la colonne xp) — utilisable à chaque chargement.
+async function getXpRank(xp) {
+  const { rows } = await pool.query(
+    'SELECT COUNT(*)::int AS n FROM users WHERE xp > $1',
+    [Number(xp) || 0]
+  );
+  return (rows[0] ? rows[0].n : 0) + 1;
+}
+
 // Reserve a (now-deleted) username so it can never be re-registered.
 async function reserveUsername(username, deletedBy = '') {
   const u = String(username || '').toLowerCase().trim();
@@ -1957,6 +1968,7 @@ module.exports = {
   addContactFolder,
   removeContactFolder,
   updateContactFolder,
+  getXpRank,
   loadScoresForUser,
   loadAllScores,
   loadAllBouilles,

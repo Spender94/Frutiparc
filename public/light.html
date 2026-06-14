@@ -69,42 +69,8 @@
   .icon-btn.bare.off { opacity: .35; }
   #menu-btn { font-size: 18px; }
 
-  /* ── Hamburger menu drawer ── */
-  #menu-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 35; display: none; }
-  #menu-backdrop.show { display: block; }
-  #menu-drawer {
-    position: fixed; top: 0; left: 0; bottom: 0; width: 74%; max-width: 290px; z-index: 36;
-    background: #fff; border-right: 1px solid #DDDDDD; display: flex; flex-direction: column;
-    transform: translateX(-100%); transition: transform .22s ease;
-    box-shadow: 6px 0 18px rgba(44,74,15,.25);
-  }
-  #menu-drawer.open { transform: translateX(0); }
-  /* Hamburger drawer in the same pink/white style: pink header (white text),
-     white body with pink labels, grey #DDDDDD separators. */
-  #menu-drawer .menu-head {
-    background: #FEABAB; color: #fff; padding: 14px 16px; font-weight: bold;
-    border-bottom: 1px solid #DDDDDD; display: flex; align-items: center; gap: 8px; font-size: 15px;
-    text-shadow: 0 1px 1px rgba(196,80,64,.55);
-  }
-  #menu-drawer .menu-head .dot { width: 9px; height: 9px; border-radius: 50%; background: #c0392b; display: inline-block; box-shadow: 0 0 0 1px #fff; }
-  #menu-drawer .menu-head .dot.on { background: #2ecc40; }
-  .menu-item {
-    background: transparent; border: 0; border-bottom: 1px solid #DDDDDD;
-    text-align: left; padding: 14px 16px; font-size: 15px; color: #D16767; font-weight: bold;
-    display: flex; align-items: center; gap: 10px;
-  }
-  .menu-item.active { background: #FFE4E4; color: #D16767; }
-  .menu-item.danger { color: #c05040; }
-  /* All menu glyphs occupy the same 24px square box and are centered, so the
-     favicon (16px), the forum ico (18px) and the inventory PNG (130px) all read
-     as the same visual size regardless of their native dimensions. */
-  .menu-item .menu-ico {
-    width: 24px; height: 24px; object-fit: contain; flex-shrink: 0;
-  }
-  .menu-item .menu-ico-emoji {
-    width: 24px; text-align: center; font-size: 19px; line-height: 24px; flex-shrink: 0;
-  }
-  .menu-spacer { flex: 1; }
+  /* (L'ancien tiroir hamburger #menu-drawer a été remplacé par le launcher
+     plein écran #home-panel — voir la section « Accueil mobile » plus bas.) */
 
   /* ── Bottom sheets (inventaire + Mes disques partagent ce châssis) ── */
   .sheet-backdrop {
@@ -606,6 +572,152 @@
     background: #fff3cd; color: #7a5b00; border-bottom: 1px solid #e0c97a;
     font-size: 12px; padding: 7px 10px; text-align: center; flex-shrink: 0;
   }
+
+  /* ════════════════════ Accueil mobile (launcher plein écran) ════════════════
+     Le « menu » du mode mobile : une main bar en haut (avatar Frutibouille +
+     niveau/classement + emotes d'humeur + raccourcis) puis une grille pleine
+     largeur des rubriques (Scores, Boutique, Mes disques, Salons, Inventaire,
+     Forum). Remplace l'ancien tiroir hamburger (qui n'était pas full width). */
+  #home-panel {
+    background: #ADE76B; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+
+  /* Police « radio-réveil » (sept segments) pour le numéro de niveau. */
+  @font-face {
+    font-family: 'DSEG7';
+    src: url('/fb/DSEG7Classic-Bold.woff2') format('woff2');
+    font-weight: bold; font-style: normal; font-display: swap;
+  }
+
+  /* ── Main bar : bandeau clair plein largeur ── */
+  .mainbar {
+    background: #fbfdf3; border-bottom: 2px solid #b9dd86;
+    box-shadow: 0 2px 4px rgba(44,74,15,.16);
+    padding: 9px 10px 10px; display: flex; flex-direction: column;
+    flex-shrink: 0;
+  }
+  /* Avatar (gauche) + colonne droite (encart niveau au-dessus, emotes en dessous).
+     align-items:stretch ⇒ l'avatar prend toute la hauteur de la colonne droite,
+     donc hauteur avatar = hauteur encart + hauteur emotes (demande explicite). */
+  .mb-top { display: flex; align-items: stretch; gap: 8px; }
+
+  /* Avatar (bouille Ruffle) dans le cadre vert glossy + reflet. Carré : sa
+     largeur fixe = la hauteur de la colonne droite (98 = 60 encart + 4 + 34). */
+  .mb-avatar { flex: 0 0 98px; position: relative; }
+  .mb-avatar .frame { position: absolute; inset: 0; }
+  .mb-avatar .cadre, .mb-avatar .reflet { position: absolute; pointer-events: none; }
+  .mb-avatar .cadre { inset: 0; width: 100%; height: 100%; z-index: 1; }
+  .mb-avatar .stage {
+    position: absolute; inset: 8.5%; z-index: 2; border-radius: 14px; overflow: hidden;
+  }
+  .mb-avatar .stage iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
+  .mb-avatar .reflet { left: 7%; top: 6%; width: 52%; height: auto; z-index: 3; }
+  .mb-avatar .dot {
+    position: absolute; right: 9%; bottom: 9%; z-index: 4;
+    width: 11px; height: 11px; border-radius: 50%; background: #c0392b;
+    box-shadow: 0 0 0 2px #fff;
+  }
+  .mb-avatar .dot.on { background: #2ecc40; }
+
+  /* Colonne droite : encart niveau (haut) + rangée d'emotes (bas). */
+  .mb-right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+
+  /* Encart « niveau / classement » : panneau vert glossy reconstruit en CSS
+     (le SVG d'origine portait un trophée + séparateur gravés qui empêchaient ce
+     nouvel agencement). 4 zones : barres de progression (haut-gauche), trophée +
+     rang (haut-centre), niveau digital + « NIV » (bas-gauche), raccourcis (bas-droite). */
+  .mb-encart {
+    position: relative; flex: 0 0 60px; min-width: 0; border-radius: 8px;
+    background: linear-gradient(180deg, #d6f7a6 0%, #c6f098 52%, #b6ea84 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 0 0 1px #93c168,
+                0 0 0 2px #dcdcdc, 0 1px 2px rgba(44,74,15,.22);
+  }
+  /* Barres de progression dans le niveau en cours (largeur = % d'XP du palier). */
+  .enc-progress {
+    position: absolute; left: 9px; top: 7px; width: 72px; height: 17px; z-index: 2;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .enc-progress i {
+    display: block; height: 3px; border-radius: 2px; background: #a6cd79;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.35); overflow: hidden;
+  }
+  .enc-progress i::before {
+    content: ""; display: block; height: 100%; width: var(--p, 0%);
+    background: linear-gradient(180deg, #6fa524, #3f6a14); border-radius: 2px;
+    transition: width .4s ease;
+  }
+  /* Trophée + rang (classement général par XP, 1 = meilleur) — haut-centre. */
+  .enc-trophy {
+    position: absolute; left: 41%; top: 5px; height: 24px; z-index: 2;
+    display: flex; align-items: center; gap: 3px;
+  }
+  .enc-trophy .tro { height: 22px; width: auto; display: block; filter: drop-shadow(0 1px 0 rgba(255,255,255,.45)); }
+  .enc-trophy .hash {
+    font-family: Impact, 'Arial Narrow Bold', Verdana, sans-serif;
+    font-size: 13px; line-height: 1; color: #6a9a36;
+  }
+  .enc-trophy .val {
+    font-family: Impact, 'Arial Narrow Bold', Verdana, sans-serif;
+    font-size: 20px; line-height: 1; color: #4f7b1f; text-shadow: 0 1px 0 rgba(255,255,255,.6);
+  }
+  /* Niveau : numéro « radio-réveil » (DSEG7) au-dessus du libellé « NIV » — bas-gauche. */
+  .enc-niv {
+    position: absolute; left: 10px; bottom: 4px; z-index: 2;
+    display: flex; flex-direction: column; align-items: flex-start; line-height: 1;
+  }
+  .enc-niv .lvl {
+    font-family: 'DSEG7', 'Courier New', monospace; font-weight: bold;
+    font-size: 18px; color: #3f6a14; text-shadow: 0 1px 0 rgba(255,255,255,.5);
+  }
+  .enc-niv .niv-img { height: 11px; width: auto; display: block; margin-top: 2px; }
+  /* Raccourcis (mail, événement, historique…) — bas-droite, resserrés. */
+  .mb-shortcuts {
+    position: absolute; right: 6px; bottom: 6px; z-index: 2;
+    display: flex; align-items: center;
+  }
+  .sc-btn {
+    flex: 0 0 auto; background: transparent; border: 0; padding: 0 2px; margin: 0;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .sc-btn img { width: 16px; height: 15px; object-fit: contain; display: block; }
+  .sc-btn:active img { transform: scale(.85); }
+
+  /* ── Emotes (humeurs) : resserrées (pas d'espace), bordure 3px #E2E2E2 ;
+     au clic, la bouille change d'HUMEUR (freeze statique `e`, comme le forum —
+     PAS l'animation du chat). Rangée placée SOUS l'encart niveau. ── */
+  .mb-emotes { flex: 0 0 34px; display: flex; align-items: stretch; }
+  .em-btn {
+    flex: 1 1 0; min-width: 0; margin-left: -3px; padding: 1px;
+    background: #fff; border: 3px solid #E2E2E2; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .em-btn:first-child { margin-left: 0; }
+  .em-btn img { width: 100%; max-width: 28px; height: auto; display: block; pointer-events: none; }
+  .em-btn:active { background: #f4f4f4; }
+  .em-btn.active { position: relative; z-index: 1; border-color: #ef9a93; background: #ffe6e4; }
+
+  /* ── Grille des rubriques (plein largeur, 3 colonnes) ── */
+  .home-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 6px;
+    padding: 16px 12px 22px;
+  }
+  .home-tile {
+    background: transparent; border: 0; cursor: pointer; padding: 6px 2px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 7px;
+    -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+  }
+  .home-tile .ico {
+    width: 78px; height: 78px; display: flex; align-items: center; justify-content: center;
+  }
+  .home-tile .ico img {
+    max-width: 100%; max-height: 100%; object-fit: contain;
+    filter: drop-shadow(0 2px 3px rgba(44,74,15,.35)); transition: transform .1s ease;
+  }
+  .home-tile:active .ico img { transform: scale(.9); }
+  .home-tile .lbl { font-size: 14px; font-weight: bold; color: #2C4A0F; text-align: center; }
+  .home-tile:active .lbl { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -649,7 +761,7 @@
        Everything else (account, navigation, quitter) lives in the menu drawer
        to keep vertical space for the conversation. -->
   <header id="topbar">
-    <button class="icon-btn" id="menu-btn" title="Menu" aria-label="Menu">☰</button>
+    <button class="icon-btn" id="menu-btn" title="Accueil" aria-label="Retour à l'accueil">‹</button>
     <select id="room-select" aria-label="Salon"></select>
     <button class="icon-btn bare" id="pen-btn" title="Feutre" aria-label="Feutre">
       <img src="/fb/icone_feutres.png" alt="Feutre">
@@ -662,35 +774,60 @@
     </button>
   </header>
 
-  <!-- Slide-in menu drawer (hamburger) -->
-  <div id="menu-backdrop"></div>
-  <nav id="menu-drawer">
-    <div class="menu-head">
-      <span class="dot" id="conn-dot"></span>
-      <span id="who-name">—</span>
+  <!-- ═══════════ Accueil : le « menu » plein largeur du mode mobile ═══════════
+       Main bar (avatar Frutibouille + encart niveau/classement + emotes d'humeur
+       + raccourcis) puis grille des rubriques. Les emotes et raccourcis sont
+       peuplés par renderHome() ; l'avatar / le niveau / les médailles par
+       loadHomeProfile(). C'est le panneau actif par défaut après connexion. -->
+  <section class="panel active" id="home-panel">
+    <div class="mainbar">
+      <div class="mb-top">
+        <!-- Avatar Frutibouille (rendu Ruffle) — hauteur = encart + emotes -->
+        <div class="mb-avatar">
+          <div class="frame">
+            <div class="stage" id="home-avatar"></div>
+            <img class="cadre" src="/fb/cadre_bouille.svg" alt="">
+            <img class="reflet" src="/fb/reflet_bouille.svg" alt="">
+            <span class="dot" id="conn-dot"></span>
+          </div>
+        </div>
+        <!-- Colonne droite : encart niveau (haut) + emotes (bas) -->
+        <div class="mb-right">
+          <div class="mb-encart">
+            <!-- Barres de progression dans le niveau en cours (haut-gauche) -->
+            <div class="enc-progress" id="home-progress"><i></i><i></i><i></i></div>
+            <!-- Trophée + rang au classement général (haut-centre) -->
+            <div class="enc-trophy" title="Rang au classement général">
+              <img class="tro" src="/fb/trophee.svg" alt="">
+              <span class="hash">#</span><span class="val" id="home-rank">—</span>
+            </div>
+            <!-- Niveau : numéro digital au-dessus du libellé « NIV » (bas-gauche) -->
+            <div class="enc-niv">
+              <span class="lvl" id="home-level">1</span>
+              <img class="niv-img" src="/fb/Niveau.svg" alt="NIV">
+            </div>
+            <!-- Raccourcis (mail, événement, historique…) — bas-droite, sans action -->
+            <div class="mb-shortcuts" id="home-shortcuts"></div>
+          </div>
+          <!-- Emotes : au clic, la bouille change d'humeur (freeze statique « forum ») -->
+          <div class="mb-emotes" id="home-emotes"></div>
+        </div>
+      </div>
     </div>
-    <button class="menu-item active" data-tab="chat">
-      <img class="menu-ico" src="/fb/icone_salon.png" alt="" onerror="this.replaceWith(document.createTextNode('💬'))"> Salons
-    </button>
-    <button class="menu-item" data-tab="forum">
-      <img class="menu-ico" src="/fb/icone_forum.png" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"> Forum
-    </button>
-    <button class="menu-item" id="disques-btn">
-      <img class="menu-ico" src="/fb/icone_jeux.png" alt="" onerror="this.replaceWith(document.createTextNode('🎮'))"> Mes disques
-    </button>
-    <button class="menu-item" data-tab="scores">
-      <img class="menu-ico" src="/fb/icone_scores.png" alt="" onerror="this.replaceWith(document.createTextNode('🏆'))"> Scores
-    </button>
-    <button class="menu-item" id="shop-btn">
-      <img class="menu-ico" src="/fb/icone_boutique.png" alt="" onerror="this.replaceWith(document.createTextNode('🛍️'))"> Boutique
-    </button>
-    <button class="menu-item" id="bouille-btn">
-      <img class="menu-ico" src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"> Mon inventaire
-    </button>
-  </nav>
+
+    <!-- Grille des rubriques (plein largeur, 3 colonnes) -->
+    <div class="home-grid" id="home-grid">
+      <button class="home-tile" data-go="scores"><span class="ico"><img src="/fb/icone_scores.png" alt="" onerror="this.replaceWith(document.createTextNode('🏆'))"></span><span class="lbl">Scores</span></button>
+      <button class="home-tile" data-go="shop"><span class="ico"><img src="/fb/icone_boutique.png" alt="" onerror="this.replaceWith(document.createTextNode('🛍️'))"></span><span class="lbl">Boutique</span></button>
+      <button class="home-tile" data-go="disques"><span class="ico"><img src="/fb/icone_jeux.png" alt="" onerror="this.replaceWith(document.createTextNode('💿'))"></span><span class="lbl">Mes disques</span></button>
+      <button class="home-tile" data-go="chat"><span class="ico"><img src="/fb/icone_salon.png" alt="" onerror="this.replaceWith(document.createTextNode('💬'))"></span><span class="lbl">Salons</span></button>
+      <button class="home-tile" data-go="inventaire"><span class="ico"><img src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"></span><span class="lbl">Inventaire</span></button>
+      <button class="home-tile" data-go="forum"><span class="ico"><img src="/fb/icone_forum.png" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"></span><span class="lbl">Forum</span></button>
+    </div>
+  </section>
 
   <!-- Chat -->
-  <section class="panel active" id="chat-panel" style="position:relative">
+  <section class="panel" id="chat-panel" style="position:relative">
     <div id="messages"></div>
 
     <!-- Bouille overlay: live Ruffle bouille (transparent) reacting to chat,
@@ -1061,7 +1198,7 @@
   function startApp() {
     $("#login-screen").classList.add("hidden");
     $("#app").classList.remove("hidden");
-    $("#who-name").textContent = state.user;
+    var wn = $("#who-name"); if (wn) wn.textContent = state.user; // (plus de pseudo affiché sur l'accueil)
 
     // Build room selector (labels get a "(n)" participant count, see
     // renderRoomOptions / the channellist handler).
@@ -1070,6 +1207,13 @@
     sel.value = ROOMS[0][0];
     sel.addEventListener("change", function () { switchRoom(sel.value); });
 
+    // L'accueil (launcher plein écran) est le panneau par défaut : on construit
+    // sa main bar (emotes d'humeur + raccourcis) et on charge le profil joueur
+    // (avatar Frutibouille, niveau, médailles).
+    renderHome();
+    goHome();
+    loadHomeProfile();
+
     connectWs();
 
     // Premier passage (ou redo admin) : proposer l'éditeur de Frutibouille tant
@@ -1077,22 +1221,153 @@
     maybeOpenFbEditor();
   }
 
-  // ── Hamburger menu drawer ──
-  function openMenu(open) {
-    $("#menu-drawer").classList.toggle("open", open);
-    $("#menu-backdrop").classList.toggle("show", open);
+  // ── Accueil (launcher) : remplace l'ancien tiroir hamburger ──
+  // Le « menu » du mode mobile est désormais un launcher plein écran (#home-panel)
+  // avec sa propre main bar. La top bar (sélecteur de salon + icônes chat) ne
+  // sert que dans les sous-panneaux ; on la masque sur l'accueil. openMenu()
+  // devient un no-op de compatibilité (les feuilles l'appelaient pour fermer le
+  // tiroir). Le bouton ‹ de la top bar ramène à l'accueil.
+  function openMenu() { /* no-op : plus de tiroir hamburger */ }
+  function showTopbar(show) {
+    var tb = $("#topbar"); if (tb) tb.style.display = show ? "" : "none";
   }
-  $("#menu-btn").addEventListener("click", function () { openMenu(true); });
-  $("#menu-backdrop").addEventListener("click", function () { openMenu(false); });
+  function goHome() {
+    ["chat", "forum", "grapiz", "bandas", "swapou", "scores"].forEach(function (t) {
+      var p = $("#" + t + "-panel"); if (p) p.classList.remove("active");
+    });
+    $("#home-panel").classList.add("active");
+    showTopbar(false);
+  }
+  $("#menu-btn").addEventListener("click", goHome);
+
+  // ── Main bar de l'accueil : avatar, niveau, emotes (humeurs), raccourcis ──
+  // Emotes → humeur de la bouille via le param `e` de bouille-preview (freeze
+  // statique, EXACTEMENT comme le forum — pas l'animation transitoire du chat).
+  // Les 7 icônes fournies couvrent les humeurs e=1..7 (cf. EXPRESSIONS du forum).
+  var HOME_EMOTES = [
+    { file: "emote_mechant", e: 1, name: "Colère" },
+    { file: "emote_triste",  e: 2, name: "Triste" },
+    { file: "emote_content", e: 3, name: "Sourire" },
+    { file: "emote_ravi",    e: 4, name: "Joie" },
+    { file: "emote_stoique", e: 5, name: "Déterminé" },
+    { file: "emote_transi",  e: 6, name: "Embarrassé" },
+    { file: "emote_fou",     e: 7, name: "Totoché" },
+  ];
+  // Raccourcis : sans action pour l'instant (à brancher plus tard).
+  var HOME_SHORTCUTS = [
+    { file: "Mail",       name: "Messagerie" },
+    { file: "Warning",    name: "Événements" },
+    { file: "Historique", name: "Historique" },
+    { file: "Aide",       name: "Aide" },
+    { file: "Forum",      name: "Forum" },
+    { file: "Jeux",       name: "Jeux" },
+  ];
+  var homeProfile = { bouille: DEFAULT_BOUILLE, level: 1, xp: 0, rank: null, kikooz: 0 };
+
+  // Progression dans le niveau EN COURS, dérivée de l'XP. Même barème que le
+  // serveur (getLevelForXp : niveau = floor(sqrt(xp/10000)+1)) → le palier N
+  // couvre [10000·(N-1)², 10000·N²[. Renvoie un ratio 0..1.
+  function levelProgress(xp, level) {
+    var L = Math.max(1, Number(level) || 1);
+    var lo = 10000 * Math.pow(L - 1, 2);
+    var hi = 10000 * Math.pow(L, 2);
+    if (hi <= lo) return 0;
+    return Math.max(0, Math.min(1, ((Number(xp) || 0) - lo) / (hi - lo)));
+  }
+  function setHomeProgress(xp, level) {
+    var p = $("#home-progress");
+    if (p) p.style.setProperty("--p", (levelProgress(xp, level) * 100).toFixed(1) + "%");
+  }
+  var homeMood = 0;          // humeur courante affichée par l'avatar (0 = neutre)
+  var homeAvatarUrl = "";    // URL Ruffle courante (évite les reboots inutiles)
+
+  function setHomeAvatar(stateStr, mood) {
+    var stage = $("#home-avatar"); if (!stage) return;
+    var s = String(stateStr || DEFAULT_BOUILLE).replace(/[^0-9A-Za-z]/g, "");
+    var q = "s=" + encodeURIComponent(s) + "&bg=transparent";
+    if (mood && Number(mood) > 0) q += "&e=" + encodeURIComponent(Number(mood));
+    var url = "/bouille-preview.html?" + q;
+    if (url === homeAvatarUrl && stage.firstChild) return; // déjà à jour
+    homeAvatarUrl = url;
+    stage.innerHTML = '<iframe scrolling="no" aria-hidden="true" '
+      + 'sandbox="allow-scripts allow-same-origin" src="' + url + '"></iframe>';
+  }
+  function refreshHomeAvatar() {
+    // Bouille live (changement d'accessoire en session) sinon celle du profil.
+    var b = (state.bouilleByUser && state.bouilleByUser[state.userLower])
+      || homeProfile.bouille || DEFAULT_BOUILLE;
+    setHomeAvatar(b, homeMood);
+  }
+  function setHomeMood(mood) {
+    homeMood = Number(mood) || 0;
+    Array.prototype.forEach.call(document.querySelectorAll("#home-emotes .em-btn"), function (b) {
+      b.classList.toggle("active", Number(b.getAttribute("data-e")) === homeMood);
+    });
+    refreshHomeAvatar();
+  }
+  function renderHome() {
+    var em = $("#home-emotes");
+    if (em && !em.childNodes.length) {
+      HOME_EMOTES.forEach(function (it) {
+        var b = el("button", "em-btn");
+        b.type = "button"; b.title = it.name; b.setAttribute("data-e", it.e);
+        b.innerHTML = '<img src="/fb/' + it.file + '.svg" alt="' + xmlEscape(it.name) + '">';
+        // Recliquer la même humeur revient au neutre.
+        b.addEventListener("click", function () { setHomeMood(homeMood === it.e ? 0 : it.e); });
+        em.appendChild(b);
+      });
+    }
+    var sc = $("#home-shortcuts");
+    if (sc && !sc.childNodes.length) {
+      HOME_SHORTCUTS.forEach(function (it) {
+        var b = el("button", "sc-btn");
+        b.type = "button"; b.title = it.name; b.setAttribute("aria-label", it.name);
+        b.innerHTML = '<img src="/fb/' + it.file + '.svg" alt="' + xmlEscape(it.name) + '">';
+        b.addEventListener("click", function () { /* TODO: brancher les raccourcis */ });
+        sc.appendChild(b);
+      });
+    }
+  }
+  function loadHomeProfile() {
+    if (!state.sid) { setHomeAvatar(DEFAULT_BOUILLE, homeMood); return; }
+    fetch("/api/light/profile?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && !d.error) {
+          homeProfile.bouille = d.bouille || DEFAULT_BOUILLE;
+          homeProfile.level = Number(d.level) || 1;
+          homeProfile.xp = Number(d.xp) || 0;
+          homeProfile.rank = (d.rank != null) ? Number(d.rank) : null;
+          homeProfile.kikooz = Number(d.kikooz) || 0;
+          if (d.bouille) state.bouilleByUser[state.userLower] = d.bouille;
+          var lv = $("#home-level"); if (lv) lv.textContent = homeProfile.level;
+          var rk = $("#home-rank"); if (rk) rk.textContent = (homeProfile.rank != null) ? homeProfile.rank : "—";
+          setHomeProgress(homeProfile.xp, homeProfile.level);
+        }
+        refreshHomeAvatar();
+      })
+      .catch(function () { refreshHomeAvatar(); });
+  }
+
+  // Clics sur la grille de l'accueil → navigation (panneaux ou feuilles).
+  Array.prototype.forEach.call(document.querySelectorAll(".home-tile[data-go]"), function (b) {
+    b.addEventListener("click", function () {
+      var go = b.getAttribute("data-go");
+      if (go === "shop") return openShopSheet();
+      if (go === "disques") return openDisquesSheet();
+      if (go === "inventaire") return openBouilleSheet();
+      activateTab(go); // chat / forum / scores
+    });
+  });
 
   // ── Navigation entre panneaux ──
-  // activateTab pilote l'affichage des panneaux ET l'état « actif » du menu. On
-  // l'appelle depuis les items de menu (Salons, Forum, Scores du jour) ET depuis
-  // la feuille « Mes disques » (qui lance grapiz / bandas / swapou). Les jeux
-  // n'ont plus d'entrée de menu propre : quand l'un d'eux est ouvert, c'est
-  // « Mes disques » qui s'allume.
-  var GAME_TABS = { grapiz: 1, bandas: 1, swapou: 1 };
+  // activateTab pilote l'affichage des panneaux. On l'appelle depuis la grille
+  // d'accueil (Salons, Forum, Scores) ET depuis la feuille « Mes disques » (qui
+  // lance grapiz / bandas / swapou). Le bouton ‹ de la top bar ramène à l'accueil.
   function activateTab(tab) {
+    // On quitte l'accueil → on réaffiche la top bar (sélecteur de salon, icônes).
+    $("#home-panel").classList.remove("active");
+    showTopbar(true);
     $("#chat-panel").classList.toggle("active", tab === "chat");
     $("#forum-panel").classList.toggle("active", tab === "forum");
     $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
@@ -1128,19 +1403,7 @@
     }
     // Les scores évoluent toute la journée : on rafraîchit à chaque ouverture.
     if (tab === "scores") loadChallengeScores();
-    // État actif du menu : l'item data-tab correspondant, ou « Mes disques »
-    // lorsqu'on est dans un jeu.
-    Array.prototype.forEach.call(document.querySelectorAll(".menu-item[data-tab]"), function (x) {
-      x.classList.toggle("active", x.getAttribute("data-tab") === tab);
-    });
-    var dq = $("#disques-btn"); if (dq) dq.classList.toggle("active", !!GAME_TABS[tab]);
   }
-  Array.prototype.forEach.call(document.querySelectorAll(".menu-item[data-tab]"), function (b) {
-    b.addEventListener("click", function () {
-      activateTab(b.getAttribute("data-tab"));
-      openMenu(false);
-    });
-  });
 
   // ── Mes disques (feuille de lancement des jeux) ──
   // Reprend le look de l'inventaire d'accessoires : un FrusionDisc par jeu
@@ -1173,7 +1436,7 @@
     $("#disques-sheet-backdrop").classList.remove("show");
     $("#disques-sheet").classList.remove("show");
   }
-  $("#disques-btn").addEventListener("click", openDisquesSheet);
+  // Ouverture via la tuile « Mes disques » de l'accueil (cf. home-tile[data-go]).
   $("#disques-sheet-close").addEventListener("click", closeDisquesSheet);
   $("#disques-sheet-backdrop").addEventListener("click", closeDisquesSheet);
 
@@ -1270,7 +1533,7 @@
     $("#shop-sheet-backdrop").classList.remove("show");
     $("#shop-sheet").classList.remove("show");
   }
-  $("#shop-btn").addEventListener("click", openShopSheet);
+  // Ouverture via la tuile « Boutique » de l'accueil (cf. home-tile[data-go]).
   $("#shop-sheet-close").addEventListener("click", closeShopSheet);
   $("#shop-sheet-backdrop").addEventListener("click", closeShopSheet);
 
@@ -2067,7 +2330,7 @@
     $("#bouille-sheet-backdrop").classList.remove("show");
     $("#bouille-sheet").classList.remove("show");
   }
-  $("#bouille-btn").addEventListener("click", openBouilleSheet);
+  // Ouverture via la tuile « Inventaire » de l'accueil (cf. home-tile[data-go]).
   $("#bouille-sheet-close").addEventListener("click", closeBouilleSheet);
   $("#bouille-sheet-backdrop").addEventListener("click", closeBouilleSheet);
 
@@ -2138,6 +2401,8 @@
     var newState = buildState(myBase, accSel.suffix, accSel.fullState);
     // Update locally first so the UI reacts instantly.
     state.bouilleByUser[state.userLower] = newState;
+    homeProfile.bouille = newState;
+    refreshHomeAvatar(); // l'avatar de l'accueil suit le nouvel accessoire
     renderAccGrid();
     updateSheetPreview();
     var hint = $("#bouille-sheet-hint");
@@ -2241,8 +2506,11 @@
   }
   function fbValider() {
     var st = fbPad(fbState);
-    // Reflète localement (overlay chat, sheet accessoires) avant la persistance.
+    // Reflète localement (overlay chat, sheet accessoires, avatar accueil) avant
+    // la persistance.
     state.bouilleByUser[state.userLower] = st;
+    homeProfile.bouille = st;
+    refreshHomeAvatar();
     if (!isIncarnation(st)) myBase = st;
     // Même chemin que le picker : <ae> sur le socket (broadcast + efface
     // needsBouille), fallback /do/eb. Une vraie bouille (≠ défaut) arrête le
