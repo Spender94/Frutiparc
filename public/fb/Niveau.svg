@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" height="17.4px" width="29.4px" xmlns="http://www.w3.org/2000/svg">
+  <g transform="matrix(1.0, 0.0, 0.0, 1.0, -4.8, -26.75)">
+    <use height="10.7" transform="matrix(1.0, 0.0, 0.0, 1.0, 4.8, 30.15)" width="21.25" xlink:href="#text0"/>
+    <use height="17.4" id="fieldLevel" transform="matrix(1.0, 0.0, 0.0, 1.0, 17.5, 26.75)" width="16.7" xlink:href="#text1"/>
+  </g>
+  <defs>
+    <g id="text0" transform="matrix(1.0, 0.0, 0.0, 1.0, -0.45, -1.4)">
+      <g transform="matrix(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)">
+        <use fill="#73b01e" height="10.7" transform="matrix(0.0107, 0.0, 0.0, 0.0107, 0.0, 11.0)" width="21.25" xlink:href="#font_Impact_N0"/>
+        <use fill="#73b01e" height="10.7" transform="matrix(0.0107, 0.0, 0.0, 0.0107, 5.95, 11.0)" width="21.25" xlink:href="#font_Impact_I0"/>
+        <use fill="#73b01e" height="10.7" transform="matrix(0.0107, 0.0, 0.0, 0.0107, 9.1, 11.0)" width="21.25" xlink:href="#font_Impact_V0"/>
+      </g>
+    </g>
+    <g id="font_Impact_N0">
+      <path d="M512.0 -809.5 L336.0 -809.5 336.0 -445.0 218.0 -809.5 42.0 -809.5 42.0 0.0 218.0 0.0 218.0 -368.0 Q273.0 -184.0 327.5 0.0 L512.0 0.0 512.0 -809.5" fill-rule="evenodd" stroke="none"/>
+    </g>
+    <g id="font_Impact_I0">
+      <path d="M252.5 -809.5 L42.0 -809.5 42.0 0.0 252.5 0.0 252.5 -809.5" fill-rule="evenodd" stroke="none"/>
+    </g>
+    <g id="font_Impact_V0">
+      <path d="M542.5 -809.5 L320.5 -809.5 Q313.0 -734.0 306.0 -659.0 287.5 -477.5 271.5 -243.5 254.5 -475.0 216.0 -809.5 L-6.0 -809.5 Q55.0 -404.5 115.5 0.0 L435.5 0.0 542.5 -809.5" fill-rule="evenodd" stroke="none"/>
+    </g>
+  </defs>
+</svg>
