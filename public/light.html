@@ -605,11 +605,12 @@
      fixe = la hauteur de la colonne droite (110 = 72 encart + 4 + 34). Bords
      arrondis (cadre + scène clippés). */
   .mb-avatar { flex: 0 0 110px; position: relative; }
-  .mb-avatar .frame { position: absolute; inset: 0; border-radius: 20px; overflow: hidden; }
+  .mb-avatar .frame { position: absolute; inset: 0; border-radius: 13px; overflow: hidden; }
   .mb-avatar .cadre, .mb-avatar .reflet { position: absolute; pointer-events: none; }
   .mb-avatar .cadre { inset: 0; width: 100%; height: 100%; z-index: 1; }
+  /* Bouille agrandie : faible marge intérieure pour qu'elle remplisse le cadre. */
   .mb-avatar .stage {
-    position: absolute; inset: 9%; z-index: 2; border-radius: 16px; overflow: hidden;
+    position: absolute; inset: 5%; z-index: 2; border-radius: 9px; overflow: hidden;
   }
   .mb-avatar .stage iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
   .mb-avatar .reflet { left: 7%; top: 6%; width: 52%; height: auto; z-index: 3; }
@@ -658,12 +659,14 @@
      suite, même taille — bas-gauche. */
   .enc-niv {
     position: absolute; left: 10px; bottom: 6px; z-index: 2;
-    display: flex; flex-direction: row; align-items: center; gap: 6px; line-height: 1;
+    display: flex; flex-direction: row; align-items: center; gap: 4px; line-height: 1;
   }
-  .enc-niv .niv-img { height: 21px; width: auto; display: block; }
+  .enc-niv .niv-img { height: 18px; width: auto; display: block; }
+  /* Le numéro est calé sur la hauteur des lettres « NIV » pour lire « NIV 8 »
+     comme un seul bloc de texte. */
   .enc-niv .lvl {
     font-family: 'DSEG7', 'Courier New', monospace; font-weight: bold;
-    font-size: 20px; line-height: 1; color: #3f6a14; text-shadow: 0 1px 0 rgba(255,255,255,.5);
+    font-size: 16px; line-height: 1; color: #3f6a14; text-shadow: 0 1px 0 rgba(255,255,255,.5);
   }
   /* Raccourcis (mail, événement, historique…) — bas-droite, resserrés. */
   .mb-shortcuts {
@@ -1257,9 +1260,12 @@
   ];
   var homeProfile = { bouille: DEFAULT_BOUILLE, level: 1, xp: 0, rank: null, kikooz: 0 };
 
-  // Progression dans le niveau EN COURS, dérivée de l'XP. Même barème que le
-  // serveur (getLevelForXp : niveau = floor(sqrt(xp/10000)+1)) → le palier N
-  // couvre [10000·(N-1)², 10000·N²[. Renvoie un ratio 0..1.
+  // Taux de complétion du niveau EN COURS — réplique EXACTE de main.swf
+  // (frutiengine/UserMng.as : xpLevelCompletionRate) :
+  //   level      = floor(sqrt(xp/10000)+1)
+  //   levelToXp(L) = (L-1)² · 10000        (XP au début du palier L)
+  //   rate       = (xp - levelToXp(level)) / (levelToXp(level+1) - levelToXp(level))
+  // Les 9 barres se remplissent de gauche à droite à ce pourcentage (0..1).
   function levelProgress(xp, level) {
     var L = Math.max(1, Number(level) || 1);
     var lo = 10000 * Math.pow(L - 1, 2);
