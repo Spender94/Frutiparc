@@ -321,23 +321,28 @@
       }
       .logo { position: absolute; left: 50%; top: -52px; transform: translateX(-50%); width: 148px; }
 
-      .login-form { flex-wrap: wrap; gap: 8px 6px; font-size: 14px; align-items: center; }
+      /* Formulaire empilé : chaque label (NOM/CODE…) AU-DESSUS de son champ,
+         en pleine largeur. L'ancienne version laissait « CODE » coincé à droite
+         du champ pseudo (les paires label+champ ne restaient pas ensemble). */
+      .login-form { flex-wrap: wrap; gap: 6px; font-size: 14px; align-items: center; }
+      .login-form > label { flex: 1 1 100%; margin: 5px 0 -2px 2px; }
+      .login-form > label:first-of-type { margin-top: 0; }
       .login-form input {
-        flex: 1 1 120px; min-width: 0; width: auto; height: 34px;
+        flex: 1 1 100%; min-width: 0; width: auto; height: 36px;
         font-size: 16px; /* ≥16px = pas de zoom auto iOS au focus */
       }
-      .login-form > label { flex: 0 0 auto; }
-      .label-img { height: 16px; }
-      /* spécificité > « .login-form > label » pour que la case MODE FRUTIZ
-         occupe bien sa propre ligne pleine largeur. */
-      .login-form > label.mode-inline { flex: 1 1 100%; justify-content: flex-start; font-size: 13px; letter-spacing: 0; }
+      .label-img { height: 17px; }
+      /* spécificité > « .login-form > label » : la case MODE FRUTIZ sur sa
+         propre ligne, alignée à gauche. */
+      .login-form > label.mode-inline { flex: 1 1 100%; justify-content: flex-start; font-size: 13px; letter-spacing: 0; margin: 8px 0 2px; }
       .btn { padding: 11px 10px; font-size: 15px; line-height: 1; }
-      .btn-primary { flex: 1 1 100%; }
+      .btn-primary { flex: 1 1 100%; margin-top: 6px; }
       .btn-secondary { flex: 1 1 100%; margin-left: 0; padding: 8px; text-decoration: underline; }
-      #register-form .login-form > strong { flex: 1 1 100%; text-align: center; }
-      #register-form .login-form label { flex: 0 0 auto; }
+      /* Inscription : mêmes règles (labels texte au-dessus des champs). */
+      #register-form .login-form > strong { flex: 1 1 100%; text-align: center; font-size: 15px; margin-bottom: 2px; }
+      #register-form .login-form label { flex: 1 1 100%; margin: 5px 0 -2px 2px; font-weight: 700; color: #4f7d1e; }
       #register-form .login-form input,
-      #register-form #reg-email { flex: 1 1 140px; }
+      #register-form #reg-email { flex: 1 1 100%; }
 
       /* Accueil : une seule colonne — panneau d'abord, jeux ensuite. */
       .layout { width: 100%; grid-template-columns: 1fr; gap: 14px; margin-top: 16px; }
@@ -346,13 +351,14 @@
         padding: 14px; text-align: center;
       }
       .main h1 { font-size: 20px; }
-      .main p { text-align: left; }
-      .welcome-title { max-width: 90%; height: auto; }
+      .main p { text-align: left; margin: 6px 0; }
+      .welcome-title { max-width: 86%; height: auto; }
       .welcome {
-        height: auto; max-width: 72%; max-height: none;
-        padding-right: 0; justify-self: center; margin: 4px auto 0;
+        height: auto; max-width: 60%; max-height: none;
+        padding-right: 0; justify-self: center; margin: 6px auto 0;
       }
-      .cta { justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+      .cta { justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+      .cta img { height: 34px; }
 
       .games { order: 2; height: auto; max-height: 300px; overflow-y: auto; }
       .game-card { width: 100%; }

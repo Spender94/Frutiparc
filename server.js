@@ -10327,8 +10327,10 @@ app.post('/api/forum/signature', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
   let sig = String((req.body && req.body.signature) || '');
-  // Limite raisonnable (forums d'époque) ; normalise les fins de ligne.
-  sig = sig.replace(/\r\n/g, '\n').slice(0, 600).replace(/\s+$/g, '');
+  // Pas de limite de caractères (colonne TEXT) ; on normalise juste les fins de
+  // ligne et on retire les blancs de fin. Le body-parser Express borne déjà la
+  // taille des requêtes — garde-fou suffisant contre un payload aberrant.
+  sig = sig.replace(/\r\n/g, '\n').replace(/\s+$/g, '');
   if (users[username]) users[username].forumSignature = sig;
   if (process.env.DATABASE_URL) {
     try { await db.updateUser(username, { forum_signature: sig }); }
