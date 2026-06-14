@@ -605,7 +605,11 @@
      fixe = la hauteur de la colonne droite (110 = 72 encart + 4 + 34). Bords
      arrondis (cadre + scène clippés). */
   .mb-avatar { flex: 0 0 110px; position: relative; }
-  .mb-avatar .frame { position: absolute; inset: 0; border-radius: 13px; overflow: hidden; }
+  /* Bordure 1px #8A888D + sur-bordure 2px #D9D9D9 autour de l'encart bouille. */
+  .mb-avatar .frame {
+    position: absolute; inset: 3px; border-radius: 13px; overflow: hidden;
+    box-shadow: 0 0 0 1px #8A888D, 0 0 0 3px #D9D9D9;
+  }
   .mb-avatar .cadre, .mb-avatar .reflet { position: absolute; pointer-events: none; }
   .mb-avatar .cadre { inset: 0; width: 100%; height: 100%; z-index: 1; }
   /* Bouille agrandie : faible marge intérieure pour qu'elle remplisse le cadre. */
@@ -613,7 +617,8 @@
     position: absolute; inset: 5%; z-index: 2; border-radius: 9px; overflow: hidden;
   }
   .mb-avatar .stage iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
-  .mb-avatar .reflet { left: 7%; top: 6%; width: 52%; height: auto; z-index: 3; }
+  /* Reflet (brillance) dans le coin SUPÉRIEUR DROIT de l'encart bouille. */
+  .mb-avatar .reflet { right: 5%; top: 5%; width: 46%; height: auto; z-index: 3; }
 
   /* Colonne droite : encart niveau (haut) + rangée d'emotes (bas). */
   .mb-right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -628,8 +633,21 @@
     box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 0 0 1px #93c168,
                 0 0 0 2px #dcdcdc, 0 1px 2px rgba(44,74,15,.22);
   }
-  /* Progression dans le niveau en cours : 9 barres courtes empilées, remplies
-     ensemble (gauche → droite) selon le % d'XP du palier. */
+  /* Reflet (brillance) dans le coin SUPÉRIEUR DROIT de l'encart niveau. */
+  .reflet-niv {
+    position: absolute; right: 3%; top: 5%; width: 40%; height: auto; z-index: 1;
+    pointer-events: none;
+  }
+  /* Ligne de séparation sous la coupe (sépare rang ↔ raccourcis), comme le SVG
+     d'origine : trait vert + léger filet blanc dessous, côté droit de l'encart. */
+  .enc-divider {
+    position: absolute; left: 27%; right: 4%; top: 47%; height: 1px; z-index: 1;
+    background: #73b01e; box-shadow: 0 1px 0 rgba(255,255,255,.5);
+  }
+  /* Progression dans le niveau en cours : 9 barres courtes empilées. Chaque barre
+     est UN segment du palier : elle se remplit ENTIÈREMENT (gauche → droite) avant
+     que la suivante commence (cf. setHomeProgress). C'est le % de complétion de
+     main.swf « découpé » en 9 lignes. */
   .enc-progress {
     position: absolute; left: 10px; top: 8px; width: 42px; height: 36px; z-index: 2;
     display: flex; flex-direction: column; justify-content: space-between;
@@ -638,8 +656,8 @@
     display: block; height: 2px; border-radius: 1px; background: #a6cd79; overflow: hidden;
   }
   .enc-progress i::before {
-    content: ""; display: block; height: 100%; width: var(--p, 0%);
-    background: #3f6a14; transition: width .4s ease;
+    content: ""; display: block; height: 100%; width: var(--f, 0%);
+    background: #3f6a14; transition: width .35s ease;
   }
   /* Trophée + rang (classement général par XP, 1 = meilleur) — haut-centre. */
   .enc-trophy {
@@ -790,6 +808,10 @@
         <!-- Colonne droite : encart niveau (haut) + emotes (bas) -->
         <div class="mb-right">
           <div class="mb-encart">
+            <!-- Reflet (brillance) coin supérieur droit -->
+            <img class="reflet-niv" src="/fb/reflet_niveau.svg" alt="">
+            <!-- Ligne de séparation sous la coupe (rang ↔ raccourcis) -->
+            <div class="enc-divider"></div>
             <!-- Barres de progression (9) dans le niveau en cours (haut-gauche) -->
             <div class="enc-progress" id="home-progress"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
             <!-- Trophée + rang au classement général (haut-centre) -->
@@ -1274,8 +1296,18 @@
     return Math.max(0, Math.min(1, ((Number(xp) || 0) - lo) / (hi - lo)));
   }
   function setHomeProgress(xp, level) {
-    var p = $("#home-progress");
-    if (p) p.style.setProperty("--p", (levelProgress(xp, level) * 100).toFixed(1) + "%");
+    var cont = $("#home-progress");
+    if (!cont) return;
+    var r = levelProgress(xp, level);            // taux de complétion 0..1
+    var bars = cont.querySelectorAll("i");
+    var n = bars.length || 9;
+    for (var i = 0; i < bars.length; i++) {
+      // Barre i = segment [i/n, (i+1)/n] du palier : elle se remplit ENTIÈREMENT
+      // (gauche → droite) avant que la suivante commence. À 58 % avec 9 barres :
+      // 5 pleines, la 6e à ~22 %, les autres vides. C'est le % « découpé » en n lignes.
+      var f = Math.max(0, Math.min(1, r * n - i));
+      bars[i].style.setProperty("--f", (f * 100).toFixed(1) + "%");
+    }
   }
   var homeMood = 0;          // humeur courante affichée par l'avatar (0 = neutre)
   var homeAvatarUrl = "";    // URL Ruffle courante (évite les reboots inutiles)
