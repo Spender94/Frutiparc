@@ -739,19 +739,17 @@
   .home-tile .lbl { font-size: 14px; font-weight: bold; color: #2C4A0F; text-align: center; }
   .home-tile:active .lbl { text-decoration: underline; }
 
-  /* ── Desktop / tablette (≥768px) : le MENU (launcher) devient une bande
-     latérale gauche FIXE ; le contenu (chat/forum/jeux…) occupe tout le reste,
-     en pleine largeur — comme avant. Sous 768px (téléphones) : un panneau plein
-     écran à la fois (launcher ↔ rubrique), inchangé. ── */
+  /* ── Desktop / tablette (≥768px) : même logique « rabattable » que sur mobile
+     (le menu n'est PAS permanent). Quand il est affiché, le MENU occupe une bande
+     à gauche (le reste de l'écran reste vide) ; on le rabat avec le bouton ‹ et le
+     contenu (chat/forum/jeux…) passe alors en PLEINE LARGEUR. La seule différence
+     avec le mobile : le menu s'affiche en bande à gauche au lieu du plein écran. ── */
   @media (min-width: 768px) {
-    #app { position: relative; padding-left: 360px; }
-    #home-panel {
-      position: absolute; left: 0; top: 0; bottom: 0; width: 360px; z-index: 5;
-      display: flex !important; border-right: 1px solid #8a888d;
-      box-shadow: 2px 0 10px rgba(0,0,0,.18);
-    }
-    #topbar { display: flex !important; }
-    #menu-btn { display: none; }   /* menu permanent → bouton « retour » inutile */
+    #home-panel { align-items: flex-start; }
+    #home-panel .mainbar,
+    #home-panel .home-grid { width: 440px; max-width: 100%; }
+    /* léger filet à droite de la bande menu pour la détacher du vide */
+    #home-panel .mainbar { box-shadow: 0 0 0 2px #d9d9d9, 0 0 0 3px #8a888d, 4px 0 14px rgba(0,0,0,.10); }
   }
 </style>
 </head>
@@ -1273,23 +1271,14 @@
     try { return window.matchMedia("(min-width: 768px)").matches; } catch (e) { return false; }
   }
   function goHome() {
-    // Sur mobile, on quitte la rubrique (désactive les panneaux) pour révéler le
-    // launcher. Sur desktop, le launcher est permanent : on ne touche pas au
-    // contenu de droite.
-    if (!isDesktop()) {
-      ["chat", "forum", "grapiz", "bandas", "swapou", "scores"].forEach(function (t) {
-        var p = $("#" + t + "-panel"); if (p) p.classList.remove("active");
-      });
-    }
+    // « Rabat » le menu : on quitte la rubrique (désactive les panneaux) et on
+    // révèle le launcher (bande à gauche en desktop, plein écran en mobile).
+    ["chat", "forum", "grapiz", "bandas", "swapou", "scores"].forEach(function (t) {
+      var p = $("#" + t + "-panel"); if (p) p.classList.remove("active");
+    });
     $("#app").classList.remove("nav-content");
   }
   $("#menu-btn").addEventListener("click", goHome);
-
-  // Si on bascule en disposition desktop (ex. téléphone tourné en paysage ≥768px)
-  // sans rubrique ouverte, on ouvre le chat à droite (le menu reste en sidebar).
-  window.addEventListener("resize", function () {
-    if (isDesktop() && state.sid && !document.querySelector(".panel.active")) activateTab("chat");
-  });
 
   // ── Main bar de l'accueil : avatar, niveau, emotes (humeurs), raccourcis ──
   // Emotes → humeur de la bouille via le param `e` de bouille-preview (freeze
