@@ -578,9 +578,15 @@
      niveau/classement + emotes d'humeur + raccourcis) puis une grille pleine
      largeur des rubriques (Scores, Boutique, Mes disques, Salons, Inventaire,
      Forum). Remplace l'ancien tiroir hamburger (qui n'était pas full width). */
+  /* Le launcher n'est plus un .panel : sa visibilité est pilotée par l'état de
+     navigation (#app.nav-content) sur mobile, et par la media query desktop
+     (bande latérale) plus bas. */
   #home-panel {
+    display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
     background: #ADE76B; overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
+  #app.nav-content #home-panel { display: none; }   /* mobile : masqué dans une rubrique */
+  #app:not(.nav-content) #topbar { display: none; } /* mobile : top bar seulement dans une rubrique */
 
   /* Police « radio-réveil » (sept segments) pour le numéro de niveau. */
   @font-face {
@@ -733,15 +739,19 @@
   .home-tile .lbl { font-size: 14px; font-weight: bold; color: #2C4A0F; text-align: center; }
   .home-tile:active .lbl { text-decoration: underline; }
 
-  /* ── Desktop / tablette : le mode mobile reste une BANDE LATÉRALE (largeur de
-     téléphone, calée à gauche) au lieu de s'étirer sur toute la largeur. En
-     dessous de 768px (téléphones) il occupe tout l'écran, comme avant. ── */
+  /* ── Desktop / tablette (≥768px) : le MENU (launcher) devient une bande
+     latérale gauche FIXE ; le contenu (chat/forum/jeux…) occupe tout le reste,
+     en pleine largeur — comme avant. Sous 768px (téléphones) : un panneau plein
+     écran à la fois (launcher ↔ rubrique), inchangé. ── */
   @media (min-width: 768px) {
-    html { background: #8fae57; }
-    body {
-      left: 0; right: auto; width: 420px; max-width: 100vw;
-      box-shadow: 1px 0 0 #6f8f3f, 8px 0 24px rgba(0, 0, 0, .28);
+    #app { position: relative; padding-left: 360px; }
+    #home-panel {
+      position: absolute; left: 0; top: 0; bottom: 0; width: 360px; z-index: 5;
+      display: flex !important; border-right: 1px solid #8a888d;
+      box-shadow: 2px 0 10px rgba(0,0,0,.18);
     }
+    #topbar { display: flex !important; }
+    #menu-btn { display: none; }   /* menu permanent → bouton « retour » inutile */
   }
 </style>
 </head>
@@ -804,7 +814,7 @@
        + raccourcis) puis grille des rubriques. Les emotes et raccourcis sont
        peuplés par renderHome() ; l'avatar / le niveau / les médailles par
        loadHomeProfile(). C'est le panneau actif par défaut après connexion. -->
-  <section class="panel active" id="home-panel">
+  <section id="home-panel">
     <div class="mainbar">
       <div class="mb-top">
         <!-- Avatar Frutibouille (rendu Ruffle) — hauteur = encart + emotes -->
@@ -1235,11 +1245,12 @@
     sel.value = ROOMS[0][0];
     sel.addEventListener("change", function () { switchRoom(sel.value); });
 
-    // L'accueil (launcher plein écran) est le panneau par défaut : on construit
-    // sa main bar (emotes d'humeur + raccourcis) et on charge le profil joueur
-    // (avatar Frutibouille, niveau, médailles).
+    // On construit la main bar du launcher (emotes + raccourcis) puis on charge le
+    // profil (avatar, niveau, rang). Vue par défaut : desktop/tablette → le menu
+    // est en bande latérale et on ouvre directement le chat (Salon) à droite ;
+    // mobile → on reste sur le launcher plein écran.
     renderHome();
-    goHome();
+    if (isDesktop()) { activateTab("chat"); } else { goHome(); }
     loadHomeProfile();
 
     connectWs();
@@ -1249,24 +1260,36 @@
     maybeOpenFbEditor();
   }
 
-  // ── Accueil (launcher) : remplace l'ancien tiroir hamburger ──
-  // Le « menu » du mode mobile est désormais un launcher plein écran (#home-panel)
-  // avec sa propre main bar. La top bar (sélecteur de salon + icônes chat) ne
-  // sert que dans les sous-panneaux ; on la masque sur l'accueil. openMenu()
-  // devient un no-op de compatibilité (les feuilles l'appelaient pour fermer le
-  // tiroir). Le bouton ‹ de la top bar ramène à l'accueil.
+  // ── Navigation : launcher ↔ rubriques ──
+  // MOBILE (<768px) : un panneau plein écran à la fois. #app.nav-content masque le
+  //   launcher et affiche la top bar + la rubrique active ; sans la classe, on voit
+  //   le launcher. Le bouton ‹ revient au menu.
+  // DESKTOP/TABLETTE (≥768px) : le launcher est une bande latérale FIXE (toujours
+  //   visible) et le contenu occupe le reste ; la classe nav-content n'a alors
+  //   aucun effet visuel (cf. media query), et ‹ est masqué.
+  // openMenu() reste un no-op de compatibilité (les feuilles l'appelaient).
   function openMenu() { /* no-op : plus de tiroir hamburger */ }
-  function showTopbar(show) {
-    var tb = $("#topbar"); if (tb) tb.style.display = show ? "" : "none";
+  function isDesktop() {
+    try { return window.matchMedia("(min-width: 768px)").matches; } catch (e) { return false; }
   }
   function goHome() {
-    ["chat", "forum", "grapiz", "bandas", "swapou", "scores"].forEach(function (t) {
-      var p = $("#" + t + "-panel"); if (p) p.classList.remove("active");
-    });
-    $("#home-panel").classList.add("active");
-    showTopbar(false);
+    // Sur mobile, on quitte la rubrique (désactive les panneaux) pour révéler le
+    // launcher. Sur desktop, le launcher est permanent : on ne touche pas au
+    // contenu de droite.
+    if (!isDesktop()) {
+      ["chat", "forum", "grapiz", "bandas", "swapou", "scores"].forEach(function (t) {
+        var p = $("#" + t + "-panel"); if (p) p.classList.remove("active");
+      });
+    }
+    $("#app").classList.remove("nav-content");
   }
   $("#menu-btn").addEventListener("click", goHome);
+
+  // Si on bascule en disposition desktop (ex. téléphone tourné en paysage ≥768px)
+  // sans rubrique ouverte, on ouvre le chat à droite (le menu reste en sidebar).
+  window.addEventListener("resize", function () {
+    if (isDesktop() && state.sid && !document.querySelector(".panel.active")) activateTab("chat");
+  });
 
   // ── Main bar de l'accueil : avatar, niveau, emotes (humeurs), raccourcis ──
   // Emotes → humeur de la bouille via le param `e` de bouille-preview (freeze
@@ -1407,9 +1430,9 @@
   // d'accueil (Salons, Forum, Scores) ET depuis la feuille « Mes disques » (qui
   // lance grapiz / bandas / swapou). Le bouton ‹ de la top bar ramène à l'accueil.
   function activateTab(tab) {
-    // On quitte l'accueil → on réaffiche la top bar (sélecteur de salon, icônes).
-    $("#home-panel").classList.remove("active");
-    showTopbar(true);
+    // Entre dans une rubrique : mobile → masque le launcher + montre la top bar ;
+    // desktop → le launcher (sidebar) reste, le contenu s'affiche à droite.
+    $("#app").classList.add("nav-content");
     $("#chat-panel").classList.toggle("active", tab === "chat");
     $("#forum-panel").classList.toggle("active", tab === "forum");
     $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
