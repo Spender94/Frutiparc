@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg xmlns:xlink="http://www.w3.org/1999/xlink" height="17.4px" width="29.4px" xmlns="http://www.w3.org/2000/svg">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" height="17.4px" width="14.2px" viewBox="0 0 14.2 17.4" xmlns="http://www.w3.org/2000/svg">
   <g transform="matrix(1.0, 0.0, 0.0, 1.0, -4.8, -26.75)">
     <use height="10.7" transform="matrix(1.0, 0.0, 0.0, 1.0, 4.8, 30.15)" width="21.25" xlink:href="#text0"/>
-    <use height="17.4" id="fieldLevel" transform="matrix(1.0, 0.0, 0.0, 1.0, 17.5, 26.75)" width="16.7" xlink:href="#text1"/>
   </g>
   <defs>
     <g id="text0" transform="matrix(1.0, 0.0, 0.0, 1.0, -0.45, -1.4)">
