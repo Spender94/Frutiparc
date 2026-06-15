@@ -33,7 +33,7 @@
   button { font-family: inherit; cursor: pointer; }
   /* The post-login app area is white; only the central chat zone is green, so
      the header (top bar) and footer (composer) read as white, not green. */
-  #app { background: #fff; }
+  #app { background: #fff; position: relative; }
 
   /* ── Single compact top bar ── */
   #topbar {
@@ -578,15 +578,23 @@
      niveau/classement + emotes d'humeur + raccourcis) puis une grille pleine
      largeur des rubriques (Scores, Boutique, Mes disques, Salons, Inventaire,
      Forum). Remplace l'ancien tiroir hamburger (qui n'était pas full width). */
-  /* Le launcher n'est plus un .panel : sa visibilité est pilotée par l'état de
-     navigation (#app.nav-content) sur mobile, et par la media query desktop
-     (bande latérale) plus bas. */
+  /* Le menu est un TIROIR qui glisse depuis la gauche, PAR-DESSUS le contenu
+     (chat/forum/jeux), qui reste visible derrière. Fermé : hors écran à gauche.
+     Mobile : plein écran ; desktop : bande de 440px (cf. media query). */
   #home-panel {
-    display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+    position: absolute; left: 0; top: 0; bottom: 0; width: 100%; z-index: 40;
+    display: flex; flex-direction: column;
     background: #ADE76B; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    transform: translateX(-100%); transition: transform .25s ease;
+    box-shadow: 4px 0 18px rgba(0,0,0,.28);
   }
-  #app.nav-content #home-panel { display: none; }   /* mobile : masqué dans une rubrique */
-  #app:not(.nav-content) #topbar { display: none; } /* mobile : top bar seulement dans une rubrique */
+  #app.menu-open #home-panel { transform: translateX(0); }
+  /* Capteur de clic « hors tiroir » (transparent → le contenu reste visible) :
+     un clic ferme le tiroir. Couvert par le tiroir plein écran sur mobile. */
+  #home-backdrop {
+    position: absolute; inset: 0; z-index: 39; display: none; background: transparent;
+  }
+  #app.menu-open #home-backdrop { display: block; }
 
   /* Police « radio-réveil » (sept segments) pour le numéro de niveau. */
   @font-face {
@@ -739,17 +747,12 @@
   .home-tile .lbl { font-size: 14px; font-weight: bold; color: #2C4A0F; text-align: center; }
   .home-tile:active .lbl { text-decoration: underline; }
 
-  /* ── Desktop / tablette (≥768px) : même logique « rabattable » que sur mobile
-     (le menu n'est PAS permanent). Quand il est affiché, le MENU occupe une bande
-     à gauche (le reste de l'écran reste vide) ; on le rabat avec le bouton ‹ et le
-     contenu (chat/forum/jeux…) passe alors en PLEINE LARGEUR. La seule différence
-     avec le mobile : le menu s'affiche en bande à gauche au lieu du plein écran. ── */
+  /* ── Desktop / tablette (≥768px) : le tiroir s'ouvre en BANDE à gauche (440px)
+     PAR-DESSUS le contenu, qui reste visible derrière (le capteur de clic est
+     transparent). On le ferme via ‹, un clic à droite, ou en choisissant une
+     rubrique. Sous 768px : tiroir plein écran (launcher), comme avant. ── */
   @media (min-width: 768px) {
-    #home-panel { align-items: flex-start; }
-    #home-panel .mainbar,
-    #home-panel .home-grid { width: 440px; max-width: 100%; }
-    /* léger filet à droite de la bande menu pour la détacher du vide */
-    #home-panel .mainbar { box-shadow: 0 0 0 2px #d9d9d9, 0 0 0 3px #8a888d, 4px 0 14px rgba(0,0,0,.10); }
+    #home-panel { width: 440px; }
   }
 </style>
 </head>
@@ -807,11 +810,14 @@
     </button>
   </header>
 
-  <!-- ═══════════ Accueil : le « menu » plein largeur du mode mobile ═══════════
-       Main bar (avatar Frutibouille + encart niveau/classement + emotes d'humeur
-       + raccourcis) puis grille des rubriques. Les emotes et raccourcis sont
-       peuplés par renderHome() ; l'avatar / le niveau / les médailles par
-       loadHomeProfile(). C'est le panneau actif par défaut après connexion. -->
+  <!-- Capteur de clic « hors tiroir » (transparent) : ferme le menu. -->
+  <div id="home-backdrop"></div>
+
+  <!-- ═══════════ Menu (tiroir) du mode mobile ═══════════════════════════════
+       Tiroir qui glisse depuis la gauche par-dessus le contenu (qui reste visible
+       derrière). Main bar (avatar + encart niveau/classement + emotes + raccourcis)
+       puis grille des rubriques. Peuplé par renderHome() ; avatar/niveau/rang par
+       loadHomeProfile(). Ouvert par défaut sur mobile, fermé (chat visible) sur PC. -->
   <section id="home-panel">
     <div class="mainbar">
       <div class="mb-top">
@@ -1243,12 +1249,13 @@
     sel.value = ROOMS[0][0];
     sel.addEventListener("change", function () { switchRoom(sel.value); });
 
-    // On construit la main bar du launcher (emotes + raccourcis) puis on charge le
-    // profil (avatar, niveau, rang). Vue par défaut : desktop/tablette → le menu
-    // est en bande latérale et on ouvre directement le chat (Salon) à droite ;
-    // mobile → on reste sur le launcher plein écran.
+    // On construit la main bar du menu (emotes + raccourcis) puis on charge le
+    // profil (avatar, niveau, rang). Le chat (Salon) est le contenu par défaut,
+    // toujours présent derrière. Mobile → on ouvre le tiroir (on atterrit sur le
+    // menu) ; desktop → tiroir fermé (le chat est visible, le menu s'ouvre via ‹).
     renderHome();
-    if (isDesktop()) { activateTab("chat"); } else { goHome(); }
+    activateTab("chat");
+    if (!isDesktop()) openMenu(true);
     loadHomeProfile();
 
     connectWs();
@@ -1258,27 +1265,21 @@
     maybeOpenFbEditor();
   }
 
-  // ── Navigation : launcher ↔ rubriques ──
-  // MOBILE (<768px) : un panneau plein écran à la fois. #app.nav-content masque le
-  //   launcher et affiche la top bar + la rubrique active ; sans la classe, on voit
-  //   le launcher. Le bouton ‹ revient au menu.
-  // DESKTOP/TABLETTE (≥768px) : le launcher est une bande latérale FIXE (toujours
-  //   visible) et le contenu occupe le reste ; la classe nav-content n'a alors
-  //   aucun effet visuel (cf. media query), et ‹ est masqué.
-  // openMenu() reste un no-op de compatibilité (les feuilles l'appelaient).
-  function openMenu() { /* no-op : plus de tiroir hamburger */ }
+  // ── Navigation : le MENU est un TIROIR (overlay) ──
+  // Le contenu (chat/forum/jeux) est toujours présent en pleine largeur ; le menu
+  // glisse PAR-DESSUS depuis la gauche (#app.menu-open). Mobile : tiroir plein
+  // écran. Desktop/tablette : bande de 440px, le contenu reste visible derrière
+  // (capteur de clic transparent). On ouvre/ferme via ‹, on ferme via un clic à
+  // droite (#home-backdrop) ou en choisissant une rubrique.
   function isDesktop() {
     try { return window.matchMedia("(min-width: 768px)").matches; } catch (e) { return false; }
   }
-  function goHome() {
-    // « Rabat » le menu : on quitte la rubrique (désactive les panneaux) et on
-    // révèle le launcher (bande à gauche en desktop, plein écran en mobile).
-    ["chat", "forum", "grapiz", "bandas", "swapou", "scores"].forEach(function (t) {
-      var p = $("#" + t + "-panel"); if (p) p.classList.remove("active");
-    });
-    $("#app").classList.remove("nav-content");
-  }
-  $("#menu-btn").addEventListener("click", goHome);
+  function openMenu(open) { $("#app").classList.toggle("menu-open", open !== false); }
+  function closeMenu() { $("#app").classList.remove("menu-open"); }
+  function toggleMenu() { $("#app").classList.toggle("menu-open"); }
+  function goHome() { openMenu(true); } // compat : « accueil » = ouvrir le tiroir
+  $("#menu-btn").addEventListener("click", toggleMenu);
+  $("#home-backdrop").addEventListener("click", closeMenu);
 
   // ── Main bar de l'accueil : avatar, niveau, emotes (humeurs), raccourcis ──
   // Emotes → humeur de la bouille via le param `e` de bouille-preview (freeze
@@ -1419,9 +1420,8 @@
   // d'accueil (Salons, Forum, Scores) ET depuis la feuille « Mes disques » (qui
   // lance grapiz / bandas / swapou). Le bouton ‹ de la top bar ramène à l'accueil.
   function activateTab(tab) {
-    // Entre dans une rubrique : mobile → masque le launcher + montre la top bar ;
-    // desktop → le launcher (sidebar) reste, le contenu s'affiche à droite.
-    $("#app").classList.add("nav-content");
+    // Choisir une rubrique referme le tiroir (le contenu choisi occupe l'écran).
+    closeMenu();
     $("#chat-panel").classList.toggle("active", tab === "chat");
     $("#forum-panel").classList.toggle("active", tab === "forum");
     $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
