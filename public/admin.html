@@ -357,6 +357,7 @@
       <button class="tab active" data-tab="users" onclick="switchTab('users')">Joueurs</button>
       <button class="tab" data-tab="detail" onclick="switchTab('detail')">Détail joueur</button>
       <button class="tab" data-tab="scores" onclick="switchTab('scores')">Scores</button>
+      <button class="tab" data-tab="referrals" onclick="switchTab('referrals')">Parrainage</button>
     </div></div>
     <div class="tab-group"><span class="lbl">Animation &amp; contenu</span><div class="grp">
       <button class="tab" data-tab="shop" onclick="switchTab('shop')">Boutique</button>
@@ -412,6 +413,23 @@
     <button class="btn" onclick="loadDetail()">Charger</button>
   </div>
   <div id="detail-content"></div>
+</div>
+
+<div class="content" id="tab-referrals" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadReferrals()">Rafraîchir</button>
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="ref-suspect-only" onchange="renderReferrals()"> Suspects uniquement</label>
+    <span id="ref-count" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <p style="font-size:12px;color:#666;margin:4px 2px 8px">
+    Récompense (50→100 kikooz aux 2) débloquée quand le filleul atteint le niveau 2.
+    Un signal anti multi-compte (même IP / même machine / machine réutilisée / <b>même mot de passe que le parrain</b> / plafond IP)
+    met le parrainage en « suspect » : aucun crédit automatique, à valider/rejeter ici.
+  </p>
+  <table>
+    <thead><tr><th>Filleul</th><th>Parrain</th><th>IP inscription</th><th>Machine</th><th>Signaux</th><th>État</th><th>Action</th></tr></thead>
+    <tbody id="referrals-body"></tbody>
+  </table>
 </div>
 
 <div class="content" id="tab-shop" style="display:none">
@@ -1044,7 +1062,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','shop','wallpapers','challenge','events','channels','gaspard','banwords','forumcensor','kiloute'].forEach(t => {
+  ['users','scores','detail','referrals','shop','wallpapers','challenge','events','channels','gaspard','banwords','forumcensor','kiloute'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -1058,6 +1076,51 @@ function switchTab(name) {
   if (name === 'banwords') loadBanWords();
   if (name === 'forumcensor') loadForumCensor();
   if (name === 'kiloute' && !$('#kiloute-body').dataset.loaded) loadKiloute();
+  if (name === 'referrals') loadReferrals();
+}
+
+// ─── Parrainage (revue anti multi-compte) ───
+let referralsData = [];
+async function loadReferrals() {
+  try {
+    const r = await fetch('/api/admin/referrals', { headers: hdr() });
+    const data = await r.json();
+    if (!Array.isArray(data)) { toast('Erreur: ' + JSON.stringify(data)); return; }
+    referralsData = data;
+    renderReferrals();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+function renderReferrals() {
+  const onlySuspect = $('#ref-suspect-only') && $('#ref-suspect-only').checked;
+  const rows = referralsData.filter(r => !onlySuspect || r.state === 'suspect');
+  const counts = referralsData.reduce((a, r) => { a[r.state] = (a[r.state] || 0) + 1; return a; }, {});
+  $('#ref-count').innerHTML = `<span class="count">${referralsData.length}</span> parrainages · `
+    + `${counts.rewarded || 0} récompensés · <b style="color:#c8860a">${counts.suspect || 0} suspects</b> · ${counts.pending || 0} en attente`;
+  const FLAG = { same_ip: 'même IP', same_device: 'même machine', device_reuse: 'machine réutilisée', same_pw: 'même mot de passe', cap_ip: 'plafond IP' };
+  const short = (s) => s ? (s.length > 12 ? s.slice(0, 10) + '…' : s) : '—';
+  const stColor = { rewarded: '#2f8f2f', suspect: '#c8860a', rejected: '#b31111', pending: '#777', none: '#aaa' };
+  const tb = $('#referrals-body');
+  tb.innerHTML = rows.map(r => `<tr>
+    <td><a href="#" onclick="viewUser('${esc(r.username)}');return false" class="uname">${esc(r.displayName)}</a> <span style="color:#999;font-size:11px">niv.${r.level}</span></td>
+    <td><a href="#" onclick="viewUser('${esc(r.parrain)}');return false" class="uname">${esc(r.parrain)}</a></td>
+    <td style="font-family:monospace;font-size:11px" title="${esc(r.ip)}">${esc(r.ip || '—')}${r.ipShared > 1 ? ` <span class="badge" style="background:#c8860a;color:#fff" title="${r.ipShared} filleuls sur cette IP">×${r.ipShared}</span>` : ''}</td>
+    <td style="font-family:monospace;font-size:11px" title="${esc(r.device)}">${esc(short(r.device))}${r.deviceShared > 1 ? ` <span class="badge" style="background:#c8860a;color:#fff" title="${r.deviceShared} filleuls sur cette machine">×${r.deviceShared}</span>` : ''}</td>
+    <td>${(r.flags || []).map(f => `<span class="badge" style="background:#f4dca0;color:#7a5b00" title="${f}">${FLAG[f] || f}</span>`).join(' ') || '<span style="color:#bbb">—</span>'}</td>
+    <td><b style="color:${stColor[r.state] || '#777'}">${r.state}</b></td>
+    <td>${r.state === 'suspect' || r.state === 'pending'
+        ? `<button class="btn btn-sm" onclick="referralAction('${esc(r.username)}','approve')">Valider</button> <button class="btn btn-sm" style="background:#c10000" onclick="referralAction('${esc(r.username)}','reject')">Rejeter</button>`
+        : '—'}</td>
+  </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#999;padding:18px">Aucun parrainage.</td></tr>';
+}
+async function referralAction(username, action) {
+  if (action === 'approve' && !confirm('Valider ce parrainage et créditer les 2 comptes ?')) return;
+  if (action === 'reject' && !confirm('Rejeter ce parrainage (aucun crédit) ?')) return;
+  try {
+    const r = await fetch(`/api/admin/referrals/${encodeURIComponent(username)}/${action}`, { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (d && d.ok) { toast('OK : ' + d.state); loadReferrals(); }
+    else toast('Erreur: ' + JSON.stringify(d));
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 
 // ─── Fonds d'écran (wallpapers) ───
