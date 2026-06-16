@@ -101,6 +101,17 @@ async function initSchema() {
         -- so the column must default OFF — a true-by-default re-opened the
         -- editbouille editor on every login.
         ALTER TABLE users ALTER COLUMN needs_bouille SET DEFAULT false;
+        -- ── Parrainage ──────────────────────────────────────────────────────
+        -- referred_by : pseudo (lowercase) du parrain ; register_ip / device_token
+        -- servent à détecter le multi-compte ; referral_state suit le cycle
+        -- pending → rewarded | suspect | rejected (récompense débloquée au niveau 2).
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by TEXT DEFAULT NULL;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_at TIMESTAMPTZ;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS register_ip TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS device_token TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_state TEXT DEFAULT 'none';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_flag TEXT DEFAULT '';
+        CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
       EXCEPTION WHEN OTHERS THEN NULL;
       END $$;
 
@@ -568,15 +579,53 @@ async function invalidateUserPasswordResets(userId) {
   );
 }
 
-async function createUser(username, password, email = null) {
+async function createUser(username, password, email = null, referral = {}) {
+  // referral = { referredBy, registerIp, deviceToken, referralState }. referredBy
+  // non nul ⇒ on horodate l'arrivée du filleul (referred_at).
+  const r = referral || {};
+  const referredBy = r.referredBy || null;
   const { rows } = await pool.query(
-    `INSERT INTO users (username, password, email)
-     VALUES ($1, $2, $3)
+    `INSERT INTO users (username, password, email, referred_by, register_ip, device_token, referral_state, referred_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, ${referredBy ? 'now()' : 'NULL'})
      ON CONFLICT (username) DO NOTHING
      RETURNING *`,
-    [username, password, email]
+    [username, password, email, referredBy, r.registerIp || '', r.deviceToken || '', r.referralState || 'none']
   );
   return rows[0] || null;
+}
+
+// Liste des parrainages (filleuls) pour la revue admin / l'écran « Mes filleuls ».
+// Si sponsor est fourni, on filtre sur ce parrain ; sinon on renvoie tout.
+async function listReferrals(sponsor = null) {
+  const where = sponsor ? 'WHERE referred_by = $1' : 'WHERE referred_by IS NOT NULL';
+  const params = sponsor ? [String(sponsor).toLowerCase()] : [];
+  const { rows } = await pool.query(
+    `SELECT username, display_name, referred_by, register_ip, device_token,
+            referral_state, referral_flag, referred_at, xp, created_at
+     FROM users ${where} ORDER BY referred_at DESC NULLS LAST, created_at DESC LIMIT 2000`,
+    params
+  );
+  return rows;
+}
+
+// Un autre compte utilise-t-il déjà ce jeton d'appareil ? (anti multi-compte)
+async function findUsernameByDeviceToken(token) {
+  if (!token) return null;
+  const { rows } = await pool.query(
+    `SELECT username FROM users WHERE device_token = $1 LIMIT 1`,
+    [String(token)]
+  );
+  return rows[0] ? rows[0].username : null;
+}
+
+// Compte les comptes déjà récompensés pour une IP donnée (plafond anti-abus).
+async function countRewardedByIp(ip) {
+  if (!ip) return 0;
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM users WHERE register_ip = $1 AND referral_state = 'rewarded'`,
+    [String(ip)]
+  );
+  return rows[0] ? rows[0].n : 0;
 }
 
 async function updateUser(username, fields) {
@@ -1941,6 +1990,9 @@ module.exports = {
   invalidateUserPasswordResets,
   createUser,
   updateUser,
+  listReferrals,
+  countRewardedByIp,
+  findUsernameByDeviceToken,
   recordLogin,
   createSession,
   getSessionUser,

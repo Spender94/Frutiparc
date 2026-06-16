@@ -389,6 +389,10 @@ function censorProfanity(text) {
 // Game Titems/Pictos — mapping item names to display info + GIF paths
 // ─────────────────────────────────────────────
 const GAME_ITEM_INFO = {
+  // Parrainage — pictos exclusifs (game « Parrainage » : hors registre de jeux,
+  // donc ignorés par computeConsecration).
+  '$parrain':  { name: 'Parrain',  game: 'Parrainage', gif: 'fb/picto_parrain.svg' },
+  '$filleul':  { name: 'Filleul',  game: 'Parrainage', gif: 'fb/picto_filleul.svg' },
   // Kaluga
   '$butterfly0': { name: 'Papillon vert',       game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/papillonVert.gif' },
   '$butterfly1': { name: 'Papillon jaune',      game: 'Kaluga', gif: 'Games/kaluga/Titems/gif/papillonJaune.gif' },
@@ -1800,6 +1804,12 @@ function createDefaultUser(pass) {
     frutiSignB: -1,
     hasWelcomeUserLog: false,
     hasWelcomeSiteLog: false,
+    // ── Parrainage (renseigné par /api/auth/register le cas échéant) ──
+    referredBy: null,       // pseudo (lowercase) du parrain
+    registerIp: '',         // IP d'inscription (anti multi-compte)
+    deviceToken: '',        // jeton d'appareil (anti multi-compte)
+    referralState: 'none',  // none | pending | rewarded | suspect | rejected
+    referralFlag: '',       // raison du flag suspect (same_ip / same_device / cap_ip…)
   };
 }
 
@@ -1858,6 +1868,11 @@ function dbUserToMemory(row) {
     mails: [],
     hasWelcomeUserLog: false,
     hasWelcomeSiteLog: false,
+    referredBy: row.referred_by || null,
+    registerIp: row.register_ip || '',
+    deviceToken: row.device_token || '',
+    referralState: row.referral_state || 'none',
+    referralFlag: row.referral_flag || '',
     _dbId: row.id,
   };
 }
@@ -2177,6 +2192,7 @@ async function awardDailyXp() {
     const newLevel = getLevelForXp(user.xp);
     if (newLevel > oldLevel) {
       addAndNotifyUserLog(username, { type: USER_LOG_TYPE.LEVEL_UP, content: `Bravo ! Tu passes au niveau ${newLevel} ! (${user.xp} XP)` });
+      maybeUnlockReferral(username, oldLevel, newLevel).catch(() => {});
     }
     if (user._dbId) {
       db.updateUser(username, { xp: user.xp }).catch(e => {
@@ -2196,6 +2212,85 @@ async function awardDailyXp() {
 // live push (addAndNotifyUserLog); false = just record the log entry, used
 // when the caller is the ident flow which already flushes new userLog entries
 // to the socket right after (so a live push would double the notification).
+// ════════════════════ Parrainage (referral / anti multi-compte) ════════════
+const REFERRAL = {
+  rewardLevel: 2,        // le filleul débloque la récompense en atteignant ce niveau
+  kikooz: 50,            // kikooz crédités au parrain ET au filleul
+  pictoParrain: '$parrain',
+  pictoFilleul: '$filleul',
+  maxRewardedPerIp: 1,   // max de comptes « rewarded » par IP d'inscription
+};
+
+// Un autre compte (mémoire ou base) utilise-t-il déjà ce jeton d'appareil ?
+async function referralDeviceReused(token, excludeUsername) {
+  if (!token) return false;
+  for (const uname in users) {
+    if (uname !== excludeUsername && users[uname] && users[uname].deviceToken === token) return true;
+  }
+  if (process.env.DATABASE_URL) {
+    try { const u = await db.findUsernameByDeviceToken(token); if (u && u !== excludeUsername) return true; } catch (e) {}
+  }
+  return false;
+}
+
+// Nb de comptes déjà « rewarded » pour cette IP (mémoire + base).
+async function referralRewardedCountForIp(ip) {
+  if (!ip) return 0;
+  let n = 0;
+  for (const uname in users) { const u = users[uname]; if (u && u.referralState === 'rewarded' && u.registerIp === ip) n++; }
+  if (process.env.DATABASE_URL) { try { n = Math.max(n, await db.countRewardedByIp(ip)); } catch (e) {} }
+  return n;
+}
+
+// Crédite kikooz + picto exclusif à un joueur (parrain ou filleul).
+function grantReferralReward(username, pictoId, role) {
+  const user = users[username];
+  if (!user) return;
+  user.kikooz = (Number(user.kikooz) || 0) + REFERRAL.kikooz;
+  if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser kikooz parrainage'));
+  if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+  user.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: REFERRAL.kikooz, c: 'parrainage' });
+  if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+  notifyKikoozUpdate(username, user.kikooz);
+  if (!Array.isArray(user.gameItems)) user.gameItems = [];
+  if (!user.gameItems.includes(pictoId)) {
+    user.gameItems.push(pictoId);
+    if (user._dbId) db.addGameItem(user._dbId, pictoId).catch(dbErr('addGameItem parrainage'));
+  }
+  addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: `Parrainage : +${REFERRAL.kikooz} kikooz et le picto « ${role} » débloqué !` });
+}
+
+// Débloque la récompense quand le filleul atteint le palier, sauf signal de
+// multi-compte (même appareil / même IP / plafond IP) → « suspect » (revue admin,
+// pas de crédit automatique). Appelée à chaque montée de niveau du filleul.
+async function maybeUnlockReferral(filleulName, oldLevel, newLevel) {
+  if (oldLevel >= REFERRAL.rewardLevel || newLevel < REFERRAL.rewardLevel) return;
+  const filleul = users[filleulName];
+  if (!filleul || filleul.referralState !== 'pending' || !filleul.referredBy) return;
+  const parrainName = filleul.referredBy;
+  let parrain = users[parrainName];
+  if (!parrain && process.env.DATABASE_URL) {
+    try { const row = await db.findUserByUsername(parrainName); if (row) { await hydrateUserFromDb(parrainName, row); parrain = users[parrainName]; } } catch (e) {}
+  }
+  const reasons = filleul.referralFlag ? filleul.referralFlag.split(',').filter(Boolean) : [];
+  if (REFERRAL.maxRewardedPerIp > 0 && filleul.registerIp
+      && (await referralRewardedCountForIp(filleul.registerIp)) >= REFERRAL.maxRewardedPerIp) {
+    reasons.push('cap_ip');
+  }
+  if (reasons.length) {
+    filleul.referralState = 'suspect';
+    filleul.referralFlag = Array.from(new Set(reasons)).join(',');
+    if (filleul._dbId) db.updateUser(filleulName, { referral_state: 'suspect', referral_flag: filleul.referralFlag }).catch(dbErr('referral suspect'));
+    console.log(`[REFERRAL] suspect ${filleulName} (parrain=${parrainName}) → ${filleul.referralFlag}`);
+    return;
+  }
+  filleul.referralState = 'rewarded';
+  if (filleul._dbId) db.updateUser(filleulName, { referral_state: 'rewarded' }).catch(dbErr('referral rewarded'));
+  grantReferralReward(filleulName, REFERRAL.pictoFilleul, 'Filleul');
+  if (parrain) grantReferralReward(parrainName, REFERRAL.pictoParrain, 'Parrain');
+  console.log(`[REFERRAL] rewarded ${filleulName} + parrain ${parrainName}`);
+}
+
 function awardImmediateXp(username, gain, reason = '', { notify = true } = {}) {
   if (!gain || gain <= 0) return;
   const user = users[username];
@@ -2209,6 +2304,7 @@ function awardImmediateXp(username, gain, reason = '', { notify = true } = {}) {
     const content = `Bravo ! Tu passes au niveau ${newLevel} ! (${user.xp} XP)`;
     if (notify) addAndNotifyUserLog(username, { type: USER_LOG_TYPE.LEVEL_UP, content });
     else addUserHistoryEntry(user, { type: USER_LOG_TYPE.LEVEL_UP, content, flNew: true });
+    maybeUnlockReferral(username, oldLevel, newLevel).catch(() => {});
   }
   console.log(`[XP]  ${username}: +${gain} XP${reason ? ' (' + reason + ')' : ''} → total=${user.xp}`);
 }
@@ -3538,7 +3634,10 @@ app.get('/api/imgproxy', async (req, res) => {
 });
 
 app.get('/login', (req, res) => {
-  res.redirect('/');
+  // Préserve la query (ex. lien de parrainage ?parrain=<pseudo>) en redirigeant
+  // vers l'accueil, qui sert la page de login/inscription.
+  const q = req.url.indexOf('?');
+  res.redirect(q >= 0 ? '/' + req.url.slice(q) : '/');
 });
 
 app.get('/', (req, res) => {
@@ -3598,9 +3697,35 @@ app.post('/api/auth/register', async (req, res) => {
     }
   }
 
+  // ── Parrainage : résoudre le parrain + calculer les signaux anti multi-compte
+  // (même IP / même appareil / appareil réutilisé). On NE bloque PAS l'inscription :
+  // les signaux sont stockés et tranchés au déblocage (niveau 2). ──
+  const parrainRaw = String((req.body && req.body.parrain) || (req.query && req.query.parrain) || '').trim().toLowerCase();
+  const deviceToken = String((req.body && req.body.device_token) || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  const ref = { referredBy: null, registerIp: ip === 'unknown' ? '' : ip, deviceToken, referralState: 'none', referralFlag: '' };
+  if (parrainRaw && parrainRaw !== username) {
+    let parrain = users[parrainRaw];
+    if (!parrain && process.env.DATABASE_URL) {
+      try { const row = await db.findUserByUsername(parrainRaw); if (row) { await hydrateUserFromDb(parrainRaw, row); parrain = users[parrainRaw]; } } catch (e) {}
+    }
+    if (parrain) {
+      ref.referredBy = parrainRaw;
+      ref.referralState = 'pending';
+      const flags = [];
+      if (ref.registerIp && parrain.registerIp && parrain.registerIp === ref.registerIp) flags.push('same_ip');
+      if (deviceToken) {
+        if (parrain.deviceToken && parrain.deviceToken === deviceToken) flags.push('same_device');
+        else if (await referralDeviceReused(deviceToken, username)) flags.push('device_reuse');
+      }
+      ref.referralFlag = flags.join(',');
+    }
+  }
+
   const passwordHash = await hashPassword(password);
   try {
-    const dbUser = await db.createUser(username, passwordHash, email);
+    const dbUser = await db.createUser(username, passwordHash, email, {
+      referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState,
+    });
     if (!dbUser) {
       return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
     }
@@ -3613,16 +3738,19 @@ app.post('/api/auth/register', async (req, res) => {
     }
     users[username].displayName = rawName;
     users[username].email = email || '';
+    Object.assign(users[username], { referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState, referralFlag: ref.referralFlag });
     await db.setUserItems(dbUser.id, users[username].items);
     await db.updateUser(username, { display_name: rawName });
+    if (ref.referralFlag) await db.updateUser(username, { referral_flag: ref.referralFlag }).catch(() => {});
     recordSuccessfulRegister(ip);
-    console.log(`[REGISTER] ok ip=${ip} user=${rawName}`);
+    console.log(`[REGISTER] ok ip=${ip} user=${rawName}` + (ref.referredBy ? ` | parrain=${ref.referredBy} state=${ref.referralState} flag=${ref.referralFlag || '-'}` : ''));
     return res.json({ ok: true, username: rawName });
   } catch (e) {
     console.error('[DB] register error:', e.message);
     users[username] = createDefaultUser(passwordHash);
     users[username].displayName = rawName;
     users[username].email = email || '';
+    Object.assign(users[username], { referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState, referralFlag: ref.referralFlag });
     recordSuccessfulRegister(ip);
     return res.json({ ok: true, username: rawName });
   }
@@ -3667,6 +3795,14 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
     }
     if (upgrade) user.pass = upgrade;
+  }
+
+  // Parrainage : on renseigne le jeton d'appareil des comptes existants qui n'en
+  // ont pas (améliore la détection « même appareil » pour leurs futurs filleuls).
+  const loginDevice = String((req.body && req.body.device_token) || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  if (loginDevice && users[username] && !users[username].deviceToken) {
+    users[username].deviceToken = loginDevice;
+    if (users[username]._dbId) db.updateUser(username, { device_token: loginDevice }).catch(() => {});
   }
 
   const sid = crypto.randomBytes(16).toString('hex');
