@@ -990,6 +990,14 @@ function utcDayKey(d = new Date()) {
 function parisDayKey(d = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 }
+// Clé de semaine = date (YYYY-MM-DD) du lundi de la semaine courante (heure de Paris).
+// Sert au quota hebdomadaire de kikooz des animateurs (remise à zéro chaque lundi).
+function parisWeekKey(d = new Date()) {
+  const dt = new Date(parisDayKey(d) + 'T12:00:00Z'); // midi UTC : évite les bascules de jour
+  const dow = dt.getUTCDay();                          // 0=dim … 6=sam
+  dt.setUTCDate(dt.getUTCDate() - (dow === 0 ? 6 : dow - 1));
+  return dt.toISOString().substring(0, 10);
+}
 function yesterdayParisDayKey() {
   return parisDayKey(new Date(Date.now() - 86400000));
 }
@@ -2087,6 +2095,41 @@ function saveXpActions() {
       console.error('[XP] Failed to save xp-actions.json:', e.message);
     }
   }, 2000);
+}
+
+// ── Quota hebdomadaire de kikooz des animateurs (à distribuer via /don) ──
+const ANIMATOR_WEEKLY_KIKOOZ = 2000;
+const ANIM_KIKOOZ_FILE = path.join(SCORES_DIR, 'animator-kikooz.json');
+let animatorKikoozGiven = {}; // username -> { weekKey, given }
+function loadAnimatorKikooz() {
+  try {
+    if (fs.existsSync(ANIM_KIKOOZ_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(ANIM_KIKOOZ_FILE, 'utf8'));
+      if (parsed && typeof parsed === 'object') animatorKikoozGiven = parsed;
+    }
+  } catch (e) { console.error('[ANIM] Failed to load animator-kikooz.json:', e.message); }
+}
+loadAnimatorKikooz();
+let _animKikoozSaveTimer = null;
+function saveAnimatorKikooz() {
+  if (_animKikoozSaveTimer) return;
+  _animKikoozSaveTimer = setTimeout(() => {
+    _animKikoozSaveTimer = null;
+    try { fs.writeFileSync(ANIM_KIKOOZ_FILE, JSON.stringify(animatorKikoozGiven), 'utf8'); }
+    catch (e) { console.error('[ANIM] Failed to save animator-kikooz.json:', e.message); }
+  }, 2000);
+}
+// Renvoie l'enregistrement { weekKey, given } de l'animateur pour la semaine en
+// cours (réinitialisé automatiquement au changement de semaine).
+function getAnimatorWeekRecord(username) {
+  const wk = parisWeekKey();
+  if (!animatorKikoozGiven[username] || animatorKikoozGiven[username].weekKey !== wk) {
+    animatorKikoozGiven[username] = { weekKey: wk, given: 0 };
+  }
+  return animatorKikoozGiven[username];
+}
+function animatorKikoozLeft(username) {
+  return Math.max(0, ANIMATOR_WEEKLY_KIKOOZ - getAnimatorWeekRecord(username).given);
 }
 
 function getXpActions(username) {
@@ -4133,7 +4176,10 @@ const ADMIN_ROLES = {
   scores: { label: 'Responsable des scores', tabs: ['scores', 'challenge'] },
   // Attribué explicitement via le menu "Rôle admin", OU implicitement à tout
   // compte portant le badge "Animateur" du chat (is_animator) — cf. /api/admin/login.
-  animateur: { label: 'Animateur', tabs: ['kiloute'] },
+  // Les animateurs gèrent aussi les salons (renommage / sujet).
+  animateur: { label: 'Animateur', tabs: ['kiloute', 'channels'] },
+  // Chapelier : crée et met en boutique des accessoires (onglet Boutique).
+  chapelier: { label: 'Chapelier', tabs: ['shop'] },
 };
 function adminRoleTabs(role) {
   const r = ADMIN_ROLES[role];
@@ -5007,6 +5053,10 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
       const gender = (users[u] && users[u].gender) || row.gender || 'M';
       fields.frutijob = gender === 'F' ? 'Animatrice' : 'Animateur';
     }
+    // Chapelier : affiche le métier "Chapelier" (sauf frutijob explicite fourni).
+    if (fields.admin_role === 'chapelier' && body.frutijob === undefined && !fields.is_moderator && !fields.is_animator) {
+      fields.frutijob = 'Chapelier';
+    }
     if (Object.keys(fields).length > 0) {
       await db.updateUser(u, fields);
       if (users[u]) {
@@ -5809,11 +5859,11 @@ app.get('/api/admin/users/:username/modlogs', adminAuth, async (req, res) => {
 });
 
 // ── Admin: Shop pack management ──
-app.get('/api/admin/shop', adminAuth, (req, res) => {
+app.get('/api/admin/shop', adminScope('shop'), (req, res) => {
   res.json(SHOP_PACKS);
 });
 
-app.post('/api/admin/shop', adminAuth, async (req, res) => {
+app.post('/api/admin/shop', adminScope('shop'), async (req, res) => {
   const b = req.body || {};
   const id = Number(b.id);
   if (!id || !b.name || !b.suffix9) return res.status(400).json({ error: 'missing id, name or suffix9' });
@@ -5833,7 +5883,7 @@ app.post('/api/admin/shop', adminAuth, async (req, res) => {
   res.json({ ok: true, pack });
 });
 
-app.patch('/api/admin/shop/:id', adminAuth, async (req, res) => {
+app.patch('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
   const pack = SHOP_PACKS.find(p => p.id === Number(req.params.id));
   if (!pack) return res.status(404).json({ error: 'not found' });
   const b = req.body || {};
@@ -5851,7 +5901,7 @@ app.patch('/api/admin/shop/:id', adminAuth, async (req, res) => {
   res.json({ ok: true, pack });
 });
 
-app.delete('/api/admin/shop/:id', adminAuth, async (req, res) => {
+app.delete('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
   const idx = SHOP_PACKS.findIndex(p => p.id === Number(req.params.id));
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   const removed = SHOP_PACKS.splice(idx, 1)[0];
@@ -6286,7 +6336,7 @@ app.post('/api/admin/kiloute/forum-post', adminScope('kiloute'), async (req, res
   }
 });
 
-app.post('/api/admin/shop/:id/push-all', adminAuth, async (req, res) => {
+app.post('/api/admin/shop/:id/push-all', adminScope('shop'), async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
   const pack = SHOP_PACKS.find(p => p.id === Number(req.params.id));
   if (!pack) return res.status(404).json({ error: 'pack not found' });
@@ -6711,7 +6761,7 @@ function genEventId() {
 
 // ── Admin: Channels ──
 
-app.get('/api/admin/channels', adminAuth, (req, res) => {
+app.get('/api/admin/channels', adminScope('channels', 'kiloute'), (req, res) => {
   const includeAll = req.query.all === '1' || req.query.all === 'true';
   const list = [];
   for (const [name, ch] of Object.entries(channels)) {
@@ -6725,7 +6775,7 @@ app.get('/api/admin/channels', adminAuth, (req, res) => {
   res.json({ ok: true, channels: list });
 });
 
-app.patch('/api/admin/channels/:name', adminAuth, async (req, res) => {
+app.patch('/api/admin/channels/:name', adminScope('channels'), async (req, res) => {
   const name = req.params.name;
   const ch = channels[name];
   if (!ch) return res.status(404).json({ ok: false, error: 'Salon introuvable' });
@@ -14932,6 +14982,46 @@ case 'send': {
       break;
     }
 
+    // ── /don <pseudo> <montant> : don de kikooz (animateurs + modérateurs) ──
+    // Annonce en bleu gras dans le salon (style t="c", comme les gains Kiloute79).
+    // Les animateurs puisent dans un quota hebdomadaire (ANIMATOR_WEEKLY_KIKOOZ,
+    // remis à zéro chaque lundi) ; les modérateurs ne sont pas plafonnés.
+    if (canAnimate && /^\/don(\s|$)/i.test(text)) {
+      const isMod = isModerator(client.username);
+      const reject = (m) => sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(m)}</i>]]></${CMD.send}>`);
+      const mm = text.match(/^\/don\s+(\S+)\s+(\d{1,6})\s*$/i);
+      if (!mm) {
+        reject(isMod ? 'Usage : /don <pseudo> <montant>'
+                     : `Usage : /don <pseudo> <montant> — il te reste ${animatorKikoozLeft(client.username)} kikooz à distribuer cette semaine.`);
+        break;
+      }
+      const targetName = resolveKnownUsername(mm[1]);
+      const amount = parseInt(mm[2], 10);
+      const target = targetName && users[targetName];
+      if (!target) { reject('Joueur introuvable (doit être connecté).'); break; }
+      if (!(amount > 0)) { reject('Montant invalide.'); break; }
+      if (targetName === client.username) { reject('Tu ne peux pas te donner des kikooz à toi-même.'); break; }
+      if (!isMod) {
+        const rec = getAnimatorWeekRecord(client.username);
+        if (rec.given + amount > ANIMATOR_WEEKLY_KIKOOZ) {
+          reject(`Quota hebdo dépassé : il te reste ${ANIMATOR_WEEKLY_KIKOOZ - rec.given} kikooz à distribuer cette semaine.`);
+          break;
+        }
+        rec.given += amount;
+        saveAnimatorKikooz();
+      }
+      target.kikooz = (Number(target.kikooz) || 0) + amount;
+      if (target._dbId) db.updateUser(targetName, { kikooz: target.kikooz }).catch(dbErr('updateUser kikooz don'));
+      if (!Array.isArray(target.kikoozLog)) target.kikoozLog = [];
+      target.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: amount, c: getDisplayName(client.username) });
+      if (target.kikoozLog.length > 200) target.kikoozLog.length = 200;
+      notifyKikoozUpdate(targetName, target.kikooz);
+      addAndNotifyUserLog(targetName, { type: USER_LOG_TYPE.CHAT, content: `${getDisplayName(client.username)} t'a offert ${amount} kikooz !` });
+      npcSay(client.username, g, `offre ${amount} kikooz à ${getDisplayName(targetName)} !`, 'c');
+      console.log(`[DON] ${client.username} → ${targetName}: ${amount} kikooz (mod=${isMod})`);
+      break;
+    }
+
     // ── Unknown slash command ──
     // The SWF command dispatcher was patched (scripts/patch-main-anim-commands)
     // to FORWARD unmatched slash commands here as plain text, instead of
@@ -14958,7 +15048,7 @@ case 'send': {
     // body — the SWF renders the resulting concatenation through an HTML
     // TextField, so wrapping the timestamp in <font color> turns it red
     // alongside the message text.
-    if (isModerator(client.username) && text.startsWith('!')) {
+    if ((isModerator(client.username) || isAnimator(client.username)) && text.startsWith('!')) {
       const shout = text.substring(1).trim();
       if (shout) {
         const inner = escapeXml(getDisplayName(client.username) + ': ' + shout);

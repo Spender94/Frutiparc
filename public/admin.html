@@ -1900,7 +1900,8 @@ async function loadDetail() {
         <select onchange="setAdminRole('${esc(u)}', this.value)" style="padding:3px">
           <option value=""${!user.admin_role ? ' selected' : ''}>— aucun —</option>
           <option value="scores"${user.admin_role === 'scores' ? ' selected' : ''}>Responsable des scores (Scores + Challenge)</option>
-          <option value="animateur"${user.admin_role === 'animateur' ? ' selected' : ''}>Animateur (Kiloute79)</option>
+          <option value="animateur"${user.admin_role === 'animateur' ? ' selected' : ''}>Animateur (Kiloute79 + Salons)</option>
+          <option value="chapelier"${user.admin_role === 'chapelier' ? ' selected' : ''}>Chapelier (Boutique)</option>
         </select>
         <span style="color:#888;font-size:11px">accès limité à /admin avec ses identifiants Frutiparc — le badge « Animateur » ci-dessus donne déjà l'accès Kiloute79</span>
       </td></tr>
