@@ -260,21 +260,15 @@
     .cta img { height: 40px; cursor: pointer; }
     .welcome { height: 342px; max-width: 115%; max-height: 115%; object-fit: contain; justify-self: end; padding-right: 50px; }
 
-    /* Formulaire d'inscription dans le bloc central (remplace l'accueil) */
-    .register-card {
-      grid-column: 1 / -1; align-self: center; justify-self: center;
-      display: flex; flex-direction: column; gap: 6px;
-      width: 100%; max-width: 440px; box-sizing: border-box;
-      background: #f6fbef; border: 2px solid #2C4A0F; border-radius: 12px;
-      padding: 14px 20px 16px; box-shadow: 0 6px 16px rgba(44, 74, 15, .18);
-    }
-    .register-title { font-size: 18px; color: #2C4A0F; text-align: center; margin-bottom: 2px; }
-    .register-grid { display: grid; grid-template-columns: 1fr; gap: 0 10px; }
-    .register-grid label { font-size: 12px; font-weight: 700; color: #4f7d1e; margin: 7px 0 1px 2px; }
-    .register-grid .opt { font-weight: 400; color: #8aa86a; font-size: 11px; }
-    .register-grid input { padding: 9px 10px; font-size: 15px; border: 1px solid #5a8a20; border-radius: 7px; background: #fff; box-sizing: border-box; width: 100%; }
-    .register-grid input:focus { outline: none; border-color: #2C4A0F; box-shadow: 0 0 0 2px rgba(44, 74, 15, .15); }
-    .register-actions { display: flex; gap: 10px; margin-top: 12px; }
+    /* Formulaire d'inscription simple : remplace le texte d'accueil (colonne gauche) */
+    .welcome-left { display: flex; flex-direction: column; min-width: 0; }
+    .register-simple { display: flex; flex-direction: column; max-width: 340px; }
+    .register-simple label { font-size: 12px; font-weight: 700; color: #4f7d1e; margin: 8px 0 2px 1px; }
+    .register-simple label:first-child { margin-top: 2px; }
+    .register-simple .opt { font-weight: 400; color: #8aa86a; font-size: 11px; }
+    .register-simple input { padding: 8px 10px; font-size: 14px; border: 1px solid #5a8a20; border-radius: 6px; background: #fff; box-sizing: border-box; width: 100%; }
+    .register-simple input:focus { outline: none; border-color: #2C4A0F; box-shadow: 0 0 0 2px rgba(44, 74, 15, .15); }
+    .register-actions { display: flex; gap: 10px; margin-top: 14px; }
     .register-actions .btn { flex: 1; margin: 0; }
 
     .status {
@@ -448,39 +442,41 @@
     </aside>
 
     <article class="main">
-      <div class="welcome-block">
+      <div class="welcome-left">
         <img class="welcome-title" src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
-        <p><strong>Découvrez l'univers fruité de Frutiparc ! <span style="color:#d82222;">Inscrivez-vous</span></strong> et jouez à nos jeux fruités : réflexion, arcade et multijoueurs.</p>
-        <p>Chaque jour, profitez de plusieurs parties gratuites pour battre les autres joueurs et grimper au classement.</p>
-        <p>Frutiparc c'est aussi le mode Frutiz : e-mail, salons de discussions, forums et blog, dans une interface fruitée.</p>
 
-        <div class="cta">
-          <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/decouvrir.gif" alt="Découvrir" />
-          <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/sinscrire.gif" alt="S'inscrire" id="cta-register" />
+        <!-- Accueil par défaut : texte + boutons (masqué pendant l'inscription) -->
+        <div id="welcome-text">
+          <p><strong>Découvrez l'univers fruité de Frutiparc ! <span style="color:#d82222;">Inscrivez-vous</span></strong> et jouez à nos jeux fruités : réflexion, arcade et multijoueurs.</p>
+          <p>Chaque jour, profitez de plusieurs parties gratuites pour battre les autres joueurs et grimper au classement.</p>
+          <p>Frutiparc c'est aussi le mode Frutiz : e-mail, salons de discussions, forums et blog, dans une interface fruitée.</p>
+
+          <div class="cta">
+            <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/decouvrir.gif" alt="Découvrir" />
+            <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/sinscrire.gif" alt="S'inscrire" id="cta-register" />
+          </div>
         </div>
-      </div>
-      <div class="welcome-block">
-        <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome.gif" alt="Frutiparc" class="welcome" />
-      </div>
 
-      <!-- Formulaire d'inscription dans le bloc central (remplace l'accueil) -->
-      <form id="register-form" class="register-card hidden" autocomplete="on">
-        <strong class="register-title">Inscription gratuite</strong>
-        <div class="register-grid">
+        <!-- Formulaire simple : remplace le texte au clic sur « S'inscrire » -->
+        <form id="register-form" class="register-simple hidden" autocomplete="on">
           <label for="reg-username">Pseudo</label>
           <input id="reg-username" name="username" minlength="3" maxlength="20" required autocapitalize="none" autocorrect="off" spellcheck="false" />
           <label for="reg-password">Code secret</label>
           <input id="reg-password" name="password" type="password" minlength="6" maxlength="80" required />
           <label for="reg-email">E-mail <span class="opt">(facultatif)</span></label>
-          <input id="reg-email" name="email" type="email" maxlength="120" autocomplete="email" placeholder="pour récupérer ton code" />
+          <input id="reg-email" name="email" type="email" maxlength="120" autocomplete="email" />
           <label for="reg-parrain">Nom du parrain <span class="opt">(facultatif)</span></label>
-          <input id="reg-parrain" name="parrain" type="text" maxlength="20" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="pseudo de la personne qui t'a invité" />
-        </div>
-        <div class="register-actions">
-          <button class="btn btn-primary" type="submit">Valider mon inscription</button>
-          <button class="btn btn-secondary" type="button" id="register-cancel">Annuler</button>
-        </div>
-      </form>
+          <input id="reg-parrain" name="parrain" type="text" maxlength="20" autocapitalize="none" autocorrect="off" spellcheck="false" />
+          <div class="register-actions">
+            <button class="btn btn-primary" type="submit">Valider</button>
+            <button class="btn btn-secondary" type="button" id="register-cancel">Annuler</button>
+          </div>
+        </form>
+      </div>
+
+      <div>
+        <img src="https://raw.githubusercontent.com/Spender94/Frutiparc/main/public/images/welcome.gif" alt="Frutiparc" class="welcome" />
+      </div>
     </article>
   </section>
 
@@ -561,7 +557,8 @@
     // Bascule le bloc central entre l'accueil (texte + images) et le formulaire
     // d'inscription. La barre du haut (connexion) reste visible.
     function showRegister(show) {
-      document.querySelectorAll('.welcome-block').forEach((el) => el.classList.toggle('hidden', !!show));
+      const txt = document.getElementById('welcome-text');
+      if (txt) txt.classList.toggle('hidden', !!show);
       registerForm.classList.toggle('hidden', !show);
       if (show) {
         setStatus('Crée ton compte pour rejoindre Frutiparc !');
