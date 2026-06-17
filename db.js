@@ -283,6 +283,69 @@ async function initSchema() {
         created_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- ── Tournois (« Maître ÈS … ») ──────────────────────────────────────
+      -- Phase de qualif (leaderboard sur une fenêtre) → coupe à élimination
+      -- directe (tours successifs). Un match se départage au MEILLEUR score posté
+      -- pendant la fenêtre du tour (capturé dans tournament_round_scores).
+      CREATE TABLE IF NOT EXISTS tournaments (
+        id             SERIAL PRIMARY KEY,
+        name           TEXT NOT NULL,
+        game           TEXT NOT NULL,                 -- swfName (ex. 'swapou2')
+        ranking_id     TEXT NOT NULL,                 -- ex. 'swapou2_classic'
+        status         TEXT NOT NULL DEFAULT 'draft', -- draft|qualif|seeded|bracket|finished|cancelled
+        bracket_size   INTEGER DEFAULT 8,             -- places visées (0 = auto/flexible)
+        round_hours    INTEGER DEFAULT 72,            -- durée d'un tour (défaut 3 j)
+        qualif_start   TIMESTAMPTZ,
+        qualif_end     TIMESTAMPTZ,
+        current_round  INTEGER DEFAULT 0,             -- 0 = qualif ; 1.. = tours de coupe
+        champion       TEXT DEFAULT NULL,
+        best_qualifier TEXT DEFAULT NULL,             -- n°1 de la qualif (honneur séparé)
+        created_at     TIMESTAMPTZ DEFAULT now(),
+        updated_at     TIMESTAMPTZ DEFAULT now()
+      );
+
+      -- Participants qualifiés (retenus à la clôture de la qualif), avec leur seed.
+      CREATE TABLE IF NOT EXISTS tournament_players (
+        tournament_id INTEGER NOT NULL,
+        username      TEXT NOT NULL,
+        seed          INTEGER DEFAULT 0,             -- 1..N (1 = meilleur qualifié)
+        qualif_score  BIGINT DEFAULT 0,
+        status        TEXT DEFAULT 'qualified',      -- qualified|eliminated|champion|runner_up
+        created_at    TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (tournament_id, username)
+      );
+
+      -- Matchs de la coupe (une affiche par ligne). winner/score* à la clôture du tour.
+      CREATE TABLE IF NOT EXISTS tournament_matches (
+        id            SERIAL PRIMARY KEY,
+        tournament_id INTEGER NOT NULL,
+        round         INTEGER NOT NULL,              -- 1 = premier tour de coupe, etc.
+        slot          INTEGER NOT NULL,              -- position dans le tour (affichage/appariement)
+        player1       TEXT DEFAULT NULL,             -- NULL = bye / à déterminer
+        player2       TEXT DEFAULT NULL,
+        score1        BIGINT DEFAULT NULL,
+        score2        BIGINT DEFAULT NULL,
+        winner        TEXT DEFAULT NULL,
+        third_place   BOOLEAN DEFAULT FALSE,         -- petite finale
+        window_start  TIMESTAMPTZ,
+        window_end    TIMESTAMPTZ,
+        status        TEXT DEFAULT 'pending',        -- pending|live|done
+        created_at    TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_tmatches_tour ON tournament_matches(tournament_id, round, slot);
+
+      -- Capture des scores postés pendant une fenêtre (round 0 = qualif, sinon le tour).
+      -- On garde le MEILLEUR score par joueur et par tour (indépendant du record perso).
+      CREATE TABLE IF NOT EXISTS tournament_round_scores (
+        tournament_id INTEGER NOT NULL,
+        round         INTEGER NOT NULL,              -- 0 = qualif ; 1.. = tours
+        username      TEXT NOT NULL,
+        score         BIGINT NOT NULL DEFAULT 0,
+        data          TEXT DEFAULT '',
+        updated_at    TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (tournament_id, round, username)
+      );
+
       -- Kiloute79 "Question à 60 kikooz" backlog (admin-managed)
       CREATE TABLE IF NOT EXISTS kiloute_questions (
         id          SERIAL PRIMARY KEY,
@@ -1979,9 +2042,90 @@ async function deleteGaspardHelpTopic(id) {
   return r.rowCount > 0;
 }
 
+// ── Tournois ───────────────────────────────────────────────────────────────
+async function createTournament(t) {
+  const { rows } = await pool.query(
+    `INSERT INTO tournaments (name, game, ranking_id, bracket_size, round_hours, status)
+     VALUES ($1,$2,$3,$4,$5,'draft') RETURNING *`,
+    [t.name, t.game, t.ranking_id, t.bracket_size ?? 8, t.round_hours ?? 72]
+  );
+  return rows[0];
+}
+async function listTournaments() {
+  const { rows } = await pool.query(
+    `SELECT t.*, (SELECT COUNT(*) FROM tournament_players p WHERE p.tournament_id = t.id) AS players
+       FROM tournaments t ORDER BY t.created_at DESC`);
+  return rows;
+}
+async function getTournament(id) {
+  const { rows } = await pool.query(`SELECT * FROM tournaments WHERE id = $1`, [id]);
+  return rows[0] || null;
+}
+async function updateTournament(id, fields) {
+  const keys = Object.keys(fields);
+  if (!keys.length) return;
+  const sets = keys.map((k, i) => `${k} = $${i + 2}`);
+  sets.push('updated_at = now()');
+  await pool.query(`UPDATE tournaments SET ${sets.join(', ')} WHERE id = $1`, [id, ...keys.map((k) => fields[k])]);
+}
+async function deleteTournament(id) {
+  await pool.query(`DELETE FROM tournament_round_scores WHERE tournament_id = $1`, [id]);
+  await pool.query(`DELETE FROM tournament_matches WHERE tournament_id = $1`, [id]);
+  await pool.query(`DELETE FROM tournament_players WHERE tournament_id = $1`, [id]);
+  await pool.query(`DELETE FROM tournaments WHERE id = $1`, [id]);
+}
+async function getTournamentPlayers(id) {
+  const { rows } = await pool.query(
+    `SELECT * FROM tournament_players WHERE tournament_id = $1 ORDER BY seed ASC, qualif_score DESC`, [id]);
+  return rows;
+}
+async function setTournamentPlayers(id, players) {
+  await pool.query(`DELETE FROM tournament_players WHERE tournament_id = $1`, [id]);
+  for (const p of players) {
+    await pool.query(
+      `INSERT INTO tournament_players (tournament_id, username, seed, qualif_score, status)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [id, p.username, p.seed || 0, p.qualif_score || 0, p.status || 'qualified']);
+  }
+}
+async function getTournamentMatches(id) {
+  const { rows } = await pool.query(
+    `SELECT * FROM tournament_matches WHERE tournament_id = $1 ORDER BY round ASC, slot ASC`, [id]);
+  return rows;
+}
+// Écrasement direct : le serveur a déjà décidé que ce score est le meilleur du tour.
+async function upsertRoundScore(tid, round, username, score, data) {
+  await pool.query(
+    `INSERT INTO tournament_round_scores (tournament_id, round, username, score, data, updated_at)
+     VALUES ($1,$2,$3,$4,$5, now())
+     ON CONFLICT (tournament_id, round, username)
+     DO UPDATE SET score = EXCLUDED.score, data = EXCLUDED.data, updated_at = now()`,
+    [tid, round, username, score, data || '']);
+}
+async function getRoundScores(tid, round) {
+  const { rows } = await pool.query(
+    `SELECT username, score, data FROM tournament_round_scores WHERE tournament_id = $1 AND round = $2`, [tid, round]);
+  return rows;
+}
+async function getActiveTournaments() {
+  const { rows } = await pool.query(`SELECT * FROM tournaments WHERE status IN ('qualif','bracket')`);
+  return rows;
+}
+
 module.exports = {
   pool,
   initSchema,
+  createTournament,
+  listTournaments,
+  getTournament,
+  updateTournament,
+  deleteTournament,
+  getTournamentPlayers,
+  setTournamentPlayers,
+  getTournamentMatches,
+  upsertRoundScore,
+  getRoundScores,
+  getActiveTournaments,
   findUserByUsername,
   findUserByEmail,
   createPasswordReset,

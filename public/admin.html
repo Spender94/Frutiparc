@@ -358,6 +358,7 @@
       <button class="tab" data-tab="detail" onclick="switchTab('detail')">Détail joueur</button>
       <button class="tab" data-tab="scores" onclick="switchTab('scores')">Scores</button>
       <button class="tab" data-tab="referrals" onclick="switchTab('referrals')">Parrainage</button>
+      <button class="tab" data-tab="tournoi" onclick="switchTab('tournoi')">Tournoi</button>
     </div></div>
     <div class="tab-group"><span class="lbl">Animation &amp; contenu</span><div class="grp">
       <button class="tab" data-tab="shop" onclick="switchTab('shop')">Boutique</button>
@@ -430,6 +431,20 @@
     <thead><tr><th>Filleul</th><th>Parrain</th><th>IP inscription</th><th>Machine</th><th>Signaux</th><th>État</th><th>Action</th></tr></thead>
     <tbody id="referrals-body"></tbody>
   </table>
+</div>
+
+<div class="content" id="tab-tournoi" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadTournaments()">Rafraîchir</button>
+    <button class="btn-success" onclick="openCreateTournament()">+ Nouveau tournoi</button>
+    <span id="tournoi-count" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <p style="font-size:12px;color:#666;margin:4px 2px 8px">
+    Coupe « Maître ÈS … » : phase de <b>qualif</b> (leaderboard sur une fenêtre) → <b>top N seedés</b> → coupe à élimination directe.
+    Tout le monde participe en posant un score pendant la fenêtre ; le meilleur score départage.
+  </p>
+  <div id="tournoi-list"></div>
+  <div id="tournoi-detail" style="margin-top:14px"></div>
 </div>
 
 <div class="content" id="tab-shop" style="display:none">
@@ -1062,7 +1077,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','referrals','shop','wallpapers','challenge','events','channels','gaspard','banwords','forumcensor','kiloute'].forEach(t => {
+  ['users','scores','detail','referrals','tournoi','shop','wallpapers','challenge','events','channels','gaspard','banwords','forumcensor','kiloute'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -1077,6 +1092,7 @@ function switchTab(name) {
   if (name === 'forumcensor') loadForumCensor();
   if (name === 'kiloute' && !$('#kiloute-body').dataset.loaded) loadKiloute();
   if (name === 'referrals') loadReferrals();
+  if (name === 'tournoi') loadTournaments();
 }
 
 // ─── Parrainage (revue anti multi-compte) ───
@@ -1119,6 +1135,110 @@ async function referralAction(username, action) {
     const r = await fetch(`/api/admin/referrals/${encodeURIComponent(username)}/${action}`, { method: 'POST', headers: hdr() });
     const d = await r.json();
     if (d && d.ok) { toast('OK : ' + d.state); loadReferrals(); }
+    else toast('Erreur: ' + JSON.stringify(d));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ─── Tournois (« Maître ÈS … ») ───
+let tournoiGames = null;
+const T_STATUS = { draft:'brouillon', qualif:'qualif en cours', seeded:'qualifiés seedés', bracket:'coupe en cours', finished:'terminé', cancelled:'annulé' };
+const T_COLOR = { draft:'#888', qualif:'#c8860a', seeded:'#2f6fb0', bracket:'#2f6fb0', finished:'#2f8f2f', cancelled:'#b31111' };
+function tFmtDate(s){ if(!s) return '—'; try { return new Date(s).toLocaleString('fr-FR'); } catch(e){ return s; } }
+async function loadTournaments() {
+  try {
+    const r = await fetch('/api/admin/tournaments', { headers: hdr() });
+    const data = await r.json();
+    if (!Array.isArray(data)) { toast('Erreur: ' + JSON.stringify(data)); return; }
+    $('#tournoi-count').innerHTML = `<span class="count">${data.length}</span> tournoi(s)`;
+    const el = $('#tournoi-list');
+    if (!data.length) { el.innerHTML = '<p style="color:#999">Aucun tournoi — crée-en un avec « + Nouveau tournoi ».</p>'; return; }
+    el.innerHTML = '<table><thead><tr><th>Nom</th><th>Jeu</th><th>État</th><th>Joueurs</th><th>Taille</th><th>Tour</th><th></th></tr></thead><tbody>'
+      + data.map(t => `<tr>
+          <td><b>${esc(t.name)}</b></td><td>${esc(t.game)}</td>
+          <td><b style="color:${T_COLOR[t.status]||'#555'}">${T_STATUS[t.status]||t.status}</b></td>
+          <td>${t.players||0}</td><td>${t.bracket_size||'auto'}</td><td>${t.round_hours} h</td>
+          <td><button class="btn btn-sm" onclick="openTournament(${t.id})">Gérer</button></td>
+        </tr>`).join('') + '</tbody></table>';
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function openCreateTournament() {
+  if (!tournoiGames) {
+    try { tournoiGames = await (await fetch('/api/admin/tournament-games', { headers: hdr() })).json(); }
+    catch (e) { toast('Erreur jeux: ' + e.message); return; }
+  }
+  const opts = tournoiGames.map(g => `<option value="${esc(g.ranking_id)}"${g.ranking_id==='swapou2_classic'?' selected':''}>${esc(g.name)}</option>`).join('');
+  $('#tournoi-detail').innerHTML = `
+    <div style="border:1px solid #cdd;padding:14px;border-radius:8px;max-width:460px">
+      <h3 style="margin:0 0 10px">Nouveau tournoi</h3>
+      <label style="display:block;margin:6px 0 2px">Nom</label>
+      <input id="t-name" maxlength="80" value="Maître ÈS Swapou" style="width:100%">
+      <label style="display:block;margin:8px 0 2px">Jeu (ranking)</label>
+      <select id="t-ranking" style="width:100%">${opts}</select>
+      <label style="display:block;margin:8px 0 2px">Taille de la coupe</label>
+      <select id="t-size"><option value="4">4 (2 tours)</option><option value="8" selected>8 (3 tours)</option><option value="16">16 (4 tours)</option><option value="32">32 (5 tours)</option></select>
+      <label style="display:block;margin:8px 0 2px">Durée d'un tour (heures)</label>
+      <input id="t-hours" type="number" min="1" max="720" value="72" style="width:90px"> <span style="color:#888;font-size:12px">72 h = 3 jours</span>
+      <div style="margin-top:12px"><button class="btn-success" onclick="createTournament()">Créer</button> <button class="btn" onclick="$('#tournoi-detail').innerHTML=''">Annuler</button></div>
+    </div>`;
+}
+async function createTournament() {
+  const body = { name: $('#t-name').value, ranking_id: $('#t-ranking').value, bracket_size: Number($('#t-size').value), round_hours: Number($('#t-hours').value) };
+  try {
+    const d = await (await fetch('/api/admin/tournaments', { method:'POST', headers: hdr(), body: JSON.stringify(body) })).json();
+    if (d && d.ok) { toast('Tournoi créé'); loadTournaments(); openTournament(d.tournament.id); }
+    else toast('Erreur: ' + JSON.stringify(d));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function openTournament(id) {
+  try {
+    const d = await (await fetch('/api/admin/tournaments/' + id, { headers: hdr() })).json();
+    if (!d.tournament) { toast('Erreur: ' + JSON.stringify(d)); return; }
+    const t = d.tournament;
+    let actions = '';
+    if (t.status === 'draft') actions = `<button class="btn-success" onclick="startQualif(${t.id})">Démarrer la qualif</button> <button class="btn" style="background:#c10000;color:#fff" onclick="deleteTournament(${t.id})">Supprimer</button>`;
+    else if (t.status === 'qualif') actions = `<button class="btn-success" onclick="closeQualif(${t.id})">Clôturer la qualif &amp; seeder</button>`;
+    else if (t.status === 'seeded') actions = `<span style="color:#2f6fb0">Qualif terminée — génération du bracket à venir (Phase 3).</span>`;
+    const lead = (d.roundScores||[]).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.username)}</td><td>${r.score}</td></tr>`).join('');
+    const players = (d.players||[]).map(p=>`<tr><td>${p.seed}</td><td><b>${esc(p.username)}</b></td><td>${p.qualif_score}</td></tr>`).join('');
+    $('#tournoi-detail').innerHTML = `
+      <div style="border:1px solid #cdd;padding:14px;border-radius:8px">
+        <h3 style="margin:0 0 6px">${esc(t.name)} <span style="color:${T_COLOR[t.status]||'#555'};font-size:13px">(${T_STATUS[t.status]||t.status})</span></h3>
+        <div style="font-size:13px;color:#555;margin-bottom:8px">
+          Jeu : <b>${esc(t.game)}</b> · Taille : ${t.bracket_size||'auto'} · Tour : ${t.round_hours} h
+          ${t.qualif_end ? ' · Fin qualif : <b>'+tFmtDate(t.qualif_end)+'</b>' : ''}
+          ${t.best_qualifier ? ' · Meilleur qualifié : <b>'+esc(t.best_qualifier)+'</b>' : ''}
+        </div>
+        <div style="margin-bottom:10px">${actions}</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          ${ players ? `<div><h4 style="margin:0 0 4px">Qualifiés (seedés)</h4><table><thead><tr><th>Seed</th><th>Joueur</th><th>Score qualif</th></tr></thead><tbody>${players}</tbody></table></div>` : '' }
+          <div><h4 style="margin:0 0 4px">Classement du tour courant ${t.status==='qualif'?'(live)':''}</h4>
+            ${ lead ? `<table><thead><tr><th>#</th><th>Joueur</th><th>Score</th></tr></thead><tbody>${lead}</tbody></table>` : '<p style="color:#999">Aucun score capturé pour le moment.</p>' }
+          </div>
+        </div>
+      </div>`;
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function startQualif(id) {
+  const days = Number(prompt('Durée de la qualif en jours ?', '7')); if (!days || days < 1) return;
+  try {
+    const d = await (await fetch('/api/admin/tournaments/'+id+'/start-qualif', { method:'POST', headers: hdr(), body: JSON.stringify({ qualif_days: days }) })).json();
+    if (d && d.ok) { toast('Qualif démarrée (fin ' + tFmtDate(d.qualif_end) + ')'); loadTournaments(); openTournament(id); }
+    else toast('Erreur: ' + (d.message || JSON.stringify(d)));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function closeQualif(id) {
+  if (!confirm('Clôturer la qualif et figer le classement (top N seedé) ?')) return;
+  try {
+    const d = await (await fetch('/api/admin/tournaments/'+id+'/close-qualif', { method:'POST', headers: hdr() })).json();
+    if (d && d.ok) { toast(d.qualified.length + ' qualifiés seedés'); loadTournaments(); openTournament(id); }
+    else toast('Erreur: ' + (d.message || JSON.stringify(d)));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function deleteTournament(id) {
+  if (!confirm('Supprimer ce tournoi ?')) return;
+  try {
+    const d = await (await fetch('/api/admin/tournaments/'+id, { method:'DELETE', headers: hdr() })).json();
+    if (d && d.ok) { toast('Supprimé'); $('#tournoi-detail').innerHTML=''; loadTournaments(); }
     else toast('Erreur: ' + JSON.stringify(d));
   } catch (e) { toast('Erreur: ' + e.message); }
 }

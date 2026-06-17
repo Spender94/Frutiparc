@@ -1705,6 +1705,9 @@ function persistScore(username, rankingId, score, data) {
   const oldData = (prev && prev.data !== undefined && prev.data !== null) ? String(prev.data) : '';
   const n = Number(score) || 0;
   const newData = (data === undefined || data === null) ? '' : String(data);
+  // Tournoi : si une fenêtre de capture est ouverte sur ce ranking, on retient le
+  // meilleur score du joueur pour le tour en cours (indépendant de son record perso).
+  captureTournamentScore(username, rankingId, n, newData);
   const oldPos = computePosition(rankingId, username);
   let updated = false;
   const scoreImproved = isScoreBetter(rankingId, n, newData, oldScore, oldData);
@@ -1726,6 +1729,63 @@ function persistScore(username, rankingId, score, data) {
   }
   const newPos = computePosition(rankingId, username);
   return { updated, newScore: updated ? n : oldScore, oldScore, oldPos, newPos };
+}
+
+// ════════════════════ Tournois (« Maître ÈS … ») ════════════════════════════
+// Fenêtres de capture actives (ranking_id -> { tid, round, endsAt }) + cache des
+// meilleurs scores du tour en cours (`${tid}:${round}` -> Map(user -> {score,data})).
+const tournamentWindows = new Map();
+const tournamentRoundScores = new Map();
+const tRoundKey = (tid, round) => `${tid}:${round}`;
+
+function openTournamentWindow(tid, round, rankingId, endsAt) {
+  tournamentWindows.set(rankingId, { tid, round, endsAt: endsAt ? new Date(endsAt).getTime() : 0 });
+  if (!tournamentRoundScores.has(tRoundKey(tid, round))) tournamentRoundScores.set(tRoundKey(tid, round), new Map());
+}
+function closeTournamentWindow(rankingId) { tournamentWindows.delete(rankingId); }
+
+// Hook appelé par persistScore : retient le meilleur score du joueur pour le tour
+// en cours si une fenêtre est ouverte sur ce ranking (sens géré par isScoreBetter).
+function captureTournamentScore(username, rankingId, score, data) {
+  const win = tournamentWindows.get(rankingId);
+  if (!win) return;
+  if (win.endsAt && Date.now() > win.endsAt) return;
+  const key = tRoundKey(win.tid, win.round);
+  let cache = tournamentRoundScores.get(key);
+  if (!cache) { cache = new Map(); tournamentRoundScores.set(key, cache); }
+  const cur = cache.get(username);
+  const n = Number(score) || 0;
+  const d = (data === undefined || data === null) ? '' : String(data);
+  if (!cur || isScoreBetter(rankingId, n, d, cur.score, cur.data)) {
+    cache.set(username, { score: n, data: d });
+    db.upsertRoundScore(win.tid, win.round, username, n, d).catch((e) => console.error('[TOURNOI] round score save:', e.message));
+  }
+}
+
+// Classe des lignes de score (round_scores) selon le sens du ranking.
+function rankTournamentRoundScores(rankingId, rows) {
+  const cmp = scoreComparator(rankingId);
+  return rows
+    .map((r) => ({ username: r.username, score: Number(r.score) || 0, data: r.data || '' }))
+    .sort((a, b) => cmp({ s: a.score, data: a.data }, { s: b.score, data: b.data }));
+}
+
+// Boot : rouvre les fenêtres des tournois actifs + recharge leur cache de scores.
+async function loadTournamentsOnBoot() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const active = await db.getActiveTournaments();
+    for (const t of active) {
+      if (t.status === 'qualif') {
+        openTournamentWindow(t.id, 0, t.ranking_id, t.qualif_end);
+        const rows = await db.getRoundScores(t.id, 0);
+        const cache = tournamentRoundScores.get(tRoundKey(t.id, 0));
+        for (const r of rows) cache.set(r.username, { score: Number(r.score) || 0, data: r.data || '' });
+      }
+      // (Les fenêtres de tours de coupe seront rouvertes en Phase 4.)
+    }
+    if (active.length) console.log(`[TOURNOI] ${active.length} tournoi(s) actif(s) rechargé(s).`);
+  } catch (e) { console.error('[TOURNOI] boot load error:', e.message); }
 }
 
 // Position for a user in a ranking (1-based). 0 if not ranked.
@@ -4176,8 +4236,8 @@ const ADMIN_ROLES = {
   scores: { label: 'Responsable des scores', tabs: ['scores', 'challenge'] },
   // Attribué explicitement via le menu "Rôle admin", OU implicitement à tout
   // compte portant le badge "Animateur" du chat (is_animator) — cf. /api/admin/login.
-  // Les animateurs gèrent aussi les salons (renommage / sujet).
-  animateur: { label: 'Animateur', tabs: ['kiloute', 'channels'] },
+  // Les animateurs gèrent aussi les salons (renommage / sujet) et les tournois.
+  animateur: { label: 'Animateur', tabs: ['kiloute', 'channels', 'tournoi'] },
   // Chapelier : crée et met en boutique des accessoires (onglet Boutique).
   chapelier: { label: 'Chapelier', tabs: ['shop'] },
 };
@@ -4371,6 +4431,114 @@ app.post('/api/admin/referrals/:username/:action', adminAuth, async (req, res) =
     return res.json({ ok: true, state: 'rejected' });
   }
   return res.status(400).json({ error: 'bad_action' });
+});
+
+// ════════════════════ Admin : Tournois ══════════════════════════════════════
+const tournoiScope = adminScope('tournoi');
+
+// Jeux disponibles (rankings "classiques") pour le sélecteur de création.
+app.get('/api/admin/tournament-games', tournoiScope, (req, res) => {
+  res.json(Object.entries(RANKINGS)
+    .filter(([, r]) => r && r.type === 'C')
+    .map(([id, r]) => ({ ranking_id: id, name: r.name, game: r.game })));
+});
+
+app.get('/api/admin/tournaments', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json([]);
+  try { res.json(await db.listTournaments()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/tournaments', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  const b = req.body || {};
+  const name = String(b.name || '').trim().slice(0, 80);
+  const rankingId = String(b.ranking_id || '').trim();
+  if (!name) return res.status(400).json({ error: 'name_required' });
+  if (!RANKINGS[rankingId]) return res.status(400).json({ error: 'ranking_invalid' });
+  const bracketSize = [4, 8, 16, 32].includes(Number(b.bracket_size)) ? Number(b.bracket_size) : 8;
+  const roundHours = Math.max(1, Math.min(720, Number(b.round_hours) || 72));
+  try {
+    const t = await db.createTournament({ name, game: RANKINGS[rankingId].game, ranking_id: rankingId, bracket_size: bracketSize, round_hours: roundHours });
+    res.json({ ok: true, tournament: t });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/tournaments/:id', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    const players = await db.getTournamentPlayers(t.id);
+    const matches = await db.getTournamentMatches(t.id);
+    const roundScores = rankTournamentRoundScores(t.ranking_id, await db.getRoundScores(t.id, t.current_round || 0));
+    res.json({ tournament: t, players, matches, roundScores });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/tournaments/:id', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    if (t.status !== 'draft') return res.status(400).json({ error: 'not_draft', message: 'Configuration modifiable uniquement à l\'état brouillon.' });
+    const b = req.body || {}; const fields = {};
+    if (b.name !== undefined) fields.name = String(b.name).trim().slice(0, 80);
+    if (b.ranking_id !== undefined && RANKINGS[b.ranking_id]) { fields.ranking_id = b.ranking_id; fields.game = RANKINGS[b.ranking_id].game; }
+    if (b.bracket_size !== undefined && [4, 8, 16, 32].includes(Number(b.bracket_size))) fields.bracket_size = Number(b.bracket_size);
+    if (b.round_hours !== undefined) fields.round_hours = Math.max(1, Math.min(720, Number(b.round_hours) || 72));
+    if (Object.keys(fields).length) await db.updateTournament(t.id, fields);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/tournaments/:id', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    closeTournamentWindow(t.ranking_id);
+    tournamentRoundScores.delete(tRoundKey(t.id, t.current_round || 0));
+    await db.deleteTournament(t.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Ouvre la phase de qualif : fenêtre de capture round 0 sur ce ranking.
+app.post('/api/admin/tournaments/:id/start-qualif', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    if (t.status !== 'draft') return res.status(400).json({ error: 'not_draft' });
+    if (tournamentWindows.has(t.ranking_id)) return res.status(409).json({ error: 'ranking_busy', message: 'Un autre tournoi capture déjà ce jeu.' });
+    const days = Math.max(1, Math.min(60, Number((req.body || {}).qualif_days) || 7));
+    const start = new Date();
+    const end = new Date(start.getTime() + days * 86400000);
+    await db.updateTournament(t.id, { status: 'qualif', qualif_start: start.toISOString(), qualif_end: end.toISOString(), current_round: 0 });
+    openTournamentWindow(t.id, 0, t.ranking_id, end.toISOString());
+    console.log(`[TOURNOI] qualif ouverte #${t.id} (${t.ranking_id}) → fin ${end.toISOString()}`);
+    res.json({ ok: true, qualif_end: end.toISOString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Clôture la qualif : classe le round 0, retient le top N et seede 1..N.
+app.post('/api/admin/tournaments/:id/close-qualif', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    if (t.status !== 'qualif') return res.status(400).json({ error: 'not_qualif' });
+    const ranked = rankTournamentRoundScores(t.ranking_id, await db.getRoundScores(t.id, 0));
+    if (ranked.length < 2) return res.status(400).json({ error: 'not_enough_players', message: 'Moins de 2 joueurs ont posté un score en qualif.' });
+    const size = t.bracket_size && t.bracket_size > 0 ? t.bracket_size : ranked.length;
+    const players = ranked.slice(0, size).map((r, i) => ({ username: r.username, seed: i + 1, qualif_score: r.score, status: 'qualified' }));
+    await db.setTournamentPlayers(t.id, players);
+    await db.updateTournament(t.id, { status: 'seeded', best_qualifier: players[0].username });
+    closeTournamentWindow(t.ranking_id);
+    console.log(`[TOURNOI] qualif clôturée #${t.id}: ${players.length} qualifiés (meilleur=${players[0].username})`);
+    res.json({ ok: true, qualified: players });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/admin/users/:username', adminAuth, async (req, res) => {
@@ -11730,6 +11898,7 @@ async function boot() {
         }
       }
       console.log(`[DB] Loaded ${count} scores from database`);
+      await loadTournamentsOnBoot();
       const allBouilles = await db.loadAllBouilles();
       Object.assign(bouilleCache, allBouilles);
       console.log(`[DB] Loaded ${Object.keys(allBouilles).length} bouilles from database`);
