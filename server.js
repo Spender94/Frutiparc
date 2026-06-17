@@ -12249,7 +12249,14 @@ async function boot() {
       const mapDay = parisDayKey(fs.statSync(dailyMapPath).mtime);
       const today = parisDayKey();
       if (mapDay !== today) { needsGen = true; reason = `mtime day ${mapDay} ≠ today ${today}`; }
-      else console.log(`[MB2] Challenge map already up-to-date (${mapDay})`);
+      else {
+        // On affiche le seed (dérivé du jour Paris) pour pouvoir vérifier en prod
+        // qu'il reste IDENTIQUE entre deux reboots du même jour — la map ne doit
+        // changer qu'au minuit Paris (en phase avec le reset des scores challenge).
+        let seed = '?';
+        try { seed = (fs.readFileSync(dailyMapPath, 'utf8').match(/dseed=(\d+)/) || [])[1] || '?'; } catch (e) {}
+        console.log(`[MB2] Challenge map already up-to-date (${mapDay}, seed=${seed}) — stable jusqu'au prochain minuit Paris`);
+      }
     }
     if (needsGen) {
       console.log(`[MB2] Challenge map needs regeneration (${reason}) — generating in background`);
