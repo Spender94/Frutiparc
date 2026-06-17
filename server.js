@@ -6754,9 +6754,17 @@ app.get('/api/admin/mb2/map-info', adminScope('challenge'), (req, res) => {
     const m = head.match(/dseed=(\d+)/);
     if (m) seed = m[1];
   } catch (_) {}
+  // Seed déterministe attendu pour aujourd'hui (jour Paris). Si le seed du fichier
+  // l'égale, la map est la map canonique du jour : une régénération/reboot la
+  // réécrit à l'identique, elle ne changera qu'au minuit Paris. Un seed différent
+  // = override (régénération manuelle aléatoire) ou map périmée.
+  let expectedSeed = '';
+  try { expectedSeed = String(require('./mb2gen').dailyChallengeSeed()); } catch (_) {}
   res.json({
     exists: true,
     seed,
+    expectedSeed,
+    canonical: !!seed && seed === expectedSeed,
     mtime: mtime.toISOString(),
     mapDay,
     today,

@@ -2770,11 +2770,20 @@ async function loadMb2MapInfo() {
     const d = await r.json();
     const box = $('#mb2-map-info');
     if (!d.exists) { box.innerHTML = '<b>MotionBall 2 :</b> aucune map challenge sur disque (sera générée au démarrage).'; return; }
-    const color = d.stale ? '#c03c30' : '#2C4A0F';
-    const status = d.stale
-      ? `⚠ map périmée — datée du ${esc(d.mapDay)}, attendue ${esc(d.today)} (clique « Régénérer » pour forcer un nouveau tirage)`
-      : `✓ map à jour (${esc(d.mapDay)})`;
-    box.innerHTML = `<b>MotionBall 2 :</b> seed=<code>${esc(d.seed)}</code> · générée le ${esc(d.mtime.replace('T',' ').slice(0,19))} UTC · <span style="color:${color}">${status}</span>`;
+    let color, status;
+    if (d.stale) {
+      color = '#c03c30';
+      status = `⚠ map périmée — datée du ${esc(d.mapDay)}, attendue ${esc(d.today)} (« Régénérer » pour forcer un nouveau tirage)`;
+    } else if (d.canonical) {
+      color = '#2C4A0F';
+      status = `✓ map canonique du ${esc(d.today)} — seed déterministe, ne change qu'au minuit Paris (un reboot la régénère à l'identique)`;
+    } else {
+      color = '#b8860b';
+      status = `⚠ seed ≠ seed déterministe du jour${d.expectedSeed ? ' (attendu : ' + esc(d.expectedSeed) + ')' : ''} — régénération manuelle ; un reboot la ramènera au seed du jour`;
+    }
+    // « fichier écrit le » (mtime) ≠ changement de map : une régénération au même
+    // seed réécrit le fichier mais produit une map IDENTIQUE.
+    box.innerHTML = `<b>MotionBall 2 :</b> seed=<code>${esc(d.seed)}</code> · fichier écrit le ${esc(d.mtime.replace('T',' ').slice(0,19))} UTC · <span style="color:${color}">${status}</span>`;
   } catch (e) { /* silent */ }
 }
 

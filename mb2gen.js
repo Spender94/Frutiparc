@@ -1977,7 +1977,7 @@ async function generateMB2Maps() {
   return log.join('\n');
 }
 
-module.exports = { generateMB2Maps, generateMb2ChallengeMap };
+module.exports = { generateMB2Maps, generateMb2ChallengeMap, dailyChallengeSeed };
 
 // Run directly if executed as a script
 if (require.main === module) {
