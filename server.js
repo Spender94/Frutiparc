@@ -1788,6 +1788,54 @@ async function loadTournamentsOnBoot() {
   } catch (e) { console.error('[TOURNOI] boot load error:', e.message); }
 }
 
+// Ouvre la fenêtre de qualif (round 0) d'un tournoi (programmé ou immédiat).
+async function tournamentOpenQualif(t) {
+  await db.updateTournament(t.id, { status: 'qualif' });
+  openTournamentWindow(t.id, 0, t.ranking_id, t.qualif_end);
+  console.log(`[TOURNOI] qualif ouverte #${t.id} (${t.ranking_id}) → fin ${t.qualif_end}`);
+}
+
+// Clôture la qualif : classe le round 0, retient le top N et seede 1..N.
+// → { ok:true, qualified } | { ok:false, error:'not_enough_players', count }.
+async function tournamentCloseQualif(t) {
+  const ranked = rankTournamentRoundScores(t.ranking_id, await db.getRoundScores(t.id, 0));
+  if (ranked.length < 2) return { ok: false, error: 'not_enough_players', count: ranked.length };
+  const size = t.bracket_size && t.bracket_size > 0 ? t.bracket_size : ranked.length;
+  const players = ranked.slice(0, size).map((r, i) => ({ username: r.username, seed: i + 1, qualif_score: r.score, status: 'qualified' }));
+  await db.setTournamentPlayers(t.id, players);
+  await db.updateTournament(t.id, { status: 'seeded', best_qualifier: players[0].username });
+  closeTournamentWindow(t.ranking_id);
+  console.log(`[TOURNOI] qualif clôturée #${t.id}: ${players.length} qualifiés (meilleur=${players[0].username})`);
+  return { ok: true, qualified: players };
+}
+
+// Planificateur : ouvre les qualifs programmées arrivées à échéance et clôture
+// (auto-seed) celles dont la fenêtre est terminée. Tourne toutes les
+// TOURNAMENT_TICK_MS (défaut 30 s) + une fois au boot.
+const TOURNAMENT_TICK_MS = Math.max(1000, Number(process.env.TOURNAMENT_TICK_MS) || 30000);
+async function runTournamentScheduler() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const rows = await db.getTournamentsByStatus(['scheduled', 'qualif']);
+    const now = Date.now();
+    for (const t of rows) {
+      try {
+        if (t.status === 'scheduled' && t.qualif_start && now >= new Date(t.qualif_start).getTime()) {
+          await tournamentOpenQualif(t);
+        } else if (t.status === 'qualif' && t.qualif_end && now >= new Date(t.qualif_end).getTime()) {
+          const r = await tournamentCloseQualif(t);
+          if (!r.ok) {
+            await db.updateTournament(t.id, { status: 'cancelled' });
+            closeTournamentWindow(t.ranking_id);
+            console.warn(`[TOURNOI] #${t.id} annulé à la clôture (joueurs=${r.count})`);
+          }
+          // (Phase 3 : génération auto du bracket ici ; Phase 5 : annonces.)
+        }
+      } catch (e) { console.error(`[TOURNOI] scheduler #${t.id}:`, e.message); }
+    }
+  } catch (e) { console.error('[TOURNOI] scheduler error:', e.message); }
+}
+
 // Position for a user in a ranking (1-based). 0 if not ranked.
 function computePosition(rankingId, username) {
   const all = [];
@@ -4504,40 +4552,56 @@ app.delete('/api/admin/tournaments/:id', tournoiScope, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Ouvre la phase de qualif : fenêtre de capture round 0 sur ce ranking.
-app.post('/api/admin/tournaments/:id/start-qualif', tournoiScope, async (req, res) => {
+// Programme (ou démarre) la phase de qualif : fenêtre [qualif_start, qualif_end].
+// Si qualif_start est maintenant/dans le passé → ouverture immédiate ; sinon le
+// planificateur l'ouvre à l'heure dite. La clôture (+ seed) est automatique à
+// qualif_end ; le bracket se lance ensuite.
+app.post('/api/admin/tournaments/:id/schedule', tournoiScope, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
   try {
     const t = await db.getTournament(Number(req.params.id));
     if (!t) return res.status(404).json({ error: 'not_found' });
-    if (t.status !== 'draft') return res.status(400).json({ error: 'not_draft' });
-    if (tournamentWindows.has(t.ranking_id)) return res.status(409).json({ error: 'ranking_busy', message: 'Un autre tournoi capture déjà ce jeu.' });
-    const days = Math.max(1, Math.min(60, Number((req.body || {}).qualif_days) || 7));
-    const start = new Date();
-    const end = new Date(start.getTime() + days * 86400000);
-    await db.updateTournament(t.id, { status: 'qualif', qualif_start: start.toISOString(), qualif_end: end.toISOString(), current_round: 0 });
-    openTournamentWindow(t.id, 0, t.ranking_id, end.toISOString());
-    console.log(`[TOURNOI] qualif ouverte #${t.id} (${t.ranking_id}) → fin ${end.toISOString()}`);
-    res.json({ ok: true, qualif_end: end.toISOString() });
+    if (!['draft', 'scheduled'].includes(t.status)) return res.status(400).json({ error: 'bad_status', message: 'Programmable seulement à l\'état brouillon ou programmé.' });
+    const b = req.body || {};
+    const start = new Date(b.qualif_start);
+    const end = new Date(b.qualif_end);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return res.status(400).json({ error: 'bad_dates', message: 'Dates invalides.' });
+    if (end <= start) return res.status(400).json({ error: 'end_before_start', message: 'La fin de qualif doit être après le début.' });
+    if (end.getTime() <= Date.now()) return res.status(400).json({ error: 'end_in_past', message: 'La fin de qualif est déjà passée.' });
+    if (await db.rankingHasActiveTournament(t.ranking_id, t.id)) return res.status(409).json({ error: 'ranking_busy', message: 'Un autre tournoi est déjà programmé/en cours sur ce jeu.' });
+    const immediate = start.getTime() <= Date.now();
+    await db.updateTournament(t.id, {
+      qualif_start: start.toISOString(), qualif_end: end.toISOString(),
+      current_round: 0, status: immediate ? 'qualif' : 'scheduled',
+    });
+    if (immediate) openTournamentWindow(t.id, 0, t.ranking_id, end.toISOString());
+    console.log(`[TOURNOI] ${immediate ? 'qualif ouverte' : 'programmée'} #${t.id} ${start.toISOString()} → ${end.toISOString()}`);
+    res.json({ ok: true, status: immediate ? 'qualif' : 'scheduled', qualif_start: start.toISOString(), qualif_end: end.toISOString() });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Clôture la qualif : classe le round 0, retient le top N et seede 1..N.
+// Annule la programmation (retour brouillon) — uniquement avant le démarrage.
+app.post('/api/admin/tournaments/:id/unschedule', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    if (t.status !== 'scheduled') return res.status(400).json({ error: 'not_scheduled' });
+    await db.updateTournament(t.id, { status: 'draft' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Clôture manuelle (anticipée) de la qualif : classe + seede tout de suite.
 app.post('/api/admin/tournaments/:id/close-qualif', tournoiScope, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
   try {
     const t = await db.getTournament(Number(req.params.id));
     if (!t) return res.status(404).json({ error: 'not_found' });
     if (t.status !== 'qualif') return res.status(400).json({ error: 'not_qualif' });
-    const ranked = rankTournamentRoundScores(t.ranking_id, await db.getRoundScores(t.id, 0));
-    if (ranked.length < 2) return res.status(400).json({ error: 'not_enough_players', message: 'Moins de 2 joueurs ont posté un score en qualif.' });
-    const size = t.bracket_size && t.bracket_size > 0 ? t.bracket_size : ranked.length;
-    const players = ranked.slice(0, size).map((r, i) => ({ username: r.username, seed: i + 1, qualif_score: r.score, status: 'qualified' }));
-    await db.setTournamentPlayers(t.id, players);
-    await db.updateTournament(t.id, { status: 'seeded', best_qualifier: players[0].username });
-    closeTournamentWindow(t.ranking_id);
-    console.log(`[TOURNOI] qualif clôturée #${t.id}: ${players.length} qualifiés (meilleur=${players[0].username})`);
-    res.json({ ok: true, qualified: players });
+    const r = await tournamentCloseQualif(t);
+    if (!r.ok) return res.status(400).json({ error: r.error, message: 'Moins de 2 joueurs ont posté un score en qualif.' });
+    res.json({ ok: true, qualified: r.qualified });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -11907,6 +11971,8 @@ async function boot() {
       }
       console.log(`[DB] Loaded ${count} scores from database`);
       await loadTournamentsOnBoot();
+      runTournamentScheduler().catch(() => {});           // rattrape les transitions manquées
+      setInterval(() => { runTournamentScheduler().catch(() => {}); }, TOURNAMENT_TICK_MS);
       const allBouilles = await db.loadAllBouilles();
       Object.assign(bouilleCache, allBouilles);
       console.log(`[DB] Loaded ${Object.keys(allBouilles).length} bouilles from database`);

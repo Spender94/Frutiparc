@@ -2111,6 +2111,17 @@ async function getActiveTournaments() {
   const { rows } = await pool.query(`SELECT * FROM tournaments WHERE status IN ('qualif','bracket')`);
   return rows;
 }
+async function getTournamentsByStatus(statuses) {
+  const { rows } = await pool.query(`SELECT * FROM tournaments WHERE status = ANY($1)`, [statuses]);
+  return rows;
+}
+// Un tournoi (autre que excludeId) occupe-t-il déjà ce ranking (programmé/en cours) ?
+async function rankingHasActiveTournament(rankingId, excludeId) {
+  const { rows } = await pool.query(
+    `SELECT id FROM tournaments WHERE ranking_id = $1 AND status IN ('scheduled','qualif','seeded','bracket') AND id <> $2 LIMIT 1`,
+    [rankingId, excludeId || 0]);
+  return rows.length > 0;
+}
 
 module.exports = {
   pool,
@@ -2126,6 +2137,8 @@ module.exports = {
   upsertRoundScore,
   getRoundScores,
   getActiveTournaments,
+  getTournamentsByStatus,
+  rankingHasActiveTournament,
   findUserByUsername,
   findUserByEmail,
   createPasswordReset,

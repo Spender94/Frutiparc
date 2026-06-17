@@ -1141,8 +1141,8 @@ async function referralAction(username, action) {
 
 // ─── Tournois (« Maître ÈS … ») ───
 let tournoiGames = null;
-const T_STATUS = { draft:'brouillon', qualif:'qualif en cours', seeded:'qualifiés seedés', bracket:'coupe en cours', finished:'terminé', cancelled:'annulé' };
-const T_COLOR = { draft:'#888', qualif:'#c8860a', seeded:'#2f6fb0', bracket:'#2f6fb0', finished:'#2f8f2f', cancelled:'#b31111' };
+const T_STATUS = { draft:'brouillon', scheduled:'programmé', qualif:'qualif en cours', seeded:'qualifiés seedés', bracket:'coupe en cours', finished:'terminé', cancelled:'annulé' };
+const T_COLOR = { draft:'#888', scheduled:'#7a5bd0', qualif:'#c8860a', seeded:'#2f6fb0', bracket:'#2f6fb0', finished:'#2f8f2f', cancelled:'#b31111' };
 function tFmtDate(s){ if(!s) return '—'; try { return new Date(s).toLocaleString('fr-FR'); } catch(e){ return s; } }
 async function loadTournaments() {
   try {
@@ -1189,23 +1189,41 @@ async function createTournament() {
     else toast('Erreur: ' + JSON.stringify(d));
   } catch (e) { toast('Erreur: ' + e.message); }
 }
+function toLocalInput(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d.getTime()))return''; const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
 async function openTournament(id) {
   try {
     const d = await (await fetch('/api/admin/tournaments/' + id, { headers: hdr() })).json();
     if (!d.tournament) { toast('Erreur: ' + JSON.stringify(d)); return; }
     const t = d.tournament;
     let actions = '';
-    if (t.status === 'draft') actions = `<button class="btn-success" onclick="startQualif(${t.id})">Démarrer la qualif</button> <button class="btn" style="background:#c10000;color:#fff" onclick="deleteTournament(${t.id})">Supprimer</button>`;
-    else if (t.status === 'qualif') actions = `<button class="btn-success" onclick="closeQualif(${t.id})">Clôturer la qualif &amp; seeder</button>`;
+    if (t.status === 'draft' || t.status === 'scheduled') {
+      const planLabel = t.status === 'scheduled' ? 'Reprogrammer' : 'Programmer';
+      actions = `
+        <div style="border:1px dashed #aac;padding:10px;border-radius:6px;font-size:13px">
+          <b>Fenêtre de qualif (phase 1)</b>
+          <div style="margin:6px 0">
+            <label>Début : <input type="datetime-local" id="t-qstart" value="${toLocalInput(t.qualif_start)}"></label>
+            <label style="margin-left:10px">Fin : <input type="datetime-local" id="t-qend" value="${toLocalInput(t.qualif_end)}"></label>
+          </div>
+          <button class="btn-success" onclick="scheduleTournament(${t.id})">${planLabel}</button>
+          <button class="btn" onclick="startQualifNow(${t.id})">Démarrer maintenant…</button>
+          ${t.status === 'scheduled'
+            ? `<button class="btn" onclick="unschedule(${t.id})">Annuler la programmation</button>`
+            : `<button class="btn" style="background:#c10000;color:#fff" onclick="deleteTournament(${t.id})">Supprimer</button>`}
+          <div style="color:#888;margin-top:6px">La qualif s'ouvre au « Début », puis se clôture et seede <b>automatiquement</b> à la « Fin ». Le bracket se lance ensuite.</div>
+        </div>`;
+    }
+    else if (t.status === 'qualif') actions = `<button class="btn-success" onclick="closeQualif(${t.id})">Clôturer la qualif maintenant &amp; seeder</button> <span style="color:#888;font-size:12px">(sinon clôture auto à la fin de fenêtre)</span>`;
     else if (t.status === 'seeded') actions = `<span style="color:#2f6fb0">Qualif terminée — génération du bracket à venir (Phase 3).</span>`;
+    else if (t.status === 'cancelled') actions = `<span style="color:#b31111">Tournoi annulé (pas assez de joueurs en qualif).</span>`;
+    const win = (t.qualif_start || t.qualif_end) ? ` · Qualif : <b>${t.qualif_start?tFmtDate(t.qualif_start):'?'}</b> → <b>${t.qualif_end?tFmtDate(t.qualif_end):'?'}</b>` : '';
     const lead = (d.roundScores||[]).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.username)}</td><td>${r.score}</td></tr>`).join('');
     const players = (d.players||[]).map(p=>`<tr><td>${p.seed}</td><td><b>${esc(p.username)}</b></td><td>${p.qualif_score}</td></tr>`).join('');
     $('#tournoi-detail').innerHTML = `
       <div style="border:1px solid #cdd;padding:14px;border-radius:8px">
         <h3 style="margin:0 0 6px">${esc(t.name)} <span style="color:${T_COLOR[t.status]||'#555'};font-size:13px">(${T_STATUS[t.status]||t.status})</span></h3>
         <div style="font-size:13px;color:#555;margin-bottom:8px">
-          Jeu : <b>${esc(t.game)}</b> · Taille : ${t.bracket_size||'auto'} · Tour : ${t.round_hours} h
-          ${t.qualif_end ? ' · Fin qualif : <b>'+tFmtDate(t.qualif_end)+'</b>' : ''}
+          Jeu : <b>${esc(t.game)}</b> · Taille : ${t.bracket_size||'auto'} · Tour : ${t.round_hours} h${win}
           ${t.best_qualifier ? ' · Meilleur qualifié : <b>'+esc(t.best_qualifier)+'</b>' : ''}
         </div>
         <div style="margin-bottom:10px">${actions}</div>
@@ -1218,13 +1236,32 @@ async function openTournament(id) {
       </div>`;
   } catch (e) { toast('Erreur: ' + e.message); }
 }
-async function startQualif(id) {
-  const days = Number(prompt('Durée de la qualif en jours ?', '7')); if (!days || days < 1) return;
+async function scheduleTournament(id) {
+  const s=$('#t-qstart').value, e=$('#t-qend').value;
+  if(!s||!e){ toast('Renseigne le début et la fin de la qualif.'); return; }
+  const body={ qualif_start:new Date(s).toISOString(), qualif_end:new Date(e).toISOString() };
   try {
-    const d = await (await fetch('/api/admin/tournaments/'+id+'/start-qualif', { method:'POST', headers: hdr(), body: JSON.stringify({ qualif_days: days }) })).json();
-    if (d && d.ok) { toast('Qualif démarrée (fin ' + tFmtDate(d.qualif_end) + ')'); loadTournaments(); openTournament(id); }
-    else toast('Erreur: ' + (d.message || JSON.stringify(d)));
-  } catch (e) { toast('Erreur: ' + e.message); }
+    const d = await (await fetch('/api/admin/tournaments/'+id+'/schedule',{ method:'POST', headers:hdr(), body:JSON.stringify(body) })).json();
+    if(d&&d.ok){ toast(d.status==='qualif'?'Qualif démarrée':'Tournoi programmé'); loadTournaments(); openTournament(id); }
+    else toast('Erreur: '+(d.message||JSON.stringify(d)));
+  } catch(err){ toast('Erreur: '+err.message); }
+}
+async function startQualifNow(id) {
+  const days=Number(prompt('Démarrer la qualif MAINTENANT — durée en jours ?','7')); if(!days||days<1) return;
+  const body={ qualif_start:new Date().toISOString(), qualif_end:new Date(Date.now()+days*86400000).toISOString() };
+  try {
+    const d = await (await fetch('/api/admin/tournaments/'+id+'/schedule',{ method:'POST', headers:hdr(), body:JSON.stringify(body) })).json();
+    if(d&&d.ok){ toast('Qualif démarrée (fin '+tFmtDate(d.qualif_end)+')'); loadTournaments(); openTournament(id); }
+    else toast('Erreur: '+(d.message||JSON.stringify(d)));
+  } catch(err){ toast('Erreur: '+err.message); }
+}
+async function unschedule(id) {
+  if(!confirm('Annuler la programmation (retour brouillon) ?')) return;
+  try {
+    const d = await (await fetch('/api/admin/tournaments/'+id+'/unschedule',{ method:'POST', headers:hdr() })).json();
+    if(d&&d.ok){ toast('Programmation annulée'); loadTournaments(); openTournament(id); }
+    else toast('Erreur: '+(d.message||JSON.stringify(d)));
+  } catch(err){ toast('Erreur: '+err.message); }
 }
 async function closeQualif(id) {
   if (!confirm('Clôturer la qualif et figer le classement (top N seedé) ?')) return;
