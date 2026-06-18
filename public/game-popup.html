@@ -584,6 +584,76 @@
 
   window.__dlog("[Game] Loaded", swfPath, "standalone at", width + "x" + height, "(SWF stage " + swfWidth + "x" + swfHeight + ")");
 
+  // ── Stuck-key fix (keyboard re-sync) ──────────────────────────────
+  // Ruffle attaches its keyboard listeners to the PLAYER element (it even
+  // dispatches its own synthetic KeyboardEvents on the element for the virtual
+  // keyboard) and does not check event.isTrusted. So if the player element
+  // loses DOM focus while a key is held — focus drifting to <body>, the zoom
+  // bar, another window, etc. — the matching "keyup" never reaches Ruffle and
+  // the key stays logically pressed. In Kaluga this makes the tzongre rise or
+  // sink forever "as if Up/Down were held"; the same class of bug affects any
+  // game that polls Key.isDown.
+  //
+  // Fix: mirror keyboard events from window → the player whenever the player
+  // wasn't the natural target, and release everything on blur / tab-hide. App
+  // shortcuts (Ctrl/Meta, e.g. the zoom keys) and form fields are left alone.
+  (function keepKeysAlive(player) {
+    if (!player) return;
+    var held = Object.create(null);
+    function isEditable(t) {
+      if (!t || !t.tagName) return false;
+      var n = t.tagName.toUpperCase();
+      return n === "INPUT" || n === "TEXTAREA" || t.isContentEditable === true;
+    }
+    function send(type, p) {
+      var targets = [player];
+      try {
+        var sr = player.shadowRoot;
+        if (sr) { var c = sr.querySelector("canvas") || sr.querySelector("#container"); if (c) targets.push(c); }
+      } catch (e) {}
+      for (var i = 0; i < targets.length; i++) {
+        var ev = new KeyboardEvent(type, {
+          key: p.key, code: p.code, keyCode: p.keyCode, which: p.which,
+          location: p.location, repeat: !!p.repeat,
+          shiftKey: p.shiftKey, altKey: p.altKey, bubbles: false, cancelable: true
+        });
+        ev.__rfwd = true; // tag so our own window listener ignores it
+        try { targets[i].dispatchEvent(ev); } catch (e) {}
+      }
+    }
+    function onKey(e) {
+      if (e.__rfwd) return;                 // ignore events we forwarded
+      if (e.ctrlKey || e.metaKey) return;   // leave app shortcuts (zoom) alone
+      if (isEditable(e.target)) return;     // never hijack form fields
+      var p = {
+        key: e.key, code: e.code, keyCode: e.keyCode, which: e.which,
+        location: e.location, repeat: e.repeat, shiftKey: e.shiftKey, altKey: e.altKey
+      };
+      var t = e.target;
+      var natural = t === player || (player.contains && t && player.contains(t));
+      if (e.type === "keydown") {
+        held[e.code] = p;
+        if (!natural) send("keydown", p);   // keep input working if the player lost focus
+      } else {
+        delete held[e.code];
+        send("keyup", p);                   // always guarantee the release reaches Ruffle (idempotent)
+      }
+    }
+    function releaseAll() {
+      for (var code in held) send("keyup", held[code]);
+      held = Object.create(null);
+    }
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("keyup", onKey, true);
+    window.addEventListener("blur", releaseAll);
+    document.addEventListener("visibilitychange", function () { if (document.hidden) releaseAll(); });
+    // Encourage the player to keep focus so it receives keys directly.
+    try { if (!(player.tabIndex >= 0)) player.tabIndex = 0; } catch (e) {}
+    function focusPlayer() { try { player.focus({ preventScroll: true }); } catch (e) {} }
+    player.addEventListener("pointerdown", focusPlayer);
+    setTimeout(focusPlayer, 0);
+  })(player);
+
   // ── Zoom control ──────────────────────────────────────────────────
   // These games were tiny by design (period-authentic). Offer an optional
   // magnifier: we scale the clipping wrap with a CSS transform — which works
