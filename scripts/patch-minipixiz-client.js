@@ -79,6 +79,7 @@ const GET_MEMBER = simpleAction(0x4E);
 const GET_VARIABLE = simpleAction(0x1C);
 const NEW_OBJECT = simpleAction(0x40);
 const CALL_METHOD = simpleAction(0x52);
+const CALL_FUNCTION = simpleAction(0x3D); // global fn call (used for escape())
 const INIT_ARRAY = simpleAction(0x42);
 const INIT_OBJECT = simpleAction(0x43);
 const RETURN = simpleAction(0x3E);
@@ -1049,8 +1050,81 @@ function buildSaveSlotBody() {
     appendSepFromReg(4, '$it'),       // 29
     appendSepFromReg(3, '$wind'),     // 30
     appendSepJoinFromReg(3, '$god'),  // 31 (csv, trous préservés côté serveur)
-    appendSepJoinFromReg(3, '$help'), // 32 (csv — dernier champ, pas de "|")
+    appendSepJoinFromReg(3, '$help'), // 32 (csv)
   ]);
+
+  // ── Champs 33-34 : les MISSIONS ──────────────────────────────────────────
+  // Racine des bugs « reviendra dans undefined jours », fées bloquées/perdues
+  // en mission, cabane de Gromelin vide : ni $mis (missions ACTIVES, avec les
+  // jours restants $d, décrémentés chaque jour) ni $mission (missions du JOUR)
+  // n'étaient sérialisés. La fée porte déjà son index $mission dans le pipe,
+  // mais il indexait un $mis absent → index dans le vide.
+  //   33 $mis     : "$d~$gift~$type~escape($string)" par mission, "," entre
+  //   34 $mission : "dif~type~duree~gift~seed" par mission, "," entre
+  // escape() (fn globale AVM1) %-encode tous nos délimiteurs (| ~ : ,) ; le
+  // serveur (parseMisField) inverse via unesc(). $gift null → "null" → null.
+  // Réutilise r4 (élément courant), r5 (tableau), r6 (index) comme la boucle
+  // des fées ; r3 reste la carte.
+  const appendLit = (s) => Buffer.concat([actionPush(pushStr(s)), ADD2]);
+  const appendScalarR4 = (name) => Buffer.concat([
+    actionPush(pushReg(4), pushStr(name)), GET_MEMBER,
+    actionPush(pushStr('')), ADD2,   // coerce → string (null → "null")
+    ADD2,                            // accum + value
+  ]);
+  const appendEscapeR4 = (name) => Buffer.concat([
+    actionPush(pushReg(4), pushStr(name)), GET_MEMBER, // arg
+    actionPush(pushInt(1)),                            // argCount
+    actionPush(pushStr('escape')),                     // global fn name
+    CALL_FUNCTION,                                     // → escape(value)
+    ADD2,                                              // accum + escaped
+  ]);
+  const setR4Item = Buffer.concat([
+    actionPush(pushReg(5), pushReg(6)), GET_MEMBER, storeReg(4), POP, // r4 = r5[r6]
+  ]);
+  const misLoopInit = Buffer.concat([actionPush(pushInt(0)), storeReg(6), POP]);
+  const misLoopCond = Buffer.concat([
+    actionPush(pushReg(6)),
+    actionPush(pushReg(5), pushCp(CP.length)), GET_MEMBER,
+    LESS2, NOT,                                        // r6 >= length ? (sort de boucle)
+  ]);
+  const misLoopIncr = Buffer.concat([
+    actionPush(pushReg(6), pushInt(1)), ADD2, storeReg(6), POP,
+  ]);
+  // $mis — corps de boucle
+  const misBody = Buffer.concat([
+    setR4Item,
+    appendScalarR4('$d'),
+    appendLit('~'), appendScalarR4('$gift'),
+    appendLit('~'), appendScalarR4('$type'),
+    appendLit('~'), appendEscapeR4('$string'),
+    appendLit(','),
+  ]);
+  const misFwd = misBody.length + misLoopIncr.length + 5;
+  const misBack = -(misLoopCond.length + 5 + misBody.length + misLoopIncr.length + 5);
+  const misField = Buffer.concat([
+    appendLit('|'),
+    actionPush(pushReg(3), pushStr('$mis')), GET_MEMBER, storeReg(5), POP, // r5 = card.$mis
+    misLoopInit, misLoopCond, actionIf(misFwd), misBody, misLoopIncr, actionJump(misBack),
+  ]);
+  // $mission — corps de boucle (chaque entrée est un tableau d'entiers → join "~")
+  const misnBody = Buffer.concat([
+    setR4Item,
+    actionPush(pushStr('~')),       // arg (séparateur)
+    actionPush(pushInt(1)),         // argCount
+    actionPush(pushReg(4)),         // tableau (this)
+    actionPush(pushCp(CP.join)),    // "join"
+    CALL_METHOD,
+    ADD2,                           // accum + r4.join("~")
+    appendLit(','),
+  ]);
+  const misnFwd = misnBody.length + misLoopIncr.length + 5;
+  const misnBack = -(misLoopCond.length + 5 + misnBody.length + misLoopIncr.length + 5);
+  const missionField = Buffer.concat([
+    appendLit('|'),
+    actionPush(pushReg(3), pushStr('$mission')), GET_MEMBER, storeReg(5), POP, // r5 = card.$mission
+    misLoopInit, misLoopCond, actionIf(misnFwd), misnBody, misLoopIncr, actionJump(misnBack),
+  ]);
+  const missionFields = Buffer.concat([misField, missionField]);
 
   // Part 4: POST pipe string to /api/saveFrutiSlot via LoadVars.
   // LoadVars.sendAndLoad is the same mechanism used by serviceConnect and is
@@ -1203,7 +1277,7 @@ function buildSaveSlotBody() {
   // Guard: skip CARD serialization when slots[0] is null/undefined (before
   // loadFruticard runs) to prevent clobbering server data with empty pipes.
   // Les prefs et le flush SO restent hors de cette garde.
-  const cardBlock = Buffer.concat([buildStr, faerieLoop, afterLoop, clockFields, lvSave]);
+  const cardBlock = Buffer.concat([buildStr, faerieLoop, afterLoop, clockFields, missionFields, lvSave]);
   const skipIfNull = Buffer.concat([
     actionPush(pushReg(3)),
     NOT,                                            // !card → true if null/undefined/0/""

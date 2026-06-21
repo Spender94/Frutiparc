@@ -2726,8 +2726,10 @@ function isValidUsername(username) {
 // Sliding window: at most REGISTER_MAX attempts per REGISTER_WINDOW_MS,
 // plus a hard cap of REGISTER_DAILY_MAX successful registrations per day.
 const REGISTER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const REGISTER_MAX = 5;                    // 5 attempts/hour/IP
-const REGISTER_DAILY_MAX = 10;             // 10 successful regs/day/IP
+// Overridable via env (defaults unchanged in prod) — lets the test suite raise
+// the ceiling, and ops tune it without a code change.
+const REGISTER_MAX = Number(process.env.REGISTER_MAX) || 5;             // attempts/hour/IP
+const REGISTER_DAILY_MAX = Number(process.env.REGISTER_DAILY_MAX) || 10; // successful regs/day/IP
 const registerAttempts = new Map(); // ip -> { attempts: number[], successDay: string, successCount: number }
 
 function checkRegisterRateLimit(ip) {
@@ -7589,6 +7591,10 @@ function padMinipixizSlot0(jsonStr) {
   if (obj.$time.$s < 0) obj.$time.$s = 0;
   if (!Array.isArray(obj.$mission)) obj.$mission = [];
   if (typeof obj.$checkpoint !== 'number') obj.$checkpoint = 0;
+  // Soigne les fées « fantômes » au CHARGEMENT (slots d'avant le fix où $mis
+  // n'était pas persisté) : une fée dont $mission pointe dans le vide est
+  // libérée, sinon « undefined jours » + fée bloquée en mission dès l'ouverture.
+  try { minipixizReconcileMissions(obj); } catch { /* carte malformée : inchangée */ }
   return JSON.stringify(obj);
 }
 
@@ -7712,6 +7718,40 @@ function parseMinipixizPipe(s) {
     const n = Number(p);
     return Number.isFinite(n) ? n : null;
   }
+  // unescape() de Flash/AS2 : %XX (octet Latin-1) + %uXXXX (Unicode). On NE
+  // peut PAS utiliser decodeURIComponent (qui attend de l'UTF-8 : "%E9" pour
+  // 'é' le ferait échouer). Le SWF sérialise $string via escape() (qui supprime
+  // tous nos délimiteurs | ~ : ,), on inverse ici.
+  function unesc(s) {
+    if (!s) return '';
+    return String(s)
+      .replace(/%u([0-9A-Fa-f]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/%([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  }
+  // Champ 33 — $mis : missions ACTIVES (fées parties). Une mission =
+  //   "$d~$gift~$type~escape($string)", missions séparées par ",". $gift peut
+  //   être null (mission ratée → pas de cadeau). C'est l'état qui manquait :
+  //   fs.$mission indexe ce tableau (cf. Flask.mt "reviendra dans $d jours").
+  function parseMisField(p) {
+    if (!p) return [];
+    return String(p).split(',').filter(t => t !== '').map(tok => {
+      const seg = tok.split('~');
+      return {
+        $d: Number(seg[0]) || 0,
+        $gift: numOrNull(seg[1]),
+        $type: Number(seg[2]) || 0,
+        $string: seg.length > 3 ? unesc(seg.slice(3).join('~')) : '',
+      };
+    });
+  }
+  // Champ 34 — $mission : missions du JOUR (cabane de Gromelin), régénérées
+  //   chaque jour. Une mission = "dif~type~duree~gift~seed" (5 entiers).
+  function parseMissionField(p) {
+    if (!p) return [];
+    return String(p).split(',').filter(t => t !== '').map(tok =>
+      tok.split('~').map(v => Number(v) || 0)
+    );
+  }
   const faerie = parseFaerieField(parts[17]);
   const inv = parts.length >= 20 ? parseInvArr(parts[19]) : [];
   // $current: null when nothing selected, numeric otherwise. Empty
@@ -7781,6 +7821,12 @@ function parseMinipixizPipe(s) {
   }
   if (parts.length >= 32) out.$god = parseSparseBoolArr(parts[31]);
   if (parts.length >= 33) out.$help = parseSparseBoolArr(parts[32]);
+  // Extension « missions » (pipe ≥ 34/35 champs) — absente des vieux SWF en
+  // cache : on n'émet alors PAS ces clés, le graft (minipixizGraftRichState)
+  // conserve le prev. Sans elles, fs.$mission pointait dans le vide →
+  // « reviendra dans undefined jours », fées bloquées en mission, Gromelin vide.
+  if (parts.length >= 34) out.$mis = parseMisField(parts[33]);
+  if (parts.length >= 35) out.$mission = parseMissionField(parts[34]);
   return out;
 }
 
@@ -7891,6 +7937,39 @@ function minipixizGraftRichState(cur, prev) {
   }
   if ((Number(prev.$checkpoint) || 0) > (Number(cur.$checkpoint) || 0)) {
     cur.$checkpoint = prev.$checkpoint; changed = true;
+  }
+  // Listes de missions (cartes-niveau). Un SWF récent les envoie (champs
+  // 33/34, même vides []). Un vieux SWF en cache ne les envoie pas → cur.$mis
+  // est undefined : on reporte le prev pour ne pas perdre les missions en cours
+  // ni la liste du jour de Gromelin. Un [] explicite (SWF récent, aucune
+  // mission) l'emporte donc bien sur le prev.
+  if (cur.$mis === undefined && Array.isArray(prev.$mis)) { cur.$mis = prev.$mis; changed = true; }
+  if (cur.$mission === undefined && Array.isArray(prev.$mission)) { cur.$mission = prev.$mission; changed = true; }
+  return changed;
+}
+
+// Soigne les missions « fantômes » : une fée dont $mission pointe vers une
+// entrée $mis inexistante (état hérité des saves d'avant le fix, où $mis
+// n'était jamais persisté). On la libère ($mission=null) au lieu de la laisser
+// « en mission » pour toujours (bocal avec M jaune + « undefined jours », fée
+// jamais de retour). Avec le SWF corrigé, $mis voyage dans le pipe et ce cas
+// ne se produit plus que pour réparer les anciens slots, au prochain save.
+function minipixizReconcileMissions(card) {
+  if (!card) return false;
+  let changed = false;
+  // Toujours fournir des tableaux : un vieux slot sans $mis ferait
+  // `card.$mis.length` = undefined côté jeu (Cm.updateTime / addMission).
+  if (!Array.isArray(card.$mis)) { card.$mis = []; changed = true; }
+  if (!Array.isArray(card.$mission)) { card.$mission = []; changed = true; }
+  if (!Array.isArray(card.$faerie)) return changed;
+  const mis = card.$mis;
+  for (const f of card.$faerie) {
+    if (!f || f.$mission === null || f.$mission === undefined) continue;
+    const idx = Number(f.$mission);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= mis.length || !mis[idx]) {
+      f.$mission = null;
+      changed = true;
+    }
   }
   return changed;
 }
@@ -8310,9 +8389,14 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
           console.error(`[SLOT]  faerie-safety DB lookup failed for ${username}/${game}: ${e.message}`);
         }
       }
-      if (prevForGraft && minipixizGraftRichState(cur, prevForGraft)) {
+      let graftChanged = prevForGraft && minipixizGraftRichState(cur, prevForGraft);
+      // Heal dangling fairy missions (idx into a $mis entry that no longer
+      // exists). Runs after the graft so it sees the carried-forward $mis.
+      const reconChanged = minipixizReconcileMissions(cur);
+      if (graftChanged || reconChanged) {
         data = JSON.stringify(cur);
-        console.log(`[SLOT]  faerie-safety re-grafted rich fairy/bag for ${username} (faerie=${Array.isArray(cur.$faerie) ? cur.$faerie.length : 0}, inv=${Array.isArray(cur.$inv) ? cur.$inv.length : 0})`);
+        if (graftChanged) console.log(`[SLOT]  faerie-safety re-grafted rich fairy/bag for ${username} (faerie=${Array.isArray(cur.$faerie) ? cur.$faerie.length : 0}, inv=${Array.isArray(cur.$inv) ? cur.$inv.length : 0})`);
+        if (reconChanged) console.log(`[SLOT]  reconciled dangling fairy mission(s) for ${username}`);
       }
     } catch (e) {
       console.error(`[SLOT]  faerie-safety failed for ${username}/${game}: ${e.message}`);

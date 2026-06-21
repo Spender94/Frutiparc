@@ -189,6 +189,15 @@ function runAvm1(code, pool, env) {
         }
         break;
       }
+      case 0x3D: { // CALL_FUNCTION (fonction globale, ex. escape())
+        const name = as2Str(stack.pop());
+        const argc = Number(stack.pop());
+        const args = [];
+        for (let i = 0; i < argc; i++) args.push(stack.pop());
+        if (name === 'escape') stack.push(escape(as2Str(args[0])));
+        else throw new Error('fonction globale non gérée : ' + name);
+        break;
+      }
       default:
         throw new Error('opcode non géré 0x' + op.toString(16) + ' à ' + pc);
     }
@@ -223,6 +232,13 @@ function mockCard() {
     $wind: 0.42,
     $god: [false, null, true],
     $help: [true, null, true],
+    // Missions actives (fées parties) + missions du jour (Gromelin). $string
+    // avec accents + virgule pour vérifier l'escape/unescape.
+    $mis: [
+      { $d: 5, $gift: 83, $type: 2, $string: 'a réussi, bravo !' },
+      { $d: 2, $gift: null, $type: 1, $string: 'a échoué...' },
+    ],
+    $mission: [[0, 2, 3, 83, 4567], [1, 0, 5, 71, 1234]],
   };
 }
 const PREF = { $mouse: false, $sound: [1, 1], $key: [37, 39, 32, 40, 38] };
@@ -251,9 +267,13 @@ const EXPECTED_PARTS = [
   '5,,12', 'null', '2',
   '1770000000000', '9', '3600000', '1', '6', '0', '2', '40', '0.42',
   'false,,true', 'true,,true',
+  // 33: $mis ("$d~$gift~$type~escape($string)" par mission, "," final) ;
+  // 34: $mission ("dif~type~duree~gift~seed" par mission, "," final).
+  '5~83~2~' + escape('a réussi, bravo !') + ',2~null~1~' + escape('a échoué...') + ',',
+  '0~2~3~83~4567,1~0~5~71~1234,',
 ];
 
-test('saveSlot patché : pipe carte 33 champs + pipe prefs, exécutés depuis le SWF réel', () => {
+test('saveSlot patché : pipe carte 35 champs + pipe prefs, exécutés depuis le SWF réel', () => {
   const env = runAvm1(code, pool, makeEnv());
   assert.equal(env.posts.length, 2, 'deux POSTs (carte + prefs)');
   const cardPost = env.posts[0];
@@ -263,7 +283,7 @@ test('saveSlot patché : pipe carte 33 champs + pipe prefs, exécutés depuis le
   assert.equal(cardPost.sid, 'SIDTEST');
   assert.equal(cardPost.slotId, '0');
   const parts = cardPost.data.split('|');
-  assert.equal(parts.length, 33, '33 champs');
+  assert.equal(parts.length, 35, '35 champs (33 + $mis + $mission)');
   // tous les champs hors fées identiques
   EXPECTED_PARTS.forEach((exp, i) => { if (exp !== null) assert.equal(parts[i], exp, 'champ ' + i); });
   // champ 17 : le token RICHE reparse exactement vers l'état des fées (le vrai
@@ -302,7 +322,7 @@ test('saveSlot patché : aucune pref nulle part → un seul POST (carte)', () =>
 test('le pipe carte produit est accepté par le serveur (round-trip parse)', () => {
   const env = runAvm1(code, pool, makeEnv());
   const parts = env.posts[0].data.split('|');
-  assert.equal(parts.length, 33);
+  assert.equal(parts.length, 35);
   assert.equal(Number(parts[22]), 1770000000000);
   assert.equal(Number(parts[23]), 9);
   assert.equal(parts[31], 'false,,true');
@@ -314,6 +334,18 @@ test('le pipe carte produit est accepté par le serveur (round-trip parse)', () 
   assert.deepEqual(fa[0].$carac, [3, 1, 1, 1, 1, 1]);
   assert.equal(fa[1].$name, 'Pigone');
   assert.equal(fa[1].$pos, null);
+  assert.equal(fa[1].$mission, 2, 'index de mission de la fée préservé');
+  // $mis (champ 33) : jours restants + cadeau + texte exact (accents, virgule)
+  const mis = parts[33].split(',').filter(Boolean).map((t) => t.split('~'));
+  assert.equal(mis.length, 2);
+  assert.equal(Number(mis[0][0]), 5, '$d (jours restants)');
+  assert.equal(Number(mis[0][1]), 83, '$gift');
+  assert.equal(Number(mis[0][2]), 2, '$type');
+  assert.equal(unescape(mis[0][3]), 'a réussi, bravo !', '$string exact');
+  assert.equal(mis[1][1], 'null', '$gift null pour mission ratée');
+  // $mission (champ 34) : missions du jour de Gromelin
+  const misn = parts[34].split(',').filter(Boolean).map((t) => t.split('~').map(Number));
+  assert.deepEqual(misn, [[0, 2, 3, 83, 4567], [1, 0, 5, 71, 1234]]);
 });
 
 // ── validation structurelle des autres fonctions patchées ──────────────────

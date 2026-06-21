@@ -38,7 +38,7 @@ async function waitForServer() {
 before(async () => {
   serverProc = spawn(process.execPath, ['server.js'], {
     cwd: path.join(__dirname, '..'),
-    env: Object.assign({}, process.env, { PORT: String(PORT), DATABASE_URL: '' }),
+    env: Object.assign({}, process.env, { PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000' }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   serverProc.stdout.on('data', () => {});
@@ -99,11 +99,26 @@ function buildPipeV2(over) {
     pondD: '1', dunDay: '6', dunLoop: '0', rainDay: '2', rainIt: '40',
     wind: '0.42', god: 'false,,true', help: 'true,,true',
   }, over || {});
-  return [o.item, o.eat, o.kill, o.run, o.game, o.forestMax, o.treeMax, o.misNum,
+  const base = [o.item, o.eat, o.kill, o.run, o.game, o.forestMax, o.treeMax, o.misNum,
     o.diam, o.key, o.star, o.bag, o.dunLvl, o.dunF, o.rainF, o.pondQ,
     o.frog, o.faerie, o.vs, o.inv, o.current, o.checkpoint,
     o.timeT, o.timeD, o.timeS, o.pondD, o.dunDay, o.dunLoop, o.rainDay, o.rainIt,
-    o.wind, o.god, o.help].join('|');
+    o.wind, o.god, o.help];
+  // Champs 33/34 (extension « missions ») — seulement si fournis, pour que les
+  // tests « vieux SWF » gardent leur pipe 33 champs.
+  if (o.mis !== undefined || o.mission !== undefined) {
+    base.push(o.mis || '', o.mission || '');
+  }
+  return base.join('|');
+}
+
+// Un token de fée RICHE avec $mission/$pos contrôlés (index 10 = mission,
+// 11 = pos), comme le sérialise le SWF patché.
+function faerieTok(name, mission, pos) {
+  const mis = mission == null ? '' : String(mission);
+  const ps = pos == null ? '' : String(pos);
+  // name:level:humor:exp:hunger:moral:bagMax:shot:life:mana:MISSION:POS
+  return `${name}:3:0:0:4:10:2:0:5:2:${mis}:${ps}`;
 }
 
 test('pipe étendu : $time/$pond/$dungeon/$rainbow/$wind voyagent et reviennent', async () => {
@@ -138,6 +153,44 @@ test('vieux SWF (pipe 22 champs) : $time acquis conservé par le forward-merge',
   await saveSlot(sid, 0, old);
   const { slot0 } = await loadSlots(sid);
   assert.equal(slot0.$time.$d, 5, '$time de la session précédente conservé');
+});
+
+test('missions : $mis (actives) + $mission (du jour) voyagent et reviennent', async () => {
+  const sid = await makeSession('piximis');
+  // Une fée partie sur la mission active 0 ; $string accentué + virgule, escapé
+  // par le SWF (escape()) → doit revenir exact côté serveur (unescape).
+  const story = 'réussi à rapporter une clé, bravo !';
+  const mis = `5~83~2~${escape(story)}`;          // $d=5, $gift=83, $type=2
+  const mission = '0~2~3~83~4567,1~0~5~71~1234';  // 2 missions du jour
+  await saveSlot(sid, 0, buildPipeV2({ faerie: faerieTok('Aria', 0, null) + ',', mis, mission }));
+  const { slot0 } = await loadSlots(sid);
+  assert.equal(slot0.$faerie[0].$mission, 0, 'fée toujours en mission 0');
+  assert.ok(Array.isArray(slot0.$mis) && slot0.$mis.length === 1, '$mis persisté');
+  assert.equal(slot0.$mis[0].$d, 5, 'jours restants conservés (plus de undefined)');
+  assert.equal(slot0.$mis[0].$gift, 83);
+  assert.equal(slot0.$mis[0].$type, 2);
+  assert.equal(slot0.$mis[0].$string, story, '$string exact (accents + virgule)');
+  assert.equal(slot0.$mission.length, 2, 'liste de Gromelin persistée');
+  assert.deepEqual(slot0.$mission[0], [0, 2, 3, 83, 4567]);
+});
+
+test('missions : mission ratée ($gift null) round-trip', async () => {
+  const sid = await makeSession('pximisb');
+  const mis = `2~~4~${escape('a échoué...')}`;   // $gift vide → null
+  await saveSlot(sid, 0, buildPipeV2({ faerie: faerieTok('Bea', 0, null) + ',', mis, mission: '' }));
+  const { slot0 } = await loadSlots(sid);
+  assert.equal(slot0.$mis[0].$gift, null, 'cadeau null préservé');
+  assert.equal(slot0.$mis[0].$d, 2);
+});
+
+test('missions : fée « fantôme » réconciliée (index $mis inexistant → libérée)', async () => {
+  const sid = await makeSession('pximisc');
+  // fée en mission 0 mais AUCUNE mission active ($mis vide) — l'état hérité des
+  // saves d'avant le fix. Le serveur doit la libérer ($mission=null) au lieu de
+  // la laisser bloquée « en mission » (M jaune + undefined jours).
+  await saveSlot(sid, 0, buildPipeV2({ faerie: faerieTok('Cleo', 0, null) + ',', mis: '', mission: '' }));
+  const { slot0 } = await loadSlots(sid);
+  assert.equal(slot0.$faerie[0].$mission, null, 'fée fantôme libérée');
 });
 
 test('fée-stub : synthèse complète et déterministe au chargement', async () => {
