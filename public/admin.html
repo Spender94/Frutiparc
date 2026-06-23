@@ -564,6 +564,7 @@
     "name": "Culture générale",        // requis
     "reward": 60,                       // optionnel (kikooz, 1–10000, défaut 60)
     "windowSec": 90,                    // optionnel (temps de réponse en s, 10–600, défaut 90)
+    "time": "18:30",                    // optionnel : lancement auto chaque jour à cette heure (Paris) ; absent/"" = manuel
     "questions": [                      // requis (≥ 1 question valide)
       {
         "q": "Capitale de la France ?", // requis : l'énoncé
@@ -595,6 +596,9 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
       </label>
       <label style="display:flex;flex-direction:column;gap:2px;font-size:12px">Temps de réponse (s)
         <input id="qd-window" type="number" value="90" min="10" max="600" style="width:120px;padding:5px">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:2px;font-size:12px" title="Heure de lancement automatique chaque jour (heure de Paris). Laisse vide pour un lancement uniquement manuel.">Programmer (heure de Paris)
+        <input id="qd-time" type="time" style="width:120px;padding:5px">
       </label>
     </div>
     <div id="qd-questions" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -1435,7 +1439,7 @@ async function kilouteLoadSalons() {
   } catch (e) {}
 }
 let quizzes = [];
-let quizDraft = null; // { id, name, reward, windowSec, questions:[{q,a:[],r,image}] }
+let quizDraft = null; // { id, name, reward, windowSec, time, questions:[{q,a:[],r,image}] }
 
 async function loadQuizzes() {
   try {
@@ -1485,6 +1489,7 @@ function renderQuizList() {
       <div style="flex:1">
         <b>${esc(qz.name)}</b>
         <span style="font-size:12px;color:#666"> — ${(qz.questions || []).length} question(s) · ${qz.reward} kikooz · ${qz.windowSec}s</span>
+        ${qz.time ? `<span title="Lancement automatique chaque jour à ${esc(qz.time)} (heure de Paris)" style="font-size:11px;color:#2f6b16;background:#e6f4df;border-radius:10px;padding:1px 8px;margin-left:6px;white-space:nowrap">⏰ ${esc(qz.time)}</span>` : ''}
       </div>
       <button class="btn-success btn-sm" onclick="launchQuiz(${qz.id})">▶ Lancer</button>
       <button class="btn btn-sm" onclick="editQuiz(${qz.id})">Modifier</button>
@@ -1501,6 +1506,7 @@ function renderQuizDraft() {
   document.getElementById('qd-name').value = quizDraft.name || '';
   document.getElementById('qd-reward').value = quizDraft.reward || 60;
   document.getElementById('qd-window').value = quizDraft.windowSec || 90;
+  document.getElementById('qd-time').value = quizDraft.time || '';
   const box = document.getElementById('qd-questions');
   box.innerHTML = (quizDraft.questions || []).map((q, i) => `
     <div class="qd-row" data-i="${i}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid #e3e3e3;border-radius:6px;padding:6px;background:#fff">
@@ -1519,6 +1525,7 @@ function syncDraftFromDOM() {
   quizDraft.name = document.getElementById('qd-name').value.trim();
   quizDraft.reward = Number(document.getElementById('qd-reward').value) || 60;
   quizDraft.windowSec = Number(document.getElementById('qd-window').value) || 90;
+  quizDraft.time = document.getElementById('qd-time').value || '';
   quizDraft.questions = Array.from(document.querySelectorAll('#qd-questions .qd-row')).map(row => ({
     q: row.querySelector('.qd-q').value.trim(),
     a: row.querySelector('.qd-a').value.split(',').map(s => s.trim()).filter(Boolean),
@@ -1527,13 +1534,13 @@ function syncDraftFromDOM() {
   }));
 }
 function newQuiz() {
-  quizDraft = { id: null, name: '', reward: 60, windowSec: 90, questions: [{ q: '', a: [], r: '', image: '' }] };
+  quizDraft = { id: null, name: '', reward: 60, windowSec: 90, time: '', questions: [{ q: '', a: [], r: '', image: '' }] };
   document.getElementById('quiz-editor').style.display = '';
   renderQuizDraft();
 }
 function editQuiz(id) {
   const qz = quizzes.find(x => x.id === id); if (!qz) return;
-  quizDraft = { id: qz.id, name: qz.name, reward: qz.reward, windowSec: qz.windowSec, questions: (qz.questions || []).map(q => ({ q: q.q, a: (q.a || []).slice(), r: q.r, image: q.image || '' })) };
+  quizDraft = { id: qz.id, name: qz.name, reward: qz.reward, windowSec: qz.windowSec, time: qz.time || '', questions: (qz.questions || []).map(q => ({ q: q.q, a: (q.a || []).slice(), r: q.r, image: q.image || '' })) };
   if (!quizDraft.questions.length) quizDraft.questions.push({ q: '', a: [], r: '', image: '' });
   document.getElementById('quiz-editor').style.display = '';
   renderQuizDraft();
@@ -1550,7 +1557,7 @@ async function saveQuiz() {
   if (!quizDraft.name) { toast('Donne un nom au quiz'); return; }
   const questions = quizDraft.questions.filter(q => q.q && q.a.length);
   if (!questions.length) { toast('Ajoute au moins une question (avec sa/ses réponse(s))'); return; }
-  const body = { name: quizDraft.name, reward: quizDraft.reward, windowSec: quizDraft.windowSec, questions };
+  const body = { name: quizDraft.name, reward: quizDraft.reward, windowSec: quizDraft.windowSec, time: quizDraft.time || '', questions };
   const url = quizDraft.id ? `/api/admin/kiloute/quizzes/${quizDraft.id}` : '/api/admin/kiloute/quizzes';
   const r = await fetch(url, { method: quizDraft.id ? 'PATCH' : 'POST', headers: hdr(), body: JSON.stringify(body) });
   const d = await r.json();

@@ -386,8 +386,12 @@ async function initSchema() {
         window_sec  INTEGER NOT NULL DEFAULT 90,
         questions   TEXT NOT NULL DEFAULT '[]',
         sort_order  INTEGER DEFAULT 0,
+        -- Heure de programmation "HH:MM" (Europe/Paris), NULL = lancement manuel.
+        schedule_time TEXT DEFAULT NULL,
         created_at  TIMESTAMPTZ DEFAULT now()
       );
+      -- Migration des bases existantes (table créée avant la programmation).
+      ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS schedule_time TEXT DEFAULT NULL;
 
       -- Forum tables
       CREATE TABLE IF NOT EXISTS forum_categories (
@@ -1352,19 +1356,19 @@ function parseQuizQuestions(s) {
 }
 async function loadQuizzes() {
   const { rows } = await pool.query('SELECT * FROM quizzes ORDER BY sort_order, id');
-  return rows.map((r) => ({ id: r.id, name: r.name, reward: r.reward || 60, windowSec: r.window_sec || 90, questions: parseQuizQuestions(r.questions) }));
+  return rows.map((r) => ({ id: r.id, name: r.name, reward: r.reward || 60, windowSec: r.window_sec || 90, time: r.schedule_time || null, questions: parseQuizQuestions(r.questions) }));
 }
-async function insertQuiz(name, reward, windowSec, questions, sortOrder) {
+async function insertQuiz(name, reward, windowSec, questions, sortOrder, scheduleTime) {
   const { rows } = await pool.query(
-    'INSERT INTO quizzes (name, reward, window_sec, questions, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-    [name, reward || 60, windowSec || 90, JSON.stringify(questions || []), sortOrder || 0]
+    'INSERT INTO quizzes (name, reward, window_sec, questions, sort_order, schedule_time) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+    [name, reward || 60, windowSec || 90, JSON.stringify(questions || []), sortOrder || 0, scheduleTime || null]
   );
   return rows[0].id;
 }
-async function updateQuiz(id, name, reward, windowSec, questions) {
+async function updateQuiz(id, name, reward, windowSec, questions, scheduleTime) {
   await pool.query(
-    'UPDATE quizzes SET name = $2, reward = $3, window_sec = $4, questions = $5 WHERE id = $1',
-    [id, name, reward || 60, windowSec || 90, JSON.stringify(questions || [])]
+    'UPDATE quizzes SET name = $2, reward = $3, window_sec = $4, questions = $5, schedule_time = $6 WHERE id = $1',
+    [id, name, reward || 60, windowSec || 90, JSON.stringify(questions || []), scheduleTime || null]
   );
 }
 async function deleteQuiz(id) {

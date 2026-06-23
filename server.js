@@ -6465,6 +6465,19 @@ function normalizeQuizQuestions(arr) {
   }).filter((x) => x.q && x.a.length);
 }
 
+// Heure de programmation d'un quiz : "HH:MM" (Europe/Paris) ou null (manuel).
+// Tolère "8:5" → "08:05" et "18h30" → "18:30". Toute valeur invalide → null.
+function normalizeQuizTime(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (s === '') return null;
+  const m = s.match(/^(\d{1,2})\s*[:hH]\s*(\d{1,2})$/);
+  if (!m) return null;
+  const hh = Number(m[1]), mm = Number(m[2]);
+  if (hh > 23 || mm > 59) return null;
+  return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+}
+
 app.get('/api/admin/kiloute/quizzes', adminScope('kiloute'), (req, res) => {
   res.json({ ok: true, quizzes: QUIZZES });
 });
@@ -6475,15 +6488,16 @@ app.post('/api/admin/kiloute/quizzes', adminScope('kiloute'), async (req, res) =
   if (!name) return res.status(400).json({ error: 'Nom du quiz requis.' });
   const reward = Math.max(1, Math.min(10000, Math.round(Number(b.reward) || 60)));
   const windowSec = Math.max(10, Math.min(600, Math.round(Number(b.windowSec) || 90)));
+  const time = normalizeQuizTime(b.time);
   const questions = normalizeQuizQuestions(b.questions);
   let id = QUIZZES.reduce((m, q) => Math.max(m, q.id || 0), 0) + 1;
   if (process.env.DATABASE_URL) {
-    try { id = await db.insertQuiz(name, reward, windowSec, questions, QUIZZES.length); }
+    try { id = await db.insertQuiz(name, reward, windowSec, questions, QUIZZES.length, time); }
     catch (e) { console.error('[KILOUTE] quiz insert:', e.message); }
   }
-  const quiz = { id, name, reward, windowSec, questions };
+  const quiz = { id, name, reward, windowSec, time, questions };
   QUIZZES.push(quiz);
-  console.log(`[ADMIN] Quiz #${id} "${name}" créé (${questions.length} questions)`);
+  console.log(`[ADMIN] Quiz #${id} "${name}" créé (${questions.length} questions${time ? ', programmé à ' + time : ''})`);
   res.json({ ok: true, quiz });
 });
 
@@ -6505,14 +6519,15 @@ app.post('/api/admin/kiloute/quizzes/import', adminScope('kiloute'), async (req,
     if (!name) { errors.push(`#${i + 1} : nom manquant`); continue; }
     const reward = Math.max(1, Math.min(10000, Math.round(Number(q.reward) || 60)));
     const windowSec = Math.max(10, Math.min(600, Math.round(Number(q.windowSec) || 90)));
+    const time = normalizeQuizTime(q.time);
     const questions = normalizeQuizQuestions(q.questions);
     if (!questions.length) { errors.push(`#${i + 1} « ${name} » : aucune question valide`); continue; }
     let id = QUIZZES.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
     if (process.env.DATABASE_URL) {
-      try { id = await db.insertQuiz(name, reward, windowSec, questions, QUIZZES.length); }
+      try { id = await db.insertQuiz(name, reward, windowSec, questions, QUIZZES.length, time); }
       catch (e) { console.error('[KILOUTE] import insert:', e.message); errors.push(`#${i + 1} « ${name} » : erreur base de données`); continue; }
     }
-    QUIZZES.push({ id, name, reward, windowSec, questions });
+    QUIZZES.push({ id, name, reward, windowSec, time, questions });
     created.push({ id, name, questions: questions.length });
   }
   console.log(`[ADMIN] Import quizz : ${created.length} créé(s), ${errors.length} erreur(s)`);
@@ -6527,12 +6542,13 @@ app.patch('/api/admin/kiloute/quizzes/:id', adminScope('kiloute'), async (req, r
   if (b.name !== undefined) quiz.name = String(b.name).trim() || quiz.name;
   if (b.reward !== undefined) quiz.reward = Math.max(1, Math.min(10000, Math.round(Number(b.reward) || 60)));
   if (b.windowSec !== undefined) quiz.windowSec = Math.max(10, Math.min(600, Math.round(Number(b.windowSec) || 90)));
+  if (b.time !== undefined) quiz.time = normalizeQuizTime(b.time);
   if (b.questions !== undefined) quiz.questions = normalizeQuizQuestions(b.questions);
   if (process.env.DATABASE_URL) {
-    try { await db.updateQuiz(id, quiz.name, quiz.reward, quiz.windowSec, quiz.questions); }
+    try { await db.updateQuiz(id, quiz.name, quiz.reward, quiz.windowSec, quiz.questions, quiz.time || null); }
     catch (e) { console.error('[KILOUTE] quiz update:', e.message); }
   }
-  console.log(`[ADMIN] Quiz #${id} "${quiz.name}" modifié (${quiz.questions.length} questions)`);
+  console.log(`[ADMIN] Quiz #${id} "${quiz.name}" modifié (${quiz.questions.length} questions${quiz.time ? ', programmé à ' + quiz.time : ''})`);
   res.json({ ok: true, quiz });
 });
 
@@ -13662,6 +13678,8 @@ function kilouteSessionStatus() {
 // first check inside 19:00–19:04 we haven't already fired today — DST-safe, as
 // the Paris hour/minute come straight from Intl.
 let kilouteLastDay = null;
+// Anti-doublon des quizz programmés : quizId → dernier jour (Paris) déjà lancé.
+const quizScheduleLastDay = new Map();
 setInterval(() => {
   try {
     const hm = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
@@ -13670,6 +13688,21 @@ setInterval(() => {
     if (hh === 19 && mm < 5 && kilouteLastDay !== day) {
       kilouteLastDay = day;
       kilouteRun();
+    }
+    // Quizz programmés (heure de Paris). hmKey = "HH:MM" reconstruit depuis les
+    // composantes (gère le 24:00 → 00:00 de certains environnements Intl) et
+    // aligné sur le format de normalizeQuizTime. On lance chaque quiz dont
+    // l'heure correspond, au plus une fois par jour ; si l'animateur est déjà
+    // occupé (Question du soir / autre quiz), kilouteStartSession renvoie
+    // ok:false et on saute simplement ce déclenchement pour la journée.
+    const hmKey = String(hh % 24).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+    for (const quiz of QUIZZES) {
+      if (!quiz.time || quiz.time !== hmKey) continue;
+      if (quizScheduleLastDay.get(quiz.id) === day) continue;
+      quizScheduleLastDay.set(quiz.id, day);
+      const r = kilouteStartSession({ quizId: quiz.id });
+      if (r && r.ok) console.log(`[KILOUTE] Quiz programmé "${quiz.name}" lancé à ${hmKey} (Paris) dans #${r.channel}`);
+      else console.log(`[KILOUTE] Quiz programmé "${quiz.name}" (${hmKey}) non lancé : ${(r && r.error) || 'inconnu'}`);
     }
   } catch (e) { console.error('[KILOUTE] scheduler error:', e.message); }
 }, 60 * 1000);
