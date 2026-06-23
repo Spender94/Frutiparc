@@ -346,7 +346,7 @@ async function initSchema() {
         PRIMARY KEY (tournament_id, round, username)
       );
 
-      -- Kiloute79 "Question à 60 kikooz" backlog (admin-managed)
+      -- MikeHorny "Question à 60 kikooz" backlog (admin-managed)
       CREATE TABLE IF NOT EXISTS kiloute_questions (
         id          SERIAL PRIMARY KEY,
         question    TEXT NOT NULL,
@@ -356,7 +356,7 @@ async function initSchema() {
         created_at  TIMESTAMPTZ DEFAULT now()
       );
       -- Optional image attached to a question (id referencing quiz_images) — for
-      -- the "image" quizzes animated by Kiloute79.
+      -- the "image" quizzes animated by MikeHorny.
       ALTER TABLE kiloute_questions ADD COLUMN IF NOT EXISTS image TEXT DEFAULT NULL;
 
       -- Quiz images uploaded from the admin panel. Like custom wallpapers, the
@@ -375,7 +375,7 @@ async function initSchema() {
         created_at  TIMESTAMPTZ DEFAULT now()
       );
 
-      -- Quizz (événements multi-questions animés par Kiloute79, lancés à la
+      -- Quizz (événements multi-questions animés par MikeHorny, lancés à la
       -- demande) — distincts du backlog "Question à 60 kikooz" quotidien. Les
       -- questions du quiz (avec réponses acceptées + image éventuelle) sont
       -- stockées en JSON puisqu'un quiz s'édite et se joue comme un tout.
@@ -1293,7 +1293,7 @@ async function upsertWallpaper(wp) {
     [wp.id, wp.name, wp.color, wp.mime, wp.ext, wp.data]
   );
 }
-// ── Quiz images (Kiloute79 "image" quizzes, uploaded from the admin) ──
+// ── Quiz images (MikeHorny "image" quizzes, uploaded from the admin) ──
 // Metadata only (no bytes) — feeds the in-memory quiz-image registry at boot.
 async function loadQuizImages() {
   const { rows } = await pool.query('SELECT id, title, ext, mime, w, h FROM quiz_images ORDER BY created_at');
@@ -1319,7 +1319,7 @@ async function deleteWallpaper(id) {
   await pool.query('DELETE FROM wallpapers WHERE id = $1', [id]);
 }
 
-// ── Kiloute79 quiz questions ──
+// ── MikeHorny quiz questions ──
 function parseAnswersField(s) {
   try { const v = JSON.parse(s); if (Array.isArray(v)) return v.map((x) => String(x)); } catch (e) { /* fall through */ }
   return String(s || '').split(',').map((x) => x.trim()).filter(Boolean);

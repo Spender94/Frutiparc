@@ -1842,7 +1842,7 @@
         var ty = attr(xml, "t") || "m";
         var h = attr(xml, "h");
         var body = bodyOf(xml);
-        // Image frames (the /image command + Kiloute79's image quizzes) carry an
+        // Image frames (the /image command + MikeHorny's image quizzes) carry an
         // <i w h u="url">title</i> child. On mobile we render the picture INLINE
         // in the chat body — the desktop SWF opens it in a separate window.
         if (ty === "i") {
@@ -2014,7 +2014,7 @@
   }
 
   // Render an image message inline: "[hh:mm:ss] pseudo : <title>" then the
-  // picture below it. Used for t="i" frames (/image + Kiloute79 image quizzes).
+  // picture below it. Used for t="i" frames (/image + MikeHorny image quizzes).
   function addImageMessage(o) {
     var stick = nearBottom();
     var row = el("div", "msg img-msg");

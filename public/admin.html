@@ -363,7 +363,7 @@
     <div class="tab-group"><span class="lbl">Animation &amp; contenu</span><div class="grp">
       <button class="tab" data-tab="shop" onclick="switchTab('shop')">Boutique</button>
       <button class="tab" data-tab="wallpapers" onclick="switchTab('wallpapers')">Fonds d'écran</button>
-      <button class="tab" data-tab="kiloute" onclick="switchTab('kiloute')">Kiloute79</button>
+      <button class="tab" data-tab="kiloute" onclick="switchTab('kiloute')">MikeHorny</button>
       <button class="tab" data-tab="gaspard" onclick="switchTab('gaspard')">Aide Gaspard</button>
       <button class="tab" data-tab="events" onclick="switchTab('events')">Événements</button>
       <button class="tab" data-tab="challenge" onclick="switchTab('challenge')">Challenge</button>
@@ -507,7 +507,7 @@
   <!-- ───────── Question à 60 kikooz (quotidienne) ───────── -->
   <h3 style="margin:6px 0 6px">🗓️ Question à 60 kikooz — quotidienne (19h)</h3>
   <p style="font-size:12px;color:#666;max-width:790px">
-    Chaque soir à <b>19h</b> (heure de Paris), Kiloute79 pose <b>une</b> question tirée de ce backlog dans le salon
+    Chaque soir à <b>19h</b> (heure de Paris), MikeHorny pose <b>une</b> question tirée de ce backlog dans le salon
     le plus fréquenté, avec 60 kikooz à la clé. Réponses acceptées séparées par des virgules ; la détection ignore
     accents, casse et ponctuation. <i>(Distinct des quizz : ici une seule question, automatique, tous les jours.)</i>
   </p>
@@ -612,7 +612,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
   </h3>
   <p style="font-size:12px;color:#666;max-width:790px">
     Téléverse ici les images (stockées en base, elles survivent à un redéploiement), puis associe-en une à une
-    question (quotidienne ou de quiz). Kiloute79 l'affiche automatiquement quand il pose la question : dans une
+    question (quotidienne ou de quiz). MikeHorny l'affiche automatiquement quand il pose la question : dans une
     fenêtre sur le bureau (main.swf) et directement dans le chat en mode mobile (Light).
   </p>
   <div style="max-width:820px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;background:#f7f7f7;padding:12px;border-radius:8px">
@@ -628,7 +628,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
   </div>
   <div id="qi-grid" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px"></div>
 
-  <h3 style="margin:22px 0 6px">Poster au forum (avec le compte Kiloute79)</h3>
+  <h3 style="margin:22px 0 6px">Poster au forum (avec le compte MikeHorny)</h3>
   <div style="max-width:760px;display:flex;flex-direction:column;gap:6px">
     <input id="kf-board" value="Animations officielles" placeholder="Rubrique du forum">
     <input id="kf-title" placeholder="Titre du sujet">
@@ -1335,7 +1335,7 @@ async function deleteWallpaper(id) {
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
-// ─── Kiloute79 — "Question à 60 kikooz" ───
+// ─── MikeHorny — "Question à 60 kikooz" ───
 let kilouteQuestions = [];
 async function loadKiloute() {
   try {
@@ -2057,10 +2057,10 @@ async function loadDetail() {
         <select onchange="setAdminRole('${esc(u)}', this.value)" style="padding:3px">
           <option value=""${!user.admin_role ? ' selected' : ''}>— aucun —</option>
           <option value="scores"${user.admin_role === 'scores' ? ' selected' : ''}>Responsable des scores (Scores + Challenge)</option>
-          <option value="animateur"${user.admin_role === 'animateur' ? ' selected' : ''}>Animateur (Kiloute79 + Salons)</option>
+          <option value="animateur"${user.admin_role === 'animateur' ? ' selected' : ''}>Animateur (MikeHorny + Salons)</option>
           <option value="chapelier"${user.admin_role === 'chapelier' ? ' selected' : ''}>Chapelier (Boutique)</option>
         </select>
-        <span style="color:#888;font-size:11px">accès limité à /admin avec ses identifiants Frutiparc — le badge « Animateur » ci-dessus donne déjà l'accès Kiloute79</span>
+        <span style="color:#888;font-size:11px">accès limité à /admin avec ses identifiants Frutiparc — le badge « Animateur » ci-dessus donne déjà l'accès MikeHorny</span>
       </td></tr>
       <tr><td>Anniversaire</td><td>${fmtDate(user.birthday)}</td></tr>
       <tr><td>FrutiSigne</td><td>${signLabel(user.fruti_sign)}</td></tr>

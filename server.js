@@ -3159,7 +3159,7 @@ function registerCustomWallpaper(wp) {
   CUSTOM_WALLPAPER_IDS.add(wp.id);
 }
 
-// ── Quiz images (Kiloute79 "image" quizzes, uploaded from the admin) ──
+// ── Quiz images (MikeHorny "image" quizzes, uploaded from the admin) ──
 // Same idea as custom wallpapers: bytes live in the DB, served same-origin by
 // /quiz-img/:file so BOTH the desktop SWF (Ruffle opens a window) and the
 // Light/mobile client (renders inline) can load them. QUIZ_IMAGES holds the
@@ -6183,7 +6183,7 @@ app.get('/wal-custom/:file', async (req, res) => {
   }
 });
 
-// Sert une image de quiz (Kiloute79) depuis la base. :file = "<id>.<ext>".
+// Sert une image de quiz (MikeHorny) depuis la base. :file = "<id>.<ext>".
 // Same-origin (et CORS ouvert) : chargée par Ruffle dans la fenêtre du bureau
 // comme par le <img> inline du client Light/mobile.
 app.get('/quiz-img/:file', async (req, res) => {
@@ -6294,7 +6294,7 @@ app.delete('/api/admin/wallpapers/:id', adminAuth, async (req, res) => {
   }
 });
 
-// ── Admin: Kiloute79 quiz (backlog de questions, lancer maintenant, post forum) ──
+// ── Admin: MikeHorny quiz (backlog de questions, lancer maintenant, post forum) ──
 function parseKilouteAnswers(input) {
   if (Array.isArray(input)) return input.map((s) => String(s).trim()).filter(Boolean);
   return String(input || '').split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
@@ -6549,7 +6549,7 @@ app.delete('/api/admin/kiloute/quizzes/:id', adminScope('kiloute'), async (req, 
   res.json({ ok: true });
 });
 
-// Poster un sujet au forum avec le compte Kiloute79 (par défaut "Animations officielles").
+// Poster un sujet au forum avec le compte MikeHorny (par défaut "Animations officielles").
 app.post('/api/admin/kiloute/forum-post', adminScope('kiloute'), async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'Forum indisponible (pas de base de données).' });
   const b = req.body || {};
@@ -13158,7 +13158,13 @@ function scheduleGromelin() {
 }
 scheduleGromelin();
 
-// ── Kiloute79 — animateur "Question à 60 kikooz" (tous les soirs à 19h Paris) ──
+// ── MikeHorny — animateur "Question à 60 kikooz" (tous les soirs à 19h Paris) ──
+// NB : la CLÉ de compte reste `kiloute79` (identité interne stable : présence
+// chat, auteur des sujets forum, NPC_USERNAMES, journaux kikooz, table
+// kiloute_questions, routes /api/admin/kiloute/*). Le PSEUDO affiché vient
+// exclusivement de getDisplayName() → displayName, donc renommer ici renomme le
+// bot PARTOUT (chat, forum y compris anciens sujets, classements) sans rien
+// casser ni toucher au SWF.
 users.kiloute79 = {
   pass: '', xp: 500000, kikooz: 0,
   fbouille: '0f0000010000000000000000',
@@ -13167,11 +13173,16 @@ users.kiloute79 = {
   gender: 'M', birthday: '1990-06-15', country: 'FR', region: 'IDF',
   countryIndex: '1', regionIndex: '1', prefs: '',
   isModerator: false, isAnimator: true, needsBouille: false,
-  city: 'Frutiparc', realJob: 'Animateur', frutijob: 'Animateur', firstName: 'Kiloute', lastName: '79',
+  city: 'Frutiparc', realJob: 'Animateur', frutijob: 'Animateur', firstName: 'Mike', lastName: 'Horny',
   comment: 'La Question à 60 kikooz, tous les soirs à 19h !', siteUrl: '',
   frutiSign: 7, frutiSignB: 7,
-  displayName: 'Kiloute79',
+  displayName: 'MikeHorny',
 };
+
+// Pseudo affiché de l'animateur — source unique, dérivée du displayName. Toutes
+// les phrases qui se réfèrent à lui par son nom passent par ANIM_NAME, donc un
+// futur changement de displayName se propage automatiquement.
+const ANIM_NAME = users.kiloute79.displayName;
 
 // Culture-générale backlog. { q: question, a: [réponses acceptées], r: réponse
 // affichée }. Le matching est insensible aux accents/casse/ponctuation et borné
@@ -13273,7 +13284,7 @@ function kilouteQuestionOfTheDay() {
 // Active quiz state (one room at a time), or null when idle.
 let kilouteQuiz = null;
 // Active QUIZ EVENT (a sequenced session of several questions hosted live by
-// Kiloute79), or null when idle. Mutually exclusive with kilouteQuiz.
+// MikeHorny), or null when idle. Mutually exclusive with kilouteQuiz.
 let kilouteSession = null;
 
 // Credit kikooz to the winner (memory + DB + history + kikooz log), like /do/give.
@@ -13283,11 +13294,11 @@ function kilouteAwardKikooz(username, amount) {
   u.kikooz = (typeof u.kikooz === 'number' ? u.kikooz : 0) + amount;
   if (u._dbId) db.updateUser(username, { kikooz: u.kikooz }).catch((e) => console.error('[KILOUTE] kikooz save:', e.message));
   if (!Array.isArray(u.kikoozLog)) u.kikoozLog = [];
-  u.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: amount, c: 'kiloute79' });
+  u.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: amount, c: ANIM_NAME });
   if (u.kikoozLog.length > 200) u.kikoozLog.length = 200;
   addUserHistoryEntry(u, {
     type: USER_LOG_TYPE.CHAT,
-    content: `Tu as gagné ${amount} kikooz à la Question à 60 kikooz de Kiloute79 !`,
+    content: `Tu as gagné ${amount} kikooz à la Question à 60 kikooz de ${ANIM_NAME} !`,
     flNew: true,
   });
 }
@@ -13295,7 +13306,7 @@ function kilouteAwardKikooz(username, amount) {
 // All of Kiloute's lines go out in the animator/blue style (t="c").
 function kilouteSay(channelName, text) { npcSay('kiloute79', channelName, text, 'c'); }
 
-// Broadcast an IMAGE frame (t="i") AS Kiloute79 — same wire format as the human
+// Broadcast an IMAGE frame (t="i") AS MikeHorny — same wire format as the human
 // /image command, but server-initiated (no animator gate to clear). The desktop
 // SWF opens it in a window; the Light/mobile client renders it inline in the
 // chat body. `img` = { url, w, h, title } (see resolveQuizImage).
@@ -13333,10 +13344,10 @@ function kilouteCheckAnswer(channelName, username, rawText) {
   const winner = getDisplayName(username);
   kilouteSay(channelName, "Stoooooooooooop !");
   setTimeout(() => {
-    kilouteSay(channelName, `Bravo ${winner} !!! La réponse était bien : ${quiz.display}`);
+    kilouteSay(channelName, kpick(KILOUTE_CORRECT)(winner, quiz.display));
     kilouteAwardKikooz(username, 60);
     setTimeout(() => {
-      kilouteSay(channelName, `Et hop, 60 kikooz pour ${winner} !`);
+      kilouteSay(channelName, kpick(KILOUTE_REWARD)(winner, 1, 60));
       setTimeout(() => {
         kilouteSay(channelName, "Merci à tous d'avoir joué, vous êtes formidables ! À demain 19h pour une nouvelle Question à 60 kikooz !");
         setTimeout(kilouteLeave, 4500);
@@ -13357,7 +13368,7 @@ function kilouteRun(forcedChannel) {
   kilouteQuiz = { channel: channelName, answers: q.a, display: q.r, answered: false, timeoutId: null };
   const qImage = resolveQuizImage(q.image);
   npcSaySequence('kiloute79', channelName, [
-    "Bonsoiiiir les Frutiz ! Kiloute79 est dans la place !",
+    kpick(KILOUTE_DAILY_HELLO),
     "C'est l'heure de votre rendez-vous préféré : la QUESTION À 60 KIKOOZ !",
     "Le premier qui donne la bonne réponse rafle les 60 kikooz ! Vous êtes prêts ?!",
     "Alors attention, voici la question :",
@@ -13383,22 +13394,37 @@ function kilouteRun(forcedChannel) {
 }
 
 // ─────────────────────────────────────────────
-// Kiloute79 — QUIZ EVENT (session de plusieurs questions à la suite)
+// MikeHorny — QUIZ EVENT (session de plusieurs questions à la suite)
 // Lancé à la demande depuis l'admin : Kiloute anime un quiz complet (intro,
 // N questions enchaînées avec fenêtre de réponse + révélation + gagnant, puis
 // classement final), à partir du backlog de questions saisi à l'avance.
 // ─────────────────────────────────────────────
 
 // Tirage aléatoire — pour que l'animation ne soit pas redondante sur un long
-// quiz (25 questions), Kiloute pioche ses phrases dans des banques variées.
-function kpick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+// quiz, l'animateur pioche ses phrases dans des banques variées. Anti-répétition :
+// on ne ressort jamais la même phrase deux fois de suite dans une même banque
+// (mémorisé par référence de tableau, les banques étant des constantes stables).
+const _kpickLast = new Map();
+function kpick(arr) {
+  if (!arr || arr.length === 0) return undefined;
+  if (arr.length === 1) return arr[0];
+  const last = _kpickLast.get(arr);
+  let i, tries = 0;
+  do { i = Math.floor(Math.random() * arr.length); } while (i === last && ++tries < 8);
+  _kpickLast.set(arr, i);
+  return arr[i];
+}
 
-// Phrases d'introduction (1re ligne du quiz, variée).
+// Phrases d'introduction (1re ligne du quiz, variée). ${ANIM_NAME} = pseudo.
 const KILOUTE_INTRO_HELLO = [
-  "Bonsoiiiir les Frutiz ! Kiloute79 débarque pour un GRAND QUIZ spécial !",
-  "Salut la compagnie ! C'est Kiloute79, et c'est l'heure du QUIZ !",
-  "Ouvrez grand les oreilles, Frutiz : Kiloute79 lance son GRAND QUIZ !",
-  "Hé ho les champions ! Kiloute79 est là pour un quiz de folie !",
+  `Bonsoiiiir les Frutiz ! ${ANIM_NAME} débarque pour un GRAND QUIZ spécial !`,
+  `Salut la compagnie ! C'est ${ANIM_NAME}, et c'est l'heure du QUIZ !`,
+  `Ouvrez grand les oreilles, Frutiz : ${ANIM_NAME} lance son GRAND QUIZ !`,
+  `Hé ho les champions ! ${ANIM_NAME} est là pour un quiz de folie !`,
+  `Coucou la Frutifamille ! Ici ${ANIM_NAME}, prêt à faire chauffer les méninges !`,
+  `Roulez tambours ! ${ANIM_NAME} vous a mitonné un quiz aux petits oignons !`,
+  `Installez-vous bien : ${ANIM_NAME} ouvre les portes de son grand quiz !`,
+  `C'est l'événement du jour, les amis : le grand quiz de ${ANIM_NAME} commence !`,
 ];
 // Préambule annoncé avant chaque question (n = numéro, t = total, r = kikooz).
 const KILOUTE_PREAMBLE = [
@@ -13407,19 +13433,28 @@ const KILOUTE_PREAMBLE = [
   (n, t, r) => `On passe à la question ${n} sur ${t}. ${r} kikooz en jeu !`,
   (n, t, r) => `Voici la question numéro ${n} ! ${r} kikooz à la clé !`,
   (n, t, r) => `Question ${n}... préparez vos doigts ! ${r} kikooz à rafler !`,
+  (n, t, r) => `Top, c'est la question ${n} sur ${t} ! ${r} kikooz attendent leur gagnant.`,
+  (n, t, r) => `Numéro ${n} sur ${t}, tenez-vous prêts : ${r} kikooz sur la table !`,
+  (n, t, r) => `Et voici la ${n}ᵉ question ! Toujours ${r} kikooz pour qui trouve en premier.`,
 ];
-// Petites phrases de transition entre deux questions (détente / ambiance).
+// Petites phrases de transition entre deux questions. Volontairement axées
+// « on respire / on ne se précipite pas » : les joueurs reprochaient à
+// l'animateur d'enchaîner trop vite, ces transitions posent le rythme.
 const KILOUTE_TRANSITIONS = [
-  "On enchaîne, on enchaîne !",
-  "Allez, on ne relâche pas la pression !",
-  "Bien, bien, bien... la suite !",
-  "Concentration maximale pour celle-ci !",
-  "Attention les yeux, voici la prochaine !",
-  "Qui va prendre la tête ? On continue !",
-  "C'est reparti pour un tour !",
-  "Toujours dans le rythme ? On accélère !",
-  "Respirez un grand coup... et c'est parti !",
-  "Pas le temps de souffler, la voilà !",
+  "Prenez le temps de souffler un instant...",
+  "On respire un bon coup avant la suite.",
+  "Petite pause, et on repart tranquillement.",
+  "Voilà voilà... on laisse retomber, la suite arrive.",
+  "On se détend, rien ne presse, la prochaine arrive bientôt.",
+  "Joli tout le monde ! On continue à votre rythme.",
+  "Laissez-moi vous laisser réfléchir une petite seconde...",
+  "On souffle, on s'étire... et c'est reparti en douceur.",
+  "Pas de panique, on a tout notre temps !",
+  "Quelle ambiance ! On savoure un instant, puis on poursuit.",
+  "Allez, sans se précipiter : la suite arrive.",
+  "Tranquillement, sereinement... place à la suivante.",
+  "On garde le sourire, la prochaine question approche.",
+  "Une petite respiration... et hop, on enchaîne en douceur.",
 ];
 // Réaction quand quelqu'un trouve (w = pseudo, r = réponse affichée).
 const KILOUTE_CORRECT = [
@@ -13429,6 +13464,10 @@ const KILOUTE_CORRECT = [
   (w, r) => `Excellent ${w} ! ${r}, évidemment ! Tu es en feu !`,
   (w, r) => `Bien joué ${w} ! La bonne réponse était ${r}. Les autres, accrochez-vous !`,
   (w, r) => `Imbattable ${w} ! ${r}, c'était ça ! Chapeau !`,
+  (w, r) => `Et toc ! ${w} trouve : ${r} ! Du grand art !`,
+  (w, r) => `Parfait ${w} ! ${r}, sans hésiter ! Bravo l'artiste !`,
+  (w, r) => `Dans le mille, ${w} ! La réponse était bien ${r}.`,
+  (w, r) => `Quelle rapidité, ${w} ! ${r}, et c'est tout bon !`,
 ];
 // Annonce du gain (w = pseudo, n = nb de bonnes réponses, k = kikooz).
 const KILOUTE_REWARD = [
@@ -13436,6 +13475,9 @@ const KILOUTE_REWARD = [
   (w, n, k) => `Et hop, ${k} kikooz qui tombent dans la poche de ${w} !`,
   (w, n, k) => `${k} kikooz pour ${w}, déjà ${n} bonne${n > 1 ? 's' : ''} réponse${n > 1 ? 's' : ''} au compteur !`,
   (w, n, k) => `Voilà ${k} kikooz bien mérités pour ${w} !`,
+  (w, n, k) => `Ka-ching ! ${k} kikooz pour ${w} (total : ${n} bonne${n > 1 ? 's' : ''}) !`,
+  (w, n, k) => `${w} empoche ${k} kikooz de plus ! Continue comme ça !`,
+  (w, n, k) => `Encore ${k} kikooz pour ${w} ! La cagnotte grossit !`,
 ];
 // Quand personne ne trouve dans le temps imparti (r = réponse affichée).
 const KILOUTE_TIMEOUT = [
@@ -13443,6 +13485,17 @@ const KILOUTE_TIMEOUT = [
   (r) => `Oh, personne ?! Dommage... c'était ${r}. On se rattrape à la suivante !`,
   (r) => `Le temps est écoulé ! La réponse était ${r}. Pas de panique, ça continue !`,
   (r) => `Aïe, celle-là vous a eus ! C'était ${r}. Allez, la prochaine est pour vous !`,
+  (r) => `Buzzz ! Fin du temps. La réponse : ${r}. Ce n'est que partie remise !`,
+  (r) => `Personne cette fois... c'était ${r}. On y retourne tranquillement !`,
+  (r) => `Eh non ! La réponse était ${r}. Pas grave, on a tout notre temps pour la suite.`,
+];
+// Salutations de la "Question à 60 kikooz" quotidienne (1re ligne, variée).
+const KILOUTE_DAILY_HELLO = [
+  `Bonsoiiiir les Frutiz ! ${ANIM_NAME} est dans la place !`,
+  `Hé oh, les Frutiz ! ${ANIM_NAME} débarque avec sa fameuse question !`,
+  `Coucou tout le monde ! ${ANIM_NAME} pointe le bout de son nez !`,
+  `C'est moi, ${ANIM_NAME} ! Prêts pour le rendez-vous du soir ?`,
+  `Bonsoir la Frutifamille ! ${ANIM_NAME} à votre service pour la question du jour !`,
 ];
 
 // Démarre un quiz (événement multi-questions). opts: { quizId, channel?, reward?, windowSec? }.
@@ -13468,7 +13521,10 @@ function kilouteStartSession(opts) {
   kilouteSession = {
     channel, questions, idx: 0, scores: {},
     acceptingAnswers: false, ending: false, timeoutId: null,
-    reward, windowMs, betweenMs: 5000, quizName: quiz.name,
+    // betweenMs = pause après la révélation, avant d'annoncer la question
+    // suivante. Relevé de 5s à 7s : les joueurs reprochaient un enchaînement
+    // trop rapide « sans respirer entre les questions ». Réglable ici.
+    reward, windowMs, betweenMs: 7000, quizName: quiz.name,
   };
   npcJoin('kiloute79', channel);
   console.log(`[KILOUTE] Quiz "${quiz.name}" lancé dans #${channel} — ${questions.length} questions, ${reward} kikooz/question`);
@@ -13493,7 +13549,9 @@ function kilouteSessionAsk(s) {
   // la 1re question) puis le préambule. La QUESTION s'affiche ensuite et ouvre
   // la fenêtre de réponse AU MÊME INSTANT (répondre dès l'affichage compte).
   const lead = [];
-  if (s.idx > 0 && Math.random() < 0.6) lead.push(kpick(KILOUTE_TRANSITIONS));
+  // Une transition « respiration » presque systématique (sauf 1re question) :
+  // elle pose un temps de pause apprécié entre deux questions.
+  if (s.idx > 0 && Math.random() < 0.8) lead.push(kpick(KILOUTE_TRANSITIONS));
   lead.push(kpick(KILOUTE_PREAMBLE)(num, total, s.reward));
   npcSaySequence('kiloute79', s.channel, lead, () => {
     if (kilouteSession !== s) return;
@@ -13507,7 +13565,7 @@ function kilouteSessionAsk(s) {
         if (kilouteSession !== s || !s.acceptingAnswers) return;
         s.acceptingAnswers = false;
         kilouteSay(s.channel, kpick(KILOUTE_TIMEOUT)(q.r));
-        setTimeout(() => kilouteSessionAdvance(s), 3500);
+        setTimeout(() => kilouteSessionAdvance(s), 4500);
       }, s.windowMs);
     };
     // L'image (quiz "image") s'affiche juste avant la question : fenêtre sur le
@@ -15317,7 +15375,7 @@ case 'send': {
     }
 
     // ── /don <pseudo> <montant> : don de kikooz (animateurs + modérateurs) ──
-    // Annonce en bleu gras dans le salon (style t="c", comme les gains Kiloute79).
+    // Annonce en bleu gras dans le salon (style t="c", comme les gains MikeHorny).
     // Les animateurs puisent dans un quota hebdomadaire (ANIMATOR_WEEKLY_KIKOOZ,
     // remis à zéro chaque lundi) ; les modérateurs ne sont pas plafonnés.
     if (canAnimate && /^\/don(\s|$)/i.test(text)) {
@@ -15428,7 +15486,7 @@ case 'send': {
     const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
     trackXpAction(client.username, 'chatMsg');
-    // Kiloute79's "Question à 60 kikooz" (daily single) AND the live quiz event:
+    // MikeHorny's "Question à 60 kikooz" (daily single) AND the live quiz event:
     // react if this line is the answer to whichever is running.
     kilouteCheckAnswer(g, client.username, text);
     kilouteSessionCheckAnswer(g, client.username, text);
