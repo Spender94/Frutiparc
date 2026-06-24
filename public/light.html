@@ -308,6 +308,10 @@
   .msg.system { color: #6b8a3f; font-style: italic; font-size: 12.5px; }
   .msg.admin { color: #b23b2e; }
   .msg .body { color: #335511; }
+  /* Cri modérateur ("!texte") — rouge vif gras, comme le desktop (#C10000). */
+  .msg.shout, .msg.shout .body, .msg.shout .from, .msg.shout .time { color: #C10000; font-weight: bold; }
+  /* Ligne animateur / mode bleu (t="c") — bleu gras, comme le desktop. */
+  .msg.blue, .msg.blue .body, .msg.blue .from, .msg.blue .from.me, .msg.blue .time { color: #1A5FD0; font-weight: bold; }
   /* Emote line ("pseudo éclate de rire") — the whole row is italic, like desktop. */
   .msg.emote { font-style: italic; color: #4f7b1f; }
   .msg.emote .from { color: #4f7b1f; }
@@ -1842,6 +1846,17 @@
         var ty = attr(xml, "t") || "m";
         var h = attr(xml, "h");
         var body = bodyOf(xml);
+        // Émote normalisée côté serveur : e=anim, el=phrase, eu=pseudo. Le SWF
+        // affiche le corps htmlText ; ici on rejoue l'action ("pseudo éclate de
+        // rire", sans « : », en italique) + l'animation de bouille du pseudo.
+        var emAnim = attr(xml, "e");
+        if (emAnim) {
+          var emWho = xmlUnescape(attr(xml, "eu")) || from;
+          var emLabel = xmlUnescape(attr(xml, "el")) || (ANIM_LABEL[emAnim] || "parle");
+          addEmoteMessage({ from: emWho, time: h, label: emLabel });
+          if (emWho) showBouilleOverlay(emWho, emAnim, emLabel);
+          break;
+        }
         // Image frames (the /image command + MikeHorny's image quizzes) carry an
         // <i w h u="url">title</i> child. On mobile we render the picture INLINE
         // in the chat body — the desktop SWF opens it in a separate window.
@@ -1867,15 +1882,25 @@
           });
           break;
         }
+        // Lignes animateur / mode bleu (/blueon) : type "c". Le desktop les rend
+        // en bleu gras (MikeHorny, gains kikooz, mode bleu) ; on s'aligne dessus.
+        if (ty === "c") {
+          var cStr = stripCdata(body);
+          var cBody = /^\s*</.test(cStr) ? htmlToText(cStr) : xmlUnescape(cStr);
+          if (cBody) addMessage({ from: from, time: h, body: cBody, kind: "blue", noFrom: (from === "admin") });
+          break;
+        }
         // Admin / system announcements (totoche, mode bleu, cri "!", gains…) are
         // sent as CDATA, sometimes wrapping a little HTML. Peel the CDATA and, if
         // what remains is markup, render its text — this is what used to fall
         // through to the "[cadeau]" placeholder. Plain CDATA text (e.g. "X a été
         // totoché") drops through to the normal path below as an admin line.
+        // st="r" → cri modérateur ("!texte"), rendu en rouge gras comme desktop.
         var stripped = stripCdata(body);
         if (/^\s*</.test(stripped)) {
           var plain = htmlToText(stripped);
-          if (plain) addMessage({ from: from, time: h, kind: "admin", noFrom: true, body: plain });
+          var isShout = (attr(xml, "st") === "r");
+          if (plain) addMessage({ from: from, time: h, kind: isShout ? "shout" : "admin", noFrom: true, body: plain });
           break;
         }
         // Emotes travel as ordinary text (e.g. "mdr"). To keep the experience
@@ -1966,7 +1991,7 @@
   }
   function addMessage(o) {
     var stick = nearBottom();
-    var row = el("div", "msg" + (o.kind === "system" ? " system" : o.kind === "admin" ? " admin" : ""));
+    var row = el("div", "msg" + (o.kind === "system" ? " system" : o.kind === "admin" ? " admin" : o.kind === "shout" ? " shout" : o.kind === "blue" ? " blue" : ""));
     if (o.kind === "system") {
       row.textContent = o.body;
     } else {

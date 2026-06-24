@@ -127,20 +127,33 @@
 <body>
     <div id="player-container"></div>
 
-    <!-- Live connected-players badge (overlay, top-right). Purely informational;
-         polls /api/online-count and never intercepts clicks on the SWF. -->
+    <!-- Live connected-players badge (overlay, top-right). Polls /api/online-count;
+         click to reveal the list of connected pseudos (/api/online-users). -->
     <div id="online-badge" style="position:fixed;top:8px;right:10px;z-index:2147483646;
         background:rgba(44,74,15,.82);color:#CFF599;font:bold 12px Verdana,sans-serif;
-        padding:5px 10px;border-radius:14px;pointer-events:none;display:none;
-        box-shadow:0 2px 6px rgba(0,0,0,.25)">
+        padding:5px 10px;border-radius:14px;cursor:pointer;user-select:none;display:none;
+        box-shadow:0 2px 6px rgba(0,0,0,.25)" title="Voir qui est connecté">
       <span id="online-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;
-        background:#2ecc40;margin-right:6px;vertical-align:middle"></span><span id="online-count">…</span> en ligne
+        background:#2ecc40;margin-right:6px;vertical-align:middle"></span><span id="online-count">…</span> en ligne <span style="opacity:.6">▾</span>
+    </div>
+    <!-- Liste des connectés (repliée par défaut, ouverte au clic sur le badge). -->
+    <div id="online-list" style="position:fixed;top:38px;right:10px;z-index:2147483646;display:none;
+        background:rgba(28,46,10,.97);color:#EAF8D2;font:12px Verdana,sans-serif;
+        border:1px solid rgba(207,245,153,.35);border-radius:10px;padding:8px 0;
+        max-height:60vh;overflow-y:auto;min-width:170px;max-width:240px;
+        box-shadow:0 6px 18px rgba(0,0,0,.4)">
+      <div id="online-list-head" style="font-weight:bold;color:#CFF599;padding:2px 14px 8px;border-bottom:1px solid rgba(207,245,153,.2);margin-bottom:4px">Connectés</div>
+      <div id="online-list-body"></div>
     </div>
     <script>
-        // Poll the connected-players count and show it in the badge.
+        // Poll the connected-players count; click the badge to list the pseudos.
         (function () {
             var badge = document.getElementById("online-badge");
             var label = document.getElementById("online-count");
+            var panel = document.getElementById("online-list");
+            var head = document.getElementById("online-list-head");
+            var body = document.getElementById("online-list-body");
+            var open = false;
             function refresh() {
                 fetch("/api/online-count", { cache: "no-store" })
                     .then(function (r) { return r.json(); })
@@ -152,8 +165,28 @@
                     })
                     .catch(function () { /* keep last value */ });
             }
+            function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+            function renderList() {
+                body.innerHTML = '<div style="padding:4px 14px;color:#9fb37e">Chargement…</div>';
+                fetch("/api/online-users", { cache: "no-store" })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        var list = (d && d.users) || [];
+                        head.textContent = list.length + (list.length > 1 ? " connectés" : " connecté");
+                        if (!list.length) { body.innerHTML = '<div style="padding:4px 14px;color:#9fb37e">Personne pour le moment.</div>'; return; }
+                        body.innerHTML = list.map(function (u) {
+                            return '<div style="padding:4px 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(u) + '</div>';
+                        }).join("");
+                    })
+                    .catch(function () { body.innerHTML = '<div style="padding:4px 14px;color:#f0a">Erreur de chargement.</div>'; });
+            }
+            function setOpen(v) { open = v; panel.style.display = v ? "block" : "none"; if (v) renderList(); }
+            badge.addEventListener("click", function (e) { e.stopPropagation(); setOpen(!open); });
+            panel.addEventListener("click", function (e) { e.stopPropagation(); });
+            // Clic ailleurs (page, SWF) → on referme.
+            document.addEventListener("click", function () { if (open) setOpen(false); });
             refresh();
-            setInterval(refresh, 20000);
+            setInterval(function () { refresh(); if (open) renderList(); }, 20000);
         })();
     </script>
     <script>

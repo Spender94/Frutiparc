@@ -3637,6 +3637,23 @@ app.get('/api/online-count', (req, res) => {
   res.json({ ok: true, count: online.size });
 });
 
+// Same population as /api/online-count, but returns the connected pseudos so the
+// Ruffle overlay can list who is online when the badge is clicked. Deduped by
+// lowercase identity, NPCs excluded, display names sorted (insensible à la casse).
+app.get('/api/online-users', (req, res) => {
+  const seen = new Map(); // clé minuscule -> pseudo affiché
+  for (const [, cl] of xmlSocketClients) {
+    const u = cl && cl.username;
+    if (!u) continue;
+    if (NPC_USERNAMES.has(u)) continue;
+    const key = String(u).toLowerCase();
+    if (!seen.has(key)) seen.set(key, getDisplayName(u));
+  }
+  const usersList = [...seen.values()].sort((a, b) => String(a).localeCompare(String(b), 'fr', { sensitivity: 'base' }));
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, count: usersList.length, users: usersList });
+});
+
 // ─────────────────────────────────────────────
 // Bouille → image (PNG / animated GIF), with on-disk cache.
 //
@@ -13304,7 +13321,9 @@ let kilouteQuiz = null;
 let kilouteSession = null;
 
 // Credit kikooz to the winner (memory + DB + history + kikooz log), like /do/give.
-function kilouteAwardKikooz(username, amount) {
+// `quizName` (optionnel) = titre du quiz lancé/programmé ; absent pour la
+// « Question à 60 kikooz » quotidienne, qui conserve son libellé historique.
+function kilouteAwardKikooz(username, amount, quizName) {
   const u = users[username];
   if (!u) return;
   u.kikooz = (typeof u.kikooz === 'number' ? u.kikooz : 0) + amount;
@@ -13312,9 +13331,13 @@ function kilouteAwardKikooz(username, amount) {
   if (!Array.isArray(u.kikoozLog)) u.kikoozLog = [];
   u.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: amount, c: ANIM_NAME });
   if (u.kikoozLog.length > 200) u.kikoozLog.length = 200;
+  const name = (typeof quizName === 'string' && quizName.trim()) ? quizName.trim() : '';
+  const content = name
+    ? `Tu as gagné ${amount} kikooz au quiz « ${name} » de ${ANIM_NAME} !`
+    : `Tu as gagné ${amount} kikooz à la Question à 60 kikooz de ${ANIM_NAME} !`;
   addUserHistoryEntry(u, {
     type: USER_LOG_TYPE.CHAT,
-    content: `Tu as gagné ${amount} kikooz à la Question à 60 kikooz de ${ANIM_NAME} !`,
+    content,
     flNew: true,
   });
 }
@@ -13612,7 +13635,7 @@ function kilouteSessionCheckAnswer(channelName, username, rawText) {
   s.acceptingAnswers = false;
   if (s.timeoutId) { clearTimeout(s.timeoutId); s.timeoutId = null; }
   const winner = getDisplayName(username);
-  kilouteAwardKikooz(username, s.reward);
+  kilouteAwardKikooz(username, s.reward, s.quizName);
   if (!s.scores[username]) s.scores[username] = { n: 0, kikooz: 0 };
   s.scores[username].n += 1;
   s.scores[username].kikooz += s.reward;
@@ -14158,6 +14181,34 @@ const quizState = {};
 // Per-client blue-bold toggle for animators.
 // Set<socketKey> — we store the username to look up.
 const blueModeUsers = new Set();
+
+// Emotes : un message dont le texte ENTIER correspond à un déclencheur devient
+// une action (« pseudo éclate de rire », en italique) + animation de bouille,
+// des DEUX côtés (Light ET main.swf). On normalise côté serveur parce que le
+// SWF n'interprète pas les déclencheurs reçus : c'est donc le serveur qui
+// fabrique la ligne d'émote (corps htmlText pour le SWF + attributs e/el/eu que
+// le client Light lit pour rejouer l'émote ; le SWF ignore ces attributs).
+// Table calquée sur public/light.html : mêmes tokens, mêmes phrases, même
+// correspondance exacte, SENSIBLE À LA CASSE pour distinguer :D (mdr) de :d (langue).
+const CHAT_EMOTES = {};
+(function () {
+  function add(anim, label, toks) { for (const t of toks) CHAT_EMOTES[t] = { anim, label }; }
+  add('rire', 'rigole', [':))', 'rigole']);
+  add('mdr', 'éclate de rire', [':D', 'mdr', 'lol', 'ptdr']);
+  add('langue', 'tire la langue', [':p', ':P', ':d']);
+  add('rougir', 'rougit', [':">', ':#)', 'rougit']);
+  add('regard', 'regarde ailleurs', ['regard', 'regarde']);
+  add('sifflote', 'sifflote', [':-"', 'siffle', 'sifflote']);
+  add('gum', 'fait une bulle de chewing-gum', ['gum']);
+  add('question', 'se pose des questions', [':?', 'question', 'curieux', 'oO']);
+  add('miam', 'se régale', ['miam', 'slurp', 'bave', 'regale']);
+  add('pleurer', 'pleure', [':-"(', ';((', 'pleure', 'ouin']);
+  add('pleurer', 'laisse couler une larme', [":'(", ';(', 'larme', 'snif']);
+})();
+function detectChatEmote(text) {
+  const key = String(text == null ? '' : text).trim();
+  return key ? (CHAT_EMOTES[key] || null) : null;
+}
 
 function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   const channel = channels[channelName];
@@ -15479,8 +15530,10 @@ case 'send': {
         const inner = escapeXml(getDisplayName(client.username) + ': ' + shout);
         const body = `<![CDATA[<font color="#C10000"><b>${inner}</b></font>]]>`;
         const redStamp = `<font color="#C10000">${timeAttrs.h.trim()}</font> `;
+        // st="r" : marqueur lu par le client Light pour rendre le cri en rouge
+        // gras (le SWF l'ignore et se fie au <font color> du corps/horodatage).
         broadcastToChannel(g,
-          `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${escapeXml(redStamp)}" d="${timeAttrs.d}">${body}</${CMD.send}>`
+          `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${escapeXml(redStamp)}" d="${timeAttrs.d}" st="r">${body}</${CMD.send}>`
         );
         break;
       }
@@ -15511,6 +15564,22 @@ case 'send': {
     if (blueModeUsers.has(client.username) && (isAnimator(client.username) || isModerator(client.username))) {
       broadcastToChannel(g,
         `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="c"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`
+      );
+      trackXpAction(client.username, 'chatMsg');
+      break;
+    }
+
+    // Emote : si TOUT le message est un déclencheur, on diffuse une ligne
+    // d'action au lieu du texte brut, pour que les DEUX clients montrent
+    // « pseudo éclate de rire » (et non « mdr »). Corps = htmlText italique
+    // « pseudo phrase » (u="admin" → le SWF n'ajoute pas de préfixe « pseudo : » ) ;
+    // attributs e/el/eu pour que le client Light rejoue l'émote + la bouille.
+    const emo = (type === 'm') ? detectChatEmote(unescapeXml(text)) : null;
+    if (emo) {
+      const who = getDisplayName(client.username);
+      const emBody = `<![CDATA[<i>${escapeXml(who + ' ' + emo.label)}</i>]]>`;
+      broadcastToChannel(g,
+        `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}" e="${escapeXml(emo.anim)}" el="${escapeXml(emo.label)}" eu="${escapeXml(who)}">${emBody}</${CMD.send}>`
       );
       trackXpAction(client.username, 'chatMsg');
       break;
