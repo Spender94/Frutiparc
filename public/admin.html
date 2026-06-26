@@ -333,6 +333,7 @@
     box-shadow: 0 2px 8px rgba(0,0,0,.2);
   }
 </style>
+  <script src="/bouille-warm.js"></script>
 </head>
 <body>
 
@@ -1174,11 +1175,13 @@ function renderTrombinoscope() {
   if (!list.length) { box.innerHTML = '<span style="font-size:12px;color:#888">' + (trombinoscope.length ? 'Aucun Frutiz pour cette recherche.' : 'Aucun Frutiz pour le moment. Importe un CSV ci-dessus.') + '</span>'; return; }
   box.innerHTML = slice.map(e => `
     <div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:104px;border:1px solid #ddd;border-radius:8px;padding:8px;background:#fff;text-align:center">
-      <img src="/bouille-img?s=${encodeURIComponent(e.bouille)}&fmt=png&size=64" alt="" width="64" height="64" loading="lazy" style="image-rendering:auto" onerror="this.style.visibility='hidden'">
+      <img alt="" width="64" height="64" loading="lazy" style="image-rendering:auto" data-code="${esc(e.bouille)}">
       <div style="font-weight:bold;font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.pseudo)}</div>
       <code style="font-size:9px;color:#999;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.bouille)}</code>
       <button class="btn-danger btn-sm" onclick="deleteTrombEntry(${e.id})">Suppr.</button>
     </div>`).join('');
+  // Réchauffe + affiche les miniatures (cf. /bouille-warm.js).
+  Array.prototype.forEach.call(box.querySelectorAll('img[data-code]'), img => { if (window.showBouilleThumb) window.showBouilleThumb(img, img.getAttribute('data-code'), 64); });
 }
 async function importTrombinoscope() {
   const msg = document.getElementById('tromb-msg');

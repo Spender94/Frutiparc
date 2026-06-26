@@ -806,6 +806,7 @@
     #home-panel { width: 440px; }
   }
 </style>
+  <script src="/bouille-warm.js"></script>
 </head>
 <body>
 
@@ -1539,9 +1540,12 @@
       body.innerHTML = '<div class="trombi-empty">' + ((trombiData && trombiData.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
     } else {
       body.innerHTML = slice.map(function (e) {
-        var code = encodeURIComponent(e.bouille);
-        return '<div class="trombi-card"><img src="/bouille-img?s=' + code + '&fmt=png&size=64" alt="" width="64" height="64" loading="lazy" decoding="async" onerror="this.style.visibility=\'hidden\'"><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
+        return '<div class="trombi-card"><img alt="" width="64" height="64" loading="lazy" decoding="async" data-code="' + e.bouille + '"><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
       }).join("");
+      // Réchauffe + affiche les miniatures de la page courante (cf. bouille-warm.js).
+      Array.prototype.forEach.call(body.querySelectorAll(".trombi-card img[data-code]"), function (img) {
+        showBouilleThumb(img, img.getAttribute("data-code"), 64);
+      });
     }
     body.scrollTop = 0;
     renderTrombiPager(list.length, pages);
