@@ -4304,7 +4304,7 @@ const ADMIN_ROLES = {
   // Attribué explicitement via le menu "Rôle admin", OU implicitement à tout
   // compte portant le badge "Animateur" du chat (is_animator) — cf. /api/admin/login.
   // Les animateurs gèrent aussi les salons (renommage / sujet) et les tournois.
-  animateur: { label: 'Animateur', tabs: ['kiloute', 'channels', 'tournoi'] },
+  animateur: { label: 'Animateur', tabs: ['kiloute', 'channels', 'tournoi', 'trombinoscope'] },
   // Chapelier : crée et met en boutique des accessoires (onglet Boutique).
   chapelier: { label: 'Chapelier', tabs: ['shop'] },
 };
@@ -6579,6 +6579,55 @@ app.delete('/api/admin/kiloute/quizzes/:id', adminScope('kiloute'), async (req, 
     catch (e) { console.error('[KILOUTE] quiz delete:', e.message); }
   }
   console.log(`[ADMIN] Quiz #${id} "${removed.name}" supprimé`);
+  res.json({ ok: true });
+});
+
+// ── Trombinoscope (annuaire des Frutiz : pseudo + code bouille) ──
+// Public : liste triée alpha, consommée par /light ET l'overlay du bureau Ruffle.
+app.get('/api/trombinoscope', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, entries: trombinoscopeSorted().map((e) => ({ pseudo: e.pseudo, bouille: e.bouille })) });
+});
+
+// Admin : liste complète (avec id, pour la suppression unitaire).
+app.get('/api/admin/trombinoscope', adminScope('trombinoscope'), (req, res) => {
+  res.json({ ok: true, entries: trombinoscopeSorted() });
+});
+
+// Admin : import d'un CSV "pseudo,bouille". Le corps est le CSV brut envoyé en
+// application/octet-stream (route-level express.raw → contourne la limite 100 ko
+// du parser JSON global, comme l'upload d'images de quiz). Fusion par pseudo.
+app.post('/api/admin/trombinoscope/import', adminScope('trombinoscope'),
+  express.raw({ type: ['application/octet-stream', 'text/csv'], limit: '8mb' }),
+  (req, res) => {
+    const csv = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : (typeof req.body === 'string' ? req.body : (req.body && req.body.csv) || '');
+    if (!csv || !csv.trim()) return res.status(400).json({ error: 'CSV vide. Format attendu : une ligne par Frutiz, "pseudo,bouille".' });
+    const parsed = parseTrombinoscopeCsv(csv);
+    if (!parsed.entries.length) return res.status(400).json({ error: 'Aucune entrée valide trouvée dans le CSV.', errors: parsed.errors.slice(0, 20) });
+    const { added, updated } = mergeTrombinoscope(parsed.entries);
+    persistTrombinoscope();
+    console.log(`[ADMIN] Trombinoscope import : +${added} / maj ${updated} (total ${TROMBINOSCOPE.length}, ${parsed.errors.length} ignorée(s))`);
+    res.json({ ok: true, added, updated, count: added + updated, total: TROMBINOSCOPE.length, errors: parsed.errors.slice(0, 20) });
+  }
+);
+
+// Admin : suppression d'une entrée.
+app.delete('/api/admin/trombinoscope/:id', adminScope('trombinoscope'), (req, res) => {
+  const id = Number(req.params.id);
+  const idx = TROMBINOSCOPE.findIndex((e) => e.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  const [removed] = TROMBINOSCOPE.splice(idx, 1);
+  persistTrombinoscope();
+  console.log(`[ADMIN] Trombinoscope : "${removed.pseudo}" supprimé (total ${TROMBINOSCOPE.length})`);
+  res.json({ ok: true });
+});
+
+// Admin : vidage complet.
+app.post('/api/admin/trombinoscope/clear', adminScope('trombinoscope'), (req, res) => {
+  const n = TROMBINOSCOPE.length;
+  TROMBINOSCOPE = [];
+  persistTrombinoscope();
+  console.log(`[ADMIN] Trombinoscope vidé (${n} entrée(s)).`);
   res.json({ ok: true });
 });
 
@@ -12156,6 +12205,10 @@ async function boot() {
         if (QUIZZES.length) console.log(`[DB] Loaded ${QUIZZES.length} quiz(zes)`);
       } catch (e) { console.error('[DB] Quizzes load error:', e.message); }
       try {
+        TROMBINOSCOPE = await db.loadTrombinoscope();
+        if (TROMBINOSCOPE.length) console.log(`[DB] Loaded ${TROMBINOSCOPE.length} trombinoscope entries`);
+      } catch (e) { console.error('[DB] Trombinoscope load error:', e.message); }
+      try {
         // Chat banned words: on first run (empty table), seed defaults.
         let bw = await db.loadChatBannedWords();
         if (bw.length === 0) {
@@ -13297,6 +13350,57 @@ const DEFAULT_QUIZZES = [
 let QUIZZES = process.env.DATABASE_URL
   ? []
   : DEFAULT_QUIZZES.map((q, i) => ({ id: i + 1, name: q.name, reward: q.reward, windowSec: q.windowSec, questions: q.questions.map((x) => ({ q: x.q, a: x.a.slice(), r: x.r, image: x.image || null })) }));
+
+// ── Trombinoscope : annuaire des Frutiz (pseudo + code bouille) ──
+// Alimenté par l'admin via import CSV (données retrouvées sur les blogs
+// archivés). En mémoire seule (sans base) il démarre vide ; avec base il est
+// chargé au boot et réécrit en bloc à chaque modification.
+let TROMBINOSCOPE = [];
+function nextTrombId() { return TROMBINOSCOPE.reduce((m, t) => Math.max(m, t.id || 0), 0) + 1; }
+
+// Parse un CSV "pseudo,bouille" (en-tête optionnel ; séparateur , ; ou tab).
+// Nettoie : pseudo non vide (≤40), bouille via normalizeBouilleState. Lignes
+// vides ignorées. Renvoie { entries:[{pseudo,bouille}], errors:[] }.
+function parseTrombinoscopeCsv(text) {
+  const out = [], errors = [];
+  const lines = String(text == null ? '' : text).split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    if (!raw || !raw.trim()) continue;
+    const cols = raw.split(/[;,\t]/);
+    const pseudo = String(cols[0] || '').trim().replace(/^["']|["']$/g, '');
+    const bouille = String(cols[1] || '').trim().replace(/^["']|["']$/g, '');
+    // En-tête éventuel sur la 1re ligne.
+    if (i === 0 && /^(pseudo|pseudonyme|nom|name|user)$/i.test(pseudo)) continue;
+    if (!pseudo || !bouille) { errors.push(`Ligne ${i + 1} ignorée (pseudo ou bouille manquant)`); continue; }
+    out.push({ pseudo: pseudo.slice(0, 40), bouille: normalizeBouilleState(bouille) });
+  }
+  return { entries: out, errors };
+}
+
+// Fusionne des entrées (clé = pseudo en minuscules ; nouvelle bouille écrase
+// l'ancienne). Renvoie { added, updated }.
+function mergeTrombinoscope(entries) {
+  let added = 0, updated = 0;
+  for (const e of entries) {
+    const key = e.pseudo.toLowerCase();
+    const existing = TROMBINOSCOPE.find((t) => t.pseudo.toLowerCase() === key);
+    if (existing) { existing.bouille = e.bouille; existing.pseudo = e.pseudo; updated++; }
+    else { TROMBINOSCOPE.push({ id: nextTrombId(), pseudo: e.pseudo, bouille: e.bouille }); added++; }
+  }
+  return { added, updated };
+}
+
+// Liste triée alpha (insensible casse/accents).
+function trombinoscopeSorted() {
+  return TROMBINOSCOPE.slice().sort((a, b) => String(a.pseudo).localeCompare(String(b.pseudo), 'fr', { sensitivity: 'base' }));
+}
+
+// Réécrit le jeu de données en base (no-op sans DATABASE_URL).
+function persistTrombinoscope() {
+  if (!process.env.DATABASE_URL) return;
+  db.replaceTrombinoscope(trombinoscopeSorted()).catch((e) => console.error('[TROMBI] save:', e.message));
+}
 
 function normalizeAnswer(s) {
   return String(s == null ? '' : s)

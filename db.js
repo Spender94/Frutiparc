@@ -393,6 +393,16 @@ async function initSchema() {
       -- Migration des bases existantes (table créée avant la programmation).
       ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS schedule_time TEXT DEFAULT NULL;
 
+      -- Trombinoscope : annuaire des Frutiz (pseudo + code bouille), alimenté par
+      -- l'admin depuis des CSV (données retrouvées sur les blogs archivés).
+      CREATE TABLE IF NOT EXISTS trombinoscope (
+        id          SERIAL PRIMARY KEY,
+        pseudo      TEXT NOT NULL,
+        bouille     TEXT NOT NULL,
+        sort_order  INTEGER DEFAULT 0,
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Forum tables
       CREATE TABLE IF NOT EXISTS forum_categories (
         id         SERIAL PRIMARY KEY,
@@ -1375,6 +1385,35 @@ async function deleteQuiz(id) {
   await pool.query('DELETE FROM quizzes WHERE id = $1', [id]);
 }
 
+// ── Trombinoscope ──
+// Le jeu de données est petit et change rarement (imports CSV ponctuels) : on le
+// stocke en bloc. replaceTrombinoscope() réécrit toute la table dans une
+// transaction (DELETE + insert en masse), comme setUserItems().
+async function loadTrombinoscope() {
+  const { rows } = await pool.query('SELECT * FROM trombinoscope ORDER BY sort_order, id');
+  return rows.map((r) => ({ id: r.id, pseudo: r.pseudo, bouille: r.bouille }));
+}
+async function replaceTrombinoscope(entries) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM trombinoscope');
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i] || {};
+      await client.query(
+        'INSERT INTO trombinoscope (pseudo, bouille, sort_order) VALUES ($1, $2, $3)',
+        [String(e.pseudo || ''), String(e.bouille || ''), i]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // ── Chat banned words ──
 async function loadChatBannedWords() {
   const { rows } = await pool.query('SELECT id, word FROM chat_banned_words ORDER BY id');
@@ -2228,6 +2267,8 @@ module.exports = {
   insertQuiz,
   updateQuiz,
   deleteQuiz,
+  loadTrombinoscope,
+  replaceTrombinoscope,
   loadChatBannedWords,
   addChatBannedWord,
   updateChatBannedWord,

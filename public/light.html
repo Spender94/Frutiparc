@@ -511,6 +511,31 @@
     flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
     padding: 8px 10px 16px;
   }
+  /* Trombinoscope */
+  #trombi-head {
+    flex-shrink: 0; background: #FEABAB; border-bottom: 1px solid #DDDDDD;
+    box-shadow: 0 1px 3px rgba(44,74,15,.18); padding: 8px 10px;
+  }
+  #trombi-search {
+    width: 100%; box-sizing: border-box; padding: 8px 12px; border: 0;
+    border-radius: 14px; font-size: 13px; background: #fff; color: #333;
+  }
+  #trombi-body {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 10px; display: grid; gap: 10px; align-content: start;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  }
+  .trombi-card {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: #fff; border: 1px solid #e3e3e3; border-radius: 10px;
+    padding: 8px 4px; text-align: center;
+  }
+  .trombi-card img { width: 64px; height: 64px; }
+  .trombi-card .nm {
+    font-size: 12px; font-weight: bold; color: #2C4A0F; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .trombi-empty { grid-column: 1 / -1; text-align: center; color: #888; font-size: 13px; padding: 22px 10px; }
   .scores-cap {
     font-size: 11.5px; color: #2f5510; font-weight: bold; text-align: center;
     margin: 2px 0 8px;
@@ -869,6 +894,7 @@
       <button class="home-tile" data-go="chat"><span class="ico"><img src="/fb/icone_salon.png" alt="" onerror="this.replaceWith(document.createTextNode('💬'))"></span><span class="lbl">Salons</span></button>
       <button class="home-tile" data-go="inventaire"><span class="ico"><img src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"></span><span class="lbl">Inventaire</span></button>
       <button class="home-tile" data-go="forum"><span class="ico"><img src="/fb/icone_forum.png" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"></span><span class="lbl">Forum</span></button>
+      <button class="home-tile" data-go="trombi"><span class="ico"><img src="/fb/icone_trombi.png" alt="" onerror="this.replaceWith(document.createTextNode('👥'))"></span><span class="lbl">Trombinoscope</span></button>
     </div>
   </section>
 
@@ -941,6 +967,13 @@
   <section class="panel" id="scores-panel">
     <div id="scores-head"><div id="scores-tabs"></div></div>
     <div id="scores-body"></div>
+  </section>
+
+  <!-- Trombinoscope — annuaire des Frutiz (pseudo + bouille), trié alpha par le
+       serveur. Barre de recherche en tête, grille scrollable de bouilles. -->
+  <section class="panel" id="trombi-panel">
+    <div id="trombi-head"><input id="trombi-search" type="search" placeholder="Rechercher un Frutiz…" autocomplete="off"></div>
+    <div id="trombi-body"></div>
   </section>
 
   <!-- Bouille / accessory picker (bottom sheet) -->
@@ -1419,6 +1452,36 @@
     });
   });
 
+  // ── Trombinoscope (annuaire des Frutiz) ──
+  // Chargé à la 1re ouverture puis gardé en mémoire ; recherche en direct.
+  var trombiData = null;
+  function loadTrombi() {
+    if (trombiData) { renderTrombi(); return; }
+    var body = $("#trombi-body");
+    if (body) body.innerHTML = '<div class="trombi-empty">Chargement…</div>';
+    fetch("/api/trombinoscope", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { trombiData = (d && d.entries) || []; renderTrombi(); })
+      .catch(function () { if (body) body.innerHTML = '<div class="trombi-empty">Impossible de charger le trombinoscope.</div>'; });
+  }
+  function renderTrombi() {
+    var body = $("#trombi-body"); if (!body) return;
+    var se = $("#trombi-search");
+    var q = ((se && se.value) || "").trim().toLowerCase();
+    var list = trombiData || [];
+    if (q) list = list.filter(function (e) { return String(e.pseudo).toLowerCase().indexOf(q) !== -1; });
+    if (!list.length) {
+      body.innerHTML = '<div class="trombi-empty">' + ((trombiData && trombiData.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
+      return;
+    }
+    body.innerHTML = list.map(function (e) {
+      var code = encodeURIComponent(e.bouille);
+      return '<div class="trombi-card"><img src="/bouille-img?s=' + code + '&fmt=png&size=64" alt="" width="64" height="64" loading="lazy" onerror="this.style.visibility=\'hidden\'"><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
+    }).join("");
+  }
+  var trombiSearchEl = $("#trombi-search");
+  if (trombiSearchEl) trombiSearchEl.addEventListener("input", renderTrombi);
+
   // ── Navigation entre panneaux ──
   // activateTab pilote l'affichage des panneaux. On l'appelle depuis la grille
   // d'accueil (Salons, Forum, Scores) ET depuis la feuille « Mes disques » (qui
@@ -1432,6 +1495,7 @@
     $("#bandas-panel").classList.toggle("active", tab === "bandas");
     $("#swapou-panel").classList.toggle("active", tab === "swapou");
     $("#scores-panel").classList.toggle("active", tab === "scores");
+    $("#trombi-panel").classList.toggle("active", tab === "trombi");
     // Chargements paresseux (1re ouverture, gardés en mémoire ensuite). On reste
     // sur /light, donc la socket de chat de la page parente n'est jamais coupée
     // pendant qu'on consulte le forum / joue / regarde les scores.
@@ -1461,6 +1525,7 @@
     }
     // Les scores évoluent toute la journée : on rafraîchit à chaque ouverture.
     if (tab === "scores") loadChallengeScores();
+    if (tab === "trombi") loadTrombi();
   }
 
   // ── Mes disques (feuille de lancement des jeux) ──

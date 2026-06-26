@@ -364,6 +364,7 @@
       <button class="tab" data-tab="shop" onclick="switchTab('shop')">Boutique</button>
       <button class="tab" data-tab="wallpapers" onclick="switchTab('wallpapers')">Fonds d'écran</button>
       <button class="tab" data-tab="kiloute" onclick="switchTab('kiloute')">MikeHorny</button>
+      <button class="tab" data-tab="trombinoscope" onclick="switchTab('trombinoscope')">Trombinoscope</button>
       <button class="tab" data-tab="gaspard" onclick="switchTab('gaspard')">Aide Gaspard</button>
       <button class="tab" data-tab="events" onclick="switchTab('events')">Événements</button>
       <button class="tab" data-tab="challenge" onclick="switchTab('challenge')">Challenge</button>
@@ -639,6 +640,31 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <textarea id="kf-content" rows="6" placeholder="Contenu du message (présentation du concept…)" style="font:inherit;padding:8px;border:1px solid #ccc;border-radius:6px;resize:vertical"></textarea>
     <div><button class="btn-success" onclick="kilouteForumPost()">Publier au forum</button></div>
   </div>
+</div>
+
+<div class="content" id="tab-trombinoscope" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadTrombinoscope()">Rafraîchir</button>
+    <span id="tromb-count" style="font-size:12px;color:#666"></span>
+    <span style="flex:1"></span>
+    <button class="btn-danger btn-sm" onclick="clearTrombinoscope()">Tout supprimer</button>
+  </div>
+
+  <h3 style="margin:6px 0 6px">📷 Importer un CSV de Frutiz</h3>
+  <div style="max-width:880px;display:flex;flex-direction:column;gap:8px;background:#f7f7f7;padding:12px;border-radius:8px">
+    <div style="font-size:12px;color:#555">
+      Deux colonnes : <code>pseudo,bouille</code> (une ligne par Frutiz ; ligne d'en-tête optionnelle ;
+      séparateur <code>,</code> ou <code>;</code>). Exemple : <code>Tagada,0005000Q010t0a030j0p0L0L</code><br>
+      L'import <b>fusionne</b> avec l'existant (un pseudo déjà présent voit sa bouille mise à jour).
+    </div>
+    <input type="file" id="tromb-file" accept=".csv,text/csv,text/plain" onchange="trombImportFile(this)" style="font-size:12px;display:block">
+    <textarea id="tromb-text" placeholder="pseudo,bouille&#10;Tagada,0005000Q010t0a030j0p0L0L&#10;Pioupiou,000000010000000000000000" style="width:100%;box-sizing:border-box;min-height:90px;font-family:monospace;font-size:12px;padding:6px"></textarea>
+    <div><button class="btn-success" onclick="importTrombinoscope()">Importer</button>
+      <span id="tromb-msg" style="font-size:12px;margin-left:8px"></span></div>
+  </div>
+
+  <h3 style="margin:18px 0 6px">Frutiz enregistrés</h3>
+  <div id="tromb-list" style="display:flex;flex-wrap:wrap;gap:10px;max-width:1000px"></div>
 </div>
 
 <div class="content" id="tab-challenge" style="display:none">
@@ -1081,7 +1107,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','referrals','tournoi','shop','wallpapers','challenge','events','channels','gaspard','banwords','forumcensor','kiloute'].forEach(t => {
+  ['users','scores','detail','referrals','tournoi','shop','wallpapers','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -1095,8 +1121,78 @@ function switchTab(name) {
   if (name === 'banwords') loadBanWords();
   if (name === 'forumcensor') loadForumCensor();
   if (name === 'kiloute' && !$('#kiloute-body').dataset.loaded) loadKiloute();
+  if (name === 'trombinoscope') loadTrombinoscope();
   if (name === 'referrals') loadReferrals();
   if (name === 'tournoi') loadTournaments();
+}
+
+// ─── Trombinoscope (annuaire des Frutiz) ───
+let trombinoscope = [];
+function trombImportFile(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { document.getElementById('tromb-text').value = String(rd.result || ''); };
+  rd.readAsText(f);
+}
+async function loadTrombinoscope() {
+  try {
+    const r = await fetch('/api/admin/trombinoscope', { headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    trombinoscope = d.entries || [];
+    renderTrombinoscope();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+function renderTrombinoscope() {
+  const box = document.getElementById('tromb-list'); if (!box) return;
+  const cnt = document.getElementById('tromb-count');
+  if (cnt) cnt.textContent = trombinoscope.length + ' Frutiz';
+  if (!trombinoscope.length) { box.innerHTML = '<span style="font-size:12px;color:#888">Aucun Frutiz pour le moment. Importe un CSV ci-dessus.</span>'; return; }
+  box.innerHTML = trombinoscope.map(e => `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:104px;border:1px solid #ddd;border-radius:8px;padding:8px;background:#fff;text-align:center">
+      <img src="/bouille-img?s=${encodeURIComponent(e.bouille)}&fmt=png&size=64" alt="" width="64" height="64" loading="lazy" style="image-rendering:auto" onerror="this.style.visibility='hidden'">
+      <div style="font-weight:bold;font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.pseudo)}</div>
+      <code style="font-size:9px;color:#999;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.bouille)}</code>
+      <button class="btn-danger btn-sm" onclick="deleteTrombEntry(${e.id})">Suppr.</button>
+    </div>`).join('');
+}
+async function importTrombinoscope() {
+  const msg = document.getElementById('tromb-msg');
+  const txt = document.getElementById('tromb-text').value.trim();
+  if (!txt) { toast('Colle un CSV ou choisis un fichier .csv'); return; }
+  try {
+    const h = hdr(); h['Content-Type'] = 'application/octet-stream';
+    const r = await fetch('/api/admin/trombinoscope/import', { method: 'POST', headers: h, body: txt });
+    const d = await r.json();
+    if (!r.ok) { if (msg) { msg.style.color = '#b23b2e'; msg.textContent = d.error || 'Erreur'; } toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    const errN = (d.errors || []).length;
+    if (msg) { msg.style.color = '#2f6b16'; msg.textContent = `${d.added} ajouté(s), ${d.updated} mis à jour — total ${d.total}` + (errN ? ` · ${errN} ligne(s) ignorée(s)` : ''); }
+    toast(`${d.count} entrée(s) importée(s)`);
+    document.getElementById('tromb-text').value = '';
+    document.getElementById('tromb-file').value = '';
+    loadTrombinoscope();
+  } catch (e) { if (msg) { msg.style.color = '#b23b2e'; msg.textContent = 'Erreur réseau'; } toast('Erreur: ' + e.message); }
+}
+async function deleteTrombEntry(id) {
+  const e = trombinoscope.find(x => x.id === id);
+  if (!confirm('Supprimer « ' + (e ? e.pseudo : id) + ' » du trombinoscope ?')) return;
+  try {
+    const r = await fetch('/api/admin/trombinoscope/' + id, { method: 'DELETE', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    toast('Supprimé'); loadTrombinoscope();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function clearTrombinoscope() {
+  if (!trombinoscope.length) { toast('Déjà vide'); return; }
+  if (!confirm('Vider TOUT le trombinoscope (' + trombinoscope.length + ' Frutiz) ?')) return;
+  try {
+    const r = await fetch('/api/admin/trombinoscope/clear', { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    toast('Trombinoscope vidé'); loadTrombinoscope();
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 
 // ─── Parrainage (revue anti multi-compte) ───
