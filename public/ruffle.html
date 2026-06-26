@@ -641,7 +641,12 @@
             // morte vers blogs.frutiparc.com est interceptée plus bas. On reste
             // sur la page (pas de popup) — meilleure UX et zéro retouche du SWF.
             (function () {
-                var ov = null, gridEl = null, searchEl = null, data = null;
+                // Navigation par lettre + recherche + pagination : avec plusieurs
+                // milliers de bouilles, on ne rend QUE la page courante (≤ TR_PAGE)
+                // pour borner le nombre de miniatures /bouille-img chargées.
+                var TR_PAGE = 60;
+                var ov = null, gridEl = null, searchEl = null, letterEl = null, pagerEl = null;
+                var data = null, letters = [], letter = "Tous", page = 0;
                 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
                 function build() {
                     ov = document.createElement("div");
@@ -655,15 +660,19 @@
                     searchEl = document.createElement("input");
                     searchEl.type = "search"; searchEl.placeholder = "Rechercher…";
                     searchEl.style.cssText = "flex:1 1 auto;min-width:60px;padding:5px 10px;border:0;border-radius:12px;font-size:13px";
-                    searchEl.addEventListener("input", render);
+                    searchEl.addEventListener("input", function () { page = 0; renderLetters(); render(); });
                     var close = document.createElement("button");
                     close.textContent = "✕";
                     close.style.cssText = "flex:0 0 auto;border:0;background:#CFF599;color:#2C4A0F;font-weight:bold;border-radius:8px;width:28px;height:28px;cursor:pointer";
                     close.addEventListener("click", hide);
                     head.appendChild(searchEl); head.appendChild(close);
+                    letterEl = document.createElement("div");
+                    letterEl.style.cssText = "flex:0 0 auto;display:flex;gap:4px;padding:6px 10px;overflow-x:auto;background:#e7f2d5;border-bottom:1px solid #cfe0b3";
                     gridEl = document.createElement("div");
                     gridEl.style.cssText = "flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px;display:grid;gap:10px;align-content:start;grid-template-columns:repeat(auto-fill,minmax(96px,1fr))";
-                    win.appendChild(head); win.appendChild(gridEl);
+                    pagerEl = document.createElement("div");
+                    pagerEl.style.cssText = "flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:12px;padding:8px;background:#eef6e0;border-top:1px solid #cfe0b3";
+                    win.appendChild(head); win.appendChild(letterEl); win.appendChild(gridEl); win.appendChild(pagerEl);
                     ov.appendChild(win);
                     ov.addEventListener("click", function (e) { if (e.target === ov) hide(); });
                     document.addEventListener("keydown", function (e) { if (e.key === "Escape" && ov && ov.style.display !== "none") hide(); });
@@ -671,24 +680,73 @@
                     return ov;
                 }
                 function hide() { if (ov) ov.style.display = "none"; }
+                function firstLetter(name) {
+                    var c = String(name || "").trim().charAt(0).toUpperCase();
+                    try { c = c.normalize("NFD").replace(/[̀-ͯ]/g, ""); } catch (e) {}
+                    return /[A-Z]/.test(c) ? c : "#";
+                }
+                function query() { return ((searchEl && searchEl.value) || "").trim().toLowerCase(); }
+                function filtered() {
+                    var q = query();
+                    if (q) return (data || []).filter(function (e) { return String(e.pseudo).toLowerCase().indexOf(q) !== -1; });
+                    if (letter && letter !== "Tous") return (data || []).filter(function (e) { return firstLetter(e.pseudo) === letter; });
+                    return data || [];
+                }
+                function renderLetters() {
+                    if (!letterEl) return;
+                    var searching = !!query();
+                    var chips = ["Tous"].concat(letters);
+                    letterEl.innerHTML = chips.map(function (L) {
+                        var active = !searching && L === letter;
+                        return '<button data-l="' + esc(L) + '" style="flex:0 0 auto;min-width:26px;padding:4px 8px;border:0;border-radius:12px;cursor:pointer;font-weight:bold;font-size:12px;background:' + (active ? "#2C4A0F;color:#CFF599" : "#fff;color:#3a5a18") + '">' + esc(L) + '</button>';
+                    }).join("");
+                    Array.prototype.forEach.call(letterEl.querySelectorAll("button"), function (b) {
+                        b.addEventListener("click", function () { if (searchEl) searchEl.value = ""; letter = b.getAttribute("data-l"); page = 0; renderLetters(); render(); });
+                    });
+                }
+                function renderPager(total, pages) {
+                    if (!pagerEl) return;
+                    if (pages <= 1) { pagerEl.innerHTML = total ? '<span style="font-size:12px;color:#557">' + total + ' Frutiz</span>' : ""; return; }
+                    var btn = "border:0;background:#2C4A0F;color:#CFF599;font-weight:bold;font-size:16px;width:36px;height:30px;border-radius:8px;cursor:pointer";
+                    pagerEl.innerHTML =
+                        '<button id="tr-prev" style="' + btn + (page <= 0 ? ";opacity:.4" : "") + '">‹</button>' +
+                        '<span style="font-size:12px;color:#557">page ' + (page + 1) + '/' + pages + ' · ' + total + ' Frutiz</span>' +
+                        '<button id="tr-next" style="' + btn + (page >= pages - 1 ? ";opacity:.4" : "") + '">›</button>';
+                    var p = pagerEl.querySelector("#tr-prev"), n = pagerEl.querySelector("#tr-next");
+                    if (p) p.addEventListener("click", function () { if (page > 0) { page--; render(); } });
+                    if (n) n.addEventListener("click", function () { if (page < pages - 1) { page++; render(); } });
+                }
                 function render() {
                     if (!gridEl) return;
-                    var q = ((searchEl && searchEl.value) || "").trim().toLowerCase();
-                    var list = data || [];
-                    if (q) list = list.filter(function (e) { return String(e.pseudo).toLowerCase().indexOf(q) !== -1; });
-                    if (!list.length) { gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#789;padding:24px">' + ((data && data.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>'; return; }
-                    gridEl.innerHTML = list.map(function (e) {
-                        var code = encodeURIComponent(e.bouille);
-                        return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1px solid #dbe7c5;border-radius:10px;padding:8px 4px;text-align:center">'
-                            + '<img src="/bouille-img?s=' + code + '&fmt=png&size=64" alt="" width="64" height="64" loading="lazy" onerror="this.style.visibility=\'hidden\'">'
-                            + '<span style="font-size:12px;font-weight:bold;color:#2C4A0F;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.pseudo) + '</span></div>';
-                    }).join("");
+                    var list = filtered();
+                    var pages = Math.max(1, Math.ceil(list.length / TR_PAGE));
+                    if (page >= pages) page = 0;
+                    var slice = list.slice(page * TR_PAGE, (page + 1) * TR_PAGE);
+                    if (!list.length) {
+                        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#789;padding:24px">' + ((data && data.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
+                    } else {
+                        gridEl.innerHTML = slice.map(function (e) {
+                            var code = encodeURIComponent(e.bouille);
+                            return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1px solid #dbe7c5;border-radius:10px;padding:8px 4px;text-align:center">'
+                                + '<img src="/bouille-img?s=' + code + '&fmt=png&size=64" alt="" width="64" height="64" loading="lazy" decoding="async" onerror="this.style.visibility=\'hidden\'">'
+                                + '<span style="font-size:12px;font-weight:bold;color:#2C4A0F;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.pseudo) + '</span></div>';
+                        }).join("");
+                    }
+                    gridEl.scrollTop = 0;
+                    renderPager(list.length, pages);
                 }
                 function load() {
                     gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#789;padding:24px">Chargement…</div>';
                     fetch("/api/trombinoscope", { cache: "no-store" })
                         .then(function (r) { return r.json(); })
-                        .then(function (d) { data = (d && d.entries) || []; render(); })
+                        .then(function (d) {
+                            data = (d && d.entries) || [];
+                            var set = {};
+                            data.forEach(function (e) { set[firstLetter(e.pseudo)] = 1; });
+                            letters = Object.keys(set).sort(function (a, b) { return a === "#" ? 1 : b === "#" ? -1 : a.localeCompare(b); });
+                            letter = "Tous"; page = 0;
+                            renderLetters(); render();
+                        })
                         .catch(function () { gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#a33;padding:24px">Erreur de chargement.</div>'; });
                 }
                 window.fp_trombi = function () {

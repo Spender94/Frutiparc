@@ -520,11 +520,33 @@
     width: 100%; box-sizing: border-box; padding: 8px 12px; border: 0;
     border-radius: 14px; font-size: 13px; background: #fff; color: #333;
   }
+  #trombi-letters {
+    display: flex; gap: 4px; margin-top: 8px; overflow-x: auto;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  #trombi-letters::-webkit-scrollbar { display: none; }
+  .trombi-letter {
+    flex: 0 0 auto; min-width: 26px; padding: 4px 7px; border: 0; border-radius: 12px;
+    background: rgba(255,255,255,.45); color: #7a1f1f; font-weight: bold;
+    font-size: 12px; cursor: pointer;
+  }
+  .trombi-letter.active { background: #fff; color: #D16767; box-shadow: 0 1px 2px rgba(44,74,15,.25); }
   #trombi-body {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
     padding: 10px; display: grid; gap: 10px; align-content: start;
     grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
   }
+  #trombi-pager {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    gap: 12px; padding: 8px; background: #fff; border-top: 1px solid #eee;
+  }
+  #trombi-pager:empty { display: none; }
+  .trombi-pgbtn {
+    border: 0; background: #FEABAB; color: #7a1f1f; font-weight: bold;
+    font-size: 16px; width: 36px; height: 30px; border-radius: 8px; cursor: pointer;
+  }
+  .trombi-pgbtn[disabled] { opacity: .4; cursor: default; }
+  .trombi-pginfo { font-size: 12px; color: #555; }
   .trombi-card {
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     background: #fff; border: 1px solid #e3e3e3; border-radius: 10px;
@@ -972,8 +994,12 @@
   <!-- Trombinoscope — annuaire des Frutiz (pseudo + bouille), trié alpha par le
        serveur. Barre de recherche en tête, grille scrollable de bouilles. -->
   <section class="panel" id="trombi-panel">
-    <div id="trombi-head"><input id="trombi-search" type="search" placeholder="Rechercher un Frutiz…" autocomplete="off"></div>
+    <div id="trombi-head">
+      <input id="trombi-search" type="search" placeholder="Rechercher un Frutiz…" autocomplete="off">
+      <div id="trombi-letters"></div>
+    </div>
     <div id="trombi-body"></div>
+    <div id="trombi-pager"></div>
   </section>
 
   <!-- Bouille / accessory picker (bottom sheet) -->
@@ -1453,34 +1479,86 @@
   });
 
   // ── Trombinoscope (annuaire des Frutiz) ──
-  // Chargé à la 1re ouverture puis gardé en mémoire ; recherche en direct.
-  var trombiData = null;
+  // Chargé une fois puis gardé en mémoire. Navigation par lettre + recherche +
+  // pagination : avec plusieurs milliers de bouilles, on ne rend QUE la page
+  // courante (≤ TROMBI_PAGE), pour borner le nombre de miniatures /bouille-img
+  // chargées simultanément.
+  var TROMBI_PAGE = 60;
+  var trombiData = null, trombiLetters = [], trombiLetter = "Tous", trombiPage = 0;
+  function trombiFirstLetter(name) {
+    var c = String(name || "").trim().charAt(0).toUpperCase();
+    try { c = c.normalize("NFD").replace(/[̀-ͯ]/g, ""); } catch (e) {}
+    return /[A-Z]/.test(c) ? c : "#";
+  }
   function loadTrombi() {
     if (trombiData) { renderTrombi(); return; }
     var body = $("#trombi-body");
     if (body) body.innerHTML = '<div class="trombi-empty">Chargement…</div>';
     fetch("/api/trombinoscope", { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(function (d) { trombiData = (d && d.entries) || []; renderTrombi(); })
+      .then(function (d) {
+        trombiData = (d && d.entries) || [];
+        var set = {};
+        trombiData.forEach(function (e) { set[trombiFirstLetter(e.pseudo)] = 1; });
+        trombiLetters = Object.keys(set).sort(function (a, b) { return a === "#" ? 1 : b === "#" ? -1 : a.localeCompare(b); });
+        trombiLetter = "Tous"; trombiPage = 0;
+        renderTrombiLetters(); renderTrombi();
+      })
       .catch(function () { if (body) body.innerHTML = '<div class="trombi-empty">Impossible de charger le trombinoscope.</div>'; });
+  }
+  function trombiQuery() { var se = $("#trombi-search"); return ((se && se.value) || "").trim().toLowerCase(); }
+  function trombiFiltered() {
+    var q = trombiQuery();
+    if (q) return (trombiData || []).filter(function (e) { return String(e.pseudo).toLowerCase().indexOf(q) !== -1; });
+    if (trombiLetter && trombiLetter !== "Tous") return (trombiData || []).filter(function (e) { return trombiFirstLetter(e.pseudo) === trombiLetter; });
+    return trombiData || [];
+  }
+  function renderTrombiLetters() {
+    var bar = $("#trombi-letters"); if (!bar) return;
+    var searching = !!trombiQuery();
+    var chips = ["Tous"].concat(trombiLetters);
+    bar.innerHTML = chips.map(function (L) {
+      var active = !searching && L === trombiLetter;
+      return '<button class="trombi-letter' + (active ? " active" : "") + '" data-l="' + xmlEscape(L) + '">' + xmlEscape(L) + '</button>';
+    }).join("");
+    Array.prototype.forEach.call(bar.querySelectorAll(".trombi-letter"), function (b) {
+      b.addEventListener("click", function () {
+        var se = $("#trombi-search"); if (se) se.value = "";
+        trombiLetter = b.getAttribute("data-l"); trombiPage = 0;
+        renderTrombiLetters(); renderTrombi();
+      });
+    });
   }
   function renderTrombi() {
     var body = $("#trombi-body"); if (!body) return;
-    var se = $("#trombi-search");
-    var q = ((se && se.value) || "").trim().toLowerCase();
-    var list = trombiData || [];
-    if (q) list = list.filter(function (e) { return String(e.pseudo).toLowerCase().indexOf(q) !== -1; });
+    var list = trombiFiltered();
+    var pages = Math.max(1, Math.ceil(list.length / TROMBI_PAGE));
+    if (trombiPage >= pages) trombiPage = 0;
+    var slice = list.slice(trombiPage * TROMBI_PAGE, (trombiPage + 1) * TROMBI_PAGE);
     if (!list.length) {
       body.innerHTML = '<div class="trombi-empty">' + ((trombiData && trombiData.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
-      return;
+    } else {
+      body.innerHTML = slice.map(function (e) {
+        var code = encodeURIComponent(e.bouille);
+        return '<div class="trombi-card"><img src="/bouille-img?s=' + code + '&fmt=png&size=64" alt="" width="64" height="64" loading="lazy" decoding="async" onerror="this.style.visibility=\'hidden\'"><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
+      }).join("");
     }
-    body.innerHTML = list.map(function (e) {
-      var code = encodeURIComponent(e.bouille);
-      return '<div class="trombi-card"><img src="/bouille-img?s=' + code + '&fmt=png&size=64" alt="" width="64" height="64" loading="lazy" onerror="this.style.visibility=\'hidden\'"><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
-    }).join("");
+    body.scrollTop = 0;
+    renderTrombiPager(list.length, pages);
+  }
+  function renderTrombiPager(total, pages) {
+    var pg = $("#trombi-pager"); if (!pg) return;
+    if (pages <= 1) { pg.innerHTML = total ? '<span class="trombi-pginfo">' + total + ' Frutiz</span>' : ""; return; }
+    pg.innerHTML =
+      '<button class="trombi-pgbtn" id="trombi-prev"' + (trombiPage <= 0 ? " disabled" : "") + '>‹</button>' +
+      '<span class="trombi-pginfo">page ' + (trombiPage + 1) + '/' + pages + ' · ' + total + ' Frutiz</span>' +
+      '<button class="trombi-pgbtn" id="trombi-next"' + (trombiPage >= pages - 1 ? " disabled" : "") + '>›</button>';
+    var prev = $("#trombi-prev"), next = $("#trombi-next");
+    if (prev) prev.addEventListener("click", function () { if (trombiPage > 0) { trombiPage--; renderTrombi(); } });
+    if (next) next.addEventListener("click", function () { if (trombiPage < pages - 1) { trombiPage++; renderTrombi(); } });
   }
   var trombiSearchEl = $("#trombi-search");
-  if (trombiSearchEl) trombiSearchEl.addEventListener("input", renderTrombi);
+  if (trombiSearchEl) trombiSearchEl.addEventListener("input", function () { trombiPage = 0; renderTrombiLetters(); renderTrombi(); });
 
   // ── Navigation entre panneaux ──
   // activateTab pilote l'affichage des panneaux. On l'appelle depuis la grille
