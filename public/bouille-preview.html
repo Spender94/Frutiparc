@@ -38,10 +38,19 @@
     upgradeToHttps: false,
     splashScreen: false,
     preferredRenderer: "canvas",
+    publicPath: "/ruffle/",
     backgroundColor: "#E8F8D3"
   };
 </script>
-<script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+<!-- Ruffle servi en local (/ruffle, version épinglée) avec repli sur le CDN.
+     Même chargement que ruffle.html / bouille-capture.html : rendu des bouilles
+     plus rapide et fiable, sans dépendre d'unpkg. -->
+<script src="/ruffle/ruffle.js" onerror="
+  window.RufflePlayer.config.publicPath = undefined;
+  var s = document.createElement('script');
+  s.src = 'https://unpkg.com/@ruffle-rs/ruffle';
+  document.head.appendChild(s);
+"></script>
 </head>
 <body>
 <div id="player-container"></div>

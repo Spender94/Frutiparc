@@ -651,28 +651,35 @@
                 function build() {
                     ov = document.createElement("div");
                     ov.id = "fp-trombi-overlay";
-                    ov.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);font-family:Verdana,Arial,sans-serif";
+                    ov.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.4);font-family:Verdana,Arial,sans-serif";
                     var win = document.createElement("div");
-                    win.style.cssText = "width:min(760px,92vw);height:min(80vh,640px);display:flex;flex-direction:column;background:#F3FBE8;border:1px solid #9ab86a;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);overflow:hidden";
+                    // Fenêtre blanche, arrondie, ombrée — même identité que le trombi de /light.
+                    win.style.cssText = "width:min(760px,92vw);height:min(82vh,660px);display:flex;flex-direction:column;background:#fff;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.45);overflow:hidden";
+                    // En-tête rose (recherche pleine largeur + barre des lettres), comme /light.
                     var head = document.createElement("div");
-                    head.style.cssText = "flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:8px 10px;background:#2C4A0F;color:#CFF599";
-                    head.innerHTML = '<b style="flex:0 0 auto">📷 Trombinoscope des Frutiz</b>';
-                    searchEl = document.createElement("input");
-                    searchEl.type = "search"; searchEl.placeholder = "Rechercher…";
-                    searchEl.style.cssText = "flex:1 1 auto;min-width:60px;padding:5px 10px;border:0;border-radius:12px;font-size:13px";
-                    searchEl.addEventListener("input", function () { page = 0; renderLetters(); render(); });
+                    head.style.cssText = "flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding:8px 10px;background:#FEABAB;border-bottom:1px solid #DDDDDD;box-shadow:0 1px 3px rgba(44,74,15,.18)";
+                    var titleRow = document.createElement("div");
+                    titleRow.style.cssText = "display:flex;align-items:center;gap:8px";
+                    var title = document.createElement("b");
+                    title.textContent = "Trombinoscope des Frutiz";
+                    title.style.cssText = "flex:1 1 auto;color:#7a1f1f;font-size:14px";
                     var close = document.createElement("button");
                     close.textContent = "✕";
-                    close.style.cssText = "flex:0 0 auto;border:0;background:#CFF599;color:#2C4A0F;font-weight:bold;border-radius:8px;width:28px;height:28px;cursor:pointer";
+                    close.style.cssText = "flex:0 0 auto;border:0;background:#fff;color:#D16767;font-weight:bold;border-radius:10px;width:30px;height:30px;cursor:pointer";
                     close.addEventListener("click", hide);
-                    head.appendChild(searchEl); head.appendChild(close);
+                    titleRow.appendChild(title); titleRow.appendChild(close);
+                    searchEl = document.createElement("input");
+                    searchEl.type = "search"; searchEl.placeholder = "Rechercher un Frutiz…";
+                    searchEl.style.cssText = "width:100%;box-sizing:border-box;padding:8px 12px;border:0;border-radius:14px;font-size:13px;background:#fff;color:#333";
+                    searchEl.addEventListener("input", function () { page = 0; renderLetters(); render(); });
                     letterEl = document.createElement("div");
-                    letterEl.style.cssText = "flex:0 0 auto;display:flex;gap:4px;padding:6px 10px;overflow-x:auto;background:#e7f2d5;border-bottom:1px solid #cfe0b3";
+                    letterEl.style.cssText = "display:flex;gap:4px;overflow-x:auto";
+                    head.appendChild(titleRow); head.appendChild(searchEl); head.appendChild(letterEl);
                     gridEl = document.createElement("div");
-                    gridEl.style.cssText = "flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px;display:grid;gap:10px;align-content:start;grid-template-columns:repeat(auto-fill,minmax(96px,1fr))";
+                    gridEl.style.cssText = "flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px;display:grid;gap:10px;align-content:start;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));background:#fff";
                     pagerEl = document.createElement("div");
-                    pagerEl.style.cssText = "flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:12px;padding:8px;background:#eef6e0;border-top:1px solid #cfe0b3";
-                    win.appendChild(head); win.appendChild(letterEl); win.appendChild(gridEl); win.appendChild(pagerEl);
+                    pagerEl.style.cssText = "flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:12px;padding:8px;background:#fff;border-top:1px solid #eee";
+                    win.appendChild(head); win.appendChild(gridEl); win.appendChild(pagerEl);
                     ov.appendChild(win);
                     ov.addEventListener("click", function (e) { if (e.target === ov) hide(); });
                     document.addEventListener("keydown", function (e) { if (e.key === "Escape" && ov && ov.style.display !== "none") hide(); });
@@ -698,7 +705,7 @@
                     var chips = ["Tous"].concat(letters);
                     letterEl.innerHTML = chips.map(function (L) {
                         var active = !searching && L === letter;
-                        return '<button data-l="' + esc(L) + '" style="flex:0 0 auto;min-width:26px;padding:4px 8px;border:0;border-radius:12px;cursor:pointer;font-weight:bold;font-size:12px;background:' + (active ? "#2C4A0F;color:#CFF599" : "#fff;color:#3a5a18") + '">' + esc(L) + '</button>';
+                        return '<button data-l="' + esc(L) + '" style="flex:0 0 auto;min-width:26px;padding:4px 7px;border:0;border-radius:12px;cursor:pointer;font-weight:bold;font-size:12px;' + (active ? "background:#fff;color:#D16767;box-shadow:0 1px 2px rgba(44,74,15,.25)" : "background:rgba(255,255,255,.45);color:#7a1f1f") + '">' + esc(L) + '</button>';
                     }).join("");
                     Array.prototype.forEach.call(letterEl.querySelectorAll("button"), function (b) {
                         b.addEventListener("click", function () { if (searchEl) searchEl.value = ""; letter = b.getAttribute("data-l"); page = 0; renderLetters(); render(); });
@@ -706,11 +713,11 @@
                 }
                 function renderPager(total, pages) {
                     if (!pagerEl) return;
-                    if (pages <= 1) { pagerEl.innerHTML = total ? '<span style="font-size:12px;color:#557">' + total + ' Frutiz</span>' : ""; return; }
-                    var btn = "border:0;background:#2C4A0F;color:#CFF599;font-weight:bold;font-size:16px;width:36px;height:30px;border-radius:8px;cursor:pointer";
+                    if (pages <= 1) { pagerEl.innerHTML = total ? '<span style="font-size:12px;color:#555">' + total + ' Frutiz</span>' : ""; return; }
+                    var btn = "border:0;background:#FEABAB;color:#7a1f1f;font-weight:bold;font-size:16px;width:36px;height:30px;border-radius:8px;cursor:pointer";
                     pagerEl.innerHTML =
                         '<button id="tr-prev" style="' + btn + (page <= 0 ? ";opacity:.4" : "") + '">‹</button>' +
-                        '<span style="font-size:12px;color:#557">page ' + (page + 1) + '/' + pages + ' · ' + total + ' Frutiz</span>' +
+                        '<span style="font-size:12px;color:#555">page ' + (page + 1) + '/' + pages + ' · ' + total + ' Frutiz</span>' +
                         '<button id="tr-next" style="' + btn + (page >= pages - 1 ? ";opacity:.4" : "") + '">›</button>';
                     var p = pagerEl.querySelector("#tr-prev"), n = pagerEl.querySelector("#tr-next");
                     if (p) p.addEventListener("click", function () { if (page > 0) { page--; render(); } });
@@ -723,13 +730,13 @@
                     if (page >= pages) page = 0;
                     var slice = list.slice(page * TR_PAGE, (page + 1) * TR_PAGE);
                     if (!list.length) {
-                        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#789;padding:24px">' + ((data && data.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
+                        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#888;font-size:13px;padding:24px">' + ((data && data.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
                     } else {
                         // Bouille via /bouille-preview.html en iframe paresseux (même rendu
                         // que les avatars du forum). loading="lazy" => seules les vignettes
                         // visibles instancient Ruffle.
                         gridEl.innerHTML = slice.map(function (e) {
-                            return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1px solid #dbe7c5;border-radius:10px;padding:8px 4px;text-align:center">'
+                            return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1px solid #e3e3e3;border-radius:10px;padding:8px 4px;text-align:center">'
                                 + '<span style="display:block;width:72px;height:72px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden"><iframe src="/bouille-preview.html?s=' + encodeURIComponent(e.bouille) + '" loading="lazy" sandbox="allow-scripts allow-same-origin" style="width:100%;height:100%;border:0;display:block"></iframe></span>'
                                 + '<span style="font-size:12px;font-weight:bold;color:#2C4A0F;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.pseudo) + '</span></div>';
                         }).join("");
