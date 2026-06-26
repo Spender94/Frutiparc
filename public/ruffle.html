@@ -123,18 +123,9 @@
         s.src = 'https://unpkg.com/@ruffle-rs/ruffle';
         document.head.appendChild(s);
     "></script>
-    <script src="/bouille-warm.js"></script>
 </head>
 <body>
     <div id="player-container"></div>
-
-    <!-- Lanceur du Trombinoscope (overlay, en haut à gauche). Indépendant du
-         bureau Flash : garantit l'accès même si l'icône « Frutiblogs » n'est pas
-         présente. Le clic ouvre l'overlay fp_trombi(). -->
-    <button id="trombi-launch" onclick="window.fp_trombi && window.fp_trombi()" title="Ouvrir le trombinoscope des Frutiz"
-        style="position:fixed;top:8px;left:10px;z-index:2147483646;cursor:pointer;border:0;
-        background:rgba(44,74,15,.82);color:#CFF599;font:bold 12px Verdana,sans-serif;
-        padding:6px 11px;border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.25)">📷 Trombinoscope</button>
 
     <!-- Live connected-players badge (overlay, top-right). Polls /api/online-count;
          click to reveal the list of connected pseudos (/api/online-users). -->
@@ -653,7 +644,7 @@
                 // Navigation par lettre + recherche + pagination : avec plusieurs
                 // milliers de bouilles, on ne rend QUE la page courante (≤ TR_PAGE)
                 // pour borner le nombre de miniatures /bouille-img chargées.
-                var TR_PAGE = 60;
+                var TR_PAGE = 48;
                 var ov = null, gridEl = null, searchEl = null, letterEl = null, pagerEl = null;
                 var data = null, letters = [], letter = "Tous", page = 0;
                 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -734,14 +725,14 @@
                     if (!list.length) {
                         gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#789;padding:24px">' + ((data && data.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
                     } else {
+                        // Bouille via /bouille-preview.html en iframe paresseux (même rendu
+                        // que les avatars du forum). loading="lazy" => seules les vignettes
+                        // visibles instancient Ruffle.
                         gridEl.innerHTML = slice.map(function (e) {
                             return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1px solid #dbe7c5;border-radius:10px;padding:8px 4px;text-align:center">'
-                                + '<img alt="" width="64" height="64" loading="lazy" decoding="async" data-code="' + esc(e.bouille) + '">'
+                                + '<span style="display:block;width:72px;height:72px;border:1px solid #cfe0b3;border-radius:6px;background:#E8F8D3;overflow:hidden"><iframe src="/bouille-preview.html?s=' + encodeURIComponent(e.bouille) + '" loading="lazy" sandbox="allow-scripts allow-same-origin" style="width:100%;height:100%;border:0;display:block"></iframe></span>'
                                 + '<span style="font-size:12px;font-weight:bold;color:#2C4A0F;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.pseudo) + '</span></div>';
                         }).join("");
-                        Array.prototype.forEach.call(gridEl.querySelectorAll("img[data-code]"), function (img) {
-                            if (window.showBouilleThumb) window.showBouilleThumb(img, img.getAttribute("data-code"), 64);
-                        });
                     }
                     gridEl.scrollTop = 0;
                     renderPager(list.length, pages);
@@ -760,23 +751,15 @@
                         })
                         .catch(function () { gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#a33;padding:24px">Erreur de chargement.</div>'; });
                 }
+                // Appelé par l'icône « Frutiblogs » du bureau : main.swf est patché
+                // (scripts/patch-main-frutiblogs-trombi.js) pour exécuter
+                // getURL("javascript:fp_trombi()") au clic → ouvre l'overlay.
                 window.fp_trombi = function () {
                     if (!ov) build();
                     ov.style.display = "flex";
                     load();
                     try { searchEl.value = ""; searchEl.focus(); } catch (e) {}
                     return true;
-                };
-
-                // Détourne le clic sur l'icône morte « Frutiblogs » : le SWF appelle
-                // window.open("…blogs.frutiparc.com…") (service Motion Twin disparu).
-                // Ruffle navigue via window.open (binding wasm-bindgen e.open(url,target)),
-                // donc surcharger window.open intercepte de façon fiable, sans toucher
-                // au binaire main.swf. Toute autre URL passe normalement.
-                var _open = window.open.bind(window);
-                window.open = function (url, target, features) {
-                    try { if (typeof url === "string" && /blogs\.frutiparc\.com/i.test(url)) { window.__dlog && window.__dlog("[TROMBI] icône Frutiblogs → trombinoscope"); window.fp_trombi(); return null; } } catch (e) {}
-                    return _open(url, target, features);
                 };
             })();
 

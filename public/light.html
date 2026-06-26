@@ -552,7 +552,9 @@
     background: #fff; border: 1px solid #e3e3e3; border-radius: 10px;
     padding: 8px 4px; text-align: center;
   }
-  .trombi-card img { width: 64px; height: 64px; }
+  /* Vignette bouille = iframe Ruffle (même rendu que le forum), fond vert carte. */
+  .trombi-card .tb { width: 72px; height: 72px; border: 1px solid #cfe0b3; border-radius: 6px; background: #E8F8D3; overflow: hidden; }
+  .trombi-card .tb iframe { width: 100%; height: 100%; border: 0; display: block; }
   .trombi-card .nm {
     font-size: 12px; font-weight: bold; color: #2C4A0F; max-width: 100%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -806,7 +808,6 @@
     #home-panel { width: 440px; }
   }
 </style>
-  <script src="/bouille-warm.js"></script>
 </head>
 <body>
 
@@ -1484,7 +1485,7 @@
   // pagination : avec plusieurs milliers de bouilles, on ne rend QUE la page
   // courante (≤ TROMBI_PAGE), pour borner le nombre de miniatures /bouille-img
   // chargées simultanément.
-  var TROMBI_PAGE = 60;
+  var TROMBI_PAGE = 48;
   var trombiData = null, trombiLetters = [], trombiLetter = "Tous", trombiPage = 0;
   function trombiFirstLetter(name) {
     var c = String(name || "").trim().charAt(0).toUpperCase();
@@ -1539,13 +1540,12 @@
     if (!list.length) {
       body.innerHTML = '<div class="trombi-empty">' + ((trombiData && trombiData.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
     } else {
+      // Bouille rendue par /bouille-preview.html en iframe paresseux — exactement
+      // comme les avatars du forum (renderBouillAvatar). loading="lazy" => seules
+      // les vignettes proches du viewport instancient Ruffle.
       body.innerHTML = slice.map(function (e) {
-        return '<div class="trombi-card"><img alt="" width="64" height="64" loading="lazy" decoding="async" data-code="' + e.bouille + '"><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
+        return '<div class="trombi-card"><div class="tb"><iframe src="/bouille-preview.html?s=' + encodeURIComponent(e.bouille) + '" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe></div><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
       }).join("");
-      // Réchauffe + affiche les miniatures de la page courante (cf. bouille-warm.js).
-      Array.prototype.forEach.call(body.querySelectorAll(".trombi-card img[data-code]"), function (img) {
-        showBouilleThumb(img, img.getAttribute("data-code"), 64);
-      });
     }
     body.scrollTop = 0;
     renderTrombiPager(list.length, pages);
