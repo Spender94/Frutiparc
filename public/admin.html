@@ -333,6 +333,8 @@
     box-shadow: 0 2px 8px rgba(0,0,0,.2);
   }
 </style>
+<!-- Pré-réchauffage du cache PNG des bouilles (bouton « Réchauffer » + auto-import). -->
+<script src="/js/bouille-thumb.js"></script>
 </head>
 <body>
 
@@ -646,6 +648,8 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
   <div class="toolbar">
     <button class="btn" onclick="loadTrombinoscope()">Rafraîchir</button>
     <span id="tromb-count" style="font-size:12px;color:#666"></span>
+    <button class="btn btn-sm" id="tromb-warm" onclick="warmTrombinoscope()" title="Génère et met en cache l'image PNG de chaque bouille, pour un affichage instantané côté Bouilloscope (main.swf et /light).">⚡ Réchauffer les bouilles</button>
+    <span id="tromb-warm-msg" style="font-size:12px;color:#2f6b16"></span>
     <span style="flex:1"></span>
     <button class="btn-danger btn-sm" onclick="clearTrombinoscope()">Tout supprimer</button>
   </div>
@@ -1194,8 +1198,37 @@ async function importTrombinoscope() {
     toast(`${d.count} entrée(s) importée(s)`);
     document.getElementById('tromb-text').value = '';
     document.getElementById('tromb-file').value = '';
-    loadTrombinoscope();
+    await loadTrombinoscope();
+    warmTrombinoscope();   // pré-remplit le cache PNG des nouvelles bouilles
   } catch (e) { if (msg) { msg.style.color = '#b23b2e'; msg.textContent = 'Erreur réseau'; } toast('Erreur: ' + e.message); }
+}
+
+// Pré-réchauffe le cache PNG de TOUTES les bouilles enregistrées : génère l'image
+// de chaque bouille (depuis l'admin, sans main.swf concurrent → rapide) et la met
+// en cache serveur. Ensuite l'affichage du Bouilloscope est instantané pour tout
+// le monde (main.swf comme /light). Les bouilles déjà en cache sont sautées.
+async function warmTrombinoscope() {
+  if (typeof FPBouilleThumb === 'undefined' || !FPBouilleThumb.warmAll) return;
+  if (!trombinoscope.length) { toast('Rien à réchauffer'); return; }
+  const btn = document.getElementById('tromb-warm');
+  const msg = document.getElementById('tromb-warm-msg');
+  if (msg) msg.style.color = '#2f6b16';
+  if (btn) btn.disabled = true;
+  const t0 = Date.now();
+  try {
+    const res = await FPBouilleThumb.warmAll(trombinoscope, {
+      concurrency: 4,
+      onProgress: (done, total, skipped) => { if (msg) msg.textContent = `Réchauffage… ${done}/${total}` + (skipped ? ` (${skipped} déjà en cache)` : ''); }
+    });
+    if (msg) {
+      msg.style.color = res.failed ? '#b26a00' : '#2f6b16';
+      msg.textContent = `✓ Cache prêt : ${res.total} bouille(s)` + (res.captured ? `, ${res.captured} générée(s)` : '') + (res.skipped ? `, ${res.skipped} déjà en cache` : '') + (res.failed ? ` — ${res.failed} échec(s), relance pour réessayer` : '') + ` (${Math.round((Date.now() - t0) / 1000)}s)`;
+    }
+  } catch (e) {
+    if (msg) { msg.style.color = '#b23b2e'; msg.textContent = 'Réchauffage interrompu'; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 async function deleteTrombEntry(id) {
   const e = trombinoscope.find(x => x.id === id);

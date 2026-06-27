@@ -54,12 +54,19 @@
       + ' style="width:100%;height:100%;object-fit:contain;display:block">';
   }
 
-  // ── réchauffage du cache froid ───────────────────────────────────────────
-  var queue = [];            // [{s,e}] à capturer
-  var waiting = {};          // s -> [img,...] en attente de leur PNG
-  var queued = {};           // s -> true (déjà en file/actif), évite les doublons
-  var active = 0;
-  var frames = [];           // toutes les iframes de capture créées (pool + occupées)
+  function statusUrl(s, e) {
+    return "/api/bouille-img/status?s=" + encodeURIComponent(s) + "&e=" + encodeURIComponent(e)
+      + "&size=" + SIZE + "&fmt=png";
+  }
+
+  // ── pool de capture (iframes /bouille-capture cachées) ─────────────────────
+  // Réutilisé par le réchauffage à la volée (vignettes manquées) ET par le
+  // pré-réchauffage en masse de l'admin. Concurrence réglable : 2 par défaut
+  // (gentil quand main.swf tourne), montée par l'admin (aucun SWF concurrent).
+  var CONC = CONCURRENCY;
+  var pending = [];          // [{s,e,cb}] captures en attente
+  var activeCaps = 0;
+  var frames = [];           // iframes de capture (pool + occupées)
 
   function idleFrame() {
     for (var i = 0; i < frames.length; i++) if (!frames[i]._job) return frames[i];
@@ -68,40 +75,54 @@
     f.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
     document.body.appendChild(f); frames.push(f); return f;
   }
+  function setConcurrency(n) { CONC = Math.max(1, (n | 0) || 1); pumpCaps(); }
+  function capture(s, e, cb) { pending.push({ s: sanitize(s), e: normEmote(e), cb: cb }); pumpCaps(); }
+  function pumpCaps() { while (activeCaps < CONC && pending.length) { activeCaps++; runCap(pending.shift()); } }
+  function runCap(job) {
+    var f = idleFrame();
+    var settled = false;
+    var timer = setTimeout(function () { settle(false); }, CAPTURE_TIMEOUT);
+    function settle(ok) {
+      if (settled) return; settled = true;
+      clearTimeout(timer); f._job = null; activeCaps--;
+      // Vider l'iframe : sinon le SWF de famille continue de tourner dans Ruffle
+      // en arrière-plan (CPU gaspillé) entre deux captures.
+      try { f.src = "about:blank"; } catch (e) {}
+      try { job.cb(ok); } catch (e) {}
+      pumpCaps();
+    }
+    f._job = { s: job.s, settle: settle };
+    f.src = captureUrl(job.s, job.e);
+  }
+  // bouille-capture.html (en iframe) signale la fin via postMessage. Il renvoie
+  // `s` (le code 24c assaini) mais pas `e` — or le Bouilloscope n'utilise pas
+  // d'humeur (e=0), donc l'appariement par `s` suffit.
+  global.addEventListener("message", function (ev) {
+    var d = ev && ev.data; if (!d || !d.__bouilleCapture) return;
+    for (var i = 0; i < frames.length; i++) {
+      var j = frames[i]._job;
+      if (j && j.s === d.s) { j.settle(d.__bouilleCapture === "ok"); return; }
+    }
+  });
 
+  // ── réchauffage à la volée (vignette dont la sonde a fait 404) ─────────────
+  var waiting = {};          // s -> [img,...] en attente de leur PNG
+  var queued = {};           // s -> true (déjà en capture), évite les doublons
   function onMiss(img) {
     var s = img.getAttribute("data-s"), e = img.getAttribute("data-e") || "0";
     if (!s) return;
     img.onerror = null;                  // ne pas boucler sur le 404
     img.style.visibility = "hidden";     // masquer l'icône « image cassée »
     (waiting[s] = waiting[s] || []).push(img);
-    if (!queued[s]) { queued[s] = true; queue.push({ s: s, e: e }); pump(); }
-  }
-
-  function onOk(img) { img.style.visibility = "visible"; }
-
-  function pump() {
-    while (active < CONCURRENCY && queue.length) { active++; run(queue.shift()); }
-  }
-
-  function run(job) {
-    var f = idleFrame();
-    var settled = false;
-    var timer = setTimeout(function () { settle(false); }, CAPTURE_TIMEOUT);
-    function settle(ok) {
-      if (settled) return; settled = true;
-      clearTimeout(timer); f._job = null; active--;
-      // Vider l'iframe : sinon le SWF de famille continue de tourner dans Ruffle
-      // en arrière-plan (CPU gaspillé) entre deux captures.
-      try { f.src = "about:blank"; } catch (e) {}
-      var imgs = waiting[job.s] || []; delete waiting[job.s]; delete queued[job.s];
+    if (queued[s]) return;
+    queued[s] = true;
+    capture(s, e, function (ok) {
+      var imgs = waiting[s] || []; delete waiting[s]; delete queued[s];
+      var job = { s: sanitize(s), e: normEmote(e) };
       for (var i = 0; i < imgs.length; i++) resolveImg(imgs[i], job, ok);
-      pump();
-    }
-    f._job = { s: job.s, settle: settle };
-    f.src = captureUrl(job.s, job.e);
+    });
   }
-
+  function onOk(img) { img.style.visibility = "visible"; }
   function resolveImg(img, job, ok) {
     if (!img.isConnected) return;
     if (ok) {
@@ -118,16 +139,52 @@
     }
   }
 
-  // bouille-capture.html (en iframe) signale la fin via postMessage. Il renvoie
-  // `s` (le code 24c assaini) mais pas `e` — or le Bouilloscope n'utilise pas
-  // d'humeur (e=0), donc l'appariement par `s` suffit.
-  global.addEventListener("message", function (ev) {
-    var d = ev && ev.data; if (!d || !d.__bouilleCapture) return;
-    for (var i = 0; i < frames.length; i++) {
-      var j = frames[i]._job;
-      if (j && j.s === d.s) { j.settle(d.__bouilleCapture === "ok"); return; }
-    }
-  });
+  // ── pré-réchauffage en masse (admin) ───────────────────────────────────────
+  // Remplit le cache PNG pour TOUTE une liste depuis un contexte sans main.swf
+  // (donc rapide) : on saute les bouilles déjà en cache (sonde /status, gratuit)
+  // et on capture le reste. Ainsi les visiteurs (surtout main.swf) n'ont plus
+  // jamais à capturer → affichage instantané. onProgress(done,total,skipped).
+  function warmAll(items, opts) {
+    opts = opts || {};
+    if (opts.concurrency) setConcurrency(opts.concurrency);
+    var retries = (opts.retries != null) ? opts.retries : 2; // une capture peut échouer (canvas pas peint à temps) → on réessaie
+    var list = (items || []).map(function (it) {
+      return (typeof it === "string") ? { s: sanitize(it), e: "0" }
+        : { s: sanitize(it.s != null ? it.s : it.bouille), e: normEmote(it.e) };
+    });
+    var total = list.length, i = 0, done = 0, okN = 0, skipped = 0, failed = 0, running = 0;
+    function report() { if (opts.onProgress) { try { opts.onProgress(done, total, skipped); } catch (e) {} } }
+    return new Promise(function (resolve) {
+      if (!total) { resolve({ total: 0, captured: 0, skipped: 0, failed: 0 }); return; }
+      function finishItem(kind) { // 'skip' | 'ok' | 'fail'
+        if (kind === 'skip') skipped++; else if (kind === 'ok') okN++; else failed++;
+        running--; done++; report(); step();
+      }
+      function attempt(job, left) {
+        capture(job.s, job.e, function (cok) {
+          if (cok) finishItem('ok');
+          else if (left > 0) attempt(job, left - 1);   // réessai sur capture en échec
+          else finishItem('fail');
+        });
+      }
+      function step() {
+        if (i >= total && running === 0) { resolve({ total: total, captured: okN, skipped: skipped, failed: failed }); return; }
+        while (running < CONC && i < total) {
+          (function (job) {
+            running++;
+            fetch(statusUrl(job.s, job.e), { cache: "no-store" })
+              .then(function (r) { return r.json(); })
+              .then(function (d) {
+                if (d && d.cached) finishItem('skip');
+                else attempt(job, retries);
+              })
+              .catch(function () { attempt(job, retries); });
+          })(list[i++]);
+        }
+      }
+      step();
+    });
+  }
 
-  global.FPBouilleThumb = { imgHtml: imgHtml, _miss: onMiss, _ok: onOk, SIZE: SIZE };
+  global.FPBouilleThumb = { imgHtml: imgHtml, warmAll: warmAll, setConcurrency: setConcurrency, _miss: onMiss, _ok: onOk, SIZE: SIZE };
 })(window);
