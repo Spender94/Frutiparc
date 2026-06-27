@@ -554,7 +554,7 @@
   }
   /* Vignette bouille = iframe Ruffle (même rendu que le forum), fond vert carte. */
   .trombi-card .tb { width: 72px; height: 72px; border: 1px solid #cfe0b3; border-radius: 6px; background: #E8F8D3; overflow: hidden; }
-  .trombi-card .tb iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .trombi-card .tb iframe, .trombi-card .tb img { width: 100%; height: 100%; border: 0; display: block; object-fit: contain; }
   .trombi-card .nm {
     font-size: 12px; font-weight: bold; color: #2C4A0F; max-width: 100%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -808,6 +808,8 @@
     #home-panel { width: 440px; }
   }
 </style>
+<!-- Miniatures de bouilles rapides (cache PNG /bouille-img) pour le Bouilloscope. -->
+<script src="/js/bouille-thumb.js"></script>
 </head>
 <body>
 
@@ -1540,11 +1542,12 @@
     if (!list.length) {
       body.innerHTML = '<div class="trombi-empty">' + ((trombiData && trombiData.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
     } else {
-      // Bouille rendue par /bouille-preview.html en iframe paresseux — exactement
-      // comme les avatars du forum (renderBouillAvatar). loading="lazy" => seules
-      // les vignettes proches du viewport instancient Ruffle.
+      // Vignette = <img> sur le cache PNG /bouille-img (même rendu que le forum,
+      // mais statique : aucun Ruffle une fois en cache). Le cache froid est
+      // réchauffé en arrière-plan par FPBouilleThumb. loading="lazy" => seules les
+      // vignettes proches du viewport sont sondées/capturées.
       body.innerHTML = slice.map(function (e) {
-        return '<div class="trombi-card"><div class="tb"><iframe src="/bouille-preview.html?s=' + encodeURIComponent(e.bouille) + '" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe></div><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
+        return '<div class="trombi-card"><div class="tb">' + FPBouilleThumb.imgHtml(e.bouille) + '</div><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
       }).join("");
     }
     body.scrollTop = 0;
