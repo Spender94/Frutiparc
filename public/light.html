@@ -513,7 +513,9 @@
   }
   /* Trombinoscope */
   #trombi-head {
-    flex-shrink: 0; background: #FEABAB; border-bottom: 1px solid #DDDDDD;
+    flex-shrink: 0; border-bottom: 1px solid #DDDDDD;
+    /* Effet « bonbon » : voile blanc dégradé par-dessus le rose. */
+    background: linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,0) 46%), linear-gradient(180deg, #FEB7B7, #FD9C9C);
     box-shadow: 0 1px 3px rgba(44,74,15,.18); padding: 8px 10px;
   }
   #trombi-search {
@@ -557,11 +559,19 @@
   }
   #trombi-pager:empty { display: none; }
   .trombi-pgbtn {
-    border: 0; background: #FEABAB; color: #7a1f1f; font-weight: bold;
-    font-size: 16px; width: 36px; height: 30px; border-radius: 8px; cursor: pointer;
+    border: 0; color: #7a1f1f; font-weight: bold;
+    background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0) 52%), linear-gradient(180deg, #FEB7B7, #F58E8E);
+    box-shadow: 0 1px 2px rgba(122,31,31,.22), inset 0 1px 0 rgba(255,255,255,.55);
+    font-size: 16px; width: 36px; height: 30px; border-radius: 9px; cursor: pointer;
   }
   .trombi-pgbtn[disabled] { opacity: .4; cursor: default; }
-  .trombi-pginfo { font-size: 12px; color: #555; }
+  .trombi-pginfo { font-size: 12px; color: #7a1f1f; }
+  /* Compteur en pastille « étiquette » blanche. */
+  .trombi-badge {
+    display: inline-block; padding: 3px 12px; border-radius: 999px;
+    background: #fff; color: #D16767; font-weight: bold; font-size: 12px;
+    box-shadow: 0 1px 2px rgba(122,31,31,.20);
+  }
   .trombi-card {
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     background: #fff; border: 1px solid #f0dada; border-radius: 10px;
@@ -1574,11 +1584,12 @@
   }
   function renderTrombiPager(total, pages) {
     var pg = $("#trombi-pager"); if (!pg) return;
-    if (pages <= 1) { pg.innerHTML = total ? '<span class="trombi-pginfo">' + total + ' Frutiz</span>' : ""; return; }
+    if (pages <= 1) { pg.innerHTML = total ? '<span class="trombi-badge">' + total + ' Frutiz</span>' : ""; return; }
     pg.innerHTML =
       '<button class="trombi-pgbtn" id="trombi-prev"' + (trombiPage <= 0 ? " disabled" : "") + '>‹</button>' +
-      '<span class="trombi-pginfo">page ' + (trombiPage + 1) + '/' + pages + ' · ' + total + ' Frutiz</span>' +
-      '<button class="trombi-pgbtn" id="trombi-next"' + (trombiPage >= pages - 1 ? " disabled" : "") + '>›</button>';
+      '<span class="trombi-pginfo">page ' + (trombiPage + 1) + '/' + pages + '</span>' +
+      '<button class="trombi-pgbtn" id="trombi-next"' + (trombiPage >= pages - 1 ? " disabled" : "") + '>›</button>' +
+      '<span class="trombi-badge">' + total + ' Frutiz</span>';
     var prev = $("#trombi-prev"), next = $("#trombi-next");
     if (prev) prev.addEventListener("click", function () { if (trombiPage > 0) { trombiPage--; renderTrombi(); } });
     if (next) next.addEventListener("click", function () { if (trombiPage < pages - 1) { trombiPage++; renderTrombi(); } });
