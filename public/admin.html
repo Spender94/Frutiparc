@@ -2796,16 +2796,19 @@ function updatePackPreview() {
   renderSuffixEditor(suffix);
 }
 
-// Lit/écrit l'index d'un groupe (sur le caractère de poids faible = dernière pos).
+// La valeur d'un slot est portée par le PREMIER caractère du groupe (position
+// absolue impaire 15/17/19/21/23) ; le second char de la paire reste un '0'
+// séparateur — c'est ainsi que sont encodés les vrais accessoires (ex.
+// '9020t0a00' = type 9, variante 2, coul t/a). On écrivait à tort sur le séparateur.
 function groupValue(suffix, group) {
-  const lo = group.positions[group.positions.length - 1];
-  return FPBouille.dec(suffix[lo] || '0');
+  const v = group.positions[0];
+  return FPBouille.dec(suffix[v] || '0');
 }
 function setGroupValue(group, idx) {
   let suffix = ($('#pack-suffix9').value || '').padEnd(9, '0').substring(0, 9);
-  const lo = group.positions[group.positions.length - 1];
-  suffix = suffix.substring(0, lo) + FPBouille.enc(idx) + suffix.substring(lo + 1);
-  if (group.positions.length > 1) { const hi = group.positions[0]; suffix = suffix.substring(0, hi) + '0' + suffix.substring(hi + 1); }
+  const v = group.positions[0];
+  suffix = suffix.substring(0, v) + FPBouille.enc(idx) + suffix.substring(v + 1);
+  if (group.positions.length > 1) { const z = group.positions[1]; suffix = suffix.substring(0, z) + '0' + suffix.substring(z + 1); }
   $('#pack-suffix9').value = suffix;
   updatePackPreview();
 }
