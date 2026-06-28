@@ -1819,6 +1819,105 @@ async function tournamentCloseQualif(t) {
   return r;
 }
 
+// ─── Bracket à élimination directe (Phase 3) ────────────────────────────────
+function isPow2(n) { return n >= 1 && (n & (n - 1)) === 0; }
+function nextPow2(n) { var p = 1; while (p < n) p *= 2; return Math.max(2, p); }
+// Ordre des seeds dans un bracket standard (1 et 2 ne se croisent qu'en finale).
+// seedBracketOrder(8) = [1,8,4,5,2,7,3,6] → affiches R1 : (1v8)(4v5)(2v7)(3v6).
+function seedBracketOrder(n) {
+  var order = [1, 2];
+  while (order.length < n) {
+    var sum = order.length * 2 + 1, next = [];
+    for (var k = 0; k < order.length; k++) { next.push(order[k]); next.push(sum - order[k]); }
+    order = next;
+  }
+  return order;
+}
+function nextSlotRef(round, slot) { return { round: round + 1, slot: Math.floor(slot / 2), isP1: slot % 2 === 0 }; }
+
+// Construit le bracket depuis les qualifiés seedés. Taille = puissance de 2
+// englobant le nombre de qualifiés (les seeds hauts manquants = byes auto).
+async function tournamentGenerateBracket(t) {
+  const players = await db.getTournamentPlayers(t.id);
+  if (players.length < 2) return { ok: false, error: 'not_enough_players', count: players.length };
+  const seedMap = {};
+  players.forEach((p) => { if (p.seed > 0) seedMap[p.seed] = p.username; });
+  const n = nextPow2(players.length);
+  const order = seedBracketOrder(n);
+  const rounds = Math.round(Math.log2(n));
+  const matches = [];
+  for (let i = 0; i < n / 2; i++) {
+    matches.push({ round: 1, slot: i, player1: seedMap[order[2 * i]] || null, player2: seedMap[order[2 * i + 1]] || null, winner: null, status: 'pending' });
+  }
+  for (let r = 2; r <= rounds; r++) {
+    const cnt = n / Math.pow(2, r);
+    for (let i = 0; i < cnt; i++) matches.push({ round: r, slot: i, player1: null, player2: null, winner: null, status: 'pending' });
+  }
+  const at = (round, slot) => matches.find((m) => m.round === round && m.slot === slot);
+  const feedNext = (round, slot, winner) => {
+    if (round >= rounds) return;
+    const nr = nextSlotRef(round, slot), m = at(nr.round, nr.slot);
+    if (m) { if (nr.isP1) m.player1 = winner; else m.player2 = winner; }
+  };
+  // Byes du 1er tour (un seul joueur présent → qualifié d'office).
+  matches.filter((m) => m.round === 1).forEach((m) => {
+    if (m.player1 && !m.player2) { m.winner = m.player1; m.status = 'done'; feedNext(1, m.slot, m.player1); }
+    else if (!m.player1 && m.player2) { m.winner = m.player2; m.status = 'done'; feedNext(1, m.slot, m.player2); }
+  });
+  await db.setTournamentMatches(t.id, matches);
+  await db.updateTournament(t.id, { status: 'bracket', current_round: 1 });
+  console.log(`[TOURNOI] bracket #${t.id} généré : ${n} places, ${rounds} tours, ${players.length} qualifiés`);
+  return { ok: true, size: n, rounds, players: players.length };
+}
+
+// Applique un vainqueur sur un match et le propage au tour suivant. Re-décidable :
+// changer un vainqueur réinjecte le bon joueur en aval (et invalide l'aval périmé).
+async function tournamentSetMatchWinner(t, match, winner, score1, score2) {
+  const matchesAll = await db.getTournamentMatches(t.id);
+  const rounds = Math.max.apply(null, matchesAll.map((m) => m.round));
+  const fields = { winner: winner || null, status: winner ? 'done' : 'pending' };
+  if (score1 !== undefined) fields.score1 = (score1 === null || score1 === '') ? null : Number(score1);
+  if (score2 !== undefined) fields.score2 = (score2 === null || score2 === '') ? null : Number(score2);
+  await db.updateTournamentMatch(match.id, fields);
+
+  // Propagation en aval.
+  const byKey = {}; matchesAll.forEach((m) => { byKey[m.round + ':' + m.slot] = m; });
+  let curRound = match.round, curSlot = match.slot, feed = winner || null, prevWinner = match.winner;
+  while (curRound < rounds) {
+    const nr = nextSlotRef(curRound, curSlot);
+    const nm = byKey[nr.round + ':' + nr.slot];
+    if (!nm) break;
+    const slotField = nr.isP1 ? 'player1' : 'player2';
+    const upd = {}; upd[slotField] = feed;
+    // Si l'aval était décidé en faveur de l'ancien joueur de ce slot, on l'invalide.
+    const replaced = nm[slotField];
+    if (nm.winner && (nm.winner === replaced || nm.winner === prevWinner) && nm.winner !== feed) {
+      upd.winner = null; upd.status = 'pending';
+    }
+    await db.updateTournamentMatch(nm.id, upd);
+    // continuer la cascade uniquement si on a invalidé un vainqueur aval
+    if (upd.winner === null && (nm.winner === replaced || nm.winner === prevWinner)) {
+      prevWinner = nm.winner; feed = null; curRound = nm.round; curSlot = nm.slot;
+    } else break;
+  }
+
+  // Finale décidée → tournoi terminé + statuts champion / finaliste.
+  if (match.round === rounds && winner) {
+    const loser = (match.player1 === winner) ? match.player2 : match.player1;
+    await db.updateTournament(t.id, { status: 'finished' });
+    try {
+      const players = await db.getTournamentPlayers(t.id);
+      const next = players.map((p) => ({ username: p.username, seed: p.seed, qualif_score: p.qualif_score,
+        status: p.username === winner ? 'champion' : (p.username === loser ? 'runner_up' : (p.status === 'qualified' ? 'eliminated' : p.status)) }));
+      await db.setTournamentPlayers(t.id, next);
+    } catch (e) { console.error('[TOURNOI] statuts finale:', e.message); }
+    console.log(`[TOURNOI] #${t.id} terminé — champion=${winner}`);
+  } else if (winner) {
+    await db.updateTournament(t.id, { current_round: Math.max(t.current_round || 1, match.round) });
+  }
+  return { ok: true };
+}
+
 // Planificateur : ouvre les qualifs programmées arrivées à échéance et clôture
 // (auto-seed) celles dont la fenêtre est terminée. Tourne toutes les
 // TOURNAMENT_TICK_MS (défaut 30 s) + une fois au boot.
@@ -4700,6 +4799,61 @@ app.post('/api/admin/tournaments/:id/reseed', tournoiScope, async (req, res) => 
     const r = await tournamentSeedFromScores(t);
     if (!r.ok) return res.status(400).json({ error: r.error, message: 'Moins de 2 scores de qualif.' });
     res.json({ ok: true, qualified: r.qualified });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Bracket (Phase 3) ───────────────────────────────────────────────────────
+// Génère (ou régénère) le bracket depuis les qualifiés seedés.
+app.post('/api/admin/tournaments/:id/generate-bracket', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    if (!['seeded', 'bracket', 'finished'].includes(t.status)) return res.status(400).json({ error: 'bad_status', message: 'Le bracket se génère une fois la qualif clôturée (état « qualifiés seedés »).' });
+    const r = await tournamentGenerateBracket(t);
+    if (!r.ok) return res.status(400).json({ error: r.error, message: 'Moins de 2 qualifiés.' });
+    res.json({ ok: true, size: r.size, rounds: r.rounds });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Édite un match : vainqueur (avance au tour suivant), joueurs (forfait/correction),
+// scores. Body : { winner } | { player1 } | { player2 } | { score1, score2 } | { reset:true }.
+app.post('/api/admin/tournaments/:id/match/:mid', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    const match = await db.getTournamentMatch(Number(req.params.mid));
+    if (!match || match.tournament_id !== t.id) return res.status(404).json({ error: 'match_not_found' });
+    const b = req.body || {};
+
+    // Édition directe des joueurs d'un match (forfait → remplacer/retirer, correction).
+    if (b.player1 !== undefined || b.player2 !== undefined) {
+      const fields = {};
+      if (b.player1 !== undefined) fields.player1 = String(b.player1 || '').trim().slice(0, 40) || null;
+      if (b.player2 !== undefined) fields.player2 = String(b.player2 || '').trim().slice(0, 40) || null;
+      // Si le vainqueur n'est plus dans le match, on l'efface.
+      const p1 = fields.player1 !== undefined ? fields.player1 : match.player1;
+      const p2 = fields.player2 !== undefined ? fields.player2 : match.player2;
+      if (match.winner && match.winner !== p1 && match.winner !== p2) { fields.winner = null; fields.status = 'pending'; }
+      await db.updateTournamentMatch(match.id, fields);
+      return res.json({ ok: true });
+    }
+    // Réinitialiser le résultat.
+    if (b.reset) { await tournamentSetMatchWinner(t, match, null); return res.json({ ok: true }); }
+    // Scores seuls (sans changer le vainqueur).
+    if (b.winner === undefined && (b.score1 !== undefined || b.score2 !== undefined)) {
+      await db.updateTournamentMatch(match.id, {
+        score1: (b.score1 === null || b.score1 === '') ? null : Number(b.score1),
+        score2: (b.score2 === null || b.score2 === '') ? null : Number(b.score2),
+      });
+      return res.json({ ok: true });
+    }
+    // Désigner un vainqueur (forfait = désigner l'autre joueur).
+    const w = String(b.winner || '').trim();
+    if (w && w !== match.player1 && w !== match.player2) return res.status(400).json({ error: 'winner_not_in_match', message: 'Le vainqueur doit être un des deux joueurs du match.' });
+    await tournamentSetMatchWinner(t, match, w || null, b.score1, b.score2);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

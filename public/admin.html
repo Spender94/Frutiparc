@@ -1372,7 +1372,9 @@ async function openTournament(id) {
         </div>`;
     }
     else if (t.status === 'qualif') actions = `<button class="btn-success" onclick="closeQualif(${t.id})">Clôturer la qualif maintenant &amp; seeder</button> <span style="color:#888;font-size:12px">(sinon clôture auto à la fin de fenêtre)</span>`;
-    else if (t.status === 'seeded') actions = `<span style="color:#2f6fb0">Qualif terminée — génération du bracket à venir (Phase 3).</span>`;
+    else if (t.status === 'seeded') actions = `<button class="btn-success" onclick="generateBracket(${t.id})">Générer le bracket</button> <span style="color:#888;font-size:12px">(top ${t.bracket_size || 'N'} seedés → élimination directe)</span>`;
+    else if (t.status === 'bracket') actions = `<button class="btn" onclick="generateBracket(${t.id})">Régénérer le bracket</button> <span style="color:#888;font-size:12px">Coupe en cours — désigne les vainqueurs dans le bracket ci-dessous.</span>`;
+    else if (t.status === 'finished') actions = `<button class="btn" onclick="generateBracket(${t.id})">Régénérer le bracket</button> <span style="color:#2f8f2f;font-weight:bold">🏆 Tournoi terminé.</span>`;
     else if (t.status === 'cancelled') actions = `<span style="color:#b31111">Tournoi annulé (pas assez de joueurs en qualif).</span>`;
     // Corrections manuelles : disponibles dès que la qualif est lancée (rattrapage
     // d'horaires mal réglés / de scores corrigés à la main hors fenêtre).
@@ -1415,6 +1417,7 @@ async function openTournament(id) {
             ${ lead ? `<table><thead><tr><th>#</th><th>Joueur</th><th>Score</th></tr></thead><tbody>${lead}</tbody></table>` : '<p style="color:#999">Aucun score capturé pour le moment.</p>' }
           </div>
         </div>
+        ${ (d.matches && d.matches.length) ? `<div style="margin-top:14px"><h4 style="margin:0 0 6px">Bracket <span style="font-weight:normal;color:#888;font-size:12px">— clique ✓ pour désigner le vainqueur (forfait = désigner l'autre) · ✎ pour corriger un joueur</span></h4>${renderBracket(t, d.matches)}</div>` : '' }
       </div>`;
   } catch (e) { toast('Erreur: ' + e.message); }
 }
@@ -1453,6 +1456,75 @@ async function closeQualif(id) {
     else toast('Erreur: ' + (d.message || JSON.stringify(d)));
   } catch (e) { toast('Erreur: ' + e.message); }
 }
+// ─── Bracket ───
+function bracketRoundName(round, totalRounds) {
+  const fromEnd = totalRounds - round;
+  if (fromEnd === 0) return totalRounds === 1 ? 'Finale' : 'Finale';
+  if (fromEnd === 1) return 'Demi-finales';
+  if (fromEnd === 2) return 'Quarts de finale';
+  if (fromEnd === 3) return 'Huitièmes de finale';
+  return 'Tour ' + round;
+}
+function renderBracket(t, matches) {
+  if (!matches || !matches.length) return '';
+  const rounds = Math.max.apply(null, matches.map(m => m.round));
+  let cols = '';
+  for (let r = 1; r <= rounds; r++) {
+    const ms = matches.filter(m => m.round === r).sort((a, b) => a.slot - b.slot);
+    const cards = ms.map(m => bracketMatchCard(t, m, r === rounds)).join('');
+    cols += `<div style="min-width:196px;flex:0 0 auto"><div style="font-weight:bold;font-size:12px;color:#555;margin-bottom:6px">${bracketRoundName(r, rounds)}</div>${cards}</div>`;
+  }
+  return `<div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:6px;align-items:flex-start">${cols}</div>`;
+}
+function bracketMatchCard(t, m, isFinal) {
+  const playerRow = (name, who) => {
+    const isWin = m.winner && m.winner === name;
+    const sc = who === 1 ? m.score1 : m.score2;
+    const label = name ? esc(name) : '<i style="color:#bbb">— à déterminer —</i>';
+    const nameJs = name ? name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
+    return `<div style="display:flex;align-items:center;gap:4px;padding:3px 5px;border-radius:4px;${isWin ? 'background:#d6f0d6' : ''}">
+      <span style="flex:1;font-size:12px;${isWin ? 'font-weight:bold' : ''};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isWin ? '🏆 ' : ''}${label}${sc != null ? ` <span style="color:#888">(${sc})</span>` : ''}</span>
+      ${name ? `<button class="btn btn-sm" title="Désigner vainqueur (forfait = désigner l'autre)" style="padding:0 6px" onclick="matchWin(${t.id},${m.id},'${nameJs}')">✓</button>` : ''}
+      <button class="btn btn-sm" title="Modifier ce joueur" style="padding:0 5px" onclick="matchEditPlayer(${t.id},${m.id},${who},'${nameJs}')">✎</button>
+    </div>`;
+  };
+  const decided = !!m.winner;
+  return `<div style="border:1px solid ${decided ? '#bcd9bc' : '#ddd'};border-radius:6px;padding:4px;margin-bottom:8px;background:#fff">
+    ${playerRow(m.player1, 1)}
+    <div style="height:1px;background:#eee;margin:1px 0"></div>
+    ${playerRow(m.player2, 2)}
+    ${m.winner ? `<div style="text-align:right;margin-top:2px"><a href="#" onclick="matchReset(${t.id},${m.id});return false" style="font-size:10px;color:#999">réinitialiser</a></div>` : ''}
+  </div>`;
+}
+function postMatch(tid, mid, body) {
+  return fetch('/api/admin/tournaments/' + tid + '/match/' + mid, { method: 'POST', headers: hdr(), body: JSON.stringify(body) })
+    .then(r => r.json()).then(d => { if (d && !d.ok) toast('Erreur: ' + (d.message || JSON.stringify(d))); return d; })
+    .catch(e => { toast('Erreur: ' + e.message); return null; });
+}
+async function matchWin(tid, mid, winner) {
+  const d = await postMatch(tid, mid, { winner });
+  if (d && d.ok) { toast('Vainqueur : ' + winner); loadTournaments(); openTournament(tid); }
+}
+async function matchReset(tid, mid) {
+  const d = await postMatch(tid, mid, { reset: true });
+  if (d && d.ok) { toast('Match réinitialisé'); openTournament(tid); }
+}
+async function matchEditPlayer(tid, mid, who, current) {
+  const name = prompt('Joueur ' + who + ' (pseudo exact ; vide = retirer) :', current || '');
+  if (name === null) return;
+  const body = {}; body['player' + who] = name.trim();
+  const d = await postMatch(tid, mid, body);
+  if (d && d.ok) { toast('Joueur modifié'); openTournament(tid); }
+}
+async function generateBracket(tid) {
+  if (!confirm('Générer le bracket depuis les qualifiés seedés ?\n⚠️ Régénérer efface les résultats de bracket déjà saisis.')) return;
+  try {
+    const d = await (await fetch('/api/admin/tournaments/' + tid + '/generate-bracket', { method: 'POST', headers: hdr() })).json();
+    if (d && d.ok) { toast('Bracket généré (' + d.size + ' places)'); loadTournaments(); openTournament(tid); }
+    else toast('Erreur: ' + (d.message || JSON.stringify(d)));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
 // ─── Corrections manuelles ───
 async function reopenQualif(id) {
   const v = $('#t-reopen-end').value;

@@ -2136,6 +2136,28 @@ async function getTournamentMatches(id) {
     `SELECT * FROM tournament_matches WHERE tournament_id = $1 ORDER BY round ASC, slot ASC`, [id]);
   return rows;
 }
+async function getTournamentMatch(matchId) {
+  const { rows } = await pool.query(`SELECT * FROM tournament_matches WHERE id = $1`, [matchId]);
+  return rows[0] || null;
+}
+// Remplace tout le bracket d'un tournoi (régénération depuis les seeds).
+async function setTournamentMatches(tid, matches) {
+  await pool.query(`DELETE FROM tournament_matches WHERE tournament_id = $1`, [tid]);
+  for (const m of matches) {
+    await pool.query(
+      `INSERT INTO tournament_matches (tournament_id, round, slot, player1, player2, score1, score2, winner, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [tid, m.round, m.slot, m.player1 || null, m.player2 || null,
+       m.score1 == null ? null : m.score1, m.score2 == null ? null : m.score2,
+       m.winner || null, m.status || 'pending']);
+  }
+}
+async function updateTournamentMatch(matchId, fields) {
+  const keys = Object.keys(fields);
+  if (!keys.length) return;
+  const sets = keys.map((k, i) => `${k} = $${i + 2}`);
+  await pool.query(`UPDATE tournament_matches SET ${sets.join(', ')} WHERE id = $1`, [matchId, ...keys.map((k) => fields[k])]);
+}
 // Écrasement direct : le serveur a déjà décidé que ce score est le meilleur du tour.
 async function upsertRoundScore(tid, round, username, score, data) {
   await pool.query(
@@ -2177,6 +2199,9 @@ module.exports = {
   getTournamentPlayers,
   setTournamentPlayers,
   getTournamentMatches,
+  getTournamentMatch,
+  setTournamentMatches,
+  updateTournamentMatch,
   upsertRoundScore,
   getRoundScores,
   getActiveTournaments,
