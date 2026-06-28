@@ -335,6 +335,8 @@
 </style>
 <!-- Pré-réchauffage du cache PNG des bouilles (bouton « Réchauffer » + auto-import). -->
 <script src="/js/bouille-thumb.js"></script>
+<!-- Palette de couleurs + noms d'accessoires (sélecteur visuel de l'éditeur d'accessoires). -->
+<script src="/js/bouille-palette.js"></script>
 </head>
 <body>
 
@@ -2772,14 +2774,19 @@ async function loadShop() {
 
 // ── Bouille preview for pack editor ──
 const SUFFIX_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+// kind: 'accessory' → noms d'accessoires (0-16) ; 'color' → palette 53 couleurs ;
+// 'raw' → grille de caractères base62 (variante/modèle, hors palette). Pour color
+// et accessory, la valeur = index sur le caractère de POIDS FAIBLE de la paire
+// (le poids fort reste '0'), ce qui correspond au decode62 du SWF.
 const SUFFIX_GROUPS = [
-  { label: 'Type', positions: [0, 1], hint: 'Type d\'accessoire' },
-  { label: 'Variante', positions: [2, 3], hint: 'Variante / modèle' },
-  { label: 'Couleur 1', positions: [4, 5], hint: 'Couleur principale' },
-  { label: 'Couleur 2', positions: [6, 7], hint: 'Couleur secondaire' },
-  { label: 'Couleur 3', positions: [8], hint: 'Couleur tertiaire' },
+  { label: 'Type d\'accessoire', positions: [0, 1], hint: 'Modèle d\'accessoire', kind: 'accessory' },
+  { label: 'Variante', positions: [2, 3], hint: 'Variante / modèle (brut)', kind: 'raw' },
+  { label: 'Couleur 1', positions: [4, 5], hint: 'Couleur principale', kind: 'color' },
+  { label: 'Couleur 2', positions: [6, 7], hint: 'Couleur secondaire', kind: 'color' },
+  { label: 'Couleur 3', positions: [8], hint: 'Couleur tertiaire', kind: 'color' },
 ];
-let packSelectedPos = -1;
+let packSelectedPos = -1;     // pour les groupes 'raw'
+let packSelectedGroup = -1;   // index du groupe color/accessory ouvert
 
 function updatePackPreview() {
   const base = $('#pack-base').value || '0004060h0407000';
@@ -2789,36 +2796,87 @@ function updatePackPreview() {
   renderSuffixEditor(suffix);
 }
 
+// Lit/écrit l'index d'un groupe (sur le caractère de poids faible = dernière pos).
+function groupValue(suffix, group) {
+  const lo = group.positions[group.positions.length - 1];
+  return FPBouille.dec(suffix[lo] || '0');
+}
+function setGroupValue(group, idx) {
+  let suffix = ($('#pack-suffix9').value || '').padEnd(9, '0').substring(0, 9);
+  const lo = group.positions[group.positions.length - 1];
+  suffix = suffix.substring(0, lo) + FPBouille.enc(idx) + suffix.substring(lo + 1);
+  if (group.positions.length > 1) { const hi = group.positions[0]; suffix = suffix.substring(0, hi) + '0' + suffix.substring(hi + 1); }
+  $('#pack-suffix9').value = suffix;
+  updatePackPreview();
+}
+
 function renderSuffixEditor(suffix) {
   const container = $('#pack-suffix-editor');
   let html = '';
-  for (const group of SUFFIX_GROUPS) {
-    html += `<div style="margin-bottom:6px"><div style="font-size:10px;font-weight:bold;color:#555;margin-bottom:2px">${group.label}</div><div style="display:flex;gap:2px;align-items:center">`;
-    for (const pos of group.positions) {
-      const active = pos === packSelectedPos;
-      const ch = suffix[pos] || '0';
-      html += `<div onclick="selectPackPos(${pos})" style="width:22px;height:24px;line-height:24px;text-align:center;font-size:12px;font-family:monospace;font-weight:bold;border:2px solid ${active ? '#0066CC' : '#ccc'};border-radius:4px;cursor:pointer;background:${active ? '#0066CC' : '#fff'};color:${active ? '#fff' : '#333'}">${ch}</div>`;
+  SUFFIX_GROUPS.forEach((group, gi) => {
+    html += `<div style="margin-bottom:6px"><div style="font-size:10px;font-weight:bold;color:#555;margin-bottom:2px">${group.label}</div>`;
+    if (group.kind === 'color') {
+      const idx = groupValue(suffix, group);
+      const hex = FPBouille.colorHex(idx);
+      html += `<div onclick="togglePackGroup(${gi})" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;border:2px solid ${packSelectedGroup === gi ? '#0066CC' : '#ccc'};border-radius:5px;padding:2px 6px;background:#fff">
+        <span style="width:18px;height:18px;border-radius:3px;border:1px solid #999;background:${hex}"></span>
+        <span style="font-size:11px;color:#333">${esc(FPBouille.colorName(idx))} <span style="color:#999">(${idx})</span></span>
+        <span style="font-size:9px;color:#0066CC">${packSelectedGroup === gi ? '▲' : '▼ palette'}</span></div>`;
+    } else if (group.kind === 'accessory') {
+      const idx = groupValue(suffix, group);
+      html += `<div onclick="togglePackGroup(${gi})" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;border:2px solid ${packSelectedGroup === gi ? '#0066CC' : '#ccc'};border-radius:5px;padding:2px 6px;background:#fff">
+        <span style="font-size:11px;font-weight:bold;color:#333">${esc(FPBouille.accName(idx))} <span style="color:#999">(${idx})</span></span>
+        <span style="font-size:9px;color:#0066CC">${packSelectedGroup === gi ? '▲' : '▼ liste'}</span></div>`;
+    } else {
+      html += `<div style="display:flex;gap:2px;align-items:center">`;
+      for (const pos of group.positions) {
+        const active = pos === packSelectedPos;
+        const ch = suffix[pos] || '0';
+        html += `<div onclick="selectPackPos(${pos})" style="width:22px;height:24px;line-height:24px;text-align:center;font-size:12px;font-family:monospace;font-weight:bold;border:2px solid ${active ? '#0066CC' : '#ccc'};border-radius:4px;cursor:pointer;background:${active ? '#0066CC' : '#fff'};color:${active ? '#fff' : '#333'}">${ch}</div>`;
+      }
+      html += `<span style="font-size:9px;color:#999;margin-left:4px">${group.hint}</span></div>`;
     }
-    html += `<span style="font-size:9px;color:#999;margin-left:4px">${group.hint}</span></div></div>`;
-  }
-  if (packSelectedPos >= 0) {
-    html += `<div style="margin-top:6px;padding:6px;background:#f5f5f5;border-radius:4px;border:1px solid #ddd">`;
-    html += `<div style="font-size:10px;color:#666;margin-bottom:4px">Valeur position ${packSelectedPos} :</div>`;
-    html += `<div style="display:flex;gap:2px;flex-wrap:wrap">`;
-    for (let i = 0; i < SUFFIX_CHARS.length; i++) {
-      const c = SUFFIX_CHARS[i];
-      const isCurrent = suffix[packSelectedPos] === c;
-      html += `<button onclick="setPackChar('${c}')" style="width:18px;height:18px;font-size:9px;padding:0;border:1px solid ${isCurrent ? '#0066CC' : '#ccc'};border-radius:3px;cursor:pointer;background:${isCurrent ? '#0066CC' : '#fff'};color:${isCurrent ? '#fff' : '#333'};font-weight:${isCurrent ? 'bold' : 'normal'}">${c}</button>`;
+    // Sélecteur déployé sous le groupe actif.
+    if (packSelectedGroup === gi && group.kind === 'color') {
+      const cur = groupValue(suffix, group);
+      html += `<div style="margin-top:4px;padding:6px;background:#faf7f9;border:1px solid #e6d6e0;border-radius:5px;display:flex;flex-wrap:wrap;gap:3px;max-width:340px">`;
+      for (let i = 0; i < FPBouille.COLORS.length; i++) {
+        const sel = i === cur;
+        html += `<span onclick="setPackColor(${gi},${i})" title="${esc(FPBouille.colorName(i))} (${i})" style="width:20px;height:20px;border-radius:4px;cursor:pointer;background:${FPBouille.colorHex(i)};border:2px solid ${sel ? '#0066CC' : 'rgba(0,0,0,.15)'};box-shadow:${sel ? '0 0 0 1px #fff inset' : 'none'}"></span>`;
+      }
+      html += `</div>`;
+    } else if (packSelectedGroup === gi && group.kind === 'accessory') {
+      const cur = groupValue(suffix, group);
+      html += `<div style="margin-top:4px;padding:6px;background:#f5f7fa;border:1px solid #d6dee6;border-radius:5px;display:flex;flex-wrap:wrap;gap:4px;max-width:340px">`;
+      for (let i = 0; i < FPBouille.ACCESSORIES.length; i++) {
+        const sel = i === cur;
+        html += `<button onclick="setPackAccessory(${gi},${i})" style="font-size:11px;padding:2px 7px;border-radius:10px;cursor:pointer;border:1px solid ${sel ? '#0066CC' : '#ccc'};background:${sel ? '#0066CC' : '#fff'};color:${sel ? '#fff' : '#333'};font-weight:${sel ? 'bold' : 'normal'}">${esc(FPBouille.accName(i))}</button>`;
+      }
+      html += `</div>`;
     }
-    html += `</div></div>`;
-  }
+    html += `</div>`;
+  });
   container.innerHTML = html;
 }
 
+function togglePackGroup(gi) { packSelectedGroup = (packSelectedGroup === gi) ? -1 : gi; packSelectedPos = -1; renderSuffixEditor(($('#pack-suffix9').value || '').padEnd(9, '0').substring(0, 9)); }
+function setPackColor(gi, idx) { setGroupValue(SUFFIX_GROUPS[gi], idx); }
+function setPackAccessory(gi, idx) { setGroupValue(SUFFIX_GROUPS[gi], idx); }
+
 function selectPackPos(pos) {
-  packSelectedPos = pos;
+  packSelectedPos = pos; packSelectedGroup = -1;
   const suffix = ($('#pack-suffix9').value || '').padEnd(9, '0').substring(0, 9);
   renderSuffixEditor(suffix);
+  // déployer la grille brute sous l'éditeur
+  const container = $('#pack-suffix-editor');
+  let extra = `<div style="margin-top:6px;padding:6px;background:#f5f5f5;border-radius:4px;border:1px solid #ddd"><div style="font-size:10px;color:#666;margin-bottom:4px">Valeur position ${pos} (brut) :</div><div style="display:flex;gap:2px;flex-wrap:wrap;max-width:340px">`;
+  for (let i = 0; i < SUFFIX_CHARS.length; i++) {
+    const c = SUFFIX_CHARS[i];
+    const isCurrent = suffix[pos] === c;
+    extra += `<button onclick="setPackChar('${c}')" style="width:18px;height:18px;font-size:9px;padding:0;border:1px solid ${isCurrent ? '#0066CC' : '#ccc'};border-radius:3px;cursor:pointer;background:${isCurrent ? '#0066CC' : '#fff'};color:${isCurrent ? '#fff' : '#333'};font-weight:${isCurrent ? 'bold' : 'normal'}">${c}</button>`;
+  }
+  extra += `</div></div>`;
+  container.insertAdjacentHTML('beforeend', extra);
 }
 
 function setPackChar(c) {
@@ -2827,11 +2885,13 @@ function setPackChar(c) {
   suffix = suffix.substring(0, packSelectedPos) + c + suffix.substring(packSelectedPos + 1);
   $('#pack-suffix9').value = suffix;
   updatePackPreview();
+  // garder la grille brute ouverte
+  const keep = packSelectedPos; selectPackPos(keep);
 }
 
 function openAddPack() {
   editingPackId = null;
-  packSelectedPos = -1;
+  packSelectedPos = -1; packSelectedGroup = -1;
   $('#pack-modal-title').textContent = 'Nouvel accessoire boutique';
   $('#pack-id').value = '';
   $('#pack-id').disabled = false;
@@ -2851,7 +2911,7 @@ function editPack(id) {
   const p = shopPacks.find(x => x.id === id);
   if (!p) return;
   editingPackId = id;
-  packSelectedPos = -1;
+  packSelectedPos = -1; packSelectedGroup = -1;
   $('#pack-modal-title').textContent = `Modifier : ${p.name}`;
   $('#pack-id').value = p.id;
   $('#pack-id').disabled = true;

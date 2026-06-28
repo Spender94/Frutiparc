@@ -244,6 +244,17 @@
   .fb-arrow:active { background: #efa6a6; }
   .fb-label { flex: 1 1 auto; text-align: center; color: #7b7b7b; font-size: 14px; }
   .fb-bar { flex: 1 1 auto; height: 18px; border-radius: 9px; border: 1px solid rgba(0, 0, 0, .14); }
+  /* Sélecteur de couleur : pastille cliquable + libellé de la couleur courante. */
+  .fb-color { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .fb-color .sw { width: 34px; height: 22px; border-radius: 7px; border: 1px solid rgba(0,0,0,.2); flex: 0 0 auto; }
+  .fb-color .cl { font-size: 12.5px; color: #7b7b7b; }
+  .fb-color .cl b { color: #2f8f86; }
+  #fb-palette { display: none; margin: 8px 0 2px; padding: 8px; background: #f7faf2; border: 1px solid #d9e6c4; border-radius: 10px; }
+  #fb-palette.show { display: block; }
+  #fb-palette-title { font-size: 12px; font-weight: bold; color: #2f8f86; margin-bottom: 6px; }
+  #fb-palette-grid { display: flex; flex-wrap: wrap; gap: 5px; max-height: 168px; overflow-y: auto; }
+  .fb-pal-sw { width: 28px; height: 28px; border-radius: 6px; cursor: pointer; border: 2px solid rgba(0,0,0,.12); }
+  .fb-pal-sw.sel { border-color: #2f8f86; box-shadow: 0 0 0 2px #fff inset; }
   .fb-valider {
     display: block; margin: 2px auto 0; padding: 7px 32px;
     border: 1px solid #e29b9b; border-radius: 16px; background: #f3a9a9;
@@ -839,6 +850,8 @@
 </style>
 <!-- Miniatures de bouilles rapides (cache PNG /bouille-img) pour le Bouilloscope. -->
 <script src="/js/bouille-thumb.js"></script>
+<!-- Palette de couleurs (sélecteur visuel de l'éditeur « Ma Frutibouille »). -->
+<script src="/js/bouille-palette.js"></script>
 </head>
 <body>
 
@@ -1087,6 +1100,7 @@
     <div class="fb-titletab"><img src="/fb/icone_bouille.png" alt="">Ma Frutibouille</div>
     <div class="fb-preview" id="fb-editor-preview"></div>
     <div class="fb-rows" id="fb-editor-rows"></div>
+    <div id="fb-palette"><div id="fb-palette-title"></div><div id="fb-palette-grid"></div></div>
     <button class="fb-valider" id="fb-editor-valider" type="button">valider</button>
   </div>
 </div>
@@ -2694,11 +2708,10 @@
     { key: "iris",    label: "iris",    pos: 5,  max: 11 },
     { key: "cheveux", label: "cheveux", pos: 7,  max: 14 },
     { key: "bouche",  label: "bouche",  pos: 9,  max: 11 },
-    // Les 2 barres = sélecteurs de couleur (peau / cheveux). La couleur de la
-    // barre est indicative (cf. screen) ; le vrai rendu est dans la preview,
-    // faute de table valeur→RGB côté client.
-    { key: "peau",    bar: "#5b3a24",   pos: 11, max: 14 },
-    { key: "colch",   bar: "#e7a6a6",   pos: 13, max: 14 },
+    // Couleurs : pos 11 = peau, pos 13 = cheveux (vérifié). Sélecteur de palette
+    // (53 couleurs, cf. /js/bouille-palette.js) au lieu d'un défilement à l'aveugle.
+    { key: "peau",    label: "couleur peau",    pos: 11, max: 52, color: true },
+    { key: "colch",   label: "couleur cheveux", pos: 13, max: 52, color: true },
   ];
   var fbState = DEFAULT_BOUILLE;   // l'état 24-car. en cours d'édition
   var fbRowsBuilt = false;
@@ -2732,7 +2745,18 @@
   function fbCycle(part, dir) {
     var span = (part.max || 0) + 1;
     fbSet(part.pos, ((fbGet(part.pos) + dir) % span + span) % span);
+    if (part.color) fbRefreshColorRow(part);
     fbRenderPreviewSoon();
+  }
+  // Contenu du centre d'une ligne couleur : pastille + nom de la couleur courante.
+  function fbColorCenterHtml(part) {
+    var idx = fbGet(part.pos);
+    return '<span class="sw" style="background:' + FPBouille.colorHex(idx) + '"></span>'
+      + '<span class="cl">' + part.label + ' : <b>' + xmlEscape(FPBouille.colorName(idx)) + '</b></span>';
+  }
+  function fbRefreshColorRow(part) {
+    var c = document.getElementById("fb-color-" + part.key);
+    if (c) c.innerHTML = fbColorCenterHtml(part);
   }
   function fbBuildRows() {
     var rows = $("#fb-editor-rows");
@@ -2742,8 +2766,12 @@
       var left = el("button", "fb-arrow"); left.type = "button"; left.innerHTML = "&#9664;";
       var right = el("button", "fb-arrow"); right.type = "button"; right.innerHTML = "&#9654;";
       var center;
-      if (part.bar) { center = el("div", "fb-bar"); center.style.background = part.bar; }
-      else { center = el("div", "fb-label"); center.textContent = part.label; }
+      if (part.color) {
+        // Centre = pastille couleur + libellé ; un tap ouvre la palette.
+        center = el("div", "fb-color"); center.id = "fb-color-" + part.key;
+        center.innerHTML = fbColorCenterHtml(part);
+        center.addEventListener("click", function () { fbOpenPalette(part); });
+      } else { center = el("div", "fb-label"); center.textContent = part.label; }
       left.addEventListener("click", function () { fbCycle(part, -1); });
       right.addEventListener("click", function () { fbCycle(part, 1); });
       row.appendChild(left); row.appendChild(center); row.appendChild(right);
@@ -2752,14 +2780,42 @@
     fbRowsBuilt = true;
   }
 
+  // Palette de couleurs (53 nuances) — sélecteur visuel inline.
+  var fbPalPart = null;
+  function fbOpenPalette(part) {
+    var pal = $("#fb-palette");
+    if (fbPalPart === part && pal.classList.contains("show")) { pal.classList.remove("show"); fbPalPart = null; return; }
+    fbPalPart = part;
+    var cur = fbGet(part.pos);
+    $("#fb-palette-title").textContent = "Choisis la " + part.label;
+    var grid = $("#fb-palette-grid"); grid.innerHTML = "";
+    FPBouille.COLORS.forEach(function (c, i) {
+      var sw = el("div", "fb-pal-sw" + (i === cur ? " sel" : ""));
+      sw.style.background = c.hex; sw.title = c.name + " (" + i + ")";
+      sw.addEventListener("click", function () { fbPickColor(part, i); });
+      grid.appendChild(sw);
+    });
+    pal.classList.add("show");
+  }
+  function fbPickColor(part, idx) {
+    fbSet(part.pos, idx);
+    fbRefreshColorRow(part);
+    Array.prototype.forEach.call($("#fb-palette-grid").children, function (sw, i) { sw.classList.toggle("sel", i === idx); });
+    fbRenderPreviewSoon();
+  }
+  function fbHidePalette() { var p = $("#fb-palette"); if (p) p.classList.remove("show"); fbPalPart = null; }
+
   function openFbEditor(initial) {
     fbState = fbPad(initial && initial.length >= 15 ? initial : DEFAULT_BOUILLE);
     if (!fbRowsBuilt) fbBuildRows();
+    else FB_PARTS.forEach(function (p) { if (p.color) fbRefreshColorRow(p); });
+    fbHidePalette();
     fbRenderPreview();
     $("#fb-editor-backdrop").classList.add("show");
     $("#fb-editor").classList.add("show");
   }
   function closeFbEditor() {
+    fbHidePalette();
     $("#fb-editor-backdrop").classList.remove("show");
     $("#fb-editor").classList.remove("show");
   }
