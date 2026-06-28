@@ -234,14 +234,16 @@
   .fb-preview iframe { width: 100%; height: 100%; border: 0; display: block; }
   .fb-rows { display: flex; flex-direction: column; gap: 9px; margin: 8px 2px 14px; }
   .fb-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  /* Flèches = icônes fournies (normal + pressed au tap), au lieu des boutons CSS. */
   .fb-arrow {
-    flex: 0 0 auto; width: 48px; height: 26px; padding: 0;
-    border: 1px solid #e29b9b; border-radius: 9px; background: #f6bcbc;
-    color: #fff; font-size: 12px; line-height: 1; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    -webkit-user-select: none; user-select: none;
+    flex: 0 0 auto; width: 46px; height: 40px; padding: 0; border: 0; cursor: pointer;
+    background: transparent no-repeat center / contain;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
   }
-  .fb-arrow:active { background: #efa6a6; }
+  .fb-arrow.lft { background-image: url('/fb/icone_fleche_gauche.png'); }
+  .fb-arrow.rgt { background-image: url('/fb/icone_fleche_droite.png'); }
+  .fb-arrow.lft:active { background-image: url('/fb/icone_gauche_pressed.png'); }
+  .fb-arrow.rgt:active { background-image: url('/fb/icone_fleche_droite_pressed.png'); }
   .fb-label { flex: 1 1 auto; text-align: center; color: #7b7b7b; font-size: 14px; }
   /* Barre couleur (peau / cheveux) : montre la vraie couleur ; ◄ ► font défiler. */
   .fb-bar { flex: 1 1 auto; height: 22px; border-radius: 9px; border: 1px solid rgba(0, 0, 0, .18); cursor: default; }
@@ -2752,8 +2754,8 @@
     rows.innerHTML = "";
     FB_PARTS.forEach(function (part) {
       var row = el("div", "fb-row");
-      var left = el("button", "fb-arrow"); left.type = "button"; left.innerHTML = "&#9664;";
-      var right = el("button", "fb-arrow"); right.type = "button"; right.innerHTML = "&#9654;";
+      var left = el("button", "fb-arrow lft"); left.type = "button"; left.setAttribute("aria-label", "précédent");
+      var right = el("button", "fb-arrow rgt"); right.type = "button"; right.setAttribute("aria-label", "suivant");
       var center;
       if (part.color) {
         center = el("div", "fb-bar"); center.id = "fb-bar-" + part.key;
