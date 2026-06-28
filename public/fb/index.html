@@ -1908,10 +1908,12 @@ async function loadTopic(topicId, page) {
     } else if (data.topic.postRestricted && !data.currentIsMod) {
       html += '<span class="reply-blocked">Seuls les modérateurs peuvent répondre dans ce forum.</span>';
     } else if (data.topic.lastPostBy && currentUser
-               && data.topic.lastPostBy === String(currentUser).toLowerCase()) {
+               && data.topic.lastPostBy === String(currentUser).toLowerCase()
+               && !data.currentIsStaff) {
       // The current user is already the author of the most recent post on
       // this topic — hide the Répondre button silently. They can edit
       // their previous post or wait for someone else to reply.
+      // Exception: moderators/animateurs may post consecutively.
     } else {
       html += '<a href="#" onclick="showReplyForm();return false" class="img-btn"><img src="/fb/reply.gif" alt="Répondre"></a>';
     }

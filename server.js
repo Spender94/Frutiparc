@@ -11400,6 +11400,8 @@ app.get('/api/forum/topic/:id', async (req, res) => {
       },
       posts: postsOut, total, page, perPage: FORUM_POSTS_PER_PAGE,
       currentIsMod: !!currentIsMod,
+      // Staff = modérateur OU animateur : autorisé à poster à la suite (double-post).
+      currentIsStaff: isForumStaff(currentUser),
       poll, canManagePoll,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -11664,7 +11666,8 @@ app.post('/api/forum/post', async (req, res) => {
     // messages on the same topic. They must edit their previous post or
     // wait for someone else to reply first. `last_post_by` is maintained
     // by forumCreateTopic + forumCreatePost so it stays in sync.
-    if (String(topic.last_post_by || '').toLowerCase() === String(username).toLowerCase()) {
+    // Exception : modérateurs et animateurs peuvent poster à la suite.
+    if (!isForumStaff(username) && String(topic.last_post_by || '').toLowerCase() === String(username).toLowerCase()) {
       return res.status(403).json({
         error: 'double_post',
         message: "Tu ne peux pas poster deux messages d'affilée sur le même sujet. Édite ton message précédent ou attends qu'un autre Frutiz réponde.",
