@@ -1356,7 +1356,7 @@ async function openTournament(id) {
       const planLabel = t.status === 'scheduled' ? 'Reprogrammer' : 'Programmer';
       actions = `
         <div style="border:1px dashed #aac;padding:10px;border-radius:6px;font-size:13px">
-          <b>Fenêtre de qualif (phase 1)</b>
+          <b>Fenêtre de qualif (phase 1)</b> <span style="color:#888;font-weight:normal">— heures en <b>heure de Paris</b> (celle de ton navigateur)</span>
           <div style="margin:6px 0">
             <label>Début : <input type="datetime-local" id="t-qstart" value="${toLocalInput(t.qualif_start)}"></label>
             <label style="margin-left:10px">Fin : <input type="datetime-local" id="t-qend" value="${toLocalInput(t.qualif_end)}"></label>
@@ -1372,6 +1372,29 @@ async function openTournament(id) {
     else if (t.status === 'qualif') actions = `<button class="btn-success" onclick="closeQualif(${t.id})">Clôturer la qualif maintenant &amp; seeder</button> <span style="color:#888;font-size:12px">(sinon clôture auto à la fin de fenêtre)</span>`;
     else if (t.status === 'seeded') actions = `<span style="color:#2f6fb0">Qualif terminée — génération du bracket à venir (Phase 3).</span>`;
     else if (t.status === 'cancelled') actions = `<span style="color:#b31111">Tournoi annulé (pas assez de joueurs en qualif).</span>`;
+    // Corrections manuelles : disponibles dès que la qualif est lancée (rattrapage
+    // d'horaires mal réglés / de scores corrigés à la main hors fenêtre).
+    let manualPanel = '';
+    if (['qualif', 'seeded', 'bracket', 'finished', 'cancelled'].includes(t.status)) {
+      manualPanel = `
+        <div style="border:1px dashed #d39; background:#fff7fb; padding:10px; border-radius:6px; margin:10px 0; font-size:13px">
+          <b>🛠️ Modifications manuelles</b>
+          <div style="color:#888;margin:4px 0 8px">Les heures sont en <b>heure de Paris</b> (celle de ton navigateur).</div>
+          <div style="margin:8px 0">
+            <label>Nouvelle fin de qualif : <input type="datetime-local" id="t-reopen-end" value="${toLocalInput(t.qualif_end)}"></label>
+            <button class="btn-success btn-sm" onclick="reopenQualif(${t.id})">Rouvrir / prolonger la qualif</button>
+            <div style="color:#888;margin-top:3px">Repasse le tournoi en « qualif » jusqu'à cette heure ; les scores déjà enregistrés sont conservés. Fin actuelle : <b>${t.qualif_end ? tFmtDate(t.qualif_end) : '—'}</b>.</div>
+          </div>
+          <div style="margin:8px 0">
+            <label>Pseudo : <input id="t-rs-user" style="width:150px" placeholder="Pseudo exact"></label>
+            <label style="margin-left:6px">Score : <input id="t-rs-score" type="number" style="width:120px"></label>
+            <button class="btn btn-sm" onclick="setRoundScore(${t.id})">Enregistrer le score de qualif</button>
+            <div style="color:#888;margin-top:3px">Crée/corrige le score de qualif d'un joueur (utile si un score a été modifié à la main hors fenêtre).</div>
+          </div>
+          ${t.status === 'seeded' ? `<div style="margin:8px 0"><button class="btn btn-sm" onclick="reseed(${t.id})">Re-seeder depuis les scores</button> <span style="color:#888">Re-fige le top ${t.bracket_size || 'N'} d'après les scores de qualif actuels.</span></div>` : ''}
+          <div style="margin-top:6px"><button class="btn btn-sm" style="background:#c10000;color:#fff" onclick="deleteTournament(${t.id})">Supprimer le tournoi</button></div>
+        </div>`;
+    }
     const win = (t.qualif_start || t.qualif_end) ? ` · Qualif : <b>${t.qualif_start?tFmtDate(t.qualif_start):'?'}</b> → <b>${t.qualif_end?tFmtDate(t.qualif_end):'?'}</b>` : '';
     const lead = (d.roundScores||[]).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.username)}</td><td>${r.score}</td></tr>`).join('');
     const players = (d.players||[]).map(p=>`<tr><td>${p.seed}</td><td><b>${esc(p.username)}</b></td><td>${p.qualif_score}</td></tr>`).join('');
@@ -1383,6 +1406,7 @@ async function openTournament(id) {
           ${t.best_qualifier ? ' · Meilleur qualifié : <b>'+esc(t.best_qualifier)+'</b>' : ''}
         </div>
         <div style="margin-bottom:10px">${actions}</div>
+        ${manualPanel}
         <div style="display:flex;gap:24px;flex-wrap:wrap">
           ${ players ? `<div><h4 style="margin:0 0 4px">Qualifiés (seedés)</h4><table><thead><tr><th>Seed</th><th>Joueur</th><th>Score qualif</th></tr></thead><tbody>${players}</tbody></table></div>` : '' }
           <div><h4 style="margin:0 0 4px">Classement du tour courant ${t.status==='qualif'?'(live)':''}</h4>
@@ -1424,6 +1448,38 @@ async function closeQualif(id) {
   try {
     const d = await (await fetch('/api/admin/tournaments/'+id+'/close-qualif', { method:'POST', headers: hdr() })).json();
     if (d && d.ok) { toast(d.qualified.length + ' qualifiés seedés'); loadTournaments(); openTournament(id); }
+    else toast('Erreur: ' + (d.message || JSON.stringify(d)));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+// ─── Corrections manuelles ───
+async function reopenQualif(id) {
+  const v = $('#t-reopen-end').value;
+  if (!v) { toast('Choisis une nouvelle fin de qualif.'); return; }
+  const end = new Date(v);
+  if (isNaN(end.getTime())) { toast('Date invalide.'); return; }
+  if (end.getTime() <= Date.now()) { toast('La nouvelle fin doit être dans le futur.'); return; }
+  if (!confirm('Rouvrir la qualif jusqu\'au ' + end.toLocaleString('fr-FR') + ' (heure de Paris) ?\nLes scores déjà enregistrés sont conservés.')) return;
+  try {
+    const d = await (await fetch('/api/admin/tournaments/' + id + '/reopen-qualif', { method: 'POST', headers: hdr(), body: JSON.stringify({ qualif_end: end.toISOString() }) })).json();
+    if (d && d.ok) { toast('Qualif rouverte (fin ' + tFmtDate(d.qualif_end) + ')'); loadTournaments(); openTournament(id); }
+    else toast('Erreur: ' + (d.message || JSON.stringify(d)));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function setRoundScore(id) {
+  const u = ($('#t-rs-user').value || '').trim();
+  const s = $('#t-rs-score').value;
+  if (!u || s === '') { toast('Renseigne le pseudo et le score.'); return; }
+  try {
+    const d = await (await fetch('/api/admin/tournaments/' + id + '/round-score', { method: 'POST', headers: hdr(), body: JSON.stringify({ username: u, score: Number(s) }) })).json();
+    if (d && d.ok) { toast('Score de qualif enregistré pour ' + u); openTournament(id); }
+    else toast('Erreur: ' + (d.message || JSON.stringify(d)));
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function reseed(id) {
+  if (!confirm('Re-figer le classement seedé d\'après les scores de qualif actuels ?')) return;
+  try {
+    const d = await (await fetch('/api/admin/tournaments/' + id + '/reseed', { method: 'POST', headers: hdr() })).json();
+    if (d && d.ok) { toast(d.qualified.length + ' qualifiés re-seedés'); loadTournaments(); openTournament(id); }
     else toast('Erreur: ' + (d.message || JSON.stringify(d)));
   } catch (e) { toast('Erreur: ' + e.message); }
 }

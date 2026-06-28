@@ -1795,18 +1795,28 @@ async function tournamentOpenQualif(t) {
   console.log(`[TOURNOI] qualif ouverte #${t.id} (${t.ranking_id}) → fin ${t.qualif_end}`);
 }
 
-// Clôture la qualif : classe le round 0, retient le top N et seede 1..N.
+// Classe le round 0 et fige le top N seedé 1..N (sans toucher au statut ni à la
+// fenêtre). Réutilisé par la clôture ET par le re-seed manuel après correction.
 // → { ok:true, qualified } | { ok:false, error:'not_enough_players', count }.
-async function tournamentCloseQualif(t) {
+async function tournamentSeedFromScores(t) {
   const ranked = rankTournamentRoundScores(t.ranking_id, await db.getRoundScores(t.id, 0));
   if (ranked.length < 2) return { ok: false, error: 'not_enough_players', count: ranked.length };
   const size = t.bracket_size && t.bracket_size > 0 ? t.bracket_size : ranked.length;
   const players = ranked.slice(0, size).map((r, i) => ({ username: r.username, seed: i + 1, qualif_score: r.score, status: 'qualified' }));
   await db.setTournamentPlayers(t.id, players);
-  await db.updateTournament(t.id, { status: 'seeded', best_qualifier: players[0].username });
-  closeTournamentWindow(t.ranking_id);
-  console.log(`[TOURNOI] qualif clôturée #${t.id}: ${players.length} qualifiés (meilleur=${players[0].username})`);
+  await db.updateTournament(t.id, { best_qualifier: players[0].username });
   return { ok: true, qualified: players };
+}
+
+// Clôture la qualif : classe le round 0, retient le top N et seede 1..N.
+// → { ok:true, qualified } | { ok:false, error:'not_enough_players', count }.
+async function tournamentCloseQualif(t) {
+  const r = await tournamentSeedFromScores(t);
+  if (!r.ok) return r;
+  await db.updateTournament(t.id, { status: 'seeded' });
+  closeTournamentWindow(t.ranking_id);
+  console.log(`[TOURNOI] qualif clôturée #${t.id}: ${r.qualified.length} qualifiés (meilleur=${r.qualified[0].username})`);
+  return r;
 }
 
 // Planificateur : ouvre les qualifs programmées arrivées à échéance et clôture
@@ -4620,6 +4630,75 @@ app.post('/api/admin/tournaments/:id/close-qualif', tournoiScope, async (req, re
     if (t.status !== 'qualif') return res.status(400).json({ error: 'not_qualif' });
     const r = await tournamentCloseQualif(t);
     if (!r.ok) return res.status(400).json({ error: r.error, message: 'Moins de 2 joueurs ont posté un score en qualif.' });
+    res.json({ ok: true, qualified: r.qualified });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Corrections manuelles (rattrapage horaires / scores) ────────────────────
+// Toutes les heures sont en UTC (ISO) côté serveur ; l'admin saisit en heure
+// locale (Paris) et le navigateur convertit. On compare à Date.now() (UTC).
+
+// Rouvre (ou prolonge) la fenêtre de qualif avec une nouvelle fin. Sert à
+// rattraper une fin mal réglée : un tournoi 'seeded'/'qualif'/'cancelled' repasse
+// en 'qualif', les scores déjà capturés (round 0) sont conservés et rechargés.
+app.post('/api/admin/tournaments/:id/reopen-qualif', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    if (t.status === 'draft') return res.status(400).json({ error: 'bad_status', message: 'Utilise « Programmer » pour un brouillon.' });
+    const end = new Date((req.body || {}).qualif_end);
+    if (isNaN(end.getTime())) return res.status(400).json({ error: 'bad_dates', message: 'Date de fin invalide.' });
+    if (end.getTime() <= Date.now()) return res.status(400).json({ error: 'end_in_past', message: 'La nouvelle fin doit être dans le futur.' });
+    if (await db.rankingHasActiveTournament(t.ranking_id, t.id)) return res.status(409).json({ error: 'ranking_busy', message: 'Un autre tournoi est déjà actif sur ce jeu.' });
+    const start = t.qualif_start || new Date().toISOString();
+    await db.updateTournament(t.id, { status: 'qualif', qualif_start: start, qualif_end: end.toISOString(), current_round: 0 });
+    // Ré-ouvre la fenêtre en mémoire + recharge le cache des scores du round 0.
+    openTournamentWindow(t.id, 0, t.ranking_id, end.toISOString());
+    const rows = await db.getRoundScores(t.id, 0);
+    const cache = tournamentRoundScores.get(tRoundKey(t.id, 0));
+    if (cache) { cache.clear(); for (const r of rows) cache.set(r.username, { score: Number(r.score) || 0, data: r.data || '' }); }
+    console.log(`[TOURNOI] #${t.id} rouvert en qualif → fin ${end.toISOString()} (était ${t.status})`);
+    res.json({ ok: true, status: 'qualif', qualif_end: end.toISOString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Crée/corrige le score de qualif (round 0) d'un joueur. Sert quand un score a
+// été corrigé à la main hors fenêtre et n'a donc pas été capturé pour le tournoi.
+app.post('/api/admin/tournaments/:id/round-score', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    const b = req.body || {};
+    const username = String(b.username || '').trim().slice(0, 40);
+    if (!username) return res.status(400).json({ error: 'username_required' });
+    const score = Number(b.score);
+    if (!Number.isFinite(score)) return res.status(400).json({ error: 'bad_score', message: 'Score numérique requis.' });
+    const data = (b.data === undefined || b.data === null) ? '' : String(b.data);
+    const round = t.current_round || 0;
+    await db.upsertRoundScore(t.id, round, username, score, data);
+    // Refléter dans le cache mémoire (classement live + comparaisons de capture).
+    const key = tRoundKey(t.id, round);
+    let cache = tournamentRoundScores.get(key);
+    if (!cache) { cache = new Map(); tournamentRoundScores.set(key, cache); }
+    cache.set(username, { score, data });
+    const ranking = rankTournamentRoundScores(t.ranking_id, await db.getRoundScores(t.id, round));
+    console.log(`[TOURNOI] #${t.id} score manuel ${username}=${score} (round ${round})`);
+    res.json({ ok: true, ranking });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Re-fige le top N seedé à partir des scores de qualif corrigés, sans rouvrir la
+// fenêtre (pour un tournoi déjà 'seeded' dont on vient de corriger un score).
+app.post('/api/admin/tournaments/:id/reseed', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not_found' });
+    if (t.status !== 'seeded') return res.status(400).json({ error: 'bad_status', message: 'Re-seed possible une fois la qualif clôturée (état « qualifiés seedés »).' });
+    const r = await tournamentSeedFromScores(t);
+    if (!r.ok) return res.status(400).json({ error: r.error, message: 'Moins de 2 scores de qualif.' });
     res.json({ ok: true, qualified: r.qualified });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
