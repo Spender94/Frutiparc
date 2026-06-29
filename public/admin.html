@@ -1212,6 +1212,9 @@ async function importTrombinoscope() {
 async function warmTrombinoscope() {
   if (typeof FPBouilleThumb === 'undefined' || !FPBouilleThumb.warmAll) return;
   if (!trombinoscope.length) { toast('Rien à réchauffer'); return; }
+  // Gros volume : le rendu dans l'onglet peut être lent/instable. Le script
+  // scripts/warm-bouilles.js fait ça hors navigateur (ne plante pas) — recommandé.
+  if (trombinoscope.length > 300 && !confirm('Beaucoup de bouilles (' + trombinoscope.length + ').\nLe réchauffage DANS le navigateur peut être lent et instable sur de gros volumes.\nPour tout pré-générer d\'un coup sans risque, utilise plutôt le script « scripts/warm-bouilles.js » (hors navigateur).\n\nContinuer quand même dans le navigateur ?')) return;
   const btn = document.getElementById('tromb-warm');
   const msg = document.getElementById('tromb-warm-msg');
   if (msg) msg.style.color = '#2f6b16';
