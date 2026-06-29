@@ -165,19 +165,41 @@
     }).then(function () { onReady(player); }).catch(function (e) { fail("chargement SWF: " + (e && e.message || e)); });
   }
 
+  // Ruffle peint d'abord le FOND (#E8F8D3) puis la bouille quelques frames plus
+  // tard. Capturer trop tôt → image vide (~1,3 ko de fond vert). On mesure donc la
+  // proportion de pixels « bouille » (non-fond) et on n'enregistre que quand il y
+  // a un vrai contenu. Sinon des milliers de bouilles blanches finissent en cache.
+  var BG = [0xE8, 0xF8, 0xD3];
+  function contentRatio(dctx) {
+    try {
+      var data = dctx.getImageData(0, 0, size, size).data;
+      var nonBg = 0, total = size * size;
+      for (var i = 0; i < data.length; i += 4) {
+        if (data[i + 3] <= 16) continue; // transparent = fond
+        if (Math.abs(data[i] - BG[0]) > 12 || Math.abs(data[i + 1] - BG[1]) > 12 || Math.abs(data[i + 2] - BG[2]) > 12) nonBg++;
+      }
+      return nonBg / total;
+    } catch (e) { return 1; } // erreur (canvas tainted…) → ne bloque pas
+  }
+
   function captureStill(player) {
     var dst = document.createElement("canvas"); dst.width = size; dst.height = size;
     var dctx = dst.getContext("2d");
     var tries = 0;
     (function attempt() {
-      if (grab(player, dst, dctx)) {
+      // On exige un canvas prêt ET un vrai contenu (≥0,5 % de pixels « bouille »).
+      // Tant que c'est vide, on patiente (le SWF peut être lent à charger).
+      if (grab(player, dst, dctx) && contentRatio(dctx) >= 0.005) {
         dst.toBlob(function (blob) {
           if (!blob) { fail("toBlob null"); return; }
           postImage(blob);
         }, "image/png");
-      } else if (++tries < 40) {
-        setTimeout(attempt, 60);
-      } else { fail("canvas introuvable"); }
+      } else if (++tries < 130) {
+        setTimeout(attempt, 100);            // ~13 s max (sous le watchdog 14 s)
+      } else {
+        // Toujours vide → on N'ENREGISTRE PAS de bouille blanche (réessai au tour suivant).
+        fail("bouille vide (rendu non abouti)");
+      }
     })();
   }
 

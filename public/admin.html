@@ -654,6 +654,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <button class="btn btn-sm" id="tromb-diag" onclick="bouilleDiagnostic()" title="Combien de bouilles sont réellement rendables (famille disponible) ? Et celles qui ne le sont pas, pourquoi ?">🔎 Diagnostic rendu</button>
     <button class="btn btn-sm" id="tromb-export" onclick="exportTrombinoscope()" title="Télécharge toutes les bouilles au format CSV (pseudo,bouille), réimportable tel quel.">⬇️ Exporter CSV</button>
     <button class="btn btn-sm" id="tromb-repair" onclick="repairTrombinoscope()" title="Répare les bouilles corrompues (zéros de tête perdus via Excel) en reprenant la bouille du compte joueur de même pseudo.">🛠️ Réparer (comptes)</button>
+    <button class="btn btn-sm" id="tromb-purge" onclick="purgeBlankBouilles()" title="Supprime du cache les images vides (fond vert, capturées trop tôt) pour qu'elles soient régénérées au prochain réchauffage.">🧹 Purger vides</button>
     <span id="tromb-warm-msg" style="font-size:12px;color:#2f6b16"></span>
     <span style="flex:1"></span>
     <button class="btn-danger btn-sm" onclick="clearTrombinoscope()">Tout supprimer</button>
@@ -1341,6 +1342,22 @@ async function repairTrombinoscope() {
         + (d.noAccount ? '<div style="margin-top:6px;color:#a23a1e">' + d.noAccount + ' code(s) corrompu(s) sans compte joueur correspondant : à corriger par réimport d\'un CSV propre (sans Excel).</div>' : '');
     }
     loadTrombinoscope();
+  } catch (e) { toast('Erreur réseau: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
+}
+// Purge les images vides du cache (fond vert capturé trop tôt), puis invite à
+// relancer le réchauffage pour les régénérer correctement.
+async function purgeBlankBouilles() {
+  if (!confirm('Supprimer du cache les bouilles « vides » (fond vert, capturées trop tôt) ?\nIl faudra ensuite relancer le réchauffage pour les régénérer.')) return;
+  const btn = document.getElementById('tromb-purge');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/admin/bouille-cache/purge-blanks', { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    toast('Purgé : ' + d.dbDeleted + ' en base, ' + d.diskDeleted + ' sur disque. Relance maintenant le réchauffage (script).');
+    const msg = document.getElementById('tromb-warm-msg');
+    if (msg) { msg.style.color = '#2f6b16'; msg.textContent = '✓ ' + d.dbDeleted + ' vide(s) purgée(s) — relance le script de réchauffage pour les régénérer.'; }
   } catch (e) { toast('Erreur réseau: ' + e.message); }
   finally { if (btn) btn.disabled = false; }
 }

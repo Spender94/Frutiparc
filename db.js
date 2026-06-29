@@ -1449,6 +1449,13 @@ async function countBouilleImages() {
   const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM bouille_images');
   return rows[0] ? rows[0].n : 0;
 }
+// Supprime les images « vides » (octets < maxBytes) : une capture trop précoce
+// enregistre une PNG de fond (~1,3 ko) au lieu de la bouille. On les purge pour
+// forcer leur re-génération au prochain réchauffage.
+async function deleteSmallBouilleImages(maxBytes) {
+  const { rowCount } = await pool.query('DELETE FROM bouille_images WHERE octet_length(bytes) < $1', [maxBytes]);
+  return rowCount || 0;
+}
 
 // ── Chat banned words ──
 async function loadChatBannedWords() {
@@ -2334,6 +2341,7 @@ module.exports = {
   bouilleImageExists,
   upsertBouilleImage,
   countBouilleImages,
+  deleteSmallBouilleImages,
   loadChatBannedWords,
   addChatBannedWord,
   updateChatBannedWord,

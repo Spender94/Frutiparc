@@ -7050,6 +7050,27 @@ app.post('/api/admin/trombinoscope/repair-from-accounts', adminScope('trombinosc
   res.json({ ok: true, checked, repaired, noAccount, accountAlsoBad, samples });
 });
 
+// Admin : purge les images de bouille « vides » du cache (capturées trop tôt =
+// fond vert ~1,3 ko, sans bouille). On les supprime en base ET sur le disque pour
+// que le réchauffage les re-génère correctement (avec la capture corrigée).
+const BLANK_BOUILLE_MAX_BYTES = 4000;
+app.post('/api/admin/bouille-cache/purge-blanks', adminScope('trombinoscope'), async (req, res) => {
+  let dbDeleted = 0, diskDeleted = 0;
+  if (process.env.DATABASE_URL) {
+    try { dbDeleted = await db.deleteSmallBouilleImages(BLANK_BOUILLE_MAX_BYTES); }
+    catch (e) { return res.status(500).json({ ok: false, error: 'db: ' + e.message }); }
+  }
+  try {
+    for (const f of fs.readdirSync(BOUILLE_IMG_DIR)) {
+      if (!/\.(png|gif)$/.test(f)) continue;
+      const fp = path.join(BOUILLE_IMG_DIR, f);
+      try { if (fs.statSync(fp).size < BLANK_BOUILLE_MAX_BYTES) { fs.unlinkSync(fp); diskDeleted++; } } catch (e) {}
+    }
+  } catch (e) {}
+  console.log(`[ADMIN] Purge bouilles vides : ${dbDeleted} en base, ${diskDeleted} sur disque (< ${BLANK_BOUILLE_MAX_BYTES} o)`);
+  res.json({ ok: true, dbDeleted, diskDeleted, maxBytes: BLANK_BOUILLE_MAX_BYTES });
+});
+
 // Admin : import d'un CSV "pseudo,bouille". Le corps est le CSV brut envoyé en
 // application/octet-stream (route-level express.raw → contourne la limite 100 ko
 // du parser JSON global, comme l'upload d'images de quiz). Fusion par pseudo.
