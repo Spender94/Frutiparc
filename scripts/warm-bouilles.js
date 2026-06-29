@@ -20,7 +20,15 @@
   les SWF de familles et /api/bouille-img). Familles non disponibles = ignorées.
 */
 const fs = require('fs');
-const { chromium } = require(require('path').join(__dirname, '..', 'node_modules', 'playwright'));
+// Playwright peut être installé dans le node_modules du projet OU globalement
+// (npm i -g playwright) OU ailleurs : on tente le chemin local puis un require
+// classique, avec un message clair si absent.
+const chromium = (function loadChromium() {
+  const tries = [require('path').join(__dirname, '..', 'node_modules', 'playwright'), 'playwright'];
+  for (const m of tries) { try { return require(m).chromium; } catch (e) {} }
+  console.error('\nPlaywright introuvable. Installe-le une fois :\n  npm install playwright\n  npx playwright install chromium\n');
+  process.exit(1);
+})();
 
 function arg(name, def) { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : def; }
 const BASE = (process.argv[2] || '').replace(/\/+$/, '');
