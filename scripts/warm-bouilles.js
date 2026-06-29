@@ -36,6 +36,7 @@ const CSV = arg('--csv', null);
 const CONC = Math.max(1, Number(arg('--concurrency', 4)) || 4);
 const SIZE = Number(arg('--size', 160)) || 160;
 const RECYCLE_EVERY = Number(arg('--recycle', 200)) || 200; // recrée le contexte tous les N
+const MAX_TRIES = Math.max(1, Number(arg('--tries', 2)) || 2);  // tentatives par bouille
 const CAP_TIMEOUT = 18000;
 if (!BASE || !/^https?:\/\//.test(BASE)) { console.error('Usage: node scripts/warm-bouilles.js <baseUrl> [--csv f] [--concurrency N]'); process.exit(1); }
 
@@ -82,26 +83,35 @@ async function jget(url) { const r = await fetch(url, { cache: 'no-store' }); re
   let ctx = await browser.newContext();
   let since = 0;
   let done = 0, captured = 0, skipped = 0, failed = 0;
+  const failedCodes = [];
   const t0 = Date.now();
+
+  // Rend une bouille dans une page jetable et attend que le cache se remplisse
+  // (poll). Renvoie true si l'image est en cache à la fin.
+  async function renderAndWait(s) {
+    const page = await ctx.newPage();
+    try {
+      await page.goto(captureUrl(s), { waitUntil: 'load', timeout: 30000 }).catch(() => {});
+      const deadline = Date.now() + CAP_TIMEOUT;
+      while (Date.now() < deadline) {
+        await sleep(500);
+        const st = await jget(statusUrl(s)).catch(() => null);
+        if (st && st.cached) return true;
+      }
+      return false;
+    } catch (e) { return false; }
+    finally { await page.close().catch(() => {}); }
+  }
 
   async function capture(s) {
     // déjà en cache ? (persistant) → on saute
     try { const st = await jget(statusUrl(s)); if (st && st.cached) { skipped++; return; } } catch (e) {}
-    const page = await ctx.newPage();
-    try {
-      await page.goto(captureUrl(s), { waitUntil: 'load', timeout: 30000 }).catch(() => {});
-      // la page capture rend, POST le PNG, puis (en top-level) redirige vers /bouille-img.
-      // on attend que le cache soit rempli (poll), robuste.
-      const deadline = Date.now() + CAP_TIMEOUT;
-      let okNow = false;
-      while (Date.now() < deadline) {
-        await sleep(500);
-        const st = await jget(statusUrl(s)).catch(() => null);
-        if (st && st.cached) { okNow = true; break; }
-      }
-      if (okNow) captured++; else failed++;
-    } catch (e) { failed++; }
-    finally { await page.close().catch(() => {}); }
+    // Plusieurs tentatives : sur une connexion domestique, un rendu peut dépasser
+    // le watchdog une fois mais passer au coup suivant. On réessaie avant d'abandonner.
+    for (let t = 0; t < MAX_TRIES; t++) {
+      if (await renderAndWait(s)) { captured++; return; }
+    }
+    failed++; failedCodes.push(s);
   }
 
   // worker pool
@@ -124,6 +134,9 @@ async function jget(url) { const r = await fetch(url, { cache: 'no-store' }); re
 
   await ctx.close().catch(() => {});
   await browser.close().catch(() => {});
+  if (failedCodes.length) { try { fs.writeFileSync('warm-failed.txt', failedCodes.join('\n') + '\n'); } catch (e) {} }
   console.log(`\nTerminé : ${captured} générées, ${skipped} déjà en cache, ${failed} échecs, ${unsupported} familles indispo. en ${Math.round((Date.now() - t0) / 1000)}s`);
-  process.exit(failed > todo.length / 2 ? 1 : 0);
+  if (failedCodes.length) console.log(`↻ ${failedCodes.length} en échec (généralement transitoires) — RELANCE la même commande pour les rattraper (liste : warm-failed.txt).`);
+  else console.log('✓ Toutes les bouilles rendables sont en cache.');
+  process.exit(0);
 })().catch((e) => { console.error('ERR', e); process.exit(1); });
