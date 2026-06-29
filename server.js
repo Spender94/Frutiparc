@@ -3828,13 +3828,26 @@ app.get('/api/online-users', (req, res) => {
 //          and only written for png/gif, and it can only ever populate a cache
 //          entry that GET would have produced anyway.
 // ─────────────────────────────────────────────
-app.get('/bouille-img', (req, res) => {
+app.get('/bouille-img', async (req, res) => {
   const p = normalizeBouilleImgParams(req.query);
   const file = bouilleImgPath(p);
   if (fs.existsSync(file)) {
     res.type(p.fmt === 'gif' ? 'image/gif' : 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=86400');
     return res.sendFile(file);
+  }
+  // Absent du disque (ex. après un redéploiement qui réinitialise le disque) :
+  // on sert depuis le cache DURABLE (Postgres) et on réchauffe le disque local.
+  if (process.env.DATABASE_URL) {
+    try {
+      const row = await db.getBouilleImage(bouilleImgKey(p));
+      if (row && row.bytes && row.bytes.length) {
+        try { ensureBouilleImgDir(); const tmp = file + '.' + crypto.randomBytes(4).toString('hex') + '.tmp'; fs.writeFileSync(tmp, row.bytes); fs.renameSync(tmp, file); } catch (e) {}
+        res.type(p.fmt === 'gif' ? 'image/gif' : 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.send(row.bytes);
+      }
+    } catch (e) { console.error('[BOUILLE-IMG] db read:', e.message); }
   }
   if (String(req.query.nocapture || '') === '1') {
     // Not cached and capture suppressed → 404 that the browser must NOT cache,
@@ -3849,9 +3862,14 @@ app.get('/bouille-img', (req, res) => {
 
 // Lightweight cache-existence probe (JSON), so the front-end can poll for a
 // freshly-captured image without fetching its bytes or following a redirect.
-app.get('/api/bouille-img/status', (req, res) => {
+app.get('/api/bouille-img/status', async (req, res) => {
   const p = normalizeBouilleImgParams(req.query);
-  const exists = fs.existsSync(bouilleImgPath(p));
+  let exists = fs.existsSync(bouilleImgPath(p));
+  // Compte aussi le cache durable (DB) : après un redéploiement le disque est
+  // vide mais les images persistées sont là → on ne re-capture pas inutilement.
+  if (!exists && process.env.DATABASE_URL) {
+    try { exists = await db.bouilleImageExists(bouilleImgKey(p)); } catch (e) {}
+  }
   res.setHeader('Cache-Control', 'no-store');
   res.json({ ok: true, cached: exists, key: bouilleImgKey(p), fmt: p.fmt });
 });
@@ -3876,6 +3894,10 @@ app.post('/api/bouille-img', express.raw({ type: ['image/png', 'image/gif', 'app
     const tmp = file + '.' + crypto.randomBytes(4).toString('hex') + '.tmp';
     fs.writeFileSync(tmp, body);
     fs.renameSync(tmp, file);
+    // Persiste aussi en base (cache durable, survit aux redéploiements). Best-effort.
+    if (process.env.DATABASE_URL) {
+      db.upsertBouilleImage(bouilleImgKey(p), p.fmt, body).catch((e) => console.error('[BOUILLE-IMG] db write:', e.message));
+    }
     console.log(`[BOUILLE-IMG] cached ${p.fmt} ${bouilleImgKey(p)} (${body.length} B) s=${p.s} e=${p.e} anim=${p.anim || '-'} size=${p.size}`);
     res.json({ ok: true, bytes: body.length, key: bouilleImgKey(p) });
   } catch (e) {

@@ -403,6 +403,16 @@ async function initSchema() {
         created_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- Cache PNG/GIF des bouilles, DURABLE (survit aux redéploiements). Le
+      -- disque (data/bouille-cache) reste un cache local rapide reconstruit à la
+      -- volée depuis cette table. key = hash sha1(s|e|anim|size|fmt).
+      CREATE TABLE IF NOT EXISTS bouille_images (
+        key         TEXT PRIMARY KEY,
+        fmt         TEXT NOT NULL,
+        bytes       BYTEA NOT NULL,
+        updated_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Forum tables
       CREATE TABLE IF NOT EXISTS forum_categories (
         id         SERIAL PRIMARY KEY,
@@ -1414,6 +1424,27 @@ async function replaceTrombinoscope(entries) {
   }
 }
 
+// ── Cache durable des images de bouilles (PNG/GIF) ──
+async function getBouilleImage(key) {
+  const { rows } = await pool.query('SELECT fmt, bytes FROM bouille_images WHERE key = $1', [key]);
+  if (!rows.length) return null;
+  return { fmt: rows[0].fmt, bytes: rows[0].bytes }; // bytes = Buffer (BYTEA)
+}
+async function bouilleImageExists(key) {
+  const { rows } = await pool.query('SELECT 1 FROM bouille_images WHERE key = $1', [key]);
+  return rows.length > 0;
+}
+async function upsertBouilleImage(key, fmt, bytes) {
+  await pool.query(
+    `INSERT INTO bouille_images (key, fmt, bytes, updated_at) VALUES ($1, $2, $3, now())
+     ON CONFLICT (key) DO UPDATE SET fmt = EXCLUDED.fmt, bytes = EXCLUDED.bytes, updated_at = now()`,
+    [key, fmt, bytes]);
+}
+async function countBouilleImages() {
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM bouille_images');
+  return rows[0] ? rows[0].n : 0;
+}
+
 // ── Chat banned words ──
 async function loadChatBannedWords() {
   const { rows } = await pool.query('SELECT id, word FROM chat_banned_words ORDER BY id');
@@ -2294,6 +2325,10 @@ module.exports = {
   deleteQuiz,
   loadTrombinoscope,
   replaceTrombinoscope,
+  getBouilleImage,
+  bouilleImageExists,
+  upsertBouilleImage,
+  countBouilleImages,
   loadChatBannedWords,
   addChatBannedWord,
   updateChatBannedWord,
