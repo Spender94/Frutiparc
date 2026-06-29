@@ -653,6 +653,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <button class="btn btn-sm" id="tromb-warm" onclick="warmTrombinoscope()" title="Génère et met en cache l'image PNG de chaque bouille, pour un affichage instantané côté Bouilloscope (main.swf et /light).">⚡ Réchauffer les bouilles</button>
     <button class="btn btn-sm" id="tromb-diag" onclick="bouilleDiagnostic()" title="Combien de bouilles sont réellement rendables (famille disponible) ? Et celles qui ne le sont pas, pourquoi ?">🔎 Diagnostic rendu</button>
     <button class="btn btn-sm" id="tromb-export" onclick="exportTrombinoscope()" title="Télécharge toutes les bouilles au format CSV (pseudo,bouille), réimportable tel quel.">⬇️ Exporter CSV</button>
+    <button class="btn btn-sm" id="tromb-repair" onclick="repairTrombinoscope()" title="Répare les bouilles corrompues (zéros de tête perdus via Excel) en reprenant la bouille du compte joueur de même pseudo.">🛠️ Réparer (comptes)</button>
     <span id="tromb-warm-msg" style="font-size:12px;color:#2f6b16"></span>
     <span style="flex:1"></span>
     <button class="btn-danger btn-sm" onclick="clearTrombinoscope()">Tout supprimer</button>
@@ -1314,6 +1315,32 @@ async function exportTrombinoscope() {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
     toast('CSV téléchargé (' + (trombinoscope.length || 0) + ' bouilles)');
+  } catch (e) { toast('Erreur réseau: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
+}
+// Répare les bouilles corrompues (zéros de tête perdus via Excel) depuis les
+// comptes joueurs de même pseudo. N'altère que les codes corrompus.
+async function repairTrombinoscope() {
+  if (!confirm('Réparer les bouilles corrompues en reprenant celle du compte joueur de même pseudo ?\n(N\'altère que les codes corrompus — les zéros de tête perdus via Excel.)')) return;
+  const btn = document.getElementById('tromb-repair');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/admin/trombinoscope/repair-from-accounts', { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
+    const msg = `Réparées : ${d.repaired}/${d.checked} corrompues`
+      + (d.noAccount ? ` · ${d.noAccount} sans compte` : '')
+      + (d.accountAlsoBad ? ` · ${d.accountAlsoBad} compte aussi corrompu` : '');
+    toast(msg);
+    const panel = document.getElementById('tromb-diag-panel');
+    if (panel && d.samples && d.samples.length) {
+      panel.style.display = 'block';
+      const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+      panel.innerHTML = '<b>' + esc(msg) + '</b><div style="margin-top:6px;color:#555">Exemples : '
+        + d.samples.map((s) => esc(s.pseudo) + ' : ' + esc(s.from) + ' → ' + esc(s.to)).join('<br>') + '</div>'
+        + (d.noAccount ? '<div style="margin-top:6px;color:#a23a1e">' + d.noAccount + ' code(s) corrompu(s) sans compte joueur correspondant : à corriger par réimport d\'un CSV propre (sans Excel).</div>' : '');
+    }
+    loadTrombinoscope();
   } catch (e) { toast('Erreur réseau: ' + e.message); }
   finally { if (btn) btn.disabled = false; }
 }

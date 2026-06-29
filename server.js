@@ -119,7 +119,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.text({
   type: (req) => {
     const ct = String(req.headers['content-type'] || '').toLowerCase();
-    if (ct.startsWith('image/') || ct.startsWith('application/octet-stream')) return false;
+    // Laisse passer vers les parsers raw de route : binaires (PNG/GIF de bouille)
+    // ET les CSV (import trombinoscope, jusqu'à 8 Mo) — sinon la limite 100 ko de
+    // express.text rejetterait un gros CSV envoyé en text/csv.
+    if (ct.startsWith('image/') || ct.startsWith('application/octet-stream') || ct.startsWith('text/csv')) return false;
     return !req.body || (typeof req.body === 'object' && Object.keys(req.body).length === 0);
   }
 }));
@@ -7002,6 +7005,35 @@ app.get('/api/admin/trombinoscope/export', adminScope('trombinoscope'), (req, re
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="bouilles.csv"');
   res.send(csv);
+});
+
+// Admin : répare les bouilles CORROMPUES du trombinoscope (zéros de tête perdus,
+// typiquement via Excel) en les remplaçant par la bouille du COMPTE joueur de même
+// pseudo — qui, elle, est intacte (le jeu la stocke correctement). Sûr : ne touche
+// QUE les codes corrompus, et seulement si le compte a une bouille valide.
+const bouilleLooksCorrupted = (s) => /^[0-9]+$/.test(s) && s.length < 18;
+app.post('/api/admin/trombinoscope/repair-from-accounts', adminScope('trombinoscope'), async (req, res) => {
+  let checked = 0, repaired = 0, noAccount = 0, accountAlsoBad = 0;
+  const samples = [];
+  for (const e of TROMBINOSCOPE) {
+    const cur = normalizeBouilleState(e && e.bouille);
+    if (!bouilleLooksCorrupted(cur)) continue;
+    checked++;
+    const uname = String(e.pseudo || '').toLowerCase();
+    let fb = (users[uname] && users[uname].fbouille) || null;
+    if (!fb && process.env.DATABASE_URL) {
+      try { const row = await db.findUserByUsername(uname); if (row && row.fbouille) fb = row.fbouille; } catch (x) {}
+    }
+    if (!fb) { noAccount++; continue; }
+    const fbN = normalizeBouilleState(fb);
+    if (bouilleLooksCorrupted(fbN)) { accountAlsoBad++; continue; }
+    if (samples.length < 12) samples.push({ pseudo: e.pseudo, from: cur, to: fbN });
+    e.bouille = fbN;
+    repaired++;
+  }
+  if (repaired) persistTrombinoscope();
+  console.log(`[ADMIN] Réparation trombinoscope depuis comptes : ${repaired}/${checked} réparées (${noAccount} sans compte, ${accountAlsoBad} compte aussi corrompu)`);
+  res.json({ ok: true, checked, repaired, noAccount, accountAlsoBad, samples });
 });
 
 // Admin : import d'un CSV "pseudo,bouille". Le corps est le CSV brut envoyé en
