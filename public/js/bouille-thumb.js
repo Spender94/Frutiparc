@@ -83,9 +83,8 @@
     return familiesLoading;
   }
   function setOf(arr) { var o = {}; for (var i = 0; i < arr.length; i++) o[arr[i]] = 1; return o; }
-  // Famille = 1er caractère base62 (0-9 → 0-9, a-o → 10-24). Lire 2 caractères
-  // donnait famille×62 (ex. "10" → 62) et ne marchait que pour la famille 0.
-  function familyOf(s) { s = sanitize(s); return dec(s.charAt(0)); }
+  // Famille = 2 premiers caractères base62 ("00"→0, "0a"→10 … "0c"→12).
+  function familyOf(s) { s = sanitize(s); return dec(s.charAt(0)) * 62 + dec(s.charAt(1)); }
   function renderable(s) { return families ? !!families[familyOf(s)] : true; }
   loadFamilies();
 

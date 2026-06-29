@@ -119,11 +119,8 @@
 
   window.addEventListener("DOMContentLoaded", async function () {
     if (!window.RufflePlayer || !window.RufflePlayer.newest) return;
-    // La famille tient sur UN seul caractère base62 (0-9 → familles 0-9,
-    // a-o → 10-24). Confirmé par les données de prod : les familles 1-8 sont
-    // stockées « N0… » (1er car. = la famille). Lire 2 caractères donnait
-    // famille×62 (ex. "10" → 62) et ne marchait que pour la famille 0.
-    var familyId = decode62(state.substring(0, 1));
+    // Famille = 2 premiers caractères base62 ("00"→0, "0a"→10 … "0o"→24, "0c"→12).
+    var familyId = decode62(state.substring(0, 2));
     var ruffle = window.RufflePlayer.newest();
     var player = ruffle.createPlayer();
     player.style.width = "100%";

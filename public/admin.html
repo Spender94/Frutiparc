@@ -1280,11 +1280,17 @@ async function bouilleDiagnostic() {
     } else {
       missLine = '<div style="margin-top:6px;color:#2f6b16">✓ Toutes les familles utilisées ont un SWF : 100 % des bouilles sont rendables.</div>';
     }
+    let corruptLine = '';
+    if (d.corrupted) {
+      corruptLine = '<div style="margin-top:6px;color:#a23a1e"><b>⚠️ ' + d.corrupted + ' code(s) corrompu(s)</b> — tout-numériques et trop courts : ils ont perdu leurs <b>zéros de tête</b> (typiquement en ouvrant le CSV des bouilles dans <b>Excel</b>, qui transforme « 000106… » en nombre). Ce ne sont PAS des familles manquantes : une fois les zéros restaurés ce sont des familles 0 valides. <b>Correctif : réimporter les bouilles sans passer par Excel</b> (ou réparer depuis les comptes).</div>';
+    }
     panel.innerHTML =
       '<div><b>' + d.total + ' bouilles</b> · <b style="color:#2f6b16">' + d.renderable + ' rendables (' + d.renderablePct + ' %)</b>'
-      + (d.unrenderable ? ' · <b style="color:#a23a1e">' + d.unrenderable + ' non rendables</b>' : '') + '</div>'
+      + (d.unrenderable ? ' · <b style="color:#a23a1e">' + d.unrenderable + ' non rendables</b>' : '')
+      + (d.corrupted ? ' · <b style="color:#a23a1e">' + d.corrupted + ' corrompues</b>' : '') + '</div>'
       + '<div style="margin-top:6px">Familles (top) : ' + topFam + '</div>'
       + '<div style="margin-top:6px;color:#555">Longueurs de code : ' + esc(lengths) + ' — <i>la longueur n\'affecte pas le rendu</i>.</div>'
+      + corruptLine
       + missLine
       + '<div style="margin-top:6px;color:#555">Familles disponibles (SWF présents) : ' + esc(d.patchedFamilies.join(', ')) + '.</div>';
   } catch (e) {

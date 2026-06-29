@@ -3945,27 +3945,26 @@ app.get('/api/bouille-families', (req, res) => {
 
 // Diagnostic du Bouilloscope : sur l'ENSEMBLE des bouilles enregistrées, combien
 // sont réellement rendables (famille avec un SWF présent) vs non, + répartition
-// par famille et par longueur de code. Sert à répondre, chiffres en main, à la
-// question « pourquoi des bouilles ne s'affichent pas ? » :
-//   - la LONGUEUR du code (15/18/24…) n'empêche JAMAIS le rendu (le SWF complète
-//     les accessoires manquants par 0) — vérifié : un code 18c rend à l'identique
-//     d'une fois complété à 24c ;
-//   - seule la FAMILLE compte : une bouille dont la famille n'a pas de SWF
-//     (familleN.swf absent) ne peut pas être rendue, quelle que soit sa longueur.
+// par famille et par longueur de code. Points clés :
+//   - la famille = 2 premiers caractères base62 ("00"→0, "0a"→10 … "0o"→24) ;
+//   - la LONGUEUR n'empêche jamais le rendu (le SWF complète les accessoires par 0) ;
+//   - codes CORROMPUS : un code tout-numérique plus court que la longueur réelle
+//     minimale (18) a perdu ses zéros de tête — typiquement en ouvrant le CSV des
+//     bouilles dans Excel, qui traite "000106…" comme un nombre et enlève les 0.
+//     Restauration des zéros = familles 0 valides. Ce n'est PAS un SWF manquant
+//     mais des données à réimporter proprement (sans passer par Excel).
 function bouilleFamilyStats() {
   const renderableFams = new Set(getPatchedFamilies());
   const byFamily = new Map();   // famille -> nb
   const byLength = new Map();   // longueur de code -> nb
-  let total = 0, ok = 0, ko = 0;
+  let total = 0, ok = 0, ko = 0, corrupted = 0;
   for (const e of TROMBINOSCOPE) {
     const s = normalizeBouilleState(e && e.bouille);
-    // Famille = 1er caractère base62 (0-9 → 0-9, a-o → 10-24). Confirmé par les
-    // données de prod (familles 1-8 stockées « N0… »). Lire 2 caractères donnait
-    // famille×62 (« famille62 » = en réalité la famille 1).
-    const fam = decode62(s.slice(0, 1));
     total++;
-    byFamily.set(fam, (byFamily.get(fam) || 0) + 1);
     byLength.set(s.length, (byLength.get(s.length) || 0) + 1);
+    if (/^[0-9]+$/.test(s) && s.length < 18) { corrupted++; continue; } // zéros de tête perdus
+    const fam = decode62(s.slice(0, 2));
+    byFamily.set(fam, (byFamily.get(fam) || 0) + 1);
     if (renderableFams.has(fam)) ok++; else ko++;
   }
   const families = [...byFamily.entries()]
@@ -3978,6 +3977,7 @@ function bouilleFamilyStats() {
     total,
     renderable: ok,
     unrenderable: ko,
+    corrupted,
     renderablePct: total ? Math.round((ok / total) * 1000) / 10 : 0,
     patchedFamilies: getPatchedFamilies(),
     families,

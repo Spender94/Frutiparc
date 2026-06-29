@@ -147,9 +147,8 @@
 
   function loadPlayer(onReady) {
     if (!window.RufflePlayer || !window.RufflePlayer.newest) { fail("Ruffle indisponible"); return; }
-    // Famille = 1er caractère base62 (0-9 → 0-9, a-o → 10-24). Voir
-    // bouille-preview.html : lire 2 caractères donnait famille×62.
-    var familyId = decode62(state.substring(0, 1));
+    // Famille = 2 premiers caractères base62 ("00"→0, "0a"→10 … "0c"→12).
+    var familyId = decode62(state.substring(0, 2));
     var ruffle = window.RufflePlayer.newest();
     var player = ruffle.createPlayer();
     player.style.width = size + "px";

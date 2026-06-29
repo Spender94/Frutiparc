@@ -42,8 +42,8 @@ if (!BASE || !/^https?:\/\//.test(BASE)) { console.error('Usage: node scripts/wa
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function sanitize(s) { var ss = String(s == null ? '' : s).replace(/[^0-9A-Za-z]/g, '').slice(0, 24); return ss.length >= 2 ? ss : '000000010000000000000000'; }
 function dec(c) { if (c >= '0' && c <= '9') return c.charCodeAt(0) - 48; if (c >= 'a' && c <= 'z') return c.charCodeAt(0) - 87; if (c >= 'A' && c <= 'Z') return c.charCodeAt(0) - 29; return 0; }
-// Famille = 1er caractère base62 (0-9 → 0-9, a-o → 10-24).
-function familyOf(s) { s = sanitize(s); return dec(s.charAt(0)); }
+// Famille = 2 premiers caractères base62 ("00"→0, "0a"→10 … "0c"→12).
+function familyOf(s) { s = sanitize(s); return dec(s.charAt(0)) * 62 + dec(s.charAt(1)); }
 const statusUrl = (s) => `${BASE}/api/bouille-img/status?s=${encodeURIComponent(s)}&e=0&size=${SIZE}&fmt=png`;
 const captureUrl = (s) => `${BASE}/bouille-capture?s=${encodeURIComponent(s)}&e=0&size=${SIZE}&fmt=png`;
 async function jget(url) { const r = await fetch(url, { cache: 'no-store' }); return r.ok ? r.json() : null; }
