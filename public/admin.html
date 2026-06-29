@@ -1417,7 +1417,7 @@ async function openTournament(id) {
             ${ lead ? `<table><thead><tr><th>#</th><th>Joueur</th><th>Score</th></tr></thead><tbody>${lead}</tbody></table>` : '<p style="color:#999">Aucun score capturé pour le moment.</p>' }
           </div>
         </div>
-        ${ (d.matches && d.matches.length) ? `<div style="margin-top:14px"><h4 style="margin:0 0 6px">Bracket <span style="font-weight:normal;color:#888;font-size:12px">— clique ✓ pour désigner le vainqueur (forfait = désigner l'autre) · ✎ pour corriger un joueur</span></h4>${renderBracket(t, d.matches)}</div>` : '' }
+        ${ (d.matches && d.matches.length) ? `<div style="margin-top:14px"><h4 style="margin:0 0 6px">Bracket <span style="font-weight:normal;color:#888;font-size:12px">— clique ✓ pour désigner le vainqueur (forfait = désigner l'autre) · ✎ pour corriger un joueur</span></h4>${bracketShareBar(t)}${renderBracket(t, d.matches)}</div>` : '' }
       </div>`;
   } catch (e) { toast('Erreur: ' + e.message); }
 }
@@ -1459,11 +1459,51 @@ async function closeQualif(id) {
 // ─── Bracket ───
 function bracketRoundName(round, totalRounds) {
   const fromEnd = totalRounds - round;
-  if (fromEnd === 0) return totalRounds === 1 ? 'Finale' : 'Finale';
-  if (fromEnd === 1) return 'Demi-finales';
-  if (fromEnd === 2) return 'Quarts de finale';
-  if (fromEnd === 3) return 'Huitièmes de finale';
+  if (fromEnd === 0) return 'Finale';
+  if (fromEnd === 1) return 'Demi-finale';
+  if (fromEnd === 2) return '1/4 de finale';
+  if (fromEnd === 3) return '8ème de finale';
+  if (fromEnd === 4) return '16ème de finale';
   return 'Tour ' + round;
+}
+// Barre de partage du bracket : image SVG publique (toujours à jour) à coller
+// sur le forum via [img], + téléchargement PNG (snapshot figé).
+function bracketImgUrl(id) { return location.origin + '/api/tournaments/' + id + '/bracket.svg'; }
+function bracketShareBar(t) {
+  const code = '[img]' + bracketImgUrl(t.id) + '[/img]';
+  return `<div style="background:#eef7df;border:1px solid #c4dd9a;border-radius:6px;padding:8px;margin-bottom:10px;font-size:12px">
+    <b>📤 Partager sur le forum</b>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:5px;flex-wrap:wrap">
+      <input id="brk-bbcode" readonly value="${esc(code)}" style="flex:1;min-width:240px;font-family:monospace;font-size:11px;padding:4px 6px" onclick="this.select()">
+      <button class="btn btn-sm" onclick="copyBracketBBCode(${t.id})">Copier le code [img]</button>
+      <a class="btn btn-sm" href="${esc(bracketImgUrl(t.id))}" target="_blank" rel="noopener" style="text-decoration:none">Voir l'image</a>
+      <button class="btn btn-sm" onclick="downloadBracketPng(${t.id},'${esc(String(t.name||'tournoi')).replace(/'/g,"\\'")}')">Télécharger PNG</button>
+    </div>
+    <div style="color:#888;margin-top:4px">Colle le code <code>[img]…[/img]</code> dans un message du forum : l'image se met à jour automatiquement quand tu modifies le bracket. Le PNG est un instantané figé.</div>
+  </div>`;
+}
+function copyBracketBBCode(id) {
+  const code = '[img]' + bracketImgUrl(id) + '[/img]';
+  const done = () => toast('Code [img] copié — colle-le sur le forum');
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(done, () => { const el = document.getElementById('brk-bbcode'); if (el) { el.select(); document.execCommand('copy'); done(); } });
+  else { const el = document.getElementById('brk-bbcode'); if (el) { el.select(); document.execCommand('copy'); done(); } }
+}
+function downloadBracketPng(id, name) {
+  const img = new Image();
+  img.onload = function () {
+    const scale = 2, c = document.createElement('canvas');
+    c.width = (img.naturalWidth || 600) * scale; c.height = (img.naturalHeight || 400) * scale;
+    const x = c.getContext('2d'); x.scale(scale, scale); x.drawImage(img, 0, 0);
+    c.toBlob(function (blob) {
+      if (!blob) { toast('Erreur génération PNG'); return; }
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = 'bracket-' + String(name || 'tournoi').replace(/[^a-z0-9]+/gi, '_').toLowerCase() + '.png';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000); toast('Image PNG téléchargée');
+    }, 'image/png');
+  };
+  img.onerror = function () { toast('Impossible de charger le bracket (génère-le d\'abord).'); };
+  img.src = bracketImgUrl(id) + '?t=' + Date.now();
 }
 function renderBracket(t, matches) {
   if (!matches || !matches.length) return '';
@@ -1480,20 +1520,19 @@ function bracketMatchCard(t, m, isFinal) {
   const playerRow = (name, who) => {
     const isWin = m.winner && m.winner === name;
     const sc = who === 1 ? m.score1 : m.score2;
-    const label = name ? esc(name) : '<i style="color:#bbb">— à déterminer —</i>';
+    const label = name ? esc(name) : '<i style="color:#8a9a6a">—</i>';
     const nameJs = name ? name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
-    return `<div style="display:flex;align-items:center;gap:4px;padding:3px 5px;border-radius:4px;${isWin ? 'background:#d6f0d6' : ''}">
-      <span style="flex:1;font-size:12px;${isWin ? 'font-weight:bold' : ''};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isWin ? '🏆 ' : ''}${label}${sc != null ? ` <span style="color:#888">(${sc})</span>` : ''}</span>
+    return `<div style="display:flex;align-items:center;gap:4px;padding:3px 6px;${isWin ? 'font-weight:bold;color:#1f3d0a' : 'color:#2c4a0f'}">
+      <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isWin ? '🏆 ' : ''}${label}${sc != null ? ` <span style="color:#6f8a45;font-weight:normal">(${sc})</span>` : ''}</span>
       ${name ? `<button class="btn btn-sm" title="Désigner vainqueur (forfait = désigner l'autre)" style="padding:0 6px" onclick="matchWin(${t.id},${m.id},'${nameJs}')">✓</button>` : ''}
       <button class="btn btn-sm" title="Modifier ce joueur" style="padding:0 5px" onclick="matchEditPlayer(${t.id},${m.id},${who},'${nameJs}')">✎</button>
     </div>`;
   };
-  const decided = !!m.winner;
-  return `<div style="border:1px solid ${decided ? '#bcd9bc' : '#ddd'};border-radius:6px;padding:4px;margin-bottom:8px;background:#fff">
+  return `<div style="border:1px solid #8fae5a;border-radius:5px;padding:3px;margin-bottom:8px;background:#e6f6c8">
     ${playerRow(m.player1, 1)}
-    <div style="height:1px;background:#eee;margin:1px 0"></div>
+    <div style="border-top:1px dashed #9bbf66;margin:0 4px"></div>
     ${playerRow(m.player2, 2)}
-    ${m.winner ? `<div style="text-align:right;margin-top:2px"><a href="#" onclick="matchReset(${t.id},${m.id});return false" style="font-size:10px;color:#999">réinitialiser</a></div>` : ''}
+    ${m.winner ? `<div style="text-align:right;margin-top:1px"><a href="#" onclick="matchReset(${t.id},${m.id});return false" style="font-size:10px;color:#6f8a45">réinitialiser</a></div>` : ''}
   </div>`;
 }
 function postMatch(tid, mid, body) {

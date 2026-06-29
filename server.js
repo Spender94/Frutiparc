@@ -1918,6 +1918,53 @@ async function tournamentSetMatchWinner(t, match, winner, score1, score2) {
   return { ok: true };
 }
 
+function tournamentRoundName(round, totalRounds) {
+  const fromEnd = totalRounds - round;
+  if (fromEnd === 0) return 'Finale';
+  if (fromEnd === 1) return 'Demi-finale';
+  if (fromEnd === 2) return '1/4 de finale';
+  if (fromEnd === 3) return '8ème de finale';
+  if (fromEnd === 4) return '16ème de finale';
+  return 'Tour ' + round;
+}
+// Rendu SVG du bracket (look « bracket classique » vert Frutiparc, vainqueur en
+// gras). Servi tel quel comme image partageable sur le forum via [img].
+function tournamentBracketSvg(t, matches) {
+  const rounds = Math.max.apply(null, matches.map((m) => m.round));
+  const boxW = 156, rowH = 22, boxH = 44, vGap = 16, colGap = 44, colW = boxW + colGap;
+  const pad = 16, titleH = 28, labelH = 20;
+  const cnt = (r) => matches.filter((m) => m.round === r).length;
+  const r1 = cnt(1);
+  const top0 = pad + titleH + labelH;
+  const cy = {};
+  for (let i = 0; i < r1; i++) cy['1:' + i] = top0 + i * (boxH + vGap) + boxH / 2;
+  for (let r = 2; r <= rounds; r++) for (let i = 0; i < cnt(r); i++) cy[r + ':' + i] = (cy[(r - 1) + ':' + (2 * i)] + cy[(r - 1) + ':' + (2 * i + 1)]) / 2;
+  const W = pad * 2 + rounds * boxW + (rounds - 1) * colGap;
+  const H = top0 + r1 * (boxH + vGap) - vGap + pad;
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const trunc = (s) => { s = String(s || ''); return s.length > 19 ? s.slice(0, 18) + '…' : s; };
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Verdana,Arial,sans-serif">`;
+  svg += `<rect width="${W}" height="${H}" fill="#cdeb9e"/>`;
+  svg += `<text x="${W / 2}" y="${pad + 17}" text-anchor="middle" font-size="15" font-weight="bold" fill="#2c4a0f">${esc(t.name || 'Tournoi')}</text>`;
+  for (let r = 1; r <= rounds; r++) {
+    const x = pad + (r - 1) * colW;
+    const ms = matches.filter((m) => m.round === r).sort((a, b) => a.slot - b.slot);
+    const firstTop = cy[r + ':0'] - boxH / 2;
+    svg += `<text x="${x}" y="${firstTop - 6}" font-size="12" font-weight="bold" fill="#2c4a0f">${esc(tournamentRoundName(r, rounds))}</text>`;
+    ms.forEach((m) => {
+      const top = cy[r + ':' + m.slot] - boxH / 2;
+      const p1 = m.player1 || '-', p2 = m.player2 || '-';
+      const b1 = m.winner && m.winner === m.player1, b2 = m.winner && m.winner === m.player2;
+      svg += `<rect x="${x}" y="${top}" width="${boxW}" height="${boxH}" rx="3" fill="#e6f6c8" stroke="#8fae5a"/>`;
+      svg += `<text x="${x + 9}" y="${top + rowH - 7}" font-size="12.5" fill="#2c4a0f"${b1 ? ' font-weight="bold"' : ''}>${esc(trunc(p1))}</text>`;
+      svg += `<line x1="${x + 5}" y1="${top + rowH}" x2="${x + boxW - 5}" y2="${top + rowH}" stroke="#9bbf66" stroke-dasharray="3 3"/>`;
+      svg += `<text x="${x + 9}" y="${top + 2 * rowH - 7}" font-size="12.5" fill="#2c4a0f"${b2 ? ' font-weight="bold"' : ''}>${esc(trunc(p2))}</text>`;
+    });
+  }
+  svg += '</svg>';
+  return svg;
+}
+
 // Planificateur : ouvre les qualifs programmées arrivées à échéance et clôture
 // (auto-seed) celles dont la fenêtre est terminée. Tourne toutes les
 // TOURNAMENT_TICK_MS (défaut 30 s) + une fois au boot.
@@ -4855,6 +4902,21 @@ app.post('/api/admin/tournaments/:id/match/:mid', tournoiScope, async (req, res)
     await tournamentSetMatchWinner(t, match, w || null, b.score1, b.score2);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Image (SVG) PUBLIQUE du bracket — partageable sur le forum via [img]…[/img].
+// Pas d'auth (lecture seule) ; régénérée à chaque requête → toujours à jour.
+app.get('/api/tournaments/:id/bracket.svg', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(404).type('text/plain').send('no_db');
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t) return res.status(404).type('text/plain').send('not_found');
+    const matches = await db.getTournamentMatches(t.id);
+    if (!matches.length) return res.status(404).type('text/plain').send('no_bracket');
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(tournamentBracketSvg(t, matches));
+  } catch (e) { res.status(500).type('text/plain').send('error'); }
 });
 
 app.get('/api/admin/users/:username', adminAuth, async (req, res) => {
