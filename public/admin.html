@@ -1219,12 +1219,22 @@ async function warmTrombinoscope() {
   const t0 = Date.now();
   try {
     const res = await FPBouilleThumb.warmAll(trombinoscope, {
-      concurrency: 4,
-      onProgress: (done, total, skipped) => { if (msg) msg.textContent = `Réchauffage… ${done}/${total}` + (skipped ? ` (${skipped} déjà en cache)` : ''); }
+      concurrency: 3,
+      onProgress: (done, total, info) => {
+        info = info || {};
+        if (msg) msg.textContent = `Réchauffage… ${done}/${total}`
+          + (info.skipped ? ` · ${info.skipped} en cache` : '')
+          + (info.unsupported ? ` · ${info.unsupported} famille indispo.` : '')
+          + (info.failed ? ` · ${info.failed} échec` : '');
+      }
     });
     if (msg) {
-      msg.style.color = res.failed ? '#b26a00' : '#2f6b16';
-      msg.textContent = `✓ Cache prêt : ${res.total} bouille(s)` + (res.captured ? `, ${res.captured} générée(s)` : '') + (res.skipped ? `, ${res.skipped} déjà en cache` : '') + (res.failed ? ` — ${res.failed} échec(s), relance pour réessayer` : '') + ` (${Math.round((Date.now() - t0) / 1000)}s)`;
+      msg.style.color = (res.failed || res.unsupported) ? '#b26a00' : '#2f6b16';
+      msg.textContent = `✓ Cache : ${res.captured || 0} générée(s)`
+        + (res.skipped ? `, ${res.skipped} déjà en cache` : '')
+        + (res.unsupported ? `, ${res.unsupported} famille non dispo. (non rendables)` : '')
+        + (res.failed ? `, ${res.failed} échec(s) — relance pour réessayer` : '')
+        + ` (${Math.round((Date.now() - t0) / 1000)}s)`;
     }
   } catch (e) {
     if (msg) { msg.style.color = '#b23b2e'; msg.textContent = 'Réchauffage interrompu'; }

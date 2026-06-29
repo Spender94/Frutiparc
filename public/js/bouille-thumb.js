@@ -31,6 +31,13 @@
     return ss.length >= 2 ? ss : "000000010000000000000000";
   }
   function normEmote(e) { return (e != null && Number(e) > 0) ? String(Number(e)) : "0"; }
+  // base62 : 0-9 → 0-9, a-z → 10-35, A-Z → 36-61 (aligné sur decode62 du SWF).
+  function dec(c) {
+    if (c >= "0" && c <= "9") return c.charCodeAt(0) - 48;
+    if (c >= "a" && c <= "z") return c.charCodeAt(0) - 87;
+    if (c >= "A" && c <= "Z") return c.charCodeAt(0) - 29;
+    return 0;
+  }
 
   function imgUrl(s, e, probe) {
     return "/bouille-img?s=" + encodeURIComponent(s) + "&e=" + encodeURIComponent(e)
@@ -59,13 +66,42 @@
       + "&size=" + SIZE + "&fmt=png";
   }
 
+  // ── familles disponibles ───────────────────────────────────────────────────
+  // Seules certaines familles ont un SWF patché (/fbouille_patched/familleN.swf).
+  // Une bouille d'une famille ABSENTE ne peut PAS être rendue : on évite alors la
+  // capture (qui échouerait en boucle et ferait planter le réchauffage) et on
+  // affiche une vignette « ? » neutre. La liste vient de /api/bouille-families.
+  var FALLBACK_FAMILIES = [0, 10, 11, 12, 13, 14, 15, 16, 23, 24];
+  var families = null; // Set | null (null = pas encore chargé → on tente)
+  var familiesLoading = null;
+  function loadFamilies() {
+    if (familiesLoading) return familiesLoading;
+    familiesLoading = fetch("/api/bouille-families", { cache: "force-cache" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { families = setOf((d && d.families) || FALLBACK_FAMILIES); })
+      .catch(function () { families = setOf(FALLBACK_FAMILIES); });
+    return familiesLoading;
+  }
+  function setOf(arr) { var o = {}; for (var i = 0; i < arr.length; i++) o[arr[i]] = 1; return o; }
+  function familyOf(s) { s = sanitize(s); return dec(s.charAt(0)) * 62 + dec(s.charAt(1)); }
+  function renderable(s) { return families ? !!families[familyOf(s)] : true; }
+  loadFamilies();
+
+  // Vignette « ? » (famille indisponible ou capture impossible) — data-URI, léger.
+  var PLACEHOLDER = "data:image/svg+xml," + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72"><rect width="72" height="72" fill="#E8F8D3"/>'
+    + '<text x="36" y="48" font-size="34" text-anchor="middle" fill="#bcd0a0" font-family="Verdana,Arial,sans-serif">?</text></svg>');
+
   // ── pool de capture (iframes /bouille-capture cachées) ─────────────────────
-  // Réutilisé par le réchauffage à la volée (vignettes manquées) ET par le
-  // pré-réchauffage en masse de l'admin. Concurrence réglable : 2 par défaut
-  // (gentil quand main.swf tourne), montée par l'admin (aucun SWF concurrent).
+  // Concurrence faible + recyclage périodique des iframes : sans ça, des milliers
+  // de captures accumulent la mémoire WASM de Ruffle et finissent par faire
+  // planter l'onglet. On détruit les iframes tous les RECYCLE_EVERY pour la libérer.
   var CONC = CONCURRENCY;
+  var RECYCLE_EVERY = 24;    // détruit les iframes après N captures (flush mémoire)
+  var GAP_MS = 35;           // petite pause entre captures (laisse respirer le GC/UI)
   var pending = [];          // [{s,e,cb}] captures en attente
   var activeCaps = 0;
+  var capCount = 0;          // captures depuis le dernier recyclage
   var frames = [];           // iframes de capture (pool + occupées)
 
   function idleFrame() {
@@ -75,6 +111,11 @@
     f.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
     document.body.appendChild(f); frames.push(f); return f;
   }
+  function destroyFrames() {
+    for (var i = 0; i < frames.length; i++) { try { frames[i].src = "about:blank"; if (frames[i].parentNode) frames[i].parentNode.removeChild(frames[i]); } catch (e) {} }
+    frames = [];
+  }
+  function maybeRecycle() { if (activeCaps === 0 && capCount >= RECYCLE_EVERY) { capCount = 0; destroyFrames(); } }
   function setConcurrency(n) { CONC = Math.max(1, (n | 0) || 1); pumpCaps(); }
   function capture(s, e, cb) { pending.push({ s: sanitize(s), e: normEmote(e), cb: cb }); pumpCaps(); }
   function pumpCaps() { while (activeCaps < CONC && pending.length) { activeCaps++; runCap(pending.shift()); } }
@@ -84,19 +125,17 @@
     var timer = setTimeout(function () { settle(false); }, CAPTURE_TIMEOUT);
     function settle(ok) {
       if (settled) return; settled = true;
-      clearTimeout(timer); f._job = null; activeCaps--;
-      // Vider l'iframe : sinon le SWF de famille continue de tourner dans Ruffle
-      // en arrière-plan (CPU gaspillé) entre deux captures.
-      try { f.src = "about:blank"; } catch (e) {}
+      clearTimeout(timer); f._job = null; activeCaps--; capCount++;
+      try { f.src = "about:blank"; } catch (e) {}  // stoppe le SWF entre deux captures
       try { job.cb(ok); } catch (e) {}
-      pumpCaps();
+      maybeRecycle();
+      // petite pause avant la suivante : libère le thread, aide le GC
+      setTimeout(pumpCaps, GAP_MS);
     }
     f._job = { s: job.s, settle: settle };
     f.src = captureUrl(job.s, job.e);
   }
-  // bouille-capture.html (en iframe) signale la fin via postMessage. Il renvoie
-  // `s` (le code 24c assaini) mais pas `e` — or le Bouilloscope n'utilise pas
-  // d'humeur (e=0), donc l'appariement par `s` suffit.
+  // bouille-capture.html (en iframe) signale la fin via postMessage (`s` = code 24c).
   global.addEventListener("message", function (ev) {
     var d = ev && ev.data; if (!d || !d.__bouilleCapture) return;
     for (var i = 0; i < frames.length; i++) {
@@ -112,6 +151,7 @@
     var s = img.getAttribute("data-s"), e = img.getAttribute("data-e") || "0";
     if (!s) return;
     img.onerror = null;                  // ne pas boucler sur le 404
+    if (!renderable(s)) { img.src = PLACEHOLDER; img.style.visibility = "visible"; return; } // famille indisponible
     img.style.visibility = "hidden";     // masquer l'icône « image cassée »
     (waiting[s] = waiting[s] || []).push(img);
     if (queued[s]) return;
@@ -129,62 +169,60 @@
       img.onload = function () { img.style.visibility = "visible"; };
       img.src = imgUrl(job.s, job.e, false);   // en cache désormais → 200
     } else {
-      // Capture en échec → iframe de preview live pour ne jamais laisser un vide.
-      var box = img.parentNode; if (!box) return;
-      var ifr = document.createElement("iframe");
-      ifr.src = "/bouille-preview.html?s=" + encodeURIComponent(job.s) + (job.e !== "0" ? "&e=" + encodeURIComponent(job.e) : "");
-      ifr.loading = "lazy"; ifr.setAttribute("sandbox", "allow-scripts allow-same-origin");
-      ifr.style.cssText = "width:100%;height:100%;border:0;display:block";
-      box.replaceChild(ifr, img);
+      // Capture en échec → vignette « ? » (léger). On NE relance PAS d'iframe live :
+      // ça surchargerait et échouerait pareil.
+      img.onerror = null; img.src = PLACEHOLDER; img.style.visibility = "visible";
     }
   }
 
   // ── pré-réchauffage en masse (admin) ───────────────────────────────────────
-  // Remplit le cache PNG pour TOUTE une liste depuis un contexte sans main.swf
-  // (donc rapide) : on saute les bouilles déjà en cache (sonde /status, gratuit)
-  // et on capture le reste. Ainsi les visiteurs (surtout main.swf) n'ont plus
-  // jamais à capturer → affichage instantané. onProgress(done,total,skipped).
+  // Remplit le cache PNG pour une liste : saute les bouilles déjà en cache (sonde
+  // /status, gratuit) ET celles dont la famille n'a pas de SWF (non rendables),
+  // puis capture le reste (concurrence faible + recyclage mémoire → ne plante pas).
+  // onProgress(done, total, {skipped, unsupported, failed}).
   function warmAll(items, opts) {
     opts = opts || {};
     if (opts.concurrency) setConcurrency(opts.concurrency);
-    var retries = (opts.retries != null) ? opts.retries : 2; // une capture peut échouer (canvas pas peint à temps) → on réessaie
-    var list = (items || []).map(function (it) {
-      return (typeof it === "string") ? { s: sanitize(it), e: "0" }
-        : { s: sanitize(it.s != null ? it.s : it.bouille), e: normEmote(it.e) };
-    });
-    var total = list.length, i = 0, done = 0, okN = 0, skipped = 0, failed = 0, running = 0;
-    function report() { if (opts.onProgress) { try { opts.onProgress(done, total, skipped); } catch (e) {} } }
-    return new Promise(function (resolve) {
-      if (!total) { resolve({ total: 0, captured: 0, skipped: 0, failed: 0 }); return; }
-      function finishItem(kind) { // 'skip' | 'ok' | 'fail'
-        if (kind === 'skip') skipped++; else if (kind === 'ok') okN++; else failed++;
-        running--; done++; report(); step();
-      }
-      function attempt(job, left) {
-        capture(job.s, job.e, function (cok) {
-          if (cok) finishItem('ok');
-          else if (left > 0) attempt(job, left - 1);   // réessai sur capture en échec
-          else finishItem('fail');
-        });
-      }
-      function step() {
-        if (i >= total && running === 0) { resolve({ total: total, captured: okN, skipped: skipped, failed: failed }); return; }
-        while (running < CONC && i < total) {
-          (function (job) {
-            running++;
-            fetch(statusUrl(job.s, job.e), { cache: "no-store" })
-              .then(function (r) { return r.json(); })
-              .then(function (d) {
-                if (d && d.cached) finishItem('skip');
-                else attempt(job, retries);
-              })
-              .catch(function () { attempt(job, retries); });
-          })(list[i++]);
+    var retries = (opts.retries != null) ? opts.retries : 1;
+    return (families ? Promise.resolve() : loadFamilies()).then(function () {
+      var raw = (items || []).map(function (it) {
+        return (typeof it === "string") ? { s: sanitize(it), e: "0" }
+          : { s: sanitize(it.s != null ? it.s : it.bouille), e: normEmote(it.e) };
+      });
+      var list = [], unsupported = 0;
+      for (var k = 0; k < raw.length; k++) { if (renderable(raw[k].s)) list.push(raw[k]); else unsupported++; }
+      var total = list.length, i = 0, done = 0, okN = 0, skipped = 0, failed = 0, running = 0;
+      function report() { if (opts.onProgress) { try { opts.onProgress(done, total, { skipped: skipped, unsupported: unsupported, failed: failed }); } catch (e) {} } }
+      report();
+      return new Promise(function (resolve) {
+        if (!total) { resolve({ total: 0, captured: 0, skipped: 0, unsupported: unsupported, failed: 0 }); return; }
+        function finishItem(kind) {
+          if (kind === 'skip') skipped++; else if (kind === 'ok') okN++; else failed++;
+          running--; done++; report(); step();
         }
-      }
-      step();
+        function attempt(job, left) {
+          capture(job.s, job.e, function (cok) {
+            if (cok) finishItem('ok');
+            else if (left > 0) attempt(job, left - 1);
+            else finishItem('fail');
+          });
+        }
+        function step() {
+          if (i >= total && running === 0) { resolve({ total: total, captured: okN, skipped: skipped, unsupported: unsupported, failed: failed }); return; }
+          while (running < CONC && i < total) {
+            (function (job) {
+              running++;
+              fetch(statusUrl(job.s, job.e), { cache: "no-store" })
+                .then(function (r) { return r.json(); })
+                .then(function (d) { if (d && d.cached) finishItem('skip'); else attempt(job, retries); })
+                .catch(function () { attempt(job, retries); });
+            })(list[i++]);
+          }
+        }
+        step();
+      });
     });
   }
 
-  global.FPBouilleThumb = { imgHtml: imgHtml, warmAll: warmAll, setConcurrency: setConcurrency, _miss: onMiss, _ok: onOk, SIZE: SIZE };
+  global.FPBouilleThumb = { imgHtml: imgHtml, warmAll: warmAll, setConcurrency: setConcurrency, loadFamilies: loadFamilies, _miss: onMiss, _ok: onOk, SIZE: SIZE };
 })(window);

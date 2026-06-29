@@ -3890,6 +3890,26 @@ app.get('/bouille-capture', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'bouille-capture.html'));
 });
 
+// Familles de bouilles RENDABLES = celles ayant un SWF patché. Les bouilles
+// d'autres familles (codes importés du web) ne peuvent pas être rendues ; le
+// front les saute (vignette « ? ») au lieu de boucler sur des captures vouées à
+// l'échec (ce qui faisait planter le réchauffage).
+let _patchedFamilies = null;
+function getPatchedFamilies() {
+  if (_patchedFamilies) return _patchedFamilies;
+  try {
+    const dir = path.join(__dirname, 'public', 'fbouille_patched');
+    _patchedFamilies = fs.readdirSync(dir)
+      .map((f) => { const m = /^famille(\d+)\.swf$/.exec(f); return m ? Number(m[1]) : null; })
+      .filter((n) => n != null).sort((a, b) => a - b);
+  } catch (e) { _patchedFamilies = [0]; }
+  return _patchedFamilies;
+}
+app.get('/api/bouille-families', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.json({ families: getPatchedFamilies() });
+});
+
 // Same-origin image proxy for the chat /image command. Flash/Ruffle can't load
 // an <img> (or loadMovie) from a foreign host without a crossdomain.xml on that
 // host — which arbitrary image hosts never have — so external images render
