@@ -3932,6 +3932,46 @@ app.get('/api/bouille-families', (req, res) => {
   res.json({ families: getPatchedFamilies() });
 });
 
+// Diagnostic du Bouilloscope : sur l'ENSEMBLE des bouilles enregistrées, combien
+// sont réellement rendables (famille avec un SWF présent) vs non, + répartition
+// par famille et par longueur de code. Sert à répondre, chiffres en main, à la
+// question « pourquoi des bouilles ne s'affichent pas ? » :
+//   - la LONGUEUR du code (15/18/24…) n'empêche JAMAIS le rendu (le SWF complète
+//     les accessoires manquants par 0) — vérifié : un code 18c rend à l'identique
+//     d'une fois complété à 24c ;
+//   - seule la FAMILLE compte : une bouille dont la famille n'a pas de SWF
+//     (familleN.swf absent) ne peut pas être rendue, quelle que soit sa longueur.
+function bouilleFamilyStats() {
+  const renderableFams = new Set(getPatchedFamilies());
+  const byFamily = new Map();   // famille -> nb
+  const byLength = new Map();   // longueur de code -> nb
+  let total = 0, ok = 0, ko = 0;
+  for (const e of TROMBINOSCOPE) {
+    const s = normalizeBouilleState(e && e.bouille);
+    const fam = decode62(s.slice(0, 2));
+    total++;
+    byFamily.set(fam, (byFamily.get(fam) || 0) + 1);
+    byLength.set(s.length, (byLength.get(s.length) || 0) + 1);
+    if (renderableFams.has(fam)) ok++; else ko++;
+  }
+  const families = [...byFamily.entries()]
+    .map(([family, count]) => ({ family, count, renderable: renderableFams.has(family) }))
+    .sort((a, b) => b.count - a.count);
+  const lengths = [...byLength.entries()]
+    .map(([length, count]) => ({ length, count }))
+    .sort((a, b) => a.length - b.length);
+  return {
+    total,
+    renderable: ok,
+    unrenderable: ko,
+    renderablePct: total ? Math.round((ok / total) * 1000) / 10 : 0,
+    patchedFamilies: getPatchedFamilies(),
+    families,
+    missingFamilies: families.filter((f) => !f.renderable),
+    lengths,
+  };
+}
+
 // Same-origin image proxy for the chat /image command. Flash/Ruffle can't load
 // an <img> (or loadMovie) from a foreign host without a crossdomain.xml on that
 // host — which arbitrary image hosts never have — so external images render
@@ -6929,6 +6969,11 @@ app.get('/api/trombinoscope', (req, res) => {
 // Admin : liste complète (avec id, pour la suppression unitaire).
 app.get('/api/admin/trombinoscope', adminScope('trombinoscope'), (req, res) => {
   res.json({ ok: true, entries: trombinoscopeSorted() });
+});
+
+// Admin : diagnostic de rendu du Bouilloscope (familles rendables vs non, etc.).
+app.get('/api/admin/bouille-stats', adminScope('trombinoscope'), (req, res) => {
+  res.json({ ok: true, ...bouilleFamilyStats() });
 });
 
 // Admin : import d'un CSV "pseudo,bouille". Le corps est le CSV brut envoyé en

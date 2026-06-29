@@ -651,10 +651,12 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <button class="btn" onclick="loadTrombinoscope()">Rafraîchir</button>
     <span id="tromb-count" style="font-size:12px;color:#666"></span>
     <button class="btn btn-sm" id="tromb-warm" onclick="warmTrombinoscope()" title="Génère et met en cache l'image PNG de chaque bouille, pour un affichage instantané côté Bouilloscope (main.swf et /light).">⚡ Réchauffer les bouilles</button>
+    <button class="btn btn-sm" id="tromb-diag" onclick="bouilleDiagnostic()" title="Combien de bouilles sont réellement rendables (famille disponible) ? Et celles qui ne le sont pas, pourquoi ?">🔎 Diagnostic rendu</button>
     <span id="tromb-warm-msg" style="font-size:12px;color:#2f6b16"></span>
     <span style="flex:1"></span>
     <button class="btn-danger btn-sm" onclick="clearTrombinoscope()">Tout supprimer</button>
   </div>
+  <div id="tromb-diag-panel" style="display:none;margin:0 0 10px;padding:10px 12px;background:#f3f8ec;border:1px solid #cfe3b4;border-radius:8px;font-size:12px;line-height:1.5;color:#2c4a0f"></div>
 
   <h3 style="margin:6px 0 6px">📷 Importer un CSV de Frutiz</h3>
   <div style="max-width:880px;display:flex;flex-direction:column;gap:8px;background:#f7f7f7;padding:12px;border-radius:8px">
@@ -1241,6 +1243,51 @@ async function warmTrombinoscope() {
     }
   } catch (e) {
     if (msg) { msg.style.color = '#b23b2e'; msg.textContent = 'Réchauffage interrompu'; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+// Diagnostic de rendu : interroge /api/admin/bouille-stats et affiche, chiffres
+// réels en main, combien de bouilles sont rendables (famille dispo) vs non, la
+// répartition par famille et par longueur de code. Démonte le mythe « c'est la
+// longueur du code » : la longueur n'empêche jamais le rendu, seule la famille
+// compte (une famille sans SWF = bouille non rendable).
+async function bouilleDiagnostic() {
+  const panel = document.getElementById('tromb-diag-panel');
+  const btn = document.getElementById('tromb-diag');
+  if (btn) btn.disabled = true;
+  if (panel) { panel.style.display = 'block'; panel.innerHTML = 'Analyse…'; }
+  try {
+    const r = await fetch('/api/admin/bouille-stats', { headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { if (panel) panel.textContent = 'Erreur: ' + (d.error || 'inconnu'); return; }
+    const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const famName = (n) => 'famille' + n;
+    const topFam = d.families.slice(0, 8).map((f) =>
+      '<span style="display:inline-block;margin:2px 6px 2px 0;padding:1px 7px;border-radius:10px;background:'
+      + (f.renderable ? '#dff0c8;color:#2c4a0f' : '#fbe0d6;color:#a23a1e')
+      + '">' + esc(famName(f.family)) + ' : ' + f.count + (f.renderable ? '' : ' ✗') + '</span>').join('');
+    const lengths = d.lengths.map((l) => l.length + 'c : ' + l.count).join(' · ');
+    const miss = d.missingFamilies;
+    let missLine = '';
+    if (miss.length) {
+      const totMiss = miss.reduce((a, f) => a + f.count, 0);
+      missLine = '<div style="margin-top:6px;color:#a23a1e"><b>' + totMiss + ' bouille(s) non rendable(s)</b> — familles sans SWF : '
+        + miss.slice(0, 12).map((f) => esc(famName(f.family)) + ' (×' + f.count + ')').join(', ')
+        + (miss.length > 12 ? '…' : '')
+        + '. Pour les afficher, il faut ajouter le SWF de ces familles dans <code>public/fbouille_patched/</code>.</div>';
+    } else {
+      missLine = '<div style="margin-top:6px;color:#2f6b16">✓ Toutes les familles utilisées ont un SWF : 100 % des bouilles sont rendables.</div>';
+    }
+    panel.innerHTML =
+      '<div><b>' + d.total + ' bouilles</b> · <b style="color:#2f6b16">' + d.renderable + ' rendables (' + d.renderablePct + ' %)</b>'
+      + (d.unrenderable ? ' · <b style="color:#a23a1e">' + d.unrenderable + ' non rendables</b>' : '') + '</div>'
+      + '<div style="margin-top:6px">Familles (top) : ' + topFam + '</div>'
+      + '<div style="margin-top:6px;color:#555">Longueurs de code : ' + esc(lengths) + ' — <i>la longueur n\'affecte pas le rendu</i>.</div>'
+      + missLine
+      + '<div style="margin-top:6px;color:#555">Familles disponibles (SWF présents) : ' + esc(d.patchedFamilies.join(', ')) + '.</div>';
+  } catch (e) {
+    if (panel) panel.textContent = 'Erreur réseau : ' + e.message;
   } finally {
     if (btn) btn.disabled = false;
   }
