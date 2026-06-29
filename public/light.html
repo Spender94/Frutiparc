@@ -2570,8 +2570,11 @@
   var accSel = { suffix: "000000000", fullState: null };
 
   function isIncarnation(v) {
+    // La famille est le 1er caractère base62 : '0' = famille 0, '1' = famille 1
+    // (les deux = la bouille « de base » de l'utilisateur). Famille ≥ 2 (1er car.
+    // '2'-'9' ou 'a'-'o') = incarnation (costume plein qui remplace tout).
     return typeof v === "string" && v.length === 24
-      && v.substring(0, 2) !== "00" && v.substring(0, 2) !== "01";
+      && v.charAt(0) !== "0" && v.charAt(0) !== "1";
   }
   function buildState(base, suffix9, fullState) {
     if (fullState) return String(fullState);

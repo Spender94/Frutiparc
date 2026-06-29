@@ -3948,7 +3948,10 @@ function bouilleFamilyStats() {
   let total = 0, ok = 0, ko = 0;
   for (const e of TROMBINOSCOPE) {
     const s = normalizeBouilleState(e && e.bouille);
-    const fam = decode62(s.slice(0, 2));
+    // Famille = 1er caractère base62 (0-9 → 0-9, a-o → 10-24). Confirmé par les
+    // données de prod (familles 1-8 stockées « N0… »). Lire 2 caractères donnait
+    // famille×62 (« famille62 » = en réalité la famille 1).
+    const fam = decode62(s.slice(0, 1));
     total++;
     byFamily.set(fam, (byFamily.get(fam) || 0) + 1);
     byLength.set(s.length, (byLength.get(s.length) || 0) + 1);
