@@ -2141,6 +2141,7 @@ function dbUserToMemory(row) {
     deviceToken: row.device_token || '',
     referralState: row.referral_state || 'none',
     referralFlag: row.referral_flag || '',
+    lastLoginXpDay: row.last_login_xp_day || '',
     _dbId: row.id,
   };
 }
@@ -2605,16 +2606,26 @@ function awardImmediateXp(username, gain, reason = '', { notify = true } = {}) {
   console.log(`[XP]  ${username}: +${gain} XP${reason ? ' (' + reason + ')' : ''} → total=${user.xp}`);
 }
 
-// Once-per-day connection bonus. The claim marker lives in dailyXpActions
-// (persisted on disk, cleared at the midnight rollover) so reconnecting can't
-// farm it and a restart within the same day won't re-grant it.
+// Once-per-day connection bonus. The claim marker is stored DURABLY on the user
+// record (last_login_xp_day, in the DB) — NOT only in dailyXpActions on disk.
+// Reason: the prod container is ephemeral; a restart wipes xp-actions.json, so
+// the disk marker was forgotten and every reconnecting player re-earned the
+// +5000 bonus on each reboot. The DB-backed marker survives restarts, so a
+// reboot has no effect on XP. (dailyXpActions stays as an in-process fast-path.)
 function awardDailyLoginXp(username) {
   if (!username) return;
   const today = parisDayKey();
+  const user = users[username];
+  // Durable guard first (survives reboots). Then the in-memory fast-path.
+  if (user && user.lastLoginXpDay === today) return;
   const acts = getXpActions(username);
   if (acts.loginXpDay === today) return;
   acts.loginXpDay = today;
   saveXpActions();
+  if (user) {
+    user.lastLoginXpDay = today;
+    if (user._dbId) db.updateUser(username, { last_login_xp_day: today }).catch(dbErr('updateUser last_login_xp_day'));
+  }
   // notify:false — the ident handler flushes new userLog entries to the socket
   // immediately after this call, so it delivers any level-up exactly once.
   awardImmediateXp(username, LOGIN_XP_BONUS, 'connexion quotidienne', { notify: false });
@@ -6977,6 +6988,20 @@ app.get('/api/admin/trombinoscope', adminScope('trombinoscope'), (req, res) => {
 // Admin : diagnostic de rendu du Bouilloscope (familles rendables vs non, etc.).
 app.get('/api/admin/bouille-stats', adminScope('trombinoscope'), (req, res) => {
   res.json({ ok: true, ...bouilleFamilyStats() });
+});
+
+// Admin : export CSV "pseudo,bouille" de toutes les bouilles (réimportable tel
+// quel via l'import ci-dessous). Échappe les champs contenant , " ou saut de ligne.
+app.get('/api/admin/trombinoscope/export', adminScope('trombinoscope'), (req, res) => {
+  const csvCell = (v) => {
+    const s = String(v == null ? '' : v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const rows = trombinoscopeSorted().map((e) => csvCell(e.pseudo) + ',' + csvCell(e.bouille));
+  const csv = 'pseudo,bouille\r\n' + rows.join('\r\n') + (rows.length ? '\r\n' : '');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="bouilles.csv"');
+  res.send(csv);
 });
 
 // Admin : import d'un CSV "pseudo,bouille". Le corps est le CSV brut envoyé en

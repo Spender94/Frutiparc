@@ -652,6 +652,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <span id="tromb-count" style="font-size:12px;color:#666"></span>
     <button class="btn btn-sm" id="tromb-warm" onclick="warmTrombinoscope()" title="Génère et met en cache l'image PNG de chaque bouille, pour un affichage instantané côté Bouilloscope (main.swf et /light).">⚡ Réchauffer les bouilles</button>
     <button class="btn btn-sm" id="tromb-diag" onclick="bouilleDiagnostic()" title="Combien de bouilles sont réellement rendables (famille disponible) ? Et celles qui ne le sont pas, pourquoi ?">🔎 Diagnostic rendu</button>
+    <button class="btn btn-sm" id="tromb-export" onclick="exportTrombinoscope()" title="Télécharge toutes les bouilles au format CSV (pseudo,bouille), réimportable tel quel.">⬇️ Exporter CSV</button>
     <span id="tromb-warm-msg" style="font-size:12px;color:#2f6b16"></span>
     <span style="flex:1"></span>
     <button class="btn-danger btn-sm" onclick="clearTrombinoscope()">Tout supprimer</button>
@@ -1291,6 +1292,24 @@ async function bouilleDiagnostic() {
   } finally {
     if (btn) btn.disabled = false;
   }
+}
+// Export CSV : on télécharge via fetch (pour envoyer la clé admin en en-tête,
+// impossible avec un simple lien <a href>), puis on déclenche le download du Blob.
+async function exportTrombinoscope() {
+  const btn = document.getElementById('tromb-export');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/admin/trombinoscope/export', { headers: hdr() });
+    if (!r.ok) { toast('Erreur export: ' + r.status); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'bouilles.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast('CSV téléchargé (' + (trombinoscope.length || 0) + ' bouilles)');
+  } catch (e) { toast('Erreur réseau: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
 }
 async function deleteTrombEntry(id) {
   const e = trombinoscope.find(x => x.id === id);
