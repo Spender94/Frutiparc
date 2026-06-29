@@ -3878,18 +3878,23 @@ app.get('/bouille-img', async (req, res) => {
 // freshly-captured image without fetching its bytes or following a redirect.
 app.get('/api/bouille-img/status', async (req, res) => {
   const p = normalizeBouilleImgParams(req.query);
-  let exists = fs.existsSync(bouilleImgPath(p));
-  // Compte aussi le cache durable (DB) : après un redéploiement le disque est
-  // vide mais les images persistées sont là → on ne re-capture pas inutilement.
-  if (!exists && process.env.DATABASE_URL) {
-    try { exists = await db.bouilleImageExists(bouilleImgKey(p)); } catch (e) {}
+  // Sur un conteneur éphémère, seule la BASE est durable. Le réchauffage doit donc
+  // considérer « en cache » UNIQUEMENT ce qui est en base : sinon une image
+  // seulement sur disque serait sautée, puis perdue au redémarrage (bouille
+  // blanche). En l'absence de base (mode mémoire), on retombe sur le disque.
+  let exists;
+  if (process.env.DATABASE_URL) {
+    try { exists = await db.bouilleImageExists(bouilleImgKey(p)); }
+    catch (e) { exists = fs.existsSync(bouilleImgPath(p)); }
+  } else {
+    exists = fs.existsSync(bouilleImgPath(p));
   }
   res.setHeader('Cache-Control', 'no-store');
   res.json({ ok: true, cached: exists, key: bouilleImgKey(p), fmt: p.fmt });
 });
 
 const BOUILLE_IMG_MAX_BYTES = 4 * 1024 * 1024; // 4 MB cap per captured image
-app.post('/api/bouille-img', express.raw({ type: ['image/png', 'image/gif', 'application/octet-stream'], limit: BOUILLE_IMG_MAX_BYTES }), (req, res) => {
+app.post('/api/bouille-img', express.raw({ type: ['image/png', 'image/gif', 'application/octet-stream'], limit: BOUILLE_IMG_MAX_BYTES }), async (req, res) => {
   try {
     const p = normalizeBouilleImgParams(req.query);
     const body = req.body;
@@ -3908,9 +3913,18 @@ app.post('/api/bouille-img', express.raw({ type: ['image/png', 'image/gif', 'app
     const tmp = file + '.' + crypto.randomBytes(4).toString('hex') + '.tmp';
     fs.writeFileSync(tmp, body);
     fs.renameSync(tmp, file);
-    // Persiste aussi en base (cache durable, survit aux redéploiements). Best-effort.
+    // Persiste en base AVANT de répondre. Le conteneur étant éphémère, une image
+    // seulement sur disque est perdue au redémarrage (bouille blanche), alors que
+    // le réchauffage l'aurait crue réussie. On ATTEND donc l'écriture durable
+    // (1 réessai) ; en cas d'échec persistant on renvoie 503 pour que le
+    // réchauffage la retente plus tard plutôt que de la croire en cache.
     if (process.env.DATABASE_URL) {
-      db.upsertBouilleImage(bouilleImgKey(p), p.fmt, body).catch((e) => console.error('[BOUILLE-IMG] db write:', e.message));
+      let dbOk = false;
+      for (let t = 0; t < 2 && !dbOk; t++) {
+        try { await db.upsertBouilleImage(bouilleImgKey(p), p.fmt, body); dbOk = true; }
+        catch (e) { if (t === 1) console.error('[BOUILLE-IMG] db write:', e.message); }
+      }
+      if (!dbOk) return res.status(503).json({ ok: false, error: 'db_write_failed' });
     }
     console.log(`[BOUILLE-IMG] cached ${p.fmt} ${bouilleImgKey(p)} (${body.length} B) s=${p.s} e=${p.e} anim=${p.anim || '-'} size=${p.size}`);
     res.json({ ok: true, bytes: body.length, key: bouilleImgKey(p) });
