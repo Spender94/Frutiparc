@@ -26,7 +26,7 @@ const OUT = process.argv[3] || 'blog-bouilles.csv';
 if (!ROOT) { console.error('Usage: node scripts/blogs-to-csv.js <racine> [sortie.csv]'); process.exit(1); }
 
 const best = new Map(); // pseudoLower -> { year, bouille, pseudo }
-let filesScanned = 0, withBouille = 0;
+let filesScanned = 0, withBouille = 0, entriesSeen = 0;
 
 // Extrait le code bouille (paramètre s=) du 1er flashvars trouvé.
 function extractBouille(html) {
@@ -50,6 +50,7 @@ function walk(dir) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
   for (const ent of entries) {
+    if (++entriesSeen % 5000 === 0) console.log(`  …${entriesSeen} éléments parcourus · ${filesScanned} HTML lus · ${best.size} pseudos trouvés`);
     const fp = path.join(dir, ent.name);
     if (ent.isDirectory()) { walk(fp); continue; }
     if (!ent.isFile() || !/\.html?$/i.test(ent.name)) continue;
