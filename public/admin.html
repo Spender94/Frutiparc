@@ -1345,19 +1345,37 @@ async function repairTrombinoscope() {
   } catch (e) { toast('Erreur réseau: ' + e.message); }
   finally { if (btn) btn.disabled = false; }
 }
-// Purge les images vides du cache (fond vert capturé trop tôt), puis invite à
-// relancer le réchauffage pour les régénérer correctement.
+// Purge les images vides du cache (fond capturé trop tôt). On montre d'abord
+// l'HISTOGRAMME des tailles pour choisir le seuil (vides < ~11 ko, vraies ≥16 ko),
+// puis on purge ; il faudra relancer le réchauffage pour les régénérer.
 async function purgeBlankBouilles() {
-  if (!confirm('Supprimer du cache les bouilles « vides » (fond vert, capturées trop tôt) ?\nIl faudra ensuite relancer le réchauffage pour les régénérer.')) return;
   const btn = document.getElementById('tromb-purge');
   if (btn) btn.disabled = true;
   try {
-    const r = await fetch('/api/admin/bouille-cache/purge-blanks', { method: 'POST', headers: hdr() });
+    // 1) dry-run : répartition des tailles
+    const dry = await fetch('/api/admin/bouille-cache/purge-blanks?dryRun=1', { method: 'POST', headers: hdr() }).then(r => r.json());
+    const h = (dry && dry.histogram) || {};
+    const info = 'Tailles des images en cache :\n'
+      + '  < 2 ko   : ' + (h.lt2k || 0) + '   (vides)\n'
+      + '  2 - 6 ko : ' + (h.k2_6 || 0) + '\n'
+      + '  6 - 11 ko: ' + (h.k6_11 || 0) + '   (vides partielles, ~9 ko)\n'
+      + '  11 - 16 ko: ' + (h.k11_16 || 0) + '\n'
+      + '  >= 16 ko : ' + (h.ge16k || 0) + '   (vraies bouilles)\n'
+      + '  total    : ' + (h.total || 0) + '\n\n'
+      + 'Les vides font généralement < 11 ko, les vraies >= 16 ko.\n'
+      + 'Supprimer les images de MOINS de combien d\'octets ?';
+    const thr = prompt(info, '12000');
+    if (thr === null) return;
+    const maxBytes = parseInt(thr, 10);
+    if (!(maxBytes > 0)) { toast('Valeur invalide'); return; }
+    if (!confirm('Supprimer les images < ' + maxBytes + ' octets du cache ?\nIl faudra relancer le réchauffage (passage complet) ensuite.')) return;
+    // 2) purge réelle
+    const r = await fetch('/api/admin/bouille-cache/purge-blanks?maxBytes=' + maxBytes, { method: 'POST', headers: hdr() });
     const d = await r.json();
     if (!r.ok) { toast('Erreur: ' + (d.error || r.status)); return; }
-    toast('Purgé : ' + d.dbDeleted + ' en base, ' + d.diskDeleted + ' sur disque. Relance maintenant le réchauffage (script).');
+    toast('Purgé : ' + d.dbDeleted + ' en base, ' + d.diskDeleted + ' sur disque (< ' + maxBytes + ' o).');
     const msg = document.getElementById('tromb-warm-msg');
-    if (msg) { msg.style.color = '#2f6b16'; msg.textContent = '✓ ' + d.dbDeleted + ' vide(s) purgée(s) — relance le script de réchauffage pour les régénérer.'; }
+    if (msg) { msg.style.color = '#2f6b16'; msg.textContent = '✓ ' + d.dbDeleted + ' vide(s) purgée(s) — relance le réchauffage (passage complet, sans --csv) pour les régénérer.'; }
   } catch (e) { toast('Erreur réseau: ' + e.message); }
   finally { if (btn) btn.disabled = false; }
 }

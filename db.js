@@ -1456,6 +1456,24 @@ async function deleteSmallBouilleImages(maxBytes) {
   const { rowCount } = await pool.query('DELETE FROM bouille_images WHERE octet_length(bytes) < $1', [maxBytes]);
   return rowCount || 0;
 }
+async function countSmallBouilleImages(maxBytes) {
+  const { rows } = await pool.query('SELECT count(*)::int AS n FROM bouille_images WHERE octet_length(bytes) < $1', [maxBytes]);
+  return rows[0] ? rows[0].n : 0;
+}
+// Répartition des tailles des images en cache : aide à choisir le seuil de purge
+// (vides ≈ < 11 ko, vraies bouilles ≈ ≥ 16 ko).
+async function bouilleImageSizeHistogram() {
+  const { rows } = await pool.query(`
+    SELECT
+      count(*) FILTER (WHERE octet_length(bytes) < 2000)::int                                      AS lt2k,
+      count(*) FILTER (WHERE octet_length(bytes) >= 2000  AND octet_length(bytes) < 6000)::int      AS k2_6,
+      count(*) FILTER (WHERE octet_length(bytes) >= 6000  AND octet_length(bytes) < 11000)::int     AS k6_11,
+      count(*) FILTER (WHERE octet_length(bytes) >= 11000 AND octet_length(bytes) < 16000)::int     AS k11_16,
+      count(*) FILTER (WHERE octet_length(bytes) >= 16000)::int                                     AS ge16k,
+      count(*)::int                                                                                 AS total
+    FROM bouille_images`);
+  return rows[0] || { lt2k: 0, k2_6: 0, k6_11: 0, k11_16: 0, ge16k: 0, total: 0 };
+}
 
 // ── Chat banned words ──
 async function loadChatBannedWords() {
@@ -2342,6 +2360,8 @@ module.exports = {
   upsertBouilleImage,
   countBouilleImages,
   deleteSmallBouilleImages,
+  countSmallBouilleImages,
+  bouilleImageSizeHistogram,
   loadChatBannedWords,
   addChatBannedWord,
   updateChatBannedWord,
