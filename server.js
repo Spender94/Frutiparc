@@ -2150,19 +2150,42 @@ function dbUserToMemory(row) {
 }
 
 async function hydrateUserFromDb(username, dbUser) {
-  users[username] = dbUserToMemory(dbUser);
-  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails, dbGameItems, dbUserLog, dbSiteLog, dbContactFolders] = await Promise.all([
-    db.getUserItems(dbUser.id),
-    db.getUserAccessories(dbUser.id),
-    db.loadScoresForUser(dbUser.id),
-    db.getContacts(dbUser.id),
-    db.getBlacklist(dbUser.id),
-    db.getMailsForUser(dbUser.id).catch(() => []),
-    db.getUserGameItems(dbUser.id).catch(() => []),
-    db.getUserLogEntries(dbUser.id, 'user', 200).catch(() => []),
-    db.getUserLogEntries(dbUser.id, 'site', 200).catch(() => []),
-    db.getContactFolders(dbUser.id).catch(() => []),
-  ]);
+  const mem = dbUserToMemory(dbUser);
+  // Charge les données liées (inventaire, accessoires, scores…). CRUCIAL : une
+  // erreur transitoire (contention DB au reboot, quand tout le monde se reconnecte
+  // en même temps) ne doit PAS laisser un utilisateur « vidé » en mémoire — sinon
+  // il voit son inventaire/pictos disparaître à l'écran alors que la base est
+  // intacte, reçoit les notifs de « première connexion », etc. On réessaie, et on
+  // n'assigne users[username] qu'une fois TOUT chargé (assignation atomique).
+  let loaded;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      loaded = await Promise.all([
+        db.getUserItems(dbUser.id),
+        db.getUserAccessories(dbUser.id),
+        db.loadScoresForUser(dbUser.id),
+        db.getContacts(dbUser.id),
+        db.getBlacklist(dbUser.id),
+        db.getMailsForUser(dbUser.id).catch(() => []),
+        db.getUserGameItems(dbUser.id).catch(() => []),
+        db.getUserLogEntries(dbUser.id, 'user', 200).catch(() => []),
+        db.getUserLogEntries(dbUser.id, 'site', 200).catch(() => []),
+        db.getContactFolders(dbUser.id).catch(() => []),
+      ]);
+      break;
+    } catch (e) {
+      if (attempt >= 2) {
+        // Échec persistant : on NE met PAS d'utilisateur vidé en cache. On relaie
+        // l'erreur pour que la prochaine connexion réessaie, plutôt que de servir
+        // un inventaire vide (et risquer qu'il soit ré-enregistré).
+        console.error(`[HYDRATE] ${username}: échec chargement données liées (inventaire NON écrasé, base intacte) → ${e.message}`);
+        throw e;
+      }
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    }
+  }
+  users[username] = mem; // atomique : seulement après un chargement COMPLET
+  const [items, accs, dbScores, dbContacts, dbBlacklist, dbMails, dbGameItems, dbUserLog, dbSiteLog, dbContactFolders] = loaded;
 
   if (items.length > 0) users[username].items = withDefaultPens(items);
   if (accs.length > 0) users[username].customAccessories = accs;
@@ -5046,6 +5069,25 @@ app.get('/api/admin/users/:username', adminAuth, async (req, res) => {
       try { gameItems = await db.getUserGameItems(row.id) || []; } catch { gameItems = []; }
     }
     res.json({ user: row, items, accessories: accs, scores, gameItems, ban: banInfoFromUntil(row.banned_until) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Recharge un utilisateur depuis la BASE (source de vérité) : corrige une session
+// en mémoire « vidée » par un échec d'hydratation au reboot (inventaire / pictos /
+// accessoires vides à l'écran, notifs de « première connexion »), alors que la
+// base est intacte. Renvoie les comptes avant/après pour vérifier la restauration.
+app.post('/api/admin/users/:username/rehydrate', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(404).json({ error: 'no db' });
+  try {
+    const row = await db.findUserByUsername(req.params.username);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    const cur = users[row.username];
+    const before = cur ? { items: (cur.items || []).length, accessories: (cur.customAccessories || []).length, gameItems: (cur.gameItems || []).length } : null;
+    await hydrateUserFromDb(row.username, row); // réassigne users[...] atomiquement depuis la base
+    const u = users[row.username] || {};
+    const after = { items: (u.items || []).length, accessories: (u.customAccessories || []).length, gameItems: (u.gameItems || []).length };
+    console.log(`[ADMIN] rehydrate ${row.username} : items ${before ? before.items : '?'}→${after.items}, accessoires ${before ? before.accessories : '?'}→${after.accessories}, pictos ${before ? before.gameItems : '?'}→${after.gameItems}`);
+    res.json({ ok: true, username: row.username, before, after });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
