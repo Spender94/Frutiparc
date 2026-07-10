@@ -2512,7 +2512,7 @@ async function loadDetail() {
     if (!r.ok) { dc.innerHTML = '<p class="empty">Joueur non trouvé</p>'; return; }
     const d = await r.json();
     const user = d.user;
-    let html = `<h3>${esc(user.display_name || u)} <button class="btn-success btn-sm" style="font-weight:normal;margin-left:8px" onclick="exportProgression()">⬇ Exporter la progression (JSON)</button></h3>`;
+    let html = `<h3>${esc(user.display_name || u)} <button class="btn-success btn-sm" style="font-weight:normal;margin-left:8px" onclick="exportProgression()">⬇ Exporter la progression (JSON)</button> <button class="btn btn-sm" style="font-weight:normal" onclick="rehydrateUser('${esc(user.username || u)}')" title="Relit tout l'inventaire (items, accessoires, pictos, scores, contacts…) depuis la base de données. À utiliser si un joueur a perdu ses pictos/accessoires après un redémarrage. La base n'est pas modifiée.">🔄 Recharger depuis la base</button></h3>`;
     html += `<table style="max-width:500px;margin-bottom:24px">
       <tr><td>ID</td><td>${user.id}</td></tr>
       <tr><td>Login</td><td><code>${esc(user.username || u)}</code></td></tr>
@@ -2965,6 +2965,21 @@ async function unbanUser(username) {
   const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}/unban`, { method: 'POST', headers: hdr() });
   if (!r.ok) { const d = await r.json().catch(() => ({})); alert('Erreur : ' + (d.error || r.status)); return; }
   toast(`Ban de ${username} levé`);
+  loadDetail();
+}
+
+// ── Rechargement depuis la base ──
+// Si un joueur a « perdu » ses pictos/accessoires après un redémarrage (mémoire
+// serveur vidée alors que la base est intacte), ce bouton fait relire TOUT son
+// inventaire depuis la base et remplace l'état en mémoire. La base n'est jamais
+// modifiée par cette action.
+async function rehydrateUser(username) {
+  if (!confirm(`Recharger ${username} depuis la base ?\n\nLe serveur relit son inventaire complet (items, accessoires, pictos, scores, contacts…) depuis la base de données et remplace ce qu'il a en mémoire. La base n'est pas modifiée.`)) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}/rehydrate`, { method: 'POST', headers: hdr() });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { alert('Erreur : ' + (d.error || r.status)); return; }
+  const fmt = (c) => c ? `${c.items} items · ${c.accessories} accessoires · ${c.gameItems} pictos` : '(absent de la mémoire serveur)';
+  alert(`✓ ${d.username} rechargé depuis la base\n\nAvant : ${fmt(d.before)}\nAprès : ${fmt(d.after)}\n\nSi le joueur est connecté, demande-lui de recharger sa page (F5).`);
   loadDetail();
 }
 
