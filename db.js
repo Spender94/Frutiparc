@@ -288,6 +288,16 @@ async function initSchema() {
         created_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- ── Pictos inédits (créés dans l'admin, image en base, distribués aux joueurs) ──
+      CREATE TABLE IF NOT EXISTS custom_pictos (
+        name         TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        category     TEXT NOT NULL DEFAULT 'Collector',
+        mime         TEXT NOT NULL DEFAULT 'image/gif',
+        data         BYTEA NOT NULL,
+        created_at   TIMESTAMPTZ DEFAULT now()
+      );
+
       -- ── Tournois (« Maître ÈS … ») ──────────────────────────────────────
       -- Phase de qualif (leaderboard sur une fenêtre) → coupe à élimination
       -- directe (tours successifs). Un match se départage au MEILLEUR score posté
@@ -1348,6 +1358,84 @@ async function deleteWallpaper(id) {
   await pool.query('DELETE FROM wallpapers WHERE id = $1', [id]);
 }
 
+// ── Pictos inédits (admin) — métadonnées au boot, octets à la demande ──
+async function loadCustomPictos() {
+  const { rows } = await pool.query(
+    'SELECT name, display_name, category, mime, octet_length(data) AS size, created_at FROM custom_pictos ORDER BY created_at'
+  );
+  return rows;
+}
+async function getCustomPictoImage(name) {
+  const { rows } = await pool.query('SELECT mime, data FROM custom_pictos WHERE name = $1', [name]);
+  return rows[0] ? { mime: rows[0].mime, data: rows[0].data } : null;
+}
+async function upsertCustomPicto(p) {
+  await pool.query(
+    `INSERT INTO custom_pictos (name, display_name, category, mime, data)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (name) DO UPDATE SET display_name = $2, category = $3, mime = $4, data = $5`,
+    [p.name, p.displayName, p.category, p.mime, p.data]
+  );
+}
+async function updateCustomPictoMeta(name, displayName, category) {
+  const r = await pool.query(
+    'UPDATE custom_pictos SET display_name = $2, category = $3 WHERE name = $1',
+    [name, displayName, category]
+  );
+  return r.rowCount > 0;
+}
+async function deleteCustomPicto(name) {
+  await pool.query('DELETE FROM custom_pictos WHERE name = $1', [name]);
+}
+// Nombre de possesseurs par picto (pour la liste admin).
+async function countGameItemOwners(names) {
+  if (!Array.isArray(names) || !names.length) return {};
+  const { rows } = await pool.query(
+    'SELECT item_name, COUNT(*)::int AS n FROM user_game_items WHERE item_name = ANY($1) GROUP BY item_name',
+    [names]
+  );
+  const map = {};
+  for (const r of rows) map[r.item_name] = r.n;
+  return map;
+}
+// Comme addGameItem mais indique si la ligne a réellement été créée
+// (false = le joueur possédait déjà le picto).
+async function addGameItemIfNew(userId, itemName) {
+  const { rows } = await pool.query(
+    'INSERT INTO user_game_items (user_id, item_name) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING user_id',
+    [userId, itemName]
+  );
+  return rows.length > 0;
+}
+// Donne un picto à TOUS les comptes en une requête ; renvoie id + username des
+// comptes nouvellement servis (pour notifier et synchroniser la mémoire).
+async function grantGameItemToAll(itemName) {
+  const { rows } = await pool.query(
+    `WITH ins AS (
+       INSERT INTO user_game_items (user_id, item_name)
+       SELECT id, $1 FROM users
+       ON CONFLICT DO NOTHING
+       RETURNING user_id
+     )
+     SELECT u.id, u.username FROM ins JOIN users u ON u.id = ins.user_id`,
+    [itemName]
+  );
+  return rows;
+}
+// Retire un picto de tous les inventaires ; renvoie le nombre de lignes supprimées.
+async function removeGameItemFromAll(itemName) {
+  const r = await pool.query('DELETE FROM user_game_items WHERE item_name = $1', [itemName]);
+  return r.rowCount || 0;
+}
+// Recherche tolérante à la casse (listes de pseudos saisies dans l'admin).
+async function findUserByUsernameInsensitive(username) {
+  const { rows } = await pool.query(
+    'SELECT * FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1',
+    [String(username || '')]
+  );
+  return rows[0] || null;
+}
+
 // ── MikeHorny quiz questions ──
 function parseAnswersField(s) {
   try { const v = JSON.parse(s); if (Array.isArray(v)) return v.map((x) => String(x)); } catch (e) { /* fall through */ }
@@ -2341,6 +2429,16 @@ module.exports = {
   getWallpaperImage,
   upsertWallpaper,
   deleteWallpaper,
+  loadCustomPictos,
+  getCustomPictoImage,
+  upsertCustomPicto,
+  updateCustomPictoMeta,
+  deleteCustomPicto,
+  countGameItemOwners,
+  addGameItemIfNew,
+  grantGameItemToAll,
+  removeGameItemFromAll,
+  findUserByUsernameInsensitive,
   loadQuizImages,
   getQuizImage,
   upsertQuizImage,

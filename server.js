@@ -812,9 +812,29 @@ function resolveGameItemGif(itemName) {
   return null;
 }
 
+// ── Pictos inédits (créés dans l'admin, distribués manuellement) ──────────────
+// Même principe que les fonds personnalisés : octets en base (le disque du
+// conteneur est effacé à chaque reboot), métadonnées en mémoire, cache d'octets
+// pour éviter un aller-retour DB par affichage. Une fois possédé, un picto
+// inédit se comporte comme un picto de jeu : inventaire SWF, galerie « Mes
+// Pictos », sélecteur et BBCode [picto=nom] au forum. Sa « catégorie » tient le
+// rôle du nom de jeu à l'affichage — et comme elle ne correspond à aucun
+// matchGame du GAME_PROGRESS_REGISTRY, la consécration n'est pas affectée.
+const CUSTOM_PICTOS = {};                 // name ($xxx) -> { displayName, category, mime }
+const customPictoImageCache = new Map();  // name -> { mime, buf }
+function registerCustomPicto(meta) {
+  CUSTOM_PICTOS[meta.name] = {
+    displayName: meta.displayName || meta.name,
+    category: meta.category || 'Collector',
+    mime: meta.mime || 'image/gif',
+  };
+}
+
 function getGameItemDisplayName(itemName) {
   const info = GAME_ITEM_INFO[itemName];
   if (info) return info.name;
+  const custom = CUSTOM_PICTOS[itemName];
+  if (custom) return custom.displayName;
   const snakeMatch = /^Fruit (\d+)$/.exec(itemName);
   if (snakeMatch) return `Fruit ${snakeMatch[1]}`;
   return itemName.replace(/^\$/, '');
@@ -823,6 +843,8 @@ function getGameItemDisplayName(itemName) {
 function getGameItemGame(itemName) {
   const info = GAME_ITEM_INFO[itemName];
   if (info) return info.game;
+  const custom = CUSTOM_PICTOS[itemName];
+  if (custom) return custom.category;
   if (/^Fruit \d+$/.test(itemName)) return 'Frutisnake';
   return '';
 }
@@ -6163,8 +6185,27 @@ app.delete('/api/admin/users/:username/items/:itemId', adminAuth, async (req, re
 // ─────────────────────────────────────────────
 // Picto image endpoint — serves GIF images for collected game items
 // ─────────────────────────────────────────────
-app.get('/api/picto/:itemName', (req, res) => {
+app.get('/api/picto/:itemName', async (req, res) => {
   const itemName = decodeURIComponent(req.params.itemName);
+  // Picto inédit : octets en base (survivent aux reboots), cache mémoire.
+  if (CUSTOM_PICTOS[itemName]) {
+    try {
+      let cached = customPictoImageCache.get(itemName);
+      if (!cached) {
+        if (!process.env.DATABASE_URL) return res.status(404).send('Not found');
+        const img = await db.getCustomPictoImage(itemName);
+        if (!img) return res.status(404).send('Not found');
+        cached = { mime: img.mime, buf: Buffer.isBuffer(img.data) ? img.data : Buffer.from(img.data) };
+        customPictoImageCache.set(itemName, cached);
+      }
+      res.type(cached.mime);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.send(cached.buf);
+    } catch (e) {
+      console.error('[PICTO] serve custom error:', e.message);
+      return res.status(500).send('error');
+    }
+  }
   const gifPath = resolveGameItemGif(itemName);
   if (!gifPath) return res.status(404).send('Not found');
   res.type('image/gif').sendFile(gifPath);
@@ -6308,6 +6349,9 @@ app.get('/api/admin/availableGameItems', adminAuth, (req, res) => {
   const items = Object.entries(GAME_ITEM_INFO).map(([key, info]) => ({
     id: key, name: info.name, game: info.game,
   }));
+  for (const [key, cp] of Object.entries(CUSTOM_PICTOS)) {
+    items.push({ id: key, name: cp.displayName, game: cp.category });
+  }
   res.json(items);
 });
 
@@ -6758,6 +6802,244 @@ app.delete('/api/admin/wallpapers/:id', adminAuth, async (req, res) => {
   } catch (e) {
     console.error('[WALLPAPER] delete error:', e.message);
     res.status(500).json({ ok: false, error: 'delete_failed', message: e.message });
+  }
+});
+
+// ── Admin : Pictos inédits ────────────────────────────────────────────────────
+// Création (upload ou image d'époque du dépôt), liste, distribution (pseudos ou
+// tout le monde, avec notification « Nouveau picto débloqué » dans l'historique),
+// retrait et suppression. Voir CUSTOM_PICTOS pour le fonctionnement côté joueurs.
+const CUSTOM_PICTO_MAX_BYTES = 256 * 1024; // affiché en ≤40px au forum : inutile au-delà
+// Images d'époque présentes dans le dépôt mais jamais branchées à un jeu —
+// proposées comme point de départ dans l'admin (copiées en base au clic, donc
+// indépendantes du disque ensuite).
+const CUSTOM_PICTO_STARTER_IMAGES = [
+  { file: 'Games/frutibandas/titems/bandasOr.gif', label: 'Frutibandas — médaille Or' },
+  { file: 'Games/frutibandas/titems/bandasArgent.gif', label: 'Frutibandas — médaille Argent' },
+  { file: 'Games/frutibandas/titems/bandasBronze.gif', label: 'Frutibandas — médaille Bronze' },
+  { file: 'Games/frutibandas/titems/titem.gif', label: 'Frutibandas — titem 1' },
+  { file: 'Games/frutibandas/titems/titem2.gif', label: 'Frutibandas — titem 2' },
+  { file: 'Games/grapiz/titems/GrapizOr.gif', label: 'Grapiz — Or' },
+  { file: 'Games/grapiz/titems/GrapizArgent.gif', label: 'Grapiz — Argent' },
+  { file: 'Games/grapiz/titems/GrapizBronze.gif', label: 'Grapiz — Bronze' },
+  { file: 'Games/grapiz/titems/grapizConsolation.gif', label: 'Grapiz — consolation' },
+  { file: 'Games/grapiz/titems/medailleBleue.gif', label: 'Grapiz — médaille bleue' },
+  { file: 'Games/grapiz/titems/medailleRouge.gif', label: 'Grapiz — médaille rouge' },
+  { file: 'Games/kaluga/Titems/gif/kalugaSpecialConsolation.gif', label: 'Kaluga — Spécial consolation' },
+  { file: 'Games/miniTroll/bmp/titems/GIF/banana0.gif', label: 'MiniPixiz — banane' },
+  { file: 'Games/kaluga/images/map_mordor/mordorFlag.gif', label: 'Kaluga — drapeau du Mordor' },
+];
+function normalizeCustomPictoName(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return null;
+  if (!s.startsWith('$')) s = '$' + s;
+  return /^\$[A-Za-z0-9_]{2,32}$/.test(s) ? s : null;
+}
+// Résout une liste de pseudos saisie dans l'admin (virgules/points-virgules/
+// retours à la ligne), dédoublonnée, en lignes users (recherche exacte puis
+// insensible à la casse). Renvoie { rows, notFound }.
+async function resolveUsernameList(input) {
+  const pseudos = [...new Set(String(input || '').split(/[,;\n]/).map((s) => s.trim()).filter(Boolean))];
+  const rows = []; const notFound = [];
+  for (const pseudo of pseudos) {
+    let row = null;
+    try { row = await db.findUserByUsername(pseudo) || await db.findUserByUsernameInsensitive(pseudo); } catch (e) {}
+    if (row) rows.push(row); else notFound.push(pseudo);
+  }
+  return { rows, notFound };
+}
+
+app.get('/api/admin/custom-pictos', adminAuth, async (req, res) => {
+  const names = Object.keys(CUSTOM_PICTOS);
+  let owners = {};
+  if (process.env.DATABASE_URL && names.length) {
+    try { owners = await db.countGameItemOwners(names); } catch (e) { /* compteurs absents */ }
+  }
+  res.json({
+    ok: true,
+    pictos: names.map((n) => ({
+      name: n,
+      displayName: CUSTOM_PICTOS[n].displayName,
+      category: CUSTOM_PICTOS[n].category,
+      mime: CUSTOM_PICTOS[n].mime,
+      owners: owners[n] || 0,
+    })),
+  });
+});
+
+app.get('/api/admin/custom-pictos/starters', adminAuth, (req, res) => {
+  const starters = [];
+  for (const s of CUSTOM_PICTO_STARTER_IMAGES) {
+    try {
+      const buf = fs.readFileSync(path.join(__dirname, s.file));
+      const kind = sniffForumImage(buf) || { mime: 'image/gif' };
+      starters.push({ file: s.file, label: s.label, dataUrl: `data:${kind.mime};base64,${buf.toString('base64')}` });
+    } catch (e) { /* fichier absent du dépôt : ignoré */ }
+  }
+  res.json({ ok: true, starters });
+});
+
+// Création / remplacement. Deux modes :
+//   • upload : image en corps brut (Content-Type image/*), métadonnées en query
+//     (?name=&displayName=&category=) — même mécanique que les fonds d'écran ;
+//   • JSON : { name, displayName, category, starterFile? } — avec starterFile
+//     (chemin de CUSTOM_PICTO_STARTER_IMAGES) pour importer une image d'époque,
+//     sans pour ne changer que libellé/catégorie d'un picto existant.
+app.post('/api/admin/custom-pictos',
+  adminAuth,
+  express.raw({ type: ['image/png', 'image/gif', 'image/jpeg', 'image/webp', 'application/octet-stream'], limit: CUSTOM_PICTO_MAX_BYTES }),
+  async (req, res) => {
+    if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: 'no_db', message: 'Base de données requise pour les pictos inédits.' });
+    const isUpload = Buffer.isBuffer(req.body);
+    const meta = isUpload ? req.query : (req.body || {});
+    const name = normalizeCustomPictoName(meta.name);
+    const displayName = String(meta.displayName || '').trim().slice(0, 80);
+    const category = (String(meta.category || '').trim() || 'Collector').slice(0, 40);
+    if (!name) return res.status(400).json({ ok: false, error: 'bad_name', message: 'Nom invalide : 2 à 32 caractères (lettres, chiffres, _), ex. collector_or.' });
+    if (GAME_ITEM_INFO[name]) return res.status(409).json({ ok: false, error: 'reserved', message: 'Ce nom est déjà celui d\'un picto de jeu, choisis-en un autre.' });
+    if (!displayName) return res.status(400).json({ ok: false, error: 'no_name', message: 'Libellé requis.' });
+    let buf = null;
+    if (isUpload) {
+      buf = req.body;
+    } else if (meta.starterFile) {
+      const starter = CUSTOM_PICTO_STARTER_IMAGES.find((s) => s.file === meta.starterFile);
+      if (!starter) return res.status(400).json({ ok: false, error: 'bad_starter', message: 'Image de départ inconnue.' });
+      try { buf = fs.readFileSync(path.join(__dirname, starter.file)); }
+      catch (e) { return res.status(500).json({ ok: false, error: 'starter_read', message: e.message }); }
+    }
+    try {
+      if (buf) {
+        if (buf.length < 64) return res.status(400).json({ ok: false, error: 'empty', message: 'Image vide ou illisible.' });
+        const kind = sniffForumImage(buf);
+        if (!kind) return res.status(415).json({ ok: false, error: 'unsupported', message: 'Format non supporté (GIF, PNG, JPEG, WEBP).' });
+        await db.upsertCustomPicto({ name, displayName, category, mime: kind.mime, data: buf });
+        registerCustomPicto({ name, displayName, category, mime: kind.mime });
+        customPictoImageCache.set(name, { mime: kind.mime, buf });
+        console.log(`[ADMIN] Picto inédit "${name}" enregistré (${kind.ext}, ${buf.length} B)`);
+        return res.json({ ok: true, picto: { name, displayName, category, mime: kind.mime } });
+      }
+      // Pas d'image : simple mise à jour du libellé/catégorie d'un picto existant.
+      if (!CUSTOM_PICTOS[name]) return res.status(400).json({ ok: false, error: 'no_image', message: 'Image requise (fichier ou image de départ).' });
+      await db.updateCustomPictoMeta(name, displayName, category);
+      registerCustomPicto({ name, displayName, category, mime: CUSTOM_PICTOS[name].mime });
+      res.json({ ok: true, picto: { name, displayName, category, mime: CUSTOM_PICTOS[name].mime } });
+    } catch (e) {
+      console.error('[PICTO] store error:', e.message);
+      res.status(500).json({ ok: false, error: 'store_failed', message: e.message });
+    }
+  }
+);
+
+// Suppression : retire le picto du catalogue ET de tous les inventaires (un nom
+// orphelin s'afficherait cassé au forum/inventaire).
+app.delete('/api/admin/custom-pictos/:name', adminAuth, async (req, res) => {
+  const name = decodeURIComponent(req.params.name || '');
+  if (!CUSTOM_PICTOS[name]) return res.status(404).json({ ok: false, error: 'not_found' });
+  try {
+    let revoked = 0;
+    if (process.env.DATABASE_URL) {
+      revoked = await db.removeGameItemFromAll(name);
+      await db.deleteCustomPicto(name);
+    }
+    for (const u of Object.values(users)) {
+      if (u && Array.isArray(u.gameItems)) {
+        const i = u.gameItems.indexOf(name);
+        if (i >= 0) u.gameItems.splice(i, 1);
+      }
+    }
+    delete CUSTOM_PICTOS[name];
+    customPictoImageCache.delete(name);
+    console.log(`[ADMIN] Picto inédit "${name}" supprimé (retiré à ${revoked} joueur(s))`);
+    res.json({ ok: true, revoked });
+  } catch (e) {
+    console.error('[PICTO] delete error:', e.message);
+    res.status(500).json({ ok: false, error: 'delete_failed', message: e.message });
+  }
+});
+
+// Distribution : body { usernames: "a, b, c" } ou { all: true }. Chaque joueur
+// nouvellement servi reçoit la notification d'historique habituelle des pictos.
+app.post('/api/admin/custom-pictos/:name/grant', adminAuth, async (req, res) => {
+  const name = decodeURIComponent(req.params.name || '');
+  const info = CUSTOM_PICTOS[name];
+  if (!info) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: 'no_db' });
+  const logMsg = `Nouveau picto débloqué : ${info.displayName} !`;
+  const syncMemory = (username) => {
+    const mem = users[username];
+    if (!mem) return false;
+    if (!Array.isArray(mem.gameItems)) mem.gameItems = [];
+    if (!mem.gameItems.includes(name)) mem.gameItems.push(name);
+    return true;
+  };
+  try {
+    const b = req.body || {};
+    if (b.all === true || b.all === '1' || b.all === 'true') {
+      const grantedRows = await db.grantGameItemToAll(name);
+      const offline = [];
+      for (const row of grantedRows) {
+        // addAndNotifyUserLog écrit lui-même en base pour un joueur chargé ;
+        // pour les autres on insère l'entrée directement (id déjà connu).
+        if (syncMemory(row.username)) addAndNotifyUserLog(row.username, { type: USER_LOG_TYPE.PICTO, content: logMsg });
+        else offline.push(row.id);
+      }
+      for (let i = 0; i < offline.length; i += 25) {
+        await Promise.all(offline.slice(i, i + 25).map((id) =>
+          db.addUserLogEntry(id, 'user', USER_LOG_TYPE.PICTO, logMsg, true).catch(() => {})));
+      }
+      console.log(`[ADMIN] Picto "${name}" donné à tout le monde : +${grantedRows.length}`);
+      return res.json({ ok: true, granted: grantedRows.length, alreadyHad: null, notFound: [] });
+    }
+    const { rows, notFound } = await resolveUsernameList(b.usernames);
+    if (!rows.length && !notFound.length) return res.status(400).json({ ok: false, error: 'no_users', message: 'Indique des pseudos (séparés par des virgules) ou « tout le monde ».' });
+    let granted = 0, alreadyHad = 0;
+    for (const row of rows) {
+      const isNew = await db.addGameItemIfNew(row.id, name);
+      syncMemory(row.username);
+      if (isNew) { granted++; addAndNotifyUserLog(row.username, { type: USER_LOG_TYPE.PICTO, content: logMsg }); }
+      else alreadyHad++;
+    }
+    console.log(`[ADMIN] Picto "${name}" donné : +${granted}, déjà possédé ${alreadyHad}, introuvables ${notFound.length}`);
+    res.json({ ok: true, granted, alreadyHad, notFound });
+  } catch (e) {
+    console.error('[PICTO] grant error:', e.message);
+    res.status(500).json({ ok: false, error: 'grant_failed', message: e.message });
+  }
+});
+
+// Retrait : body { usernames } ou { all: true }. Pas de notification (on ne
+// signale pas un retrait), la base et la mémoire sont synchronisées.
+app.post('/api/admin/custom-pictos/:name/revoke', adminAuth, async (req, res) => {
+  const name = decodeURIComponent(req.params.name || '');
+  if (!CUSTOM_PICTOS[name]) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: 'no_db' });
+  const dropFromMemory = (username) => {
+    const mem = users[username];
+    if (!mem || !Array.isArray(mem.gameItems)) return;
+    const i = mem.gameItems.indexOf(name);
+    if (i >= 0) mem.gameItems.splice(i, 1);
+  };
+  try {
+    const b = req.body || {};
+    if (b.all === true || b.all === '1' || b.all === 'true') {
+      const revoked = await db.removeGameItemFromAll(name);
+      for (const uname of Object.keys(users)) dropFromMemory(uname);
+      console.log(`[ADMIN] Picto "${name}" retiré à tout le monde (${revoked})`);
+      return res.json({ ok: true, revoked, notFound: [] });
+    }
+    const { rows, notFound } = await resolveUsernameList(b.usernames);
+    if (!rows.length && !notFound.length) return res.status(400).json({ ok: false, error: 'no_users', message: 'Indique des pseudos (séparés par des virgules) ou « tout le monde ».' });
+    let revoked = 0;
+    for (const row of rows) {
+      await db.removeGameItem(row.id, name);
+      dropFromMemory(row.username);
+      revoked++;
+    }
+    console.log(`[ADMIN] Picto "${name}" retiré : ${revoked}, introuvables ${notFound.length}`);
+    res.json({ ok: true, revoked, notFound });
+  } catch (e) {
+    console.error('[PICTO] revoke error:', e.message);
+    res.status(500).json({ ok: false, error: 'revoke_failed', message: e.message });
   }
 });
 
@@ -12704,6 +12986,11 @@ async function boot() {
         for (const wp of wps) registerCustomWallpaper(wp);
         if (wps.length) console.log(`[DB] Loaded ${wps.length} custom wallpaper(s)`);
       } catch (e) { console.error('[DB] Wallpapers load error:', e.message); }
+      try {
+        const cps = await db.loadCustomPictos();
+        for (const p of cps) registerCustomPicto({ name: p.name, displayName: p.display_name, category: p.category, mime: p.mime });
+        if (cps.length) console.log(`[DB] Loaded ${cps.length} custom picto(s)`);
+      } catch (e) { console.error('[DB] Custom pictos load error:', e.message); }
       try {
         const qimgs = await db.loadQuizImages();
         for (const im of qimgs) registerQuizImage(im);
