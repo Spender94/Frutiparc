@@ -280,7 +280,7 @@
   }
   /* Signature de l'auteur, sous le message, séparée par un filet (comme phpBB) */
   .post .post-signature {
-    margin: 10px 12px 4px;
+    margin: 10px 12px 10px;
     padding-top: 8px;
     border-top: 1px solid #cfe0a8;
     font-size: 11px;
@@ -334,12 +334,14 @@
   .bbcode-toolbar button.i { font-style: italic; }
   .bbcode-toolbar button.u { text-decoration: underline; }
 
-  /* Inline pictos in posts */
+  /* Inline pictos in posts — taille naturelle (les médailles/gros pictos ne
+     sont plus écrasés à 40px) ; 130px de plafond de sécurité, aucun picto
+     actuel (jeux et images d'époque ≤ 113×121) n'est redimensionné. */
   .picto-inline {
     display: inline-block;
     vertical-align: middle;
-    max-width: 40px;
-    max-height: 40px;
+    max-width: 130px;
+    max-height: 130px;
     margin: 0 2px;
   }
   /* Picto picker popup */
