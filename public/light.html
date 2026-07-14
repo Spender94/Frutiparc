@@ -215,6 +215,10 @@
     position: fixed; z-index: 61; left: 50%; top: 50%;
     transform: translate(-50%, -50%) scale(.96);
     width: min(92vw, 320px); box-sizing: border-box;
+    /* 11 lignes (accessoires inclus) : sur petit écran, le contenu scrolle
+       dans le cadre — le bouton « valider » reste toujours atteignable. */
+    max-height: 92vh; max-height: 92dvh; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     background: #fff; border: 2px solid #aacf86; border-radius: 18px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, .35);
     padding: 12px 14px 18px; display: none; opacity: 0;
@@ -2682,27 +2686,40 @@
     }
   }
 
-  // ── "Ma Frutibouille" : éditeur de visage (chars 2-14 de l'état bouille) ───
+  // ── "Ma Frutibouille" : éditeur de visage (chars 2-23 de l'état bouille) ───
   // Auto-affiché à la connexion tant que le serveur signale needsBouille
   // (bouille par défaut OU flag admin), comme l'editbouille de main.swf. Chaque
-  // ligne fait défiler UN caractère de l'état ; la preview Flash
+  // ligne fait défiler UNE PAIRE de caractères de l'état ; la preview Flash
   // (bouille-preview.html) montre le rendu réel — c'est la vérité terrain.
   // "valider" persiste via <ae>/​/do/eb, ce qui efface needsBouille côté serveur
   // → l'éditeur ne se rouvre plus (sauf réactivation admin).
   //
-  // MAPPING (best-guess). L'état = 24 car. base62 : [0-1]=famille, [2-14]=visage
-  // (paires de car. dont seul le poids faible — index impair — varie en
-  // pratique), [15-23]=accessoires. Si une ligne pilote la mauvaise partie au
-  // test, ajuster "pos" ; "max" = nb d'options-1 (le défilement boucle).
+  // MAPPING EXACT, lu dans l'ActionScript de famille0.swf (fonction apply) :
+  // chaque attribut = decode62 d'une PAIRE (s.substring(pos, pos+2)) —
+  //   [0-1]=famille, [2-3]=yeux, [4-5]=iris, [6-7]=cheveux, [8-9]=bouche,
+  //   [10-11]=couleur visage, [12-13]=couleur cheveux, [14-15]=accessoire,
+  //   [16-17]=accessoire 2, [18-19]/[20-21]/[22-23]=couleurs d'accessoire.
+  // "max" = _totalframes du sprite correspondant − 1 (extrait des SWF ; c'est
+  // ce que l'objet `info` de l'éditeur d'époque exposait) : famille 0 = 9 yeux,
+  // 18 iris, 67 cheveux, 5 bouches, 40 accessoires, 32 accessoires 2. Les
+  // familles ≥ 10 sont des incarnations de boutique sans variantes : l'éditeur
+  // reste sur la famille 0, comme l'inscription d'époque.
   var FB_PARTS = [
-    { key: "yeux",    label: "yeux",    pos: 3,  max: 11 },
-    { key: "iris",    label: "iris",    pos: 5,  max: 11 },
-    { key: "cheveux", label: "cheveux", pos: 7,  max: 14 },
-    { key: "bouche",  label: "bouche",  pos: 9,  max: 11 },
-    // Couleurs : pos 11 = peau, pos 13 = cheveux (vérifié). Sélecteur de palette
-    // (53 couleurs, cf. /js/bouille-palette.js) au lieu d'un défilement à l'aveugle.
-    { key: "peau",    label: "couleur peau",    pos: 11, max: 52, color: true },
-    { key: "colch",   label: "couleur cheveux", pos: 13, max: 52, color: true },
+    { key: "yeux",    label: "yeux",    pos: 2,  max: 8,  count: true },
+    { key: "iris",    label: "iris",    pos: 4,  max: 17, count: true },
+    { key: "cheveux", label: "cheveux", pos: 6,  max: 66, count: true },
+    { key: "bouche",  label: "bouche",  pos: 8,  max: 4,  count: true },
+    // Couleurs : sélecteur de palette (53 couleurs, cf. /js/bouille-palette.js).
+    { key: "peau",    label: "couleur peau",    pos: 10, max: 52, color: true },
+    { key: "colch",   label: "couleur cheveux", pos: 12, max: 52, color: true },
+    // Accessoires de tête (casquettes, chapeaux, lunettes…) + leurs couleurs —
+    // absents de la première version de l'éditeur : « on ne pouvait pas tout
+    // choisir » sur mobile. 0 = aucun.
+    { key: "acc",     label: "accessoire",      pos: 14, max: 39, count: true },
+    { key: "acc2",    label: "accessoire 2",    pos: 16, max: 31, count: true },
+    { key: "accc1",   label: "couleur access. 1", pos: 18, max: 52, color: true },
+    { key: "accc2",   label: "couleur access. 2", pos: 20, max: 52, color: true },
+    { key: "accc3",   label: "couleur access. 3", pos: 22, max: 52, color: true },
   ];
   var fbState = DEFAULT_BOUILLE;   // l'état 24-car. en cours d'édition
   var fbRowsBuilt = false;
@@ -2722,8 +2739,13 @@
     return String.fromCharCode(29 + n);
   }
   function fbPad(s) { s = String(s || ""); while (s.length < 24) s += "0"; return s.substring(0, 24); }
-  function fbGet(pos) { return fbDecChar(fbState.charAt(pos) || "0"); }
-  function fbSet(pos, val) { fbState = fbState.substring(0, pos) + fbEncChar(val) + fbState.substring(pos + 1); }
+  // Chaque attribut occupe une PAIRE base62 (poids fort puis poids faible) —
+  // indispensable au-delà de 61 (ex : coiffures 62 à 66 de la famille 0).
+  function fbGet(pos) { return fbDecChar(fbState.charAt(pos) || "0") * 62 + fbDecChar(fbState.charAt(pos + 1) || "0"); }
+  function fbSet(pos, val) {
+    val = Math.max(0, val | 0);
+    fbState = fbState.substring(0, pos) + fbEncChar(Math.floor(val / 62)) + fbEncChar(val % 62) + fbState.substring(pos + 2);
+  }
 
   function fbRenderPreview() { $("#fb-editor-preview").innerHTML = previewIframe(fbState); }
   // Recharger l'iframe Flash recrée le player Ruffle (~lent) : on débounce pour
@@ -2737,8 +2759,16 @@
     var span = (part.max || 0) + 1;
     fbSet(part.pos, ((fbGet(part.pos) + dir) % span + span) % span);
     if (part.color) fbRefreshBar(part);
+    else fbRefreshLabel(part);
     fbRenderPreviewSoon();
   }
+  // Ligne élément (yeux, cheveux, accessoire…) : « cheveux · 13/67 » pour se
+  // repérer dans les longues listes (67 coiffures !).
+  function fbRefreshLabel(part) {
+    var l = document.getElementById("fb-lbl-" + part.key);
+    if (l) l.textContent = part.label + (part.count ? " · " + (fbGet(part.pos) + 1) + "/" + (part.max + 1) : "");
+  }
+  function fbRefreshLabels() { FB_PARTS.forEach(function (p) { if (!p.color) fbRefreshLabel(p); }); }
   // Ligne couleur (peau / cheveux) = barre montrant la VRAIE couleur courante ;
   // ◄ ► font défiler la palette (53 couleurs), fidèle au modèle mobile d'origine.
   function fbRefreshBar(part) {
@@ -2762,7 +2792,10 @@
         var idx = fbGet(part.pos);
         center.style.background = FPBouille.colorHex(idx);
         center.title = FPBouille.colorName(idx) + " (" + idx + ")";
-      } else { center = el("div", "fb-label"); center.textContent = part.label; }
+      } else {
+        center = el("div", "fb-label"); center.id = "fb-lbl-" + part.key;
+        center.textContent = part.label + (part.count ? " · " + (fbGet(part.pos) + 1) + "/" + (part.max + 1) : "");
+      }
       left.addEventListener("click", function () { fbCycle(part, -1); });
       right.addEventListener("click", function () { fbCycle(part, 1); });
       row.appendChild(left); row.appendChild(center); row.appendChild(right);
@@ -2774,7 +2807,7 @@
   function openFbEditor(initial) {
     fbState = fbPad(initial && initial.length >= 15 ? initial : DEFAULT_BOUILLE);
     if (!fbRowsBuilt) fbBuildRows();
-    else fbRefreshBars();
+    else { fbRefreshBars(); fbRefreshLabels(); }
     fbRenderPreview();
     $("#fb-editor-backdrop").classList.add("show");
     $("#fb-editor").classList.add("show");
