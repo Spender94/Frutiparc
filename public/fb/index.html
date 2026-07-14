@@ -133,7 +133,7 @@
     text-align: left;
   }
   .topic-row .info { padding-left: 4px; }
-  .row .info { flex: 1; }
+  .row .info { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .row .info .title { font-weight: bold; font-size: 12px; color: #2C4A0F; }
   .row .info .title a { color: #2C4A0F; text-decoration: none; }
   .row .info .title a:hover { color: #2C4A0F; text-decoration: underline; }
@@ -213,6 +213,9 @@
   }
   .post .post-body {
     flex: 1;
+    /* min-width:0 : autorise la colonne message à rétrécir sous sa largeur
+       intrinsèque (URLs longues insécables) au lieu de faire déborder la page */
+    min-width: 0;
     padding: 0;
     background: #D6F7B5;
   }
@@ -269,8 +272,12 @@
     color: #335511;
     white-space: pre-wrap;
     word-wrap: break-word;
+    /* anywhere : compte aussi dans la largeur minimale flex/table, donc les
+       URLs très longues ne poussent plus la mise en page hors de l'écran */
+    overflow-wrap: anywhere;
     padding: 6px 8px;
   }
+  .post-content .bb-img { max-width: 100%; height: auto; }
   .post .post-edited {
     margin-top: 6px;
     padding: 0 12px 8px;
@@ -287,6 +294,7 @@
     color: #5a7030;
     line-height: 1.4;
     word-wrap: break-word;
+    overflow-wrap: anywhere;
   }
   .post .post-signature img.bb-img { max-height: 80px; }
 
@@ -300,8 +308,16 @@
     color: #335511;
     line-height: 125%;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
     border-radius: 5px;
   }
+  /* Citation imbriquée (citer un message qui citait déjà) : un léger retrait
+     et un fond un peu plus clair pour distinguer les niveaux */
+  .post-content blockquote.quote blockquote.quote {
+    margin: 6px 0 4px;
+    background: #EFFFDE;
+  }
+  .post-content blockquote.quote .quote-author { margin-left: 0; }
   .post-content .quote-author {
     font-weight: bold;
     font-size: 11px;
@@ -1259,6 +1275,45 @@
   }
   .poll-add-btn:hover { background: linear-gradient(180deg, #fff 0%, #e5e5e5 100%); }
   .poll-edit-hint { margin-top: 6px; font-size: 10px; font-style: italic; color: #4a6a2e; }
+
+  /* ── Mobile (≤ 640px) : forum entièrement responsive ─────────────────────
+     Les listes gardent l'essentiel (icône + titre), les colonnes de stats
+     passent à la trappe ; dans un sujet, l'auteur devient un bandeau
+     horizontal au-dessus de son message ; l'éditeur s'empile sur une colonne. */
+  @media (max-width: 640px) {
+    body { padding: 4px; }
+    .forum-header { flex-wrap: wrap; }
+    /* Listes (accueil + sujets) : colonnes secondaires masquées */
+    .tbl-header .col-num, .tbl-header .col-last,
+    .row .col-num, .row .col-last { display: none; }
+    .row .icon { width: 34px; min-width: 34px; }
+    /* Posts : auteur en bandeau horizontal, message pleine largeur */
+    .tbl-header .col-author { display: none; }
+    .post { flex-direction: column; }
+    .post .post-author {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px 0;
+      text-align: left;
+    }
+    .post .post-author .avatar { width: 44px; height: 44px; margin: 0; flex-shrink: 0; }
+    .post .post-author .username { margin-top: 0; word-break: normal; }
+    .post .post-header { flex-wrap: wrap; padding-left: 8px; }
+    /* Éditeur : la table 2 colonnes (labels 180px | champs) s'empile */
+    .editor-form, .editor-row { display: block; }
+    .editor-label-cell, .editor-value-cell {
+      display: block;
+      width: auto;
+      white-space: normal;
+      padding: 4px 8px;
+    }
+    .editor-label-cell { padding-bottom: 0; }
+    .editor-label-cell .emoticons-row { grid-template-columns: repeat(8, auto); }
+    .editor-input { max-width: 100%; }
+    /* Le sélecteur de pictos ne dépasse pas l'écran */
+    .picto-picker { max-width: calc(100vw - 32px); }
+  }
 </style>
 </head>
 <body>
@@ -1604,14 +1659,19 @@ function renderBBCode(s) {
   // src can't break out of the attribute or smuggle a javascript: scheme.
   out = out.replace(/\[img\]\s*((?:https?:\/\/|\/)[^\s\[\]"'<>]+?)\s*\[\/img\]/gi,
     '<img class="bb-img" src="$1" alt="image" loading="lazy">');
-  // Trim the newline right after [quote] and right before [/quote] so the
-  // \n→<br> pass below doesn't add an empty line at the top/bottom of the
-  // blockquote. Also swallow the first newline after [/quote] so the
-  // blockquote isn't followed by a hardcoded <br>.
-  out = out.replace(/\[(?:citation|quote)=([^\]]+)\]\n?([\s\S]*?)\n?\[\/(?:citation|quote)\]\n?/gi,
-    '<div class="quote-author">$1 a dit :</div><blockquote class="quote">$2</blockquote>');
-  out = out.replace(/\[(?:citation|quote)\]\n?([\s\S]*?)\n?\[\/(?:citation|quote)\]\n?/gi,
-    '<blockquote class="quote">$1</blockquote>');
+  // Citations — gère l'IMBRICATION ([quote] dans [quote], profondeur libre) :
+  // on remplace en boucle la citation la plus INTERNE (celle dont le corps ne
+  // contient plus d'ouvrant [quote/citation]), chaque passe remonte donc d'un
+  // niveau. Les [quote]/[/quote] orphelins restent en texte brut. Le \n collé
+  // aux balises est avalé pour que la passe \n→<br> plus bas n'ajoute pas de
+  // ligne vide en tête/queue de blockquote ni juste après.
+  var quoteInnermost = /\[(?:citation|quote)(?:=([^\]]+))?\]\n?((?:(?!\[(?:citation|quote)(?:=[^\]]+)?\])[\s\S])*?)\n?\[\/(?:citation|quote)\]\n?/i;
+  for (var qGuard = 0; qGuard < 200 && quoteInnermost.test(out); qGuard++) {
+    out = out.replace(quoteInnermost, function(mq, qAuthor, qBody) {
+      return (qAuthor ? '<div class="quote-author">' + qAuthor + ' a dit :</div>' : '')
+        + '<blockquote class="quote">' + qBody + '</blockquote>';
+    });
+  }
   // [code] blocks — handled before linkification so URLs inside stay literal.
   out = out.replace(/\[code\]([\s\S]*?)\[\/code\]/gi, function(m, txt) {
     return '<pre class="bb-code">' + txt + '</pre>';
