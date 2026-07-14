@@ -215,8 +215,8 @@
     position: fixed; z-index: 61; left: 50%; top: 50%;
     transform: translate(-50%, -50%) scale(.96);
     width: min(92vw, 320px); box-sizing: border-box;
-    /* 11 lignes (accessoires inclus) : sur petit écran, le contenu scrolle
-       dans le cadre — le bouton « valider » reste toujours atteignable. */
+    /* Sur petit écran, le contenu scrolle dans le cadre — le bouton
+       « valider » reste toujours atteignable. */
     max-height: 92vh; max-height: 92dvh; overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     background: #fff; border: 2px solid #aacf86; border-radius: 18px;
@@ -2697,13 +2697,17 @@
   // MAPPING EXACT, lu dans l'ActionScript de famille0.swf (fonction apply) :
   // chaque attribut = decode62 d'une PAIRE (s.substring(pos, pos+2)) —
   //   [0-1]=famille, [2-3]=yeux, [4-5]=iris, [6-7]=cheveux, [8-9]=bouche,
-  //   [10-11]=couleur visage, [12-13]=couleur cheveux, [14-15]=accessoire,
-  //   [16-17]=accessoire 2, [18-19]/[20-21]/[22-23]=couleurs d'accessoire.
+  //   [10-11]=couleur visage, [12-13]=couleur cheveux, [14-23]=accessoires.
   // "max" = _totalframes du sprite correspondant − 1 (extrait des SWF ; c'est
   // ce que l'objet `info` de l'éditeur d'époque exposait) : famille 0 = 9 yeux,
-  // 18 iris, 67 cheveux, 5 bouches, 40 accessoires, 32 accessoires 2. Les
-  // familles ≥ 10 sont des incarnations de boutique sans variantes : l'éditeur
-  // reste sur la famille 0, comme l'inscription d'époque.
+  // 18 iris, 67 cheveux, 5 bouches. Les familles ≥ 10 sont des incarnations de
+  // boutique sans variantes : l'éditeur reste sur la famille 0, comme
+  // l'inscription d'époque.
+  //
+  // IMPORTANT : les ACCESSOIRES (chars 14-23) ne se choisissent PAS ici — ils
+  // se gagnent/achètent (boutique, packs) et se posent via l'inventaire.
+  // L'éditeur n'édite que le visage ; les chars 14-23 de l'état initial sont
+  // conservés tels quels à la validation (fbSet n'écrit que les paires listées).
   var FB_PARTS = [
     { key: "yeux",    label: "yeux",    pos: 2,  max: 8,  count: true },
     { key: "iris",    label: "iris",    pos: 4,  max: 17, count: true },
@@ -2712,14 +2716,6 @@
     // Couleurs : sélecteur de palette (53 couleurs, cf. /js/bouille-palette.js).
     { key: "peau",    label: "couleur peau",    pos: 10, max: 52, color: true },
     { key: "colch",   label: "couleur cheveux", pos: 12, max: 52, color: true },
-    // Accessoires de tête (casquettes, chapeaux, lunettes…) + leurs couleurs —
-    // absents de la première version de l'éditeur : « on ne pouvait pas tout
-    // choisir » sur mobile. 0 = aucun.
-    { key: "acc",     label: "accessoire",      pos: 14, max: 39, count: true },
-    { key: "acc2",    label: "accessoire 2",    pos: 16, max: 31, count: true },
-    { key: "accc1",   label: "couleur access. 1", pos: 18, max: 52, color: true },
-    { key: "accc2",   label: "couleur access. 2", pos: 20, max: 52, color: true },
-    { key: "accc3",   label: "couleur access. 3", pos: 22, max: 52, color: true },
   ];
   var fbState = DEFAULT_BOUILLE;   // l'état 24-car. en cours d'édition
   var fbRowsBuilt = false;
