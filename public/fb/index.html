@@ -1276,31 +1276,35 @@
   .poll-add-btn:hover { background: linear-gradient(180deg, #fff 0%, #e5e5e5 100%); }
   .poll-edit-hint { margin-top: 6px; font-size: 10px; font-style: italic; color: #4a6a2e; }
 
-  /* ── Mobile (≤ 640px) : forum entièrement responsive ─────────────────────
-     Les listes gardent l'essentiel (icône + titre), les colonnes de stats
-     passent à la trappe ; dans un sujet, l'auteur devient un bandeau
-     horizontal au-dessus de son message ; l'éditeur s'empile sur une colonne. */
+  /* ── Mobile (≤ 640px) : forum au plus proche du rendu desktop ────────────
+     On GARDE la mise en page en colonnes exactement comme sur desktop —
+     icône | forum sur les listes, auteur | message dans les sujets. On se
+     contente de : réduire les marges du body, masquer les colonnes de stats
+     des listes (sujets/messages/dernier — pas la place), et compacter la
+     colonne auteur (avatar plus petit) pour laisser le maximum au message.
+     Le message conserve ainsi sa marge gauche (la colonne auteur) comme sur
+     desktop et ne déborde jamais (min-width:0 + overflow-wrap plus haut).
+     Seul l'éditeur s'empile : sa table 2 colonnes (labels 180px) est
+     illisible autrement sur mobile. */
   @media (max-width: 640px) {
-    body { padding: 4px; }
+    body { padding: 5px; }
     .forum-header { flex-wrap: wrap; }
-    /* Listes (accueil + sujets) : colonnes secondaires masquées */
+    /* Listes (accueil + board) : colonnes de stats masquées ; l'icône (dossier
+       46px) garde sa colonne de 56px — ne PAS la rétrécir (sinon elle chevauche
+       le titre/la description). */
     .tbl-header .col-num, .tbl-header .col-last,
     .row .col-num, .row .col-last { display: none; }
-    .row .icon { width: 34px; min-width: 34px; }
-    /* Posts : auteur en bandeau horizontal, message pleine largeur */
-    .tbl-header .col-author { display: none; }
-    .post { flex-direction: column; }
-    .post .post-author {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 8px 0;
-      text-align: left;
-    }
-    .post .post-author .avatar { width: 44px; height: 44px; margin: 0; flex-shrink: 0; }
-    .post .post-author .username { margin-top: 0; word-break: normal; }
-    .post .post-header { flex-wrap: wrap; padding-left: 8px; }
-    /* Éditeur : la table 2 colonnes (labels 180px | champs) s'empile */
+    /* Sujet : colonne auteur conservée mais compacte (avatar 64 au lieu de 90). */
+    .tbl-header .col-author { width: 78px; min-width: 78px; }
+    .post .post-author { width: 78px; min-width: 78px; padding: 6px 2px; }
+    .post .post-author .avatar { width: 64px; height: 64px; margin: 0 auto 5px; }
+    .post .post-author .username { font-size: 10px; line-height: 1.25; }
+    /* En-tête de post (date + actions) : passe à la ligne au lieu de pousser. */
+    .post .post-header { flex-wrap: wrap; row-gap: 3px; }
+    .post .post-header .post-info { flex: 1 1 100%; }
+    .post .post-header .actions { padding-right: 6px; margin-top: 0; }
+    .post .post-content { padding: 7px 10px; }
+    /* Éditeur : la table 2 colonnes (labels 180px | champs) s'empile. */
     .editor-form, .editor-row { display: block; }
     .editor-label-cell, .editor-value-cell {
       display: block;
@@ -1311,7 +1315,7 @@
     .editor-label-cell { padding-bottom: 0; }
     .editor-label-cell .emoticons-row { grid-template-columns: repeat(8, auto); }
     .editor-input { max-width: 100%; }
-    /* Le sélecteur de pictos ne dépasse pas l'écran */
+    /* Le sélecteur de pictos ne dépasse pas l'écran. */
     .picto-picker { max-width: calc(100vw - 32px); }
   }
 </style>
