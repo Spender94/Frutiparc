@@ -1104,10 +1104,21 @@ const LEGACY_RANKINGS = [
   // (section C) à bandas_challenge/grapiz_challenge.
   { rk: '5', internal: 'bandas_challenge', ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
   { rk: '6', internal: 'grapiz_challenge', ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
+  // Classement Kikooz : ce n'est PAS un jeu mais un classement « joueur » (comme
+  // l'XP / la consécration), monté ici dans la liste pilotée serveur pour
+  // apparaître comme un onglet supplémentaire dans main.swf sans toucher au SWF.
+  // internal = KIKOOZ_RANKING_ID (id virtuel, hors RANKINGS) : la source des
+  // scores est spécialisée dans rankingResult (lecture de user.kikooz).
+  { rk: '9', internal: 'kikooz',           ty: 'point',       rn: 'Kikooz',       gs: '9', g: 'kikooz', section: 'C' },
   // Section L = "Championnat" in front-end — plus aucun classement réel
   { rk: '7', internal: null,                ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
 ];
+// Classement « joueur » Kikooz : id virtuel (n'est PAS dans RANKINGS pour ne pas
+// polluer les itérations — livre des records web, etc.). isLowerBetter/
+// isDailyResetRanking le traitent correctement en inconnu (plus = mieux, jamais
+// remis à zéro) ; formatRankingExtraData renvoie '' (aucune donnée annexe).
+const KIKOOZ_RANKING_ID = 'kikooz';
 const LEGACY_RK_TO_INTERNAL = Object.fromEntries(
   LEGACY_RANKINGS.filter((r) => r.internal).map((r) => [r.rk, r.internal])
 );
@@ -1127,6 +1138,7 @@ function hardcodedMeAttrs(name) {
 function resolveInternalRankingId(rkLike, refDate) {
   const raw = String(rkLike || '').trim();
   if (!raw) return null;
+  if (raw === KIKOOZ_RANKING_ID) return KIKOOZ_RANKING_ID; // id virtuel, hors RANKINGS
   if (RANKINGS[raw]) return raw;
   if (raw === '0') {
     const d = refDate ? new Date(refDate + 'T12:00:00Z') : new Date();
@@ -2059,6 +2071,29 @@ async function getConsecrationLeaderboard() {
   }
   results.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
   return results;
+}
+
+// Classement Kikooz : tous les comptes triés par nombre de kikooz décroissant.
+// Même sourcing que le xpranking (base + mémoire fusionnées) mais sur la colonne
+// kikooz. La mémoire prime sur la base (valeur live la plus à jour).
+async function getKikoozLeaderboard() {
+  const merged = new Map();
+  if (process.env.DATABASE_URL) {
+    try {
+      const rows = await db.listAllUsers();
+      for (const row of rows) {
+        const k = Number(row.kikooz);
+        if (Number.isFinite(k)) merged.set(row.username, k);
+      }
+    } catch (e) { console.error('[FSCORE] kikooz DB error:', e.message); }
+  }
+  for (const [u, ud] of Object.entries(users)) {
+    if (ud && Number.isFinite(Number(ud.kikooz))) merged.set(u, Number(ud.kikooz));
+  }
+  const all = [];
+  for (const [u, s] of merged) all.push({ u, s });
+  all.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
+  return all;
 }
 
 loadScores();
@@ -15948,6 +15983,10 @@ case 'join': {
               all.push({ u: row.username, s: Number(row.score), d: row.data || '', at: row.updated_at || '' });
             }
           } catch (e) { console.error('[FSCORE] archive query error:', e.message); }
+        } else if (internalId === KIKOOZ_RANKING_ID) {
+          // Classement « joueur » Kikooz : source = user.kikooz (pas le magasin
+          // de scores). Onglet piloté serveur, rendu comme les autres classements.
+          all = await getKikoozLeaderboard();
         } else if (internalId) {
           for (const [u, rlist] of Object.entries(scoresData.users || {})) {
             if (rlist && rlist[internalId] && Number.isFinite(Number(rlist[internalId].score))) {
@@ -16056,6 +16095,10 @@ case 'join': {
               all.push({ u: row.username, s: Number(row.score), d: row.data || '', at: row.updated_at || '' });
             }
           } catch (e) { console.error('[FSCORE] archive query error:', e.message); }
+        } else if (internalId === KIKOOZ_RANKING_ID) {
+          // Classement « joueur » Kikooz : source = user.kikooz (pas le magasin
+          // de scores). Onglet piloté serveur, rendu comme les autres classements.
+          all = await getKikoozLeaderboard();
         } else if (internalId) {
           for (const [u, rlist] of Object.entries(scoresData.users || {})) {
             if (rlist && rlist[internalId] && Number.isFinite(Number(rlist[internalId].score))) {
