@@ -12660,12 +12660,22 @@ app.get('/api/club/records', async (req, res) => {
     if (!slot0) continue;
     const bests = bkiwiTrackBestsFromSlot0(slot0);
     if (!bests) continue;
-    for (const rkId of Object.keys(bestByRanking)) {
-      if (rkId.startsWith('bkiwi_track') && bestByRanking[rkId]) delete bestByRanking[rkId][username];
-    }
+    // La carte est la source de vérité PAR CIRCUIT, mais SEULEMENT pour les
+    // (circuit, mode) qu'elle renseigne. On remplace la ligne du joueur pour ces
+    // couples-là (ce qui corrige les scores mal étiquetés routés vers le mauvais
+    // circuit). En revanche on ne SUPPRIME JAMAIS une ligne pour un (circuit,
+    // mode) que la carte ne couvre pas : sinon on efface un record archivé réel
+    // sur un circuit que la carte actuelle ne reflète pas (course d'époque dont
+    // le meilleur temps ne vit que dans l'archive — patchSlot0 ne réamorce la
+    // carte que depuis la table live, jamais l'archive). C'était la cause du
+    // « Green Hill correct, les autres circuits amputés ».
+    const replaceTrack = (rkId, val) => {
+      if (bestByRanking[rkId]) delete bestByRanking[rkId][username];
+      upsertBest(rkId, username, val, '', '');
+    };
     for (let t = 0; t < 6; t++) {
-      if (bests.classic[t]) upsertBest(`bkiwi_track${t}_classic`, username, bests.classic[t], '', '');
-      if (bests.challenge[t]) upsertBest(`bkiwi_track${t}_challenge`, username, bests.challenge[t], '', '');
+      if (bests.classic[t]) replaceTrack(`bkiwi_track${t}_classic`, bests.classic[t]);
+      if (bests.challenge[t]) replaceTrack(`bkiwi_track${t}_challenge`, bests.challenge[t]);
     }
   }
 
