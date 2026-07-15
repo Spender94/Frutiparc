@@ -2702,12 +2702,19 @@ function editScore(user, ranking, score, data) {
 async function saveEditScore() {
   const user = $('#escore-user').value;
   const ranking = $('#escore-ranking').value;
-  await fetch(`/api/admin/scores/${encodeURIComponent(user)}/${encodeURIComponent(ranking)}`, {
+  const r = await fetch(`/api/admin/scores/${encodeURIComponent(user)}/${encodeURIComponent(ranking)}`, {
     method: 'PATCH', headers: hdr(),
     body: JSON.stringify({ score: Number($('#escore-value').value), data: $('#escore-data').value })
   });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { toast('Erreur : ' + (d.error || r.status)); return; }
   closeModal('modal-edit-score');
-  toast('Score mis à jour');
+  let msg = 'Score mis à jour';
+  const extra = [];
+  if (d.archived) extra.push(d.archived + ' archive' + (d.archived > 1 ? 's' : '') + ' retirée' + (d.archived > 1 ? 's' : ''));
+  if (d.cardSet) extra.push('carte BKiwi mise à jour');
+  if (extra.length) msg += ' (' + extra.join(', ') + ')';
+  toast(msg);
   loadScores();
 }
 

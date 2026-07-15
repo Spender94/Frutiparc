@@ -6136,12 +6136,16 @@ app.get('/api/admin/scores', adminScope('scores'), async (req, res) => {
   res.json({ rankings: Object.keys(RANKINGS), rankingNames, scores: result });
 });
 
-// Efface l'entrée d'un circuit BKiwi dans la carte (slot 0, $ts.$t{N}.$bc pour le
-// classique / $bl pour le challenge). Sans ça, le livre des records du Club
-// reconstruit le record supprimé à partir de la carte. Renvoie true si modifié.
-async function clearBkiwiCardTrack(username, track, mode) {
+// Écrit (ou efface avec value=0) l'entrée d'un circuit BKiwi dans la carte du
+// joueur (slot 0, $ts.$t{N}.$bc pour le classique / $bl pour le challenge).
+// Indispensable car le livre des records du Club reconstruit BKiwi depuis les
+// cartes : sans ça, un record supprimé/édité y réapparaîtrait. Pour value>0 on
+// crée l'entrée si absente (édition manuelle) ; pour value=0 on n'efface que ce
+// qui existe (suppression). Renvoie true si la carte a réellement changé.
+async function setBkiwiCardTrack(username, track, mode, value) {
   const field = mode === 'challenge' ? '$bl' : '$bc';
   const key = `$t${track}`;
+  value = Math.max(0, Number(value) || 0);
   const mem = users[username];
   let slot0 = mem && mem.frutiSlots && mem.frutiSlots.bkiwi && mem.frutiSlots.bkiwi['0'];
   let dbId = mem && mem._dbId;
@@ -6152,9 +6156,14 @@ async function clearBkiwiCardTrack(username, track, mode) {
   if (!slot0) return false;
   let parsed;
   try { parsed = JSON.parse(slot0); } catch { return false; }
-  if (!parsed || typeof parsed.$ts !== 'object' || !parsed.$ts[key] || !(field in parsed.$ts[key])) return false;
-  if (!Number(parsed.$ts[key][field])) return false; // déjà à 0
-  parsed.$ts[key][field] = 0;
+  if (!parsed || typeof parsed !== 'object') return false;
+  if (typeof parsed.$ts !== 'object' || Array.isArray(parsed.$ts)) parsed.$ts = {};
+  if (typeof parsed.$ts[key] !== 'object' || Array.isArray(parsed.$ts[key])) {
+    if (!value) return false; // rien à effacer
+    parsed.$ts[key] = {};
+  }
+  if (Number(parsed.$ts[key][field]) === value) return false; // déjà à la bonne valeur
+  parsed.$ts[key][field] = value;
   const newData = JSON.stringify(parsed);
   if (mem && mem.frutiSlots && mem.frutiSlots.bkiwi) mem.frutiSlots.bkiwi['0'] = newData;
   if (dbId && process.env.DATABASE_URL) await db.upsertFrutiSlot(dbId, 'bkiwi', 0, newData);
@@ -6181,7 +6190,7 @@ app.delete('/api/admin/scores/:username/:ranking', adminScope('scores'), async (
   }
   const m = /^bkiwi_track(\d)_(classic|challenge)$/.exec(ranking);
   if (m) {
-    try { cardCleared = await clearBkiwiCardTrack(username, Number(m[1]), m[2]); }
+    try { cardCleared = await setBkiwiCardTrack(username, Number(m[1]), m[2], 0); }
     catch (e) { console.error('[ADMIN] clear bkiwi card:', e.message); }
   }
   console.log(`[ADMIN] Deleted score ${username}/${ranking} (archive:${archived}, card:${cardCleared})`);
@@ -6200,14 +6209,25 @@ app.patch('/api/admin/scores/:username/:ranking', adminScope('scores'), async (r
   entry.updatedAt = new Date().toISOString();
   scoresData.users[username][ranking] = entry;
   saveScoresFile();
+  // Édition AUTORITAIRE pour le livre des records du Club : on écrit la valeur
+  // dans la table scores, on retire les copies archivées (sinon un ancien temps
+  // pourrait l'emporter dans le « meilleur de scores ∪ archive ») et, pour
+  // BKiwi, on écrit la valeur dans la carte (que le Club utilise pour ce jeu).
+  let archived = 0, cardSet = false;
   if (process.env.DATABASE_URL) {
     try {
       const row = await db.findUserByUsername(username);
       if (row) await db.upsertScore(row.id, ranking, newScore, entry.data || '');
+      archived = await db.deleteArchivedScore(username, ranking);
     } catch (e) { console.error(e.message); }
   }
-  console.log(`[ADMIN] Updated score ${username}/${ranking} = ${newScore}`);
-  res.json({ ok: true });
+  const m = /^bkiwi_track(\d)_(classic|challenge)$/.exec(ranking);
+  if (m) {
+    try { cardSet = await setBkiwiCardTrack(username, Number(m[1]), m[2], newScore); }
+    catch (e) { console.error('[ADMIN] set bkiwi card:', e.message); }
+  }
+  console.log(`[ADMIN] Edited score ${username}/${ranking} = ${newScore} (archive removed:${archived}, card:${cardSet})`);
+  res.json({ ok: true, archived, cardSet });
 });
 
 app.get('/api/admin/users/:username/accessories', adminAuth, async (req, res) => {

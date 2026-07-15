@@ -491,20 +491,27 @@
     return html;
   }
 
+  // Burning Kiwi : on affiche TOUJOURS les données du « Championnat » (le défi du
+  // jour par circuit, fiables), y compris dans la section « Challenge (Classique) ».
+  // Les records classiques (_classic) sont pollués par un mauvais mapping de
+  // circuit historique ; le challenge (_challenge) route de façon déterministe et
+  // reste juste. Choix validé côté prod (les autres jeux gardent leur classique).
+  function bkiwiRankingFor(track) {
+    var rankings = (recordsData && recordsData.rankings) || [];
+    return rankings.find(function(r) { return r.id === 'bkiwi_track' + track + '_challenge'; });
+  }
+
   function switchBkiwiTrack(type, track) {
     bkiwiSelectedTrack[type] = track;
     var container = document.getElementById('bkiwi-scores-' + type);
     if (!container || !recordsData) return;
-    var rankings = recordsData.rankings || [];
-    var suffix = type === 'L' ? '_challenge' : '_classic';
-    var rk = rankings.find(function(r) { return r.id === 'bkiwi_track' + track + suffix; });
+    var rk = bkiwiRankingFor(track);
     container.innerHTML = rk ? renderScoreRows(rk) : '<div class="empty">Aucun score enregistré</div>';
   }
 
   function renderBkiwiCard(bkiwiRankings, type) {
     var selected = bkiwiSelectedTrack[type] || 0;
-    var suffix = type === 'L' ? '_challenge' : '_classic';
-    var current = bkiwiRankings.find(function(r) { return r.bkiwiTrack === selected; });
+    var current = bkiwiRankingFor(selected);
     var html = '<div class="ranking-card">';
     html += '<h3>Burning Kiwi <select class="bkiwi-track-select" onchange="switchBkiwiTrack(\'' + type + '\', Number(this.value))">';
     bkiwiRankings.slice().sort(function(a,b) { return a.bkiwiTrack - b.bkiwiTrack; }).forEach(function(rk) {
@@ -542,6 +549,11 @@
     var groupLabels = { C: 'Challenge (Classique)', L: 'Championnat', other: 'Autres' };
 
     var html = '';
+    // BKiwi n'affiche qu'UNE carte (données Championnat), pas une par section :
+    // sinon la même grille apparaîtrait sous « Challenge (Classique) » ET
+    // « Championnat ». On la rend dans la 1re section affichée qui a des rangs
+    // BKiwi (C en vue « tous » ou « Challenge » ; L si on filtre « Championnat »).
+    var bkiwiRendered = false;
     for (var ki = 0; ki < 3; ki++) {
       var key = ['C', 'L', 'other'][ki];
       var arr = groups[key];
@@ -552,8 +564,9 @@
       html += '<div class="ranking-list">';
       var bkiwiGroup = arr.filter(function(rk) { return rk.bkiwiTrack !== undefined; });
       var otherRankings = arr.filter(function(rk) { return rk.bkiwiTrack === undefined; });
-      if (bkiwiGroup.length) {
+      if (bkiwiGroup.length && !bkiwiRendered) {
         html += renderBkiwiCard(bkiwiGroup, key);
+        bkiwiRendered = true;
       }
       otherRankings.forEach(function(rk) {
         html += '<div class="ranking-card">';
