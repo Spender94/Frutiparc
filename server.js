@@ -12818,7 +12818,7 @@ function formatChallengeScoreLabel(rankingId, score) {
 // first; BKiwi resolves to today's rotating challenge track. sid is optional —
 // when present, the caller's own rows are flagged (isMe) so the UI can spotlight
 // them.
-app.get('/api/light/challenge', (req, res) => {
+app.get('/api/light/challenge', async (req, res) => {
   const me = resolveUsernameFromSid(req.query.sid || '');
   const meLower = me ? String(me).toLowerCase() : '';
   const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
@@ -12874,6 +12874,27 @@ app.get('/api/light/challenge', (req, res) => {
       podium: podiumFor(g.game),
     };
   });
+  // Onglet « Kikooz » : classement TOUS-TEMPS des joueurs par nombre de kikooz
+  // (≠ challenge du jour). allTime:true → le client n'affiche ni « aujourd'hui »
+  // ni podium. Même source que le classement Kikooz de main.swf (user.kikooz).
+  try {
+    const kAll = await getKikoozLeaderboard();
+    games.push({
+      id: 'kikooz',
+      game: 'kikooz',
+      name: 'Kikooz',
+      allTime: true,
+      lowerIsBetter: false,
+      count: kAll.length,
+      scores: kAll.slice(0, limit).map((e) => ({
+        user: getDisplayName(e.u),
+        score: e.s,
+        label: Number(e.s).toLocaleString('fr-FR') + ' kikooz',
+        isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
+      })),
+      podium: [],
+    });
+  } catch (e) { console.error('[LIGHT] kikooz ranking error:', e.message); }
   res.json({ day: parisDayKey(), yesterday, games });
 });
 

@@ -1843,12 +1843,16 @@
     if (!g) { body.innerHTML = ""; return; }
     var html = podiumHtml(g); // podium de la veille en tête (le cas échéant)
     if (!g.scores || !g.scores.length) {
-      html += '<div class="scores-empty">Aucun score pour « ' + xmlEscape(g.name) + ' » aujourd\'hui.<br>'
-        + 'À toi de lancer la première partie&nbsp;!</div>';
+      html += g.allTime
+        ? '<div class="scores-empty">Aucun joueur classé pour le moment.</div>'
+        : '<div class="scores-empty">Aucun score pour « ' + xmlEscape(g.name) + ' » aujourd\'hui.<br>'
+          + 'À toi de lancer la première partie&nbsp;!</div>';
     } else {
       var n = g.count || g.scores.length;
+      // Classement tous-temps (Kikooz) : pas de « aujourd'hui ».
       html += '<div class="scores-cap">' + xmlEscape(g.name) + ' — '
-        + n + ' joueur' + (n > 1 ? 's' : '') + ' aujourd\'hui</div><ol class="scores-list">';
+        + n + ' joueur' + (n > 1 ? 's' : '') + (g.allTime ? ' classé' + (n > 1 ? 's' : '') : ' aujourd\'hui')
+        + '</div><ol class="scores-list">';
       g.scores.forEach(function (s, i) {
         var pos = i + 1;
         var cls = "score-row" + (pos <= 3 ? " r" + pos : "") + (s.isMe ? " me" : "");
