@@ -1107,9 +1107,14 @@ const LEGACY_RANKINGS = [
   // Classement Kikooz : ce n'est PAS un jeu mais un classement « joueur » (comme
   // l'XP / la consécration), monté ici dans la liste pilotée serveur pour
   // apparaître comme un onglet supplémentaire dans main.swf sans toucher au SWF.
+  // Rangé en section 'L' (« Championnat »), aux côtés de l'XP et de la
+  // consécration. L'icône d'une ligne de classement est choisie par fileIcon.swf
+  // d'après l'attribut g : 'kikooz' serait inconnu (→ icône par défaut/snake),
+  // donc on pointe sur 'linkScore', l'icône « Scores » (trophée) de fileIcon —
+  // la plus proche de l'esprit XP/consécration parmi les icônes existantes.
   // internal = KIKOOZ_RANKING_ID (id virtuel, hors RANKINGS) : la source des
   // scores est spécialisée dans rankingResult (lecture de user.kikooz).
-  { rk: '9', internal: 'kikooz',           ty: 'point',       rn: 'Kikooz',       gs: '9', g: 'kikooz', section: 'C' },
+  { rk: '9', internal: 'kikooz',           ty: 'point',       rn: 'Kikooz',       gs: '9', g: 'linkScore', section: 'L' },
   // Section L = "Championnat" in front-end — plus aucun classement réel
   { rk: '7', internal: null,                ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
