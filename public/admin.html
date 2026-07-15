@@ -409,7 +409,7 @@
     <span id="score-count"></span>
   </div>
   <table>
-    <thead><tr><th>Joueur</th><th>Classement</th><th>Score</th><th>Data</th><th>Date</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Joueur</th><th>Classement</th><th>Score</th><th>Data</th><th>Source</th><th>Date</th><th>Actions</th></tr></thead>
     <tbody id="scores-body"></tbody>
   </table>
 </div>
@@ -2657,11 +2657,12 @@ async function loadScores() {
     const r = await fetch(`/api/admin/scores?ranking=${encodeURIComponent(ranking)}`, { headers: hdr() });
     const data = await r.json();
     const sel = $('#ranking-select');
+    const names = data.rankingNames || {};
     if (!sel.dataset.loaded && data.rankings) {
       data.rankings.forEach(rk => {
         if (!sel.querySelector(`option[value="${rk}"]`)) {
           const o = document.createElement('option');
-          o.value = rk; o.textContent = rk;
+          o.value = rk; o.textContent = names[rk] ? (names[rk] + ' — ' + rk) : rk;
           sel.appendChild(o);
         }
       });
@@ -2670,11 +2671,17 @@ async function loadScores() {
     const scores = data.scores || [];
     $('#score-count').innerHTML = `<span class="count">${scores.length}</span> scores`;
     const tb = $('#scores-body');
+    const srcBadge = (src) => {
+      const s = String(src || '');
+      const col = s.indexOf('archive') >= 0 ? (s.indexOf('live') >= 0 ? '#e0a800' : '#c1660b') : '#6a8a2e';
+      return `<span class="badge" style="background:${col};color:#fff" title="Où vit ce score (la suppression retire toutes les sources + l'entrée de carte BKiwi)">${esc(s)}</span>`;
+    };
     tb.innerHTML = scores.map(s => `<tr>
       <td><a href="#" onclick="viewUser('${esc(s.username)}');return false" class="uname">${esc(s.username)}</a></td>
-      <td><span class="badge">${esc(s.ranking)}</span></td>
+      <td><span class="badge">${esc(names[s.ranking] || s.ranking)}</span></td>
       <td>${s.score}</td>
       <td><code style="font-size:11px">${esc(s.data||'-')}</code></td>
+      <td>${srcBadge(s.source)}</td>
       <td>${fmtDate(s.updatedAt)}</td>
       <td>
         <button class="btn btn-sm" onclick="editScore('${esc(s.username)}','${esc(s.ranking)}',${s.score},'${esc(s.data||'')}')">Modifier</button>
@@ -2705,9 +2712,16 @@ async function saveEditScore() {
 }
 
 async function deleteScore(user, ranking) {
-  if (!confirm(`Supprimer le score de ${user} dans ${ranking} ?`)) return;
-  await fetch(`/api/admin/scores/${encodeURIComponent(user)}/${encodeURIComponent(ranking)}`, { method: 'DELETE', headers: hdr() });
-  toast('Score supprimé');
+  if (!confirm(`Supprimer le score de ${user} dans ${ranking} ?\n\nRetire l'entrée partout : live, base, archive${/^bkiwi_track/.test(ranking) ? ' et carte du joueur (circuit BKiwi)' : ''}. Le livre des records du Club sera à jour.`)) return;
+  const r = await fetch(`/api/admin/scores/${encodeURIComponent(user)}/${encodeURIComponent(ranking)}`, { method: 'DELETE', headers: hdr() });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { toast('Erreur : ' + (d.error || r.status)); return; }
+  let msg = 'Score supprimé';
+  const extra = [];
+  if (d.archived) extra.push(d.archived + ' archivé' + (d.archived > 1 ? 's' : ''));
+  if (d.cardCleared) extra.push('carte nettoyée');
+  if (extra.length) msg += ' (' + extra.join(', ') + ')';
+  toast(msg);
   loadScores();
 }
 

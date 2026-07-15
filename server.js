@@ -6096,37 +6096,96 @@ app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
   }
 });
 
-app.get('/api/admin/scores', adminScope('scores'), (req, res) => {
+app.get('/api/admin/scores', adminScope('scores'), async (req, res) => {
   const ranking = req.query.ranking || '';
-  const result = [];
+  // Fusionne le live (scoresData) ET l'archive (challenge_score_archive) : sinon
+  // les scores mal mappés qui ne vivent QUE dans l'archive sont invisibles et
+  // donc non supprimables depuis l'admin. On garde une ligne par (joueur,
+  // classement) et on marque la ou les source(s) pour que l'admin sache où vit
+  // l'entrée. Dédoublonne en gardant la meilleure valeur (comme le livre des
+  // records), la suppression retirant de toute façon toutes les sources.
+  const map = new Map();
+  const put = (username, rk, score, data, updatedAt, src) => {
+    if (!Number.isFinite(Number(score))) return;
+    const k = username.toLowerCase() + '|' + rk;
+    const cur = map.get(k);
+    if (!cur) { map.set(k, { username, ranking: rk, score: Number(score), data: data || '', updatedAt: updatedAt || '', source: src }); return; }
+    if (cur.source.indexOf(src) === -1) cur.source += '+' + src;
+    if (isScoreBetter(rk, Number(score), data, Number(cur.score), cur.data)) {
+      cur.score = Number(score); cur.data = data || ''; if (updatedAt) cur.updatedAt = updatedAt;
+    }
+  };
   for (const [u, rlist] of Object.entries(scoresData.users || {})) {
-    if (ranking) {
-      if (rlist[ranking]) result.push({ username: u, ranking, score: rlist[ranking].score, data: rlist[ranking].data || '', updatedAt: rlist[ranking].updatedAt || '' });
-    } else {
-      for (const [rk, entry] of Object.entries(rlist)) {
-        result.push({ username: u, ranking: rk, score: entry.score, data: entry.data || '', updatedAt: entry.updatedAt || '' });
-      }
+    for (const [rk, entry] of Object.entries(rlist)) {
+      if (ranking && rk !== ranking) continue;
+      put(u, rk, entry.score, entry.data, entry.updatedAt, 'live');
     }
   }
-  result.sort((a, b) => b.score - a.score);
-  res.json({ rankings: Object.keys(RANKINGS), scores: result });
+  if (process.env.DATABASE_URL) {
+    try {
+      const rows = await db.getAllTimeBestScores(); // scores(DB) ∪ archive
+      for (const r of rows) {
+        if (ranking && r.ranking_id !== ranking) continue;
+        put(r.username, r.ranking_id, r.score, r.data, r.updated_at ? r.updated_at.toISOString() : '', 'archive');
+      }
+    } catch (e) { console.error('[ADMIN] scores archive query:', e.message); }
+  }
+  const result = [...map.values()].sort((a, b) => b.score - a.score);
+  const rankingNames = {};
+  for (const [id, m] of Object.entries(RANKINGS)) rankingNames[id] = m.name || id;
+  res.json({ rankings: Object.keys(RANKINGS), rankingNames, scores: result });
 });
+
+// Efface l'entrée d'un circuit BKiwi dans la carte (slot 0, $ts.$t{N}.$bc pour le
+// classique / $bl pour le challenge). Sans ça, le livre des records du Club
+// reconstruit le record supprimé à partir de la carte. Renvoie true si modifié.
+async function clearBkiwiCardTrack(username, track, mode) {
+  const field = mode === 'challenge' ? '$bl' : '$bc';
+  const key = `$t${track}`;
+  const mem = users[username];
+  let slot0 = mem && mem.frutiSlots && mem.frutiSlots.bkiwi && mem.frutiSlots.bkiwi['0'];
+  let dbId = mem && mem._dbId;
+  if ((!slot0 || !dbId) && process.env.DATABASE_URL) {
+    const row = await db.findUserByUsername(username);
+    if (row) { dbId = dbId || row.id; if (!slot0) { const s = await db.getFrutiSlots(row.id, 'bkiwi'); slot0 = s && s['0']; } }
+  }
+  if (!slot0) return false;
+  let parsed;
+  try { parsed = JSON.parse(slot0); } catch { return false; }
+  if (!parsed || typeof parsed.$ts !== 'object' || !parsed.$ts[key] || !(field in parsed.$ts[key])) return false;
+  if (!Number(parsed.$ts[key][field])) return false; // déjà à 0
+  parsed.$ts[key][field] = 0;
+  const newData = JSON.stringify(parsed);
+  if (mem && mem.frutiSlots && mem.frutiSlots.bkiwi) mem.frutiSlots.bkiwi['0'] = newData;
+  if (dbId && process.env.DATABASE_URL) await db.upsertFrutiSlot(dbId, 'bkiwi', 0, newData);
+  return true;
+}
 
 app.delete('/api/admin/scores/:username/:ranking', adminScope('scores'), async (req, res) => {
   const { username, ranking } = req.params;
+  // Suppression COMPLÈTE : live + table scores + archive (+ carte pour BKiwi),
+  // sinon le score mal mappé réapparaît dans le livre des records du Club (qui
+  // lit scores ∪ archive puis reconstruit BKiwi depuis les cartes).
   if (scoresData.users[username]) {
     delete scoresData.users[username][ranking];
     if (Object.keys(scoresData.users[username]).length === 0) delete scoresData.users[username];
     saveScoresFile();
   }
+  let archived = 0, cardCleared = false;
   if (process.env.DATABASE_URL) {
     try {
       const row = await db.findUserByUsername(username);
       if (row) await db.deleteScore(row.id, ranking);
+      archived = await db.deleteArchivedScore(username, ranking);
     } catch (e) { console.error(e.message); }
   }
-  console.log(`[ADMIN] Deleted score ${username}/${ranking}`);
-  res.json({ ok: true });
+  const m = /^bkiwi_track(\d)_(classic|challenge)$/.exec(ranking);
+  if (m) {
+    try { cardCleared = await clearBkiwiCardTrack(username, Number(m[1]), m[2]); }
+    catch (e) { console.error('[ADMIN] clear bkiwi card:', e.message); }
+  }
+  console.log(`[ADMIN] Deleted score ${username}/${ranking} (archive:${archived}, card:${cardCleared})`);
+  res.json({ ok: true, archived, cardCleared });
 });
 
 app.patch('/api/admin/scores/:username/:ranking', adminScope('scores'), async (req, res) => {

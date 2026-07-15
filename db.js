@@ -1169,6 +1169,17 @@ async function deleteScore(userId, rankingId) {
   await pool.query('DELETE FROM scores WHERE user_id = $1 AND ranking_id = $2', [userId, rankingId]);
 }
 
+// Supprime TOUTES les entrées archivées (tous les jours) d'un joueur pour un
+// classement donné — nécessaire pour retirer un record mal mappé du livre des
+// records du Club (qui lit scores ∪ archive). Renvoie le nombre de lignes.
+async function deleteArchivedScore(username, rankingId) {
+  const r = await pool.query(
+    'DELETE FROM challenge_score_archive WHERE LOWER(username) = LOWER($1) AND ranking_id = $2',
+    [String(username || ''), rankingId]
+  );
+  return r.rowCount || 0;
+}
+
 async function deleteAccessory(accRowId) {
   await pool.query('DELETE FROM user_accessories WHERE id = $1', [accRowId]);
 }
@@ -2406,6 +2417,7 @@ module.exports = {
   isUsernameReserved,
   unreserveUsername,
   deleteScore,
+  deleteArchivedScore,
   deleteAccessory,
   deleteItem,
   addItem,
