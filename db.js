@@ -298,6 +298,18 @@ async function initSchema() {
         created_at   TIMESTAMPTZ DEFAULT now()
       );
 
+      -- ── Images téléversées dans les posts du forum ──
+      -- Adressées par contenu (hash) et stockées EN BASE pour survivre aux
+      -- reboots du conteneur (le disque est éphémère) : sans ça les images des
+      -- posts disparaissaient à chaque redémarrage.
+      CREATE TABLE IF NOT EXISTS forum_images (
+        hash        TEXT PRIMARY KEY,
+        mime        TEXT NOT NULL,
+        ext         TEXT NOT NULL,
+        data        BYTEA NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- ── Tournois (« Maître ÈS … ») ──────────────────────────────────────
       -- Phase de qualif (leaderboard sur une fenêtre) → coupe à élimination
       -- directe (tours successifs). Un match se départage au MEILLEUR score posté
@@ -1367,6 +1379,23 @@ async function deleteQuizImage(id) {
 
 async function deleteWallpaper(id) {
   await pool.query('DELETE FROM wallpapers WHERE id = $1', [id]);
+}
+
+// ── Images de posts du forum (adressées par contenu, durables en base) ──
+async function upsertForumImage(hash, mime, ext, data) {
+  await pool.query(
+    `INSERT INTO forum_images (hash, mime, ext, data) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (hash) DO NOTHING`,
+    [hash, mime, ext, data]
+  );
+}
+async function getForumImage(hash) {
+  const { rows } = await pool.query('SELECT mime, ext, data FROM forum_images WHERE hash = $1', [hash]);
+  return rows[0] ? { mime: rows[0].mime, ext: rows[0].ext, data: rows[0].data } : null;
+}
+async function forumImageExists(hash) {
+  const { rows } = await pool.query('SELECT 1 FROM forum_images WHERE hash = $1', [hash]);
+  return rows.length > 0;
 }
 
 // ── Pictos inédits (admin) — métadonnées au boot, octets à la demande ──
@@ -2441,6 +2470,9 @@ module.exports = {
   getWallpaperImage,
   upsertWallpaper,
   deleteWallpaper,
+  upsertForumImage,
+  getForumImage,
+  forumImageExists,
   loadCustomPictos,
   getCustomPictoImage,
   upsertCustomPicto,

@@ -278,6 +278,22 @@
     padding: 6px 8px;
   }
   .post-content .bb-img { max-width: 100%; height: auto; }
+  /* Lecteur YouTube intégré : ratio 16:9 responsive, borné en largeur. */
+  .bb-youtube {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    aspect-ratio: 16 / 9;
+    margin: 6px 0;
+    background: #000;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .bb-youtube iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  /* Repli navigateurs sans aspect-ratio : hauteur via padding-top. */
+  @supports not (aspect-ratio: 1 / 1) {
+    .bb-youtube { height: 0; padding-top: 56.25%; }
+  }
   .post .post-edited {
     margin-top: 6px;
     padding: 0 12px 8px;
@@ -1639,6 +1655,27 @@ function escapeHtml(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Extrait l'identifiant (11 car.) d'une vidéo YouTube depuis les formats usuels
+// (watch?v=, youtu.be/, /embed/, /shorts/) ou un ID nu. Le contenu ayant déjà
+// été HTML-échappé, on rétablit &amp;→& avant l'analyse.
+function youtubeIdFrom(str) {
+  var s = String(str == null ? '' : str).replace(/&amp;/gi, '&').trim();
+  var m;
+  if ((m = s.match(/[?&]v=([A-Za-z0-9_-]{11})/))) return m[1];
+  if ((m = s.match(/youtu\.be\/([A-Za-z0-9_-]{11})/i))) return m[1];
+  if ((m = s.match(/\/(?:embed|shorts|v)\/([A-Za-z0-9_-]{11})/i))) return m[1];
+  if ((m = s.match(/^([A-Za-z0-9_-]{11})$/))) return m[1];
+  return null;
+}
+// Lecteur intégré (domaine youtube-nocookie = pas de cookies tiers). L'ID est
+// contraint à [A-Za-z0-9_-] donc rien à échapper dans l'URL.
+function youtubeEmbedHtml(id) {
+  return '<div class="bb-youtube"><iframe src="https://www.youtube-nocookie.com/embed/' + id + '"'
+    + ' title="Vidéo YouTube" frameborder="0" loading="lazy"'
+    + ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"'
+    + ' referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>';
+}
+
 function renderBBCode(s) {
   let out = escapeHtml(s);
   out = out.replace(/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong>$1</strong>');
@@ -1653,6 +1690,17 @@ function renderBBCode(s) {
   };
   out = out.replace(/\[size=(\d+)\]([\s\S]*?)\[\/size\]/gi, sizeReplacer);
   out = out.replace(/\[taille=(\d+)\]([\s\S]*?)\[\/taille\]/gi, sizeReplacer);
+  // [youtube]URL ou ID[/youtube] → lecteur intégré. AVANT [url]/linkification
+  // pour que l'URL ne soit pas d'abord transformée en simple lien.
+  out = out.replace(/\[youtube\]\s*([^\[\]]+?)\s*\[\/youtube\]/gi, function(m, v) {
+    var id = youtubeIdFrom(v);
+    return id ? youtubeEmbedHtml(id) : m;
+  });
+  // URL YouTube « nue » (sur sa propre ligne / précédée d'un espace) → intégrée.
+  out = out.replace(/(^|[\s>])(https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?|shorts\/|embed\/)|youtu\.be\/)[^\s<]+)/gi, function(m, pre, url) {
+    var id = youtubeIdFrom(url);
+    return id ? pre + youtubeEmbedHtml(id) : m;
+  });
   out = out.replace(/\[url=(https?:\/\/[^\s\]]+)\]([\s\S]*?)\[\/url\]/gi,
     '<a href="$1" target="_blank" rel="noopener">$2</a>');
   out = out.replace(/\[url\](https?:\/\/[^\s\[]+)\[\/url\]/gi,
@@ -2223,6 +2271,7 @@ function bbcodeToolbarHtml(targetId) {
   html += '<button type="button" class="bb-btn" onclick="bbToggleTag(\'' + targetId + '\',\'citation\')" title="Citation">Citation</button>';
   html += '<button type="button" class="bb-btn" onclick="bbInsertUrl(\'' + targetId + '\')" title="Lien">Lien</button>';
   html += '<button type="button" class="bb-btn" onclick="bbInsertImage(\'' + targetId + '\')" title="Insérer une image depuis ton ordinateur">Image</button>';
+  html += '<button type="button" class="bb-btn" onclick="bbInsertYoutube(\'' + targetId + '\')" title="Intégrer une vidéo YouTube">YouTube</button>';
   html += '<button type="button" class="bb-btn" onclick="bbTogglePictos(\'' + targetId + '\', this)" title="Pictos">Pictos</button>';
   html += '</div>';
   return html;
@@ -2389,6 +2438,22 @@ function bbInsertUrl(targetId) {
   ta.value = ta.value.substring(0, start) + insert + ta.value.substring(end);
   ta.focus();
   ta.setSelectionRange(start + insert.length, start + insert.length);
+}
+
+// YouTube : demande une URL (ou un ID), la valide, et insère [youtube]…[/youtube].
+function bbInsertYoutube(targetId) {
+  var url = prompt('Lien de la vidéo YouTube :', 'https://www.youtube.com/watch?v=');
+  if (!url) return;
+  var id = youtubeIdFrom(url);
+  if (!id) { alert('Lien YouTube non reconnu.\nExemples acceptés :\n• https://www.youtube.com/watch?v=XXXXXXXXXXX\n• https://youtu.be/XXXXXXXXXXX'); return; }
+  var ta = document.getElementById(targetId);
+  if (!ta) return;
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var insert = '[youtube]' + id + '[/youtube]';
+  ta.value = ta.value.substring(0, start) + insert + ta.value.substring(end);
+  ta.focus();
+  ta.setSelectionRange(start + insert.length, start + insert.length);
+  if (typeof previewEditor === 'function') { try { previewEditor(targetId); } catch (e) {} }
 }
 
 // Color dropdown handler — applies [color=value]...[/color] to selection

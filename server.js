@@ -12280,44 +12280,83 @@ app.post('/api/forum/upload-image',
       return res.status(415).json({ ok: false, error: 'unsupported_type',
         message: 'Format non supporté. Accepté : PNG, JPEG, GIF, WEBP.' });
     }
-    try {
-      ensureForumUploadDir();
-      // Content-addressed name → automatic dedupe and no user-controlled path.
-      const hash = crypto.createHash('sha256').update(body).digest('hex').slice(0, 32);
-      const fname = hash + '.' + kind.ext;
-      const file = path.join(FORUM_UPLOAD_DIR, fname);
-      if (!fs.existsSync(file)) {
-        // Atomic write so a concurrent GET never sees a half-written file.
-        const tmp = file + '.' + crypto.randomBytes(4).toString('hex') + '.tmp';
-        fs.writeFileSync(tmp, body);
-        fs.renameSync(tmp, file);
+    // Content-addressed name → automatic dedupe and no user-controlled path.
+    const hash = crypto.createHash('sha256').update(body).digest('hex').slice(0, 32);
+    const fname = hash + '.' + kind.ext;
+    (async () => {
+      try {
+        // Durable : les octets vont EN BASE (le disque du conteneur est effacé à
+        // chaque reboot → les images des posts disparaissaient). On garde une
+        // copie disque comme cache best-effort, mais la base fait foi.
+        if (process.env.DATABASE_URL) {
+          await db.upsertForumImage(hash, kind.mime, kind.ext, body);
+        }
+        try {
+          ensureForumUploadDir();
+          const file = path.join(FORUM_UPLOAD_DIR, fname);
+          if (!fs.existsSync(file)) {
+            const tmp = file + '.' + crypto.randomBytes(4).toString('hex') + '.tmp';
+            fs.writeFileSync(tmp, body);
+            fs.renameSync(tmp, file);
+          }
+        } catch (e) { /* le cache disque est optionnel */ }
+        forumImageCache.set(fname, { mime: kind.mime, buf: body });
+        console.log(`[FORUM-UPLOAD] ${username} ${kind.ext} ${fname} (${body.length} B)`);
+        res.json({ ok: true, url: '/forum-uploads/' + fname, bytes: body.length });
+      } catch (e) {
+        console.error('[FORUM-UPLOAD] store error:', e.message);
+        res.status(500).json({ ok: false, error: 'store_failed', message: "Échec de l'enregistrement de l'image." });
       }
-      console.log(`[FORUM-UPLOAD] ${username} ${kind.ext} ${fname} (${body.length} B)`);
-      res.json({ ok: true, url: '/forum-uploads/' + fname, bytes: body.length });
-    } catch (e) {
-      console.error('[FORUM-UPLOAD] store error:', e.message);
-      res.status(500).json({ ok: false, error: 'store_failed', message: "Échec de l'enregistrement de l'image." });
-    }
+    })();
   }
 );
+// Cache mémoire des images de forum (évite un aller-retour base par affichage).
+const forumImageCache = new Map(); // fname -> { mime, buf }
 
 // Serve uploaded forum images. Names are content hashes we minted above, so
 // the strict pattern both validates the request and blocks path traversal.
-app.get('/forum-uploads/:name', (req, res) => {
+app.get('/forum-uploads/:name', async (req, res) => {
   const name = String(req.params.name || '');
   if (!/^[0-9a-f]{32}\.(png|jpe?g|gif|webp)$/i.test(name)) {
     return res.status(400).type('text/plain').send('bad name');
   }
-  const file = path.join(FORUM_UPLOAD_DIR, name);
-  if (!fs.existsSync(file)) return res.status(404).type('text/plain').send('not found');
   const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
-  const mime = ext === 'png' ? 'image/png'
-             : ext === 'gif' ? 'image/gif'
-             : ext === 'webp' ? 'image/webp'
-             : 'image/jpeg';
-  res.type(mime);
-  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  res.sendFile(file);
+  const mimeFor = (e) => e === 'png' ? 'image/png' : e === 'gif' ? 'image/gif' : e === 'webp' ? 'image/webp' : 'image/jpeg';
+  const sendBuf = (mime, buf) => {
+    res.type(mime);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(buf);
+  };
+  try {
+    // cache mémoire → base (durable) → disque (repli pour d'éventuels fichiers
+    // encore présents avant migration/reboot).
+    const cached = forumImageCache.get(name);
+    if (cached) return sendBuf(cached.mime, cached.buf);
+    if (process.env.DATABASE_URL) {
+      const hash = name.slice(0, name.lastIndexOf('.'));
+      const img = await db.getForumImage(hash);
+      if (img) {
+        const buf = Buffer.isBuffer(img.data) ? img.data : Buffer.from(img.data);
+        forumImageCache.set(name, { mime: img.mime, buf });
+        return sendBuf(img.mime, buf);
+      }
+    }
+    const file = path.join(FORUM_UPLOAD_DIR, name);
+    if (fs.existsSync(file)) {
+      const buf = fs.readFileSync(file);
+      // migre l'ancien fichier disque vers la base pour le rendre durable
+      if (process.env.DATABASE_URL) {
+        const hash = name.slice(0, name.lastIndexOf('.'));
+        db.upsertForumImage(hash, mimeFor(ext), ext, buf).catch(() => {});
+      }
+      forumImageCache.set(name, { mime: mimeFor(ext), buf });
+      return sendBuf(mimeFor(ext), buf);
+    }
+    res.status(404).type('text/plain').send('not found');
+  } catch (e) {
+    console.error('[FORUM-UPLOAD] serve error:', e.message);
+    res.status(500).type('text/plain').send('error');
+  }
 });
 
 app.post('/api/forum/post', async (req, res) => {
@@ -13142,6 +13181,23 @@ async function boot() {
         for (const p of cps) registerCustomPicto({ name: p.name, displayName: p.display_name, category: p.category, mime: p.mime });
         if (cps.length) console.log(`[DB] Loaded ${cps.length} custom picto(s)`);
       } catch (e) { console.error('[DB] Custom pictos load error:', e.message); }
+      // Migration best-effort : sauvegarde en base les images de forum encore
+      // présentes sur le disque (éphémère) avant qu'un reboot ne les efface.
+      try {
+        let migrated = 0;
+        if (fs.existsSync(FORUM_UPLOAD_DIR)) {
+          for (const fn of fs.readdirSync(FORUM_UPLOAD_DIR)) {
+            const m = /^([0-9a-f]{32})\.(png|jpe?g|gif|webp)$/i.exec(fn);
+            if (!m) continue;
+            if (await db.forumImageExists(m[1])) continue;
+            const ext = m[2].toLowerCase();
+            const mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+            await db.upsertForumImage(m[1], mime, ext, fs.readFileSync(path.join(FORUM_UPLOAD_DIR, fn)));
+            migrated++;
+          }
+        }
+        if (migrated) console.log(`[DB] Migrated ${migrated} forum image(s) disk → base`);
+      } catch (e) { console.error('[DB] Forum image migration error:', e.message); }
       try {
         const qimgs = await db.loadQuizImages();
         for (const im of qimgs) registerQuizImage(im);
