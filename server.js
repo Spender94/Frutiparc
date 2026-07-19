@@ -2208,6 +2208,8 @@ function dbUserToMemory(row) {
     referralState: row.referral_state || 'none',
     referralFlag: row.referral_flag || '',
     lastLoginXpDay: row.last_login_xp_day || '',
+    dailyKikoozDay: row.daily_kikooz_day || '',
+    dailyStreak: row.daily_streak ?? 0,
     _dbId: row.id,
   };
 }
@@ -2718,6 +2720,69 @@ function awardDailyLoginXp(username) {
   // notify:false — the ident handler flushes new userLog entries to the socket
   // immediately after this call, so it delivers any level-up exactly once.
   awardImmediateXp(username, LOGIN_XP_BONUS, 'connexion quotidienne', { notify: false });
+}
+
+// ── Récompense de connexion quotidienne (kikooz) avec bonus de série ──────────
+// Chaque jour où le joueur se connecte lui crédite des kikooz. Se connecter
+// plusieurs jours d'affilée fait grimper la récompense (« série ») jusqu'à un
+// palier au 7ᵉ jour ; rater un jour remet la série à 1. Le marqueur du dernier
+// jour récompensé (clé Paris) ET la longueur de la série sont stockés EN BASE,
+// comme le bonus XP : le conteneur de prod est éphémère, donc un redémarrage ne
+// doit jamais re-verser la récompense ni casser la série.
+//
+// Barème (jour 1 → 7 et plus) : une série parfaite d'une semaine rapporte
+// 10+15+20+25+30+40+60 = 200 kikooz — de l'ordre d'un gain de quiz Kiloute,
+// assez pour motiver sans inonder l'économie (un fond d'écran coûte 60 kikooz).
+const DAILY_KIKOOZ_TABLE = [10, 15, 20, 25, 30, 40, 60];
+
+function dailyKikoozReward(streak) {
+  const idx = Math.max(1, Math.min(DAILY_KIKOOZ_TABLE.length, Number(streak) || 1)) - 1;
+  return DAILY_KIKOOZ_TABLE[idx];
+}
+
+// true si prevKey (clé jour 'YYYY-MM-DD') est la veille de todayKey. On calcule
+// à midi UTC (= 13h/14h à Paris) pour que le décalage d'un jour reste sans
+// ambiguïté sur la date, indépendamment de l'heure et des changements d'heure.
+function isDayBefore(prevKey, todayKey) {
+  if (!prevKey || !todayKey) return false;
+  const d = new Date(todayKey + 'T12:00:00Z');
+  if (Number.isNaN(d.getTime())) return false;
+  d.setUTCDate(d.getUTCDate() - 1);
+  return prevKey === d.toISOString().substring(0, 10);
+}
+
+// Renvoie la récompense versée (0 si déjà réclamée aujourd'hui). N'ÉMET PAS la
+// notification userLog : dans le handler ident, la boucle de flush qui suit
+// l'envoie une seule fois (comme pour le bonus XP). Appelé après ident, socket
+// déjà enregistré, donc notifyKikoozUpdate atteint bien le client.
+function awardDailyLoginKikooz(username) {
+  if (!username) return 0;
+  const user = users[username];
+  if (!user) return 0;
+  const today = parisDayKey();
+  if (user.dailyKikoozDay === today) return 0; // déjà réclamé aujourd'hui
+  const prev = user.dailyKikoozDay || '';
+  const streak = isDayBefore(prev, today) ? (Number(user.dailyStreak) || 0) + 1 : 1;
+  const reward = dailyKikoozReward(streak);
+  user.dailyKikoozDay = today;
+  user.dailyStreak = streak;
+  user.kikooz = (Number(user.kikooz) || 0) + reward;
+  if (user._dbId) {
+    db.updateUser(username, { daily_kikooz_day: today, daily_streak: streak, kikooz: user.kikooz })
+      .catch(dbErr('updateUser daily kikooz'));
+  }
+  if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+  user.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: reward, c: 'connexion quotidienne' });
+  if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+  notifyKikoozUpdate(username, user.kikooz);
+  const serie = streak > 1 ? ` (série de ${streak} jours)` : '';
+  addUserHistoryEntry(user, {
+    type: USER_LOG_TYPE.GODSON,
+    content: `Connexion quotidienne${serie} : +${reward} kikooz !`,
+    flNew: true,
+  });
+  console.log(`[KIKOOZ] ${username}: +${reward} kikooz (connexion quotidienne, série ${streak})`);
+  return reward;
 }
 
 function buildUserLogXml(entries) {
@@ -9965,6 +10030,34 @@ app.get('/do/prefsave', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: /api/daily-status — État de la récompense de connexion quotidienne.
+// Lecture seule : la récompense (kikooz + bonus de série) est versée
+// automatiquement à la connexion au serveur de jeu (handler ident). Sert aux
+// clients /light et /ft à afficher « 🔥 Série : N jours » et la récompense.
+// ─────────────────────────────────────────────
+app.get('/api/daily-status', (req, res) => {
+  const username = resolveUsernameFromSid(String(req.query.sid || ''));
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const user = users[username] || {};
+  const today = parisDayKey();
+  const streak = Number(user.dailyStreak) || 0;
+  const claimedToday = user.dailyKikoozDay === today;
+  // La série « tient » si la dernière récompense date d'aujourd'hui ou d'hier ;
+  // sinon elle est retombée (le prochain jour repartira à 1).
+  const alive = claimedToday || isDayBefore(user.dailyKikoozDay || '', today);
+  res.json({
+    ok: true,
+    streak: alive ? streak : 0,
+    claimedToday,
+    // reward = kikooz gagnés aujourd'hui (si déjà versés) OU ce que rapporterait
+    // une connexion maintenant (si pas encore versés aujourd'hui).
+    reward: claimedToday ? dailyKikoozReward(streak) : dailyKikoozReward(alive ? streak + 1 : 1),
+    kikooz: Math.max(0, Math.floor(Number(user.kikooz) || 0)),
+    table: DAILY_KIKOOZ_TABLE,
+  });
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINT: do/eb — Edit/validate frutibouille (avatar)
 // Called when the editbouille window opens or saves.
 // Params: b=<fbouille_string>, sid=<session_id>
@@ -15819,6 +15912,10 @@ async function handleCBeeMessage(socket, rawXml) {
       // Once-per-day connection bonus, granted immediately (now that the socket
       // is registered, any level-up notification reaches the client).
       awardDailyLoginXp(effectiveLogin);
+      // Récompense kikooz de connexion quotidienne (+ bonus de série). Comme le
+      // bonus XP, l'entrée userLog qu'elle ajoute est délivrée par la boucle de
+      // flush ci-dessous (exactement une fois).
+      awardDailyLoginKikooz(effectiveLogin);
 
       // Reconnect: if a previous socket dropped within the grace window, re-bind
       // this new socket to the salons the user was in (they were never removed,

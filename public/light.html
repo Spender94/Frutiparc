@@ -820,6 +820,17 @@
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 6px;
     padding: 16px 12px 22px;
   }
+  /* Bandeau récompense de connexion quotidienne (série de kikooz). */
+  .daily-banner {
+    margin: 6px 12px 0; padding: 10px 14px; border-radius: 14px;
+    background: linear-gradient(135deg, #EAF7CE, #D3ED9E);
+    border: 1px solid #B6D97E; box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+    display: flex; align-items: center; flex-wrap: wrap; gap: 3px 9px;
+  }
+  .daily-banner .db-flame { font-size: 22px; line-height: 1; }
+  .daily-banner .db-main { font-size: 14px; color: #2C4A0F; }
+  .daily-banner .db-main strong { color: #3E6A12; }
+  .daily-banner .db-sub { flex-basis: 100%; font-size: 11px; color: #5a8a20; }
   .home-tile {
     background: transparent; border: 0; cursor: pointer; padding: 6px 2px 8px;
     display: flex; flex-direction: column; align-items: center; gap: 7px;
@@ -949,6 +960,11 @@
         </div>
       </div>
     </div>
+
+    <!-- Bandeau « récompense de connexion quotidienne » : série + gain du jour.
+         Renseigné par loadDailyStatus() → /api/daily-status. Masqué tant que la
+         récompense du jour n'est pas versée (l'ident WS la déclenche au boot). -->
+    <div class="daily-banner" id="daily-banner" style="display:none"></div>
 
     <!-- Grille des rubriques (plein largeur, 3 colonnes) -->
     <div class="home-grid" id="home-grid">
@@ -1362,6 +1378,7 @@
     activateTab("chat");
     if (!isDesktop()) openMenu(true);
     loadHomeProfile();
+    loadDailyStatus();
 
     connectWs();
 
@@ -1507,6 +1524,34 @@
         refreshHomeAvatar();
       })
       .catch(function () { refreshHomeAvatar(); });
+  }
+
+  // Récompense de connexion quotidienne : bandeau « 🔥 Série de N jours · +X
+  // kikooz aujourd'hui ». La récompense est versée côté serveur par l'ident WS
+  // (au boot) ; on lit l'état ici pour l'afficher. Appelé au boot ET à la
+  // réception de la réponse ident ("k") pour refléter le gain qui vient d'être
+  // crédité.
+  function renderDailyBanner(d) {
+    var el = $("#daily-banner"); if (!el) return;
+    if (!d || !d.ok || !d.claimedToday) { el.style.display = "none"; return; }
+    var s = Number(d.streak) || 1;
+    var r = Number(d.reward) || 0;
+    el.innerHTML =
+      '<span class="db-flame">🔥</span>' +
+      '<span class="db-main">Série de <strong>' + s + ' jour' + (s > 1 ? 's' : '') +
+      '</strong> · <strong>+' + r + '</strong> kikooz aujourd’hui</span>' +
+      '<span class="db-sub">Reviens demain pour ne pas perdre ta série !</span>';
+    el.style.display = "";
+  }
+  function loadDailyStatus() {
+    if (!state.sid) return;
+    fetch("/api/daily-status?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        renderDailyBanner(d);
+        if (d && d.ok && typeof d.kikooz === "number") homeProfile.kikooz = d.kikooz;
+      })
+      .catch(function () {});
   }
 
   // Clics sur la grille de l'accueil → navigation (panneaux ou feuilles).
@@ -1964,6 +2009,9 @@
         switchRoom($("#room-select").value || ROOMS[0][0]);
         requestChannelList();
         startChannelListPolling();
+        // L'ident vient de créditer (le cas échéant) la récompense quotidienne :
+        // on rafraîchit le bandeau de série pour refléter le gain du jour.
+        loadDailyStatus();
         break;
 
       case "o": // join confirmed: <o g="room" p="">...</o>

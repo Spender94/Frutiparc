@@ -92,6 +92,12 @@ async function initSchema() {
         -- éphémère) pour qu'un redémarrage du serveur ne re-verse PAS le bonus à
         -- chaque reconnexion.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_xp_day TEXT DEFAULT '';
+        -- Récompense de connexion quotidienne (kikooz). daily_kikooz_day = jour
+        -- (clé YYYY-MM-DD, fuseau Paris) où la récompense a été versée pour la
+        -- dernière fois ; daily_streak = nombre de jours consécutifs de connexion.
+        -- Stockés en base (≠ disque éphémère) pour survivre aux redémarrages.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_kikooz_day TEXT DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_streak INTEGER DEFAULT 0;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT NULL;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_by TEXT DEFAULT '';
