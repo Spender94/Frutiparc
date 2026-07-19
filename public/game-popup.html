@@ -306,10 +306,68 @@
             window.__dlog("[Game] disc ejected by parent — closing popup");
             try { window.close(); } catch (e) {}
           }
+          // Le serveur vient de refuser une partie challenge (plus de FD) :
+          // le jeu est revenu à son menu ; on propose le rachat par-dessus.
+          if (j && j.fd && j.fd.refused) showFdOverlay(j.fd, sidArg);
         })
         .catch(function () {});
     }, 1500);
   })();
+
+  // ── Overlay « Plus de FD » : explication + rachat d'un FD en kikooz ──
+  // Affiché quand /do/fdclaim vient de refuser une course challenge (drapeau
+  // fd.refused du poll ci-dessus). Le rachat crédite un FD pour AUJOURD'HUI ;
+  // le joueur relance ensuite sa course depuis le menu du jeu.
+  function showFdOverlay(fd, sidArg) {
+    if (document.getElementById("fd-overlay")) return;
+    var price = Number(fd.price) || 60;
+    var kikooz = Number(fd.kikooz) || 0;
+    var wrap = document.createElement("div");
+    wrap.id = "fd-overlay";
+    wrap.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(20,30,8,.72)";
+    var canAfford = kikooz >= price;
+    wrap.innerHTML =
+      '<div style="background:linear-gradient(135deg,#F7FBE8,#E4F3C5);border:2px solid #7FA83E;border-radius:16px;max-width:400px;margin:16px;padding:22px 24px;font-family:Verdana,Arial,sans-serif;color:#2C4A0F;box-shadow:0 12px 40px rgba(0,0,0,.45);text-align:center">' +
+      '<div style="font-size:34px;line-height:1">💾</div>' +
+      '<h2 style="font-size:17px;margin:10px 0 6px">Plus de FD pour aujourd’hui !</h2>' +
+      '<p style="font-size:12.5px;line-height:1.5;margin:0 0 6px">Tu as utilisé tes disquettes de challenge du jour — la course du jour ne compte plus au classement pour l’instant.</p>' +
+      '<p style="font-size:12.5px;line-height:1.5;margin:0 0 14px">Rachète un FD pour retenter ta chance dès maintenant, ou reviens demain (2 FD gratuits chaque jour).</p>' +
+      '<div style="font-size:12px;color:#5a8a20;margin-bottom:12px">Ton solde : <b>' + kikooz + '</b> kikooz</div>' +
+      '<button id="fd-buy" ' + (canAfford ? '' : 'disabled ') + 'style="font-family:inherit;font-size:14px;font-weight:bold;padding:10px 18px;border-radius:10px;border:2px solid #4F7A1A;background:' + (canAfford ? 'linear-gradient(180deg,#A8D45E,#7FB33A)' : '#c9d6b2') + ';color:#1F3608;cursor:' + (canAfford ? 'pointer' : 'not-allowed') + '">💾 Racheter 1 FD — ' + price + ' kikooz</button>' +
+      (canAfford ? '' : '<div style="font-size:11px;color:#a05a2c;margin-top:6px">Pas assez de kikooz — gagne-en en te connectant chaque jour !</div>') +
+      '<div><button id="fd-later" style="font-family:inherit;font-size:12px;margin-top:10px;padding:6px 12px;border-radius:8px;border:1px solid #9ab86e;background:transparent;color:#4F7A1A;cursor:pointer">Plus tard</button></div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    document.getElementById("fd-later").onclick = function () { wrap.remove(); };
+    var buyBtn = document.getElementById("fd-buy");
+    buyBtn.onclick = function () {
+      buyBtn.disabled = true;
+      buyBtn.textContent = "Achat…";
+      fetch("/api/fd/buy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sid: sidArg, game: fd.game || "bkiwi" }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+        .then(function (res) {
+          if (res.s === 200 && res.d && res.d.ok) {
+            wrap.firstChild.innerHTML =
+              '<div style="font-size:34px;line-height:1">✅</div>' +
+              '<h2 style="font-size:17px;margin:10px 0 6px">FD ajouté !</h2>' +
+              '<p style="font-size:13px;line-height:1.5;margin:0">Relance ta course du jour depuis le menu — elle comptera au classement. Il te reste <b>' + (Number(res.d.kikooz) || 0) + '</b> kikooz.</p>';
+            setTimeout(function () { wrap.remove(); }, 4000);
+          } else {
+            buyBtn.disabled = false;
+            buyBtn.textContent = "💾 Racheter 1 FD — " + price + " kikooz";
+            alert((res.d && res.d.error === "not_enough_kikooz") ? "Pas assez de kikooz !" : "Achat impossible — réessaie.");
+          }
+        })
+        .catch(function () {
+          buyBtn.disabled = false;
+          buyBtn.textContent = "💾 Racheter 1 FD — " + price + " kikooz";
+        });
+    };
+  }
 
   // ExternalInterface callback: JSON parser for game SWFs that call client.fromJSON().
   // motionball.swf (mb2) is patched to call ExternalInterface.call("parseJSON", str)

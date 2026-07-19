@@ -2867,10 +2867,10 @@ function fdGameFromRanking(rankingId) { return String(rankingId || '').split('_'
 // Portillon FD à l'enregistrement d'un score CHALLENGE. Pour un jeu limité :
 // consomme 1 FD et renvoie true (score classé) ; si plus de FD, renvoie false
 // (le score challenge ne doit PAS être classé) et notifie le joueur une fois.
-// Jeu non limité → toujours true, rien n'est décompté. C'est le point d'ancrage
-// FIABLE et universel : tout score challenge passe par persistScore(challenge),
-// quel que soit le chemin (socket ou HTTP), et les jeux tournent « en fake » côté
-// client (pas de refus natif avant la partie).
+// Jeu non limité → toujours true, rien n'est décompté. C'est le filet de
+// sécurité UNIVERSEL : tout score challenge passe par persistScore(challenge),
+// quel que soit le chemin (socket ou HTTP). Le SWF patché, lui, réserve la
+// partie AVANT la course via /do/fdclaim (jeton) — voir fdGrantPlayToken.
 function fdGateChallengeScore(username, user, game) {
   if (!user || !fdGameIsLimited(game)) return true;
   if (fdConsume(username, user, game)) return true;
@@ -2880,6 +2880,57 @@ function fdGateChallengeScore(username, user, game) {
   });
   console.log(`[FD] ${username} : challenge ${game} BLOQUÉ (plus de FD)`);
   return false;
+}
+
+// ── Marqueurs de partie (réservés AVANT la course par le SWF patché) ──────────
+// Le claim (/do/fdclaim) est appelé au DÉMARRAGE de chaque course et marque la
+// session : 'paid' = course sur le circuit du jour, FD consommé immédiatement
+// (usage unique, comme les disquettes d'époque : abandonner ne rembourse pas) ;
+// 'free' = course d'entraînement sur un autre circuit (rien consommé). À
+// l'enregistrement du score, le marqueur décide du classement challenge sans
+// reconsommer. Sans marqueur (vieux SWF en cache, autre chemin), on retombe sur
+// l'heuristique circuit + fdGateChallengeScore (consommation au save).
+function fdSetClaim(sid, game, kind) {
+  const sess = sessions[sid];
+  if (!sess) return;
+  if (!sess.fdClaims || typeof sess.fdClaims !== 'object') sess.fdClaims = {};
+  sess.fdClaims[String(game || '').toLowerCase()] = kind;
+}
+function fdTakeClaim(sid, game) {
+  const sess = sid ? sessions[sid] : null;
+  const key = String(game || '').toLowerCase();
+  if (!sess || !sess.fdClaims || sess.fdClaims[key] === undefined) return undefined;
+  const kind = sess.fdClaims[key];
+  delete sess.fdClaims[key];
+  return kind;
+}
+
+// Décide si un score challenge doit être classé ('ok'), ignoré silencieusement
+// ('skip' : course d'entraînement sur un autre circuit) ou bloqué ('blocked' :
+// plus de FD — le joueur est notifié par fdGateChallengeScore).
+function fdAuthorizeChallengeSave(sid, username, game, routed) {
+  const claim = fdTakeClaim(sid, game);
+  if (claim === 'paid') return 'ok';
+  if (claim === 'free') return 'skip';
+  if (!fdGameIsLimited(game)) return 'ok';
+  const hint = routed && routed.hint;
+  const daily = routed && routed.daily;
+  if (Number.isFinite(hint) && Number.isFinite(daily) && hint !== daily) return 'skip';
+  return fdGateChallengeScore(username, users[username], game) ? 'ok' : 'blocked';
+}
+// Drapeau « refus à afficher » lu (et effacé) par le poll du popup de jeu :
+// permet à game-popup.html d'afficher l'overlay « Plus de FD — racheter » au
+// moment précis où le SWF vient d'essuyer un refus.
+function fdFlagRefusal(sid, game) {
+  const sess = sessions[sid];
+  if (sess) sess.fdRefused = { game: String(game || '').toLowerCase(), at: Date.now() };
+}
+function fdTakeRefusalFlag(sid) {
+  const sess = sid ? sessions[sid] : null;
+  if (!sess || !sess.fdRefused) return null;
+  const r = sess.fdRefused;
+  sess.fdRefused = null;
+  return r;
 }
 
 // Vue lisible de l'état FD d'un jeu (pour les endpoints / l'admin).
@@ -4706,6 +4757,7 @@ async function handleSaveScore(req, res) {
   }
   let extraResult = null;
   let extraRankingId = null;
+  let routedInfo = null;
   {
     // Single source of truth for BKiwi/MB2 routing (see routeRankingForSave):
     // BKiwi daily challenge always lands on today's track so the fiche + table
@@ -4713,6 +4765,7 @@ async function handleSaveScore(req, res) {
     const routed = routeRankingForSave(rankingId, username);
     rankingId = routed.rankingId;
     extraRankingId = routed.extraRankingId;
+    routedInfo = routed;
     if (routed.daily !== undefined) {
       console.log(`[HTTP]  bkiwi route hint=${routed.hint} daily=${routed.daily} -> classic:${rankingId} challenge:${extraRankingId}`);
     }
@@ -4721,13 +4774,17 @@ async function handleSaveScore(req, res) {
   const result = persistScore(username, rankingId, scoreVal, scoreData);
   let fdBlocked = false;
   if (extraRankingId) {
-    // Portillon FD : le score challenge n'est classé que si le joueur a un FD
-    // (consommé ici). Jeu non limité → toujours classé.
-    if (fdGateChallengeScore(username, users[username], fdGameFromRanking(extraRankingId))) {
+    // Portillon FD : marqueur du claim pré-course (SWF patché), sinon
+    // heuristique circuit + consommation au save. 'skip' = entraînement sur un
+    // autre circuit → pas de miroir challenge (et rien consommé).
+    const verdict = fdAuthorizeChallengeSave(sid, username, fdGameFromRanking(extraRankingId), routedInfo);
+    if (verdict === 'ok') {
       extraResult = persistScore(username, extraRankingId, scoreVal, scoreData);
       console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ${scoreVal} updated=${extraResult.updated} (challenge)`);
-    } else {
+    } else if (verdict === 'blocked') {
       fdBlocked = true;
+    } else {
+      console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ignoré (entraînement hors circuit du jour)`);
     }
   }
   if (rankingId === 'jamajama_classic' || rankingId === 'jamajama_challenge') {
@@ -10178,6 +10235,47 @@ app.get('/api/daily-status', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// ENDPOINT: /do/fdclaim — réservation d'une partie challenge par le SWF patché
+// (BurningKiwi), appelée au DÉMARRAGE de la course (LoadVars.sendAndLoad).
+// Params : sid, game, track (circuit choisi, optionnel).
+// Réponse LoadVars :
+//   ok=1&fd=free                → course hors circuit du jour / jeu non limité
+//   ok=1&fd=paid&remaining=N    → FD consommé, course challenge autorisée
+//   ok=0&err=no_fd&remaining=0&price=60 → plus de FD (le SWF pose client.error,
+//        le menu revient nativement en arrière ; le popup affiche l'overlay
+//        de rachat via le drapeau fdRefused lu par /api/check-ejected).
+// ─────────────────────────────────────────────
+app.post('/do/fdclaim', async (req, res) => {
+  await rollDailyChallengeIfNeeded();
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  const sid = String(params.sid || '');
+  const username = resolveUsernameFromSid(sid);
+  res.type('text/plain');
+  if (!username) return res.send('ok=0&err=auth');
+  const user = users[username];
+  const game = String(params.game || '').toLowerCase();
+  if (!fdGameIsLimited(game)) return res.send('ok=1&fd=free');
+  // Course sur un autre circuit que celui du jour → entraînement, gratuit.
+  if (game === 'bkiwi' && params.track !== undefined && params.track !== '') {
+    const track = Number(params.track);
+    const daily = getBkiwiDailyTrack();
+    if (Number.isFinite(track) && track !== daily) {
+      fdSetClaim(sid, game, 'free');
+      return res.send('ok=1&fd=free');
+    }
+  }
+  if (fdConsume(username, user, game)) {
+    fdSetClaim(sid, game, 'paid');
+    const left = fdRemaining(user, game);
+    console.log(`[FD] ${username} : claim ${game} OK (reste ${left})`);
+    return res.send(`ok=1&fd=paid&remaining=${left}`);
+  }
+  fdFlagRefusal(sid, game);
+  console.log(`[FD] ${username} : claim ${game} REFUSÉ (plus de FD)`);
+  return res.send(`ok=0&err=no_fd&remaining=0&price=${FD_EXTRA_PRICE}`);
+});
+
+// ─────────────────────────────────────────────
 // ENDPOINTS FD — disquettes de partie challenge (limite quotidienne + rachat).
 //   GET  /api/fd/status?sid=&game=  → état FD du jeu (restants, prix, solde).
 //   POST /api/fd/buy   {sid, game}  → dépense FD_EXTRA_PRICE kikooz → +1 FD.
@@ -10697,16 +10795,30 @@ app.get('/api/check-ejected', (req, res) => {
   const sid = String(req.query.sid || '');
   const game = String(req.query.game || '');
   if (!sid || !game) return res.json({ ejected: false });
+  // Drapeau FD : le SWF vient d'essuyer un refus de partie challenge (plus de
+  // FD) → le popup affiche l'overlay de rachat. Lu-et-effacé (une seule fois).
+  let fd = null;
+  const refusal = fdTakeRefusalFlag(sid);
+  if (refusal && Date.now() - refusal.at < 120000) {
+    const username = resolveUsernameFromSid(sid);
+    const user = username ? users[username] : null;
+    fd = {
+      refused: true,
+      game: refusal.game,
+      price: FD_EXTRA_PRICE,
+      kikooz: user ? Math.max(0, Math.floor(Number(user.kikooz) || 0)) : 0,
+    };
+  }
   const key = `${sid}::${game}`;
   const ts = recentlyEjected.get(key);
   if (ts && Date.now() - ts < 120000) {
     // Consume the entry so the response only fires once per eject.
     recentlyEjected.delete(key);
-    return res.json({ ejected: true });
+    return res.json({ ejected: true, fd });
   }
   // Older than 2 minutes — stale, drop it.
   if (ts) recentlyEjected.delete(key);
-  return res.json({ ejected: false });
+  return res.json({ ejected: false, fd });
 });
 
 const GAME_DISCS = {
@@ -16135,6 +16247,7 @@ async function handleCBeeMessage(socket, rawXml) {
         let rankingId = rankingIdForGame(discId, scoreMode);
         if (!rankingId && client.currentGame) rankingId = rankingIdForGame(client.currentGame, scoreMode);
         let extraRankingId = null;
+        let routedInfo = null;
         {
           // Single source of truth for BKiwi/MB2 routing (see
           // routeRankingForSave). The daily challenge is anchored to today's
@@ -16142,6 +16255,7 @@ async function handleCBeeMessage(socket, rawXml) {
           const routed = routeRankingForSave(rankingId, username);
           rankingId = routed.rankingId;
           extraRankingId = routed.extraRankingId;
+          routedInfo = routed;
           if (routed.daily !== undefined) {
             console.log(`[FSCORE] bkiwi route hint=${routed.hint} daily=${routed.daily} -> classic:${rankingId} challenge:${extraRankingId}`);
           }
@@ -16152,8 +16266,9 @@ async function handleCBeeMessage(socket, rawXml) {
         if (username && rankingId) {
           res = persistScore(username, rankingId, scoreVal, scoreData);
           console.log(`[FSCORE] ${username} ${rankingId}: ${res.oldScore} -> ${res.newScore} (updated=${res.updated}, pos ${res.oldPos}->${res.newPos})`);
-          if (extraRankingId && fdGateChallengeScore(username, users[username], fdGameFromRanking(extraRankingId))) {
-            // Portillon FD : score challenge classé seulement si un FD est dispo.
+          // Portillon FD : marqueur du claim pré-course, sinon heuristique
+          // circuit + consommation au save (cf. fdAuthorizeChallengeSave).
+          if (extraRankingId && fdAuthorizeChallengeSave(client.sid, username, fdGameFromRanking(extraRankingId), routedInfo) === 'ok') {
             challengeRes = persistScore(username, extraRankingId, scoreVal, scoreData);
             console.log(`[FSCORE] ${username} ${extraRankingId}: ${challengeRes.oldScore} -> ${challengeRes.newScore} (updated=${challengeRes.updated}, challenge)`);
           }
