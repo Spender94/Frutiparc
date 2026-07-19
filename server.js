@@ -2792,16 +2792,21 @@ function awardDailyLoginKikooz(username) {
 
 // ── FD : disquettes de partie « challenge » (limite quotidienne + FD payants) ──
 // Reproduit le principe d'origine : le mode challenge d'un jeu n'est pas illimité.
-// Chaque joueur dispose de FD_FREE_PER_DAY parties challenge gratuites par jour et
-// par jeu (les « FD noir »), à usage unique ; en manque, il peut en racheter à
-// FD_EXTRA_PRICE kikooz l'unité (les « FD gris »). L'entraînement / le classique
-// reste ILLIMITÉ — seul le challenge (score au classement) est rationné.
+// Chaque joueur dispose de FD_FREE_PER_DAY parties challenge gratuites par jour
+// et par jeu, à usage unique ; pour en avoir plus, il achète en BOUTIQUE un
+// « Pass quotidien » (rubrique Pass) — permanent et cumulable : +1 partie/jour à
+// vie par pass. L'entraînement / le classique reste ILLIMITÉ — seul le challenge
+// (score au classement) est rationné.
 //
-// État par joueur : user.fdState = { d:'YYYY-MM-DD', g:{ <jeu>:{ u:used, b:bought } } }.
-// Persisté en base (colonne fd_state) pour survivre aux redémarrages : un reboot ne
-// re-crédite pas de FD gratuits et ne perd pas les FD payés dans la journée.
-const FD_FREE_PER_DAY = 2;   // FD noir : parties challenge gratuites / jour / jeu
-const FD_EXTRA_PRICE  = 60;  // FD gris : prix d'une partie challenge supplémentaire
+// État par joueur : user.fdState = { d:'YYYY-MM-DD', g:{ <jeu>:{ u:used } }, p:{ <jeu>:n } }.
+//   • d/g : partie QUOTIDIENNE (remise à zéro chaque jour via la clé d).
+//   • p   : pass quotidiens possédés — PERMANENTS et cumulables, achetés en
+//     boutique (« Pass quotidien de … », rubrique Pass). Chaque pass ajoute
+//     +1 partie challenge par jour, à vie : 1 pass → 3/jour, 2 pass → 4/jour…
+// Persisté en base (colonne fd_state) pour survivre aux redémarrages : un reboot
+// ne re-crédite pas de FD gratuits et ne perd jamais les pass.
+const FD_FREE_PER_DAY = 2;   // parties challenge gratuites / jour / jeu
+const FD_PASS_PRICE   = 80;  // prix boutique d'un pass quotidien (fiche d'origine)
 // Jeux dont le mode challenge est soumis à la limite. On démarre avec bkiwi ;
 // extension prévue : swapou, grapiz, bandas, mb2, kaluga.
 const FD_LIMITED_GAMES = new Set(['bkiwi']);
@@ -2817,26 +2822,47 @@ function parseFdState(raw) {
   catch { return null; }
 }
 
-// Renvoie l'état FD du jour (réinitialise si la clé jour a changé).
+// Renvoie l'état FD du jour (réinitialise la partie quotidienne si la clé jour
+// a changé — les pass `p`, permanents, sont TOUJOURS préservés).
 function fdEnsureToday(user) {
   const today = parisDayKey();
   let st = user.fdState;
   if (!st || typeof st !== 'object' || st.d !== today) {
-    st = { d: today, g: {} };
+    st = { d: today, g: {}, p: (st && typeof st === 'object' && st.p && typeof st.p === 'object') ? st.p : {} };
     user.fdState = st;
   }
   if (!st.g || typeof st.g !== 'object') st.g = {};
+  if (!st.p || typeof st.p !== 'object') st.p = {};
   return st;
 }
 function fdGameEntry(user, game) {
   const st = fdEnsureToday(user);
   const key = String(game || '').toLowerCase();
-  if (!st.g[key] || typeof st.g[key] !== 'object') st.g[key] = { u: 0, b: 0 };
+  if (!st.g[key] || typeof st.g[key] !== 'object') st.g[key] = { u: 0 };
   return st.g[key];
+}
+// Nombre de pass quotidiens possédés (permanents, cumulables).
+function fdPassCount(user, game) {
+  const st = fdEnsureToday(user);
+  return Math.max(0, Math.floor(Number(st.p[String(game || '').toLowerCase()]) || 0));
+}
+// Parties challenge autorisées aujourd'hui = gratuites + pass (+ d'éventuels FD
+// « du jour » crédités par l'ancien modèle d'achat à l'unité, champ b hérité).
+function fdAllowance(user, game) {
+  const e = fdGameEntry(user, game);
+  return FD_FREE_PER_DAY + fdPassCount(user, game) + Math.max(0, Number(e.b) || 0);
 }
 function fdRemaining(user, game) {
   const e = fdGameEntry(user, game);
-  return Math.max(0, FD_FREE_PER_DAY + (Number(e.b) || 0) - (Number(e.u) || 0));
+  return Math.max(0, fdAllowance(user, game) - (Number(e.u) || 0));
+}
+// Accorde un pass quotidien permanent (+1 partie/jour à vie) — achat boutique.
+function fdGrantPass(username, user, game) {
+  const st = fdEnsureToday(user);
+  const key = String(game || '').toLowerCase();
+  st.p[key] = (Number(st.p[key]) || 0) + 1;
+  fdPersist(username, user);
+  return st.p[key];
 }
 function fdPersist(username, user) {
   if (user && user._dbId) {
@@ -2852,12 +2878,6 @@ function fdConsume(username, user, game) {
   e.u = (Number(e.u) || 0) + 1;
   fdPersist(username, user);
   return true;
-}
-// Crédite n FD achetés (FD gris) pour aujourd'hui.
-function fdGrant(username, user, game, n) {
-  const e = fdGameEntry(user, game);
-  e.b = (Number(e.b) || 0) + Math.max(0, Math.floor(Number(n) || 0));
-  fdPersist(username, user);
 }
 const FD_GAME_LABELS = { bkiwi: 'Burning Kiwi', mb2: 'MotionBall', kaluga: 'Kaluga', swapou: 'Swapou', grapiz: 'Grapiz', bandas: 'Frutibandas' };
 function fdGameLabel(game) { return FD_GAME_LABELS[String(game || '').toLowerCase()] || game; }
@@ -2876,7 +2896,7 @@ function fdGateChallengeScore(username, user, game) {
   if (fdConsume(username, user, game)) return true;
   addAndNotifyUserLog(username, {
     type: USER_LOG_TYPE.CHAT,
-    content: `Plus de FD pour le challenge « ${fdGameLabel(game)} » aujourd'hui : ton score n'a pas été classé. Rachète un FD pour ${FD_EXTRA_PRICE} kikooz pour retenter ta chance.`,
+    content: `Plus de FD pour le challenge « ${fdGameLabel(game)} » aujourd'hui : ton score n'a pas été classé. Le Pass quotidien (Boutique, rubrique Pass) ajoute une partie par jour, pour toujours !`,
   });
   console.log(`[FD] ${username} : challenge ${game} BLOQUÉ (plus de FD)`);
   return false;
@@ -2941,10 +2961,11 @@ function fdSnapshot(user, game) {
     game: String(game || '').toLowerCase(),
     limited,
     free: FD_FREE_PER_DAY,
+    passes: fdPassCount(user, game),
+    allowance: fdAllowance(user, game),
     used: Number(e.u) || 0,
-    bought: Number(e.b) || 0,
     remaining: limited ? fdRemaining(user, game) : null, // null = illimité
-    price: FD_EXTRA_PRICE,
+    passPrice: FD_PASS_PRICE,
   };
 }
 
@@ -3768,6 +3789,21 @@ const SHOP_PACKS_DEFAULT = [
   { id: 206, name: 'Mini-Wave Nostromo',    category: "Fonds d'écran", price: 0, description: 'Le vaisseau Nostromo de Mini-Wave.',             suffix9: '000000000', wallpaperId: 'nostromo' },
   { id: 207, name: 'Mini-Wave Mini-Star',   category: "Fonds d'écran", price: 0, description: 'La planète Mini-Star de Mini-Wave.',             suffix9: '000000000', wallpaperId: 'ministar' },
   { id: 208, name: 'Utopiz',                category: "Fonds d'écran", price: 0, description: 'Le monde coloré d\'Utopiz.',                    suffix9: '000000000', wallpaperId: 'utopiz' },
+  // Pass quotidiens (rubrique « Pass ») — produits d'ORIGINE (public/ft/pass/*),
+  // branchés sur le système FD : chaque achat est PERMANENT et CUMULABLE
+  // (+1 partie challenge par jour, à vie — 1 pass → 3/jour, 2 → 4/jour…).
+  // On ne câble que les jeux dont la limite FD est active (FD_LIMITED_GAMES).
+  {
+    id: 22,
+    name: 'Pass quotidien de Burning Kiwi',
+    category: 'Pass',
+    price: FD_PASS_PRICE,
+    picto: 'pass,4',
+    description: 'Devenez le roi du circuit en activant des turbo survitaminés.',
+    comment: "Donne droit à une partie quotidienne supplémentaire pour réaliser le meilleur temps sur la course du jour. Permanent et cumulable !",
+    fdPassGame: 'bkiwi',
+    suffix9: '000000000',
+  },
   ...SHOP_GAME_PACKS_DEFAULT,
   ...SHOP_FEUTRES_DEFAULT,
 ];
@@ -3934,12 +3970,13 @@ function userOwnsShopPack(user, id) {
 }
 
 // Rubriques granted to everyone by default (full games, feutres, titems,
-// packs…). Everything that is NOT a buyable rubrique — Accessoires or
-// Fonds d'écran — is shown as "vous possédez déjà ce produit" and can't be
-// re-purchased. Accent/case-insensitive so DB category labels match.
+// packs…). Everything that is NOT a buyable rubrique — Accessoires, Fonds
+// d'écran or Pass (pass quotidiens : achetables et RE-achetables, cumulables)
+// — is shown as "vous possédez déjà ce produit" and can't be re-purchased.
+// Accent/case-insensitive so DB category labels match.
 function shopCategoryOwnedByDefault(category) {
   const n = String(category || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-  return !(n.startsWith('accessoir') || n.startsWith('fond'));
+  return !(n.startsWith('accessoir') || n.startsWith('fond') || n.startsWith('pass'));
 }
 
 function buildShopTreeXml(user) {
@@ -3978,16 +4015,24 @@ function buildShopPackXml(pack, user) {
     );
   }
   if (pack.picto) {
-    // Game packs ("pack,N") and feutres ("feutre,N") — exact original boutique
-    // format: blurb wrapped in <desc>, and packs carry a screenshot block.
-    const screens = pack.picto.startsWith('pack,')
+    // Game packs ("pack,N"), feutres ("feutre,N") and pass ("pass,N") — exact
+    // original boutique format: blurb wrapped in <desc>, packs and pass carry
+    // a screenshot block (cf. public/ft/pass/*).
+    const screens = (pack.picto.startsWith('pack,') || pack.picto.startsWith('pass,'))
       ? `<s n="Capture d'écran du jeu"><b u="wal/pi.jpg" w="150" h="150" /><t u="wal/pl.jpg" w="150" h="150" /></s>`
       : '';
+    // Pass quotidien : la fiche affiche l'état du joueur (pass possédés →
+    // parties/jour) à la suite du descriptif du prix.
+    let comment = pack.comment || '';
+    if (pack.fdPassGame && user) {
+      const n = fdPassCount(user, pack.fdPassGame);
+      comment += ` Vous en possédez ${n} → ${fdAllowance(user, pack.fdPassGame)} parties par jour.`;
+    }
     return (
       `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
       ` p="${escapeXml(pack.picto)}" h="${alreadyBuy}">` +
       `<d><desc>${escapeXml(pack.description)}</desc></d>` +
-      `<r p="${pack.price}">${escapeXml(pack.comment || '')}</r>` +
+      `<r p="${pack.price}">${escapeXml(comment)}</r>` +
       screens +
       `</p>`
     );
@@ -10272,15 +10317,17 @@ app.post('/do/fdclaim', async (req, res) => {
   }
   fdFlagRefusal(sid, game);
   console.log(`[FD] ${username} : claim ${game} REFUSÉ (plus de FD)`);
-  return res.send(`ok=0&err=no_fd&remaining=0&price=${FD_EXTRA_PRICE}`);
+  return res.send(`ok=0&err=no_fd&remaining=0&price=${FD_PASS_PRICE}`);
 });
 
 // ─────────────────────────────────────────────
-// ENDPOINTS FD — disquettes de partie challenge (limite quotidienne + rachat).
-//   GET  /api/fd/status?sid=&game=  → état FD du jeu (restants, prix, solde).
-//   POST /api/fd/buy   {sid, game}  → dépense FD_EXTRA_PRICE kikooz → +1 FD.
+// ENDPOINTS FD — disquettes de partie challenge (limite quotidienne).
+//   GET  /api/fd/status?sid=&game=  → état FD du jeu (restants, pass, solde).
 //   POST /api/fd/claim {sid, game}  → consomme 1 FD (pour les lanceurs natifs qui
 //        veulent réserver la partie AVANT de démarrer). Renvoie refus si épuisé.
+// L'achat de parties supplémentaires passe par la BOUTIQUE officielle
+// (rubrique Pass, « Pass quotidien de … ») : chaque pass est PERMANENT et
+// cumulable (+1 partie/jour à vie) — voir purchaseShopPack.
 // ─────────────────────────────────────────────
 app.get('/api/fd/status', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
@@ -10288,28 +10335,6 @@ app.get('/api/fd/status', (req, res) => {
   const user = users[username];
   const game = String(req.query.game || '').toLowerCase();
   res.json({ ok: true, ...fdSnapshot(user, game), kikooz: Math.max(0, Math.floor(Number(user.kikooz) || 0)) });
-});
-
-app.post('/api/fd/buy', (req, res) => {
-  const sid = String((req.body && req.body.sid) || req.query.sid || '');
-  const username = resolveUsernameFromSid(sid);
-  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
-  const user = users[username];
-  const game = String((req.body && req.body.game) || req.query.game || '').toLowerCase();
-  if (!fdGameIsLimited(game)) return res.status(400).json({ ok: false, error: 'game_not_limited', game });
-  const balance = Math.max(0, Math.floor(Number(user.kikooz) || 0));
-  if (balance < FD_EXTRA_PRICE) {
-    return res.status(402).json({ ok: false, error: 'not_enough_kikooz', kikooz: balance, price: FD_EXTRA_PRICE });
-  }
-  user.kikooz = balance - FD_EXTRA_PRICE;
-  fdGrant(username, user, game, 1);
-  if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser kikooz fd buy'));
-  if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
-  user.kikoozLog.unshift({ type: 'b', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: FD_EXTRA_PRICE, n: `FD ${game}` });
-  if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
-  notifyKikoozUpdate(username, user.kikooz);
-  console.log(`[FD] ${username} a acheté 1 FD ${game} (-${FD_EXTRA_PRICE} kikooz → ${user.kikooz})`);
-  res.json({ ok: true, ...fdSnapshot(user, game), kikooz: user.kikooz });
 });
 
 app.post('/api/fd/claim', (req, res) => {
@@ -10796,7 +10821,8 @@ app.get('/api/check-ejected', (req, res) => {
   const game = String(req.query.game || '');
   if (!sid || !game) return res.json({ ejected: false });
   // Drapeau FD : le SWF vient d'essuyer un refus de partie challenge (plus de
-  // FD) → le popup affiche l'overlay de rachat. Lu-et-effacé (une seule fois).
+  // FD) → le popup affiche l'overlay d'information (l'achat de pass se fait en
+  // BOUTIQUE, pas dans l'overlay). Lu-et-effacé (une seule fois).
   let fd = null;
   const refusal = fdTakeRefusalFlag(sid);
   if (refusal && Date.now() - refusal.at < 120000) {
@@ -10805,8 +10831,9 @@ app.get('/api/check-ejected', (req, res) => {
     fd = {
       refused: true,
       game: refusal.game,
-      price: FD_EXTRA_PRICE,
-      kikooz: user ? Math.max(0, Math.floor(Number(user.kikooz) || 0)) : 0,
+      allowance: user ? fdAllowance(user, refusal.game) : FD_FREE_PER_DAY,
+      passes: user ? fdPassCount(user, refusal.game) : 0,
+      passPrice: FD_PASS_PRICE,
     };
   }
   const key = `${sid}::${game}`;
@@ -11112,6 +11139,24 @@ function purchaseShopPack(user, username, packIdRaw) {
   user.kikooz -= pack.price;
   if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser'));
 
+  // Pass quotidien : pas un cosmétique — on crédite un pass PERMANENT (+1
+  // partie challenge/jour à vie, cumulable) et on s'arrête là. Jamais marqué
+  // « déjà possédé » (rubrique Pass) : ré-achetable à volonté.
+  if (pack.fdPassGame) {
+    const passes = fdGrantPass(username, user, pack.fdPassGame);
+    const nowStrP = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+    user.kikoozLog.unshift({ type: 'b', t: nowStrP, k: pack.price, n: pack.name });
+    if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+    notifyKikoozUpdate(username, user.kikooz);
+    addAndNotifyUserLog(username, {
+      type: USER_LOG_TYPE.CHAT,
+      content: `${pack.name} acheté : tu as désormais droit à ${fdAllowance(user, pack.fdPassGame)} parties par jour sur la course du jour !`,
+    });
+    console.log(`[ft/buy] ${username} bought PASS #${pack.id} (${pack.name}) — pass=${passes}, kikooz now ${user.kikooz}`);
+    return { ok: true, kikooz: user.kikooz, isPass: true, pack, passes, allowance: fdAllowance(user, pack.fdPassGame) };
+  }
+
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const isWallpaper = !!pack.wallpaperId;
   const wp = isWallpaper ? WALLPAPER_BY_ID[pack.wallpaperId] : null;
@@ -11149,12 +11194,14 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
 
   // Build response: new kikooz balance, the bouille to push into bouilleList,
   // and folder refresh requests so Inventaire/Accessoires re-list contents.
-  const xml =
-    `<r i="${r.kikooz}">` +
-    (r.isWallpaper ? '' : `<b b="${escapeXml(r.bouille)}">${escapeXml(r.pack.name)}</b>`) +
-    `<f>inventory</f>` +
-    `<f>accessories</f>` +
-    `</r>`;
+  // Pass quotidien : rien à ajouter à l'inventaire — solde seulement.
+  const xml = r.isPass
+    ? `<r i="${r.kikooz}"></r>`
+    : `<r i="${r.kikooz}">` +
+      (r.isWallpaper ? '' : `<b b="${escapeXml(r.bouille)}">${escapeXml(r.pack.name)}</b>`) +
+      `<f>inventory</f>` +
+      `<f>accessories</f>` +
+      `</r>`;
   sendShopXml(res, xml);
 });
 
@@ -13529,6 +13576,9 @@ async function boot() {
           const def = defaultById[p.id];
           if (def && def.wallpaperId && !p.wallpaperId) p.wallpaperId = def.wallpaperId;
           if (def && def.picto && !p.picto) p.picto = def.picto;
+          // Champ fonctionnel hors-DB (pass quotidiens) : toujours porté par la
+          // définition statique, sinon l'achat créditerait un accessoire.
+          if (def && def.fdPassGame) p.fdPassGame = def.fdPassGame;
           if (existingIds.has(p.id)) {
             const idx = SHOP_PACKS.findIndex(x => x.id === p.id);
             SHOP_PACKS[idx] = p;
