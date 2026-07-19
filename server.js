@@ -2210,6 +2210,7 @@ function dbUserToMemory(row) {
     lastLoginXpDay: row.last_login_xp_day || '',
     dailyKikoozDay: row.daily_kikooz_day || '',
     dailyStreak: row.daily_streak ?? 0,
+    fdState: parseFdState(row.fd_state),
     _dbId: row.id,
   };
 }
@@ -2787,6 +2788,113 @@ function awardDailyLoginKikooz(username) {
   });
   console.log(`[KIKOOZ] ${username}: +${reward} kikooz (connexion quotidienne, série ${streak})`);
   return reward;
+}
+
+// ── FD : disquettes de partie « challenge » (limite quotidienne + FD payants) ──
+// Reproduit le principe d'origine : le mode challenge d'un jeu n'est pas illimité.
+// Chaque joueur dispose de FD_FREE_PER_DAY parties challenge gratuites par jour et
+// par jeu (les « FD noir »), à usage unique ; en manque, il peut en racheter à
+// FD_EXTRA_PRICE kikooz l'unité (les « FD gris »). L'entraînement / le classique
+// reste ILLIMITÉ — seul le challenge (score au classement) est rationné.
+//
+// État par joueur : user.fdState = { d:'YYYY-MM-DD', g:{ <jeu>:{ u:used, b:bought } } }.
+// Persisté en base (colonne fd_state) pour survivre aux redémarrages : un reboot ne
+// re-crédite pas de FD gratuits et ne perd pas les FD payés dans la journée.
+const FD_FREE_PER_DAY = 2;   // FD noir : parties challenge gratuites / jour / jeu
+const FD_EXTRA_PRICE  = 60;  // FD gris : prix d'une partie challenge supplémentaire
+// Jeux dont le mode challenge est soumis à la limite. On démarre avec bkiwi ;
+// extension prévue : swapou, grapiz, bandas, mb2, kaluga.
+const FD_LIMITED_GAMES = new Set(['bkiwi']);
+
+function fdGameIsLimited(game) {
+  return FD_LIMITED_GAMES.has(String(game || '').toLowerCase());
+}
+
+function parseFdState(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try { const o = JSON.parse(raw); return (o && typeof o === 'object') ? o : null; }
+  catch { return null; }
+}
+
+// Renvoie l'état FD du jour (réinitialise si la clé jour a changé).
+function fdEnsureToday(user) {
+  const today = parisDayKey();
+  let st = user.fdState;
+  if (!st || typeof st !== 'object' || st.d !== today) {
+    st = { d: today, g: {} };
+    user.fdState = st;
+  }
+  if (!st.g || typeof st.g !== 'object') st.g = {};
+  return st;
+}
+function fdGameEntry(user, game) {
+  const st = fdEnsureToday(user);
+  const key = String(game || '').toLowerCase();
+  if (!st.g[key] || typeof st.g[key] !== 'object') st.g[key] = { u: 0, b: 0 };
+  return st.g[key];
+}
+function fdRemaining(user, game) {
+  const e = fdGameEntry(user, game);
+  return Math.max(0, FD_FREE_PER_DAY + (Number(e.b) || 0) - (Number(e.u) || 0));
+}
+function fdPersist(username, user) {
+  if (user && user._dbId) {
+    db.updateUser(username, { fd_state: JSON.stringify(user.fdState) }).catch(dbErr('updateUser fd_state'));
+  }
+}
+// Consomme un FD (une partie challenge). Renvoie true si consommé, false si aucun
+// FD disponible. Sans limite sur ce jeu → toujours true, rien n'est décompté.
+function fdConsume(username, user, game) {
+  if (!fdGameIsLimited(game)) return true;
+  if (fdRemaining(user, game) <= 0) return false;
+  const e = fdGameEntry(user, game);
+  e.u = (Number(e.u) || 0) + 1;
+  fdPersist(username, user);
+  return true;
+}
+// Crédite n FD achetés (FD gris) pour aujourd'hui.
+function fdGrant(username, user, game, n) {
+  const e = fdGameEntry(user, game);
+  e.b = (Number(e.b) || 0) + Math.max(0, Math.floor(Number(n) || 0));
+  fdPersist(username, user);
+}
+const FD_GAME_LABELS = { bkiwi: 'Burning Kiwi', mb2: 'MotionBall', kaluga: 'Kaluga', swapou: 'Swapou', grapiz: 'Grapiz', bandas: 'Frutibandas' };
+function fdGameLabel(game) { return FD_GAME_LABELS[String(game || '').toLowerCase()] || game; }
+// Jeu extrait d'un id de classement (« bkiwi_track3_challenge » → « bkiwi »).
+function fdGameFromRanking(rankingId) { return String(rankingId || '').split('_')[0].toLowerCase(); }
+
+// Portillon FD à l'enregistrement d'un score CHALLENGE. Pour un jeu limité :
+// consomme 1 FD et renvoie true (score classé) ; si plus de FD, renvoie false
+// (le score challenge ne doit PAS être classé) et notifie le joueur une fois.
+// Jeu non limité → toujours true, rien n'est décompté. C'est le point d'ancrage
+// FIABLE et universel : tout score challenge passe par persistScore(challenge),
+// quel que soit le chemin (socket ou HTTP), et les jeux tournent « en fake » côté
+// client (pas de refus natif avant la partie).
+function fdGateChallengeScore(username, user, game) {
+  if (!user || !fdGameIsLimited(game)) return true;
+  if (fdConsume(username, user, game)) return true;
+  addAndNotifyUserLog(username, {
+    type: USER_LOG_TYPE.CHAT,
+    content: `Plus de FD pour le challenge « ${fdGameLabel(game)} » aujourd'hui : ton score n'a pas été classé. Rachète un FD pour ${FD_EXTRA_PRICE} kikooz pour retenter ta chance.`,
+  });
+  console.log(`[FD] ${username} : challenge ${game} BLOQUÉ (plus de FD)`);
+  return false;
+}
+
+// Vue lisible de l'état FD d'un jeu (pour les endpoints / l'admin).
+function fdSnapshot(user, game) {
+  const limited = fdGameIsLimited(game);
+  const e = fdGameEntry(user, game);
+  return {
+    game: String(game || '').toLowerCase(),
+    limited,
+    free: FD_FREE_PER_DAY,
+    used: Number(e.u) || 0,
+    bought: Number(e.b) || 0,
+    remaining: limited ? fdRemaining(user, game) : null, // null = illimité
+    price: FD_EXTRA_PRICE,
+  };
 }
 
 function buildUserLogXml(entries) {
@@ -4611,9 +4719,16 @@ async function handleSaveScore(req, res) {
   }
 
   const result = persistScore(username, rankingId, scoreVal, scoreData);
+  let fdBlocked = false;
   if (extraRankingId) {
-    extraResult = persistScore(username, extraRankingId, scoreVal, scoreData);
-    console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ${scoreVal} updated=${extraResult.updated} (challenge)`);
+    // Portillon FD : le score challenge n'est classé que si le joueur a un FD
+    // (consommé ici). Jeu non limité → toujours classé.
+    if (fdGateChallengeScore(username, users[username], fdGameFromRanking(extraRankingId))) {
+      extraResult = persistScore(username, extraRankingId, scoreVal, scoreData);
+      console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ${scoreVal} updated=${extraResult.updated} (challenge)`);
+    } else {
+      fdBlocked = true;
+    }
   }
   if (rankingId === 'jamajama_classic' || rankingId === 'jamajama_challenge') {
     awardJamaPictosOnScore(username);
@@ -4631,6 +4746,7 @@ async function handleSaveScore(req, res) {
     oldPos: result.oldPos,
     newPos: result.newPos,
     rankingId,
+    fdBlocked, // true si le score challenge n'a pas été classé faute de FD
   });
 }
 app.post('/api/saveScore', handleSaveScore);
@@ -10059,6 +10175,56 @@ app.get('/api/daily-status', (req, res) => {
     kikooz: Math.max(0, Math.floor(Number(user.kikooz) || 0)),
     table: DAILY_KIKOOZ_WEEK,
   });
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINTS FD — disquettes de partie challenge (limite quotidienne + rachat).
+//   GET  /api/fd/status?sid=&game=  → état FD du jeu (restants, prix, solde).
+//   POST /api/fd/buy   {sid, game}  → dépense FD_EXTRA_PRICE kikooz → +1 FD.
+//   POST /api/fd/claim {sid, game}  → consomme 1 FD (pour les lanceurs natifs qui
+//        veulent réserver la partie AVANT de démarrer). Renvoie refus si épuisé.
+// ─────────────────────────────────────────────
+app.get('/api/fd/status', (req, res) => {
+  const username = resolveUsernameFromSid(String(req.query.sid || ''));
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const user = users[username];
+  const game = String(req.query.game || '').toLowerCase();
+  res.json({ ok: true, ...fdSnapshot(user, game), kikooz: Math.max(0, Math.floor(Number(user.kikooz) || 0)) });
+});
+
+app.post('/api/fd/buy', (req, res) => {
+  const sid = String((req.body && req.body.sid) || req.query.sid || '');
+  const username = resolveUsernameFromSid(sid);
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const user = users[username];
+  const game = String((req.body && req.body.game) || req.query.game || '').toLowerCase();
+  if (!fdGameIsLimited(game)) return res.status(400).json({ ok: false, error: 'game_not_limited', game });
+  const balance = Math.max(0, Math.floor(Number(user.kikooz) || 0));
+  if (balance < FD_EXTRA_PRICE) {
+    return res.status(402).json({ ok: false, error: 'not_enough_kikooz', kikooz: balance, price: FD_EXTRA_PRICE });
+  }
+  user.kikooz = balance - FD_EXTRA_PRICE;
+  fdGrant(username, user, game, 1);
+  if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser kikooz fd buy'));
+  if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+  user.kikoozLog.unshift({ type: 'b', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: FD_EXTRA_PRICE, n: `FD ${game}` });
+  if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+  notifyKikoozUpdate(username, user.kikooz);
+  console.log(`[FD] ${username} a acheté 1 FD ${game} (-${FD_EXTRA_PRICE} kikooz → ${user.kikooz})`);
+  res.json({ ok: true, ...fdSnapshot(user, game), kikooz: user.kikooz });
+});
+
+app.post('/api/fd/claim', (req, res) => {
+  const sid = String((req.body && req.body.sid) || req.query.sid || '');
+  const username = resolveUsernameFromSid(sid);
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const user = users[username];
+  const game = String((req.body && req.body.game) || req.query.game || '').toLowerCase();
+  if (!fdGameIsLimited(game)) return res.json({ ok: true, limited: false }); // pas de limite → autorisé
+  if (!fdConsume(username, user, game)) {
+    return res.status(409).json({ ok: false, error: 'no_fd', ...fdSnapshot(user, game), kikooz: Math.max(0, Math.floor(Number(user.kikooz) || 0)) });
+  }
+  res.json({ ok: true, ...fdSnapshot(user, game), kikooz: Math.max(0, Math.floor(Number(user.kikooz) || 0)) });
 });
 
 // ─────────────────────────────────────────────
@@ -15986,7 +16152,8 @@ async function handleCBeeMessage(socket, rawXml) {
         if (username && rankingId) {
           res = persistScore(username, rankingId, scoreVal, scoreData);
           console.log(`[FSCORE] ${username} ${rankingId}: ${res.oldScore} -> ${res.newScore} (updated=${res.updated}, pos ${res.oldPos}->${res.newPos})`);
-          if (extraRankingId) {
+          if (extraRankingId && fdGateChallengeScore(username, users[username], fdGameFromRanking(extraRankingId))) {
+            // Portillon FD : score challenge classé seulement si un FD est dispo.
             challengeRes = persistScore(username, extraRankingId, scoreVal, scoreData);
             console.log(`[FSCORE] ${username} ${extraRankingId}: ${challengeRes.oldScore} -> ${challengeRes.newScore} (updated=${challengeRes.updated}, challenge)`);
           }

@@ -98,6 +98,11 @@ async function initSchema() {
         -- Stockés en base (≠ disque éphémère) pour survivre aux redémarrages.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_kikooz_day TEXT DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_streak INTEGER DEFAULT 0;
+        -- Compteur de « FD » (disquettes de partie challenge) : JSON
+        -- { d:'YYYY-MM-DD', g:{ <jeu>:{ u:parties utilisées, b:FD achetés } } }.
+        -- Remis à zéro chaque jour (via la clé d). Stocké en base pour survivre aux
+        -- redémarrages : un reboot ne rend pas des FD gratuits ni ne perd les FD payés.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS fd_state TEXT DEFAULT NULL;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT NULL;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_by TEXT DEFAULT '';

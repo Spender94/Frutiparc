@@ -2761,6 +2761,7 @@ async function loadDetail() {
       <tr><td>XP</td><td>${user.xp}</td></tr>
       <tr><td>Kikooz</td><td>${user.kikooz}</td></tr>
       <tr><td>Série de connexion</td><td>${user.daily_streak ? '🔥 ' + user.daily_streak + ' jour' + (user.daily_streak > 1 ? 's' : '') : '—'}${user.daily_kikooz_day ? ' <span style="color:#888;font-size:11px">(dernière récompense le ' + esc(user.daily_kikooz_day) + ')</span>' : ''}</td></tr>
+      <tr><td>FD challenge (aujourd'hui)</td><td>${(function(){ try { var f = JSON.parse(user.fd_state||'null'); if(!f||!f.g||!Object.keys(f.g).length) return '—'; var parts = Object.keys(f.g).map(function(g){ var e=f.g[g]||{}; return esc(g)+' : '+(e.u||0)+' utilisé'+((e.u||0)>1?'s':'')+(e.b?' (+'+e.b+' acheté'+(e.b>1?'s':'')+')':''); }); return parts.join(' · ')+' <span style="color:#888;font-size:11px">('+esc(f.d||'')+')</span>'; } catch(e){ return '—'; } })()}</td></tr>
       <tr><td>Bouille</td><td><code>${esc(user.fbouille||'')}</code></td></tr>
       <tr><td>Éditeur bouille</td><td>
         <span class="badge ${user.needs_bouille ? 'badge-mod' : 'badge-no-mod'}">${user.needs_bouille ? 'Ouvert' : 'Verrouillé'}</span>
