@@ -2730,15 +2730,19 @@ function awardDailyLoginXp(username) {
 // comme le bonus XP : le conteneur de prod est éphémère, donc un redémarrage ne
 // doit jamais re-verser la récompense ni casser la série.
 //
-// Barème (jour 1 → 7 et plus) : une série parfaite d'une semaine rapporte
-// 10+15+20+25+30+40+60 = 200 kikooz — de l'ordre d'un gain de quiz Kiloute,
-// assez pour motiver sans inonder l'économie (un fond d'écran coûte 60 kikooz).
-const DAILY_KIKOOZ_TABLE = [10, 15, 20, 25, 30, 40, 60];
+// Barème volontairement sobre pour ne pas inonder l'économie : 10 kikooz par
+// jour, avec un bonus tous les 7 jours de série (le 7ᵉ jour rapporte 30 au lieu
+// de 10, puis le 14ᵉ, le 21ᵉ… — un « jackpot hebdo » qui récompense l'assiduité).
+// Une semaine parfaite = 6×10 + 30 = 90 kikooz.
+const DAILY_KIKOOZ_BASE = 10;        // récompense d'un jour ordinaire
+const DAILY_KIKOOZ_WEEK_BONUS = 30;  // récompense d'un 7ᵉ jour de série (puis tous les 7 jours)
 
 function dailyKikoozReward(streak) {
-  const idx = Math.max(1, Math.min(DAILY_KIKOOZ_TABLE.length, Number(streak) || 1)) - 1;
-  return DAILY_KIKOOZ_TABLE[idx];
+  const s = Math.max(1, Math.floor(Number(streak) || 1));
+  return (s % 7 === 0) ? DAILY_KIKOOZ_WEEK_BONUS : DAILY_KIKOOZ_BASE;
 }
+// Cycle d'une semaine, pour l'affichage côté clients ([10,10,10,10,10,10,30]).
+const DAILY_KIKOOZ_WEEK = Array.from({ length: 7 }, (_, i) => dailyKikoozReward(i + 1));
 
 // true si prevKey (clé jour 'YYYY-MM-DD') est la veille de todayKey. On calcule
 // à midi UTC (= 13h/14h à Paris) pour que le décalage d'un jour reste sans
@@ -10053,7 +10057,7 @@ app.get('/api/daily-status', (req, res) => {
     // une connexion maintenant (si pas encore versés aujourd'hui).
     reward: claimedToday ? dailyKikoozReward(streak) : dailyKikoozReward(alive ? streak + 1 : 1),
     kikooz: Math.max(0, Math.floor(Number(user.kikooz) || 0)),
-    table: DAILY_KIKOOZ_TABLE,
+    table: DAILY_KIKOOZ_WEEK,
   });
 });
 
