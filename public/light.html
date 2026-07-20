@@ -369,6 +369,16 @@
     background: #fff; color: #D16767; font-size: 14px; line-height: 26px;
     text-align: center; font-weight: bold;
   }
+  /* Feutre multicolore : pastille et texte des messages en arc-en-ciel. */
+  .pen-swatch.mc {
+    background: linear-gradient(90deg, #E8342A, #E8732A, #E8C81E, #2E8C3A, #2A6FE8, #7A2AB8);
+  }
+  .mc-text {
+    background: linear-gradient(90deg, #E8342A, #E8732A, #E8C81E, #2E8C3A, #2A6FE8, #7A2AB8);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+    font-weight: bold;
+  }
 
   /* Accent helper bar (above the composer), same toggle pattern as #pen-bar */
   #accent-bar {
@@ -1160,7 +1170,8 @@
     usersByRoom: {},   // room -> Set of display names
     bouilleByUser: {}, // lowercased pseudo -> bouille state string "f"
     overlayTimer: null,
-    pen: "",           // selected feutre index ("" = default colour)
+    pen: "",           // selected feutre index ("" = default colour, "mc" = multicolore)
+    ownedFeutres: [],  // feutres spéciaux possédés (ex. "mc") — profil serveur
     roomCounts: {},    // room id -> participant count (from channellist <q>)
     roomLabels: {},    // room id -> live admin label (from channellist <q><desc>)
     bouillesEnabled: true, // show the bouille reaction overlay (off = "light" mode)
@@ -1516,6 +1527,7 @@
           homeProfile.xp = Number(d.xp) || 0;
           homeProfile.rank = (d.rank != null) ? Number(d.rank) : null;
           homeProfile.kikooz = Number(d.kikooz) || 0;
+          state.ownedFeutres = Array.isArray(d.ownedFeutres) ? d.ownedFeutres : [];
           if (d.bouille) state.bouilleByUser[state.userLower] = d.bouille;
           var lv = $("#home-level"); if (lv) lv.textContent = homeProfile.level;
           var rk = $("#home-rank"); if (rk) rk.textContent = (homeProfile.rank != null) ? homeProfile.rank : "—";
@@ -2136,6 +2148,14 @@
         // what remains is markup, render its text — this is what used to fall
         // through to the "[cadeau]" placeholder. Plain CDATA text (e.g. "X a été
         // totoché") drops through to the normal path below as an admin line.
+        // st="mc" → feutre multicolore d'un JOUEUR : le corps est du HTML
+        // arc-en-ciel (pour le bureau). Ici on extrait le texte et on applique
+        // NOTRE dégradé CSS, en gardant le pseudo de l'auteur (≠ lignes admin).
+        if (attr(xml, "st") === "mc") {
+          var mcText = htmlToText(stripCdata(body));
+          if (mcText) addMessage({ from: from, time: h, body: mcText, kind: "normal", multicolor: true });
+          break;
+        }
         // st="r" → cri modérateur ("!texte"), rendu en rouge gras comme desktop.
         var stripped = stripCdata(body);
         if (/^\s*</.test(stripped)) {
@@ -2248,8 +2268,8 @@
         if (o.pen) fr.style.color = o.pen;
         row.appendChild(fr);
       }
-      var bd = el("span", o.emote ? "body emote" : "body");
-      if (o.pen) bd.style.color = o.pen;     // feutre colour
+      var bd = el("span", "body" + (o.emote ? " emote" : "") + (o.multicolor ? " mc-text" : ""));
+      if (o.pen && !o.multicolor) bd.style.color = o.pen;     // feutre colour (mc-text porte son propre dégradé)
       bd.textContent = o.body;
       row.appendChild(bd);
     }
@@ -2511,7 +2531,8 @@
   // swatch sets state.pen and tints the composer text so the choice is obvious.
   function buildPenBar() {
     var bar = $("#pen-bar");
-    if (!bar || bar.childNodes.length) return;
+    if (!bar) return;
+    bar.innerHTML = "";   // reconstruit à chaque ouverture (reflète la possession du feutre multicolore)
     var none = el("div", "pen-swatch none" + (state.pen === "" ? " sel" : ""));
     none.textContent = "✕"; none.title = "Aucun feutre";
     none.addEventListener("click", function () { selectPen(""); });
@@ -2523,6 +2544,14 @@
       sw.addEventListener("click", function () { selectPen(String(f.i)); });
       bar.appendChild(sw);
     });
+    // Feutre multicolore (uniquement s'il est possédé) : pastille dédiée à dégradé.
+    if (state.ownedFeutres && state.ownedFeutres.indexOf("mc") >= 0) {
+      var mc = el("div", "pen-swatch mc" + (state.pen === "mc" ? " sel" : ""));
+      mc.title = "Feutre multicolore";
+      mc.setAttribute("data-pen", "mc");
+      mc.addEventListener("click", function () { selectPen("mc"); });
+      bar.appendChild(mc);
+    }
   }
   function selectPen(idx) {
     state.pen = idx;

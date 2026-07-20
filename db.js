@@ -103,6 +103,9 @@ async function initSchema() {
         -- Remis à zéro chaque jour (via la clé d). Stocké en base pour survivre aux
         -- redémarrages : un reboot ne rend pas des FD gratuits ni ne perd les FD payés.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS fd_state TEXT DEFAULT NULL;
+        -- Feutres spéciaux possédés (achat boutique), JSON : ["mc", ...]. Les 17
+        -- feutres d'origine restent offerts par défaut (hors de cette liste).
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_feutres TEXT DEFAULT NULL;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT NULL;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_by TEXT DEFAULT '';
@@ -300,6 +303,16 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_shop_purchases_created ON shop_purchases(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_shop_purchases_cat ON shop_purchases(category, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_shop_purchases_user ON shop_purchases(LOWER(username));
+
+      -- Images de boutique éditables depuis l'admin (aperçu d'un produit, ex.
+      -- feutre spécial). BYTES en base (disque éphémère au reboot). Clé libre
+      -- (ex. "feutre:mc"). Servi par /shop-asset/:key.
+      CREATE TABLE IF NOT EXISTS shop_assets (
+        key         TEXT PRIMARY KEY,
+        mime        TEXT NOT NULL,
+        data        BYTEA NOT NULL,
+        updated_at  TIMESTAMPTZ DEFAULT now()
+      );
 
       -- Custom wallpapers ("fonds d'écran") uploaded from the admin panel. The
       -- image BYTES live in the DB (not on disk) so a bought wallpaper keeps
@@ -1440,6 +1453,23 @@ async function upsertWallpaper(wp) {
     [wp.id, wp.name, wp.color, wp.mime, wp.ext, wp.data]
   );
 }
+// ── Images de boutique éditables (aperçu produit, ex. feutre spécial) ──
+async function getShopAsset(key) {
+  const { rows } = await pool.query('SELECT mime, data FROM shop_assets WHERE key = $1', [key]);
+  return rows[0] ? { mime: rows[0].mime, data: rows[0].data } : null;
+}
+async function upsertShopAsset(key, mime, data) {
+  await pool.query(
+    `INSERT INTO shop_assets (key, mime, data, updated_at)
+     VALUES ($1, $2, $3, now())
+     ON CONFLICT (key) DO UPDATE SET mime = $2, data = $3, updated_at = now()`,
+    [key, mime, data]
+  );
+}
+async function listShopAssetKeys() {
+  const { rows } = await pool.query('SELECT key, mime, updated_at FROM shop_assets ORDER BY key');
+  return rows;
+}
 // ── Quiz images (MikeHorny "image" quizzes, uploaded from the admin) ──
 // Metadata only (no bytes) — feeds the in-memory quiz-image registry at boot.
 async function loadQuizImages() {
@@ -2558,6 +2588,9 @@ module.exports = {
   loadWallpapers,
   getWallpaperImage,
   upsertWallpaper,
+  getShopAsset,
+  upsertShopAsset,
+  listShopAssetKeys,
   deleteWallpaper,
   upsertForumImage,
   getForumImage,

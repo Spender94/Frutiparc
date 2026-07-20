@@ -822,6 +822,11 @@ function resolveGameItemGif(itemName) {
 // matchGame du GAME_PROGRESS_REGISTRY, la consécration n'est pas affectée.
 const CUSTOM_PICTOS = {};                 // name ($xxx) -> { displayName, category, mime }
 const customPictoImageCache = new Map();  // name -> { mime, buf }
+// Images de boutique éditables (aperçu produit, ex. feutre spécial). On garde en
+// mémoire l'ensemble des clés présentes en base (pour n'émettre l'aperçu que si
+// l'image existe) + un cache d'octets pour éviter un aller-retour DB par affichage.
+const shopAssetKeys = new Set();          // clés présentes en base
+const shopAssetImageCache = new Map();    // key -> { mime, buf }
 function registerCustomPicto(meta) {
   CUSTOM_PICTOS[meta.name] = {
     displayName: meta.displayName || meta.name,
@@ -2211,6 +2216,7 @@ function dbUserToMemory(row) {
     dailyKikoozDay: row.daily_kikooz_day || '',
     dailyStreak: row.daily_streak ?? 0,
     fdState: parseFdState(row.fd_state),
+    ownedFeutres: parseOwnedFeutres(row.owned_feutres),
     _dbId: row.id,
   };
 }
@@ -3840,6 +3846,50 @@ const SHOP_GAME_PACKS_DEFAULT = [
   id, name, category: 'Packs', price: 260, suffix9: '000000000', picto, description, comment,
 }));
 
+// ── Feutres spéciaux (achat boutique, hors des 17 feutres d'origine) ──────────
+// Un feutre spécial est un STYLO de chat cosmétique ACHETÉ (non offert par
+// défaut). Aujourd'hui : 'mc' = feutre multicolore — le texte du salon s'affiche
+// en arc-en-ciel, rendu par INJECTION HTML côté serveur (per-caractère
+// <font color>), donc sans toucher au SWF : ça marche sur le bureau (chat
+// htmlText) ET sur mobile (le client Light lit le marqueur st="mc"). Possession
+// suivie dans user.ownedFeutres (persisté, colonne owned_feutres).
+const SPECIAL_FEUTRES = {
+  mc: { name: 'Feutre multicolore', shopId: 30, price: 300, assetKey: 'feutre:mc' },
+};
+const SPECIAL_FEUTRE_BY_SHOPID = Object.fromEntries(
+  Object.entries(SPECIAL_FEUTRES).map(([kind, f]) => [f.shopId, kind])
+);
+function parseOwnedFeutres(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter((x) => typeof x === 'string');
+  try { const a = JSON.parse(raw); return Array.isArray(a) ? a.filter((x) => typeof x === 'string') : []; }
+  catch { return []; }
+}
+function userOwnsFeutre(user, kind) {
+  return !!(user && Array.isArray(user.ownedFeutres) && user.ownedFeutres.includes(kind));
+}
+function grantFeutre(username, user, kind) {
+  if (!user || !SPECIAL_FEUTRES[kind]) return;
+  if (!Array.isArray(user.ownedFeutres)) user.ownedFeutres = [];
+  if (!user.ownedFeutres.includes(kind)) user.ownedFeutres.push(kind);
+  if (user._dbId) db.updateUser(username, { owned_feutres: JSON.stringify(user.ownedFeutres) }).catch(dbErr('updateUser owned_feutres'));
+}
+// Palette arc-en-ciel du feutre multicolore (6 teintes cycliques).
+const MC_RAINBOW = ['#E8342A', '#E8732A', '#E8C81E', '#2E8C3A', '#2A6FE8', '#7A2AB8'];
+// Enveloppe chaque caractère VISIBLE dans un <font color> cyclique → texte
+// arc-en-ciel dans le htmlText du chat (bureau) — même mécanisme que le cri
+// modérateur rouge. `text` est le texte BRUT (non échappé).
+function rainbowHtml(text) {
+  let out = '';
+  let i = 0;
+  for (const ch of String(text || '')) {
+    if (ch === ' ' || ch === '\t') { out += ch; continue; }
+    out += `<font color="${MC_RAINBOW[i % MC_RAINBOW.length]}">${escapeXml(ch)}</font>`;
+    i++;
+  }
+  return out;
+}
+
 // Feutres (rubrique "Feutres") — chat-pen colours, granted by default.
 // picto "feutre,N" (N = index 0..16) is the original boutique format,
 // documented in public/ft/pack-pen. Order matches penItemList (ids 315..327,
@@ -3987,6 +4037,22 @@ const SHOP_PACKS_DEFAULT = [
     description: 'Affrontez les meilleurs joueurs à Grapiz.',
     comment: "Donne droit à un disque Challenge supplémentaire par jour : une défaite de plus avant de basculer en entraînement contre les bots. Permanent et cumulable !",
     fdPassGame: 'grapiz',
+    suffix9: '000000000',
+  },
+  // Feutre spécial ACHETABLE (rubrique Feutres, mais notDefault → non offert).
+  // L'aperçu de la fiche affiche l'image éditable en admin (shopAssetKey) ; le
+  // petit picto retombe sur une teinte de stylo générique.
+  {
+    id: SPECIAL_FEUTRES.mc.shopId,
+    name: SPECIAL_FEUTRES.mc.name,
+    category: 'Feutres',
+    price: SPECIAL_FEUTRES.mc.price,
+    notDefault: true,
+    feutrePen: 'mc',
+    picto: 'feutre,4',
+    shopAssetKey: SPECIAL_FEUTRES.mc.assetKey,
+    description: 'Écris en couleurs ! Ce feutre inédit affiche ton texte en arc-en-ciel dans les salons de discussion.',
+    comment: 'Un feutre unique : chaque lettre de tes messages change de couleur. Achat permanent.',
     suffix9: '000000000',
   },
   ...SHOP_GAME_PACKS_DEFAULT,
@@ -4150,8 +4216,12 @@ function getAccessoryWallpaper(acc) {
 }
 
 function userOwnsShopPack(user, id) {
+  const nid = Number(id);
+  // Feutre spécial : possession suivie dans user.ownedFeutres (pas customAccessories).
+  const feutreKind = SPECIAL_FEUTRE_BY_SHOPID[nid];
+  if (feutreKind) return userOwnsFeutre(user, feutreKind);
   if (!Array.isArray(user.customAccessories)) return false;
-  return user.customAccessories.some((a) => a && a.shopId === Number(id));
+  return user.customAccessories.some((a) => a && a.shopId === nid);
 }
 
 // Rubriques granted to everyone by default (full games, feutres, titems,
@@ -4187,7 +4257,10 @@ function buildShopTreeXml(user) {
 }
 
 function buildShopPackXml(pack, user) {
-  const alreadyBuy = (shopCategoryOwnedByDefault(pack.category) || userOwnsShopPack(user, pack.id)) ? '1' : '0';
+  // `notDefault` force un produit d'une rubrique normalement offerte (ex.
+  // Feutres) à devenir ACHETABLE (feutre spécial).
+  const ownedByDefault = shopCategoryOwnedByDefault(pack.category) && !pack.notDefault;
+  const alreadyBuy = (ownedByDefault || userOwnsShopPack(user, pack.id)) ? '1' : '0';
   if (pack.wallpaperId) {
     const wp = WALLPAPER_BY_ID[pack.wallpaperId];
     const picto = wp ? `wallpaper,${wp.url}` : 'wallpaper,wal/ch.jpg';
@@ -4203,9 +4276,16 @@ function buildShopPackXml(pack, user) {
     // Game packs ("pack,N"), feutres ("feutre,N") and pass ("pass,N") — exact
     // original boutique format: blurb wrapped in <desc>, packs and pass carry
     // a screenshot block (cf. public/ft/pass/*).
-    const screens = (pack.picto.startsWith('pack,') || pack.picto.startsWith('pass,'))
-      ? `<s n="Capture d'écran du jeu"><b u="wal/pi.jpg" w="150" h="150" /><t u="wal/pl.jpg" w="150" h="150" /></s>`
-      : '';
+    // Feutre spécial : l'aperçu de la fiche affiche l'image ÉDITABLE en admin
+    // (route /shop-asset/<key>), stockée en base. Sinon, bloc capture d'origine
+    // pour les jeux complets / pass.
+    let screens = '';
+    if (pack.shopAssetKey && shopAssetKeys.has(pack.shopAssetKey)) {
+      const u = `/shop-asset/${encodeURIComponent(pack.shopAssetKey)}`;
+      screens = `<s n="${escapeXml(pack.name)}"><b u="${escapeXml(u)}" w="150" h="150" /><t u="${escapeXml(u)}" w="150" h="150" /></s>`;
+    } else if (pack.picto.startsWith('pack,') || pack.picto.startsWith('pass,')) {
+      screens = `<s n="Capture d'écran du jeu"><b u="wal/pi.jpg" w="150" h="150" /><t u="wal/pl.jpg" w="150" h="150" /></s>`;
+    }
     // Pass quotidien : la fiche affiche l'état du joueur (pass possédés →
     // parties/jour) à la suite du descriptif du prix.
     let comment = pack.comment || '';
@@ -7286,6 +7366,70 @@ app.get('/wal-custom/:file', async (req, res) => {
     res.status(500).type('text/plain').send('error');
   }
 });
+
+// Sert une image de boutique éditable (aperçu produit, ex. feutre spécial)
+// depuis la base. :key = clé libre (ex. "feutre:mc"), extension ignorée. Chargée
+// par Ruffle (fenêtre boutique du bureau) ET par le client Light → CORS ouvert.
+const SHOP_ASSET_KEY_RE = /^[a-z0-9:_-]{2,64}$/i;
+app.get('/shop-asset/:key', async (req, res) => {
+  const key = String(req.params.key || '').replace(/\.[a-z0-9]+$/i, '');
+  if (!SHOP_ASSET_KEY_RE.test(key)) return res.status(400).type('text/plain').send('bad key');
+  try {
+    let cached = shopAssetImageCache.get(key);
+    if (!cached) {
+      if (!process.env.DATABASE_URL) return res.status(404).type('text/plain').send('not found');
+      const img = await db.getShopAsset(key);
+      if (!img) return res.status(404).type('text/plain').send('not found');
+      cached = { mime: img.mime, buf: Buffer.isBuffer(img.data) ? img.data : Buffer.from(img.data) };
+      shopAssetImageCache.set(key, cached);
+    }
+    res.type(cached.mime);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(cached.buf);
+  } catch (e) {
+    console.error('[SHOPASSET] serve error:', e.message);
+    res.status(500).type('text/plain').send('error');
+  }
+});
+
+// Liste des images de boutique éditables + catalogue des feutres spéciaux (admin).
+app.get('/api/admin/shop-assets', adminAuth, async (req, res) => {
+  try {
+    const keys = process.env.DATABASE_URL ? await db.listShopAssetKeys() : [];
+    const feutres = Object.entries(SPECIAL_FEUTRES).map(([kind, f]) => ({
+      kind, name: f.name, shopId: f.shopId, price: f.price, assetKey: f.assetKey,
+      hasImage: shopAssetKeys.has(f.assetKey),
+    }));
+    res.json({ ok: true, assets: keys, feutres });
+  } catch (e) { res.status(500).json({ ok: false, error: 'db', message: e.message }); }
+});
+
+// Upload/remplace l'image d'un produit boutique (aperçu de fiche). Corps =
+// octets image bruts ; clé dans l'URL (ex. feutre:mc). Octets en base.
+app.post('/api/admin/shop-asset/:key',
+  adminAuth,
+  express.raw({ type: ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/octet-stream'], limit: WALLPAPER_UPLOAD_MAX_BYTES }),
+  async (req, res) => {
+    if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: 'no_db', message: 'Base de données requise.' });
+    const key = String(req.params.key || '').trim();
+    if (!SHOP_ASSET_KEY_RE.test(key)) return res.status(400).json({ ok: false, error: 'bad_key', message: 'Clé invalide (a-z 0-9 : _ -, 2 à 64 caractères).' });
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length < 64) return res.status(400).json({ ok: false, error: 'empty', message: 'Image vide ou illisible.' });
+    const kind = sniffForumImage(body);
+    if (!kind) return res.status(415).json({ ok: false, error: 'unsupported', message: 'Format non supporté (PNG, JPEG, GIF, WEBP).' });
+    try {
+      await db.upsertShopAsset(key, kind.mime, body);
+      shopAssetKeys.add(key);
+      shopAssetImageCache.set(key, { mime: kind.mime, buf: body });
+      console.log(`[SHOPASSET] ${key} mis à jour (${kind.mime}, ${body.length} o)`);
+      res.json({ ok: true, key, mime: kind.mime, bytes: body.length });
+    } catch (e) {
+      console.error('[SHOPASSET] upload error:', e.message);
+      res.status(500).json({ ok: false, error: 'db', message: e.message });
+    }
+  }
+);
 
 // Sert une image de quiz (MikeHorny) depuis la base. :file = "<id>.<ext>".
 // Same-origin (et CORS ouvert) : chargée par Ruffle dans la fenêtre du bureau
@@ -11342,7 +11486,7 @@ app.get('/ft/pack', (req, res) => {
 function purchaseShopPack(user, username, packIdRaw) {
   const pack = getShopPack(packIdRaw);
   if (!pack || pack.disabled) return { ok: false, code: 1 };
-  if (userOwnsShopPack(user, pack.id) || shopCategoryOwnedByDefault(pack.category)) {
+  if (userOwnsShopPack(user, pack.id) || (shopCategoryOwnedByDefault(pack.category) && !pack.notDefault)) {
     return { ok: false, code: 2 };
   }
   if (typeof user.kikooz !== 'number') user.kikooz = 0;
@@ -11374,6 +11518,23 @@ function purchaseShopPack(user, username, packIdRaw) {
     });
     console.log(`[ft/buy] ${username} bought PASS #${pack.id} (${pack.name}) — pass=${passes}, kikooz now ${user.kikooz}`);
     return { ok: true, kikooz: user.kikooz, isPass: true, pack, passes, allowance: fdAllowance(user, pack.fdPassGame) };
+  }
+
+  // Feutre spécial : cosmétique PERMANENT (stylo de chat). On accorde le stylo
+  // (user.ownedFeutres) et on s'arrête là — pas d'accessoire de bouille.
+  if (pack.feutrePen) {
+    grantFeutre(username, user, pack.feutrePen);
+    const nowStrF = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+    user.kikoozLog.unshift({ type: 'b', t: nowStrF, k: pack.price, n: pack.name });
+    if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+    notifyKikoozUpdate(username, user.kikooz);
+    addAndNotifyUserLog(username, {
+      type: USER_LOG_TYPE.CHAT,
+      content: `${pack.name} acheté ! Pour écrire en couleurs dans les salons : sur mobile, choisis-le dans la palette de feutres ; sur le bureau, tape /feutremulti.`,
+    });
+    console.log(`[ft/buy] ${username} bought FEUTRE #${pack.id} (${pack.feutrePen}) — kikooz now ${user.kikooz}`);
+    return { ok: true, kikooz: user.kikooz, isFeutre: true, feutre: pack.feutrePen, pack };
   }
 
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -11414,7 +11575,7 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
   // Build response: new kikooz balance, the bouille to push into bouilleList,
   // and folder refresh requests so Inventaire/Accessoires re-list contents.
   // Pass quotidien : rien à ajouter à l'inventaire — solde seulement.
-  const xml = r.isPass
+  const xml = (r.isPass || r.isFeutre)
     ? `<r i="${r.kikooz}"></r>`
     : `<r i="${r.kikooz}">` +
       (r.isWallpaper ? '' : `<b b="${escapeXml(r.bouille)}">${escapeXml(r.pack.name)}</b>`) +
@@ -13696,6 +13857,8 @@ app.get('/api/light/profile', async (req, res) => {
     rank,
     kikooz: Number(u.kikooz) || 0,
     medals,
+    // Feutres spéciaux possédés (pour afficher la pastille dédiée dans la palette).
+    ownedFeutres: Array.isArray(u.ownedFeutres) ? u.ownedFeutres.slice() : [],
   });
 });
 
@@ -13798,6 +13961,10 @@ async function boot() {
           // Champ fonctionnel hors-DB (pass quotidiens) : toujours porté par la
           // définition statique, sinon l'achat créditerait un accessoire.
           if (def && def.fdPassGame) p.fdPassGame = def.fdPassGame;
+          // Idem feutre spécial : feutrePen/notDefault/shopAssetKey ne sont pas
+          // stockés en base ; on les réapplique depuis la définition statique
+          // (sinon le produit redeviendrait « offert » et n'accorderait rien).
+          if (def && def.feutrePen) { p.feutrePen = def.feutrePen; p.notDefault = def.notDefault; p.shopAssetKey = def.shopAssetKey; }
           if (existingIds.has(p.id)) {
             const idx = SHOP_PACKS.findIndex(x => x.id === p.id);
             SHOP_PACKS[idx] = p;
@@ -13825,6 +13992,11 @@ async function boot() {
         for (const p of cps) registerCustomPicto({ name: p.name, displayName: p.display_name, category: p.category, mime: p.mime });
         if (cps.length) console.log(`[DB] Loaded ${cps.length} custom picto(s)`);
       } catch (e) { console.error('[DB] Custom pictos load error:', e.message); }
+      try {
+        const assets = await db.listShopAssetKeys();
+        for (const a of assets) shopAssetKeys.add(a.key);
+        if (assets.length) console.log(`[DB] Loaded ${assets.length} shop asset(s)`);
+      } catch (e) { console.error('[DB] Shop assets load error:', e.message); }
       // Migration best-effort : sauvegarde en base les images de forum encore
       // présentes sur le disque (éphémère) avant qu'un reboot ne les efface.
       try {
@@ -17249,6 +17421,31 @@ case 'send': {
       }
     }
 
+    // ── /feutremulti [on|off] : (dé)active le feutre multicolore (bureau) ──
+    // Le feutre s'achète en boutique ; le bureau (main.swf) n'a pas de pastille
+    // dédiée dans la palette (17 clips figés), donc on l'active par commande. Le
+    // mode reste actif jusqu'à /feutremulti off (ou déconnexion) ; le rendu
+    // arc-en-ciel est injecté côté serveur à chaque message. Sur MOBILE, une
+    // pastille dédiée fait la même chose sans commande.
+    {
+      const m = text.match(/^\/(?:feutremulti|feutremc|multicolore)(?:\s+(on|off|oui|non|1|0))?\s*$/i);
+      if (m) {
+        if (!userOwnsFeutre(senderData, 'mc')) {
+          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Tu ne possèdes pas encore le Feutre multicolore. Il s'achète à la Boutique, rubrique Feutres !</i>]]></${CMD.send}>`);
+          break;
+        }
+        const arg = (m[1] || '').toLowerCase();
+        const turnOff = arg === 'off' || arg === 'non' || arg === '0';
+        const turnOn = arg === 'on' || arg === 'oui' || arg === '1';
+        senderData.penMcActive = turnOff ? false : (turnOn ? true : !senderData.penMcActive);
+        const msgMc = senderData.penMcActive
+          ? '<i>Feutre multicolore activé — tes messages s’affichent en couleurs ! (tape /feutremulti off pour arrêter)</i>'
+          : '<i>Feutre multicolore désactivé.</i>';
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${msgMc}]]></${CMD.send}>`);
+        break;
+      }
+    }
+
     // ── /stat, /stats, /statut, /status, /statistiques, /statistics: channel stats ──
     if (/^\/(stat|stats|statut|status|statistiques|statistics)\s*$/i.test(text)) {
       const userCount = channel.users.size;
@@ -17390,6 +17587,24 @@ case 'send': {
         `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}" e="${escapeXml(emo.anim)}" el="${escapeXml(emo.label)}" eu="${escapeXml(who)}">${emBody}</${CMD.send}>`
       );
       trackXpAction(client.username, 'chatMsg');
+      break;
+    }
+
+    // Feutre multicolore : si le joueur le POSSÈDE et l'a ACTIVÉ (mobile → pen
+    // "mc" dans le message ; bureau → mode /feutremulti), on réécrit le corps en
+    // arc-en-ciel (per-caractère <font color>, rendu par le htmlText du chat du
+    // bureau) et on marque st="mc" pour que le client Light applique son propre
+    // dégradé en gardant le pseudo. On garde u=pseudo → template chat.msg (préfixe
+    // « pseudo : » conservé, texte coloré). Le texte est échappé par rainbowHtml.
+    const senderU = users[client.username];
+    if (type === 'm' && userOwnsFeutre(senderU, 'mc') && (pen === 'mc' || (senderU && senderU.penMcActive))) {
+      const rainbow = `<![CDATA[${rainbowHtml(unescapeXml(text))}]]>`;
+      broadcastToChannel(g,
+        `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}" st="mc">${rainbow}</${CMD.send}>`
+      );
+      trackXpAction(client.username, 'chatMsg');
+      kilouteCheckAnswer(g, client.username, text);
+      kilouteSessionCheckAnswer(g, client.username, text);
       break;
     }
 

@@ -464,6 +464,9 @@
     <thead><tr><th>ID</th><th>Nom</th><th>Catégorie</th><th>Prix</th><th>Suffix9</th><th>Description</th><th>Actions</th></tr></thead>
     <tbody id="shop-body"></tbody>
   </table>
+  <h3 style="margin:18px 0 4px">Feutres spéciaux — image de boutique</h3>
+  <p style="color:#888;font-size:12px;margin:0 0 8px">Image inédite affichée dans l'aperçu de la fiche boutique (PNG, JPEG, GIF ou WEBP). Stockée en base.</p>
+  <div id="feutre-assets"></div>
 </div>
 
 <div class="content" id="tab-purchases" style="display:none">
@@ -3349,6 +3352,42 @@ async function loadShop() {
         <button class="btn-danger btn-sm" onclick="deletePack(${p.id},'${esc(p.name)}')">Supprimer</button>
       </td>
     </tr>`).join('');
+  } catch (e) { toast('Erreur: ' + e.message); }
+  loadFeutreAssets();
+}
+
+// ── Feutres spéciaux : image de boutique éditable ──
+async function loadFeutreAssets() {
+  const box = $('#feutre-assets');
+  if (!box) return;
+  try {
+    const r = await fetch('/api/admin/shop-assets', { headers: hdr() });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { box.textContent = 'Erreur de chargement.'; return; }
+    box.innerHTML = (d.feutres || []).map(f => `
+      <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid #eee">
+        <img src="${f.hasImage ? ('/shop-asset/' + encodeURIComponent(f.assetKey) + '?t=' + Date.now()) : ''}"
+             alt="" style="width:64px;height:64px;object-fit:contain;border:1px solid #ddd;background:#fafafa;${f.hasImage ? '' : 'visibility:hidden'}">
+        <div style="flex:1">
+          <div><b>${esc(f.name)}</b> <span style="color:#888;font-size:12px">(#${f.shopId} · ${f.price} K · clé <code>${esc(f.assetKey)}</code>)</span></div>
+          <div style="color:#888;font-size:12px">${f.hasImage ? 'Image en place.' : 'Aucune image — l\'aperçu de la fiche sera vide.'}</div>
+        </div>
+        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" id="feutre-file-${esc(f.kind)}" style="font-size:12px">
+        <button class="btn-success btn-sm" onclick="uploadFeutreImage('${esc(f.kind)}','${esc(f.assetKey)}')">Envoyer</button>
+      </div>`).join('') || '<span style="color:#888">Aucun feutre spécial.</span>';
+  } catch (e) { box.textContent = 'Erreur: ' + e.message; }
+}
+async function uploadFeutreImage(kind, assetKey) {
+  const input = $('#feutre-file-' + kind);
+  const file = input && input.files && input.files[0];
+  if (!file) { toast('Choisis une image'); return; }
+  try {
+    const headers = Object.assign(hdr(), { 'Content-Type': file.type || 'application/octet-stream' });
+    const r = await fetch('/api/admin/shop-asset/' + encodeURIComponent(assetKey), { method: 'POST', headers, body: file });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { toast('Erreur: ' + (d.message || d.error || 'inconnu')); return; }
+    toast('Image du feutre mise à jour (' + d.bytes + ' o)');
+    loadFeutreAssets();
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
