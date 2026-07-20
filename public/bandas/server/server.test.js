@@ -269,61 +269,66 @@ msgs = net4.tick(240001);
 ok(msgs.some(function (m) { return m.xml.indexOf('t="end"') >= 0; }), "net: clock timeout ends the game via tick");
 eq(Object.keys(net4.sessions).length, 0, "net: timed-out session cleaned up");
 
-// ── Portillon FD (« bots libres, humains classés ») ──────────────────────────
-// Un match ENTRE HUMAINS consomme 1 FD par joueur au démarrage et est refusé si
-// un joueur est à sec. Le mock reproduit le contrat de fdConsumeForRankedMatch
-// (serveur) : TOUS doivent avoir un FD, puis débit ; sinon { ok:false, blocked }
-// sans rien débiter. Un match avec un BOT n'est jamais rationné.
-var fdBudget = { rob: 2, lea: 2 };
-function fdGate(humans) {
-  var blocked = humans.filter(function (u) { return (fdBudget[u] || 0) <= 0; });
-  if (blocked.length) return { ok: false, blocked: blocked };
-  humans.forEach(function (u) { fdBudget[u] -= 1; });
-  return { ok: true };
+// ── Portillon FD « DISQUE = VIE » ────────────────────────────────────────────
+// 2 disques : on garde son disque tant qu'on gagne, on le perd à chaque défaite.
+// À 0 disque : plus de match entre humains (refus), seulement des bots non classés.
+// Le mock reproduit le contrat serveur (fdMatchForming + fdConsumeDisc).
+var startsWith = function (msgs, evt) { return msgs.some(function (m) { return m.xml.indexOf('e="' + evt + '"') >= 0; }); };
+var discs = {};
+function forming(humans, ctx) {
+  var withDisc = function (u) { return (discs[u] || 0) > 0; };
+  if (!ctx.hasBot && humans.length >= 2) {
+    var blocked = humans.filter(function (u) { return !withDisc(u); });
+    if (blocked.length) return { ok: false, blocked: blocked };
+    var r = {}; humans.forEach(function (u) { r[u] = true; }); return { ok: true, ranked: r };
+  }
+  var r2 = {}; humans.forEach(function (u) { r2[u] = withDisc(u); }); return { ok: true, ranked: r2 };
 }
-var nfd = new N.BandasNet({ clock: function () { return 0; }, rng: seeded(7), onRankedMatchStart: fdGate });
+function discLost(u) { if (discs[u] > 0) discs[u] -= 1; }
+var bslog = [];
+var nfd = new N.BandasNet({ clock: function () { return 0; }, rng: seeded(7), onMatchForming: forming, onDiscLost: discLost, onStreak: function (u, s, info) { bslog.push({ u: u, s: s, series: info.series }); } });
+discs.rob = 2; discs.lea = 2;
 nfd.handle("rob", { a: "hello", n: "Rob" });
 nfd.handle("lea", { a: "hello", n: "Lea" });
-function duel() { return nfd.handle("rob", { a: "challenge", u: "lea" }); }
-var f1 = duel();
-ok(f1.some(function (m) { return m.xml.indexOf('e="start"') >= 0; }), "bandas: match humain #1 démarre (FD dispo)");
-ok(fdBudget.rob === 1 && fdBudget.lea === 1, "bandas: 1 FD consommé par joueur au match #1");
-nfd.handle("lea", { a: "part" });
-var f2 = duel();
-ok(f2.some(function (m) { return m.xml.indexOf('e="start"') >= 0; }), "bandas: match humain #2 démarre (2e FD)");
-ok(fdBudget.rob === 0 && fdBudget.lea === 0, "bandas: 2e FD consommé par joueur");
-nfd.handle("lea", { a: "part" });
-var f3 = duel();
-ok(!f3.some(function (m) { return m.xml.indexOf('e="start"') >= 0; }), "bandas: match humain #3 refusé (plus de FD)");
-ok(f3.some(function (m) { return m.xml.indexOf('e="err"') >= 0 && m.xml.indexOf('m="no-fd"') >= 0; }), "bandas: refus err no-fd renvoyé");
-ok(nfd.lobby.getPlayer("rob").status === "idle" && nfd.lobby.getPlayer("lea").status === "idle", "bandas: refus → les 2 joueurs reviennent idle (lobby libéré)");
+var bbots = nfd.lobby.listPlayers().filter(function (p) { return nfd.bots[p.id]; }).map(function (p) { return p.id; });
 
-// opp-no-fd : l'adversaire est à sec → refus atomique (le joueur avec FD non débité).
-var fdB2 = { wealthy: 2, empty: 0 };
-function fdGate2(humans) {
-  var b = humans.filter(function (u) { return (fdB2[u] || 0) <= 0; });
-  if (b.length) return { ok: false, blocked: b };
-  humans.forEach(function (u) { fdB2[u] -= 1; });
-  return { ok: true };
-}
-var nfd2 = new N.BandasNet({ clock: function () { return 0; }, rng: seeded(7), onRankedMatchStart: fdGate2 });
-nfd2.handle("wealthy", { a: "hello" }); nfd2.handle("empty", { a: "hello" });
-var od = nfd2.handle("wealthy", { a: "challenge", u: "empty" });
-ok(!od.some(function (m) { return m.xml.indexOf('e="start"') >= 0; }), "bandas: match refusé si l'adversaire est à sec");
-var wMsg = od.filter(function (m) { return m.to.indexOf("wealthy") >= 0 && m.xml.indexOf('e="err"') >= 0; })[0];
-var eMsg = od.filter(function (m) { return m.to.indexOf("empty") >= 0 && m.xml.indexOf('e="err"') >= 0; })[0];
-ok(wMsg && wMsg.xml.indexOf('m="opp-no-fd"') >= 0, "bandas: le joueur avec FD reçoit opp-no-fd");
-ok(eMsg && eMsg.xml.indexOf('m="no-fd"') >= 0, "bandas: le joueur à sec reçoit no-fd");
-ok(fdB2.wealthy === 2, "bandas: aucun FD débité au joueur riche (refus atomique)");
-
-// Un match contre un BOT n'est JAMAIS rationné : le portillon n'est pas consulté.
-var gateCalls = 0;
-var nfb = new N.BandasNet({ clock: function () { return 0; }, rng: seeded(7), onRankedMatchStart: function (h) { gateCalls++; return { ok: false, blocked: h }; } });
-nfb.handle("lone", { a: "hello" });
-var bots2 = nfb.lobby.listPlayers().filter(function (p) { return nfb.bots[p.id]; });
-var bm = nfb.handle("lone", { a: "challenge", u: bots2[0].id });
-ok(bm.some(function (m) { return m.xml.indexOf('e="start"') >= 0; }), "bandas: défier un bot démarre malgré un portillon bloquant");
-eq(gateCalls, 0, "bandas: portillon FD non consulté pour un match avec bot (entraînement libre)");
+// (a) battre un bot : la série monte, AUCUN disque perdu.
+nfd.handle("rob", { a: "challenge", u: bbots[0] });
+nfd.handle(bbots[0], { a: "part" });                        // bot abandonne → rob gagne
+eq(nfd.streaks["rob"], 1, "bandas: battre un bot fait monter la série (classé avec un disque)");
+eq(discs.rob, 2, "bandas: gagner ne coûte AUCUN disque");
+// (b) perdre contre un bot : la série tombe, UN disque perdu.
+nfd.handle("rob", { a: "challenge", u: bbots[1] });
+nfd.handle("rob", { a: "part" });                           // rob abandonne → bot gagne
+eq(nfd.streaks["rob"], 0, "bandas: perdre remet la série à 0");
+eq(discs.rob, 1, "bandas: perdre coûte UN disque");
+// (c) perdre encore → 0 disque.
+nfd.handle("rob", { a: "challenge", u: bbots[0] });
+nfd.handle("rob", { a: "part" });
+eq(discs.rob, 0, "bandas: 2e défaite → 0 disque");
+// (d) à 0 disque : match ENTRE HUMAINS refusé (no-fd pour rob, opp-no-fd pour lea).
+var refused = nfd.handle("rob", { a: "challenge", u: "lea" });
+ok(!startsWith(refused, "start"), "bandas: 0 disque → match entre humains refusé");
+var robErr = refused.filter(function (m) { return m.to.indexOf("rob") >= 0 && m.xml.indexOf('e="err"') >= 0; })[0];
+var leaErr = refused.filter(function (m) { return m.to.indexOf("lea") >= 0 && m.xml.indexOf('e="err"') >= 0; })[0];
+ok(robErr && robErr.xml.indexOf('m="no-fd"') >= 0, "bandas: rob (à sec) reçoit no-fd");
+ok(leaErr && leaErr.xml.indexOf('m="opp-no-fd"') >= 0, "bandas: lea (avec disque) reçoit opp-no-fd");
+ok(nfd.lobby.getPlayer("lea").status === "idle", "bandas: refus → lea reste idle (lobby libéré)");
+// (e) à 0 disque : jouer un BOT reste possible mais NON classé.
+bslog.length = 0;
+nfd.handle("rob", { a: "challenge", u: bbots[0] });
+nfd.handle(bbots[0], { a: "part" });                        // rob bat le bot
+eq(nfd.streaks["rob"], 0, "bandas: 0 disque → battre un bot ne classe rien (série reste 0)");
+eq(discs.rob, 0, "bandas: 0 disque → aucun disque en jeu");
+ok(!bslog.some(function (x) { return x.u === "rob"; }), "bandas: 0 disque → rien n'est persisté pour rob");
+// (f) 2 humains avec disques : le perdant perd un disque, le gagnant garde le sien.
+discs.gwen = 2; discs.hugo = 2;
+nfd.handle("gwen", { a: "hello" }); nfd.handle("hugo", { a: "hello" });
+nfd.handle("gwen", { a: "challenge", u: "hugo" });
+nfd.handle("hugo", { a: "part" });                          // hugo abandonne → gwen gagne
+eq(nfd.streaks["gwen"], 1, "bandas: match humain → le gagnant monte sa série");
+eq(discs.gwen, 2, "bandas: le gagnant garde son disque");
+eq(discs.hugo, 1, "bandas: le perdant perd un disque");
 
 console.log("bandas server tests: " + passed + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

@@ -35,8 +35,8 @@
   function showFdPopin(kind) {
     if (document.getElementById("fd-popin")) return;
     var msg = (kind === "opp-no-fd")
-      ? "Ton adversaire n’a plus de match Challenge disponible aujourd’hui. Proposez-lui un entraînement contre les bots (toujours libre), ou réessayez demain."
-      : "Nom d’un Pamplefrousse ! Tu as épuisé ton quota de matchs Challenge pour aujourd’hui ! Entraîne-toi librement contre les bots, retente demain ou achète un pass en boutique !";
+      ? "Ton adversaire n’a plus de disque Challenge aujourd’hui. Proposez-lui un entraînement contre les bots (toujours libre), ou réessayez demain."
+      : "Nom d’un Pamplefrousse ! Tu as perdu tous tes disques Challenge pour aujourd’hui ! Continue à t’entraîner librement contre les bots, retente demain ou achète un pass en boutique !";
     var wrap = document.createElement("div");
     wrap.id = "fd-popin";
     wrap.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.30)";

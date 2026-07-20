@@ -2809,12 +2809,12 @@ const FD_FREE_PER_DAY = 2;   // parties challenge gratuites / jour / jeu
 const FD_PASS_PRICE   = 80;  // prix boutique d'un pass quotidien (fiche d'origine)
 // Jeux dont le mode challenge est soumis à la limite.
 const FD_LIMITED_GAMES = new Set(['bkiwi', 'snake3', 'swapou2', 'mb2', 'kaluga', 'grapiz', 'bandas']);
-// Jeux rationnés AU DÉMARRAGE du match (modèle pré-partie) plutôt qu'à
+// Jeux rationnés au fil du MATCH (modèle « disque = vie ») plutôt qu'à
 // l'enregistrement du score : grapiz/bandas sont des jeux PvP natifs dont la
 // série (score challenge) est persistée hors des chemins de save (onStreak →
-// persistScore direct). Le portillon FD est posé à la formation du match entre
-// humains (cf. onRankedMatchStart / net.js _startSession) ; le portillon de save
-// ne doit JAMAIS les gater (sinon double décompte) — fdApplyToSave les ignore.
+// persistScore direct). Le portillon FD est posé par net.js (formation du match
+// via fdMatchForming + débit d'un disque à la défaite via fdConsumeDisc) ; le
+// portillon de save ne doit JAMAIS les gater — fdApplyToSave les ignore.
 const FD_PREMATCH_GAMES = new Set(['grapiz', 'bandas']);
 // Jeux dont le bucket <jeu>_classic EST le classement du mode Challenge (c'est
 // lui que l'onglet « Challenge du jour » lit et que les clients écrivent en
@@ -2985,25 +2985,44 @@ function fdApplyToSave(sid, username, rankingId, extraRankingId, routed) {
   };
 }
 
-// Portillon FD des jeux PvP natifs (grapiz/bandas), appelé à la FORMATION d'un
-// match ENTRE HUMAINS (aucun bot — cf. net.js _startSession / onRankedMatchStart).
-// Vérifie d'abord que TOUS les joueurs ont un FD (atomicité : personne n'est
-// débité si le match ne peut pas être classé pour tout le monde), puis consomme
-// 1 partie par joueur. Renvoie { ok:true } si le match démarre en classé, sinon
-// { ok:false, blocked:[usernames à sec] } → le client des joueurs bloqués ouvre
-// la popin boutique (l'entraînement contre les bots, lui, reste libre).
-function fdConsumeForRankedMatch(game, humans) {
+// Portillon FD des jeux PvP natifs (grapiz/bandas) — modèle « DISQUE = VIE ».
+// Un disque (FD) n'est PAS consommé au démarrage mais à chaque DÉFAITE : on garde
+// sa vie tant qu'on gagne (contre des humains ou des bots, qui comptent tous au
+// classement) ; une défaite termine la série et coûte un disque. À 0 disque, on
+// ne peut plus jouer qu'en entraînement contre les bots (non classé).
+//
+// fdMatchForming : appelé à la formation d'un match par net.js. Décide si le
+// match peut démarrer et QUELS humains y jouent « classé » (un disque en jeu) :
+//   • match ENTRE HUMAINS : refusé si un joueur n'a plus de disque (il ne peut
+//     plus jouer qu'entraînement contre les bots) → { ok:false, blocked:[à sec] }.
+//     Sinon tous classés.
+//   • match avec un BOT : toujours autorisé ; l'humain est classé s'il a encore
+//     un disque, sinon c'est un entraînement libre (non classé).
+// Renvoie { ok, blocked?, ranked:{username:bool} }. Ne consomme RIEN (le débit
+// se fait à la défaite via fdConsumeDisc).
+function fdMatchForming(game, humans, ctx) {
   const list = Array.isArray(humans) ? humans : [];
-  const blocked = list.filter((u) => {
-    const user = users[u];
-    return !user || fdRemaining(user, game) <= 0;
-  });
-  if (blocked.length) return { ok: false, blocked };
-  for (const u of list) {
-    const user = users[u];
-    if (user) fdConsume(u, user, game);
+  const hasDisc = (u) => { const user = users[u]; return !!(user && fdRemaining(user, game) > 0); };
+  if (ctx && !ctx.hasBot && list.length >= 2) {
+    // Match entre humains : chacun risque un disque → tous doivent en avoir un.
+    const blocked = list.filter((u) => !hasDisc(u));
+    if (blocked.length) return { ok: false, blocked };
+    const ranked = {};
+    for (const u of list) ranked[u] = true;
+    return { ok: true, ranked };
   }
-  return { ok: true };
+  // Match impliquant un bot : toujours autorisé (entraînement) ; l'humain est
+  // classé (sa partie compte + un disque est en jeu) s'il a encore un disque.
+  const ranked = {};
+  for (const u of list) ranked[u] = hasDisc(u);
+  return { ok: true, ranked };
+}
+// Débit d'un disque (FD) quand un joueur CLASSÉ PERD (défaite/abandon/timeout).
+// Gagner ne coûte rien. fdConsume est idempotent au plancher (ne descend jamais
+// sous 0), donc sûr même si appelé en limite.
+function fdConsumeDisc(game, username) {
+  const user = users[username];
+  if (user) fdConsume(username, user, game);
 }
 // Drapeau « refus à afficher » lu (et effacé) par le poll du popup de jeu :
 // permet à game-popup.html d'afficher l'overlay « Plus de FD — racheter » au
@@ -3922,7 +3941,7 @@ const SHOP_PACKS_DEFAULT = [
     price: FD_PASS_PRICE,
     picto: 'pass,6',
     description: 'Affrontez les meilleurs joueurs à Frutibandas.',
-    comment: "Donne droit à un match classé supplémentaire par jour contre de vrais joueurs (l'entraînement contre les bots reste libre). Permanent et cumulable !",
+    comment: "Donne droit à un disque Challenge supplémentaire par jour : une défaite de plus avant de basculer en entraînement contre les bots. Permanent et cumulable !",
     fdPassGame: 'bandas',
     suffix9: '000000000',
   },
@@ -3933,7 +3952,7 @@ const SHOP_PACKS_DEFAULT = [
     price: FD_PASS_PRICE,
     picto: 'pass,7',
     description: 'Affrontez les meilleurs joueurs à Grapiz.',
-    comment: "Donne droit à un match classé supplémentaire par jour contre de vrais joueurs (l'entraînement contre les bots reste libre). Permanent et cumulable !",
+    comment: "Donne droit à un disque Challenge supplémentaire par jour : une défaite de plus avant de basculer en entraînement contre les bots. Permanent et cumulable !",
     fdPassGame: 'grapiz',
     suffix9: '000000000',
   },
@@ -15534,9 +15553,12 @@ const grapizNet = new GrapizNet({
     // au classement « Grapiz - Challenge » (persistScore garde le meilleur).
     if (info && info.series > 0) persistScore(username, 'grapiz_challenge', info.series);
   },
-  // Portillon FD : un match entre humains consomme 1 partie/joueur et est refusé
-  // si un joueur n'a plus de FD (les matchs contre un bot restent libres).
-  onRankedMatchStart: (humans) => fdConsumeForRankedMatch('grapiz', humans),
+  // Portillon FD « disque = vie » : un match entre humains est refusé si un
+  // joueur n'a plus de disque ; un disque est consommé à chaque DÉFAITE classée
+  // (gagner ne coûte rien). Les matchs contre un bot restent jouables (classés
+  // tant qu'on a un disque, sinon entraînement libre non classé).
+  onMatchForming: (humans, ctx) => fdMatchForming('grapiz', humans, ctx),
+  onDiscLost: (username) => fdConsumeDisc('grapiz', username),
 });
 // Envoie chaque message { to:[usernames], xml } à tous les sockets de ces joueurs.
 function grapizFlush(messages) {
@@ -15571,9 +15593,12 @@ const bandasNet = new BandasNet({
     // au classement « Frutibandas - Challenge » (persistScore garde le meilleur).
     if (info && info.series > 0) persistScore(username, 'bandas_challenge', info.series);
   },
-  // Portillon FD : un match entre humains consomme 1 partie/joueur et est refusé
-  // si un joueur n'a plus de FD (les matchs contre un bot restent libres).
-  onRankedMatchStart: (humans) => fdConsumeForRankedMatch('bandas', humans),
+  // Portillon FD « disque = vie » : un match entre humains est refusé si un
+  // joueur n'a plus de disque ; un disque est consommé à chaque DÉFAITE classée
+  // (gagner ne coûte rien). Les matchs contre un bot restent jouables (classés
+  // tant qu'on a un disque, sinon entraînement libre non classé).
+  onMatchForming: (humans, ctx) => fdMatchForming('bandas', humans, ctx),
+  onDiscLost: (username) => fdConsumeDisc('bandas', username),
 });
 // Tick : horloges (timeout) + coups des bots (1 Hz).
 setInterval(() => {
