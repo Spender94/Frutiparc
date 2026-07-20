@@ -2808,8 +2808,14 @@ function awardDailyLoginKikooz(username) {
 const FD_FREE_PER_DAY = 2;   // parties challenge gratuites / jour / jeu
 const FD_PASS_PRICE   = 80;  // prix boutique d'un pass quotidien (fiche d'origine)
 // Jeux dont le mode challenge est soumis à la limite.
-// Extension prévue : grapiz, bandas.
-const FD_LIMITED_GAMES = new Set(['bkiwi', 'snake3', 'swapou2', 'mb2', 'kaluga']);
+const FD_LIMITED_GAMES = new Set(['bkiwi', 'snake3', 'swapou2', 'mb2', 'kaluga', 'grapiz', 'bandas']);
+// Jeux rationnés AU DÉMARRAGE du match (modèle pré-partie) plutôt qu'à
+// l'enregistrement du score : grapiz/bandas sont des jeux PvP natifs dont la
+// série (score challenge) est persistée hors des chemins de save (onStreak →
+// persistScore direct). Le portillon FD est posé à la formation du match entre
+// humains (cf. onRankedMatchStart / net.js _startSession) ; le portillon de save
+// ne doit JAMAIS les gater (sinon double décompte) — fdApplyToSave les ignore.
+const FD_PREMATCH_GAMES = new Set(['grapiz', 'bandas']);
 // Jeux dont le bucket <jeu>_classic EST le classement du mode Challenge (c'est
 // lui que l'onglet « Challenge du jour » lit et que les clients écrivent en
 // m=0) : c'est donc CE bucket qui est rationné pour eux. BKiwi n'y figure pas
@@ -2968,13 +2974,36 @@ function fdAuthorizeChallengeSave(sid, username, game, routed) {
 // la fois mb2_classic et le miroir mb2_challenge).
 function fdApplyToSave(sid, username, rankingId, extraRankingId, routed) {
   const game = fdGameFromRanking(rankingId || extraRankingId || '');
-  if (!fdGameIsLimited(game)) return { direct: true, mirror: true, blocked: false };
+  // Jeux non limités OU rationnés au démarrage du match (grapiz/bandas) : le
+  // save ne gate rien (le portillon est ailleurs). Cf. FD_PREMATCH_GAMES.
+  if (!fdGameIsLimited(game) || FD_PREMATCH_GAMES.has(game)) return { direct: true, mirror: true, blocked: false };
   const verdict = fdAuthorizeChallengeSave(sid, username, game, routed);
   return {
     direct: fdGatedBucketGame(rankingId) ? (verdict === 'ok') : true,
     mirror: verdict === 'ok',
     blocked: verdict === 'blocked',
   };
+}
+
+// Portillon FD des jeux PvP natifs (grapiz/bandas), appelé à la FORMATION d'un
+// match ENTRE HUMAINS (aucun bot — cf. net.js _startSession / onRankedMatchStart).
+// Vérifie d'abord que TOUS les joueurs ont un FD (atomicité : personne n'est
+// débité si le match ne peut pas être classé pour tout le monde), puis consomme
+// 1 partie par joueur. Renvoie { ok:true } si le match démarre en classé, sinon
+// { ok:false, blocked:[usernames à sec] } → le client des joueurs bloqués ouvre
+// la popin boutique (l'entraînement contre les bots, lui, reste libre).
+function fdConsumeForRankedMatch(game, humans) {
+  const list = Array.isArray(humans) ? humans : [];
+  const blocked = list.filter((u) => {
+    const user = users[u];
+    return !user || fdRemaining(user, game) <= 0;
+  });
+  if (blocked.length) return { ok: false, blocked };
+  for (const u of list) {
+    const user = users[u];
+    if (user) fdConsume(u, user, game);
+  }
+  return { ok: true };
 }
 // Drapeau « refus à afficher » lu (et effacé) par le poll du popup de jeu :
 // permet à game-popup.html d'afficher l'overlay « Plus de FD — racheter » au
@@ -3884,6 +3913,28 @@ const SHOP_PACKS_DEFAULT = [
     description: 'Jouez le célèbre Tzongre et ses amis pour collecter le plus de pommes.',
     comment: "Donne droit à une partie quotidienne supplémentaire pour réaliser le meilleur score en Challenge. Permanent et cumulable !",
     fdPassGame: 'kaluga',
+    suffix9: '000000000',
+  },
+  {
+    id: 24,
+    name: 'Pass quotidien de Frutibandas',
+    category: 'Pass',
+    price: FD_PASS_PRICE,
+    picto: 'pass,6',
+    description: 'Affrontez les meilleurs joueurs à Frutibandas.',
+    comment: "Donne droit à un match classé supplémentaire par jour contre de vrais joueurs (l'entraînement contre les bots reste libre). Permanent et cumulable !",
+    fdPassGame: 'bandas',
+    suffix9: '000000000',
+  },
+  {
+    id: 25,
+    name: 'Pass quotidien de Grapiz',
+    category: 'Pass',
+    price: FD_PASS_PRICE,
+    picto: 'pass,7',
+    description: 'Affrontez les meilleurs joueurs à Grapiz.',
+    comment: "Donne droit à un match classé supplémentaire par jour contre de vrais joueurs (l'entraînement contre les bots reste libre). Permanent et cumulable !",
+    fdPassGame: 'grapiz',
     suffix9: '000000000',
   },
   ...SHOP_GAME_PACKS_DEFAULT,
@@ -15483,6 +15534,9 @@ const grapizNet = new GrapizNet({
     // au classement « Grapiz - Challenge » (persistScore garde le meilleur).
     if (info && info.series > 0) persistScore(username, 'grapiz_challenge', info.series);
   },
+  // Portillon FD : un match entre humains consomme 1 partie/joueur et est refusé
+  // si un joueur n'a plus de FD (les matchs contre un bot restent libres).
+  onRankedMatchStart: (humans) => fdConsumeForRankedMatch('grapiz', humans),
 });
 // Envoie chaque message { to:[usernames], xml } à tous les sockets de ces joueurs.
 function grapizFlush(messages) {
@@ -15517,6 +15571,9 @@ const bandasNet = new BandasNet({
     // au classement « Frutibandas - Challenge » (persistScore garde le meilleur).
     if (info && info.series > 0) persistScore(username, 'bandas_challenge', info.series);
   },
+  // Portillon FD : un match entre humains consomme 1 partie/joueur et est refusé
+  // si un joueur n'a plus de FD (les matchs contre un bot restent libres).
+  onRankedMatchStart: (humans) => fdConsumeForRankedMatch('bandas', humans),
 });
 // Tick : horloges (timeout) + coups des bots (1 Hz).
 setInterval(() => {

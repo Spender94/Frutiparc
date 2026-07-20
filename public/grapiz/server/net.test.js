@@ -143,29 +143,33 @@ ok(ses._botAt != null, "le coup du bot est planifié (délai naturel)");
 CL = 12000; nbot.tick(12000);                        // 2e tick : exécute le coup
 ok(!nbot.sessions[ses.id] || nbot.sessions[ses.id].game.currentTurn === 0, "le bot a joué (tour rendu au joueur) ou partie conclue");
 
-// ── Règles de la série classée ───────────────────────────────────────────────
-// (1) Battre un BOT compte comme une vraie victoire, et c'est REJOUABLE
-//     (un bot n'est pas un complice). Perdre contre un bot casse la série.
+// ── Règles de la série classée : « bots libres, humains classés » ────────────
+// (1) Les matchs contre un BOT sont des ENTRAÎNEMENTS : jamais classés. Ils ne
+//     touchent pas la série classée du joueur (ni ne la font monter, ni ne la
+//     cassent) et ne sont jamais persistés.
 var botLog = [];
 var nb = new N.GrapizNet({ clock: function () { return 0; }, onStreak: function (u, s, info) { botLog.push({ u: u, s: s, series: info.series }); } });
 nb.handle("grimpeur", { a: "hello", n: "Grimpeur" });
+nb.handle("rival", { a: "hello", n: "Rival" });
+// grimpeur bat un HUMAIN → série CLASSÉE = 1 (persistée)
+nb.handle("grimpeur", { a: "challenge", u: "rival", t: "60000" });
+nb.handle("rival", { a: "part" });                                 // rival abandonne → grimpeur gagne
+eq(nb.streaks["grimpeur"], 1, "battre un HUMAIN fait monter la série classée (1)");
+ok(botLog.some(function (x) { return x.u === "grimpeur" && x.series === 1; }), "la victoire contre un humain est classée (series=1)");
+botLog.length = 0;
 function beatsBot(bot) {
   nb.handle("grimpeur", { a: "challenge", u: bot, t: "60000" });
   nb.handle(bot, { a: "part" });                                  // le bot abandonne → victoire
 }
 beatsBot("pepino");
-eq(nb.streaks["grimpeur"], 1, "battre un bot fait monter la série (1)");
-ok(botLog.some(function (x) { return x.u === "grimpeur" && x.series === 1; }), "la victoire contre un bot est classée (series=1)");
-beatsBot("pepino");
-eq(nb.streaks["grimpeur"], 2, "REBATTRE LE MÊME bot compte encore (série 2)");
+eq(nb.streaks["grimpeur"], 1, "battre un bot ne change PAS la série classée (reste 1 — entraînement)");
 beatsBot("mirabo");
-eq(nb.streaks["grimpeur"], 3, "battre un autre bot → série 3");
-ok(botLog.some(function (x) { return x.u === "grimpeur" && x.series === 3; }), "la série en cours alimente le classement (series=3)");
-// défaite contre un bot → la série s'enregistre puis tombe à 0
+eq(nb.streaks["grimpeur"], 1, "enchaîner les bots ne fait pas monter la série classée");
+// perdre contre un bot ne CASSE PAS la série classée (l'entraînement est sans risque)
 nb.handle("grimpeur", { a: "challenge", u: "cassis", t: "60000" });
 nb.handle("grimpeur", { a: "part" });                              // le joueur abandonne → le bot gagne
-eq(nb.streaks["grimpeur"], 0, "perdre contre un bot remet la série à 0");
-ok(botLog.some(function (x) { return x.u === "grimpeur" && x.s === 0 && x.series === 3; }), "la série terminée (3) est enregistrée à la défaite");
+eq(nb.streaks["grimpeur"], 1, "perdre contre un bot ne casse pas la série classée (entraînement)");
+ok(botLog.length === 0, "aucun match contre un bot n'est classé/persisté");
 ok(!botLog.some(function (x) { return x.u === "pepino" || x.u === "mirabo" || x.u === "cassis"; }), "les séries des bots ne sont jamais persistées/classées");
 
 // (2) Rebattre le MÊME humain ne compte qu'une fois ; il faut des adversaires différents.
@@ -189,6 +193,64 @@ nh.handle("pro", { a: "join", g: gidLose });
 nh.handle("pro", { a: "part" });             // pro abandonne → série de pro retombe à 0
 eq(nh.streaks["pro"], 0, "défaite → série de pro à 0");
 proBeats("victimA"); eq(nh.streaks["pro"], 1, "après reset, rebattre A compte de nouveau (série 1)");
+
+// ── Portillon FD (« bots libres, humains classés ») ──────────────────────────
+// Un match ENTRE HUMAINS consomme 1 FD par joueur au démarrage et est refusé si
+// un joueur est à sec. Le mock reproduit le contrat de fdConsumeForRankedMatch
+// (serveur) : vérifie que TOUS ont un FD, puis débite ; sinon { ok:false,
+// blocked:[à sec] } sans rien débiter.
+var fdBudget = { pro2: 2, novice: 2 };
+function fdGate(humans) {
+  var blocked = humans.filter(function (u) { return (fdBudget[u] || 0) <= 0; });
+  if (blocked.length) return { ok: false, blocked: blocked };
+  humans.forEach(function (u) { fdBudget[u] -= 1; });
+  return { ok: true };
+}
+var ng = new N.GrapizNet({ clock: function () { return 0; }, withBots: false, onRankedMatchStart: fdGate });
+ng.handle("pro2", { a: "hello", n: "Pro2" });
+ng.handle("novice", { a: "hello", n: "Novice" });
+function humanDuel() { return ng.handle("pro2", { a: "challenge", u: "novice", t: "60000" }); }
+var d1 = humanDuel();
+ok(find(d1, "start"), "match humain #1 démarre (FD dispo)");
+ok(fdBudget.pro2 === 1 && fdBudget.novice === 1, "match #1 : 1 FD consommé par joueur");
+ng.handle("novice", { a: "part" });                    // fin du match → lobby libéré
+var d2 = humanDuel();
+ok(find(d2, "start"), "match humain #2 démarre (2e FD)");
+ok(fdBudget.pro2 === 0 && fdBudget.novice === 0, "match #2 : 2e FD consommé par joueur");
+ng.handle("novice", { a: "part" });
+var d3 = humanDuel();
+ok(!find(d3, "start"), "match humain #3 refusé (plus de FD)");
+var err3 = find(d3, "err");
+ok(err3 && err3.xml.indexOf('m="no-fd"') >= 0, "refus : err no-fd renvoyé");
+ok(ng.lobby.getPlayer("pro2").status === "idle" && ng.lobby.getPlayer("novice").status === "idle", "refus : les 2 joueurs reviennent idle (lobby libéré)");
+ok(fdBudget.pro2 === 0 && fdBudget.novice === 0, "refus : aucun FD débité en plus (débit atomique)");
+
+// opp-no-fd : l'ADVERSAIRE est à sec → refus, et le joueur avec FD n'est pas débité.
+var fdB2 = { rich: 2, broke: 0 };
+function fdGate2(humans) {
+  var blocked = humans.filter(function (u) { return (fdB2[u] || 0) <= 0; });
+  if (blocked.length) return { ok: false, blocked: blocked };
+  humans.forEach(function (u) { fdB2[u] -= 1; });
+  return { ok: true };
+}
+var ng2 = new N.GrapizNet({ clock: function () { return 0; }, withBots: false, onRankedMatchStart: fdGate2 });
+ng2.handle("rich", { a: "hello" }); ng2.handle("broke", { a: "hello" });
+var od = ng2.handle("rich", { a: "challenge", u: "broke", t: "60000" });
+ok(!find(od, "start"), "match refusé si l'adversaire est à sec");
+var richMsg = od.filter(function (m) { return m.to.indexOf("rich") >= 0 && m.xml.indexOf('e="err"') >= 0; })[0];
+var brokeMsg = od.filter(function (m) { return m.to.indexOf("broke") >= 0 && m.xml.indexOf('e="err"') >= 0; })[0];
+ok(richMsg && richMsg.xml.indexOf('m="opp-no-fd"') >= 0, "le joueur avec FD reçoit opp-no-fd");
+ok(brokeMsg && brokeMsg.xml.indexOf('m="no-fd"') >= 0, "le joueur à sec reçoit no-fd");
+ok(fdB2.rich === 2, "aucun FD débité au joueur riche (refus atomique)");
+
+// Un match contre un BOT n'est JAMAIS rationné : onRankedMatchStart n'est pas consulté.
+var gateCalls = 0;
+var ngb = new N.GrapizNet({ clock: function () { return 0; }, onRankedMatchStart: function (h) { gateCalls++; return { ok: false, blocked: h }; } });
+ngb.handle("solo", { a: "hello" });
+var botList = ngb.lobby.listPlayers().filter(function (p) { return ngb.bots[p.id]; });
+var bm = ngb.handle("solo", { a: "challenge", u: botList[0].id, t: "60000" });
+ok(find(bm, "start"), "défier un bot démarre même avec un portillon FD bloquant");
+eq(gateCalls, 0, "le portillon FD n'est PAS consulté pour un match avec bot (entraînement libre)");
 
 console.log("\nGrapiz net: " + passed + " passed, " + fails + " failed.");
 process.exit(fails ? 1 : 0);

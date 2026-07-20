@@ -269,5 +269,61 @@ msgs = net4.tick(240001);
 ok(msgs.some(function (m) { return m.xml.indexOf('t="end"') >= 0; }), "net: clock timeout ends the game via tick");
 eq(Object.keys(net4.sessions).length, 0, "net: timed-out session cleaned up");
 
+// ── Portillon FD (« bots libres, humains classés ») ──────────────────────────
+// Un match ENTRE HUMAINS consomme 1 FD par joueur au démarrage et est refusé si
+// un joueur est à sec. Le mock reproduit le contrat de fdConsumeForRankedMatch
+// (serveur) : TOUS doivent avoir un FD, puis débit ; sinon { ok:false, blocked }
+// sans rien débiter. Un match avec un BOT n'est jamais rationné.
+var fdBudget = { rob: 2, lea: 2 };
+function fdGate(humans) {
+  var blocked = humans.filter(function (u) { return (fdBudget[u] || 0) <= 0; });
+  if (blocked.length) return { ok: false, blocked: blocked };
+  humans.forEach(function (u) { fdBudget[u] -= 1; });
+  return { ok: true };
+}
+var nfd = new N.BandasNet({ clock: function () { return 0; }, rng: seeded(7), onRankedMatchStart: fdGate });
+nfd.handle("rob", { a: "hello", n: "Rob" });
+nfd.handle("lea", { a: "hello", n: "Lea" });
+function duel() { return nfd.handle("rob", { a: "challenge", u: "lea" }); }
+var f1 = duel();
+ok(f1.some(function (m) { return m.xml.indexOf('e="start"') >= 0; }), "bandas: match humain #1 démarre (FD dispo)");
+ok(fdBudget.rob === 1 && fdBudget.lea === 1, "bandas: 1 FD consommé par joueur au match #1");
+nfd.handle("lea", { a: "part" });
+var f2 = duel();
+ok(f2.some(function (m) { return m.xml.indexOf('e="start"') >= 0; }), "bandas: match humain #2 démarre (2e FD)");
+ok(fdBudget.rob === 0 && fdBudget.lea === 0, "bandas: 2e FD consommé par joueur");
+nfd.handle("lea", { a: "part" });
+var f3 = duel();
+ok(!f3.some(function (m) { return m.xml.indexOf('e="start"') >= 0; }), "bandas: match humain #3 refusé (plus de FD)");
+ok(f3.some(function (m) { return m.xml.indexOf('e="err"') >= 0 && m.xml.indexOf('m="no-fd"') >= 0; }), "bandas: refus err no-fd renvoyé");
+ok(nfd.lobby.getPlayer("rob").status === "idle" && nfd.lobby.getPlayer("lea").status === "idle", "bandas: refus → les 2 joueurs reviennent idle (lobby libéré)");
+
+// opp-no-fd : l'adversaire est à sec → refus atomique (le joueur avec FD non débité).
+var fdB2 = { wealthy: 2, empty: 0 };
+function fdGate2(humans) {
+  var b = humans.filter(function (u) { return (fdB2[u] || 0) <= 0; });
+  if (b.length) return { ok: false, blocked: b };
+  humans.forEach(function (u) { fdB2[u] -= 1; });
+  return { ok: true };
+}
+var nfd2 = new N.BandasNet({ clock: function () { return 0; }, rng: seeded(7), onRankedMatchStart: fdGate2 });
+nfd2.handle("wealthy", { a: "hello" }); nfd2.handle("empty", { a: "hello" });
+var od = nfd2.handle("wealthy", { a: "challenge", u: "empty" });
+ok(!od.some(function (m) { return m.xml.indexOf('e="start"') >= 0; }), "bandas: match refusé si l'adversaire est à sec");
+var wMsg = od.filter(function (m) { return m.to.indexOf("wealthy") >= 0 && m.xml.indexOf('e="err"') >= 0; })[0];
+var eMsg = od.filter(function (m) { return m.to.indexOf("empty") >= 0 && m.xml.indexOf('e="err"') >= 0; })[0];
+ok(wMsg && wMsg.xml.indexOf('m="opp-no-fd"') >= 0, "bandas: le joueur avec FD reçoit opp-no-fd");
+ok(eMsg && eMsg.xml.indexOf('m="no-fd"') >= 0, "bandas: le joueur à sec reçoit no-fd");
+ok(fdB2.wealthy === 2, "bandas: aucun FD débité au joueur riche (refus atomique)");
+
+// Un match contre un BOT n'est JAMAIS rationné : le portillon n'est pas consulté.
+var gateCalls = 0;
+var nfb = new N.BandasNet({ clock: function () { return 0; }, rng: seeded(7), onRankedMatchStart: function (h) { gateCalls++; return { ok: false, blocked: h }; } });
+nfb.handle("lone", { a: "hello" });
+var bots2 = nfb.lobby.listPlayers().filter(function (p) { return nfb.bots[p.id]; });
+var bm = nfb.handle("lone", { a: "challenge", u: bots2[0].id });
+ok(bm.some(function (m) { return m.xml.indexOf('e="start"') >= 0; }), "bandas: défier un bot démarre malgré un portillon bloquant");
+eq(gateCalls, 0, "bandas: portillon FD non consulté pour un match avec bot (entraînement libre)");
+
 console.log("bandas server tests: " + passed + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

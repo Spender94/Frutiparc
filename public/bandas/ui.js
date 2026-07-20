@@ -24,6 +24,41 @@
     inGame: false, helloTimer: null, lobbyTab: "players",
   };
   function setStatus(s) { $("#status").textContent = s; }
+
+  // ── Pop-in « Plus de FD » (reproduction de la popin NATIVE Frutiparc) ──
+  // Affichée quand le serveur refuse un match CLASSÉ faute de FD : soit le
+  // joueur a épuisé son quota (no-fd), soit son adversaire (opp-no-fd). PAS
+  // d'achat ici — les pass s'achètent dans la BOUTIQUE officielle (rubrique
+  // Pass, « Pass quotidien de Frutibandas »). L'entraînement contre les bots
+  // reste libre. Style calqué sur la Boutique (fond blanc, bordure noire +
+  // liseré gris collé, coins arrondis, ombre portée, icône + titre gras).
+  function showFdPopin(kind) {
+    if (document.getElementById("fd-popin")) return;
+    var msg = (kind === "opp-no-fd")
+      ? "Ton adversaire n’a plus de match Challenge disponible aujourd’hui. Proposez-lui un entraînement contre les bots (toujours libre), ou réessayez demain."
+      : "Nom d’un Pamplefrousse ! Tu as épuisé ton quota de matchs Challenge pour aujourd’hui ! Entraîne-toi librement contre les bots, retente demain ou achète un pass en boutique !";
+    var wrap = document.createElement("div");
+    wrap.id = "fd-popin";
+    wrap.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.30)";
+    wrap.innerHTML =
+      '<div style="background:#fff;border:1px solid #000;border-radius:12px;padding:0;box-shadow:0 7px 8px rgba(0,0,0,.5);max-width:378px;width:calc(100% - 14px)">' +
+        '<div style="border:2px solid #ccc;border-radius:11px;padding:13px 16px 16px;font-family:Verdana,Arial,sans-serif;color:#000">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">' +
+            '<img src="/fb/icone_popin.png" alt="" width="19" height="24" style="display:block">' +
+            '<b style="font-size:15px">Challenge</b>' +
+          '</div>' +
+          '<p style="font-family:Verdana,Arial,sans-serif;font-size:14px;line-height:1.5;margin:0 0 20px">' + msg + '</p>' +
+          '<div style="text-align:center">' +
+            '<button id="fd-popin-close" style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">Fermer</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    var bt = document.getElementById("fd-popin-close");
+    bt.onmousedown = function () { bt.style.transform = "translateY(1px)"; };
+    bt.onmouseup = function () { bt.style.transform = ""; };
+    bt.onclick = function () { wrap.remove(); };
+  }
   function showScreen(name) {
     state.screen = name;
     each(document.querySelectorAll(".screen"), function (s) { s.classList.toggle("on", s.id === "screen-" + name); });
@@ -105,7 +140,12 @@
     if (e === "gchat") return GV.chatMessage(el.getAttribute("u"), el.getAttribute("m"));
     if (e === "start") return onStart(el);
     if (e === "ev") return onEvent(el);
-    if (e === "err") { setStatus("⚠ " + el.getAttribute("m")); return; }
+    if (e === "err") {
+      var m = el.getAttribute("m");
+      // Refus FD d'un match classé : popin native (pas une simple ligne d'état).
+      if (m === "no-fd" || m === "opp-no-fd") { showFdPopin(m); return; }
+      setStatus("⚠ " + m); return;
+    }
   }
 
   // ── Lobby ────────────────────────────────────────────────────────────────

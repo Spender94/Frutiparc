@@ -51,6 +51,11 @@
     this.onResult = opts.onResult || function () {};   // hook (game, winner, reason)
     this.getStreak = opts.getStreak || null;           // username → série persistée (seed)
     this.onStreak = opts.onStreak || null;             // (username, série, {series}) → persistance + classement
+    // Portillon FD : (humans, game) → { ok, blocked? }. Consomme 1 « partie »
+    // (FD) par humain au démarrage d'un match CLASSÉ (2 humains, aucun bot) et
+    // refuse si au moins un humain n'a plus de FD. Absent (tests purs) → aucun
+    // rationnement. Les matchs impliquant un bot sont des entraînements libres.
+    this.onRankedMatchStart = opts.onRankedMatchStart || null;
     if (opts.withBots !== false) this._registerBots();
   }
 
@@ -106,6 +111,27 @@
 
   GrapizNet.prototype._startSession = function (game) {
     var self = this;
+    // Portillon FD : un match ENTRE HUMAINS (exactement 2 joueurs, aucun bot)
+    // est « classé » → il consomme 1 FD par joueur (parties Challenge rationnées).
+    // Dès qu'un bot participe, c'est un ENTRAÎNEMENT libre : jamais rationné,
+    // jamais classé. Si un humain n'a plus de FD, le match classé est refusé :
+    // le lobby libère la partie et chaque joueur reçoit un refus (no-fd pour
+    // celui qui est à sec, opp-no-fd pour son adversaire) — le client ouvre la
+    // popin boutique. Sans onRankedMatchStart (tests purs), rien n'est rationné.
+    var humans = game.players.filter(function (uid) { return !self.bots[uid]; });
+    var ranked = game.players.length === 2 && humans.length === 2;
+    if (ranked && this.onRankedMatchStart) {
+      var chk;
+      try { chk = this.onRankedMatchStart(humans, game); } catch (e) { chk = null; }
+      if (chk && chk.ok === false) {
+        this.lobby.endGame(game.id);
+        var blocked = (chk.blocked && chk.blocked.length) ? chk.blocked : humans;
+        return game.players.map(function (uid) {
+          var code = blocked.indexOf(uid) >= 0 ? "no-fd" : "opp-no-fd";
+          return { to: [uid], xml: '<gz e="err" m="' + code + '"/>' };
+        });
+      }
+    }
     var players = game.players.map(function (uid) {
       return { id: uid, name: self.names[uid] || uid, fb: self.bouilles[uid] || "" };
     });
@@ -126,13 +152,14 @@
   // Met à jour les séries (challenge) : le gagnant +1, le perdant enregistre sa
   // série puis repart à 0. 2 joueurs uniquement (TODO multi).
   //
-  // Règles de la série classée :
-  //   1. Battre un BOT compte comme une vraie victoire (les bots sont des
-  //      adversaires à part entière), et c'est REJOUABLE : un bot est contrôlé
-  //      par le serveur, il ne peut pas être un complice — l'anti-farm
-  //      « une fois par série » ne s'applique donc qu'aux humains.
-  //   2. Perdre contre un bot casse la série, comme contre un humain
-  //      (symétrique — sinon affronter les bots serait un farm sans risque).
+  // Règles de la série classée (« bots libres, humains classés ») :
+  //   1. ENTRAÎNEMENT : dès qu'un BOT participe, la partie n'est PAS classée.
+  //      La série classée des humains n'est ni avancée ni cassée — s'entraîner
+  //      contre un bot ne rapporte ni ne coûte rien au classement (et ne
+  //      consomme aucun FD). Seul le compteur "vitrine" du bot bouge.
+  //   2. CLASSÉ : entre deux humains uniquement (1 FD consommé par joueur au
+  //      démarrage). Le gagnant +1, le perdant enregistre sa série puis repart
+  //      à 0.
   //   3. Entre humains : pendant une série, chaque adversaire ne compte
   //      qu'UNE fois. Battre en boucle le même compte (alt/complice qui
   //      abandonne) ne rapporte qu'UN point ; pour monter il faut enchaîner
@@ -143,32 +170,27 @@
     var win = session.playerOfTeam(session.winner);
     var lose = session.players.filter(function (p) { return p.team !== session.winner; })[0];
     if (!win || !lose) return;
-    if (this.bots[win.id] && this.bots[lose.id]) return;   // bot vs bot : rien
 
-    // Victoire du gagnant.
-    if (this.bots[win.id]) {
-      // Gagnant bot : simple bump cosmétique de sa série "vitrine" (jamais
-      // persistée — _fireStreak ignore les bots), pour un écran de fin cohérent.
-      this.streaks[win.id] = (this.streaks[win.id] || 0) + 1;
-    } else {
-      var counts;
-      if (this.bots[lose.id]) {
-        counts = true;                       // bot battu → compte toujours
-      } else {
-        var beaten = this._beaten[win.id] || (this._beaten[win.id] = {});
-        counts = !beaten[lose.id];           // humain : une fois par série
-        if (counts) beaten[lose.id] = true;
-      }
-      if (counts) {
-        var ws = (this.streaks[win.id] || 0) + 1;
-        this.streaks[win.id] = ws;
-        this._fireStreak(win.id, ws, ws);
-      }
-      // (humain déjà battu pendant cette série → série inchangée)
+    // Entraînement (au moins un bot) : la série CLASSÉE n'est pas touchée. On
+    // bump juste la série "vitrine" d'un bot gagnant (jamais persistée —
+    // _fireStreak ignore les bots) pour un écran de fin cohérent.
+    if (this.bots[win.id] || this.bots[lose.id]) {
+      if (this.bots[win.id]) this.streaks[win.id] = (this.streaks[win.id] || 0) + 1;
+      return;
     }
 
-    // Défaite du perdant : la série tombe et s'enregistre. Pour un bot c'est
-    // purement cosmétique (sa série "vitrine" retombe ; _fireStreak l'ignore).
+    // Match CLASSÉ (2 humains). Victoire du gagnant : +1, mais chaque adversaire
+    // ne compte qu'UNE fois par série (anti-farm alt/complice).
+    var beaten = this._beaten[win.id] || (this._beaten[win.id] = {});
+    if (!beaten[lose.id]) {
+      beaten[lose.id] = true;
+      var ws = (this.streaks[win.id] || 0) + 1;
+      this.streaks[win.id] = ws;
+      this._fireStreak(win.id, ws, ws);
+    }
+    // (humain déjà battu pendant cette série → série inchangée)
+
+    // Défaite du perdant : la série tombe et s'enregistre.
     var ended = this.streaks[lose.id] || 0;
     this.streaks[lose.id] = 0;
     this._beaten[lose.id] = {};            // le perdant repart sur une série vierge
