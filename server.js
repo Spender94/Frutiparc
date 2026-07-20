@@ -2808,13 +2808,16 @@ function awardDailyLoginKikooz(username) {
 const FD_FREE_PER_DAY = 2;   // parties challenge gratuites / jour / jeu
 const FD_PASS_PRICE   = 80;  // prix boutique d'un pass quotidien (fiche d'origine)
 // Jeux dont le mode challenge est soumis à la limite.
-// Extension prévue : grapiz, bandas, mb2, kaluga.
-const FD_LIMITED_GAMES = new Set(['bkiwi', 'snake3', 'swapou2']);
+// Extension prévue : grapiz, bandas.
+const FD_LIMITED_GAMES = new Set(['bkiwi', 'snake3', 'swapou2', 'mb2', 'kaluga']);
 // Jeux dont le bucket <jeu>_classic EST le classement du mode Challenge (c'est
 // lui que l'onglet « Challenge du jour » lit et que les clients écrivent en
 // m=0) : c'est donc CE bucket qui est rationné pour eux. BKiwi n'y figure pas
 // (son challenge = le miroir bkiwi_track{jour}_challenge, déjà gaté à part).
-const FD_CLASSIC_GATED = new Set(['snake3', 'swapou2']);
+// MB2 s'y ajoute : mb2_classic est bien la cuve « Challenge du jour » (cf.
+// /api/light/challenge et la section C de LEGACY_RANKINGS) ; son miroir
+// mb2_challenge suit le même verdict via fdApplyToSave (une seule conso).
+const FD_CLASSIC_GATED = new Set(['snake3', 'swapou2', 'mb2', 'kaluga']);
 // Renvoie le jeu si ce classement est un bucket challenge rationné, sinon null.
 function fdGatedBucketGame(rankingId) {
   const g = fdGameFromRanking(rankingId);
@@ -2950,6 +2953,28 @@ function fdAuthorizeChallengeSave(sid, username, game, routed) {
   if (fdGateChallengeScore(username, users[username], game)) return 'ok';
   fdFlagRefusal(sid, game); // le popup de jeu affichera l'overlay d'info
   return 'blocked';
+}
+
+// Portillon FD appliqué à UN enregistrement de score. Consomme AU PLUS un FD
+// pour la partie (une seule fois même quand le save écrit deux cuves), et dit
+// quelles cuves écrire :
+//   • direct (rankingId)      : écrite, SAUF si c'est LA cuve challenge rationnée
+//     du jeu (fdGatedBucketGame) et que la partie est refusée. Le classique
+//     « record tout-temps » de BKiwi (non rationné) est donc toujours écrit.
+//   • mirror (extraRankingId) : la cuve « challenge du jour » — écrite seulement
+//     si la partie est autorisée.
+// Renvoie { direct, mirror, blocked }. Un seul appel à fdAuthorizeChallengeSave
+// → une seule consommation, ce qui règle le double-décompte de MB2 (qui écrit à
+// la fois mb2_classic et le miroir mb2_challenge).
+function fdApplyToSave(sid, username, rankingId, extraRankingId, routed) {
+  const game = fdGameFromRanking(rankingId || extraRankingId || '');
+  if (!fdGameIsLimited(game)) return { direct: true, mirror: true, blocked: false };
+  const verdict = fdAuthorizeChallengeSave(sid, username, game, routed);
+  return {
+    direct: fdGatedBucketGame(rankingId) ? (verdict === 'ok') : true,
+    mirror: verdict === 'ok',
+    blocked: verdict === 'blocked',
+  };
 }
 // Drapeau « refus à afficher » lu (et effacé) par le poll du popup de jeu :
 // permet à game-popup.html d'afficher l'overlay « Plus de FD — racheter » au
@@ -3837,6 +3862,28 @@ const SHOP_PACKS_DEFAULT = [
     description: 'Jouez Dimitri ou Natacha pour remplir votre panier de fruits.',
     comment: "Donne droit à une partie quotidienne supplémentaire en mode Challenge. Permanent et cumulable !",
     fdPassGame: 'swapou2',
+    suffix9: '000000000',
+  },
+  {
+    id: 20,
+    name: 'Pass journalier de Motion Ball 2',
+    category: 'Pass',
+    price: FD_PASS_PRICE,
+    picto: 'pass,1',
+    description: 'Jouez les célèbres balles pour vaincre le terrible poulpe !',
+    comment: "Donne droit à une partie quotidienne supplémentaire pour réaliser le meilleur score en Challenge. Permanent et cumulable !",
+    fdPassGame: 'mb2',
+    suffix9: '000000000',
+  },
+  {
+    id: 26,
+    name: 'Pass quotidien de Kaluga',
+    category: 'Pass',
+    price: FD_PASS_PRICE,
+    picto: 'pass,8',
+    description: 'Jouez le célèbre Tzongre et ses amis pour collecter le plus de pommes.',
+    comment: "Donne droit à une partie quotidienne supplémentaire pour réaliser le meilleur score en Challenge. Permanent et cumulable !",
+    fdPassGame: 'kaluga',
     suffix9: '000000000',
   },
   ...SHOP_GAME_PACKS_DEFAULT,
@@ -4851,35 +4898,22 @@ async function handleSaveScore(req, res) {
     }
   }
 
-  // Portillon FD (bucket direct) : pour snake3/swapou2, le classement visé
-  // (<jeu>_classic) EST le bucket du mode Challenge → il n'est classé que si
+  // Portillon FD (bucket direct) : pour snake3/swapou2/mb2/kaluga, le classement
+  // visé (<jeu>_classic) EST le bucket du mode Challenge → il n'est classé que si
   // le joueur a un FD (marqueur du claim pré-partie, sinon consommation ici).
-  let fdBlocked = false;
   let result = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
-  const directGated = fdGatedBucketGame(rankingId);
-  if (directGated) {
-    if (fdAuthorizeChallengeSave(sid, username, directGated, null) === 'ok') {
-      result = persistScore(username, rankingId, scoreVal, scoreData);
-    } else {
-      fdBlocked = true;
-      console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} NON classé (plus de FD)`);
-    }
-  } else {
+  // Portillon FD unifié : UNE consommation pour la partie, appliquée aux deux
+  // cuves (direct + miroir) — cf. fdApplyToSave.
+  const fdg = fdApplyToSave(sid, username, rankingId, extraRankingId, routedInfo);
+  let fdBlocked = fdg.blocked;
+  if (fdg.direct) {
     result = persistScore(username, rankingId, scoreVal, scoreData);
+  } else {
+    console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} NON classé (plus de FD)`);
   }
-  if (extraRankingId) {
-    // Portillon FD (miroir bkiwi/mb2) : marqueur du claim pré-course (SWF
-    // patché), sinon heuristique circuit + consommation au save. 'skip' =
-    // entraînement sur un autre circuit → pas de miroir challenge.
-    const verdict = fdAuthorizeChallengeSave(sid, username, fdGameFromRanking(extraRankingId), routedInfo);
-    if (verdict === 'ok') {
-      extraResult = persistScore(username, extraRankingId, scoreVal, scoreData);
-      console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ${scoreVal} updated=${extraResult.updated} (challenge)`);
-    } else if (verdict === 'blocked') {
-      fdBlocked = true;
-    } else {
-      console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ignoré (entraînement hors circuit du jour)`);
-    }
+  if (extraRankingId && fdg.mirror) {
+    extraResult = persistScore(username, extraRankingId, scoreVal, scoreData);
+    console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ${scoreVal} updated=${extraResult.updated} (challenge)`);
   }
   if (rankingId === 'jamajama_classic' || rankingId === 'jamajama_challenge') {
     awardJamaPictosOnScore(username);
@@ -8535,16 +8569,16 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
   // — including the daily challenge anchored to today's track.
   const routed = routeRankingForSave(rankingId, username);
   rankingId = routed.rankingId;
-  // Portillon FD, identique aux deux autres chemins de save (bucket direct
-  // snake3/swapou2 + miroir bkiwi/mb2).
+  // Portillon FD, identique aux deux autres chemins de save : un seul verdict par
+  // partie (fdApplyToSave), qui décide de classer la cuve directe et/ou le miroir.
   let result = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
-  const directGated = fdGatedBucketGame(rankingId);
-  if (!directGated || fdAuthorizeChallengeSave(effectiveSid, username, directGated, null) === 'ok') {
+  const fdg = fdApplyToSave(effectiveSid, username, rankingId, routed.extraRankingId, routed);
+  if (fdg.direct) {
     result = persistScore(username, rankingId, scoreVal, '');
   } else {
     console.log(`[SWF-SCORE] ${username} ${rankingId} NON classé (plus de FD)`);
   }
-  if (routed.extraRankingId && fdAuthorizeChallengeSave(effectiveSid, username, fdGameFromRanking(routed.extraRankingId), routed) === 'ok') {
+  if (routed.extraRankingId && fdg.mirror) {
     persistScore(username, routed.extraRankingId, scoreVal, '');
   }
   console.log(`[SWF-SCORE] ${username} ${gameName} ${scoreVal} -> ${rankingId}${routed.extraRankingId ? ' +' + routed.extraRankingId : ''} mode=${swfMode} updated=${result.updated}`);
@@ -16396,17 +16430,17 @@ async function handleCBeeMessage(socket, rawXml) {
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
         let challengeRes = null;
         if (username && rankingId) {
-          // Portillon FD (bucket direct snake3/swapou2 — cf. fdGatedBucketGame).
-          const directGated = fdGatedBucketGame(rankingId);
-          if (!directGated || fdAuthorizeChallengeSave(client.sid, username, directGated, null) === 'ok') {
+          // Portillon FD : un seul verdict par partie (fdApplyToSave), même quand
+          // le save écrit deux cuves (direct snake3/swapou2/mb2/kaluga + miroir
+          // bkiwi/mb2) — évite le double décompte.
+          const fdg = fdApplyToSave(client.sid, username, rankingId, extraRankingId, routedInfo);
+          if (fdg.direct) {
             res = persistScore(username, rankingId, scoreVal, scoreData);
             console.log(`[FSCORE] ${username} ${rankingId}: ${res.oldScore} -> ${res.newScore} (updated=${res.updated}, pos ${res.oldPos}->${res.newPos})`);
           } else {
             console.log(`[FSCORE] ${username} ${rankingId}: NON classé (plus de FD)`);
           }
-          // Portillon FD : marqueur du claim pré-course, sinon heuristique
-          // circuit + consommation au save (cf. fdAuthorizeChallengeSave).
-          if (extraRankingId && fdAuthorizeChallengeSave(client.sid, username, fdGameFromRanking(extraRankingId), routedInfo) === 'ok') {
+          if (extraRankingId && fdg.mirror) {
             challengeRes = persistScore(username, extraRankingId, scoreVal, scoreData);
             console.log(`[FSCORE] ${username} ${extraRankingId}: ${challengeRes.oldScore} -> ${challengeRes.newScore} (updated=${challengeRes.updated}, challenge)`);
           }
