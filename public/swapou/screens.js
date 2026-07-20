@@ -1139,27 +1139,33 @@
   };
   SW.setEsc = function (down) { SW.escDown = down; };
 
-  // ── Panneau « Plus de FD » (mode Challenge rationné) ──────────────────────
-  // Affiché par Manager.startChallenge quand /do/fdclaim refuse la partie.
-  // Aucun achat ici : les pass s'achètent dans la Boutique officielle
-  // (rubrique Pass) — permanents et cumulables.
+  // ── Pop-in « Plus de FD » — reproduction de la popin NATIVE Frutiparc ──
+  // Même rendu que l'overlay du popup de jeu (game-popup.html) : bordure noire
+  // + liseré gris, coins arrondis, ombre portée, icône + titre, bouton
+  // /fb/bouton_popin.png (Verdana bold #660000). Un seul bouton « Fermer » :
+  // le joueur retourne au menu (Classique/Duel/Pot au feu restent libres).
   SW.showFdRefus = function (lvText) {
     if (document.getElementById('fd-overlay')) return;
-    var price = 80;
-    var m = /(?:^|&)price=(\d+)/.exec(String(lvText || ''));
-    if (m) price = Number(m[1]) || 80;
     var wrap = document.createElement('div');
     wrap.id = 'fd-overlay';
-    wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(20,30,8,.72)';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.30)';
     wrap.innerHTML =
-      '<div style="background:linear-gradient(135deg,#F7FBE8,#E4F3C5);border:2px solid #7FA83E;border-radius:16px;max-width:400px;margin:16px;padding:22px 24px;font-family:Verdana,Arial,sans-serif;color:#2C4A0F;box-shadow:0 12px 40px rgba(0,0,0,.45);text-align:center">' +
-      '<div style="font-size:34px;line-height:1">💾</div>' +
-      '<h2 style="font-size:17px;margin:10px 0 6px">Plus de FD pour aujourd’hui !</h2>' +
-      '<p style="font-size:12.5px;line-height:1.5;margin:0 0 6px">Tu as joué tes parties de Challenge du jour à <b>Swapou 2</b>. Reviens demain — ou joue en Classique, Duel et Pot au feu à volonté !</p>' +
-      '<p style="font-size:12.5px;line-height:1.5;margin:0 0 14px">💡 Astuce : le <b>Pass quotidien de Swapou 2</b> (Boutique → rubrique <b>Pass</b>, ' + price + ' kikooz) ajoute une partie par jour, <b>pour toujours</b> — et c’est cumulable !</p>' +
-      '<div><button id="fd-later" style="font-family:inherit;font-size:13px;font-weight:bold;padding:9px 22px;border-radius:10px;border:2px solid #4F7A1A;background:linear-gradient(180deg,#A8D45E,#7FB33A);color:#1F3608;cursor:pointer">Compris !</button></div>' +
+      '<div style="background:#fff;border:1px solid #000;border-radius:12px;padding:3px;box-shadow:0 7px 8px rgba(0,0,0,.5);max-width:378px;width:calc(100% - 14px)">' +
+        '<div style="border:2px solid #ccc;border-radius:9px;padding:13px 16px 16px;font-family:Verdana,Arial,sans-serif;color:#000">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">' +
+            '<img src="/fb/icone_popin.png" alt="" width="19" height="24" style="display:block">' +
+            '<b style="font-size:15px">Challenge</b>' +
+          '</div>' +
+          '<p style="font-size:14px;line-height:1.5;margin:0 0 20px">Nom d\u2019un Pamplefrousse ! Tu as \u00e9puis\u00e9 ton quota de parties Challenge pour aujourd\u2019hui ! Retente ta chance demain ou ach\u00e8te un pass en boutique !</p>' +
+          '<div style="text-align:center">' +
+            '<button id="fd-later" style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">Fermer</button>' +
+          '</div>' +
+        '</div>' +
       '</div>';
     document.body.appendChild(wrap);
-    document.getElementById('fd-later').onclick = function () { wrap.remove(); };
+    var bt = document.getElementById('fd-later');
+    bt.onmousedown = function () { bt.style.transform = 'translateY(1px)'; };
+    bt.onmouseup = function () { bt.style.transform = ''; };
+    bt.onclick = function () { wrap.remove(); };
   };
 })();
