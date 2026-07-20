@@ -3111,13 +3111,41 @@ const GAME_DISPLAY_NAMES = {
   bandas: 'Frutibandas', grapiz: 'Grapiz', minipixiz: 'MiniPixiz',
 };
 const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
+// Récompense kikooz d'une médaille du challenge du jour (versée UNE fois, au roll
+// quotidien) : or → 15, argent → 10, bronze → 5.
+const MEDAL_KIKOOZ = { or: 15, argent: 10, bronze: 5 };
+
+// Crédite `reward` kikooz à un joueur pour ses médailles. Joueur EN LIGNE :
+// crédit en mémoire (source de vérité) + persistance + journal + rafraîchissement
+// live du solde boutique. Joueur HORS LIGNE : incrément ATOMIQUE en base
+// (db.incrementKikooz) — sûr même en cas de médailles multiples ou de connexion
+// simultanée. Appelé une seule fois par joueur et par roll (pas de double crédit).
+function awardMedalKikooz(username, reward, reason) {
+  if (!reward || reward <= 0) return;
+  const user = users[username];
+  if (user) {
+    user.kikooz = (Number(user.kikooz) || 0) + reward;
+    if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+    user.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: reward, c: reason });
+    if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+    if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser medal kikooz'));
+    notifyKikoozUpdate(username, user.kikooz);
+  } else if (process.env.DATABASE_URL) {
+    db.incrementKikooz(username, reward).catch(dbErr('incrementKikooz medal'));
+  }
+}
 
 function notifyChallengeWinners(winnersByUser, visibleDay) {
   for (const [username, medals] of Object.entries(winnersByUser || {})) {
+    let totalReward = 0;
     for (const m of medals) {
       const gameName = GAME_DISPLAY_NAMES[m.game] || m.game;
       const medalName = MEDAL_DISPLAY_NAMES[m.medal] || m.medal;
-      const text = `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} ! (${visibleDay})`;
+      const reward = MEDAL_KIKOOZ[m.medal] || 0;
+      totalReward += reward;
+      const text = reward > 0
+        ? `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} et empoché ${reward} kikooz ! (${visibleDay})`
+        : `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} ! (${visibleDay})`;
       // Notify online (live + DB) AND offline (DB, shown unread on next login)
       // through the unified path — no more "only if connected at push time".
       addAndNotifyUserLog(username, { type: USER_LOG_TYPE.MEDAL, content: text, flNew: true });
@@ -3129,6 +3157,11 @@ function notifyChallengeWinners(winnersByUser, visibleDay) {
           if (row) db.saveMedal(row.id, username, m.rankingId, m.game, m.rank, m.medal, visibleDay).catch(dbErr('saveMedal'));
         }).catch(dbErr('saveMedal'));
       }
+    }
+    // Crédit kikooz : UNE fois par joueur (somme de ses médailles du jour), pour
+    // éviter toute course d'écriture pour un joueur hors ligne multi-médaillé.
+    if (totalReward > 0) {
+      awardMedalKikooz(username, totalReward, `médailles du challenge (${visibleDay})`);
     }
   }
 }

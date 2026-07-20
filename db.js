@@ -781,6 +781,18 @@ async function updateUser(username, fields) {
   );
 }
 
+// Crédit ATOMIQUE de kikooz (kikooz = kikooz + delta) : sûr même si le joueur
+// est hors ligne et gagne plusieurs médailles le même jour, ou se connecte au
+// même instant (pas de lecture-modif-écriture côté application). Renvoie le
+// nouveau solde, ou null si l'utilisateur n'existe pas.
+async function incrementKikooz(username, delta) {
+  const { rows } = await pool.query(
+    `UPDATE users SET kikooz = kikooz + $2, updated_at = now() WHERE username = $1 RETURNING kikooz`,
+    [username, Math.trunc(Number(delta) || 0)]
+  );
+  return rows[0] ? rows[0].kikooz : null;
+}
+
 async function recordLogin(username) {
   await pool.query(
     `UPDATE users SET last_login = now() WHERE username = $1`,
@@ -2477,6 +2489,7 @@ module.exports = {
   invalidateUserPasswordResets,
   createUser,
   updateUser,
+  incrementKikooz,
   listReferrals,
   countRewardedByIp,
   findUsernameByDeviceToken,
