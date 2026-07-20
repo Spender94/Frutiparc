@@ -285,6 +285,22 @@ async function initSchema() {
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS picto TEXT DEFAULT NULL;
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS disabled BOOLEAN DEFAULT FALSE;
 
+      -- Historique CENTRALISÉ des achats boutique (passes, accessoires, fonds
+      -- d'écran…). Une ligne par achat, consultable dans l'admin (« Achats
+      -- boutique ») — notamment pour suivre qui achète des pass.
+      CREATE TABLE IF NOT EXISTS shop_purchases (
+        id          SERIAL PRIMARY KEY,
+        username    TEXT NOT NULL,
+        pack_id     INTEGER,
+        pack_name   TEXT,
+        category    TEXT,
+        price       INTEGER,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_shop_purchases_created ON shop_purchases(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_shop_purchases_cat ON shop_purchases(category, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_shop_purchases_user ON shop_purchases(LOWER(username));
+
       -- Custom wallpapers ("fonds d'écran") uploaded from the admin panel. The
       -- image BYTES live in the DB (not on disk) so a bought wallpaper keeps
       -- loading even after an ephemeral-filesystem redeploy. Served on demand by
@@ -1346,6 +1362,52 @@ async function upsertShopPack(pack) {
 
 async function deleteShopPack(id) {
   await pool.query('DELETE FROM shop_packs WHERE id = $1', [id]);
+}
+
+// ── Historique des achats boutique ──
+async function insertShopPurchase(p) {
+  await pool.query(
+    `INSERT INTO shop_purchases (username, pack_id, pack_name, category, price)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [p.username, p.packId ?? null, p.packName || '', p.category || '', Number(p.price) || 0]
+  );
+}
+// Liste paginée, filtrable par catégorie (ex. 'Pass') et par joueur.
+async function listShopPurchases({ category = null, username = null, limit = 100, offset = 0 } = {}) {
+  const conds = [];
+  const params = [];
+  if (category) { params.push(category); conds.push(`category = $${params.length}`); }
+  if (username) { params.push(username.toLowerCase()); conds.push(`LOWER(username) = $${params.length}`); }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  params.push(Math.min(1000, Math.max(1, Number(limit) || 100)));
+  const limIdx = params.length;
+  params.push(Math.max(0, Number(offset) || 0));
+  const offIdx = params.length;
+  const { rows } = await pool.query(
+    `SELECT id, username, pack_id, pack_name, category, price, created_at
+       FROM shop_purchases ${where}
+      ORDER BY created_at DESC, id DESC
+      LIMIT $${limIdx} OFFSET $${offIdx}`,
+    params
+  );
+  return rows;
+}
+// Synthèse : nombre d'achats + total kikooz par produit (filtrable par catégorie).
+async function shopPurchaseSummary(category = null) {
+  const params = [];
+  let where = '';
+  if (category) { params.push(category); where = 'WHERE category = $1'; }
+  const { rows } = await pool.query(
+    `SELECT pack_name, category,
+            COUNT(*)::int AS purchases,
+            COUNT(DISTINCT LOWER(username))::int AS buyers,
+            COALESCE(SUM(price), 0)::int AS total_kikooz
+       FROM shop_purchases ${where}
+      GROUP BY pack_name, category
+      ORDER BY purchases DESC`,
+    params
+  );
+  return rows;
 }
 
 // ── Custom wallpapers (fonds d'écran uploadés depuis l'admin) ──
@@ -2477,6 +2539,9 @@ module.exports = {
   loadShopPacks,
   upsertShopPack,
   deleteShopPack,
+  insertShopPurchase,
+  listShopPurchases,
+  shopPurchaseSummary,
   loadWallpapers,
   getWallpaperImage,
   upsertWallpaper,

@@ -366,6 +366,7 @@
     </div></div>
     <div class="tab-group"><span class="lbl">Animation &amp; contenu</span><div class="grp">
       <button class="tab" data-tab="shop" onclick="switchTab('shop')">Boutique</button>
+      <button class="tab" data-tab="purchases" onclick="switchTab('purchases')">Achats boutique</button>
       <button class="tab" data-tab="wallpapers" onclick="switchTab('wallpapers')">Fonds d'écran</button>
       <button class="tab" data-tab="custompictos" onclick="switchTab('custompictos')">Pictos inédits</button>
       <button class="tab" data-tab="kiloute" onclick="switchTab('kiloute')">MikeHorny</button>
@@ -462,6 +463,32 @@
   <table>
     <thead><tr><th>ID</th><th>Nom</th><th>Catégorie</th><th>Prix</th><th>Suffix9</th><th>Description</th><th>Actions</th></tr></thead>
     <tbody id="shop-body"></tbody>
+  </table>
+</div>
+
+<div class="content" id="tab-purchases" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadPurchases()">Rafraîchir</button>
+    <label style="font-size:12px;display:flex;align-items:center;gap:4px">Filtre&nbsp;:
+      <select id="purchases-filter" onchange="loadPurchases()">
+        <option value="Pass">Pass uniquement</option>
+        <option value="">Tous les achats</option>
+        <option value="Accessoires">Accessoires</option>
+        <option value="Fonds d'écran">Fonds d'écran</option>
+      </select>
+    </label>
+    <input id="purchases-user" placeholder="Filtrer par pseudo…" style="padding:4px" onkeydown="if(event.key==='Enter')loadPurchases()">
+    <span id="purchases-count" style="color:#888;font-size:12px"></span>
+  </div>
+  <h3 style="margin:8px 0 4px">Synthèse</h3>
+  <table style="max-width:640px">
+    <thead><tr><th>Produit</th><th>Catégorie</th><th>Achats</th><th>Acheteurs</th><th>Total kikooz</th></tr></thead>
+    <tbody id="purchases-summary"></tbody>
+  </table>
+  <h3 style="margin:18px 0 4px">Détail (récent → ancien)</h3>
+  <table>
+    <thead><tr><th>Date</th><th>Joueur</th><th>Produit</th><th>Catégorie</th><th>Prix</th></tr></thead>
+    <tbody id="purchases-body"></tbody>
   </table>
 </div>
 
@@ -1167,12 +1194,13 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','referrals','tournoi','shop','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope'].forEach(t => {
+  ['users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
   if (name === 'scores' && !$('#ranking-select').dataset.loaded) loadScores();
   if (name === 'shop' && !$('#shop-body').dataset.loaded) loadShop();
+  if (name === 'purchases') loadPurchases();
   if (name === 'wallpapers') loadWallpapers();
   if (name === 'custompictos') loadCustomPictos();
   if (name === 'challenge') loadChallengeStatus();
@@ -1857,6 +1885,42 @@ async function deleteWallpaper(id) {
 let cpSelectedStarter = null; // { file, label } quand une image d'époque est choisie
 let cpStartersLoaded = false;
 let customPictosList = []; // les onclick passent par l'index (libellés avec apostrophes)
+
+async function loadPurchases() {
+  const cat = $('#purchases-filter').value;
+  const user = ($('#purchases-user').value || '').trim();
+  const qs = new URLSearchParams();
+  if (cat) qs.set('category', cat);
+  if (user) qs.set('user', user);
+  qs.set('limit', '300');
+  try {
+    const r = await fetch('/api/admin/shop-purchases?' + qs.toString(), { headers: hdr() });
+    const d = await r.json();
+    const summary = d.summary || [];
+    const purchases = d.purchases || [];
+    $('#purchases-summary').innerHTML = summary.length
+      ? summary.map(s => `<tr>
+          <td>${esc(s.pack_name || '—')}</td>
+          <td><span class="badge">${esc(s.category || '')}</span></td>
+          <td>${s.purchases}</td>
+          <td>${s.buyers}</td>
+          <td>${s.total_kikooz} 🪙</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" class="empty">Aucun achat</td></tr>';
+    $('#purchases-count').textContent = purchases.length + ' achat' + (purchases.length > 1 ? 's' : '') + ' affiché' + (purchases.length > 1 ? 's' : '');
+    $('#purchases-body').innerHTML = purchases.length
+      ? purchases.map(p => `<tr>
+          <td style="white-space:nowrap">${fmtDateTime(p.created_at)}</td>
+          <td><a href="#" onclick="viewUser('${esc(p.username)}');return false" class="uname">${esc(p.username)}</a></td>
+          <td>${esc(p.pack_name || '')}</td>
+          <td><span class="badge">${esc(p.category || '')}</span></td>
+          <td>${p.price} 🪙</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" class="empty">Aucun achat pour ce filtre</td></tr>';
+  } catch (e) {
+    $('#purchases-body').innerHTML = '<tr><td colspan="5" class="empty">Erreur : ' + esc(e.message) + '</td></tr>';
+  }
+}
 
 async function loadCustomPictos() {
   try {

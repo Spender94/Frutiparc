@@ -7305,6 +7305,22 @@ async function resolveUsernameList(input) {
   return { rows, notFound };
 }
 
+// Historique centralisé des achats boutique (admin). ?category=Pass pour ne
+// voir que les pass ; ?user=<pseudo> pour un joueur ; ?limit=N.
+app.get('/api/admin/shop-purchases', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, purchases: [], summary: [] });
+  try {
+    const category = req.query.category ? String(req.query.category) : null;
+    const username = req.query.user ? String(req.query.user) : null;
+    const limit = Number(req.query.limit) || 200;
+    const [purchases, summary] = await Promise.all([
+      db.listShopPurchases({ category, username, limit }),
+      db.shopPurchaseSummary(category),
+    ]);
+    res.json({ ok: true, purchases, summary });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 app.get('/api/admin/custom-pictos', adminAuth, async (req, res) => {
   const names = Object.keys(CUSTOM_PICTOS);
   let owners = {};
@@ -11197,6 +11213,13 @@ function purchaseShopPack(user, username, packIdRaw) {
 
   user.kikooz -= pack.price;
   if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser'));
+
+  // Historique centralisé (admin « Achats boutique ») — enregistré ici, après le
+  // débit, pour couvrir TOUS les types d'achat (pass, accessoires, fonds d'écran).
+  if (process.env.DATABASE_URL) {
+    db.insertShopPurchase({ username, packId: pack.id, packName: pack.name, category: pack.category, price: pack.price })
+      .catch(dbErr('insertShopPurchase'));
+  }
 
   // Pass quotidien : pas un cosmétique — on crédite un pass PERMANENT (+1
   // partie challenge/jour à vie, cumulable) et on s'arrête là. Jamais marqué
