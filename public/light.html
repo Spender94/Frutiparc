@@ -2259,13 +2259,15 @@
       // A feutre colour (o.pen) tints the WHOLE line — "[hh:mm:ss] pseudo :
       // message" — not just the body. The pseudo stays bold (.from in CSS).
       var t = cleanTime(o.time);
-      if (t) { var ts = el("span", "time"); ts.textContent = t; if (o.pen) ts.style.color = o.pen; row.appendChild(ts); }
+      // Feutre multicolore (o.multicolor) : comme un feutre normal, TOUTE la ligne
+      // (horodatage + pseudo + corps) est teintée — ici en dégradé arc-en-ciel.
+      if (t) { var ts = el("span", "time" + (o.multicolor ? " mc-text" : "")); ts.textContent = t; if (o.pen && !o.multicolor) ts.style.color = o.pen; row.appendChild(ts); }
       // Admin/system ANNOUNCEMENTS (totoche, kikooz gift, mode bleu, kick…)
       // carry no author prefix — the desktop renders them as a lone italic line.
       if (!o.noFrom) {
-        var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
+        var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : "") + (o.multicolor ? " mc-text" : ""));
         fr.textContent = (o.from || "?") + " : ";
-        if (o.pen) fr.style.color = o.pen;
+        if (o.pen && !o.multicolor) fr.style.color = o.pen;
         row.appendChild(fr);
       }
       var bd = el("span", "body" + (o.emote ? " emote" : "") + (o.multicolor ? " mc-text" : ""));

@@ -17598,9 +17598,16 @@ case 'send': {
     // « pseudo : » conservé, texte coloré). Le texte est échappé par rainbowHtml.
     const senderU = users[client.username];
     if (type === 'm' && userOwnsFeutre(senderU, 'mc') && (pen === 'mc' || (senderU && senderU.penMcActive))) {
-      const rainbow = `<![CDATA[${rainbowHtml(unescapeXml(text))}]]>`;
+      // Comme un feutre normal, la couleur touche TOUTE la ligne : le corps passe
+      // en arc-en-ciel, et l'horodatage + le pseudo sont teintés via un <font>
+      // OUVERT dans l'attribut h et refermé en tête du corps. Le SWF concatène
+      // $h + le gabarit chat.msg (« <b><a>pseudo</a> : </b> ») + $m en un seul
+      // htmlText, donc ce <font> englobe l'horodatage et le pseudo (dont le lien
+      // cliquable est conservé). Le client Light applique son propre dégradé.
+      const hOpen = escapeXml(`<font color="${MC_RAINBOW[0]}">`) + timeAttrs.h;
+      const rainbow = `<![CDATA[</font>${rainbowHtml(unescapeXml(text))}]]>`;
       broadcastToChannel(g,
-        `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}" st="mc">${rainbow}</${CMD.send}>`
+        `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="" g="${escapeXml(g)}" h="${hOpen}" d="${timeAttrs.d}" st="mc">${rainbow}</${CMD.send}>`
       );
       trackXpAction(client.username, 'chatMsg');
       kilouteCheckAnswer(g, client.username, text);
