@@ -2807,9 +2807,20 @@ function awardDailyLoginKikooz(username) {
 // ne re-crédite pas de FD gratuits et ne perd jamais les pass.
 const FD_FREE_PER_DAY = 2;   // parties challenge gratuites / jour / jeu
 const FD_PASS_PRICE   = 80;  // prix boutique d'un pass quotidien (fiche d'origine)
-// Jeux dont le mode challenge est soumis à la limite. On démarre avec bkiwi ;
-// extension prévue : swapou, grapiz, bandas, mb2, kaluga.
-const FD_LIMITED_GAMES = new Set(['bkiwi']);
+// Jeux dont le mode challenge est soumis à la limite.
+// Extension prévue : grapiz, bandas, mb2, kaluga.
+const FD_LIMITED_GAMES = new Set(['bkiwi', 'snake3', 'swapou2']);
+// Jeux dont le bucket <jeu>_classic EST le classement du mode Challenge (c'est
+// lui que l'onglet « Challenge du jour » lit et que les clients écrivent en
+// m=0) : c'est donc CE bucket qui est rationné pour eux. BKiwi n'y figure pas
+// (son challenge = le miroir bkiwi_track{jour}_challenge, déjà gaté à part).
+const FD_CLASSIC_GATED = new Set(['snake3', 'swapou2']);
+// Renvoie le jeu si ce classement est un bucket challenge rationné, sinon null.
+function fdGatedBucketGame(rankingId) {
+  const g = fdGameFromRanking(rankingId);
+  if (!fdGameIsLimited(g)) return null;
+  return (FD_CLASSIC_GATED.has(g) && rankingId === g + '_classic') ? g : null;
+}
 
 function fdGameIsLimited(game) {
   return FD_LIMITED_GAMES.has(String(game || '').toLowerCase());
@@ -2879,7 +2890,7 @@ function fdConsume(username, user, game) {
   fdPersist(username, user);
   return true;
 }
-const FD_GAME_LABELS = { bkiwi: 'Burning Kiwi', mb2: 'MotionBall', kaluga: 'Kaluga', swapou: 'Swapou', grapiz: 'Grapiz', bandas: 'Frutibandas' };
+const FD_GAME_LABELS = { bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', swapou2: 'Swapou', mb2: 'MotionBall', kaluga: 'Kaluga', grapiz: 'Grapiz', bandas: 'Frutibandas' };
 function fdGameLabel(game) { return FD_GAME_LABELS[String(game || '').toLowerCase()] || game; }
 // Jeu extrait d'un id de classement (« bkiwi_track3_challenge » → « bkiwi »).
 function fdGameFromRanking(rankingId) { return String(rankingId || '').split('_')[0].toLowerCase(); }
@@ -2936,7 +2947,9 @@ function fdAuthorizeChallengeSave(sid, username, game, routed) {
   const hint = routed && routed.hint;
   const daily = routed && routed.daily;
   if (Number.isFinite(hint) && Number.isFinite(daily) && hint !== daily) return 'skip';
-  return fdGateChallengeScore(username, users[username], game) ? 'ok' : 'blocked';
+  if (fdGateChallengeScore(username, users[username], game)) return 'ok';
+  fdFlagRefusal(sid, game); // le popup de jeu affichera l'overlay d'info
+  return 'blocked';
 }
 // Drapeau « refus à afficher » lu (et effacé) par le poll du popup de jeu :
 // permet à game-popup.html d'afficher l'overlay « Plus de FD — racheter » au
@@ -3794,6 +3807,17 @@ const SHOP_PACKS_DEFAULT = [
   // (+1 partie challenge par jour, à vie — 1 pass → 3/jour, 2 → 4/jour…).
   // On ne câble que les jeux dont la limite FD est active (FD_LIMITED_GAMES).
   {
+    id: 21,
+    name: 'Pass quotidien de Frutisnake',
+    category: 'Pass',
+    price: FD_PASS_PRICE,
+    picto: 'pass,3',
+    description: 'Jouez un serpent de manière illimitée pour manger le plus de fruits possible.',
+    comment: "Donne droit à une partie quotidienne supplémentaire comptant pour le classement du jour. Permanent et cumulable !",
+    fdPassGame: 'snake3',
+    suffix9: '000000000',
+  },
+  {
     id: 22,
     name: 'Pass quotidien de Burning Kiwi',
     category: 'Pass',
@@ -3802,6 +3826,17 @@ const SHOP_PACKS_DEFAULT = [
     description: 'Devenez le roi du circuit en activant des turbo survitaminés.',
     comment: "Donne droit à une partie quotidienne supplémentaire pour réaliser le meilleur temps sur la course du jour. Permanent et cumulable !",
     fdPassGame: 'bkiwi',
+    suffix9: '000000000',
+  },
+  {
+    id: 23,
+    name: 'Pass quotidien de Swapou 2',
+    category: 'Pass',
+    price: FD_PASS_PRICE,
+    picto: 'pass,5',
+    description: 'Jouez Dimitri ou Natacha pour remplir votre panier de fruits.',
+    comment: "Donne droit à une partie quotidienne supplémentaire en mode Challenge. Permanent et cumulable !",
+    fdPassGame: 'swapou2',
     suffix9: '000000000',
   },
   ...SHOP_GAME_PACKS_DEFAULT,
@@ -4816,12 +4851,26 @@ async function handleSaveScore(req, res) {
     }
   }
 
-  const result = persistScore(username, rankingId, scoreVal, scoreData);
+  // Portillon FD (bucket direct) : pour snake3/swapou2, le classement visé
+  // (<jeu>_classic) EST le bucket du mode Challenge → il n'est classé que si
+  // le joueur a un FD (marqueur du claim pré-partie, sinon consommation ici).
   let fdBlocked = false;
+  let result = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
+  const directGated = fdGatedBucketGame(rankingId);
+  if (directGated) {
+    if (fdAuthorizeChallengeSave(sid, username, directGated, null) === 'ok') {
+      result = persistScore(username, rankingId, scoreVal, scoreData);
+    } else {
+      fdBlocked = true;
+      console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} NON classé (plus de FD)`);
+    }
+  } else {
+    result = persistScore(username, rankingId, scoreVal, scoreData);
+  }
   if (extraRankingId) {
-    // Portillon FD : marqueur du claim pré-course (SWF patché), sinon
-    // heuristique circuit + consommation au save. 'skip' = entraînement sur un
-    // autre circuit → pas de miroir challenge (et rien consommé).
+    // Portillon FD (miroir bkiwi/mb2) : marqueur du claim pré-course (SWF
+    // patché), sinon heuristique circuit + consommation au save. 'skip' =
+    // entraînement sur un autre circuit → pas de miroir challenge.
     const verdict = fdAuthorizeChallengeSave(sid, username, fdGameFromRanking(extraRankingId), routedInfo);
     if (verdict === 'ok') {
       extraResult = persistScore(username, extraRankingId, scoreVal, scoreData);
@@ -8470,8 +8519,18 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
   // — including the daily challenge anchored to today's track.
   const routed = routeRankingForSave(rankingId, username);
   rankingId = routed.rankingId;
-  const result = persistScore(username, rankingId, scoreVal, '');
-  if (routed.extraRankingId) persistScore(username, routed.extraRankingId, scoreVal, '');
+  // Portillon FD, identique aux deux autres chemins de save (bucket direct
+  // snake3/swapou2 + miroir bkiwi/mb2).
+  let result = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
+  const directGated = fdGatedBucketGame(rankingId);
+  if (!directGated || fdAuthorizeChallengeSave(effectiveSid, username, directGated, null) === 'ok') {
+    result = persistScore(username, rankingId, scoreVal, '');
+  } else {
+    console.log(`[SWF-SCORE] ${username} ${rankingId} NON classé (plus de FD)`);
+  }
+  if (routed.extraRankingId && fdAuthorizeChallengeSave(effectiveSid, username, fdGameFromRanking(routed.extraRankingId), routed) === 'ok') {
+    persistScore(username, routed.extraRankingId, scoreVal, '');
+  }
   console.log(`[SWF-SCORE] ${username} ${gameName} ${scoreVal} -> ${rankingId}${routed.extraRankingId ? ' +' + routed.extraRankingId : ''} mode=${swfMode} updated=${result.updated}`);
   res.type('text/plain').send('ok=1');
 });
@@ -16314,8 +16373,14 @@ async function handleCBeeMessage(socket, rawXml) {
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
         let challengeRes = null;
         if (username && rankingId) {
-          res = persistScore(username, rankingId, scoreVal, scoreData);
-          console.log(`[FSCORE] ${username} ${rankingId}: ${res.oldScore} -> ${res.newScore} (updated=${res.updated}, pos ${res.oldPos}->${res.newPos})`);
+          // Portillon FD (bucket direct snake3/swapou2 — cf. fdGatedBucketGame).
+          const directGated = fdGatedBucketGame(rankingId);
+          if (!directGated || fdAuthorizeChallengeSave(client.sid, username, directGated, null) === 'ok') {
+            res = persistScore(username, rankingId, scoreVal, scoreData);
+            console.log(`[FSCORE] ${username} ${rankingId}: ${res.oldScore} -> ${res.newScore} (updated=${res.updated}, pos ${res.oldPos}->${res.newPos})`);
+          } else {
+            console.log(`[FSCORE] ${username} ${rankingId}: NON classé (plus de FD)`);
+          }
           // Portillon FD : marqueur du claim pré-course, sinon heuristique
           // circuit + consommation au save (cf. fdAuthorizeChallengeSave).
           if (extraRankingId && fdAuthorizeChallengeSave(client.sid, username, fdGameFromRanking(extraRankingId), routedInfo) === 'ok') {

@@ -319,10 +319,14 @@
   // fd.refused du poll ci-dessus). PAS d'achat ici : les parties
   // supplémentaires s'achètent dans la BOUTIQUE officielle (rubrique Pass,
   // « Pass quotidien de … ») — chaque pass est permanent et cumulable.
+  var FD_GAME_LABELS = { bkiwi: "Burning Kiwi", snake3: "Frutisnake", swapou2: "Swapou 2" };
+  var FD_PASS_NAMES = { bkiwi: "Pass quotidien de Burning Kiwi", snake3: "Pass quotidien de Frutisnake", swapou2: "Pass quotidien de Swapou 2" };
   function showFdOverlay(fd, sidArg) {
     if (document.getElementById("fd-overlay")) return;
     var price = Number(fd.passPrice) || 80;
     var allowance = Number(fd.allowance) || 2;
+    var passName = FD_PASS_NAMES[fd.game] || "Pass quotidien";
+    var gameLabel = FD_GAME_LABELS[fd.game] || fd.game;
     var wrap = document.createElement("div");
     wrap.id = "fd-overlay";
     wrap.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(20,30,8,.72)";
@@ -330,8 +334,10 @@
       '<div style="background:linear-gradient(135deg,#F7FBE8,#E4F3C5);border:2px solid #7FA83E;border-radius:16px;max-width:400px;margin:16px;padding:22px 24px;font-family:Verdana,Arial,sans-serif;color:#2C4A0F;box-shadow:0 12px 40px rgba(0,0,0,.45);text-align:center">' +
       '<div style="font-size:34px;line-height:1">💾</div>' +
       '<h2 style="font-size:17px;margin:10px 0 6px">Plus de FD pour aujourd\u2019hui !</h2>' +
-      '<p style="font-size:12.5px;line-height:1.5;margin:0 0 6px">Tu as couru tes <b>' + allowance + '</b> parties de challenge du jour. Reviens demain pour retenter ta chance !</p>' +
-      '<p style="font-size:12.5px;line-height:1.5;margin:0 0 14px">\ud83d\udca1 Astuce : le <b>Pass quotidien de Burning Kiwi</b> (Boutique \u2192 rubrique <b>Pass</b>, ' + price + ' kikooz) ajoute une partie par jour, <b>pour toujours</b> \u2014 et c\u2019est cumulable !</p>' +
+      ((fd.game === 'snake3')
+        ? '<p style="font-size:12.5px;line-height:1.5;margin:0 0 6px">Ton score n\u2019a pas \u00e9t\u00e9 class\u00e9 : tu as d\u00e9j\u00e0 jou\u00e9 tes <b>' + allowance + '</b> parties class\u00e9es du jour \u00e0 <b>' + gameLabel + '</b>. Tu peux continuer \u00e0 jouer en libre \u2014 et retenter au classement demain !</p>'
+        : '<p style="font-size:12.5px;line-height:1.5;margin:0 0 6px">Tu as jou\u00e9 tes <b>' + allowance + '</b> parties de challenge du jour \u00e0 <b>' + gameLabel + '</b>. Reviens demain pour retenter ta chance !</p>') +
+      '<p style="font-size:12.5px;line-height:1.5;margin:0 0 14px">\ud83d\udca1 Astuce : le <b>' + passName + '</b> (Boutique \u2192 rubrique <b>Pass</b>, ' + price + ' kikooz) ajoute une partie par jour, <b>pour toujours</b> \u2014 et c\u2019est cumulable !</p>' +
       '<div><button id="fd-later" style="font-family:inherit;font-size:13px;font-weight:bold;padding:9px 22px;border-radius:10px;border:2px solid #4F7A1A;background:linear-gradient(180deg,#A8D45E,#7FB33A);color:#1F3608;cursor:pointer">Compris !</button></div>' +
       '</div>';
     document.body.appendChild(wrap);

@@ -951,7 +951,25 @@
       if (this.mode && this.mode.draw) this.mode.draw(ctx);
     },
     startChallenge: function () {
-      Manager.started();
+      // FD : le mode Challenge est rationné (2 parties/jour + pass boutique).
+      // On réserve la partie auprès du serveur AVANT de démarrer — même modèle
+      // que l'AS2 d'origine (startGame attendait le serveur). Refus → on reste
+      // au menu (déverrouillé) et un panneau explique. Panne réseau → on joue
+      // (fail-open : le portillon au save protège le classement).
+      var sid = (Manager.client && Manager.client.sid) || '';
+      if (!sid) { Manager.started(); return; }
+      if (Manager.mode && Manager.mode.netLock) Manager.mode.netLock();
+      var body = new URLSearchParams();
+      body.set('sid', sid);
+      body.set('game', 'swapou2');
+      fetch('/do/fdclaim', { method: 'POST', body: body })
+        .then(function (r) { return r.text(); })
+        .then(function (t) {
+          if (/(^|&)ok=1(&|$)/.test(t)) { Manager.started(); return; }
+          if (Manager.mode && Manager.mode.netUnlock) Manager.mode.netUnlock();
+          SW.showFdRefus(t);
+        })
+        .catch(function () { Manager.started(); });
     },
     startDuel: function () {
       Manager.mode.destroy();
@@ -1120,4 +1138,28 @@
     SW.swipe.active = false;    // après le dispatch : laisse pickPair lire la direction
   };
   SW.setEsc = function (down) { SW.escDown = down; };
+
+  // ── Panneau « Plus de FD » (mode Challenge rationné) ──────────────────────
+  // Affiché par Manager.startChallenge quand /do/fdclaim refuse la partie.
+  // Aucun achat ici : les pass s'achètent dans la Boutique officielle
+  // (rubrique Pass) — permanents et cumulables.
+  SW.showFdRefus = function (lvText) {
+    if (document.getElementById('fd-overlay')) return;
+    var price = 80;
+    var m = /(?:^|&)price=(\d+)/.exec(String(lvText || ''));
+    if (m) price = Number(m[1]) || 80;
+    var wrap = document.createElement('div');
+    wrap.id = 'fd-overlay';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(20,30,8,.72)';
+    wrap.innerHTML =
+      '<div style="background:linear-gradient(135deg,#F7FBE8,#E4F3C5);border:2px solid #7FA83E;border-radius:16px;max-width:400px;margin:16px;padding:22px 24px;font-family:Verdana,Arial,sans-serif;color:#2C4A0F;box-shadow:0 12px 40px rgba(0,0,0,.45);text-align:center">' +
+      '<div style="font-size:34px;line-height:1">💾</div>' +
+      '<h2 style="font-size:17px;margin:10px 0 6px">Plus de FD pour aujourd’hui !</h2>' +
+      '<p style="font-size:12.5px;line-height:1.5;margin:0 0 6px">Tu as joué tes parties de Challenge du jour à <b>Swapou 2</b>. Reviens demain — ou joue en Classique, Duel et Pot au feu à volonté !</p>' +
+      '<p style="font-size:12.5px;line-height:1.5;margin:0 0 14px">💡 Astuce : le <b>Pass quotidien de Swapou 2</b> (Boutique → rubrique <b>Pass</b>, ' + price + ' kikooz) ajoute une partie par jour, <b>pour toujours</b> — et c’est cumulable !</p>' +
+      '<div><button id="fd-later" style="font-family:inherit;font-size:13px;font-weight:bold;padding:9px 22px;border-radius:10px;border:2px solid #4F7A1A;background:linear-gradient(180deg,#A8D45E,#7FB33A);color:#1F3608;cursor:pointer">Compris !</button></div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    document.getElementById('fd-later').onclick = function () { wrap.remove(); };
+  };
 })();
