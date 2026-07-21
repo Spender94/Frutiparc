@@ -2828,7 +2828,7 @@ async function loadDetail() {
       <tr><td>XP</td><td>${user.xp}</td></tr>
       <tr><td>Kikooz</td><td>${user.kikooz}</td></tr>
       <tr><td>Série de connexion</td><td>${user.daily_streak ? '🔥 ' + user.daily_streak + ' jour' + (user.daily_streak > 1 ? 's' : '') : '—'}${user.daily_kikooz_day ? ' <span style="color:#888;font-size:11px">(dernière récompense le ' + esc(user.daily_kikooz_day) + ')</span>' : ''}</td></tr>
-      <tr><td>FD challenge</td><td>${(function(){ try { var f = JSON.parse(user.fd_state||'null'); if(!f) return '—'; var games = {}; Object.keys(f.g||{}).forEach(function(g){ games[g]=true; }); Object.keys(f.p||{}).forEach(function(g){ games[g]=true; }); var keys = Object.keys(games); if(!keys.length) return '—'; var parts = keys.map(function(g){ var e=(f.g||{})[g]||{}; var passes=Number((f.p||{})[g])||0; var quota=2+passes+(Number(e.b)||0); return esc(g)+' : '+(e.u||0)+'/'+quota+' aujourd’hui'+(passes?' · '+passes+' pass permanent'+(passes>1?'s':''):''); }); return parts.join(' · ')+' <span style="color:#888;font-size:11px">('+esc(f.d||'')+')</span>'; } catch(e){ return '—'; } })()}</td></tr>
+      <tr><td>FD challenge</td><td>${(function(){ try { var f = JSON.parse(user.fd_state||'null'); if(!f) return '—'; var games = {}; Object.keys(f.g||{}).forEach(function(g){ games[g]=true; }); Object.keys(f.p||{}).forEach(function(g){ games[g]=true; }); var keys = Object.keys(games); if(!keys.length) return '—'; var parts = keys.map(function(g){ var e=(f.g||{})[g]||{}; var passes=Number((f.p||{})[g])||0; var quota=2+passes+(Number(e.b)||0); return esc(g)+' : '+(e.u||0)+'/'+quota+' aujourd’hui'+(passes?' · '+passes+' pass permanent'+(passes>1?'s':''):''); }); return parts.join(' · ')+' <span style="color:#888;font-size:11px">('+esc(f.d||'')+')</span>'; } catch(e){ return '—'; } })()} <button class="btn btn-sm" style="font-weight:normal;margin-left:6px" onclick="resetFdDay('${esc(user.username||u)}')" title="Remet à zéro les parties challenge consommées AUJOURD'HUI (tous les jeux). Les Pass permanents sont conservés. À utiliser pour dédommager un joueur.">⟲ Reset quotas du jour</button></td></tr>
       <tr><td>Bouille</td><td><code>${esc(user.fbouille||'')}</code></td></tr>
       <tr><td>Éditeur bouille</td><td>
         <span class="badge ${user.needs_bouille ? 'badge-mod' : 'badge-no-mod'}">${user.needs_bouille ? 'Ouvert' : 'Verrouillé'}</span>
@@ -3036,6 +3036,17 @@ async function resetGameSlot(game) {
   if (!confirm(`Réinitialiser le slot ${game} de ${currentDetailUser} ?\n\nLes données de carte (progression, items en jeu) seront effacées et le joueur repartira d'une carte fraîche au prochain chargement du jeu. Les pictos déjà débloqués ne sont PAS affectés.`)) return;
   const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/reset-game-slot/${encodeURIComponent(game)}`, { method: 'POST', headers: hdr() });
   if (r.ok) toast(`Slot ${game} réinitialisé`);
+  else toast(`Erreur: ${r.status}`);
+}
+
+// Remet à zéro les quotas FD du JOUR (parties challenge consommées aujourd'hui,
+// tous jeux) d'un joueur. Les Pass permanents sont conservés. Sert à dédommager
+// un joueur dont le quota a été mangé à tort (ex. sur-conso Time Trial/Duel).
+async function resetFdDay(username) {
+  if (!username) return;
+  if (!confirm(`Remettre à zéro les quotas FD du JOUR de ${username} ?\n\nLes parties challenge consommées aujourd'hui (tous les jeux) repartent à zéro. Les Pass permanents sont conservés.`)) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}/fd-reset`, { method: 'POST', headers: hdr() });
+  if (r.ok) { toast('Quotas FD du jour réinitialisés'); loadDetail(); }
   else toast(`Erreur: ${r.status}`);
 }
 

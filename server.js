@@ -5820,6 +5820,36 @@ app.post('/api/admin/users/:username/reset-game-slot/:game', adminAuth, async (r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Remet à zéro les quotas FD du JOUR (parties challenge consommées aujourd'hui)
+// d'un joueur — pour dédommager après une sur-consommation. Les Pass permanents
+// (fd_state.p) sont TOUJOURS préservés. `game` facultatif (query/body) : un seul
+// jeu, sinon tous les jeux du jour.
+app.post('/api/admin/users/:username/fd-reset', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  const game = String((req.body && req.body.game) || req.query.game || '').trim().toLowerCase();
+  try {
+    let user = users[u];
+    if (!user && process.env.DATABASE_URL) {
+      const row = await db.findUserByUsername(u);
+      if (!row) return res.status(404).json({ error: 'not found' });
+      await hydrateUserFromDb(u, row); // assignation atomique (préserve tout)
+      user = users[u];
+    }
+    if (!user) return res.status(404).json({ error: 'not found' });
+    const st = fdEnsureToday(user); // garantit la structure du jour ; préserve p
+    if (game) {
+      st.g[game] = { u: 0 };
+    } else {
+      st.g = {}; // tous les jeux : quotas du jour remis à zéro
+    }
+    fdPersist(u, user);
+    console.log(`[ADMIN] Reset quotas FD du jour pour ${u}${game ? ' (' + game + ')' : ' (tous jeux)'}`);
+    const fd = {};
+    for (const g of FD_LIMITED_GAMES) fd[g] = fdSnapshot(user, g);
+    res.json({ ok: true, username: u, game: game || null, fd });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ENDPOINT: /api/admin/users/:username/slots — Export de la progression de jeu
 // (FrutiSlots) d'un joueur, en JSON lisible : { game: { slotId: <objet> } }.
 // Source = DB si disponible (vérité de persistance), sinon mémoire. Les valeurs
