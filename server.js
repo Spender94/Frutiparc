@@ -2991,15 +2991,6 @@ function fdApplyToSave(sid, username, rankingId, extraRankingId, routed) {
   // Jeux non limités OU rationnés au démarrage du match (grapiz/bandas) : le
   // save ne gate rien (le portillon est ailleurs). Cf. FD_PREMATCH_GAMES.
   if (!fdGameIsLimited(game) || FD_PREMATCH_GAMES.has(game)) return { direct: true, mirror: true, blocked: false };
-  // BKiwi : le quota FD ne s'applique QU'au mode Challenge (course classée du
-  // jour). Une partie HORS challenge — Time Trial ou Duel — est libre et
-  // illimitée : on classe le record all-time (cuve classic = « direct ») mais on
-  // NE consomme aucun FD et on n'écrit PAS la cuve challenge du jour (« mirror »).
-  // Le signal challengeMode est posé au lancement de la partie (setChallengeMode /
-  // startGame m=1), comme pour tout le routage de mode du jeu.
-  if (game === 'bkiwi' && !(sid && sessions[sid] && sessions[sid].challengeMode)) {
-    return { direct: true, mirror: false, blocked: false };
-  }
   const verdict = fdAuthorizeChallengeSave(sid, username, game, routed);
   return {
     direct: fdGatedBucketGame(rankingId) ? (verdict === 'ok') : true,
@@ -10721,17 +10712,11 @@ app.post('/do/fdclaim', async (req, res) => {
   const user = users[username];
   const game = String(params.game || '').toLowerCase();
   if (!fdGameIsLimited(game)) return res.send('ok=1&fd=free');
-  // BKiwi : le quota FD ne concerne QUE le mode Challenge (course classée du
-  // jour). Time Trial, Duel, ou une course sur un circuit ≠ celui du jour →
-  // entraînement libre, gratuit, jamais bloqué. Le mode Challenge est signalé
-  // par le drapeau de session challengeMode (posé au lancement de la partie).
-  if (game === 'bkiwi') {
-    const sess = sessions[sid];
-    const isChallenge = !!(sess && sess.challengeMode);
+  // Course sur un autre circuit que celui du jour → entraînement, gratuit.
+  if (game === 'bkiwi' && params.track !== undefined && params.track !== '') {
+    const track = Number(params.track);
     const daily = getBkiwiDailyTrack();
-    const hasTrack = params.track !== undefined && params.track !== '';
-    const track = hasTrack ? Number(params.track) : NaN;
-    if (!isChallenge || (Number.isFinite(track) && track !== daily)) {
+    if (Number.isFinite(track) && track !== daily) {
       fdSetClaim(sid, game, 'free');
       return res.send('ok=1&fd=free');
     }
