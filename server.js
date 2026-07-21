@@ -3883,13 +3883,20 @@ function grantFeutre(username, user, kind) {
   if (user._dbId) db.updateUser(username, { owned_feutres: JSON.stringify(user.ownedFeutres) }).catch(dbErr('updateUser owned_feutres'));
 }
 // Palette arc-en-ciel du feutre multicolore (6 teintes cycliques).
-const MC_RAINBOW = ['#E8342A', '#E8732A', '#E8C81E', '#2E8C3A', '#2A6FE8', '#7A2AB8'];
+// Palette du feutre multicolore : on REPREND les couleurs des 17 feutres d'origine
+// (_global.penList de frutiparc/global.as), pour rester cohérent avec la gamme du
+// site. Ordre spectral (rouge → violet → rose) en piochant les teintes les plus
+// vives : penList[0] orange sanguin, [5] jaune maïs, [6] vert pomme, [7] bleu ciel,
+// [1] bleu, [16] violet fondant, [4] rose.
+const MC_RAINBOW = ['#FF6600', '#EBB601', '#20D251', '#47B9C9', '#6666CC', '#6E3C8D', '#F986E2'];
 // Enveloppe chaque caractère VISIBLE dans un <font color> cyclique → texte
 // arc-en-ciel dans le htmlText du chat (bureau) — même mécanisme que le cri
-// modérateur rouge. `text` est le texte BRUT (non échappé).
-function rainbowHtml(text) {
+// modérateur rouge. `text` est le texte BRUT (non échappé). `start` = index de
+// départ dans la palette (pour enchaîner plusieurs segments — horodatage, pseudo,
+// corps — en UN dégradé continu). Retourne { html, next } (next = prochain index).
+function rainbowSpan(text, start = 0) {
   let out = '';
-  let i = 0;
+  let i = start;
   for (const ch of String(text || '')) {
     // Espace insécable : le htmlText du chat COLLAPSE les blancs entre balises
     // (entre </font> et <font>), donc un espace normal disparaîtrait. &nbsp; est
@@ -3899,8 +3906,9 @@ function rainbowHtml(text) {
     out += `<font color="${MC_RAINBOW[i % MC_RAINBOW.length]}">${escapeXml(ch)}</font>`;
     i++;
   }
-  return out;
+  return { html: out, next: i };
 }
+function rainbowHtml(text) { return rainbowSpan(text, 0).html; }
 
 // Feutres (rubrique "Feutres") — chat-pen colours, granted by default.
 // picto "feutre,N" (N = index 0..16) is the original boutique format,
@@ -17617,14 +17625,21 @@ case 'send': {
     // « pseudo : » conservé, texte coloré). Le texte est échappé par rainbowHtml.
     const senderU = users[client.username];
     if (type === 'm' && userOwnsFeutre(senderU, 'mc') && (pen === 'mc' || (senderU && senderU.penMcActive))) {
-      // Comme un feutre normal, la couleur touche TOUTE la ligne : le corps passe
-      // en arc-en-ciel, et l'horodatage + le pseudo sont teintés via un <font>
-      // OUVERT dans l'attribut h et refermé en tête du corps. Le SWF concatène
-      // $h + le gabarit chat.msg (« <b><a>pseudo</a> : </b> ») + $m en un seul
-      // htmlText, donc ce <font> englobe l'horodatage et le pseudo (dont le lien
-      // cliquable est conservé). Le client Light applique son propre dégradé.
-      const hOpen = escapeXml(`<font color="${MC_RAINBOW[0]}">`) + timeAttrs.h;
-      const rainbow = `<![CDATA[</font><b>${rainbowHtml(unescapeXml(text))}</b>]]>`;
+      // Comme un feutre normal, la couleur touche TOUTE la ligne — mais en dégradé
+      // CONTINU (rouge → violet) au lieu d'une teinte unique :
+      //   • l'horodatage ($h, hors <b>) → dégradé caractère-par-caractère, NON gras ;
+      //   • le pseudo ($u, dans <b>) → une teinte du dégradé (le lien cliquable
+      //     « asfunction:…,$u » impose un pseudo SANS balises, donc une seule
+      //     couleur ici), et il reste GRAS ;
+      //   • le corps ($m) → dégradé caractère-par-caractère, GRAS.
+      // Le SWF concatène $h + le gabarit chat.msg (« <b><a>pseudo</a> : </b> ») + $m
+      // en UN seul htmlText : le <font> du pseudo est ouvert en fin de h et refermé
+      // en tête de corps. Les index de palette s'enchaînent (ts.next…) pour un seul
+      // dégradé sur toute la ligne. Le client Light applique son propre dégradé CSS.
+      const ts = rainbowSpan(timeAttrs.h, 0);                        // horodatage
+      const pseudoColor = MC_RAINBOW[ts.next % MC_RAINBOW.length];   // teinte du pseudo
+      const hOpen = escapeXml(`${ts.html}<font color="${pseudoColor}">`);
+      const rainbow = `<![CDATA[</font><b>${rainbowSpan(unescapeXml(text), ts.next + 1).html}</b>]]>`;
       broadcastToChannel(g,
         `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="" g="${escapeXml(g)}" h="${hOpen}" d="${timeAttrs.d}" st="mc">${rainbow}</${CMD.send}>`
       );

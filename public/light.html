@@ -369,12 +369,15 @@
     background: #fff; color: #D16767; font-size: 14px; line-height: 26px;
     text-align: center; font-weight: bold;
   }
-  /* Feutre multicolore : pastille et texte des messages en arc-en-ciel. */
+  /* Feutre multicolore : pastille et texte des messages en arc-en-ciel.
+     Couleurs REPRISES des 17 feutres d'origine (penList) : orange sanguin, jaune
+     maïs, vert pomme, bleu ciel, bleu, violet fondant, rose — mêmes teintes que le
+     dégradé du bureau (MC_RAINBOW côté serveur). */
   .pen-swatch.mc {
-    background: linear-gradient(90deg, #E8342A, #E8732A, #E8C81E, #2E8C3A, #2A6FE8, #7A2AB8);
+    background: linear-gradient(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2);
   }
   .mc-text {
-    background: linear-gradient(90deg, #E8342A, #E8732A, #E8C81E, #2E8C3A, #2A6FE8, #7A2AB8);
+    background: linear-gradient(90deg, #FF6600, #EBB601, #20D251, #47B9C9, #6666CC, #6E3C8D, #F986E2);
     -webkit-background-clip: text; background-clip: text;
     -webkit-text-fill-color: transparent; color: transparent;
     font-weight: bold;
@@ -2153,7 +2156,12 @@
         // NOTRE dégradé CSS, en gardant le pseudo de l'auteur (≠ lignes admin).
         if (attr(xml, "st") === "mc") {
           var mcText = htmlToText(stripCdata(body));
-          if (mcText) addMessage({ from: from, time: h, body: mcText, kind: "normal", multicolor: true });
+          // Le bureau colore l'horodatage via des <font> DANS l'attribut h ; le
+          // client Light applique SON propre dégradé CSS (.mc-text) et n'a donc pas
+          // besoin de ce balisage. attr() renvoie la valeur BRUTE (entités encodées),
+          // donc on décode d'abord (xmlUnescape → vraies balises) puis htmlToText les
+          // retire, pour un horodatage propre « [hh:mm:ss] ».
+          if (mcText) addMessage({ from: from, time: htmlToText(xmlUnescape(h)), body: mcText, kind: "normal", multicolor: true });
           break;
         }
         // st="r" → cri modérateur ("!texte"), rendu en rouge gras comme desktop.
