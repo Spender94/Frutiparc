@@ -3854,7 +3854,7 @@ const SHOP_GAME_PACKS_DEFAULT = [
 // htmlText) ET sur mobile (le client Light lit le marqueur st="mc"). Possession
 // suivie dans user.ownedFeutres (persisté, colonne owned_feutres).
 const SPECIAL_FEUTRES = {
-  mc: { name: 'Feutre multicolore', shopId: 30, price: 300, assetKey: 'feutre:mc' },
+  mc: { name: 'Feutre multicolore', shopId: 30, price: 300, assetKey: 'feutremc' },
 };
 const SPECIAL_FEUTRE_BY_SHOPID = Object.fromEntries(
   Object.entries(SPECIAL_FEUTRES).map(([kind, f]) => [f.shopId, kind])
@@ -3883,7 +3883,11 @@ function rainbowHtml(text) {
   let out = '';
   let i = 0;
   for (const ch of String(text || '')) {
-    if (ch === ' ' || ch === '\t') { out += ch; continue; }
+    // Espace insécable : le htmlText du chat COLLAPSE les blancs entre balises
+    // (entre </font> et <font>), donc un espace normal disparaîtrait. &nbsp; est
+    // une entité, préservée. Le client Light la re-décode en espace (htmlToText).
+    if (ch === ' ') { out += '&nbsp;'; continue; }
+    if (ch === '\t') { out += '&nbsp;&nbsp;'; continue; }
     out += `<font color="${MC_RAINBOW[i % MC_RAINBOW.length]}">${escapeXml(ch)}</font>`;
     i++;
   }
@@ -4276,12 +4280,15 @@ function buildShopPackXml(pack, user) {
     // Game packs ("pack,N"), feutres ("feutre,N") and pass ("pass,N") — exact
     // original boutique format: blurb wrapped in <desc>, packs and pass carry
     // a screenshot block (cf. public/ft/pass/*).
-    // Feutre spécial : l'aperçu de la fiche affiche l'image ÉDITABLE en admin
-    // (route /shop-asset/<key>), stockée en base. Sinon, bloc capture d'origine
-    // pour les jeux complets / pass.
+    let picto = pack.picto;
     let screens = '';
     if (pack.shopAssetKey && shopAssetKeys.has(pack.shopAssetKey)) {
+      // Feutre spécial AVEC image admin : on l'affiche comme PICTO PRINCIPAL en
+      // réutilisant le rendu image des fonds d'écran (main.swf charge l'URL dans
+      // le porte-picto pour un picto "wallpaper,<url>"). shopitem.swf ne sait pas
+      // charger une image, d'où ce détour. On garde aussi l'image en aperçu.
       const u = `/shop-asset/${encodeURIComponent(pack.shopAssetKey)}`;
+      picto = `wallpaper,${u}`;
       screens = `<s n="${escapeXml(pack.name)}"><b u="${escapeXml(u)}" w="150" h="150" /><t u="${escapeXml(u)}" w="150" h="150" /></s>`;
     } else if (pack.picto.startsWith('pack,') || pack.picto.startsWith('pass,')) {
       screens = `<s n="Capture d'écran du jeu"><b u="wal/pi.jpg" w="150" h="150" /><t u="wal/pl.jpg" w="150" h="150" /></s>`;
@@ -4295,7 +4302,7 @@ function buildShopPackXml(pack, user) {
     }
     return (
       `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
-      ` p="${escapeXml(pack.picto)}" h="${alreadyBuy}">` +
+      ` p="${escapeXml(picto)}" h="${alreadyBuy}">` +
       `<d><desc>${escapeXml(pack.description)}</desc></d>` +
       `<r p="${pack.price}">${escapeXml(comment)}</r>` +
       screens +
@@ -11531,7 +11538,7 @@ function purchaseShopPack(user, username, packIdRaw) {
     notifyKikoozUpdate(username, user.kikooz);
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.CHAT,
-      content: `${pack.name} acheté ! Pour écrire en couleurs dans les salons : sur mobile, choisis-le dans la palette de feutres ; sur le bureau, tape /feutremulti.`,
+      content: `${pack.name} acheté ! Pour écrire en couleurs dans les salons : sur mobile, choisis-le dans la palette de feutres ; sur le bureau, tape /multipen.`,
     });
     console.log(`[ft/buy] ${username} bought FEUTRE #${pack.id} (${pack.feutrePen}) — kikooz now ${user.kikooz}`);
     return { ok: true, kikooz: user.kikooz, isFeutre: true, feutre: pack.feutrePen, pack };
@@ -17421,14 +17428,14 @@ case 'send': {
       }
     }
 
-    // ── /feutremulti [on|off] : (dé)active le feutre multicolore (bureau) ──
+    // ── /multipen [on|off] : (dé)active le feutre multicolore (bureau) ──
     // Le feutre s'achète en boutique ; le bureau (main.swf) n'a pas de pastille
     // dédiée dans la palette (17 clips figés), donc on l'active par commande. Le
-    // mode reste actif jusqu'à /feutremulti off (ou déconnexion) ; le rendu
+    // mode reste actif jusqu'à /multipen off (ou déconnexion) ; le rendu
     // arc-en-ciel est injecté côté serveur à chaque message. Sur MOBILE, une
-    // pastille dédiée fait la même chose sans commande.
+    // pastille dédiée fait la même chose sans commande. Alias : /feutremulti.
     {
-      const m = text.match(/^\/(?:feutremulti|feutremc|multicolore)(?:\s+(on|off|oui|non|1|0))?\s*$/i);
+      const m = text.match(/^\/(?:multipen|feutremulti|multicolore)(?:\s+(on|off|oui|non|1|0))?\s*$/i);
       if (m) {
         if (!userOwnsFeutre(senderData, 'mc')) {
           sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Tu ne possèdes pas encore le Feutre multicolore. Il s'achète à la Boutique, rubrique Feutres !</i>]]></${CMD.send}>`);
@@ -17439,7 +17446,7 @@ case 'send': {
         const turnOn = arg === 'on' || arg === 'oui' || arg === '1';
         senderData.penMcActive = turnOff ? false : (turnOn ? true : !senderData.penMcActive);
         const msgMc = senderData.penMcActive
-          ? '<i>Feutre multicolore activé — tes messages s’affichent en couleurs ! (tape /feutremulti off pour arrêter)</i>'
+          ? '<i>Feutre multicolore activé — tes messages s’affichent en couleurs ! (tape /multipen off pour arrêter)</i>'
           : '<i>Feutre multicolore désactivé.</i>';
         sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${msgMc}]]></${CMD.send}>`);
         break;

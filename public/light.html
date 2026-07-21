@@ -1244,7 +1244,7 @@
   // Reduce the small HTML the server uses in admin announces (<i>, <b>,
   // <font color>) to readable plain text for the mobile chat line.
   function htmlToText(s) {
-    return xmlUnescape(String(s == null ? "" : s).replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "")).trim();
+    return xmlUnescape(String(s == null ? "" : s).replace(/<br\s*\/?>/gi, " ").replace(/&nbsp;/gi, " ").replace(/<[^>]+>/g, "")).trim();
   }
   // Case-insensitive pseudo comparison (server sends display names; state.user
   // may differ only by case).
