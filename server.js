@@ -4060,8 +4060,10 @@ const SHOP_PACKS_DEFAULT = [
     suffix9: '000000000',
   },
   // Feutre spécial ACHETABLE (rubrique Feutres, mais notDefault → non offert).
-  // L'aperçu de la fiche affiche l'image éditable en admin (shopAssetKey) ; le
-  // petit picto retombe sur une teinte de stylo générique.
+  // Picto "feutre,17" : la 18e entrée du porte-feutre de shopitem.swf, éditée pour
+  // faire DÉFILER la teinte du stylo à travers les couleurs des feutres (arc-en-ciel
+  // animé via onEnterFrame). Les 17 feutres d'origine (index 0..16) sont inchangés.
+  // L'image éditable en admin (shopAssetKey) reste un APERÇU de fiche facultatif.
   {
     id: SPECIAL_FEUTRES.mc.shopId,
     name: SPECIAL_FEUTRES.mc.name,
@@ -4069,7 +4071,7 @@ const SHOP_PACKS_DEFAULT = [
     price: SPECIAL_FEUTRES.mc.price,
     notDefault: true,
     feutrePen: 'mc',
-    picto: 'feutre,4',
+    picto: 'feutre,17',
     shopAssetKey: SPECIAL_FEUTRES.mc.assetKey,
     description: 'Écris en couleurs ! Ce feutre inédit affiche ton texte en arc-en-ciel dans les salons de discussion.',
     comment: 'Un feutre unique : chaque lettre de tes messages change de couleur. Achat permanent.',
@@ -4299,16 +4301,13 @@ function buildShopPackXml(pack, user) {
     let picto = pack.picto;
     let screens = '';
     if (pack.shopAssetKey && shopAssetKeys.has(pack.shopAssetKey)) {
-      // Feutre spécial AVEC image admin : on l'affiche comme PICTO PRINCIPAL en
-      // réutilisant le rendu image des fonds d'écran (main.swf charge l'URL dans
-      // le porte-picto pour un picto "wallpaper,<url>"). shopitem.swf ne sait pas
-      // charger une image, d'où ce détour. On garde aussi l'image en aperçu.
-      // URL RELATIVE + EXTENSION, exactement comme les fonds (« wal-custom/id.jpg ») :
-      // le chargeur du SWF ne traite l'URL comme une IMAGE que dans ce format
-      // (sinon il retombe sur une image par défaut). Résolue depuis la racine.
+      // Feutre spécial : le PICTO principal est natif (picto "feutre,17", stylo
+      // arc-en-ciel animé de shopitem.swf) — plus besoin du détour "wallpaper,<url>"
+      // (shopitem.swf ne sait de toute façon pas charger une image externe). On
+      // garde l'image éditable en admin comme APERÇU de fiche (main.swf, lui, charge
+      // l'URL dans la zone d'aperçu). URL relative + extension, comme les fonds.
       const ext = shopAssetKeys.get(pack.shopAssetKey) || 'png';
       const u = `shop-asset/${pack.shopAssetKey}.${ext}`;
-      picto = `wallpaper,${u}`;
       screens = `<s n="${escapeXml(pack.name)}"><b u="${escapeXml(u)}" w="150" h="150" /><t u="${escapeXml(u)}" w="150" h="150" /></s>`;
     } else if (pack.picto.startsWith('pack,') || pack.picto.startsWith('pass,')) {
       screens = `<s n="Capture d'écran du jeu"><b u="wal/pi.jpg" w="150" h="150" /><t u="wal/pl.jpg" w="150" h="150" /></s>`;
@@ -13990,8 +13989,10 @@ async function boot() {
           if (def && def.fdPassGame) p.fdPassGame = def.fdPassGame;
           // Idem feutre spécial : feutrePen/notDefault/shopAssetKey ne sont pas
           // stockés en base ; on les réapplique depuis la définition statique
-          // (sinon le produit redeviendrait « offert » et n'accorderait rien).
-          if (def && def.feutrePen) { p.feutrePen = def.feutrePen; p.notDefault = def.notDefault; p.shopAssetKey = def.shopAssetKey; }
+          // (sinon le produit redeviendrait « offert » et n'accorderait rien). Le
+          // picto est aussi piloté par le code (natif shopitem.swf), pas éditable :
+          // la définition statique PRIME sur la valeur persistée (ex. feutre,17).
+          if (def && def.feutrePen) { p.feutrePen = def.feutrePen; p.notDefault = def.notDefault; p.shopAssetKey = def.shopAssetKey; if (def.picto) p.picto = def.picto; }
           if (existingIds.has(p.id)) {
             const idx = SHOP_PACKS.findIndex(x => x.id === p.id);
             SHOP_PACKS[idx] = p;
