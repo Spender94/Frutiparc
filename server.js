@@ -823,10 +823,18 @@ function resolveGameItemGif(itemName) {
 const CUSTOM_PICTOS = {};                 // name ($xxx) -> { displayName, category, mime }
 const customPictoImageCache = new Map();  // name -> { mime, buf }
 // Images de boutique éditables (aperçu produit, ex. feutre spécial). On garde en
-// mémoire l'ensemble des clés présentes en base (pour n'émettre l'aperçu que si
-// l'image existe) + un cache d'octets pour éviter un aller-retour DB par affichage.
-const shopAssetKeys = new Set();          // clés présentes en base
+// mémoire les clés présentes en base ET leur extension (le chargeur d'images du
+// SWF exige une URL avec extension, comme les fonds : « wal-custom/id.jpg »),
+// plus un cache d'octets pour éviter un aller-retour DB par affichage.
+const shopAssetKeys = new Map();          // key -> ext ('png'|'jpg'|'gif'|'webp')
 const shopAssetImageCache = new Map();    // key -> { mime, buf }
+function mimeToExt(mime) {
+  const m = String(mime || '').toLowerCase();
+  if (m.includes('png')) return 'png';
+  if (m.includes('gif')) return 'gif';
+  if (m.includes('webp')) return 'webp';
+  return 'jpg';
+}
 function registerCustomPicto(meta) {
   CUSTOM_PICTOS[meta.name] = {
     displayName: meta.displayName || meta.name,
@@ -4287,7 +4295,11 @@ function buildShopPackXml(pack, user) {
       // réutilisant le rendu image des fonds d'écran (main.swf charge l'URL dans
       // le porte-picto pour un picto "wallpaper,<url>"). shopitem.swf ne sait pas
       // charger une image, d'où ce détour. On garde aussi l'image en aperçu.
-      const u = `/shop-asset/${encodeURIComponent(pack.shopAssetKey)}`;
+      // URL RELATIVE + EXTENSION, exactement comme les fonds (« wal-custom/id.jpg ») :
+      // le chargeur du SWF ne traite l'URL comme une IMAGE que dans ce format
+      // (sinon il retombe sur une image par défaut). Résolue depuis la racine.
+      const ext = shopAssetKeys.get(pack.shopAssetKey) || 'png';
+      const u = `shop-asset/${pack.shopAssetKey}.${ext}`;
       picto = `wallpaper,${u}`;
       screens = `<s n="${escapeXml(pack.name)}"><b u="${escapeXml(u)}" w="150" h="150" /><t u="${escapeXml(u)}" w="150" h="150" /></s>`;
     } else if (pack.picto.startsWith('pack,') || pack.picto.startsWith('pass,')) {
@@ -7427,7 +7439,7 @@ app.post('/api/admin/shop-asset/:key',
     if (!kind) return res.status(415).json({ ok: false, error: 'unsupported', message: 'Format non supporté (PNG, JPEG, GIF, WEBP).' });
     try {
       await db.upsertShopAsset(key, kind.mime, body);
-      shopAssetKeys.add(key);
+      shopAssetKeys.set(key, kind.ext);
       shopAssetImageCache.set(key, { mime: kind.mime, buf: body });
       console.log(`[SHOPASSET] ${key} mis à jour (${kind.mime}, ${body.length} o)`);
       res.json({ ok: true, key, mime: kind.mime, bytes: body.length });
@@ -14001,7 +14013,7 @@ async function boot() {
       } catch (e) { console.error('[DB] Custom pictos load error:', e.message); }
       try {
         const assets = await db.listShopAssetKeys();
-        for (const a of assets) shopAssetKeys.add(a.key);
+        for (const a of assets) shopAssetKeys.set(a.key, mimeToExt(a.mime));
         if (assets.length) console.log(`[DB] Loaded ${assets.length} shop asset(s)`);
       } catch (e) { console.error('[DB] Shop assets load error:', e.message); }
       // Migration best-effort : sauvegarde en base les images de forum encore
@@ -17612,7 +17624,7 @@ case 'send': {
       // htmlText, donc ce <font> englobe l'horodatage et le pseudo (dont le lien
       // cliquable est conservé). Le client Light applique son propre dégradé.
       const hOpen = escapeXml(`<font color="${MC_RAINBOW[0]}">`) + timeAttrs.h;
-      const rainbow = `<![CDATA[</font>${rainbowHtml(unescapeXml(text))}]]>`;
+      const rainbow = `<![CDATA[</font><b>${rainbowHtml(unescapeXml(text))}</b>]]>`;
       broadcastToChannel(g,
         `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="" g="${escapeXml(g)}" h="${hOpen}" d="${timeAttrs.d}" st="mc">${rainbow}</${CMD.send}>`
       );
