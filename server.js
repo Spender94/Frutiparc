@@ -2915,6 +2915,29 @@ function fdConsume(username, user, game) {
 }
 const FD_GAME_LABELS = { bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', swapou2: 'Swapou', mb2: 'MotionBall', kaluga: 'Kaluga', grapiz: 'Grapiz', bandas: 'Frutibandas' };
 function fdGameLabel(game) { return FD_GAME_LABELS[String(game || '').toLowerCase()] || game; }
+
+// Mémorise, SUR LE USER (pas la session), le mode de la course en cours pour un
+// jeu — Challenge (true) vs autre mode : Time Trial / Duel (false). Posé au
+// démarrage de la partie (startGame) et à chaque save où le mode est connu de
+// façon fiable. Indispensable pour BKiwi : ses scores arrivent souvent via un
+// getURL sans sid fiable (repli par IP), donc la session n'est pas fiable ; le
+// USER, lui, est toujours résolu. Sert au portillon FD : SEUL le mode Challenge
+// est limité. Mode inconnu (undefined) → on retombe sur l'heuristique circuit.
+function fdStampRaceMode(username, game, isChallenge) {
+  const u = username ? users[username] : null;
+  const key = String(game || '').toLowerCase();
+  if (!u || !key) return;
+  if (!u.challengeRaceByGame || typeof u.challengeRaceByGame !== 'object') u.challengeRaceByGame = {};
+  u.challengeRaceByGame[key] = !!isChallenge;
+}
+// Renvoie true/false si le mode de la dernière course de ce jeu est connu, sinon
+// undefined (→ heuristique circuit).
+function fdRaceModeChallenge(username, game) {
+  const u = username ? users[username] : null;
+  const key = String(game || '').toLowerCase();
+  if (!u || !u.challengeRaceByGame || typeof u.challengeRaceByGame !== 'object') return undefined;
+  return u.challengeRaceByGame[key];
+}
 // Jeu extrait d'un id de classement (« bkiwi_track3_challenge » → « bkiwi »).
 function fdGameFromRanking(rankingId) { return String(rankingId || '').split('_')[0].toLowerCase(); }
 
@@ -2967,6 +2990,25 @@ function fdAuthorizeChallengeSave(sid, username, game, routed) {
   if (claim === 'paid') return 'ok';
   if (claim === 'free') return 'skip';
   if (!fdGameIsLimited(game)) return 'ok';
+  // BKiwi : SEUL le mode Challenge est limité. Si le mode de la course est CONNU
+  // (posé au startGame / save sur le USER, cf. fdStampRaceMode) :
+  //   • non-challenge (Time Trial / Duel) → 'skip' : partie libre, non classée en
+  //     challenge, aucun FD consommé ;
+  //   • challenge → on consomme un FD (course classée du jour), directement, sans
+  //     dépendre de la détection de circuit.
+  // Mode INCONNU (undefined : aucun startGame vu) → on retombe sur l'heuristique
+  // circuit d'origine, qui classait déjà correctement le challenge (jamais de perte
+  // de score).
+  if (game === 'bkiwi') {
+    const cm = fdRaceModeChallenge(username, game);
+    if (cm === false) return 'skip';
+    if (cm === true) {
+      if (fdGateChallengeScore(username, users[username], game)) return 'ok';
+      fdFlagRefusal(sid, game);
+      return 'blocked';
+    }
+    // cm === undefined → heuristique ci-dessous
+  }
   const hint = routed && routed.hint;
   const daily = routed && routed.daily;
   if (Number.isFinite(hint) && Number.isFinite(daily) && hint !== daily) return 'skip';
@@ -5111,6 +5153,11 @@ async function handleSaveScore(req, res) {
   // visé (<jeu>_classic) EST le bucket du mode Challenge → il n'est classé que si
   // le joueur a un FD (marqueur du claim pré-partie, sinon consommation ici).
   let result = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
+  // Mode de la course connu explicitement (param m) → mémorisé sur le user pour le
+  // portillon FD (seul le Challenge est limité).
+  if (params.m !== undefined || params.mode !== undefined) {
+    fdStampRaceMode(username, fdGameFromRanking(rankingId), mode === 1);
+  }
   // Portillon FD unifié : UNE consommation pour la partie, appliquée aux deux
   // cuves (direct + miroir) — cf. fdApplyToSave.
   const fdg = fdApplyToSave(sid, username, rankingId, extraRankingId, routedInfo);
@@ -10712,6 +10759,13 @@ app.post('/do/fdclaim', async (req, res) => {
   const user = users[username];
   const game = String(params.game || '').toLowerCase();
   if (!fdGameIsLimited(game)) return res.send('ok=1&fd=free');
+  // BKiwi : le quota FD ne concerne QUE le mode Challenge. Si le mode de la course
+  // est CONNU (posé au startGame) et n'est PAS challenge (Time Trial / Duel) →
+  // entraînement libre, jamais bloqué. Mode inconnu → heuristique circuit ci-dessous.
+  if (game === 'bkiwi' && fdRaceModeChallenge(username, game) === false) {
+    fdSetClaim(sid, game, 'free');
+    return res.send('ok=1&fd=free');
+  }
   // Course sur un autre circuit que celui du jour → entraînement, gratuit.
   if (game === 'bkiwi' && params.track !== undefined && params.track !== '') {
     const track = Number(params.track);
@@ -16775,6 +16829,9 @@ async function handleCBeeMessage(socket, rawXml) {
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
         let challengeRes = null;
         if (username && rankingId) {
+          // Mode de la course connu (m / currentGameMode) → mémorisé sur le user
+          // pour le portillon FD (seul le Challenge est limité).
+          fdStampRaceMode(username, fdGameFromRanking(rankingId), scoreMode === 1);
           // Portillon FD : un seul verdict par partie (fdApplyToSave), même quand
           // le save écrit deux cuves (direct snake3/swapou2/mb2/kaluga + miroir
           // bkiwi/mb2) — évite le double décompte.
@@ -16832,6 +16889,12 @@ case 'join': {
     const gameUser = client.username ||
       (client.sid && sessions[client.sid] && sessions[client.sid].user) || null;
     console.log(`[FSCORE] startGame disc=${discId} mode=${gameMode} user=${gameUser || '-'}`);
+    // Mémorise le mode de CETTE course sur le user (fiable même quand le save
+    // arrivera par un getURL sans sid). Seul le mode Challenge (m=1) est limité.
+    if (gameUser) {
+      const startRank = rankingIdForGame(discId, gameMode) || (client.currentGame ? rankingIdForGame(client.currentGame, gameMode) : '');
+      fdStampRaceMode(gameUser, fdGameFromRanking(startRank || ''), gameMode === 1);
+    }
     // Show the game icon in place of the presence indicator on the user
     // card by updating the "internal" portion of the status string.
     if (gameUser) {
