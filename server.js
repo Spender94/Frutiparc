@@ -5906,6 +5906,63 @@ app.post('/api/admin/users/:username/fd-reset', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Charge (mémoire, sinon base) un utilisateur pour une action admin. Renvoie
+// null si introuvable — les actions qui MODIFIENT un joueur passent par ici pour
+// fonctionner aussi sur un joueur hors-ligne (hydratation atomique).
+async function adminLoadUser(username) {
+  let user = users[username];
+  if (!user && process.env.DATABASE_URL) {
+    const row = await db.findUserByUsername(username);
+    if (!row) return null;
+    await hydrateUserFromDb(username, row);
+    user = users[username];
+  }
+  return user || null;
+}
+
+// Donne/retire des PASS quotidiens FD (permanents, cumulables) à un joueur —
+// comme on donne un accessoire. body: { game, delta } (delta ±n, plancher 0).
+// Le jeu doit être soumis au quota (FD_LIMITED_GAMES).
+app.post('/api/admin/users/:username/fd-pass', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  const game = String((req.body && req.body.game) || '').trim().toLowerCase();
+  const delta = Math.trunc(Number((req.body && req.body.delta)) || 0);
+  if (!fdGameIsLimited(game)) return res.status(400).json({ error: 'jeu sans quota FD : ' + (game || '(vide)') });
+  if (!delta) return res.status(400).json({ error: 'delta requis (entier non nul, ex. 1 ou -1)' });
+  try {
+    const user = await adminLoadUser(u);
+    if (!user) return res.status(404).json({ error: 'not found' });
+    const st = fdEnsureToday(user);
+    const before = Math.max(0, Math.floor(Number(st.p[game]) || 0));
+    st.p[game] = Math.max(0, before + delta);
+    fdPersist(u, user);
+    console.log(`[ADMIN] Pass FD ${game} de ${u} : ${before} → ${st.p[game]} (delta ${delta > 0 ? '+' : ''}${delta})`);
+    res.json({ ok: true, username: u, game, passes: st.p[game], fd: fdSnapshot(user, game) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Donne/retire un FEUTRE SPÉCIAL (ex. multicolore) à un joueur — comme un
+// accessoire. body: { kind: 'mc', owned: true|false }.
+app.post('/api/admin/users/:username/feutre', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  const kind = String((req.body && req.body.kind) || 'mc').trim().toLowerCase();
+  const owned = !!(req.body && req.body.owned);
+  if (!SPECIAL_FEUTRES[kind]) return res.status(400).json({ error: 'feutre inconnu : ' + kind });
+  try {
+    const user = await adminLoadUser(u);
+    if (!user) return res.status(404).json({ error: 'not found' });
+    if (owned) {
+      grantFeutre(u, user, kind); // idempotent + persiste (retry)
+    } else {
+      user.ownedFeutres = parseOwnedFeutres(user.ownedFeutres).filter((k) => k !== kind);
+      if (kind === 'mc') user.penMcActive = false; // coupe aussi le mode /multipen en cours
+      dbUpdateUserCritical(u, { owned_feutres: JSON.stringify(user.ownedFeutres) }, 'feutre retiré (admin)');
+    }
+    console.log(`[ADMIN] Feutre ${kind} de ${u} : ${owned ? 'DONNÉ' : 'RETIRÉ'}`);
+    res.json({ ok: true, username: u, kind, owned, ownedFeutres: parseOwnedFeutres(user.ownedFeutres) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ENDPOINT: /api/admin/users/:username/slots — Export de la progression de jeu
 // (FrutiSlots) d'un joueur, en JSON lisible : { game: { slotId: <objet> } }.
 // Source = DB si disponible (vérité de persistance), sinon mémoire. Les valeurs

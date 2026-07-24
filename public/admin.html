@@ -2829,6 +2829,8 @@ async function loadDetail() {
       <tr><td>Kikooz</td><td>${user.kikooz}</td></tr>
       <tr><td>Série de connexion</td><td>${user.daily_streak ? '🔥 ' + user.daily_streak + ' jour' + (user.daily_streak > 1 ? 's' : '') : '—'}${user.daily_kikooz_day ? ' <span style="color:#888;font-size:11px">(dernière récompense le ' + esc(user.daily_kikooz_day) + ')</span>' : ''} <button class="btn btn-sm" style="font-weight:normal;margin-left:6px" onclick="repairStreak('${esc(user.username || u)}', ${Number(user.daily_streak) || 0})" title="Rétablit la série de jours consécutifs d'un joueur (dédommagement). La date de dernière récompense est calée sur aujourd'hui : la série reprend demain, bonus à chaque multiple de 7.">✎ Corriger la série</button></td></tr>
       <tr><td>FD challenge</td><td>${(function(){ try { var f = JSON.parse(user.fd_state||'null'); if(!f) return '—'; var games = {}; Object.keys(f.g||{}).forEach(function(g){ games[g]=true; }); Object.keys(f.p||{}).forEach(function(g){ games[g]=true; }); var keys = Object.keys(games); if(!keys.length) return '—'; var parts = keys.map(function(g){ var e=(f.g||{})[g]||{}; var passes=Number((f.p||{})[g])||0; var quota=2+passes+(Number(e.b)||0); return esc(g)+' : '+(e.u||0)+'/'+quota+' aujourd’hui'+(passes?' · '+passes+' pass permanent'+(passes>1?'s':''):''); }); return parts.join(' · ')+' <span style="color:#888;font-size:11px">('+esc(f.d||'')+')</span>'; } catch(e){ return '—'; } })()} <button class="btn btn-sm" style="font-weight:normal;margin-left:6px" onclick="resetFdDay('${esc(user.username||u)}')" title="Remet à zéro les parties challenge consommées AUJOURD'HUI (tous les jeux). Les Pass permanents sont conservés. À utiliser pour dédommager un joueur.">⟲ Reset quotas du jour</button></td></tr>
+      <tr><td>Pass FD (permanents)</td><td>${(function(){ var p={}; try { var f=JSON.parse(user.fd_state||'null'); p=(f&&f.p)||{}; } catch(e){} var games=[['bkiwi','Burning Kiwi'],['snake3','Frutisnake'],['swapou2','Swapou'],['mb2','MotionBall'],['kaluga','Kaluga']]; return games.map(function(g){ var n=Math.max(0,Math.floor(Number(p[g[0]])||0)); return '<span style="display:inline-block;margin:1px 8px 1px 0;white-space:nowrap">'+g[1]+' : <b>'+n+'</b> <button class="btn btn-sm" style="font-weight:normal;padding:0 6px" onclick="adminFdPass(\''+esc(user.username||u)+'\',\''+g[0]+'\',1)" title="+1 pass permanent (+1 partie challenge/jour à vie)">+</button><button class="btn btn-sm" style="font-weight:normal;padding:0 6px" '+(n?'':'disabled ')+'onclick="adminFdPass(\''+esc(user.username||u)+'\',\''+g[0]+'\',-1)" title="-1 pass permanent">−</button></span>'; }).join(''); })()}</td></tr>
+      <tr><td>Feutre multicolore</td><td>${(function(){ var owned=false; try { owned=(JSON.parse(user.owned_feutres||'[]')||[]).indexOf('mc')>=0; } catch(e){} return (owned ? '<span class="badge badge-mod">Possédé</span> <button class="btn-danger btn-sm" style="font-weight:normal" onclick="adminFeutre(\''+esc(user.username||u)+'\',\'mc\',false)" title="Retire le feutre multicolore (le mode /multipen en cours est coupé). Les kikooz ne sont pas remboursés automatiquement.">Retirer</button>' : '<span class="badge badge-no-mod">Non possédé</span> <button class="btn-success btn-sm" style="font-weight:normal" onclick="adminFeutre(\''+esc(user.username||u)+'\',\'mc\',true)" title="Donne le feutre multicolore (comme un achat boutique, sans débit de kikooz).">Donner</button>'); })()}</td></tr>
       <tr><td>Bouille</td><td><code>${esc(user.fbouille||'')}</code></td></tr>
       <tr><td>Éditeur bouille</td><td>
         <span class="badge ${user.needs_bouille ? 'badge-mod' : 'badge-no-mod'}">${user.needs_bouille ? 'Ouvert' : 'Verrouillé'}</span>
@@ -3049,6 +3051,24 @@ async function repairStreak(username, current) {
   const n = Math.max(0, Math.floor(Number(v) || 0));
   const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify({ daily_streak: n }) });
   if (r.ok) { toast(`Série rétablie : ${n} jour${n > 1 ? 's' : ''}`); loadDetail(); }
+  else toast(`Erreur: ${r.status}`);
+}
+
+// Donne/retire un PASS FD permanent (+1/-1 partie challenge par jour, à vie)
+// sur un jeu — comme on donne un accessoire. Plancher 0 côté serveur.
+async function adminFdPass(username, game, delta) {
+  if (!username || !game) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}/fd-pass`, { method: 'POST', headers: hdr(), body: JSON.stringify({ game, delta }) });
+  if (r.ok) { const d = await r.json(); toast(`Pass ${game} : ${d.passes}`); loadDetail(); }
+  else toast(`Erreur: ${r.status}`);
+}
+
+// Donne/retire un feutre spécial (ex. multicolore) — comme un accessoire.
+async function adminFeutre(username, kind, owned) {
+  if (!username) return;
+  if (!owned && !confirm(`Retirer le feutre ${kind} de ${username} ?`)) return;
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}/feutre`, { method: 'POST', headers: hdr(), body: JSON.stringify({ kind, owned }) });
+  if (r.ok) { toast(owned ? `Feutre ${kind} donné` : `Feutre ${kind} retiré`); loadDetail(); }
   else toast(`Erreur: ${r.status}`);
 }
 
