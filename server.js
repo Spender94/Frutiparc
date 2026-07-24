@@ -2843,8 +2843,11 @@ function awardDailyLoginKikooz(username) {
 // ne re-crédite pas de FD gratuits et ne perd jamais les pass.
 const FD_FREE_PER_DAY = 2;   // parties challenge gratuites / jour / jeu
 const FD_PASS_PRICE   = 80;  // prix boutique d'un pass quotidien (fiche d'origine)
-// Jeux dont le mode challenge est soumis à la limite.
-const FD_LIMITED_GAMES = new Set(['bkiwi', 'snake3', 'swapou2', 'mb2', 'kaluga', 'grapiz', 'bandas']);
+// Jeux dont le mode challenge est soumis à la limite. Grapiz et Frutibandas n'y
+// figurent PLUS : leur quota quotidien (modèle « disque = vie ») a été retiré —
+// jeux PvP entièrement libres, toutes les parties comptent au classement (leurs
+// Pass ont aussi été retirés de la boutique).
+const FD_LIMITED_GAMES = new Set(['bkiwi', 'snake3', 'swapou2', 'mb2', 'kaluga']);
 // Jeux rationnés au fil du MATCH (modèle « disque = vie ») plutôt qu'à
 // l'enregistrement du score : grapiz/bandas sont des jeux PvP natifs dont la
 // série (score challenge) est persistée hors des chemins de save (onStreak →
@@ -3082,6 +3085,13 @@ function fdApplyToSave(sid, username, rankingId, extraRankingId, routed) {
 // se fait à la défaite via fdConsumeDisc).
 function fdMatchForming(game, humans, ctx) {
   const list = Array.isArray(humans) ? humans : [];
+  // Jeu sans limite FD (ex. grapiz/bandas depuis le retrait de leur quota) :
+  // aucun refus, TOUT LE MONDE joue classé (humains comme bots).
+  if (!fdGameIsLimited(game)) {
+    const ranked = {};
+    for (const u of list) ranked[u] = true;
+    return { ok: true, ranked };
+  }
   const hasDisc = (u) => { const user = users[u]; return !!(user && fdRemaining(user, game) > 0); };
   if (ctx && !ctx.hasBot && list.length >= 2) {
     // Match entre humains : chacun risque un disque → tous doivent en avoir un.
@@ -4106,28 +4116,9 @@ const SHOP_PACKS_DEFAULT = [
     fdPassGame: 'kaluga',
     suffix9: '000000000',
   },
-  {
-    id: 24,
-    name: 'Pass quotidien de Frutibandas',
-    category: 'Pass',
-    price: FD_PASS_PRICE,
-    picto: 'pass,6',
-    description: 'Affrontez les meilleurs joueurs à Frutibandas.',
-    comment: "Donne droit à un disque Challenge supplémentaire par jour : une défaite de plus avant de basculer en entraînement contre les bots. Permanent et cumulable !",
-    fdPassGame: 'bandas',
-    suffix9: '000000000',
-  },
-  {
-    id: 25,
-    name: 'Pass quotidien de Grapiz',
-    category: 'Pass',
-    price: FD_PASS_PRICE,
-    picto: 'pass,7',
-    description: 'Affrontez les meilleurs joueurs à Grapiz.',
-    comment: "Donne droit à un disque Challenge supplémentaire par jour : une défaite de plus avant de basculer en entraînement contre les bots. Permanent et cumulable !",
-    fdPassGame: 'grapiz',
-    suffix9: '000000000',
-  },
+  // (ids 24 et 25 : ex-Pass quotidiens de Frutibandas et Grapiz — RETIRÉS avec la
+  // suppression du quota de ces deux jeux PvP. Ne pas réutiliser ces ids : ils
+  // sont filtrés de la fusion DB via REMOVED_SHOP_PACK_IDS pour ne pas ressusciter.)
   // Feutre spécial ACHETABLE (rubrique Feutres, mais notDefault → non offert).
   // Picto "feutre,17" : la 18e entrée du porte-feutre de shopitem.swf, éditée pour
   // faire DÉFILER la teinte du stylo à travers les couleurs des feutres (arc-en-ciel
@@ -10796,9 +10787,25 @@ app.post('/do/fdclaim', async (req, res) => {
   const user = users[username];
   const game = String(params.game || '').toLowerCase();
   if (!fdGameIsLimited(game)) return res.send('ok=1&fd=free');
-  // BKiwi : le quota FD ne concerne QUE le mode Challenge. Si le mode de la course
-  // est CONNU (posé au startGame) et n'est PAS challenge (Time Trial / Duel) →
-  // entraînement libre, jamais bloqué. Mode inconnu → heuristique circuit ci-dessous.
+  // BKiwi v2 : le SWF patché envoie mode = vs.gameMode (inc/gameData.as —
+  // ARCADE=1 est le bouton « Challenge » du menu ; DUEL=2, TIMETRIAL=3, etc.).
+  // SEUL le mode Challenge consomme un FD : Duel, TimeTrial, entraînements et
+  // tournois sont LIBRES, même sur le circuit du jour. Le mode est aussi mémorisé
+  // sur le user (fdStampRaceMode) pour que l'enregistrement du score suive le
+  // même verdict, même s'il arrive par getURL sans sid.
+  if (game === 'bkiwi' && params.mode !== undefined && params.mode !== '') {
+    const m = Number(params.mode);
+    if (Number.isFinite(m)) {
+      const isChallenge = (m === 1);
+      fdStampRaceMode(username, game, isChallenge);
+      if (!isChallenge) {
+        fdSetClaim(sid, game, 'free');
+        return res.send('ok=1&fd=free');
+      }
+    }
+  }
+  // Mode absent (SWF antérieur au patch v2) mais dernier mode CONNU non-challenge
+  // (posé par un save/startGame antérieur) → entraînement libre.
   if (game === 'bkiwi' && fdRaceModeChallenge(username, game) === false) {
     fdSetClaim(sid, game, 'free');
     return res.send('ok=1&fd=free');
@@ -14101,7 +14108,12 @@ async function boot() {
         const dbPacks = await db.loadShopPacks();
         const defaultById = Object.fromEntries(SHOP_PACKS_DEFAULT.map(p => [p.id, p]));
         const existingIds = new Set(SHOP_PACKS.map(p => p.id));
+        // Packs RETIRÉS du catalogue (ex-Pass Frutibandas/Grapiz, quota supprimé) :
+        // une copie persistée en base ne doit PAS les ressusciter — sans leur
+        // définition statique (fdPassGame), l'achat créditerait un accessoire.
+        const REMOVED_SHOP_PACK_IDS = new Set([24, 25]);
         for (const p of dbPacks) {
+          if (REMOVED_SHOP_PACK_IDS.has(p.id)) continue;
           const def = defaultById[p.id];
           if (def && def.wallpaperId && !p.wallpaperId) p.wallpaperId = def.wallpaperId;
           if (def && def.picto && !p.picto) p.picto = def.picto;

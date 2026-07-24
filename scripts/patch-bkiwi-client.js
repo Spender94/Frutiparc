@@ -13,6 +13,7 @@
 //       var lv = new LoadVars() ;
 //       lv.game = "bkiwi" ; lv.sid = _root.sid ;
 //       lv.track = this.root.vs.selectedTrack ;                // circuit choisi
+//       lv.mode = this.root.vs.gameMode ;                      // v2 : MODE de jeu
 //       var r = new LoadVars() ; r._client = this ;
 //       r.onLoad = function (success) {
 //         var c = this._client ;
@@ -21,6 +22,12 @@
 //       } ;                                                    // (phase 93)
 //       lv.sendAndLoad("/do/fdclaim", r, "POST") ;
 //     }
+//
+// v2 — lv.mode : vs.gameMode (inc/gameData.as) : FRUTICUP=0, ARCADE=1 (= le mode
+// « Challenge » du menu), DUEL=2, TIMETRIAL=3, KIWIRUN=4, TUTORIAL=5, SURVIVOR=6,
+// GHOSTRUN=7, TRAINING=8. Le serveur ne consomme un FD QUE pour mode=1 : Duel,
+// TimeTrial et les autres modes sont libres, même sur le circuit du jour.
+// RE-PATCH : repartir du SWF VIERGE (git show 19c0851:Games/burningKiwi/burningkiwi.swf).
 //
 // Le refus réutilise le chemin NATIF du menu (inc/menu.as, phase 93 :
 // `if (client.error) → retour au menu principal`). Panne réseau → fail-open
@@ -161,7 +168,7 @@ console.log(`DoInitAction trouvé à ${tag.offset} (len=${tag.length}), pool: ${
 if (cp.entries.includes('/do/fdclaim')) { console.log('Déjà patché (« /do/fdclaim » présent) — rien à faire.'); process.exit(0); }
 
 // 3. Chaînes nécessaires : réutilise l'existant, ajoute le manquant.
-const NEEDED = ['fl_success', 'error', 'LoadVars', 'game', 'bkiwi', 'sid', 'track', 'root', 'vs', 'selectedTrack', '_client', 'onLoad', 'ok', '1', 'onStartGame', '/do/fdclaim', 'sendAndLoad', 'POST', 'startGame', 'fl_fake'];
+const NEEDED = ['fl_success', 'error', 'LoadVars', 'game', 'bkiwi', 'sid', 'track', 'root', 'vs', 'selectedTrack', 'mode', 'gameMode', '_client', 'onLoad', 'ok', '1', 'onStartGame', '/do/fdclaim', 'sendAndLoad', 'POST', 'startGame', 'fl_fake'];
 const idx = {};
 const toAppend = [];
 for (const s of NEEDED) {
@@ -254,6 +261,12 @@ const newBody = Buffer.concat([
   actionPush(pushReg(1), pushCp(idx['root'])), GET_MEMBER,
   actionPush(pushCp(idx['vs'])), GET_MEMBER,
   actionPush(pushCp(idx['selectedTrack'])), GET_MEMBER, SET_MEMBER,
+  // v2 : lv.mode = this.root.vs.gameMode — le serveur ne consomme un FD que pour
+  // le mode Challenge (ARCADE=1) ; Duel/TimeTrial/entraînements sont libres.
+  actionPush(pushReg(3), pushCp(idx['mode'])),
+  actionPush(pushReg(1), pushCp(idx['root'])), GET_MEMBER,
+  actionPush(pushCp(idx['vs'])), GET_MEMBER,
+  actionPush(pushCp(idx['gameMode'])), GET_MEMBER, SET_MEMBER,
   actionPush(pushInt(0), pushCp(idx['LoadVars'])), NEW_OBJECT, storeReg(4), POP,
   actionPush(pushReg(4), pushCp(idx['_client']), pushReg(1)), SET_MEMBER,
   actionPush(pushReg(4), pushCp(idx['onLoad'])), onLoadFunc, SET_MEMBER,
@@ -294,4 +307,4 @@ buf.writeUInt32LE(tag.length + delta1 + delta2, tag.offset + 2);
 // 8. Écrit.
 const outSize = writeSwf(IN_PATH, sig, version, buf);
 console.log(`Écrit ${IN_PATH} (${outSize} o compressés)`);
-console.log('Terminé — startGame demande désormais /do/fdclaim avant chaque course.');
+console.log('Terminé — startGame demande /do/fdclaim avant chaque course (v2 : avec track ET mode).');
