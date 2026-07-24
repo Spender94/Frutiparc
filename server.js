@@ -2730,7 +2730,8 @@ function awardDailyLoginXp(username) {
   saveXpActions();
   if (user) {
     user.lastLoginXpDay = today;
-    if (user._dbId) db.updateUser(username, { last_login_xp_day: today }).catch(dbErr('updateUser last_login_xp_day'));
+    // Par PSEUDO (même raison que la série kikooz : survivre à un ident sans _dbId).
+    if (process.env.DATABASE_URL) db.updateUser(username, { last_login_xp_day: today }).catch(dbErr('updateUser last_login_xp_day'));
   }
   // notify:false — the ident handler flushes new userLog entries to the socket
   // immediately after this call, so it delivers any level-up exactly once.
@@ -2786,7 +2787,10 @@ function awardDailyLoginKikooz(username) {
   user.dailyKikoozDay = today;
   user.dailyStreak = streak;
   user.kikooz = (Number(user.kikooz) || 0) + reward;
-  if (user._dbId) {
+  // Écrit par PSEUDO (pas gardé par _dbId) : la série de connexion doit être
+  // persistée même si l'objet mémoire a perdu son _dbId (ident de secours au
+  // reboot) — sinon la série repartait de 1 après chaque redémarrage.
+  if (process.env.DATABASE_URL) {
     db.updateUser(username, { daily_kikooz_day: today, daily_streak: streak, kikooz: user.kikooz })
       .catch(dbErr('updateUser daily kikooz'));
   }
@@ -2899,7 +2903,10 @@ function fdGrantPass(username, user, game) {
   return st.p[key];
 }
 function fdPersist(username, user) {
-  if (user && user._dbId) {
+  // Écrit par PSEUDO (pas gardé par _dbId) : les pass/quotas doivent être
+  // persistés même si l'objet mémoire a perdu son _dbId (ident de secours au
+  // reboot) — sinon un pass acheté dans cet état « sautait » au redémarrage.
+  if (user && process.env.DATABASE_URL) {
     db.updateUser(username, { fd_state: JSON.stringify(user.fdState) }).catch(dbErr('updateUser fd_state'));
   }
 }
@@ -3922,7 +3929,10 @@ function grantFeutre(username, user, kind) {
   if (!user || !SPECIAL_FEUTRES[kind]) return;
   if (!Array.isArray(user.ownedFeutres)) user.ownedFeutres = [];
   if (!user.ownedFeutres.includes(kind)) user.ownedFeutres.push(kind);
-  if (user._dbId) db.updateUser(username, { owned_feutres: JSON.stringify(user.ownedFeutres) }).catch(dbErr('updateUser owned_feutres'));
+  // Écrit par PSEUDO (pas par _dbId) : même si l'objet mémoire a perdu son _dbId
+  // (ex. ident de secours au reboot), l'achat est persisté — sinon le feutre
+  // disparaissait au redémarrage suivant. Sans base configurée, no-op inoffensif.
+  if (process.env.DATABASE_URL) db.updateUser(username, { owned_feutres: JSON.stringify(user.ownedFeutres) }).catch(dbErr('updateUser owned_feutres'));
 }
 // Palette arc-en-ciel du feutre multicolore (6 teintes cycliques).
 // Palette du feutre multicolore : on REPREND les couleurs des 17 feutres d'origine
@@ -16704,12 +16714,34 @@ async function handleCBeeMessage(socket, rawXml) {
 
       // Auto-create user if doesn't exist (check DB first)
       if (!users[effectiveLogin]) {
-        let dbUser = null;
-        try { dbUser = await db.findUserByUsername(effectiveLogin); } catch (e) { /* ignore */ }
+        // CRUCIAL au reboot : sous contention DB, une lecture qui ÉCHOUE ne doit PAS
+        // être confondue avec « utilisateur inconnu ». Sinon on fabrique un compte
+        // par défaut SANS _dbId, qui n'a ni l'inventaire/feutre/série réels, et dont
+        // toutes les écritures sont ignorées (gardées par `if (user._dbId)`) → d'où la
+        // perte du feutre multicolore et de la série de connexion au reboot. On
+        // réessaie la lecture, et on REFUSE l'ident si la base reste injoignable (le
+        // client se reconnecte) plutôt que d'écraser des données.
+        let dbUser = null, lookupOk = !process.env.DATABASE_URL;
+        if (process.env.DATABASE_URL) {
+          for (let attempt = 0; attempt < 3 && !lookupOk; attempt++) {
+            try { dbUser = await db.findUserByUsername(effectiveLogin); lookupOk = true; }
+            catch (e) { await new Promise((r) => setTimeout(r, 150 * (attempt + 1))); }
+          }
+        }
         if (dbUser) {
           try {
             await hydrateUserFromDb(effectiveLogin, dbUser);
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            console.error(`[IDENT] ${effectiveLogin} : hydratation impossible (base en contention) → refus ident, reconnexion attendue`);
+            sendToClient(socket, `<${CMD.ident} k="503" />`);
+            break;
+          }
+        } else if (!lookupOk) {
+          // Lecture DB en échec (≠ « utilisateur inconnu ») : NE PAS fabriquer un
+          // compte par défaut (perte du feutre/série + inventaire vidé).
+          console.error(`[IDENT] ${effectiveLogin} : lecture DB impossible → refus ident (évite la perte de données au reboot)`);
+          sendToClient(socket, `<${CMD.ident} k="503" />`);
+          break;
         } else {
           users[effectiveLogin] = {
             pass: '',
