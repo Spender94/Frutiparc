@@ -2827,7 +2827,7 @@ async function loadDetail() {
       <tr><td>Pseudo (display)</td><td>${esc(user.display_name || u)}</td></tr>
       <tr><td>XP</td><td>${user.xp}</td></tr>
       <tr><td>Kikooz</td><td>${user.kikooz}</td></tr>
-      <tr><td>Série de connexion</td><td>${user.daily_streak ? '🔥 ' + user.daily_streak + ' jour' + (user.daily_streak > 1 ? 's' : '') : '—'}${user.daily_kikooz_day ? ' <span style="color:#888;font-size:11px">(dernière récompense le ' + esc(user.daily_kikooz_day) + ')</span>' : ''}</td></tr>
+      <tr><td>Série de connexion</td><td>${user.daily_streak ? '🔥 ' + user.daily_streak + ' jour' + (user.daily_streak > 1 ? 's' : '') : '—'}${user.daily_kikooz_day ? ' <span style="color:#888;font-size:11px">(dernière récompense le ' + esc(user.daily_kikooz_day) + ')</span>' : ''} <button class="btn btn-sm" style="font-weight:normal;margin-left:6px" onclick="repairStreak('${esc(user.username || u)}', ${Number(user.daily_streak) || 0})" title="Rétablit la série de jours consécutifs d'un joueur (dédommagement). La date de dernière récompense est calée sur aujourd'hui : la série reprend demain, bonus à chaque multiple de 7.">✎ Corriger la série</button></td></tr>
       <tr><td>FD challenge</td><td>${(function(){ try { var f = JSON.parse(user.fd_state||'null'); if(!f) return '—'; var games = {}; Object.keys(f.g||{}).forEach(function(g){ games[g]=true; }); Object.keys(f.p||{}).forEach(function(g){ games[g]=true; }); var keys = Object.keys(games); if(!keys.length) return '—'; var parts = keys.map(function(g){ var e=(f.g||{})[g]||{}; var passes=Number((f.p||{})[g])||0; var quota=2+passes+(Number(e.b)||0); return esc(g)+' : '+(e.u||0)+'/'+quota+' aujourd’hui'+(passes?' · '+passes+' pass permanent'+(passes>1?'s':''):''); }); return parts.join(' · ')+' <span style="color:#888;font-size:11px">('+esc(f.d||'')+')</span>'; } catch(e){ return '—'; } })()} <button class="btn btn-sm" style="font-weight:normal;margin-left:6px" onclick="resetFdDay('${esc(user.username||u)}')" title="Remet à zéro les parties challenge consommées AUJOURD'HUI (tous les jeux). Les Pass permanents sont conservés. À utiliser pour dédommager un joueur.">⟲ Reset quotas du jour</button></td></tr>
       <tr><td>Bouille</td><td><code>${esc(user.fbouille||'')}</code></td></tr>
       <tr><td>Éditeur bouille</td><td>
@@ -3036,6 +3036,19 @@ async function resetGameSlot(game) {
   if (!confirm(`Réinitialiser le slot ${game} de ${currentDetailUser} ?\n\nLes données de carte (progression, items en jeu) seront effacées et le joueur repartira d'une carte fraîche au prochain chargement du jeu. Les pictos déjà débloqués ne sont PAS affectés.`)) return;
   const r = await fetch(`/api/admin/users/${encodeURIComponent(currentDetailUser)}/reset-game-slot/${encodeURIComponent(game)}`, { method: 'POST', headers: hdr() });
   if (r.ok) toast(`Slot ${game} réinitialisé`);
+  else toast(`Erreur: ${r.status}`);
+}
+
+// Rétablit la SÉRIE de connexion d'un joueur (dédommagement après l'ancien bug
+// des comptes fantômes au reboot). daily_kikooz_day est calé sur aujourd'hui
+// côté serveur : la série repart proprement demain (bonus au multiple de 7).
+async function repairStreak(username, current) {
+  if (!username) return;
+  const v = prompt(`Série de connexion de ${username} (jours consécutifs) :`, String(current || 0));
+  if (v === null) return;
+  const n = Math.max(0, Math.floor(Number(v) || 0));
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify({ daily_streak: n }) });
+  if (r.ok) { toast(`Série rétablie : ${n} jour${n > 1 ? 's' : ''}`); loadDetail(); }
   else toast(`Erreur: ${r.status}`);
 }
 

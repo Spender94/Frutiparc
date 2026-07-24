@@ -33,6 +33,26 @@ const dbErr = (op) => (e) => {
   console.error('[DB] ' + op + ' failed: ' + msg);
 };
 
+// Écriture users CRITIQUE avec retry (série de connexion, feutres, fd_state…) :
+// contrairement au fire-and-forget simple, un échec transitoire (contention au
+// reboot, micro-coupure) est réessayé 3× avec backoff avant d'abandonner — un
+// échec définitif est loggé BRUYAMMENT car il signifie une perte de donnée joueur.
+function dbUpdateUserCritical(username, fields, label) {
+  if (!process.env.DATABASE_URL) return;
+  (async () => {
+    for (let attempt = 0; ; attempt++) {
+      try { await db.updateUser(username, fields); return; }
+      catch (e) {
+        if (attempt >= 2) {
+          console.error(`[DB] CRITIQUE ${label} PERDU pour ${username} après 3 essais : ${e && e.message ? e.message : e}`);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+      }
+    }
+  })();
+}
+
 
 
 const app = express();
@@ -2731,7 +2751,7 @@ function awardDailyLoginXp(username) {
   if (user) {
     user.lastLoginXpDay = today;
     // Par PSEUDO (même raison que la série kikooz : survivre à un ident sans _dbId).
-    if (process.env.DATABASE_URL) db.updateUser(username, { last_login_xp_day: today }).catch(dbErr('updateUser last_login_xp_day'));
+    dbUpdateUserCritical(username, { last_login_xp_day: today }, 'jour de bonus XP');
   }
   // notify:false — the ident handler flushes new userLog entries to the socket
   // immediately after this call, so it delivers any level-up exactly once.
@@ -2789,11 +2809,9 @@ function awardDailyLoginKikooz(username) {
   user.kikooz = (Number(user.kikooz) || 0) + reward;
   // Écrit par PSEUDO (pas gardé par _dbId) : la série de connexion doit être
   // persistée même si l'objet mémoire a perdu son _dbId (ident de secours au
-  // reboot) — sinon la série repartait de 1 après chaque redémarrage.
-  if (process.env.DATABASE_URL) {
-    db.updateUser(username, { daily_kikooz_day: today, daily_streak: streak, kikooz: user.kikooz })
-      .catch(dbErr('updateUser daily kikooz'));
-  }
+  // reboot) — sinon la série repartait de 1 après chaque redémarrage. Avec
+  // RETRY : perdre cette écriture un jour J casserait la série (bonus 7 jours).
+  dbUpdateUserCritical(username, { daily_kikooz_day: today, daily_streak: streak, kikooz: user.kikooz }, 'série de connexion');
   if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
   user.kikoozLog.unshift({ type: 'c', t: new Date().toISOString().replace('T', ' ').substring(0, 19), k: reward, c: 'connexion quotidienne' });
   if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
@@ -2906,9 +2924,8 @@ function fdPersist(username, user) {
   // Écrit par PSEUDO (pas gardé par _dbId) : les pass/quotas doivent être
   // persistés même si l'objet mémoire a perdu son _dbId (ident de secours au
   // reboot) — sinon un pass acheté dans cet état « sautait » au redémarrage.
-  if (user && process.env.DATABASE_URL) {
-    db.updateUser(username, { fd_state: JSON.stringify(user.fdState) }).catch(dbErr('updateUser fd_state'));
-  }
+  // Avec RETRY (un pass acheté = argent réel du joueur, perte inacceptable).
+  if (user) dbUpdateUserCritical(username, { fd_state: JSON.stringify(user.fdState) }, 'fd_state (pass/quotas)');
 }
 // Consomme un FD (une partie challenge). Renvoie true si consommé, false si aucun
 // FD disponible. Sans limite sur ce jeu → toujours true, rien n'est décompté.
@@ -3931,8 +3948,8 @@ function grantFeutre(username, user, kind) {
   if (!user.ownedFeutres.includes(kind)) user.ownedFeutres.push(kind);
   // Écrit par PSEUDO (pas par _dbId) : même si l'objet mémoire a perdu son _dbId
   // (ex. ident de secours au reboot), l'achat est persisté — sinon le feutre
-  // disparaissait au redémarrage suivant. Sans base configurée, no-op inoffensif.
-  if (process.env.DATABASE_URL) db.updateUser(username, { owned_feutres: JSON.stringify(user.ownedFeutres) }).catch(dbErr('updateUser owned_feutres'));
+  // disparaissait au redémarrage suivant. Avec RETRY (achat payé = critique).
+  dbUpdateUserCritical(username, { owned_feutres: JSON.stringify(user.ownedFeutres) }, 'feutre acheté');
 }
 // Palette arc-en-ciel du feutre multicolore (6 teintes cycliques).
 // Palette du feutre multicolore : on REPREND les couleurs des 17 feutres d'origine
@@ -6459,6 +6476,16 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
         return res.status(400).json({ error: 'Le pseudo doit correspondre au même identifiant (même lettres, casse différente autorisée).' });
       }
       fields.display_name = dn;
+    }
+    // Réparation de la SÉRIE de connexion quotidienne (dédommagement : l'ancien
+    // bug des « comptes fantômes » pouvait la remettre à 1 au reboot). On règle
+    // daily_streak, et daily_kikooz_day est calé sur AUJOURD'HUI (Paris) pour que
+    // la série reparte proprement demain (J+1 → streak+1, bonus au multiple de 7).
+    if (body.daily_streak !== undefined) {
+      const v = Math.max(0, Math.floor(Number(body.daily_streak) || 0));
+      fields.daily_streak = v;
+      fields.daily_kikooz_day = parisDayKey();
+      if (users[u]) { users[u].dailyStreak = v; users[u].dailyKikoozDay = fields.daily_kikooz_day; }
     }
     if (body.fruti_sign !== undefined) {
       const v = Number(body.fruti_sign);
