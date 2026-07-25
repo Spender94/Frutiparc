@@ -3388,6 +3388,9 @@ async function performChallengeRoll(today) {
   try {
     const { generateMb2ChallengeMap } = require('./mb2gen');
     const r = await generateMb2ChallengeMap();
+    // Persistée en base : la map du jour survit aux reboots (et l'ancienne passe
+    // en 'previous', donc l'admin peut la rétablir si le nouveau tirage déplaît).
+    await mb2StoreCurrentFromDisk(r.seed, 'roll quotidien');
     console.log(`[MB2] Daily roll → regenerated ${r.log}`);
   } catch (e) {
     console.error('[MB2] Daily roll map regeneration error:', e.message);
@@ -8623,6 +8626,29 @@ app.post('/api/admin/challenge/reset', adminScope('challenge'), async (req, res)
   res.json({ ok: true });
 });
 
+// ── Persistance de la map challenge MB2 (mb2data.dat) ─────────────────────────
+// Le disque du conteneur est ÉPHÉMÈRE et ce fichier est gitignoré : sans copie en
+// base, chaque reboot régénérait la map — et écrasait notamment une map posée à la
+// main via l'admin (seed aléatoire) par la map canonique du jour. La map SERVIE
+// reste le fichier disque ; la base est la couche de durabilité (current/previous).
+const MB2_MAP_PATH = path.join(__dirname, 'Games', 'motionBall2', 'mb2data.dat');
+function mb2WriteMapAtomic(content) {
+  const tmp = MB2_MAP_PATH + '.tmp';
+  fs.writeFileSync(tmp, content);
+  fs.renameSync(tmp, MB2_MAP_PATH); // le SWF ne lit jamais un dseed/ddata déchiré
+}
+// Stocke le mb2data.dat COURANT (celui du disque) en base, slot 'current' (l'ancien
+// current glisse en 'previous'). Appelé après chaque génération (boot, roll, admin).
+async function mb2StoreCurrentFromDisk(seed, why) {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const content = fs.readFileSync(MB2_MAP_PATH, 'utf8');
+    const s = seed !== undefined ? String(seed) : ((content.match(/dseed=(\d+)/) || [])[1] || '');
+    await db.setMb2CurrentMap(parisDayKey(), s, content);
+    console.log(`[MB2] Map stockée en base (${why || 'maj'}, seed=${s}) — survivra aux reboots`);
+  } catch (e) { console.error('[MB2] stockage map en base:', e.message); }
+}
+
 app.post('/api/admin/mb2/regenerate-map', adminScope('challenge'), async (req, res) => {
   try {
     const { generateMb2ChallengeMap } = require('./mb2gen');
@@ -8632,10 +8658,31 @@ app.post('/api/admin/mb2/regenerate-map', adminScope('challenge'), async (req, r
     // happened". The automatic daily roll + boot still use the day seed.
     const seed = crypto.randomBytes(4).readUInt32BE(0) & 0x3FFFFFFF;
     const r = await generateMb2ChallengeMap(seed);
+    // Persistée en base : cette map (seed aléatoire, hors map canonique du jour)
+    // survivra aux reboots — avant, le boot la remplaçait par celle du jour.
+    await mb2StoreCurrentFromDisk(r.seed, 'régénération admin');
     console.log(`[ADMIN] Manual MB2 map regeneration (random seed): ${r.log}`);
     res.json({ ok: true, seed: r.seed, distPct: r.distPct, log: r.log });
   } catch (e) {
     console.error('[ADMIN] MB2 map regeneration error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Rétablit la map MB2 PRÉCÉDENTE (celle d'avant la dernière régénération/reboot).
+// Échange les slots current ↔ previous en base et réécrit le fichier servi, donc
+// l'aller-retour est possible (re-cliquer rétablit la map d'avant).
+app.post('/api/admin/mb2/restore-previous', adminScope('challenge'), async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  try {
+    const restored = await db.swapMb2Maps();
+    if (!restored) return res.status(404).json({ error: 'aucune map précédente enregistrée' });
+    mb2WriteMapAtomic(restored.data);
+    const seed = restored.seed || ((String(restored.data).match(/dseed=(\d+)/) || [])[1] || '');
+    console.log(`[ADMIN] Map MB2 précédente rétablie (seed=${seed}, jour ${restored.day_key})`);
+    res.json({ ok: true, seed, dayKey: restored.day_key });
+  } catch (e) {
+    console.error('[ADMIN] restauration map MB2:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -14542,30 +14589,53 @@ async function boot() {
   // tracked in git — they are fixed level sets and must NOT change between
   // deploys (single-player progression depends on stable level layouts).
   try {
-    const mb2Dir = path.join(__dirname, 'Games', 'motionBall2');
-    const dailyMapPath = path.join(mb2Dir, 'mb2data.dat');
+    const dailyMapPath = MB2_MAP_PATH;
+    const today = parisDayKey();
     let needsGen = false;
     let reason = '';
-    if (!fs.existsSync(dailyMapPath)) { needsGen = true; reason = 'file missing'; }
-    else {
-      const mapDay = parisDayKey(fs.statSync(dailyMapPath).mtime);
-      const today = parisDayKey();
-      if (mapDay !== today) { needsGen = true; reason = `mtime day ${mapDay} ≠ today ${today}`; }
+
+    // 1. La BASE fait foi. Le disque du conteneur est éphémère (fichier gitignoré) :
+    //    sur un déploiement neuf il est absent, et le régénérer changeait la map à
+    //    CHAQUE reboot — y compris une map posée à la main via l'admin. Si la base
+    //    a une map du JOUR, on la restaure telle quelle : aucune régénération.
+    let restored = false;
+    if (process.env.DATABASE_URL) {
+      try {
+        const saved = await db.getMb2Map('current');
+        if (saved && saved.day_key === today && saved.data) {
+          const onDisk = fs.existsSync(dailyMapPath) ? fs.readFileSync(dailyMapPath, 'utf8') : null;
+          if (onDisk !== saved.data) mb2WriteMapAtomic(saved.data);
+          restored = true;
+          console.log(`[MB2] Map du jour restaurée depuis la base (${saved.day_key}, seed=${saved.seed || '?'})${onDisk === saved.data ? ' — disque déjà identique' : ''} — stable jusqu'au prochain minuit Paris`);
+        } else if (saved && saved.day_key !== today) {
+          reason = `map en base du ${saved.day_key} ≠ aujourd'hui ${today}`;
+        }
+      } catch (e) { console.error('[MB2] lecture map en base:', e.message); }
+    }
+
+    // 2. Rien d'exploitable en base → règles d'origine sur le fichier disque.
+    if (!restored) {
+      if (!fs.existsSync(dailyMapPath)) { needsGen = true; reason = reason || 'file missing'; }
       else {
-        // On affiche le seed (dérivé du jour Paris) pour pouvoir vérifier en prod
-        // qu'il reste IDENTIQUE entre deux reboots du même jour — la map ne doit
-        // changer qu'au minuit Paris (en phase avec le reset des scores challenge).
-        let seed = '?';
-        try { seed = (fs.readFileSync(dailyMapPath, 'utf8').match(/dseed=(\d+)/) || [])[1] || '?'; } catch (e) {}
-        console.log(`[MB2] Challenge map already up-to-date (${mapDay}, seed=${seed}) — stable jusqu'au prochain minuit Paris`);
+        const mapDay = parisDayKey(fs.statSync(dailyMapPath).mtime);
+        if (mapDay !== today) { needsGen = true; reason = reason || `mtime day ${mapDay} ≠ today ${today}`; }
+        else {
+          let seed = '?';
+          try { seed = (fs.readFileSync(dailyMapPath, 'utf8').match(/dseed=(\d+)/) || [])[1] || '?'; } catch (e) {}
+          console.log(`[MB2] Challenge map already up-to-date (${mapDay}, seed=${seed}) — stable jusqu'au prochain minuit Paris`);
+          // Première fois avec la persistance : on adopte la map du disque en base.
+          await mb2StoreCurrentFromDisk(seed === '?' ? undefined : seed, 'adoption map disque');
+        }
       }
     }
+
     if (needsGen) {
       console.log(`[MB2] Challenge map needs regeneration (${reason}) — generating in background`);
       setImmediate(async () => {
         try {
           const { generateMb2ChallengeMap } = require('./mb2gen');
           const r = await generateMb2ChallengeMap();
+          await mb2StoreCurrentFromDisk(r.seed, 'génération au démarrage');
           console.log(`[MB2] Generated ${r.log}`);
         } catch (e) {
           console.error('[MB2] Challenge map generation error:', e.message);

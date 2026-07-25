@@ -314,6 +314,19 @@ async function initSchema() {
         updated_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- Map challenge du jour de MotionBall 2 (contenu de mb2data.dat). Le disque
+      -- du conteneur est ÉPHÉMÈRE et ce fichier est gitignoré : sans cette copie
+      -- en base, chaque reboot régénérait la map (et écrasait une map posée à la
+      -- main via l'admin). slot 'current' = la map servie ; 'previous' = celle
+      -- d'avant (bouton admin « Rétablir la map précédente »).
+      CREATE TABLE IF NOT EXISTS mb2_maps (
+        slot        TEXT PRIMARY KEY CHECK (slot IN ('current', 'previous')),
+        day_key     TEXT NOT NULL,
+        seed        TEXT NOT NULL DEFAULT '',
+        data        TEXT NOT NULL,
+        updated_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Custom wallpapers ("fonds d'écran") uploaded from the admin panel. The
       -- image BYTES live in the DB (not on disk) so a bought wallpaper keeps
       -- loading even after an ephemeral-filesystem redeploy. Served on demand by
@@ -1470,6 +1483,54 @@ async function listShopAssetKeys() {
   const { rows } = await pool.query('SELECT key, mime, updated_at FROM shop_assets ORDER BY key');
   return rows;
 }
+// ── Map challenge MotionBall 2 (mb2data.dat persisté : le disque est éphémère) ──
+async function getMb2Map(slot) {
+  const { rows } = await pool.query('SELECT day_key, seed, data, updated_at FROM mb2_maps WHERE slot = $1', [slot]);
+  return rows[0] || null;
+}
+// Pose la map 'current' en décalant l'ancienne 'current' vers 'previous' (dans une
+// transaction : jamais d'état à moitié décalé).
+async function setMb2CurrentMap(dayKey, seed, data) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO mb2_maps (slot, day_key, seed, data, updated_at)
+       SELECT 'previous', day_key, seed, data, now() FROM mb2_maps WHERE slot = 'current'
+       ON CONFLICT (slot) DO UPDATE SET day_key = EXCLUDED.day_key, seed = EXCLUDED.seed, data = EXCLUDED.data, updated_at = now()`
+    );
+    await client.query(
+      `INSERT INTO mb2_maps (slot, day_key, seed, data, updated_at)
+       VALUES ('current', $1, $2, $3, now())
+       ON CONFLICT (slot) DO UPDATE SET day_key = $1, seed = $2, data = $3, updated_at = now()`,
+      [dayKey, String(seed || ''), data]
+    );
+    await client.query('COMMIT');
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; }
+  finally { client.release(); }
+}
+// Échange 'current' ↔ 'previous' (bouton admin « Rétablir la map précédente »).
+// Renvoie la nouvelle 'current' (l'ex-previous), ou null s'il n'y a pas de previous.
+async function swapMb2Maps() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT slot, day_key, seed, data FROM mb2_maps FOR UPDATE');
+    const cur = rows.find((r) => r.slot === 'current');
+    const prev = rows.find((r) => r.slot === 'previous');
+    if (!prev) { await client.query('ROLLBACK'); return null; }
+    const put = (slot, r) => client.query(
+      `INSERT INTO mb2_maps (slot, day_key, seed, data, updated_at) VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (slot) DO UPDATE SET day_key = $2, seed = $3, data = $4, updated_at = now()`,
+      [slot, r.day_key, r.seed, r.data]
+    );
+    await put('current', prev);
+    if (cur) await put('previous', cur);
+    await client.query('COMMIT');
+    return { day_key: prev.day_key, seed: prev.seed, data: prev.data };
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; }
+  finally { client.release(); }
+}
 // ── Quiz images (MikeHorny "image" quizzes, uploaded from the admin) ──
 // Metadata only (no bytes) — feeds the in-memory quiz-image registry at boot.
 async function loadQuizImages() {
@@ -2591,6 +2652,9 @@ module.exports = {
   getShopAsset,
   upsertShopAsset,
   listShopAssetKeys,
+  getMb2Map,
+  setMb2CurrentMap,
+  swapMb2Maps,
   deleteWallpaper,
   upsertForumImage,
   getForumImage,

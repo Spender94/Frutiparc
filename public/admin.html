@@ -762,6 +762,7 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <button class="btn" onclick="loadChallengeStatus()">Rafraîchir</button>
     <button class="btn-danger" onclick="forceRoll()">Terminer le cycle (médailles + reset)</button>
     <button class="btn-success" onclick="regenerateMb2Map()" title="Générer une nouvelle map challenge MotionBall 2">Régénérer la map MotionBall 2</button>
+    <button class="btn" onclick="restoreMb2Map()" title="Remet la map MotionBall 2 précédente (celle d'avant la dernière régénération). Re-cliquer refait l'aller-retour.">↩ Rétablir la map précédente</button>
   </div>
   <div id="challenge-status" class="section-content" style="margin-bottom:8px"></div>
   <div id="mb2-map-info" class="section-content" style="margin-bottom:8px;font-size:11px;color:#2C4A0F"></div>
@@ -3754,10 +3755,10 @@ async function loadMb2MapInfo() {
       status = `⚠ map périmée — datée du ${esc(d.mapDay)}, attendue ${esc(d.today)} (« Régénérer » pour forcer un nouveau tirage)`;
     } else if (d.canonical) {
       color = '#2C4A0F';
-      status = `✓ map canonique du ${esc(d.today)} — seed déterministe, ne change qu'au minuit Paris (un reboot la régénère à l'identique)`;
+      status = `✓ map canonique du ${esc(d.today)} — ne change qu'au minuit Paris (conservée en base : un reboot la restaure à l'identique)`;
     } else {
       color = '#b8860b';
-      status = `⚠ seed ≠ seed déterministe du jour${d.expectedSeed ? ' (attendu : ' + esc(d.expectedSeed) + ')' : ''} — régénération manuelle ; un reboot la ramènera au seed du jour`;
+      status = `map personnalisée (seed ≠ seed du jour${d.expectedSeed ? ', déterministe : ' + esc(d.expectedSeed) : ''}) — conservée en base, elle SURVIT aux reboots jusqu'au prochain minuit Paris`;
     }
     // « fichier écrit le » (mtime) ≠ changement de map : une régénération au même
     // seed réécrit le fichier mais produit une map IDENTIQUE.
@@ -3772,6 +3773,19 @@ async function regenerateMb2Map() {
     const d = await r.json();
     if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
     toast(`Map MB2 régénérée (seed=${d.seed}, ${d.distPct}% du donjon)`);
+    loadMb2MapInfo();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// Rétablit la map MB2 précédente (échange current ↔ previous côté serveur), donc
+// re-cliquer refait l'aller-retour : pratique si un nouveau tirage ne plaît pas.
+async function restoreMb2Map() {
+  if (!confirm('Rétablir la map MotionBall 2 précédente ?\nLa map en cours prendra sa place (re-cliquer permet de revenir en arrière).')) return;
+  try {
+    const r = await fetch('/api/admin/mb2/restore-previous', { method: 'POST', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+    toast(`Map précédente rétablie (seed=${d.seed})`);
     loadMb2MapInfo();
   } catch (e) { toast('Erreur: ' + e.message); }
 }
