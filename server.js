@@ -3023,19 +3023,9 @@ function fdAuthorizeChallengeSave(sid, username, game, routed) {
   if (claim === 'paid') return 'ok';
   if (claim === 'free') return 'skip';
   if (!fdGameIsLimited(game)) return 'ok';
-  // BKiwi — repli quand le marqueur de session rate (socket de jeu sans sid, le
-  // cas réel). Le verdict vient du claim de CETTE course et il est à USAGE UNIQUE
-  // (lu puis effacé) : il vaut pour un seul enregistrement, donc aucun résidu ne
-  // peut retomber sur une course ultérieure — c'est ce qui a fait perdre des
-  // scores Challenge quand ce marquage était persistant.
-  //   • Challenge PAYÉE → on CLASSE sans reconsommer (le FD est déjà débité) ;
-  //   • course libre (Duel/TimeTrial/entraînement) → non classée en challenge ;
-  //   • aucun claim (mobile, très vieux client) → heuristique de circuit d'origine.
-  if (game === 'bkiwi') {
-    const paid = fdTakeRaceModeChallenge(username, game);
-    if (paid === true) return 'ok';
-    if (paid === false) return 'skip';
-  }
+  // NB : BKiwi ne passe JAMAIS ici — fdApplyToSave court-circuite pour lui (son
+  // score est toujours écrit, cf. le commentaire là-bas). Ne pas réintroduire de
+  // branche bkiwi dans ce portillon : c'est ce qui a fait perdre des scores.
   const hint = routed && routed.hint;
   const daily = routed && routed.daily;
   if (Number.isFinite(hint) && Number.isFinite(daily) && hint !== daily) return 'skip';
@@ -3060,6 +3050,22 @@ function fdApplyToSave(sid, username, rankingId, extraRankingId, routed) {
   // Jeux non limités OU rationnés au démarrage du match (grapiz/bandas) : le
   // save ne gate rien (le portillon est ailleurs). Cf. FD_PREMATCH_GAMES.
   if (!fdGameIsLimited(game) || FD_PREMATCH_GAMES.has(game)) return { direct: true, mirror: true, blocked: false };
+  // ── BKiwi : L'ENREGISTREMENT N'EST JAMAIS BLOQUÉ ─────────────────────────────
+  // Le quota de Burning Kiwi est appliqué AVANT la course, par /do/fdclaim : quand
+  // il n'y a plus de FD, le claim refuse et le jeu revient au menu — le joueur ne
+  // court même pas. Le portillon de save n'apportait donc aucune protection réelle,
+  // mais il pouvait FAIRE PERDRE un score challenge dès qu'il se trompait de
+  // verdict (désaccord sur le circuit du jour, marqueur de session manquant,
+  // marquage résiduel…). C'est exactement ce qui est arrivé, plusieurs fois.
+  // Règle définitive : pour BKiwi, le score est TOUJOURS écrit (cuve classique ET
+  // cuve challenge du jour) et rien n'est consommé ici — la consommation a lieu
+  // une seule fois, au claim. Un score de joueur ne doit jamais dépendre d'une
+  // heuristique.
+  if (game === 'bkiwi') {
+    fdTakeClaim(sid, game);                       // purge le marqueur de la course
+    fdTakeRaceModeChallenge(username, game);      // purge le marquage (usage unique)
+    return { direct: true, mirror: true, blocked: false };
+  }
   const verdict = fdAuthorizeChallengeSave(sid, username, game, routed);
   return {
     direct: fdGatedBucketGame(rankingId) ? (verdict === 'ok') : true,
