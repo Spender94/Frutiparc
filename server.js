@@ -2943,13 +2943,15 @@ function fdConsume(username, user, game) {
 const FD_GAME_LABELS = { bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', swapou2: 'Swapou', mb2: 'MotionBall', kaluga: 'Kaluga', grapiz: 'Grapiz', bandas: 'Frutibandas' };
 function fdGameLabel(game) { return FD_GAME_LABELS[String(game || '').toLowerCase()] || game; }
 
-// Mémorise, SUR LE USER (pas la session), le mode de la course en cours pour un
-// jeu — Challenge (true) vs autre mode : Time Trial / Duel (false). Posé au
-// démarrage de la partie (startGame) et à chaque save où le mode est connu de
-// façon fiable. Indispensable pour BKiwi : ses scores arrivent souvent via un
-// getURL sans sid fiable (repli par IP), donc la session n'est pas fiable ; le
-// USER, lui, est toujours résolu. Sert au portillon FD : SEUL le mode Challenge
-// est limité. Mode inconnu (undefined) → on retombe sur l'heuristique circuit.
+// Mémorise, SUR LE USER (pas la session), le verdict de la DERNIÈRE course
+// réclamée pour un jeu — course Challenge payée (true) vs course libre (false).
+// RÈGLE ABSOLUE : posé UNIQUEMENT par /do/fdclaim, selon SON verdict (paid →
+// true ; free → false). Les chemins de save ne doivent JAMAIS écrire ici : leur
+// « m » FrutiScore n'est PAS le mode de jeu de BKiwi (toujours 0 pour lui) et
+// marquerait faussement « libre » → le classement challenge sauterait dès que
+// le marqueur de session rate (socket de jeu sans sid). Le save LIT ce verdict :
+// true → classer SANS reconsommer (le claim a déjà payé — fin de la double
+// conso historique) ; false → non classé ; inconnu → heuristique circuit.
 function fdStampRaceMode(username, game, isChallenge) {
   const u = username ? users[username] : null;
   const key = String(game || '').toLowerCase();
@@ -3017,23 +3019,21 @@ function fdAuthorizeChallengeSave(sid, username, game, routed) {
   if (claim === 'paid') return 'ok';
   if (claim === 'free') return 'skip';
   if (!fdGameIsLimited(game)) return 'ok';
-  // BKiwi : SEUL le mode Challenge est limité. Si le mode de la course est CONNU
-  // (posé au startGame / save sur le USER, cf. fdStampRaceMode) :
-  //   • non-challenge (Time Trial / Duel) → 'skip' : partie libre, non classée en
-  //     challenge, aucun FD consommé ;
-  //   • challenge → on consomme un FD (course classée du jour), directement, sans
-  //     dépendre de la détection de circuit.
-  // Mode INCONNU (undefined : aucun startGame vu) → on retombe sur l'heuristique
-  // circuit d'origine, qui classait déjà correctement le challenge (jamais de perte
-  // de score).
+  // BKiwi : le verdict du CLAIM fait foi (fdStampRaceMode, posé UNIQUEMENT par
+  // /do/fdclaim). Le marqueur de session ci-dessus est le chemin nominal, mais il
+  // rate quand le socket de jeu n'a pas le même sid que le claim — ce repli par
+  // USER couvre ce cas :
+  //   • dernière course réclamée = CHALLENGE PAYÉE (true) → on CLASSE sans
+  //     reconsommer : le FD a déjà été débité au claim. (Consommer ici re-débitait
+  //     un 2e FD quand le marqueur ratait — la « double conso » historique.)
+  //   • dernière course réclamée = LIBRE (false : Time Trial/Duel/autre circuit)
+  //     → non classé en challenge, aucun débit.
+  //   • verdict INCONNU (aucun claim vu : très vieux SWF, autre client) →
+  //     heuristique circuit d'origine ci-dessous (classe et consomme au save).
   if (game === 'bkiwi') {
     const cm = fdRaceModeChallenge(username, game);
     if (cm === false) return 'skip';
-    if (cm === true) {
-      if (fdGateChallengeScore(username, users[username], game)) return 'ok';
-      fdFlagRefusal(sid, game);
-      return 'blocked';
-    }
+    if (cm === true) return 'ok';
     // cm === undefined → heuristique ci-dessous
   }
   const hint = routed && routed.hint;
@@ -5171,11 +5171,11 @@ async function handleSaveScore(req, res) {
   // visé (<jeu>_classic) EST le bucket du mode Challenge → il n'est classé que si
   // le joueur a un FD (marqueur du claim pré-partie, sinon consommation ici).
   let result = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
-  // Mode de la course connu explicitement (param m) → mémorisé sur le user pour le
-  // portillon FD (seul le Challenge est limité).
-  if (params.m !== undefined || params.mode !== undefined) {
-    fdStampRaceMode(username, fdGameFromRanking(rankingId), mode === 1);
-  }
+  // NOTE : ne PAS poser fdStampRaceMode ici — le « m » des chemins de save est le
+  // mode FrutiScore (routage de cuve), pas le mode de jeu BKiwi (toujours 0 pour
+  // lui) : il marquerait faussement « course libre » et ferait sauter le
+  // classement challenge dès que le marqueur de session rate. Seul /do/fdclaim
+  // pose ce verdict (cf. fdStampRaceMode).
   // Portillon FD unifié : UNE consommation pour la partie, appliquée aux deux
   // cuves (direct + miroir) — cf. fdApplyToSave.
   const fdg = fdApplyToSave(sid, username, rankingId, extraRankingId, routedInfo);
@@ -10847,36 +10847,34 @@ app.post('/do/fdclaim', async (req, res) => {
   // BKiwi v2 : le SWF patché envoie mode = vs.gameMode (inc/gameData.as —
   // ARCADE=1 est le bouton « Challenge » du menu ; DUEL=2, TIMETRIAL=3, etc.).
   // SEUL le mode Challenge consomme un FD : Duel, TimeTrial, entraînements et
-  // tournois sont LIBRES, même sur le circuit du jour. Le mode est aussi mémorisé
-  // sur le user (fdStampRaceMode) pour que l'enregistrement du score suive le
-  // même verdict, même s'il arrive par getURL sans sid.
+  // tournois sont LIBRES, même sur le circuit du jour.
+  //
+  // Le claim est la SEULE autorité qui pose fdStampRaceMode, et il le pose selon
+  // son VERDICT (paid → challenge payé ; free → course libre) : l'enregistrement
+  // du score suit ce verdict même quand le marqueur de session rate (socket de
+  // jeu sans sid), sans jamais reconsommer. Chaque claim ré-évalue à neuf —
+  // aucun état antérieur n'influence le verdict (un stamp périmé ne doit JAMAIS
+  // transformer un vrai Challenge en course libre : ça ferait sauter son score).
   if (game === 'bkiwi' && params.mode !== undefined && params.mode !== '') {
     const m = Number(params.mode);
-    if (Number.isFinite(m)) {
-      const isChallenge = (m === 1);
-      fdStampRaceMode(username, game, isChallenge);
-      if (!isChallenge) {
-        fdSetClaim(sid, game, 'free');
-        return res.send('ok=1&fd=free');
-      }
+    if (Number.isFinite(m) && m !== 1) {
+      fdStampRaceMode(username, game, false);
+      fdSetClaim(sid, game, 'free');
+      return res.send('ok=1&fd=free');
     }
-  }
-  // Mode absent (SWF antérieur au patch v2) mais dernier mode CONNU non-challenge
-  // (posé par un save/startGame antérieur) → entraînement libre.
-  if (game === 'bkiwi' && fdRaceModeChallenge(username, game) === false) {
-    fdSetClaim(sid, game, 'free');
-    return res.send('ok=1&fd=free');
   }
   // Course sur un autre circuit que celui du jour → entraînement, gratuit.
   if (game === 'bkiwi' && params.track !== undefined && params.track !== '') {
     const track = Number(params.track);
     const daily = getBkiwiDailyTrack();
     if (Number.isFinite(track) && track !== daily) {
+      fdStampRaceMode(username, game, false);
       fdSetClaim(sid, game, 'free');
       return res.send('ok=1&fd=free');
     }
   }
   if (fdConsume(username, user, game)) {
+    if (game === 'bkiwi') fdStampRaceMode(username, game, true); // course Challenge PAYÉE
     fdSetClaim(sid, game, 'paid');
     const left = fdRemaining(user, game);
     console.log(`[FD] ${username} : claim ${game} OK (reste ${left})`);
@@ -16957,9 +16955,10 @@ async function handleCBeeMessage(socket, rawXml) {
         let res = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
         let challengeRes = null;
         if (username && rankingId) {
-          // Mode de la course connu (m / currentGameMode) → mémorisé sur le user
-          // pour le portillon FD (seul le Challenge est limité).
-          fdStampRaceMode(username, fdGameFromRanking(rankingId), scoreMode === 1);
+          // NOTE : pas de fdStampRaceMode ici — le « m » FrutiScore d'un save
+          // BKiwi vaut toujours 0 (le mode Challenge est interne au jeu) : il
+          // marquerait « course libre » et ferait sauter le classement challenge
+          // dès que le marqueur rate. Seul /do/fdclaim pose ce verdict.
           // Portillon FD : un seul verdict par partie (fdApplyToSave), même quand
           // le save écrit deux cuves (direct snake3/swapou2/mb2/kaluga + miroir
           // bkiwi/mb2) — évite le double décompte.
@@ -17017,12 +17016,10 @@ case 'join': {
     const gameUser = client.username ||
       (client.sid && sessions[client.sid] && sessions[client.sid].user) || null;
     console.log(`[FSCORE] startGame disc=${discId} mode=${gameMode} user=${gameUser || '-'}`);
-    // Mémorise le mode de CETTE course sur le user (fiable même quand le save
-    // arrivera par un getURL sans sid). Seul le mode Challenge (m=1) est limité.
-    if (gameUser) {
-      const startRank = rankingIdForGame(discId, gameMode) || (client.currentGame ? rankingIdForGame(client.currentGame, gameMode) : '');
-      fdStampRaceMode(gameUser, fdGameFromRanking(startRank || ''), gameMode === 1);
-    }
+    // NOTE : pas de fdStampRaceMode ici — le « m » du startGame FrutiScore n'est
+    // pas le mode de jeu BKiwi (son Challenge est interne, vs.gameMode) : il
+    // marquerait « course libre » et ferait sauter le classement challenge.
+    // Seul /do/fdclaim pose ce verdict (cf. fdStampRaceMode).
     // Show the game icon in place of the presence indicator on the user
     // card by updating the "internal" portion of the status string.
     if (gameUser) {
