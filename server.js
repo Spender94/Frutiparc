@@ -2959,13 +2959,17 @@ function fdStampRaceMode(username, game, isChallenge) {
   if (!u.challengeRaceByGame || typeof u.challengeRaceByGame !== 'object') u.challengeRaceByGame = {};
   u.challengeRaceByGame[key] = !!isChallenge;
 }
-// Renvoie true/false si le mode de la dernière course de ce jeu est connu, sinon
-// undefined (→ heuristique circuit).
-function fdRaceModeChallenge(username, game) {
+// Lecture à USAGE UNIQUE du marquage (lu puis effacé, comme le marqueur de
+// session) : une seule course peut en bénéficier, donc aucun résidu ne peut
+// influencer une course ultérieure. Renvoie true seulement si la dernière course
+// réclamée était une course Challenge PAYÉE.
+function fdTakeRaceModeChallenge(username, game) {
   const u = username ? users[username] : null;
   const key = String(game || '').toLowerCase();
-  if (!u || !u.challengeRaceByGame || typeof u.challengeRaceByGame !== 'object') return undefined;
-  return u.challengeRaceByGame[key];
+  if (!u || !key || !u.challengeRaceByGame || typeof u.challengeRaceByGame !== 'object') return undefined;
+  const v = u.challengeRaceByGame[key];
+  delete u.challengeRaceByGame[key];
+  return v;
 }
 // Jeu extrait d'un id de classement (« bkiwi_track3_challenge » → « bkiwi »).
 function fdGameFromRanking(rankingId) { return String(rankingId || '').split('_')[0].toLowerCase(); }
@@ -3019,22 +3023,18 @@ function fdAuthorizeChallengeSave(sid, username, game, routed) {
   if (claim === 'paid') return 'ok';
   if (claim === 'free') return 'skip';
   if (!fdGameIsLimited(game)) return 'ok';
-  // BKiwi : le verdict du CLAIM fait foi (fdStampRaceMode, posé UNIQUEMENT par
-  // /do/fdclaim). Le marqueur de session ci-dessus est le chemin nominal, mais il
-  // rate quand le socket de jeu n'a pas le même sid que le claim — ce repli par
-  // USER couvre ce cas :
-  //   • dernière course réclamée = CHALLENGE PAYÉE (true) → on CLASSE sans
-  //     reconsommer : le FD a déjà été débité au claim. (Consommer ici re-débitait
-  //     un 2e FD quand le marqueur ratait — la « double conso » historique.)
-  //   • dernière course réclamée = LIBRE (false : Time Trial/Duel/autre circuit)
-  //     → non classé en challenge, aucun débit.
-  //   • verdict INCONNU (aucun claim vu : très vieux SWF, autre client) →
-  //     heuristique circuit d'origine ci-dessous (classe et consomme au save).
+  // BKiwi — repli quand le marqueur de session rate (socket de jeu sans sid, le
+  // cas réel). Le verdict vient du claim de CETTE course et il est à USAGE UNIQUE
+  // (lu puis effacé) : il vaut pour un seul enregistrement, donc aucun résidu ne
+  // peut retomber sur une course ultérieure — c'est ce qui a fait perdre des
+  // scores Challenge quand ce marquage était persistant.
+  //   • Challenge PAYÉE → on CLASSE sans reconsommer (le FD est déjà débité) ;
+  //   • course libre (Duel/TimeTrial/entraînement) → non classée en challenge ;
+  //   • aucun claim (mobile, très vieux client) → heuristique de circuit d'origine.
   if (game === 'bkiwi') {
-    const cm = fdRaceModeChallenge(username, game);
-    if (cm === false) return 'skip';
-    if (cm === true) return 'ok';
-    // cm === undefined → heuristique ci-dessous
+    const paid = fdTakeRaceModeChallenge(username, game);
+    if (paid === true) return 'ok';
+    if (paid === false) return 'skip';
   }
   const hint = routed && routed.hint;
   const daily = routed && routed.daily;
@@ -10896,37 +10896,42 @@ app.post('/do/fdclaim', async (req, res) => {
   // SEUL le mode Challenge consomme un FD : Duel, TimeTrial, entraînements et
   // tournois sont LIBRES, même sur le circuit du jour.
   //
-  // Le claim est la SEULE autorité qui pose fdStampRaceMode, et il le pose selon
-  // son VERDICT (paid → challenge payé ; free → course libre) : l'enregistrement
-  // du score suit ce verdict même quand le marqueur de session rate (socket de
-  // jeu sans sid), sans jamais reconsommer. Chaque claim ré-évalue à neuf —
-  // aucun état antérieur n'influence le verdict (un stamp périmé ne doit JAMAIS
-  // transformer un vrai Challenge en course libre : ça ferait sauter son score).
-  if (game === 'bkiwi' && params.mode !== undefined && params.mode !== '') {
-    const m = Number(params.mode);
-    if (Number.isFinite(m) && m !== 1) {
-      fdStampRaceMode(username, game, false);
-      fdSetClaim(sid, game, 'free');
-      return res.send('ok=1&fd=free');
-    }
+  // Le MODE PRIME sur le circuit. Quand le SWF v2 annonce mode=1, c'est une
+  // course Challenge, POINT : on ne lui applique PAS l'heuristique de circuit.
+  // (C'est ce qui cassait le classement : le circuit choisi par le jeu ne
+  // coïncide pas toujours avec le « circuit du jour » calculé ici, et la course
+  // challenge était alors classée « entraînement » → score jamais classé.)
+  const modeRaw = (game === 'bkiwi' && params.mode !== undefined && params.mode !== '') ? Number(params.mode) : NaN;
+  const modeKnown = Number.isFinite(modeRaw);
+  if (modeKnown && modeRaw !== 1) {
+    fdStampRaceMode(username, game, false); // efface un éventuel « payé » antérieur
+    fdSetClaim(sid, game, 'free');          // Duel / TimeTrial / entraînement
+    return res.send('ok=1&fd=free');
   }
-  // Course sur un autre circuit que celui du jour → entraînement, gratuit.
-  if (game === 'bkiwi' && params.track !== undefined && params.track !== '') {
+  // Mode INCONNU (SWF antérieur au patch v2) : on retombe sur l'heuristique de
+  // circuit d'origine — course sur un autre circuit que celui du jour = gratuite.
+  if (!modeKnown && game === 'bkiwi' && params.track !== undefined && params.track !== '') {
     const track = Number(params.track);
     const daily = getBkiwiDailyTrack();
     if (Number.isFinite(track) && track !== daily) {
-      fdStampRaceMode(username, game, false);
       fdSetClaim(sid, game, 'free');
       return res.send('ok=1&fd=free');
     }
   }
   if (fdConsume(username, user, game)) {
-    if (game === 'bkiwi') fdStampRaceMode(username, game, true); // course Challenge PAYÉE
+    // Course Challenge PAYÉE, mémorisée sur le USER : si le marqueur de session
+    // rate au moment du save (socket de jeu sans sid), le score sera quand même
+    // classé, et SANS reconsommer. Ce marquage ne peut que FAVORISER le
+    // classement — il ne bloque jamais rien (cf. fdAuthorizeChallengeSave).
+    if (game === 'bkiwi') fdStampRaceMode(username, game, true);
     fdSetClaim(sid, game, 'paid');
     const left = fdRemaining(user, game);
     console.log(`[FD] ${username} : claim ${game} OK (reste ${left})`);
     return res.send(`ok=1&fd=paid&remaining=${left}`);
   }
+  // Course REFUSÉE (plus de FD) : on efface tout « payé » antérieur — elle ne doit
+  // en aucun cas être classée si le jeu tente quand même d'enregistrer un score.
+  if (game === 'bkiwi') fdStampRaceMode(username, game, false);
   fdFlagRefusal(sid, game);
   console.log(`[FD] ${username} : claim ${game} REFUSÉ (plus de FD)`);
   return res.send(`ok=0&err=no_fd&remaining=0&price=${FD_PASS_PRICE}`);
