@@ -45,11 +45,17 @@ function readSwf(filePath) {
   else throw new Error('Signature inconnue: ' + sig);
   return { sig, version, body };
 }
+// ATTENTION — l'octet de version du SWF ne doit PAS rester à 7.
+// ExternalInterface est une API Flash Player 8 : tant que l'en-tête annonce la
+// version 7, Ruffle ne publie pas flash.external.ExternalInterface et l'appel
+// injecté ne fait RIEN, sans la moindre erreur. Vérifié par une sonde
+// inconditionnelle : zéro rappel en version 7, rappel immédiat en version 8.
+const MIN_SWF_VERSION = 8;
 function writeSwf(outPath, sig, version, newBody) {
   const payload = sig === 'CWS' ? zlib.deflateSync(newBody, { level: 9 }) : newBody;
   const out = Buffer.alloc(8 + payload.length);
   out.write(sig, 0, 'ascii');
-  out.writeUInt8(version, 3);
+  out.writeUInt8(Math.max(version, MIN_SWF_VERSION), 3);
   out.writeUInt32LE(8 + newBody.length, 4);
   payload.copy(out, 8);
   fs.writeFileSync(outPath, out);

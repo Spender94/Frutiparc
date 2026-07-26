@@ -303,38 +303,62 @@
 
   // ── Tableau de bord Frutisnake ─────────────────────────────────────────────
   // Le SWF patché (scripts/patch-snake3-hud.js) appelle, pendant la partie,
-  // window.fpSnakeHud(longueur, dynamites, nbBonus, tempsBonus). On affiche un
-  // bandeau discret EN BAS : le jeu dessine ses propres icônes de bonus en haut
-  // à gauche, et le bas reste la zone la moins encombrée. Translucide et
-  // « transparent aux clics » pour ne jamais gêner le jeu.
+  // window.fpSnakeHud(longueur, dynamites, nbBonusEnMain, tempsBonus).
+  //
+  // Le rendu reprend le vocabulaire graphique du jeu, relevé au pixel sur une
+  // capture de partie réelle : Frutisnake affiche deux « onglets » blancs
+  // entièrement arrondis qui débordent des bords de la scène — la jauge en haut
+  // à droite et l'étiquette FRUTIBARRE en bas à gauche — avec un texte Verdana
+  // gras, capitales, légèrement chassé, en vert olive #729E1C. Le tableau de
+  // bord est le jumeau de FRUTIBARRE : même hauteur, même arrondi, même
+  // typographie, mais collé en BAS À DROITE, le seul coin encore libre.
+  //
+  // Il est posé DANS #player-wrap, en pixels de la scène (700x480) : il suit
+  // donc la loupe (le wrap est mis à l'échelle par transform) et se fait
+  // découper par son overflow:hidden, exactement comme un élément du jeu.
+  // Surtout, la bande y=444..469 n'est PAS l'aire de jeu — c'est le cadre
+  // décoratif du plateau, là où le jeu pose déjà FRUTIBARRE. Rien n'est masqué.
   (function setupSnakeHud() {
     var bar = null, allowed = false, hideTimer = null;
-    function cell(label, value) {
-      return '<span style="opacity:.65">' + label + '</span> <b style="font-size:14px">' + value + '</b>';
+    // Typographie relevée sur l'étiquette FRUTIBARRE du jeu : Verdana gras,
+    // capitales, chassé, vert olive (#729E1C au plus sombre du texte d'origine).
+    var LABEL = "font:bold 9px Verdana,Geneva,sans-serif;letter-spacing:1.1px;color:#7FAE28";
+    var VALUE = "font:bold 12px Verdana,Geneva,sans-serif;color:#4F7A0C";
+    var SEP = '<i style="width:1px;height:11px;background:#E1F1C6;margin:0 10px"></i>';
+    function cell(label, value, color) {
+      return '<span style="' + LABEL + '">' + label + '</span>' +
+             '<b style="' + VALUE + (color ? ";color:" + color : "") + ';margin-left:5px">' + value + '</b>';
     }
     window.fpSnakeHud = function (len, dyn, nbSlots, slotTime) {
       if (!allowed) return;
       if (!bar) {
+        var host = document.getElementById("player-wrap");
+        if (!host) return;
         bar = document.createElement("div");
-        bar.style.cssText = "position:fixed;left:50%;bottom:8px;transform:translateX(-50%);" +
-          "z-index:500;pointer-events:none;display:flex;gap:16px;align-items:baseline;" +
-          "padding:4px 14px;border-radius:12px;background:rgba(0,0,0,.55);" +
-          "color:#fff;font:12px Verdana,Arial,sans-serif;white-space:nowrap;" +
-          "text-shadow:0 1px 2px rgba(0,0,0,.9)";
-        document.body.appendChild(bar);
+        // left/top:auto neutralisent la règle « #player-wrap > * { left:0;top:0 } ».
+        bar.style.cssText = "position:absolute;left:auto;top:auto;right:0;bottom:10px;" +
+          "z-index:5;pointer-events:none;display:flex;align-items:center;height:21px;" +
+          "padding:0 13px 0 15px;border-radius:11px 0 0 11px;background:#fff;" +
+          "box-shadow:0 1px 0 rgba(90,130,20,.22);white-space:nowrap;" +
+          "opacity:0;transition:opacity .3s ease-out";
+        host.appendChild(bar);
       }
-      // Le temps du bonus n'est pertinent que si un bonus est actif ; il est
-      // exprimé dans l'unité de temps du jeu, on l'arrondit en secondes.
-      var n = Number(nbSlots) || 0;
+      // `time` est déjà un nombre de SECONDES : Const.as annote « temps en
+      // secondes » le bloc TIME_* et TimedSlot.permanent() y retranche Std.deltaT.
+      // Il n'existe que sur les bonus temporisés (potions, Pieu, Rondelle,
+      // Steroids) ; un ciseau ou une langue en main n'a pas de minuterie.
       var t = Number(slotTime);
-      var bonus = n > 0
-        ? (isFinite(t) && t > 0 ? cell("Bonus", Math.ceil(t / 30) + " s") : cell("Bonus", n))
-        : '<span style="opacity:.45">Aucun bonus</span>';
-      bar.innerHTML = cell("Longueur", Number(len) || 0) + cell("Dynamites", Number(dyn) || 0) + bonus;
-      bar.style.display = "flex";
-      // La partie est finie (plus d'appels) → on efface le bandeau.
+      var timed = isFinite(t) && t > 0;
+      var bonus = timed
+        ? cell("BONUS", Math.ceil(t) + '<span style="' + LABEL + ';margin-left:2px">S</span>')
+        : cell("BONUS", "—");
+      var d = Number(dyn) || 0;
+      bar.innerHTML = cell("LONGUEUR", Number(len) || 0) + SEP +
+                      cell("DYNAMITES", d, d > 0 ? "#BB1E1E" : null) + SEP + bonus;
+      bar.style.opacity = "1";
+      // Plus d'appels ⇒ la partie est terminée : on efface en fondu.
       if (hideTimer) clearTimeout(hideTimer);
-      hideTimer = setTimeout(function () { if (bar) bar.style.display = "none"; }, 2500);
+      hideTimer = setTimeout(function () { if (bar) bar.style.opacity = "0"; }, 2000);
     };
     if (!popupSid) return;
     fetch("/api/features?sid=" + encodeURIComponent(popupSid), { cache: "no-store" })

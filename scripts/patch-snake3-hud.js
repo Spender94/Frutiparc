@@ -9,8 +9,20 @@
 //       flash.external.ExternalInterface.call("fpSnakeHud",
 //           this.snake.len,                          // longueur
 //           snake3.bonus.Pile.counter,               // dynamites ramassées
-//           this.slots.length,                       // bonus actifs
-//           this.slots[0].time ) ;                   // temps du bonus courant
+//           this.slots.length,                       // bonus en main
+//           this.slots[this.slots.length - 1].time ) ;  // temps du bonus temporisé
+//
+// Pourquoi le DERNIER slot et pas slots[0] : Game.add_slot() empile par la TÊTE
+// (unshift) les bonus activables — Ciseaux, Langue, Bombe, les seuls dont
+// activable() vaut true — et par la QUEUE (push) tous les autres, c'est-à-dire
+// précisément les TimedSlot (potions, Pieu, Rondelle, Steroids) qui portent un
+// membre `time`. slots[0] est donc presque toujours un ciseau SANS minuterie ;
+// slots[length-1] est le bonus temporisé le plus récemment ramassé. Les
+// unique_slots (Bague, Ressort, Plume…) sont permanents et n'ont pas de `time`.
+//
+// L'unité : Const.as annote « temps en secondes » le bloc TIME_* (TIME_POTIONROUGE
+// = 30) et TimedSlot.permanent() fait `time -= Std.deltaT`. La valeur remontée est
+// donc DÉJÀ un nombre de secondes — la page l'affiche telle quelle.
 //
 // Le jeu ne communiquait pas du tout avec la page : ce pont est le seul moyen
 // d'afficher ces valeurs en overlay (recompiler est impossible — le Makefile
@@ -23,7 +35,8 @@
 //   Pile    = snake3."!$+35"."!?7*&"   (bonus.Pile : counter++ puis boucle
 //                                       d'explosions sur snake.len)
 //   counter = "3}-82]#"
-//   time    = "*}^#\"#"  (slot temporisé : membre initialisé au 3e paramètre)
+//   time    = "*}^#\"#"  (TimedSlot : membre initialisé au 3e paramètre du
+//                         constructeur puis décrémenté dans permanent())
 //   slots   et  main  ne sont PAS obfusqués (marqués « ! » dans snake3_obfu.txt).
 //
 // Cible repérée par MOTIF (Push "main" suivi du DefineFunction2), aucun offset
@@ -50,11 +63,19 @@ function readSwf(p) {
   else throw new Error('Signature inconnue: ' + sig);
   return { sig, version, body };
 }
+// ATTENTION — l'octet de version du SWF ne doit PAS rester à 7.
+// ExternalInterface est une API Flash Player 8 : tant que l'en-tête annonce la
+// version 7, Ruffle ne publie pas flash.external.ExternalInterface et l'appel
+// injecté ne fait RIEN, sans la moindre erreur (constaté : sonde inconditionnelle
+// posée sur l'image 1 → zéro rappel en version 7, un rappel dès la version 8).
+// snake3 n'utilise aucune API dont le comportement change entre 7 et 8 : la
+// bascule ne fait qu'ouvrir l'accès aux classes apparues en 8.
+const MIN_SWF_VERSION = 8;
 function writeSwf(p, sig, version, newBody) {
   const payload = sig === 'CWS' ? zlib.deflateSync(newBody, { level: 9 }) : newBody;
   const out = Buffer.alloc(8 + payload.length);
   out.write(sig, 0, 'ascii');
-  out.writeUInt8(version, 3);
+  out.writeUInt8(Math.max(version, MIN_SWF_VERSION), 3);
   out.writeUInt32LE(8 + newBody.length, 4);
   payload.copy(out, 8);
   fs.writeFileSync(p, out);
@@ -102,6 +123,7 @@ const GET_VARIABLE = Buffer.from([0x1C]);
 const ADD2 = Buffer.from([0x47]);
 const BIT_OR = Buffer.from([0x61]);
 const MODULO = Buffer.from([0x3F]);
+const SUBTRACT = Buffer.from([0x0B]);
 const EQUALS2 = Buffer.from([0x49]);
 const NOT = Buffer.from([0x12]);
 function actionIf(offset) { const b = Buffer.alloc(5); b[0] = 0x9D; b.writeUInt16LE(2, 1); b.writeInt16LE(offset, 3); return b; }
@@ -192,8 +214,11 @@ console.log(`Game.main : corps à ${fn.hdrEnd} (${fn.codeSize} octets)`);
 const tick = pushCp(idx[TICK_MEMBER]);
 const callBlock = Buffer.concat([
   // arguments empilés en ordre INVERSE
+  // slots[slots.length - 1].time  (le bonus temporisé le plus récent — cf. en-tête)
   actionPush(pushReg(1), pushCp(idx['slots'])), GET_MEMBER,
-  actionPush(pushInt(0)), GET_MEMBER, actionPush(pushCp(idx[OBF.time])), GET_MEMBER,   // slots[0].time
+  actionPush(pushReg(1), pushCp(idx['slots'])), GET_MEMBER, actionPush(pushCp(idx['length'])), GET_MEMBER,
+  actionPush(pushInt(1)), SUBTRACT,
+  GET_MEMBER, actionPush(pushCp(idx[OBF.time])), GET_MEMBER,
   actionPush(pushReg(1), pushCp(idx['slots'])), GET_MEMBER, actionPush(pushCp(idx['length'])), GET_MEMBER,
   actionPush(pushCp(idx['snake3'])), GET_VARIABLE,
   actionPush(pushCp(idx[OBF.bonusPkg])), GET_MEMBER,
@@ -244,4 +269,5 @@ buf.writeUInt32LE(tag.length + delta1 + inject.length, tag.offset + 2);
 
 const outSize = writeSwf(IN_PATH, sig, version, buf);
 console.log(`Écrit ${IN_PATH} (${outSize} o compressés)`);
+if (version < MIN_SWF_VERSION) console.log(`Version SWF ${version} → ${MIN_SWF_VERSION} (ExternalInterface est une API Flash 8)`);
 console.log(`Terminé — le jeu appelle ${JS_CALLBACK}(longueur, dynamites, nbBonus, tempsBonus).`);
