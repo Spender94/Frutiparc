@@ -483,6 +483,17 @@
     <input id="purchases-user" placeholder="Filtrer par pseudo…" style="padding:4px" onkeydown="if(event.key==='Enter')loadPurchases()">
     <span id="purchases-count" style="color:#888;font-size:12px"></span>
   </div>
+  <div style="margin:8px 0;padding:10px;border:1px dashed #cdddb4;border-radius:8px;background:#fafdf4;max-width:880px">
+    <b>Restaurer les Pass quotidiens</b>
+    <div style="font-size:11px;color:#555;margin:4px 0 8px">
+      Recalcule les Pass de chaque joueur d'après l'historique d'achats ci-dessous (la référence de ce qui a été payé),
+      et restitue ceux qui manquent. Un compteur n'est jamais diminué : les Pass offerts par l'admin sont conservés.
+      Commencez par la simulation.
+    </div>
+    <button class="btn" onclick="rebuildPasses(false)">Simuler (ne modifie rien)</button>
+    <button class="btn-success" onclick="rebuildPasses(true)">Restaurer les Pass manquants</button>
+    <div id="rebuild-passes-result" style="font-size:12px;margin-top:8px"></div>
+  </div>
   <h3 style="margin:8px 0 4px">Synthèse</h3>
   <table style="max-width:640px">
     <thead><tr><th>Produit</th><th>Catégorie</th><th>Achats</th><th>Acheteurs</th><th>Total kikooz</th></tr></thead>
@@ -1889,6 +1900,28 @@ async function deleteWallpaper(id) {
 let cpSelectedStarter = null; // { file, label } quand une image d'époque est choisie
 let cpStartersLoaded = false;
 let customPictosList = []; // les onclick passent par l'index (libellés avec apostrophes)
+
+// Restaure les Pass quotidiens d'après l'historique d'achats (source de vérité :
+// ils ont été payés en kikooz). Simulation d'abord, puis application.
+async function rebuildPasses(apply) {
+  const box = $('#rebuild-passes-result');
+  box.innerHTML = '<span style="color:#888">Calcul en cours…</span>';
+  try {
+    const r = await fetch('/api/admin/fd/rebuild-passes', { method: apply ? 'POST' : 'GET', headers: hdr() });
+    const d = await r.json();
+    if (!r.ok) { box.innerHTML = '<span style="color:#c03c30">Erreur : ' + esc(d.error || 'inconnue') + '</span>'; return; }
+    if (!d.users) { box.innerHTML = '<span style="color:#2C4A0F">✓ Rien à restaurer : tous les Pass achetés sont déjà en place.</span>'; return; }
+    const lignes = (d.details || []).map(function (u) {
+      const jeux = Object.keys(u.after).map(function (g) { return esc(g) + ' ' + u.before[g] + '→' + u.after[g]; }).join(', ');
+      return '<li><code>' + esc(u.username) + '</code> : ' + jeux + '</li>';
+    }).join('');
+    box.innerHTML = (apply
+      ? '<span style="color:#2C4A0F"><b>✓ ' + d.restored + ' Pass restitué(s) à ' + d.users + ' joueur(s).</b></span>'
+      : '<span style="color:#b8860b"><b>Simulation : ' + d.restored + ' Pass manquant(s) chez ' + d.users + ' joueur(s).</b> Cliquez sur « Restaurer » pour appliquer.</span>')
+      + '<ul style="margin:6px 0 0 18px">' + lignes + '</ul>';
+    if (apply) toast(`${d.restored} Pass restitué(s)`);
+  } catch (e) { box.innerHTML = '<span style="color:#c03c30">Erreur : ' + esc(e.message) + '</span>'; }
+}
 
 async function loadPurchases() {
   const cat = $('#purchases-filter').value;

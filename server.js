@@ -5929,6 +5929,76 @@ async function adminLoadUser(username) {
   return user || null;
 }
 
+// RECONSTRUIT les pass quotidiens de TOUS les joueurs d'après l'historique
+// d'achats boutique (table shop_purchases, alimentée à chaque achat AVANT
+// l'attribution du pass). Les pass sont payés en kikooz : cet historique est la
+// vérité de ce qui est dû. Sert à réparer une perte d'état FD.
+// GET  → simulation (rien n'est écrit), pour vérifier avant d'appliquer.
+// POST → applique. On ne fait que REMONTER un compteur (jamais retirer un pass
+// accordé par l'admin ou déjà présent) : max(actuel, acheté).
+async function fdRebuildPassesFromPurchases(apply) {
+  // packId → jeu, d'après le catalogue statique (les packs retirés du catalogue,
+  // ex. Grapiz/Frutibandas dont le quota a été supprimé, sont ignorés).
+  const packGame = {};
+  for (const p of SHOP_PACKS_DEFAULT) {
+    if (p.fdPassGame && fdGameIsLimited(p.fdPassGame)) packGame[p.id] = p.fdPassGame;
+  }
+  const packIds = Object.keys(packGame).map(Number);
+  const rows = await db.countPurchasesByUserAndPack(packIds);
+  // { pseudo → { jeu → nombre acheté } }
+  const bought = {};
+  for (const r of rows) {
+    const game = packGame[r.pack_id];
+    if (!game) continue;
+    if (!bought[r.username]) bought[r.username] = {};
+    bought[r.username][game] = (bought[r.username][game] || 0) + Number(r.n || 0);
+  }
+  const names = Object.keys(bought);
+  if (!names.length) return { apply, users: 0, restored: 0, details: [] };
+  const states = await db.getFdStatesFor(names);
+  const stateByUser = Object.fromEntries(states.map((s) => [s.username, s.fd_state]));
+  const today = parisDayKey();
+  const details = [];
+  let restored = 0;
+  for (const name of names) {
+    const st = parseFdState(stateByUser[name]) || { d: today, g: {}, p: {} };
+    if (!st.p || typeof st.p !== 'object') st.p = {};
+    if (!st.g || typeof st.g !== 'object') st.g = {};
+    if (!st.d) st.d = today;
+    const before = {}, after = {};
+    let changed = false;
+    for (const [game, n] of Object.entries(bought[name])) {
+      const cur = Math.max(0, Math.floor(Number(st.p[game]) || 0));
+      before[game] = cur;
+      if (n > cur) { st.p[game] = n; changed = true; restored += (n - cur); }
+      after[game] = Math.max(cur, n);
+    }
+    if (!changed) continue;
+    details.push({ username: name, before, after });
+    if (apply) {
+      // Mémoire (joueur connecté) ET base — les deux doivent concorder.
+      const memUser = users[name];
+      if (memUser) { memUser.fdState = st; }
+      dbUpdateUserCritical(name, { fd_state: JSON.stringify(st) }, 'reconstruction des pass');
+    }
+  }
+  return { apply, users: details.length, restored, details };
+}
+
+app.get('/api/admin/fd/rebuild-passes', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  try { res.json(await fdRebuildPassesFromPurchases(false)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/fd/rebuild-passes', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no db' });
+  try {
+    const r = await fdRebuildPassesFromPurchases(true);
+    console.log(`[ADMIN] Reconstruction des pass : ${r.restored} pass restitué(s) à ${r.users} joueur(s)`);
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Donne/retire des PASS quotidiens FD (permanents, cumulables) à un joueur —
 // comme on donne un accessoire. body: { game, delta } (delta ±n, plancher 0).
 // Le jeu doit être soumis au quota (FD_LIMITED_GAMES).

@@ -1410,9 +1410,34 @@ async function insertShopPurchase(p) {
     [p.username, p.packId ?? null, p.packName || '', p.category || '', Number(p.price) || 0]
   );
 }
+// Nombre d'achats par joueur et par pack, pour une liste de packs donnée.
+// Sert à RECONSTRUIRE les pass quotidiens d'après l'historique d'achats quand
+// l'état FD d'un joueur a été perdu (les pass sont payés en kikooz : la vérité
+// de ce qui est dû se trouve ici).
+async function countPurchasesByUserAndPack(packIds) {
+  if (!Array.isArray(packIds) || !packIds.length) return [];
+  const { rows } = await pool.query(
+    `SELECT LOWER(username) AS username, pack_id, COUNT(*)::int AS n
+       FROM shop_purchases
+      WHERE pack_id = ANY($1::int[])
+      GROUP BY LOWER(username), pack_id`,
+    [packIds]
+  );
+  return rows;
+}
+// État FD brut d'une liste de joueurs (par pseudo minuscule) — lecture directe,
+// sans charger les comptes en mémoire (la reconstruction touche surtout des
+// joueurs hors-ligne).
+async function getFdStatesFor(usernames) {
+  if (!Array.isArray(usernames) || !usernames.length) return [];
+  const { rows } = await pool.query(
+    `SELECT LOWER(username) AS username, fd_state FROM users WHERE LOWER(username) = ANY($1::text[])`,
+    [usernames]
+  );
+  return rows;
+}
 // Liste paginée, filtrable par catégorie (ex. 'Pass') et par joueur.
-async function listShopPurchases({ category = null, username = null, limit = 100, offset = 0 } = {}) {
-  const conds = [];
+async function listShopPurchases({ category = null, username = null, limit = 100, offset = 0 } = {}) {  const conds = [];
   const params = [];
   if (category) { params.push(category); conds.push(`category = $${params.length}`); }
   if (username) { params.push(username.toLowerCase()); conds.push(`LOWER(username) = $${params.length}`); }
@@ -2645,6 +2670,8 @@ module.exports = {
   deleteShopPack,
   insertShopPurchase,
   listShopPurchases,
+  countPurchasesByUserAndPack,
+  getFdStatesFor,
   shopPurchaseSummary,
   loadWallpapers,
   getWallpaperImage,
