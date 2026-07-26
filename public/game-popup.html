@@ -190,6 +190,16 @@
       window.__dlog("[Game] window.open(javascript:close) blocked");
       return null;
     }
+    // Compteur de coups Swapou : le SWF patché appelle
+    // getURL("fpswcoup:<n>", "_fpswcoup") à chaque échange. On récupère la valeur
+    // et on renvoie null : aucune fenêtre ne s'ouvre. C'est le MÊME canal que les
+    // sauvegardes de slot/score ci-dessous, éprouvé et disponible dès Flash 4 —
+    // d'où l'absence de tout changement de version du SWF.
+    var coupMatch = u.match(/^fpswcoup:(\d+)/);
+    if (coupMatch) {
+      if (typeof window.fpSwapouCoup === "function") window.fpSwapouCoup(Number(coupMatch[1]));
+      return null;
+    }
     // Slot save via getURL: "slot:GAME:SLOTID:PIPEDATA"
     var slotMatch = u.match(/^slot:([\w]+):(\d+):(.+)/);
     if (slotMatch) {
@@ -282,6 +292,58 @@
       body: JSON.stringify({ sid: popupSid, challenge: isChallenge })
     }).catch(function() {});
   }
+
+  // ── Compteur de coups Swapou (version SWF) ─────────────────────────────────
+  // Le SWF patché (scripts/patch-swapou-movecounter.js) émet
+  // getURL("fpswcoup:<n>") à chaque coup ; l'aiguillage window.open ci-dessus
+  // appelle window.fpSwapouCoup(n).
+  //
+  // Rendu : un panneau posé À CÔTÉ de la scène, jamais par-dessus. Il RÉPLIQUE le
+  // parchemin du score en réutilisant l'asset du jeu lui-même — la bande haute de
+  // /games/swapou2/images/leftPanel.png, rouleaux de cuivre et veinage du bois
+  // compris. Même image, même typographie que la version JavaScript, donc aucun
+  // écart possible entre les deux versions du jeu.
+  (function setupSwapouCoups() {
+    var panel = null, allowed = false, dernier = 0;
+    function construire() {
+      var row = document.getElementById("stage-row");
+      if (!row) return null;
+      var p = document.createElement("div");
+      p.id = "swapou-hud";
+      var css = document.createElement("style");
+      css.textContent =
+        "#swapou-hud{flex:0 0 auto;width:150px;height:76px;position:relative;" +
+          "background:url(/games/swapou2/images/leftPanel.png) 0 0 no-repeat;" +
+          "font-family:Verdana,Arial,sans-serif;user-select:none}" +
+        // Mêmes coordonnées relatives que dans la version JS : le score y est
+        // écrit à x=88, l'étiquette au-dessus.
+        "#swapou-hud .fp-lab{position:absolute;left:0;top:15px;width:176px;text-align:center;" +
+          "font:bold 9px Verdana,Arial,sans-serif;color:#8a6a37;letter-spacing:.5px;" +
+          "transform:translateX(-30px)}" +
+        "#swapou-hud .fp-val{position:absolute;left:0;top:29px;width:176px;text-align:center;" +
+          "font:bold 20px Verdana,Arial,sans-serif;color:#5a3a10;transform:translateX(-30px)}";
+      p.appendChild(css);
+      p.insertAdjacentHTML("beforeend", '<div class="fp-lab">COUPS</div><div class="fp-val">0</div>');
+      row.appendChild(p);
+      if (typeof window.__fpRelayout === "function") window.__fpRelayout();
+      return p;
+    }
+    window.fpSwapouCoup = function (n) {
+      if (!allowed) return;
+      if (!panel) { panel = construire(); if (!panel) return; }
+      dernier = Number(n) || 0;
+      panel.querySelector(".fp-val").textContent = String(dernier);
+    };
+    if (!popupSid) return;
+    fetch("/api/features?sid=" + encodeURIComponent(popupSid), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        allowed = !!(j && j.features && j.features.swapouMoves);
+        // Le panneau apparaît dès le chargement, à zéro, comme celui du jeu.
+        if (allowed) window.fpSwapouCoup(0);
+      })
+      .catch(function () {});
+  })();
 
   // ── Tableau de bord Frutisnake ─────────────────────────────────────────────
   // Le SWF patché (scripts/patch-snake3-hud.js) appelle, pendant la partie,

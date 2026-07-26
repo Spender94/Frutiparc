@@ -1771,21 +1771,45 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     }
     return false;
   };
+  // ── Second parchemin : compteur de coups ─────────────────────────────────
+  // Plutôt que d'entasser deux informations sur le parchemin du score, on
+  // RÉPLIQUE celui-ci plus bas. La bande est recopiée depuis le panneau lui-même
+  // (mêmes pixels, donc mêmes rouleaux de cuivre et même parchemin), à la même
+  // abscisse : le veinage vertical du bois reste aligné, le raccord ne se voit
+  // pas. Aucun nouvel asset n'est nécessaire.
+  const COUPS_BANDE_H = 76;   // hauteur de la bande recopiée (rouleaux compris)
+  const COUPS_DY = 82;        // décalage vertical du second parchemin
+  const COUPS_LARGEUR = 150;  // au-delà commence la colonne de bambou
+
+  InterfChallenge.prototype.drawMovePanel = function (ctx) {
+    const lp = A.img(this.classicModeOn || this.classic ? 'leftPanelClassic' : 'leftPanel');
+    if (!lp) return;
+    ctx.drawImage(lp, 0, 0, COUPS_LARGEUR, COUPS_BANDE_H,
+                      0, COUPS_DY, COUPS_LARGEUR, COUPS_BANDE_H);
+  };
+
+  InterfChallenge.prototype.movesEnabled = function () {
+    return !!(SW.Manager.client && SW.Manager.client.features && SW.Manager.client.features.swapouMoves);
+  };
+
   InterfChallenge.prototype.drawBack = function (ctx) {
     drawBg(ctx, this.classicModeOn || this.classic ? 'bgClassic' : 'bg');
     const lp = A.img(this.classicModeOn || this.classic ? 'leftPanelClassic' : 'leftPanel');
     if (lp) ctx.drawImage(lp, 0, 0);
+    if (this.movesEnabled()) this.drawMovePanel(ctx);
     const rp = A.img(this.classicModeOn || this.classic ? 'rightPanelClassic' : 'rightPanel');
     if (rp) ctx.drawImage(rp, D.DOCWIDTH - rp.naturalWidth, 0);
   };
   InterfChallenge.prototype.drawFront = function (ctx) {
     // score sur le parchemin
     U.text(ctx, String(this.viewScore), 88, 38, { size: 20, color: '#5a3a10', align: 'center' });
-    // Compteur de coups (option de confort) : juste sous le score, même teinte
-    // que le parchemin. N'apparaît que si le serveur accorde l'option au joueur.
-    if (SW.Manager.client && SW.Manager.client.features && SW.Manager.client.features.swapouMoves) {
+    // Compteur de coups : sur SON parchemin, à la même place relative que le
+    // score sur le sien, surmonté de son étiquette. N'apparaît que si le serveur
+    // accorde l'option au joueur.
+    if (this.movesEnabled()) {
       const n = (this.game && this.game.nmoves) || 0;
-      U.text(ctx, 'Coup ' + n, 88, 57, { size: 11, color: '#6b4718', align: 'center' });
+      U.text(ctx, 'COUPS', 88, 22 + COUPS_DY, { size: 9, color: '#8a6a37', align: 'center' });
+      U.text(ctx, String(n), 88, 42 + COUPS_DY, { size: 20, color: '#5a3a10', align: 'center' });
     }
     if (!this.classicModeOn) drawLeaves(ctx, D.LEAVES_X, D.LEAVES_Y);
     this.drawPowerStars(ctx);

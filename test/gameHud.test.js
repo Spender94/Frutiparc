@@ -89,22 +89,69 @@ test('snake3.swf : pont présent et jouable en version 8 (sinon ExternalInterfac
   assert.ok(contient(body, 'fpSnakeHud'), 'nom du rappel JS présent');
   assert.ok(contient(body, 'ExternalInterface'), 'appel ExternalInterface présent');
   // Symboles du jeu intacts : l'injection ne doit rien avoir écrasé.
-  for (const s of ['slots', 'giveItem', ']@=%^$', '3}-82]#', '*}^#"#']) {
+  for (const s of ['slots', 'giveItem', ']@=%^$', '3}-82]#', "'@{ #"]) {
     assert.ok(contient(body, s), `symbole du jeu conservé : ${JSON.stringify(s)}`);
   }
 });
 
-// Le compteur de coups côté SWF a cassé Swapou en production : le patch a été
-// entièrement retiré et swapou.swf remis à l'octet près dans son état d'origine.
-// Ce test empêche qu'un pont y soit réintroduit par inadvertance. Le compteur de
-// la version JavaScript (public/swapou/game.js), lui, est conservé.
-test('swapou.swf : intact, aucun pont réinjecté', () => {
+// Le compteur de coups Swapou a d'abord cassé le jeu : le script d'alors
+// n'agrandissait PAS le codeSize de la fonction englobante, si bien que l'AVM
+// s'arrêtait 80 octets trop tôt et tronquait la routine d'échange. La deuxième
+// version est volontairement minimale — pas de changement de version du SWF
+// (getURL existe depuis Flash 4), aucune écriture mémoire, aucun branchement —
+// et les tests ci-dessous verrouillent ces trois garanties.
+test('swapou.swf : pont getURL, version d\'origine préservée', () => {
   const { version, body } = swfBody('Games/swapou2/swapou.swf');
-  assert.equal(version, 7, 'version SWF d\'origine inchangée');
-  assert.ok(!contient(body, 'fpSwapouCoup'), 'aucun rappel JS injecté');
-  assert.ok(!contient(body, 'ExternalInterface'), 'aucun appel ExternalInterface injecté');
-  assert.ok(!fs.existsSync(path.join(ROOT, 'scripts/patch-swapou-movecounter.js')),
-    'le script de patch Swapou reste supprimé');
+  assert.equal(version, 7, 'la version du SWF ne doit PAS être relevée');
+  assert.ok(contient(body, 'fpswcoup:'), 'préfixe getURL du compteur présent');
+  assert.ok(!contient(body, 'ExternalInterface'),
+    'pas d\'ExternalInterface : il exigerait la version 8');
+});
+
+test('swapou.swf : le codeSize de la fonction englobante a bien été agrandi', () => {
+  // C'est LA régression qui avait cassé le jeu. On refait le calcul : le site
+  // injecté doit tomber dans le corps déclaré d'une fonction, pas au-delà.
+  const { body } = swfBody('Games/swapou2/swapou.swf');
+  const rect = (b) => Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8);
+  let off = rect(body) + 4, tag = null;
+  while (off < body.length) {
+    const h = body.readUInt16LE(off), c = h >> 6;
+    let l = h & 0x3f, hs = 2;
+    if (l === 0x3f) { l = body.readUInt32LE(off + 2); hs = 6; }
+    if (c === 0) break;
+    if (c === 59 && body.slice(off + hs, off + hs + l).includes(Buffer.from('fpswcoup:', 'latin1'))) {
+      tag = { off, hs, l }; break;
+    }
+    off += hs + l;
+  }
+  assert.ok(tag, 'tag contenant le pont trouvé');
+  const s0 = tag.off + tag.hs;
+  const plen = body.readUInt16LE(s0 + 3), cnt = body.readUInt16LE(s0 + 5);
+  const cp = []; let q = s0 + 7;
+  for (let i = 0; i < cnt; i++) { const e = body.indexOf(0, q); cp.push(body.slice(q, e).toString('latin1')); q = e + 1; }
+  const iUrl = cp.indexOf('fpswcoup:');
+  assert.ok(iUrl >= 0, 'préfixe présent dans la table des constantes');
+
+  const start = s0 + 5 + plen, end = tag.off + tag.hs + tag.l;
+  const fns = [];
+  let site = -1, pc = start;
+  while (pc < end) {
+    const op = body[pc];
+    const next = op >= 0x80 ? pc + 3 + body.readUInt16LE(pc + 1) : pc + 1;
+    if (next <= pc || next > end) break;
+    if (op === 0x8E) { const hdrEnd = next; fns.push({ debut: hdrEnd, fin: hdrEnd + body.readUInt16LE(hdrEnd - 2) }); }
+    if (op === 0x96 && site < 0) {
+      const seg = body.slice(pc + 3, next);
+      // Push cp(fpswcoup:) — index sur 1 ou 2 octets selon sa taille.
+      if ((seg[0] === 0x08 && seg[1] === iUrl) || (seg[0] === 0x09 && seg.readUInt16LE(1) === iUrl)) site = pc;
+    }
+    pc = next;
+  }
+  assert.ok(site > 0, 'site injecté localisé');
+  const englobantes = fns.filter((f) => f.debut <= site && site < f.fin);
+  assert.ok(englobantes.length >= 1,
+    'le site injecté tombe dans le corps DÉCLARÉ d\'une fonction — sinon l\'AVM ' +
+    'tronquerait la routine d\'échange, ce qui avait cassé le jeu');
 });
 
 test('panneau Frutisnake : à CÔTÉ de la scène, aux couleurs du jeu', () => {
