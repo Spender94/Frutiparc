@@ -1785,7 +1785,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     // que le parchemin. N'apparaît que si le serveur accorde l'option au joueur.
     if (SW.Manager.client && SW.Manager.client.features && SW.Manager.client.features.swapouMoves) {
       const n = (this.game && this.game.nmoves) || 0;
-      U.text(ctx, 'Coup ' + n, 88, 62, { size: 12, color: '#5a3a10', align: 'center' });
+      U.text(ctx, 'Coup ' + n, 88, 57, { size: 11, color: '#6b4718', align: 'center' });
     }
     if (!this.classicModeOn) drawLeaves(ctx, D.LEAVES_X, D.LEAVES_Y);
     this.drawPowerStars(ctx);
