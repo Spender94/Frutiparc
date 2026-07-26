@@ -16,13 +16,22 @@
       justify-content: center;
       align-items: center;
     }
+    /* La scène et l'éventuel panneau latéral vivent dans une rangée : c'est ELLE
+       que la loupe met à l'échelle, pour que le panneau suive le zoom et reste
+       collé au jeu. Sans panneau, la rangée épouse exactement #player-wrap. */
+    #stage-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      transform-origin: center center;
+      transition: transform .12s ease-out;
+    }
     #player-wrap {
       background: #000;
       box-shadow: 0 0 0 1px rgba(255,255,255,.15);
       overflow: hidden;
       position: relative;
-      transform-origin: center center;
-      transition: transform .12s ease-out;
+      flex: 0 0 auto;
     }
     #player-wrap > * {
       position: absolute;
@@ -95,7 +104,7 @@
        injected save would be invisible to getLocal. See loadRuffleScript(). -->
 </head>
 <body>
-  <div id="player-wrap"></div>
+  <div id="stage-row"><div id="player-wrap"></div></div>
 <script>
 // Block legacy Frusion "burst disc" auto-close: some SWFs (MiniWave, etc.)
 // call getURL("javascript:self.close()", "_self") on init or end-of-game,
@@ -305,65 +314,130 @@
   // Le SWF patché (scripts/patch-snake3-hud.js) appelle, pendant la partie,
   // window.fpSnakeHud(longueur, dynamites, nbBonusEnMain, tempsBonus).
   //
-  // Le rendu reprend le vocabulaire graphique du jeu, relevé au pixel sur une
-  // capture de partie réelle : Frutisnake affiche deux « onglets » blancs
-  // entièrement arrondis qui débordent des bords de la scène — la jauge en haut
-  // à droite et l'étiquette FRUTIBARRE en bas à gauche — avec un texte Verdana
-  // gras, capitales, légèrement chassé, en vert olive #729E1C. Le tableau de
-  // bord est le jumeau de FRUTIBARRE : même hauteur, même arrondi, même
-  // typographie, mais collé en BAS À DROITE, le seul coin encore libre.
+  // Rendu : un panneau posé À CÔTÉ de la scène, jamais par-dessus — l'aire de jeu
+  // reste intégralement visible. Il s'insère dans #stage-row, la rangée que la
+  // loupe met à l'échelle, donc il grandit avec le jeu et reste collé à lui.
   //
-  // Il est posé DANS #player-wrap, en pixels de la scène (700x480) : il suit
-  // donc la loupe (le wrap est mis à l'échelle par transform) et se fait
-  // découper par son overflow:hidden, exactement comme un élément du jeu.
-  // Surtout, la bande y=444..469 n'est PAS l'aire de jeu — c'est le cadre
-  // décoratif du plateau, là où le jeu pose déjà FRUTIBARRE. Rien n'est masqué.
+  // Habillage repris du jeu : remplissage #83CA22 (le vert du cadre de Frutisnake,
+  // relevé au pixel sur une capture), bordure blanche de 2 px, libellés Verdana
+  // gras blancs, et les valeurs dans la police ALBA — celle des titres « Pause »
+  // et « Game over » — avec contour blanc et dégradé #E46A6A → #E7A8A8.
+  //
+  // Alba n'existe nulle part sur le disque : elle ne vit que dans le SWF sous
+  // forme de contours. scripts/extract-alba-digits.js les convertit en tracés
+  // SVG (public/fb/alba-glyphs.json), ce qui donne la typographie exacte du jeu
+  // ET permet le contour + le dégradé, qu'une webfont ne saurait pas rendre
+  // seule (paint-order: stroke fill peint le contour DERRIÈRE la lettre).
   (function setupSnakeHud() {
-    var bar = null, allowed = false, hideTimer = null;
-    // Typographie relevée sur l'étiquette FRUTIBARRE du jeu : Verdana gras,
-    // capitales, chassé, vert olive (#729E1C au plus sombre du texte d'origine).
-    var LABEL = "font:bold 9px Verdana,Geneva,sans-serif;letter-spacing:1.1px;color:#7FAE28";
-    var VALUE = "font:bold 12px Verdana,Geneva,sans-serif;color:#4F7A0C";
-    var SEP = '<i style="width:1px;height:11px;background:#E1F1C6;margin:0 10px"></i>';
-    function cell(label, value, color) {
-      return '<span style="' + LABEL + '">' + label + '</span>' +
-             '<b style="' + VALUE + (color ? ";color:" + color : "") + ';margin-left:5px">' + value + '</b>';
+    var panel = null, allowed = false, hideTimer = null, alba = null;
+    var LIGNES = [
+      { cle: "len", titre: "Longueur" },
+      { cle: "dyn", titre: "Dynamites" },
+      { cle: "bonus", titre: "Bonus" },
+    ];
+
+    // Un nombre → un <svg> de tracés Alba. Sans les glyphes (fichier absent ou
+    // pas encore arrivé), on retombe sur du texte : le panneau reste lisible.
+    function nombre(txt) {
+      txt = String(txt);
+      if (!alba) return '<span class="fp-fallback">' + txt + "</span>";
+      var x = 0, paths = "";
+      for (var i = 0; i < txt.length; i++) {
+        var g = alba.glyphes[txt[i]];
+        if (!g) continue;
+        paths += '<path transform="translate(' + x + ',0)" d="' + g.d + '"/>';
+        x += g.adv;
+      }
+      if (!x) return "";
+      // viewBox calé sur la boîte RÉELLE des chiffres, pas sur l'ascendante
+      // déclarée par la police (qui couvre accents et hampes et rendrait les
+      // nombres deux fois trop petits). On laisse une marge pour le contour.
+      var m = 40;
+      var haut = alba.hautChiffres - m, ht = (alba.basChiffres - alba.hautChiffres) + 2 * m;
+      return '<svg class="fp-num" viewBox="0 ' + haut + " " + x + " " + ht + '" height="30" ' +
+             'preserveAspectRatio="xMaxYMid meet"><g>' + paths + "</g></svg>";
     }
+
+    function construire() {
+      var row = document.getElementById("stage-row");
+      if (!row) return null;
+      var p = document.createElement("div");
+      p.id = "snake-hud";
+      var css = document.createElement("style");
+      css.textContent =
+        "#snake-hud{flex:0 0 auto;width:118px;box-sizing:border-box;padding:7px 8px 9px;" +
+          "background:#83CA22;border:2px solid #fff;border-radius:8px;" +
+          "font:bold 11px Verdana,Geneva,sans-serif;color:#fff;user-select:none;" +
+          "opacity:0;transition:opacity .3s ease-out}" +
+        "#snake-hud .fp-lab{text-align:center;letter-spacing:.2px;text-shadow:0 1px 0 rgba(0,0,0,.15)}" +
+        // La pastille blanche reprend la jauge du jeu ; le nombre repose dessus
+        // et la déborde, comme sur le gabarit.
+        "#snake-hud .fp-slot{position:relative;height:30px;margin:3px 0 8px}" +
+        "#snake-hud .fp-pill{position:absolute;left:0;right:0;top:9px;height:13px;" +
+          "background:#fff;border-radius:7px}" +
+        "#snake-hud .fp-val{position:absolute;inset:0;display:flex;align-items:center;" +
+          "justify-content:flex-end;padding-right:2px}" +
+        "#snake-hud .fp-num{display:block;overflow:visible}" +
+        "#snake-hud .fp-num g{fill:url(#fp-alba-grad);stroke:#fff;stroke-width:52;" +
+          "stroke-linejoin:round;paint-order:stroke fill}" +
+        "#snake-hud .fp-fallback{font:bold 26px Verdana,Geneva,sans-serif;color:#E46A6A;" +
+          "-webkit-text-stroke:2px #fff;paint-order:stroke fill}" +
+        "#snake-hud .fp-slot:last-child{margin-bottom:0}";
+      p.appendChild(css);
+      // Un seul dégradé, partagé par tous les nombres du panneau.
+      p.insertAdjacentHTML("beforeend",
+        '<svg width="0" height="0" style="position:absolute"><defs>' +
+        '<linearGradient id="fp-alba-grad" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0" stop-color="#E46A6A"/><stop offset="1" stop-color="#E7A8A8"/>' +
+        "</linearGradient></defs></svg>");
+      for (var i = 0; i < LIGNES.length; i++) {
+        p.insertAdjacentHTML("beforeend",
+          '<div class="fp-lab">' + LIGNES[i].titre + "</div>" +
+          '<div class="fp-slot"><div class="fp-pill"></div>' +
+          '<div class="fp-val" data-cle="' + LIGNES[i].cle + '"></div></div>');
+      }
+      row.appendChild(p);
+      // La rangée s'élargit : la fenêtre doit suivre, sinon le panneau serait
+      // hors champ sur un popup dimensionné pour la seule scène.
+      if (typeof window.__fpRelayout === "function") window.__fpRelayout();
+      return p;
+    }
+
     window.fpSnakeHud = function (len, dyn, nbSlots, slotTime) {
       if (!allowed) return;
-      if (!bar) {
-        var host = document.getElementById("player-wrap");
-        if (!host) return;
-        bar = document.createElement("div");
-        // left/top:auto neutralisent la règle « #player-wrap > * { left:0;top:0 } ».
-        bar.style.cssText = "position:absolute;left:auto;top:auto;right:0;bottom:10px;" +
-          "z-index:5;pointer-events:none;display:flex;align-items:center;height:21px;" +
-          "padding:0 13px 0 15px;border-radius:11px 0 0 11px;background:#fff;" +
-          "box-shadow:0 1px 0 rgba(90,130,20,.22);white-space:nowrap;" +
-          "opacity:0;transition:opacity .3s ease-out";
-        host.appendChild(bar);
-      }
+      if (!panel) { panel = construire(); if (!panel) return; }
       // `time` est déjà un nombre de SECONDES : Const.as annote « temps en
       // secondes » le bloc TIME_* et TimedSlot.permanent() y retranche Std.deltaT.
       // Il n'existe que sur les bonus temporisés (potions, Pieu, Rondelle,
-      // Steroids) ; un ciseau ou une langue en main n'a pas de minuterie.
+      // Steroids) ; un ciseau ou une langue en main n'a pas de minuterie, d'où
+      // le 0 affiché — il n'y a alors aucun bonus chronométré en cours.
       var t = Number(slotTime);
-      var timed = isFinite(t) && t > 0;
-      var bonus = timed
-        ? cell("BONUS", Math.ceil(t) + '<span style="' + LABEL + ';margin-left:2px">S</span>')
-        : cell("BONUS", "—");
-      var d = Number(dyn) || 0;
-      bar.innerHTML = cell("LONGUEUR", Number(len) || 0) + SEP +
-                      cell("DYNAMITES", d, d > 0 ? "#BB1E1E" : null) + SEP + bonus;
-      bar.style.opacity = "1";
+      var valeurs = {
+        len: Number(len) || 0,
+        dyn: Number(dyn) || 0,
+        bonus: (isFinite(t) && t > 0) ? Math.ceil(t) : 0,
+      };
+      var cases = panel.querySelectorAll(".fp-val");
+      for (var i = 0; i < cases.length; i++) {
+        cases[i].innerHTML = nombre(valeurs[cases[i].getAttribute("data-cle")]);
+      }
+      panel.style.opacity = "1";
       // Plus d'appels ⇒ la partie est terminée : on efface en fondu.
       if (hideTimer) clearTimeout(hideTimer);
-      hideTimer = setTimeout(function () { if (bar) bar.style.opacity = "0"; }, 2000);
+      hideTimer = setTimeout(function () { if (panel) panel.style.opacity = "0"; }, 2000);
     };
+
     if (!popupSid) return;
     fetch("/api/features?sid=" + encodeURIComponent(popupSid), { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { allowed = !!(j && j.features && j.features.snake3Hud); })
+      .then(function (j) {
+        allowed = !!(j && j.features && j.features.snake3Hud);
+        if (!allowed) return null;
+        return fetch("/fb/alba-glyphs.json", { cache: "force-cache" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (f) { if (f && f.glyphes) alba = f; })
+          .catch(function () {});
+      })
       .catch(function () {});
   })();
 
@@ -796,7 +870,11 @@
   // soft when upscaled, but guaranteed to enlarge any game. Remembered per game.
   (function setupZoom() {
     var ZMIN = 1, ZMAX = 4, STEP = 0.25;
-    var baseW = width, baseH = height;
+    // La rangée porte la mise à l'échelle : sa taille de base est mesurée à
+    // chaque fois, car un panneau latéral peut apparaître APRÈS le démarrage
+    // (une fois /api/features revenu). offsetWidth ignore les transforms, donc
+    // il renvoie bien la taille non zoomée.
+    var row = document.getElementById("stage-row");
     var zoomKey = "frutiparc:zoom:" + gameSwfName;
     var zoom = 1;
     try {
@@ -820,8 +898,8 @@
       try {
         var chromeW = Math.max(0, window.outerWidth - window.innerWidth);
         var chromeH = Math.max(0, window.outerHeight - window.innerHeight);
-        var wantW = Math.ceil(baseW * zoom) + chromeW;
-        var wantH = Math.ceil(baseH * zoom) + chromeH;
+        var wantW = Math.ceil((row.offsetWidth || width) * zoom) + chromeW;
+        var wantH = Math.ceil((row.offsetHeight || height) * zoom) + chromeH;
         var maxW = screen.availWidth || 1920;
         var maxH = screen.availHeight || 1080;
         window.resizeTo(Math.min(wantW, maxW), Math.min(wantH, maxH));
@@ -833,7 +911,7 @@
 
     function apply(z, resizeWin) {
       zoom = clamp(z);
-      wrap.style.transform = "scale(" + zoom + ")";
+      row.style.transform = "scale(" + zoom + ")";
       label.textContent = Math.round(zoom * 100) + "%";
       try { localStorage.setItem(zoomKey, String(zoom)); } catch (e) {}
       if (resizeWin) fitWindow();
@@ -862,6 +940,8 @@
     });
 
     apply(zoom, zoom !== 1);
+    // Ré-ajuste la fenêtre quand un panneau latéral s'ajoute après coup.
+    window.__fpRelayout = function () { apply(zoom, true); };
   })();
 })();
 </script>

@@ -91,23 +91,47 @@ test('swapou.swf : même pont, même exigence de version', () => {
   assert.ok(contient(body, 'ExternalInterface'), 'appel ExternalInterface présent');
 });
 
-test('overlay Frutisnake : trois informations, transparent aux clics, calé dans la scène', () => {
+test('panneau Frutisnake : à CÔTÉ de la scène, aux couleurs du jeu', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
   const bloc = html.slice(html.indexOf('function setupSnakeHud'), html.indexOf('const wrap = document.getElementById'));
   assert.ok(bloc.length > 100, 'bloc setupSnakeHud présent');
 
-  for (const label of ['LONGUEUR', 'DYNAMITES', 'BONUS']) {
-    assert.ok(bloc.includes(`"${label}"`), `information affichée : ${label}`);
+  for (const titre of ['Longueur', 'Dynamites', 'Bonus']) {
+    assert.ok(bloc.includes(`"${titre}"`), `information affichée : ${titre}`);
   }
-  assert.ok(/pointer-events:\s*none/.test(bloc), 'ne peut pas intercepter un clic du joueur');
-  assert.ok(bloc.includes('features.snake3Hud'), 'affichage conditionné à l\'option serveur');
-  // Posé DANS #player-wrap ⇒ suit la loupe et se fait découper comme le jeu.
-  assert.ok(bloc.includes('getElementById("player-wrap")'), 'ancré dans la scène du jeu');
-  // Collé en bas à droite, dans le cadre décoratif (jumeau de FRUTIBARRE),
-  // donc hors de l'aire de jeu qui s'arrête à y=443 sur une scène de 480.
-  assert.ok(/right:\s*0/.test(bloc) && /bottom:\s*10px/.test(bloc), 'aligné sur l\'étiquette FRUTIBARRE');
-  // `time` est déjà en secondes (Const.as : « temps en secondes ») : aucune
-  // division parasite ne doit se glisser dans la conversion.
+  // Posé dans la RANGÉE, pas dans la scène : l'aire de jeu n'est jamais couverte,
+  // et le panneau suit la loupe puisque c'est la rangée qui est mise à l'échelle.
+  assert.ok(bloc.includes('getElementById("stage-row")'), 'inséré à côté de la scène');
+  assert.ok(!bloc.includes('getElementById("player-wrap")'), 'jamais posé par-dessus le jeu');
+  assert.ok(html.includes('#stage-row'), 'la rangée existe dans la page');
+  assert.ok(/row\.style\.transform = "scale\(/.test(html), 'la loupe met à l\'échelle la rangée');
+
+  // Habillage demandé : fond vert du jeu, bordure blanche 2 px, libellés Verdana blancs.
+  assert.ok(bloc.includes('background:#83CA22'), 'remplissage vert du jeu');
+  assert.ok(bloc.includes('border:2px solid #fff'), 'bordure blanche de 2 px');
+  assert.ok(/color:#fff/.test(bloc) && /Verdana/.test(bloc), 'libellés Verdana blancs');
+
+  // Valeurs en Alba : dégradé demandé + contour blanc peint DERRIÈRE la lettre.
+  assert.ok(bloc.includes('#E46A6A') && bloc.includes('#E7A8A8'), 'dégradé #E46A6A → #E7A8A8');
+  assert.ok(bloc.includes('paint-order:stroke fill'), 'contour blanc derrière le remplissage');
+  assert.ok(bloc.includes('/fb/alba-glyphs.json'), 'glyphes Alba chargés');
+
+  // `time` est déjà en secondes (Const.as : « temps en secondes »).
   assert.ok(/Math\.ceil\(t\)/.test(bloc), 'durée affichée telle quelle, en secondes');
   assert.ok(!/t\s*\/\s*30/.test(bloc), 'pas de conversion images→secondes erronée');
+});
+
+test('glyphes Alba : extraits du SWF, chiffres complets et boîte exploitable', () => {
+  const f = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/fb/alba-glyphs.json'), 'utf8'));
+  assert.equal(f.police, 'Alba');
+  for (const c of '0123456789') {
+    assert.ok(f.glyphes[c] && f.glyphes[c].d.length > 20, `glyphe ${c} présent`);
+    assert.ok(f.glyphes[c].adv > 0, `chasse du glyphe ${c}`);
+  }
+  // La boîte des chiffres doit être NETTEMENT plus serrée que l'ascendante
+  // déclarée : c'est elle qui donne la bonne taille de rendu (sinon les nombres
+  // sortent deux fois trop petits dans une hauteur fixée).
+  const hauteur = f.basChiffres - f.hautChiffres;
+  assert.ok(hauteur > 300 && hauteur < f.ascendante + f.descendante,
+    `boîte des chiffres exploitable (${hauteur} sur ${f.ascendante + f.descendante})`);
 });
