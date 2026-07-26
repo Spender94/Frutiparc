@@ -11030,9 +11030,12 @@ app.post('/do/fdclaim', async (req, res) => {
 // par une vérification de possession (même mécanique que les feutres spéciaux :
 // pack boutique + entitlement persisté), sans toucher aux clients.
 //   swapouMoves : compteur de coups affiché pendant une partie de Swapou.
+//   snake3Hud   : longueur du serpent, dynamites ramassées et bonus actif
+//                 pendant une partie de Frutisnake.
 // ─────────────────────────────────────────────
 const FEATURE_TESTERS = {
   swapouMoves: new Set(['kasparov']),
+  snake3Hud: new Set(['kasparov']),
 };
 function userHasFeature(username, feature) {
   const u = String(username || '').toLowerCase();

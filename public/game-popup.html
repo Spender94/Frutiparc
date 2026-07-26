@@ -301,6 +301,48 @@
       .catch(function () {});
   })();
 
+  // ── Tableau de bord Frutisnake ─────────────────────────────────────────────
+  // Le SWF patché (scripts/patch-snake3-hud.js) appelle, pendant la partie,
+  // window.fpSnakeHud(longueur, dynamites, nbBonus, tempsBonus). On affiche un
+  // bandeau discret EN BAS : le jeu dessine ses propres icônes de bonus en haut
+  // à gauche, et le bas reste la zone la moins encombrée. Translucide et
+  // « transparent aux clics » pour ne jamais gêner le jeu.
+  (function setupSnakeHud() {
+    var bar = null, allowed = false, hideTimer = null;
+    function cell(label, value) {
+      return '<span style="opacity:.65">' + label + '</span> <b style="font-size:14px">' + value + '</b>';
+    }
+    window.fpSnakeHud = function (len, dyn, nbSlots, slotTime) {
+      if (!allowed) return;
+      if (!bar) {
+        bar = document.createElement("div");
+        bar.style.cssText = "position:fixed;left:50%;bottom:8px;transform:translateX(-50%);" +
+          "z-index:500;pointer-events:none;display:flex;gap:16px;align-items:baseline;" +
+          "padding:4px 14px;border-radius:12px;background:rgba(0,0,0,.55);" +
+          "color:#fff;font:12px Verdana,Arial,sans-serif;white-space:nowrap;" +
+          "text-shadow:0 1px 2px rgba(0,0,0,.9)";
+        document.body.appendChild(bar);
+      }
+      // Le temps du bonus n'est pertinent que si un bonus est actif ; il est
+      // exprimé dans l'unité de temps du jeu, on l'arrondit en secondes.
+      var n = Number(nbSlots) || 0;
+      var t = Number(slotTime);
+      var bonus = n > 0
+        ? (isFinite(t) && t > 0 ? cell("Bonus", Math.ceil(t / 30) + " s") : cell("Bonus", n))
+        : '<span style="opacity:.45">Aucun bonus</span>';
+      bar.innerHTML = cell("Longueur", Number(len) || 0) + cell("Dynamites", Number(dyn) || 0) + bonus;
+      bar.style.display = "flex";
+      // La partie est finie (plus d'appels) → on efface le bandeau.
+      if (hideTimer) clearTimeout(hideTimer);
+      hideTimer = setTimeout(function () { if (bar) bar.style.display = "none"; }, 2500);
+    };
+    if (!popupSid) return;
+    fetch("/api/features?sid=" + encodeURIComponent(popupSid), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { allowed = !!(j && j.features && j.features.snake3Hud); })
+      .catch(function () {});
+  })();
+
   const wrap = document.getElementById("player-wrap");
   wrap.style.width  = width + "px";
   // When ct/cb are set, the wrap is shorter than the SWF — the player below
