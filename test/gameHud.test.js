@@ -96,9 +96,9 @@ test('panneau Frutisnake : à CÔTÉ de la scène, aux couleurs du jeu', () => {
   const bloc = html.slice(html.indexOf('function setupSnakeHud'), html.indexOf('const wrap = document.getElementById'));
   assert.ok(bloc.length > 100, 'bloc setupSnakeHud présent');
 
-  for (const titre of ['Longueur', 'Dynamites', 'Bonus']) {
-    assert.ok(bloc.includes(`"${titre}"`), `information affichée : ${titre}`);
-  }
+  assert.ok(bloc.includes('"Longueur"'), 'information affichée : Longueur');
+  assert.ok(bloc.includes('"Dynamites"'), 'information affichée : Dynamites');
+  assert.ok(bloc.includes('Dur\\u00e9e bonus en cours'), 'information affichée : Durée bonus en cours');
   // Posé dans la RANGÉE, pas dans la scène : l'aire de jeu n'est jamais couverte,
   // et le panneau suit la loupe puisque c'est la rangée qui est mise à l'échelle.
   assert.ok(bloc.includes('getElementById("stage-row")'), 'inséré à côté de la scène');
@@ -106,25 +106,51 @@ test('panneau Frutisnake : à CÔTÉ de la scène, aux couleurs du jeu', () => {
   assert.ok(html.includes('#stage-row'), 'la rangée existe dans la page');
   assert.ok(/row\.style\.transform = "scale\(/.test(html), 'la loupe met à l\'échelle la rangée');
 
-  // Habillage demandé : fond vert du jeu, bordure blanche 2 px, libellés Verdana blancs.
+  // Habillage demandé : fond vert du jeu, bordure blanche 2 px, ANGLES DROITS,
+  // libellés Verdana blancs.
   assert.ok(bloc.includes('background:#83CA22'), 'remplissage vert du jeu');
   assert.ok(bloc.includes('border:2px solid #fff'), 'bordure blanche de 2 px');
+  assert.ok(!/#snake-hud\{[^}]*border-radius/.test(bloc), 'encart sans arrondi');
   assert.ok(/color:#fff/.test(bloc) && /Verdana/.test(bloc), 'libellés Verdana blancs');
 
-  // Valeurs en Alba : dégradé demandé + contour blanc peint DERRIÈRE la lettre.
-  assert.ok(bloc.includes('#E46A6A') && bloc.includes('#E7A8A8'), 'dégradé #E46A6A → #E7A8A8');
+  // Valeurs en Alba : contour blanc épais peint DERRIÈRE la lettre, et dégradé
+  // dont la teinte FONCÉE est en bas (stop 0 clair → stop 1 foncé).
   assert.ok(bloc.includes('paint-order:stroke fill'), 'contour blanc derrière le remplissage');
+  const trait = /stroke-width:(\d+)/.exec(bloc);
+  assert.ok(trait && Number(trait[1]) >= 90, `contour épais (${trait && trait[1]})`);
+  // On isole le dégradé : #E46A6A apparaît aussi dans le repli texte, un simple
+  // indexOf sur tout le bloc comparerait la mauvaise occurrence.
+  const grad = /linearGradient id="fp-alba-grad"[\s\S]*?linearGradient>/.exec(bloc);
+  assert.ok(grad, 'dégradé Alba défini');
+  assert.ok(grad[0].indexOf('#E7A8A8') < grad[0].indexOf('#E46A6A'),
+    'dégradé inversé : clair en haut, #E46A6A foncé en bas');
   assert.ok(bloc.includes('/fb/alba-glyphs.json'), 'glyphes Alba chargés');
 
   // `time` est déjà en secondes (Const.as : « temps en secondes »).
-  assert.ok(/Math\.ceil\(t\)/.test(bloc), 'durée affichée telle quelle, en secondes');
+  assert.ok(/Math\.ceil\(t\)/.test(bloc), 'durée lue en secondes, sans conversion');
   assert.ok(!/t\s*\/\s*30/.test(bloc), 'pas de conversion images→secondes erronée');
+});
+
+test('durée du bonus : format mm:ss, et 00:00 quand aucun bonus n\'est chronométré', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
+  const src = /function mmss\(sec\) \{[\s\S]*?\n    \}/.exec(html);
+  assert.ok(src, 'fonction mmss présente');
+  const mmss = new Function(src[0] + '; return mmss;')();
+
+  assert.equal(mmss(0), '00:00', 'aucun bonus chronométré');
+  assert.equal(mmss(13), '00:13');
+  assert.equal(mmss(59), '00:59');
+  assert.equal(mmss(60), '01:00');
+  assert.equal(mmss(138), '02:18');
+  // Le plus long bonus du jeu (potion verte : 80 + random(80)) reste sur 2 chiffres.
+  assert.equal(mmss(160), '02:40');
+  assert.equal(mmss(-5), '00:00', 'jamais de durée négative');
 });
 
 test('glyphes Alba : extraits du SWF, chiffres complets et boîte exploitable', () => {
   const f = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/fb/alba-glyphs.json'), 'utf8'));
   assert.equal(f.police, 'Alba');
-  for (const c of '0123456789') {
+  for (const c of '0123456789:') {
     assert.ok(f.glyphes[c] && f.glyphes[c].d.length > 20, `glyphe ${c} présent`);
     assert.ok(f.glyphes[c].adv > 0, `chasse du glyphe ${c}`);
   }

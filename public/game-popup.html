@@ -333,8 +333,18 @@
     var LIGNES = [
       { cle: "len", titre: "Longueur" },
       { cle: "dyn", titre: "Dynamites" },
-      { cle: "bonus", titre: "Bonus" },
+      { cle: "bonus", titre: "Dur\u00e9e bonus en cours" },
     ];
+    // Le décompte est affiché en mm:ss. Les bonus concernés sont exactement les
+    // TimedSlot du jeu, seuls porteurs d'un membre `time` : les neuf potions,
+    // plus le Pieu, la Rondelle et les Steroids. Les autres — ciseaux, langue,
+    // bombe, et les bonus « uniques » (bague, ressort, plume, poupée…) — sont
+    // permanents ou instantanés et n'ont pas de minuterie : 00:00.
+    function mmss(sec) {
+      var n = Math.max(0, Math.floor(sec));
+      var m = Math.floor(n / 60), r = n % 60;
+      return (m < 10 ? "0" : "") + m + ":" + (r < 10 ? "0" : "") + r;
+    }
 
     // Un nombre → un <svg> de tracés Alba. Sans les glyphes (fichier absent ou
     // pas encore arrivé), on retombe sur du texte : le panneau reste lisible.
@@ -352,9 +362,9 @@
       // viewBox calé sur la boîte RÉELLE des chiffres, pas sur l'ascendante
       // déclarée par la police (qui couvre accents et hampes et rendrait les
       // nombres deux fois trop petits). On laisse une marge pour le contour.
-      var m = 40;
+      var m = 60;
       var haut = alba.hautChiffres - m, ht = (alba.basChiffres - alba.hautChiffres) + 2 * m;
-      return '<svg class="fp-num" viewBox="0 ' + haut + " " + x + " " + ht + '" height="30" ' +
+      return '<svg class="fp-num" viewBox="' + (-m) + " " + haut + " " + (x + 2 * m) + " " + ht + '" ' +
              'preserveAspectRatio="xMaxYMid meet"><g>' + paths + "</g></svg>";
     }
 
@@ -365,11 +375,12 @@
       p.id = "snake-hud";
       var css = document.createElement("style");
       css.textContent =
-        "#snake-hud{flex:0 0 auto;width:118px;box-sizing:border-box;padding:7px 8px 9px;" +
-          "background:#83CA22;border:2px solid #fff;border-radius:8px;" +
+        "#snake-hud{flex:0 0 auto;width:132px;box-sizing:border-box;padding:7px 8px 9px;" +
+          "background:#83CA22;border:2px solid #fff;" +
           "font:bold 11px Verdana,Geneva,sans-serif;color:#fff;user-select:none;" +
           "opacity:0;transition:opacity .3s ease-out}" +
-        "#snake-hud .fp-lab{text-align:center;letter-spacing:.2px;text-shadow:0 1px 0 rgba(0,0,0,.15)}" +
+        "#snake-hud .fp-lab{text-align:center;letter-spacing:.2px;line-height:1.25;" +
+          "text-shadow:0 1px 0 rgba(0,0,0,.15)}" +
         // La pastille blanche reprend la jauge du jeu ; le nombre repose dessus
         // et la déborde, comme sur le gabarit.
         "#snake-hud .fp-slot{position:relative;height:30px;margin:3px 0 8px}" +
@@ -377,8 +388,8 @@
           "background:#fff;border-radius:7px}" +
         "#snake-hud .fp-val{position:absolute;inset:0;display:flex;align-items:center;" +
           "justify-content:flex-end;padding-right:2px}" +
-        "#snake-hud .fp-num{display:block;overflow:visible}" +
-        "#snake-hud .fp-num g{fill:url(#fp-alba-grad);stroke:#fff;stroke-width:52;" +
+        "#snake-hud .fp-num{display:block;height:30px;max-width:100%}" +
+        "#snake-hud .fp-num g{fill:url(#fp-alba-grad);stroke:#fff;stroke-width:95;" +
           "stroke-linejoin:round;paint-order:stroke fill}" +
         "#snake-hud .fp-fallback{font:bold 26px Verdana,Geneva,sans-serif;color:#E46A6A;" +
           "-webkit-text-stroke:2px #fff;paint-order:stroke fill}" +
@@ -388,7 +399,7 @@
       p.insertAdjacentHTML("beforeend",
         '<svg width="0" height="0" style="position:absolute"><defs>' +
         '<linearGradient id="fp-alba-grad" x1="0" y1="0" x2="0" y2="1">' +
-        '<stop offset="0" stop-color="#E46A6A"/><stop offset="1" stop-color="#E7A8A8"/>' +
+        '<stop offset="0" stop-color="#E7A8A8"/><stop offset="1" stop-color="#E46A6A"/>' +
         "</linearGradient></defs></svg>");
       for (var i = 0; i < LIGNES.length; i++) {
         p.insertAdjacentHTML("beforeend",
@@ -415,7 +426,7 @@
       var valeurs = {
         len: Number(len) || 0,
         dyn: Number(dyn) || 0,
-        bonus: (isFinite(t) && t > 0) ? Math.ceil(t) : 0,
+        bonus: mmss((isFinite(t) && t > 0) ? Math.ceil(t) : 0),
       };
       var cases = panel.querySelectorAll(".fp-val");
       for (var i = 0; i < cases.length; i++) {

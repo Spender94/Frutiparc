@@ -21,8 +21,8 @@ const zlib = require('zlib');
 const IN_PATH = path.resolve(__dirname, '..', 'Games', 'snake3', 'snake3.swf');
 const OUT_PATH = path.resolve(__dirname, '..', 'public', 'fb', 'alba-glyphs.json');
 const FONT_NAME = 'Alba';
-// Chiffres + le nécessaire pour « 12 s » et « — ».
-const WANTED = '0123456789s-'.split('');
+// Chiffres + les deux-points du format mm:ss.
+const WANTED = '0123456789:'.split('');
 
 // ─── Lecture de bits ───
 class Bits {
