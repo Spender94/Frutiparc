@@ -283,33 +283,6 @@
     }).catch(function() {});
   }
 
-  // ── Compteur de coups (Swapou, version SWF) ────────────────────────────────
-  // Le SWF patché (scripts/patch-swapou-movecounter.js) appelle window.fpSwapouCoup(n)
-  // à chaque échange réussi. On affiche la valeur dans une pastille posée sur le
-  // jeu, UNIQUEMENT si le serveur accorde l'option au joueur (/api/features).
-  // La pastille est créée à la volée : aucun impact quand l'option est absente.
-  (function setupMoveCounter() {
-    var badge = null, allowed = false;
-    window.fpSwapouCoup = function (n) {
-      if (!allowed) return;
-      if (!badge) {
-        badge = document.createElement("div");
-        badge.style.cssText = "position:absolute;top:6px;left:50%;transform:translateX(-50%);" +
-          "z-index:500;padding:3px 12px;border-radius:11px;pointer-events:none;" +
-          "background:rgba(0,0,0,.62);color:#fff;font:bold 13px Verdana,Arial,sans-serif;" +
-          "text-shadow:0 1px 2px rgba(0,0,0,.8)";
-        document.body.appendChild(badge);
-      }
-      badge.textContent = "Coup " + n;
-      badge.style.display = "block";
-    };
-    if (!popupSid) return;
-    fetch("/api/features?sid=" + encodeURIComponent(popupSid), { cache: "no-store" })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { allowed = !!(j && j.features && j.features.swapouMoves); })
-      .catch(function () {});
-  })();
-
   // ── Tableau de bord Frutisnake ─────────────────────────────────────────────
   // Le SWF patché (scripts/patch-snake3-hud.js) appelle, pendant la partie,
   // window.fpSnakeHud(longueur, dynamites, nbBonusEnMain, tempsBonus).

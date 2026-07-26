@@ -1,9 +1,10 @@
-// Options « tableau de bord » posées en overlay au-dessus des jeux Flash :
-//   - Frutisnake : longueur du serpent, dynamites, durée du bonus actif
-//   - Swapou     : compteur de coups
+// Option « tableau de bord » de Frutisnake : longueur du serpent, dynamites,
+// durée du bonus en cours, affichées dans un panneau à côté de la scène.
 //
-// Les deux reposent sur le MÊME pont : un ExternalInterface.call injecté dans le
-// bytecode AVM1 du SWF, capté par window.fp*() dans game-popup.html.
+// Elle repose sur un ExternalInterface.call injecté dans le bytecode AVM1 du
+// SWF, capté par window.fpSnakeHud() dans game-popup.html. Le même montage
+// avait été appliqué à Swapou pour un compteur de coups : il cassait le jeu, il
+// a été retiré (voir le test « swapou.swf : intact »).
 //
 // Le piège que ces tests verrouillent : ExternalInterface est une API Flash
 // Player 8. Tant que l'en-tête du SWF annonce la version 7 (leur valeur
@@ -29,7 +30,14 @@ let serverProc;
 before(async () => {
   serverProc = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
-    env: Object.assign({}, process.env, { PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000' }),
+    // server.js ouvre aussi deux sockets sur des ports FIXES par défaut (5000
+    // chat / 5001 scores). Deux fichiers de test lancés en parallèle par
+    // `node --test` se les disputeraient et le second serveur ne démarrerait
+    // jamais : on les décale ici.
+    env: Object.assign({}, process.env, {
+      PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
+      XMLSOCKET_PORT: '5100', FRUTISCORE_PORT: '5101',
+    }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   serverProc.stdout.on('data', () => {});
@@ -62,7 +70,9 @@ test('kasparov obtient le tableau de bord Frutisnake, pas les autres joueurs', a
   const sidOk = await sidFor('kasparov');
   const j = await (await fetch(BASE + '/api/features?sid=' + sidOk)).json();
   assert.equal(j.features.snake3Hud, true, 'kasparov → snake3Hud accordé');
-  assert.equal(j.features.swapouMoves, true, 'kasparov → compteur Swapou conservé');
+  // swapouMoves reste accordé : il ne pilote plus que le compteur de la version
+  // JavaScript de Swapou, le pont SWF ayant été retiré.
+  assert.equal(j.features.swapouMoves, true, 'kasparov → compteur Swapou (version JS) conservé');
 
   const sidKo = await sidFor('quidamsnake');
   const k = await (await fetch(BASE + '/api/features?sid=' + sidKo)).json();
@@ -84,11 +94,17 @@ test('snake3.swf : pont présent et jouable en version 8 (sinon ExternalInterfac
   }
 });
 
-test('swapou.swf : même pont, même exigence de version', () => {
+// Le compteur de coups côté SWF a cassé Swapou en production : le patch a été
+// entièrement retiré et swapou.swf remis à l'octet près dans son état d'origine.
+// Ce test empêche qu'un pont y soit réintroduit par inadvertance. Le compteur de
+// la version JavaScript (public/swapou/game.js), lui, est conservé.
+test('swapou.swf : intact, aucun pont réinjecté', () => {
   const { version, body } = swfBody('Games/swapou2/swapou.swf');
-  assert.ok(version >= 8, `version SWF ${version} : le compteur de coups serait ignoré en silence`);
-  assert.ok(contient(body, 'fpSwapouCoup'), 'nom du rappel JS présent');
-  assert.ok(contient(body, 'ExternalInterface'), 'appel ExternalInterface présent');
+  assert.equal(version, 7, 'version SWF d\'origine inchangée');
+  assert.ok(!contient(body, 'fpSwapouCoup'), 'aucun rappel JS injecté');
+  assert.ok(!contient(body, 'ExternalInterface'), 'aucun appel ExternalInterface injecté');
+  assert.ok(!fs.existsSync(path.join(ROOT, 'scripts/patch-swapou-movecounter.js')),
+    'le script de patch Swapou reste supprimé');
 });
 
 test('panneau Frutisnake : à CÔTÉ de la scène, aux couleurs du jeu', () => {

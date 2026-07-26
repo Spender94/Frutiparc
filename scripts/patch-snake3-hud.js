@@ -35,8 +35,17 @@
 //   Pile    = snake3."!$+35"."!?7*&"   (bonus.Pile : counter++ puis boucle
 //                                       d'explosions sur snake.len)
 //   counter = "3}-82]#"
-//   time    = "*}^#\"#"  (TimedSlot : membre initialisé au 3e paramètre du
-//                         constructeur puis décrémenté dans permanent())
+//   time    = "'@{ #"   Établi par CHAÎNAGE, pas par ressemblance :
+//     1. dans Game.main, l'appel `slots[i].permanent()` donne permanent = "^!)30(#" ;
+//     2. la seule définition de "^!)30(#" qui décrémente un membre est celle du
+//        tag @1874115, dont le corps est mot pour mot TimedSlot.permanent() :
+//          this.'@{ # -= Std.deltaT ; si < 0 → play(SOUND_EFFECT_END),
+//          game.remove_slot(this), sinon effect().
+//     Au passage : game = "2|=!!", Std = "3&!$", deltaT = "$4*}!?!".
+//     (Une première identification par « membre initialisé au 3e paramètre du
+//     constructeur » avait donné "*}^#\"#" — c'était FAUX, le membre n'existait
+//     pas et la durée restait donc bloquée à 00:00. Ne pas y revenir sans
+//     refaire le chaînage ci-dessus.)
 //   slots   et  main  ne sont PAS obfusqués (marqués « ! » dans snake3_obfu.txt).
 //
 // Cible repérée par MOTIF (Push "main" suivi du DefineFunction2), aucun offset
@@ -47,7 +56,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 const IN_PATH = path.resolve(__dirname, '..', 'Games', 'snake3', 'snake3.swf');
-const OBF = { snake: ']@=%^$', len: '-1"!', bonusPkg: '!$+35', pile: '!?7*&', counter: '3}-82]#', time: '*}^#"#' };
+const OBF = { snake: ']@=%^$', len: '-1"!', bonusPkg: '!$+35', pile: '!?7*&', counter: '3}-82]#', time: "'@{ #" };
 const JS_CALLBACK = 'fpSnakeHud';
 const TICK_MEMBER = '__k';
 const EVERY = 6;               // 1 envoi toutes les 6 images (~5/s)
