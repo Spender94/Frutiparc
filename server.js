@@ -11022,6 +11022,34 @@ app.post('/do/fdclaim', async (req, res) => {
 // (rubrique Pass, « Pass quotidien de … ») : chaque pass est PERMANENT et
 // cumulable (+1 partie/jour à vie) — voir purchaseShopPack.
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// FONCTIONNALITÉS DE CONFORT (futures options boutique)
+// Chaque option est une capacité nommée que les clients interrogent avant de
+// l'afficher. Aujourd'hui elles sont réservées à une liste blanche (phase de
+// test) ; pour les rendre PAYANTES il suffira de remplacer le test ci-dessous
+// par une vérification de possession (même mécanique que les feutres spéciaux :
+// pack boutique + entitlement persisté), sans toucher aux clients.
+//   swapouMoves : compteur de coups affiché pendant une partie de Swapou.
+// ─────────────────────────────────────────────
+const FEATURE_TESTERS = {
+  swapouMoves: new Set(['kasparov']),
+};
+function userHasFeature(username, feature) {
+  const u = String(username || '').toLowerCase();
+  if (!u) return false;
+  const testers = FEATURE_TESTERS[feature];
+  return !!(testers && testers.has(u));
+}
+// État des options pour le joueur de la session — lu par le client JS de Swapou
+// et par le popup de jeu (version SWF). Toujours 200 : un visiteur non
+// identifié reçoit simplement toutes les options à false.
+app.get('/api/features', (req, res) => {
+  const username = resolveUsernameFromSid(String(req.query.sid || ''));
+  const out = {};
+  for (const name of Object.keys(FEATURE_TESTERS)) out[name] = userHasFeature(username, name);
+  res.json({ ok: true, username: username || null, features: out });
+});
+
 app.get('/api/fd/status', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });

@@ -55,7 +55,21 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.standalone = false;
     this.connected = false;
     this.forcePause = false;
+    // Options de confort accordées au joueur (cf. /api/features côté serveur).
+    // Renseigné à la connexion ; false tant que la réponse n'est pas arrivée,
+    // donc l'affichage n'apparaît jamais pour un joueur non autorisé.
+    this.features = {};
   }
+  // Interroge le serveur pour savoir quelles options d'affichage sont accordées.
+  // Silencieux en cas d'échec : le jeu fonctionne exactement comme avant.
+  Client.prototype.loadFeatures = function () {
+    const me = this;
+    if (!this.sid) return;
+    fetch('/api/features?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { if (j && j.features) me.features = j.features; })
+      .catch(function () {});
+  };
   Client.prototype.isWhite = function () { return false; };
   Client.prototype.serviceConnect = function (cb) {
     const me = this;
@@ -82,6 +96,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       cb();
     }
     if (!this.sid) { this.standalone = true; done(); return; }
+    this.loadFeatures();   // options de confort (compteur de coups…) en parallèle
     fetch('/api/loadFrutiSlots?sid=' + encodeURIComponent(this.sid) + '&game=swapou2', { cache: 'no-store' })
       .then(function (r) { return r.text(); })
       .then(function (txt) {
@@ -1766,6 +1781,12 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   InterfChallenge.prototype.drawFront = function (ctx) {
     // score sur le parchemin
     U.text(ctx, String(this.viewScore), 88, 38, { size: 20, color: '#5a3a10', align: 'center' });
+    // Compteur de coups (option de confort) : juste sous le score, même teinte
+    // que le parchemin. N'apparaît que si le serveur accorde l'option au joueur.
+    if (SW.Manager.client && SW.Manager.client.features && SW.Manager.client.features.swapouMoves) {
+      const n = (this.game && this.game.nmoves) || 0;
+      U.text(ctx, 'Coup ' + n, 88, 62, { size: 12, color: '#5a3a10', align: 'center' });
+    }
     if (!this.classicModeOn) drawLeaves(ctx, D.LEAVES_X, D.LEAVES_Y);
     this.drawPowerStars(ctx);
     this.defenseIcon.draw(ctx);
@@ -1936,6 +1957,10 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     A.playMusic(A.MUSIC_CHALLENGE);
     TItem.combo_nitems = 0;
     this.ncoups = 5;
+    // Compteur de coups AFFICHABLE : nombre d'échanges joués depuis le début de
+    // la partie. Distinct de `ncoups`, qui est un paramètre de difficulté (il
+    // démarre à 5 en Challenge et se remet à zéro à chaque niveau en Classique).
+    this.nmoves = 0;
     this.star_counter = E.CHALLENGE_STAR_COUNTER;
     this.player = new Player(this, SW.Data.players[0], this.gameParams(), D.GAMEX, D.GAMEY, true);
     this.interf = new InterfChallenge(this);
@@ -2015,6 +2040,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (this.player.swapPair(fpair)) {
       SW.Manager.client.nswaps++;
       this.ncoups++;
+      this.nmoves = (this.nmoves || 0) + 1;   // compteur affichable (cf. drawFront)
       this.setLock(true);
     }
   };
