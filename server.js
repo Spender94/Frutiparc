@@ -12053,7 +12053,7 @@ app.all(['/ft/buy', '/do/ft/buy'], (req, res) => {
   // Build response: new kikooz balance, the bouille to push into bouilleList,
   // and folder refresh requests so Inventaire/Accessoires re-list contents.
   // Pass quotidien : rien à ajouter à l'inventaire — solde seulement.
-  const xml = (r.isPass || r.isFeutre)
+  const xml = (r.isPass || r.isFeutre || r.isGameFeature)
     ? `<r i="${r.kikooz}"></r>`
     : `<r i="${r.kikooz}">` +
       (r.isWallpaper ? '' : `<b b="${escapeXml(r.bouille)}">${escapeXml(r.pack.name)}</b>`) +
@@ -14436,8 +14436,11 @@ async function boot() {
         // une copie persistée en base ne doit PAS les ressusciter — sans leur
         // définition statique (fdPassGame), l'achat créditerait un accessoire.
         // 24/25 : ex-Pass Frutibandas/Grapiz (quota supprimé).
-        // 10 et 12→17 : ex-packs de jeux complets, retirés au profit des options.
-        const REMOVED_SHOP_PACK_IDS = new Set([24, 25, 10, 12, 13, 14, 15, 16, 17]);
+        // 10→17 : ex-packs de jeux complets, retirés au profit des options de jeu.
+        // L'id 11 (ex-« Pack de Frutisnake ») EN FAIT PARTIE : l'oublier faisait
+        // réapparaître un second pack Frutisnake, marqué « déjà possédé », à côté
+        // du nouveau. La plage est donc contiguë, sans trou.
+        const REMOVED_SHOP_PACK_IDS = new Set([24, 25, 10, 11, 12, 13, 14, 15, 16, 17]);
         for (const p of dbPacks) {
           if (REMOVED_SHOP_PACK_IDS.has(p.id)) continue;
           const def = defaultById[p.id];

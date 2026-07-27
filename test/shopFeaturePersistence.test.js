@@ -145,6 +145,40 @@ test('l\'option achetée survit à un redémarrage du serveur', async (t) => {
   assert.equal(rachat.code, 2, 'second achat refusé : déjà possédée');
 });
 
+test('un ancien pack de jeu persisté en base ne ressuscite pas', async (t) => {
+  if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
+  // Reproduit le bug signalé : la copie DB de l'ancien « Pack de Frutisnake »
+  // (id 11) réapparaissait en boutique, marquée « déjà possédée », à côté de la
+  // nouvelle option. On réinjecte les huit anciens packs en base, on redémarre,
+  // et aucun ne doit revenir.
+  const c = new Client({ connectionString: DB });
+  await c.connect();
+  const { rows: cols } = await c.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'shop_packs'`);
+  if (!cols.length) { await c.end(); return t.skip('table shop_packs absente'); }
+  const noms = cols.map((x) => x.column_name);
+  const val = (n) => (n === 'id' ? null : n === 'price' ? 260 : n === 'category' ? 'Packs'
+    : n === 'name' ? 'Ancien pack' : n === 'suffix9' ? '000000000' : null);
+  for (const id of [10, 11, 12, 13, 14, 15, 16, 17]) {
+    const utiles = noms.filter((n) => ['id', 'name', 'category', 'price', 'suffix9', 'description', 'comment'].includes(n));
+    const valeurs = utiles.map((n) => (n === 'id' ? id : (val(n) ?? '')));
+    await c.query(
+      `INSERT INTO shop_packs (${utiles.join(',')}) VALUES (${utiles.map((_, i) => '$' + (i + 1)).join(',')})
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, category = EXCLUDED.category`,
+      valeurs);
+  }
+  await c.end();
+
+  await arreter();
+  await demarrer();
+  const liste = await (await fetch(BASE + '/api/admin/shop?key=' + CLE)).json();
+  for (const id of [10, 11, 12, 13, 14, 15, 16, 17]) {
+    assert.ok(!liste.some((p) => p.id === id), `l'ancien pack #${id} ne doit pas ressusciter`);
+  }
+  const rubrique = liste.filter((p) => String(p.category || '').toLowerCase() === 'packs');
+  assert.equal(rubrique.length, 1, 'la rubrique Packs ne contient toujours qu\'un produit');
+});
+
 test('le retrait par l\'admin est lui aussi persisté', async (t) => {
   if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
   const sid = await sidFor(JOUEUR);
@@ -163,4 +197,30 @@ test('le retrait par l\'admin est lui aussi persisté', async (t) => {
   const sid2 = await sidFor(JOUEUR);
   assert.equal((await options(sid2)).snake3Hud, false,
     'APRÈS REDÉMARRAGE : l\'option retirée ne revient pas');
+});
+
+test('l\'achat par le client Flash renvoie une réponse exploitable', async (t) => {
+  if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
+  // Le bug signalé : « connexion au serveur Frutiparc impossible » à l'achat.
+  // /ft/buy répond en XML ; l'option tombait dans la branche « accessoire », qui
+  // émet <b b="..."> à partir d'une bouille que l'option ne produit pas — d'où un
+  // <b b="undefined"> que le client n'exploite pas. Une option n'ajoute rien à
+  // l'inventaire : la réponse doit se limiter au solde, comme pour un pass.
+  const joueur = 'achatflash';
+  const sid = await sidFor(joueur);
+  await fetch(BASE + `/api/admin/users/${joueur}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': CLE },
+    body: JSON.stringify({ kikooz: 1000 }),
+  });
+  const liste = await (await fetch(BASE + '/api/admin/shop?key=' + CLE)).json();
+  const pack = liste.find((p) => p.gameFeature === 'snake3Hud');
+
+  const r = await fetch(BASE + `/ft/buy?sid=${encodeURIComponent(sid)}&i=${pack.id}`);
+  const xml = await r.text();
+  assert.equal(r.status, 200);
+  assert.ok(!/undefined/.test(xml), `aucun « undefined » dans la réponse : ${xml}`);
+  assert.ok(!/<b\b/.test(xml), `pas d'entrée d'inventaire pour une option : ${xml}`);
+  assert.ok(/<r i="700"\s*>?<\/r>|<r i="700"><\/r>/.test(xml.replace(/\s+/g, '')) || /i="700"/.test(xml),
+    `le solde débité est renvoyé : ${xml}`);
+  assert.equal((await options(sid)).snake3Hud, true, 'et l\'option est bien accordée');
 });
