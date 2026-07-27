@@ -106,6 +106,10 @@ async function initSchema() {
         -- Feutres spéciaux possédés (achat boutique), JSON : ["mc", ...]. Les 17
         -- feutres d'origine restent offerts par défaut (hors de cette liste).
         ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_feutres TEXT DEFAULT NULL;
+        -- Options de jeu achetées en boutique (rubrique « Packs »), JSON :
+        -- ["snake3Hud", ...]. Une option est un confort de jeu permanent, activé
+        -- dès l'achat ; distinct des feutres (cosmétique de chat).
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_features TEXT DEFAULT NULL;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT NULL;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_by TEXT DEFAULT '';

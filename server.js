@@ -2245,6 +2245,7 @@ function dbUserToMemory(row) {
     dailyStreak: row.daily_streak ?? 0,
     fdState: parseFdState(row.fd_state),
     ownedFeutres: parseOwnedFeutres(row.owned_feutres),
+    ownedFeatures: parseOwnedFeutres(row.owned_features),
     _dbId: row.id,
   };
 }
@@ -3922,22 +3923,62 @@ const DEFAULT_ACCESSORIES = [
 // suffix9 = last 9 chars of a 24-char bouille string (prefix is taken from
 // the user's current bouille at serve time).
 // ─────────────────────────────────────────────
-// Game packs (rubrique "Packs") — full games, granted to everyone by default
-// on this server, so they show as "déjà possédé". Sourced from the original
-// boutique captures in public/ft/game-pack/. picto "pack,N" is the sprite key
-// the client renders; suffix9 is unused for these (kept for the DB NOT NULL).
+// ── Options de jeu achetables (rubrique « Packs ») ───────────────────────────
+// La rubrique Packs vendait des jeux complets — or ils sont offerts à tout le
+// monde sur ce serveur, ce qui la rendait inutile. Elle sert désormais à vendre
+// des OPTIONS DE CONFORT par jeu. Une option achetée est permanente et s'active
+// toute seule dans le jeu concerné.
+// Possession suivie dans user.ownedFeatures (colonne owned_features), exactement
+// comme les feutres spéciaux : écriture par PSEUDO et avec RETRY, parce qu'un
+// achat payé qui ne survit pas au reboot est le pire des bogues.
+const GAME_FEATURES = {
+  snake3Hud: {
+    shopId: 40,
+    price: 300,
+    name: 'Pack de Frutisnake',
+    label: 'tableau de bord de Frutisnake',
+  },
+};
+const GAME_FEATURE_BY_SHOPID = Object.fromEntries(
+  Object.entries(GAME_FEATURES).map(([k, v]) => [v.shopId, k]));
+
+function userOwnsGameFeature(user, key) {
+  return !!(user && Array.isArray(user.ownedFeatures) && user.ownedFeatures.includes(key));
+}
+function grantGameFeature(username, user, key) {
+  if (!user || !GAME_FEATURES[key]) return;
+  if (!Array.isArray(user.ownedFeatures)) user.ownedFeatures = [];
+  if (!user.ownedFeatures.includes(key)) user.ownedFeatures.push(key);
+  dbUpdateUserCritical(username, { owned_features: JSON.stringify(user.ownedFeatures) }, 'option de jeu achetée');
+}
+
+// ── Rubrique « Packs » : les OPTIONS DE JEU ───────────────────────────────────
+// Cette rubrique vendait à l'origine les jeux complets. Ils sont offerts à tout
+// le monde sur ce serveur, ce qui rendait la rubrique vide de sens : les huit
+// anciens packs (ids 10 et 12→17) sont retirés — leurs ids sont listés dans
+// REMOVED_SHOP_PACK_IDS pour qu'une copie persistée en base ne les ressuscite
+// pas. La rubrique sert désormais à vendre des options de confort par jeu.
+//
+// `gameFeature` est le champ fonctionnel : à l'achat, il accorde l'option
+// (user.ownedFeatures) au lieu de créditer un accessoire de bouille. Comme pour
+// les pass et les feutres, il n'est PAS stocké en base et doit être réappliqué
+// depuis cette définition lors de la fusion des packs DB.
+// `notDefault` sort le produit du régime « rubrique offerte » : sans lui, la
+// rubrique Packs est considérée comme déjà possédée et l'achat serait refusé.
 const SHOP_GAME_PACKS_DEFAULT = [
-  ['pack,10', 10, 'Pack de Motion Ball 2',         'Jouez les célèbres balles pour vaincre le célèbre Tournéboulé !',                  "Bénéficiez du jeux complet et d'un pass journalier"],
-  ['pack,12', 11, 'Pack de Frutisnake',            'Jouez un serpent de manière illimité pour manger le plus de fruits possible.',    "Bénéficiez du jeux complet et d'un pass journalier"],
-  ['pack,13', 12, 'Pack de Burning Kiwi',          'Devenez le roi du circuit de manière illimité en activant des turbo survitaminés.', "Bénéficiez du jeux complet et d'un pass journalier"],
-  ['pack,14', 13, 'Pack de Swapou 2',              'Jouez Dimitri ou Natacha pour vaincre le redoutable Wasabii !',                   "Bénéficiez du jeux complet et d'un pass journalier"],
-  ['pack,15', 14, 'Pack de Frutibandas',           'Affrontez les meilleurs joueurs à Frutibandas et entrainez-vous de manière illimitée.', "Bénéficiez du jeux complet et d'un pass journalier"],
-  ['pack,16', 15, 'Pack de Grapiz',                'Affrontez les meilleurs joueurs à Grapiz et entrainez-vous de manière illimitée.',  "Bénéficiez du jeux complet et d'un pass journalier"],
-  ['pack,17', 16, 'Pack de Kaluga',                'Jouez le célèbre Tzongre et ses amis dans des défis incroyables',                 "Bénéficiez du jeux complet et d'un pass journalier"],
-  ['pack,3',  17, 'Pack de Frutibandas et Grapiz', 'Jouez de manière illimitée aux deux jeux multijoueurs : Grapiz et Frutibandas',   "Bénéficiez des jeux complet et d'un pass journalier pour chaque jeu"],
-].map(([picto, id, name, description, comment]) => ({
-  id, name, category: 'Packs', price: 260, suffix9: '000000000', picto, description, comment,
-}));
+  {
+    id: GAME_FEATURES.snake3Hud.shopId,
+    name: GAME_FEATURES.snake3Hud.name,
+    category: 'Packs',
+    price: GAME_FEATURES.snake3Hud.price,
+    notDefault: true,
+    gameFeature: 'snake3Hud',
+    picto: 'pack,12',
+    description: 'Le tableau de bord de Frutisnake : la longueur de ton serpent, le nombre de dynamites avalées et le temps qu\'il reste sur ton bonus, affichés en jeu à côté du plateau.',
+    comment: "Trois informations en direct pendant la partie : longueur, dynamites, durée du bonus en cours. S'active tout seul dès l'achat. Permanent !",
+    suffix9: '000000000',
+  },
+];
 
 // ── Feutres spéciaux (achat boutique, hors des 17 feutres d'origine) ──────────
 // Un feutre spécial est un STYLO de chat cosmétique ACHETÉ (non offert par
@@ -3961,6 +4002,7 @@ function parseOwnedFeutres(raw) {
 function userOwnsFeutre(user, kind) {
   return !!(user && Array.isArray(user.ownedFeutres) && user.ownedFeutres.includes(kind));
 }
+
 function grantFeutre(username, user, kind) {
   if (!user || !SPECIAL_FEUTRES[kind]) return;
   if (!Array.isArray(user.ownedFeutres)) user.ownedFeutres = [];
@@ -4311,6 +4353,9 @@ function userOwnsShopPack(user, id) {
   // Feutre spécial : possession suivie dans user.ownedFeutres (pas customAccessories).
   const feutreKind = SPECIAL_FEUTRE_BY_SHOPID[nid];
   if (feutreKind) return userOwnsFeutre(user, feutreKind);
+  // Option de jeu : possession suivie dans user.ownedFeatures.
+  const featureKey = GAME_FEATURE_BY_SHOPID[nid];
+  if (featureKey) return userOwnsGameFeature(user, featureKey);
   if (!Array.isArray(user.customAccessories)) return false;
   return user.customAccessories.some((a) => a && a.shopId === nid);
 }
@@ -6022,6 +6067,28 @@ app.post('/api/admin/users/:username/fd-pass', adminAuth, async (req, res) => {
 
 // Donne/retire un FEUTRE SPÉCIAL (ex. multicolore) à un joueur — comme un
 // accessoire. body: { kind: 'mc', owned: true|false }.
+// Accorder / retirer une OPTION DE JEU (rubrique Packs) à un joueur, sans passer
+// par la caisse — même usage que pour les feutres : réparer un achat, dépanner,
+// ou faire tester. L'écriture est persistée avec retry (achat payé = critique).
+app.post('/api/admin/users/:username/game-feature', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  const key = String((req.body && req.body.feature) || '').trim();
+  const owned = !!(req.body && req.body.owned);
+  if (!GAME_FEATURES[key]) return res.status(400).json({ error: 'option inconnue : ' + key });
+  try {
+    const user = await adminLoadUser(u);
+    if (!user) return res.status(404).json({ error: 'not found' });
+    if (owned) {
+      grantGameFeature(u, user, key);
+    } else {
+      user.ownedFeatures = parseOwnedFeutres(user.ownedFeatures).filter((k) => k !== key);
+      dbUpdateUserCritical(u, { owned_features: JSON.stringify(user.ownedFeatures) }, 'option de jeu retirée (admin)');
+    }
+    console.log(`[ADMIN] option ${key} ${owned ? 'accordée à' : 'retirée à'} ${u}`);
+    res.json({ ok: true, username: u, feature: key, owned, ownedFeatures: parseOwnedFeutres(user.ownedFeatures) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/users/:username/feutre', adminAuth, async (req, res) => {
   const u = req.params.username;
   const kind = String((req.body && req.body.kind) || 'mc').trim().toLowerCase();
@@ -11033,6 +11100,10 @@ app.post('/do/fdclaim', async (req, res) => {
 //   snake3Hud   : longueur du serpent, dynamites ramassées et bonus actif
 //                 pendant une partie de Frutisnake.
 // ─────────────────────────────────────────────
+// Testeurs nommés : accès sans achat, pour pouvoir vérifier une option en
+// production sans se la vendre à soi-même. L'option snake3Hud est désormais
+// VENDUE en boutique (rubrique Packs) : le portillon regarde d'abord la
+// possession réelle, cette liste ne sert plus que de garde-fou d'exploitation.
 const FEATURE_TESTERS = {
   swapouMoves: new Set(['kasparov']),
   snake3Hud: new Set(['kasparov']),
@@ -11040,6 +11111,12 @@ const FEATURE_TESTERS = {
 function userHasFeature(username, feature) {
   const u = String(username || '').toLowerCase();
   if (!u) return false;
+  // 1) Option ACHETÉE en boutique (rubrique Packs) — la voie normale.
+  if (GAME_FEATURES[feature]) {
+    const user = users[u];
+    if (userOwnsGameFeature(user, feature)) return true;
+  }
+  // 2) Testeur nommé : accès sans achat.
   const testers = FEATURE_TESTERS[feature];
   return !!(testers && testers.has(u));
 }
@@ -11903,6 +11980,24 @@ function purchaseShopPack(user, username, packIdRaw) {
     });
     console.log(`[ft/buy] ${username} bought FEUTRE #${pack.id} (${pack.feutrePen}) — kikooz now ${user.kikooz}`);
     return { ok: true, kikooz: user.kikooz, isFeutre: true, feutre: pack.feutrePen, pack };
+  }
+
+  // Option de jeu : confort PERMANENT dans un jeu, pas un cosmétique. On accorde
+  // l'option (user.ownedFeatures) et on s'arrête là — aucun accessoire de bouille.
+  if (pack.gameFeature) {
+    grantGameFeature(username, user, pack.gameFeature);
+    const nowStrG = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+    user.kikoozLog.unshift({ type: 'b', t: nowStrG, k: pack.price, n: pack.name });
+    if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
+    notifyKikoozUpdate(username, user.kikooz);
+    const opt = GAME_FEATURES[pack.gameFeature];
+    addAndNotifyUserLog(username, {
+      type: USER_LOG_TYPE.CHAT,
+      content: `${pack.name} acheté ! Le ${opt ? opt.label : 'tableau de bord'} s'affiche désormais tout seul dès que tu lances une partie.`,
+    });
+    console.log(`[ft/buy] ${username} bought OPTION #${pack.id} (${pack.gameFeature}) — kikooz now ${user.kikooz}`);
+    return { ok: true, kikooz: user.kikooz, isGameFeature: true, feature: pack.gameFeature, pack };
   }
 
   const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -14325,7 +14420,9 @@ async function boot() {
         // Packs RETIRÉS du catalogue (ex-Pass Frutibandas/Grapiz, quota supprimé) :
         // une copie persistée en base ne doit PAS les ressusciter — sans leur
         // définition statique (fdPassGame), l'achat créditerait un accessoire.
-        const REMOVED_SHOP_PACK_IDS = new Set([24, 25]);
+        // 24/25 : ex-Pass Frutibandas/Grapiz (quota supprimé).
+        // 10 et 12→17 : ex-packs de jeux complets, retirés au profit des options.
+        const REMOVED_SHOP_PACK_IDS = new Set([24, 25, 10, 12, 13, 14, 15, 16, 17]);
         for (const p of dbPacks) {
           if (REMOVED_SHOP_PACK_IDS.has(p.id)) continue;
           const def = defaultById[p.id];
@@ -14340,6 +14437,9 @@ async function boot() {
           // picto est aussi piloté par le code (natif shopitem.swf), pas éditable :
           // la définition statique PRIME sur la valeur persistée (ex. feutre,17).
           if (def && def.feutrePen) { p.feutrePen = def.feutrePen; p.notDefault = def.notDefault; p.shopAssetKey = def.shopAssetKey; if (def.picto) p.picto = def.picto; }
+          // Idem option de jeu : sans gameFeature/notDefault réappliqués, le
+          // produit redeviendrait « offert » et n'accorderait rien.
+          if (def && def.gameFeature) { p.gameFeature = def.gameFeature; p.notDefault = def.notDefault; if (def.picto) p.picto = def.picto; }
           if (existingIds.has(p.id)) {
             const idx = SHOP_PACKS.findIndex(x => x.id === p.id);
             SHOP_PACKS[idx] = p;
