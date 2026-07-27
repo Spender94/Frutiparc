@@ -2251,6 +2251,21 @@ function dbUserToMemory(row) {
 }
 
 async function hydrateUserFromDb(username, dbUser) {
+  // GARDE-FOU : hydrater depuis une ligne PARTIELLE écraserait en mémoire tout
+  // ce que ses colonnes absentes portent — options de jeu achetées, feutres,
+  // pass quotidiens, préférences — et le joueur verrait son achat disparaître.
+  // Le cas se produit vraiment : db.listAllUsers() n'expose qu'une vingtaine de
+  // colonnes et sert pourtant à hydrater (classement Consécration). On détecte
+  // la ligne tronquée à une colonne témoin et on recharge la ligne complète.
+  if (dbUser && dbUser.id && !('owned_features' in dbUser) && process.env.DATABASE_URL) {
+    try {
+      const complet = await db.findUserByUsername(dbUser.username || username);
+      if (complet) dbUser = complet;
+      else console.warn(`[HYDRATE] ${username} : ligne partielle et rechargement vide — hydratation abandonnée`);
+    } catch (e) {
+      console.warn(`[HYDRATE] ${username} : rechargement de la ligne complète impossible (${e.message})`);
+    }
+  }
   const mem = dbUserToMemory(dbUser);
   // Charge les données liées (inventaire, accessoires, scores…). CRUCIAL : une
   // erreur transitoire (contention DB au reboot, quand tout le monde se reconnecte
