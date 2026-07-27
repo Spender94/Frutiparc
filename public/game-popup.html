@@ -195,9 +195,10 @@
     // et on renvoie null : aucune fenêtre ne s'ouvre. C'est le MÊME canal que les
     // sauvegardes de slot/score ci-dessous, éprouvé et disponible dès Flash 4 —
     // d'où l'absence de tout changement de version du SWF.
-    var coupMatch = u.match(/^fpswcoup:(\d+)/);
+    var coupMatch = u.match(/^fpswcoup:(-?\d+):(-?\d+)/);
     if (coupMatch) {
-      if (typeof window.fpSwapouCoup === "function") window.fpSwapouCoup(Number(coupMatch[1]));
+      if (typeof window.fpSwapouCoup === "function")
+        window.fpSwapouCoup(Number(coupMatch[1]), Number(coupMatch[2]));
       return null;
     }
     // Slot save via getURL: "slot:GAME:SLOTID:PIPEDATA"
@@ -293,58 +294,83 @@
     }).catch(function() {});
   }
 
-  // ── Compteur de coups Swapou (version SWF) ─────────────────────────────────
-  // Le SWF patché (scripts/patch-swapou-movecounter.js) émet
-  // getURL("fpswcoup:<n>") à chaque coup ; l'aiguillage window.open ci-dessus
-  // appelle window.fpSwapouCoup(n).
+  // ── Cadrans Swapou (version SWF) ───────────────────────────────────────────
+  // Le SWF patché émet getURL("fpswcoup:<ncoups>:<star_counter>") à chaque
+  // échange réussi ; l'aiguillage window.open ci-dessus appelle
+  // window.fpSwapouCoup(ncoups, star).
   //
-  // Rendu : un panneau posé À CÔTÉ de la scène, jamais par-dessus. Il RÉPLIQUE le
-  // parchemin du score en réutilisant l'asset du jeu lui-même — la bande haute de
-  // /games/swapou2/images/leftPanel.png, rouleaux de cuivre et veinage du bois
-  // compris. Même image, même typographie que la version JavaScript, donc aucun
-  // écart possible entre les deux versions du jeu.
+  // Rendu : deux cadrans posés DANS la scène, juste sous le parchemin du score,
+  // sur la colonne de bois de gauche — l'endroit exact où la version JavaScript
+  // pose son second parchemin. Ils réutilisent l'asset du jeu lui-même (la bande
+  // haute de leftPanel.png, rouleaux de cuivre et veinage compris), recopiée à
+  // la même abscisse : le veinage reste aligné et le raccord ne se voit pas.
+  // Cette zone est du décor, pas du jeu : rien n'est masqué.
+  //
+  // COUPS est compté ICI, pas lu dans le jeu : `ncoups` est le curseur de
+  // difficulté (il démarre à 5 en Challenge, à 1 en Classique, et retombe à 0 à
+  // chaque niveau franchi), il ne conviendrait pas à l'affichage. Un envoi = un
+  // échange réussi, donc on incrémente ; `ncoups` ne sert qu'à repérer un
+  // redémarrage, sa valeur repartant alors en arrière.
   (function setupSwapouCoups() {
-    var panel = null, allowed = false, dernier = 0;
+    var panel = null, allowed = false, coups = 0, ncoupsPrec = null;
+    var BANDE_H = 76;         // hauteur de la bande recopiée (rouleaux compris)
+    var HAUT = 82;            // sous le parchemin du score
+    var LARGE = 150;          // au-delà commence la colonne de bambou
+
     function construire() {
-      var row = document.getElementById("stage-row");
-      if (!row) return null;
+      var host = document.getElementById("player-wrap");
+      if (!host) return null;
       var p = document.createElement("div");
       p.id = "swapou-hud";
       var css = document.createElement("style");
       css.textContent =
-        "#swapou-hud{flex:0 0 auto;width:150px;height:76px;position:relative;" +
-          "background:url(/games/swapou2/images/leftPanel.png) 0 0 no-repeat;" +
-          "font-family:Verdana,Arial,sans-serif;user-select:none}" +
-        // Mêmes coordonnées relatives que dans la version JS : le score y est
-        // écrit à x=88, l'étiquette au-dessus.
-        "#swapou-hud .fp-lab{position:absolute;left:0;top:15px;width:176px;text-align:center;" +
-          "font:bold 9px Verdana,Arial,sans-serif;color:#8a6a37;letter-spacing:.5px;" +
-          "transform:translateX(-30px)}" +
-        "#swapou-hud .fp-val{position:absolute;left:0;top:29px;width:176px;text-align:center;" +
-          "font:bold 20px Verdana,Arial,sans-serif;color:#5a3a10;transform:translateX(-30px)}";
+        // left/top:auto neutralisent « #player-wrap > * { left:0;top:0 } ».
+        "#swapou-hud{position:absolute;left:0;top:" + HAUT + "px;width:" + LARGE + "px;" +
+          "z-index:5;pointer-events:none;font-family:Verdana,Arial,sans-serif;user-select:none}" +
+        "#swapou-hud .fp-cadran{position:relative;height:" + BANDE_H + "px;" +
+          "background:url(/games/swapou2/images/leftPanel.png) 0 0 no-repeat}" +
+        // Mêmes coordonnées que le score du jeu : centré sur x=88 du panneau.
+        "#swapou-hud .fp-lab{position:absolute;left:0;top:16px;width:176px;text-align:center;" +
+          "font:bold 9px Verdana,Arial,sans-serif;color:#8a6a37;letter-spacing:.5px}" +
+        "#swapou-hud .fp-val{position:absolute;left:0;top:30px;width:176px;text-align:center;" +
+          "font:bold 20px Verdana,Arial,sans-serif;color:#5a3a10}";
       p.appendChild(css);
-      p.insertAdjacentHTML("beforeend", '<div class="fp-lab">COUPS</div><div class="fp-val">0</div>');
-      row.appendChild(p);
-      if (typeof window.__fpRelayout === "function") window.__fpRelayout();
+      p.insertAdjacentHTML("beforeend",
+        '<div class="fp-cadran"><div class="fp-lab">COUPS</div>' +
+        '<div class="fp-val" data-cle="coups">0</div></div>' +
+        '<div class="fp-cadran"><div class="fp-lab">\u00c9TOILE DANS</div>' +
+        '<div class="fp-val" data-cle="etoile">\u2013</div></div>');
+      host.appendChild(p);
       return p;
     }
-    window.fpSwapouCoup = function (n) {
+
+    window.fpSwapouCoup = function (ncoups, star) {
       if (!allowed) return;
       if (!panel) { panel = construire(); if (!panel) return; }
-      dernier = Number(n) || 0;
-      panel.querySelector(".fp-val").textContent = String(dernier);
+      if (ncoups !== undefined) {
+        var n = Number(ncoups);
+        // Un envoi = un échange réussi, donc un coup. Si la valeur du jeu est
+        // repartie en arrière, c'est une nouvelle partie (ou le niveau suivant
+        // en Classique) : ce coup-ci est le premier de la nouvelle série.
+        if (ncoupsPrec !== null && n < ncoupsPrec) coups = 1;
+        else coups += 1;
+        ncoupsPrec = n;
+      }
+      panel.querySelector('[data-cle="coups"]').textContent = String(coups);
+      var e = Number(star);
+      panel.querySelector('[data-cle="etoile"]').textContent =
+        (isFinite(e) && e >= 0) ? String(e) : "\u2013";
     };
+
     // Ce panneau n'a de sens QUE dans Swapou : sans ce garde, il s'affichait à
-    // côté de n'importe quel jeu ouvert par un joueur qui a l'option (constaté
-    // dans Frutisnake, où il venait se coller au tableau de bord).
+    // côté de n'importe quel jeu ouvert par un joueur qui a l'option.
     var estSwapou = /swapou/i.test(swfPath || "");
     if (!popupSid || !estSwapou) return;
     fetch("/api/features?sid=" + encodeURIComponent(popupSid), { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
         allowed = !!(j && j.features && j.features.swapouMoves);
-        // Le panneau apparaît dès le chargement, à zéro, comme celui du jeu.
-        if (allowed) window.fpSwapouCoup(0);
+        if (allowed) window.fpSwapouCoup();      // affiche les cadrans à vide
       })
       .catch(function () {});
   })();

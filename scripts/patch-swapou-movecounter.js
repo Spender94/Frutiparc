@@ -17,7 +17,13 @@
 //      se tromper. Le code injecté est une suite linéaire de 6 instructions.
 //
 // Injecté juste après `this.ncoups++` :
-//     getURL( "fpswcoup:" + this.ncoups , "_fpswcoup" ) ;
+//     getURL( "fpswcoup:" + this.ncoups + ":" + this.star_counter , "_fpswcoup" ) ;
+//
+// `ncoups` n'est PAS un compteur de coups affichable tel quel : c'est le curseur
+// de difficulté du jeu (il démarre à 5 en Challenge, à 1 en Classique, et
+// retombe à 0 à chaque niveau franchi). La page compte donc les coups elle-même
+// — un envoi = un échange réussi — et se sert de `ncoups` uniquement pour
+// détecter un redémarrage (sa valeur repart en arrière).
 //
 // Le nom obfusqué de ncoups ("}+{$0 \"") vient du motif bytecode
 // Push r1,cp | Push r1,cp | GetMember | Increment | SetMember, et la fonction qui
@@ -31,7 +37,16 @@ const zlib = require('zlib');
 
 const IN_PATH = path.resolve(__dirname, '..', 'Games', 'swapou2', 'swapou.swf');
 const OBF_NCOUPS = '}+{$0 "';
+// star_counter — décompte les fruits jusqu'à la prochaine étoile de pouvoir.
+// Identifié par la signature de la fonction qui engendre un fruit :
+//     is_armure = ( random(130) < random(ncoups) )
+//     is_noswap = ... ( random(250) < random(ncoups) )
+//     is_star   = ... ( (--star_counter) == 0 )
+// Les littéraux 130 et 250 pointent la fonction ; le seul Decrement qui suit
+// écrit "36&0#|#".
+const OBF_STAR = '36&0#|#';
 const URL_PREFIX = 'fpswcoup:';
+const URL_SEP = ':';
 const URL_TARGET = '_fpswcoup';
 
 // ─── SWF I/O (la version n'est JAMAIS modifiée) ───
@@ -110,9 +125,10 @@ console.log(`Classe trouvée à ${tag.offset} (pool ${count} entrées)`);
 
 if (cp.includes(URL_PREFIX)) { console.log('Déjà patché — rien à faire.'); process.exit(0); }
 if (cp.indexOf(OBF_NCOUPS) < 0) throw new Error('ncoups absent du pool');
+if (cp.indexOf(OBF_STAR) < 0) throw new Error('star_counter absent du pool');
 
 // Chaînes à ajouter.
-const NEEDED = [OBF_NCOUPS, URL_PREFIX, URL_TARGET];
+const NEEDED = [OBF_NCOUPS, OBF_STAR, URL_PREFIX, URL_SEP, URL_TARGET];
 const idx = {}, toAppend = [];
 for (const s of NEEDED) {
   const i = cp.indexOf(s);
@@ -150,10 +166,13 @@ for (const ins of walk(buf, actionsStart, tagEnd)) {
 if (injectAt < 0) throw new Error('site « ncoups++ » introuvable');
 console.log(`Site « ncoups++ » trouvé — injection à ${injectAt}`);
 
-// getURL("fpswcoup:" + this.ncoups, "_fpswcoup") — 6 instructions, aucune écriture,
-// aucun branchement, pile équilibrée (tout est consommé par GetURL2).
+// getURL("fpswcoup:" + this.ncoups + ":" + this.star_counter, "_fpswcoup")
+// Suite LINÉAIRE : aucune écriture mémoire, aucun branchement, pile équilibrée
+// (tout est consommé par GetURL2).
 const inject = Buffer.concat([
   actionPush(pushCp(idx[URL_PREFIX]), pushReg(1), nc), GET_MEMBER, ADD2,
+  actionPush(pushCp(idx[URL_SEP])), ADD2,
+  actionPush(pushReg(1), pushCp(idx[OBF_STAR])), GET_MEMBER, ADD2,
   actionPush(pushCp(idx[URL_TARGET])),
   GET_URL2,
 ]);
