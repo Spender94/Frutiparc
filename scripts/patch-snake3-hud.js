@@ -10,7 +10,18 @@
 //           this.snake.len,                          // longueur
 //           snake3.bonus.Pile.counter,               // dynamites ramassées
 //           this.slots.length,                       // bonus en main
-//           this.slots[this.slots.length - 1].time ) ;  // temps du bonus temporisé
+//           this.slots[this.slots.length - 1].time ,  // temps du bonus temporisé
+//           this.__nf ,                                // fruits avalés (cf. plus bas)
+//           this.pause ) ;                             // partie en pause ?
+//
+// Et, EN TÊTE de Game.eat_fruit() — la seule porte par laquelle un fruit est
+// avalé, quelle qu'en soit la cause (contact, Langue, Potion noire) :
+//     this.__nf = (this.__nf | 0) + 1 ;
+// Le compteur vit sur l'instance de partie, recréée à chaque nouvelle partie :
+// il repart donc de zéro tout seul, sans remise à zéro à gérer.
+//
+// `pause` sert au CHRONOMÈTRE, tenu côté page : sans lui, le temps passé en
+// pause serait compté comme du temps de jeu.
 //
 // Pourquoi le DERNIER slot et pas slots[0] : Game.add_slot() empile par la TÊTE
 // (unshift) les bonus activables — Ciseaux, Langue, Bombe, les seuls dont
@@ -56,9 +67,23 @@ const path = require('path');
 const zlib = require('zlib');
 
 const IN_PATH = path.resolve(__dirname, '..', 'Games', 'snake3', 'snake3.swf');
-const OBF = { snake: ']@=%^$', len: '-1"!', bonusPkg: '!$+35', pile: '!?7*&', counter: '3}-82]#', time: "'@{ #" };
+const OBF = {
+  snake: ']@=%^$', len: '-1"!', bonusPkg: '!$+35', pile: '!?7*&', counter: '3}-82]#',
+  time: "'@{ #",
+  // eat_fruit — établi par chaînage sur la FIN de Game.main, qui traduit mot pour
+  // mot les dernières lignes du source :
+  //     var f = level.get_fruit(c) ; if( f != null ) eat_fruit(f) ;
+  //     var b = level.get_bonus(c) ; if( b != null ) get_bonus(b) ;
+  // Le désassemblage y montre this.<*}^#"#>.<|*"|4["> puis this.<|*?23!"> :
+  // level.get_fruit, puis eat_fruit. (Au passage "*}^#\"#" est `level` — c'était
+  // la chaîne prise à tort pour `time` lors de la première identification.)
+  eatFruit: '|*?23!"',
+  // `pause` n'est PAS obfusqué : il apparaît tel quel dans le pool de Game.
+  pause: 'pause',
+};
 const JS_CALLBACK = 'fpSnakeHud';
 const TICK_MEMBER = '__k';
+const FRUIT_MEMBER = '__nf';   // fruits avalés DANS LA PARTIE en cours
 const EVERY = 6;               // 1 envoi toutes les 6 images (~5/s)
 
 // ─── SWF I/O ───
@@ -173,9 +198,10 @@ for (const k of ['snake', 'len']) {
   if (cp.entries.indexOf(OBF[k]) < 0) throw new Error(`nom obfusqué ${k} (${JSON.stringify(OBF[k])}) absent du pool`);
 }
 
-// 3. Chaînes nécessaires.
+// 3. Chaînes nécessaires (ajoutées en une fois, avant toute injection).
 const NEEDED = ['snake3', OBF.bonusPkg, OBF.pile, OBF.counter, OBF.snake, OBF.len, OBF.time,
-                'slots', 'length', 'main', TICK_MEMBER, JS_CALLBACK, 'flash', 'external', 'ExternalInterface', 'call'];
+                OBF.eatFruit, OBF.pause, 'slots', 'length', 'main', TICK_MEMBER, FRUIT_MEMBER,
+                JS_CALLBACK, 'flash', 'external', 'ExternalInterface', 'call'];
 const idx = {};
 const toAppend = [];
 for (const s of NEEDED) {
@@ -194,36 +220,83 @@ if (delta1) {
   buf.writeUInt32LE(tag.length + delta1, tag.offset + 2);
   console.log(`Pool: +${toAppend.length} chaînes, +${delta1} o`);
 }
-const tagEnd = tag.offset + tag.hdrSize + tag.length + delta1;
 const actionsStart = cp.dataEnd + delta1;
+let tagLen = tag.length + delta1;                       // suit chaque injection
+const tagEnd = () => tag.offset + tag.hdrSize + tagLen;
 
-// 4. Localise Game.main : Push cp("main") immédiatement suivi d'un DefineFunction2.
-let fn = null;
-let prev = null;
-for (const ins of walkActions(buf, actionsStart, tagEnd)) {
-  if (ins.op === 0x8E && prev && prev.op === 0x96) {
-    const seg = buf.slice(prev.pc + 3, prev.pc + 3 + prev.len);
-    // Push d'une seule constante valant "main"
-    const isMain = (seg.length === 2 && seg[0] === 0x08 && seg[1] === idx['main']) ||
-                   (seg.length === 3 && seg[0] === 0x09 && seg.readUInt16LE(1) === idx['main']);
-    if (isMain) {
-      const hdrEnd = ins.pc + 3 + ins.len;          // fin de l'en-tête DefineFunction2
-      const codeSizePos = hdrEnd - 2;               // codeSize = 2 derniers octets
-      fn = { hdrEnd, codeSizePos, codeSize: buf.readUInt16LE(codeSizePos) };
-      break;
+// ─── Localisation d'un corps de méthode ───
+// Motif : Push d'une seule constante (le nom) immédiatement suivi du
+// DefineFunction2. Aucun offset codé en dur : le script survit à une réécriture
+// du SWF tant que la classe existe.
+function corpsDeMethode(nomIdx) {
+  let prev = null;
+  for (const ins of walkActions(buf, actionsStart, tagEnd())) {
+    if (ins.op === 0x8E && prev && prev.op === 0x96) {
+      const seg = buf.slice(prev.pc + 3, prev.pc + 3 + prev.len);
+      const ok = (seg.length === 2 && seg[0] === 0x08 && seg[1] === nomIdx) ||
+                 (seg.length === 3 && seg[0] === 0x09 && seg.readUInt16LE(1) === nomIdx);
+      if (ok) return ins.pc + 3 + ins.len;               // début du corps
     }
+    prev = ins;
   }
-  prev = ins;
+  return -1;
 }
-if (idx['main'] === undefined) throw new Error("'main' absent du pool");
-if (!fn) throw new Error('Game.main introuvable');
-console.log(`Game.main : corps à ${fn.hdrEnd} (${fn.codeSize} octets)`);
 
-// 5. Code injecté, en tête du corps de main(). r1 = this (le Game).
+// ─── Injection ───
+// Trois choses doivent suivre l'insertion, sous peine de casser le jeu :
+//   1. les branchements du jeu qui ENJAMBENT le point d'injection ;
+//   2. le codeSize de CHAQUE fonction dont le corps englobe ce point — l'oublier
+//      fait que l'AVM s'arrête trop tôt et tronque la fin de la méthode (c'est
+//      exactement ce qui avait cassé Swapou) ;
+//   3. la longueur du tag.
+function injecter(at, code, quoi) {
+  const spanning = [];
+  for (const ins of walkActions(buf, actionsStart, tagEnd())) {
+    if (ins.op !== 0x9D && ins.op !== 0x99) continue;
+    const rel = buf.readInt16LE(ins.pc + 3), cible = ins.next + rel;
+    if ((ins.next <= at && cible > at) || (ins.next > at && cible <= at))
+      spanning.push({ fieldPos: ins.pc + 3, rel });
+  }
+  const englobantes = [];
+  for (const ins of walkActions(buf, actionsStart, tagEnd())) {
+    if (ins.op !== 0x8E) continue;
+    const hdrEnd = ins.next, csPos = hdrEnd - 2, cs = buf.readUInt16LE(csPos);
+    if (hdrEnd <= at && at < hdrEnd + cs) englobantes.push({ csPos, cs });
+  }
+  if (!englobantes.length) throw new Error(`${quoi} : aucune fonction englobante — injection abandonnée`);
+
+  buf = Buffer.concat([buf.slice(0, at), code, buf.slice(at)]);
+  for (const b of spanning) {
+    const pos = b.fieldPos < at ? b.fieldPos : b.fieldPos + code.length;
+    buf.writeInt16LE(b.rel + (b.rel > 0 ? code.length : -code.length), pos);
+  }
+  for (const f of englobantes) {
+    const pos = f.csPos < at ? f.csPos : f.csPos + code.length;
+    buf.writeUInt16LE(f.cs + code.length, pos);
+  }
+  tagLen += code.length;
+  buf.writeUInt32LE(tagLen, tag.offset + 2);
+  console.log(`${quoi} : ${code.length} o injectés (${spanning.length} branchement(s) réajusté(s), ` +
+              `${englobantes.length} fonction(s) agrandie(s))`);
+}
+
+// ─── Site A : Game.eat_fruit() → compteur de fruits ───
+const nf = pushCp(idx[FRUIT_MEMBER]);
+const posEat = corpsDeMethode(idx[OBF.eatFruit]);
+if (posEat < 0) throw new Error('Game.eat_fruit introuvable');
+injecter(posEat, Buffer.concat([
+  actionPush(pushReg(1), nf),
+  actionPush(pushReg(1), nf), GET_MEMBER, actionPush(pushInt(0)), BIT_OR, actionPush(pushInt(1)), ADD2,
+  SET_MEMBER,
+]), 'Game.eat_fruit');
+
+// ─── Site B : Game.main() → l'envoi vers la page ───
 const tick = pushCp(idx[TICK_MEMBER]);
 const callBlock = Buffer.concat([
-  // arguments empilés en ordre INVERSE
-  // slots[slots.length - 1].time  (le bonus temporisé le plus récent — cf. en-tête)
+  // Arguments empilés en ordre INVERSE de leur réception côté page.
+  actionPush(pushReg(1), pushCp(idx[OBF.pause])), GET_MEMBER,                    // pause
+  actionPush(pushReg(1), nf), GET_MEMBER,                                        // fruits avalés
+  // slots[slots.length - 1].time — le bonus temporisé le plus récent (cf. en-tête)
   actionPush(pushReg(1), pushCp(idx['slots'])), GET_MEMBER,
   actionPush(pushReg(1), pushCp(idx['slots'])), GET_MEMBER, actionPush(pushCp(idx['length'])), GET_MEMBER,
   actionPush(pushInt(1)), SUBTRACT,
@@ -232,17 +305,17 @@ const callBlock = Buffer.concat([
   actionPush(pushCp(idx['snake3'])), GET_VARIABLE,
   actionPush(pushCp(idx[OBF.bonusPkg])), GET_MEMBER,
   actionPush(pushCp(idx[OBF.pile])), GET_MEMBER,
-  actionPush(pushCp(idx[OBF.counter])), GET_MEMBER,                                    // Pile.counter
+  actionPush(pushCp(idx[OBF.counter])), GET_MEMBER,                              // dynamites
   actionPush(pushReg(1), pushCp(idx[OBF.snake])), GET_MEMBER, actionPush(pushCp(idx[OBF.len])), GET_MEMBER,
   actionPush(pushCp(idx[JS_CALLBACK])),
-  actionPush(pushInt(5)),
+  actionPush(pushInt(7)),
   actionPush(pushCp(idx['flash'])), GET_VARIABLE,
   actionPush(pushCp(idx['external'])), GET_MEMBER,
   actionPush(pushCp(idx['ExternalInterface'])), GET_MEMBER,
   actionPush(pushCp(idx['call'])),
   CALL_METHOD, POP,
 ]);
-const inject = Buffer.concat([
+const injectMain = Buffer.concat([
   // this.__k = (this.__k | 0) + 1
   actionPush(pushReg(1), tick),
   actionPush(pushReg(1), tick), GET_MEMBER, actionPush(pushInt(0)), BIT_OR, actionPush(pushInt(1)), ADD2,
@@ -253,30 +326,11 @@ const inject = Buffer.concat([
   actionIf(callBlock.length),
   callBlock,
 ]);
-console.log(`Code injecté : ${inject.length} octets (envoi 1 image sur ${EVERY})`);
-
-// 6. Branchements enjambant le point d'injection (début du corps de main).
-const injectAt = fn.hdrEnd;
-const spanning = [];
-for (const ins of walkActions(buf, actionsStart, tagEnd)) {
-  if (ins.op !== 0x9D && ins.op !== 0x99) continue;
-  const rel = buf.readInt16LE(ins.pc + 3);
-  const target = ins.next + rel;
-  const crosses = (ins.next <= injectAt && target > injectAt) || (ins.next > injectAt && target <= injectAt);
-  if (crosses) spanning.push({ fieldPos: ins.pc + 3, rel });
-}
-console.log(`Branchements enjambants : ${spanning.length}`);
-
-// 7. Splice + mises à jour (codeSize de main, offsets, longueur de tag).
-buf = Buffer.concat([buf.slice(0, injectAt), inject, buf.slice(injectAt)]);
-for (const b of spanning) {
-  const pos = b.fieldPos < injectAt ? b.fieldPos : b.fieldPos + inject.length;
-  buf.writeInt16LE(b.rel + (b.rel > 0 ? inject.length : -inject.length), pos);
-}
-buf.writeUInt16LE(fn.codeSize + inject.length, fn.codeSizePos);   // main() est plus longue
-buf.writeUInt32LE(tag.length + delta1 + inject.length, tag.offset + 2);
+const posMain = corpsDeMethode(idx['main']);
+if (posMain < 0) throw new Error('Game.main introuvable');
+injecter(posMain, injectMain, 'Game.main');
 
 const outSize = writeSwf(IN_PATH, sig, version, buf);
 console.log(`Écrit ${IN_PATH} (${outSize} o compressés)`);
 if (version < MIN_SWF_VERSION) console.log(`Version SWF ${version} → ${MIN_SWF_VERSION} (ExternalInterface est une API Flash 8)`);
-console.log(`Terminé — le jeu appelle ${JS_CALLBACK}(longueur, dynamites, nbBonus, tempsBonus).`);
+console.log(`Terminé — le jeu appelle ${JS_CALLBACK}(longueur, dynamites, nbBonus, tempsBonus, fruits, pause).`);

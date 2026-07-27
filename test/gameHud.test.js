@@ -89,9 +89,40 @@ test('snake3.swf : pont présent et jouable en version 8 (sinon ExternalInterfac
   assert.ok(contient(body, 'fpSnakeHud'), 'nom du rappel JS présent');
   assert.ok(contient(body, 'ExternalInterface'), 'appel ExternalInterface présent');
   // Symboles du jeu intacts : l'injection ne doit rien avoir écrasé.
-  for (const s of ['slots', 'giveItem', ']@=%^$', '3}-82]#', "'@{ #"]) {
+  for (const s of ['slots', 'giveItem', ']@=%^$', '3}-82]#', "'@{ #", '|*?23!"']) {
     assert.ok(contient(body, s), `symbole du jeu conservé : ${JSON.stringify(s)}`);
   }
+  // Second point d'injection : le compteur de fruits, posé dans eat_fruit.
+  assert.ok(contient(body, '__nf'), 'compteur de fruits présent');
+});
+
+test('chronomètre : la pause et les coupures ne comptent pas', () => {
+  // Le chronomètre est tenu par la PAGE (le jeu ne mesure pas le temps écoulé).
+  // On extrait la fonction du fichier livré et on la fait tourner pour de vrai.
+  const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
+  const src = /var chrono = 0, derniereTick = 0;[\s\S]*?\n    \}/.exec(html);
+  assert.ok(src, 'fonction majChrono présente');
+  const faux = { valeur: 1000 };
+  const sandbox = new Function('Date', src[0] +
+    '; return { maj: majChrono, lire: function () { return chrono; } };')(
+    { now: () => faux.valeur });
+
+  // Trois tics de 200 ms en jeu → 400 ms comptés (le premier tic amorce l'horloge).
+  for (const dt of [0, 200, 200]) { faux.valeur += dt; sandbox.maj(false, false); }
+  assert.equal(sandbox.lire(), 400, 'temps de jeu cumulé');
+
+  // Un tic en PAUSE ne compte pas.
+  faux.valeur += 200; sandbox.maj(true, false);
+  assert.equal(sandbox.lire(), 400, 'la pause ne compte pas');
+
+  // Une coupure de plus d'une seconde (fin de partie, onglet caché) non plus :
+  // le chronomètre se fige sur la durée finale.
+  faux.valeur += 5000; sandbox.maj(false, false);
+  assert.equal(sandbox.lire(), 400, 'une longue coupure ne compte pas');
+
+  // Nouvelle partie : remise à zéro.
+  faux.valeur += 200; sandbox.maj(false, true);
+  assert.equal(sandbox.lire(), 0, 'une nouvelle partie repart de zéro');
 });
 
 // Le compteur de coups Swapou a d'abord cassé le jeu : le script d'alors
@@ -160,8 +191,10 @@ test('panneau Frutisnake : à CÔTÉ de la scène, aux couleurs du jeu', () => {
   assert.ok(bloc.length > 100, 'bloc setupSnakeHud présent');
 
   assert.ok(bloc.includes('"Longueur"'), 'information affichée : Longueur');
+  assert.ok(bloc.includes('Fruits aval\\u00e9s'), 'information affichée : Fruits avalés');
   assert.ok(bloc.includes('"Dynamites"'), 'information affichée : Dynamites');
   assert.ok(bloc.includes('Dur\\u00e9e bonus en cours'), 'information affichée : Durée bonus en cours');
+  assert.ok(bloc.includes('Dur\\u00e9e de la partie'), 'information affichée : Durée de la partie');
   // Posé dans la RANGÉE, pas dans la scène : l'aire de jeu n'est jamais couverte,
   // et le panneau suit la loupe puisque c'est la rangée qui est mise à l'échelle.
   assert.ok(bloc.includes('getElementById("stage-row")'), 'inséré à côté de la scène');
