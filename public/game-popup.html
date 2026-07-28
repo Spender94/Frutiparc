@@ -531,9 +531,75 @@
       .catch(function () {});
   })();
 
+  // ── Le pont Frutisnake, partagé ────────────────────────────────────────────
+  // Le SWF patché (scripts/patch-snake3-hud.js) appelle fpSnakeHud à chaque tour
+  // de sa boucle de jeu, pour TOUS les joueurs : le pont est dans le fichier, il
+  // n'a aucune idée de qui possède quoi. Le Pack de Frutisnake ne conditionne que
+  // l'AFFICHAGE du tableau de bord — pas la donnée.
+  //
+  // Deux modules s'y abonnent donc indépendamment : le tableau de bord (réservé
+  // aux détenteurs du pack) et le relevé du Frutisnake Contest (tout le monde).
+  // Un abonné qui échoue ne doit pas priver l'autre de ses appels, d'où le try.
+  var abonnesSnake = [];
+  function abonnerSnake(fn) { abonnesSnake.push(fn); }
+  window.fpSnakeHud = function () {
+    for (var i = 0; i < abonnesSnake.length; i++) {
+      try { abonnesSnake[i].apply(null, arguments); }
+      catch (e) { window.__dlog("[Snake] abonné en erreur :", e && e.message); }
+    }
+  };
+
+  // ── Frutisnake Contest : le plus long serpent ──────────────────────────────
+  // Classement à part, ouvert à tous et alimenté par TOUTES les parties —
+  // challenge comme essai — puisqu'il ne mesure pas le score mais la longueur.
+  // On suit le maximum atteint et on l'envoie à la fin de la partie.
+  //
+  // Fin de partie : le SWF cesse simplement d'appeler le pont, il n'émet aucun
+  // signal. On considère donc la partie terminée après un silence de 3 s. Une
+  // pause un peu longue peut déclencher un envoi anticipé : c'est sans
+  // conséquence, le serveur ne retient que le maximum, et la suite de la partie
+  // en enverra un plus grand. Une nouvelle partie (compteurs du jeu repartis en
+  // arrière) clôt la précédente immédiatement.
+  (function setupSnakeContest() {
+    if (!popupSid || !/snake3/i.test(swfPath || "")) return;
+    var record = 0, envoye = 0, precedent = null, silence = null;
+    var SILENCE_MS = 3000;
+    function url(len) {
+      return "/api/snake/contest?sid=" + encodeURIComponent(popupSid) + "&len=" + len;
+    }
+    function envoyer() {
+      if (record <= envoye || record < 3) return;
+      envoye = record;
+      fetch(url(record), { method: "POST", cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (j && j.updated) window.__dlog("[Contest] nouveau record de longueur :", j.record);
+        })
+        .catch(function () {});
+    }
+    abonnerSnake(function (len, dyn, nbSlots, slotTime, fruits) {
+      var l = Number(len) || 0, nf = Number(fruits) || 0;
+      // Même détection de nouvelle partie que le tableau de bord : le serpent a
+      // raccourci ET les fruits sont retombés.
+      if (precedent && nf < precedent.fruits && l <= precedent.len) {
+        envoyer();
+        record = 0; envoye = 0;
+      }
+      precedent = { fruits: nf, len: l };
+      if (l > record) record = l;
+      if (silence) clearTimeout(silence);
+      silence = setTimeout(envoyer, SILENCE_MS);
+    });
+    // Fenêtre fermée en pleine partie : fetch serait annulé, sendBeacon non.
+    window.addEventListener("pagehide", function () {
+      if (record <= envoye || record < 3) return;
+      envoye = record;
+      try { navigator.sendBeacon(url(record)); } catch (e) {}
+    });
+  })();
+
   // ── Tableau de bord Frutisnake ─────────────────────────────────────────────
-  // Le SWF patché (scripts/patch-snake3-hud.js) appelle, pendant la partie,
-  // window.fpSnakeHud(longueur, dynamites, nbBonusEnMain, tempsBonus).
+  // Réservé aux détenteurs du Pack de Frutisnake (option snake3Hud).
   //
   // Rendu : un panneau posé À CÔTÉ de la scène, jamais par-dessus — l'aire de jeu
   // reste intégralement visible. Il s'insère dans #stage-row, la rangée que la
@@ -654,7 +720,7 @@
     }
 
     var precedent = null;
-    window.fpSnakeHud = function (len, dyn, nbSlots, slotTime, fruits, enPause) {
+    abonnerSnake(function (len, dyn, nbSlots, slotTime, fruits, enPause) {
       if (!allowed) return;
       if (!panel) { panel = construire(); if (!panel) return; }
       // Nouvelle partie : les compteurs du jeu sont repartis en arrière (le
@@ -685,7 +751,7 @@
       // Plus d'appels ⇒ la partie est terminée : on efface en fondu.
       if (hideTimer) clearTimeout(hideTimer);
       hideTimer = setTimeout(function () { if (panel) panel.style.opacity = "0"; }, 2000);
-    };
+    });
 
     if (!popupSid) return;
     fetch("/api/features?sid=" + encodeURIComponent(popupSid), { cache: "no-store" })

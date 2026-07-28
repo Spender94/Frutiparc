@@ -1121,6 +1121,20 @@ const RANKINGS = {
   mb2_challenge:      { name: 'MotionBall - Challenge',   game: 'mb2',      type: 'L', lowerIsBetter: true },
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
   grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L' },
+  // ── Frutisnake Contest : le plus long serpent ────────────────────────────
+  // Un classement à part, qui ne mesure pas le score mais la LONGUEUR maximale
+  // atteinte pendant une partie. Trois différences volontaires avec les autres :
+  //   • ouvert à TOUS — la longueur est relevée par le pont fpSnakeHud du SWF,
+  //     que le jeu appelle pour tout le monde ; le Pack de Frutisnake ne
+  //     conditionne que son AFFICHAGE en jeu, pas sa collecte ;
+  //   • alimenté par TOUTES les parties, challenge comme essai, sans toucher au
+  //     quota FD (rien n'est consommé, rien n'est bloqué) ;
+  //   • PERMANENT — son descripteur ci-dessous le range en section 'L', il
+  //     échappe donc à la remise à zéro quotidienne (cf. DAILY_RESET_RANKING_SET)
+  //     et garde le record de chacun.
+  // type 'C' malgré tout : c'est le filtre de /api/admin/tournament-games, donc
+  // un tournoi « Maître ÈS … » peut se tenir sur ce classement.
+  snake3_contest:     { name: 'Frutisnake - Contest',     game: 'snake3',   type: 'C' },
 };
 
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
@@ -1149,6 +1163,12 @@ const LEGACY_RANKINGS = [
   // internal = KIKOOZ_RANKING_ID (id virtuel, hors RANKINGS) : la source des
   // scores est spécialisée dans rankingResult (lecture de user.kikooz).
   { rk: '9', internal: 'kikooz',           ty: 'point',       rn: 'Class. kikooz', gs: '9', g: 'linkClub', section: 'L' },
+  // Frutisnake Contest — même mécanique d'onglet supplémentaire piloté serveur.
+  // Rangé en section 'L' à dessein : c'est un record PERMANENT, il ne doit pas
+  // être balayé par la remise à zéro quotidienne des classements de section 'C'
+  // (ni distribuer de médailles du jour). g='snake3' pour hériter de l'icône du
+  // jeu dans fileIcon.swf.
+  { rk: '10', internal: 'snake3_contest',  ty: 'point',       rn: 'Frutisnake Contest', gs: '1', g: 'snake3', section: 'L' },
   // Section L = "Championnat" in front-end — plus aucun classement réel
   { rk: '7', internal: null,                ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
@@ -11222,6 +11242,40 @@ app.get('/api/features', (req, res) => {
   res.json({ ok: true, username: username || null, features: out });
 });
 
+// ── Frutisnake Contest : relevé de la plus longue partie ─────────────────────
+// Le popup de jeu suit la longueur du serpent pendant la partie (pont fpSnakeHud,
+// que le SWF appelle pour TOUS les joueurs) et poste ici le maximum atteint quand
+// la partie se termine. Volontairement HORS du circuit des scores :
+//   • aucun quota FD n'est consommé ni consulté — les parties d'essai comptent
+//     autant que les parties challenge, c'est tout l'intérêt du concours ;
+//   • le classement n'est jamais remis à zéro (section 'L'), donc chacun garde
+//     son record.
+// Accepte GET comme POST, et les paramètres en query : c'est ce qui permet au
+// popup d'utiliser navigator.sendBeacon quand la fenêtre se ferme, seul moyen
+// fiable de ne pas perdre la dernière partie.
+const SNAKE_CONTEST_RANKING = 'snake3_contest';
+// Garde-fou : le serpent démarre à 3 (Const.SNAKE_DEFAULT_LENGTH) et gagne un
+// anneau par fruit. Le plafond n'existe que pour écarter une valeur absurde ;
+// il est très au-dessus de ce qu'une vraie partie produit.
+const SNAKE_CONTEST_MIN = 3;
+const SNAKE_CONTEST_MAX = 2000;
+function handleSnakeContest(req, res) {
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  const username = resolveUsernameFromSid(String(params.sid || ''));
+  if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
+  const len = Math.floor(Number(params.len));
+  if (!Number.isFinite(len) || len < SNAKE_CONTEST_MIN || len > SNAKE_CONTEST_MAX) {
+    return res.status(400).json({ ok: false, error: 'longueur_invalide', len: params.len });
+  }
+  // persistScore ne retient que le meilleur : renvoyer une partie plus courte
+  // (ou renvoyer deux fois la même) est sans effet.
+  const r = persistScore(username, SNAKE_CONTEST_RANKING, len, '');
+  if (r.updated) console.log(`[CONTEST] ${username} : nouveau record de longueur ${len} (ancien ${r.oldScore})`);
+  return res.json({ ok: true, len, record: r.newScore, updated: r.updated, position: r.newPos });
+}
+app.post('/api/snake/contest', handleSnakeContest);
+app.get('/api/snake/contest', handleSnakeContest);
+
 app.get('/api/fd/status', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
@@ -14374,6 +14428,32 @@ app.get('/api/light/challenge', async (req, res) => {
       podium: [],
     });
   } catch (e) { console.error('[LIGHT] kikooz ranking error:', e.message); }
+  // Onglet « Frutisnake Contest » : le plus long serpent, tous temps confondus.
+  // allTime:true → le client n'affiche ni « aujourd'hui » ni podium, comme pour
+  // les kikooz : ce classement n'est pas remis à zéro chaque jour.
+  {
+    const all = [];
+    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+      const e = rlist && rlist[SNAKE_CONTEST_RANKING];
+      if (e && Number.isFinite(Number(e.score))) all.push({ u, s: Number(e.score), data: e.data });
+    }
+    all.sort(scoreComparator(SNAKE_CONTEST_RANKING));
+    games.push({
+      id: SNAKE_CONTEST_RANKING,
+      game: 'snake3',
+      name: 'Frutisnake Contest',
+      allTime: true,
+      lowerIsBetter: false,
+      count: all.length,
+      scores: all.slice(0, limit).map((e) => ({
+        user: getDisplayName(e.u),
+        score: e.s,
+        label: e.s + ' anneaux',
+        isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
+      })),
+      podium: [],
+    });
+  }
   res.json({ day: parisDayKey(), yesterday, games });
 });
 
