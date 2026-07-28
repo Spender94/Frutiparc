@@ -201,6 +201,12 @@
         window.fpSwapouCoup(Number(coupMatch[1]), Number(coupMatch[2]));
       return null;
     }
+    // Fin de partie Swapou : émis par le constructeur de l'écran de game over,
+    // donc à l'instant exact où la partie s'arrête, et une seule fois.
+    if (u.indexOf("fpswfin:") === 0) {
+      if (typeof window.fpSwapouFin === "function") window.fpSwapouFin();
+      return null;
+    }
     // Slot save via getURL: "slot:GAME:SLOTID:PIPEDATA"
     var slotMatch = u.match(/^slot:([\w]+):(\d+):(.+)/);
     if (slotMatch) {
@@ -378,9 +384,13 @@
     var VAL_X = (8.6 + 128.2) / 2;         // centre de la boîte du score : 68,4
     var VAL_HAUT_BOITE = 7.2;              // haut de la boîte dans le parchemin
     var VAL_COUL = "#aa724b";              // couleur du score
-    var LAB_X = (61.1 + 82.8) / 2;         // centre de « pts » : 71,95
-    var LAB_BASE = 55.7;                   // sa ligne de base
+    var LAB_X = 68;                        // centre optique du parchemin
+    var LAB_BASE = 55.7;                   // ligne de base du « pts » du jeu
     var LAB_COUL = "#b37851";              // sa couleur
+    // NB : le « pts » du jeu est centré en 71,95, soit 3,5 px à droite du milieu
+    // du parchemin. Sur trois lettres ça ne se voit pas ; sur « AV. ÉTOILE » si.
+    // On garde donc sa hauteur et sa teinte, mais on recentre : mesuré au 1/8 de
+    // pixel, l'encre du libellé tombe alors sur celle du nombre à 0,1 px près.
     // Flash pose la première ligne d'un champ à 2 px du haut de sa boîte, puis
     // descend de l'ascendante de la police. Vérifié au pixel en chargeant dans
     // Ruffle un SWF minimal reprenant cette police et ce champ.
@@ -491,6 +501,16 @@
         var g = panel.querySelector('[data-cle="' + CADRANS[i].cle + '"]');
         if (g) peindre(g, valeurs[CADRANS[i].cle]);
       }
+    };
+
+    // Fin de partie : les cadrans s'effacent, et les compteurs sont remis à zéro
+    // pour que la partie suivante reparte proprement. Le signal vient du SWF
+    // lui-même (constructeur de l'écran de game over), pas d'un délai d'inactivité
+    // — un joueur peut réfléchir longtemps entre deux échanges sans que les
+    // panneaux aient à disparaître.
+    window.fpSwapouFin = function () {
+      if (panel) panel.style.display = "none";
+      coups = 0; ncoupsPrec = null; debutSerie = null;
     };
 
     // Ce panneau n'a de sens QUE dans Swapou : sans ce garde, il s'affichait à

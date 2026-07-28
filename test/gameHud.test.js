@@ -186,6 +186,115 @@ test('swapou.swf : le codeSize de la fonction englobante a bien été agrandi', 
     'tronquerait la routine d\'échange, ce qui avait cassé le jeu');
 });
 
+test('swapou.swf : structure du bytecode intacte après injection', () => {
+  // Contrôle GÉNÉRAL, et non plus limité au site patché : dans tout le fichier,
+  // chaque flux d'actions doit se parcourir jusqu'à sa dernière instruction, et
+  // le corps déclaré de chaque fonction doit tenir dans celui de son parent.
+  // Un codeSize oublié se voit ici, où qu'il soit.
+  const { body } = swfBody('Games/swapou2/swapou.swf');
+  const rect = (b) => Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8);
+  const tags = [];
+  (function scan(from, to) {
+    let off = from;
+    while (off < to) {
+      const h = body.readUInt16LE(off), c = h >> 6;
+      let l = h & 0x3f, hs = 2;
+      if (l === 0x3f) { l = body.readUInt32LE(off + 2); hs = 6; }
+      if (c === 0) break;
+      tags.push({ code: c, offset: off, hdrSize: hs, length: l });
+      if (c === 39) scan(off + hs + 4, off + hs + l);
+      off += hs + l;
+    }
+  })(rect(body) + 4, body.length);
+
+  function* walk(start, end) {
+    let pc = start;
+    while (pc < end) {
+      const op = body[pc];
+      if (op === 0) { pc += 1; continue; }
+      const next = op >= 0x80 ? pc + 3 + body.readUInt16LE(pc + 1) : pc + 1;
+      if (next <= pc || next > end) { yield { pc, op, next, deborde: true }; return; }
+      yield { pc, op, next };
+      pc = next;
+    }
+  }
+  let nbTags = 0, nbFn = 0;
+  for (const t of tags) {
+    if (t.code !== 59 && t.code !== 12 && t.code !== 60) continue;
+    const saut = t.code === 12 ? 0 : 2;
+    let p = t.offset + t.hdrSize + saut;
+    const fin = t.offset + t.hdrSize + t.length;
+    if (body[p] === 0x88) p = p + 3 + body.readUInt16LE(p + 1);
+    nbTags++;
+    const pile = [{ fin, quoi: 'tag' }];
+    for (const i of walk(p, fin)) {
+      assert.ok(!i.deborde, `tag @${t.offset} : instruction 0x${i.op.toString(16)} en ${i.pc} déborde du tag`);
+      while (pile.length > 1 && i.pc >= pile[pile.length - 1].fin) pile.pop();
+      if (i.op !== 0x8E) continue;
+      nbFn++;
+      const finFn = i.next + body.readUInt16LE(i.next - 2);
+      assert.ok(finFn <= pile[pile.length - 1].fin,
+        `tag @${t.offset} : fonction en ${i.pc} finit en ${finFn}, au-delà de son ${pile[pile.length - 1].quoi}`);
+      pile.push({ fin: finFn, quoi: 'fonction @' + i.pc });
+    }
+  }
+  assert.ok(nbTags > 50 && nbFn > 300, `${nbTags} tags / ${nbFn} fonctions parcourus`);
+});
+
+test('swapou.swf : la fin de partie est signalée à la page', () => {
+  // Sans ce signal, les cadrans resteraient affichés par-dessus l'écran de game
+  // over puis le menu. Il est accroché au CONSTRUCTEUR de l'écran de game over,
+  // donc tiré une seule fois, à l'instant où la partie s'arrête.
+  const { body } = swfBody('Games/swapou2/swapou.swf');
+  assert.ok(contient(body, 'fpswfin:'), 'préfixe getURL de fin de partie présent');
+
+  // Le site doit tomber dans le corps déclaré d'une fonction — même invariant
+  // que pour le compteur de coups.
+  const rect = (b) => Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8);
+  let off = rect(body) + 4, tag = null;
+  while (off < body.length) {
+    const h = body.readUInt16LE(off), c = h >> 6;
+    let l = h & 0x3f, hs = 2;
+    if (l === 0x3f) { l = body.readUInt32LE(off + 2); hs = 6; }
+    if (c === 0) break;
+    if ((c === 59 || c === 12) && body.slice(off + hs, off + hs + l).includes(Buffer.from('fpswfin:', 'latin1'))) {
+      tag = { off, hs, l, c }; break;
+    }
+    off += hs + l;
+  }
+  assert.ok(tag, 'tag contenant le signal de fin trouvé');
+  // La classe visée est bien GameOver : elle porte le seul littéral en clair
+  // qui l'identifie, et l'appel endGame qui referme la partie.
+  const corps = body.slice(tag.off + tag.hs, tag.off + tag.hs + tag.l);
+  assert.ok(corps.includes(Buffer.from('Vous avez gagn', 'latin1')), 'classe GameOver');
+  assert.ok(corps.includes(Buffer.from('endGame', 'latin1')), 'endGame présent dans la classe');
+
+  const s0 = tag.off + tag.hs + (tag.c === 12 ? 0 : 2);
+  const plen = body.readUInt16LE(s0 + 1), cnt = body.readUInt16LE(s0 + 3);
+  const cp = []; let q = s0 + 5;
+  for (let i = 0; i < cnt; i++) { const e = body.indexOf(0, q); cp.push(body.slice(q, e).toString('latin1')); q = e + 1; }
+  const iUrl = cp.indexOf('fpswfin:');
+  assert.ok(iUrl >= 0, 'préfixe présent dans la table des constantes');
+
+  const start = s0 + 3 + plen, end = tag.off + tag.hs + tag.l;
+  const fns = [];
+  let site = -1, pc = start;
+  while (pc < end) {
+    const op = body[pc];
+    const next = op >= 0x80 ? pc + 3 + body.readUInt16LE(pc + 1) : pc + 1;
+    if (next <= pc || next > end) break;
+    if (op === 0x8E) fns.push({ debut: next, fin: next + body.readUInt16LE(next - 2) });
+    if (op === 0x96 && site < 0) {
+      const seg = body.slice(pc + 3, next);
+      if ((seg[0] === 0x08 && seg[1] === iUrl) || (seg[0] === 0x09 && seg.readUInt16LE(1) === iUrl)) site = pc;
+    }
+    pc = next;
+  }
+  assert.ok(site > 0, 'site injecté localisé');
+  assert.ok(fns.some((f) => f.debut <= site && site < f.fin),
+    'le signal est bien DANS le corps déclaré d\'une fonction (le constructeur)');
+});
+
 test('panneau Frutisnake : à CÔTÉ de la scène, aux couleurs du jeu', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
   const bloc = html.slice(html.indexOf('function setupSnakeHud'), html.indexOf('const wrap = document.getElementById'));
@@ -315,6 +424,13 @@ test('cadrans Swapou : le nombre reprend le gabarit exact du score du jeu', () =
   assert.ok(/VAL_COUL = "#aa724b"/.test(bloc), 'couleur du score');
   assert.ok(/LAB_COUL = "#b37851"/.test(bloc), 'couleur du libellé « pts »');
   assert.ok(/LAB_BASE = 55\.7/.test(bloc), 'libellé à la place de « pts », SOUS le nombre');
+  // Le « pts » du jeu est centré en 71,95, soit 3,5 px à droite du milieu du
+  // parchemin (20,9..115,6, centre 68,25). Invisible sur trois lettres, très
+  // visible sur « AV. ÉTOILE » : le libellé est donc recentré, lui.
+  const lab = /LAB_X = ([\d.]+)/.exec(bloc);
+  assert.ok(lab, 'LAB_X défini');
+  assert.ok(Math.abs(Number(lab[1]) - 68.25) < 1,
+    `libellé centré sur ${lab[1]} au lieu du milieu du parchemin (68,25)`);
 
   // Ligne de base : Flash pose la première ligne à 2 px du haut de la boîte puis
   // descend de l'ascendante. Mesuré au pixel dans Ruffle : 26 px sous le haut.
@@ -353,17 +469,21 @@ test('cadrans Swapou : réservés au Challenge, et le compteur part de 0', () =>
   const corps = /window\.fpSwapouCoup = function \(ncoups, star\) \{[\s\S]*?\n    \};/.exec(bloc);
   assert.ok(corps, 'fonction fpSwapouCoup présente');
 
+  const fin = /window\.fpSwapouFin = function \(\) \{[\s\S]*?\n    \};/.exec(bloc);
+  assert.ok(fin, 'fonction fpSwapouFin présente');
+
   function nouveau() {
     const vu = {}, style = {};
     const faux = { style, querySelector: (sel) => sel };
-    const f = new Function('faux', 'vu',
+    const api = new Function('faux', 'vu',
       'var panel = null, allowed = true, coups = 0, ncoupsPrec = null, debutSerie = null;' +
       'var CADRANS = [{ cle: "coups" }, { cle: "etoile" }];' +
       'var construire = function () { return faux; };' +
       'var caler = function () {};' +
       'var peindre = function (sel, v) { vu[sel] = v; };' +
-      'var window = {};' + corps[0] + 'return window.fpSwapouCoup;')(faux, vu);
-    return { f, vu, style };
+      'var window = {};' + corps[0] + fin[0] +
+      'return window;')(faux, vu);
+    return { f: api.fpSwapouCoup, fin: api.fpSwapouFin, vu, style };
   }
 
   // Mode CLASSIQUE : ncoups démarre à 1, le premier envoi vaut donc 2.
@@ -386,4 +506,47 @@ test('cadrans Swapou : réservés au Challenge, et le compteur part de 0', () =>
   assert.equal(g.vu['[data-cle="etoile"]'], '37');
   g.f(6, 100);                 // la valeur du jeu repart en arrière ⇒ nouvelle partie
   assert.equal(g.vu['[data-cle="coups"]'], '1', 'nouvelle partie : le compteur repart');
+});
+
+test('cadrans Swapou : effacés à la fin de la partie, revenus à la suivante', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
+  const bloc = html.slice(html.indexOf('function setupSwapouCoups'), html.indexOf('Tableau de bord Frutisnake'));
+  const corps = /window\.fpSwapouCoup = function \(ncoups, star\) \{[\s\S]*?\n    \};/.exec(bloc);
+  const fin = /window\.fpSwapouFin = function \(\) \{[\s\S]*?\n    \};/.exec(bloc);
+  assert.ok(corps && fin, 'les deux fonctions du pont sont présentes');
+
+  const vu = {}, style = {};
+  const faux = { style, querySelector: (sel) => sel };
+  const api = new Function('faux', 'vu',
+    'var panel = null, allowed = true, coups = 0, ncoupsPrec = null, debutSerie = null;' +
+    'var CADRANS = [{ cle: "coups" }, { cle: "etoile" }];' +
+    'var construire = function () { return faux; };' +
+    'var caler = function () {};' +
+    'var peindre = function (sel, v) { vu[sel] = v; };' +
+    'var window = {};' + corps[0] + fin[0] + 'return window;')(faux, vu);
+
+  // Une partie Challenge de trois coups.
+  api.fpSwapouCoup(6, 100); api.fpSwapouCoup(7, 62); api.fpSwapouCoup(8, 37);
+  assert.equal(vu['[data-cle="coups"]'], '3');
+  assert.equal(style.display, 'block', 'les cadrans sont là pendant la partie');
+
+  // Game over : le SWF émet fpswfin: → tout disparaît.
+  api.fpSwapouFin();
+  assert.equal(style.display, 'none', 'les cadrans disparaissent à la fin de la partie');
+
+  // Le joueur relance un Challenge : le compteur repart de 1, pas de 4.
+  api.fpSwapouCoup(6, 100);
+  assert.equal(style.display, 'block', 'ils reviennent dès le premier coup de la partie suivante');
+  assert.equal(vu['[data-cle="coups"]'], '1', 'le compteur est reparti de zéro');
+
+  // Après une fin de partie, une partie CLASSIQUE ne doit pas les rallumer.
+  api.fpSwapouFin();
+  api.fpSwapouCoup(2, 90); api.fpSwapouCoup(3, 89);
+  assert.equal(style.display, 'none', 'le mode Classique reste sans cadrans');
+});
+
+test('fin de partie Swapou : le pont getURL est branché dans la page', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
+  assert.ok(/indexOf\("fpswfin:"\) === 0/.test(html), 'le préfixe fpswfin: est intercepté');
+  assert.ok(/window\.fpSwapouFin\(\)/.test(html), 'et relayé à fpSwapouFin');
 });
