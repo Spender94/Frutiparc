@@ -4004,6 +4004,15 @@ const GAME_FEATURES = {
     name: 'Pack de Frutisnake',
     label: 'tableau de bord de Frutisnake',
   },
+  // Les deux cadrans de Swapou, incrustés sous le parchemin du score : le nombre
+  // de coups joués et le nombre de fruits avant la prochaine étoile de pouvoir.
+  // La même option pilote le compteur de coups de la version JavaScript du jeu.
+  swapouMoves: {
+    shopId: 41,
+    price: 300,
+    name: 'Pack de Swapou',
+    label: 'cadrans de Swapou',
+  },
 };
 const GAME_FEATURE_BY_SHOPID = Object.fromEntries(
   Object.entries(GAME_FEATURES).map(([k, v]) => [v.shopId, k]));
@@ -4042,6 +4051,21 @@ const SHOP_GAME_PACKS_DEFAULT = [
     picto: 'pack,12',
     description: 'Le tableau de bord de Frutisnake : la longueur de ton serpent, le nombre de dynamites avalées et le temps qu\'il reste sur ton bonus, affichés en jeu à côté du plateau.',
     comment: "Trois informations en direct pendant la partie : longueur, dynamites, durée du bonus en cours. S'active tout seul dès l'achat. Permanent !",
+    suffix9: '000000000',
+  },
+  {
+    // picto « pack,14 » : l'image de Swapou 2 dans le porte-vignettes de
+    // shopitem.swf (image 14 du clip des packs, comme « pack,12 » pour
+    // Frutisnake — relevé sur les étiquettes d'images du SWF).
+    id: GAME_FEATURES.swapouMoves.shopId,
+    name: GAME_FEATURES.swapouMoves.name,
+    category: 'Packs',
+    price: GAME_FEATURES.swapouMoves.price,
+    notDefault: true,
+    gameFeature: 'swapouMoves',
+    picto: 'pack,14',
+    description: 'Deux cadrans de plus sur le panneau de Swapou, gravés comme ceux du jeu : le nombre de coups que tu as joués, et le nombre de fruits qui te séparent de la prochaine étoile de pouvoir.',
+    comment: "Deux compteurs en direct pendant une partie Challenge : coups joués et fruits avant la prochaine étoile. S'active tout seul dès l'achat. Permanent !",
     suffix9: '000000000',
   },
 ];

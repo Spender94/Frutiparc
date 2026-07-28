@@ -176,7 +176,9 @@ test('un ancien pack de jeu persisté en base ne ressuscite pas', async (t) => {
     assert.ok(!liste.some((p) => p.id === id), `l'ancien pack #${id} ne doit pas ressusciter`);
   }
   const rubrique = liste.filter((p) => String(p.category || '').toLowerCase() === 'packs');
-  assert.equal(rubrique.length, 1, 'la rubrique Packs ne contient toujours qu\'un produit');
+  // Il ne doit rester que les options de jeu, celles définies dans le code.
+  assert.deepEqual(rubrique.map((p) => p.gameFeature).sort(), ['snake3Hud', 'swapouMoves'],
+    `rubrique Packs après réinjection : ${rubrique.map((p) => `${p.id}/${p.name}`).join(', ')}`);
 });
 
 test('le retrait par l\'admin est lui aussi persisté', async (t) => {
@@ -223,4 +225,52 @@ test('l\'achat par le client Flash renvoie une réponse exploitable', async (t) 
   assert.ok(/<r i="700"\s*>?<\/r>|<r i="700"><\/r>/.test(xml.replace(/\s+/g, '')) || /i="700"/.test(xml),
     `le solde débité est renvoyé : ${xml}`);
   assert.equal((await options(sid)).snake3Hud, true, 'et l\'option est bien accordée');
+});
+
+test('le Pack de Swapou s\'achète, n\'accorde QUE lui, et survit au redémarrage', async (t) => {
+  if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
+  const joueur = 'achatswapou';
+  const sid = await sidFor(joueur);
+  assert.equal((await options(sid)).swapouMoves, false, 'au départ : pas de cadrans');
+
+  await fetch(BASE + `/api/admin/users/${joueur}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': CLE },
+    body: JSON.stringify({ kikooz: 1000 }),
+  });
+  const liste = await (await fetch(BASE + '/api/admin/shop?key=' + CLE)).json();
+  const pack = liste.find((p) => p.gameFeature === 'swapouMoves');
+  assert.ok(pack, 'le Pack de Swapou est au catalogue');
+
+  const achat = await (await fetch(BASE + '/api/light/shop/buy', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid, id: pack.id }),
+  })).json();
+  assert.equal(achat.ok, true, `achat accepté (${JSON.stringify(achat)})`);
+  assert.equal(achat.kikooz, 1000 - pack.price, 'les kikooz sont bien débités du prix');
+
+  const apres = await options(sid);
+  assert.equal(apres.swapouMoves, true, 'cadrans ouverts tout de suite');
+  assert.equal(apres.snake3Hud, false, 'l\'achat n\'accorde QUE l\'option payée');
+
+  // Racheter ne doit pas re-débiter.
+  const encore = await (await fetch(BASE + '/api/light/shop/buy', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid, id: pack.id }),
+  })).json();
+  assert.equal(encore.ok, false, 'un second achat est refusé');
+
+  // La colonne, sans passer par le serveur.
+  await wait(400);
+  const c = new Client({ connectionString: DB });
+  await c.connect();
+  const { rows } = await c.query('SELECT owned_features FROM users WHERE LOWER(username) = $1', [joueur]);
+  await c.end();
+  assert.deepEqual(JSON.parse(rows[0].owned_features || '[]'), ['swapouMoves'], 'écrit en base');
+
+  // Et après un vrai redémarrage ?
+  await arreter();
+  await demarrer();
+  const sid2 = await sidFor(joueur);
+  assert.equal((await options(sid2)).swapouMoves, true,
+    'APRÈS REDÉMARRAGE : les cadrans sont toujours là');
 });

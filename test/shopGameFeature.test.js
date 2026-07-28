@@ -54,17 +54,32 @@ async function sidFor(username) {
 const packs = async () => (await (await fetch(BASE + '/api/admin/shop?key=' + CLE)).json());
 const options = async (sid) => (await (await fetch(BASE + '/api/features?sid=' + sid)).json()).features;
 
-test('la rubrique Packs ne contient que le tableau de bord de Frutisnake, à 300 kikooz', async () => {
+// Les produits attendus dans la rubrique, et rien d'autre.
+const ATTENDUS = [
+  { nom: 'Pack de Frutisnake', option: 'snake3Hud', prix: 300, picto: 'pack,12' },
+  { nom: 'Pack de Swapou', option: 'swapouMoves', prix: 300, picto: 'pack,14' },
+];
+
+test('la rubrique Packs contient les options de jeu, à 300 kikooz, et rien d\'autre', async () => {
   const liste = await packs();
   assert.ok(Array.isArray(liste), 'catalogue lisible');
   const rubrique = liste.filter((p) => String(p.category || '').toLowerCase() === 'packs');
-  assert.equal(rubrique.length, 1, 'un seul produit dans la rubrique Packs');
-  const p = rubrique[0];
-  assert.equal(p.name, 'Pack de Frutisnake');
-  assert.equal(p.price, 300);
-  assert.equal(p.gameFeature, 'snake3Hud', 'le produit accorde bien l\'option');
-  assert.equal(p.notDefault, true,
-    'sans notDefault la rubrique Packs est réputée offerte : le produit serait invendable');
+  assert.equal(rubrique.length, ATTENDUS.length,
+    `${rubrique.length} produits dans la rubrique Packs : ${rubrique.map((p) => p.name).join(', ')}`);
+  for (const attendu of ATTENDUS) {
+    const p = rubrique.find((x) => x.gameFeature === attendu.option);
+    assert.ok(p, `produit accordant ${attendu.option} présent`);
+    assert.equal(p.name, attendu.nom);
+    assert.equal(p.price, attendu.prix);
+    assert.equal(p.notDefault, true,
+      'sans notDefault la rubrique Packs est réputée offerte : le produit serait invendable');
+    // Le picto désigne une image du porte-vignettes de shopitem.swf : 12 pour
+    // Frutisnake, 14 pour Swapou 2 (étiquettes d'images relevées dans le SWF).
+    assert.equal(p.picto, attendu.picto, `vignette du jeu (${attendu.picto})`);
+  }
+  // Deux produits ne doivent pas partager un identifiant de boutique.
+  const ids = rubrique.map((p) => p.id);
+  assert.equal(new Set(ids).size, ids.length, `identifiants en double : ${ids.join(', ')}`);
 
   // Les huit anciens packs de jeux complets ont disparu du catalogue.
   for (const id of [10, 11, 12, 13, 14, 15, 16, 17]) {
@@ -72,19 +87,21 @@ test('la rubrique Packs ne contient que le tableau de bord de Frutisnake, à 300
   }
 });
 
-test('le produit est bien EN VENTE : un joueur sans kikooz est refusé faute d\'argent', async () => {
-  const sid = await sidFor('packsnake1');
+test('les produits sont bien EN VENTE : un joueur sans kikooz est refusé faute d\'argent', async () => {
   const liste = await packs();
-  const id = liste.find((p) => p.gameFeature === 'snake3Hud').id;
-  const r = await fetch(BASE + '/api/light/shop/buy', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sid, id }),
-  });
-  const j = await r.json();
-  // code 3 = kikooz insuffisants. Surtout PAS 2 (« déjà possédé ») : ce serait le
-  // signe que la rubrique est encore traitée comme offerte par défaut.
-  assert.equal(j.ok, false);
-  assert.equal(j.code, 3, `attendu « kikooz insuffisants », reçu ${JSON.stringify(j)}`);
+  for (const attendu of ATTENDUS) {
+    const sid = await sidFor('sanssou' + attendu.option.toLowerCase());
+    const id = liste.find((p) => p.gameFeature === attendu.option).id;
+    const r = await fetch(BASE + '/api/light/shop/buy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid, id }),
+    });
+    const j = await r.json();
+    // code 3 = kikooz insuffisants. Surtout PAS 2 (« déjà possédé ») : ce serait le
+    // signe que la rubrique est encore traitée comme offerte par défaut.
+    assert.equal(j.ok, false);
+    assert.equal(j.code, 3, `${attendu.nom} : attendu « kikooz insuffisants », reçu ${JSON.stringify(j)}`);
+  }
 });
 
 test('l\'option accordée ouvre le tableau de bord, son retrait le referme', async () => {
