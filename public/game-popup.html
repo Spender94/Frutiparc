@@ -753,10 +753,10 @@
   // (Verdana bold #660000). Un seul bouton « Fermer », centré : ouvrir la
   // Boutique du bureau main.swf depuis le popup de jeu n'est pas faisable
   // proprement — le joueur y va lui-même.
-  function showFdOverlay(fd, sidArg) {
-    if (document.getElementById("fd-overlay")) return;
+  function popinFrutiparc(id, texte) {
+    if (document.getElementById(id)) return;
     var wrap = document.createElement("div");
-    wrap.id = "fd-overlay";
+    wrap.id = id;
     wrap.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.30)";
     wrap.innerHTML =
       '<div style="background:#fff;border:1px solid #000;border-radius:12px;padding:0;box-shadow:0 7px 8px rgba(0,0,0,.5);max-width:378px;width:calc(100% - 14px)">' +
@@ -765,18 +765,65 @@
             '<img src="/fb/icone_popin.png" alt="" width="19" height="24" style="display:block">' +
             '<b style="font-size:15px">Challenge</b>' +
           '</div>' +
-          '<p style="font-family:Verdana,Arial,sans-serif;font-size:14px;line-height:1.5;margin:0 0 20px">Nom d\u2019un Pamplefrousse ! Tu as \u00e9puis\u00e9 ton quota de parties Challenge pour aujourd\u2019hui ! Retente ta chance demain ou ach\u00e8te un pass en boutique !</p>' +
+          '<p style="font-family:Verdana,Arial,sans-serif;font-size:14px;line-height:1.5;margin:0 0 20px">' + texte + '</p>' +
           '<div style="text-align:center">' +
-            '<button id="fd-later" style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">Fermer</button>' +
+            '<button style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">Fermer</button>' +
           '</div>' +
         '</div>' +
       '</div>';
     document.body.appendChild(wrap);
-    var bt = document.getElementById("fd-later");
+    var bt = wrap.querySelector("button");
     bt.onmousedown = function () { bt.style.transform = "translateY(1px)"; };
     bt.onmouseup = function () { bt.style.transform = ""; };
     bt.onclick = function () { wrap.remove(); };
   }
+
+  function showFdOverlay(fd, sidArg) {
+    popinFrutiparc("fd-overlay",
+      "Nom d\u2019un Pamplefrousse ! Tu as \u00e9puis\u00e9 ton quota de parties Challenge " +
+      "pour aujourd\u2019hui ! Retente ta chance demain ou ach\u00e8te un pass en boutique !");
+  }
+
+  // \u2500\u2500 Avertissement AVANT la premi\u00e8re partie hors quota \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // Frutisnake, Swapou, MotionBall et Kaluga laissent jouer autant qu'on veut :
+  // c'est le CLASSEMENT qui est rationn\u00e9. Pass\u00e9 le quota, la partie se d\u00e9roule
+  // normalement, les fruits et les titems sont bien enregistr\u00e9s, mais le score
+  // n'entre plus au Challenge \u2014 ce qui, sans rien \u00e0 l'\u00e9cran, ressemblait \u00e0 un
+  // bug (\u00ab ma 3e partie n'enregistre pas le score \u00bb). On pr\u00e9vient donc d\u00e8s que
+  // le quota tombe \u00e0 z\u00e9ro, c'est-\u00e0-dire AVANT la premi\u00e8re partie qui ne comptera
+  // plus : \u00e0 l'ouverture si le joueur a d\u00e9j\u00e0 tout consomm\u00e9, sinon \u00e0 la fin de la
+  // partie qui \u00e9puise le quota.
+  //
+  // Burning Kiwi est exclu : chez lui le quota est appliqu\u00e9 AVANT la course
+  // (/do/fdclaim refuse et le jeu revient au menu), donc le joueur ne court
+  // jamais \u00ab pour rien \u00bb et le message serait faux.
+  (function surveillerQuotaChallenge() {
+    var sidArg = new URLSearchParams(window.location.search).get("sid") || "";
+    var gameArg = (new URLSearchParams(window.location.search).get("game") || "").toLowerCase();
+    if (!sidArg || !gameArg || gameArg === "bkiwi") return;
+    var averti = false;
+    function verifier() {
+      if (averti) return;
+      fetch("/api/fd/status?sid=" + encodeURIComponent(sidArg) + "&game=" + encodeURIComponent(gameArg),
+            { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (!j || !j.ok || !j.limited || j.remaining !== 0 || averti) return;
+          averti = true;
+          popinFrutiparc("fd-preavis",
+            "Tu as \u00e9puis\u00e9 tes parties Challenge du jour. Tu peux continuer \u00e0 jouer " +
+            "autant que tu veux, mais le score de tes prochaines parties ne sera pas class\u00e9 " +
+            "au Challenge. Le Pass quotidien (Boutique, rubrique Pass) ajoute une partie par " +
+            "jour, pour toujours !");
+        })
+        .catch(function () {});
+    }
+    verifier();
+    var iv = setInterval(function () {
+      if (averti) { clearInterval(iv); return; }
+      verifier();
+    }, 5000);
+  })();
 
   // ExternalInterface callback: JSON parser for game SWFs that call client.fromJSON().
   // motionball.swf (mb2) is patched to call ExternalInterface.call("parseJSON", str)

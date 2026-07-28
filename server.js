@@ -3000,10 +3000,21 @@ function fdGameFromRanking(rankingId) { return String(rankingId || '').split('_'
 function fdGateChallengeScore(username, user, game) {
   if (!user || !fdGameIsLimited(game)) return true;
   if (fdConsume(username, user, game)) return true;
-  addAndNotifyUserLog(username, {
-    type: USER_LOG_TYPE.CHAT,
-    content: `Plus de FD pour le challenge « ${fdGameLabel(game)} » aujourd'hui : ton score n'a pas été classé. Le Pass quotidien (Boutique, rubrique Pass) ajoute une partie par jour, pour toujours !`,
-  });
+  // UNE SEULE notification par jeu et par jour. Le message est une information,
+  // pas un événement à archiver : le répéter à chaque partie refusée noyait
+  // l'historique du joueur (et un jeu qui ré-enregistre son score en boucle en
+  // engendrait des dizaines d'affilée). Le drapeau vit dans l'entrée FD du jour,
+  // donc il se remet à zéro tout seul au changement de journée et survit à un
+  // redémarrage comme le reste du quota.
+  const e = fdGameEntry(user, game);
+  if (!e.n) {
+    e.n = 1;
+    fdPersist(username, user);
+    addAndNotifyUserLog(username, {
+      type: USER_LOG_TYPE.CHAT,
+      content: `Plus de FD pour le challenge « ${fdGameLabel(game)} » aujourd'hui : tes prochains scores ne seront pas classés. Le Pass quotidien (Boutique, rubrique Pass) ajoute une partie par jour, pour toujours !`,
+    });
+  }
   console.log(`[FD] ${username} : challenge ${game} BLOQUÉ (plus de FD)`);
   return false;
 }
@@ -3050,6 +3061,44 @@ function fdAuthorizeChallengeSave(sid, username, game, routed) {
   return 'blocked';
 }
 
+// ── UNE PARTIE = UN FD, même quand le jeu enregistre son score plusieurs fois ──
+// Kaluga ré-émet son score à CHAQUE IMAGE quand la partie est menée à son terme :
+// le panier plein coupe la chute des fruits (Classic.flFruitFalling), le panier
+// se vide, et checkFruit() appelle alors initEndGame() directement — sans passer
+// par endGame(), le seul à porter le garde flEndingGame. Chaque appel ré-enregistre
+// le score. Résultat côté quota : finir une partie vidait le quota du jour, et le
+// joueur recevait autant de notifications « plus de FD » qu'il y avait d'images.
+// (Le chemin « mort du personnage » passe, lui, par endGame() : il était correct,
+// d'où un bug visible seulement quand on TERMINE la partie.)
+//
+// On reconnaît la rafale à ce qu'elle est : MÊME joueur, MÊME jeu, MÊME score et
+// MÊMES données, à moins de FD_RAFALE_MS d'écart. Le verdict du premier envoi est
+// alors rejoué tel quel — rien n'est reconsommé, rien n'est renotifié. La fenêtre
+// est glissante, donc une rafale de durée quelconque reste UNE partie. Une vraie
+// partie suivante en diffère forcément : soit son score change, soit il s'écoule
+// plus de cinq secondes le temps de la relancer.
+const FD_RAFALE_MS = 5000;
+const fdDernierSave = new Map();          // "pseudo::jeu" → { signature, at, verdict }
+function fdVerdictDePartie(sid, username, game, routed, partie) {
+  const signature = partie ? `${partie.score}|${partie.data || ''}` : null;
+  if (signature === null) return fdAuthorizeChallengeSave(sid, username, game, routed);
+  const cle = `${username}::${game}`;
+  const maintenant = Date.now();
+  const precedent = fdDernierSave.get(cle);
+  if (precedent && precedent.signature === signature && maintenant - precedent.at < FD_RAFALE_MS) {
+    precedent.at = maintenant;            // fenêtre glissante : la rafale continue
+    console.log(`[FD] ${username} : renvoi identique de ${game} (${signature}) — même partie, rien de consommé`);
+    return precedent.verdict;
+  }
+  const verdict = fdAuthorizeChallengeSave(sid, username, game, routed);
+  // Ménage : la table ne sert qu'aux quelques secondes qui suivent un envoi.
+  if (fdDernierSave.size > 500) {
+    for (const [k, v] of fdDernierSave) if (maintenant - v.at > FD_RAFALE_MS) fdDernierSave.delete(k);
+  }
+  fdDernierSave.set(cle, { signature, at: maintenant, verdict });
+  return verdict;
+}
+
 // Portillon FD appliqué à UN enregistrement de score. Consomme AU PLUS un FD
 // pour la partie (une seule fois même quand le save écrit deux cuves), et dit
 // quelles cuves écrire :
@@ -3061,7 +3110,9 @@ function fdAuthorizeChallengeSave(sid, username, game, routed) {
 // Renvoie { direct, mirror, blocked }. Un seul appel à fdAuthorizeChallengeSave
 // → une seule consommation, ce qui règle le double-décompte de MB2 (qui écrit à
 // la fois mb2_classic et le miroir mb2_challenge).
-function fdApplyToSave(sid, username, rankingId, extraRankingId, routed) {
+// `partie` = { score, data } de l'enregistrement en cours : sert à reconnaître
+// les renvois d'une même fin de partie (cf. fdVerdictDePartie).
+function fdApplyToSave(sid, username, rankingId, extraRankingId, routed, partie) {
   const game = fdGameFromRanking(rankingId || extraRankingId || '');
   // Jeux non limités OU rationnés au démarrage du match (grapiz/bandas) : le
   // save ne gate rien (le portillon est ailleurs). Cf. FD_PREMATCH_GAMES.
@@ -3082,7 +3133,7 @@ function fdApplyToSave(sid, username, rankingId, extraRankingId, routed) {
     fdTakeRaceModeChallenge(username, game);      // purge le marquage (usage unique)
     return { direct: true, mirror: true, blocked: false };
   }
-  const verdict = fdAuthorizeChallengeSave(sid, username, game, routed);
+  const verdict = fdVerdictDePartie(sid, username, game, routed, partie);
   return {
     direct: fdGatedBucketGame(rankingId) ? (verdict === 'ok') : true,
     mirror: verdict === 'ok',
@@ -5247,7 +5298,8 @@ async function handleSaveScore(req, res) {
   // pose ce verdict (cf. fdStampRaceMode).
   // Portillon FD unifié : UNE consommation pour la partie, appliquée aux deux
   // cuves (direct + miroir) — cf. fdApplyToSave.
-  const fdg = fdApplyToSave(sid, username, rankingId, extraRankingId, routedInfo);
+  const fdg = fdApplyToSave(sid, username, rankingId, extraRankingId, routedInfo,
+    { score: scoreVal, data: scoreData });
   let fdBlocked = fdg.blocked;
   if (fdg.direct) {
     result = persistScore(username, rankingId, scoreVal, scoreData);
@@ -9212,7 +9264,8 @@ app.get(/^\/(?:swf\/)?games\/([^/]+)\/s(\d+)$/, async (req, res) => {
   // Portillon FD, identique aux deux autres chemins de save : un seul verdict par
   // partie (fdApplyToSave), qui décide de classer la cuve directe et/ou le miroir.
   let result = { updated: false, newScore: scoreVal, oldScore: 0, oldPos: 0, newPos: 0 };
-  const fdg = fdApplyToSave(effectiveSid, username, rankingId, routed.extraRankingId, routed);
+  const fdg = fdApplyToSave(effectiveSid, username, rankingId, routed.extraRankingId, routed,
+    { score: scoreVal, data: '' });
   if (fdg.direct) {
     result = persistScore(username, rankingId, scoreVal, '');
   } else {
@@ -11149,6 +11202,10 @@ app.get('/api/fd/status', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
   const user = users[username];
+  // Session vivante mais joueur absent de la mémoire (redémarrage en cours) : on
+  // répond proprement plutôt que de laisser planter fdSnapshot — l'appelant est
+  // un sondage, il repassera.
+  if (!user) return res.status(503).json({ ok: false, error: 'user_not_loaded' });
   const game = String(req.query.game || '').toLowerCase();
   res.json({ ok: true, ...fdSnapshot(user, game), kikooz: Math.max(0, Math.floor(Number(user.kikooz) || 0)) });
 });
@@ -17262,7 +17319,8 @@ async function handleCBeeMessage(socket, rawXml) {
           // Portillon FD : un seul verdict par partie (fdApplyToSave), même quand
           // le save écrit deux cuves (direct snake3/swapou2/mb2/kaluga + miroir
           // bkiwi/mb2) — évite le double décompte.
-          const fdg = fdApplyToSave(client.sid, username, rankingId, extraRankingId, routedInfo);
+          const fdg = fdApplyToSave(client.sid, username, rankingId, extraRankingId, routedInfo,
+            { score: scoreVal, data: scoreData });
           if (fdg.direct) {
             res = persistScore(username, rankingId, scoreVal, scoreData);
             console.log(`[FSCORE] ${username} ${rankingId}: ${res.oldScore} -> ${res.newScore} (updated=${res.updated}, pos ${res.oldPos}->${res.newPos})`);
