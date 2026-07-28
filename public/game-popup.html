@@ -313,12 +313,115 @@
   // redémarrage, sa valeur repartant alors en arrière.
   (function setupSwapouCoups() {
     var panel = null, allowed = false, coups = 0, ncoupsPrec = null, debutSerie = null;
+    var cipher = null;        // glyphes de la police du score (public/fb/cipher-glyphs.json)
+    var CADRANS = [
+      { cle: "coups", titre: "COUPS" },
+      { cle: "etoile", titre: "AV. ÉTOILE" },
+    ];
     var BANDE_H = 76;         // hauteur de la bande recopiée (rouleaux compris)
     var HAUT = 82;            // sous le parchemin du score
-    // La bande recopiée s'arrête au liseré sombre qui suit le rouleau droit du
-    // parchemin (x=132). Au-delà commence la colonne de bambou, où le jeu range
-    // les étoiles gagnées : une bande plus large les recouvrait.
-    var LARGE = 134;
+    // La bande recopiée s'arrête SUR le liseré sombre qui ferme le rouleau droit
+    // du parchemin (x=132 dans leftPanel.png) : la coupe tombe donc sur un trait
+    // déjà dessiné et ne se voit pas. Au-delà commence la colonne de bambou, où
+    // le jeu empile les étoiles de pouvoir — elles sont centrées en x=145 et font
+    // 36 px à l'échelle 0,7, soit un bord gauche à 132,4 : la bande les frôle
+    // sans jamais les mordre. (La version JavaScript, elle, peut aller jusqu'à
+    // 150 : chez elle les étoiles sont peintes PAR-DESSUS le panneau.)
+    var LARGE = 133;
+
+    // Les trois cotes ci-dessus sont relevées sur leftPanel.png, donc exprimées
+    // en pixels de SCÈNE — pas en pixels de fenêtre. Or la scène de swapou.swf
+    // fait 700x480 alors que la fenêtre l'affiche sur 640x480 : Ruffle la réduit
+    // (showAll) de 640/700 ≈ 0,914 et la recentre, ce qui ajoute une bande noire
+    // de ~20 px en haut et en bas. Un overlay posé en pixels de fenêtre était
+    // donc ~1,09x trop grand et 21 px trop haut — d'où le débordement. On relit
+    // la vraie taille de scène auprès de Ruffle et on refait SA transformation,
+    // si bien que les cadrans sont dimensionnés exactement comme le parchemin du
+    // score, quel que soit le cadrage demandé par la fiche du jeu.
+    function transformationScene(host) {
+      var lecteur = null;
+      for (var i = 0; i < host.children.length; i++)
+        if (host.children[i].metadata) { lecteur = host.children[i]; break; }
+      var boite = lecteur || host;
+      var bw = boite.offsetWidth || 0, bh = boite.offsetHeight || 0;
+      var meta = (lecteur && lecteur.metadata) || {};
+      var sw = Number(meta.width) || 0, sh = Number(meta.height) || 0;
+      // Métadonnées indisponibles : on retombe sur l'ancien comportement (1:1).
+      if (!sw || !sh || !bw || !bh) return { k: 1, x: 0, y: 0 };
+      var k = Math.min(bw / sw, bh / sh);
+      if (!(k > 0)) return { k: 1, x: 0, y: 0 };
+      return { k: k, x: (bw - sw * k) / 2, y: (bh - sh * k) / 2 };
+    }
+
+    // Recalé à CHAQUE mise à jour, et non une fois pour toutes : si Ruffle n'a
+    // pas encore publié ses métadonnées au premier coup, le cadrage se corrige
+    // tout seul au coup suivant.
+    function caler(p) {
+      var host = p.parentNode;
+      if (!host) return;
+      var t = transformationScene(host);
+      p.style.left = t.x + "px";
+      p.style.top = (t.y + HAUT * t.k) + "px";
+      p.style.transform = "scale(" + t.k + ")";
+    }
+
+    // ── Gabarit du parchemin du score, relevé DANS le SWF ────────────────────
+    // (chaînage : DefineSprite « leftPanel » → sub, image 1 = Challenge ; le
+    // champ scoreTxt y est posé en -9,8/9,2 avec une boîte de 18,4..138 en x et
+    // -2..32 en y, police intégrée « cipher » corps 24, alignée au centre ; le
+    // libellé « pts » sous le nombre est un DefineText de la même police,
+    // corps 12.) Reproduire ces cotes est ce qui fait passer les cadrans pour des
+    // éléments d'origine : même colonne, même ligne de base, même police, mêmes
+    // teintes. Le libellé passe donc SOUS le nombre, comme « pts » — et non
+    // au-dessus comme dans la version JavaScript.
+    var VAL_PX = 24;                       // corps du nombre
+    var VAL_X = (8.6 + 128.2) / 2;         // centre de la boîte du score : 68,4
+    var VAL_HAUT_BOITE = 7.2;              // haut de la boîte dans le parchemin
+    var VAL_COUL = "#aa724b";              // couleur du score
+    var LAB_X = (61.1 + 82.8) / 2;         // centre de « pts » : 71,95
+    var LAB_BASE = 55.7;                   // sa ligne de base
+    var LAB_COUL = "#b37851";              // sa couleur
+    // Flash pose la première ligne d'un champ à 2 px du haut de sa boîte, puis
+    // descend de l'ascendante de la police. Vérifié au pixel en chargeant dans
+    // Ruffle un SWF minimal reprenant cette police et ce champ.
+    function ligneDeBase() {
+      var asc = cipher ? cipher.ascendante / cipher.cadratin : 1006 / 1024;
+      return VAL_HAUT_BOITE + 2 + asc * VAL_PX;      // ≈ 32,8
+    }
+
+    // Un nombre → tracés SVG de la police du jeu. Sans les glyphes (fichier
+    // absent ou pas encore arrivé), <text> prend le relais : le cadran reste
+    // lisible, seule la typographie diffère.
+    var SVGNS = "http://www.w3.org/2000/svg";
+    function svgEl(nom, attrs) {
+      var e = document.createElementNS(SVGNS, nom);
+      for (var k in attrs) if (Object.prototype.hasOwnProperty.call(attrs, k)) e.setAttribute(k, attrs[k]);
+      return e;
+    }
+    function peindre(hote, txt) {
+      while (hote.firstChild) hote.removeChild(hote.firstChild);
+      txt = String(txt);
+      var base = ligneDeBase();
+      if (!cipher) {
+        var t = svgEl("text", { "class": "fp-repli", x: VAL_X, y: base });
+        t.textContent = txt;
+        hote.appendChild(t);
+        return;
+      }
+      var x = 0, traces = [];
+      for (var i = 0; i < txt.length; i++) {
+        var g = cipher.glyphes[txt[i]];
+        if (!g) continue;
+        traces.push(svgEl("path", { transform: "translate(" + x + ",0)", d: g.d }));
+        x += g.adv;
+      }
+      if (!x) return;
+      // Comme le jeu : centrage sur la somme des chasses, pas sur l'encre.
+      var s = VAL_PX / cipher.cadratin;
+      var grp = svgEl("g", { transform: "translate(" + (VAL_X - x * s / 2) + "," + base + ") scale(" + s + ")" });
+      for (var j = 0; j < traces.length; j++) grp.appendChild(traces[j]);
+      hote.appendChild(grp);
+    }
 
     function construire() {
       var host = document.getElementById("player-wrap");
@@ -327,22 +430,32 @@
       p.id = "swapou-hud";
       var css = document.createElement("style");
       css.textContent =
-        // left/top:auto neutralisent « #player-wrap > * { left:0;top:0 } ».
-        "#swapou-hud{position:absolute;left:0;top:" + HAUT + "px;width:" + LARGE + "px;" +
-          "z-index:5;pointer-events:none;font-family:Verdana,Arial,sans-serif;user-select:none}" +
-        "#swapou-hud .fp-cadran{position:relative;height:" + BANDE_H + "px;" +
-          "background:url(/games/swapou2/images/leftPanel.png) 0 0 no-repeat}" +
-        // Mêmes coordonnées que le score du jeu : centré sur x=88 du panneau.
-        "#swapou-hud .fp-lab{position:absolute;left:0;top:16px;width:176px;text-align:center;" +
-          "font:bold 9px Verdana,Arial,sans-serif;color:#8a6a37;letter-spacing:.5px}" +
-        "#swapou-hud .fp-val{position:absolute;left:0;top:30px;width:176px;text-align:center;" +
-          "font:bold 20px Verdana,Arial,sans-serif;color:#5a3a10}";
+        // Posé au bord de la scène utile (et non de la fenêtre) par caler(), puis
+        // mis à la même échelle qu'elle : tout ce qui suit s'écrit donc en pixels
+        // de SCÈNE, exactement comme les cotes relevées sur leftPanel.png.
+        "#swapou-hud{position:absolute;left:0;top:0;transform-origin:0 0;" +
+          "width:" + LARGE + "px;" +
+          "z-index:5;pointer-events:none;user-select:none}" +
+        "#swapou-hud .fp-cadran{display:block;width:" + LARGE + "px;height:" + BANDE_H + "px}" +
+        "#swapou-hud .fp-val{fill:" + VAL_COUL + "}" +
+        "#swapou-hud .fp-repli{fill:" + VAL_COUL + ";font:" + VAL_PX + "px Georgia,serif;text-anchor:middle}" +
+        // Le libellé prend la place — et la teinte — du « pts » du jeu. « cipher »
+        // ne contient que « .0123456789pst » : impossible d'y écrire un mot, on
+        // garde donc le Verdana de l'interface, au même corps apparent.
+        "#swapou-hud .fp-lab{fill:" + LAB_COUL + ";font:9px Verdana,Arial,sans-serif;" +
+          "letter-spacing:.3px;text-anchor:middle}";
       p.appendChild(css);
-      p.insertAdjacentHTML("beforeend",
-        '<div class="fp-cadran"><div class="fp-lab">COUPS</div>' +
-        '<div class="fp-val" data-cle="coups">0</div></div>' +
-        '<div class="fp-cadran"><div class="fp-lab">\u00c9TOILE DANS</div>' +
-        '<div class="fp-val" data-cle="etoile">\u2013</div></div>');
+      // Un <svg> par cadran : la bande de bois du jeu, le nombre en trac\u00e9s, le
+      // libell\u00e9. Tout y est cot\u00e9 en pixels de sc\u00e8ne, donc rien \u00e0 recalculer
+      // quand Ruffle change d'\u00e9chelle \u2014 l'unique scale() du conteneur suffit.
+      for (var i = 0; i < CADRANS.length; i++) {
+        p.insertAdjacentHTML("beforeend",
+          '<svg class="fp-cadran" viewBox="0 0 ' + LARGE + " " + BANDE_H + '">' +
+            '<image href="/games/swapou2/images/leftPanel.png" x="0" y="0" width="177" height="480"/>' +
+            '<g class="fp-val" data-cle="' + CADRANS[i].cle + '"></g>' +
+            '<text class="fp-lab" x="' + LAB_X + '" y="' + LAB_BASE + '">' + CADRANS[i].titre + "</text>" +
+          "</svg>");
+      }
       host.appendChild(p);
       return p;
     }
@@ -367,11 +480,17 @@
       if (debutSerie < 6) { if (panel) panel.style.display = "none"; return; }
 
       if (!panel) { panel = construire(); if (!panel) return; }
+      caler(panel);
       panel.style.display = "block";
-      panel.querySelector('[data-cle="coups"]').textContent = String(coups);
       var e = Number(star);
-      panel.querySelector('[data-cle="etoile"]').textContent =
-        (isFinite(e) && e >= 0) ? String(e) : "\u2013";
+      var valeurs = {
+        coups: String(coups),
+        etoile: (isFinite(e) && e >= 0) ? String(e) : "0",
+      };
+      for (var i = 0; i < CADRANS.length; i++) {
+        var g = panel.querySelector('[data-cle="' + CADRANS[i].cle + '"]');
+        if (g) peindre(g, valeurs[CADRANS[i].cle]);
+      }
     };
 
     // Ce panneau n'a de sens QUE dans Swapou : sans ce garde, il s'affichait à
@@ -384,6 +503,10 @@
         // Les cadrans ne sont PAS créés ici : ils n'apparaissent qu'au premier
         // échange d'une partie Challenge (cf. fpSwapouCoup).
         allowed = !!(j && j.features && j.features.swapouMoves);
+        if (!allowed) return null;
+        return fetch("/fb/cipher-glyphs.json", { cache: "force-cache" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (f) { if (f && f.glyphes) cipher = f; });
       })
       .catch(function () {});
   })();

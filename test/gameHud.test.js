@@ -275,9 +275,72 @@ test('cadrans Swapou : posés dans la scène, sous le parchemin du score', () =>
     `bande de ${large && large[1]} px : elle déborderait sur la colonne à étoiles`);
   assert.ok(bloc.includes('leftPanel.png'), 'réutilisent l\'asset du jeu');
   assert.ok(/pointer-events:\s*none/.test(bloc), 'ne peuvent pas intercepter un clic');
-  assert.ok(bloc.includes('COUPS') && bloc.includes('TOILE DANS'), 'deux cadrans : coups et étoile');
+  assert.ok(bloc.includes('COUPS') && /TOILE/.test(bloc), 'deux cadrans : coups et étoile');
   // Le panneau ne doit apparaître que dans Swapou.
   assert.ok(/estSwapou/.test(bloc), 'rattaché à son jeu');
+});
+
+test('cadrans Swapou : cotés en pixels de SCÈNE, pas de fenêtre', () => {
+  // La scène de swapou.swf fait 700x480 alors que la fiche du jeu demande une
+  // fenêtre de 640x480 : Ruffle réduit donc l'image de 640/700 et la recentre.
+  // Un overlay posé en pixels de fenêtre serait ~1,09x trop grand — le défaut
+  // que ce test verrouille.
+  const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
+  const bloc = html.slice(html.indexOf('function setupSwapouCoups'), html.indexOf('Tableau de bord Frutisnake'));
+  const src = /function transformationScene\(host\) \{[\s\S]*?\n    \}/.exec(bloc);
+  assert.ok(src, 'transformationScene présente');
+  assert.ok(/function caler\(p\)/.test(bloc), 'le cadrage est réappliqué à chaque mise à jour');
+  assert.ok(/caler\(panel\)/.test(bloc), 'caler() est bien appelée');
+
+  const transformationScene = new Function(src[0] + '; return transformationScene;')();
+  // Cas réel : scène 700x480 rendue dans 640x480.
+  const t = transformationScene({ children: [{ metadata: { width: 700, height: 480 }, offsetWidth: 640, offsetHeight: 480 }] });
+  assert.ok(Math.abs(t.k - 640 / 700) < 1e-9, `échelle ${t.k} au lieu de ${640 / 700}`);
+  assert.equal(t.x, 0, 'pas de marge horizontale');
+  assert.ok(Math.abs(t.y - (480 - 480 * 640 / 700) / 2) < 1e-9, 'bande noire verticale prise en compte');
+
+  // Sans métadonnées (Ruffle pas encore prêt), on ne déforme rien.
+  const brut = transformationScene({ children: [], offsetWidth: 640, offsetHeight: 480 });
+  assert.deepEqual(brut, { k: 1, x: 0, y: 0 }, 'repli neutre');
+});
+
+test('cadrans Swapou : le nombre reprend le gabarit exact du score du jeu', () => {
+  // Relevé dans swapou.swf : champ scoreTxt (image 1 = Challenge) posé en
+  // -9,8/9,2, boîte 18,4..138 x -2..32, police intégrée « cipher » corps 24
+  // centrée, couleur #aa724b ; libellé « pts » en #b37851, ligne de base 55,7.
+  const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
+  const bloc = html.slice(html.indexOf('function setupSwapouCoups'), html.indexOf('Tableau de bord Frutisnake'));
+  assert.ok(/VAL_X = \(8\.6 \+ 128\.2\) \/ 2/.test(bloc), 'nombre centré comme le score (x=68,4)');
+  assert.ok(/VAL_PX = 24/.test(bloc), 'même corps que le score');
+  assert.ok(/VAL_COUL = "#aa724b"/.test(bloc), 'couleur du score');
+  assert.ok(/LAB_COUL = "#b37851"/.test(bloc), 'couleur du libellé « pts »');
+  assert.ok(/LAB_BASE = 55\.7/.test(bloc), 'libellé à la place de « pts », SOUS le nombre');
+
+  // Ligne de base : Flash pose la première ligne à 2 px du haut de la boîte puis
+  // descend de l'ascendante. Mesuré au pixel dans Ruffle : 26 px sous le haut.
+  const src = /function ligneDeBase\(\) \{[\s\S]*?\n    \}/.exec(bloc);
+  assert.ok(src, 'ligneDeBase présente');
+  const f = fs.readFileSync(path.join(ROOT, 'public/fb/cipher-glyphs.json'), 'utf8');
+  const cipher = JSON.parse(f);
+  const ligneDeBase = new Function('cipher', 'var VAL_HAUT_BOITE = 7.2, VAL_PX = 24;' + src[0] + '; return ligneDeBase;')(cipher);
+  assert.ok(Math.abs(ligneDeBase() - (7.2 + 26)) < 0.5,
+    `ligne de base à ${ligneDeBase().toFixed(2)} au lieu de ~33,2 (mesure Ruffle)`);
+});
+
+test('police « cipher » : les chiffres du score sont extraits du SWF', () => {
+  const p = path.join(ROOT, 'public/fb/cipher-glyphs.json');
+  assert.ok(fs.existsSync(p), 'public/fb/cipher-glyphs.json produit par scripts/extract-swapou-digits.js');
+  const f = JSON.parse(fs.readFileSync(p, 'utf8'));
+  assert.equal(f.police, 'cipher');
+  assert.equal(f.cadratin, 1024);
+  for (const c of '0123456789') {
+    assert.ok(f.glyphes[c] && f.glyphes[c].d.length > 20, `glyphe ${c} présent`);
+    assert.ok(f.glyphes[c].adv > 0, `chasse de ${c}`);
+  }
+  // « pts » est le libellé que le jeu grave sous le score : on le garde pour
+  // pouvoir comparer un rendu à l'original.
+  for (const c of 'pts') assert.ok(f.glyphes[c], `glyphe ${c} présent`);
+  assert.equal(f.ascendante, 1006, 'ascendante déclarée par la police');
 });
 
 test('cadrans Swapou : réservés au Challenge, et le compteur part de 0', () => {
@@ -292,11 +355,14 @@ test('cadrans Swapou : réservés au Challenge, et le compteur part de 0', () =>
 
   function nouveau() {
     const vu = {}, style = {};
-    const faux = { style, querySelector: (sel) => ({ set textContent(v) { vu[sel] = v; } }) };
-    const f = new Function('faux',
+    const faux = { style, querySelector: (sel) => sel };
+    const f = new Function('faux', 'vu',
       'var panel = null, allowed = true, coups = 0, ncoupsPrec = null, debutSerie = null;' +
+      'var CADRANS = [{ cle: "coups" }, { cle: "etoile" }];' +
       'var construire = function () { return faux; };' +
-      'var window = {};' + corps[0] + 'return window.fpSwapouCoup;')(faux);
+      'var caler = function () {};' +
+      'var peindre = function (sel, v) { vu[sel] = v; };' +
+      'var window = {};' + corps[0] + 'return window.fpSwapouCoup;')(faux, vu);
     return { f, vu, style };
   }
 
