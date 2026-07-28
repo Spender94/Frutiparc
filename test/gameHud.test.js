@@ -268,6 +268,11 @@ test('cadrans Swapou : posés dans la scène, sous le parchemin du score', () =>
   // le parchemin du score que le jeu dessine en haut.
   assert.ok(bloc.includes('getElementById("player-wrap")'), 'posés dans la scène');
   assert.ok(/HAUT = 82/.test(bloc), 'calés sous le parchemin du score');
+  // La colonne de bambou — où le jeu range les étoiles gagnées — commence vers
+  // x=137 : la bande recopiée doit s'arrêter avant, sinon elle la recouvre.
+  const large = /LARGE = (\d+)/.exec(bloc);
+  assert.ok(large && Number(large[1]) <= 136,
+    `bande de ${large && large[1]} px : elle déborderait sur la colonne à étoiles`);
   assert.ok(bloc.includes('leftPanel.png'), 'réutilisent l\'asset du jeu');
   assert.ok(/pointer-events:\s*none/.test(bloc), 'ne peuvent pas intercepter un clic');
   assert.ok(bloc.includes('COUPS') && bloc.includes('TOILE DANS'), 'deux cadrans : coups et étoile');
@@ -275,34 +280,44 @@ test('cadrans Swapou : posés dans la scène, sous le parchemin du score', () =>
   assert.ok(/estSwapou/.test(bloc), 'rattaché à son jeu');
 });
 
-test('compteur de coups Swapou : part de 0 et repart à chaque partie', () => {
+test('cadrans Swapou : réservés au Challenge, et le compteur part de 0', () => {
   // `ncoups` du jeu ne convient pas à l'affichage (5 en Challenge, 1 en
-  // Classique, remis à 0 à chaque niveau) : la page compte les envois. On extrait
-  // la fonction livrée et on la fait tourner sur un faux panneau.
+  // Classique, remis à 0 à chaque niveau) : la page compte les envois, et se sert
+  // de la valeur de DÉPART pour reconnaître le mode. On extrait la fonction
+  // livrée et on la fait tourner sur un panneau factice.
   const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
   const bloc = html.slice(html.indexOf('function setupSwapouCoups'), html.indexOf('Tableau de bord Frutisnake'));
   const corps = /window\.fpSwapouCoup = function \(ncoups, star\) \{[\s\S]*?\n    \};/.exec(bloc);
   assert.ok(corps, 'fonction fpSwapouCoup présente');
 
-  // Bac à sable minimal : on fournit les variables que la fonction referme
-  // (panel, allowed, coups, ncoupsPrec, construire) et un panneau factice.
-  const vu = {};
-  const faux = { querySelector: (sel) => ({ set textContent(v) { vu[sel] = v; } }) };
-  const f = new Function('faux',
-    'var panel = null, allowed = true, coups = 0, ncoupsPrec = null;' +
-    'var construire = function () { return faux; };' +
-    'var window = {};' +
-    corps[0] +
-    'return window.fpSwapouCoup;')(faux);
+  function nouveau() {
+    const vu = {}, style = {};
+    const faux = { style, querySelector: (sel) => ({ set textContent(v) { vu[sel] = v; } }) };
+    const f = new Function('faux',
+      'var panel = null, allowed = true, coups = 0, ncoupsPrec = null, debutSerie = null;' +
+      'var construire = function () { return faux; };' +
+      'var window = {};' + corps[0] + 'return window.fpSwapouCoup;')(faux);
+    return { f, vu, style };
+  }
 
-  f();                       // amorçage : les cadrans s'affichent à vide
-  assert.equal(vu['[data-cle="coups"]'], '0', 'avant le premier coup : 0');
-  f(6, 100);                 // premier échange (Challenge : ncoups passe à 6)
-  assert.equal(vu['[data-cle="coups"]'], '1', 'premier coup compté');
-  assert.equal(vu['[data-cle="etoile"]'], '100', 'compteur d\'étoile affiché');
-  f(7, 62); f(8, 37);
-  assert.equal(vu['[data-cle="coups"]'], '3', 'trois coups');
-  assert.equal(vu['[data-cle="etoile"]'], '37');
-  f(6, 100);                 // la valeur du jeu repart en arrière ⇒ nouvelle partie
-  assert.equal(vu['[data-cle="coups"]'], '1', 'nouvelle partie : le compteur repart');
+  // Mode CLASSIQUE : ncoups démarre à 1, le premier envoi vaut donc 2.
+  const c = nouveau();
+  c.f(2, 90); c.f(3, 89);
+  assert.equal(c.vu['[data-cle="coups"]'], undefined, 'Classique : rien n\'est affiché');
+  // Aucun envoi du tout (écrans de menu) : rien non plus.
+  const m = nouveau();
+  m.f();
+  assert.equal(m.vu['[data-cle="coups"]'], undefined, 'hors partie : rien n\'est affiché');
+
+  // Mode CHALLENGE : ncoups démarre à 5, le premier envoi vaut donc 6.
+  const g = nouveau();
+  g.f(6, 100);
+  assert.equal(g.vu['[data-cle="coups"]'], '1', 'premier coup compté');
+  assert.equal(g.vu['[data-cle="etoile"]'], '100', 'compteur d\'étoile affiché');
+  assert.equal(g.style.display, 'block', 'les cadrans apparaissent');
+  g.f(7, 62); g.f(8, 37);
+  assert.equal(g.vu['[data-cle="coups"]'], '3', 'trois coups');
+  assert.equal(g.vu['[data-cle="etoile"]'], '37');
+  g.f(6, 100);                 // la valeur du jeu repart en arrière ⇒ nouvelle partie
+  assert.equal(g.vu['[data-cle="coups"]'], '1', 'nouvelle partie : le compteur repart');
 });

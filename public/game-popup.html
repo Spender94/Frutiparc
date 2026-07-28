@@ -312,10 +312,13 @@
   // échange réussi, donc on incrémente ; `ncoups` ne sert qu'à repérer un
   // redémarrage, sa valeur repartant alors en arrière.
   (function setupSwapouCoups() {
-    var panel = null, allowed = false, coups = 0, ncoupsPrec = null;
+    var panel = null, allowed = false, coups = 0, ncoupsPrec = null, debutSerie = null;
     var BANDE_H = 76;         // hauteur de la bande recopiée (rouleaux compris)
     var HAUT = 82;            // sous le parchemin du score
-    var LARGE = 150;          // au-delà commence la colonne de bambou
+    // La bande recopiée s'arrête au liseré sombre qui suit le rouleau droit du
+    // parchemin (x=132). Au-delà commence la colonne de bambou, où le jeu range
+    // les étoiles gagnées : une bande plus large les recouvrait.
+    var LARGE = 134;
 
     function construire() {
       var host = document.getElementById("player-wrap");
@@ -346,16 +349,25 @@
 
     window.fpSwapouCoup = function (ncoups, star) {
       if (!allowed) return;
+      var n = Number(ncoups);
+      if (!isFinite(n)) return;            // hors partie : rien à afficher
+
+      // Un envoi = un échange réussi, donc un coup. Si la valeur du jeu repart
+      // en arrière, une nouvelle série commence (nouvelle partie, ou niveau
+      // suivant en Classique) et ce coup-ci en est le premier.
+      var nouvelleSerie = (ncoupsPrec === null) || (n < ncoupsPrec);
+      if (nouvelleSerie) { debutSerie = n; coups = 1; } else { coups += 1; }
+      ncoupsPrec = n;
+
+      // Réservé au mode CHALLENGE, reconnu à la valeur de départ de `ncoups` :
+      // le Challenge l'initialise à 5 (le premier envoi vaut donc 6), le mode
+      // Classique à 1 (premier envoi 2, et 1 au début de chaque niveau).
+      // Effet de bord voulu : les cadrans n'apparaissent JAMAIS sur les écrans
+      // de menu, puisqu'aucun échange n'y a lieu — ils naissent au premier coup.
+      if (debutSerie < 6) { if (panel) panel.style.display = "none"; return; }
+
       if (!panel) { panel = construire(); if (!panel) return; }
-      if (ncoups !== undefined) {
-        var n = Number(ncoups);
-        // Un envoi = un échange réussi, donc un coup. Si la valeur du jeu est
-        // repartie en arrière, c'est une nouvelle partie (ou le niveau suivant
-        // en Classique) : ce coup-ci est le premier de la nouvelle série.
-        if (ncoupsPrec !== null && n < ncoupsPrec) coups = 1;
-        else coups += 1;
-        ncoupsPrec = n;
-      }
+      panel.style.display = "block";
       panel.querySelector('[data-cle="coups"]').textContent = String(coups);
       var e = Number(star);
       panel.querySelector('[data-cle="etoile"]').textContent =
@@ -369,8 +381,9 @@
     fetch("/api/features?sid=" + encodeURIComponent(popupSid), { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
+        // Les cadrans ne sont PAS créés ici : ils n'apparaissent qu'au premier
+        // échange d'une partie Challenge (cf. fpSwapouCoup).
         allowed = !!(j && j.features && j.features.swapouMoves);
-        if (allowed) window.fpSwapouCoup();      // affiche les cadrans à vide
       })
       .catch(function () {});
   })();
