@@ -300,10 +300,85 @@
     }).catch(function() {});
   }
 
+  // ── Le pont Swapou, partagé ────────────────────────────────────────────────
+  // Le SWF patché émet getURL("fpswcoup:<ncoups>:<star_counter>") à chaque échange
+  // réussi et getURL("fpswfin:") à la fin de la partie ; l'aiguillage window.open
+  // ci-dessus les relaie ici. Comme pour Frutisnake, le jeu les émet pour TOUS les
+  // joueurs : le Pack de Swapou ne conditionne que l'affichage des cadrans, pas la
+  // donnée. Deux modules s'y abonnent donc — les cadrans (derrière leur option) et
+  // le relevé du Swapou Contest (ouvert à tous).
+  var abonnesSwapouCoup = [], abonnesSwapouFin = [];
+  function abonnerSwapou(surCoup, surFin) {
+    if (surCoup) abonnesSwapouCoup.push(surCoup);
+    if (surFin) abonnesSwapouFin.push(surFin);
+  }
+  function diffuser(liste, args) {
+    for (var i = 0; i < liste.length; i++) {
+      try { liste[i].apply(null, args); }
+      catch (e) { window.__dlog("[Swapou] abonné en erreur :", e && e.message); }
+    }
+  }
+  window.fpSwapouCoup = function (ncoups, star) { diffuser(abonnesSwapouCoup, [ncoups, star]); };
+  window.fpSwapouFin = function () { diffuser(abonnesSwapouFin, []); };
+
+  // ── Swapou Contest : le plus grand nombre de coups ─────────────────────────
+  // Un coup = un échange réussi, donc un envoi du SWF. On les compte du début de
+  // la partie jusqu'au signal de fin, puis on poste le total. Contrairement au
+  // Contest de Frutisnake, pas de détection de silence à faire : le jeu annonce
+  // lui-même sa fin de partie (fpswfin:), accroché au constructeur de l'écran de
+  // game over.
+  //
+  // Réservé au mode CHALLENGE, reconnu comme pour les cadrans à la valeur de
+  // départ de `ncoups` (5 en Challenge, 1 en Classique) : en Classique le
+  // compteur du jeu repart à chaque niveau, un « nombre de coups » n'y serait pas
+  // comparable d'un joueur à l'autre. Le quota FD, lui, n'entre pas en ligne de
+  // compte : une partie Challenge jouée au-delà du quota du jour compte quand même.
+  (function setupSwapouContest() {
+    if (!popupSid || !/swapou/i.test(swfPath || "")) return;
+    var coups = 0, ncoupsPrec = null, challenge = false;
+    function url(total) {
+      return "/api/contest/swapou2?sid=" + encodeURIComponent(popupSid) + "&v=" + total;
+    }
+    // Clôt la partie en cours et renvoie son total, ou 0 s'il n'y a rien à
+    // classer. Remet le compteur à zéro dans tous les cas : la partie est finie.
+    function cloturer() {
+      var total = (challenge && coups >= 1) ? coups : 0;
+      coups = 0; ncoupsPrec = null; challenge = false;
+      return total;
+    }
+    abonnerSwapou(function (ncoups) {
+      var n = Number(ncoups);
+      if (!isFinite(n)) return;
+      if (ncoupsPrec === null || n < ncoupsPrec) {
+        // Nouvelle série : le Challenge initialise ncoups à 5, donc son premier
+        // envoi vaut 6 ; le mode Classique part de 1 et y revient à chaque niveau.
+        challenge = (n >= 6);
+        coups = 1;
+      } else {
+        coups += 1;
+      }
+      ncoupsPrec = n;
+    }, function () {
+      var total = cloturer();
+      if (!total) return;
+      fetch(url(total), { method: "POST", cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (j && j.updated) window.__dlog("[Contest] nouveau record de coups :", j.record);
+        })
+        .catch(function () {});
+    });
+    // Fenêtre fermée en pleine partie : le total part quand même (fetch serait
+    // annulé, sendBeacon non).
+    window.addEventListener("pagehide", function () {
+      var total = cloturer();
+      if (!total) return;
+      try { navigator.sendBeacon(url(total)); } catch (e) {}
+    });
+  })();
+
   // ── Cadrans Swapou (version SWF) ───────────────────────────────────────────
-  // Le SWF patché émet getURL("fpswcoup:<ncoups>:<star_counter>") à chaque
-  // échange réussi ; l'aiguillage window.open ci-dessus appelle
-  // window.fpSwapouCoup(ncoups, star).
+  // Réservés aux détenteurs du Pack de Swapou (option swapouMoves).
   //
   // Rendu : deux cadrans posés DANS la scène, juste sous le parchemin du score,
   // sur la colonne de bois de gauche — l'endroit exact où la version JavaScript
@@ -470,7 +545,7 @@
       return p;
     }
 
-    window.fpSwapouCoup = function (ncoups, star) {
+    abonnerSwapou(function (ncoups, star) {
       if (!allowed) return;
       var n = Number(ncoups);
       if (!isFinite(n)) return;            // hors partie : rien à afficher
@@ -501,17 +576,15 @@
         var g = panel.querySelector('[data-cle="' + CADRANS[i].cle + '"]');
         if (g) peindre(g, valeurs[CADRANS[i].cle]);
       }
-    };
-
     // Fin de partie : les cadrans s'effacent, et les compteurs sont remis à zéro
     // pour que la partie suivante reparte proprement. Le signal vient du SWF
     // lui-même (constructeur de l'écran de game over), pas d'un délai d'inactivité
     // — un joueur peut réfléchir longtemps entre deux échanges sans que les
     // panneaux aient à disparaître.
-    window.fpSwapouFin = function () {
+    }, function () {
       if (panel) panel.style.display = "none";
       coups = 0; ncoupsPrec = null; debutSerie = null;
-    };
+    });
 
     // Ce panneau n'a de sens QUE dans Swapou : sans ce garde, il s'affichait à
     // côté de n'importe quel jeu ouvert par un joueur qui a l'option.
@@ -565,7 +638,7 @@
     var record = 0, envoye = 0, precedent = null, silence = null;
     var SILENCE_MS = 3000;
     function url(len) {
-      return "/api/snake/contest?sid=" + encodeURIComponent(popupSid) + "&len=" + len;
+      return "/api/contest/snake3?sid=" + encodeURIComponent(popupSid) + "&v=" + len;
     }
     function envoyer() {
       if (record <= envoye || record < 3) return;

@@ -58,7 +58,7 @@ async function sidFor(username) {
   return j.sid;
 }
 const envoyer = async (sid, len) =>
-  await (await fetch(`${BASE}/api/snake/contest?sid=${encodeURIComponent(sid)}&len=${len}`,
+  await (await fetch(`${BASE}/api/contest/snake3?sid=${encodeURIComponent(sid)}&v=${len}`,
     { method: 'POST' })).json();
 const quota = async (sid) =>
   await (await fetch(`${BASE}/api/fd/status?sid=${encodeURIComponent(sid)}&game=snake3`)).json();
@@ -128,7 +128,7 @@ test('seul le record est retenu ; renvoyer moins ne l\'écrase pas', async () =>
 test('les valeurs aberrantes sont refusées', async () => {
   const sid = await sidFor(joueur('trichesnake'));
   for (const len of [0, 2, -5, 999999, 'abc', '']) {
-    const r = await fetch(`${BASE}/api/snake/contest?sid=${encodeURIComponent(sid)}&len=${encodeURIComponent(len)}`,
+    const r = await fetch(`${BASE}/api/contest/snake3?sid=${encodeURIComponent(sid)}&v=${encodeURIComponent(len)}`,
       { method: 'POST' });
     assert.equal(r.status, 400, `longueur ${JSON.stringify(len)} refusée`);
   }
@@ -136,7 +136,7 @@ test('les valeurs aberrantes sont refusées', async () => {
   const ok = await envoyer(sid, 3);
   assert.equal(ok.ok, true, 'la longueur de départ est acceptée');
   // Sans session, rien n'est enregistré.
-  const anon = await fetch(`${BASE}/api/snake/contest?len=50`, { method: 'POST' });
+  const anon = await fetch(`${BASE}/api/contest/snake3?v=50`, { method: 'POST' });
   assert.equal(anon.status, 401, 'un visiteur non identifié est refusé');
 });
 
@@ -152,7 +152,7 @@ test('le popup relève la longueur pour TOUT LE MONDE, pas seulement les acheteu
                              html.indexOf('Tableau de bord Frutisnake'));
   assert.ok(contest.length > 200, 'bloc setupSnakeContest présent');
   assert.ok(!/allowed/.test(contest), 'le relevé du Contest n\'est PAS gardé par l\'option achetée');
-  assert.ok(/\/api\/snake\/contest/.test(contest), 'il poste bien au classement');
+  assert.ok(/\/api\/contest\/snake3/.test(contest), 'il poste bien au classement');
   assert.ok(/sendBeacon/.test(contest),
     'une fenêtre fermée en pleine partie doit quand même livrer son record');
   assert.ok(/snake3/.test(contest), 'et seulement pour Frutisnake');

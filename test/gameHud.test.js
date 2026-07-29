@@ -466,11 +466,8 @@ test('cadrans Swapou : réservés au Challenge, et le compteur part de 0', () =>
   // livrée et on la fait tourner sur un panneau factice.
   const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
   const bloc = html.slice(html.indexOf('function setupSwapouCoups'), html.indexOf('Tableau de bord Frutisnake'));
-  const corps = /window\.fpSwapouCoup = function \(ncoups, star\) \{[\s\S]*?\n    \};/.exec(bloc);
-  assert.ok(corps, 'fonction fpSwapouCoup présente');
-
-  const fin = /window\.fpSwapouFin = function \(\) \{[\s\S]*?\n    \};/.exec(bloc);
-  assert.ok(fin, 'fonction fpSwapouFin présente');
+  const abonnement = /abonnerSwapou\(function \(ncoups, star\) \{[\s\S]*?\n    \}\);/.exec(bloc);
+  assert.ok(abonnement, 'les cadrans sont abonnés au pont Swapou');
 
   function nouveau() {
     const vu = {}, style = {};
@@ -481,9 +478,10 @@ test('cadrans Swapou : réservés au Challenge, et le compteur part de 0', () =>
       'var construire = function () { return faux; };' +
       'var caler = function () {};' +
       'var peindre = function (sel, v) { vu[sel] = v; };' +
-      'var window = {};' + corps[0] + fin[0] +
-      'return window;')(faux, vu);
-    return { f: api.fpSwapouCoup, fin: api.fpSwapouFin, vu, style };
+      'var api = {};' +
+      'var abonnerSwapou = function (surCoup, surFin) { api.coup = surCoup; api.fin = surFin; };' +
+      abonnement[0] + 'return api;')(faux, vu);
+    return { f: api.coup, fin: api.fin, vu, style };
   }
 
   // Mode CLASSIQUE : ncoups démarre à 1, le premier envoi vaut donc 2.
@@ -511,9 +509,8 @@ test('cadrans Swapou : réservés au Challenge, et le compteur part de 0', () =>
 test('cadrans Swapou : effacés à la fin de la partie, revenus à la suivante', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/game-popup.html'), 'utf8');
   const bloc = html.slice(html.indexOf('function setupSwapouCoups'), html.indexOf('Tableau de bord Frutisnake'));
-  const corps = /window\.fpSwapouCoup = function \(ncoups, star\) \{[\s\S]*?\n    \};/.exec(bloc);
-  const fin = /window\.fpSwapouFin = function \(\) \{[\s\S]*?\n    \};/.exec(bloc);
-  assert.ok(corps && fin, 'les deux fonctions du pont sont présentes');
+  const abonnement = /abonnerSwapou\(function \(ncoups, star\) \{[\s\S]*?\n    \}\);/.exec(bloc);
+  assert.ok(abonnement, 'les cadrans sont abonnés au pont Swapou');
 
   const vu = {}, style = {};
   const faux = { style, querySelector: (sel) => sel };
@@ -523,25 +520,27 @@ test('cadrans Swapou : effacés à la fin de la partie, revenus à la suivante',
     'var construire = function () { return faux; };' +
     'var caler = function () {};' +
     'var peindre = function (sel, v) { vu[sel] = v; };' +
-    'var window = {};' + corps[0] + fin[0] + 'return window;')(faux, vu);
+    'var api = {};' +
+    'var abonnerSwapou = function (surCoup, surFin) { api.coup = surCoup; api.fin = surFin; };' +
+    abonnement[0] + 'return api;')(faux, vu);
 
   // Une partie Challenge de trois coups.
-  api.fpSwapouCoup(6, 100); api.fpSwapouCoup(7, 62); api.fpSwapouCoup(8, 37);
+  api.coup(6, 100); api.coup(7, 62); api.coup(8, 37);
   assert.equal(vu['[data-cle="coups"]'], '3');
   assert.equal(style.display, 'block', 'les cadrans sont là pendant la partie');
 
   // Game over : le SWF émet fpswfin: → tout disparaît.
-  api.fpSwapouFin();
+  api.fin();
   assert.equal(style.display, 'none', 'les cadrans disparaissent à la fin de la partie');
 
   // Le joueur relance un Challenge : le compteur repart de 1, pas de 4.
-  api.fpSwapouCoup(6, 100);
+  api.coup(6, 100);
   assert.equal(style.display, 'block', 'ils reviennent dès le premier coup de la partie suivante');
   assert.equal(vu['[data-cle="coups"]'], '1', 'le compteur est reparti de zéro');
 
   // Après une fin de partie, une partie CLASSIQUE ne doit pas les rallumer.
-  api.fpSwapouFin();
-  api.fpSwapouCoup(2, 90); api.fpSwapouCoup(3, 89);
+  api.fin();
+  api.coup(2, 90); api.coup(3, 89);
   assert.equal(style.display, 'none', 'le mode Classique reste sans cadrans');
 });
 

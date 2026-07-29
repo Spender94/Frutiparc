@@ -1135,6 +1135,10 @@ const RANKINGS = {
   // type 'C' malgré tout : c'est le filtre de /api/admin/tournament-games, donc
   // un tournoi « Maître ÈS … » peut se tenir sur ce classement.
   snake3_contest:     { name: 'Frutisnake - Contest',     game: 'snake3',   type: 'C' },
+  // Swapou Contest : le nombre de coups tenus sur une partie Challenge. Plus on
+  // dure, plus on joue de coups — donc le plus GRAND gagne, comme pour le
+  // serpent le plus long.
+  swapou2_contest:    { name: 'Swapou - Contest',          game: 'swapou2',  type: 'C' },
 };
 
 // Legacy FrutiScore wire descriptors (numeric rk ids used by original clients).
@@ -1169,6 +1173,7 @@ const LEGACY_RANKINGS = [
   // (ni distribuer de médailles du jour). g='snake3' pour hériter de l'icône du
   // jeu dans fileIcon.swf.
   { rk: '10', internal: 'snake3_contest',  ty: 'point',       rn: 'Frutisnake Contest', gs: '1', g: 'snake3', section: 'L' },
+  { rk: '11', internal: 'swapou2_contest', ty: 'point',       rn: 'Swapou Contest', gs: '3', g: 'swapou2', section: 'L' },
   // Section L = "Championnat" in front-end — plus aucun classement réel
   { rk: '7', internal: null,                ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
@@ -11242,39 +11247,52 @@ app.get('/api/features', (req, res) => {
   res.json({ ok: true, username: username || null, features: out });
 });
 
-// ── Frutisnake Contest : relevé de la plus longue partie ─────────────────────
-// Le popup de jeu suit la longueur du serpent pendant la partie (pont fpSnakeHud,
-// que le SWF appelle pour TOUS les joueurs) et poste ici le maximum atteint quand
-// la partie se termine. Volontairement HORS du circuit des scores :
-//   • aucun quota FD n'est consommé ni consulté — les parties d'essai comptent
-//     autant que les parties challenge, c'est tout l'intérêt du concours ;
-//   • le classement n'est jamais remis à zéro (section 'L'), donc chacun garde
-//     son record.
-// Accepte GET comme POST, et les paramètres en query : c'est ce qui permet au
-// popup d'utiliser navigator.sendBeacon quand la fenêtre se ferme, seul moyen
-// fiable de ne pas perdre la dernière partie.
-const SNAKE_CONTEST_RANKING = 'snake3_contest';
-// Garde-fou : le serpent démarre à 3 (Const.SNAKE_DEFAULT_LENGTH) et gagne un
-// anneau par fruit. Le plafond n'existe que pour écarter une valeur absurde ;
-// il est très au-dessus de ce qu'une vraie partie produit.
-const SNAKE_CONTEST_MIN = 3;
-const SNAKE_CONTEST_MAX = 2000;
-function handleSnakeContest(req, res) {
+// ── Les « Contest » : des concours à côté du classement au score ─────────────
+// Chaque concours mesure autre chose que les points — la longueur du serpent
+// pour Frutisnake, le nombre de coups tenus pour Swapou — pour que d'autres
+// joueurs que les meilleurs marqueurs puissent gagner. Trois traits communs,
+// volontaires :
+//   • OUVERTS À TOUS : la mesure vient d'un pont que le SWF appelle pour tout le
+//     monde ; les packs de boutique ne conditionnent que son AFFICHAGE en jeu ;
+//   • HORS du circuit des scores : aucun quota FD n'est consulté ni consommé,
+//     donc jouer au-delà de son quota du jour compte quand même ;
+//   • PERMANENTS : les classements sont rangés en section 'L', hors du balayage
+//     nocturne qui remet à zéro les challenges — chacun garde son record.
+// Le popup poste la valeur à la fin de chaque partie. GET est accepté autant que
+// POST, et les paramètres peuvent venir de la query : c'est ce qui permet
+// d'utiliser navigator.sendBeacon quand la fenêtre se ferme, seul moyen fiable
+// de ne pas perdre la dernière partie.
+const CONTESTS = {
+  // Le serpent démarre à 3 anneaux (Const.SNAKE_DEFAULT_LENGTH) et en gagne un
+  // par fruit. Les bornes n'existent que pour écarter l'absurde.
+  snake3: { ranking: 'snake3_contest', unite: 'anneaux', min: 3, max: 2000,
+            quoi: 'longueur' },
+  // Un coup = un échange réussi. Une partie Challenge en compte quelques
+  // dizaines ; le plafond est très au-dessus d'une partie humaine.
+  swapou2: { ranking: 'swapou2_contest', unite: 'coups', min: 1, max: 5000,
+             quoi: 'nombre de coups' },
+};
+function handleContest(req, res) {
   const params = Object.assign({}, req.query || {}, req.body || {});
+  const jeu = String(req.params.jeu || params.game || '').toLowerCase();
+  const def = CONTESTS[jeu];
+  if (!def) return res.status(404).json({ ok: false, error: 'concours_inconnu', game: jeu });
   const username = resolveUsernameFromSid(String(params.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
-  const len = Math.floor(Number(params.len));
-  if (!Number.isFinite(len) || len < SNAKE_CONTEST_MIN || len > SNAKE_CONTEST_MAX) {
-    return res.status(400).json({ ok: false, error: 'longueur_invalide', len: params.len });
+  const valeur = Math.floor(Number(params.v ?? params.len));
+  if (!Number.isFinite(valeur) || valeur < def.min || valeur > def.max) {
+    return res.status(400).json({ ok: false, error: 'valeur_invalide', v: params.v ?? params.len });
   }
-  // persistScore ne retient que le meilleur : renvoyer une partie plus courte
+  // persistScore ne retient que le meilleur : renvoyer une partie moins bonne
   // (ou renvoyer deux fois la même) est sans effet.
-  const r = persistScore(username, SNAKE_CONTEST_RANKING, len, '');
-  if (r.updated) console.log(`[CONTEST] ${username} : nouveau record de longueur ${len} (ancien ${r.oldScore})`);
-  return res.json({ ok: true, len, record: r.newScore, updated: r.updated, position: r.newPos });
+  const r = persistScore(username, def.ranking, valeur, '');
+  if (r.updated) {
+    console.log(`[CONTEST] ${username} : ${jeu}, nouveau record de ${def.quoi} ${valeur} (ancien ${r.oldScore})`);
+  }
+  return res.json({ ok: true, v: valeur, record: r.newScore, updated: r.updated, position: r.newPos });
 }
-app.post('/api/snake/contest', handleSnakeContest);
-app.get('/api/snake/contest', handleSnakeContest);
+app.post('/api/contest/:jeu', handleContest);
+app.get('/api/contest/:jeu', handleContest);
 
 app.get('/api/fd/status', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
@@ -14428,27 +14446,27 @@ app.get('/api/light/challenge', async (req, res) => {
       podium: [],
     });
   } catch (e) { console.error('[LIGHT] kikooz ranking error:', e.message); }
-  // Onglet « Frutisnake Contest » : le plus long serpent, tous temps confondus.
-  // allTime:true → le client n'affiche ni « aujourd'hui » ni podium, comme pour
-  // les kikooz : ce classement n'est pas remis à zéro chaque jour.
-  {
+  // Onglets « Contest » : les concours, tous temps confondus. allTime:true → le
+  // client n'affiche ni « aujourd'hui » ni podium, comme pour les kikooz : ces
+  // classements ne sont pas remis à zéro chaque jour.
+  for (const [jeu, def] of Object.entries(CONTESTS)) {
     const all = [];
     for (const [u, rlist] of Object.entries(scoresData.users || {})) {
-      const e = rlist && rlist[SNAKE_CONTEST_RANKING];
+      const e = rlist && rlist[def.ranking];
       if (e && Number.isFinite(Number(e.score))) all.push({ u, s: Number(e.score), data: e.data });
     }
-    all.sort(scoreComparator(SNAKE_CONTEST_RANKING));
+    all.sort(scoreComparator(def.ranking));
     games.push({
-      id: SNAKE_CONTEST_RANKING,
-      game: 'snake3',
-      name: 'Frutisnake Contest',
+      id: def.ranking,
+      game: jeu,
+      name: (RANKINGS[def.ranking] && RANKINGS[def.ranking].name || def.ranking).replace(' - ', ' '),
       allTime: true,
       lowerIsBetter: false,
       count: all.length,
       scores: all.slice(0, limit).map((e) => ({
         user: getDisplayName(e.u),
         score: e.s,
-        label: e.s + ' anneaux',
+        label: e.s + ' ' + def.unite,
         isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
       })),
       podium: [],
