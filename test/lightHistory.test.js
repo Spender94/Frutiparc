@@ -162,18 +162,19 @@ test('les visuels de l\'historique sont valides', () => {
   assert.equal(png.slice(1, 4).toString('ascii'), 'PNG', 'le totoché est un vrai PNG');
   assert.equal(png.readUInt32BE(16), 20, 'largeur');
 
-  // Le voyant vient de la même bande d'alerte que l'enveloppe de courrier et le
-  // triangle des événements (celle de butPushSmallPink). Elle n'a pas d'horloge :
-  // son icône de journal est une liste, ce qui dit « historique » aussi bien.
-  // Ce qui compte, c'est que ce soit un autre TRACÉ, pas la même forme repeinte.
+  // Le voyant reste une HORLOGE : c'est la forme que le jeu donne à
+  // l'historique, et le joueur doit reconnaître la même icône, allumée. La bande
+  // d'alerte du SWF (butPushSmallPink), qui a fourni l'enveloppe de courrier et
+  // le triangle des événements, n'a pas d'horloge — c'est donc celle du repos,
+  // dans le même rouge d'alerte que les deux autres.
   const repos = fs.readFileSync(path.join(dir, 'Historique.svg'), 'utf8');
   const alerte = fs.readFileSync(path.join(dir, 'HistoriqueAlerte.svg'), 'utf8');
   const traces = (svg) => (svg.match(/ d="[^"]+"/g) || []).join('|');
   assert.match(alerte, /#df4b44/, 'le voyant porte le rouge d\'alerte du jeu');
-  assert.notEqual(traces(alerte), traces(repos),
-    'et c\'est un autre tracé, pas l\'horloge repeinte');
-  // Le rouge est le même que celui du courrier : les trois voyants se lisent
-  // pareil, ce qui est tout l'intérêt d'en avoir trois.
+  assert.equal(traces(alerte), traces(repos), 'et garde la forme d\'horloge');
+  assert.notEqual(alerte, repos, 'seule la couleur change');
+  // Même rouge que le courrier : les trois voyants se lisent pareil, ce qui est
+  // tout l'intérêt d'en avoir trois.
   const courrier = fs.readFileSync(path.join(dir, 'MailRecu.svg'), 'utf8');
   assert.match(courrier, /#df4b44/, 'même rouge que l\'enveloppe de courrier');
 });
@@ -274,11 +275,16 @@ test('les trois rubriques à voyant ont leur tuile sur l\'accueil', () => {
   // qui ne l'a jamais remarquée n'aurait aucun moyen d'ouvrir sa messagerie.
   // Les trois rubriques ont donc aussi leur tuile dans la grille.
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
-  for (const [go, ico, label] of [['mail', 'Mail', 'Messagerie'],
-                                  ['evenements', 'Warning', 'Événements'],
-                                  ['historique', 'Historique', 'Historique']]) {
+  for (const [go, ico, fichier, label] of [['mail', 'Mail', 'icone_messagerie', 'Messagerie'],
+                                           ['evenements', 'Warning', 'icone_evenements', 'Événements'],
+                                           ['historique', 'Historique', 'icone_historique', 'Historique']]) {
     const tuile = new RegExp(`data-go="${go}" data-ico="${ico}"[\\s\\S]{0,200}?<span class="lbl">${label}</span>`);
     assert.match(html, tuile, `tuile ${label}`);
+    // Les tuiles portent les icônes du BUREAU, comme leurs voisines (linkScore,
+    // linkShop, inventory…) — pas les petits tracés de la rangée de raccourcis.
+    assert.match(html, new RegExp(`data-ico="${ico}"[\\s\\S]{0,120}?/fb/${fichier}\\.svg`),
+      `${label} porte son icône de bureau`);
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/fb', fichier + '.svg')), `${fichier}.svg présent`);
   }
   // Un clic sur la tuile ouvre la rubrique (les autres tuiles ouvrent des
   // feuilles ; celles-ci passent par activateTab).
@@ -293,6 +299,11 @@ test('les trois rubriques à voyant ont leur tuile sur l\'accueil', () => {
   assert.match(maj[0], /\.sc-btn\[data-sc="' \+ fichier \+ '"\], \.home-tile\[data-ico="' \+ fichier \+ '"\]/,
     'elle vise les deux endroits d\'un coup');
   assert.match(maj[0], /pastille\.remove\(\)/, 'et le compteur disparaît quand tout est lu');
+  // La bascule d'icône n'a lieu que sur le raccourci : la tuile garde son icône
+  // de bureau (deux des trois n'ont pas de variante d'alerte, et le compteur y
+  // est déjà bien assez visible).
+  assert.match(maj[0], /var img = estTuile \? null : e\.querySelector\("img"\)/,
+    'la tuile ne change pas d\'icône');
 });
 
 test('le client mobile sert les deux journaux avec un seul code', () => {

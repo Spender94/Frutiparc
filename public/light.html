@@ -1029,16 +1029,6 @@
   }
   .home-tile:active .ico img { transform: scale(.9); }
   .home-tile .lbl { font-size: 14px; font-weight: bold; color: #2C4A0F; text-align: center; }
-  /* Tuiles à icône vectorielle (Messagerie, Événements, Historique) : les icônes
-     du jeu sont des tracés fins, qui pèseraient trop peu à côté des dessins
-     pleins des autres tuiles. Une pastille claire leur donne le même poids. */
-  .home-tile.ligne .ico {
-    background: radial-gradient(circle at 50% 42%, #FFFFFF 0%, #EAF7CE 62%, rgba(234,247,206,0) 72%);
-    border-radius: 50%;
-  }
-  .home-tile.ligne .ico img {
-    width: 30px; height: 30px; filter: drop-shadow(0 1px 1px rgba(44,74,15,.30));
-  }
   .home-tile:active .lbl { text-decoration: underline; }
   /* Messages privés non lus : sans ce compteur sur l'accueil, un message reçu
      pendant qu'on est ailleurs dans l'appli restait totalement invisible — la
@@ -1176,12 +1166,17 @@
       <button class="home-tile" data-go="shop"><span class="ico"><img src="/fb/icone_boutique.png" alt="" onerror="this.replaceWith(document.createTextNode('🛍️'))"></span><span class="lbl">Boutique</span></button>
       <button class="home-tile" data-go="disques"><span class="ico"><img src="/fb/icone_jeux.png" alt="" onerror="this.replaceWith(document.createTextNode('💿'))"></span><span class="lbl">Mes disques</span></button>
       <button class="home-tile" data-go="chat"><span class="ico"><img src="/fb/icone_salon.png" alt="" onerror="this.replaceWith(document.createTextNode('💬'))"></span><span class="lbl">Salons</span></button>
-      <!-- Les trois rubriques à voyant. `data-ico` désigne l'icône du jeu à
-           afficher : majVoyant() la bascule sur sa variante d'alerte et y accroche
-           le compteur, ici comme sur le raccourci de l'encart niveau. -->
-      <button class="home-tile ligne" data-go="mail" data-ico="Mail"><span class="ico"><img src="/fb/Mail.svg" alt=""></span><span class="lbl">Messagerie</span></button>
-      <button class="home-tile ligne" data-go="evenements" data-ico="Warning"><span class="ico"><img src="/fb/Warning.svg" alt=""></span><span class="lbl">Événements</span></button>
-      <button class="home-tile ligne" data-go="historique" data-ico="Historique"><span class="ico"><img src="/fb/Historique.svg" alt=""></span><span class="lbl">Historique</span></button>
+      <!-- Les trois rubriques à voyant. Leurs icônes sont celles du BUREAU
+           (fileIcon.swf, sprite iconGFX) : l'enveloppe du dossier « mail » et la
+           poire de « linkHisto », comme les tuiles voisines viennent de
+           « linkScore », « linkShop » ou « inventory ». Le bureau n'a pas d'icône
+           pour les événements : on prend celle de leur propre journal (le tam-tam
+           de l'information, sprite icoSiteLog de main.swf).
+           `data-ico` relie la tuile à son voyant : majVoyant() y accroche le
+           compteur, et bascule l'icône du raccourci de l'encart niveau. -->
+      <button class="home-tile" data-go="mail" data-ico="Mail"><span class="ico"><img src="/fb/icone_messagerie.svg" alt=""></span><span class="lbl">Messagerie</span></button>
+      <button class="home-tile" data-go="evenements" data-ico="Warning"><span class="ico"><img src="/fb/icone_evenements.svg" alt=""></span><span class="lbl">Événements</span></button>
+      <button class="home-tile" data-go="historique" data-ico="Historique"><span class="ico"><img src="/fb/icone_historique.svg" alt=""></span><span class="lbl">Historique</span></button>
       <button class="home-tile" data-go="inventaire"><span class="ico"><img src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"></span><span class="lbl">Inventaire</span></button>
       <button class="home-tile" data-go="forum"><span class="ico"><img src="/fb/icone_forum.png" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"></span><span class="lbl">Forum</span></button>
       <button class="home-tile" data-go="trombi"><span class="ico"><img src="/fb/icone_bouilloscope.png" alt="" onerror="this.replaceWith(document.createTextNode('👥'))"></span><span class="lbl">Bouilloscope</span></button>
@@ -1777,7 +1772,12 @@
     var titre = def.name + (n ? " — " + n + " " + (def.mot || "élément") + (n > 1 ? "s" : "")
       + " non lu" + (n > 1 ? "s" : "") : "");
     Array.prototype.forEach.call(cibles, function (e) {
-      var img = e.querySelector("img");
+      var estTuile = e.classList.contains("home-tile");
+      // La bascule d'icône n'a lieu que sur le raccourci : à 27 px, changer le
+      // dessin est le seul signal lisible. La tuile, elle, garde son icône de
+      // bureau — le compteur y est déjà bien assez visible, et deux des trois
+      // icônes de bureau n'ont de toute façon pas de variante d'alerte.
+      var img = estTuile ? null : e.querySelector("img");
       if (img) {
         var src = "/fb/" + ((n > 0 && def.voyant) ? def.voyant : def.file) + ".svg";
         if (img.getAttribute("src") !== src) img.setAttribute("src", src);
@@ -1785,7 +1785,6 @@
       e.title = titre;
       // Le compteur : petite pastille sur le raccourci, grande sur la tuile
       // (même style que celui des messages privés, déjà en place).
-      var estTuile = e.classList.contains("home-tile");
       var classe = estTuile ? "mp-compte" : "sc-compte";
       var pastille = e.querySelector("." + classe);
       if (!n) { if (pastille) pastille.remove(); return; }
