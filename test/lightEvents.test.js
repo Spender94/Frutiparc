@@ -146,8 +146,7 @@ test('les visuels annoncés existent réellement', () => {
   // repeignage du triangle au repos donnerait le même dessin en rouge.
   const repos = fs.readFileSync(path.join(dir, 'Warning.svg'), 'utf8');
   const alerte = fs.readFileSync(path.join(dir, 'WarningAlerte.svg'), 'utf8');
-  assert.match(alerte, /#73b01e/,
-    'le triangle allumé porte le vert foncé du jeu — celui des chiffres du classement');
+  assert.match(alerte, /#2C4A0F/, 'le triangle allumé porte le vert presque noir');
   assert.notEqual(traces(alerte), traces(repos),
     'et c\'est un autre TRACÉ, pas la même forme repeinte');
 });

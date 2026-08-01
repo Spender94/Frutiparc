@@ -170,13 +170,13 @@ test('les visuels de l\'historique sont valides', () => {
   const repos = fs.readFileSync(path.join(dir, 'Historique.svg'), 'utf8');
   const alerte = fs.readFileSync(path.join(dir, 'HistoriqueAlerte.svg'), 'utf8');
   const traces = (svg) => (svg.match(/ d="[^"]+"/g) || []).join('|');
-  assert.match(alerte, /#73b01e/, 'le voyant porte le vert foncé du classement');
+  assert.match(alerte, /#2C4A0F/, 'le voyant porte le vert presque noir');
   assert.equal(traces(alerte), traces(repos), 'et garde la forme d\'horloge');
   assert.notEqual(alerte, repos, 'seule la couleur change');
   // Même vert que le courrier : les trois voyants se lisent pareil, ce qui est
   // tout l'intérêt d'en avoir trois.
   const courrier = fs.readFileSync(path.join(dir, 'MailRecu.svg'), 'utf8');
-  assert.match(courrier, /#73b01e/, 'même vert que l\'enveloppe de courrier');
+  assert.match(courrier, /#2C4A0F/, 'même vert que l\'enveloppe de courrier');
   // Et l'icône au repos reste dans le vert clair : c'est le CONTRASTE entre les
   // deux qui fait le voyant.
   assert.match(repos, /#a2eb56/, 'l\'horloge au repos reste en vert clair');
@@ -322,17 +322,27 @@ test('les trois rubriques à voyant ont leur tuile sur l\'accueil', () => {
   assert.ok(maj, 'majVoyant présente');
   assert.match(maj[0], /\.sc-btn\[data-sc="' \+ fichier \+ '"\], \.home-tile\[data-ico="' \+ fichier \+ '"\]/,
     'elle vise les deux endroits d\'un coup');
-  assert.match(maj[0], /pastille\.remove\(\)/, 'et le compteur disparaît quand tout est lu');
-  // Le compteur chiffré ne va QUE sur le raccourci : le bureau d'origine ne pose
-  // aucune pastille sur ses icônes.
-  assert.match(maj[0], /if \(estTuile\) return;/, 'aucune pastille sur les tuiles');
-  // Chaque endroit bascule sur SES états : le raccourci entre son icône et sa
-  // variante d'alerte, la tuile entre les deux états de son icône de bureau —
-  // quand elle en a deux.
-  assert.match(maj[0], /var repos\s+= estTuile \? def\.tuile : def\.file/,
-    'la tuile part de son icône de bureau');
-  assert.match(maj[0], /var alerte = estTuile \? def\.tuileVoyant : def\.voyant/,
-    'et de sa variante, s\'il y en a une');
+  // Le raccourci clignote : les deux couches sont posées à la construction, et
+  // le voyant se réduit à une classe. Aucune pastille chiffrée nulle part — ni
+  // sur les tuiles, ni sur les raccourcis : le bureau d'origine n'en a pas.
+  assert.match(maj[0], /e\.classList\.toggle\("clignote", allume\)/, 'le raccourci clignote');
+  assert.ok(!/sc-compte/.test(html), 'plus aucune pastille chiffrée');
+  assert.match(html, /class="ico-repos"[\s\S]{0,200}class="ico-alerte"/,
+    'les deux couches sont posées ensemble');
+  assert.match(html, /@keyframes sc-allume[\s\S]{0,120}@keyframes sc-eteint/,
+    'et alternent en opposition de phase');
+  // Elles doivent battre ensemble : chaque animation démarre quand sa classe est
+  // posée, or les compteurs arrivent de requêtes distinctes.
+  assert.match(html, /function caler\(bouton\)/, 'les voyants sont calés sur une horloge commune');
+  assert.match(html, /animationDelay = phase/, 'par un délai négatif');
+  // Mouvement réduit : on ne clignote pas, mais on reste allumé.
+  assert.match(html, /prefers-reduced-motion: reduce\)[\s\S]{0,220}animation: none; opacity: 1/,
+    'le signal demeure sans mouvement');
+  // Chaque endroit fait ce qu'il sait faire : la tuile change d'état d'icône
+  // quand son icône de bureau en a deux (la boîte aux lettres lève son drapeau),
+  // le raccourci clignote.
+  assert.match(maj[0], /def\.tuileVoyant\) \? def\.tuileVoyant : def\.tuile/,
+    'la tuile bascule entre les deux états de son icône de bureau');
 });
 
 test('le client mobile sert les deux journaux avec un seul code', () => {

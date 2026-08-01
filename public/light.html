@@ -694,14 +694,6 @@
 
   /* Voyant de la messagerie sur le raccourci de l'accueil : l'icône change (le
      bac à courrier de main.swf remplace l'enveloppe) et un compteur s'y accroche. */
-  .sc-btn { position: relative; }
-  .sc-btn .sc-compte {
-    position: absolute; top: -3px; right: -4px; min-width: 13px; padding: 0 3px;
-    border-radius: 999px; background: #73b01e; color: #fff;
-    font-size: 9.5px; line-height: 13px; font-weight: bold; text-align: center;
-    box-shadow: 0 0 0 1.5px rgba(255,255,255,.85), 0 1px 2px rgba(44,74,15,.35);
-    pointer-events: none;
-  }
 
   /* Trombinoscope */
   #trombi-head {
@@ -985,6 +977,25 @@
   }
   .sc-btn img { width: 27px; height: 27px; object-fit: contain; display: block; }
   .sc-btn:active img { transform: scale(.85); }
+  /* Voyant : l'icône au repos et sa version allumée sont superposées, et
+     alternent en opposition de phase — un vrai clignotement, pas un fondu
+     (steps(1)), comme un témoin lumineux. Tant qu'il n'y a rien à signaler, la
+     couche allumée reste invisible et rien ne bouge. */
+  .sc-btn { position: relative; }
+  .sc-btn .ico-alerte {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    opacity: 0; pointer-events: none;
+  }
+  .sc-btn:active .ico-alerte { transform: translate(-50%, -50%) scale(.85); }
+  .sc-btn.clignote .ico-alerte { animation: sc-allume 1.2s steps(1) infinite; }
+  .sc-btn.clignote .ico-repos  { animation: sc-eteint 1.2s steps(1) infinite; }
+  @keyframes sc-allume { 0%, 50% { opacity: 0; } 50.01%, 100% { opacity: 1; } }
+  @keyframes sc-eteint { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+  /* Mouvement réduit : on ne clignote pas, on reste allumé. Le signal demeure. */
+  @media (prefers-reduced-motion: reduce) {
+    .sc-btn.clignote .ico-alerte { animation: none; opacity: 1; }
+    .sc-btn.clignote .ico-repos  { animation: none; opacity: 0; }
+  }
 
   /* ── Emotes (humeurs) : resserrées, SANS bordure ; au clic, la bouille change
      d'HUMEUR (freeze statique `e`, comme le forum — pas l'animation du chat).
@@ -1772,6 +1783,18 @@
   // historique) et chacune apparaît à DEUX endroits — le raccourci de l'encart
   // niveau et la tuile de la grille. Une seule fonction les tient toutes, sinon
   // un endroit finirait par signaler ce que l'autre ignore.
+  // Les voyants clignotent ENSEMBLE. Une animation CSS démarre au moment où la
+  // classe est posée ; comme chaque compteur arrive de sa propre requête, les
+  // trois partiraient décalés et le bandeau ressemblerait à une guirlande. Un
+  // délai négatif recale chacun sur la même horloge.
+  var CYCLE_VOYANT = 1200;                 // doit valoir la durée de @keyframes
+  var departVoyants = Date.now();
+  function caler(bouton) {
+    var phase = -((Date.now() - departVoyants) % CYCLE_VOYANT) + "ms";
+    Array.prototype.forEach.call(bouton.querySelectorAll("img"), function (i) {
+      i.style.animationDelay = phase;
+    });
+  }
   function majVoyant(fichier, n) {
     var def = raccourci(fichier);
     if (!def) return;
@@ -1780,27 +1803,21 @@
     var titre = def.name + (n ? " — " + n + " " + (def.mot || "élément") + (n > 1 ? "s" : "")
       + " non lu" + (n > 1 ? "s" : "") : "");
     Array.prototype.forEach.call(cibles, function (e) {
-      var estTuile = e.classList.contains("home-tile");
-      // Chaque endroit bascule sur ses propres états : le raccourci entre son
-      // icône et sa variante d'alerte, la tuile entre les deux états de son
-      // icône de bureau — quand elle en a deux. Les événements et l'historique
-      // n'en ont qu'un : là, c'est le compteur qui signale, et il suffit.
-      var repos  = estTuile ? def.tuile : def.file;
-      var alerte = estTuile ? def.tuileVoyant : def.voyant;
-      var img = e.querySelector("img");
-      if (img && repos) {
-        var src = "/fb/" + ((n > 0 && alerte) ? alerte : repos) + ".svg";
-        if (img.getAttribute("src") !== src) img.setAttribute("src", src);
-      }
       e.title = titre;
-      // Le compteur chiffré ne va que sur le raccourci. Le bureau d'origine n'en
-      // pose aucun sur ses icônes : elles disent ce qu'elles ont à dire par
-      // elles-mêmes — le drapeau de la boîte aux lettres se lève, et c'est tout.
-      if (estTuile) return;
-      var pastille = e.querySelector(".sc-compte");
-      if (!n) { if (pastille) pastille.remove(); return; }
-      if (!pastille) { pastille = el("span", "sc-compte"); e.appendChild(pastille); }
-      pastille.textContent = n > 99 ? "99+" : String(n);
+      if (e.classList.contains("home-tile")) {
+        // La tuile porte l'icône du bureau, qui a parfois deux états (la boîte
+        // aux lettres lève son drapeau). Rien d'autre : le bureau d'origine ne
+        // pose aucune pastille sur ses icônes.
+        var img = e.querySelector("img");
+        var src = "/fb/" + ((n > 0 && def.tuileVoyant) ? def.tuileVoyant : def.tuile) + ".svg";
+        if (img && def.tuile && img.getAttribute("src") !== src) img.setAttribute("src", src);
+        return;
+      }
+      // Le raccourci clignote : les deux couches sont déjà en place, il suffit
+      // de lancer ou d'arrêter l'alternance.
+      var allume = n > 0 && !!def.voyant;
+      if (allume) caler(e);
+      e.classList.toggle("clignote", allume);
     });
   }
   var homeProfile = { bouille: DEFAULT_BOUILLE, level: 1, xp: 0, rank: null, kikooz: 0 };
@@ -1878,7 +1895,10 @@
         var b = el("button", "sc-btn");
         b.type = "button"; b.title = it.name; b.setAttribute("aria-label", it.name);
         b.setAttribute("data-sc", it.file);
-        b.innerHTML = '<img src="/fb/' + it.file + '.svg" alt="' + xmlEscape(it.name) + '">';
+        // Deux couches : l'icône au repos, et la version allumée par-dessus. Le
+        // clignotement n'est qu'une classe posée sur le bouton — aucun minuteur.
+        b.innerHTML = '<img class="ico-repos" src="/fb/' + it.file + '.svg" alt="' + xmlEscape(it.name) + '">'
+          + (it.voyant ? '<img class="ico-alerte" src="/fb/' + it.voyant + '.svg" alt="" aria-hidden="true">' : '');
         if (it.go) b.addEventListener("click", function () {
           if (it.go === "disques") return openDisquesSheet();
           activateTab(it.go);

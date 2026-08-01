@@ -229,11 +229,10 @@ test('le client mobile sait lister, lire, écrire et signaler', () => {
   assert.match(html, /id="mail-vue-lecture"/, 'vue lecture');
   assert.match(html, /id="mail-vue-ecriture"/, 'vue rédaction');
 
-  // Le voyant : icône de remplacement + compteur, par le mécanisme partagé avec
-  // les événements (cf. test/lightEvents.test.js).
+  // Le voyant, par le mécanisme partagé avec les événements et l'historique
+  // (cf. test/lightHistory.test.js).
   assert.match(html, /majVoyant\("Mail", mailNonLus\)/, 'le voyant est mis à jour');
-  assert.match(html, /voyant: "MailRecu"/, 'l\'icône d\'alerte est déclarée');
-  assert.match(html, /sc-compte/, 'un compteur s\'accroche au raccourci');
+  assert.match(html, /voyant: "MailRecu"/, 'l\'icône allumée est déclarée');
 
   // La trame poussée par le serveur est traitée : sans ça, il faudrait ouvrir la
   // messagerie pour découvrir qu'on a du courrier.
@@ -256,7 +255,7 @@ test('l\'icône d\'alerte est bien celle du jeu, distincte de l\'enveloppe au re
   // c'est ce contraste qui rend le voyant lisible à 27 px. Le dessin change aussi
   // — l'enveloppe allumée est celle de la bande d'alerte du SWF, pas la même
   // repeinte — mais la couleur seule doit déjà se voir.
-  assert.match(alerte, /#73b01e/, 'l\'enveloppe allumée est en vert foncé');
+  assert.match(alerte, /#2C4A0F/, 'l\'enveloppe allumée est en vert presque noir');
   assert.match(repos, /#a2eb56/, 'celle du repos reste en vert clair');
   assert.notEqual(alerte.replace(/\s/g, ''), repos.replace(/\s/g, ''),
     'les deux états doivent différer, sinon le voyant ne signale rien');
