@@ -1746,10 +1746,17 @@
   // d'alerte), extraite du SWF d'origine — cf. scripts/extract-swf-shapes.js.
   // L'enveloppe verte au repos (Mail.svg) est la forme #420, celle de la bande
   // d'icônes de raccourcis (sprite #427).
+  // `file` / `voyant` : l'icône du raccourci (bande digitalIcon du SWF) et sa
+  // variante d'alerte. `tuile` / `tuileVoyant` : l'icône de la grille, prise au
+  // jeu d'icônes du BUREAU (fileIcon.swf). Seule la messagerie a deux états côté
+  // bureau — c'est une boîte aux lettres, avec son drapeau qui se lève.
   var HOME_SHORTCUTS = [
-    { file: "Mail",       name: "Messagerie", go: "mail",       voyant: "MailRecu",      mot: "message" },
-    { file: "Warning",    name: "Événements", go: "evenements", voyant: "WarningAlerte",    mot: "événement" },
-    { file: "Historique", name: "Historique", go: "historique", voyant: "HistoriqueAlerte", mot: "événement" },
+    { file: "Mail",       name: "Messagerie", go: "mail",       voyant: "MailRecu",         mot: "message",
+      tuile: "icone_messagerie", tuileVoyant: "icone_messagerie_pleine" },
+    { file: "Warning",    name: "Événements", go: "evenements", voyant: "WarningAlerte",    mot: "événement",
+      tuile: "icone_evenements" },
+    { file: "Historique", name: "Historique", go: "historique", voyant: "HistoriqueAlerte", mot: "événement",
+      tuile: "icone_historique" },
     { file: "Aide",       name: "Aide" },
     { file: "Forum",      name: "Forum", go: "forum" },
     { file: "Jeux",       name: "Jeux", go: "disques" },
@@ -1773,13 +1780,15 @@
       + " non lu" + (n > 1 ? "s" : "") : "");
     Array.prototype.forEach.call(cibles, function (e) {
       var estTuile = e.classList.contains("home-tile");
-      // La bascule d'icône n'a lieu que sur le raccourci : à 27 px, changer le
-      // dessin est le seul signal lisible. La tuile, elle, garde son icône de
-      // bureau — le compteur y est déjà bien assez visible, et deux des trois
-      // icônes de bureau n'ont de toute façon pas de variante d'alerte.
-      var img = estTuile ? null : e.querySelector("img");
-      if (img) {
-        var src = "/fb/" + ((n > 0 && def.voyant) ? def.voyant : def.file) + ".svg";
+      // Chaque endroit bascule sur ses propres états : le raccourci entre son
+      // icône et sa variante d'alerte, la tuile entre les deux états de son
+      // icône de bureau — quand elle en a deux. Les événements et l'historique
+      // n'en ont qu'un : là, c'est le compteur qui signale, et il suffit.
+      var repos  = estTuile ? def.tuile : def.file;
+      var alerte = estTuile ? def.tuileVoyant : def.voyant;
+      var img = e.querySelector("img");
+      if (img && repos) {
+        var src = "/fb/" + ((n > 0 && alerte) ? alerte : repos) + ".svg";
         if (img.getAttribute("src") !== src) img.setAttribute("src", src);
       }
       e.title = titre;

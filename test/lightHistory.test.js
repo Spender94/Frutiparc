@@ -270,6 +270,27 @@ test('l\'historique exige une session', async () => {
   assert.equal(r.status, 401, 'la consultation aussi');
 });
 
+test('la boîte aux lettres du bureau a ses deux états', () => {
+  // L'icône « inbox » du bureau est une boîte aux lettres à drapeau : fermée
+  // drapeau baissé, ouverte drapeau levé quand du courrier attend. Les deux
+  // états sont composés comme fileIcon.swf les compose — boîte (sprite#129) et
+  // drapeau (sprite#132), chacun avec sa matrice de placement.
+  const dir = path.join(ROOT, 'public/fb');
+  const repos = fs.readFileSync(path.join(dir, 'icone_messagerie.svg'), 'utf8');
+  const plein = fs.readFileSync(path.join(dir, 'icone_messagerie_pleine.svg'), 'utf8');
+  for (const [nom, svg] of [['repos', repos], ['plein', plein]]) {
+    // Deux groupes transformés : la boîte, puis le drapeau.
+    assert.equal((svg.match(/<g transform="matrix\(/g) || []).length, 2,
+      `${nom} : la boîte et le drapeau, chacun placé`);
+    assert.ok((svg.match(/<path/g) || []).length >= 8, `${nom} : le dessin est complet`);
+  }
+  // Le drapeau tourne : baissé au repos (matrice à rotation), droit quand il y a
+  // du courrier. C'est ce qui distingue les deux états.
+  assert.match(repos, /<g transform="matrix\(0\.3849,-0\.9062/, 'drapeau baissé au repos');
+  assert.match(plein, /<g transform="matrix\(0\.986,0,0,0\.986/, 'drapeau levé quand du courrier attend');
+  assert.notEqual(repos, plein, 'les deux états diffèrent');
+});
+
 test('les trois rubriques à voyant ont leur tuile sur l\'accueil', () => {
   // La petite rangée d'icônes de l'encart niveau se rate facilement : un joueur
   // qui ne l'a jamais remarquée n'aurait aucun moyen d'ouvrir sa messagerie.
@@ -299,11 +320,13 @@ test('les trois rubriques à voyant ont leur tuile sur l\'accueil', () => {
   assert.match(maj[0], /\.sc-btn\[data-sc="' \+ fichier \+ '"\], \.home-tile\[data-ico="' \+ fichier \+ '"\]/,
     'elle vise les deux endroits d\'un coup');
   assert.match(maj[0], /pastille\.remove\(\)/, 'et le compteur disparaît quand tout est lu');
-  // La bascule d'icône n'a lieu que sur le raccourci : la tuile garde son icône
-  // de bureau (deux des trois n'ont pas de variante d'alerte, et le compteur y
-  // est déjà bien assez visible).
-  assert.match(maj[0], /var img = estTuile \? null : e\.querySelector\("img"\)/,
-    'la tuile ne change pas d\'icône');
+  // Chaque endroit bascule sur SES états : le raccourci entre son icône et sa
+  // variante d'alerte, la tuile entre les deux états de son icône de bureau —
+  // quand elle en a deux.
+  assert.match(maj[0], /var repos\s+= estTuile \? def\.tuile : def\.file/,
+    'la tuile part de son icône de bureau');
+  assert.match(maj[0], /var alerte = estTuile \? def\.tuileVoyant : def\.voyant/,
+    'et de sa variante, s\'il y en a une');
 });
 
 test('le client mobile sert les deux journaux avec un seul code', () => {

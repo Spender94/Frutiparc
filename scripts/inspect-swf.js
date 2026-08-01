@@ -68,13 +68,39 @@ function parcourir(visiter) {
   })(debut, b.length, 0);
 }
 
-// PlaceObject 1/2/3 → { caractere, profondeur } (caractere = -1 si le tag ne fait
-// que modifier un objet déjà en place).
+// Lecteur de bits, pour les champs du format qui ne sont pas alignés.
+class Bits {
+  constructor(b, o) { this.b = b; this.o = o; this.bit = 0; }
+  u(n) { let v = 0; for (let i = 0; i < n; i++) { v = (v << 1) | ((this.b[this.o] >> (7 - this.bit)) & 1); if (++this.bit === 8) { this.bit = 0; this.o++; } } return v >>> 0; }
+  s(n) { if (!n) return 0; const v = this.u(n); return (v & (1 << (n - 1))) ? v - (1 << n) : v; }
+  align() { if (this.bit) { this.bit = 0; this.o++; } }
+}
+// MATRIX : échelle, rotation/inclinaison, translation (en twips).
+function lireMatrice(o) {
+  const m = new Bits(b, o);
+  const M = { sx: 1, sy: 1, b: 0, c: 0, tx: 0, ty: 0 };
+  if (m.u(1)) { const n = m.u(5); M.sx = m.s(n) / 65536; M.sy = m.s(n) / 65536; }
+  if (m.u(1)) { const n = m.u(5); M.b = m.s(n) / 65536; M.c = m.s(n) / 65536; }
+  const n = m.u(5); M.tx = m.s(n); M.ty = m.s(n); m.align();
+  return M;
+}
+const matriceTexte = (M) => `matrix(${[M.sx, M.b, M.c, M.sy, M.tx / 20, M.ty / 20]
+  .map((v) => Math.round(v * 1e4) / 1e4).join(',')})`;
+
+// PlaceObject 1/2/3 → { caractere, profondeur, matrice } (caractere = -1 si le
+// tag ne fait que modifier un objet déjà en place).
 function placement(code, corps) {
-  if (code === 4) return { ch: b.readUInt16LE(corps), depth: b.readUInt16LE(corps + 2) };
+  if (code === 4) {
+    return { ch: b.readUInt16LE(corps), depth: b.readUInt16LE(corps + 2), M: lireMatrice(corps + 4) };
+  }
   if (code === 26 || code === 70) {
     const flags = b[corps], depth = b.readUInt16LE(corps + 1);
-    return { ch: (flags & 2) ? b.readUInt16LE(corps + 3) : -1, depth, bouge: !!(flags & 1) };
+    let o = corps + 3;
+    if (code === 70) o += 0;                        // PlaceObject3 : drapeaux étendus déjà lus
+    const aChar = !!(flags & 2);
+    if (aChar) o += 2;
+    const M = (flags & 4) ? lireMatrice(o) : null;  // HasMatrix
+    return { ch: aChar ? b.readUInt16LE(corps + 3) : -1, depth, bouge: !!(flags & 1), M };
   }
   return null;
 }
@@ -101,7 +127,8 @@ if (commande === 'bandes') {
     if (!veut.has(id)) return;
     if (code === 43) console.log(`f${frame}\tLABEL "${b.slice(corps, corps + len).toString('utf8').replace(/\0/g, '')}"`);
     const p = placement(code, corps);
-    if (p) console.log(`f${frame}\tplace\tdepth ${p.depth}\t${p.ch >= 0 ? '#' + p.ch : '(modif)'}${p.bouge ? ' [move]' : ''}`);
+    if (p) console.log(`f${frame}\tplace\tdepth ${p.depth}\t${p.ch >= 0 ? '#' + p.ch : '(modif)'}`
+      + `${p.bouge ? ' [move]' : ''}${p.M ? '\t' + matriceTexte(p.M) : ''}`);
     if (code === 5) console.log(`f${frame}\tretire\tdepth ${b.readUInt16LE(corps + 2)}\t#${b.readUInt16LE(corps)}`);
     if (code === 28) console.log(`f${frame}\tretire\tdepth ${b.readUInt16LE(corps)}`);
   });
