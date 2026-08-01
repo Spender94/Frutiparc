@@ -122,6 +122,12 @@ test('chaque type d\'annonce ressort avec son visuel', async () => {
   assert.deepEqual(dates.slice().sort().reverse(), dates, 'tri décroissant par date');
 });
 
+// Les tracés d'un SVG, couleurs mises de côté : deux icônes qui ne diffèrent que
+// par leur teinte donnent ici le même résultat.
+function traces(svg) {
+  return (svg.match(/ d="[^"]+"/g) || []).join('|');
+}
+
 test('les visuels annoncés existent réellement', () => {
   const dir = path.join(ROOT, 'public/fb');
   for (const f of ['evt_info', 'evt_technique', 'evt_nouveaute', 'evt_jeu', 'evt_inscription']) {
@@ -134,11 +140,15 @@ test('les visuels annoncés existent réellement', () => {
     assert.match(svg, /mask="url\(#a\)"/, `${f} applique son masque alpha`);
     assert.match(svg, /viewBox="0 0 \d+ \d+"/, `${f} a des dimensions`);
   }
-  // Le voyant : le triangle d'alerte doit différer du triangle au repos.
+  // Le voyant. Il ne suffit pas qu'il soit d'une autre couleur : le SWF a un
+  // VRAI triangle d'alerte (bande d'icônes de butPushSmallPink, celle d'où vient
+  // aussi l'enveloppe de courrier), et c'est lui qu'on veut — un simple
+  // repeignage du triangle au repos donnerait le même dessin en rouge.
   const repos = fs.readFileSync(path.join(dir, 'Warning.svg'), 'utf8');
   const alerte = fs.readFileSync(path.join(dir, 'WarningAlerte.svg'), 'utf8');
   assert.match(alerte, /#df4b44/, 'le triangle d\'alerte porte le rouge du jeu');
-  assert.notEqual(alerte, repos, 'les deux états diffèrent');
+  assert.notEqual(traces(alerte), traces(repos),
+    'et c\'est un autre TRACÉ, pas la même forme repeinte');
 });
 
 test('le voyant ne s\'éteint qu\'à la consultation', async () => {

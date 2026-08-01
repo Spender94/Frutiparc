@@ -162,11 +162,20 @@ test('les visuels de l\'historique sont valides', () => {
   assert.equal(png.slice(1, 4).toString('ascii'), 'PNG', 'le totoché est un vrai PNG');
   assert.equal(png.readUInt32BE(16), 20, 'largeur');
 
-  // Le voyant : l'horloge d'alerte doit différer de celle au repos.
+  // Le voyant vient de la même bande d'alerte que l'enveloppe de courrier et le
+  // triangle des événements (celle de butPushSmallPink). Elle n'a pas d'horloge :
+  // son icône de journal est une liste, ce qui dit « historique » aussi bien.
+  // Ce qui compte, c'est que ce soit un autre TRACÉ, pas la même forme repeinte.
   const repos = fs.readFileSync(path.join(dir, 'Historique.svg'), 'utf8');
   const alerte = fs.readFileSync(path.join(dir, 'HistoriqueAlerte.svg'), 'utf8');
-  assert.match(alerte, /#df4b44/, 'l\'horloge d\'alerte porte le rouge du jeu');
-  assert.notEqual(alerte, repos, 'les deux états diffèrent');
+  const traces = (svg) => (svg.match(/ d="[^"]+"/g) || []).join('|');
+  assert.match(alerte, /#df4b44/, 'le voyant porte le rouge d\'alerte du jeu');
+  assert.notEqual(traces(alerte), traces(repos),
+    'et c\'est un autre tracé, pas l\'horloge repeinte');
+  // Le rouge est le même que celui du courrier : les trois voyants se lisent
+  // pareil, ce qui est tout l'intérêt d'en avoir trois.
+  const courrier = fs.readFileSync(path.join(dir, 'MailRecu.svg'), 'utf8');
+  assert.match(courrier, /#df4b44/, 'même rouge que l\'enveloppe de courrier');
 });
 
 test('le voyant ne s\'éteint qu\'à la consultation', async () => {
@@ -258,6 +267,32 @@ test('l\'historique exige une session', async () => {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid: 'bidon' }),
   });
   assert.equal(r.status, 401, 'la consultation aussi');
+});
+
+test('les trois rubriques à voyant ont leur tuile sur l\'accueil', () => {
+  // La petite rangée d'icônes de l'encart niveau se rate facilement : un joueur
+  // qui ne l'a jamais remarquée n'aurait aucun moyen d'ouvrir sa messagerie.
+  // Les trois rubriques ont donc aussi leur tuile dans la grille.
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  for (const [go, ico, label] of [['mail', 'Mail', 'Messagerie'],
+                                  ['evenements', 'Warning', 'Événements'],
+                                  ['historique', 'Historique', 'Historique']]) {
+    const tuile = new RegExp(`data-go="${go}" data-ico="${ico}"[\\s\\S]{0,200}?<span class="lbl">${label}</span>`);
+    assert.match(html, tuile, `tuile ${label}`);
+  }
+  // Un clic sur la tuile ouvre la rubrique (les autres tuiles ouvrent des
+  // feuilles ; celles-ci passent par activateTab).
+  assert.match(html, /go === "mail" \|\| go === "evenements" \|\| go === "historique"/,
+    'les tuiles sont branchées sur la navigation');
+
+  // Et surtout : UNE seule fonction met à jour le raccourci ET la tuile. Deux
+  // mécanismes finiraient par diverger — un endroit signalerait ce que l'autre
+  // ignore.
+  const maj = /function majVoyant\(fichier, n\)[\s\S]*?\n  \}/.exec(html);
+  assert.ok(maj, 'majVoyant présente');
+  assert.match(maj[0], /\.sc-btn\[data-sc="' \+ fichier \+ '"\], \.home-tile\[data-ico="' \+ fichier \+ '"\]/,
+    'elle vise les deux endroits d\'un coup');
+  assert.match(maj[0], /pastille\.remove\(\)/, 'et le compteur disparaît quand tout est lu');
 });
 
 test('le client mobile sert les deux journaux avec un seul code', () => {
