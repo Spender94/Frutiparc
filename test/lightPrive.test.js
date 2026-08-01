@@ -204,3 +204,19 @@ test('le client mobile sait ouvrir, router et signaler les discussions privées'
   assert.ok(/sourdineJusqua/.test(html),
     'le rejeu d\'historique ne doit pas gonfler le compteur de non-lus');
 });
+
+test('un message reçu se voit AUSSI depuis l\'accueil', () => {
+  // Le cas qui manquait : la pastille du bandeau de chat n'existe que DANS les
+  // salons. Un joueur sur l'accueil, en boutique ou en train de jouer n'aurait
+  // rien vu passer — la conversation l'attendait sans qu'il le sache.
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.ok(/\.home-tile \.mp-compte/.test(html), 'style du compteur sur la tuile Salons');
+  assert.ok(/home-tile\[data-go="chat"\]/.test(html),
+    'le compteur est posé sur la tuile qui mène aux salons');
+  const maj = /function majPastilleMp\(\)[\s\S]*?\n  \}/.exec(html);
+  assert.ok(maj, 'majPastilleMp présente');
+  assert.ok(/mp-compte/.test(maj[0]),
+    'la même fonction met à jour le bandeau ET l\'accueil — sinon les deux divergent');
+  assert.ok(/pastille\.remove\(\)/.test(maj[0]),
+    'le compteur disparaît quand tout est lu');
+});

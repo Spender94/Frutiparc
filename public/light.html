@@ -875,6 +875,16 @@
   .home-tile:active .ico img { transform: scale(.9); }
   .home-tile .lbl { font-size: 14px; font-weight: bold; color: #2C4A0F; text-align: center; }
   .home-tile:active .lbl { text-decoration: underline; }
+  /* Messages privés non lus : sans ce compteur sur l'accueil, un message reçu
+     pendant qu'on est ailleurs dans l'appli restait totalement invisible — la
+     pastille du bandeau de chat n'est affichée que DANS les salons. */
+  .home-tile { position: relative; }
+  .home-tile .mp-compte {
+    position: absolute; top: 2px; right: 14px; min-width: 20px; height: 20px;
+    padding: 0 5px; border-radius: 10px; background: #e63b3b; color: #fff;
+    font: bold 12px/20px Verdana, Arial, sans-serif; text-align: center;
+    box-shadow: 0 0 0 2px #fff; pointer-events: none;
+  }
 
   /* ── Desktop / tablette (≥768px) : le tiroir s'ouvre en BANDE à gauche (440px)
      PAR-DESSUS le contenu, qui reste visible derrière (le capteur de clic est
@@ -2395,6 +2405,19 @@
     for (var id in state.prives) total += state.prives[id].nonLus || 0;
     var btn = $("#users-btn");
     if (btn) btn.classList.toggle("a-lire", total > 0);
+    // Et sur l'accueil : c'est le seul endroit visible quand on n'est pas dans
+    // les salons (jeu, boutique, forum…), donc le seul qui prévienne vraiment.
+    var tuile = document.querySelector('.home-tile[data-go="chat"]');
+    if (!tuile) return;
+    var pastille = tuile.querySelector(".mp-compte");
+    if (!total) { if (pastille) pastille.remove(); return; }
+    if (!pastille) {
+      pastille = document.createElement("span");
+      pastille.className = "mp-compte";
+      tuile.appendChild(pastille);
+    }
+    pastille.textContent = total > 99 ? "99+" : String(total);
+    pastille.title = total + " message" + (total > 1 ? "s" : "") + " privé" + (total > 1 ? "s" : "") + " non lu" + (total > 1 ? "s" : "");
   }
 
   // ── Messages UI ──
