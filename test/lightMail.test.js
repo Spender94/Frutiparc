@@ -229,8 +229,9 @@ test('le client mobile sait lister, lire, écrire et signaler', () => {
   assert.match(html, /id="mail-vue-lecture"/, 'vue lecture');
   assert.match(html, /id="mail-vue-ecriture"/, 'vue rédaction');
 
-  // Le voyant : icône de remplacement + compteur.
-  assert.match(html, /function majVoyantMail/, 'le voyant a sa fonction');
+  // Le voyant : icône de remplacement + compteur, par le mécanisme partagé avec
+  // les événements (cf. test/lightEvents.test.js).
+  assert.match(html, /majVoyant\("Mail", mailNonLus\)/, 'le voyant est mis à jour');
   assert.match(html, /voyant: "MailRecu"/, 'l\'icône d\'alerte est déclarée');
   assert.match(html, /sc-compte/, 'un compteur s\'accroche au raccourci');
 

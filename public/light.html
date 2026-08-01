@@ -653,6 +653,45 @@
   }
   .mail-erreur { min-height: 16px; margin-top: 7px; font-size: 12px; color: #C0392B; }
   .mail-erreur.ok { color: #4B7A18; }
+  /* ── Évènements ──
+     Les annonces du site, la plus récente en tête. Chaque ligne porte le visuel
+     de son type (les images d'origine du SWF, 51 à 64 px) : c'est ce qui rend la
+     liste lisible d'un coup d'œil, là où quatre lignes de texte se ressemblent. */
+  #evt-panel { padding: 0; background: #CCF599; }
+  #evt-head {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 10px 12px; background: #FEABAB; border-bottom: 1px solid #DDDDDD;
+    box-shadow: 0 1px 3px rgba(44,74,15,.18);
+  }
+  #evt-head .titre { font-weight: bold; font-size: 14px; color: #7a1f1f; }
+  #evt-compte { font-size: 11.5px; color: #7a1f1f; opacity: .85; }
+  #evt-liste {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 10px 10px 18px;
+  }
+  .evt-item {
+    display: flex; gap: 10px; align-items: flex-start; background: #fff;
+    border: 1px solid #B7DD84; border-radius: 10px; padding: 9px 11px; margin-bottom: 8px;
+  }
+  /* Le visuel garde ses proportions d'origine (elles varient d'un type à l'autre)
+     dans une case de taille fixe, pour que les textes restent alignés. */
+  .evt-item .vis {
+    flex: 0 0 46px; width: 46px; height: 46px; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .evt-item .vis img { max-width: 100%; max-height: 100%; display: block; }
+  .evt-item .txt { flex: 1 1 auto; min-width: 0; }
+  .evt-item .l1 { display: flex; align-items: baseline; gap: 6px; }
+  .evt-item .genre { font-weight: bold; font-size: 11.5px; color: #4B7A18;
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .evt-item .quand { flex: 0 0 auto; font-size: 10.5px; color: #7d9a5a; }
+  .evt-item .corps { font-size: 13px; color: #2C4A0F; line-height: 1.35; margin-top: 3px;
+    word-break: break-word; }
+  /* Non consulté : même liseré vert vif que le courrier neuf. */
+  .evt-item.neuf { border-color: #8CCB3F; box-shadow: inset 3px 0 0 #8CCB3F; }
+  .evt-item.neuf .corps { font-weight: bold; }
+  .evt-vide, .evt-charge { text-align: center; color: #4B7A18; font-size: 13px; padding: 26px 12px; }
+
   /* Voyant de la messagerie sur le raccourci de l'accueil : l'icône change (le
      bac à courrier de main.swf remplace l'enveloppe) et un compteur s'y accroche. */
   .sc-btn { position: relative; }
@@ -1255,6 +1294,14 @@
     </div>
   </section>
 
+  <!-- Évènements — les annonces du site (user.siteLog côté serveur), celles-là
+       mêmes que le bureau reçoit dans <sl> à l'ident et par la trame <bl> en
+       direct. Chaque type a son visuel d'origine, extrait du SWF. -->
+  <section class="panel" id="evt-panel">
+    <div id="evt-head"><span class="titre">Événements</span><span id="evt-compte"></span></div>
+    <div id="evt-liste"></div>
+  </section>
+
   <!-- Trombinoscope — annuaire des Frutiz (pseudo + bouille), trié alpha par le
        serveur. Barre de recherche en tête, grille scrollable de bouilles. -->
   <section class="panel" id="trombi-panel">
@@ -1685,13 +1732,37 @@
   // L'enveloppe verte au repos (Mail.svg) est la forme #420, celle de la bande
   // d'icônes de raccourcis (sprite #427).
   var HOME_SHORTCUTS = [
-    { file: "Mail",       name: "Messagerie", go: "mail", voyant: "MailRecu" },
-    { file: "Warning",    name: "Événements" },
+    { file: "Mail",       name: "Messagerie", go: "mail",       voyant: "MailRecu",      mot: "message" },
+    { file: "Warning",    name: "Événements", go: "evenements", voyant: "WarningAlerte", mot: "événement" },
     { file: "Historique", name: "Historique" },
     { file: "Aide",       name: "Aide" },
     { file: "Forum",      name: "Forum", go: "forum" },
     { file: "Jeux",       name: "Jeux", go: "disques" },
   ];
+  function raccourci(fichier) {
+    for (var i = 0; i < HOME_SHORTCUTS.length; i++)
+      if (HOME_SHORTCUTS[i].file === fichier) return HOME_SHORTCUTS[i];
+    return null;
+  }
+  // Voyant d'un raccourci : l'icône passe à sa variante d'alerte et un compteur
+  // s'y accroche. Deux rubriques s'en servent (courrier, événements) — une seule
+  // mécanique, pour qu'elles ne divergent pas.
+  function majVoyant(fichier, n) {
+    var b = document.querySelector('#home-shortcuts .sc-btn[data-sc="' + fichier + '"]');
+    var def = raccourci(fichier);
+    if (!b || !def) return;
+    var img = b.querySelector("img");
+    if (img) {
+      var src = "/fb/" + ((n > 0 && def.voyant) ? def.voyant : def.file) + ".svg";
+      if (img.getAttribute("src") !== src) img.setAttribute("src", src);
+    }
+    var p = b.querySelector(".sc-compte");
+    if (!n) { if (p) p.remove(); b.title = def.name; return; }
+    if (!p) { p = el("span", "sc-compte"); b.appendChild(p); }
+    p.textContent = n > 99 ? "99+" : String(n);
+    b.title = def.name + " — " + n + " " + (def.mot || "élément") + (n > 1 ? "s" : "")
+      + " non lu" + (n > 1 ? "s" : "");
+  }
   var homeProfile = { bouille: DEFAULT_BOUILLE, level: 1, xp: 0, rank: null, kikooz: 0 };
 
   // Taux de complétion du niveau EN COURS — réplique EXACTE de main.swf
@@ -1774,7 +1845,10 @@
         });
         sc.appendChild(b);
       });
-      majVoyantMail();   // l'icône peut déjà devoir signaler du courrier
+      // Les icônes peuvent déjà avoir à signaler quelque chose (le profil a pu
+      // répondre avant que la grille ne soit construite).
+      majVoyant("Mail", mailNonLus);
+      majVoyant("Warning", evtNonLus);
     }
   }
   function loadHomeProfile() {
@@ -1788,7 +1862,8 @@
           homeProfile.xp = Number(d.xp) || 0;
           homeProfile.rank = (d.rank != null) ? Number(d.rank) : null;
           homeProfile.kikooz = Number(d.kikooz) || 0;
-          setMailNonLus(d.mailUnread);       // voyant de la messagerie
+          setMailNonLus(d.mailUnread);       // voyants messagerie…
+          setEvtNonLus(d.eventsUnread);      // …et événements
           state.ownedFeutres = Array.isArray(d.ownedFeutres) ? d.ownedFeutres : [];
           if (d.bouille) state.bouilleByUser[state.userLower] = d.bouille;
           var lv = $("#home-level"); if (lv) lv.textContent = homeProfile.level;
@@ -1940,6 +2015,7 @@
     $("#scores-panel").classList.toggle("active", tab === "scores");
     $("#trombi-panel").classList.toggle("active", tab === "trombi");
     $("#mail-panel").classList.toggle("active", tab === "mail");
+    $("#evt-panel").classList.toggle("active", tab === "evenements");
     // Chargements paresseux (1re ouverture, gardés en mémoire ensuite). On reste
     // sur /light, donc la socket de chat de la page parente n'est jamais coupée
     // pendant qu'on consulte le forum / joue / regarde les scores.
@@ -1974,6 +2050,8 @@
     // écrire (ecrireMail passe par activateTab avant d'afficher son formulaire —
     // un loadMail ici le remplacerait aussitôt par la liste).
     if (tab === "mail" && !mailVersRedaction) loadMail();
+    // Les annonces tombent à tout moment : on recharge à chaque ouverture.
+    if (tab === "evenements") loadEvenements();
   }
 
   // ── Mes disques (feuille de lancement des jeux) ──
@@ -2211,30 +2289,13 @@
   var mailLu = null;               // courrier ouvert en lecture
   var mailVersRedaction = false;   // garde-fou : cf. activateTab("mail")
 
-  // Le voyant : l'icône du raccourci passe de l'enveloppe au bac à courrier dès
-  // qu'un message attend, avec le nombre en pastille. Les deux formes viennent
-  // du même jeu d'icônes de main.swf, donc le changement se lit tout de suite.
-  function majVoyantMail() {
-    var b = document.querySelector('#home-shortcuts .sc-btn[data-sc="Mail"]');
-    if (!b) return;
-    var img = b.querySelector("img");
-    var def = HOME_SHORTCUTS[0];
-    if (img) {
-      var fichier = (mailNonLus > 0 && def.voyant) ? def.voyant : def.file;
-      var src = "/fb/" + fichier + ".svg";
-      if (img.getAttribute("src") !== src) img.setAttribute("src", src);
-    }
-    var p = b.querySelector(".sc-compte");
-    if (!mailNonLus) { if (p) p.remove(); b.title = def.name; return; }
-    if (!p) { p = el("span", "sc-compte"); b.appendChild(p); }
-    p.textContent = mailNonLus > 99 ? "99+" : String(mailNonLus);
-    b.title = def.name + " — " + mailNonLus + " message" + (mailNonLus > 1 ? "s" : "") + " non lu" + (mailNonLus > 1 ? "s" : "");
-  }
+  // Le voyant : l'icône du raccourci passe de l'enveloppe verte à l'enveloppe
+  // d'alerte rouge dès qu'un message attend, avec le nombre en pastille.
   function setMailNonLus(n) {
     var v = Math.max(0, Number(n) || 0);
     if (v === mailNonLus) return;
     mailNonLus = v;
-    majVoyantMail();
+    majVoyant("Mail", mailNonLus);
     majOngletsMail();
   }
   function majOngletsMail() {
@@ -2419,6 +2480,100 @@
     ecrireMail(mailLu.from || "", /^re\s*:/i.test(s) ? s : ("Re : " + (s || "(sans sujet)")));
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // Événements
+  //
+  // Les annonces du site. Comme pour la messagerie, la source est unique :
+  // user.siteLog côté serveur, que le bureau reçoit dans <sl> à l'ident et par
+  // la trame <bl> en direct, et que le mobile lit en JSON.
+  //
+  // Chaque type d'annonce a son visuel d'origine (le tam-tam de l'information,
+  // le maillet de la maintenance, la bande de fruits des nouveautés, le soleil
+  // des nouveaux jeux) : c'est le serveur qui nomme le fichier, pour que les
+  // deux bouts ne puissent pas diverger sur la correspondance type → image.
+  // ══════════════════════════════════════════════════════════════════════════
+  var evtNonLus = 0;      // compteur du voyant
+  var evtListe = [];      // dernier listing reçu
+  var evtCharge = false;  // au moins un chargement réussi
+
+  function setEvtNonLus(n) {
+    var v = Math.max(0, Number(n) || 0);
+    if (v === evtNonLus) return;
+    evtNonLus = v;
+    majVoyant("Warning", evtNonLus);
+  }
+  // « 2026-08-01 14:32:05 » → « 1er août, 14:32 » (aujourd'hui : juste l'heure).
+  var MOIS = ["janvier", "février", "mars", "avril", "mai", "juin",
+              "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+  function evtDate(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ""));
+    if (!m) return String(s || "");
+    var d = new Date();
+    if (d.getFullYear() === +m[1] && (d.getMonth() + 1) === +m[2] && d.getDate() === +m[3])
+      return m[4] + ":" + m[5];
+    var jour = +m[3];
+    return (jour === 1 ? "1er" : jour) + " " + MOIS[+m[2] - 1]
+      + (d.getFullYear() === +m[1] ? "" : " " + m[1]) + ", " + m[4] + ":" + m[5];
+  }
+  function loadEvenements() {
+    var box = $("#evt-liste");
+    if (box && !evtCharge) box.innerHTML = '<div class="evt-charge">Chargement…</div>';
+    fetch("/api/light/events?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) throw new Error("ko");
+        evtListe = d.events || [];
+        evtCharge = true;
+        renderEvenements();
+        // Ouvrir la rubrique vaut consultation : on éteint le voyant, ici et au
+        // serveur (le bureau fait de même à l'ident). Tant qu'on n'ouvre pas, le
+        // compteur tient — c'est tout l'intérêt d'un voyant.
+        if (d.unread > 0) {
+          fetch("/api/light/events/read", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sid: state.sid }),
+          }).catch(function () {});
+        }
+        setEvtNonLus(0);
+      })
+      .catch(function () {
+        if (box && !evtCharge) box.innerHTML = '<div class="evt-vide">Événements indisponibles pour le moment.</div>';
+      });
+  }
+  function renderEvenements() {
+    var box = $("#evt-liste"), tete = $("#evt-compte");
+    if (!box) return;
+    if (tete) tete.textContent = evtListe.length
+      ? evtListe.length + " annonce" + (evtListe.length > 1 ? "s" : "") : "";
+    if (!evtListe.length) {
+      box.innerHTML = '<div class="evt-vide">Aucune annonce pour le moment.<br>'
+        + 'C\'est ici qu\'arriveront les nouveautés du parc.</div>';
+      return;
+    }
+    box.innerHTML = "";
+    evtListe.forEach(function (e) {
+      var it = el("div", "evt-item" + (e.nouveau ? " neuf" : ""));
+      // Le visuel manquant ne doit pas laisser un trou : on retombe sur celui de
+      // l'information générale, jamais sur une image cassée.
+      it.innerHTML = '<div class="vis"><img src="/fb/' + xmlEscape(e.kind || "evt_info") + '.svg" alt="" '
+        + 'onerror="this.onerror=null;this.src=\'/fb/evt_info.svg\'"></div>'
+        + '<div class="txt"><div class="l1">'
+        + '<span class="genre">' + xmlEscape(e.kindLabel || "Information") + '</span>'
+        + '<span class="quand">' + xmlEscape(evtDate(e.date)) + '</span></div>'
+        + '<div class="corps">' + xmlEscape(e.text || "") + '</div></div>';
+      box.appendChild(it);
+    });
+    box.scrollTop = 0;
+  }
+  // Interrogation du compteur seul (au boot et à la reconnexion).
+  function rafraichirCompteurEvt() {
+    if (!state.sid) return;
+    fetch("/api/light/events?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok) setEvtNonLus(d.unread); })
+      .catch(function () {});
+  }
+
   // ── Logout ── (the "Quitter" menu item was removed from the light client.)
 
   // ── WebSocket (CBee bridge at "/") ──
@@ -2518,10 +2673,11 @@
         // L'ident vient de créditer (le cas échéant) la récompense quotidienne :
         // on rafraîchit le bandeau de série pour refléter le gain du jour.
         loadDailyStatus();
-        // Le courrier arrivé pendant que la socket était coupée (le navigateur
+        // Ce qui est arrivé pendant que la socket était coupée (le navigateur
         // mobile la ferme dès qu'on passe en arrière-plan) n'a poussé aucune
-        // trame <ax> : on redemande le compteur pour que le voyant soit juste.
+        // trame : on redemande les compteurs pour que les voyants soient justes.
         rafraichirCompteurMail();
+        rafraichirCompteurEvt();
         break;
 
       case "o": // join confirmed: <o g="room" p="">...</o>
@@ -2757,6 +2913,20 @@
         // toute seule ; sinon le voyant suffit.
         if ($("#mail-panel").classList.contains("active")
           && $("#mail-vue-liste").classList.contains("on") && mailDossier === "inbox") loadMail();
+        break;
+      }
+
+      // ── Annonce du site ──
+      // <bl date="…" type="…">texte</bl>, poussée à tout le monde quand
+      // l'administration diffuse un événement. Même trame que celle qu'écoute
+      // main.swf. On allume le voyant et on l'annonce dans le fil : une annonce
+      // qui n'attend qu'on ouvre une rubrique pour être vue rate son objet.
+      case "bl": {
+        var texteEvt = xmlUnescape(bodyOf(xml));
+        setEvtNonLus(evtNonLus + 1);
+        if (texteEvt) systemLine("📣 " + texteEvt);
+        // Rubrique ouverte : la liste se met à jour toute seule.
+        if ($("#evt-panel").classList.contains("active")) loadEvenements();
         break;
       }
 

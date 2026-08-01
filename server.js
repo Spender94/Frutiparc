@@ -14633,6 +14633,83 @@ app.post('/api/light/mail/delete', (req, res) => {
   res.json({ ok: true, unread: unreadInboxCount(user) });
 });
 
+// ─────────────────────────────────────────────
+// Évènements du mobile (/light)
+//
+// Même principe que la messagerie : une seule source, deux façades. Les
+// évènements vivent dans user.siteLog (voir addSiteHistoryEntry et
+// /api/admin/broadcast) ; le bureau les reçoit en XML dans <sl> à l'ident, et
+// en direct par la trame <bl>. Le mobile lit la même liste en JSON.
+//
+// Le drapeau « non lu » (entry.n) est transitoire : /do/onident l'efface dès
+// qu'il a livré les entrées au bureau. Ici on ne l'efface PAS à la lecture de la
+// liste, seulement quand le joueur ouvre vraiment la rubrique — sinon le voyant
+// s'éteindrait en arrière-plan, avant d'avoir servi à quoi que ce soit.
+// ─────────────────────────────────────────────
+
+// Type d'entrée → visuel. Les quatre premiers sont les types que diffuse
+// l'administration (SITE_LOG_ICONS), avec le numéro de frame du sprite 576 du
+// SWF ; le cinquième est le message de bienvenue, qui utilise le type
+// INSCRIPTION de l'historique. Les visuels sont les images d'origine, extraites
+// par scripts/extract-swf-bitmaps.js.
+const LIGHT_EVENT_KINDS = {
+  1:  { icone: 'evt_info',        titre: 'Information' },
+  11: { icone: 'evt_technique',   titre: 'Info technique' },
+  20: { icone: 'evt_nouveaute',   titre: 'Nouveauté' },
+  21: { icone: 'evt_jeu',         titre: 'Nouveau jeu' },
+  40: { icone: 'evt_inscription', titre: 'Inscription' },
+};
+const LIGHT_EVENT_DEFAULT = LIGHT_EVENT_KINDS[1];
+
+function lightEventRows(user) {
+  const list = Array.isArray(user && user.siteLog) ? user.siteLog : [];
+  return list
+    .slice()
+    .sort((a, b) => String(b.d || '').localeCompare(String(a.d || '')))
+    .map((e, i) => {
+      const t = Number(e.t) || 1;
+      const kind = LIGHT_EVENT_KINDS[t] || LIGHT_EVENT_DEFAULT;
+      return {
+        // siteLog n'a pas d'identifiant propre : date + rang suffisent à
+        // distinguer deux entrées côté client (ouverture, animation).
+        id: `${e.d || ''}#${i}`,
+        date: String(e.d || ''),
+        type: t,
+        kind: kind.icone,
+        kindLabel: kind.titre,
+        text: String(e.c || ''),
+        nouveau: Number(e.n) === 1,
+      };
+    });
+}
+function lightEventUnread(user) {
+  const list = Array.isArray(user && user.siteLog) ? user.siteLog : [];
+  return list.filter((e) => Number(e.n) === 1).length;
+}
+
+app.get('/api/light/events', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ error: 'auth' });
+  const user = users[username] || {};
+  const events = lightEventRows(user);
+  res.json({ ok: true, events, unread: lightEventUnread(user) });
+});
+
+// Marquer la rubrique comme consultée. Le bureau fait la même chose à l'ident
+// (clearTransientNewFlag) ; on garde le même effet en base pour que les deux
+// clients restent d'accord sur ce qui a déjà été vu.
+app.post('/api/light/events/read', (req, res) => {
+  const corps = req.body || {};
+  const username = resolveUsernameFromSid(corps.sid || req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username];
+  if (Array.isArray(user && user.siteLog)) {
+    for (const e of user.siteLog) if (Number(e.n) === 1) delete e.n;
+  }
+  if (user && user._dbId) db.clearUserLogNewFlag(user._dbId, 'site').catch(dbErr('clearUserLogNewFlag'));
+  res.json({ ok: true, unread: 0 });
+});
+
 // Profil mobile (/light) : tout ce qu'affiche la « main bar » de l'accueil —
 // la bouille du joueur (pour l'avatar), son niveau (dérivé de l'XP, même formule
 // que partout : getLevelForXp), son solde de kikooz et son total de trophées
@@ -14673,8 +14750,10 @@ app.get('/api/light/profile', async (req, res) => {
     kikooz: Number(u.kikooz) || 0,
     medals,
     // Courriers non lus : le voyant de la messagerie doit être juste dès le
-    // premier écran, sans attendre qu'on ouvre la boîte.
+    // premier écran, sans attendre qu'on ouvre la boîte. Idem pour les
+    // évènements non consultés.
     mailUnread: unreadInboxCount(u),
+    eventsUnread: lightEventUnread(u),
     // Feutres spéciaux possédés (pour afficher la pastille dédiée dans la palette).
     ownedFeutres: Array.isArray(u.ownedFeutres) ? u.ownedFeutres.slice() : [],
   });
