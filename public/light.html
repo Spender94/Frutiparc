@@ -481,6 +481,22 @@
     font-size: 10px; font-weight: bold; background: #242169; color: #fff;
     border-radius: 8px; padding: 1px 6px; letter-spacing: 0; text-shadow: none; flex-shrink: 0;
   }
+  /* Un pseudo sur lequel on peut appuyer pour écrire en privé. L'enveloppe dit
+     ce que le simple texte ne disait pas : que la ligne est un bouton. */
+  #users-drawer .u.mp { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #users-drawer .u.mp::after {
+    content: "\2709"; font-size: 18px; font-weight: 400; color: #6c8f3a;
+    flex-shrink: 0; line-height: 1;
+  }
+  #users-drawer .u.mp:active { background: #c7f09a; }
+  /* Pastille « des messages privés non lus » sur l'icône des connectés : elle
+     doit se voir même quand le tiroir et le sélecteur sont fermés. */
+  #users-btn.a-lire { position: relative; }
+  #users-btn.a-lire::after {
+    content: ""; position: absolute; top: 2px; right: 2px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #e63b3b; box-shadow: 0 0 0 2px #fff;
+  }
   #drawer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.25); z-index: 25; display: none; }
   #drawer-backdrop.show { display: block; }
 
@@ -1178,6 +1194,13 @@
     roomCounts: {},    // room id -> participant count (from channellist <q>)
     roomLabels: {},    // room id -> live admin label (from channellist <q><desc>)
     bouillesEnabled: true, // show the bouille reaction overlay (off = "light" mode)
+    // ── Discussions privées ──
+    // Le protocole les traite comme des salons, nommés "pm2_<a>__<b>". On garde
+    // ici, par identifiant de salon, avec qui on parle, le mot de passe transmis
+    // par le serveur et le nombre de messages pas encore lus. À la différence
+    // des salons publics, on ne les QUITTE jamais : rester abonné est ce qui
+    // permet de recevoir la suite de la conversation pendant qu'on lit ailleurs.
+    prives: {},        // id de salon -> { avec: "Pseudo", pass: "", nonLus: 0 }
   };
 
   var DEFAULT_BOUILLE = "000000010000000000000000";
@@ -1190,14 +1213,61 @@
     if (!sel) return;
     var current = sel.value || (state && state.room) || ROOMS[0][0];
     sel.innerHTML = "";
+    var gSalons = document.createElement("optgroup");
+    gSalons.label = "Salons";
     ROOMS.forEach(function (r) {
       var n = state.roomCounts[r[0]] || 0;
       var o = document.createElement("option");
       o.value = r[0];
       o.textContent = roomLabel(r[0]) + (n > 0 ? " (" + n + ")" : "");
-      sel.appendChild(o);
+      gSalons.appendChild(o);
     });
+    sel.appendChild(gSalons);
+    // Discussions privées ouvertes pendant la session, avec leur compte de
+    // messages non lus — c'est le seul endroit où elles sont visibles, d'où le
+    // badge : sans lui, un message reçu pendant qu'on est dans un salon passerait
+    // inaperçu.
+    var ids = Object.keys(state.prives);
+    if (ids.length) {
+      var gPrives = document.createElement("optgroup");
+      gPrives.label = "Messages privés";
+      ids.sort(function (a, b) {
+        return state.prives[a].avec.toLowerCase().localeCompare(state.prives[b].avec.toLowerCase());
+      }).forEach(function (id) {
+        var c = state.prives[id];
+        var o = document.createElement("option");
+        o.value = id;
+        o.textContent = c.avec + (c.nonLus > 0 ? " (" + c.nonLus + " nouveau" + (c.nonLus > 1 ? "x" : "") + ")" : "");
+        gPrives.appendChild(o);
+      });
+      sel.appendChild(gPrives);
+    }
     sel.value = current;
+  }
+
+  // ── Discussions privées ───────────────────────────────────────────────────
+  // Un salon privé porte un identifiant "pm2_<a>__<b>" ; le serveur le crée à la
+  // demande et y abonne les deux participants. Côté page, il suffit de le retenir
+  // pour l'afficher dans le sélecteur et router ses messages.
+  function estPrive(id) {
+    return String(id || "").indexOf("pm_") === 0 || String(id || "").indexOf("pm2_") === 0;
+  }
+  function retenirPrive(id, avec, pass) {
+    if (!id) return null;
+    if (!state.prives[id]) state.prives[id] = { avec: avec || "?", pass: pass || "", nonLus: 0 };
+    else {
+      if (avec) state.prives[id].avec = avec;
+      if (pass) state.prives[id].pass = pass;
+    }
+    renderRoomOptions();
+    return state.prives[id];
+  }
+  // Ouvre (ou rouvre) une discussion avec un joueur. Le serveur répond par un
+  // <r> qui porte l'identifiant du salon — c'est lui qui décide du nom, pas nous.
+  function ouvrirPrive(pseudo) {
+    var p = String(pseudo || "").trim();
+    if (!p || p.toLowerCase() === state.userLower) return;
+    wsSend('<r u="' + xmlEscape(p) + '" r="mp' + Date.now() + '" />');
   }
 
   // ── XML helpers (CBee protocol) ──
@@ -2022,6 +2092,7 @@
         // ident OK → join the current/default room, then ask for the room list
         // (participant counts) and refresh it periodically.
         switchRoom($("#room-select").value || ROOMS[0][0]);
+        rejoindreLesPrives();
         requestChannelList();
         startChannelListPolling();
         // L'ident vient de créditer (le cas échéant) la récompense quotidienne :
@@ -2083,7 +2154,7 @@
           rememberBouille(uj, attr(xml, "f"));
           if (!state.usersByRoom[rj]) state.usersByRoom[rj] = {};
           state.usersByRoom[rj][uj] = true;
-          if (rj === state.room) { renderUsers(); systemLine(uj + " a rejoint le salon."); }
+          if (rj === state.room) { renderUsers(); systemLine(uj + (estPrive(rj) ? " est là." : " a rejoint le salon.")); }
         }
         break;
       }
@@ -2092,12 +2163,26 @@
         var rl = attr(xml, "g"); var ul = attr(xml, "u");
         if (rl && state.usersByRoom[rl]) {
           delete state.usersByRoom[rl][ul];
-          if (rl === state.room) { renderUsers(); systemLine(ul + " a quitté le salon."); }
+          if (rl === state.room) { renderUsers(); systemLine(ul + (estPrive(rl) ? " s'est déconnecté(e)." : " a quitté le salon.")); }
         }
         break;
       }
 
-      case "t": { // chat message: <t u="from" t="m" h="[hh:mm:ss] " ...>body</t>
+      case "t": { // chat message: <t u="from" t="m" g="salon" h="[hh:mm:ss] " ...>body</t>
+        // Une seule conversation est à l'écran, mais la socket reste abonnée aux
+        // discussions privées ouvertes : sans ce tri, un message privé s'écrirait
+        // au milieu du salon public (et réciproquement). Les trames sans `g`
+        // (annonces globales) restent affichées telles quelles.
+        var salon = attr(xml, "g");
+        if (salon && salon !== state.room) {
+          var conv = state.prives[salon];
+          if (conv && !(conv.sourdineJusqua > Date.now())) {
+            conv.nonLus += 1;
+            renderRoomOptions();
+            majPastilleMp();
+          }
+          break;
+        }
         var from = attr(xml, "u");
         var ty = attr(xml, "t") || "m";
         var h = attr(xml, "h");
@@ -2189,6 +2274,43 @@
         break;
       }
 
+      // ── Ouverture d'une discussion privée, demandée par nous ──
+      // Réponse du serveur à <r u="pseudo"> : soit l'identifiant du salon privé,
+      // soit un refus. 201 = le joueur n'est pas connecté ; le bureau propose
+      // alors un e-mail, on se contente de le dire.
+      case "r": {
+        var refus = attr(xml, "k");
+        var avecQui = xmlUnescape(attr(xml, "u"));
+        if (refus) {
+          systemLine(refus === "201"
+            ? (avecQui || "Ce joueur") + " n'est pas connecté(e) pour le moment."
+            : "Impossible d'ouvrir la discussion privée.");
+          break;
+        }
+        var idSalon = attr(xml, "g");
+        if (!idSalon) break;
+        retenirPrive(idSalon, avecQui, attr(xml, "p"));
+        switchRoom(idSalon);
+        break;
+      }
+
+      // ── Invitation reçue : quelqu'un nous écrit en privé ──
+      // Le serveur nous a déjà abonnés au salon ; on l'enregistre pour qu'il
+      // apparaisse dans le sélecteur. On ne bascule PAS de force : interrompre
+      // quelqu'un qui lit ou écrit ailleurs serait plus gênant qu'utile — on
+      // signale, il ouvre quand il veut.
+      case "s": {
+        var idInvite = attr(xml, "g");
+        var deQui = xmlUnescape(attr(xml, "u"));
+        if (!idInvite) break;
+        var dejaLa = !!state.prives[idInvite];
+        retenirPrive(idInvite, deQui, attr(xml, "p"));
+        if (idInvite === state.room) break;
+        if (!dejaLa) systemLine(deQui + " t'écrit en privé — ouvre « " + deQui + " » dans la liste des salons.");
+        majPastilleMp();
+        break;
+      }
+
       case "an": { // topic change — show as a system line
         var t = bodyOf(xml);
         if (t) systemLine("Sujet : " + xmlUnescape(t));
@@ -2231,15 +2353,48 @@
   // ── Room switching ──
   function switchRoom(room) {
     if (!room) return;
-    if (state.room && state.room !== room) {
-      wsSend('<y g="' + xmlEscape(state.room) + '" />'); // part previous
+    // On quitte le salon public qu'on laisse — mais JAMAIS une discussion privée :
+    // y rester abonné est ce qui permet de recevoir la suite pendant qu'on lit
+    // ailleurs, et donc d'afficher un badge « nouveau ».
+    if (state.room && state.room !== room && !estPrive(state.room)) {
+      wsSend('<y g="' + xmlEscape(state.room) + '" />');
     }
     state.room = room;
+    var conv = state.prives[room];
+    if (conv) { conv.nonLus = 0; majPastilleMp(); }
+    renderRoomOptions();
     $("#room-select").value = room;
     clearMessages();
-    systemLine("— Salon " + roomLabel(room) + " —");
-    wsSend('<o g="' + xmlEscape(room) + '" />'); // join
+    systemLine("— " + (conv ? "Discussion privée avec " + conv.avec : roomLabel(room)) + " —");
+    // Le mot de passe transmis par le serveur accompagne le join d'un salon privé.
+    wsSend('<o g="' + xmlEscape(room) + '"' + (conv && conv.pass ? ' p="' + xmlEscape(conv.pass) + '"' : '') + ' />');
     renderUsers();
+  }
+
+  // Après une reconnexion (le navigateur mobile coupe la socket dès qu'on passe
+  // en arrière-plan), les abonnements du serveur sont perdus : on se réinscrit
+  // aux discussions ouvertes, sinon leurs messages n'arriveraient plus.
+  // Le join déclenche le rejeu des dernières minutes ; on met la conversation en
+  // sourdine le temps qu'il passe, sinon des messages DÉJÀ LUS gonfleraient le
+  // compteur de non-lus. Aucun message n'est perdu pour autant : il est dans
+  // l'historique, et s'affiche à l'ouverture de la conversation.
+  function rejoindreLesPrives() {
+    for (var id in state.prives) {
+      if (id === state.room) continue;
+      var c = state.prives[id];
+      c.sourdineJusqua = Date.now() + 2000;
+      wsSend('<o g="' + xmlEscape(id) + '"' + (c.pass ? ' p="' + xmlEscape(c.pass) + '"' : '') + ' />');
+    }
+  }
+
+  // Pastille sur l'icône « connectés » : un point tant qu'une discussion privée
+  // a des messages non lus, pour que l'information existe même quand le
+  // sélecteur est fermé.
+  function majPastilleMp() {
+    var total = 0;
+    for (var id in state.prives) total += state.prives[id].nonLus || 0;
+    var btn = $("#users-btn");
+    if (btn) btn.classList.toggle("a-lire", total > 0);
   }
 
   // ── Messages UI ──
@@ -2406,8 +2561,18 @@
       var u = el("div", "u");
       var nm = el("span"); nm.textContent = n;
       u.appendChild(nm);
-      if (n.toLowerCase() === state.userLower) {
+      var moi = (n.toLowerCase() === state.userLower);
+      if (moi) {
         var b = el("span", "badge"); b.textContent = "toi"; u.appendChild(b);
+      } else {
+        // Appuyer sur un pseudo ouvre la discussion privée : c'est le seul geste
+        // à connaître, et il tombe là où le joueur cherche déjà ses interlocuteurs.
+        u.classList.add("mp");
+        u.title = "Écrire à " + n + " en privé";
+        u.addEventListener("click", function () {
+          openDrawer(false);
+          ouvrirPrive(n);
+        });
       }
       list.appendChild(u);
     });
