@@ -14475,6 +14475,164 @@ app.get('/api/light/challenge', async (req, res) => {
   res.json({ day: parisDayKey(), yesterday, games });
 });
 
+// ─────────────────────────────────────────────
+// Messagerie interne du mobile (/light)
+//
+// Le bureau parle à la messagerie en XML, par une pile de routes taillées pour
+// l'AS2 : /ff/ls pour lister un dossier, /ff/get pour lire un corps, /fm/sendmail
+// pour envoyer, /ff/mv pour déplacer. Le mobile n'a pas besoin de cette
+// gymnastique — il lui faut du JSON. On expose donc quatre routes minces qui
+// s'appuient sur EXACTEMENT le même modèle (user.mails) et les mêmes fonctions de
+// livraison : un courrier envoyé du mobile arrive dans la boîte du bureau, et
+// inversement, parce qu'il n'y a qu'une seule boîte.
+//
+// Les dossiers exposés se limitent à ceux qui ont un sens sur un téléphone :
+// reçus, envoyés, indésirables. Les brouillons resteraient sans usage (on écrit
+// et on envoie dans la foulée), la corbeille sert de destination aux
+// suppressions.
+// ─────────────────────────────────────────────
+const LIGHT_MAIL_FOLDERS = new Set(['inbox', 'outbox', 'blackbox']);
+
+// Un courrier « allégé » pour la liste : de quoi afficher une ligne, sans
+// embarquer le corps (une boîte de 200 messages tiendrait sinon dans la réponse).
+function lightMailRow(m) {
+  const corps = String(m.body || '').replace(/\s+/g, ' ').trim();
+  return {
+    uid: m.uid,
+    from: m.from || (m.fromAddr || '').split('@')[0] || '',
+    to: Array.isArray(m.toAddrs) ? m.toAddrs.map((a) => String(a).split('@')[0]).join(', ')
+      : String(m.to || ''),
+    subject: m.subject || '',
+    date: normalizeMailDate(m.date) || '',
+    read: !!m.read,
+    extrait: corps.length > 90 ? corps.slice(0, 90) + '…' : corps,
+  };
+}
+
+// Liste d'un dossier, la plus récente d'abord, + le compteur de non-lus (le
+// client s'en sert pour le voyant de l'accueil sans redemander le profil).
+app.get('/api/light/mail', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ error: 'auth' });
+  const user = users[username];
+  ensureMails(user);
+  const dossier = LIGHT_MAIL_FOLDERS.has(String(req.query.folder || '')) ? String(req.query.folder) : 'inbox';
+  const liste = user.mails
+    .filter((m) => m.folder === dossier)
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+    .map(lightMailRow);
+  res.json({ ok: true, folder: dossier, mails: liste, unread: unreadInboxCount(user) });
+});
+
+// Lecture d'un courrier. L'ouvrir vaut lecture : on marque lu ici, exactement
+// comme /ff/ls le fait côté bureau, pour que le voyant s'éteigne des deux côtés.
+app.get('/api/light/mail/read', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ error: 'auth' });
+  const user = users[username];
+  const mail = findMail(user, String(req.query.uid || ''));
+  if (!mail) return res.status(404).json({ ok: false, error: 'Ce courrier n\'existe plus.' });
+  if (mail.folder === 'inbox' && !mail.read) {
+    mail.read = true;
+    if (user._dbId) db.updateMailRead(mail.uid, true).catch(dbErr('updateMailRead'));
+  }
+  res.json({
+    ok: true,
+    mail: Object.assign(lightMailRow(mail), { body: String(mail.body || ''), folder: mail.folder }),
+    unread: unreadInboxCount(user),
+  });
+});
+
+// Envoi. Le destinataire est saisi au pseudo (« alice ») ou à l'adresse
+// (« alice@frutiparc.com ») : les deux formes se ramènent au même compte.
+// Contrairement au bureau, qui avale silencieusement un destinataire inconnu,
+// on le signale — un courrier qui part dans le vide sans un mot est le genre de
+// détail qu'on ne découvre que trop tard.
+app.post('/api/light/mail/send', async (req, res) => {
+  const corps = req.body || {};
+  const username = resolveUsernameFromSid(corps.sid || req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username];
+  ensureMails(user);
+
+  const destBrut = String(corps.to || '').trim();
+  const sujet = String(corps.subject || '').trim().slice(0, 120);
+  const texte = String(corps.body || '').slice(0, 4000);
+  if (!destBrut) return res.json({ ok: false, error: 'Indique au moins un destinataire.' });
+  if (!texte.trim()) return res.json({ ok: false, error: 'Le message est vide.' });
+
+  // On résout AVANT d'envoyer : un pseudo mal orthographié doit se voir tout de
+  // suite, pas se deviner devant une boîte « Envoyés » qui n'a rien livré.
+  const adresses = parseRecipients(destBrut).map(normalizeContactAddress);
+  if (!adresses.length) return res.json({ ok: false, error: 'Destinataire illisible.' });
+  const connus = [], inconnus = [];
+  for (const a of adresses) {
+    const cible = await addressToUsername(a);
+    if (cible && users[cible]) connus.push(a); else inconnus.push(String(a).split('@')[0]);
+  }
+  if (!connus.length) {
+    return res.json({
+      ok: false,
+      error: inconnus.length === 1
+        ? `« ${inconnus[0]} » n'existe pas — vérifie l'orthographe du pseudo.`
+        : 'Aucun de ces destinataires n\'existe.',
+    });
+  }
+
+  // Même format de date que le bureau : FEDate.newFromString lit « YYYY-MM-DD
+  // HH:MM:SS » à coups d'offsets fixes, un autre format y afficherait NaN.
+  const maintenant = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const mail = {
+    uid: genMailUid(),
+    from: username,
+    fromAddr: username + '@frutiparc.com',
+    to: destBrut,
+    toAddrs: connus,
+    subject: sujet,
+    body: texte,
+    folder: 'outbox',
+    date: maintenant,
+    read: true,
+  };
+  user.mails.push(mail);
+  if (user._dbId) db.saveMail(user._dbId, mail).catch((e) => console.error('[DB] outbox save error:', e.message));
+
+  try {
+    await deliverMailToRecipients(mail, username);
+  } catch (e) {
+    console.error('[Mail] /light delivery error:', e.message);
+    return res.json({ ok: false, error: 'L\'envoi a échoué, réessaie.' });
+  }
+  console.log(`[Mail] ${username} (light) → ${connus.join(', ')} : ${sujet}`);
+  res.json({
+    ok: true,
+    uid: mail.uid,
+    livres: connus.map((a) => String(a).split('@')[0]),
+    ignores: inconnus,
+  });
+});
+
+// Suppression : premier passage vers la corbeille (rattrapable depuis le
+// bureau), second passage définitif — le mobile n'affiche pas la corbeille, la
+// garder indéfiniment ne ferait qu'enfler la base.
+app.post('/api/light/mail/delete', (req, res) => {
+  const corps = req.body || {};
+  const username = resolveUsernameFromSid(corps.sid || req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username];
+  const mail = findMail(user, String(corps.uid || ''));
+  if (!mail) return res.status(404).json({ ok: false, error: 'Ce courrier n\'existe plus.' });
+  if (mail.folder === 'recyclebin') {
+    user.mails = user.mails.filter((m) => m.uid !== mail.uid);
+    if (user._dbId) db.deleteMails([mail.uid]).catch((e) => console.error('[DB] mail delete error:', e.message));
+  } else {
+    mail.folder = 'recyclebin';
+    mail.read = true;
+    if (user._dbId) db.updateMailFolder(mail.uid, 'recyclebin').catch(dbErr('updateMailFolder'));
+  }
+  res.json({ ok: true, unread: unreadInboxCount(user) });
+});
+
 // Profil mobile (/light) : tout ce qu'affiche la « main bar » de l'accueil —
 // la bouille du joueur (pour l'avatar), son niveau (dérivé de l'XP, même formule
 // que partout : getLevelForXp), son solde de kikooz et son total de trophées
@@ -14514,6 +14672,9 @@ app.get('/api/light/profile', async (req, res) => {
     rank,
     kikooz: Number(u.kikooz) || 0,
     medals,
+    // Courriers non lus : le voyant de la messagerie doit être juste dès le
+    // premier écran, sans attendre qu'on ouvre la boîte.
+    mailUnread: unreadInboxCount(u),
     // Feutres spéciaux possédés (pour afficher la pastille dédiée dans la palette).
     ownedFeutres: Array.isArray(u.ownedFeutres) ? u.ownedFeutres.slice() : [],
   });

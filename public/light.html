@@ -313,6 +313,11 @@
   .msg .from { font-weight: bold; color: #2C4A0F; }
   .msg .from.me { color: #E3756A; }
   .msg.system { color: #6b8a3f; font-style: italic; font-size: 12.5px; }
+  /* Lien d'action dans une ligne système (« Lui écrire un courrier »). */
+  .sys-lien {
+    border: 0; background: transparent; padding: 0; font: inherit; font-style: italic;
+    color: #3C7A0F; font-weight: bold; text-decoration: underline; cursor: pointer;
+  }
   .msg.admin { color: #b23b2e; }
   .msg .body { color: #335511; }
   /* Cri modérateur ("!texte") — rouge vif gras, comme le desktop (#C10000). */
@@ -547,6 +552,117 @@
     flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
     padding: 8px 10px 16px;
   }
+
+  /* ── Messagerie ──
+     Même grammaire visuelle que les scores (bandeau corail collé en haut,
+     contenu vert scrollable), pour que le mobile reste d'un seul tenant. Les
+     trois vues (liste / lecture / rédaction) occupent tour à tour la place. */
+  #mail-panel { padding: 0; background: #CCF599; }
+  #mail-head {
+    flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    background: #FEABAB; border-bottom: 1px solid #DDDDDD;
+    box-shadow: 0 1px 3px rgba(44,74,15,.18);
+  }
+  #mail-tabs {
+    display: flex; gap: 6px; flex: 1 1 auto; min-width: 0; overflow-x: auto;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  #mail-tabs::-webkit-scrollbar { display: none; }
+  .mail-tab {
+    flex: 0 0 auto; padding: 6px 13px; border: 0; border-radius: 14px;
+    background: rgba(255,255,255,.35); color: #7a1f1f; font-weight: bold;
+    font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  }
+  .mail-tab.active { background: #fff; color: #D16767; box-shadow: 0 1px 2px rgba(44,74,15,.25); }
+  /* Compteur de non-lus accolé à l'onglet « Reçus ». */
+  .mail-tab .n {
+    display: inline-block; margin-left: 5px; min-width: 15px; padding: 0 4px;
+    border-radius: 999px; background: #D8402F; color: #fff; font-size: 10.5px; line-height: 15px;
+  }
+  #mail-new {
+    flex: 0 0 auto; border: 0; border-radius: 14px; padding: 6px 14px; cursor: pointer;
+    color: #7a1f1f; font-weight: bold; font-size: 12.5px;
+    background: linear-gradient(180deg, rgba(255,255,255,.75), rgba(255,255,255,.30));
+    box-shadow: 0 1px 2px rgba(122,31,31,.22);
+  }
+  /* Une seule vue affichée à la fois. */
+  .mail-vue { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+  .mail-vue.on { display: flex; }
+  #mail-liste {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 8px 10px 16px;
+  }
+  .mail-item {
+    display: block; width: 100%; text-align: left; border: 1px solid #B7DD84;
+    background: #fff; border-radius: 10px; padding: 8px 10px; margin-bottom: 7px;
+    cursor: pointer; font: inherit; color: #2C4A0F;
+  }
+  .mail-item .l1 { display: flex; align-items: baseline; gap: 6px; }
+  .mail-item .qui { font-weight: bold; color: #4B7A18; flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mail-item .quand { flex: 0 0 auto; font-size: 10.5px; color: #7d9a5a; }
+  .mail-item .obj { font-size: 13px; margin-top: 2px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .mail-item .apercu { font-size: 11.5px; color: #6d8a4c; margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Non lu : liseré vert vif + objet en gras — repérable d'un coup d'œil. */
+  .mail-item.neuf { border-color: #8CCB3F; box-shadow: inset 3px 0 0 #8CCB3F; }
+  .mail-item.neuf .obj { font-weight: bold; }
+  .mail-vide, .mail-charge {
+    text-align: center; color: #4B7A18; font-size: 13px; padding: 26px 12px;
+  }
+  .mail-entete { flex-shrink: 0; padding: 10px 12px 8px; background: #E4F7C4;
+    border-bottom: 1px solid #B7DD84; }
+  .ml-sujet { font-weight: bold; color: #2C4A0F; font-size: 14px; word-break: break-word; }
+  .ml-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 3px;
+    font-size: 11.5px; color: #6d8a4c; }
+  .mail-corps {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 12px; font-size: 13.5px; line-height: 1.45; color: #2C4A0F;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .mail-actions {
+    flex-shrink: 0; display: flex; gap: 8px; padding: 8px 10px;
+    background: #fff; border-top: 1px solid #DDD;
+  }
+  .ma-btn {
+    flex: 1 1 0; border: 0; border-radius: 12px; padding: 9px 6px; cursor: pointer;
+    font-weight: bold; font-size: 13px; color: #7a1f1f;
+    background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0) 52%), linear-gradient(180deg, #FEB7B7, #F58E8E);
+    box-shadow: 0 1px 2px rgba(122,31,31,.22), inset 0 1px 0 rgba(255,255,255,.55);
+  }
+  .ma-btn.primaire {
+    color: #2C4A0F;
+    background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0) 52%), linear-gradient(180deg, #B7E86B, #93CC3C);
+    box-shadow: 0 1px 2px rgba(44,74,15,.22), inset 0 1px 0 rgba(255,255,255,.55);
+  }
+  .ma-btn.danger { color: #fff; background: linear-gradient(180deg, #E8756B, #C94437); }
+  .ma-btn[disabled] { opacity: .55; cursor: default; }
+  .mail-form {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 10px 12px 14px; display: flex; flex-direction: column;
+  }
+  .mail-form label { font-size: 11.5px; font-weight: bold; color: #4B7A18; margin: 6px 0 3px; }
+  .mail-form input, .mail-form textarea {
+    box-sizing: border-box; width: 100%; border: 1px solid #B7DD84; border-radius: 10px;
+    padding: 9px 11px; font: inherit; font-size: 13.5px; color: #2C4A0F; background: #fff;
+  }
+  .mail-form textarea { resize: vertical; min-height: 110px; line-height: 1.4; }
+  .mail-form input:focus, .mail-form textarea:focus {
+    outline: none; border-color: #8CCB3F; box-shadow: 0 0 0 3px rgba(140,203,63,.28);
+  }
+  .mail-erreur { min-height: 16px; margin-top: 7px; font-size: 12px; color: #C0392B; }
+  .mail-erreur.ok { color: #4B7A18; }
+  /* Voyant de la messagerie sur le raccourci de l'accueil : l'icône change (le
+     bac à courrier de main.swf remplace l'enveloppe) et un compteur s'y accroche. */
+  .sc-btn { position: relative; }
+  .sc-btn .sc-compte {
+    position: absolute; top: -3px; right: -4px; min-width: 13px; padding: 0 3px;
+    border-radius: 999px; background: #D8402F; color: #fff;
+    font-size: 9.5px; line-height: 13px; font-weight: bold; text-align: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,.35); pointer-events: none;
+  }
+
   /* Trombinoscope */
   #trombi-head {
     flex-shrink: 0; border-bottom: 1px solid #DDDDDD;
@@ -1088,6 +1204,57 @@
     <div id="scores-body"></div>
   </section>
 
+  <!-- Messagerie interne — la MÊME boîte que celle du bureau (user.mails côté
+       serveur), en JSON. Trois vues empilées dans le même panneau : la liste du
+       dossier courant, la lecture d'un courrier, la rédaction. Une seule est
+       visible à la fois (classe .on), pour ne jamais quitter /light — la socket
+       de chat reste vivante pendant qu'on écrit. -->
+  <section class="panel" id="mail-panel">
+    <div id="mail-head">
+      <div id="mail-tabs">
+        <button class="mail-tab active" data-folder="inbox" type="button">Reçus</button>
+        <button class="mail-tab" data-folder="outbox" type="button">Envoyés</button>
+        <button class="mail-tab" data-folder="blackbox" type="button">Indésirables</button>
+      </div>
+      <button id="mail-new" type="button">Écrire</button>
+    </div>
+
+    <!-- Vue liste -->
+    <div class="mail-vue on" id="mail-vue-liste"><div id="mail-liste"></div></div>
+
+    <!-- Vue lecture -->
+    <div class="mail-vue" id="mail-vue-lecture">
+      <div class="mail-entete">
+        <div class="ml-sujet" id="mail-lu-sujet"></div>
+        <div class="ml-meta"><span id="mail-lu-qui"></span><span id="mail-lu-date"></span></div>
+      </div>
+      <div class="mail-corps" id="mail-lu-corps"></div>
+      <div class="mail-actions">
+        <button type="button" class="ma-btn" id="mail-retour">‹ Retour</button>
+        <button type="button" class="ma-btn primaire" id="mail-repondre">Répondre</button>
+        <button type="button" class="ma-btn danger" id="mail-supprimer">Supprimer</button>
+      </div>
+    </div>
+
+    <!-- Vue rédaction -->
+    <div class="mail-vue" id="mail-vue-ecriture">
+      <div class="mail-form">
+        <label for="mail-a">À</label>
+        <input type="text" id="mail-a" autocomplete="off" autocapitalize="none" autocorrect="off"
+               spellcheck="false" placeholder="Pseudo du destinataire" maxlength="120">
+        <label for="mail-sujet">Sujet</label>
+        <input type="text" id="mail-sujet" autocomplete="off" placeholder="Sujet" maxlength="120">
+        <label for="mail-texte">Message</label>
+        <textarea id="mail-texte" rows="8" placeholder="Ton message…" maxlength="4000"></textarea>
+        <div class="mail-erreur" id="mail-erreur"></div>
+      </div>
+      <div class="mail-actions">
+        <button type="button" class="ma-btn" id="mail-annuler">‹ Annuler</button>
+        <button type="button" class="ma-btn primaire" id="mail-envoyer">Envoyer</button>
+      </div>
+    </div>
+  </section>
+
   <!-- Trombinoscope — annuaire des Frutiz (pseudo + bouille), trié alpha par le
        serveur. Barre de recherche en tête, grille scrollable de bouilles. -->
   <section class="panel" id="trombi-panel">
@@ -1510,14 +1677,20 @@
     { file: "emote_transi",  e: 6, name: "Embarrassé" },
     { file: "emote_fou",     e: 7, name: "Totoché" },
   ];
-  // Raccourcis : sans action pour l'instant (à brancher plus tard).
+  // Raccourcis de l'encart niveau. `go` = rubrique ouverte au clic (les autres
+  // restent inertes en attendant d'être branchées). `voyant` désigne l'icône de
+  // remplacement quand il y a du neuf : pour la messagerie, c'est l'enveloppe
+  // d'alerte rouge de main.swf (forme #373, celle de la barre de pictos
+  // d'alerte), extraite du SWF d'origine — cf. scripts/extract-swf-shapes.js.
+  // L'enveloppe verte au repos (Mail.svg) est la forme #420, celle de la bande
+  // d'icônes de raccourcis (sprite #427).
   var HOME_SHORTCUTS = [
-    { file: "Mail",       name: "Messagerie" },
+    { file: "Mail",       name: "Messagerie", go: "mail", voyant: "MailRecu" },
     { file: "Warning",    name: "Événements" },
     { file: "Historique", name: "Historique" },
     { file: "Aide",       name: "Aide" },
-    { file: "Forum",      name: "Forum" },
-    { file: "Jeux",       name: "Jeux" },
+    { file: "Forum",      name: "Forum", go: "forum" },
+    { file: "Jeux",       name: "Jeux", go: "disques" },
   ];
   var homeProfile = { bouille: DEFAULT_BOUILLE, level: 1, xp: 0, rank: null, kikooz: 0 };
 
@@ -1593,10 +1766,15 @@
       HOME_SHORTCUTS.forEach(function (it) {
         var b = el("button", "sc-btn");
         b.type = "button"; b.title = it.name; b.setAttribute("aria-label", it.name);
+        b.setAttribute("data-sc", it.file);
         b.innerHTML = '<img src="/fb/' + it.file + '.svg" alt="' + xmlEscape(it.name) + '">';
-        b.addEventListener("click", function () { /* TODO: brancher les raccourcis */ });
+        if (it.go) b.addEventListener("click", function () {
+          if (it.go === "disques") return openDisquesSheet();
+          activateTab(it.go);
+        });
         sc.appendChild(b);
       });
+      majVoyantMail();   // l'icône peut déjà devoir signaler du courrier
     }
   }
   function loadHomeProfile() {
@@ -1610,6 +1788,7 @@
           homeProfile.xp = Number(d.xp) || 0;
           homeProfile.rank = (d.rank != null) ? Number(d.rank) : null;
           homeProfile.kikooz = Number(d.kikooz) || 0;
+          setMailNonLus(d.mailUnread);       // voyant de la messagerie
           state.ownedFeutres = Array.isArray(d.ownedFeutres) ? d.ownedFeutres : [];
           if (d.bouille) state.bouilleByUser[state.userLower] = d.bouille;
           var lv = $("#home-level"); if (lv) lv.textContent = homeProfile.level;
@@ -1760,6 +1939,7 @@
     $("#swapou-panel").classList.toggle("active", tab === "swapou");
     $("#scores-panel").classList.toggle("active", tab === "scores");
     $("#trombi-panel").classList.toggle("active", tab === "trombi");
+    $("#mail-panel").classList.toggle("active", tab === "mail");
     // Chargements paresseux (1re ouverture, gardés en mémoire ensuite). On reste
     // sur /light, donc la socket de chat de la page parente n'est jamais coupée
     // pendant qu'on consulte le forum / joue / regarde les scores.
@@ -1790,6 +1970,10 @@
     // Les scores évoluent toute la journée : on rafraîchit à chaque ouverture.
     if (tab === "scores") loadChallengeScores();
     if (tab === "trombi") loadTrombi();
+    // Messagerie : on recharge à l'ouverture SAUF si on vient d'y basculer pour
+    // écrire (ecrireMail passe par activateTab avant d'afficher son formulaire —
+    // un loadMail ici le remplacerait aussitôt par la liste).
+    if (tab === "mail" && !mailVersRedaction) loadMail();
   }
 
   // ── Mes disques (feuille de lancement des jeux) ──
@@ -2009,6 +2193,232 @@
     body.scrollTop = 0;
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // Messagerie interne
+  //
+  // La boîte est la MÊME que celle du bureau : le serveur ne tient qu'une liste
+  // user.mails, que /ff/ls sert en XML à main.swf et que /api/light/mail sert en
+  // JSON ici. Un courrier lu sur le téléphone est lu sur le bureau, et
+  // réciproquement — il n'y a rien à synchroniser, il n'y a qu'une boîte.
+  //
+  // Trois vues dans le même panneau (liste, lecture, rédaction) : sur un écran
+  // de téléphone, les empiler côte à côte n'aurait aucun sens, et changer de
+  // page nous ferait quitter /light — donc perdre la socket de chat.
+  // ══════════════════════════════════════════════════════════════════════════
+  var mailDossier = "inbox";       // dossier affiché
+  var mailNonLus = 0;              // compteur du voyant (accueil + onglet)
+  var mailListe = [];              // dernier listing reçu
+  var mailLu = null;               // courrier ouvert en lecture
+  var mailVersRedaction = false;   // garde-fou : cf. activateTab("mail")
+
+  // Le voyant : l'icône du raccourci passe de l'enveloppe au bac à courrier dès
+  // qu'un message attend, avec le nombre en pastille. Les deux formes viennent
+  // du même jeu d'icônes de main.swf, donc le changement se lit tout de suite.
+  function majVoyantMail() {
+    var b = document.querySelector('#home-shortcuts .sc-btn[data-sc="Mail"]');
+    if (!b) return;
+    var img = b.querySelector("img");
+    var def = HOME_SHORTCUTS[0];
+    if (img) {
+      var fichier = (mailNonLus > 0 && def.voyant) ? def.voyant : def.file;
+      var src = "/fb/" + fichier + ".svg";
+      if (img.getAttribute("src") !== src) img.setAttribute("src", src);
+    }
+    var p = b.querySelector(".sc-compte");
+    if (!mailNonLus) { if (p) p.remove(); b.title = def.name; return; }
+    if (!p) { p = el("span", "sc-compte"); b.appendChild(p); }
+    p.textContent = mailNonLus > 99 ? "99+" : String(mailNonLus);
+    b.title = def.name + " — " + mailNonLus + " message" + (mailNonLus > 1 ? "s" : "") + " non lu" + (mailNonLus > 1 ? "s" : "");
+  }
+  function setMailNonLus(n) {
+    var v = Math.max(0, Number(n) || 0);
+    if (v === mailNonLus) return;
+    mailNonLus = v;
+    majVoyantMail();
+    majOngletsMail();
+  }
+  function majOngletsMail() {
+    Array.prototype.forEach.call(document.querySelectorAll(".mail-tab"), function (t) {
+      var d = t.getAttribute("data-folder");
+      t.classList.toggle("active", d === mailDossier);
+      var lbl = d === "inbox" ? "Reçus" : d === "outbox" ? "Envoyés" : "Indésirables";
+      t.innerHTML = xmlEscape(lbl) + (d === "inbox" && mailNonLus
+        ? '<span class="n">' + (mailNonLus > 99 ? "99+" : mailNonLus) + "</span>" : "");
+    });
+  }
+  function mailVue(nom) {
+    ["liste", "lecture", "ecriture"].forEach(function (v) {
+      var e = $("#mail-vue-" + v);
+      if (e) e.classList.toggle("on", v === nom);
+    });
+  }
+  // « 2026-08-01 14:32:05 » → « 01/08 14:32 » (aujourd'hui : juste l'heure).
+  function mailDate(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ""));
+    if (!m) return String(s || "");
+    var d = new Date();
+    var auj = d.getFullYear() === +m[1] && (d.getMonth() + 1) === +m[2] && d.getDate() === +m[3];
+    return auj ? m[4] + ":" + m[5] : m[3] + "/" + m[2] + " " + m[4] + ":" + m[5];
+  }
+  function loadMail(dossier) {
+    if (dossier) mailDossier = dossier;
+    majOngletsMail();
+    mailVue("liste");
+    var box = $("#mail-liste");
+    if (box) box.innerHTML = '<div class="mail-charge">Chargement…</div>';
+    fetch("/api/light/mail?sid=" + encodeURIComponent(state.sid)
+      + "&folder=" + encodeURIComponent(mailDossier), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) throw new Error("ko");
+        mailListe = d.mails || [];
+        setMailNonLus(d.unread);
+        renderMailListe();
+      })
+      .catch(function () {
+        if (box) box.innerHTML = '<div class="mail-vide">Messagerie indisponible pour le moment.</div>';
+      });
+  }
+  function renderMailListe() {
+    var box = $("#mail-liste");
+    if (!box) return;
+    if (!mailListe.length) {
+      box.innerHTML = '<div class="mail-vide">'
+        + (mailDossier === "inbox" ? "Aucun courrier reçu."
+          : mailDossier === "outbox" ? "Tu n'as encore rien envoyé."
+          : "Aucun indésirable.")
+        + "</div>";
+      return;
+    }
+    box.innerHTML = "";
+    mailListe.forEach(function (m) {
+      // Dans « Envoyés », la colonne utile est le destinataire, pas soi-même.
+      var qui = (mailDossier === "outbox") ? ("à " + (m.to || "?")) : (m.from || "?");
+      var b = el("button", "mail-item" + (!m.read && mailDossier !== "outbox" ? " neuf" : ""));
+      b.type = "button";
+      b.innerHTML = '<div class="l1"><span class="qui">' + xmlEscape(qui) + '</span>'
+        + '<span class="quand">' + xmlEscape(mailDate(m.date)) + '</span></div>'
+        + '<div class="obj">' + xmlEscape(m.subject || "(sans sujet)") + '</div>'
+        + (m.extrait ? '<div class="apercu">' + xmlEscape(m.extrait) + '</div>' : "");
+      b.addEventListener("click", function () { ouvrirMail(m.uid); });
+      box.appendChild(b);
+    });
+    box.scrollTop = 0;
+  }
+  function ouvrirMail(uid) {
+    fetch("/api/light/mail/read?sid=" + encodeURIComponent(state.sid)
+      + "&uid=" + encodeURIComponent(uid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) throw new Error("ko");
+        mailLu = d.mail;
+        setMailNonLus(d.unread);
+        // La ligne cesse d'être « neuve » sans recharger toute la liste.
+        for (var i = 0; i < mailListe.length; i++) if (mailListe[i].uid === uid) mailListe[i].read = true;
+        $("#mail-lu-sujet").textContent = mailLu.subject || "(sans sujet)";
+        $("#mail-lu-qui").textContent = (mailLu.folder === "outbox")
+          ? "à " + (mailLu.to || "?") : "de " + (mailLu.from || "?");
+        $("#mail-lu-date").textContent = mailDate(mailLu.date);
+        $("#mail-lu-corps").textContent = mailLu.body || "";
+        // On ne répond pas à un courrier qu'on a soi-même envoyé.
+        $("#mail-repondre").style.display = (mailLu.folder === "outbox") ? "none" : "";
+        mailVue("lecture");
+        $("#mail-lu-corps").scrollTop = 0;
+      })
+      .catch(function () { systemLine("Ce courrier n'a pas pu être ouvert."); });
+  }
+  // Rédaction. `dest` pré-remplit le destinataire (réponse, ou « écrire à » depuis
+  // le chat quand la personne n'est pas connectée).
+  function ecrireMail(dest, sujet) {
+    mailVersRedaction = true;
+    activateTab("mail");
+    mailVersRedaction = false;
+    $("#mail-a").value = dest || "";
+    $("#mail-sujet").value = sujet || "";
+    $("#mail-texte").value = "";
+    var err = $("#mail-erreur"); err.textContent = ""; err.classList.remove("ok");
+    $("#mail-envoyer").disabled = false;
+    mailVue("ecriture");
+    // Curseur là où il reste quelque chose à saisir.
+    var cible = dest ? (sujet ? $("#mail-texte") : $("#mail-sujet")) : $("#mail-a");
+    try { cible.focus(); } catch (e) {}
+  }
+  function envoyerMail() {
+    var err = $("#mail-erreur");
+    err.classList.remove("ok");
+    var corps = {
+      sid: state.sid,
+      to: $("#mail-a").value.trim(),
+      subject: $("#mail-sujet").value.trim(),
+      body: $("#mail-texte").value,
+    };
+    if (!corps.to) { err.textContent = "Indique un destinataire."; return; }
+    if (!corps.body.trim()) { err.textContent = "Le message est vide."; return; }
+    $("#mail-envoyer").disabled = true;
+    err.textContent = "Envoi…";
+    fetch("/api/light/mail/send", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corps),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) {
+          err.textContent = (d && d.error) || "L'envoi a échoué.";
+          $("#mail-envoyer").disabled = false;
+          return;
+        }
+        // Un destinataire inconnu au milieu d'une liste : le courrier est parti
+        // aux autres, autant le dire plutôt que de laisser croire à un envoi net.
+        if (d.ignores && d.ignores.length) {
+          systemLine("Courrier envoyé, sauf à « " + d.ignores.join(" », « ") + " » (pseudo inconnu).");
+        }
+        loadMail("outbox");
+      })
+      .catch(function () {
+        err.textContent = "L'envoi a échoué, réessaie.";
+        $("#mail-envoyer").disabled = false;
+      });
+  }
+  function supprimerMail() {
+    if (!mailLu) return;
+    var uid = mailLu.uid;
+    $("#mail-supprimer").disabled = true;
+    fetch("/api/light/mail/delete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sid: state.sid, uid: uid }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        $("#mail-supprimer").disabled = false;
+        if (!d || !d.ok) return;
+        setMailNonLus(d.unread);
+        loadMail();
+      })
+      .catch(function () { $("#mail-supprimer").disabled = false; });
+  }
+  // Interrogation du compteur seul (au boot et à la reconnexion) : le voyant doit
+  // être juste même sans jamais avoir ouvert la messagerie.
+  function rafraichirCompteurMail() {
+    if (!state.sid) return;
+    fetch("/api/light/mail?sid=" + encodeURIComponent(state.sid) + "&folder=inbox", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok) setMailNonLus(d.unread); })
+      .catch(function () {});
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".mail-tab"), function (t) {
+    t.addEventListener("click", function () { loadMail(t.getAttribute("data-folder")); });
+  });
+  $("#mail-new").addEventListener("click", function () { ecrireMail("", ""); });
+  $("#mail-retour").addEventListener("click", function () { mailVue("liste"); });
+  $("#mail-annuler").addEventListener("click", function () { mailVue("liste"); });
+  $("#mail-envoyer").addEventListener("click", envoyerMail);
+  $("#mail-supprimer").addEventListener("click", supprimerMail);
+  $("#mail-repondre").addEventListener("click", function () {
+    if (!mailLu) return;
+    var s = String(mailLu.subject || "");
+    ecrireMail(mailLu.from || "", /^re\s*:/i.test(s) ? s : ("Re : " + (s || "(sans sujet)")));
+  });
+
   // ── Logout ── (the "Quitter" menu item was removed from the light client.)
 
   // ── WebSocket (CBee bridge at "/") ──
@@ -2108,6 +2518,10 @@
         // L'ident vient de créditer (le cas échéant) la récompense quotidienne :
         // on rafraîchit le bandeau de série pour refléter le gain du jour.
         loadDailyStatus();
+        // Le courrier arrivé pendant que la socket était coupée (le navigateur
+        // mobile la ferme dès qu'on passe en arrière-plan) n'a poussé aucune
+        // trame <ax> : on redemande le compteur pour que le voyant soit juste.
+        rafraichirCompteurMail();
         break;
 
       case "o": // join confirmed: <o g="room" p="">...</o>
@@ -2292,9 +2706,16 @@
         var refus = attr(xml, "k");
         var avecQui = xmlUnescape(attr(xml, "u"));
         if (refus) {
-          systemLine(refus === "201"
-            ? (avecQui || "Ce joueur") + " n'est pas connecté(e) pour le moment."
-            : "Impossible d'ouvrir la discussion privée.");
+          // 201 = destinataire hors ligne. Le bureau bascule alors sur l'e-mail ;
+          // on propose le même repli, en un clic, avec le destinataire pré-rempli.
+          if (refus === "201" && avecQui) {
+            systemAction(avecQui + " n'est pas connecté(e) pour le moment.",
+              "Lui écrire un courrier", function () { ecrireMail(avecQui, ""); });
+          } else {
+            systemLine(refus === "201"
+              ? "Ce joueur n'est pas connecté(e) pour le moment."
+              : "Impossible d'ouvrir la discussion privée.");
+          }
           break;
         }
         var idSalon = attr(xml, "g");
@@ -2318,6 +2739,24 @@
         if (idInvite === state.room) break;
         if (!dejaLa) systemLine(deQui + " t'écrit en privé — ouvre « " + deQui + " » dans la liste des salons.");
         majPastilleMp();
+        break;
+      }
+
+      // ── Courrier reçu ──
+      // Le serveur pousse <ax from="…" subject="…" /> à la livraison (même trame
+      // que celle qu'écoute main.swf). On allume le voyant de l'accueil et on le
+      // dit dans le fil : sans ça, un joueur qui n'ouvre jamais la messagerie ne
+      // saurait pas qu'on lui a écrit.
+      case "ax": {
+        var expediteur = String(xmlUnescape(attr(xml, "from")) || "").split("@")[0];
+        var objet = xmlUnescape(attr(xml, "subject"));
+        setMailNonLus(mailNonLus + 1);
+        systemLine("✉ Nouveau courrier de " + (expediteur || "?")
+          + (objet ? " — « " + objet + " »" : "") + ".");
+        // Si la messagerie est ouverte sur les reçus, la liste se met à jour
+        // toute seule ; sinon le voyant suffit.
+        if ($("#mail-panel").classList.contains("active")
+          && $("#mail-vue-liste").classList.contains("on") && mailDossier === "inbox") loadMail();
         break;
       }
 
@@ -2467,6 +2906,23 @@
     if (stick) scrollDown();
   }
   function systemLine(text) { addMessage({ kind: "system", body: text }); }
+
+  // Ligne système suivie d'un lien d'action. Sert au repli « il n'est pas
+  // connecté → écris-lui » : le bureau propose exactement ça, autant ne pas
+  // laisser le mobile sur un simple constat d'échec.
+  function systemAction(texte, libelle, action) {
+    var stick = nearBottom();
+    var row = el("div", "msg system");
+    row.appendChild(document.createTextNode(texte + " "));
+    var a = el("button", "sys-lien");
+    a.type = "button";
+    a.textContent = libelle;
+    a.addEventListener("click", action);
+    row.appendChild(a);
+    msgEl.appendChild(row);
+    while (msgEl.childNodes.length > 400) msgEl.removeChild(msgEl.firstChild);
+    if (stick) scrollDown();
+  }
 
   // Emote line, identical to the desktop: "[hh:mm:ss] pseudo <phrase>" with the
   // pseudo in bold and the whole line in italics, NO colon (e.g.
