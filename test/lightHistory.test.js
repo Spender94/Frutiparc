@@ -170,13 +170,16 @@ test('les visuels de l\'historique sont valides', () => {
   const repos = fs.readFileSync(path.join(dir, 'Historique.svg'), 'utf8');
   const alerte = fs.readFileSync(path.join(dir, 'HistoriqueAlerte.svg'), 'utf8');
   const traces = (svg) => (svg.match(/ d="[^"]+"/g) || []).join('|');
-  assert.match(alerte, /#df4b44/, 'le voyant porte le rouge d\'alerte du jeu');
+  assert.match(alerte, /#73b01e/, 'le voyant porte le vert foncé du classement');
   assert.equal(traces(alerte), traces(repos), 'et garde la forme d\'horloge');
   assert.notEqual(alerte, repos, 'seule la couleur change');
-  // Même rouge que le courrier : les trois voyants se lisent pareil, ce qui est
+  // Même vert que le courrier : les trois voyants se lisent pareil, ce qui est
   // tout l'intérêt d'en avoir trois.
   const courrier = fs.readFileSync(path.join(dir, 'MailRecu.svg'), 'utf8');
-  assert.match(courrier, /#df4b44/, 'même rouge que l\'enveloppe de courrier');
+  assert.match(courrier, /#73b01e/, 'même vert que l\'enveloppe de courrier');
+  // Et l'icône au repos reste dans le vert clair : c'est le CONTRASTE entre les
+  // deux qui fait le voyant.
+  assert.match(repos, /#a2eb56/, 'l\'horloge au repos reste en vert clair');
 });
 
 test('le voyant ne s\'éteint qu\'à la consultation', async () => {
@@ -320,6 +323,9 @@ test('les trois rubriques à voyant ont leur tuile sur l\'accueil', () => {
   assert.match(maj[0], /\.sc-btn\[data-sc="' \+ fichier \+ '"\], \.home-tile\[data-ico="' \+ fichier \+ '"\]/,
     'elle vise les deux endroits d\'un coup');
   assert.match(maj[0], /pastille\.remove\(\)/, 'et le compteur disparaît quand tout est lu');
+  // Le compteur chiffré ne va QUE sur le raccourci : le bureau d'origine ne pose
+  // aucune pastille sur ses icônes.
+  assert.match(maj[0], /if \(estTuile\) return;/, 'aucune pastille sur les tuiles');
   // Chaque endroit bascule sur SES états : le raccourci entre son icône et sa
   // variante d'alerte, la tuile entre les deux états de son icône de bureau —
   // quand elle en a deux.

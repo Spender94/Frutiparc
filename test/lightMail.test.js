@@ -252,9 +252,12 @@ test('l\'icône d\'alerte est bien celle du jeu, distincte de l\'enveloppe au re
   const repos = fs.readFileSync(path.join(dir, 'Mail.svg'), 'utf8');
   const alerte = fs.readFileSync(path.join(dir, 'MailRecu.svg'), 'utf8');
   assert.match(alerte, /<svg/, 'MailRecu.svg est un SVG');
-  // Rouge d'alerte de main.swf : c'est ce qui rend le voyant lisible à 27 px,
-  // là où deux tracés verts se confondraient.
-  assert.match(alerte, /#df4b44/, 'la couleur d\'alerte du SWF est conservée');
+  // Vert foncé du jeu (celui des chiffres du classement) sur vert clair au repos :
+  // c'est ce contraste qui rend le voyant lisible à 27 px. Le dessin change aussi
+  // — l'enveloppe allumée est celle de la bande d'alerte du SWF, pas la même
+  // repeinte — mais la couleur seule doit déjà se voir.
+  assert.match(alerte, /#73b01e/, 'l\'enveloppe allumée est en vert foncé');
+  assert.match(repos, /#a2eb56/, 'celle du repos reste en vert clair');
   assert.notEqual(alerte.replace(/\s/g, ''), repos.replace(/\s/g, ''),
     'les deux états doivent différer, sinon le voyant ne signale rien');
   // Et surtout : PAS le tracé d'une autre icône de la bande (le joystick de

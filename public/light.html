@@ -577,7 +577,7 @@
   /* Compteur de non-lus accolé à l'onglet « Reçus ». */
   .mail-tab .n {
     display: inline-block; margin-left: 5px; min-width: 15px; padding: 0 4px;
-    border-radius: 999px; background: #D8402F; color: #fff; font-size: 10.5px; line-height: 15px;
+    border-radius: 999px; background: #73b01e; color: #fff; font-size: 10.5px; line-height: 15px;
   }
   #mail-new {
     flex: 0 0 auto; border: 0; border-radius: 14px; padding: 6px 14px; cursor: pointer;
@@ -697,9 +697,10 @@
   .sc-btn { position: relative; }
   .sc-btn .sc-compte {
     position: absolute; top: -3px; right: -4px; min-width: 13px; padding: 0 3px;
-    border-radius: 999px; background: #D8402F; color: #fff;
+    border-radius: 999px; background: #73b01e; color: #fff;
     font-size: 9.5px; line-height: 13px; font-weight: bold; text-align: center;
-    box-shadow: 0 1px 2px rgba(0,0,0,.35); pointer-events: none;
+    box-shadow: 0 0 0 1.5px rgba(255,255,255,.85), 0 1px 2px rgba(44,74,15,.35);
+    pointer-events: none;
   }
 
   /* Trombinoscope */
@@ -1792,12 +1793,13 @@
         if (img.getAttribute("src") !== src) img.setAttribute("src", src);
       }
       e.title = titre;
-      // Le compteur : petite pastille sur le raccourci, grande sur la tuile
-      // (même style que celui des messages privés, déjà en place).
-      var classe = estTuile ? "mp-compte" : "sc-compte";
-      var pastille = e.querySelector("." + classe);
+      // Le compteur chiffré ne va que sur le raccourci. Le bureau d'origine n'en
+      // pose aucun sur ses icônes : elles disent ce qu'elles ont à dire par
+      // elles-mêmes — le drapeau de la boîte aux lettres se lève, et c'est tout.
+      if (estTuile) return;
+      var pastille = e.querySelector(".sc-compte");
       if (!n) { if (pastille) pastille.remove(); return; }
-      if (!pastille) { pastille = el("span", classe); e.appendChild(pastille); }
+      if (!pastille) { pastille = el("span", "sc-compte"); e.appendChild(pastille); }
       pastille.textContent = n > 99 ? "99+" : String(n);
     });
   }
