@@ -14647,66 +14647,112 @@ app.post('/api/light/mail/delete', (req, res) => {
 // s'éteindrait en arrière-plan, avant d'avoir servi à quoi que ce soit.
 // ─────────────────────────────────────────────
 
-// Type d'entrée → visuel. Les quatre premiers sont les types que diffuse
-// l'administration (SITE_LOG_ICONS), avec le numéro de frame du sprite 576 du
-// SWF ; le cinquième est le message de bienvenue, qui utilise le type
-// INSCRIPTION de l'historique. Les visuels sont les images d'origine, extraites
-// par scripts/extract-swf-bitmaps.js.
+// Type d'entrée → visuel, pour chacun des deux journaux. Les numéros sont ceux
+// que le SWF utilise comme frames dans ses bandes d'icônes (sprite 576 pour les
+// événements, sprite 533 pour l'historique) ; les visuels sont les images
+// d'origine, sorties par scripts/extract-swf-bitmaps.js et, pour le parrainage
+// qui est vectoriel, par scripts/extract-swf-shapes.js.
 const LIGHT_EVENT_KINDS = {
   1:  { icone: 'evt_info',        titre: 'Information' },
   11: { icone: 'evt_technique',   titre: 'Info technique' },
   20: { icone: 'evt_nouveaute',   titre: 'Nouveauté' },
   21: { icone: 'evt_jeu',         titre: 'Nouveau jeu' },
+  // Message de bienvenue : il emprunte le type INSCRIPTION de l'historique.
   40: { icone: 'evt_inscription', titre: 'Inscription' },
 };
-const LIGHT_EVENT_DEFAULT = LIGHT_EVENT_KINDS[1];
+// Cf. USER_LOG_TYPE. Le type 4 est réservé côté SWF (aucun code ne l'émet), mais
+// son visuel existe : autant le garder plutôt que de le faire retomber ailleurs.
+const LIGHT_HISTORY_KINDS = {
+  1:  { icone: 'histo_kick',       titre: 'Expulsion' },
+  2:  { icone: 'histo_ban',        titre: 'Bannissement' },
+  3:  { icone: 'histo_totoche',    titre: 'Totoché', ext: 'png' },
+  4:  { icone: 'histo_boum',       titre: 'Alerte' },
+  10: { icone: 'histo_picto',      titre: 'Picto' },
+  20: { icone: 'histo_chat',       titre: 'Salons' },
+  30: { icone: 'histo_niveau',     titre: 'Niveau gagné' },
+  31: { icone: 'histo_niveau_bas', titre: 'Niveau perdu' },
+  // Même image que côté événements (c'est la même dans le SWF) : un seul
+  // fichier, pour qu'on ne se retrouve pas à en corriger un et pas l'autre.
+  40: { icone: 'evt_inscription',  titre: 'Inscription' },
+  50: { icone: 'histo_filleul',    titre: 'Parrainage' },
+  60: { icone: 'histo_medaille',   titre: 'Médaille' },
+};
 
-function lightEventRows(user) {
-  const list = Array.isArray(user && user.siteLog) ? user.siteLog : [];
+// Les deux journaux ont la même forme : { d: date, t: type, c: texte, n: neuf }.
+// Une seule paire de fonctions les sert donc, pour que les deux rubriques ne
+// puissent pas diverger sur le tri, l'horodatage ou le comptage.
+function lightLogRows(user, champ, kinds) {
+  const list = Array.isArray(user && user[champ]) ? user[champ] : [];
+  const defaut = kinds[1];
   return list
     .slice()
     .sort((a, b) => String(b.d || '').localeCompare(String(a.d || '')))
     .map((e, i) => {
       const t = Number(e.t) || 1;
-      const kind = LIGHT_EVENT_KINDS[t] || LIGHT_EVENT_DEFAULT;
+      const kind = kinds[t] || defaut;
       return {
-        // siteLog n'a pas d'identifiant propre : date + rang suffisent à
-        // distinguer deux entrées côté client (ouverture, animation).
+        // Ces journaux n'ont pas d'identifiant propre : date + rang suffisent à
+        // distinguer deux entrées côté client.
         id: `${e.d || ''}#${i}`,
         date: String(e.d || ''),
         type: t,
         kind: kind.icone,
+        kindExt: kind.ext || 'svg',
         kindLabel: kind.titre,
         text: String(e.c || ''),
         nouveau: Number(e.n) === 1,
       };
     });
 }
-function lightEventUnread(user) {
-  const list = Array.isArray(user && user.siteLog) ? user.siteLog : [];
+function lightLogUnread(user, champ) {
+  const list = Array.isArray(user && user[champ]) ? user[champ] : [];
   return list.filter((e) => Number(e.n) === 1).length;
+}
+// Marquer un journal comme consulté. Le bureau fait la même chose à l'ident
+// (clearTransientNewFlag) ; on garde le même effet en base pour que les deux
+// clients restent d'accord sur ce qui a déjà été vu.
+function lightLogMarkRead(user, champ, typeDb) {
+  if (Array.isArray(user && user[champ])) {
+    for (const e of user[champ]) if (Number(e.n) === 1) delete e.n;
+  }
+  if (user && user._dbId) db.clearUserLogNewFlag(user._dbId, typeDb).catch(dbErr('clearUserLogNewFlag'));
 }
 
 app.get('/api/light/events', (req, res) => {
   const username = resolveUsernameFromSid(req.query.sid || '');
   if (!username) return res.status(401).json({ error: 'auth' });
   const user = users[username] || {};
-  const events = lightEventRows(user);
-  res.json({ ok: true, events, unread: lightEventUnread(user) });
+  res.json({
+    ok: true,
+    events: lightLogRows(user, 'siteLog', LIGHT_EVENT_KINDS),
+    unread: lightLogUnread(user, 'siteLog'),
+  });
+});
+app.post('/api/light/events/read', (req, res) => {
+  const username = resolveUsernameFromSid((req.body || {}).sid || req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  lightLogMarkRead(users[username], 'siteLog', 'site');
+  res.json({ ok: true, unread: 0 });
 });
 
-// Marquer la rubrique comme consultée. Le bureau fait la même chose à l'ident
-// (clearTransientNewFlag) ; on garde le même effet en base pour que les deux
-// clients restent d'accord sur ce qui a déjà été vu.
-app.post('/api/light/events/read', (req, res) => {
-  const corps = req.body || {};
-  const username = resolveUsernameFromSid(corps.sid || req.query.sid || '');
+// L'historique personnel : ce qui est arrivé AU JOUEUR (niveaux, pictos,
+// médailles, parrainages, sanctions). Même journal que le « Mon historique » du
+// bureau — user.userLog, servi là-bas dans <ul> à l'ident et poussé en direct
+// par la trame <aw>.
+app.get('/api/light/history', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ error: 'auth' });
+  const user = users[username] || {};
+  res.json({
+    ok: true,
+    events: lightLogRows(user, 'userLog', LIGHT_HISTORY_KINDS),
+    unread: lightLogUnread(user, 'userLog'),
+  });
+});
+app.post('/api/light/history/read', (req, res) => {
+  const username = resolveUsernameFromSid((req.body || {}).sid || req.query.sid || '');
   if (!username) return res.status(401).json({ ok: false, error: 'auth' });
-  const user = users[username];
-  if (Array.isArray(user && user.siteLog)) {
-    for (const e of user.siteLog) if (Number(e.n) === 1) delete e.n;
-  }
-  if (user && user._dbId) db.clearUserLogNewFlag(user._dbId, 'site').catch(dbErr('clearUserLogNewFlag'));
+  lightLogMarkRead(users[username], 'userLog', 'user');
   res.json({ ok: true, unread: 0 });
 });
 
@@ -14751,9 +14797,10 @@ app.get('/api/light/profile', async (req, res) => {
     medals,
     // Courriers non lus : le voyant de la messagerie doit être juste dès le
     // premier écran, sans attendre qu'on ouvre la boîte. Idem pour les
-    // évènements non consultés.
+    // événements et l'historique.
     mailUnread: unreadInboxCount(u),
-    eventsUnread: lightEventUnread(u),
+    eventsUnread: lightLogUnread(u, 'siteLog'),
+    historyUnread: lightLogUnread(u, 'userLog'),
     // Feutres spéciaux possédés (pour afficher la pastille dédiée dans la palette).
     ownedFeutres: Array.isArray(u.ownedFeutres) ? u.ownedFeutres.slice() : [],
   });

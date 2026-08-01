@@ -10,10 +10,11 @@
 // Sans identifiants, liste les formes avec leur taille et leurs couleurs — c'est
 // ainsi qu'on repère celle qu'on cherche.
 //
-// Ce qui est géré : DefineShape 1 à 4, remplissages UNIS (les seuls qu'utilisent
-// ces icônes), arêtes droites et courbes quadratiques. Les dégradés et les
-// remplissages bitmap sont signalés puis ignorés — aucune des icônes visées n'en
-// utilise, et deviner un rendu approximatif serait pire que de le dire.
+// Ce qui est géré : DefineShape 1 à 4, remplissages unis et dégradés (linéaires,
+// radiaux, focaux), arêtes droites et courbes quadratiques, et les tableaux de
+// styles introduits en cours de tracé — dont se servent les icônes dessinées
+// couche par couche. Les remplissages bitmap sont signalés avec l'identifiant de
+// l'image (`bitmap#572`) : c'est extract-swf-bitmaps.js qui va la chercher.
 //
 // Repères du format : les coordonnées sont en TWIPS (1/20 de pixel), l'axe y est
 // orienté vers le bas comme en SVG, et un enregistrement de style change le
@@ -56,18 +57,33 @@ function lireStyles(b, o, alpha, shape4) {
       remplissages.push({ couleur: hex(b[o + 1], b[o + 2], b[o + 3]), alpha: a });
       o += alpha ? 5 : 4;
     } else if (t === 0x10 || t === 0x12 || t === 0x13) {
-      remplissages.push({ degrade: true });               // signalé, non rendu
+      // La matrice envoie le « carré du dégradé » (32768 twips de côté, centré
+      // sur l'origine) dans l'espace de la forme. SVG sait faire exactement ça,
+      // avec gradientUnits="userSpaceOnUse" + gradientTransform.
       const m = new Bits(b, o + 1);
-      if (m.u(1)) { const nb = m.u(5); m.s(nb); m.s(nb); }
-      if (m.u(1)) { const nb = m.u(5); m.s(nb); m.s(nb); }
-      const nb = m.u(5); m.s(nb); m.s(nb); m.align();
+      const M = { sx: 1, sy: 1, b: 0, c: 0, tx: 0, ty: 0 };
+      if (m.u(1)) { const nb = m.u(5); M.sx = m.s(nb) / 65536; M.sy = m.s(nb) / 65536; }
+      if (m.u(1)) { const nb = m.u(5); M.b = m.s(nb) / 65536; M.c = m.s(nb) / 65536; }
+      const nb = m.u(5); M.tx = m.s(nb); M.ty = m.s(nb); m.align();
       let q = m.o;
-      if (t === 0x13) q += 2;                              // focal
-      const nArrets = b[q] & 0x0f; q += 1;
-      q += nArrets * (alpha ? 5 : 4);
+      let focale = 0;
+      if (t === 0x13) { focale = b.readInt16LE(q) / 256; q += 2; }
+      const etalement = b[q] >> 6, interpolation = (b[q] >> 4) & 3, nArrets = b[q] & 0x0f; q += 1;
+      const arrets = [];
+      for (let k = 0; k < nArrets; k++) {
+        arrets.push({
+          ratio: b[q],
+          couleur: hex(b[q + 1], b[q + 2], b[q + 3]),
+          alpha: alpha ? b[q + 4] / 255 : 1,
+        });
+        q += alpha ? 5 : 4;
+      }
+      remplissages.push({ degrade: { radial: t !== 0x10, focale, etalement, interpolation, M, arrets } });
       o = q;
     } else if (t >= 0x40 && t <= 0x43) {
-      remplissages.push({ bitmap: true });
+      // Les images matricielles ne se rendent pas en SVG pur : on retient leur
+      // identifiant, pour que extract-swf-bitmaps.js puisse les sortir.
+      remplissages.push({ bitmap: b.readUInt16LE(o + 1) });
       const m = new Bits(b, o + 3);
       if (m.u(1)) { const nb = m.u(5); m.s(nb); m.s(nb); }
       if (m.u(1)) { const nb = m.u(5); m.s(nb); m.s(nb); }
@@ -96,33 +112,52 @@ function lireStyles(b, o, alpha, shape4) {
 }
 
 // SHAPERECORDs → un tracé par style de remplissage.
-function lireFormes(b, o, nbRemplissages, nbTraits, alpha, shape4) {
+//
+// Une forme peut REMPLACER ses tableaux de styles en cours de tracé
+// (StateNewStyles) : les icônes un peu riches du bureau sont dessinées ainsi,
+// couche par couche. On garde donc la suite des tableaux, et chaque tracé
+// retient de quel tableau vient son style — sinon l'indice 1 du second tableau
+// écraserait l'indice 1 du premier.
+function lireFormes(b, o, alpha, shape4, tableaux) {
   const r = new Bits(b, o);
   let nFill = r.u(4), nLine = r.u(4);
+  let ti = 0;                                              // tableau de styles courant
   let x = 0, y = 0;
   let f0 = 0, f1 = 0, ls = 0;
   const parFill = new Map(), parTrait = new Map();
   let dFill = '', dTrait = '';
   const N = (v) => Math.round(v / 20 * 100) / 100;
+  const ajouter = (carte, cle, d) => carte.set(cle, (carte.get(cle) || '') + d);
   const pousser = () => {
-    if (dFill && f1) parFill.set(f1, (parFill.get(f1) || '') + dFill);
-    if (dFill && f0) parFill.set(f0, (parFill.get(f0) || '') + dFill);
-    if (dTrait && ls) parTrait.set(ls, (parTrait.get(ls) || '') + dTrait);
+    if (dFill && f1) ajouter(parFill, ti + ':' + f1, dFill);
+    if (dFill && f0) ajouter(parFill, ti + ':' + f0, dFill);
+    if (dTrait && ls) ajouter(parTrait, ti + ':' + ls, dTrait);
     dFill = ''; dTrait = '';
   };
-  let debutX = 0, debutY = 0, ouvert = false;
   for (;;) {
     if (r.u(1) === 0) {
       const nouveaux = r.u(1), trait = r.u(1), fill1 = r.u(1), fill0 = r.u(1), bouge = r.u(1);
       if (!nouveaux && !trait && !fill1 && !fill0 && !bouge) break;
       pousser();
-      if (bouge) { const nb = r.u(5); x = r.s(nb); y = r.s(nb); debutX = x; debutY = y; ouvert = false; }
+      if (bouge) { const nb = r.u(5); x = r.s(nb); y = r.s(nb); }
       if (fill0) f0 = r.u(nFill);
       if (fill1) f1 = r.u(nFill);
       if (trait) ls = r.u(nLine);
-      if (nouveaux) break;   // nouveaux styles en cours de forme : hors périmètre
+      if (nouveaux) {
+        // Nouveau tableau de styles : il est écrit ALIGNÉ sur l'octet, et les
+        // largeurs d'indices qui suivent sont relues juste après.
+        r.align();
+        const st = lireStyles(b, r.o, alpha, shape4);
+        tableaux.push(st);
+        ti = tableaux.length - 1;
+        f0 = 0; f1 = 0; ls = 0;
+        const suite = new Bits(b, st.fin);
+        nFill = suite.u(4); nLine = suite.u(4);
+        r.o = suite.o; r.bit = suite.bit;
+        continue;
+      }
       const deb = `M${N(x)} ${N(y)}`;
-      dFill += deb; dTrait += deb; ouvert = true;
+      dFill += deb; dTrait += deb;
     } else if (r.u(1) === 1) {
       const nb = r.u(4) + 2;
       if (r.u(1)) { x += r.s(nb); y += r.s(nb); }
@@ -150,28 +185,65 @@ function extraire(b, tag) {
   const id = b.readUInt16LE(o); o += 2;
   const rc = lireRect(b, o); o = rc.fin;
   if (shape4) { o = lireRect(b, o).fin; o += 1; }          // EdgeBounds + flags
-  const st = lireStyles(b, o, alpha, shape4);
-  const { parFill, parTrait } = lireFormes(b, st.fin, st.remplissages.length, st.traits.length, alpha, shape4);
-  return { id, bounds: rc.v, styles: st, parFill, parTrait };
+  const tableaux = [lireStyles(b, o, alpha, shape4)];
+  const { parFill, parTrait } = lireFormes(b, tableaux[0].fin, alpha, shape4, tableaux);
+  return { id, bounds: rc.v, tableaux, parFill, parTrait };
+}
+
+// « 1:3 » → tableau 1, style 3. Le tri par ce couple restitue l'ordre de dessin :
+// dans un tableau, les styles se peignent par indice croissant, et un tableau
+// introduit plus tard passe par-dessus les précédents.
+const cleTriee = (a, b) => {
+  const [ta, sa] = a.split(':').map(Number), [tb, sb] = b.split(':').map(Number);
+  return ta - tb || sa - sb;
+};
+const arrondi = (v) => Math.round(v * 1e5) / 1e5;
+
+function degradeSvg(id, g) {
+  const M = g.M;
+  // La matrice va de l'espace du dégradé aux twips ; nos tracés sont en pixels
+  // (twips / 20), d'où la division des six coefficients.
+  const t = [M.sx, M.b, M.c, M.sy, M.tx, M.ty].map((v) => arrondi(v / 20)).join(',');
+  const etalement = ['pad', 'reflect', 'repeat'][g.etalement] || 'pad';
+  const lin = g.interpolation === 1 ? ' color-interpolation="linearRGB"' : '';
+  const arrets = g.arrets.map((a) =>
+    `<stop offset="${arrondi(a.ratio / 255)}" stop-color="${a.couleur}"` +
+    (a.alpha < 1 ? ` stop-opacity="${Math.round(a.alpha * 1000) / 1000}"` : '') + '/>').join('');
+  if (!g.radial) {
+    return `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0"`
+      + ` spreadMethod="${etalement}"${lin} gradientTransform="matrix(${t})">${arrets}</linearGradient>`;
+  }
+  const foyer = g.focale ? ` fx="${Math.round(g.focale * 16384)}" fy="0"` : '';
+  return `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384"${foyer}`
+    + ` spreadMethod="${etalement}"${lin} gradientTransform="matrix(${t})">${arrets}</radialGradient>`;
 }
 
 function versSvg(f) {
   const [x0, x1, y0, y1] = f.bounds.map((v) => v / 20);
-  let corps = '';
-  for (const [i, d] of f.parFill) {
-    const s = f.styles.remplissages[i - 1];
-    if (!s || s.degrade || s.bitmap) continue;
-    corps += `  <path d="${d}Z" fill="${s.couleur}"` +
-      (s.alpha < 1 ? ` fill-opacity="${Math.round(s.alpha * 100) / 100}"` : '') +
+  let corps = '', defs = '', nDeg = 0;
+  for (const cle of [...f.parFill.keys()].sort(cleTriee)) {
+    const [ti, fi] = cle.split(':').map(Number);
+    const s = (f.tableaux[ti] || { remplissages: [] }).remplissages[fi - 1];
+    if (!s || s.bitmap !== undefined) continue;            // bitmap : hors périmètre
+    let peinture = s.couleur, opacite = s.alpha;
+    if (s.degrade) {
+      const gid = 'g' + (++nDeg);
+      defs += '    ' + degradeSvg(gid, s.degrade) + '\n';
+      peinture = `url(#${gid})`; opacite = 1;
+    }
+    corps += `  <path d="${f.parFill.get(cle)}Z" fill="${peinture}"` +
+      (opacite < 1 ? ` fill-opacity="${Math.round(opacite * 100) / 100}"` : '') +
       ` fill-rule="evenodd"/>\n`;
   }
-  for (const [i, d] of f.parTrait) {
-    const s = f.styles.traits[i - 1];
+  for (const cle of [...f.parTrait.keys()].sort(cleTriee)) {
+    const [ti, li] = cle.split(':').map(Number);
+    const s = (f.tableaux[ti] || { traits: [] }).traits[li - 1];
     if (!s) continue;
-    corps += `  <path d="${d}" fill="none" stroke="${s.couleur}" stroke-width="${s.largeur}"/>\n`;
+    corps += `  <path d="${f.parTrait.get(cle)}" fill="none" stroke="${s.couleur}" stroke-width="${s.largeur}"/>\n`;
   }
   const l = Math.max(0.01, x1 - x0), h = Math.max(0.01, y1 - y0);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${l} ${h}" width="${l}" height="${h}">\n${corps}</svg>\n`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${l} ${h}" width="${l}" height="${h}">\n`
+    + (defs ? `  <defs>\n${defs}  </defs>\n` : '') + corps + '</svg>\n';
 }
 
 // ─── Parcours des tags ───
@@ -206,7 +278,9 @@ for (const t of tags) {
   }
   if (voulus.size && !voulus.has(f.id)) continue;
   const [x0, x1, y0, y1] = f.bounds.map((v) => v / 20);
-  const cols = f.styles.remplissages.map((s) => s.degrade ? 'dégradé' : s.bitmap ? 'bitmap' : s.couleur);
+  const cols = f.tableaux.flatMap((t) => t.remplissages.map(
+    (s) => s.degrade ? (s.degrade.radial ? 'radial' : 'linéaire')
+      : s.bitmap !== undefined ? ('bitmap#' + s.bitmap) : s.couleur));
   if (!voulus.size) {
     console.log(`#${f.id}\tshape${t.code}\t${(x1 - x0).toFixed(2)}x${(y1 - y0).toFixed(2)}\t${cols.join(' ')}`);
     continue;

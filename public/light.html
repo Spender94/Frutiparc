@@ -1294,11 +1294,15 @@
     </div>
   </section>
 
-  <!-- Évènements — les annonces du site (user.siteLog côté serveur), celles-là
-       mêmes que le bureau reçoit dans <sl> à l'ident et par la trame <bl> en
-       direct. Chaque type a son visuel d'origine, extrait du SWF. -->
+  <!-- Journaux — deux rubriques bâties sur le même gabarit, parce que le serveur
+       leur donne la même forme :
+         · Événements : les annonces du site (user.siteLog), que le bureau reçoit
+           dans <sl> à l'ident et par la trame <bl> en direct ;
+         · Historique : ce qui est arrivé au joueur (user.userLog), servi dans
+           <ul> et poussé par la trame <aw>.
+       Chaque type d'entrée porte son visuel d'origine, extrait du SWF. -->
   <section class="panel" id="evt-panel">
-    <div id="evt-head"><span class="titre">Événements</span><span id="evt-compte"></span></div>
+    <div id="evt-head"><span class="titre" id="evt-titre">Événements</span><span id="evt-compte"></span></div>
     <div id="evt-liste"></div>
   </section>
 
@@ -1733,8 +1737,8 @@
   // d'icônes de raccourcis (sprite #427).
   var HOME_SHORTCUTS = [
     { file: "Mail",       name: "Messagerie", go: "mail",       voyant: "MailRecu",      mot: "message" },
-    { file: "Warning",    name: "Événements", go: "evenements", voyant: "WarningAlerte", mot: "événement" },
-    { file: "Historique", name: "Historique" },
+    { file: "Warning",    name: "Événements", go: "evenements", voyant: "WarningAlerte",    mot: "événement" },
+    { file: "Historique", name: "Historique", go: "historique", voyant: "HistoriqueAlerte", mot: "événement" },
     { file: "Aide",       name: "Aide" },
     { file: "Forum",      name: "Forum", go: "forum" },
     { file: "Jeux",       name: "Jeux", go: "disques" },
@@ -1848,7 +1852,9 @@
       // Les icônes peuvent déjà avoir à signaler quelque chose (le profil a pu
       // répondre avant que la grille ne soit construite).
       majVoyant("Mail", mailNonLus);
-      majVoyant("Warning", evtNonLus);
+      Object.keys(JOURNAUX).forEach(function (cle) {
+        majVoyant(JOURNAUX[cle].raccourci, journalEtat[cle].nonLus);
+      });
     }
   }
   function loadHomeProfile() {
@@ -1862,8 +1868,9 @@
           homeProfile.xp = Number(d.xp) || 0;
           homeProfile.rank = (d.rank != null) ? Number(d.rank) : null;
           homeProfile.kikooz = Number(d.kikooz) || 0;
-          setMailNonLus(d.mailUnread);       // voyants messagerie…
-          setEvtNonLus(d.eventsUnread);      // …et événements
+          setMailNonLus(d.mailUnread);                       // voyants messagerie…
+          setJournalNonLus("evenements", d.eventsUnread);    // …événements…
+          setJournalNonLus("historique", d.historyUnread);   // …et historique
           state.ownedFeutres = Array.isArray(d.ownedFeutres) ? d.ownedFeutres : [];
           if (d.bouille) state.bouilleByUser[state.userLower] = d.bouille;
           var lv = $("#home-level"); if (lv) lv.textContent = homeProfile.level;
@@ -2015,7 +2022,7 @@
     $("#scores-panel").classList.toggle("active", tab === "scores");
     $("#trombi-panel").classList.toggle("active", tab === "trombi");
     $("#mail-panel").classList.toggle("active", tab === "mail");
-    $("#evt-panel").classList.toggle("active", tab === "evenements");
+    $("#evt-panel").classList.toggle("active", tab === "evenements" || tab === "historique");
     // Chargements paresseux (1re ouverture, gardés en mémoire ensuite). On reste
     // sur /light, donc la socket de chat de la page parente n'est jamais coupée
     // pendant qu'on consulte le forum / joue / regarde les scores.
@@ -2050,8 +2057,8 @@
     // écrire (ecrireMail passe par activateTab avant d'afficher son formulaire —
     // un loadMail ici le remplacerait aussitôt par la liste).
     if (tab === "mail" && !mailVersRedaction) loadMail();
-    // Les annonces tombent à tout moment : on recharge à chaque ouverture.
-    if (tab === "evenements") loadEvenements();
+    // Ces journaux bougent à tout moment : on recharge à chaque ouverture.
+    if (tab === "evenements" || tab === "historique") loadJournal(tab);
   }
 
   // ── Mes disques (feuille de lancement des jeux) ──
@@ -2481,31 +2488,46 @@
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Événements
+  // Journaux : Événements et Historique
   //
-  // Les annonces du site. Comme pour la messagerie, la source est unique :
-  // user.siteLog côté serveur, que le bureau reçoit dans <sl> à l'ident et par
-  // la trame <bl> en direct, et que le mobile lit en JSON.
+  // Deux rubriques, un seul code. Le serveur leur donne la même forme — une
+  // liste d'entrées { date, type, kind, kindLabel, text, nouveau } — parce que
+  // ce sont les mêmes journaux que ceux du bureau : user.siteLog pour les
+  // annonces du site, user.userLog pour ce qui est arrivé au joueur.
   //
-  // Chaque type d'annonce a son visuel d'origine (le tam-tam de l'information,
-  // le maillet de la maintenance, la bande de fruits des nouveautés, le soleil
-  // des nouveaux jeux) : c'est le serveur qui nomme le fichier, pour que les
-  // deux bouts ne puissent pas diverger sur la correspondance type → image.
+  // Chaque entrée porte son visuel d'origine (le tam-tam de l'information, la
+  // fraise des salons, le chapeau du parrainage…) : c'est le SERVEUR qui nomme
+  // le fichier, pour que les deux bouts ne puissent pas diverger sur la
+  // correspondance type → image.
   // ══════════════════════════════════════════════════════════════════════════
-  var evtNonLus = 0;      // compteur du voyant
-  var evtListe = [];      // dernier listing reçu
-  var evtCharge = false;  // au moins un chargement réussi
+  var JOURNAUX = {
+    evenements: {
+      titre: "Événements", route: "events", raccourci: "Warning", unite: "annonce",
+      repli: "evt_info",
+      vide: "Aucune annonce pour le moment.<br>C'est ici qu'arriveront les nouveautés du parc.",
+    },
+    historique: {
+      titre: "Historique", route: "history", raccourci: "Historique", unite: "entrée",
+      repli: "histo_kick",
+      vide: "Ton historique est vide pour l'instant.<br>Niveaux, pictos et médailles viendront s'y inscrire.",
+    },
+  };
+  // État par journal : compteur du voyant, dernier listing, et « au moins un
+  // chargement réussi » (pour ne pas réafficher « Chargement… » à chaque retour).
+  var journalEtat = { evenements: { nonLus: 0, liste: [], charge: false },
+                      historique: { nonLus: 0, liste: [], charge: false } };
+  var journalCourant = "evenements";
 
-  function setEvtNonLus(n) {
-    var v = Math.max(0, Number(n) || 0);
-    if (v === evtNonLus) return;
-    evtNonLus = v;
-    majVoyant("Warning", evtNonLus);
+  function setJournalNonLus(cle, n) {
+    var e = journalEtat[cle], v = Math.max(0, Number(n) || 0);
+    if (!e || v === e.nonLus) return;
+    e.nonLus = v;
+    majVoyant(JOURNAUX[cle].raccourci, v);
   }
   // « 2026-08-01 14:32:05 » → « 1er août, 14:32 » (aujourd'hui : juste l'heure).
   var MOIS = ["janvier", "février", "mars", "avril", "mai", "juin",
               "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
-  function evtDate(s) {
+  function journalDate(s) {
     var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ""));
     if (!m) return String(s || "");
     var d = new Date();
@@ -2515,63 +2537,91 @@
     return (jour === 1 ? "1er" : jour) + " " + MOIS[+m[2] - 1]
       + (d.getFullYear() === +m[1] ? "" : " " + m[1]) + ", " + m[4] + ":" + m[5];
   }
-  function loadEvenements() {
+  function loadJournal(cle) {
+    var def = JOURNAUX[cle], etat = journalEtat[cle];
+    if (!def) return;
+    journalCourant = cle;
+    var titre = $("#evt-titre"); if (titre) titre.textContent = def.titre;
     var box = $("#evt-liste");
-    if (box && !evtCharge) box.innerHTML = '<div class="evt-charge">Chargement…</div>';
-    fetch("/api/light/events?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+    if (box) box.innerHTML = etat.charge ? "" : '<div class="evt-charge">Chargement…</div>';
+    if (etat.charge) renderJournal(cle);           // on réaffiche le connu tout de suite
+    fetch("/api/light/" + def.route + "?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d || !d.ok) throw new Error("ko");
-        evtListe = d.events || [];
-        evtCharge = true;
-        renderEvenements();
+        etat.liste = d.events || [];
+        etat.charge = true;
+        if (journalCourant === cle) renderJournal(cle);
         // Ouvrir la rubrique vaut consultation : on éteint le voyant, ici et au
         // serveur (le bureau fait de même à l'ident). Tant qu'on n'ouvre pas, le
         // compteur tient — c'est tout l'intérêt d'un voyant.
         if (d.unread > 0) {
-          fetch("/api/light/events/read", {
+          fetch("/api/light/" + def.route + "/read", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sid: state.sid }),
           }).catch(function () {});
         }
-        setEvtNonLus(0);
+        setJournalNonLus(cle, 0);
       })
       .catch(function () {
-        if (box && !evtCharge) box.innerHTML = '<div class="evt-vide">Événements indisponibles pour le moment.</div>';
+        if (box && !etat.charge && journalCourant === cle)
+          box.innerHTML = '<div class="evt-vide">' + def.titre + ' indisponible pour le moment.</div>';
       });
   }
-  function renderEvenements() {
+  function renderJournal(cle) {
+    var def = JOURNAUX[cle], liste = journalEtat[cle].liste;
     var box = $("#evt-liste"), tete = $("#evt-compte");
     if (!box) return;
-    if (tete) tete.textContent = evtListe.length
-      ? evtListe.length + " annonce" + (evtListe.length > 1 ? "s" : "") : "";
-    if (!evtListe.length) {
-      box.innerHTML = '<div class="evt-vide">Aucune annonce pour le moment.<br>'
-        + 'C\'est ici qu\'arriveront les nouveautés du parc.</div>';
-      return;
-    }
+    if (tete) tete.textContent = liste.length
+      ? liste.length + " " + def.unite + (liste.length > 1 ? "s" : "") : "";
+    if (!liste.length) { box.innerHTML = '<div class="evt-vide">' + def.vide + '</div>'; return; }
     box.innerHTML = "";
-    evtListe.forEach(function (e) {
+    liste.forEach(function (e) {
       var it = el("div", "evt-item" + (e.nouveau ? " neuf" : ""));
-      // Le visuel manquant ne doit pas laisser un trou : on retombe sur celui de
-      // l'information générale, jamais sur une image cassée.
-      it.innerHTML = '<div class="vis"><img src="/fb/' + xmlEscape(e.kind || "evt_info") + '.svg" alt="" '
-        + 'onerror="this.onerror=null;this.src=\'/fb/evt_info.svg\'"></div>'
+      // Un visuel manquant ne doit pas laisser un trou : on retombe sur celui du
+      // journal, jamais sur une image cassée.
+      it.innerHTML = '<div class="vis"><img src="/fb/' + xmlEscape(e.kind || def.repli)
+        + "." + xmlEscape(e.kindExt || "svg") + '" alt="" '
+        + 'onerror="this.onerror=null;this.src=\'/fb/' + def.repli + '.svg\'"></div>'
         + '<div class="txt"><div class="l1">'
-        + '<span class="genre">' + xmlEscape(e.kindLabel || "Information") + '</span>'
-        + '<span class="quand">' + xmlEscape(evtDate(e.date)) + '</span></div>'
+        + '<span class="genre">' + xmlEscape(e.kindLabel || def.titre) + '</span>'
+        + '<span class="quand">' + xmlEscape(journalDate(e.date)) + '</span></div>'
         + '<div class="corps">' + xmlEscape(e.text || "") + '</div></div>';
       box.appendChild(it);
     });
     box.scrollTop = 0;
   }
-  // Interrogation du compteur seul (au boot et à la reconnexion).
-  function rafraichirCompteurEvt() {
+  // Le journal demandé est-il celui affiché ? (pour ne recharger que l'écran en cours)
+  function journalOuvert(cle) {
+    return journalCourant === cle && $("#evt-panel").classList.contains("active");
+  }
+  function rafraichirCompteurJournal(cle) {
     if (!state.sid) return;
-    fetch("/api/light/events?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+    fetch("/api/light/" + JOURNAUX[cle].route + "?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(function (d) { if (d && d.ok) setEvtNonLus(d.unread); })
+      .then(function (d) {
+        if (!d || !d.ok) return;
+        journalEtat[cle].liste = d.events || [];
+        journalEtat[cle].charge = true;
+        setJournalNonLus(cle, d.unread);
+        if (journalOuvert(cle)) loadJournal(cle);   // rubrique ouverte : on la remet à jour
+      })
       .catch(function () {});
+  }
+  // Interrogation des compteurs (au démarrage et à la reconnexion : rien n'a été
+  // poussé pendant que la socket était coupée).
+  function rafraichirCompteursJournaux() {
+    Object.keys(JOURNAUX).forEach(rafraichirCompteurJournal);
+  }
+  // Les entrées d'historique arrivent en rafale (l'ident rejoue tout le non-lu) :
+  // on groupe les rafraîchissements plutôt que d'enchaîner les requêtes.
+  var minuteurHisto = null;
+  function planifierMajHistorique() {
+    if (minuteurHisto) return;
+    minuteurHisto = setTimeout(function () {
+      minuteurHisto = null;
+      rafraichirCompteurJournal("historique");
+    }, 500);
   }
 
   // ── Logout ── (the "Quitter" menu item was removed from the light client.)
@@ -2677,7 +2727,7 @@
         // mobile la ferme dès qu'on passe en arrière-plan) n'a poussé aucune
         // trame : on redemande les compteurs pour que les voyants soient justes.
         rafraichirCompteurMail();
-        rafraichirCompteurEvt();
+        rafraichirCompteursJournaux();
         break;
 
       case "o": // join confirmed: <o g="room" p="">...</o>
@@ -2923,10 +2973,23 @@
       // qui n'attend qu'on ouvre une rubrique pour être vue rate son objet.
       case "bl": {
         var texteEvt = xmlUnescape(bodyOf(xml));
-        setEvtNonLus(evtNonLus + 1);
+        setJournalNonLus("evenements", journalEtat.evenements.nonLus + 1);
         if (texteEvt) systemLine("📣 " + texteEvt);
         // Rubrique ouverte : la liste se met à jour toute seule.
-        if ($("#evt-panel").classList.contains("active")) loadEvenements();
+        if (journalOuvert("evenements")) loadJournal("evenements");
+        break;
+      }
+
+      // ── Entrée d'historique ──
+      // <aw date="…" type="…">texte</aw> : niveau gagné, picto débloqué, médaille,
+      // parrainage, sanction… Contrairement à <bl>, cette trame est REJOUÉE à
+      // l'ident (le serveur renvoie tout ce qui reste non lu). Incrémenter
+      // aveuglément doublerait donc le compteur à chaque reconnexion : on
+      // redemande le compte au serveur, qui seul fait autorité.
+      case "aw": {
+        var texteHisto = xmlUnescape(bodyOf(xml));
+        if (texteHisto) systemLine("★ " + texteHisto);
+        planifierMajHistorique();
         break;
       }
 

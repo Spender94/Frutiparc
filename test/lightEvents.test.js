@@ -234,23 +234,25 @@ test('le client mobile affiche, signale et date les événements', () => {
   assert.match(html, /name: "Événements", go: "evenements"/, 'le raccourci est branché');
   assert.match(html, /tab === "evenements"/, 'le panneau est piloté par activateTab');
   assert.match(html, /id="evt-liste"/, 'la liste existe');
-  assert.match(html, /function renderEvenements/, 'le rendu existe');
+  assert.match(html, /function renderJournal/, 'le rendu existe');
 
   // Le visuel vient du SERVEUR (e.kind) : c'est ce qui empêche les deux bouts de
   // diverger sur la correspondance type → image.
   assert.match(html, /\/fb\/' \+ xmlEscape\(e\.kind/, 'le visuel est celui annoncé par le serveur');
-  assert.match(html, /evt_info\.svg/, 'un visuel de repli couvre les types inconnus');
+  assert.match(html, /repli: "evt_info"/, 'un visuel de repli couvre les types inconnus');
+  assert.match(html, /def\.repli \+ '\.svg/, 'et il sert aussi quand le fichier manque');
 
   // La trame poussée en direct.
   assert.match(html, /case "bl": \{/, 'la trame <bl> est traitée');
-  assert.match(html, /setEvtNonLus\(evtNonLus \+ 1\)/, 'elle incrémente le voyant');
-  assert.match(html, /rafraichirCompteurEvt\(\)/, 'le compteur est redemandé à l\'ident');
+  assert.match(html, /setJournalNonLus\("evenements", journalEtat\.evenements\.nonLus \+ 1\)/,
+    'elle incrémente le voyant');
+  assert.match(html, /rafraichirCompteursJournaux\(\)/, 'les compteurs sont redemandés à l\'ident');
 
   // Un seul mécanisme de voyant pour les deux rubriques : deux copies auraient
   // fini par diverger.
   assert.match(html, /function majVoyant\(fichier, n\)/, 'le voyant est générique');
   assert.match(html, /majVoyant\("Mail"/, 'la messagerie s\'en sert');
-  assert.match(html, /majVoyant\("Warning"/, 'les événements aussi');
+  assert.match(html, /majVoyant\(JOURNAUX\[cle\]\.raccourci/, 'les journaux aussi');
 });
 
 // ── L'extracteur d'images ──
