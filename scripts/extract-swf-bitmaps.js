@@ -18,6 +18,11 @@
 //     pour revenir aux couleurs droites, sinon tout ce qui est semi-transparent
 //     ressort assombri.
 //
+//   DefineBits (tag 6) → .jpg
+//     Le plus ancien format : les tables JPEG ne sont PAS dans le tag, elles
+//     vivent dans un JPEGTables (8) partagé par tout le fichier. On recolle les
+//     deux — sans quoi le bloc est illisible seul.
+//
 //   DefineBitsJPEG 2/3/4 (tags 21, 35, 90) → .svg (ou .png / .jpg)
 //     Ces tags portent un JPEG + un canal alpha zlib SÉPARÉ. Node ne sait pas
 //     décoder un JPEG, et ajouter une dépendance pour trois icônes serait cher
@@ -202,6 +207,27 @@ function lireJpeg(b, t) {
   return { id, w, h, ext: '.svg', octets: Buffer.from(svg, 'utf8'), note: 'JPEG + masque alpha' };
 }
 
+// DefineBits (tag 6) — le plus ancien format d'image de Flash. Contrairement aux
+// DefineBitsJPEG, il ne porte PAS ses tables de quantification et de Huffman :
+// elles vivent une fois pour toutes dans un tag JPEGTables (8), partagé par
+// toutes les images du fichier. Un tel bloc est donc illisible seul.
+//
+// On les recolle : les tables sans leur EOI final, puis les données sans leur
+// SOI initial. Le résultat est un JPEG ordinaire.
+function lireDefineBits(b, t, tables) {
+  const id = b.readUInt16LE(t.corps);
+  if (!tables) throw new Error('DefineBits sans tag JPEGTables dans le fichier');
+  let tete = tables;
+  if (tete.length >= 2 && tete[tete.length - 2] === 0xFF && tete[tete.length - 1] === 0xD9) {
+    tete = tete.subarray(0, tete.length - 2);            // on retire l'EOI des tables
+  }
+  let corps = b.subarray(t.corps + 2, t.corps + t.len);
+  if (corps[0] === 0xFF && corps[1] === 0xD8) corps = corps.subarray(2);   // et le SOI des données
+  const octets = Buffer.concat([tete, corps]);
+  const d = tailleJpeg(octets);
+  return { id, w: d.w, h: d.h, ext: '.jpg', octets, note: 'JPEG à tables partagées' };
+}
+
 // ─── Parcours des tags ───
 const [, , fichier, sortie, ...ids] = process.argv;
 if (!fichier) {
@@ -211,6 +237,7 @@ if (!fichier) {
 const b = lireSwf(fichier);
 const rectBytes = (x) => Math.ceil((5 + ((x[0] >> 3) & 0x1f) * 4) / 8);
 const images = [];
+let jpegTables = null;                 // tag 8 : les tables partagées des DefineBits
 (function scan(from, to) {
   let o = from;
   while (o < to) {
@@ -219,7 +246,8 @@ const images = [];
     if (len === 0x3f) { len = b.readUInt32LE(o + 2); hs = 6; }
     if (code === 0) break;
     if (code === 39) scan(o + hs + 4, o + hs + len);
-    if ([20, 21, 35, 36, 90].includes(code)) images.push({ code, corps: o + hs, len });
+    if (code === 8) jpegTables = b.subarray(o + hs, o + hs + len);
+    if ([6, 20, 21, 35, 36, 90].includes(code)) images.push({ code, corps: o + hs, len });
     o += hs + len;
   }
 })(rectBytes(b) + 4, b.length);
@@ -230,7 +258,11 @@ for (const t of images) {
   const id = b.readUInt16LE(t.corps);
   if (voulus.size && !voulus.has(id)) continue;
   let img;
-  try { img = (t.code === 20 || t.code === 36) ? lireLossless(b, t) : lireJpeg(b, t); }
+  try {
+    img = (t.code === 6) ? lireDefineBits(b, t, jpegTables)
+      : (t.code === 20 || t.code === 36) ? lireLossless(b, t)
+        : lireJpeg(b, t);
+  }
   catch (e) { console.error(`  #${id} : ${e.message}`); continue; }
   if (!voulus.size) {
     console.log(`#${id}\ttag${t.code}\t${img.w}x${img.h}\t${img.ext.slice(1)}\t${img.note}`);

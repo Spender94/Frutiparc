@@ -134,9 +134,15 @@
     fetch('/miniwave/levels.json').then(function (r) { return r.json(); })
   ]).then(function (res) {
     var sprites = res[0], niveaux = res[1];
-    return window.MiniwaveClient.charger(sprites, function (p) {
-      $('#jauge').style.width = Math.round(p * 100) + '%';
-    }).then(function () { return { sprites: sprites, niveaux: niveaux }; });
+    return Promise.all([
+      window.MiniwaveClient.charger(sprites, function (p) {
+        $('#jauge').style.width = Math.round(p * 90) + '%';
+      }),
+      window.MiniwaveClient.chargerDecor()
+    ]).then(function () {
+      $('#jauge').style.width = '100%';
+      return { sprites: sprites, niveaux: niveaux };
+    });
   }).then(function (d) {
     $('#chargement').style.display = 'none';
 

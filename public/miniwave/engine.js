@@ -33,6 +33,7 @@ const TAILLE_BADS = 24;           // Game.badsSize — largeur d'un ennemi pour 
 const FLUX_BADS = 10;             // Game.badsFlow — ennemis déplacés par tour de vague
 const FRICTION = 0.95;            // Game.friction
 const MARGE_TIR = 20;             // Shot.killMargin
+const DECOR_DECAL = 18.7;         // Game.decorDecal — défilement du fond par niveau
 
 // badsInfo.as : valeur au score, rang de déblocage et nom de chaque ennemi.
 // L'index EST le type stocké dans les niveaux.
@@ -1777,6 +1778,10 @@ class Game {
         break;
       case ETAPE.SUIVANT:
         this.timer = 40;
+        // `nextLevel` peut avoir été fixé plus loin (sortie par la droite, boss
+        // vaincu) ; sinon c'est simplement le niveau suivant. Le client s'en sert
+        // pour faire défiler le décor pendant la transition.
+        if (this.nextLevel === undefined || this.nextLevel <= this.level) this.nextLevel = this.level + 1;
         this.nettoyerTirs();
         break;
       case ETAPE.BOSS:
@@ -1890,7 +1895,11 @@ class Game {
         break;
       case ETAPE.SUIVANT:
         this.timer -= tmod;
-        if (this.timer <= 0) { this.level++; this.initStep(ETAPE.PANNEAU); }
+        if (this.timer <= 0) {
+          this.level = this.nextLevel;
+          this.nextLevel = undefined;
+          this.initStep(ETAPE.PANNEAU);
+        }
         break;
       case ETAPE.BOSS:
         // Le boss se conduit lui-même ; il faut juste ramasser ses escortes.
@@ -1956,9 +1965,22 @@ class Game {
     this.evenement('score', { score: this.score, delta: n });
   }
 
-  // Le vaisseau sorti par la droite saute `n` niveaux d'un coup.
+  // Le vaisseau sorti par la droite saute `n` niveaux d'un coup. On passe par
+  // `nextLevel` : le décor doit défiler d'autant, pas sauter d'un coup.
   setWarp(n) {
-    this.level = Math.min(this.level + Math.max(1, Math.floor(n / 100)), this.waveInfo.length - 1);
+    this.nextLevel = Math.min(this.level + Math.max(1, Math.floor(n / 100)), this.waveInfo.length - 1);
+    this.initStep(ETAPE.SUIVANT);
+  }
+
+  // Game.decorDecal : de combien le décor défile par niveau franchi. C'est ce
+  // qui fait qu'on traverse les quatre sections de 1000 px au fil du parcours.
+  defilementDecor() {
+    if (this.step === ETAPE.SUIVANT && this.nextLevel !== undefined) {
+      const c = Math.max(0, this.timer) / 40;
+      const d = (this.nextLevel - this.level) * c;
+      return (this.nextLevel - d) * DECOR_DECAL;
+    }
+    return this.level * DECOR_DECAL;
   }
 
   onHeroKill() {
@@ -2008,7 +2030,7 @@ class Game {
 }
 
 const API = { Game, Hero, Bads, Boss, Shot, Sprite, ENNEMIS, VAISSEAUX, TYPES, ETAPE, FORME, generateur,
-  LARGEUR, HAUTEUR, TAILLE_BADS, FLUX_BADS, FRICTION };
+  LARGEUR, HAUTEUR, TAILLE_BADS, FLUX_BADS, FRICTION, DECOR_DECAL };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MiniwaveEngine = API;

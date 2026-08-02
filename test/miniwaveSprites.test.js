@@ -102,3 +102,45 @@ test('le lot livré est bien ce que l\'extracteur tire du SWF', () => {
   assert.equal(fs.readFileSync(MANIFESTE, 'utf8'), avant,
     'public/miniwave/sprites/sprites.json est reproductible depuis Games/miniWave2');
 });
+
+// ── Le décor ───────────────────────────────────────────────────────────────
+// Le fond du jeu est une bande verticale de quatre sections de 240×1000 qu'on
+// remonte au fil des niveaux. Elles sont stockées en DefineBits — le plus ancien
+// format d'image de Flash, dont les tables JPEG vivent dans un tag séparé : un
+// bloc pris seul est illisible, il faut les recoller.
+
+test('les quatre sections du décor sont extraites et lisibles', () => {
+  const decor = path.join(ROOT, 'public/miniwave/decor');
+  const attendues = ['bitmap1.jpg', 'bitmap3.jpg', 'bitmap5.jpg', 'bitmap7.jpg'];
+  for (const f of attendues) {
+    const p = path.join(decor, f);
+    assert.ok(fs.existsSync(p), `${f} extraite`);
+    const o = fs.readFileSync(p);
+    assert.ok(o.length > 20000, `${f} a du contenu (${o.length} o)`);
+    // Un JPEG recollé doit commencer par SOI et finir par EOI : c'est la preuve
+    // que les tables partagées ont bien été raboutées aux données.
+    assert.equal(o[0], 0xFF, `${f} commence par un marqueur JPEG`);
+    assert.equal(o[1], 0xD8, `${f} : SOI présent`);
+    assert.equal(o[o.length - 2], 0xFF, `${f} : fin de flux`);
+    assert.equal(o[o.length - 1], 0xD9, `${f} : EOI présent`);
+    // Et il doit contenir une table de Huffman (DHT) : sans elle, le décodeur
+    // du navigateur refuserait l'image — c'est exactement ce qui manquait avant.
+    let dht = false;
+    for (let i = 0; i < o.length - 1; i++) if (o[i] === 0xFF && o[i + 1] === 0xC4) { dht = true; break; }
+    assert.ok(dht, `${f} porte ses tables de Huffman`);
+  }
+});
+
+test('le décor défile d\'un niveau à l\'autre', () => {
+  const NIVEAUX = require(path.join(ROOT, 'public/miniwave/levels.json'));
+  const jeu = new E.Game({ levels: NIVEAUX.main[0].levels, graine: 1 });
+  assert.equal(jeu.defilementDecor(), 0, 'au premier niveau, on est en bas de la bande');
+  jeu.level = 10;
+  assert.ok(Math.abs(jeu.defilementDecor() - 10 * E.DECOR_DECAL) < 0.001,
+    'le défilement suit le niveau atteint');
+  // Sur les 201 niveaux de l'arcade, on traverse bien les quatre sections.
+  jeu.level = 200;
+  const total = jeu.defilementDecor();
+  assert.ok(total > 3000 && total < 4000,
+    `le parcours complet couvre les quatre sections de 1000 px (${Math.round(total)})`);
+});

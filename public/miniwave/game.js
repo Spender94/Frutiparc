@@ -58,28 +58,38 @@ function poser(ctx, sprite, frame, x, y, echelle) {
   }
 }
 
-// ── Le fond ───────────────────────────────────────────────────────────────
-// Le décor d'origine défile sur des bitmaps de 1000 px de haut. On en garde
-// l'esprit — un ciel étoilé qui descend — sans traîner les 400 ko de décor.
-const etoiles = [];
-function semerEtoiles(rng) {
-  for (let i = 0; i < 70; i++) {
-    etoiles.push({
-      x: rng() * LARGEUR,
-      y: rng() * HAUTEUR,
-      v: 0.15 + rng() * 0.5,
-      t: rng() < 0.15 ? 2 : 1,
-    });
-  }
+// ── Le décor ──────────────────────────────────────────────────────────────
+// Le fond du jeu est une bande verticale de quatre sections de 240×1000, qu'on
+// remonte au fil des niveaux : on décolle au-dessus des nuages d'une planète, on
+// traverse un champ d'astéroïdes, on passe une planète rouge fissurée et ses
+// galaxies, puis une station orbitale. Ce sont les images du SWF d'origine.
+//
+// Reproduction fidèle de Game.moveMap : deux sections empilées, celle du niveau
+// courant et la suivante, décalées de `dy % 1000`. Chaque image est ancrée PAR
+// LE BAS (dans le SWF elle s'étend de -1000 à 0), d'où les soustractions.
+const SECTIONS = ['bitmap1.jpg', 'bitmap3.jpg', 'bitmap5.jpg', 'bitmap7.jpg'];
+const HAUT_SECTION = 1000;
+const decor = new Map();
+
+function chargerDecor() {
+  return Promise.all(SECTIONS.map((f) => new Promise((resoudre) => {
+    const img = new Image();
+    img.onload = () => { decor.set(f, img); resoudre(); };
+    img.onerror = resoudre;
+    img.src = BASE + 'decor/' + f;
+  })));
 }
-function fond(ctx, tmod) {
-  ctx.fillStyle = '#0b1024';
+
+function fond(ctx, dy) {
+  ctx.fillStyle = '#1a0f33';
   ctx.fillRect(0, 0, LARGEUR, HAUTEUR);
-  for (const e of etoiles) {
-    e.y += e.v * tmod;
-    if (e.y > HAUTEUR) { e.y -= HAUTEUR; }
-    ctx.fillStyle = e.t === 2 ? 'rgba(200,220,255,.9)' : 'rgba(150,170,220,.55)';
-    ctx.fillRect(e.x | 0, e.y | 0, e.t, e.t);
+  const i = Math.floor(dy / HAUT_SECTION);
+  const off = dy % HAUT_SECTION;
+  for (const k of [0, 1]) {
+    // Au-delà de la dernière section, Flash resterait sur la dernière image :
+    // on fait pareil plutôt que de laisser un trou noir en fin de parcours.
+    const img = decor.get(SECTIONS[Math.min(i + k, SECTIONS.length - 1)]);
+    if (img) ctx.drawImage(img, 0, HAUTEUR + off - HAUT_SECTION * (k + 1), LARGEUR, HAUT_SECTION);
   }
 }
 
@@ -132,8 +142,6 @@ class Client {
     opts = opts || {};
     const graine = opts.graine === undefined ? (Date.now() & 0x7fffffff) : opts.graine;
     eclats.length = 0;
-    etoiles.length = 0;
-    semerEtoiles(E.generateur(graine));
     this.jeu = new E.Game({
       levels: this.niveaux,
       graine,
@@ -192,7 +200,7 @@ class Client {
   dessiner(tmod) {
     const ctx = this.ctx, jeu = this.jeu;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    fond(ctx, tmod);
+    fond(ctx, jeu.defilementDecor());
 
     for (const b of jeu.badsList) {
       // L'image de coque suit les points de vie : intact = image 1, entamé = 2…
@@ -351,6 +359,6 @@ class Client {
   }
 }
 
-window.MiniwaveClient = { Client, charger, images };
+window.MiniwaveClient = { Client, charger, chargerDecor, images, decor };
 
 })();
