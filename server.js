@@ -10465,6 +10465,54 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
     }
   }
 
+  // MiniWave forward-merge — protège ce que le tuyau ne sait pas transporter.
+  //
+  // Le SWF du bureau enregistre par une chaîne à sept champs (parseMiniwavePipe).
+  // Sept, pas plus : le solde de crédits, les modes achetés en boutique, les
+  // records d'Endurance et de Letter Invader, le meilleur score d'arcade et les
+  // statistiques n'y tiennent pas. Le portage JavaScript, lui, envoie la fiche
+  // complète en JSON.
+  //
+  // Sans cette greffe, l'enchaînement suivant efface tout : le joueur achète un
+  // vaisseau sur mobile, ouvre le jeu Flash sur son ordinateur, et la première
+  // sauvegarde du SWF — un tuyau — remplace la fiche riche par sa version
+  // amputée. Aucune erreur, aucun refus : juste des crédits envolés.
+  //
+  // On ne recopie QUE les champs absents du tuyau. Ceux qu'il porte
+  // ($ship, $badsKill, $arcade.$bestLevel, $cons, $shop, $vs) viennent du SWF
+  // et gagnent, comme il se doit.
+  if ((game === 'miniwave' || game === 'miniwave2') && slotId === '0'
+      && data && data[0] === '{' && prevSlotData) {
+    try {
+      const neuf = JSON.parse(data);
+      const prev = JSON.parse(prevSlotData);
+      // On ne greffe que sur une sauvegarde venue du tuyau : elle se reconnaît
+      // à l'absence des champs que seul le JSON complet écrit.
+      const venuDuTuyau = neuf.$credit === undefined && neuf.$mode === undefined;
+      if (venuDuTuyau) {
+        for (const k of ['$mode', '$letter', '$survival', '$time', '$bonus',
+          '$saucerKill', '$credit', '$lvl', '$stats']) {
+          if (prev[k] !== undefined) neuf[k] = prev[k];
+        }
+        // $arcade : le tuyau porte $bestLevel mais pas $bestScore.
+        if (prev.$arcade && neuf.$arcade && prev.$arcade.$bestScore !== undefined
+            && neuf.$arcade.$bestScore === undefined) {
+          neuf.$arcade.$bestScore = prev.$arcade.$bestScore;
+        }
+        // $cons.$main non plus (le tuyau ne porte que $bonus et $letter).
+        if (prev.$cons && neuf.$cons && prev.$cons.$main !== undefined
+            && neuf.$cons.$main === undefined) {
+          neuf.$cons.$main = prev.$cons.$main;
+        }
+        data = JSON.stringify(neuf);
+        console.log(`[SLOT]  miniwave : champs hors tuyau regreffés pour ${username}`
+          + ` (crédits=${neuf.$credit}, modes=${JSON.stringify(neuf.$mode && neuf.$mode[2])})`);
+      }
+    } catch (e) {
+      console.error(`[SLOT]  miniwave forward-merge failed for ${username}: ${e.message}`);
+    }
+  }
+
   // Safeguard: when the SWF can't load saved slots on startup (miniwave),
   // the game may auto-save empty initial data and clobber real progress.
   // Refuse saves where the new payload is dramatically smaller than the

@@ -109,6 +109,82 @@
   }
   #aide { display: none; }
   @media (pointer: fine) { #aide { display: block; } }
+
+  /* ── Clavier de Letter Invader ──
+     Le mode se joue au clavier ; sur un téléphone il n'y en a pas. Trente-cinq
+     touches (A-Z, 1-9) suffisent : le « 0 » et le « P » ne sortent jamais. */
+  #clavier {
+    flex: 0 0 auto; display: none; width: 100%; max-width: 460px;
+    box-sizing: border-box; padding: 0 6px 8px;
+    grid-template-columns: repeat(9, 1fr); gap: 3px;
+  }
+  #clavier.on { display: grid; }
+  #clavier button {
+    border: 0; border-radius: 6px; padding: 9px 0;
+    background: #1d2a48; color: #cfe8a0;
+    font: bold 14px Verdana, sans-serif; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #clavier button:active, #clavier button.on { background: #4b7a26; color: #fff; }
+
+  /* ── Menu, choix et boutique ──
+     Des panneaux HTML posés sur le canvas : un menu dessiné dans 240×240 serait
+     illisible au doigt. */
+  .ecran {
+    position: fixed; inset: 0; z-index: 7; display: none;
+    flex-direction: column; align-items: center;
+    background: #070b18; color: #cfe8a0;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
+    box-sizing: border-box;
+  }
+  .ecran.on { display: flex; }
+  .ecran h1 {
+    font-size: 19px; letter-spacing: 3px; color: #ffd76a; margin: 22px 0 4px;
+  }
+  .ecran h2 { font-size: 14px; letter-spacing: 1px; margin: 18px 0 8px; color: #8fd0ff; }
+  .ecran .sous { font-size: 11px; color: #6d7fa8; margin-bottom: 12px; text-align: center; }
+  .ecran .liste { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 7px; }
+  .ecran .item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    border: 0; border-radius: 12px; padding: 12px 14px;
+    background: #16203a; color: #cfe8a0; text-align: left;
+    font: 14px Verdana, sans-serif; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ecran .item:active { background: #22314f; }
+  .ecran .item .nom { flex: 1 1 auto; font-weight: bold; }
+  .ecran .item .det { font-size: 10px; color: #7f93bd; font-weight: normal; display: block; margin-top: 3px; }
+  .ecran .item.ferme { opacity: .45; cursor: default; }
+  .ecran .item.ferme .det { color: #a08050; }
+  .ecran .item .prix { font-size: 12px; color: #ffd76a; white-space: nowrap; }
+  .ecran .item.vendu .prix { color: #7ed957; }
+  .ecran .item.trop .prix { color: #ff8a5a; }
+  .ecran .bas {
+    width: 100%; max-width: 420px; display: flex; gap: 8px; margin: 16px 0 24px;
+  }
+  .ecran .bas button {
+    flex: 1 1 0; border: 0; border-radius: 12px; padding: 13px;
+    background: #2f4a1c; color: #bff18d; font: bold 14px Verdana, sans-serif; cursor: pointer;
+  }
+  .ecran .bas button.secondaire { background: #1d2a48; color: #8fd0ff; }
+  #bourse {
+    position: sticky; top: 0; align-self: stretch; z-index: 1;
+    display: flex; justify-content: center; gap: 14px;
+    background: #070b18; padding: 8px 0 6px; font-size: 12px;
+  }
+  #bourse b { color: #ffd76a; }
+  #escadron-choix { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin: 6px 0 2px; }
+  #escadron-choix span {
+    border-radius: 6px; background: #16203a; padding: 5px 9px; font-size: 11px; color: #8fd0ff;
+  }
+  #message {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    z-index: 9; background: rgba(22,32,58,.96); color: #cfe8a0;
+    border-radius: 10px; padding: 10px 16px; font-size: 12px;
+    opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 88vw; text-align: center;
+  }
+  #message.on { opacity: 1; }
 </style>
 </head>
 <body>
@@ -121,9 +197,49 @@
     <button type="button" class="bombe" data-cmd="bombe" aria-label="Bombe">💣</button>
     <button type="button" data-cmd="droite" aria-label="Droite">▶</button>
   </div>
+  <div id="clavier"></div>
   <button type="button" id="muet" aria-label="Couper le son">🔊</button>
   <div id="aide">← → pour se déplacer · espace pour tirer · majuscule pour la bombe</div>
 </div>
+
+<!-- Accueil : les quatre rubriques de page/Main.as. -->
+<div class="ecran" id="accueil">
+  <h1>MINI-WAVE 2</h1>
+  <div class="sous" id="accueil-grade"></div>
+  <div class="liste" id="accueil-liste"></div>
+  <div class="bas"><button type="button" class="secondaire" id="accueil-fermer">Retour au jeu</button></div>
+</div>
+
+<!-- Choix d'une mission ou d'un mode spécial. -->
+<div class="ecran" id="choix">
+  <h1 id="choix-titre">MISSIONS</h1>
+  <div class="sous" id="choix-sous"></div>
+  <div class="liste" id="choix-liste"></div>
+  <div class="bas"><button type="button" class="secondaire" data-retour="accueil">Retour</button></div>
+</div>
+
+<!-- Composition de l'escadron (page/SelectShip.as) : on choisit shipMax
+     vaisseaux, un par un, et on les perdra dans cet ordre. -->
+<div class="ecran" id="escadron">
+  <h1>ESCADRON</h1>
+  <div class="sous" id="escadron-sous"></div>
+  <div id="escadron-choix"></div>
+  <div class="liste" id="escadron-liste"></div>
+  <div class="bas">
+    <button type="button" class="secondaire" data-retour="accueil">Retour</button>
+    <button type="button" id="escadron-vite">Tout pareil</button>
+  </div>
+</div>
+
+<!-- Le stand (page/Shop.as). -->
+<div class="ecran" id="boutique">
+  <h1>STAND</h1>
+  <div id="bourse">Crédits : <b id="bourse-credit">0</b></div>
+  <div class="liste" id="boutique-liste"></div>
+  <div class="bas"><button type="button" class="secondaire" data-retour="accueil">Retour</button></div>
+</div>
+
+<div id="message"></div>
 
 <div id="chargement">
   <div>MINIWAVE 2</div>
@@ -134,35 +250,236 @@
   <div class="t" id="fin-titre">GAME OVER</div>
   <div class="s" id="fin-score"></div>
   <div class="s" id="fin-pictos"></div>
-  <button type="button" id="rejouer">Rejouer</button>
+  <div class="bas" style="max-width:300px">
+    <button type="button" class="secondaire" id="fin-menu">Menu</button>
+    <button type="button" id="rejouer">Rejouer</button>
+  </div>
 </div>
 
 <script src="/miniwave/engine.js"></script>
+<script src="/miniwave/modes.js"></script>
 <script src="/miniwave/game.js"></script>
 <script src="/miniwave/sons.js"></script>
 <script src="/miniwave/plateforme.js"></script>
+<script src="/miniwave/menu.js"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
+  var $$ = function (s) { return [].slice.call(document.querySelectorAll(s)); };
   var sid = new URLSearchParams(location.search).get('sid') || '';
   var sons = new window.MiniwaveSons.Sons();
-  var plateforme = new window.MiniwavePlateforme.Plateforme(sid);
+  var P = window.MiniwavePlateforme;
+  var Menu = window.MiniwaveMenu;
+  var plateforme = new P.Plateforme(sid);
+  var client = null, niveaux = null;
+  // Ce qu'on est en train de lancer : le mode choisi, puis l'escadron composé.
+  var enCours = null;
 
-  // Ce que la partie vient d'ouvrir, dit au joueur. Sans session (jeu ouvert
-  // hors du site) on le prévient plutôt que de laisser croire à une sauvegarde.
+  // ── Bandeau volant ──
+  var messageT = null;
+  function dire(texte) {
+    var m = $('#message');
+    m.textContent = texte;
+    m.classList.add('on');
+    clearTimeout(messageT);
+    messageT = setTimeout(function () { m.classList.remove('on'); }, 2400);
+  }
+
+  // ── Écrans ──
+  function montrer(nom) {
+    $$('.ecran').forEach(function (e) { e.classList.toggle('on', e.id === nom); });
+    if (nom) $('#fin').classList.remove('on');
+  }
+  function fermerEcrans() { $$('.ecran').forEach(function (e) { e.classList.remove('on'); }); }
+
+  // Ce que la partie (ou un achat) vient d'ouvrir, dit au joueur.
   function resumePictos(r) {
     if (!r.enregistre) return sid ? 'Progression non enregistrée.' : 'Partie hors compte.';
     if (!r.gagnes.length) return 'Progression enregistrée.';
     var noms = r.gagnes.map(function (p) {
       if (p.genre === 'arcade') return 'picto Arcade';
+      if (p.genre === 'letter') return 'picto Lettres';
+      if (p.genre === 'mission') return 'picto Mission ' + (p.num + 1);
+      if (p.genre === 'article') return 'picto ' + p.nom;
+      if (p.genre === 'vaisseau') return 'picto ' + P.VAISSEAUX[p.num];
       var e = window.MiniwaveEngine.ENNEMIS[p.type];
       return 'picto ' + (e ? e.name : 'espèce ' + p.type);
     });
     return 'Débloqué : ' + noms.join(', ') + ' !';
   }
 
-  // Le navigateur n'ouvre le son qu'après un geste du joueur : le premier appui,
-  // quel qu'il soit, sert de déclencheur.
+  // ── Accueil ──
+  function ouvrirAccueil() {
+    var c = plateforme.carte;
+    $('#accueil-grade').textContent = P.GRADES[P.grade(c)] + ' · ' + c.$credit + ' crédits';
+    var liste = $('#accueil-liste');
+    liste.innerHTML = '';
+    Menu.RUBRIQUES.forEach(function (r) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'item';
+      b.innerHTML = '<span class="nom">' + r.nom + '<span class="det">' + r.desc + '</span></span>';
+      b.addEventListener('click', function () { choisirRubrique(r.id); });
+      liste.appendChild(b);
+    });
+    montrer('accueil');
+  }
+
+  function choisirRubrique(id) {
+    var e = Menu.entrees(plateforme.carte, niveaux);
+    if (id === 'arcade') return preparer(e.arcade[0].lancement);
+    if (id === 'stand') return ouvrirBoutique();
+    ouvrirChoix(id === 'bonus' ? 'MISSIONS' : 'SPÉCIAL', id === 'bonus' ? e.bonus : e.special);
+  }
+
+  function ouvrirChoix(titre, entrees) {
+    $('#choix-titre').textContent = titre;
+    var ouverts = entrees.filter(function (x) { return x.ouvert; }).length;
+    $('#choix-sous').textContent = ouverts
+      ? ''
+      : 'Rien d\'ouvert ici : ces modes s\'achètent au stand, avec les crédits ramassés en partie.';
+    var liste = $('#choix-liste');
+    liste.innerHTML = '';
+    entrees.forEach(function (x) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'item' + (x.ouvert ? '' : ' ferme');
+      b.innerHTML = '<span class="nom">' + x.nom
+        + '<span class="det">' + (x.ouvert ? x.detail : x.pourAcheter) + '</span></span>';
+      if (x.ouvert) b.addEventListener('click', function () { preparer(x.lancement); });
+      liste.appendChild(b);
+    });
+    montrer('choix');
+  }
+
+  // ── Composition de l'escadron ──
+  // page/SelectShip.as : on choisit autant de vaisseaux que gameInfo.shipMax, un
+  // par un. Les modes à une seule vie s'en passent — il n'y a rien à composer.
+  function preparer(lancement) {
+    enCours = { lancement: lancement, escadron: [] };
+    var dispo = Menu.vaisseauxDisponibles(plateforme.carte);
+    if (lancement.vies <= 1 || dispo.length === 1) {
+      enCours.escadron = [];
+      for (var i = 0; i < lancement.vies; i++) enCours.escadron.push(dispo[0] || 0);
+      return demarrer();
+    }
+    dessinerEscadron(dispo);
+    montrer('escadron');
+  }
+
+  function dessinerEscadron(dispo) {
+    var l = enCours.lancement;
+    $('#escadron-sous').textContent = l.nom + ' — choisis ' + l.vies
+      + ' vaisseaux. Tu les perdras dans cet ordre.';
+    var choix = $('#escadron-choix');
+    choix.innerHTML = '';
+    for (var i = 0; i < l.vies; i++) {
+      var s = document.createElement('span');
+      s.textContent = (i + 1) + '. '
+        + (enCours.escadron[i] === undefined ? '—' : P.VAISSEAUX[enCours.escadron[i]]);
+      choix.appendChild(s);
+    }
+    var liste = $('#escadron-liste');
+    liste.innerHTML = '';
+    dispo.forEach(function (n) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'item';
+      b.innerHTML = '<span class="nom">' + P.VAISSEAUX[n] + '</span>';
+      b.addEventListener('click', function () {
+        enCours.escadron.push(n);
+        if (enCours.escadron.length >= l.vies) return demarrer();
+        dessinerEscadron(dispo);
+      });
+      liste.appendChild(b);
+    });
+  }
+
+  $('#escadron-vite').addEventListener('click', function () {
+    // Le raccourci : compléter avec le premier vaisseau disponible.
+    var dispo = Menu.vaisseauxDisponibles(plateforme.carte);
+    while (enCours.escadron.length < enCours.lancement.vies) enCours.escadron.push(dispo[0]);
+    demarrer();
+  });
+
+  // ── La boutique ──
+  function ouvrirBoutique() {
+    dessinerBoutique();
+    montrer('boutique');
+  }
+  function dessinerBoutique() {
+    $('#bourse-credit').textContent = plateforme.carte.$credit;
+    var liste = $('#boutique-liste');
+    liste.innerHTML = '';
+    Menu.rayon(plateforme.carte).forEach(function (a) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'item' + (a.achete ? ' vendu' : (a.abordable ? '' : ' trop'));
+      b.innerHTML = '<span class="nom">' + a.nom + '<span class="det">' + a.ouvre + '</span></span>'
+        + '<span class="prix">' + (a.achete ? 'acquis' : a.prix + ' ¤') + '</span>';
+      if (!a.achete) {
+        b.addEventListener('click', function () {
+          plateforme.acheter(a.id).then(function (r) {
+            if (!r.ok) {
+              dire(r.raison === 'credit'
+                ? ('Il te manque ' + r.manque + ' crédits.')
+                : 'Article déjà acquis.');
+              return;
+            }
+            dire(r.article.nom + ' acheté ! ' + resumePictos(r));
+            dessinerBoutique();
+          });
+        });
+      }
+      liste.appendChild(b);
+    });
+  }
+
+  // ── Le clavier de Letter Invader ──
+  var TOUCHES = 'AZERTYUIOPQSDFGHJKLMWXCVBN123456789';
+  (function construireClavier() {
+    var cl = $('#clavier');
+    TOUCHES.split('').forEach(function (ch) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = ch;
+      b.addEventListener('pointerdown', function (ev) {
+        ev.preventDefault();
+        sons.ouvrir();
+        if (client && client.jeu && client.jeu.frapper) client.jeu.frapper(ch.charCodeAt(0));
+        b.classList.add('on');
+        setTimeout(function () { b.classList.remove('on'); }, 90);
+      });
+      cl.appendChild(b);
+    });
+  })();
+
+  // Au clavier physique, on parle directement au mode.
+  window.addEventListener('keydown', function (ev) {
+    if (!client || !client.jeu || !client.jeu.frapper) return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (client.jeu.frapper(ev.keyCode)) ev.preventDefault();
+  });
+
+  // ── Lancer une partie ──
+  function demarrer() {
+    fermerEcrans();
+    $('#fin').classList.remove('on');
+    var l = enCours.lancement;
+    var lettres = (l.mode === 'letter');
+    $('#clavier').classList.toggle('on', lettres);
+    $('#manette').style.display = lettres ? 'none' : '';
+    client.nouvellePartie({
+      mode: l.mode, niveaux: l.niveaux, vies: l.vies,
+      ship: enCours.escadron[0] || 0, escadron: enCours.escadron,
+      missionNum: l.missionNum, prime: l.prime, nom: l.nom,
+    });
+    // page/SelectShip : l'escadron est une LISTE de vaisseaux, consommée dans
+    // l'ordre. Le moteur en remplit une d'un seul type ; on pose la vraie.
+    if (enCours.escadron.length) client.jeu.heroList = enCours.escadron.slice();
+    client.demarrer();
+  }
+
   ['pointerdown', 'touchstart', 'keydown'].forEach(function (ev) {
     window.addEventListener(ev, function () { sons.ouvrir(); }, { once: false });
   });
@@ -171,7 +488,8 @@
     fetch('/miniwave/sprites/sprites.json').then(function (r) { return r.json(); }),
     fetch('/miniwave/levels.json').then(function (r) { return r.json(); })
   ]).then(function (res) {
-    var sprites = res[0], niveaux = res[1];
+    var sprites = res[0];
+    niveaux = res[1];
     return Promise.all([
       window.MiniwaveClient.charger(sprites, function (p) {
         $('#jauge').style.width = Math.round(p * 90) + '%';
@@ -181,27 +499,31 @@
       plateforme.charger()
     ]).then(function () {
       $('#jauge').style.width = '100%';
-      return { sprites: sprites, niveaux: niveaux };
+      return sprites;
     });
-  }).then(function (d) {
+  }).then(function (sprites) {
     $('#chargement').style.display = 'none';
 
-    var client = new window.MiniwaveClient.Client({
+    client = new window.MiniwaveClient.Client({
       canvas: $('#stage'),
-      sprites: d.sprites,
-      // Le parcours arcade : les 201 niveaux, boss compris.
-      niveaux: d.niveaux.main[0].levels,
+      sprites: sprites,
+      niveaux: niveaux.main[0].levels,
       surEvenement: function (nom, info) {
         sons.surEvenement(nom, info);
         if (nom !== 'finPartie') return;
+        var l = enCours ? enCours.lancement : {};
         $('#fin-titre').textContent = (info.raison === 'fin') ? 'BRAVO !' : 'GAME OVER';
-        $('#fin-score').textContent = info.score + ' points · niveau ' + (info.level + 1);
+        $('#fin-score').textContent = info.score + ' points · '
+          + (l.mode === 'survival' ? ('palier ' + (info.level + 1)) : ('niveau ' + (info.level + 1)));
         $('#fin-pictos').textContent = '';
         $('#fin').classList.add('on');
         // La fiche part au serveur : les éliminations s'ajoutent à celles des
-        // parties précédentes, et le meilleur niveau monte. C'est de là que le
-        // serveur tire les pictos, puis la consécration.
-        plateforme.enregistrer(info).then(function (r) {
+        // parties précédentes, les records montent, les crédits s'accumulent.
+        // C'est de là que le serveur tire les pictos, puis la consécration.
+        plateforme.enregistrer(Object.assign({}, info, {
+          mode: l.mode || 'arcade', missionNum: l.missionNum, prime: l.prime,
+          cons: (client.jeu.cons !== undefined) ? client.jeu.cons : client.jeu.getCons(),
+        })).then(function (r) {
           $('#fin-pictos').textContent = resumePictos(r);
           window.__derniereSauvegarde = r;      // utile aux vérifications automatisées
         });
@@ -211,27 +533,29 @@
       }
     });
 
-    function lancer() {
-      $('#fin').classList.remove('on');
-      // Le champ `ship` du parcours n'est PAS un type de vaisseau : c'est la
-      // taille de l'escadron qu'on emmène (Menu → gameInfo.shipMax), donc le
-      // nombre de vies. L'arcade en donne trois. Le TYPE se choisit à l'écran de
-      // sélection, parmi les vaisseaux débloqués ; tant qu'il n'est pas porté,
-      // on part avec celui du départ — le seul que le jeu offre d'emblée
-      // ($ship = [1,0,0,0,0,0] dans le slot neuf).
-      client.nouvellePartie({ vies: d.niveaux.main[0].ship || 3, ship: 0 });
-      client.demarrer();
-    }
     $('#muet').addEventListener('click', function () {
       var muet = this.classList.toggle('off');
       this.textContent = muet ? '🔇' : '🔊';
       sons.taire(muet);
       if (!muet) sons.ouvrir();
     });
-    $('#rejouer').addEventListener('click', lancer);
-    lancer();
+    $('#rejouer').addEventListener('click', function () {
+      if (enCours) demarrer(); else ouvrirAccueil();
+    });
+    $('#fin-menu').addEventListener('click', ouvrirAccueil);
+    $('#accueil-fermer').addEventListener('click', function () {
+      if (enCours) fermerEcrans(); else choisirRubrique('arcade');
+    });
+    $$('[data-retour]').forEach(function (b) {
+      b.addEventListener('click', function () { ouvrirAccueil(); });
+    });
+
     window.miniwaveClient = client;        // utile aux vérifications automatisées
+    window.__plateforme = plateforme;
     window.__sons = sons;
+    window.__menu = { ouvrirAccueil: ouvrirAccueil, ouvrirBoutique: ouvrirBoutique,
+      choisirRubrique: choisirRubrique, preparer: preparer };
+    ouvrirAccueil();
   }).catch(function (e) {
     $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'
       + String(e && e.message || e) + '</div>';

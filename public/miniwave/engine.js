@@ -2183,12 +2183,11 @@ class Game {
         if (this.vagueEnPlace()) this.initStep(ETAPE.COMBAT);
         break;
       case ETAPE.COMBAT:
-        if (this.badsList.length > 0) { this.verifierEvenement(tmod); this.updateWave(tmod); }
-        // checkEnd : on ne passe au niveau suivant que lorsque la soucoupe est
-        // partie et les bonus ramassés — sinon on perdrait ce qu'on a gagné.
-        if (this.toKill <= 0 && this.saucerList.length === 0 && this.optList.length === 0) {
-          this.initStep(ETAPE.SUIVANT);
+        if (this.badsList.length > 0) {
+          if (this.avecSoucoupe()) this.verifierEvenement(tmod);
+          this.updateWave(tmod);
         }
+        if (this.peutAvancer()) this.initStep(ETAPE.SUIVANT);
         break;
       case ETAPE.SUIVANT:
         this.timer -= tmod;
@@ -2345,6 +2344,20 @@ class Game {
   getCons() {
     return Math.round((this.level / this.waveInfo.length) * 100);
   }
+
+  // ── Ce que les modes redéfinissent ──
+  // checkEnd : quand a-t-on le droit de passer au niveau suivant ? L'arcade
+  // attend que la soucoupe soit repartie et les bonus ramassés — avancer plus
+  // tôt ferait perdre au joueur ce qu'il vient de gagner. Le mode lettres, lui,
+  // attend la fin d'un enchaînement, dont les points ne sont comptés qu'à sa
+  // clôture.
+  peutAvancer() {
+    return this.toKill <= 0 && this.saucerList.length === 0 && this.optList.length === 0;
+  }
+
+  // La soucoupe ne visite pas tous les modes : elle apporte les bonus, et le
+  // mode lettres n'en a pas (on n'y tire pas).
+  avecSoucoupe() { return true; }
 }
 
 const API = { Game, Hero, Bads, Boss, Saucer, Opt, Shot, Sprite,

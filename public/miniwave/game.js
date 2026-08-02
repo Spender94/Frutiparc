@@ -138,17 +138,22 @@ class Client {
     window.addEventListener('orientationchange', () => setTimeout(() => this.redimensionner(), 120));
   }
 
+  // `mode` choisit la classe : l'arcade est le moteur nu, les trois autres sont
+  // dans modes.js. Le reste des options passe telle quelle — chaque mode y
+  // prend ce qui le concerne (missionNum et prime pour une mission, rien pour
+  // l'endurance qui n'a pas de parcours).
   nouvellePartie(opts) {
     opts = opts || {};
     const graine = opts.graine === undefined ? (Date.now() & 0x7fffffff) : opts.graine;
     eclats.length = 0;
-    this.jeu = new E.Game({
-      levels: this.niveaux,
+    const M = window.MiniwaveModes || {};
+    const Classe = { mission: M.Mission, survival: M.Survival, letter: M.Letter }[opts.mode] || E.Game;
+    this.jeu = new Classe(Object.assign({}, opts, {
+      levels: opts.niveaux || this.niveaux,
       graine,
-      vies: opts.vies,
-      ship: opts.ship,
       onEvent: (n, d) => this.annonce(n, d),
-    });
+    }));
+    this.mode = opts.mode || 'arcade';
     this.jeu.entree = this.entree;
     this.dernier = 0;
     this.reste = 0;
@@ -210,6 +215,18 @@ class Client {
       const sp = this.sprites['bads' + b.type];
       const etat = sp ? Math.min(sp.etats.length, (b.profil.hp || 1) - b.hp + 1) : 1;
       poser(ctx, sp, sp ? sp.etats[Math.max(0, etat - 1)].frame : 1, b.x, b.y);
+      // Letter Invader : le caractère à taper, posé sur le monstre. C'est la
+      // seule information du mode — sans elle il n'y a pas de jeu.
+      if (b.affiche) {
+        ctx.font = 'bold 13px Verdana, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(0,0,0,.85)';
+        ctx.strokeText(b.affiche, b.x, b.y + 1);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(b.affiche, b.x, b.y + 1);
+      }
     }
 
     // La soucoupe passe au-dessus de la mêlée ; les bonus tombent devant.
@@ -352,6 +369,25 @@ class Client {
       ctx.font = '8px Verdana, Arial, sans-serif';
       ctx.fillStyle = '#F2D1AA';
       ctx.fillText('¤' + jeu.credits, 12, 13);
+    }
+    // Letter Invader : les boucliers, à la place des vies (il n'y a pas de
+    // vaisseau à perdre, seulement des fautes de frappe à ne pas faire).
+    if (jeu.boucliers !== undefined) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = jeu.boucliers > 1 ? '#8fd0ff' : '#ff8a5a';
+      ctx.fillText('◆'.repeat(Math.max(0, jeu.boucliers)), LARGEUR - 4, 3);
+      ctx.textAlign = 'left';
+      if (jeu.combo && jeu.combo.num > 1) {
+        ctx.fillStyle = '#ffd76a';
+        ctx.fillText('combo ' + jeu.combo.num, 4, 13);
+      }
+    }
+    // Endurance : le palier atteint, seule mesure d'avancement du mode. À
+    // GAUCHE sous le score — le coin droit appartient aux vies, et un bonus
+    // « vie » en cours de partie viendrait s'écrire par-dessus.
+    if (this.mode === 'survival') {
+      ctx.fillStyle = '#8fd0ff';
+      ctx.fillText('palier ' + (jeu.level + 1), 4, HAUTEUR - 11);
     }
 
     if (this.panneauT > 0 && this.panneau) {
