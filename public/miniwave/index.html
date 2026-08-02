@@ -72,6 +72,15 @@
   #manette button.on { background: #3a5480; transform: scale(.96); }
   #manette button.tir.on { background: #4b7a26; }
 
+  /* Coupe-son, discret en haut à droite : on joue souvent en silence. */
+  #muet {
+    position: fixed; top: 10px; right: 10px; z-index: 4;
+    border: 0; border-radius: 50%; width: 38px; height: 38px;
+    background: rgba(29,42,72,.85); color: #cfe8a0; font-size: 17px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #muet.off { opacity: .55; }
+
   #chargement {
     position: fixed; inset: 0; z-index: 5;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
@@ -112,6 +121,7 @@
     <button type="button" class="bombe" data-cmd="bombe" aria-label="Bombe">💣</button>
     <button type="button" data-cmd="droite" aria-label="Droite">▶</button>
   </div>
+  <button type="button" id="muet" aria-label="Couper le son">🔊</button>
   <div id="aide">← → pour se déplacer · espace pour tirer · majuscule pour la bombe</div>
 </div>
 
@@ -128,10 +138,18 @@
 
 <script src="/miniwave/engine.js"></script>
 <script src="/miniwave/game.js"></script>
+<script src="/miniwave/sons.js"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
   var sid = new URLSearchParams(location.search).get('sid') || '';
+  var sons = new window.MiniwaveSons.Sons();
+
+  // Le navigateur n'ouvre le son qu'après un geste du joueur : le premier appui,
+  // quel qu'il soit, sert de déclencheur.
+  ['pointerdown', 'touchstart', 'keydown'].forEach(function (ev) {
+    window.addEventListener(ev, function () { sons.ouvrir(); }, { once: false });
+  });
 
   Promise.all([
     fetch('/miniwave/sprites/sprites.json').then(function (r) { return r.json(); }),
@@ -142,7 +160,8 @@
       window.MiniwaveClient.charger(sprites, function (p) {
         $('#jauge').style.width = Math.round(p * 90) + '%';
       }),
-      window.MiniwaveClient.chargerDecor()
+      window.MiniwaveClient.chargerDecor(),
+      sons.charger()
     ]).then(function () {
       $('#jauge').style.width = '100%';
       return { sprites: sprites, niveaux: niveaux };
@@ -156,6 +175,7 @@
       // Le parcours arcade : les 201 niveaux, boss compris.
       niveaux: d.niveaux.main[0].levels,
       surEvenement: function (nom, info) {
+        sons.surEvenement(nom, info);
         if (nom !== 'finPartie') return;
         $('#fin-titre').textContent = (info.raison === 'fin') ? 'BRAVO !' : 'GAME OVER';
         $('#fin-score').textContent = info.score + ' points · niveau ' + (info.level + 1);
@@ -178,9 +198,16 @@
       client.nouvellePartie({ vies: d.niveaux.main[0].ship || 3, ship: 0 });
       client.demarrer();
     }
+    $('#muet').addEventListener('click', function () {
+      var muet = this.classList.toggle('off');
+      this.textContent = muet ? '🔇' : '🔊';
+      sons.taire(muet);
+      if (!muet) sons.ouvrir();
+    });
     $('#rejouer').addEventListener('click', lancer);
     lancer();
     window.miniwaveClient = client;        // utile aux vérifications automatisées
+    window.__sons = sons;
   }).catch(function (e) {
     $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'
       + String(e && e.message || e) + '</div>';

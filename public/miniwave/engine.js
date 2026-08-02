@@ -1966,6 +1966,8 @@ class Game {
     this.credits = 0;            // les pièces ramassées (monnaie de la boutique)
     this.saucerCompt = 0;
     this.eventTimer = 100;
+    this.beepCount = 0;
+    this.beepIndex = 0;
 
     this.level = 0;
     this.score = 0;
@@ -2225,6 +2227,15 @@ class Game {
       if (this.waveIndex >= this.badsList.length) {
         this.waveIndex = 0;
         this.verifierSens();
+        // Le battement de la vague : un bip tous les `beepInterval` tours. Comme
+        // un tour se boucle d'autant plus vite qu'il reste peu d'ennemis, le
+        // rythme s'accélère à mesure qu'on nettoie — c'est la montée de tension
+        // du jeu, et elle vient de là, pas d'une minuterie.
+        if (++this.beepCount > 48 && this.badsList.length > 0) {
+          this.beepCount = 0;
+          this.evenement('bipVague', { index: this.beepIndex });
+          this.beepIndex = (this.beepIndex + 1) % 4;
+        }
       }
     }
   }
