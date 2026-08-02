@@ -91,14 +91,99 @@ const ENNEMIS = [
   { value: 50, rank: 50, name: 'Letter-monster' },
 ];
 
-// heroName.as : les six vaisseaux, dans l'ordre où le jeu les indexe.
+// heroName.as : les six vaisseaux, dans l'ordre où le jeu les indexe — et leur
+// armement (sp/hero/*.as). Seul le premier est offert au départ ; les autres
+// s'achètent à la boutique interne du jeu ($ship = [1,0,0,0,0,0] au démarrage).
+//
+// Chacun a sa vitesse, sa cadence, son tir et sa bombe. C'est ce qui donne un
+// intérêt au déblocage : le Pastaga est lent mais encaisse deux coups et tire
+// double, le Manzana file vite et tire loin, le Cherry se dédouble une fois
+// entamé et déclenche un rayon vertical.
 const VAISSEAUX = [
-  { link: 'Tequila', name: 'aliquet' },
-  { link: 'Porto', name: 'proto' },
-  { link: 'Pastaga', name: 'gapatsa' },
-  { link: 'Manzana', name: 'namazan' },
-  { link: 'Curaso', name: 'sacuro' },
-  { link: 'Cherry', name: 'rycher' },
+  {
+    link: 'Tequila', name: 'aliquet', speed: 3, cdSpeed: 3.2,
+    // Le tir de base. Sa bombe est une onde de choc qui balaie TOUS les tirs.
+    bombe: (h) => { h.jeu.evenement('ondeChoc', { x: h.x, y: h.y }); h.jeu.nettoyerTirs(); },
+  },
+  {
+    link: 'Porto', name: 'proto', speed: 3, cdSpeed: 5,
+    tirer: (h, t) => {
+      const a = ((h.jeu.hasard(80) - 40) / 100) - Math.PI / 2;   // tir légèrement dispersé
+      t.vitx = Math.cos(a) * 3;
+      t.vity = Math.sin(a) * 3;
+    },
+    bombe: (h) => {                                             // gerbe de douze
+      for (let i = 0; i < 12; i++) {
+        const c = ((i / 11) * 2) - 1;
+        const a = (77 * c - 157) / 100;
+        const s = 5 - Math.abs(c) * 2;
+        const t = h.tirBase();
+        t.vitx = Math.cos(a) * s;
+        t.vity = Math.sin(a) * s;
+      }
+    },
+  },
+  {
+    link: 'Pastaga', name: 'gapatsa', speed: 2, cdSpeed: 2.2, hp: 2,
+    tirer: (h, t) => {                                          // deux canons
+      t.x += 6; t.vity = -2.6;
+      const u = h.tirBase();
+      u.x -= 6; u.vity = -2.6;
+    },
+    // Un missile qu'on fait sauter quand on veut : il explose au tir suivant
+    // (comportement 6 → il meurt dès qu'on rappuie).
+    bombe: (h) => { const t = h.tirBase(); t.behaviourId = 6; t.vity = -2; },
+  },
+  {
+    link: 'Manzana', name: 'namazan', speed: 4.5, cdSpeed: 3.6,
+    tirer: (h, t) => { t.vity = -6; },                          // rapide et loin
+    bombe: (h) => {                                             // huit têtes chercheuses
+      for (let i = 0; i < 8; i++) {
+        const c = ((i / 7) * 2) - 1;
+        const a = (77 * c - 157) / 100;
+        h.jeu.newHShot({
+          x: h.x, y: h.y - 6,
+          vitx: Math.cos(a) * 4, vity: Math.sin(a) * 4,
+          behaviourId: 8, heroType: 3,
+        });
+      }
+    },
+  },
+  {
+    link: 'Curaso', name: 'sacuro', speed: 3, cdSpeed: 3,
+    tirer: (h, t) => {                                          // deux tirs qui ondulent
+      t.behaviourId = 9;
+      t.behaviourInfo = { x: h.x, d: 314, decalSpeed: 20, decal: 8 };
+      t.x = h.x - 7;
+      t.vity = -3.5;
+      const u = h.tirBase();
+      u.behaviourId = 9;
+      u.behaviourInfo = { x: h.x, d: 0, decalSpeed: 20, decal: 8 };
+      u.x = h.x + 7;
+      u.vity = -3.5;
+    },
+    bombe: (h) => {
+      h.jeu.newHShot({ x: h.x, y: h.y - 6, vitx: 0, vity: -5, behaviourId: 10, heroType: 4 });
+    },
+  },
+  {
+    link: 'Cherry', name: 'rycher', speed: 3, cdSpeed: 3, hp: 2,
+    // Entamé, il tire en éventail au lieu d'un seul trait — et sa cadence double.
+    tirer: (h) => {
+      if (h.hp !== 1) return;
+      for (let i = 0; i < 2; i++) {
+        const s = (i * 2) - 1;
+        h.jeu.newHShot({
+          x: h.x + s * 5, y: h.y - 6, vitx: s * 0.5, vity: -2.5,
+          flStandardHeroShot: true, heroType: 5,
+        });
+      }
+    },
+    auCoup: (h) => { if (h.hp === 1) h.coolDownSpeed = 2; },
+    // Un rayon vertical qui pulvérise tout ce qui passe dans sa colonne, au prix
+    // de la mobilité : le vaisseau est ralenti tant qu'il tire.
+    bombe: (h) => { h.laser = 40; h.speed = 1; h.bossTimer = 0; },
+  },
 ];
 
 // Les étapes de game/Main.initStep, telles que le jeu les numérote. Le vaisseau
@@ -143,12 +228,15 @@ class Sprite {
 class Hero extends Sprite {
   constructor(jeu, o) {
     super(jeu, o);
-    if (this.hp === undefined) this.hp = 1;
-    if (this.speed === undefined) this.speed = 3;
-    if (this.coolDownSpeed === undefined) this.coolDownSpeed = 4;
+    if (this.type === undefined) this.type = 0;
+    // Chaque vaisseau a sa fiche : vitesse, cadence, robustesse et armement.
+    const v = VAISSEAUX[this.type] || {};
+    this.fiche = v;
+    if (this.hp === undefined) this.hp = v.hp || 1;
+    if (this.speed === undefined) this.speed = v.speed || 3;
+    if (this.coolDownSpeed === undefined) this.coolDownSpeed = v.cdSpeed || 4;
     if (this.ray === undefined) this.ray = 8;
     if (this.moveLine === undefined) this.moveLine = 11;
-    if (this.type === undefined) this.type = 0;
     this.flLine = false;
     this.coolDown = 0;
     this.flBomb = true;
@@ -198,6 +286,21 @@ class Hero extends Sprite {
       else this.newShield = undefined;
     }
 
+    // Rayon du Cherry : tout ce qui passe dans sa colonne est pulvérisé, et le
+    // boss encaisse aussi — mais avec un temps de latence, sinon il fondrait.
+    if (this.laser > 0) {
+      this.laser -= tmod;
+      for (const b of jeu.badsList.slice()) if (Math.abs(b.x - this.x) < 6) b.frapper();
+      if (jeu.boss) {
+        if (this.bossTimer > 0) this.bossTimer -= tmod;
+        else if (Math.abs(jeu.boss.x - this.x) < jeu.boss.ray + 6) {
+          jeu.boss.frapper(null);
+          this.bossTimer = 2.5;
+        }
+      }
+      if (this.laser <= 0) this.speed = this.fiche.speed || 3;
+    }
+
     // Sortie par la droite : le vaisseau saute au niveau suivant (le « warp »).
     if (this.x > LARGEUR + this.ray) {
       jeu.evenement('warp', {});
@@ -218,24 +321,39 @@ class Hero extends Sprite {
     if (this.flBomb && e.bombe && this.peutTirer()) this.bombe();
   }
 
-  tirer() {
-    this.coolDown = 100;
-    const t = this.jeu.newHShot({
+  // Le tir « nu », celui que les vaisseaux ajustent (super.shoot en AS2).
+  tirBase() {
+    return this.jeu.newHShot({
       x: this.x, y: this.y - 6, vitx: 0, vity: -3,
       flStandardHeroShot: true, heroType: this.type,   // aspect du tir = vaisseau
     });
-    this.jeu.evenement('tirHero', { x: this.x, y: this.y - 6 });
+  }
+
+  tirer() {
+    this.coolDown = 100;
+    const t = this.tirBase();
+    if (this.fiche.tirer) this.fiche.tirer(this, t);
+    this.jeu.evenement('tirHero', { x: this.x, y: this.y - 6, type: this.type });
     return t;
   }
 
-  bombe() { this.flBomb = false; this.jeu.evenement('bombe', {}); }
+  // La bombe ne sert qu'UNE fois par vaisseau : c'est le dernier recours.
+  bombe() {
+    this.flBomb = false;
+    if (this.fiche.bombe) this.fiche.bombe(this);
+    this.jeu.evenement('bombe', { type: this.type, x: this.x, y: this.y });
+  }
 
   frapper(power) {
     if (power === undefined) power = 1;
     if (this.newShield !== undefined) return;   // encore invulnérable
     this.hp -= power;
     if (this.hp <= 0) this.exploser();
-    else this.newShield = { t: 80, d: 0 };
+    else {
+      this.newShield = { t: 80, d: 0 };
+      // Le Cherry entamé change d'arme et double sa cadence.
+      if (this.fiche.auCoup) this.fiche.auCoup(this);
+    }
     this.jeu.evenement('heroTouche', { x: this.x, y: this.y, mort: this.hp <= 0 });
   }
 

@@ -566,3 +566,133 @@ test('le boss vaincu fait reprendre le parcours', () => {
   for (let i = 0; i < 200 && jeu.level === 0; i++) jeu.update(1);
   assert.equal(jeu.level, 1, 'on passe au niveau suivant');
 });
+
+test('le champ « ship » d\'un parcours est la taille de l\'escadron, pas un vaisseau', () => {
+  // Piège du format : on lit « ship: 3 » et on comprend « vaisseau n° 3 ». En
+  // réalité Menu.as le range dans gameInfo.shipMax, et l'écran de sélection fait
+  // choisir AUTANT de vaisseaux — c'est donc le nombre de vies. Un parcours
+  // bonus monte à 5, ce qui n'aurait aucun sens comme index dans une liste de six
+  // vaisseaux dont un seul est débloqué au départ.
+  const arcade = NIVEAUX.main[0];
+  assert.equal(arcade.ship, 3, 'l\'arcade emmène trois vaisseaux');
+  const jeu = new E.Game({ levels: arcade.levels, graine: 1, vies: arcade.ship, ship: 0 });
+  assert.equal(jeu.heroList.length, 3, 'trois vies en réserve');
+  assert.ok(jeu.heroList.every((t) => t === 0), 'tous du vaisseau de départ');
+
+  // Et l'escadron peut mélanger les types : heroList est une LISTE de vaisseaux,
+  // consommée dans l'ordre. C'est ce qui permettra à l'écran de sélection de
+  // composer une escadre une fois la boutique portée.
+  const mixte = new E.Game({ levels: arcade.levels, graine: 1, vies: 3, ship: 0 });
+  mixte.heroList = [0, 2, 4];
+  for (let i = 0; i < 600 && mixte.step !== E.ETAPE.COMBAT; i++) mixte.update(1);
+  assert.equal(mixte.hero.type, 0, 'on décolle avec le premier de la liste');
+  mixte.hero.newShield = undefined;
+  mixte.hero.frapper(10);
+  for (let i = 0; i < 20 && !mixte.hero; i++) mixte.update(1);
+  assert.equal(mixte.hero.type, 2, 'le suivant de la liste prend le relais');
+});
+
+// ── Les six vaisseaux ──────────────────────────────────────────────────────
+// Seul le premier est offert ; les autres s'achètent à la boutique interne du
+// jeu. Le déblocage n'a d'intérêt que s'ils se jouent VRAIMENT différemment :
+// c'est ce que ces tests figent.
+
+function auVolant(ship, graine) {
+  const jeu = new E.Game({ levels: ARCADE, graine: graine === undefined ? 21 : graine, vies: 3, ship });
+  for (let i = 0; i < 600 && jeu.step !== E.ETAPE.COMBAT; i++) jeu.update(1);
+  return jeu;
+}
+
+test('chaque vaisseau a sa fiche : vitesse, cadence, robustesse', () => {
+  const vus = new Set();
+  for (let s = 0; s < 6; s++) {
+    const h = auVolant(s).hero;
+    assert.equal(h.type, s, `on pilote bien le vaisseau ${s}`);
+    assert.ok(h.speed > 0 && h.coolDownSpeed > 0, `${E.VAISSEAUX[s].link} : fiche renseignée`);
+    vus.add(h.speed + '/' + h.coolDownSpeed + '/' + h.hp);
+  }
+  assert.ok(vus.size >= 5, `les fiches diffèrent réellement (${vus.size} profils sur 6)`);
+  // Deux vaisseaux encaissent deux coups : le Pastaga, lent et lourd, et le
+  // Cherry, qui change d'arme une fois entamé.
+  assert.equal(auVolant(2).hero.hp, 2, 'le Pastaga a une double coque');
+  assert.equal(auVolant(5).hero.hp, 2, 'le Cherry aussi');
+  assert.ok(auVolant(3).hero.speed > auVolant(2).hero.speed, 'le Manzana file plus vite que le Pastaga');
+});
+
+test('chaque vaisseau tire à sa façon', () => {
+  const compte = (s) => {
+    const jeu = auVolant(s);
+    const avant = jeu.hShotList.length;
+    jeu.hero.coolDown = 0;
+    jeu.hero.tirer();
+    return jeu.hShotList.length - avant;
+  };
+  assert.equal(compte(0), 1, 'Tequila : un trait');
+  assert.equal(compte(2), 2, 'Pastaga : deux canons');
+  assert.equal(compte(4), 2, 'Curaso : deux tirs qui ondulent');
+  // Le Manzana tire plus loin (vitesse verticale plus forte) que la base.
+  const jeu = auVolant(3);
+  jeu.hero.coolDown = 0;
+  jeu.hero.tirer();
+  assert.ok(jeu.hShotList[jeu.hShotList.length - 1].vity <= -6, 'Manzana : tir rapide');
+});
+
+test('le Cherry entamé change d\'arme', () => {
+  const jeu = auVolant(5);
+  const h = jeu.hero;
+  const avant = jeu.hShotList.length;
+  h.coolDown = 0; h.tirer();
+  assert.equal(jeu.hShotList.length - avant, 1, 'intact : un seul trait');
+  const cadence = h.coolDownSpeed;
+
+  h.newShield = undefined;
+  h.frapper();                     // une coque en moins
+  assert.equal(h.hp, 1, 'il tient le coup');
+  assert.ok(h.coolDownSpeed < cadence, 'et tire désormais plus vite');
+  const apres = jeu.hShotList.length;
+  h.coolDown = 0; h.tirer();
+  assert.equal(jeu.hShotList.length - apres, 3, 'entamé : il tire en éventail');
+});
+
+test('chaque bombe fait autre chose, et ne sert qu\'une fois', () => {
+  // Tequila : une onde de choc qui balaie TOUS les tirs de l'écran.
+  const t = auVolant(0);
+  t.newBShot({ x: 50, y: 50, vitx: 0, vity: 1 });
+  t.newBShot({ x: 60, y: 60, vitx: 0, vity: 1 });
+  assert.ok(t.bShotList.length >= 2, 'des tirs ennemis en vol');
+  t.hero.bombe();
+  assert.equal(t.bShotList.length, 0, 'Tequila : l\'onde balaie l\'écran');
+  assert.equal(t.hero.flBomb, false, 'et la bombe est consommée');
+  const restant = t.bShotList.length;
+  t.hero.bombe();
+  assert.equal(t.bShotList.length, restant, 'une seule fois par vaisseau');
+
+  const gerbe = (s) => {
+    const jeu = auVolant(s);
+    const avant = jeu.hShotList.length;
+    jeu.hero.bombe();
+    return jeu.hShotList.length - avant;
+  };
+  assert.equal(gerbe(1), 12, 'Porto : une gerbe de douze');
+  assert.equal(gerbe(3), 8, 'Manzana : huit têtes chercheuses');
+  assert.equal(gerbe(2), 1, 'Pastaga : un missile');
+});
+
+test('le rayon du Cherry pulvérise sa colonne', () => {
+  const jeu = auVolant(5, 31);
+  const h = jeu.hero;
+  const cible = jeu.badsList[0];
+  cible.x = h.x;                   // pile au-dessus de lui
+  const nb = jeu.badsList.length;
+  const vitesse = h.speed;
+
+  h.bombe();
+  assert.ok(h.laser > 0, 'le rayon est allumé');
+  assert.equal(h.speed, 1, 'et le vaisseau est ralenti tant qu\'il tire');
+  jeu.update(1);
+  assert.ok(jeu.badsList.length < nb, 'ce qui passe dans la colonne est pulvérisé');
+
+  for (let i = 0; i < 60 && h.laser > 0; i++) jeu.update(1);
+  assert.ok(h.laser <= 0, 'le rayon s\'éteint');
+  assert.equal(h.speed, vitesse, 'et la mobilité revient');
+});

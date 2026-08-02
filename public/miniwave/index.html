@@ -165,7 +165,13 @@
 
     function lancer() {
       $('#fin').classList.remove('on');
-      client.nouvellePartie({ ship: 3 });   // le vaisseau du parcours arcade
+      // Le champ `ship` du parcours n'est PAS un type de vaisseau : c'est la
+      // taille de l'escadron qu'on emmène (Menu → gameInfo.shipMax), donc le
+      // nombre de vies. L'arcade en donne trois. Le TYPE se choisit à l'écran de
+      // sélection, parmi les vaisseaux débloqués ; tant qu'il n'est pas porté,
+      // on part avec celui du départ — le seul que le jeu offre d'emblée
+      // ($ship = [1,0,0,0,0,0] dans le slot neuf).
+      client.nouvellePartie({ vies: d.niveaux.main[0].ship || 3, ship: 0 });
       client.demarrer();
     }
     $('#rejouer').addEventListener('click', lancer);
