@@ -11410,6 +11410,14 @@ app.all('/do/eb', (req, res) => {
 //   k="2"  cannot give to yourself
 //   k="3"  target user unknown
 //   k="4"  not enough kikooz
+//
+// Sans AUCUN paramètre, la même URL répond à une tout autre question : combien
+// de kikooz l'appelant peut-il encore distribuer avec /don cette semaine ? C'est
+// la requête que main.swf envoie pour /meskikooz (alias /mykikooz,
+// /kikoozrestants) — il attend <r k="0" a="<restant>"/> et affiche « Il me reste
+// N kikooz distribuables cette semaine ». Faute de cette branche, la commande
+// tombait dans la validation des paramètres et ne renvoyait qu'un refus.
+//   k="2"  l'appelant n'a pas de pouvoir de don (ni animateur, ni modérateur)
 // ─────────────────────────────────────────────
 app.all('/do/give', (req, res) => {
   const source = req.method === 'POST' ? { ...req.query, ...(req.body || {}) } : req.query;
@@ -11417,6 +11425,21 @@ app.all('/do/give', (req, res) => {
   const auth = requireAuthBySid(sid, res, 'text/xml');
   if (!auth) return;
   const { user, username } = auth;
+
+  // ── Requête de quota (/meskikooz) ──
+  if (source.k === undefined && source.u === undefined) {
+    const anim = isAnimator(username), mod = isModerator(username);
+    if (!anim && !mod) return res.type('text/xml').send('<r k="2" />');
+    // Le plafond ne s'applique qu'aux animateurs : /don ne compte rien pour un
+    // modérateur. On le signale par p="0" — un attribut que le bureau ignore, et
+    // qui permet au mobile de dire « tes dons ne sont pas plafonnés » au lieu
+    // d'annoncer un reste qui n'existe pas. Le bureau, lui, n'a qu'un nombre à
+    // afficher : on lui donne l'allocation pleine, qui est pour un modérateur un
+    // plancher et non un plafond.
+    const plafonne = anim && !mod;
+    const restant = plafonne ? animatorKikoozLeft(username) : ANIMATOR_WEEKLY_KIKOOZ;
+    return res.type('text/xml').send(`<r k="0" a="${restant}" p="${plafonne ? 1 : 0}" />`);
+  }
 
   const amount = Math.floor(Number(source.k));
   const targetRaw = String(source.u || '').trim();
@@ -14804,6 +14827,54 @@ app.get('/api/light/profile', async (req, res) => {
     // Feutres spéciaux possédés (pour afficher la pastille dédiée dans la palette).
     ownedFeutres: Array.isArray(u.ownedFeutres) ? u.ownedFeutres.slice() : [],
   });
+});
+
+// Qui est connecté sur le SITE (/light).
+//
+// Le protocole de chat ne sait répondre qu'à « qui est dans CE salon » : la
+// liste <p> arrive au join, et la liste des salons <q> ne donne que des
+// comptages. Un joueur du mobile ne pouvait donc pas savoir qu'un ami l'attend
+// deux salons plus loin. On lit la table des sockets identifiées — celle qui
+// sert déjà à pousser les trames — et on rend, pour chacun, où il se trouve.
+//
+// Même population que /api/online-count et /api/online-users (les PNJ sont
+// exclus : la question porte sur les joueurs), mais réservée aux connectés :
+// dire QUI est où en dit plus que le compteur public de la page d'accueil.
+//
+// Un joueur peut avoir plusieurs sockets (bureau + téléphone) : on fusionne
+// leurs salons sous une seule entrée. Les discussions privées sont écartées —
+// leur nom trahirait avec qui l'on parle.
+app.get('/api/light/online', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+
+  const parJoueur = new Map(); // clé minuscule -> { pseudo, salons:Set, staff }
+  for (const [, cl] of xmlSocketClients) {
+    if (!cl || !cl.username || !cl.logged) continue;
+    const cle = String(cl.username).toLowerCase();
+    if (NPC_USERNAMES.has(cle)) continue;
+    let e = parJoueur.get(cle);
+    if (!e) {
+      e = {
+        pseudo: getDisplayName(cl.username),
+        salons: new Set(),
+        staff: isModerator(cl.username) || isAnimator(cl.username),
+      };
+      parJoueur.set(cle, e);
+    }
+    for (const salon of (cl.channels || [])) {
+      // Test sur le NOM, pas sur le contenu : un salon privé mal formé serait
+      // rendu public par une lecture de ses participants qui échoue.
+      if (!/^pm2?_/.test(String(salon))) e.salons.add(salon);
+    }
+  }
+
+  const liste = [...parJoueur.values()]
+    .map((e) => ({ pseudo: e.pseudo, salons: [...e.salons].sort(), staff: e.staff }))
+    .sort((a, b) => String(a.pseudo).localeCompare(String(b.pseudo), 'fr', { sensitivity: 'base' }));
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, count: liste.length, users: liste });
 });
 
 // Boutique mobile (/light) : accessoires achetables + solde kikooz. On expose

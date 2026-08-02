@@ -451,6 +451,29 @@
   }
   #users-drawer.open { transform: translateX(0); }
   #users-drawer h3 { margin: 0; padding: 12px 14px; background: #fff; color: #D16767; font-size: 14px; border-bottom: 1px solid #DDDDDD; }
+  /* Bascule « ce salon » / « tout le site ». Deux onglets pleine largeur : la
+     cible tactile fait la moitié du tiroir, on ne peut pas la manquer. */
+  #drawer-onglets { display: flex; background: #fff; border-bottom: 1px solid #DDDDDD; }
+  .dr-onglet {
+    flex: 1; padding: 9px 4px; border: 0; background: transparent; cursor: pointer;
+    font-family: inherit; font-size: 13px; font-weight: bold; color: #8aa06a;
+    border-bottom: 3px solid transparent; -webkit-tap-highlight-color: transparent;
+  }
+  .dr-onglet.on { color: #D16767; border-bottom-color: #D16767; }
+  .dr-onglet:active { background: #f4f9ec; }
+  /* Sur « tout le site », chaque ligne porte en plus le salon où se trouve le
+     joueur : le pseudo passe donc au-dessus, en colonne. */
+  #users-drawer .u.avec-lieu { flex-direction: column; align-items: center; gap: 2px; justify-content: center; }
+  #users-drawer .u .lieu {
+    font-size: 11px; font-weight: bold; letter-spacing: 0; color: #6c8f3a;
+    text-shadow: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* L'enveloppe « écrire en privé » se pose à droite ; en colonne, elle serait
+     poussée sous le pseudo. On la remet dans le flux horizontal. */
+  #users-drawer .u.avec-lieu .haut { display: flex; align-items: center; gap: 8px; max-width: 100%; }
+  #users-drawer .u.avec-lieu.mp::after { position: absolute; right: 12px; top: 50%; margin-top: -9px; }
+  #users-drawer .u.avec-lieu { position: relative; }
+  #users-drawer .vide { padding: 16px 12px; text-align: center; color: #6c8f3a; font-size: 13px; }
   /* Connected-users list styled after the "score panel" mockup: a light-green
      card (soft green border, rounded top, inner white highlight + green glow)
      encapsulated in the white drawer; rows alternate two greens with big bold
@@ -1240,6 +1263,13 @@
     <div id="drawer-backdrop"></div>
     <div id="users-drawer">
       <h3>Connectés <span id="drawer-count"></span></h3>
+      <!-- Le protocole ne connaît que « qui est dans CE salon ». Le second
+           onglet interroge le serveur pour voir tout le site — et dit où
+           chacun se trouve, pour qu'on sache où aller le retrouver. -->
+      <div id="drawer-onglets">
+        <button type="button" class="dr-onglet on" data-vue="salon">Ce salon</button>
+        <button type="button" class="dr-onglet" data-vue="site">Tout le site</button>
+      </div>
       <button class="users-scroll up" id="users-scroll-up" aria-label="Faire défiler vers le haut"><img src="/fb/bouton_up.png" alt=""></button>
       <div class="list" id="users-list"></div>
       <button class="users-scroll down" id="users-scroll-down" aria-label="Faire défiler vers le bas"><img src="/fb/bouton_up.png" alt=""></button>
@@ -3434,13 +3464,37 @@
       .catch(function () { systemLine("Le don n'a pas abouti (serveur injoignable)."); });
   }
 
+  // ── Quota hebdomadaire de dons (/meskikooz) ──
+  // Même URL que le don, mais SANS paramètre : le serveur y répond « combien
+  // puis-je encore distribuer avec /don cette semaine ? ». Réservée au staff,
+  // comme sur le bureau (qui gate la commande sur son drapeau d'animateur).
+  var CMD_QUOTA = ["/meskikooz", "/mykikooz", "/kikoozrestants"];
+
+  function commandeQuota() {
+    fetch("/do/give?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.text(); })
+      .then(function (xml) {
+        if (attr(xml, "k") !== "0") {
+          systemLine("Seuls les animateurs ont un quota de dons à distribuer.");
+          return;
+        }
+        // p="0" : l'appelant n'est pas plafonné (modérateur). Annoncer un « reste »
+        // dans ce cas laisserait croire à une limite qui n'existe pas.
+        systemLine(attr(xml, "p") === "0"
+          ? "Tes dons ne sont pas plafonnés."
+          : "Il te reste " + attr(xml, "a") + " kikooz distribuables cette semaine.");
+      })
+      .catch(function () { systemLine("Quota indisponible (serveur injoignable)."); });
+  }
+
   // Renvoie true si la ligne a été traitée localement. Toutes les autres
   // commandes (/topic, /stats, /fiche, /don…) partent au serveur, qui les gère.
   function traiterCommande(texte) {
     var mots = texte.trim().split(/\s+/);
-    if (CMD_DON.indexOf(mots[0].toLowerCase()) === -1) return false;
-    commandeDon(mots, texte.trim());
-    return true;
+    var cmd = mots[0].toLowerCase();
+    if (CMD_DON.indexOf(cmd) !== -1) { commandeDon(mots, texte.trim()); return true; }
+    if (CMD_QUOTA.indexOf(cmd) !== -1) { commandeQuota(); return true; }
+    return false;
   }
 
   // ── Compose ──
@@ -3502,42 +3556,120 @@
   })();
 
   // ── Users drawer ──
+  // Deux vues sur la même liste : « salon » vient du protocole de chat (la liste
+  // <p> reçue au join, tenue à jour par les arrivées/départs), « site » vient du
+  // serveur (/api/light/online) car aucune trame ne dit qui est ailleurs.
+  var drawerVue = "salon";
+  var siteListe = null, siteTimer = null;
+
+  // Une ligne : le pseudo, éventuellement le lieu, et le geste « écrire en privé ».
+  function ligneConnecte(pseudo, lieu, staff) {
+    var u = el("div", "u");
+    var contenu = u;
+    if (lieu) { u.classList.add("avec-lieu"); contenu = el("div", "haut"); u.appendChild(contenu); }
+    var nm = el("span"); nm.textContent = pseudo;
+    contenu.appendChild(nm);
+    if (staff) { var s = el("span", "badge"); s.textContent = "staff"; contenu.appendChild(s); }
+    if (pseudo.toLowerCase() === state.userLower) {
+      var b = el("span", "badge"); b.textContent = "toi"; contenu.appendChild(b);
+    } else {
+      // Appuyer sur un pseudo ouvre la discussion privée : c'est le seul geste
+      // à connaître, et il tombe là où le joueur cherche déjà ses interlocuteurs.
+      u.classList.add("mp");
+      u.title = "Écrire à " + pseudo + " en privé";
+      u.addEventListener("click", function () {
+        openDrawer(false);
+        ouvrirPrive(pseudo);
+      });
+    }
+    if (lieu) { var l = el("div", "lieu"); l.textContent = lieu; u.appendChild(l); }
+    return u;
+  }
+
   function renderUsers() {
     var set = state.usersByRoom[state.room] || {};
     var names = Object.keys(set).sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
-    $("#drawer-count").textContent = "(" + names.length + ")";
     // Keep the selector's "(n)" for the current room fresh between polls.
     if (state.room) {
       var prev = state.roomCounts[state.room];
       state.roomCounts[state.room] = names.length;
       if (prev !== names.length) renderRoomOptions();
     }
+    if (drawerVue !== "salon") return;   // la vue « site » a son propre rendu
+    $("#drawer-count").textContent = "(" + names.length + ")";
     var list = $("#users-list");
     list.innerHTML = "";
-    names.forEach(function (n) {
-      var u = el("div", "u");
-      var nm = el("span"); nm.textContent = n;
-      u.appendChild(nm);
-      var moi = (n.toLowerCase() === state.userLower);
-      if (moi) {
-        var b = el("span", "badge"); b.textContent = "toi"; u.appendChild(b);
-      } else {
-        // Appuyer sur un pseudo ouvre la discussion privée : c'est le seul geste
-        // à connaître, et il tombe là où le joueur cherche déjà ses interlocuteurs.
-        u.classList.add("mp");
-        u.title = "Écrire à " + n + " en privé";
-        u.addEventListener("click", function () {
-          openDrawer(false);
-          ouvrirPrive(n);
-        });
-      }
-      list.appendChild(u);
+    names.forEach(function (n) { list.appendChild(ligneConnecte(n, "", false)); });
+  }
+
+  // Vue « tout le site ». Le lieu affiché est le salon PUBLIC où se trouve le
+  // joueur ; qui n'en a rejoint aucun (il joue, il lit le forum…) est simplement
+  // « en ligne ». Les discussions privées ne sont jamais nommées.
+  function renderSite() {
+    var list = $("#users-list");
+    list.innerHTML = "";
+    if (!siteListe) {
+      $("#drawer-count").textContent = "";
+      var att = el("div", "vide"); att.textContent = "Chargement…";
+      list.appendChild(att);
+      return;
+    }
+    $("#drawer-count").textContent = "(" + siteListe.length + ")";
+    if (!siteListe.length) {
+      var v = el("div", "vide"); v.textContent = "Personne d'autre en ligne.";
+      list.appendChild(v);
+      return;
+    }
+    siteListe.forEach(function (j) {
+      var lieu = (j.salons && j.salons.length)
+        ? j.salons.map(roomLabel).join(", ")
+        : "en ligne";
+      list.appendChild(ligneConnecte(j.pseudo, lieu, !!j.staff));
     });
   }
+
+  // Toujours redemander : la liste précédente reste affichée pendant l'appel
+  // (renderSite la rend depuis siteListe), donc rafraîchir ne coûte aucun
+  // clignotement — et une liste de présence périmée ne vaut rien.
+  function chargerSite() {
+    if (!state.sid) return;
+    fetch("/api/light/online?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) return;
+        siteListe = d.users || [];
+        if (drawerVue === "site") renderSite();
+      })
+      .catch(function () {});
+  }
+
+  function drawerBascule(vue) {
+    drawerVue = vue;
+    Array.prototype.forEach.call(document.querySelectorAll(".dr-onglet"), function (b) {
+      b.classList.toggle("on", b.getAttribute("data-vue") === vue);
+    });
+    $("#users-list").scrollTop = 0;
+    if (vue === "site") { renderSite(); chargerSite(); } else renderUsers();
+    majRafraichissementSite();
+  }
+  // Tant que la vue « site » est affichée, on la garde fraîche : les allées et
+  // venues sont exactement ce qu'on est venu observer. Ailleurs, on arrête —
+  // interroger le serveur pour un tiroir fermé ne sert personne.
+  function majRafraichissementSite() {
+    var voulu = (drawerVue === "site") && $("#users-drawer").classList.contains("open");
+    if (voulu && !siteTimer) siteTimer = setInterval(chargerSite, 15000);
+    if (!voulu && siteTimer) { clearInterval(siteTimer); siteTimer = null; }
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".dr-onglet"), function (b) {
+    b.addEventListener("click", function () { drawerBascule(b.getAttribute("data-vue")); });
+  });
+
   function openDrawer(open) {
     $("#users-drawer").classList.toggle("open", open);
     $("#drawer-backdrop").classList.toggle("show", open);
     $("#users-btn").classList.toggle("on", open);
+    if (open && drawerVue === "site") chargerSite();
+    majRafraichissementSite();
   }
   // The "liste" icon toggles the connected-users drawer open/closed.
   $("#users-btn").addEventListener("click", function () {

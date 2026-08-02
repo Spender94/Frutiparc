@@ -178,8 +178,12 @@ test('le client mobile sait ouvrir, router et signaler les discussions privées'
   assert.ok(/function ouvrirPrive\(pseudo\)/.test(html), 'fonction d\'ouverture présente');
   assert.ok(/wsSend\('<r u="' \+ xmlEscape\(p\)/.test(html),
     'elle envoie bien la demande d\'ouverture au serveur');
-  assert.ok(/u\.classList\.add\("mp"\)/.test(html) && /ouvrirPrive\(n\)/.test(html),
+  assert.ok(/u\.classList\.add\("mp"\)/.test(html) && /ouvrirPrive\(pseudo\)/.test(html),
     'les pseudos de la liste sont cliquables');
+  // La même ligne sert aux deux onglets du tiroir : celui du salon et celui de
+  // tout le site. Écrire à quelqu'un d'un autre salon doit rester un seul appui.
+  assert.ok(/function ligneConnecte\(pseudo, lieu, staff\)/.test(html),
+    'les deux onglets partagent le même rendu de ligne');
 
   // Réception : les deux trames du protocole sont traitées.
   assert.ok(/case "r": \{/.test(html), 'réponse d\'ouverture traitée');
