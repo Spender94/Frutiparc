@@ -314,6 +314,161 @@ class Shot extends Sprite {
         this.suivre(this.behaviourInfo.target, 0.7, 0.5, tmod);
         if (this.y > HAUTEUR + 4) { this.tuer(); return; }
         break;
+      case 0: {                       // Astro-Pamplemousse : éclate en deux
+        let eclate = this.y > HAUTEUR - 12;
+        for (let i = 0; i < jeu.hShotList.length; i++) {
+          const m = jeu.hShotList[i];
+          if (this.touche(m.x, m.y)) { m.tuer(); eclate = true; }
+        }
+        if (eclate) {
+          for (const s of [2, -2]) jeu.newBShot({ x: this.x, y: this.y, vitx: s, vity: 0, time: 40 });
+          this.tuer();
+          return;
+        }
+        break;
+      }
+      case 4: {                       // Tyson : le poing part et revient
+        const o = this.behaviourInfo;
+        if (o.step === 0) {
+          if (this.y > HAUTEUR - 10) { o.step = 1; o.coef = 0; this.flHit = false; }
+        } else {
+          o.coef += 0.02 * tmod;
+          const p = o.path;
+          const cx = p.x + (o.id * 9 - 4.5), cy = p.y + 4.5;
+          if (o.coef < 0.6) {
+            this.x = this.x * (1 - o.coef) + cx * o.coef;
+            this.y = this.y * (1 - o.coef) + cy * o.coef;
+          } else {
+            if (p.rendrePoing) p.rendrePoing(o.id);
+            this.tuer();
+            return;
+          }
+        }
+        break;
+      }
+      case 5: {                       // Cosmirabelle : un rayon vertical
+        const o = this.behaviourInfo;
+        o.parcouru += this.vity;
+        const h = jeu.hero;
+        if (h && this.y > h.y - h.ray && this.y - o.length < h.y + h.ray
+          && Math.abs(h.x - this.x) < h.ray) h.frapper();
+        break;
+      }
+      case 7: {                       // Souffle d'explosion : un disque qui grandit
+        const o = this.behaviourInfo;
+        o.ray += o.raySpeed * tmod;
+        o.ray *= Math.pow(o.frict, tmod);
+        o.timer -= tmod;
+        if (o.timer < 0) { this.tuer(); return; }
+        if (o.timer > 5) {
+          for (const b of jeu.badsList.slice()) {
+            const dx = b.x - this.x, dy = b.y - this.y;
+            if (Math.sqrt(dx * dx + dy * dy) < o.ray) b.frapper();
+          }
+        }
+        break;
+      }
+      case 11: {                      // Fraise-shuriken : va, puis revient au tireur
+        const o = this.behaviourInfo;
+        let c;
+        if (o.timer > 0) { o.timer -= tmod; c = jeu.cibleHero(); }
+        else {
+          c = o.launcher && o.launcher.vivant ? o.launcher : { x: LARGEUR / 2, y: -200 };
+          if (this.distance(c) < 10) {
+            if (o.launcher && o.launcher.reprendreTir) o.launcher.reprendreTir();
+            this.tuer();
+            return;
+          }
+        }
+        this.suivre(c, 0.3, 0.5, tmod);
+        break;
+      }
+      case 13: {                      // Nectarine : se fige et aspire le vaisseau
+        const o = this.behaviourInfo;
+        const c = jeu.cibleHero();
+        if (this.y > c.y) {
+          this.y = c.y; this.vitx = 0; this.vity = 0;
+          o.flBlackHole = true; o.timer = 100;
+        }
+        if (o.flBlackHole && o.timer > 0 && jeu.hero) {
+          o.timer -= tmod;
+          const dif = jeu.hero.x - this.x;
+          if (dif !== 0) jeu.hero.x -= Math.min(Math.max(-2, 40 / dif), 2) * tmod;
+        }
+        break;
+      }
+      case 14: {                      // Astro-raisin : avance par à-coups
+        const o = this.behaviourInfo;
+        const c = Math.pow(0.8, tmod);
+        this.vitx *= c;
+        this.vity *= c;
+        if (this.vity < 0.1) {
+          this.vity = o.speed;
+          this.vitx = o.speed * (jeu.hasard(3) - 1);
+        }
+        break;
+      }
+      case 15:                        // Space-Kumquat : rebrousse vers le vaisseau
+        if ((this.x < 0 || this.x > LARGEUR) && this.y < HAUTEUR - 10) {
+          const a = this.angle(jeu.cibleHero());
+          this.vitx = Math.cos(a) * 4;
+          this.vity = Math.sin(a) * 4;
+        }
+        break;
+      case 17: {                      // Demon lemon : boule qui charge de près
+        const o = this.behaviourInfo;
+        if (o.step === undefined) o.step = 0;
+        for (let i = 0; i < jeu.hShotList.length; i++) {
+          const m = jeu.hShotList[i];
+          if (this.touche(m.x, m.y)) { m.tuer(); this.flHit = false; }
+        }
+        if (this.flHit && jeu.hero) {
+          if (o.step === 0) { if (this.distance(jeu.hero) < 100) o.step = 1; }
+          else this.suivre(jeu.hero, 0.7, 2, tmod);
+        }
+        break;
+      }
+      case 20:                        // Bulbe : chercheuse lourde
+        this.suivre(jeu.cibleHero(), 0.25, 5, tmod);
+        this.vity += 0.3 * tmod;
+        break;
+      case 21: {                      // Cosmo-Cassis : chercheuse à durée limitée
+        const o = this.behaviourInfo;
+        if (o.timer > 0) {
+          o.timer -= tmod;
+          this.suivre(jeu.cibleHero(), 0.5, 1, tmod);
+          if (o.timer <= 0) this.time = 100;
+        }
+        break;
+      }
+      case 22: {                      // Pois casseur : file, se replace, repart
+        const o = this.behaviourInfo;
+        if (o.step === 0) {
+          if (jeu.hasard(60) === 0) {
+            o.step = 1;
+            o.ty = this.y - 80;
+            o.vitx = -this.vitx; o.vity = this.vity;
+            this.vitx = 0; this.vity = 0;
+          }
+          if (this.x < 0) this.vitx = Math.abs(this.vitx);
+          if (this.x > LARGEUR) this.vitx = -Math.abs(this.vitx);
+        } else {
+          const dy = o.ty - this.y;
+          this.y += dy * Math.pow(0.5, tmod);
+          if (Math.abs(dy) < 2) { this.vitx = o.vitx; this.vity = o.vity; o.step = 0; }
+        }
+        break;
+      }
+      case 23:                        // Brugnon : mine destructible qui essaime
+        for (let i = 0; i < jeu.hShotList.length; i++) {
+          const m = jeu.hShotList[i];
+          if (this.distance(m) < 10) { m.tuer(); this.flHit = false; }
+        }
+        if (this.flHit && jeu.hasard(Math.max(1, Math.round(18 / tmod))) === 0) {
+          const a = jeu.hasard(628) / 100;
+          jeu.newBShot({ x: this.x, y: this.y, vitx: Math.cos(a) * 4, vity: Math.sin(a) * 4 });
+        }
+        break;
       case 16: {                      // Tir destructible par le vaisseau
         for (let i = 0; i < jeu.hShotList.length; i++) {
           const m = jeu.hShotList[i];
@@ -386,11 +541,15 @@ class Shot extends Sprite {
 class Bads extends Sprite {
   constructor(jeu, o) {
     super(jeu, o);
-    if (this.flWave === undefined) this.flWave = true;
-    if (this.freq === undefined) this.freq = 200;
-    if (this.coolDownSpeed === undefined) this.coolDownSpeed = 5;
+    // Le profil de l'espèce (cadence, robustesse, armes) vient de la table TYPES.
+    const p = TYPES[this.type] || {};
+    this.profil = p;
+    if (this.flWave === undefined) this.flWave = (p.flWave === undefined) ? true : p.flWave;
+    if (this.freq === undefined) this.freq = (p.freq === undefined) ? 200 : p.freq;
+    if (this.coolDownSpeed === undefined) this.coolDownSpeed = (p.cdSpeed === undefined) ? 5 : p.cdSpeed;
     if (this.coolDown === undefined) this.coolDown = 0;
     if (this.ray === undefined) this.ray = 10;
+    if (this.hp === undefined) this.hp = (p.hp === undefined) ? 1 : p.hp;
     this.flReady = false;
     this.ty = this.y;
   }
@@ -407,8 +566,18 @@ class Bads extends Sprite {
       // Toucher le bas, c'est perdu : l'escadre a atteint la Terre.
       if (this.y > HAUTEUR - this.ray && jeu.hero) jeu.hero.exploser();
     }
+    if (this.profil.vague) this.profil.vague(this, tmod);
+    if (this.tirePendantLaVague()) this.verifierTir(tmod);
     this.verifierTirsHero();
     if (jeu.hero && this.y + this.ray > jeu.hero.y - jeu.hero.ray) this.verifierChocHero();
+  }
+
+  // Le jeu d'origine décide espèce par espèce : la classe de base ne tire pas,
+  // et chaque sous-classe appelle (ou non) checkShoot depuis son waveUpdate.
+  tirePendantLaVague() {
+    if (this.profil.tire === false) return false;
+    if (this.profil.peutTirer) return this.profil.peutTirer(this);
+    return true;
   }
 
   verifierChocHero() {
@@ -431,7 +600,12 @@ class Bads extends Sprite {
   verifierTir(tmod) {
     if (this.coolDown > 0) return;
     // AS2 : if(!random(freq/tmod)) — une chance sur freq/tmod à chaque image.
-    if (this.jeu.hasard(Math.max(1, Math.round(this.freq / tmod))) === 0) {
+    // L'Ananas remplace ce tirage par sa propre condition (il n'ouvre le feu que
+    // lorsque le vaisseau passe sous lui).
+    const tire = this.profil.cadence
+      ? this.profil.cadence(this, tmod)
+      : this.jeu.hasard(Math.max(1, Math.round(this.freq / tmod))) === 0;
+    if (tire) {
       this.coolDown = 100;
       this.tirer();
     }
@@ -464,7 +638,7 @@ class Bads extends Sprite {
           const dy = (this.ty - this.y) * 0.3;
           this.y += Math.min(dy, 4) * tmod;
         }
-        this.verifierTir(tmod);
+        if (this.profil.tic) this.profil.tic(this, tmod);
         break;
       default:
         break;
@@ -496,21 +670,41 @@ class Bads extends Sprite {
     this.wayPoint.dist = Math.sqrt(dx * dx + dy * dy);
   }
 
-  auBord() { this.jeu.flChangeSens = true; }
+  // Le Pruneau passe-muraille ne fait pas rebondir la vague : il traverse.
+  auBord() {
+    if (this.profil.flWave !== false) this.jeu.flChangeSens = true;
+    if (this.profil.auBord) this.profil.auBord(this);
+  }
 
   exploser() {
+    if (!this.vivant) return;
+    if (this.profil.exploser) this.profil.exploser(this);
     this.jeu.evenement('badsExplose', { x: this.x, y: this.y, type: this.type });
     this.jeu.incScore(ENNEMIS[this.type].value);
     this.jeu.badsKill[this.type] = (this.jeu.badsKill[this.type] || 0) + 1;
     this.tuer();
   }
 
-  frapper() { this.exploser(); }
+  // Les espèces à coques encaissent : chaque coup ôte un point de vie, et
+  // certaines changent de comportement en se dégradant (la Poire s'affole,
+  // la Myrtillerie se transforme en kamikaze).
+  frapper() {
+    this.hp--;
+    if (this.hp <= 0) { this.exploser(); return; }
+    this.jeu.evenement('badsEcaille', { x: this.x, y: this.y, type: this.type, hp: this.hp });
+    if (this.profil.auCoup) this.profil.auCoup(this);
+  }
 
-  tirer() {
+  // Le tir « nu » de la classe de base : c'est lui que les espèces ajustent.
+  tirBase() {
     const t = this.jeu.newBShot({ x: this.x, y: this.y, vitx: 0, vity: 2 });
     this.jeu.evenement('tirBads', { x: this.x, y: this.y, type: this.type });
     return t;
+  }
+
+  tirer() {
+    if (this.profil.tirer) return this.profil.tirer(this);
+    return this.tirBase();
   }
 
   // Fin de l'arrivée : l'escadre passe en formation et se met à onduler.
@@ -523,6 +717,500 @@ class Bads extends Sprite {
     this.jeu.toKill--;
   }
 }
+
+// ── Les 51 ennemis ─────────────────────────────────────────────────────────
+// Le jeu d'origine en fait 51 sous-classes d'une trentaine de lignes, dont
+// l'écrasante majorité ne change que trois valeurs (cadence, robustesse) et la
+// façon de tirer. Une table dit la même chose sans 51 fichiers, et la garde
+// LISIBLE : on voit d'un coup d'œil qui tire quoi.
+//
+//   freq / cdSpeed  cadence de tir (une chance sur freq par image, refroidie
+//                   à cdSpeed par image)
+//   hp              nombre de coups à encaisser (défaut 1)
+//   flWave          false = ne suit pas l'ondulation de l'escadre
+//   tire            false = ne tire pas de lui-même (il a une autre arme)
+//   tirer(b)        sa façon de tirer
+//   vague/tic(b,t)  ce qu'il fait en plus, pendant la vague / à chaque image
+//   auBord(b)       sa réaction quand l'escadre touche un bord
+//   exploser(b)     ce qu'il laisse derrière lui
+//   peutTirer(b,t)  condition de tir, quand elle n'est pas la règle générale
+const TYPES = {};
+const def = (t, o) => { TYPES[t] = o; };
+
+// Un tir de base, puis on l'ajuste : c'est exactement ce que fait super.shoot().
+const base = (b) => b.tirBase();
+const versHero = (b, vitesse, tir) => {
+  const a = b.angle(b.jeu.cibleHero());
+  tir.vitx = Math.cos(a) * vitesse;
+  tir.vity = Math.sin(a) * vitesse;
+  return tir;
+};
+
+def(0, { tire: false });                                          // Fraise-bouclier : inoffensive
+def(1, { freq: 800, cdSpeed: 1, hp: 2 });                         // Orangeonaute : encaisse deux coups
+def(2, { tirer: (b) => { const t = base(b); t.vitx = (b.jeu.hasard(200) - 100) / 100; t.vity = 2.5; } });
+def(3, {                                                          // Clémentine : deux tirs divergents
+  freq: 400, cdSpeed: 1,
+  tirer: (b) => { for (let i = 0; i < 2; i++) { const s = i * 2 - 1, t = base(b); t.x = b.x + 3 * s; t.vitx = 0.5 * s; t.vity = 2; } },
+});
+def(4, {                                                          // Kamikaze : plonge quand on passe dessous
+  tire: false,
+  vague: (b, tmod) => {
+    if (b.mode) return;
+    const h = b.jeu.cibleHero();
+    if (Math.abs(h.x - b.x) < 10 && b.jeu.hasard(Math.max(1, Math.round(30 / tmod))) === 0) {
+      b.mode = 1; b.vity = 0; b.flWave = false;
+    }
+  },
+  tic: (b, tmod) => {
+    if (b.mode !== 1) return;
+    b.vity = Math.min(b.vity + 0.5, 8) * tmod;
+    b.y += b.vity * tmod;
+    if (b.y > HAUTEUR + 20) b.tuer();
+  },
+});
+def(5, {                                                          // Cerises-duo : une gerbe de trois
+  freq: 400, cdSpeed: 0.5,
+  tirer: (b) => { for (let i = 0; i < 3; i++) { const s = i - 1, t = base(b); t.x = b.x + 4 * s; t.vitx = 0.8 * s; t.vity = 1.5 + 0.3 * (1 - Math.abs(s)); } },
+});
+def(6, { freq: 130, cdSpeed: 10 });                               // Fraise des bois : tire vite
+def(7, {                                                          // Poire sous cloche : la coque cassée, elle s'affole
+  hp: 2, peutTirer: (b) => b.hp === 1,
+  auCoup: (b) => { b.freq = 10; b.cdSpeed = 5; },
+  tirer: (b) => { base(b).vity = 3; },
+});
+def(8, {                                                          // Astro-Pamplemousse : bombe qui éclate
+  freq: 600, cdSpeed: 5,
+  peutTirer: (b) => b.y < HAUTEUR - 70,
+  tirer: (b) => { const t = base(b); t.vity = 1; t.behaviourId = 0; },
+});
+def(9, {                                                          // Cosmo-Prune : descend d'un cran au bord
+  tire: false,
+  auBord: (b) => {
+    let y = HAUTEUR - 60;
+    while (y > b.y) { if (b.jeu.placeLibre(b.x, y)) { b.ty = y; break; } y -= 24; }
+  },
+});
+def(10, {                                                         // Coing mutant : tir en éventail aléatoire
+  freq: 200, cdSpeed: 10,
+  tirer: (b) => { const t = base(b), a = (57 + b.jeu.hasard(200)) / 100; t.vitx = Math.cos(a) * 2.5; t.vity = Math.sin(a) * 2.5; },
+});
+def(11, {                                                         // Figue-laser : un rayon qui balaie sa colonne
+  freq: 200, cdSpeed: 0.5,
+  peutTirer: (b) => !b.flShooting,
+  tirer: (b) => { b.flShooting = true; b.timer = 48; b.jeu.evenement('rayonFigue', { x: b.x, y: b.y }); },
+  vague: (b, tmod) => {
+    if (!b.flShooting) return;
+    if (b.timer <= 0) { b.flShooting = false; return; }
+    // Entre l'ouverture et la fermeture, la colonne sous lui est mortelle.
+    if (b.timer <= 36 && b.timer > 12) {
+      const h = b.jeu.hero;
+      if (h && Math.abs(h.x - b.x) < h.ray) h.frapper();
+    }
+  },
+  tic: (b, tmod) => { if (b.flShooting) b.timer -= tmod; },
+});
+def(12, {                                                         // Batmandarine : se téléporte sur le côté
+  freq: 280, cdSpeed: 1,
+  vague: (b) => {
+    if (b.flStrafe) { b.flStrafe = false; return; }
+    if (b.jeu.hasard(200) !== 0) return;
+    for (let i = 0; i < 10; i++) {
+      const x = 15 + b.jeu.hasard(LARGEUR - 30);
+      if (Math.abs(b.x - x) < 60 && b.jeu.placeLibre(x, b.y)) { b.x = x; b.flStrafe = true; break; }
+    }
+  },
+});
+def(13, {                                                         // Pomme d'épines : arrose en mourant
+  tire: false,
+  exploser: (b) => {
+    for (let i = 0; i < 5; i++) { const t = b.tirBase(); const c = ((i * 2) - 4) / 4; t.vitx = c * 3; t.vity = 2.5; }
+  },
+});
+def(14, {                                                         // Astro-Datte : rafale de trois vers le vaisseau
+  freq: 240, cdSpeed: 4,
+  peutTirer: (b) => !(b.toShot > 0),
+  tirer: (b) => {
+    if (!b.toShot) b.toShot = 2;
+    versHero(b, 3, base(b));
+    b.timer = 5;
+  },
+  vague: (b) => { if (b.toShot > 0 && b.timer < 0) { versHero(b, 3, base(b)); b.toShot--; b.timer = 5; } },
+  tic: (b, tmod) => { if (b.toShot > 0) b.timer -= tmod; },
+});
+def(15, {                                                         // Pruneau magnétique : aspire le vaisseau vers le haut
+  freq: 240, cdSpeed: 50,
+  tic: (b, tmod) => {
+    const h = b.jeu.hero;
+    if (b.jeu.step === ETAPE.COMBAT && h && Math.abs(b.x - h.x) < b.ray + 2 && h.flLine) h.y -= 1.5 * tmod;
+  },
+});
+def(16, { freq: 220, cdSpeed: 4, tirer: (b) => { base(b).behaviourId = 1; } });   // Mère chercheuse
+def(17, {                                                         // Citrus : trois coques, puis une pluie
+  freq: 280, cdSpeed: 3, hp: 3,
+  peutTirer: (b) => b.hp === 1,
+  tirer: (b) => {
+    for (let i = 0; i < 5; i++) {
+      const t = base(b);
+      t.vitx = 8 * (b.jeu.hasard(200) - 100) / 100;
+      t.vity = -(3 + b.jeu.hasard(30) / 10);
+      t.behaviourId = 3;
+    }
+  },
+});
+def(18, {                                                         // Astéropulpe : gerbe en touchant le bord
+  freq: 500, cdSpeed: 8,
+  tirer: (b) => {
+    for (const s of [1, -1]) { const t = base(b); t.vitx = 3 * s; t.vity = 3; }
+  },
+  auBord: (b) => {
+    for (let i = 0; i < 5; i++) {
+      const a = (Math.PI / 2) + ((i + 1) / 5 * (Math.PI / 2)) * b.jeu.waveSens;
+      const t = b.tirBase();
+      t.vitx = Math.cos(a) * 3;
+      t.vity = Math.sin(a) * 3;
+    }
+  },
+});
+def(19, {                                                         // Baies : trois têtes chercheuses posthumes
+  tire: false,
+  exploser: (b) => {
+    for (let i = 0; i < 3; i++) {
+      const t = b.tirBase();
+      t.vitx = 8 * (b.jeu.hasard(200) - 100) / 100;
+      t.vity = -(3 + b.jeu.hasard(30) / 10);
+      t.behaviourId = 2;
+    }
+  },
+});
+def(20, { freq: 300, cdSpeed: 20, tirer: (b) => versHero(b, 3, base(b)) });        // Aigrelle assassine
+def(21, {                                                         // Mangue-strike : balaie en éventail
+  freq: 400, cdSpeed: 100,
+  peutTirer: (b) => !(b.toShot > 0),
+  tirer: (b) => {
+    if (!b.toShot) b.toShot = 7;
+    const c = b.toShot / 8, d = Math.PI / 2, a = d + ((c * 2) - 1) * d;
+    const t = base(b);
+    t.vitx = Math.cos(a) * 3;
+    t.vity = Math.sin(a) * 3;
+    b.timer = 3;
+    b.toShot--;
+  },
+  vague: (b) => { if (b.toShot > 0 && b.timer < 0) TYPES[21].tirer(b); },
+  tic: (b, tmod) => { if (b.toShot > 0) b.timer -= tmod; },
+});
+def(22, {                                                         // Tyson : envoie ses deux poings
+  freq: 240, cdSpeed: 20,
+  tirer: (b) => {
+    if (!b.poings) b.poings = [true, true];
+    for (let i = 0; i < 2; i++) {
+      if (!b.poings[i]) continue;
+      const t = base(b);
+      t.vity = 10;
+      t.behaviourId = 4;
+      t.behaviourInfo = { id: i, step: 0, path: b };
+      b.poings[i] = false;
+      b.rendrePoing = (id) => { b.poings[id] = true; };
+      return;
+    }
+  },
+});
+def(23, {                                                         // Cosmirabelle : un rayon de 160 px
+  freq: 220, cdSpeed: 4,
+  tirer: (b) => {
+    const t = base(b);
+    t.vity = 4;
+    t.behaviourId = 5;
+    t.behaviourInfo = { length: 160, parcouru: 0 };
+  },
+});
+def(24, {                                                         // Astro-Quetsch : dévie les tirs qui l'approchent
+  freq: 320, cdSpeed: 2,
+  tirer: (b) => { base(b).vity = 4; },
+  tic: (b) => {
+    for (const m of b.jeu.hShotList) {
+      const dx = m.x - b.x, dy = m.y - b.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < 26 && d > 0) { const a = Math.atan2(dy, dx); m.x += Math.cos(a) * 2; m.y += Math.sin(a) * 2; }
+    }
+  },
+});
+def(25, {                                                         // Ananas sauvage : ne tire que sur la verticale
+  cdSpeed: 15,
+  peutTirer: () => true,
+  cadence: (b, tmod) => {
+    const d = Math.abs(b.x - b.jeu.cibleHero().x);
+    return b.jeu.hasard(Math.max(1, Math.round((d * 3) / tmod))) === 0;
+  },
+  tirer: (b) => { base(b).vity = 8; },
+});
+def(26, {                                                         // Myrtillerie lourde : à moitié détruite, elle fonce
+  hp: 2, tire: false,
+  auCoup: (b) => { b.flKamikaze = true; b.flWave = false; b.vitx = 0; b.vity = 0; },
+  tic: (b, tmod) => {
+    if (!b.flKamikaze) return;
+    const h = b.jeu.cibleHero();
+    const dx = h.x - b.x, dy = h.y - b.y;
+    if (dx > 5) b.vitx += tmod * 0.2;
+    if (dx < -5) b.vitx -= tmod * 0.2;
+    if (dy > 5) b.vity += tmod * 0.2;
+    if (dy < -5) b.vity -= tmod * 0.2;
+    const c = Math.pow(0.98, tmod);
+    b.vitx *= c; b.vity *= c;
+    b.x += b.vitx; b.y += b.vity;
+  },
+});
+def(27, {                                                         // Fraise-shuriken : un seul projectile, qui revient
+  freq: 320, cdSpeed: 4,
+  peutTirer: (b) => b.flShotReady !== false,
+  tirer: (b) => {
+    const t = base(b);
+    t.behaviourId = 11;
+    t.behaviourInfo = { timer: 44, launcher: b };
+    t.vitx = (b.jeu.hasard(2) * 2 - 1) * 8;
+    t.vity = 0;
+    b.flShotReady = false;
+    b.reprendreTir = () => { b.flShotReady = true; };
+  },
+});
+def(28, {                                                         // Aubergine folle : charge en laissant sa place
+  tire: false,
+  vague: (b) => {
+    if (b.step) return;
+    if (b.jeu.hasard(300) !== 0) return;
+    const c = b.jeu.cibleHero();
+    b.step = 1;
+    b.kx = b.x; b.ky = b.y;
+    b.timer = b.distance(c) / 6.6;
+    b.cible = { x: c.x, y: c.y };
+    b.vitx = 0; b.vity = 0;
+  },
+  tic: (b, tmod) => {
+    if (b.step !== 1) return;
+    const t = b.cible;
+    const dx = t.x - b.kx, dy = t.y - b.ky;
+    if (dx > 1) b.vitx += tmod * 0.5;
+    if (dx < -1) b.vitx -= tmod * 0.5;
+    if (dy > 1) b.vity += tmod * 0.5;
+    if (dy < -1) b.vity -= tmod * 0.5;
+    b.vitx *= b.jeu.frict; b.vity *= b.jeu.frict;
+    b.kx += b.vitx; b.ky += b.vity;
+    if (b.timer > 0) b.timer -= tmod;
+    else {
+      b.cible = { x: b.x, y: b.y };
+      const ddx = b.kx - b.x, ddy = b.ky - b.y;
+      if (Math.sqrt(ddx * ddx + ddy * ddy) < 6) b.step = 0;
+    }
+  },
+});
+def(29, {                                                         // Space-Groseille : plonge en piqué
+  freq: 400, cdSpeed: 100,
+  tirer: (b) => {
+    const t = base(b);
+    const h = b.jeu.cibleHero();
+    t.behaviourId = 12;
+    t.behaviourInfo = { target: { x: h.x, y: h.y } };
+    const u = (Math.PI / 4) * 100;
+    const a = (b.jeu.hasard(2 * u) - u * 3) / 100;
+    t.vitx = Math.cos(a) * 12;
+    t.vity = Math.sin(a) * 12;
+  },
+});
+def(30, {                                                         // Pêche astronomique : tir oblique rapide
+  freq: 220, cdSpeed: 6,
+  tirer: (b) => {
+    const u = (Math.PI / 4) * 100;
+    const a = (u * 3 - b.jeu.hasard(2 * u)) / 100;
+    const t = base(b);
+    t.vitx = Math.cos(a) * 6;
+    t.vity = Math.sin(a) * 6;
+  },
+});
+def(31, { tire: false, auBord: (b) => versHero(b, 6, b.tirBase()) });             // Abricot guerrier
+def(32, { freq: 400, cdSpeed: 2, tirer: (b) => { base(b).behaviourId = 13; } });   // Nectarine trou-noir
+def(33, {                                                         // Pruneau passe-muraille : traverse l'écran
+  flWave: false, tire: false,
+  vague: (b, tmod) => {
+    b.x += b.jeu.waveSpeed;
+    if (b.x > LARGEUR + 10) { b.x = -10; b.cote = true; }
+    b.y += Math.min((b.ty - b.y) * 0.3, 4) * tmod;
+    const cote = b.x < LARGEUR / 2;
+    if (b.cote !== undefined && b.cote !== cote) { b.aTirer = 3; b.timer = -1; }
+    b.cote = cote;
+  },
+  tic: (b, tmod) => {
+    if (!(b.aTirer > 0)) return;
+    if (b.timer < 0) { b.aTirer--; versHero(b, 4, b.tirBase()); b.timer = 4; }
+    else b.timer -= tmod;
+  },
+});
+def(34, {                                                         // Astro-raisin : deux tirs saccadés
+  freq: 200, cdSpeed: 1,
+  tirer: (b) => {
+    for (let i = 0; i < 2; i++) {
+      const t = base(b);
+      t.x = b.x + ((i * 2) - 1) * 6;
+      t.vitx = 0; t.vity = 6;
+      t.behaviourId = 14;
+      t.behaviourInfo = { speed: 6 };
+    }
+  },
+});
+def(35, {                                                         // Betterave astrale : trois tirs en cône
+  freq: 240, cdSpeed: 10,
+  tirer: (b) => {
+    for (let i = 0; i < 3; i++) {
+      const a = (Math.PI / 2) + 0.4 * ((i / 2) * 2 - 1);
+      const t = base(b);
+      t.vitx = Math.cos(a) * 4.5;
+      t.vity = Math.sin(a) * 4.5;
+    }
+  },
+});
+def(36, {                                                         // Scarabé pulpé : descend d'un cran par surprise
+  freq: 400, cdSpeed: 4,
+  tirer: (b) => { const t = base(b); t.vity = 4; },
+  vague: (b, tmod) => {
+    if (b.cdFall > 0) return;
+    if (b.jeu.hasard(Math.max(1, Math.round(240 / tmod))) === 0 && b.jeu.placeLibre(b.x, b.y + 24, 12)) {
+      b.ty += 24;
+      b.cdFall = 12;
+    }
+  },
+  tic: (b, tmod) => { b.cdFall = (b.cdFall || 0) - tmod; },
+});
+def(37, {                                                         // Space-Kumquat : rebondit sur les bords
+  freq: 280, cdSpeed: 8,
+  tirer: (b) => {
+    const t = base(b);
+    t.behaviourId = 15;
+    t.vitx = 4 * (b.jeu.hasard(2) * 2 - 1);
+    t.vity = 2;
+  },
+});
+def(38, {                                                         // Poivri : vise là où le vaisseau VA
+  freq: 220, cdSpeed: 40,
+  tirer: (b) => {
+    const h = b.jeu.cibleHero();
+    const e = b.jeu.entree;
+    const s = e.gauche ? -1 : (e.droite ? 1 : 0);
+    const c = Math.min(b.distance(h) / 6, 24);
+    const a = b.angle({ x: h.x + c * s * (h.speed || 0), y: h.y });
+    const t = base(b);
+    t.vitx = Math.cos(a) * 6;
+    t.vity = Math.sin(a) * 6;
+  },
+});
+def(39, {                                                         // Kiwi interstellaire : huit tirs destructibles
+  freq: 360, cdSpeed: 1,
+  tirer: (b) => {
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI / 2) + 0.8 * ((i / 7) * 2 - 1);
+      const t = base(b);
+      t.vitx = Math.cos(a) * 3.5;
+      t.vity = Math.sin(a) * 3.5;
+      t.behaviourId = 16;
+    }
+  },
+});
+def(40, {                                                         // Prune sidérale : mitraille vers le bas
+  freq: 80, cdSpeed: 10,
+  tirer: (b) => {
+    const t = base(b);
+    t.vitx = 3 * (b.jeu.hasard(200) - 100) / 100;
+    t.vity = 7;
+    t.y = b.y + 12;
+  },
+});
+def(41, {                                                         // Prune paralysante : brouille au lieu de blesser
+  freq: 220, cdSpeed: 10,
+  tirer: (b) => {
+    const t = versHero(b, 8, base(b));
+    t.behaviourId = 18;
+    t.flHit = false;
+  },
+});
+def(42, {                                                         // Demon lemon : boule qui charge
+  freq: 400, cdSpeed: 1,
+  tirer: (b) => { const t = base(b); t.vity = 2.2; t.behaviourId = 17; },
+});
+def(43, {                                                         // Pêche jongleuse : tire souvent, un peu au hasard
+  freq: 40, cdSpeed: 10,
+  tirer: (b) => {
+    const a = (157 + b.jeu.hasard(75) * (b.jeu.rng() * 2 - 1)) / 100;
+    const t = base(b);
+    t.vitx = Math.cos(a) * 5;
+    t.vity = Math.sin(a) * 5;
+  },
+});
+def(44, {                                                         // Courge céleste : tir en sinusoïde
+  freq: 240, cdSpeed: 10,
+  tirer: (b) => {
+    const t = base(b);
+    t.behaviourId = 19;
+    t.behaviourInfo = { amp: 0, d: 0, x: b.x };
+  },
+});
+def(45, {                                                         // Bulbe spatial : deux chercheuses lentes
+  freq: 180, cdSpeed: 6,
+  tirer: (b) => {
+    for (let i = 0; i < 2; i++) {
+      const t = base(b);
+      t.vitx = (i * 2 - 1) * 5;
+      t.vity = -2;
+      t.behaviourId = 20;
+    }
+  },
+});
+def(46, {                                                         // Cosmo-Cassis : accumule des satellites puis les lâche
+  freq: 400, cdSpeed: 10,
+  vague: (b, tmod) => {
+    if (!b.jetons) b.jetons = 0;
+    if (b.jeu.hasard(Math.max(1, Math.round(60 / tmod))) === 0) b.jetons++;
+    if (b.jetons > 10) TYPES[46].tirer(b);
+  },
+  tirer: (b) => {
+    const n = b.jetons || 1;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * 2 * Math.PI;
+      const t = base(b);
+      t.x = b.x + Math.cos(a) * 12;
+      t.y = b.y + Math.sin(a) * 12;
+      t.vitx = Math.cos(a) * 4;
+      t.vity = Math.sin(a) * 4;
+      t.behaviourId = 21;
+      t.behaviourInfo = { timer: 14 };
+    }
+    b.jetons = 0;
+  },
+});
+def(47, {                                                         // Pois casseur : tir erratique
+  freq: 240, cdSpeed: 4,
+  tirer: (b) => {
+    const t = base(b);
+    t.vitx = 6 * (b.jeu.hasard(2) * 2 - 1);
+    t.vity = 6;
+    t.behaviourId = 22;
+    t.behaviourInfo = { step: 0 };
+  },
+});
+def(48, {                                                         // Brugnon cuirassé : pose des mines
+  freq: 360, cdSpeed: 1, hp: 2,
+  tirer: (b) => { const t = base(b); t.vity = 0.6; t.behaviourId = 23; },
+});
+def(49, {                                                         // Nitro-pruneau : explose en chaîne
+  freq: 200, cdSpeed: 50, tire: false,
+  exploser: (b) => {
+    const t = b.jeu.newHShot({
+      x: b.x, y: b.y, vitx: b.vitx || 0, vity: 0,
+      behaviourId: 7,
+      behaviourInfo: { ray: 0, raySpeed: 16, frict: 0.77, timer: 16 },
+    });
+    return t;
+  },
+  tic: (b) => { b.vitx = b.x - (b.oldx === undefined ? b.x : b.oldx); b.oldx = b.x; },
+});
+def(50, { tire: false });                                          // Letter-monster : porte une lettre
 
 // ── La partie ──────────────────────────────────────────────────────────────
 class Game {
@@ -781,6 +1469,17 @@ class Game {
     this.evenement('finPartie', { raison, score: this.score, level: this.level });
   }
 
+  // Game.isFree : y a-t-il de la place à cet endroit ? Sert à la Batmandarine
+  // (qui se téléporte), au Scarabé (qui descend d'un cran) et à la Cosmo-Prune.
+  placeLibre(x, y, ray) {
+    if (ray === undefined) ray = 24;
+    for (let i = 0; i < this.badsList.length; i++) {
+      const b = this.badsList[i];
+      if (Math.abs(b.x - x) < ray && Math.abs(b.ty - y) < ray) return false;
+    }
+    return true;
+  }
+
   horsCadre(x, y, m) {
     if (m === undefined) m = 0;
     return x < -m || x > LARGEUR + m || y < -m || y > HAUTEUR + m;
@@ -798,7 +1497,7 @@ class Game {
   }
 }
 
-const API = { Game, Hero, Bads, Shot, Sprite, ENNEMIS, VAISSEAUX, ETAPE, generateur,
+const API = { Game, Hero, Bads, Shot, Sprite, ENNEMIS, VAISSEAUX, TYPES, ETAPE, generateur,
   LARGEUR, HAUTEUR, TAILLE_BADS, FLUX_BADS, FRICTION };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

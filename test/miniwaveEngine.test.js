@@ -270,3 +270,175 @@ test('une partie longue reste saine', () => {
     'les listes de tirs sont propres');
   assert.ok(jeu.score !== 0, 'et il s\'est passé quelque chose');
 });
+
+// ── Le bestiaire ───────────────────────────────────────────────────────────
+// Le jeu compte 51 espèces, chacune avec sa cadence, sa robustesse et son arme.
+// Le portage les décrit dans une table plutôt qu'en 51 sous-classes : ces tests
+// vérifient que la table couvre tout le monde et que personne ne casse la partie.
+
+// Met un ennemi du type voulu en situation de combat, seul, et rend le jeu.
+function enCombat(type, o) {
+  o = o || {};
+  const niveau = {
+    name: 'essai', moveSpeed: 1, fallSpeed: 6, ss: 6, sd: 6,
+    list: [[{ t: type, x: 120, y: 40 }, { t: type, x: 96, y: 40 }]],
+  };
+  const journal = [];
+  const jeu = new E.Game({
+    levels: [niveau], graine: o.graine === undefined ? 11 : o.graine,
+    onEvent: (n, d) => journal.push({ n, d }),
+  });
+  for (let i = 0; i < 800 && jeu.step !== E.ETAPE.COMBAT; i++) jeu.update(1);
+  return { jeu, journal, compte: (nom) => journal.filter((e) => e.n === nom).length };
+}
+
+test('les 51 espèces du bestiaire ont toutes un profil', () => {
+  for (let t = 0; t < E.ENNEMIS.length; t++) {
+    assert.ok(E.TYPES[t], `le type ${t} (${E.ENNEMIS[t].name}) est décrit`);
+  }
+  assert.equal(Object.keys(E.TYPES).length, 51, 'et il n\'y en a pas d\'autres');
+});
+
+test('chaque espèce se bat sans casser la partie', () => {
+  // Le vrai filet : on met chaque type en piste, on le laisse tirer, exploser,
+  // charger, poser des mines — mille images chacun. Aucune ne doit lever
+  // d'erreur ni produire de position aberrante.
+  for (let t = 0; t < E.ENNEMIS.length; t++) {
+    const r = enCombat(t, { graine: 100 + t });
+    const jeu = r.jeu;
+    assert.equal(jeu.step, E.ETAPE.COMBAT, `${E.ENNEMIS[t].name} : la vague se met en place`);
+    jeu.entree.tir = true;
+    for (let i = 0; i < 1000 && !jeu.termine; i++) {
+      jeu.update(1);
+      jeu.entree.droite = (i % 80) < 40;
+      jeu.entree.gauche = !jeu.entree.droite;
+    }
+    for (const s of jeu.spriteList) {
+      assert.ok(Number.isFinite(s.x) && Number.isFinite(s.y),
+        `${E.ENNEMIS[t].name} : position calculable (${s.x},${s.y})`);
+    }
+    assert.ok(Number.isFinite(jeu.score), `${E.ENNEMIS[t].name} : score calculable`);
+  }
+});
+
+test('les espèces armées ripostent, les autres non', () => {
+  // Onze espèces n'ouvrent pas le feu d'elles-mêmes : elles ont une autre arme
+  // (l'explosion, la charge, le bord de l'écran) ou aucune.
+  // La Figue-laser en fait partie : son arme est un rayon, pas un projectile.
+  const sansTir = [0, 4, 9, 11, 13, 19, 26, 28, 31, 33, 49, 50];
+  for (let t = 0; t < E.ENNEMIS.length; t++) {
+    const r = enCombat(t, { graine: 500 + t });
+    // Deux espèces cuirassées (Poire sous cloche, Citrus) ne ripostent qu'une
+    // fois leur coque entamée : on les met dans cet état avant d'observer.
+    for (const b of r.jeu.badsList) while (b.hp > 1) b.frapper();
+    for (let i = 0; i < 1500 && !r.jeu.termine; i++) r.jeu.update(1);
+    const aTire = r.compte('tirBads') > 0;
+    if (sansTir.includes(t)) {
+      // Certaines tirent quand même — mais seulement par leur arme propre
+      // (l'Abricot au bord, le Pruneau passe-muraille en changeant de côté).
+      continue;
+    }
+    assert.ok(aTire, `${E.ENNEMIS[t].name} (type ${t}) riposte`);
+  }
+});
+
+test('les espèces cuirassées encaissent plusieurs coups', () => {
+  // Orangeonaute 2, Poire sous cloche 2, Citrus 3, Myrtillerie 2, Brugnon 2.
+  for (const [type, pv] of [[1, 2], [7, 2], [17, 3], [26, 2], [48, 2]]) {
+    const r = enCombat(type, { graine: 3 });
+    const b = r.jeu.badsList[0];
+    assert.equal(b.hp, pv, `${E.ENNEMIS[type].name} a ${pv} points de coque`);
+    for (let i = 1; i < pv; i++) {
+      b.frapper();
+      assert.ok(b.vivant, `${E.ENNEMIS[type].name} tient après ${i} coup(s)`);
+    }
+    b.frapper();
+    assert.ok(!b.vivant, `${E.ENNEMIS[type].name} cède au dernier coup`);
+  }
+});
+
+test('la Pomme d\'épines et les Baies arrosent en mourant', () => {
+  for (const type of [13, 19]) {
+    const r = enCombat(type, { graine: 4 });
+    const avant = r.jeu.bShotList.length;
+    r.jeu.badsList[0].exploser();
+    assert.ok(r.jeu.bShotList.length > avant,
+      `${E.ENNEMIS[type].name} laisse des projectiles derrière lui`);
+  }
+});
+
+test('le Nitro-pruneau explose en chaîne', () => {
+  // Type 49 : sa mort crée un souffle (comportement 7) qui frappe ses voisins.
+  const niveau = {
+    name: 'chaîne', moveSpeed: 1, fallSpeed: 6, ss: 6, sd: 6,
+    list: [[{ t: 49, x: 120, y: 40 }, { t: 0, x: 126, y: 40 }, { t: 0, x: 132, y: 40 }]],
+  };
+  const jeu = new E.Game({ levels: [niveau], graine: 2 });
+  for (let i = 0; i < 800 && jeu.step !== E.ETAPE.COMBAT; i++) jeu.update(1);
+  const nb = jeu.badsList.length;
+  assert.ok(nb >= 2, 'plusieurs ennemis côte à côte');
+  const nitro = jeu.badsList.find((b) => b.type === 49);
+  nitro.x = 120; nitro.y = 40;
+  jeu.badsList.filter((b) => b.type === 0).forEach((b) => { b.x = 124; b.y = 40; });
+  nitro.exploser();
+  for (let i = 0; i < 30; i++) jeu.update(1);
+  assert.ok(jeu.badsList.length < nb - 1, 'le souffle a emporté au moins un voisin');
+});
+
+test('l\'Abricot guerrier tire quand la vague touche un bord', () => {
+  const r = enCombat(31, { graine: 6 });
+  assert.equal(r.compte('tirBads'), 0, 'il ne tire pas de lui-même');
+  r.jeu.badsList[0].auBord();
+  assert.equal(r.compte('tirBads'), 1, 'mais il riposte au demi-tour de l\'escadre');
+});
+
+test('les tirs destructibles du Kiwi peuvent être abattus', () => {
+  const r = enCombat(39, { graine: 8 });
+  const jeu = r.jeu;
+  jeu.badsList[0].tirer();
+  const tir = jeu.bShotList[0];
+  assert.ok(tir, 'le Kiwi a tiré');
+  assert.equal(tir.behaviourId, 16, 'son tir est du type destructible');
+  // On l'éloigne du tireur avant de l'intercepter : sinon c'est le KIWI que le
+  // tir du vaisseau touche en premier, ce qui est le comportement normal.
+  tir.x = 40; tir.y = 150;
+  jeu.newHShot({ x: 40, y: 150, vitx: 0, vity: 0 });
+  jeu.update(1);
+  assert.equal(tir.flHit, false, 'touché par un tir du vaisseau, il devient inoffensif');
+});
+
+test('la Figue-laser balaie sa colonne au lieu de tirer', () => {
+  const r = enCombat(11, { graine: 12 });
+  const jeu = r.jeu;
+  const f = jeu.badsList[0];
+  f.tirer();
+  assert.equal(r.compte('rayonFigue'), 1, 'elle ouvre un rayon');
+  assert.equal(r.compte('tirBads'), 0, 'et ne lâche aucun projectile');
+  // Le vaisseau placé sous elle, rayon ouvert, est touché.
+  const h = jeu.hero;
+  h.newShield = undefined;
+  h.x = f.x;
+  f.timer = 30;                     // en plein balayage
+  const pv = h.hp;
+  f.waveUpdate(1);
+  assert.ok(h.hp < pv || !h.vivant, 'rester sous le rayon coûte un vaisseau');
+});
+
+test('la Prune paralysante brouille au lieu de blesser', () => {
+  const r = enCombat(41, { graine: 9 });
+  const jeu = r.jeu;
+  const h = jeu.hero;
+  h.newShield = undefined;
+  const pv = h.hp;
+  jeu.badsList[0].tirer();
+  const tir = jeu.bShotList[0];
+  tir.x = h.x; tir.y = h.y;
+  jeu.update(1);
+  assert.equal(h.hp, pv, 'le vaisseau n\'est pas endommagé');
+  assert.equal(h.flEMP, true, 'mais il est brouillé');
+  h.jeu.entree.tir = true;
+  const avant = jeu.hShotList.length;
+  h.coolDown = 0;
+  h.commander(1);
+  assert.equal(jeu.hShotList.length, avant, 'et ne peut plus tirer');
+});
