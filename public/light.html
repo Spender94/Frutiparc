@@ -2192,6 +2192,15 @@
     var w = $("#shop-wallet");
     if (w) w.innerHTML = '🪙 <strong>' + (Number(k) || 0) + '</strong> kikooz';
   }
+  // Point d'entrée unique du solde : un don, un achat ou la poussée <av ku> du
+  // serveur passent tous par ici, pour que la boutique n'affiche jamais un
+  // montant périmé (le bureau fait pareil via _global.me.kikooz).
+  function setKikoozSolde(k) {
+    var n = Number(k);
+    if (!isFinite(n)) return;
+    homeProfile.kikooz = n;
+    setShopWallet(n);
+  }
   function shopHint(msg, cls) {
     var h = $("#shop-hint");
     if (!h) return;
@@ -2985,16 +2994,24 @@
           }
           break;
         }
-        // Kikooz gift (/donne) — body is a <g k="amount" u="target"/> element.
-        // Show the same announcement the desktop does instead of "[cadeau]".
+        // Don de kikooz (/donne) — le corps est un <g k="montant" u="destinataire"/>.
+        // La trame part à TOUT le salon, mais le bureau ne l'affiche que si elle
+        // lui est destinée (chat.givemsg, « X vient de vous offrir N kikooz ! ») :
+        // un cadeau reste une affaire entre deux joueurs. On s'aligne, sinon les
+        // mobiles commenteraient un don que les postes de bureau ne voient pas.
         if (ty === "g") {
           var gAmt = parseInt(attr(body, "k"), 10);
           var gTo = xmlUnescape(attr(body, "u"));
-          addMessage({
-            from: from, time: h, kind: "admin", noFrom: true,
-            body: (from || "Quelqu'un") + " a donné " + (isFinite(gAmt) ? gAmt : attr(body, "k")) +
-              " kikooz à " + (gTo || "?") + ".",
-          });
+          if (sameName(gTo, state.user)) {
+            addMessage({
+              from: from, time: h, kind: "blue", noFrom: true,
+              body: (from || "Quelqu'un") + " vient de t'offrir "
+                + (isFinite(gAmt) ? gAmt : attr(body, "k")) + " kikooz !",
+            });
+            // Le serveur pousse aussi le nouveau solde (<av ku>) ; ce rafraîchissement
+            // couvre le cas où la poussée se perdrait (socket recyclée en arrière-plan).
+            loadHomeProfile();
+          }
           break;
         }
         // Lignes animateur / mode bleu (/blueon) : type "c". Le desktop les rend
@@ -3134,6 +3151,16 @@
         var texteHisto = xmlUnescape(bodyOf(xml));
         if (texteHisto) systemLine("★ " + texteHisto);
         planifierMajHistorique();
+        break;
+      }
+
+      // ── Solde de kikooz poussé par le serveur ──
+      // <av command_name="ku">N</av> : la trame que main.swf range dans
+      // _global.me.kikooz. Elle tombe à chaque mouvement du portefeuille (don
+      // reçu, don émis, récompense, achat), y compris quand le joueur n'a rien
+      // fait lui-même — c'est le seul moyen d'avoir un solde juste sans sonder.
+      case "av": {
+        if (attr(xml, "command_name") === "ku") setKikoozSolde(bodyOf(xml).trim());
         break;
       }
 
@@ -3346,12 +3373,86 @@
     if (stick) scrollDown();
   }
 
+  // ── Don de kikooz (/donne) ──
+  // Le bureau intercepte cette commande AVANT de l'envoyer : elle n'existe pas
+  // côté serveur, c'est le client qui appelle /do/give puis annonce le cadeau au
+  // salon. On refait exactement le même chemin, sur le même point d'entrée et
+  // avec la même trame, pour qu'un don parti du téléphone s'affiche correctement
+  // chez un joueur resté sur main.swf (et l'inverse).
+  //
+  // Les quatre alias sont ceux du bureau : /donne, /give, /kikooz et /g mènent
+  // tous ici. Attention à ne PAS attraper /don, qui est une autre commande
+  // (celle des animateurs, traitée côté serveur) dont /donne est le préfixe.
+  var CMD_DON = ["/donne", "/give", "/kikooz", "/g"];
+  // La syntaxe du bureau met le MONTANT en premier, puis le pseudo : c'est
+  // contre-intuitif, d'où le rappel avec un exemple, mot pour mot comme le SWF.
+  var SYNTAXE_DON = "Syntaxe : /donne <kikooz> <pseudo> [message] — exemple :"
+    + " /donne 3 deepnight Parce qu'il est sympa !";
+  // Codes de refus de /do/give. Le bureau les traduit par les libellés génériques
+  // de sa table error.http (« Une erreur inconnue s'est produite ») ; ici on dit
+  // ce qui s'est réellement passé, sinon le joueur n'a aucun moyen de corriger.
+  var REFUS_DON = {
+    "1": "Don refusé : montant ou pseudo invalide.",
+    "2": "Tu ne peux pas t'offrir des kikooz à toi-même.",
+    "3": "Ce Frutiz est introuvable — vérifie l'orthographe (il doit être connecté).",
+    "4": "Tu n'as pas assez de kikooz pour ce don.",
+  };
+
+  function commandeDon(mots, texte) {
+    // Mêmes garde-fous que le bureau : au moins deux arguments, le premier
+    // numérique. Un simple « /donne toto 3 » (arguments inversés) tombe ici.
+    var montant = Math.floor(Number(mots[1]));
+    if (mots.length < 3 || !isFinite(montant) || montant <= 0) { systemLine(SYNTAXE_DON); return; }
+    var cible = mots[2];
+    // Le reste de la ligne est le message qui accompagne le don. Le bureau le
+    // découpe par longueurs cumulées ; on retrouve la même chose en repartant de
+    // la position du pseudo dans le texte d'origine, ce qui préserve les espaces.
+    var apres = texte.indexOf(cible, texte.indexOf(mots[1]) + mots[1].length) + cible.length;
+    var raison = texte.slice(apres).trim();
+
+    if (!window.confirm("Es-tu sûr de vouloir offrir " + montant
+      + " kikooz (pris sur ton compte) à " + cible + " ?")) return;
+
+    fetch("/do/give?sid=" + encodeURIComponent(state.sid)
+      + "&k=" + encodeURIComponent(montant)
+      + "&u=" + encodeURIComponent(cible)
+      + "&r=" + encodeURIComponent(raison), { cache: "no-store" })
+      .then(function (r) { return r.text(); })
+      .then(function (xml) {
+        var code = attr(xml, "k");
+        if (code !== "0") { systemLine(REFUS_DON[code] || "Le don n'a pas abouti."); return; }
+        var solde = Number(attr(xml, "a"));
+        var recu = xmlUnescape(attr(xml, "u")) || cible;   // pseudo tel que le serveur l'orthographie
+        var offert = Number(attr(xml, "g")) || montant;
+        if (isFinite(solde)) setKikoozSolde(solde);
+        systemLine("Don réussi ! Tu as maintenant " + solde + " kikooz disponibles.");
+        // Le serveur a déjà transféré les kikooz ; cette trame n'est QUE l'annonce
+        // au salon, celle que le destinataire voit s'afficher (chez lui seul).
+        wsSend('<t g="' + xmlEscape(state.room) + '" t="g" p="">'
+          + '<g k="' + xmlEscape(String(offert)) + '" u="' + xmlEscape(recu) + '" /></t>');
+      })
+      .catch(function () { systemLine("Le don n'a pas abouti (serveur injoignable)."); });
+  }
+
+  // Renvoie true si la ligne a été traitée localement. Toutes les autres
+  // commandes (/topic, /stats, /fiche, /don…) partent au serveur, qui les gère.
+  function traiterCommande(texte) {
+    var mots = texte.trim().split(/\s+/);
+    if (CMD_DON.indexOf(mots[0].toLowerCase()) === -1) return false;
+    commandeDon(mots, texte.trim());
+    return true;
+  }
+
   // ── Compose ──
   $("#compose-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
     var inp = $("#compose-input");
     var text = inp.value;
     if (!text.trim() || !state.connected || !state.room) return;
+    // Les commandes que le BUREAU traite lui-même n'ont pas de gestionnaire
+    // serveur : les envoyer telles quelles ne rapporterait qu'un « Commande
+    // inconnue ». On les exécute ici, comme le SWF.
+    if (text.charAt(0) === "/" && traiterCommande(text)) { inp.value = ""; inp.focus(); return; }
     // Always send the user's actual text. Each client detects emotes from the
     // text itself and reacts locally (here via detectEmote on receive; the
     // desktop SWF triggers its own emote icons/bouille the same way it does for

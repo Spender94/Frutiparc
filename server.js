@@ -15102,7 +15102,7 @@ async function boot() {
                   body: "Quelques commandes utiles dans le chat&#160;:<br/>"
                     + "&#8226; <i>/aide</i> ou <i>/help</i>&#160;: ouvre cette fen&#234;tre<br/>"
                     + "&#8226; <i>/fiche pseudo</i>&#160;: affiche la fiche d&#8217;un Frutiz<br/>"
-                    + "&#8226; <i>/donne pseudo nombre</i>&#160;: offre des Kikooz<br/>"
+                    + "&#8226; <i>/donne nombre pseudo</i>&#160;: offre des Kikooz (le nombre d&#8217;abord&#160;!)<br/>"
                     + "&#8226; <i>/topic ...</i>&#160;: change le sujet du salon (mod&#233;rateurs)",
                 },
               ],
@@ -15162,7 +15162,7 @@ async function boot() {
               keywords: 'kikooz monnaie boutique cadeau donne',
               sort_order: 50,
               body: "Les <b>Kikooz</b> sont la monnaie virtuelle de Frutiparc.<br/><br/>"
-                + "Vous en gagnez en jouant, en participant au chat et en relevant des d&#233;fis quotidiens. Vous pouvez les d&#233;penser &#224; la <i>Boutique</i> ou les offrir &#224; un autre Frutiz via la commande <i>/donne pseudo nombre</i>.",
+                + "Vous en gagnez en jouant, en participant au chat et en relevant des d&#233;fis quotidiens. Vous pouvez les d&#233;penser &#224; la <i>Boutique</i> ou les offrir &#224; un autre Frutiz via la commande <i>/donne nombre pseudo</i> (par exemple <i>/donne 10 Gaspard</i>).",
             },
           ];
 
