@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -6 12 12" width="12" height="12">
+  <path d="M0 -6Q2.5 -6 4.2 -4.25Q6 -2.55 6 0Q6 2.5 4.2 4.2Q2.5 6 0 6Q-2.45 6 -4.25 4.2Q-6 2.5 -6 0Q-6 -2.55 -4.25 -4.25Q-2.45 -6 0 -6Z" fill="#ffffff" fill-opacity="0.5" fill-rule="evenodd"/>
+  <path d="M2.8 -2.9Q4 -1.7 4 0Q4 1.65 2.8 2.8Q1.65 4 0 4Q-1.7 4 -2.9 2.8Q-4 1.65 -4 0Q-4 -1.7 -2.9 -2.9Q-1.7 -4 0 -4Q1.65 -4 2.8 -2.9Z" fill="#bfbf40" fill-rule="evenodd"/>
+  <path d="M2.8 -2.9Q4 -1.7 4 0Q4 1.65 2.8 2.8Q1.65 4 0 4Q-1.7 4 -2.9 2.8Q-4 1.65 -4 0Q-4 -1.7 -2.9 -2.9Q-1.7 -4 0 -4Q1.65 -4 2.8 -2.9" fill="none" stroke="#e0e0a3" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

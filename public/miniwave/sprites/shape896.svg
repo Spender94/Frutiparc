@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 8 8" width="8" height="8">
+  <defs>
+    <radialGradient id="g1" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00045,0,0,0.00045,-0.2,3.35)"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#aaaaaa"/></radialGradient>
+  </defs>
+  <path d="M2.8 -2.8L2.85 -2.8Q4 -1.65 4 0Q4 1.65 2.85 2.8L2.8 2.85Q1.65 4 0 4Q-1.65 4 -2.8 2.85L-2.8 2.8Q-4 1.65 -4 0Q-4 -1.65 -2.8 -2.8Q-1.65 -4 0 -4Q1.65 -4 2.8 -2.8Z" fill="url(#g1)" fill-rule="evenodd"/>
+</svg>
