@@ -1262,7 +1262,7 @@
 
     <div id="drawer-backdrop"></div>
     <div id="users-drawer">
-      <h3>Connectés <span id="drawer-count"></span></h3>
+      <h3>Connectés</h3>
       <!-- Le protocole ne connaît que « qui est dans CE salon ». Le second
            onglet interroge le serveur pour voir tout le site — et dit où
            chacun se trouve, pour qu'on sache où aller le retrouver. -->
@@ -3596,7 +3596,6 @@
       if (prev !== names.length) renderRoomOptions();
     }
     if (drawerVue !== "salon") return;   // la vue « site » a son propre rendu
-    $("#drawer-count").textContent = "(" + names.length + ")";
     var list = $("#users-list");
     list.innerHTML = "";
     names.forEach(function (n) { list.appendChild(ligneConnecte(n, "", false)); });
@@ -3609,12 +3608,10 @@
     var list = $("#users-list");
     list.innerHTML = "";
     if (!siteListe) {
-      $("#drawer-count").textContent = "";
       var att = el("div", "vide"); att.textContent = "Chargement…";
       list.appendChild(att);
       return;
     }
-    $("#drawer-count").textContent = "(" + siteListe.length + ")";
     if (!siteListe.length) {
       var v = el("div", "vide"); v.textContent = "Personne d'autre en ligne.";
       list.appendChild(v);
