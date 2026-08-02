@@ -653,43 +653,60 @@
   }
   .mail-erreur { min-height: 16px; margin-top: 7px; font-size: 12px; color: #C0392B; }
   .mail-erreur.ok { color: #4B7A18; }
-  /* ── Évènements ──
-     Les annonces du site, la plus récente en tête. Chaque ligne porte le visuel
-     de son type (les images d'origine du SWF, 51 à 64 px) : c'est ce qui rend la
-     liste lisible d'un coup d'œil, là où quatre lignes de texte se ressemblent. */
-  #evt-panel { padding: 0; background: #CCF599; }
-  #evt-head {
-    flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
-    gap: 8px; padding: 10px 12px; background: #FEABAB; border-bottom: 1px solid #DDDDDD;
-    box-shadow: 0 1px 3px rgba(44,74,15,.18);
+  /* ── Événements et Historique ──
+     Calqués sur la fenêtre du bureau : cadre lilas, barre de titre blanche avec
+     l'icône de fenêtre, fond vert, et des cartes portant chacune le visuel de
+     son type. En bas, le pageur — ses deux boutons sont ceux du SWF (le carré
+     rose et le triangle de butPushSmallPink). Ni croix ni bouton de réduction :
+     sur un téléphone, la rubrique EST l'écran, il n'y a rien à fermer. */
+  #evt-panel { padding: 8px; background: #ADE76B; }
+  .fenetre {
+    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+    background: #CCF599; border: 3px solid #C6A9E4; border-radius: 11px;
+    box-shadow: 0 2px 9px rgba(44,74,15,.28); overflow: hidden;
   }
-  #evt-head .titre { font-weight: bold; font-size: 14px; color: #7a1f1f; }
-  #evt-compte { font-size: 11.5px; color: #7a1f1f; opacity: .85; }
+  .fen-titre {
+    flex-shrink: 0; display: flex; align-items: center; gap: 6px;
+    padding: 5px 10px; background: #fff; border-bottom: 1px solid #C6A9E4;
+    font-weight: bold; font-size: 13px; color: #40305c;
+  }
+  .fen-ico { width: 15px; height: 15px; display: block; }
   #evt-liste {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 10px 10px 18px;
+    padding: 7px 7px 3px;
   }
   .evt-item {
-    display: flex; gap: 10px; align-items: flex-start; background: #fff;
-    border: 1px solid #B7DD84; border-radius: 10px; padding: 9px 11px; margin-bottom: 8px;
+    display: flex; gap: 7px; align-items: center;
+    background: #DCF2B4; border: 1px solid #8CC63F; border-radius: 9px;
+    padding: 5px 9px 5px 5px; margin-bottom: 6px;
   }
-  /* Le visuel garde ses proportions d'origine (elles varient d'un type à l'autre)
-     dans une case de taille fixe, pour que les textes restent alignés. */
+  /* Le visuel garde ses proportions d'origine (elles varient d'un type à
+     l'autre) dans une case de taille fixe, pour que les textes s'alignent. */
   .evt-item .vis {
-    flex: 0 0 46px; width: 46px; height: 46px; display: flex;
-    align-items: center; justify-content: center;
+    flex: 0 0 52px; width: 52px; height: 52px;
+    display: flex; align-items: center; justify-content: center;
   }
   .evt-item .vis img { max-width: 100%; max-height: 100%; display: block; }
-  .evt-item .txt { flex: 1 1 auto; min-width: 0; }
-  .evt-item .l1 { display: flex; align-items: baseline; gap: 6px; }
-  .evt-item .genre { font-weight: bold; font-size: 11.5px; color: #4B7A18;
-    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .evt-item .quand { flex: 0 0 auto; font-size: 10.5px; color: #7d9a5a; }
-  .evt-item .corps { font-size: 13px; color: #2C4A0F; line-height: 1.35; margin-top: 3px;
-    word-break: break-word; }
-  /* Non consulté : même liseré vert vif que le courrier neuf. */
-  .evt-item.neuf { border-color: #8CCB3F; box-shadow: inset 3px 0 0 #8CCB3F; }
-  .evt-item.neuf .corps { font-weight: bold; }
+  .evt-item .txt {
+    flex: 1 1 auto; min-width: 0; font-size: 12.5px; line-height: 1.36;
+    color: #2C4A0F; word-break: break-word;
+  }
+  .evt-item .quand { font-weight: bold; }
+  /* Non consultée : le bureau met toute la ligne en gras, un cran plus grand. */
+  .evt-item.neuf .txt { font-weight: bold; font-size: 13.5px; }
+  .fen-pied {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 3px 7px 7px;
+  }
+  .fen-page {
+    border: 0; background: transparent; padding: 0; cursor: pointer; line-height: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .fen-page img { width: 27px; height: 27px; display: block; }
+  .fen-page:active img { transform: scale(.9); }
+  .fen-page[disabled] { opacity: .35; cursor: default; }
+  .fen-page[disabled]:active img { transform: none; }
+  #evt-page { font-size: 12.5px; color: #2C4A0F; }
   .evt-vide, .evt-charge { text-align: center; color: #4B7A18; font-size: 13px; padding: 26px 12px; }
 
   /* Voyant de la messagerie sur le raccourci de l'accueil : l'icône change (le
@@ -1325,8 +1342,20 @@
            <ul> et poussé par la trame <aw>.
        Chaque type d'entrée porte son visuel d'origine, extrait du SWF. -->
   <section class="panel" id="evt-panel">
-    <div id="evt-head"><span class="titre" id="evt-titre">Événements</span><span id="evt-compte"></span></div>
-    <div id="evt-liste"></div>
+    <div class="fenetre">
+      <div class="fen-titre">
+        <img class="fen-ico" src="/fb/icone_fenetre.svg" alt="">
+        <span id="evt-titre">Événements</span>
+      </div>
+      <div id="evt-liste"></div>
+      <div class="fen-pied">
+        <button type="button" class="fen-page" id="evt-prec" aria-label="Page précédente">
+          <img src="/fb/fleche_gauche.svg" alt=""></button>
+        <span id="evt-page"></span>
+        <button type="button" class="fen-page" id="evt-suiv" aria-label="Page suivante">
+          <img src="/fb/fleche_droite.svg" alt=""></button>
+      </div>
+    </div>
   </section>
 
   <!-- Trombinoscope — annuaire des Frutiz (pseudo + bouille), trié alpha par le
@@ -2571,9 +2600,10 @@
   };
   // État par journal : compteur du voyant, dernier listing, et « au moins un
   // chargement réussi » (pour ne pas réafficher « Chargement… » à chaque retour).
-  var journalEtat = { evenements: { nonLus: 0, liste: [], charge: false },
-                      historique: { nonLus: 0, liste: [], charge: false } };
+  var journalEtat = { evenements: { nonLus: 0, liste: [], charge: false, page: 0 },
+                      historique: { nonLus: 0, liste: [], charge: false, page: 0 } };
   var journalCourant = "evenements";
+  var PAR_PAGE = 5;                   // ce que la fenêtre du bureau affiche
 
   function setJournalNonLus(cle, n) {
     var e = journalEtat[cle], v = Math.max(0, Number(n) || 0);
@@ -2581,23 +2611,25 @@
     e.nonLus = v;
     majVoyant(JOURNAUX[cle].raccourci, v);
   }
-  // « 2026-08-01 14:32:05 » → « 1er août, 14:32 » (aujourd'hui : juste l'heure).
-  var MOIS = ["janvier", "février", "mars", "avril", "mai", "juin",
-              "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+  // « 2026-08-01 21:35:00 » → « sam 1 aout 21:35 », exactement comme le bureau.
+  // Les deux tables viennent du SWF (clés `day_short` et `month_short`) : quatre
+  // mois n'y ont pas d'abrégé et gardent leur nom entier — d'où « mars », « mai »,
+  // « juin » et « aout », ce dernier sans accent circonflexe, comme dans le jeu.
+  var JOURS_COURTS = ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"];
+  var MOIS_COURTS = ["janv", "fév", "mars", "avr", "mai", "juin",
+                     "juil", "aout", "sept", "oct", "nov", "déc"];
   function journalDate(s) {
     var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ""));
     if (!m) return String(s || "");
-    var d = new Date();
-    if (d.getFullYear() === +m[1] && (d.getMonth() + 1) === +m[2] && d.getDate() === +m[3])
-      return m[4] + ":" + m[5];
-    var jour = +m[3];
-    return (jour === 1 ? "1er" : jour) + " " + MOIS[+m[2] - 1]
-      + (d.getFullYear() === +m[1] ? "" : " " + m[1]) + ", " + m[4] + ":" + m[5];
+    var d = new Date(+m[1], +m[2] - 1, +m[3]);
+    return JOURS_COURTS[d.getDay()] + " " + (+m[3]) + " " + MOIS_COURTS[+m[2] - 1]
+      + " " + m[4] + ":" + m[5];
   }
   function loadJournal(cle) {
     var def = JOURNAUX[cle], etat = journalEtat[cle];
     if (!def) return;
     journalCourant = cle;
+    etat.page = 0;                    // on rouvre toujours sur la première page
     var titre = $("#evt-titre"); if (titre) titre.textContent = def.titre;
     var box = $("#evt-liste");
     if (box) box.innerHTML = etat.charge ? "" : '<div class="evt-charge">Chargement…</div>';
@@ -2626,28 +2658,41 @@
       });
   }
   function renderJournal(cle) {
-    var def = JOURNAUX[cle], liste = journalEtat[cle].liste;
-    var box = $("#evt-liste"), tete = $("#evt-compte");
+    var def = JOURNAUX[cle], etat = journalEtat[cle], liste = etat.liste;
+    var box = $("#evt-liste");
     if (!box) return;
-    if (tete) tete.textContent = liste.length
-      ? liste.length + " " + def.unite + (liste.length > 1 ? "s" : "") : "";
+    var pages = Math.max(1, Math.ceil(liste.length / PAR_PAGE));
+    etat.page = Math.max(0, Math.min(etat.page, pages - 1));
+
+    var pied = $("#evt-page"), prec = $("#evt-prec"), suiv = $("#evt-suiv");
+    if (pied) pied.textContent = liste.length ? (etat.page + 1) + "/" + pages : "";
+    if (prec) prec.disabled = etat.page <= 0;
+    if (suiv) suiv.disabled = etat.page >= pages - 1;
+
     if (!liste.length) { box.innerHTML = '<div class="evt-vide">' + def.vide + '</div>'; return; }
     box.innerHTML = "";
-    liste.forEach(function (e) {
+    liste.slice(etat.page * PAR_PAGE, (etat.page + 1) * PAR_PAGE).forEach(function (e) {
       var it = el("div", "evt-item" + (e.nouveau ? " neuf" : ""));
       // Un visuel manquant ne doit pas laisser un trou : on retombe sur celui du
       // journal, jamais sur une image cassée.
       it.innerHTML = '<div class="vis"><img src="/fb/' + xmlEscape(e.kind || def.repli)
         + "." + xmlEscape(e.kindExt || "svg") + '" alt="" '
         + 'onerror="this.onerror=null;this.src=\'/fb/' + def.repli + '.svg\'"></div>'
-        + '<div class="txt"><div class="l1">'
-        + '<span class="genre">' + xmlEscape(e.kindLabel || def.titre) + '</span>'
-        + '<span class="quand">' + xmlEscape(journalDate(e.date)) + '</span></div>'
-        + '<div class="corps">' + xmlEscape(e.text || "") + '</div></div>';
+        + '<div class="txt"><span class="quand">' + xmlEscape(journalDate(e.date))
+        + ' - </span>' + xmlEscape(e.text || "") + '</div>';
       box.appendChild(it);
     });
     box.scrollTop = 0;
   }
+  function tournerPage(pas) {
+    var etat = journalEtat[journalCourant];
+    if (!etat) return;
+    etat.page += pas;
+    renderJournal(journalCourant);
+  }
+  $("#evt-prec").addEventListener("click", function () { tournerPage(-1); });
+  $("#evt-suiv").addEventListener("click", function () { tournerPage(1); });
+
   // Le journal demandé est-il celui affiché ? (pour ne recharger que l'écran en cours)
   function journalOuvert(cle) {
     return journalCourant === cle && $("#evt-panel").classList.contains("active");

@@ -151,6 +151,23 @@ test('les visuels annoncés existent réellement', () => {
     'et c\'est un autre TRACÉ, pas la même forme repeinte');
 });
 
+test('les deux flèches du pageur sont celles du jeu', () => {
+  const dir = path.join(ROOT, 'public/fb');
+  const g = fs.readFileSync(path.join(dir, 'fleche_gauche.svg'), 'utf8');
+  const d = fs.readFileSync(path.join(dir, 'fleche_droite.svg'), 'utf8');
+  // Chacune est le carré rose du SWF (#f28687 / #ffaaad) plus son triangle.
+  for (const [nom, svg] of [['gauche', g], ['droite', d]]) {
+    assert.match(svg, /#f28687/, `${nom} : le carré du bouton`);
+    assert.match(svg, /#ffeaec/, `${nom} : le triangle`);
+  }
+  // La gauche est le miroir de la droite : même tracé, une symétrie en plus.
+  assert.match(g, /scale\(-1,1\)/, 'la flèche gauche est le miroir de la droite');
+  assert.equal(traces(g), traces(d), 'et donc exactement le même dessin');
+  // L'icône de la barre de titre : celle du bureau (iconWindow, frame « default »).
+  const ico = fs.readFileSync(path.join(dir, 'icone_fenetre.svg'), 'utf8');
+  assert.match(ico, /#ff9900|#e98001/, 'l\'icône de fenêtre garde son orange');
+});
+
 test('le voyant ne s\'éteint qu\'à la consultation', async () => {
   const sid = await inscrire('evtvoy' + RUN);
 
@@ -245,6 +262,30 @@ test('le client mobile affiche, signale et date les événements', () => {
   assert.match(html, /tab === "evenements"/, 'le panneau est piloté par activateTab');
   assert.match(html, /id="evt-liste"/, 'la liste existe');
   assert.match(html, /function renderJournal/, 'le rendu existe');
+
+  // La rubrique reprend la fenêtre du bureau : cadre lilas, barre de titre avec
+  // l'icône de fenêtre du SWF, et le pageur en bas. Pas de croix ni de bouton de
+  // réduction — sur un téléphone, la rubrique EST l'écran.
+  assert.match(html, /class="fen-titre"[\s\S]{0,160}icone_fenetre\.svg/, 'barre de titre à l\'icône du jeu');
+  assert.match(html, /border: 3px solid #C6A9E4/, 'cadre lilas comme sur le bureau');
+  assert.match(html, /id="evt-prec"[\s\S]{0,120}fleche_gauche\.svg/, 'flèche précédente');
+  assert.match(html, /id="evt-suiv"[\s\S]{0,120}fleche_droite\.svg/, 'flèche suivante');
+  const barre = /<div class="fen-titre">([\s\S]*?)<\/div>/.exec(html);
+  assert.ok(barre, 'la barre de titre existe');
+  assert.ok(!/<button/.test(barre[1]),
+    'aucun bouton dedans : ni croix ni réduction, il n\'y a rien à fermer sur un téléphone');
+
+  // Le pageur : cinq par page, comme la fenêtre du bureau.
+  assert.match(html, /var PAR_PAGE = 5;/, 'cinq entrées par page');
+  assert.match(html, /etat\.page \* PAR_PAGE, \(etat\.page \+ 1\) \* PAR_PAGE/, 'la page est découpée');
+  assert.match(html, /prec\.disabled = etat\.page <= 0/, 'la flèche gauche s\'éteint sur la première page');
+  assert.match(html, /suiv\.disabled = etat\.page >= pages - 1/, 'la droite sur la dernière');
+
+  // La date au format du jeu : « sam 1 aout 21:35 ». Les tables viennent du SWF,
+  // où quatre mois n'ont pas d'abrégé — « aout » s'y écrit sans circonflexe.
+  assert.match(html, /var JOURS_COURTS = \["dim", "lun", "mar", "mer", "jeu", "ven", "sam"\]/,
+    'jours abrégés du SWF');
+  assert.match(html, /"juil", "aout", "sept"/, 'mois abrégés du SWF, « aout » compris');
 
   // Le visuel vient du SERVEUR (e.kind) : c'est ce qui empêche les deux bouts de
   // diverger sur la correspondance type → image.
