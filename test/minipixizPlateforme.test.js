@@ -166,13 +166,14 @@ test('la santé d\'une fiche se juge comme le serveur la juge', () => {
 // ── La course en forêt ────────────────────────────────────────────────────
 
 test('une course additionne le CARRÉ de chaque niveau franchi', () => {
-  // base/Forest.endGame : $stat.$run += level². C'est ce qui fait qu'une longue
-  // course vaut infiniment plus que dix courtes — et c'est ce total qui ouvre
-  // le donjon et les fées (Cm : $run > 1000, $run > (lvl+1)²×5000).
+  // base/Forest : setWin fait `level += 1` AVANT endGame, qui fait
+  // `$stat.$run += level²`. Terminer le niveau n rapporte donc (n+1)², pas n².
+  // Le premier niveau, numéroté zéro, ne rapporterait sinon rien du tout.
   const c = P.fusionner(P.carteNeuve(), { niveaux: [0, 1, 2, 3], dernier: 4 });
-  assert.equal(c.$stat.$run, 0 + 1 + 4 + 9, 'la somme des carrés');
-  const dix = P.fusionner(P.carteNeuve(), { niveaux: [0], dernier: 1 });
-  assert.ok(c.$stat.$run > dix.$stat.$run * 4, 'une longue course paie bien plus');
+  assert.equal(c.$stat.$run, 1 + 4 + 9 + 16, 'la somme des carrés, décalée d\'un');
+  const un = P.fusionner(P.carteNeuve(), { niveaux: [0], dernier: 1 });
+  assert.equal(un.$stat.$run, 1, 'le tout premier niveau rapporte un, pas zéro');
+  assert.ok(c.$stat.$run > un.$stat.$run * 4, 'une longue course paie bien plus');
 });
 
 test('le meilleur niveau de forêt ne redescend jamais', () => {
@@ -202,17 +203,50 @@ test('la clé de donjon et les aliments ne passent pas par l\'album des objets',
   assert.equal(c.$stat.$item[9], true, 'mais l\'objet ordinaire y entre');
 });
 
-test('les relais se prennent tous les vingt niveaux', () => {
-  // base/Forest.endGame : un relais à chaque multiple de vingt, et seulement
-  // s'il n'était pas déjà acquis. C'est ce qui permet de reprendre là.
-  let c = P.fusionner(P.carteNeuve(), { niveaux: [], dernier: 18 });
-  assert.equal(c.$checkpoint, 0, 'pas encore');
-  c = P.fusionner(c, { niveaux: [], dernier: 19 });
-  assert.equal(c.$checkpoint, 1, 'le niveau 20 franchi ouvre le premier relais');
-  c = P.fusionner(c, { niveaux: [], dernier: 39 });
+test('les relais se prennent un par un, au relais SUIVANT', () => {
+  // base/Forest.endGame :
+  //     if( level == (Cm.card.$checkpoint+1)*20 ) Cm.card.$checkpoint += 1
+  // Le relais ne se gagne donc ni avant, ni deux d'un coup, ni en refaisant un
+  // passage déjà connu.
+  let c = P.fusionner(P.carteNeuve(), { niveaux: [], dernier: 19 });
+  assert.equal(c.$checkpoint, 0, 'dix-neuf niveaux ne suffisent pas');
+  c = P.fusionner(c, { niveaux: [], dernier: 20 });
+  assert.equal(c.$checkpoint, 1, 'le vingtième franchi ouvre le premier relais');
+  c = P.fusionner(c, { niveaux: [], dernier: 40 });
   assert.equal(c.$checkpoint, 2, 'puis le deuxième');
+  c = P.fusionner(c, { niveaux: [], dernier: 20 });
+  assert.equal(c.$checkpoint, 2, 'refaire un passage connu n\'en donne pas');
   c = P.fusionner(c, { niveaux: [], dernier: 5 });
   assert.equal(c.$checkpoint, 2, 'et une course ratée ne les reprend pas');
+});
+
+test('sauter des relais est impossible : on n\'en gagne qu\'un par course', () => {
+  // Un seul saut, même en arrivant très loin — le jeu compare à l'ÉGAL, pas au
+  // supérieur. C'est aussi ce qui garantit qu'une fiche gonflée ne s'ouvre pas
+  // toute la forêt d'un coup.
+  const c = P.fusionner(P.carteNeuve(), { niveaux: [], dernier: 100 });
+  assert.equal(c.$checkpoint, 0, 'cent niveaux d\'un coup n\'ouvrent rien');
+});
+
+test('une course s\'arrête au relais suivant, pas à l\'infini', () => {
+  assert.equal(P.finDeCourse(0), 20, 'partie de zéro, elle finit à vingt');
+  assert.equal(P.finDeCourse(19), 20);
+  assert.equal(P.finDeCourse(20), 40, 'partie du premier relais, elle finit à quarante');
+  assert.equal(P.finDeCourse(41), 60);
+});
+
+test('la carte de la forêt nomme ses relais', () => {
+  const p = new P.Plateforme('');
+  p.carte.$checkpoint = 2;
+  const carte = p.carteDesRelais();
+  assert.equal(carte.length, 3, 'trois passages connus');
+  assert.deepEqual(carte[0], { index: 0, niveau: 0, affiche: 1, nom: P.RELAIS[0], fin: 20 });
+  assert.deepEqual(carte[2], { index: 2, niveau: 40, affiche: 41, nom: P.RELAIS[2], fin: 60 });
+  // Au-delà des sept noms du jeu d'origine, on ne laisse pas de trou.
+  p.carte.$checkpoint = 8;
+  const loin = p.carteDesRelais();
+  assert.equal(loin.length, 9);
+  assert.ok(loin[8].nom.length > 0, 'le neuvième a quand même un nom');
 });
 
 test('les départs proposés sont les relais acquis', () => {
@@ -312,7 +346,7 @@ test('un compte neuf part de la fiche vierge et a le droit d\'enregistrer', asyn
   assert.equal(envois[0].game, 'minipixiz');
   assert.equal(envois[0].slotId, '0');
   const relu = JSON.parse(envois[0].data);
-  assert.equal(relu.$stat.$run, 5);
+  assert.equal(relu.$stat.$run, 1 + 4 + 9);
   assert.equal(relu.$stat.$forestMax, 4);
   assert.equal(relu.$stat.$item[7], true);
 });
@@ -478,7 +512,7 @@ test('le moteur reçoit la fiche pour tirer ses objets', () => {
 test('la page enchaîne les niveaux et n\'enregistre qu\'à la fin de la course', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
   assert.match(html, /src="\/minipixiz\/plateforme\.js"/, 'le module est chargé');
-  assert.match(html, /new window\.MinipixizPlateforme\.Plateforme\(sid\)/, 'construit avec la session');
+  assert.match(html, /new P\.Plateforme\(sid\)/, 'construit avec la session');
   assert.match(html, /plateforme\.charger\(\)/, 'la fiche est lue au démarrage');
   // Une course est une SUITE : gagner enchaîne, perdre enregistre.
   assert.match(html, /if \(info\.gagne\)/, 'un niveau gagné enchaîne');
@@ -486,10 +520,15 @@ test('la page enchaîne les niveaux et n\'enregistre qu\'à la fin de la course'
   assert.match(html, /plateforme\.enregistrer\(\{\s*niveaux: course\.niveaux/,
     'et seule la fin de course enregistre');
   assert.match(html, /course\.objets\.push\(info\.type\)/, 'les objets sont collectés en route');
-  assert.match(html, /plateforme\.departs\(\)/, 'on repart du dernier relais');
   // Base.grab agit tout de suite : le sac ramassé change le niveau SUIVANT.
-  assert.match(html, /MinipixizPlateforme\.ramasser\(course\.carte, info\.type\)/,
+  assert.match(html, /P\.ramasser\(course\.carte, info\.type\)/,
     'le ramassage s\'applique pendant la course');
-  assert.match(html, /fiche: window\.MinipixizPlateforme\.fiche\(course\.carte\)/,
+  assert.match(html, /fiche: P\.fiche\(course\.carte\)/,
     'et le niveau suivant tire selon ce qu\'on porte');
+  // base/Forest.endGame ferme la partie au relais suivant : pas de course infinie.
+  assert.match(html, /fin: P\.finDeCourse\(depart \|\| 0\)/, 'la course a une fin');
+  assert.match(html, /if \(course\.niveau < course\.fin\)/, 'et elle s\'y arrête');
+  // Et la carte de la forêt, dès qu'un relais est acquis.
+  assert.match(html, /plateforme\.carteDesRelais\(\)/, 'la carte liste les relais');
+  assert.match(html, /id="carte"/, 'et la page a de quoi l\'afficher');
 });

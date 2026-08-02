@@ -106,16 +106,18 @@ async function pictos(qui) {
 const consecration = async (sid) => (await fetch(
   `${BASE}/api/consecration?sid=${encodeURIComponent(sid)}`)).json();
 
-// Une course réellement jouée : le moteur, des commandes, jusqu'à la mort.
-// Les niveaux gagnés s'enchaînent, comme sur la page.
-function courir(P, carte, graine, maxNiveaux) {
+// Une course réellement jouée : le moteur, des commandes, jusqu'à la mort ou
+// jusqu'au relais suivant. C'est ce que fait la page, à l'affichage près.
+function courir(P, carte, graine, depart) {
   const E = require(path.join(ROOT, 'public/minipixiz/engine.js'));
-  const course = { niveaux: [], objets: [], dernier: 0, entree: true };
+  const debut = depart || 0;
+  const fin = P.finDeCourse(debut);
+  const course = { niveaux: [], objets: [], dernier: debut, entree: true };
   const travail = JSON.parse(JSON.stringify(carte));
-  let niveau = 0;
-  for (let n = 0; n < (maxNiveaux || 40); n++) {
+  let niveau = debut;
+  while (niveau < fin) {
     const jeu = new E.Jeu({
-      graine: graine + n, niveau, fiche: P.fiche(travail),
+      graine: graine + niveau, niveau, fiche: P.fiche(travail),
       onEvent: (nom, d) => {
         if (nom !== 'objet') return;
         course.objets.push(d.type);
@@ -155,7 +157,9 @@ test('une course jouée pour de vrai finit par se voir dans la fiche', async (t)
   const r = await p.enregistrer(course);
   assert.equal(r.enregistre, true, 'la fiche est partie au serveur');
 
-  const attendu = course.niveaux.reduce((s, n) => s + n * n, 0);
+  // base/Forest : setWin incrémente le niveau AVANT endGame, donc terminer le
+  // niveau n rapporte (n+1)².
+  const attendu = course.niveaux.reduce((s, n) => s + (n + 1) * (n + 1), 0);
   const relu = await new P.Plateforme(sid).charger();
   assert.equal(relu.$stat.$run, attendu, '$stat.$run additionne le carré de chaque niveau');
   assert.equal(relu.$stat.$forestMax, course.dernier + 1, 'le meilleur niveau atteint');
@@ -310,7 +314,7 @@ test('une fiche abîmée par Ruffle se répare au chargement au lieu de se propa
   assert.equal(r.enregistre, true, 'la sauvegarde passe — elle n\'est plus corrompue');
 
   const relu = await new P.Plateforme(sid).charger();
-  assert.equal(relu.$stat.$run, 4242 + 41 * 41, 'la course s\'ajoute au record conservé');
+  assert.equal(relu.$stat.$run, 4242 + 42 * 42, 'la course s\'ajoute au record conservé');
   assert.equal(relu.$stat.$forestMax, 43);
   assert.equal(relu.$stat.$game.length, 5, 'et le dégât ne revient pas');
   assert.equal(relu.$stat.$item[70], true, 'l\'objet ramassé est à l\'album');

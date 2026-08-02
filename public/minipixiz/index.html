@@ -85,6 +85,29 @@
     border: 0; border-radius: 14px; padding: 14px 28px;
     background: #453177; color: #e9dcff; font: bold 15px inherit; cursor: pointer;
   }
+  /* La carte de la forêt : les relais, du plus proche au plus lointain. */
+  #carte {
+    position: fixed; inset: 0; z-index: 7; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: #150f28; color: #d9cbff; text-align: center; padding: 20px;
+  }
+  #carte.on { display: flex; }
+  #carte .t { font-size: 20px; font-weight: bold; color: #ffd76a; letter-spacing: 2px; }
+  #carte .s { font-size: 13px; color: #9b8cc9; }
+  #carte-liste {
+    display: flex; flex-direction: column; gap: 8px;
+    width: 100%; max-width: 300px; max-height: 60vh; overflow-y: auto;
+  }
+  #carte .relais {
+    display: flex; align-items: center; gap: 12px; width: 100%;
+    border: 2px solid #453177; border-radius: 12px; padding: 12px 14px;
+    background: #241c3a; color: #e9dcff; font: inherit; cursor: pointer; text-align: left;
+  }
+  #carte .relais:active { background: #453177; }
+  #carte .relais .n {
+    flex: 0 0 40px; text-align: center; font-weight: bold; font-size: 17px; color: #ffd76a;
+  }
+  #carte .relais .t { font-size: 13px; font-weight: normal; color: #d9cbff; letter-spacing: 0; }
   @media (min-width: 700px) and (pointer: fine) {
     #manette { display: none; }
     #aide { color: #7b6ba8; font-size: 12px; padding-bottom: 14px; }
@@ -118,23 +141,34 @@
   <button type="button" id="rejouer">Rejouer</button>
 </div>
 
+<!-- La carte de la forêt : un relais par vingt niveaux franchis. -->
+<div id="carte">
+  <div class="t">LA FORÊT</div>
+  <div class="s">Où reprendre ?</div>
+  <div id="carte-liste"></div>
+</div>
+
 <script src="/minipixiz/engine.js"></script>
 <script src="/minipixiz/game.js"></script>
 <script src="/minipixiz/plateforme.js"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
+  var P = window.MinipixizPlateforme;
   var sid = new URLSearchParams(location.search).get('sid') || '';
-  var plateforme = new window.MinipixizPlateforme.Plateforme(sid);
+  var plateforme = new P.Plateforme(sid);
   var client = null;
   // base/Forest : une COURSE est une suite de niveaux. On gagne, on passe au
-  // suivant sans quitter ; on perd, et la course s'arrête. C'est elle qu'on
-  // enregistre, pas chaque niveau — $stat.$run additionne le carré de chacun.
+  // suivant sans quitter ; on perd, ou on atteint le relais suivant, et la
+  // course s'arrête. C'est elle qu'on enregistre, pas chaque niveau.
   var course = null;
 
   function nouvelleCourse(depart) {
     course = {
       depart: depart || 0, niveau: depart || 0, niveaux: [], objets: [], entree: true,
+      // base/Forest.endGame ferme la partie au premier multiple de vingt : une
+      // course, c'est vingt niveaux, pas l'infini.
+      fin: P.finDeCourse(depart || 0),
       // Une copie de travail de la fiche. Base.grab agit TOUT DE SUITE : le sac
       // ramassé au niveau 3 change ce qui tombe au niveau 4, sans attendre la
       // fin de la course. La vraie fiche, elle, n'est écrite qu'à la fin.
@@ -147,7 +181,7 @@
     $('#fin').classList.remove('on');
     client.nouvellePartie({
       niveau: course.niveau,
-      fiche: window.MinipixizPlateforme.fiche(course.carte),
+      fiche: P.fiche(course.carte),
     });
   }
 
@@ -176,52 +210,85 @@
         surEvenement: function (nom, info) {
           if (nom === 'objet') {
             course.objets.push(info.type);
-            window.MinipixizPlateforme.ramasser(course.carte, info.type);
+            P.ramasser(course.carte, info.type);
             return;
           }
           if (nom !== 'finPartie') return;
 
           if (info.gagne) {
-            // Niveau terminé : on enchaîne, la course continue.
             course.niveaux.push(course.niveau);
             course.niveau++;
-            $('#fin-titre').textContent = 'NIVEAU ' + info.niveau + ' TERMINÉ !';
-            $('#fin-score').textContent = info.score + ' points';
-            $('#fin-note').textContent = 'On enchaîne sur le niveau ' + (course.niveau + 1) + '…';
-            $('#fin').classList.add('on');
-            setTimeout(lancerNiveau, 1400);
+            if (course.niveau < course.fin) {
+              // La course continue : niveau suivant, sans quitter la forêt.
+              $('#fin-titre').textContent = 'NIVEAU ' + info.niveau + ' TERMINÉ !';
+              $('#fin-score').textContent = info.score + ' points';
+              $('#fin-note').textContent = 'On enchaîne sur le niveau ' + (course.niveau + 1) + '…';
+              $('#fin').classList.add('on');
+              setTimeout(lancerNiveau, 1400);
+              return;
+            }
+            // Relais atteint : base/Forest.endGame ferme la partie ici.
+            var neuf = course.fin === (Number(plateforme.carte.$checkpoint) + 1) * P.PAS_CHECKPOINT;
+            $('#fin-titre').textContent = neuf ? 'NOUVEAU RELAIS !' : 'RELAIS ATTEINT';
+            terminer(info, neuf
+              ? 'Vous pourrez repartir du niveau ' + (course.fin + 1) + '.'
+              : 'Vous connaissiez déjà ce passage.');
             return;
           }
 
-          // Course terminée : c'est maintenant qu'on enregistre.
           $('#fin-titre').textContent = 'PERDU';
-          $('#fin-score').textContent = 'niveau ' + (course.niveau + 1)
-            + ' · ' + course.niveaux.length + ' niveau' + (course.niveaux.length > 1 ? 'x' : '')
-            + ' franchi' + (course.niveaux.length > 1 ? 's' : '');
-          $('#fin-note').textContent = '';
-          $('#fin').classList.add('on');
-          plateforme.enregistrer({
-            niveaux: course.niveaux, dernier: course.niveau,
-            objets: course.objets, entree: course.entree,
-          }).then(function (r) {
-            $('#fin-note').textContent = resume(r);
-            window.__derniereSauvegarde = r;   // utile aux vérifications automatisées
-          });
-          if (window.parent !== window) {
-            window.parent.postMessage({ minipixiz: 'fin', score: info.score,
-              niveau: course.niveau, sid: sid }, '*');
-          }
+          terminer(info, '');
         }
       });
 
-      $('#rejouer').addEventListener('click', function () {
-        // On repart du dernier relais acquis, comme la carte de la forêt.
-        var d = plateforme.departs();
-        nouvelleCourse(d[d.length - 1] || 0);
-      });
+      // Fin de course — perdue ou menée jusqu'au relais. C'est le seul endroit
+      // qui enregistre.
+      function terminer(info, note) {
+        $('#fin-score').textContent = 'niveau ' + (course.niveau + 1)
+          + ' · ' + course.niveaux.length + ' niveau' + (course.niveaux.length > 1 ? 'x' : '')
+          + ' franchi' + (course.niveaux.length > 1 ? 's' : '');
+        $('#fin-note').textContent = note;
+        $('#fin').classList.add('on');
+        plateforme.enregistrer({
+          niveaux: course.niveaux, dernier: course.niveau,
+          objets: course.objets, entree: course.entree,
+        }).then(function (r) {
+          $('#fin-note').textContent = (note ? note + ' ' : '') + resume(r);
+          window.__derniereSauvegarde = r;   // utile aux vérifications automatisées
+        });
+        if (window.parent !== window) {
+          window.parent.postMessage({ minipixiz: 'fin', score: info.score,
+            niveau: course.niveau, sid: sid }, '*');
+        }
+      }
 
-      var d = plateforme.departs();
-      nouvelleCourse(d[d.length - 1] || 0);
+      // ── La carte de la forêt (base/Forest.initCheckpoint) ──
+      // Elle ne s'affiche que si un relais a été gagné : sans ça, il n'y a
+      // qu'un départ possible et le jeu se lance directement.
+      function ouvrirCarte() {
+        var relais = plateforme.carteDesRelais();
+        if (relais.length < 2) { nouvelleCourse(relais[0] ? relais[0].niveau : 0); return; }
+        var liste = $('#carte-liste');
+        liste.innerHTML = '';
+        relais.forEach(function (r) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'relais';
+          b.innerHTML = '<span class="n">' + r.affiche + '</span>'
+            + '<span class="t">' + r.nom + '</span>';
+          b.addEventListener('click', function () {
+            $('#carte').classList.remove('on');
+            nouvelleCourse(r.niveau);
+          });
+          liste.appendChild(b);
+        });
+        $('#fin').classList.remove('on');
+        $('#carte').classList.add('on');
+      }
+
+      $('#rejouer').addEventListener('click', ouvrirCarte);
+
+      ouvrirCarte();
       client.demarrer();
 
       window.minipixizClient = client;   // utile aux vérifications automatisées

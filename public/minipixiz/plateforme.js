@@ -38,6 +38,20 @@ const VERSION = 1.2;                  // Cm.VERSION
 const NB_ZONES = 5;                   // $stat.$game / $kill : forêt, bassin, château, arc-en-ciel, arbre
 const PAS_CHECKPOINT = 20;            // base/Forest.endGame : un relais tous les vingt niveaux
 
+// Lang.checkpointName : les relais de la forêt, dans l'ordre. Le premier est
+// toujours ouvert ; chacun se gagne en franchissant vingt niveaux depuis le
+// précédent. Sept noms, donc sept relais — au-delà, le jeu d'origine n'avait
+// plus rien à afficher.
+const RELAIS = [
+  'L’orée de la forêt',
+  'La clairière sereine',
+  'L’épaisse sommière',
+  'Le cœur de la forêt',
+  'L’antre sylvaine',
+  'Le seuil empirique',
+  'Le sentier oublié',
+];
+
 // Cs.bagLimit : combien de places l'inventaire offre selon le sac possédé.
 // Sans sac — $bag à zéro — il n'y a AUCUNE place, et c'est voulu : Item.getRandomId
 // ne fait alors tomber que des sacs. Le premier sac ouvre le jeu.
@@ -289,14 +303,20 @@ function ramasser(c, type) {
  * Ce qu'une course en forêt ajoute à la fiche.
  *
  * Une course est une SUITE de niveaux : on gagne, on passe au suivant, jusqu'à
- * perdre ou franchir un relais. `run` la décrit :
+ * perdre ou atteindre le relais suivant. `run` la décrit :
  *
- *   niveaux    les niveaux terminés, dans l'ordre — base/Forest.endGame ajoute
- *              le CARRÉ de chacun à $stat.$run, ce qui fait qu'une longue
- *              course vaut infiniment plus que dix courtes
+ *   niveaux    les niveaux terminés, dans l'ordre
  *   dernier    le niveau où la course s'est arrêtée
  *   objets     les identifiants ramassés (Base.grab)
  *   entree     vrai si c'est une nouvelle entrée en forêt ($stat.$game[0]++)
+ *
+ * ── Le carré, et son décalage d'un ──
+ *
+ * base/Forest.setWin fait `level += 1` AVANT d'appeler endGame, qui fait
+ * `$stat.$run += int(Math.pow(level,2))`. Terminer le niveau n rapporte donc
+ * (n+1)², et non n². Ça n'est pas un détail : le tout premier niveau, numéroté
+ * zéro, ne rapporterait rien du tout — et $run est ce qui ouvre le donjon
+ * ($run > 1000) et les fées ($run > (lvl+1)²×5000).
  */
 function fusionner(carte, run) {
   const c = JSON.parse(JSON.stringify(carte));
@@ -305,7 +325,10 @@ function fusionner(carte, run) {
 
   if (run.entree) s.$game[0] = nombre(s.$game[0]) + 1;
 
-  for (const n of (run.niveaux || [])) s.$run += Math.floor(Math.pow(nombre(n), 2));
+  for (const n of (run.niveaux || [])) {
+    const gagne = nombre(n) + 1;
+    s.$run += Math.floor(gagne * gagne);
+  }
 
   // base/Forest.kill : le meilleur niveau atteint ne redescend jamais.
   const dernier = nombre(run.dernier);
@@ -313,12 +336,22 @@ function fusionner(carte, run) {
 
   for (const id of (run.objets || [])) ramasser(c, id);
 
-  // base/Forest.endGame : un relais tous les vingt niveaux, et seulement s'il
-  // n'était pas déjà acquis.
-  const atteint = Math.floor((dernier + 1) / PAS_CHECKPOINT);
-  if (atteint > nombre(c.$checkpoint)) c.$checkpoint = atteint;
+  // base/Forest.endGame : le relais SUIVANT, et lui seul.
+  //
+  //     if( level == (Cm.card.$checkpoint+1)*20 ) Cm.card.$checkpoint += 1
+  //
+  // On n'en gagne donc jamais deux d'un coup, et repartir d'un vieux relais
+  // pour refaire ses vingt niveaux n'en rapporte aucun : il faut atteindre le
+  // premier qu'on n'a pas.
+  if (dernier === (nombre(c.$checkpoint) + 1) * PAS_CHECKPOINT) c.$checkpoint = nombre(c.$checkpoint) + 1;
 
   return c;
+}
+
+// Le relais où s'arrête une course partie de `depart` : base/Forest.endGame
+// ferme la partie dès que le niveau atteint est un multiple de vingt.
+function finDeCourse(depart) {
+  return (Math.floor(nombre(depart) / PAS_CHECKPOINT) + 1) * PAS_CHECKPOINT;
 }
 
 // Ce que la course vient d'ouvrir, dit au joueur avant que le serveur ne le
@@ -396,6 +429,18 @@ class Plateforme {
     return l;
   }
 
+  // La carte de la forêt : un relais par départ, avec son nom et le numéro
+  // affiché au joueur (le jeu compte les niveaux à partir de un).
+  carteDesRelais() {
+    return this.departs().map((niveau, i) => ({
+      index: i,
+      niveau,
+      affiche: niveau + 1,
+      nom: RELAIS[i] || ('Relais ' + (i + 1)),
+      fin: finDeCourse(niveau),
+    }));
+  }
+
   // Ce que le moteur doit savoir du joueur pour tirer ses objets.
   fiche() { return fiche(this.carte); }
 
@@ -416,8 +461,8 @@ class Plateforme {
 
 const API = {
   Plateforme, carteNeuve, reparer, fusionner, ramasser, fiche, lireLoadVars,
-  nouveauxPictos, porteUneProgression,
-  VERSION, NB_ZONES, PAS_CHECKPOINT, PLACES_SAC,
+  nouveauxPictos, porteUneProgression, finDeCourse,
+  VERSION, NB_ZONES, PAS_CHECKPOINT, PLACES_SAC, RELAIS,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
