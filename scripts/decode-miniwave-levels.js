@@ -214,13 +214,26 @@ function nettoyer(v) {
 }
 
 // ── Extraction depuis les sources AS2 ──
-// Les fichiers inc/level/*.as sont des littéraux ActionScript : on y récupère
-// les métadonnées lisibles (nom, vaisseau, prime) et la chaîne encodée `lvl`.
+// Ce sont des littéraux ActionScript : on y récupère les métadonnées lisibles
+// (nom, vaisseau, prime) et la chaîne encodée `lvl`.
+//
+// ATTENTION au fichier choisi. Le jeu porte DEUX jeux de parcours :
+//
+//   Games/miniWave2/inc/level/*.as        — un brouillon, resté dans l'arbre
+//   Games/miniWave2/class/miniwave/lvl/*.as — celui qui est compilé
+//
+// Ils se ressemblent (mêmes clés, même codec) mais ne décrivent pas les mêmes
+// niveaux : le brouillon donne 6 missions aux noms d'atelier (« level bonus
+// no2 », « Mission explosive »), le vrai en donne 5 nommées (« Fruit
+// d'artifice », « Canon à pulpe »…), et jusqu'au parcours arcade diffère —
+// escadron de 3 dans le brouillon, de 4 dans le jeu. La vérification est
+// simple et sans appel : les chaînes `lvl` de class/ se retrouvent telles
+// quelles dans miniwave.swf, celles de inc/ non. Le test le rappelle.
 const RACINE = path.join(__dirname, '..');
 const SOURCES = [
-  { fichier: 'Games/miniWave2/inc/level/main.as', cle: 'main' },
-  { fichier: 'Games/miniWave2/inc/level/bonus.as', cle: 'bonus' },
-  { fichier: 'Games/miniWave2/inc/level/letter.as', cle: 'letter' },
+  { fichier: 'Games/miniWave2/class/miniwave/lvl/Main.as', cle: 'main' },
+  { fichier: 'Games/miniWave2/class/miniwave/lvl/Bonus.as', cle: 'bonus' },
+  { fichier: 'Games/miniWave2/class/miniwave/lvl/Letter.as', cle: 'letter' },
 ];
 
 // Le source est en latin-1 (accents Flash d'époque) ; on le relit en UTF-8

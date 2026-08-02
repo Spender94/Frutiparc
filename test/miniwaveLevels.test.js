@@ -33,14 +33,40 @@ const toutesLesEscadres = function* () {
   for (const p of tousLesParcours()) for (const n of p.levels) for (const e of (n.list || [])) yield e;
 };
 
+test('les niveaux décodés sont ceux que le SWF embarque, pas le brouillon', () => {
+  // Le jeu porte DEUX jeux de parcours : Games/miniWave2/inc/level/*.as (un
+  // brouillon resté dans l'arbre) et class/miniwave/lvl/*.as (le compilé). Ils
+  // ont les mêmes clés et le même codec, donc décoder le mauvais ne casse rien —
+  // ça donne juste un AUTRE jeu : six missions aux noms d'atelier au lieu de
+  // cinq nommées, un parcours arcade différent, un escadron de 3 au lieu de 4.
+  // La preuve tient en une ligne : les chaînes encodées du compilé se retrouvent
+  // telles quelles dans miniwave.swf, celles du brouillon non.
+  const swf = (() => {
+    const raw = fs.readFileSync(path.join(ROOT, 'Games/miniWave2/miniwave.swf'));
+    const b = raw.slice(0, 3).toString('ascii') === 'CWS'
+      ? require('node:zlib').inflateSync(raw.slice(8)) : raw.slice(8);
+    return b.toString('latin1');
+  })();
+  const debut = (rel) => /lvl:"([^"]{60})/.exec(fs.readFileSync(path.join(ROOT, rel), 'latin1'))[1];
+  assert.ok(swf.includes(debut('Games/miniWave2/class/miniwave/lvl/Main.as')),
+    'le parcours compilé est bien celui du SWF');
+  assert.ok(!swf.includes(debut('Games/miniWave2/inc/level/main.as')),
+    'le brouillon n\'y est pas');
+  // Et les noms des missions le confirment côté lisible.
+  assert.ok(swf.includes('Fruit d\'artifice') && !swf.includes('Mission explosive'));
+});
+
 test('les trois familles de niveaux sont décodées', () => {
   assert.equal(niveaux.main.length, 1, 'un seul parcours principal (l\'arcade)');
   assert.equal(niveaux.main[0].name, 'arcade');
-  assert.equal(niveaux.main[0].levels.length, 201, 'les 201 niveaux de l\'arcade');
-  // bonus.as contient huit entrées, dont deux réservées et jamais remplies :
-  // l'extracteur doit les écarter au lieu d'échouer dessus.
-  assert.equal(niveaux.bonus.length, 6, 'six missions bonus réellement écrites');
+  assert.equal(niveaux.main[0].levels.length, 200, 'les 200 niveaux de l\'arcade');
+  assert.equal(niveaux.main[0].ship, 4, 'l\'arcade se joue à quatre vaisseaux');
+  // Bonus.as contient huit entrées, dont trois réservées et jamais remplies
+  // (« level bonus no6 » à « no8 ») : l'extracteur doit les écarter au lieu
+  // d'échouer dessus.
+  assert.equal(niveaux.bonus.length, 5, 'cinq missions bonus réellement écrites');
   assert.equal(niveaux.letter.length, 1, 'le parcours « lettres »');
+  assert.equal(niveaux.letter[0].levels.length, 50);
 });
 
 test('les niveaux portent les noms écrits par les auteurs du jeu', () => {
@@ -51,31 +77,36 @@ test('les niveaux portent les noms écrits par les auteurs du jeu', () => {
   assert.ok(noms.includes('Clémentines à la rescousse'));
   assert.ok(noms.includes('Formation serrée'));
   assert.ok(noms.every((n) => typeof n === 'string' && n.length > 0), 'chaque niveau est nommé');
-  const missions = niveaux.bonus.map((p) => p.name);
-  assert.ok(missions.includes('Mort aux fruit jaunes !'), 'les missions gardent leur titre');
-  assert.ok(missions.includes('Mission Pulpe à canon'));
+  // Les cinq missions, dans l'ordre où la boutique les vend.
+  assert.deepEqual(niveaux.bonus.map((p) => p.name), [
+    'Fruit d\'artifice', 'Mort aux fruits jaunes !', 'Canon à pulpe',
+    'Guerre ou paix ?', 'Mission New Wave',
+  ]);
+  assert.deepEqual(niveaux.bonus.map((p) => p.prime), [50, 100, 500, 500, 500],
+    'chaque mission promet sa prime');
+  assert.deepEqual(niveaux.bonus.map((p) => p.ship), [5, 3, 2, 2, 2],
+    'et impose la taille de son escadron');
 });
 
 test('chaque niveau a de quoi être joué', () => {
-  const lacunes = [];
+  const sansEscadre = [];
   for (const p of tousLesParcours()) {
     for (const n of p.levels) {
-      assert.ok(Array.isArray(n.list) && n.list.length > 0, `« ${n.name} » a au moins une escadre`);
+      assert.ok(Array.isArray(n.list), `« ${n.name} » décrit ses escadres`);
+      if (n.list.length === 0) sansEscadre.push(`${p.name}/${n.name}`);
       // Game.initLevel lit ces quatre valeurs à chaque niveau.
       for (const champ of ['moveSpeed', 'fallSpeed', 'ss', 'sd']) {
-        if (n[champ] === null) { lacunes.push(`${p.name}/${n.name}:${champ}`); continue; }
         assert.equal(typeof n[champ], 'number', `« ${n.name} » : ${champ} est un nombre`);
+        assert.ok(Number.isFinite(n[champ]), `« ${n.name} » : ${champ} est fini`);
         assert.ok(n[champ] > 0 && n[champ] < 1000, `« ${n.name} » : ${champ} = ${n[champ]} est plausible`);
       }
     }
   }
-  // Une seule lacune dans tout le jeu, et elle vient des auteurs : le niveau 36
-  // du parcours d'essai « level test 1 » a un moveSpeed valant NaN — que JSON ne
-  // sait écrire que « null ». On la fige ici plutôt que de la masquer : le
-  // moteur devra donner une vitesse de repli, et si une AUTRE lacune apparaît
-  // c'est que le décodage a dérivé.
-  assert.deepEqual(lacunes, ['level test 1/ vague no36...:moveSpeed'],
-    'la seule valeur manquante est celle, connue, du parcours d\'essai');
+  // Un seul niveau du jeu n'a pas d'escadre : le dernier de « Canon à pulpe »,
+  // laissé vide dans l'éditeur. On le fige plutôt que de le masquer — si un
+  // AUTRE apparaissait, c'est que le décodage a dérivé.
+  assert.deepEqual(sansEscadre, ['Canon à pulpe/ vague no41...'],
+    'le seul niveau sans escadre est celui, connu, des auteurs');
 });
 
 test('les ennemis désignés existent, et se placent dans l\'aire de jeu', () => {

@@ -53,13 +53,14 @@ test('le premier niveau place exactement les vaisseaux décrits', () => {
   for (let i = 0; i < 200 && jeu.step === E.ETAPE.PANNEAU; i++) jeu.update(1);
   assert.equal(jeu.step, E.ETAPE.ARRIVEE, 'le panneau laisse place à l\'arrivée');
 
-  // Le niveau 1 de l'arcade décrit quatre Letter-monsters sur une ligne.
+  // « Première escadre » : douze Fraises-boucliers, l'ouverture du jeu.
   const attendus = ARCADE[0].list.reduce((n, ligne) =>
     n + ((ligne && ligne.length > 1) ? ligne.filter((c) => c && c.t !== undefined).length : 0), 0);
   assert.equal(jeu.badsList.length, attendus, `${attendus} ennemis placés`);
   assert.equal(jeu.toKill, attendus, 'et autant à abattre');
-  assert.deepEqual(jeu.badsList.map((b) => b.type), [43, 43, 43, 43],
+  assert.deepEqual(jeu.badsList.map((b) => b.type), new Array(12).fill(0),
     'du type écrit dans le niveau');
+  assert.equal(E.ENNEMIS[0].name, 'Fraise-bouclier');
 });
 
 test('les escadres entrent par l\'extérieur et se rangent en formation', () => {
@@ -212,7 +213,11 @@ test('sans vaisseau en réserve, la partie s\'arrête', () => {
 });
 
 test('les ennemis ripostent', () => {
-  const r = jouer({ images: 3000, graine: 3 });
+  // Les Fraises-boucliers du premier niveau ne tirent pas : il faut avancer dans
+  // le parcours pour rencontrer les espèces armées. On joue donc pour de vrai —
+  // sans tirer, on reste bloqué au niveau 1 et la riposte ne vient jamais.
+  const r = jouer({ images: 6000, graine: 3, pilote: (jeu) => { jeu.entree.tir = true; } });
+  assert.ok(r.jeu.level > 0, `la partie progresse (niveau ${r.jeu.level + 1})`);
   assert.ok(r.compte('tirBads') > 0, 'la vague tire sur le joueur');
 });
 
@@ -233,12 +238,11 @@ test('deux parties de même graine se déroulent à l\'identique', () => {
 });
 
 test('tous les niveaux du jeu se chargent sans caler', () => {
-  // Le point sensible : un niveau du parcours d'essai a un moveSpeed manquant
-  // (NaN à l'origine). Sans repli, sa vague resterait immobile et le joueur
-  // serait bloqué — on vérifie donc que CHAQUE niveau donne des vitesses finies
-  // et une escadre plaçable.
+  // Chaque niveau doit donner des vitesses finies et une escadre plaçable —
+  // sinon la vague reste immobile et le joueur est bloqué sans rien comprendre.
   const parcours = [].concat(NIVEAUX.main, NIVEAUX.bonus, NIVEAUX.letter);
   let places = 0, combats = 0;
+  const vides = [];
   for (const p of parcours) {
     for (let i = 0; i < p.levels.length; i++) {
       const jeu = new E.Game({ levels: p.levels.slice(i, i + 1), graine: 1 });
@@ -253,14 +257,30 @@ test('tous les niveaux du jeu se chargent sans caler', () => {
       assert.ok(Number.isFinite(jeu.waveSpeed) && jeu.waveSpeed > 0,
         `« ${p.name} » niveau ${i + 1} : vitesse de vague utilisable (${jeu.waveSpeed})`);
       assert.ok(Number.isFinite(jeu.fallSpeed), `« ${p.name} » niveau ${i + 1} : descente définie`);
-      assert.ok(jeu.badsList.length > 0, `« ${p.name} » niveau ${i + 1} : la vague n'est pas vide`);
       assert.ok(jeu.badsList.every((b) => Number.isFinite(b.x) && Number.isFinite(b.y)),
         `« ${p.name} » niveau ${i + 1} : positions calculables`);
+      if (jeu.badsList.length === 0) { vides.push(`${p.name}/${i + 1}`); continue; }
       places += jeu.badsList.length;
     }
   }
   assert.ok(places > 5000, `les milliers de vaisseaux du jeu sont plaçables (${places})`);
   assert.equal(combats, 1, 'un seul combat de boss dans tout le jeu : la fin de l\'arcade');
+  // Un seul niveau du jeu n'a pas d'escadre : le dernier de « Canon à pulpe »,
+  // resté vide dans l'éditeur. On le fige ici plutôt que de le masquer — si un
+  // AUTRE apparaissait, c'est que le décodage a dérivé.
+  assert.deepEqual(vides, ['Canon à pulpe/41'],
+    'le seul niveau vide est celui, connu, laissé par les auteurs');
+});
+
+test('le niveau vide de « Canon à pulpe » est traversé, pas subi', () => {
+  // Sans escadre, il n'y a rien à abattre : le moteur doit enchaîner sur le
+  // suivant tout seul. S'il attendait un ennemi qui ne viendra pas, la mission
+  // serait injouable à partir de là.
+  const canon = NIVEAUX.bonus.find((p) => p.name === 'Canon à pulpe');
+  const jeu = new E.Game({ levels: canon.levels.slice(39), graine: 1 });
+  for (let i = 0; i < 4000 && !jeu.termine; i++) { jeu.entree.tir = true; jeu.update(1); }
+  assert.ok(jeu.termine, 'la mission va jusqu\'à son terme');
+  assert.equal(jeu.level, 2, 'les deux derniers niveaux sont franchis, vide compris');
 });
 
 test('une partie longue reste saine', () => {
@@ -574,9 +594,9 @@ test('le champ « ship » d\'un parcours est la taille de l\'escadron, pas un va
   // bonus monte à 5, ce qui n'aurait aucun sens comme index dans une liste de six
   // vaisseaux dont un seul est débloqué au départ.
   const arcade = NIVEAUX.main[0];
-  assert.equal(arcade.ship, 3, 'l\'arcade emmène trois vaisseaux');
+  assert.equal(arcade.ship, 4, 'l\'arcade emmène quatre vaisseaux');
   const jeu = new E.Game({ levels: arcade.levels, graine: 1, vies: arcade.ship, ship: 0 });
-  assert.equal(jeu.heroList.length, 3, 'trois vies en réserve');
+  assert.equal(jeu.heroList.length, 4, 'quatre vies en réserve');
   assert.ok(jeu.heroList.every((t) => t === 0), 'tous du vaisseau de départ');
 
   // Et l'escadron peut mélanger les types : heroList est une LISTE de vaisseaux,
