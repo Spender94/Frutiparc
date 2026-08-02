@@ -549,6 +549,11 @@
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
     border: 0; display: block; background: #24330e;
   }
+  #miniwave-panel { padding: 0; }
+  #miniwave-frame {
+    flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
+    border: 0; display: block; background: #150d24;
+  }
 
   /* ── Scores du jour (Challenge) ──
      Barre de jeux (chips) corail collée en haut + tableau vert scrollable,
@@ -1302,6 +1307,14 @@
        persistance (scores, persos, titems). -->
   <section class="panel" id="swapou-panel">
     <iframe id="swapou-frame" title="Swapou 2" referrerpolicy="no-referrer"></iframe>
+  </section>
+
+  <!-- Mini-Wave 2 — portage natif canvas, même schéma que Swapou. Le jeu lit
+       ?sid= pour charger la fiche du joueur (slot 0) et la réécrire en fin de
+       partie : les fruits abattus s'accumulent, les pictos et la consécration
+       suivent, exactement comme sur le bureau. -->
+  <section class="panel" id="miniwave-panel">
+    <iframe id="miniwave-frame" title="Mini-Wave 2" referrerpolicy="no-referrer"></iframe>
   </section>
 
   <!-- Scores du jour — classement « Challenge » du jour, en lecture seule.
@@ -2135,6 +2148,7 @@
     $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
     $("#bandas-panel").classList.toggle("active", tab === "bandas");
     $("#swapou-panel").classList.toggle("active", tab === "swapou");
+    $("#miniwave-panel").classList.toggle("active", tab === "miniwave");
     $("#scores-panel").classList.toggle("active", tab === "scores");
     $("#trombi-panel").classList.toggle("active", tab === "trombi");
     $("#mail-panel").classList.toggle("active", tab === "mail");
@@ -2166,6 +2180,12 @@
         sf.setAttribute("src", "/swapou/?sid=" + encodeURIComponent(state.sid));
       }
     }
+    if (tab === "miniwave") {
+      var mf = $("#miniwave-frame");
+      if (mf && !mf.getAttribute("src") && state.sid) {
+        mf.setAttribute("src", "/miniwave/?sid=" + encodeURIComponent(state.sid));
+      }
+    }
     // Les scores évoluent toute la journée : on rafraîchit à chaque ouverture.
     if (tab === "scores") loadChallengeScores();
     if (tab === "trombi") loadTrombi();
@@ -2184,6 +2204,7 @@
     { tab: "bandas", img: "/fb/fd_bandas.png", name: "Frutibandas" },
     { tab: "grapiz", img: "/fb/fd_grapiz.png", name: "Grapiz" },
     { tab: "swapou", img: "/fb/fd_swapou.png", name: "Swapou" },
+    { tab: "miniwave", img: "/fb/fd_miniwave.png", name: "Mini-Wave" },
   ];
   function renderDiscs() {
     var grid = $("#disques-grid");

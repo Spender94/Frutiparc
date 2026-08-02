@@ -2309,7 +2309,14 @@ class Game {
     if (this.flGameOver) return;
     this.flGameOver = true;
     this.termine = true;
-    this.evenement('finPartie', { raison, score: this.score, level: this.level });
+    // Le relevé de la partie part avec l'annonce : c'est lui que la plateforme
+    // ajoute à la fiche du joueur (les éliminations par espèce ouvrent les
+    // pictos à 200, le niveau atteint ouvre le picto « arcade »).
+    this.evenement('finPartie', {
+      raison, score: this.score, level: this.level,
+      badsKill: Object.assign({}, this.badsKill),
+      saucerKill: this.saucerKill, credits: this.credits,
+    });
   }
 
   // Game.isFree : y a-t-il de la place à cet endroit ? Sert à la Batmandarine

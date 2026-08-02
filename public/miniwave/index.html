@@ -133,17 +133,33 @@
 <div id="fin">
   <div class="t" id="fin-titre">GAME OVER</div>
   <div class="s" id="fin-score"></div>
+  <div class="s" id="fin-pictos"></div>
   <button type="button" id="rejouer">Rejouer</button>
 </div>
 
 <script src="/miniwave/engine.js"></script>
 <script src="/miniwave/game.js"></script>
 <script src="/miniwave/sons.js"></script>
+<script src="/miniwave/plateforme.js"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
   var sid = new URLSearchParams(location.search).get('sid') || '';
   var sons = new window.MiniwaveSons.Sons();
+  var plateforme = new window.MiniwavePlateforme.Plateforme(sid);
+
+  // Ce que la partie vient d'ouvrir, dit au joueur. Sans session (jeu ouvert
+  // hors du site) on le prévient plutôt que de laisser croire à une sauvegarde.
+  function resumePictos(r) {
+    if (!r.enregistre) return sid ? 'Progression non enregistrée.' : 'Partie hors compte.';
+    if (!r.gagnes.length) return 'Progression enregistrée.';
+    var noms = r.gagnes.map(function (p) {
+      if (p.genre === 'arcade') return 'picto Arcade';
+      var e = window.MiniwaveEngine.ENNEMIS[p.type];
+      return 'picto ' + (e ? e.name : 'espèce ' + p.type);
+    });
+    return 'Débloqué : ' + noms.join(', ') + ' !';
+  }
 
   // Le navigateur n'ouvre le son qu'après un geste du joueur : le premier appui,
   // quel qu'il soit, sert de déclencheur.
@@ -161,7 +177,8 @@
         $('#jauge').style.width = Math.round(p * 90) + '%';
       }),
       window.MiniwaveClient.chargerDecor(),
-      sons.charger()
+      sons.charger(),
+      plateforme.charger()
     ]).then(function () {
       $('#jauge').style.width = '100%';
       return { sprites: sprites, niveaux: niveaux };
@@ -179,8 +196,15 @@
         if (nom !== 'finPartie') return;
         $('#fin-titre').textContent = (info.raison === 'fin') ? 'BRAVO !' : 'GAME OVER';
         $('#fin-score').textContent = info.score + ' points · niveau ' + (info.level + 1);
+        $('#fin-pictos').textContent = '';
         $('#fin').classList.add('on');
-        // La sauvegarde plateforme (slot, pictos, consécration) se branchera ici.
+        // La fiche part au serveur : les éliminations s'ajoutent à celles des
+        // parties précédentes, et le meilleur niveau monte. C'est de là que le
+        // serveur tire les pictos, puis la consécration.
+        plateforme.enregistrer(info).then(function (r) {
+          $('#fin-pictos').textContent = resumePictos(r);
+          window.__derniereSauvegarde = r;      // utile aux vérifications automatisées
+        });
         if (window.parent !== window) {
           window.parent.postMessage({ miniwave: 'fin', score: info.score, level: info.level, sid: sid }, '*');
         }
