@@ -10747,14 +10747,30 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
     if (users[username].frutiSlots && users[username].frutiSlots[game]) {
       const slots = users[username].frutiSlots[game];
       // Auto-repair: corrupted minipixiz slot 0 (scalar fields where arrays
-      // are expected) loops forever via save→load, so reset to formatFruticard
-      // defaults before serving to the SWF. The "progress" lost was already
-      // unreachable because gameplay writes to primitives were silently dropped.
+      // are expected) loops forever via save→load, so it must be healed before
+      // being served.
+      //
+      // On RÉPARE les champs abîmés, on ne jette plus la fiche entière.
+      // L'ancienne version remplaçait tout par formatFruticard() en arguant que
+      // « la progression perdue était de toute façon inatteignable ». C'est vrai
+      // des champs abîmés eux-mêmes — écrire dans une chaîne est silencieux en
+      // AS2 — mais FAUX de tous les autres : $run, $forestMax, $bag, $key,
+      // $star, $diam, $checkpoint, $faerie, $dungeon restent parfaitement
+      // lisibles à côté. Les effacer, c'était remettre à zéro un joueur qui
+      // n'avait rien demandé. padMinipixizSlot0 recolle les tableaux et garde
+      // le reste ; la boucle save→load est cassée de la même façon, puisque la
+      // fiche servie n'est plus corrompue.
       if ((game === 'minipixiz' || game === 'minitroll') && slots['0'] && isMinipixizSlot0Corrupted(slots['0'])) {
-        console.log(`[SLOT]  REPAIR ${game} slot0 for ${username}: corrupted scalar fields detected, replacing with fresh defaults`);
-        slots['0'] = FRESH_MINIPIXIZ_SLOT0;
+        let soigne = FRESH_MINIPIXIZ_SLOT0;
+        try {
+          const essai = padMinipixizSlot0(slots['0']);
+          if (essai && !isMinipixizSlot0Corrupted(essai)) soigne = essai;
+        } catch (e) { /* irrécupérable : on repart de la fiche neuve */ }
+        const sauve = (soigne === FRESH_MINIPIXIZ_SLOT0) ? 'irréparable, fiche neuve' : 'champs recollés, progression gardée';
+        console.log(`[SLOT]  REPAIR ${game} slot0 for ${username}: corrupted scalar fields detected — ${sauve}`);
+        slots['0'] = soigne;
         const dbId = users[username]._dbId;
-        if (dbId) db.upsertFrutiSlot(dbId, game, 0, FRESH_MINIPIXIZ_SLOT0).catch((e) => console.error('[DB] repair upsert error:', e.message));
+        if (dbId) db.upsertFrutiSlot(dbId, game, 0, soigne).catch((e) => console.error('[DB] repair upsert error:', e.message));
       }
       // Extract pictos from slot 0 on load (catches items from before this feature existed)
       if (slots['0']) {

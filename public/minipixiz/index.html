@@ -120,19 +120,52 @@
 
 <script src="/minipixiz/engine.js"></script>
 <script src="/minipixiz/game.js"></script>
+<script src="/minipixiz/plateforme.js"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
   var sid = new URLSearchParams(location.search).get('sid') || '';
+  var plateforme = new window.MinipixizPlateforme.Plateforme(sid);
   var client = null;
-  var niveau = 0;
+  // base/Forest : une COURSE est une suite de niveaux. On gagne, on passe au
+  // suivant sans quitter ; on perd, et la course s'arrête. C'est elle qu'on
+  // enregistre, pas chaque niveau — $stat.$run additionne le carré de chacun.
+  var course = null;
+
+  function nouvelleCourse(depart) {
+    course = {
+      depart: depart || 0, niveau: depart || 0, niveaux: [], objets: [], entree: true,
+      // Une copie de travail de la fiche. Base.grab agit TOUT DE SUITE : le sac
+      // ramassé au niveau 3 change ce qui tombe au niveau 4, sans attendre la
+      // fin de la course. La vraie fiche, elle, n'est écrite qu'à la fin.
+      carte: JSON.parse(JSON.stringify(plateforme.carte)),
+    };
+    lancerNiveau();
+  }
+
+  function lancerNiveau() {
+    $('#fin').classList.remove('on');
+    client.nouvellePartie({
+      niveau: course.niveau,
+      fiche: window.MinipixizPlateforme.fiche(course.carte),
+    });
+  }
+
+  function resume(r) {
+    if (!r.enregistre) return sid ? 'Progression non enregistrée.' : 'Partie hors compte.';
+    if (!r.gagnes.length) return 'Progression enregistrée.';
+    return 'Album : ' + r.gagnes.length + ' objet' + (r.gagnes.length > 1 ? 's' : '') + ' de plus !';
+  }
 
   fetch('/minipixiz/sprites/sprites.json')
     .then(function (r) { return r.json(); })
     .then(function (sprites) {
-      return window.MinipixizClient.charger(sprites, function (p) {
-        $('#jauge').style.width = Math.round(p * 100) + '%';
-      }).then(function () { return sprites; });
+      return Promise.all([
+        window.MinipixizClient.charger(sprites, function (p) {
+          $('#jauge').style.width = Math.round(p * 100) + '%';
+        }),
+        plateforme.charger()
+      ]).then(function () { return sprites; });
     })
     .then(function (sprites) {
       $('#chargement').style.display = 'none';
@@ -141,32 +174,59 @@
         canvas: $('#stage'),
         sprites: sprites,
         surEvenement: function (nom, info) {
+          if (nom === 'objet') {
+            course.objets.push(info.type);
+            window.MinipixizPlateforme.ramasser(course.carte, info.type);
+            return;
+          }
           if (nom !== 'finPartie') return;
-          $('#fin-titre').textContent = info.gagne ? 'NIVEAU TERMINÉ !' : 'PERDU';
-          $('#fin-score').textContent = info.score + ' points · niveau ' + (info.niveau + 1)
-            + ' · ' + info.pieces + ' pièces';
-          // Un niveau réussi fait avancer ; un échec le fait rejouer.
-          if (info.gagne) niveau = info.niveau + 1;
-          $('#fin-note').textContent = info.gagne
-            ? 'Au suivant : niveau ' + (niveau + 1)
-            : 'Le niveau ' + (info.niveau + 1) + ' reste à faire.';
+
+          if (info.gagne) {
+            // Niveau terminé : on enchaîne, la course continue.
+            course.niveaux.push(course.niveau);
+            course.niveau++;
+            $('#fin-titre').textContent = 'NIVEAU ' + info.niveau + ' TERMINÉ !';
+            $('#fin-score').textContent = info.score + ' points';
+            $('#fin-note').textContent = 'On enchaîne sur le niveau ' + (course.niveau + 1) + '…';
+            $('#fin').classList.add('on');
+            setTimeout(lancerNiveau, 1400);
+            return;
+          }
+
+          // Course terminée : c'est maintenant qu'on enregistre.
+          $('#fin-titre').textContent = 'PERDU';
+          $('#fin-score').textContent = 'niveau ' + (course.niveau + 1)
+            + ' · ' + course.niveaux.length + ' niveau' + (course.niveaux.length > 1 ? 'x' : '')
+            + ' franchi' + (course.niveaux.length > 1 ? 's' : '');
+          $('#fin-note').textContent = '';
           $('#fin').classList.add('on');
+          plateforme.enregistrer({
+            niveaux: course.niveaux, dernier: course.niveau,
+            objets: course.objets, entree: course.entree,
+          }).then(function (r) {
+            $('#fin-note').textContent = resume(r);
+            window.__derniereSauvegarde = r;   // utile aux vérifications automatisées
+          });
           if (window.parent !== window) {
             window.parent.postMessage({ minipixiz: 'fin', score: info.score,
-              niveau: info.niveau, gagne: info.gagne, sid: sid }, '*');
+              niveau: course.niveau, sid: sid }, '*');
           }
         }
       });
 
-      function lancer() {
-        $('#fin').classList.remove('on');
-        client.nouvellePartie({ niveau: niveau });
-      }
-      $('#rejouer').addEventListener('click', lancer);
-      lancer();
+      $('#rejouer').addEventListener('click', function () {
+        // On repart du dernier relais acquis, comme la carte de la forêt.
+        var d = plateforme.departs();
+        nouvelleCourse(d[d.length - 1] || 0);
+      });
+
+      var d = plateforme.departs();
+      nouvelleCourse(d[d.length - 1] || 0);
       client.demarrer();
 
       window.minipixizClient = client;   // utile aux vérifications automatisées
+      window.__plateforme = plateforme;
+      window.__course = function () { return course; };
     })
     .catch(function (e) {
       $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'

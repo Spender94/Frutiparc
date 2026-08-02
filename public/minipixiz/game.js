@@ -44,7 +44,8 @@ const images = new Map();
 
 function charger(manifeste, surAvancee) {
   const fichiers = new Set();
-  for (const s of Object.values(manifeste)) {
+  for (const [cle, s] of Object.entries(manifeste)) {
+    s.cle = cle;                       // rendre() en a besoin pour l'ancrage
     for (const e of s.etats) for (const p of e.pieces) fichiers.add(p.fichier);
   }
   const liste = [...fichiers];
@@ -61,29 +62,76 @@ function charger(manifeste, surAvancee) {
 // ── Teinture ──────────────────────────────────────────────────────────────
 const teintes = new Map();
 
-// Rend un état de sprite dans un canevas de `taille` px, éventuellement teinté.
+// ── Où se pose un dessin ──────────────────────────────────────────────────
+//
+// Les dessins ne partagent pas tous la même origine, et la différence vient du
+// jeu, pas de l'extraction.
+//
+// Le jeton est deux clips : `token` (#41) porte le contour, et il place son
+// clip intérieur (#32) en 50,50 — l'art de #32 est donc centré sur son propre
+// zéro. Aplatis, les dix-sept états occupent exactement 0..100 : la CASE. Les
+// autres éléments du plateau (pierre, cellule, bombe) suivent la même règle.
+//
+// Mais Token.mt accroche la perle et l'étoile DANS le clip intérieur :
+//
+//     bm = Std.attachMC( Std.cast(skin).skin, "mcBlackMarble", 5 )
+//
+// leur zéro est donc le CENTRE de la case, pas son coin. Sans ce décalage
+// elles se posaient au coin haut-gauche, à cheval sur la case d'à côté.
+//
+// Enfin, un dessin peut légitimement déborder de sa case — le halo de l'objet
+// s'étend de -30 à 130. Flash ne coupait rien ; on rend donc dans un canevas à
+// la taille du dessin, et on rend aussi le décalage à appliquer.
+const ANCRE_CENTRE = new Set(['marble', 'star']);
+
+// Les habitants du plateau ne sont pas à la même échelle que ses cases.
+// Element.mt les met à l'échelle de la case :
+//
+//     setScale(game.ts)   →   skin._xscale = skin._yscale = 16
+//
+// donc leurs 100 unités valent 16 px. L'impy, lui, est accroché sans échelle
+// (Imp.mt : `dm.attach("imp", …)`), et son dessin est déjà en pixels : 20 × 24,
+// une case et demie. Le réduire à 100 unités le rendrait minuscule.
+const ECHELLE_PIXEL = new Set(['imp']);
+
+// Rend un état de sprite pour une case de `taille` px, éventuellement teinté.
 // `couleur` non définie = le dessin d'origine, en gris.
+// Renvoie { c, dx, dy } : le canevas, et où le poser depuis le coin de la case.
 function rendre(sprite, frame, taille, couleur) {
   const cle = sprite.nom + '/' + frame + '/' + taille + '/' + (couleur === undefined ? 'gris' : couleur);
   const dejaLa = teintes.get(cle);
   if (dejaLa) return dejaLa;
 
-  const c = document.createElement('canvas');
-  c.width = taille;
-  c.height = taille;
-  const g = c.getContext('2d');
   const etat = sprite.etats.find((e) => e.frame === frame) || sprite.etats[0];
+  const k = ECHELLE_PIXEL.has(sprite.cle) ? 1 : taille / 100;
+  const zero = ANCRE_CENTRE.has(sprite.cle) ? 50 : 0;
+
+  // Le cadre du dessin, dans le repère de la case.
+  let x0 = 0, y0 = 0, x1 = 100, y1 = 100;
+  if (etat && etat.pieces.length) {
+    x0 = y0 = Infinity; x1 = y1 = -Infinity;
+    for (const p of etat.pieces) {
+      x0 = Math.min(x0, p.x + zero); y0 = Math.min(y0, p.y + zero);
+      x1 = Math.max(x1, p.x + zero + p.w); y1 = Math.max(y1, p.y + zero + p.h);
+    }
+  }
+  const dx = Math.floor(x0 * k), dy = Math.floor(y0 * k);
+  const l = Math.max(1, Math.ceil(x1 * k) - dx), h = Math.max(1, Math.ceil(y1 * k) - dy);
+
+  const c = document.createElement('canvas');
+  c.width = l;
+  c.height = h;
+  const g = c.getContext('2d');
   if (etat) {
-    const k = taille / 100;            // les dessins du SWF sont posés sur 100 unités
     for (const p of etat.pieces) {
       const img = images.get(p.fichier);
       if (!img) continue;
-      g.drawImage(img, p.x * k, p.y * k, p.w * k, p.h * k);
+      g.drawImage(img, (p.x + zero) * k - dx, (p.y + zero) * k - dy, p.w * k, p.h * k);
     }
   }
-  if (couleur !== undefined && taille > 0) {
+  if (couleur !== undefined) {
     // Mc.setColor + modColor(1, 25) : un décalage additif, borné.
-    const d = g.getImageData(0, 0, taille, taille);
+    const d = g.getImageData(0, 0, l, h);
     const px = d.data;
     const dr = ((couleur >> 16) & 0xFF) - 230;
     const dv = ((couleur >> 8) & 0xFF) - 230;
@@ -96,8 +144,14 @@ function rendre(sprite, frame, taille, couleur) {
     }
     g.putImageData(d, 0, 0);
   }
-  teintes.set(cle, c);
-  return c;
+  const rendu = { c, dx, dy };
+  teintes.set(cle, rendu);
+  return rendu;
+}
+
+// Pose un rendu à la case (x, y), en pixels.
+function poserRendu(ctx, r, x, y) {
+  ctx.drawImage(r.c, x + r.dx, y + r.dy);
 }
 
 // ── Les liaisons d'un jeton (Group.draw) ──────────────────────────────────
@@ -245,33 +299,33 @@ class Client {
       case E.E.JETON: {
         const frame = this.jeu ? imageJeton(this.jeu, e) : 1;
         const couleur = E.COULEURS[e.type] || E.COULEURS[0];
-        ctx.drawImage(rendre(s.token, frame, TS, couleur), x, y);
+        poserRendu(ctx, rendre(s.token, frame, TS, couleur), x, y);
         // Les marques se posent par-dessus : la perle noire et l'étoile.
         if (e.special === E.SPECIAL.PERLE && s.marble) {
-          ctx.drawImage(rendre(s.marble, 1, TS), x, y);
+          poserRendu(ctx, rendre(s.marble, 1, TS), x, y);
         }
         if (e.special === E.SPECIAL.ETOILE && s.star) {
-          ctx.drawImage(rendre(s.star, 1, TS), x, y);
+          poserRendu(ctx, rendre(s.star, 1, TS), x, y);
         }
         break;
       }
       case E.E.PIERRE:
         // stone : trois images, de la plus intacte à la plus fendue.
-        ctx.drawImage(rendre(s.stone, Math.max(1, Math.min(3, e.life)), TS), x, y);
+        poserRendu(ctx, rendre(s.stone, Math.max(1, Math.min(3, e.life)), TS), x, y);
         break;
       case E.E.CELLULE:
-        ctx.drawImage(rendre(s.impCell, 1, TS), x, y);
+        poserRendu(ctx, rendre(s.impCell, 1, TS), x, y);
         break;
       case E.E.BOMBE:
-        ctx.drawImage(rendre(s.bomb, 1, TS), x, y);
+        poserRendu(ctx, rendre(s.bomb, 1, TS), x, y);
         break;
       case E.E.OBJET:
-        ctx.drawImage(rendre(s.elItem, 1, TS), x, y);
+        poserRendu(ctx, rendre(s.elItem, 1, TS), x, y);
         break;
       case E.E.OEIL: {
         // L'œil n'a pas de dessin propre dans root.swf : on le rend par un
         // jeton de sa couleur, marqué. Il se distingue par sa pupille.
-        ctx.drawImage(rendre(s.token, 1, TS, E.COULEURS[e.color] || E.COULEURS[0]), x, y);
+        poserRendu(ctx, rendre(s.token, 1, TS, E.COULEURS[e.color] || E.COULEURS[0]), x, y);
         ctx.fillStyle = '#ffffff';
         ctx.beginPath(); ctx.arc(x + TS / 2, y + TS / 2, 4, 0, 6.28); ctx.fill();
         ctx.fillStyle = '#1a1030';
@@ -377,6 +431,6 @@ class Client {
   }
 }
 
-window.MinipixizClient = { Client, charger, rendre, imageJeton, images, LARGEUR, HAUTEUR, LIGNES_CACHEES };
+window.MinipixizClient = { Client, charger, rendre, poserRendu, imageJeton, images, LARGEUR, HAUTEUR, LIGNES_CACHEES };
 
 })();

@@ -509,3 +509,115 @@ test('le moteur est chargeable dans le navigateur comme sous Node', () => {
   assert.match(src, /racine\.MinipixizEngine = API/, 'exposé sur window pour la page');
   assert.match(src, /module\.exports = API/, 'et exporté pour les tests');
 });
+
+// ── Le tirage d'un objet (Item.getRandomId) ───────────────────────────────
+
+test('sans sac, seul le sac peut tomber', () => {
+  // Item.getRandomId : `if (Cm.card.$bag == 0) return null` vient APRÈS le
+  // tirage du sac. Un joueur qui commence ne ramasse donc que son premier sac —
+  // et c'est voulu : il n'aurait nulle part où ranger le reste.
+  const h = (n) => Math.floor(Math.random() * n);
+  const vus = new Set();
+  for (let i = 0; i < 3000; i++) {
+    const x = E.tirerObjet(25, h, { sac: 0, flasques: 0 });
+    if (x !== null) vus.add(x);
+  }
+  assert.deepEqual([...vus], [80], 'rien d\'autre que le premier sac');
+});
+
+test('le sac ne tombe qu\'une fois le palier atteint, et de plus en plus rarement', () => {
+  const h = (n) => Math.floor(Math.random() * n);
+  // `Cs.aventure.level > Cm.card.$bag*20` : le deuxième sac attend le niveau 20.
+  let vus = 0;
+  for (let i = 0; i < 3000; i++) if (E.tirerObjet(15, h, { sac: 1 }) === 81) vus++;
+  assert.equal(vus, 0, 'au niveau 15, le deuxième sac ne tombe pas encore');
+  vus = 0;
+  for (let i = 0; i < 3000; i++) if (E.tirerObjet(25, h, { sac: 1 }) === 81) vus++;
+  assert.ok(vus > 0, `au niveau 25, il devient possible (${vus} fois sur 3000)`);
+  // Et le troisième est bien plus rare que le deuxième (1/22 contre 1/42).
+  let deux = 0, trois = 0;
+  for (let i = 0; i < 20000; i++) {
+    if (E.tirerObjet(80, h, { sac: 1 }) === 81) deux++;
+    if (E.tirerObjet(80, h, { sac: 2 }) === 82) trois++;
+  }
+  assert.ok(deux > trois, `le troisième sac est plus rare (${deux} contre ${trois})`);
+  // Au-delà de trois, plus de sac du tout.
+  for (let i = 0; i < 2000; i++) assert.notEqual(E.tirerObjet(90, h, { sac: 3 }), 83);
+});
+
+test('la pioche respecte le niveau minimum de chaque objet', () => {
+  const h = (n) => Math.floor(Math.random() * n);
+  const vus = new Set();
+  for (let i = 0; i < 8000; i++) {
+    const x = E.tirerObjet(5, h, { sac: 2, flasques: 99 });
+    if (x !== null) vus.add(x);
+  }
+  // Au niveau 5, seuls les objets de `lvl: 0` sont autorisés.
+  for (const id of vus) {
+    if (id >= 80) continue;                        // les sacs ont leur propre règle
+    const o = E.OBJETS.concat(E.NOURRITURE).find((x) => x.id === id);
+    assert.ok(o, `l'objet ${id} est dans une table`);
+    assert.equal(o.lvl, 0, `l'objet ${id} est autorisé dès le niveau 0`);
+  }
+  assert.ok(vus.size > 3, `il en tombe quand même (${vus.size} sortes)`);
+});
+
+test('la flasque se raréfie à mesure qu\'on en a', () => {
+  // Item.getRandomId : `Math.random() * (flasques+2)³ < 1`. Avec zéro flasque
+  // c'est une chance sur huit ; avec cinq, une sur 343.
+  const h = (n) => Math.floor(Math.random() * n);
+  let sansRien = 0, avecCinq = 0;
+  for (let i = 0; i < 6000; i++) {
+    if (E.tirerObjet(50, h, { sac: 2, flasques: 0 }) === 30) sansRien++;
+    if (E.tirerObjet(50, h, { sac: 2, flasques: 5 }) === 30) avecCinq++;
+  }
+  assert.ok(sansRien > avecCinq * 3, `elle se raréfie nettement (${sansRien} contre ${avecCinq})`);
+});
+
+test('les parchemins et les grimoires suivent la table des sorts', () => {
+  // Item.initItemList : parchemin = moitié de la fréquence du sort, grimoire =
+  // un cinquième, et au double du niveau.
+  for (const s of E.SORTS) {
+    const parchemin = E.OBJETS.find((o) => o.id === 100 + s.id);
+    const grimoire = E.OBJETS.find((o) => o.id === 200 + s.id);
+    assert.ok(parchemin, `parchemin du sort ${s.id}`);
+    assert.ok(grimoire, `grimoire du sort ${s.id}`);
+    assert.equal(parchemin.freq, Math.floor(s.freq * 0.5));
+    assert.equal(parchemin.lvl, s.lvl);
+    assert.equal(grimoire.freq, Math.floor(s.freq * 0.2));
+    assert.equal(grimoire.lvl, s.lvl * 2, 'le grimoire attend deux fois plus longtemps');
+  }
+  assert.equal(E.SORTS.length, 24, 'les vingt-quatre sorts du jeu');
+});
+
+test('un objet apparaît dans les niveaux qui en méritent un', () => {
+  // base/Forest.getLevel : jamais dans les trois premiers niveaux d'un palier
+  // de vingt, et une fois sur deux seulement.
+  let avec = 0;
+  for (let graine = 1; graine <= 60; graine++) {
+    const g = E.genererNiveau(30, (n) => Math.floor(Math.random() * n), 8, 17, { sac: 2 });
+    if (g.grille.flat().some((c) => c && c.et === E.E.OBJET)) avec++;
+  }
+  assert.ok(avec > 5, `des objets sont semés (${avec} niveaux sur 60)`);
+  // Mais jamais dans les trois premiers d'un palier.
+  for (const niv of [0, 1, 2, 20, 21, 22]) {
+    for (let i = 0; i < 40; i++) {
+      const g = E.genererNiveau(niv, (n) => Math.floor(Math.random() * n), 8, 17, { sac: 2 });
+      assert.ok(!g.grille.flat().some((c) => c && c.et === E.E.OBJET),
+        `niveau ${niv} : pas d'objet en début de palier`);
+    }
+  }
+});
+
+test('un objet dégagé se ramasse, et la partie en tient la liste', () => {
+  const j = jeuVide();
+  new E.Objet(j, { px: 3, py: 16, type: 7 }).poser();
+  for (const x of [4, 5, 6]) new E.Pierre(j, { px: x, py: 16, life: 9 }).poser();
+  for (const x of [3, 4, 5, 6]) poser(j, x, 15, 0);
+  const vus = [];
+  j.onEvent = (n, d) => { if (n === 'objet') vus.push(d.type); };
+  j.flActiviteAFaire = true;
+  resoudre(j);
+  assert.deepEqual(vus, [7], 'l\'objet dégagé est pris');
+  assert.deepEqual(j.objets, [7], 'et la partie s\'en souvient');
+});

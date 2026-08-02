@@ -448,6 +448,10 @@ class Jeu {
     this.nextPiece = null;
     this.starWait = 0;
     this.score = 0;
+    // Les objets ramassés pendant la partie : c'est ce que la fiche du joueur
+    // retient (Cm.getItem → $stat.$item → picto de l'album).
+    this.objets = [];
+    this.flActiviteAFaire = false;
     this.pieces = 0;                 // pieceTimer : le nombre de pièces posées
     this.termine = false;
     this.gagne = false;
@@ -468,7 +472,7 @@ class Jeu {
     // l'absence de champ fait générer le niveau, comme le jeu.
     let modele = o.grille;
     if (modele === undefined) {
-      const g = genererNiveau(this.niveau, (n) => this.hasard(n), this.xMax, this.yMax);
+      const g = genererNiveau(this.niveau, (n) => this.hasard(n), this.xMax, this.yMax, o.fiche);
       modele = g.grille;
       this.colMax = g.couleurs;
       this.hauteurDepart = g.hauteur;
@@ -667,6 +671,17 @@ class Jeu {
         this.souffler();
         if (this.dList.length === 0) {
           this.verifierStatsChute();
+          // Game.initStep(5) : une fois la cascade close, les objets dégagés se
+          // ramassent. S'il y en avait, ils laissent un trou — le cycle
+          // recommence (Game.newCycle), et la chute peut relancer une cascade.
+          if (this.flActiviteAFaire) {
+            this.flActiviteAFaire = false;
+            if (this.ramasserObjets()) {
+              this.initStatsChute();
+              this.initStep(ETAPE.CHUTE);
+              break;
+            }
+          }
           this.nouveauTour();
         }
         break;
@@ -857,8 +872,29 @@ class Jeu {
   // Game.onPieceValidate → newUpkeep → newCycle
   surPiecePosee() {
     this.piece = null;
+    // Game.newUpkeep : la pose d'une pièce ouvre un tour, et c'est à la fin de
+    // ce tour que les objets dégagés se ramassent.
+    this.flActiviteAFaire = true;
     this.initStatsChute();
     this.initStep(ETAPE.CHUTE);
+  }
+
+  // sp/el/Item.initActiveStep : un objet ne se prend que DÉGAGÉ par le haut. Il
+  // faut donc le déterrer avant de l'avoir — c'est ce qui en fait un objectif et
+  // pas un ramassage automatique.
+  //
+  // C'est de là que viennent les pictos de l'album : Cm.getItem inscrit
+  // l'identifiant dans $stat.$item, que le serveur relit.
+  ramasserObjets() {
+    let pris = 0;
+    for (const e of this.eList.slice()) {
+      if (e.et !== E.OBJET || !e.degage()) continue;
+      this.objets.push(e.type);
+      this.evenement('objet', { type: e.type, x: e.px, y: e.py });
+      e.tuer();
+      pris++;
+    }
+    return pris > 0;
   }
 
   finPartie(gagne) {
@@ -868,6 +904,7 @@ class Jeu {
     this.step = ETAPE.FIGE;
     this.evenement('finPartie', {
       gagne: this.gagne, score: this.score, niveau: this.niveau, pieces: this.pieces,
+      objets: this.objets.slice(),
     });
   }
 
@@ -878,6 +915,94 @@ class Jeu {
     }
     return 0;
   }
+}
+
+
+// ── Le tirage d'un objet (Item.getRandomId) ───────────────────────────────
+//
+// L'ordre compte, et il dit toute la progression du jeu :
+//
+//   1. le SAC. Tant qu'on n'en a pas le troisième, il peut tomber — mais
+//      seulement passé le niveau 20×(sac déjà acquis), et de plus en plus
+//      rarement. C'est la vraie porte d'entrée.
+//   2. SANS SAC, rien d'autre ne tombe. Un joueur qui commence ne ramasse donc
+//      que son premier sac, et c'est voulu : il n'aurait nulle part où ranger.
+//   3. la FLASQUE, d'autant plus rare qu'on en a déjà.
+//   4. sinon, une pioche pondérée — une fois sur quatre dans les objets, trois
+//      fois sur quatre dans la nourriture — parmi ce que le niveau autorise.
+//
+// Table Item.itemList / Item.foodList : { id, freq, lvl } où `lvl` est le
+// niveau minimum. Les parchemins (100+) et grimoires (200+) sont ajoutés à
+// partir de Spell.spellList — fréquence de moitié pour l'un, du cinquième pour
+// l'autre, et niveau doublé pour le grimoire.
+const SORTS = [
+  { id: 1, freq: 500, lvl: 20 }, { id: 2, freq: 750, lvl: 10 }, { id: 3, freq: 200, lvl: 80 },
+  { id: 4, freq: 350, lvl: 10 }, { id: 5, freq: 100, lvl: 40 }, { id: 6, freq: 150, lvl: 28 },
+  { id: 7, freq: 800, lvl: 15 }, { id: 8, freq: 50, lvl: 40 }, { id: 9, freq: 300, lvl: 10 },
+  { id: 10, freq: 500, lvl: 20 }, { id: 11, freq: 100, lvl: 40 }, { id: 12, freq: 700, lvl: 15 },
+  { id: 13, freq: 20, lvl: 25 }, { id: 14, freq: 150, lvl: 50 }, { id: 15, freq: 300, lvl: 25 },
+  { id: 16, freq: 2, lvl: 20 }, { id: 20, freq: 0, lvl: 10 }, { id: 21, freq: 500, lvl: 18 },
+  { id: 22, freq: 400, lvl: 22 }, { id: 23, freq: 300, lvl: 28 }, { id: 24, freq: 50, lvl: 36 },
+  { id: 25, freq: 150, lvl: 50 }, { id: 26, freq: 300, lvl: 30 }, { id: 27, freq: 200, lvl: 100 },
+];
+
+const OBJETS = [
+  { id: 0, freq: 400, lvl: 10 }, { id: 1, freq: 50, lvl: 30 }, { id: 2, freq: 10, lvl: 70 },
+  { id: 5, freq: 400, lvl: 10 }, { id: 6, freq: 50, lvl: 30 }, { id: 7, freq: 10, lvl: 70 },
+  { id: 10, freq: 300, lvl: 10 }, { id: 11, freq: 40, lvl: 30 }, { id: 12, freq: 8, lvl: 70 },
+  { id: 15, freq: 400, lvl: 10 }, { id: 16, freq: 50, lvl: 30 }, { id: 17, freq: 10, lvl: 70 },
+  { id: 20, freq: 400, lvl: 10 }, { id: 21, freq: 50, lvl: 30 }, { id: 22, freq: 10, lvl: 70 },
+  { id: 25, freq: 400, lvl: 10 }, { id: 26, freq: 50, lvl: 30 }, { id: 27, freq: 10, lvl: 70 },
+  { id: 30, freq: 0, lvl: 0 },                       // flasque : jamais par la pioche
+  { id: 31, freq: 600, lvl: 0 },                     // clé de donjon
+  { id: 40, freq: 20, lvl: 30 }, { id: 41, freq: 10, lvl: 20 }, { id: 42, freq: 10, lvl: 60 },
+  { id: 43, freq: 10, lvl: 70 }, { id: 44, freq: 15, lvl: 50 }, { id: 45, freq: 5, lvl: 40 },
+  { id: 46, freq: 100, lvl: 10 },
+  { id: 70, freq: 700, lvl: 0 }, { id: 71, freq: 300, lvl: 10 }, { id: 72, freq: 80, lvl: 20 },
+].concat(
+  SORTS.map((s) => ({ id: 100 + s.id, freq: Math.floor(s.freq * 0.5), lvl: s.lvl })),
+  SORTS.map((s) => ({ id: 200 + s.id, freq: Math.floor(s.freq * 0.2), lvl: Math.floor(s.lvl * 2) })),
+);
+
+const NOURRITURE = [
+  { id: 300, freq: 800, lvl: 0 }, { id: 303, freq: 300, lvl: 0 }, { id: 306, freq: 500, lvl: 0 },
+  { id: 309, freq: 600, lvl: 0 }, { id: 312, freq: 500, lvl: 0 },
+  { id: 315, freq: 75, lvl: 10 }, { id: 318, freq: 125, lvl: 10 }, { id: 321, freq: 125, lvl: 10 },
+  { id: 324, freq: 175, lvl: 10 }, { id: 327, freq: 125, lvl: 10 },
+  { id: 330, freq: 8, lvl: 20 }, { id: 333, freq: 12, lvl: 20 }, { id: 336, freq: 20, lvl: 20 },
+  { id: 339, freq: 18, lvl: 20 }, { id: 342, freq: 24, lvl: 20 }, { id: 345, freq: 16, lvl: 20 },
+  { id: 348, freq: 2, lvl: 20 }, { id: 351, freq: 6, lvl: 20 }, { id: 354, freq: 4, lvl: 20 },
+];
+
+const ITEM_RATE = 2;              // Cs.itemRate : une chance sur deux
+
+/**
+ * @param {number} niveau
+ * @param {function} hasard
+ * @param {{sac:number, flasques:number}} fiche  ce que la fiche du joueur porte
+ * @returns {number|null} l'identifiant tiré, ou null s'il n'y a rien à donner
+ */
+function tirerObjet(niveau, hasard, fiche) {
+  const sac = (fiche && fiche.sac) || 0;
+  const flasques = (fiche && fiche.flasques) || 0;
+
+  // 1. LE SAC — la porte d'entrée de tout le reste.
+  if (sac < 3 && niveau > sac * 20 && hasard(2 + sac * 20) === 0) return 80 + sac;
+
+  // 2. Sans sac, rien : le joueur n'a nulle part où ranger.
+  if (sac === 0) return null;
+
+  // 3. LA FLASQUE — d'autant plus rare qu'on en a déjà (cube du compte).
+  if (hasard(1e9) / 1e9 * Math.pow(flasques + 2, 3) < 1) return 30;
+
+  // 4. La pioche : une fois sur quatre un objet, sinon de la nourriture.
+  const source = (hasard(4) === 0) ? OBJETS : NOURRITURE;
+  const liste = source.filter((o) => niveau >= o.lvl);
+  const somme = liste.reduce((n, o) => n + o.freq, 0);
+  if (somme <= 0) return null;
+  let n = hasard(somme), s = 0;
+  for (const o of liste) { s += o.freq; if (s > n) return o.id; }
+  return null;
 }
 
 // ── La génération d'un niveau (base/Forest.getLevel) ──────────────────────
@@ -915,7 +1040,7 @@ function tableElements(niveau) {
  *
  * @returns {{grille: Array, couleurs: number, hauteur: number}}
  */
-function genererNiveau(niveau, hasard, xMax, yMax) {
+function genererNiveau(niveau, hasard, xMax, yMax, fiche) {
   let dif = 10 + niveau * 2;
   let couleurs = COULEURS_DEPART;
 
@@ -968,12 +1093,21 @@ function genererNiveau(niveau, hasard, xMax, yMax) {
     impys++;
   }
 
+  // OBJET — base/Forest.getLevel : jamais dans les trois premiers niveaux d'un
+  // palier de vingt, et une fois sur deux seulement.
+  if (niveau % 20 > 2 && hasard(ITEM_RATE) === 0) {
+    const n = tirerObjet(niveau, hasard, fiche);
+    if (n !== null) {
+      grille[hasard(xMax)][yMax - (1 + hasard(Math.max(1, h - 1)))] = { et: E.OBJET, n };
+    }
+  }
+
   return { grille, couleurs, hauteur: h };
 }
 
 const API = {
   Jeu, Piece, Groupe, Element, Jeton, Pierre, Cellule, Bombe, Objet, Oeil,
-  generateur, genererNiveau, tableElements,
+  generateur, genererNiveau, tableElements, tirerObjet, OBJETS, NOURRITURE, SORTS, ITEM_RATE,
   COULEURS, E, SPECIAL, ETAPE, FORMES,
   TS, LARGEUR, HAUTEUR, MARGE_HAUT, MARGE_GAUCHE, GROUPE_MIN, COULEURS_DEPART,
   RESERVE, ETOILE_SEUIL, LIGNE_MORT,
