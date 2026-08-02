@@ -131,6 +131,12 @@ class Client {
     this.panneau = null;               // texte affiché entre deux niveaux
     this.panneauT = 0;
     this.echelle = 1;
+    // Le compteur d'images doit exister DÈS la construction : le menu tourne sur
+    // la même boucle, et il s'ouvre avant la première partie. Sans ces deux
+    // valeurs, `reste` vaut NaN, la condition d'avancement n'est jamais vraie et
+    // rien ne bouge — ni le menu ni, plus tard, le jeu.
+    this.dernier = 0;
+    this.reste = 0;
     this.entree = { gauche: false, droite: false, tir: false, bombe: false };
     this.brancherCommandes(o.racine || document);
     this.redimensionner();
@@ -190,6 +196,7 @@ class Client {
   // sur 40 i/s et ses tirages au sort en dépendent. Un écran à 60 Hz exécute
   // donc parfois deux pas, parfois aucun — jamais un pas « à moitié ».
   demarrer() {
+    if (this.raf) return;                           // une seule boucle
     const boucle = (t) => {
       this.raf = requestAnimationFrame(boucle);
       if (!this.dernier) { this.dernier = t; return; }
@@ -198,6 +205,14 @@ class Client {
       if (dt > 0.25) dt = 0.25;                     // onglet revenu au premier plan
       this.reste += dt * IPS;
       let pas = 0;
+      // Le menu occupe le même canevas : quand il est ouvert, c'est lui qui
+      // avance et qui dessine, et la partie attend son tour.
+      if (this.avant && this.avant.visible) {
+        while (this.reste >= 1 && pas < 6) { this.avant.update(1); this.reste -= 1; pas++; }
+        this.avant.dessiner(dt * IPS);
+        return;
+      }
+      if (!this.jeu) { this.reste = 0; return; }
       while (this.reste >= 1 && pas < 6) { this.jeu.update(1); this.reste -= 1; pas++; }
       this.dessiner(dt * IPS);
     };
@@ -459,6 +474,6 @@ class Client {
   }
 }
 
-window.MiniwaveClient = { Client, charger, chargerDecor, images, decor };
+window.MiniwaveClient = { Client, charger, chargerDecor, poser, images, decor };
 
 })();

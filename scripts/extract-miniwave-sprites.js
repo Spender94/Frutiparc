@@ -105,24 +105,68 @@ function composer(P, E) {
 }
 const IDENTITE = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 
-// Les placements image par image de chaque sprite.
+// Le contenu image par image de chaque sprite.
+//
+// Flash ne redéclare pas tout à chaque image : il tient une LISTE D'AFFICHAGE
+// indexée par profondeur, qu'un PlaceObject remplit et qu'un RemoveObject vide.
+// Une image qui ne touche qu'une profondeur laisse les autres en place. Ne
+// retenir que les placements de l'image courante suffit pour les vaisseaux (qui
+// se redessinent entièrement à chaque image), mais perd tout ce qui persiste —
+// le fond commun des icônes de la boutique, par exemple, posé une fois puis
+// gardé pendant trois images.
+//
+// On tient donc la liste d'affichage, et on photographie son état à chaque
+// image. Les profondeurs sont triées : c'est l'ordre d'empilement de Flash.
 const parSprite = new Map();
-parcourir((code, corps, len, id, frame) => {
-  if (!id) return;
-  let ch = -1, M = IDENTITE;
-  if (code === 4) { ch = b.readUInt16LE(corps); M = lireMatrice(corps + 4); }
-  else if (code === 26 || code === 70) {
-    const flags = b[corps];
-    if (!(flags & 2)) return;                          // simple modification
-    ch = b.readUInt16LE(corps + 3);
-    if (flags & 4) M = lireMatrice(corps + 5);
+{
+  const listes = new Map();                            // sprite → profondeur → {ch, M}
+  const photographier = (id, frame) => {
+    const l = listes.get(id);
+    if (!l || l.size === 0) return;
+    if (!parSprite.has(id)) parSprite.set(id, new Map());
+    parSprite.get(id).set(frame,
+      [...l.keys()].sort((a, c) => a - c).map((d) => l.get(d)));
+  };
+  let derniere = new Map();                            // sprite → dernière image vue
+  parcourir((code, corps, len, id, frame) => {
+    if (!id) return;
+    if (!listes.has(id)) listes.set(id, new Map());
+    const l = listes.get(id);
+    // ShowFrame : l'image est complète, on la photographie.
+    if (code === 1) { photographier(id, frame); derniere.set(id, frame); return; }
+    // RemoveObject (5) et RemoveObject2 (28) : la profondeur se vide.
+    if (code === 5) { l.delete(b.readUInt16LE(corps + 2)); return; }
+    if (code === 28) { l.delete(b.readUInt16LE(corps)); return; }
+    let ch = -1, M = IDENTITE, prof = -1;
+    if (code === 4) {                                  // PlaceObject
+      ch = b.readUInt16LE(corps);
+      prof = b.readUInt16LE(corps + 2);
+      M = lireMatrice(corps + 4);
+    } else if (code === 26 || code === 70) {           // PlaceObject2 / 3
+      const flags = b[corps];
+      prof = b.readUInt16LE(corps + 1);
+      if (!(flags & 2)) {
+        // Simple modification : on garde le caractère déjà en place et on ne
+        // remplace que ce que l'étiquette redéfinit (typiquement la matrice).
+        const avant = l.get(prof);
+        if (!avant) return;
+        ch = avant.ch;
+        M = (flags & 4) ? lireMatrice(corps + 3) : avant.M;
+      } else {
+        ch = b.readUInt16LE(corps + 3);
+        M = (flags & 4) ? lireMatrice(corps + 5) : IDENTITE;
+      }
+    }
+    if (ch < 0 || prof < 0) return;
+    l.set(prof, { ch, M });
+  });
+  // La dernière image d'un sprite n'est pas toujours suivie d'un ShowFrame.
+  for (const [id, l] of listes) {
+    if (l.size === 0) continue;
+    const f = (derniere.get(id) || 0) + 1;
+    if (!parSprite.has(id) || !parSprite.get(id).has(f - 1)) photographier(id, f);
   }
-  if (ch < 0) return;
-  if (!parSprite.has(id)) parSprite.set(id, new Map());
-  const frames = parSprite.get(id);
-  if (!frames.has(frame)) frames.set(frame, []);
-  frames.get(frame).push({ ch, M });
-});
+}
 
 // Aplatit un caractère en une liste de formes avec leur matrice absolue. Un
 // sprite imbriqué (une pièce animée : le hublot qui clignote, la main du boss)
@@ -166,6 +210,18 @@ function aExtraire() {
   liste.push({ cle: 'boss', symbole: 'miniWave2SpBoss', etiquette: 'Boss' });
   liste.push({ cle: 'saucer', symbole: 'miniWave2SpSaucer', etiquette: 'Soucoupe' });
   liste.push({ cle: 'shot', symbole: 'miniWave2SpShot', etiquette: 'Projectiles' });
+  // Les icônes de la boutique : un seul clip de dix-huit images, une par
+  // article (box/ShopSlot.as fait `ico.gotoAndStop(id+1)`). Il n'est pas exporté
+  // sous un nom — il vit à l'intérieur de miniWave2BoxShopSlot — d'où
+  // l'identifiant direct.
+  liste.push({ cle: 'shopIco', id: 1108, etiquette: 'Icônes du stand' });
+  // Le logo du menu (posé en 120,24 sur le fond #4a4a84 de miniWave2Menu) et la
+  // pièce du compteur de crédits. Comme les icônes, ils n'ont pas de nom
+  // d'export : ils sont imbriqués dans les clips de l'interface.
+  liste.push({ cle: 'titre', id: 1025, etiquette: 'Logo du menu' });
+  liste.push({ cle: 'piece', id: 1082, etiquette: 'Pièce du compteur' });
+  // Les vignettes des modes spéciaux (box/Special.as : `illus.gotoAndStop(id+1)`).
+  liste.push({ cle: 'specialIco', symbole: 'specialIllustration', etiquette: 'Vignettes des spéciaux' });
   return liste;
 }
 
@@ -194,7 +250,7 @@ function principal() {
   const absents = [];
 
   for (const item of liste) {
-    const id = noms.get(item.symbole);
+    const id = (item.id !== undefined) ? item.id : noms.get(item.symbole);
     if (id === undefined) { absents.push(item.symbole); continue; }
     const frames = parSprite.get(id);
     if (!frames || frames.size === 0) { absents.push(item.symbole + ' (sans image)'); continue; }
@@ -207,7 +263,7 @@ function principal() {
       etats.push({ frame: f, pieces });
     }
     if (!etats.length) { absents.push(item.symbole + ' (aucune forme)'); continue; }
-    manifeste[item.cle] = { nom: item.etiquette, symbole: item.symbole, etats };
+    manifeste[item.cle] = { nom: item.etiquette, symbole: item.symbole || ('#' + id), etats };
   }
 
   if (absents.length) console.log('introuvables : ' + absents.join(', '));

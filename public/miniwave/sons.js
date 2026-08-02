@@ -29,6 +29,9 @@ const FICHIERS = {
   sMissile: 'wav', sMissileLaunch: 'wav', sZap: 'wav', sBigLaser: 'wav',
   sMetalHit: 'mp3', sWarp0: 'wav', sSaucer: 'wav', sJingle2: 'mp3',
   sWaveBeep0: 'mp3', sWaveBeep1: 'mp3', sWaveBeep2: 'mp3', sWaveBeep3: 'mp3',
+  // Le menu : le froissement d'une page qui s'ouvre, le bip d'un choix, celui
+  // d'un refus, et la musique d'accueil.
+  sMenu: 'mp3', sMenuPage: 'wav', sMenuBeep: 'wav', sMenuBeep2: 'wav', sMenuBeepWrong: 'wav',
 };
 
 // Les canaux du jeu, repris de ses appels : le tir du vaisseau et celui des
@@ -36,6 +39,8 @@ const FICHIERS = {
 const CANAL = {
   tirHero: 10, tirBads: 12, explosion: 11, degat: 14, arme: 62,
   soucoupe: 57, saut: 15, vague: 32, jingle: 33,
+  // Le menu a les siens (Box.tryToInitContent joue sMenuBeep2 sur 47).
+  menu: 47, musique: 1,
 };
 
 // Le son du tir, vaisseau par vaisseau (sp/hero/*.as).

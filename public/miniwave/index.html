@@ -127,57 +127,8 @@
   }
   #clavier button:active, #clavier button.on { background: #4b7a26; color: #fff; }
 
-  /* ── Menu, choix et boutique ──
-     Des panneaux HTML posés sur le canvas : un menu dessiné dans 240×240 serait
-     illisible au doigt. */
-  .ecran {
-    position: fixed; inset: 0; z-index: 7; display: none;
-    flex-direction: column; align-items: center;
-    background: #070b18; color: #cfe8a0;
-    overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
-    box-sizing: border-box;
-  }
-  .ecran.on { display: flex; }
-  .ecran h1 {
-    font-size: 19px; letter-spacing: 3px; color: #ffd76a; margin: 22px 0 4px;
-  }
-  .ecran h2 { font-size: 14px; letter-spacing: 1px; margin: 18px 0 8px; color: #8fd0ff; }
-  .ecran .sous { font-size: 11px; color: #6d7fa8; margin-bottom: 12px; text-align: center; }
-  .ecran .liste { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 7px; }
-  .ecran .item {
-    display: flex; align-items: center; gap: 10px; width: 100%;
-    border: 0; border-radius: 12px; padding: 12px 14px;
-    background: #16203a; color: #cfe8a0; text-align: left;
-    font: 14px Verdana, sans-serif; cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .ecran .item:active { background: #22314f; }
-  .ecran .item .nom { flex: 1 1 auto; font-weight: bold; }
-  .ecran .item .det { font-size: 10px; color: #7f93bd; font-weight: normal; display: block; margin-top: 3px; }
-  .ecran .item.ferme { opacity: .45; cursor: default; }
-  .ecran .item.ferme .det { color: #a08050; }
-  .ecran .item .prix { font-size: 12px; color: #ffd76a; white-space: nowrap; }
-  .ecran .item.vendu .prix { color: #7ed957; }
-  .ecran .item.trop .prix { color: #ff8a5a; }
-  .ecran .bas {
-    width: 100%; max-width: 420px; display: flex; gap: 8px; margin: 16px 0 24px;
-  }
-  .ecran .bas button {
-    flex: 1 1 0; border: 0; border-radius: 12px; padding: 13px;
-    background: #2f4a1c; color: #bff18d; font: bold 14px Verdana, sans-serif; cursor: pointer;
-  }
-  .ecran .bas button.secondaire { background: #1d2a48; color: #8fd0ff; }
-  #bourse {
-    position: sticky; top: 0; align-self: stretch; z-index: 1;
-    display: flex; justify-content: center; gap: 14px;
-    background: #070b18; padding: 8px 0 6px; font-size: 12px;
-  }
-  #bourse b { color: #ffd76a; }
-  #escadron-choix { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin: 6px 0 2px; }
-  #escadron-choix span {
-    border-radius: 6px; background: #16203a; padding: 5px 9px; font-size: 11px; color: #8fd0ff;
-  }
+  /* Le bandeau d'avertissement du menu est dessiné sur le canevas ; il ne reste
+     ici que la pastille de secours pour les messages hors jeu. */
   #message {
     position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
     z-index: 9; background: rgba(22,32,58,.96); color: #cfe8a0;
@@ -200,43 +151,6 @@
   <div id="clavier"></div>
   <button type="button" id="muet" aria-label="Couper le son">🔊</button>
   <div id="aide">← → pour se déplacer · espace pour tirer · majuscule pour la bombe</div>
-</div>
-
-<!-- Accueil : les quatre rubriques de page/Main.as. -->
-<div class="ecran" id="accueil">
-  <h1>MINI-WAVE 2</h1>
-  <div class="sous" id="accueil-grade"></div>
-  <div class="liste" id="accueil-liste"></div>
-  <div class="bas"><button type="button" class="secondaire" id="accueil-fermer">Retour au jeu</button></div>
-</div>
-
-<!-- Choix d'une mission ou d'un mode spécial. -->
-<div class="ecran" id="choix">
-  <h1 id="choix-titre">MISSIONS</h1>
-  <div class="sous" id="choix-sous"></div>
-  <div class="liste" id="choix-liste"></div>
-  <div class="bas"><button type="button" class="secondaire" data-retour="accueil">Retour</button></div>
-</div>
-
-<!-- Composition de l'escadron (page/SelectShip.as) : on choisit shipMax
-     vaisseaux, un par un, et on les perdra dans cet ordre. -->
-<div class="ecran" id="escadron">
-  <h1>ESCADRON</h1>
-  <div class="sous" id="escadron-sous"></div>
-  <div id="escadron-choix"></div>
-  <div class="liste" id="escadron-liste"></div>
-  <div class="bas">
-    <button type="button" class="secondaire" data-retour="accueil">Retour</button>
-    <button type="button" id="escadron-vite">Tout pareil</button>
-  </div>
-</div>
-
-<!-- Le stand (page/Shop.as). -->
-<div class="ecran" id="boutique">
-  <h1>STAND</h1>
-  <div id="bourse">Crédits : <b id="bourse-credit">0</b></div>
-  <div class="liste" id="boutique-liste"></div>
-  <div class="bas"><button type="button" class="secondaire" data-retour="accueil">Retour</button></div>
 </div>
 
 <div id="message"></div>
@@ -265,32 +179,14 @@
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
-  var $$ = function (s) { return [].slice.call(document.querySelectorAll(s)); };
   var sid = new URLSearchParams(location.search).get('sid') || '';
   var sons = new window.MiniwaveSons.Sons();
   var P = window.MiniwavePlateforme;
   var Menu = window.MiniwaveMenu;
   var plateforme = new P.Plateforme(sid);
-  var client = null, niveaux = null;
-  // Ce qu'on est en train de lancer : le mode choisi, puis l'escadron composé.
+  var client = null, niveaux = null, ui = null;
+  // Ce qui a été lancé en dernier : sert au bouton « Rejouer ».
   var enCours = null;
-
-  // ── Bandeau volant ──
-  var messageT = null;
-  function dire(texte) {
-    var m = $('#message');
-    m.textContent = texte;
-    m.classList.add('on');
-    clearTimeout(messageT);
-    messageT = setTimeout(function () { m.classList.remove('on'); }, 2400);
-  }
-
-  // ── Écrans ──
-  function montrer(nom) {
-    $$('.ecran').forEach(function (e) { e.classList.toggle('on', e.id === nom); });
-    if (nom) $('#fin').classList.remove('on');
-  }
-  function fermerEcrans() { $$('.ecran').forEach(function (e) { e.classList.remove('on'); }); }
 
   // Ce que la partie (ou un achat) vient d'ouvrir, dit au joueur.
   function resumePictos(r) {
@@ -308,131 +204,34 @@
     return 'Débloqué : ' + noms.join(', ') + ' !';
   }
 
-  // ── Accueil ──
-  function ouvrirAccueil() {
-    var c = plateforme.carte;
-    $('#accueil-grade').textContent = P.GRADES[P.grade(c)] + ' · ' + c.$credit + ' crédits';
-    var liste = $('#accueil-liste');
-    liste.innerHTML = '';
-    Menu.RUBRIQUES.forEach(function (r) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'item';
-      b.innerHTML = '<span class="nom">' + r.nom + '<span class="det">' + r.desc + '</span></span>';
-      b.addEventListener('click', function () { choisirRubrique(r.id); });
-      liste.appendChild(b);
+  // Les sons du menu, ceux du jeu d'origine.
+  function sonMenu(quoi) {
+    sons.ouvrir();
+    sons.jouer({ page: 'sMenuPage', clic: 'sMenuBeep', achat: 'sMenuBeep',
+      refus: 'sMenuBeepWrong' }[quoi] || 'sMenuBeep', window.MiniwaveSons.CANAL.menu);
+  }
+
+  // ── Lancer une partie ──
+  function lancer(l, escadron) {
+    enCours = { lancement: l, escadron: escadron };
+    $('#fin').classList.remove('on');
+    var lettres = (l.mode === 'letter');
+    $('#clavier').classList.toggle('on', lettres);
+    $('#manette').style.display = lettres ? 'none' : '';
+    client.nouvellePartie({
+      mode: l.mode, niveaux: l.niveaux, vies: l.vies,
+      ship: escadron[0] || 0, missionNum: l.missionNum, prime: l.prime, nom: l.nom,
     });
-    montrer('accueil');
+    // page/SelectShip : l'escadron est une LISTE de vaisseaux, consommée dans
+    // l'ordre. Le moteur en remplit une d'un seul type ; on pose la vraie.
+    if (escadron.length) client.jeu.heroList = escadron.slice();
   }
 
-  function choisirRubrique(id) {
-    var e = Menu.entrees(plateforme.carte, niveaux);
-    if (id === 'arcade') return preparer(e.arcade[0].lancement);
-    if (id === 'stand') return ouvrirBoutique();
-    ouvrirChoix(id === 'bonus' ? 'MISSIONS' : 'SPÉCIAL', id === 'bonus' ? e.bonus : e.special);
-  }
-
-  function ouvrirChoix(titre, entrees) {
-    $('#choix-titre').textContent = titre;
-    var ouverts = entrees.filter(function (x) { return x.ouvert; }).length;
-    $('#choix-sous').textContent = ouverts
-      ? ''
-      : 'Rien d\'ouvert ici : ces modes s\'achètent au stand, avec les crédits ramassés en partie.';
-    var liste = $('#choix-liste');
-    liste.innerHTML = '';
-    entrees.forEach(function (x) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'item' + (x.ouvert ? '' : ' ferme');
-      b.innerHTML = '<span class="nom">' + x.nom
-        + '<span class="det">' + (x.ouvert ? x.detail : x.pourAcheter) + '</span></span>';
-      if (x.ouvert) b.addEventListener('click', function () { preparer(x.lancement); });
-      liste.appendChild(b);
-    });
-    montrer('choix');
-  }
-
-  // ── Composition de l'escadron ──
-  // page/SelectShip.as : on choisit autant de vaisseaux que gameInfo.shipMax, un
-  // par un. Les modes à une seule vie s'en passent — il n'y a rien à composer.
-  function preparer(lancement) {
-    enCours = { lancement: lancement, escadron: [] };
-    var dispo = Menu.vaisseauxDisponibles(plateforme.carte);
-    if (lancement.vies <= 1 || dispo.length === 1) {
-      enCours.escadron = [];
-      for (var i = 0; i < lancement.vies; i++) enCours.escadron.push(dispo[0] || 0);
-      return demarrer();
-    }
-    dessinerEscadron(dispo);
-    montrer('escadron');
-  }
-
-  function dessinerEscadron(dispo) {
-    var l = enCours.lancement;
-    $('#escadron-sous').textContent = l.nom + ' — choisis ' + l.vies
-      + ' vaisseaux. Tu les perdras dans cet ordre.';
-    var choix = $('#escadron-choix');
-    choix.innerHTML = '';
-    for (var i = 0; i < l.vies; i++) {
-      var s = document.createElement('span');
-      s.textContent = (i + 1) + '. '
-        + (enCours.escadron[i] === undefined ? '—' : P.VAISSEAUX[enCours.escadron[i]]);
-      choix.appendChild(s);
-    }
-    var liste = $('#escadron-liste');
-    liste.innerHTML = '';
-    dispo.forEach(function (n) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'item';
-      b.innerHTML = '<span class="nom">' + P.VAISSEAUX[n] + '</span>';
-      b.addEventListener('click', function () {
-        enCours.escadron.push(n);
-        if (enCours.escadron.length >= l.vies) return demarrer();
-        dessinerEscadron(dispo);
-      });
-      liste.appendChild(b);
-    });
-  }
-
-  $('#escadron-vite').addEventListener('click', function () {
-    // Le raccourci : compléter avec le premier vaisseau disponible.
-    var dispo = Menu.vaisseauxDisponibles(plateforme.carte);
-    while (enCours.escadron.length < enCours.lancement.vies) enCours.escadron.push(dispo[0]);
-    demarrer();
-  });
-
-  // ── La boutique ──
-  function ouvrirBoutique() {
-    dessinerBoutique();
-    montrer('boutique');
-  }
-  function dessinerBoutique() {
-    $('#bourse-credit').textContent = plateforme.carte.$credit;
-    var liste = $('#boutique-liste');
-    liste.innerHTML = '';
-    Menu.rayon(plateforme.carte).forEach(function (a) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'item' + (a.achete ? ' vendu' : (a.abordable ? '' : ' trop'));
-      b.innerHTML = '<span class="nom">' + a.nom + '<span class="det">' + a.ouvre + '</span></span>'
-        + '<span class="prix">' + (a.achete ? 'acquis' : a.prix + ' ¤') + '</span>';
-      if (!a.achete) {
-        b.addEventListener('click', function () {
-          plateforme.acheter(a.id).then(function (r) {
-            if (!r.ok) {
-              dire(r.raison === 'credit'
-                ? ('Il te manque ' + r.manque + ' crédits.')
-                : 'Article déjà acquis.');
-              return;
-            }
-            dire(r.article.nom + ' acheté ! ' + resumePictos(r));
-            dessinerBoutique();
-          });
-        });
-      }
-      liste.appendChild(b);
-    });
+  function ouvrirMenu() {
+    $('#fin').classList.remove('on');
+    $('#clavier').classList.remove('on');
+    $('#manette').style.display = 'none';
+    ui.ouvrir('accueil');
   }
 
   // ── Le clavier de Letter Invader ──
@@ -454,31 +253,11 @@
     });
   })();
 
-  // Au clavier physique, on parle directement au mode.
   window.addEventListener('keydown', function (ev) {
     if (!client || !client.jeu || !client.jeu.frapper) return;
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
     if (client.jeu.frapper(ev.keyCode)) ev.preventDefault();
   });
-
-  // ── Lancer une partie ──
-  function demarrer() {
-    fermerEcrans();
-    $('#fin').classList.remove('on');
-    var l = enCours.lancement;
-    var lettres = (l.mode === 'letter');
-    $('#clavier').classList.toggle('on', lettres);
-    $('#manette').style.display = lettres ? 'none' : '';
-    client.nouvellePartie({
-      mode: l.mode, niveaux: l.niveaux, vies: l.vies,
-      ship: enCours.escadron[0] || 0, escadron: enCours.escadron,
-      missionNum: l.missionNum, prime: l.prime, nom: l.nom,
-    });
-    // page/SelectShip : l'escadron est une LISTE de vaisseaux, consommée dans
-    // l'ordre. Le moteur en remplit une d'un seul type ; on pose la vraie.
-    if (enCours.escadron.length) client.jeu.heroList = enCours.escadron.slice();
-    client.demarrer();
-  }
 
   ['pointerdown', 'touchstart', 'keydown'].forEach(function (ev) {
     window.addEventListener(ev, function () { sons.ouvrir(); }, { once: false });
@@ -533,6 +312,27 @@
       }
     });
 
+    ui = new Menu.Interface({
+      canvas: $('#stage'),
+      sprites: sprites,
+      poser: window.MiniwaveClient.poser,
+      plateforme: plateforme,
+      niveaux: niveaux,
+      surChoix: lancer,
+      surSon: sonMenu,
+    });
+    // Le menu occupe le même canevas que le jeu : c'est lui qui dessine quand il
+    // est ouvert, et le jeu reprend la main dès qu'une partie commence.
+    client.avant = ui;
+
+    // Les appuis sur le canevas vont au menu, converti dans son repère 240×240.
+    $('#stage').addEventListener('pointerdown', function (ev) {
+      if (!ui.visible) return;
+      var r = this.getBoundingClientRect();
+      ui.auClic((ev.clientX - r.left) * 240 / r.width, (ev.clientY - r.top) * 240 / r.height);
+      ev.preventDefault();
+    });
+
     $('#muet').addEventListener('click', function () {
       var muet = this.classList.toggle('off');
       this.textContent = muet ? '🔇' : '🔊';
@@ -540,22 +340,17 @@
       if (!muet) sons.ouvrir();
     });
     $('#rejouer').addEventListener('click', function () {
-      if (enCours) demarrer(); else ouvrirAccueil();
+      if (enCours) lancer(enCours.lancement, enCours.escadron); else ouvrirMenu();
     });
-    $('#fin-menu').addEventListener('click', ouvrirAccueil);
-    $('#accueil-fermer').addEventListener('click', function () {
-      if (enCours) fermerEcrans(); else choisirRubrique('arcade');
-    });
-    $$('[data-retour]').forEach(function (b) {
-      b.addEventListener('click', function () { ouvrirAccueil(); });
-    });
+    $('#fin-menu').addEventListener('click', ouvrirMenu);
+
+    client.demarrer();
+    ouvrirMenu();
 
     window.miniwaveClient = client;        // utile aux vérifications automatisées
     window.__plateforme = plateforme;
+    window.__ui = ui;
     window.__sons = sons;
-    window.__menu = { ouvrirAccueil: ouvrirAccueil, ouvrirBoutique: ouvrirBoutique,
-      choisirRubrique: choisirRubrique, preparer: preparer };
-    ouvrirAccueil();
   }).catch(function (e) {
     $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'
       + String(e && e.message || e) + '</div>';
