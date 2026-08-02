@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Minipixiz</title>
+<!--
+  Minipixiz (miniTroll) — portage natif JS du puzzle, fidèle aux sources d'origine
+  (Games/miniTroll/src, en « .mt »).
+
+  L'aire est haute et étroite (132 × 240) : elle tombe bien sur un téléphone tenu
+  debout. On la centre, on l'agrandit d'un facteur entier tant que possible, et
+  on garde le bas de l'écran pour la manette — le jeu se joue au clavier, il faut
+  donc bien lui en donner un.
+
+  ?sid= pour la persistance plateforme.
+-->
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #150f28;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; -webkit-user-select: none;
+    font-family: Verdana, Arial, sans-serif;
+  }
+  #tout {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    box-sizing: border-box;
+  }
+  /* L'aire prend toute la place disponible : c'est elle que le client mesure. */
+  #aire {
+    flex: 1 1 auto; min-height: 0; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #stage {
+    display: block;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px #3a2d5e, 0 8px 30px rgba(0,0,0,.6);
+  }
+
+  /* ── Manette ──
+     Gauche, tourner, droite, et « poser » qui accélère la chute. Les cibles font
+     au moins 64 px : on joue au pouce. */
+  #manette {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 0 10px 12px;
+    width: 100%; max-width: 460px; box-sizing: border-box;
+  }
+  #manette button {
+    flex: 1 1 0; height: 70px; min-width: 60px;
+    border: 0; border-radius: 16px;
+    background: #2e2450; color: #d9cbff;
+    font-size: 24px; font-weight: bold; font-family: inherit;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: background .08s, transform .08s;
+  }
+  #manette button.tourner { background: #453177; color: #e9dcff; font-size: 22px; }
+  #manette button.bas { background: #2f4a1c; color: #bff18d; font-size: 15px; letter-spacing: 1px; }
+  #manette button.on { transform: scale(.95); background: #5a45a0; }
+  #manette button.bas.on { background: #4b7a26; }
+
+  #chargement {
+    position: fixed; inset: 0; z-index: 5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: #150f28; color: #d9cbff; font-size: 13px; letter-spacing: 2px;
+  }
+  #chargement .barre { width: 200px; height: 10px; border: 2px solid #d9cbff; border-radius: 6px; overflow: hidden; }
+  #chargement .barre > div { height: 100%; width: 0; background: #9b7dff; transition: width .12s; }
+
+  #fin {
+    position: fixed; inset: 0; z-index: 6; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: rgba(21,15,40,.88); color: #d9cbff; text-align: center; padding: 20px;
+  }
+  #fin.on { display: flex; }
+  #fin .t { font-size: 20px; font-weight: bold; color: #ffd76a; }
+  #fin .s { font-size: 13px; }
+  #fin button {
+    border: 0; border-radius: 14px; padding: 14px 28px;
+    background: #453177; color: #e9dcff; font: bold 15px inherit; cursor: pointer;
+  }
+  @media (min-width: 700px) and (pointer: fine) {
+    #manette { display: none; }
+    #aide { color: #7b6ba8; font-size: 12px; padding-bottom: 14px; }
+  }
+  #aide { display: none; }
+  @media (pointer: fine) { #aide { display: block; } }
+</style>
+</head>
+<body>
+
+<div id="tout">
+  <div id="aire"><canvas id="stage" width="132" height="240"></canvas></div>
+  <div id="manette">
+    <button type="button" data-cmd="gauche" aria-label="Gauche">◀</button>
+    <button type="button" class="tourner" data-cmd="tourner" aria-label="Tourner">⟳</button>
+    <button type="button" class="bas" data-cmd="bas" aria-label="Poser">POSER</button>
+    <button type="button" data-cmd="droite" aria-label="Droite">▶</button>
+  </div>
+  <div id="aide">← → pour déplacer · ↑ pour tourner · ↓ pour poser</div>
+</div>
+
+<div id="chargement">
+  <div>MINIPIXIZ</div>
+  <div class="barre"><div id="jauge"></div></div>
+</div>
+
+<div id="fin">
+  <div class="t" id="fin-titre">PERDU</div>
+  <div class="s" id="fin-score"></div>
+  <div class="s" id="fin-note"></div>
+  <button type="button" id="rejouer">Rejouer</button>
+</div>
+
+<script src="/minipixiz/engine.js"></script>
+<script src="/minipixiz/game.js"></script>
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var sid = new URLSearchParams(location.search).get('sid') || '';
+  var client = null;
+  var niveau = 0;
+
+  fetch('/minipixiz/sprites/sprites.json')
+    .then(function (r) { return r.json(); })
+    .then(function (sprites) {
+      return window.MinipixizClient.charger(sprites, function (p) {
+        $('#jauge').style.width = Math.round(p * 100) + '%';
+      }).then(function () { return sprites; });
+    })
+    .then(function (sprites) {
+      $('#chargement').style.display = 'none';
+
+      client = new window.MinipixizClient.Client({
+        canvas: $('#stage'),
+        sprites: sprites,
+        surEvenement: function (nom, info) {
+          if (nom !== 'finPartie') return;
+          $('#fin-titre').textContent = info.gagne ? 'NIVEAU TERMINÉ !' : 'PERDU';
+          $('#fin-score').textContent = info.score + ' points · niveau ' + (info.niveau + 1)
+            + ' · ' + info.pieces + ' pièces';
+          // Un niveau réussi fait avancer ; un échec le fait rejouer.
+          if (info.gagne) niveau = info.niveau + 1;
+          $('#fin-note').textContent = info.gagne
+            ? 'Au suivant : niveau ' + (niveau + 1)
+            : 'Le niveau ' + (info.niveau + 1) + ' reste à faire.';
+          $('#fin').classList.add('on');
+          if (window.parent !== window) {
+            window.parent.postMessage({ minipixiz: 'fin', score: info.score,
+              niveau: info.niveau, gagne: info.gagne, sid: sid }, '*');
+          }
+        }
+      });
+
+      function lancer() {
+        $('#fin').classList.remove('on');
+        client.nouvellePartie({ niveau: niveau });
+      }
+      $('#rejouer').addEventListener('click', lancer);
+      lancer();
+      client.demarrer();
+
+      window.minipixizClient = client;   // utile aux vérifications automatisées
+    })
+    .catch(function (e) {
+      $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'
+        + String(e && e.message || e) + '</div>';
+    });
+})();
+</script>
+</body>
+</html>
