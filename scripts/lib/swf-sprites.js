@@ -105,14 +105,30 @@ function ouvrir(chemin) {
       return v >>> 0;
     }
     s(n) { if (!n) return 0; const v = this.u(n); return (v & (1 << (n - 1))) ? v - (1 << n) : v; }
+    aligner() { if (this.bit) { this.bit = 0; this.o++; } return this.o; }
   }
-  function lireMatrice(o) {
-    const m = new Bits(o);
+  function lireMatriceBits(m) {
     const M = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };   // a b c d e f, comme en SVG
     if (m.u(1)) { const n = m.u(5); M.a = m.s(n) / 65536; M.d = m.s(n) / 65536; }
     if (m.u(1)) { const n = m.u(5); M.b = m.s(n) / 65536; M.c = m.s(n) / 65536; }
     const n = m.u(5); M.e = m.s(n); M.f = m.s(n);       // translation, en twips
+    m.aligner();
     return M;
+  }
+  function lireMatrice(o) { return lireMatriceBits(new Bits(o)); }
+
+  // CXFORMWITHALPHA — on n'en garde rien, mais il faut le TRAVERSER : c'est lui
+  // qui sépare la matrice du nom d'instance et de la profondeur de masque.
+  function sauterTransfoCouleur(m) {
+    const add = m.u(1), mult = m.u(1), n = m.u(4);
+    if (mult) { m.s(n); m.s(n); m.s(n); m.s(n); }
+    if (add) { m.s(n); m.s(n); m.s(n); m.s(n); }
+    m.aligner();
+  }
+
+  function lireChaine(o) {
+    let e = o; while (e < b.length && b[e] !== 0) e++;
+    return { texte: b.slice(o, e).toString('utf8'), fin: e + 1 };
   }
 
   // Le contenu image par image de chaque sprite, liste d'affichage tenue à jour.
@@ -133,28 +149,51 @@ function ouvrir(chemin) {
       if (code === 1) { photographier(id, frame); derniere.set(id, frame); return; }
       if (code === 5) { l.delete(b.readUInt16LE(corps + 2)); return; }
       if (code === 28) { l.delete(b.readUInt16LE(corps)); return; }
-      let ch = -1, M = IDENTITE, prof = -1;
+      let ch = -1, M = IDENTITE, prof = -1, nom = null, masque = 0;
       if (code === 4) {
         ch = b.readUInt16LE(corps);
         prof = b.readUInt16LE(corps + 2);
         M = lireMatrice(corps + 4);
       } else if (code === 26 || code === 70) {
+        // PlaceObject2/3. Les champs se suivent dans l'ordre des drapeaux, et
+        // il faut tous les traverser pour atteindre le nom d'instance et la
+        // profondeur de masque — deux choses dont on a besoin :
+        //
+        //   le NOM, parce que le jeu tient ses sous-clips par leur nom
+        //     (Mc.setPic colore pic.f.k0, pic.f.o0.p, pic.f.w0…) ;
+        //   le MASQUE (ClipDepth), parce qu'un masque est une forme comme une
+        //     autre dans le fichier. Sans le repérer, le rectangle rouge qui
+        //     découpe le portrait de la fée se dessine PAR-DESSUS le portrait.
         const flags = b[corps];
-        prof = b.readUInt16LE(corps + 1);
-        if (!(flags & 2)) {
+        let o = corps + 1;
+        if (code === 70) o += 1;                       // PlaceObject3 : drapeaux étendus
+        prof = b.readUInt16LE(o); o += 2;
+        const aCar = !!(flags & 2);
+        if (code === 70 && (b[corps + 1] & 0x10)) {    // HasClassName
+          o = lireChaine(o).fin;
+        }
+        if (aCar) { ch = b.readUInt16LE(o); o += 2; }
+        const bits = new Bits(o);
+        if (flags & 4) M = lireMatriceBits(bits);
+        if (flags & 8) sauterTransfoCouleur(bits);
+        o = bits.aligner();
+        if (flags & 16) o += 2;                        // ratio (morph)
+        if (flags & 32) { const r = lireChaine(o); nom = r.texte; o = r.fin; }
+        if (flags & 64) { masque = b.readUInt16LE(o); o += 2; }
+
+        if (!aCar) {
           // Simple modification : on garde le caractère en place et on ne
           // remplace que ce que l'étiquette redéfinit.
           const avant = l.get(prof);
           if (!avant) return;
           ch = avant.ch;
-          M = (flags & 4) ? lireMatrice(corps + 3) : avant.M;
-        } else {
-          ch = b.readUInt16LE(corps + 3);
-          M = (flags & 4) ? lireMatrice(corps + 5) : IDENTITE;
+          if (!(flags & 4)) M = avant.M;
+          if (nom === null) nom = avant.nom;
+          if (!masque) masque = avant.masque;
         }
       }
       if (ch < 0 || prof < 0) return;
-      l.set(prof, { ch, M });
+      l.set(prof, { ch, M, nom: nom || null, masque: masque || 0 });
     });
     // La dernière image d'un sprite n'est pas toujours suivie d'un ShowFrame.
     for (const [id, l] of listes) {
@@ -173,11 +212,23 @@ function ouvrir(chemin) {
    * le corps et le contour sont deux clips que Group.draw envoie sur la MÊME
    * image. Sans ça, tous les contours seraient corrects et tous les corps
    * identiques.
+   *
+   * Chaque forme rendue porte :
+   *   shape   son identifiant
+   *   M       sa matrice absolue
+   *   chemin  le chemin des clips NOMMÉS qui la contiennent ("f.o0.p"), parce
+   *           que le jeu tient ses morceaux par leur nom — Mc.setPic colore
+   *           pic.f.k0 d'une couleur, pic.f.o0.p d'une autre, pic.f.w0 d'une
+   *           troisième. Sans le chemin, une fée n'aurait qu'une seule teinte.
+   *   masque  vrai si la forme sert de DÉCOUPE et non de dessin. Flash range un
+   *           masque comme n'importe quelle forme ; la dessiner telle quelle
+   *           collait un rectangle rouge en travers du portrait.
    */
-  function aplatir(ch, M, profondeur, frame) {
+  function aplatir(ch, M, profondeur, frame, chemin) {
     profondeur = profondeur || 0;
+    chemin = chemin || '';
     if (profondeur > 6) return [];
-    if (estForme(ch)) return [{ shape: ch, M }];
+    if (estForme(ch)) return [{ shape: ch, M, chemin }];
     if (!estSprite(ch)) return [];
     const frames = parSprite.get(ch);
     if (!frames) return [];
@@ -186,7 +237,10 @@ function ouvrir(chemin) {
     else cle = [...frames.keys()].sort((x, y) => x - y)[0];
     const out = [];
     for (const p of (frames.get(cle) || [])) {
-      out.push(...aplatir(p.ch, composer(M, p.M), profondeur + 1, frame));
+      const sous = p.nom ? (chemin ? chemin + '.' + p.nom : p.nom) : chemin;
+      const morceaux = aplatir(p.ch, composer(M, p.M), profondeur + 1, frame, sous);
+      if (p.masque) for (const m of morceaux) m.masque = true;
+      out.push(...morceaux);
     }
     return out;
   }

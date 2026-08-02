@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10.2 3.5 9.299999999999999 18.3" width="9.299999999999999" height="18.3">
+  <defs>
+    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.00021,0,0,0.0016,-5.6,-5.35)"><stop offset="0" stop-color="#afc2b9"/><stop offset="0.57255" stop-color="#8fab9d"/><stop offset="1" stop-color="#73917e"/></linearGradient>
+    <linearGradient id="g2" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.00021,0,0,0.0016,-5.6,28.65)"><stop offset="0" stop-color="#afc2b9"/><stop offset="0.57255" stop-color="#8fab9d"/><stop offset="1" stop-color="#73917e"/></linearGradient>
+    <linearGradient id="g3" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.00028,0,0,0.00018,-5.6,4.3)"><stop offset="0" stop-color="#afc2b9"/><stop offset="0.57255" stop-color="#8fab9d"/><stop offset="1" stop-color="#73917e"/></linearGradient>
+    <linearGradient id="g4" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.00021,0,0,0.0016,-5.6,33.65)"><stop offset="0" stop-color="#afc2b9"/><stop offset="0.57255" stop-color="#8fab9d"/><stop offset="1" stop-color="#73917e"/></linearGradient>
+  </defs>
+  <path d="M-9 6.6L-2.25 6.6L-2.2 9.75L-2.25 9.7L-2.8 8.95Q-3.8 7.75 -4.95 7.6L-7.25 7.45L-9 7.45L-9 6.6Z" fill="#74927f" fill-rule="evenodd"/>
+  <path d="M-2.25 20.85Q-3.35 21.95 -5.65 21.8Q-8.05 21.65 -9 20.85L-9 19.75L-9 20.85L-2.25 20.85Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M-2.2 19.75L-2.25 20.85L-9 20.85L-9 19.75L-2.2 19.75Z" fill="url(#g2)" fill-rule="evenodd"/>
+  <path d="M-0.9 6.6L-2.25 6.6L-9 6.6L-10.2 6.6L-10.2 3.5L-9.3 3.5L-9.3 4.9L-8.05 4.9L-8.05 3.5L-6.5 3.5L-6.5 4.9L-4.85 4.9L-4.85 3.5L-3.2 3.5L-3.2 4.9L-1.95 4.9L-1.95 3.5L-0.9 3.5L-0.9 6.6Z" fill="url(#g3)" fill-rule="evenodd"/>
+  <path d="M-2.2 9.75L-2.2 19.75L-9 19.75L-9 7.45L-7.25 7.45L-4.95 7.6Q-3.8 7.75 -2.8 8.95L-2.25 9.7L-2.2 9.75Z" fill="url(#g4)" fill-rule="evenodd"/>
+  <path d="M-3.6 9.3L-3.4 9.15L-3.2 9.25L-3.2 9.35Q-3.05 10.15 -3.15 11L-3.25 11.1Q-3.4 11.3 -3.55 11.1L-3.7 9.7L-3.7 9.6L-3.7 9.4L-3.6 9.3ZM-7.05 13.35Q-6.95 12.95 -6.5 12.9L-6.3 13.05Q-5.7 13.45 -5.85 14.4L-6.15 14.95Q-6.85 15.5 -7 14.65L-7.1 13.7L-7.05 13.35Z" fill="#53685a" fill-rule="evenodd"/>
+  <path d="M-3.4 9.15L-3.6 9.3Q-4.1 9.15 -3.7 8.7L-3.4 8.55L-3.2 8.5Q-2.4 8.85 -3.1 9.3L-3.2 9.35L-3.2 9.25L-3.4 9.15ZM-5.95 13.45L-6.3 13.05L-6.5 12.9Q-6.95 12.95 -7.05 13.35Q-7.35 13.3 -7.3 12.75L-7.2 12.6L-6.75 12.5L-6.65 12.45Q-5.95 12.45 -5.6 13L-5.6 13.05Q-5.7 13.5 -5.95 13.45Z" fill="#769381" fill-rule="evenodd"/>
+</svg>

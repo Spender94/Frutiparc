@@ -119,7 +119,7 @@
 <body>
 
 <div id="tout">
-  <div id="aire"><canvas id="stage" width="132" height="240"></canvas></div>
+  <div id="aire"><canvas id="stage" width="240" height="240"></canvas></div>
   <div id="manette">
     <button type="button" data-cmd="gauche" aria-label="Gauche">◀</button>
     <button type="button" class="tourner" data-cmd="tourner" aria-label="Tourner">⟳</button>
@@ -149,6 +149,7 @@
 </div>
 
 <script src="/minipixiz/engine.js"></script>
+<script src="/minipixiz/faerie.js"></script>
 <script src="/minipixiz/game.js"></script>
 <script src="/minipixiz/plateforme.js"></script>
 <script>
@@ -182,7 +183,27 @@
     client.nouvellePartie({
       niveau: course.niveau,
       fiche: P.fiche(course.carte),
+      fee: feeCourante(),
+      coefNuit: coefNuit(),
     });
+  }
+
+  // Cm.getCurrentFaerie : la fée que le joueur emmène. Tant que le bassin n'est
+  // pas porté, on prend la première de la fiche — et un compte qui n'en a
+  // aucune joue sans, ce que le jeu autorise (fi.isReadyForBattle est faux).
+  function feeCourante() {
+    var l = plateforme.carte.$faerie || [];
+    var i = plateforme.carte.$current;
+    var fs = (i !== null && i !== undefined && l[i]) ? l[i] : l[0];
+    return fs ? new window.MinipixizFee.Fee(fs) : null;
+  }
+
+  // Cm.getNightCoef : $time.$s sur une journée. Zéro à minuit, un demi à midi.
+  function coefNuit() {
+    var t = plateforme.carte.$time || {};
+    var s = Number(t.$s);
+    if (!isFinite(s) || s < 0) s = 0;
+    return (s % 86400000) / 86400000;
   }
 
   function resume(r) {
@@ -207,6 +228,8 @@
       client = new window.MinipixizClient.Client({
         canvas: $('#stage'),
         sprites: sprites,
+        fee: feeCourante(),
+        coefNuit: coefNuit(),
         surEvenement: function (nom, info) {
           if (nom === 'objet') {
             course.objets.push(info.type);

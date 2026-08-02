@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-131.45 -134.15 262.9 134.3" width="262.9" height="134.3">
+  <defs>
+    <radialGradient id="g1" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00807,0,0,0.00798,-0.35,-4.55)"><stop offset="0.68627" stop-color="#e9d9ff" stop-opacity="0"/><stop offset="0.72941" stop-color="#8812fe"/><stop offset="0.78039" stop-color="#3cacff"/><stop offset="0.83137" stop-color="#35ff7b"/><stop offset="0.87843" stop-color="#e6ff2f"/><stop offset="0.92157" stop-color="#ffcf2b"/><stop offset="0.96471" stop-color="#fc1b1b"/><stop offset="1" stop-color="#ff2b2b" stop-opacity="0"/></radialGradient>
+  </defs>
+  <path d="M39.8 -129.3Q70.85 -120.05 95.5 -95.35Q116.8 -74.05 126.65 -47.95Q129.55 -40.25 131.45 -32.15L131.45 0.15L90.05 0.15L90.05 0.05Q90 -37.25 63.65 -63.6Q37.3 -89.95 0.05 -89.95Q-37.25 -89.95 -63.6 -63.6Q-90 -37.25 -89.95 0L-89.95 0.15L-131.4 0.15L-131.45 -4.55Q-131.45 -58.25 -93.05 -96.2Q-54.7 -134.2 -0.35 -134.15L4.6 -134.1L15.6 -134.1Q28.15 -132.8 39.8 -129.3Z" fill="url(#g1)" fill-rule="evenodd"/>
+</svg>

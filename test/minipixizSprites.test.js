@@ -155,3 +155,123 @@ test('le client sait choisir la bonne liaison', () => {
   // Et la teinture reprend la transformation de Flash.
   assert.match(src, /- 230/, 'le décalage additif de Mc.setColor + modColor(1, 25)');
 });
+
+// ── Le décor, le cadre, la fée ────────────────────────────────────────────
+//
+// Le portage ne se joue pas que sur les règles : un Minipixiz qui ne
+// ressemblerait pas à Minipixiz ne serait pas Minipixiz. Ces tests fixent ce
+// qui fait son allure — le cadre de racines, les portraits, les plans du décor.
+
+test('le cadre de la forêt a bien ses trois morceaux', () => {
+  // base/Forest.initSkin attache interfaceRacine TROIS fois, sur trois
+  // profondeurs, en s'arrêtant sur les images 1, 2 et 3 : le sol derrière le
+  // plateau, le panneau de la fée devant, le feuillage par-dessus tout.
+  const c = sprites.cadre;
+  assert.ok(c, 'le cadre est extrait');
+  assert.deepEqual(c.etats.map((e) => e.frame), [1, 2, 3]);
+  for (const e of c.etats) assert.ok(e.pieces.length > 0, `image ${e.frame} dessinée`);
+
+  // Le fond (image 3) couvre le plateau, le montant (image 2) la colonne.
+  const boite = (f) => {
+    const e = c.etats.find((x) => x.frame === f);
+    let x0 = Infinity, x1 = -Infinity;
+    for (const p of e.pieces) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x + p.w); }
+    return { x0, x1 };
+  };
+  assert.ok(boite(3).x0 < 10 && boite(3).x1 > 100, 'l\'image 3 tient le plateau');
+  assert.ok(boite(2).x0 > 100, 'l\'image 2 se tient à droite, où vit la fée');
+});
+
+test('les neuf plans du décor sont là, du plus lointain au plus proche', () => {
+  for (const k of ['horizon', 'collines', 'foret3', 'foret2', 'foret',
+    'milieu', 'arbre', 'herbe', 'premier', 'nuage']) {
+    assert.ok(sprites[k], `le plan ${k} est extrait`);
+    assert.ok(sprites[k].etats[0].pieces.length > 0, `et ${k} porte un dessin`);
+  }
+  // Menu.initDecor les empile du plus loin au plus près ; les plans lointains
+  // sont plus hauts sur l'écran que les proches.
+  const haut = (k) => Math.min(...sprites[k].etats[0].pieces.map((p) => p.y));
+  assert.ok(haut('horizon') < haut('herbe'), 'l\'horizon est au-dessus de l\'herbe');
+});
+
+test('les six portraits de fée sont extraits, sans la blague de l\'atelier', () => {
+  const p = sprites.portrait;
+  assert.ok(p, 'les portraits sont extraits');
+  assert.ok(p.etats.length >= 6, `au moins six visages (${p.etats.length})`);
+  for (let i = 1; i <= 6; i++) {
+    const e = p.etats.find((x) => x.frame === i);
+    assert.ok(e && e.pieces.length > 5, `l'image ${i} est un vrai portrait`);
+  }
+  // Les images 11 et suivantes ne sont qu'une photo de Barbarella laissée dans
+  // le fichier : on ne les emporte pas.
+  for (const e of p.etats) {
+    for (const q of e.pieces) {
+      assert.ok(!/bitmap/.test(q.fichier),
+        `aucune photo dans les portraits (image ${e.frame} : ${q.fichier})`);
+    }
+  }
+});
+
+test('les morceaux colorables du portrait portent leur nom', () => {
+  // Mc.setPic tient chaque morceau par son nom de clip. Sans les noms, toutes
+  // les fées auraient la même couleur.
+  const noms = new Set();
+  for (const e of sprites.portrait.etats) for (const q of e.pieces) if (q.nom) noms.add(q.nom);
+  for (const n of ['f.k0', 'f.k1', 'f.w0', 'f.cloth', 'f.o0.p', 'f.o1.p']) {
+    assert.ok(noms.has(n), `${n} est nommé (trouvés : ${[...noms].sort().join(', ')})`);
+  }
+});
+
+test('les masques sont mis de côté, pas dessinés', () => {
+  // Un masque est une forme comme une autre dans le fichier — celui du cadre du
+  // portrait est un rectangle ROUGE VIF. Le dessiner mettait une barre rouge en
+  // travers de la fée.
+  for (const [cle, sp] of Object.entries(sprites)) {
+    // `nuit` (mcNightMask) EST un masque : c'est le disque que le sort de nuit
+    // pose sur l'écran. Son rouge est donc à sa place.
+    if (cle === 'nuit') continue;
+    for (const e of sp.etats) {
+      for (const q of e.pieces) {
+        const svg = path.join(DOSSIER, q.fichier);
+        if (!/\.svg$/.test(q.fichier)) continue;
+        const t = fs.readFileSync(svg, 'utf8');
+        // Le masque du jeu est un aplat #ff0000 sans rien d'autre.
+        const rougeSeul = /fill="#ff0000"/.test(t) && (t.match(/fill="/g) || []).length === 1;
+        assert.ok(!rougeSeul, `${cle} ne dessine pas le masque ${q.fichier}`);
+      }
+    }
+  }
+  assert.ok(sprites.interFace.etats[0].masques, 'le cadre du portrait a gardé sa découpe');
+  assert.ok(sprites.suivante.etats[0].masques, 'la colonne des pièces à venir aussi');
+});
+
+test('chaque pièce porte sa matrice, pour les dessins retournés', () => {
+  // L'aile droite de la fée est l'aile gauche à l'envers (a = -1) et le masque
+  // du cadre est étiré de 32 à 94 px. Sans la matrice, les deux seraient faux.
+  let miroirs = 0, etires = 0;
+  for (const sp of Object.values(sprites)) {
+    for (const e of sp.etats) {
+      for (const q of e.pieces) {
+        assert.ok(Array.isArray(q.m) && q.m.length === 6, 'six coefficients');
+        assert.ok(Array.isArray(q.vb) && q.vb.length === 4, 'et le cadre du SVG');
+        if (q.m[0] < 0 || q.m[3] < 0) miroirs++;
+        if (Math.abs(q.m[0]) > 1.5 || Math.abs(q.m[3]) > 1.5) etires++;
+      }
+    }
+  }
+  assert.ok(miroirs > 0, `des dessins retournés (${miroirs})`);
+  assert.ok(etires > 0, `des dessins étirés (${etires})`);
+});
+
+test('l\'interface de la fée est complète : cadre, cœurs, gouttes, aperçu', () => {
+  for (const k of ['interFace', 'coeur', 'mana', 'suivante', 'fee']) {
+    assert.ok(sprites[k], `${k} est extrait`);
+  }
+  // inter.Life et inter.Mana : deux images chacune, vide et pleine.
+  assert.deepEqual(sprites.coeur.etats.map((e) => e.frame), [1, 2]);
+  assert.deepEqual(sprites.mana.etats.map((e) => e.frame), [1, 2]);
+  // Et leurs tailles sont bien celles des écarts du jeu (14 px, 6 px).
+  const large = (k) => Math.max(...sprites[k].etats[0].pieces.map((p) => p.w));
+  assert.ok(large('coeur') > 10 && large('coeur') < 18, `un cœur fait ${large('coeur')} px`);
+  assert.ok(large('mana') > 3 && large('mana') < 9, `une goutte fait ${large('mana')} px`);
+});

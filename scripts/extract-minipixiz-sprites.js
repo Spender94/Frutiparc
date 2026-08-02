@@ -66,6 +66,55 @@ const CIBLES = [
   { cle: 'star', symbole: 'mcTokenStar', etiquette: 'Étoile' },
   { cle: 'marble', symbole: 'mcBlackMarble', etiquette: 'Perle noire' },
   { cle: 'imp', symbole: 'imp', etiquette: 'Impy' },
+
+  // ── Le cadre du jeu ──
+  // interfaceRacine porte les trois morceaux du cadre de la forêt : les racines
+  // du haut (image 1), le montant du milieu (2) et le sol (3). base/Forest les
+  // attache tels quels, sur trois profondeurs.
+  { cle: 'cadre', symbole: 'interfaceRacine', etiquette: 'Cadre de la forêt' },
+
+  // ── Le décor ──
+  // Neuf plans, de l'horizon au premier plan, chacun avec son coefficient de
+  // parallaxe (Menu.initDecor).
+  //
+  // Le ciel manque, et c'est délibéré : decorPlanSky n'est pas une forme mais un
+  // MORPH (tag 46), cent une images d'un dégradé qui se déforme — c'est lui qui
+  // fait le lever et le coucher du soleil. L'extracteur de formes ne sait pas
+  // lire un morph, et le bricoler à moitié donnerait un ciel faux. Il se joue
+  // sur l'écran du menu, pas sur celui de la forêt : on le traitera avec le
+  // menu, proprement.
+  { cle: 'horizon', symbole: 'decorPlanHorizon', etiquette: 'Horizon' },
+  { cle: 'collines', symbole: 'decorPlanHill', etiquette: 'Collines' },
+  { cle: 'foret3', symbole: 'decorPlanForest3', etiquette: 'Forêt lointaine' },
+  { cle: 'foret2', symbole: 'decorPlanForest2', etiquette: 'Forêt moyenne' },
+  { cle: 'foret', symbole: 'decorPlanForest', etiquette: 'Forêt' },
+  { cle: 'milieu', symbole: 'decorPlanMid', etiquette: 'Plan médian' },
+  { cle: 'arbre', symbole: 'decorPlanTree', etiquette: 'Arbre' },
+  { cle: 'herbe', symbole: 'decorPlanHerb', etiquette: 'Herbe' },
+  { cle: 'premier', symbole: 'decorPlanFirst', etiquette: 'Premier plan' },
+  { cle: 'nuage', symbole: 'cloud', etiquette: 'Nuage' },
+
+  // ── La fée et son interface ──
+  // faerie porte toutes ses animations, picFace ses portraits. On ne garde pas
+  // les soixante-et-onze images du clip : le jeu n'en joue qu'une poignée, et
+  // le reste alourdirait le chargement pour rien.
+  { cle: 'fee', symbole: 'faerie', etiquette: 'Fée', synchro: true,
+    images: [...Array(24)].map((_, i) => i + 1) },
+  // picFace ne garde que ses DIX premières images. Au-delà, les dix-neuf
+  // suivantes ne sont qu'une seule et même photo de Jane Fonda en Barbarella —
+  // une blague d'atelier laissée dans le fichier. Cm.genFaerieSeed tire de toute
+  // façon `$skin[0] = Std.random(6)`, donc six visages ; les quatre autres
+  // restent au cas où une fée de mission en demanderait un.
+  { cle: 'portrait', symbole: 'picFace', etiquette: 'Portrait de fée', synchro: true,
+    images: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] },
+  { cle: 'interFace', symbole: 'interFace', etiquette: 'Cadre du portrait' },
+  // inter.Life et inter.Mana ne sont que des boîtes vides : ce qu'on voit, ce
+  // sont des cœurs posés tous les 14 px et des gouttes tous les 6, chacun à
+  // deux images — vide, plein.
+  { cle: 'coeur', symbole: 'mcHeart', etiquette: 'Cœur de vie', synchro: true },
+  { cle: 'mana', symbole: 'mcMana', etiquette: 'Goutte de mana', synchro: true },
+  { cle: 'suivante', symbole: 'mcNext', etiquette: 'Pièce suivante' },
+  { cle: 'nuit', symbole: 'mcNightMask', etiquette: 'Masque de nuit' },
 ];
 
 // Quelle image chaque forme utilise-t-elle ? extract-swf-shapes.js le dit.
@@ -101,7 +150,13 @@ function principal() {
       if (voulues && !voulues.has(f)) continue;
       const pieces = [];
       for (const p of frames.get(f)) {
-        pieces.push(...aplatir(p.ch, p.M, 0, item.synchro ? f : undefined));
+        const morceaux = aplatir(p.ch, p.M, 0, item.synchro ? f : undefined, p.nom || '');
+        // Le masque posé au PREMIER niveau du symbole visé : aplatir() ne le
+        // voit pas, puisqu'on l'appelle placement par placement. Sans ce
+        // rattrapage, le rectangle rouge qui découpe la colonne des pièces à
+        // venir se dessinait par-dessus elle.
+        if (p.masque) for (const m of morceaux) m.masque = true;
+        pieces.push(...morceaux);
       }
       if (!pieces.length) continue;
       for (const pc of pieces) formes.add(pc.shape);
@@ -171,23 +226,65 @@ function principal() {
   for (const [cle, m] of Object.entries(manifeste)) {
     m.etats = m.etats.map((e) => {
       const pieces = [];
+      const masques = [];
       for (const pc of e.pieces) {
         const info = infos.get(pc.shape);
         const k = (info && info.images.length === 1) ? 'img' + info.images[0] : 'shp' + pc.shape;
         const fichier = ecrites.get(k);
         if (!fichier) { perdues.push(`${cle} #${pc.shape}`); continue; }
         const c = cadre(fichier) || { x: -50, y: -50, w: 100, h: 100 };
-        pieces.push({
+        // La matrice absolue, translation convertie en pixels. Le client s'en
+        // sert telle quelle : c'est le seul moyen exact de poser une pièce
+        // MIROIR (l'aile droite de la fée est l'aile gauche à l'envers, a = -1)
+        // ou TOURNÉE. Un simple coin haut-gauche et une taille ne suffisent
+        // pas — le masque du portrait, étiré de 32 à 94 px, en est la preuve.
+        const M = [pc.M.a, pc.M.b, pc.M.c, pc.M.d, pc.M.e / 20, pc.M.f / 20];
+        const coin = (x, y) => [M[0] * x + M[2] * y + M[4], M[1] * x + M[3] * y + M[5]];
+        const pts = [coin(c.x, c.y), coin(c.x + c.w, c.y),
+          coin(c.x, c.y + c.h), coin(c.x + c.w, c.y + c.h)];
+        const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+        const arr = (v) => Math.round(v * 1e4) / 1e4;
+        const p = {
           fichier,
-          // Coin haut-gauche du dessin dans le repère du clip, translation du
-          // placement comprise. Le client n'a plus qu'à poser l'image là.
-          x: c.x + pc.M.e / 20,
-          y: c.y + pc.M.f / 20,
-          w: c.w, h: c.h,
-          m: [pc.M.a, pc.M.b, pc.M.c, pc.M.d],
-        });
+          // Le cadre du dessin APRÈS transformation : c'est lui qui dit au
+          // client quelle taille de canevas préparer.
+          x: arr(Math.min(...xs)), y: arr(Math.min(...ys)),
+          w: arr(Math.max(...xs) - Math.min(...xs)),
+          h: arr(Math.max(...ys) - Math.min(...ys)),
+          // Le viewBox propre du SVG, et la matrice pour l'y poser.
+          vb: [arr(c.x), arr(c.y), arr(c.w), arr(c.h)],
+          m: M.map(arr),
+        };
+        // Un masque ne se dessine pas : il DÉCOUPE. On n'en garde que le cadre,
+        // et le client s'en sert comme fenêtre — sans quoi le rectangle rouge
+        // qui découpe le portrait de la fée se collerait en travers du cadre.
+        //
+        // Seuls les masques de PREMIER NIVEAU sont retenus. Ceux qui vivent au
+        // fond d'un sous-clip ne découpent que ce sous-clip : les deux petits
+        // masques des pupilles de la fée, appliqués au dessin entier,
+        // réduiraient son portrait à treize pixels sur six.
+        if (pc.masque) {
+          masques.push({ x: p.x, y: p.y, w: p.w, h: p.h, chemin: pc.chemin || '' });
+          continue;
+        }
+        // Le chemin des clips nommés qui portent la forme : c'est par lui que
+        // le client sait quelle couleur de la fée appliquer à quel morceau.
+        if (pc.chemin) p.nom = pc.chemin;
+        pieces.push(p);
       }
-      return { frame: e.frame, pieces };
+      // Un masque ne découpe que ses FRÈRES — ce qui vit sous le même clip que
+      // lui. On ne garde donc que ceux qui couvrent tout le dessin, c'est-à-dire
+      // ceux dont le clip parent contient toutes les pièces. Les deux petits
+      // masques des pupilles de la fée, appliqués au dessin entier, réduiraient
+      // son portrait à treize pixels sur six.
+      const couvreTout = (m) => pieces.every((p) => {
+        const n = p.nom || '';
+        return m.chemin === '' || n === m.chemin || n.indexOf(m.chemin + '.') === 0;
+      });
+      const gardes = masques.filter(couvreTout).map((m) => ({ x: m.x, y: m.y, w: m.w, h: m.h }));
+      const etat = { frame: e.frame, pieces };
+      if (gardes.length) etat.masques = gardes;
+      return etat;
     }).filter((e) => e.pieces.length);
   }
   if (perdues.length) console.log('pièces perdues : ' + perdues.join(', '));
