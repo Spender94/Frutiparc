@@ -168,6 +168,9 @@ class Client {
       case 'impact': eclater(d.x, d.y, 2, '#ffffff', 1.2); break;
       case 'bossRenvoi': eclater(d.x, d.y, 3, '#cfe8ff', 2); break;
       case 'bossExplose': eclater(d.x, d.y, 40, '#ffb04a', 4); break;
+      case 'soucoupeExplose': eclater(d.x, d.y, 10, '#cfe8ff', 3); break;
+      case 'ondeChoc': eclater(d.x, d.y, 20, '#ffffff', 3.4); break;
+      case 'saut': eclater(LARGEUR / 2, HAUTEUR / 2, 24, '#8fd0ff', 4); break;
       case 'finPartie':
         this.panneau = (d.raison === 'fin') ? 'BRAVO !' : 'GAME OVER';
         this.panneauT = 1e9;
@@ -208,6 +211,10 @@ class Client {
       const etat = sp ? Math.min(sp.etats.length, (b.profil.hp || 1) - b.hp + 1) : 1;
       poser(ctx, sp, sp ? sp.etats[Math.max(0, etat - 1)].frame : 1, b.x, b.y);
     }
+
+    // La soucoupe passe au-dessus de la mêlée ; les bonus tombent devant.
+    for (const s of jeu.saucerList) poser(ctx, this.sprites.saucer, 1, s.x, s.y);
+    for (const o of jeu.optList) this.dessinerBonus(ctx, o);
 
     if (jeu.boss) this.dessinerBoss(ctx, jeu.boss);
 
@@ -258,6 +265,50 @@ class Client {
     ctx.fillRect(30, 6, (LARGEUR - 60) * c, 4);
   }
 
+  // Les bonus n'ont pas de dessin extrait (leur clip est composé à l'exécution :
+  // couleurs posées par code, atomes dupliqués…). On les rend selon leur famille,
+  // avec les couleurs du jeu : pièces, sauts, cartes, vie.
+  dessinerBonus(ctx, o) {
+    const b = E.BONUS[o.type] || {};
+    const pulse = 0.75 + Math.sin(o.y / 6) * 0.25;
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    if (b.credit !== undefined) {
+      const cols = ['#F2D1AA', '#FFFFFF', '#FFF58A', '#A5F89E'];   // bronze, argent, or, platine
+      ctx.fillStyle = cols[o.type] || '#fff';
+      ctx.beginPath();
+      ctx.arc(0, 0, 5, 0, 6.28);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.45)';
+      ctx.stroke();
+    } else if (b.warp !== undefined) {
+      ctx.fillStyle = '#8fd0ff';
+      ctx.globalAlpha = pulse;
+      ctx.beginPath();
+      ctx.arc(0, 0, 6, 0, 6.28);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#0b1024';
+      ctx.font = 'bold 7px Verdana, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(b.warp), 0, 3);
+      ctx.textAlign = 'left';
+    } else if (b.nom === 'vie') {
+      ctx.globalAlpha = pulse;
+      poser(ctx, this.sprites.hero0, 1, 0, 0, 0.8);
+      ctx.globalAlpha = 1;
+    } else {
+      const cols = { carteRouge: '#ff4a4a', carteVerte: '#5aff7a', carteBleue: '#5aa8ff' };
+      ctx.fillStyle = cols[b.nom] || '#fff';
+      ctx.globalAlpha = pulse;
+      ctx.fillRect(-5, -7, 10, 14);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,.8)';
+      ctx.strokeRect(-5, -7, 10, 14);
+    }
+    ctx.restore();
+  }
+
   dessinerTir(ctx, t, frame) {
     const sp = this.sprites.shot;
     if (sp && sp.etats.some((e) => e.frame === frame)) {
@@ -288,6 +339,19 @@ class Client {
     // Vies restantes : un petit vaisseau par vie en réserve.
     for (let i = 0; i < Math.min(jeu.heroList.length, 6); i++) {
       poser(ctx, this.sprites['hero' + (jeu.heroList[i] || 0)], 1, LARGEUR - 8 - i * 11, 8, 0.6);
+    }
+    // Bombe disponible : elle ne sert qu'une fois, autant que ça se voie.
+    if (jeu.hero && jeu.hero.flBomb) {
+      ctx.fillStyle = '#ffd76a';
+      ctx.beginPath();
+      ctx.arc(6, 16, 3, 0, 6.28);
+      ctx.fill();
+    }
+    // Pièces ramassées (la monnaie de la boutique interne).
+    if (jeu.credits > 0) {
+      ctx.font = '8px Verdana, Arial, sans-serif';
+      ctx.fillStyle = '#F2D1AA';
+      ctx.fillText('¤' + jeu.credits, 12, 13);
     }
 
     if (this.panneauT > 0 && this.panneau) {

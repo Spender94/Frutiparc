@@ -66,6 +66,9 @@
     transition: background .08s, transform .08s;
   }
   #manette button.tir { flex: 1.4 1 0; background: #2f4a1c; color: #bff18d; font-size: 15px; letter-spacing: 1px; }
+  /* La bombe ne sert qu'une fois par vaisseau : un bouton plus étroit, à part. */
+  #manette button.bombe { flex: 0.7 1 0; min-width: 52px; background: #4a3a1c; font-size: 20px; }
+  #manette button.bombe.on { background: #7a5f26; }
   #manette button.on { background: #3a5480; transform: scale(.96); }
   #manette button.tir.on { background: #4b7a26; }
 
@@ -106,9 +109,10 @@
   <div id="manette">
     <button type="button" data-cmd="gauche" aria-label="Gauche">◀</button>
     <button type="button" class="tir" data-cmd="tir" aria-label="Tirer">TIR</button>
+    <button type="button" class="bombe" data-cmd="bombe" aria-label="Bombe">💣</button>
     <button type="button" data-cmd="droite" aria-label="Droite">▶</button>
   </div>
-  <div id="aide">← → pour se déplacer · espace pour tirer</div>
+  <div id="aide">← → pour se déplacer · espace pour tirer · majuscule pour la bombe</div>
 </div>
 
 <div id="chargement">

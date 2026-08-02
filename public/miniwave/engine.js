@@ -301,10 +301,13 @@ class Hero extends Sprite {
       if (this.laser <= 0) this.speed = this.fiche.speed || 3;
     }
 
-    // Sortie par la droite : le vaisseau saute au niveau suivant (le « warp »).
+    // Sortie par la droite : le secret du jeu. Le vaisseau qui franchit le bord
+    // droit saute CENT niveaux d'un coup et rend sa place à l'escadron — il se
+    // sacrifie, mais on repart bien plus loin.
     if (this.x > LARGEUR + this.ray) {
-      jeu.evenement('warp', {});
+      jeu.evenement('warp', { type: this.type });
       jeu.setWarp(100);
+      jeu.ajouterVie(this.type);
       this.tuer();
     }
   }
@@ -839,6 +842,117 @@ class Bads extends Sprite {
     const i = this.jeu.badsList.indexOf(this);
     if (i >= 0) this.jeu.badsList.splice(i, 1);
     this.jeu.toKill--;
+  }
+}
+
+// ── La soucoupe bonus ──────────────────────────────────────────────────────
+// Elle traverse l'écran en haut, de temps à autre. L'abattre rapporte 200 points
+// ET lâche un bonus — c'est la seule source de bonus du jeu, donc la seule façon
+// de recharger sa bombe ou de gagner une vie. Elle accélère à chaque passage et
+// avec l'avancement dans le parcours : la rater devient de plus en plus cher.
+const MARGE_SOUCOUPE = 40;
+
+class Saucer extends Sprite {
+  constructor(jeu, o) {
+    super(jeu, o);
+    this.ray = 12;
+  }
+  update(tmod) {
+    this.x += this.speed * this.sens * tmod;
+    if (this.x + MARGE_SOUCOUPE < 0 || this.x - MARGE_SOUCOUPE > LARGEUR) { this.tuer(); return; }
+    for (const t of this.jeu.hShotList.slice()) {
+      if (!t.flHit || !this.touche(t.x, t.y)) continue;
+      t.auContact();
+      t.tuer();
+      this.jeu.genOption(this.x, this.y);
+      this.exploser();
+      return;
+    }
+  }
+  exploser() {
+    this.jeu.evenement('soucoupeExplose', { x: this.x, y: this.y });
+    this.jeu.incScore(200);
+    this.jeu.saucerKill++;
+    this.tuer();
+  }
+  tuer() {
+    super.tuer();
+    const i = this.jeu.saucerList.indexOf(this);
+    if (i >= 0) this.jeu.saucerList.splice(i, 1);
+  }
+}
+
+// ── Les bonus ──────────────────────────────────────────────────────────────
+// Onze sortes, tirées au sort selon une table de POIDS : les pièces de bronze
+// tombent souvent, le platine une fois sur cent. C'est cette table qui règle
+// toute l'économie du jeu.
+const BONUS = [
+  { poids: 40, nom: 'bronze', credit: 1 },
+  { poids: 20, nom: 'argent', credit: 5 },
+  { poids: 5, nom: 'or', credit: 10 },
+  { poids: 1, nom: 'platine', credit: 50 },
+  { poids: 12, nom: 'saut5', warp: 5 },
+  { poids: 6, nom: 'saut10', warp: 10 },
+  { poids: 2, nom: 'saut20', warp: 20 },
+  { poids: 5, nom: 'carteRouge' },     // hanabi : 32 projectiles rebondissants
+  { poids: 5, nom: 'carteVerte' },     // une tête chercheuse indestructible
+  { poids: 5, nom: 'carteBleue' },     // une vague qui balaie tout le haut
+  { poids: 8, nom: 'vie' },            // un vaisseau de plus dans l'escadron
+];
+const POIDS_TOTAL = BONUS.reduce((n, b) => n + b.poids, 0);
+
+class Opt extends Sprite {
+  constructor(jeu, o) {
+    super(jeu, o);
+    this.ray = 10;
+    this.speed = 2;
+  }
+  update(tmod) {
+    this.y += this.speed * tmod;
+    const h = this.jeu.hero;
+    if (h && this.distance(h) < h.ray + this.ray) { this.ramasser(); this.tuer(); return; }
+    if (this.y - this.ray > HAUTEUR) this.tuer();
+  }
+  ramasser() {
+    const jeu = this.jeu;
+    const b = BONUS[this.type];
+    jeu.evenement('bonus', { type: this.type, nom: b.nom, x: this.x, y: this.y });
+    if (b.credit !== undefined) { jeu.credits += b.credit; return; }
+    if (b.warp !== undefined) { jeu.setWarp(b.warp); return; }
+    switch (b.nom) {
+      case 'carteRouge':                 // gerbe circulaire qui rebondit
+        for (let i = 0; i < 32; i++) {
+          const a = 6.28 * i / 32;
+          jeu.newHShot({
+            x: this.x, y: this.y,
+            vitx: Math.cos(a) * 5, vity: Math.sin(a) * 5,
+            time: 60 + jeu.hasard(60), behaviourId: 24,
+          });
+        }
+        break;
+      case 'carteVerte':                 // chercheuse increvable, un long moment
+        jeu.newHShot({
+          x: this.x, y: this.y, vitx: 0, vity: 0,
+          flIndestructible: true, time: 200 + jeu.hasard(200), behaviourId: 8,
+        });
+        break;
+      case 'carteBleue':                 // un mur qui monte et fait tout exploser
+        jeu.newHShot({
+          x: LARGEUR / 2, y: this.y, vitx: 0, vity: -10,
+          flIndestructible: true, behaviourId: 25,
+        });
+        break;
+      case 'vie':
+        jeu.ajouterVie(jeu.hasard(5) + 1);
+        break;
+      default:
+        break;
+    }
+  }
+  tuer() {
+    super.tuer();
+    const i = this.jeu.optList.indexOf(this);
+    if (i >= 0) this.jeu.optList.splice(i, 1);
   }
 }
 
@@ -1845,7 +1959,13 @@ class Game {
     this.badsList = [];
     this.hShotList = [];
     this.bShotList = [];
+    this.saucerList = [];
+    this.optList = [];
     this.badsKill = {};
+    this.saucerKill = 0;
+    this.credits = 0;            // les pièces ramassées (monnaie de la boutique)
+    this.saucerCompt = 0;
+    this.eventTimer = 100;
 
     this.level = 0;
     this.score = 0;
@@ -1993,6 +2113,59 @@ class Game {
     return t;
   }
 
+  // genSaucer : elle entre par un côté tiré au sort, et va d'autant plus vite
+  // qu'on en a déjà croisé — et qu'on est loin dans le parcours.
+  genSaucer() {
+    const sens = this.hasard(2) * 2 - 1;
+    const w = HAUTEUR / 2;
+    const s = new Saucer(this, {
+      x: w - (w + MARGE_SOUCOUPE) * sens,
+      y: 20,
+      sens,
+      speed: 1 + (this.hasard(10) / 10) + this.saucerCompt * 0.5
+        + Math.min(Math.round(this.level / 50), 3),
+    });
+    this.spriteList.push(s);
+    this.saucerList.push(s);
+    this.saucerCompt++;
+    this.evenement('soucoupe', { sens, speed: s.speed });
+    return s;
+  }
+
+  // Le type de bonus est tiré selon la table de poids : c'est elle qui règle
+  // toute l'économie (le platine sort une fois sur cent).
+  typeDeBonus() {
+    const n = this.hasard(POIDS_TOTAL);
+    let cumul = 0;
+    for (let i = 0; i < BONUS.length; i++) {
+      cumul += BONUS[i].poids;
+      if (cumul > n) return i;
+    }
+    return 0;
+  }
+
+  genOption(x, y) {
+    const o = new Opt(this, { x, y, type: this.typeDeBonus() });
+    this.spriteList.push(o);
+    this.optList.push(o);
+    return o;
+  }
+
+  // Un vaisseau de plus dans l'escadron — le seul moyen d'en regagner.
+  ajouterVie(type) {
+    this.heroList.unshift(type);
+    this.evenement('vieGagnee', { type, restant: this.heroList.length });
+  }
+
+  // checkEvent : la soucoupe se présente rarement, et de plus en plus rarement
+  // à mesure qu'on en a déjà vu (une chance sur 3 + 3^(n+1)).
+  verifierEvenement(tmod) {
+    if (this.eventTimer >= 0) { this.eventTimer -= tmod; return; }
+    this.eventTimer = 100;
+    if (this.saucerList.length === 0
+      && this.hasard(3 + Math.pow(3, this.saucerCompt + 1)) === 0) this.genSaucer();
+  }
+
   // ── Boucle ──
   update(tmod) {
     if (this.termine) return;
@@ -2008,8 +2181,12 @@ class Game {
         if (this.vagueEnPlace()) this.initStep(ETAPE.COMBAT);
         break;
       case ETAPE.COMBAT:
-        this.updateWave(tmod);
-        if (this.toKill <= 0) this.initStep(ETAPE.SUIVANT);
+        if (this.badsList.length > 0) { this.verifierEvenement(tmod); this.updateWave(tmod); }
+        // checkEnd : on ne passe au niveau suivant que lorsque la soucoupe est
+        // partie et les bonus ramassés — sinon on perdrait ce qu'on a gagné.
+        if (this.toKill <= 0 && this.saucerList.length === 0 && this.optList.length === 0) {
+          this.initStep(ETAPE.SUIVANT);
+        }
         break;
       case ETAPE.SUIVANT:
         this.timer -= tmod;
@@ -2086,7 +2263,12 @@ class Game {
   // Le vaisseau sorti par la droite saute `n` niveaux d'un coup. On passe par
   // `nextLevel` : le décor doit défiler d'autant, pas sauter d'un coup.
   setWarp(n) {
-    this.nextLevel = Math.min(this.level + Math.max(1, Math.floor(n / 100)), this.waveInfo.length - 1);
+    this.evenement('saut', { niveaux: n });
+    while (this.badsList.length > 0) this.badsList[0].tuer();
+    while (this.saucerList.length > 0) this.saucerList[0].tuer();
+    while (this.optList.length > 0) this.optList[0].tuer();
+    this.nettoyerTirs();
+    this.nextLevel = Math.min(this.level + n, this.waveInfo.length - 1);
     this.initStep(ETAPE.SUIVANT);
   }
 
@@ -2147,7 +2329,8 @@ class Game {
   }
 }
 
-const API = { Game, Hero, Bads, Boss, Shot, Sprite, ENNEMIS, VAISSEAUX, TYPES, ETAPE, FORME, generateur,
+const API = { Game, Hero, Bads, Boss, Saucer, Opt, Shot, Sprite,
+  ENNEMIS, VAISSEAUX, TYPES, BONUS, ETAPE, FORME, generateur,
   LARGEUR, HAUTEUR, TAILLE_BADS, FLUX_BADS, FRICTION, DECOR_DECAL };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

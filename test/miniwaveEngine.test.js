@@ -696,3 +696,116 @@ test('le rayon du Cherry pulvérise sa colonne', () => {
   assert.ok(h.laser <= 0, 'le rayon s\'éteint');
   assert.equal(h.speed, vitesse, 'et la mobilité revient');
 });
+
+// ── Soucoupe et bonus ──────────────────────────────────────────────────────
+// La soucoupe est la SEULE source de bonus du jeu : la rater, c'est renoncer à
+// recharger sa bombe ou à gagner une vie. D'où l'importance de la mécanique.
+
+test('la soucoupe traverse l\'écran et finit par sortir', () => {
+  const jeu = new E.Game({ levels: ARCADE, graine: 41, vies: 3, ship: 0 });
+  assert.ok(jusquAuCombat(jeu));
+  const s = jeu.genSaucer();
+  assert.equal(jeu.saucerList.length, 1, 'elle est en piste');
+  assert.ok(s.speed > 0, 'et elle avance');
+  for (let i = 0; i < 2000 && jeu.saucerList.length; i++) jeu.update(1);
+  assert.equal(jeu.saucerList.length, 0, 'elle sort de l\'écran si on la rate');
+});
+
+test('l\'abattre rapporte 200 points et lâche un bonus', () => {
+  const jeu = new E.Game({ levels: ARCADE, graine: 42, vies: 3, ship: 0 });
+  assert.ok(jusquAuCombat(jeu));
+  const s = jeu.genSaucer();
+  const avant = jeu.score;
+  jeu.newHShot({ x: s.x, y: s.y, vitx: 0, vity: 0, flStandardHeroShot: true });
+  jeu.update(1);
+  assert.equal(jeu.score, avant + 200, '200 points');
+  assert.equal(jeu.saucerKill, 1, 'la prise est comptée');
+  assert.equal(jeu.optList.length, 1, 'et un bonus tombe');
+});
+
+test('elle accélère à chaque passage', () => {
+  const jeu = new E.Game({ levels: ARCADE, graine: 43, vies: 3, ship: 0 });
+  assert.ok(jusquAuCombat(jeu));
+  const v = [];
+  for (let i = 0; i < 4; i++) { v.push(jeu.genSaucer().speed); jeu.saucerList[0].tuer(); }
+  assert.ok(v[3] > v[0], `la quatrième va plus vite que la première (${v.join(' → ')})`);
+});
+
+test('la vague ne se termine pas tant qu\'un bonus est en jeu', () => {
+  // Sinon on perdrait ce qu'on vient de gagner en passant au niveau suivant.
+  const jeu = new E.Game({ levels: ARCADE, graine: 44, vies: 3, ship: 0 });
+  assert.ok(jusquAuCombat(jeu));
+  while (jeu.badsList.length) jeu.badsList[0].exploser();
+  jeu.genOption(120, 60);
+  for (let i = 0; i < 30; i++) jeu.update(1);
+  assert.equal(jeu.step, E.ETAPE.COMBAT, 'on reste sur le niveau tant que le bonus tombe');
+  jeu.optList[0].tuer();
+  for (let i = 0; i < 30 && jeu.step === E.ETAPE.COMBAT; i++) jeu.update(1);
+  assert.equal(jeu.step, E.ETAPE.SUIVANT, 'et on passe une fois l\'écran net');
+});
+
+test('les onze bonus font chacun leur effet', () => {
+  const poser = (type, graine) => {
+    const jeu = new E.Game({ levels: ARCADE, graine: graine || 45, vies: 3, ship: 0 });
+    for (let i = 0; i < 600 && jeu.step !== E.ETAPE.COMBAT; i++) jeu.update(1);
+    const o = jeu.genOption(jeu.hero.x, jeu.hero.y);
+    o.type = type;
+    return { jeu, o };
+  };
+  // Les quatre pièces créditent la monnaie de la boutique interne.
+  for (const [type, valeur] of [[0, 1], [1, 5], [2, 10], [3, 50]]) {
+    const { jeu, o } = poser(type);
+    o.ramasser();
+    assert.equal(jeu.credits, valeur, `${E.BONUS[type].nom} : +${valeur} crédits`);
+  }
+  // Les trois sauts avancent dans le parcours.
+  for (const [type, saut] of [[4, 5], [5, 10], [6, 20]]) {
+    const { jeu, o } = poser(type);
+    const depart = jeu.level;
+    o.ramasser();
+    assert.equal(jeu.nextLevel, depart + saut, `${E.BONUS[type].nom} : saute ${saut} niveaux`);
+    assert.equal(jeu.badsList.length, 0, 'et l\'écran est nettoyé au passage');
+  }
+  // Les trois cartes envoient chacune leur artillerie.
+  const rouge = poser(7); rouge.o.ramasser();
+  assert.equal(rouge.jeu.hShotList.length, 32, 'carte rouge : trente-deux projectiles');
+  const verte = poser(8); verte.o.ramasser();
+  assert.equal(verte.jeu.hShotList.length, 1, 'carte verte : une tête chercheuse');
+  assert.equal(verte.jeu.hShotList[0].flIndestructible, true, 'increvable');
+  const bleue = poser(9); bleue.o.ramasser();
+  assert.equal(bleue.jeu.hShotList.length, 1, 'carte bleue : une vague');
+  assert.ok(bleue.jeu.hShotList[0].vity < 0, 'qui monte');
+  // Et la vie.
+  const vie = poser(10);
+  const avant = vie.jeu.heroList.length;
+  vie.o.ramasser();
+  assert.equal(vie.jeu.heroList.length, avant + 1, 'un vaisseau de plus dans l\'escadron');
+});
+
+test('le tirage des bonus respecte la table de poids', () => {
+  // Le platine (poids 1 sur 109) doit rester exceptionnel, le bronze (40)
+  // fréquent : c'est cette table qui règle toute l'économie du jeu.
+  const jeu = new E.Game({ levels: ARCADE, graine: 99, vies: 3, ship: 0 });
+  const compte = new Array(E.BONUS.length).fill(0);
+  for (let i = 0; i < 20000; i++) compte[jeu.typeDeBonus()]++;
+  const total = E.BONUS.reduce((n, b) => n + b.poids, 0);
+  E.BONUS.forEach((b, i) => {
+    const attendu = 20000 * b.poids / total;
+    assert.ok(Math.abs(compte[i] - attendu) < attendu * 0.25 + 40,
+      `${b.nom} : ${compte[i]} tirages pour ~${Math.round(attendu)} attendus`);
+  });
+  assert.ok(compte[0] > compte[3] * 20, 'le bronze est bien plus courant que le platine');
+});
+
+test('sortir par la droite fait sauter cent niveaux', () => {
+  // Le secret du jeu : le vaisseau qui franchit le bord droit se sacrifie, mais
+  // rend sa place à l'escadron et fait repartir bien plus loin.
+  const jeu = new E.Game({ levels: ARCADE, graine: 46, vies: 3, ship: 0 });
+  assert.ok(jusquAuCombat(jeu));
+  const vies = jeu.heroList.length;
+  const h = jeu.hero;
+  h.x = E.LARGEUR + h.ray + 1;
+  h.update(1);
+  assert.equal(jeu.nextLevel, 100, 'cent niveaux d\'un coup');
+  assert.equal(jeu.heroList.length, vies + 1, 'et le vaisseau rejoint la réserve');
+});
