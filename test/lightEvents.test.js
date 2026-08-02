@@ -267,7 +267,11 @@ test('le client mobile affiche, signale et date les événements', () => {
   // l'icône de fenêtre du SWF, et le pageur en bas. Pas de croix ni de bouton de
   // réduction — sur un téléphone, la rubrique EST l'écran.
   assert.match(html, /class="fen-titre"[\s\S]{0,160}icone_fenetre\.svg/, 'barre de titre à l\'icône du jeu');
-  assert.match(html, /border: 3px solid #C6A9E4/, 'cadre lilas comme sur le bureau');
+  // Pas de cadre : la fenêtre du bureau ne porte qu'une ombre portée.
+  const styleFen = /\.fenetre \{([\s\S]*?)\}/.exec(html);
+  assert.ok(styleFen, 'la fenêtre a son style');
+  assert.ok(!/border:/.test(styleFen[1]), 'aucun cadre');
+  assert.match(styleFen[1], /box-shadow: [^;]*rgba\(0, ?0, ?0/, 'seulement une ombre noire');
   assert.match(html, /id="evt-prec"[\s\S]{0,120}fleche_gauche\.svg/, 'flèche précédente');
   assert.match(html, /id="evt-suiv"[\s\S]{0,120}fleche_droite\.svg/, 'flèche suivante');
   const barre = /<div class="fen-titre">([\s\S]*?)<\/div>/.exec(html);
@@ -275,11 +279,18 @@ test('le client mobile affiche, signale et date les événements', () => {
   assert.ok(!/<button/.test(barre[1]),
     'aucun bouton dedans : ni croix ni réduction, il n\'y a rien à fermer sur un téléphone');
 
-  // Le pageur : cinq par page, comme la fenêtre du bureau.
-  assert.match(html, /var PAR_PAGE = 5;/, 'cinq entrées par page');
-  assert.match(html, /etat\.page \* PAR_PAGE, \(etat\.page \+ 1\) \* PAR_PAGE/, 'la page est découpée');
-  assert.match(html, /prec\.disabled = etat\.page <= 0/, 'la flèche gauche s\'éteint sur la première page');
-  assert.match(html, /suiv\.disabled = etat\.page >= pages - 1/, 'la droite sur la dernière');
+  // Le pageur ne compte pas les entrées, il MESURE : les cartes ont des hauteurs
+  // très inégales, un nombre figé laisserait tantôt un grand vide, tantôt une
+  // barre de défilement — et paginer n'aurait plus de sens.
+  assert.ok(!/PAR_PAGE/.test(html), 'aucun nombre d\'entrées figé');
+  assert.match(html, /var dispo = box\.clientHeight - \(parseFloat\(cs\.paddingTop\)/,
+    'la place disponible est mesurée, rembourrage déduit');
+  assert.match(html, /if \(hauteur && hauteur \+ h > dispo\) \{ bornes\.push\(i\); hauteur = 0; \}/,
+    'on remplit tant que la carte suivante tient');
+  assert.match(html, /window\.addEventListener\("resize"/,
+    'et on redécoupe quand la fenêtre change de hauteur');
+  assert.match(html, /prec\.disabled = page <= 0/, 'la flèche gauche s\'éteint sur la première page');
+  assert.match(html, /suiv\.disabled = page >= pages - 1/, 'la droite sur la dernière');
 
   // La date au format du jeu : « sam 1 aout 21:35 ». Les tables viennent du SWF,
   // où quatre mois n'ont pas d'abrégé — « aout » s'y écrit sans circonflexe.

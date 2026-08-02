@@ -654,20 +654,20 @@
   .mail-erreur { min-height: 16px; margin-top: 7px; font-size: 12px; color: #C0392B; }
   .mail-erreur.ok { color: #4B7A18; }
   /* ── Événements et Historique ──
-     Calqués sur la fenêtre du bureau : cadre lilas, barre de titre blanche avec
-     l'icône de fenêtre, fond vert, et des cartes portant chacune le visuel de
-     son type. En bas, le pageur — ses deux boutons sont ceux du SWF (le carré
-     rose et le triangle de butPushSmallPink). Ni croix ni bouton de réduction :
-     sur un téléphone, la rubrique EST l'écran, il n'y a rien à fermer. */
-  #evt-panel { padding: 8px; background: #ADE76B; }
+     Calqués sur la fenêtre du bureau : barre de titre blanche avec l'icône de
+     fenêtre, fond vert, et des cartes portant chacune le visuel de son type. En
+     bas, le pageur — ses deux boutons sont ceux du SWF (le carré rose et le
+     triangle de butPushSmallPink). Ni croix ni bouton de réduction : sur un
+     téléphone, la rubrique EST l'écran, il n'y a rien à fermer. */
+  #evt-panel { padding: 9px; background: #ADE76B; }
   .fenetre {
     flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
-    background: #CCF599; border: 3px solid #C6A9E4; border-radius: 11px;
-    box-shadow: 0 2px 9px rgba(44,74,15,.28); overflow: hidden;
+    background: #CCF599; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 3px 11px rgba(0,0,0,.42);
   }
   .fen-titre {
     flex-shrink: 0; display: flex; align-items: center; gap: 6px;
-    padding: 5px 10px; background: #fff; border-bottom: 1px solid #C6A9E4;
+    padding: 5px 10px; background: #fff;
     font-weight: bold; font-size: 13px; color: #40305c;
   }
   .fen-ico { width: 15px; height: 15px; display: block; }
@@ -2603,7 +2603,6 @@
   var journalEtat = { evenements: { nonLus: 0, liste: [], charge: false, page: 0 },
                       historique: { nonLus: 0, liste: [], charge: false, page: 0 } };
   var journalCourant = "evenements";
-  var PAR_PAGE = 5;                   // ce que la fenêtre du bureau affiche
 
   function setJournalNonLus(cle, n) {
     var e = journalEtat[cle], v = Math.max(0, Number(n) || 0);
@@ -2657,21 +2656,25 @@
           box.innerHTML = '<div class="evt-vide">' + def.titre + ' indisponible pour le moment.</div>';
       });
   }
+  // Une page = ce qui tient dans la fenêtre, pas un nombre fixe. Les cartes ont
+  // des hauteurs très inégales (une ligne pour « Reboot à 11h30 », trois pour une
+  // annonce de tournoi) : un compte figé laisserait tantôt un grand vide, tantôt
+  // une barre de défilement — et paginer n'aurait plus de sens. On pose donc
+  // TOUTES les cartes, on mesure, on découpe, puis on ne montre que la page
+  // demandée. Une seule mise en page pour tout le travail.
   function renderJournal(cle) {
     var def = JOURNAUX[cle], etat = journalEtat[cle], liste = etat.liste;
     var box = $("#evt-liste");
     if (!box) return;
-    var pages = Math.max(1, Math.ceil(liste.length / PAR_PAGE));
-    etat.page = Math.max(0, Math.min(etat.page, pages - 1));
 
-    var pied = $("#evt-page"), prec = $("#evt-prec"), suiv = $("#evt-suiv");
-    if (pied) pied.textContent = liste.length ? (etat.page + 1) + "/" + pages : "";
-    if (prec) prec.disabled = etat.page <= 0;
-    if (suiv) suiv.disabled = etat.page >= pages - 1;
+    if (!liste.length) {
+      box.innerHTML = '<div class="evt-vide">' + def.vide + '</div>';
+      majPied(0, 1);
+      return;
+    }
 
-    if (!liste.length) { box.innerHTML = '<div class="evt-vide">' + def.vide + '</div>'; return; }
     box.innerHTML = "";
-    liste.slice(etat.page * PAR_PAGE, (etat.page + 1) * PAR_PAGE).forEach(function (e) {
+    var cartes = liste.map(function (e) {
       var it = el("div", "evt-item" + (e.nouveau ? " neuf" : ""));
       // Un visuel manquant ne doit pas laisser un trou : on retombe sur celui du
       // journal, jamais sur une image cassée.
@@ -2681,9 +2684,48 @@
         + '<div class="txt"><span class="quand">' + xmlEscape(journalDate(e.date))
         + ' - </span>' + xmlEscape(e.text || "") + '</div>';
       box.appendChild(it);
+      return it;
     });
+
+    // Découpage : on remplit tant que la carte suivante tient. Une carte plus
+    // haute que la fenêtre occupe sa page à elle seule, sinon on tournerait sans
+    // jamais avancer.
+    // clientHeight comprend le rembourrage, où les cartes ne vont pas : on le
+    // retire, sinon on en pose une de trop et la barre de défilement apparaît.
+    var cs = getComputedStyle(box);
+    var dispo = box.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    var bornes = [0], hauteur = 0;
+    for (var i = 0; i < cartes.length; i++) {
+      var h = cartes[i].offsetHeight + ecart(cartes[i]);
+      if (hauteur && hauteur + h > dispo) { bornes.push(i); hauteur = 0; }
+      hauteur += h;
+    }
+    etat.page = Math.max(0, Math.min(etat.page, bornes.length - 1));
+    var debut = bornes[etat.page];
+    var suite = (etat.page + 1 < bornes.length) ? bornes[etat.page + 1] : cartes.length;
+    for (var j = 0; j < cartes.length; j++) {
+      cartes[j].style.display = (j >= debut && j < suite) ? "" : "none";
+    }
     box.scrollTop = 0;
+    majPied(etat.page, bornes.length);
   }
+  // Marge basse d'une carte : elle compte dans la place occupée.
+  function ecart(carte) {
+    return parseFloat(getComputedStyle(carte).marginBottom) || 0;
+  }
+  function majPied(page, pages) {
+    var pied = $("#evt-page"), prec = $("#evt-prec"), suiv = $("#evt-suiv");
+    var liste = journalEtat[journalCourant].liste;
+    if (pied) pied.textContent = liste.length ? (page + 1) + "/" + pages : "";
+    if (prec) prec.disabled = page <= 0;
+    if (suiv) suiv.disabled = page >= pages - 1;
+  }
+  // Rotation de l'écran, clavier qui se replie : la fenêtre change de hauteur,
+  // donc le découpage aussi.
+  window.addEventListener("resize", function () {
+    if ($("#evt-panel").classList.contains("active")) renderJournal(journalCourant);
+  });
+
   function tournerPage(pas) {
     var etat = journalEtat[journalCourant];
     if (!etat) return;
