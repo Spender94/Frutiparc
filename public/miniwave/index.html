@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Miniwave 2</title>
+<!--
+  Miniwave 2 — portage natif JS du jeu Flash d'origine (240×240 @40 i/s),
+  fidèle aux sources AS2 (Games/miniWave2/class/miniwave).
+
+  L'aire de jeu est CARRÉE et petite : contrairement à Swapou, pas besoin de
+  forcer le paysage. On la centre, on l'agrandit d'un facteur entier (les
+  dessins font 16 à 20 pixels ; un facteur fractionnaire les rendrait flous) et
+  on garde le bas de l'écran pour la manette — le jeu d'origine se joue au
+  clavier, il faut donc bien lui en donner un.
+
+  ?sid= pour la persistance plateforme (slot, pictos, consécration).
+-->
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #070b18;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; -webkit-user-select: none;
+    font-family: Verdana, Arial, sans-serif;
+  }
+  #tout {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    box-sizing: border-box;
+  }
+  /* La zone de jeu prend TOUTE la largeur : c'est elle que le client mesure pour
+     choisir son agrandissement. Sans width:100%, elle se serrerait autour du
+     canvas — qui se dimensionne d'après elle — et le jeu resterait minuscule. */
+  #aire {
+    flex: 1 1 auto; min-height: 0; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #stage {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px #1d2a48, 0 8px 30px rgba(0,0,0,.6);
+  }
+
+  /* ── Manette ──
+     Deux grandes zones de direction et un gros bouton de tir. Les cibles font
+     au moins 64 px : on joue avec les pouces, en tenant le téléphone. */
+  #manette {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    padding: 0 12px 12px;
+    width: 100%; max-width: 460px; box-sizing: border-box;
+  }
+  #manette button {
+    flex: 1 1 0; height: 72px; min-width: 64px;
+    border: 0; border-radius: 16px;
+    background: #1d2a48; color: #cfe8a0;
+    font-size: 26px; font-weight: bold; font-family: inherit;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: background .08s, transform .08s;
+  }
+  #manette button.tir { flex: 1.4 1 0; background: #2f4a1c; color: #bff18d; font-size: 15px; letter-spacing: 1px; }
+  #manette button.on { background: #3a5480; transform: scale(.96); }
+  #manette button.tir.on { background: #4b7a26; }
+
+  #chargement {
+    position: fixed; inset: 0; z-index: 5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: #070b18; color: #cfe8a0; font-size: 13px; letter-spacing: 1px;
+  }
+  #chargement .barre { width: 200px; height: 10px; border: 2px solid #cfe8a0; border-radius: 6px; overflow: hidden; }
+  #chargement .barre > div { height: 100%; width: 0; background: #9fce30; transition: width .12s; }
+
+  /* Écran de fin : on rejoue d'un appui, sans passer par un menu. */
+  #fin {
+    position: fixed; inset: 0; z-index: 6; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    background: rgba(7,11,24,.86); color: #cfe8a0;
+  }
+  #fin.on { display: flex; }
+  #fin .t { font-size: 20px; font-weight: bold; color: #ffd76a; }
+  #fin .s { font-size: 14px; }
+  #fin button {
+    border: 0; border-radius: 14px; padding: 14px 28px;
+    background: #2f4a1c; color: #bff18d; font: bold 15px inherit; cursor: pointer;
+  }
+  @media (min-width: 700px) and (pointer: fine) {
+    /* Au clavier, la manette n'a plus lieu d'être — on rappelle les touches. */
+    #manette { display: none; }
+    #aide { color: #6d7fa8; font-size: 12px; padding-bottom: 14px; }
+  }
+  #aide { display: none; }
+  @media (pointer: fine) { #aide { display: block; } }
+</style>
+</head>
+<body>
+
+<div id="tout">
+  <div id="aire"><canvas id="stage" width="240" height="240"></canvas></div>
+  <div id="manette">
+    <button type="button" data-cmd="gauche" aria-label="Gauche">◀</button>
+    <button type="button" class="tir" data-cmd="tir" aria-label="Tirer">TIR</button>
+    <button type="button" data-cmd="droite" aria-label="Droite">▶</button>
+  </div>
+  <div id="aide">← → pour se déplacer · espace pour tirer</div>
+</div>
+
+<div id="chargement">
+  <div>MINIWAVE 2</div>
+  <div class="barre"><div id="jauge"></div></div>
+</div>
+
+<div id="fin">
+  <div class="t" id="fin-titre">GAME OVER</div>
+  <div class="s" id="fin-score"></div>
+  <button type="button" id="rejouer">Rejouer</button>
+</div>
+
+<script src="/miniwave/engine.js"></script>
+<script src="/miniwave/game.js"></script>
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var sid = new URLSearchParams(location.search).get('sid') || '';
+
+  Promise.all([
+    fetch('/miniwave/sprites/sprites.json').then(function (r) { return r.json(); }),
+    fetch('/miniwave/levels.json').then(function (r) { return r.json(); })
+  ]).then(function (res) {
+    var sprites = res[0], niveaux = res[1];
+    return window.MiniwaveClient.charger(sprites, function (p) {
+      $('#jauge').style.width = Math.round(p * 100) + '%';
+    }).then(function () { return { sprites: sprites, niveaux: niveaux }; });
+  }).then(function (d) {
+    $('#chargement').style.display = 'none';
+
+    var client = new window.MiniwaveClient.Client({
+      canvas: $('#stage'),
+      sprites: d.sprites,
+      // Le parcours arcade : les 201 niveaux, boss compris.
+      niveaux: d.niveaux.main[0].levels,
+      surEvenement: function (nom, info) {
+        if (nom !== 'finPartie') return;
+        $('#fin-titre').textContent = (info.raison === 'fin') ? 'BRAVO !' : 'GAME OVER';
+        $('#fin-score').textContent = info.score + ' points · niveau ' + (info.level + 1);
+        $('#fin').classList.add('on');
+        // La sauvegarde plateforme (slot, pictos, consécration) se branchera ici.
+        if (window.parent !== window) {
+          window.parent.postMessage({ miniwave: 'fin', score: info.score, level: info.level, sid: sid }, '*');
+        }
+      }
+    });
+
+    function lancer() {
+      $('#fin').classList.remove('on');
+      client.nouvellePartie({ ship: 3 });   // le vaisseau du parcours arcade
+      client.demarrer();
+    }
+    $('#rejouer').addEventListener('click', lancer);
+    lancer();
+    window.miniwaveClient = client;        // utile aux vérifications automatisées
+  }).catch(function (e) {
+    $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'
+      + String(e && e.message || e) + '</div>';
+  });
+})();
+</script>
+</body>
+</html>

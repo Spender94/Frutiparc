@@ -219,7 +219,10 @@ class Hero extends Sprite {
 
   tirer() {
     this.coolDown = 100;
-    const t = this.jeu.newHShot({ x: this.x, y: this.y - 6, vitx: 0, vity: -3, flStandardHeroShot: true });
+    const t = this.jeu.newHShot({
+      x: this.x, y: this.y - 6, vitx: 0, vity: -3,
+      flStandardHeroShot: true, heroType: this.type,   // aspect du tir = vaisseau
+    });
     this.jeu.evenement('tirHero', { x: this.x, y: this.y - 6 });
     return t;
   }
@@ -697,7 +700,9 @@ class Bads extends Sprite {
 
   // Le tir « nu » de la classe de base : c'est lui que les espèces ajustent.
   tirBase() {
-    const t = this.jeu.newBShot({ x: this.x, y: this.y, vitx: 0, vity: 2 });
+    // `badsType` sert au rendu : le jeu choisit l'aspect du projectile par
+    // gotoAndStop(10 + type), et le client fait la même chose.
+    const t = this.jeu.newBShot({ x: this.x, y: this.y, vitx: 0, vity: 2, badsType: this.type });
     this.jeu.evenement('tirBads', { x: this.x, y: this.y, type: this.type });
     return t;
   }
