@@ -718,6 +718,492 @@ class Bads extends Sprite {
   }
 }
 
+// ── Le boss ────────────────────────────────────────────────────────────────
+// Un seul adversaire, mais TROIS formes qui s'enchaînent : la coquille, puis le
+// casque, puis l'orange qu'ils protégeaient. Chacune a ses trente points de vie,
+// sa façon de se déplacer et son répertoire d'attaques, tirées au sort dès que
+// son temps de récupération est écoulé.
+//
+// Le détail qui fait le combat : sur la coquille, un tir n'entame rien tant
+// qu'elle tourne vite (elle le renvoie). Il faut la frapper entre deux
+// accélérations — et chaque coup encaissé l'accélère justement.
+const FORME = { COQUILLE: 0, CASQUE: 1, ORANGE: 2 };
+
+class Boss extends Sprite {
+  constructor(jeu, o) {
+    super(jeu, o);
+    this.ray = 25;
+    this.turning = 3;
+    this.speedCoef = 1;
+    this.vitx = 0;
+    this.vity = 0;
+    this.mvx = 0;
+    this.mvy = 0;
+    this.rotation = 0;                  // l'angle de la coquille : il dit sa vitesse
+    this.specialCoolDown = 0;
+    this.flash = 0;
+    this.mains = [{ x: -20, y: 18 }, { x: 20, y: 18 }];
+    this.initStep(0);
+  }
+
+  initStep(step) {
+    const jeu = this.jeu;
+    this.step = step;
+    switch (step) {
+      case 0:                            // la coquille descend du haut
+        this.forme = FORME.COQUILLE;
+        this.x = LARGEUR / 2;
+        this.y = -100;
+        this.hpMax = 30;
+        this.hp = 30;
+        this.vitx = 0; this.vity = 0;
+        this.specialCoolDown = 0;
+        // Deux oscillateurs indépendants : c'est eux qui lui donnent sa
+        // trajectoire flottante, jamais deux fois la même.
+        this.mvt = [
+          { d: 157, s: 0, st: 5 + jeu.hasard(5) },
+          { d: 157, s: 0, st: 5 + jeu.hasard(5) },
+        ];
+        jeu.evenement('bossArrive', { forme: this.forme });
+        break;
+      case 1:                            // état de veille : il choisit une attaque
+        break;
+      case 2:                            // ruée latérale, en tirant
+        this.shootInfo = { type: 1, toShoot: 3, timer: 0, interval: 2 };
+        this.vitx += 15 * ((this.x < LARGEUR / 2) ? -1 : 1);
+        this.speedCoef = 8;
+        this.specialCoolDown = 100;
+        break;
+      case 3:                            // roue de la mort : dix missiles
+        this.shootInfo = { type: 1, toShoot: 10, timer: 36, interval: 3 };
+        this.specialCoolDown = 200;
+        break;
+      case 9:                            // la coquille se disloque
+        this.timer = 20;
+        this.cible = { x: LARGEUR / 2, y: 120 };
+        this.vitx = 0; this.vity = 0;
+        jeu.evenement('bossForme', { forme: this.forme, fin: true });
+        break;
+      case 10:                           // le casque apparaît
+        this.forme = FORME.CASQUE;
+        this.hpMax = 30;
+        this.hp = 30;
+        this.specialCoolDown = 100;
+        this.timer = 10;
+        this.vitx = 0; this.vity = 0;
+        this.mvt = { dy: 0, vy: 10, cy: 80, ey: 30, coy: 1, cox: 1, speed: 2, sens: 1 };
+        jeu.evenement('bossArrive', { forme: this.forme });
+        break;
+      case 11:
+        this.mvt.cox = 1;
+        break;
+      case 12:                           // souffle de flammes en balayant
+        this.shootInfo = { type: 2, toShoot: 50, timer: 40, interval: 2.5 };
+        this.specialCoolDown = 200;
+        this.mvt.ty = 132;
+        this.mvt.cox = 0.2;
+        break;
+      case 13:                           // double laser
+        this.shootInfo = { type: 3, toShoot: 3, timer: 60, interval: 20 };
+        this.specialCoolDown = 100;
+        break;
+      case 14:                           // laser d'une seule main
+        this.shootInfo = { type: 3, toShoot: 6, timer: 70, interval: 9, hand: jeu.hasard(2) };
+        this.specialCoolDown = 100;
+        break;
+      case 19:                           // le casque éclate
+        this.mvt = { d: 10, timerMax: 10, x: this.x, y: this.y };
+        this.timer = 10;
+        jeu.evenement('bossForme', { forme: this.forme, fin: true });
+        break;
+      case 20:                           // l'orange, à nu
+        this.forme = FORME.ORANGE;
+        this.timer = 20;
+        this.vitx = 0; this.vity = 0;
+        this.hpMax = 30;
+        this.hp = 30;
+        this.mvt = { dy: 0, ty: 100, vy: 16, cy: 100, ey: 60, coy: 1, cox: 1, speed: 4, sens: 1 };
+        jeu.evenement('bossArrive', { forme: this.forme });
+        break;
+      case 21:
+        this.mvt.cy = 100;
+        this.mvt.ey = 60;
+        break;
+      case 22:                           // gerbes circulaires
+        this.shootInfo = { type: 4, toShoot: 5, timer: 20, interval: 14, hand: jeu.hasard(2) };
+        this.specialCoolDown = 140;
+        break;
+      case 23:                           // il se couvre d'une escorte
+        this.shootInfo = { timerMax: 60 };
+        this.timer = 60;
+        this.specialCoolDown = 180;
+        break;
+      case 24:                           // la morsure du soleil : il descend et charge
+        this.shootInfo = { step: 0 };
+        this.mvt.ty = 0;
+        this.mvt.cy = 50;
+        this.mvt.ey = 10;
+        this.timer = 80;
+        this.specialCoolDown = 200;
+        break;
+      case 25:                           // rafale en glissant sur le côté
+        this.shootInfo = {
+          type: 6, toShoot: 8, timer: 0, interval: 3,
+          hand: (this.x < LARGEUR / 2) ? 0 : 1,
+        };
+        this.specialCoolDown = 80;
+        break;
+      case 29:                           // agonie
+        this.mvt = { d: 8, timerMax: 80, x: this.x, y: this.y };
+        this.timer = 80;
+        jeu.evenement('bossForme', { forme: this.forme, fin: true });
+        break;
+      case 30:                           // explosion finale
+        this.timer = 80;
+        jeu.evenement('bossExplose', { x: this.x, y: this.y });
+        break;
+      default:
+        break;
+    }
+  }
+
+  update(tmod) {
+    const jeu = this.jeu;
+    this.speedCoef = this.speedCoef * 0.9 + 0.1;
+    if (this.flash > 0) this.flash -= tmod;
+    this.verifierChocHero();
+
+    switch (this.step) {
+      case 0:
+        this.rotation += this.turning * this.speedCoef;
+        this.y += 6 * tmod;
+        if (this.y > HAUTEUR / 2) this.initStep(1);
+        break;
+      case 1:
+        this.tournerCoquille(tmod);
+        this.bougerCoquille(tmod);
+        this.choisirAttaque(tmod);
+        this.verifierTirsHero();
+        break;
+      case 2:
+      case 3:
+        this.tournerCoquille(tmod);
+        this.bougerCoquille(tmod);
+        this.tirer(tmod);
+        if (this.step === 3) {
+          this.mvt[0].s *= 0.8;
+          this.mvt[1].s *= 0.8;
+          this.speedCoef *= 1.1;
+        }
+        if (this.shootInfo.toShoot === 0) this.step = 1;
+        this.verifierTirsHero();
+        break;
+      case 9:                             // dislocation, puis le casque
+        this.derive(tmod);
+        this.timer -= tmod;
+        if (this.timer < 0) this.initStep(10);
+        break;
+      case 10:
+        this.timer -= tmod;
+        if (this.timer < 0) this.initStep(11);
+        break;
+      case 11:
+        this.bougerOrange(tmod);
+        this.choisirAttaque(tmod);
+        this.verifierTirsHero();
+        // En veille, il lâche des lasers de temps à autre : plus il est bas en
+        // vie, plus c'est fréquent.
+        if (jeu.hasard(Math.max(1, Math.round((40 + 40 * (this.hp / this.hpMax)) / tmod))) === 0) {
+          this.shootInfo = { type: 3, toShoot: 0, timer: -1 };
+          this.tirer(tmod);
+        }
+        break;
+      case 12:
+      case 13:
+      case 14:
+        this.bougerOrange(tmod);
+        this.tirer(tmod);
+        if (this.shootInfo.toShoot === 0) this.initStep(11);
+        this.verifierTirsHero();
+        break;
+      case 19:
+        this.timer -= tmod;
+        if (this.timer < 0) this.initStep(20);
+        break;
+      case 20:
+        this.timer -= tmod;
+        if (this.timer < 0) this.initStep(21);
+        break;
+      case 21:
+        this.bougerOrange(tmod);
+        this.choisirAttaque(tmod);
+        this.verifierTirsHero();
+        break;
+      case 22:
+      case 25:
+        this.bougerOrange(tmod);
+        this.tirer(tmod);
+        if (this.shootInfo.toShoot === 0) this.initStep(21);
+        this.verifierTirsHero();
+        break;
+      case 23: {                          // escorte : il appelle des ennemis
+        this.bougerOrange(tmod);
+        this.timer -= tmod;
+        if (this.timer === Math.floor(this.timer) && jeu.badsList.length < 6
+          && jeu.hasard(Math.max(1, Math.round(10 / tmod))) === 0) {
+          const b = jeu.newBads(0, {
+            x: this.x + (jeu.hasard(80) - 40), y: this.y + 30,
+            waveId: 0, lineId: 0, wpTimer: -1, flWave: false,
+          });
+          b.flReady = true;
+        }
+        if (this.timer < 0) this.initStep(21);
+        this.verifierTirsHero();
+        break;
+      }
+      case 24: {                          // morsure du soleil : invulnérable en charge
+        this.bougerOrange(tmod);
+        this.timer -= tmod;
+        if (this.shootInfo.step === 0 && this.timer < 0) {
+          this.shootInfo.step = 1;
+          this.shootInfo.type = 5;
+          this.shootInfo.toShoot = 12;
+          this.shootInfo.timer = 0;
+          this.shootInfo.interval = 4;
+        }
+        if (this.shootInfo.step === 1) {
+          this.tirer(tmod);
+          if (this.shootInfo.toShoot === 0) this.initStep(21);
+        }
+        this.verifierTirsHero();
+        break;
+      }
+      case 29:
+        this.timer -= tmod;
+        if (this.timer < 0) this.initStep(30);
+        break;
+      case 30:
+        this.timer -= tmod;
+        if (this.timer < 0) this.tuer();
+        break;
+      default:
+        break;
+    }
+  }
+
+  tournerCoquille(tmod) { this.rotation += this.turning * this.speedCoef * tmod; }
+
+  // Deux sinus décorrélés : la coquille flotte sans jamais répéter le même
+  // trajet, et ses à-coups (o.st retiré au hasard) la rendent imprévisible.
+  bougerCoquille(tmod) {
+    for (let i = 0; i < 2; i++) {
+      const o = this.mvt[i];
+      o.s = o.s * 0.95 + o.st * 0.05;
+      o.d = (o.d + o.s * tmod) % 628;
+      if (this.jeu.hasard(Math.max(1, Math.round(200 / tmod))) === 0) o.st = 5 + this.jeu.hasard(5);
+    }
+    const w = LARGEUR / 2;
+    this.x = w + Math.cos(this.mvt[0].d / 100) * (w - 50);
+    this.y = 100 + Math.sin(this.mvt[1].d / 100) * 40;
+  }
+
+  derive(tmod) {
+    const dx = this.cible.x - this.x, dy = this.cible.y - this.y;
+    this.vitx += Math.min(Math.max(-1, dx / 10), 1) * tmod;
+    this.vity += Math.min(Math.max(-1, dy / 10), 1) * tmod;
+    const f = Math.pow(0.99, tmod);
+    this.vitx *= f; this.vity *= f;
+    this.x += this.vitx; this.y += this.vity;
+  }
+
+  // Casque et orange : glissement horizontal, hauteur en sinus, et une vitesse
+  // qui AUGMENTE à mesure qu'il perd des points de vie. Acculé, il devient
+  // beaucoup plus difficile à suivre.
+  bougerOrange(tmod) {
+    const m = this.mvt;
+    const chp = this.hp / this.hpMax;
+    this.x += (m.speed + (1 - chp) * 6) * m.cox * m.sens * tmod;
+    m.dy = (m.dy + m.vy * m.coy * tmod) % 628;
+    const y = m.cy + Math.cos(m.dy / 100) * m.ey;
+    if (m.ty !== undefined) {
+      if (this.step === 11 || this.step === 21 || this.step === 24) {
+        m.ty = y;
+        if (Math.abs(this.y - m.ty) < 2) m.ty = undefined;
+      }
+      if (m.ty !== undefined) this.y = this.y * 0.9 + m.ty * 0.1;
+    }
+    if (m.ty === undefined) this.y = y;
+    if (this.x < this.ray) { this.x = this.ray; m.sens *= -1; }
+    if (this.x > LARGEUR - this.ray) { this.x = LARGEUR - this.ray; m.sens *= -1; }
+    this.mvx = (m.speed + (1 - chp) * 6) * m.cox * m.sens;
+    this.mains[0].x = -20; this.mains[1].x = 20;
+  }
+
+  // checkBehaviour : dès que le temps de récupération est écoulé, chaque forme
+  // pioche dans SON répertoire.
+  choisirAttaque(tmod) {
+    if (this.specialCoolDown >= 0) { this.specialCoolDown -= tmod; return; }
+    const jeu = this.jeu;
+    const un = (n) => jeu.hasard(Math.max(1, Math.round(n / tmod))) === 0;
+    const chp = this.hp / this.hpMax;
+    switch (this.forme) {
+      case FORME.COQUILLE:
+        if (this.y < 100 && un(100)) { this.vity = 18; this.specialCoolDown = 80; }
+        if (un(100)) this.initStep(2);
+        if (chp < 0.5 && un(100)) this.initStep(3);   // la roue n'arrive qu'à mi-vie
+        break;
+      case FORME.CASQUE:
+        if (un(100)) this.initStep(12);
+        if (un(100)) this.initStep(13);
+        if (un(100)) this.initStep(14);
+        break;
+      case FORME.ORANGE:
+        if (un(100)) this.initStep(22);
+        if (un(60)) this.initStep(23);
+        if (un(160)) this.initStep(24);
+        if (un(100)) this.initStep(25);
+        break;
+      default:
+        break;
+    }
+  }
+
+  tirer(tmod) {
+    const o = this.shootInfo;
+    if (!o) return;
+    if (o.timer >= 0) { o.timer -= tmod; return; }
+    const jeu = this.jeu;
+    const h = jeu.cibleHero();
+    switch (o.type) {
+      case 0:
+      case 1: {                            // missile guidé
+        const a = this.angle(h);
+        jeu.newBShot({ x: this.x, y: this.y, vitx: Math.cos(a) * 6.5, vity: Math.sin(a) * 6.5 });
+        break;
+      }
+      case 2:                              // deux jets de flamme
+        for (let i = 0; i < 2; i++) {
+          jeu.newBShot({
+            x: this.x + this.mains[i].x, y: this.y + 28,
+            vitx: this.mvx * 0.8 + (jeu.hasard(20) - 10) / 20, vity: 6,
+          });
+        }
+        break;
+      case 3:                              // laser (une main ou les deux)
+        for (let i = 0; i < 2; i++) {
+          if (o.hand !== undefined && o.hand !== i) continue;
+          jeu.newBShot({ x: this.x + this.mains[i].x, y: this.y + this.mains[i].y + 10, vitx: 0, vity: 10 });
+        }
+        break;
+      case 4: {                            // gerbe circulaire de dix-huit boules
+        const max = 18;
+        const m = this.mains[o.hand || 0];
+        for (let i = 0; i < max; i++) {
+          const a = (i / max) * 6.28 + (o.toShoot % 2) * (6.28 / (max * 2));
+          jeu.newBShot({
+            x: this.x + m.x, y: this.y + m.y,
+            vitx: Math.cos(a) * 5, vity: Math.sin(a) * 5,
+          });
+        }
+        break;
+      }
+      case 5: {                            // boule d'énergie vers le vaisseau
+        const a = this.angle(h);
+        jeu.newBShot({
+          x: this.x + Math.cos(a) * 25, y: this.y + Math.sin(a) * 25,
+          vitx: Math.cos(a) * 3.5, vity: Math.sin(a) * 3.5,
+        });
+        break;
+      }
+      case 6: {                            // rafale d'une main
+        const m = this.mains[o.hand || 0];
+        jeu.newBShot({
+          x: this.x + m.x, y: this.y + m.y,
+          vitx: 2 * (jeu.rng() * 2 - 1), vity: 4,
+        });
+        break;
+      }
+      default:
+        break;
+    }
+    this.jeu.evenement('bossTire', { type: o.type, x: this.x, y: this.y });
+    if (o.toShoot === 0 || o.toShoot === undefined) o.toShoot = 0;
+    else { o.toShoot--; o.timer += o.interval; }
+  }
+
+  verifierChocHero() {
+    const h = this.jeu.hero;
+    if (!h) return;
+    if (this.distance(h) < this.ray + h.ray) h.frapper(10);
+  }
+
+  verifierTirsHero() {
+    for (const t of this.jeu.hShotList.slice()) {
+      if (t.flHit && this.touchePar(t.x, t.y)) this.essayerDeToucher(t);
+    }
+  }
+
+  touchePar(x, y) {
+    // La coquille présente une cible plus large que les deux autres formes.
+    const coef = (this.forme === FORME.COQUILLE) ? 1.3 : 1;
+    return this.distance({ x, y }) < this.ray * coef;
+  }
+
+  // Tout ne l'entame pas : la coquille lancée renvoie les tirs, et l'orange en
+  // pleine « morsure du soleil » est invulnérable le temps de sa charge.
+  essayerDeToucher(t) {
+    const renvoi = (this.forme === FORME.COQUILLE && this.speedCoef > 1.5)
+      || (this.step === 24 && this.shootInfo && this.shootInfo.step === 0);
+    if (renvoi) {
+      this.jeu.evenement('bossRenvoi', { x: t.x, y: t.y });
+      t.tuer();
+      return;
+    }
+    this.frapper(t);
+    t.auContact();
+    t.tuer();
+  }
+
+  frapper(t) {
+    this.hp--;
+    this.flash = 20;
+    // Le tir à tête chercheuse du vaisseau secoue dix fois moins : sans quoi il
+    // suffirait de l'arroser pour l'envoyer au plafond.
+    const coef = (t && t.behaviourId === 8) ? 0.1 : 1;
+    this.jeu.evenement('bossTouche', { hp: this.hp, hpMax: this.hpMax, forme: this.forme });
+    switch (this.forme) {
+      case FORME.COQUILLE:
+        this.speedCoef += 4;              // chaque coup l'accélère, donc la protège
+        this.vitx += (this.x - (t ? t.x : this.x)) / 6;
+        this.vity += -12 * coef;
+        if (this.hp <= 0) this.initStep(9);
+        break;
+      case FORME.CASQUE:
+        this.vity += -1 * coef;
+        if (this.hp <= 0) this.initStep(19);
+        break;
+      default:
+        this.vity += -2 * coef;
+        if (this.hp <= 0) this.initStep(29);
+        break;
+    }
+  }
+
+  // La mort du vaisseau interrompt l'attaque en cours : le boss reprend sa veille.
+  onHeroKill() {
+    this.specialCoolDown = 100;
+    if (this.step === 2 || this.step === 3) this.step = 1;
+    else if (this.step >= 12 && this.step <= 14) this.initStep(11);
+    else if (this.step === 22) this.initStep(21);
+  }
+
+  tuer() {
+    super.tuer();
+    this.jeu.boss = null;
+    this.jeu.bossVaincu();
+  }
+}
+
 // ── Les 51 ennemis ─────────────────────────────────────────────────────────
 // Le jeu d'origine en fait 51 sous-classes d'une trentaine de lignes, dont
 // l'écrasante majorité ne change que trois valeurs (cadence, robustesse) et la
@@ -1269,8 +1755,11 @@ class Game {
       case ETAPE.PANNEAU: {
         const info = this.waveInfo[this.level];
         if (info === undefined) { this.finPartie('fin'); return; }
-        this.evenement('panneau', { level: this.level, name: info.name });
-        this.attente = 80;                  // le panneau « level N » reste affiché
+        // Un niveau qui s'appelle « boss » n'a pas d'escadre : c'est le combat
+        // de fin de parcours, annoncé plus longuement.
+        this.estBoss = (info.name === 'boss');
+        this.evenement('panneau', { level: this.level, name: info.name, boss: this.estBoss });
+        this.attente = this.estBoss ? 160 : 80;
         break;
       }
       case ETAPE.ARRIVEE:
@@ -1284,6 +1773,11 @@ class Game {
       case ETAPE.SUIVANT:
         this.timer = 40;
         this.nettoyerTirs();
+        break;
+      case ETAPE.BOSS:
+        this.boss = new Boss(this, {});
+        this.spriteList.push(this.boss);
+        this.verifierHero();
         break;
       default:
         break;
@@ -1380,7 +1874,7 @@ class Game {
     switch (this.step) {
       case ETAPE.PANNEAU:
         this.attente -= tmod;
-        if (this.attente <= 0) this.initStep(ETAPE.ARRIVEE);
+        if (this.attente <= 0) this.initStep(this.estBoss ? ETAPE.BOSS : ETAPE.ARRIVEE);
         break;
       case ETAPE.ARRIVEE:
         if (this.vagueEnPlace()) this.initStep(ETAPE.COMBAT);
@@ -1392,6 +1886,10 @@ class Game {
       case ETAPE.SUIVANT:
         this.timer -= tmod;
         if (this.timer <= 0) { this.level++; this.initStep(ETAPE.PANNEAU); }
+        break;
+      case ETAPE.BOSS:
+        // Le boss se conduit lui-même ; il faut juste ramasser ses escortes.
+        this.updateWave(tmod);
         break;
       default:
         break;
@@ -1460,6 +1958,13 @@ class Game {
 
   onHeroKill() {
     this.evenement('viePerdue', { restant: this.heroList.length });
+    if (this.boss) this.boss.onHeroKill();
+  }
+
+  // Boss.kill : le parcours reprend au niveau suivant.
+  bossVaincu() {
+    this.evenement('bossVaincu', { level: this.level, score: this.score });
+    this.initStep(ETAPE.SUIVANT);
   }
 
   finPartie(raison) {
@@ -1497,7 +2002,7 @@ class Game {
   }
 }
 
-const API = { Game, Hero, Bads, Shot, Sprite, ENNEMIS, VAISSEAUX, TYPES, ETAPE, generateur,
+const API = { Game, Hero, Bads, Boss, Shot, Sprite, ENNEMIS, VAISSEAUX, TYPES, ETAPE, FORME, generateur,
   LARGEUR, HAUTEUR, TAILLE_BADS, FLUX_BADS, FRICTION };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

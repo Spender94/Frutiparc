@@ -238,11 +238,18 @@ test('tous les niveaux du jeu se chargent sans caler', () => {
   // serait bloqué — on vérifie donc que CHAQUE niveau donne des vitesses finies
   // et une escadre plaçable.
   const parcours = [].concat(NIVEAUX.main, NIVEAUX.bonus, NIVEAUX.letter);
-  let places = 0;
+  let places = 0, combats = 0;
   for (const p of parcours) {
     for (let i = 0; i < p.levels.length; i++) {
       const jeu = new E.Game({ levels: p.levels.slice(i, i + 1), graine: 1 });
-      for (let k = 0; k < 200 && jeu.step === E.ETAPE.PANNEAU; k++) jeu.update(1);
+      for (let k = 0; k < 400 && jeu.step === E.ETAPE.PANNEAU; k++) jeu.update(1);
+      // Le dernier niveau de l'arcade s'appelle « boss » : il n'a pas d'escadre,
+      // c'est le combat de fin de parcours.
+      if (jeu.step === E.ETAPE.BOSS) {
+        assert.ok(jeu.boss, `« ${p.name} » niveau ${i + 1} : le boss est en piste`);
+        combats++;
+        continue;
+      }
       assert.ok(Number.isFinite(jeu.waveSpeed) && jeu.waveSpeed > 0,
         `« ${p.name} » niveau ${i + 1} : vitesse de vague utilisable (${jeu.waveSpeed})`);
       assert.ok(Number.isFinite(jeu.fallSpeed), `« ${p.name} » niveau ${i + 1} : descente définie`);
@@ -253,6 +260,7 @@ test('tous les niveaux du jeu se chargent sans caler', () => {
     }
   }
   assert.ok(places > 5000, `les milliers de vaisseaux du jeu sont plaçables (${places})`);
+  assert.equal(combats, 1, 'un seul combat de boss dans tout le jeu : la fin de l\'arcade');
 });
 
 test('une partie longue reste saine', () => {
@@ -441,4 +449,120 @@ test('la Prune paralysante brouille au lieu de blesser', () => {
   h.coolDown = 0;
   h.commander(1);
   assert.equal(jeu.hShotList.length, avant, 'et ne peut plus tirer');
+});
+
+// ── Le boss ────────────────────────────────────────────────────────────────
+// Un seul adversaire, mais trois formes qui s'enchaînent : la coquille, le
+// casque, puis l'orange qu'ils protégeaient. Ce qui est vérifié ici, c'est
+// l'enchaînement et la règle qui fait tout le combat : la coquille lancée
+// renvoie les tirs, et chaque coup encaissé l'accélère — donc la protège.
+
+const NIVEAU_VAGUE = {
+  name: 'essai', moveSpeed: 1, fallSpeed: 6, ss: 6, sd: 6,
+  list: [[{ t: 0, x: 120, y: 40 }, { t: 0, x: 96, y: 40 }]],
+};
+const NIVEAU_BOSS = Object.assign({}, NIVEAU_VAGUE, { name: 'boss' });
+
+// Ouvre une partie directement sur le combat de boss.
+function auBoss(graine) {
+  const journal = [];
+  const jeu = new E.Game({
+    levels: [NIVEAU_BOSS], graine: graine === undefined ? 3 : graine, vies: 99,
+    onEvent: (n, d) => journal.push({ n, d }),
+  });
+  for (let i = 0; i < 400 && jeu.step !== E.ETAPE.BOSS; i++) jeu.update(1);
+  return { jeu, journal, compte: (nom) => journal.filter((e) => e.n === nom).length };
+}
+
+test('un niveau nommé « boss » ouvre un combat au lieu d\'une vague', () => {
+  const r = auBoss();
+  assert.equal(r.jeu.step, E.ETAPE.BOSS, 'la partie entre en combat de boss');
+  assert.ok(r.jeu.boss, 'le boss est en piste');
+  assert.equal(r.jeu.badsList.length, 0, 'et aucune escadre n\'a été placée');
+  const p = r.journal.find((e) => e.n === 'panneau');
+  assert.equal(p.d.boss, true, 'le panneau l\'annonce comme un boss');
+});
+
+test('le boss traverse ses trois formes, trente points de vie chacune', () => {
+  const r = auBoss(5);
+  const jeu = r.jeu;
+  const formes = [];
+  for (let i = 0; i < 40000 && jeu.boss && !jeu.termine; i++) {
+    if (!formes.includes(jeu.boss.forme)) {
+      formes.push(jeu.boss.forme);
+      assert.equal(jeu.boss.hpMax, 30, `forme ${jeu.boss.forme} : trente points de vie`);
+    }
+    jeu.update(1);
+    // Un tir bien placé, régulièrement : on joue le combat, on ne triche pas.
+    if (i % 6 === 0 && jeu.boss) {
+      jeu.newHShot({ x: jeu.boss.x, y: jeu.boss.y, vitx: 0, vity: 0, flStandardHeroShot: true });
+    }
+  }
+  assert.deepEqual(formes, [E.FORME.COQUILLE, E.FORME.CASQUE, E.FORME.ORANGE],
+    'coquille, puis casque, puis orange');
+  assert.ok(!jeu.boss, 'le boss finit par tomber');
+  assert.equal(r.compte('bossVaincu'), 1, 'et la victoire est annoncée');
+  assert.equal(r.compte('bossExplose'), 1, 'avec son explosion');
+});
+
+test('la coquille lancée renvoie les tirs', () => {
+  const r = auBoss(6);
+  const b = r.jeu.boss;
+  assert.equal(b.forme, E.FORME.COQUILLE);
+
+  // Coquille lente : le tir porte.
+  b.speedCoef = 1;
+  const pv = b.hp;
+  r.jeu.newHShot({ x: b.x, y: b.y, vitx: 0, vity: 0 });
+  b.verifierTirsHero();
+  assert.equal(b.hp, pv - 1, 'au ralenti, elle encaisse');
+
+  // Coquille lancée : le tir est renvoyé.
+  b.speedCoef = 8;
+  const pv2 = b.hp;
+  const renvois = r.compte('bossRenvoi');
+  r.jeu.newHShot({ x: b.x, y: b.y, vitx: 0, vity: 0 });
+  b.verifierTirsHero();
+  assert.equal(b.hp, pv2, 'lancée, elle n\'encaisse rien');
+  assert.equal(r.compte('bossRenvoi'), renvois + 1, 'et le tir est renvoyé');
+});
+
+test('chaque coup encaissé accélère la coquille — donc la protège', () => {
+  const r = auBoss(7);
+  const b = r.jeu.boss;
+  b.speedCoef = 1;
+  const avant = b.speedCoef;
+  b.frapper(null);
+  assert.ok(b.speedCoef > avant + 3,
+    `un coup l'emballe (${avant} → ${b.speedCoef}) : il faut la reprendre entre deux`);
+});
+
+test('toucher le boss est fatal au vaisseau', () => {
+  const r = auBoss(8);
+  const jeu = r.jeu;
+  const h = jeu.hero;
+  h.newShield = undefined;
+  h.x = jeu.boss.x;
+  h.y = jeu.boss.y;
+  jeu.boss.verifierChocHero();
+  assert.ok(!h.vivant || h.hp <= 0, 'le contact ne pardonne pas');
+});
+
+test('la mort du vaisseau interrompt l\'attaque en cours', () => {
+  const r = auBoss(9);
+  const jeu = r.jeu;
+  jeu.boss.initStep(2);                 // ruée latérale
+  assert.equal(jeu.boss.step, 2);
+  jeu.onHeroKill();
+  assert.equal(jeu.boss.step, 1, 'le boss revient en veille');
+  assert.equal(jeu.boss.specialCoolDown, 100, 'et se donne un temps de récupération');
+});
+
+test('le boss vaincu fait reprendre le parcours', () => {
+  const jeu = new E.Game({ levels: [NIVEAU_BOSS, NIVEAU_VAGUE], graine: 4, vies: 99 });
+  for (let i = 0; i < 400 && jeu.step !== E.ETAPE.BOSS; i++) jeu.update(1);
+  assert.equal(jeu.level, 0);
+  jeu.boss.tuer();
+  for (let i = 0; i < 200 && jeu.level === 0; i++) jeu.update(1);
+  assert.equal(jeu.level, 1, 'on passe au niveau suivant');
 });
