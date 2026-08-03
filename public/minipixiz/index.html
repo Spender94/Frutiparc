@@ -116,8 +116,8 @@
   @media (pointer: fine) { #aide { display: block; } }
 
   /* ── L'inventaire ──
-     On y regarde sa fée en face, on lui donne à manger, on lui fait porter ce
-     qu'on a trouvé. Le geste est celui du jeu : prendre, puis reposer. */
+     C'est l'écran d'Inventory.mt, dessiné sur ses propres images : un canevas
+     de 240 × 240 comme le reste du jeu, agrandi du même facteur. */
   #sac-but {
     position: fixed; top: 8px; right: 8px; z-index: 4;
     border: 0; border-radius: 12px; padding: 8px 12px;
@@ -126,60 +126,22 @@
   }
   #inventaire {
     position: fixed; inset: 0; z-index: 8; display: none;
-    flex-direction: column; align-items: center; gap: 8px;
-    background: #150f28; color: #d9cbff; padding: 14px 12px 24px;
-    overflow-y: auto; box-sizing: border-box;
+    flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: #150f28;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    box-sizing: border-box;
   }
   #inventaire.on { display: flex; }
-  .inv-titre { font-size: 17px; font-weight: bold; color: #ffd76a; letter-spacing: 2px; }
-  .inv-fermer {
-    position: absolute; top: 10px; right: 12px;
-    border: 0; border-radius: 10px; width: 36px; height: 36px;
-    background: #2e2450; color: #d9cbff; font-size: 16px; cursor: pointer;
-  }
-  .inv-fee {
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-    justify-content: center; width: 100%; max-width: 340px;
-  }
-  .inv-portrait { border-radius: 8px; cursor: pointer; }
-  .inv-infos { flex: 1 1 150px; min-width: 150px; }
-  .inv-nom { font-size: 14px; font-weight: bold; color: #e9dcff; margin-bottom: 4px; }
-  /* Les jauges sont des canevas à leur taille exacte (un cœur tous les 14 px) :
-     sans align-items, la colonne flex les étirerait et les rendrait flous. */
-  .inv-barres {
-    display: flex; flex-direction: column; align-items: flex-start;
-    gap: 2px; margin-bottom: 6px;
-  }
-  .inv-barres canvas { display: block; max-width: 100%; }
-  .inv-b { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 2px 0; }
-  .inv-b span { flex: 0 0 42px; color: #9b8cc9; }
-  .inv-b i {
-    display: block; height: 7px; border-radius: 4px; min-width: 2px;
-    box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
-  }
-  .inv-etat { background: rgba(255,255,255,.05); border-radius: 6px; padding: 4px 6px; }
-  .inv-nav { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; width: 100%; }
-  .inv-onglet {
-    border: 0; border-radius: 10px; padding: 6px 10px;
-    background: #241c3a; color: #b9a9e0; font: 12px inherit; cursor: pointer;
-  }
-  .inv-onglet.on { background: #453177; color: #fff; }
-  .inv-label { font-size: 11px; color: #9b8cc9; letter-spacing: 1px; margin-top: 6px; }
-  .inv-grille {
-    display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
-    width: 100%; max-width: 340px;
-  }
-  .inv-case {
-    width: 52px; height: 52px; padding: 0;
-    border: 2px solid #3a2d5e; border-radius: 10px;
-    background: #241c3a; cursor: pointer;
+  #inv-aire {
+    flex: 1 1 auto; min-height: 0; width: 100%;
     display: flex; align-items: center; justify-content: center;
-    color: #6b5b96; font-size: 18px;
   }
-  .inv-case.main { border-color: #ffd76a; background: #3a2f10; }
-  .inv-case img { width: 40px; height: 40px; image-rendering: auto; }
-  .inv-rien { font-size: 12px; color: #7b6ba8; text-align: center; padding: 6px 10px; }
-  .inv-msg { font-size: 12px; color: #ffd76a; min-height: 18px; text-align: center; }
+  #inv-stage { display: block; border-radius: 4px; box-shadow: 0 8px 30px rgba(0,0,0,.6); }
+  #inv-fermer {
+    flex: 0 0 auto; margin-bottom: 12px;
+    border: 0; border-radius: 14px; padding: 12px 26px;
+    background: #453177; color: #e9dcff; font: bold 15px inherit; cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -197,8 +159,11 @@
 
 <button type="button" id="sac-but">🎒 sac</button>
 
-<!-- L'inventaire : la fée, ce qu'elle porte, et ce que le joueur garde. -->
-<div id="inventaire"></div>
+<!-- L'inventaire, sur les dessins du jeu (Inventory.mt). -->
+<div id="inventaire">
+  <div id="inv-aire"><canvas id="inv-stage" width="240" height="240"></canvas></div>
+  <button type="button" id="inv-fermer">retour au jeu</button>
+</div>
 
 <div id="chargement">
   <div>MINIPIXIZ</div>
@@ -391,7 +356,7 @@
       // gant se voit tout de suite dans la partie suivante. Chaque changement
       // part au serveur — on ne perd pas un repas parce qu'on a fermé l'onglet.
       var inventaire = new window.MinipixizInventaire.Inventaire({
-        racine: $('#inventaire'),
+        canvas: $('#inv-stage'),
         plateforme: plateforme,
         sprites: sprites,
         surChangement: function () {
@@ -400,7 +365,13 @@
           client.fee = feeCourante();
         },
       });
-      $('#sac-but').addEventListener('click', function () { inventaire.ouvrir(); });
+      $('#sac-but').addEventListener('click', function () {
+        $('#inventaire').classList.add('on');
+        inventaire.ouvrir();
+      });
+      $('#inv-fermer').addEventListener('click', function () {
+        $('#inventaire').classList.remove('on');
+      });
 
       ouvrirCarte();
       client.demarrer();

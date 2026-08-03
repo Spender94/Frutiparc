@@ -381,6 +381,29 @@ class Fee {
     };
   }
 
+  /**
+   * getMsgTaste — ce qu'elle aime et ce qu'elle déteste, dit avec ses mots.
+   * C'est le texte que le jeu affiche quand on la regarde, et c'est par lui
+   * qu'on apprend quoi lui donner.
+   */
+  gouts() {
+    const O = (typeof module !== 'undefined' && module.exports)
+      ? require('./items.js') : racine.MinipixizObjets;
+    const nom = (n) => (O && O.QUANTITE[n]) || 'ça';
+    const liste = (l) => l.map(nom).reduce((s, v, i) => {
+      if (i === 0) return v;
+      return s + (i === l.length - 1 ? ' et ' : ', ') + v;
+    }, '');
+    const aime = (this.fs.$taste && this.fs.$taste[0]) || [];
+    const deteste = (this.fs.$taste && this.fs.$taste[1]) || [];
+    let str = '';
+    if (aime.length) str += this.fs.$name + ' aime ' + liste(aime) + '. ';
+    if (deteste.length) {
+      str += (aime.length ? 'Elle ' : this.fs.$name + ' ') + 'déteste ' + liste(deteste) + '.';
+    }
+    return str.trim();
+  }
+
   // Un résumé lisible, pour l'interface.
   etat() {
     return {

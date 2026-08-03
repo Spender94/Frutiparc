@@ -41,11 +41,22 @@ const { execFileSync } = require('child_process');
 const { ouvrir } = require('./lib/swf-sprites.js');
 
 const RACINE = path.join(__dirname, '..');
-const SWF = path.join(RACINE, 'Games/miniTroll/swf/root.swf');
 const SORTIE = path.join(RACINE, 'public/minipixiz/sprites');
 
-const swf = ouvrir(SWF);
-const { noms, parSprite, aplatir } = swf;
+// Le jeu se joue à DEUX fichiers. root.swf porte le décor, l'interface et les
+// personnages ; gfx.swf porte les objets — itemCarac, itemFood, itemPotion, la
+// bille des sorts… — que le jeu charge à part. Chercher les objets dans root.swf
+// ne donnait rien, et c'est pour ça qu'on s'était rabattu sur les GIF de
+// l'album : les vrais dessins étaient simplement dans l'autre fichier.
+const SOURCES = {
+  root: path.join(RACINE, 'Games/miniTroll/swf/root.swf'),
+  gfx: path.join(RACINE, 'Games/miniTroll/swf/gfx.swf'),
+};
+const swfs = {};
+for (const [cle, chemin] of Object.entries(SOURCES)) swfs[cle] = ouvrir(chemin);
+// Les préfixes de fichier, pour que deux formes portant le même identifiant
+// dans les deux SWF ne s'écrasent pas.
+const PREFIXE = { root: '', gfx: 'g' };
 
 // Ce qu'on va chercher. `synchro` demande que les clips imbriqués suivent
 // l'image du parent — voir l'en-tête.
@@ -115,12 +126,46 @@ const CIBLES = [
   { cle: 'mana', symbole: 'mcMana', etiquette: 'Goutte de mana', synchro: true },
   { cle: 'suivante', symbole: 'mcNext', etiquette: 'Pièce suivante' },
   { cle: 'nuit', symbole: 'mcNightMask', etiquette: 'Masque de nuit' },
+
+  // ── L'inventaire (Inventory.mt) ──
+  // Un fond, un cadre par-dessus, des cases de 32 px, le panneau de la fée avec
+  // son portrait et ses quatre volets — caractéristiques, sortilèges, sac,
+  // santé —, le bandeau de message en bas et la poubelle.
+  { cle: 'invFond', symbole: 'invBg', etiquette: 'Fond de l\'inventaire' },
+  { cle: 'invDevant', symbole: 'invFront', etiquette: 'Cadre de l\'inventaire' },
+  { cle: 'invCase', symbole: 'invSlot', etiquette: 'Case' },
+  { cle: 'invPetiteCase', symbole: 'invSmallSlot', etiquette: 'Petite case' },
+  { cle: 'invPanneau', symbole: 'invFace', etiquette: 'Panneau de la fée' },
+  { cle: 'invBarre', symbole: 'invFaerieBar', etiquette: 'Barre de caractéristique' },
+  { cle: 'invPoint', symbole: 'invFaerieBarPoint', etiquette: 'Point de caractéristique' },
+  { cle: 'invMessage', symbole: 'msgPanel', etiquette: 'Bandeau de message' },
+  { cle: 'invPoubelle', symbole: 'mcTrashcan', etiquette: 'Poubelle' },
+  { cle: 'invSante', symbole: 'mcManPower', etiquette: 'Cadrans de faim et de moral' },
+
+  // ── Les objets (gfx.swf) ──
+  // Item.getPic choisit l'image par famille : itemCarac.gotoAndStop(type+1),
+  // itemPotion(id+1), itemFood(id+1) avec sa part dans le sous-clip `sub`…
+  { cle: 'itCarac', symbole: 'itemCarac', etiquette: 'Objet de caractéristique', swf: 'gfx', synchro: true },
+  { cle: 'itPouvoir', symbole: 'itemSpecialPower', etiquette: 'Pouvoir spécial', swf: 'gfx', synchro: true },
+  { cle: 'itGlobe', symbole: 'itemCaracAll', etiquette: 'Globe', swf: 'gfx', synchro: true },
+  { cle: 'itColoration', symbole: 'itemColor', etiquette: 'Coloration', swf: 'gfx', synchro: true },
+  { cle: 'itPotion', symbole: 'itemPotion', etiquette: 'Potion', swf: 'gfx', synchro: true },
+  { cle: 'itParchemin', symbole: 'itemScroll', etiquette: 'Parchemin', swf: 'gfx', synchro: true },
+  { cle: 'itGrimoire', symbole: 'itemSpellBook', etiquette: 'Grimoire', swf: 'gfx', synchro: true },
+  // L'aliment se dessine à deux index : l'image du clip dit LEQUEL, celle du
+  // sous-clip `sub` dit quelle PART il en reste. D'où trois extractions.
+  { cle: 'itAliment1', symbole: 'itemFood', etiquette: 'Aliment (grande part)', swf: 'gfx', sousImage: 1 },
+  { cle: 'itAliment2', symbole: 'itemFood', etiquette: 'Aliment (moyenne part)', swf: 'gfx', sousImage: 2 },
+  { cle: 'itAliment3', symbole: 'itemFood', etiquette: 'Aliment (petite part)', swf: 'gfx', sousImage: 3 },
+  { cle: 'itBocal', symbole: 'itemFlask', etiquette: 'Bocal', swf: 'gfx' },
+  { cle: 'sortBille', symbole: 'spellBall', etiquette: 'Bille de sort', swf: 'gfx' },
+  { cle: 'sortSymbole', symbole: 'spellSymbol', etiquette: 'Symboles des sorts', swf: 'gfx' },
 ];
 
 // Quelle image chaque forme utilise-t-elle ? extract-swf-shapes.js le dit.
-function tableFormes() {
+function tableFormes(source) {
   const brut = execFileSync(process.execPath,
-    [path.join(__dirname, 'extract-swf-shapes.js'), SWF],
+    [path.join(__dirname, 'extract-swf-shapes.js'), SOURCES[source]],
     { cwd: RACINE, encoding: 'utf8', maxBuffer: 128e6 });
   const t = new Map();
   for (const ligne of brut.split('\n')) {
@@ -136,10 +181,12 @@ function tableFormes() {
 
 function principal() {
   const manifeste = {};
-  const formes = new Set();
+  const formes = new Map();          // clé « source#forme » → { source, shape }
   const absents = [];
 
   for (const item of CIBLES) {
+    const source = item.swf || 'root';
+    const { noms, parSprite, aplatir } = swfs[source];
     const id = (item.id !== undefined) ? item.id : noms.get(item.symbole);
     if (id === undefined) { absents.push(item.symbole); continue; }
     const frames = parSprite.get(id);
@@ -150,7 +197,20 @@ function principal() {
       if (voulues && !voulues.has(f)) continue;
       const pieces = [];
       for (const p of frames.get(f)) {
-        const morceaux = aplatir(p.ch, p.M, 0, item.synchro ? f : undefined, p.nom || '');
+        // `sousImage` envoie les clips ENFANTS sur une image fixe pendant que le
+        // parent parcourt les siennes. C'est ce que fait it.Food.getPic :
+        //
+        //     pic.gotoAndStop( floor((type-300)/3) + 1 )   // quel aliment
+        //     pic.sub.gotoAndStop( ((type-300)%3) + 1 )    // quelle part
+        //
+        // deux index indépendants ; `synchro` seul enverrait les deux au même
+        // et ne montrerait jamais que la grande part.
+        const fEnfant = (item.sousImage !== undefined) ? item.sousImage
+          : (item.synchro ? f : undefined);
+        // La transformation de couleur du placement de PREMIER niveau se
+        // transmet comme le masque : aplatir() ne la voit pas, puisqu'on
+        // l'appelle placement par placement.
+        const morceaux = aplatir(p.ch, p.M, 0, fEnfant, p.nom || '', p.cx || null);
         // Le masque posé au PREMIER niveau du symbole visé : aplatir() ne le
         // voit pas, puisqu'on l'appelle placement par placement. Sans ce
         // rattrapage, le rectangle rouge qui découpe la colonne des pièces à
@@ -159,7 +219,10 @@ function principal() {
         pieces.push(...morceaux);
       }
       if (!pieces.length) continue;
-      for (const pc of pieces) formes.add(pc.shape);
+      for (const pc of pieces) {
+        pc.source = source;
+        formes.set(source + '#' + pc.shape, { source, shape: pc.shape });
+      }
       etats.push({ frame: f, pieces });
     }
     if (!etats.length) { absents.push(item.symbole + ' (aucune forme)'); continue; }
@@ -179,31 +242,45 @@ function principal() {
   }
 
   fs.mkdirSync(SORTIE, { recursive: true });
-  const infos = tableFormes();
 
-  const imagesVoulues = new Set(), tracesVoulus = new Set();
-  for (const f of formes) {
-    const info = infos.get(f);
-    if (info && info.images.length === 1) imagesVoulues.add(info.images[0]);
-    else tracesVoulus.add(f);
-  }
-  console.log(`${imagesVoulues.size} images, ${tracesVoulus.size} tracés`);
+  // Chaque SWF a sa propre numérotation : on les traite séparément, et on
+  // préfixe les fichiers du second pour que deux formes numéro 42 ne se
+  // marchent pas dessus.
+  const infos = new Map();           // « source#forme » → { images, w, h }
+  const ecrites = new Map();         // « source#img|shp N » → fichier écrit
+  for (const source of Object.keys(SOURCES)) {
+    const voulues = [...formes.values()].filter((f) => f.source === source);
+    if (!voulues.length) continue;
+    const t = tableFormes(source);
+    for (const [id, v] of t) infos.set(source + '#' + id, v);
 
-  const ecrites = new Map();
-  if (imagesVoulues.size) {
-    const brut = execFileSync(process.execPath,
-      [path.join(__dirname, 'extract-swf-bitmaps.js'), SWF, SORTIE, ...[...imagesVoulues].map(String)],
-      { cwd: RACINE, encoding: 'utf8', maxBuffer: 128e6 });
-    for (const m of brut.matchAll(/^#(\d+) → \S*?([^/\s]+\.(?:png|svg|jpg|gif))/gm)) {
-      ecrites.set('img' + m[1], m[2]);
+    const images = new Set(), traces = new Set();
+    for (const f of voulues) {
+      const info = t.get(f.shape);
+      if (info && info.images.length === 1) images.add(info.images[0]);
+      else traces.add(f.shape);
     }
-  }
-  if (tracesVoulus.size) {
-    const brut = execFileSync(process.execPath,
-      [path.join(__dirname, 'extract-swf-shapes.js'), SWF, SORTIE, ...[...tracesVoulus].map(String)],
-      { cwd: RACINE, encoding: 'utf8', maxBuffer: 128e6 });
-    for (const m of brut.matchAll(/^#(\d+) → \S*?([^/\s]+\.svg)/gm)) {
-      ecrites.set('shp' + m[1], m[2]);
+    console.log(`${source} : ${images.size} images, ${traces.size} tracés`);
+
+    const sortie = PREFIXE[source] ? path.join(SORTIE, PREFIXE[source]) : SORTIE;
+    if (PREFIXE[source]) fs.mkdirSync(sortie, { recursive: true });
+    const relatif = (nom) => (PREFIXE[source] ? PREFIXE[source] + '/' + nom : nom);
+
+    if (images.size) {
+      const brut = execFileSync(process.execPath,
+        [path.join(__dirname, 'extract-swf-bitmaps.js'), SOURCES[source], sortie, ...[...images].map(String)],
+        { cwd: RACINE, encoding: 'utf8', maxBuffer: 128e6 });
+      for (const m of brut.matchAll(/^#(\d+) → \S*?([^/\s]+\.(?:png|svg|jpg|gif))/gm)) {
+        ecrites.set(source + '#img' + m[1], relatif(m[2]));
+      }
+    }
+    if (traces.size) {
+      const brut = execFileSync(process.execPath,
+        [path.join(__dirname, 'extract-swf-shapes.js'), SOURCES[source], sortie, ...[...traces].map(String)],
+        { cwd: RACINE, encoding: 'utf8', maxBuffer: 128e6 });
+      for (const m of brut.matchAll(/^#(\d+) → \S*?([^/\s]+\.svg)/gm)) {
+        ecrites.set(source + '#shp' + m[1], relatif(m[2]));
+      }
     }
   }
 
@@ -215,6 +292,7 @@ function principal() {
   // déjà l'information — autant la lire là plutôt que d'inventer un format.
   function cadre(fichier) {
     const t = fs.readFileSync(path.join(SORTIE, fichier), 'utf8');
+
     const m = /viewBox="([-\d.eE]+) ([-\d.eE]+) ([-\d.eE]+) ([-\d.eE]+)"/.exec(t);
     if (!m) return null;
     return { x: Number(m[1]), y: Number(m[2]), w: Number(m[3]), h: Number(m[4]) };
@@ -228,10 +306,12 @@ function principal() {
       const pieces = [];
       const masques = [];
       for (const pc of e.pieces) {
-        const info = infos.get(pc.shape);
-        const k = (info && info.images.length === 1) ? 'img' + info.images[0] : 'shp' + pc.shape;
+        const src = pc.source || 'root';
+        const info = infos.get(src + '#' + pc.shape);
+        const k = src + '#' + ((info && info.images.length === 1)
+          ? 'img' + info.images[0] : 'shp' + pc.shape);
         const fichier = ecrites.get(k);
-        if (!fichier) { perdues.push(`${cle} #${pc.shape}`); continue; }
+        if (!fichier) { perdues.push(`${cle} ${src}#${pc.shape}`); continue; }
         const c = cadre(fichier) || { x: -50, y: -50, w: 100, h: 100 };
         // La matrice absolue, translation convertie en pixels. Le client s'en
         // sert telle quelle : c'est le seul moyen exact de poser une pièce
@@ -270,6 +350,14 @@ function principal() {
         // Le chemin des clips nommés qui portent la forme : c'est par lui que
         // le client sait quelle couleur de la fée appliquer à quel morceau.
         if (pc.chemin) p.nom = pc.chemin;
+        // La transformation de couleur POSÉE dans le fichier (sortie = source
+        // × mult/256 + add). C'est elle qui teinte en bleu ardoise le symbole
+        // blanc d'un sort pour qu'il se lise sur sa bille blanche : sans elle,
+        // les vingt-cinq symboles étaient invisibles.
+        if (pc.cx) {
+          p.cx = [pc.cx.mr, pc.cx.mv, pc.cx.mb, pc.cx.ma,
+            pc.cx.ar, pc.cx.av, pc.cx.ab, pc.cx.aa].map(arr);
+        }
         pieces.push(p);
       }
       // Un masque ne découpe que ses FRÈRES — ce qui vit sous le même clip que

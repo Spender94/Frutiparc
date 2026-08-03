@@ -134,8 +134,19 @@ test('les fichiers annoncés existent tous, et ne sont pas vides', () => {
 });
 
 test('l\'extraction est reproductible depuis le SWF', () => {
+  // Les dessins du second fichier (gfx.swf) vivent dans un sous-dossier : on
+  // parcourt donc l'arborescence, pas seulement le premier niveau.
+  const tout = (dir, prefixe) => {
+    let l = [];
+    for (const f of fs.readdirSync(dir)) {
+      const p = path.join(dir, f);
+      if (fs.statSync(p).isDirectory()) l = l.concat(tout(p, prefixe + f + '/'));
+      else l.push(prefixe + f);
+    }
+    return l;
+  };
   const avant = new Map();
-  for (const f of fs.readdirSync(DOSSIER)) avant.set(f, fs.readFileSync(path.join(DOSSIER, f)));
+  for (const f of tout(DOSSIER, '')) avant.set(f, fs.readFileSync(path.join(DOSSIER, f)));
   execFileSync(process.execPath, [path.join(ROOT, 'scripts/extract-minipixiz-sprites.js')],
     { cwd: ROOT, stdio: 'ignore' });
   for (const [f, octets] of avant) {

@@ -89,6 +89,15 @@ const ALIMENTS = [
   'Cerise', 'Sushi', 'Tarte aux fruits', 'Yakitori',
 ];
 
+// it.Food.NAME.qt — la forme « quantifiée », celle dont la fée se sert pour
+// dire ce qu'elle aime : « Lila aime le pain et les poires. » Les neuf derniers
+// aliments n'en ont pas dans le fichier d'origine (« -- »), et c'est sans
+// conséquence : les goûts d'une fée ne portent que sur les dix premiers.
+const QUANTITE = [
+  'le pain', 'le raisin', 'la salade', 'les biscottes', 'les poires',
+  'les glaces', 'les œufs', 'le gouda', 'les bananes', 'la brioche',
+];
+
 // Chaque aliment existe en TROIS tailles : la grosse part se mange en trois
 // fois. it.Food.use fait `type++` et jette l'objet quand `(type-300)%3` retombe
 // à zéro — c'est ce qui fait qu'un pain trouvé nourrit trois soirs.
@@ -346,7 +355,7 @@ function donner(carte, source, fee) {
 const API = {
   info, effetPorte, effetGroupe, utiliser, deplacer, donner,
   contenu, placesJoueur, placesFee,
-  PLACES_SAC, ALIMENTS, TAILLES_ALIMENT, POUVOIRS, GLOBES, POTIONS, SACS,
+  PLACES_SAC, ALIMENTS, QUANTITE, TAILLES_ALIMENT, POUVOIRS, GLOBES, POTIONS, SACS,
   COULEURS_CHEVEUX, NOM_OBJET_CARAC, NOM_CARAC, CARAC,
   PREMIER_ALIMENT, IT_BOCAL, IT_CLE, IT_SAC,
 };

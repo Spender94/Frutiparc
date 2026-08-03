@@ -264,19 +264,12 @@ test('un objet qui ne se mange pas ne se donne pas', () => {
 
 // ── L'accrochage à la page ────────────────────────────────────────────────
 
-test('les icônes sont celles de l\'album, déjà dans le dépôt', () => {
+test('les objets se dessinent avec l\'art du jeu, pas avec les GIF de l\'album', () => {
+  // Les GIF de bmp/titems servent l'album du site ; l'inventaire du jeu, lui,
+  // a ses propres clips vectoriels dans gfx.swf. C'est ceux-là qu'on veut.
   const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
-  const m = /BASE_ICONES = '([^']+)'/.exec(src);
-  assert.ok(m, 'le chemin des icônes est déclaré');
-  // Le serveur sert Games/miniTroll sous /swf/games/miniTroll.
-  const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  assert.match(srv, /app\.use\('\/swf\/games\/miniTroll', express\.static/);
-  // Et les fichiers existent vraiment.
-  const dossier = path.join(ROOT, 'Games/miniTroll/bmp/titems/GIF');
-  assert.ok(fs.existsSync(path.join(dossier, 'item/item_1.gif')), 'item_1.gif');
-  assert.ok(fs.existsSync(path.join(dossier, 'item/item_3.gif')), 'le brassard (type 2)');
-  assert.ok(fs.existsSync(path.join(dossier, 'food/food_1.gif')), 'la grande part de pain');
-  assert.ok(fs.existsSync(path.join(dossier, 'food/food_57.gif')), 'et la dernière');
+  assert.doesNotMatch(src, /titems/, 'plus de chemin vers les GIF');
+  assert.match(src, /itCarac/, 'mais les dessins de gfx.swf');
 });
 
 test('la page charge l\'inventaire et enregistre chaque changement', () => {
@@ -290,4 +283,103 @@ test('la page charge l\'inventaire et enregistre chaque changement', () => {
     'et la fée du plateau reprend ce qu\'elle porte');
   assert.match(html, /new window\.MinipixizFee\.Fee\(fs, null, plateforme\.carte\)/,
     'la fiche est passée pour que les globes agissent');
+});
+
+// ── L'inventaire, sur les dessins du jeu ──────────────────────────────────
+//
+// Ce n'est pas un panneau de notre invention : c'est l'écran d'Inventory.mt,
+// avec ses constantes, ses quatre volets et son geste — prendre, puis reposer.
+
+test('la grille du sac change de forme avec le sac', () => {
+  // INV_SHAPE = [0,2,3,4,3] : deux colonnes avec le premier sac, trois avec le
+  // deuxième, quatre avec le troisième. L'inventaire ne fait pas que grandir,
+  // il se réorganise.
+  const I = require(path.join(ROOT, 'public/minipixiz/inventaire.js'));
+  assert.deepEqual(I.INV_SHAPE, [0, 2, 3, 4, 3]);
+  assert.equal(I.SLOT_SIZE, 32);
+  assert.equal(I.INV_WIDTH, 154);
+  assert.equal(I.INV_HEIGHT, 140);
+  assert.deepEqual(I.SECTION, ['voir les caractéristiques', 'voir les sortilèges',
+    'voir l\'équipement', 'voir la santé']);
+  assert.deepEqual(I.PANNEAU, { x: 200, y: 41 }, 'initFaeriePanel : _x = 200, _y = 41');
+});
+
+test('les constantes de l\'inventaire sont celles du fichier .mt', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'Games/miniTroll/src/Inventory.mt'), 'latin1');
+  assert.match(src, /MARGIN_UP\s*=\s*20/);
+  assert.match(src, /SLOT_SIZE\s*=\s*32/);
+  assert.match(src, /INV_WIDTH\s*=\s*154/);
+  assert.match(src, /INV_HEIGHT\s*=\s*140/);
+  assert.match(src, /INV_SHAPE\s*=\s*\[0,2,3,4,3\]/);
+  assert.match(src, /facePanel\._x = 200;/);
+  assert.match(src, /facePanel\._y = 41;/);
+});
+
+test('chaque objet sait quel dessin et quelle image le représentent', () => {
+  const I = require(path.join(ROOT, 'public/minipixiz/inventaire.js'));
+  const sprites = require(path.join(ROOT, 'public/minipixiz/sprites/sprites.json'));
+  // Item.getPic : l'image se déduit du type, famille par famille.
+  assert.deepEqual(I.dessinObjet(2), { cle: 'itCarac', frame: 3 });
+  assert.deepEqual(I.dessinObjet(71), { cle: 'itPotion', frame: 2 });
+  assert.deepEqual(I.dessinObjet(113), { cle: 'itParchemin', frame: 14 });
+  // L'aliment se lit à DEUX index : lequel, et quelle part il en reste.
+  assert.deepEqual(I.dessinObjet(300), { cle: 'itAliment1', frame: 1 });
+  assert.deepEqual(I.dessinObjet(301), { cle: 'itAliment2', frame: 1 });
+  assert.deepEqual(I.dessinObjet(305), { cle: 'itAliment3', frame: 2 });
+  // Et les dessins existent vraiment.
+  for (const t of [0, 2, 30, 45, 52, 63, 70, 113, 213, 300, 304, 350]) {
+    const d = I.dessinObjet(t);
+    assert.ok(d, 'objet ' + t + ' : un dessin');
+    const sp = sprites[d.cle];
+    assert.ok(sp, d.cle + ' est extrait');
+    assert.ok(sp.etats.some((e) => e.frame === d.frame),
+      `${d.cle} a bien l'image ${d.frame} (objet ${t})`);
+  }
+});
+
+test('les dessins des objets viennent de gfx.swf, pas de root.swf', () => {
+  // C'est le fichier que le jeu charge à part : chercher itemCarac dans
+  // root.swf ne donne rien, et c'est ce qui nous avait fait prendre les GIF de
+  // l'album pour seule ressource.
+  const src = fs.readFileSync(path.join(ROOT, 'scripts/extract-minipixiz-sprites.js'), 'utf8');
+  assert.match(src, /gfx: path\.join\(RACINE, 'Games\/miniTroll\/swf\/gfx\.swf'\)/);
+  assert.ok(fs.existsSync(path.join(ROOT, 'Games/miniTroll/swf/gfx.swf')));
+  const sprites = require(path.join(ROOT, 'public/minipixiz/sprites/sprites.json'));
+  for (const cle of ['itCarac', 'itPotion', 'itAliment1', 'sortBille', 'sortSymbole']) {
+    assert.ok(sprites[cle], cle + ' est extrait');
+    assert.ok(sprites[cle].etats[0].pieces.every((p) => /^g\//.test(p.fichier)),
+      cle + ' vient bien du second fichier');
+  }
+});
+
+test('les vingt-cinq symboles de sort sont teintés pour se voir', () => {
+  // Le symbole est un tracé BLANC posé sur une bille BLANCHE : sans la
+  // transformation de couleur que le fichier porte (mult 0, add 142/179/215),
+  // les vingt-cinq sortilèges étaient invisibles.
+  const sprites = require(path.join(ROOT, 'public/minipixiz/sprites/sprites.json'));
+  const bille = sprites.sortBille.etats.find((e) => e.frame === 1);
+  const symbole = bille.pieces.find((p) => p.nom === 'symbol');
+  assert.ok(symbole, 'la bille porte un emplacement de symbole');
+  assert.ok(Array.isArray(symbole.cx), 'et une transformation de couleur');
+  assert.deepEqual(symbole.cx.slice(0, 3), [0, 0, 0], 'la source est effacée');
+  assert.deepEqual(symbole.cx.slice(4, 7), [142, 179, 215], 'et remplacée par un bleu ardoise');
+  assert.ok(sprites.sortSymbole.etats.length >= 25, 'les vingt-cinq symboles sont là');
+});
+
+test('la fée dit ce qu\'elle aime, avec les mots du jeu', () => {
+  // getMsgTaste, et it.Food.getQt pour les tournures (« le pain », « les poires »).
+  const fee = new F.Fee(neuve(31, { $name: 'Lila', $taste: [[0, 4], [1]] }), null, null);
+  assert.equal(fee.gouts(), 'Lila aime le pain et les poires. Elle déteste le raisin.');
+  const muette = new F.Fee(neuve(32, { $name: 'Zoé', $taste: [[], []] }), null, null);
+  assert.equal(muette.gouts(), '', 'une fée sans goût n\'a rien à dire');
+  const seulementContre = new F.Fee(neuve(33, { $name: 'Ana', $taste: [[], [2]] }), null, null);
+  assert.equal(seulementContre.gouts(), 'Ana déteste la salade.');
+});
+
+test('la page ouvre l\'inventaire sur son propre canevas', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(html, /<canvas id="inv-stage" width="240" height="240">/,
+    'la scène de l\'inventaire fait 240 × 240 comme le jeu');
+  assert.match(html, /canvas: \$\('#inv-stage'\)/);
+  assert.match(html, /surChangement: function \(\) \{\s*plateforme\.ecrire/);
 });

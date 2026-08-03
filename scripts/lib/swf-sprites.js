@@ -117,13 +117,33 @@ function ouvrir(chemin) {
   }
   function lireMatrice(o) { return lireMatriceBits(new Bits(o)); }
 
-  // CXFORMWITHALPHA — on n'en garde rien, mais il faut le TRAVERSER : c'est lui
-  // qui sépare la matrice du nom d'instance et de la profondeur de masque.
-  function sauterTransfoCouleur(m) {
+  // CXFORMWITHALPHA — la transformation de couleur POSÉE dans le fichier.
+  //
+  // Flash l'applique à chaque canal : sortie = source × mult / 256 + add. On ne
+  // peut pas se contenter de la traverser : c'est elle, par exemple, qui assombrit
+  // le symbole blanc d'un sort pour qu'il se lise sur sa bille blanche. L'ignorer
+  // rendait ces symboles invisibles.
+  const CX_NEUTRE = { mr: 256, mv: 256, mb: 256, ma: 256, ar: 0, av: 0, ab: 0, aa: 0 };
+  function lireTransfoCouleur(m) {
     const add = m.u(1), mult = m.u(1), n = m.u(4);
-    if (mult) { m.s(n); m.s(n); m.s(n); m.s(n); }
-    if (add) { m.s(n); m.s(n); m.s(n); m.s(n); }
+    const c = Object.assign({}, CX_NEUTRE);
+    if (mult) { c.mr = m.s(n); c.mv = m.s(n); c.mb = m.s(n); c.ma = m.s(n); }
+    if (add) { c.ar = m.s(n); c.av = m.s(n); c.ab = m.s(n); c.aa = m.s(n); }
     m.aligner();
+    return c;
+  }
+  const cxNeutre = (c) => !c || (c.mr === 256 && c.mv === 256 && c.mb === 256
+    && c.ma === 256 && !c.ar && !c.av && !c.ab && !c.aa);
+  // Composition parent ∘ enfant, dans l'ordre où Flash les empile.
+  function composerCouleur(P, E) {
+    if (!P) return E;
+    if (!E) return P;
+    return {
+      mr: P.mr * E.mr / 256, mv: P.mv * E.mv / 256,
+      mb: P.mb * E.mb / 256, ma: P.ma * E.ma / 256,
+      ar: P.mr * E.ar / 256 + P.ar, av: P.mv * E.av / 256 + P.av,
+      ab: P.mb * E.ab / 256 + P.ab, aa: P.ma * E.aa / 256 + P.aa,
+    };
   }
 
   function lireChaine(o) {
@@ -149,7 +169,7 @@ function ouvrir(chemin) {
       if (code === 1) { photographier(id, frame); derniere.set(id, frame); return; }
       if (code === 5) { l.delete(b.readUInt16LE(corps + 2)); return; }
       if (code === 28) { l.delete(b.readUInt16LE(corps)); return; }
-      let ch = -1, M = IDENTITE, prof = -1, nom = null, masque = 0;
+      let ch = -1, M = IDENTITE, prof = -1, nom = null, masque = 0, cx = null;
       if (code === 4) {
         ch = b.readUInt16LE(corps);
         prof = b.readUInt16LE(corps + 2);
@@ -175,7 +195,7 @@ function ouvrir(chemin) {
         if (aCar) { ch = b.readUInt16LE(o); o += 2; }
         const bits = new Bits(o);
         if (flags & 4) M = lireMatriceBits(bits);
-        if (flags & 8) sauterTransfoCouleur(bits);
+        if (flags & 8) cx = lireTransfoCouleur(bits);
         o = bits.aligner();
         if (flags & 16) o += 2;                        // ratio (morph)
         if (flags & 32) { const r = lireChaine(o); nom = r.texte; o = r.fin; }
@@ -190,10 +210,11 @@ function ouvrir(chemin) {
           if (!(flags & 4)) M = avant.M;
           if (nom === null) nom = avant.nom;
           if (!masque) masque = avant.masque;
+          if (!(flags & 8)) cx = avant.cx;
         }
       }
       if (ch < 0 || prof < 0) return;
-      l.set(prof, { ch, M, nom: nom || null, masque: masque || 0 });
+      l.set(prof, { ch, M, nom: nom || null, masque: masque || 0, cx: cx || null });
     });
     // La dernière image d'un sprite n'est pas toujours suivie d'un ShowFrame.
     for (const [id, l] of listes) {
@@ -224,11 +245,11 @@ function ouvrir(chemin) {
    *           masque comme n'importe quelle forme ; la dessiner telle quelle
    *           collait un rectangle rouge en travers du portrait.
    */
-  function aplatir(ch, M, profondeur, frame, chemin) {
+  function aplatir(ch, M, profondeur, frame, chemin, cx) {
     profondeur = profondeur || 0;
     chemin = chemin || '';
     if (profondeur > 6) return [];
-    if (estForme(ch)) return [{ shape: ch, M, chemin }];
+    if (estForme(ch)) return [{ shape: ch, M, chemin, cx: cxNeutre(cx) ? null : cx }];
     if (!estSprite(ch)) return [];
     const frames = parSprite.get(ch);
     if (!frames) return [];
@@ -238,14 +259,16 @@ function ouvrir(chemin) {
     const out = [];
     for (const p of (frames.get(cle) || [])) {
       const sous = p.nom ? (chemin ? chemin + '.' + p.nom : p.nom) : chemin;
-      const morceaux = aplatir(p.ch, composer(M, p.M), profondeur + 1, frame, sous);
+      const morceaux = aplatir(p.ch, composer(M, p.M), profondeur + 1, frame, sous,
+        composerCouleur(cx, p.cx));
       if (p.masque) for (const m of morceaux) m.masque = true;
       out.push(...morceaux);
     }
     return out;
   }
 
-  return { b, noms, parSprite, estForme, estSprite, aplatir, composer, IDENTITE, parcourir };
+  return { b, noms, parSprite, estForme, estSprite, aplatir, composer, composerCouleur,
+    cxNeutre, IDENTITE, parcourir };
 }
 
 module.exports = { ouvrir, lireSwf, composer, IDENTITE };

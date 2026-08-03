@@ -155,12 +155,32 @@ const ECHELLE_PIXEL = new Set(['imp', 'coeur', 'mana', 'fee']);
 //
 // Sans ça, toutes les fées se ressemblent — or c'est leur apparence unique qui
 // fait qu'on s'y attache.
-function partiesDeFee(couleurs) {
+// `prefixe` sert quand le portrait n'est pas seul mais imbriqué dans un
+// panneau : dans invFace, les mêmes morceaux s'appellent « pic.f.k0 ».
+function partiesDeFee(couleurs, prefixe) {
+  const p = prefixe || '';
   const t = {};
-  for (const n of ['f.k0', 'f.k1', 'f.k2']) t[n] = couleurs[0];
-  for (const n of ['f.o0.p', 'f.o1.p', 'f.cloth']) t[n] = couleurs[1];
-  for (const n of ['f.w0', 'f.w1']) t[n] = couleurs[2];
+  for (const n of ['f.k0', 'f.k1', 'f.k2']) t[p + n] = couleurs[0];
+  for (const n of ['f.o0.p', 'f.o1.p', 'f.cloth']) t[p + n] = couleurs[1];
+  for (const n of ['f.w0', 'f.w1']) t[p + n] = couleurs[2];
   return t;
+}
+
+// CXFORMWITHALPHA : sortie = source × mult / 256 + add, par canal. C'est la
+// transformation que Flash a POSÉE dans le fichier, à ne pas confondre avec
+// celle que le jeu applique à l'exécution (teinter).
+function transformer(g, x, y, l, h, cx) {
+  if (l <= 0 || h <= 0) return;
+  const d = g.getImageData(x, y, l, h);
+  const px = d.data;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] === 0) continue;
+    px[i] = Math.max(0, Math.min(255, px[i] * cx[0] / 256 + cx[4]));
+    px[i + 1] = Math.max(0, Math.min(255, px[i + 1] * cx[1] / 256 + cx[5]));
+    px[i + 2] = Math.max(0, Math.min(255, px[i + 2] * cx[2] / 256 + cx[6]));
+    px[i + 3] = Math.max(0, Math.min(255, px[i + 3] * cx[3] / 256 + cx[7]));
+  }
+  g.putImageData(d, x, y);
 }
 
 // Applique la teinte de Flash à une zone de canevas.
@@ -190,11 +210,12 @@ function teinter(g, x, y, l, h, couleur) {
  *
  * Renvoie { c, dx, dy } : le canevas, et où le poser depuis le coin de la case.
  */
-function rendre(sprite, frame, taille, couleur, parties, tranche) {
+function rendre(sprite, frame, taille, couleur, parties, tranche, rotations) {
   const cle = sprite.nom + '/' + frame + '/' + taille + '/'
     + (couleur === undefined ? 'gris' : couleur)
     + (parties ? '/' + JSON.stringify(parties) : '')
-    + (tranche ? '/' + tranche : '');
+    + (tranche ? '/' + tranche : '')
+    + (rotations ? '/' + JSON.stringify(rotations) : '');
   const dejaLa = teintes.get(cle);
   if (dejaLa) return dejaLa;
 
@@ -259,6 +280,17 @@ function rendre(sprite, frame, taille, couleur, parties, tranche) {
       if (m && vb) {
         dest.setTransform(m[0] * k, m[1] * k, m[2] * k, m[3] * k,
           (m[4] + zero) * k - dx, (m[5] + zero) * k - dy);
+        // Une ROTATION vive, autour du point d'accroche de la pièce. Le jeu s'en
+        // sert pour les deux aiguilles des cadrans de faim et de moral :
+        //     mc.h0.h._rotation = 180 + ($hunger/20)*180
+        // Elles ne sont pas dessinées penchées, elles TOURNENT.
+        const a = rotations && p.nom ? rotations[p.nom] : undefined;
+        if (a !== undefined) {
+          const r = a * Math.PI / 180;
+          dest.translate(-m[4], -m[5]);
+          dest.rotate(r);
+          dest.translate(m[4], m[5]);
+        }
         dest.drawImage(img, vb[0], vb[1], vb[2], vb[3]);
       } else {
         dest.drawImage(img, (p.x + zero) * k - dx, (p.y + zero) * k - dy, p.w * k, p.h * k);
@@ -270,7 +302,7 @@ function rendre(sprite, frame, taille, couleur, parties, tranche) {
       const img = images.get(p.fichier);
       if (!img) continue;
       const t = (parties && p.nom !== undefined) ? parties[p.nom] : undefined;
-      if (t === undefined) { poser(g, p, img); continue; }
+      if (t === undefined && !p.cx) { poser(g, p, img); continue; }
       // Une pièce teintée se dessine SEULE sur un calque, se teinte là — où
       // elle est la seule à porter des pixels opaques — puis se colle. Teinter
       // son rectangle sur le dessin commun repeindrait ce qu'il y a dessous :
@@ -280,7 +312,10 @@ function rendre(sprite, frame, taille, couleur, parties, tranche) {
       calque.width = l; calque.height = h;
       const gc = calque.getContext('2d');
       poser(gc, p, img);
-      teinter(gc, 0, 0, l, h, t);
+      // La transformation de couleur du fichier d'abord — c'est celle que Flash
+      // avait déjà appliquée — puis la teinte demandée par le jeu.
+      if (p.cx) transformer(gc, 0, 0, l, h, p.cx);
+      if (t !== undefined) teinter(gc, 0, 0, l, h, t);
       g.drawImage(calque, 0, 0);
     }
   }
@@ -739,7 +774,7 @@ function jauge(sprites, cle, plein, max, ecart) {
 }
 
 window.MinipixizClient = {
-  Client, charger, rendre, poserRendu, imageJeton, images, portraitDeFee, jauge,
+  Client, charger, rendre, poserRendu, imageJeton, images, portraitDeFee, jauge, partiesDeFee,
   LARGEUR, HAUTEUR, LIGNES_CACHEES, SCENE, COLONNE_X, INTER, ECART_COEUR, ECART_MANA,
 };
 
