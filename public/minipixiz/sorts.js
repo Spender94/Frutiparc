@@ -180,7 +180,7 @@ class Sort {
     this.lanceur.vity *= f;
   }
 
-  centrerLanceur() { this.lanceurVers(E.LARGEUR * 0.5, E.HAUTEUR * 0.5); }
+  centrerLanceur() { this.lanceurVers(this.jeu.largeur * 0.5, this.jeu.hauteur * 0.5); }
 
   lanceurVers(x, y) {
     this.lanceur.trg = { x, y };
@@ -762,7 +762,7 @@ class Dactylo extends Sort {
           if (this.timer > i * 2) {
             // Les étoiles montent se ranger dans le portrait de la fée : c'est
             // là que l'interface montre l'effet en cours.
-            const trg = { x: E.LARGEUR + 12, y: 10 + (i / this.bList.length) * 64 };
+            const trg = { x: this.jeu.largeur + 12, y: 10 + (i / this.bList.length) * 64 };
             p.versVitesse(trg, 0.01, 1, tmod);
             if (p.distance(trg) < 32) {
               p.vitx = 0; p.vity = 0;
@@ -1251,8 +1251,8 @@ class ValseFossile extends Sort {
 
   nouvellePoussiere() {
     const p = this.champ.nouvellePart('partDust');
-    p.x = this.alea() * E.LARGEUR;
-    p.y = this.alea() * E.HAUTEUR;
+    p.x = this.alea() * this.jeu.largeur;
+    p.y = this.alea() * this.jeu.hauteur;
     p.dx = this.alea() * 628;
     p.dy = this.alea() * 628;
     p.dsx = 20;
@@ -1411,7 +1411,7 @@ class TrancheCimes extends Sort {
     if (n === 0) {
       this.lanceurVers(this.jeu.ts * 0.8, this.cy);
     } else if (n === 1) {
-      this.lanceurVers(E.LARGEUR - this.jeu.ts * 0.8, this.cy);
+      this.lanceurVers(this.jeu.largeur - this.jeu.ts * 0.8, this.cy);
     } else if (n === 2) {
       const slash = this.champ.nouvellePart('partSlash');
       slash.x = 0;
@@ -1419,7 +1419,7 @@ class TrancheCimes extends Sort {
       slash.fondu = [1];
       slash.timer = 10;
       slash.init();
-      slash.sx = E.LARGEUR;
+      slash.sx = this.jeu.largeur;
       this.lanceur.flForceWay = false;
       for (const o of this.cutList) {
         o.vx = 0.5; o.vy = 0.5; o.timer = 18;
@@ -1821,7 +1821,7 @@ class SuperNova extends Sort {
   // nombre : c'est lui qui a été équilibré.
   pertinence() {
     this.ray = 30 + 7 * 5;
-    this.center = { x: E.LARGEUR * 0.5, y: E.HAUTEUR - this.ray };
+    this.center = { x: this.jeu.largeur * 0.5, y: this.jeu.hauteur - this.ray };
     const m = this.jeu.ts * 0.5;
     const c = { x: this.center.x - m, y: this.center.y - m };
     this.cibles = [];
@@ -1966,8 +1966,8 @@ class BillesDeLumiere extends Sort {
       const trg = this.positionCible(p);
       p.versVitesse(trg, 0.15, 0.6, tmod);
       const m = 10;
-      if (p.x < m || p.x > E.LARGEUR - m) { p.vitx *= -0.8; p.x = borner(m, p.x, E.LARGEUR - m); }
-      if (p.y < m || p.y > E.HAUTEUR - m) { p.vity *= -0.8; p.y = borner(m, p.y, E.HAUTEUR - m); }
+      if (p.x < m || p.x > this.jeu.largeur - m) { p.vitx *= -0.8; p.x = borner(m, p.x, this.jeu.largeur - m); }
+      if (p.y < m || p.y > this.jeu.hauteur - m) { p.vity *= -0.8; p.y = borner(m, p.y, this.jeu.hauteur - m); }
       if (p.distance(trg) < 10) {
         if (p.trgType === 0) {
           p.trg.vitx += p.vitx * 0.5;
@@ -2112,7 +2112,7 @@ class ChuteJetons extends SortImpy {
       this.pList = [];
       for (let i = 0; i < this.max; i++) {
         const p = this.champ.nouvellePart('partBallColor');
-        p.tx = this.alea() * E.LARGEUR;
+        p.tx = this.alea() * this.jeu.largeur;
         p.x = this.lanceur.x;
         p.y = this.lanceur.y - 10;
         p.vitx = 4 * (this.alea() * 2 - 1);
@@ -2152,8 +2152,8 @@ class ChuteJetons extends SortImpy {
         for (let i = 0; i < this.pList.length; i++) {
           const p = this.pList[i];
           p.versVitesse({ x: p.tx, y: -30 }, 0.1, 0.4, tmod);
-          if (p.x < 0 || p.x > E.LARGEUR) {
-            p.x = borner(0, p.x, E.LARGEUR);
+          if (p.x < 0 || p.x > this.jeu.largeur) {
+            p.x = borner(0, p.x, this.jeu.largeur);
             p.vitx *= -0.8;
           }
           if (p.y < -20) { this.pList.splice(i--, 1); p.tuer(); }
@@ -2367,7 +2367,7 @@ class Armure extends SortImpy {
   initStep(n) {
     this.step = n;
     if (n === 0) {
-      this.lanceurVers(E.LARGEUR * 0.5, 20);
+      this.lanceurVers(this.jeu.largeur * 0.5, 20);
     } else if (n === 1) {
       this.eList = [];
       const list = this.jeu.eList.slice();
@@ -2466,7 +2466,7 @@ class Conglomerat extends SortImpy {
         break;
       case 1: {
         this.grainNoir(this.lanceur.x, this.lanceur.y);
-        this.ball.versVitesse({ x: E.LARGEUR * 0.5, y: -30 }, 0.2, 0.3, tmod);
+        this.ball.versVitesse({ x: this.jeu.largeur * 0.5, y: -30 }, 0.2, 0.3, tmod);
         const mc = this.champ.nouvellePart('mcBlackBallSpark');
         const a = this.alea() * 6.28;
         const d = 2 + this.alea() * 10;
@@ -2549,7 +2549,7 @@ class GrandeForme extends SortImpy {
         p.x = this.lanceur.x;
         p.y = this.lanceur.y;
         p.init();
-        this.bList.push({ p, tx: this.alea() * E.LARGEUR });
+        this.bList.push({ p, tx: this.alea() * this.jeu.largeur });
       }
       this.decal = 0;
       this.dSpeed = 1;
@@ -2600,9 +2600,9 @@ class GrandeForme extends SortImpy {
             p.frame = 2;
             p.versVitesse({ x: info.tx, y: -30 }, 0.01, 1, tmod);
             const ray = 16;
-            if (p.x < ray || p.x > E.LARGEUR + ray) {
+            if (p.x < ray || p.x > this.jeu.largeur + ray) {
               p.vitx *= -1;
-              p.x = borner(ray, p.x, E.LARGEUR + ray);
+              p.x = borner(ray, p.x, this.jeu.largeur + ray);
             }
             if (p.y < -20) { p.tuer(); this.bList.splice(i--, 1); }
           }

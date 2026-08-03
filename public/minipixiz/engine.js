@@ -251,6 +251,21 @@ class Objet extends Element {
   degage() { return this.jeu.estLibre(this.px, this.py - 1); }
 }
 
+// sp/el/FireBall.mt — la boule de feu du bassin. Elle ne se groupe pas et ne
+// rapporte rien : elle ATTEND qu'une destruction voisine la souffle, et part
+// alors en projectile vers la bulle qui retient la fée. C'est la seule arme du
+// mode, et c'est pour ça que le bassin se joue autrement que la forêt.
+class Boule extends Element {
+  constructor(jeu, o) {
+    super(jeu, o);
+    this.et = E.BOULE;
+  }
+  souffler() {
+    this.jeu.evenement('bouleDeFeu', { x: this.px, y: this.py, e: this });
+    this.tuer();
+  }
+}
+
 // sp/el/Eye.mt — l'œil porte une couleur et la retient dans le tirage tant
 // qu'il est là (Game.updatecolorList le compte comme un jeton).
 class Oeil extends Element {
@@ -263,7 +278,7 @@ class Oeil extends Element {
 
 const CLASSES = {
   [E.JETON]: Jeton, [E.OBJET]: Objet, [E.PIERRE]: Pierre,
-  [E.CELLULE]: Cellule, [E.BOMBE]: Bombe, [E.OEIL]: Oeil,
+  [E.CELLULE]: Cellule, [E.BOMBE]: Bombe, [E.BOULE]: Boule, [E.OEIL]: Oeil,
 };
 
 // ── Les groupes (Group.mt) ────────────────────────────────────────────────
@@ -445,8 +460,8 @@ class Piece {
   cases() {
     return this.list.map((o) => ({
       e: o.e,
-      x: MARGE_GAUCHE + (this.x + this.cx + o.x) * TS,
-      y: MARGE_HAUT + (this.y + this.cy + o.y) * TS,
+      x: this.jeu.posX(this.x + this.cx + o.x),
+      y: this.jeu.posY(this.y + this.cy + o.y),
     }));
   }
 }
@@ -468,8 +483,15 @@ class Jeu {
     this.niveau = o.niveau || 0;
 
     this.ts = TS;
-    this.xMax = Math.floor((LARGEUR - MARGE_GAUCHE) / TS);
-    this.yMax = Math.floor((HAUTEUR - MARGE_HAUT) / TS);
+    // L'aire de jeu. La forêt est étroite (132 de large : le reste de l'écran
+    // porte l'interface) ; le bassin occupe les 240 pixels (base/Fountain.initGame).
+    // Game.initDefault pose les marges, et c'est d'elles que la grille se déduit.
+    this.margeGauche = (o.margeGauche === undefined) ? MARGE_GAUCHE : o.margeGauche;
+    this.margeHaut = (o.margeHaut === undefined) ? MARGE_HAUT : o.margeHaut;
+    this.largeur = o.largeur || LARGEUR;
+    this.hauteur = o.hauteur || HAUTEUR;
+    this.xMax = Math.floor((this.largeur - this.margeGauche) / TS);
+    this.yMax = Math.floor((this.hauteur - this.margeHaut) / TS);
     this.groupMax = GROUPE_MIN;
     this.colMax = o.couleurs || COULEURS_DEPART;
     this.shapeNum = FORMES_DEPART;
@@ -489,6 +511,18 @@ class Jeu {
     this.objets = [];
     this.flActiviteAFaire = false;
     this.pieces = 0;                 // pieceTimer : le nombre de pièces posées
+    this.mainTimer = 0;              // Game.mainTimer : les images passées À JOUER
+    // Game.nextLimit — la forêt en montre dix, le bassin une seule.
+    this.nextLimit = o.reserve || RESERVE;
+    // base/*.newPieceList : un mode peut IMPOSER la composition d'une pièce.
+    // Le bassin s'en sert pour sa croix de boule de feu, une fois sur onze.
+    this.fabriquePiece = o.fabriquePiece || null;
+    // base/Forest.onNewTurn appelle updatecolorList : une couleur qui n'est
+    // plus sur la grille sort du tirage, et le niveau se gagne quand il n'en
+    // reste aucune. Le BASSIN ne le fait pas — on n'y gagne pas en vidant la
+    // grille mais en libérant la fée, et il ajoute des couleurs au lieu d'en
+    // retirer.
+    this.couleursSeVident = (o.couleursSeVident === undefined) ? true : !!o.couleursSeVident;
     this.termine = false;
     this.gagne = false;
     this.entree = { gauche: false, droite: false, bas: false, tourner: false };
@@ -508,8 +542,9 @@ class Jeu {
     this.flAide = false;    // Game.flHelp — le joueur vient d'appeler sa fée
     this.sortsAFaire = false;
 
-    // base/Forest.initGame : la vitesse de chute monte avec le niveau.
-    this.pSpeedStart = 0.03 + this.niveau * 0.002;
+    // base/Forest.initGame : la vitesse de chute monte avec le niveau. Chaque
+    // mode a la sienne — Game.setPieceSpeed.
+    this.pSpeedStart = (o.vitesse === undefined) ? 0.03 + this.niveau * 0.002 : o.vitesse;
     this.pSpeed = this.pSpeedStart;
 
     this.colorList = [];
@@ -642,11 +677,15 @@ class Jeu {
 
   // ── La file des pièces à venir ──
   remplirReserve() {
-    while (this.nextList.length < RESERVE) this.nextList.push(this.nouvelleForme());
+    while (this.nextList.length < this.nextLimit) this.nextList.push(this.nouvelleForme());
   }
 
   // Game.updateNextList + Base.newPieceList : une forme, puis un jeton par case.
   nouvelleForme() {
+    if (this.fabriquePiece) {
+      const imposee = this.fabriquePiece(this);
+      if (imposee) return imposee;
+    }
     const sn = Math.min(Math.max(1, this.shapeNum + this.shapeNumInc), 6);
     let forme;
     if (sn <= 4) {
@@ -804,6 +843,9 @@ class Jeu {
         }
         break;
       case ETAPE.JEU:
+        // Game.update case 2 : le seul compteur qui n'avance QUE pendant qu'on
+        // joue. Le bassin s'en sert pour ajouter ses couleurs.
+        this.mainTimer += tmod;
         this.piece.update(tmod, this.entree);
         break;
       case ETAPE.DESTRUCTION:
@@ -968,7 +1010,7 @@ class Jeu {
   // gagnée avant d'avoir commencé.
   nouveauTour() {
     if (this.termine) return;
-    this.majCouleurs();
+    if (this.couleursSeVident) this.majCouleurs();
     if (this.termine) return;
     if (this.grilleTropHaute()) { this.finPartie(false); return; }
     this.initStep(ETAPE.JEU);
@@ -1035,10 +1077,11 @@ class Jeu {
   // donc les deux premières lignes sont HORS de l'écran. C'est l'espace où la
   // fée peut monter, et c'est aussi pourquoi l'aire fait 240 de haut pour
   // dix-sept lignes de seize.
-  posX(gx) { return MARGE_GAUCHE + gx * TS; }
-  posY(gy) { return MARGE_HAUT + gy * TS; }
+  posX(gx) { return this.margeGauche + gx * TS; }
+  posY(gy) { return this.margeHaut + gy * TS; }
   estDans(x, y, m) {
-    return x > m + MARGE_GAUCHE && y > m + MARGE_HAUT && x < LARGEUR - m && y < HAUTEUR - m;
+    return x > m + this.margeGauche && y > m + this.margeHaut
+      && x < this.largeur - m && y < this.hauteur - m;
   }
 
   // Game.getHeightMax : la ligne de la case occupée la plus haute (yMax si la
@@ -1318,7 +1361,7 @@ function genererNiveau(niveau, hasard, xMax, yMax, fiche) {
 }
 
 const API = {
-  Jeu, Piece, Groupe, Element, Jeton, Pierre, Cellule, Bombe, Objet, Oeil,
+  Jeu, Piece, Groupe, Element, Jeton, Pierre, Cellule, Bombe, Boule, Objet, Oeil,
   generateur, genererNiveau, tableElements, tirerObjet, OBJETS, NOURRITURE, SORTS, ITEM_RATE,
   COULEURS, E, SPECIAL, ETAPE, FORMES,
   TS, LARGEUR, HAUTEUR, MARGE_HAUT, MARGE_GAUCHE, GROUPE_MIN, COULEURS_DEPART,

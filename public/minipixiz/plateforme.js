@@ -393,9 +393,31 @@ class Plateforme {
         this.carte = r.carte;
         this.reparations = r.reparations;
         this.charge = true;
+        this.passerLesNuits();
         return this.carte;
       })
       .catch(() => this.carte);        // charge reste faux : on ne sauvera pas
+  }
+
+  /**
+   * Cm.updateTime — le retour du joueur.
+   *
+   * Toute l'aventure se passe LÀ : les fées mangent, le bassin s'allume, le
+   * donjon se construit, les missions se soldent. Rien de tout cela n'arrive
+   * pendant qu'on joue ; ça arrive entre deux visites, et c'est ce qui fait de
+   * Minipixiz un jeu qu'on habite plutôt qu'un jeu qu'on finit.
+   *
+   * On enregistre aussitôt : une nuit passée doit l'être une seule fois.
+   */
+  passerLesNuits(maintenant) {
+    const N = (typeof module !== 'undefined' && module.exports)
+      ? require('./nuit.js') : racine.MinipixizNuit;
+    if (!N) return null;
+    const avant = JSON.parse(JSON.stringify(this.carte));
+    const r = N.passerLeTemps(this.carte, maintenant === undefined ? Date.now() : maintenant);
+    this.messagesDeNuit = r.messages;
+    if (r.nuits > 0) this.ecrire(avant);
+    return r;
   }
 
   ecrire(avant) {

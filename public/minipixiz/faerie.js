@@ -41,6 +41,10 @@ const NOM_CARAC = ['force', 'rapidité', 'vie', 'intelligence', 'concentration',
 
 // ── Les travers de caractère (Cs.PSYCHOANALYST…) ──────────────────────────
 const PSYCHANALYSTE = 0, CANNIBALISME = 1, CLEPTOMANIE = 2, APATHIE = 3, SCHIZOPHRENIE = 4;
+// Cs.HYPOCONDREAC — l'upkeep le lit, mais genFaerieSeed ne le tire jamais : il
+// dort dans le fichier, seule une ligne de mise au point le posait. On le garde
+// pour que le code dise la même chose que l'original.
+const HYPOCONDRIE = 5;
 const NOM_COMPORTEMENT = ['psychanalyste', 'cannibalisme', 'cleptomanie', 'apathie', 'schizophrénie'];
 
 // Leur rareté, telle que genFaerieSeed la tire : une chance sur N.
@@ -326,7 +330,7 @@ class Fee {
    *                         (Cm.card.$current != son index)
    * @returns {{partie:boolean, messages:string[]}}
    */
-  entretien(libre) {
+  entretien(libre, ctx) {
     this.messages = [];
     const fs = this.fs;
 
@@ -365,7 +369,157 @@ class Fee {
     }
     if (nombre(fs.$moral) <= 0) fs.$moral = 0;
 
+    // Ce qui suit demande de connaître les AUTRES fées : on ne le fait donc que
+    // si l'appelant a passé la fiche du joueur.
+    if (ctx && ctx.carte) {
+      this.jouerLesTravers(ctx);
+      this.tirerLHumeur(ctx);
+    }
+
     return { partie: false, messages: this.messages };
+  }
+
+  /**
+   * Les travers de caractère, une fois la nuit tombée. Ils sont rares — une fée
+   * sur soixante est cleptomane, une sur cent cannibale — mais ce sont eux
+   * qu'on raconte. Ils n'agissent qu'entre fées LIBRES : une fée en mission est
+   * ailleurs.
+   */
+  jouerLesTravers(ctx) {
+    const bl = this.fs.$behaviour || [];
+    for (let i = 0; i < bl.length; i++) {
+      if (bl[i] !== 1) continue;
+      switch (i) {
+        case PSYCHANALYSTE:
+          if (ctx.entier(5) === 0) this.psychanalyser(ctx);
+          break;
+        case CANNIBALISME:
+          if (nombre(this.fs.$hunger) === 0 && nombre(this.fs.$life) <= 1) this.devorer(ctx);
+          break;
+        case CLEPTOMANIE:
+          if (ctx.entier(3) === 0) this.voler(ctx);
+          break;
+        case APATHIE:
+          break;                        // son effet est dans l'humeur
+        case SCHIZOPHRENIE:
+          if (ctx.entier(10) === 0) this.echangerSesCaracs();
+          break;
+        default: break;
+      }
+    }
+  }
+
+  // Les sœurs disponibles, dans un ordre brassé (Tools.shuffle).
+  soeurs(ctx) {
+    const l = (ctx.carte.$faerie || []).filter((o) => o !== this.fs && o.$mission === null);
+    for (let i = l.length - 1; i > 0; i--) {
+      const j = ctx.entier(i + 1);
+      const t = l[i]; l[i] = l[j]; l[j] = t;
+    }
+    return l;
+  }
+
+  // CANNIBALISME : elle ne s'en prend qu'à plus faible qu'elle, et il lui faut
+  // le DOUBLE de niveau pour y arriver. Sinon, elle essaie et le raconte.
+  devorer(ctx) {
+    for (const fso of this.soeurs(ctx)) {
+      if (nombre(this.fs.$level) > nombre(fso.$level) * 2) {
+        this.dire(this.fs.$name + ' a dévoré ' + fso.$name + ', elle se sent beaucoup mieux à présent.');
+        this.fs.$hunger = nombre(this.fs.$hunger) + 15;
+        ctx.effacer(fso);
+        return;
+      }
+      if (nombre(this.fs.$level) > nombre(fso.$level)) {
+        this.dire(this.fs.$name + ' a tellement faim qu\'elle a essayé de manger ' + fso.$name + ' !!');
+        return;
+      }
+    }
+  }
+
+  // CLEPTOMANIE : elle ÉCHANGE un objet — la victime perd le sien et récupère
+  // ce que la voleuse avait dans la case visée, souvent rien.
+  voler(ctx) {
+    for (const fso of this.soeurs(ctx)) {
+      let i0 = null, i1 = null;
+      for (let n = 0; n < nombre(this.fs.$bagMax); n++) {
+        if (i0 === null || !this.fs.$inv[n]) i0 = n;
+      }
+      for (let n = 0; n < nombre(fso.$bagMax); n++) {
+        if (fso.$inv[n] !== null && fso.$inv[n] !== undefined) i1 = n;
+      }
+      if (i1 === null || i0 === null) continue;
+      const id0 = this.fs.$inv[i0];
+      const id1 = fso.$inv[i1];
+      this.fs.$inv[i0] = id1;
+      fso.$inv[i1] = (id0 === undefined) ? null : id0;
+      this.dire('Pendant la nuit, ' + fso.$name + ' a perdu l\'objet suivant : '
+        + ctx.nomObjet(id1) + '.');
+      return;
+    }
+  }
+
+  /**
+   * PSYCHANALYSTE : elle devine les travers de ses sœurs et les annonce.
+   *
+   * PSY_BOUCLE_INFINIE — l'original écrit `for(var n=1; n<fso.$behaviour.length; i++)`
+   * et incrémente `i` au lieu de `n` : la boucle ne se termine jamais et le jeu
+   * se fige dès qu'une psychanalyste côtoie une autre fée. On corrige, avec en
+   * prime le travers 0 (que le `n=1` sautait) et une seule annonce par sœur.
+   */
+  psychanalyser(ctx) {
+    for (const fso of this.soeurs(ctx)) {
+      const bl = fso.$behaviour || [];
+      for (let n = 0; n < bl.length; n++) {
+        if (bl[n] !== 1) continue;
+        this.dire(this.fs.$name + ' pense avoir décelé en ' + fso.$name
+          + ' une forme de ' + NOM_COMPORTEMENT[n] + '.');
+      }
+    }
+  }
+
+  // SCHIZOPHRÉNIE : ses six caractéristiques permutent en bloc, force contre
+  // intelligence. Une fée schizophrène n'est jamais la même deux jours de suite.
+  echangerSesCaracs() {
+    const l = this.fs.$carac.slice();
+    for (let i = 0; i < 6; i++) this.fs.$carac[i] = nombre(l[(i + 3) % 6]);
+    this.carac = this.fs.$carac.slice();
+  }
+
+  /**
+   * L'humeur du matin. Une fée engourdie ou malade ne se bat pas de la journée
+   * (isReadyForBattle) : c'est le seul aléa qui puisse gâcher une partie prévue.
+   * L'apathie et l'hypocondrie la ramènent un jour sur trois, sans tirage.
+   */
+  tirerLHumeur(ctx) {
+    const fs = this.fs;
+    const bl = fs.$behaviour || [];
+    const jour = nombre(ctx.jour);
+    fs.$mood = [];
+    if (ctx.entier(30) === 0) {
+      this.dire(ctx.choisir([
+        fs.$name + ' est un peu endormie aujourd\'hui !',
+        fs.$name + ' a un peu trop fait la fête hier soir.',
+        fs.$name + ' n\'a pas réussi à fermer l\'œil de la nuit.',
+        fs.$name + ' a du mal à se réveiller ce matin.',
+        fs.$name + ' n\'a pas du tout la forme ce matin.',
+      ]));
+      fs.$mood[ENGOURDIE] = 1;
+    } else if (bl[APATHIE] === 1 && jour % 3 === 0) {
+      this.dire(fs.$name + ' est un peu endormie aujourd\'hui !');
+      fs.$mood[ENGOURDIE] = 1;
+    }
+    if (ctx.entier(50) === 0) {
+      this.dire(ctx.choisir([
+        fs.$name + ' ne se sent pas très bien aujourd\'hui.',
+        fs.$name + ' n\'est pas dans son assiette ce matin.',
+        fs.$name + ' est malade aujourd\'hui, elle ne pourra pas vous aider.',
+        fs.$name + ' semble avoir de la fièvre ce matin.',
+      ]));
+      fs.$mood[MALADE] = 1;
+    } else if (bl[HYPOCONDRIE] === 1 && jour % 3 === 1) {
+      this.dire(fs.$name + ' ne se sent pas très bien aujourd\'hui.');
+      fs.$mood[MALADE] = 1;
+    }
   }
 
   // Ce qu'il faut au client pour la dessiner.
@@ -427,7 +581,7 @@ const API = {
   Fee, genererGraine, genererNom, enrichirGraine,
   CARAC, NOM_CARAC, NB_CARAC, CARAC_MAX, NIVEAU_MAX,
   NOM_COMPORTEMENT, RARETE_COMPORTEMENT,
-  PSYCHANALYSTE, CANNIBALISME, CLEPTOMANIE, APATHIE, SCHIZOPHRENIE,
+  PSYCHANALYSTE, CANNIBALISME, CLEPTOMANIE, APATHIE, SCHIZOPHRENIE, HYPOCONDRIE,
   ENGOURDIE, MALADE, SYLLABES_1, SYLLABES_2,
 };
 

@@ -84,6 +84,14 @@ const CIBLES = [
   // du haut (image 1), le montant du milieu (2) et le sol (3). base/Forest les
   // attache tels quels, sur trois profondeurs.
   { cle: 'cadre', symbole: 'interfaceRacine', etiquette: 'Cadre de la forêt' },
+  // Les autres lieux ont chacun leur cadre, bâti sur le même principe : trois
+  // images pour trois profondeurs. Celui du bassin porte en plus un fond dont
+  // l'image dit l'heure qu'il est (`sub.bg.gotoAndStop(nuit×100 + 1)`).
+  { cle: 'cadreBassin', symbole: 'interfaceFountain', etiquette: 'Cadre du bassin' },
+  { cle: 'cadreDonjon', symbole: 'interfaceDungeon', etiquette: 'Cadre du donjon' },
+  { cle: 'cadreArbre', symbole: 'interfaceTree', etiquette: 'Cadre de l\'arbre creux' },
+  { cle: 'cadreArcEnCiel', symbole: 'interfaceRainbow', etiquette: 'Cadre de l\'arc-en-ciel' },
+  { cle: 'fireball', symbole: 'fireball', etiquette: 'Boule de feu' },
 
   // ── Le décor ──
   // Dix plans, du ciel au premier plan, chacun avec son coefficient de

@@ -333,7 +333,7 @@ class Tir extends Particule {
           break;
         }
         case T.POURSUITE: {
-          const trg = this.cibles[0] || { x: E.LARGEUR * 0.5, y: -40 };
+          const trg = this.cibles[0] || { x: this.jeu.largeur * 0.5, y: -40 };
           let da = this.angle(trg) - this.angle_;
           da = borner(-this.poursuite.la, ramener(da, 3.14), this.poursuite.la);
           this.angle_ += da * this.poursuite.va * tmod;
@@ -393,13 +393,13 @@ class Tir extends Particule {
           break;
         }
         case T.REBONDIT:
-          if (this.x < this.ray || this.x > E.LARGEUR - this.ray) {
-            this.x = borner(this.ray, this.x, E.LARGEUR - this.ray);
+          if (this.x < this.ray || this.x > this.jeu.largeur - this.ray) {
+            this.x = borner(this.ray, this.x, this.jeu.largeur - this.ray);
             this.vitx *= -1;
             this.angle_ = Math.atan2(this.vity, this.vitx);
           }
-          if (this.y < this.ray || this.y > E.HAUTEUR - this.ray) {
-            this.y = borner(this.ray, this.y, E.HAUTEUR - this.ray);
+          if (this.y < this.ray || this.y > this.jeu.hauteur - this.ray) {
+            this.y = borner(this.ray, this.y, this.jeu.hauteur - this.ray);
             this.vity *= -1;
             this.angle_ = Math.atan2(this.vity, this.vitx);
           }
@@ -411,8 +411,8 @@ class Tir extends Particule {
   }
 
   verifierBords() {
-    if (this.x < this.vLim || this.x > E.LARGEUR - this.vLim
-      || this.y < this.vLim || this.y > E.HAUTEUR - this.vLim) this.tuer();
+    if (this.x < this.vLim || this.x > this.jeu.largeur - this.vLim
+      || this.y < this.vLim || this.y > this.jeu.hauteur - this.vLim) this.tuer();
   }
 
   // Un tir ne touche que pendant le JEU : pendant une cascade ou un sort, tout
@@ -585,22 +585,22 @@ class Personne extends Corps {
     if (this.noTrgTimer > 0) {
       this.noTrgTimer -= tmod;
     } else if (!this.flForceWay && this.hasard(Math.floor(30 / tmod)) === 0) {
-      this.trg = { x: this.hasard(E.LARGEUR), y: this.hasard(E.HAUTEUR) };
+      this.trg = { x: this.hasard(this.jeu.largeur), y: this.hasard(this.jeu.hauteur) };
     }
     return this.trg ? this.angle(this.trg) : this.ta;
   }
 
   verifierBords() {
     const m = 6;
-    if (this.x < m + E.MARGE_GAUCHE || this.x > E.LARGEUR - m) {
+    if (this.x < m + this.jeu.margeGauche || this.x > this.jeu.largeur - m) {
       this.angle_ = this.angleDeFuite(this.angle_, 30);
       this.vitx *= -0.3;
-      this.x = borner(m + E.MARGE_GAUCHE, this.x, E.LARGEUR - m);
+      this.x = borner(m + this.jeu.margeGauche, this.x, this.jeu.largeur - m);
     }
-    if (this.y < m + E.MARGE_HAUT || this.y > E.HAUTEUR - m) {
+    if (this.y < m + this.jeu.margeHaut || this.y > this.jeu.hauteur - m) {
       this.angle_ = this.angleDeFuite(this.angle_, 30);
       this.vity *= -0.3;
-      this.y = borner(m + E.MARGE_HAUT, this.y, E.HAUTEUR - m);
+      this.y = borner(m + this.jeu.margeHaut, this.y, this.jeu.hauteur - m);
     }
   }
 
@@ -780,8 +780,8 @@ class Fee extends Personne {
     this.starTimer = 0;
     this.tirCourant = null;
     this.berserk = false;
-    this.x = E.LARGEUR * 0.5;
-    this.y = E.HAUTEUR * 0.5;
+    this.x = this.jeu.largeur * 0.5;
+    this.y = this.jeu.hauteur * 0.5;
     this.poserInfo(fi);
   }
 
@@ -1035,7 +1035,7 @@ class Impy extends Personne {
       // action 0 : il a fini son compte de sorts et s'en va par le haut.
       if (this.action === 0) {
         this.flForceWay = true;
-        this.trg = { x: E.LARGEUR * 0.5, y: -30 };
+        this.trg = { x: this.jeu.largeur * 0.5, y: -30 };
         if (this.y < -20) this.tuer();
       }
     }

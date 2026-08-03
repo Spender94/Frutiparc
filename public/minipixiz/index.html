@@ -224,6 +224,8 @@
 <script src="/minipixiz/items.js"></script>
 <script src="/minipixiz/faerie.js"></script>
 <script src="/minipixiz/combat.js"></script>
+<script src="/minipixiz/nuit.js"></script>
+<script src="/minipixiz/bassin.js"></script>
 <script src="/minipixiz/sorts.js"></script>
 <script src="/minipixiz/game.js"></script>
 <script src="/minipixiz/plateforme.js"></script>
@@ -430,17 +432,56 @@
             menu.dire('Il vous faut une clé pour entrer dans le donjon.');
             return;
           }
-          if (lieu.va === 'fountain' && !etat.ouvert) {
-            menu.dire('Le bassin est calme. Aucune lueur au fond.');
+          if (lieu.va === 'fountain') {
+            if (!etat.ouvert) {
+              menu.dire('Le bassin est calme. Aucune lueur au fond.');
+              return;
+            }
+            fermerMenu();
+            ouvrirBassin();
             return;
           }
           menu.dire(lieu.titre + ' : pas encore ouvert.');
         },
       });
 
+      /**
+       * base/Fountain — la descente au bassin.
+       *
+       * On n'y va pas pour marquer des points : on y va pour crever la bulle et
+       * repartir avec la fée. La partie se joue sur la fiche RÉELLE, sans copie
+       * de travail : libérer une fée est irréversible, et le jeu l'écrit tout
+       * de suite.
+       */
+      function ouvrirBassin() {
+        $('#carte').classList.remove('on');
+        $('#fin').classList.remove('on');
+        var bassin = client.nouveauBassin({
+          carte: plateforme.carte,
+          graine: Math.floor(Math.random() * 1e9),
+          surEvenement: function (nom) {
+            if (nom === 'feeLiberee') {
+              plateforme.ecrire(plateforme.carte);
+              client.poserFee(feeCourante());
+              return;
+            }
+            if (nom !== 'feeEnvolee' && nom !== 'finPartie') return;
+            // Qu'elle s'envole ou que la grille déborde, on remonte au menu.
+            setTimeout(function () { ouvrirMenu(); }, 600);
+          },
+        });
+        client.demarrer();
+        return bassin;
+      }
+
       function ouvrirMenu() {
         $('#menu').classList.add('on');
         menu.demarrer();
+        // Ce que les nuits passées ont à raconter : la lueur du bassin, une fée
+        // qui a faim, un donjon bâti. On les donne une par une, à chaque retour
+        // au menu, comme Manager.addMsg les empilait.
+        var msg = plateforme.messagesDeNuit;
+        if (msg && msg.length) menu.dire(msg.shift());
       }
       function fermerMenu() {
         $('#menu').classList.remove('on');
@@ -466,6 +507,7 @@
       window.__inventaire = inventaire;
       window.__menu = menu;
       window.__ouvrirMenu = ouvrirMenu;
+      window.__ouvrirBassin = ouvrirBassin;
       window.__course = function () { return course; };
     })
     .catch(function (e) {

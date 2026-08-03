@@ -540,6 +540,7 @@ function bougerEclats(ctx, tmod) {
 }
 
 const enHexa = (n) => '#' + n.toString(16).padStart(6, '0');
+const borner01 = (v) => Math.max(0, Math.min(1, v));
 
 // ── Le client ─────────────────────────────────────────────────────────────
 class Client {
@@ -555,6 +556,8 @@ class Client {
     this.reste = 0;
     // La fée qui accompagne la partie, et l'heure qu'il est dans le jeu.
     this.fee = o.fee || null;
+    this.bassin = null;
+    this.champ = null;
     this.coefNuit = (o.coefNuit === undefined) ? 0.5 : o.coefNuit;
     this.brancherCommandes(o.racine || document);
     this.redimensionner();
@@ -565,6 +568,7 @@ class Client {
   nouvellePartie(opts) {
     opts = opts || {};
     eclats.length = 0;
+    this.bassin = null;
     if (opts.fee !== undefined) this.fee = opts.fee;
     if (opts.coefNuit !== undefined) this.coefNuit = opts.coefNuit;
     this.jeu = new E.Jeu(Object.assign({}, opts, { onEvent: (n, d) => this.annonce(n, d) }));
@@ -576,6 +580,25 @@ class Client {
     this.dernier = 0;
     this.reste = 0;
     return this.jeu;
+  }
+
+  /**
+   * Le BASSIN (bassin.js) — l'autre mode. Il apporte sa propre partie, son
+   * aire de 240 sur 240 et sa bulle ; le client se contente de le dessiner et
+   * de lui passer les commandes.
+   */
+  nouveauBassin(opts) {
+    const B = window.MinipixizBassin;
+    if (!B) return null;
+    eclats.length = 0;
+    this.bassin = new B.Bassin(Object.assign({}, opts || {},
+      { surEvenement: (n, d) => this.annonce(n, d) }));
+    this.jeu = this.bassin.jeu;
+    this.champ = this.bassin.champ;
+    this.jeu.entree = this.entree;
+    this.dernier = 0;
+    this.reste = 0;
+    return this.bassin;
   }
 
   annonce(nom, d) {
@@ -609,7 +632,9 @@ class Client {
       if (dt > 0.25) dt = 0.25;
       this.reste += dt * IPS;
       let pas = 0;
-      if (this.jeu) {
+      if (this.bassin) {
+        while (this.reste >= 1 && pas < 6) { this.bassin.update(1); this.reste -= 1; pas++; }
+      } else if (this.jeu) {
         while (this.reste >= 1 && pas < 6) { this.jeu.update(1); this.reste -= 1; pas++; }
       } else {
         this.reste = 0;
@@ -624,6 +649,7 @@ class Client {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, SCENE, SCENE);
     const s = this.sprites;
+    if (this.bassin) { this.dessinerBassin(ctx, tmod); return; }
 
     // 1. LE FOND — l'image 3 du cadre, posée sous le plateau (DP_SKIN_DOWN).
     //    C'est le vert profond des racines : sans lui, le plateau flotte.
@@ -655,6 +681,47 @@ class Client {
 
     // 5. L'heure qu'il est, en dernier : elle teinte la scène entière.
     this.dessinerNuit(ctx);
+  }
+
+  /**
+   * La scène du bassin. Pas de colonne d'interface : l'aire occupe les 240
+   * pixels, et le fond est le même dégradé d'heure que le menu — base/Fountain
+   * pose `sub.bg.gotoAndStop(nuit×100 + 1)`, c'est-à-dire la même centaine
+   * d'images de ciel, vue depuis le fond de l'eau.
+   */
+  dessinerBassin(ctx, tmod) {
+    const jeu = this.jeu, s = this.sprites, bassin = this.bassin;
+    const heure = Math.round(borner01(this.coefNuit) * 100);
+    const ciel = s['ciel' + heure] || s.ciel0;
+    if (ciel) poserRendu(ctx, rendre(ciel, 1, SCENE), 0, 0);
+    else { ctx.fillStyle = '#12365a'; ctx.fillRect(0, 0, SCENE, SCENE); }
+    // Le décor du lieu par-dessus le ciel : c'est lui qui met l'eau et la roche.
+    if (s.cadreBassin) poserRendu(ctx, rendre(s.cadreBassin, 3, 100), 0, 0);
+
+    for (const e of jeu.eList) this.dessinerElement(ctx, e, e.px, e.py);
+    if (jeu.piece) for (const c of jeu.piece.cases()) this.poser(ctx, c.e, c.x, c.y);
+    this.dessinerVol(ctx);
+    // La bulle et sa prisonnière, par-dessus tout : c'est l'objectif, il ne
+    // faut jamais la perdre de vue.
+    if (bassin.bulle) this.dessinerBulle(ctx, bassin.bulle);
+    bougerEclats(ctx, tmod);
+    this.dessinerNuit(ctx);
+    this.dessinerMessage(ctx, tmod);
+  }
+
+  dessinerBulle(ctx, b) {
+    const s = this.sprites;
+    const F = window.MinipixizFee;
+    if (s.fee && b.fs && F) {
+      const a = new F.Fee(b.fs, null, null).apparence();
+      poserVif(ctx, s.fee, 1, {
+        x: b.x, y: b.y + 2, sx: b.sx * 0.8, sy: b.sy * 0.8,
+        parties: partiesDeCorps(a.couleurs),
+      });
+    }
+    if (s.mcFaerieBubble) {
+      poserVif(ctx, s.mcFaerieBubble, 1, { x: b.x, y: b.y, sx: b.sx, sy: b.sy });
+    }
   }
 
   // spell/imp/Night : Manager.setNightMask masque tout le slot, puis le trou
@@ -944,17 +1011,23 @@ class Client {
       }
     }
 
-    if (this.messageT > 0 && this.message) {
-      this.messageT -= tmod;
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 10px Verdana, Arial, sans-serif';
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(10,40,25,.9)';
-      ctx.strokeText(this.message, LARGEUR / 2, HAUTEUR / 2 - 20);
-      ctx.fillStyle = '#ffd76a';
-      ctx.fillText(this.message, LARGEUR / 2, HAUTEUR / 2 - 20);
-      ctx.textAlign = 'left';
-    }
+    this.dessinerMessage(ctx, tmod);
+  }
+
+  // Le bandeau qui annonce une chaîne ou une couleur finie. Les deux modes s'en
+  // servent, d'où sa place à part.
+  dessinerMessage(ctx, tmod) {
+    if (!(this.messageT > 0) || !this.message) return;
+    this.messageT -= tmod;
+    const l = this.bassin ? SCENE : LARGEUR;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 10px Verdana, Arial, sans-serif';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(10,40,25,.9)';
+    ctx.strokeText(this.message, l / 2, HAUTEUR / 2 - 20);
+    ctx.fillStyle = '#ffd76a';
+    ctx.fillText(this.message, l / 2, HAUTEUR / 2 - 20);
+    ctx.textAlign = 'left';
   }
 
   // La scène est carrée (240 × 240, Cs.mcw × Cs.mch) : on l'agrandit du facteur
