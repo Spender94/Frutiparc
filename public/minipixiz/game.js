@@ -557,6 +557,7 @@ class Client {
     // La fée qui accompagne la partie, et l'heure qu'il est dans le jeu.
     this.fee = o.fee || null;
     this.bassin = null;
+    this.lieu = null;
     this.champ = null;
     this.coefNuit = (o.coefNuit === undefined) ? 0.5 : o.coefNuit;
     this.brancherCommandes(o.racine || document);
@@ -569,6 +570,7 @@ class Client {
     opts = opts || {};
     eclats.length = 0;
     this.bassin = null;
+    this.lieu = null;
     if (opts.fee !== undefined) this.fee = opts.fee;
     if (opts.coefNuit !== undefined) this.coefNuit = opts.coefNuit;
     this.jeu = new E.Jeu(Object.assign({}, opts, { onEvent: (n, d) => this.annonce(n, d) }));
@@ -591,6 +593,7 @@ class Client {
     const B = window.MinipixizBassin;
     if (!B) return null;
     eclats.length = 0;
+    this.lieu = null;
     this.bassin = new B.Bassin(Object.assign({}, opts || {},
       { surEvenement: (n, d) => this.annonce(n, d) }));
     this.jeu = this.bassin.jeu;
@@ -601,7 +604,35 @@ class Client {
     return this.bassin;
   }
 
+  /**
+   * Un LIEU (lieux.js) — le donjon, l'arbre creux, l'arc-en-ciel. Comme le
+   * bassin, chacun apporte sa partie et ses règles ; le client le dessine et
+   * lui passe les commandes.
+   */
+  nouveauLieu(classe, opts) {
+    const X = window.MinipixizLieux;
+    if (!X || !X[classe]) return null;
+    eclats.length = 0;
+    this.bassin = null;
+    this.lieu = new X[classe](Object.assign({}, opts || {},
+      { surEvenement: (n, d) => this.annonce(n, d) }));
+    this.jeu = this.lieu.jeu;
+    this.champ = this.lieu.champ;
+    this.jeu.entree = this.entree;
+    if (this.lieu.fi) this.fee = this.lieu.fi;
+    this.dernier = 0;
+    this.reste = 0;
+    return this.lieu;
+  }
+
   annonce(nom, d) {
+    // Un lieu qui enchaîne ses niveaux (le donjon) remonte une partie neuve :
+    // il faut la reprendre, sans quoi on continuerait de dessiner l'ancienne.
+    if (nom === 'niveauDonjon' && this.lieu) {
+      this.jeu = this.lieu.jeu;
+      this.champ = this.lieu.champ;
+      this.jeu.entree = this.entree;
+    }
     const px = (gx) => E.MARGE_GAUCHE + (gx + 0.5) * TS;
     const py = (gy) => E.MARGE_HAUT + (gy + 0.5) * TS;
     switch (nom) {
@@ -632,8 +663,9 @@ class Client {
       if (dt > 0.25) dt = 0.25;
       this.reste += dt * IPS;
       let pas = 0;
-      if (this.bassin) {
-        while (this.reste >= 1 && pas < 6) { this.bassin.update(1); this.reste -= 1; pas++; }
+      const mode = this.bassin || this.lieu;
+      if (mode) {
+        while (this.reste >= 1 && pas < 6) { mode.update(1); this.reste -= 1; pas++; }
       } else if (this.jeu) {
         while (this.reste >= 1 && pas < 6) { this.jeu.update(1); this.reste -= 1; pas++; }
       } else {
@@ -650,6 +682,7 @@ class Client {
     ctx.clearRect(0, 0, SCENE, SCENE);
     const s = this.sprites;
     if (this.bassin) { this.dessinerBassin(ctx, tmod); return; }
+    if (this.lieu) { this.dessinerLieu(ctx, tmod); return; }
 
     // 1. LE FOND — l'image 3 du cadre, posée sous le plateau (DP_SKIN_DOWN).
     //    C'est le vert profond des racines : sans lui, le plateau flotte.
@@ -707,6 +740,53 @@ class Client {
     bougerEclats(ctx, tmod);
     this.dessinerNuit(ctx);
     this.dessinerMessage(ctx, tmod);
+  }
+
+  /**
+   * La scène d'un lieu. Chacun a son cadre — interfaceDungeon, interfaceTree,
+   * interfaceRainbow — bâti comme celui de la forêt : trois images pour trois
+   * profondeurs, le fond dessous et le feuillage dessus.
+   */
+  dessinerLieu(ctx, tmod) {
+    const jeu = this.jeu, s = this.sprites, lieu = this.lieu;
+    const cadre = s[lieu.cadre || 'cadre'];
+    if (cadre) poserRendu(ctx, rendre(cadre, CADRE_FOND, 100), 0, 0);
+    else { ctx.fillStyle = '#241c3a'; ctx.fillRect(0, 0, SCENE, SCENE); }
+
+    for (const e of jeu.eList) this.dessinerElement(ctx, e, e.px, e.py);
+    if (jeu.piece) for (const c of jeu.piece.cases()) this.poser(ctx, c.e, c.x, c.y);
+    this.dessinerVol(ctx);
+    bougerEclats(ctx, tmod);
+
+    if (cadre) poserRendu(ctx, rendre(cadre, CADRE_MILIEU, 100), 0, 0);
+    if (this.champ && this.champ.faerieList.length) this.dessinerInterface(ctx, tmod);
+    else this.dessinerMessage(ctx, tmod);
+    this.dessinerEnteteLieu(ctx);
+    if (cadre) poserRendu(ctx, rendre(cadre, CADRE_DESSUS, 100), 0, 0);
+    this.dessinerNuitNoire(ctx);
+    this.dessinerNuit(ctx);
+  }
+
+  // Ce que chaque lieu doit dire au joueur, et que la forêt n'a pas : à quel
+  // niveau de donjon il en est, combien de pièces la roue attend encore, ce que
+  // vaut sa cascade.
+  dessinerEnteteLieu(ctx) {
+    const e = this.lieu.etat();
+    const l = [];
+    if (e.sur) l.push('donjon ' + (e.niveau + 1) + '/' + e.sur);
+    if (e.tours !== undefined) l.push(e.tours + ' pièces');
+    if (e.multi !== undefined) l.push('×' + e.multi + '  ' + e.score);
+    if (!l.length) return;
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 9px Verdana, Arial, sans-serif';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(10,20,35,.9)';
+    // Sous le bord haut : les deux premières lignes de la grille sont cachées,
+    // l'entête n'y masque donc rien de jouable.
+    const x = this.lieu.jeu.margeGauche + 2;
+    ctx.strokeText(l.join('   '), x, 12);
+    ctx.fillStyle = '#ffd76a';
+    ctx.fillText(l.join('   '), x, 12);
   }
 
   dessinerBulle(ctx, b) {

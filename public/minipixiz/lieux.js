@@ -61,6 +61,7 @@ class Lieu {
 
   options() { return {}; }
   niveauDeDepart() { return undefined; }   // undefined = le moteur génère
+  emmeneLaFee() { return true; }
 
   commencer() {
     this.jeu = new E.Jeu(Object.assign({
@@ -69,8 +70,10 @@ class Lieu {
       onEvent: (n, d) => this.annonce(n, d),
       grille: this.niveauDeDepart(),
     }, this.options()));
-    // base/Aventure.initFaerie : elle n'est du voyage que si elle tient debout.
-    const prete = this.fee && new F.Fee(this.fee, null, this.carte).preteAuCombat();
+    // base/Aventure.initFaerie : elle n'est du voyage que si elle tient debout —
+    // et si le lieu l'emmène. L'arbre creux, lui, se joue seul.
+    const prete = this.emmeneLaFee() && this.fee
+      && new F.Fee(this.fee, null, this.carte).preteAuCombat();
     this.champ = new C.Champ(this.jeu, {
       fee: prete ? new F.Fee(this.fee, null, this.carte) : null,
       surEvenement: (n, d) => this.evenement(n, d),
@@ -116,6 +119,8 @@ class Lieu {
 const DONJON_NIVEAUX = 10;
 
 class Donjon extends Lieu {
+  get cadre() { return 'cadreDonjon'; }
+
   constructor(o) {
     const c = (o || {}).carte;
     // Une clé à l'entrée, et elle est prise TOUT DE SUITE : abandonner ne la
@@ -288,6 +293,13 @@ const ARBRE_VITESSES = [0.15, 0.35, 0.5];    // SPEED_LIMIT, par nombre de coule
 const ARBRE_VALEURS = [1, 5, 7, 8, 9, 10];   // VALUE_LIMIT, par rang de maillon
 
 class Arbre extends Lieu {
+  get cadre() { return 'cadreArbre'; }
+
+  // base/Tree.initGame n'appelle PAS initFaerie : l'arbre creux est le seul
+  // lieu où l'on joue sans fée. Pas de sorts, pas de démons, pas de portrait —
+  // le tronc, l'escargot et le score.
+  emmeneLaFee() { return false; }
+
   constructor(o) {
     super(o);
     const c = (o || {}).carte;
@@ -414,6 +426,8 @@ const ROUE_DEPART = 100;
 const ROUE_PAS = 1.15;
 
 class ArcEnCiel extends Lieu {
+  get cadre() { return 'cadreArcEnCiel'; }
+
   constructor(o) {
     super(o);
     const c = (o || {}).carte;

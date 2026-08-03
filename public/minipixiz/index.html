@@ -226,6 +226,9 @@
 <script src="/minipixiz/combat.js"></script>
 <script src="/minipixiz/nuit.js"></script>
 <script src="/minipixiz/bassin.js"></script>
+<script src="/minipixiz/langue.js"></script>
+<script src="/minipixiz/missions.js"></script>
+<script src="/minipixiz/lieux.js"></script>
 <script src="/minipixiz/sorts.js"></script>
 <script src="/minipixiz/game.js"></script>
 <script src="/minipixiz/plateforme.js"></script>
@@ -428,10 +431,22 @@
         surChoix: function (lieu, etat) {
           if (lieu.va === 'foret') { fermerMenu(); ouvrirCarte(); return; }
           if (lieu.va === 'inventaire') { ouvrirSac(); return; }
-          if (lieu.va === 'dungeon' && !etat.ouvert) {
-            menu.dire('Il vous faut une clé pour entrer dans le donjon.');
-            return;
+          if (lieu.va === 'dungeon') {
+            if (!etat.ouvert) {
+              menu.dire('Il vous faut une clé pour entrer dans le donjon.');
+              return;
+            }
+            fermerMenu(); ouvrirLieu('Donjon'); return;
           }
+          if (lieu.va === 'tree') { fermerMenu(); ouvrirLieu('Arbre'); return; }
+          if (lieu.va === 'rainbow') {
+            if (!plateforme.carte.$rainbow.$f) {
+              menu.dire('Il n\'y a pas d\'arc-en-ciel aujourd\'hui.');
+              return;
+            }
+            fermerMenu(); ouvrirLieu('ArcEnCiel'); return;
+          }
+          if (lieu.va === 'mission') { fermerMenu(); ouvrirGromelin(); return; }
           if (lieu.va === 'fountain') {
             if (!etat.ouvert) {
               menu.dire('Le bassin est calme. Aucune lueur au fond.');
@@ -474,6 +489,54 @@
         return bassin;
       }
 
+      /**
+       * Le donjon, l'arbre creux, l'arc-en-ciel. Comme le bassin, ils se jouent
+       * sur la fiche RÉELLE : la clé du donjon est prise à l'entrée, le record
+       * de l'arbre et l'objet de l'arc-en-ciel sont acquis sur-le-champ.
+       */
+      function ouvrirLieu(classe) {
+        $('#carte').classList.remove('on');
+        $('#fin').classList.remove('on');
+        var avant = JSON.parse(JSON.stringify(plateforme.carte));
+        var l = client.nouveauLieu(classe, {
+          carte: plateforme.carte,
+          fee: (plateforme.carte.$faerie || [])[plateforme.carte.$current] || null,
+          graine: Math.floor(Math.random() * 1e9),
+          surEvenement: function (nom, info) {
+            if (nom === 'donjonGagne' || nom === 'record' || nom === 'prix') {
+              plateforme.ecrire(avant);
+              return;
+            }
+            if (nom !== 'finPartie') return;
+            plateforme.ecrire(avant);
+            setTimeout(function () { ouvrirMenu(); }, 700);
+          },
+        });
+        client.demarrer();
+        return l;
+      }
+
+      /**
+       * La cabane de Gromelin. Il ne travaille pas la nuit et n'a rien à
+       * proposer sans missions ; sinon il ouvre, et il faut lui amener des fées
+       * EN BOCAL — c'est sa seule exigence, et il la répète.
+       */
+      function ouvrirGromelin() {
+        var M = window.MinipixizMissions;
+        var a = M.accueil(plateforme.carte, coefNuit(), plateforme.carte.$help
+          && plateforme.carte.$help[2]);
+        ouvrirMenu();
+        for (var i = 0; i < a.dial.length; i++) {
+          (function (t, n) { setTimeout(function () { menu.dire(t); }, n * 1400); })(a.dial[i], i);
+        }
+        if (a.ouvre && !plateforme.carte.$help[2]) {
+          plateforme.carte.$help[2] = 1;
+          plateforme.ecrire(plateforme.carte);
+        }
+        window.__gromelin = a;
+        return a;
+      }
+
       function ouvrirMenu() {
         $('#menu').classList.add('on');
         menu.demarrer();
@@ -508,6 +571,8 @@
       window.__menu = menu;
       window.__ouvrirMenu = ouvrirMenu;
       window.__ouvrirBassin = ouvrirBassin;
+      window.__ouvrirLieu = ouvrirLieu;
+      window.__ouvrirGromelin = ouvrirGromelin;
       window.__course = function () { return course; };
     })
     .catch(function (e) {
