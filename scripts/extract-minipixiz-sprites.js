@@ -146,15 +146,46 @@ const CIBLES = [
   { cle: 'suivante', symbole: 'mcNext', etiquette: 'Pièce suivante' },
   { cle: 'nuit', symbole: 'mcNightMask', etiquette: 'Masque de nuit' },
 
+  // ── L'arbre creux (base/Tree) ──
+  // Son tableau de bord tient en trois clips : la plaque du score en (2,2),
+  // l'escargot qui grimpe le long du tronc à mesure que le chronomètre tourne
+  // — c'est LUI qui annonce la prochaine accélération —, et les fruits du
+  // multiplicateur, qui pendent du haut au bout d'un élastique.
+  { cle: 'panScore', symbole: 'panScore', etiquette: 'Plaque du score' },
+  { cle: 'escargot', symbole: 'mcEscargot', etiquette: 'Escargot du chronomètre' },
+  { cle: 'multiFruit', symbole: 'mcMultiFruit', etiquette: 'Fruit du multiplicateur' },
+
   // ── L'inventaire (Inventory.mt) ──
   // Un fond, un cadre par-dessus, des cases de 32 px, le panneau de la fée avec
   // son portrait et ses quatre volets — caractéristiques, sortilèges, sac,
   // santé —, le bandeau de message en bas et la poubelle.
+  // Le grand panneau clair de l'écran est le dessin du CLIP D'ÉCRAN lui-même
+  // (Slot.link = « inventory »), pas un décor attaché : invBg ne porte que les
+  // lianes. Sans lui, tout l'inventaire flottait sur du noir.
+  { cle: 'invEcran', symbole: 'inventory', etiquette: 'Panneau de l\'inventaire' },
   { cle: 'invFond', symbole: 'invBg', etiquette: 'Fond de l\'inventaire' },
   { cle: 'invDevant', symbole: 'invFront', etiquette: 'Cadre de l\'inventaire' },
   { cle: 'invCase', symbole: 'invSlot', etiquette: 'Case' },
-  { cle: 'invPetiteCase', symbole: 'invSmallSlot', etiquette: 'Petite case' },
-  { cle: 'invPanneau', symbole: 'invFace', etiquette: 'Panneau de la fée' },
+  // La rangée du bas — la clé, l'étoile, les cinq diamants (initExtraDisplay).
+  // C'est UN clip à trois images, dont le sous-clip `sub` porte le contenu et
+  // s'efface quand on n'a rien : on sort donc l'alvéole vide d'un côté et les
+  // trois contenus de l'autre. Le diamant est le seul à avoir cinq images —
+  // cinq teintes additives sur le même dessin, une par diamant trouvé.
+  { cle: 'invPetiteCase', symbole: 'invSmallSlot', etiquette: 'Petite case', exclure: ['sub'] },
+  { cle: 'invCle', id: 789, etiquette: 'Clé' },
+  { cle: 'invEtoile', id: 1193, etiquette: 'Étoile' },
+  { cle: 'invDiamant', id: 1186, etiquette: 'Diamant' },
+  // Le panneau de la fée porte SON portrait — `Mc.setPic(facePanel.pic, fi.skin)`
+  // envoie le clip sur l'image du visage tiré. On sort donc le panneau une fois
+  // par visage, et le médaillon rond du fichier découpe chacun d'eux.
+  // Ses deux boutons et sa pastille de niveau sortent à part : ils ont leur
+  // propre image (le bouton de gauche montre le volet SUIVANT, celui de droite
+  // toujours la sixième — « libérer la fée »), et les laisser dedans les aurait
+  // fait défiler avec les visages.
+  { cle: 'invPanneau', symbole: 'invFace', etiquette: 'Panneau de la fée',
+    sousImage: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], exclure: ['swap', 'quit', 'level'] },
+  { cle: 'invBouton', id: 615, etiquette: 'Bouton du panneau' },
+  { cle: 'invNiveau', id: 619, etiquette: 'Pastille de niveau' },
   { cle: 'invBarre', symbole: 'invFaerieBar', etiquette: 'Barre de caractéristique' },
   { cle: 'invPoint', symbole: 'invFaerieBarPoint', etiquette: 'Point de caractéristique' },
   { cle: 'invMessage', symbole: 'msgPanel', etiquette: 'Bandeau de message' },
@@ -328,7 +359,17 @@ function principal() {
     if (!frames || frames.size === 0) { absents.push(item.symbole + ' (sans image)'); continue; }
     const etats = [];
     const voulues = item.images ? new Set(item.images) : null;
-    for (const f of [...frames.keys()].sort((a, c) => a - c)) {
+    // Le plus souvent une image du symbole donne un état. Mais quand
+    // `sousImage` est une LISTE, c'est le sous-clip qui défile pendant que le
+    // symbole reste sur sa seule image : le panneau de l'inventaire est ainsi
+    // le même dessin pour les dix visages qu'il peut abriter, et son médaillon
+    // rond découpe chacun d'eux.
+    const parEnfant = Array.isArray(item.sousImage) ? item.sousImage : null;
+    const cadres = parEnfant
+      ? parEnfant.map((n) => ({ sortie: n, parent: [...frames.keys()][0], enfant: n }))
+      : [...frames.keys()].sort((a, c) => a - c).map((f) => ({ sortie: f, parent: f }));
+    for (const cadreDe of cadres) {
+      const f = cadreDe.parent;
       if (voulues && !voulues.has(f)) continue;
       const pieces = [];
       // Les clips que le jeu pilote lui-même (la fontaine, le donjon, le sac…)
@@ -347,8 +388,16 @@ function principal() {
           }
         }
       }
+      // Le masque de premier niveau et sa TRANCHE : il découpe les profondeurs
+      // qui vont de la sienne à son ClipDepth, et elles seules. Le cadre rond du
+      // portrait de l'inventaire s'arrête à la profondeur 11 ; le fond du
+      // panneau, ses deux boutons et sa pastille de niveau vivent au-dessus.
+      // Les appliquer au dessin entier rognait le panneau à son médaillon.
+      let masqueOuvert = null;
+      let numeroDeMasque = 0;
       for (const p of frames.get(f)) {
         if (p.nom && exclus.has(p.nom)) continue;
+        if (masqueOuvert && p.prof > masqueOuvert.clip) masqueOuvert = null;
         // `sousImage` envoie les clips ENFANTS sur une image fixe pendant que le
         // parent parcourt les siennes. C'est ce que fait it.Food.getPic :
         //
@@ -357,8 +406,9 @@ function principal() {
         //
         // deux index indépendants ; `synchro` seul enverrait les deux au même
         // et ne montrerait jamais que la grande part.
-        const fEnfant = (item.sousImage !== undefined) ? item.sousImage
-          : (item.synchro ? f : undefined);
+        const fEnfant = (cadreDe.enfant !== undefined) ? cadreDe.enfant
+          : (item.sousImage !== undefined) ? item.sousImage
+            : (item.synchro ? f : undefined);
         // La transformation de couleur du placement de PREMIER niveau se
         // transmet comme le masque : aplatir() ne la voit pas, puisqu'on
         // l'appelle placement par placement.
@@ -367,7 +417,12 @@ function principal() {
         // voit pas, puisqu'on l'appelle placement par placement. Sans ce
         // rattrapage, le rectangle rouge qui découpe la colonne des pièces à
         // venir se dessinait par-dessus elle.
-        if (p.masque) for (const m of morceaux) m.masque = true;
+        if (p.masque) {
+          masqueOuvert = { clip: p.masque, num: ++numeroDeMasque };
+          for (const m of morceaux) { m.masque = true; m.numeroMasque = masqueOuvert.num; }
+        } else if (masqueOuvert) {
+          for (const m of morceaux) m.sousMasque = masqueOuvert.num;
+        }
         pieces.push(...morceaux);
       }
       if (!pieces.length) continue;
@@ -375,7 +430,7 @@ function principal() {
         pc.source = source;
         formes.set(source + '#' + pc.shape, { source, shape: pc.shape });
       }
-      etats.push({ frame: f, pieces });
+      etats.push({ frame: cadreDe.sortie, pieces });
     }
     if (!etats.length) { absents.push(item.symbole + ' (aucune forme)'); continue; }
     manifeste[item.cle] = { nom: item.etiquette, symbole: item.symbole, etats };
@@ -497,9 +552,14 @@ function principal() {
         // masques des pupilles de la fée, appliqués au dessin entier,
         // réduiraient son portrait à treize pixels sur six.
         if (pc.masque) {
-          masques.push({ x: p.x, y: p.y, w: p.w, h: p.h, chemin: pc.chemin || '' });
+          // On garde le DESSIN du masque, pas seulement son cadre : celui du
+          // médaillon de l'inventaire est un disque, et s'en tenir à son carré
+          // laisserait dépasser les quatre coins du portrait.
+          masques.push(Object.assign({}, p, { chemin: pc.chemin || '',
+            num: pc.numeroMasque || 0 }));
           continue;
         }
+        if (pc.sousMasque) p.msq = pc.sousMasque;
         // Le chemin des clips nommés qui portent la forme : c'est par lui que
         // le client sait quelle couleur de la fée appliquer à quel morceau.
         if (pc.chemin) p.nom = pc.chemin;
@@ -520,11 +580,32 @@ function principal() {
       // son portrait à treize pixels sur six.
       const couvreTout = (m) => pieces.every((p) => {
         const n = p.nom || '';
-        return m.chemin === '' || n === m.chemin || n.indexOf(m.chemin + '.') === 0;
+        const parLeNom = m.chemin !== '' && (n === m.chemin || n.indexOf(m.chemin + '.') === 0);
+        return parLeNom || (m.num !== 0 && p.msq === m.num);
       });
       const gardes = masques.filter(couvreTout).map((m) => ({ x: m.x, y: m.y, w: m.w, h: m.h }));
       const etat = { frame: e.frame, pieces };
-      if (gardes.length) etat.masques = gardes;
+      if (gardes.length) {
+        // Un masque qui prend TOUT le dessin devient la fenêtre du canevas : rien
+        // ne peut en sortir, autant ne pas préparer plus grand.
+        etat.masques = gardes;
+        for (const p of pieces) delete p.msq;
+      } else {
+        // Un masque PARTIEL, lui, ne découpe que sa tranche. Le client garde le
+        // cadre entier et ne pose sous fenêtre que les pièces marquées.
+        //
+        // On sort AUSSI ceux que rien ne référence : la découpe de la colonne
+        // des pièces à venir ne s'applique qu'à un clip vide (`mcNext.zone`),
+        // que le jeu remplit lui-même à chaque pièce. Sans son cadre, elles
+        // déborderaient du cadre du portrait en montant.
+        const partiels = masques.filter((m) => m.num !== 0);
+        if (partiels.length) {
+          etat.masquesPartiels = partiels.map((m) => {
+            const q = Object.assign({}, m); delete q.chemin; return q;
+          });
+        }
+        for (const p of pieces) if (p.msq && !partiels.some((m) => m.num === p.msq)) delete p.msq;
+      }
       return etat;
     }).filter((e) => e.pieces.length);
   }

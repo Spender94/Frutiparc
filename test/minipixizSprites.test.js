@@ -253,7 +253,42 @@ test('les masques sont mis de côté, pas dessinés', () => {
     }
   }
   assert.ok(sprites.interFace.etats[0].masques, 'le cadre du portrait a gardé sa découpe');
-  assert.ok(sprites.suivante.etats[0].masques, 'la colonne des pièces à venir aussi');
+  // Celle de la colonne des pièces à venir est PARTIELLE : elle ne s'applique
+  // qu'au clip que le jeu remplit lui-même (`mcNext.zone`), pas au dessin
+  // entier. Le client s'en sert pour couper les pièces qui montent.
+  assert.ok(sprites.suivante.etats[0].masquesPartiels,
+    'la colonne des pièces à venir a gardé la sienne');
+});
+
+test('un masque ne découpe que sa tranche de profondeurs', () => {
+  // Le médaillon du panneau de l'inventaire est un masque de premier niveau,
+  // mais son ClipDepth s'arrête au portrait : le fond du panneau, ses deux
+  // boutons et sa pastille de niveau vivent au-dessus. L'appliquer au dessin
+  // entier rognait le panneau à son médaillon.
+  const e = sprites.invPanneau.etats[0];
+  assert.ok(!e.masques, 'le médaillon ne prend pas tout le panneau');
+  assert.ok(e.masquesPartiels && e.masquesPartiels.length === 1, 'il est retenu à part');
+  const m = e.masquesPartiels[0];
+  assert.ok(m.fichier, 'avec son DESSIN, pas seulement son cadre : c\'est un disque');
+  const marquees = e.pieces.filter((p) => p.msq === m.num);
+  assert.ok(marquees.length > 0, 'le portrait est découpé');
+  assert.ok(marquees.every((p) => (p.nom || '').indexOf('pic') === 0),
+    'et lui seul : ' + e.pieces.filter((p) => p.msq).map((p) => p.nom).join(', '));
+});
+
+test('le panneau de la fée sort un visage par image', () => {
+  // `Mc.setPic(facePanel.pic, fi.skin)` envoie le clip du portrait sur l'image
+  // du visage tiré. Le panneau doit donc en porter autant.
+  assert.equal(sprites.invPanneau.etats.length, 10);
+  const dessin = (n) => JSON.stringify(sprites.invPanneau.etats[n].pieces.map((p) => p.fichier));
+  assert.notEqual(dessin(0), dessin(2), 'deux visages, deux dessins');
+  // Ses boutons en sont sortis : ils ont leur propre image, et seraient partis
+  // défiler avec les visages.
+  const noms = new Set();
+  for (const e of sprites.invPanneau.etats) for (const p of e.pieces) if (p.nom) noms.add(p.nom);
+  for (const n of ['swap', 'quit', 'level']) assert.ok(!noms.has(n), n + ' est sorti du panneau');
+  assert.ok(sprites.invPanneau.ancrages.swap, 'mais son ancre est gardée');
+  assert.equal(sprites.invBouton.etats.length, 16, 'le bouton a ses seize images');
 });
 
 test('chaque pièce porte sa matrice, pour les dessins retournés', () => {

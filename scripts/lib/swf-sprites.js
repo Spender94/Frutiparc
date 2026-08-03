@@ -203,21 +203,31 @@ function ouvrir(chemin) {
         if (flags & 32) { const r = lireChaine(o); nom = r.texte; o = r.fin; }
         if (flags & 64) { masque = b.readUInt16LE(o); o += 2; }
 
-        if (!aCar) {
-          // Simple modification : on garde le caractère en place et on ne
-          // remplace que ce que l'étiquette redéfinit.
-          const avant = l.get(prof);
-          if (!avant) return;
-          ch = avant.ch;
-          if (!(flags & 4)) M = avant.M;
-          if (nom === null) nom = avant.nom;
-          if (!masque) masque = avant.masque;
-          if (!(flags & 8)) cx = avant.cx;
-          if (ratio === null) ratio = avant.ratio;
+        // Un DÉPLACEMENT (drapeau 1) reprend tout ce que l'étiquette ne redit
+        // pas. C'est vrai sans caractère — la simple modification — mais AUSSI
+        // avec : l'atelier de Flash écrit un « remplacement de caractère »
+        // (déplacement + caractère, sans matrice) chaque fois qu'une image-clé
+        // ne change que le symbole d'un calque, et le lecteur garde alors la
+        // position de l'objet déjà en place. Prendre l'identité à la place
+        // envoyait la lettre V de la barre de caractéristique soixante-douze
+        // pixels à droite de ses cinq sœurs.
+        const avant = l.get(prof);
+        if (flags & 1 || !aCar) {
+          if (!avant) { if (!aCar) return; } else {
+            if (!aCar) ch = avant.ch;
+            if (!(flags & 4)) M = avant.M;
+            if (nom === null) nom = avant.nom;
+            if (!masque) masque = avant.masque;
+            if (!(flags & 8)) cx = avant.cx;
+            if (ratio === null) ratio = avant.ratio;
+          }
         }
       }
       if (ch < 0 || prof < 0) return;
-      l.set(prof, { ch, M, nom: nom || null, masque: masque || 0, cx: cx || null,
+      // La PROFONDEUR sort avec le reste : un masque ne découpe que la tranche
+      // de profondeurs qui va de la sienne à son ClipDepth, et sans elle on ne
+      // peut pas savoir qui il découpe.
+      l.set(prof, { ch, M, prof, nom: nom || null, masque: masque || 0, cx: cx || null,
         ratio: (ratio === null || ratio === undefined) ? null : ratio });
     });
     // La dernière image d'un sprite n'est pas toujours suivie d'un ShowFrame.

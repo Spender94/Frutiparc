@@ -31,6 +31,9 @@
 // Node : les tests peuvent ainsi vérifier la géométrie sans navigateur.
 const O = (typeof module !== 'undefined' && module.exports)
   ? require('./items.js') : racine.MinipixizObjets;
+const N = (typeof module !== 'undefined' && module.exports)
+  ? require('./nuit.js') : null;
+const nuit = () => N || racine.MinipixizNuit;
 
 // Les constantes d'Inventory.mt, telles quelles.
 const SCENE = 240;
@@ -49,6 +52,35 @@ const SORT = { x: 175, y: 98, pas: 17, colonnes: 4, lignes: 5 };
 const SAC_FEE = { x: 184, pas: 32, colonnes: 2 };
 const SANTE = { coeurY: 92, coeurPas: 9, coeurEchelle: 60, cadranX: 200, cadranY: 137 };
 const MSG_Y = SCENE - 60;
+
+// La rangée du bas (initExtraDisplay) : la clé, l'étoile, cinq diamants.
+const EXTRA = { y: 168, cleX: 19, etoileX: 54, diamX: 85, diamPas: 15, diamants: 5 };
+// Où chaque contenu se pose dans son alvéole, et à quelle taille. Ce sont les
+// matrices de placement de `invSmallSlot`, lues telles quelles : la clé est un
+// dessin de cent unités réduit à 14,8 %, l'étoile est à sa taille, le diamant
+// à 72,9 %.
+const DEDANS = {
+  cle: { echelle: 14.825, dx: -2.2, dy: 0.45 },
+  etoile: { echelle: 100, dx: -2.85, dy: -0.3 },
+  diamant: { echelle: 72.897, dx: 0, dy: 0 },
+};
+
+// Les lettres des six barres. Le fichier les porte en texte STATIQUE (chars 622
+// à 627, Berlin Sans FB Demi 10 px, rgb(73,116,186)), une par image du clip —
+// et un texte statique n'est pas une forme : l'extracteur ne peut pas le sortir.
+// On les redessine donc, à la place que donnent les matrices : le coin haut
+// gauche de la lettre tombe à 2,45 px à gauche du repère de la barre, sa ligne
+// de base 3,3 px en dessous.
+const LETTRES = ['F', 'R', 'V', 'I', 'C', 'M'];
+const LETTRE_COULEUR = 'rgb(73,116,186)';
+const LETTRE_X = 2.35;
+const LETTRE_BASE = 3.3;
+// Le compteur de clés et d'étoiles : même fonte, deux fois plus haute, centrée
+// dans une boîte qui déborde à droite de l'alvéole, et à peine opaque.
+const COMPTE_COULEUR = 'rgba(67,100,175,.70)';
+const COMPTE_X = 13;
+const COMPTE_BASE = 4;
+const FONTE = '"Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
 
 const nombre = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
@@ -92,6 +124,7 @@ class Inventaire {
     this.main = null;                 // l'objet tenu : {sac, case}
     this.feeCourante = 0;
     this.volet = 0;                   // faerieIntMode
+    this.aConfirmer = null;           // la fée qu'on s'apprête à relâcher
     this.message = '';
     this.titre = '';
     this.zones = [];                  // les rectangles cliquables, refaits à chaque rendu
@@ -169,10 +202,12 @@ class Inventaire {
       C.poserRendu(ctx, C.rendre(s[cle], frame, taille, couleur, parties), x, y);
     };
 
-    // 1. Le fond.
-    poser('invFond', 1, 100, 0, 0);
+    // 1. Le dessin de l'ÉCRAN lui-même : le grand panneau clair. Ce n'est pas un
+    //    décor attaché, c'est le clip « inventory » que Manager.genSlot pose, et
+    //    sans lui tout l'inventaire flottait sur du noir.
+    poser('invEcran', 1, 100, 0, 0);
 
-    // 2. Les cases du sac du joueur, et ce qu'elles portent.
+    // 2. Les cases du sac du joueur, et ce qu'elles portent (DP_SLOT = 4).
     const g = this.grilleJoueur();
     const liste = O.contenu(this.carte.$inv, g.max);
     for (const c of g.cases) {
@@ -182,12 +217,19 @@ class Inventaire {
       this.texte('Pas encore de sac', INV_WIDTH / 2, MARGIN_UP + INV_HEIGHT / 2, '#6b5b3a', 10);
     }
 
-    // 3. Le volet de la fée, puis son panneau par-dessus.
+    // 3. La rangée du bas : ce qu'on a rapporté du monde (DP_SLOT lui aussi).
+    this.rendreExtra();
+
+    // 4. Le volet de la fée, puis son panneau par-dessus (DP_SLOT2 = 6).
     const fee = this.fee();
     if (fee) this.rendreVolet(fee);
     this.rendrePanneau(fee);
 
-    // 4. Le bandeau de message, le cadre, la poubelle.
+    // 5. Les lianes (invBg) : malgré son nom, le jeu les pose à DP_BG = 7, donc
+    //    PAR-DESSUS les cases et le panneau. Elles retombent sur l'écran.
+    poser('invFond', 1, 100, 0, 0);
+
+    // 6. Le bandeau de message, le cadre, la poubelle.
     poser('invMessage', this.titre ? 2 : 1, 100, 0, MSG_Y);
     if (this.message) {
       this.texte(this.message, SCENE / 2, MSG_Y + (this.titre ? 26 : 22), '#2a2416', 9, 200);
@@ -245,6 +287,54 @@ class Inventaire {
     this.zoneRect({ sac, case: index }, cx - taille / 2, cy - taille / 2, taille, taille);
   }
 
+  /**
+   * Inventory.initExtraDisplay — la clé, l'étoile et les cinq diamants.
+   *
+   * Chaque alvéole existe toujours ; c'est son CONTENU qui s'efface quand on n'a
+   * rien. Et sous la clé comme sous l'étoile s'affiche un compte, qui disparaît
+   * lui aussi à zéro.
+   */
+  rendreExtra() {
+    const C = racine.MinipixizClient, s = this.sprites, ctx = this.ctx;
+    const c = this.carte;
+    const alveole = (frame, x) => {
+      if (s.invPetiteCase) C.poserRendu(ctx, C.rendre(s.invPetiteCase, frame, 100), x, EXTRA.y);
+    };
+    const dedans = (cle, frame, x, d) => {
+      if (!s[cle]) return;
+      C.poserRendu(ctx, C.rendre(s[cle], frame, d.echelle), x + d.dx, EXTRA.y + d.dy);
+    };
+
+    alveole(1, EXTRA.cleX);
+    if (nombre(c.$key) > 0) {
+      dedans('invCle', 1, EXTRA.cleX, DEDANS.cle);
+      this.compte(String(nombre(c.$key)), EXTRA.cleX);
+    }
+
+    alveole(2, EXTRA.etoileX);
+    if (nombre(c.$star) > 0) {
+      dedans('invEtoile', 1, EXTRA.etoileX, DEDANS.etoile);
+      this.compte(String(nombre(c.$star)), EXTRA.etoileX);
+    }
+
+    for (let i = 0; i < EXTRA.diamants; i++) {
+      const x = EXTRA.diamX + i * EXTRA.diamPas;
+      alveole(3, x);
+      // `sub.gotoAndStop(1+i)` : le i-ième diamant a sa propre teinte.
+      if (nombre(c.$diam) > i) dedans('invDiamant', i + 1, x, DEDANS.diamant);
+    }
+  }
+
+  compte(t, x) {
+    const ctx = this.ctx;
+    ctx.font = 'bold 11px ' + FONTE;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = COMPTE_COULEUR;
+    ctx.fillText(t, x + COMPTE_X, EXTRA.y + COMPTE_BASE);
+    ctx.textBaseline = 'top';
+  }
+
   rendreVolet(fee) {
     const C = racine.MinipixizClient, s = this.sprites, ctx = this.ctx;
     switch (this.volet) {
@@ -252,6 +342,12 @@ class Inventaire {
         for (let i = 0; i < 6; i++) {
           const y = BARRE.y + i * BARRE.pas;
           if (s.invBarre) C.poserRendu(ctx, C.rendre(s.invBarre, i + 1, 100), BARRE.x, y);
+          ctx.font = 'bold 10px ' + FONTE;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillStyle = LETTRE_COULEUR;
+          ctx.fillText(LETTRES[i], BARRE.x + LETTRE_X, y + LETTRE_BASE);
+          ctx.textBaseline = 'top';
           for (let p = 0; p < BARRE.points; p++) {
             if (!s.invPoint) break;
             C.poserRendu(ctx, C.rendre(s.invPoint, p < nombre(fee.carac[i]) ? 2 : 1, 100),
@@ -309,22 +405,46 @@ class Inventaire {
     if (!s.invPanneau) return;
     const px = PANNEAU.x, py = PANNEAU.y;
 
+    // `Mc.setPic(facePanel.pic, fi.skin)` fait DEUX choses : il envoie le clip du
+    // portrait sur l'image du visage tiré — d'où une sortie du panneau par
+    // visage —, et il teinte ses mèches, ce que `parties` applique ici. Le
+    // médaillon est un disque, et c'est le masque du fichier qui le découpe.
     if (fee) {
-      // Le portrait se glisse dans le panneau : Mc.setPic(facePanel.pic, skin).
       const a = fee.apparence();
-      C.poserRendu(ctx, C.rendre(s.invPanneau, 1, 100, undefined,
+      C.poserRendu(ctx, C.rendre(s.invPanneau, a.num + 1, 100, undefined,
         C.partiesDeFee(a.couleurs, 'pic.'), null), px, py);
     } else {
-      C.poserRendu(ctx, C.rendre(s.invPanneau, 1, 100), px, py);
+      // Sans fée, le médaillon reste vide : le panneau n'a plus que son cadre.
+      C.poserRendu(ctx, C.rendre(s.invPanneau, 1, 100, undefined, null, '>pic'), px, py);
     }
 
-    // Le niveau, dans sa pastille (facePanel.level.field).
-    if (fee) this.texte(String(nombre(fee.fs.$level) + 1), px + 1, py + 30, '#3a2a12', 10);
+    // Les deux boutons et la pastille de niveau, aux ancres que le fichier
+    // donne. Le bouton de gauche montre le volet SUIVANT — c'est ce qu'on
+    // obtiendra en le touchant —, celui de droite toujours l'image 6, la fée
+    // qu'on relâche.
+    const a = (s.invPanneau.ancrages) || {};
+    const pose = (cle, frame, an) => {
+      if (!s[cle] || !an) return;
+      C.poserRendu(ctx, C.rendre(s[cle], frame, 100), px + an.x, py + an.y);
+    };
+    pose('invBouton', ((this.volet + 1) % 4) + 1, a.swap);
+    if (fee) {
+      pose('invBouton', 6, a.quit);
+      pose('invNiveau', 1, a.level);
+      // Le niveau, dans sa pastille (facePanel.level.field).
+      if (a.level) {
+        this.texte(String(nombre(fee.fs.$level) + 1), px + a.level.x, py + a.level.y - 5,
+          '#3a2a12', 10);
+      }
+    }
 
-    // Les trois boutons du panneau, aux positions du dessin.
-    this.zoneRect('volet', px - 34, py + 16, 22, 22);
-    this.zoneRect('portrait', px - 32, py - 32, 54, 44);
-    this.zoneRect('liberer', px + 14, py + 16, 22, 22);
+    // Les trois zones à toucher, sur le dessin de chacune.
+    const zone = (quoi, an, r) => {
+      if (an) this.zoneRect(quoi, px + an.x - r, py + an.y - r, r * 2, r * 2);
+    };
+    zone('volet', a.swap, 10);
+    this.zoneRect('portrait', px - 29.4, py - 29.4, 58.8, 58.8);
+    if (fee) zone('liberer', a.quit, 10);
 
     // Plusieurs fées : de quoi passer de l'une à l'autre.
     const l = this.carte.$faerie || [];
@@ -377,6 +497,8 @@ class Inventaire {
   }
 
   agir(quoi) {
+    // Un geste, quel qu'il soit, annule la libération qu'on venait d'annoncer.
+    if (quoi !== 'liberer') this.aConfirmer = null;
     if (quoi === 'volet') {
       // Le bouton fait tourner les quatre volets, mais pas les mains pleines :
       // `if( me.hand == null )` dans initFaerieIntMode.
@@ -386,7 +508,7 @@ class Inventaire {
       return;
     }
     if (quoi === 'portrait') { this.donnerALaFee(); return; }
-    if (quoi === 'liberer') { this.dire('Rendre sa liberté à une fée n\'est pas encore porté.'); return; }
+    if (quoi === 'liberer') { this.liberer(); return; }
     if (quoi === 'poubelle') { this.jeter(); return; }
     if (quoi && quoi.fee !== undefined) {
       this.feeCourante = quoi.fee; this.main = null; this.dire(''); return;
@@ -451,6 +573,38 @@ class Inventaire {
       { sac: this.main.sac, case: this.main.case }, { sac, case: index });
     this.main = null;
     if (!bouge) { this.dire('Impossible de poser là.'); return; }
+    this.changer();
+  }
+
+  /**
+   * Cm.withdraw — on rend sa liberté à la fée.
+   *
+   * Le jeu demande confirmation (`attachChoice`) avant : on ne relâche pas une
+   * compagne de quinze niveaux d'un doigt qui glisse. Et à partir du niveau 15,
+   * elle laisse une étoile en souvenir.
+   */
+  liberer() {
+    const fs = (this.carte.$faerie || [])[this.feeCourante];
+    if (!fs) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
+    if (this.aConfirmer !== this.feeCourante) {
+      this.aConfirmer = this.feeCourante;
+      this.dire('Touchez encore pour rendre sa liberté à ' + fs.$name + '.', 'Êtes-vous sûr ?');
+      return;
+    }
+    this.aConfirmer = null;
+    let msg = fs.$name + ' est repartie au pays des fées ! ';
+    if (nombre(fs.$level) >= 15) {
+      msg += 'En souvenir de vos aventures, elle vous offre une étoile !';
+      this.carte.$star = nombre(this.carte.$star) + 1;
+    }
+    // Une fée en bocal doit d'abord en sortir, sinon le bocal garderait un
+    // occupant qui n'existe plus.
+    fs.$pos = null;
+    nuit().effacerFee(this.carte, fs);
+    this.feeCourante = Math.max(0, Math.min(this.feeCourante,
+      (this.carte.$faerie || []).length - 1));
+    this.main = null;
+    this.dire(msg);
     this.changer();
   }
 
@@ -523,7 +677,8 @@ class Inventaire {
   fermer() { if (this.surFermeture) this.surFermeture(); }
 }
 
-const API = { Inventaire, dessinObjet, INV_SHAPE, SLOT_SIZE, INV_WIDTH, INV_HEIGHT, SECTION, PANNEAU };
+const API = { Inventaire, dessinObjet, INV_SHAPE, SLOT_SIZE, INV_WIDTH, INV_HEIGHT,
+  SECTION, PANNEAU, EXTRA, BARRE, LETTRES };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinipixizInventaire = API;
 

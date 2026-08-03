@@ -62,6 +62,9 @@ class Lieu {
   options() { return {}; }
   niveauDeDepart() { return undefined; }   // undefined = le moteur génère
   emmeneLaFee() { return true; }
+  // Les pièces à venir se lisent d'ordinaire dans le cadre du portrait, donc
+  // seulement en aventure ; l'arbre creux, lui, a sa propre colonne.
+  get colonneSuivantes() { return null; }
 
   commencer() {
     this.jeu = new E.Jeu(Object.assign({
@@ -291,6 +294,8 @@ class Donjon extends Lieu {
 const ARBRE_TEMPS = 1000;                    // TIME_LIMIT
 const ARBRE_VITESSES = [0.15, 0.35, 0.5];    // SPEED_LIMIT, par nombre de couleurs
 const ARBRE_VALEURS = [1, 5, 7, 8, 9, 10];   // VALUE_LIMIT, par rang de maillon
+const FRUIT_ELASTIQUE = 40;                  // au-delà, l'élastique rappelle le fruit
+const FRICT = 0.95;                          // Cs.frict, le frottement de tout ce qui vole
 
 class Arbre extends Lieu {
   get cadre() { return 'cadreArbre'; }
@@ -299,6 +304,19 @@ class Arbre extends Lieu {
   // lieu où l'on joue sans fée. Pas de sorts, pas de démons, pas de portrait —
   // le tronc, l'escargot et le score.
   emmeneLaFee() { return false; }
+
+  /**
+   * base/Tree.initNextPiece — l'arbre montre TOUJOURS trois pièces à venir.
+   *
+   * Il se sert d'un `inter.Face` dont `supaMorph()` efface le cadre pour ne
+   * garder que la colonne, agrandie d'un cinquième (`height*1.2` = 84) et posée
+   * en (132+4+68, 4+4). C'est le seul mode où la fée n'a pas son mot à dire :
+   * ici on voit venir, quelle que soit sa concentration — et pour cause, elle
+   * n'est pas du voyage.
+   */
+  get colonneSuivantes() {
+    return { x: 204, y: 8, echelle: 0.84, image: 4, nombre: 3 };
+  }
 
   constructor(o) {
     super(o);
@@ -328,7 +346,47 @@ class Arbre extends Lieu {
     this.timer = 0;
     this.multi = 1;
     this.score = 0;
+    this.fruits = [];
     this.blinder();
+  }
+
+  /**
+   * base/Tree.multiUp — un fruit de plus pend du haut de l'écran.
+   *
+   * Ils ne sont pas posés : ils TOMBENT depuis y = −60, et un élastique les
+   * rappelle dès qu'ils s'éloignent de plus de quarante pixels de leur point
+   * d'accroche. Le dernier de la grappe pend à −60, les autres sont tirés vers
+   * −240, si bien que la grappe s'étire vers le haut à mesure qu'elle grandit.
+   */
+  ajouterFruit() {
+    this.fruits.push({
+      x: 20 + (this.jeu.hasard(1e6) / 1e6) * 10, y: -60,
+      vitx: 0, vity: 0, vitr: 0, rot: ((this.jeu.hasard(1e6) / 1e6) * 2 - 1) * 90,
+      image: Math.min(this.multi, 4),
+    });
+  }
+
+  bougerFruits(tmod) {
+    const f = this.fruits || [];
+    for (let i = 0; i < f.length; i++) {
+      const p = f[i];
+      const at = (i < f.length - 1) ? { x: 22, y: -240 } : { x: 22, y: -60 };
+      const dx = at.x - p.x, dy = at.y - p.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > FRUIT_ELASTIQUE) {
+        const c = (dist - FRUIT_ELASTIQUE) / FRUIT_ELASTIQUE;
+        const a = Math.atan2(dy, dx);
+        p.vitx += Math.cos(a) * c;
+        p.vity += Math.sin(a) * c;
+      }
+      // Le fruit se redresse : sa rotation le freine d'autant plus qu'il penche.
+      p.vitr -= Math.max(-0.5, Math.min(p.rot * 0.05, 0.5)) * tmod;
+      p.vity += tmod;                  // flGrav, weight = 1
+      p.vitx *= FRICT; p.vity *= FRICT; p.vitr *= FRICT;
+      p.x += p.vitx * tmod;
+      p.y += p.vity * tmod;
+      p.rot += p.vitr * tmod;
+    }
   }
 
   /**
@@ -361,6 +419,7 @@ class Arbre extends Lieu {
         const lim = ARBRE_VITESSES[jeu.colorList.length - 3];
         if (lim !== undefined && jeu.pSpeed > lim && jeu.colorList.length < 6) {
           this.multi++;
+          this.ajouterFruit();
           jeu.colorList.push(jeu.colorList.length);
           jeu.pSpeed = jeu.colorList.length * 0.01;
           jeu.viderReserve();
@@ -369,6 +428,7 @@ class Arbre extends Lieu {
         }
       }
     }
+    this.bougerFruits(tmod);
     const avant = jeu.nextList.length;
     super.update(tmod);
     if (jeu.nextList.length > avant) this.blinder();
@@ -409,6 +469,7 @@ class Arbre extends Lieu {
     return Object.assign(super.etat(), {
       score: this.score, multi: this.multi,
       escargot: this.hauteurEscargot(),
+      fruits: this.fruits || [],
       couleurs: this.jeu.colorList.length,
     });
   }

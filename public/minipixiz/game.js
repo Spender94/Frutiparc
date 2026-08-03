@@ -82,6 +82,12 @@ const NEXT_ZONE = { x: 18, y: 120, taille: 10 };
 // jouer entre des racines.
 const CADRE_FOND = 3, CADRE_MILIEU = 2, CADRE_DESSUS = 1;
 
+// L'arbre creux : la plaque du score en (2,2), et l'escargot en x = 38. Le champ
+// de la plaque est centré dans une boîte qui va de 1,95 à 61,25 — son milieu
+// tombe donc à 31,6 du coin de la plaque — et sa ligne de base à 13.
+const SCORE_ARBRE = { x: 2, y: 2, cx: 31.6, base: 13, couleur: 'rgb(104,69,34)' };
+const ESCARGOT_X = 38;
+
 // Le bleu de la nuit, et la force du voile (Menu.setNight). Le coefficient de
 // nuit vaut zéro à minuit, un demi à midi : |nc - 0.5| × 2 donne donc zéro en
 // plein jour et un au cœur de la nuit.
@@ -95,7 +101,12 @@ function charger(manifeste, surAvancee) {
   const fichiers = new Set();
   for (const [cle, s] of Object.entries(manifeste)) {
     s.cle = cle;                       // rendre() en a besoin pour l'ancrage
-    for (const e of s.etats) for (const p of e.pieces) fichiers.add(p.fichier);
+    for (const e of s.etats) {
+      for (const p of e.pieces) fichiers.add(p.fichier);
+      // Le dessin d'un masque partiel sert de pochoir : il faut le charger comme
+      // les autres, même s'il ne se voit jamais.
+      for (const m of (e.masquesPartiels || [])) if (m.fichier) fichiers.add(m.fichier);
+    }
   }
   const liste = [...fichiers];
   let faits = 0;
@@ -395,21 +406,36 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
   // et le passe-partout du cadre sont SOUS le portrait, le liseré est DESSUS ;
   // tout dessiner d'un bloc cacherait la fée derrière le passe-partout.
   //
+  //   '<pic'  les pièces d'avant
   //   'pic'   les pièces jusqu'à `pic` incluse
   //   '>pic'  celles d'après
   //
   // Le cadre du canevas reste celui du dessin ENTIER : les deux moitiés doivent
   // se superposer exactement.
   if (tranche && complet) {
-    const apres = tranche.charAt(0) === '>';
-    const nom = apres ? tranche.slice(1) : tranche;
+    const signe = tranche.charAt(0);
+    const apres = signe === '>';
+    const avant = signe === '<';
+    const nom = (apres || avant) ? tranche.slice(1) : tranche;
     // Le nom est un CHEMIN de clips ("cadre.pic") : on accepte le suffixe, pour
-    // que l'appelant n'ait pas à connaître toute la hiérarchie.
-    const i = complet.pieces.findIndex((p) => p.nom === nom
-      || (p.nom && p.nom.slice(-(nom.length + 1)) === '.' + nom));
-    const morceaux = (i < 0) ? (apres ? [] : complet.pieces)
-      : (apres ? complet.pieces.slice(i + 1) : complet.pieces.slice(0, i + 1));
-    etat = { frame: complet.frame, pieces: morceaux, masques: complet.masques };
+    // que l'appelant n'ait pas à connaître toute la hiérarchie — et le PRÉFIXE,
+    // parce qu'un clip dont on veut la place peut n'apparaître que par ses
+    // enfants (le portrait de l'inventaire ne pose que des « pic.f… »).
+    const vise = (p) => p.nom && (p.nom === nom
+      || p.nom.slice(-(nom.length + 1)) === '.' + nom
+      || p.nom.indexOf(nom + '.') === 0
+      || p.nom.indexOf('.' + nom + '.') >= 0);
+    const premier = complet.pieces.findIndex(vise);
+    let dernier = -1;
+    for (let i = complet.pieces.length - 1; i >= 0; i--) {
+      if (vise(complet.pieces[i])) { dernier = i; break; }
+    }
+    const morceaux = (premier < 0) ? ((apres || avant) ? [] : complet.pieces)
+      : apres ? complet.pieces.slice(dernier + 1)
+        : avant ? complet.pieces.slice(0, premier)
+          : complet.pieces.slice(0, dernier + 1);
+    etat = { frame: complet.frame, pieces: morceaux, masques: complet.masques,
+      masquesPartiels: complet.masquesPartiels };
   }
   const k = ECHELLE_PIXEL.has(sprite.cle) ? 1 : taille / 100;
   const zero = ANCRE_CENTRE.has(sprite.cle) ? 50 : 0;
@@ -465,20 +491,45 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
       dest.restore();
     };
 
+    // Un masque PARTIEL ne découpe qu'une tranche du dessin — la sienne. Le
+    // médaillon du panneau de l'inventaire s'arrête au portrait ; le fond du
+    // panneau, ses deux boutons et sa pastille de niveau vivent au-dessus de lui
+    // et doivent rester entiers. Le pousser en fenêtre du canevas, comme un
+    // masque qui prend tout, rognait le panneau à son médaillon.
+    //
+    // Et c'est bien le DESSIN du masque qui découpe, pas son cadre : celui du
+    // médaillon est un disque, s'en tenir à son carré laisserait dépasser les
+    // quatre coins du portrait.
+    const partiels = new Map();
+    for (const m of (etat.masquesPartiels || [])) partiels.set(m.num, m);
+    const decouper = (dest, m) => {
+      const img = images.get(m.fichier);
+      dest.globalCompositeOperation = 'destination-in';
+      if (img) poser(dest, m, img);
+      else {
+        dest.setTransform(1, 0, 0, 1, 0, 0);
+        dest.fillStyle = '#000';
+        dest.fillRect((m.x + zero) * k - dx, (m.y + zero) * k - dy, m.w * k, m.h * k);
+      }
+      dest.globalCompositeOperation = 'source-over';
+    };
+
     for (const p of etat.pieces) {
       const img = images.get(p.fichier);
       if (!img) continue;
       const t = (parties && p.nom !== undefined) ? parties[p.nom] : undefined;
-      if (t === undefined && !p.cx) { poser(g, p, img); continue; }
+      const coupe = p.msq ? partiels.get(p.msq) : null;
+      if (t === undefined && !p.cx && !coupe) { poser(g, p, img); continue; }
       // Une pièce teintée se dessine SEULE sur un calque, se teinte là — où
       // elle est la seule à porter des pixels opaques — puis se colle. Teinter
       // son rectangle sur le dessin commun repeindrait ce qu'il y a dessous :
       // la chevelure de la fée couvre presque tout son portrait, et sa couleur
-      // aurait débordé sur le visage.
+      // aurait débordé sur le visage. Le même calque sert de plan de découpe.
       const calque = document.createElement('canvas');
       calque.width = l; calque.height = h;
       const gc = calque.getContext('2d');
       poser(gc, p, img);
+      if (coupe) decouper(gc, coupe);
       // La transformation de couleur du fichier d'abord — c'est celle que Flash
       // avait déjà appliquée — puis la teinte demandée par le jeu.
       if (p.cx) transformer(gc, 0, 0, l, h, p.cx);
@@ -539,7 +590,6 @@ function bougerEclats(ctx, tmod) {
   ctx.globalAlpha = 1;
 }
 
-const enHexa = (n) => '#' + n.toString(16).padStart(6, '0');
 const borner01 = (v) => Math.max(0, Math.min(1, v));
 
 // ── Le client ─────────────────────────────────────────────────────────────
@@ -633,8 +683,10 @@ class Client {
       this.champ = this.lieu.champ;
       this.jeu.entree = this.entree;
     }
-    const px = (gx) => E.MARGE_GAUCHE + (gx + 0.5) * TS;
-    const py = (gy) => E.MARGE_HAUT + (gy + 0.5) * TS;
+    // Les marges sont celles de la PARTIE, pas du module : l'arbre creux décale
+    // son aire de quarante-huit pixels pour laisser la place au tronc.
+    const px = (gx) => (this.jeu ? this.jeu.posX(gx + 0.5) : E.MARGE_GAUCHE + (gx + 0.5) * TS);
+    const py = (gy) => (this.jeu ? this.jeu.posY(gy + 0.5) : E.MARGE_HAUT + (gy + 0.5) * TS);
     switch (nom) {
       case 'destruction': this.message = null; break;
       case 'etoile': eclater(px(d.x), py(d.y), 24, '#ffffff', 3.2); break;
@@ -753,29 +805,118 @@ class Client {
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_FOND, 100), 0, 0);
     else { ctx.fillStyle = '#241c3a'; ctx.fillRect(0, 0, SCENE, SCENE); }
 
+    // Les fruits du multiplicateur pendent DERRIÈRE le tronc (`dm.under`).
+    this.dessinerFruits(ctx);
+
     for (const e of jeu.eList) this.dessinerElement(ctx, e, e.px, e.py);
     if (jeu.piece) for (const c of jeu.piece.cases()) this.poser(ctx, c.e, c.x, c.y);
     this.dessinerVol(ctx);
     bougerEclats(ctx, tmod);
 
+    // L'escargot est posé à DP_SKIN_MIDDLE, comme le montant du tronc, mais
+    // avant lui : il grimpe DERRIÈRE l'écorce.
+    this.dessinerEscargot(ctx);
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_MILIEU, 100), 0, 0);
     if (this.champ && this.champ.faerieList.length) this.dessinerInterface(ctx, tmod);
     else this.dessinerMessage(ctx, tmod);
+    const col = lieu.colonneSuivantes;
+    if (col) this.dessinerSuivantes(ctx, col.x, col.y, col.echelle, col.image, col.nombre);
     this.dessinerEnteteLieu(ctx);
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_DESSUS, 100), 0, 0);
     this.dessinerNuitNoire(ctx);
     this.dessinerNuit(ctx);
   }
 
+  /**
+   * inter.Face.newPiece — la colonne des pièces à venir (`mcNext`).
+   *
+   * Les pièces y entrent par le bas (`piece._y = 120`) et remontent vers leur
+   * place, `(i+1) × 100/(n+1)`. Un masque borde la colonne : sans lui, on les
+   * verrait passer par-dessous. Deux endroits s'en servent — le portrait de la
+   * fée en aventure, et le tronc de l'arbre creux, qui la montre toujours.
+   *
+   * @param {number} x,y   le coin du clip mcNext
+   * @param {number} k     son échelle (0,70 en aventure, 0,84 dans l'arbre)
+   * @param {number} frame son image (`setSkin`)
+   * @param {number} n     combien de pièces
+   */
+  dessinerSuivantes(ctx, x, y, k, frame, n) {
+    const s = this.sprites, jeu = this.jeu;
+    if (!s.suivante || !jeu) return;
+    poserRendu(ctx, rendre(s.suivante, frame, 100 * k), x, y);
+    const zx = x + NEXT_ZONE.x * k;
+    const zy = y + NEXT_ZONE.y * k;
+    const ec = 100 / (n + 1);
+    const etat = s.suivante.etats.find((e) => e.frame === frame) || s.suivante.etats[0];
+    const decoupe = (etat.masquesPartiels || [])[0];
+    ctx.save();
+    if (decoupe) {
+      ctx.beginPath();
+      ctx.rect(x + decoupe.x * k, y + decoupe.y * k, decoupe.w * k, decoupe.h * k);
+      ctx.clip();
+    }
+    for (let i = 0; i < n; i++) {
+      const liste = jeu.nextList[i];
+      if (!liste) continue;
+      const dy = ((i + 1) * ec - NEXT_ZONE.y) * k;
+      let xMin = 9, yMin = 9;
+      for (const o of liste) { xMin = Math.min(xMin, o.x); yMin = Math.min(yMin, o.y); }
+      for (const o of liste) {
+        poserRendu(ctx, rendre(s.token, 1, NEXT_ZONE.taille * k,
+          E.COULEURS[o.e.type] || E.COULEURS[0]),
+        zx + (o.x - xMin) * NEXT_ZONE.taille * k,
+        zy + dy + (o.y - yMin) * NEXT_ZONE.taille * k);
+      }
+    }
+    ctx.restore();
+  }
+
+  // base/Tree.initEscargot — l'escargot grimpe le long du tronc à mesure que le
+  // chronomètre tourne : `esc._y = 240 - (timer/1000)*220`. C'est LUI qui
+  // annonce la prochaine accélération, et c'est la seule horloge du mode.
+  dessinerEscargot(ctx) {
+    const e = this.lieu.etat();
+    if (e.escargot === undefined || !this.sprites.escargot) return;
+    poserRendu(ctx, rendre(this.sprites.escargot, 1, 100), ESCARGOT_X, e.escargot);
+  }
+
+  // base/Tree.multiUp — les fruits du multiplicateur, au bout de leur élastique.
+  dessinerFruits(ctx) {
+    const s = this.sprites;
+    const l = (this.lieu.etat().fruits) || [];
+    if (!l.length || !s.multiFruit) return;
+    for (const p of l) {
+      const r = rendre(s.multiFruit, p.image, 100);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot * Math.PI / 180);
+      ctx.drawImage(r.c, r.dx, r.dy);
+      ctx.restore();
+    }
+  }
+
   // Ce que chaque lieu doit dire au joueur, et que la forêt n'a pas : à quel
-  // niveau de donjon il en est, combien de pièces la roue attend encore, ce que
-  // vaut sa cascade.
+  // niveau de donjon il en est, combien de pièces la roue attend encore.
+  //
+  // L'arbre creux, lui, a sa PLAQUE (base/Tree.initScore) : `panScore` en (2,2),
+  // dont le champ est centré, en Berlin Sans 18 et brun.
   dessinerEnteteLieu(ctx) {
     const e = this.lieu.etat();
+    if (e.multi !== undefined && this.sprites.panScore) {
+      poserRendu(ctx, rendre(this.sprites.panScore, 1, 100), SCORE_ARBRE.x, SCORE_ARBRE.y);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = 'bold 15px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
+      ctx.fillStyle = SCORE_ARBRE.couleur;
+      ctx.fillText(String(e.score), SCORE_ARBRE.x + SCORE_ARBRE.cx,
+        SCORE_ARBRE.y + SCORE_ARBRE.base);
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'left';
+      return;
+    }
     const l = [];
     if (e.sur) l.push('donjon ' + (e.niveau + 1) + '/' + e.sur);
     if (e.tours !== undefined) l.push(e.tours + ' pièces');
-    if (e.multi !== undefined) l.push('×' + e.multi + '  ' + e.score);
     if (!l.length) return;
     ctx.textAlign = 'left';
     ctx.font = 'bold 9px Verdana, Arial, sans-serif';
@@ -894,7 +1035,10 @@ class Client {
   }
 
   dessinerElement(ctx, e, gx, gy) {
-    this.poser(ctx, e, E.MARGE_GAUCHE + gx * TS, E.MARGE_HAUT + gy * TS);
+    // Idem : c'est la partie qui sait où sa grille commence. S'en remettre aux
+    // constantes du module posait la pile de l'arbre creux quarante-quatre
+    // pixels à gauche de la pièce qui venait de la former.
+    this.poser(ctx, e, this.jeu.posX(gx), this.jeu.posY(gy));
   }
 
   // Pose un élément à un point en pixels. C'est le seul endroit qui sait à quoi
@@ -982,26 +1126,7 @@ class Client {
 
     // La colonne des pièces à venir, sous le cadre : elle n'existe que si la fée
     // est assez concentrée pour l'offrir.
-    if (voitVenir > 0 && s.suivante) {
-      poserRendu(ctx, rendre(s.suivante, 1, t), INTER.portrait.x, cy);
-      const k = FACE_ECHELLE;
-      const zx = INTER.portrait.x + NEXT_ZONE.x * k;
-      const zy = cy + NEXT_ZONE.y * k;
-      const ec = 100 / (voitVenir + 1);
-      for (let n = 0; n < voitVenir; n++) {
-        const liste = jeu.nextList[n];
-        if (!liste) continue;
-        const dy = ((n + 1) * ec - NEXT_ZONE.y) * k;
-        let xMin = 9, yMin = 9;
-        for (const o of liste) { xMin = Math.min(xMin, o.x); yMin = Math.min(yMin, o.y); }
-        for (const o of liste) {
-          poserRendu(ctx, rendre(s.token, 1, NEXT_ZONE.taille * k,
-            E.COULEURS[o.e.type] || E.COULEURS[0]),
-          zx + (o.x - xMin) * NEXT_ZONE.taille * k,
-          zy + dy + (o.y - yMin) * NEXT_ZONE.taille * k);
-        }
-      }
-    }
+    if (voitVenir > 0) this.dessinerSuivantes(ctx, INTER.portrait.x, cy, FACE_ECHELLE, 1, voitVenir);
 
     // Le portrait se glisse ENTRE le passe-partout du cadre et son liseré, et
     // le masque du cadre le découpe : c'est mot pour mot ce que fait
@@ -1043,53 +1168,12 @@ class Client {
       }
     }
 
-    ctx.font = 'bold 9px Verdana, Arial, sans-serif';
-    ctx.textBaseline = 'top';
-
-    // Le nom de la fée, sous ses barres.
-    if (fee) {
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#0d3d24';
-      ctx.fillText(fee.fs.$name, COLONNE_X + 50, INTER.vie.y + 22);
-      ctx.fillStyle = '#bfe8cf';
-      ctx.fillText(fee.fs.$name, COLONNE_X + 50, INTER.vie.y + 21);
-    }
-
-    // ── LE SCORE ── en haut du plateau, comme dans le jeu.
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#0d3d24';
-    ctx.fillText(String(jeu.score), 5, 4);
-    ctx.fillStyle = '#e6f5ec';
-    ctx.fillText(String(jeu.score), 4, 3);
-
-    // ── L'OBJECTIF ── les couleurs encore en jeu. Le niveau se gagne quand la
-    // rangée est vide : elle doit se lire d'un coup d'œil.
-    let x = COLONNE_X + 8;
-    const yObj = INTER.vie.y + 40;
-    for (let i = 0; i < jeu.colorList.length; i++) {
-      ctx.fillStyle = enHexa(E.COULEURS[jeu.colorList[i]]);
-      ctx.beginPath();
-      ctx.arc(x, yObj, 4, 0, 6.28);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(10,50,30,.6)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      x += 11;
-      if (x > COLONNE_X + 92) { x = COLONNE_X + 8; }
-    }
-
-    // ── LA PIÈCE SUIVANTE ── dans sa boîte, sous l'objectif.
-    const suite = jeu.nextList[0];
-    if (suite) {
-      const k = 9;
-      let xMin = 9, yMin = 9;
-      for (const o of suite) { xMin = Math.min(xMin, o.x); yMin = Math.min(yMin, o.y); }
-      const bx = COLONNE_X + 34, by = yObj + 16;
-      for (const o of suite) {
-        poserRendu(ctx, rendre(s.token, 1, k, E.COULEURS[o.e.type] || E.COULEURS[0]),
-          bx + (o.x - xMin) * k, by + (o.y - yMin) * k);
-      }
-    }
+    // Et c'est TOUT. `base/Aventure.initFaerieInterface` ne construit que ces
+    // trois éléments-là — le portrait, le mana, la vie. Le nom de la fée, la
+    // rangée des couleurs restantes, une deuxième boîte « pièce suivante » et le
+    // score n'existent nulle part à l'écran : `inter.Score` est déclaré mais
+    // jamais instancié, et la pièce à venir se lit DANS le cadre du portrait
+    // (mcNext), quand la concentration de la fée la laisse voir.
 
     this.dessinerMessage(ctx, tmod);
   }
