@@ -648,8 +648,46 @@ class Client {
     if (jeu) this.dessinerInterface(ctx, tmod);
     if (s.cadre) poserRendu(ctx, rendre(s.cadre, CADRE_DESSUS, 100), 0, 0);
 
-    // 4. LA NUIT, en dernier : elle teinte la scène entière.
+    // 4. LA NUIT NOIRE d'un impy : elle éteint TOUT, interface comprise, et ne
+    //    laisse qu'un rond autour de la pièce. C'est pour ça qu'elle vient ici,
+    //    après le reste.
+    this.dessinerNuitNoire(ctx);
+
+    // 5. L'heure qu'il est, en dernier : elle teinte la scène entière.
     this.dessinerNuit(ctx);
+  }
+
+  // spell/imp/Night : Manager.setNightMask masque tout le slot, puis le trou
+  // s'ouvre (mask._xscale = 100 - scale). On refait le geste : un voile noir,
+  // dans lequel le clip du masque perce une ouverture.
+  dessinerNuitNoire(ctx) {
+    const n = this.jeu && this.jeu.nuit;
+    if (!n || !(n.prc > 0)) return;
+    if (!this.calqueNuit) {
+      this.calqueNuit = document.createElement('canvas');
+      this.calqueNuit.width = SCENE;
+      this.calqueNuit.height = SCENE;
+    }
+    const g = this.calqueNuit.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, SCENE, SCENE);
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, SCENE, SCENE);
+    if (n.ouverture > 0 && this.sprites.nuit) {
+      g.globalCompositeOperation = 'destination-out';
+      poserVif(g, this.sprites.nuit, 1,
+        { x: n.x, y: n.y, sx: n.ouverture * 2.2, sy: n.ouverture * 2.2 });
+      g.globalCompositeOperation = 'source-over';
+    }
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, n.prc / 100);
+    ctx.drawImage(this.calqueNuit, 0, 0);
+    ctx.restore();
+    // mcBlackRing : le liseré sombre qui borde l'ouverture.
+    if (n.ouverture > 0 && this.sprites.mcBlackRing) {
+      poserVif(ctx, this.sprites.mcBlackRing, 1,
+        { x: n.x, y: n.y, sx: n.ouverture * 2.2, sy: n.ouverture * 2.2 });
+    }
   }
 
   // Menu.setNight : la scène bleuit à mesure qu'on s'éloigne de midi. Le jeu

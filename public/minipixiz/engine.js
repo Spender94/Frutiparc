@@ -308,6 +308,7 @@ class Piece {
     this.cy = 0;
     this.ta = 0;                       // l'angle visé, par quarts de tour
     this.flGround = false;
+    this.flBind = false;              // spell/imp/Bind : la pièce ne tourne plus
     this.flTurn = true;                // relâchement de la touche de rotation
     this.flSpeedable = false;
     this.slideWay = 0;
@@ -365,9 +366,15 @@ class Piece {
     if (entree.tourner) {
       if (this.flTurn) {
         this.flTurn = false;
-        this.tourner(1);
-        if (!this.placeLibre(0, 0)) this.tourner(-1);
-        else this.ta = (this.ta + 90) % 360;
+        // Les fils paralysants d'un impy (spell/imp/Bind) empêchent la rotation :
+        // la pièce se contente de gîter, et il faut la poser telle quelle.
+        if (this.flBind) {
+          this.jeu.evenement('pieceLiee', {});
+        } else {
+          this.tourner(1);
+          if (!this.placeLibre(0, 0)) this.tourner(-1);
+          else this.ta = (this.ta + 90) % 360;
+        }
       }
     } else {
       this.flTurn = true;
@@ -677,6 +684,17 @@ class Jeu {
       if (valide) list.push({ x, y });
     }
     return list;
+  }
+
+  // spell/imp/Conglomerat : l'impy IMPOSE la pièce suivante, aussi grosse qu'il
+  // est fort. Elle passe devant la file — c'est le seul moment où le jeu ne
+  // tire pas lui-même ce qui va tomber.
+  imposerForme(n) {
+    this.nextPiece = this.grandeForme(n).map((c) => ({
+      x: c.x, y: c.y,
+      e: new Jeton(this, { type: this.getColor(), special: this.tirerEtoile() }),
+    }));
+    return this.nextPiece;
   }
 
   // Game.clearNext : quand une couleur disparaît, la file est renouvelée pour

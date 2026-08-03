@@ -2069,6 +2069,750 @@ class Pigmentation extends Sort {
   description() { return 'Votre fée peint d\'une couleur unique les billes du niveau en les touchant.'; }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  spell/imp/*.mt — les sorts des démons
+//
+//  Symétriques de ceux de la fée, et pourtant tout autres : ils ne cherchent
+//  pas à ranger la grille mais à l'encombrer. Un impy n'a pas de mana ; il a
+//  des ACTIONS — huit à onze, tirées à sa naissance — et une cadence
+//  (Cs.impSpellRate). Quand il n'a plus d'actions, il quitte le niveau par le
+//  haut. C'est ce compte qui borne les dégâts qu'un démon peut faire.
+//
+//  Le tirage est dans Imp.getSpell (combat.js) : à chaque rang sa table.
+// ══════════════════════════════════════════════════════════════════════════
+
+class SortImpy extends Sort {
+  constructor(c) { super(c); this.imp = null; }
+  // Un impy ne paie rien et n'est jamais interrogé sur sa disponibilité : il
+  // lance quand sa cadence le lui permet.
+  disponible() { return true; }
+  finActif() {
+    this.flLance = false;
+    const i = this.jeu.saList.indexOf(this);
+    if (i >= 0) this.jeu.saList.splice(i, 1);
+  }
+}
+
+// ── Éboulement (TokenFall) ────────────────────────────────────────────────
+// Il monte des billes au ciel, et elles retombent au sommet des colonnes.
+// Autant que son rang le permet, jamais plus qu'il n'y a de colonnes.
+class ChuteJetons extends SortImpy {
+  constructor(c) { super(c); this.pList = []; this.cList = []; this.max = 0; }
+
+  initStep(n) {
+    this.step = n;
+    if (n === 1) {
+      this.max = Math.round(Math.min(this.jeu.xMax, (this.imp.level + 1) * (1 + this.alea())));
+      this.imp.epauleActive = true;
+      this.timer = 20;
+    } else if (n === 2) {
+      this.imp.epauleActive = false;
+      this.cList = [];
+      for (let i = 0; i < this.max; i++) this.cList.push(this.jeu.getColor());
+      this.pList = [];
+      for (let i = 0; i < this.max; i++) {
+        const p = this.champ.nouvellePart('partBallColor');
+        p.tx = this.alea() * E.LARGEUR;
+        p.x = this.lanceur.x;
+        p.y = this.lanceur.y - 10;
+        p.vitx = 4 * (this.alea() * 2 - 1);
+        p.vity = -(1 + this.alea() * 2);
+        p.couleur = E.COULEURS[this.cList[i]];
+        p.init();
+        this.pList.push(p);
+      }
+      this.lanceur.vity += 4;
+    }
+  }
+
+  updateActif(tmod) {
+    switch (this.step) {
+      case 0:
+        this.centrerLanceur();
+        this.lanceur.vers(this.lanceur.trg, 0.1, tmod);
+        if (this.lanceurPret(20)) this.initStep(1);
+        break;
+      case 1:
+        for (let i = 0; i < this.max; i++) {
+          const p = this.champ.nouvellePart('partLightBallFlip');
+          const a = this.alea() * 6.28;
+          const r = this.alea() * 8;
+          p.x = this.lanceur.x + Math.cos(a) * r;
+          p.y = this.lanceur.y - 10 + Math.sin(a) * r;
+          p.timer = 6 + this.alea() * 10;
+          p.fondu = [2];
+          p.echelle = 50 + this.alea() * 20;
+          p.fadeCouleur = this.hasard(0xFFFFFF);
+          p.init();
+        }
+        this.timer -= tmod;
+        if (this.timer < 0) this.initStep(2);
+        break;
+      case 2:
+        for (let i = 0; i < this.pList.length; i++) {
+          const p = this.pList[i];
+          p.versVitesse({ x: p.tx, y: -30 }, 0.1, 0.4, tmod);
+          if (p.x < 0 || p.x > E.LARGEUR) {
+            p.x = borner(0, p.x, E.LARGEUR);
+            p.vitx *= -0.8;
+          }
+          if (p.y < -20) { this.pList.splice(i--, 1); p.tuer(); }
+        }
+        if (this.pList.length === 0) {
+          // Une colonne au plus par bille, tirées au hasard, et rien ne tombe
+          // au-delà de la troisième ligne : le sort encombre, il ne tue pas.
+          const xList = [];
+          for (let i = 0; i < this.jeu.xMax; i++) xList.push(i);
+          for (let i = xList.length - 1; i > 0; i--) {
+            const j = this.hasard(i + 1);
+            const t = xList[i]; xList[i] = xList[j]; xList[j] = t;
+          }
+          for (const couleur of this.cList) {
+            const x = xList.pop();
+            if (x === undefined) break;
+            let y = 0;
+            while (!this.jeu.estLibre(x, y) && y < 20) y++;
+            if (y < 3) {
+              const t = this.jeu.genElement(E.E.JETON, x, y, 1);
+              if (t) t.setType(couleur);
+            }
+          }
+          this.toutFinir();
+        }
+        break;
+      default: break;
+    }
+  }
+
+  nom() { return 'Éboulement'; }
+  description() { return 'Fait retomber des billes au sommet des colonnes.'; }
+}
+
+// ── Fils Paralysants (Bind) ───────────────────────────────────────────────
+// La pièce ne tourne plus. Un seul tour, mais il suffit à gâcher un coup.
+class Lien extends SortImpy {
+  lancer() {
+    this.flLance = true;
+    this.lanceur.sortEnCours = this;
+    this.finActif();                     // il rend la main aussitôt : l'effet dure
+  }
+
+  update(tmod) {
+    const p = this.jeu.piece;
+    if (!p) return;
+    p.flBind = true;
+    // Il tire sur ses fils : la pièce trop loin le RAMÈNE vers elle.
+    for (const o of p.list) {
+      const trg = {
+        x: this.jeu.posX(o.x + p.x + p.cx + 0.5),
+        y: this.jeu.posY(o.y + p.y + p.cy + 0.5),
+      };
+      const dist = this.lanceur.distance(trg);
+      const lim = 80;
+      if (dist > lim) {
+        const a = this.lanceur.angle(trg);
+        const po = (dist - lim) / lim;
+        this.lanceur.vitx += Math.cos(a) * po * tmod;
+        this.lanceur.vity += Math.sin(a) * po * tmod;
+      }
+    }
+    this.fils = p.list.map((o) => ({
+      x: this.jeu.posX(o.x + p.x + p.cx + 0.5),
+      y: this.jeu.posY(o.y + p.y + p.cy + 0.5),
+    }));
+  }
+
+  surEntretien() { this.dissiper(); }
+
+  dissiper() {
+    if (this.jeu.piece) this.jeu.piece.flBind = false;
+    this.fils = null;
+    super.dissiper();
+  }
+
+  nom() { return 'Fils Paralysants'; }
+  description() { return 'La pièce en cours ne peut plus tourner.'; }
+}
+
+// ── Fumée troublante (Smoke) ──────────────────────────────────────────────
+// Il DISPARAÎT, et revient au tour suivant. Le tuer devient impossible tant
+// qu'il n'est pas ressorti — c'est une esquive, pas une attaque.
+class Fumee extends SortImpy {
+  lancer() {
+    this.flLance = true;
+    this.pos = { x: this.lanceur.x, y: this.lanceur.y };
+    this.niveau = this.imp.level;
+    this.nuage();
+    this.finActif();
+    this.lanceur.tuer();
+  }
+
+  update() {
+    const p = this.jeu.piece;
+    if (!p) return;
+    for (const o of p.list) {
+      this.grainDeNuage(
+        this.jeu.posX(o.x + p.x + p.cx + 0.5),
+        this.jeu.posY(o.y + p.y + p.cy + 0.5));
+    }
+  }
+
+  grainDeNuage(x, y) {
+    const a = this.alea() * 6.28;
+    const d = this.alea() * 6;
+    const p = this.champ.nouvellePart('partLightBall');
+    p.x = x + Math.cos(a) * d;
+    p.y = y + Math.sin(a) * d;
+    p.echelle = 300 + (this.alea() * 2 - 1) * 100;
+    p.alpha = 60;
+    p.timer = 2 + this.alea() * 10;
+    p.init();
+  }
+
+  nuage() {
+    for (let i = 0; i < 6; i++) {
+      const a = this.alea() * 6.28;
+      const d = this.alea() * 14;
+      const p = this.champ.nouvellePart('partCloud');
+      p.x = this.pos.x + Math.cos(a) * d;
+      p.y = this.pos.y + Math.sin(a) * d;
+      p.echelle = Math.max(30, 120 - d * 10);
+      p.frame = this.hasard(3) + 1;
+      p.joue = true;
+      p.init();
+    }
+  }
+
+  surEntretien() {
+    this.nuage();
+    this.champ.naitreImpy(this.niveau, this.pos.x, this.pos.y);
+    this.dissiper();
+  }
+
+  // Il n'est plus là : rien ne peut l'interrompre.
+  arretUrgence() {}
+
+  nom() { return 'Fumée troublante'; }
+  description() { return 'Le démon s\'évapore et reparaît au tour suivant.'; }
+}
+
+// ── Quintal (Wall) ────────────────────────────────────────────────────────
+// Un mur de pierres en travers de la grille, aussi haut que son rang.
+class Mur extends SortImpy {
+  constructor(c) { super(c); this.pList = []; this.ym = 0; this.x = 0; }
+
+  initStep(n) {
+    this.step = n;
+    if (n === 0) this.centrerLanceur();
+    else if (n === 1) {
+      this.pList = [];
+      this.ym = Math.floor(Math.min(this.imp.level + 1, this.jeu.hauteurMax() - 1));
+      this.x = 0;
+      this.timer = 0;
+    }
+  }
+
+  updateActif(tmod) {
+    if (this.step === 0) {
+      this.lanceur.vers(this.lanceur.trg, 0.1, tmod);
+      if (this.lanceurPret(20)) this.initStep(1);
+      return;
+    }
+    for (let i = 0; i < this.pList.length; i++) {
+      const p = this.pList[i];
+      p.versVitesse(p.trg, 0.2, 0.4, tmod);
+      const dist = p.distance(p.trg);
+      p.vers(p.trg, borner(0, 3 / Math.max(0.001, dist), 0.5), tmod);
+      if (dist < 5) {
+        if (this.jeu.estLibre(p.t.x, p.t.y)) this.jeu.genElement(E.E.PIERRE, p.t.x, p.t.y, 2);
+        p.tuer();
+        this.pList.splice(i--, 1);
+      }
+    }
+    if (this.x < this.jeu.xMax) {
+      this.timer -= tmod;
+      if (this.timer <= 0) {
+        this.timer = 8;
+        for (let y = 2; y < this.ym; y++) {
+          const p = this.champ.nouvellePart('partDust');
+          p.x = this.lanceur.x;
+          p.y = this.lanceur.y;
+          const a = this.alea() * 6.28;
+          const po = 1 + this.alea() * 8;
+          p.vitx = Math.cos(a) * po;
+          p.vity = Math.sin(a) * po;
+          p.trg = { x: this.jeu.posX(this.x), y: this.jeu.posY(y) };
+          p.t = { x: this.x, y };
+          p.echelle = 250;
+          p.init();
+          this.pList.push(p);
+        }
+        this.x++;
+      }
+    } else if (this.pList.length === 0) {
+      this.toutFinir();
+    }
+  }
+
+  nom() { return 'Quintal'; }
+  description() { return 'Dresse un mur de pierres en travers du niveau.'; }
+}
+
+// ── Cuirasse (Armor) ──────────────────────────────────────────────────────
+// Rang² billes reçoivent une armure : elles ne se groupent plus tant qu'un
+// souffle ne l'a pas brisée.
+class Armure extends SortImpy {
+  constructor(c) { super(c); this.eList = []; }
+
+  initStep(n) {
+    this.step = n;
+    if (n === 0) {
+      this.lanceurVers(E.LARGEUR * 0.5, 20);
+    } else if (n === 1) {
+      this.eList = [];
+      const list = this.jeu.eList.slice();
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = this.hasard(i + 1);
+        const t = list[i]; list[i] = list[j]; list[j] = t;
+      }
+      const max = Math.pow(this.imp.level, 2);
+      while (this.eList.length < max && list.length > 0) {
+        const e = list.pop();
+        if (e.et === E.E.JETON && e.special === 0) this.eList.push(e);
+      }
+      this.timer = 0;
+    }
+  }
+
+  updateActif(tmod) {
+    if (this.step === 0) {
+      this.lanceur.vers(this.lanceur.trg, 0.1, tmod);
+      if (this.lanceurPret(20)) this.initStep(1);
+      return;
+    }
+    this.timer -= tmod;
+    if (this.timer < 0) {
+      this.timer = 8;
+      const e = this.eList.pop();
+      if (e && e.vivant) {
+        e.isoler();
+        e.setSpecial(2);
+        const trg = { x: this.jeu.posX(e.px + 0.5), y: this.jeu.posY(e.py + 0.5) };
+        const a = this.lanceur.angle(trg);
+        const dist = this.lanceur.distance(trg);
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const p = this.champ.nouvellePart('partFullRay');
+        p.x = this.lanceur.x; p.y = this.lanceur.y;
+        p.timer = 12; p.fondu = [4];
+        p.init();
+        p.sx = dist;
+        p.rot = a / 0.0174;
+        for (let i = 0; i < 3; i++) {
+          const sr = this.champ.nouvellePart('partHoriLight');
+          const d = this.alea() * 0.8 * dist;
+          const sp = 1 + this.alea() * 5;
+          sr.x = this.lanceur.x + ca * d;
+          sr.y = this.lanceur.y + sa * d;
+          sr.vitx = ca * sp; sr.vity = sa * sp;
+          sr.timer = 16 + this.alea() * 10;
+          sr.fondu = [1];
+          sr.init();
+          sr.rot = a / 0.0174;
+          sr.sx = 100 + this.alea() * 50;
+        }
+        const lb = this.champ.nouvellePart('partLightBall');
+        lb.x = trg.x; lb.y = trg.y;
+        lb.timer = 24; lb.fondu = [1]; lb.echelle = 150;
+        lb.init();
+      }
+    }
+    if (this.eList.length === 0) this.toutFinir();
+  }
+
+  nom() { return 'Cuirasse'; }
+  description() { return 'Blinde une partie des billes du niveau.'; }
+}
+
+// ── Conglomérat ───────────────────────────────────────────────────────────
+// Il avale une pièce et la recrache énorme : six cases plus son rang.
+class Conglomerat extends SortImpy {
+  constructor(c) { super(c); this.ball = null; this.decal = 0; }
+
+  initStep(n) {
+    this.step = n;
+    if (n === 0) {
+      this.timer = 20;
+      this.jeu.imposerForme(6 + this.imp.level);
+    } else if (n === 1) {
+      this.lanceur.vity += 4;
+      this.ball = this.champ.nouvellePart('partBlackBall');
+      this.ball.x = this.lanceur.x;
+      this.ball.y = this.lanceur.y;
+      this.ball.init();
+    } else if (n === 2) {
+      this.lanceur.flForceWay = false;
+      this.finActif();
+      this.decal = 0;
+    }
+  }
+
+  updateActif(tmod) {
+    switch (this.step) {
+      case 0:
+        this.ralentirLanceur(0.5, tmod);
+        this.grainNoir(this.lanceur.x, this.lanceur.y);
+        this.timer -= tmod;
+        if (this.timer < 0) this.initStep(1);
+        break;
+      case 1: {
+        this.grainNoir(this.lanceur.x, this.lanceur.y);
+        this.ball.versVitesse({ x: E.LARGEUR * 0.5, y: -30 }, 0.2, 0.3, tmod);
+        const mc = this.champ.nouvellePart('mcBlackBallSpark');
+        const a = this.alea() * 6.28;
+        const d = 2 + this.alea() * 10;
+        mc.x = this.ball.x + Math.cos(a) * d;
+        mc.y = this.ball.y + Math.sin(a) * d;
+        mc.rot = this.alea() * 360;
+        mc.timer = 4;
+        mc.init();
+        if (this.ball.y < -30) { this.ball.tuer(); this.ball = null; this.initStep(2); }
+        break;
+      }
+      default: break;
+    }
+  }
+
+  update(tmod) {
+    if (this.step !== 2) return;
+    this.decal = (this.decal + 73 * tmod) % 628;
+    if (!this.jeu.piece) return;
+    // La pièce maudite clignote en rose : c'est le seul avertissement qu'on ait.
+    // L'original teinte le clip qui la porte ; ici on teinte ses billes, ce qui
+    // revient au même et se lit au dessin.
+    const m = { prc: 30 + Math.cos(this.decal / 100) * 30, couleur: 0xFF00AA };
+    for (const o of this.jeu.piece.list) o.e.melange = m;
+    this.grainNoir(this.lanceur.x, this.lanceur.y);
+  }
+
+  grainNoir(x, y) {
+    const p = this.champ.nouvellePart('partFader');
+    const a = this.alea() * 6.28;
+    const d = 2 + this.alea() * 10;
+    p.x = x + Math.cos(a) * d;
+    p.y = y + Math.sin(a) * d;
+    p.timer = 4 + this.alea() * 10;
+    p.fondu = [0, 1, 2];
+    p.fadeCouleur = 0x000000;
+    p.init();
+    return p;
+  }
+
+  surEntretien() { this.dissiper(); }
+
+  dissiper() {
+    if (this.jeu.piece) for (const o of this.jeu.piece.list) o.e.melange = null;
+    super.dissiper();
+  }
+
+  nom() { return 'Conglomérat'; }
+  description() { return 'La prochaine pièce sera énorme.'; }
+}
+
+// ── Migraine (ShapeBig) ───────────────────────────────────────────────────
+// L'exact contraire de la Dactylo de la fée : une bille de PLUS par pièce,
+// pendant quatre pièces par rang.
+class GrandeForme extends SortImpy {
+  constructor(c) {
+    super(c);
+    this.bList = []; this.startPiece = null; this.decal = 0; this.dSpeed = 1; this.nStar = 0;
+  }
+
+  lancer() {
+    this.flLance = true;
+    this.lanceur.sortEnCours = this;
+    this.startPiece = this.jeu.pieces;
+    this.nStar = this.imp.level;
+    this.initStep(0);
+  }
+
+  update() {
+    if (this.startPiece === null) return;
+    if (this.jeu.pieces - this.startPiece > this.imp.level * 4) this.dissiper();
+  }
+
+  initStep(n) {
+    this.step = n;
+    if (n === 0) {
+      this.bList = [];
+      for (let i = 0; i < this.nStar; i++) {
+        const p = this.champ.nouvellePart('partLightGrim');
+        p.x = this.lanceur.x;
+        p.y = this.lanceur.y;
+        p.init();
+        this.bList.push({ p, tx: this.alea() * E.LARGEUR });
+      }
+      this.decal = 0;
+      this.dSpeed = 1;
+    } else if (n === 1) {
+      this.timer = 0;
+    } else if (n === 2) {
+      this.executer();
+    }
+  }
+
+  updateActif(tmod) {
+    this.ralentirLanceur(0.5, tmod);
+    switch (this.step) {
+      case 0: {
+        this.decal = (this.decal + this.dSpeed * tmod) % 628;
+        this.dSpeed *= 1.1;
+        for (let i = 0; i < this.bList.length; i++) {
+          const p = this.bList[i].p;
+          const a = (this.decal / 100) - (i / this.bList.length) * 6.28;
+          p.vers({ x: this.lanceur.x + Math.cos(a) * 30, y: this.lanceur.y + Math.sin(a) * 30 },
+            0.2, tmod);
+          if (this.dSpeed > 40) {
+            p.vitx += Math.cos(a + 1.2) * 10;
+            p.vity += Math.sin(a + 1.2) * 10;
+          }
+        }
+        if (this.dSpeed > 40) this.initStep(1);
+        break;
+      }
+      case 1: {
+        this.timer += tmod;
+        for (let i = 0; i < this.bList.length; i++) {
+          const info = this.bList[i];
+          const p = info.p;
+          for (let n = 0; n < 2; n++) {
+            const part = this.champ.nouvellePart('partLightBall');
+            const a = this.alea() * 6.28;
+            part.x = p.x; part.y = p.y;
+            part.vitx = Math.cos(a) * 2;
+            part.vity = Math.sin(a) * 2;
+            part.echelle = 30 + this.alea() * 50;
+            part.poids = 0.1;
+            part.flGrav = true;
+            part.timer = 10 + this.alea() * 10;
+            part.init();
+          }
+          if (this.timer > i * 2) {
+            p.frame = 2;
+            p.versVitesse({ x: info.tx, y: -30 }, 0.01, 1, tmod);
+            const ray = 16;
+            if (p.x < ray || p.x > E.LARGEUR + ray) {
+              p.vitx *= -1;
+              p.x = borner(ray, p.x, E.LARGEUR + ray);
+            }
+            if (p.y < -20) { p.tuer(); this.bList.splice(i--, 1); }
+          }
+        }
+        if (this.bList.length === 0) { this.executer(); this.finActif(); }
+        break;
+      }
+      default: break;
+    }
+  }
+
+  executer() {
+    this.jeu.shapeNumInc++;
+    this.jeu.viderReserve();
+    this.champ.evenement('effetPiece', { id: 1, actif: true });
+  }
+
+  dissiper() {
+    if (this.flOccupe && this.startPiece !== null) {
+      this.jeu.shapeNumInc--;
+      this.jeu.viderReserve();
+      this.champ.evenement('effetPiece', { id: 1, actif: false });
+    }
+    super.dissiper();
+  }
+
+  nom() { return 'Migraine'; }
+  description() { return 'Les prochaines pièces contiendront une bille de plus.'; }
+}
+
+// ── Nuit Noire (Night) ────────────────────────────────────────────────────
+// L'écran s'éteint : il ne reste qu'un rond de lumière autour de la pièce.
+// Un seul démon peut l'invoquer à la fois, et l'effet dure autant de pièces
+// que son rang.
+class Nuit extends SortImpy {
+  lancer() {
+    this.flLance = true;
+    this.lanceur.sortEnCours = this;
+    if (this.jeu.nuit) {                 // une nuit à la fois
+      this.finActif();
+      Sort.prototype.dissiper.call(this);
+      return;
+    }
+    this.pieceTimer = this.imp.level;
+    this.initStep(0);
+  }
+
+  initStep(n) {
+    this.step = n;
+    if (n === 0) this.centrerLanceur();
+    else if (n === 1) this.prc = 0;
+    else if (n === 2) this.tomberLaNuit();
+  }
+
+  updateActif(tmod) {
+    switch (this.step) {
+      case 0:
+        this.lanceur.vers(this.lanceur.trg, 0.1, tmod);
+        if (this.lanceurPret(10)) this.initStep(1);
+        break;
+      case 1:
+        this.prc = Math.min(this.prc + tmod * 1.5, 100);
+        this.jeu.nuit = { x: this.lanceur.x, y: this.lanceur.y, prc: this.prc, ouverture: 0 };
+        if (this.prc === 100) { this.prc = 0; this.initStep(2); }
+        break;
+      case 2:
+        this.echelle *= Math.pow(0.92, tmod);
+        if (this.echelle < 1) this.echelle = 0;
+        this.jeu.nuit.ouverture = 100 - this.echelle;
+        if (this.echelle === 0) this.finActif();
+        break;
+      default: break;
+    }
+  }
+
+  // Le rond suit la PIÈCE, pas le démon : c'est ce qui rend le sort jouable.
+  update(tmod) {
+    if (!this.jeu.nuit) return;
+    const p = this.jeu.piece;
+    let tx = this.lanceur.x, ty = this.lanceur.y;
+    if (p) {
+      tx = this.jeu.posX(p.x + p.cx + 0.5);
+      ty = this.jeu.posY(p.y + p.cy + 0.5);
+    }
+    this.jeu.nuit.x += (tx - this.jeu.nuit.x) * 0.2 * tmod;
+    this.jeu.nuit.y += (ty - this.jeu.nuit.y) * 0.2 * tmod;
+  }
+
+  surEntretien() {
+    this.pieceTimer--;
+    if (this.pieceTimer <= 0) this.dissiper();
+  }
+
+  dissiper() {
+    this.jeu.nuit = null;
+    super.dissiper();
+  }
+
+  tomberLaNuit() {
+    this.echelle = 100;
+    this.jeu.nuit = { x: this.lanceur.x, y: this.lanceur.y, prc: 100, ouverture: 0 };
+  }
+
+  nom() { return 'Nuit Noire'; }
+  description() { return 'Éteint le niveau, sauf autour de la pièce.'; }
+}
+
+// ── Origine ───────────────────────────────────────────────────────────────
+// Le pire de tous : il AJOUTE une couleur au niveau. Tant qu'elle est là, le
+// niveau ne peut pas se terminer.
+class Origine extends SortImpy {
+  constructor(c) { super(c); this.pList = []; this.fp = null; this.tok = null; }
+
+  initStep(n) {
+    this.step = n;
+    if (n === 0) {
+      if (!this.jeu.estLibre(Math.floor(this.jeu.xMax * 0.5), 0)) { this.toutFinir(); return; }
+      // La première couleur qui n'est PAS déjà en jeu.
+      this.color = 0;
+      while (this.jeu.colorList.indexOf(this.color) >= 0) this.color++;
+      if (this.color >= E.COULEURS.length) { this.toutFinir(); return; }
+      this.cv = E.COULEURS[this.color];
+      this.centrerLanceur();
+    } else if (n === 1) {
+      this.pList = [];
+      this.timer = 80;
+      this.fp = this.champ.nouvellePart('partFlipGlow');
+      this.fp.x = this.lanceur.x;
+      this.fp.y = this.lanceur.y;
+      this.fp.echelle = 0;
+      this.fp.init();
+    } else if (n === 2) {
+      this.jeu.colorList.push(this.color);
+      this.tok = this.jeu.genElement(E.E.JETON, Math.floor(this.jeu.xMax * 0.5), 0, 0);
+      if (this.tok) this.tok.setType(this.color);
+      for (const p of this.pList) {
+        const dist = p.distance(this.lanceur);
+        const a = p.angle(this.lanceur);
+        const sp = dist * 0.2;
+        p.vitx = -Math.cos(a) * sp;
+        p.vity = -Math.sin(a) * sp;
+        p.timer = 12 + this.alea() * 15;
+        p.couleur = this.cv;
+      }
+      this.fp.timer = 10;
+      this.timer = 20;
+    }
+  }
+
+  updateActif(tmod) {
+    switch (this.step) {
+      case 0:
+        this.lanceur.vers(this.lanceur.trg, 0.1, tmod);
+        if (this.lanceurPret(20)) this.initStep(1);
+        break;
+      case 1: {
+        this.ralentirLanceur(0.5, tmod);
+        const np = this.champ.nouvellePart('partLightBallFlip');
+        const a = this.alea() * 6.28;
+        const d = 30 + this.alea() * 30;
+        np.x = this.lanceur.x + Math.cos(a) * d;
+        np.y = this.lanceur.y + Math.sin(a) * d;
+        np.echelle = 50;
+        np.alpha = 50;
+        np.ajouterA(this.pList);
+        np.init();
+
+        for (let i = 0; i < this.pList.length; i++) {
+          const p = this.pList[i];
+          p.versVitesse(this.lanceur, 0.1, 0.2, tmod);
+          const dist = p.distance(this.lanceur);
+          p.melange = { prc: Math.max(0, 100 - dist * 3), couleur: this.cv };
+          const sc = Math.max(0, 160 - dist * 3);
+          p.sx = sc; p.sy = sc;
+          if (dist < 6) { p.tuer(); i--; }
+        }
+        this.fp.x = this.lanceur.x;
+        this.fp.y = this.lanceur.y;
+        const sc = Math.max(0, 100 - this.timer * 1.5);
+        this.fp.sx = sc; this.fp.sy = sc;
+        this.timer -= tmod;
+        if (this.timer < 0) this.initStep(2);
+        break;
+      }
+      case 2:
+        for (let i = 0; i < Math.floor(this.timer * 0.5); i++) {
+          const p = this.champ.nouvellePart('partVertiLight');
+          p.x = this.jeu.posX(Math.floor(this.jeu.xMax * 0.5) + this.alea());
+          const c = this.alea();
+          p.y = this.lanceur.y * c + (this.tok ? this.jeu.posY(this.tok.py) : 0) * (1 - c);
+          p.vity = -(2 + this.alea() * 12);
+          p.timer = 8 + this.alea() * 10;
+          p.init();
+          p.sy = 100 + this.alea() * 200;
+        }
+        this.timer -= tmod;
+        if (this.timer < 0) this.toutFinir();
+        break;
+      default: break;
+    }
+  }
+
+  nom() { return 'Origine'; }
+  description() { return 'Ajoute une couleur au niveau.'; }
+}
+
+const CLASSES_IMPY = {
+  ChuteJetons, Lien, Fumee, Mur, Armure, Conglomerat, GrandeForme, Nuit, Origine,
+};
+
 // ── Spell.newSpell ────────────────────────────────────────────────────────
 const CLASSES = {
   0: SchemeDeDimitri, 1: PercePuits, 2: Dactylo, 3: Meteore, 4: GobeurDePerles,
@@ -2113,16 +2857,17 @@ function idAleatoire(fi, hasard) {
   return null;
 }
 
-/**
- * Les sorts des impys (spell/imp/*.mt) — ils viennent gêner la grille : faire
- * tomber des billes, poser des armures, agrandir les pièces, éteindre la
- * lumière. Ils ne sont pas encore portés ; d'ici là, un impy tire et charge,
- * mais ne jette rien sur le plateau.
- */
-function nouveauSortImpy() { return null; }
+// Imp.getSpell : la table de tirage vit dans combat.js, ici seulement la
+// fabrique.
+function nouveauSortImpy(nom, champ) {
+  const C = CLASSES_IMPY[nom];
+  return C ? new C(champ) : null;
+}
 
 const API = {
-  Sort, Tir, TABLE, CLASSES, nouveauSort, nouveauSortImpy, idAleatoire,
+  Sort, Tir, SortImpy, TABLE, CLASSES, CLASSES_IMPY,
+  nouveauSort, nouveauSortImpy, idAleatoire,
+  ChuteJetons, Lien, Fumee, Mur, Armure, Conglomerat, GrandeForme, Nuit, Origine,
   SchemeDeDimitri, PercePuits, Dactylo, Meteore, GobeurDePerles, Depressurisation,
   ValseFossile, Ascension, Exaltation, TrancheCimes, Silence, Tremblement, Cloche,
   SuperNova, Bannissement, BillesDeLumiere, Pigmentation,

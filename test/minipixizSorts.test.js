@@ -512,3 +512,171 @@ test('la partie entière tourne sans se figer, la fée appelée à chaque tour',
   assert.equal(jeu.saList.length, 0, 'aucun sort ne reste en travers');
   assert.ok(fi.fs.$mana >= 0, 'le mana ne passe jamais sous zéro');
 });
+
+// ── Les sorts des démons (spell/imp) ──────────────────────────────────────
+
+test('les neuf sorts de démon existent et se lancent sans figer la partie', () => {
+  const noms = Object.keys(S.CLASSES_IMPY);
+  assert.equal(noms.length, 9);
+  const bloques = [];
+  for (const nom of noms) {
+    for (const rang of [1, 4]) {
+      const { jeu, champ } = partie({});
+      const imp = champ.naitreImpy(rang, 60, 60);
+      let i = 0;
+      while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+      const s = S.nouveauSortImpy(nom, champ);
+      s.lanceur = imp; s.imp = imp;
+      s.ranger();
+      jeu.initStep(E.ETAPE.MAGIE);
+      let images = 0;
+      while (jeu.saList.length > 0 && images < 6000) { jeu.update(1); images++; }
+      if (jeu.saList.length > 0) bloques.push(nom + ' rang ' + rang);
+      // Puis la partie continue, entretien compris — c'est lui qui dissipe
+      // plusieurs de ces sorts.
+      for (let n = 0; n < 4000 && !jeu.termine; n++) {
+        if (jeu.step === E.ETAPE.JEU) {
+          jeu.entree.bas = (n % 4) < 2;
+          jeu.entree.tourner = (n % 7) < 2;
+        }
+        jeu.update(1);
+      }
+    }
+  }
+  assert.deepEqual(bloques, []);
+});
+
+test('un impy ne jette rien tant qu\'il est en réserve, ni s\'il est muet', () => {
+  const { jeu, champ } = partie({});
+  jeu.step = E.ETAPE.JEU;
+  const imp = champ.naitreImpy(4, 60, 60);
+  imp.spellCoolDown = 0;
+  imp.poserStatut(C.STATUT.SILENCE, true);
+  imp.verifierSort();
+  assert.equal(jeu.saList.length, 0, 'muet, il se tait');
+  imp.poserStatut(C.STATUT.SILENCE, false);
+  imp.action = 0;
+  imp.verifierSort();
+  assert.equal(jeu.saList.length, 0, 'à court d\'actions, il s\'en va plutôt');
+});
+
+test('un impy à court d\'actions quitte le niveau par le haut', () => {
+  const { jeu, champ } = partie({});
+  jeu.step = E.ETAPE.JEU;
+  const imp = champ.naitreImpy(0, 60, 200);
+  imp.action = 0;
+  for (let i = 0; i < 3000 && champ.impList.length; i++) champ.update(1);
+  assert.equal(champ.impList.length, 0, 'il est sorti');
+});
+
+test('l\'Origine ajoute une couleur, et le niveau ne peut plus se finir sans elle', () => {
+  const { jeu, champ } = partie({});
+  let i = 0;
+  while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+  const avant = jeu.colorList.slice();
+  const imp = champ.naitreImpy(4, 60, 60);
+  const s = S.nouveauSortImpy('Origine', champ);
+  s.lanceur = imp; s.imp = imp;
+  s.ranger();
+  jeu.initStep(E.ETAPE.MAGIE);
+  for (let n = 0; n < 6000 && jeu.saList.length; n++) jeu.update(1);
+  assert.equal(jeu.colorList.length, avant.length + 1, 'une couleur de plus');
+  const neuve = jeu.colorList.find((c) => avant.indexOf(c) < 0);
+  assert.ok(neuve !== undefined);
+  assert.ok(jeu.eList.some((e) => e.et === E.E.JETON && e.type === neuve),
+    'et une bille de cette couleur est apparue');
+});
+
+test('les Fils Paralysants empêchent la rotation, jusqu\'à la pièce suivante', () => {
+  const { jeu, champ } = partie({});
+  let i = 0;
+  while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+  const imp = champ.naitreImpy(0, 60, 60);
+  const s = S.nouveauSortImpy('Lien', champ);
+  s.lanceur = imp; s.imp = imp;
+  s.ranger();
+  jeu.initStep(E.ETAPE.MAGIE);
+  jeu.update(1);
+  assert.equal(jeu.saList.length, 0, 'il rend la main tout de suite');
+  jeu.update(1);
+  assert.equal(jeu.piece.flBind, true, 'la pièce est liée');
+  const avant = jeu.piece.list.map((o) => o.x + ',' + o.y).join(' ');
+  jeu.entree.tourner = true;
+  jeu.update(1);
+  assert.equal(jeu.piece.list.map((o) => o.x + ',' + o.y).join(' '), avant,
+    'et elle ne tourne pas');
+  // L'entretien de la pièce suivante coupe les fils.
+  jeu.surPiecePosee();
+  assert.equal(jeu.sList.indexOf(s), -1, 'le sort s\'est dissipé');
+});
+
+test('la Fumée retire le démon, puis le rend au tour suivant', () => {
+  const { jeu, champ } = partie({});
+  let i = 0;
+  while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+  const imp = champ.naitreImpy(3, 60, 60);
+  const s = S.nouveauSortImpy('Fumee', champ);
+  s.lanceur = imp; s.imp = imp;
+  s.ranger();
+  jeu.initStep(E.ETAPE.MAGIE);
+  jeu.update(1);
+  assert.equal(champ.impList.length, 0, 'il a disparu');
+  jeu.surPiecePosee();
+  assert.equal(champ.impList.length, 1, 'et il est revenu');
+  assert.equal(champ.impList[0].level, 3, 'du même rang');
+});
+
+test('la Nuit Noire éteint le niveau, une seule à la fois', () => {
+  const { jeu, champ } = partie({});
+  let i = 0;
+  while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+  const imp = champ.naitreImpy(2, 60, 60);
+  const s = S.nouveauSortImpy('Nuit', champ);
+  s.lanceur = imp; s.imp = imp;
+  s.ranger();
+  jeu.initStep(E.ETAPE.MAGIE);
+  for (let n = 0; n < 3000 && jeu.saList.length; n++) jeu.update(1);
+  assert.ok(jeu.nuit, 'la nuit est tombée');
+  assert.equal(jeu.nuit.prc, 100);
+  // Un second démon ne peut pas en rajouter une.
+  const s2 = S.nouveauSortImpy('Nuit', champ);
+  s2.lanceur = imp; s2.imp = imp;
+  s2.ranger();
+  jeu.initStep(E.ETAPE.MAGIE);
+  jeu.update(1);
+  assert.equal(jeu.saList.length, 0, 'la seconde se retire aussitôt');
+  // Elle dure autant de pièces que le rang du démon.
+  jeu.surPiecePosee();
+  assert.ok(jeu.nuit, 'encore là après une pièce');
+  jeu.surPiecePosee();
+  assert.equal(jeu.nuit, null, 'partie après la seconde');
+});
+
+test('le Conglomérat impose une pièce énorme', () => {
+  const { jeu, champ } = partie({});
+  let i = 0;
+  while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+  const imp = champ.naitreImpy(3, 60, 60);
+  const s = S.nouveauSortImpy('Conglomerat', champ);
+  s.lanceur = imp; s.imp = imp;
+  s.ranger();
+  jeu.initStep(E.ETAPE.MAGIE);
+  jeu.update(1);
+  assert.ok(jeu.nextPiece, 'la pièce suivante est imposée');
+  assert.equal(jeu.nextPiece.length, 9, 'six cases plus le rang');
+});
+
+test('le Quintal dresse un mur de pierres', () => {
+  const { jeu, champ } = partie({});
+  let i = 0;
+  while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+  const avant = jeu.eList.filter((e) => e.et === E.E.PIERRE).length;
+  const imp = champ.naitreImpy(4, 60, 60);
+  const s = S.nouveauSortImpy('Mur', champ);
+  s.lanceur = imp; s.imp = imp;
+  s.ranger();
+  jeu.initStep(E.ETAPE.MAGIE);
+  for (let n = 0; n < 6000 && jeu.saList.length; n++) jeu.update(1);
+  assert.ok(jeu.eList.filter((e) => e.et === E.E.PIERRE).length > avant,
+    'il y a plus de pierres qu\'avant');
+});

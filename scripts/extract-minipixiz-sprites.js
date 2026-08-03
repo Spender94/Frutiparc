@@ -203,6 +203,7 @@ function effets() {
     // les traînées et les auras
     'partQueueStandard', 'partQueuePhantom', 'partFader', 'partGlue',
     'mcDashAura', 'mcGlow', 'mcPeopleStatus', 'mcFaerieBubble',
+    'mcBlackRing', 'mcBlackBallSpark',
     // les sorts
     'partLightBall', 'partLightBallFlip', 'partLightCircle', 'partLightStar',
     'partLightTube', 'partLightGrim', 'partFlipGlow', 'partVertiLight',
