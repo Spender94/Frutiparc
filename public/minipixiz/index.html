@@ -62,6 +62,8 @@
   }
   #manette button.tourner { background: #453177; color: #e9dcff; font-size: 22px; }
   #manette button.bas { background: #2f4a1c; color: #bff18d; font-size: 15px; letter-spacing: 1px; }
+  #manette button.fee { background: #5b3a86; color: #ffe9a8; font-size: 20px; }
+  #manette button.fee:active { background: #7d51b8; }
   #manette button.on { transform: scale(.95); background: #5a45a0; }
   #manette button.bas.on { background: #4b7a26; }
 
@@ -177,8 +179,9 @@
     <button type="button" class="tourner" data-cmd="tourner" aria-label="Tourner">⟳</button>
     <button type="button" class="bas" data-cmd="bas" aria-label="Poser">POSER</button>
     <button type="button" data-cmd="droite" aria-label="Droite">▶</button>
+    <button type="button" class="fee" data-cmd-aide aria-label="Appeler la fée">✦</button>
   </div>
-  <div id="aide">← → pour déplacer · ↑ pour tourner · ↓ pour poser</div>
+  <div id="aide">← → pour déplacer · ↑ pour tourner · ↓ pour poser · Ctrl pour appeler la fée</div>
 </div>
 
 <button type="button" id="sac-but">🎒 sac</button>
@@ -220,6 +223,8 @@
 <script src="/minipixiz/engine.js"></script>
 <script src="/minipixiz/items.js"></script>
 <script src="/minipixiz/faerie.js"></script>
+<script src="/minipixiz/combat.js"></script>
+<script src="/minipixiz/sorts.js"></script>
 <script src="/minipixiz/game.js"></script>
 <script src="/minipixiz/plateforme.js"></script>
 <script src="/minipixiz/inventaire.js"></script>

@@ -219,6 +219,154 @@ function teinter(g, x, y, l, h, couleur) {
   g.putImageData(d, x, y);
 }
 
+// ── Le dessin VIF ─────────────────────────────────────────────────────────
+//
+// `rendre` met en cache un dessin fini : parfait pour une bille, impossible
+// pour une particule, qui tourne et grandit à chaque image. Ce qui vole se
+// dessine donc directement, avec sa matrice — et ce qui coûte cher, la teinte,
+// se met en cache une fois par (fichier, couleur) au lieu d'une fois par image.
+const peintes = new Map();
+const SUPER = 4;                       // le rendu tramé est fait plus grand que
+                                       // nature : la matrice l'agrandit souvent
+
+function imagePeinte(fichier, couleur, melange, cx) {
+  const cle = fichier + '/' + couleur + '/'
+    + (melange ? Math.round(melange.prc / 5) * 5 + ',' + melange.couleur : '')
+    + (cx ? '/' + cx.join(',') : '');
+  const deja = peintes.get(cle);
+  if (deja) return deja;
+  const img = images.get(fichier);
+  if (!img) return null;
+  const l = Math.max(1, Math.ceil((img.naturalWidth || img.width || 1) * SUPER));
+  const h = Math.max(1, Math.ceil((img.naturalHeight || img.height || 1) * SUPER));
+  const c = document.createElement('canvas');
+  c.width = l; c.height = h;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0, l, h);
+  if (cx) transformer(g, 0, 0, l, h, cx);
+  if (couleur !== undefined && couleur !== null) teinter(g, 0, 0, l, h, couleur);
+  if (melange && melange.prc > 0) fondre(g, 0, 0, l, h, melange.prc, melange.couleur);
+  peintes.set(cle, c);
+  return c;
+}
+
+// Une déformation posée sur un clip INTERMÉDIAIRE : elle tourne et met à
+// l'échelle autour de l'origine de ce clip, exprimée dans le repère de la pièce
+// qu'on dessine. C'est ainsi que Flash anime une aile — le battement est sur
+// `w0.w`, pas sur le dessin lui-même.
+function appliquerDeform(ctx, t) {
+  ctx.translate(t.p[0], t.p[1]);
+  if (t.r) ctx.rotate(t.r * Math.PI / 180);
+  if (t.sx !== 1 || t.sy !== 1) ctx.scale(t.sx, t.sy);
+  ctx.translate(-t.p[0], -t.p[1]);
+}
+
+/**
+ * Dessine un état de sprite tel quel, à l'échelle et à l'angle demandés.
+ *
+ * `o` : { x, y, sx, sy, rot, alpha, couleur, parties, melange, deform }
+ * — sx/sy/alpha en pourcentage, rot en degrés, comme dans Flash.
+ */
+function poserVif(ctx, sprite, frame, o) {
+  if (!sprite || !sprite.etats.length) return;
+  let etat = sprite.etats.find((e) => e.frame === frame);
+  if (!etat) {
+    // Un clip qu'on fait JOUER déroule ses images ; s'il en manque une, on
+    // prend la dernière avant elle plutôt que de sauter au début.
+    for (const e of sprite.etats) if (e.frame <= frame) etat = e;
+    if (!etat) etat = sprite.etats[0];
+  }
+  const sx = (o.sx === undefined ? 100 : o.sx) / 100;
+  const sy = (o.sy === undefined ? 100 : o.sy) / 100;
+  if (sx === 0 || sy === 0) return;
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  if (o.rot) ctx.rotate(o.rot * Math.PI / 180);
+  ctx.scale(sx, sy);
+  if (o.alpha !== undefined && o.alpha < 100) ctx.globalAlpha *= Math.max(0, o.alpha / 100);
+  for (const p of etat.pieces) {
+    let teinte = o.couleur;
+    if (o.parties && p.nom !== undefined && o.parties[p.nom] !== undefined) {
+      teinte = o.parties[p.nom];
+    }
+    const brut = (teinte === undefined || teinte === null) && !o.melange && !p.cx;
+    const img = brut ? images.get(p.fichier) : imagePeinte(p.fichier, teinte, o.melange, p.cx);
+    if (!img) continue;
+    const d = o.deform ? o.deform(p.nom) : null;
+    ctx.save();
+    if (p.m && p.vb) {
+      ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
+      if (d) for (const t of d) appliquerDeform(ctx, t);
+      ctx.drawImage(img, p.vb[0], p.vb[1], p.vb[2], p.vb[3]);
+    } else {
+      ctx.drawImage(img, p.x, p.y, p.w, p.h);
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ── La fée et l'impy, en vol ──────────────────────────────────────────────
+//
+// Leurs deux clips ont exactement la même charpente : deux ailes en trois
+// niveaux (w0 → w → w) et un corps en trois morceaux. Les nombres ci-dessous
+// sont l'ORIGINE de chaque clip intermédiaire, lue dans root.swf et exprimée
+// dans le repère du dessin qu'elle porte : c'est le point autour duquel
+// People.moveWings fait battre et pencher.
+//
+// Les placements du fichier sont en TWIPS ; les pièces extraites, en pixels.
+// D'où la division par vingt — sans elle, tourner la tête l'enverrait à cinq
+// pixels du corps.
+const TWIP = 1 / 20;
+const pv = (x, y) => [x * TWIP, y * TWIP];
+const PIVOT_AILE_W = pv(0, 0);         // w0.w — le battement
+const PIVOT_AILE = pv(-5, 0);          // w0   — la perspective
+const PIVOT_CORPS = {
+  'body.corps': pv(0, 11), 'body.corps.m': pv(2, -10), 'body.corps.col': pv(-12, -98),
+  'body.epaule': pv(-4, 18), 'body.epaule.m': pv(-1, 44), 'body.epaule.col': pv(-11, 3),
+  'body.tete': pv(9, 115), 'body.tete.kami': pv(9, 117), 'body.tete.col': pv(9, 124),
+};
+
+// People.moveWings, traduit en gestes de dessin.
+function deformationsDeVol(pe) {
+  const a = pe.aile;
+  return (nom) => {
+    if (nom === 'w0.w.w' || nom === 'w1.w.w') {
+      const sens = (nom === 'w0.w.w') ? 1 : -1;
+      return [
+        { p: PIVOT_AILE, sx: Math.abs(100 + sens * a.ecart) / 100, sy: 1, r: 0 },
+        { p: PIVOT_AILE_W, sx: 1, sy: 1, r: a.rot },
+        { p: PIVOT_AILE_W, sx: a.xs / 100, sy: (100 - 80 * a.yi) / 100, r: 0 },
+      ];
+    }
+    const piv = PIVOT_CORPS[nom];
+    return piv ? [{ p: piv, sx: 1, sy: 1, r: pe.penchePart }] : null;
+  };
+}
+
+// Faerie.setColor : les cheveux, la robe, les ailes — trois couleurs tirées de
+// la fiche, et c'est ce qui fait qu'on reconnaît SA fée du premier coup d'œil.
+function partiesDeCorps(couleurs) {
+  return {
+    'body.tete.kami': couleurs[0],
+    'body.corps.m': couleurs[1],
+    'body.epaule.m': couleurs[1],
+    'w0.w.w': couleurs[2],
+    'w1.w.w': couleurs[2],
+  };
+}
+
+// Imp.setSkin : la peau puis les ailes, selon le rang (Cs.impColorList).
+function partiesDImpy(couleurs) {
+  return {
+    'body.tete.col': couleurs[0],
+    'body.corps.col': couleurs[0],
+    'body.epaule.col': couleurs[0],
+    'w0.w.w': couleurs[1],
+    'w1.w.w': couleurs[1],
+  };
+}
+
 /**
  * Rend un état de sprite pour une case de `taille` px.
  *
@@ -421,6 +569,10 @@ class Client {
     if (opts.coefNuit !== undefined) this.coefNuit = opts.coefNuit;
     this.jeu = new E.Jeu(Object.assign({}, opts, { onEvent: (n, d) => this.annonce(n, d) }));
     this.jeu.entree = this.entree;
+    // Le champ — la fée, les impys, les tirs. Sans fée le puzzle se joue tout
+    // seul, comme dans le jeu d'origine quand aucune n'est en état de sortir.
+    const Combat = window.MinipixizCombat;
+    this.champ = (Combat && this.fee) ? new Combat.Champ(this.jeu, { fee: this.fee }) : null;
     this.dernier = 0;
     this.reste = 0;
     return this.jeu;
@@ -482,6 +634,9 @@ class Client {
       for (const e of jeu.eList) this.dessinerElement(ctx, e, e.px, e.py);
       // La pièce en cours flotte entre deux cases : elle a ses propres positions.
       if (jeu.piece) for (const c of jeu.piece.cases()) this.poser(ctx, c.e, c.x, c.y);
+      // Puis tout ce qui vole. L'ordre est celui des profondeurs de Flash :
+      // les particules derrière, les créatures, les tirs devant.
+      this.dessinerVol(ctx);
       bougerEclats(ctx, tmod);
     }
 
@@ -512,19 +667,80 @@ class Client {
     ctx.restore();
   }
 
+  // ── Ce qui vole (combat.js) ──
+  dessinerVol(ctx) {
+    const jeu = this.jeu, s = this.sprites;
+    if (!jeu.partList) return;
+    for (const p of jeu.partList) {
+      poserVif(ctx, s[p.lien], p.joue ? p.frame + Math.floor(p.age) : p.frame, {
+        x: p.x, y: p.y, sx: p.sx, sy: p.sy, rot: p.rot, alpha: p.sa,
+        couleur: p.couleur === null ? undefined : p.couleur, melange: p.melange,
+      });
+    }
+    for (const pe of jeu.pList) this.dessinerCreature(ctx, pe);
+    for (const t of jeu.shotList) {
+      poserVif(ctx, s[t.lien], t.frame, {
+        x: t.x, y: t.y, sx: t.sx, sy: t.sy, rot: t.rot, alpha: t.sa, melange: t.melange,
+      });
+    }
+  }
+
+  // Une fée ou un impy : le même clip, animé par le code — pas par un scénario.
+  dessinerCreature(ctx, pe) {
+    const s = this.sprites;
+    const fee = !!pe.fi;
+    const sprite = fee ? s.fee : s.imp;
+    if (!sprite) return;
+    // L'aura de charge : elle grandit avec la vitesse, et dit qu'un choc arrive.
+    if (pe.charge > 0 && s.mcDashAura) {
+      poserVif(ctx, s.mcDashAura, 1,
+        { x: pe.x, y: pe.y, rot: pe.chargeAngle, alpha: pe.charge });
+    }
+    const couleurs = fee ? pe.apparence().couleurs : pe.couleurs;
+    const parties = fee ? partiesDeCorps(couleurs) : partiesDImpy(couleurs);
+    // POW_INVISIBILITY : elle ne se voit qu'à quarante pour cent, et les démons
+    // la manquent d'autant.
+    const invisible = fee && pe.fi.pouvoirs
+      && pe.fi.pouvoirs[window.MinipixizCombat.POUVOIR.INVISIBILITE];
+    poserVif(ctx, sprite, pe.spinSpeed !== null ? Math.min(24, pe.corps) : 1, {
+      x: pe.x, y: pe.y, rot: pe.penche, alpha: invisible ? 40 : 100,
+      parties, melange: pe.melange, deform: pe.spinSpeed !== null ? null : deformationsDeVol(pe),
+    });
+  }
+
   dessinerElement(ctx, e, gx, gy) {
     this.poser(ctx, e, E.MARGE_GAUCHE + gx * TS, E.MARGE_HAUT + gy * TS);
   }
 
   // Pose un élément à un point en pixels. C'est le seul endroit qui sait à quoi
   // ressemble chaque espèce.
-  poser(ctx, e, x, y) {
+  poser(ctx, e, x0, y0) {
+    // Un sort peut soulever une bille, la faire glisser, l'effacer ou la blanchir
+    // sans jamais toucher sa case : tout cela se lit ici.
+    const x = x0 + (e.decalX || 0);
+    const y = y0 + (e.decalY || 0);
+    // Mc.modColor(1, n) pour l'éclat blanc de l'échange, setPercentColor pour le
+    // tremblement de terre : les deux sont le même fondu vers une couleur. On
+    // l'arrondit au dixième, sans quoi le cache des teintes enflerait d'une
+    // entrée par image.
+    let melange = null;
+    const blanc = Math.round(Math.max(e.eclat || 0, e.melange ? e.melange.prc : 0) / 10) * 10;
+    if (blanc > 0) {
+      melange = { prc: Math.min(100, blanc), couleur: e.melange ? e.melange.couleur : 0xFFFFFF };
+    }
+    const pale = e.alpha !== undefined && e.alpha < 100;
+    if (pale) { ctx.save(); ctx.globalAlpha = Math.max(0, e.alpha / 100); }
+    this.poserBrut(ctx, e, x, y, melange);
+    if (pale) ctx.restore();
+  }
+
+  poserBrut(ctx, e, x, y, melange) {
     const s = this.sprites;
     switch (e.et) {
       case E.E.JETON: {
         const frame = this.jeu ? imageJeton(this.jeu, e) : 1;
         const couleur = E.COULEURS[e.type] || E.COULEURS[0];
-        poserRendu(ctx, rendre(s.token, frame, TS, couleur), x, y);
+        poserRendu(ctx, rendre(s.token, frame, TS, couleur, null, null, null, melange), x, y);
         // Les marques se posent par-dessus : la perle noire et l'étoile.
         if (e.special === E.SPECIAL.PERLE && s.marble) {
           poserRendu(ctx, rendre(s.marble, 1, TS), x, y);
@@ -731,8 +947,18 @@ class Client {
       ' ': 'tourner',
     };
     window.addEventListener('keydown', (ev) => {
+      // Cm.pref.$key[4] — la touche d'AIDE. Le jeu d'origine n'écoute que le
+      // premier appui (flHelpRelease) : rester appuyé n'enchaîne pas les sorts.
+      if (ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'e') {
+        if (!this.aideEnfoncee) { this.aideEnfoncee = true; this.appelerFee(); }
+        ev.preventDefault();
+        return;
+      }
       const k = touches[ev.key];
       if (k) { this.entree[k] = true; ev.preventDefault(); }
+    });
+    window.addEventListener('keyup', (ev) => {
+      if (ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'e') this.aideEnfoncee = false;
     });
     window.addEventListener('keyup', (ev) => {
       const k = touches[ev.key];
@@ -750,6 +976,19 @@ class Client {
       b.addEventListener('mouseup', off);
       b.addEventListener('mouseleave', off);
     });
+    const aide = racine.querySelector('[data-cmd-aide]');
+    if (aide) {
+      const appel = (ev) => { ev.preventDefault(); this.appelerFee(); };
+      aide.addEventListener('touchstart', appel, { passive: false });
+      aide.addEventListener('mousedown', appel);
+    }
+  }
+
+  // Le joueur appelle sa fée. Elle ne lancera son sort qu'au bout du tour —
+  // c'est ce délai qui fait qu'on appelle en prévision, pas en réaction.
+  appelerFee() {
+    if (!this.jeu || this.jeu.termine) return false;
+    return this.jeu.appelerAide();
   }
 }
 
@@ -797,7 +1036,8 @@ function jauge(sprites, cle, plein, max, ecart) {
 }
 
 window.MinipixizClient = {
-  Client, charger, rendre, poserRendu, imageJeton, images, portraitDeFee, jauge, partiesDeFee,
+  Client, charger, rendre, poserRendu, poserVif, imagePeinte, imageJeton, images,
+  portraitDeFee, jauge, partiesDeFee, partiesDeCorps, partiesDImpy, deformationsDeVol,
   fondre, teinter,
   LARGEUR, HAUTEUR, LIGNES_CACHEES, SCENE, COLONNE_X, INTER, ECART_COEUR, ECART_MANA,
 };
