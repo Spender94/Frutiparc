@@ -523,6 +523,10 @@ class Jeu {
     // grille mais en libérant la fée, et il ajoute des couleurs au lieu d'en
     // retirer.
     this.couleursSeVident = (o.couleursSeVident === undefined) ? true : !!o.couleursSeVident;
+    // Game.flAutoRaiseSpeed : dans la forêt, chaque pièce accélère un peu la
+    // chute. L'arbre creux coupe ça — c'est SON chronomètre qui décide, et par
+    // paliers bien plus francs.
+    this.monteeAuto = (o.monteeAuto === undefined) ? true : !!o.monteeAuto;
     this.termine = false;
     this.gagne = false;
     this.entree = { gauche: false, droite: false, bas: false, tourner: false };
@@ -755,7 +759,7 @@ class Jeu {
         break;
       case ETAPE.JEU: {
         if (this.colorList.length === 0) { this.finPartie(true); return; }
-        this.pSpeed = Math.min(this.pSpeed + 0.0015, this.pSpeedStart * 3);
+        if (this.monteeAuto) this.pSpeed = Math.min(this.pSpeed + 0.0015, this.pSpeedStart * 3);
         const liste = this.nextPiece || this.nextList.shift();
         this.nextPiece = null;
         this.remplirReserve();
@@ -996,7 +1000,12 @@ class Jeu {
     for (let i = 0; i < this.fs.list.length; i++) somme += this.fs.list[i] * (i + 1);
     if (somme > 0) {
       this.score += somme;
-      this.evenement('score', { gagne: somme, score: this.score, chaine: this.fs.list.length, max: this.fs.bm });
+      this.evenement('score', {
+        gagne: somme, score: this.score, chaine: this.fs.list.length, max: this.fs.bm,
+        // Le détail maillon par maillon : l'arbre creux ne compte pas comme la
+        // forêt, et c'est de là qu'il tire son score.
+        liste: this.fs.list.slice(),
+      });
     }
     // Sans étoile dans le lot, les jetons détruits nourrissent la prochaine.
     if (!this.fs.flSpecial) this.starWait += this.fs.sum;
@@ -1009,6 +1018,10 @@ class Jeu {
   // la première image d'une grille encore vide, et la partie s'annoncerait
   // gagnée avant d'avoir commencé.
   nouveauTour() {
+    if (this.termine) return;
+    // base/*.onNewTurn : c'est ici que les lieux prennent la main — le donjon
+    // fait monter son ascenseur, l'arc-en-ciel avance sa roue.
+    this.evenement('nouveauTour', { pieces: this.pieces });
     if (this.termine) return;
     if (this.couleursSeVident) this.majCouleurs();
     if (this.termine) return;
