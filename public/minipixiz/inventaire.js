@@ -230,6 +230,18 @@ class Inventaire {
       const r = C.rendre(s[d.cle], d.frame, taille * 0.82, undefined, d.parties);
       C.poserRendu(ctx, r, cx, cy);
     }
+    // inv/Item.updatePic : un bocal habité montre SA locataire. Sans ce dessin,
+    // rien ne dirait au joueur laquelle de ses fées Gromelin acceptera.
+    if (sac === 'joueur' && type === O.IT_BOCAL) {
+      const dedans = (this.carte.$faerie || []).find((f) => f && f.$pos === index);
+      if (dedans && s.fee) {
+        const a = new racine.MinipixizFee.Fee(dedans, null, null).apparence();
+        C.poserVif(ctx, s.fee, 1, {
+          x: cx, y: cy + taille * 0.12, sx: 52, sy: 52,
+          parties: C.partiesDeCorps(a.couleurs),
+        });
+      }
+    }
     this.zoneRect({ sac, case: index }, cx - taille / 2, cy - taille / 2, taille, taille);
   }
 
@@ -388,8 +400,46 @@ class Inventaire {
     return O.info(Array.isArray(liste) ? liste[index] : null);
   }
 
+  /**
+   * inv/Item.addFaerie — la fée entre dans son BOCAL.
+   *
+   * `$pos` est l'index de la case du sac où se trouve le bocal qui l'abrite.
+   * C'est une notion de session : le serveur ne l'enregistre jamais (une fée
+   * persistée « en bocal » apparaissait à la fois dedans et dehors, ce qui la
+   * dupliquait). On la repose donc à chaque visite — comme le SWF.
+   *
+   * Et ce n'est pas un détail décoratif : Gromelin ne prend QUE les fées en
+   * bocal. Sans ce geste, ses missions sont hors d'atteinte.
+   */
+  bocal(index) {
+    const l = this.carte.$faerie || [];
+    const dedans = l.find((f) => f && f.$pos === index);
+    if (dedans) {
+      dedans.$pos = null;
+      this.dire(dedans.$name + ' sort de son bocal.');
+      this.changer();
+      return true;
+    }
+    const fs = l[this.feeCourante];
+    if (!fs) { this.dire('Aucune fée ne vous accompagne encore.'); return true; }
+    if (fs.$pos !== null && fs.$pos !== undefined) {
+      this.dire(fs.$name + ' est déjà dans un bocal.');
+      return true;
+    }
+    fs.$pos = index;
+    this.dire(fs.$name + ' s\'installe dans le bocal. Gromelin l\'acceptera.');
+    this.changer();
+    return true;
+  }
+
   toucher(sac, index) {
     const it = this.objetA(sac, index);
+    // Un bocal du sac du JOUEUR se touche pour y mettre — ou en sortir — la fée
+    // qu'on regarde. Les mains pleines, il redevient un objet ordinaire qu'on
+    // peut déplacer.
+    if (!this.main && sac === 'joueur' && it && it.famille === 'bocal') {
+      return this.bocal(index);
+    }
     if (!this.main) {
       if (!it) { this.dire(''); return; }
       this.main = { sac, case: index };
