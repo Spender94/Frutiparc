@@ -354,7 +354,10 @@ test('la concentration de la fée décide combien de pièces on voit venir', () 
 test('la page charge le module des fées et le passe au client', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
   assert.match(html, /src="\/minipixiz\/faerie\.js"/);
-  assert.match(html, /new window\.MinipixizFee\.Fee\(fs\)/, 'la fée vient de la fiche');
+  // La fiche du joueur est passée en troisième : les globes et grimoires
+  // restés dans son sac profitent aussi à la fée (FaerieInfo.initItems).
+  assert.match(html, /new window\.MinipixizFee\.Fee\(fs, null, plateforme\.carte\)/,
+    'la fée vient de la fiche, avec le sac du joueur');
   assert.match(html, /coefNuit\(\)/, 'et l\'heure du jeu suit $time.$s');
   assert.match(html, /width="240" height="240"/, 'la scène fait 240 × 240, comme Cs.mcw');
 });

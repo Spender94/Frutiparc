@@ -144,7 +144,7 @@ function genererGraine(alea) {
     if (entier(RARETE_COMPORTEMENT[i]) === 0) fs.$behaviour[i] = 1;
   }
 
-  new Fee(fs, alea).preparerProchainNiveau();
+  new Fee(fs, alea, null).preparerProchainNiveau();
   return fs;
 }
 
@@ -175,12 +175,47 @@ function enrichirGraine(fs, jour, alea) {
  * `fs` est ce qui est écrit dans la fiche ; tout le reste se recalcule.
  */
 class Fee {
-  constructor(fs, alea) {
+  /**
+   * @param {object} fs    la graine, telle qu'elle vit dans la fiche
+   * @param {function} [alea]
+   * @param {object} [carte] la fiche du joueur — nécessaire pour que les objets
+   *                 de SON sac (globes, grimoires) profitent aussi à la fée
+   */
+  constructor(fs, alea, carte) {
     this.fs = fs;
     this.alea = alea;
     this.carac = (fs.$carac || []).slice();
     this.sorts = (fs.$spell || []).slice();
+    this.pouvoirs = [];               // FaerieInfo.sPow
+    this.couleurCheveux = null;       // posée par une coloration portée
     this.messages = [];               // ce que Manager.addMsg aurait dit
+    this.initItems(carte);
+  }
+
+  /**
+   * FaerieInfo.initItems — rejoue les effets de tout ce qu'elle porte, et de
+   * tout ce que le joueur garde dans son propre sac.
+   *
+   *     pour chaque objet de fs.$inv          → it.faerieEffect()
+   *     pour chaque objet de Cm.card.$inv     → it.groupEffect(this)
+   *
+   * Rien de tout cela n'est écrit dans la fiche : les effets se recalculent à
+   * chaque chargement. C'est ce qui fait qu'il n'y a pas d'« équiper » dans ce
+   * jeu — porter suffit, et reposer l'objet annule le bonus.
+   */
+  initItems(carte) {
+    const O = (typeof module !== 'undefined' && module.exports)
+      ? require('./items.js')
+      : racine.MinipixizObjets;
+    if (!O) return;
+    for (const n of (this.fs.$inv || [])) {
+      const it = O.info(n);
+      if (it) O.effetPorte(it, this);
+    }
+    for (const n of ((carte && carte.$inv) || [])) {
+      const it = O.info(n);
+      if (it) O.effetGroupe(it, this);
+    }
   }
 
   dire(texte) { this.messages.push(texte); }
@@ -336,9 +371,13 @@ class Fee {
   // Ce qu'il faut au client pour la dessiner.
   apparence() {
     const p = this.fs.$skin || [];
+    // it.Color.faerieEffect écrit `fi.skin.col1` : une coloration portée
+    // remplace la couleur de cheveux, sans toucher à la fiche.
+    const cheveux = (this.couleurCheveux === null || this.couleurCheveux === undefined)
+      ? nombre(p[1]) : this.couleurCheveux;
     return {
       num: nombre(p[0]) % 6,
-      couleurs: [nombre(p[1]), nombre(p[2]), nombre(p[3])],
+      couleurs: [cheveux, nombre(p[2]), nombre(p[3])],
     };
   }
 
@@ -354,6 +393,8 @@ class Fee {
       faim: nombre(this.fs.$hunger),
       moral: nombre(this.fs.$moral),
       carac: this.carac.slice(),
+      pouvoirs: this.pouvoirs.slice(),
+      sorts: this.sorts.slice(),
       prete: this.preteAuCombat(),
     };
   }

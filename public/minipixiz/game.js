@@ -695,9 +695,52 @@ class Client {
   }
 }
 
+/**
+ * Le portrait d'une fée, seul, dans son cadre — pour l'inventaire, où on la
+ * regarde en face au lieu de la voir du coin de l'œil pendant la partie.
+ *
+ * @returns {HTMLCanvasElement}
+ */
+function portraitDeFee(sprites, fee, taille) {
+  const c = document.createElement('canvas');
+  c.width = taille; c.height = taille;
+  const g = c.getContext('2d');
+  if (!sprites.interFace) return c;
+  const fond = rendre(sprites.interFace, 1, taille, undefined, null, 'pic');
+  g.drawImage(fond.c, fond.dx, fond.dy);
+  if (fee && sprites.portrait) {
+    const a = fee.apparence();
+    g.save();
+    g.beginPath();
+    g.rect(fond.dx, fond.dy, fond.c.width, fond.c.height);
+    g.clip();
+    const p = rendre(sprites.portrait, a.num + 1, taille, undefined, partiesDeFee(a.couleurs));
+    g.drawImage(p.c, p.dx, p.dy);
+    g.restore();
+  }
+  const dessus = rendre(sprites.interFace, 1, taille, undefined, null, '>pic');
+  g.drawImage(dessus.c, dessus.dx, dessus.dy);
+  return c;
+}
+
+// Une ligne de cœurs ou de gouttes, comme inter.Life / inter.Mana.
+function jauge(sprites, cle, plein, max, ecart) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, ecart * max + 4);
+  c.height = ecart + 10;
+  const g = c.getContext('2d');
+  const s = sprites[cle];
+  if (!s) return c;
+  for (let i = 0; i < max; i++) {
+    const r = rendre(s, i < plein ? 2 : 1, 100);
+    g.drawImage(r.c, ecart * i + r.dx, r.dy + 2);
+  }
+  return c;
+}
+
 window.MinipixizClient = {
-  Client, charger, rendre, poserRendu, imageJeton, images,
-  LARGEUR, HAUTEUR, LIGNES_CACHEES, SCENE, COLONNE_X, INTER,
+  Client, charger, rendre, poserRendu, imageJeton, images, portraitDeFee, jauge,
+  LARGEUR, HAUTEUR, LIGNES_CACHEES, SCENE, COLONNE_X, INTER, ECART_COEUR, ECART_MANA,
 };
 
 })();

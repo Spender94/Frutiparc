@@ -114,6 +114,72 @@
   }
   #aide { display: none; }
   @media (pointer: fine) { #aide { display: block; } }
+
+  /* ── L'inventaire ──
+     On y regarde sa fée en face, on lui donne à manger, on lui fait porter ce
+     qu'on a trouvé. Le geste est celui du jeu : prendre, puis reposer. */
+  #sac-but {
+    position: fixed; top: 8px; right: 8px; z-index: 4;
+    border: 0; border-radius: 12px; padding: 8px 12px;
+    background: rgba(36,28,58,.85); color: #e9dcff;
+    font: bold 13px inherit; cursor: pointer;
+  }
+  #inventaire {
+    position: fixed; inset: 0; z-index: 8; display: none;
+    flex-direction: column; align-items: center; gap: 8px;
+    background: #150f28; color: #d9cbff; padding: 14px 12px 24px;
+    overflow-y: auto; box-sizing: border-box;
+  }
+  #inventaire.on { display: flex; }
+  .inv-titre { font-size: 17px; font-weight: bold; color: #ffd76a; letter-spacing: 2px; }
+  .inv-fermer {
+    position: absolute; top: 10px; right: 12px;
+    border: 0; border-radius: 10px; width: 36px; height: 36px;
+    background: #2e2450; color: #d9cbff; font-size: 16px; cursor: pointer;
+  }
+  .inv-fee {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    justify-content: center; width: 100%; max-width: 340px;
+  }
+  .inv-portrait { border-radius: 8px; cursor: pointer; }
+  .inv-infos { flex: 1 1 150px; min-width: 150px; }
+  .inv-nom { font-size: 14px; font-weight: bold; color: #e9dcff; margin-bottom: 4px; }
+  /* Les jauges sont des canevas à leur taille exacte (un cœur tous les 14 px) :
+     sans align-items, la colonne flex les étirerait et les rendrait flous. */
+  .inv-barres {
+    display: flex; flex-direction: column; align-items: flex-start;
+    gap: 2px; margin-bottom: 6px;
+  }
+  .inv-barres canvas { display: block; max-width: 100%; }
+  .inv-b { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 2px 0; }
+  .inv-b span { flex: 0 0 42px; color: #9b8cc9; }
+  .inv-b i {
+    display: block; height: 7px; border-radius: 4px; min-width: 2px;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
+  }
+  .inv-etat { background: rgba(255,255,255,.05); border-radius: 6px; padding: 4px 6px; }
+  .inv-nav { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; width: 100%; }
+  .inv-onglet {
+    border: 0; border-radius: 10px; padding: 6px 10px;
+    background: #241c3a; color: #b9a9e0; font: 12px inherit; cursor: pointer;
+  }
+  .inv-onglet.on { background: #453177; color: #fff; }
+  .inv-label { font-size: 11px; color: #9b8cc9; letter-spacing: 1px; margin-top: 6px; }
+  .inv-grille {
+    display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+    width: 100%; max-width: 340px;
+  }
+  .inv-case {
+    width: 52px; height: 52px; padding: 0;
+    border: 2px solid #3a2d5e; border-radius: 10px;
+    background: #241c3a; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #6b5b96; font-size: 18px;
+  }
+  .inv-case.main { border-color: #ffd76a; background: #3a2f10; }
+  .inv-case img { width: 40px; height: 40px; image-rendering: auto; }
+  .inv-rien { font-size: 12px; color: #7b6ba8; text-align: center; padding: 6px 10px; }
+  .inv-msg { font-size: 12px; color: #ffd76a; min-height: 18px; text-align: center; }
 </style>
 </head>
 <body>
@@ -128,6 +194,11 @@
   </div>
   <div id="aide">← → pour déplacer · ↑ pour tourner · ↓ pour poser</div>
 </div>
+
+<button type="button" id="sac-but">🎒 sac</button>
+
+<!-- L'inventaire : la fée, ce qu'elle porte, et ce que le joueur garde. -->
+<div id="inventaire"></div>
 
 <div id="chargement">
   <div>MINIPIXIZ</div>
@@ -149,9 +220,11 @@
 </div>
 
 <script src="/minipixiz/engine.js"></script>
+<script src="/minipixiz/items.js"></script>
 <script src="/minipixiz/faerie.js"></script>
 <script src="/minipixiz/game.js"></script>
 <script src="/minipixiz/plateforme.js"></script>
+<script src="/minipixiz/inventaire.js"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
@@ -195,7 +268,9 @@
     var l = plateforme.carte.$faerie || [];
     var i = plateforme.carte.$current;
     var fs = (i !== null && i !== undefined && l[i]) ? l[i] : l[0];
-    return fs ? new window.MinipixizFee.Fee(fs) : null;
+    // La fiche est passée en troisième : les globes et grimoires restés dans le
+    // sac du joueur profitent aussi à la fée (FaerieInfo.initItems).
+    return fs ? new window.MinipixizFee.Fee(fs, null, plateforme.carte) : null;
   }
 
   // Cm.getNightCoef : $time.$s sur une journée. Zéro à minuit, un demi à midi.
@@ -311,11 +386,28 @@
 
       $('#rejouer').addEventListener('click', ouvrirCarte);
 
+      // ── L'inventaire ──
+      // Il travaille sur la VRAIE fiche : nourrir une fée ou lui faire porter un
+      // gant se voit tout de suite dans la partie suivante. Chaque changement
+      // part au serveur — on ne perd pas un repas parce qu'on a fermé l'onglet.
+      var inventaire = new window.MinipixizInventaire.Inventaire({
+        racine: $('#inventaire'),
+        plateforme: plateforme,
+        sprites: sprites,
+        surChangement: function () {
+          plateforme.ecrire(plateforme.carte);
+          // La fée du plateau porte peut-être autre chose depuis tout à l'heure.
+          client.fee = feeCourante();
+        },
+      });
+      $('#sac-but').addEventListener('click', function () { inventaire.ouvrir(); });
+
       ouvrirCarte();
       client.demarrer();
 
       window.minipixizClient = client;   // utile aux vérifications automatisées
       window.__plateforme = plateforme;
+      window.__inventaire = inventaire;
       window.__course = function () { return course; };
     })
     .catch(function (e) {
