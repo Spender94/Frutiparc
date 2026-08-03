@@ -171,7 +171,58 @@ const CIBLES = [
   { cle: 'itBocal', symbole: 'itemFlask', etiquette: 'Bocal', swf: 'gfx' },
   { cle: 'sortBille', symbole: 'spellBall', etiquette: 'Bille de sort', swf: 'gfx' },
   { cle: 'sortSymbole', symbole: 'spellSymbol', etiquette: 'Symboles des sorts', swf: 'gfx' },
-];
+].concat(effets());
+
+/**
+ * Les effets — tout ce que les sorts, les tirs et les combats font apparaître
+ * au-dessus du plateau.
+ *
+ * `Game.newPart(link)` attache le clip qui porte ce nom et le pilote depuis
+ * l'ActionScript : position, échelle, rotation, transparence. Le clip lui-même
+ * n'est souvent qu'un dessin fixe — sa vie vient du code, pas du scénario. Ceux
+ * qui S'ANIMENT sont ceux que le jeu lance par `gotoAndPlay` : l'éclaboussure,
+ * l'explosion, la mort d'un impy. On garde pour eux toutes leurs images.
+ *
+ * Les noms sont ceux du fichier ; les traduire n'aiderait personne, puisque
+ * c'est sous ce nom que le code d'origine les demande.
+ */
+function effets() {
+  // Les clips que le jeu fait JOUER : on garde la séquence entière.
+  const ANIMES = {
+    partJet: 12, partMiniExplosion: 12, partDeadImp: 12, partPaint: 1,
+    partLightStar: 9, partFlipGlow: 2, partBombEplosion: 12,
+    partDynColorFlower: 12, partRoundBlink: 12, partSuperNova: 2,
+    partQueueStandard: 12, partQueuePhantom: 8, partOnde: 4,
+    partBlackJuice: 15, partConcentrationRay: 11, partFlameBall: 13,
+    partShieldBall: 30, shotImp: 5,
+  };
+  const NOMS = [
+    // les tirs
+    'shotLightBall', 'shotLightBeam', 'shotSolero', 'shotWisp', 'shotGlue',
+    'shotHolyBall', 'shotPhantom', 'shotImp', 'shotFireball',
+    // les traînées et les auras
+    'partQueueStandard', 'partQueuePhantom', 'partFader', 'partGlue',
+    'mcDashAura', 'mcGlow', 'mcPeopleStatus', 'mcFaerieBubble',
+    // les sorts
+    'partLightBall', 'partLightBallFlip', 'partLightCircle', 'partLightStar',
+    'partLightTube', 'partLightGrim', 'partFlipGlow', 'partVertiLight',
+    'partHoriLight', 'partShieldBall', 'partForceBubble', 'partSlash',
+    'partMiniStar', 'partMiniStarFull', 'partMiniCircle', 'partMiniExplosion',
+    'partSuperNova', 'partBlackJuice', 'partBlackBall', 'partConcentrationRay',
+    'partMeteore', 'partMeteoreStone', 'partFlameBall', 'partDust',
+    'partStoneCrack', 'partStone', 'partOnde', 'partFaerieWhiteShade',
+    'partPaint', 'partJet', 'partStar', 'partDeadImp', 'partBubble',
+    'partElementCrystal', 'partElementCrystalDark', 'partEyeBall',
+    'partBombEplosion', 'partBallColor', 'partDynColorFlower', 'partRay',
+    'partFullRay', 'partRoundBlink', 'partPentacle', 'partCloud',
+  ];
+  const vus = new Set();
+  return NOMS.filter((n) => !vus.has(n) && vus.add(n)).map((nom) => {
+    const c = { cle: nom, symbole: nom, etiquette: nom };
+    if (ANIMES[nom]) { c.synchro = true; c.images = [...Array(ANIMES[nom])].map((_, i) => i + 1); }
+    return c;
+  });
+}
 
 // Quelle image chaque forme utilise-t-elle ? extract-swf-shapes.js le dit.
 function tableFormes(source) {

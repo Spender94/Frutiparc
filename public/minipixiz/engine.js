@@ -105,6 +105,14 @@ class Element {
     this.flFalling = false;
     this.flDestroy = false;
     this.vivant = true;
+    // Ce qu'un sort peut poser par-dessus, et que le client dessine : un
+    // décalage en pixels (une bille qu'on échange, qu'on soulève, qu'on
+    // tranche), une transparence, un éclat blanc, un fondu vers une couleur.
+    this.decalX = 0;
+    this.decalY = 0;
+    this.alpha = 100;
+    this.eclat = 0;
+    this.melange = null;
     Object.assign(this, o || {});
   }
 
@@ -123,6 +131,17 @@ class Element {
 
   // Le souffle d'une destruction voisine. Chaque espèce y réagit à sa façon.
   souffler() {}
+
+  // Element.isolate — un sort SORT l'élément du jeu normal avant d'en faire ce
+  // qu'il veut : le soulever, le trancher, le changer en pierre. Sans ça il
+  // resterait relié à son groupe, et le groupe compterait un absent.
+  isoler() {}
+
+  // Element.explode — purement visuel (fxCrystal) : l'élément vole en éclats.
+  // Le retirer de la grille reste au sort qui l'a appelé, comme dans l'original.
+  exploser() {
+    this.jeu.evenement('eclats', { x: this.px, y: this.py, et: this.et, type: this.type });
+  }
 
   tuer() {
     if (!this.vivant) return;
@@ -158,6 +177,10 @@ class Jeton extends Element {
     }
   }
 
+  setType(t) { this.type = t; }
+
+  isoler() { if (this.groupe) this.groupe.retirer(this); }
+
   tuer() {
     if (this.groupe) this.groupe.retirer(this);
     super.tuer();
@@ -191,6 +214,12 @@ class Cellule extends Element {
   }
   souffler() {
     if (this.jeu.hasard(2) === 0) {
+      // C'est le seul endroit où le puzzle PEUPLE le ciel : la cellule cède, et
+      // l'impy qu'elle tenait s'échappe au milieu de la case.
+      if (this.jeu.champ) {
+        this.jeu.champ.naitreImpy(this.level,
+          this.jeu.posX(this.px + 0.5), this.jeu.posY(this.py + 0.5));
+      }
       this.jeu.evenement('impyLibere', { x: this.px, y: this.py, level: this.level });
       this.tuer();
     } else {
@@ -457,6 +486,21 @@ class Jeu {
     this.gagne = false;
     this.entree = { gauche: false, droite: false, bas: false, tourner: false };
 
+    // ── Ce qui vole au-dessus (combat.js) ──
+    // Le puzzle tourne très bien sans : ces listes restent vides tant qu'aucun
+    // champ n'est installé, et rien ici n'en dépend. C'est ce qui permet de
+    // vérifier les règles du puzzle seules.
+    this.champ = null;
+    this.pList = [];
+    this.faerieList = [];
+    this.impList = [];
+    this.shotList = [];
+    this.partList = [];
+    this.sList = [];        // Game.sList — les sorts dont l'effet DURE
+    this.saList = [];       // Game.saList — le sort qui a la main sur la partie
+    this.flAide = false;    // Game.flHelp — le joueur vient d'appeler sa fée
+    this.sortsAFaire = false;
+
     // base/Forest.initGame : la vitesse de chute monte avec le niveau.
     this.pSpeedStart = 0.03 + this.niveau * 0.002;
     this.pSpeed = this.pSpeedStart;
@@ -671,6 +715,11 @@ class Jeu {
         this.souffler();
         if (this.dList.length === 0) {
           this.verifierStatsChute();
+          // Game.initStep(3) : la cascade close, c'est le moment de la MAGIE. La
+          // fée n'agit qu'ici, une fois par pièce posée, et seulement si le
+          // joueur l'a appelée. Tant qu'un sort tient la main, le puzzle attend.
+          if (this.sortsAFaire) { this.initSorts(); this.sortsAFaire = false; }
+          if (this.saList.length > 0) { this.initStep(ETAPE.MAGIE); break; }
           // Game.initStep(5) : une fois la cascade close, les objets dégagés se
           // ramassent. S'il y en avait, ils laissent un trou — le cycle
           // recommence (Game.newCycle), et la chute peut relancer une cascade.
@@ -685,6 +734,7 @@ class Jeu {
           this.nouveauTour();
         }
         break;
+      case ETAPE.MAGIE:
       case ETAPE.FIGE:
         break;
       default:
@@ -692,10 +742,38 @@ class Jeu {
     }
   }
 
+  // Game.newCycle : on repart d'une chute, avec un compte de cascade neuf.
+  nouveauCycle() {
+    this.initStep(ETAPE.CHUTE);
+    this.initStatsChute();
+  }
+
+  // Game.initSpell — appelé UNE fois par tour. Chaque fée regarde si on l'a
+  // appelée ; les impys, eux, n'ont le droit d'agir que sur une grille déjà
+  // encombrée (plus d'un dixième), sans quoi ils étoufferaient un début de
+  // niveau.
+  initSorts() {
+    for (const f of this.faerieList.slice()) f.verifierSort();
+    if (this.coefRemplissage() > 0.1) {
+      for (const i of this.impList.slice()) i.verifierSort();
+    }
+    this.flAide = false;
+  }
+
+  // Game.callHelp : la touche d'aide. Sans mana, la fée refuse — et le dit.
+  appelerAide() {
+    let ok = false;
+    for (const f of this.faerieList.slice()) ok = f.appelerAide() || ok;
+    return ok;
+  }
+
   // Game.update — la boucle, un pas d'image à la fois.
   update(tmod) {
     if (this.termine) return;
     if (tmod === undefined) tmod = 1;
+    // Tout ce qui vole avance AVANT le puzzle, quelle que soit l'étape : c'est
+    // ce qui fait que la fée continue de voler pendant une cascade.
+    if (this.champ) this.champ.update(tmod);
     switch (this.step) {
       case ETAPE.CHUTE:
         this.cFall += 0.5 * tmod;
@@ -718,6 +796,21 @@ class Jeu {
           for (const e of this.dList) e.tuer();
           this.dList = [];
           this.initStep(ETAPE.CHUTE);
+        }
+        break;
+      // Game.update case 4 : le sort a la main. Il se lance à sa première image
+      // et pilote la partie jusqu'à ce qu'il la rende (endActive), après quoi le
+      // cycle reprend.
+      case ETAPE.MAGIE:
+        if (this.saList.length > 0) {
+          const s = this.saList[0];
+          if (!s.flLance) {
+            s.lancer();
+            this.evenement('sort', { nom: s.nom(), id: s.sid, cout: s.cout });
+          }
+          s.updateActif(tmod);
+        } else {
+          this.nouveauCycle();
         }
         break;
       default:
@@ -873,7 +966,9 @@ class Jeu {
   surPiecePosee() {
     this.piece = null;
     // Game.newUpkeep : la pose d'une pièce ouvre un tour, et c'est à la fin de
-    // ce tour que les objets dégagés se ramassent.
+    // ce tour que les objets dégagés se ramassent et que la magie opère.
+    for (const s of this.sList.slice()) s.surEntretien();
+    this.sortsAFaire = true;
     this.flActiviteAFaire = true;
     this.initStatsChute();
     this.initStep(ETAPE.CHUTE);
@@ -914,6 +1009,105 @@ class Jeu {
       for (let x = 0; x < this.xMax; x++) if (this.grille[x][y]) return this.yMax - y;
     }
     return 0;
+  }
+
+  // ── Géométrie de l'aire (Game.getX / getY / isIn) ──
+  //
+  // La grille est posée à MARGE_GAUCHE et MARGE_HAUT ; MARGE_HAUT vaut -32,
+  // donc les deux premières lignes sont HORS de l'écran. C'est l'espace où la
+  // fée peut monter, et c'est aussi pourquoi l'aire fait 240 de haut pour
+  // dix-sept lignes de seize.
+  posX(gx) { return MARGE_GAUCHE + gx * TS; }
+  posY(gy) { return MARGE_HAUT + gy * TS; }
+  estDans(x, y, m) {
+    return x > m + MARGE_GAUCHE && y > m + MARGE_HAUT && x < LARGEUR - m && y < HAUTEUR - m;
+  }
+
+  // Game.getHeightMax : la ligne de la case occupée la plus haute (yMax si la
+  // grille est vide). Tranche-Cimes s'en sert pour choisir sa hauteur de coupe.
+  hauteurMax() {
+    let ym = this.yMax;
+    for (let x = 0; x < this.xMax; x++) {
+      for (let y = 0; y < this.yMax; y++) {
+        if (this.grille[x][y]) { ym = Math.min(y, ym); break; }
+      }
+    }
+    return ym;
+  }
+
+  // Game.getCoefFull : la part de la grille occupée. Au-delà de 10 %, les impys
+  // ont le droit de lancer leurs sorts à eux.
+  coefRemplissage() {
+    let score = 0;
+    for (let x = 0; x < this.xMax; x++) {
+      for (let y = 0; y < this.yMax; y++) if (this.grille[x][y]) score++;
+    }
+    return score / (this.xMax * this.yMax);
+  }
+
+  // ── Le modèle de grille (Game.getGridModel / evalGridModel) ──
+  //
+  // C'est le CERVEAU des sorts. La fée ne raisonne jamais sur la vraie grille :
+  // elle en prend une copie allégée où ne subsistent que les jetons groupables
+  // — { t: couleur, g: groupe, s: état spécial } — puis simule dessus (échanger
+  // deux billes, vider une colonne) et compare les scores. Rien de ce qu'elle
+  // essaie ne touche la partie.
+  modeleGrille() {
+    const liste = [];
+    for (let x = 0; x < this.xMax; x++) {
+      liste[x] = new Array(this.yMax).fill(null);
+      for (let y = 0; y < this.yMax; y++) {
+        const e = this.grille[x][y];
+        if (e && e.et === E.JETON && e.flGroupable) {
+          liste[x][y] = { t: e.type, g: null, s: e.special };
+        }
+      }
+    }
+    return liste;
+  }
+
+  // Relie chaque unité à sa voisine de droite et à celle du dessous, exactement
+  // comme chercherGroupes le fait sur la vraie grille — deux groupes qui se
+  // rencontrent fusionnent.
+  evaluerModele(liste) {
+    const gList = [];
+    for (let x = 0; x < this.xMax; x++) {
+      for (let y = 0; y < this.yMax; y++) {
+        const e = liste[x] && liste[x][y];
+        if (!e) continue;
+        if (!e.g) { e.g = [e]; gList.push(e.g); }
+        for (const d of [{ x: 1, y: 0 }, { x: 0, y: 1 }]) {
+          const col = liste[x + d.x];
+          const se = col ? col[y + d.y] : null;
+          if (!se || se.t !== e.t) continue;
+          if (se.g) {
+            if (se.g === e.g) continue;
+            const n = gList.indexOf(se.g);
+            if (n >= 0) gList.splice(n, 1);
+            for (const gre of se.g.slice()) { e.g.push(gre); gre.g = e.g; }
+          } else {
+            e.g.push(se);
+            se.g = e.g;
+          }
+        }
+      }
+    }
+    return { gList, liste };
+  }
+
+  // Game.getGroupModelScore : seuls comptent les groupes qui EXPLOSERAIENT, et
+  // seules les billes ordinaires (s === 0) comptent dans le décompte — une
+  // perle appartient au groupe mais ne le fait pas sauter. Un groupe trop petit
+  // ne rapporte rien du tout : la fée cherche des coups qui marchent, pas des
+  // demi-mesures.
+  scoreModele(gList) {
+    let score = 0;
+    for (const g of gList) {
+      let tr = 0;
+      for (const u of g) if (u.s === 0) tr++;
+      if (tr >= this.groupMax) score += tr * 50;
+    }
+    return score;
   }
 }
 

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 8 8" width="8" height="8">
+  <path d="M2.8 2.8Q1.65 4 0 4Q-1.65 4 -2.85 2.8Q-4 1.65 -4 0Q-4 -1.65 -2.85 -2.8Q-1.65 -4 0 -4Q1.65 -4 2.8 -2.8Q4 -1.65 4 0Q4 1.65 2.8 2.8Z" fill="#00ffff" fill-opacity="0.5" fill-rule="evenodd"/>
+  <path d="M2.1 -2.1Q3 -1.2 3 0Q3 1.25 2.1 2.1Q1.25 3 0 3Q-1.25 3 -2.15 2.1Q-3 1.25 -3 0Q-3 -1.2 -2.15 -2.1Q-1.25 -3 0 -3Q1.25 -3 2.1 -2.1Z" fill="#bbf2ff" fill-rule="evenodd"/>
+  <path d="M1.4 1.4Q0.8 2 0 2Q-0.85 2 -1.45 1.4Q-2 0.85 -2 0Q-2 -0.8 -1.45 -1.4Q-0.85 -2 0 -2Q0.8 -2 1.4 -1.4Q2 -0.8 2 0Q2 0.85 1.4 1.4Z" fill="#ffffff" fill-rule="evenodd"/>
+</svg>
