@@ -183,6 +183,24 @@ function transformer(g, x, y, l, h, cx) {
   g.putImageData(d, x, y);
 }
 
+// Mc.setPercentColor : sortie = source × (100-prc)/100 + (prc/100) × couleur.
+function fondre(g, x, y, l, h, prc, couleur) {
+  if (l <= 0 || h <= 0) return;
+  const k = Math.max(0, Math.min(100, prc)) / 100;
+  const d = g.getImageData(x, y, l, h);
+  const px = d.data;
+  const cr = ((couleur >> 16) & 0xFF) * k;
+  const cv = ((couleur >> 8) & 0xFF) * k;
+  const cb = (couleur & 0xFF) * k;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] === 0) continue;
+    px[i] = Math.max(0, Math.min(255, px[i] * (1 - k) + cr));
+    px[i + 1] = Math.max(0, Math.min(255, px[i + 1] * (1 - k) + cv));
+    px[i + 2] = Math.max(0, Math.min(255, px[i + 2] * (1 - k) + cb));
+  }
+  g.putImageData(d, x, y);
+}
+
 // Applique la teinte de Flash à une zone de canevas.
 // Mc.setColor + modColor(1, 25) : un décalage additif, borné.
 function teinter(g, x, y, l, h, couleur) {
@@ -210,12 +228,13 @@ function teinter(g, x, y, l, h, couleur) {
  *
  * Renvoie { c, dx, dy } : le canevas, et où le poser depuis le coin de la case.
  */
-function rendre(sprite, frame, taille, couleur, parties, tranche, rotations) {
+function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, melange) {
   const cle = sprite.nom + '/' + frame + '/' + taille + '/'
     + (couleur === undefined ? 'gris' : couleur)
     + (parties ? '/' + JSON.stringify(parties) : '')
     + (tranche ? '/' + tranche : '')
-    + (rotations ? '/' + JSON.stringify(rotations) : '');
+    + (rotations ? '/' + JSON.stringify(rotations) : '')
+    + (melange ? '/m' + melange.prc + ',' + melange.couleur : '');
   const dejaLa = teintes.get(cle);
   if (dejaLa) return dejaLa;
 
@@ -320,6 +339,10 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations) {
     }
   }
   if (couleur !== undefined) teinter(g, 0, 0, l, h, couleur);
+  // Mc.setPercentColor : un fondu linéaire vers une couleur.
+  //     sortie = source × (100 - prc)/100 + (prc/100) × couleur
+  // C'est ce que le menu applique à chaque plan pour le faire bleuir la nuit.
+  if (melange && melange.prc > 0) fondre(g, 0, 0, l, h, melange.prc, melange.couleur);
   const rendu = { c, dx, dy };
   teintes.set(cle, rendu);
   return rendu;
@@ -775,6 +798,7 @@ function jauge(sprites, cle, plein, max, ecart) {
 
 window.MinipixizClient = {
   Client, charger, rendre, poserRendu, imageJeton, images, portraitDeFee, jauge, partiesDeFee,
+  fondre, teinter,
   LARGEUR, HAUTEUR, LIGNES_CACHEES, SCENE, COLONNE_X, INTER, ECART_COEUR, ECART_MANA,
 };
 

@@ -115,6 +115,30 @@
   #aide { display: none; }
   @media (pointer: fine) { #aide { display: block; } }
 
+  /* ── Le menu de l'aventure ──
+     La clairière d'où l'on part : le même canevas de 240 × 240 que le reste. */
+  #menu {
+    position: fixed; inset: 0; z-index: 9; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: #0b1424;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    box-sizing: border-box;
+  }
+  #menu.on { display: flex; }
+  #menu-aire {
+    flex: 1 1 auto; min-height: 0; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #menu-stage {
+    display: block; border-radius: 4px; cursor: pointer;
+    box-shadow: 0 8px 30px rgba(0,0,0,.6);
+  }
+  #menu-pied { flex: 0 0 auto; display: flex; gap: 10px; margin-bottom: 12px; }
+  #menu-pied button {
+    border: 0; border-radius: 14px; padding: 12px 22px;
+    background: #2b4a6b; color: #dff0ff; font: bold 14px inherit; cursor: pointer;
+  }
+
   /* ── L'inventaire ──
      C'est l'écran d'Inventory.mt, dessiné sur ses propres images : un canevas
      de 240 × 240 comme le reste du jeu, agrandi du même facteur. */
@@ -159,6 +183,14 @@
 
 <button type="button" id="sac-but">🎒 sac</button>
 
+<!-- Le menu de l'aventure (Menu.mt) : l'écran d'où tout part. -->
+<div id="menu">
+  <div id="menu-aire"><canvas id="menu-stage" width="240" height="240"></canvas></div>
+  <div id="menu-pied">
+    <button type="button" id="menu-sac">🎒 sac</button>
+  </div>
+</div>
+
 <!-- L'inventaire, sur les dessins du jeu (Inventory.mt). -->
 <div id="inventaire">
   <div id="inv-aire"><canvas id="inv-stage" width="240" height="240"></canvas></div>
@@ -175,6 +207,7 @@
   <div class="s" id="fin-score"></div>
   <div class="s" id="fin-note"></div>
   <button type="button" id="rejouer">Rejouer</button>
+  <button type="button" id="retour-menu">retour à la clairière</button>
 </div>
 
 <!-- La carte de la forêt : un relais par vingt niveaux franchis. -->
@@ -190,6 +223,7 @@
 <script src="/minipixiz/game.js"></script>
 <script src="/minipixiz/plateforme.js"></script>
 <script src="/minipixiz/inventaire.js"></script>
+<script src="/minipixiz/menu.js"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
@@ -365,13 +399,59 @@
           client.fee = feeCourante();
         },
       });
-      $('#sac-but').addEventListener('click', function () {
+      function ouvrirSac() {
         $('#inventaire').classList.add('on');
         inventaire.ouvrir();
-      });
+      }
+      $('#sac-but').addEventListener('click', ouvrirSac);
+      $('#menu-sac').addEventListener('click', ouvrirSac);
       $('#inv-fermer').addEventListener('click', function () {
         $('#inventaire').classList.remove('on');
       });
+
+      // ── Le menu de l'aventure ──
+      // C'est lui l'écran d'accueil : on n'entre en forêt qu'en touchant la
+      // forêt, comme dans le jeu. Les autres lieux existent et se voient — le
+      // bassin s'allume, le donjon apparaît, l'arbre grandit — mais ils
+      // renvoient un mot honnête tant qu'ils ne sont pas portés.
+      var menu = new window.MinipixizMenu.Menu({
+        canvas: $('#menu-stage'),
+        plateforme: plateforme,
+        sprites: sprites,
+        surChoix: function (lieu, etat) {
+          if (lieu.va === 'foret') { fermerMenu(); ouvrirCarte(); return; }
+          if (lieu.va === 'inventaire') { ouvrirSac(); return; }
+          if (lieu.va === 'dungeon' && !etat.ouvert) {
+            menu.dire('Il vous faut une clé pour entrer dans le donjon.');
+            return;
+          }
+          if (lieu.va === 'fountain' && !etat.ouvert) {
+            menu.dire('Le bassin est calme. Aucune lueur au fond.');
+            return;
+          }
+          menu.dire(lieu.titre + ' : pas encore ouvert.');
+        },
+      });
+
+      function ouvrirMenu() {
+        $('#menu').classList.add('on');
+        menu.demarrer();
+      }
+      function fermerMenu() {
+        $('#menu').classList.remove('on');
+        menu.arreter();
+      }
+
+      // Quitter une course ramène au menu, comme tryToClose.
+      $('#rejouer').addEventListener('click', function () { $('#fin').classList.remove('on'); });
+      $('#retour-menu').addEventListener('click', function () {
+        $('#fin').classList.remove('on');
+        $('#carte').classList.remove('on');
+        ouvrirMenu();
+      });
+
+      ouvrirMenu();
+      client.demarrer();
 
       ouvrirCarte();
       client.demarrer();
@@ -379,6 +459,8 @@
       window.minipixizClient = client;   // utile aux vérifications automatisées
       window.__plateforme = plateforme;
       window.__inventaire = inventaire;
+      window.__menu = menu;
+      window.__ouvrirMenu = ouvrirMenu;
       window.__course = function () { return course; };
     })
     .catch(function (e) {

@@ -169,7 +169,7 @@ function ouvrir(chemin) {
       if (code === 1) { photographier(id, frame); derniere.set(id, frame); return; }
       if (code === 5) { l.delete(b.readUInt16LE(corps + 2)); return; }
       if (code === 28) { l.delete(b.readUInt16LE(corps)); return; }
-      let ch = -1, M = IDENTITE, prof = -1, nom = null, masque = 0, cx = null;
+      let ch = -1, M = IDENTITE, prof = -1, nom = null, masque = 0, cx = null, ratio = null;
       if (code === 4) {
         ch = b.readUInt16LE(corps);
         prof = b.readUInt16LE(corps + 2);
@@ -197,7 +197,9 @@ function ouvrir(chemin) {
         if (flags & 4) M = lireMatriceBits(bits);
         if (flags & 8) cx = lireTransfoCouleur(bits);
         o = bits.aligner();
-        if (flags & 16) o += 2;                        // ratio (morph)
+        // Le taux de mélange d'un morph, sur seize bits : c'est lui qui dit à
+        // quel point du matin ou du soir en est le ciel.
+        if (flags & 16) { ratio = b.readUInt16LE(o); o += 2; }
         if (flags & 32) { const r = lireChaine(o); nom = r.texte; o = r.fin; }
         if (flags & 64) { masque = b.readUInt16LE(o); o += 2; }
 
@@ -211,10 +213,12 @@ function ouvrir(chemin) {
           if (nom === null) nom = avant.nom;
           if (!masque) masque = avant.masque;
           if (!(flags & 8)) cx = avant.cx;
+          if (ratio === null) ratio = avant.ratio;
         }
       }
       if (ch < 0 || prof < 0) return;
-      l.set(prof, { ch, M, nom: nom || null, masque: masque || 0, cx: cx || null });
+      l.set(prof, { ch, M, nom: nom || null, masque: masque || 0, cx: cx || null,
+        ratio: (ratio === null || ratio === undefined) ? null : ratio });
     });
     // La dernière image d'un sprite n'est pas toujours suivie d'un ShowFrame.
     for (const [id, l] of listes) {

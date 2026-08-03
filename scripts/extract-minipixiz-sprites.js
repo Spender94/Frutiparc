@@ -39,6 +39,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { ouvrir } = require('./lib/swf-sprites.js');
+const { lireMorphs, versSvg } = require('./lib/swf-morph.js');
 
 const RACINE = path.join(__dirname, '..');
 const SORTIE = path.join(RACINE, 'public/minipixiz/sprites');
@@ -85,25 +86,35 @@ const CIBLES = [
   { cle: 'cadre', symbole: 'interfaceRacine', etiquette: 'Cadre de la forêt' },
 
   // ── Le décor ──
-  // Neuf plans, de l'horizon au premier plan, chacun avec son coefficient de
-  // parallaxe (Menu.initDecor).
-  //
-  // Le ciel manque, et c'est délibéré : decorPlanSky n'est pas une forme mais un
-  // MORPH (tag 46), cent une images d'un dégradé qui se déforme — c'est lui qui
-  // fait le lever et le coucher du soleil. L'extracteur de formes ne sait pas
-  // lire un morph, et le bricoler à moitié donnerait un ciel faux. Il se joue
-  // sur l'écran du menu, pas sur celui de la forêt : on le traitera avec le
-  // menu, proprement.
-  { cle: 'horizon', symbole: 'decorPlanHorizon', etiquette: 'Horizon' },
-  { cle: 'collines', symbole: 'decorPlanHill', etiquette: 'Collines' },
+  // Dix plans, du ciel au premier plan, chacun avec son coefficient de
+  // parallaxe (Menu.initDecor). Le ciel a son extraction à part — voir
+  // extraireCiel : ce n'est pas une forme mais deux MORPHS.
+  { cle: 'horizon', symbole: 'decorPlanHorizon', etiquette: 'Horizon', exclure: ['rainbow'] },
+  { cle: 'collines', symbole: 'decorPlanHill', etiquette: 'Collines', exclure: ['windMill', 'dungeon'] },
   { cle: 'foret3', symbole: 'decorPlanForest3', etiquette: 'Forêt lointaine' },
   { cle: 'foret2', symbole: 'decorPlanForest2', etiquette: 'Forêt moyenne' },
-  { cle: 'foret', symbole: 'decorPlanForest', etiquette: 'Forêt' },
-  { cle: 'milieu', symbole: 'decorPlanMid', etiquette: 'Plan médian' },
-  { cle: 'arbre', symbole: 'decorPlanTree', etiquette: 'Arbre' },
+  { cle: 'foret', symbole: 'decorPlanForest', etiquette: 'Forêt',
+    exclure: ['fountain', 'forest', 'house'] },
+  { cle: 'milieu', symbole: 'decorPlanMid', etiquette: 'Plan médian', exclure: ['tree'] },
+  { cle: 'arbre', symbole: 'decorPlanTree', etiquette: 'Arbre', exclure: ['bag'] },
   { cle: 'herbe', symbole: 'decorPlanHerb', etiquette: 'Herbe' },
-  { cle: 'premier', symbole: 'decorPlanFirst', etiquette: 'Premier plan' },
+  { cle: 'premier', symbole: 'decorPlanFirst', etiquette: 'Premier plan', exclure: ['frog'] },
   { cle: 'nuage', symbole: 'cloud', etiquette: 'Nuage' },
+
+  // ── Les lieux du menu ──
+  // Chacun est un clip que le jeu pilote : le donjon change de forme selon son
+  // niveau, l'arbre grandit avec $treeMax, le sac montre celui qu'on porte, le
+  // bassin s'allume quand une fée y dort. Ils ne sont pas exportés sous un nom :
+  // on les prend par leur identifiant, celui que le plan leur donne.
+  { cle: 'mArcEnCiel', id: 379, etiquette: 'Arc-en-ciel' },
+  { cle: 'mMoulin', id: 337, etiquette: 'Moulin' },
+  { cle: 'mDonjon', id: 394, etiquette: 'Donjon' },
+  { cle: 'mBassin', id: 424, etiquette: 'Bassin aux fées' },
+  { cle: 'mForet', id: 427, etiquette: 'Forêt enchantée' },
+  { cle: 'mCabane', id: 430, etiquette: 'Cabane de Gromelin' },
+  { cle: 'mArbre', id: 443, etiquette: 'Arbre creux' },
+  { cle: 'mSac', id: 454, etiquette: 'Sac' },
+  { cle: 'mGrenouille', id: 464, etiquette: 'Ornegon' },
 
   // ── La fée et son interface ──
   // faerie porte toutes ses animations, picFace ses portraits. On ne garde pas
@@ -179,8 +190,72 @@ function tableFormes(source) {
   return t;
 }
 
+/**
+ * Le ciel — cent une images d'un dégradé qui se déforme du lever au coucher.
+ *
+ * decorPlanSky ne contient pas une forme mais DEUX MORPHS et une forme :
+ *
+ *     images   1 à  50   morph #373, minuit → midi
+ *     images  51 à 100   morph #374, midi → minuit
+ *     image  101         forme #375, la nuit revenue
+ *
+ * et chaque image porte son propre taux de mélange (le champ `ratio` du
+ * placement, de 0 à 65535). Menu.setNight y envoie l'heure du jeu :
+ *
+ *     sky.gotoAndStop( int(nc*100) + 1 )        nc = $time.$s / un jour
+ *
+ * On écrit donc les cent une images, chacune interpolée à son propre taux.
+ * C'est peu de place — un dégradé tient en six cents octets — et c'est le seul
+ * moyen d'avoir EXACTEMENT le ciel du jeu à chaque heure.
+ */
+function extraireCiel(manifeste) {
+  const swf = swfs.root;
+  const id = swf.noms.get('decorPlanSky');
+  if (id === undefined) return;
+  const frames = swf.parSprite.get(id);
+  if (!frames) return;
+  const morphs = lireMorphs(SOURCES.root);
+
+  const dossier = path.join(SORTIE, 'ciel');
+  fs.mkdirSync(dossier, { recursive: true });
+  const etats = [];
+  for (const f of [...frames.keys()].sort((a, b) => a - b)) {
+    const p = frames.get(f)[0];
+    if (!p) continue;
+    const m = morphs.get(p.ch);
+    let svg = null;
+    if (m) {
+      svg = versSvg(m, (p.ratio || 0) / 65535);
+    } else if (swf.estForme(p.ch)) {
+      // La dernière image n'est plus un morph : c'est le ciel de minuit, figé.
+      // On le tire par le même chemin que le reste, et on le lira ensuite.
+      continue;
+    }
+    if (!svg) continue;
+    const nom = 'ciel/ciel' + String(f).padStart(3, '0') + '.svg';
+    fs.writeFileSync(path.join(SORTIE, nom), svg, 'utf8');
+    const vb = /viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"/.exec(svg);
+    const c = vb ? { x: +vb[1], y: +vb[2], w: +vb[3], h: +vb[4] } : { x: 0, y: 0, w: 240, h: 240 };
+    etats.push({
+      frame: f,
+      pieces: [{ fichier: nom, x: c.x, y: c.y, w: c.w, h: c.h,
+        vb: [c.x, c.y, c.w, c.h], m: [1, 0, 0, 1, 0, 0] }],
+    });
+  }
+  if (!etats.length) return;
+  // L'image 101 est une forme ordinaire : on recopie la centième plutôt que de
+  // laisser un trou d'une image à minuit pile.
+  if (!etats.some((e) => e.frame === 101)) {
+    const derniere = etats[etats.length - 1];
+    etats.push({ frame: 101, pieces: derniere.pieces });
+  }
+  manifeste.ciel = { nom: 'Ciel (heure par heure)', symbole: 'decorPlanSky', etats };
+  console.log(`ciel : ${etats.length} images`);
+}
+
 function principal() {
   const manifeste = {};
+  const ancrages = {};               // plan → nom du clip → point d'accroche
   const formes = new Map();          // clé « source#forme » → { source, shape }
   const absents = [];
 
@@ -196,7 +271,24 @@ function principal() {
     for (const f of [...frames.keys()].sort((a, c) => a - c)) {
       if (voulues && !voulues.has(f)) continue;
       const pieces = [];
+      // Les clips que le jeu pilote lui-même (la fontaine, le donjon, le sac…)
+      // sont sortis du plan et extraits à part : c'est le jeu qui choisit leur
+      // image et décide s'ils sont visibles. On garde en revanche l'endroit où
+      // le plan les accroche, sans quoi on ne saurait pas où les reposer.
+      const exclus = new Set(item.exclure || []);
+      if (exclus.size) {
+        ancrages[item.cle] = ancrages[item.cle] || {};
+        for (const p of frames.get(f)) {
+          if (p.nom && exclus.has(p.nom)) {
+            ancrages[item.cle][p.nom] = {
+              x: Math.round(p.M.e / 20 * 100) / 100,
+              y: Math.round(p.M.f / 20 * 100) / 100,
+            };
+          }
+        }
+      }
       for (const p of frames.get(f)) {
+        if (p.nom && exclus.has(p.nom)) continue;
         // `sousImage` envoie les clips ENFANTS sur une image fixe pendant que le
         // parent parcourt les siennes. C'est ce que fait it.Food.getPic :
         //
@@ -227,6 +319,7 @@ function principal() {
     }
     if (!etats.length) { absents.push(item.symbole + ' (aucune forme)'); continue; }
     manifeste[item.cle] = { nom: item.etiquette, symbole: item.symbole, etats };
+    if (ancrages[item.cle]) manifeste[item.cle].ancrages = ancrages[item.cle];
   }
 
   if (absents.length) console.log('introuvables : ' + absents.join(', '));
@@ -376,6 +469,11 @@ function principal() {
     }).filter((e) => e.pieces.length);
   }
   if (perdues.length) console.log('pièces perdues : ' + perdues.join(', '));
+
+  // Le ciel arrive APRÈS le tri des formes : ses images ne viennent pas du
+  // catalogue mais d'une interpolation, et repasser par la résolution des
+  // formes les jetterait.
+  extraireCiel(manifeste);
 
   const dest = path.join(SORTIE, 'sprites.json');
   fs.writeFileSync(dest, JSON.stringify(manifeste), 'utf8');
