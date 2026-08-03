@@ -137,12 +137,27 @@ const CIBLES = [
   // restent au cas où une fée de mission en demanderait un.
   { cle: 'portrait', symbole: 'picFace', etiquette: 'Portrait de fée', synchro: true,
     images: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] },
-  { cle: 'interFace', symbole: 'interFace', etiquette: 'Cadre du portrait' },
   // inter.Life et inter.Mana ne sont que des boîtes vides : ce qu'on voit, ce
   // sont des cœurs posés tous les 14 px et des gouttes tous les 6, chacun à
   // deux images — vide, plein.
-  { cle: 'coeur', symbole: 'mcHeart', etiquette: 'Cœur de vie', synchro: true },
-  { cle: 'mana', symbole: 'mcMana', etiquette: 'Goutte de mana', synchro: true },
+  //
+  // Mais le cadre du portrait, le cœur et la goutte ont chacun un sous-clip de
+  // PEAU, que le lieu choisit : la forêt garde la première, le donjon prend la
+  // deuxième (`intLife.skinFrame = 2`), l'arc-en-ciel la troisième. Sans cette
+  // distinction, le cœur PLEIN portait le fond de pierre du donjon jusqu'en
+  // forêt — le sous-clip suivait l'image du parent au lieu de la peau.
+  ...[1, 2, 3].flatMap((peau) => {
+    const suf = peau > 1 ? String(peau) : '';
+    const dit = ['', '', ' (donjon)', ' (arc-en-ciel)'][peau];
+    return [
+      { cle: 'interFace' + suf, symbole: 'interFace', sousImage: peau,
+        etiquette: 'Cadre du portrait' + dit },
+      { cle: 'coeur' + suf, symbole: 'mcHeart', sousImage: peau,
+        etiquette: 'Cœur de vie' + dit },
+      { cle: 'mana' + suf, symbole: 'mcMana', sousImage: peau,
+        etiquette: 'Goutte de mana' + dit },
+    ];
+  }),
   { cle: 'suivante', symbole: 'mcNext', etiquette: 'Pièce suivante' },
   { cle: 'nuit', symbole: 'mcNightMask', etiquette: 'Masque de nuit' },
 
@@ -154,6 +169,23 @@ const CIBLES = [
   { cle: 'panScore', symbole: 'panScore', etiquette: 'Plaque du score' },
   { cle: 'escargot', symbole: 'mcEscargot', etiquette: 'Escargot du chronomètre' },
   { cle: 'multiFruit', symbole: 'mcMultiFruit', etiquette: 'Fruit du multiplicateur' },
+
+  // ── Le donjon (base/Dungeon.initElevator) ──
+  // Le plancher qui monte, et les trois roues qui l'entraînent — devant et
+  // derrière. C'est la seule chose qui dise au joueur que le sol se rapproche.
+  // Les six roues sont SIX COPIES d'un même dessin, à six places et six
+  // tailles : on ne sort donc que la roue, et le client la repose. Sortir les
+  // deux assemblages tout faits aurait obligé à les redessiner en entier à
+  // chaque image, puisqu'ils tournent.
+  { cle: 'ascenseur', symbole: 'mcElevator', etiquette: 'Ascenseur du donjon' },
+  { cle: 'roue', id: 818, etiquette: 'Roue du treuil' },
+
+  // ── L'arc-en-ciel (inter.Wheel) ──
+  // Une roue de 80 sur 80, douze flammes en couronne à quarante-deux pixels du
+  // centre, et le LOT au milieu. Chaque flamme qui s'éteint est une pièce de
+  // moins avant la récompense.
+  { cle: 'roueLot', symbole: 'interWheel', etiquette: 'Roue de l\'arc-en-ciel' },
+  { cle: 'flamme', symbole: 'mcFlame', etiquette: 'Flamme de la roue', images: [1] },
 
   // ── L'inventaire (Inventory.mt) ──
   // Un fond, un cadre par-dessus, des cases de 32 px, le panneau de la fée avec

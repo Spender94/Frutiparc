@@ -55,11 +55,18 @@ const LIGNES_CACHEES = 2;
 const SCENE = 240;
 const MARGE = 4;
 const COLONNE_X = LARGEUR + MARGE;    // 136
-const INTER = {
-  portrait: { x: COLONNE_X, y: MARGE, l: 100, h: 70 },
-  mana: { x: COLONNE_X, y: MARGE + 70 + 3, l: 100, h: 6 },
-  vie: { x: COLONNE_X, y: MARGE + 70 + 3 + 6 + 3, l: 100, h: 18 },
-};
+//
+// `inter.margin` s'ajoute à la hauteur : le donjon et l'arc-en-ciel donnent 10
+// au portrait (`intFace.margin = 10`), ce qui pousse le mana et la vie d'autant.
+function pilerInterface(margeFace) {
+  const m = margeFace || 0;
+  return {
+    portrait: { x: COLONNE_X, y: MARGE, l: 100, h: 70 },
+    mana: { x: COLONNE_X, y: MARGE + 70 + m + 3, l: 100, h: 6 },
+    vie: { x: COLONNE_X, y: MARGE + 70 + m + 3 + 6 + 3, l: 100, h: 18 },
+  };
+}
+const INTER = pilerInterface(0);
 const ECART_COEUR = 14;               // inter.Life : un cœur tous les 14 px
 const ECART_MANA = 6;                 // inter.Mana : une goutte tous les 6 px
 
@@ -87,6 +94,18 @@ const CADRE_FOND = 3, CADRE_MILIEU = 2, CADRE_DESSUS = 1;
 // tombe donc à 31,6 du coin de la plaque — et sa ligne de base à 13.
 const SCORE_ARBRE = { x: 2, y: 2, cx: 31.6, base: 13, couleur: 'rgb(104,69,34)' };
 const ESCARGOT_X = 38;
+const ASCENSEUR_X = 8;                // base/Dungeon : `elevator._x = 8`
+// Les six roues du treuil, telles que `mcWheelSystem` et `mcWheelSystemBack`
+// les posent — place et taille. Les deux assemblages sont accrochés en x = 0.
+const ROUES_DEVANT = [
+  { x: 8, y: 2.9, k: 1 }, { x: 135.95, y: -24.45, k: 0.5 }, { x: 115.25, y: 6.4, k: 0.5 },
+];
+const ROUES_FOND = [
+  { x: 90.15, y: 23.85, k: 1.5 }, { x: 0.25, y: -25.65, k: 0.8 }, { x: 46.9, y: -36.15, k: 0.5 },
+];
+// inter.Wheel — la roue de l'arc-en-ciel : 80 × 80, `mx = 10`, son moyeu en
+// (42, 42), douze flammes à quarante-deux pixels, et le lot au centre à 40 %.
+const ROUE_LOT = { x: COLONNE_X + 10, cx: 42, cy: 42, rayon: 42, flammes: 12, lot: 40 };
 
 // Le bleu de la nuit, et la force du voile (Menu.setNight). Le coefficient de
 // nuit vaut zéro à minuit, un demi à midi : |nc - 0.5| × 2 donne donc zéro en
@@ -805,8 +824,10 @@ class Client {
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_FOND, 100), 0, 0);
     else { ctx.fillStyle = '#241c3a'; ctx.fillRect(0, 0, SCENE, SCENE); }
 
-    // Les fruits du multiplicateur pendent DERRIÈRE le tronc (`dm.under`).
+    // Les fruits du multiplicateur pendent DERRIÈRE le tronc (`dm.under`), et
+    // les roues du fond du donjon tournent derrière la grille (DP_UNDER).
     this.dessinerFruits(ctx);
+    this.dessinerAscenseur(ctx, false);
 
     for (const e of jeu.eList) this.dessinerElement(ctx, e, e.px, e.py);
     if (jeu.piece) for (const c of jeu.piece.cases()) this.poser(ctx, c.e, c.x, c.y);
@@ -814,8 +835,10 @@ class Client {
     bougerEclats(ctx, tmod);
 
     // L'escargot est posé à DP_SKIN_MIDDLE, comme le montant du tronc, mais
-    // avant lui : il grimpe DERRIÈRE l'écorce.
+    // avant lui : il grimpe DERRIÈRE l'écorce. Le plancher du donjon et ses
+    // roues de devant, eux, sont à DP_SPRITE_FRONT — au-dessus des jetons.
     this.dessinerEscargot(ctx);
+    this.dessinerAscenseur(ctx, true);
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_MILIEU, 100), 0, 0);
     if (this.champ && this.champ.faerieList.length) this.dessinerInterface(ctx, tmod);
     else this.dessinerMessage(ctx, tmod);
@@ -871,6 +894,38 @@ class Client {
     ctx.restore();
   }
 
+  /**
+   * base/Dungeon.initElevator — le plancher qui monte, et son treuil.
+   *
+   * `mcElevator` en x = 8, `mcWheelSystem` et `mcWheelSystemBack` en x = 0, tous
+   * trois à la hauteur du sol. Six roues, chacune à son rapport : trois devant
+   * la grille, trois derrière.
+   *
+   * @param {boolean} devant vrai pour DP_SPRITE_FRONT, faux pour DP_UNDER
+   */
+  dessinerAscenseur(ctx, devant) {
+    const s = this.sprites;
+    const e = this.lieu.etat();
+    if (e.ascenseur === undefined) return;
+    const y = e.ascenseur;
+    const rot = e.rotations || [0, 0, 0, 0, 0, 0];
+    const poserRoue = (r, angle) => {
+      if (!s.roue) return;
+      // La roue tourne au CANEVAS, pas au rendu : un dessin par angle aurait
+      // rempli le cache d'une image par battement d'horloge.
+      const rendu = rendre(s.roue, 1, 100 * r.k);
+      ctx.save();
+      ctx.translate(r.x, y + r.y);
+      ctx.rotate(angle * Math.PI / 180);
+      ctx.drawImage(rendu.c, rendu.dx, rendu.dy);
+      ctx.restore();
+    };
+    const jeu = devant ? ROUES_DEVANT : ROUES_FOND;
+    const de = devant ? 0 : 3;
+    if (devant && s.ascenseur) poserRendu(ctx, rendre(s.ascenseur, 1, 100), ASCENSEUR_X, y);
+    for (let i = 0; i < jeu.length; i++) poserRoue(jeu[i], rot[de + i]);
+  }
+
   // base/Tree.initEscargot — l'escargot grimpe le long du tronc à mesure que le
   // chronomètre tourne : `esc._y = 240 - (timer/1000)*220`. C'est LUI qui
   // annonce la prochaine accélération, et c'est la seule horloge du mode.
@@ -895,15 +950,23 @@ class Client {
     }
   }
 
-  // Ce que chaque lieu doit dire au joueur, et que la forêt n'a pas : à quel
-  // niveau de donjon il en est, combien de pièces la roue attend encore.
-  //
-  // L'arbre creux, lui, a sa PLAQUE (base/Tree.initScore) : `panScore` en (2,2),
-  // dont le champ est centré, en Berlin Sans 18 et brun.
+  /**
+   * Ce que le lieu affiche en propre.
+   *
+   * L'arbre creux a sa PLAQUE (base/Tree.initScore) : `panScore` en (2,2), dont
+   * le champ est centré, en Berlin Sans 18 et brun.
+   *
+   * L'arc-en-ciel a sa ROUE (inter.Wheel), douze flammes en couronne autour du
+   * lot à gagner. Chaque flamme éteinte est une pièce de moins à poser.
+   *
+   * Le donjon, lui, n'affiche RIEN : ni son rang, ni son niveau. On le sent
+   * monter, on ne le lit pas.
+   */
   dessinerEnteteLieu(ctx) {
+    const s = this.sprites;
     const e = this.lieu.etat();
-    if (e.multi !== undefined && this.sprites.panScore) {
-      poserRendu(ctx, rendre(this.sprites.panScore, 1, 100), SCORE_ARBRE.x, SCORE_ARBRE.y);
+    if (e.multi !== undefined && s.panScore) {
+      poserRendu(ctx, rendre(s.panScore, 1, 100), SCORE_ARBRE.x, SCORE_ARBRE.y);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
       ctx.font = 'bold 15px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
@@ -914,20 +977,32 @@ class Client {
       ctx.textAlign = 'left';
       return;
     }
-    const l = [];
-    if (e.sur) l.push('donjon ' + (e.niveau + 1) + '/' + e.sur);
-    if (e.tours !== undefined) l.push(e.tours + ' pièces');
-    if (!l.length) return;
-    ctx.textAlign = 'left';
-    ctx.font = 'bold 9px Verdana, Arial, sans-serif';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(10,20,35,.9)';
-    // Sous le bord haut : les deux premières lignes de la grille sont cachées,
-    // l'entête n'y masque donc rien de jouable.
-    const x = this.lieu.jeu.margeGauche + 2;
-    ctx.strokeText(l.join('   '), x, 12);
-    ctx.fillStyle = '#ffd76a';
-    ctx.fillText(l.join('   '), x, 12);
+    if (e.roue === undefined || !s.roueLot) return;
+
+    // inter.Wheel — la roue vient après le portrait, le mana et la vie dans la
+    // pile de `updatePos`, avec `mx = 10`.
+    const boite = pilerInterface(this.lieu.margeFace);
+    const x = ROUE_LOT.x, y = boite.vie.y + boite.vie.h + 3;
+    poserRendu(ctx, rendre(s.roueLot, 1, 100), x, y);
+
+    // Le lot, au centre de la roue, au tiers et demi de sa taille.
+    const O = window.MinipixizInventaire;
+    const d = O && e.prix !== null && e.prix !== undefined ? O.dessinObjet(e.prix) : null;
+    if (d && s[d.cle]) {
+      poserRendu(ctx, rendre(s[d.cle], d.frame, ROUE_LOT.lot, undefined, d.parties),
+        x + ROUE_LOT.cx, y + ROUE_LOT.cy);
+    }
+
+    // `addFlame` : une flamme par douzième de compte, posée sur le cercle en
+    // partant du haut et en tournant à l'envers.
+    if (!s.flamme) return;
+    const n = Math.ceil((e.roue / 100) * ROUE_LOT.flammes);
+    for (let i = 0; i < n; i++) {
+      const a = (1 - (i / ROUE_LOT.flammes)) * 6.28 - 1.57;
+      poserRendu(ctx, rendre(s.flamme, 1, 100),
+        x + ROUE_LOT.cx + Math.cos(a) * ROUE_LOT.rayon,
+        y + ROUE_LOT.cy + Math.sin(a) * ROUE_LOT.rayon);
+    }
   }
 
   dessinerBulle(ctx, b) {
@@ -1113,6 +1188,16 @@ class Client {
     const jeu = this.jeu, s = this.sprites;
     const fee = this.fee;
 
+    // La PEAU de l'interface : la forêt garde la première, le donjon prend la
+    // deuxième, l'arc-en-ciel la troisième — et ces deux-là ajoutent en plus dix
+    // pixels sous le portrait (`intFace.margin = 10`).
+    const peau = (this.lieu && this.lieu.peau) || 1;
+    const suf = peau > 1 ? String(peau) : '';
+    const boite = pilerInterface((this.lieu && this.lieu.margeFace) || 0);
+    const sCadre = s['interFace' + suf] || s.interFace;
+    const sMana = s['mana' + suf] || s.mana;
+    const sCoeur = s['coeur' + suf] || s.coeur;
+
     // ── LE PORTRAIT (inter.Face) ──
     // Le cadre est là même sans fée : c'est un élément du décor, et son absence
     // creuserait un trou dans le panneau.
@@ -1120,19 +1205,21 @@ class Client {
     // décide, et c'est aussi ce qui décale son portrait vers la droite.
     const voitVenir = fee ? Math.floor((fee.carac[CONCENTRATION] || 0) * 0.5) : 0;
     const align = voitVenir > 0 ? 1 : FACE_ALIGN;
-    const cx = INTER.portrait.x + (INTER.portrait.l - INTER.portrait.l * FACE_ECHELLE) * align;
-    const cy = INTER.portrait.y;
-    const t = INTER.portrait.l * FACE_ECHELLE;
+    const cx = boite.portrait.x + (boite.portrait.l - boite.portrait.l * FACE_ECHELLE) * align;
+    const cy = boite.portrait.y;
+    const t = boite.portrait.l * FACE_ECHELLE;
 
     // La colonne des pièces à venir, sous le cadre : elle n'existe que si la fée
     // est assez concentrée pour l'offrir.
-    if (voitVenir > 0) this.dessinerSuivantes(ctx, INTER.portrait.x, cy, FACE_ECHELLE, 1, voitVenir);
+    if (voitVenir > 0) {
+      this.dessinerSuivantes(ctx, boite.portrait.x, cy, FACE_ECHELLE, peau, voitVenir);
+    }
 
     // Le portrait se glisse ENTRE le passe-partout du cadre et son liseré, et
     // le masque du cadre le découpe : c'est mot pour mot ce que fait
     // `Std.attachMC(skin.cadre.pic, "picFace", 10)`.
-    if (s.interFace) {
-      const fond = rendre(s.interFace, 1, t, undefined, null, 'pic');
+    if (sCadre) {
+      const fond = rendre(sCadre, 1, t, undefined, null, 'pic');
       poserRendu(ctx, fond, cx, cy);
       if (fee && s.portrait) {
         const a = fee.apparence();
@@ -1145,26 +1232,26 @@ class Client {
           cx, cy);
         ctx.restore();
       }
-      poserRendu(ctx, rendre(s.interFace, 1, t, undefined, null, '>pic'), cx, cy);
+      poserRendu(ctx, rendre(sCadre, 1, t, undefined, null, '>pic'), cx, cy);
     }
 
     // ── LE MANA (inter.Mana) ── une goutte tous les six pixels, centrées.
-    if (fee && s.mana) {
+    if (fee && sMana) {
       const max = fee.manaMax();
-      const m = (INTER.mana.l - ECART_MANA * max) * 0.5;
+      const m = (boite.mana.l - ECART_MANA * max) * 0.5;
       for (let i = 0; i < max; i++) {
-        poserRendu(ctx, rendre(s.mana, i < fee.fs.$mana ? 2 : 1, 100),
-          INTER.mana.x + m + ECART_MANA * i - 1, INTER.mana.y);
+        poserRendu(ctx, rendre(sMana, i < fee.fs.$mana ? 2 : 1, 100),
+          boite.mana.x + m + ECART_MANA * i - 1, boite.mana.y);
       }
     }
 
     // ── LA VIE (inter.Life) ── un cœur tous les quatorze.
-    if (fee && s.coeur) {
+    if (fee && sCoeur) {
       const max = fee.vieMax();
-      const m = (INTER.vie.l - ECART_COEUR * max) * 0.5;
+      const m = (boite.vie.l - ECART_COEUR * max) * 0.5;
       for (let i = 0; i < max; i++) {
-        poserRendu(ctx, rendre(s.coeur, i < fee.fs.$life ? 2 : 1, 100),
-          INTER.vie.x + m + ECART_COEUR * i - 1, INTER.vie.y);
+        poserRendu(ctx, rendre(sCoeur, i < fee.fs.$life ? 2 : 1, 100),
+          boite.vie.x + m + ECART_COEUR * i - 1, boite.vie.y);
       }
     }
 

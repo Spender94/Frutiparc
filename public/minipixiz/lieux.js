@@ -65,6 +65,12 @@ class Lieu {
   // Les pièces à venir se lisent d'ordinaire dans le cadre du portrait, donc
   // seulement en aventure ; l'arbre creux, lui, a sa propre colonne.
   get colonneSuivantes() { return null; }
+  // La PEAU de l'interface. Le cadre du portrait, le cœur et la goutte de mana
+  // ont chacun trois habits, et le lieu choisit — la forêt garde le premier, le
+  // donjon prend la pierre, l'arc-en-ciel les nuages. Les deux qui changent de
+  // peau glissent aussi dix pixels sous le portrait.
+  get peau() { return 1; }
+  get margeFace() { return this.peau > 1 ? 10 : 0; }
 
   commencer() {
     this.jeu = new E.Jeu(Object.assign({
@@ -123,6 +129,8 @@ const DONJON_NIVEAUX = 10;
 
 class Donjon extends Lieu {
   get cadre() { return 'cadreDonjon'; }
+  // base/Dungeon.initFaerieInterface : la pierre.
+  get peau() { return 2; }
 
   constructor(o) {
     const c = (o || {}).carte;
@@ -151,6 +159,7 @@ class Donjon extends Lieu {
     this.heightCycle = (this.level < 9) ? 250 : 500;
     this.heightTimer = this.heightCycle * 0.5;
     this.wSpeed = 0;
+    this.rotations = [0, 0, 0, 0, 0, 0];   // ws.r0..r2 puis wsb.r0..r2
     if (this.level === 9) {
       for (let i = 0; i < 2; i++) {
         this.champ.naitreImpy(this.difficulte, this.jeu.largeur * 0.5, this.jeu.hauteur * 0.5);
@@ -190,7 +199,15 @@ class Donjon extends Lieu {
     // La roue prend de la vitesse dès que le compte est écoulé, puis retombe.
     // C'est elle qu'on entend monter avant que le sol ne bouge.
     if (this.heightTimer < 0) this.wSpeed += 1 * tmod;
-    if (this.wSpeed > 0.1) this.wSpeed *= Math.pow(0.95, tmod);
+    if (this.wSpeed > 0.1) {
+      this.wSpeed *= Math.pow(0.95, tmod);
+      // Les six roues, chacune à son rapport. Celles de devant tournent plus
+      // vite que le treuil, celles du fond à contresens : c'est ce désaccord
+      // qui donne l'impression d'un mécanisme, et non d'un décor qui pivote.
+      const r = this.rotations;
+      r[0] += this.wSpeed; r[1] += this.wSpeed * 2; r[2] -= this.wSpeed * 2;
+      r[3] -= this.wSpeed * 0.66; r[4] -= this.wSpeed * 1.25; r[5] += this.wSpeed * 2;
+    }
     super.update(tmod);
   }
 
@@ -278,6 +295,10 @@ class Donjon extends Lieu {
       roue: this.wSpeed,
       montee: Math.max(0, this.heightTimer),
       lignes: this.jeu.yMax,
+      // `elevator._y = game.getY(game.yMax)` : le plancher est à la première
+      // ligne PERDUE, pas à la dernière jouable.
+      ascenseur: this.jeu.posY(this.jeu.yMax),
+      rotations: this.rotations,
     });
   }
 }
@@ -488,6 +509,8 @@ const ROUE_PAS = 1.15;
 
 class ArcEnCiel extends Lieu {
   get cadre() { return 'cadreArcEnCiel'; }
+  // base/Rainbow.initFaerieInterface : les nuages.
+  get peau() { return 3; }
 
   constructor(o) {
     super(o);
