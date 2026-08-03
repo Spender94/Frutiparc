@@ -401,7 +401,7 @@
         surChangement: function () {
           plateforme.ecrire(plateforme.carte);
           // La fée du plateau porte peut-être autre chose depuis tout à l'heure.
-          client.fee = feeCourante();
+          client.poserFee(feeCourante());
         },
       });
       function ouvrirSac() {

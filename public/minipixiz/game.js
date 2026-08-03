@@ -1022,6 +1022,17 @@ class Client {
     }
   }
 
+  /**
+   * La fée a changé — elle a mangé, on lui a donné un objet, on en a choisi une
+   * autre. Faerie.setInfo relit la fiche : ses caractéristiques, sa maniabilité
+   * et ses sorts en dépendent, et un globe posé dans le sac du joueur doit se
+   * sentir tout de suite.
+   */
+  poserFee(fi) {
+    this.fee = fi;
+    if (this.champ && this.champ.faerieList[0] && fi) this.champ.faerieList[0].poserInfo(fi);
+  }
+
   // Le joueur appelle sa fée. Elle ne lancera son sort qu'au bout du tour —
   // c'est ce délai qui fait qu'on appelle en prévision, pas en réaction.
   appelerFee() {

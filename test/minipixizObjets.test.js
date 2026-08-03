@@ -279,7 +279,10 @@ test('la page charge l\'inventaire et enregistre chaque changement', () => {
   assert.match(html, /new window\.MinipixizInventaire\.Inventaire\(/);
   assert.match(html, /surChangement: function \(\) \{\s*plateforme\.ecrire/,
     'un repas est enregistré tout de suite');
-  assert.match(html, /client\.fee = feeCourante\(\)/,
+  // poserFee et non une simple affectation : la fée QUI VOLE relit sa fiche
+  // (Faerie.setInfo), sans quoi un globe posé dans le sac ne se sentirait qu'à
+  // la partie suivante.
+  assert.match(html, /client\.poserFee\(feeCourante\(\)\)/,
     'et la fée du plateau reprend ce qu\'elle porte');
   assert.match(html, /new window\.MinipixizFee\.Fee\(fs, null, plateforme\.carte\)/,
     'la fiche est passée pour que les globes agissent');
