@@ -106,6 +106,10 @@ const ROUES_FOND = [
 // inter.Wheel — la roue de l'arc-en-ciel : 80 × 80, `mx = 10`, son moyeu en
 // (42, 42), douze flammes à quarante-deux pixels, et le lot au centre à 40 %.
 const ROUE_LOT = { x: COLONNE_X + 10, cx: 42, cy: 42, rayon: 42, flammes: 12, lot: 40 };
+// Frog.mt — chez Ornegon : les barres à x = 99 depuis y = 12, le curseur entre
+// 17 et 133 autour du centre 75 ; le salut dans la bulle, le nom du sort en bas.
+const ORNEGON = { barreX: 99, barreY: 12, centre: 75,
+  texteX: 47, texteY: 82, texteL: 80, nomX: 163, nomY: 222 };
 
 // Le bleu de la nuit, et la force du voile (Menu.setNight). Le coefficient de
 // nuit vaut zéro à minuit, un demi à midi : |nc - 0.5| × 2 donne donc zéro en
@@ -718,10 +722,21 @@ class Client {
     this.canvas.addEventListener('touchmove', (ev) => {
       if (ev.touches[0]) suivre(ev.touches[0].clientX, ev.touches[0].clientY);
     }, { passive: true });
+    this.canvas.addEventListener('mousemove', () => {
+      if (!this.ornegon || !this.pointeur) return;
+      const z = (this.ornegon.zones || []).find((q) => this.pointeur.x >= q.x
+        && this.pointeur.x <= q.x + q.l && this.pointeur.y >= q.y
+        && this.pointeur.y <= q.y + q.h);
+      this.ornegon.survole = z ? z.sid : null;
+    });
     this.canvas.addEventListener('mouseleave', () => { this.pointeur = null; });
     this.canvas.addEventListener('click', (ev) => {
-      if (!this.carteForet && !this.nouvelle) return;
+      if (!this.carteForet && !this.nouvelle && !this.ornegon) return;
       suivre(ev.clientX, ev.clientY);
+      if (this.ornegon) {
+        this.clicOrnegon(this.pointeur.x, this.pointeur.y);
+        return;
+      }
       if (this.nouvelle) {
         // Le bouton de sortie, au coin — News.tryToQuit.
         if (this.pointeur.x > SCENE - 50 && this.pointeur.y > SCENE - 50) {
@@ -748,6 +763,7 @@ class Client {
     this.nouvelle = null;
     this.nouvelleEnAttente = null;
     this.dialogue = null;
+    this.ornegon = null;
     this.pause = false;
     this.commencerOuverture((opts.niveau || 0) + 1);
     if (opts.fee !== undefined) this.fee = opts.fee;
@@ -778,6 +794,7 @@ class Client {
     this.nouvelle = null;
     this.nouvelleEnAttente = null;
     this.dialogue = null;
+    this.ornegon = null;
     this.pause = false;
     this.ouverture = null;             // le bassin s'ouvre sur sa bulle, pas sur la gerbe
     // Les événements passent par `annonce` pour les effets de dessin, puis vont
@@ -808,6 +825,7 @@ class Client {
     this.carteForet = null;
     this.nouvelle = null;
     this.nouvelleEnAttente = null;
+    this.ornegon = null;
     this.dialogue = null;
     this.pause = false;
     // Même chose qu'au bassin : les événements du lieu vont au gestionnaire du
@@ -842,6 +860,7 @@ class Client {
     this.champ = null;
     this.cine = null;
     this.ouverture = null;
+    this.ornegon = null;
     this.nouvelle = null;
     this.pause = false;
     this.carteForet = {
@@ -1026,6 +1045,7 @@ class Client {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, SCENE, SCENE);
     const s = this.sprites;
+    if (this.ornegon) { this.dessinerOrnegon(ctx); return; }
     if (this.nouvelle) { this.dessinerNouvelle(ctx); return; }
     if (this.carteForet) { this.dessinerCarteForet(ctx, tmod); return; }
     if (this.bassin) { this.dessinerBassin(ctx, tmod); this.dessinerCine(ctx, tmod); return; }
@@ -1073,6 +1093,124 @@ class Client {
     this.dessinerDialogue(ctx, tmod);
     this.dessinerOuverture(ctx, tmod);
     this.dessinerCine(ctx, tmod);
+  }
+
+  /**
+   * Frog.mt — chez ORNEGON. La grenouille demande à la fée ses sorts préférés :
+   * une barre par sort appris, un curseur par barre, et chaque réglage écrit
+   * `$spellCoef` — le goût qui pèse dans le choix des sorts en pleine partie.
+   * Un clic sur la barre pousse le curseur de cinq pixels vers le doigt, comme
+   * l'original.
+   *
+   * @param {object} o  { fee, surFermer }
+   */
+  ouvrirOrnegon(o) {
+    this.bassin = null;
+    this.lieu = null;
+    this.jeu = null;
+    this.champ = null;
+    this.cine = null;
+    this.ouverture = null;
+    this.nouvelle = null;
+    this.dialogue = null;
+    this.pause = false;
+    this.carteForet = null;
+    const fee = o.fee;
+    const sorts = (fee && fee.sorts ? fee.sorts : [])
+      .filter((sid) => sid !== null && sid !== undefined && sid < 20);
+    this.ornegon = {
+      fee,
+      sorts,
+      surFermer: o.surFermer || null,
+      survole: null,
+      // Le curseur garde SA position en pixels : le goût n'est écrit qu'en
+      // dixièmes, et le recalculer à chaque image le ferait revenir en
+      // arrière — cinq pixels n'y changent pas toujours un dixième.
+      positions: {},
+    };
+    for (const sid of sorts) {
+      this.ornegon.positions[sid] = ORNEGON.centre + ((this.coefDuSort(sid) / 10) - 1) * 58;
+    }
+    return this.ornegon;
+  }
+
+  dessinerOrnegon(ctx) {
+    const s = this.sprites, or = this.ornegon;
+    if (s.ecranOrnegon) poserRendu(ctx, rendre(s.ecranOrnegon, 1, 100), 0, 0);
+    else { ctx.fillStyle = '#1c3a24'; ctx.fillRect(0, 0, SCENE, SCENE); }
+
+    // Le salut de la grenouille (fieldFrog) — dix pixels, rouge sombre, dans
+    // la bulle de gauche.
+    const fee = or.fee;
+    ctx.font = 'bold 9px Verdana, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgb(126,16,1)';
+    const salut = decouperTexte(ctx,
+      'Salut,\n' + (fee ? fee.fs.$name : '') + ' !\nDis-moi quels sont tes sorts préférés...',
+      ORNEGON.texteL);
+    let sy = ORNEGON.texteY;
+    for (const l of salut) { ctx.fillText(l, ORNEGON.texteX, sy); sy += 11; }
+
+    // Frog.initSpellBars : les barres à x = 99 depuis y = 12, serrées si la
+    // fée sait beaucoup de sorts.
+    or.zones = [];
+    const n = or.sorts.length;
+    const pas = Math.min(20, (SCENE - 22) / Math.max(1, n));
+    let y = ORNEGON.barreY;
+    for (const sid of or.sorts) {
+      if (s.barreSort) poserRendu(ctx, rendre(s.barreSort, 1, 100), ORNEGON.barreX, y);
+      if (s.sortSymbole && s.sortSymbole.etats.some((e) => e.frame === sid + 1)) {
+        poserRendu(ctx, rendre(s.sortSymbole, sid + 1, 100), ORNEGON.barreX, y);
+      }
+      const bx = or.positions[sid];
+      if (s.curseurSort) poserRendu(ctx, rendre(s.curseurSort, 1, 100), ORNEGON.barreX + bx, y);
+      or.zones.push({ sid, x: ORNEGON.barreX + 10, y: y - 9, l: 130, h: Math.max(18, pas),
+        curseur: bx });
+      y += pas;
+    }
+
+    // Le nom du sort visé (fieldSpell), en blanc au bas.
+    if (or.survole !== null && or.survole !== undefined) {
+      const X = window.MinipixizSorts;
+      const sort = X && X.nouveauSort(or.survole);
+      if (sort) {
+        ctx.font = 'bold 14px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(sort.nom(), ORNEGON.nomX, ORNEGON.nomY);
+      }
+    }
+    this.dessinerBoutonQuitter(ctx);
+  }
+
+  coefDuSort(sid) {
+    const fs = this.ornegon.fee.fs;
+    if (!Array.isArray(fs.$spellCoef)) fs.$spellCoef = [];
+    if (fs.$spellCoef[sid] === null || fs.$spellCoef[sid] === undefined) {
+      fs.$spellCoef[sid] = 10;
+    }
+    return fs.$spellCoef[sid];
+  }
+
+  clicOrnegon(x, y) {
+    const or = this.ornegon;
+    if (x > SCENE - 50 && y > SCENE - 50) {
+      const f = or.surFermer;
+      this.ornegon = null;
+      if (f) f();
+      return;
+    }
+    for (const z of (or.zones || [])) {
+      if (x < z.x || x > z.x + z.l || y < z.y || y > z.y + z.h) continue;
+      // Frog.clickBar : cinq pixels vers le doigt, entre 17 et 133.
+      const local = x - ORNEGON.barreX;
+      let bx = or.positions[z.sid];
+      bx = local < bx ? Math.max(17, bx - 5) : Math.min(133, bx + 5);
+      or.positions[z.sid] = bx;
+      // Frog.release : c = 1 + (x − 75)/58, gardé en dixièmes.
+      or.fee.fs.$spellCoef[z.sid] = Math.floor((1 + (bx - ORNEGON.centre) / 58) * 10);
+      return;
+    }
   }
 
   /**

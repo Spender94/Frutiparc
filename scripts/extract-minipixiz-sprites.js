@@ -201,6 +201,13 @@ const CIBLES = [
   { cle: 'panPerdu', symbole: 'panGameOver', etiquette: 'Panneau de fin de partie' },
   // La PAUSE (Manager.setPause) : un voile violet, le panneau, et le mot.
   { cle: 'panPause', symbole: 'mcPause', etiquette: 'Panneau de pause' },
+  // Chez ORNEGON (Frog.mt) : la grenouille demande à la fée ses sorts
+  // préférés — une barre par sort appris, et un curseur qui écrit $spellCoef.
+  // Le symbole est celui des sorts, déjà extrait ; le curseur est la forme du
+  // bouton, que l'extracteur ne sait pas traverser.
+  { cle: 'ecranOrnegon', symbole: 'frog', etiquette: 'Chez Ornegon' },
+  { cle: 'barreSort', symbole: 'mcSpellBar', etiquette: 'Barre de sort', exclure: ['symbole'] },
+  { cle: 'curseurSort', id: 1173, etiquette: 'Curseur de sort' },
   // Le BOUQUET (Aventure.initBouquet) : chaque niveau s'ouvre sur cette gerbe
   // qui jaillit d'un point, porte le numéro du niveau, tient un instant et se
   // referme avant que les pièces ne tombent.
@@ -413,7 +420,12 @@ function principal() {
     const { noms, parSprite, aplatir } = swfs[source];
     const id = (item.id !== undefined) ? item.id : noms.get(item.symbole);
     if (id === undefined) { absents.push(item.symbole); continue; }
-    const frames = parSprite.get(id);
+    // Une FORME nue (le curseur d'Ornegon est la forme d'un bouton, que
+    // l'extracteur ne traverse pas) : on la présente comme un clip d'une image.
+    const frames = parSprite.get(id) || (swfs[source].estForme(id)
+      ? new Map([[1, [{ ch: id, M: swfs[source].IDENTITE, prof: 1, nom: null,
+        masque: 0, cx: null, ratio: null }]]])
+      : undefined);
     if (!frames || frames.size === 0) { absents.push(item.symbole + ' (sans image)'); continue; }
     const etats = [];
     const voulues = item.images ? new Set(item.images) : null;

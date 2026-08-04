@@ -397,6 +397,22 @@
             fermerMenu(); ouvrirLieu('ArcEnCiel'); irisVersJeu(); return;
           }
           if (lieu.va === 'mission') { fermerMenu(); ouvrirGromelin(); return; }
+          if (lieu.va === 'frog') {
+            // Frog.mt : Ornegon veut la fée du moment, pour lui demander ses
+            // sorts préférés.
+            var fi = feeCourante();
+            if (!fi) { menu.dire('Ornegon n\'a personne à qui parler.'); return; }
+            fermerMenu();
+            client.ouvrirOrnegon({
+              fee: fi,
+              surFermer: function () {
+                plateforme.ecrire(plateforme.carte);
+                ouvrirMenu();
+              },
+            });
+            irisVersJeu();
+            return;
+          }
           if (lieu.va === 'fountain') {
             if (!etat.ouvert) {
               menu.dire('Le bassin est calme. Aucune lueur au fond.');
