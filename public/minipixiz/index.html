@@ -81,6 +81,10 @@
   }
   #aide { display: none; }
   @media (pointer: fine) { #aide { display: block; } }
+  /* Au doigt, le plateau SE JOUE : la manette reste en secours, et on dit
+     une fois comment faire. */
+  #aide-tactile { display: none; color: #7b6ba8; font-size: 11px; padding: 0 12px 8px; text-align: center; }
+  @media (pointer: coarse) { #aide-tactile { display: block; } }
 
   /* ── Le menu de l'aventure ──
      La clairière d'où l'on part : le même canevas de 240 × 240 que le reste. */
@@ -146,6 +150,7 @@
     <button type="button" data-cmd="droite" aria-label="Droite">▶</button>
     <button type="button" class="fee" data-cmd-aide aria-label="Appeler la fée">✦</button>
   </div>
+  <div id="aide-tactile">tapotez le plateau pour tourner · glissez pour déplacer · tirez vers le bas pour poser</div>
   <div id="aide">← → pour déplacer · ↑ pour tourner · ↓ pour poser · Ctrl pour appeler la fée</div>
 </div>
 

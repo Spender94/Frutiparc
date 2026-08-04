@@ -734,6 +734,7 @@ class Client {
       this.ornegon.survole = z ? z.sid : null;
     });
     this.canvas.addEventListener('mouseleave', () => { this.pointeur = null; });
+    this.brancherToucher();
     this.canvas.addEventListener('click', (ev) => {
       if (!this.carteForet && !this.nouvelle && !this.ornegon && !this.gromelin) return;
       suivre(ev.clientX, ev.clientY);
@@ -1009,6 +1010,7 @@ class Client {
       if (dt > 0.25) dt = 0.25;
       this.reste += dt * IPS;
       let pas = 0;
+      this.piloterAuDoigt();
       const mode = this.bassin || this.lieu;
       if (this.pause) {
         this.reste = 0;
@@ -2235,6 +2237,109 @@ class Client {
   // ── Commandes ──
   // Clavier pour le bureau, quatre zones tactiles pour le téléphone. Le jeu
   // d'origine se joue aux flèches (Cm.pref.$key) ; on garde ça, plus ZQSD.
+  /**
+   * Le jeu AU DOIGT — la pièce se joue sur le plateau même, comme les Tetris
+   * de téléphone :
+   *
+   *   tapoter        → la pièce pivote (une impulsion de `tourner`)
+   *   glisser        → elle SUIT le doigt, colonne par colonne : on vise la
+   *                    colonne du doigt et le moteur y glisse à sa vitesse
+   *   tirer en bas   → la descente rapide, qui pose la pièce en arrivant
+   *
+   * On ne pilote pas la pièce directement : on écrit dans `entree`, comme le
+   * clavier et la manette. C'est le moteur qui glisse, refuse un mur, refuse
+   * une rotation impossible — le doigt n'a pas de passe-droit.
+   */
+  brancherToucher() {
+    this.doigt = null;
+    const scene = (t) => {
+      const r = this.canvas.getBoundingClientRect();
+      return { x: (t.clientX - r.left) / this.echelle, y: (t.clientY - r.top) / this.echelle };
+    };
+    const enJeu = () => this.jeu && !this.carteForet && !this.nouvelle && !this.ornegon
+      && !this.gromelin && !this.pause && !this.cine;
+
+    this.canvas.addEventListener('touchstart', (ev) => {
+      if (!enJeu()) return;            // les écrans gardent leurs clics
+      const t = ev.changedTouches[0];
+      if (this.doigt) return;          // un seul doigt pilote
+      ev.preventDefault();
+      const p = scene(t);
+      this.doigt = {
+        id: t.identifier,
+        x0: p.x, y0: p.y, x: p.x, y: p.y,
+        depart: Date.now(),
+        bouge: false,
+        piece: this.jeu.piece || null,
+        colonne0: this.jeu.piece ? this.jeu.piece.x : 0,
+        cible: null,
+      };
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchmove', (ev) => {
+      const d = this.doigt;
+      if (!d) return;
+      const t = [...ev.changedTouches].find((q) => q.identifier === d.id);
+      if (!t) return;
+      ev.preventDefault();
+      const p = scene(t);
+      d.x = p.x; d.y = p.y;
+      if (Math.abs(p.x - d.x0) > 6 || Math.abs(p.y - d.y0) > 6) d.bouge = true;
+      // La colonne visée suit le doigt depuis la prise : un cran par case.
+      d.cible = d.colonne0 + Math.round((p.x - d.x0) / TS);
+    }, { passive: false });
+
+    const lacher = (ev) => {
+      const d = this.doigt;
+      if (!d) return;
+      const t = [...ev.changedTouches].find((q) => q.identifier === d.id);
+      if (!t) return;
+      ev.preventDefault();
+      this.doigt = null;
+      this.entree.gauche = false;
+      this.entree.droite = false;
+      this.entree.bas = false;
+      // Un toucher bref et immobile : la pièce pivote.
+      if (!d.bouge && Date.now() - d.depart < 400 && ev.type !== 'touchcancel') {
+        this.pulseTourner = 2;
+      }
+    };
+    this.canvas.addEventListener('touchend', lacher, { passive: false });
+    this.canvas.addEventListener('touchcancel', lacher, { passive: false });
+  }
+
+  // Une image de pilotage au doigt, avant que le moteur ne lise `entree`.
+  piloterAuDoigt() {
+    if (this.pulseTourner > 0) {
+      this.entree.tourner = true;
+      if (--this.pulseTourner === 0) this.finPulseTourner = true;
+    } else if (this.finPulseTourner) {
+      this.entree.tourner = false;
+      this.finPulseTourner = false;
+    }
+    const d = this.doigt;
+    if (!d || !this.jeu) return;
+    const piece = this.jeu.piece;
+    if (!piece) { this.entree.gauche = this.entree.droite = this.entree.bas = false; return; }
+    // Une pièce neuve sous le doigt : on repart d'elle, sans lâcher la prise.
+    if (piece !== d.piece) {
+      d.piece = piece;
+      d.colonne0 = piece.x;
+      d.x0 = d.x;
+      d.y0 = d.y;
+      d.cible = null;
+      this.entree.bas = false;
+      return;
+    }
+    // Tirer vers le bas déclenche la descente rapide ; remonter la coupe.
+    this.entree.bas = (d.y - d.y0) > TS * 1.5;
+    // Et la pièce court après la colonne du doigt, à sa vitesse à elle.
+    if (d.cible === null) return;
+    const ou = piece.x + piece.cx;
+    this.entree.droite = d.cible > ou + 0.35;
+    this.entree.gauche = d.cible < ou - 0.35;
+  }
+
   brancherCommandes(racine) {
     const touches = {
       ArrowLeft: 'gauche', ArrowRight: 'droite', ArrowDown: 'bas', ArrowUp: 'tourner',
