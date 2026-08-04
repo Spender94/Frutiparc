@@ -421,6 +421,9 @@ class Plateforme {
     const avant = JSON.parse(JSON.stringify(this.carte));
     const r = N.passerLeTemps(this.carte, maintenant === undefined ? Date.now() : maintenant);
     this.messagesDeNuit = r.messages;
+    // Les mêmes nouvelles, datées du jour de la fiche — pour la lettre du
+    // courrier (Manager.addMsg garde {d, txt}, Menu.displayLog groupe par jour).
+    this.courrier = r.courrier || [];
     if (r.nuits > 0) this.ecrire(avant);
     return r;
   }

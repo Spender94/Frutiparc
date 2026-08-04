@@ -84,6 +84,12 @@ const FONTE = '"Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
 
 const nombre = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
+// FaerieSeed — les deux états qui retirent une fée du jeu : partie en mission
+// ($mission désigne sa mission dans $mis), ou rangée dans un bocal ($pos est la
+// case du sac où le bocal se trouve).
+const enMission = (fs) => !!fs && fs.$mission !== null && fs.$mission !== undefined;
+const enBocal = (fs) => !!fs && fs.$pos !== null && fs.$pos !== undefined;
+
 // Item.getPic : quel dessin, et sur quelle image, pour un type donné.
 function dessinObjet(type) {
   const it = O.info(type);
@@ -134,6 +140,13 @@ class Inventaire {
     this.titre = '';
     this.zones = [];                  // les rectangles cliquables, refaits à chaque rendu
     this.dpr = 1;
+    // Cm.withdraw écrivait ses adieux dans le courrier (Manager.addMsg).
+    this.surCourrier = o.surCourrier || null;
+    // Inventory.extraList — les objets ramassés en forêt SANS place au sac.
+    // Tant qu'il en reste, la sortie est condamnée.
+    this.extraList = null;
+    this.extraIndex = 0;
+    this.extraMax = 0;
 
     this.canvas.addEventListener('click', (ev) => this.clic(ev));
     // Le coin de sortie s'allume au survol (mcButQuit image 2). L'écran ne se
@@ -236,7 +249,11 @@ class Inventaire {
     }
 
     // 3. La rangée du bas : ce qu'on a rapporté du monde (DP_SLOT lui aussi).
-    this.rendreExtra();
+    //    En mode « objets à ranger », les nouveaux venus prennent sa place —
+    //    c'est le flNoExtraDisplay de Base.tryToClose, les deux rangées se
+    //    marcheraient dessus.
+    if (this.extraList) this.rendreARanger();
+    else this.rendreExtra();
 
     // 4. Le volet de la fée, puis son panneau par-dessus (DP_SLOT2 = 6).
     const fee = this.fee();
@@ -254,6 +271,7 @@ class Inventaire {
       if (this.titre) this.texte(this.titre, SCENE / 2, MSG_Y + 10, '#6b3a1a', 10);
     }
     poser('invDevant', 1, 100, 0, 0);
+    if (this.extraList) this.rendreFlechesARanger();
     poser('invPoubelle', 1, 100, 0, SCENE);
     this.zoneRect('poubelle', 0, SCENE - 32, 24, 32);
 
@@ -276,6 +294,13 @@ class Inventaire {
 
   caseDeLaMain() {
     if (!this.main) return null;
+    if (this.main.sac === 'extra') {
+      // L'alvéole n'est encadrée que si elle est encore à l'écran — la file a
+      // pu défiler sous la main.
+      const i = this.main.case - this.extraIndex;
+      if (i < 0 || i >= this.extraMax) return null;
+      return { x: INV_WIDTH * 0.5 + (i - (this.extraMax - 1) * 0.5) * SLOT_SIZE, y: 158 };
+    }
     const g = this.main.sac === 'joueur' ? this.grilleJoueur() : this.grilleFee();
     const c = g.cases.find((q) => q.i === this.main.case);
     return c ? { x: c.cx, y: c.cy } : null;
@@ -299,7 +324,13 @@ class Inventaire {
     // rien ne dirait au joueur laquelle de ses fées Gromelin acceptera.
     if (sac === 'joueur' && type === O.IT_BOCAL) {
       const dedans = (this.carte.$faerie || []).find((f) => f && f.$pos === index);
-      if (dedans && s.fee) {
+      if (dedans && enMission(dedans)) {
+        // it/Flask.updatePic : partie en mission, la locataire cède la place à
+        // l'icône (mcIconMission à 360 % dans le dessin de l'objet).
+        if (s.iconeMission) {
+          C.poserRendu(ctx, C.rendre(s.iconeMission, 1, taille * 0.82 * 3.6), cx, cy);
+        }
+      } else if (dedans && s.fee) {
         const a = new racine.MinipixizFee.Fee(dedans, null, null).apparence();
         C.poserVif(ctx, s.fee, 1, {
           x: cx, y: cy + taille * 0.12, sx: 52, sy: 52,
@@ -356,6 +387,92 @@ class Inventaire {
     ctx.fillStyle = COMPTE_COULEUR;
     ctx.fillText(t, x + COMPTE_X, EXTRA.y + COMPTE_BASE);
     ctx.textBaseline = 'top';
+  }
+
+  /**
+   * Inventory.setExtraList — la rangée des objets ramassés sans place, à ranger
+   * avant de repartir. Quatre alvéoles au plus, centrées sous la grille du sac
+   * (y = 158), et une flèche de chaque côté quand la file dépasse.
+   */
+  setExtraList(list) {
+    this.extraList = (list && list.length) ? list.slice() : null;
+    this.extraIndex = 0;
+    this.extraMax = this.extraList ? Math.min(this.extraList.length, 4) : 0;
+    if (this.extraList) {
+      this.dire('Rangez vos nouveaux objets avant de partir!', 'Le sac était plein');
+    } else {
+      this.rendre();
+    }
+  }
+
+  // Reste-t-il des objets dans la rangée ? Tant que oui, la sortie est fermée.
+  resteARanger() {
+    return !!(this.extraList
+      && this.extraList.some((v) => v !== null && v !== undefined));
+  }
+
+  rendreARanger() {
+    const C = racine.MinipixizClient, s = this.sprites, ctx = this.ctx;
+    const y = 158;                                     // setExtraList : _y = 158
+    for (let i = 0; i < this.extraMax; i++) {
+      const x = INV_WIDTH * 0.5 + (i - (this.extraMax - 1) * 0.5) * SLOT_SIZE;
+      const type = this.extraList[this.extraIndex + i];
+      if (s.invCase) C.poserRendu(ctx, C.rendre(s.invCase, 1, SLOT_SIZE), x, y);
+      const d = (type === null || type === undefined) ? null : dessinObjet(type);
+      if (d && s[d.cle]) {
+        C.poserRendu(ctx, C.rendre(s[d.cle], d.frame, SLOT_SIZE * 0.82, undefined, d.parties), x, y);
+      }
+      this.zoneRect({ sac: 'extra', case: this.extraIndex + i },
+        x - SLOT_SIZE / 2, y - SLOT_SIZE / 2, SLOT_SIZE, SLOT_SIZE);
+    }
+  }
+
+  // initExtraArrowBut : à cinq pixels des alvéoles, l'aile gauche retournée
+  // (mc._xscale = 100 × sens). Chacune ne se montre que si la file continue de
+  // son côté (updateExtraList) — et elles vivent à DP_FRONT, PAR-DESSUS les
+  // lianes : dessinées avec la rangée, elles disparaissaient dessous.
+  rendreFlechesARanger() {
+    const C = racine.MinipixizClient, s = this.sprites, ctx = this.ctx;
+    const y = 158;
+    const portee = 5 + (this.extraMax * 0.5) * SLOT_SIZE;
+    for (const sens of [-1, 1]) {
+      const visible = sens < 0 ? this.extraIndex > 0
+        : this.extraIndex < this.extraList.length - this.extraMax;
+      if (!visible || !s.flecheExtra) continue;
+      const x = INV_WIDTH * 0.5 + portee * sens;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(sens, 1);
+      C.poserRendu(ctx, C.rendre(s.flecheExtra, 1, 100), 0, 0);
+      ctx.restore();
+      this.zoneRect({ extraDefile: sens }, x - 12, y - 14, 24, 28);
+    }
+  }
+
+  /**
+   * Les échanges avec la rangée du bas. Le SWF laissait aussi équiper une fée
+   * droit depuis la rangée ; ici elle ne cause qu'avec le sac du joueur —
+   * l'équipement passe par lui. Une pose sur une case occupée ÉCHANGE, comme
+   * inv/Item.setCardPos qui écrivait chaque moitié de l'échange.
+   */
+  deplacerExtra(de, vers) {
+    const bag = Math.max(0, Math.min(nombre(this.carte.$bag), INV_SHAPE.length - 1));
+    const places = O.PLACES_SAC[bag] || 0;
+    const dansSac = (p) => p.sac === 'joueur' && p.case >= 0 && p.case < places;
+    const dansRang = (p) => p.sac === 'extra' && !!this.extraList
+      && p.case >= 0 && p.case < this.extraList.length;
+    if (!(dansSac(de) || dansRang(de)) || !(dansSac(vers) || dansRang(vers))) return false;
+    if (!Array.isArray(this.carte.$inv)) this.carte.$inv = [];
+    const lire = (p) => (p.sac === 'extra' ? this.extraList[p.case] : this.carte.$inv[p.case]);
+    const poser = (p, v) => {
+      const vv = (v === undefined) ? null : v;
+      if (p.sac === 'extra') this.extraList[p.case] = vv;
+      else this.carte.$inv[p.case] = vv;
+    };
+    const a = lire(de), b = lire(vers);
+    poser(vers, a);
+    poser(de, b);
+    return true;
   }
 
   rendreVolet(fee) {
@@ -542,6 +659,16 @@ class Inventaire {
     if (quoi === 'liberer') { this.liberer(); return; }
     if (quoi === 'poubelle') { this.jeter(); return; }
     if (quoi === 'quitter') { this.fermer(); return; }
+    // incExtraIndex — un cran par pression, et pas les mains pleines
+    // (initExtraArrowBut : `if( me.hand == null )`).
+    if (quoi && quoi.extraDefile !== undefined) {
+      if (!this.main && this.extraList) {
+        const bout = Math.max(0, this.extraList.length - this.extraMax);
+        this.extraIndex = Math.max(0, Math.min(this.extraIndex + quoi.extraDefile, bout));
+        this.rendre();
+      }
+      return;
+    }
     // Le sort touché se présente : son nom, puis son effet (Spell.getDesc).
     if (quoi && quoi.sort !== undefined) {
       const S = racine.MinipixizSorts;
@@ -563,7 +690,12 @@ class Inventaire {
       // Choisir une fée ici, c'est choisir la fée JOUÉE : la forêt lit
       // $current (Cm.getCurrentFaerie), pas l'affichage du sac. Sans cette
       // écriture, on regardait une fée et on en jouait une autre.
-      if (this.carte.$current !== quoi.fee) {
+      //
+      // Mais une fée EN BOCAL ou EN MISSION ne se prend pas du regard : dans
+      // le jeu, la main passe par son bocal (inv/Slot.mt), et une fée partie
+      // n'est pas là du tout. On la regarde, sans la choisir.
+      const fs = (this.carte.$faerie || [])[quoi.fee];
+      if (fs && !enMission(fs) && !enBocal(fs) && this.carte.$current !== quoi.fee) {
         this.carte.$current = quoi.fee;
         if (this.surChangement) this.surChangement();
       }
@@ -574,7 +706,8 @@ class Inventaire {
 
   objetA(sac, index) {
     const liste = sac === 'joueur' ? this.carte.$inv
-      : ((this.carte.$faerie || [])[sac] || {}).$inv;
+      : sac === 'extra' ? this.extraList
+        : ((this.carte.$faerie || [])[sac] || {}).$inv;
     return O.info(Array.isArray(liste) ? liste[index] : null);
   }
 
@@ -593,25 +726,67 @@ class Inventaire {
     const l = this.carte.$faerie || [];
     const dedans = l.find((f) => f && f.$pos === index);
     if (dedans) {
+      // inv/Slot.mt : une fée EN MISSION ne sort pas de son bocal — c'est
+      // it/Flask.getDesc qui répond à sa place, avec l'échéance.
+      if (enMission(dedans)) {
+        this.dire(this.descMission(dedans), dedans.$name);
+        return true;
+      }
+      // L'ÉCHANGE de Slot.mt : la fée du bocal passe en main ($current), et
+      // celle qu'on avait en main prend sa place dans le bocal. C'est ce
+      // va-et-vient qui garantit qu'une fée n'est jamais « en main » ET « en
+      // bocal » à la fois.
+      const c = this.carte.$current;
+      const courante = (c !== null && c !== undefined) ? l[nombre(c)] : null;
       dedans.$pos = null;
-      this.dire(dedans.$name + ' sort de son bocal.');
+      this.carte.$current = l.indexOf(dedans);
+      let msg = dedans.$name + ' sort de son bocal.';
+      if (courante && courante !== dedans && !enMission(courante) && !enBocal(courante)) {
+        courante.$pos = index;
+        msg = dedans.$name + ' sort du bocal, ' + courante.$name + ' s\'y installe.';
+      }
+      this.dire(msg);
       this.changer();
       return true;
     }
     const fs = l[this.feeCourante];
     if (!fs) { this.dire('Aucune fée ne vous accompagne encore.'); return true; }
-    if (fs.$pos !== null && fs.$pos !== undefined) {
+    if (enBocal(fs)) {
       this.dire(fs.$name + ' est déjà dans un bocal.');
       return true;
     }
     fs.$pos = index;
-    this.dire(fs.$name + ' s\'installe dans le bocal. Gromelin l\'acceptera.');
+    // Slot.mt : entrer en bocal retire la main — Cm.card.$current = null. Sans
+    // cette ligne, la fée serait en bocal ET en forêt à la fois : c'est le bug
+    // de la fée en mission qui accompagne encore.
+    if (this.carte.$current !== null && this.carte.$current !== undefined
+      && nombre(this.carte.$current) === l.indexOf(fs)) {
+      this.carte.$current = null;
+    }
+    this.dire(enMission(fs) ? this.descMission(fs)
+      : fs.$name + ' s\'installe dans le bocal. Gromelin l\'acceptera.');
     this.changer();
     return true;
   }
 
+  // it/Flask.getDesc — le bocal d'une fée en mission parle à sa place :
+  // « … Elle reviendra demain / après-demain / dans N jours. »
+  descMission(fs) {
+    const d = nombre(((this.carte.$mis || [])[fs.$mission] || {}).$d);
+    const quand = d === 1 ? ' demain.' : d === 2 ? ' après-demain.'
+      : ' dans ' + d + ' jours.';
+    return fs.$name + ' est actuellement en mission. Elle reviendra' + quand;
+  }
+
   toucher(sac, index) {
     const it = this.objetA(sac, index);
+    // inv/Slot.mt (« PAS DE MANIP DE FEE EN FIN DE MATCH ») : tant qu'il reste
+    // des objets à ranger, un bocal HABITÉ ne répond plus — ni pour en sortir
+    // la fée, ni pour bouger. Le jeu ne dit rien, il ignore.
+    if (this.extraList && sac === 'joueur' && it && it.famille === 'bocal'
+      && (this.carte.$faerie || []).some((f) => f && f.$pos === index)) {
+      return;
+    }
     // Un bocal du sac du JOUEUR se touche pour y mettre — ou en sortir — la fée
     // qu'on regarde. Les mains pleines, il redevient un objet ordinaire qu'on
     // peut déplacer.
@@ -625,6 +800,21 @@ class Inventaire {
       return;
     }
     if (this.main.sac === sac && this.main.case === index) { this.main = null; this.dire(''); return; }
+    // La rangée des objets à ranger n'est pas dans la fiche : ses échanges se
+    // règlent ici (inv/Item.setCardPos écrivait dans extraList).
+    if (this.main.sac === 'extra' || sac === 'extra') {
+      const bouge = this.deplacerExtra(
+        { sac: this.main.sac, case: this.main.case }, { sac, case: index });
+      this.main = null;
+      if (!bouge) { this.dire('Impossible de poser là.'); return; }
+      if (this.extraList && !this.resteARanger()) {
+        this.dire('Tout est rangé. Vous pouvez repartir.');
+      } else {
+        this.dire('');
+      }
+      this.changer();
+      return;
+    }
     const bouge = O.deplacer(this.carte,
       { sac: this.main.sac, case: this.main.case }, { sac, case: index });
     this.main = null;
@@ -661,18 +851,26 @@ class Inventaire {
       (this.carte.$faerie || []).length - 1));
     this.main = null;
     this.dire(msg);
+    // Cm.withdraw finissait par Manager.addMsg : l'adieu se relit au courrier.
+    if (this.surCourrier) this.surCourrier(msg);
     this.changer();
   }
 
-  // Inventory.trash : ce qu'on jette ne revient pas.
+  // Inventory.trash : ce qu'on jette ne revient pas — les objets en attente de
+  // rangement aussi peuvent y passer, c'est même souvent le prix de la place.
   jeter() {
     if (!this.main) { this.dire('Prenez un objet, puis touchez la poubelle.'); return; }
     const it = this.objetA(this.main.sac, this.main.case);
     const liste = this.main.sac === 'joueur' ? this.carte.$inv
-      : ((this.carte.$faerie || [])[this.main.sac] || {}).$inv;
+      : this.main.sac === 'extra' ? this.extraList
+        : ((this.carte.$faerie || [])[this.main.sac] || {}).$inv;
     if (Array.isArray(liste)) liste[this.main.case] = null;
     this.main = null;
-    this.dire(it ? (it.nom + ' jeté.') : '');
+    if (this.extraList && !this.resteARanger()) {
+      this.dire('Tout est rangé. Vous pouvez repartir.');
+    } else {
+      this.dire(it ? (it.nom + ' jeté.') : '');
+    }
     this.changer();
   }
 
@@ -680,6 +878,11 @@ class Inventaire {
   donnerALaFee() {
     const fee = this.fee();
     if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
+    // La rangée du bas ne nourrit pas : elle passe d'abord par le sac.
+    if (this.main && this.main.sac === 'extra') {
+      this.dire('Rangez d\'abord cet objet dans votre sac.');
+      return;
+    }
     if (!this.main) {
       // setFaerieFace : la regarder, c'est apprendre ce qu'elle aime — le jeu
       // met son nom en titre du bandeau et ses goûts en dessous.
@@ -735,7 +938,16 @@ class Inventaire {
     this.dire('');
   }
 
-  fermer() { if (this.surFermeture) this.surFermeture(); }
+  fermer() {
+    // Inventory.update : la porte est CONDAMNÉE tant que la rangée des objets
+    // à ranger n'est pas vide — placés dans le sac, ou jetés à la poubelle.
+    if (this.resteARanger()) {
+      this.dire('Rangez vos nouveaux objets avant de partir!');
+      return;
+    }
+    if (this.extraList) this.setExtraList(null);
+    if (this.surFermeture) this.surFermeture();
+  }
 }
 
 const API = { Inventaire, dessinObjet, INV_SHAPE, SLOT_SIZE, INV_WIDTH, INV_HEIGHT,

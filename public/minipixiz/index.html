@@ -110,6 +110,33 @@
     background: #2b4a6b; color: #dff0ff; font: bold 14px inherit; cursor: pointer;
   }
 
+  /* ── Le courrier (mcMail) ──
+     La lettre se pose SUR le canevas de la clairière : sa boîte est calée sur
+     lui par le script, et tout l'intérieur se place en pourcentages de la
+     scène de 240 — les mesures sont celles du clip. */
+  #courrier { position: fixed; display: none; z-index: 11; }
+  #courrier.on { display: block; }
+  #courrier-fond { position: absolute; inset: 0; }             /* le voile `out` */
+  #courrier-lettre {
+    /* shape 1039 : 224 × 186,1 posée en (8,8 ; 26,95) dans la scène. */
+    position: absolute; left: 3.67%; top: 11.23%; width: 93.33%; height: 77.54%;
+    pointer-events: none;
+  }
+  #courrier-texte {
+    /* Le champ `field` : (17,65 ; 36,15) → (226,55 ; 203,35), verdana 10
+       brun #5a3a05 — la police du htmlText d'origine. */
+    position: absolute; left: 7.35%; top: 15.06%; width: 87.05%; height: 69.67%;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    font-family: Verdana, Arial, sans-serif; color: #5a3a05; line-height: 1.32;
+  }
+  #courrier-texte b { color: #5a3a05; }
+  .courrier-fleche {
+    /* Le bouton 1046 (16,7 × 16,7), centré en x = 121,1. */
+    position: absolute; left: 46.98%; width: 6.96%; cursor: pointer;
+  }
+  #courrier-haut { top: 8.35%; }
+  #courrier-bas { top: 84.73%; }
+
   /* ── L'inventaire ──
      C'est l'écran d'Inventory.mt, dessiné sur ses propres images : un canevas
      de 240 × 240 comme le reste du jeu, agrandi du même facteur. */
@@ -164,6 +191,16 @@
   <div id="menu-pied">
     <button type="button" id="menu-sac">🎒 sac</button>
   </div>
+  <!-- La lettre du courrier (mcMail) : le parchemin `inside`, le champ, les
+       flèches `up`/`down`, et le voile `out` qui referme d'un clic à côté.
+       Sa boîte est calée sur le canevas de la clairière par le script. -->
+  <div id="courrier">
+    <div id="courrier-fond"></div>
+    <img id="courrier-lettre" src="/minipixiz/sprites/shape1039.svg" alt="">
+    <div id="courrier-texte"></div>
+    <img id="courrier-haut" class="courrier-fleche" src="/minipixiz/sprites/shape1042.svg" alt="">
+    <img id="courrier-bas" class="courrier-fleche" src="/minipixiz/sprites/shape1042.svg" alt="">
+  </div>
 </div>
 
 <!-- L'inventaire, sur les dessins du jeu (Inventory.mt). -->
@@ -203,6 +240,12 @@
   // suivant sans quitter ; on perd, ou on atteint le relais suivant, et la
   // course s'arrête. C'est elle qu'on enregistre, pas chaque niveau.
   var course = null;
+  // Base.itemList, en attente de rangement : les objets ramassés le sac plein.
+  // La prochaine clairière ouvrira l'inventaire dessus (tryToClose).
+  var objetsARanger = null;
+  // Manager.msg — le courrier de la session : les nouvelles des nuits passées,
+  // datées du jour de la fiche. L'enveloppe clignote tant qu'on ne l'a pas lu.
+  var courrier = { flView: true, ouvert: false, list: [] };
 
   // Le voyant « en partie » — la même icône que le bureau pose à côté du
   // pseudo. On prévient au départ d'une partie, on éteint au retour à la
@@ -250,13 +293,35 @@
     });
   }
 
-  // Cm.getCurrentFaerie : la fée que le joueur emmène. Tant que le bassin n'est
-  // pas porté, on prend la première de la fiche — et un compte qui n'en a
-  // aucune joue sans, ce que le jeu autorise (fi.isReadyForBattle est faux).
-  function feeCourante() {
+  // Cm.getCurrentFaerie : la fée que le joueur emmène — $faerie[$current].
+  //
+  // Une fée EN MISSION est ailleurs : son bocal montre l'icône de mission
+  // (it/Flask.updatePic) et refuse de s'ouvrir (inv/Slot.mt). Dans le SWF cet
+  // état la rend inatteignable — pour partir il faut être en bocal, et entrer
+  // en bocal retire la main ($current). On refait la même exclusion ici, et
+  // on l'applique aussi au REPLI : une sauvegarde d'avant $current, ou d'avant
+  // cette règle, peut encore désigner une fée partie — on la traite comme
+  // absente, le joueur part seul, comme dans le jeu.
+  //
+  // Le repli sur la première fée LIBRE (ni en mission, ni en bocal) reste une
+  // concession aux comptes d'avant $current : $pos ne survit pas à la session,
+  // on ne peut pas savoir si le joueur avait laissé sa fée en bocal.
+  function feeCouranteSeed() {
     var l = plateforme.carte.$faerie || [];
     var i = plateforme.carte.$current;
-    var fs = (i !== null && i !== undefined && l[i]) ? l[i] : l[0];
+    var enMission = function (fs) { return fs.$mission !== null && fs.$mission !== undefined; };
+    var enBocal = function (fs) { return fs.$pos !== null && fs.$pos !== undefined; };
+    var fs = (i !== null && i !== undefined && l[i]) ? l[i] : null;
+    if (fs && (enMission(fs) || enBocal(fs))) fs = null;
+    if (!fs) {
+      for (var k = 0; k < l.length; k++) {
+        if (l[k] && !enMission(l[k]) && !enBocal(l[k])) { fs = l[k]; break; }
+      }
+    }
+    return fs || null;
+  }
+  function feeCourante() {
+    var fs = feeCouranteSeed();
     // La fiche est passée en troisième : les globes et grimoires restés dans le
     // sac du joueur profitent aussi à la fée (FaerieInfo.initItems).
     return fs ? new window.MinipixizFee.Fee(fs, null, plateforme.carte) : null;
@@ -293,7 +358,12 @@
             // Hors course (une partie lancée à la main), rien à ranger.
             if (course) {
               course.objets.push(info.type);
-              P.ramasser(plateforme.carte, info.type);
+              // Base.grab : le sac plein ne PERD pas l'objet — il attend dans
+              // l'itemList de la partie, et l'inventaire s'ouvrira dessus à la
+              // sortie de la forêt (tryToClose), sans laisser partir avant.
+              if (P.ramasser(plateforme.carte, info.type) === 'perdu') {
+                (course.enAttente = course.enAttente || []).push(info.type);
+              }
             }
             return;
           }
@@ -340,6 +410,11 @@
       // Fin de course — perdue ou menée jusqu'au relais. C'est le seul endroit
       // qui enregistre ; les écrans, eux, sont ceux du client.
       function terminer(info) {
+        // Base.tryToClose : les objets ramassés SANS place attendent que le
+        // joueur repasse par l'inventaire — il s'ouvrira sur la clairière.
+        if (course.enAttente && course.enAttente.length) {
+          objetsARanger = course.enAttente.slice();
+        }
         plateforme.enregistrer({
           niveaux: course.niveaux, dernier: course.niveau,
           objets: course.objets, entree: course.entree,
@@ -388,6 +463,8 @@
         // Le triangle du coin (Slot.initButQuit) referme l'écran, comme le
         // bouton sous le canevas.
         surFermeture: function () { fermerSac(); },
+        // Cm.withdraw écrivait aussi son adieu dans le courrier (Manager.addMsg).
+        surCourrier: function (txt) { ajouterCourrier(txt); },
       });
       function ouvrirSac() {
         $('#inventaire').classList.add('on');
@@ -402,7 +479,10 @@
       }
       $('#sac-but').addEventListener('click', ouvrirSac);
       $('#menu-sac').addEventListener('click', ouvrirSac);
-      $('#inv-fermer').addEventListener('click', fermerSac);
+      // Le bouton « retour » passe par la même porte que le triangle du coin :
+      // tant qu'il reste des objets à ranger, elle est condamnée (Inventory
+      // .update — « Rangez vos nouveaux objets avant de partir! »).
+      $('#inv-fermer').addEventListener('click', function () { inventaire.fermer(); });
 
       // ── Le menu de l'aventure ──
       // C'est lui l'écran d'accueil : on n'entre en forêt qu'en touchant la
@@ -466,6 +546,81 @@
           }
           menu.dire(lieu.titre + ' : pas encore ouvert.');
         },
+        // Menu.initMsgIcon : toucher l'enveloppe ouvre la lettre.
+        surCourrier: function () { ouvrirCourrier(); },
+      });
+      menu.poserCourrier(courrier);
+
+      // ── Le courrier (Manager.addMsg / Menu.displayLog) ──
+      // Les nuits déposent leurs nouvelles ici, datées du jour de la fiche ;
+      // l'enveloppe clignote au bord de la clairière tant qu'on n'a pas lu, et
+      // la lettre montre TOUT le journal de la session, groupé par jour.
+      function ajouterCourrier(txt, jour) {
+        courrier.list.push({
+          d: (jour === undefined) ? (Number((plateforme.carte.$time || {}).$d) || 0) : jour,
+          txt: String(txt || ''),
+        });
+        courrier.flView = false;
+      }
+      // Ce que les nuits passées avaient à raconter — la lueur du bassin, une
+      // fée qui a faim, un donjon bâti — arrive déjà daté de plateforme.charger.
+      for (var ci = 0; ci < (plateforme.courrier || []).length; ci++) {
+        var cm = plateforme.courrier[ci];
+        ajouterCourrier(cm.txt, cm.d);
+      }
+
+      function echapperHtml(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+      // La lettre se pose sur le canevas de la clairière, aux mesures du clip
+      // mcMail : parchemin (shape 1039) centré, champ de texte en retrait,
+      // flèches de défilement en haut et en bas au centre.
+      function poserCadreCourrier() {
+        var r = $('#menu-stage').getBoundingClientRect();
+        var el = $('#courrier');
+        el.style.left = r.left + 'px';
+        el.style.top = r.top + 'px';
+        el.style.width = r.width + 'px';
+        el.style.height = r.height + 'px';
+        // La police suit l'échelle de la scène : 10 px dans un écran de 240.
+        el.style.fontSize = (10 * r.width / 240) + 'px';
+      }
+      function ouvrirCourrier() {
+        courrier.flView = true;
+        courrier.ouvert = true;
+        // Menu.displayLog : les messages groupés par jour — « Jour N » en gras.
+        var html = '', jour = null;
+        for (var i = 0; i < courrier.list.length; i++) {
+          var o = courrier.list[i];
+          if (o.d !== jour) { html += '<b>Jour ' + o.d + '</b> :<br>'; jour = o.d; }
+          html += echapperHtml(o.txt).replace(/\n/g, '<br>') + '<br>';
+        }
+        var corps = $('#courrier-texte');
+        corps.innerHTML = html || 'Rien à lire pour le moment.';
+        poserCadreCourrier();
+        $('#courrier').classList.add('on');
+        corps.scrollTop = 0;
+        // Le SWF cache ses flèches quand le champ ne défile pas (maxscroll == 1).
+        var defile = corps.scrollHeight > corps.clientHeight + 1;
+        $('#courrier-haut').style.display = defile ? '' : 'none';
+        $('#courrier-bas').style.display = defile ? '' : 'none';
+      }
+      function fermerCourrier() {
+        $('#courrier').classList.remove('on');
+        courrier.ouvert = false;
+        // Le doigt qui vient de fermer la lettre ne choisit pas un lieu.
+        menu.garder(400);
+      }
+      $('#courrier-fond').addEventListener('click', fermerCourrier);
+      // f.scroll ± 1 : une ligne par pression.
+      $('#courrier-haut').addEventListener('click', function () {
+        var c = $('#courrier-texte'); c.scrollTop -= c.clientHeight / 12;
+      });
+      $('#courrier-bas').addEventListener('click', function () {
+        var c = $('#courrier-texte'); c.scrollTop += c.clientHeight / 12;
+      });
+      window.addEventListener('resize', function () {
+        if (courrier.ouvert) poserCadreCourrier();
       });
 
       /**
@@ -510,7 +665,9 @@
         var avant = JSON.parse(JSON.stringify(plateforme.carte));
         var l = client.nouveauLieu(classe, {
           carte: plateforme.carte,
-          fee: (plateforme.carte.$faerie || [])[plateforme.carte.$current] || null,
+          // La même règle qu'en forêt : une fée en mission ou en bocal ne
+          // descend pas au donjon non plus.
+          fee: feeCouranteSeed(),
           graine: Math.floor(Math.random() * 1e9),
           surEvenement: function (nom, info) {
             if (nom === 'donjonGagne' || nom === 'record' || nom === 'prix') {
@@ -570,11 +727,15 @@
         client.fermerCarteForet();
         $('#menu').classList.add('on');
         menu.demarrer();
-        // Ce que les nuits passées ont à raconter : la lueur du bassin, une fée
-        // qui a faim, un donjon bâti. On les donne une par une, à chaque retour
-        // au menu, comme Manager.addMsg les empilait.
-        var msg = plateforme.messagesDeNuit;
-        if (msg && msg.length) menu.dire(msg.shift());
+        // Base.tryToClose : on ne rentre pas de forêt avec des objets sans
+        // place — l'inventaire s'ouvre dessus, et sa sortie reste condamnée
+        // tant que la rangée n'est pas vidée.
+        if (objetsARanger && objetsARanger.length) {
+          var aRanger = objetsARanger;
+          objetsARanger = null;
+          ouvrirSac();
+          inventaire.setExtraList(aRanger);
+        }
       }
       function fermerMenu() {
         $('#menu').classList.remove('on');
@@ -595,6 +756,11 @@
       window.__ouvrirLieu = ouvrirLieu;
       window.__ouvrirGromelin = ouvrirGromelin;
       window.__course = function () { return course; };
+      window.__courrier = courrier;
+      window.__ouvrirCourrier = ouvrirCourrier;
+      window.__ajouterCourrier = ajouterCourrier;
+      window.__feeCouranteSeed = feeCouranteSeed;
+      window.__ouvrirSac = ouvrirSac;
     })
     .catch(function (e) {
       $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'

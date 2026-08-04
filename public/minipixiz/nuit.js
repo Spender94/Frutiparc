@@ -332,6 +332,10 @@ function passerLeTemps(carte, maintenant, alea, limite) {
 
   let nuits = 0;
   const messages = [];
+  // Manager.addMsg date chaque nouvelle du JOUR de la fiche au moment où elle
+  // tombe — pendant l'entretien, c'est le matin qui vient de se lever. C'est
+  // cette date que la lettre du courrier affiche en tête de groupe.
+  const courrier = [];
   let nouvellesFees = 0;
   while (carte.$time.$s > JOUR) {
     carte.$time.$s -= JOUR;
@@ -339,10 +343,13 @@ function passerLeTemps(carte, maintenant, alea, limite) {
     nuits++;
     if (nuits > max) continue;              // on avance la date, on ne joue plus
     const r = entretien(carte, alea);
-    for (const m of r.messages) messages.push(m);
+    for (const m of r.messages) {
+      messages.push(m);
+      courrier.push({ d: nombre(carte.$time.$d), txt: m });
+    }
     nouvellesFees += r.nouvellesFees;
   }
-  return { nuits, jouees: Math.min(nuits, max), messages, nouvellesFees };
+  return { nuits, jouees: Math.min(nuits, max), messages, courrier, nouvellesFees };
 }
 
 const API = {

@@ -439,5 +439,8 @@ test('la page charge la nuit et le bassin, et le bassin est atteignable', () => 
   assert.match(html, /src="\/minipixiz\/bassin\.js"/);
   assert.match(html, /ouvrirBassin\(\)/, 'toucher le bassin y descend');
   assert.match(html, /client\.nouveauBassin\(/);
-  assert.match(html, /plateforme\.messagesDeNuit/, 'et les nuits passées se racontent');
+  // Les nuits passées se racontent au COURRIER (Manager.addMsg / displayLog) :
+  // l'enveloppe clignote sur la clairière, la lettre groupe par jour.
+  assert.match(html, /plateforme\.courrier/, 'et les nuits passées se racontent');
+  assert.match(html, /ouvrirCourrier/);
 });

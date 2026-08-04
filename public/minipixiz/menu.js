@@ -91,6 +91,11 @@ class Menu {
     this.plateforme = o.plateforme;
     this.sprites = o.sprites;
     this.surChoix = o.surChoix || null;
+    // Menu.initMsgIcon — l'enveloppe du courrier, au bord droit. Elle clignote
+    // tant que la lettre n'est pas lue, et toucher l'ouvre (surCourrier).
+    this.surCourrier = o.surCourrier || null;
+    this.courrier = null;
+    this.decalCourrier = 0;
 
     // Au bureau, la souris place le regard dès le premier survol. Au doigt,
     // rien ne bouge tant qu'on ne glisse pas : on ouvre le regard vers la
@@ -192,7 +197,13 @@ class Menu {
       if (n.x > SCENE + m) n.x = -(n.w + m);
     }
     this.rotationMoulin += wc * 2 * tmod;
+    // MSG BLINK (Menu.update) : la phase avance de 40 par image, modulo 628 —
+    // deux π aux centièmes près, le cosinus fait le reste.
+    this.decalCourrier = (this.decalCourrier + 40 * tmod) % 628;
   }
+
+  // Le courrier de la session — {list, flView, ouvert}, tenu par la page.
+  poserCourrier(c) { this.courrier = c; }
 
   // Menu.update : le pointeur commande la parallaxe, avec trente pour cent de
   // marge de chaque côté pour qu'on atteigne les bords du décor.
@@ -315,6 +326,22 @@ class Menu {
       }
     }
 
+    // 3 bis. L'ENVELOPPE du courrier (Menu.initMsgIcon) — accrochée au bord
+    // droit (msgIcon._x = Cs.mcw), par-dessus les plans. Tant que la lettre
+    // n'est pas lue, elle clignote : setPercentColor(50 + cos(decal/100) × 50)
+    // vers le blanc. Elle disparaît pendant que la lettre est ouverte.
+    const courrier = this.courrier;
+    if (courrier && courrier.list && courrier.list.length && !courrier.ouvert
+      && s.iconeCourrier) {
+      const prc = courrier.flView ? 0
+        : Math.round((50 + Math.cos(this.decalCourrier / 100) * 50) / 5) * 5;
+      C.poserRendu(ctx, C.rendre(s.iconeCourrier, 1, 100, undefined, null, null, null,
+        prc ? { prc, couleur: 0xFFFFFF } : null), SCENE, 0);
+      // La zone déborde un peu du dessin (17 × 11 au coin) : c'est un doigt
+      // qui vise, pas une souris.
+      this.zones.push({ courrier: true, x: SCENE - 24, y: 0, l: 24, h: 18 });
+    }
+
     // 4. Le titre du lieu visé, et le bandeau d'information.
     ctx.font = 'bold 11px Verdana, Arial, sans-serif';
     ctx.textAlign = 'center';
@@ -363,6 +390,11 @@ class Menu {
     for (let i = this.zones.length - 1; i >= 0; i--) {
       const z = this.zones[i];
       if (x >= z.x && x <= z.x + z.l && y >= z.y && y <= z.y + z.h) {
+        // L'enveloppe passe avant les lieux : elle est posée par-dessus.
+        if (z.courrier) {
+          if (this.surCourrier) this.surCourrier();
+          return;
+        }
         this.titre = z.lieu.titre;
         if (this.surChoix) this.surChoix(z.lieu, z.etat);
         return;
@@ -371,10 +403,11 @@ class Menu {
   }
 
   // Quel lieu se trouve sous un point ? Utile aux vérifications automatisées.
+  // L'enveloppe du courrier n'est pas un lieu : elle n'a pas de titre à écrire.
   lieuA(x, y) {
     for (let i = this.zones.length - 1; i >= 0; i--) {
       const z = this.zones[i];
-      if (x >= z.x && x <= z.x + z.l && y >= z.y && y <= z.y + z.h) return z;
+      if (z.lieu && x >= z.x && x <= z.x + z.l && y >= z.y && y <= z.y + z.h) return z;
     }
     return null;
   }

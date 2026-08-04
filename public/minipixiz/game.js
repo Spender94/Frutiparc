@@ -1357,55 +1357,66 @@ class Client {
       if (!g.decrit || g.decrit.index !== g.index) {
         g.decrit = info ? Object.assign({ index: g.index }, M.decrire(info)) : null;
       }
-      // Les flèches (s0/s1) font partie du dessin : leurs zones seulement.
-      g.zones.push({ quoi: 'avant', x: 5, y: 24, l: 26, h: 28 });
-      g.zones.push({ quoi: 'apres', x: 211, y: 24, l: 26, h: 28 });
-      if (g.decrit) {
-        ctx.textAlign = 'center';
+      // Les flèches (s0/s1) : dans le fichier, le « bouton » est le RAIL doré
+      // lui-même — le clip 994 n'est que la bande de 26 × 192 posée à 16,75 et
+      // 223,25 (frame 3 de `mission`), sans le moindre glyphe par-dessus. La
+      // zone doit donc couvrir le rail que le joueur voit, du haut en bas —
+      // c'est là qu'il touche pour feuilleter les six missions du jour.
+      g.zones.push({ quoi: 'avant', x: 3.75, y: 37.75, l: 26, h: 192 });
+      g.zones.push({ quoi: 'apres', x: 210.25, y: 37.75, l: 26, h: 192 });
+      if (g.decrit && g.etape === 2) {
         ctx.textBaseline = 'top';
-        // fieldTitle — seize pixels, écru, en haut.
-        ctx.font = 'bold 13px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
+        ctx.textAlign = 'left';
+        // fieldTitle — seize pixels (fontHeight 320), écru rgb(239,230,216),
+        // aligné à GAUCHE dans sa boîte posée en (5,75 ; 5,95), large de 234.
+        ctx.font = 'bold 16px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
         ctx.fillStyle = 'rgb(239,230,216)';
-        let ty = 8;
-        for (const l of decouperTexte(ctx, g.decrit.titre, 226)) {
-          ctx.fillText(l, 122, ty); ty += 15;
+        let ty = 5.95;
+        for (const l of decouperTexte(ctx, g.decrit.titre, 230)) {
+          ctx.fillText(l, 5.75, ty); ty += 17;
         }
-        if (g.etape === 2) {
-          // fieldDesc — dix pixels, brun, centré autour de 96.
-          ctx.font = '10px Verdana, Arial, sans-serif';
-          ctx.fillStyle = 'rgb(81,61,47)';
-          const lignes = decouperTexte(ctx, g.decrit.enonce, 160);
-          let dy = 96 - (lignes.length * 11) * 0.5;
-          for (const l of lignes) { ctx.fillText(l, 119, dy); dy += 11; }
-          // fieldInfo — à gauche, sous l'énoncé.
-          const L = window.MinipixizLangue;
-          ctx.textAlign = 'left';
-          const rang = (L.MISSION_DIF_RANK || [])[info[0]] || '';
-          const inf = ['type: ' + ((L.MISSION[info[1]] || {}).type || ''),
-            'difficulté: ' + rang, 'durée: ' + info[2] + ' jours'];
-          let iy = 172;
-          for (const l of inf) { ctx.fillText(l, 37, iy); iy += 11; }
-          // La récompense, dans son alvéole, à moitié de taille.
-          const I = window.MinipixizInventaire;
-          const dp = I && I.dessinObjet(info[3]);
-          if (dp && s[dp.cle]) {
-            poserRendu(ctx, rendre(s[dp.cle], dp.frame, 50, undefined, dp.parties),
-              RECOMPENSE.x, RECOMPENSE.y);
-          }
-          // accepter la mission!
-          ctx.textAlign = 'center';
-          ctx.fillStyle = 'rgb(213,185,151)';
-          ctx.fillText('accepter la mission!', 181, 231);
-          g.zones.push({ quoi: 'accepter', x: 120, y: 224, l: 120, h: 16 });
+        // fieldDesc — dix pixels, brun, boîte en (36,45 ; 48,3) large de 165 ;
+        // displayMission recentre son _y autour de 96 selon la hauteur.
+        ctx.font = '10px Verdana, Arial, sans-serif';
+        ctx.fillStyle = 'rgb(81,61,47)';
+        const lignes = decouperTexte(ctx, g.decrit.enonce, 160);
+        let dy = 96 - (lignes.length * 11) * 0.5;
+        for (const l of lignes) { ctx.fillText(l, 36.45, dy); dy += 11; }
+        // fieldInfo — même boîte à gauche, sous l'énoncé (36,6 ; 171,45).
+        const L = window.MinipixizLangue;
+        const rang = (L.MISSION_DIF_RANK || [])[info[0]] || '';
+        const inf = ['type: ' + ((L.MISSION[info[1]] || {}).type || ''),
+          'difficulté: ' + rang, 'durée: ' + info[2] + ' jours'];
+        let iy = 173.4;
+        for (const l of inf) { ctx.fillText(l, 36.6, iy); iy += 11; }
+        // La récompense, dans son alvéole, à moitié de taille.
+        const I = window.MinipixizInventaire;
+        const dp = I && I.dessinObjet(info[3]);
+        if (dp && s[dp.cle]) {
+          poserRendu(ctx, rendre(s[dp.cle], dp.frame, 50, undefined, dp.parties),
+            RECOMPENSE.x, RECOMPENSE.y);
         }
+        // butAccept — un bouton-TEXTE (DefineEditText 1000), sans plaque :
+        // « accepter la mission! » en rgb(213,185,151), boîte de 125 posée en
+        // (57,3 ; 223,3), texte au ras de sa gouttière.
+        ctx.fillStyle = 'rgb(213,185,151)';
+        ctx.fillText('accepter la mission!', 59.3, 225.3);
+        g.zones.push({ quoi: 'accepter', x: 57.3, y: 223.3, l: 125.5, h: 16 });
       }
     }
 
     if (g.etape === 4) {
-      // Le panneau d'envoi : une ligne par fée en bocal, sa case à cocher, et
-      // la chance de succès qui bouge à chaque coche.
+      // Le panneau d'envoi. La frame 4 RETIRE le titre de la mission et pose à
+      // sa place l'en-tête statique (EditText 1004, écru, en 10,1 ; 6,9) — ses
+      // deux lignes sont celles du fichier, coupure comprise.
+      ctx.textBaseline = 'top';
       ctx.textAlign = 'left';
       ctx.font = '10px Verdana, Arial, sans-serif';
+      ctx.fillStyle = 'rgb(239,230,216)';
+      ctx.fillText('selectionner une ou plusieurs fées', 10.1, 8.9);
+      ctx.fillText('pour cette mission', 10.1, 20.9);
+      // Une ligne par fée en bocal, sa case à cocher, et la chance de succès
+      // qui bouge à chaque coche.
       for (let i = 0; i < g.fees.length; i++) {
         const y = 54 + i * 16;
         if (s.caseMission) {
@@ -1415,17 +1426,19 @@ class Client {
         ctx.fillText(g.fees[i].$name, 44, y + 2);
         g.zones.push({ quoi: 'coche', i, x: 40, y: y - 2, l: 156, h: 16 });
       }
+      // « chance de succes: » (EditText 1009 en 36,55 ; 202,95) et le
+      // pourcentage (fieldPrc, EditText 1010 en 120,65 ; 202,9) — deux champs
+      // alignés à gauche, comme dans le fichier.
       ctx.fillStyle = 'rgb(91,71,53)';
-      ctx.fillText('chance de succes:', 37, 205);
+      ctx.fillText('chance de succes:', 36.55, 204.95);
       const cochees = g.fees.filter((f, i) => g.coches[i]);
       const prc = cochees.length
         ? Math.floor(M.chances(g.carte.$mission[g.index], cochees, g.carte) * 100) : 0;
-      ctx.textAlign = 'right';
-      ctx.fillText(prc + '%', 196, 205);
-      ctx.textAlign = 'center';
+      ctx.fillText(prc + '%', 120.65, 204.9);
+      // butAccept de la frame 4 — même bouton-texte, même boîte.
       ctx.fillStyle = 'rgb(213,185,151)';
-      ctx.fillText('valider la mission', 181, 231);
-      g.zones.push({ quoi: 'valider', x: 120, y: 224, l: 120, h: 16 });
+      ctx.fillText('valider la mission', 59.3, 224.8);
+      g.zones.push({ quoi: 'valider', x: 57.3, y: 222.8, l: 125.5, h: 16 });
     }
 
     // La bulle de Gromelin — sans portrait ; avant l'ouverture elle vient du

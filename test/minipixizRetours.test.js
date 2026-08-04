@@ -97,7 +97,10 @@ test('choisir une fée au sac, c\'est choisir la fée jouée', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
   assert.match(src, /this\.carte\.\$current = quoi\.fee;/,
     'la sélection écrit $current');
-  assert.match(src, /if \(this\.carte\.\$current !== quoi\.fee\) \{[\s\S]{0,220}surChangement/,
+  // …mais seulement une fée LIBRE : en bocal ou en mission, on la regarde
+  // sans la choisir (inv/Slot.mt tient la main par l'échange de bocal).
+  assert.match(src,
+    /if \(fs && !enMission\(fs\) && !enBocal\(fs\) && this\.carte\.\$current !== quoi\.fee\) \{[\s\S]{0,220}surChangement/,
     'et la fiche est persistée dans la foulée');
 });
 

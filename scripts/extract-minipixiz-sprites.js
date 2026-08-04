@@ -215,6 +215,21 @@ const CIBLES = [
   { cle: 'ecranMission', symbole: 'mission', etiquette: 'Chez Gromelin',
     images: [1, 2, 3, 4] },
   { cle: 'caseMission', symbole: 'mcMissionFaerieSlot', etiquette: 'Fée à envoyer' },
+  // Le bocal d'une fée EN MISSION (it/Flask.updatePic) : l'icône qui remplace
+  // la locataire absente — posée à 360 % dans le dessin de l'objet.
+  { cle: 'iconeMission', symbole: 'mcIconMission', etiquette: 'Fée en mission' },
+  // Le COURRIER (Menu.initMsgIcon / displayLog) : l'enveloppe qui clignote au
+  // bord droit de la clairière tant qu'un message n'est pas lu, et la lettre
+  // qui s'ouvre au centre. Le parchemin est le clip `inside` ; le voile `out`
+  // et les flèches `up`/`down` sont des BOUTONS, que l'extracteur ne traverse
+  // pas — le voile est de toute façon invisible (état HitTest seul), et la
+  // flèche sort par sa forme, comme le curseur d'Ornegon.
+  { cle: 'iconeCourrier', symbole: 'mcMailIcone', etiquette: 'Enveloppe du courrier' },
+  { cle: 'lettreCourrier', symbole: 'mcMail', etiquette: 'Lettre du courrier' },
+  { cle: 'flecheCourrier', id: 1042, etiquette: 'Flèche du courrier' },
+  // La rangée des objets à ranger (Inventory.setExtraList) : sa flèche de
+  // défilement est un bouton, on sort la forme de son état haut.
+  { cle: 'flecheExtra', id: 680, etiquette: 'Flèche des objets à ranger' },
   { cle: 'barreSort', symbole: 'mcSpellBar', etiquette: 'Barre de sort', exclure: ['symbole'] },
   { cle: 'curseurSort', id: 1173, etiquette: 'Curseur de sort' },
   // Le BOUQUET (Aventure.initBouquet) : chaque niveau s'ouvre sur cette gerbe
