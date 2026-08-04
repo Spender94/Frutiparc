@@ -673,6 +673,7 @@ function imageJeton(jeu, e) {
 }
 
 // ── Particules ────────────────────────────────────────────────────────────
+const couleurCss = (n) => '#' + (n >>> 0).toString(16).padStart(6, '0');
 const eclats = [];
 function eclater(x, y, n, couleur, vitesse) {
   for (let i = 0; i < n; i++) {
@@ -780,10 +781,11 @@ class Client {
     if (opts.coefNuit !== undefined) this.coefNuit = opts.coefNuit;
     this.jeu = new E.Jeu(Object.assign({}, opts, { onEvent: (n, d) => this.annonce(n, d) }));
     this.jeu.entree = this.entree;
-    // Le champ — la fée, les impys, les tirs. Sans fée le puzzle se joue tout
-    // seul, comme dans le jeu d'origine quand aucune n'est en état de sortir.
+    // Le champ — la fée, les impys, les tirs. Il existe MÊME SANS fée : le jeu
+    // d'origine garde toujours son terrain, et une cellule cassée y lâche son
+    // impy que la fée soit là ou non (ImpCell.blast → Cs.game.addImp).
     const Combat = window.MinipixizCombat;
-    this.champ = (Combat && this.fee) ? new Combat.Champ(this.jeu, { fee: this.fee }) : null;
+    this.champ = Combat ? new Combat.Champ(this.jeu, { fee: this.fee || null }) : null;
     this.dernier = 0;
     this.reste = 0;
     return this.jeu;
@@ -988,6 +990,15 @@ class Client {
       case 'pierreEntamee': eclater(px(d.x), py(d.y), 4, '#d8d2bb', 1.6); break;
       case 'armureBrisee': eclater(px(d.x), py(d.y), 6, '#ffffff', 2); break;
       case 'impyLibere': eclater(px(d.x), py(d.y), 16, '#ff66cc', 3); break;
+      // Eye.blast : l'onde et les éclats sombres de sa couleur.
+      case 'oeilDetruit':
+        eclater(px(d.x), py(d.y), 14, couleurCss(E.COULEURS[d.couleur] || 0xffffff), 3);
+        break;
+      // Eye.initEffect : le rayon et la boule qui file vers la ponte.
+      case 'oeilPond':
+        eclater(px(d.deX), py(d.deY), 8, '#ffffff', 2.2);
+        eclater(px(d.x), py(d.y), 10, couleurCss(E.COULEURS[d.couleur] || 0xffffff), 2.6);
+        break;
       case 'score':
         if (d.chaine > 1) { this.message = 'chaîne ×' + d.chaine + '  +' + d.gagne; this.messageT = 50; }
         break;
@@ -2093,23 +2104,58 @@ class Client {
         // stone : trois images, de la plus intacte à la plus fendue.
         poserRendu(ctx, rendre(s.stone, Math.max(1, Math.min(3, e.life)), TS), x, y);
         break;
-      case E.E.CELLULE:
-        poserRendu(ctx, rendre(s.impCell, 1, TS), x, y);
+      case E.E.CELLULE: {
+        // ImpCell.setLevel : la boule (`ball`) et son occupant (`bz`) prennent
+        // les couleurs du rang du démon — c'est à sa teinte qu'on lit sa force.
+        const Cb = window.MinipixizCombat;
+        const paire = Cb && Cb.COULEURS_IMPY
+          ? Cb.COULEURS_IMPY[Math.min(e.level || 0, Cb.COULEURS_IMPY.length - 1)] : null;
+        poserRendu(ctx, rendre(s.impCell, 1, TS, undefined,
+          paire ? { ball: paire[0], bz: paire[1] } : null), x, y);
         break;
+      }
       case E.E.BOMBE:
         poserRendu(ctx, rendre(s.bomb, 1, TS), x, y);
         break;
-      case E.E.OBJET:
+      case E.E.OBJET: {
+        // sp/el/Item : la bulle, et le dessin de l'objet posé en son centre
+        // (Item.setType → it.getPic, attaché en 50,50).
         poserRendu(ctx, rendre(s.elItem, 1, TS), x, y);
+        const I = window.MinipixizInventaire;
+        const d = I ? I.dessinObjet(e.type) : null;
+        if (d && s[d.cle]) {
+          poserRendu(ctx, rendre(s[d.cle], d.frame, TS, undefined, d.parties),
+            x + TS / 2, y + TS / 2);
+        }
         break;
+      }
       case E.E.OEIL: {
-        // L'œil n'a pas de dessin propre dans root.swf : on le rend par un
-        // jeton de sa couleur, marqué. Il se distingue par sa pupille.
-        poserRendu(ctx, rendre(s.token, 1, TS, E.COULEURS[e.color] || E.COULEURS[0]), x, y);
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath(); ctx.arc(x + TS / 2, y + TS / 2, 4, 0, 6.28); ctx.fill();
-        ctx.fillStyle = '#1a1030';
-        ctx.beginPath(); ctx.arc(x + TS / 2, y + TS / 2, 2, 0, 6.28); ctx.fill();
+        // Le clip `eye` du jeu : le halo, la boule `col` teintée de sa couleur,
+        // et la pupille `center` que la charge fait grossir —
+        // Eye.updateLight : 20 + light×40 pour cent.
+        const teinte = E.COULEURS[e.color] || E.COULEURS[0];
+        const etat = s.eye && (s.eye.etats.find((q) => q.frame === 1) || s.eye.etats[0]);
+        const pupille = etat && etat.pieces.find((p) => p.nom === 'center');
+        if (etat && pupille) {
+          poserRendu(ctx, rendre(s.eye, 1, TS, undefined, { col: teinte }, '<center'), x, y);
+          const img = images.get(pupille.fichier);
+          if (img) {
+            const k = TS / 100;
+            const charge = (20 + Math.min(2, e.lumiere || 0) * 40) / 100;
+            ctx.save();
+            ctx.translate(x + pupille.m[4] * k, y + pupille.m[5] * k);
+            ctx.scale(k * charge, k * charge);
+            ctx.drawImage(img, pupille.vb[0], pupille.vb[1], pupille.vb[2], pupille.vb[3]);
+            ctx.restore();
+          }
+        } else {
+          // Sans le clip (vieux manifeste), l'ancien dépannage : un jeton marqué.
+          poserRendu(ctx, rendre(s.token, 1, TS, teinte), x, y);
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(x + TS / 2, y + TS / 2, 4, 0, 6.28); ctx.fill();
+          ctx.fillStyle = '#1a1030';
+          ctx.beginPath(); ctx.arc(x + TS / 2, y + TS / 2, 2, 0, 6.28); ctx.fill();
+        }
         break;
       }
       default:

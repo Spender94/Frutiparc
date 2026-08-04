@@ -424,7 +424,10 @@ test('elle reste dans l\'aire, y compris au-dessus de la grille', () => {
 
 test('les huit tirs viennent à bout de trois démons', () => {
   for (const tir of [20, 21, 22, 23, 24, 25, 26, 27]) {
-    const { jeu, champ, f } = partie({ sorts: [tir], impys: 3, carac: [5, 5, 5, 5, 5, 8] });
+    // La vie au maximum : ce qui se vérifie ici est que chaque tir TUE, pas que
+    // la fée survit à ce déroulé-là — le combat est chaotique, et le niveau 30
+    // sous la volière change avec la génération (les yeux tirent leur couleur).
+    const { jeu, champ, f } = partie({ sorts: [tir], impys: 3, carac: [5, 5, 5, 5, 5, 8], vie: 7 });
     jeu.step = E.ETAPE.JEU;
     for (let i = 0; i < 4000 && champ.impList.length && f.vivant; i++) champ.update(1);
     assert.equal(champ.impList.length, 0, 'le tir ' + tir + ' finit par tuer');

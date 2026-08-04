@@ -120,7 +120,9 @@
     font: bold 13px inherit; cursor: pointer;
   }
   #inventaire {
-    position: fixed; inset: 0; z-index: 8; display: none;
+    /* Au-dessus du MENU (9) : le sac s'ouvre depuis la clairière comme depuis
+       la partie, et il doit passer devant les deux. */
+    position: fixed; inset: 0; z-index: 10; display: none;
     flex-direction: column; align-items: center; justify-content: center; gap: 10px;
     background: #150f28;
     padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
@@ -167,7 +169,7 @@
 <!-- L'inventaire, sur les dessins du jeu (Inventory.mt). -->
 <div id="inventaire">
   <div id="inv-aire"><canvas id="inv-stage" width="240" height="240"></canvas></div>
-  <button type="button" id="inv-fermer">retour au jeu</button>
+  <button type="button" id="inv-fermer">retour</button>
 </div>
 
 <div id="chargement">

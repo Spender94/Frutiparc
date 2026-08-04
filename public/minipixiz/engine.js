@@ -267,12 +267,46 @@ class Boule extends Element {
 }
 
 // sp/el/Eye.mt — l'œil porte une couleur et la retient dans le tirage tant
-// qu'il est là (Game.updatecolorList le compte comme un jeton).
+// qu'il est là (Game.updatecolorList le compte comme un jeton). À chaque tour
+// il se charge d'un cran (sa pupille grossit), et chargé il POND une perle de
+// sa couleur en haut du plateau — c'est lui qui rallonge le niveau, et il faut
+// le détruire pour que sa couleur puisse enfin s'épuiser.
 class Oeil extends Element {
   constructor(jeu, o) {
     super(jeu, o);
     this.et = E.OEIL;
     if (this.color === undefined) this.color = 0;
+    this.lumiere = 0;               // Eye.light — la charge, dite par la pupille
+  }
+
+  // Eye.blast : un seul souffle l'emporte — explode() puis kill().
+  souffler() {
+    this.jeu.evenement('oeilDetruit', { x: this.px, y: this.py, couleur: this.color });
+    this.exploser();
+    this.tuer();
+  }
+
+  // Eye.initActiveStep — chargé (light > 1), il cherche une case libre en haut
+  // du plateau : vingt tirages sur la première ligne, puis on descend d'une
+  // ligne tous les vingt échecs, et au centième on renonce (la charge reste).
+  pondre() {
+    if (this.lumiere <= 1) { this.lumiere++; return false; }
+    let tx = this.jeu.hasard(this.jeu.xMax);
+    let ty = 0;
+    let tr = 0;
+    while (!this.jeu.estLibre(tx, ty)) {
+      tr++;
+      tx = this.jeu.hasard(this.jeu.xMax);
+      if (tr > 20) ty++;
+      if (tr > 100) return false;
+    }
+    // genElement(0, tx, ty, 1) : la ponte est une PERLE, à la couleur de l'œil.
+    const t = this.jeu.genElement(E.JETON, tx, ty, SPECIAL.PERLE);
+    t.setType(this.color);
+    this.lumiere = 0;
+    this.jeu.evenement('oeilPond',
+      { deX: this.px, deY: this.py, x: tx, y: ty, couleur: this.color });
+    return true;
   }
 }
 
@@ -619,7 +653,9 @@ class Jeu {
     else if (et === E.PIERRE) o.life = (n === undefined || n === null) ? 3 : n;
     else if (et === E.CELLULE) o.level = n || 0;
     else if (et === E.OBJET) o.type = n || 0;
-    else if (et === E.OEIL) o.color = n || 0;
+    // Eye.init tire lui-même sa couleur dans la liste du niveau — le `n` du
+    // modèle ne lui dit rien (genElement, cas E_EYE : il est ignoré).
+    else if (et === E.OEIL) o.color = this.getColor();
     const e = new C(this, o);
     e.poser();
     return e;
@@ -781,12 +817,15 @@ class Jeu {
           // joueur l'a appelée. Tant qu'un sort tient la main, le puzzle attend.
           if (this.sortsAFaire) { this.initSorts(); this.sortsAFaire = false; }
           if (this.saList.length > 0) { this.initStep(ETAPE.MAGIE); break; }
-          // Game.initStep(5) : une fois la cascade close, les objets dégagés se
-          // ramassent. S'il y en avait, ils laissent un trou — le cycle
-          // recommence (Game.newCycle), et la chute peut relancer une cascade.
+          // Game.initStep(5) : une fois la cascade close, chaque élément vit
+          // son tour — les objets dégagés se ramassent, les yeux se chargent
+          // et pondent. Si la grille a changé, le cycle recommence
+          // (Game.newCycle), et la chute peut relancer une cascade.
           if (this.flActiviteAFaire) {
             this.flActiviteAFaire = false;
-            if (this.ramasserObjets()) {
+            const ramasse = this.ramasserObjets();
+            const ponte = this.veillerYeux();
+            if (ramasse || ponte) {
               this.initStatsChute();
               this.initStep(ETAPE.CHUTE);
               break;
@@ -1063,6 +1102,16 @@ class Jeu {
       pris++;
     }
     return pris > 0;
+  }
+
+  // Eye.initActiveStep, pour tous les yeux du plateau : chacun se charge d'un
+  // cran, et ceux qui sont pleins pondent. Dit si la grille a changé.
+  veillerYeux() {
+    let ponte = false;
+    for (const e of this.eList.slice()) {
+      if (e.et === E.OEIL && e.vivant && e.pondre()) ponte = true;
+    }
+    return ponte;
   }
 
   finPartie(gagne) {
