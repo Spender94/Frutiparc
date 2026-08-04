@@ -126,6 +126,19 @@ class Survival extends Game {
     this.verifierHero();
   }
 
+  /**
+   * Survival.onHeroKill — l'endurance ne connaît PAS la retraite de la vague.
+   *
+   * Le mode n'a pas de grille d'entrée : ses rangées naissent en haut de
+   * l'écran et descendent, il n'y a donc aucune case de départ où renvoyer
+   * quiconque. L'original le dit en clair — game.Survival redéfinit
+   * onHeroKill et se contente de décompter la vie, là où game.Main (arcade et
+   * missions) fait battre l'escadre en retraite.
+   */
+  onHeroKill() {
+    this.evenement('viePerdue', { restant: this.heroList.length });
+  }
+
   // Trois rangées pour commencer, centrées.
   initLevel() {
     this.waveSens = 1;

@@ -770,6 +770,26 @@ class Bads extends Sprite {
     }
   }
 
+  /**
+   * Bads.reset — la RETRAITE. Le vaisseau du joueur vient d'être détruit :
+   * l'escadre lâche l'attaque et regagne sa place de départ, chacun rejoignant
+   * sa case de la grille (waveId) depuis là où il se trouve. Le délai décale
+   * les départs, pour que la vague reflue en éventail et non d'un bloc.
+   *
+   * @param {number} t images d'attente avant de repartir
+   */
+  reset(t) {
+    // Un ennemi né hors grille (l'escorte que le boss appelle) n'a pas de case
+    // de départ où revenir : il reste où il est plutôt que de chercher une
+    // ligne qui n'existe pas.
+    const ligne = this.jeu.gridInfo && this.jeu.gridInfo.list
+      ? this.jeu.gridInfo.list[this.lineId] : null;
+    if (!ligne || !ligne[this.waveId]) { this.flReady = true; this.ty = this.y; return; }
+    this.flReady = false;
+    this.pointSuivant(this.waveId);
+    this.wpTimer = t;
+  }
+
   // Chaîne les points de passage de sa ligne jusqu'au sien (waveId). Les cases
   // vides du niveau sont des points de passage sans vaisseau : on les traverse.
   pointSuivant(id) {
@@ -2293,8 +2313,25 @@ class Game {
     return this.level * DECOR_DECAL;
   }
 
+  /**
+   * Game.onHeroKill — ce que la mort du vaisseau coûte à l'ADVERSAIRE.
+   *
+   * Le plateau se vide de ses tirs, et si l'escadre était en train d'attaquer
+   * (COMBAT), elle bat en RETRAITE : chacun regagne sa case de départ, décalé
+   * de deux images sur son voisin, et le niveau repasse en phase d'arrivée.
+   * C'est la respiration du jeu — sans elle, le joueur qui vient de perdre un
+   * vaisseau réapparaît sous une escadre déjà descendue sur lui, et la partie
+   * devient nettement plus dure qu'elle ne doit l'être.
+   */
   onHeroKill() {
     this.evenement('viePerdue', { restant: this.heroList.length });
+    this.nettoyerTirs();
+    if (this.step === ETAPE.COMBAT) {
+      const enFuite = this.badsList.slice();
+      for (let i = 0; i < enFuite.length; i++) enFuite[i].reset(i * 2);
+      this.step = ETAPE.ARRIVEE;
+      this.evenement('retraite', { nombre: enFuite.length });
+    }
     if (this.boss) this.boss.onHeroKill();
   }
 

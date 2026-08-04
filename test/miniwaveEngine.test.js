@@ -276,11 +276,22 @@ test('le niveau vide de « Canon à pulpe » est traversé, pas subi', () => {
   // Sans escadre, il n'y a rien à abattre : le moteur doit enchaîner sur le
   // suivant tout seul. S'il attendait un ennemi qui ne viendra pas, la mission
   // serait injouable à partir de là.
+  //
+  // On part DU niveau vide. La version précédente jouait aussi le niveau
+  // peuplé qui le précède, avec un pilote qui tire sans jamais bouger : elle
+  // n'arrivait au bout que parce que ce pilote ramassait, par chance de
+  // tirage, un bonus « saut de niveau ». Le jour où le moteur a changé
+  // ailleurs (la retraite de la vague), le tirage a bougé, le bonus n'est plus
+  // tombé — et le test a crié pour une raison qui n'était pas la sienne.
   const canon = NIVEAUX.bonus.find((p) => p.name === 'Canon à pulpe');
-  const jeu = new E.Game({ levels: canon.levels.slice(39), graine: 1 });
-  for (let i = 0; i < 4000 && !jeu.termine; i++) { jeu.entree.tir = true; jeu.update(1); }
+  const vide = canon.levels.slice(40);
+  assert.equal((vide[0].list || []).length, 0, 'le dernier niveau est bien SANS escadre');
+
+  const jeu = new E.Game({ levels: vide, graine: 1 });
+  for (let i = 0; i < 1000 && !jeu.termine; i++) { jeu.entree.tir = true; jeu.update(1); }
   assert.ok(jeu.termine, 'la mission va jusqu\'à son terme');
-  assert.equal(jeu.level, 2, 'les deux derniers niveaux sont franchis, vide compris');
+  assert.equal(jeu.level, 1, 'le niveau vide est franchi, et la mission s\'achève après lui');
+  assert.ok(jeu.heroList.length > 0, 'et on en sort vivant : il est traversé, pas subi');
 });
 
 test('une partie longue reste saine', () => {
@@ -828,4 +839,64 @@ test('sortir par la droite fait sauter cent niveaux', () => {
   h.update(1);
   assert.equal(jeu.nextLevel, 100, 'cent niveaux d\'un coup');
   assert.equal(jeu.heroList.length, vies + 1, 'et le vaisseau rejoint la réserve');
+});
+
+test('la mort du vaisseau fait battre l\'escadre en retraite', () => {
+  // game.Main.onHeroKill, bloc « RETRAITE DE LA WAVE » : perdre un vaisseau en
+  // plein combat renvoie chaque ennemi à sa case de départ (Bads.reset →
+  // nextWayPoint(waveId)), décalé de deux images sur son voisin, et le niveau
+  // repasse en phase d'arrivée. Sans ça, le joueur réapparaît sous une escadre
+  // déjà descendue sur lui — c'est le « le jeu est plus dur » remonté.
+  const jeu = new E.Game({ levels: ARCADE, graine: 12, vies: 3, ship: 0 });
+  assert.ok(jusquAuCombat(jeu), 'le combat est engagé');
+
+  // On laisse l'escadre AVANCER : elle glisse et descend, elle n'est donc plus
+  // sur ses cases de départ.
+  for (let i = 0; i < 240; i++) jeu.update(1);
+  assert.equal(jeu.step, E.ETAPE.COMBAT);
+  const avant = jeu.badsList.map((b) => ({ b, x: b.x, y: b.y }));
+  const bouge = avant.filter((e) => {
+    const c = jeu.gridInfo.list[e.b.lineId][e.b.waveId];
+    return c && (Math.abs(e.x - c.x) > 1 || Math.abs(e.y - c.y) > 1);
+  });
+  assert.ok(bouge.length > 0, 'l\'escadre a quitté ses cases (' + bouge.length + ')');
+
+  // Le vaisseau meurt.
+  jeu.hero.exploser();
+
+  // La vague bat en retraite : personne n'est « en place », chacun vise sa
+  // case, et les départs sont échelonnés de deux images.
+  assert.equal(jeu.step, E.ETAPE.ARRIVEE, 'le niveau repasse en arrivée');
+  assert.ok(jeu.badsList.every((b) => !b.flReady), 'plus personne en position');
+  jeu.badsList.forEach(function (b, i) {
+    assert.equal(b.wayPoint.id, b.waveId, 'chacun vise SA case');
+    assert.equal(b.wpTimer, i * 2, 'et part deux images après son voisin');
+  });
+  // Les tirs en vol sont balayés, des deux camps (Game.cleanShots).
+  assert.equal(jeu.bShotList.length, 0, 'plus un tir ennemi en vol');
+  assert.equal(jeu.hShotList.length, 0, 'ni un tir du joueur');
+
+  // Et au bout du reflux, tout le monde EST revenu à sa case de départ.
+  for (let i = 0; i < 900 && jeu.step === E.ETAPE.ARRIVEE; i++) jeu.update(1);
+  assert.equal(jeu.step, E.ETAPE.COMBAT, 'le combat reprend une fois l\'escadre rangée');
+  jeu.badsList.forEach(function (b) {
+    const c = jeu.gridInfo.list[b.lineId][b.waveId];
+    assert.ok(Math.abs(b.x - c.x) < 12 && Math.abs(b.y - c.y) < 12,
+      'chaque ennemi est reparti de sa position de départ');
+  });
+});
+
+test('la retraite ne se déclenche QUE pendant le combat', () => {
+  // En phase d'arrivée, l'escadre est déjà en train de rejoindre ses places :
+  // la relancer remettrait les compteurs à zéro pour rien. L'original ne le
+  // fait pas non plus (le bloc est gardé par `step == 2`).
+  const jeu = new E.Game({ levels: ARCADE, graine: 5, vies: 3, ship: 0 });
+  for (let i = 0; i < 400 && jeu.step !== E.ETAPE.ARRIVEE; i++) jeu.update(1);
+  assert.equal(jeu.step, E.ETAPE.ARRIVEE);
+  for (let i = 0; i < 20; i++) jeu.update(1);
+  const minuteries = jeu.badsList.map((b) => b.wpTimer);
+  if (jeu.hero) jeu.hero.exploser();
+  assert.equal(jeu.step, E.ETAPE.ARRIVEE, 'on reste en arrivée');
+  assert.deepEqual(jeu.badsList.map((b) => b.wpTimer), minuteries,
+    'et les minuteries d\'entrée ne sont pas rejouées');
 });

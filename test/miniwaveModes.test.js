@@ -319,3 +319,31 @@ test('les modes sont chargeables dans le navigateur comme sous Node', () => {
   // endroit où le portage s'écarte de l'original.
   assert.match(src, /SURVIVAL_MONTEE_EN_DIFFICULTE/, 'l\'écart au jeu d\'origine est documenté');
 });
+
+test('l\'endurance ne connaît pas la retraite de la vague', () => {
+  // game.Survival redéfinit onHeroKill : le mode n'a pas de grille d'entrée
+  // (ses rangées naissent en haut et descendent), il n'y a donc aucune case de
+  // départ où renvoyer quiconque. Seuls l'arcade et les missions — game.Main —
+  // font battre l'escadre en retraite. Ce test garde la frontière : c'est en
+  // la franchissant qu'on faisait planter le mode.
+  const s = new M.Survival({ graine: 3, vies: 3 });
+  jouer(s, 400);
+  assert.ok(s.badsList.length > 0, 'des ennemis sont en piste');
+  const avant = s.badsList.map((b) => ({ x: b.x, y: b.y }));
+  const vies = s.heroList.length;
+
+  assert.ok(s.hero, 'le vaisseau est là');
+  s.hero.exploser();                       // ne doit ni planter ni tout replacer
+
+  assert.equal(s.step, E.ETAPE.COMBAT, 'le mode reste en combat');
+  s.badsList.forEach(function (b, i) {
+    assert.ok(Math.abs(b.x - avant[i].x) < 1 && Math.abs(b.y - avant[i].y) < 1,
+      'chaque ennemi est resté exactement où il était');
+  });
+  // La réserve ne bouge qu'au moment où le vaisseau suivant décolle
+  // (verifierHero le prend dans la liste) : on laisse passer l'image.
+  s.update(1);
+  assert.equal(s.heroList.length, vies - 1, 'seule la vie est décomptée');
+  jouer(s, 200);                            // et la partie continue de tourner
+  assert.ok(!s.termine || s.heroList.length === 0, 'la partie suit son cours');
+});
