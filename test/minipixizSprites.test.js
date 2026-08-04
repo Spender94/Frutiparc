@@ -123,7 +123,7 @@ test('les fichiers annoncés existent tous, et ne sont pas vides', () => {
       for (const p of e.pieces) {
         const f = path.join(DOSSIER, p.fichier);
         assert.ok(fs.existsSync(f), `${p.fichier} existe`);
-        if (/\.png$/.test(p.fichier)) {
+        if (/\.(png|jpg)$/.test(p.fichier)) {
           // Tout n'est pas vectoriel : le plancher de l'ascenseur du donjon est
           // une image posée telle quelle dans le fichier d'origine.
           assert.ok(fs.statSync(f).size > 100, `${p.fichier} n'est pas une image vide`);

@@ -630,6 +630,23 @@ class Client {
     this.champ = null;
     this.coefNuit = (o.coefNuit === undefined) ? 0.5 : o.coefNuit;
     this.brancherCommandes(o.racine || document);
+    // La carte de la forêt suit la souris (base/Forest.update) et se touche :
+    // on garde la position du pointeur dans le repère de la scène.
+    this.pointeur = null;
+    const suivre = (cx, cy) => {
+      const r = this.canvas.getBoundingClientRect();
+      this.pointeur = { x: (cx - r.left) / this.echelle, y: (cy - r.top) / this.echelle };
+    };
+    this.canvas.addEventListener('mousemove', (ev) => suivre(ev.clientX, ev.clientY));
+    this.canvas.addEventListener('touchmove', (ev) => {
+      if (ev.touches[0]) suivre(ev.touches[0].clientX, ev.touches[0].clientY);
+    }, { passive: true });
+    this.canvas.addEventListener('mouseleave', () => { this.pointeur = null; });
+    this.canvas.addEventListener('click', (ev) => {
+      if (!this.carteForet) return;
+      suivre(ev.clientX, ev.clientY);
+      this.clicCarteForet(this.pointeur.x, this.pointeur.y);
+    });
     this.redimensionner();
     window.addEventListener('resize', () => this.redimensionner());
     window.addEventListener('orientationchange', () => setTimeout(() => this.redimensionner(), 120));
@@ -640,6 +657,8 @@ class Client {
     eclats.length = 0;
     this.bassin = null;
     this.lieu = null;
+    this.cine = null;
+    this.carteForet = null;
     if (opts.fee !== undefined) this.fee = opts.fee;
     if (opts.coefNuit !== undefined) this.coefNuit = opts.coefNuit;
     this.jeu = new E.Jeu(Object.assign({}, opts, { onEvent: (n, d) => this.annonce(n, d) }));
@@ -663,8 +682,14 @@ class Client {
     if (!B) return null;
     eclats.length = 0;
     this.lieu = null;
+    this.cine = null;
+    this.carteForet = null;
+    // Les événements passent par `annonce` pour les effets de dessin, puis vont
+    // au gestionnaire DU BASSIN — pas à celui de la forêt. L'écraser envoyait
+    // la fin d'une partie de bassin au code des courses, qui affichait son
+    // écran « PERDU » pendant que personne ne ramenait au menu.
     this.bassin = new B.Bassin(Object.assign({}, opts || {},
-      { surEvenement: (n, d) => this.annonce(n, d) }));
+      { surEvenement: (n, d) => this.annonce(n, d, opts && opts.surEvenement) }));
     this.jeu = this.bassin.jeu;
     this.champ = this.bassin.champ;
     this.jeu.entree = this.entree;
@@ -683,8 +708,12 @@ class Client {
     if (!X || !X[classe]) return null;
     eclats.length = 0;
     this.bassin = null;
+    this.cine = null;
+    this.carteForet = null;
+    // Même chose qu'au bassin : les événements du lieu vont au gestionnaire du
+    // LIEU, une fois les effets de dessin servis.
     this.lieu = new X[classe](Object.assign({}, opts || {},
-      { surEvenement: (n, d) => this.annonce(n, d) }));
+      { surEvenement: (n, d) => this.annonce(n, d, opts && opts.surEvenement) }));
     this.jeu = this.lieu.jeu;
     this.champ = this.lieu.champ;
     this.jeu.entree = this.entree;
@@ -694,7 +723,98 @@ class Client {
     return this.lieu;
   }
 
-  annonce(nom, d) {
+  /**
+   * base/Forest.initCheckpoint — la carte de la forêt.
+   *
+   * Une pancarte par relais gagné (mcCheckpointPicture, une image chacune),
+   * empilées tous les 108 pixels dans un chariot qui suit la souris, et le
+   * bouton de sortie dans le coin. Elle ne s'affiche que si un relais existe :
+   * sinon la course part directement (le jeu fait pareil).
+   *
+   * @param {object} o  { relais: [{niveau, nom}], surChoix(niveau), surQuitter() }
+   */
+  ouvrirCarteForet(o) {
+    this.bassin = null;
+    this.lieu = null;
+    this.jeu = null;
+    this.champ = null;
+    this.cine = null;
+    this.carteForet = {
+      relais: o.relais || [],
+      surChoix: o.surChoix || null,
+      surQuitter: o.surQuitter || null,
+      defile: 0,
+      sMax: Math.max(0, (16 + (o.relais || []).length * 108) - SCENE),
+      zones: [],
+    };
+    return this.carteForet;
+  }
+
+  fermerCarteForet() { this.carteForet = null; }
+
+  dessinerCarteForet(ctx, tmod) {
+    const s = this.sprites, c = this.carteForet;
+    // Le fond de la carte est un décor plein cadre ; le cadre de la forêt vit
+    // derrière lui, comme dans le jeu (la carte s'attache dans l'écran de la
+    // forêt, par-dessus son décor).
+    if (s.carteForet) poserRendu(ctx, rendre(s.carteForet, 1, 100), 0, 0);
+    else { ctx.fillStyle = '#1c3a24'; ctx.fillRect(0, 0, SCENE, SCENE); }
+
+    // Le chariot suit la souris : dy = (souris − 120) × 0,1 par image.
+    if (this.pointeur && c.sMax > 0) {
+      const dy = (this.pointeur.y - SCENE * 0.5) * 0.1 * tmod;
+      c.defile = Math.max(-c.sMax, Math.min(c.defile - dy, 0));
+    }
+
+    c.zones = [];
+    for (let i = 0; i < c.relais.length; i++) {
+      const r = c.relais[i];
+      const x = 8, y = 8 + i * 108 + c.defile;
+      if (y > SCENE || y < -120) continue;
+      if (s.relaisImage) {
+        const frame = Math.min(i + 1, s.relaisImage.etats.length);
+        poserRendu(ctx, rendre(s.relaisImage, frame, 100), x, y);
+      }
+      // Les deux champs de la pancarte : le grand numéro vert (fonte de titre,
+      // 110 px dans le jeu) et le nom du relais au-dessus.
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = 'bold 96px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
+      ctx.fillStyle = 'rgb(32,149,64)';
+      ctx.fillText(String(r.niveau + 1), x + 167, y + 96);
+      ctx.font = 'bold 13px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
+      ctx.fillStyle = 'rgb(189,240,199)';
+      ctx.fillText(r.nom || '', x + 167, y + 16);
+      ctx.textBaseline = 'top';
+      c.zones.push({ niveau: r.niveau, x: 0, y, l: SCENE, h: 108 });
+    }
+
+    // Le bouton de sortie, accroché au coin bas-droit (Slot.initButQuit).
+    if (s.boutonQuitter) poserRendu(ctx, rendre(s.boutonQuitter, 1, 100), SCENE, SCENE);
+    c.zones.push({ quitter: true, x: SCENE - 46, y: SCENE - 46, l: 46, h: 46 });
+  }
+
+  clicCarteForet(x, y) {
+    const c = this.carteForet;
+    if (!c) return;
+    // Le bouton de sortie d'abord : il est par-dessus les pancartes.
+    for (let i = c.zones.length - 1; i >= 0; i--) {
+      const z = c.zones[i];
+      if (x < z.x || x > z.x + z.l || y < z.y || y > z.y + z.h) continue;
+      if (z.quitter) { if (c.surQuitter) c.surQuitter(); return; }
+      if (c.surChoix) c.surChoix(z.niveau);
+      return;
+    }
+  }
+
+  annonce(nom, d, cible) {
+    // Base.gameOver — perdre ne pose pas de question : l'écran vire au noir,
+    // le panneau s'affiche une centaine d'images, puis `tryToClose` ramène à
+    // la clairière. On lance ici le fondu ; `dessinerCine` fera le reste et
+    // émettra « rideau » quand il sera temps de partir.
+    if (nom === 'finPartie' && d && !d.gagne && !this.cine) {
+      this.cine = { phase: 1, prc: 1, cible: cible || null };
+    }
     // Un lieu qui enchaîne ses niveaux (le donjon) remonte une partie neuve :
     // il faut la reprendre, sans quoi on continuerait de dessiner l'ancienne.
     if (nom === 'niveauDonjon' && this.lieu) {
@@ -719,7 +839,8 @@ class Client {
       case 'couleurFinie': this.message = 'couleur terminée !'; this.messageT = 60; break;
       default: break;
     }
-    if (this.surEvenement) this.surEvenement(nom, d);
+    const dest = cible || this.surEvenement;
+    if (dest) dest(nom, d);
   }
 
   // La boucle. Le jeu d'origine tourne à 30 images par seconde et ses tirages en
@@ -735,7 +856,11 @@ class Client {
       this.reste += dt * IPS;
       let pas = 0;
       const mode = this.bassin || this.lieu;
-      if (mode) {
+      if (this.cine && this.cine.phase === 2) {
+        // Base.initStep(11) : au noir complet, `game.kill()`. Plus rien ne bouge
+        // sous le panneau de fin.
+        this.reste = 0;
+      } else if (mode) {
         while (this.reste >= 1 && pas < 6) { mode.update(1); this.reste -= 1; pas++; }
       } else if (this.jeu) {
         while (this.reste >= 1 && pas < 6) { this.jeu.update(1); this.reste -= 1; pas++; }
@@ -752,8 +877,9 @@ class Client {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, SCENE, SCENE);
     const s = this.sprites;
-    if (this.bassin) { this.dessinerBassin(ctx, tmod); return; }
-    if (this.lieu) { this.dessinerLieu(ctx, tmod); return; }
+    if (this.carteForet) { this.dessinerCarteForet(ctx, tmod); return; }
+    if (this.bassin) { this.dessinerBassin(ctx, tmod); this.dessinerCine(ctx, tmod); return; }
+    if (this.lieu) { this.dessinerLieu(ctx, tmod); this.dessinerCine(ctx, tmod); return; }
 
     // 1. LE FOND — l'image 3 du cadre, posée sous le plateau (DP_SKIN_DOWN).
     //    C'est le vert profond des racines : sans lui, le plateau flotte.
@@ -785,6 +911,38 @@ class Client {
 
     // 5. L'heure qu'il est, en dernier : elle teinte la scène entière.
     this.dessinerNuit(ctx);
+
+    // 6. Et s'il faut mourir, le rideau par-dessus tout.
+    this.dessinerCine(ctx, tmod);
+  }
+
+  /**
+   * Base.gameOver, en deux temps : le fondu au noir (flashInfo prc 1 → 100,
+   * ×1,1 par image), puis le panneau « Game Over » pendant une centaine
+   * d'images. À dix images de la fin, `tryToClose` — ici l'événement `rideau`,
+   * que la page écoute pour rouvrir la clairière.
+   */
+  dessinerCine(ctx, tmod) {
+    const c = this.cine;
+    if (!c) return;
+    if (c.phase === 1) {
+      c.prc = Math.min(100, c.prc * Math.pow(1.1, tmod));
+      ctx.fillStyle = 'rgba(0,0,0,' + (c.prc / 100).toFixed(3) + ')';
+      ctx.fillRect(0, 0, SCENE, SCENE);
+      if (c.prc >= 100) { c.phase = 2; c.timer = 100; }
+      return;
+    }
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, SCENE, SCENE);
+    // Le panneau est un tableau plein cadre : la forêt sous un ciel violet.
+    if (this.sprites.panPerdu) {
+      poserRendu(ctx, rendre(this.sprites.panPerdu, 1, SCENE), SCENE / 2, SCENE / 2);
+    }
+    c.timer -= tmod;
+    if (c.timer <= 10 && !c.dit) {
+      c.dit = true;
+      this.annonce('rideau', {}, c.cible);
+    }
   }
 
   /**

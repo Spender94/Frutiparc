@@ -194,6 +194,19 @@ const CIBLES = [
   // Le grand panneau clair de l'écran est le dessin du CLIP D'ÉCRAN lui-même
   // (Slot.link = « inventory »), pas un décor attaché : invBg ne porte que les
   // lianes. Sans lui, tout l'inventaire flottait sur du noir.
+  // ── La fin de partie et la carte de la forêt ──
+  // Perdre, dans le jeu, ne pose pas de question : l'écran vire au noir, le
+  // panneau « game over » s'affiche une centaine d'images, puis la clairière
+  // revient d'elle-même (Base.gameOver → tryToClose).
+  { cle: 'panPerdu', symbole: 'panGameOver', etiquette: 'Panneau de fin de partie' },
+  // Et l'entrée en forêt, quand on a des relais, est une CARTE (mcForestMap) :
+  // une pancarte par relais (mcCheckpointPicture, une image chacune), qui
+  // défile sous la souris, et le bouton pour repartir.
+  { cle: 'carteForet', symbole: 'mcForestMap', etiquette: 'Carte de la forêt' },
+  { cle: 'relaisImage', symbole: 'mcCheckpointPicture', etiquette: 'Pancarte de relais',
+    images: [1, 2, 3, 4, 5, 6, 7, 8] },
+  { cle: 'boutonQuitter', symbole: 'mcButQuit', etiquette: 'Bouton de sortie' },
+
   { cle: 'invEcran', symbole: 'inventory', etiquette: 'Panneau de l\'inventaire' },
   { cle: 'invFond', symbole: 'invBg', etiquette: 'Fond de l\'inventaire' },
   { cle: 'invDevant', symbole: 'invFront', etiquette: 'Cadre de l\'inventaire' },
@@ -413,10 +426,18 @@ function principal() {
         ancrages[item.cle] = ancrages[item.cle] || {};
         for (const p of frames.get(f)) {
           if (p.nom && exclus.has(p.nom)) {
-            ancrages[item.cle][p.nom] = {
+            const a = {
               x: Math.round(p.M.e / 20 * 100) / 100,
               y: Math.round(p.M.f / 20 * 100) / 100,
             };
+            // Le plan ne fait pas que POSER un lieu : il peut le réduire (le
+            // moulin est à 70 %) ou le voiler (l'arc-en-ciel est posé avec un
+            // multiplicateur d'alpha de 77/256 — c'est ce qui rend ses couleurs
+            // si douces). Perdre ces deux-là donnait un moulin trop grand et un
+            // arc-en-ciel criard.
+            if (Math.abs(p.M.a - 1) > 0.01) a.k = Math.round(p.M.a * 1000) / 1000;
+            if (p.cx && p.cx.ma !== 256) a.alpha = Math.round(p.cx.ma / 256 * 1000) / 1000;
+            ancrages[item.cle][p.nom] = a;
           }
         }
       }

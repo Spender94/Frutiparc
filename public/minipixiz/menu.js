@@ -269,8 +269,17 @@ class Menu {
         const frame = borner(1, et.frame, sl.etats[sl.etats.length - 1].frame);
         const lx = x + ancre.x, ly = ancre.y;
         const rot = (l.nom === 'windMill') ? { 'w.w': this.rotationMoulin } : null;
-        C.poserRendu(ctx, C.rendre(sl, frame, 100, undefined, null, null, rot,
+        // Le plan ne fait pas que poser un lieu : le moulin est réduit à 70 %,
+        // et l'arc-en-ciel posé sous un alpha de 30 % — c'est ce voile qui rend
+        // ses couleurs si douces. Sans lui, il criait.
+        const k = ancre.k || 1;
+        if (ancre.alpha !== undefined) {
+          ctx.save();
+          ctx.globalAlpha = ancre.alpha;
+        }
+        C.poserRendu(ctx, C.rendre(sl, frame, 100 * k, undefined, null, null, rot,
           { prc, couleur: BLEU_NUIT }), lx, ly);
+        if (ancre.alpha !== undefined) ctx.restore();
         // Sa zone sensible, au même endroit que son dessin.
         const e = sl.etats.find((q) => q.frame === frame) || sl.etats[0];
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -279,7 +288,7 @@ class Menu {
           x1 = Math.max(x1, q.x + q.w); y1 = Math.max(y1, q.y + q.h);
         }
         this.zones.push({ lieu: l, etat: et,
-          x: lx + x0, y: ly + y0, l: x1 - x0, h: y1 - y0 });
+          x: lx + x0 * k, y: ly + y0 * k, l: (x1 - x0) * k, h: (y1 - y0) * k });
       }
     }
 

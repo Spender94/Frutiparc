@@ -320,18 +320,18 @@
             P.ramasser(course.carte, info.type);
             return;
           }
+          // Base.tryToClose : le panneau de fin s'est montré, la clairière
+          // revient d'elle-même — dans le jeu, perdre ne pose pas de question.
+          if (nom === 'rideau') { ouvrirMenu(); return; }
           if (nom !== 'finPartie') return;
 
           if (info.gagne) {
             course.niveaux.push(course.niveau);
             course.niveau++;
             if (course.niveau < course.fin) {
-              // La course continue : niveau suivant, sans quitter la forêt.
-              $('#fin-titre').textContent = 'NIVEAU ' + info.niveau + ' TERMINÉ !';
-              $('#fin-score').textContent = info.score + ' points';
-              $('#fin-note').textContent = 'On enchaîne sur le niveau ' + (course.niveau + 1) + '…';
-              $('#fin').classList.add('on');
-              setTimeout(lancerNiveau, 1400);
+              // La course continue : la fée monte, le niveau suivant s'ouvre.
+              // Pas d'écran entre les deux — le jeu enchaîne sur son bouquet.
+              setTimeout(lancerNiveau, 900);
               return;
             }
             // Relais atteint : base/Forest.endGame ferme la partie ici.
@@ -339,28 +339,32 @@
             $('#fin-titre').textContent = neuf ? 'NOUVEAU RELAIS !' : 'RELAIS ATTEINT';
             terminer(info, neuf
               ? 'Vous pourrez repartir du niveau ' + (course.fin + 1) + '.'
-              : 'Vous connaissiez déjà ce passage.');
+              : 'Vous connaissiez déjà ce passage.', true);
             return;
           }
 
-          $('#fin-titre').textContent = 'PERDU';
-          terminer(info, '');
+          // Perdu : on enregistre tout de suite, sans rien afficher — le client
+          // joue le fondu noir et le panneau, puis enverra `rideau`.
+          terminer(info, '', false);
         }
       });
 
       // Fin de course — perdue ou menée jusqu'au relais. C'est le seul endroit
-      // qui enregistre.
-      function terminer(info, note) {
-        $('#fin-score').textContent = 'niveau ' + (course.niveau + 1)
-          + ' · ' + course.niveaux.length + ' niveau' + (course.niveaux.length > 1 ? 'x' : '')
-          + ' franchi' + (course.niveaux.length > 1 ? 's' : '');
-        $('#fin-note').textContent = note;
-        $('#fin').classList.add('on');
+      // qui enregistre. L'écran ne s'affiche que pour un relais : la défaite a
+      // son propre panneau, dessiné par le client.
+      function terminer(info, note, montrer) {
+        if (montrer) {
+          $('#fin-score').textContent = 'niveau ' + (course.niveau + 1)
+            + ' · ' + course.niveaux.length + ' niveau' + (course.niveaux.length > 1 ? 'x' : '')
+            + ' franchi' + (course.niveaux.length > 1 ? 's' : '');
+          $('#fin-note').textContent = note;
+          $('#fin').classList.add('on');
+        }
         plateforme.enregistrer({
           niveaux: course.niveaux, dernier: course.niveau,
           objets: course.objets, entree: course.entree,
         }).then(function (r) {
-          $('#fin-note').textContent = (note ? note + ' ' : '') + resume(r);
+          if (montrer) $('#fin-note').textContent = (note ? note + ' ' : '') + resume(r);
           window.__derniereSauvegarde = r;   // utile aux vérifications automatisées
         });
         if (window.parent !== window) {
@@ -371,26 +375,24 @@
 
       // ── La carte de la forêt (base/Forest.initCheckpoint) ──
       // Elle ne s'affiche que si un relais a été gagné : sans ça, il n'y a
-      // qu'un départ possible et le jeu se lance directement.
+      // qu'un départ possible et le jeu se lance directement. C'est le client
+      // qui la dessine — les pancartes du jeu, pas une liste de boutons.
       function ouvrirCarte() {
         var relais = plateforme.carteDesRelais();
-        if (relais.length < 2) { nouvelleCourse(relais[0] ? relais[0].niveau : 0); return; }
-        var liste = $('#carte-liste');
-        liste.innerHTML = '';
-        relais.forEach(function (r) {
-          var b = document.createElement('button');
-          b.type = 'button';
-          b.className = 'relais';
-          b.innerHTML = '<span class="n">' + r.affiche + '</span>'
-            + '<span class="t">' + r.nom + '</span>';
-          b.addEventListener('click', function () {
-            $('#carte').classList.remove('on');
-            nouvelleCourse(r.niveau);
-          });
-          liste.appendChild(b);
-        });
         $('#fin').classList.remove('on');
-        $('#carte').classList.add('on');
+        $('#carte').classList.remove('on');
+        if (relais.length < 2) { nouvelleCourse(relais[0] ? relais[0].niveau : 0); return; }
+        client.ouvrirCarteForet({
+          relais: relais,
+          surChoix: function (niveau) {
+            client.fermerCarteForet();
+            nouvelleCourse(niveau);
+          },
+          surQuitter: function () {
+            client.fermerCarteForet();
+            ouvrirMenu();
+          },
+        });
       }
 
       $('#rejouer').addEventListener('click', ouvrirCarte);
@@ -474,15 +476,19 @@
         var bassin = client.nouveauBassin({
           carte: plateforme.carte,
           graine: Math.floor(Math.random() * 1e9),
-          surEvenement: function (nom) {
+          surEvenement: function (nom, info) {
             if (nom === 'feeLiberee') {
               plateforme.ecrire(plateforme.carte);
               client.poserFee(feeCourante());
               return;
             }
-            if (nom !== 'feeEnvolee' && nom !== 'finPartie') return;
-            // Qu'elle s'envole ou que la grille déborde, on remonte au menu.
-            setTimeout(function () { ouvrirMenu(); }, 600);
+            // La grille a débordé : le client joue le panneau de fin, puis
+            // `rideau` nous ramène. La fée qui s'envole, elle, ne perd pas.
+            if (nom === 'rideau') { ouvrirMenu(); return; }
+            if (nom === 'feeEnvolee') { setTimeout(function () { ouvrirMenu(); }, 600); return; }
+            if (nom === 'finPartie' && info && info.gagne) {
+              setTimeout(function () { ouvrirMenu(); }, 600);
+            }
           },
         });
         client.demarrer();
@@ -507,9 +513,12 @@
               plateforme.ecrire(avant);
               return;
             }
+            // Perdu : le client joue le fondu et le panneau, puis `rideau`.
+            // Gagné (le donjon vidé), il n'y a pas de panneau : on rentre.
+            if (nom === 'rideau') { ouvrirMenu(); return; }
             if (nom !== 'finPartie') return;
             plateforme.ecrire(avant);
-            setTimeout(function () { ouvrirMenu(); }, 700);
+            if (info && info.gagne) setTimeout(function () { ouvrirMenu(); }, 900);
           },
         });
         client.demarrer();
@@ -538,6 +547,8 @@
       }
 
       function ouvrirMenu() {
+        $('#fin').classList.remove('on');
+        client.fermerCarteForet();
         $('#menu').classList.add('on');
         menu.demarrer();
         // Ce que les nuits passées ont à raconter : la lueur du bassin, une fée
@@ -559,10 +570,9 @@
         ouvrirMenu();
       });
 
+      // On ouvre sur la clairière — c'est l'écran d'accueil du jeu. La forêt ne
+      // se lance qu'en la touchant.
       ouvrirMenu();
-      client.demarrer();
-
-      ouvrirCarte();
       client.demarrer();
 
       window.minipixizClient = client;   // utile aux vérifications automatisées
