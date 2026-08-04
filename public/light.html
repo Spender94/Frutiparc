@@ -463,9 +463,9 @@
     box-shadow: 0 0 16px rgba(0, 0, 0, .45), 0 4px 10px rgba(0, 0, 0, .3);
     padding: 6px;
   }
-  /* Le haut : la plaque à gauche, le pseudo et les actions à droite. La croix
-     et le bouton rose sont posés dans le coin, hors du flux. */
-  .fiche-haut { display: flex; align-items: flex-start; gap: 9px; padding-right: 26px; }
+  /* Le haut : la plaque à gauche ; à droite, l'identité sur une ligne et les
+     actions sur la suivante — le bouton rose au bout de celle-ci. */
+  .fiche-haut { display: flex; align-items: flex-start; gap: 9px; }
   /* LA PLAQUE — un seul encart vert (#C8F39A) cerné de gris qui tient la
      bouille ET l'écran de niveau, comme sur l'intégration. */
   .fiche-plaque {
@@ -503,31 +503,38 @@
     font-family: 'DSEG7', 'Courier New', monospace; font-weight: bold;
     font-size: 11px; line-height: 1; color: #4E8030;
   }
-  .fiche-droite { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+  .fiche-droite {
+    flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+    gap: 8px; justify-content: center; align-self: stretch;
+  }
+  /* L'identité tient sur UNE ligne : le voyant, le pseudo, l'âge et le
+     département, la croix — comme au bureau. */
   .fiche-nom-ligne { display: flex; align-items: center; gap: 5px; }
   /* Le point de présence du bureau (clip status : vert présent, anneau éteint). */
   .fiche-nom-ligne .statut { width: 11px; height: 11px; object-fit: contain; flex: 0 0 auto; }
   .fiche-nom-ligne b {
     font-family: Verdana, Arial, sans-serif; font-size: 12.5px; color: #290D64;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto;
   }
-  .fiche-meta { font-size: 11.5px; color: #444; margin-top: -2px; }
-  /* La croix du bureau (butGroupWinTop) et, dessous, le bouton ROSE du mode
-     avancé (butPushSmallPink + son triangle) — qui DÉPLIE la fiche, comme au
-     bureau où il ouvre la partie détaillée. */
-  #fiche-fermer, #fiche-avance {
-    position: absolute; right: 5px; border: 0; background: transparent;
-    cursor: pointer; padding: 0; z-index: 3;
+  .fiche-nom-ligne .meta {
+    margin-left: auto; font-size: 11px; color: #444; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto;
   }
-  #fiche-fermer { top: 4px; }
+  /* La croix du bureau — butGroupWinTop, image 1. */
+  #fiche-fermer {
+    flex: 0 0 auto; border: 0; background: transparent; cursor: pointer; padding: 0 0 0 3px;
+  }
   #fiche-fermer img { width: 15px; height: 15px; display: block; }
+  .fiche-actions { display: flex; align-items: center; gap: 5px; }
+  /* Le bouton ROSE du mode avancé, au bout de la rangée : la tuile
+     (butPushSmallPink) en fond, son triangle (image 13) posé dedans. */
   #fiche-avance {
-    top: 30px; width: 24px; height: 24px;
+    margin-left: auto; flex: 0 0 auto; width: 26px; height: 26px;
+    border: 0; padding: 0; cursor: pointer;
     background: url('/fb/fiche/bouton_rose.png') no-repeat center / 100% 100%;
     display: flex; align-items: center; justify-content: center;
   }
   #fiche-avance img { width: 13px; height: 13px; object-fit: contain; display: block; }
-  .fiche-actions { display: flex; align-items: center; gap: 5px; margin-top: 7px; padding: 0 2px; }
   /* Les glyphes du bureau (la feuille `icon` du sprite 500), posés dans le
      halo gris clair de l'intégration plutôt que dans un cadre plein. */
   .fiche-actions button {
@@ -553,7 +560,11 @@
     cursor: pointer; padding: 6px 0;
   }
   .fiche-onglets button.actif { color: #811C22; }
-  .fiche-page { padding: 10px 12px 12px; min-height: 168px; }
+  /* La HAUTEUR de la fiche dépliée ne bouge pas d'un onglet à l'autre : le
+     panneau garde sa taille et c'est le contenu qui défile s'il déborde (les
+     scores d'un joueur chargé, par exemple). Sans ça, la carte sautait à
+     chaque changement d'onglet. */
+  .fiche-page { padding: 10px 12px 12px; height: 236px; overflow-y: auto; }
   /* Le titre de section, centré entre deux filets — le « FrutiSigne » de
      l'intégration. */
   .fiche-titre {
@@ -1419,10 +1430,6 @@
          pseudo — dans un salon, la liste des connectés ou le trombinoscope. -->
     <div id="fiche-backdrop">
       <div id="fiche" class="deploye" role="dialog" aria-modal="true" aria-label="Fiche du frutiz">
-        <button type="button" id="fiche-fermer" aria-label="Fermer"><img src="/fb/fiche/croix_fermer.png" alt="Fermer"></button>
-        <!-- Le bouton ROSE du bureau (butPushSmallPink + son triangle) : au
-             bureau il ouvre la partie détaillée, ici il déplie la fiche. -->
-        <button type="button" id="fiche-avance" title="Afficher ou masquer le détail" aria-expanded="true"><img src="/fb/fiche/ico_avance.png" alt=""></button>
         <div class="fiche-haut">
           <!-- La plaque verte : la bouille et l'écran de niveau dans un seul
                encart, avec les dessins de la mainbar (cadre, reflets, NIV). -->
@@ -1438,25 +1445,32 @@
               <div class="fa-niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
             </div>
           </div>
+          <!-- À droite de la plaque, DEUX lignes : l'identité (voyant, pseudo,
+               âge et département, la croix) puis la rangée d'actions avec, au
+               bout, le bouton rose. -->
           <div class="fiche-droite">
             <div class="fiche-nom-ligne">
               <img class="statut" id="fiche-statut" src="/fb/fiche/statut_absent.png" alt=""><b id="fiche-pseudo">…</b>
+              <span class="meta" id="fiche-meta"></span>
+              <button type="button" id="fiche-fermer" aria-label="Fermer"><img src="/fb/fiche/croix_fermer.png" alt="Fermer"></button>
             </div>
-            <div class="fiche-meta" id="fiche-meta"></div>
+            <!-- La rangée du bureau (box.Frutiz.getIconList), avec les VRAIS
+                 glyphes de main.swf — la feuille `icon` de butPushSmallWhite.
+                 On n'y met que les gestes QUI MARCHENT sur mobile : trois
+                 boutons éteints (Bouilloscope, contacts, liste noire) ne
+                 servaient qu'à prendre la place. Kick, ban et totoché ne se
+                 montrent qu'au staff qui peut s'en servir. Au bout, le bouton
+                 ROSE (butPushSmallPink + son triangle) : au bureau il ouvre la
+                 partie détaillée, ici il déplie la fiche. -->
+            <div class="fiche-actions">
+              <button type="button" id="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
+              <button type="button" id="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
+              <button type="button" id="fiche-kick" class="modo" title="Éjecter du salon" hidden><img src="/fb/fiche/ico_kick.png" alt=""></button>
+              <button type="button" id="fiche-ban" class="modo" title="Bannir" hidden><img src="/fb/fiche/ico_ban.png" alt=""></button>
+              <button type="button" id="fiche-totoche" class="modo" title="Totocher (rendre muet)" hidden><img src="/fb/fiche/ico_totoche.png" alt=""></button>
+              <button type="button" id="fiche-avance" title="Afficher ou masquer le détail" aria-expanded="true"><img src="/fb/fiche/ico_avance.png" alt=""></button>
+            </div>
           </div>
-        </div>
-        <!-- La rangée du bureau (box.Frutiz.getIconList), avec les VRAIS
-             glyphes de main.swf — la feuille `icon` de butPushSmallWhite. On
-             n'y met que les gestes QUI MARCHENT sur mobile : trois boutons
-             éteints (Bouilloscope, contacts, liste noire) ne servaient qu'à
-             prendre la place. Kick, ban et totoché ne se montrent qu'au staff
-             qui peut s'en servir. -->
-        <div class="fiche-actions">
-          <button type="button" id="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
-          <button type="button" id="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
-          <button type="button" id="fiche-kick" class="modo" title="Éjecter du salon" hidden><img src="/fb/fiche/ico_kick.png" alt=""></button>
-          <button type="button" id="fiche-ban" class="modo" title="Bannir" hidden><img src="/fb/fiche/ico_ban.png" alt=""></button>
-          <button type="button" id="fiche-totoche" class="modo" title="Totocher (rendre muet)" hidden><img src="/fb/fiche/ico_totoche.png" alt=""></button>
         </div>
         <div class="fiche-corps">
           <div class="fiche-onglets" id="fiche-onglets">

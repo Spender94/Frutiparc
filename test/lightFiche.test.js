@@ -211,6 +211,47 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
   assert.match(html, /"fiche-lignes encadre"/, 'perso encadré de ses séparateurs');
 });
 
+test('l\'en-tête tient sur deux lignes, et la carte ne saute pas d\'un onglet à l\'autre', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  // LIGNE 1 : le voyant, le pseudo, l'âge et le département, la croix — dans
+  // cet ordre et sur la MÊME ligne, comme au bureau.
+  const ligne = /<div class="fiche-nom-ligne">([\s\S]*?)<\/div>/.exec(html);
+  assert.ok(ligne, 'la ligne d\'identité existe');
+  const l = ligne[1];
+  assert.ok(l.indexOf('id="fiche-statut"') < l.indexOf('id="fiche-pseudo"'),
+    'le voyant avant le pseudo');
+  assert.ok(l.indexOf('id="fiche-pseudo"') < l.indexOf('id="fiche-meta"'),
+    'puis l\'âge et le département');
+  assert.ok(l.indexOf('id="fiche-meta"') < l.indexOf('id="fiche-fermer"'),
+    'et la croix au bout');
+  assert.match(html, /\.fiche-nom-ligne \.meta \{\s*margin-left: auto;/,
+    'l\'âge est poussé à droite de la ligne');
+  // LIGNE 2 : les actions SOUS le pseudo (dans la colonne de droite), pas
+  // sous la plaque — et le bouton rose au bout, au même niveau.
+  const droite = /<div class="fiche-droite">([\s\S]*?)\n          <\/div>/.exec(html);
+  assert.ok(droite && droite[1].includes('class="fiche-actions"'),
+    'la rangée d\'actions vit dans la colonne du pseudo');
+  assert.ok(droite[1].includes('id="fiche-avance"'),
+    'et le bouton rose la termine');
+  assert.match(html, /#fiche-avance \{\s*margin-left: auto;/, 'poussé au bout de la rangée');
+  // La HAUTEUR de la fiche dépliée est FIXE : le contenu défile s'il déborde.
+  assert.match(html, /\.fiche-page \{ padding: [^;]*; height: \d+px; overflow-y: auto; \}/,
+    'le panneau garde sa hauteur d\'un onglet à l\'autre');
+});
+
+test('Minipixiz et Miniwave sont posés sur le vert du bureau', () => {
+  for (const jeu of ['minipixiz', 'miniwave']) {
+    const html = fs.readFileSync(path.join(ROOT, 'public/' + jeu + '/index.html'), 'utf8');
+    assert.match(html, /html, body \{[\s\S]{0,120}background: #ADE76B;/,
+      jeu + ' : le fond de page est vert');
+    assert.ok(!/background: #150f28|background: #0b1424|background: #070b18/.test(html),
+      jeu + ' : plus un seul fond bleu nuit');
+    // L'écran de chargement suit, avec une encre lisible sur le vert.
+    assert.match(html, /#chargement \{[\s\S]{0,200}background: #ADE76B; color: #2c4a0f;/,
+      jeu + ' : le chargement aussi, en encre sombre');
+  }
+});
+
 test('le bouton rose est la TUILE nue, le triangle posé dessus', () => {
   // but.Push monte ses boutons en deux clips (Push.init) : la tuile
   // (butPushSmallPink, 378) et le glyphe dans son enfant `icon`
