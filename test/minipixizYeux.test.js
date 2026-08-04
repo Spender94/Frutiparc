@@ -205,6 +205,40 @@ test('le clip de l\'œil est dans le manifeste, avec sa boule et sa pupille', ()
   assert.ok(noms.includes('center'), 'et la pupille');
 });
 
+// ── Les couleurs du plateau ───────────────────────────────────────────────
+
+test('l\'heure ne voile jamais l\'écran de jeu', () => {
+  // Dans l'original, seul le MENU bleuit ses plans (Menu.setNight) et le
+  // bassin change l'image de son fond (base/Fountain) : la forêt est la même
+  // à midi et à minuit. Le portage posait un multiply bleu nuit sur toute la
+  // scène — le « filtre opaque » qui éteignait les couleurs.
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.ok(!/this\.dessinerNuit\(ctx\)/.test(client), 'plus de voile sur les scènes de jeu');
+  assert.ok(!/NUIT_MAX/.test(client), 'la constante du voile est partie avec lui');
+  // Le menu, lui, garde sa nuit — c'est la sienne.
+  const menu = fs.readFileSync(path.join(ROOT, 'public/minipixiz/menu.js'), 'utf8');
+  assert.match(menu, /BLEU_NUIT/, 'la clairière bleuit toujours');
+});
+
+test('la couleur ne teint que la peau du jeton — le reflet reste clair', () => {
+  // Token.updateSkin : Mc.setColor(downcast(skin).skin, …) — la teinte tombe
+  // sur le clip `skin` seul ; le rebord anonyme au-dessus (le liseré brillant)
+  // garde ses couleurs. Teindre tout le canevas rendait les billes plates.
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(client, /function partiesJeton\(couleur\) \{\n  return \{ skin: couleur, 'skin\.d': couleur \};/,
+    'la peau, et son enfant sur l\'armure');
+  assert.match(client, /rendre\(s\.token, frame, TS, undefined, partiesJeton\(couleur\), null, null, melange\)/,
+    'le plateau teint par parties');
+  assert.match(client, /rendre\(s\.token, 1, NEXT_ZONE\.taille \* k, undefined,\n\s*partiesJeton\(/,
+    'la colonne des pièces à venir aussi');
+  // Et le rebord existe bien : une pièce anonyme au-dessus de la peau.
+  const m = JSON.parse(fs.readFileSync(
+    path.join(ROOT, 'public/minipixiz/sprites/sprites.json'), 'utf8'));
+  const f1 = m.token.etats.find((q) => q.frame === 1);
+  assert.ok(f1.pieces.some((p) => p.nom === 'skin'), 'la peau nommée');
+  assert.ok(f1.pieces.some((p) => !p.nom), 'et le rebord anonyme, épargné par la teinte');
+});
+
 // ── Le sac de l'écran principal ───────────────────────────────────────────
 
 test('l\'inventaire s\'ouvre DEVANT la clairière', () => {

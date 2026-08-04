@@ -118,8 +118,9 @@ const ORNEGON = { barreX: 99, barreY: 12, centre: 75,
 // Le bleu de la nuit, et la force du voile (Menu.setNight). Le coefficient de
 // nuit vaut zéro à minuit, un demi à midi : |nc - 0.5| × 2 donne donc zéro en
 // plein jour et un au cœur de la nuit.
-const BLEU_NUIT = { r: 0x27, v: 0x4C, b: 0x76 };
-const NUIT_MAX = 0.55;                // le voile ne noie jamais complètement le jeu
+// L'heure ne teinte JAMAIS l'écran de jeu : dans l'original, seul le menu
+// bleuit ses plans (Menu.setNight) et le bassin change l'image de son fond —
+// la forêt est la même à midi et à minuit.
 
 // ── Chargement ────────────────────────────────────────────────────────────
 const images = new Map();
@@ -183,6 +184,15 @@ const ANCRE_CENTRE = new Set(['marble', 'star']);
 // inter.Face les met à l'échelle (`_xscale = height`), donc ils suivent la règle
 // commune. Ne restent en pixels que les dessins accrochés SANS échelle.
 const ECHELLE_PIXEL = new Set(['imp', 'coeur', 'mana', 'fee']);
+
+// Token.updateSkin : `Mc.setColor(downcast(skin).skin, …)` — la couleur ne
+// touche que la PEAU du jeton (le clip `skin`, et son enfant sur l'armure).
+// Le rebord anonyme posé au-dessus — le liseré clair des billes — reste tel
+// quel : c'est lui qui les fait briller. Teindre tout le canevas éteignait
+// ce reflet, et les billes paraissaient plates.
+function partiesJeton(couleur) {
+  return { skin: couleur, 'skin.d': couleur };
+}
 
 // Mc.setPic : la fée n'a pas une couleur mais trois, et chaque morceau du
 // portrait sait laquelle lui revient.
@@ -1111,10 +1121,7 @@ class Client {
     //    après le reste.
     this.dessinerNuitNoire(ctx);
 
-    // 5. L'heure qu'il est, en dernier : elle teinte la scène entière.
-    this.dessinerNuit(ctx);
-
-    // 6. La bulle de la fée, le bouquet d'ouverture, et s'il faut mourir, le
+    // 5. La bulle de la fée, le bouquet d'ouverture, et s'il faut mourir, le
     //    rideau par-dessus tout.
     this.dessinerDialogue(ctx, tmod);
     this.dessinerOuverture(ctx, tmod);
@@ -1755,7 +1762,6 @@ class Client {
     // faut jamais la perdre de vue.
     if (bassin.bulle) this.dessinerBulle(ctx, bassin.bulle);
     bougerEclats(ctx, tmod);
-    this.dessinerNuit(ctx);
     this.dessinerMessage(ctx, tmod);
   }
 
@@ -1793,7 +1799,6 @@ class Client {
     this.dessinerEnteteLieu(ctx);
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_DESSUS, 100), 0, 0);
     this.dessinerNuitNoire(ctx);
-    this.dessinerNuit(ctx);
   }
 
   /**
@@ -1831,8 +1836,8 @@ class Client {
       let xMin = 9, yMin = 9;
       for (const o of liste) { xMin = Math.min(xMin, o.x); yMin = Math.min(yMin, o.y); }
       for (const o of liste) {
-        poserRendu(ctx, rendre(s.token, 1, NEXT_ZONE.taille * k,
-          E.COULEURS[o.e.type] || E.COULEURS[0]),
+        poserRendu(ctx, rendre(s.token, 1, NEXT_ZONE.taille * k, undefined,
+          partiesJeton(E.COULEURS[o.e.type] || E.COULEURS[0])),
         zx + (o.x - xMin) * NEXT_ZONE.taille * k,
         zy + dy + (o.y - yMin) * NEXT_ZONE.taille * k);
       }
@@ -1999,21 +2004,6 @@ class Client {
     }
   }
 
-  // Menu.setNight : la scène bleuit à mesure qu'on s'éloigne de midi. Le jeu
-  // applique une teinte par plan ; ici la scène est plate, donc un seul voile.
-  dessinerNuit(ctx) {
-    const c = Math.abs(this.coefNuit - 0.5) * 2;
-    if (!(c > 0.02)) return;
-    const k = c * NUIT_MAX;
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = 'rgb(' + Math.round(255 - (255 - BLEU_NUIT.r) * k) + ','
-      + Math.round(255 - (255 - BLEU_NUIT.v) * k) + ','
-      + Math.round(255 - (255 - BLEU_NUIT.b) * k) + ')';
-    ctx.fillRect(0, 0, SCENE, SCENE);
-    ctx.restore();
-  }
-
   // ── Ce qui vole (combat.js) ──
   dessinerVol(ctx) {
     const jeu = this.jeu, s = this.sprites;
@@ -2090,7 +2080,8 @@ class Client {
       case E.E.JETON: {
         const frame = this.jeu ? imageJeton(this.jeu, e) : 1;
         const couleur = E.COULEURS[e.type] || E.COULEURS[0];
-        poserRendu(ctx, rendre(s.token, frame, TS, couleur, null, null, null, melange), x, y);
+        poserRendu(ctx,
+          rendre(s.token, frame, TS, undefined, partiesJeton(couleur), null, null, melange), x, y);
         // Les marques se posent par-dessus : la perle noire et l'étoile.
         if (e.special === E.SPECIAL.PERLE && s.marble) {
           poserRendu(ctx, rendre(s.marble, 1, TS), x, y);
@@ -2150,7 +2141,7 @@ class Client {
           }
         } else {
           // Sans le clip (vieux manifeste), l'ancien dépannage : un jeton marqué.
-          poserRendu(ctx, rendre(s.token, 1, TS, teinte), x, y);
+          poserRendu(ctx, rendre(s.token, 1, TS, undefined, partiesJeton(teinte)), x, y);
           ctx.fillStyle = '#ffffff';
           ctx.beginPath(); ctx.arc(x + TS / 2, y + TS / 2, 4, 0, 6.28); ctx.fill();
           ctx.fillStyle = '#1a1030';
