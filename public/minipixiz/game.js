@@ -250,14 +250,17 @@ function fondre(g, x, y, l, h, prc, couleur) {
 }
 
 // Applique la teinte de Flash à une zone de canevas.
-// Mc.setColor + modColor(1, 25) : un décalage additif, borné.
-function teinter(g, x, y, l, h, couleur) {
+// Mc.setColor + modColor(1, ajout) : un décalage additif, borné. L'ajout vaut
+// 25 par défaut (l'éclat des jetons) ; la perle et l'étoile, attachées DANS le
+// clip teinté et éclaircies en plus (bmEnlight, +100), montent à 125.
+function teinter(g, x, y, l, h, couleur, ajout) {
   if (l <= 0 || h <= 0) return;
+  const a = 255 - ((ajout === undefined) ? 25 : ajout);
   const d = g.getImageData(x, y, l, h);
   const px = d.data;
-  const dr = ((couleur >> 16) & 0xFF) - 230;
-  const dv = ((couleur >> 8) & 0xFF) - 230;
-  const db = (couleur & 0xFF) - 230;
+  const dr = ((couleur >> 16) & 0xFF) - a;
+  const dv = ((couleur >> 8) & 0xFF) - a;
+  const db = (couleur & 0xFF) - a;
   for (let i = 0; i < px.length; i += 4) {
     if (px[i + 3] === 0) continue;
     px[i] = Math.max(0, Math.min(255, px[i] + dr));
@@ -418,15 +421,19 @@ function partiesDImpy(couleurs) {
 /**
  * Rend un état de sprite pour une case de `taille` px.
  *
- * `couleur` non définie = le dessin d'origine, en gris.
+ * `couleur` non définie = le dessin d'origine, en gris. Un nombre teinte avec
+ * l'éclat des jetons (+25) ; `{ col, ajout }` règle l'éclat — la perle et
+ * l'étoile, éclaircies en plus par bmEnlight, passent par là.
  * `parties` associe un chemin de clip nommé à une couleur — c'est ce que fait
  * Mc.setPic pour la fée, qui n'a pas une teinte mais trois.
  *
  * Renvoie { c, dx, dy } : le canevas, et où le poser depuis le coin de la case.
  */
 function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, melange) {
+  const colNum = (couleur && typeof couleur === 'object') ? couleur.col : couleur;
+  const colAjout = (couleur && typeof couleur === 'object') ? couleur.ajout : undefined;
   const cle = sprite.nom + '/' + frame + '/' + taille + '/'
-    + (couleur === undefined ? 'gris' : couleur)
+    + (colNum === undefined ? 'gris' : colNum + (colAjout !== undefined ? '+' + colAjout : ''))
     + (parties ? '/' + JSON.stringify(parties) : '')
     + (tranche ? '/' + tranche : '')
     + (rotations ? '/' + JSON.stringify(rotations) : '')
@@ -574,7 +581,7 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
       g.drawImage(calque, 0, 0);
     }
   }
-  if (couleur !== undefined) teinter(g, 0, 0, l, h, couleur);
+  if (colNum !== undefined) teinter(g, 0, 0, l, h, colNum, colAjout);
   // Mc.setPercentColor : un fondu linéaire vers une couleur.
   //     sortie = source × (100 - prc)/100 + (prc/100) × couleur
   // C'est ce que le menu applique à chaque plan pour le faire bleuir la nuit.
@@ -2083,11 +2090,14 @@ class Client {
         poserRendu(ctx,
           rendre(s.token, frame, TS, undefined, partiesJeton(couleur), null, null, melange), x, y);
         // Les marques se posent par-dessus : la perle noire et l'étoile.
+        // Token.setSpecial les attache DANS le clip teinté (attachMC sur
+        // skin.skin) et les éclaircit (bmEnlight, +100) : leur noyau prend la
+        // couleur de la bille — sortie = source + couleur − 130.
         if (e.special === E.SPECIAL.PERLE && s.marble) {
-          poserRendu(ctx, rendre(s.marble, 1, TS), x, y);
+          poserRendu(ctx, rendre(s.marble, 1, TS, { col: couleur, ajout: 125 }), x, y);
         }
         if (e.special === E.SPECIAL.ETOILE && s.star) {
-          poserRendu(ctx, rendre(s.star, 1, TS), x, y);
+          poserRendu(ctx, rendre(s.star, 1, TS, { col: couleur, ajout: 125 }), x, y);
         }
         break;
       }

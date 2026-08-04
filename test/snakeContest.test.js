@@ -47,7 +47,22 @@ before(async () => {
   }
   throw new Error('serveur indisponible');
 });
-after(() => { if (serverProc) serverProc.kill('SIGKILL'); });
+after(async () => {
+  if (serverProc) serverProc.kill('SIGKILL');
+  // Le suffixe rend chaque exécution vierge, mais les joueurs S'ACCUMULENT :
+  // au bout d'une vingtaine de runs, le classement (plafonné au top 20) ne
+  // laisse plus paraître le joueur du run courant, et « figure au
+  // classement » échoue à tort. On efface donc NOS joueurs en sortant.
+  await wait(300);
+  const fichier = path.join(ROOT, 'data/scores.json');
+  try {
+    const d = JSON.parse(fs.readFileSync(fichier, 'utf8'));
+    for (const u of Object.keys(d.users || {})) {
+      if (u.slice(-RUN.length) === RUN) delete d.users[u];
+    }
+    fs.writeFileSync(fichier, JSON.stringify(d));
+  } catch { /* pas de fichier : rien à nettoyer */ }
+});
 
 async function sidFor(username) {
   const body = JSON.stringify({ username, password: 'secret123' });

@@ -377,6 +377,11 @@
           // La fée du plateau porte peut-être autre chose depuis tout à l'heure.
           client.poserFee(feeCourante());
         },
+        // Le triangle du coin (Slot.initButQuit) referme l'écran, comme le
+        // bouton sous le canevas.
+        surFermeture: function () {
+          $('#inventaire').classList.remove('on');
+        },
       });
       function ouvrirSac() {
         $('#inventaire').classList.add('on');

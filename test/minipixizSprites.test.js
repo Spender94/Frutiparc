@@ -169,8 +169,11 @@ test('le client sait choisir la bonne liaison', () => {
     'les quatre directions et leurs bits, comme dans Group.draw');
   assert.match(src, /if \(e\.special === E\.SPECIAL\.ARMURE\) return 20/,
     'l\'armure a son image à part');
-  // Et la teinture reprend la transformation de Flash.
-  assert.match(src, /- 230/, 'le décalage additif de Mc.setColor + modColor(1, 25)');
+  // Et la teinture reprend la transformation de Flash : setColor décale de
+  // couleur − 255, modColor rajoute l'éclat — 25 pour la peau des jetons,
+  // 125 pour la perle et l'étoile éclaircies par bmEnlight.
+  assert.match(src, /const a = 255 - \(\(ajout === undefined\) \? 25 : ajout\);/,
+    'le décalage additif de Mc.setColor + modColor(1, éclat)');
 });
 
 // ── Le décor, le cadre, la fée ────────────────────────────────────────────

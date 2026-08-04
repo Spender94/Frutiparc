@@ -46,7 +46,21 @@ before(async () => {
   }
   throw new Error('serveur indisponible');
 });
-after(() => { if (serverProc) serverProc.kill('SIGKILL'); });
+after(async () => {
+  if (serverProc) serverProc.kill('SIGKILL');
+  // Même ménage que le Frutisnake Contest : le suffixe rend chaque exécution
+  // vierge, mais les joueurs s'accumulent et finissent par pousser celui du
+  // run courant hors du top 20 — on efface donc LES NÔTRES en sortant.
+  await wait(300);
+  const fichier = path.join(ROOT, 'data/scores.json');
+  try {
+    const d = JSON.parse(fs.readFileSync(fichier, 'utf8'));
+    for (const u of Object.keys(d.users || {})) {
+      if (u.slice(-RUN.length) === RUN) delete d.users[u];
+    }
+    fs.writeFileSync(fichier, JSON.stringify(d));
+  } catch { /* pas de fichier : rien à nettoyer */ }
+});
 
 async function sidFor(username) {
   const body = JSON.stringify({ username, password: 'secret123' });

@@ -131,6 +131,19 @@ class Inventaire {
     this.dpr = 1;
 
     this.canvas.addEventListener('click', (ev) => this.clic(ev));
+    // Le coin de sortie s'allume au survol (mcButQuit image 2). L'écran ne se
+    // redessine que quand l'état change — pas à chaque mouvement.
+    this.surLeCoin = false;
+    this.canvas.addEventListener('mousemove', (ev) => {
+      const r = this.canvas.getBoundingClientRect();
+      const x = (ev.clientX - r.left) / this.echelle;
+      const y = (ev.clientY - r.top) / this.echelle;
+      const dessus = x > SCENE - 46 && y > SCENE - 46;
+      if (dessus !== this.surLeCoin) { this.surLeCoin = dessus; this.rendre(); }
+    });
+    this.canvas.addEventListener('mouseleave', () => {
+      if (this.surLeCoin) { this.surLeCoin = false; this.rendre(); }
+    });
     this.redimensionner();
     window.addEventListener('resize', () => { this.redimensionner(); this.rendre(); });
   }
@@ -238,6 +251,11 @@ class Inventaire {
     poser('invDevant', 1, 100, 0, 0);
     poser('invPoubelle', 1, 100, 0, SCENE);
     this.zoneRect('poubelle', 0, SCENE - 32, 24, 32);
+
+    // 7. Le coin de sortie — Slot.initButQuit : mcButQuit posé en (mcw, mch),
+    //    image 2 au survol, et le clic ramène à la clairière.
+    poser('boutonQuitter', this.surLeCoin ? 2 : 1, 100, SCENE, SCENE);
+    this.zoneRect('quitter', SCENE - 46, SCENE - 46, 46, 46);
 
     // 5. L'objet tenu suit le doigt : on le montre au coin de sa case d'origine,
     //    entouré, pour qu'on sache toujours ce qu'on a en main.
@@ -510,6 +528,7 @@ class Inventaire {
     if (quoi === 'portrait') { this.donnerALaFee(); return; }
     if (quoi === 'liberer') { this.liberer(); return; }
     if (quoi === 'poubelle') { this.jeter(); return; }
+    if (quoi === 'quitter') { this.fermer(); return; }
     if (quoi && quoi.fee !== undefined) {
       this.feeCourante = quoi.fee; this.main = null; this.dire(''); return;
     }
@@ -670,6 +689,11 @@ class Inventaire {
 
   ouvrir() {
     this.main = null;
+    // Inventory.mt s'ouvre sur la fée COURANTE (Cm.getCurrentFaerie lit
+    // $faerie[$current]) — pas sur la première du bocal.
+    const l = this.carte.$faerie || [];
+    const c = nombre(this.carte.$current);
+    this.feeCourante = (c >= 0 && c < l.length && l[c]) ? c : 0;
     this.redimensionner();
     this.dire('');
   }

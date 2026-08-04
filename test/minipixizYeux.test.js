@@ -239,6 +239,46 @@ test('la couleur ne teint que la peau du jeton — le reflet reste clair', () =>
   assert.ok(f1.pieces.some((p) => !p.nom), 'et le rebord anonyme, épargné par la teinte');
 });
 
+test('la perle et l\'étoile prennent la couleur de leur bille', () => {
+  // Token.setSpecial attache la perle et l'étoile DANS le clip teinté
+  // (attachMC sur skin.skin) puis les éclaircit (bmEnlight, +100) : leur
+  // noyau suit la couleur de la bille — sortie = source + couleur − 130.
+  // Posées brutes, elles restaient grises — les « noyaux gris » du terrain.
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(client, /rendre\(s\.marble, 1, TS, \{ col: couleur, ajout: 125 \}\)/,
+    'la perle hérite de la teinte, éclaircie');
+  assert.match(client, /rendre\(s\.star, 1, TS, \{ col: couleur, ajout: 125 \}\)/,
+    'l\'étoile aussi');
+  assert.match(client, /function teinter\(g, x, y, l, h, couleur, ajout\)/,
+    'teinter sait doser l\'éclat');
+});
+
+// ── L'inventaire ──────────────────────────────────────────────────────────
+
+test('l\'inventaire s\'ouvre sur la fée COURANTE', () => {
+  // Inventory.mt lit Cm.getCurrentFaerie() — $faerie[$current] — partout.
+  // Ouvrir sur la première du bocal montrait la mauvaise fée au médaillon.
+  const inv = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
+  assert.match(inv, /const c = nombre\(this\.carte\.\$current\);\n\s*this\.feeCourante = \(c >= 0 && c < l\.length && l\[c\]\) \? c : 0;/,
+    'ouvrir() suit $current, avec repli sur zéro');
+});
+
+test('le coin de sortie ramène à la clairière', () => {
+  // Slot.initButQuit : mcButQuit en (mcw, mch), image 2 au survol, et le
+  // clic quitte l'écran. Le portage n'avait que le bouton HTML sous le
+  // canevas — le triangle du jeu manquait.
+  const inv = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
+  assert.match(inv, /poser\('boutonQuitter', this\.surLeCoin \? 2 : 1, 100, SCENE, SCENE\)/,
+    'le triangle du jeu, au coin, image 2 au survol');
+  assert.match(inv, /this\.zoneRect\('quitter', SCENE - 46, SCENE - 46, 46, 46\)/,
+    'et sa zone');
+  assert.match(inv, /if \(quoi === 'quitter'\) \{ this\.fermer\(\); return; \}/,
+    'le clic referme');
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /surFermeture: function \(\) \{\n\s*\$\('#inventaire'\)\.classList\.remove\('on'\);/,
+    'et la page rend la main à la clairière');
+});
+
 // ── Le sac de l'écran principal ───────────────────────────────────────────
 
 test('l\'inventaire s\'ouvre DEVANT la clairière', () => {
