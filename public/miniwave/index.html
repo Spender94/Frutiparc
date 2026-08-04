@@ -211,8 +211,25 @@
       refus: 'sMenuBeepWrong' }[quoi] || 'sMenuBeep', window.MiniwaveSons.CANAL.menu);
   }
 
+  // Le voyant « en partie » — la même icône que le bureau. Allumé au départ,
+  // éteint à la fin de partie et au retour au menu ; la fermeture de l'onglet
+  // éteint par sendBeacon, la déconnexion du chat éteint côté serveur.
+  function direEnPartie(on) {
+    if (!sid) return;
+    var corps = JSON.stringify({ sid: sid, jeu: 'miniwave', on: on ? '1' : '0' });
+    if (!on && navigator.sendBeacon) {
+      navigator.sendBeacon('/api/light/jeu-en-cours', new Blob([corps], { type: 'application/json' }));
+      return;
+    }
+    fetch('/api/light/jeu-en-cours', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps,
+    }).catch(function () {});
+  }
+  window.addEventListener('pagehide', function () { direEnPartie(false); });
+
   // ── Lancer une partie ──
   function lancer(l, escadron) {
+    direEnPartie(true);
     enCours = { lancement: l, escadron: escadron };
     $('#fin').classList.remove('on');
     var lettres = (l.mode === 'letter');
@@ -228,6 +245,7 @@
   }
 
   function ouvrirMenu() {
+    direEnPartie(false);
     $('#fin').classList.remove('on');
     $('#clavier').classList.remove('on');
     $('#manette').style.display = 'none';
@@ -290,6 +308,7 @@
       surEvenement: function (nom, info) {
         sons.surEvenement(nom, info);
         if (nom !== 'finPartie') return;
+        direEnPartie(false);
         var l = enCours ? enCours.lancement : {};
         $('#fin-titre').textContent = (info.raison === 'fin') ? 'BRAVO !' : 'GAME OVER';
         $('#fin-score').textContent = info.score + ' points · '

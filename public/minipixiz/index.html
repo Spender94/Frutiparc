@@ -202,7 +202,25 @@
   // course s'arrête. C'est elle qu'on enregistre, pas chaque niveau.
   var course = null;
 
+  // Le voyant « en partie » — la même icône que le bureau pose à côté du
+  // pseudo. On prévient au départ d'une partie, on éteint au retour à la
+  // clairière ; la fermeture de l'onglet éteint par sendBeacon, et la
+  // déconnexion du chat éteint de toute façon côté serveur.
+  function direEnPartie(on) {
+    if (!sid) return;
+    var corps = JSON.stringify({ sid: sid, jeu: 'minipixiz', on: on ? '1' : '0' });
+    if (!on && navigator.sendBeacon) {
+      navigator.sendBeacon('/api/light/jeu-en-cours', new Blob([corps], { type: 'application/json' }));
+      return;
+    }
+    fetch('/api/light/jeu-en-cours', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps,
+    }).catch(function () {});
+  }
+  window.addEventListener('pagehide', function () { direEnPartie(false); });
+
   function nouvelleCourse(depart) {
+    direEnPartie(true);
     course = {
       depart: depart || 0, niveau: depart || 0, niveaux: [], objets: [], entree: true,
       // base/Forest.endGame ferme la partie au premier multiple de vingt : une
@@ -441,6 +459,7 @@
        * de suite.
        */
       function ouvrirBassin() {
+        direEnPartie(true);
         var bassin = client.nouveauBassin({
           carte: plateforme.carte,
           graine: Math.floor(Math.random() * 1e9),
@@ -469,6 +488,7 @@
        * de l'arbre et l'objet de l'arc-en-ciel sont acquis sur-le-champ.
        */
       function ouvrirLieu(classe) {
+        direEnPartie(true);
         var avant = JSON.parse(JSON.stringify(plateforme.carte));
         var l = client.nouveauLieu(classe, {
           carte: plateforme.carte,
@@ -523,6 +543,7 @@
       }
 
       function ouvrirMenu() {
+        direEnPartie(false);
         // Manager.fadeSlot : la clairière s'ouvre dans l'iris, sur la
         // photographie de l'écran qu'on quitte — s'il y en avait un.
         if (client.jeu || client.lieu || client.bassin || client.carteForet || client.nouvelle) {

@@ -182,7 +182,7 @@ test('le client mobile sait ouvrir, router et signaler les discussions privées'
     'les pseudos de la liste sont cliquables');
   // La même ligne sert aux deux onglets du tiroir : celui du salon et celui de
   // tout le site. Écrire à quelqu'un d'un autre salon doit rester un seul appui.
-  assert.ok(/function ligneConnecte\(pseudo, lieu, staff\)/.test(html),
+  assert.ok(/function ligneConnecte\(pseudo, lieu, staff, jeu\)/.test(html),
     'les deux onglets partagent le même rendu de ligne');
 
   // Réception : les deux trames du protocole sont traitées.

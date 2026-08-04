@@ -973,23 +973,28 @@
     },
     startDuel: function () {
       Manager.mode.destroy();
+      Manager.client.direEnPartie(true);
       Manager.mode = new SW.Duel();
     },
     startHistoryMap: function () {
       Manager.mode.destroy();
+      Manager.client.direEnPartie(true);
       Manager.mode = new HistoMap();
     },
     startClassic: function () {
       Manager.mode.destroy();
+      Manager.client.direEnPartie(true);
       Manager.mode = new SW.Classic();
     },
     startMenu: function () {
       if (Manager.mode) Manager.mode.destroy();
+      if (Manager.client) Manager.client.direEnPartie(false);
       SW.Data.histoPhase = 0;
       Manager.mode = new Menu();
     },
     started: function () {
       Manager.mode.destroy();
+      Manager.client.direEnPartie(true);
       Manager.mode = new SW.Challenge();
     },
     connected: function () {

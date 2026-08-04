@@ -146,6 +146,20 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   // data = perso au format sérialisé Motion-Twin « S<charId>: » (colonne
   // « Perso » du tableau, identique à ce que le serveur normalise) → lignes
   // desktop (SWF) et mobile strictement interchangeables.
+  // Le voyant « en partie » à côté du pseudo — le serveur l'éteint de
+  // lui-même quand le score part (saveScore) ou que la socket tombe.
+  Client.prototype.direEnPartie = function (on) {
+    if (!this.sid) return;
+    var corps = JSON.stringify({ sid: this.sid, jeu: 'swapou2', on: on ? '1' : '0' });
+    if (!on && navigator.sendBeacon) {
+      navigator.sendBeacon('/api/light/jeu-en-cours', new Blob([corps], { type: 'application/json' }));
+      return;
+    }
+    fetch('/api/light/jeu-en-cours', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps,
+    }).catch(function () {});
+  };
+
   Client.prototype.saveScore = function (score, mode, cb) {
     if (this.standalone || !this.sid) { cb(null); return; }
     const body = new URLSearchParams();

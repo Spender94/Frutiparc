@@ -504,7 +504,9 @@
     text-shadow: 0 1px 0 rgba(255,255,255,.25);
   }
   #users-drawer .u:nth-child(odd) { background: #d6f7b5; }
-  #users-drawer .u > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #users-drawer .u > span:first-of-type { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Le voyant de jeu — la même icône que le bureau pose à côté du pseudo. */
+  #users-drawer .u .voyant { width: 22px; height: 22px; flex-shrink: 0; }
   #users-drawer .u .badge {
     font-size: 10px; font-weight: bold; background: #242169; color: #fff;
     border-radius: 8px; padding: 1px 6px; letter-spacing: 0; text-shadow: none; flex-shrink: 0;
@@ -1522,7 +1524,8 @@
     reconnectTimer: null,
     intentionalClose: false,
     usersByRoom: {},   // room -> Set of display names
-    bouilleByUser: {}, // lowercased pseudo -> bouille state string "f"
+    bouilleByUser: {},
+    jeuByUser: {}, // lowercased pseudo -> bouille state string "f"
     overlayTimer: null,
     pen: "",           // selected feutre index ("" = default colour, "mc" = multicolore)
     ownedFeutres: [],  // feutres spéciaux possédés (ex. "mc") — profil serveur
@@ -2986,7 +2989,11 @@
         while ((mm = re.exec(inner)) !== null) {
           var frag = "<u " + mm[1] + "/>";
           var uname = attr(frag, "u");
-          if (uname) { set[uname] = true; rememberBouille(uname, attr(frag, "f")); }
+          if (uname) {
+            set[uname] = true;
+            rememberBouille(uname, attr(frag, "f"));
+            rememberStatut(uname, attr(frag, "s"));
+          }
         }
         state.usersByRoom[room] = set;
         if (room === state.room) renderUsers();
@@ -2995,9 +3002,18 @@
 
       case "z": { // trace push: <z><u u=".." f="<bouille>" .../></z> — bouille data
         var zre = /<u\b([^>]*)\/>/g, zm;
+        var zTrouve = false;
         while ((zm = zre.exec(xml)) !== null) {
+          zTrouve = true;
           var zf = "<u " + zm[1] + "/>";
           rememberBouille(attr(zf, "u"), attr(zf, "f"));
+          rememberStatut(attr(zf, "u"), attr(zf, "s"));
+        }
+        // La trace vient aussi sous forme directe (<z u=".." s=".." f=".."/>) :
+        // c'est elle qui porte les changements de voyant en direct.
+        if (!zTrouve && attr(xml, "u")) {
+          rememberBouille(attr(xml, "u"), attr(xml, "f"));
+          rememberStatut(attr(xml, "u"), attr(xml, "s"));
         }
         break;
       }
@@ -3604,10 +3620,19 @@
   var siteListe = null, siteTimer = null;
 
   // Une ligne : le pseudo, éventuellement le lieu, et le geste « écrire en privé ».
-  function ligneConnecte(pseudo, lieu, staff) {
+  function ligneConnecte(pseudo, lieu, staff, jeu) {
     var u = el("div", "u");
     var contenu = u;
     if (lieu) { u.classList.add("avec-lieu"); contenu = el("div", "haut"); u.appendChild(contenu); }
+    // Le voyant de jeu, avant le pseudo — la même icône que le bureau.
+    if (jeu === undefined) jeu = voyantDe(pseudo);
+    if (jeu && VOYANTS_NOM[jeu]) {
+      var vj = el("img", "voyant");
+      vj.src = "/fb/voyant_" + jeu + ".png";
+      vj.alt = "";
+      vj.title = "Joue à " + VOYANTS_NOM[jeu];
+      contenu.appendChild(vj);
+    }
     var nm = el("span"); nm.textContent = pseudo;
     contenu.appendChild(nm);
     if (staff) { var s = el("span", "badge"); s.textContent = "staff"; contenu.appendChild(s); }
@@ -3661,8 +3686,8 @@
     siteListe.forEach(function (j) {
       var lieu = (j.salons && j.salons.length)
         ? j.salons.map(roomLabel).join(", ")
-        : "en ligne";
-      list.appendChild(ligneConnecte(j.pseudo, lieu, !!j.staff));
+        : (j.jeu && VOYANTS_NOM[j.jeu] ? "joue à " + VOYANTS_NOM[j.jeu] : "en ligne");
+      list.appendChild(ligneConnecte(j.pseudo, lieu, !!j.staff, j.jeu || ""));
     });
   }
 
@@ -3763,6 +3788,36 @@
     var clean = String(f).replace(/[^0-9A-Za-z]/g, "");
     if (clean.length >= 4) state.bouilleByUser[String(pseudo).toLowerCase()] = clean;
   }
+
+  // ── Le voyant de jeu ──
+  // Le serveur diffuse pour chaque joueur une chaîne de statut de quatre
+  // caractères en base 62 : absence(1) + JEU(2) + émote(1). Les deux du milieu
+  // sont le code interne du bureau — celui qui choisit l'icône à côté du
+  // pseudo. On garde la même table que main.swf, traduite en PNG extraits du
+  // même sprite (scripts/extract-voyants-jeux.js).
+  var VOYANTS_JEU = { 6: "bandas", 7: "grapiz", 4: "swapou", 9: "miniwave", 12: "minipixiz" };
+  var VOYANTS_NOM = { bandas: "Frutibandas", grapiz: "Grapiz", swapou: "Swapou",
+    miniwave: "Mini-Wave", minipixiz: "Minipixiz" };
+  var BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  function decode62(s) {
+    var r = 0;
+    for (var i = 0; i < s.length; i++) {
+      var k = BASE62.indexOf(s.charAt(i));
+      if (k < 0) return 0;
+      r = r * 62 + k;
+    }
+    return r;
+  }
+  function rememberStatut(pseudo, s) {
+    if (!pseudo || s === null || s === undefined) return;
+    var interne = decode62(String(s).substring(1, 3));
+    var avant = state.jeuByUser[String(pseudo).toLowerCase()];
+    var jeu = VOYANTS_JEU[interne] || "";
+    state.jeuByUser[String(pseudo).toLowerCase()] = jeu;
+    // Un voyant qui s'allume ou s'éteint se voit tout de suite dans la liste.
+    if (avant !== jeu && drawerVue === "salon") renderUsers();
+  }
+  function voyantDe(pseudo) { return state.jeuByUser[String(pseudo).toLowerCase()] || ""; }
 
   // Emote detection — IDENTICAL to the desktop. Source of truth:
   //   _global.actionInfo (FAMILLE 0) in frutiparc/global.as : token → emote id

@@ -270,10 +270,29 @@ const STATUS_INTERNAL_FRAME = {
   grapiz:    7,   // verified: MB2 (internal=7) was showing the Grapiz visual
   kaluga:    8,   // verified: BKiwi (internal=8) was showing the Kaluga visual
   miniwave:  9,   // verified empirically via /set-internal scan
-  // Not yet located in the sprite (frame number unknown): minipixiz, jamajama.
+  // The displayed frame is the internal code + 3 across every verified game
+  // (bandas 6 -> the beret tomato at sprite frame 9, etc.). The fairy's
+  // butterfly visual sits at sprite frame 15 -> internal 12.
+  minipixiz: 12,
+  // Not yet located: jamajama (candidate: the maraca at sprite frame 18 ->
+  // internal 15, unverified).
   // forum visual is at frame 36 per FrameLabels.
   forum:     36,
 };
+// Nom de jeu ← code interne, pour dire au mobile QUI joue à QUOI. On ne
+// publie que les jeux jouables — le forum n'est pas une partie.
+const STATUS_INTERNAL_JEU = Object.fromEntries(Object.entries(STATUS_INTERNAL_FRAME)
+  .filter(([nom]) => nom !== 'forum')
+  .map(([nom, code]) => [code, nom]));
+// Le code interne d'un joueur connecté, lu sur ses sockets de chat (0 si rien).
+function statusInternalOf(username) {
+  for (const [, cl] of xmlSocketClients) {
+    if (cl && cl.username === username && cl.logged && cl.statusStr) {
+      return decode62(cl.statusStr.substring(1, 3)) || 0;
+    }
+  }
+  return 0;
+}
 function statusInternalCode(name) {
   if (!name) return 0;
   return STATUS_INTERNAL_FRAME[name] || 0;
@@ -14921,6 +14940,7 @@ app.get('/api/light/online', (req, res) => {
     if (!e) {
       e = {
         pseudo: getDisplayName(cl.username),
+        nom: cl.username,
         salons: new Set(),
         staff: isModerator(cl.username) || isAnimator(cl.username),
       };
@@ -14934,11 +14954,36 @@ app.get('/api/light/online', (req, res) => {
   }
 
   const liste = [...parJoueur.values()]
-    .map((e) => ({ pseudo: e.pseudo, salons: [...e.salons].sort(), staff: e.staff }))
+    .map((e) => {
+      const o = { pseudo: e.pseudo, salons: [...e.salons].sort(), staff: e.staff };
+      // Le voyant de jeu : le même code interne que le bureau affiche à côté
+      // du pseudo. On le traduit en nom de jeu pour l'icône du mobile.
+      const jeu = STATUS_INTERNAL_JEU[statusInternalOf(e.nom)];
+      if (jeu) o.jeu = jeu;
+      return o;
+    })
     .sort((a, b) => String(a.pseudo).localeCompare(String(b.pseudo), 'fr', { sensitivity: 'base' }));
 
   res.setHeader('Cache-Control', 'no-store');
   res.json({ ok: true, count: liste.length, users: liste });
+});
+
+// « Je joue / j'ai fini » — la balise des jeux NATIFS (mobile et portages).
+// Les jeux en SWF passent par le lancement Frusion ou FrutiScore, qui posent
+// déjà le voyant ; les natifs n'avaient aucun chemin. Le client l'appelle au
+// début d'une partie (on=1) et à la sortie (on=0) — et sendBeacon à la
+// fermeture de l'onglet. Le voyant s'éteint de toute façon avec la socket.
+const JEUX_NATIFS_VOYANT = new Set(['bandas', 'grapiz', 'swapou2', 'miniwave', 'minipixiz']);
+app.post('/api/light/jeu-en-cours', (req, res) => {
+  const corps = req.body || {};
+  const sid = corps.sid || req.query.sid || '';
+  const username = resolveUsernameFromSid(sid);
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  const jeu = String(corps.jeu || req.query.jeu || '');
+  const on = String(corps.on !== undefined ? corps.on : req.query.on) === '1';
+  if (!JEUX_NATIFS_VOYANT.has(jeu)) return res.status(400).json({ ok: false, error: 'jeu' });
+  setUserInternalStatus(username, on ? statusInternalCode(jeu) : 0);
+  res.json({ ok: true });
 });
 
 // Boutique mobile (/light) : accessoires achetables + solde kikooz. On expose
@@ -16866,6 +16911,9 @@ const { GrapizNet } = require('./public/grapiz/server/net.js');
 const grapizNet = new GrapizNet({
   onResult: (session, winner, reason) => {
     console.log(`[grapiz] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
+    // Le voyant de jeu s'éteint pour chaque humain de la partie (les
+    // identifiants de bots n'ont pas de socket : l'appel ne fait rien).
+    for (const p of (session.players || [])) setUserInternalStatus(p.id, 0);
   },
   // Le gros nombre doré = la SÉRIE de victoires consécutives (mode challenge).
   getStreak: (username) => (users[username] || {}).grapizStreak || 0,
@@ -16879,7 +16927,15 @@ const grapizNet = new GrapizNet({
   // joueur n'a plus de disque ; un disque est consommé à chaque DÉFAITE classée
   // (gagner ne coûte rien). Les matchs contre un bot restent jouables (classés
   // tant qu'on a un disque, sinon entraînement libre non classé).
-  onMatchForming: (humans, ctx) => fdMatchForming('grapiz', humans, ctx),
+  onMatchForming: (humans, ctx) => {
+    const r = fdMatchForming('grapiz', humans, ctx);
+    // Le match part : chaque humain porte le voyant Grapiz à côté de son
+    // pseudo, sur le bureau comme sur le mobile.
+    if (!r || r.ok !== false) {
+      for (const u of humans) setUserInternalStatus(u, statusInternalCode('grapiz'));
+    }
+    return r;
+  },
   onDiscLost: (username) => fdConsumeDisc('grapiz', username),
 });
 // Envoie chaque message { to:[usernames], xml } à tous les sockets de ces joueurs.
@@ -16906,6 +16962,7 @@ const { BandasNet } = require('./public/bandas/server/net.js');
 const bandasNet = new BandasNet({
   onResult: (session, winner, reason) => {
     console.log(`[bandas] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
+    for (const p of (session.players || [])) setUserInternalStatus(p.id, 0);
   },
   // Le gros nombre doré = la SÉRIE de victoires consécutives (mode challenge).
   getStreak: (username) => (users[username] || {}).bandasStreak || 0,
@@ -16919,7 +16976,13 @@ const bandasNet = new BandasNet({
   // joueur n'a plus de disque ; un disque est consommé à chaque DÉFAITE classée
   // (gagner ne coûte rien). Les matchs contre un bot restent jouables (classés
   // tant qu'on a un disque, sinon entraînement libre non classé).
-  onMatchForming: (humans, ctx) => fdMatchForming('bandas', humans, ctx),
+  onMatchForming: (humans, ctx) => {
+    const r = fdMatchForming('bandas', humans, ctx);
+    if (!r || r.ok !== false) {
+      for (const u of humans) setUserInternalStatus(u, statusInternalCode('bandas'));
+    }
+    return r;
+  },
   onDiscLost: (username) => fdConsumeDisc('bandas', username),
 });
 // Tick : horloges (timeout) + coups des bots (1 Hz).
