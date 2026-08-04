@@ -487,16 +487,24 @@
     flex: 0 0 auto; border: 0; background: transparent; color: #d02c17;
     font-size: 18px; font-weight: bold; line-height: 1; cursor: pointer; padding: 0 2px;
   }
-  .fiche-actions { display: flex; align-items: center; gap: 6px; }
+  .fiche-actions { display: flex; align-items: center; gap: 5px; }
+  /* Les boutons du bureau : le carré rose de butPushVerySmallPink (chrome sans
+     son glyphe), et par-dessus une icône de la banque fileIcon.swf. */
   .fiche-actions button {
-    width: 32px; height: 26px; border: 1px solid #eba7a7; border-radius: 6px;
-    background: #fff; font-size: 13px; line-height: 1; cursor: pointer; padding: 0;
+    width: 30px; height: 30px; border: 0; padding: 0; cursor: pointer;
+    background: url('/fb/fiche/bouton_carre.png') no-repeat center / 100% 100%;
+    display: flex; align-items: center; justify-content: center;
   }
-  .fiche-actions button:active { background: #ffecec; }
+  .fiche-actions button img { width: 19px; height: 19px; object-fit: contain; display: block; }
+  .fiche-actions button:active { filter: brightness(.92); }
+  /* butPushSmallPink, entier : son glyphe « liste » est dans le dessin. */
+  .fiche-actions button.entier { background-image: url('/fb/fiche/bouton_liste.png'); }
+  /* Pas encore porté sur mobile : présent, mais éteint — comme convenu. */
+  .fiche-actions button:disabled { opacity: .42; cursor: default; }
+  /* icoArrow du bureau, teinté rouge comme à l'exécution. */
   .fiche-actions .triangle {
-    margin-left: auto; width: 0; height: 0;
-    border-left: 8px solid transparent; border-right: 8px solid transparent;
-    border-top: 11px solid #e2574b; border-radius: 2px;
+    margin-left: auto; width: 17px; height: 13px;
+    background: url('/fb/fiche/triangle.png') no-repeat center / contain;
   }
   .fiche-corps { background: #d9f0a2; border-top: 1px solid #b3d37e; }
   .fiche-onglets { display: flex; padding: 9px 8px 7px; border-bottom: 1px solid #a8ca6d; }
@@ -506,7 +514,12 @@
   }
   .fiche-onglets button.actif { color: #c22000; }
   .fiche-page { padding: 10px 18px 16px; min-height: 200px; }
-  .fiche-titre { text-align: center; font-weight: bold; font-size: 14.5px; color: #16300a; margin: 6px 0 10px; }
+  /* Le bandeau clair du bureau (butGfxFrutizInfoTitleBg) sous chaque titre. */
+  .fiche-titre {
+    text-align: center; font-weight: bold; font-size: 14.5px; color: #16300a;
+    margin: 6px 0 10px; padding: 3px 0;
+    background: url('/fb/fiche/bandeau_titre.png') no-repeat center / 100% 100%;
+  }
   .fiche-signes { display: flex; align-items: center; justify-content: center; gap: 30px; margin: 4px 0 14px; }
   .fiche-signes img.petit { width: 26px; height: 26px; object-fit: contain; }
   .fiche-signes img.grand { width: 58px; height: 58px; object-fit: contain; }
@@ -1351,9 +1364,15 @@
               <span class="meta" id="fiche-meta"></span>
               <button type="button" id="fiche-fermer" aria-label="Fermer">✕</button>
             </div>
+            <!-- La rangée du bureau, avec ses vrais dessins. Les boutons sans
+                 action mobile restent visibles mais éteints. -->
             <div class="fiche-actions">
-              <button type="button" id="fiche-mp" title="Discuter en privé">💬</button>
-              <button type="button" id="fiche-don" title="Offrir des kikooz">🎁</button>
+              <button type="button" id="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
+              <button type="button" id="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
+              <button type="button" id="fiche-liste" class="entier" title="Sur le bureau" disabled></button>
+              <button type="button" id="fiche-blog" title="Bouilloscope — sur le bureau" disabled><img src="/fb/fiche/ico_blog.png" alt=""></button>
+              <button type="button" id="fiche-don" title="Offrir des kikooz"><img src="/fb/icone_kikooz.svg" alt=""></button>
+              <button type="button" id="fiche-contact" title="Ajouter aux contacts — sur le bureau" disabled><img src="/fb/fiche/ico_contact.png" alt=""></button>
               <span class="triangle" aria-hidden="true"></span>
             </div>
           </div>
@@ -3811,8 +3830,9 @@
     $("#fiche-meta").textContent = meta;
     // Se parler à soi-même n'a pas de sens : le bureau non plus ne le fait pas.
     var moi = ficheEtat.pseudo && ficheEtat.pseudo.toLowerCase() === state.userLower;
-    $("#fiche-mp").style.display = moi ? "none" : "";
-    $("#fiche-don").style.display = moi ? "none" : "";
+    ["#fiche-mp", "#fiche-mail", "#fiche-don"].forEach(function (s) {
+      $(s).style.display = moi ? "none" : "";
+    });
     Array.prototype.forEach.call($("#fiche-onglets").children, function (b) {
       b.classList.toggle("actif", b.getAttribute("data-onglet") === ficheEtat.onglet);
     });
@@ -3912,6 +3932,12 @@
     fermerFiche();
     openDrawer(false);
     ouvrirPrive(p);
+  });
+  // Le courrier du bureau, destinataire prérempli — la vraie messagerie.
+  $("#fiche-mail").addEventListener("click", function () {
+    var p = ficheEtat.pseudo;
+    fermerFiche();
+    ecrireMail(p, "");
   });
   // « Offrir des kikooz » : on prépare la commande /donne dans le compositeur,
   // le joueur n'a plus qu'à mettre le montant — comme l'aide de Gaspard l'enseigne.

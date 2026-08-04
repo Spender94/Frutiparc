@@ -127,6 +127,31 @@ test('les frutisignes sont extraits — les dix fruits, et la silhouette', () =>
     'les dix signes, dans l\'ordre du bureau');
 });
 
+test('la rangée d\'actions porte les vrais dessins du bureau', () => {
+  // Le chrome des boutons (butPushVerySmallPink sans son glyphe), le bouton
+  // « liste » complet (butPushSmallPink), le triangle (icoArrow teinté), le
+  // bandeau des titres (butGfxFrutizInfoTitleBg) — et les icônes de la banque
+  // fileIcon.swf (sprite iconGFX, une étiquette par type).
+  for (const f of ['bouton_carre', 'bouton_liste', 'triangle', 'bandeau_titre',
+    'ico_chat', 'ico_mail', 'ico_blog', 'ico_contact']) {
+    const p = path.join(ROOT, 'public/fb/fiche/' + f + '.png');
+    assert.ok(fs.existsSync(p), f + '.png existe');
+    assert.ok(fs.statSync(p).size > 200, 'et porte un vrai dessin');
+  }
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(html, /\/fb\/fiche\/bouton_carre\.png/, 'le chrome du bureau');
+  assert.match(html, /\/fb\/fiche\/triangle\.png/, 'le triangle du bureau');
+  assert.match(html, /\/fb\/fiche\/bandeau_titre\.png/, 'le bandeau des titres');
+  for (const ico of ['ico_chat', 'ico_mail', 'ico_blog', 'ico_contact']) {
+    assert.match(html, new RegExp('/fb/fiche/' + ico + '\\.png'), ico + ' posée sur son bouton');
+  }
+  // Les boutons sans action mobile restent visibles mais éteints.
+  assert.match(html, /id="fiche-blog"[^>]*disabled/, 'le Bouilloscope attend le bureau');
+  assert.match(html, /id="fiche-contact"[^>]*disabled/, 'les contacts aussi');
+  // Et le courrier est branché sur la vraie messagerie, destinataire prérempli.
+  assert.match(html, /ecrireMail\(p, ""\)/, 'le bouton mail ouvre le composeur');
+});
+
 test('l\'écran mobile porte la fenêtre, les onglets et les gestes', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   // La fenêtre et ses quatre onglets.
