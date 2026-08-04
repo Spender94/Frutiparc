@@ -150,8 +150,13 @@ test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
   // L'en-tête : le point de présence, et l'écran de niveau à barres.
   assert.match(html, /statut_present/, 'présent en vert');
   assert.match(html, /statut_absent/, 'éteint sinon');
-  assert.match(html, /id="fiche-barres"/, 'les barres de progression du niveau');
-  assert.match(html, /10000 \* Math\.pow\(d\.basic\.niveau - 1, 2\)/, 'la progression suit les paliers en carrés');
+  // L'écran de niveau est la mainbar de l'accueil en miniature : NEUF barres,
+  // remplies par la même règle (levelProgress = UserMng.xpLevelCompletionRate).
+  const barres = /id="fiche-barres">((?:<i><\/i>)+)</.exec(html);
+  assert.ok(barres && (barres[1].match(/<i>/g) || []).length === 9, 'neuf barres, comme la mainbar');
+  assert.match(html, /levelProgress\(d\.basic\.xp, d\.basic\.niveau\)/, 'remplies par la règle de la mainbar');
+  assert.match(html, /cadre_bouille\.svg/, 'le cadre de la bouille de la mainbar');
+  assert.match(html, /reflet_niveau\.svg/, 'et le reflet de l\'encart');
   for (const ico of ['ico_chat', 'ico_mail', 'ico_blog', 'ico_contact',
     'ico_listenoire', 'ico_kick', 'ico_ban', 'ico_totoche', 'ico_avance']) {
     assert.match(html, new RegExp('/fb/fiche/' + ico + '\\.png'), ico + ' posée sur son bouton');

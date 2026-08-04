@@ -458,37 +458,51 @@
     box-shadow: 0 14px 34px rgba(20, 40, 6, .4);
     display: flex; flex-direction: column;
   }
-  .fiche-haut { display: flex; gap: 10px; padding: 8px 10px; background: #fff; }
-  /* La plaque du bureau : la bouille et l'ÉCRAN DE NIVEAU dans un cadre
-     sombre — la mainbar en miniature. L'écran empile les barres de
-     progression dans le niveau en cours, et « NIV n » s'affiche à sa base. */
-  .fiche-avatar { flex: 0 0 auto; width: 106px; }
-  .fiche-avatar .plaque {
-    display: flex; gap: 3px; padding: 3px; background: #232f47;
-    border-radius: 9px; height: 60px; box-sizing: border-box;
+  /* L'en-tête suit le style VERT de la fenêtre (la fiche du bureau se teinte
+     au colorSet du joueur ; la nôtre est verte, comme la référence). */
+  .fiche-haut { display: flex; gap: 10px; padding: 8px 10px; background: #e9f7cd; }
+  /* La plaque de la bouille et l'ÉCRAN DE NIVEAU : la mainbar de /light en
+     miniature — mêmes dessins (cadre, reflets, « NIV »), mêmes couleurs,
+     mêmes NEUF barres de progression que l'encart de l'accueil. */
+  .fiche-avatar { flex: 0 0 auto; display: flex; gap: 5px; }
+  .fiche-avatar .fa-frame {
+    position: relative; width: 58px; height: 58px; border-radius: 9px; overflow: hidden;
+    box-shadow: 0 0 0 1px #8A888D, 0 0 0 3px #D9D9D9;
   }
-  .fiche-avatar .stage {
-    flex: 0 0 auto; width: 50px; border-radius: 6px;
-    overflow: hidden; background: #cfe4f4;
+  .fiche-avatar .fa-frame .cadre { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+  .fiche-avatar .fa-frame .stage { position: absolute; inset: 5%; z-index: 2; border-radius: 7px; overflow: hidden; }
+  .fiche-avatar .fa-frame .stage iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; pointer-events: none; }
+  .fiche-avatar .fa-frame .reflet { position: absolute; right: 5%; top: 5%; width: 46%; height: auto; z-index: 3; pointer-events: none; }
+  .fiche-avatar .fa-encart {
+    position: relative; width: 58px; height: 58px; border-radius: 6px; overflow: hidden;
+    background: #c8f39a;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 0 0 1px #93c168,
+                0 0 0 2px #dcdcdc, 0 1px 2px rgba(44,74,15,.22);
   }
-  .fiche-avatar .stage iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
-  .fiche-avatar .ecran {
-    flex: 1 1 auto; border-radius: 6px; background: #8ec63f;
-    display: flex; flex-direction: column; padding: 3px 4px 2px; box-sizing: border-box;
+  .fiche-avatar .fa-encart .reflet-niv {
+    position: absolute; right: 3%; top: 4%; height: 56%; width: auto; z-index: 1; pointer-events: none;
   }
-  .fiche-avatar .barres { display: flex; flex-direction: column-reverse; gap: 2px; flex: 1 1 auto; }
-  .fiche-avatar .barres i {
-    display: block; height: 4px; border-radius: 2px;
-    background: rgba(255, 255, 255, .32);
+  /* Les NEUF barres : le taux de complétion du niveau, découpé en neuf lignes
+     qui se remplissent du bas vers le haut (setFicheProgress). */
+  .fiche-avatar .fa-progress {
+    position: absolute; left: 7px; top: 6px; width: 34px; height: 32px; z-index: 2;
+    display: flex; flex-direction: column; justify-content: space-between;
   }
-  .fiche-avatar .barres i.plein { background: rgba(255, 255, 255, .92); }
-  .fiche-avatar .niv {
-    display: flex; align-items: center; justify-content: center; gap: 3px; padding-top: 1px;
+  .fiche-avatar .fa-progress i {
+    display: block; height: 2px; background: #A3EB57; overflow: hidden;
   }
-  .fiche-avatar .niv img { height: 8px; width: auto; display: block; }
-  .fiche-avatar .niv b {
-    font-family: 'DSEG7', 'Courier New', monospace; font-size: 10px;
-    font-weight: normal; color: #29510f; line-height: 1;
+  .fiche-avatar .fa-progress i::before {
+    content: ""; display: block; height: 100%; width: var(--f, 0%);
+    background: #78B425;
+  }
+  .fiche-avatar .fa-niv {
+    position: absolute; left: 7px; bottom: 5px; z-index: 2;
+    display: flex; align-items: center; gap: 2px; line-height: 1;
+  }
+  .fiche-avatar .fa-niv img { height: 13px; width: auto; display: block; }
+  .fiche-avatar .fa-niv b {
+    font-family: 'DSEG7', 'Courier New', monospace; font-weight: bold;
+    font-size: 12px; line-height: 1; color: #73b01e;
   }
   .fiche-droite { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
   .fiche-nom-ligne { display: flex; align-items: center; gap: 5px; }
@@ -1374,12 +1388,15 @@
       <div id="fiche" role="dialog" aria-modal="true" aria-label="Fiche du frutiz">
         <div class="fiche-haut">
           <div class="fiche-avatar">
-            <div class="plaque">
+            <div class="fa-frame">
               <div class="stage" id="fiche-avatar"></div>
-              <div class="ecran">
-                <div class="barres" id="fiche-barres"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                <div class="niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
-              </div>
+              <img class="cadre" src="/fb/cadre_bouille.svg" alt="">
+              <img class="reflet" src="/fb/reflet_bouille.svg" alt="">
+            </div>
+            <div class="fa-encart">
+              <img class="reflet-niv" src="/fb/reflet_niveau.svg" alt="">
+              <div class="fa-progress" id="fiche-barres"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="fa-niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
             </div>
           </div>
           <div class="fiche-droite">
@@ -3850,18 +3867,15 @@
     // L'avatar : la vraie bouille, rendue par Ruffle comme partout ailleurs.
     $("#fiche-avatar").innerHTML = (d && d.bouille) ? previewIframe(d.bouille) : "";
     $("#fiche-niveau").textContent = (d && d.basic) ? d.basic.niveau : "–";
-    // L'écran de niveau : la progression dans le niveau en cours, en barres
-    // (niveau = 1 + racine de xp/10000 — les paliers sont donc des carrés).
-    var barres = $("#fiche-barres").children;
-    var prog = 0;
-    if (d && d.basic && d.basic.niveau >= 1) {
-      var debut = 10000 * Math.pow(d.basic.niveau - 1, 2);
-      var fin = 10000 * Math.pow(d.basic.niveau, 2);
-      if (fin > debut) prog = Math.max(0, Math.min(1, (d.basic.xp - debut) / (fin - debut)));
-    }
-    var pleines = Math.round(prog * barres.length);
+    // Les NEUF barres de l'écran de niveau : la même règle que l'encart de
+    // l'accueil (levelProgress = UserMng.xpLevelCompletionRate, remplissage du
+    // bas vers le haut, barre par barre).
+    var barres = $("#fiche-barres").querySelectorAll("i");
+    var prog = (d && d.basic) ? levelProgress(d.basic.xp, d.basic.niveau) : 0;
+    var nb = barres.length || 9;
     for (var bi = 0; bi < barres.length; bi++) {
-      barres[bi].classList.toggle("plein", bi < pleines);
+      var fb = Math.max(0, Math.min(1, prog * nb - (nb - 1 - bi)));
+      barres[bi].style.setProperty("--f", (fb * 100).toFixed(1) + "%");
     }
     // Le point de présence du bureau : vert s'il est en ligne.
     $("#fiche-statut").src = "/fb/fiche/" + ((d && d.enLigne) ? "statut_present" : "statut_absent") + ".png";
