@@ -6,12 +6,34 @@
 //
 // ── D'où vient quoi ──
 //
-// La fiche du bureau (win.Frutiz + cp.FrutizBasicInfo) est assemblée par code :
-// des boutons roses (pinkBut, butPush*SmallPink), des icônes de fichiers
-// chargées depuis /fileIcon.swf (sprite iconGFX, une étiquette par type :
-// mail, contact, linkChat, linkBlogs…), le petit triangle icoArrow teinté à
-// l'exécution, et le bandeau clair butGfxFrutizInfoTitleBg sous les titres de
-// section (« frutisigne »).
+// La fiche du bureau est assemblée par code (win.Frutiz + box.Frutiz,
+// décompilés). Chaque bouton d'action est un but.Push : le chrome blanc de
+// butPushSmallWhite, et DEDANS un enfant nommé `icon` — le sprite 500, la
+// feuille des glyphes de la fiche — arrêté sur l'image du geste :
+//
+//     2 discuter   3 mail   4 contact (cœur)   5 liste noire   6 kick (!)
+//     7 ban (carton)   8 totoché (la statue dorée)   10 modifier sa fiche
+//     12 rendre la parole   13 Bouilloscope (le B)
+//
+// (box.Frutiz.getIconList : chat_now 2, new_mail 3, blog 13, add_to_contact 4,
+//  add_to_blacklist 5 / remove 12, et la vue modérateur kick 6, ban 7, mute 8.)
+//
+// À droite de la rangée, le bouton du mode avancé : chrome rose
+// (butPushSmallPink) et l'image 13 de SA feuille (sprite 374). Le bandeau
+// clair sous les titres est butGfxFrutizInfoTitleBg.
+
+// ── Note sur les glyphes du sprite 500 ──
+//
+// Les dix images d'icônes (ico_chat … ico_blog) utilisent des remplissages que
+// notre extracteur de formes maison ne couvre pas encore (les SVG sortent
+// vides). Elles ont été exportées avec JPEXS FFDec :
+//
+//     java -jar ffdec.jar -zoom 3 -format sprite:png -export sprite <dossier> \
+//         legacy/main.swf
+//     → <dossier>/DefineSprite_500/<image>.png, renommées selon la table
+//
+// Ce script les laisse donc en place s'il ne parvient pas à les redessiner
+// (SVG vide) — il écrase seulement ce qu'il sait produire.
 
 const fs = require('fs');
 const path = require('path');
@@ -26,21 +48,31 @@ const K = 3;                        // rendu à 3× pour les écrans denses
 // Chaque cible : le SWF, le clip, l'image — et parfois SEULEMENT certaines
 // formes (le chrome d'un bouton sans son glyphe) ou une teinte (le triangle).
 const CIBLES = [
-  // Le chrome carré des boutons d'action : butPushVerySmallPink sans son
-  // glyphe « » » (forme 457) — il ne reste que le carré rose.
-  { swf: 'legacy/main.swf', nom: 'butPushVerySmallPink', image: 1,
-    fichier: 'bouton_carre', garder: [456] },
-  // Le bouton « liste » complet — le deuxième de la rangée du bureau.
-  { swf: 'legacy/main.swf', nom: 'butPushSmallPink', image: 1, fichier: 'bouton_liste' },
-  // Le triangle (icoArrow, pointe en bas) — le bureau le teinte à l'exécution.
-  { swf: 'legacy/main.swf', nom: 'icoArrow', image: 2, fichier: 'triangle', teinte: 0xE2574B },
+  // Le chrome des boutons d'action : le carré BLANC à liseré rose (son enfant
+  // `icon` est vide à l'image 1, il ne reste que le chrome).
+  { swf: 'legacy/main.swf', nom: 'butPushSmallWhite', image: 1, fichier: 'bouton_carre' },
+  // Le chrome ROSE du bouton de droite (sans son glyphe, formes 359-360).
+  { swf: 'legacy/main.swf', nom: 'butPushSmallPink', image: 1,
+    fichier: 'bouton_rose', garder: [359, 360] },
+  // Son glyphe du mode avancé : l'image 13 de SA feuille (sprite 374).
+  { swf: 'legacy/main.swf', sprite: 374, image: 13, fichier: 'ico_avance' },
   // Le bandeau clair sous les titres de section (« frutisigne »).
   { swf: 'legacy/main.swf', nom: 'butGfxFrutizInfoTitleBg', image: 8, fichier: 'bandeau_titre' },
-  // Les icônes de la banque du bureau (fileIcon.swf, sprite iconGFX).
-  { swf: 'public/fileIcon.swf', nom: 'iconGFX', image: 49, fichier: 'ico_chat' },
-  { swf: 'public/fileIcon.swf', nom: 'iconGFX', image: 9, fichier: 'ico_mail' },
-  { swf: 'public/fileIcon.swf', nom: 'iconGFX', image: 132, fichier: 'ico_blog' },
-  { swf: 'public/fileIcon.swf', nom: 'iconGFX', image: 14, fichier: 'ico_contact' },
+  // La feuille des glyphes de la fiche — sprite 500, l'enfant `icon` de
+  // butPushSmallWhite, une image par geste (box.Frutiz.getIconList).
+  { swf: 'legacy/main.swf', sprite: 500, image: 2, fichier: 'ico_chat' },
+  { swf: 'legacy/main.swf', sprite: 500, image: 3, fichier: 'ico_mail' },
+  { swf: 'legacy/main.swf', sprite: 500, image: 4, fichier: 'ico_contact' },
+  { swf: 'legacy/main.swf', sprite: 500, image: 5, fichier: 'ico_listenoire' },
+  { swf: 'legacy/main.swf', sprite: 500, image: 6, fichier: 'ico_kick' },
+  { swf: 'legacy/main.swf', sprite: 500, image: 7, fichier: 'ico_ban' },
+  { swf: 'legacy/main.swf', sprite: 500, image: 8, fichier: 'ico_totoche' },
+  { swf: 'legacy/main.swf', sprite: 500, image: 10, fichier: 'ico_edite' },
+  { swf: 'legacy/main.swf', sprite: 500, image: 12, fichier: 'ico_autorise' },
+  { swf: 'legacy/main.swf', sprite: 500, image: 13, fichier: 'ico_blog' },
+  // La fleur devant le pseudo : la fleur des contacts de la banque du bureau,
+  // chauffée au jaune-orangé comme l'en-tête de la fiche la montre.
+  { swf: 'public/fileIcon.swf', nom: 'iconGFX', image: 14, fichier: 'fleur_pseudo', teinte: 0xFFC030 },
 ];
 
 fs.mkdirSync(TRAVAIL, { recursive: true });
@@ -52,7 +84,7 @@ const parSwf = {};
 for (const c of CIBLES) {
   const chemin = path.join(RACINE, c.swf);
   const r = lecteurs[c.swf] || (lecteurs[c.swf] = ouvrir(chemin));
-  const id = r.noms.get(c.nom);
+  const id = c.sprite !== undefined ? c.sprite : r.noms.get(c.nom);
   let pieces = r.aplatir(id, r.IDENTITE, 0, c.image, '', null);
   if (c.garder) pieces = pieces.filter((p) => c.garder.includes(p.shape));
   const prefixe = c.swf.includes('fileIcon') ? 'fi' : 'mn';
@@ -145,8 +177,14 @@ const K = ${K};
         }
         ctx.putImageData(d2, 0, 0);
       }
-      return cv.toDataURL('image/png');
+      // Rien de dessiné (formes hors de portée de l'extracteur maison) ?
+      // On le dit — et on n'écrase pas un PNG déjà en place (voir l'en-tête).
+      const d3 = ctx.getImageData(0, 0, cv.width, cv.height).data;
+      let plein = false;
+      for (let i = 3; i < d3.length; i += 4) if (d3[i] > 8) { plein = true; break; }
+      return plein ? cv.toDataURL('image/png') : null;
     }, { c, svgs, K });
+    if (url === null) { console.log(c.fichier + '.png : vide — conservé tel quel'); continue; }
     fs.writeFileSync(SORTIE + '/' + c.fichier + '.png', Buffer.from(url.split(',')[1], 'base64'));
     console.log(c.fichier + '.png');
   }

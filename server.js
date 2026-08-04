@@ -15069,11 +15069,15 @@ app.get('/api/light/fiche', async (req, res) => {
     ? { index: Number(n), nom: SIGNES_FRUITS[n] } : null);
 
   res.setHeader('Cache-Control', 'no-store');
+  const moi = users[demandeur] || {};
   res.json({
     ok: true,
     pseudo: getDisplayName(u),
     bouille: bouilleOf(ud, u),
     staff: { moderateur: !!ud.isModerator, animateur: !!ud.isAnimator },
+    // Les droits du REGARDEUR : la vue modérateur (kick, ban, totoché) ne se
+    // montre qu'aux modérateurs, comme box.Frutiz le fait avec me.flMode.
+    vous: { moderateur: !!moi.isModerator, animateur: !!moi.isAnimator },
     basic: { niveau: getLevelForXp(ud.xp || 0), xp: ud.xp || 0, age,
       ville: ud.city || '', sexe: ud.gender || 'M' },
     frutiz: {
@@ -15091,6 +15095,9 @@ app.get('/api/light/fiche', async (req, res) => {
       anniversaire: naissance && !Number.isNaN(naissance.getTime())
         ? naissance.toISOString().substring(0, 10) : null,
       ville: ud.city || '', metier: ud.realJob || '',
+      // Le bureau affiche pays et région par leurs INDEX dans les listes du
+      // SWF ; les noms ne sont pas portés côté serveur — vides pour l'instant.
+      pays: '', region: '',
     },
     bonus: { commentaire: ud.comment || '', site: ud.siteUrl || '' },
     scores: { classements, medailles },

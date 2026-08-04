@@ -454,35 +454,45 @@
   #fiche-backdrop.show { display: flex; }
   #fiche {
     width: min(400px, 96vw); max-height: 92vh; overflow-y: auto;
-    background: #fff; border: 1px solid #9fbf6b; border-radius: 12px;
+    background: #fff; border: 2px solid #6f9b2e; border-radius: 12px;
     box-shadow: 0 14px 34px rgba(20, 40, 6, .4);
     display: flex; flex-direction: column;
   }
-  .fiche-haut { display: flex; gap: 10px; padding: 10px 10px 8px; background: #fff; }
-  .fiche-avatar {
-    flex: 0 0 auto; width: 64px; position: relative;
+  .fiche-haut { display: flex; gap: 10px; padding: 8px 10px; background: #fff; }
+  /* La plaque du bureau : la bouille et son écran vert rayé dans un cadre
+     sombre, la plaque « NIV » à cheval sur le bas — la mainbar en miniature. */
+  .fiche-avatar { flex: 0 0 auto; width: 102px; position: relative; }
+  .fiche-avatar .plaque {
+    display: flex; gap: 3px; padding: 3px; background: #232f47;
+    border-radius: 9px; height: 58px; box-sizing: border-box;
   }
   .fiche-avatar .stage {
-    width: 64px; height: 64px; border: 1px solid #b8cf92; border-radius: 6px;
-    overflow: hidden; background: #eef7db;
+    flex: 0 0 auto; width: 52px; border-radius: 6px;
+    overflow: hidden; background: #cfe4f4;
   }
   .fiche-avatar .stage iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
+  .fiche-avatar .ecran {
+    flex: 1 1 auto; border-radius: 6px;
+    background: #86bd35 repeating-linear-gradient(180deg,
+      rgba(255, 255, 255, .75) 0 2px, rgba(255, 255, 255, 0) 2px 6px);
+  }
   .fiche-avatar .niv {
-    display: flex; align-items: center; justify-content: center; gap: 3px;
-    margin-top: 3px; padding: 1px 0; background: #232f47; border-radius: 4px;
+    position: absolute; left: 3px; bottom: -4px;
+    display: flex; align-items: center; gap: 3px;
+    padding: 2px 6px; background: #232f47; border-radius: 4px;
   }
   .fiche-avatar .niv img { height: 9px; width: auto; display: block; }
   .fiche-avatar .niv b {
     font-family: 'DSEG7', 'Courier New', monospace; font-size: 11px;
     font-weight: normal; color: #73b01e; line-height: 1;
   }
-  .fiche-droite { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-  .fiche-nom-ligne { display: flex; align-items: baseline; gap: 6px; }
-  .fiche-nom-ligne .fleur { font-size: 13px; line-height: 1; }
+  .fiche-droite { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+  .fiche-nom-ligne { display: flex; align-items: center; gap: 5px; }
+  .fiche-nom-ligne .fleur { width: 15px; height: 15px; object-fit: contain; }
   .fiche-nom-ligne b {
-    font-size: 15px; color: #14280a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 15px; color: #101408; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .fiche-nom-ligne .meta { margin-left: auto; font-size: 11.5px; color: #7a8a68; white-space: nowrap; }
+  .fiche-nom-ligne .meta { margin-left: auto; font-size: 11.5px; color: #6f6f6f; white-space: nowrap; }
   #fiche-fermer {
     flex: 0 0 auto; border: 0; background: transparent; color: #d02c17;
     font-size: 18px; font-weight: bold; line-height: 1; cursor: pointer; padding: 0 2px;
@@ -497,39 +507,40 @@
   }
   .fiche-actions button img { width: 19px; height: 19px; object-fit: contain; display: block; }
   .fiche-actions button:active { filter: brightness(.92); }
-  /* butPushSmallPink, entier : son glyphe « liste » est dans le dessin. */
-  .fiche-actions button.entier { background-image: url('/fb/fiche/bouton_liste.png'); }
   /* Pas encore porté sur mobile : présent, mais éteint — comme convenu. */
   .fiche-actions button:disabled { opacity: .42; cursor: default; }
-  /* icoArrow du bureau, teinté rouge comme à l'exécution. */
-  .fiche-actions .triangle {
-    margin-left: auto; width: 17px; height: 13px;
-    background: url('/fb/fiche/triangle.png') no-repeat center / contain;
+  /* Le bouton du mode avancé, à droite : le chrome ROSE et son triangle
+     (butPushSmallPink, glyphe 13 de sa feuille). */
+  .fiche-actions button.rose {
+    margin-left: auto;
+    background-image: url('/fb/fiche/bouton_rose.png');
   }
-  .fiche-corps { background: #d9f0a2; border-top: 1px solid #b3d37e; }
-  .fiche-onglets { display: flex; padding: 9px 8px 7px; border-bottom: 1px solid #a8ca6d; }
+  .fiche-actions button.rose:disabled { opacity: 1; }
+  .fiche-corps { background: #cfec9a; border-top: 2px solid #6f9b2e; }
+  .fiche-onglets { display: flex; padding: 9px 8px 7px; border-bottom: 1px solid #55771f; }
   .fiche-onglets button {
     flex: 1 1 0; border: 0; background: transparent; font-weight: bold;
-    font-size: 13.5px; color: #20390c; cursor: pointer; padding: 2px 0;
+    font-size: 13.5px; color: #131309; cursor: pointer; padding: 2px 0;
   }
   .fiche-onglets button.actif { color: #c22000; }
   .fiche-page { padding: 10px 18px 16px; min-height: 200px; }
-  /* Le bandeau clair du bureau (butGfxFrutizInfoTitleBg) sous chaque titre. */
+  /* Le bandeau clair du bureau (butGfxFrutizInfoTitleBg), d'un bord à l'autre
+     du panneau — le titre est posé dessus, en noir. */
   .fiche-titre {
-    text-align: center; font-weight: bold; font-size: 14.5px; color: #16300a;
-    margin: 6px 0 10px; padding: 3px 0;
+    text-align: center; font-weight: bold; font-size: 14.5px; color: #131309;
+    margin: 8px -18px 12px; padding: 4px 0;
     background: url('/fb/fiche/bandeau_titre.png') no-repeat center / 100% 100%;
   }
-  .fiche-signes { display: flex; align-items: center; justify-content: center; gap: 30px; margin: 4px 0 14px; }
-  .fiche-signes img.petit { width: 26px; height: 26px; object-fit: contain; }
-  .fiche-signes img.grand { width: 58px; height: 58px; object-fit: contain; }
-  .fiche-lignes { border-top: 1px solid #aacc70; padding-top: 9px; margin-top: 10px; }
-  .fiche-ligne { display: flex; justify-content: space-between; gap: 12px; padding: 3.5px 0; font-size: 13px; color: #223f0c; }
+  .fiche-signes { display: flex; align-items: center; justify-content: center; gap: 34px; margin: 6px 0 14px; }
+  .fiche-signes img.petit { width: 24px; height: 24px; object-fit: contain; }
+  .fiche-signes img.grand { width: 54px; height: 54px; object-fit: contain; }
+  .fiche-lignes { border-top: 1px solid #55771f; padding-top: 9px; margin-top: 10px; }
+  .fiche-ligne { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 13px; color: #131309; }
   .fiche-ligne .val { text-align: right; min-width: 0; overflow-wrap: anywhere; }
   .fiche-ligne .val a { color: #2f6b16; }
-  .fiche-com { font-size: 13px; color: #223f0c; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
-  .fiche-vide { text-align: center; color: #5f7a44; font-size: 12.5px; padding: 26px 0; }
-  .fiche-pied { height: 12px; background: #bfe184; border-top: 1px solid #a8ca6d; }
+  .fiche-com { font-size: 13px; color: #131309; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
+  .fiche-vide { text-align: center; color: #4c611f; font-size: 12.5px; padding: 26px 0; }
+  .fiche-pied { height: 12px; background: #b9dc77; border-top: 1px solid #55771f; }
   /* Le pseudo d'un message se touche : il ouvre la fiche, comme au bureau. */
   #messages .from { cursor: pointer; }
 
@@ -1355,25 +1366,32 @@
       <div id="fiche" role="dialog" aria-modal="true" aria-label="Fiche du frutiz">
         <div class="fiche-haut">
           <div class="fiche-avatar">
-            <div class="stage" id="fiche-avatar"></div>
+            <div class="plaque">
+              <div class="stage" id="fiche-avatar"></div>
+              <div class="ecran"></div>
+            </div>
             <div class="niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
           </div>
           <div class="fiche-droite">
             <div class="fiche-nom-ligne">
-              <span class="fleur">✿</span><b id="fiche-pseudo">…</b>
+              <img class="fleur" src="/fb/fiche/fleur_pseudo.png" alt=""><b id="fiche-pseudo">…</b>
               <span class="meta" id="fiche-meta"></span>
               <button type="button" id="fiche-fermer" aria-label="Fermer">✕</button>
             </div>
-            <!-- La rangée du bureau, avec ses vrais dessins. Les boutons sans
-                 action mobile restent visibles mais éteints. -->
+            <!-- La rangée du bureau (box.Frutiz.getIconList), avec les VRAIS
+                 glyphes de main.swf — la feuille `icon` de butPushSmallWhite.
+                 Les gestes sans action mobile restent visibles mais éteints ;
+                 kick, ban et totoché ne se montrent qu'aux modérateurs. -->
             <div class="fiche-actions">
               <button type="button" id="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
               <button type="button" id="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
-              <button type="button" id="fiche-liste" class="entier" title="Sur le bureau" disabled></button>
               <button type="button" id="fiche-blog" title="Bouilloscope — sur le bureau" disabled><img src="/fb/fiche/ico_blog.png" alt=""></button>
-              <button type="button" id="fiche-don" title="Offrir des kikooz"><img src="/fb/icone_kikooz.svg" alt=""></button>
               <button type="button" id="fiche-contact" title="Ajouter aux contacts — sur le bureau" disabled><img src="/fb/fiche/ico_contact.png" alt=""></button>
-              <span class="triangle" aria-hidden="true"></span>
+              <button type="button" id="fiche-noire" title="Liste noire — sur le bureau" disabled><img src="/fb/fiche/ico_listenoire.png" alt=""></button>
+              <button type="button" id="fiche-kick" class="modo" title="Éjecter du salon" hidden><img src="/fb/fiche/ico_kick.png" alt=""></button>
+              <button type="button" id="fiche-ban" class="modo" title="Bannir" hidden><img src="/fb/fiche/ico_ban.png" alt=""></button>
+              <button type="button" id="fiche-totoche" class="modo" title="Totocher (rendre muet)" hidden><img src="/fb/fiche/ico_totoche.png" alt=""></button>
+              <button type="button" id="fiche-avance" class="rose" title="Mode avancé — sur le bureau" disabled><img src="/fb/fiche/ico_avance.png" alt=""></button>
             </div>
           </div>
         </div>
@@ -3828,11 +3846,15 @@
       if (d.basic.ville) meta += (meta ? " - " : "") + d.basic.ville;
     }
     $("#fiche-meta").textContent = meta;
-    // Se parler à soi-même n'a pas de sens : le bureau non plus ne le fait pas.
+    // Se parler à soi-même n'a pas de sens : le bureau non plus ne le fait pas
+    // (box.Frutiz montre alors le seul bouton « modifier ma fiche »).
     var moi = ficheEtat.pseudo && ficheEtat.pseudo.toLowerCase() === state.userLower;
-    ["#fiche-mp", "#fiche-mail", "#fiche-don"].forEach(function (s) {
-      $(s).style.display = moi ? "none" : "";
-    });
+    ["#fiche-mp", "#fiche-mail", "#fiche-blog", "#fiche-contact", "#fiche-noire"]
+      .forEach(function (s) { $(s).style.display = moi ? "none" : ""; });
+    // La vue modérateur : kick, ban, totoché — aux modérateurs seulement.
+    var modo = !moi && d && d.vous && d.vous.moderateur;
+    ["#fiche-kick", "#fiche-ban", "#fiche-totoche"]
+      .forEach(function (s) { $(s).hidden = !modo; });
     Array.prototype.forEach.call($("#fiche-onglets").children, function (b) {
       b.classList.toggle("actif", b.getAttribute("data-onglet") === ficheEtat.onglet);
     });
@@ -3864,15 +3886,16 @@
       lignes.appendChild(ligneFiche("inscription", jourCourt(d.frutiz.inscription) || "?"));
       page.appendChild(lignes);
     } else if (ficheEtat.onglet === "perso") {
+      // win.Frutiz.genDisplayInfo, mot pour mot et dans l'ordre du bureau.
       var lp = el("div", "fiche-lignes");
       lp.style.borderTop = "0";
-      lp.appendChild(ligneFiche("age", d.perso.age !== null && d.perso.age !== undefined ? d.perso.age + " ans" : "?"));
-      lp.appendChild(ligneFiche("anniversaire", jourCourt(d.perso.anniversaire) || "?"));
-      lp.appendChild(ligneFiche("sexe", d.perso.sexe === "F" ? "fille" : "garçon"));
-      if (d.perso.ville) lp.appendChild(ligneFiche("ville", d.perso.ville));
-      if (d.perso.metier) lp.appendChild(ligneFiche("métier", d.perso.metier));
-      if (d.perso.prenom) lp.appendChild(ligneFiche("prénom", d.perso.prenom));
-      if (d.perso.nom) lp.appendChild(ligneFiche("nom", d.perso.nom));
+      lp.appendChild(ligneFiche("Prénom", d.perso.prenom || ""));
+      lp.appendChild(ligneFiche("Nom", d.perso.nom || ""));
+      lp.appendChild(ligneFiche("Date de naissance", jourCourt(d.perso.anniversaire) || ""));
+      lp.appendChild(ligneFiche("Activité", d.perso.metier || ""));
+      lp.appendChild(ligneFiche("Pays", d.perso.pays || ""));
+      lp.appendChild(ligneFiche("Région", d.perso.region || ""));
+      lp.appendChild(ligneFiche("Ville", d.perso.ville || ""));
       page.appendChild(lp);
     } else if (ficheEtat.onglet === "scores") {
       var sc = d.scores || {};
@@ -3939,16 +3962,26 @@
     fermerFiche();
     ecrireMail(p, "");
   });
-  // « Offrir des kikooz » : on prépare la commande /donne dans le compositeur,
-  // le joueur n'a plus qu'à mettre le montant — comme l'aide de Gaspard l'enseigne.
-  $("#fiche-don").addEventListener("click", function () {
+  // La vue modérateur — les mêmes fils que le bureau (box.Frutiz) : kick sur
+  // le salon courant, ban global, totoché. Confirmation d'abord : un doigt
+  // glisse plus vite qu'une souris.
+  $("#fiche-kick").addEventListener("click", function () {
     var p = ficheEtat.pseudo;
+    if (!window.confirm("Éjecter " + p + " du salon ?")) return;
+    wsSend('<l u="' + xmlEscape(p) + '" g="' + xmlEscape(state.room || "") + '" />');
     fermerFiche();
-    activateTab("chat");
-    openDrawer(false);
-    var input = $("#compose-input");
-    input.value = "/donne 10 " + p;
-    input.focus();
+  });
+  $("#fiche-ban").addEventListener("click", function () {
+    var p = ficheEtat.pseudo;
+    if (!window.confirm("Bannir " + p + " ?")) return;
+    wsSend('<m u="' + xmlEscape(p) + '" g="0" />');
+    fermerFiche();
+  });
+  $("#fiche-totoche").addEventListener("click", function () {
+    var p = ficheEtat.pseudo;
+    if (!window.confirm("Totocher " + p + " (dix minutes de silence) ?")) return;
+    wsSend('<az u="' + xmlEscape(p) + '" />');
+    fermerFiche();
   });
 
   function ligneConnecte(pseudo, lieu, staff, jeu) {

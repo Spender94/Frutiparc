@@ -127,22 +127,24 @@ test('les frutisignes sont extraits — les dix fruits, et la silhouette', () =>
     'les dix signes, dans l\'ordre du bureau');
 });
 
-test('la rangée d\'actions porte les vrais dessins du bureau', () => {
-  // Le chrome des boutons (butPushVerySmallPink sans son glyphe), le bouton
-  // « liste » complet (butPushSmallPink), le triangle (icoArrow teinté), le
-  // bandeau des titres (butGfxFrutizInfoTitleBg) — et les icônes de la banque
-  // fileIcon.swf (sprite iconGFX, une étiquette par type).
-  for (const f of ['bouton_carre', 'bouton_liste', 'triangle', 'bandeau_titre',
-    'ico_chat', 'ico_mail', 'ico_blog', 'ico_contact']) {
+test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
+  // La feuille `icon` de butPushSmallWhite (sprite 500), mappée par
+  // box.Frutiz.getIconList : bulle (2), carte (3), cœur (4), bulle-croix (5),
+  // « ! » (6), carton (7), totoche (8), feuille (10), bulle-plus (12), B (13).
+  // Plus les chromes (blanc et rose), le bandeau des titres et la fleur.
+  for (const f of ['bouton_carre', 'bouton_rose', 'bandeau_titre', 'fleur_pseudo',
+    'ico_chat', 'ico_mail', 'ico_contact', 'ico_listenoire', 'ico_kick',
+    'ico_ban', 'ico_totoche', 'ico_edite', 'ico_autorise', 'ico_blog', 'ico_avance']) {
     const p = path.join(ROOT, 'public/fb/fiche/' + f + '.png');
     assert.ok(fs.existsSync(p), f + '.png existe');
     assert.ok(fs.statSync(p).size > 200, 'et porte un vrai dessin');
   }
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
-  assert.match(html, /\/fb\/fiche\/bouton_carre\.png/, 'le chrome du bureau');
-  assert.match(html, /\/fb\/fiche\/triangle\.png/, 'le triangle du bureau');
+  assert.match(html, /\/fb\/fiche\/bouton_carre\.png/, 'le chrome blanc du bureau');
+  assert.match(html, /\/fb\/fiche\/bouton_rose\.png/, 'le chrome rose du mode avancé');
   assert.match(html, /\/fb\/fiche\/bandeau_titre\.png/, 'le bandeau des titres');
-  for (const ico of ['ico_chat', 'ico_mail', 'ico_blog', 'ico_contact']) {
+  for (const ico of ['ico_chat', 'ico_mail', 'ico_blog', 'ico_contact',
+    'ico_listenoire', 'ico_kick', 'ico_ban', 'ico_totoche', 'ico_avance']) {
     assert.match(html, new RegExp('/fb/fiche/' + ico + '\\.png'), ico + ' posée sur son bouton');
   }
   // Les boutons sans action mobile restent visibles mais éteints.
@@ -150,6 +152,26 @@ test('la rangée d\'actions porte les vrais dessins du bureau', () => {
   assert.match(html, /id="fiche-contact"[^>]*disabled/, 'les contacts aussi');
   // Et le courrier est branché sur la vraie messagerie, destinataire prérempli.
   assert.match(html, /ecrireMail\(p, ""\)/, 'le bouton mail ouvre le composeur');
+});
+
+test('la vue modérateur : kick, ban et totoché, aux modérateurs seulement', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  // Cachés par défaut, montrés quand le REGARDEUR est modérateur (d.vous).
+  for (const id of ['fiche-kick', 'fiche-ban', 'fiche-totoche']) {
+    assert.match(html, new RegExp('id="' + id + '"[^>]*hidden'), id + ' caché par défaut');
+  }
+  assert.match(html, /d\.vous && d\.vous\.moderateur/, 'la vue suit les droits du regardeur');
+  // Les mêmes fils que le bureau : kick <l>, ban <m>, totoché <az> — et une
+  // confirmation d'abord, un doigt glisse plus vite qu'une souris.
+  assert.match(html, /wsSend\('<l u="' \+ xmlEscape\(p\) \+ '" g="' \+ xmlEscape\(state\.room/,
+    'kick sur le salon courant');
+  assert.match(html, /wsSend\('<m u="' \+ xmlEscape\(p\) \+ '" g="0" \/>'\)/, 'ban global');
+  assert.match(html, /wsSend\('<az u="' \+ xmlEscape\(p\) \+ '" \/>'\)/, 'totoché');
+  assert.ok((html.match(/window\.confirm\(/g) || []).length >= 3, 'trois confirmations');
+  // Et le serveur dit les droits du regardeur.
+  const serveur = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(serveur, /vous: \{ moderateur: !!moi\.isModerator, animateur: !!moi\.isAnimator \}/,
+    'la fiche porte `vous`');
 });
 
 test('l\'écran mobile porte la fenêtre, les onglets et les gestes', () => {
