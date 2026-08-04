@@ -173,8 +173,8 @@ test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
 test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   // La CARTE : blanche, liseré sombre fin, coins courts — pas une fenêtre verte.
-  assert.match(html, /#fiche \{[\s\S]{0,400}border: 1\.5px solid #545454; border-radius: 5px;/,
-    'la carte blanche à liseré sombre');
+  assert.match(html, /#fiche \{[\s\S]{0,400}border: 1\.5px solid #545454; border-radius: 8px;/,
+    'la carte blanche à liseré sombre, coins francs');
   // LA PLAQUE : un seul encart vert qui tient la bouille ET l'écran de niveau.
   assert.match(html, /\.fiche-plaque \{[\s\S]{0,400}background: #c8f39a;/, 'la plaque verte');
   assert.match(html, /border: 1px solid #666; border-radius: 5px; box-shadow: 0 0 0 2px #ddd;/,
@@ -185,6 +185,17 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
   assert.match(html, /background: #72A62C;/, 'les barres au vert de l\'intégration');
   assert.match(html, /font-size: 11px; line-height: 1; color: #4E8030;/, 'le niveau aussi');
   assert.match(html, /font-size: 12\.5px; color: #290D64;/, 'et le pseudo au bleu nuit');
+  // Les tailles de la rangée d'en-tête, réglées à la demande.
+  assert.match(html, /#fiche-fermer img \{ width: 20px; height: 20px;/, 'la croix en 20 px');
+  assert.match(html, /\.fiche-actions button img \{ width: 20px; height: 20px;/, 'les glyphes en 20 px');
+  assert.match(html, /\.fiche-nom-ligne \.statut \{ width: 18px; height: 18px;/, 'le voyant en 18 px');
+  // Le cadre et le reflet habillent la PLAQUE, pas la seule vignette — et la
+  // bouille garde son carré de 52 px, avec son propre repère.
+  assert.match(html, /\.fiche-plaque > \.cadre \{/, 'le cadre est posé sur la plaque');
+  assert.match(html, /<div class="fa-frame">\s*<div class="stage" id="fiche-avatar"><\/div>\s*<\/div>/,
+    'la vignette ne contient plus que la bouille');
+  assert.match(html, /\.fiche-plaque \.fa-frame \{\s*position: relative; width: 52px; height: 52px;/,
+    'et garde son repère : la bouille ne bouge pas');
   // La bouille n'a plus de contour, et la carte porte son ombre de tous les côtés.
   assert.match(html, /\.fiche-plaque \.fa-frame \{[^}]*\n\s*z-index: 2;\n\s*\}/,
     'plus de liseré autour de la bouille');
