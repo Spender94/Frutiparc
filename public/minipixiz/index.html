@@ -383,19 +383,22 @@
         },
         // Le triangle du coin (Slot.initButQuit) referme l'écran, comme le
         // bouton sous le canevas.
-        surFermeture: function () {
-          $('#inventaire').classList.remove('on');
-        },
+        surFermeture: function () { fermerSac(); },
       });
       function ouvrirSac() {
         $('#inventaire').classList.add('on');
         inventaire.ouvrir();
       }
+      // À la fermeture, la clairière retient ses clics un instant : le doigt
+      // qui vient de toucher « retour » (ou le triangle) ne doit pas choisir
+      // un lieu — la porte de l'arbre creux se tient parfois juste dessous.
+      function fermerSac() {
+        $('#inventaire').classList.remove('on');
+        if (menu && menu.garder) menu.garder(400);
+      }
       $('#sac-but').addEventListener('click', ouvrirSac);
       $('#menu-sac').addEventListener('click', ouvrirSac);
-      $('#inv-fermer').addEventListener('click', function () {
-        $('#inventaire').classList.remove('on');
-      });
+      $('#inv-fermer').addEventListener('click', fermerSac);
 
       // ── Le menu de l'aventure ──
       // C'est lui l'écran d'accueil : on n'entre en forêt qu'en touchant la

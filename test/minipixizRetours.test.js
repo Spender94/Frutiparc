@@ -179,6 +179,55 @@ test('la fée fatiguée reste au bocal — la partie se joue sans elle', () => {
     'pas prête, pas d\'interface non plus');
 });
 
+/*
+ * Troisième retour : « j'ai ouvert mon sac, cliqué "retour", ça m'a mis
+ * direct dans l'arbre creux au lieu du menu. »
+ *
+ * Au doigt, REGARDER la clairière (glisser = viser) finit tout de même par un
+ * `click` du navigateur au lever — sur la porte venue glisser sous le doigt.
+ * Et le tap qui ferme le sac peut retomber sur la clairière révélée. Deux
+ * gardes : un toucher qui a bougé n'est pas un choix, et le menu retient ses
+ * clics un instant à chaque retour.
+ */
+test('un glissement du doigt sur la clairière n\'est pas un choix', () => {
+  const M = require('../public/minipixiz/menu.js');
+  const choix = [];
+  const faux = {
+    canvas: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+    echelle: 1,
+    zones: [{ lieu: { titre: 'Arbre creux' }, etat: {}, x: 0, y: 0, l: 240, h: 240 }],
+    surChoix: (l) => choix.push(l.titre),
+    touche: null,
+    garde: 0,
+    maintenant: M.Menu.prototype.maintenant,
+  };
+  const clic = M.Menu.prototype.clic.bind(faux);
+  // Un vrai tap — deux pixels de tremblé — choisit.
+  faux.touche = { x: 50, y: 50, bouge: 2 };
+  clic({ clientX: 50, clientY: 50 });
+  assert.deepEqual(choix, ['Arbre creux'], 'le tap immobile entre');
+  // Un toucher qui a panoramé la clairière ne choisit pas.
+  faux.touche = { x: 50, y: 50, bouge: 30 };
+  clic({ clientX: 80, clientY: 50 });
+  assert.deepEqual(choix, ['Arbre creux'], 'le glissement, lui, n\'entre pas');
+  // Au retour du sac, la clairière retient ses clics un instant.
+  faux.touche = null;
+  M.Menu.prototype.garder.call(faux, 60000);
+  clic({ clientX: 50, clientY: 50 });
+  assert.deepEqual(choix, ['Arbre creux'], 'la garde avale le clic de fermeture');
+  faux.garde = 0;
+  clic({ clientX: 50, clientY: 50 });
+  assert.equal(choix.length, 2, 'la garde levée, on choisit à nouveau');
+  // Et les deux retours arment bien cette garde : le sac, et chaque
+  // ouverture du menu (retour de partie, d'Ornegon, du bassin…).
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /function fermerSac\(\) \{[\s\S]{0,220}menu\.garder\(400\)/,
+    'fermer le sac arme la garde');
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/menu.js'), 'utf8');
+  assert.match(src, /demarrer\(alea\) \{\n    this\.garder\(400\);/,
+    'ouvrir le menu aussi');
+});
+
 test('les objets tombent au rythme du jeu — sans sac, seul le sac', () => {
   const h = (g) => {
     let s = (g * 48271) % 0x7fffffff || 1;

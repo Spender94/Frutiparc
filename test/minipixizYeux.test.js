@@ -275,8 +275,10 @@ test('le coin de sortie ramène à la clairière', () => {
   assert.match(inv, /if \(quoi === 'quitter'\) \{ this\.fermer\(\); return; \}/,
     'le clic referme');
   const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
-  assert.match(page, /surFermeture: function \(\) \{\n\s*\$\('#inventaire'\)\.classList\.remove\('on'\);/,
+  assert.match(page, /surFermeture: function \(\) \{ fermerSac\(\); \}/,
     'et la page rend la main à la clairière');
+  assert.match(page, /function fermerSac\(\) \{\n\s*\$\('#inventaire'\)\.classList\.remove\('on'\);/,
+    '— la même fermeture que le bouton « retour »');
 });
 
 // ── Le sac de l'écran principal ───────────────────────────────────────────

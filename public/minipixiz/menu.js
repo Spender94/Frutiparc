@@ -111,8 +111,23 @@ class Menu {
 
     this.canvas.addEventListener('click', (ev) => this.clic(ev));
     this.canvas.addEventListener('mousemove', (ev) => this.viser(ev));
+    // Au doigt, REGARDER et CHOISIR passent par les mêmes gestes : glisser
+    // panorame la clairière (viser), et le navigateur clôt tout de même le
+    // toucher par un `click` — qui tomberait sur le lieu venu GLISSER sous le
+    // doigt. On mesure donc chaque toucher : ce qui a bougé était un regard.
+    this.touche = null;
+    this.canvas.addEventListener('touchstart', (ev) => {
+      const t = ev.touches[0];
+      if (t) this.touche = { x: t.clientX, y: t.clientY, bouge: 0 };
+    }, { passive: true });
     this.canvas.addEventListener('touchmove', (ev) => {
-      if (ev.touches[0]) this.viser(ev.touches[0]);
+      const t = ev.touches[0];
+      if (!t) return;
+      if (this.touche) {
+        this.touche.bouge = Math.max(this.touche.bouge,
+          Math.hypot(t.clientX - this.touche.x, t.clientY - this.touche.y));
+      }
+      this.viser(t);
     }, { passive: true });
     this.redimensionner();
     window.addEventListener('resize', () => this.redimensionner());
@@ -329,6 +344,15 @@ class Menu {
   }
 
   clic(ev) {
+    // Le clic qui referme un GLISSEMENT n'est pas un choix : le décor a
+    // défilé sous le doigt, et l'endroit relâché n'est pas celui qu'on a
+    // touché. Huit pixels laissent passer le tremblé d'un vrai tap.
+    const touche = this.touche;
+    this.touche = null;
+    if (touche && touche.bouge > 8) return;
+    // Et au retour d'un autre écran (le sac, une partie), un court silence :
+    // le tap qui a fermé là-bas ne doit pas choisir ici.
+    if (this.garde && this.maintenant() < this.garde) return;
     const r = this.canvas.getBoundingClientRect();
     const x = (ev.clientX - r.left) / this.echelle;
     const y = (ev.clientY - r.top) / this.echelle;
@@ -357,7 +381,16 @@ class Menu {
 
   dire(message) { this.message = message || ''; }
 
+  maintenant() {
+    return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  }
+
+  // Ignorer les clics un instant — le temps qu'un doigt qui vient de fermer
+  // un écran au même endroit ne retombe pas sur la clairière.
+  garder(ms) { this.garde = this.maintenant() + (ms || 400); }
+
   demarrer(alea) {
+    this.garder(400);
     if (!this.nuages.length) this.semerNuages(alea);
     // On mesure à l'ouverture : tant que le panneau est caché, il n'a pas de
     // taille, et le canevas resterait à l'échelle un.
