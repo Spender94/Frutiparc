@@ -191,7 +191,19 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
   assert.match(html, /\.fiche-nom-ligne \.statut \{ width: 18px; height: 18px;/, 'le voyant en 18 px');
   // Le cadre et le reflet habillent la PLAQUE, pas la seule vignette — et la
   // bouille garde son carré de 52 px, avec son propre repère.
-  assert.match(html, /\.fiche-plaque > \.cadre \{/, 'le cadre est posé sur la plaque');
+  // Le cadre ET le reflet doivent être DANS la plaque — pas seulement quelque
+  // part dans la page : la mainbar de l'accueil en a une paire elle aussi, et
+  // c'est ce qui a permis de les supprimer de la fiche sans que rien ne crie.
+  const plaque = /<div class="fiche-plaque">([\s\S]*?)\n          <\/div>/.exec(html);
+  assert.ok(plaque, 'la plaque existe');
+  assert.match(plaque[1], /<img class="cadre" src="\/fb\/cadre_bouille\.svg"/,
+    'le cadre est dans la plaque');
+  assert.match(plaque[1], /<img class="reflet" src="\/fb\/reflet_bouille\.svg"/,
+    'et le reflet aussi');
+  assert.match(html, /\.fiche-plaque > \.cadre \{[\s\S]{0,120}inset: 0; width: 100%; height: 100%;/,
+    'le cadre prend toute la largeur de l\'encart');
+  assert.match(html, /\.fiche-plaque > \.reflet \{[\s\S]{0,120}right: 3%; top: 4%;/,
+    'le reflet se pose dans le coin haut-droit');
   assert.match(html, /<div class="fa-frame">\s*<div class="stage" id="fiche-avatar"><\/div>\s*<\/div>/,
     'la vignette ne contient plus que la bouille');
   assert.match(html, /\.fiche-plaque \.fa-frame \{\s*position: relative; width: 52px; height: 52px;/,
