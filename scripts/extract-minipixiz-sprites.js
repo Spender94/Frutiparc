@@ -199,6 +199,8 @@ const CIBLES = [
   // panneau « game over » s'affiche une centaine d'images, puis la clairière
   // revient d'elle-même (Base.gameOver → tryToClose).
   { cle: 'panPerdu', symbole: 'panGameOver', etiquette: 'Panneau de fin de partie' },
+  // La PAUSE (Manager.setPause) : un voile violet, le panneau, et le mot.
+  { cle: 'panPause', symbole: 'mcPause', etiquette: 'Panneau de pause' },
   // Le BOUQUET (Aventure.initBouquet) : chaque niveau s'ouvre sur cette gerbe
   // qui jaillit d'un point, porte le numéro du niveau, tient un instant et se
   // referme avant que les pièces ne tombent.

@@ -748,6 +748,7 @@ class Client {
     this.nouvelle = null;
     this.nouvelleEnAttente = null;
     this.dialogue = null;
+    this.pause = false;
     this.commencerOuverture((opts.niveau || 0) + 1);
     if (opts.fee !== undefined) this.fee = opts.fee;
     if (opts.coefNuit !== undefined) this.coefNuit = opts.coefNuit;
@@ -777,6 +778,7 @@ class Client {
     this.nouvelle = null;
     this.nouvelleEnAttente = null;
     this.dialogue = null;
+    this.pause = false;
     this.ouverture = null;             // le bassin s'ouvre sur sa bulle, pas sur la gerbe
     // Les événements passent par `annonce` pour les effets de dessin, puis vont
     // au gestionnaire DU BASSIN — pas à celui de la forêt. L'écraser envoyait
@@ -807,6 +809,7 @@ class Client {
     this.nouvelle = null;
     this.nouvelleEnAttente = null;
     this.dialogue = null;
+    this.pause = false;
     // Même chose qu'au bassin : les événements du lieu vont au gestionnaire du
     // LIEU, une fois les effets de dessin servis.
     this.lieu = new X[classe](Object.assign({}, opts || {},
@@ -840,6 +843,7 @@ class Client {
     this.cine = null;
     this.ouverture = null;
     this.nouvelle = null;
+    this.pause = false;
     this.carteForet = {
       relais: o.relais || [],
       surChoix: o.surChoix || null,
@@ -975,7 +979,9 @@ class Client {
       this.reste += dt * IPS;
       let pas = 0;
       const mode = this.bassin || this.lieu;
-      if (this.cine && this.cine.phase === 2) {
+      if (this.pause) {
+        this.reste = 0;
+      } else if (this.cine && this.cine.phase === 2) {
         // Base.initStep(11) : au noir complet, `game.kill()`. Plus rien ne bouge
         // sous le panneau de fin.
         this.reste = 0;
@@ -1011,6 +1017,7 @@ class Client {
 
   dessiner(tmod) {
     this.dessinerScene(tmod);
+    this.dessinerPause(this.ctx, tmod);
     if (this.iris && !this.iris.dessiner(this.ctx, tmod)) this.iris = null;
   }
 
@@ -1066,6 +1073,34 @@ class Client {
     this.dessinerDialogue(ctx, tmod);
     this.dessinerOuverture(ctx, tmod);
     this.dessinerCine(ctx, tmod);
+  }
+
+  /**
+   * Manager.setPause — la pause. Le voile violet monte vite (pauseAlpha part de
+   * −90 et se divise par deux à chaque image), le panneau s'affiche, et plus
+   * rien ne bouge. Elle ne vaut que pendant une partie : les écrans d'attente
+   * n'ont rien à suspendre.
+   */
+  basculerPause() {
+    const enJeu = (this.jeu || this.bassin || this.lieu)
+      && !this.cine && !this.nouvelle && !this.carteForet;
+    if (!this.pause && !enJeu) return;
+    this.pause = !this.pause;
+    if (this.pause) this.pauseAlpha = -90;
+  }
+
+  dessinerPause(ctx, tmod) {
+    if (!this.pause) return;
+    this.pauseAlpha *= Math.pow(0.5, tmod);
+    const prc = Math.min(90, 90 + this.pauseAlpha);
+    // Mc.setPercentColor(slot, prc, 0x938DC3) : un fondu linéaire vers le
+    // violet — un aplat de cette couleur, à cette opacité.
+    ctx.fillStyle = 'rgba(147,141,195,' + (prc / 100).toFixed(3) + ')';
+    ctx.fillRect(0, 0, SCENE, SCENE);
+    // Le panneau porte déjà le mot, en pleins et déliés.
+    if (this.sprites.panPause) {
+      poserRendu(ctx, rendre(this.sprites.panPause, 1, 100), 0, 0);
+    }
   }
 
   /**
@@ -1824,6 +1859,13 @@ class Client {
       ' ': 'tourner',
     };
     window.addEventListener('keydown', (ev) => {
+      // Manager.update : P ou Échap mettent en PAUSE — un voile violet, le
+      // panneau, et plus rien ne bouge jusqu'au prochain appui.
+      if (ev.key === 'p' || ev.key === 'P' || ev.key === 'Escape') {
+        if (!this.pauseEnfoncee) { this.pauseEnfoncee = true; this.basculerPause(); }
+        ev.preventDefault();
+        return;
+      }
       // Cm.pref.$key[4] — la touche d'AIDE. Le jeu d'origine n'écoute que le
       // premier appui (flHelpRelease) : rester appuyé n'enchaîne pas les sorts.
       if (ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'e') {
@@ -1836,6 +1878,7 @@ class Client {
     });
     window.addEventListener('keyup', (ev) => {
       if (ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'e') this.aideEnfoncee = false;
+      if (ev.key === 'p' || ev.key === 'P' || ev.key === 'Escape') this.pauseEnfoncee = false;
     });
     window.addEventListener('keyup', (ev) => {
       const k = touches[ev.key];
