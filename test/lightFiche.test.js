@@ -132,7 +132,8 @@ test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
   // box.Frutiz.getIconList : bulle (2), carte (3), cœur (4), bulle-croix (5),
   // « ! » (6), carton (7), totoche (8), feuille (10), bulle-plus (12), B (13).
   // Plus les chromes (blanc et rose), le bandeau des titres et la fleur.
-  for (const f of ['bouton_carre', 'bouton_rose', 'bandeau_titre', 'fleur_pseudo',
+  for (const f of ['bouton_rose', 'bandeau_titre', 'croix_fermer',
+    'statut_present', 'statut_absent',
     'ico_chat', 'ico_mail', 'ico_contact', 'ico_listenoire', 'ico_kick',
     'ico_ban', 'ico_totoche', 'ico_edite', 'ico_autorise', 'ico_blog', 'ico_avance']) {
     const p = path.join(ROOT, 'public/fb/fiche/' + f + '.png');
@@ -140,9 +141,17 @@ test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
     assert.ok(fs.statSync(p).size > 200, 'et porte un vrai dessin');
   }
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
-  assert.match(html, /\/fb\/fiche\/bouton_carre\.png/, 'le chrome blanc du bureau');
+  // but.Push trace son cadre par code (drawSmoothSquare 0xDDDDDD) : le mobile
+  // fait pareil, en CSS — pas d'image de chrome blanc.
+  assert.match(html, /border: 2px solid #ddd; border-radius: 6px;/, 'le cadre des boutons, par code');
   assert.match(html, /\/fb\/fiche\/bouton_rose\.png/, 'le chrome rose du mode avancé');
   assert.match(html, /\/fb\/fiche\/bandeau_titre\.png/, 'le bandeau des titres');
+  assert.match(html, /\/fb\/fiche\/croix_fermer\.png/, 'la croix du bureau (butGroupWinTop)');
+  // L'en-tête : le point de présence, et l'écran de niveau à barres.
+  assert.match(html, /statut_present/, 'présent en vert');
+  assert.match(html, /statut_absent/, 'éteint sinon');
+  assert.match(html, /id="fiche-barres"/, 'les barres de progression du niveau');
+  assert.match(html, /10000 \* Math\.pow\(d\.basic\.niveau - 1, 2\)/, 'la progression suit les paliers en carrés');
   for (const ico of ['ico_chat', 'ico_mail', 'ico_blog', 'ico_contact',
     'ico_listenoire', 'ico_kick', 'ico_ban', 'ico_totoche', 'ico_avance']) {
     assert.match(html, new RegExp('/fb/fiche/' + ico + '\\.png'), ico + ' posée sur son bouton');

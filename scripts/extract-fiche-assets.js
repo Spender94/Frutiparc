@@ -47,17 +47,22 @@ const K = 3;                        // rendu à 3× pour les écrans denses
 
 // Chaque cible : le SWF, le clip, l'image — et parfois SEULEMENT certaines
 // formes (le chrome d'un bouton sans son glyphe) ou une teinte (le triangle).
+// Les cadres des boutons ne sont PAS des dessins : but.Push les trace par code
+// (drawSmoothSquare gris clair 0xDDDDDD, l'art posé dedans) — le mobile fait
+// pareil, en CSS. La croix de fermeture (butGroupWinTop image 1) et les points
+// de présence (status images 3 et 4) viennent des exports FFDec, comme les
+// glyphes — voir l'en-tête.
 const CIBLES = [
-  // Le chrome des boutons d'action : le carré BLANC à liseré rose (son enfant
-  // `icon` est vide à l'image 1, il ne reste que le chrome).
-  { swf: 'legacy/main.swf', nom: 'butPushSmallWhite', image: 1, fichier: 'bouton_carre' },
-  // Le chrome ROSE du bouton de droite (sans son glyphe, formes 359-360).
+  // Le chrome ROSE du bouton du mode avancé (sans son glyphe, formes 359-360).
   { swf: 'legacy/main.swf', nom: 'butPushSmallPink', image: 1,
     fichier: 'bouton_rose', garder: [359, 360] },
-  // Son glyphe du mode avancé : l'image 13 de SA feuille (sprite 374).
+  // Son glyphe : l'image 13 de SA feuille (sprite 374).
   { swf: 'legacy/main.swf', sprite: 374, image: 13, fichier: 'ico_avance' },
-  // Le bandeau clair sous les titres de section (« frutisigne »).
-  { swf: 'legacy/main.swf', nom: 'butGfxFrutizInfoTitleBg', image: 8, fichier: 'bandeau_titre' },
+  // Le bandeau sous les titres de section (« frutisigne ») — teinté à la
+  // couleur du style, comme InfoFrutiz.genContent (slot.setColor(inline)) :
+  // sur la fenêtre verte du mobile, un vert tendre.
+  { swf: 'legacy/main.swf', nom: 'butGfxFrutizInfoTitleBg', image: 8,
+    fichier: 'bandeau_titre', teinte: 0xE4F4BC },
   // La feuille des glyphes de la fiche — sprite 500, l'enfant `icon` de
   // butPushSmallWhite, une image par geste (box.Frutiz.getIconList).
   { swf: 'legacy/main.swf', sprite: 500, image: 2, fichier: 'ico_chat' },
@@ -70,9 +75,6 @@ const CIBLES = [
   { swf: 'legacy/main.swf', sprite: 500, image: 10, fichier: 'ico_edite' },
   { swf: 'legacy/main.swf', sprite: 500, image: 12, fichier: 'ico_autorise' },
   { swf: 'legacy/main.swf', sprite: 500, image: 13, fichier: 'ico_blog' },
-  // La fleur devant le pseudo : la fleur des contacts de la banque du bureau,
-  // chauffée au jaune-orangé comme l'en-tête de la fiche la montre.
-  { swf: 'public/fileIcon.swf', nom: 'iconGFX', image: 14, fichier: 'fleur_pseudo', teinte: 0xFFC030 },
 ];
 
 fs.mkdirSync(TRAVAIL, { recursive: true });

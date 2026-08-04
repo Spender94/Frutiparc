@@ -15070,10 +15070,16 @@ app.get('/api/light/fiche', async (req, res) => {
 
   res.setHeader('Cache-Control', 'no-store');
   const moi = users[demandeur] || {};
+  // Le point de présence de l'en-tête (clip status du bureau).
+  let enLigne = false;
+  for (const [, cl] of xmlSocketClients) {
+    if (cl && cl.logged && cl.username === u) { enLigne = true; break; }
+  }
   res.json({
     ok: true,
     pseudo: getDisplayName(u),
     bouille: bouilleOf(ud, u),
+    enLigne,
     staff: { moderateur: !!ud.isModerator, animateur: !!ud.isAnimator },
     // Les droits du REGARDEUR : la vue modérateur (kick, ban, totoché) ne se
     // montre qu'aux modérateurs, comme box.Frutiz le fait avec me.flMode.

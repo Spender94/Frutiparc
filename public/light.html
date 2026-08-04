@@ -459,61 +459,69 @@
     display: flex; flex-direction: column;
   }
   .fiche-haut { display: flex; gap: 10px; padding: 8px 10px; background: #fff; }
-  /* La plaque du bureau : la bouille et son écran vert rayé dans un cadre
-     sombre, la plaque « NIV » à cheval sur le bas — la mainbar en miniature. */
-  .fiche-avatar { flex: 0 0 auto; width: 102px; position: relative; }
+  /* La plaque du bureau : la bouille et l'ÉCRAN DE NIVEAU dans un cadre
+     sombre — la mainbar en miniature. L'écran empile les barres de
+     progression dans le niveau en cours, et « NIV n » s'affiche à sa base. */
+  .fiche-avatar { flex: 0 0 auto; width: 106px; }
   .fiche-avatar .plaque {
     display: flex; gap: 3px; padding: 3px; background: #232f47;
-    border-radius: 9px; height: 58px; box-sizing: border-box;
+    border-radius: 9px; height: 60px; box-sizing: border-box;
   }
   .fiche-avatar .stage {
-    flex: 0 0 auto; width: 52px; border-radius: 6px;
+    flex: 0 0 auto; width: 50px; border-radius: 6px;
     overflow: hidden; background: #cfe4f4;
   }
   .fiche-avatar .stage iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
   .fiche-avatar .ecran {
-    flex: 1 1 auto; border-radius: 6px;
-    background: #86bd35 repeating-linear-gradient(180deg,
-      rgba(255, 255, 255, .75) 0 2px, rgba(255, 255, 255, 0) 2px 6px);
+    flex: 1 1 auto; border-radius: 6px; background: #8ec63f;
+    display: flex; flex-direction: column; padding: 3px 4px 2px; box-sizing: border-box;
   }
+  .fiche-avatar .barres { display: flex; flex-direction: column-reverse; gap: 2px; flex: 1 1 auto; }
+  .fiche-avatar .barres i {
+    display: block; height: 4px; border-radius: 2px;
+    background: rgba(255, 255, 255, .32);
+  }
+  .fiche-avatar .barres i.plein { background: rgba(255, 255, 255, .92); }
   .fiche-avatar .niv {
-    position: absolute; left: 3px; bottom: -4px;
-    display: flex; align-items: center; gap: 3px;
-    padding: 2px 6px; background: #232f47; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center; gap: 3px; padding-top: 1px;
   }
-  .fiche-avatar .niv img { height: 9px; width: auto; display: block; }
+  .fiche-avatar .niv img { height: 8px; width: auto; display: block; }
   .fiche-avatar .niv b {
-    font-family: 'DSEG7', 'Courier New', monospace; font-size: 11px;
-    font-weight: normal; color: #73b01e; line-height: 1;
+    font-family: 'DSEG7', 'Courier New', monospace; font-size: 10px;
+    font-weight: normal; color: #29510f; line-height: 1;
   }
   .fiche-droite { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
   .fiche-nom-ligne { display: flex; align-items: center; gap: 5px; }
-  .fiche-nom-ligne .fleur { width: 15px; height: 15px; object-fit: contain; }
+  /* Le point de présence du bureau (clip status : vert présent, anneau éteint). */
+  .fiche-nom-ligne .statut { width: 13px; height: 13px; object-fit: contain; }
   .fiche-nom-ligne b {
     font-size: 15px; color: #101408; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .fiche-nom-ligne .meta { margin-left: auto; font-size: 11.5px; color: #6f6f6f; white-space: nowrap; }
+  /* La croix du bureau — butGroupWinTop, image 1. */
   #fiche-fermer {
-    flex: 0 0 auto; border: 0; background: transparent; color: #d02c17;
-    font-size: 18px; font-weight: bold; line-height: 1; cursor: pointer; padding: 0 2px;
+    flex: 0 0 auto; border: 0; background: transparent; cursor: pointer; padding: 0 2px;
   }
+  #fiche-fermer img { width: 14px; height: 14px; display: block; }
   .fiche-actions { display: flex; align-items: center; gap: 5px; }
-  /* Les boutons du bureau : le carré rose de butPushVerySmallPink (chrome sans
-     son glyphe), et par-dessus une icône de la banque fileIcon.swf. */
+  /* but.Push trace son cadre PAR CODE : un carré arrondi gris clair
+     (drawSmoothSquare, couleur 0xDDDDDD) et l'art posé dedans. Même chose ici,
+     en CSS — les glyphes (la feuille `icon` du sprite 500) par-dessus. */
   .fiche-actions button {
-    width: 30px; height: 30px; border: 0; padding: 0; cursor: pointer;
-    background: url('/fb/fiche/bouton_carre.png') no-repeat center / 100% 100%;
+    width: 28px; height: 28px; padding: 0; cursor: pointer;
+    background: #fff; border: 2px solid #ddd; border-radius: 6px;
     display: flex; align-items: center; justify-content: center;
   }
   .fiche-actions button img { width: 19px; height: 19px; object-fit: contain; display: block; }
   .fiche-actions button:active { filter: brightness(.92); }
   /* Pas encore porté sur mobile : présent, mais éteint — comme convenu. */
   .fiche-actions button:disabled { opacity: .42; cursor: default; }
-  /* Le bouton du mode avancé, à droite : le chrome ROSE et son triangle
-     (butPushSmallPink, glyphe 13 de sa feuille). */
+  /* Le bouton du mode avancé, à droite : le chrome ROSE du bureau et son
+     triangle (butPushSmallPink, glyphe 13 de sa feuille). */
   .fiche-actions button.rose {
     margin-left: auto;
-    background-image: url('/fb/fiche/bouton_rose.png');
+    background: url('/fb/fiche/bouton_rose.png') no-repeat center / 100% 100%;
+    border-color: #ddd;
   }
   .fiche-actions button.rose:disabled { opacity: 1; }
   .fiche-corps { background: #cfec9a; border-top: 2px solid #6f9b2e; }
@@ -1368,15 +1376,17 @@
           <div class="fiche-avatar">
             <div class="plaque">
               <div class="stage" id="fiche-avatar"></div>
-              <div class="ecran"></div>
+              <div class="ecran">
+                <div class="barres" id="fiche-barres"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                <div class="niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
+              </div>
             </div>
-            <div class="niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
           </div>
           <div class="fiche-droite">
             <div class="fiche-nom-ligne">
-              <img class="fleur" src="/fb/fiche/fleur_pseudo.png" alt=""><b id="fiche-pseudo">…</b>
+              <img class="statut" id="fiche-statut" src="/fb/fiche/statut_absent.png" alt=""><b id="fiche-pseudo">…</b>
               <span class="meta" id="fiche-meta"></span>
-              <button type="button" id="fiche-fermer" aria-label="Fermer">✕</button>
+              <button type="button" id="fiche-fermer" aria-label="Fermer"><img src="/fb/fiche/croix_fermer.png" alt="Fermer"></button>
             </div>
             <!-- La rangée du bureau (box.Frutiz.getIconList), avec les VRAIS
                  glyphes de main.swf — la feuille `icon` de butPushSmallWhite.
@@ -3840,6 +3850,21 @@
     // L'avatar : la vraie bouille, rendue par Ruffle comme partout ailleurs.
     $("#fiche-avatar").innerHTML = (d && d.bouille) ? previewIframe(d.bouille) : "";
     $("#fiche-niveau").textContent = (d && d.basic) ? d.basic.niveau : "–";
+    // L'écran de niveau : la progression dans le niveau en cours, en barres
+    // (niveau = 1 + racine de xp/10000 — les paliers sont donc des carrés).
+    var barres = $("#fiche-barres").children;
+    var prog = 0;
+    if (d && d.basic && d.basic.niveau >= 1) {
+      var debut = 10000 * Math.pow(d.basic.niveau - 1, 2);
+      var fin = 10000 * Math.pow(d.basic.niveau, 2);
+      if (fin > debut) prog = Math.max(0, Math.min(1, (d.basic.xp - debut) / (fin - debut)));
+    }
+    var pleines = Math.round(prog * barres.length);
+    for (var bi = 0; bi < barres.length; bi++) {
+      barres[bi].classList.toggle("plein", bi < pleines);
+    }
+    // Le point de présence du bureau : vert s'il est en ligne.
+    $("#fiche-statut").src = "/fb/fiche/" + ((d && d.enLigne) ? "statut_present" : "statut_absent") + ".png";
     var meta = "";
     if (d && d.basic) {
       if (d.basic.age !== null && d.basic.age !== undefined) meta = d.basic.age + " ans";
