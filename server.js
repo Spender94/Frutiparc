@@ -14998,6 +14998,106 @@ app.post('/api/light/jeu-en-cours', (req, res) => {
 //   bonus    le commentaire et le site du joueur
 const SIGNES_FRUITS = ['pomme', 'abricot', 'poire', 'fraise', 'citron',
   'kiwi', 'raisin', 'orange', 'cerise', 'banane'];
+// ── La fenêtre des LOGS du staff ──────────────────────────────────────────
+// « … voir les messages précédents … » : depuis toujours, le bureau appelle
+// fp_openHisto(sid, salon) (box.Chat.onIamMode, la commande /logs) — et la
+// page ne répondait rien. La voici : les messages du salon des six dernières
+// heures, aux couleurs de Frutiparc. Modérateurs partout, animateurs sur
+// leur salon.
+app.get('/api/chat/histo', (req, res) => {
+  const demandeur = resolveUsernameFromSid(req.query.sid || '');
+  if (!demandeur) return res.status(401).send('Session inconnue.');
+  const g = String(req.query.g || '').trim();
+  if (!g || !channels[g]) return res.status(404).send('Salon inconnu.');
+  if (!isChannelStaff(demandeur, g)) return res.status(403).send('Réservé au staff du salon.');
+
+  const lignes = [];
+  for (const e of getChannelHistoryComplete(g)) {
+    const x = e.xml;
+    const attr = (n) => { const m = x.match(new RegExp('\\b' + n + '="([^"]*)"')); return m ? m[1] : ''; };
+    const u = unescapeXml(attr('u'));
+    const t = attr('t') || 'm';
+    const st = attr('st');
+    // L'heure du chat ([hh:mm:ss] dans h, débarrassée du <font> des cris) —
+    // sinon l'horloge du serveur au moment de l'enregistrement.
+    let h = unescapeXml(attr('h')).replace(/<[^>]*>/g, '').trim();
+    if (!h) {
+      h = '[' + new Date(e.at).toLocaleTimeString('fr-FR',
+        { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ']';
+    }
+    let corps = x.replace(/^<t[^>]*>/, '').replace(/<\/t>\s*$/, '');
+    const cd = corps.match(/^<!\[CDATA\[([\s\S]*)\]\]>$/);
+    if (cd) corps = cd[1];
+    if (t === 'i') {
+      const iu = corps.match(/\bu="([^"]*)"/);
+      const it = corps.match(/>([^<]*)</);
+      corps = '[image] ' + (it ? unescapeXml(it[1]) : '')
+        + (iu ? ' — ' + unescapeXml(iu[1]) : '');
+    } else if (t === 'g') {
+      const gk = corps.match(/\bk="([^"]*)"/);
+      const gu = corps.match(/\bu="([^"]*)"/);
+      corps = '[don] ' + (gk ? gk[1] : '?') + ' kikooz à ' + (gu ? unescapeXml(gu[1]) : '?');
+    } else {
+      // Le htmlText du bureau (font, b, i…) redevient du texte nu.
+      corps = unescapeXml(corps.replace(/<[^>]*>/g, '')).trim();
+    }
+    if (!corps) continue;
+    lignes.push({ h, u, corps, rouge: st === 'r', anim: t === 'c', systeme: u === 'admin' });
+  }
+
+  const esc = escapeXml;
+  const rendu = lignes.map((l) => {
+    const classes = ['ligne'];
+    if (l.rouge) classes.push('cri');
+    if (l.anim) classes.push('anim');
+    if (l.systeme && !l.rouge) classes.push('systeme');
+    const qui = (l.systeme || l.rouge) ? '' : '<b>' + esc(l.u) + ' :</b> ';
+    return '<div class="' + classes.join(' ') + '"><span class="h">' + esc(l.h) + '</span> '
+      + qui + esc(l.corps) + '</div>';
+  }).join('\n');
+
+  const page = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Salon ${esc(g)} — messages précédents</title>
+<style>
+  body { margin: 0; background: #8A9F60; font: 12px Verdana, Arial, sans-serif; color: #2c3a10; }
+  .fenetre {
+    max-width: 640px; margin: 14px auto; background: #cfec9a;
+    border: 2px solid #6f9b2e; border-radius: 8px; overflow: hidden;
+    box-shadow: 0 6px 24px rgba(0,0,0,.35);
+  }
+  .bandeau {
+    background: #e9f7cd; border-bottom: 2px solid #6f9b2e; padding: 8px 12px;
+    font-weight: bold; color: #4a7016;
+  }
+  .bandeau .salon { color: #c22000; }
+  .sous { padding: 5px 12px; background: #dff3b4; color: #5a7a2a; font-size: 11px;
+    border-bottom: 1px solid #b8d97e; }
+  .corps { padding: 8px 10px; max-height: 76vh; overflow-y: auto; background: #f4fbe4; }
+  .ligne { padding: 2px 4px; border-radius: 3px; }
+  .ligne:nth-child(even) { background: #ecf7d4; }
+  .h { color: #8aa15c; }
+  .cri { color: #c10000; font-weight: bold; }
+  .anim { color: #1d5fa8; font-weight: bold; }
+  .systeme { font-style: italic; color: #5a7a2a; }
+  .vide { padding: 18px; text-align: center; font-style: italic; color: #5a7a2a; }
+</style>
+</head>
+<body>
+<div class="fenetre">
+  <div class="bandeau">Salon <span class="salon">${esc(g)}</span> — les messages des 6 dernières heures</div>
+  <div class="sous">${lignes.length} message${lignes.length > 1 ? 's' : ''} — consultation réservée au staff. Les heures sont celles du chat.</div>
+  <div class="corps">${rendu || '<div class="vide">Aucun message sur ce salon depuis six heures.</div>'}</div>
+</div>
+<script>document.querySelector('.corps').scrollTop = 1e9;</script>
+</body>
+</html>`;
+  res.type('html').send(page);
+});
+
 app.get('/api/light/fiche', async (req, res) => {
   const demandeur = resolveUsernameFromSid(req.query.sid || '');
   if (!demandeur) return res.status(401).json({ ok: false, error: 'auth' });
@@ -16974,13 +17074,16 @@ function sendToClient(socket, data) {
   } catch (e) { /* ignore */ }
 }
 
-// Per-channel rolling chat history: the last few minutes of `<t>` content
-// frames (normal lines, gifts, images, admin announces…). Used to replay
-// recent context to a (re)joining LIGHT client so switching browser tabs on
-// mobile no longer wipes the conversation. Desktop is unaffected (replay is
-// opt-in, see client.wantsChatHistory).
-const CHAT_HISTORY_MAX_AGE_MS = 5 * 60 * 1000;
-const CHAT_HISTORY_MAX = 120;
+// Per-channel rolling chat history: `<t>` content frames (normal lines,
+// gifts, images, admin announces…). Two consumers, two windows :
+//  · le REJEU des clients Light qui reviennent (onglet mobile) — cinq
+//    minutes, comme avant ;
+//  · la fenêtre des LOGS du staff (« … voir les messages précédents … ») —
+//    les SIX dernières heures du salon.
+// Desktop is unaffected (replay is opt-in, see client.wantsChatHistory).
+const CHAT_HISTORY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const CHAT_REPLAY_MAX_AGE_MS = 5 * 60 * 1000;
+const CHAT_HISTORY_MAX = 4000;
 function recordChannelHistory(channelName, xmlStr) {
   const channel = channels[channelName];
   if (!channel) return;
@@ -16999,8 +17102,16 @@ function recordChannelHistory(channelName, xmlStr) {
 function getChannelHistory(channelName) {
   const channel = channels[channelName];
   if (!channel || !channel.history) return [];
-  const cutoff = Date.now() - CHAT_HISTORY_MAX_AGE_MS;
+  const cutoff = Date.now() - CHAT_REPLAY_MAX_AGE_MS;
   return channel.history.filter((e) => e.at >= cutoff).map((e) => e.xml);
+}
+
+// La fenêtre des logs : tout ce que la rétention porte (six heures).
+function getChannelHistoryComplete(channelName) {
+  const channel = channels[channelName];
+  if (!channel || !channel.history) return [];
+  const cutoff = Date.now() - CHAT_HISTORY_MAX_AGE_MS;
+  return channel.history.filter((e) => e.at >= cutoff);
 }
 
 function broadcastToChannel(channelName, xmlStr, excludeSocket = null) {
@@ -17175,10 +17286,14 @@ function isAnimator(username) {
   return !!(username && users[username] && users[username].isAnimator);
 }
 
-const ANIM_CHANNEL = 'bienvenue';
+// Le salon où les ANIMATEURS ont les droits de modération : tête de liste
+// (m="1"), le cri rouge gras (!message), /kick et /image — mais ni totoché ni
+// ban, qui restent aux modérateurs partout. Hors de ce salon, un animateur est
+// un utilisateur comme un autre.
+const ANIM_CHANNEL = 'pomme';
 
 // Whether a user should be shown as staff in a given channel: moderators
-// everywhere, animators only on the Anim ("bienvenue") channel where they act
+// everywhere, animators only on the ANIM_CHANNEL salon where they act
 // as moderators.
 function isChannelStaff(username, channelName) {
   return isModerator(username) || (channelName === ANIM_CHANNEL && isAnimator(username));
@@ -17187,9 +17302,9 @@ function isChannelStaff(username, channelName) {
 // The m="1" attribute on a <u> element. The chat client (UserListMng) reads it
 // as flMode = (attributes.m == 1): it badges the user as a moderator AND sorts
 // them to the TOP of the channel user list (flMode first, then alphabetical).
-// Without it, everyone sorts alphabetically — which is why a moderator could
-// appear below a Frutiz like "Gaspard". channelName omitted → moderators only
-// (they are global; the animator badge is Anim-channel-specific).
+// The SWF ALSO copies the flag of one's own entry into Chat.flMode (per salon),
+// which is what unlocks its "!" shout and /kick — the whole per-salon rights
+// story is therefore driven from here. channelName omitted → moderators only.
 function modAttr(username, channelName) {
   return isChannelStaff(username, channelName) ? ' m="1"' : '';
 }
@@ -18399,11 +18514,14 @@ case 'join': {
         console.log(`[FSCORE] listRankings dt=${dt}: ${LEGACY_RANKINGS.length} legacy rankings sent`);
         break;
       }
-      if (!isModerator(client.username)) {
+      // Kick par la fiche/liste : modérateurs partout, animateurs sur le
+      // salon des animateurs (le SWF ne montre l'action qu'aux m="1" du salon,
+      // on applique la même règle ici).
+      const g = pickActiveChannel(client, msg.attrs);
+      if (!isChannelStaff(client.username, g)) {
         sendToClient(socket, `<${CMD.error} k="403" />`);
         break;
       }
-      const g = pickActiveChannel(client, msg.attrs);
       const targetUser = resolveModerationTarget(msg);
       if (!g || !targetUser) break;
       kickUserFromChannel(g, targetUser, client.username, 'kick');
@@ -18547,7 +18665,8 @@ case 'send': {
     }
     // Broadcasting a desktop window to a whole salon is a staff power (the SWF
     // itself gates /image behind flAnimator); defend it server-side too.
-    if (!isModerator(client.username) && !isAnimator(client.username)) break;
+    // Modérateurs partout ; animateurs sur LEUR salon seulement.
+    if (!isChannelStaff(client.username, g)) break;
     const xmlUnescape = (s) => String(s || '')
       .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
@@ -18604,6 +18723,27 @@ case 'send': {
     if (canModHere && text.startsWith('/kick ')) {
       const targetUser = resolveKnownUsername(text.substring(6).trim());
       if (targetUser) kickUserFromChannel(g, targetUser, client.username, 'kick');
+      break;
+    }
+    // /image en TEXTE — le chemin du client Light (le SWF, lui, envoie une
+    // trame t="i" interceptée plus haut). Même droit (staff du salon), mêmes
+    // bornes et même relais proxifié que la trame du bureau.
+    if (canModHere && /^\/(image|img)\s/i.test(text)) {
+      const morceaux = unescapeXml(text).trim().split(/\s+/);
+      const largeur = parseInt(morceaux[1], 10) || 0;
+      const hauteur = parseInt(morceaux[2], 10) || 0;
+      const adresse = String(morceaux[3] || '').trim();
+      const titre = morceaux.slice(4).join(' ');
+      if (!largeur || !hauteur || !/^https?:\/\//i.test(adresse)) {
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe : /image largeur hauteur url titre')}</${CMD.send}>`);
+        break;
+      }
+      const lBornee = Math.min(Math.max(largeur, 10), 600);
+      const hBornee = Math.min(Math.max(hauteur, 10), 600);
+      const relayee = `/api/imgproxy?url=${encodeURIComponent(adresse)}`;
+      broadcastToChannel(g,
+        `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="i"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><i w="${lBornee}" h="${hBornee}" u="${escapeXml(relayee)}">${escapeXml(titre)}</i></${CMD.send}>`);
+      trackXpAction(client.username, 'chatMsg');
       break;
     }
     if (isModerator(client.username) && text.startsWith('/totoch ')) {
@@ -18859,24 +18999,27 @@ case 'send': {
 
     let safeText = escapeXml(unescapeXml(text));
 
-    // Moderator "!" prefix: route through chat.msg_admin ("$h<i>$m</i>") and
-    // inline a red bold <font> in BOTH the timestamp (h attr) and message
-    // body — the SWF renders the resulting concatenation through an HTML
-    // TextField, so wrapping the timestamp in <font color> turns it red
-    // alongside the message text.
-    if ((isModerator(client.username) || isAnimator(client.username)) && text.startsWith('!')) {
-      const shout = text.substring(1).trim();
+    // Le CRI rouge gras — un seul droit (être staff DU salon : modérateur
+    // partout, animateur sur le sien), deux chemins pour l'exercer :
+    //  · le client Light envoie « !message » tel quel (préfixe « ! ») ;
+    //  · le SWF (sendMsgMode) retire le « ! » et envoie le corps en t="w".
+    // Un t="w" forgé par un client qui n'est pas staff du salon est avalé.
+    // Rendu : chat.msg_admin ("$h<i>$m</i>") avec un <font> rouge gras dans le
+    // corps ET l'horodatage — le TextField HTML du SWF suit, et st="r" fait le
+    // même rendu côté Light.
+    if (type === 'w' || (isChannelStaff(client.username, g) && text.startsWith('!'))) {
+      if (type === 'w' && !isChannelStaff(client.username, g)) break;
+      const shout = (type === 'w' ? unescapeXml(text) : text.substring(1)).trim();
       if (shout) {
         const inner = escapeXml(getDisplayName(client.username) + ': ' + shout);
         const body = `<![CDATA[<font color="#C10000"><b>${inner}</b></font>]]>`;
         const redStamp = `<font color="#C10000">${timeAttrs.h.trim()}</font> `;
-        // st="r" : marqueur lu par le client Light pour rendre le cri en rouge
-        // gras (le SWF l'ignore et se fie au <font color> du corps/horodatage).
         broadcastToChannel(g,
           `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${escapeXml(redStamp)}" d="${timeAttrs.d}" st="r">${body}</${CMD.send}>`
         );
         break;
       }
+      if (type === 'w') break;
     }
 
     // Type "g" (kikooz gift broadcast from /donne command):

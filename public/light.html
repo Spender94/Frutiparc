@@ -1691,6 +1691,10 @@
     return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
   }
 
+  // Le salon où les ANIMATEURS ont les droits de modération (tête de liste,
+  // « ! » rouge gras, /kick, /image) — aligné sur ANIM_CHANNEL côté serveur.
+  var SALON_ANIM = "pomme";
+
   var state = {
     sid: "",
     user: "",          // display name
@@ -1700,7 +1704,7 @@
     connected: false,
     reconnectTimer: null,
     intentionalClose: false,
-    usersByRoom: {},   // room -> Set of display names
+    usersByRoom: {},   // room -> { pseudo: { staff } } (m="1" du salon)
     bouilleByUser: {},
     jeuByUser: {}, // lowercased pseudo -> bouille state string "f"
     overlayTimer: null,
@@ -3171,13 +3175,18 @@
           var frag = "<u " + mm[1] + "/>";
           var uname = attr(frag, "u");
           if (uname) {
-            set[uname] = true;
+            // m="1" : le staff DU salon (modérateur partout, animateur sur le
+            // sien) — c'est lui qui trie la liste et allume le badge, comme le
+            // bureau (UserListMng).
+            set[uname] = { staff: attr(frag, "m") === "1" };
             rememberBouille(uname, attr(frag, "f"));
             rememberStatut(uname, attr(frag, "s"));
           }
         }
         state.usersByRoom[room] = set;
         if (room === state.room) renderUsers();
+        // Et si MA ligne porte m="1", le lien des logs du bureau.
+        montrerLienHisto(room, set);
         break;
       }
 
@@ -3204,7 +3213,7 @@
         if (rj && uj) {
           rememberBouille(uj, attr(xml, "f"));
           if (!state.usersByRoom[rj]) state.usersByRoom[rj] = {};
-          state.usersByRoom[rj][uj] = true;
+          state.usersByRoom[rj][uj] = { staff: attr(xml, "m") === "1" };
           if (rj === state.room) { renderUsers(); systemLine(uj + (estPrive(rj) ? " est là." : " a rejoint le salon.")); }
         }
         break;
@@ -3486,6 +3495,9 @@
     renderRoomOptions();
     $("#room-select").value = room;
     clearMessages();
+    // Le bureau remet « … voir les messages précédents … » à CHAQUE entrée
+    // (onJoin → onIamMode) : l'écran vient d'être vidé, le lien doit revenir.
+    delete histoMontre[room];
     systemLine("— " + (conv ? "Discussion privée avec " + conv.avec : roomLabel(room)) + " —");
     // Le mot de passe transmis par le serveur accompagne le join d'un salon privé.
     wsSend('<o g="' + xmlEscape(room) + '"' + (conv && conv.pass ? ' p="' + xmlEscape(conv.pass) + '"' : '') + ' />');
@@ -3892,8 +3904,11 @@
       .forEach(function (s) { $(s).style.display = moi ? "none" : ""; });
     // La vue modérateur : kick, ban, totoché — aux modérateurs seulement.
     var modo = !moi && d && d.vous && d.vous.moderateur;
-    ["#fiche-kick", "#fiche-ban", "#fiche-totoche"]
-      .forEach(function (s) { $(s).hidden = !modo; });
+    // L'animateur est staff de SON salon (pomme) : il peut éjecter — mais ni
+    // totocher ni bannir, qui restent aux modérateurs.
+    var animIci = !moi && d && d.vous && d.vous.animateur && state.room === SALON_ANIM;
+    $("#fiche-kick").hidden = !(modo || animIci);
+    ["#fiche-ban", "#fiche-totoche"].forEach(function (s) { $(s).hidden = !modo; });
     Array.prototype.forEach.call($("#fiche-onglets").children, function (b) {
       b.classList.toggle("actif", b.getAttribute("data-onglet") === ficheEtat.onglet);
     });
@@ -4055,7 +4070,14 @@
 
   function renderUsers() {
     var set = state.usersByRoom[state.room] || {};
-    var names = Object.keys(set).sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+    // Le staff du salon d'abord (m="1"), puis l'alphabet — le tri du bureau
+    // (UserListMng : flMode en tête).
+    var names = Object.keys(set).sort(function (a, b) {
+      var sa = set[a] && set[a].staff ? 0 : 1;
+      var sb = set[b] && set[b].staff ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return a.toLowerCase().localeCompare(b.toLowerCase());
+    });
     // Keep the selector's "(n)" for the current room fresh between polls.
     if (state.room) {
       var prev = state.roomCounts[state.room];
@@ -4065,7 +4087,25 @@
     if (drawerVue !== "salon") return;   // la vue « site » a son propre rendu
     var list = $("#users-list");
     list.innerHTML = "";
-    names.forEach(function (n) { list.appendChild(ligneConnecte(n, "", false)); });
+    names.forEach(function (n) {
+      list.appendChild(ligneConnecte(n, "", !!(set[n] && set[n].staff)));
+    });
+  }
+
+  // « … voir les messages précédents … » — le lien des logs du staff, comme au
+  // bureau (box.Chat.onIamMode) : il n'apparaît qu'à ceux dont la ligne porte
+  // m="1" sur ce salon, une fois par salon.
+  var histoMontre = {};
+  function montrerLienHisto(room, set) {
+    if (histoMontre[room] || room !== state.room || estPrive(room)) return;
+    var moi = null;
+    for (var n in set) { if (n.toLowerCase() === state.userLower) { moi = set[n]; break; } }
+    if (!moi || !moi.staff) return;
+    histoMontre[room] = true;
+    systemAction("", "... voir les messages précédents ...", function () {
+      window.open("/api/chat/histo?sid=" + encodeURIComponent(state.sid)
+        + "&g=" + encodeURIComponent(room), "fp_histo", "width=680,height=720");
+    });
   }
 
   // Vue « tout le site ». Le lieu affiché est le salon PUBLIC où se trouve le

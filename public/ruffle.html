@@ -624,9 +624,13 @@
                 return true;
             };
 
-            window.fp_openHisto = function (user) {
-                const u = encodeURIComponent(String(user || ""));
-                window.open(`/legacy?histo=${u}`, "_blank", "noopener,noreferrer");
+            window.fp_openHisto = function (sid, group) {
+                // « … voir les messages précédents … » (box.Chat.onIamMode) et
+                // la commande /logs : le SWF appelle fp_openHisto(sid, salon)
+                // depuis toujours — la fenêtre des six dernières heures.
+                const qs = `sid=${encodeURIComponent(String(sid || ""))}&g=${encodeURIComponent(String(group || ""))}`;
+                window.open(`/api/chat/histo?${qs}`, "fp_histo",
+                    "width=680,height=720,resizable=yes,scrollbars=yes");
                 return true;
             };
 
