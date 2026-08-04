@@ -75,6 +75,34 @@ function missions() {
   return sortie;
 }
 
+// Les listes À RANGS : une rangée de phrases par humeur, avec des trous — un
+// null est un silence, et il compte dans le tirage. La fée bavarde pioche dans
+// sa rangée ; la timide a plus de trous que de mots.
+function rangs(nom) {
+  const debut = texte.indexOf('static var ' + nom);
+  if (debut < 0) throw new Error('rangs introuvables : ' + nom);
+  const ouvre = texte.indexOf('[', debut);
+  const fin = fermant(ouvre, '[', ']');
+  const corps = texte.slice(ouvre + 1, fin);
+  const sortie = [];
+  let i = 0;
+  for (;;) {
+    const o = corps.indexOf('[', i);
+    if (o < 0) break;
+    let n = 0, f = -1;
+    for (let k = o; k < corps.length; k++) {
+      if (corps[k] === '[') n++;
+      else if (corps[k] === ']') { n--; if (n === 0) { f = k; break; } }
+    }
+    if (f < 0) break;
+    const rang = corps.slice(o + 1, f);
+    sortie.push([...rang.matchAll(/null|"((?:[^"\\]|\\.)*)"/g)]
+      .map((m) => (m[0] === 'null' ? null : m[1])));
+    i = f + 1;
+  }
+  return sortie;
+}
+
 const MOTS = [
   'WORD_THIEF', 'WORD_KINGDOM', 'WORD_HISTORY', 'WORD_FUN_GAME', 'WORD_LONG_TIME',
   'WORD_VICTIMS', 'WORD_FROM_LOCATION', 'WORD_AT_LOCATION', 'WORD_BAD_NAME',
@@ -88,6 +116,13 @@ const donnees = {
   MISSION_DIF_RANK: liste('MISSION_DIF_RANK'),
   nameSyl0: liste('nameSyl0').map((s) => s.slice(1)),
   nameSyl1: liste('nameSyl1').map((s) => s.slice(1)),
+  // Ce que la fée DIT : sa rangée d'humeur, dans chaque liste.
+  CLOUD_SHAPE: liste('CLOUD_SHAPE'),
+  END_CHEER: rangs('endCheerList'),
+  AMBIANCE_NORMAL: rangs('SENT_GAME_AMBIENT_NORMAL'),
+  AMBIANCE_FINISH: rangs('SENT_GAME_AMBIENT_FINISH'),
+  AMBIANCE_BATTLE: rangs('SENT_GAME_AMBIENT_BATTLE'),
+  AMBIANCE_STRESS: rangs('SENT_GAME_AMBIENT_STRESS'),
 };
 for (const m of MOTS) donnees[m] = liste(m);
 

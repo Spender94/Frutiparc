@@ -686,6 +686,7 @@ function bougerEclats(ctx, tmod) {
 }
 
 const borner01 = (v) => Math.max(0, Math.min(1, v));
+const nombreSur = (v, n) => Math.max(0, Math.min(Math.floor(Number(v) || 0), n - 1));
 
 // ── Le client ─────────────────────────────────────────────────────────────
 class Client {
@@ -746,6 +747,7 @@ class Client {
     this.carteForet = null;
     this.nouvelle = null;
     this.nouvelleEnAttente = null;
+    this.dialogue = null;
     this.commencerOuverture((opts.niveau || 0) + 1);
     if (opts.fee !== undefined) this.fee = opts.fee;
     if (opts.coefNuit !== undefined) this.coefNuit = opts.coefNuit;
@@ -774,6 +776,7 @@ class Client {
     this.carteForet = null;
     this.nouvelle = null;
     this.nouvelleEnAttente = null;
+    this.dialogue = null;
     this.ouverture = null;             // le bassin s'ouvre sur sa bulle, pas sur la gerbe
     // Les événements passent par `annonce` pour les effets de dessin, puis vont
     // au gestionnaire DU BASSIN — pas à celui de la forêt. L'écraser envoyait
@@ -803,6 +806,7 @@ class Client {
     this.carteForet = null;
     this.nouvelle = null;
     this.nouvelleEnAttente = null;
+    this.dialogue = null;
     // Même chose qu'au bassin : les événements du lieu vont au gestionnaire du
     // LIEU, une fois les effets de dessin servis.
     this.lieu = new X[classe](Object.assign({}, opts || {},
@@ -906,6 +910,10 @@ class Client {
   }
 
   annonce(nom, d, cible) {
+    // Aventure.initStep(2) : le niveau gagné, la fée s'exclame en s'envolant.
+    if (nom === 'finPartie' && d && d.gagne) {
+      this.react((window.MinipixizLangue || {}).END_CHEER);
+    }
     // base/Tree.gameOver : un record vaut mieux qu'un panneau de défaite — le
     // jeu montre alors l'écran de nouvelle à la place du « Game Over ».
     if (nom === 'record' && d && d.score !== undefined) {
@@ -984,6 +992,12 @@ class Client {
       } else {
         this.reste = 0;
       }
+      // Game.update, étape JEU : toutes les ~cinq cents images, si personne ne
+      // parle déjà, la fée regarde autour d'elle et dit un mot.
+      if (pas && this.jeu && this.jeu.step === E.ETAPE.JEU && this.fee
+        && !this.dialogue && Math.random() * 500 < pas) {
+        this.ambiance();
+      }
       this.dessiner(dt * IPS);
     };
     this.raf = requestAnimationFrame(boucle);
@@ -1010,6 +1024,7 @@ class Client {
     if (this.bassin) { this.dessinerBassin(ctx, tmod); this.dessinerCine(ctx, tmod); return; }
     if (this.lieu) {
       this.dessinerLieu(ctx, tmod);
+      this.dessinerDialogue(ctx, tmod);
       this.dessinerOuverture(ctx, tmod);
       this.dessinerCine(ctx, tmod);
       return;
@@ -1046,9 +1061,123 @@ class Client {
     // 5. L'heure qu'il est, en dernier : elle teinte la scène entière.
     this.dessinerNuit(ctx);
 
-    // 6. Le bouquet d'ouverture, et s'il faut mourir, le rideau par-dessus tout.
+    // 6. La bulle de la fée, le bouquet d'ouverture, et s'il faut mourir, le
+    //    rideau par-dessus tout.
+    this.dessinerDialogue(ctx, tmod);
     this.dessinerOuverture(ctx, tmod);
     this.dessinerCine(ctx, tmod);
+  }
+
+  /**
+   * FaerieInfo.react / speak — la fée PARLE. Une bulle arrondie près de son
+   * portrait, le temps de lire (18 images + 1,9 par lettre), une seule à la
+   * fois. Sa rangée d'HUMEUR décide de ce qu'elle dit — et les trous de la
+   * rangée sont ses silences.
+   */
+  react(rangees) {
+    const fee = this.fee;
+    if (!fee || !rangees) return;
+    const rang = rangees[nombreSur(fee.fs.$humor, rangees.length)];
+    if (!rang || !rang.length) return;
+    const brut = rang[Math.floor(Math.random() * rang.length)];
+    const texte = this.enrichir(brut);
+    if (texte) this.parler(texte);
+  }
+
+  // FaerieInfo.getRichStr — les mots à trous du dialogue.
+  enrichir(str) {
+    if (str === null || str === undefined) return null;
+    const fee = this.fee;
+    const L = window.MinipixizLangue || {};
+    const O = window.MinipixizObjets;
+    if (L.CLOUD_SHAPE && str.indexOf('$cloud') >= 0) {
+      str = str.split('$cloud').join(
+        L.CLOUD_SHAPE[Math.floor(Math.random() * L.CLOUD_SHAPE.length)]);
+    }
+    str = str.split('$name').join(fee.fs.$name);
+    if (str.indexOf('$other') >= 0) {
+      // Une autre fée de la fiche — et sans compagne, le silence.
+      const liste = ((fee.carte || {}).$faerie || []).filter((f) => f && f !== fee.fs);
+      if (!liste.length) return null;
+      str = str.split('$other').join(liste[Math.floor(Math.random() * liste.length)].$name);
+    }
+    const gout = (quel) => {
+      const l = ((fee.fs.$taste || [])[quel]) || [];
+      const id = l.length ? 300 + l[Math.floor(Math.random() * l.length)] * 3 : 300;
+      const it = O && O.info(id);
+      return (it && it.nom) || 'de la brioche';
+    };
+    if (str.indexOf('$like') >= 0) str = str.split('$like').join(gout(0));
+    if (str.indexOf('$dislike') >= 0) str = str.split('$dislike').join(gout(1));
+    return str;
+  }
+
+  parler(texte) {
+    if (this.dialogue) return;         // Manager.slot.dial : une bulle à la fois
+    this.dialogue = { texte: String(texte), timer: 18 + String(texte).length * 1.9 };
+  }
+
+  /**
+   * FaerieInfo.reactAmbience — le bavardage de jeu. Toutes les ~cinq cents
+   * images, la fée regarde le plateau : presque vide, elle sent la fin ; des
+   * démons, elle crie ; trop plein, elle s'inquiète ; sinon, elle papote.
+   */
+  ambiance() {
+    const L = window.MinipixizLangue || {};
+    const jeu = this.jeu;
+    if (!jeu || !jeu.coefRemplissage) return;
+    let liste = L.AMBIANCE_NORMAL, rnd = 3;
+    const c = jeu.coefRemplissage();
+    if (c < 0.1) { liste = L.AMBIANCE_FINISH; rnd = 3; }
+    if (this.champ && this.champ.impList.length > 0) { liste = L.AMBIANCE_BATTLE; rnd = 1; }
+    if (c > 0.5) { liste = L.AMBIANCE_STRESS; rnd = 2; }
+    if (Math.floor(Math.random() * rnd) === 0) this.react(liste);
+  }
+
+  dessinerDialogue(ctx, tmod) {
+    const d = this.dialogue;
+    if (!d) return;
+    d.timer -= tmod;
+    if (d.timer <= 0) { this.dialogue = null; return; }
+    // Dialog.setSkin + Aventure.attachDialog, à la géométrie près : la largeur
+    // suit le texte, la bulle s'accroche vers (190, 64) et sa pointe la relie
+    // au portrait.
+    ctx.font = '9px Verdana, Arial, sans-serif';
+    const w = Math.min(Math.max(70, d.texte.length * 3), 130);
+    const lignes = decouperTexte(ctx, d.texte, w - 8);
+    const h = lignes.length * 11 + 8;
+    const x = Math.min(190 - w * 0.5, SCENE - w - 4);
+    const y = 64;
+    const arrondi = (px, py, pw, ph, r, couleur) => {
+      ctx.fillStyle = couleur;
+      ctx.beginPath();
+      ctx.moveTo(px + r, py);
+      ctx.arcTo(px + pw, py, px + pw, py + ph, r);
+      ctx.arcTo(px + pw, py + ph, px, py + ph, r);
+      ctx.arcTo(px, py + ph, px, py, r);
+      ctx.arcTo(px, py, px + pw, py, r);
+      ctx.fill();
+    };
+    arrondi(x - 2, y - 2, w + 4, h + 4, 8, '#AB9CC9');
+    arrondi(x, y, w, h, 4, '#E7E3F0');
+    // La pointe, vers le haut — c'est de là que vient la voix.
+    const px = Math.min(x + w - 14, 190 - 6);
+    ctx.fillStyle = '#E7E3F0';
+    ctx.beginPath();
+    ctx.moveTo(px, y + 1);
+    ctx.lineTo(px + 12, y + 1);
+    ctx.lineTo(px + 9, y - 9);
+    ctx.fill();
+    ctx.fillStyle = 'rgb(108,89,159)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    let ty = y + 4;
+    for (const l of lignes) { ctx.fillText(l, x + w / 2, ty); ty += 11; }
+    // Le portrait de la parleuse, dans son médaillon, à gauche de la bulle.
+    if (this.fee) {
+      if (!d.portrait) d.portrait = portraitDeFee(this.sprites, this.fee, 34);
+      ctx.drawImage(d.portrait, x - 40, y - 4);
+    }
   }
 
   /**

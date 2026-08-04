@@ -227,6 +227,474 @@ const LANGUE = {
     "mone",
     "gone"
   ],
+  "CLOUD_SHAPE": [
+    "une autruche",
+    "une bouteille",
+    "un oiseau",
+    "une aubergine",
+    "un ananas",
+    "un cheval",
+    "un serpent",
+    "une paire de ciseaux",
+    "une main",
+    "un visage",
+    "une poule",
+    "un trés gros morceau de sucre",
+    "un panier",
+    "une étoile",
+    "un labrador",
+    "un château",
+    "$other",
+    "un pichet",
+    "une fourchette",
+    "un sablier",
+    "un kikooz",
+    "une tzongre",
+    "la bouille de Gaspard",
+    "une totoche"
+  ],
+  "END_CHEER": [
+    [
+      null,
+      "On a fini !",
+      "Bravo !",
+      "En route!",
+      "Voyons voir ce qui nous attend...",
+      "Fini!!",
+      "Un de plus"
+    ],
+    [
+      null,
+      null,
+      "Wow !!",
+      "Déjà !?",
+      "C'est déjà fini ?",
+      "Qu'est-ce qui se passe ?",
+      "On va où?",
+      "Hein? C'est fini?"
+    ],
+    [
+      null,
+      null,
+      null,
+      null,
+      "Pas mal !",
+      "Enfin !",
+      "Génial...",
+      "Je commençais à m'impatienter...",
+      "On a fini par s'en sortir... C'est pas grâce à toi !",
+      "Tu veux vraiment continuer?",
+      "Ah ben ca fait du bien quand c'est fini tiens",
+      "Et voilà, encore un niveau, on dit merci qui?"
+    ],
+    [
+      null,
+      "Héhé, j'ai tout déchiré !",
+      "Heureusement que j'étais là !",
+      "Je m'en suis bien sortie !",
+      "Tu m'as trouvée comment ?",
+      "Avec $other tu l'aurais sûrement pas fini",
+      "$name a encore tout fait",
+      "Et encore une victoire pour moi, je sais je suis trop forte"
+    ],
+    [
+      null,
+      "C'est encore loin Grand-Schtroumpf ?",
+      "Je suis trop youpi-framboise !",
+      "Génial !",
+      "Félicitations, puzzle-man !",
+      "Youhouhou !!!",
+      "Un de plus en moins"
+    ],
+    [
+      null,
+      null,
+      null,
+      null,
+      "On s'en est bien sortis... non ?",
+      "J'espère que je ne t'ai pas trop encombré...",
+      "Si tu veux continuer sans moi je comprendrais...",
+      "On continue ensemble?"
+    ],
+    [
+      null,
+      "C'est pas trop tôt",
+      "T'aurais pas pu aller plus vite ?",
+      "Ah ben quand même",
+      "Le prochain je le fais moi-même",
+      "Go go go go !!!",
+      "Allez, on se dépèche",
+      "J'ai failli m'endormir",
+      "Allez hop hop encore un niveau!!"
+    ],
+    [
+      null,
+      "On fait vraiment une super équipe tous les deux",
+      "Tu crois que ça va être dur plus loin ?",
+      "J'espère qu'il n'y aura pas de démons plus loin",
+      "youpiiii, on a réussi",
+      "Tu veux pas me porter? Je commence à fatiguer",
+      "Y a quoi aprés?"
+    ],
+    [
+      null,
+      "On rentre à la maison maintenant?",
+      " Ouf, on a réussi",
+      "An rentre? Ah non?",
+      "T'es sûr qu'il y a pas de démons plus loin?",
+      "Si tu veux continuer sans moi je comprendrais...",
+      "Tu veux pas appeler $other à ma place?"
+    ]
+  ],
+  "AMBIANCE_NORMAL": [
+    [
+      null,
+      null,
+      "Allez encore un effort !",
+      "Il nous faut une super combo !",
+      "Concentre toi sur le jeu, tu peux sûrement trouver une faille !",
+      "Persévère !",
+      "Concentre toi",
+      "Essaie de repérer les groupes de billes les plus importants !",
+      "Ne libère pas plusieurs démons à la fois !"
+    ],
+    [
+      null,
+      null,
+      "Tiens ? je suis déjà venue ici...",
+      "Tu as vu mon collier ? $other me l'a prêté !",
+      "Mince j'ai fait tomber une boucle d'oreille",
+      "Ho ! Je crois que j'ai vu un kikooz derrière ce buisson",
+      "C'est quoi ce champignon ?!",
+      "Tu as déjà entendu parler de l'arc-en-ciel ?",
+      "Je suis super mal coiffée aujourd'hui...",
+      "J'ai un peu soif...",
+      "Il n'y a pas un autre moyen d'explorer cette contrée ?",
+      "Faut que j'aille chez la manucure, à force de me battre j'ai les mains toutes abimées",
+      "Et si je me colorais les ailes pour les assortir à ma tenue?"
+    ],
+    [
+      null,
+      "Ca fait combien de temps qu'on est partis ?",
+      "La prochaine fois, demande plutôt à $other de t'accompagner.",
+      "Il y aurait pas un autre mode de jeu... où je suis pas obligée de venir?",
+      "Je crois que je préfère encore être enfermée dans un bocal",
+      "J'aurais mieux fait de rester dans mon bassin moi...",
+      "Si j'avais su, je serais pas venue.",
+      "Engagez-vous qu'ils disaient...",
+      "J'aurais dû rester couchée ce matin",
+      "J'ai pas de bol.",
+      "*soupir*"
+    ],
+    [
+      "Je m'ennuie",
+      "Tu as pas un truc à faire pour moi ?",
+      "Que penses-tu de moi ? Je suis bien meilleure que $other n'est-ce pas ?",
+      "Si je récupère assez de magie...",
+      "Je prépare un super coup !",
+      "Qu'ils viennent les démons !! Je les attends !",
+      "J'ai un plan d'attaque infaillible pour le prochain démon",
+      "$other ne m'arrive pas à la cheville !",
+      "Regarde ce que j'arrive à faire avec mes ailes !!",
+      "Il faudra que je parle de mes exploits aux autres en rentrant",
+      "Après toutes ces aventures, je vais devenir une fée très populaire !!"
+    ],
+    [
+      null,
+      null,
+      "Hier, $other et moi on a pas mal parlé de toi...",
+      "C'est qui le malade qui entasse toutes ces billes ?",
+      "Ils sont pas serrés, les démons, dans les capsules ?",
+      "Ca manque de couleurs par ici!!",
+      "Je me demande ce qu'il y a par là !",
+      "On devrait monter un cirque !",
+      "Tu peux pas voler ?",
+      "Mais finalement, c'est quoi l'univers ?",
+      "C'est pas vraiment l'endroit où j'aimerais vivre...",
+      "On l'a pas déjà vu ce niveau ?",
+      "Dis, t'aurais pas vu Nalika par hasard ? Je lui ai prété mes paillettes, et elle ne me les a pas rendues...",
+      "Tu sais ce que ça fait, du chocolat dans un champs de blé ? hihi",
+      "*chante* A l'aventure Compagnon, je suis partie vers l'horizon...",
+      "Il est sympa Gaspard, hein ? Je rigole bien avec lui",
+      "Tu crois qu'on pourrait invoquer Ornegon ?",
+      "J'aimerais des sandales pour aller avec ma jupe"
+    ],
+    [
+      null,
+      null,
+      null,
+      null,
+      null,
+      "hum...",
+      "Tu penses qu'on forme une bonne équipe...?",
+      "J'espère que je ne te décevrais jamais !",
+      "Je préfère ta compagnie à celle des autres fées... *rougit*",
+      "Je suis mieux avec toi qu'avec $other...*rougis*"
+    ],
+    [
+      "Une super combo et on y va !!",
+      "Dépêche toi, je veux voir plus loin",
+      "Bon, tu entasses des billes ou tu les fais disparaître ?",
+      "Plus rapide c'est possible ?",
+      "Appuie vers en baaaassssss !!!"
+    ],
+    [
+      "J'aimerais bien rencontrer une mini-pouss, c'est un peu comme une fée sans ailes",
+      "Je me demande si $other ne s'ennuie pas trop",
+      "*fait une bulle de chewing-gum*",
+      " Mdamirma m'a prédit Une b'nne configurati'n Frutale",
+      "On est pas déjà passés par là ?",
+      "Ca manque de couleurs par ici!",
+      "J'ai un peu soif...",
+      "Tu crois que je devrais réamménager mon bocal ?",
+      "C'est quoi ta couleur préférée ?",
+      "Tu me donnes ton adresse MSN ?",
+      "A.S.V. pour tout le monde !!",
+      "J'ai quand même l'impression qu'on tourne en rond",
+      "On devrait sortir d'ici, je suis sûre qu'on est perdus",
+      "C'est quand que j'apprends un nouveau sort ?",
+      "T'as pas vu passer une tzongre ?",
+      "Dis, tu crois que je serai modératrice, un jour ?",
+      "Je me suis battue avec Gomola hier... il voulait me voler $like!",
+      "Tu t'es déjà fait totocher ? Moi oui, plein de fois !",
+      "Dis, tu me prêtes des kikooz ? J'ai envie de m'acheter un chapeau... Alleeeer, s'il te plaaaiiit..."
+    ],
+    [
+      "Argh!! Ah non rien c'est mon ombre",
+      "Dis je peux me cacher derrière toi?",
+      "Aaaaah quelque chose m'a touchée!! ... Ah c'est juste du lierre...",
+      "C'est ca que tu appelles s'amuser?",
+      "Et si on rentrait à la maison",
+      "Tu préfèrerais pas qu'on joue à swapou?",
+      "Il a l'air sympa le coin la bas pour se cacher...",
+      "C'est quand même un peu sombre ici",
+      "C'est quoi ce bruit? T'as entendu?",
+      "On aurait dû amener $other avec nous",
+      "On devrait rentrer tant que le démon n'y est pas"
+    ]
+  ],
+  "AMBIANCE_FINISH": [
+    [
+      null,
+      null,
+      "Persévère! Tu y es presque !",
+      "Y'a plus grand chose à faire ! Tiens bon !",
+      "Le prochain niveau est bientôt en vue !",
+      "Il n'y a plus de danger désormais..."
+    ],
+    [
+      null,
+      null,
+      "Y'a plus grand chose de ce niveau...",
+      "Pourquoi on s'en va pas ?",
+      "Quand est-ce qu'on s'arrache d'ici ?",
+      "Ca fait un peu vide maintenant..."
+    ],
+    [
+      null,
+      null,
+      null,
+      "Pfff... On se traîne...",
+      "Bon si tu perds maintenant, tu es irrécupérable",
+      "Tu en as pour longtemps ?",
+      "ah ben voilà c'est à ton niveau là"
+    ],
+    [
+      "Bon, je pense que tu pourras finir sans moi !",
+      "Je te laisse finir le niveau.",
+      "C'est presque fini !"
+    ],
+    [
+      null,
+      null,
+      "Aie, je me suis froissée une aile !",
+      "Ce niveau était vraiment super !",
+      "Oh regarde !... Ah non rien..."
+    ],
+    [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      "Ce niveau était sympa...",
+      "Tu t'es bien débrouillé sur ce niveau"
+    ],
+    [
+      "Bon, là tu peux finir vite",
+      "C'est fini, on va au prochain !!",
+      "Rien qu'un petit effort",
+      "Je pars devant, tu me rejoins",
+      "Tu peux pas jouer plus vite?"
+    ],
+    [
+      "Hé! Tu t'es bien débrouillé là!",
+      "Bon, ça a l'air calme là maintenant",
+      "Bon, je vais m'asseoir et regarder la fin",
+      "J'espère que le prochain sera aussi simple",
+      "Tu veux pas que je fasse un sort ?"
+    ],
+    [
+      "Mince j'ai plus rien pour me cacher",
+      "c'est pas possible il va nous arriver une tuile",
+      "c'est trop beau pour être vrai",
+      "C'est presque fini !"
+    ]
+  ],
+  "AMBIANCE_BATTLE": [
+    [
+      "Je retiens les démons, profites-en",
+      "Il a l'air coriace, mais je peux le vaincre",
+      "Concentre-toi sur le jeu, les démons c'est mon boulot !",
+      "Je m'occupe du démon, essaie de finir vite !"
+    ],
+    [
+      "Argh ! Il est affreux celui-là !",
+      "Ces démons sont incroyablement résistants !",
+      "Je me demande d'où viennent ces démons",
+      "Je vais essayer de te débarasser de ce monstre",
+      "Wah, il a failli me toucher !",
+      "Oups, j'ai failli me froisser une aile",
+      "Ils ont l'air bizarre les trucs qui volent là!"
+    ],
+    [
+      "Ce démon m'a mise en colère !",
+      "Je ne peux pas supporter ces démons",
+      "Tu nous as mis dans de beaux draps...",
+      "Ca va chauffer pour toi le démon !",
+      "Arrête de libérer des démons s'il te plait!!",
+      "Ca va chauffer",
+      "Mais pourquoi tant de violence, si ça se trouve ils sont gentils"
+    ],
+    [
+      "Ce démon ne tiendra pas longtemps !",
+      "C'est l'affaire d'une seconde",
+      " Tu vas voir je vais l'écraser cette souris ailée",
+      "On t'as jamais dis de ne pas embêter les filles??",
+      "Coup de tête, balayette!!",
+      "Ca va chauffer!!",
+      "Ils sont en baisse de forme les démons là non?",
+      "Je connais un démon qui va se prendre un coup de coiffe bigoudène",
+      "Va y avoir de la ratatouille de démon"
+    ],
+    [
+      null,
+      null,
+      null,
+      "Hé ! Je le reconnais celui-là ! C'est le chef de la bande, celui avec la mèche !",
+      "Y'a un démon qui a la même façon de voler que $other!",
+      " Beurk! il a une tête de chou-fleur ce démon",
+      "Ils sont plutôt lents ces démons...",
+      "Ca va chauffer",
+      "Tremblez démons ! La superbe $name va vous écraser !!",
+      "Ils sont pas trés beaux ces démons...",
+      "Houla celui-là est vraiment affreux",
+      "C'est pas un démon rose que j'ai vu à l'instant ?",
+      "Regarde ce coup là, c'est Piwali qui m'a appris ! hé hé"
+    ],
+    [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      "Je vais mettre toutes mes forces dans la bataille",
+      "Je vais bloquer ces démons !"
+    ],
+    [
+      "Je m'en occupe, concentre toi",
+      "Qu'est ce qu'il est moche celui-là !",
+      "Je le finis, et je reviens t'aider",
+      "Tu penses y arriver tout seul ?",
+      "Je m'en débarasse avant même que tu finisses le niveau",
+      "Il va nous faire perdre notre temps ce démon!"
+    ],
+    [
+      "Houlaaaa, plus ils sont gros plus ils sont moches ces démons",
+      "Il me faudrait une tapette à démon",
+      "Y'a un démon qui a la même façon de voler que $other !",
+      "Je m'en occupe, tu me regardes hein ?",
+      "Super $name Attack, ça sonne bien ?",
+      "Mais ils sont rapides quand même !!",
+      "Attention je vais sortir ma super attaque : fourchette pow@@@",
+      "Kowabungaaa"
+    ],
+    [
+      "J'aurais pas dû venir",
+      "Je me méfierai des balades avec toi la prochaine fois",
+      "Pourquoi ça tombe sur moi?",
+      "Ne jamais suivre quelqu'un dans une forêt ça finit toujours mal je le savais"
+    ]
+  ],
+  "AMBIANCE_STRESS": [
+    [
+      "Ne te relâche pas ! Tu peux encore t'en sortir",
+      "Rien n'est perdu, reste bien concentré !",
+      "Tu peux encore y arriver"
+    ],
+    [
+      null,
+      null,
+      null,
+      null,
+      "Houla, ça sent le roussi",
+      "Ca va aller ?"
+    ],
+    [
+      null,
+      "Et voilà, on est foutus !",
+      "Alors là, je vois pas comment tu vas t'en sortir",
+      "Tu joues vraiment mal...",
+      "C'est pas comme ça qu'on va avancer...",
+      "Ca sent la fin...",
+      "Je savais que ça finirait comme ça...",
+      "bon les erreurs c'est fait, les jolis coups tu as ?"
+    ],
+    [
+      "Tu veux un coup de main ?",
+      "Avec un peu de mana, je peux nettoyer le plateau !!",
+      "Tu vas t'en sortir tout seul ?",
+      "Tu penses pouvoir t'en sortir sans moi ?"
+    ],
+    [
+      null,
+      null,
+      "Hola, je veux pas voir ça !",
+      "Houlala c'est la méga catastrophe !",
+      "Bon, ben... on se retrouve dehors ?",
+      "T'aurais pas des problèmes avec ton clavier?"
+    ],
+    [
+      null,
+      null,
+      null,
+      "Tiens bon !",
+      "Je suis de tout coeur avec toi...",
+      "Je ne sais pas quoi faire pour t'aider..."
+    ],
+    [
+      "respire, respire",
+      "calme toi, on va pas arrêter maintenant",
+      "bon, là, tu peux prendre ton temps",
+      "comment t'as pu entasser tout ça ?"
+    ],
+    [
+      "Ah, là c'est sûr, c'est dommage le coup de tout à l'heure",
+      "Je suis sûre que si tu te concentres bien, c'est faisable",
+      "Je voudrais vraiment t'aider",
+      "Et en fait quand on est là, il se passe quoi ?",
+      "C'est pas très bon là, non ?",
+      "mais comment t'as fait pour arriver si haut?"
+    ],
+    [
+      "Bon, ben, je crois que c'est l'heure de rentrer",
+      "je te l'avais bien dit qu'il fallait rester à la maison",
+      "j'ai pris des coups pour rien ...",
+      "tout ca pour ca?"
+    ]
+  ],
   "WORD_THIEF": [
     "un colibri envouté",
     "un chat très rapide",
