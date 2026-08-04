@@ -98,6 +98,16 @@ const QUANTITE = [
   'les glaces', 'les œufs', 'le gouda', 'les bananes', 'la brioche',
 ];
 
+// it.Food.NAME.qt2 — la forme « à l'unité », celle du salut de la fée quand
+// l'aliment décolle (reactItem : « Chouette ! une brioche ! »). Dix-neuf
+// entrées, comme la table d'origine — c'est la plage exacte des largages.
+const ALIMENT_QT2 = [
+  'du pain', 'du raisin', 'une salade', 'une biscotte', 'une poire',
+  'une glace', 'un oeuf', 'du gouda', 'une banane', 'une brioche',
+  'de la barbapapa', 'des nouilles chinoises', 'un poireau', 'un melon', 'du maïs',
+  'des cerises', 'des sushis', 'une tarte aux fruits', 'des Yakitori',
+];
+
 // Chaque aliment existe en TROIS tailles : la grosse part se mange en trois
 // fois. it.Food.use fait `type++` et jette l'objet quand `(type-300)%3` retombe
 // à zéro — c'est ce qui fait qu'un pain trouvé nourrit trois soirs.
@@ -355,7 +365,7 @@ function donner(carte, source, fee) {
 const API = {
   info, effetPorte, effetGroupe, utiliser, deplacer, donner,
   contenu, placesJoueur, placesFee,
-  PLACES_SAC, ALIMENTS, QUANTITE, TAILLES_ALIMENT, POUVOIRS, GLOBES, POTIONS, SACS,
+  PLACES_SAC, ALIMENTS, QUANTITE, ALIMENT_QT2, TAILLES_ALIMENT, POUVOIRS, GLOBES, POTIONS, SACS,
   COULEURS_CHEVEUX, NOM_OBJET_CARAC, NOM_CARAC, CARAC,
   PREMIER_ALIMENT, IT_BOCAL, IT_CLE, IT_SAC,
 };

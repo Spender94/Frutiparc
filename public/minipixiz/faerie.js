@@ -323,6 +323,48 @@ class Fee {
   }
 
   /**
+   * FaerieInfo.reactItem — la fée salue l'objet qui décolle vers le sac.
+   *
+   * Pour un aliment, la rangée vient de ses goûts : aimé, détesté (le dégoût
+   * l'emporte si les deux se contredisent, comme dans le fichier), rare — dix
+   * et plus — ou ordinaire ; puis son humeur choisit la ligne, et $food prend
+   * la forme « à l'unité » (it.Food.NAME.qt2 : « une brioche »). Pour un
+   * objet, SENT_GET_ITEM et la famille (Lang.getItemFamily) : elle ne connaît
+   * jamais le nom exact de ce qu'elle trouve.
+   *
+   * Une case nulle est un silence — comme partout dans ses dialogues. Le
+   * $other d'un éventuel partage reste à l'appelant (getRichStr).
+   *
+   * @returns {string|null} la phrase, $food/$item résolus — ou null, muette
+   */
+  salutObjet(type) {
+    const L = (typeof module !== 'undefined' && module.exports)
+      ? require('./langue.js') : racine.MinipixizLangue;
+    const O = (typeof module !== 'undefined' && module.exports)
+      ? require('./items.js') : racine.MinipixizObjets;
+    const alea = this.alea || Math.random;
+    const n = nombre(type);
+    const h = borner(0, nombre(this.fs.$humor), 8);
+    const dire = (liste) => (liste && liste.length
+      ? liste[Math.floor(alea() * liste.length)] : null);
+
+    if (n >= 300) {
+      const id = Math.floor((n - 300) / 3);
+      const gouts = this.fs.$taste || [];
+      let rang = null;
+      if (((gouts[0] || []).map(nombre).indexOf(id) >= 0)) rang = 0;
+      if (((gouts[1] || []).map(nombre).indexOf(id) >= 0)) rang = 1;
+      if (rang === null) rang = id >= 10 ? 2 : 3;
+      const brut = dire((L.SENT_GET_FOOD[rang] || [])[h]);
+      if (brut === null || brut === undefined) return null;
+      return brut.split('$food').join(O.ALIMENT_QT2[id] || 'de la nourriture');
+    }
+    const brut = dire(L.SENT_GET_ITEM[h]);
+    if (brut === null || brut === undefined) return null;
+    return brut.split('$item').join(L.getItemFamily(n, alea));
+  }
+
+  /**
    * upkeep — ce qui arrive à la fée pendant la nuit. Appelé une fois par jour
    * écoulé (Cm.updateTime).
    *

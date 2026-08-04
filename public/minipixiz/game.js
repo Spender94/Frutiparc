@@ -1016,6 +1016,15 @@ class Client {
         eclater(px(d.x), py(d.y), 14, '#ff8800', 3.4);
         eclater(px(d.x), py(d.y), 10, '#ffcc33', 2.2);
         break;
+      // Item.initActiveStep : la fée salue l'objet qui décolle (reactItem) —
+      // et les trous de ses tables sont ses silences.
+      case 'objetEnvol': {
+        if (this.fee && this.fee.salutObjet) {
+          const texte = this.enrichir(this.fee.salutObjet(d.type));
+          if (texte) this.parler(texte);
+        }
+        break;
+      }
       // Eye.blast : l'onde et les éclats sombres de sa couleur.
       case 'oeilDetruit':
         eclater(px(d.x), py(d.y), 14, couleurCss(E.COULEURS[d.couleur] || 0xffffff), 3);
@@ -1121,7 +1130,7 @@ class Client {
       // Puis tout ce qui vole. L'ordre est celui des profondeurs de Flash :
       // les particules derrière, les créatures, les tirs devant.
       this.dessinerVol(ctx);
-      this.semerEnvol();
+      this.dessinerActifs(ctx);
       bougerEclats(ctx, tmod);
     }
 
@@ -1801,7 +1810,7 @@ class Client {
     for (const e of jeu.eList) this.dessinerElement(ctx, e, e.px, e.py);
     if (jeu.piece) for (const c of jeu.piece.cases()) this.poser(ctx, c.e, c.x, c.y);
     this.dessinerVol(ctx);
-    this.semerEnvol();
+    this.dessinerActifs(ctx);
     bougerEclats(ctx, tmod);
 
     // L'escargot est posé à DP_SKIN_MIDDLE, comme le montant du tronc, mais
@@ -2063,23 +2072,47 @@ class Client {
     });
   }
 
-  // Item.activeUpdate, la traîne : une étoile par image sous l'objet qui
-  // s'envole — posée au hasard dans un rayon de douze pixels, d'une couleur
-  // tirée au sort et éclaircie (setColor + modColor 180), et qui retombe
-  // doucement derrière lui (weight 0.1).
-  semerEnvol() {
+  // L'étape ACTIF, vue du client — la tête de liste vit, le dessin suit :
+  //
+  //   · l'OBJET qui s'envole sème une étoile par image (Item.activeUpdate) —
+  //     posée au hasard dans un rayon de douze pixels, couleur tirée au sort
+  //     et éclaircie (setColor + modColor 180), qui retombe derrière lui ;
+  //   · l'ŒIL qui vient de pondre tient son RAYON (Eye.activeUpdate) — le
+  //     trait qui s'affine d'image en image (partSlash, yscale × 0.8) et la
+  //     boule de sa couleur qui file vers la perle (partEyeBall, BALL_SPEED).
+  dessinerActifs(ctx) {
     const jeu = this.jeu;
     if (!jeu || jeu.step !== E.ETAPE.ACTIF) return;
     const e = jeu.activeList[0];
-    if (!e || e.et !== E.E.OBJET) return;
-    const a = Math.random() * 6.28;
-    const d = Math.random() * 12;
-    eclats.push({
-      x: jeu.posX(e.px) + TS / 2 + Math.cos(a) * d,
-      y: jeu.posY(e.py) + (e.decalY || 0) + TS / 2 + Math.sin(a) * d,
-      vx: 0, vy: -0.2, t: 5 + Math.random() * 15,
-      c: 'hsl(' + Math.floor(Math.random() * 360) + ', 95%, 75%)',
-    });
+    if (!e) return;
+    if (e.et === E.E.OBJET) {
+      const a = Math.random() * 6.28;
+      const d = Math.random() * 12;
+      eclats.push({
+        x: jeu.posX(e.px) + TS / 2 + Math.cos(a) * d,
+        y: jeu.posY(e.py) + (e.decalY || 0) + TS / 2 + Math.sin(a) * d,
+        vx: 0, vy: -0.2, t: 5 + Math.random() * 15,
+        c: 'hsl(' + Math.floor(Math.random() * 360) + ', 95%, 75%)',
+      });
+      return;
+    }
+    if (e.et === E.E.OEIL && e.rayon) {
+      const cx = jeu.posX(e.px) + TS / 2;
+      const cy = jeu.posY(e.py) + TS / 2;
+      const lg = E.Oeil.VITESSE_BOULE * e.rayon.t;
+      const bx = cx + Math.cos(e.rayon.ang) * lg;
+      const by = cy + Math.sin(e.rayon.ang) * lg;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = Math.max(0.4, 6 * Math.pow(0.8, e.rayon.t));
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.fillStyle = couleurCss(E.COULEURS[e.color] || 0xffffff);
+      ctx.beginPath(); ctx.arc(bx, by, 3.5, 0, 6.29); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath(); ctx.arc(bx, by, 1.6, 0, 6.29); ctx.fill();
+      ctx.restore();
+    }
   }
 
   dessinerElement(ctx, e, gx, gy) {

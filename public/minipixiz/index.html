@@ -290,8 +290,11 @@
         coefNuit: coefNuit(),
         surEvenement: function (nom, info) {
           if (nom === 'objet') {
-            course.objets.push(info.type);
-            P.ramasser(plateforme.carte, info.type);
+            // Hors course (une partie lancée à la main), rien à ranger.
+            if (course) {
+              course.objets.push(info.type);
+              P.ramasser(plateforme.carte, info.type);
+            }
             return;
           }
           // Base.tryToClose : le panneau de fin s'est montré, la clairière

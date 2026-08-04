@@ -294,10 +294,13 @@ class Objet extends Element {
     this.montee -= 0.1 * tmod;
     this.decalY = (this.decalY || 0) + this.montee * tmod;
     if (this.jeu.posY(this.py) + this.decalY < -20) {
-      this.jeu.objets.push(this.type);
-      this.jeu.evenement('objet', { type: this.type, x: this.px, y: this.py });
+      // L'élément quitte la liste et la grille AVANT que la prise ne
+      // s'annonce : un gestionnaire qui lève ne doit pas pouvoir laisser
+      // l'envol se reprendre à chaque image.
       this.jeu.retirerActif(this);
       this.tuer();
+      this.jeu.objets.push(this.type);
+      this.jeu.evenement('objet', { type: this.type, x: this.px, y: this.py });
     }
   }
 }
@@ -355,11 +358,38 @@ class Oeil extends Element {
     const t = this.jeu.genElement(E.JETON, tx, ty, SPECIAL.PERLE);
     t.setType(this.color);
     this.lumiere = 0;
+    // Eye.initActiveStep, la fin : la perle posée, l'œil TIRE — un rayon qui
+    // s'affine, et une boule de sa couleur qui file (BALL_SPEED). Le tour
+    // entier le regarde faire : l'œil rejoint la liste active, coin à coin
+    // comme l'original mesure (getAng sur les x,y de getX/getY).
+    this.rayon = {
+      t: 0,
+      ang: Math.atan2(this.jeu.posY(ty) - this.jeu.posY(this.py),
+        this.jeu.posX(tx) - this.jeu.posX(this.px)),
+    };
+    this.jeu.activeList.push(this);
     this.jeu.evenement('oeilPond',
       { deX: this.px, deY: this.py, x: tx, y: ty, couleur: this.color });
     return true;
   }
+
+  // Eye.activeUpdate : fini quand la boule est sortie par le haut
+  // (ball.y < -60). L'original ne borne que là ; on borne aussi les trois
+  // autres côtés — une perle pondue SOUS l'œil enverrait sinon la boule vers
+  // le bas pour toujours, et la partie avec elle.
+  majActive(tmod) {
+    if (!this.rayon) { this.jeu.retirerActif(this); return; }
+    this.rayon.t += tmod;
+    const bx = this.jeu.posX(this.px) + TS / 2 + Math.cos(this.rayon.ang) * Oeil.VITESSE_BOULE * this.rayon.t;
+    const by = this.jeu.posY(this.py) + TS / 2 + Math.sin(this.rayon.ang) * Oeil.VITESSE_BOULE * this.rayon.t;
+    if (by < -60 || by > this.jeu.posY(this.jeu.yMax) + 60
+      || bx < -60 || bx > this.jeu.posX(this.jeu.xMax) + 60) {
+      this.rayon = null;
+      this.jeu.retirerActif(this);
+    }
+  }
 }
+Oeil.VITESSE_BOULE = 40;             // Eye.BALL_SPEED
 
 const CLASSES = {
   [E.JETON]: Jeton, [E.OBJET]: Objet, [E.PIERRE]: Pierre,

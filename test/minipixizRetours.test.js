@@ -261,6 +261,66 @@ test('l\'objet collecté s\'envole — et n\'est pris qu\'en haut de l\'aire', (
 });
 
 /*
+ * La suite du cinquième retour (« je te laisse gérer ça ») : les deux écarts
+ * notés au commit de l'envol — le salut de la fée à l'objet qui décolle
+ * (FaerieInfo.reactItem), et le rayon animé de la ponte (Eye.activeUpdate).
+ */
+test('la fée salue l\'objet qui décolle — reactItem, mot pour mot', () => {
+  const faire = (graine) => {
+    const alea = tirage(graine || 7);
+    const f = F.genererGraine(alea);
+    f.$humor = 0;
+    f.$taste = [[9], [2]];             // elle aime la brioche, déteste la salade
+    return new F.Fee(f, alea, { $inv: [] });
+  };
+  // Aimé : la rangée LIKE de son humeur, $food mis « à l'unité » (qt2).
+  const aime = faire().salutObjet(300 + 9 * 3);
+  assert.ok(['Chouette ! une brioche !', 'une brioche, youpiii'].includes(aime),
+    'la brioche aimée : ' + aime);
+  // Détesté : la rangée DISLIKE l'emporte.
+  const deteste = faire().salutObjet(300 + 2 * 3);
+  assert.ok(['une salade...', 'Dommage, une salade'].includes(deteste),
+    'la salade détestée : ' + deteste);
+  // Rare — dix et plus — hors goûts : la rangée RARE.
+  assert.equal(faire().salutObjet(300 + 12 * 3),
+    'Oh !! un poireau ! On en voit pas souvent !', 'le poireau est rare');
+  // Ordinaire hors goûts : la rangée OTHER ($other reste à enrichir()).
+  const banal = faire().salutObjet(300);
+  assert.ok(['du pain !', 'Oh, du pain', 'tiens? du pain, on partagera avec $other']
+    .includes(banal), 'le pain ordinaire : ' + banal);
+  // Un objet : sa FAMILLE, jamais son nom exact (Lang.getItemFamily).
+  assert.ok(faire().salutObjet(7).indexOf('un objet magique') >= 0, 'l\'objet magique');
+  assert.ok(faire().salutObjet(80).indexOf('un nouveau sac') >= 0, 'le sac');
+  // Et la case nulle est un silence : LIKE, humeur 5, première case.
+  const f5 = F.genererGraine(tirage(7));
+  f5.$humor = 5; f5.$taste = [[9], []];
+  const muette = new F.Fee(f5, () => 0, { $inv: [] });
+  assert.equal(muette.salutObjet(300 + 9 * 3), null, 'la case nulle est un silence');
+  // Le client fait parler la fée au décollage.
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /case 'objetEnvol': \{/, 'le décollage est écouté');
+  assert.match(src, /this\.fee\.salutObjet\(d\.type\)/, 'et la fée salue');
+});
+
+test('la ponte de l\'œil tire son rayon — et la partie le regarde', () => {
+  const jeu = new E.Jeu({ graine: 3, niveau: 0, grille: null });
+  const oeil = jeu.genElement(E.E.OEIL, 4, 10, 0);
+  oeil.color = 2;
+  oeil.lumiere = 2;                    // chargé : la prochaine veille pond
+  jeu.initStep(E.ETAPE.ACTIF);
+  assert.ok(jeu.activeList.indexOf(oeil) >= 0, 'la perle posée, l\'œil rejoint la liste');
+  assert.ok(oeil.rayon, 'et tient son rayon');
+  const perle = jeu.eList.find((e) => e.special === E.SPECIAL.PERLE);
+  assert.ok(perle, 'la perle est là');
+  assert.equal(perle.type, 2, 'à sa couleur');
+  let garde = 0;
+  while (jeu.activeList.length > 0 && garde++ < 300) jeu.update(1);
+  assert.ok(garde < 300, 'la boule sort en un temps borné (' + garde + ' images)');
+  assert.equal(oeil.rayon, null, 'le rayon s\'éteint');
+  assert.ok(oeil.vivant, 'et l\'œil, lui, reste');
+});
+
+/*
  * Quatrième retour : « j'ai ramassé un objet en forêt mais il n'apparaît pas
  * dans mon inventaire après la partie. »
  *
