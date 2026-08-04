@@ -157,13 +157,15 @@ test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
   assert.match(html, /levelProgress\(d\.basic\.xp, d\.basic\.niveau\)/, 'remplies par la règle de la mainbar');
   assert.match(html, /cadre_bouille\.svg/, 'le cadre de la bouille de la mainbar');
   assert.match(html, /reflet_niveau\.svg/, 'et le reflet de l\'encart');
-  for (const ico of ['ico_chat', 'ico_mail', 'ico_blog', 'ico_contact',
-    'ico_listenoire', 'ico_kick', 'ico_ban', 'ico_totoche', 'ico_avance']) {
+  // La rangée ne porte QUE les gestes qui marchent sur mobile.
+  for (const ico of ['ico_chat', 'ico_mail', 'ico_kick', 'ico_ban',
+    'ico_totoche', 'ico_avance']) {
     assert.match(html, new RegExp('/fb/fiche/' + ico + '\\.png'), ico + ' posée sur son bouton');
   }
-  // Les boutons sans action mobile restent visibles mais éteints.
-  assert.match(html, /id="fiche-blog"[^>]*disabled/, 'le Bouilloscope attend le bureau');
-  assert.match(html, /id="fiche-contact"[^>]*disabled/, 'les contacts aussi');
+  for (const mort of ['ico_blog', 'ico_contact', 'ico_listenoire']) {
+    assert.ok(!html.includes('/fb/fiche/' + mort + '.png'),
+      mort + ' retirée : un bouton éteint ne prend plus la place');
+  }
   // Et le courrier est branché sur la vraie messagerie, destinataire prérempli.
   assert.match(html, /ecrireMail\(p, ""\)/, 'le bouton mail ouvre le composeur');
 });
@@ -183,6 +185,11 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
   assert.match(html, /background: #72A62C;/, 'les barres au vert de l\'intégration');
   assert.match(html, /font-size: 11px; line-height: 1; color: #4E8030;/, 'le niveau aussi');
   assert.match(html, /font-size: 12\.5px; color: #290D64;/, 'et le pseudo au bleu nuit');
+  // La bouille n'a plus de contour, et la carte porte son ombre de tous les côtés.
+  assert.match(html, /\.fiche-plaque \.fa-frame \{[^}]*\n\s*z-index: 2;\n\s*\}/,
+    'plus de liseré autour de la bouille');
+  assert.match(html, /box-shadow: 0 0 16px rgba\(0, 0, 0, \.45\), 0 4px 10px rgba\(0, 0, 0, \.3\);/,
+    'l\'ombre portée court sur tous les côtés');
   // LE DÉPLIANT : le bouton rose n'est plus mort, il ouvre le détail.
   assert.ok(!/id="fiche-avance"[^>]*disabled/.test(html), 'le bouton rose n\'est plus éteint');
   assert.match(html, /#fiche:not\(\.deploye\) \.fiche-corps \{ display: none; \}/,
@@ -202,6 +209,30 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
   assert.match(html, /border-bottom: 1\.5px solid #a7dc6b;/, 'les signes posés sur leur séparateur');
   // Et l'onglet perso encadre ses lignes.
   assert.match(html, /"fiche-lignes encadre"/, 'perso encadré de ses séparateurs');
+});
+
+test('le bouton rose est la TUILE nue, le triangle posé dessus', () => {
+  // but.Push monte ses boutons en deux clips (Push.init) : la tuile
+  // (butPushSmallPink, 378) et le glyphe dans son enfant `icon`
+  // (gfx.icon.gotoAndStop(frame)). Notre extracteur maison ramenait l'enfant
+  // avec la tuile : le carré rose sortait avec le glyphe « liste » collé
+  // dessus. La tuile vient donc de FFDec, nue.
+  const png = fs.readFileSync(path.join(ROOT, 'public/fb/fiche/bouton_rose.png'));
+  assert.equal(png.subarray(1, 4).toString('ascii'), 'PNG', 'c\'est bien un PNG');
+  // Les dimensions vivent dans l'en-tête IHDR (deux entiers 32 bits, offset 16).
+  assert.equal(png.readUInt32BE(16), 60, 'la tuile exportée à 3× : 60 px');
+  assert.equal(png.readUInt32BE(20), 60, 'carrée');
+  const script = fs.readFileSync(path.join(ROOT, 'scripts/extract-fiche-assets.js'), 'utf8');
+  assert.match(script, /DefineSprite_378_butPushSmallPink\/1\.png → bouton_rose\.png/,
+    'la provenance FFDec est écrite');
+  assert.ok(!/nom: 'butPushSmallPink'/.test(script),
+    'et l\'ancienne extraction maison ne repasse pas derrière');
+  // Le triangle reste un dessin à part, posé DANS le bouton.
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(html, /id="fiche-avance"[^>]*><img src="\/fb\/fiche\/ico_avance\.png"/,
+    'le triangle est l\'enfant du bouton');
+  assert.match(html, /#fiche-avance \{[\s\S]{0,200}bouton_rose\.png'\) no-repeat/,
+    'et la tuile en est le fond');
 });
 
 test('l\'onglet perso nomme le pays et la région, pas des blancs', () => {

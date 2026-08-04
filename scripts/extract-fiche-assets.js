@@ -53,10 +53,26 @@ const K = 3;                        // rendu à 3× pour les écrans denses
 // de présence (status images 3 et 4) viennent des exports FFDec, comme les
 // glyphes — voir l'en-tête.
 const CIBLES = [
-  // Le chrome ROSE du bouton du mode avancé (sans son glyphe, formes 359-360).
-  { swf: 'legacy/main.swf', nom: 'butPushSmallPink', image: 1,
-    fichier: 'bouton_rose', garder: [359, 360] },
-  // Son glyphe : l'image 13 de SA feuille (sprite 374).
+  // Le chrome ROSE du bouton du mode avancé — la TUILE SEULE.
+  //
+  // but.Push assemble ses boutons en deux temps (Push.init) :
+  //
+  //     attachMovie(link, "gfx")            → la tuile (butPushSmallPink, 378)
+  //     gfx.icon.gotoAndStop(frame)         → le glyphe, dans l'enfant `icon`
+  //
+  // La tuile et le glyphe sont donc DEUX clips. Notre extracteur maison
+  // ramenait l'enfant `icon` avec la tuile — on repartait avec le glyphe
+  // « liste » (son image 1) collé au carré rose. La tuile nue vient donc de
+  // FFDec, comme les glyphes du sprite 500 :
+  //
+  //     java -jar ffdec.jar -zoom 3 -format sprite:png -select 378 \
+  //         -export sprite <dossier> legacy/main.swf
+  //     → <dossier>/DefineSprite_378_butPushSmallPink/1.png → bouton_rose.png
+  //
+  // (win.Frutiz : rightIconList = butPushSmallPink, frame 13 → le triangle
+  //  du mode avancé, toggleAdvancedMode.)
+  //
+  // Son glyphe : l'image 13 de SA feuille (sprite 374, l'enfant `icon`).
   { swf: 'legacy/main.swf', sprite: 374, image: 13, fichier: 'ico_avance' },
   // Le bandeau sous les titres de section (« frutisigne ») — teinté à la
   // couleur du style, comme InfoFrutiz.genContent (slot.setColor(inline)) :
