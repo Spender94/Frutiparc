@@ -174,12 +174,16 @@ test('écrire à quelqu\'un de déconnecté est refusé proprement', async () =>
 test('le client mobile sait ouvrir, router et signaler les discussions privées', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 
-  // Ouverture : un appui sur un pseudo de la liste des connectés.
+  // Ouverture : un appui sur un pseudo ouvre sa FICHE (comme au bureau), et
+  // c'est le bouton « discuter en privé » de la fiche qui lance le privé.
   assert.ok(/function ouvrirPrive\(pseudo\)/.test(html), 'fonction d\'ouverture présente');
   assert.ok(/wsSend\('<r u="' \+ xmlEscape\(p\)/.test(html),
     'elle envoie bien la demande d\'ouverture au serveur');
-  assert.ok(/u\.classList\.add\("mp"\)/.test(html) && /ouvrirPrive\(pseudo\)/.test(html),
+  assert.ok(/u\.classList\.add\("mp"\)/.test(html) && /ouvrirFiche\(pseudo\)/.test(html),
     'les pseudos de la liste sont cliquables');
+  assert.ok(/\$\("#fiche-mp"\)\.addEventListener\("click"/.test(html)
+    && /ouvrirPrive\(p\)/.test(html),
+    'la fiche mène au privé en un appui');
   // La même ligne sert aux deux onglets du tiroir : celui du salon et celui de
   // tout le site. Écrire à quelqu'un d'un autre salon doit rester un seul appui.
   assert.ok(/function ligneConnecte\(pseudo, lieu, staff, jeu\)/.test(html),

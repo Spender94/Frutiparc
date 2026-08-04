@@ -14986,6 +14986,117 @@ app.post('/api/light/jeu-en-cours', (req, res) => {
   res.json({ ok: true });
 });
 
+// La FICHE d'un frutiz — ce que la commande chat `userinfo` et FrutiScore
+// donnent au bureau (FrutizInfo.as), réuni en un JSON pour le mobile. Les
+// quatre onglets de la fiche y puisent :
+//
+//   frutiz   fj (métier), fs/fsb (signe et ascendant), fr (consécration),
+//            ft (inscription → « frutiAge » en mois), niveau (XP)
+//   perso    âge, anniversaire, sexe, ville, métier réel, prénom, nom
+//   scores   les classements de la section C (Championnat) où le joueur
+//            figure, et ses médailles de la veille (awarduser)
+//   bonus    le commentaire et le site du joueur
+const SIGNES_FRUITS = ['pomme', 'abricot', 'poire', 'fraise', 'citron',
+  'kiwi', 'raisin', 'orange', 'cerise', 'banane'];
+app.get('/api/light/fiche', async (req, res) => {
+  const demandeur = resolveUsernameFromSid(req.query.sid || '');
+  if (!demandeur) return res.status(401).json({ ok: false, error: 'auth' });
+  const u = String(req.query.u || '').toLowerCase().trim();
+  if (!u) return res.status(400).json({ ok: false, error: 'pseudo' });
+
+  let ud = users[u];
+  if (!ud && process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(u);
+      if (row) ud = dbUserToMemory(row);
+    } catch (e) { /* ignore */ }
+  }
+  if (!ud) return res.status(404).json({ ok: false, error: 'inconnu' });
+
+  const cons = computeConsecration(u);
+  const naissance = ud.birthday ? new Date(ud.birthday) : null;
+  let age = null;
+  if (naissance && !Number.isNaN(naissance.getTime())) {
+    const now = new Date();
+    age = now.getFullYear() - naissance.getFullYear();
+    const m = now.getMonth() - naissance.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < naissance.getDate())) age--;
+  }
+  const inscription = ud.createdAt ? new Date(ud.createdAt) : null;
+  let frutiAgeMois = 0;
+  if (inscription && !Number.isNaN(inscription.getTime())) {
+    const now = new Date();
+    frutiAgeMois = Math.max(0, (now.getFullYear() - inscription.getFullYear()) * 12
+      + (now.getMonth() - inscription.getMonth()));
+  }
+
+  // Les classements de la section C — ceux que la fiche du bureau interroge
+  // (listrankings ty="C" puis userresult) ; on ne garde que ceux où il figure.
+  const classements = [];
+  for (const d of LEGACY_RANKINGS) {
+    if (d.section !== 'C' || !d.internal) continue;
+    const info = getUserScore(u, d.internal);
+    if (info.score <= 0 && info.pos <= 0) continue;
+    classements.push({ titre: d.rn, jeu: d.g, score: info.score, pos: info.pos, type: d.ty });
+  }
+
+  // Les médailles de la veille, une par jeu — la même règle qu'`awarduser`.
+  const medailles = [];
+  const jourMedaille = yesterdayParisDayKey();
+  let toutes = [];
+  if (process.env.DATABASE_URL) {
+    try { toutes = await db.getMedalsForUserByDay(u, jourMedaille); } catch (e) { /* ignore */ }
+  }
+  if (toutes.length === 0) {
+    const duJour = challengeMedalsData.medalsByVisibleDay[jourMedaille] || {};
+    for (const m of (duJour[u] || [])) {
+      toutes.push({ game: m.game, rank: m.rank, medal: m.medal, awarded_day: jourMedaille });
+    }
+  }
+  const jeuxVus = new Set();
+  for (const m of toutes) {
+    if (jeuxVus.has(m.game)) continue;
+    jeuxVus.add(m.game);
+    medailles.push({
+      jeu: GAME_DISPLAY_NAMES[m.game] || m.game,
+      medaille: MEDAL_DISPLAY_NAMES[m.medal] || m.medal,
+      rang: m.rank,
+      jour: m.awarded_day,
+    });
+  }
+
+  const signe = (n) => (Number.isFinite(Number(n)) && n >= 0 && n < SIGNES_FRUITS.length
+    ? { index: Number(n), nom: SIGNES_FRUITS[n] } : null);
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    pseudo: getDisplayName(u),
+    bouille: bouilleOf(ud, u),
+    staff: { moderateur: !!ud.isModerator, animateur: !!ud.isAnimator },
+    basic: { niveau: getLevelForXp(ud.xp || 0), xp: ud.xp || 0, age,
+      ville: ud.city || '', sexe: ud.gender || 'M' },
+    frutiz: {
+      job: getFrutizJob(u, ud),
+      signe: signe(ud.frutiSign),
+      ascendant: signe(ud.frutiSignB),
+      consecration: cons.overall || 0,
+      inscription: inscription && !Number.isNaN(inscription.getTime())
+        ? inscription.toISOString() : null,
+      frutiAgeMois,
+    },
+    perso: {
+      prenom: ud.firstName || '', nom: ud.lastName || '',
+      sexe: ud.gender || 'M', age,
+      anniversaire: naissance && !Number.isNaN(naissance.getTime())
+        ? naissance.toISOString().substring(0, 10) : null,
+      ville: ud.city || '', metier: ud.realJob || '',
+    },
+    bonus: { commentaire: ud.comment || '', site: ud.siteUrl || '' },
+    scores: { classements, medailles },
+  });
+});
+
 // Boutique mobile (/light) : accessoires achetables + solde kikooz. On expose
 // uniquement la rubrique « Accessoires » (les fonds d'écran ne sont pas
 // exploitables sur mobile, on les masque) et on signale ceux déjà possédés. La

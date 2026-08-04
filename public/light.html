@@ -442,6 +442,84 @@
   }
   #bouille-overlay.show #bouille-overlay-name { opacity: 1; }
 
+  /* ── La FICHE d'un frutiz ──
+     La fenêtre de main.swf (winFrutizInfo), reconstruite : bandeau blanc
+     (bouille + pseudo + « âge - ville » + fermer), rangée d'actions, quatre
+     onglets sur le panneau vert clair, l'onglet actif en rouge. */
+  #fiche-backdrop {
+    position: fixed; inset: 0; z-index: 70; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(20, 32, 8, .45); padding: 16px;
+  }
+  #fiche-backdrop.show { display: flex; }
+  #fiche {
+    width: min(400px, 96vw); max-height: 92vh; overflow-y: auto;
+    background: #fff; border: 1px solid #9fbf6b; border-radius: 12px;
+    box-shadow: 0 14px 34px rgba(20, 40, 6, .4);
+    display: flex; flex-direction: column;
+  }
+  .fiche-haut { display: flex; gap: 10px; padding: 10px 10px 8px; background: #fff; }
+  .fiche-avatar {
+    flex: 0 0 auto; width: 64px; position: relative;
+  }
+  .fiche-avatar .stage {
+    width: 64px; height: 64px; border: 1px solid #b8cf92; border-radius: 6px;
+    overflow: hidden; background: #eef7db;
+  }
+  .fiche-avatar .stage iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
+  .fiche-avatar .niv {
+    display: flex; align-items: center; justify-content: center; gap: 3px;
+    margin-top: 3px; padding: 1px 0; background: #232f47; border-radius: 4px;
+  }
+  .fiche-avatar .niv img { height: 9px; width: auto; display: block; }
+  .fiche-avatar .niv b {
+    font-family: 'DSEG7', 'Courier New', monospace; font-size: 11px;
+    font-weight: normal; color: #73b01e; line-height: 1;
+  }
+  .fiche-droite { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .fiche-nom-ligne { display: flex; align-items: baseline; gap: 6px; }
+  .fiche-nom-ligne .fleur { font-size: 13px; line-height: 1; }
+  .fiche-nom-ligne b {
+    font-size: 15px; color: #14280a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fiche-nom-ligne .meta { margin-left: auto; font-size: 11.5px; color: #7a8a68; white-space: nowrap; }
+  #fiche-fermer {
+    flex: 0 0 auto; border: 0; background: transparent; color: #d02c17;
+    font-size: 18px; font-weight: bold; line-height: 1; cursor: pointer; padding: 0 2px;
+  }
+  .fiche-actions { display: flex; align-items: center; gap: 6px; }
+  .fiche-actions button {
+    width: 32px; height: 26px; border: 1px solid #eba7a7; border-radius: 6px;
+    background: #fff; font-size: 13px; line-height: 1; cursor: pointer; padding: 0;
+  }
+  .fiche-actions button:active { background: #ffecec; }
+  .fiche-actions .triangle {
+    margin-left: auto; width: 0; height: 0;
+    border-left: 8px solid transparent; border-right: 8px solid transparent;
+    border-top: 11px solid #e2574b; border-radius: 2px;
+  }
+  .fiche-corps { background: #d9f0a2; border-top: 1px solid #b3d37e; }
+  .fiche-onglets { display: flex; padding: 9px 8px 7px; border-bottom: 1px solid #a8ca6d; }
+  .fiche-onglets button {
+    flex: 1 1 0; border: 0; background: transparent; font-weight: bold;
+    font-size: 13.5px; color: #20390c; cursor: pointer; padding: 2px 0;
+  }
+  .fiche-onglets button.actif { color: #c22000; }
+  .fiche-page { padding: 10px 18px 16px; min-height: 200px; }
+  .fiche-titre { text-align: center; font-weight: bold; font-size: 14.5px; color: #16300a; margin: 6px 0 10px; }
+  .fiche-signes { display: flex; align-items: center; justify-content: center; gap: 30px; margin: 4px 0 14px; }
+  .fiche-signes img.petit { width: 26px; height: 26px; object-fit: contain; }
+  .fiche-signes img.grand { width: 58px; height: 58px; object-fit: contain; }
+  .fiche-lignes { border-top: 1px solid #aacc70; padding-top: 9px; margin-top: 10px; }
+  .fiche-ligne { display: flex; justify-content: space-between; gap: 12px; padding: 3.5px 0; font-size: 13px; color: #223f0c; }
+  .fiche-ligne .val { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+  .fiche-ligne .val a { color: #2f6b16; }
+  .fiche-com { font-size: 13px; color: #223f0c; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
+  .fiche-vide { text-align: center; color: #5f7a44; font-size: 12.5px; padding: 26px 0; }
+  .fiche-pied { height: 12px; background: #bfe184; border-top: 1px solid #a8ca6d; }
+  /* Le pseudo d'un message se touche : il ouvre la fiche, comme au bureau. */
+  #messages .from { cursor: pointer; }
+
   /* User list drawer */
   #users-drawer {
     position: absolute; top: 0; right: 0; bottom: 0; width: 72%; max-width: 280px;
@@ -1256,6 +1334,41 @@
     <div id="bouille-overlay">
       <div id="bouille-overlay-stage"></div>
       <div id="bouille-overlay-name"></div>
+    </div>
+
+    <!-- La FICHE d'un frutiz (winFrutizInfo du bureau). Ouverte en touchant un
+         pseudo — dans un salon, la liste des connectés ou le trombinoscope. -->
+    <div id="fiche-backdrop">
+      <div id="fiche" role="dialog" aria-modal="true" aria-label="Fiche du frutiz">
+        <div class="fiche-haut">
+          <div class="fiche-avatar">
+            <div class="stage" id="fiche-avatar"></div>
+            <div class="niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
+          </div>
+          <div class="fiche-droite">
+            <div class="fiche-nom-ligne">
+              <span class="fleur">✿</span><b id="fiche-pseudo">…</b>
+              <span class="meta" id="fiche-meta"></span>
+              <button type="button" id="fiche-fermer" aria-label="Fermer">✕</button>
+            </div>
+            <div class="fiche-actions">
+              <button type="button" id="fiche-mp" title="Discuter en privé">💬</button>
+              <button type="button" id="fiche-don" title="Offrir des kikooz">🎁</button>
+              <span class="triangle" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+        <div class="fiche-corps">
+          <div class="fiche-onglets" id="fiche-onglets">
+            <button type="button" data-onglet="frutiz" class="actif">frutiz</button>
+            <button type="button" data-onglet="perso">perso</button>
+            <button type="button" data-onglet="scores">scores</button>
+            <button type="button" data-onglet="bonus">bonus</button>
+          </div>
+          <div class="fiche-page" id="fiche-page"></div>
+        </div>
+        <div class="fiche-pied"></div>
+      </div>
     </div>
 
     <!-- Feutre (pen) swatch picker, toggled by the feutres icon in the header -->
@@ -2130,8 +2243,12 @@
       // réchauffé en arrière-plan par FPBouilleThumb. loading="lazy" => seules les
       // vignettes proches du viewport sont sondées/capturées.
       body.innerHTML = slice.map(function (e) {
-        return '<div class="trombi-card"><div class="tb">' + FPBouilleThumb.imgHtml(e.bouille) + '</div><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
+        return '<div class="trombi-card" data-pseudo="' + xmlEscape(e.pseudo) + '"><div class="tb">' + FPBouilleThumb.imgHtml(e.bouille) + '</div><span class="nm">' + xmlEscape(e.pseudo) + '</span></div>';
       }).join("");
+      // Toucher une vignette ouvre la fiche du frutiz, comme au bureau.
+      Array.prototype.forEach.call(body.querySelectorAll(".trombi-card"), function (c) {
+        c.addEventListener("click", function () { ouvrirFiche(c.getAttribute("data-pseudo")); });
+      });
     }
     body.scrollTop = 0;
     renderTrombiPager(list.length, pages);
@@ -3384,6 +3501,12 @@
         var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : "") + (o.multicolor ? " mc-text" : ""));
         fr.textContent = (o.from || "?") + " : ";
         if (o.pen && !o.multicolor) fr.style.color = o.pen;
+        // Comme au bureau : le pseudo d'un message ouvre la fiche du frutiz.
+        var auteur = String(o.from || "");
+        if (auteur && auteur.toLowerCase() !== "admin") {
+          fr.title = "Voir la fiche de " + auteur;
+          fr.addEventListener("click", function () { ouvrirFiche(auteur); });
+        }
         row.appendChild(fr);
       }
       var bd = el("span", "body" + (o.emote ? " emote" : "") + (o.multicolor ? " mc-text" : ""));
@@ -3620,6 +3743,188 @@
   var siteListe = null, siteTimer = null;
 
   // Une ligne : le pseudo, éventuellement le lieu, et le geste « écrire en privé ».
+  // ── La FICHE d'un frutiz ──
+  // Ce que le bureau montre en cliquant un pseudo (FrutizInfo + winFrutizInfo) :
+  // quatre onglets alimentés par /api/light/fiche, qui réunit la commande chat
+  // `userinfo` et les classements FrutiScore de la section Championnat.
+  var ficheEtat = { pseudo: null, data: null, onglet: "frutiz" };
+  var MOIS_COURTS = ["janv", "févr", "mars", "avr", "mai", "juin",
+    "juil", "août", "sept", "oct", "nov", "déc"];
+  // Lang.formatDateString(.., "day_short") : « 3 mai 26 ».
+  function jourCourt(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return d.getDate() + " " + MOIS_COURTS[d.getMonth()] + " " + String(d.getFullYear() % 100).padStart(2, "0");
+  }
+  function scoreLisible(score, type) {
+    if (type === "millisecond") {
+      var s = Math.floor(score / 1000), ms = score % 1000;
+      return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + "." + String(ms).padStart(3, "0");
+    }
+    return String(score);
+  }
+  function ouvrirFiche(pseudo) {
+    var p = String(pseudo || "").trim();
+    if (!p) return;
+    ficheEtat = { pseudo: p, data: null, onglet: "frutiz" };
+    $("#fiche-backdrop").classList.add("show");
+    renderFiche();
+    fetch("/api/light/fiche?sid=" + encodeURIComponent(state.sid) + "&u=" + encodeURIComponent(p),
+      { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (ficheEtat.pseudo !== p) return;
+        ficheEtat.data = (d && d.ok) ? d : { erreur: (d && d.error === "inconnu")
+          ? "Aucun frutiz n'a ce nom d'utilisateur" : "Fiche indisponible" };
+        renderFiche();
+      })
+      .catch(function () {
+        if (ficheEtat.pseudo !== p) return;
+        ficheEtat.data = { erreur: "Fiche indisponible" };
+        renderFiche();
+      });
+  }
+  function fermerFiche() {
+    $("#fiche-backdrop").classList.remove("show");
+    ficheEtat = { pseudo: null, data: null, onglet: "frutiz" };
+  }
+  function ligneFiche(lib, val) {
+    var l = el("div", "fiche-ligne");
+    var a = el("span", "lib"); a.textContent = lib + " :"; l.appendChild(a);
+    var b = el("span", "val");
+    if (val instanceof Node) b.appendChild(val); else b.textContent = val;
+    l.appendChild(b);
+    return l;
+  }
+  function renderFiche() {
+    var d = ficheEtat.data;
+    $("#fiche-pseudo").textContent = (d && d.pseudo) || ficheEtat.pseudo || "…";
+    // L'avatar : la vraie bouille, rendue par Ruffle comme partout ailleurs.
+    $("#fiche-avatar").innerHTML = (d && d.bouille) ? previewIframe(d.bouille) : "";
+    $("#fiche-niveau").textContent = (d && d.basic) ? d.basic.niveau : "–";
+    var meta = "";
+    if (d && d.basic) {
+      if (d.basic.age !== null && d.basic.age !== undefined) meta = d.basic.age + " ans";
+      if (d.basic.ville) meta += (meta ? " - " : "") + d.basic.ville;
+    }
+    $("#fiche-meta").textContent = meta;
+    // Se parler à soi-même n'a pas de sens : le bureau non plus ne le fait pas.
+    var moi = ficheEtat.pseudo && ficheEtat.pseudo.toLowerCase() === state.userLower;
+    $("#fiche-mp").style.display = moi ? "none" : "";
+    $("#fiche-don").style.display = moi ? "none" : "";
+    Array.prototype.forEach.call($("#fiche-onglets").children, function (b) {
+      b.classList.toggle("actif", b.getAttribute("data-onglet") === ficheEtat.onglet);
+    });
+
+    var page = $("#fiche-page");
+    page.innerHTML = "";
+    if (!d) { page.appendChild(el("div", "fiche-vide")).textContent = "Chargement…"; return; }
+    if (d.erreur) { page.appendChild(el("div", "fiche-vide")).textContent = d.erreur; return; }
+
+    if (ficheEtat.onglet === "frutiz") {
+      var t = el("div", "fiche-titre"); t.textContent = "frutisigne"; page.appendChild(t);
+      // Le signe au centre, l'ascendant en petit de part et d'autre — et la
+      // silhouette noire tant que le signe n'est pas révélé.
+      var rangSignes = el("div", "fiche-signes");
+      var grand = (d.frutiz.signe && d.frutiz.signe.nom) || "mystere";
+      var petit = (d.frutiz.ascendant && d.frutiz.ascendant.nom) || grand;
+      [["petit", petit], ["grand", grand], ["petit", petit]].forEach(function (q) {
+        var img = el("img", q[0]);
+        img.src = "/fb/signe_" + q[1] + ".png";
+        img.alt = q[1];
+        rangSignes.appendChild(img);
+      });
+      page.appendChild(rangSignes);
+      var lignes = el("div", "fiche-lignes");
+      lignes.appendChild(ligneFiche("frutiJob", d.frutiz.job || "Frutiz"));
+      lignes.appendChild(ligneFiche("consécration", (Number(d.frutiz.consecration) || 0).toFixed(2) + " %"));
+      lignes.appendChild(ligneFiche("niveau", d.basic.niveau));
+      lignes.appendChild(ligneFiche("frutiAge", d.frutiz.frutiAgeMois + " mois"));
+      lignes.appendChild(ligneFiche("inscription", jourCourt(d.frutiz.inscription) || "?"));
+      page.appendChild(lignes);
+    } else if (ficheEtat.onglet === "perso") {
+      var lp = el("div", "fiche-lignes");
+      lp.style.borderTop = "0";
+      lp.appendChild(ligneFiche("age", d.perso.age !== null && d.perso.age !== undefined ? d.perso.age + " ans" : "?"));
+      lp.appendChild(ligneFiche("anniversaire", jourCourt(d.perso.anniversaire) || "?"));
+      lp.appendChild(ligneFiche("sexe", d.perso.sexe === "F" ? "fille" : "garçon"));
+      if (d.perso.ville) lp.appendChild(ligneFiche("ville", d.perso.ville));
+      if (d.perso.metier) lp.appendChild(ligneFiche("métier", d.perso.metier));
+      if (d.perso.prenom) lp.appendChild(ligneFiche("prénom", d.perso.prenom));
+      if (d.perso.nom) lp.appendChild(ligneFiche("nom", d.perso.nom));
+      page.appendChild(lp);
+    } else if (ficheEtat.onglet === "scores") {
+      var sc = d.scores || {};
+      if ((!sc.classements || !sc.classements.length) && (!sc.medailles || !sc.medailles.length)) {
+        page.appendChild(el("div", "fiche-vide")).textContent = "Aucun score enregistré.";
+      } else {
+        if (sc.classements && sc.classements.length) {
+          var ts = el("div", "fiche-titre"); ts.textContent = "championnat"; page.appendChild(ts);
+          var ls = el("div", "fiche-lignes"); ls.style.borderTop = "0";
+          sc.classements.forEach(function (c) {
+            ls.appendChild(ligneFiche(c.titre, scoreLisible(c.score, c.type) + (c.pos > 0 ? " (" + c.pos + "ᵉ)" : "")));
+          });
+          page.appendChild(ls);
+        }
+        if (sc.medailles && sc.medailles.length) {
+          var tm = el("div", "fiche-titre"); tm.textContent = "récompenses"; page.appendChild(tm);
+          var lm = el("div", "fiche-lignes"); lm.style.borderTop = "0";
+          sc.medailles.forEach(function (m) {
+            lm.appendChild(ligneFiche(m.jeu, "Médaille " + m.medaille));
+          });
+          page.appendChild(lm);
+        }
+      }
+    } else if (ficheEtat.onglet === "bonus") {
+      var com = d.bonus && d.bonus.commentaire;
+      var site = d.bonus && d.bonus.site;
+      if (!com && !site) {
+        page.appendChild(el("div", "fiche-vide")).textContent = "Rien à montrer ici.";
+      } else {
+        if (com) {
+          var tc = el("div", "fiche-titre"); tc.textContent = "commentaire"; page.appendChild(tc);
+          var bloc = el("div", "fiche-com"); bloc.textContent = com; page.appendChild(bloc);
+        }
+        if (site) {
+          var lb = el("div", "fiche-lignes");
+          if (!com) lb.style.borderTop = "0";
+          var lien = el("a"); lien.href = site; lien.target = "_blank"; lien.rel = "noopener";
+          lien.textContent = site;
+          lb.appendChild(ligneFiche("site", lien));
+          page.appendChild(lb);
+        }
+      }
+    }
+  }
+  $("#fiche-fermer").addEventListener("click", fermerFiche);
+  $("#fiche-backdrop").addEventListener("click", function (ev) {
+    if (ev.target === this) fermerFiche();
+  });
+  $("#fiche-onglets").addEventListener("click", function (ev) {
+    var b = ev.target.closest("button[data-onglet]");
+    if (!b) return;
+    ficheEtat.onglet = b.getAttribute("data-onglet");
+    renderFiche();
+  });
+  $("#fiche-mp").addEventListener("click", function () {
+    var p = ficheEtat.pseudo;
+    fermerFiche();
+    openDrawer(false);
+    ouvrirPrive(p);
+  });
+  // « Offrir des kikooz » : on prépare la commande /donne dans le compositeur,
+  // le joueur n'a plus qu'à mettre le montant — comme l'aide de Gaspard l'enseigne.
+  $("#fiche-don").addEventListener("click", function () {
+    var p = ficheEtat.pseudo;
+    fermerFiche();
+    activateTab("chat");
+    openDrawer(false);
+    var input = $("#compose-input");
+    input.value = "/donne 10 " + p;
+    input.focus();
+  });
+
   function ligneConnecte(pseudo, lieu, staff, jeu) {
     var u = el("div", "u");
     var contenu = u;
@@ -3638,16 +3943,14 @@
     if (staff) { var s = el("span", "badge"); s.textContent = "staff"; contenu.appendChild(s); }
     if (pseudo.toLowerCase() === state.userLower) {
       var b = el("span", "badge"); b.textContent = "toi"; contenu.appendChild(b);
-    } else {
-      // Appuyer sur un pseudo ouvre la discussion privée : c'est le seul geste
-      // à connaître, et il tombe là où le joueur cherche déjà ses interlocuteurs.
-      u.classList.add("mp");
-      u.title = "Écrire à " + pseudo + " en privé";
-      u.addEventListener("click", function () {
-        openDrawer(false);
-        ouvrirPrive(pseudo);
-      });
     }
+    // Appuyer sur un pseudo ouvre sa FICHE, comme au bureau — et la fiche
+    // porte le bouton « discuter en privé ». La sienne se regarde aussi.
+    u.classList.add("mp");
+    u.title = "Voir la fiche de " + pseudo;
+    u.addEventListener("click", function () {
+      ouvrirFiche(pseudo);
+    });
     if (lieu) { var l = el("div", "lieu"); l.textContent = lieu; u.appendChild(l); }
     return u;
   }
