@@ -1147,7 +1147,10 @@ class Champ {
     jeu.impList = this.impList;
     jeu.shotList = this.shotList;
     jeu.partList = this.partList;
-    if (opts.fee) this.naitreFee(opts.fee);
+    // Aventure.initFaerie : la fée ne descend que prête au combat — vie et
+    // moral au-dessus de zéro, ni engourdie ni malade (isReadyForBattle).
+    // Fatiguée, elle reste au bocal et la partie se joue sans elle.
+    if (opts.fee && opts.fee.preteAuCombat()) this.naitreFee(opts.fee);
   }
 
   evenement(nom, d) {

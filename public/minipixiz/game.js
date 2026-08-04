@@ -796,6 +796,10 @@ class Client {
     this.commencerOuverture((opts.niveau || 0) + 1);
     if (opts.fee !== undefined) this.fee = opts.fee;
     if (opts.coefNuit !== undefined) this.coefNuit = opts.coefNuit;
+    // Forest.launch : le même isReadyForBattle décide de l'interface ET de la
+    // fée en vol — fatiguée, la partie entière la tient pour absente, et la
+    // colonne de droite garde son cadre vide.
+    if (this.fee && !this.fee.preteAuCombat()) this.fee = null;
     this.jeu = new E.Jeu(Object.assign({}, opts, { onEvent: (n, d) => this.annonce(n, d) }));
     this.jeu.entree = this.entree;
     // Le champ — la fée, les impys, les tirs. Il existe MÊME SANS fée : le jeu
@@ -1007,6 +1011,11 @@ class Client {
       case 'pierreEntamee': eclater(px(d.x), py(d.y), 4, '#d8d2bb', 1.6); break;
       case 'armureBrisee': eclater(px(d.x), py(d.y), 6, '#ffffff', 2); break;
       case 'impyLibere': eclater(px(d.x), py(d.y), 16, '#ff66cc', 3); break;
+      // Bomb.blast : les quatorze boules de flammes et l'explosion au centre.
+      case 'bombe':
+        eclater(px(d.x), py(d.y), 14, '#ff8800', 3.4);
+        eclater(px(d.x), py(d.y), 10, '#ffcc33', 2.2);
+        break;
       // Eye.blast : l'onde et les éclats sombres de sa couleur.
       case 'oeilDetruit':
         eclater(px(d.x), py(d.y), 14, couleurCss(E.COULEURS[d.couleur] || 0xffffff), 3);

@@ -234,11 +234,33 @@ class Bombe extends Element {
     super(jeu, o);
     this.et = E.BOMBE;
   }
+  // Bomb.blast : quiconque vit à moins de RAY pixels — fée comme démons —
+  // encaisse jusqu'à 200 points, dégressifs avec la distance, et l'onde le
+  // repousse. La liste se lit par index pendant qu'un mort s'en retire : le
+  // voisin de rang d'un démon tué net échappe au souffle, ici comme là-bas.
   souffler() {
+    const list = this.jeu.pList;
+    if (list) {
+      const x = this.jeu.posX(this.px);
+      const y = this.jeu.posY(this.py);
+      for (let i = 0; i < list.length; i++) {
+        const f = list[i];
+        const dx = f.x - x;
+        const dy = f.y - y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist >= Bombe.RAYON) continue;
+        const a = Math.atan2(dy, dx);
+        const c = 1 - dist / Bombe.RAYON;
+        f.blesser(c * 200);
+        f.vitx += Math.cos(a) * c * 20;
+        f.vity += Math.sin(a) * c * 20;
+      }
+    }
     this.jeu.evenement('bombe', { x: this.px, y: this.py });
     this.tuer();
   }
 }
+Bombe.RAYON = 64;                  // Bomb.RAY — quatre cases tout rond
 
 // sp/el/Item.mt — l'objet à ramasser. Il ne se ramasse que dégagé par le haut
 // (Item.initActiveStep : la case au-dessus doit être libre).

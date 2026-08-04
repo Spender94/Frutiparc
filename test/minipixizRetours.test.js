@@ -118,3 +118,96 @@ test('au doigt, la clairière s\'ouvre le regard vers l\'arbre et son sac', () =
   assert.match(src, /this\.xm = tactile \? 8 : SCENE \/ 2;/,
     'et le regard part à gauche, où le sac est accroché');
 });
+
+/*
+ * Le deuxième retour de terrain.
+ *
+ * « les bombes explosées n'infligeaient   Bombe.souffler mourait sans porter
+ *   aucun dégât ni à ma fée ni aux        le souffle de Bomb.blast : 200 pts
+ *   démons »                              dégressifs sur 64 px, et le recul
+ * « ma fée qui est fatiguée est venue     personne ne demandait
+ *   avec moi en forêt sans pb »           isReadyForBattle avant le départ
+ * « une 10aine de niveaux mais jamais     là, rien à corriger : les taux sont
+ *   aucun objet »                         ceux du jeu — on les épingle ici
+ */
+
+test('la bombe soufflée blesse la fée et les démons alentour', () => {
+  const jeu = new E.Jeu({ graine: 3, niveau: 0, grille: null });
+  const alea = tirage(5);
+  const fsFee = F.genererGraine(alea);
+  fsFee.$life = 3;
+  const fi = new F.Fee(fsFee, alea, { $inv: [] });
+  const champ = new C.Champ(jeu, { fee: fi });
+  const fee = champ.faerieList[0];
+  const bombe = jeu.genElement(E.E.BOMBE, 3, 10, null);
+  // Bomb.blast mesure du coin de la case : la fée à dix pixels (un cœur y
+  // passe), un démon à vingt (137 points — mortel pour un rang 0), un autre
+  // au-delà du rayon de soixante-quatre.
+  fee.x = jeu.posX(3) + 10; fee.y = jeu.posY(10);
+  fee.vitx = 0; fee.vity = 0;
+  const pres = champ.naitreImpy(0, jeu.posX(3) + 20, jeu.posY(10));
+  const loin = champ.naitreImpy(0, jeu.posX(3) + 200, jeu.posY(10));
+  const coeurs = fee.life;
+  const santeLoin = loin.health;
+  bombe.souffler();
+  assert.ok(fee.life < coeurs, 'la fée y perd un cœur : ' + coeurs + ' → ' + fee.life);
+  assert.ok(fee.vitx > 0, 'et l\'onde la repousse (vitx ' + fee.vitx.toFixed(1) + ')');
+  assert.ok(!pres.vivant, 'le démon voisin meurt du souffle');
+  assert.equal(loin.health, santeLoin, 'celui d\'au-delà des soixante-quatre pixels n\'a rien');
+  assert.ok(!bombe.vivant, 'et la bombe y reste');
+});
+
+test('la fée fatiguée reste au bocal — la partie se joue sans elle', () => {
+  // Aventure.initFaerie + FaerieInfo.isReadyForBattle : vie et moral au-dessus
+  // de zéro, ni engourdie (mood 0) ni malade (mood 1). Sinon, pas de fée.
+  const faire = (retouche) => {
+    const alea = tirage(5);
+    const f = F.genererGraine(alea);
+    retouche(f);
+    return new C.Champ(new E.Jeu({ graine: 3, niveau: 0, grille: null }),
+      { fee: new F.Fee(f, alea, { $inv: [] }) });
+  };
+  assert.equal(faire((f) => { f.$moral = 0; }).faerieList.length, 0, 'sans moral, pas de vol');
+  assert.equal(faire((f) => { f.$life = 0; }).faerieList.length, 0, 'sans vie non plus');
+  assert.equal(faire((f) => { f.$mood = [1]; }).faerieList.length, 0, 'engourdie, elle reste');
+  assert.equal(faire((f) => { f.$mood = [0, 1]; }).faerieList.length, 0, 'malade aussi');
+  assert.equal(faire(() => {}).faerieList.length, 1, 'prête, elle vole');
+  // Et la forêt cache aussi son interface : le même test décide des deux,
+  // comme Forest.launch ne monte l'intFace que prête.
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /if \(this\.fee && !this\.fee\.preteAuCombat\(\)\) this\.fee = null;/,
+    'pas prête, pas d\'interface non plus');
+});
+
+test('les objets tombent au rythme du jeu — sans sac, seul le sac', () => {
+  const h = (g) => {
+    let s = (g * 48271) % 0x7fffffff || 1;
+    return (n) => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s % n; };
+  };
+  // Item.getRandomId, $bag = 0 : l'issue est le premier sac (80), ou rien —
+  // un débutant n'a nulle part où ranger autre chose.
+  const vues = new Set();
+  for (let g = 1; g <= 300; g++) {
+    const n = E.tirerObjet(5, h(g), { sac: 0, flasques: 0 });
+    if (n !== null) vues.add(n);
+  }
+  assert.deepEqual([...vues], [80], 'rien d\'autre que le sac ne tombe sans sac');
+  // Forest.getLevel : les trois premiers niveaux d'un palier de vingt ne
+  // donnent JAMAIS d'objet (level % 20 > 2).
+  for (const niveau of [1, 2, 20, 21, 22]) {
+    for (let g = 1; g <= 40; g++) {
+      const jeu = new E.Jeu({ graine: g * 7 + niveau, niveau });
+      assert.ok(!jeu.eList.some((e) => e.et === E.E.OBJET), 'objet au niveau ' + niveau);
+    }
+  }
+  // …et un niveau éligible en donne une fois sur quatre au débutant :
+  // la porte (1/2, Cs.itemRate) fois le tirage du sac (1/2).
+  let avec = 0;
+  const total = 400;
+  for (let g = 1; g <= total; g++) {
+    const jeu = new E.Jeu({ graine: g * 13 + 5, niveau: 5 });
+    if (jeu.eList.some((e) => e.et === E.E.OBJET)) avec++;
+  }
+  assert.ok(avec > total * 0.17 && avec < total * 0.33,
+    'un quart des niveaux éligibles, en gros : ' + avec + '/' + total);
+});
