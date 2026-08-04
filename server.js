@@ -14998,6 +14998,46 @@ app.post('/api/light/jeu-en-cours', (req, res) => {
 //   bonus    le commentaire et le site du joueur
 const SIGNES_FRUITS = ['pomme', 'abricot', 'poire', 'fraise', 'citron',
   'kiwi', 'raisin', 'orange', 'cerise', 'banane'];
+// ── Pays et région, par leurs NOMS ────────────────────────────────────────
+// Le bureau ne garde que des index (countryIndex / regionIndex) et lit les
+// noms dans la table que le serveur lui sert déjà : public/xml/lang_french.xml,
+// bloc <ct> (listener/main.as la charge dans langText.countries). La fiche
+// mobile lit la MÊME table — inventer un second référentiel serait le meilleur
+// moyen de les voir diverger.
+let TABLE_PAYS = null;
+function tablePays() {
+  if (TABLE_PAYS) return TABLE_PAYS;
+  TABLE_PAYS = {};
+  try {
+    const xml = fs.readFileSync(path.join(__dirname, 'public/xml/lang_french.xml'), 'utf8');
+    const bloc = /<ct>([\s\S]*?)<\/ct>/.exec(xml);
+    if (bloc) {
+      const reC = /<c c="([^"]*)" n="([^"]*)"[^>]*>([\s\S]*?)<\/c>/g;
+      let m;
+      while ((m = reC.exec(bloc[1])) !== null) {
+        const regions = {};
+        const reR = /<r c="([^"]*)">([^<]*)<\/r>/g;
+        let r;
+        while ((r = reR.exec(m[3])) !== null) regions[r[1]] = r[2];
+        TABLE_PAYS[m[1]] = { nom: m[2], regions };
+      }
+    }
+  } catch (e) { /* table absente : la fiche se rabattra sur le texte libre */ }
+  return TABLE_PAYS;
+}
+// Les deux lignes « Pays » et « Région » de l'onglet perso. À défaut d'index
+// résolvable, on montre le texte libre de la colonne `region` plutôt qu'un
+// blanc — une fiche à moitié vide est pire qu'une fiche approximative.
+function nomsPaysRegion(ud) {
+  const t = tablePays();
+  const pays = t[String((ud && ud.countryIndex) || '')] || null;
+  const region = pays && pays.regions[String((ud && ud.regionIndex) || '')];
+  return {
+    pays: (pays && pays.nom) || '',
+    region: region || (ud && ud.region) || '',
+  };
+}
+
 // ── La fenêtre des LOGS du staff ──────────────────────────────────────────
 // « … voir les messages précédents … » : depuis toujours, le bureau appelle
 // fp_openHisto(sid, salon) (box.Chat.onIamMode, la commande /logs) — et la
@@ -15175,6 +15215,7 @@ app.get('/api/light/fiche', async (req, res) => {
   for (const [, cl] of xmlSocketClients) {
     if (cl && cl.logged && cl.username === u) { enLigne = true; break; }
   }
+  const lieuDit = nomsPaysRegion(ud);
   res.json({
     ok: true,
     pseudo: getDisplayName(u),
@@ -15201,9 +15242,8 @@ app.get('/api/light/fiche', async (req, res) => {
       anniversaire: naissance && !Number.isNaN(naissance.getTime())
         ? naissance.toISOString().substring(0, 10) : null,
       ville: ud.city || '', metier: ud.realJob || '',
-      // Le bureau affiche pays et région par leurs INDEX dans les listes du
-      // SWF ; les noms ne sont pas portés côté serveur — vides pour l'instant.
-      pays: '', region: '',
+      // Pays et région par leurs noms, résolus dans la table du bureau.
+      pays: lieuDit.pays, region: lieuDit.region,
     },
     bonus: { commentaire: ud.comment || '', site: ud.siteUrl || '' },
     scores: { classements, medailles },
@@ -18665,8 +18705,15 @@ case 'send': {
     }
     // Broadcasting a desktop window to a whole salon is a staff power (the SWF
     // itself gates /image behind flAnimator); defend it server-side too.
-    // Modérateurs partout ; animateurs sur LEUR salon seulement.
-    if (!isChannelStaff(client.username, g)) break;
+    // Modérateurs partout ; animateurs sur LEUR salon seulement — et le SWF
+    // laisse l'animateur taper la commande PARTOUT (flAnimator est global), il
+    // faut donc lui dire pourquoi elle ne part pas ailleurs qu'un silence.
+    if (!isChannelStaff(client.username, g)) {
+      if (isAnimator(client.username)) {
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>L'affichage d'images est réservé au salon Pomme.</i>]]></${CMD.send}>`);
+      }
+      break;
+    }
     const xmlUnescape = (s) => String(s || '')
       .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
@@ -18728,6 +18775,10 @@ case 'send': {
     // /image en TEXTE — le chemin du client Light (le SWF, lui, envoie une
     // trame t="i" interceptée plus haut). Même droit (staff du salon), mêmes
     // bornes et même relais proxifié que la trame du bureau.
+    if (!canModHere && isAnimator(client.username) && /^\/(image|img)\s/i.test(text)) {
+      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>L'affichage d'images est réservé au salon Pomme.</i>]]></${CMD.send}>`);
+      break;
+    }
     if (canModHere && /^\/(image|img)\s/i.test(text)) {
       const morceaux = unescapeXml(text).trim().split(/\s+/);
       const largeur = parseInt(morceaux[1], 10) || 0;

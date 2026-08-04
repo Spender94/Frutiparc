@@ -443,9 +443,11 @@
   #bouille-overlay.show #bouille-overlay-name { opacity: 1; }
 
   /* ── La FICHE d'un frutiz ──
-     La fenêtre de main.swf (winFrutizInfo), reconstruite : bandeau blanc
-     (bouille + pseudo + « âge - ville » + fermer), rangée d'actions, quatre
-     onglets sur le panneau vert clair, l'onglet actif en rouge. */
+     La fenêtre de main.swf (winFrutizInfo), redessinée sur l'intégration
+     d'époque de Rémi : une CARTE blanche à liseré sombre, pas une fenêtre
+     verte. En haut la plaque verte (bouille + écran de niveau) et le pseudo ;
+     en dessous, dépliable par le bouton rose du bureau, le panneau vert clair
+     des quatre onglets. Les dessins, eux, restent ceux de main.swf. */
   #fiche-backdrop {
     position: fixed; inset: 0; z-index: 70; display: none;
     align-items: center; justify-content: center;
@@ -453,116 +455,146 @@
   }
   #fiche-backdrop.show { display: flex; }
   #fiche {
-    width: min(400px, 96vw); max-height: 92vh; overflow-y: auto;
-    background: #fff; border: 2px solid #6f9b2e; border-radius: 12px;
-    box-shadow: 0 14px 34px rgba(20, 40, 6, .4);
-    display: flex; flex-direction: column;
+    position: relative;
+    width: min(340px, 94vw); max-height: 92vh; overflow-y: auto;
+    background: #fff; border: 1.5px solid #545454; border-radius: 5px;
+    box-shadow: 0 8px 26px rgba(20, 40, 6, .42);
+    padding: 6px;
   }
-  /* L'en-tête suit le style VERT de la fenêtre (la fiche du bureau se teinte
-     au colorSet du joueur ; la nôtre est verte, comme la référence). */
-  .fiche-haut { display: flex; gap: 10px; padding: 8px 10px; background: #e9f7cd; }
-  /* La plaque de la bouille et l'ÉCRAN DE NIVEAU : la mainbar de /light en
-     miniature — mêmes dessins (cadre, reflets, « NIV »), mêmes couleurs,
-     mêmes NEUF barres de progression que l'encart de l'accueil. */
-  .fiche-avatar { flex: 0 0 auto; display: flex; gap: 5px; }
-  .fiche-avatar .fa-frame {
-    position: relative; width: 58px; height: 58px; border-radius: 9px; overflow: hidden;
-    box-shadow: 0 0 0 1px #8A888D, 0 0 0 3px #D9D9D9;
+  /* Le haut : la plaque à gauche, le pseudo et les actions à droite. La croix
+     et le bouton rose sont posés dans le coin, hors du flux. */
+  .fiche-haut { display: flex; align-items: flex-start; gap: 9px; padding-right: 26px; }
+  /* LA PLAQUE — un seul encart vert (#C8F39A) cerné de gris qui tient la
+     bouille ET l'écran de niveau, comme sur l'intégration. */
+  .fiche-plaque {
+    flex: 0 0 auto; position: relative; overflow: hidden;
+    display: flex; align-items: center; gap: 5px;
+    padding: 3px; background: #c8f39a;
+    border: 1px solid #666; border-radius: 5px; box-shadow: 0 0 0 2px #ddd;
   }
-  .fiche-avatar .fa-frame .cadre { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
-  .fiche-avatar .fa-frame .stage { position: absolute; inset: 5%; z-index: 2; border-radius: 7px; overflow: hidden; }
-  .fiche-avatar .fa-frame .stage iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; pointer-events: none; }
-  .fiche-avatar .fa-frame .reflet { position: absolute; right: 5%; top: 5%; width: 46%; height: auto; z-index: 3; pointer-events: none; }
-  .fiche-avatar .fa-encart {
-    position: relative; width: 58px; height: 58px; border-radius: 6px; overflow: hidden;
-    background: #c8f39a;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 0 0 1px #93c168,
-                0 0 0 2px #dcdcdc, 0 1px 2px rgba(44,74,15,.22);
+  .fiche-plaque .reflet-niv {
+    position: absolute; right: -3px; top: -3px; height: 62%; width: auto;
+    z-index: 1; pointer-events: none; opacity: .8;
   }
-  .fiche-avatar .fa-encart .reflet-niv {
-    position: absolute; right: 3%; top: 4%; height: 56%; width: auto; z-index: 1; pointer-events: none;
+  .fiche-plaque .fa-frame {
+    position: relative; width: 52px; height: 52px; border-radius: 5px; overflow: hidden;
+    z-index: 2; box-shadow: 0 0 0 1px #8A888D;
+  }
+  .fiche-plaque .fa-frame .cadre { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+  .fiche-plaque .fa-frame .stage { position: absolute; inset: 5%; z-index: 2; border-radius: 4px; overflow: hidden; }
+  .fiche-plaque .fa-frame .stage iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; pointer-events: none; }
+  .fiche-plaque .fa-frame .reflet { position: absolute; right: 5%; top: 5%; width: 46%; height: auto; z-index: 3; pointer-events: none; }
+  .fiche-plaque .fa-jauge {
+    position: relative; z-index: 2; display: flex; flex-direction: column;
+    align-items: center; gap: 3px; padding-right: 3px;
   }
   /* Les NEUF barres : le taux de complétion du niveau, découpé en neuf lignes
-     qui se remplissent du bas vers le haut (setFicheProgress). */
-  .fiche-avatar .fa-progress {
-    position: absolute; left: 7px; top: 6px; width: 34px; height: 32px; z-index: 2;
-    display: flex; flex-direction: column; justify-content: space-between;
+     qui se remplissent du bas vers le haut (UserMng.xpLevelCompletionRate). */
+  .fiche-plaque .fa-progress { display: flex; flex-direction: column; gap: 1.5px; width: 30px; }
+  .fiche-plaque .fa-progress i { display: block; height: 2px; background: #A3EB57; overflow: hidden; }
+  .fiche-plaque .fa-progress i::before {
+    content: ""; display: block; height: 100%; width: var(--f, 0%); background: #72A62C;
   }
-  .fiche-avatar .fa-progress i {
-    display: block; height: 2px; background: #A3EB57; overflow: hidden;
-  }
-  .fiche-avatar .fa-progress i::before {
-    content: ""; display: block; height: 100%; width: var(--f, 0%);
-    background: #78B425;
-  }
-  .fiche-avatar .fa-niv {
-    position: absolute; left: 7px; bottom: 5px; z-index: 2;
-    display: flex; align-items: center; gap: 2px; line-height: 1;
-  }
-  .fiche-avatar .fa-niv img { height: 13px; width: auto; display: block; }
-  .fiche-avatar .fa-niv b {
+  .fiche-plaque .fa-niv { display: flex; align-items: center; gap: 2px; line-height: 1; }
+  .fiche-plaque .fa-niv img { height: 11px; width: auto; display: block; }
+  .fiche-plaque .fa-niv b {
     font-family: 'DSEG7', 'Courier New', monospace; font-weight: bold;
-    font-size: 12px; line-height: 1; color: #73b01e;
+    font-size: 11px; line-height: 1; color: #4E8030;
   }
-  .fiche-droite { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+  .fiche-droite { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; justify-content: center; }
   .fiche-nom-ligne { display: flex; align-items: center; gap: 5px; }
   /* Le point de présence du bureau (clip status : vert présent, anneau éteint). */
-  .fiche-nom-ligne .statut { width: 13px; height: 13px; object-fit: contain; }
+  .fiche-nom-ligne .statut { width: 11px; height: 11px; object-fit: contain; flex: 0 0 auto; }
   .fiche-nom-ligne b {
-    font-size: 15px; color: #101408; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: Verdana, Arial, sans-serif; font-size: 12.5px; color: #290D64;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .fiche-nom-ligne .meta { margin-left: auto; font-size: 11.5px; color: #6f6f6f; white-space: nowrap; }
-  /* La croix du bureau — butGroupWinTop, image 1. */
-  #fiche-fermer {
-    flex: 0 0 auto; border: 0; background: transparent; cursor: pointer; padding: 0 2px;
+  .fiche-meta { font-size: 11.5px; color: #444; margin-top: -2px; }
+  /* La croix du bureau (butGroupWinTop) et, dessous, le bouton ROSE du mode
+     avancé (butPushSmallPink + son triangle) — qui DÉPLIE la fiche, comme au
+     bureau où il ouvre la partie détaillée. */
+  #fiche-fermer, #fiche-avance {
+    position: absolute; right: 5px; border: 0; background: transparent;
+    cursor: pointer; padding: 0; z-index: 3;
   }
-  #fiche-fermer img { width: 14px; height: 14px; display: block; }
-  .fiche-actions { display: flex; align-items: center; gap: 5px; }
-  /* but.Push trace son cadre PAR CODE : un carré arrondi gris clair
-     (drawSmoothSquare, couleur 0xDDDDDD) et l'art posé dedans. Même chose ici,
-     en CSS — les glyphes (la feuille `icon` du sprite 500) par-dessus. */
-  .fiche-actions button {
-    width: 28px; height: 28px; padding: 0; cursor: pointer;
-    background: #fff; border: 2px solid #ddd; border-radius: 6px;
+  #fiche-fermer { top: 4px; }
+  #fiche-fermer img { width: 15px; height: 15px; display: block; }
+  #fiche-avance {
+    top: 30px; width: 24px; height: 24px;
+    background: url('/fb/fiche/bouton_rose.png') no-repeat center / 100% 100%;
     display: flex; align-items: center; justify-content: center;
   }
-  .fiche-actions button img { width: 19px; height: 19px; object-fit: contain; display: block; }
+  #fiche-avance img { width: 13px; height: 13px; object-fit: contain; display: block; }
+  #fiche-avance.ouvert img { transform: rotate(180deg); }
+  .fiche-actions { display: flex; align-items: center; gap: 5px; margin-top: 7px; padding: 0 2px; }
+  /* Les glyphes du bureau (la feuille `icon` du sprite 500), posés dans le
+     halo gris clair de l'intégration plutôt que dans un cadre plein. */
+  .fiche-actions button {
+    width: 26px; height: 26px; padding: 0; cursor: pointer;
+    background: #fff; border: 0; border-radius: 3px;
+    box-shadow: 0 0 0 1.5px #DDDDDD;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fiche-actions button img { width: 18px; height: 18px; object-fit: contain; display: block; }
   .fiche-actions button:active { filter: brightness(.92); }
   /* Pas encore porté sur mobile : présent, mais éteint — comme convenu. */
   .fiche-actions button:disabled { opacity: .42; cursor: default; }
-  /* Le bouton du mode avancé, à droite : le chrome ROSE du bureau et son
-     triangle (butPushSmallPink, glyphe 13 de sa feuille). */
-  .fiche-actions button.rose {
-    margin-left: auto;
-    background: url('/fb/fiche/bouton_rose.png') no-repeat center / 100% 100%;
-    border-color: #ddd;
+  /* LA PARTIE DÉPLIÉE — le panneau vert clair de l'intégration. */
+  .fiche-corps {
+    margin-top: 8px; background: #E0F4C5;
+    border: 2px solid #a7dc6b; border-radius: 2px; box-shadow: 0 0 0 2px #DDDDDD;
   }
-  .fiche-actions button.rose:disabled { opacity: 1; }
-  .fiche-corps { background: #cfec9a; border-top: 2px solid #6f9b2e; }
-  .fiche-onglets { display: flex; padding: 9px 8px 7px; border-bottom: 1px solid #55771f; }
+  #fiche:not(.deploye) .fiche-corps { display: none; }
+  .fiche-onglets { display: flex; justify-content: space-around; border-bottom: 2px solid #a7dc6b; }
   .fiche-onglets button {
     flex: 1 1 0; border: 0; background: transparent; font-weight: bold;
-    font-size: 13.5px; color: #131309; cursor: pointer; padding: 2px 0;
+    font-family: Verdana, Arial, sans-serif; font-size: 11px; color: #446531;
+    cursor: pointer; padding: 6px 0;
   }
-  .fiche-onglets button.actif { color: #c22000; }
-  .fiche-page { padding: 10px 18px 16px; min-height: 200px; }
-  /* Le bandeau clair du bureau (butGfxFrutizInfoTitleBg), d'un bord à l'autre
-     du panneau — le titre est posé dessus, en noir. */
+  .fiche-onglets button.actif { color: #811C22; }
+  .fiche-page { padding: 10px 12px 12px; min-height: 168px; }
+  /* Le titre de section, centré entre deux filets — le « FrutiSigne » de
+     l'intégration. */
   .fiche-titre {
-    text-align: center; font-weight: bold; font-size: 14.5px; color: #131309;
-    margin: 8px -18px 12px; padding: 4px 0;
-    background: url('/fb/fiche/bandeau_titre.png') no-repeat center / 100% 100%;
+    position: relative; text-align: center; font-weight: bold;
+    font-family: Verdana, Arial, sans-serif; font-size: 12px; color: #446531;
+    margin: 2px 0 10px;
   }
-  .fiche-signes { display: flex; align-items: center; justify-content: center; gap: 34px; margin: 6px 0 14px; }
-  .fiche-signes img.petit { width: 24px; height: 24px; object-fit: contain; }
-  .fiche-signes img.grand { width: 54px; height: 54px; object-fit: contain; }
-  .fiche-lignes { border-top: 1px solid #55771f; padding-top: 9px; margin-top: 10px; }
-  .fiche-ligne { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 13px; color: #131309; }
-  .fiche-ligne .val { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+  .fiche-titre::before, .fiche-titre::after {
+    content: ""; position: absolute; top: 50%; width: 26%; height: 1.5px; background: #a7dc6b;
+  }
+  .fiche-titre::before { left: 4px; }
+  .fiche-titre::after { right: 4px; }
+  /* Les trois signes : l'ascendant en petit de part et d'autre, le signe au
+     centre — et le filet qui les sépare des lignes d'information. */
+  .fiche-signes {
+    display: flex; align-items: center; justify-content: space-around;
+    margin: 0 8px 10px; padding: 0 46px 10px;
+    border-bottom: 1.5px solid #a7dc6b;
+  }
+  .fiche-signes img.petit { width: 28px; height: 28px; object-fit: contain; }
+  .fiche-signes img.grand { width: 52px; height: 52px; object-fit: contain; }
+  .fiche-lignes { padding: 0 4px; }
+  .fiche-ligne {
+    display: flex; justify-content: space-between; gap: 12px; padding: 3px 0;
+    font-family: Verdana, Arial, sans-serif; font-size: 11px;
+  }
+  .fiche-ligne .lib { color: #446531; }
+  .fiche-ligne .val { color: #444; text-align: right; min-width: 0; overflow-wrap: anywhere; }
   .fiche-ligne .val a { color: #2f6b16; }
-  .fiche-com { font-size: 13px; color: #131309; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
-  .fiche-vide { text-align: center; color: #4c611f; font-size: 12.5px; padding: 26px 0; }
-  .fiche-pied { height: 12px; background: #b9dc77; border-top: 1px solid #55771f; }
+  /* L'onglet « perso » encadre ses lignes de deux séparateurs. */
+  .fiche-lignes.encadre { padding: 4px; }
+  .fiche-lignes.encadre::before, .fiche-lignes.encadre::after {
+    content: ""; display: block; height: 2px; background: #a7dc6b; margin: 5px 0;
+  }
+  .fiche-com {
+    font-family: Verdana, Arial, sans-serif; font-size: 11px; color: #444;
+    white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; padding: 0 4px;
+  }
+  .fiche-vide {
+    text-align: center; color: #446531; font-family: Verdana, Arial, sans-serif;
+    font-size: 11px; padding: 26px 0;
+  }
   /* Le pseudo d'un message se touche : il ouvre la fiche, comme au bureau. */
   #messages .from { cursor: pointer; }
 
@@ -1385,16 +1417,22 @@
     <!-- La FICHE d'un frutiz (winFrutizInfo du bureau). Ouverte en touchant un
          pseudo — dans un salon, la liste des connectés ou le trombinoscope. -->
     <div id="fiche-backdrop">
-      <div id="fiche" role="dialog" aria-modal="true" aria-label="Fiche du frutiz">
+      <div id="fiche" class="deploye" role="dialog" aria-modal="true" aria-label="Fiche du frutiz">
+        <button type="button" id="fiche-fermer" aria-label="Fermer"><img src="/fb/fiche/croix_fermer.png" alt="Fermer"></button>
+        <!-- Le bouton ROSE du bureau (butPushSmallPink + son triangle) : au
+             bureau il ouvre la partie détaillée, ici il déplie la fiche. -->
+        <button type="button" id="fiche-avance" title="Afficher ou masquer le détail" aria-expanded="true"><img src="/fb/fiche/ico_avance.png" alt=""></button>
         <div class="fiche-haut">
-          <div class="fiche-avatar">
+          <!-- La plaque verte : la bouille et l'écran de niveau dans un seul
+               encart, avec les dessins de la mainbar (cadre, reflets, NIV). -->
+          <div class="fiche-plaque">
+            <img class="reflet-niv" src="/fb/reflet_niveau.svg" alt="">
             <div class="fa-frame">
               <div class="stage" id="fiche-avatar"></div>
               <img class="cadre" src="/fb/cadre_bouille.svg" alt="">
               <img class="reflet" src="/fb/reflet_bouille.svg" alt="">
             </div>
-            <div class="fa-encart">
-              <img class="reflet-niv" src="/fb/reflet_niveau.svg" alt="">
+            <div class="fa-jauge">
               <div class="fa-progress" id="fiche-barres"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
               <div class="fa-niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
             </div>
@@ -1402,36 +1440,36 @@
           <div class="fiche-droite">
             <div class="fiche-nom-ligne">
               <img class="statut" id="fiche-statut" src="/fb/fiche/statut_absent.png" alt=""><b id="fiche-pseudo">…</b>
-              <span class="meta" id="fiche-meta"></span>
-              <button type="button" id="fiche-fermer" aria-label="Fermer"><img src="/fb/fiche/croix_fermer.png" alt="Fermer"></button>
             </div>
-            <!-- La rangée du bureau (box.Frutiz.getIconList), avec les VRAIS
-                 glyphes de main.swf — la feuille `icon` de butPushSmallWhite.
-                 Les gestes sans action mobile restent visibles mais éteints ;
-                 kick, ban et totoché ne se montrent qu'aux modérateurs. -->
-            <div class="fiche-actions">
-              <button type="button" id="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
-              <button type="button" id="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
-              <button type="button" id="fiche-blog" title="Bouilloscope — sur le bureau" disabled><img src="/fb/fiche/ico_blog.png" alt=""></button>
-              <button type="button" id="fiche-contact" title="Ajouter aux contacts — sur le bureau" disabled><img src="/fb/fiche/ico_contact.png" alt=""></button>
-              <button type="button" id="fiche-noire" title="Liste noire — sur le bureau" disabled><img src="/fb/fiche/ico_listenoire.png" alt=""></button>
-              <button type="button" id="fiche-kick" class="modo" title="Éjecter du salon" hidden><img src="/fb/fiche/ico_kick.png" alt=""></button>
-              <button type="button" id="fiche-ban" class="modo" title="Bannir" hidden><img src="/fb/fiche/ico_ban.png" alt=""></button>
-              <button type="button" id="fiche-totoche" class="modo" title="Totocher (rendre muet)" hidden><img src="/fb/fiche/ico_totoche.png" alt=""></button>
-              <button type="button" id="fiche-avance" class="rose" title="Mode avancé — sur le bureau" disabled><img src="/fb/fiche/ico_avance.png" alt=""></button>
-            </div>
+            <div class="fiche-meta" id="fiche-meta"></div>
           </div>
+        </div>
+        <!-- La rangée du bureau (box.Frutiz.getIconList), avec les VRAIS
+             glyphes de main.swf — la feuille `icon` de butPushSmallWhite. Elle
+             court sur toute la largeur : le bureau n'en montre que quatre, on
+             en a huit avec la vue modérateur, et une rangée coupée en deux
+             serait plus laide qu'une rangée pleine. Les gestes sans action
+             mobile restent visibles mais éteints ; kick, ban et totoché ne se
+             montrent qu'aux modérateurs. -->
+        <div class="fiche-actions">
+          <button type="button" id="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
+          <button type="button" id="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
+          <button type="button" id="fiche-blog" title="Bouilloscope — sur le bureau" disabled><img src="/fb/fiche/ico_blog.png" alt=""></button>
+          <button type="button" id="fiche-contact" title="Ajouter aux contacts — sur le bureau" disabled><img src="/fb/fiche/ico_contact.png" alt=""></button>
+          <button type="button" id="fiche-noire" title="Liste noire — sur le bureau" disabled><img src="/fb/fiche/ico_listenoire.png" alt=""></button>
+          <button type="button" id="fiche-kick" class="modo" title="Éjecter du salon" hidden><img src="/fb/fiche/ico_kick.png" alt=""></button>
+          <button type="button" id="fiche-ban" class="modo" title="Bannir" hidden><img src="/fb/fiche/ico_ban.png" alt=""></button>
+          <button type="button" id="fiche-totoche" class="modo" title="Totocher (rendre muet)" hidden><img src="/fb/fiche/ico_totoche.png" alt=""></button>
         </div>
         <div class="fiche-corps">
           <div class="fiche-onglets" id="fiche-onglets">
-            <button type="button" data-onglet="frutiz" class="actif">frutiz</button>
-            <button type="button" data-onglet="perso">perso</button>
-            <button type="button" data-onglet="scores">scores</button>
-            <button type="button" data-onglet="bonus">bonus</button>
+            <button type="button" data-onglet="frutiz" class="actif">Frutiz</button>
+            <button type="button" data-onglet="perso">Perso</button>
+            <button type="button" data-onglet="scores">Scores</button>
+            <button type="button" data-onglet="bonus">Bonus</button>
           </div>
           <div class="fiche-page" id="fiche-page"></div>
         </div>
-        <div class="fiche-pied"></div>
       </div>
     </div>
 
@@ -3844,6 +3882,7 @@
     var p = String(pseudo || "").trim();
     if (!p) return;
     ficheEtat = { pseudo: p, data: null, onglet: "frutiz" };
+    poserFicheDeployee(ficheDeployee());
     $("#fiche-backdrop").classList.add("show");
     renderFiche();
     fetch("/api/light/fiche?sid=" + encodeURIComponent(state.sid) + "&u=" + encodeURIComponent(p),
@@ -3919,7 +3958,7 @@
     if (d.erreur) { page.appendChild(el("div", "fiche-vide")).textContent = d.erreur; return; }
 
     if (ficheEtat.onglet === "frutiz") {
-      var t = el("div", "fiche-titre"); t.textContent = "frutisigne"; page.appendChild(t);
+      var t = el("div", "fiche-titre"); t.textContent = "FrutiSigne"; page.appendChild(t);
       // Le signe au centre, l'ascendant en petit de part et d'autre — et la
       // silhouette noire tant que le signe n'est pas révélé.
       var rangSignes = el("div", "fiche-signes");
@@ -3940,9 +3979,9 @@
       lignes.appendChild(ligneFiche("inscription", jourCourt(d.frutiz.inscription) || "?"));
       page.appendChild(lignes);
     } else if (ficheEtat.onglet === "perso") {
-      // win.Frutiz.genDisplayInfo, mot pour mot et dans l'ordre du bureau.
-      var lp = el("div", "fiche-lignes");
-      lp.style.borderTop = "0";
+      // win.Frutiz.genDisplayInfo, mot pour mot et dans l'ordre du bureau —
+      // encadré de ses deux séparateurs, comme sur l'intégration.
+      var lp = el("div", "fiche-lignes encadre");
       lp.appendChild(ligneFiche("Prénom", d.perso.prenom || ""));
       lp.appendChild(ligneFiche("Nom", d.perso.nom || ""));
       lp.appendChild(ligneFiche("Date de naissance", jourCourt(d.perso.anniversaire) || ""));
@@ -3957,16 +3996,16 @@
         page.appendChild(el("div", "fiche-vide")).textContent = "Aucun score enregistré.";
       } else {
         if (sc.classements && sc.classements.length) {
-          var ts = el("div", "fiche-titre"); ts.textContent = "championnat"; page.appendChild(ts);
-          var ls = el("div", "fiche-lignes"); ls.style.borderTop = "0";
+          var ts = el("div", "fiche-titre"); ts.textContent = "Championnat"; page.appendChild(ts);
+          var ls = el("div", "fiche-lignes");
           sc.classements.forEach(function (c) {
             ls.appendChild(ligneFiche(c.titre, scoreLisible(c.score, c.type) + (c.pos > 0 ? " (" + c.pos + "ᵉ)" : "")));
           });
           page.appendChild(ls);
         }
         if (sc.medailles && sc.medailles.length) {
-          var tm = el("div", "fiche-titre"); tm.textContent = "récompenses"; page.appendChild(tm);
-          var lm = el("div", "fiche-lignes"); lm.style.borderTop = "0";
+          var tm = el("div", "fiche-titre"); tm.textContent = "Récompenses"; page.appendChild(tm);
+          var lm = el("div", "fiche-lignes");
           sc.medailles.forEach(function (m) {
             lm.appendChild(ligneFiche(m.jeu, "Médaille " + m.medaille));
           });
@@ -3994,6 +4033,23 @@
       }
     }
   }
+  // Le bouton ROSE du bureau : là-bas il ouvre la partie détaillée de la
+  // fiche, ici il la déplie ou la replie. Le choix se retient — qui préfère la
+  // carte compacte la retrouve compacte au tap suivant.
+  var FICHE_DEPLOYE_KEY = "fp_fiche_deploye";
+  function ficheDeployee() {
+    var v; try { v = localStorage.getItem(FICHE_DEPLOYE_KEY); } catch (e) { v = null; }
+    return v !== "0";                       // dépliée par défaut sur mobile
+  }
+  function poserFicheDeployee(ouvert) {
+    $("#fiche").classList.toggle("deploye", !!ouvert);
+    $("#fiche-avance").classList.toggle("ouvert", !!ouvert);
+    $("#fiche-avance").setAttribute("aria-expanded", ouvert ? "true" : "false");
+    try { localStorage.setItem(FICHE_DEPLOYE_KEY, ouvert ? "1" : "0"); } catch (e) {}
+  }
+  $("#fiche-avance").addEventListener("click", function () {
+    poserFicheDeployee(!$("#fiche").classList.contains("deploye"));
+  });
   $("#fiche-fermer").addEventListener("click", fermerFiche);
   $("#fiche-backdrop").addEventListener("click", function (ev) {
     if (ev.target === this) fermerFiche();

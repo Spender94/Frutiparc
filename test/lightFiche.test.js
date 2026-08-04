@@ -142,10 +142,10 @@ test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
   }
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   // but.Push trace son cadre par code (drawSmoothSquare 0xDDDDDD) : le mobile
-  // fait pareil, en CSS — pas d'image de chrome blanc.
-  assert.match(html, /border: 2px solid #ddd; border-radius: 6px;/, 'le cadre des boutons, par code');
+  // fait pareil, en CSS — le halo gris clair de l'intégration, pas d'image de
+  // chrome blanc.
+  assert.match(html, /box-shadow: 0 0 0 1\.5px #DDDDDD;/, 'le halo gris des boutons, par code');
   assert.match(html, /\/fb\/fiche\/bouton_rose\.png/, 'le chrome rose du mode avancé');
-  assert.match(html, /\/fb\/fiche\/bandeau_titre\.png/, 'le bandeau des titres');
   assert.match(html, /\/fb\/fiche\/croix_fermer\.png/, 'la croix du bureau (butGroupWinTop)');
   // L'en-tête : le point de présence, et l'écran de niveau à barres.
   assert.match(html, /statut_present/, 'présent en vert');
@@ -166,6 +166,58 @@ test('la rangée d\'actions porte les vrais glyphes de main.swf', () => {
   assert.match(html, /id="fiche-contact"[^>]*disabled/, 'les contacts aussi');
   // Et le courrier est branché sur la vraie messagerie, destinataire prérempli.
   assert.match(html, /ecrireMail\(p, ""\)/, 'le bouton mail ouvre le composeur');
+});
+
+test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  // La CARTE : blanche, liseré sombre fin, coins courts — pas une fenêtre verte.
+  assert.match(html, /#fiche \{[\s\S]{0,400}border: 1\.5px solid #545454; border-radius: 5px;/,
+    'la carte blanche à liseré sombre');
+  // LA PLAQUE : un seul encart vert qui tient la bouille ET l'écran de niveau.
+  assert.match(html, /\.fiche-plaque \{[\s\S]{0,400}background: #c8f39a;/, 'la plaque verte');
+  assert.match(html, /border: 1px solid #666; border-radius: 5px; box-shadow: 0 0 0 2px #ddd;/,
+    'cernée de gris, comme sur l\'intégration');
+  assert.match(html, /<div class="fiche-plaque">[\s\S]{0,700}class="fa-jauge"/,
+    'la bouille et la jauge dans le MÊME encart');
+  // Les barres et le niveau prennent les couleurs de l'intégration.
+  assert.match(html, /background: #72A62C;/, 'les barres au vert de l\'intégration');
+  assert.match(html, /font-size: 11px; line-height: 1; color: #4E8030;/, 'le niveau aussi');
+  assert.match(html, /font-size: 12\.5px; color: #290D64;/, 'et le pseudo au bleu nuit');
+  // LE DÉPLIANT : le bouton rose n'est plus mort, il ouvre le détail.
+  assert.ok(!/id="fiche-avance"[^>]*disabled/.test(html), 'le bouton rose n\'est plus éteint');
+  assert.match(html, /#fiche:not\(\.deploye\) \.fiche-corps \{ display: none; \}/,
+    'la fiche se replie');
+  assert.match(html, /poserFicheDeployee\(!\$\("#fiche"\)\.classList\.contains\("deploye"\)\)/,
+    'et le bouton rose bascule');
+  assert.match(html, /localStorage\.setItem\(FICHE_DEPLOYE_KEY/, 'le choix se retient');
+  // Le panneau vert clair, ses onglets et leur rouge d'activité.
+  assert.match(html, /\.fiche-corps \{[\s\S]{0,200}background: #E0F4C5;/, 'le panneau vert clair');
+  assert.match(html, /border: 2px solid #a7dc6b; border-radius: 2px; box-shadow: 0 0 0 2px #DDDDDD;/,
+    'son liseré et son halo');
+  assert.match(html, /font-size: 11px; color: #446531;/, 'les onglets en vert sombre');
+  assert.match(html, /\.fiche-onglets button\.actif \{ color: #811C22; \}/, 'l\'onglet actif en rouge brique');
+  // Le titre de section entre deux filets — la réponse à l'encart « frutisigne ».
+  assert.match(html, /\.fiche-titre::before, \.fiche-titre::after \{/, 'le titre entre deux filets');
+  assert.match(html, /t\.textContent = "FrutiSigne"/, 'nommé comme sur l\'intégration');
+  assert.match(html, /border-bottom: 1\.5px solid #a7dc6b;/, 'les signes posés sur leur séparateur');
+  // Et l'onglet perso encadre ses lignes.
+  assert.match(html, /"fiche-lignes encadre"/, 'perso encadré de ses séparateurs');
+});
+
+test('l\'onglet perso nomme le pays et la région, pas des blancs', () => {
+  // Le bureau ne garde que des index et lit les noms dans la table qu'on lui
+  // sert déjà (public/xml/lang_french.xml, bloc <ct>). La fiche mobile lit la
+  // même — deux référentiels finiraient par diverger.
+  const xml = fs.readFileSync(path.join(ROOT, 'public/xml/lang_french.xml'), 'utf8');
+  assert.match(xml, /<c c="1" n="France"/, 'la table porte la France');
+  assert.match(xml, /<r c="94">Val-de-Marne<\/r>/, 'et ses départements');
+  const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(src, /function tablePays\(\)/, 'le serveur lit la table');
+  assert.match(src, /pays: lieuDit\.pays, region: lieuDit\.region,/,
+    'et la fiche en sort les NOMS');
+  // Le repli : sans index résolvable, le texte libre plutôt qu'un blanc.
+  assert.match(src, /region: region \|\| \(ud && ud\.region\) \|\| '',/,
+    'à défaut d\'index, le texte libre');
 });
 
 test('la vue modérateur : kick, ban et totoché, aux modérateurs seulement', () => {

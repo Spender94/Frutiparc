@@ -172,12 +172,31 @@ test('salon pomme : les quatre droits de l\'animateur, et leurs refus ailleurs',
     assert.match(criSwf, /st="r"/, 'rendu comme le « ! » du client Light');
 
     // ── 3. /image : la fenêtre pour tout le salon, depuis pomme seulement. ──
+    // a) le chemin du client LIGHT : la commande en texte.
     anim.envoyer('<t g="pomme" t="m" p="">/image 200 150 https://exemple.test/a.png La preuve</t>');
     const img = await temoin.attendre((x) => x.includes('t="i"') && x.includes('La preuve'), 'la trame image');
     assert.match(img, /\/api\/imgproxy\?url=/, 'l\'image passe par le relais du serveur');
+    assert.match(img, new RegExp(`u="${ANIM}"`), 'et elle est signée de l\'animateur');
+    assert.match(img, /g="pomme"/, 'diffusée SUR le salon — donc à tout le monde');
+
+    // b) le chemin du BUREAU : la trame t="i" que sendImage compose. Le SWF la
+    //    laisse partir de n'importe où (flAnimator est global) ; c'est le
+    //    serveur qui la retient ailleurs que sur pomme.
+    temoin.trames.length = 0;
+    anim.envoyer('<t g="pomme" t="i" p=""><i w="240" h="180" u="https://exemple.test/b.png">Depuis le bureau</i></t>');
+    const imgSwf = await temoin.attendre((x) => x.includes('Depuis le bureau'), 'la trame image du bureau');
+    assert.match(imgSwf, /t="i"/, 'relayée telle quelle en t="i"');
+    assert.match(imgSwf, /\/api\/imgproxy\?url=/, 'proxifiée elle aussi');
+
+    // c) ailleurs, les deux chemins sont muets — et l'animateur sait pourquoi.
+    temoin.trames.length = 0;
+    anim.envoyer('<t g="poire" t="i" p=""><i w="240" h="180" u="https://exemple.test/c.png">Hors salon</i></t>');
+    await anim.attendre((x) => x.includes('réservé au salon Pomme'), 'le refus expliqué (bureau)');
     anim.envoyer('<t g="poire" t="m" p="">/image 200 150 https://exemple.test/a.png Refusée</t>');
-    const refusImg = await anim.attendre((x) => x.includes('Commande inconnue'), 'le refus sur poire');
-    assert.ok(refusImg, 'hors de son salon, /image n\'existe pas pour lui');
+    await anim.attendre((x) => x.includes('réservé au salon Pomme'), 'le refus expliqué (light)');
+    await wait(400);
+    assert.ok(!temoin.trames.some((x) => x.includes('Hors salon') || x.includes('Refusée')),
+      'et personne n\'a rien vu passer sur poire');
 
     // ── 4. /kick : l'éjection marche sur pomme… ──
     const cible = await client(CIBLE, sidCible);
