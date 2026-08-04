@@ -228,10 +228,11 @@
       // base/Forest.endGame ferme la partie au premier multiple de vingt : une
       // course, c'est vingt niveaux, pas l'infini.
       fin: P.finDeCourse(depart || 0),
-      // Une copie de travail de la fiche. Base.grab agit TOUT DE SUITE : le sac
-      // ramassé au niveau 3 change ce qui tombe au niveau 4, sans attendre la
-      // fin de la course. La vraie fiche, elle, n'est écrite qu'à la fin.
-      carte: JSON.parse(JSON.stringify(plateforme.carte)),
+      // La photo de la fiche à l'entrée — pour compter les pictos gagnés en
+      // fin de course, et rien d'autre. La course, elle, joue sur la fiche
+      // VIVANTE : Base.grab agit à l'instant du ramassage, et le sac ouvert
+      // en pleine course doit montrer ce qu'on vient de prendre.
+      avant: JSON.parse(JSON.stringify(plateforme.carte)),
     };
     lancerNiveau();
   }
@@ -243,7 +244,7 @@
       // par défaut et deux niveaux du même palier se ressemblent trait pour
       // trait — c'est le « j'ai déjà vu ce niveau » des joueurs.
       graine: Math.floor(Math.random() * 1e9),
-      fiche: P.fiche(course.carte),
+      fiche: P.fiche(plateforme.carte),
       fee: feeCourante(),
       coefNuit: coefNuit(),
     });
@@ -290,7 +291,7 @@
         surEvenement: function (nom, info) {
           if (nom === 'objet') {
             course.objets.push(info.type);
-            P.ramasser(course.carte, info.type);
+            P.ramasser(plateforme.carte, info.type);
             return;
           }
           // Base.tryToClose : le panneau de fin s'est montré, la clairière
@@ -339,7 +340,7 @@
         plateforme.enregistrer({
           niveaux: course.niveaux, dernier: course.niveau,
           objets: course.objets, entree: course.entree,
-        }).then(function (r) {
+        }, course.avant).then(function (r) {
           window.__derniereSauvegarde = r;   // utile aux vérifications automatisées
         });
         if (window.parent !== window) {

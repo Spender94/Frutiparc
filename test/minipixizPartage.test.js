@@ -197,6 +197,8 @@ test('reparer ne touche à rien d\'une fiche Flash saine', () => {
 
 test('une course native garde tout ce que le Flash avait posé', () => {
   const c = P.reparer(ficheDepuisLeSwf()).carte;
+  // Le ramassage écrit la fiche à l'instant (Base.grab), la fusion solde.
+  P.ramasser(c, 46);
   const apres = P.fusionner(c, { niveaux: [41, 42], dernier: 43, objets: [46], entree: true });
 
   // Ce que la course change.

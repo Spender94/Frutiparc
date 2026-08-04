@@ -303,12 +303,19 @@ function ramasser(c, type) {
  * Ce qu'une course en forêt ajoute à la fiche.
  *
  * Une course est une SUITE de niveaux : on gagne, on passe au suivant, jusqu'à
- * perdre ou atteindre le relais suivant. `run` la décrit :
+ * la défaite ou au relais. C'est elle que l'on solde, comme base/Forest.endGame.
  *
- *   niveaux    les niveaux terminés, dans l'ordre
- *   dernier    le niveau où la course s'est arrêtée
- *   objets     les identifiants ramassés (Base.grab)
+ *   niveaux    les niveaux FRANCHIS ($stat.$run += (n+1)² chacun)
+ *   dernier    le niveau atteint ($stat.$forestMax, relais)
  *   entree     vrai si c'est une nouvelle entrée en forêt ($stat.$game[0]++)
+ *
+ * ── Les objets ? Déjà sur la fiche ──
+ *
+ * Base.grab agit à l'INSTANT du ramassage : l'album, le trousseau, le sac,
+ * l'inventaire — tout est écrit quand l'objet se dégage, pas en fin de course.
+ * C'est ce qui fait que le sac du niveau 3 change le tirage du niveau 4, et
+ * que l'inventaire ouvert en pleine course dit la vérité. La fusion n'ajoute
+ * donc que ce que endGame ajoute ; `run.objets` n'est qu'une trace.
  *
  * ── Le carré, et son décalage d'un ──
  *
@@ -333,8 +340,6 @@ function fusionner(carte, run) {
   // base/Forest.kill : le meilleur niveau atteint ne redescend jamais.
   const dernier = nombre(run.dernier);
   s.$forestMax = Math.max(nombre(s.$forestMax), dernier + 1);
-
-  for (const id of (run.objets || [])) ramasser(c, id);
 
   // base/Forest.endGame : le relais SUIVANT, et lui seul.
   //
@@ -436,11 +441,13 @@ class Plateforme {
       .catch(() => ({ enregistre: false, carte: this.carte, gagnes }));
   }
 
-  // Appelé à la fin d'une course.
-  enregistrer(run) {
-    const avant = this.carte;
-    this.carte = fusionner(avant, run);
-    return this.ecrire(avant);
+  // Appelé à la fin d'une course. `avant` est la photo de la fiche à l'ENTRÉE
+  // en forêt : les ramassages ont déjà écrit la fiche vivante (Base.grab), et
+  // c'est contre cette photo que se comptent les pictos gagnés.
+  enregistrer(run, avant) {
+    const base = this.carte;
+    this.carte = fusionner(base, run);
+    return this.ecrire(avant || base);
   }
 
   // Où le joueur peut reprendre : les relais acquis, tous les vingt niveaux

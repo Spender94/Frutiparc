@@ -113,15 +113,17 @@ function courir(P, carte, graine, depart) {
   const debut = depart || 0;
   const fin = P.finDeCourse(debut);
   const course = { niveaux: [], objets: [], dernier: debut, entree: true };
-  const travail = JSON.parse(JSON.stringify(carte));
+  // La page joue sur la fiche VIVANTE : Base.grab agit à l'instant du
+  // ramassage, la fusion de fin de course ne solde que les stats. `carte`
+  // ressort donc mutée, exactement comme plateforme.carte dans la page.
   let niveau = debut;
   while (niveau < fin) {
     const jeu = new E.Jeu({
-      graine: graine + niveau, niveau, fiche: P.fiche(travail),
+      graine: graine + niveau, niveau, fiche: P.fiche(carte),
       onEvent: (nom, d) => {
         if (nom !== 'objet') return;
         course.objets.push(d.type);
-        P.ramasser(travail, d.type);      // Base.grab agit tout de suite
+        P.ramasser(carte, d.type);        // Base.grab agit tout de suite
       },
     });
     let i = 0;
@@ -309,8 +311,11 @@ test('une fiche abîmée par Ruffle se répare au chargement au lieu de se propa
   assert.equal(p.carte.$checkpoint, 2, 'et les relais acquis');
   assert.deepEqual(p.departs(), [0, 20, 40], 'donc trois départs possibles');
 
-  // Une course par-dessus : ce qui part au serveur est la fiche RÉPARÉE.
-  const r = await p.enregistrer({ niveaux: [41], dernier: 42, objets: [80, 70], entree: true });
+  // Une course par-dessus : les ramassages à l'instant (Base.grab), puis le
+  // solde — ce qui part au serveur est la fiche RÉPARÉE.
+  P.ramasser(p.carte, 82);
+  P.ramasser(p.carte, 70);
+  const r = await p.enregistrer({ niveaux: [41], dernier: 42, objets: [82, 70], entree: true });
   assert.equal(r.enregistre, true, 'la sauvegarde passe — elle n\'est plus corrompue');
 
   const relu = await new P.Plateforme(sid).charger();

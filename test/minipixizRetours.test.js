@@ -24,6 +24,7 @@ const E = require('../public/minipixiz/engine.js');
 const C = require('../public/minipixiz/combat.js');
 const F = require('../public/minipixiz/faerie.js');
 const I = require('../public/minipixiz/inventaire.js');
+const P = require('../public/minipixiz/plateforme.js');
 
 function tirage(graine) {
   let s = graine;
@@ -226,6 +227,35 @@ test('un glissement du doigt sur la clairière n\'est pas un choix', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/menu.js'), 'utf8');
   assert.match(src, /demarrer\(alea\) \{\n    this\.garder\(400\);/,
     'ouvrir le menu aussi');
+});
+
+/*
+ * Quatrième retour : « j'ai ramassé un objet en forêt mais il n'apparaît pas
+ * dans mon inventaire après la partie. »
+ *
+ * La course jouait sur une COPIE de la fiche, fusionnée en fin de course —
+ * et le sac, ouvert pendant la course (le bouton est là), montrait la fiche
+ * d'AVANT : l'objet semblait perdu. Base.grab n'a jamais eu de copie : il
+ * écrit Cm.card à l'instant du ramassage. On fait pareil.
+ */
+test('l\'objet ramassé est dans le sac à l\'instant, pas en fin de course', () => {
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /P\.ramasser\(plateforme\.carte, info\.type\)/,
+    'Base.grab écrit la fiche VIVANTE');
+  assert.match(page, /fiche: P\.fiche\(plateforme\.carte\)/,
+    'et le tirage du niveau suivant lit la même fiche');
+  assert.match(page, /avant: JSON\.parse\(JSON\.stringify\(plateforme\.carte\)\)/,
+    'la photo d\'entrée ne sert qu\'à compter les pictos');
+  assert.match(page, /\}, course\.avant\)\.then\(/,
+    'et la fin de course la passe à l\'enregistrement');
+  // Le tout, sans que la fusion ne repasse derrière : un seul exemplaire.
+  const c = P.carteNeuve();
+  c.$bag = 1;
+  P.ramasser(c, 300);
+  assert.deepEqual(c.$inv, [300], 'ramassé = rangé, avant la fin de la course');
+  const fin = P.fusionner(c, { niveaux: [3], dernier: 4, objets: [300], entree: true });
+  assert.deepEqual(fin.$inv, [300], 'la fusion solde la course, elle ne re-range pas');
+  assert.equal(fin.$stat.$run, 16, 'et les carrés de endGame restent là');
 });
 
 test('les objets tombent au rythme du jeu — sans sac, seul le sac', () => {

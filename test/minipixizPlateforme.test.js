@@ -184,7 +184,10 @@ test('le meilleur niveau de forêt ne redescend jamais', () => {
 });
 
 test('les objets ramassés entrent à l\'album', () => {
-  const c = P.fusionner(P.carteNeuve(), { niveaux: [0], dernier: 1, objets: [7, 12, 7] });
+  // Base.grab agit à l'instant du ramassage — l'album se remplit en course,
+  // pas à la fusion.
+  const c = P.carteNeuve();
+  for (const id of [7, 12, 7]) P.ramasser(c, id);
   assert.equal(c.$stat.$item[7], true);
   assert.equal(c.$stat.$item[12], true);
   assert.equal(P.nouveauxPictos(P.carteNeuve(), c).length, 2, 'deux objets, deux pictos');
@@ -197,7 +200,9 @@ test('les objets ramassés entrent à l\'album', () => {
 test('la clé de donjon et les aliments ne passent pas par l\'album des objets', () => {
   // L'objet 31 est la clé de donjon, que l'album ne montre pas ; au-delà de 300
   // ce sont les aliments, qui ont leur propre compteur ($eat).
-  const c = P.fusionner(P.carteNeuve(), { niveaux: [], dernier: 0, objets: [31, 305, 9] });
+  const c = P.carteNeuve();
+  c.$bag = 1;
+  for (const id of [31, 305, 9]) P.ramasser(c, id);
   assert.equal(c.$stat.$item[31], undefined, 'la clé reste hors album');
   assert.equal(c.$stat.$item[305], undefined, 'les aliments aussi');
   assert.equal(c.$stat.$item[9], true, 'mais l\'objet ordinaire y entre');
@@ -341,6 +346,7 @@ test('un compte neuf part de la fiche vierge et a le droit d\'enregistrer', asyn
   const p = new Pl.Plateforme('SIDNEUF');
   await p.charger();
   assert.equal(p.charge, true, 'une réponse vide est un compte neuf, pas une panne');
+  Pl.ramasser(p.carte, 7);          // Base.grab, à l'instant du ramassage
   const r = await p.enregistrer({ niveaux: [0, 1, 2], dernier: 3, objets: [7], entree: true });
   assert.equal(r.enregistre, true);
   assert.equal(envois[0].game, 'minipixiz');
@@ -403,8 +409,10 @@ test('le moteur annonce les objets ramassés, et la fin les emporte', () => {
   assert.deepEqual(vus, [7], 'l\'objet dégagé est ramassé');
   assert.deepEqual(j.objets, [7], 'et la partie en tient la liste');
 
-  // Cette liste est exactement ce que la plateforme attend.
-  const c = P.fusionner(P.carteNeuve(), { niveaux: [0], dernier: 1, objets: j.objets });
+  // Chaque annonce nourrit la fiche à l'instant même — c'est ce que fait la
+  // page : P.ramasser(plateforme.carte, info.type).
+  const c = P.carteNeuve();
+  for (const t of vus) P.ramasser(c, t);
   assert.equal(c.$stat.$item[7], true);
 });
 
@@ -472,18 +480,25 @@ test('les flasques se comptent aussi chez les fées', () => {
     'Item.scanInventory additionne les deux inventaires');
 });
 
-test('la course applique les ramassages dans l\'ordre', () => {
+test('les ramassages agissent à l\'instant, dans l\'ordre du jeu', () => {
   // Un sac, puis quatre aliments, puis un cinquième : le dernier est perdu —
-  // et il ne serait PAS perdu si le sac avait été appliqué après coup.
-  const c = P.fusionner(P.carteNeuve(),
-    { niveaux: [0, 1], dernier: 2, objets: [80, 300, 303, 306, 309, 70] });
+  // et il ne serait PAS perdu si le sac n'agissait qu'après coup.
+  const c = P.carteNeuve();
+  for (const id of [80, 300, 303, 306, 309, 70]) P.ramasser(c, id);
   assert.equal(c.$bag, 1);
   assert.deepEqual(c.$inv, [300, 303, 306, 309], 'quatre places, quatre aliments');
   assert.equal(c.$stat.$item[70], true, 'le sixième est perdu de l\'inventaire, pas de l\'album');
+  // Et la fusion de fin de course n\'y REPASSE pas : l\'objet entré à
+  // l\'instant du ramassage n\'entre pas une seconde fois.
+  const fin = P.fusionner(c, { niveaux: [0, 1], dernier: 2, objets: [80, 300, 303, 306, 309, 70] });
+  assert.equal(fin.$bag, 1, 'le sac ne remonte pas');
+  assert.deepEqual(fin.$inv, [300, 303, 306, 309], 'pas un aliment de plus');
 });
 
 test('l\'album ignore la clé et les aliments, comme Cm.getItem', () => {
-  const c = P.fusionner(P.carteNeuve(), { dernier: 0, objets: [31, 7, 300] });
+  const c = P.carteNeuve();
+  c.$bag = 1;
+  for (const id of [31, 7, 300]) P.ramasser(c, id);
   assert.equal(c.$stat.$item[31], undefined);
   assert.equal(c.$stat.$item[300], undefined, 'les aliments ont leur propre compteur');
   assert.equal(c.$stat.$item[7], true);
@@ -520,10 +535,11 @@ test('la page enchaîne les niveaux et n\'enregistre qu\'à la fin de la course'
   assert.match(html, /plateforme\.enregistrer\(\{\s*niveaux: course\.niveaux/,
     'et seule la fin de course enregistre');
   assert.match(html, /course\.objets\.push\(info\.type\)/, 'les objets sont collectés en route');
-  // Base.grab agit tout de suite : le sac ramassé change le niveau SUIVANT.
-  assert.match(html, /P\.ramasser\(course\.carte, info\.type\)/,
+  // Base.grab agit tout de suite, sur la fiche VIVANTE : le sac ramassé
+  // change le niveau suivant, et l'inventaire le montre sans attendre.
+  assert.match(html, /P\.ramasser\(plateforme\.carte, info\.type\)/,
     'le ramassage s\'applique pendant la course');
-  assert.match(html, /fiche: P\.fiche\(course\.carte\)/,
+  assert.match(html, /fiche: P\.fiche\(plateforme\.carte\)/,
     'et le niveau suivant tire selon ce qu\'on porte');
   // base/Forest.endGame ferme la partie au relais suivant : pas de course infinie.
   assert.match(html, /fin: P\.finDeCourse\(depart \|\| 0\)/, 'la course a une fin');
