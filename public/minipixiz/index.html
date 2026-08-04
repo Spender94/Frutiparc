@@ -396,7 +396,7 @@
             }
             fermerMenu(); ouvrirLieu('ArcEnCiel'); irisVersJeu(); return;
           }
-          if (lieu.va === 'mission') { fermerMenu(); ouvrirGromelin(); return; }
+          if (lieu.va === 'mission') { fermerMenu(); ouvrirGromelin(); irisVersJeu(); return; }
           if (lieu.va === 'frog') {
             // Frog.mt : Ornegon veut la fée du moment, pour lui demander ses
             // sorts préférés.
@@ -487,22 +487,32 @@
       }
 
       /**
-       * La cabane de Gromelin. Il ne travaille pas la nuit et n'a rien à
-       * proposer sans missions ; sinon il ouvre, et il faut lui amener des fées
-       * EN BOCAL — c'est sa seule exigence, et il la répète.
+       * La cabane de Gromelin (Mission.mt). On toque à la porte : elle s'ouvre
+       * — ou pas —, il parle, et s'il a du travail on entre dans le panneau des
+       * missions. Il ne prend que des fées EN BOCAL, et il le répète.
        */
       function ouvrirGromelin() {
         var M = window.MinipixizMissions;
         var a = M.accueil(plateforme.carte, coefNuit(), plateforme.carte.$help
           && plateforme.carte.$help[2]);
-        ouvrirMenu();
-        for (var i = 0; i < a.dial.length; i++) {
-          (function (t, n) { setTimeout(function () { menu.dire(t); }, n * 1400); })(a.dial[i], i);
-        }
         if (a.ouvre && !plateforme.carte.$help[2]) {
           plateforme.carte.$help[2] = 1;
           plateforme.ecrire(plateforme.carte);
         }
+        // Mission.init : les répliques, entrecoupées des marqueurs qui pilotent
+        // la porte. Elle s'ouvre après les coups frappés, et se referme —
+        // ou laisse entrer — selon ce que Gromelin a trouvé à dire.
+        var dial = [{ time: 40, txt: a.dial[0] }];
+        if (a.ouvre) dial.push({ time: 30, txt: 'openDoor' });
+        for (var i = 1; i < a.dial.length; i++) dial.push({ time: 20, txt: a.dial[i] });
+        dial.push({ time: 10, txt: a.missions ? 'gotoMission' : 'closeDoor' });
+        client.ouvrirChezGromelin({
+          carte: plateforme.carte,
+          dial: dial,
+          fees: a.fees || [],
+          surFermer: function () { ouvrirMenu(); },
+          surAccepter: function () { plateforme.ecrire(plateforme.carte); },
+        });
         window.__gromelin = a;
         return a;
       }

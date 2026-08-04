@@ -206,6 +206,12 @@ const CIBLES = [
   // Le symbole est celui des sorts, déjà extrait ; le curseur est la forme du
   // bouton, que l'extracteur ne sait pas traverser.
   { cle: 'ecranOrnegon', symbole: 'frog', etiquette: 'Chez Ornegon' },
+  // Chez GROMELIN (Mission.mt) : la porte fermée, la porte ouverte, le panneau
+  // des missions, le panneau d'envoi. Les champs sont redessinés ; la case à
+  // cocher d'une fée est son propre clip.
+  { cle: 'ecranMission', symbole: 'mission', etiquette: 'Chez Gromelin',
+    images: [1, 2, 3, 4] },
+  { cle: 'caseMission', symbole: 'mcMissionFaerieSlot', etiquette: 'Fée à envoyer' },
   { cle: 'barreSort', symbole: 'mcSpellBar', etiquette: 'Barre de sort', exclure: ['symbole'] },
   { cle: 'curseurSort', id: 1173, etiquette: 'Curseur de sort' },
   // Le BOUQUET (Aventure.initBouquet) : chaque niveau s'ouvre sur cette gerbe

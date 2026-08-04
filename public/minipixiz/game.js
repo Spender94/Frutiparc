@@ -108,6 +108,10 @@ const ROUES_FOND = [
 const ROUE_LOT = { x: COLONNE_X + 10, cx: 42, cy: 42, rayon: 42, flammes: 12, lot: 40 };
 // Frog.mt — chez Ornegon : les barres à x = 99 depuis y = 12, le curseur entre
 // 17 et 133 autour du centre 75 ; le salut dans la bulle, le nom du sort en bas.
+// Mission.mt — chez Gromelin : la récompense dans son alvéole (le clip `slot`
+// à 174,193, l'objet à 50 %), et la bulle au-dessus de la porte ouverte.
+const RECOMPENSE = { x: 174, y: 193 };
+const BULLE_PORTE = { x: 60, y: 40 };
 const ORNEGON = { barreX: 99, barreY: 12, centre: 75,
   texteX: 47, texteY: 82, texteL: 80, nomX: 163, nomY: 222 };
 
@@ -731,8 +735,12 @@ class Client {
     });
     this.canvas.addEventListener('mouseleave', () => { this.pointeur = null; });
     this.canvas.addEventListener('click', (ev) => {
-      if (!this.carteForet && !this.nouvelle && !this.ornegon) return;
+      if (!this.carteForet && !this.nouvelle && !this.ornegon && !this.gromelin) return;
       suivre(ev.clientX, ev.clientY);
+      if (this.gromelin) {
+        this.clicGromelin(this.pointeur.x, this.pointeur.y);
+        return;
+      }
       if (this.ornegon) {
         this.clicOrnegon(this.pointeur.x, this.pointeur.y);
         return;
@@ -764,6 +772,7 @@ class Client {
     this.nouvelleEnAttente = null;
     this.dialogue = null;
     this.ornegon = null;
+    this.gromelin = null;
     this.pause = false;
     this.commencerOuverture((opts.niveau || 0) + 1);
     if (opts.fee !== undefined) this.fee = opts.fee;
@@ -795,6 +804,7 @@ class Client {
     this.nouvelleEnAttente = null;
     this.dialogue = null;
     this.ornegon = null;
+    this.gromelin = null;
     this.pause = false;
     this.ouverture = null;             // le bassin s'ouvre sur sa bulle, pas sur la gerbe
     // Les événements passent par `annonce` pour les effets de dessin, puis vont
@@ -826,6 +836,7 @@ class Client {
     this.nouvelle = null;
     this.nouvelleEnAttente = null;
     this.ornegon = null;
+    this.gromelin = null;
     this.dialogue = null;
     this.pause = false;
     // Même chose qu'au bassin : les événements du lieu vont au gestionnaire du
@@ -861,6 +872,7 @@ class Client {
     this.cine = null;
     this.ouverture = null;
     this.ornegon = null;
+    this.gromelin = null;
     this.nouvelle = null;
     this.pause = false;
     this.carteForet = {
@@ -1045,6 +1057,7 @@ class Client {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, SCENE, SCENE);
     const s = this.sprites;
+    if (this.gromelin) { this.dessinerGromelin(ctx, tmod); return; }
     if (this.ornegon) { this.dessinerOrnegon(ctx); return; }
     if (this.nouvelle) { this.dessinerNouvelle(ctx); return; }
     if (this.carteForet) { this.dessinerCarteForet(ctx, tmod); return; }
@@ -1197,6 +1210,7 @@ class Client {
     if (x > SCENE - 50 && y > SCENE - 50) {
       const f = or.surFermer;
       this.ornegon = null;
+    this.gromelin = null;
       if (f) f();
       return;
     }
@@ -1210,6 +1224,237 @@ class Client {
       // Frog.release : c = 1 + (x − 75)/58, gardé en dixièmes.
       or.fee.fs.$spellCoef[z.sid] = Math.floor((1 + (bx - ORNEGON.centre) / 58) * 10);
       return;
+    }
+  }
+
+  /**
+   * Mission.mt — chez GROMELIN. On toque, la porte s'ouvre (ou pas), Gromelin
+   * parle, et s'il a du travail on entre : le panneau des missions — titre,
+   * énoncé, difficulté, récompense, les flèches pour en changer —, puis le
+   * panneau d'envoi où l'on coche les fées et où la chance de succès s'affiche.
+   * Valider scelle la mission et referme la porte.
+   *
+   * @param {object} o
+   *   carte       la fiche (les missions y sont, l'envoi y écrit)
+   *   dial        les répliques de l'accueil, avec les marqueurs openDoor /
+   *               closeDoor / gotoMission de Mission.init
+   *   fees        les fiches des fées en bocal, prêtes à partir
+   *   surFermer   () → retour à la clairière
+   *   surAccepter (résultat) → la mission est scellée, la fiche a changé
+   */
+  ouvrirChezGromelin(o) {
+    this.bassin = null;
+    this.lieu = null;
+    this.jeu = null;
+    this.champ = null;
+    this.cine = null;
+    this.ouverture = null;
+    this.nouvelle = null;
+    this.dialogue = null;
+    this.ornegon = null;
+    this.gromelin = null;
+    this.pause = false;
+    this.carteForet = null;
+    this.gromelin = {
+      carte: o.carte,
+      dial: (o.dial || []).slice(),
+      fees: o.fees || [],
+      surFermer: o.surFermer || null,
+      surAccepter: o.surAccepter || null,
+      frame: 1,
+      etape: 1,                        // 1 dialogue, 2 panneau, 4 envoi, 11 rideau
+      porteOuverte: false,
+      bulle: null,
+      timer: 0,
+      index: 0,
+      coches: [],
+      zones: [],
+    };
+    return this.gromelin;
+  }
+
+  avancerGromelin(tmod) {
+    const g = this.gromelin;
+    if (g.bulle) {
+      g.bulle.timer -= tmod;
+      if (g.bulle.timer <= 0) g.bulle = null;
+      return;
+    }
+    if (g.etape === 11) {
+      g.timer -= tmod;
+      if (g.timer < 0 && g.surFermer) { const f = g.surFermer; this.gromelin = null; f(); }
+      return;
+    }
+    if (g.etape !== 1 || !g.dial.length) return;
+    const d = g.dial[0];
+    if (d.time > 0) { d.time -= tmod; return; }
+    g.dial.shift();
+    // Mission.playDial : les marqueurs pilotent la porte et la suite.
+    if (d.txt === 'openDoor') { g.frame = 2; g.porteOuverte = true; return; }
+    if (d.txt === 'closeDoor') { g.frame = 1; g.etape = 11; g.timer = 16; return; }
+    if (d.txt === 'gotoMission') { g.frame = 3; g.etape = 2; return; }
+    g.bulle = { texte: d.txt, timer: 18 + d.txt.length * 1.9 };
+  }
+
+  dessinerGromelin(ctx, tmod) {
+    const s = this.sprites, g = this.gromelin;
+    this.avancerGromelin(tmod);
+    if (!this.gromelin) return;        // la porte vient de se refermer
+    g.zones = [];
+    if (s.ecranMission) poserRendu(ctx, rendre(s.ecranMission, g.frame, 100), 0, 0);
+    else { ctx.fillStyle = '#2a1c10'; ctx.fillRect(0, 0, SCENE, SCENE); }
+
+    const M = window.MinipixizMissions;
+    if (g.etape === 2 || g.etape === 4) {
+      const infos = g.carte.$mission || [];
+      const info = infos[g.index];
+      if (!g.decrit || g.decrit.index !== g.index) {
+        g.decrit = info ? Object.assign({ index: g.index }, M.decrire(info)) : null;
+      }
+      // Les flèches (s0/s1) font partie du dessin : leurs zones seulement.
+      g.zones.push({ quoi: 'avant', x: 5, y: 24, l: 26, h: 28 });
+      g.zones.push({ quoi: 'apres', x: 211, y: 24, l: 26, h: 28 });
+      if (g.decrit) {
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        // fieldTitle — seize pixels, écru, en haut.
+        ctx.font = 'bold 13px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
+        ctx.fillStyle = 'rgb(239,230,216)';
+        let ty = 8;
+        for (const l of decouperTexte(ctx, g.decrit.titre, 226)) {
+          ctx.fillText(l, 122, ty); ty += 15;
+        }
+        if (g.etape === 2) {
+          // fieldDesc — dix pixels, brun, centré autour de 96.
+          ctx.font = '10px Verdana, Arial, sans-serif';
+          ctx.fillStyle = 'rgb(81,61,47)';
+          const lignes = decouperTexte(ctx, g.decrit.enonce, 160);
+          let dy = 96 - (lignes.length * 11) * 0.5;
+          for (const l of lignes) { ctx.fillText(l, 119, dy); dy += 11; }
+          // fieldInfo — à gauche, sous l'énoncé.
+          const L = window.MinipixizLangue;
+          ctx.textAlign = 'left';
+          const rang = (L.MISSION_DIF_RANK || [])[info[0]] || '';
+          const inf = ['type: ' + ((L.MISSION[info[1]] || {}).type || ''),
+            'difficulté: ' + rang, 'durée: ' + info[2] + ' jours'];
+          let iy = 172;
+          for (const l of inf) { ctx.fillText(l, 37, iy); iy += 11; }
+          // La récompense, dans son alvéole, à moitié de taille.
+          const I = window.MinipixizInventaire;
+          const dp = I && I.dessinObjet(info[3]);
+          if (dp && s[dp.cle]) {
+            poserRendu(ctx, rendre(s[dp.cle], dp.frame, 50, undefined, dp.parties),
+              RECOMPENSE.x, RECOMPENSE.y);
+          }
+          // accepter la mission!
+          ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgb(213,185,151)';
+          ctx.fillText('accepter la mission!', 181, 231);
+          g.zones.push({ quoi: 'accepter', x: 120, y: 224, l: 120, h: 16 });
+        }
+      }
+    }
+
+    if (g.etape === 4) {
+      // Le panneau d'envoi : une ligne par fée en bocal, sa case à cocher, et
+      // la chance de succès qui bouge à chaque coche.
+      ctx.textAlign = 'left';
+      ctx.font = '10px Verdana, Arial, sans-serif';
+      for (let i = 0; i < g.fees.length; i++) {
+        const y = 54 + i * 16;
+        if (s.caseMission) {
+          poserRendu(ctx, rendre(s.caseMission, g.coches[i] ? 2 : 1, 100), 40, y);
+        }
+        ctx.fillStyle = 'rgb(91,71,53)';
+        ctx.fillText(g.fees[i].$name, 44, y + 2);
+        g.zones.push({ quoi: 'coche', i, x: 40, y: y - 2, l: 156, h: 16 });
+      }
+      ctx.fillStyle = 'rgb(91,71,53)';
+      ctx.fillText('chance de succes:', 37, 205);
+      const cochees = g.fees.filter((f, i) => g.coches[i]);
+      const prc = cochees.length
+        ? Math.floor(M.chances(g.carte.$mission[g.index], cochees, g.carte) * 100) : 0;
+      ctx.textAlign = 'right';
+      ctx.fillText(prc + '%', 196, 205);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgb(213,185,151)';
+      ctx.fillText('valider la mission', 181, 231);
+      g.zones.push({ quoi: 'valider', x: 120, y: 224, l: 120, h: 16 });
+    }
+
+    // La bulle de Gromelin — sans portrait ; avant l'ouverture elle vient du
+    // coin (les coups frappés), ensuite de la porte.
+    if (g.bulle) {
+      this.dessinerBulleTexte(ctx, g.bulle.texte,
+        g.porteOuverte ? BULLE_PORTE.x : 8, g.porteOuverte ? BULLE_PORTE.y : 8,
+        g.porteOuverte);
+    }
+    this.dessinerBoutonQuitter(ctx);
+  }
+
+  // Le corps d'une bulle de dialogue, sans locuteur — Gromelin parle derrière
+  // sa porte.
+  dessinerBulleTexte(ctx, texte, x, y, pointe) {
+    ctx.font = '9px Verdana, Arial, sans-serif';
+    const w = Math.min(Math.max(70, texte.length * 3), 130);
+    const lignes = decouperTexte(ctx, texte, w - 8);
+    const h = lignes.length * 11 + 8;
+    const arrondi = (px, py, pw, ph, r, couleur) => {
+      ctx.fillStyle = couleur;
+      ctx.beginPath();
+      ctx.moveTo(px + r, py);
+      ctx.arcTo(px + pw, py, px + pw, py + ph, r);
+      ctx.arcTo(px + pw, py + ph, px, py + ph, r);
+      ctx.arcTo(px, py + ph, px, py, r);
+      ctx.arcTo(px, py, px + pw, py, r);
+      ctx.fill();
+    };
+    arrondi(x - 2, y - 2, w + 4, h + 4, 8, '#AB9CC9');
+    arrondi(x, y, w, h, 4, '#E7E3F0');
+    if (pointe) {
+      ctx.fillStyle = '#E7E3F0';
+      ctx.beginPath();
+      ctx.moveTo(x + 18, y + h - 1);
+      ctx.lineTo(x + 30, y + h - 1);
+      ctx.lineTo(x + 22, y + h + 10);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgb(108,89,159)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    let ty = y + 4;
+    for (const l of lignes) { ctx.fillText(l, x + w / 2, ty); ty += 11; }
+  }
+
+  clicGromelin(x, y) {
+    const g = this.gromelin;
+    // Une bulle en cours se laisse presser : le clic l'écourte.
+    if (g.bulle) { g.bulle.timer = Math.min(g.bulle.timer, 6); return; }
+    if (x > SCENE - 50 && y > SCENE - 50) {
+      const f = g.surFermer;
+      this.gromelin = null;
+      if (f) f();
+      return;
+    }
+    const M = window.MinipixizMissions;
+    for (const z of (g.zones || [])) {
+      if (x < z.x || x > z.x + z.l || y < z.y || y > z.y + z.h) continue;
+      const n = (g.carte.$mission || []).length;
+      if (z.quoi === 'avant') { g.index = Math.max(0, g.index - 1); return; }
+      if (z.quoi === 'apres') { g.index = Math.min(n - 1, g.index + 1); return; }
+      if (z.quoi === 'accepter') { g.etape = 4; g.frame = 4; g.coches = []; return; }
+      if (z.quoi === 'coche') { g.coches[z.i] = !g.coches[z.i]; return; }
+      if (z.quoi === 'valider') {
+        const cochees = g.fees.filter((f, i) => g.coches[i]);
+        if (!cochees.length) return;
+        const resultat = M.accepter(g.carte, g.index, cochees);
+        if (g.surAccepter) g.surAccepter(resultat);
+        // Mission.validate → quit() : la porte se referme sur le marché conclu.
+        const f = g.surFermer;
+        this.gromelin = null;
+        if (f) f();
+        return;
+      }
     }
   }
 
