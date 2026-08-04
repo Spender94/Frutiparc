@@ -571,6 +571,26 @@ function poserRendu(ctx, r, x, y) {
   ctx.drawImage(r.c, x + r.dx, y + r.dy);
 }
 
+// Coupe un texte aux espaces pour tenir dans une largeur — les champs du jeu
+// enveloppent leurs phrases, le canevas ne sait pas le faire seul.
+function decouperTexte(ctx, texte, largeur) {
+  const lignes = [];
+  for (const brut of String(texte).split('\n')) {
+    let ligne = '';
+    for (const mot of brut.split(' ')) {
+      const essai = ligne ? ligne + ' ' + mot : mot;
+      if (ctx.measureText(essai).width > largeur && ligne) {
+        lignes.push(ligne);
+        ligne = mot;
+      } else {
+        ligne = essai;
+      }
+    }
+    lignes.push(ligne);
+  }
+  return lignes;
+}
+
 // ── Les liaisons d'un jeton (Group.draw) ──────────────────────────────────
 // L'image dit à quels voisins DU MÊME GROUPE le jeton est relié : haut 1,
 // droite 2, bas 4, gauche 8, plus un. C'est ce qui fait qu'un groupe se lit
@@ -643,8 +663,17 @@ class Client {
     }, { passive: true });
     this.canvas.addEventListener('mouseleave', () => { this.pointeur = null; });
     this.canvas.addEventListener('click', (ev) => {
-      if (!this.carteForet) return;
+      if (!this.carteForet && !this.nouvelle) return;
       suivre(ev.clientX, ev.clientY);
+      if (this.nouvelle) {
+        // Le bouton de sortie, au coin — News.tryToQuit.
+        if (this.pointeur.x > SCENE - 50 && this.pointeur.y > SCENE - 50) {
+          const n = this.nouvelle;
+          this.nouvelle = null;
+          if (n.surFermer) n.surFermer();
+        }
+        return;
+      }
       this.clicCarteForet(this.pointeur.x, this.pointeur.y);
     });
     this.redimensionner();
@@ -659,6 +688,9 @@ class Client {
     this.lieu = null;
     this.cine = null;
     this.carteForet = null;
+    this.nouvelle = null;
+    this.nouvelleEnAttente = null;
+    this.commencerOuverture((opts.niveau || 0) + 1);
     if (opts.fee !== undefined) this.fee = opts.fee;
     if (opts.coefNuit !== undefined) this.coefNuit = opts.coefNuit;
     this.jeu = new E.Jeu(Object.assign({}, opts, { onEvent: (n, d) => this.annonce(n, d) }));
@@ -684,6 +716,9 @@ class Client {
     this.lieu = null;
     this.cine = null;
     this.carteForet = null;
+    this.nouvelle = null;
+    this.nouvelleEnAttente = null;
+    this.ouverture = null;             // le bassin s'ouvre sur sa bulle, pas sur la gerbe
     // Les événements passent par `annonce` pour les effets de dessin, puis vont
     // au gestionnaire DU BASSIN — pas à celui de la forêt. L'écraser envoyait
     // la fin d'une partie de bassin au code des courses, qui affichait son
@@ -710,10 +745,14 @@ class Client {
     this.bassin = null;
     this.cine = null;
     this.carteForet = null;
+    this.nouvelle = null;
+    this.nouvelleEnAttente = null;
     // Même chose qu'au bassin : les événements du lieu vont au gestionnaire du
     // LIEU, une fois les effets de dessin servis.
     this.lieu = new X[classe](Object.assign({}, opts || {},
       { surEvenement: (n, d) => this.annonce(n, d, opts && opts.surEvenement) }));
+    // Les lieux descendent tous de l'aventure : chacun s'ouvre sur son bouquet.
+    this.commencerOuverture((this.lieu.level || 0) + 1);
     this.jeu = this.lieu.jeu;
     this.champ = this.lieu.champ;
     this.jeu.entree = this.entree;
@@ -739,6 +778,8 @@ class Client {
     this.jeu = null;
     this.champ = null;
     this.cine = null;
+    this.ouverture = null;
+    this.nouvelle = null;
     this.carteForet = {
       relais: o.relais || [],
       surChoix: o.surChoix || null,
@@ -808,12 +849,25 @@ class Client {
   }
 
   annonce(nom, d, cible) {
+    // base/Tree.gameOver : un record vaut mieux qu'un panneau de défaite — le
+    // jeu montre alors l'écran de nouvelle à la place du « Game Over ».
+    if (nom === 'record' && d && d.score !== undefined) {
+      this.nouvelleEnAttente = { genre: 'record', score: d.score };
+    }
     // Base.gameOver — perdre ne pose pas de question : l'écran vire au noir,
     // le panneau s'affiche une centaine d'images, puis `tryToClose` ramène à
     // la clairière. On lance ici le fondu ; `dessinerCine` fera le reste et
     // émettra « rideau » quand il sera temps de partir.
-    if (nom === 'finPartie' && d && !d.gagne && !this.cine) {
-      this.cine = { phase: 1, prc: 1, cible: cible || null };
+    if (nom === 'finPartie' && d && !d.gagne && !this.cine && !this.nouvelle) {
+      if (this.nouvelleEnAttente) {
+        const attente = this.nouvelleEnAttente;
+        this.nouvelleEnAttente = null;
+        this.ouvrirNouvelle(Object.assign(attente, {
+          surFermer: () => this.annonce('rideau', {}, cible || null),
+        }));
+      } else {
+        this.cine = { phase: 1, prc: 1, cible: cible || null };
+      }
     }
     // Un lieu qui enchaîne ses niveaux (le donjon) remonte une partie neuve :
     // il faut la reprendre, sans quoi on continuerait de dessiner l'ancienne.
@@ -860,6 +914,12 @@ class Client {
         // Base.initStep(11) : au noir complet, `game.kill()`. Plus rien ne bouge
         // sous le panneau de fin.
         this.reste = 0;
+      } else if (this.nouvelle) {
+        this.reste = 0;
+      } else if (this.ouverture) {
+        // Le bouquet d'abord : le plateau attend que la gerbe se referme
+        // (Aventure.initStep(1) ne lance le jeu qu'après).
+        this.reste = 0;
       } else if (mode) {
         while (this.reste >= 1 && pas < 6) { mode.update(1); this.reste -= 1; pas++; }
       } else if (this.jeu) {
@@ -877,9 +937,15 @@ class Client {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, SCENE, SCENE);
     const s = this.sprites;
+    if (this.nouvelle) { this.dessinerNouvelle(ctx); return; }
     if (this.carteForet) { this.dessinerCarteForet(ctx, tmod); return; }
     if (this.bassin) { this.dessinerBassin(ctx, tmod); this.dessinerCine(ctx, tmod); return; }
-    if (this.lieu) { this.dessinerLieu(ctx, tmod); this.dessinerCine(ctx, tmod); return; }
+    if (this.lieu) {
+      this.dessinerLieu(ctx, tmod);
+      this.dessinerOuverture(ctx, tmod);
+      this.dessinerCine(ctx, tmod);
+      return;
+    }
 
     // 1. LE FOND — l'image 3 du cadre, posée sous le plateau (DP_SKIN_DOWN).
     //    C'est le vert profond des racines : sans lui, le plateau flotte.
@@ -912,8 +978,94 @@ class Client {
     // 5. L'heure qu'il est, en dernier : elle teinte la scène entière.
     this.dessinerNuit(ctx);
 
-    // 6. Et s'il faut mourir, le rideau par-dessus tout.
+    // 6. Le bouquet d'ouverture, et s'il faut mourir, le rideau par-dessus tout.
+    this.dessinerOuverture(ctx, tmod);
     this.dessinerCine(ctx, tmod);
+  }
+
+  /**
+   * News.setNews — l'écran des bonnes nouvelles : un relais gagné (avec la
+   * photo du lieu) ou un record à l'arbre creux. Il attend qu'on le quitte par
+   * son bouton, et alors seulement la clairière revient.
+   *
+   * @param {object} o  { genre: 'relais'|'record', numero, nom, score, surFermer }
+   */
+  ouvrirNouvelle(o) {
+    this.cine = null;
+    this.ouverture = null;
+    this.nouvelle = o || {};
+  }
+
+  dessinerNouvelle(ctx) {
+    const s = this.sprites, n = this.nouvelle;
+    const relais = n.genre === 'relais';
+    if (s.nouvelle) poserRendu(ctx, rendre(s.nouvelle, relais ? 1 : 2, 100), 0, 0);
+    else { ctx.fillStyle = '#1c3a24'; ctx.fillRect(0, 0, SCENE, SCENE); }
+    if (relais && s.nouvelleImage) {
+      // Le plan pose la photo à 130 % (ancre `pic` de l'écran).
+      const a = (s.nouvelle && s.nouvelle.ancrages && s.nouvelle.ancrages.pic)
+        || { x: 51, y: 14, k: 1.3 };
+      const frame = Math.max(1, Math.min(n.numero || 1, s.nouvelleImage.etats.length));
+      poserRendu(ctx, rendre(s.nouvelleImage, frame, 100 * (a.k || 1)), a.x, a.y);
+    }
+    // field0 — vingt pixels, vert pâle, centré. Les mots du jeu, tels quels.
+    const texte = relais
+      ? 'Felicitations vous avez atteint ' + (n.nom || '') + ' !!'
+      : 'Bravo vous avez etabli un nouveau record !!\n' + (n.score || 0) + ' points!';
+    ctx.font = 'bold 15px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgb(200,242,201)';
+    let y = relais ? 166 : 158;
+    for (const ligne of decouperTexte(ctx, texte, 205)) {
+      ctx.fillText(ligne, 122, y);
+      y += 17;
+    }
+    if (s.boutonQuitter) poserRendu(ctx, rendre(s.boutonQuitter, 1, 100), SCENE, SCENE);
+  }
+
+  /**
+   * Aventure.initBouquet — l'ouverture d'un niveau. La gerbe jaillit d'un
+   * point (ressort : vit += écart×0,1, frottement 0,75), porte le numéro du
+   * niveau, tient quarante images puis se referme ; alors seulement les pièces
+   * tombent. Pendant ce temps, rien ne bouge — le plateau attend.
+   */
+  commencerOuverture(numero) {
+    this.ouverture = { sc: 1, vit: 0, trg: 100, tenue: 40, numero };
+  }
+
+  dessinerOuverture(ctx, tmod) {
+    const o = this.ouverture;
+    if (!o) return;
+    const ds = o.trg - o.sc;
+    o.vit += Math.max(-10, Math.min(ds * 0.1, 10)) * tmod;
+    o.vit *= Math.pow(0.75, tmod);
+    o.sc += o.vit * tmod;
+    if (o.trg === 100) {
+      o.tenue -= tmod;
+      if (o.tenue < 0) o.trg = 0;
+    } else if (o.sc < 1) {
+      this.ouverture = null;
+      return;
+    }
+    const jeu = this.jeu;
+    const cx = jeu ? (jeu.margeGauche + jeu.largeur) * 0.5 : SCENE / 2;
+    const cy = jeu ? jeu.hauteur * 0.5 : SCENE / 2;
+    const k = Math.max(0.01, o.sc / 100);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(k, k);
+    if (this.sprites.bouquet) {
+      poserRendu(ctx, rendre(this.sprites.bouquet, 1, 100), 0, 0);
+    }
+    // panel.field : le numéro du niveau, en gros, au cœur de la gerbe.
+    ctx.font = 'bold 74px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = 'rgb(136,84,158)';
+    ctx.fillText(String(o.numero), 1, 28);
+    ctx.textBaseline = 'top';
+    ctx.restore();
   }
 
   /**

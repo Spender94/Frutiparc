@@ -199,9 +199,20 @@ const CIBLES = [
   // panneau « game over » s'affiche une centaine d'images, puis la clairière
   // revient d'elle-même (Base.gameOver → tryToClose).
   { cle: 'panPerdu', symbole: 'panGameOver', etiquette: 'Panneau de fin de partie' },
+  // Le BOUQUET (Aventure.initBouquet) : chaque niveau s'ouvre sur cette gerbe
+  // qui jaillit d'un point, porte le numéro du niveau, tient un instant et se
+  // referme avant que les pièces ne tombent.
+  { cle: 'bouquet', symbole: 'bouquet', etiquette: 'Bouquet d\'ouverture' },
   // Et l'entrée en forêt, quand on a des relais, est une CARTE (mcForestMap) :
   // une pancarte par relais (mcCheckpointPicture, une image chacune), qui
   // défile sous la souris, et le bouton pour repartir.
+  // Les NOUVELLES (News.mt) : l'écran qui célèbre un relais gagné (image 1,
+  // avec la photo du lieu) ou un record à l'arbre creux (image 2). Le texte est
+  // un champ, redessiné par le client ; la photo est le clip `pic`, sorti à
+  // part — le plan la pose à 130 %.
+  { cle: 'nouvelle', symbole: 'news', etiquette: 'Écran de nouvelle',
+    images: [1, 2], exclure: ['pic'] },
+  { cle: 'nouvelleImage', id: 1012, etiquette: 'Photo de relais' },
   { cle: 'carteForet', symbole: 'mcForestMap', etiquette: 'Carte de la forêt' },
   { cle: 'relaisImage', symbole: 'mcCheckpointPicture', etiquette: 'Pancarte de relais',
     images: [1, 2, 3, 4, 5, 6, 7, 8] },

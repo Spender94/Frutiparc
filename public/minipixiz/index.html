@@ -334,12 +334,23 @@
               setTimeout(lancerNiveau, 900);
               return;
             }
-            // Relais atteint : base/Forest.endGame ferme la partie ici.
-            var neuf = course.fin === (Number(plateforme.carte.$checkpoint) + 1) * P.PAS_CHECKPOINT;
-            $('#fin-titre').textContent = neuf ? 'NOUVEAU RELAIS !' : 'RELAIS ATTEINT';
-            terminer(info, neuf
-              ? 'Vous pourrez repartir du niveau ' + (course.fin + 1) + '.'
-              : 'Vous connaissiez déjà ce passage.', true);
+            // Relais atteint : base/Forest.endGame ferme la partie ici. Un
+            // relais NOUVEAU se fête sur l'écran de nouvelle, avec la photo du
+            // lieu ; un passage déjà connu ramène à la clairière sans un mot —
+            // c'est ce que fait le jeu.
+            var cpAvant = Number(plateforme.carte.$checkpoint) || 0;
+            var neuf = course.fin === (cpAvant + 1) * P.PAS_CHECKPOINT;
+            terminer(info, '', false);
+            if (neuf) {
+              client.ouvrirNouvelle({
+                genre: 'relais',
+                numero: cpAvant + 2,
+                nom: (P.RELAIS || [])[cpAvant + 1] || '',
+                surFermer: function () { ouvrirMenu(); },
+              });
+            } else {
+              ouvrirMenu();
+            }
             return;
           }
 
