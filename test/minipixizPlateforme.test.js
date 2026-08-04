@@ -421,9 +421,9 @@ test('un objet enterré ne se ramasse pas', () => {
   const j = new E.Jeu({ graine: 1, grille: null });
   new E.Objet(j, { px: 3, py: 16, type: 7 }).poser();
   new E.Pierre(j, { px: 3, py: 15, life: 9 }).poser();
-  j.flActiviteAFaire = true;
-  j.ramasserObjets();
-  assert.deepEqual(j.objets, [], 'il faut le déterrer d\'abord');
+  j.initStep(E.ETAPE.ACTIF);
+  assert.deepEqual(j.activeList, [], 'il faut le déterrer d\'abord : pas de décollage');
+  assert.deepEqual(j.objets, [], 'et rien n\'est pris');
 });
 
 // ── Ramasser, comme Base.grab ─────────────────────────────────────────────

@@ -230,6 +230,37 @@ test('un glissement du doigt sur la clairière n\'est pas un choix', () => {
 });
 
 /*
+ * Cinquième retour : « il manque l'animation de l'objet lorsqu'il est
+ * collecté — l'objet est censé monter. »
+ *
+ * Game.initStep(5), l'étape ACTIVE ELEMENT : l'objet dégagé rejoint la liste
+ * et le jeu ENTIER attend son envol — il monte en accélérant (vity -= 0.1),
+ * sème sa traîne d'étoiles, et n'est pris qu'en sortant de l'aire (y < -20).
+ * Le portage le ramassait sur place, sans une image d'envol.
+ */
+test('l\'objet collecté s\'envole — et n\'est pris qu\'en haut de l\'aire', () => {
+  const jeu = new E.Jeu({ graine: 1, niveau: 0, grille: null });
+  const e = jeu.genElement(E.E.OBJET, 2, 10, 300);
+  const vus = [];
+  jeu.onEvent = (n) => vus.push(n);
+  jeu.initStep(E.ETAPE.ACTIF);
+  assert.equal(jeu.activeList[0], e, 'dégagé, il décolle');
+  assert.ok(vus.includes('objetEnvol'), 'et le départ s\'annonce');
+  assert.deepEqual(jeu.objets, [], 'pas encore pris : il monte');
+  // Quelques images : il est plus haut qu'avant, toujours pas pris.
+  for (let i = 0; i < 10; i++) jeu.update(1);
+  assert.ok(e.decalY < 0, 'dix images plus tard il est plus haut (' + e.decalY.toFixed(1) + ')');
+  assert.ok(!vus.includes('objet'), 'et toujours à prendre');
+  // Jusqu'en haut : la prise n'a lieu qu'en sortant de l'aire.
+  let garde = 0;
+  while (jeu.step === E.ETAPE.ACTIF && garde++ < 400) jeu.update(1);
+  assert.ok(vus.includes('objet'), 'sorti de l\'aire, il est pris');
+  assert.deepEqual(jeu.objets, [300], 'et la partie le retient');
+  assert.ok(!e.vivant, 'l\'élément a quitté la grille');
+  assert.ok(jeu.step !== E.ETAPE.ACTIF, 'et le jeu a repris son cycle');
+});
+
+/*
  * Quatrième retour : « j'ai ramassé un objet en forêt mais il n'apparaît pas
  * dans mon inventaire après la partie. »
  *

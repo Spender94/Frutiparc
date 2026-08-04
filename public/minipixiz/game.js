@@ -1121,6 +1121,7 @@ class Client {
       // Puis tout ce qui vole. L'ordre est celui des profondeurs de Flash :
       // les particules derrière, les créatures, les tirs devant.
       this.dessinerVol(ctx);
+      this.semerEnvol();
       bougerEclats(ctx, tmod);
     }
 
@@ -1800,6 +1801,7 @@ class Client {
     for (const e of jeu.eList) this.dessinerElement(ctx, e, e.px, e.py);
     if (jeu.piece) for (const c of jeu.piece.cases()) this.poser(ctx, c.e, c.x, c.y);
     this.dessinerVol(ctx);
+    this.semerEnvol();
     bougerEclats(ctx, tmod);
 
     // L'escargot est posé à DP_SKIN_MIDDLE, comme le montant du tronc, mais
@@ -2058,6 +2060,25 @@ class Client {
     poserVif(ctx, sprite, pe.spinSpeed !== null ? Math.min(24, pe.corps) : 1, {
       x: pe.x, y: pe.y, rot: pe.penche, alpha: invisible ? 40 : 100,
       parties, melange: pe.melange, deform: pe.spinSpeed !== null ? null : deformationsDeVol(pe),
+    });
+  }
+
+  // Item.activeUpdate, la traîne : une étoile par image sous l'objet qui
+  // s'envole — posée au hasard dans un rayon de douze pixels, d'une couleur
+  // tirée au sort et éclaircie (setColor + modColor 180), et qui retombe
+  // doucement derrière lui (weight 0.1).
+  semerEnvol() {
+    const jeu = this.jeu;
+    if (!jeu || jeu.step !== E.ETAPE.ACTIF) return;
+    const e = jeu.activeList[0];
+    if (!e || e.et !== E.E.OBJET) return;
+    const a = Math.random() * 6.28;
+    const d = Math.random() * 12;
+    eclats.push({
+      x: jeu.posX(e.px) + TS / 2 + Math.cos(a) * d,
+      y: jeu.posY(e.py) + (e.decalY || 0) + TS / 2 + Math.sin(a) * d,
+      vx: 0, vy: -0.2, t: 5 + Math.random() * 15,
+      c: 'hsl(' + Math.floor(Math.random() * 360) + ', 95%, 75%)',
     });
   }
 

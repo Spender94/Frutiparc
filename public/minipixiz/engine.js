@@ -137,6 +137,11 @@ class Element {
   // resterait relié à son groupe, et le groupe compterait un absent.
   isoler() {}
 
+  // Element.initActiveStep / activeUpdate — le tour de l'élément, une fois la
+  // cascade close (étape ACTIF). Seuls l'objet et l'œil s'en servent.
+  initActiveStep() {}
+  majActive() {}
+
   // Element.explode — purement visuel (fxCrystal) : l'élément vole en éclats.
   // Le retirer de la grille reste au sort qui l'a appelé, comme dans l'original.
   exploser() {
@@ -271,6 +276,30 @@ class Objet extends Element {
     if (this.type === undefined) this.type = 0;
   }
   degage() { return this.jeu.estLibre(this.px, this.py - 1); }
+
+  // Item.initActiveStep : dégagé, il DÉCOLLE — et le tour entier l'attend.
+  initActiveStep() {
+    if (!this.degage()) return;
+    this.montee = 0;                 // Item.vity — la vitesse de l'envol
+    this.jeu.activeList.push(this);
+    this.jeu.actifRelance = true;    // sa case rendue peut faire tomber le reste
+    this.jeu.evenement('objetEnvol', { type: this.type, x: this.px, y: this.py });
+  }
+
+  // Item.activeUpdate : il monte en accélérant (vity -= 0.1), et la PRISE n'a
+  // lieu qu'en sortant de l'aire — Cs.base.grab quand y passe sous -20. C'est
+  // l'envol qui dit au joueur « c'est à toi » ; la traîne d'étoiles est semée
+  // par le client, qui lit decalY.
+  majActive(tmod) {
+    this.montee -= 0.1 * tmod;
+    this.decalY = (this.decalY || 0) + this.montee * tmod;
+    if (this.jeu.posY(this.py) + this.decalY < -20) {
+      this.jeu.objets.push(this.type);
+      this.jeu.evenement('objet', { type: this.type, x: this.px, y: this.py });
+      this.jeu.retirerActif(this);
+      this.tuer();
+    }
+  }
 }
 
 // sp/el/FireBall.mt — la boule de feu du bassin. Elle ne se groupe pas et ne
@@ -566,6 +595,8 @@ class Jeu {
     // retient (Cm.getItem → $stat.$item → picto de l'album).
     this.objets = [];
     this.flActiviteAFaire = false;
+    this.activeList = [];            // Game.activeElementList — ceux qui vivent leur tour
+    this.actifRelance = false;
     this.pieces = 0;                 // pieceTimer : le nombre de pièces posées
     this.mainTimer = 0;              // Game.mainTimer : les images passées À JOUER
     // Game.nextLimit — la forêt en montre dix, le bassin une seule.
@@ -843,21 +874,21 @@ class Jeu {
           if (this.sortsAFaire) { this.initSorts(); this.sortsAFaire = false; }
           if (this.saList.length > 0) { this.initStep(ETAPE.MAGIE); break; }
           // Game.initStep(5) : une fois la cascade close, chaque élément vit
-          // son tour — les objets dégagés se ramassent, les yeux se chargent
-          // et pondent. Si la grille a changé, le cycle recommence
-          // (Game.newCycle), et la chute peut relancer une cascade.
+          // son tour — les yeux se chargent et pondent, les objets dégagés
+          // DÉCOLLENT. La partie attend la fin de leur envol pour reprendre.
           if (this.flActiviteAFaire) {
             this.flActiviteAFaire = false;
-            const ramasse = this.ramasserObjets();
-            const ponte = this.veillerYeux();
-            if (ramasse || ponte) {
-              this.initStatsChute();
-              this.initStep(ETAPE.CHUTE);
-              break;
-            }
+            this.initStep(ETAPE.ACTIF);
+            break;
           }
           this.nouveauTour();
         }
+        break;
+      case ETAPE.ACTIF:
+        this.activeList = [];
+        // La ponte d'abord (elle peut mûrir la grille), puis les décollages.
+        this.actifRelance = this.veillerYeux();
+        for (const e of this.eList.slice()) e.initActiveStep();
         break;
       case ETAPE.MAGIE:
       case ETAPE.FIGE:
@@ -924,6 +955,16 @@ class Jeu {
           for (const e of this.dList) e.tuer();
           this.dList = [];
           this.initStep(ETAPE.CHUTE);
+        }
+        break;
+      // Game.update case 5 : l'élément de tête, UN par image — le jeu entier
+      // regarde l'objet s'envoler. La liste vidée, le cycle reprend si la
+      // grille a changé ; sinon le tour s'achève.
+      case ETAPE.ACTIF:
+        if (this.activeList.length > 0) this.activeList[0].majActive(tmod);
+        if (this.activeList.length === 0) {
+          if (this.actifRelance) this.nouveauCycle();
+          else this.nouveauTour();
         }
         break;
       // Game.update case 4 : le sort a la main. Il se lance à sa première image
@@ -1119,22 +1160,11 @@ class Jeu {
     this.initStep(ETAPE.CHUTE);
   }
 
-  // sp/el/Item.initActiveStep : un objet ne se prend que DÉGAGÉ par le haut. Il
-  // faut donc le déterrer avant de l'avoir — c'est ce qui en fait un objectif et
-  // pas un ramassage automatique.
-  //
-  // C'est de là que viennent les pictos de l'album : Cm.getItem inscrit
-  // l'identifiant dans $stat.$item, que le serveur relit.
-  ramasserObjets() {
-    let pris = 0;
-    for (const e of this.eList.slice()) {
-      if (e.et !== E.OBJET || !e.degage()) continue;
-      this.objets.push(e.type);
-      this.evenement('objet', { type: e.type, x: e.px, y: e.py });
-      e.tuer();
-      pris++;
-    }
-    return pris > 0;
+  // Un élément a fini de vivre son tour (envol terminé, rayon éteint) : il
+  // rend la main. La liste vide, l'étape ACTIF s'achève.
+  retirerActif(e) {
+    const i = this.activeList.indexOf(e);
+    if (i >= 0) this.activeList.splice(i, 1);
   }
 
   // Eye.initActiveStep, pour tous les yeux du plateau : chacun se charge d'un
