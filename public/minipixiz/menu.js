@@ -324,6 +324,8 @@ class Menu {
     const r = this.canvas.getBoundingClientRect();
     const x = (ev.clientX - r.left) / this.echelle;
     const y = (ev.clientY - r.top) / this.echelle;
+    // L'iris de la prochaine transition s'ouvrira d'ici (Manager.fadeSlot).
+    this.dernierClic = { x, y };
     // Le plus proche du joueur d'abord : les zones sont posées du fond vers
     // l'avant, on cherche donc à l'envers.
     for (let i = this.zones.length - 1; i >= 0; i--) {
@@ -362,6 +364,8 @@ class Menu {
       dernier = t;
       this.avancer(dt * 30);
       this.rendre();
+      // La clairière aussi s'ouvre dans l'iris du jeu.
+      if (this.iris && !this.iris.dessiner(this.ctx, dt * 30)) this.iris = null;
     };
     this.raf = requestAnimationFrame(boucle);
   }

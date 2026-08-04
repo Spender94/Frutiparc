@@ -75,41 +75,6 @@
   #chargement .barre { width: 200px; height: 10px; border: 2px solid #d9cbff; border-radius: 6px; overflow: hidden; }
   #chargement .barre > div { height: 100%; width: 0; background: #9b7dff; transition: width .12s; }
 
-  #fin {
-    position: fixed; inset: 0; z-index: 6; display: none;
-    flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-    background: rgba(21,15,40,.88); color: #d9cbff; text-align: center; padding: 20px;
-  }
-  #fin.on { display: flex; }
-  #fin .t { font-size: 20px; font-weight: bold; color: #ffd76a; }
-  #fin .s { font-size: 13px; }
-  #fin button {
-    border: 0; border-radius: 14px; padding: 14px 28px;
-    background: #453177; color: #e9dcff; font: bold 15px inherit; cursor: pointer;
-  }
-  /* La carte de la forêt : les relais, du plus proche au plus lointain. */
-  #carte {
-    position: fixed; inset: 0; z-index: 7; display: none;
-    flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-    background: #150f28; color: #d9cbff; text-align: center; padding: 20px;
-  }
-  #carte.on { display: flex; }
-  #carte .t { font-size: 20px; font-weight: bold; color: #ffd76a; letter-spacing: 2px; }
-  #carte .s { font-size: 13px; color: #9b8cc9; }
-  #carte-liste {
-    display: flex; flex-direction: column; gap: 8px;
-    width: 100%; max-width: 300px; max-height: 60vh; overflow-y: auto;
-  }
-  #carte .relais {
-    display: flex; align-items: center; gap: 12px; width: 100%;
-    border: 2px solid #453177; border-radius: 12px; padding: 12px 14px;
-    background: #241c3a; color: #e9dcff; font: inherit; cursor: pointer; text-align: left;
-  }
-  #carte .relais:active { background: #453177; }
-  #carte .relais .n {
-    flex: 0 0 40px; text-align: center; font-weight: bold; font-size: 17px; color: #ffd76a;
-  }
-  #carte .relais .t { font-size: 13px; font-weight: normal; color: #d9cbff; letter-spacing: 0; }
   @media (min-width: 700px) and (pointer: fine) {
     #manette { display: none; }
     #aide { color: #7b6ba8; font-size: 12px; padding-bottom: 14px; }
@@ -205,21 +170,7 @@
   <div class="barre"><div id="jauge"></div></div>
 </div>
 
-<div id="fin">
-  <div class="t" id="fin-titre">PERDU</div>
-  <div class="s" id="fin-score"></div>
-  <div class="s" id="fin-note"></div>
-  <button type="button" id="rejouer">Rejouer</button>
-  <button type="button" id="retour-menu">retour à la clairière</button>
-</div>
-
 <!-- La carte de la forêt : un relais par vingt niveaux franchis. -->
-<div id="carte">
-  <div class="t">LA FORÊT</div>
-  <div class="s">Où reprendre ?</div>
-  <div id="carte-liste"></div>
-</div>
-
 <script src="/minipixiz/engine.js"></script>
 <script src="/minipixiz/items.js"></script>
 <script src="/minipixiz/faerie.js"></script>
@@ -261,7 +212,6 @@
   }
 
   function lancerNiveau() {
-    $('#fin').classList.remove('on');
     client.nouvellePartie({
       niveau: course.niveau,
       fiche: P.fiche(course.carte),
@@ -288,12 +238,6 @@
     var s = Number(t.$s);
     if (!isFinite(s) || s < 0) s = 0;
     return (s % 86400000) / 86400000;
-  }
-
-  function resume(r) {
-    if (!r.enregistre) return sid ? 'Progression non enregistrée.' : 'Partie hors compte.';
-    if (!r.gagnes.length) return 'Progression enregistrée.';
-    return 'Album : ' + r.gagnes.length + ' objet' + (r.gagnes.length > 1 ? 's' : '') + ' de plus !';
   }
 
   fetch('/minipixiz/sprites/sprites.json')
@@ -340,7 +284,7 @@
             // c'est ce que fait le jeu.
             var cpAvant = Number(plateforme.carte.$checkpoint) || 0;
             var neuf = course.fin === (cpAvant + 1) * P.PAS_CHECKPOINT;
-            terminer(info, '', false);
+            terminer(info);
             if (neuf) {
               client.ouvrirNouvelle({
                 genre: 'relais',
@@ -356,26 +300,17 @@
 
           // Perdu : on enregistre tout de suite, sans rien afficher — le client
           // joue le fondu noir et le panneau, puis enverra `rideau`.
-          terminer(info, '', false);
+          terminer(info);
         }
       });
 
       // Fin de course — perdue ou menée jusqu'au relais. C'est le seul endroit
-      // qui enregistre. L'écran ne s'affiche que pour un relais : la défaite a
-      // son propre panneau, dessiné par le client.
-      function terminer(info, note, montrer) {
-        if (montrer) {
-          $('#fin-score').textContent = 'niveau ' + (course.niveau + 1)
-            + ' · ' + course.niveaux.length + ' niveau' + (course.niveaux.length > 1 ? 'x' : '')
-            + ' franchi' + (course.niveaux.length > 1 ? 's' : '');
-          $('#fin-note').textContent = note;
-          $('#fin').classList.add('on');
-        }
+      // qui enregistre ; les écrans, eux, sont ceux du client.
+      function terminer(info) {
         plateforme.enregistrer({
           niveaux: course.niveaux, dernier: course.niveau,
           objets: course.objets, entree: course.entree,
         }).then(function (r) {
-          if (montrer) $('#fin-note').textContent = (note ? note + ' ' : '') + resume(r);
           window.__derniereSauvegarde = r;   // utile aux vérifications automatisées
         });
         if (window.parent !== window) {
@@ -390,8 +325,6 @@
       // qui la dessine — les pancartes du jeu, pas une liste de boutons.
       function ouvrirCarte() {
         var relais = plateforme.carteDesRelais();
-        $('#fin').classList.remove('on');
-        $('#carte').classList.remove('on');
         if (relais.length < 2) { nouvelleCourse(relais[0] ? relais[0].niveau : 0); return; }
         client.ouvrirCarteForet({
           relais: relais,
@@ -405,8 +338,6 @@
           },
         });
       }
-
-      $('#rejouer').addEventListener('click', ouvrirCarte);
 
       // ── L'inventaire ──
       // Il travaille sur la VRAIE fiche : nourrir une fée ou lui faire porter un
@@ -442,22 +373,28 @@
         plateforme: plateforme,
         sprites: sprites,
         surChoix: function (lieu, etat) {
-          if (lieu.va === 'foret') { fermerMenu(); ouvrirCarte(); return; }
+          // Et dans l'autre sens : le jeu s'ouvre dans l'iris, depuis le point
+          // de la clairière qu'on vient de toucher.
+          function irisVersJeu() {
+            var p = menu.dernierClic || null;
+            client.irisDepuis($('#menu-stage'), p && p.x, p && p.y);
+          }
+          if (lieu.va === 'foret') { fermerMenu(); ouvrirCarte(); irisVersJeu(); return; }
           if (lieu.va === 'inventaire') { ouvrirSac(); return; }
           if (lieu.va === 'dungeon') {
             if (!etat.ouvert) {
               menu.dire('Il vous faut une clé pour entrer dans le donjon.');
               return;
             }
-            fermerMenu(); ouvrirLieu('Donjon'); return;
+            fermerMenu(); ouvrirLieu('Donjon'); irisVersJeu(); return;
           }
-          if (lieu.va === 'tree') { fermerMenu(); ouvrirLieu('Arbre'); return; }
+          if (lieu.va === 'tree') { fermerMenu(); ouvrirLieu('Arbre'); irisVersJeu(); return; }
           if (lieu.va === 'rainbow') {
             if (!plateforme.carte.$rainbow.$f) {
               menu.dire('Il n\'y a pas d\'arc-en-ciel aujourd\'hui.');
               return;
             }
-            fermerMenu(); ouvrirLieu('ArcEnCiel'); return;
+            fermerMenu(); ouvrirLieu('ArcEnCiel'); irisVersJeu(); return;
           }
           if (lieu.va === 'mission') { fermerMenu(); ouvrirGromelin(); return; }
           if (lieu.va === 'fountain') {
@@ -467,6 +404,7 @@
             }
             fermerMenu();
             ouvrirBassin();
+            irisVersJeu();
             return;
           }
           menu.dire(lieu.titre + ' : pas encore ouvert.');
@@ -482,8 +420,6 @@
        * de suite.
        */
       function ouvrirBassin() {
-        $('#carte').classList.remove('on');
-        $('#fin').classList.remove('on');
         var bassin = client.nouveauBassin({
           carte: plateforme.carte,
           graine: Math.floor(Math.random() * 1e9),
@@ -512,8 +448,6 @@
        * de l'arbre et l'objet de l'arc-en-ciel sont acquis sur-le-champ.
        */
       function ouvrirLieu(classe) {
-        $('#carte').classList.remove('on');
-        $('#fin').classList.remove('on');
         var avant = JSON.parse(JSON.stringify(plateforme.carte));
         var l = client.nouveauLieu(classe, {
           carte: plateforme.carte,
@@ -558,7 +492,11 @@
       }
 
       function ouvrirMenu() {
-        $('#fin').classList.remove('on');
+        // Manager.fadeSlot : la clairière s'ouvre dans l'iris, sur la
+        // photographie de l'écran qu'on quitte — s'il y en avait un.
+        if (client.jeu || client.lieu || client.bassin || client.carteForet || client.nouvelle) {
+          menu.iris = new window.MinipixizClient.Iris($('#stage'));
+        }
         client.fermerCarteForet();
         $('#menu').classList.add('on');
         menu.demarrer();
@@ -572,14 +510,6 @@
         $('#menu').classList.remove('on');
         menu.arreter();
       }
-
-      // Quitter une course ramène au menu, comme tryToClose.
-      $('#rejouer').addEventListener('click', function () { $('#fin').classList.remove('on'); });
-      $('#retour-menu').addEventListener('click', function () {
-        $('#fin').classList.remove('on');
-        $('#carte').classList.remove('on');
-        ouvrirMenu();
-      });
 
       // On ouvre sur la clairière — c'est l'écran d'accueil du jeu. La forêt ne
       // se lance qu'en la touchant.

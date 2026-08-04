@@ -571,6 +571,62 @@ function poserRendu(ctx, r, x, y) {
   ctx.drawImage(r.c, x + r.dx, y + r.dy);
 }
 
+/**
+ * Manager.fadeSlot — l'IRIS, la transition du jeu : le nouvel écran se révèle
+ * dans un cercle qui grandit depuis le point touché et glisse vers le centre,
+ * bordé d'un anneau de lumière. `checkFade` : prc += 0,2 par image puis ×1,2.
+ *
+ * On photographie l'ANCIEN écran, on le pose sur le nouveau, et on y perce le
+ * trou qui grandit. Quand le cercle a tout couvert, l'iris se retire.
+ */
+class Iris {
+  constructor(source, x, y) {
+    this.img = document.createElement('canvas');
+    this.img.width = SCENE;
+    this.img.height = SCENE;
+    this.img.getContext('2d').drawImage(source, 0, 0, SCENE, SCENE);
+    this.tampon = document.createElement('canvas');
+    this.tampon.width = SCENE;
+    this.tampon.height = SCENE;
+    this.prc = 0;
+    this.x = (x === undefined || x === null) ? SCENE / 2 : x;
+    this.y = (y === undefined || y === null) ? SCENE / 2 : y;
+  }
+
+  /** Dessine une image de la transition ; rend faux quand elle est finie. */
+  dessiner(ctx, tmod) {
+    this.prc += 0.2 * tmod;
+    this.prc *= Math.pow(1.2, tmod);
+    if (this.prc > 105) return false;
+    const c = Math.min(1, this.prc / 100);
+    const cx = SCENE / 2 * c + this.x * (1 - c);
+    const cy = SCENE / 2 * c + this.y * (1 - c);
+    // À 100 %, le cercle doit couvrir les coins : 170 px depuis le centre.
+    const r = (this.prc / 100) * 175;
+    const g = this.tampon.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    g.clearRect(0, 0, SCENE, SCENE);
+    g.drawImage(this.img, 0, 0);
+    g.globalCompositeOperation = 'destination-out';
+    g.beginPath();
+    g.arc(cx, cy, Math.max(0, r), 0, 6.2832);
+    g.fill();
+    ctx.drawImage(this.tampon, 0, 0, SCENE, SCENE);
+    // L'anneau de lumière au bord de l'ouverture (slotMaskLight).
+    if (r > 1) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,240,0.55)';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 2, 0, 6.2832);
+      ctx.stroke();
+      ctx.restore();
+    }
+    return true;
+  }
+}
+
 // Coupe un texte aux espaces pour tenir dans une largeur — les champs du jeu
 // enveloppent leurs phrases, le canevas ne sait pas le faire seul.
 function decouperTexte(ctx, texte, largeur) {
@@ -830,8 +886,9 @@ class Client {
       c.zones.push({ niveau: r.niveau, x: 0, y, l: SCENE, h: 108 });
     }
 
-    // Le bouton de sortie, accroché au coin bas-droit (Slot.initButQuit).
-    if (s.boutonQuitter) poserRendu(ctx, rendre(s.boutonQuitter, 1, 100), SCENE, SCENE);
+    // Le bouton de sortie, accroché au coin bas-droit (Slot.initButQuit). Le
+    // survoler déplie son étiquette (image 2), comme dans le jeu.
+    this.dessinerBoutonQuitter(ctx);
     c.zones.push({ quitter: true, x: SCENE - 46, y: SCENE - 46, l: 46, h: 46 });
   }
 
@@ -932,7 +989,18 @@ class Client {
     this.raf = requestAnimationFrame(boucle);
   }
 
+  // Manager.fadeSlot : le nouvel écran s'ouvre dans l'iris — le cercle qui
+  // grandit depuis le point touché. On photographie l'écran qu'on quitte.
+  irisDepuis(source, x, y) {
+    if (source) this.iris = new Iris(source, x, y);
+  }
+
   dessiner(tmod) {
+    this.dessinerScene(tmod);
+    if (this.iris && !this.iris.dessiner(this.ctx, tmod)) this.iris = null;
+  }
+
+  dessinerScene(tmod) {
     const ctx = this.ctx, jeu = this.jeu;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, SCENE, SCENE);
@@ -1021,7 +1089,15 @@ class Client {
       ctx.fillText(ligne, 122, y);
       y += 17;
     }
-    if (s.boutonQuitter) poserRendu(ctx, rendre(s.boutonQuitter, 1, 100), SCENE, SCENE);
+    this.dessinerBoutonQuitter(ctx);
+  }
+
+  dessinerBoutonQuitter(ctx) {
+    const s = this.sprites;
+    if (!s.boutonQuitter) return;
+    const p = this.pointeur;
+    const dessus = p && p.x > SCENE - 46 && p.y > SCENE - 46;
+    poserRendu(ctx, rendre(s.boutonQuitter, dessus ? 2 : 1, 100), SCENE, SCENE);
   }
 
   /**
@@ -1719,7 +1795,7 @@ function jauge(sprites, cle, plein, max, ecart) {
 }
 
 window.MinipixizClient = {
-  Client, charger, rendre, poserRendu, poserVif, imagePeinte, imageJeton, images,
+  Client, Iris, charger, rendre, poserRendu, poserVif, imagePeinte, imageJeton, images,
   portraitDeFee, jauge, partiesDeFee, partiesDeCorps, partiesDImpy, deformationsDeVol,
   fondre, teinter,
   LARGEUR, HAUTEUR, LIGNES_CACHEES, SCENE, COLONNE_X, INTER, ECART_COEUR, ECART_MANA,

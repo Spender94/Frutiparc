@@ -528,7 +528,8 @@ test('la page enchaîne les niveaux et n\'enregistre qu\'à la fin de la course'
   // base/Forest.endGame ferme la partie au relais suivant : pas de course infinie.
   assert.match(html, /fin: P\.finDeCourse\(depart \|\| 0\)/, 'la course a une fin');
   assert.match(html, /if \(course\.niveau < course\.fin\)/, 'et elle s\'y arrête');
-  // Et la carte de la forêt, dès qu'un relais est acquis.
+  // Et la carte de la forêt, dès qu'un relais est acquis — dessinée par le
+  // client sur ses pancartes, pas par un écran HTML.
   assert.match(html, /plateforme\.carteDesRelais\(\)/, 'la carte liste les relais');
-  assert.match(html, /id="carte"/, 'et la page a de quoi l\'afficher');
+  assert.match(html, /client\.ouvrirCarteForet\(\{/, 'et le client la dessine');
 });
