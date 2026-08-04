@@ -150,6 +150,9 @@ class Bassin {
       grille: null,
       vitesse: VITESSE,
       couleursSeVident: false,
+      // base/Fountain descend de Base, pas de l'aventure : sa mana revient au
+      // coefficient de Base (1), pas aux 3 de la forêt.
+      manaCoef: 1,
       fabriquePiece: (jeu) => this.fabriquePiece(jeu),
       onEvent: (n, d) => this.annonce(n, d),
     });

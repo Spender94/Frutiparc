@@ -584,6 +584,9 @@ class Jeu {
     // mode a la sienne — Game.setPieceSpeed.
     this.pSpeedStart = (o.vitesse === undefined) ? 0.03 + this.niveau * 0.002 : o.vitesse;
     this.pSpeed = this.pSpeedStart;
+    // Base.getManaReplenishCoef : ce que chaque bille détruite rend en mana.
+    // L'aventure (forêt et lieux) rend 3, le bassin garde le 1 de Base.
+    this.manaCoef = (o.manaCoef === undefined) ? 3 : o.manaCoef;
 
     this.colorList = [];
     for (let i = 0; i < this.colMax; i++) this.colorList.push(i);
@@ -1046,8 +1049,16 @@ class Jeu {
         liste: this.fs.list.slice(),
       });
     }
-    // Sans étoile dans le lot, les jetons détruits nourrissent la prochaine.
-    if (!this.fs.flSpecial) this.starWait += this.fs.sum;
+    // Sans étoile dans le lot, les jetons détruits nourrissent la prochaine —
+    // et rechargent la mana des fées : Game.checkFallStats fait
+    // fi.incManaTimer(-somme × coef), coef = base.getManaReplenishCoef()
+    // (3 dans l'aventure, 1 au bassin).
+    if (!this.fs.flSpecial) {
+      this.starWait += this.fs.sum;
+      for (const f of this.faerieList) {
+        if (f && f.incManaTimer) f.incManaTimer(-this.fs.sum * this.manaCoef);
+      }
+    }
   }
 
   // Game.newTurn : nouvelle pièce, sauf si la pile a atteint la ligne fatale.

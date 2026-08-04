@@ -92,7 +92,15 @@ class Menu {
     this.sprites = o.sprites;
     this.surChoix = o.surChoix || null;
 
-    this.xm = SCENE / 2;
+    // Au bureau, la souris place le regard dès le premier survol. Au doigt,
+    // rien ne bouge tant qu'on ne glisse pas : on ouvre le regard vers la
+    // GAUCHE, là où vivent l'arbre et son sac — sans quoi le sac restait
+    // invisible tant qu'on ne savait pas qu'il fallait glisser.
+    const tactile = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(pointer: coarse)').matches;
+    // Le sac pend au pied de l'arbre, tout à gauche du plan (x ≈ 28, parallaxe
+    // 1,5) : il faut un regard presque au bord pour l'avoir entier à l'écran.
+    this.xm = tactile ? 8 : SCENE / 2;
     this.titre = '';
     this.message = '';
     this.zones = [];

@@ -98,6 +98,11 @@ function dessinObjet(type) {
     case 'parchemin': return { cle: 'itParchemin', frame: it.sort + 1 };
     case 'grimoire': return { cle: 'itGrimoire', frame: it.sort + 1 };
     case 'bocal': return { cle: 'itBocal', frame: 1 };
+    // Le sac et la clé n'entrent jamais dans une case du sac (l'un devient de
+    // la place, l'autre monte le trousseau) — mais sur la GRILLE de la forêt,
+    // ils doivent se voir : sans dessin, la bulle paraissait vide.
+    case 'sac': return { cle: 'mSac', frame: (it.id || 0) + 1 };
+    case 'cle': return { cle: 'invCle', frame: 1 };
     // L'aliment se lit à deux index : lequel, et quelle part il en reste.
     case 'aliment': return { cle: 'itAliment' + (it.taille + 1), frame: it.id + 1 };
     default: return null;
@@ -385,6 +390,9 @@ class Inventaire {
             if (!vide && s.sortSymbole && s.sortSymbole.etats.some((e) => e.frame === t + 1)) {
               C.poserRendu(ctx, C.rendre(s.sortSymbole, t + 1, 100), px, py);
             }
+            // Toucher un sort en dit le nom et l'effet (Spell.getDesc du
+            // bureau, montré là-bas en infobulle).
+            if (!vide) this.zoneRect({ sort: t }, px - 9, py - 9, 18, 18);
           }
         }
         break;
@@ -449,10 +457,15 @@ class Inventaire {
     if (fee) {
       pose('invBouton', 6, a.quit);
       pose('invNiveau', 1, a.level);
-      // Le niveau, dans sa pastille (facePanel.level.field).
+      // Le niveau, dans sa pastille (facePanel.level.field) — et dessous, la
+      // progression vers le suivant, que le bureau ne disait qu'en infobulle :
+      // « niveau N (42.3%) ».
       if (a.level) {
         this.texte(String(nombre(fee.fs.$level) + 1), px + a.level.x, py + a.level.y - 5,
           '#3a2a12', 10);
+        const prc = Math.min(99.9, Math.round((nombre(fee.fs.$exp) / fee.limiteExp()) * 1000) / 10);
+        this.texte(prc + ' %', px + a.level.x, py + a.level.y + 9, '#5a4a22', 7);
+        this.zoneRect({ pastille: 1 }, px + a.level.x - 10, py + a.level.y - 12, 20, 26);
       }
     }
 
@@ -529,8 +542,32 @@ class Inventaire {
     if (quoi === 'liberer') { this.liberer(); return; }
     if (quoi === 'poubelle') { this.jeter(); return; }
     if (quoi === 'quitter') { this.fermer(); return; }
+    // Le sort touché se présente : son nom, puis son effet (Spell.getDesc).
+    if (quoi && quoi.sort !== undefined) {
+      const S = racine.MinipixizSorts;
+      const sort = S && S.nouveauSort ? S.nouveauSort(quoi.sort, null) : null;
+      if (sort) this.dire(sort.description(), sort.nom() + ' :');
+      return;
+    }
+    // La pastille de niveau dit la progression, comme l'infobulle du bureau.
+    if (quoi && quoi.pastille !== undefined) {
+      const fee = this.fee();
+      if (fee) {
+        const prc = Math.min(99.9, Math.round((nombre(fee.fs.$exp) / fee.limiteExp()) * 1000) / 10);
+        this.dire('niveau ' + (nombre(fee.fs.$level) + 1) + ' (' + prc + ' %)');
+      }
+      return;
+    }
     if (quoi && quoi.fee !== undefined) {
-      this.feeCourante = quoi.fee; this.main = null; this.dire(''); return;
+      this.feeCourante = quoi.fee;
+      // Choisir une fée ici, c'est choisir la fée JOUÉE : la forêt lit
+      // $current (Cm.getCurrentFaerie), pas l'affichage du sac. Sans cette
+      // écriture, on regardait une fée et on en jouait une autre.
+      if (this.carte.$current !== quoi.fee) {
+        this.carte.$current = quoi.fee;
+        if (this.surChangement) this.surChangement();
+      }
+      this.main = null; this.dire(''); return;
     }
     if (quoi && quoi.sac !== undefined) { this.toucher(quoi.sac, quoi.case); return; }
   }
