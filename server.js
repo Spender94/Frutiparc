@@ -10152,6 +10152,30 @@ function minipixizReconcileMissions(card) {
   return changed;
 }
 
+// ── Miniwave : reconnaître une fiche « formatFruticard() » toute neuve ──
+// Quand le SWF du bureau ne parvient pas à LIRE l'état sauvé (SharedObject
+// vide avant le seed, seed illisible…), il reformate une fiche vierge et
+// l'enregistre aussitôt — par-dessus la progression light. La garde de taille
+// ne voit rien : la fiche vierge, avec ses 51 zéros de $badsKill, est souvent
+// PLUS LONGUE que la fiche riche. On la reconnaît donc à son CONTENU : tout
+// aux valeurs d'usine de Manager.formatFruticard.
+function looksLikeMiniwaveDefault(o) {
+  if (!o || typeof o !== 'object') return false;
+  const arc = o.$arcade || {};
+  const cons = o.$cons || {};
+  return Array.isArray(o.$ship) && o.$ship.every((v, i) => (i === 0 ? !!v : !v))
+    && (!Array.isArray(o.$badsKill) || o.$badsKill.every((v) => !v))
+    && !Number(arc.$bestLevel) && !Number(arc.$bestScore)
+    && !Number(cons.$main) && !Number(cons.$letter)
+    && (!Array.isArray(cons.$bonus) || cons.$bonus.every((v) => !v))
+    && !Number(o.$letter) && !Number(o.$survival) && !Number(o.$credit);
+}
+// Et la progression, elle, se reconnaît à N'IMPORTE QUEL écart à l'usine.
+function miniwaveHasProgress(o) {
+  if (!o || typeof o !== 'object') return false;
+  return !looksLikeMiniwaveDefault(o);
+}
+
 app.post('/api/saveFrutiSlot', async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const sid = String(params.sid || '');
@@ -10172,6 +10196,16 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
       data = JSON.stringify(obj);
       console.log(`[SLOT]  miniwave pipe → JSON (${data.length} chars)`);
     }
+  }
+
+  // Miniwave : le slot 1 (préférences) du SWF arrive en « undefined|undefined|… »
+  // — le sérialiseur du GameClient applique au pref le gabarit du slot 0 et ne
+  // trouve aucun champ. Il n'y a RIEN à sauver là-dedans ; l'enregistrer
+  // écraserait un éventuel pref valide et polluerait le seed du bureau.
+  if ((game === 'miniwave' || game === 'miniwave2') && slotId === '1'
+      && /^(?:undefined\|)+undefined\|?$/.test(data)) {
+    console.log(`[SLOT]  miniwave pref pipe VIDE (que des undefined) — ignoré`);
+    return res.type('text/plain').send('ok=1');
   }
 
   // MiniPixiz: pipe-delimited string → JSON
@@ -10490,6 +10524,27 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
     } catch (e) {
       console.error(`[SLOT]  forward-merge failed for ${username}/${game}: ${e.message}`);
     }
+  }
+
+  // Miniwave : refuser la fiche « formatFruticard() » toute neuve quand une
+  // progression existe — AVANT la greffe ci-dessous, qui recollerait les
+  // crédits sur la fiche d'usine et la rendrait méconnaissable. C'est
+  // l'enchaînement observé en vrai : le SWF du bureau ne lit pas l'état
+  // sauvé, reformate, enregistre — et la garde de taille ne bronche pas (la
+  // fiche vierge est PLUS LONGUE que la riche, ses 51 zéros de $badsKill
+  // pèsent). Une vraie partie, même nulle, passe toujours : le moindre écart
+  // à l'usine ($arcade.$bestLevel = 1 dès la première mort, un crédit, un
+  // vaisseau…) sort du gabarit.
+  if ((game === 'miniwave' || game === 'miniwave2') && slotId === '0'
+      && prevSlotData && data && data[0] === '{') {
+    try {
+      const neuf = JSON.parse(data);
+      const prev = JSON.parse(prevSlotData);
+      if (looksLikeMiniwaveDefault(neuf) && miniwaveHasProgress(prev)) {
+        console.log(`[SLOT]  save REJECTED — fiche d'usine par-dessus la progression de ${username}/${game} (bureau sans lecture ?)`);
+        return res.type('text/plain').send('ok=1'); // pretend success so SWF doesn't retry
+      }
+    } catch (e) { /* illisible : les autres gardes s'en chargent */ }
   }
 
   // MiniWave forward-merge — protège ce que le tuyau ne sait pas transporter.
@@ -20128,6 +20183,27 @@ case 'createchannel': {
             const obj = parseMb2Pipe(slotData);
             if (obj) { normalizedSlotData = JSON.stringify(obj); }
           }
+        }
+        // Miroir de la garde HTTP : la fiche « formatFruticard() » d'usine ne
+        // remplace pas une progression Miniwave, quel que soit le chemin.
+        if ((game === 'miniwave' || game === 'miniwave2') && slotId === '0'
+            && prevSlotData && normalizedSlotData && normalizedSlotData[0] === '{') {
+          try {
+            const neuf = JSON.parse(normalizedSlotData);
+            const prev = JSON.parse(prevSlotData);
+            if (looksLikeMiniwaveDefault(neuf) && miniwaveHasProgress(prev)) {
+              console.log(`[FCARD] save REJECTED — fiche d'usine par-dessus la progression de ${username}/${game} (fil)`);
+              sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
+              break;
+            }
+          } catch (e) { /* illisible : la garde de taille reste en amont */ }
+        }
+        // Et le pref « undefined|undefined|… » du slot 1 ne s'enregistre pas.
+        if ((game === 'miniwave' || game === 'miniwave2') && slotId === '1'
+            && /^(?:undefined\|)+undefined\|?$/.test(slotData)) {
+          console.log(`[FCARD] miniwave pref pipe VIDE — ignoré (fil)`);
+          sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
+          break;
         }
         // Mirror the /api/saveFrutiSlot MiniPixiz default-clobber guard on
         // the wire path: refuse a fresh-formatFruticard()-shaped save when
