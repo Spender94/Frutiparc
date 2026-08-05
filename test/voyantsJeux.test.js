@@ -59,7 +59,7 @@ test('la table du bureau suit internalList, et l\'extracteur suit les étiquette
 
 test('main.swf porte la rustine qui branche la fée au bureau', () => {
   // internalList s'arrête à miniwave (index 9) dans la classe compilée : le
-  // patch appende un DoAction après son DoInitAction —
+  // patch appende un DoInitAction après celui de StatusMng —
   // _global.StatusMng.internalList[12] = "minipixiz" — et le bureau résout
   // enfin le code 12 vers l'image étiquetée minipixiz (la fée-papillon).
   const zlib = require('zlib');
@@ -73,6 +73,36 @@ test('main.swf porte la rustine qui branche la fée au bureau', () => {
   let n = 0, i = 0;
   while ((i = corps.indexOf(graine, i)) >= 0) { n++; i++; }
   assert.equal(n, 1, 'l\'injection est là, une seule fois');
+  // Et elle est LISIBLE et EXÉCUTÉE AU CHARGEMENT : en marchant les tags, la
+  // graine doit tomber dans un DoInitAction (code 59). Les deux pièges déjà
+  // rencontrés : un en-tête 0x33F tronqué en octet (tag End long — lecteurs
+  // stricts arrêtés, rustine jamais exécutée), et un DoAction ordinaire (la
+  // classe vit sur l'image 10 de 23, qu'un gotoAndStop peut ne jamais
+  // afficher — l'init action, elle, s'exécute au chargement, vérifié sous
+  // Ruffle par une balise /api/diag : icone12=minipixiz).
+  const nbits = (corps[0] >> 3) & 0x1f;
+  let o = Math.ceil((5 + nbits * 4) / 8) + 4;
+  let porteur = -1, sprite = -1;
+  const initsParSprite = new Map();
+  while (o < corps.length) {
+    const hdr = corps.readUInt16LE(o), code = hdr >> 6;
+    let len = hdr & 0x3f, hs = 2;
+    if (len === 0x3f) { len = corps.readUInt32LE(o + 2); hs = 6; }
+    if (code === 59) {
+      const id = corps.readUInt16LE(o + hs);
+      initsParSprite.set(id, (initsParSprite.get(id) || 0) + 1);
+    }
+    if (porteur < 0 && corps.slice(o + hs, o + hs + len).indexOf(graine) >= 0) {
+      porteur = code;
+      sprite = corps.readUInt16LE(o + hs);
+    }
+    if (code === 0) break;
+    o += hs + len;
+  }
+  assert.equal(porteur, 59, 'la graine vit dans un DoInitAction atteignable');
+  // Un seul DoInitAction par sprite fait foi : le porteur doit être le seul.
+  assert.equal(initsParSprite.get(sprite), 1,
+    'le sprite porteur (' + sprite + ') n\'a que cette init action');
   assert.ok(fs.existsSync(path.join(ROOT, 'scripts/patch-main-statusmng-minipixiz.js')),
     'et le patch est rejouable');
 });

@@ -12,15 +12,19 @@
 //
 // Le serveur envoie 12 pour Minipixiz (STATUS_INTERNAL_FRAME). Plutôt que de
 // retailler la fonction d'init compilée de StatusMng (sauts relatifs, taille
-// de fonction — fragile), on APPEND un petit tag DoAction juste après le
-// DoInitAction qui la définit :
+// de fonction — fragile), on APPEND un petit tag juste après le DoInitAction
+// qui la définit :
 //
 //     _global.StatusMng.internalList[12] = "minipixiz";
 //
-// Un DoInitAction s'exécute au chargement du tag, un DoAction à l'affichage
-// de l'image : dans la même image, le nôtre passe après — la liste existe.
-// Insérer un tag ENTRE deux tags ne retaille rien d'autre que l'en-tête du
-// fichier (FileLength), recalculé par l'écriture.
+// Et ce tag est lui-même un DoInitAction — pas un DoAction : la classe vit
+// sur l'image 10 de 23, qu'un gotoAndStop peut ne jamais AFFICHER, alors
+// qu'un DoInitAction s'exécute au CHARGEMENT, dans l'ordre du flux — juste
+// après celui de StatusMng, la liste existe. Il lui faut un SpriteID porteur :
+// on prend un DefineSprite déjà défini en amont et qui n'a d'init action
+// nulle part (un seul DoInitAction par sprite fait foi, les suivants sont
+// ignorés). Insérer un tag ENTRE deux tags ne retaille rien d'autre que
+// l'en-tête du fichier (FileLength), recalculé par l'écriture.
 
 'use strict';
 
@@ -71,13 +75,17 @@ const ACTIONS = Buffer.concat([
   Buffer.from([0x4f]),                                     // setMember
   Buffer.from([0x00]),                                     // end
 ]);
-// Tag DoAction (code 12), en-tête court — le corps fait bien moins de 63 octets ?
-// Non : ~70. En-tête LONG, toujours valable.
-const TAG = Buffer.concat([
-  Buffer.from([(12 << 6) | 0x3f, 0x00]),                   // hdr16 : code 12, long
-  (() => { const b = Buffer.alloc(4); b.writeUInt32LE(ACTIONS.length, 0); return b; })(),
-  ACTIONS,
-]);
+// L'en-tête de tag : sur DEUX octets little-endian — (code << 6) | 0x3f fait
+// plus d'un octet (une première version l'écrivait naïvement dans un
+// Buffer.from([...]) : tronqué en 0x003F, un tag End (code 0) long — les
+// lecteurs stricts s'arrêtaient là et Ruffle n'exécutait jamais la rustine).
+// En-tête LONG, toujours valable, writeUInt16LE comme le lecteur d'en face.
+function tagLong(code, corps) {
+  const b = Buffer.alloc(6);
+  b.writeUInt16LE((code << 6) | 0x3f, 0);
+  b.writeUInt32LE(corps.length, 2);
+  return Buffer.concat([b, corps]);
+}
 
 function principal() {
   const { sig, version, body } = lireSwf(SWF);
@@ -86,29 +94,45 @@ function principal() {
     return;
   }
 
-  // Trouve le DoInitAction (code 59) qui définit StatusMng : celui dont le
-  // corps contient la chaîne "internalList".
+  // Une passe sur les tags : le DoInitAction (code 59) qui définit StatusMng
+  // (son corps contient "internalList"), les DefineSprite (39) vus avant lui,
+  // et les SpriteID déjà pris par un DoInitAction (les 2 premiers octets).
   const nbits = (body[0] >> 3) & 0x1f;
   let o = Math.ceil((5 + nbits * 4) / 8) + 4;
   let apres = -1, trouves = 0;
+  const spritesAvant = [];
+  const initsPris = new Set();
   while (o < body.length) {
     const hdr = body.readUInt16LE(o), code = hdr >> 6;
     let len = hdr & 0x3f, hs = 2;
     if (len === 0x3f) { len = body.readUInt32LE(o + 2); hs = 6; }
     if (code === 0) break;
-    if (code === 59
-      && body.slice(o + hs, o + hs + len).indexOf('internalList') >= 0) {
-      apres = o + hs + len;
-      trouves++;
+    if (code === 39 && apres < 0) spritesAvant.push(body.readUInt16LE(o + hs));
+    if (code === 59) {
+      initsPris.add(body.readUInt16LE(o + hs));
+      if (body.slice(o + hs, o + hs + len).indexOf('internalList') >= 0) {
+        apres = o + hs + len;
+        trouves++;
+      }
     }
     o += hs + len;
   }
   if (trouves !== 1) throw new Error('DoInitAction de StatusMng : ' + trouves + ' candidat(s)');
 
+  // Le porteur : le dernier sprite défini avant l'insertion qui n'a d'init
+  // action nulle part — le nôtre sera donc le seul, et il compte.
+  const porteur = spritesAvant.reverse().find((id) => !initsPris.has(id));
+  if (porteur === undefined) throw new Error('aucun sprite vierge avant StatusMng');
+
+  const idBuf = Buffer.alloc(2);
+  idBuf.writeUInt16LE(porteur, 0);
+  const TAG = tagLong(59, Buffer.concat([idBuf, ACTIONS]));
+
   const patche = Buffer.concat([body.slice(0, apres), TAG, body.slice(apres)]);
   fs.copyFileSync(SWF, SWF + '.avant-minipixiz');
   const taille = ecrireSwf(SWF, sig, version, patche);
-  console.log('patché : +' + TAG.length + ' octets injectés après le DoInitAction de StatusMng');
+  console.log('patché : +' + TAG.length + ' octets (DoInitAction, sprite porteur '
+    + porteur + ') après le DoInitAction de StatusMng');
   console.log('→ ' + SWF + ' (' + taille + ' octets, sauvegarde .avant-minipixiz)');
 }
 
