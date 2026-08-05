@@ -401,6 +401,12 @@ test('le cœur courant fond avec la santé qui reste (inter.Life.setHealth)', ()
   // L'échelle du fichier : 10 + santé × 0,9 pour cent, sur le cœur rouge seul.
   assert.match(src, /10 \+ Math\.max\(0, mf\.health\) \* 0\.9/);
   assert.match(src, /function coeurSeul\(/);
+  // Le piège vérifié contre le VRAI SWF (root.swf sous Ruffle, impys de
+  // triche) : `coeur` est dans ECHELLE_PIXEL, où rendre() ignore la taille.
+  // Avec la clé du parent, le cœur restait à taille pleine et la compensation
+  // de centrage le poussait hors de son contour. La clé dédiée le fait fondre
+  // DANS le contour, comme le sous-clip c.
+  assert.match(src, /cle: 'coeurQuiFond'/);
   // Le point fixe de la fonte : le centre du dessin, comme le clip `c`.
   assert.match(src, /COEUR_CENTRE = \{ x: 6\.15, y: 5\.53 \}/);
   assert.match(src, /COEUR_CENTRE\.x \* \(1 - prc \/ 100\)/);

@@ -74,11 +74,18 @@ const ECART_MANA = 6;                 // inter.Mana : une goutte tous les 6 px
 // cœur rouge, pas son fond. Dans l'export, c'est la DERNIÈRE pièce de
 // l'image 2 (l'image 1 n'a que le fond) : on en fait un dessin à part, mémoïsé
 // sur le sprite, pour le fondre seul.
+//
+// ATTENTION à la clé : `coeur` est dans ECHELLE_PIXEL, où rendre() IGNORE le
+// paramètre de taille (k = 1). Garder la clé du parent dessinait le cœur à
+// taille pleine, décalé par la compensation de centrage — un cœur qui
+// débordait de son contour au lieu de fondre dedans. La clé dédiée rend à
+// l'échelle demandée : les coordonnées de la pièce sont déjà en pixels, et
+// taille/100 est exactement le facteur du _xscale du fichier.
 function coeurSeul(sCoeur) {
   if (sCoeur.__seul !== undefined) return sCoeur.__seul;
   const f2 = sCoeur.etats.find((e) => e.frame === 2);
   sCoeur.__seul = (f2 && f2.pieces.length > 1)
-    ? { nom: sCoeur.nom + ' (plein)', cle: sCoeur.cle,
+    ? { nom: sCoeur.nom + ' (plein)', cle: 'coeurQuiFond',
       etats: [{ frame: 1, pieces: [f2.pieces[f2.pieces.length - 1]] }] }
     : null;
   return sCoeur.__seul;
@@ -2339,7 +2346,9 @@ class Client {
           poserRendu(ctx, rendre(sCoeur, 1, 100), x, y);
           const plein = coeurSeul(sCoeur);
           if (plein) {
-            const prc = 10 + Math.max(0, mf.health) * 0.9;
+            // Arrondi au pour cent : le rendu est mémoïsé par taille, et la
+            // régénération (POW_REGENERATE_LIFE) glisse en continu.
+            const prc = Math.round(10 + Math.max(0, mf.health) * 0.9);
             // L'échelle du renderer part du coin du dessin : on recale pour
             // que le cœur fonde autour de son centre, comme le clip `c`.
             poserRendu(ctx, rendre(plein, 1, prc),
