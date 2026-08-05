@@ -8,10 +8,17 @@
 //
 // Le bureau les tient dans le clip 246 (la feuille d'icônes d'activité, posée
 // dans le clip « status » à l'étiquette internal). Le serveur diffuse un code
-// INTERNE dans la chaîne de statut de chaque joueur, et le SWF affiche l'image
-// correspondante — décalée de trois : le code 6 (Frutibandas) montre l'image 9,
-// la tomate au béret. C'est la règle vérifiée sur les huit jeux du bureau
-// (STATUS_INTERNAL_FRAME, server.js).
+// INTERNE dans la chaîne de statut de chaque joueur ; StatusMng.analyseStr en
+// fait un NOM — le code est un index dans internalList, lu dans le bytecode :
+//
+//   [ ∅, forum, bkiwi, mb2, swapou2, snake3, bandas, grapiz, kaluga, miniwave ]
+//
+// et l'affichage fait gotoAndStop(nom) : chaque image du clip porte
+// l'ÉTIQUETTE de son jeu. On choisit donc l'image PAR SON ÉTIQUETTE — pas par
+// un décalage : la vieille règle « code + 3 » n'était qu'une coïncidence
+// partielle, qui donnait à Grapiz le bolide de Burning Kiwi, à Frutibandas la
+// tomate de Costomate, à Swapou le lion de Zibal et à Mini-Wave la bille de
+// Grapiz.
 //
 // Le mobile n'a pas de SWF : on sort donc les images en PNG, une par jeu
 // jouable, aux mêmes dessins que le bureau.
@@ -27,17 +34,69 @@ const SORTIE = path.join(RACINE, 'public/fb');
 // Les SVG intermédiaires vont dans data/ (hors dépôt) : seuls les PNG comptent.
 const TRAVAIL = path.join(RACINE, 'data/voyants-travail');
 
-// Jeu → image AFFICHÉE du clip 246 (code interne + 3).
+// Fichier PNG → étiquette d'image du clip 246 (la clé du fichier reste le nom
+// que light.html connaît ; l'étiquette est celle du jeu dans le SWF).
 const VOYANTS = [
-  { jeu: 'bandas', image: 9 },       // la tomate au béret         (interne 6)
-  { jeu: 'grapiz', image: 10 },      // le bolide doré             (interne 7)
-  { jeu: 'swapou', image: 7 },       // le lion                    (interne 4)
-  { jeu: 'miniwave', image: 12 },    // la bille bleue             (interne 9)
-  { jeu: 'minipixiz', image: 15 },   // la fée aux ailes d'or      (interne 12)
+  { jeu: 'bandas', etiquette: 'bandas' },        // le béret rouge
+  { jeu: 'grapiz', etiquette: 'grapiz' },        // la bille bleue
+  { jeu: 'swapou', etiquette: 'swapou2' },       // la grappe de fruits
+  { jeu: 'miniwave', etiquette: 'miniwave' },    // le vaisseau blanc
+  { jeu: 'minipixiz', etiquette: 'minipixiz' },  // la fée-papillon
 ];
+
+// Les ÉTIQUETTES d'images d'un sprite (FrameLabel, code 43), directement dans
+// le fichier — swf-sprites.js ne les lit pas.
+function etiquettesDuClip(chemin, spriteId) {
+  const zlib = require('zlib');
+  const raw = fs.readFileSync(chemin);
+  const b = raw.slice(0, 3).toString('ascii') === 'CWS'
+    ? zlib.inflateSync(raw.slice(8)) : raw.slice(8);
+  const debut = Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8) + 4;
+  const table = {};
+  (function scan(from, to) {
+    let o = from;
+    while (o < to) {
+      const hdr = b.readUInt16LE(o), code = hdr >> 6;
+      let len = hdr & 0x3f, hs = 2;
+      if (len === 0x3f) { len = b.readUInt32LE(o + 2); hs = 6; }
+      if (code === 0) break;
+      const corps = o + hs;
+      if (code === 39) {
+        const sid = b.readUInt16LE(corps);
+        if (sid === spriteId) {
+          let p = corps + 4, f = 1;
+          while (p < corps + len) {
+            const h2 = b.readUInt16LE(p), c2 = h2 >> 6;
+            let l2 = h2 & 0x3f, hs2 = 2;
+            if (l2 === 0x3f) { l2 = b.readUInt32LE(p + 2); hs2 = 6; }
+            if (c2 === 0) break;
+            if (c2 === 43) {
+              let e = p + hs2;
+              while (b[e] !== 0) e++;
+              table[b.slice(p + hs2, e).toString('latin1')] = f;
+            }
+            if (c2 === 1) f++;
+            p += hs2 + l2;
+          }
+        } else {
+          scan(corps + 4, corps + len);
+        }
+      }
+      o += hs + len;
+    }
+  })(debut, b.length);
+  return table;
+}
 
 fs.mkdirSync(TRAVAIL, { recursive: true });
 const r = ouvrir(SWF);
+const etiquettes = etiquettesDuClip(SWF, 246);
+for (const v of VOYANTS) {
+  v.image = etiquettes[v.etiquette];
+  if (!v.image) throw new Error('étiquette absente du clip 246 : ' + v.etiquette);
+}
+console.log('images par étiquette : '
+  + VOYANTS.map((v) => v.jeu + '=f' + v.image).join(' '));
 
 const cellules = [];
 const formes = new Set();

@@ -3,14 +3,25 @@
  *
  * Le bureau les tient depuis toujours : le serveur diffuse un code INTERNE
  * dans la chaîne de statut (quatre caractères base 62 : absence, JEU sur
- * deux, émote), et main.swf montre l'image correspondante de sa feuille
- * d'icônes — décalée de trois (le code 6, Frutibandas, montre l'image 9).
+ * deux, émote). Ce code est un INDEX dans StatusMng.internalList — lu dans le
+ * bytecode de main.swf :
+ *
+ *   [ ∅, forum, bkiwi, mb2, swapou2, snake3, bandas, grapiz, kaluga,
+ *     miniwave ]
+ *
+ * — et l'affichage fait gotoAndStop(nom) sur la feuille d'icônes (clip 246),
+ * dont chaque image porte l'ÉTIQUETTE de son jeu. Les étiquettes disent vrai
+ * (bandas = le béret, grapiz = la bille, swapou2 = la grappe, miniwave = le
+ * vaisseau) ; la vieille règle « code + 3 » était une coïncidence qui donnait
+ * au mobile le bolide de Burning Kiwi pour Grapiz et la tomate de Costomate
+ * pour Frutibandas.
  *
  * Ce fichier garde trois choses :
- *   1. la table serveur — dont la fée de Minipixiz, absente à l'origine ;
+ *   1. la table serveur — dont la fée de Minipixiz, absente de la liste
+ *      d'origine (pas d'icône possible au bureau, le mobile la montre) ;
  *   2. les chemins qui allument et éteignent le voyant (natifs et matchs) ;
- *   3. l'affichage mobile — les PNG extraits de la même feuille, et le code
- *      de light.html qui les pose à côté des pseudos.
+ *   3. l'affichage mobile — les PNG extraits PAR ÉTIQUETTE de la même
+ *      feuille, et le code de light.html qui les pose à côté des pseudos.
  */
 'use strict';
 
@@ -23,13 +34,26 @@ const ROOT = path.join(__dirname, '..');
 const serveur = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 
-test('la table du bureau connaît la fée de Minipixiz', () => {
-  // La règle vérifiée sur les huit jeux d'origine : l'image affichée est le
-  // code interne + 3. Le papillon-fée est à l'image 15 de la feuille → 12.
-  assert.match(serveur, /minipixiz:\s*12,/, 'minipixiz → interne 12');
-  // Et les codes historiques ne bougent pas : le bureau les montre déjà.
-  for (const [jeu, code] of [['bandas', 6], ['grapiz', 7], ['swapou2', 4], ['miniwave', 9]]) {
+test('la table du bureau suit internalList, et l\'extracteur suit les étiquettes', () => {
+  // Les codes = les index d'internalList (main.swf) : ils ne bougent pas.
+  for (const [jeu, code] of [['bandas', 6], ['grapiz', 7], ['swapou2', 4],
+    ['miniwave', 9], ['bkiwi', 2], ['mb2', 3], ['snake3', 5], ['kaluga', 8]]) {
     assert.match(serveur, new RegExp(jeu + ':\\s*' + code + ','), jeu + ' → ' + code);
+  }
+  // Minipixiz est HORS liste (elle s'arrête à miniwave = 9) : le code 12 ne
+  // sert qu'au mobile, et le serveur le dit.
+  assert.match(serveur, /minipixiz:\s*12,/, 'minipixiz → interne 12');
+  assert.match(serveur, /OUTSIDE the SWF's internalList/);
+  // L'extracteur choisit les images PAR ÉTIQUETTE — la source de vérité du
+  // gotoAndStop(nom) du SWF — plus jamais par décalage.
+  const extracteur = fs.readFileSync(
+    path.join(ROOT, 'scripts/extract-voyants-jeux.js'), 'utf8');
+  assert.match(extracteur, /etiquettesDuClip\(SWF, 246\)/);
+  for (const [jeu, etiquette] of [['bandas', 'bandas'], ['grapiz', 'grapiz'],
+    ['swapou', 'swapou2'], ['miniwave', 'miniwave'], ['minipixiz', 'minipixiz']]) {
+    assert.match(extracteur,
+      new RegExp("jeu: '" + jeu + "', etiquette: '" + etiquette + "'"),
+      jeu + ' ← étiquette ' + etiquette);
   }
 });
 

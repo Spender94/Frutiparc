@@ -254,30 +254,38 @@ const USER_LOG_TYPE = {
   MEDAL:       60,   // won a daily-challenge medal
 };
 
-// Frame number in the activity-icon sprite (sprite id=246 inside the "status"
-// sprite at the "internal" label) for each game. The SWF renders the icon via
-// gotoAndStop(internal) where `internal` is the 2-char base62 value broadcast
-// in the user's status string. Note: the sprite has been reordered since it
-// was authored and its FrameLabels no longer match the visual content at each
-// frame — these numbers were validated empirically from the icons users see
-// when launching each game. Returning 0 hides the icon (no internal status).
+// Internal-status code for each game — the 2-char base62 value broadcast in
+// the user's status string. It is NOT a frame number: StatusMng.analyseStr
+// (main.swf bytecode) treats it as an index into internalList,
+//
+//   [ <none>, forum, bkiwi, mb2, swapou2, snake3, bandas, grapiz, kaluga,
+//     miniwave ]                                             (indices 0..9)
+//
+// and the SWF then does gotoAndStop(<name>) on the activity-icon sprite
+// (id=246), whose frames carry FrameLabels — snake3=f1, mb2=f2, swapou2=f5,
+// kaluga=f8, bkiwi=f10, grapiz=f12, bandas=f13, miniwave=f14, minipixiz=f15,
+// forum=f36. The labels DO match their drawings (bandas = the red beret,
+// grapiz = the blue marble…) — the old "+3 offset" note here was a wrong
+// rationalization that only held by accident for minipixiz.
+// Returning 0 hides the icon (no internal status).
 const STATUS_INTERNAL_FRAME = {
-  bkiwi:     2,   // verified: Kaluga (internal=2) was showing the BKiwi visual
-  mb2:       3,   // verified empirically via /set-internal scan
-  swapou2:   4,   // verified empirically via /set-internal scan
-  snake3:    5,   // verified: Snake (internal=5) already shows the right visual
-  bandas:    6,   // verified: Swapou (internal=6) was showing the Frutibandas visual
-  grapiz:    7,   // verified: MB2 (internal=7) was showing the Grapiz visual
-  kaluga:    8,   // verified: BKiwi (internal=8) was showing the Kaluga visual
-  miniwave:  9,   // verified empirically via /set-internal scan
-  // The displayed frame is the internal code + 3 across every verified game
-  // (bandas 6 -> the beret tomato at sprite frame 9, etc.). The fairy's
-  // butterfly visual sits at sprite frame 15 -> internal 12.
+  bkiwi:     2,
+  mb2:       3,
+  swapou2:   4,
+  snake3:    5,
+  bandas:    6,
+  grapiz:    7,
+  kaluga:    8,
+  miniwave:  9,
+  // minipixiz sits OUTSIDE the SWF's internalList (it stops at miniwave=9):
+  // the desktop cannot show its icon — internalList[12] is undefined, so the
+  // SWF simply shows nothing. The mobile, which resolves codes itself, shows
+  // the butterfly (frame label minipixiz=f15). Patching main.swf's list would
+  // be needed for a desktop icon.
   minipixiz: 12,
-  // Not yet located: jamajama (candidate: the maraca at sprite frame 18 ->
-  // internal 15, unverified).
-  // forum visual is at frame 36 per FrameLabels.
-  forum:     36,
+  // Kept for completeness: the SWF list's index 1. Filtered out of the
+  // mobile's "joue à…" display below — browsing the forum is not a game.
+  forum:     1,
 };
 // Nom de jeu ← code interne, pour dire au mobile QUI joue à QUOI. On ne
 // publie que les jeux jouables — le forum n'est pas une partie.

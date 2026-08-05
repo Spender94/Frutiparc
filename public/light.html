@@ -4314,9 +4314,12 @@
   // ── Le voyant de jeu ──
   // Le serveur diffuse pour chaque joueur une chaîne de statut de quatre
   // caractères en base 62 : absence(1) + JEU(2) + émote(1). Les deux du milieu
-  // sont le code interne du bureau — celui qui choisit l'icône à côté du
-  // pseudo. On garde la même table que main.swf, traduite en PNG extraits du
-  // même sprite (scripts/extract-voyants-jeux.js).
+  // sont un INDEX dans l'internalList de main.swf ([∅, forum, bkiwi, mb2,
+  // swapou2, snake3, bandas, grapiz, kaluga, miniwave]) — le bureau fait
+  // ensuite gotoAndStop(nom) sur sa feuille d'icônes étiquetée. On garde les
+  // mêmes index, traduits en PNG extraits PAR ÉTIQUETTE du même sprite
+  // (scripts/extract-voyants-jeux.js). Minipixiz (12) est hors liste côté
+  // SWF : seul le mobile montre sa fée-papillon.
   var VOYANTS_JEU = { 6: "bandas", 7: "grapiz", 4: "swapou", 9: "miniwave", 12: "minipixiz" };
   var VOYANTS_NOM = { bandas: "Frutibandas", grapiz: "Grapiz", swapou: "Swapou",
     miniwave: "Mini-Wave", minipixiz: "Minipixiz" };
