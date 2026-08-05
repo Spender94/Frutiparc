@@ -41,6 +41,10 @@
 (function (racine) {
 
 const SCENE = 240;
+// La cadence du jeu d'origine : quarante images par seconde (l'en-tête des SWF
+// livrés, et le compteur `400/Timer.tmod` de Manager.update qui affiche 40 pour
+// tmod = 1). La clairière respire au même rythme que le reste.
+const IPS = 40;
 
 // Menu.initDecor — l'ordre d'empilement et le coefficient de parallaxe.
 const PLANS = [
@@ -55,18 +59,33 @@ const PLANS = [
   { cle: 'premier', c: 3.2 },
 ];
 
-// Les lieux, avec le plan qui les accroche et ce qu'ils ouvrent.
+/*
+ * Les lieux, avec le plan qui les accroche et ce qu'ils ouvrent.
+ *
+ * Les titres sont ceux de `Menu.initTitleBut`, au caractère près — espace de
+ * fin comprise, elle décale le centrage de quelques pixels. Et SANS ACCENTS :
+ * ce n'est pas une négligence d'époque mais une contrainte de la fonte. La
+ * police du bandeau, « Atlantis », est embarquée dans le SWF et ses glyphes
+ * accentués sont DÉCLARÉS MAIS VIDES — écrire « Forêt enchantée » y creusait
+ * deux trous. Motion-Twin a écrit « Foret enchantee », on écrit pareil.
+ */
 const LIEUX = [
-  { cle: 'mArcEnCiel', plan: 'horizon', nom: 'rainbow', titre: 'Arc en ciel', va: 'rainbow' },
-  { cle: 'mMoulin', plan: 'collines', nom: 'windMill', titre: 'Moulin', va: 'option' },
-  { cle: 'mDonjon', plan: 'collines', nom: 'dungeon', titre: 'Donjon', va: 'dungeon' },
-  { cle: 'mBassin', plan: 'foret', nom: 'fountain', titre: 'Bassin aux fées', va: 'fountain' },
-  { cle: 'mForet', plan: 'foret', nom: 'forest', titre: 'Forêt enchantée', va: 'foret' },
+  { cle: 'mArcEnCiel', plan: 'horizon', nom: 'rainbow', titre: 'Arc en ciel ', va: 'rainbow' },
+  { cle: 'mMoulin', plan: 'collines', nom: 'windMill', titre: 'Moulin ', va: 'option' },
+  { cle: 'mDonjon', plan: 'collines', nom: 'dungeon', titre: 'Donjon ', va: 'dungeon' },
+  { cle: 'mBassin', plan: 'foret', nom: 'fountain', titre: 'Bassin aux fees ', va: 'fountain' },
+  { cle: 'mForet', plan: 'foret', nom: 'forest', titre: 'Foret enchantee', va: 'foret' },
   { cle: 'mCabane', plan: 'foret', nom: 'house', titre: 'Cabane de Gromelin', va: 'mission' },
   { cle: 'mArbre', plan: 'milieu', nom: 'tree', titre: 'Arbre creux', va: 'tree' },
-  { cle: 'mSac', plan: 'arbre', nom: 'bag', titre: 'Inventaire', va: 'inventaire' },
-  { cle: 'mGrenouille', plan: 'premier', nom: 'frog', titre: 'Ornegon', va: 'frog' },
+  { cle: 'mSac', plan: 'arbre', nom: 'bag', titre: 'Inventaire ', va: 'inventaire' },
+  { cle: 'mGrenouille', plan: 'premier', nom: 'frog', titre: 'Ornegon ', va: 'frog' },
 ];
+
+// mcMenuTitle : un seul champ de texte, Atlantis 32 px, blanc plein, centré sur
+// la largeur de la scène, posé tout en haut. Le champ de Flash garde deux
+// pixels de gouttière avant la première ligne — d'où le petit décalage.
+const TITRE_FONTE = '32px Atlantis, Verdana, Arial, sans-serif';
+const TITRE_Y = 2;
 
 const BLEU_NUIT = 0x274C76;
 const BLEU_NUAGE = 0x8EB3D7;
@@ -107,6 +126,7 @@ class Menu {
     // 1,5) : il faut un regard presque au bord pour l'avoir entier à l'écran.
     this.xm = tactile ? 8 : SCENE / 2;
     this.titre = '';
+    this.titresEteints = [];
     this.message = '';
     this.zones = [];
     this.rotationMoulin = 0;
@@ -216,7 +236,14 @@ class Menu {
     // temps, donc on relit la zone APRÈS avoir déplacé le regard — sinon le nom
     // désignerait l'endroit qu'on vient de quitter.
     const z = this.lieuA(x, y);
-    this.titre = z ? z.lieu.titre : '';
+    const titre = z ? z.lieu.titre : '';
+    // Menu.removeTitle : le nom qu'on quitte ne disparaît pas d'un coup, il est
+    // versé dans `titleFadeList` où son alpha est HALVÉ à chaque image jusqu'à
+    // s'éteindre — six images, un souffle.
+    if (titre !== this.titre && this.titre) {
+      this.titresEteints.push({ texte: this.titre, alpha: 100 });
+    }
+    this.titre = titre;
   }
 
   // ── Ce que la fiche dit de chaque lieu (Menu.initElements) ──
@@ -343,16 +370,21 @@ class Menu {
     }
 
     // 4. Le titre du lieu visé, et le bandeau d'information.
-    ctx.font = 'bold 11px Verdana, Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    if (this.titre) {
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(10,25,40,.85)';
-      ctx.strokeText(this.titre, SCENE / 2, 10);
-      ctx.fillStyle = '#ffe9a8';
-      ctx.fillText(this.titre, SCENE / 2, 10);
+    ctx.font = TITRE_FONTE;
+    for (let i = this.titresEteints.length - 1; i >= 0; i--) {
+      const t = this.titresEteints[i];
+      t.alpha *= 0.5;
+      if (t.alpha < 2) { this.titresEteints.splice(i, 1); continue; }
+      ctx.fillStyle = 'rgba(255,255,255,' + (t.alpha / 100) + ')';
+      ctx.fillText(t.texte, SCENE / 2, TITRE_Y);
     }
+    if (this.titre) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(this.titre, SCENE / 2, TITRE_Y);
+    }
+    ctx.font = 'bold 11px Verdana, Arial, sans-serif';
     // Sur un écran tactile il n'y a pas de survol : on dit comment se promener.
     if (!this.message && !this.titre) {
       ctx.font = '9px Verdana, Arial, sans-serif';
@@ -436,10 +468,10 @@ class Menu {
       if (!this.actif) return;
       const dt = dernier ? Math.min((t - dernier) / 1000, 0.25) : 0;
       dernier = t;
-      this.avancer(dt * 30);
+      this.avancer(dt * IPS);
       this.rendre();
       // La clairière aussi s'ouvre dans l'iris du jeu.
-      if (this.iris && !this.iris.dessiner(this.ctx, dt * 30)) this.iris = null;
+      if (this.iris && !this.iris.dessiner(this.ctx, dt * IPS)) this.iris = null;
     };
     this.raf = requestAnimationFrame(boucle);
   }

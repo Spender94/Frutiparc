@@ -555,3 +555,258 @@ test('le moulin remappe les cinq touches — et le sort revient sur espace', () 
   const plate = fs.readFileSync(path.join(ROOT, 'public/minipixiz/plateforme.js'), 'utf8');
   assert.match(plate, /slotId: '1'/, 'les préférences repartent au slot 1');
 });
+
+/*
+ * ── Le deuxième retour de terrain ────────────────────────────────────────────
+ *
+ * « la version flash n'affiche pas les nombres de points à chaque coup »
+ * « quand un joueur n'a pas de fée, inutile d'afficher le cadre vide »
+ * « quand une fée parle, inutile de rafficher son image à côté de la bulle »
+ *
+ * Trois ajouts de trop, tous les trois inventés par le portage. On les défait,
+ * et on rend au jeu ce qu'il faisait à la place — pour la cascade, la VOIX de
+ * la fée.
+ */
+
+// Le client est un script de navigateur : pas de module.exports, et `window`
+// comme point de chute. On le charge dans une fonction dont les paramètres
+// masquent les globales — de quoi appeler ses méthodes pour de vrai.
+function chargerClient() {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  const fenetre = {
+    MinipixizLangue: require('../public/minipixiz/langue.js'),
+    MinipixizEngine: E,
+    MinipixizCombat: C,
+  };
+  new Function('window', 'document', 'navigator', 'Image', src)(
+    fenetre,
+    { createElement: () => ({ getContext: () => ({}), width: 0, height: 0 }) },
+    { userAgent: '' }, function () {});
+  return fenetre.MinipixizClient;
+}
+
+// Un pinceau qui note ce qu'on lui demande — et rien de plus.
+function pinceauTemoin() {
+  const faits = [];
+  const rien = () => {};
+  return {
+    faits,
+    ctx: {
+      save: rien, restore: rien, beginPath: rien, moveTo: rien, lineTo: rien,
+      arcTo: rien, quadraticCurveTo: rien, closePath: rien, clip: rien,
+      fill: rien, stroke: rien, rect: rien, translate: rien, scale: rien,
+      measureText: (t) => ({ width: String(t).length * 5 }),
+      fillText: (t) => faits.push('texte:' + t),
+      strokeText: (t) => faits.push('trait:' + t),
+      drawImage: () => faits.push('image'),
+      fillRect: () => faits.push('rect'),
+    },
+  };
+}
+
+test('une cascade ne montre AUCUN nombre — la fée la commente', () => {
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  // Le bandeau « chaîne ×N +M » et « couleur terminée ! » n'ont jamais existé :
+  // Game.checkFallStats ne fait qu'appeler faerieList[0].fi.reactCombo(sum), et
+  // Game.updatecolorList lève un drapeau interne (flColorKill) qui ne sert qu'à
+  // couper la recharge de mana du tour.
+  assert.ok(!/dessinerMessage/.test(client), 'plus de bandeau de message');
+  assert.ok(!/this\.messageT/.test(client), 'ni le compte à rebours qui allait avec');
+  assert.ok(!/couleur terminée/.test(client), 'ni l\'annonce de couleur finie');
+  assert.ok(!/chaîne ×/.test(client), 'ni le compteur de chaîne');
+  assert.match(client, /case 'score': this\.reactCombo\(d\.gagne\); break;/,
+    'la cascade appelle reactCombo, comme checkFallStats');
+
+  // Et le comportement, aux seuils de FaerieInfo.reactCombo : rien sous 17,
+  // les félicitations au-dessus de 16, l'emballement au-dessus de 36.
+  const { Client } = chargerClient();
+  const fee = { fs: { $humor: 0, $name: 'Lila' }, carac: [] };
+  const essai = (somme) => {
+    const dit = [];
+    const faux = Object.create(Client.prototype);
+    faux.fee = fee;
+    faux.dialogue = null;
+    faux.parler = (t) => dit.push(t);
+    faux.reactCombo(somme);
+    return dit;
+  };
+  assert.deepEqual(essai(16), [], 'seize points : la fée se tait');
+  const L = require('../public/minipixiz/langue.js');
+  assert.ok(L.COMBO_CHEER[0].includes(essai(17)[0]), 'dix-sept : elle félicite');
+  assert.ok(L.SUPER_COMBO_CHEER[0].includes(essai(37)[0]), 'trente-sept : elle s\'emballe');
+  // Les deux listes viennent de Lang.mt, une rangée par humeur (0 à 8).
+  assert.equal(L.COMBO_CHEER.length, 9);
+  assert.equal(L.SUPER_COMBO_CHEER.length, 9);
+  const script = fs.readFileSync(path.join(ROOT, 'scripts/extract-minipixiz-lang.js'), 'utf8');
+  assert.match(script, /COMBO_CHEER: rangs\('comboCheerList'\)/, 'et elles sont EXTRAITES');
+  assert.match(script, /SUPER_COMBO_CHEER: rangs\('superComboCheerList'\)/);
+});
+
+test('sans fée, la colonne de droite reste nue', () => {
+  const { Client } = chargerClient();
+  // base/Forest.launch : `if( fi.isReadyForBattle() ) initFaerieInterface()`.
+  // Le cadre du portrait, la goutte de mana et les cœurs naissent ENSEMBLE, à
+  // cet instant-là, ou pas du tout. Un pinceau qui hurle au moindre trait le
+  // prouve : sans fée, dessinerInterface ne pose rien.
+  const faux = Object.create(Client.prototype);
+  faux.fee = null;
+  faux.sprites = {};
+  faux.lieu = null;
+  faux.champ = null;
+  const hurleur = new Proxy({}, {
+    get(_, p) { throw new Error('l\'interface a dessiné sans fée : ' + String(p)); },
+  });
+  assert.doesNotThrow(() => faux.dessinerInterface(hurleur, 1));
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(client, /isReadyForBattle/, 'et le code dit d\'où vient la règle');
+  // Le montant de bois, lui, n'est pas de cette interface : c'est une peau du
+  // décor (interfaceRacine), posée à part — la colonne ne devient pas un trou.
+  assert.match(client, /interfaceRacine/);
+});
+
+test('la bulle de la fée en partie n\'a pas de portrait', () => {
+  const { Client } = chargerClient();
+  const faux = Object.create(Client.prototype);
+  faux.fee = { fs: { $humor: 0, $name: 'Lila' }, carac: [] };
+  faux.sprites = {};
+  faux.dialogue = { texte: 'Joli coup !', timer: 40 };
+  const t = pinceauTemoin();
+  faux.dessinerDialogue(t.ctx, 1);
+  assert.ok(t.faits.some((f) => f.startsWith('texte:')), 'la bulle porte bien son texte');
+  assert.ok(!t.faits.includes('image'),
+    'mais aucun médaillon : Dialog.setPic n\'a qu\'un appelant, Menu.attachDialog');
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.ok(!/portraitDeFee\(this\.sprites, this\.fee/.test(client),
+    'le portrait ne se redessine plus à côté de la bulle');
+});
+
+test('les noms de lieux sont écrits dans la police du jeu', () => {
+  // 1. LA POLICE. « Atlantis » est EMBARQUÉE dans le SWF (DefineFont2 id 165) :
+  //    elle n'existe sur aucune machine, et le portage tombait sur Verdana gras
+  //    11 px là où le jeu écrit en 32 px. On l'extrait du fichier d'origine.
+  const woff = path.join(ROOT, 'public/minipixiz/atlantis.woff');
+  assert.ok(fs.existsSync(woff), 'la police extraite est livrée');
+  const octets = fs.readFileSync(woff);
+  assert.equal(octets.toString('latin1', 0, 4), 'wOFF', 'et c\'est bien un WOFF');
+  assert.equal(octets.readUInt32BE(8), octets.length, 'dont l\'en-tête dit la vraie taille');
+  assert.ok(octets.length > 5000, 'avec de vrais contours dedans');
+  assert.ok(fs.existsSync(path.join(ROOT, 'scripts/extract-swf-font.js')),
+    'et l\'extraction est rejouable');
+
+  // 2. LES TITRES, tirés de Menu.initTitleBut — au caractère près, espaces de
+  //    fin comprises, et sans accents (la fonte n'en a pas : ses glyphes
+  //    accentués sont déclarés mais vides).
+  const menu = fs.readFileSync(path.join(ROOT, 'public/minipixiz/menu.js'), 'utf8');
+  const source = fs.readFileSync(path.join(ROOT, 'Games/miniTroll/src/Menu.mt'), 'latin1');
+  const attendus = [...source.matchAll(/initTitleBut\(\s*\w+\s*,\s*"([^"]*)"\s*\)/g)]
+    .map((m) => m[1]);
+  assert.ok(attendus.length >= 9, 'les neuf lieux de la clairière');
+  const poses = [...menu.matchAll(/titre: '([^']*)'/g)].map((m) => m[1]);
+  for (const t of attendus) {
+    assert.ok(poses.includes(t), 'le titre « ' + t + ' » est écrit comme dans Menu.mt');
+  }
+  for (const t of poses) assert.ok(!/[éèêàçùôîï]/.test(t), t + ' : pas d\'accent');
+
+  // 3. LE DESSIN : 32 px, blanc plein, en haut, sans contour — le champ de
+  //    mcMenuTitle n'a ni bordure ni ombre.
+  assert.match(menu, /const TITRE_FONTE = '32px Atlantis/);
+  assert.match(menu, /ctx\.fillStyle = '#ffffff';\s*\n\s*ctx\.fillText\(this\.titre/);
+  assert.ok(!/strokeText\(this\.titre/.test(menu), 'aucun liseré autour du titre');
+  // Menu.removeTitle : le nom quitté s'éteint en halvant son alpha par image.
+  assert.match(menu, /t\.alpha \*= 0\.5/);
+  assert.match(menu, /t\.alpha < 2/);
+
+  // 4. LA PAGE la déclare et l'ATTEND : un canevas ne se redessine pas tout
+  //    seul quand une police arrive en retard.
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /@font-face \{\s*\n\s*font-family: 'Atlantis';/);
+  assert.match(page, /url\('\/minipixiz\/atlantis\.woff'\) format\('woff'\)/);
+  assert.match(page, /document\.fonts\.load\('32px Atlantis'\)/);
+});
+
+test('l\'ouverture du jeu : l\'écran-titre, puis la clairière dans une ÉTOILE', () => {
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+
+  // 1. LA CADENCE. Le jeu d'origine tourne à QUARANTE images par seconde —
+  //    l'en-tête des SWF livrés le dit, et le compteur de mise au point de
+  //    Manager.update (`400/Timer.tmod`) affiche 40 pour tmod = 1. Le portage
+  //    avançait à trente : un tiers de temps en trop sur chaque chute.
+  assert.match(client, /const IPS = 40;/, 'la boucle du jeu compte 40 i/s');
+  const menu = fs.readFileSync(path.join(ROOT, 'public/minipixiz/menu.js'), 'utf8');
+  assert.match(menu, /const IPS = 40;/, 'la clairière aussi');
+  assert.ok(!/dt \* 30/.test(menu), 'plus de trente images par seconde nulle part');
+  const zlib = require('zlib');
+  for (const f of ['minipixiz.swf', 'full.swf', 'swf/root.swf']) {
+    const raw = fs.readFileSync(path.join(ROOT, 'Games/miniTroll', f));
+    const b = raw.toString('latin1', 0, 3) === 'CWS' ? zlib.inflateSync(raw.slice(8)) : raw.slice(8);
+    const o = Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8);
+    assert.equal(b.readUInt16LE(o) / 256, 40, f + ' tourne à 40 i/s');
+  }
+
+  // 2. L'ÉCRAN-TITRE (sprite « loading ») : fond lavande, logo, bande qui
+  //    efface les fioritures, « chargement en cours ». Les deux tracés sortent
+  //    du SWF, aux coordonnées de la timeline du sprite.
+  for (const f of ['titre-logo.svg', 'titre-bande.svg']) {
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/minipixiz', f)), f + ' est livré');
+  }
+  assert.match(page, /background: #ac9dec/, 'le lavande du fond');
+  assert.match(page, /left: 16\.05px; top: 73\.85px/, 'le logo à sa place');
+  assert.match(page, /left: 35\.95px; top: 126\.95px/, 'la bande à la sienne');
+  assert.match(page, /chargement en cours/);
+  assert.match(page, /fillText\('chargement en cours', 47\.95, 140\.25\)/,
+    'et la ligne de base du DefineText, décalage du premier glyphe compris');
+
+  // 3. L'OUVERTURE : Manager.connected → fadeSlot("menu", 120, 120). La
+  //    clairière ne remplace pas le titre, elle s'ouvre dedans.
+  assert.match(page, /function photographierTitre\(\)/);
+  assert.match(page, /new window\.MinipixizClient\.Iris\(photoTitre, 120, 120\)/);
+
+  // 4. LA FORME. `slotMask` est une étoile à cinq branches, pas un cercle —
+  //    et le portage traçait un cercle dans TOUTES ses transitions.
+  assert.ok(!/g\.arc\(cx, cy/.test(client), 'plus de cercle dans l\'iris');
+  assert.match(client, /tracerEtoile\(g, cx, cy, k\)/, 'le masque est l\'étoile');
+  // slotMaskLight : la même étoile, 1,109 fois pleine et 1,213 fois à moitié.
+  assert.match(client, /k \* 1\.213/);
+  assert.match(client, /k \* 1\.109/);
+  assert.match(client, /return this\.prc <= 100;/, 'et elle est retirée passé 100 %');
+
+  // Le tracé lui-même : cinq pointes, à soixante-douze degrés l'une de l'autre.
+  const brut = /const ETOILE = `([^`]*)`/.exec(client);
+  assert.ok(brut, 'le tracé est dans le fichier');
+  const jetons = brut[1].trim().split(/[\s,]+/);
+  const points = [];
+  for (let i = 0; i < jetons.length;) {
+    const t = jetons[i++];
+    if (t === 'Z') continue;
+    const n = t === 'Q' ? 4 : 2;
+    const v = [];
+    for (let k = 0; k < n; k++) v.push(parseFloat(jetons[i++]));
+    points.push([v[n - 2], v[n - 1]]);
+  }
+  // Les sommets sont ARRONDIS — plusieurs points se pressent sur chacun — et le
+  // point d'ancrage n'est pas le centre géométrique de l'étoile : on mesure donc
+  // depuis le barycentre, et on compte les GROUPES de points éloignés. Il doit
+  // y en avoir cinq, chacun bien détaché des autres, le premier droit en haut.
+  const cx = points.reduce((s, p) => s + p[0], 0) / points.length;
+  const cy = points.reduce((s, p) => s + p[1], 0) / points.length;
+  const rayon = ([x, y]) => Math.hypot(x - cx, y - cy);
+  const rMax = Math.max(...points.map(rayon));
+  const angles = points.filter((p) => rayon(p) > rMax * 0.9)
+    .map(([x, y]) => (Math.atan2(x - cx, -(y - cy)) * 180 / Math.PI + 360) % 360)
+    .sort((a, b) => a - b);
+  const pointes = [];
+  for (const a of angles) {
+    const derniere = pointes[pointes.length - 1];
+    if (derniere && a - derniere[derniere.length - 1] < 30) derniere.push(a);
+    else pointes.push([a]);
+  }
+  // Le tout premier groupe et le tout dernier se rejoignent par-dessus 0°.
+  if (pointes.length > 1
+    && 360 - pointes[pointes.length - 1][0] + pointes[0][0] < 30) {
+    pointes[0] = pointes.pop().concat(pointes[0]);
+  }
+  assert.equal(pointes.length, 5, 'cinq pointes — une étoile, pas un cercle');
+  const milieu = (g) => g.reduce((s, a) => s + (a > 180 ? a - 360 : a), 0) / g.length;
+  assert.ok(Math.abs(milieu(pointes[0])) < 6, 'dont la première droit en haut');
+});

@@ -346,6 +346,137 @@ const LANGUE = {
       "Tu veux pas appeler $other à ma place?"
     ]
   ],
+  "COMBO_CHEER": [
+    [
+      "Super !",
+      "Bien !",
+      "Bien joué !",
+      "Joli coup !",
+      "Combo !"
+    ],
+    [
+      "Génial !",
+      "Bien vu !",
+      "Y'a un truc qui est tombé là, non ?",
+      "On y voit plus clair !"
+    ],
+    [
+      null,
+      "Pas mal !",
+      "Peut mieux faire...",
+      "Passable...",
+      "Plutôt médiocre.",
+      "Combo primitive..."
+    ],
+    [
+      null,
+      "Ouep, pas mal",
+      "Bof, je peux le faire aussi...",
+      "J'aurais pu le faire toute seule",
+      "Pas de quoi se vanter...",
+      "Ca, même $other peut le faire !"
+    ],
+    [
+      "Bam!",
+      "Trop la classe !",
+      "Tu peux le refaire ?",
+      "Combooo !!",
+      "Excellent !"
+    ],
+    [
+      null,
+      null,
+      null,
+      "Chouette !",
+      "T'es fort !",
+      "... "
+    ],
+    [
+      "Tu peux en faire un autre ?",
+      "Au moins ça débarasse",
+      "Bon, maintenant t'en fais un autre.",
+      "Pas mal, on va gagner un peu de temps"
+    ],
+    [
+      "Waw, comment tu fais ?",
+      "Tu me montreras comment tu fais ?",
+      "Joliiiii !!",
+      "Joli coup !"
+    ],
+    [
+      "T'es fort !",
+      "Joliiiiii",
+      "Bien joué !",
+      "Joli coup !",
+      "Tu peux le refaire ?"
+    ]
+  ],
+  "SUPER_COMBO_CHEER": [
+    [
+      "Très joli coup !",
+      "Fantastique !",
+      "Fabuleux !",
+      "T'es super doué !",
+      "Epoustouflant !"
+    ],
+    [
+      "Comment t'as fait ça ?",
+      "Waaah quel combo !",
+      "Trop fort !!!",
+      "Incroyable !",
+      "Y'avait pas un tas de billes, là, avant ?"
+    ],
+    [
+      "Enfin un peu d'action",
+      "Ah t'es un peu moins rouillé",
+      "Hé.. Tu te défends...",
+      "Combo acceptable.",
+      "Hola, y'a du mouvement...",
+      "Pas mal pour une fois...",
+      "Ha ben tu vois quand tu veux !!",
+      "Si tu pouvais faire des combos comme ça tout le temps..."
+    ],
+    [
+      "Je peux faire mieux au prochain tour !",
+      "Impressionnant ! Mais c'est rien comparé à mes pouvoirs",
+      "Super ! C'est presque aussi efficace que mes sorts"
+    ],
+    [
+      "Badaboum !",
+      "Yo ! C'est du grand spectacle ça !",
+      "C'est top-Fraise ce que tu nous fais là",
+      "T'as mangé du lion ce matin non ?",
+      "C'est super efficace ta combo, comment tu fais ça !?"
+    ],
+    [
+      "... ",
+      "C'est toi qui casse tout...",
+      "Quelle combo! Je me sens inutile..."
+    ],
+    [
+      "Avec ça on va gagner du temps",
+      "Ca c'est du combo rapide",
+      "Si avec ça on passe pas au prochain niveau !",
+      "Ouais on va pouvoir partir plus vite!!!",
+      "Tu vois quand tu veux ?"
+    ],
+    [
+      "Géniaaaaal !",
+      "J'suis super youpi-framboise",
+      "Mais comment t'as fait un truc pareil ?",
+      "Crac ! Boum !! Whaoouu !!",
+      "Ouhouuu Combo-folie's !!"
+    ],
+    [
+      "Avec ça on a bientôt fini",
+      "Voilààà on va pouvoir y aller maintenant?",
+      "T'es sûr que ca va pas me tomber dessus?",
+      "T'as pas peur quand ca explose comme ca ?",
+      "*Kiaaahhh*",
+      "Y a un truc qui a explosé",
+      "Toutes ces explosions m'effraient"
+    ]
+  ],
   "AMBIANCE_NORMAL": [
     [
       null,
@@ -695,6 +826,224 @@ const LANGUE = {
       "tout ca pour ca?"
     ]
   ],
+  "TRUC": [
+    "un truc",
+    "un machin",
+    "un nouveau truc",
+    "un nouveau machin",
+    "un bidule"
+  ],
+  "SENT_GET_FOOD": [
+    [
+      [
+        "Chouette ! $food !",
+        "$food, youpiii"
+      ],
+      [
+        "$food ? Ca sent bon !",
+        "$food, hum ça a l'air bon"
+      ],
+      [
+        "$food ? On aura pas perdu la journée !",
+        "$food, je vais enfin manger correctement"
+      ],
+      [
+        "Héhé, voici ma récompense : $food !!",
+        "$food, je vais me régaler"
+      ],
+      [
+        "$food ! C'est super bon !",
+        "$food, ca a l'air bon"
+      ],
+      [
+        null,
+        "$food ! Quelle chance !"
+      ],
+      [
+        "Hmm, je vais me régaler!",
+        "$food, j'espérais en trouver"
+      ],
+      [
+        "$food, Ouais, je vais me régaler j'adore ça, c'est génial",
+        "Au diable le régime, vive la gourmandise!!"
+      ],
+      [
+        "$food ? Ca sent bon !",
+        "Chouette ! $food !"
+      ]
+    ],
+    [
+      [
+        "$food...",
+        "Dommage, $food"
+      ],
+      [
+        "Beurk c'est quoi ça ?",
+        "Oh noooonn!! Pas $food"
+      ],
+      [
+        "$food !? Tu as interêt à le jeter!",
+        "fais venir un goûteur, je ne touche pas à ça sans être sûre",
+        "Pouah et tu penses que je vais manger ca?",
+        "Je préfère encore partir si tu n'as que ça à me donner"
+      ],
+      [
+        "$food !? Compte pas sur moi pour manger ça !",
+        "Je sens que je vais faire un regime moi!"
+      ],
+      [
+        "Mon dieu ! Ne me dis pas que tu vas garder ça !",
+        "Je préfère mourir que de cohabiter avec $food !"
+      ],
+      [
+        "*soupir*",
+        "Dommage"
+      ],
+      [
+        "$food! tout ça pour ça?",
+        "$food, faut jeter ça !!"
+      ],
+      [
+        "$food! Beurkkk, comment on peut manger ça ?",
+        "Soit on le jette, soit on le donne à $other",
+        "J'espère que t'as faim parce que je mange pas ça moi"
+      ],
+      [
+        "Beurk, encore un truc qui va moisir",
+        "Vu que j'en mange pas on peut peut-être le jeter non?"
+      ]
+    ],
+    [
+      [
+        "Oh !! $food ! On en voit pas souvent !"
+      ],
+      [
+        "Ah, Enfin ! $food ! C'est pas trop tôt !"
+      ],
+      [
+        "Oh !! $food ! On en voit pas souvent !"
+      ],
+      [
+        "Oh !! $food ! ah, enfin, pas trop tôt, un met digne de moi"
+      ],
+      [
+        "Oh !! $food ! On en voit pas souvent !"
+      ],
+      [
+        "Oh !! $food ! On en voit pas souvent !"
+      ],
+      [
+        "Oh !! $food ! On est vraiment pas venus pour rien !"
+      ],
+      [
+        "Waw!! $food!! C'est super rare, y a de quoi être super youpi-framboise"
+      ],
+      [
+        "$food!! ça c'est rare!!"
+      ]
+    ],
+    [
+      [
+        "$food !",
+        "Oh, $food",
+        "tiens? $food, on partagera avec $other"
+      ],
+      [
+        "Ho, on dirait $food.",
+        "$food!Tiens? $food, ca faisait longtemps!",
+        "tiens? $food, on partagera avec $other"
+      ],
+      [
+        "Encore $food...",
+        "$food...",
+        "$food, hé ben voila le repas de ce soir",
+        "tiens? $food, on partagera avec $other"
+      ],
+      [
+        "$food !",
+        "$food, c'est déjà ca",
+        "$food, Au moins, ça cale l'estomac",
+        "tiens? $food, on partagera avec $other"
+      ],
+      [
+        "$food !",
+        "Au moins, ça cale l'estomac",
+        "tiens? $food, on partagera avec $other"
+      ],
+      [
+        null,
+        "...",
+        "tiens? $food, on partagera avec $other"
+      ],
+      [
+        "On perd notre temps avec ça",
+        "juste $food",
+        "tiens? $food, on partagera avec $other"
+      ],
+      [
+        "$food !",
+        "$food, Tu crois que c'est bon avec du chocolat ?",
+        "$food, C'est pas mauvais pour ma ligne au moins ?",
+        "Ca va être sympa pour décorer le bocal",
+        "tiens je comptais en acheter chez superfée",
+        "tiens? $food, on partagera avec $other"
+      ],
+      [
+        "$food !",
+        "$food, hé ben voila le repas de ce soir",
+        "tiens? $food, on partagera avec $other"
+      ]
+    ]
+  ],
+  "SENT_GET_ITEM": [
+    [
+      "Cool ! $item !",
+      "$item, ça c'est cool!"
+    ],
+    [
+      "Ah c'est quoi ce truc ?",
+      "Tiens ! Un nouveau machin !",
+      "Houla ! C'est quoi ca ?"
+    ],
+    [
+      "Encore $item !",
+      "$item ? Bof...",
+      "Toujours les mêmes objets...",
+      "Voilà de la nouvelle quincaillerie..."
+    ],
+    [
+      "Grâce à moi on a récupéré $item !",
+      "$item !!! Rien que pour moi !",
+      "$item ! Je l'ai bien mérité...Maintenant c'est à moi"
+    ],
+    [
+      "$item ? Trop de la balle !!",
+      "Avec $item à la main, j'ai peur de rien !",
+      "La vie c'est comme une boîte de chocolat..."
+    ],
+    [
+      null,
+      "$item , J'espère que ça te plaît...",
+      "... "
+    ],
+    [
+      "Bon, on prend ça et on y va",
+      "$item, ça pourra toujours servir"
+    ],
+    [
+      "Waw,$item, mais qu'est ce qu'on va en faire ?",
+      "Oh, c'est quoi ça ?",
+      "Tu crois que c'est utile ?",
+      "$item, je veux tester ça !!!",
+      "Youki je sais pas ce que c'est mais Youki!!"
+    ],
+    [
+      "Ca a une drôle de forme tu crois que ça se mange?",
+      "Ah c'est quoi ce truc ?",
+      "Et ça va m'aider ca?",
+      "Je pourrais me cacher avec tu crois?"
+    ]
+  ],
   "WORD_THIEF": [
     "un colibri envouté",
     "un chat très rapide",
@@ -909,76 +1258,6 @@ const LANGUE = {
     "de Krom le géant malicieux",
     "de Sakurim le dragon des océans",
     "des cruels tournesols des enfers"
-  ],
-  "TRUC": [
-    "un truc",
-    "un machin",
-    "un nouveau truc",
-    "un nouveau machin",
-    "un bidule"
-  ],
-  // Lang.SENT_GET_FOOD — la fée salue l'aliment qui décolle (reactItem).
-  // Quatre rangées : aimé, détesté, rare (dix et plus), ordinaire — puis
-  // l'humeur choisit la ligne. Une case nulle est un silence. Deux paires de
-  // phrases de l'original se touchent sans virgule : le compilateur les
-  // collait en une seule, on les colle pareil.
-  "SENT_GET_FOOD": [
-    [
-      ["Chouette ! $food !", "$food, youpiii"],
-      ["$food ? Ca sent bon !", "$food, hum ça a l'air bon"],
-      ["$food ? On aura pas perdu la journée !", "$food, je vais enfin manger correctement"],
-      ["Héhé, voici ma récompense : $food !!", "$food, je vais me régaler"],
-      ["$food ! C'est super bon !", "$food, ca a l'air bon"],
-      [null, "$food ! Quelle chance !"],
-      ["Hmm, je vais me régaler!", "$food, j'espérais en trouver"],
-      ["$food, Ouais, je vais me régaler j'adore ça, c'est génial", "Au diable le régime, vive la gourmandise!!"],
-      ["$food ? Ca sent bon !", "Chouette ! $food !"]
-    ],
-    [
-      ["$food...", "Dommage, $food"],
-      ["Beurk c'est quoi ça ?", "Oh noooonn!! Pas $food"],
-      ["$food !? Tu as interêt à le jeter!", "fais venir un goûteur, je ne touche pas à ça sans être sûre", "Pouah et tu penses que je vais manger ca?", "Je préfère encore partir si tu n'as que ça à me donner"],
-      ["$food !? Compte pas sur moi pour manger ça !", "Je sens que je vais faire un regime moi!"],
-      ["Mon dieu ! Ne me dis pas que tu vas garder ça !", "Je préfère mourir que de cohabiter avec $food !"],
-      ["*soupir*", "Dommage"],
-      ["$food! tout ça pour ça?", "$food, faut jeter ça !!"],
-      ["$food! Beurkkk, comment on peut manger ça ?", "Soit on le jette, soit on le donne à $other", "J'espère que t'as faim parce que je mange pas ça moi"],
-      ["Beurk, encore un truc qui va moisir", "Vu que j'en mange pas on peut peut-être le jeter non?"]
-    ],
-    [
-      ["Oh !! $food ! On en voit pas souvent !"],
-      ["Ah, Enfin ! $food ! C'est pas trop tôt !"],
-      ["Oh !! $food ! On en voit pas souvent !"],
-      ["Oh !! $food ! ah, enfin, pas trop tôt, un met digne de moi"],
-      ["Oh !! $food ! On en voit pas souvent !"],
-      ["Oh !! $food ! On en voit pas souvent !"],
-      ["Oh !! $food ! On est vraiment pas venus pour rien !"],
-      ["Waw!! $food!! C'est super rare, y a de quoi être super youpi-framboise"],
-      ["$food!! ça c'est rare!!"]
-    ],
-    [
-      ["$food !", "Oh, $food", "tiens? $food, on partagera avec $other"],
-      ["Ho, on dirait $food.", "$food!Tiens? $food, ca faisait longtemps!", "tiens? $food, on partagera avec $other"],
-      ["Encore $food...", "$food...", "$food, hé ben voila le repas de ce soir", "tiens? $food, on partagera avec $other"],
-      ["$food !", "$food, c'est déjà ca", "$food, Au moins, ça cale l'estomac", "tiens? $food, on partagera avec $other"],
-      ["$food !", "Au moins, ça cale l'estomac", "tiens? $food, on partagera avec $other"],
-      [null, "...", "tiens? $food, on partagera avec $other"],
-      ["On perd notre temps avec ça", "juste $food", "tiens? $food, on partagera avec $other"],
-      ["$food !", "$food, Tu crois que c'est bon avec du chocolat ?", "$food, C'est pas mauvais pour ma ligne au moins ?", "Ca va être sympa pour décorer le bocal", "tiens je comptais en acheter chez superfée", "tiens? $food, on partagera avec $other"],
-      ["$food !", "$food, hé ben voila le repas de ce soir", "tiens? $food, on partagera avec $other"]
-    ]
-  ],
-  // Lang.SENT_GET_ITEM — même chose pour un objet, une ligne par humeur.
-  "SENT_GET_ITEM": [
-    ["Cool ! $item !", "$item, ça c'est cool!"],
-    ["Ah c'est quoi ce truc ?", "Tiens ! Un nouveau machin !", "Houla ! C'est quoi ca ?"],
-    ["Encore $item !", "$item ? Bof...", "Toujours les mêmes objets...", "Voilà de la nouvelle quincaillerie..."],
-    ["Grâce à moi on a récupéré $item !", "$item !!! Rien que pour moi !", "$item ! Je l'ai bien mérité...Maintenant c'est à moi"],
-    ["$item ? Trop de la balle !!", "Avec $item à la main, j'ai peur de rien !", "La vie c'est comme une boîte de chocolat..."],
-    [null, "$item , J'espère que ça te plaît...", "... "],
-    ["Bon, on prend ça et on y va", "$item, ça pourra toujours servir"],
-    ["Waw,$item, mais qu'est ce qu'on va en faire ?", "Oh, c'est quoi ça ?", "Tu crois que c'est utile ?", "$item, je veux tester ça !!!", "Youki je sais pas ce que c'est mais Youki!!"],
-    ["Ca a une drôle de forme tu crois que ça se mange?", "Ah c'est quoi ce truc ?", "Et ça va m'aider ca?", "Je pourrais me cacher avec tu crois?"]
   ]
 };
 

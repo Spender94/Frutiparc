@@ -33,7 +33,21 @@ const E = window.MinipixizEngine;
 const CONCENTRATION = (window.MinipixizFee && window.MinipixizFee.CARAC.CONCENTRATION) || 4;
 const BASE = '/minipixiz/';
 const TS = E.TS;
-const IPS = 30;                       // Timer.tmod du jeu d'origine
+/*
+ * La CADENCE du jeu d'origine — quarante images par seconde, pas trente.
+ *
+ * Tout le code de miniTroll compte en `Timer.tmod`, un multiplicateur qui vaut
+ * 1 quand une image dure ce qu'elle doit durer. Reste à savoir combien : le
+ * compteur de mise au point de `Manager.update` le dit sans ambiguïté —
+ *
+ *     Log.print(">>>" + Math.round(400/Timer.tmod)/10)      // = 40 / tmod
+ *
+ * — tmod = 1 affiche « 40 ». Et les trois SWF livrés (minipixiz.swf, full.swf,
+ * root.swf) portent bien 40 dans leur en-tête. Le portage avançait à trente :
+ * chaque chute, chaque sort, chaque particule prenait un tiers de temps de plus
+ * qu'au bureau. C'est ce qui donnait au jeu son air pâteux à côté du Flash.
+ */
+const IPS = 40;                       // Timer.tmod : 1 = une image à 40 i/s
 
 // L'aire de JEU : les deux lignes d'antichambre restent hors cadre.
 const LARGEUR = E.LARGEUR;            // 132
@@ -694,13 +708,67 @@ function poserRendu(ctx, r, x, y) {
   }
 }
 
+/*
+ * L'ÉTOILE de `slotMask` (forme 1208 du SWF), relevée telle quelle.
+ *
+ * Une étoile à cinq branches aux sommets arrondis, pointe en haut, décrite
+ * autour de son point d'ancrage — celui que `fadeSlot` pose au centre de la
+ * scène. Ses coordonnées sont celles de l'échelle 100 %, où elle déborde
+ * largement d'une scène de 240 : c'est voulu, le masque grandit jusqu'à
+ * 113 % avant d'être retiré.
+ */
+const ETOILE = `M 17.7 -298.05 Q 25.55 -292.3 28.55 -283.05 L 80.6 -122.9
+  L 248.95 -122.9 Q 258.6 -122.9 266.5 -117.15 Q 274.4 -111.45 277.45 -102.15
+  Q 280.5 -92.9 277.5 -83.65 Q 274.45 -74.45 266.6 -68.6 L 130.4 30.35
+  L 182.45 190.5 Q 185.45 199.75 182.45 209 Q 179.4 218.25 171.55 224
+  Q 163.65 229.75 153.95 229.75 Q 144.25 229.75 136.3 224.05 L 0 125.05
+  L -136.2 224.05 Q -144.2 229.8 -153.9 229.8 Q -163.6 229.75 -171.5 224
+  Q -179.4 218.25 -182.4 209 Q -185.4 199.75 -182.35 190.5 L -130.35 30.35
+  L -266.55 -68.6 Q -274.45 -74.45 -277.45 -83.65 Q -280.5 -92.9 -277.45 -102.15
+  Q -274.4 -111.45 -266.5 -117.15 Q -258.6 -122.9 -248.95 -122.9 L -80.55 -122.9
+  L -28.5 -283.05 Q -25.5 -292.3 -17.6 -298.05 Q -9.75 -303.8 0.05 -303.8
+  Q 9.8 -303.8 17.7 -298.05 Z`;
+
+// Le tracé, une fois pour toutes : [type, …nombres].
+const ETOILE_TRAITS = (() => {
+  const jetons = ETOILE.trim().split(/[\s,]+/);
+  const traits = [];
+  for (let i = 0; i < jetons.length;) {
+    const t = jetons[i++];
+    if (t === 'Z') { traits.push(['Z']); continue; }
+    const n = t === 'Q' ? 4 : 2;
+    const v = [];
+    for (let k = 0; k < n; k++) v.push(parseFloat(jetons[i++]));
+    traits.push([t, ...v]);
+  }
+  return traits;
+})();
+
+function tracerEtoile(g, cx, cy, k) {
+  g.beginPath();
+  for (const t of ETOILE_TRAITS) {
+    if (t[0] === 'M') g.moveTo(cx + t[1] * k, cy + t[2] * k);
+    else if (t[0] === 'L') g.lineTo(cx + t[1] * k, cy + t[2] * k);
+    else if (t[0] === 'Q') {
+      g.quadraticCurveTo(cx + t[1] * k, cy + t[2] * k, cx + t[3] * k, cy + t[4] * k);
+    } else g.closePath();
+  }
+}
+
 /**
  * Manager.fadeSlot — l'IRIS, la transition du jeu : le nouvel écran se révèle
- * dans un cercle qui grandit depuis le point touché et glisse vers le centre,
- * bordé d'un anneau de lumière. `checkFade` : prc += 0,2 par image puis ×1,2.
+ * dans une ÉTOILE qui grandit depuis le point touché et glisse vers le centre,
+ * bordée d'un halo lui aussi en étoile. `checkFade` : prc += 0,2 par image puis
+ * ×1,2 — vingt-quatre images, six dixièmes de seconde.
  *
  * On photographie l'ANCIEN écran, on le pose sur le nouveau, et on y perce le
- * trou qui grandit. Quand le cercle a tout couvert, l'iris se retire.
+ * trou qui grandit. Passé cent pour cent, le masque est retiré d'un coup : les
+ * derniers coins d'ancien écran, entre les branches, disparaissent d'un bloc —
+ * c'est ce que fait le jeu d'origine, `removeMovieClip` sans fondu.
+ *
+ * Le halo est `slotMaskLight` : la MÊME étoile deux fois, sous le nouvel écran,
+ * donc visible seulement en débordement — blanche pleine à 1,109 fois le
+ * masque, blanche à moitié transparente à 1,213 fois.
  */
 class Iris {
   constructor(source, x, y) {
@@ -720,33 +788,34 @@ class Iris {
   dessiner(ctx, tmod) {
     this.prc += 0.2 * tmod;
     this.prc *= Math.pow(1.2, tmod);
-    if (this.prc > 105) return false;
-    const c = Math.min(1, this.prc / 100);
+    // `mask._x = 120·c + x0·(1−c)` : l'étoile part du point touché et glisse
+    // vers le centre à mesure qu'elle grandit.
+    const c = this.prc / 100;
     const cx = SCENE / 2 * c + this.x * (1 - c);
     const cy = SCENE / 2 * c + this.y * (1 - c);
-    // À 100 %, le cercle doit couvrir les coins : 170 px depuis le centre.
-    const r = (this.prc / 100) * 175;
+    const k = Math.max(0, c);
     const g = this.tampon.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.globalCompositeOperation = 'source-over';
     g.clearRect(0, 0, SCENE, SCENE);
     g.drawImage(this.img, 0, 0);
-    g.globalCompositeOperation = 'destination-out';
-    g.beginPath();
-    g.arc(cx, cy, Math.max(0, r), 0, 6.2832);
-    g.fill();
-    ctx.drawImage(this.tampon, 0, 0, SCENE, SCENE);
-    // L'anneau de lumière au bord de l'ouverture (slotMaskLight).
-    if (r > 1) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,240,0.55)';
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r + 2, 0, 6.2832);
-      ctx.stroke();
-      ctx.restore();
+    // Le halo, sur l'ancien écran : la grande étoile à demi transparente, puis
+    // la moyenne, pleine. Le trou percé juste après en découpera le cœur.
+    if (k > 0.01) {
+      g.fillStyle = 'rgba(255,255,255,0.5)';
+      tracerEtoile(g, cx, cy, k * 1.213);
+      g.fill();
+      g.fillStyle = '#ffffff';
+      tracerEtoile(g, cx, cy, k * 1.109);
+      g.fill();
+      g.globalCompositeOperation = 'destination-out';
+      tracerEtoile(g, cx, cy, k);
+      g.fill();
     }
-    return true;
+    ctx.drawImage(this.tampon, 0, 0, SCENE, SCENE);
+    // `if( fadePrc > 100 ) removeMovieClip()` — l'image de l'excès est bien
+    // dessinée, puis tout s'efface d'un coup.
+    return this.prc <= 100;
   }
 }
 
@@ -820,8 +889,6 @@ class Client {
     this.sprites = o.sprites;
     this.surEvenement = o.surEvenement || null;
     this.entree = { gauche: false, droite: false, bas: false, tourner: false };
-    this.message = null;
-    this.messageT = 0;
     this.dernier = 0;
     this.reste = 0;
     // La fée qui accompagne la partie, et l'heure qu'il est dans le jeu.
@@ -1113,7 +1180,6 @@ class Client {
     const px = (gx) => (this.jeu ? this.jeu.posX(gx + 0.5) : E.MARGE_GAUCHE + (gx + 0.5) * TS);
     const py = (gy) => (this.jeu ? this.jeu.posY(gy + 0.5) : E.MARGE_HAUT + (gy + 0.5) * TS);
     switch (nom) {
-      case 'destruction': this.message = null; break;
       case 'etoile': eclater(px(d.x), py(d.y), 24, '#ffffff', 3.2); break;
       case 'pierreCassee': eclater(px(d.x), py(d.y), 10, '#d8d2bb', 2.4); break;
       case 'pierreEntamee': eclater(px(d.x), py(d.y), 4, '#d8d2bb', 1.6); break;
@@ -1207,18 +1273,17 @@ class Client {
         eclater(px(d.deX), py(d.deY), 8, '#ffffff', 2.2);
         eclater(px(d.x), py(d.y), 10, couleurCss(E.COULEURS[d.couleur] || 0xffffff), 2.6);
         break;
-      case 'score':
-        if (d.chaine > 1) { this.message = 'chaîne ×' + d.chaine + '  +' + d.gagne; this.messageT = 50; }
-        break;
-      case 'couleurFinie': this.message = 'couleur terminée !'; this.messageT = 60; break;
+      // Game.checkFallStats : le seul écho d'une cascade est la VOIX de la fée.
+      case 'score': this.reactCombo(d.gagne); break;
       default: break;
     }
     const dest = cible || this.surEvenement;
     if (dest) dest(nom, d);
   }
 
-  // La boucle. Le jeu d'origine tourne à 30 images par seconde et ses tirages en
-  // dépendent : on avance par pas d'UNE image nominale, jamais à moitié.
+  // La boucle. Le jeu d'origine tourne à quarante images par seconde (voir IPS)
+  // et ses tirages en dépendent : on avance par pas d'UNE image nominale,
+  // jamais à moitié.
   demarrer() {
     if (this.raf) return;
     const boucle = (t) => {
@@ -1724,6 +1789,22 @@ class Client {
    * fois. Sa rangée d'HUMEUR décide de ce qu'elle dit — et les trous de la
    * rangée sont ses silences.
    */
+  /**
+   * FaerieInfo.reactCombo — ce que le jeu d'origine fait d'une cascade.
+   *
+   * `Game.checkFallStats` additionne les maillons pondérés par leur rang
+   * (`fs.list[i] × (i+1)`) et passe la somme à `faerieList[0].fi.reactCombo` :
+   * au-delà de seize, la fée félicite ; au-delà de trente-six, elle s'emballe.
+   * Sous seize, elle ne dit rien — et dans TOUS les cas, pas un chiffre ne
+   * s'affiche. Les deux répliques se choisissent dans la rangée de son humeur,
+   * si bien qu'une fée aigrie sait aussi bien dénigrer le coup que l'applaudir.
+   */
+  reactCombo(somme) {
+    const L = window.MinipixizLangue || {};
+    if (somme > 36) this.react(L.SUPER_COMBO_CHEER);
+    else if (somme > 16) this.react(L.COMBO_CHEER);
+  }
+
   react(rangees) {
     const fee = this.fee;
     if (!fee || !rangees) return;
@@ -1823,11 +1904,13 @@ class Client {
     ctx.textBaseline = 'top';
     let ty = y + 4;
     for (const l of lignes) { ctx.fillText(l, x + w / 2, ty); ty += 11; }
-    // Le portrait de la parleuse, dans son médaillon, à gauche de la bulle.
-    if (this.fee) {
-      if (!d.portrait) d.portrait = portraitDeFee(this.sprites, this.fee, 34);
-      ctx.drawImage(d.portrait, x - 40, y - 4);
-    }
+    // Et RIEN d'autre. Le médaillon de la parleuse — `Dialog.setPic`, qui
+    // accroche « mcDialogPicture » à quarante-quatre pixels sur la gauche — n'a
+    // qu'un seul appelant dans tout le jeu : `Menu.attachDialog`, la clairière,
+    // où la fée n'a pas de cadre à elle et où la pointe est justement masquée.
+    // En partie, `Aventure.attachDialog` ne pose que le panneau et sa pointe,
+    // qu'il vise sur x = 190 — le cadre du portrait. Redessiner la fée à côté
+    // de sa propre bulle doublait ce que la pointe désignait déjà.
   }
 
   /**
@@ -1974,7 +2057,8 @@ class Client {
     // faut jamais la perdre de vue.
     if (bassin.bulle) this.dessinerBulle(ctx, bassin.bulle);
     bougerEclats(ctx, tmod);
-    this.dessinerMessage(ctx, tmod);
+    // Rien d'écrit ici non plus : `base/Fountain.mt` n'a pas un seul champ de
+    // texte, et le bassin partage le checkFallStats de tout le monde.
   }
 
   /**
@@ -2006,7 +2090,6 @@ class Client {
     this.dessinerAscenseur(ctx, true);
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_MILIEU, 100), 0, 0);
     if (this.champ && this.champ.faerieList.length) this.dessinerInterface(ctx, tmod);
-    else this.dessinerMessage(ctx, tmod);
     const col = lieu.colonneSuivantes;
     if (col) this.dessinerSuivantes(ctx, col.x, col.y, col.echelle, col.image, col.nombre);
     this.dessinerEnteteLieu(ctx);
@@ -2441,8 +2524,17 @@ class Client {
   // La colonne de droite : le portrait de la fée, son mana, sa vie, et sous
   // elle la pièce suivante et l'objectif du niveau.
   dessinerInterface(ctx, tmod) {
-    const jeu = this.jeu, s = this.sprites;
+    const s = this.sprites;
     const fee = this.fee;
+
+    // SANS FÉE, RIEN. `base/Forest.launch` — comme Dungeon.init et
+    // Rainbow.init — n'appelle `initFaerieInterface()` que sous
+    // `fi.isReadyForBattle()` : le cadre du portrait, la goutte de mana et les
+    // cœurs sont créés ENSEMBLE, à ce moment-là, ou jamais. Partir sans fée
+    // (ou la laisser endormie, malade, à bout de moral) laisse la colonne de
+    // droite nue — le montant de bois, lui, reste : c'est `interfaceRacine`,
+    // une peau du décor posée à part, et non un morceau de cette interface.
+    if (!fee) return;
 
     // La PEAU de l'interface : la forêt garde la première, le donjon prend la
     // deuxième, l'arc-en-ciel la troisième — et ces deux-là ajoutent en plus dix
@@ -2455,11 +2547,9 @@ class Client {
     const sCoeur = s['coeur' + suf] || s.coeur;
 
     // ── LE PORTRAIT (inter.Face) ──
-    // Le cadre est là même sans fée : c'est un élément du décor, et son absence
-    // creuserait un trou dans le panneau.
     // Combien de pièces à venir la fée laisse-t-elle voir ? Sa concentration en
     // décide, et c'est aussi ce qui décale son portrait vers la droite.
-    const voitVenir = fee ? Math.floor((fee.carac[CONCENTRATION] || 0) * 0.5) : 0;
+    const voitVenir = Math.floor((fee.carac[CONCENTRATION] || 0) * 0.5);
     const align = voitVenir > 0 ? 1 : FACE_ALIGN;
     const cx = boite.portrait.x + (boite.portrait.l - boite.portrait.l * FACE_ECHELLE) * align;
     const cy = boite.portrait.y;
@@ -2542,24 +2632,12 @@ class Client {
     // score n'existent nulle part à l'écran : `inter.Score` est déclaré mais
     // jamais instancié, et la pièce à venir se lit DANS le cadre du portrait
     // (mcNext), quand la concentration de la fée la laisse voir.
-
-    this.dessinerMessage(ctx, tmod);
-  }
-
-  // Le bandeau qui annonce une chaîne ou une couleur finie. Les deux modes s'en
-  // servent, d'où sa place à part.
-  dessinerMessage(ctx, tmod) {
-    if (!(this.messageT > 0) || !this.message) return;
-    this.messageT -= tmod;
-    const l = this.bassin ? SCENE : LARGEUR;
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 10px Verdana, Arial, sans-serif';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(10,40,25,.9)';
-    ctx.strokeText(this.message, l / 2, HAUTEUR / 2 - 20);
-    ctx.fillStyle = '#ffd76a';
-    ctx.fillText(this.message, l / 2, HAUTEUR / 2 - 20);
-    ctx.textAlign = 'left';
+    //
+    // Et aucun NOMBRE ne vole non plus au milieu du plateau : une cascade ne
+    // s'annonce que par la voix de la fée (voir `reactCombo`), une couleur
+    // épuisée par rien du tout — `Game.updatecolorList` lève un simple drapeau
+    // interne, `flColorKill`, qui ne sert qu'à couper la recharge de mana du
+    // tour (`Aventure.getManaReplenishCoef`).
   }
 
   // La scène est carrée (240 × 240, Cs.mcw × Cs.mch) : on l'agrandit du facteur

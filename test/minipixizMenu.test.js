@@ -220,7 +220,8 @@ test('la page ouvre le menu en premier, et la forêt part de là', () => {
   assert.match(html, /<canvas id="menu-stage" width="240" height="240">/);
   assert.match(html, /src="\/minipixiz\/menu\.js"/);
   assert.match(html, /new window\.MinipixizMenu\.Menu\(/);
-  assert.match(html, /ouvrirMenu\(\);\s*\n\s*client\.demarrer\(\);/,
-    'c\'est le menu qui s\'ouvre au démarrage, pas la partie');
+  // C'est le menu qui s'ouvre au démarrage, pas la partie — et il s'ouvre dans
+  // l'étoile de `fadeSlot("menu", 120, 120)`, par-dessus l'écran-titre.
+  assert.match(html, /ouvrirMenu\(\);\s*\n\s*menu\.iris = new window\.MinipixizClient\.Iris\(photoTitre, 120, 120\);\s*\n\s*client\.demarrer\(\);/);
   assert.match(html, /if \(lieu\.va === 'foret'\)/, 'et la forêt s\'ouvre depuis le menu');
 });

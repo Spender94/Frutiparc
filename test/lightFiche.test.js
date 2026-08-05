@@ -269,9 +269,18 @@ test('Minipixiz et Miniwave sont posés sur le vert du bureau', () => {
       jeu + ' : le fond de page est vert');
     assert.ok(!/background: #150f28|background: #0b1424|background: #070b18/.test(html),
       jeu + ' : plus un seul fond bleu nuit');
-    // L'écran de chargement suit, avec une encre lisible sur le vert.
-    assert.match(html, /#chargement \{[\s\S]{0,200}background: #ADE76B; color: #2c4a0f;/,
-      jeu + ' : le chargement aussi, en encre sombre');
+    // L'écran de chargement suit, avec une encre lisible sur le vert — SAUF
+    // pour Minipixiz, qui a le sien : le sprite « loading » du SWF, fond
+    // lavande et logo calligraphié, par-dessus lequel la clairière s'ouvre en
+    // étoile. Reprendre le vert du bureau y effacerait l'ouverture du jeu.
+    if (jeu === 'minipixiz') {
+      assert.match(html, /#chargement \{[\s\S]{0,220}background: #ac9dec;/,
+        jeu + ' : le chargement est l\'écran-titre du jeu');
+      assert.match(html, /titre-logo\.svg/, jeu + ' : avec son logo');
+    } else {
+      assert.match(html, /#chargement \{[\s\S]{0,200}background: #ADE76B; color: #2c4a0f;/,
+        jeu + ' : le chargement aussi, en encre sombre');
+    }
   }
 });
 

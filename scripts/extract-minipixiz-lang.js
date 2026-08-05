@@ -48,6 +48,57 @@ function liste(nom) {
   return [...corps.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
 }
 
+/*
+ * Le TABLEAU IMBRIQUÉ, lu comme le compilateur d'origine le lisait.
+ *
+ * `liste` et `rangs` ramassent les guillemets à plat : cela suffit tant que le
+ * tableau a une ou deux profondeurs et que chaque phrase est écrite d'un seul
+ * tenant. Deux listes échappent aux deux règles. SENT_GET_FOOD compte TROIS
+ * étages (aimé / détesté / rare / ordinaire, puis l'humeur, puis les variantes)
+ * et surtout, à deux endroits, l'auteur a oublié une virgule :
+ *
+ *     [ "Ho, on dirait $food.", "$food!" "Tiens? $food, ca faisait longtemps!" ]
+ *
+ * Deux littéraux qui se touchent — le compilateur de Motion-Twin les COLLE en
+ * une seule phrase, et le jeu d'origine dit donc « $food!Tiens? $food, ca
+ * faisait longtemps! ». Les découper en deux répliques serait plus propre et
+ * moins fidèle : on colle pareil.
+ */
+function tableau(nom, profondeur) {
+  const debut = texte.indexOf('static var ' + nom);
+  if (debut < 0) throw new Error('tableau introuvable : ' + nom);
+  const ouvre = texte.indexOf('[', debut);
+  return corpsDeTableau(texte.slice(ouvre + 1, fermant(ouvre, '[', ']')), profondeur);
+}
+
+function corpsDeTableau(corps, profondeur) {
+  const sortie = [];
+  if (profondeur === 1) {
+    // Les feuilles : `null`, ou des littéraux dont les ADJACENTS se collent.
+    let colle = false;
+    for (const m of corps.matchAll(/null|,|"((?:[^"\\]|\\.)*)"/g)) {
+      if (m[0] === ',') { colle = false; continue; }
+      if (m[0] === 'null') { sortie.push(null); colle = false; continue; }
+      if (colle && sortie.length) sortie[sortie.length - 1] += m[1];
+      else sortie.push(m[1]);
+      colle = true;                    // pas de virgule depuis : le suivant colle
+    }
+    return sortie;
+  }
+  for (let i = 0; i < corps.length; i++) {
+    if (corps[i] !== '[') continue;
+    let n = 0, f = -1;
+    for (let k = i; k < corps.length; k++) {
+      if (corps[k] === '[') n++;
+      else if (corps[k] === ']') { n--; if (n === 0) { f = k; break; } }
+    }
+    if (f < 0) break;
+    sortie.push(corpsDeTableau(corps.slice(i + 1, f), profondeur - 1));
+    i = f;
+  }
+  return sortie;
+}
+
 // Les huit canevas de mission : un type, les caractéristiques mises à
 // l'épreuve, et quatre phrases — titre, énoncé, réussite, échec.
 function missions() {
@@ -119,10 +170,23 @@ const donnees = {
   // Ce que la fée DIT : sa rangée d'humeur, dans chaque liste.
   CLOUD_SHAPE: liste('CLOUD_SHAPE'),
   END_CHEER: rangs('endCheerList'),
+  // FaerieInfo.reactCombo : au-dessus de seize points de cascade la fée
+  // félicite, au-dessus de trente-six elle s'emballe. C'est le SEUL écho d'une
+  // chaîne réussie dans le jeu d'origine — aucun nombre ne s'affiche.
+  COMBO_CHEER: rangs('comboCheerList'),
+  SUPER_COMBO_CHEER: rangs('superComboCheerList'),
   AMBIANCE_NORMAL: rangs('SENT_GAME_AMBIENT_NORMAL'),
   AMBIANCE_FINISH: rangs('SENT_GAME_AMBIENT_FINISH'),
   AMBIANCE_BATTLE: rangs('SENT_GAME_AMBIENT_BATTLE'),
   AMBIANCE_STRESS: rangs('SENT_GAME_AMBIENT_STRESS'),
+  // Ce que la fée dit d'un objet qui DÉCOLLE (FaerieInfo.reactItem). Un aliment
+  // (type ≥ 300) passe par SENT_GET_FOOD : quatre rangées — aimé, détesté, rare
+  // (identifiant ≥ 10), ordinaire — puis l'humeur choisit la ligne, puis le
+  // hasard la variante. Tout le reste passe par SENT_GET_ITEM, une rangée par
+  // humeur. TRUC sert aux objets qu'elle ne sait pas nommer.
+  TRUC: liste('TRUC'),
+  SENT_GET_FOOD: tableau('SENT_GET_FOOD', 3),
+  SENT_GET_ITEM: tableau('SENT_GET_ITEM', 2),
 };
 for (const m of MOTS) donnees[m] = liste(m);
 
@@ -153,6 +217,23 @@ const entete = `/*
 const LANGUE = `;
 
 const pied = `;
+
+// Lang.getItemFamily — comment la fée NOMME un objet qu'elle ne connaît pas :
+// par sa famille, jamais par son nom exact.
+LANGUE.getItemFamily = function (n, alea) {
+  const hasard = alea || Math.random;
+  if (n >= 0 && n < 30) return "un objet magique";
+  if (n >= 40 && n < 50) return LANGUE.TRUC[Math.floor(hasard() * LANGUE.TRUC.length)];
+  if (n >= 50 && n < 60) return "une orbe";
+  if (n >= 60 && n < 70) return LANGUE.TRUC[Math.floor(hasard() * LANGUE.TRUC.length)] + " coloré";
+  if (n >= 70 && n < 80) return "une potion";
+  if (n >= 80 && n < 90) return "un nouveau sac";
+  if (n >= 100 && n < 200) return "un parchemin";
+  if (n >= 200 && n < 300) return "un livre";
+  if (n === 30) return "un bocal";
+  if (n === 31) return "une clé";
+  return "un Kouglof";
+};
 
 if (typeof module !== 'undefined' && module.exports) module.exports = LANGUE;
 else racine.MinipixizLangue = LANGUE;

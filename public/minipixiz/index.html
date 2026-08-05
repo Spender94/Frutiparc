@@ -16,6 +16,17 @@
   ?sid= pour la persistance plateforme.
 -->
 <style>
+  /* La police du jeu, tirée du SWF d'origine — voir scripts/extract-swf-font.js.
+     Le titre des lieux de la clairière est écrit en « Atlantis » 32 px, une
+     display Art Nouveau que Motion-Twin avait EMBARQUÉE dans le fichier : elle
+     n'existe sur aucune machine, et sans elle le portage tombait sur Verdana.
+     `font-display: block` plutôt que `swap` : mieux vaut attendre le titre que
+     le voir changer de fonte sous les yeux. */
+  @font-face {
+    font-family: 'Atlantis';
+    src: url('/minipixiz/atlantis.woff') format('woff');
+    font-display: block;
+  }
   html, body {
     margin: 0; padding: 0; height: 100%;
     background: #ADE76B;
@@ -67,13 +78,37 @@
   #manette button.on { transform: scale(.95); background: #5a45a0; }
   #manette button.bas.on { background: #4b7a26; }
 
+  /* L'ÉCRAN-TITRE (sprite « loading » du SWF, une seule image fixe) : fond
+     lavande #ac9dec, le logo calligraphié en #34428d, et « chargement en
+     cours » posé dessus — une bande de la couleur du fond efface au passage
+     les fioritures basses du logo pour dégager la ligne. Les mesures sont
+     celles de la timeline du sprite : le logo en (16.05, 73.85), la bande en
+     (35.95, 126.95), le texte en (43.95, 124.25) sur une scène de 240.
+     La barre de progression, elle, n'est pas du jeu : le SWF avait son propre
+     préchargeur avec son pourcentage. On la garde, discrète et aux couleurs
+     de l'écran, parce que le portage charge cinq cents dessins. */
   #chargement {
     position: fixed; inset: 0; z-index: 5;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-    background: #ADE76B; color: #2c4a0f; font-size: 13px; letter-spacing: 2px;
+    display: flex; align-items: center; justify-content: center;
+    background: #ac9dec;
   }
-  #chargement .barre { width: 200px; height: 10px; border: 2px solid #2c4a0f; border-radius: 6px; overflow: hidden; }
-  #chargement .barre > div { height: 100%; width: 0; background: #4e8030; transition: width .12s; }
+  #chargement .scene {
+    position: relative;
+    width: 240px; height: 240px;
+    transform-origin: center;
+  }
+  #chargement .logo { position: absolute; left: 16.05px; top: 73.85px; width: 207.6px; height: 82px; }
+  #chargement .bande { position: absolute; left: 35.95px; top: 126.95px; width: 159.3px; height: 18.2px; }
+  #chargement .mot {
+    position: absolute; left: 43.95px; top: 124.25px;
+    font-family: 'Atlantis', Verdana, sans-serif; font-size: 20px; color: #34428d;
+    white-space: nowrap;
+  }
+  #chargement .barre {
+    position: absolute; left: 43.95px; top: 156px; width: 152px; height: 3px;
+    background: rgba(52,66,141,.22); border-radius: 2px; overflow: hidden;
+  }
+  #chargement .barre > div { height: 100%; width: 0; background: #34428d; transition: width .12s; }
 
   @media (min-width: 700px) and (pointer: fine) {
     #manette { display: none; }
@@ -258,9 +293,27 @@
 </div>
 
 <div id="chargement">
-  <div>MINIPIXIZ</div>
-  <div class="barre"><div id="jauge"></div></div>
+  <div class="scene" id="scene-titre">
+    <img class="logo" src="/minipixiz/titre-logo.svg" alt="MiniPixiz">
+    <img class="bande" src="/minipixiz/titre-bande.svg" alt="">
+    <div class="mot">chargement en cours</div>
+    <div class="barre"><div id="jauge"></div></div>
+  </div>
 </div>
+<script>
+  // L'écran-titre est dessiné aux mesures de la scène (240 × 240) : on l'agrandit
+  // du même facteur que le canevas du jeu, pour qu'il ne saute pas à l'ouverture.
+  (function () {
+    var scene = document.getElementById('scene-titre');
+    function tailler() {
+      var k = Math.min(window.innerWidth, window.innerHeight) / 240;
+      var entier = Math.floor(k);
+      scene.style.transform = 'scale(' + ((entier >= 1 && entier / k >= 0.8) ? entier : k) + ')';
+    }
+    tailler();
+    window.addEventListener('resize', tailler);
+  })();
+</script>
 
 <!-- La carte de la forêt : un relais par vingt niveaux franchis. -->
 <script src="/minipixiz/engine.js"></script>
@@ -383,6 +436,36 @@
     return (s % 86400000) / 86400000;
   }
 
+  /**
+   * L'écran-titre, redessiné sur un canevas de 240 × 240 — le clip `loading`
+   * du SWF, à ses mesures : fond lavande, logo, bande qui efface les
+   * fioritures, et la ligne de texte dont la base tombe à 16 pixels sous le
+   * coin du champ (le décalage du premier glyphe du DefineText).
+   *
+   * C'est cette image que l'iris percera. Les deux dessins viennent du
+   * fichier d'origine (scripts/extract-swf-shapes.js, formes 1203 et 1205) et
+   * sont déjà dans la page : les redemander ici ne coûte rien.
+   */
+  function photographierTitre() {
+    var c = document.createElement('canvas');
+    c.width = 240; c.height = 240;
+    var g = c.getContext('2d');
+    g.fillStyle = '#ac9dec';
+    g.fillRect(0, 0, 240, 240);
+    var logo = document.querySelector('#chargement .logo');
+    var bande = document.querySelector('#chargement .bande');
+    try {
+      if (logo && logo.complete) g.drawImage(logo, 16.05, 73.85, 207.6, 82);
+      if (bande && bande.complete) g.drawImage(bande, 35.95, 126.95, 159.3, 18.2);
+    } catch (e) { /* une image pas encore décodée : le fond suffit */ }
+    g.font = '20px Atlantis, Verdana, sans-serif';
+    g.fillStyle = '#34428d';
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    g.fillText('chargement en cours', 47.95, 140.25);
+    return c;
+  }
+
   fetch('/minipixiz/sprites/sprites.json')
     .then(function (r) { return r.json(); })
     .then(function (sprites) {
@@ -390,10 +473,21 @@
         window.MinipixizClient.charger(sprites, function (p) {
           $('#jauge').style.width = Math.round(p * 100) + '%';
         }),
-        plateforme.charger()
+        plateforme.charger(),
+        // Le canevas ne redessine rien tout seul quand une police arrive : si on
+        // ne l'attend pas ici, le premier titre de la clairière part en Verdana
+        // et n'est jamais repeint. Une police manquante ne doit pas retenir le
+        // jeu pour autant.
+        (document.fonts && document.fonts.load
+          ? document.fonts.load('32px Atlantis').catch(function () {})
+          : Promise.resolve())
       ]).then(function () { return sprites; });
     })
     .then(function (sprites) {
+      // Manager.connected : la clairière ne remplace pas l'écran-titre, elle
+      // s'OUVRE dedans. On photographie donc le titre AVANT de l'effacer, pour
+      // que l'étoile de `fadeSlot` ait un ancien écran à percer.
+      var photoTitre = photographierTitre();
       $('#chargement').style.display = 'none';
 
       client = new window.MinipixizClient.Client({
@@ -882,8 +976,11 @@
       })();
 
       // On ouvre sur la clairière — c'est l'écran d'accueil du jeu. La forêt ne
-      // se lance qu'en la touchant.
+      // se lance qu'en la touchant. Et elle s'ouvre comme dans le jeu d'origine :
+      // `Manager.connected()` fait `fadeSlot("menu", 120, 120)`, l'étoile qui
+      // grandit depuis le centre exact de la scène par-dessus l'écran-titre.
       ouvrirMenu();
+      menu.iris = new window.MinipixizClient.Iris(photoTitre, 120, 120);
       client.demarrer();
 
       window.minipixizClient = client;   // utile aux vérifications automatisées
