@@ -48,29 +48,32 @@
     box-shadow: 0 0 0 2px #1d2a48, 0 8px 30px rgba(0,0,0,.6);
   }
 
-  /* ── Manette ──
-     Deux grandes zones de direction et un gros bouton de tir. Les cibles font
-     au moins 64 px : on joue avec les pouces, en tenant le téléphone. */
+  /* ── La bande tactile ──
+     Pas de boutons : le pouce posé sur la bande PILOTE — la position X du
+     vaisseau est celle du doigt, le tir est continu tant qu'il est posé (la
+     cadence reste celle du vaisseau), un double-tap lance la spéciale. */
   #manette {
     flex: 0 0 auto;
-    display: flex; align-items: center; justify-content: center; gap: 14px;
+    display: flex; align-items: stretch; justify-content: center;
     padding: 0 12px 12px;
     width: 100%; max-width: 460px; box-sizing: border-box;
   }
-  #manette button {
-    flex: 1 1 0; height: 72px; min-width: 64px;
-    border: 0; border-radius: 16px;
-    background: #1d2a48; color: #cfe8a0;
-    font-size: 26px; font-weight: bold; font-family: inherit;
-    cursor: pointer; -webkit-tap-highlight-color: transparent;
-    transition: background .08s, transform .08s;
+  #pave-tactile {
+    flex: 1 1 auto; height: 96px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #1d2a48, #16203a);
+    box-shadow: inset 0 0 0 2px rgba(143,208,255,.18);
+    display: flex; align-items: center; justify-content: center;
+    cursor: crosshair; -webkit-tap-highlight-color: transparent;
+    touch-action: none; user-select: none;
+    transition: box-shadow .08s;
   }
-  #manette button.tir { flex: 1.4 1 0; background: #2f4a1c; color: #bff18d; font-size: 15px; letter-spacing: 1px; }
-  /* La bombe ne sert qu'une fois par vaisseau : un bouton plus étroit, à part. */
-  #manette button.bombe { flex: 0.7 1 0; min-width: 52px; background: #4a3a1c; font-size: 20px; }
-  #manette button.bombe.on { background: #7a5f26; }
-  #manette button.on { background: #3a5480; transform: scale(.96); }
-  #manette button.tir.on { background: #4b7a26; }
+  #pave-tactile.on { box-shadow: inset 0 0 0 2px rgba(191,241,141,.6); }
+  #pave-tactile .mode-emploi {
+    color: #6d7fa8; font-size: 11px; text-align: center; line-height: 1.6;
+    pointer-events: none;
+  }
+  #pave-tactile.on .mode-emploi { opacity: .35; }
 
   /* Coupe-son, discret en haut à droite : on joue souvent en silence. */
   #muet {
@@ -142,11 +145,10 @@
 
 <div id="tout">
   <div id="aire"><canvas id="stage" width="240" height="240"></canvas></div>
-  <div id="manette">
-    <button type="button" data-cmd="gauche" aria-label="Gauche">◀</button>
-    <button type="button" class="tir" data-cmd="tir" aria-label="Tirer">TIR</button>
-    <button type="button" class="bombe" data-cmd="bombe" aria-label="Bombe">💣</button>
-    <button type="button" data-cmd="droite" aria-label="Droite">▶</button>
+  <div id="manette" aria-label="Zone de pilotage tactile">
+    <div id="pave-tactile">
+      <span class="mode-emploi">glisse ton pouce — le vaisseau le suit et tire<br>double-tap : l'attaque spéciale</span>
+    </div>
   </div>
   <div id="clavier"></div>
   <button type="button" id="muet" aria-label="Couper le son">🔊</button>
@@ -238,6 +240,9 @@
     client.nouvellePartie({
       mode: l.mode, niveaux: l.niveaux, vies: l.vies,
       ship: escadron[0] || 0, missionNum: l.missionNum, prime: l.prime, nom: l.nom,
+      // Le compteur en jeu affiche portefeuille + récolte : le même nombre que
+      // le bureau, dont Game.incCred crédite la fiche en direct.
+      portefeuille: Number(plateforme.carte.$credit) || 0,
     });
     // page/SelectShip : l'escadron est une LISTE de vaisseaux, consommée dans
     // l'ordre. Le moteur en remplit une d'un seul type ; on pose la vraie.

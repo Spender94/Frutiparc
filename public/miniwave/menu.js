@@ -441,6 +441,14 @@ class Interface {
   choisirVaisseau(n) {
     const e = this.escadron;
     if (!e) return;
+    // box/ShipDemo.select : après un choix, le bouton du vaisseau disparaît —
+    // SAUF pour le basique (id 0), que le jeu ré-attache aussitôt. Un escadron
+    // ne compte donc jamais deux fois le même vaisseau, hormis l'aliquet.
+    if (n !== 0 && e.choix.indexOf(n) >= 0) {
+      this.surSon('refus');
+      this.dire('Un seul ' + (P.VAISSEAUX[n] || 'vaisseau') + ' par escadron !');
+      return;
+    }
     e.choix.push(n);
     if (e.choix.length >= e.lancement.vies) return this.lancer(e.lancement, e.choix.slice());
     // Rien d'autre à faire : le décompte et l'escadron se relisent à l'image
@@ -555,9 +563,15 @@ class Interface {
     }
 
     if (b.vaisseau !== undefined) {
+      // box/ShipDemo : un vaisseau déjà enrôlé (sauf le basique) a quitté son
+      // hangar — la case s'éteint, et choisirVaisseau refuse de toute façon.
+      const enrole = this.escadron && b.vaisseau !== 0
+        && this.escadron.choix.indexOf(b.vaisseau) >= 0;
+      if (enrole) ctx.globalAlpha = 0.25;
       this.poser(ctx, this.sprites['hero' + b.vaisseau], 1, b.x + b.w / 2, b.y + b.h / 2 - 6, 1.6);
       ctx.font = '7px Verdana, Arial, sans-serif';
-      ctx.fillText(b.texte, b.x + b.w / 2, b.y + b.h - 8);
+      ctx.fillText(enrole ? 'parti !' : b.texte, b.x + b.w / 2, b.y + b.h - 8);
+      if (enrole) ctx.globalAlpha = 1;
       return;
     }
 

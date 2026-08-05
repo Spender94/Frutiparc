@@ -314,6 +314,15 @@ class Hero extends Sprite {
 
   commander(tmod) {
     const e = this.jeu.entree;
+    // Pilotage tactile : la position X du vaisseau est celle du pouce sur la
+    // bande, en absolu — le doigt EST le vaisseau, pas un bouton de direction.
+    // Sous l'EMP de la Prune, les commandes s'inversent (`sens`) : l'équivalent
+    // absolu est le MIROIR — le vaisseau va à l'opposé du pouce.
+    if (e.cibleX !== undefined && e.cibleX !== null) {
+      const cible = (this.sens < 0) ? (LARGEUR - e.cibleX) : e.cibleX;
+      this.x = Math.max(this.jeu.shipBounds.min + this.ray,
+        Math.min(cible, this.jeu.shipBounds.max - this.ray));
+    }
     if (e.gauche) {
       this.x = Math.max(this.x - this.speed * this.sens * tmod, this.jeu.shipBounds.min + this.ray);
     }
@@ -427,12 +436,14 @@ class Shot extends Sprite {
           else { this.disparaitre(); return; }
         }
         this.suivre(o.target, 1, 0.5, tmod);
+        this.tracer('homing');        // Shot.queue("…PartHomingQueue")
         break;
       }
       case 9: {                       // Curaso : ondule autour de son axe
         const o = this.behaviourInfo;
         o.d = (o.d + o.decalSpeed) % 628;
         this.x = o.x + Math.cos(o.d / 100) * o.decal;
+        this.tracer('curaso');        // Shot.queue("…PartCurasoQueue")
         break;
       }
       case 12:                        // Groseille : poursuite, meurt en bas
@@ -634,6 +645,23 @@ class Shot extends Sprite {
   disparaitre() { this.jeu.evenement('tirDisparait', { x: this.x, y: this.y }); this.tuer(); }
 
   auContact() {
+    if (this.behaviourId === 10) {     // Spécial Curaso : éclate en étoile
+      // Shot.onHit case 10 : CINQ tirs à angles réguliers (i/5 de tour),
+      // vitesse 4, vie brève (time 20) — et chacun porte le même comportement,
+      // donc re-divise à l'impact : c'est la cascade qui fait tout le spécial.
+      const max = 5;
+      for (let i = 0; i < max; i++) {
+        const a = ((i / max) * 628) / 100;
+        this.jeu.newHShot({
+          x: this.x, y: this.y,
+          vitx: Math.cos(a) * 4, vity: Math.sin(a) * 4,
+          time: 20, behaviourId: 10, heroType: 4,
+        });
+      }
+      this.jeu.evenement('impact', { x: this.x, y: this.y });
+      this.tuer();
+      return;
+    }
     if (this.behaviourId === 18) {     // Prune paralysante : brouille le vaisseau
       this.jeu.hero && this.jeu.hero.frapperEMP(100);
       this.tuer();
@@ -641,6 +669,19 @@ class Shot extends Sprite {
     }
     this.jeu.evenement('impact', { x: this.x, y: this.y });
     if (!this.flIndestructible) this.tuer();
+  }
+
+  // Shot.queue : le tir laisse derrière lui un segment tendu entre sa position
+  // d'avant et celle de maintenant (le SWF étire une particule — _xscale =
+  // distance, _rotation = angle). Le rendu s'en charge ; ici on ne fait que
+  // publier le segment.
+  tracer(genre) {
+    const o = this.behaviourInfo;
+    if (o.oldPos) {
+      this.jeu.evenement('traine',
+        { x0: o.oldPos.x, y0: o.oldPos.y, x1: this.x, y1: this.y, genre });
+    }
+    o.oldPos = { x: this.x, y: this.y };
   }
 
   suivre(cible, vitesse, tol, tmod) {

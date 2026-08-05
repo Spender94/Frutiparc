@@ -119,6 +119,30 @@ function bougerEclats(ctx, tmod) {
   ctx.globalAlpha = 1;
 }
 
+// Les traînes des tirs (Shot.queue du SWF) : un segment par image, tendu entre
+// la position d'avant et celle de maintenant, qui s'éteint sur place en
+// quelques images. Le bleu du Curaso, l'orangé des têtes chercheuses.
+const traines = [];
+const TRAINE_COULEUR = { curaso: '#7ec9ff', homing: '#ffb060' };
+function tracer(d) {
+  traines.push({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, c: TRAINE_COULEUR[d.genre] || '#ffffff', t: 8 });
+  if (traines.length > 400) traines.splice(0, traines.length - 400);
+}
+function bougerTraines(ctx, tmod) {
+  for (let i = traines.length - 1; i >= 0; i--) {
+    const s = traines[i];
+    s.t -= tmod;
+    if (s.t <= 0) { traines.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.min(1, s.t / 8) * 0.8;
+    ctx.strokeStyle = s.c;
+    ctx.beginPath();
+    ctx.moveTo(s.x0, s.y0);
+    ctx.lineTo(s.x1, s.y1);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
 // ── Le client ─────────────────────────────────────────────────────────────
 class Client {
   constructor(o) {
@@ -152,6 +176,7 @@ class Client {
     opts = opts || {};
     const graine = opts.graine === undefined ? (Date.now() & 0x7fffffff) : opts.graine;
     eclats.length = 0;
+    traines.length = 0;
     const M = window.MiniwaveModes || {};
     const Classe = { mission: M.Mission, survival: M.Survival, letter: M.Letter }[opts.mode] || E.Game;
     this.jeu = new Classe(Object.assign({}, opts, {
@@ -161,6 +186,9 @@ class Client {
     }));
     this.mode = opts.mode || 'arcade';
     this.jeu.entree = this.entree;
+    // Le solde de la fiche à l'entrée en partie : le compteur affiche
+    // portefeuille + récolte, comme le bureau qui crédite en direct.
+    this.jeu.portefeuille = Number(opts.portefeuille) || 0;
     this.dernier = 0;
     this.reste = 0;
     return this.jeu;
@@ -172,6 +200,7 @@ class Client {
         this.panneau = d.boss ? 'BOSS' : ('niveau ' + (d.level + 1) + '\n' + (d.name || ''));
         this.panneauT = d.boss ? 160 : 80;
         break;
+      case 'traine': tracer(d); break;
       case 'badsExplose': eclater(d.x, d.y, 6, '#ffd76a', 2.6); break;
       case 'badsEcaille': eclater(d.x, d.y, 3, '#ffffff', 1.6); break;
       case 'heroExplose': eclater(d.x, d.y, 14, '#8fd0ff', 3.2); break;
@@ -250,6 +279,8 @@ class Client {
 
     if (jeu.boss) this.dessinerBoss(ctx, jeu.boss);
 
+    // Les traînes passent SOUS les tirs : le trait s'éteint derrière la balle.
+    bougerTraines(ctx, tmod);
     for (const t of jeu.bShotList) this.dessinerTir(ctx, t, 10 + (t.badsType || 0));
     for (const t of jeu.hShotList) this.dessinerTir(ctx, t, 1 + (t.heroType || 0));
 
@@ -379,11 +410,15 @@ class Client {
       ctx.arc(6, 16, 3, 0, 6.28);
       ctx.fill();
     }
-    // Pièces ramassées (la monnaie de la boutique interne).
-    if (jeu.credits > 0) {
+    // Le compteur de crédits : le PORTEFEUILLE, pas la seule récolte de la
+    // manche. Le jeu d'origine crédite la fiche en direct (Game.incCred fait
+    // $credit += n pendant la partie) — le joueur du bureau lit donc toujours
+    // son solde total. On affiche le même nombre : fiche + manche en cours.
+    const bourse = (jeu.portefeuille || 0) + jeu.credits;
+    if (bourse > 0) {
       ctx.font = '8px Verdana, Arial, sans-serif';
       ctx.fillStyle = '#F2D1AA';
-      ctx.fillText('¤' + jeu.credits, 12, 13);
+      ctx.fillText('¤' + bourse, 12, 13);
     }
     // Letter Invader : les boucliers, à la place des vies (il n'y a pas de
     // vaisseau à perdre, seulement des fautes de frappe à ne pas faire).
@@ -471,6 +506,50 @@ class Client {
       b.addEventListener('mouseup', off);
       b.addEventListener('mouseleave', off);
     });
+
+    // ── La bande tactile ──
+    // Le pouce EST le vaisseau : sa position X sur la bande devient celle du
+    // vaisseau (en absolu), le tir est continu tant que le pouce est posé — la
+    // cadence reste celle du vaisseau, c'est le coolDown qui gouverne — et
+    // s'arrête au relâcher. Un double-tap déclenche la spéciale. Pas de bouton
+    // de tir : c'est toute l'idée.
+    const bande = (racine.querySelector ? racine : document).querySelector('#pave-tactile');
+    if (bande) {
+      let dernierTap = 0;
+      const viser = (ev) => {
+        const t = (ev.touches && ev.touches[0]) || ev;
+        const r = bande.getBoundingClientRect();
+        const gx = ((t.clientX - r.left) / r.width) * LARGEUR;
+        this.entree.cibleX = Math.max(0, Math.min(LARGEUR, gx));
+      };
+      const poser_ = (ev) => {
+        ev.preventDefault();
+        viser(ev);
+        this.entree.tir = true;
+        bande.classList.add('on');
+        const t = Date.now();
+        if (t - dernierTap < 320) {                    // double-tap : la spéciale
+          this.entree.bombe = true;
+          setTimeout(() => { this.entree.bombe = false; }, 120);
+        }
+        dernierTap = t;
+      };
+      const glisser = (ev) => { ev.preventDefault(); if (this.entree.tir) viser(ev); };
+      const lever = (ev) => {
+        ev.preventDefault();
+        this.entree.tir = false;
+        this.entree.cibleX = null;                     // le clavier reprend la main
+        bande.classList.remove('on');
+      };
+      bande.addEventListener('touchstart', poser_, { passive: false });
+      bande.addEventListener('touchmove', glisser, { passive: false });
+      bande.addEventListener('touchend', lever, { passive: false });
+      bande.addEventListener('touchcancel', lever, { passive: false });
+      bande.addEventListener('mousedown', poser_);
+      bande.addEventListener('mousemove', glisser);
+      bande.addEventListener('mouseup', lever);
+      bande.addEventListener('mouseleave', lever);
+    }
   }
 }
 
