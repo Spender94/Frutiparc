@@ -354,6 +354,14 @@
         fee: feeCourante(),
         coefNuit: coefNuit(),
         surEvenement: function (nom, info) {
+          // Imp.harm : chaque impy abattu se compte par RANG —
+          // $stat.$kill[0..4] — c'est la seule écriture de ce compteur.
+          if (nom === 'impyMort') {
+            var kills = (plateforme.carte.$stat || {}).$kill;
+            if (Array.isArray(kills) && info && info.level >= 0
+              && info.level < kills.length) kills[info.level]++;
+            return;
+          }
           if (nom === 'objet') {
             // Hors course (une partie lancée à la main), rien à ranger.
             if (course) {
@@ -375,6 +383,16 @@
           if (info.gagne) {
             course.niveaux.push(course.niveau);
             course.niveau++;
+            // base/Forest.setWin puis endGame : CHAQUE niveau franchi nourrit
+            // la fée — int(niveau × 1,5) + 1 points, à condition qu'elle soit
+            // là et VIVANTE (mf.flDeath). C'était la source d'expérience
+            // manquante : les impys seuls, l'XP montait bien moins vite qu'au
+            // bureau.
+            var mfXp = client.champ && client.champ.faerieList
+              && client.champ.faerieList[0];
+            if (mfXp && !mfXp.flDeath && mfXp.fi) {
+              mfXp.fi.incExp(Math.floor(course.niveau * 1.5) + 1);
+            }
             if (course.niveau < course.fin) {
               // La course continue : la fée monte, le niveau suivant s'ouvre.
               // Pas d'écran entre les deux — le jeu enchaîne sur son bouquet.
@@ -670,6 +688,14 @@
           fee: feeCouranteSeed(),
           graine: Math.floor(Math.random() * 1e9),
           surEvenement: function (nom, info) {
+            // Les impys du donjon se comptent au même endroit que ceux de la
+            // forêt : par rang, dans $stat.$kill (Imp.harm).
+            if (nom === 'impyMort') {
+              var kills = (plateforme.carte.$stat || {}).$kill;
+              if (Array.isArray(kills) && info && info.level >= 0
+                && info.level < kills.length) kills[info.level]++;
+              return;
+            }
             if (nom === 'donjonGagne' || nom === 'record' || nom === 'prix') {
               plateforme.ecrire(avant);
               return;

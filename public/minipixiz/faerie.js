@@ -36,6 +36,7 @@ const CARAC = { FORCE, RAPIDITE, VIE, INTELLIGENCE, CONCENTRATION, MANA };
 const NB_CARAC = 6;                   // it.Carac.carNameList — six, pas huit
 const CARAC_MAX = 7;                  // setNextLevelUp : on n'améliore pas au-delà
 const NIVEAU_MAX = 50;                // Cs.FAERIE_LEVEL_MAX
+const POW_EXP = 4;                    // Cs.POW_EXP — l'index dans sPow / pouvoirs
 
 const NOM_CARAC = ['force', 'rapidité', 'vie', 'intelligence', 'concentration', 'mana'];
 
@@ -232,7 +233,11 @@ class Fee {
   incMana(n) { this.fs.$mana = Math.round(borner(0, nombre(this.fs.$mana) + n, this.manaMax())); }
   incMoral(n) { this.fs.$moral = Math.round(borner(0, nombre(this.fs.$moral) + n, 20)); }
   incFaim(n) { this.fs.$hunger = Math.round(borner(0, nombre(this.fs.$hunger) + n, 20)); }
-  incExp(n) { this.fs.$exp = nombre(this.fs.$exp) + n; }
+  // FaerieInfo.incExp — le pouvoir POW_EXP (sPow[4], donné par un objet porté)
+  // rapporte moitié plus. Pas d'arrondi dans le fichier : 5 points en font 7,5.
+  incExp(n) {
+    this.fs.$exp = nombre(this.fs.$exp) + (this.pouvoirs[POW_EXP] ? n * 1.5 : n);
+  }
 
   // ── L'expérience ──
   // getNextExpLimit : (niveau+1)² × 50. Le premier niveau coûte 50 points, le

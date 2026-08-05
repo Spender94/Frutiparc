@@ -384,3 +384,82 @@ test('les objets tombent au rythme du jeu — sans sac, seul le sac', () => {
   assert.ok(avec > total * 0.17 && avec < total * 0.33,
     'un quart des niveaux éligibles, en gros : ' + avec + '/' + total);
 });
+
+// ── Le retour « combat » : cœurs, dégâts, expérience ───────────────────────
+//
+// « Les cœurs ne diminuent pas progressivement… elle perd d'un coup un cœur
+// entier » — chaque cœur encaisse CENT points (People.health), et inter.Life
+// .setHealth fait fondre le cœur COURANT à mesure. L'affichage du portage
+// était binaire : six tirs d'impy mineur sans que rien ne bouge, puis un cœur
+// entier au septième.
+// « l'XP augmente moins vite » — vrai : base/Forest.endGame donne
+// int(niveau × 1,5) + 1 à CHAQUE niveau gagné, et le portage ne payait que
+// les impys abattus. Le pouvoir POW_EXP (× 1,5) manquait aussi.
+
+test('le cœur courant fond avec la santé qui reste (inter.Life.setHealth)', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  // L'échelle du fichier : 10 + santé × 0,9 pour cent, sur le cœur rouge seul.
+  assert.match(src, /10 \+ Math\.max\(0, mf\.health\) \* 0\.9/);
+  assert.match(src, /function coeurSeul\(/);
+  // Le point fixe de la fonte : le centre du dessin, comme le clip `c`.
+  assert.match(src, /COEUR_CENTRE = \{ x: 6\.15, y: 5\.53 \}/);
+  assert.match(src, /COEUR_CENTRE\.x \* \(1 - prc \/ 100\)/);
+  // Et le sprite d'où il sort : l'image 2 du cœur a bien DEUX pièces, la
+  // dernière étant le cœur rouge lui-même.
+  const sprites = JSON.parse(fs.readFileSync(
+    path.join(ROOT, 'public/minipixiz/sprites/sprites.json'), 'utf8'));
+  const f2 = sprites.coeur.etats.find((e) => e.frame === 2);
+  assert.ok(f2 && f2.pieces.length === 2, 'fond + cœur rouge');
+});
+
+test('les dégâts du portage sont ceux du fichier, tir pour tir', () => {
+  // Faerie.harm : d = tir + niveau × 0,1 (la « réduction » par niveau est une
+  // ADDITION — priorité des opérateurs du fichier, gardée telle quelle), cent
+  // points par cœur. Une fée Vie 4, niveau 10 : 26 tirs d'un rang 0 pour la
+  // tuer. Si elle tombe en deux ou trois tirs, c'est qu'elle était déjà à un
+  // cœur (la vie persiste sur la fiche, comme au bureau) face à un rang 3-4.
+  const cas = [[0, 26], [1, 13], [2, 9], [3, 7], [4, 6]];
+  for (const [rang, attendu] of cas) {
+    const alea = tirage(3);
+    const fs2 = F.genererGraine(alea);
+    fs2.$carac = [4, 3, 4, 2, 2, 3];
+    fs2.$level = 9;
+    fs2.$life = 4;
+    const jeu = new E.Jeu({ graine: 7, niveau: 25, fiche: { $stat: {} } });
+    const champ = new C.Champ(jeu, { fee: new F.Fee(fs2, alea, { $inv: [] }) });
+    const fee = champ.faerieList[0];
+    const tir = 15 + rang * 15;
+    let coups = 0;
+    while (!fee.flDeath && coups < 100) { fee.blesser(tir); coups++; }
+    assert.equal(coups, attendu, 'rang ' + rang + ' : ' + coups + ' tirs');
+  }
+});
+
+test('chaque niveau de forêt gagné nourrit la fée — int(niveau × 1,5) + 1', () => {
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /incExp\(Math\.floor\(course\.niveau \* 1\.5\) \+ 1\)/);
+  // …seulement si elle est là et vivante, comme base/Forest.endGame.
+  assert.match(page, /mfXp && !mfXp\.flDeath && mfXp\.fi/);
+});
+
+test('le pouvoir POW_EXP rapporte moitié plus, sans arrondi', () => {
+  const alea = tirage(5);
+  const fs2 = F.genererGraine(alea);
+  const fee = new F.Fee(fs2, alea, { $inv: [] });
+  fee.incExp(10);
+  assert.equal(fee.fs.$exp, 10);
+  fee.pouvoirs[4] = true;              // Cs.POW_EXP
+  fee.incExp(5);
+  assert.equal(fee.fs.$exp, 17.5, '5 points en font 7,5');
+});
+
+test('les impys abattus se comptent par rang dans $stat.$kill', () => {
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  // Les deux écrans qui font naître des impys — la forêt et les lieux — font
+  // le geste d'Imp.harm : $kill[level]++.
+  const occurrences = page.match(/kills\[info\.level\]\+\+/g) || [];
+  assert.equal(occurrences.length, 2, 'forêt ET donjon');
+  // Et le portage ne raconte plus que $kill compte des zones.
+  const plate = fs.readFileSync(path.join(ROOT, 'public/minipixiz/plateforme.js'), 'utf8');
+  assert.match(plate, /un compteur par RANG d'impy/);
+});

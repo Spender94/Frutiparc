@@ -70,6 +70,23 @@ const INTER = pilerInterface(0);
 const ECART_COEUR = 14;               // inter.Life : un cœur tous les 14 px
 const ECART_MANA = 6;                 // inter.Mana : une goutte tous les 6 px
 
+// inter.Life.setHealth ne met à l'échelle que le sous-clip `c` du cœur — le
+// cœur rouge, pas son fond. Dans l'export, c'est la DERNIÈRE pièce de
+// l'image 2 (l'image 1 n'a que le fond) : on en fait un dessin à part, mémoïsé
+// sur le sprite, pour le fondre seul.
+function coeurSeul(sCoeur) {
+  if (sCoeur.__seul !== undefined) return sCoeur.__seul;
+  const f2 = sCoeur.etats.find((e) => e.frame === 2);
+  sCoeur.__seul = (f2 && f2.pieces.length > 1)
+    ? { nom: sCoeur.nom + ' (plein)', cle: sCoeur.cle,
+      etats: [{ frame: 1, pieces: [f2.pieces[f2.pieces.length - 1]] }] }
+    : null;
+  return sCoeur.__seul;
+}
+// Le centre du cœur rouge (12,3 × 11,35 posé en 0 ; −0,15) : le point fixe de
+// la fonte.
+const COEUR_CENTRE = { x: 6.15, y: 5.53 };
+
 // inter.Face.updateImage — le cadre du portrait n'occupe pas toute la boîte :
 //
 //     mc._xscale = mc._yscale = height          // 70 %
@@ -2307,9 +2324,32 @@ class Client {
     if (fee && sCoeur) {
       const max = fee.vieMax();
       const m = (boite.vie.l - ECART_COEUR * max) * 0.5;
+      // inter.Life.setHealth : le cœur COURANT rétrécit avec la santé qui
+      // reste — échelle 10 + santé × 0,9 % — car chaque cœur encaisse CENT
+      // points avant de céder (Faerie.harm). Sans lui, la vie semblait tomber
+      // d'un bloc : six tirs d'impy mineur sans que rien ne bouge, puis un
+      // cœur entier au septième. La santé vit sur la fée du CHAMP.
+      const mf = this.champ && this.champ.faerieList && this.champ.faerieList[0];
+      const vie = Math.max(0, Math.floor(Number(fee.fs.$life) || 0));
       for (let i = 0; i < max; i++) {
-        poserRendu(ctx, rendre(sCoeur, i < fee.fs.$life ? 2 : 1, 100),
-          boite.vie.x + m + ECART_COEUR * i - 1, boite.vie.y);
+        const x = boite.vie.x + m + ECART_COEUR * i - 1, y = boite.vie.y;
+        if (i === vie - 1 && mf && !mf.flDeath && mf.health < 100) {
+          // Le fond du cœur (image 1), puis le cœur rouge seul, fondu sur
+          // place — c'est le sous-clip `c` que le fichier met à l'échelle.
+          poserRendu(ctx, rendre(sCoeur, 1, 100), x, y);
+          const plein = coeurSeul(sCoeur);
+          if (plein) {
+            const prc = 10 + Math.max(0, mf.health) * 0.9;
+            // L'échelle du renderer part du coin du dessin : on recale pour
+            // que le cœur fonde autour de son centre, comme le clip `c`.
+            poserRendu(ctx, rendre(plein, 1, prc),
+              x + COEUR_CENTRE.x * (1 - prc / 100), y + COEUR_CENTRE.y * (1 - prc / 100));
+          } else {
+            poserRendu(ctx, rendre(sCoeur, 2, 100), x, y);
+          }
+          continue;
+        }
+        poserRendu(ctx, rendre(sCoeur, i < vie ? 2 : 1, 100), x, y);
       }
     }
 

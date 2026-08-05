@@ -35,7 +35,9 @@
 (function (racine) {
 
 const VERSION = 1.2;                  // Cm.VERSION
-const NB_ZONES = 5;                   // $stat.$game / $kill : forêt, bassin, château, arc-en-ciel, arbre
+const NB_ZONES = 5;                   // $stat.$game : forêt, bassin, château, arc-en-ciel, arbre
+// $stat.$kill a lui aussi cinq cases, mais elles ne comptent PAS des zones :
+// Imp.harm fait $kill[level]++ — un compteur par RANG d'impy (0 à 4).
 const PAS_CHECKPOINT = 20;            // base/Forest.endGame : un relais tous les vingt niveaux
 
 // Lang.checkpointName : les relais de la forêt, dans l'ordre. Le premier est
