@@ -305,3 +305,77 @@ test('les deux clients embarquent le par-salon : tri, lien des logs, fiche', () 
   assert.match(serveur, /Date\.now\(\) - CHAT_REPLAY_MAX_AGE_MS/,
     'et c\'est bien lui que sert getChannelHistory');
 });
+
+test('les logs survivent au redémarrage du serveur', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+
+  // Un modérateur écrit dans un salon…
+  const sid1 = await inscrire('logsdur');
+  assert.equal((await donnerRole('logsdur', { is_moderator: true })).status, 200);
+  const proc1 = proc;
+  // Le rôle est lu au boot : on redémarre une première fois pour qu'il prenne,
+  // puis on écrit, puis on redémarre encore — le message doit tenir bon.
+  proc1.kill('SIGKILL');
+  await wait(400);
+  const relancer = () => {
+    proc = spawn(process.execPath, ['server.js'], {
+      cwd: ROOT,
+      env: Object.assign({}, process.env, {
+        PORT: String(PORT), DATABASE_URL: DB, REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
+        ADMIN_KEY: CLE, XMLSOCKET_PORT: '5194', FRUTISCORE_PORT: '5195',
+      }),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    proc.stdout.on('data', () => {});
+    proc.stderr.on('data', () => {});
+    return (async () => {
+      for (let i = 0; i < 160; i++) {
+        try { if ((await fetch(BASE + '/api/loadFrutiSlots?game=snake3')).ok) return; } catch {}
+        await wait(250);
+      }
+      throw new Error('serveur indisponible après relance');
+    })();
+  };
+  await relancer();
+
+  const login = await fetch(BASE + '/api/auth/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'logsdur', password: 'secret123' }),
+  });
+  const sid2 = (await login.json()).sid;
+  const c = await client('logsdur', sid2);
+  c.envoyer('<o g="pomme" />');
+  await c.attendre((x) => x.startsWith('<o'), 'entrée dans pomme');
+  c.envoyer('<t g="pomme" t="m" p="">Un message qui doit survivre au reboot.</t>');
+  await c.attendre((x) => /survivre au reboot/.test(x), 'écho du message');
+  c.fermer();
+  // L'insertion en base est asynchrone : une respiration avant de tuer.
+  await wait(600);
+
+  const avant = await fetch(`${BASE}/api/chat/histo?sid=${sid2}&g=pomme`);
+  assert.equal(avant.status, 200);
+  assert.match(await avant.text(), /survivre au reboot/, 'les logs le montrent avant');
+
+  // Le couperet, puis la relance : la fenêtre doit encore l'avoir.
+  proc.kill('SIGKILL');
+  await wait(400);
+  await relancer();
+  const login2 = await fetch(BASE + '/api/auth/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'logsdur', password: 'secret123' }),
+  });
+  const sid3 = (await login2.json()).sid;
+  // La restauration est asynchrone au boot (l'écoute HTTP ouvre avant) : on
+  // laisse à la fenêtre le temps de se remplir, comme un humain qui la rouvre.
+  let texte = '';
+  for (let i = 0; i < 40; i++) {
+    const apres = await fetch(`${BASE}/api/chat/histo?sid=${sid3}&g=pomme`);
+    if (apres.status === 200) {
+      texte = await apres.text();
+      if (/survivre au reboot/.test(texte)) break;
+    }
+    await wait(250);
+  }
+  assert.match(texte, /survivre au reboot/,
+    'le message écrit avant le redémarrage est toujours dans la fenêtre');
+});

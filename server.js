@@ -14609,8 +14609,27 @@ const LIGHT_MAIL_FOLDERS = new Set(['inbox', 'outbox', 'blackbox']);
 
 // Un courrier « allégé » pour la liste : de quoi afficher une ligne, sans
 // embarquer le corps (une boîte de 200 messages tiendrait sinon dans la réponse).
+// Le corps d'un courrier, à plat pour le mobile. Le bureau compose et affiche
+// en htmlText : les sauts de ligne y voyagent en <br>, et le SWF peut semer
+// d'autres balises. Le lecteur du mobile montre du TEXTE (textContent, en
+// pre-wrap) — on rend donc les <br> en vrais sauts et on retire le reste,
+// exactement ce qu'un lecteur bureau AFFICHE. Les entités reviennent en
+// caractères (&amp; en dernier, sinon &amp;lt; se déferait deux fois).
+function texteMailLight(brut) {
+  return String(brut || '')
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/p\s*>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"').replace(/&apos;/gi, '\'')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&');
+}
+
 function lightMailRow(m) {
-  const corps = String(m.body || '').replace(/\s+/g, ' ').trim();
+  // L'extrait se taille dans le texte NETTOYÉ : couper dans le brut pouvait
+  // trancher une balise en deux et afficher « <b » dans l'aperçu.
+  const corps = texteMailLight(m.body).replace(/\s+/g, ' ').trim();
   return {
     uid: m.uid,
     from: m.from || (m.fromAddr || '').split('@')[0] || '',
@@ -14652,7 +14671,7 @@ app.get('/api/light/mail/read', (req, res) => {
   }
   res.json({
     ok: true,
-    mail: Object.assign(lightMailRow(mail), { body: String(mail.body || ''), folder: mail.folder }),
+    mail: Object.assign(lightMailRow(mail), { body: texteMailLight(mail.body), folder: mail.folder }),
     unread: unreadInboxCount(user),
   });
 });
@@ -15154,9 +15173,16 @@ app.get('/api/light/fiche', async (req, res) => {
 
   let ud = users[u];
   if (!ud && process.env.DATABASE_URL) {
+    // HYDRATER, pas seulement convertir : computeConsecration lit users[u]
+    // (gameItems, chargés de user_game_items). Une simple conversion de ligne
+    // affichait « consécration 0 % » pour tout joueur pas revenu depuis le
+    // dernier reboot — alors que ses pictos Miniwave/Minipixiz étaient en base.
     try {
       const row = await db.findUserByUsername(u);
-      if (row) ud = dbUserToMemory(row);
+      if (row) {
+        try { await hydrateUserFromDb(u, row); } catch (e) { /* transitoire */ }
+        ud = users[u] || dbUserToMemory(row);
+      }
     } catch (e) { /* ignore */ }
   }
   if (!ud) return res.status(404).json({ ok: false, error: 'inconnu' });
@@ -15649,6 +15675,27 @@ async function boot() {
         }
         console.log(`[DB] Loaded ${count} channel overrides from database`);
       } catch (e) { console.error('[DB] Channel load error:', e.message); }
+      try {
+        // La fenêtre des logs (six heures) se recharge depuis la base : sans
+        // ça, chaque redémarrage vidait « … voir les messages précédents … ».
+        const cutoff = Date.now() - CHAT_HISTORY_MAX_AGE_MS;
+        const lignes = await db.loadChatHistory(cutoff);
+        let restaurees = 0;
+        for (const l of lignes) {
+          const ch = channels[l.channel];
+          if (!ch) continue;
+          if (!ch.history) ch.history = [];
+          ch.history.push({ at: Number(l.at_ms), xml: l.xml });
+          restaurees++;
+        }
+        for (const ch of Object.values(channels)) {
+          if (ch.history && ch.history.length > CHAT_HISTORY_MAX) {
+            ch.history.splice(0, ch.history.length - CHAT_HISTORY_MAX);
+          }
+        }
+        db.pruneChatHistory(cutoff).catch(dbErr('pruneChatHistory boot'));
+        console.log(`[DB] ${restaurees} chat-history line(s) restored (6 h window)`);
+      } catch (e) { console.error('[DB] Chat history load error:', e.message); }
     } catch (e) {
       console.error('[DB] Init failed (running without persistence):', e.message);
     }
@@ -17141,10 +17188,22 @@ function recordChannelHistory(channelName, xmlStr) {
   if (!channel.history) channel.history = [];
   const now = Date.now();
   channel.history.push({ at: now, xml: xmlStr });
+  // La mémoire s'efface avec le processus : chaque trame part aussi en base,
+  // et le boot recharge la fenêtre — les logs survivent au redémarrage.
+  if (process.env.DATABASE_URL) {
+    db.insertChatHistory(channelName, now, xmlStr).catch(dbErr('insertChatHistory'));
+  }
   const cutoff = now - CHAT_HISTORY_MAX_AGE_MS;
   while (channel.history.length && (channel.history[0].at < cutoff || channel.history.length > CHAT_HISTORY_MAX)) {
     channel.history.shift();
   }
+}
+// La purge en base suit la même fenêtre, une fois par demi-heure — le boot
+// purge aussi, ceci ne rattrape que les serveurs qui tournent longtemps.
+if (process.env.DATABASE_URL) {
+  setInterval(() => {
+    db.pruneChatHistory(Date.now() - CHAT_HISTORY_MAX_AGE_MS).catch(dbErr('pruneChatHistory'));
+  }, 30 * 60 * 1000).unref();
 }
 // Recent (≤5 min) chat frames for a channel, oldest first.
 function getChannelHistory(channelName) {
@@ -19339,9 +19398,15 @@ case 'trace': {
       }
       let ud = users[u];
       if (!ud && process.env.DATABASE_URL) {
+        // Même exigence que /api/light/fiche : hydrater users[u] pour que
+        // computeConsecration voie les gameItems — sinon fr="0" pour tout
+        // joueur pas revenu depuis le reboot.
         try {
           const row = await db.findUserByUsername(u);
-          if (row) ud = dbUserToMemory(row);
+          if (row) {
+            try { await hydrateUserFromDb(u, row); } catch (e) { /* transitoire */ }
+            ud = users[u] || dbUserToMemory(row);
+          }
         } catch (e) { /* ignore */ }
       }
       if (!ud) ud = {};

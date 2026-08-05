@@ -266,3 +266,32 @@ test('l\'icône d\'alerte est bien celle du jeu, distincte de l\'enveloppe au re
   const trace = /d="([^"]+)"/.exec(alerte)[1];
   assert.ok(!jeux.includes(trace.slice(0, 40)), 'ce n\'est pas l\'icône Jeux');
 });
+
+test('les <br> du bureau deviennent des sauts de ligne sur le mobile', async () => {
+  // Le bureau compose en htmlText : les retours voyagent en <br>, et d'autres
+  // balises peuvent suivre. Le lecteur mobile montre du TEXTE : il doit rendre
+  // de vrais sauts de ligne, pas des balises littérales — et l'extrait de la
+  // liste, taillé dans le nettoyé, ne doit jamais trancher une balise en deux.
+  const a = await inscrire('mlbr' + RUN);
+  const b = await inscrire('mlbrb' + RUN);
+  await fetch(BASE + '/fm/sendmail', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      sid: a, t: 'mlbrb' + RUN, s: 'Mise en page', o: '1',
+      c: 'Bonjour&nbsp;!<br>Voici la <b>suite</b> du texte.<br/>Et &lt;ceci&gt; est un chevron.<BR >Fin.',
+    }),
+  });
+  const boite = await getJson('/api/light/mail?sid=' + b);
+  const uid = boite.mails[0].uid;
+  // L'aperçu garde les chevrons du TEXTE (« <ceci> », décodé de &lt;…&gt;)
+  // mais plus aucune BALISE — ni <br>, ni <b>.
+  assert.ok(!/<br|<b>|<\/b>/i.test(boite.mails[0].extrait),
+    'pas de balise dans l\'aperçu : ' + boite.mails[0].extrait);
+  assert.match(boite.mails[0].extrait, /^Bonjour ! Voici la suite du texte\./,
+    'l\'aperçu se lit d\'une traite');
+
+  const lu = await getJson('/api/light/mail/read?sid=' + b + '&uid=' + uid);
+  assert.equal(lu.mail.body,
+    'Bonjour !\nVoici la suite du texte.\nEt <ceci> est un chevron.\nFin.',
+    'sauts réels, balises retirées, entités rendues');
+});

@@ -308,6 +308,17 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_shop_purchases_cat ON shop_purchases(category, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_shop_purchases_user ON shop_purchases(LOWER(username));
 
+      -- L'historique des salons — la fenêtre des logs du staff (six heures).
+      -- La mémoire seule s'efface à chaque redémarrage du serveur : une ligne
+      -- par trame <t> diffusée, purgée au-delà de la fenêtre.
+      CREATE TABLE IF NOT EXISTS chat_history (
+        id      BIGSERIAL PRIMARY KEY,
+        channel TEXT NOT NULL,
+        at_ms   BIGINT NOT NULL,
+        xml     TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_history_channel_at ON chat_history(channel, at_ms);
+
       -- Images de boutique éditables depuis l'admin (aperçu d'un produit, ex.
       -- feutre spécial). BYTES en base (disque éphémère au reboot). Clé libre
       -- (ex. "feutre:mc"). Servi par /shop-asset/:key.
@@ -2385,6 +2396,25 @@ async function forumGetSignatures(usernames) {
   return map;
 }
 
+// ── Historique des salons (fenêtre des logs staff, six heures) ──
+async function insertChatHistory(channel, atMs, xml) {
+  await pool.query(
+    'INSERT INTO chat_history (channel, at_ms, xml) VALUES ($1, $2, $3)',
+    [channel, atMs, xml]
+  );
+}
+async function loadChatHistory(sinceMs) {
+  const { rows } = await pool.query(
+    'SELECT channel, at_ms, xml FROM chat_history WHERE at_ms >= $1 ORDER BY at_ms ASC',
+    [sinceMs]
+  );
+  return rows;
+}
+async function pruneChatHistory(beforeMs) {
+  const r = await pool.query('DELETE FROM chat_history WHERE at_ms < $1', [beforeMs]);
+  return r.rowCount;
+}
+
 // ── Channels ──
 
 async function loadChannels() {
@@ -2775,6 +2805,9 @@ module.exports = {
   updateMailRead,
   deleteMails,
   loadChannels,
+  insertChatHistory,
+  loadChatHistory,
+  pruneChatHistory,
   upsertChannel,
   updateChannelTopic,
   addModerationLog,
