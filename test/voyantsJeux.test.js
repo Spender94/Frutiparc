@@ -57,6 +57,26 @@ test('la table du bureau suit internalList, et l\'extracteur suit les étiquette
   }
 });
 
+test('main.swf porte la rustine qui branche la fée au bureau', () => {
+  // internalList s'arrête à miniwave (index 9) dans la classe compilée : le
+  // patch appende un DoAction après son DoInitAction —
+  // _global.StatusMng.internalList[12] = "minipixiz" — et le bureau résout
+  // enfin le code 12 vers l'image étiquetée minipixiz (la fée-papillon).
+  const zlib = require('zlib');
+  const raw = fs.readFileSync(path.join(ROOT, 'legacy/main.swf'));
+  const corps = zlib.inflateSync(raw.slice(8));
+  const graine = Buffer.concat([
+    Buffer.from([0x96, 14, 0, 0]), Buffer.from('internalList'), Buffer.from([0]),
+    Buffer.from([0x4e]),                       // getMember
+    Buffer.from([0x96, 5, 0, 7, 12, 0, 0, 0]), // push int 12
+  ]);
+  let n = 0, i = 0;
+  while ((i = corps.indexOf(graine, i)) >= 0) { n++; i++; }
+  assert.equal(n, 1, 'l\'injection est là, une seule fois');
+  assert.ok(fs.existsSync(path.join(ROOT, 'scripts/patch-main-statusmng-minipixiz.js')),
+    'et le patch est rejouable');
+});
+
 test('le serveur sait traduire le code interne en nom de jeu', () => {
   assert.match(serveur, /STATUS_INTERNAL_JEU/, 'la table inverse existe');
   assert.match(serveur, /statusInternalOf/, 'et la lecture du code d\'un joueur');
