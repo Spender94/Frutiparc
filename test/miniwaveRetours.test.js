@@ -155,4 +155,14 @@ test('la bande tactile a remplacé les boutons, et le compteur dit le portefeuil
     'le compteur affiche portefeuille + récolte');
   assert.match(rendu, /'#pave-tactile'/, 'et la bande est branchée');
   assert.match(rendu, /dernierTap < 320/, 'double-tap : la spéciale');
+
+  // Le pilotage doit tenir sur un VRAI téléphone : Pointer Events avec
+  // capture (iOS/Android/souris, un seul chemin), le canevas lui-même comme
+  // surface (l'instinct pose le doigt sur le jeu), et des scripts estampillés
+  // pour que les téléphones ne rejouent pas un vieux game.js en cache.
+  assert.match(rendu, /setPointerCapture/, 'la capture suit le doigt hors surface');
+  assert.match(rendu, /piloter\(this\.canvas, true\)/, 'le jeu lui-même se pilote');
+  assert.match(rendu, /horsMenu && this\.avant && this\.avant\.visible/,
+    'mais pas pendant que le menu écoute');
+  assert.match(page, /game\.js\?v=/, 'les scripts sont estampillés');
 });

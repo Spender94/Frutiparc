@@ -507,26 +507,35 @@ class Client {
       b.addEventListener('mouseleave', off);
     });
 
-    // ── La bande tactile ──
-    // Le pouce EST le vaisseau : sa position X sur la bande devient celle du
-    // vaisseau (en absolu), le tir est continu tant que le pouce est posé — la
+    // ── Le pilotage au doigt ──
+    // Le pouce EST le vaisseau : sa position X (sur la bande OU sur le jeu
+    // lui-même — l'instinct pose le doigt n'importe où) devient celle du
+    // vaisseau, en absolu. Le tir est continu tant que le pouce est posé — la
     // cadence reste celle du vaisseau, c'est le coolDown qui gouverne — et
     // s'arrête au relâcher. Un double-tap déclenche la spéciale. Pas de bouton
     // de tir : c'est toute l'idée.
-    const bande = (racine.querySelector ? racine : document).querySelector('#pave-tactile');
-    if (bande) {
-      let dernierTap = 0;
+    //
+    // POINTER EVENTS d'abord (iOS 13+, Android, souris — un seul chemin, et
+    // setPointerCapture garantit le suivi même quand le doigt déborde de la
+    // surface) ; repli touch/mouse pour les navigateurs d'un autre âge.
+    let dernierTap = 0;
+    const piloter = (surface, horsMenu) => {
+      if (!surface) return;
       const viser = (ev) => {
         const t = (ev.touches && ev.touches[0]) || ev;
-        const r = bande.getBoundingClientRect();
+        const r = surface.getBoundingClientRect();
+        if (!r.width) return;
         const gx = ((t.clientX - r.left) / r.width) * LARGEUR;
         this.entree.cibleX = Math.max(0, Math.min(LARGEUR, gx));
       };
       const poser_ = (ev) => {
-        ev.preventDefault();
+        // Sur le canevas, les appuis appartiennent au MENU tant qu'il est
+        // ouvert (il écoute pointerdown lui aussi) : on ne pilote qu'en jeu.
+        if (horsMenu && this.avant && this.avant.visible) return;
+        if (ev.cancelable) ev.preventDefault();
         viser(ev);
         this.entree.tir = true;
-        bande.classList.add('on');
+        surface.classList.add('on');
         const t = Date.now();
         if (t - dernierTap < 320) {                    // double-tap : la spéciale
           this.entree.bombe = true;
@@ -534,22 +543,37 @@ class Client {
         }
         dernierTap = t;
       };
-      const glisser = (ev) => { ev.preventDefault(); if (this.entree.tir) viser(ev); };
+      const glisser = (ev) => {
+        if (ev.cancelable) ev.preventDefault();
+        if (this.entree.tir) viser(ev);
+      };
       const lever = (ev) => {
-        ev.preventDefault();
+        if (ev && ev.cancelable) ev.preventDefault();
         this.entree.tir = false;
         this.entree.cibleX = null;                     // le clavier reprend la main
-        bande.classList.remove('on');
+        surface.classList.remove('on');
       };
-      bande.addEventListener('touchstart', poser_, { passive: false });
-      bande.addEventListener('touchmove', glisser, { passive: false });
-      bande.addEventListener('touchend', lever, { passive: false });
-      bande.addEventListener('touchcancel', lever, { passive: false });
-      bande.addEventListener('mousedown', poser_);
-      bande.addEventListener('mousemove', glisser);
-      bande.addEventListener('mouseup', lever);
-      bande.addEventListener('mouseleave', lever);
-    }
+      if (window.PointerEvent) {
+        surface.addEventListener('pointerdown', (ev) => {
+          try { surface.setPointerCapture(ev.pointerId); } catch (e) { /* vieux moteurs */ }
+          poser_(ev);
+        });
+        surface.addEventListener('pointermove', glisser);
+        surface.addEventListener('pointerup', lever);
+        surface.addEventListener('pointercancel', lever);
+      } else {
+        surface.addEventListener('touchstart', poser_, { passive: false });
+        surface.addEventListener('touchmove', glisser, { passive: false });
+        surface.addEventListener('touchend', lever, { passive: false });
+        surface.addEventListener('touchcancel', lever, { passive: false });
+        surface.addEventListener('mousedown', poser_);
+        surface.addEventListener('mousemove', glisser);
+        surface.addEventListener('mouseup', lever);
+        surface.addEventListener('mouseleave', lever);
+      }
+    };
+    piloter((racine.querySelector ? racine : document).querySelector('#pave-tactile'), false);
+    piloter(this.canvas, true);
   }
 }
 
