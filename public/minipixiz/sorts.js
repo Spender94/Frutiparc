@@ -2486,10 +2486,13 @@ class Conglomerat extends SortImpy {
     if (this.step !== 2) return;
     this.decal = (this.decal + 73 * tmod) % 628;
     if (!this.jeu.piece) return;
-    // La pièce maudite clignote en rose : c'est le seul avertissement qu'on ait.
-    // L'original teinte le clip qui la porte ; ici on teinte ses billes, ce qui
-    // revient au même et se lit au dessin.
-    const m = { prc: 30 + Math.cos(this.decal / 100) * 30, couleur: 0xFF00AA };
+    // Conglomerat.mt : setPercentColor(piece.base, 0, …) REMET la teinte à
+    // zéro, puis modColor(1, cos(decal/100)×40−40) ASSOMBRIT — la pièce
+    // maudite pulse vers le noir (offset −80..0), elle ne rosit pas. L'ancien
+    // clignotement rose était une invention du port — et il restait collé aux
+    // billes une fois posées.
+    const offset = Math.cos(this.decal / 100) * 40 - 40;
+    const m = { prc: Math.round((-offset * 100) / 255), couleur: 0x000000 };
     for (const o of this.jeu.piece.list) o.e.melange = m;
     this.grainNoir(this.lanceur.x, this.lanceur.y);
   }

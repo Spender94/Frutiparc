@@ -325,6 +325,28 @@ function imagePeinte(fichier, couleur, melange, cx) {
   return c;
 }
 
+// La silhouette d'un fichier peint : la même découpe, remplie de la couleur du
+// voile. Une par (fichier, teinte, couleur) — le fondu qui s'anime n'invente
+// plus de canevas.
+function silhouettePeinte(fichier, teinte, cx, couleur) {
+  const cle = fichier + '/' + teinte + '/' + (cx ? cx.join(',') : '') + '/sil' + couleur;
+  const deja = peintes.get(cle);
+  if (deja) return deja;
+  const base = (teinte === undefined || teinte === null) && !cx
+    ? images.get(fichier) : imagePeinte(fichier, teinte, null, cx);
+  if (!base) return null;
+  const l = base.naturalWidth || base.width, h = base.naturalHeight || base.height;
+  const c = document.createElement('canvas');
+  c.width = l; c.height = h;
+  const g = c.getContext('2d');
+  g.drawImage(base, 0, 0);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = '#' + ('00000' + (couleur >>> 0).toString(16)).slice(-6);
+  g.fillRect(0, 0, l, h);
+  peintes.set(cle, c);
+  return c;
+}
+
 // Une déformation posée sur un clip INTERMÉDIAIRE : elle tourne et met à
 // l'échelle autour de l'origine de ce clip, exprimée dans le repère de la pièce
 // qu'on dessine. C'est ainsi que Flash anime une aile — le battement est sur
@@ -364,17 +386,36 @@ function poserVif(ctx, sprite, frame, o) {
     if (o.parties && p.nom !== undefined && o.parties[p.nom] !== undefined) {
       teinte = o.parties[p.nom];
     }
-    const brut = (teinte === undefined || teinte === null) && !o.melange && !p.cx;
-    const img = brut ? images.get(p.fichier) : imagePeinte(p.fichier, teinte, o.melange, p.cx);
+    const brut = (teinte === undefined || teinte === null) && !p.cx;
+    const img = brut ? images.get(p.fichier) : imagePeinte(p.fichier, teinte, null, p.cx);
     if (!img) continue;
+    // Le mélange animé (le fondu d'une particule vers sa fadeCouleur) se pose
+    // en VOILE — la silhouette de la couleur à l'alpha du pourcentage — au
+    // lieu d'être cuit dans un canevas neuf à chaque pas. Même remède que
+    // rendre() : c'est ce qui rendait les explosions coûteuses.
+    const voile = (o.melange && o.melange.prc > 0)
+      ? silhouettePeinte(p.fichier, teinte, p.cx, o.melange.couleur) : null;
+    const k = voile ? Math.min(100, o.melange.prc) / 100 : 0;
     const d = o.deform ? o.deform(p.nom) : null;
     ctx.save();
     if (p.m && p.vb) {
       ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
       if (d) for (const t of d) appliquerDeform(ctx, t);
       ctx.drawImage(img, p.vb[0], p.vb[1], p.vb[2], p.vb[3]);
+      if (voile) {
+        const a = ctx.globalAlpha;
+        ctx.globalAlpha = a * k;
+        ctx.drawImage(voile, p.vb[0], p.vb[1], p.vb[2], p.vb[3]);
+        ctx.globalAlpha = a;
+      }
     } else {
       ctx.drawImage(img, p.x, p.y, p.w, p.h);
+      if (voile) {
+        const a = ctx.globalAlpha;
+        ctx.globalAlpha = a * k;
+        ctx.drawImage(voile, p.x, p.y, p.w, p.h);
+        ctx.globalAlpha = a;
+      }
     }
     ctx.restore();
   }
@@ -454,14 +495,44 @@ function partiesDImpy(couleurs) {
  * Renvoie { c, dx, dy } : le canevas, et où le poser depuis le coin de la case.
  */
 function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, melange) {
+  // Un MÉLANGE (setPercentColor) qui s'anime — le blanchiment des billes à la
+  // destruction monte de 0 à 100 en dix images — frappait le cache une fois
+  // par pas : chaque pas fabriquait un canevas neuf et repassait tous les
+  // pixels (fondre). C'était LE petit accroc senti à chaque cascade. On ne
+  // cuit plus le mélange dans le dessin : on rend la BASE (en cache, une
+  // fois), une SILHOUETTE de la couleur (en cache, une fois), et le fondu
+  // devient un simple drawImage à alpha — mathématiquement le même résultat,
+  // sortie = source × (1−k) + couleur × k.
+  if (melange && melange.prc > 0) {
+    const base = rendre(sprite, frame, taille, couleur, parties, tranche, rotations, null);
+    const cleSil = sprite.nom + '/' + frame + '/' + taille + '/'
+      + ((couleur && typeof couleur === 'object') ? couleur.col : couleur)
+      + (parties ? '/' + JSON.stringify(parties) : '')
+      + (tranche ? '/' + tranche : '')
+      + (rotations ? '/' + JSON.stringify(rotations) : '')
+      + '/sil' + melange.couleur;
+    let sil = teintes.get(cleSil);
+    if (!sil) {
+      const c = document.createElement('canvas');
+      c.width = base.c.width; c.height = base.c.height;
+      const g = c.getContext('2d');
+      g.drawImage(base.c, 0, 0);
+      g.globalCompositeOperation = 'source-in';
+      g.fillStyle = '#' + ('00000' + (melange.couleur >>> 0).toString(16)).slice(-6);
+      g.fillRect(0, 0, c.width, c.height);
+      sil = { c, dx: base.dx, dy: base.dy };
+      teintes.set(cleSil, sil);
+    }
+    return { c: base.c, dx: base.dx, dy: base.dy,
+      voile: { c: sil.c, alpha: Math.min(100, melange.prc) / 100 } };
+  }
   const colNum = (couleur && typeof couleur === 'object') ? couleur.col : couleur;
   const colAjout = (couleur && typeof couleur === 'object') ? couleur.ajout : undefined;
   const cle = sprite.nom + '/' + frame + '/' + taille + '/'
     + (colNum === undefined ? 'gris' : colNum + (colAjout !== undefined ? '+' + colAjout : ''))
     + (parties ? '/' + JSON.stringify(parties) : '')
     + (tranche ? '/' + tranche : '')
-    + (rotations ? '/' + JSON.stringify(rotations) : '')
-    + (melange ? '/m' + melange.prc + ',' + melange.couleur : '');
+    + (rotations ? '/' + JSON.stringify(rotations) : '');
   const dejaLa = teintes.get(cle);
   if (dejaLa) return dejaLa;
 
@@ -606,18 +677,21 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
     }
   }
   if (colNum !== undefined) teinter(g, 0, 0, l, h, colNum, colAjout);
-  // Mc.setPercentColor : un fondu linéaire vers une couleur.
-  //     sortie = source × (100 - prc)/100 + (prc/100) × couleur
-  // C'est ce que le menu applique à chaque plan pour le faire bleuir la nuit.
-  if (melange && melange.prc > 0) fondre(g, 0, 0, l, h, melange.prc, melange.couleur);
   const rendu = { c, dx, dy };
   teintes.set(cle, rendu);
   return rendu;
 }
 
-// Pose un rendu à la case (x, y), en pixels.
+// Pose un rendu à la case (x, y), en pixels. Le VOILE — le fondu vers une
+// couleur (setPercentColor) — se pose par-dessus, à l'alpha du pourcentage.
 function poserRendu(ctx, r, x, y) {
   ctx.drawImage(r.c, x + r.dx, y + r.dy);
+  if (r.voile) {
+    const a = ctx.globalAlpha;
+    ctx.globalAlpha = a * r.voile.alpha;
+    ctx.drawImage(r.voile.c, x + r.dx, y + r.dy);
+    ctx.globalAlpha = a;
+  }
 }
 
 /**
@@ -756,6 +830,7 @@ class Client {
     this.lieu = null;
     this.champ = null;
     this.coefNuit = (o.coefNuit === undefined) ? 0.5 : o.coefNuit;
+    this.poserPref(o.pref || null);
     this.brancherCommandes(o.racine || document);
     // La carte de la forêt suit la souris (base/Forest.update) et se touche :
     // on garde la position du pointeur dans le repère de la scène.
@@ -993,6 +1068,15 @@ class Client {
   }
 
   annonce(nom, d, cible) {
+    // V0.38 du jeu : « Les fées mortes ne parlent plus ». La fée du client
+    // s'éteint À L'INSTANT de la mort — sans ça, l'ambiance (un mot toutes
+    // les ~500 images), le salut des objets qui décollent et le bravo de fin
+    // de niveau parlaient d'outre-tombe jusqu'au niveau suivant, pendant
+    // qu'aucune fée ne volait. L'interface, elle, suit déjà faerieList.
+    if (nom === 'feeMorte') {
+      this.fee = null;
+      this.dialogue = null;
+    }
     // Aventure.initStep(2) : le niveau gagné, la fée s'exclame en s'envolant.
     if (nom === 'finPartie' && d && d.gagne) {
       this.react((window.MinipixizLangue || {}).END_CHEER);
@@ -1034,12 +1118,77 @@ class Client {
       case 'pierreCassee': eclater(px(d.x), py(d.y), 10, '#d8d2bb', 2.4); break;
       case 'pierreEntamee': eclater(px(d.x), py(d.y), 4, '#d8d2bb', 1.6); break;
       case 'armureBrisee': eclater(px(d.x), py(d.y), 6, '#ffffff', 2); break;
-      case 'impyLibere': eclater(px(d.x), py(d.y), 16, '#ff66cc', 3); break;
-      // Bomb.blast : les quatorze boules de flammes et l'explosion au centre.
-      case 'bombe':
-        eclater(px(d.x), py(d.y), 14, '#ff8800', 3.4);
-        eclater(px(d.x), py(d.y), 10, '#ffcc33', 2.2);
+      // ImpCell.blast : le PENTACLE s'imprime au sol et dix RAYONS de lumière
+      // jaillissent — étirés en longueur (xscale 20..320), penchés au hasard,
+      // tournant à peine. C'est la signature de la capsule qui lâche son démon.
+      case 'impyLibere': {
+        if (!this.champ) break;
+        const pen = this.champ.nouvellePart('partPentacle');
+        pen.x = px(d.x); pen.y = py(d.y);
+        pen.fondu = [1];
+        pen.timer = 16;
+        pen.init();
+        for (let i = 0; i < 10; i++) {
+          const p = this.champ.nouvellePart('partRay');
+          p.x = px(d.x); p.y = py(d.y);
+          p.timer = 10 + Math.random() * 10;
+          p.vitr = Math.random() * 2;
+          p.rot = Math.random() * 360;
+          p.init();
+          p.sx = 20 + Math.random() * 300;   // _xscale seul : le rayon s'étire
+        }
         break;
+      }
+      // Bomb.blast : QUATORZE boules de flammes en couronne, à poids NÉGATIF —
+      // elles flottent vers le haut, chacune démarrant son clip à une image
+      // différente — et le clip d'explosion au centre. (Le jeu écrit deux fois
+      // vitx : les flammes n'ont pas d'élan vertical propre, on garde la
+      // bizarrerie.)
+      case 'bombe': {
+        if (!this.champ) break;
+        const bx = px(d.x), by = py(d.y);
+        for (let i = 0; i < 14; i++) {
+          const p = this.champ.nouvellePart('partFlameBall');
+          const a = Math.random() * 6.28;
+          p.x = bx + Math.cos(a) * (TS / 2);
+          p.y = by + Math.sin(a) * (TS / 2);
+          p.vitx = Math.cos(a) * (Math.random() * 2);
+          p.poids = -(0.2 + Math.random() * 0.3);
+          p.flGrav = true;
+          p.timer = 8 + Math.random() * 20;
+          p.echelle = 100 + Math.random() * 100;
+          p.joue = true;
+          p.frame = 1 + Math.floor((1 - i / 14) * 6);
+          p.fondu = [1];
+          p.init();
+        }
+        const bp = this.champ.nouvellePart('partBombEplosion');
+        bp.x = bx; bp.y = by;
+        bp.joue = true;
+        bp.init();
+        break;
+      }
+      // Token.explode → fxCrystal : dix éclats de cristal aux couleurs de la
+      // bille (teintés et éclaircis), qui tournoient en retombant.
+      case 'billeExplose': {
+        if (!this.champ) break;
+        const couleur = E.COULEURS[d.type] || E.COULEURS[0];
+        for (let i = 0; i < 10; i++) {
+          const p = this.champ.nouvellePart('partElementCrystal');
+          p.x = px(d.x); p.y = py(d.y);
+          const a = Math.random() * 6.28;
+          const v = 2 + Math.random() * 6;
+          p.vitx = Math.cos(a) * v;
+          p.vity = Math.sin(a) * v;
+          p.vitr = (Math.random() * 2 - 1) * 10;
+          p.timer = 5 + Math.random() * 10;
+          p.echelle = 20 + Math.random() * 50;
+          p.rot = Math.random() * 360;
+          p.couleur = couleur;
+          p.init();
+        }
+        break;
+      }
       // Item.initActiveStep : la fée salue l'objet qui décolle (reactItem) —
       // et les trous de ses tables sont ses silences.
       case 'objetEnvol': {
@@ -2084,6 +2233,31 @@ class Client {
         x: t.x, y: t.y, sx: t.sx, sy: t.sy, rot: t.rot, alpha: t.sa, melange: t.melange,
       });
     }
+    // spell/imp/Bind : les FILS PARALYSANTS se voient — un trait blanc d'un
+    // pixel à 75 %, du démon vers chaque bille de la pièce. À moins de 80 px
+    // le fil a du MOU : la courbe s'affaisse d'autant (Cs.game.line du SWF).
+    for (const sort of (jeu.sList || [])) {
+      if (!sort.fils || !sort.fils.length || !sort.lanceur) continue;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (const f of sort.fils) {
+        ctx.moveTo(sort.lanceur.x, sort.lanceur.y);
+        const dx = f.x - sort.lanceur.x, dy = f.y - sort.lanceur.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const lim = 80;
+        if (dist < lim) {
+          const cx = (f.x + sort.lanceur.x) * 0.5;
+          const cy = (f.y + sort.lanceur.y) * 0.5 + (lim * 0.5) * (1 - dist / lim);
+          ctx.quadraticCurveTo(cx, cy, f.x, f.y);
+        } else {
+          ctx.lineTo(f.x, f.y);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // Une fée ou un impy : le même clip, animé par le code — pas par un scénario.
@@ -2478,6 +2652,46 @@ class Client {
     };
     this.canvas.addEventListener('touchend', lacher, { passive: false });
     this.canvas.addEventListener('touchcancel', lacher, { passive: false });
+
+    // Cm.pref.$mouse — le MODE SOURIS du jeu d'origine : la pièce se joue au
+    // pointeur (clic bref = tourner, glisser = suivre la colonne, tirer vers
+    // le bas = la descente rapide). On rejoue exactement le chemin du doigt.
+    this.canvas.addEventListener('mousedown', (ev) => {
+      if (!(this.pref && this.pref.$mouse)) return;
+      if (!enJeu() || this.doigt) return;
+      ev.preventDefault();
+      const p = scene(ev);
+      this.doigt = {
+        id: 'souris',
+        x0: p.x, y0: p.y, x: p.x, y: p.y,
+        depart: Date.now(),
+        bouge: false,
+        piece: this.jeu.piece || null,
+        colonne0: this.jeu.piece ? this.jeu.piece.x : 0,
+        cible: null,
+      };
+    });
+    this.canvas.addEventListener('mousemove', (ev) => {
+      const d = this.doigt;
+      if (!d || d.id !== 'souris') return;
+      const p = scene(ev);
+      d.x = p.x; d.y = p.y;
+      if (Math.abs(p.x - d.x0) > 6 || Math.abs(p.y - d.y0) > 6) d.bouge = true;
+      d.cible = d.colonne0 + Math.round((p.x - d.x0) / TS);
+    });
+    const lacherSouris = (ev) => {
+      const d = this.doigt;
+      if (!d || d.id !== 'souris') return;
+      this.doigt = null;
+      this.entree.gauche = false;
+      this.entree.droite = false;
+      this.entree.bas = false;
+      if (!d.bouge && Date.now() - d.depart < 400 && ev.type !== 'mouseleave') {
+        this.pulseTourner = 2;
+      }
+    };
+    this.canvas.addEventListener('mouseup', lacherSouris);
+    this.canvas.addEventListener('mouseleave', lacherSouris);
   }
 
   // Une image de pilotage au doigt, avant que le moteur ne lise `entree`.
@@ -2512,13 +2726,29 @@ class Client {
     this.entree.gauche = d.cible < ou - 0.35;
   }
 
+  // Cm.pref.$key — les CINQ touches du jeu, remappables au moulin comme dans
+  // l'original (Option.mt) : gauche, droite, tourner, descendre, sort. Les
+  // codes sont ceux de Key.getCode, identiques aux keyCode du navigateur.
+  // C'est ici que le joueur historique retrouve son sort sur ESPACE.
+  poserPref(p) {
+    this.pref = p || null;
+    this.prefRoles = {};
+    const roles = ['gauche', 'droite', 'tourner', 'bas', 'sort'];
+    const cles = (p && p.$key) || [];
+    for (let i = 0; i < roles.length; i++) {
+      if (cles[i]) this.prefRoles[cles[i]] = roles[i];
+    }
+  }
+
   brancherCommandes(racine) {
     const touches = {
       ArrowLeft: 'gauche', ArrowRight: 'droite', ArrowDown: 'bas', ArrowUp: 'tourner',
       q: 'gauche', d: 'droite', s: 'bas', z: 'tourner', a: 'gauche', w: 'tourner',
       ' ': 'tourner',
     };
+    if (!this.prefRoles) this.prefRoles = {};
     window.addEventListener('keydown', (ev) => {
+      if (this.captureTouche) return;   // le moulin écoute : rien ne joue
       // Manager.update : P ou Échap mettent en PAUSE — un voile violet, le
       // panneau, et plus rien ne bouge jusqu'au prochain appui.
       if (ev.key === 'p' || ev.key === 'P' || ev.key === 'Escape') {
@@ -2526,6 +2756,16 @@ class Client {
         ev.preventDefault();
         return;
       }
+      // Les touches du moulin d'abord : elles PRIMENT sur les commodités du
+      // port (sinon remapper espace vers le sort le laisserait tourner).
+      const role = this.prefRoles[ev.keyCode];
+      if (role === 'sort') {
+        // Game.update : seul le premier appui compte (flHelpRelease).
+        if (!this.aideEnfoncee) { this.aideEnfoncee = true; this.appelerFee(); }
+        ev.preventDefault();
+        return;
+      }
+      if (role) { this.entree[role] = true; ev.preventDefault(); return; }
       // Cm.pref.$key[4] — la touche d'AIDE. Le jeu d'origine n'écoute que le
       // premier appui (flHelpRelease) : rester appuyé n'enchaîne pas les sorts.
       if (ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'e') {
@@ -2537,10 +2777,13 @@ class Client {
       if (k) { this.entree[k] = true; ev.preventDefault(); }
     });
     window.addEventListener('keyup', (ev) => {
-      if (ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'e') this.aideEnfoncee = false;
+      if (this.prefRoles[ev.keyCode] === 'sort'
+        || ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'e') this.aideEnfoncee = false;
       if (ev.key === 'p' || ev.key === 'P' || ev.key === 'Escape') this.pauseEnfoncee = false;
     });
     window.addEventListener('keyup', (ev) => {
+      const role = this.prefRoles[ev.keyCode];
+      if (role && role !== 'sort') { this.entree[role] = false; ev.preventDefault(); return; }
       const k = touches[ev.key];
       if (k) { this.entree[k] = false; ev.preventDefault(); }
     });

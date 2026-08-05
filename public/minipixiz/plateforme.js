@@ -371,10 +371,35 @@ function nouveauxPictos(avant, apres) {
   return l;
 }
 
+// Cm.formatPref — les préférences du joueur, telles que le SWF les écrit au
+// slot 1 : la souris, les deux volumes, et les CINQ touches — gauche, droite,
+// tourner, descendre, sort (callHelp). Les codes sont ceux de Key.getCode,
+// identiques aux keyCode du navigateur : LEFT 37, RIGHT 39, SPACE 32, DOWN 40,
+// UP 38. C'est le moulin (Option.mt) qui les remappe — c'est là que les
+// joueurs historiques ont mis leur sort sur espace.
+const PREF_DEFAUT = { $mouse: false, $sound: [1, 1], $key: [37, 39, 32, 40, 38] };
+
+function normaliserPref(o) {
+  const p = { $mouse: PREF_DEFAUT.$mouse, $sound: PREF_DEFAUT.$sound.slice(), $key: PREF_DEFAUT.$key.slice() };
+  if (!o || typeof o !== 'object') return p;
+  if (typeof o.$mouse === 'boolean') p.$mouse = o.$mouse;
+  if (Array.isArray(o.$sound)) {
+    for (let i = 0; i < 2; i++) if (o.$sound[i] !== undefined) p.$sound[i] = nombre(o.$sound[i]);
+  }
+  if (Array.isArray(o.$key)) {
+    for (let i = 0; i < 5; i++) {
+      const k = nombre(o.$key[i]);
+      if (k > 0) p.$key[i] = k;
+    }
+  }
+  return p;
+}
+
 class Plateforme {
   constructor(sid) {
     this.sid = sid || '';
     this.carte = carteNeuve();
+    this.pref = normaliserPref(null);
     this.charge = false;
     this.reparations = [];
   }
@@ -386,6 +411,13 @@ class Plateforme {
       { cache: 'no-store' })
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status))))
       .then((txt) => {
+        // Le slot 1, les préférences — celles que le SWF du bureau écrit et
+        // relit : les touches remappées au moulin voyagent entre les versions.
+        const brutPref = lireLoadVars(txt, '1');
+        let oPref = null;
+        if (brutPref) { try { oPref = JSON.parse(brutPref); } catch (e) { oPref = null; } }
+        this.pref = normaliserPref(oPref);
+
         const brut = lireLoadVars(txt, '0');
         let o = null;
         if (brut) { try { o = JSON.parse(brut); } catch (e) { o = null; } }
@@ -404,6 +436,19 @@ class Plateforme {
         return this.carte;
       })
       .catch(() => this.carte);        // charge reste faux : on ne sauvera pas
+  }
+
+  // Les préférences remaniées au moulin repartent au slot 1 — le SWF du
+  // bureau les relira telles quelles.
+  ecrirePref() {
+    if (!this.sid) return Promise.resolve(false);
+    return fetch('/api/saveFrutiSlot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sid: this.sid, game: 'minipixiz', slotId: '1', data: JSON.stringify(this.pref),
+      }),
+    }).then((r) => r.ok).catch(() => false);
   }
 
   /**
@@ -495,6 +540,7 @@ class Plateforme {
 
 const API = {
   Plateforme, carteNeuve, reparer, fusionner, ramasser, fiche, lireLoadVars,
+  normaliserPref, PREF_DEFAUT,
   nouveauxPictos, porteUneProgression, finDeCourse,
   VERSION, NB_ZONES, PAS_CHECKPOINT, PLACES_SAC, RELAIS,
 };

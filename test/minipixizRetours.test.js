@@ -469,3 +469,89 @@ test('les impys abattus se comptent par rang dans $stat.$kill', () => {
   const plate = fs.readFileSync(path.join(ROOT, 'public/minipixiz/plateforme.js'), 'utf8');
   assert.match(plate, /un compteur par RANG d'impy/);
 });
+
+/*
+ * ── La seconde vague de retours ──────────────────────────────────────────
+ *
+ * « la fée morte parlait encore »       le client gardait this.fee au-delà
+ *                                       de la mort (V0.38 : « les fées mortes
+ *                                       ne parlent plus »)
+ * « ça rame quand les pièces           chaque pas du blanchiment fabriquait
+ *   disparaissent »                     un canevas et repassait les pixels
+ * « le sort anti-rotation n'a pas      les fils calculés n'étaient jamais
+ *   ses fils, et les billes rosissent » dessinés ; la teinte inventée collait
+ *                                       aux billes posées
+ * « pas les mêmes explosions »          des carrés de couleur à la place des
+ *                                       cristaux, flammes et pentacles du SWF
+ * « je lance mes sorts avec espace »    les touches étaient figées — le
+ *                                       moulin (Option.mt) les remappe
+ */
+
+test('la fée morte se tait sur-le-champ — V0.38, « les fées mortes ne parlent plus »', () => {
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(client, /if \(nom === 'feeMorte'\) \{\s*this\.fee = null;\s*this\.dialogue = null;\s*\}/,
+    'la mort coupe la parole à l\'instant');
+});
+
+test('le blanchiment des billes se COMPOSE — plus un canevas par pas de fondu', () => {
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(client, /voile: \{ c: sil\.c, alpha/, 'rendre publie un voile');
+  assert.match(client, /if \(r\.voile\)/, 'poserRendu le pose à l\'alpha');
+  assert.match(client, /function silhouettePeinte/, 'poserVif a le même remède');
+  // Le chemin chaud ne repasse plus les pixels : fondre() a quitté rendre().
+  const rendreSrc = client.slice(client.indexOf('function rendre('),
+    client.indexOf('function poserRendu'));
+  assert.ok(!/fondre\(/.test(rendreSrc), 'rendre ne rasterise plus le mélange');
+});
+
+test('les Fils Paralysants se voient, et la pièce du Conglomérat pulse vers le NOIR', () => {
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  // spell/imp/Bind : trait blanc 1 px à 75 %, la courbe s'affaisse sous 80 px.
+  assert.match(client, /rgba\(255,255,255,0\.75\)/, 'le fil blanc du SWF');
+  assert.match(client, /quadraticCurveTo\(cx, cy, f\.x, f\.y\)/, 'et son mou');
+  const sorts = fs.readFileSync(path.join(ROOT, 'public/minipixiz/sorts.js'), 'utf8');
+  // Conglomerat.mt : modColor(1, cos×40−40) — un assombrissement, pas du rose.
+  assert.match(sorts, /couleur: 0x000000/, 'la pulsation est sombre');
+  assert.ok(!/0xFF00AA/.test(sorts), 'le rose inventé a disparu');
+  const moteur = fs.readFileSync(path.join(ROOT, 'public/minipixiz/engine.js'), 'utf8');
+  assert.match(moteur, /o\.e\.melange = null;/,
+    'et la pose rend la bille à sa couleur — rien ne colle à la grille');
+});
+
+test('les explosions sont celles du jeu : cristaux, flammes, pentacle et rayons', () => {
+  const moteur = fs.readFileSync(path.join(ROOT, 'public/minipixiz/engine.js'), 'utf8');
+  assert.match(moteur, /billeExplose/, 'chaque bille détruite éclate (Token.explode)');
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  for (const lien of ['partElementCrystal', 'partFlameBall', 'partBombEplosion',
+    'partPentacle', 'partRay']) {
+    assert.match(client, new RegExp("nouvellePart\\('" + lien + "'\\)"), lien);
+  }
+  // Bomb.blast : QUATORZE flammes à poids négatif — elles flottent vers le haut.
+  assert.match(client, /i < 14/, 'quatorze flammes');
+  assert.match(client, /poids = -\(0\.2 \+ Math\.random\(\) \* 0\.3\)/, 'qui montent');
+});
+
+test('le moulin remappe les cinq touches — et le sort revient sur espace', () => {
+  // Cm.formatPref : LEFT, RIGHT, SPACE, DOWN, UP — et la souris à faux.
+  assert.deepEqual(P.normaliserPref(null).$key, [37, 39, 32, 40, 38]);
+  assert.equal(P.normaliserPref(null).$mouse, false);
+  // Un slot 1 remappé (le sort sur espace) est honoré tel quel.
+  assert.deepEqual(P.normaliserPref({ $key: [37, 39, 38, 40, 32] }).$key,
+    [37, 39, 38, 40, 32]);
+  // Du bruit → les défauts, champ à champ.
+  assert.deepEqual(P.normaliserPref({ $key: 'zut', $mouse: 3 }).$key,
+    [37, 39, 32, 40, 38]);
+  // Le client applique les rôles par keyCode, et les touches du moulin PRIMENT.
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(client, /poserPref\(p\)/);
+  assert.match(client, /this\.prefRoles\[ev\.keyCode\]/);
+  assert.match(client, /\$mouse/, 'et le mode souris du jeu d\'origine est là');
+  // La page : le panneau, la route du lieu, et l'écriture au slot 1 (le SWF
+  // du bureau relit les mêmes préférences).
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /id="moulin"/);
+  assert.match(page, /lieu\.va === 'option'.*ouvrirMoulin/);
+  assert.match(page, /ecrirePref\(\)/);
+  const plate = fs.readFileSync(path.join(ROOT, 'public/minipixiz/plateforme.js'), 'utf8');
+  assert.match(plate, /slotId: '1'/, 'les préférences repartent au slot 1');
+});

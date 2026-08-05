@@ -110,6 +110,37 @@
     background: #2b4a6b; color: #dff0ff; font: bold 14px inherit; cursor: pointer;
   }
 
+  /* ── Le moulin (Option.mt) : la souris et les cinq touches du jeu ── */
+  #moulin {
+    position: fixed; inset: 0; z-index: 12; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(12, 8, 28, .72);
+  }
+  #moulin.on { display: flex; }
+  #moulin .panneau {
+    width: min(320px, 92vw);
+    background: linear-gradient(180deg, #241a44, #1a1233);
+    border-radius: 14px; box-shadow: 0 0 0 2px #3a2d5e, 0 12px 40px rgba(0,0,0,.7);
+    padding: 16px; color: #dff0ff;
+  }
+  #moulin h2 { margin: 0 0 10px; font-size: 15px; color: #ffd76a; text-align: center; }
+  #moulin .rang {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 4px; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 13px;
+  }
+  #moulin .rang button {
+    border: 0; border-radius: 8px; padding: 6px 14px; min-width: 96px;
+    background: #2b4a6b; color: #dff0ff; font: bold 12px inherit; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #moulin .rang button.attend { background: #7d51b8; }
+  #moulin .pied { display: flex; justify-content: center; margin-top: 12px; }
+  #moulin .pied button {
+    border: 0; border-radius: 12px; padding: 10px 26px;
+    background: #2f4a1c; color: #bff18d; font: bold 13px inherit; cursor: pointer;
+  }
+  #moulin .note { font-size: 11px; color: #9b8fc9; text-align: center; margin-top: 8px; }
+
   /* ── Le courrier (mcMail) ──
      La lettre se pose SUR le canevas de la clairière : sa boîte est calée sur
      lui par le script, et tout l'intérieur se place en pourcentages de la
@@ -180,7 +211,7 @@
     <button type="button" class="fee" data-cmd-aide aria-label="Appeler la fée">✦</button>
   </div>
   <div id="aide-tactile">tapotez le plateau pour tourner · glissez pour déplacer · tirez vers le bas pour poser</div>
-  <div id="aide">← → pour déplacer · ↑ pour tourner · ↓ pour poser · Ctrl pour appeler la fée</div>
+  <div id="aide">← → pour déplacer · espace pour tourner · ↓ pour poser · ↑ pour appeler la fée — touches remappables au moulin</div>
 </div>
 
 <button type="button" id="sac-but">🎒 sac</button>
@@ -207,6 +238,23 @@
 <div id="inventaire">
   <div id="inv-aire"><canvas id="inv-stage" width="240" height="240"></canvas></div>
   <button type="button" id="inv-fermer">retour</button>
+</div>
+
+<!-- Le moulin (Option.mt) : le mode souris et les cinq touches du jeu,
+     enregistrés au slot 1 — le SWF du bureau relit exactement les mêmes.
+     C'est ici que les joueurs historiques remettent leur sort sur espace. -->
+<div id="moulin">
+  <div class="panneau">
+    <h2>Le Moulin — Options</h2>
+    <div class="rang"><span>Jouer à la souris</span><button type="button" id="mo-souris"></button></div>
+    <div class="rang"><span>Gauche</span><button type="button" data-role="0"></button></div>
+    <div class="rang"><span>Droite</span><button type="button" data-role="1"></button></div>
+    <div class="rang"><span>Tourner</span><button type="button" data-role="2"></button></div>
+    <div class="rang"><span>Descendre</span><button type="button" data-role="3"></button></div>
+    <div class="rang"><span>Appeler la fée (sort)</span><button type="button" data-role="4"></button></div>
+    <div class="note">clique une touche puis presse la nouvelle — Échap annule</div>
+    <div class="pied"><button type="button" id="mo-fermer">Fermer</button></div>
+  </div>
 </div>
 
 <div id="chargement">
@@ -352,6 +400,7 @@
         canvas: $('#stage'),
         sprites: sprites,
         fee: feeCourante(),
+        pref: plateforme.pref,
         coefNuit: coefNuit(),
         surEvenement: function (nom, info) {
           // Imp.harm : chaque impy abattu se compte par RANG —
@@ -519,6 +568,7 @@
             client.irisDepuis($('#menu-stage'), p && p.x, p && p.y);
           }
           if (lieu.va === 'foret') { fermerMenu(); ouvrirCarte(); irisVersJeu(); return; }
+          if (lieu.va === 'option') { ouvrirMoulin(); return; }
           if (lieu.va === 'inventaire') { ouvrirSac(); return; }
           if (lieu.va === 'dungeon') {
             if (!etat.ouvert) {
@@ -768,6 +818,69 @@
         menu.arreter();
       }
 
+      // ── Le moulin (Option.mt) : les préférences du joueur ──
+      // Les cinq touches et le mode souris, écrits au slot 1 comme le SWF —
+      // le bureau relira les mêmes. C'est ici que l'on remet le sort sur
+      // espace, comme au bon vieux temps.
+      var NOMS_TOUCHES = { 8: 'Retour', 9: 'Tab', 13: 'Entrée', 16: 'Maj',
+        17: 'Ctrl', 18: 'Alt', 32: 'Espace', 37: '←', 38: '↑', 39: '→',
+        40: '↓', 46: 'Suppr' };
+      function nomTouche(code) {
+        if (NOMS_TOUCHES[code]) return NOMS_TOUCHES[code];
+        if (code >= 48 && code <= 90) return String.fromCharCode(code);
+        if (code >= 96 && code <= 105) return 'PavNum ' + (code - 96);
+        if (code >= 112 && code <= 123) return 'F' + (code - 111);
+        return 'code ' + code;
+      }
+      function peindreMoulin() {
+        $('#mo-souris').textContent = plateforme.pref.$mouse ? 'oui' : 'non';
+        var boutons = document.querySelectorAll('#moulin [data-role]');
+        Array.prototype.forEach.call(boutons, function (b) {
+          b.textContent = nomTouche(plateforme.pref.$key[Number(b.getAttribute('data-role'))]);
+        });
+      }
+      function ouvrirMoulin() {
+        peindreMoulin();
+        $('#moulin').classList.add('on');
+      }
+      function fermerMoulin() {
+        $('#moulin').classList.remove('on');
+        client.captureTouche = false;
+        client.poserPref(plateforme.pref);
+        plateforme.ecrirePref();
+      }
+      $('#mo-fermer').addEventListener('click', fermerMoulin);
+      $('#mo-souris').addEventListener('click', function () {
+        plateforme.pref.$mouse = !plateforme.pref.$mouse;
+        peindreMoulin();
+      });
+      (function brancherMoulin() {
+        var attente = null;
+        var boutons = document.querySelectorAll('#moulin [data-role]');
+        Array.prototype.forEach.call(boutons, function (b) {
+          b.addEventListener('click', function () {
+            if (attente) attente.classList.remove('attend');
+            attente = b;
+            b.classList.add('attend');
+            b.textContent = 'presse…';
+            client.captureTouche = true;
+            var capter = function (ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              window.removeEventListener('keydown', capter, true);
+              var i = Number(b.getAttribute('data-role'));
+              // Option.mt : Key.getCode() tel quel — Échap annule seulement.
+              if (ev.key !== 'Escape') plateforme.pref.$key[i] = ev.keyCode;
+              b.classList.remove('attend');
+              attente = null;
+              client.captureTouche = false;
+              peindreMoulin();
+            };
+            window.addEventListener('keydown', capter, true);
+          });
+        });
+      })();
+
       // On ouvre sur la clairière — c'est l'écran d'accueil du jeu. La forêt ne
       // se lance qu'en la touchant.
       ouvrirMenu();
@@ -778,6 +891,7 @@
       window.__inventaire = inventaire;
       window.__menu = menu;
       window.__ouvrirMenu = ouvrirMenu;
+      window.__ouvrirMoulin = ouvrirMoulin;
       window.__ouvrirBassin = ouvrirBassin;
       window.__ouvrirLieu = ouvrirLieu;
       window.__ouvrirGromelin = ouvrirGromelin;

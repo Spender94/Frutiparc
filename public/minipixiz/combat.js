@@ -85,6 +85,7 @@ const COULEURS_IMPY = [
 const EPHEMERES = {
   partQueueStandard: 12, partQueuePhantom: 8, partJet: 48, partMiniExplosion: 12,
   partOnde: 4, partBlackJuice: 15, partConcentrationRay: 11, partDeadImp: 12,
+  partBombEplosion: 12,        // l'explosion de la bombe joue ses douze images
 };
 
 const nombre = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);

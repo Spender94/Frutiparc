@@ -566,6 +566,10 @@ class Piece {
     for (const o of this.list) {
       o.e.px = this.x + o.x;
       o.e.py = this.y + o.y;
+      // La teinte d'un sort vit sur la PIÈCE — dans le jeu d'origine, sur le
+      // clip qui la porte, détruit à la pose. Une bille posée redevient une
+      // bille : le Conglomérat ne marque pas la grille.
+      o.e.melange = null;
       o.e.poser();
     }
     this.jeu.surPiecePosee();
@@ -982,7 +986,12 @@ class Jeu {
         // délai, c'est lui qui rend la cascade lisible.
         this.timer += tmod;
         if (this.timer > 10) {
-          for (const e of this.dList) e.tuer();
+          for (const e of this.dList) {
+            // Token.explode → fxCrystal : chaque bille détruite éclate en
+            // cristaux de SA couleur. Le client écoute et pose les particules.
+            if (e.et === E.JETON) this.evenement('billeExplose', { x: e.px, y: e.py, type: e.type });
+            e.tuer();
+          }
           this.dList = [];
           this.initStep(ETAPE.CHUTE);
         }
