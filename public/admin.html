@@ -2792,6 +2792,33 @@ async function loadScores() {
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
+// ── Le Challenge du jour : édition et suppression, journée en cours seulement ──
+// Contrairement aux records (ci-dessous), l'archive des jours passés et ses
+// médailles ne sont JAMAIS touchées : le rollover de minuit lira la valeur
+// corrigée.
+function editChallengeScore(user, ranking, score) {
+  const v = prompt(`Nouveau score du JOUR pour ${user} (${ranking}) :`, score);
+  if (v === null || v === '') return;
+  if (!Number.isFinite(Number(v))) { toast('Score invalide'); return; }
+  fetch(`/api/admin/challenge/scores/${encodeURIComponent(user)}/${encodeURIComponent(ranking)}`, {
+    method: 'PATCH', headers: hdr(), body: JSON.stringify({ score: Number(v) })
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { toast('Erreur : ' + (d.error || r.status)); return; }
+    toast('Score du jour mis à jour');
+    loadChallengeStatus();
+  }).catch((e) => toast('Erreur : ' + e.message));
+}
+
+async function deleteChallengeScore(user, ranking) {
+  if (!confirm(`Supprimer le score du JOUR de ${user} dans ${ranking} ?\n\nSeule la journée en cours est touchée — l'archive et les médailles des jours passés restent intactes. Le rollover de minuit se fera sans cette entrée.`)) return;
+  const r = await fetch(`/api/admin/challenge/scores/${encodeURIComponent(user)}/${encodeURIComponent(ranking)}`, { method: 'DELETE', headers: hdr() });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { toast('Erreur : ' + (d.error || r.status)); return; }
+  toast('Score du jour supprimé');
+  loadChallengeStatus();
+}
+
 function editScore(user, ranking, score, data) {
   $('#escore-user').value = user;
   $('#escore-ranking').value = ranking;
@@ -3737,17 +3764,31 @@ async function loadChallengeStatus() {
     $('#challenge-status').innerHTML = html;
     loadMb2MapInfo();
 
+    // Le classement COMPLET du jour, éditable : chaque ligne se modifie ou se
+    // supprime — la journée en cours seulement, l'archive des jours passés et
+    // ses médailles ne bougent pas.
     let scoresHtml = '';
+    const noms = d.rankingNames || {};
+    const medals = ['🥇','🥈','🥉'];
     for (const rkId of (d.challengeRankings || [])) {
-      const info = d.scores[rkId] || { count: 0, top3: [] };
-      scoresHtml += `<div style="margin-bottom:12px;padding:0 10px"><strong style="color:#E3756A">${esc(rkId)}</strong> — ${info.count} joueur(s)`;
-      if (info.top3.length > 0) {
-        scoresHtml += '<ol style="margin:4px 0 0 20px;padding:0">';
-        const medals = ['🥇','🥈','🥉'];
-        for (let i = 0; i < info.top3.length; i++) {
-          scoresHtml += `<li>${medals[i] || ''} ${esc(info.top3[i].u)} — ${info.top3[i].s}</li>`;
-        }
-        scoresHtml += '</ol>';
+      const info = d.scores[rkId] || { count: 0, entries: [] };
+      const entries = info.entries || (info.top3 || []).map(t => ({ username: t.u, score: t.s, data: t.data || '', updatedAt: '' }));
+      scoresHtml += `<div style="margin-bottom:14px;padding:0 10px"><strong style="color:#E3756A">${esc(noms[rkId] || rkId)}</strong> <span style="color:#888;font-size:11px">${esc(rkId)}</span> — ${info.count} joueur(s)`;
+      if (entries.length > 0) {
+        scoresHtml += '<table style="margin-top:4px;max-width:640px"><tr><th style="width:28px"></th><th>joueur</th><th>score</th><th>maj</th><th></th></tr>';
+        entries.forEach((e, i) => {
+          scoresHtml += `<tr>
+            <td>${medals[i] || (i + 1)}</td>
+            <td><a href="#" onclick="viewUser('${esc(e.username)}');return false" class="uname">${esc(e.username)}</a></td>
+            <td>${e.score}</td>
+            <td style="font-size:11px;color:#888">${esc(String(e.updatedAt || '').replace('T', ' ').slice(0, 19))}</td>
+            <td>
+              <button class="btn btn-sm" onclick="editChallengeScore('${esc(e.username)}','${esc(rkId)}',${e.score})">Modifier</button>
+              <button class="btn-danger btn-sm" onclick="deleteChallengeScore('${esc(e.username)}','${esc(rkId)}')">Supprimer</button>
+            </td>
+          </tr>`;
+        });
+        scoresHtml += '</table>';
       }
       scoresHtml += '</div>';
     }

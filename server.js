@@ -8864,20 +8864,79 @@ app.get('/api/admin/challenge/status', adminScope('challenge'), async (req, res)
     const all = [];
     for (const [u, rlist] of Object.entries(scoresData.users || {})) {
       if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
-        all.push({ u, s: Number(rlist[rkId].score), data: rlist[rkId].data });
+        all.push({ u, s: Number(rlist[rkId].score), data: rlist[rkId].data, at: rlist[rkId].updatedAt || '' });
       }
     }
     all.sort(scoreComparator(rkId));
-    summary[rkId] = { count: all.length, top3: all.slice(0, 3) };
+    summary[rkId] = {
+      count: all.length,
+      top3: all.slice(0, 3),
+      // Le classement COMPLET du jour, pour l'édition/suppression depuis
+      // l'admin — pas seulement le podium.
+      entries: all.map((e) => ({ username: e.u, score: e.s, data: e.data || '', updatedAt: e.at })),
+    };
   }
+  const rankingNames = {};
+  for (const [id, m] of Object.entries(RANKINGS)) rankingNames[id] = m.name || id;
   const archiveDays = process.env.DATABASE_URL ? await db.getArchiveDays().catch(() => []) : [];
   res.json({
     today,
     lastRollDay: challengeMedalsData.lastRollDay || '',
     challengeRankings: challengeIds,
+    rankingNames,
     scores: summary,
     archiveDays,
   });
+});
+
+// ── Le Challenge du JOUR s'édite et se supprime — sans toucher l'archive ──
+// Les routes « records » (/api/admin/scores) purgent aussi l'archive : parfait
+// pour le livre des records, destructeur pour le challenge — les journées
+// passées et leurs médailles y vivent. Ici on n'opère QUE sur la journée en
+// cours : la mémoire (scoresData), le fichier, et la ligne live en base. Le
+// rollover de minuit lira donc la valeur corrigée, et les médailles du soir
+// tomberont sur le classement nettoyé.
+app.patch('/api/admin/challenge/scores/:username/:ranking', adminScope('challenge'), async (req, res) => {
+  const { username, ranking } = req.params;
+  if (!challengeRankingIds().includes(ranking)) {
+    return res.status(400).json({ error: 'pas un classement challenge' });
+  }
+  const entry = scoresData.users[username] && scoresData.users[username][ranking];
+  if (!entry) return res.status(404).json({ error: 'aucun score aujourd\'hui' });
+  const newScore = Number(req.body.score);
+  if (!Number.isFinite(newScore)) return res.status(400).json({ error: 'invalid score' });
+  entry.score = newScore;
+  if (req.body.data !== undefined) entry.data = String(req.body.data);
+  entry.updatedAt = new Date().toISOString();
+  saveScoresFile();
+  if (process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(username);
+      if (row) await db.upsertScore(row.id, ranking, newScore, entry.data || '');
+    } catch (e) { console.error('[ADMIN] challenge day edit:', e.message); }
+  }
+  console.log(`[ADMIN] Challenge du jour : score édité ${username}/${ranking} = ${newScore}`);
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/challenge/scores/:username/:ranking', adminScope('challenge'), async (req, res) => {
+  const { username, ranking } = req.params;
+  if (!challengeRankingIds().includes(ranking)) {
+    return res.status(400).json({ error: 'pas un classement challenge' });
+  }
+  const rlist = scoresData.users[username];
+  if (!rlist || !rlist[ranking]) return res.status(404).json({ error: 'aucun score aujourd\'hui' });
+  delete rlist[ranking];
+  if (Object.keys(rlist).length === 0) delete scoresData.users[username];
+  saveScoresFile();
+  if (process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(username);
+      if (row) await db.deleteScore(row.id, ranking);
+    } catch (e) { console.error('[ADMIN] challenge day delete:', e.message); }
+  }
+  console.log(`[ADMIN] Challenge du jour : score supprimé ${username}/${ranking} (archive intacte)`);
+  res.json({ ok: true });
 });
 
 app.post('/api/admin/challenge/roll', adminScope('challenge'), async (req, res) => {
