@@ -960,8 +960,10 @@ class Client {
     this.canvas.addEventListener('mouseleave', () => { this.pointeur = null; });
     this.brancherToucher();
     this.canvas.addEventListener('click', (ev) => {
-      if (!this.carteForet && !this.nouvelle && !this.ornegon && !this.gromelin) return;
+      if (!this.carteForet && !this.nouvelle && !this.ornegon && !this.gromelin
+        && !this.evolution) return;
       suivre(ev.clientX, ev.clientY);
+      if (this.evolution) { this.clicEvolution(this.pointeur.x, this.pointeur.y); return; }
       if (this.gromelin) {
         this.clicGromelin(this.pointeur.x, this.pointeur.y);
         return;
@@ -998,6 +1000,7 @@ class Client {
     this.dialogue = null;
     this.ornegon = null;
     this.gromelin = null;
+    this.evolution = null;
     this.pause = false;
     this.commencerOuverture((opts.niveau || 0) + 1);
     if (opts.fee !== undefined) this.fee = opts.fee;
@@ -1035,6 +1038,7 @@ class Client {
     this.dialogue = null;
     this.ornegon = null;
     this.gromelin = null;
+    this.evolution = null;
     this.pause = false;
     this.ouverture = null;             // le bassin s'ouvre sur sa bulle, pas sur la gerbe
     // Les événements passent par `annonce` pour les effets de dessin, puis vont
@@ -1067,6 +1071,7 @@ class Client {
     this.nouvelleEnAttente = null;
     this.ornegon = null;
     this.gromelin = null;
+    this.evolution = null;
     this.dialogue = null;
     this.pause = false;
     // Même chose qu'au bassin : les événements du lieu vont au gestionnaire du
@@ -1103,6 +1108,7 @@ class Client {
     this.ouverture = null;
     this.ornegon = null;
     this.gromelin = null;
+    this.evolution = null;
     this.nouvelle = null;
     this.pause = false;
     this.carteForet = {
@@ -1391,6 +1397,7 @@ class Client {
     const s = this.sprites;
     if (this.gromelin) { this.dessinerGromelin(ctx, tmod); return; }
     if (this.ornegon) { this.dessinerOrnegon(ctx); return; }
+    if (this.evolution) { this.dessinerEvolution(ctx); return; }
     if (this.nouvelle) { this.dessinerNouvelle(ctx); return; }
     if (this.carteForet) { this.dessinerCarteForet(ctx, tmod); return; }
     if (this.bassin) { this.dessinerBassin(ctx, tmod); this.dessinerCine(ctx, tmod); return; }
@@ -1541,6 +1548,7 @@ class Client {
       const f = or.surFermer;
       this.ornegon = null;
     this.gromelin = null;
+    this.evolution = null;
       if (f) f();
       return;
     }
@@ -1583,6 +1591,7 @@ class Client {
     this.dialogue = null;
     this.ornegon = null;
     this.gromelin = null;
+    this.evolution = null;
     this.pause = false;
     this.carteForet = null;
     this.gromelin = {
@@ -1970,6 +1979,101 @@ class Client {
     this.cine = null;
     this.ouverture = null;
     this.nouvelle = o || {};
+  }
+
+  /**
+   * base/Aventure.initExpPanel — LA MONTÉE DE NIVEAU.
+   *
+   * `tryToCloseGame` est appelé à la fin de CHAQUE niveau qui n'est pas un
+   * multiple de vingt : la partie s'arrête, et si la fée a de quoi monter
+   * (`getNextExpLimit() <= $exp`), le jeu ouvre ce panneau AVANT d'enchaîner.
+   * Deux cases, et il faut choisir : un point de caractéristique, ou le sort
+   * que `setNextLevelUp` lui a réservé. `$next` porte les deux depuis sa
+   * naissance ; l'icône se lit dans la bande `evolution`, à l'image `n+1`
+   * pour la caractéristique et `n+11` pour le sort.
+   *
+   * Rien de tout cela n'existait dans le portage : l'expérience s'accumulait
+   * sans jamais rien donner, et l'affichage la bornait à 99,9 % pour cacher
+   * qu'elle dépassait depuis longtemps.
+   *
+   * @param {object} o  { fi, surChoix(choix) }
+   */
+  ouvrirEvolution(o) {
+    this.cine = null;
+    this.ouverture = null;
+    this.evolution = Object.assign({ survole: null }, o || {});
+  }
+
+  // initExpSlot : `mc._x = (i*2-1) × 46`, `mc._y = 15`, dans un panneau centré.
+  casesEvolution() {
+    return [0, 1].map((i) => ({
+      i,
+      x: SCENE * 0.5 + (i * 2 - 1) * 46,
+      y: SCENE * 0.5 + 15,
+    }));
+  }
+
+  clicEvolution(x, y) {
+    const e = this.evolution;
+    if (!e) return;
+    for (const c of this.casesEvolution()) {
+      if (Math.abs(x - c.x) > 30 || Math.abs(y - c.y) > 30) continue;
+      // Un choix impossible (pas de sort à apprendre) ne compte pas.
+      if (c.i === 1 && (e.fi.fs.$next[1] === null || e.fi.fs.$next[1] === undefined)) return;
+      this.evolution = null;
+      if (e.surChoix) e.surChoix(c.i);
+      return;
+    }
+  }
+
+  dessinerEvolution(ctx) {
+    const s = this.sprites, e = this.evolution;
+    const fi = e.fi;
+    ctx.fillStyle = 'rgba(12,20,10,.55)';
+    ctx.fillRect(0, 0, SCENE, SCENE);
+    if (s.expPanneau) {
+      const r = rendre(s.expPanneau, 1, 100);
+      poserRendu(ctx, r, SCENE * 0.5, SCENE * 0.5);
+    }
+    const S = window.MinipixizSorts;
+    const noms = [null, null];
+    for (const c of this.casesEvolution()) {
+      const n = fi.fs.$next[c.i];
+      const vide = (n === null || n === undefined);
+      if (s.expChoix) poserRendu(ctx, rendre(s.expChoix, 1, 100), c.x, c.y);
+      // `mc.e.gotoAndStop(n+1+i*10)` — et 60, hors de la bande, quand il n'y a
+      // rien à offrir : la case reste nue.
+      if (!vide && s.expIcone) {
+        poserRendu(ctx, rendre(s.expIcone, n + 1 + c.i * 10, 100), c.x, c.y);
+      }
+      if (vide) continue;
+      noms[c.i] = c.i === 0
+        ? '+1 en ' + (window.MinipixizFee.NOM_CARAC[n] || '?')
+        : ((S && S.TABLE && S.TABLE[n] && S.TABLE[n].nom) || 'un nouveau sort');
+    }
+    // expPanel.fieldName : « Faites votre choix ! », remplacé au survol par le
+    // nom de ce qu'on désigne. Au doigt il n'y a pas de survol : on écrit les
+    // deux, sous leur case.
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    // L'illustration est chargée : sans liseré, le texte s'y perd.
+    const ecrire = (t, x, y) => {
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(24,12,40,.85)';
+      ctx.strokeText(t, x, y);
+      ctx.fillStyle = '#ffeeb8';
+      ctx.fillText(t, x, y);
+    };
+    ctx.font = 'bold 9px Verdana, Arial, sans-serif';
+    ecrire('Faites votre choix !', SCENE * 0.5, SCENE * 0.5 - 38);
+    ctx.font = 'bold 8px Verdana, Arial, sans-serif';
+    for (const c of this.casesEvolution()) {
+      if (!noms[c.i]) continue;
+      for (const [k, ligne] of decouperTexte(ctx, noms[c.i], 84).entries()) {
+        ecrire(ligne, c.x, c.y + 34 + k * 9);
+      }
+    }
+    ctx.textAlign = 'left';
   }
 
   dessinerNouvelle(ctx) {

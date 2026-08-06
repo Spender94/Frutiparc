@@ -983,10 +983,24 @@ test('la fée du joueur vole dans la clairière et sème ses étoiles', () => {
   assert.equal(menu.fee.flBound, false, 'et rien ne la retient aux bords');
 
   const depart = { x: menu.fee.x, y: menu.fee.y };
-  menu.fee.trg = { x: 220, y: 30 };
-  for (let i = 0; i < 40; i++) { menu.fee.bouger(1); menu.fee.etoiles(0.7, 1); }
+  const cible = { x: 220, y: 30 };
+  const loin = (p) => Math.hypot(p.x - cible.x, p.y - cible.y);
+  const avant = loin(depart);
+  menu.fee.trg = cible;
+  // Slot.moveCursor lui redonne le pointeur À CHAQUE IMAGE — sans quoi
+  // `chooseWay` lui tire une destination au hasard toutes les trente images et
+  // elle part vagabonder. Son cap de départ, lui, est tiré au sort comme dans
+  // le jeu : ce qui compte n'est pas qu'elle file droit, c'est qu'elle se
+  // RAPPROCHE.
+  for (let i = 0; i < 120; i++) {
+    menu.fee.bouger(1);
+    menu.fee.etoiles(0.7, 1);
+    menu.fee.trg = cible;
+  }
   assert.ok(menu.fee.x !== depart.x || menu.fee.y !== depart.y, 'elle s\'est déplacée');
-  assert.ok(menu.fee.x > depart.x, 'vers le pointeur');
+  assert.ok(loin(menu.fee) < avant,
+    'et elle s\'est rapprochée du pointeur (' + Math.round(avant) + ' → '
+    + Math.round(loin(menu.fee)) + ')');
   assert.ok(menu.champ.partList.some((p) => p.lien === 'partStar'),
     'et elle laisse une poussière d\'étoiles');
 
@@ -997,4 +1011,75 @@ test('la fée du joueur vole dans la clairière et sème ses étoiles', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/menu.js'), 'utf8');
   assert.match(src, /C\.dessinerCreatureSur\(ctx, s, this\.fee\)/);
   assert.match(src, /C\.dessinerPartsSur\(ctx, s, this\.champ\.partList\)/);
+});
+
+/*
+ * ── La progression de la fée ─────────────────────────────────────────────────
+ *
+ * « ma fée était à 98 % d'XP, elle a stoppé à 99,9 % jusqu'au niveau 20 »
+ * « je ne peux pas donner à ma fée un objet venant de ma collecte »
+ */
+
+test('la fée MONTE de niveau : le panneau de choix existe et s\'applique', () => {
+  // base/Aventure.tryToCloseGame : à la fin de chaque niveau qui n'est pas un
+  // multiple de vingt, si `getNextExpLimit() <= $exp`, le jeu s'arrête sur
+  // initExpPanel et fait choisir. C'est la SEULE montée de niveau du jeu ; le
+  // portage ne l'avait pas, l'expérience s'entassait sans jamais rien donner.
+  const graine = F.genererGraine(tirage(4));
+  graine.$level = 0; graine.$carac = [1, 1, 1, 1, 1, 1]; graine.$spell = [];
+  const fee = new F.Fee(graine, tirage(4), { $inv: [] });
+  const S = require('../public/minipixiz/sorts.js');
+  fee.preparerProchainNiveau((f) => S.idAleatoire(f, tirage(8)));
+  assert.equal(fee.limiteExp(), 50, 'le premier niveau coûte cinquante points');
+  assert.equal(fee.peutMonter(), false, 'à zéro point, rien à choisir');
+
+  fee.incExp(60);
+  assert.equal(fee.peutMonter(), true, 'à soixante, elle peut monter');
+  const carAvant = graine.$carac[graine.$next[0]];
+  const appris = fee.monterNiveau(0, (f) => S.idAleatoire(f, tirage(8)));
+  assert.equal(appris.genre, 'carac');
+  assert.equal(graine.$level, 1, 'elle est niveau deux');
+  assert.equal(graine.$exp, 10, 'et l\'expérience retombe de ce que le niveau coûtait');
+  assert.equal(graine.$carac[appris.id], carAvant + 1, 'le point est posé');
+
+  // Le panneau : deux cases, aux mesures d'initExpSlot (±46, +15).
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /ouvrirEvolution\(o\)/);
+  assert.match(src, /\(i \* 2 - 1\) \* 46/, 'les deux cases à ±46');
+  assert.match(src, /n \+ 1 \+ c\.i \* 10/, 'l\'icône à n+1 pour la carac, n+11 pour le sort');
+  // Et la page l'ouvre entre deux niveaux, pas ailleurs.
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /mfXp\.fi\.peutMonter\(\)/);
+  assert.match(page, /client\.ouvrirEvolution\(\{/);
+  assert.match(page, /monterNiveau\(choix, sortAApprendre\)/);
+  // Les dessins du panneau sont extraits du SWF.
+  const m = JSON.parse(fs.readFileSync(
+    path.join(ROOT, 'public/minipixiz/sprites/sprites.json'), 'utf8'));
+  assert.ok(m.expPanneau, 'le panneau');
+  assert.ok(m.expChoix, 'la case de choix');
+  assert.ok(m.expIcone && m.expIcone.etats.length > 20, 'et la bande d\'icônes');
+});
+
+test('un aliment de la collecte se donne DIRECTEMENT à la fée', () => {
+  // Inventory.giveItem agit sur l'objet TENU, sans regarder d'où il vient :
+  // `setHand` ne retient `flExtra` que pour savoir où le REPOSER. Le portage
+  // exigeait un détour par le sac — une règle qui n'existe nulle part.
+  const O = require('../public/minipixiz/items.js');
+  const carte = P.carteNeuve();
+  const graine = F.genererGraine(tirage(3));
+  graine.$hunger = 10;
+  carte.$faerie = [graine];
+  carte.$current = 0;
+  const fee = new F.Fee(graine, tirage(3), carte);
+  const collecte = [300, null];
+  const r = O.donner(carte, { sac: 'extra', case: 0, extra: collecte }, fee);
+  assert.equal(r.ok, true, 'le don passe');
+  assert.equal(r.effet.genre, 'repas');
+  assert.ok(fee.fs.$hunger > 10, 'elle a mangé');
+  assert.notEqual(collecte[0], 300, 'et la part entamée reste dans la collecte');
+
+  const inv = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
+  assert.ok(!/Rangez d\\'abord cet objet dans votre sac/.test(inv),
+    'le refus inventé a disparu');
+  assert.match(inv, /extra: this\.extraList/, 'et la rangée du bas est passée au don');
 });

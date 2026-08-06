@@ -878,11 +878,6 @@ class Inventaire {
   donnerALaFee() {
     const fee = this.fee();
     if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
-    // La rangée du bas ne nourrit pas : elle passe d'abord par le sac.
-    if (this.main && this.main.sac === 'extra') {
-      this.dire('Rangez d\'abord cet objet dans votre sac.');
-      return;
-    }
     if (!this.main) {
       // setFaerieFace : la regarder, c'est apprendre ce qu'elle aime — le jeu
       // met son nom en titre du bandeau et ses goûts en dessous.
@@ -895,7 +890,8 @@ class Inventaire {
       this.dire((it ? it.nom : 'Cet objet') + ' ne se donne pas à manger.');
       return;
     }
-    const r = O.donner(this.carte, { sac: this.main.sac, case: this.main.case }, fee);
+    const r = O.donner(this.carte,
+      { sac: this.main.sac, case: this.main.case, extra: this.extraList }, fee);
     if (!r.ok) { this.dire(r.message); return; }
 
     // La fée vit dans la fiche : ce que `donner` a changé doit y retourner.

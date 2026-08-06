@@ -381,6 +381,14 @@
     lancerNiveau();
   }
 
+  // Spell.getRandomId — le sort que `setNextLevelUp` réserve à la fée pour sa
+  // prochaine montée : un qu'elle ne connaît pas, à sa portée et dans ses
+  // moyens de mana.
+  function sortAApprendre(fi) {
+    var S = window.MinipixizSorts;
+    return S && S.idAleatoire ? S.idAleatoire(fi) : null;
+  }
+
   function lancerNiveau() {
     client.nouvellePartie({
       niveau: course.niveau,
@@ -540,6 +548,31 @@
               mfXp.fi.incExp(Math.floor(course.niveau * 1.5) + 1);
             }
             if (course.niveau < course.fin) {
+              // base/Aventure.tryToCloseGame : la partie se ferme, et si la fée
+              // a de quoi MONTER, le jeu s'arrête sur le panneau de choix avant
+              // d'enchaîner — un point de caractéristique, ou le sort que
+              // `setNextLevelUp` lui réserve. C'est la seule façon de monter de
+              // niveau dans tout le jeu ; sans lui l'expérience s'entassait
+              // sans jamais rien donner.
+              if (mfXp && !mfXp.flDeath && mfXp.fi && mfXp.fi.peutMonter()) {
+                setTimeout(function () {
+                  client.ouvrirEvolution({
+                    fi: mfXp.fi,
+                    surChoix: function (choix) {
+                      var appris = mfXp.fi.monterNiveau(choix, sortAApprendre);
+                      if (appris) {
+                        menu.dire(mfXp.fi.fs.$name + ' passe au niveau '
+                          + (Number(mfXp.fi.fs.$level) + 1) + ' — '
+                          + (appris.genre === 'carac' ? '+1 en ' + appris.nom
+                            : 'elle apprend un sort !'));
+                      }
+                      plateforme.ecrire(plateforme.carte);
+                      setTimeout(lancerNiveau, 300);
+                    },
+                  });
+                }, 900);
+                return;
+              }
               // La course continue : la fée monte, le niveau suivant s'ouvre.
               // Pas d'écran entre les deux — le jeu enchaîne sur son bouquet.
               setTimeout(lancerNiveau, 900);

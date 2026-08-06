@@ -392,7 +392,7 @@ test('pendant le rangement, un bocal habité ne répond plus', () => {
   assert.equal(fee.$pos, null, 'la fée ressort du bocal');
 });
 
-test('la rangée nourrit pas, n\'équipe pas : elle passe par le sac', () => {
+test('la rangée NOURRIT sans détour, mais n\'équipe pas une fée', () => {
   const carte = carteNeuve();
   carte.$bag = 1;
   carte.$inv = [301, null];
@@ -402,12 +402,16 @@ test('la rangée nourrit pas, n\'équipe pas : elle passe par le sac', () => {
   inv.ouvrir();
   inv.setExtraList([303]);
 
+  // Inventory.giveItem agit sur l'objet TENU, sans regarder d'où il vient :
+  // `setHand` ne retient `flExtra` que pour savoir où le REPOSER. Exiger un
+  // passage par le sac était une règle inventée — elle obligeait à libérer une
+  // case avant de pouvoir nourrir.
   inv.toucher('extra', 0);
   inv.donnerALaFee();
-  assert.match(inv.message, /Rangez d'abord cet objet dans votre sac\./);
-  assert.equal(inv.extraList[0], 303, 'rien n\'a été consommé');
+  assert.notEqual(inv.extraList[0], 303, 'l\'aliment a bien été entamé');
+  assert.ok(!/Rangez d'abord/.test(inv.message), 'plus de refus : ' + inv.message);
 
-  // Vers le sac d'une fée : refusé aussi — la rangée ne cause qu'avec le sac.
+  // Vers le sac d'une fée : refusé — la rangée ne cause qu'avec le sac.
   const bouge = inv.deplacerExtra({ sac: 'extra', case: 0 }, { sac: 0, case: 0 });
   assert.equal(bouge, false);
 });

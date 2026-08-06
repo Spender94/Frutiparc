@@ -281,6 +281,17 @@ const CIBLES = [
   { cle: 'invPoubelle', symbole: 'mcTrashcan', etiquette: 'Poubelle' },
   { cle: 'invSante', symbole: 'mcManPower', etiquette: 'Cadrans de faim et de moral' },
 
+  // ── La montée de niveau (base/Aventure.initExpPanel) ──
+  // Le niveau fini, si la fée a de quoi monter, le jeu s'arrête sur ce panneau
+  // et lui fait CHOISIR : un point de caractéristique, ou un sort. Les deux
+  // s'offrent dans un `evolutionSlot`, une bande d'icônes où l'image dit le
+  // choix — `n+1` pour la caractéristique, `n+11` pour le sort, 60 pour rien.
+  { cle: 'expPanneau', symbole: 'mcExpPanel', etiquette: 'Panneau de montée de niveau' },
+  { cle: 'expChoix', symbole: 'evolutionSlot', etiquette: 'Case de choix', swf: 'gfx',
+    exclure: ['e'] },
+  { cle: 'expIcone', symbole: 'evolution', etiquette: 'Icônes d\'évolution', swf: 'gfx',
+    images: [...Array(40)].map((_, i) => i + 1) },
+
   // ── Les objets (gfx.swf) ──
   // Item.getPic choisit l'image par famille : itemCarac.gotoAndStop(type+1),
   // itemPotion(id+1), itemFood(id+1) avec sa part dans le sous-clip `sub`…

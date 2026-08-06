@@ -336,10 +336,20 @@ function deplacer(carte, de, vers) {
  *
  * @returns {{ok:boolean, effet?:object, pictos?:string[], message?:string}}
  */
+/**
+ * Inventory.giveItem — l'objet TENU est consommé sur la fée.
+ *
+ * « Tenu » et rien d'autre : `setHand` recopie d'où il vient (`flExtra`) pour
+ * savoir où le remettre si on le repose, mais `giveItem` ne regarde jamais
+ * cette provenance. Un aliment cueilli en forêt et resté dans la rangée du bas
+ * se donne donc directement — c'est `source.extra` qui porte cette rangée.
+ */
 function donner(carte, source, fee) {
-  const liste = source.sac === 'joueur'
-    ? (carte.$inv = carte.$inv || [])
-    : (((carte.$faerie || [])[source.sac] || {}).$inv);
+  const liste = source.sac === 'extra'
+    ? source.extra
+    : source.sac === 'joueur'
+      ? (carte.$inv = carte.$inv || [])
+      : (((carte.$faerie || [])[source.sac] || {}).$inv);
   if (!Array.isArray(liste)) return { ok: false, message: 'sac introuvable' };
   const it = info(liste[source.case]);
   if (!it || !it.flUse) return { ok: false, message: 'cet objet ne se consomme pas' };
