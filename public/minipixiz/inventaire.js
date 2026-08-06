@@ -880,9 +880,13 @@ class Inventaire {
     if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
     if (!this.main) {
       // setFaerieFace : la regarder, c'est apprendre ce qu'elle aime — le jeu
-      // met son nom en titre du bandeau et ses goûts en dessous.
+      // met son nom en titre du bandeau et ses goûts en dessous. Et si elle
+      // n'est pas en état de suivre (isReadyForBattle), on le dit ICI d'abord :
+      // c'est la question que le joueur se pose en la voyant manquer en forêt.
+      const raison = fee.raisonDeRester ? fee.raisonDeRester() : null;
       const g = fee.gouts();
-      this.dire(g || 'Amenez un aliment ici pour la nourrir.', fee.fs.$name);
+      this.dire(raison ? ('Elle ' + raison + '.')
+        : (g || 'Amenez un aliment ici pour la nourrir.'), fee.fs.$name);
       return;
     }
     const it = this.objetA(this.main.sac, this.main.case);

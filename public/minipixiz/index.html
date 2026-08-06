@@ -432,6 +432,22 @@
     }
     return fs || null;
   }
+  /**
+   * La phrase à dire quand la fée choisie ne peut pas suivre — ou rien du tout
+   * si elle vient, ou si le joueur part seul de toute façon.
+   */
+  function feeQuiReste() {
+    var fs = feeCouranteSeed();
+    if (!fs) return null;
+    var fi = new window.MinipixizFee.Fee(fs, null, plateforme.carte);
+    var raison = fi.raisonDeRester();
+    return raison ? (fs.$name + ' ' + raison + '. Vous partez seul.') : null;
+  }
+  // La dernière raison annoncée. On ne retient le joueur qu'une fois par
+  // raison : la deuxième tape part en forêt, et si la fée change d'état la
+  // nouvelle raison sera dite à son tour.
+  var raisonDite = null;
+
   function feeCourante() {
     var fs = feeCouranteSeed();
     // La fiche est passée en troisième : les globes et grimoires restés dans le
@@ -697,7 +713,22 @@
             var p = menu.dernierClic || null;
             client.irisDepuis($('#menu-stage'), p && p.x, p && p.y);
           }
-          if (lieu.va === 'foret') { fermerMenu(); ouvrirCarte(); irisVersJeu(); return; }
+          if (lieu.va === 'foret') {
+            // Aventure.initFaerie : une fée qui n'est pas `isReadyForBattle`
+            // reste au sac, et la colonne de droite reste nue — c'est la règle
+            // du jeu. Mais le portage ne montrait RIEN : ni la fée, ni son
+            // cadre, ni un mot. On dit donc pourquoi avant de partir.
+            var resteAuSac = feeQuiReste();
+            if (!resteAuSac) raisonDite = null;
+            else if (resteAuSac !== raisonDite) {
+              // Dit dans la clairière, pas en partant : `dire` ne fait que
+              // poser le texte sur l'écran du menu, que `fermerMenu` efface.
+              raisonDite = resteAuSac;
+              menu.dire(resteAuSac);
+              return;
+            }
+            fermerMenu(); ouvrirCarte(); irisVersJeu(); return;
+          }
           if (lieu.va === 'option') { ouvrirMoulin(); return; }
           if (lieu.va === 'inventaire') { ouvrirSac(); return; }
           if (lieu.va === 'dungeon') {

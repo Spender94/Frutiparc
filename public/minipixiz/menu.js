@@ -41,6 +41,26 @@
 (function (racine) {
 
 const SCENE = 240;
+
+/**
+ * Couper une phrase aux espaces pour qu'aucune ligne ne dépasse `large`.
+ *
+ * Un mot plus long que la ligne reste entier et déborde : mieux vaut un mot
+ * qui dépasse qu'un mot coupé en deux au milieu d'une syllabe.
+ */
+function couperEnLignes(ctx, texte, large) {
+  const mots = String(texte).split(' ');
+  const lignes = [];
+  let ligne = '';
+  for (const mot of mots) {
+    const essai = ligne ? ligne + ' ' + mot : mot;
+    if (ligne && ctx.measureText(essai).width > large) { lignes.push(ligne); ligne = mot; }
+    else ligne = essai;
+  }
+  if (ligne) lignes.push(ligne);
+  return lignes;
+}
+
 // La cadence du jeu d'origine : quarante images par seconde (l'en-tête des SWF
 // livrés, et le compteur `400/Timer.tmod` de Manager.update qui affiche 40 pour
 // tmod = 1). La clairière respire au même rythme que le reste.
@@ -463,11 +483,18 @@ class Menu {
     }
     if (this.message) {
       ctx.font = 'bold 9px Verdana, Arial, sans-serif';
+      // La scène ne fait que 240 pixels de large : une phrase entière y
+      // dépasse des deux côtés. On la coupe aux mots et on empile les lignes
+      // vers le haut, la dernière restant à sa place habituelle.
+      const lignes = couperEnLignes(ctx, this.message, SCENE - 16);
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(10,25,40,.85)';
-      ctx.strokeText(this.message, SCENE / 2, SCENE - 22);
       ctx.fillStyle = '#e8f0ff';
-      ctx.fillText(this.message, SCENE / 2, SCENE - 22);
+      for (let i = 0; i < lignes.length; i++) {
+        const y = SCENE - 22 - (lignes.length - 1 - i) * 11;
+        ctx.strokeText(lignes[i], SCENE / 2, y);
+        ctx.fillText(lignes[i], SCENE / 2, y);
+      }
     }
   }
 
@@ -548,7 +575,7 @@ class Menu {
   arreter() { this.actif = false; }
 }
 
-const API = { Menu, PLANS, LIEUX, TREE_LIMIT, BLEU_NUIT, BLEU_NUAGE, MARGE_SOURIS };
+const API = { Menu, PLANS, LIEUX, TREE_LIMIT, BLEU_NUIT, BLEU_NUAGE, MARGE_SOURIS, couperEnLignes };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinipixizMenu = API;
 

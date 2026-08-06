@@ -327,6 +327,25 @@ class Fee {
     return !(h[ENGOURDIE] === 1 || h[MALADE] === 1);
   }
 
+  /*
+   * POURQUOI elle ne vient pas.
+   *
+   * `isReadyForBattle` ne rend qu'un oui ou un non, et le jeu d'origine n'en
+   * disait rien de plus : le joueur voyait sa fée fatiguée dans le panneau de
+   * santé et comprenait. Le portage, lui, ne montre RIEN — la colonne de
+   * droite reste nue et le plateau se joue seul, sans qu'on sache si c'est un
+   * bug ou une règle. On rend donc la raison lisible, sans changer la règle.
+   */
+  raisonDeRester() {
+    if (this.preteAuCombat()) return null;
+    const h = this.fs.$mood || [];
+    if (h[ENGOURDIE] === 1) return 'est engourdie et dort toute la journée';
+    if (h[MALADE] === 1) return 'est malade : elle ne quittera pas le sac aujourd\'hui';
+    if (!(nombre(this.fs.$life) > 0)) return 'est à bout de forces — nourrissez-la';
+    if (!(nombre(this.fs.$moral) > 0)) return 'n\'a plus le moral — elle ne veut pas y aller';
+    return 'n\'est pas en état de vous suivre';
+  }
+
   /**
    * FaerieInfo.reactItem — la fée salue l'objet qui décolle vers le sac.
    *

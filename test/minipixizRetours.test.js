@@ -25,6 +25,7 @@ const C = require('../public/minipixiz/combat.js');
 const F = require('../public/minipixiz/faerie.js');
 const I = require('../public/minipixiz/inventaire.js');
 const P = require('../public/minipixiz/plateforme.js');
+const M = require('../public/minipixiz/menu.js');
 
 function tirage(graine) {
   let s = graine;
@@ -1082,4 +1083,59 @@ test('un aliment de la collecte se donne DIRECTEMENT à la fée', () => {
   assert.ok(!/Rangez d\\'abord cet objet dans votre sac/.test(inv),
     'le refus inventé a disparu');
   assert.match(inv, /extra: this\.extraList/, 'et la rangée du bas est passée au don');
+});
+
+test('quand la fée reste au sac, le jeu DIT pourquoi', () => {
+  // Aventure.initFaerie ne l'emmène que sous `isReadyForBattle`. C'est la règle
+  // du jeu et elle ne change pas — mais depuis que la colonne de droite ne
+  // dessine plus de cadre vide, son absence était totalement muette : ni fée,
+  // ni cadre, ni un mot. Le joueur ne pouvait pas distinguer une règle d'un bug.
+  const carte = P.carteNeuve();
+  const cas = [
+    [{ $life: 0 }, /à bout de forces/],
+    [{ $moral: 0 }, /moral/],
+    [{ $mood: (() => { const m = []; m[F.ENGOURDIE] = 1; return m; })() }, /engourdie/],
+    [{ $mood: (() => { const m = []; m[F.MALADE] = 1; return m; })() }, /malade/],
+  ];
+  for (const [patch, attendu] of cas) {
+    const g = Object.assign(F.genererGraine(tirage(2)), patch);
+    const fee = new F.Fee(g, tirage(2), carte);
+    assert.equal(fee.preteAuCombat(), false, 'elle ne peut pas suivre');
+    assert.match(fee.raisonDeRester(), attendu);
+  }
+  // Et une fée en forme ne dit rien : elle vient, c'est tout.
+  const saine = new F.Fee(F.genererGraine(tirage(2)), tirage(2), carte);
+  assert.equal(saine.preteAuCombat(), true);
+  assert.equal(saine.raisonDeRester(), null);
+
+  // La clairière l'annonce avant de partir en forêt, et le sac le répète quand
+  // on touche son portrait.
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /function feeQuiReste\(\)/);
+  // Dit DANS la clairière : `dire` ne fait que poser le texte sur l'écran du
+  // menu, et fermer le menu dans la foulée l'effacerait avant qu'on le lise.
+  // La tape suivante part quand même — on prévient, on n'interdit pas.
+  assert.match(page, /menu\.dire\(resteAuSac\);\s*\n\s*return;/);
+  assert.match(page, /raisonDite = resteAuSac;/);
+  const inv = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
+  assert.match(inv, /raisonDeRester \? fee\.raisonDeRester\(\) : null/);
+});
+
+test('la clairière coupe ses phrases aux mots plutôt que de déborder', () => {
+  // La scène ne fait que 240 pixels : « Il vous faut une clé pour entrer dans
+  // le donjon. » sortait déjà des deux côtés avant qu'on ajoute la moindre
+  // phrase. On mesure avec une règle simple — six pixels par caractère.
+  const ctx = { measureText: (s) => ({ width: s.length * 6 }) };
+  const long = 'Lila est malade : elle ne quittera pas le sac aujourd\'hui. Vous partez seul.';
+  const lignes = M.couperEnLignes(ctx, long, 224);
+  assert.ok(lignes.length > 1, 'la phrase tient sur plusieurs lignes');
+  for (const l of lignes) assert.ok(l.length * 6 <= 224, 'aucune ligne ne dépasse : ' + l);
+  assert.equal(lignes.join(' '), long, 'aucun mot perdu ni ajouté');
+
+  // Une phrase courte reste sur une seule ligne, telle quelle.
+  assert.deepEqual(M.couperEnLignes(ctx, 'Pas de fée.', 224), ['Pas de fée.']);
+
+  // Un mot plus long que la ligne déborde plutôt que d'être coupé en deux.
+  assert.deepEqual(M.couperEnLignes(ctx, 'anticonstitutionnellement', 60),
+    ['anticonstitutionnellement']);
 });
