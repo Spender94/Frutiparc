@@ -19,7 +19,8 @@ const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
 const db = require('./db');
-const { faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults } = require('./minipixizFaerie');
+const { faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults,
+  listeAutoritaire, dedoublonnerFees, recalerCurrent, reglerBocaux } = require('./minipixizFaerie');
 const { extractRecordsFromSlot, pickRecordsToArchive, RECORD_GAMES } = require('./gameRecords');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
@@ -9779,39 +9780,38 @@ function padMinipixizSlot0(jsonStr) {
   if (obj.$pond.$q === undefined) obj.$pond.$q = null;
   if (typeof obj.$pond.$d !== 'number') obj.$pond.$d = 0;
   if (obj.$pond.$fs === undefined) obj.$pond.$fs = null;
+  if (!Array.isArray(obj.$inv))     obj.$inv     = [];
   if (!Array.isArray(obj.$faerie)) obj.$faerie = [];
+  // $current is null when nothing is selected (not 0)
+  if (obj.$current === undefined) obj.$current = null;
   // Dé-doublonnage par nom : la même fée ne doit JAMAIS apparaître deux fois.
   // Filet anti-« dédoublement » (la fée se clonait à chaque bocal), cohérent
   // avec l'identité-par-nom de mergeFaerieByIdentity. On garde la 1re occurrence
   // (déjà fusionnée). Les fées sans nom (vieux stubs) sont conservées telles
   // quelles (identité par index).
-  const seenFaerieNames = new Set();
-  obj.$faerie = obj.$faerie.filter((f) => {
-    const n = (f && typeof f === 'object') ? f.$name : undefined;
-    if (n === undefined || n === null || n === '') return true;
-    if (seenFaerieNames.has(n)) return false;
-    seenFaerieNames.add(n);
-    return true;
-  });
+  //
+  // Et on RECALE la main : `$current` est un index, pas un nom. Retirer une
+  // entrée devant elle faisait désigner au joueur une autre fée — ou le vide,
+  // « pas de fée présente à la clairière » alors qu'il venait d'en gagner une.
+  recalerCurrent(obj, dedoublonnerFees(obj.$faerie));
   // Répare les fées-stubs de l'ère pipe ({$name,$level} sans état riche) ET
   // les fées partiellement riches : chaque champ manquant reçoit le défaut
   // de genFaerieSeed, déterministe par nom (portrait stable, équipement,
   // stats, goûts, suivi — cf. minipixizFaerie.synthesizeFaerieDefaults).
   for (const f of obj.$faerie) {
     try { synthesizeFaerieDefaults(f); } catch { /* fée malformée : inchangée */ }
-    // $pos (emplacement en bocal de la fée) n'est PAS persisté : on recharge
-    // toujours les fées « en main » (null). Persister $pos faisait apparaître
-    // la même fée À LA FOIS dans son bocal ET dehors (duplication exploitable,
-    // « autant de fois que de bocaux »). Le reste de l'état (niveau, objets,
-    // faim, mana, carac, couleurs, goûts, exp) est bien conservé.
-    if (f && typeof f === 'object') f.$pos = null;
   }
+  // $pos — la case du bocal où dort la fée — est un champ de FaerieSeed que le
+  // SWF transporte lui aussi. On le PERSISTE, et on fait respecter la règle qui
+  // empêchait le doublon : une fée en bocal n'est pas en main, un bocal
+  // n'abrite qu'une fée, et une fée ne dort que dans une case qui en porte
+  // vraiment un. L'ancien remède — remettre $pos à null au chargement — tuait
+  // bien la duplication, mais vidait le bocal de tout le monde à chaque partie :
+  // la fée qu'on venait d'y ranger en ressortait seule.
+  reglerBocaux(obj);
   if (obj.$pond && obj.$pond.$fs && typeof obj.$pond.$fs === 'object') {
     try { synthesizeFaerieDefaults(obj.$pond.$fs); } catch { /* idem */ }
   }
-  if (!Array.isArray(obj.$inv))     obj.$inv     = [];
-  // $current is null when nothing is selected (not 0)
-  if (obj.$current === undefined) obj.$current = null;
   // $help defaults to [true,true,true] (all three hints enabled for new users)
   if (!Array.isArray(obj.$help) || obj.$help.length < 3) obj.$help = [true, true, true];
   if (!Array.isArray(obj.$mis))     obj.$mis     = [];
@@ -10152,12 +10152,19 @@ function minipixizHasRichFaerie(obj) {
 // Graft rich fairy objects + non-empty bag/selection/checkpoint from prev onto
 // cur (mutates cur). Fairy $level from cur always wins; every other fairy field
 // falls back to prev. Returns true when something was grafted.
-function minipixizGraftRichState(cur, prev) {
+function minipixizGraftRichState(cur, prev, opts) {
   if (!cur || typeof cur !== 'object' || !prev || typeof prev !== 'object') return false;
   let changed = false;
   const pf = Array.isArray(prev.$faerie) ? prev.$faerie : [];
   const cf = Array.isArray(cur.$faerie) ? cur.$faerie : [];
-  if (minipixizHasRichFaerie(prev)) {
+  // Une sauvegarde dont chaque fée porte son état complet dit la VÉRITÉ sur qui
+  // reste : une liste plus courte est un DÉPART, pas une perte. Sans cette
+  // distinction, la fée partie dans la nuit revenait à la sauvegarde suivante.
+  // Une liste VIDE ne se juge pas ainsi — on la croit si elle vient d'une fiche
+  // JSON native, où le portage écrit la carte entière.
+  const autoritaire = listeAutoritaire(cf)
+    || (cf.length === 0 && Array.isArray(cur.$faerie) && !(opts && opts.vientDuPipe));
+  if (minipixizHasRichFaerie(prev) && !autoritaire) {
     const curRich = cf.filter(minipixizFaerieIsRich).length;
     const prevRich = pf.filter(minipixizFaerieIsRich).length;
     if (cf.length < pf.length || curRich < prevRich) {
@@ -10169,7 +10176,14 @@ function minipixizGraftRichState(cur, prev) {
   if ((!Array.isArray(cur.$inv) || cur.$inv.length === 0) && Array.isArray(prev.$inv) && prev.$inv.length > 0) {
     cur.$inv = prev.$inv; changed = true;
   }
-  if ((cur.$current === null || cur.$current === undefined) && prev.$current !== null && prev.$current !== undefined) {
+  // Les mains VIDES sont un état du jeu, pas une donnée manquante : ranger sa
+  // fée dans son bocal met `$current` à null (inv/Slot.mt). Reporter l'ancien
+  // index par-dessus la remettait en main alors qu'elle dormait — la fée
+  // apparaissait à la fois dans son bocal et dehors. On ne comble donc que
+  // pour une sauvegarde appauvrie, qui, elle, n'a rien voulu dire.
+  if (!autoritaire
+    && (cur.$current === null || cur.$current === undefined)
+    && prev.$current !== null && prev.$current !== undefined) {
     cur.$current = prev.$current; changed = true;
   }
   if ((Number(prev.$checkpoint) || 0) > (Number(cur.$checkpoint) || 0)) {
@@ -10268,10 +10282,14 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
   }
 
   // MiniPixiz: pipe-delimited string → JSON
+  let minipixizVientDuPipe = false;
   if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0' && data.indexOf('|') >= 0 && data[0] !== '{') {
     const rawPipe = data;
     const obj = parseMinipixizPipe(data);
     if (obj) {
+      // Retenu pour le merge des fées : un pipe est une sauvegarde APPAUVRIE
+      // par nature, une fiche JSON native est complète.
+      minipixizVientDuPipe = true;
       data = JSON.stringify(obj);
       // Show the TAIL of the pipe (scalar fields after the big $item array)
       // — the head is just 80 booleans we already see, the meaningful
@@ -10515,7 +10533,26 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
         // back to the legacy per-index merge. Either way $level (and any field
         // the pipe starts sending) wins from new, prev supplies the rich
         // fields, and no fairy is ever dropped or duplicated.
-        merged.$faerie = mergeFaerieByIdentity(prev.$faerie, merged.$faerie);
+        //
+        // …SAUF quand la sauvegarde reçue porte l'état COMPLET de chacune de
+        // ses fées. Elle sait alors qui est parti, et le jeu fait partir des
+        // fées pour de bon : moral à zéro dans la nuit, renvoi au pays des
+        // fées, dévorée par une sœur affamée (FaerieInfo.erase). Les remettre
+        // à la sauvegarde suivante rendait ces départs impossibles — c'est ce
+        // qui faisait « réapparaître une ancienne fée niveau 12 » dans le sac.
+        // Une liste VIDE ne se juge pas à sa richesse : elle ne dit rien. On la
+        // croit quand même si elle vient d'une fiche JSON native — le portage
+        // écrit la carte entière, et la dernière fée a le droit de partir. Un
+        // pipe vide, lui, reste le symptôme d'une sauvegarde qui a perdu son
+        // champ, et le filet le rattrape.
+        const autoritaire = listeAutoritaire(merged.$faerie)
+          || (!minipixizVientDuPipe && Array.isArray(merged.$faerie)
+            && merged.$faerie.length === 0);
+        merged.$faerie = mergeFaerieByIdentity(prev.$faerie, merged.$faerie, { autoritaire });
+        if (autoritaire && Array.isArray(prev.$faerie)
+          && prev.$faerie.length > merged.$faerie.length) {
+          console.log(`[SLOT]  minipixiz ${username} : ${prev.$faerie.length - merged.$faerie.length} fée(s) quittent la fiche (sauvegarde complète)`);
+        }
         // Nested progress containers — the pipe save only carries a few
         // fields per container; preserve the dropped sub-fields from prev.
         // $dungeon: pipe transports $lvl and $f; $day and $loop are lost.
@@ -10729,7 +10766,8 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
           console.error(`[SLOT]  faerie-safety DB lookup failed for ${username}/${game}: ${e.message}`);
         }
       }
-      let graftChanged = prevForGraft && minipixizGraftRichState(cur, prevForGraft);
+      let graftChanged = prevForGraft
+        && minipixizGraftRichState(cur, prevForGraft, { vientDuPipe: minipixizVientDuPipe });
       // Heal dangling fairy missions (idx into a $mis entry that no longer
       // exists). Runs after the graft so it sees the carried-forward $mis.
       const reconChanged = minipixizReconcileMissions(cur);

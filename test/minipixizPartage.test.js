@@ -93,9 +93,12 @@ function fonctionsDuServeur() {
   const code = morceau('parseMinipixizPipe') + '\n' + morceau('padMinipixizSlot0')
     + '\n' + morceau('minipixizReconcileMissions')
     + '\nreturn { parseMinipixizPipe, padMinipixizSlot0 };';
+  const F = require('../minipixizFaerie.js');
   // eslint-disable-next-line no-new-func
-  return new Function('parseFaerieField', 'synthesizeFaerieDefaults', code)(
-    parseFaerieField, require('../minipixizFaerie.js').synthesizeFaerieDefaults);
+  return new Function('parseFaerieField', 'synthesizeFaerieDefaults',
+    'dedoublonnerFees', 'recalerCurrent', 'reglerBocaux', code)(
+    parseFaerieField, F.synthesizeFaerieDefaults,
+    F.dedoublonnerFees, F.recalerCurrent, F.reglerBocaux);
 }
 
 const S = fonctionsDuServeur();
@@ -247,14 +250,27 @@ test('la fiche réécrite par le portage reste lisible par le SWF', () => {
 
 // ── Le bocal, et pourquoi Gromelin l'exige ────────────────────────────────
 
-test('le serveur ne persiste JAMAIS le bocal d\'une fée', () => {
-  // C'est délibéré : une fée persistée « en bocal » apparaissait à la fois
-  // dedans et dehors, ce qui la dupliquait. $pos est donc une notion de
-  // session — le pipe la porte, la fiche servie la remet à null.
+test('le bocal d\'une fée SURVIT, mais seulement s\'il existe vraiment', () => {
+  // $pos est un champ de FaerieSeed — « null = en main , 0-16 = index de
+  // l'inventaire » — que le pipe du SWF transporte. Le serveur le remettait à
+  // null à chaque chargement pour tuer un doublon (la fée apparaissait dans son
+  // bocal ET dehors) ; il vidait du même coup le bocal de tout le monde à
+  // chaque partie. La règle du jeu suffit : une fée en bocal n'est pas en main,
+  // un bocal n'abrite qu'une fée, et il faut un bocal dans la case.
   const brut = S.parseMinipixizPipe(PIPE);
-  assert.equal(brut.$faerie[0].$pos, 1, 'le pipe du SWF la porte');
-  const servie = JSON.parse(S.padMinipixizSlot0(JSON.stringify(brut)));
-  assert.equal(servie.$faerie[0].$pos, null, 'la fiche servie ne la garde pas');
+  assert.equal(brut.$faerie[0].$pos, 1, 'le pipe du SWF porte la case');
+  // Le sac de cette sauvegarde-là ne porte pas de bocal en case 1 (70,,301,45) :
+  // personne n'y dort, la fée est donc libre.
+  const sansBocal = JSON.parse(S.padMinipixizSlot0(JSON.stringify(brut)));
+  assert.equal(sansBocal.$faerie[0].$pos, null, 'pas de bocal en case 1 : elle est libre');
+
+  // Posons-en un : elle y reste, et le joueur n'a plus les mains pleines.
+  const avecBocal = JSON.parse(JSON.stringify(brut));
+  avecBocal.$inv[1] = O.IT_BOCAL;
+  avecBocal.$current = 0;
+  const servie = JSON.parse(S.padMinipixizSlot0(JSON.stringify(avecBocal)));
+  assert.equal(servie.$faerie[0].$pos, 1, 'le bocal de la case 1 la garde');
+  assert.equal(servie.$current, null, 'et ranger sa fée retire la main (inv/Slot.mt)');
 });
 
 test('sans bocal posé dans la séance, Gromelin ne prend personne', () => {

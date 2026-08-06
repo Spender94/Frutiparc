@@ -394,19 +394,22 @@
     });
   }
 
-  // Cm.getCurrentFaerie : la fée que le joueur emmène — $faerie[$current].
+  // Cm.getCurrentFaerie : la fée que le joueur emmène — $faerie[$current], et
+  // RIEN d'autre. Le jeu d'origine n'a pas de repli : `$current` à null veut
+  // dire que le joueur part seul, et c'est un état normal (il vient de ranger
+  // sa fée dans son bocal, elle est en mission, elle est partie).
   //
   // Une fée EN MISSION est ailleurs : son bocal montre l'icône de mission
   // (it/Flask.updatePic) et refuse de s'ouvrir (inv/Slot.mt). Dans le SWF cet
   // état la rend inatteignable — pour partir il faut être en bocal, et entrer
-  // en bocal retire la main ($current). On refait la même exclusion ici, et
-  // on l'applique aussi au REPLI : une sauvegarde d'avant $current, ou d'avant
-  // cette règle, peut encore désigner une fée partie — on la traite comme
-  // absente, le joueur part seul, comme dans le jeu.
+  // en bocal retire la main ($current). On refait la même exclusion ici.
   //
-  // Le repli sur la première fée LIBRE (ni en mission, ni en bocal) reste une
-  // concession aux comptes d'avant $current : $pos ne survit pas à la session,
-  // on ne peut pas savoir si le joueur avait laissé sa fée en bocal.
+  // Le repli sur la première fée libre ne subsiste que pour les fiches d'AVANT
+  // `$current` : sans lui, ces comptes-là ouvriraient le jeu sans fée alors
+  // qu'ils en ont une. Il ne se déclenche donc que si RIEN dans la fiche ne dit
+  // que le joueur a délibérément les mains vides — c'est-à-dire tant qu'aucune
+  // fée ne dort en bocal. Le prendre plus large, c'était emmener en forêt une
+  // ancienne fée à la place de celle qu'on venait de gagner au bassin.
   function feeCouranteSeed() {
     var l = plateforme.carte.$faerie || [];
     var i = plateforme.carte.$current;
@@ -414,9 +417,9 @@
     var enBocal = function (fs) { return fs.$pos !== null && fs.$pos !== undefined; };
     var fs = (i !== null && i !== undefined && l[i]) ? l[i] : null;
     if (fs && (enMission(fs) || enBocal(fs))) fs = null;
-    if (!fs) {
+    if (!fs && !l.some(function (f) { return f && enBocal(f); })) {
       for (var k = 0; k < l.length; k++) {
-        if (l[k] && !enMission(l[k]) && !enBocal(l[k])) { fs = l[k]; break; }
+        if (l[k] && !enMission(l[k])) { fs = l[k]; break; }
       }
     }
     return fs || null;

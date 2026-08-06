@@ -111,10 +111,35 @@ function parseFaerieToken(tok) {
 //
 // Otherwise: the exact legacy index merge, byte-for-byte equivalent to the old
 // inline behaviour, so saves from old/cached SWFs keep working identically.
-function mergeFaerieByIdentity(prev, next) {
+/*
+ * `autoritaire` — quand la liste reçue fait FOI.
+ *
+ * Tout ce qui précède est bâti pour une sauvegarde APPAUVRIE : le pipe du SWF
+ * n'a longtemps porté que le niveau de chaque fée, alors ne jamais laisser
+ * tomber personne était la seule attitude sûre. Mais une fée QUITTE la fiche
+ * dans le jeu — elle part dans la nuit quand son moral tombe, on la renvoie au
+ * pays des fées, une sœur affamée la dévore (FaerieInfo.erase, appelé depuis
+ * Cm.withdraw et tryToEatSibling) — et la remettre à la sauvegarde suivante,
+ * c'est rendre ces départs impossibles. C'est ce qui faisait « réapparaître une
+ * ancienne fée niveau 12 » dans le sac du joueur.
+ *
+ * La distinction est lisible dans la donnée elle-même : une sauvegarde dont
+ * TOUTES les fées portent leur état complet sait qui est parti, une sauvegarde
+ * de moignons ne sait rien. `listeAutoritaire` tranche, et l'appelant passe le
+ * résultat ici. En mode autoritaire, la liste reçue est la liste — on greffe
+ * toujours l'état riche du précédent sur les fées qui restent, mais on
+ * n'exhume plus les absentes.
+ */
+function listeAutoritaire(next) {
+  if (!Array.isArray(next) || next.length === 0) return false;
+  return next.every(faerieIsRich);
+}
+
+function mergeFaerieByIdentity(prev, next, opts) {
+  const autoritaire = !!(opts && opts.autoritaire);
   const pf = Array.isArray(prev) ? prev : [];
   const nf = Array.isArray(next) ? next : [];
-  if (nf.length === 0) return pf; // empty/glitched save → never wipe fairies
+  if (nf.length === 0) return autoritaire ? [] : pf; // sinon : jamais d'effacement
   if (pf.length === 0) return nf;
 
   const isObj = f => f && typeof f === 'object' && !Array.isArray(f);
@@ -131,12 +156,14 @@ function mergeFaerieByIdentity(prev, next) {
       if (p && !matched.has(n.$name)) { matched.add(n.$name); return Object.assign({}, p, n); }
       return n; // genuinely new fairy (no prev) — rich data fills in on later saves
     });
-    for (const p of pf) if (hasName(p) && !matched.has(p.$name)) out.push(p);
+    if (!autoritaire) {
+      for (const p of pf) if (hasName(p) && !matched.has(p.$name)) out.push(p);
+    }
     return out;
   }
 
   // Legacy index merge (unchanged behaviour).
-  if (pf.length > nf.length) return pf;
+  if (pf.length > nf.length && !autoritaire) return pf;
   const out = [];
   for (let i = 0; i < nf.length; i++) {
     const p = pf[i], n = nf[i];
@@ -228,4 +255,95 @@ function synthesizeFaerieDefaults(f) {
   return changed;
 }
 
-module.exports = { faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults, faerieNameHash };
+// ── La cohérence de la fiche des fées ────────────────────────────────────
+//
+// Deux champs disent où est chaque fée, et le jeu d'origine les tient pour
+// EXCLUSIFS :
+//
+//   $current   l'INDEX, dans $faerie, de la fée que le joueur emmène.
+//              Cm.getCurrentFaerie() ne fait rien d'autre que
+//              `card.$faerie[card.$current]` — pas de repli, pas de « à défaut
+//              la première ». Null veut dire : le joueur part seul.
+//   $pos       la case du sac où se trouve le bocal qui l'abrite.
+//              FaerieSeed.mt : « null = en main , 0-16 = index de l'inventaire ».
+//
+// Ranger une fée en bocal RETIRE la main (inv/Slot.mt) : les deux ne peuvent
+// donc jamais être vrais ensemble. C'est cette exclusion qui empêche une fée
+// d'apparaître deux fois — dans son bocal ET dehors. L'ancien remède, effacer
+// `$pos` à chaque chargement, supprimait bien le doublon, mais en vidant les
+// bocaux de tout le monde à chaque partie.
+
+// Le dé-doublonnage par nom : la même fée ne doit jamais figurer deux fois.
+// On garde la PREMIÈRE occurrence (déjà fusionnée). Les fées sans nom, vieux
+// moignons dont l'identité est l'index, passent telles quelles.
+function dedoublonnerFees(liste) {
+  if (!Array.isArray(liste)) return [];
+  const vus = new Set();
+  return liste.filter((f) => {
+    const n = (f && typeof f === 'object') ? f.$name : undefined;
+    if (n === undefined || n === null || n === '') return true;
+    if (vus.has(n)) return false;
+    vus.add(n);
+    return true;
+  });
+}
+
+// Remplace $faerie par une nouvelle liste EN GARDANT la main sur la même fée.
+// `$current` est un index : retirer une entrée devant elle la ferait désigner
+// quelqu'un d'autre — ou le vide, et le joueur se retrouve sans fée.
+function recalerCurrent(carte, nouvelle) {
+  if (!carte || typeof carte !== 'object') return carte;
+  const ancienne = Array.isArray(carte.$faerie) ? carte.$faerie : [];
+  const i = carte.$current;
+  const enMain = (i !== null && i !== undefined && Number.isFinite(Number(i)))
+    ? ancienne[Number(i)] : null;
+  carte.$faerie = Array.isArray(nouvelle) ? nouvelle : [];
+  if (!enMain) {
+    if (i !== null && i !== undefined && !carte.$faerie[Number(i)]) carte.$current = null;
+    return carte;
+  }
+  let n = carte.$faerie.indexOf(enMain);
+  if (n < 0 && enMain.$name) {
+    n = carte.$faerie.findIndex((f) => f && f.$name === enMain.$name);
+  }
+  carte.$current = n >= 0 ? n : null;
+  return carte;
+}
+
+// Fait respecter la règle des bocaux, sans rien effacer qui ait un sens :
+//   • une fée en bocal n'est pas en main ;
+//   • un bocal n'abrite qu'une fée ;
+//   • une fée ne dort que dans une case qui porte VRAIMENT un bocal (objet 30).
+// Le dernier point ne s'applique que si le sac est connu : une sauvegarde
+// appauvrie qui n'a pas transporté $inv ne doit pas vider les bocaux.
+const OBJET_BOCAL = 30;
+
+function reglerBocaux(carte) {
+  if (!carte || typeof carte !== 'object') return carte;
+  const l = Array.isArray(carte.$faerie) ? carte.$faerie : [];
+  const sacConnu = Array.isArray(carte.$inv) && carte.$inv.length > 0;
+  const pris = new Set();
+  for (let i = 0; i < l.length; i++) {
+    const f = l[i];
+    if (!f || typeof f !== 'object') continue;
+    if (f.$pos === undefined) f.$pos = null;
+    if (f.$pos === null) continue;
+    const p = Number(f.$pos);
+    const valide = Number.isInteger(p) && p >= 0 && p <= 16
+      && !pris.has(p)
+      && (!sacConnu || Number(carte.$inv[p]) === OBJET_BOCAL);
+    if (!valide) { f.$pos = null; continue; }
+    pris.add(p);
+    f.$pos = p;
+    // Elle dort : elle n'est plus dans la main du joueur.
+    if (carte.$current !== null && carte.$current !== undefined
+      && Number(carte.$current) === i) carte.$current = null;
+  }
+  return carte;
+}
+
+module.exports = {
+  faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults,
+  faerieNameHash, listeAutoritaire, dedoublonnerFees, recalerCurrent, reglerBocaux,
+  OBJET_BOCAL,
+};

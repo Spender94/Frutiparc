@@ -77,8 +77,14 @@ test('la page ne prend jamais une fée en mission ou en bocal pour la forêt', (
   const html = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
   assert.match(html, /function feeCouranteSeed\(\)/);
   assert.match(html, /if \(fs && \(enMission\(fs\) \|\| enBocal\(fs\)\)\) fs = null;/);
-  assert.match(html, /!enMission\(l\[k\]\) && !enBocal\(l\[k\]\)/,
-    'le repli aussi saute les fées parties ou rangées');
+  // Le repli des vieux comptes ne se déclenche plus dès qu'une fée dort en
+  // bocal : c'est le signe que le joueur a VOULU les mains vides. Sans cette
+  // condition, revenir du bassin emmenait en forêt une ancienne fée à la place
+  // de celle qu'on venait de gagner.
+  assert.match(html, /!l\.some\(function \(f\) \{ return f && enBocal\(f\); \}\)/,
+    'le repli s\'efface devant un bocal occupé');
+  assert.match(html, /if \(l\[k\] && !enMission\(l\[k\]\)\)/,
+    'et il saute toujours les fées parties en mission');
   // Le donjon passe par la même porte.
   assert.match(html, /fee: feeCouranteSeed\(\),/);
   // Et l'ancien repli aveugle sur l[0] n'existe plus.
