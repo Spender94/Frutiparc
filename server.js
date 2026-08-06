@@ -9334,17 +9334,26 @@ app.get('/api/admin/kikooz-gifts', adminScope('dons'), async (req, res) => {
   try {
     const gifts = await db.listKikoozGifts(filtres, Number(q.limit) || 200);
     // L'enveloppe de la semaine EN COURS, animateur par animateur.
+    //
+    // La liste des animateurs vient de la BASE, pas du cache mémoire : celui-ci
+    // se remplit à la demande (`hydrateUserFromDb`), si bien qu'au redémarrage
+    // il est vide et que le tableau des enveloppes l'était aussi jusqu'à ce que
+    // chacun se reconnecte. On y ajoute quiconque a donné cette semaine sans
+    // être (ou n'être plus) animateur : son enveloppe entamée doit rester
+    // visible, sinon des kikooz distribués disparaîtraient du tableau.
     const semaine = parisWeekKey();
     const dejaDonne = await db.sumKikoozGiftsForWeek(semaine);
-    const quotas = Object.entries(users)
-      .filter(([, u]) => u && u.isAnimator)
-      .map(([pseudo]) => ({
+    const animateurs = new Set(
+      (await db.listAllUsers()).filter((u) => u.is_animator).map((u) => u.username));
+    for (const donneur of Object.keys(dejaDonne)) animateurs.add(donneur);
+    const quotas = [...animateurs]
+      .map((pseudo) => ({
         username: getDisplayName(pseudo),
         given: dejaDonne[pseudo] || 0,
         left: Math.max(0, ANIMATOR_WEEKLY_KIKOOZ - (dejaDonne[pseudo] || 0)),
         max: ANIMATOR_WEEKLY_KIKOOZ,
       }))
-      .sort((a, b) => b.given - a.given);
+      .sort((a, b) => b.given - a.given || a.username.localeCompare(b.username));
     res.json({ ok: true, week: semaine, gifts, quotas });
   } catch (e) {
     console.error('[ADMIN] kikooz-gifts error:', e.message);

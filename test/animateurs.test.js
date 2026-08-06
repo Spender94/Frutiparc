@@ -537,3 +537,77 @@ test('le mode animateur reprend la teinte et la taille exactes du bureau', () =>
   assert.match(ruffle, /background:#000046/, 'et le bandeau du bureau');
   assert.ok(!/1A5FD0/i.test(ruffle), 'plus de bleu inventé côté bureau non plus');
 });
+
+// ── La persistance, prouvée plutôt qu'affirmée ────────────────────────────
+//
+// « L'historique est-il persistant ? » — la seule réponse honnête est un
+// SECOND serveur. On en lance un sur la MÊME base, sans rien partager avec le
+// premier : ce qu'il voit vient forcément du disque, pas d'une mémoire.
+//
+// Il vérifie du même coup deux choses qui ne se voient qu'au redémarrage :
+// l'enveloppe hebdomadaire, recomptée depuis le registre (le fichier JSON ne
+// sert plus dès qu'une base est là), et le tableau des enveloppes de l'admin,
+// qui lisait le cache mémoire des comptes — vide au démarrage, puisqu'il ne se
+// remplit qu'à la demande.
+
+test('l\'historique et l\'enveloppe vivent en base, pas en mémoire', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+
+  // Son propre compte : les autres tests du fichier partagent la base, et une
+  // enveloppe déjà entamée ailleurs rendrait la mesure illisible.
+  const PERS = 'animpersist';
+  const sidAnim = await inscrire(PERS);
+  await donnerRole(PERS, { is_animator: true, kikooz: 100000 });
+  await inscrire(CIBLE);
+  await fetch(`${BASE}/do/give?sid=${sidAnim}&k=470&u=${CIBLE}`
+    + `&r=${encodeURIComponent('preuve de persistance')}`, { cache: 'no-store' });
+  await wait(500);
+
+  // Un second serveur, sur la même base, qui ne sait rien du premier.
+  const PORT2 = 3463;
+  const BASE2 = `http://127.0.0.1:${PORT2}`;
+  const autre = spawn(process.execPath, ['server.js'], {
+    cwd: ROOT,
+    env: Object.assign({}, process.env, {
+      PORT: String(PORT2), DATABASE_URL: DB, REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
+      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5290', FRUTISCORE_PORT: '5291',
+    }),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let journal = '';
+  autre.stdout.on('data', (d) => { journal += d.toString(); });
+  autre.stderr.on('data', () => {});
+  try {
+    let pret = false;
+    for (let i = 0; i < 200 && !pret; i++) {
+      try { pret = (await fetch(BASE2 + '/api/loadFrutiSlots?game=snake3')).ok; } catch {}
+      if (!pret) await wait(250);
+    }
+    assert.ok(pret, 'le second serveur répond');
+    await wait(1500);                   // le temps de sa reprise au démarrage
+
+    const vu = await (await fetch(BASE2 + '/api/admin/kikooz-gifts',
+      { headers: { 'x-admin-key': CLE } })).json();
+    const don = (vu.gifts || []).find((g) => g.reason === 'preuve de persistance');
+    assert.ok(don, 'le second serveur relit le don du premier');
+    assert.equal(don.amount, 470);
+    assert.equal(don.giver_role, 'animateur');
+
+    // L'enveloppe : recomptée depuis le registre, pas depuis un fichier.
+    assert.match(journal, /Quota de dons repris pour \d+ donateur/,
+      'la reprise au démarrage a bien eu lieu');
+    const sid2 = (await (await fetch(BASE2 + '/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: PERS, password: 'secret123' }),
+    })).json()).sid;
+    const quota = await (await fetch(`${BASE2}/do/give?sid=${sid2}`, { cache: 'no-store' })).text();
+    assert.match(quota, /a="1530"/, 'et elle est bien entamée de 470 sur le second serveur');
+
+    // Le tableau des enveloppes de l'admin lisait le cache MÉMOIRE des comptes,
+    // qui ne se remplit qu'à la demande : il était vide au redémarrage.
+    const ligne = (vu.quotas || []).find((q) => q.username.toLowerCase() === PERS);
+    assert.ok(ligne, 'l\'animateur figure au tableau des enveloppes');
+    assert.equal(ligne.given, 470);
+    assert.equal(ligne.left, 1530);
+  } finally { autre.kill('SIGKILL'); }
+});
