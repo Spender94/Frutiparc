@@ -94,7 +94,9 @@ const donnerRole = (pseudo, champs) => fetch(`${BASE}/api/admin/users/${pseudo}`
 });
 const admin = (chemin) => fetch(BASE + chemin, { headers: { 'x-admin-key': CLE } }).then((r) => r.json());
 
-async function client(pseudo, sid) {
+// `lc="1"` est la marque du client Light. Le bureau (main.swf) ne l'envoie
+// jamais : c'est à cela que le serveur reconnaît qui sait jouer un blindtest.
+async function client(pseudo, sid, light = true) {
   const ws = new WebSocket(`ws://127.0.0.1:${PORT}/`);
   const trames = [];
   let tampon = '';
@@ -105,7 +107,7 @@ async function client(pseudo, sid) {
     for (const b of bouts) if (b.trim()) trames.push(b.trim());
   });
   await new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });
-  ws.send(`<k l="${pseudo}" s="${sid}" lc="1" />\0`);
+  ws.send(`<k l="${pseudo}" s="${sid}"${light ? ' lc="1"' : ''} />\0`);
   const c = {
     pseudo, trames,
     envoyer: (xml) => ws.send(xml + '\0'),
@@ -122,6 +124,7 @@ async function client(pseudo, sid) {
   await c.attendre((t) => t.startsWith('<k'), 'accusé d\'identification');
   return c;
 }
+const clientBureau = (pseudo, sid) => client(pseudo, sid, false);
 
 // ── 1. Le drapeau qui ouvre /image au bureau ──────────────────────────────
 
@@ -317,4 +320,133 @@ test('/mesdons répond en privé, avec l\'enveloppe restante', async (t) => {
     // Ce qu'un animateur distribue ne regarde pas le salon.
     assert.ok(!temoin.trames.some((x) => x.includes('Mes dons')), 'personne d\'autre ne le voit');
   } finally { anim.fermer(); temoin.fermer(); }
+});
+
+// ── 5. Le blindtest ────────────────────────────────────────────────────────
+//
+// YouTube seul : le SDK de Spotify n'émet un son que si l'auditeur possède un
+// compte Premium ET s'authentifie en OAuth — inutilisable pour un salon.
+//
+// Trois choses valent d'être tenues : le salon ne doit JAMAIS voir passer
+// l'identifiant de la vidéo (sinon la réponse s'affiche avec la question), un
+// retardataire doit tomber sur la même seconde que les autres, et le SWF du
+// bureau — qui ne saurait pas jouer YouTube — ne doit pas recevoir une trame
+// dont il ne ferait rien.
+
+test('le blindtest : un jeton, jamais la vidéo, et tout le monde à la même seconde', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+
+  const sidAnim = await inscrire(ANIM);
+  await donnerRole(ANIM, { is_animator: true });
+  const sidLight = await inscrire('btlight');
+  const sidBureau = await inscrire('btbureau');
+  const anim = await client(ANIM, sidAnim);
+  const light = await client('btlight', sidLight);      // lc="1" : un mobile
+  const bureau = await clientBureau('btbureau', sidBureau);
+  try {
+    for (const c of [anim, light, bureau]) c.envoyer('<o g="pomme" />');
+    await light.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'userlist');
+
+    // La syntaxe, puis un lien qui n'est pas de YouTube.
+    anim.envoyer('<t g="pomme" t="m" p="">/blind</t>');
+    assert.match(await anim.attendre((x) => x.includes('Blindtest —'), 'l\'aide'), /YouTube/);
+    anim.envoyer('<t g="pomme" t="m" p="">/blind https://exemple.test/chanson.mp3</t>');
+    await anim.attendre((x) => x.includes('non reconnu'), 'le refus');
+
+    // L'extrait.
+    light.trames.length = 0; bureau.trames.length = 0;
+    anim.envoyer('<t g="pomme" t="m" p="">/blind https://youtu.be/dQw4w9WgXcQ?t=1m02s 1:02 20</t>');
+    const annonce = await light.attendre((x) => x.includes('Blindtest !'), 'l\'annonce');
+    assert.match(annonce, /t="c"/, 'annoncé dans la typo bleue');
+    assert.match(annonce, /20 secondes/);
+    // LE point : le salon ne voit pas la vidéo.
+    assert.ok(!annonce.includes('dQw4w9WgXcQ'), 'l\'annonce ne trahit pas la chanson');
+
+    const trame = await light.attendre((x) => x.includes('t="bt"'), 'la trame du lecteur');
+    const jeton = /bk="([^"]*)"/.exec(trame)[1];
+    assert.equal(jeton.length, 16, 'un jeton opaque');
+    assert.ok(!trame.includes('dQw4w9WgXcQ'), 'la trame non plus ne la trahit pas');
+    assert.match(trame, /bd="20"/, 'la durée voyage');
+    await wait(400);
+    assert.ok(!bureau.trames.some((x) => x.includes('t="bt"')),
+      'le SWF du bureau ne reçoit rien : sa page hôte interroge l\'état à la place');
+
+    // Le lecteur : une redirection vers l'extrait, bornée et sans habillage.
+    const r = await fetch(`${BASE}/api/blindtest/embed?k=${jeton}`, { redirect: 'manual' });
+    assert.equal(r.status, 302);
+    const dest = new URL(r.headers.get('location'));
+    assert.equal(dest.origin + dest.pathname, 'https://www.youtube.com/embed/dQw4w9WgXcQ');
+    assert.ok(Number(dest.searchParams.get('start')) >= 62, 'départ à 1:02');
+    assert.equal(dest.searchParams.get('end'), '82', 'et fin vingt secondes plus loin');
+    assert.equal(dest.searchParams.get('controls'), '0', 'sans contrôles ni titre à lire');
+
+    // La synchro par l'horloge : deux secondes plus tard, on entre plus loin.
+    await wait(2200);
+    const r2 = await fetch(`${BASE}/api/blindtest/embed?k=${jeton}`, { redirect: 'manual' });
+    const tard = Number(new URL(r2.headers.get('location')).searchParams.get('start'));
+    assert.ok(tard >= 64, `un retardataire entre à ${tard} s, pas au début`);
+
+    // L'état que lit la page hôte du bureau.
+    const st = await (await fetch(`${BASE}/api/blindtest/state?sid=${sidBureau}`)).json();
+    assert.equal(st.jeton, jeton, 'la page hôte retrouve l\'extrait de son salon');
+    assert.ok(st.restant > 0 && st.restant <= 20);
+    assert.equal(st.par.toLowerCase(), ANIM);
+
+    // L'arrêt.
+    light.trames.length = 0;
+    anim.envoyer('<t g="pomme" t="m" p="">/blindstop</t>');
+    await light.attendre((x) => x.includes('arrêté'), 'l\'annonce d\'arrêt');
+    await light.attendre((x) => x.includes('t="bt"') && x.includes('bk=""'), 'l\'ordre de se taire');
+    const r3 = await fetch(`${BASE}/api/blindtest/embed?k=${jeton}`, { redirect: 'manual' });
+    assert.equal(r3.status, 404, 'le jeton ne mène plus nulle part');
+
+    // Et un joueur ordinaire ne lance rien.
+    light.envoyer('<t g="pomme" t="m" p="">/blind https://youtu.be/dQw4w9WgXcQ</t>');
+    await wait(600);
+    const st2 = await (await fetch(`${BASE}/api/blindtest/state?sid=${sidLight}`)).json();
+    assert.equal(st2.jeton, null, 'la commande d\'un non-animateur ne lance aucun extrait');
+  } finally { anim.fermer(); light.fermer(); bureau.fermer(); }
+});
+
+test('le blindtest accepte les liens YouTube tels qu\'on les colle', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+
+  const sidAnim = await inscrire(ANIM);
+  await donnerRole(ANIM, { is_animator: true });
+  const anim = await client(ANIM, sidAnim);
+  const light = await client('btformes', await inscrire('btformes'));
+  try {
+    anim.envoyer('<o g="pomme" />');
+    light.envoyer('<o g="pomme" />');
+    await light.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'userlist');
+
+    const formes = [
+      ['https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=45s', 45],
+      ['https://youtu.be/dQw4w9WgXcQ?t=90', 90],
+      ['https://www.youtube.com/embed/dQw4w9WgXcQ?start=12', 12],
+      ['https://music.youtube.com/watch?v=dQw4w9WgXcQ', 0],
+      ['https://www.youtube.com/shorts/dQw4w9WgXcQ', 0],
+      ['dQw4w9WgXcQ', 0],                                   // l'identifiant nu
+    ];
+    for (const [lien, debutAttendu] of formes) {
+      light.trames.length = 0;
+      anim.envoyer(`<t g="pomme" t="m" p="">/blind ${lien}</t>`);
+      const trame = await light.attendre((x) => x.includes('t="bt"') && x.includes('bk="'),
+        `la trame pour ${lien}`);
+      const jeton = /bk="([^"]*)"/.exec(trame)[1];
+      assert.ok(jeton, `${lien} est reconnu`);
+      const r = await fetch(`${BASE}/api/blindtest/embed?k=${jeton}`, { redirect: 'manual' });
+      const d = new URL(r.headers.get('location'));
+      assert.equal(d.pathname, '/embed/dQw4w9WgXcQ', `${lien} → la bonne vidéo`);
+      // Le repère de temps du lien sert de départ quand on n'en donne pas.
+      const start = Number(d.searchParams.get('start'));
+      assert.ok(start >= debutAttendu && start <= debutAttendu + 3,
+        `${lien} démarre vers ${debutAttendu} s (mesuré ${start})`);
+      // La durée par défaut : trente secondes.
+      assert.equal(Number(d.searchParams.get('end')) - debutAttendu, 30,
+        `${lien} dure trente secondes par défaut`);
+      anim.envoyer('<t g="pomme" t="m" p="">/blindstop</t>');
+      await wait(150);
+    }
+  } finally { anim.fermer(); light.fermer(); }
 });

@@ -2561,7 +2561,14 @@ function saveXpActions() {
 const ANIMATOR_WEEKLY_KIKOOZ = 2000;
 const ANIM_KIKOOZ_FILE = path.join(SCORES_DIR, 'animator-kikooz.json');
 let animatorKikoozGiven = {}; // username -> { weekKey, given }
+// Le fichier n'est plus qu'un REPLI, pour un déploiement sans base. Dès qu'une
+// base est là, c'est le registre des dons qui fait foi : lui seul survit à un
+// disque éphémère, et lui seul dit d'où vient chaque kikooz. Garder les deux,
+// c'était garder deux vérités — et le fichier, partagé par tous les serveurs
+// d'un même dossier, gagnait la course au hasard.
+const KIKOOZ_EN_BASE = () => !!process.env.DATABASE_URL;
 function loadAnimatorKikooz() {
+  if (KIKOOZ_EN_BASE()) return;         // rempli au démarrage depuis kikooz_gifts
   try {
     if (fs.existsSync(ANIM_KIKOOZ_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(ANIM_KIKOOZ_FILE, 'utf8'));
@@ -2572,6 +2579,7 @@ function loadAnimatorKikooz() {
 loadAnimatorKikooz();
 let _animKikoozSaveTimer = null;
 function saveAnimatorKikooz() {
+  if (KIKOOZ_EN_BASE()) return;         // `kikooz_gifts` porte déjà chaque don
   if (_animKikoozSaveTimer) return;
   _animKikoozSaveTimer = setTimeout(() => {
     _animKikoozSaveTimer = null;
@@ -9244,6 +9252,63 @@ app.get('/api/admin/channels', adminScope('channels', 'kiloute'), (req, res) => 
     list.push({ name, label: ch.desc || '', topic: ch.topic || '', users: ch.users.size, private: !!ch.private, locked: !!ch.pass });
   }
   res.json({ ok: true, channels: list });
+});
+
+// ── Blindtest : l'extrait, et son état ──
+//
+// L'iframe pointe ICI, jamais sur YouTube en clair : le salon n'a qu'un jeton,
+// et c'est le serveur qui sait à quelle vidéo il mène. On calcule au passage
+// où en est l'extrait, de sorte qu'un retardataire tombe sur la même seconde
+// de la chanson que les autres.
+app.get('/api/blindtest/embed', (req, res) => {
+  const salon = blindtestParJeton.get(String(req.query.k || ''));
+  const b = salon ? blindtestEnCours(salon) : null;
+  if (!b) return res.status(404).send('Extrait terminé.');
+
+  const ecoule = Math.max(0, (Date.now() - b.aMs) / 1000);
+  const depart = Math.floor(b.debut + ecoule);
+  const fin = Math.ceil(b.debut + b.duree);
+  if (depart >= fin) return res.status(404).send('Extrait terminé.');
+
+  const p = new URLSearchParams({
+    start: String(depart), end: String(fin), autoplay: '1',
+    // Ni titre, ni suggestions, ni contrôles : on ne doit rien lire de la
+    // vidéo pendant qu'elle joue.
+    controls: '0', modestbranding: '1', rel: '0', iv_load_policy: '3',
+    fs: '0', disablekb: '1', playsinline: '1',
+  });
+  res.redirect(302, `https://www.youtube.com/embed/${b.id}?${p.toString()}`);
+});
+
+// L'état pour la PAGE HÔTE du bureau (ruffle.html) : le SWF ne saurait pas
+// jouer YouTube, et il n'a pas à le savoir. On répond pour le salon où se
+// trouve la socket de chat de ce joueur.
+app.get('/api/blindtest/state', (req, res) => {
+  const sid = getSidFromRequest(req, req.query);
+  const username = resolveUsernameFromSid(sid);
+  if (!username) return res.status(401).json({ ok: false });
+  res.set('Cache-Control', 'no-store');
+
+  const salons = new Set();
+  for (const [, cl] of xmlSocketClients) {
+    if (cl && cl.logged && cl.username === username) {
+      for (const c of cl.channels) salons.add(c);
+    }
+  }
+  for (const salon of salons) {
+    const b = blindtestEnCours(salon);
+    if (b) {
+      return res.json({
+        ok: true, salon,
+        jeton: b.jeton,
+        duree: b.duree,
+        // Ce qu'il reste à jouer, pour que la page sache quand refermer.
+        restant: Math.max(0, Math.round(b.duree - (Date.now() - b.aMs) / 1000)),
+        par: getDisplayName(b.par),
+      });
+    }
+  }
+  res.json({ ok: true, jeton: null });
 });
 
 // ── Le registre des dons de kikooz ──
@@ -15921,14 +15986,18 @@ async function boot() {
         // des dons plutôt que depuis son fichier JSON : le disque est éphémère,
         // et un redémarrage rendait à chacun une enveloppe pleine. La base, qui
         // porte chaque don avec sa semaine, ne se trompe pas.
+        // AUTORITAIRE : on ne complète pas le fichier, on le remplace. Sinon
+        // une entrée périmée (semaine d'avant, base restaurée, compte renommé)
+        // continuerait de grever une enveloppe que la base dit intacte.
         const wk = parisWeekKey();
         const parDonneur = await db.sumKikoozGiftsForWeek(wk);
+        for (const pseudo of Object.keys(animatorKikoozGiven)) delete animatorKikoozGiven[pseudo];
         let repris = 0;
         for (const [pseudo, total] of Object.entries(parDonneur)) {
           animatorKikoozGiven[pseudo] = { weekKey: wk, given: total };
           repris++;
         }
-        if (repris) saveAnimatorKikooz();
+        saveAnimatorKikooz();
         console.log(`[DB] Quota de dons repris pour ${repris} donateur(s) (semaine ${wk})`);
       } catch (e) { console.error('[DB] Kikooz quota load error:', e.message); }
       try {
@@ -17951,6 +18020,114 @@ function formaterClassement(points, titre) {
 // Set<socketKey> — we store the username to look up.
 const blueModeUsers = new Set();
 
+// ─────────────────────────────────────────────
+// BLINDTEST — l'extrait qu'un animateur lance dans son salon.
+//
+// Source : YouTube seul. Spotify exige que CHAQUE auditeur possède un compte
+// Premium et s'authentifie en OAuth (le Web Playback SDK ne joue rien sans) :
+// inutilisable pour un salon de joueurs. L'IFrame de YouTube, elle, accepte un
+// début et une fin dans son URL, ne demande aucun compte, et marche partout.
+//
+// Trois idées portent le reste :
+//
+//   1. LE JETON. Le salon reçoit un jeton opaque, jamais l'identifiant de la
+//      vidéo : le titre ne doit pas s'afficher dans le chat, sinon ce n'est
+//      plus un blindtest. (Un curieux qui ouvre l'inspecteur suivra quand même
+//      la redirection — c'est la limite d'une lecture côté client, et elle est
+//      assumée.)
+//
+//   2. LA SYNCHRO PAR L'HORLOGE. On diffuse l'instant de départ, pas « joue
+//      maintenant ». Chaque client calcule où en est l'extrait et se place
+//      dedans : un retardataire, un onglet réveillé, un joueur qui arrive au
+//      milieu tombent tous sur la même seconde de la chanson.
+//
+//   3. DEUX CHEMINS. Le client Light écoute sa socket. Le bureau, lui, est un
+//      SWF dans Ruffle qui ne saurait pas jouer YouTube : c'est la PAGE hôte
+//      (ruffle.html) qui interroge /api/blindtest/state et pose le lecteur
+//      par-dessus. Le SWF n'est pas touché.
+// ─────────────────────────────────────────────
+
+const BLIND_DUREE_DEFAUT = 30;        // secondes — la longueur d'un extrait
+const BLIND_DUREE_MAX = 300;
+const blindtestState = {};            // salon -> { id, debut, duree, jeton, par, aMs }
+const blindtestParJeton = new Map();  // jeton -> salon
+
+/**
+ * L'identifiant d'une vidéo YouTube, et le repère de temps que porte l'URL.
+ *
+ * Accepte les formes que les animateurs colleront vraiment : watch?v=,
+ * youtu.be/, /embed/, /shorts/, music.youtube.com, ou l'identifiant nu.
+ *
+ * @returns {{id:string, debut:number}|null}
+ */
+function analyserYoutube(brut) {
+  const s = String(brut || '').trim();
+  if (!s) return null;
+  const ID = /^[A-Za-z0-9_-]{11}$/;
+  if (ID.test(s)) return { id: s, debut: 0 };
+
+  let u;
+  try { u = new URL(s.startsWith('http') ? s : 'https://' + s); } catch { return null; }
+  if (!/(^|\.)(youtube\.com|youtu\.be)$/i.test(u.hostname)) return null;
+
+  let id = '';
+  if (/(^|\.)youtu\.be$/i.test(u.hostname)) id = u.pathname.slice(1).split('/')[0];
+  else if (u.pathname === '/watch') id = u.searchParams.get('v') || '';
+  else {
+    const m = /^\/(embed|shorts|v|live)\/([^/?#]+)/.exec(u.pathname);
+    if (m) id = m[2];
+  }
+  if (!ID.test(id)) return null;
+
+  const t = u.searchParams.get('t') || u.searchParams.get('start') || '';
+  return { id, debut: lireDuree(t) };
+}
+
+/**
+ * Une durée écrite comme un humain l'écrit : « 90 », « 90s », « 1:30 »,
+ * « 1m30s », « 1h02m03s ». Rend des secondes, zéro si on n'y comprend rien.
+ */
+function lireDuree(brut) {
+  const s = String(brut || '').trim().toLowerCase();
+  if (!s) return 0;
+  if (/^\d+$/.test(s)) return Number(s);
+  const colon = /^(?:(\d+):)?(\d+):(\d{1,2})$/.exec(s);
+  if (colon) {
+    return (Number(colon[1] || 0) * 3600) + (Number(colon[2]) * 60) + Number(colon[3]);
+  }
+  const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(s);
+  if (m && (m[1] || m[2] || m[3])) {
+    return (Number(m[1] || 0) * 3600) + (Number(m[2] || 0) * 60) + Number(m[3] || 0);
+  }
+  return 0;
+}
+
+// Où en est l'extrait, maintenant — et s'il est fini, plus rien.
+function blindtestEnCours(salon) {
+  const b = blindtestState[salon];
+  if (!b) return null;
+  const ecoule = (Date.now() - b.aMs) / 1000;
+  if (ecoule >= b.duree + 2) { arreterBlindtest(salon); return null; }
+  return b;
+}
+
+function arreterBlindtest(salon) {
+  const b = blindtestState[salon];
+  if (!b) return null;
+  blindtestParJeton.delete(b.jeton);
+  delete blindtestState[salon];
+  return b;
+}
+
+// La trame que seuls les clients Light comprennent. Le SWF du bureau ne
+// connaît pas ce type et n'a pas à le recevoir : sa page hôte interroge
+// /api/blindtest/state à la place.
+function envoyerBlindtestAuxLight(salon, xml) {
+  for (const [sock, cl] of xmlSocketClients) {
+    if (cl && cl.estLight && cl.channels.has(salon)) sendToClient(sock, xml);
+  }
+}
+
 // Emotes : un message dont le texte ENTIER correspond à un déclencheur devient
 // une action (« pseudo éclate de rire », en italique) + animation de bouille,
 // des DEUX côtés (Light ET main.swf). On normalise côté serveur parce que le
@@ -18380,7 +18557,7 @@ async function handleCBeeMessage(socket, rawXml) {
       // recent-chat-history replay on (re)join, so flipping browser tabs no
       // longer leaves it with an empty conversation. The desktop SWF never sets
       // this, so its join behaviour is unchanged.
-      if (msg.attrs.lc === '1') client.wantsChatHistory = true;
+      if (msg.attrs.lc === '1') { client.wantsChatHistory = true; client.estLight = true; }
       const sessionUser = sid && sessions[sid] && sessions[sid].user ? sessions[sid].user : '';
 
       // Priority: sid-bound user (real logged account) > explicit login.
@@ -19253,6 +19430,56 @@ case 'send': {
         broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
       }
       delete quizState[g];
+      break;
+    }
+
+    // ── /blind : l'extrait du blindtest ──
+    //
+    //   /blind <url ou id> [début] [durée]
+    //
+    // Le début se prend dans l'URL (« ?t=1m30s ») si on ne le donne pas. Le
+    // salon ne voit qu'un jeton : ni le titre, ni le lien — sinon la réponse
+    // s'affiche avec la question.
+    if (canAnimate && /^\/blind(test)?\b/i.test(text)) {
+      const args = unescapeXml(text).trim().split(/\s+/).slice(1);
+      if (!args.length) {
+        sendToClient(socket, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${
+          ['Blindtest — /blind &lt;lien YouTube&gt; [début] [durée]',
+            'Exemple : /blind https://youtu.be/dQw4w9WgXcQ 1:02 20',
+            'Le début se lit dans le lien si vous ne le donnez pas ; la durée vaut '
+              + BLIND_DUREE_DEFAUT + ' s par défaut.',
+            '/blindstop arrête l\'extrait.'].join('<br/>')
+        }]]></${CMD.send}>`);
+        break;
+      }
+      const yt = analyserYoutube(args[0]);
+      if (!yt) {
+        sendToClient(socket, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${escapeXml('Lien YouTube non reconnu. Collez l\'adresse de la vidéo, ou son identifiant.')}]]></${CMD.send}>`);
+        break;
+      }
+      const debut = args.length > 1 ? lireDuree(args[1]) : yt.debut;
+      const duree = Math.max(3, Math.min(
+        args.length > 2 ? (lireDuree(args[2]) || BLIND_DUREE_DEFAUT) : BLIND_DUREE_DEFAUT,
+        BLIND_DUREE_MAX));
+
+      arreterBlindtest(g);
+      const jeton = crypto.randomBytes(8).toString('hex');
+      blindtestState[g] = { id: yt.id, debut, duree, jeton, par: client.username, aMs: Date.now() };
+      blindtestParJeton.set(jeton, g);
+
+      // L'annonce, visible de tous — et muette sur le contenu.
+      broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${
+        escapeXml(`Blindtest ! ${getDisplayName(client.username)} lance un extrait de ${duree} secondes.`)
+      }]]></${CMD.send}>`);
+      // Et la trame que les clients Light savent jouer.
+      envoyerBlindtestAuxLight(g, `<${CMD.send} u="admin" t="bt" g="${escapeXml(g)}" bk="${jeton}" bd="${duree}" ba="${Date.now()}" h="" d="" />`);
+      break;
+    }
+    if (canAnimate && /^\/blind(test)?stop\s*$/i.test(text)) {
+      if (arreterBlindtest(g)) {
+        broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${escapeXml('Blindtest : extrait arrêté.')}]]></${CMD.send}>`);
+        envoyerBlindtestAuxLight(g, `<${CMD.send} u="admin" t="bt" g="${escapeXml(g)}" bk="" bd="0" ba="0" h="" d="" />`);
+      }
       break;
     }
 

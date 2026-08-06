@@ -322,6 +322,23 @@
   .msg .body { color: #335511; }
   /* Cri modérateur ("!texte") — rouge vif gras, comme le desktop (#C10000). */
   .msg.shout, .msg.shout .body, .msg.shout .from, .msg.shout .time { color: #C10000; font-weight: bold; }
+  /* Blindtest : un bandeau au-dessus du fil, avec le décompte. L'iframe est
+     réduite à un point : on veut le SON, surtout pas l'image — elle porterait
+     le titre de la chanson. */
+  .blindtest {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; background: #1A5FD0; color: #fff;
+    font-size: 13px; font-weight: bold; flex: 0 0 auto;
+  }
+  .blindtest .bt-titre { letter-spacing: .5px; }
+  .blindtest .bt-temps { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .blindtest .bt-bouton {
+    border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer;
+    background: #fff; color: #1A5FD0; font-weight: bold; font-size: 12px;
+  }
+  .blindtest .bt-cadre { width: 1px; height: 1px; overflow: hidden; opacity: .01; }
+  .blindtest .bt-cadre iframe { width: 320px; height: 180px; border: 0; }
+
   /* Ligne animateur / mode bleu (t="c") — bleu gras, comme le desktop. Le
      classement d'un quiz y arrive sur plusieurs lignes : pre-line les garde
      (et replie les espaces, donc une ligne simple ne change pas d'allure). */
@@ -3357,6 +3374,14 @@
           }
           break;
         }
+        // Blindtest : l'extrait qu'un animateur lance dans le salon. La trame
+        // ne porte qu'un jeton — le titre de la vidéo ne doit apparaître nulle
+        // part — plus la durée et l'instant de départ, dont le lecteur se sert
+        // pour tomber sur la même seconde que tout le monde.
+        if (ty === "bt") {
+          jouerBlindtest(attr(xml, "bk"), Number(attr(xml, "bd")) || 0, Number(attr(xml, "ba")) || 0);
+          break;
+        }
         // Lignes animateur / mode bleu (/blueon) : type "c". Le desktop les rend
         // en bleu gras (MikeHorny, gains kikooz, mode bleu) ; on s'aligne dessus.
         if (ty === "c") {
@@ -3666,6 +3691,90 @@
     if (stick) scrollDown();
   }
   function systemLine(text) { addMessage({ kind: "system", body: text }); }
+
+  // ── Blindtest ──
+  //
+  // Un bandeau au-dessus du chat, avec le décompte, et l'extrait qui joue dans
+  // une iframe minuscule. Trois choix méritent un mot :
+  //
+  //  · L'iframe pointe sur /api/blindtest/embed?k=jeton, pas sur YouTube : le
+  //    titre de la vidéo n'apparaît nulle part dans la page. C'est un
+  //    blindtest ; l'afficher, ce serait donner la réponse.
+  //  · On CALCULE où en est l'extrait à partir de l'instant de départ. Un
+  //    joueur qui arrive en retard, ou dont l'onglet dormait, retombe sur la
+  //    même seconde que les autres.
+  //  · Le son ne démarre pas tout seul : les navigateurs l'interdisent sans
+  //    geste de l'utilisateur. On propose donc un bouton une bonne fois, et on
+  //    retient le consentement — les extraits suivants partent sans rien
+  //    demander.
+  var blindtest = { jeton: "", fin: 0, minuteur: null, arme: false };
+
+  function blindtestBoite() {
+    var b = document.getElementById("blindtest");
+    if (b) return b;
+    b = el("div", "blindtest");
+    b.id = "blindtest";
+    b.innerHTML = '<span class="bt-titre">Blindtest</span>'
+      + '<span class="bt-temps" id="bt-temps"></span>'
+      + '<button class="bt-bouton" id="bt-bouton"></button>'
+      + '<div class="bt-cadre" id="bt-cadre"></div>';
+    var av = document.getElementById("messages");
+    av.parentNode.insertBefore(b, av);
+    document.getElementById("bt-bouton").addEventListener("click", function () {
+      if (blindtest.arme) { arreterBlindtest(true); return; }
+      blindtest.arme = true;
+      try { localStorage.setItem("fp_bt_son", "1"); } catch (e) {}
+      lancerCadre();
+      majBlindtest();
+    });
+    return b;
+  }
+
+  function lancerCadre() {
+    var cadre = document.getElementById("bt-cadre");
+    if (!cadre || !blindtest.jeton) return;
+    cadre.innerHTML = '<iframe title="extrait" allow="autoplay" frameborder="0"'
+      + ' src="/api/blindtest/embed?k=' + encodeURIComponent(blindtest.jeton)
+      + '&r=' + Date.now() + '"></iframe>';
+  }
+
+  function majBlindtest() {
+    var t = document.getElementById("bt-temps");
+    var bouton = document.getElementById("bt-bouton");
+    if (!t || !bouton) return;
+    var reste = Math.max(0, Math.ceil((blindtest.fin - Date.now()) / 1000));
+    t.textContent = reste + " s";
+    bouton.textContent = blindtest.arme ? "Couper" : "Écouter";
+    if (reste <= 0) arreterBlindtest(false);
+  }
+
+  function arreterBlindtest(parLeJoueur) {
+    if (blindtest.minuteur) { clearInterval(blindtest.minuteur); blindtest.minuteur = null; }
+    blindtest.jeton = "";
+    var b = document.getElementById("blindtest");
+    if (b) b.parentNode.removeChild(b);
+    // Couper soi-même retire le consentement : on ne veut pas que le suivant
+    // reparte dans les oreilles de quelqu'un qui vient de dire non.
+    if (parLeJoueur) {
+      blindtest.arme = false;
+      try { localStorage.removeItem("fp_bt_son"); } catch (e) {}
+    }
+  }
+
+  function jouerBlindtest(jeton, duree, depart) {
+    arreterBlindtest(false);
+    if (!jeton || !duree) return;                 // jeton vide = /blindstop
+    try { blindtest.arme = localStorage.getItem("fp_bt_son") === "1"; } catch (e) {}
+    blindtest.jeton = jeton;
+    // `depart` est l'horloge du SERVEUR ; on la ramène à la nôtre en gardant
+    // le temps déjà écoulé, ce qui absorbe un décalage d'horloge.
+    var ecoule = Math.max(0, Math.min(Date.now() - depart, duree * 1000));
+    blindtest.fin = Date.now() + (duree * 1000 - ecoule);
+    blindtestBoite();
+    if (blindtest.arme) lancerCadre();
+    majBlindtest();
+    blindtest.minuteur = setInterval(majBlindtest, 500);
+  }
 
   // Ligne système suivie d'un lien d'action. Sert au repli « il n'est pas
   // connecté → écris-lui » : le bureau propose exactement ça, autant ne pas

@@ -149,6 +149,92 @@
     </div>
     <script>
         // Poll the connected-players count; click the badge to list the pseudos.
+        // ── Blindtest (bureau) ──
+        //
+        // Le SWF est du Flash dans Ruffle : il ne saura jamais jouer YouTube.
+        // C'est donc la PAGE qui s'en charge, sans qu'on touche au SWF. Elle
+        // demande au serveur, toutes les deux secondes, s'il y a un extrait en
+        // cours dans un salon où se trouve ce joueur, et pose un petit bandeau
+        // par-dessus le bureau quand il y en a un.
+        //
+        // Comme sur mobile, l'iframe pointe sur /api/blindtest/embed : le titre
+        // de la chanson n'apparaît nulle part, et le serveur place l'extrait à
+        // la seconde où il en est — un retardataire entend la même chose que
+        // les autres.
+        (function () {
+            var sid = new URLSearchParams(window.location.search).get("sid") || "";
+            if (!sid) return;
+            var etat = { jeton: "", fin: 0, arme: false, boite: null, minuteur: null };
+            try { etat.arme = localStorage.getItem("fp_bt_son") === "1"; } catch (e) {}
+
+            function poser() {
+                if (etat.boite) return etat.boite;
+                var b = document.createElement("div");
+                b.id = "bt-bureau";
+                b.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);top:8px;"
+                    + "z-index:99999;display:flex;align-items:center;gap:10px;padding:7px 14px;"
+                    + "background:#1A5FD0;color:#fff;font:bold 13px Verdana,Arial,sans-serif;"
+                    + "border-radius:10px;box-shadow:0 3px 12px rgba(0,0,0,.35)";
+                b.innerHTML = '<span>Blindtest</span><span id="bt-b-temps"></span>'
+                    + '<button id="bt-b-bouton" style="border:0;border-radius:6px;padding:4px 10px;'
+                    + 'cursor:pointer;background:#fff;color:#1A5FD0;font:bold 12px Verdana,Arial,sans-serif"></button>'
+                    + '<div id="bt-b-cadre" style="width:1px;height:1px;overflow:hidden;opacity:.01"></div>';
+                document.body.appendChild(b);
+                b.querySelector("#bt-b-bouton").addEventListener("click", function () {
+                    if (etat.arme) {
+                        etat.arme = false;
+                        try { localStorage.removeItem("fp_bt_son"); } catch (e) {}
+                        var c = document.getElementById("bt-b-cadre");
+                        if (c) c.innerHTML = "";
+                    } else {
+                        etat.arme = true;
+                        try { localStorage.setItem("fp_bt_son", "1"); } catch (e) {}
+                        cadre();
+                    }
+                    tic();
+                });
+                etat.boite = b;
+                return b;
+            }
+            function cadre() {
+                var c = document.getElementById("bt-b-cadre");
+                if (!c || !etat.jeton) return;
+                c.innerHTML = '<iframe title="extrait" allow="autoplay" frameborder="0"'
+                    + ' style="width:320px;height:180px;border:0"'
+                    + ' src="/api/blindtest/embed?k=' + encodeURIComponent(etat.jeton)
+                    + '&r=' + Date.now() + '"></iframe>';
+            }
+            function retirer() {
+                if (etat.boite && etat.boite.parentNode) etat.boite.parentNode.removeChild(etat.boite);
+                etat.boite = null; etat.jeton = "";
+            }
+            function tic() {
+                if (!etat.jeton) return;
+                var reste = Math.max(0, Math.ceil((etat.fin - Date.now()) / 1000));
+                var t = document.getElementById("bt-b-temps");
+                var bo = document.getElementById("bt-b-bouton");
+                if (t) t.textContent = reste + " s";
+                if (bo) bo.textContent = etat.arme ? "Couper" : "Écouter";
+                if (reste <= 0) retirer();
+            }
+            setInterval(tic, 500);
+            setInterval(function () {
+                fetch("/api/blindtest/state?sid=" + encodeURIComponent(sid), { cache: "no-store" })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!d || !d.ok) return;
+                        if (!d.jeton) { if (etat.jeton) retirer(); return; }
+                        if (d.jeton === etat.jeton) return;     // déjà en cours
+                        etat.jeton = d.jeton;
+                        etat.fin = Date.now() + (Number(d.restant) || 0) * 1000;
+                        poser();
+                        if (etat.arme) cadre();
+                        tic();
+                    })
+                    .catch(function () { /* le bureau continue sans */ });
+            }, 2000);
+        })();
+
         (function () {
             var badge = document.getElementById("online-badge");
             var label = document.getElementById("online-count");
