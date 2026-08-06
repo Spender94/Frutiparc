@@ -251,3 +251,34 @@ test('la dernière fée peut partir, mais pas par accident', async (t) => {
   assert.equal(M.listeAutoritaire([]), false,
     'et une liste vide ne dit rien par elle-même');
 });
+
+test('une fée qu\'on ne nourrit plus s\'en va d\'elle-même, et ne revient pas', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  // C'est le ménage que le jeu d'origine fait tout seul (FaerieInfo.upkeep) :
+  // la faim descend de quatre par nuit, le moral suit, et sous trois « elle
+  // s'est enfuie pendant la nuit » — erase(), la fiche l'oublie. Encore
+  // fallait-il que la sauvegarde suivante ne la ressuscite pas.
+  const N = require('../public/minipixiz/nuit.js');
+
+  const gardee = fee('Gardee', 4, { $hunger: 60, $moral: 10 });
+  const lasse = fee('Lasse', 8, { $hunger: 0, $moral: 3 });
+  const carte = carteAvec([gardee, lasse], 0, []);
+  await ecrire(carte);
+  assert.equal((await relire()).$faerie.length, 2);
+
+  // Quelques nuits passent, personne ne nourrit Lasse.
+  let garde = 0;
+  while (carte.$faerie.some((f) => f.$name === 'Lasse') && garde++ < 10) {
+    carte.$time.$t -= 86400000;
+    N.passerLeTemps(carte, Date.now());
+  }
+  assert.ok(!carte.$faerie.some((f) => f.$name === 'Lasse'),
+    'Lasse a fini par partir (en ' + garde + ' nuit(s))');
+
+  await ecrire(carte);
+  const c = await relire();
+  assert.ok(!c.$faerie.some((f) => f.$name === 'Lasse'),
+    'et le serveur ne la rappelle pas');
+  assert.ok(c.$faerie.some((f) => f.$name === 'Gardee'),
+    'tandis que celle qu\'on garde reste');
+});

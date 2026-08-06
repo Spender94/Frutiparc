@@ -403,7 +403,11 @@ class Fee {
     fs.$hunger = nombre(fs.$hunger) - 4;
     if (fs.$hunger <= 0) { fs.$hunger = 0; fs.$moral = nombre(fs.$moral) - 1; }
 
-    // Enfermée, elle déprime ; libre, elle se remet — mais peut s'enfuir.
+    // `libre` = elle n'est PAS celle que le joueur emmène (FaerieInfo.upkeep :
+    // `flFree = $current != getFaerieIndex(fs)`). Celle qu'on trimballe s'use
+    // d'un point de moral par nuit ; celle qui reste au calme se remet — mais
+    // si son moral est déjà tombé sous trois, elle profite de la nuit pour
+    // s'en aller, et elle quitte la fiche pour de bon.
     if (!libre) {
       fs.$moral = nombre(fs.$moral) - 1;
     } else {

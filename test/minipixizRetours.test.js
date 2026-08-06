@@ -520,7 +520,10 @@ test('les Fils Paralysants se voient, et la pièce du Conglomérat pulse vers le
 
 test('les explosions sont celles du jeu : cristaux, flammes, pentacle et rayons', () => {
   const moteur = fs.readFileSync(path.join(ROOT, 'public/minipixiz/engine.js'), 'utf8');
-  assert.match(moteur, /billeExplose/, 'chaque bille détruite éclate (Token.explode)');
+  // Les cristaux sont l'effet d'`Element.explode`, que le moteur ne déclenche
+  // que par `exploser()` — c'est-à-dire depuis un SORT. Un paquet de couleur
+  // qui casse, lui, ne fait que blanchir (voir le test suivant).
+  assert.match(moteur, /evenement\('eclats'/, 'explode() prévient le client');
   const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
   for (const lien of ['partElementCrystal', 'partFlameBall', 'partBombEplosion',
     'partPentacle', 'partRay']) {
@@ -809,4 +812,49 @@ test('l\'ouverture du jeu : l\'écran-titre, puis la clairière dans une ÉTOILE
   assert.equal(pointes.length, 5, 'cinq pointes — une étoile, pas un cercle');
   const milieu = (g) => g.reduce((s, a) => s + (a > 180 ? a - 360 : a), 0) / g.length;
   assert.ok(Math.abs(milieu(pointes[0])) < 6, 'dont la première droit en haut');
+});
+
+test('un paquet de couleur qui casse BLANCHIT, il n\'éclate pas', () => {
+  // Game.update, case 3 — le pas de destruction, en entier :
+  //     timer += Timer.tmod ; blanchir de timer/10 ; si timer > 10 : kill()
+  // Rien d'autre. `Token.explode` (les dix cristaux) n'a que trois appelants
+  // dans tout le jeu, et ce sont des SORTS : Mass (le Météore qui écrase),
+  // LightBolt (les Billes de lumière qui frappent), Dig (le Perce-puits qui
+  // creuse). Aucun ne passe par la destruction ordinaire.
+  const moteur = fs.readFileSync(path.join(ROOT, 'public/minipixiz/engine.js'), 'utf8');
+  // Deux `case ETAPE.DESTRUCTION` existent — celui d'initStep, qui monte la
+  // liste, et celui d'update, qui joue l'effacement. C'est le second.
+  const pas = /case ETAPE\.DESTRUCTION:(?:(?!case ETAPE)[\s\S])*?this\.timer \+= tmod;[\s\S]*?break;/
+    .exec(moteur);
+  assert.ok(pas, 'le pas de destruction est là');
+  assert.ok(!/evenement\(/.test(pas[0]),
+    'il n\'annonce aucun effet : les billes blanchissent et s\'effacent');
+  assert.match(pas[0], /for \(const e of this\.dList\) e\.tuer\(\);/);
+
+  // La source de l'original le dit noir sur blanc : `explode()` n'est appelé
+  // que par les trois sorts. On le vérifie sur le fichier d'origine.
+  const src = path.join(ROOT, 'Games/miniTroll/src');
+  const appelants = [];
+  for (const f of fs.readdirSync(path.join(src, 'spell'))) {
+    if (!f.endsWith('.mt')) continue;
+    if (/\.explode\(\)/.test(fs.readFileSync(path.join(src, 'spell', f), 'latin1'))) {
+      appelants.push(f.replace('.mt', ''));
+    }
+  }
+  assert.deepEqual(appelants.sort(), ['Dig', 'LightBolt', 'Mass'],
+    'et les trois sorts sont bien les seuls');
+
+  // Côté portage, ce sont exactement les trois qui appellent `exploser()`.
+  const sorts = fs.readFileSync(path.join(ROOT, 'public/minipixiz/sorts.js'), 'utf8');
+  assert.equal((sorts.match(/\.exploser\(\)/g) || []).length, 3,
+    'Perce-puits, Météore, Billes de lumière — et personne d\'autre');
+  // Et le client ne pose les cristaux que pour un JETON.
+  const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(client, /case 'eclats': \{\s*\n\s*if \(!this\.champ \|\| d\.et !== E\.E\.JETON\) break;/);
+
+  // Le bassin, lui, a bien son effet propre : base/Fountain.onDestroyElement
+  // relâche une bulle par bille effacée. C'est le SEUL lieu qui surcharge ce
+  // rendez-vous — Base.onDestroyElement est vide.
+  const bassin = fs.readFileSync(path.join(ROOT, 'public/minipixiz/bassin.js'), 'utf8');
+  assert.match(bassin, /onDestroyElement/);
 });

@@ -1234,10 +1234,16 @@ class Client {
         bp.init();
         break;
       }
-      // Token.explode → fxCrystal : dix éclats de cristal aux couleurs de la
-      // bille (teintés et éclaircis), qui tournoient en retombant.
-      case 'billeExplose': {
-        if (!this.champ) break;
+      /*
+       * Element.explode — l'élément vole en éclats. Trois sorts seulement le
+       * déclenchent (Mass, LightBolt, Dig, plus Eye.blast), JAMAIS la
+       * destruction d'un paquet de couleur : celle-là blanchit et s'efface.
+       *
+       * Token.fxCrystal : dix éclats de cristal aux couleurs de la bille
+       * (teintés et éclaircis), qui tournoient en retombant.
+       */
+      case 'eclats': {
+        if (!this.champ || d.et !== E.E.JETON) break;
         const couleur = E.COULEURS[d.type] || E.COULEURS[0];
         for (let i = 0; i < 10; i++) {
           const p = this.champ.nouvellePart('partElementCrystal');

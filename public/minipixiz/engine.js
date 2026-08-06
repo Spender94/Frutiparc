@@ -982,16 +982,25 @@ class Jeu {
         this.piece.update(tmod, this.entree);
         break;
       case ETAPE.DESTRUCTION:
-        // L'effacement dure dix images dans le jeu d'origine ; on garde le
-        // délai, c'est lui qui rend la cascade lisible.
+        /*
+         * Game.update, case 3 — et c'est TOUT ce qui arrive à un paquet de
+         * couleur qui casse :
+         *
+         *     timer += Timer.tmod
+         *     pour chaque e de dList : blanchir de timer/10
+         *     si timer > 10 : e.kill()
+         *
+         * Les billes BLANCHISSENT sur dix images, puis disparaissent. Pas un
+         * éclat, pas une particule. Les cristaux (`Token.fxCrystal`) viennent
+         * de `Token.explode`, que rien n'appelle ici : seuls trois sorts le
+         * font — le Météore qui écrase, les Billes de lumière qui frappent, le
+         * Perce-puits qui creuse (voir `exploser`). Les poser sur la
+         * destruction ordinaire couvrait la forêt d'éclats que le jeu d'origine
+         * n'a jamais montrés.
+         */
         this.timer += tmod;
         if (this.timer > 10) {
-          for (const e of this.dList) {
-            // Token.explode → fxCrystal : chaque bille détruite éclate en
-            // cristaux de SA couleur. Le client écoute et pose les particules.
-            if (e.et === E.JETON) this.evenement('billeExplose', { x: e.px, y: e.py, type: e.type });
-            e.tuer();
-          }
+          for (const e of this.dList) e.tuer();
           this.dList = [];
           this.initStep(ETAPE.CHUTE);
         }
