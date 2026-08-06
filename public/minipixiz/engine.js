@@ -999,6 +999,11 @@ class Jeu {
          * n'a jamais montrés.
          */
         this.timer += tmod;
+        // `col.setTransform({ rb: 255*p, gb: 255*p, bb: 255*p })` — la teinte
+        // monte vers le blanc à mesure que le compteur court. C'est la SEULE
+        // chose que le joueur voit d'un paquet qui casse ; sans elle les billes
+        // s'évanouissent d'un coup, et la cascade devient illisible.
+        for (const e of this.dList) e.eclat = Math.min(1, this.timer / 10) * 100;
         if (this.timer > 10) {
           for (const e of this.dList) e.tuer();
           this.dList = [];

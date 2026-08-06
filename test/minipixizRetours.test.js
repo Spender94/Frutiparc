@@ -831,6 +831,31 @@ test('un paquet de couleur qui casse BLANCHIT, il n\'éclate pas', () => {
     'il n\'annonce aucun effet : les billes blanchissent et s\'effacent');
   assert.match(pas[0], /for \(const e of this\.dList\) e\.tuer\(\);/);
 
+  // Et le blanchiment JOUE : le commentaire l'a décrit un temps sans que la
+  // ligne existe, et les billes disparaissaient d'un coup. On le mesure sur le
+  // vrai moteur — la teinte monte, puis les billes s'en vont.
+  const jeu = new E.Jeu({ graine: 11, niveau: 0, grille: null });
+  for (const [x, y] of [[2, 15], [3, 15], [2, 16], [3, 16]]) {
+    jeu.genElement(E.E.JETON, x, y, 0).setType(0);
+  }
+  jeu.viderGroupes();
+  jeu.chercherGroupes();
+  jeu.initStep(E.ETAPE.DESTRUCTION);
+  const cible = jeu.dList[0];
+  assert.ok(cible, 'le paquet part à la destruction');
+  assert.equal(cible.eclat, 0, 'la bille est encore de sa couleur');
+  const teintes = [];
+  for (let i = 0; i < 5; i++) { jeu.update(1); teintes.push(Math.round(cible.eclat)); }
+  for (let i = 1; i < teintes.length; i++) {
+    assert.ok(teintes[i] > teintes[i - 1],
+      'la teinte monte vers le blanc : ' + teintes.join(' → '));
+  }
+  // Dix images, et il ne reste rien.
+  let garde = 0;
+  while (jeu.dList.length && garde++ < 30) jeu.update(1);
+  assert.equal(jeu.dList.length, 0, 'puis les billes s\'effacent');
+  assert.ok(!cible.vivant, 'et quittent la grille');
+
   // La source de l'original le dit noir sur blanc : `explode()` n'est appelé
   // que par les trois sorts. On le vérifie sur le fichier d'origine.
   const src = path.join(ROOT, 'Games/miniTroll/src');
