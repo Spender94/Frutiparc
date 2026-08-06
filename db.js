@@ -653,6 +653,26 @@ async function initSchema() {
         ON gaspard_help_topics (is_index) WHERE is_index;
       CREATE INDEX IF NOT EXISTS idx_moderation_logs_target ON moderation_logs(target_username, created_at DESC);
 
+      -- Le registre des dons de kikooz (/donne). Le destinataire en gardait
+      -- bien une trace dans SON journal, mais rien ne disait qui avait donné
+      -- quoi : impossible pour l'équipe de relire ses propres distributions,
+      -- ni de savoir où était passé le quota hebdomadaire d'un animateur.
+      -- week_key est la semaine parisienne du don (parisWeekKey) : c'est sur
+      -- elle que se recompte l'enveloppe des 2000 kikooz.
+      CREATE TABLE IF NOT EXISTS kikooz_gifts (
+        id          SERIAL PRIMARY KEY,
+        giver       TEXT NOT NULL,
+        recipient   TEXT NOT NULL,
+        amount      INTEGER NOT NULL,
+        reason      TEXT NOT NULL DEFAULT '',
+        giver_role  TEXT NOT NULL DEFAULT '',
+        week_key    TEXT NOT NULL DEFAULT '',
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_kikooz_gifts_giver ON kikooz_gifts(giver, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_kikooz_gifts_date ON kikooz_gifts(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_kikooz_gifts_week ON kikooz_gifts(giver, week_key);
+
       -- Chat auto-moderation: words triggering an instant totoché. Matched
       -- case-insensitively on the accent-stripped message, with word
       -- boundaries (so "pdf" doesn't hit "pd"). Edited live from /admin.
@@ -1382,6 +1402,56 @@ async function getModerationLogs(targetUsername, limit = 50) {
     [targetUsername, limit]
   );
   return rows;
+}
+
+// ── Le registre des dons de kikooz ──
+
+async function addKikoozGift(gift) {
+  await pool.query(
+    `INSERT INTO kikooz_gifts (giver, recipient, amount, reason, giver_role, week_key)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [gift.giver, gift.recipient, gift.amount, gift.reason || '',
+      gift.giverRole || '', gift.weekKey || '']
+  );
+}
+
+/**
+ * Les dons, du plus récent au plus ancien.
+ *
+ * @param {object} [f] filtres : giver, recipient, role, weekKey, since (Date)
+ * @param {number} [limit]
+ */
+async function listKikoozGifts(f = {}, limit = 200) {
+  const cond = [], args = [];
+  const ajouter = (sql, v) => { args.push(v); cond.push(sql.replace('?', '$' + args.length)); };
+  if (f.giver) ajouter('LOWER(giver) = LOWER(?)', String(f.giver));
+  if (f.recipient) ajouter('LOWER(recipient) = LOWER(?)', String(f.recipient));
+  if (f.role) ajouter('giver_role = ?', String(f.role));
+  if (f.weekKey) ajouter('week_key = ?', String(f.weekKey));
+  if (f.since) ajouter('created_at >= ?', f.since);
+  args.push(Math.max(1, Math.min(Number(limit) || 200, 1000)));
+  const { rows } = await pool.query(
+    `SELECT id, giver, recipient, amount, reason, giver_role, week_key, created_at
+     FROM kikooz_gifts
+     ${cond.length ? 'WHERE ' + cond.join(' AND ') : ''}
+     ORDER BY created_at DESC LIMIT $${args.length}`,
+    args
+  );
+  return rows;
+}
+
+// Ce qu'un donateur a déjà distribué sur une semaine donnée — la source de
+// vérité du quota, relue au démarrage pour que le compteur survive au
+// redémarrage (le fichier JSON, lui, se perdait avec le disque éphémère).
+async function sumKikoozGiftsForWeek(weekKey) {
+  const { rows } = await pool.query(
+    `SELECT giver, SUM(amount)::int AS total FROM kikooz_gifts
+     WHERE week_key = $1 GROUP BY giver`,
+    [String(weekKey)]
+  );
+  const par = {};
+  for (const r of rows) par[r.giver] = Number(r.total) || 0;
+  return par;
 }
 
 async function loadShopPacks() {
@@ -2811,6 +2881,9 @@ module.exports = {
   upsertChannel,
   updateChannelTopic,
   addModerationLog,
+  addKikoozGift,
+  listKikoozGifts,
+  sumKikoozGiftsForWeek,
   getModerationLogs,
   listGaspardHelpTopics,
   getGaspardHelpTopic,

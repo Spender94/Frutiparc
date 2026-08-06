@@ -377,6 +377,7 @@
     </div></div>
     <div class="tab-group"><span class="lbl">Modération</span><div class="grp">
       <button class="tab" data-tab="channels" onclick="switchTab('channels')">Salons</button>
+      <button class="tab" data-tab="dons" onclick="switchTab('dons')">Dons de kikooz</button>
       <button class="tab" data-tab="banwords" onclick="switchTab('banwords')">Modération chat</button>
       <button class="tab" data-tab="forumcensor" onclick="switchTab('forumcensor')">Censure forum</button>
     </div></div>
@@ -862,6 +863,39 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
   </table>
 </div>
 
+<!-- Le registre des dons de kikooz : qui a donné quoi, à qui, et où en est
+     l'enveloppe hebdomadaire de chaque animateur. -->
+<div class="content" id="tab-dons" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadDons()">Rafraîchir</button>
+    <input id="dons-giver" placeholder="donateur" style="width:130px" onkeydown="if(event.key==='Enter')loadDons()">
+    <input id="dons-recipient" placeholder="destinataire" style="width:130px" onkeydown="if(event.key==='Enter')loadDons()">
+    <select id="dons-role" onchange="loadDons()">
+      <option value="">tous les rôles</option>
+      <option value="animateur">animateurs</option>
+      <option value="moderateur">modérateurs</option>
+      <option value="joueur">joueurs</option>
+    </select>
+    <select id="dons-days" onchange="loadDons()">
+      <option value="7">7 derniers jours</option>
+      <option value="30" selected>30 derniers jours</option>
+      <option value="90">90 derniers jours</option>
+      <option value="">tout l'historique</option>
+    </select>
+    <span id="dons-count"></span>
+  </div>
+  <h3 style="margin:14px 0 6px">Enveloppe de la semaine <span id="dons-week" style="font-weight:normal"></span></h3>
+  <table>
+    <thead><tr><th>Animateur</th><th>Distribué</th><th>Restant</th><th></th></tr></thead>
+    <tbody id="dons-quotas"></tbody>
+  </table>
+  <h3 style="margin:18px 0 6px">Historique</h3>
+  <table>
+    <thead><tr><th>Date</th><th>Donateur</th><th>Rôle</th><th>Destinataire</th><th>Kikooz</th><th>Message</th></tr></thead>
+    <tbody id="dons-body"></tbody>
+  </table>
+</div>
+
 <div class="content" id="tab-gaspard" style="display:none">
   <div class="toolbar">
     <button class="btn" onclick="loadGaspardTopics()">Rafraîchir</button>
@@ -1209,7 +1243,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope'].forEach(t => {
+  ['users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -1228,6 +1262,7 @@ function switchTab(name) {
   if (name === 'trombinoscope') loadTrombinoscope();
   if (name === 'referrals') loadReferrals();
   if (name === 'tournoi') loadTournaments();
+  if (name === 'dons') loadDons();
 }
 
 // ─── Trombinoscope (annuaire des Frutiz) ───
@@ -4044,6 +4079,57 @@ async function loadChannels() {
       <td><button class="btn" onclick="editChannel('${esc(ch.name)}','${esc(ch.label).replace(/'/g,"\\'")}','${esc(ch.topic).replace(/'/g,"\\'")}')">Modifier</button></td>
     </tr>`).join('');
   } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ── Le registre des dons de kikooz ──
+// Une barre de jauge par animateur pour l'enveloppe de la semaine, et
+// l'historique dessous. Le donateur et le destinataire sont cliquables : ils
+// remplissent le filtre, ce qui est le geste qu'on fait naturellement en
+// lisant une ligne qui intrigue.
+async function loadDons() {
+  try {
+    const p = new URLSearchParams();
+    const g = $('#dons-giver').value.trim(); if (g) p.set('giver', g);
+    const d2 = $('#dons-recipient').value.trim(); if (d2) p.set('recipient', d2);
+    const ro = $('#dons-role').value; if (ro) p.set('role', ro);
+    const jours = $('#dons-days').value; if (jours) p.set('days', jours);
+    p.set('limit', '500');
+    const r = await fetch('/api/admin/kikooz-gifts?' + p.toString(), { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
+
+    $('#dons-week').textContent = d.week ? '(' + d.week + ')' : '';
+    const quotas = d.quotas || [];
+    $('#dons-quotas').innerHTML = quotas.length ? quotas.map(q => {
+      const prc = q.max ? Math.round(q.given / q.max * 100) : 0;
+      const couleur = prc >= 90 ? '#c0392b' : prc >= 60 ? '#d68910' : '#27ae60';
+      return `<tr>
+        <td><b>${esc(q.username)}</b></td>
+        <td>${q.given} / ${q.max}</td>
+        <td>${q.left}</td>
+        <td style="width:200px"><div style="background:#eee;border-radius:6px;height:10px;overflow:hidden">
+          <div style="width:${Math.min(100, prc)}%;height:100%;background:${couleur}"></div></div></td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="4" class="empty">Aucun animateur</td></tr>';
+
+    const gifts = d.gifts || [];
+    $('#dons-count').textContent = `${gifts.length} don(s)`;
+    $('#dons-body').innerHTML = gifts.length ? gifts.map(x => {
+      const quand = String(x.created_at || '').replace('T', ' ').substring(0, 19);
+      return `<tr>
+        <td>${esc(quand)}</td>
+        <td><a href="#" onclick="filtrerDons('giver','${esc(x.giver).replace(/'/g, "\\'")}');return false">${esc(x.giver)}</a></td>
+        <td>${esc(x.giver_role || '')}</td>
+        <td><a href="#" onclick="filtrerDons('recipient','${esc(x.recipient).replace(/'/g, "\\'")}');return false">${esc(x.recipient)}</a></td>
+        <td><b>${x.amount}</b></td>
+        <td>${esc(x.reason || '')}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="6" class="empty">Aucun don sur la période</td></tr>';
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+function filtrerDons(quoi, valeur) {
+  $('#dons-' + quoi).value = valeur;
+  loadDons();
 }
 
 function editChannel(name, label, topic) {

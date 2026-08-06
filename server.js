@@ -5501,7 +5501,9 @@ const ADMIN_ROLES = {
   // Attribué explicitement via le menu "Rôle admin", OU implicitement à tout
   // compte portant le badge "Animateur" du chat (is_animator) — cf. /api/admin/login.
   // Les animateurs gèrent aussi les salons (renommage / sujet) et les tournois.
-  animateur: { label: 'Animateur', tabs: ['kiloute', 'channels', 'tournoi', 'trombinoscope'] },
+  // `dons` : le registre des kikooz distribués — l'équipe voulait pouvoir
+  // relire ses propres dons, et savoir où passe l'enveloppe de la semaine.
+  animateur: { label: 'Animateur', tabs: ['kiloute', 'channels', 'tournoi', 'trombinoscope', 'dons'] },
   // Chapelier : crée et met en boutique des accessoires (onglet Boutique).
   chapelier: { label: 'Chapelier', tabs: ['shop'] },
 };
@@ -9244,6 +9246,47 @@ app.get('/api/admin/channels', adminScope('channels', 'kiloute'), (req, res) => 
   res.json({ ok: true, channels: list });
 });
 
+// ── Le registre des dons de kikooz ──
+//
+// Qui a donné quoi, à qui, quand, et pourquoi. Filtrable par donateur, par
+// destinataire, par rôle (animateur / moderateur / joueur) et par semaine.
+// L'état de l'enveloppe hebdomadaire de chaque animateur accompagne la liste :
+// c'est la question qu'on se pose en la lisant.
+app.get('/api/admin/kikooz-gifts', adminScope('dons'), async (req, res) => {
+  if (!process.env.DATABASE_URL) {
+    return res.json({ ok: true, gifts: [], quotas: [], note: 'base indisponible' });
+  }
+  const q = req.query || {};
+  const filtres = {};
+  if (q.giver) filtres.giver = String(q.giver).trim();
+  if (q.recipient) filtres.recipient = String(q.recipient).trim();
+  if (q.role) filtres.role = String(q.role).trim();
+  if (q.week) filtres.weekKey = String(q.week).trim();
+  if (q.days) {
+    const j = Math.max(1, Math.min(Number(q.days) || 30, 365));
+    filtres.since = new Date(Date.now() - j * 86400000);
+  }
+  try {
+    const gifts = await db.listKikoozGifts(filtres, Number(q.limit) || 200);
+    // L'enveloppe de la semaine EN COURS, animateur par animateur.
+    const semaine = parisWeekKey();
+    const dejaDonne = await db.sumKikoozGiftsForWeek(semaine);
+    const quotas = Object.entries(users)
+      .filter(([, u]) => u && u.isAnimator)
+      .map(([pseudo]) => ({
+        username: getDisplayName(pseudo),
+        given: dejaDonne[pseudo] || 0,
+        left: Math.max(0, ANIMATOR_WEEKLY_KIKOOZ - (dejaDonne[pseudo] || 0)),
+        max: ANIMATOR_WEEKLY_KIKOOZ,
+      }))
+      .sort((a, b) => b.given - a.given);
+    res.json({ ok: true, week: semaine, gifts, quotas });
+  } catch (e) {
+    console.error('[ADMIN] kikooz-gifts error:', e.message);
+    res.status(500).json({ ok: false, error: 'lecture impossible' });
+  }
+});
+
 app.patch('/api/admin/channels/:name', adminScope('channels'), async (req, res) => {
   const name = req.params.name;
   const ch = channels[name];
@@ -11704,6 +11747,20 @@ app.all('/do/give', (req, res) => {
     return res.type('text/xml').send('<r k="4" />');
   }
 
+  // Le plafond hebdomadaire des animateurs était LU (par /meskikooz) mais
+  // jamais DÉBITÉ : le compteur annonçait 2000 restants à perpétuité et rien
+  // n'arrêtait la distribution. On le décompte pour de bon.
+  //
+  // Le refus part en k="4" — « pas assez de kikooz » — parce que c'est le code
+  // que le bureau sait déjà traduire ; l'attribut q="1", qu'il ignore, permet
+  // au client Light de dire la vraie raison : l'enveloppe de la semaine, pas
+  // le solde du compte.
+  const donneurAnim = isAnimator(username), donneurModo = isModerator(username);
+  const plafonne = donneurAnim && !donneurModo;
+  if (plafonne && animatorKikoozLeft(username) < amount) {
+    return res.type('text/xml').send(`<r k="4" q="1" a="${animatorKikoozLeft(username)}" />`);
+  }
+
   user.kikooz -= amount;
   target.kikooz = (typeof target.kikooz === 'number' ? target.kikooz : 0) + amount;
   if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser'));
@@ -11726,7 +11783,24 @@ app.all('/do/give', (req, res) => {
   notifyKikoozUpdate(username, user.kikooz);
   notifyKikoozUpdate(targetName, target.kikooz);
 
-  console.log(`[do/give] ${username} → ${targetName}: ${amount} kikooz${reason ? ' ('+reason+')' : ''}`);
+  if (plafonne) {
+    getAnimatorWeekRecord(username).given += amount;
+    saveAnimatorKikooz();
+  }
+
+  // Le registre des dons. Le destinataire gardait sa ligne dans `kikoozLog` —
+  // mais rien, nulle part, ne disait ce qu'un animateur avait distribué. C'est
+  // l'historique que l'équipe réclamait ; il vit en base, donc il survit au
+  // redémarrage, et /api/admin/kikooz-gifts le relit.
+  const roleDon = donneurModo ? 'moderateur' : (donneurAnim ? 'animateur' : 'joueur');
+  if (process.env.DATABASE_URL) {
+    db.addKikoozGift({
+      giver: username, recipient: targetName, amount, reason,
+      giverRole: roleDon, weekKey: parisWeekKey(),
+    }).catch((e) => console.error('[DB] kikooz gift log error:', e.message));
+  }
+
+  console.log(`[do/give] ${username} (${roleDon}) → ${targetName}: ${amount} kikooz${reason ? ' ('+reason+')' : ''}`);
 
   const xml = `<r k="0" a="${user.kikooz}" u="${escapeXml(targetName)}" g="${amount}" />`;
   res.type('text/xml').send(xml);
@@ -11983,7 +12057,22 @@ app.get('/do/onident', (req, res) => {
   const now = nowSqlTimestamp();
   const currentUsername = auth.username || '';
   const allowModeration = user.isModerator && !isDebugNotUser(currentUsername);
-  const modAttr = allowModeration ? ' m="1" a="1"' : '';
+  // Deux drapeaux, deux pouvoirs — et ils étaient confondus.
+  //
+  // `m="1"` → listener/main.as : `_global.me.flMode = true`. C'est le pouvoir
+  // GLOBAL de modération : kick, ban, totoché, partout. Il reste aux
+  // modérateurs. L'animateur reçoit le sien salon par salon, dans la liste des
+  // connectés (`modAttr(username, channelName)`), et seulement sur le sien.
+  //
+  // `a="1"` → `_global.me.flAnimator = true`. Celui-là n'ouvre que la commande
+  // /image : son gestionnaire commence par `if( !me.flAnimator ) return false`.
+  // Il n'était envoyé qu'aux modérateurs — si bien qu'un animateur tapait
+  // /img et que la commande N'ATTEIGNAIT JAMAIS LE SERVEUR : elle mourait dans
+  // le client, sans un mot. Le portillon du serveur, lui, était correct depuis
+  // le début ; c'est la porte du bureau qui ne s'ouvrait pas.
+  const allowAnimation = user.isAnimator && !isDebugNotUser(currentUsername);
+  const modAttr = (allowModeration ? ' m="1"' : '')
+    + (allowModeration || allowAnimation ? ' a="1"' : '');
 
   // The "f" attribute, when present, forces the SWF to open the editbouille
   // window with the listed part families. Used for first-time avatar setup.
@@ -15828,6 +15917,21 @@ async function boot() {
         console.log(`[DB] Loaded ${count} channel overrides from database`);
       } catch (e) { console.error('[DB] Channel load error:', e.message); }
       try {
+        // Le quota hebdomadaire des animateurs se recompte depuis le REGISTRE
+        // des dons plutôt que depuis son fichier JSON : le disque est éphémère,
+        // et un redémarrage rendait à chacun une enveloppe pleine. La base, qui
+        // porte chaque don avec sa semaine, ne se trompe pas.
+        const wk = parisWeekKey();
+        const parDonneur = await db.sumKikoozGiftsForWeek(wk);
+        let repris = 0;
+        for (const [pseudo, total] of Object.entries(parDonneur)) {
+          animatorKikoozGiven[pseudo] = { weekKey: wk, given: total };
+          repris++;
+        }
+        if (repris) saveAnimatorKikooz();
+        console.log(`[DB] Quota de dons repris pour ${repris} donateur(s) (semaine ${wk})`);
+      } catch (e) { console.error('[DB] Kikooz quota load error:', e.message); }
+      try {
         // La fenêtre des logs (six heures) se recharge depuis la base : sans
         // ça, chaque redémarrage vidait « … voir les messages précédents … ».
         const cutoff = Date.now() - CHAT_HISTORY_MAX_AGE_MS;
@@ -17814,6 +17918,35 @@ function patchSlot0(username, game, existingData, ctx) {
 // { channelName: { question, points: Map<username, number>, active } }
 const quizState = {};
 
+/**
+ * Le classement d'un quiz, mis au propre.
+ *
+ * Il partait en t="m" avec un <font> à l'intérieur : le bureau le rendait
+ * bleuâtre, et le client Light — qui aplatit le HTML des annonces au texte, en
+ * remplaçant les <br/> par des ESPACES — en faisait une seule ligne illisible.
+ * On le diffuse maintenant comme le mode bleu (`t="c"`), la typo que les
+ * animateurs voulaient : bleu gras sur les deux clients, sans balise à
+ * l'intérieur.
+ *
+ * Les ex æquo partagent leur rang — deux joueurs à douze points sont tous les
+ * deux premiers, et le suivant est troisième.
+ *
+ * @param {Map<string,number>} points
+ * @param {string} titre  la ligne d'en-tête
+ * @returns {string} du htmlText, <br/> compris
+ */
+function formaterClassement(points, titre) {
+  const classes = [...points.entries()].sort((a, b) => b[1] - a[1]);
+  const lignes = [];
+  let rang = 0, precedent = null;
+  for (let i = 0; i < classes.length; i++) {
+    const [u, pts] = classes[i];
+    if (pts !== precedent) { rang = i + 1; precedent = pts; }
+    lignes.push(`${rang}. ${getDisplayName(u)} — ${pts} pt${pts > 1 ? 's' : ''}`);
+  }
+  return [titre, ...lignes].map(escapeXml).join('<br/>');
+}
+
 // Per-client blue-bold toggle for animators.
 // Set<socketKey> — we store the username to look up.
 const blueModeUsers = new Set();
@@ -19108,27 +19241,71 @@ case 'send': {
         sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Aucun point distribué.</${CMD.send}>`);
         break;
       }
-      const sorted = [...qs.points.entries()].sort((a, b) => b[1] - a[1]);
-      const lines = sorted.map(([u, pts], i) => `${i + 1}. ${getDisplayName(u)} — ${pts} pt${pts > 1 ? 's' : ''}`);
       const header = qs.question ? `Classement — ${qs.question}` : 'Classement';
-      const body = `<![CDATA[<b><font color="#0066CC">${header}</font></b><br/>${lines.join('<br/>')}]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
+      const body = `<![CDATA[${formaterClassement(qs.points, header)}]]>`;
+      broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
       break;
     }
 
     if (canAnimate && /^\/(resetpoint|stoppoint|endpoint)\s*$/i.test(text)) {
       if (quizState[g] && quizState[g].points.size > 0) {
-        const sorted = [...quizState[g].points.entries()].sort((a, b) => b[1] - a[1]);
-        const lines = sorted.map(([u, pts], i) => `${i + 1}. ${getDisplayName(u)} — ${pts} pt${pts > 1 ? 's' : ''}`);
-        const body = `<![CDATA[<b><font color="#0066CC">Fin du quiz ! Classement final :</font></b><br/>${lines.join('<br/>')}]]>`;
-        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
+        const body = `<![CDATA[${formaterClassement(quizState[g].points, 'Fin du quiz ! Classement final :')}]]>`;
+        broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
       }
       delete quizState[g];
       break;
     }
 
-    // ── /topic, /sujet: change channel topic ──
+    // ── /mesdons : mes derniers dons de kikooz, et ce qu'il me reste ──
+    //
+    // L'admin porte le registre complet ; ici c'est la version de poche, celle
+    // qu'on consulte en pleine animation sans quitter le salon. Réponse
+    // PRIVÉE (sendToClient) : ce que distribue un animateur ne regarde pas le
+    // salon.
+    if (canAnimate && /^\/(mesdons|mesdon|dons)\s*$/i.test(text)) {
+      const plafonne = isAnimator(client.username) && !isModerator(client.username);
+      const restant = plafonne ? animatorKikoozLeft(client.username) : null;
+      let lignes = [];
+      if (process.env.DATABASE_URL) {
+        try {
+          const l = await db.listKikoozGifts({ giver: client.username }, 10);
+          lignes = l.map((x) => {
+            const quand = String(x.created_at ? new Date(x.created_at).toISOString() : '')
+              .replace('T', ' ').substring(0, 16);
+            return `${quand} — ${getDisplayName(x.recipient)} : ${x.amount} kikooz`
+              + (x.reason ? ` (${x.reason})` : '');
+          });
+        } catch (e) { console.error('[DB] mesdons error:', e.message); }
+      }
+      const entete = plafonne
+        ? `Mes dons — il me reste ${restant} kikooz sur ${ANIMATOR_WEEKLY_KIKOOZ} cette semaine`
+        : 'Mes dons — sans plafond hebdomadaire';
+      const corps = lignes.length
+        ? [entete, ...lignes] : [entete, 'Aucun don enregistré pour l\'instant.'];
+      sendToClient(socket, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${corps.map(escapeXml).join('<br/>')}]]></${CMD.send}>`);
+      break;
+    }
+
+    // ── /topic, /sujet : le sujet ET le nom affiché du salon ──
+    //
+    // La commande n'écrivait que `topic`. Or le topic ne s'affiche NULLE PART
+    // en permanence : le bureau le passe en ligne système fugitive, le client
+    // Light aussi. Ce que tout le monde lit — la liste des salons, l'onglet —
+    // c'est `desc`, le « nom affiché » que seule l'admin savait changer. D'où
+    // le constat des animateurs : « /sujet n'est pas persistant ». Il l'était,
+    // mais sur un champ invisible.
+    //
+    // Les deux changent donc ensemble, et se rangent ensemble (`upsertChannel`
+    // écrit label ET topic ; `updateChannelTopic` laissait le label de côté).
+    // La liste des salons repart à tout le monde, sans quoi le nouveau nom
+    // n'apparaîtrait qu'à la prochaine ouverture.
     if (text.startsWith('/topic ') || text.startsWith('/sujet ')) {
+      // Et elle n'avait AUCUN contrôle de droits : n'importe qui pouvait
+      // renommer le salon des autres. Modérateurs partout, animateurs chez eux.
+      if (!canModHere) {
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Le sujet du salon est réservé à son équipe.</i>]]></${CMD.send}>`);
+        break;
+      }
       const newTopic = text.replace(/^\/(topic|sujet)\s+/, '').trim();
       if (newTopic.length > 200) {
         sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Le sujet est trop long (200 caractères max).</${CMD.send}>`);
@@ -19136,8 +19313,15 @@ case 'send': {
       }
       if (newTopic) {
         channel.topic = newTopic;
+        // Le nom affiché tient dans cent caractères (la borne de l'admin).
+        channel.desc = newTopic.slice(0, 100);
         broadcastToChannel(g, `<${CMD.topic} g="${escapeXml(g)}">${escapeXml(newTopic)}</${CMD.topic}>`);
-        if (process.env.DATABASE_URL) db.updateChannelTopic(g, newTopic).catch(e => console.error('[DB] topic save error:', e.message));
+        const listeXml = buildChannelListXml();
+        for (const [sock] of xmlSocketClients) sendToClient(sock, listeXml);
+        if (process.env.DATABASE_URL) {
+          db.upsertChannel(g, channel.desc, newTopic)
+            .catch(e => console.error('[DB] topic save error:', e.message));
+        }
       }
       break;
     }
