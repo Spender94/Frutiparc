@@ -251,6 +251,17 @@ function accueil(carte, coefNuit, dejaVu) {
     dial.push('Grrr... Reviens me voir quand tu auras des fées, petit homme...');
     return { ouvre: true, dial, missions: false };
   }
+  // Accepter une mission RETIRE l'offre de la liste (`accepter` la splice, comme
+  // Cm.addMission), et les six ne se renouvellent qu'à la nuit. Prendre les
+  // dernières vide donc le tableau — et un tableau vide n'est pas `null` : le
+  // test d'entrée le laissait passer, la porte s'ouvrait, et le joueur se
+  // retrouvait devant un parchemin nu sans un mot d'explication. Le jeu
+  // d'origine a le même trou ; on le bouche du seul côté qui manquait.
+  if (!(carte.$mission || []).length) {
+    dial.push('Grumph... Je n\'ai plus rien sous la main aujourd\'hui.');
+    dial.push('Repasse demain, j\'aurai retrouvé du travail pour tes fées.');
+    return { ouvre: true, dial, missions: false };
+  }
   const libres = feesDisponibles(carte);
   if (libres.length === 0) {
     dial.push('Grumph.... Tu m\'as dérangé pour rien...');

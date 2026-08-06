@@ -422,3 +422,62 @@ test('la flèche de la rangée est sortie du fichier (bouton 682, forme 680)', (
   assert.equal(sprites.flecheExtra.etats[0].pieces[0].fichier, 'shape680.svg');
   assert.ok(fs.existsSync(path.join(ROOT, 'public/minipixiz/sprites/shape680.svg')));
 });
+
+// ── « Au moment de choisir une mission, tout est vide » ────────────────────
+//
+// Accepter une mission RETIRE l'offre de la liste — `accepter` la splice, comme
+// Cm.addMission — et les six ne se renouvellent qu'à la nuit, et seulement si
+// le joueur a assez couru. Prendre les dernières vide donc le tableau.
+//
+// Or le test d'entrée de Gromelin est `!carte.$mission`, et un tableau VIDE
+// n'est pas `null` : il passait. Gromelin promettait du travail (« J'ai
+// peut-être du boulot pour X... Rentre donc à l'intérieur ») puis ouvrait le
+// panneau sur un parchemin nu, sans un mot. Le jeu d'origine a le même trou —
+// son `Cm.card.$mission == null` ne couvre pas davantage l'array vide.
+
+test('Gromelin n\'ouvre pas son panneau sur une liste d\'offres vide', () => {
+  const E = require('../public/minipixiz/engine.js');
+  const carte = P.reparer(null).carte;
+  carte.$stat.$run = 5000;                 // il a assez couru pour intéresser Gromelin
+  carte.$help = [1, 1, 1];                 // ce n'est pas sa première visite
+  const fee = F.genererGraine(E.generateur(4));
+  fee.$pos = 0;                            // en bocal : la seule sorte qu'il accepte
+  carte.$faerie = [fee];
+  carte.$current = null;
+  carte.$item = [30];
+  N.genererMissions(carte, E.generateur(9));
+
+  assert.equal(carte.$mission.length, 6, 'six offres au départ');
+  assert.equal(M.accueil(carte, 0.5, true).missions, true, 'il propose du travail');
+
+  // Le joueur prend tout ce qu'il peut, jour après jour.
+  for (let i = 6; i > 0; i--) {
+    M.accepter(carte, 0, [fee], E.generateur(i), true);
+    fee.$mission = null;                   // elle revient, et repart
+  }
+  assert.equal(carte.$mission.length, 0, 'la liste est vidée');
+
+  const a = M.accueil(carte, 0.5, true);
+  assert.equal(a.ouvre, true, 'il est là, et il ouvre : ce n\'est pas la nuit');
+  assert.equal(a.missions, false, 'mais il n\'ouvre PAS le panneau sur du vide');
+  assert.match(a.dial.join(' '), /plus rien/, 'et il dit pourquoi');
+  // Surtout : il ne promet plus ce qu'il n'a pas.
+  assert.ok(!/Rentre donc/.test(a.dial.join(' ')), 'il ne fait plus entrer pour rien');
+
+  // Et la nuit lui rend du travail.
+  N.genererMissions(carte, E.generateur(21));
+  fee.$mission = null;
+  assert.equal(M.accueil(carte, 0.5, true).missions, true, 'les offres reviennent');
+});
+
+test('le panneau des missions ne reste jamais muet', () => {
+  // Ceinture et bretelles : même si une fiche ancienne menait au panneau avec
+  // une liste vide, l'écran doit dire ce qu'il en est plutôt que de rester nu.
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /if \(!info && g\.etape === 2\) \{/,
+    'le cas « aucune offre à afficher » est traité');
+  // Les apostrophes sont échappées dans la source : on les accepte des deux
+  // façons plutôt que de figer une graphie.
+  assert.match(src, /Gromelin n\\?'a plus rien à proposer aujourd\\?'hui/,
+    'et il l\'écrit sur le parchemin');
+});

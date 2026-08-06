@@ -1664,6 +1664,21 @@ class Client {
       // c'est là qu'il touche pour feuilleter les six missions du jour.
       g.zones.push({ quoi: 'avant', x: 3.75, y: 37.75, l: 26, h: 192 });
       g.zones.push({ quoi: 'apres', x: 210.25, y: 37.75, l: 26, h: 192 });
+      // Ceinture : le panneau ne doit JAMAIS rester muet. `accueil` refuse
+      // désormais d'ouvrir sur une liste vide, mais une fiche ancienne ou une
+      // offre disparue en cours de route mènerait ici, devant un parchemin nu
+      // dont rien ne dit s'il est vide ou gelé.
+      if (!info && g.etape === 2) {
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'center';
+        ctx.font = '10px Verdana, Arial, sans-serif';
+        ctx.fillStyle = 'rgb(81,61,47)';
+        for (const [k, l] of decouperTexte(ctx,
+          'Gromelin n\'a plus rien à proposer aujourd\'hui. Repassez demain.', 160).entries()) {
+          ctx.fillText(l, SCENE * 0.5, 90 + k * 12);
+        }
+        ctx.textAlign = 'left';
+      }
       if (g.decrit && g.etape === 2) {
         ctx.textBaseline = 'top';
         ctx.textAlign = 'left';
