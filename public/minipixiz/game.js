@@ -819,6 +819,46 @@ class Iris {
   }
 }
 
+/**
+ * Une fée ou un impy, peint sur n'importe quel canevas.
+ *
+ * Les deux partagent le même clip : ce n'est pas un scénario qui les anime,
+ * c'est le code — l'inclinaison, le battement d'ailes, la déformation du vol,
+ * la teinte de leurs trois couleurs. La clairière s'en sert aussi, pour la fée
+ * qui suit le pointeur.
+ */
+function dessinerCreatureSur(ctx, s, pe) {
+  const fee = !!pe.fi;
+  const sprite = fee ? s.fee : s.imp;
+  if (!sprite) return;
+  // L'aura de charge : elle grandit avec la vitesse, et dit qu'un choc arrive.
+  if (pe.charge > 0 && s.mcDashAura) {
+    poserVif(ctx, s.mcDashAura, 1,
+      { x: pe.x, y: pe.y, rot: pe.chargeAngle, alpha: pe.charge });
+  }
+  const couleurs = fee ? pe.apparence().couleurs : pe.couleurs;
+  const parties = fee ? partiesDeCorps(couleurs) : partiesDImpy(couleurs);
+  // POW_INVISIBILITY : elle ne se voit qu'à quarante pour cent, et les démons
+  // la manquent d'autant.
+  const invisible = fee && pe.fi.pouvoirs
+    && pe.fi.pouvoirs[window.MinipixizCombat.POUVOIR.INVISIBILITE];
+  poserVif(ctx, sprite, pe.spinSpeed !== null ? Math.min(24, pe.corps) : 1, {
+    x: pe.x, y: pe.y, rot: pe.penche, alpha: invisible ? 40 : 100,
+    parties, melange: pe.melange, deform: pe.spinSpeed !== null ? null : deformationsDeVol(pe),
+  });
+}
+
+// Les particules d'un champ, sur n'importe quel canevas — la clairière a les
+// siennes (la poussière d'étoiles que la fée sème en volant).
+function dessinerPartsSur(ctx, s, liste) {
+  for (const p of liste) {
+    poserVif(ctx, s[p.lien], p.joue ? p.frame + Math.floor(p.age) : p.frame, {
+      x: p.x, y: p.y, sx: p.sx, sy: p.sy, rot: p.rot, alpha: p.sa,
+      couleur: p.couleur === null ? undefined : p.couleur, melange: p.melange,
+    });
+  }
+}
+
 // Coupe un texte aux espaces pour tenir dans une largeur — les champs du jeu
 // enveloppent leurs phrases, le canevas ne sait pas le faire seul.
 function decouperTexte(ctx, texte, largeur) {
@@ -2350,27 +2390,9 @@ class Client {
   }
 
   // Une fée ou un impy : le même clip, animé par le code — pas par un scénario.
-  dessinerCreature(ctx, pe) {
-    const s = this.sprites;
-    const fee = !!pe.fi;
-    const sprite = fee ? s.fee : s.imp;
-    if (!sprite) return;
-    // L'aura de charge : elle grandit avec la vitesse, et dit qu'un choc arrive.
-    if (pe.charge > 0 && s.mcDashAura) {
-      poserVif(ctx, s.mcDashAura, 1,
-        { x: pe.x, y: pe.y, rot: pe.chargeAngle, alpha: pe.charge });
-    }
-    const couleurs = fee ? pe.apparence().couleurs : pe.couleurs;
-    const parties = fee ? partiesDeCorps(couleurs) : partiesDImpy(couleurs);
-    // POW_INVISIBILITY : elle ne se voit qu'à quarante pour cent, et les démons
-    // la manquent d'autant.
-    const invisible = fee && pe.fi.pouvoirs
-      && pe.fi.pouvoirs[window.MinipixizCombat.POUVOIR.INVISIBILITE];
-    poserVif(ctx, sprite, pe.spinSpeed !== null ? Math.min(24, pe.corps) : 1, {
-      x: pe.x, y: pe.y, rot: pe.penche, alpha: invisible ? 40 : 100,
-      parties, melange: pe.melange, deform: pe.spinSpeed !== null ? null : deformationsDeVol(pe),
-    });
-  }
+  // Le corps du dessin vit hors de la classe : la clairière a sa propre fée
+  // (sp.pe.Cursor) et son propre canevas, et doit pouvoir la peindre pareil.
+  dessinerCreature(ctx, pe) { dessinerCreatureSur(ctx, this.sprites, pe); }
 
   // L'étape ACTIF, vue du client — la tête de liste vit, le dessin suit :
   //
@@ -2956,6 +2978,7 @@ function jauge(sprites, cle, plein, max, ecart) {
 window.MinipixizClient = {
   Client, Iris, charger, rendre, poserRendu, poserVif, imagePeinte, imageJeton, images,
   portraitDeFee, jauge, partiesDeFee, partiesDeCorps, partiesDImpy, deformationsDeVol,
+  dessinerCreatureSur, dessinerPartsSur,
   fondre, teinter,
   LARGEUR, HAUTEUR, LIGNES_CACHEES, SCENE, COLONNE_X, INTER, ECART_COEUR, ECART_MANA,
 };

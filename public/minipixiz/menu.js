@@ -125,6 +125,10 @@ class Menu {
     // Le sac pend au pied de l'arbre, tout à gauche du plan (x ≈ 28, parallaxe
     // 1,5) : il faut un regard presque au bord pour l'avoir entier à l'écran.
     this.xm = tactile ? 8 : SCENE / 2;
+    this.xmVrai = SCENE / 2;
+    this.ymVrai = SCENE / 2;
+    this.fee = null;
+    this.champ = null;
     this.titre = '';
     this.titresEteints = [];
     this.message = '';
@@ -208,8 +212,60 @@ class Menu {
     }
   }
 
+  /**
+   * Slot.initCursor — LA FÉE DE LA CLAIRIÈRE.
+   *
+   * Ce n'est pas un décor : c'est un `sp.pe.Cursor`, une vraie fée, la même
+   * classe que celle qui se bat en forêt. Elle en hérite tout — le battement
+   * d'ailes, l'inclinaison dans les virages, la déformation du vol, ses trois
+   * couleurs — et n'en change que deux choses : `flBound = false` (rien ne la
+   * retient aux bords) et un `update` réduit à `move()` puis `starFall(0.7)`,
+   * la poussière d'étoiles qu'elle sème derrière elle.
+   *
+   * `Slot.moveCursor` lui donne le pointeur pour cible à chaque image. C'est
+   * tout : le reste de son vol, c'est People.move qui le décide, avec la
+   * rapidité et l'intelligence de LA fée du joueur.
+   */
+  poserFee(fs) {
+    this.fee = null;
+    this.champ = null;
+    // Sous Node (les tests), les modules s'exportent par `module.exports` ;
+    // dans le navigateur ils se posent sur `window`. On prend ce qui existe.
+    const enNode = (typeof module !== 'undefined' && module.exports);
+    const F = enNode ? require('./faerie.js') : racine.MinipixizFee;
+    const Co = enNode ? require('./combat.js') : racine.MinipixizCombat;
+    if (!fs || !F || !Co) return;
+    // La clairière n'a pas de plateau : on lui prête le strict nécessaire —
+    // une scène de 240, un hasard, et l'assurance qu'aucun bord ne compte.
+    const faux = {
+      largeur: SCENE, hauteur: SCENE, margeGauche: 0, margeHaut: 0,
+      step: -1, flAide: false,
+      hasard: (n) => Math.floor(Math.random() * n),
+      rng: Math.random,
+      estDans: () => true,
+      evenement: () => {},
+    };
+    const champ = new Co.Champ(faux, {});
+    const fi = new F.Fee(fs, null, this.carte);
+    const fee = champ.naitreFee(fi);
+    if (!fee) return;
+    fee.flBound = false;
+    fee.x = SCENE * 0.5; fee.y = SCENE * 0.5;
+    fee.trg = { x: fee.x, y: fee.y };
+    this.champ = champ;
+    this.fee = fee;
+  }
+
   // Menu.moveDecor, une image de jeu.
   avancer(tmod) {
+    // sp.pe.Cursor.update : elle vole, elle sème ses étoiles, et elle vise le
+    // pointeur — dans cet ordre, celui de Slot.moveCursor.
+    if (this.fee) {
+      this.fee.bouger(tmod);
+      this.fee.etoiles(0.7, tmod);
+      this.fee.trg = { x: this.xmVrai, y: this.ymVrai };
+      for (const p of this.champ.partList.slice()) p.update(tmod);
+    }
     const wc = this.vent();
     for (const n of this.nuages) {
       n.x += n.c * wc * 3 * tmod;
@@ -231,6 +287,10 @@ class Menu {
     const r = this.canvas.getBoundingClientRect();
     const x = (ev.clientX - r.left) / this.echelle;
     const y = (ev.clientY - r.top) / this.echelle;
+    // Le pointeur BRUT, sans la marge de parallaxe : c'est lui que la fée suit
+    // (Slot.moveCursor lit `_xmouse`, pas le regard du décor).
+    this.xmVrai = borner(0, x, SCENE);
+    this.ymVrai = borner(0, y, SCENE);
     this.xm = borner(0, x * (1 + 2 * MARGE_SOURIS) - SCENE * MARGE_SOURIS, SCENE);
     // Menu.initTitleBut : survoler un lieu écrit son nom. Le décor bouge en même
     // temps, donc on relit la zone APRÈS avoir déplacé le regard — sinon le nom
@@ -350,6 +410,15 @@ class Menu {
         }
         this.zones.push({ lieu: l, etat: et,
           x: lx + x0 * k, y: ly + y0 * k, l: (x1 - x0) * k, h: (y1 - y0) * k });
+      }
+
+      // La fée partage la couche de l'arbre (DP_TREE) : elle vole devant lui,
+      // derrière l'herbe et le premier plan. Ses étoiles la précèdent, comme
+      // elles tombent derrière elle. Aucun voile de nuit ne la touche —
+      // setNight ne teinte que les plans du décor.
+      if (p.cle === 'arbre' && this.fee) {
+        C.dessinerPartsSur(ctx, s, this.champ.partList);
+        C.dessinerCreatureSur(ctx, s, this.fee);
       }
     }
 

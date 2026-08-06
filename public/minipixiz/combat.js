@@ -88,6 +88,33 @@ const EPHEMERES = {
   partBombEplosion: 12,        // l'explosion de la bombe joue ses douze images
 };
 
+/*
+ * Le nombre d'IMAGES de chaque clip de particule, relevé dans root.swf.
+ *
+ * Sous Flash, un clip qu'on attache JOUE sa timeline — il n'y a pas à le
+ * demander, il faut au contraire l'arrêter (`gotoAndStop`) quand on veut une
+ * image fixe. Et dans tout miniTroll, on ne l'arrête que deux fois : pour
+ * choisir un éclat de pierre, et pour choisir l'aliment d'une icône. Tout le
+ * reste se déroule.
+ *
+ * Le portage faisait l'inverse : chaque particule restait sur sa première
+ * image, sauf les six où j'avais pensé à demander l'animation. D'où la mort
+ * d'un démon réduite à une vignette qui apparaît et rétrécit, là où le jeu
+ * montre une bouffée de fumée qui se déploie et se dissipe.
+ */
+const IMAGES = {
+  mcBlackBallSpark: 6, partBallColor: 1, partBlackBall: 1, partBlackJuice: 16,
+  partBombEplosion: 14, partBubble: 1, partCloud: 13, partConcentrationRay: 12,
+  partDeadImp: 12, partDust: 1, partElementCrystal: 1, partFader: 1,
+  partFaerieWhiteShade: 1, partFlameBall: 13, partFlipGlow: 2, partForceBubble: 2,
+  partFullRay: 1, partGlue: 1, partHoriLight: 1, partJet: 49, partLightBall: 1,
+  partLightBallFlip: 2, partLightCircle: 1, partLightGrim: 2, partLightStar: 9,
+  partLightTube: 2, partMeteore: 1, partMeteoreStone: 1, partMiniCircle: 1,
+  partMiniExplosion: 13, partMiniStar: 1, partOnde: 5, partPaint: 1,
+  partPentacle: 1, partRay: 1, partShieldBall: 30, partSlash: 1, partStar: 1,
+  partStoneCrack: 1, partSuperNova: 2, partVertiLight: 1,
+};
+
 const nombre = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
 const borner = (a, v, b) => Math.min(Math.max(a, v), b);
 
@@ -159,6 +186,7 @@ class Particule extends Corps {
     this.lien = lien;
     this.frame = 1;
     this.joue = false;            // gotoAndPlay : le clip déroule ses images
+    this.fige = false;            // gotoAndStop : on veut UNE image, et pas l'animation
     this.age = 0;
     this.vitx = 0;
     this.vity = 0;
@@ -188,6 +216,9 @@ class Particule extends Corps {
     this.sx = this.echelle;
     this.sy = this.echelle;
     this.sa = this.alpha;
+    // Un clip à PLUSIEURS images se déroule, c'est la règle de Flash. Seul un
+    // `gotoAndStop` explicite le fige, et le jeu n'en compte que deux.
+    if (!this.fige && IMAGES[this.lien] > 1) this.joue = true;
     if (this.timer === null && EPHEMERES[this.lien]) {
       this.timer = EPHEMERES[this.lien];
       this.fondu = [];            // il joue jusqu'au bout, il ne s'estompe pas
@@ -1200,7 +1231,7 @@ class Champ {
 const API = {
   Corps, Particule, Tir, Personne, Fee, Impy, Champ,
   FORCE, RAPIDITE, VIE, INTELLIGENCE, CONCENTRATION, MANA,
-  POUVOIR, STATUT, COULEURS_IMPY, EPHEMERES, T,
+  POUVOIR, STATUT, COULEURS_IMPY, EPHEMERES, IMAGES, T,
   FRICT, BASE_TIR, BASE_CHARGE, CADENCE_SORT_IMPY,
 };
 

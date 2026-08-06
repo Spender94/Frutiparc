@@ -883,3 +883,118 @@ test('un paquet de couleur qui casse BLANCHIT, il n\'éclate pas', () => {
   const bassin = fs.readFileSync(path.join(ROOT, 'public/minipixiz/bassin.js'), 'utf8');
   assert.match(bassin, /onDestroyElement/);
 });
+
+/*
+ * ── Les SENSATIONS de jeu ────────────────────────────────────────────────────
+ *
+ * « le jeu est très saccadé, les billes se décalent case par case au lieu de
+ *   glisser »
+ * « c'est une image qui apparaît lorsqu'ils meurent au lieu de la même image en
+ *   fumée qui finit par disparaître »
+ * « ma fée ne vole pas dans le menu de base ? »
+ *
+ * Trois oublis de la même famille : le portage avait porté la LOGIQUE et laissé
+ * derrière lui ce qui la rend vivante — la position entre deux cases, la
+ * timeline d'un clip, et une fée entière.
+ */
+
+test('une bille qui tombe glisse entre ses cases', () => {
+  // Game.fall finit par `setPos(e, e.px, e.py + c)` : `c` est la part
+  // fractionnaire de la chute. Sans elle, la bille saute de case en case.
+  const jeu = new E.Jeu({ graine: 21, niveau: 0, grille: null });
+  const t = jeu.genElement(E.E.JETON, 3, 4, 0);
+  t.setType(0);
+  jeu.preparerChute();
+  assert.ok(jeu.fList.includes(t), 'elle n\'a pas de sol : elle tombe');
+  const py0 = t.py;
+  // Un demi-pas par image : après une image, elle est à MI-CHEMIN.
+  jeu.cFall = 0.5;
+  jeu.tomber(jeu.cFall);
+  assert.equal(t.py, py0, 'sa case n\'a pas encore changé');
+  assert.ok(t.decalY > 0 && t.decalY < E.TS,
+    'mais elle est déjà descendue de ' + Math.round(t.decalY) + ' px sur ' + E.TS);
+  // Et le décalage repart à zéro quand elle change de case.
+  jeu.tomber(1);
+  assert.equal(t.py, py0 + 1);
+  assert.ok(t.decalY < 0.001, 'la case suivante la reprend d\'aplomb');
+});
+
+test('la pièce PIVOTE au lieu de claquer', () => {
+  const jeu = new E.Jeu({ graine: 7, niveau: 0 });
+  let garde = 0;
+  while (!jeu.piece && garde++ < 60) jeu.update(1);
+  const p = jeu.piece;
+  const repos = p.cases().map((c) => Math.round(c.x) + ',' + Math.round(c.y)).join(' ');
+  const touche = { gauche: false, droite: false, bas: false, tourner: true };
+  p.update(1, touche);
+  assert.equal(p.ta, 90, 'le quart de tour est demandé');
+  // Piece.update : `base._rotation += da × min(0.5 × tmod, 1)` — l'angle court
+  // après sa cible, il ne l'atteint pas d'un coup.
+  assert.ok(p.rot > 0 && p.rot < 90, 'l\'angle est en chemin (' + p.rot + '°)');
+  const arc = [];
+  for (let i = 0; i < 4; i++) { p.update(1, touche); arc.push(Math.round(p.rot)); }
+  for (let i = 1; i < arc.length; i++) {
+    assert.ok(arc[i] > arc[i - 1], 'et il progresse : ' + arc.join(' → '));
+  }
+  assert.ok(arc[arc.length - 1] > 85, 'jusqu\'à se poser sur le quart de tour');
+  const apres = p.cases().map((c) => Math.round(c.x) + ',' + Math.round(c.y)).join(' ');
+  assert.notEqual(apres, repos, 'et les billes ont bougé avec lui');
+});
+
+test('un clip à plusieurs images se DÉROULE, comme sous Flash', () => {
+  // Sous Flash, un clip attaché joue sa timeline ; il faut un `gotoAndStop`
+  // pour l'arrêter, et miniTroll n'en pose que sur l'éclat de pierre et
+  // l'icône d'un aliment. Le portage faisait l'inverse.
+  assert.ok(C.IMAGES.partDeadImp > 1, 'la fumée d\'un démon a douze images');
+  const jeu = new E.Jeu({ graine: 3, niveau: 0, grille: null });
+  const champ = new C.Champ(jeu, { fee: null });
+  const imp = champ.naitreImpy(0, 60, 60);
+  const avant = jeu.partList.length;
+  imp.blesser(9999);
+  const nees = jeu.partList.slice(avant);
+  const fumee = nees.find((p) => p.lien === 'partDeadImp');
+  assert.ok(fumee, 'la bouffée est là');
+  assert.equal(fumee.joue, true, 'et elle se déroule');
+  // Part.update, fadeType 0 (le défaut) : l'échelle fond sur les dix dernières
+  // images. C'est la fumée qui se dissipe.
+  const images = [], tailles = [];
+  for (let i = 0; i < 14; i++) {
+    fumee.update(1);
+    images.push(fumee.frame + Math.floor(fumee.age));
+    tailles.push(Math.round(fumee.sx));
+  }
+  assert.ok(images[5] > images[0], 'les images défilent : ' + images.join(' '));
+  assert.ok(tailles[tailles.length - 1] < tailles[0], 'et la bouffée fond : ' + tailles.join(' '));
+  // Une particule à UNE seule image n'a rien à dérouler.
+  const cristal = champ.nouvellePart('partElementCrystal');
+  cristal.init();
+  assert.equal(cristal.joue, false, 'un cristal reste sur son image');
+});
+
+test('la fée du joueur vole dans la clairière et sème ses étoiles', () => {
+  // Slot.initCursor : un sp.pe.Cursor, c'est-à-dire une VRAIE fée — flBound à
+  // faux, et un update réduit à move() puis starFall(0.7). Slot.moveCursor lui
+  // donne le pointeur pour cible à chaque image.
+  const M = require('../public/minipixiz/menu.js');
+  const menu = Object.create(M.Menu.prototype);
+  menu.plateforme = { carte: P.carteNeuve() };
+  menu.poserFee(F.genererGraine(tirage(9)));
+  assert.ok(menu.fee, 'la fée est en vol');
+  assert.equal(menu.fee.flBound, false, 'et rien ne la retient aux bords');
+
+  const depart = { x: menu.fee.x, y: menu.fee.y };
+  menu.fee.trg = { x: 220, y: 30 };
+  for (let i = 0; i < 40; i++) { menu.fee.bouger(1); menu.fee.etoiles(0.7, 1); }
+  assert.ok(menu.fee.x !== depart.x || menu.fee.y !== depart.y, 'elle s\'est déplacée');
+  assert.ok(menu.fee.x > depart.x, 'vers le pointeur');
+  assert.ok(menu.champ.partList.some((p) => p.lien === 'partStar'),
+    'et elle laisse une poussière d\'étoiles');
+
+  // La page la (re)pose à chaque retour à la clairière : elle a pu changer.
+  const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(page, /menu\.poserFee\(feeCouranteSeed\(\)\);/);
+  // Et le menu la dessine avec le MÊME pinceau que la forêt.
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/menu.js'), 'utf8');
+  assert.match(src, /C\.dessinerCreatureSur\(ctx, s, this\.fee\)/);
+  assert.match(src, /C\.dessinerPartsSur\(ctx, s, this\.champ\.partList\)/);
+});

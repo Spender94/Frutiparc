@@ -453,6 +453,24 @@ class Piece {
       yMin = Math.min(yMin, o.y); yMax = Math.max(yMax, o.y);
     }
     this.dRot = Math.min(Math.round((xMax - xMin) % 2), Math.round((yMax - yMin) % 2)) * 0.5;
+
+    /*
+     * La ROTATION est jouée, pas subie.
+     *
+     * Dans Piece.init, chaque bille est posée UNE FOIS dans le clip `base`, à
+     * `(o.x - dRot) × ts`, et n'en bouge plus. `turn()` ne déplace que les
+     * coordonnées LOGIQUES (celles qui servent aux collisions) et pousse
+     * l'angle visé `ta` d'un quart de tour ; c'est `base._rotation` qui court
+     * après lui, un demi-écart par image :
+     *
+     *     base._rotation += da × min(0.5 × Timer.tmod, 1)
+     *     et chaque bille garde son aplomb : mc._rotation = -base._rotation
+     *
+     * Les billes décrivent donc un arc jusqu'à leur nouvelle case. Le portage
+     * les y téléportait — d'où la pièce qui « claque » au lieu de pivoter.
+     */
+    this.rot = 0;
+    for (const o of this.list) { o.ox = o.x - this.dRot; o.oy = o.y - this.dRot; }
   }
 
   // Piece.update — l'ordre compte : chute, rotation, glissement.
@@ -509,6 +527,12 @@ class Piece {
     } else {
       this.flTurn = true;
     }
+
+    // L'angle court après sa cible par le plus court chemin.
+    let da = this.ta - this.rot;
+    while (da > 180) da -= 360;
+    while (da < -180) da += 360;
+    if (Math.abs(da) > 0.5) this.rot += da * Math.min(0.5 * tmod, 1);
 
     this.glisser(tmod, entree);
   }
@@ -575,13 +599,28 @@ class Piece {
     this.jeu.surPiecePosee();
   }
 
-  // Position d'affichage, en pixels — le client n'a pas à la recalculer.
+  /*
+   * Position d'affichage, en pixels — le client n'a pas à la recalculer.
+   *
+   * `base._x = marginLeft + (x + cx + 0.5 + dRot) × ts`, et chaque bille est
+   * accrochée à `(o.x - dRot) × ts` DANS le clip qui tourne : sa place à
+   * l'écran est donc cet ancrage pivoté de l'angle courant, autour du centre
+   * de la pièce. Le demi-pas de `base` vise le CENTRE de la case (les billes
+   * y sont centrées) ; nos coins se lisent donc sans lui.
+   */
   cases() {
-    return this.list.map((o) => ({
-      e: o.e,
-      x: this.jeu.posX(this.x + this.cx + o.x),
-      y: this.jeu.posY(this.y + this.cy + o.y),
-    }));
+    const a = this.rot * Math.PI / 180;
+    const cos = Math.cos(a), sin = Math.sin(a);
+    return this.list.map((o) => {
+      // Rotation horaire : l'axe des ordonnées descend, comme chez Flash.
+      const rx = o.ox * cos - o.oy * sin;
+      const ry = o.ox * sin + o.oy * cos;
+      return {
+        e: o.e,
+        x: this.jeu.posX(this.x + this.cx + this.dRot + rx),
+        y: this.jeu.posY(this.y + this.cy + this.dRot + ry),
+      };
+    });
   }
 }
 
@@ -1051,6 +1090,15 @@ class Jeu {
     }
   }
 
+  /*
+   * Game.fall — et sa dernière ligne, qui fait tout : `setPos(e, e.px, e.py+c)`.
+   *
+   * `c` est la part FRACTIONNAIRE de la chute : la bille n'est pas posée sur sa
+   * case, elle est posée ENTRE deux cases, à `py + c` rangées. Comme le compteur
+   * monte d'un demi par image, une case prend deux images et la bille glisse.
+   * Le portage ne gardait que le `py` entier : les billes sautaient de case en
+   * case, et toute la cascade paraissait hachée à côté du Flash.
+   */
   tomber(cFall) {
     for (let i = 0; i < this.fList.length; i++) {
       const e = this.fList[i];
@@ -1067,6 +1115,9 @@ class Jeu {
           c -= 1;
         }
       }
+      // La position entre deux cases, en pixels — le client dessine chaque
+      // élément sur sa case, décalé de ce qu'on lui pose là.
+      e.decalY = c * TS;
     }
   }
 

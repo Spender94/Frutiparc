@@ -898,6 +898,10 @@
           menu.iris = new window.MinipixizClient.Iris($('#stage'));
         }
         client.fermerCarteForet();
+        // Slot.initCursor : la fée du joueur vole dans la clairière et suit le
+        // pointeur. On la (re)pose à chaque ouverture — elle a pu changer au
+        // bassin, au bocal, ou s'en aller pendant la nuit.
+        menu.poserFee(feeCouranteSeed());
         $('#menu').classList.add('on');
         menu.demarrer();
         // Base.tryToClose : on ne rentre pas de forêt avec des objets sans
