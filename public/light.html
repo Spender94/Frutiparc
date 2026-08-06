@@ -327,22 +327,31 @@
      le titre de la chanson. */
   .blindtest {
     display: flex; align-items: center; gap: 8px;
-    padding: 6px 10px; background: #1A5FD0; color: #fff;
+    padding: 6px 10px; background: #000046; color: #fff;
     font-size: 13px; font-weight: bold; flex: 0 0 auto;
   }
   .blindtest .bt-titre { letter-spacing: .5px; }
   .blindtest .bt-temps { margin-left: auto; font-variant-numeric: tabular-nums; }
   .blindtest .bt-bouton {
     border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer;
-    background: #fff; color: #1A5FD0; font-weight: bold; font-size: 12px;
+    background: #fff; color: #000046; font-weight: bold; font-size: 12px;
   }
   .blindtest .bt-cadre { width: 1px; height: 1px; overflow: hidden; opacity: .01; }
   .blindtest .bt-cadre iframe { width: 320px; height: 180px; border: 0; }
 
-  /* Ligne animateur / mode bleu (t="c") — bleu gras, comme le desktop. Le
-     classement d'un quiz y arrive sur plusieurs lignes : pre-line les garde
+  /* Ligne animateur / mode bleu (t="c") — la typo du bureau, à la valeur près.
+     main.swf compose ces lignes en `<font size="14"><b>…</b></font>` teintées
+     de `penBlueAnimator`, que global.as déclare {r:0, g:0, b:70} : un bleu
+     marine très sombre, pas le bleu vif qu'on avait approché à l'œil. Le
+     rapport de taille vient de là aussi — le chat du bureau écrit en Verdana
+     12, l'animateur en 14, soit un septième de plus.
+     Le classement d'un quiz y arrive sur plusieurs lignes : pre-line les garde
      (et replie les espaces, donc une ligne simple ne change pas d'allure). */
-  .msg.blue, .msg.blue .body, .msg.blue .from, .msg.blue .from.me, .msg.blue .time { color: #1A5FD0; font-weight: bold; }
+  .msg.blue, .msg.blue .body, .msg.blue .from, .msg.blue .from.me, .msg.blue .time {
+    color: #000046; font-weight: bold;
+  }
+  .msg.blue { font-size: 1.1667em; }
+  .msg.blue .time { font-size: 11px; }
   .msg.blue .body { white-space: pre-line; }
   /* Emote line ("pseudo éclate de rire") — the whole row is italic, like desktop. */
   .msg.emote { font-style: italic; color: #4f7b1f; }
@@ -3385,12 +3394,17 @@
         // Lignes animateur / mode bleu (/blueon) : type "c". Le desktop les rend
         // en bleu gras (MikeHorny, gains kikooz, mode bleu) ; on s'aligne dessus.
         if (ty === "c") {
-          var cStr = stripCdata(body);
           // Le classement d'un quiz arrive ici, une ligne par joueur séparée
-          // par des <br/>. `htmlToText` les remplace par des espaces — le
-          // classement devenait une phrase à rallonge. On garde les retours à
-          // la ligne (le CSS de .msg.blue les respecte).
-          var cBody = /^\s*</.test(cStr) ? htmlToText(cStr.replace(/<br\s*\/?>/gi, "\n")) : xmlUnescape(cStr);
+          // par des <br/>. Deux pièges s'y sont succédé :
+          //  · `htmlToText` remplace les <br/> par des ESPACES — le classement
+          //    devenait une phrase à rallonge. On les passe en retours à la
+          //    ligne d'abord (le CSS de .msg.blue les respecte).
+          //  · le corps ne passait par `htmlToText` que s'il COMMENÇAIT par
+          //    « < ». Depuis qu'il n'a plus de <b><font> en tête, il commence
+          //    par du texte : les <br/> s'affichaient tels quels, en clair.
+          // On traite donc le corps de la même façon quoi qu'il arrive : un
+          // « < » écrit par un joueur nous parvient échappé, il survit.
+          var cBody = htmlToText(stripCdata(body).replace(/<br\s*\/?>/gi, "\n"));
           if (cBody) addMessage({ from: from, time: h, body: cBody, kind: "blue", noFrom: (from === "admin") });
           break;
         }

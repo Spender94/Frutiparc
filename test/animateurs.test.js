@@ -22,6 +22,7 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
+const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const { Client } = require(path.join(__dirname, '..', 'node_modules', 'pg'));
 const WebSocket = require(path.join(__dirname, '..', 'node_modules', 'ws'));
@@ -449,4 +450,90 @@ test('le blindtest accepte les liens YouTube tels qu\'on les colle', async (t) =
       await wait(150);
     }
   } finally { anim.fermer(); light.fermer(); }
+});
+
+// ── Le RENDU du classement sur le client Light ────────────────────────────
+//
+// Les tests plus haut vérifient la TRAME que diffuse le serveur. Ce n'est pas
+// la même chose que ce que le joueur lit : la première version du classement
+// sans balises est bien partie en t="c" avec ses <br/>… et le mobile les a
+// affichés EN CLAIR, parce qu'il ne passait le corps par `htmlToText` que
+// s'il COMMENÇAIT par « < ». Une capture d'écran l'a montré, aucun test ne
+// l'avait vu. Celui-ci fait tourner le vrai code du client sur un vrai corps.
+
+test('le mobile rend le classement sur plusieurs lignes, sans <br/> en clair', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+
+  // On extrait les fonctions du client, telles qu'elles sont écrites.
+  const prendre = (nom) => {
+    const m = new RegExp(`\\n  function ${nom}\\(([\\s\\S]*?)\\n  \\}`).exec(html);
+    assert.ok(m, `${nom} trouvée dans light.html`);
+    return `function ${nom}(${m[1]}\n}`;
+  };
+  // Et la ligne qui décide du corps affiché pour une ligne bleue (t="c").
+  const ligne = /if \(ty === "c"\) \{[\s\S]*?(var cBody = [^\n]+)/.exec(html);
+  assert.ok(ligne, 'la construction du corps t="c" est trouvée');
+
+  const rendre = new Function('body', [
+    prendre('xmlUnescape'), prendre('stripCdata'), prendre('htmlToText'),
+    ligne[1], 'return cBody;',
+  ].join('\n'));
+
+  // Le corps exact que diffuse `formaterClassement`.
+  const corps = '<![CDATA[Classement — Manche 1<br/>1. remi — 5 pts<br/>2. zoe — 3 pts]]>';
+  const rendu = rendre(corps);
+  assert.ok(!/<br/i.test(rendu), 'aucun <br/> n\'apparaît en clair : ' + rendu);
+  assert.equal(rendu.split('\n').length, 3, 'trois lignes');
+  assert.match(rendu.split('\n')[0], /^Classement — Manche 1$/);
+  assert.match(rendu.split('\n')[1], /^1\. remi — 5 pts$/);
+
+  // Et le CSS les laisse vivre : sans `pre-line`, le HTML replierait tout.
+  assert.match(html, /\.msg\.blue \.body \{ white-space: pre-line; \}/,
+    'les retours à la ligne sont respectés à l\'affichage');
+
+  // Une ligne bleue ORDINAIRE (le mode /blueon, du texte d'un joueur) passe
+  // toujours, y compris quand elle contient des chevrons — qui nous arrivent
+  // échappés et doivent réapparaître tels quels.
+  assert.equal(rendre('<![CDATA[<i>Mode bleu activé.</i>]]>'), 'Mode bleu activé.');
+  assert.equal(rendre('<![CDATA[3 &lt; 5 &amp; 7 &gt; 2]]>'), '3 < 5 & 7 > 2');
+});
+
+// ── Les couleurs du bureau, pas celles qu'on croit ────────────────────────
+//
+// Le bleu du mode animateur avait été approché à l'œil (#1A5FD0, un bleu vif)
+// alors que le bureau en applique un tout autre : main.swf compose ces lignes
+// en `<font size="14"><b>…</b></font>` teintées de `penBlueAnimator`, que
+// global.as déclare {r:0, g:0, b:70} — un marine presque noir. On lit donc la
+// déclaration à la source, pour que le portage ne puisse plus dériver.
+
+test('le mode animateur reprend la teinte et la taille exactes du bureau', () => {
+  const global = fs.readFileSync(path.join(ROOT, 'frutiparc/global.as'), 'utf8');
+  const lire = (nom) => {
+    const m = new RegExp(`_global\\.${nom}\\s*=\\s*\\{\\s*r:\\s*(\\d+)\\s*,\\s*g:\\s*(\\d+)\\s*,\\s*b:\\s*(\\d+)`).exec(global);
+    assert.ok(m, `${nom} déclaré dans global.as`);
+    return '#' + [m[1], m[2], m[3]]
+      .map((v) => Number(v).toString(16).padStart(2, '0')).join('').toUpperCase();
+  };
+  const bleu = lire('penBlueAnimator');
+  const rouge = lire('penRedMode');
+  assert.equal(bleu, '#000046', 'le bleu animateur du SWF');
+  assert.equal(rouge, '#C10000', 'et le rouge du cri');
+
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.ok(html.includes('color: ' + bleu.toLowerCase()) || html.includes('color: ' + bleu),
+    'la ligne bleue du mobile porte ' + bleu);
+  assert.ok(html.includes(rouge) || html.includes(rouge.toLowerCase()),
+    'et le cri rouge porte ' + rouge);
+  // Plus aucune trace du bleu inventé.
+  assert.ok(!/1A5FD0/i.test(html), 'le bleu approché à l\'œil a disparu de light.html');
+
+  // La taille : le chat du bureau écrit en Verdana 12, l'animateur en 14.
+  assert.match(html, /\.msg\.blue \{ font-size: 1\.1667em; \}/,
+    'le rapport de taille 14/12 est appliqué');
+
+  // Le bandeau du blindtest emprunte la même teinte, sur les deux clients.
+  assert.match(html, /\.blindtest \{[\s\S]*?background: #000046;/, 'le bandeau mobile');
+  const ruffle = fs.readFileSync(path.join(ROOT, 'public/ruffle.html'), 'utf8');
+  assert.match(ruffle, /background:#000046/, 'et le bandeau du bureau');
+  assert.ok(!/1A5FD0/i.test(ruffle), 'plus de bleu inventé côté bureau non plus');
 });
