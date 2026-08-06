@@ -1356,6 +1356,13 @@ class Client {
         this.reste = 0;
       } else if (this.nouvelle) {
         this.reste = 0;
+      } else if (this.evolution) {
+        // Aventure.tryToCloseGame appelle `game.kill()` AVANT d'ouvrir le
+        // panneau d'expérience : rien ne tourne dessous. Le portage laissait le
+        // plateau vivre sa vie derrière — les billes tombaient, la manette le
+        // pilotait toujours, et on pouvait perdre la partie en choisissant sa
+        // caractéristique.
+        this.reste = 0;
       } else if (this.ouverture) {
         // Le bouquet d'abord : le plateau attend que la gerbe se referme
         // (Aventure.initStep(1) ne lance le jeu qu'après).
@@ -2046,10 +2053,14 @@ class Client {
       if (!vide && s.expIcone) {
         poserRendu(ctx, rendre(s.expIcone, n + 1 + c.i * 10, 100), c.x, c.y);
       }
-      if (vide) continue;
-      noms[c.i] = c.i === 0
+      // `setNextLevelUp` ne réserve un sort que s'il en existe un que la fée ne
+      // connaît pas, à sa portée et dans ses moyens de mana — au premier niveau,
+      // souvent aucun. La case reste nue, comme dans le jeu ; mais une case nue
+      // ET muette, sur laquelle on tape sans effet, ne se distingue pas d'un
+      // écran gelé. On dit donc qu'il n'y a rien là.
+      noms[c.i] = vide ? null : (c.i === 0
         ? '+1 en ' + (window.MinipixizFee.NOM_CARAC[n] || '?')
-        : ((S && S.TABLE && S.TABLE[n] && S.TABLE[n].nom) || 'un nouveau sort');
+        : ((S && S.TABLE && S.TABLE[n] && S.TABLE[n].nom) || 'un nouveau sort'));
     }
     // expPanel.fieldName : « Faites votre choix ! », remplacé au survol par le
     // nom de ce qu'on désigne. Au doigt il n'y a pas de survol : on écrit les
@@ -2068,9 +2079,20 @@ class Client {
     ecrire('Faites votre choix !', SCENE * 0.5, SCENE * 0.5 - 38);
     ctx.font = 'bold 8px Verdana, Arial, sans-serif';
     for (const c of this.casesEvolution()) {
-      if (!noms[c.i]) continue;
-      for (const [k, ligne] of decouperTexte(ctx, noms[c.i], 84).entries()) {
-        ecrire(ligne, c.x, c.y + 34 + k * 9);
+      const texte = noms[c.i] || (c.i === 1 ? 'rien à apprendre' : null);
+      if (!texte) continue;
+      // La case sans offre s'écrit en gris : elle se lit, mais ne se propose pas.
+      const terne = !noms[c.i];
+      for (const [k, ligne] of decouperTexte(ctx, texte, 84).entries()) {
+        if (terne) {
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = 'rgba(24,12,40,.7)';
+          ctx.strokeText(ligne, c.x, c.y + 34 + k * 9);
+          ctx.fillStyle = 'rgba(255,238,184,.5)';
+          ctx.fillText(ligne, c.x, c.y + 34 + k * 9);
+        } else {
+          ecrire(ligne, c.x, c.y + 34 + k * 9);
+        }
       }
     }
     ctx.textAlign = 'left';
@@ -2812,8 +2834,14 @@ class Client {
       const r = this.canvas.getBoundingClientRect();
       return { x: (t.clientX - r.left) / this.echelle, y: (t.clientY - r.top) / this.echelle };
     };
+    // Les écrans qui se posent PAR-DESSUS le plateau gardent leurs clics : le
+    // doigt n'y pilote pas la pièce. La liste doit rester celle du gestionnaire
+    // de `click` plus haut — le panneau d'évolution y manquait, et comme
+    // `touchstart` appelle `preventDefault()`, le navigateur ne synthétisait
+    // même plus le clic : au téléphone, la montée de niveau était un cul-de-sac
+    // où plus rien ne répondait. À la souris, elle marchait.
     const enJeu = () => this.jeu && !this.carteForet && !this.nouvelle && !this.ornegon
-      && !this.gromelin && !this.pause && !this.cine;
+      && !this.gromelin && !this.evolution && !this.pause && !this.cine;
 
     this.canvas.addEventListener('touchstart', (ev) => {
       if (!enJeu()) return;            // les écrans gardent leurs clics

@@ -1253,3 +1253,57 @@ test('le cadran de santé nomme ses deux aiguilles à la touche', () => {
   assert.ok(z.faim.x < z.moral.x, 'la faim est l\'aiguille de gauche');
   assert.ok(z.vie, 'les cœurs aussi');
 });
+
+// ── « Ma fée monte d'un niveau et je ne peux cliquer sur rien » ────────────
+//
+// Le panneau d'évolution s'ouvrait PAR-DESSUS une partie qui continuait de
+// tourner. Deux conséquences, invisibles à la souris et fatales au doigt :
+//
+//  · `brancherToucher` dresse la liste des écrans qui gardent leurs clics
+//    (`enJeu`), et le panneau n'y était pas. Le doigt pilotait donc la pièce
+//    sous le panneau — et comme `touchstart` appelle `preventDefault()`, le
+//    navigateur ne synthétisait même plus le `click` sur lequel le panneau
+//    écoute. Plus rien ne répondait. À la souris, tout marchait : d'où des
+//    vérifications au vert et un joueur bloqué.
+//
+//  · la boucle continuait d'avancer le plateau, alors que
+//    `Aventure.tryToCloseGame` appelle `game.kill()` AVANT `initStep(3)` :
+//    on pouvait perdre la partie en choisissant sa caractéristique.
+
+test('le panneau d\'évolution gèle le plateau et garde ses clics', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+
+  // 1. La liste d'`enJeu` doit couvrir le panneau — sinon le doigt pilote et
+  //    `preventDefault` avale le clic.
+  const enJeu = /const enJeu = \(\) =>([\s\S]*?);/.exec(src);
+  assert.ok(enJeu, 'enJeu est là');
+  assert.match(enJeu[1], /!this\.evolution/,
+    'le panneau d\'évolution garde ses clics');
+
+  // 2. Et elle doit rester alignée sur le gestionnaire de `click` : tout écran
+  //    qui y est cité doit figurer dans enJeu, sans quoi le défaut revient.
+  const clic = /addEventListener\('click', \(ev\) => \{\s*\n\s*if \(([\s\S]*?)\) return;/.exec(src);
+  assert.ok(clic, 'le gestionnaire de clic est là');
+  for (const ecran of ['carteForet', 'nouvelle', 'ornegon', 'gromelin', 'evolution']) {
+    assert.match(clic[1], new RegExp('this\\.' + ecran),
+      `le clic connaît ${ecran}`);
+    assert.match(enJeu[1], new RegExp('!this\\.' + ecran),
+      `et le doigt le laisse tranquille : ${ecran}`);
+  }
+
+  // 3. Le plateau ne tourne plus dessous.
+  assert.match(src, /\} else if \(this\.evolution\) \{[\s\S]*?this\.reste = 0;/,
+    'la boucle gèle le jeu tant que le panneau est ouvert');
+});
+
+test('une case d\'évolution sans offre le dit au lieu de rester muette', () => {
+  // `setNextLevelUp` ne réserve un sort que s'il en existe un à la portée de la
+  // fée — au premier niveau, souvent aucun. La case reste nue comme dans le jeu
+  // (mc.e image 60), mais une case nue ET muette sur laquelle on tape sans
+  // effet ne se distingue pas d'un écran gelé.
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /'rien à apprendre'/, 'la case vide porte son libellé');
+  // Et elle reste inerte au clic : on ne peut pas choisir ce qui n'existe pas.
+  assert.match(src, /if \(c\.i === 1 && \(e\.fi\.fs\.\$next\[1\] === null[^)]*\)\) return;/,
+    'taper une case sans offre ne choisit rien');
+});
