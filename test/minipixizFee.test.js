@@ -245,18 +245,26 @@ test('à jeun, elle perd sa vie puis s\'en va', () => {
   assert.equal(fee.fs.$life, 0, 'elle a très faim');
   assert.ok(r.messages.some((m) => /très faim/.test(m)));
 
+  // C'est celle qu'on PORTE : `flFree` est faux, et FaerieInfo.upkeep la fait
+  // fuir. Le bocal, c'est l'autre branche.
   r = fee.entretien(false);
-  assert.equal(r.partie, true, 'la nuit suivante, elle meurt dans son bocal');
-  assert.ok(r.messages.some((m) => /morte de faim/.test(m)), r.messages.join(' | '));
+  assert.equal(r.partie, true, 'la nuit suivante, elle s\'en va');
+  assert.ok(r.messages.some((m) => /enfuie car elle avait trop faim/.test(m)),
+    r.messages.join(' | '));
 });
 
-test('à jeun mais LIBRE, elle s\'enfuit au lieu de mourir', () => {
+test('à jeun et LIBRE, elle meurt dans son bocal', () => {
+  // FaerieInfo.upkeep, à la lettre : `if(flFree) "est morte de faim dans son
+  // bocal" else "s'est enfuie car elle avait trop faim"`. `flFree` désigne
+  // celle que le joueur NE porte PAS — celle restée au sac, en bocal. Le
+  // portage avait les deux messages à l'envers.
   const fee = new F.Fee(F.genererGraine(alea(33)), alea(33));
   fee.fs.$carac = [1, 1, 3, 1, 1, 1]; fee.carac = fee.fs.$carac.slice();
   fee.fs.$hunger = 0; fee.fs.$life = 0; fee.fs.$moral = 10;
   const r = fee.entretien(true);
   assert.equal(r.partie, true);
-  assert.ok(r.messages.some((m) => /enfuie car elle avait trop faim/.test(m)));
+  assert.ok(r.messages.some((m) => /morte de faim dans son bocal/.test(m)),
+    r.messages.join(' | '));
 });
 
 test('UPKEEP_MORAL_PLANCHER : enfermée, elle déprime ; libre et malheureuse, elle part', () => {

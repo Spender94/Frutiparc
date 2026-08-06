@@ -32,6 +32,34 @@ function tirage(graine) {
   return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
 }
 
+const nb = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+// L'inventaire est une classe d'écran : un canevas de paille et le rendu
+// débranché suffisent à éprouver sa mécanique.
+function fauxInventaire(carte) {
+  if (typeof global.window === 'undefined' || !global.window.addEventListener) {
+    global.window = { addEventListener() {}, devicePixelRatio: 1 };
+  }
+  // fee() passe par `racine`, figé au chargement du module : ici c'est
+  // globalThis, le fichier ayant été requis avant qu'on invente une fenêtre.
+  global.window.MinipixizFee = F;
+  globalThis.MinipixizFee = F;
+  if (typeof global.document === 'undefined') {
+    global.document = { body: { clientWidth: 240, clientHeight: 240 } };
+  }
+  const ctx = new Proxy({}, {
+    get: (o, k) => (k in o ? o[k] : () => {}),
+    set: (o, k, v) => { o[k] = v; return true; },
+  });
+  const canvas = {
+    getContext: () => ctx, addEventListener() {}, style: {},
+    parentElement: null, width: 0, height: 0,
+  };
+  const inv = new I.Inventaire({ canvas, plateforme: { carte }, sprites: {} });
+  inv.rendre = () => {};
+  return inv;
+}
+
 test('chaque niveau de forêt part avec une graine neuve', () => {
   const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
   const lancer = /function lancerNiveau\(\) \{[\s\S]*?\n  \}/.exec(page);
@@ -1138,4 +1166,90 @@ test('la clairière coupe ses phrases aux mots plutôt que de déborder', () => 
   // Un mot plus long que la ligne déborde plutôt que d'être coupé en deux.
   assert.deepEqual(M.couperEnLignes(ctx, 'anticonstitutionnellement', 60),
     ['anticonstitutionnellement']);
+});
+
+// ── « Elle a mangé à plusieurs reprises » ─────────────────────────────────
+//
+// Un joueur nourrit sa fée, et elle refuse quand même de venir en forêt. La
+// faim et le moral sont DEUX jauges : n'importe quel aliment remplit la
+// première, seul un aliment qu'elle aime relève la seconde — et c'est la
+// seconde qui décide (`isReadyForBattle`). Le cadran de santé, seul endroit du
+// jeu qui montre le moral, ne se lisait qu'au survol : rien sur un téléphone.
+
+test('la faim se remplit avec tout, le moral seulement avec ce qu\'elle aime', () => {
+  const carte = { $faerie: [], $current: 0 };
+  const fs = F.genererGraine(tirage(3));
+  fs.$taste = [[2], [7]];
+  fs.$moral = 0; fs.$hunger = 4; fs.$life = 1; fs.$mood = [];
+  carte.$faerie.push(fs);
+  const fee = new F.Fee(fs, tirage(3), carte);
+
+  assert.equal(fee.preteAuCombat(), false, 'sans moral, elle reste');
+
+  // Un aliment neutre : la faim monte, le moral ne bouge pas.
+  fee.manger(5);
+  assert.equal(nb(fs.$hunger), 8, 'la faim monte de quatre');
+  assert.equal(nb(fs.$moral), 0, 'le moral reste à zéro');
+  assert.equal(fee.preteAuCombat(), false, 'elle ne vient toujours pas');
+
+  // Un aliment qu'elle aime : trois points de moral, et elle repart.
+  fee.manger(2);
+  assert.equal(nb(fs.$moral), 3, 'ce qu\'elle aime vaut trois points');
+  assert.equal(fee.preteAuCombat(), true, 'elle accompagne de nouveau');
+
+  // Un aliment qu'elle déteste les reprend.
+  fee.manger(7);
+  assert.equal(nb(fs.$moral), 0, 'ce qu\'elle déteste retire trois points');
+
+  // La raison annoncée montre le remède, pas seulement le symptôme.
+  assert.match(fee.raisonDeRester(), /moral/);
+  assert.match(fee.raisonDeRester(), /aime/);
+});
+
+test('la fée affamée meurt au bocal et s\'enfuit quand on la porte', () => {
+  // FaerieInfo.upkeep, à la lettre : `if(flFree) "morte de faim dans son
+  // bocal" else "s'est enfuie car elle avait trop faim"`. Le sens surprend —
+  // `flFree` désigne celle qu'on NE porte PAS — et le portage l'avait inversé.
+  for (const [libre, attendu] of [[true, /morte de faim dans son bocal/],
+    [false, /enfuie car elle avait trop faim/]]) {
+    const fs = F.genererGraine(tirage(4));
+    fs.$hunger = 0; fs.$life = 0; fs.$moral = 10; fs.$mood = [];
+    const fee = new F.Fee(fs, tirage(4), { $faerie: [fs], $current: libre ? null : 0 });
+    const r = fee.entretien(libre, null);
+    assert.equal(r.partie, true, 'elle quitte la fiche');
+    assert.match(r.messages.join(' '), attendu);
+  }
+});
+
+test('le cadran de santé nomme ses deux aiguilles à la touche', () => {
+  // `Mc.makeHint( mc.h0, " faim " )` / `( mc.h1, " moral " )` : deux infobulles
+  // au survol dans le SWF, donc rien du tout sur un téléphone.
+  const carte = { $faerie: [], $current: 0, $item: [], $bag: 0 };
+  const fs = F.genererGraine(tirage(5));
+  fs.$moral = 0; fs.$hunger = 12; fs.$life = 1; fs.$name = 'Pikine';
+  carte.$faerie.push(fs);
+
+  const inv = fauxInventaire(carte);
+  inv.volet = 3;
+
+  const dit = {};
+  for (const q of ['vie', 'faim', 'moral']) {
+    inv.agir(q);
+    dit[q] = inv.titre + ' — ' + inv.message;
+  }
+  assert.match(dit.vie, /^Pikine — vie 1 \/ /);
+  assert.match(dit.faim, /^Pikine — faim 12 \/ 20/);
+  assert.match(dit.moral, /^Pikine — moral 0 \/ 20/);
+  // Et le moral à zéro dit ce qu'il empêche, puisque c'est lui qui décide.
+  assert.match(dit.moral, /ne vous suit plus/);
+  assert.match(dit.moral, /aime/);
+
+  // Les trois zones sont bien posées par le volet santé, du bon côté du cadran.
+  inv.zones = [];
+  inv.rendreVolet(inv.fee());
+  const z = {};
+  for (const e of inv.zones) if (typeof e.quoi === 'string') z[e.quoi] = e;
+  assert.ok(z.faim && z.moral, 'les deux aiguilles sont touchables');
+  assert.ok(z.faim.x < z.moral.x, 'la faim est l\'aiguille de gauche');
+  assert.ok(z.vie, 'les cœurs aussi');
 });

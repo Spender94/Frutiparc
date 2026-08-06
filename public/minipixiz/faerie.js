@@ -342,7 +342,13 @@ class Fee {
     if (h[ENGOURDIE] === 1) return 'est engourdie et dort toute la journée';
     if (h[MALADE] === 1) return 'est malade : elle ne quittera pas le sac aujourd\'hui';
     if (!(nombre(this.fs.$life) > 0)) return 'est à bout de forces — nourrissez-la';
-    if (!(nombre(this.fs.$moral) > 0)) return 'n\'a plus le moral — elle ne veut pas y aller';
+    // Le moral ne remonte que de trois façons (les trois seuls `incMoral` du
+    // jeu) : un aliment qu'elle aime, une montée de niveau, ou une nuit passée
+    // au bocal. La dernière est un piège sous trois de moral — elle en profite
+    // pour s'enfuir — donc on ne conseille que la première.
+    if (!(nombre(this.fs.$moral) > 0)) {
+      return 'n\'a plus le moral — offrez-lui ce qu\'elle aime';
+    }
     return 'n\'est pas en état de vous suivre';
   }
 
@@ -409,9 +415,12 @@ class Fee {
         this.dire(fs.$name + ' a vraiment très faim !');
         fs.$life--;
       } else {
+        // FaerieInfo.upkeep : c'est la fée LIBRE — celle restée au sac — qui
+        // meurt dans son bocal, et celle qu'on trimballe qui s'enfuit. Le sens
+        // surprend, mais c'est celui de l'original, à la lettre.
         this.dire(libre
-          ? fs.$name + ' s\'est enfuie car elle avait trop faim !'
-          : fs.$name + ' est morte de faim dans son bocal...');
+          ? fs.$name + ' est morte de faim dans son bocal...'
+          : fs.$name + ' s\'est enfuie car elle avait trop faim !');
         return { partie: true, messages: this.messages };
       }
     } else if (nombre(fs.$hunger) < 10) {

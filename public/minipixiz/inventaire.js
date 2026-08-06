@@ -51,6 +51,8 @@ const BARRE = { x: 173, y: 97, pas: 14, point0: 9, pointPas: 6, points: 8 };
 const SORT = { x: 175, y: 98, pas: 17, colonnes: 4, lignes: 5 };
 const SAC_FEE = { x: 184, pas: 32, colonnes: 2 };
 const SANTE = { coeurY: 92, coeurPas: 9, coeurEchelle: 60, cadranX: 200, cadranY: 137 };
+// Le demi-cadran de mcManPower : la roue fait 71 pixels, une aiguille par côté.
+const CADRAN = 35.5;
 const MSG_Y = SCENE - 60;
 
 // La rangée du bas (initExtraDisplay) : la clé, l'étoile, cinq diamants.
@@ -537,6 +539,16 @@ class Inventaire {
             'h1.h': 180 + (nombre(fee.fs.$moral) / 20) * 180,
           }), SANTE.cadranX, SANTE.cadranY);
         }
+        // `Mc.makeHint( mc.h0, " faim " )` et `( mc.h1, " moral " )` : le SWF
+        // nommait ses deux aiguilles au survol. Sur un téléphone il n'y a pas
+        // de survol, et la jauge qui décide si la fée vient restait donc
+        // indéchiffrable. On les nomme à la touche, chiffre à l'appui —
+        // l'aiguille de gauche est la faim, celle de droite le moral, comme
+        // dans le cadran d'origine.
+        this.zoneRect('faim', SANTE.cadranX - CADRAN, SANTE.cadranY - CADRAN, CADRAN, CADRAN * 2);
+        this.zoneRect('moral', SANTE.cadranX, SANTE.cadranY - CADRAN, CADRAN, CADRAN * 2);
+        this.zoneRect('vie', SANTE.cadranX - 4 - (max * SANTE.coeurPas) * 0.5 - 6,
+          SANTE.coeurY - 9, max * SANTE.coeurPas + 12, 18);
         break;
       }
       default: break;
@@ -655,6 +667,7 @@ class Inventaire {
       this.dire(SECTION[(this.volet + 1) % 4]);
       return;
     }
+    if (quoi === 'faim' || quoi === 'moral' || quoi === 'vie') { this.direSante(quoi); return; }
     if (quoi === 'portrait') { this.donnerALaFee(); return; }
     if (quoi === 'liberer') { this.liberer(); return; }
     if (quoi === 'poubelle') { this.jeter(); return; }
@@ -914,6 +927,33 @@ class Inventaire {
     if (r.pictos.length) msg += ' Album : +' + r.pictos.length + ' !';
     this.dire(msg);
     this.changer();
+  }
+
+  /**
+   * Ce que dit une aiguille du cadran de santé, ou la rangée de cœurs.
+   *
+   * Les deux jauges ne se valent pas : la faim se remplit avec n'importe quoi,
+   * le moral seulement avec ce qu'elle aime. Et c'est le moral qui décide si
+   * elle vient en forêt (`isReadyForBattle`) — autant le dire là où on le lit.
+   */
+  direSante(quoi) {
+    const fee = this.fee();
+    if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
+    const fs = fee.fs;
+    if (quoi === 'vie') {
+      this.dire('vie ' + nombre(fs.$life) + ' / ' + fee.vieMax(), fs.$name);
+      return;
+    }
+    if (quoi === 'faim') {
+      const f = nombre(fs.$hunger);
+      this.dire('faim ' + f + ' / 20'
+        + (f < 10 ? ' — elle a faim, donnez-lui à manger.' : ''), fs.$name);
+      return;
+    }
+    const m = nombre(fs.$moral);
+    this.dire('moral ' + m + ' / 20'
+      + (m > 0 ? '' : ' — à zéro, elle ne vous suit plus. Seul un aliment'
+        + ' qu\'elle aime le fait remonter.'), fs.$name);
   }
 
   dire(message, titre) {
