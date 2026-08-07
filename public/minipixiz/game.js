@@ -2637,6 +2637,16 @@ class Client {
     const blanc = Math.round(Math.max(e.eclat || 0, e.melange ? e.melange.prc : 0) / 10) * 10;
     if (blanc > 0) {
       melange = { prc: Math.min(100, blanc), couleur: e.melange ? e.melange.couleur : 0xFFFFFF };
+    } else if (this.bassin && this.bassin.teinteElements) {
+      // Base.elementColor, posé par sp.Element.updateSkin sur CHAQUE élément à
+      // sa naissance. Un seul mode s'en sert : le bassin, qui teinte tout le
+      // plateau de seize pour cent de bleu — c'est ce qui met les billes sous
+      // l'eau au lieu de les poser devant un décor d'eau.
+      //
+      // Et c'est bien un « sinon » : la destruction remplace la transformation
+      // du clip (`new Color(e.skin).setTransform`), elle ne s'y ajoute pas. Une
+      // bille qui blanchit perd donc son bleu, là-bas comme ici.
+      melange = this.bassin.teinteElements;
     }
     const pale = e.alpha !== undefined && e.alpha < 100;
     if (pale) { ctx.save(); ctx.globalAlpha = Math.max(0, e.alpha / 100); }
@@ -2681,6 +2691,31 @@ class Client {
       case E.E.BOMBE:
         poserRendu(ctx, rendre(s.bomb, 1, TS), x, y);
         break;
+      case E.E.BOULE: {
+        /*
+         * sp/el/FireBall — `link = "fireball"`, et sp.Element.init fait
+         * `skin = game.dm.attach(link, d)`. Rien de plus : c'est un clip
+         * ordinaire, il vit tant que la boule attend son souffle.
+         *
+         * Le portage n'avait pas ce cas du tout. `poserBrut` tombait sur son
+         * `default: break` et ne dessinait RIEN — la boule était bien là, elle
+         * comptait dans la grille et partait en projectile au bon moment, mais
+         * le joueur voyait un trou au centre de la croix. C'est le « les boules
+         * de feu n'avaient pas de skin » remonté du bassin.
+         *
+         * Les dix-sept images sont la pulsation de la flamme, et elles
+         * BOUCLENT : sous Flash un clip attaché déroule sa timeline, seul un
+         * `gotoAndStop` l'arrête, et FireBall n'en a pas.
+         */
+        const n = s.fireball ? s.fireball.etats.length : 0;
+        let f = 1;
+        if (n > 1) {
+          const t = Math.floor(((this.jeu && this.jeu.horloge) || 0) - (e.ne || 0));
+          f = 1 + ((t % n) + n) % n;
+        }
+        poserRendu(ctx, rendre(s.fireball, f, TS, undefined, null, null, null, melange), x, y);
+        break;
+      }
       case E.E.OBJET: {
         // sp/el/Item : la bulle, et le dessin de l'objet posé en son centre
         // (Item.setType → it.getPic, attaché en 50,50).

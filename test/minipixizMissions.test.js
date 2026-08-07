@@ -72,24 +72,48 @@ function fauxInventaire(carte) {
 test('la page ne prend jamais une fée en mission ou en bocal pour la forêt', () => {
   // Cm.getCurrentFaerie ne rend que $faerie[$current] ; dans le SWF une fée en
   // mission est structurellement hors d'atteinte (en bocal, bocal verrouillé).
-  // La page refait l'exclusion noir sur blanc — sur la fée courante ET sur le
-  // repli des vieux comptes.
+  // La règle vit dans `plateforme.feeEnMain`, et la forêt, Ornegon et le
+  // bassin la lisent tous les trois — c'est le fond de l'affaire, pas le texte
+  // de la page : on l'éprouve donc en la faisant tourner.
+
+  // Une fée courante ordinaire s'emmène.
+  let c = carteNeuve();
+  const libre = ajouterFee(c, { graine: 3 });
+  c.$current = 0;
+  assert.equal(P.feeEnMain(c), libre, 'la fée courante part en forêt');
+
+  // La même, partie en mission : elle n'est plus là.
+  c = carteNeuve();
+  ajouterFee(c, { graine: 3, fs: { $mission: 0 } });
+  c.$current = 0;
+  assert.equal(P.feeEnMain(c), null, 'une fée en mission ne suit pas');
+
+  // La même, rangée dans son bocal : le joueur part seul, et c'est normal.
+  c = carteNeuve();
+  ajouterFee(c, { graine: 3, fs: { $pos: 0 } });
+  c.$current = 0;
+  assert.equal(P.feeEnMain(c), null, 'une fée en bocal reste au bocal');
+
+  // Le repli des vieux comptes (sans `$current`) rend la première fée libre…
+  c = carteNeuve();
+  ajouterFee(c, { graine: 5, fs: { $mission: 1 } });
+  const seconde = ajouterFee(c, { graine: 7 });
+  c.$current = null;
+  assert.equal(P.feeEnMain(c), seconde, 'le vieux compte emmène sa fée libre');
+
+  // …mais s'efface dès qu'une fée dort en bocal : c'est le signe que le joueur
+  // a VOULU les mains vides. Sans ça, revenir du bassin emmenait en forêt une
+  // ancienne fée à la place de celle qu'on venait de gagner.
+  c = carteNeuve();
+  ajouterFee(c, { graine: 5, fs: { $pos: 0 } });
+  ajouterFee(c, { graine: 7 });
+  c.$current = null;
+  assert.equal(P.feeEnMain(c), null, 'un bocal occupé coupe le repli');
+
+  // Et la page passe bien par là, pour la forêt comme pour le donjon.
   const html = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
-  assert.match(html, /function feeCouranteSeed\(\)/);
-  assert.match(html, /if \(fs && \(enMission\(fs\) \|\| enBocal\(fs\)\)\) fs = null;/);
-  // Le repli des vieux comptes ne se déclenche plus dès qu'une fée dort en
-  // bocal : c'est le signe que le joueur a VOULU les mains vides. Sans cette
-  // condition, revenir du bassin emmenait en forêt une ancienne fée à la place
-  // de celle qu'on venait de gagner.
-  assert.match(html, /!l\.some\(function \(f\) \{ return f && enBocal\(f\); \}\)/,
-    'le repli s\'efface devant un bocal occupé');
-  assert.match(html, /if \(l\[k\] && !enMission\(l\[k\]\)\)/,
-    'et il saute toujours les fées parties en mission');
-  // Le donjon passe par la même porte.
+  assert.match(html, /return P\.feeEnMain\(plateforme\.carte\);/);
   assert.match(html, /fee: feeCouranteSeed\(\),/);
-  // Et l'ancien repli aveugle sur l[0] n'existe plus.
-  assert.ok(!/var fs = \(i !== null && i !== undefined && l\[i\]\) \? l\[i\] : l\[0\];/.test(html),
-    'le repli aveugle sur la première fée de la fiche a disparu');
 });
 
 test('l\'échange de bocal tient la main : entrer efface $current, sortir le prend', () => {

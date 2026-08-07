@@ -1445,3 +1445,143 @@ test('l\'aperçu des pièces suit le placement du fichier', () => {
   const neg = jeu.nextList.some((l) => l.some((o) => o.x < 0));
   assert.ok(neg, 'des pièces s\'étendent à gauche de leur ancre');
 });
+
+// ── Le bassin aux fées : « j'ai pu entrer avec ma fée hors de son bocal » ──
+//
+// Menu.initElements pose DEUX conditions au bassin, et le portage n'avait gardé
+// que la première :
+//
+//     if( $pond.$fs != null ){
+//         if( $current == null ) → on descend
+//         else                   → mcEnterError, image 2
+//     }else → useHandCursor = false
+//
+// Elle n'est pas décorative : `Cm.freeFaerie` fait `$current = $faerie.length`
+// et pousse la nouvelle fée. Plonger avec une fée au bras, c'est donc revenir
+// avec une AUTRE, l'ancienne restée en fiche sans main.
+
+test('on ne plonge au bassin qu\'avec une fée en bocal', () => {
+  const menuDe = (carte) => Object.create(M.Menu.prototype, {
+    plateforme: { value: { carte } },
+    carte: { get() { return carte; } },
+  });
+  const bassin = (carte) => menuDe(carte).etatLieu(M.LIEUX.find((l) => l.nom === 'fountain'));
+
+  const neuve = (patch) => Object.assign(P.carteNeuve(1700000000000), patch);
+  const graine = (g) => F.genererGraine(tirage(g));
+
+  // Pas de lueur : le bassin dort, il ne s'ouvre pas et ne refuse rien non plus.
+  let e = bassin(neuve({ $pond: { $fs: null } }));
+  assert.equal(e.frame, 1, 'le bassin est éteint');
+  assert.equal(e.ouvert, false);
+  assert.equal(e.feeEnMain, false, 'et il n\'a rien à reprocher au joueur');
+
+  // Une lueur, les mains vides : on descend.
+  e = bassin(neuve({ $pond: { $fs: graine(3) }, $faerie: [], $current: null }));
+  assert.equal(e.frame, 2, 'la lueur allume le bassin');
+  assert.equal(e.ouvert, true, 'et on y descend');
+
+  // Une lueur, MAIS la fée du joueur est en liberté : refus.
+  const portee = graine(5);
+  e = bassin(neuve({ $pond: { $fs: graine(3) }, $faerie: [portee], $current: 0 }));
+  assert.equal(e.frame, 2, 'le bassin brille toujours');
+  assert.equal(e.ouvert, false, 'mais on ne descend pas');
+  assert.equal(e.feeEnMain, true, 'parce qu\'on a déjà une fée au bras');
+
+  // La même fée rangée dans son bocal : la porte se rouvre.
+  portee.$pos = 0;
+  e = bassin(neuve({ $pond: { $fs: graine(3) }, $faerie: [portee], $current: null }));
+  assert.equal(e.ouvert, true, 'la fée au bocal, on replonge');
+});
+
+test('le refus du bassin est celui du SWF, mot pour mot', () => {
+  // mcEnterError (#1031) est un clip à trois images, et `initElementButError`
+  // en montre la `id+1`. Les textes sont des DefineText : il a fallu décoder
+  // les glyphes contre la table de codes de la police pour les relire.
+  const html = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(html, /Vous avez besoin d\\?'une clé pour entrer dans donjon !!!/);
+  assert.match(html, /Vous ne pouvez pas plonger dans le bassin avec une fée en liberté !/);
+  assert.match(html, /Ornegon la grenouille ne peut communiquer qu\\?'avec les fées !/);
+  // Et le bassin distingue ses deux refus : la lueur absente n'est pas la fée
+  // au bras.
+  assert.match(html, /if \(etat\.feeEnMain\) \{ menu\.dire\(REFUS\[1\]\); return; \}/);
+});
+
+// ── « les boules de feu n'avaient pas de skin » ───────────────────────────
+//
+// sp/el/FireBall a `link = "fireball"`, et sp.Element.init fait
+// `dm.attach(link)`. Le portage n'avait aucun cas pour cet élément dans
+// `poserBrut` : il tombait sur `default: break` et ne dessinait rien. La boule
+// existait — elle occupait sa case et partait bien en projectile —, mais on
+// voyait un trou au centre de la croix.
+
+test('la boule de feu du bassin a son dessin', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /case E\.E\.BOULE:/, 'poserBrut connaît la boule');
+  assert.match(src, /rendre\(s\.fireball, f, TS/, 'et il pose le clip `fireball`');
+
+  // Le clip est bien dans le manifeste, avec ses dix-sept images.
+  const man = JSON.parse(fs.readFileSync(
+    path.join(ROOT, 'public/minipixiz/sprites/sprites.json'), 'utf8'));
+  assert.ok(man.fireball, 'le clip `fireball` est extrait');
+  assert.equal(man.fireball.etats.length, 17, 'la flamme enfle et retombe en dix-sept images');
+
+  // Et la croix du bassin en pose bien une, au centre. Le compteur repart de
+  // zéro : la réserve du jeu a déjà consommé les premières pièces à la
+  // construction.
+  const B = require('../public/minipixiz/bassin.js');
+  const carte = Object.assign(P.carteNeuve(1700000000000), {
+    $pond: { $fs: F.genererGraine(tirage(3)), $q: 0 },
+  });
+  const b = new B.Bassin({ carte, graine: 7 });
+  b.bouleTimer = 0;
+  const croix = b.fabriquePiece(b.jeu);
+  assert.equal(croix.length, 9, 'trois sur trois');
+  const centre = croix.find((o) => o.x === 0 && o.y === 0);
+  assert.equal(centre.e.et, E.E.BOULE, 'une boule de feu au milieu');
+  assert.equal(croix.filter((o) => o.e.et === E.E.JETON).length, 8, 'huit billes blindées autour');
+});
+
+test('l\'horloge du clip tourne même quand le plateau ne joue pas', () => {
+  // Sous Flash un clip attaché déroule sa timeline au rythme du FILM : la
+  // flamme pulse pendant les chutes et les cassures comme pendant le jeu.
+  // `mainTimer` ne compte que les images passées à jouer — il fige la flamme
+  // dès qu'une cascade démarre. D'où la seconde horloge.
+  const B = require('../public/minipixiz/bassin.js');
+  const carte = Object.assign(P.carteNeuve(1700000000000), {
+    $pond: { $fs: F.genererGraine(tirage(3)), $q: 0 },
+  });
+  const jeu = new B.Bassin({ carte, graine: 7 }).jeu;
+  jeu.step = E.ETAPE.CHUTE;
+  const mAvant = jeu.mainTimer, hAvant = jeu.horloge;
+  jeu.update(1);
+  assert.equal(jeu.mainTimer, mAvant, 'une image de CHUTE ne compte pas dans mainTimer');
+  assert.equal(jeu.horloge, hAvant + 1, 'mais elle compte dans l\'horloge du film');
+  jeu.update(1); jeu.update(1);
+  assert.equal(jeu.horloge, hAvant + 3, 'qui ne s\'arrête jamais');
+
+  // Et chaque boule retient l'instant de son attache : deux boules posées à
+  // deux moments ne pulsent pas ensemble.
+  const a = new E.Boule(jeu, {});
+  jeu.update(5);
+  const b2 = new E.Boule(jeu, {});
+  assert.ok(b2.ne > a.ne, 'la seconde boule est née plus tard');
+});
+
+test('le bassin bleuit tout le plateau, comme Base.elementColor', () => {
+  // `elementColor = {prc:16, col:0x0000FF}` dans le constructeur de Fountain,
+  // posé par sp.Element.updateSkin sur chaque élément. C'est la seule teinte de
+  // mode du jeu, et c'est elle qui met les billes SOUS l'eau.
+  const B = require('../public/minipixiz/bassin.js');
+  assert.deepEqual(B.TEINTE, { prc: 16, couleur: 0x0000FF });
+  const carte = Object.assign(P.carteNeuve(1700000000000), {
+    $pond: { $fs: F.genererGraine(tirage(3)), $q: 0 },
+  });
+  assert.deepEqual(new B.Bassin({ carte, graine: 7 }).teinteElements, B.TEINTE);
+
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /this\.bassin && this\.bassin\.teinteElements/);
+  // Un « sinon » : la destruction REMPLACE la transformation du clip
+  // (`new Color(e.skin).setTransform`), elle ne s'y ajoute pas.
+  assert.match(src, /\} else if \(this\.bassin && this\.bassin\.teinteElements\) \{/);
+});

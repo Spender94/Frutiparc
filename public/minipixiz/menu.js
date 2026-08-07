@@ -42,6 +42,10 @@
 
 const SCENE = 240;
 
+// Sous Node (les tests), les modules s'exportent par `module.exports` ; dans le
+// navigateur ils se posent sur `window`. On prend ce qui existe.
+const enNode = () => (typeof module !== 'undefined' && !!module.exports);
+
 /**
  * Couper une phrase aux espaces pour qu'aucune ligne ne dépasse `large`.
  *
@@ -249,11 +253,8 @@ class Menu {
   poserFee(fs) {
     this.fee = null;
     this.champ = null;
-    // Sous Node (les tests), les modules s'exportent par `module.exports` ;
-    // dans le navigateur ils se posent sur `window`. On prend ce qui existe.
-    const enNode = (typeof module !== 'undefined' && module.exports);
-    const F = enNode ? require('./faerie.js') : racine.MinipixizFee;
-    const Co = enNode ? require('./combat.js') : racine.MinipixizCombat;
+    const F = enNode() ? require('./faerie.js') : racine.MinipixizFee;
+    const Co = enNode() ? require('./combat.js') : racine.MinipixizCombat;
     if (!fs || !F || !Co) return;
     // La clairière n'a pas de plateau : on lui prête le strict nécessaire —
     // une scène de 240, un hasard, et l'assurance qu'aucun bord ne compte.
@@ -340,9 +341,25 @@ class Menu {
           ouvert: nombre(c.$key) > 0 };
       }
       case 'fountain': {
+        /*
+         * Menu.initElements — le bassin est le seul lieu à DEUX conditions :
+         *
+         *     if( $pond.$fs != null ){
+         *         if( $current == null ) → on descend, image 2
+         *         else                   → mcEnterError, image 2
+         *     }else → useHandCursor = false : rien ne se passe
+         *
+         * Le portage n'avait gardé que la première. On pouvait donc plonger
+         * avec sa fée au bras — et la fée gagnée au fond devenait `$current`
+         * en écrasant celle qu'on portait. C'est pour ça que la seconde
+         * existe, et le panneau du SWF le dit mot pour mot : « Vous ne pouvez
+         * pas plonger dans le bassin avec une fée en liberté ! »
+         */
+        const P = enNode() ? require('./plateforme.js') : racine.MinipixizPlateforme;
         const p = c.$pond || {};
-        const pret = p.$fs !== null && p.$fs !== undefined;
-        return { visible: true, frame: pret ? 2 : 1, ouvert: pret };
+        const lueur = p.$fs !== null && p.$fs !== undefined;
+        const enMain = P ? !!P.feeEnMain(c) : (c.$current !== null && c.$current !== undefined);
+        return { visible: true, frame: lueur ? 2 : 1, ouvert: lueur && !enMain, feeEnMain: enMain };
       }
       case 'frog':
         return { visible: !!c.$frog, frame: 1 };

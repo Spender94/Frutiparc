@@ -313,6 +313,11 @@ class Boule extends Element {
   constructor(jeu, o) {
     super(jeu, o);
     this.et = E.BOULE;
+    // L'instant de l'attache. Le clip `fireball` compte dix-sept images —
+    // la flamme qui enfle et retombe — et il BOUCLE. Deux boules posées à
+    // deux moments ne pulsent donc pas ensemble, et c'est ce décalage qu'on
+    // retient ici.
+    this.ne = (jeu && jeu.horloge) || 0;
   }
   souffler() {
     this.jeu.evenement('bouleDeFeu', { x: this.px, y: this.py, e: this });
@@ -672,6 +677,12 @@ class Jeu {
     this.actifRelance = false;
     this.pieces = 0;                 // pieceTimer : le nombre de pièces posées
     this.mainTimer = 0;              // Game.mainTimer : les images passées À JOUER
+    // Et l'autre horloge, celle de Flash : sous le lecteur, un clip attaché
+    // DÉROULE sa timeline au rythme du film, que la partie soit en train de
+    // jouer, de faire tomber ou de casser. `mainTimer` ne convient donc pas
+    // pour animer un clip — il s'arrête dès que le plateau s'occupe. Celle-ci
+    // ne s'arrête jamais.
+    this.horloge = 0;
     // Game.nextLimit — la forêt en montre dix, le bassin une seule.
     this.nextLimit = o.reserve || RESERVE;
     // base/*.newPieceList : un mode peut IMPOSER la composition d'une pièce.
@@ -1000,6 +1011,7 @@ class Jeu {
   update(tmod) {
     if (this.termine) return;
     if (tmod === undefined) tmod = 1;
+    this.horloge += tmod;
     // Tout ce qui vole avance AVANT le puzzle, quelle que soit l'étape : c'est
     // ce qui fait que la fée continue de voler pendant une cascade.
     if (this.champ) this.champ.update(tmod);

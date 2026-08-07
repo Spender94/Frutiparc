@@ -265,6 +265,41 @@ function fiche(carte) {
 }
 
 /**
+ * Cm.getCurrentFaerie — la fée que le joueur EMMÈNE, `$faerie[$current]`.
+ *
+ * C'est la notion que le jeu appelle « une fée en liberté » : sortie de son
+ * bocal, elle suit le joueur partout. Trois écrans en dépendent — la forêt
+ * (Aventure.initFaerie), Ornegon (Menu : « ne peut communiquer qu'avec les
+ * fées ») et le bassin (« on ne plonge pas avec une fée en liberté »). Ils
+ * doivent tous lire la MÊME chose, sans quoi l'un s'ouvre quand l'autre se
+ * ferme.
+ *
+ * Une fée EN MISSION ou EN BOCAL ne compte pas : son bocal montre l'icône de
+ * mission et refuse de s'ouvrir (inv/Slot.mt), et entrer en bocal retire la
+ * main ($current = null).
+ *
+ * Le repli sur la première fée libre ne sert qu'aux fiches d'AVANT `$current` :
+ * sans lui, ces comptes-là partiraient sans fée alors qu'ils en ont une. Il ne
+ * se déclenche donc que si RIEN dans la fiche ne dit que le joueur a
+ * délibérément les mains vides — c'est-à-dire tant qu'aucune fée ne dort en
+ * bocal.
+ *
+ * @returns {object|null} la GRAINE de la fée portée, ou null
+ */
+function feeEnMain(carte) {
+  const l = (carte && carte.$faerie) || [];
+  const i = carte && carte.$current;
+  const enMission = (fs) => fs.$mission !== null && fs.$mission !== undefined;
+  const enBocal = (fs) => fs.$pos !== null && fs.$pos !== undefined;
+  let fs = (i !== null && i !== undefined && l[i]) ? l[i] : null;
+  if (fs && (enMission(fs) || enBocal(fs))) fs = null;
+  if (!fs && !l.some((f) => f && enBocal(f))) {
+    for (const f of l) if (f && !enMission(f)) { fs = f; break; }
+  }
+  return fs || null;
+}
+
+/**
  * Ramasser un objet, exactement comme Base.grab(type).
  *
  * Trois choses arrivent, dans cet ordre, et il ne faut en oublier aucune :
@@ -539,7 +574,7 @@ class Plateforme {
 }
 
 const API = {
-  Plateforme, carteNeuve, reparer, fusionner, ramasser, fiche, lireLoadVars,
+  Plateforme, carteNeuve, reparer, fusionner, ramasser, fiche, lireLoadVars, feeEnMain,
   normaliserPref, PREF_DEFAUT,
   nouveauxPictos, porteUneProgression, finDeCourse,
   VERSION, NB_ZONES, PAS_CHECKPOINT, PLACES_SAC, RELAIS,

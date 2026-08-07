@@ -348,6 +348,23 @@
   // datées du jour de la fiche. L'enveloppe clignote tant qu'on ne l'a pas lu.
   var courrier = { flView: true, ouvert: false, list: [] };
 
+  /*
+   * Menu.setError — les trois refus de la clairière.
+   *
+   * Ce ne sont pas des phrases à moi : `mcEnterError` (#1031) est un clip à
+   * trois images, et `initElementButError(mc, id)` en montre la `id+1`. Le
+   * texte est un DefineText, donc invisible à un grep — il a fallu décoder les
+   * glyphes contre la table de codes de la police pour les relire. Les voici
+   * tels quels, ponctuation comprise :
+   *
+   *     #1028 → 0 : le donjon      #1029 → 1 : le bassin      #1030 → 2 : Ornegon
+   */
+  var REFUS = [
+    'Vous avez besoin d\'une clé pour entrer dans donjon !!!',
+    'Vous ne pouvez pas plonger dans le bassin avec une fée en liberté !',
+    'Ornegon la grenouille ne peut communiquer qu\'avec les fées !',
+  ];
+
   // Le voyant « en partie » — la même icône que le bureau pose à côté du
   // pseudo. On prévient au départ d'une partie, on éteint au retour à la
   // clairière ; la fermeture de l'onglet éteint par sendBeacon, et la
@@ -402,35 +419,11 @@
     });
   }
 
-  // Cm.getCurrentFaerie : la fée que le joueur emmène — $faerie[$current], et
-  // RIEN d'autre. Le jeu d'origine n'a pas de repli : `$current` à null veut
-  // dire que le joueur part seul, et c'est un état normal (il vient de ranger
-  // sa fée dans son bocal, elle est en mission, elle est partie).
-  //
-  // Une fée EN MISSION est ailleurs : son bocal montre l'icône de mission
-  // (it/Flask.updatePic) et refuse de s'ouvrir (inv/Slot.mt). Dans le SWF cet
-  // état la rend inatteignable — pour partir il faut être en bocal, et entrer
-  // en bocal retire la main ($current). On refait la même exclusion ici.
-  //
-  // Le repli sur la première fée libre ne subsiste que pour les fiches d'AVANT
-  // `$current` : sans lui, ces comptes-là ouvriraient le jeu sans fée alors
-  // qu'ils en ont une. Il ne se déclenche donc que si RIEN dans la fiche ne dit
-  // que le joueur a délibérément les mains vides — c'est-à-dire tant qu'aucune
-  // fée ne dort en bocal. Le prendre plus large, c'était emmener en forêt une
-  // ancienne fée à la place de celle qu'on venait de gagner au bassin.
+  // Cm.getCurrentFaerie : la fée que le joueur emmène. La règle vit dans
+  // `plateforme.feeEnMain` — la forêt, Ornegon et le bassin doivent tous lire
+  // la MÊME chose, et le bassin l'a appris à ses dépens.
   function feeCouranteSeed() {
-    var l = plateforme.carte.$faerie || [];
-    var i = plateforme.carte.$current;
-    var enMission = function (fs) { return fs.$mission !== null && fs.$mission !== undefined; };
-    var enBocal = function (fs) { return fs.$pos !== null && fs.$pos !== undefined; };
-    var fs = (i !== null && i !== undefined && l[i]) ? l[i] : null;
-    if (fs && (enMission(fs) || enBocal(fs))) fs = null;
-    if (!fs && !l.some(function (f) { return f && enBocal(f); })) {
-      for (var k = 0; k < l.length; k++) {
-        if (l[k] && !enMission(l[k])) { fs = l[k]; break; }
-      }
-    }
-    return fs || null;
+    return P.feeEnMain(plateforme.carte);
   }
   /**
    * La phrase à dire quand la fée choisie ne peut pas suivre — ou rien du tout
@@ -733,7 +726,7 @@
           if (lieu.va === 'inventaire') { ouvrirSac(); return; }
           if (lieu.va === 'dungeon') {
             if (!etat.ouvert) {
-              menu.dire('Il vous faut une clé pour entrer dans le donjon.');
+              menu.dire(REFUS[0]);
               return;
             }
             fermerMenu(); ouvrirLieu('Donjon'); irisVersJeu(); return;
@@ -751,7 +744,7 @@
             // Frog.mt : Ornegon veut la fée du moment, pour lui demander ses
             // sorts préférés.
             var fi = feeCourante();
-            if (!fi) { menu.dire('Ornegon n\'a personne à qui parler.'); return; }
+            if (!fi) { menu.dire(REFUS[2]); return; }
             fermerMenu();
             client.ouvrirOrnegon({
               fee: fi,
@@ -764,6 +757,10 @@
             return;
           }
           if (lieu.va === 'fountain') {
+            // Deux refus différents, et il ne faut pas les confondre : le
+            // bassin éteint n'a rien à donner ; le bassin allumé refuse le
+            // joueur qui a déjà sa fée au bras.
+            if (etat.feeEnMain) { menu.dire(REFUS[1]); return; }
             if (!etat.ouvert) {
               menu.dire('Le bassin est calme. Aucune lueur au fond.');
               return;

@@ -46,6 +46,11 @@ const CADENCE_BOULE = 10;             // fireBallTimer : une croix toutes les on
 const VIE_BULLE = 5;                  // Bubble : 5 + $q×3 coups à encaisser
 const DEGATS_BOULE = 80;              // onFireBall : la boule frappe fort, mais la
                                       // bulle ne compte que les coups, pas les dégâts
+// Base.elementColor — `{prc:16, col:0x0000FF}` dans le constructeur de Fountain.
+// sp.Element.updateSkin le pose sur chaque élément à sa naissance : au bassin,
+// TOUT le plateau est bleui de seize pour cent. C'est la seule fois du jeu
+// qu'une teinte de mode existe, et c'est elle qui met les billes SOUS l'eau.
+const TEINTE = { prc: 16, couleur: 0x0000FF };
 
 const nombre = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const borner = (a, v, b) => Math.min(Math.max(a, v), b);
@@ -138,6 +143,7 @@ class Bassin {
     this.fini = false;
     this.gagne = false;
     this.bouleTimer = 0;              // fireBallTimer : la première pièce est une croix
+    this.teinteElements = TEINTE;     // Base.elementColor, lu par le client
 
     this.jeu = new E.Jeu({
       graine: opts.graine === undefined ? 1 : opts.graine,
@@ -383,7 +389,7 @@ class Bassin {
 }
 
 const API = {
-  Bassin, Bulle, COTE, VITESSE, RESERVE, CADENCE_BOULE, VIE_BULLE, DEGATS_BOULE,
+  Bassin, Bulle, COTE, VITESSE, RESERVE, CADENCE_BOULE, VIE_BULLE, DEGATS_BOULE, TEINTE,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
