@@ -710,6 +710,31 @@
                 return true;
             };
 
+            // Ouvrir une fenêtre pendant qu'une touche est ENFONCÉE lui vole le
+            // `keyup` : il part au popup, jamais au lecteur. Ruffle garde donc
+            // la touche pour enfoncée, et le champ de saisie du chat croit
+            // qu'Entrée est tenue — la frappe suivante renvoie le message. D'où
+            // « chaque message part à la deuxième lettre ».
+            //
+            // On relâche donc à la main ce que le navigateur a avalé, et on
+            // rend le clavier au lecteur.
+            function rendreLeClavier() {
+                const player = document.querySelector("#player-container ruffle-player, #player-container > *");
+                for (const cible of [player, document, window]) {
+                    if (!cible || !cible.dispatchEvent) continue;
+                    for (const k of [
+                        { key: "Enter", code: "Enter", keyCode: 13 },
+                        { key: " ", code: "Space", keyCode: 32 },
+                    ]) {
+                        try {
+                            cible.dispatchEvent(new KeyboardEvent("keyup", Object.assign(
+                                { bubbles: true, cancelable: true, composed: true }, k)));
+                        } catch (e) { /* le navigateur n'en veut pas : tant pis */ }
+                    }
+                }
+                try { if (player && player.focus) player.focus(); } catch (e) {}
+            }
+
             window.fp_openHisto = function (sid, group) {
                 // « … voir les messages précédents … » (box.Chat.onIamMode) et
                 // la commande /logs : le SWF appelle fp_openHisto(sid, salon)
@@ -717,6 +742,7 @@
                 const qs = `sid=${encodeURIComponent(String(sid || ""))}&g=${encodeURIComponent(String(group || ""))}`;
                 window.open(`/api/chat/histo?${qs}`, "fp_histo",
                     "width=680,height=720,resizable=yes,scrollbars=yes");
+                setTimeout(rendreLeClavier, 0);
                 return true;
             };
 
@@ -724,6 +750,8 @@
                 const rewritten = rewriteLegacyUrl(url);
                 window.__dlog("[FP] fp_openPopup", url, "->", rewritten);
                 window.open(rewritten, title || "frutiparc_popup", features || "width=700,height=500,resizable=yes,scrollbars=yes");
+                // Même piège que pour les logs : le popup emporte le `keyup`.
+                setTimeout(rendreLeClavier, 0);
                 return true;
             };
 

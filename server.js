@@ -9326,6 +9326,7 @@ app.get('/api/admin/kikooz-gifts', adminScope('dons'), async (req, res) => {
   if (q.giver) filtres.giver = String(q.giver).trim();
   if (q.recipient) filtres.recipient = String(q.recipient).trim();
   if (q.role) filtres.role = String(q.role).trim();
+  if (q.source) filtres.source = String(q.source).trim();
   if (q.week) filtres.weekKey = String(q.week).trim();
   if (q.days) {
     const j = Math.max(1, Math.min(Number(q.days) || 30, 365));
@@ -11821,19 +11822,12 @@ app.all('/do/give', (req, res) => {
     return res.type('text/xml').send('<r k="4" />');
   }
 
-  // Le plafond hebdomadaire des animateurs était LU (par /meskikooz) mais
-  // jamais DÉBITÉ : le compteur annonçait 2000 restants à perpétuité et rien
-  // n'arrêtait la distribution. On le décompte pour de bon.
-  //
-  // Le refus part en k="4" — « pas assez de kikooz » — parce que c'est le code
-  // que le bureau sait déjà traduire ; l'attribut q="1", qu'il ignore, permet
-  // au client Light de dire la vraie raison : l'enveloppe de la semaine, pas
-  // le solde du compte.
+  // ICI, le donateur puise dans SON compte — c'est /donne, /kikooz, /give, la
+  // commande de tout le monde. L'enveloppe hebdomadaire des animateurs ne la
+  // regarde pas : elle appartient à /don, qui CRÉE des kikooz sans toucher au
+  // compte de celui qui les offre. Les avoir confondues débitait deux fois un
+  // animateur qui offrait son propre argent — sa boutique ET sa banque.
   const donneurAnim = isAnimator(username), donneurModo = isModerator(username);
-  const plafonne = donneurAnim && !donneurModo;
-  if (plafonne && animatorKikoozLeft(username) < amount) {
-    return res.type('text/xml').send(`<r k="4" q="1" a="${animatorKikoozLeft(username)}" />`);
-  }
 
   user.kikooz -= amount;
   target.kikooz = (typeof target.kikooz === 'number' ? target.kikooz : 0) + amount;
@@ -11857,20 +11851,14 @@ app.all('/do/give', (req, res) => {
   notifyKikoozUpdate(username, user.kikooz);
   notifyKikoozUpdate(targetName, target.kikooz);
 
-  if (plafonne) {
-    getAnimatorWeekRecord(username).given += amount;
-    saveAnimatorKikooz();
-  }
-
   // Le registre des dons. Le destinataire gardait sa ligne dans `kikoozLog` —
-  // mais rien, nulle part, ne disait ce qu'un animateur avait distribué. C'est
-  // l'historique que l'équipe réclamait ; il vit en base, donc il survit au
-  // redémarrage, et /api/admin/kikooz-gifts le relit.
+  // mais rien, nulle part, ne disait qui avait donné quoi. Marqué 'personnel' :
+  // c'est l'argent du donateur, pas l'enveloppe de l'équipe.
   const roleDon = donneurModo ? 'moderateur' : (donneurAnim ? 'animateur' : 'joueur');
   if (process.env.DATABASE_URL) {
     db.addKikoozGift({
       giver: username, recipient: targetName, amount, reason,
-      giverRole: roleDon, weekKey: parisWeekKey(),
+      giverRole: roleDon, source: 'personnel', weekKey: parisWeekKey(),
     }).catch((e) => console.error('[DB] kikooz gift log error:', e.message));
   }
 
@@ -19664,6 +19652,16 @@ case 'send': {
       notifyKikoozUpdate(targetName, target.kikooz);
       addAndNotifyUserLog(targetName, { type: USER_LOG_TYPE.CHAT, content: `${getDisplayName(client.username)} t'a offert ${amount} kikooz !` });
       npcSay(client.username, g, `offre ${amount} kikooz à ${getDisplayName(targetName)} !`, 'c');
+      // C'EST CE DON-LÀ que l'équipe voulait relire : celui qui puise dans
+      // l'enveloppe. Il n'était nulle part — seul /donne, l'argent personnel,
+      // remontait à l'admin, ce qui donnait un registre exactement à l'envers.
+      if (process.env.DATABASE_URL) {
+        db.addKikoozGift({
+          giver: client.username, recipient: targetName, amount, reason: '',
+          giverRole: isMod ? 'moderateur' : 'animateur',
+          source: 'enveloppe', weekKey: parisWeekKey(),
+        }).catch((e) => console.error('[DB] kikooz gift log error:', e.message));
+      }
       console.log(`[DON] ${client.username} → ${targetName}: ${amount} kikooz (mod=${isMod})`);
       break;
     }

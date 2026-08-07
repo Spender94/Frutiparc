@@ -3899,14 +3899,9 @@
       .then(function (r) { return r.text(); })
       .then(function (xml) {
         var code = attr(xml, "k");
-        // q="1" : ce n'est pas le solde du compte qui manque, c'est l'enveloppe
-        // hebdomadaire de l'animateur. Le bureau ne connaît que k="4" et dira
-        // « pas assez de kikooz » ; ici on dit la vraie raison.
-        if (code === "4" && attr(xml, "q") === "1") {
-          systemLine("Don refusé : il ne te reste que " + (attr(xml, "a") || "0")
-            + " kikooz distribuables cette semaine.");
-          return;
-        }
+        // /donne puise dans le compte du joueur, jamais dans l'enveloppe
+        // hebdomadaire des animateurs — celle-ci appartient à /don. Le refus
+        // « plus d'enveloppe » n'a donc plus lieu d'être ici.
         if (code !== "0") { systemLine(REFUS_DON[code] || "Le don n'a pas abouti."); return; }
         var solde = Number(attr(xml, "a"));
         var recu = xmlUnescape(attr(xml, "u")) || cible;   // pseudo tel que le serveur l'orthographie

@@ -171,19 +171,18 @@ test('les dons de kikooz laissent une trace, et l\'enveloppe hebdomadaire se vid
   assert.match(await quota(sidAnim), /a="2000"/, 'l\'enveloppe part pleine');
 
   assert.match(await donner(sidAnim, 300, 'bonne réponse au quiz'), /k="0"/, 'le don passe');
-  // C'est LE défaut : `animatorKikoozLeft` était lu par /meskikooz mais rien ne
-  // créditait jamais `given`. Le compteur annonçait 2000 à perpétuité.
-  assert.match(await quota(sidAnim), /a="1700"/, 'et l\'enveloppe est débitée');
-
-  // Le refus part en k="4" (le seul code que le bureau sait traduire) avec
-  // q="1", que le client Light lit pour dire la vraie raison.
-  const trop = await donner(sidAnim, 1800, 'au-delà');
-  assert.match(trop, /k="4"/);
-  assert.match(trop, /q="1"/, 'le refus distingue l\'enveloppe du solde');
-  assert.match(await quota(sidAnim), /a="1700"/, 'un refus ne débite rien');
+  // /donne puise dans le COMPTE du donateur. L'enveloppe hebdomadaire, elle,
+  // appartient à /don — qui crée des kikooz sans toucher au compte. Les avoir
+  // confondues débitait deux fois l'animateur qui offrait son propre argent.
+  assert.match(await quota(sidAnim), /a="2000"/,
+    'et l\'enveloppe n\'a pas bougé : ce n\'était pas son argent à elle');
 
   assert.match(await donner(sidModo, 5000, 'sans plafond'), /k="0"/,
-    'le modérateur n\'est pas plafonné');
+    'le modérateur donne aussi du sien');
+
+  // L'écriture au registre part sans qu'on l'attende (le don ne doit pas
+  // dépendre de la base) : on laisse la ligne se poser avant de relire.
+  await wait(500);
 
   // Le registre.
   const reg = await admin('/api/admin/kikooz-gifts?limit=50');
@@ -198,10 +197,12 @@ test('les dons de kikooz laissent une trace, et l\'enveloppe hebdomadaire se vid
   assert.equal(dModo.length, 1);
   assert.equal(dModo[0].giver_role, 'moderateur');
 
-  // L'enveloppe de la semaine, telle que l'admin la montre.
+  assert.equal(dAnim[0].source, 'personnel', 'et sa provenance : son compte');
+
+  // L'enveloppe reste pleine : aucun /don n'a été passé.
   const env = reg.quotas.find((q) => q.username.toLowerCase() === ANIM);
   assert.deepEqual({ given: env.given, left: env.left, max: env.max },
-    { given: 300, left: 1700, max: 2000 });
+    { given: 0, left: 2000, max: 2000 });
 
   // Les filtres.
   const parRole = await admin('/api/admin/kikooz-gifts?role=animateur');
@@ -210,6 +211,46 @@ test('les dons de kikooz laissent une trace, et l\'enveloppe hebdomadaire se vid
   assert.equal(parCible.gifts.length, 2, 'filtre par destinataire');
   const parDonneur = await admin(`/api/admin/kikooz-gifts?giver=${MODO}`);
   assert.equal(parDonneur.gifts.length, 1, 'filtre par donateur');
+  const parSource = await admin('/api/admin/kikooz-gifts?source=personnel');
+  assert.equal(parSource.gifts.length, 2, 'filtre par provenance');
+});
+
+// ── /don : le don qui puise dans l'enveloppe ──────────────────────────────
+//
+// C'est CELUI-LÀ que l'équipe voulait relire, et il n'était nulle part : seul
+// /donne — l'argent personnel — remontait à l'admin. Le registre était donc
+// exactement à l'envers de ce qu'on en attendait.
+
+test('/don débite l\'enveloppe, s\'inscrit au registre, et ne touche pas le compte', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+
+  const DONN = 'animenv';
+  const sidAnim = await inscrire(DONN);
+  await donnerRole(DONN, { is_animator: true, kikooz: 777 });
+  await inscrire(CIBLE);
+  const anim = await client(DONN, sidAnim);
+  const cible = await client(CIBLE, await inscrire(CIBLE));
+  try {
+    anim.envoyer('<o g="pomme" />');
+    cible.envoyer('<o g="pomme" />');
+    await cible.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'userlist');
+
+    anim.envoyer(`<t g="pomme" t="m" p="">/don ${CIBLE} 250</t>`);
+    await cible.attendre((x) => x.includes('250'), 'l\'annonce du don');
+    await wait(600);
+
+    const reg = await admin(`/api/admin/kikooz-gifts?giver=${DONN}`);
+    assert.equal(reg.gifts.length, 1, 'le /don est inscrit au registre');
+    assert.equal(reg.gifts[0].amount, 250);
+    assert.equal(reg.gifts[0].source, 'enveloppe', 'et marqué comme venant de l\'enveloppe');
+    assert.equal(reg.gifts[0].recipient, CIBLE);
+
+    // Le compte du donateur n'a pas bougé : /don CRÉE les kikooz.
+    const quota = await fetch(`${BASE}/do/give?sid=${sidAnim}`, { cache: 'no-store' }).then((x) => x.text());
+    assert.match(quota, /a="1750"/, 'l\'enveloppe est débitée de 250');
+    const env = (reg.quotas || []).find((q) => q.username.toLowerCase() === DONN);
+    assert.equal(env.given, 250, 'et l\'admin le montre');
+  } finally { anim.fermer(); cible.fermer(); }
 });
 
 // ── 3 & 4. Le classement, et /sujet ───────────────────────────────────────
@@ -559,9 +600,15 @@ test('l\'historique et l\'enveloppe vivent en base, pas en mémoire', async (t) 
   const sidAnim = await inscrire(PERS);
   await donnerRole(PERS, { is_animator: true, kikooz: 100000 });
   await inscrire(CIBLE);
-  await fetch(`${BASE}/do/give?sid=${sidAnim}&k=470&u=${CIBLE}`
-    + `&r=${encodeURIComponent('preuve de persistance')}`, { cache: 'no-store' });
-  await wait(500);
+  // Un don d'ENVELOPPE (/don) : c'est lui qui entame le quota, donc lui qui
+  // prouve que le quota se recompte depuis la base.
+  const pers = await client(PERS, sidAnim);
+  try {
+    pers.envoyer('<o g="pomme" />');
+    await wait(400);
+    pers.envoyer(`<t g="pomme" t="m" p="">/don ${CIBLE} 470</t>`);
+    await wait(800);
+  } finally { pers.fermer(); }
 
   // Un second serveur, sur la même base, qui ne sait rien du premier.
   const PORT2 = 3463;
@@ -588,10 +635,11 @@ test('l\'historique et l\'enveloppe vivent en base, pas en mémoire', async (t) 
 
     const vu = await (await fetch(BASE2 + '/api/admin/kikooz-gifts',
       { headers: { 'x-admin-key': CLE } })).json();
-    const don = (vu.gifts || []).find((g) => g.reason === 'preuve de persistance');
+    const don = (vu.gifts || []).find((g) => g.giver === PERS && g.amount === 470);
     assert.ok(don, 'le second serveur relit le don du premier');
     assert.equal(don.amount, 470);
     assert.equal(don.giver_role, 'animateur');
+    assert.equal(don.source, 'enveloppe');
 
     // L'enveloppe : recomptée depuis le registre, pas depuis un fichier.
     assert.match(journal, /Quota de dons repris pour \d+ donateur/,

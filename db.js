@@ -659,6 +659,12 @@ async function initSchema() {
       -- ni de savoir où était passé le quota hebdomadaire d'un animateur.
       -- week_key est la semaine parisienne du don (parisWeekKey) : c'est sur
       -- elle que se recompte l'enveloppe des 2000 kikooz.
+      -- La colonne source sépare les deux dons, qui n'ont rien à voir :
+      --   'enveloppe'  /don — l'animateur puise dans son quota hebdomadaire,
+      --                les kikooz sont CRÉÉS, son compte n'est pas touché ;
+      --   'personnel'  /donne, /kikooz, /give — il donne SON argent, et cela
+      --                ne regarde pas l'enveloppe.
+      -- Seuls les dons 'enveloppe' comptent dans le quota.
       CREATE TABLE IF NOT EXISTS kikooz_gifts (
         id          SERIAL PRIMARY KEY,
         giver       TEXT NOT NULL,
@@ -666,9 +672,11 @@ async function initSchema() {
         amount      INTEGER NOT NULL,
         reason      TEXT NOT NULL DEFAULT '',
         giver_role  TEXT NOT NULL DEFAULT '',
+        source      TEXT NOT NULL DEFAULT 'personnel',
         week_key    TEXT NOT NULL DEFAULT '',
         created_at  TIMESTAMPTZ DEFAULT now()
       );
+      ALTER TABLE kikooz_gifts ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'personnel';
       CREATE INDEX IF NOT EXISTS idx_kikooz_gifts_giver ON kikooz_gifts(giver, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_kikooz_gifts_date ON kikooz_gifts(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_kikooz_gifts_week ON kikooz_gifts(giver, week_key);
@@ -1408,10 +1416,10 @@ async function getModerationLogs(targetUsername, limit = 50) {
 
 async function addKikoozGift(gift) {
   await pool.query(
-    `INSERT INTO kikooz_gifts (giver, recipient, amount, reason, giver_role, week_key)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+    `INSERT INTO kikooz_gifts (giver, recipient, amount, reason, giver_role, source, week_key)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [gift.giver, gift.recipient, gift.amount, gift.reason || '',
-      gift.giverRole || '', gift.weekKey || '']
+      gift.giverRole || '', gift.source || 'personnel', gift.weekKey || '']
   );
 }
 
@@ -1427,11 +1435,12 @@ async function listKikoozGifts(f = {}, limit = 200) {
   if (f.giver) ajouter('LOWER(giver) = LOWER(?)', String(f.giver));
   if (f.recipient) ajouter('LOWER(recipient) = LOWER(?)', String(f.recipient));
   if (f.role) ajouter('giver_role = ?', String(f.role));
+  if (f.source) ajouter('source = ?', String(f.source));
   if (f.weekKey) ajouter('week_key = ?', String(f.weekKey));
   if (f.since) ajouter('created_at >= ?', f.since);
   args.push(Math.max(1, Math.min(Number(limit) || 200, 1000)));
   const { rows } = await pool.query(
-    `SELECT id, giver, recipient, amount, reason, giver_role, week_key, created_at
+    `SELECT id, giver, recipient, amount, reason, giver_role, source, week_key, created_at
      FROM kikooz_gifts
      ${cond.length ? 'WHERE ' + cond.join(' AND ') : ''}
      ORDER BY created_at DESC LIMIT $${args.length}`,
@@ -1446,7 +1455,7 @@ async function listKikoozGifts(f = {}, limit = 200) {
 async function sumKikoozGiftsForWeek(weekKey) {
   const { rows } = await pool.query(
     `SELECT giver, SUM(amount)::int AS total FROM kikooz_gifts
-     WHERE week_key = $1 GROUP BY giver`,
+     WHERE week_key = $1 AND source = 'enveloppe' GROUP BY giver`,
     [String(weekKey)]
   );
   const par = {};
