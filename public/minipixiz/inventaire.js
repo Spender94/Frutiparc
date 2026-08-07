@@ -916,7 +916,13 @@ class Inventaire {
     fs.$life = fee.fs.$life; fs.$mana = fee.fs.$mana;
     fs.$hunger = fee.fs.$hunger; fs.$moral = fee.fs.$moral;
 
-    this.main = null;
+    // Un aliment se donne en TROIS parts (it.taille). Reposer la main entre
+    // chaque obligeait à retourner chercher l'aliment dans le sac deux fois de
+    // plus pour finir la portion — trois allers-retours pour un seul repas. On
+    // garde donc en main ce qui reste du même aliment ; la case vidée relâche
+    // d'elle-même.
+    const reste = this.objetA(this.main.sac, this.main.case);
+    if (!reste || !reste.flUse) this.main = null;
     let msg;
     if (r.effet.genre === 'repas') {
       msg = fee.fs.$name + (r.effet.moral > 0 ? ' se régale !'

@@ -1371,3 +1371,77 @@ test('le panneau de santé dit par quoi la vie remonte', () => {
   inv.agir('vie');
   assert.ok(!/potion/.test(inv.message), 'pas de conseil quand tout va bien');
 });
+
+// ── « Rester sélectionné pour donner les 3 morceaux » ─────────────────────
+//
+// Un aliment se donne en trois parts (it.taille : 2, puis 1, puis 0). La main
+// se vidait après CHAQUE bouchée : il fallait retourner chercher le même pain
+// dans le sac deux fois de plus pour finir la portion. On garde donc en main
+// ce qui reste du même aliment, et la case vidée relâche d'elle-même.
+
+test('un aliment reste en main tant qu\'il en reste une part', () => {
+  const F2 = require('../public/minipixiz/faerie.js');
+  const carte = { $faerie: [], $current: 0, $inv: [300], $bag: 1, $mis: [], $help: [1, 1, 1] };
+  const g = F2.genererGraine(tirage(21));
+  g.$hunger = 2; g.$life = 2; g.$moral = 10; g.$mood = [];
+  carte.$faerie.push(g);
+
+  const inv = fauxInventaire(carte);
+  // it.Food.use : la part rétrécit d'un cran à chaque bouchée (300 → 301 →
+  // 302) et disparaît à la troisième.
+  const part = () => { const o = inv.objetA('joueur', 0); return o ? o.taille : null; };
+  assert.equal(part(), 0, 'un pain entier');
+
+  inv.main = { sac: 'joueur', case: 0 };
+  inv.agir('portrait');
+  assert.equal(part(), 1, 'une bouchée de moins');
+  assert.ok(inv.main, 'et le pain reste en main');
+
+  inv.agir('portrait');
+  assert.equal(part(), 2, 'la deuxième bouchée');
+  assert.ok(inv.main, 'toujours en main');
+
+  inv.agir('portrait');
+  assert.equal(inv.objetA('joueur', 0), null, 'le pain est fini');
+  assert.equal(inv.main, null, 'et la main se vide toute seule');
+});
+
+// ── La cadence : un pas par image, fractionnaire ──────────────────────────
+//
+// Le portage avançait par pas ENTIERS — quarante `update(1)` par seconde pris
+// sur les images du navigateur. Sur un écran de soixante hertz cela donne deux
+// tiers de pas par image, donc la cadence 1, 1, 0, 1, 1, 0 : le plateau saute
+// une image sur trois. C'est le « stutter » remonté, et c'est aussi ce qui
+// rendait le glissement gauche-droite nerveux (0,35 case, 0,35, puis rien)
+// quand la ROTATION, qui ne dépend pas du temps, paraissait inchangée.
+//
+// Flash fait UNE mise à jour par image rendue, avec un `Timer.tmod`
+// fractionnaire. On y revient.
+
+test('la boucle avance d\'un pas fractionnaire par image, comme Flash', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /this\.avancerDe = \(cible, tmodTotal\) =>/, 'la boucle a son avanceur');
+  // Plus de boucle à pas entiers.
+  assert.ok(!/while \(this\.reste >= 1 && pas < 6\)/.test(src),
+    'les pas entiers ont disparu');
+  assert.match(src, /pas = this\.avancerDe\(this\.jeu, this\.reste\)/,
+    'le jeu avance du temps écoulé, pas d\'un nombre de crans');
+  // Le pas reste borné : une image très longue ne doit pas traverser le décor.
+  assert.match(src, /const MAX = 1\.5;/, 'et un long réveil se découpe');
+});
+
+test('l\'aperçu des pièces suit le placement du fichier', () => {
+  // inter.Face.newPiece pose chaque bille à `ei.x × size` depuis un x FIXE (18)
+  // et centre l'élément dessus (`ei.e.x = -0.5 × size`). Le portage ramenait la
+  // pièce sur le coin de sa propre boîte (`o.x - xMin`) : les formes dont les
+  // coordonnées partent de -1 sortaient du masque — d'où l'aperçu rogné.
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /zx \+ \(o\.x - 0\.5\) \* NEXT_ZONE\.taille \* k/);
+  assert.match(src, /\(o\.y - 0\.5\) \* NEXT_ZONE\.taille \* k/);
+  assert.ok(!/zx \+ \(o\.x - xMin\)/.test(src), 'plus de recentrage sur la boîte');
+
+  // Et les formes du jeu ont bien des x négatifs : c'est ce qui débordait.
+  const jeu = new E.Jeu({ graine: 5, niveau: 3 });
+  const neg = jeu.nextList.some((l) => l.some((o) => o.x < 0));
+  assert.ok(neg, 'des pièces s\'étendent à gauche de leur ancre');
+});

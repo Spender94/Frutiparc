@@ -1338,6 +1338,38 @@ class Client {
   // jamais à moitié.
   demarrer() {
     if (this.raf) return;
+    /**
+     * Une image de jeu, avec le `tmod` FRACTIONNAIRE de l'original.
+     *
+     * Le portage avançait par pas ENTIERS : quarante `update(1)` par seconde,
+     * pris sur les images du navigateur. Sur un écran de soixante hertz cela
+     * donne deux tiers de pas par image — donc la cadence 1, 1, 0, 1, 1, 0. Le
+     * plateau saute une image sur trois : c'est le « stutter » remonté, et
+     * c'est aussi ce qui rendait le glissement gauche-droite si nerveux (0,35
+     * case, 0,35, puis rien) alors que la ROTATION, elle, ne dépend pas du
+     * temps et paraissait inchangée.
+     *
+     * Flash ne faisait pas ça : `Manager.update` tourne UNE fois par image
+     * rendue, et `Timer.tmod` vaut la fraction de temps écoulée. On revient à
+     * ce modèle. La vitesse moyenne ne change pas — c'est la régularité qui
+     * change, et c'est tout ce que le joueur ressent.
+     *
+     * Le pas reste borné : une image très longue (onglet réveillé) sauterait
+     * les collisions si on l'avalait d'un coup, donc on la découpe.
+     */
+    this.avancerDe = (cible, tmodTotal) => {
+      const MAX = 1.5;                 // au-delà, on découpe : rien ne traverse
+      let reste = Math.max(0, tmodTotal), fait = 0;
+      let garde = 0;
+      while (reste > 0.0001 && garde++ < 12) {
+        const pas = Math.min(reste, MAX);
+        cible.update(pas);
+        reste -= pas;
+        fait += pas;
+      }
+      return fait;
+    };
+
     const boucle = (t) => {
       this.raf = requestAnimationFrame(boucle);
       if (!this.dernier) { this.dernier = t; return; }
@@ -1368,9 +1400,9 @@ class Client {
         // (Aventure.initStep(1) ne lance le jeu qu'après).
         this.reste = 0;
       } else if (mode) {
-        while (this.reste >= 1 && pas < 6) { mode.update(1); this.reste -= 1; pas++; }
+        pas = this.avancerDe(mode, this.reste); this.reste = 0;
       } else if (this.jeu) {
-        while (this.reste >= 1 && pas < 6) { this.jeu.update(1); this.reste -= 1; pas++; }
+        pas = this.avancerDe(this.jeu, this.reste); this.reste = 0;
       } else {
         this.reste = 0;
       }
@@ -2316,13 +2348,18 @@ class Client {
       const liste = jeu.nextList[i];
       if (!liste) continue;
       const dy = ((i + 1) * ec - NEXT_ZONE.y) * k;
-      let xMin = 9, yMin = 9;
-      for (const o of liste) { xMin = Math.min(xMin, o.x); yMin = Math.min(yMin, o.y); }
+      // inter.Face.newPiece pose chaque bille à `ei.x × size` depuis un x FIXE
+      // (18), et centre l'élément sur ce point (`ei.e.x = -0.5 × size`). Le
+      // portage, lui, ramenait la pièce sur le coin de sa propre boîte
+      // (`o.x - xMin`) et oubliait le demi-décalage : les pièces sortaient donc
+      // décalées d'une demi-case vers la droite, et celles dont les coordonnées
+      // ne partent pas de zéro se retrouvaient hors du masque — d'où l'aperçu
+      // rogné sur le côté.
       for (const o of liste) {
         poserRendu(ctx, rendre(s.token, 1, NEXT_ZONE.taille * k, undefined,
           partiesJeton(E.COULEURS[o.e.type] || E.COULEURS[0])),
-        zx + (o.x - xMin) * NEXT_ZONE.taille * k,
-        zy + dy + (o.y - yMin) * NEXT_ZONE.taille * k);
+        zx + (o.x - 0.5) * NEXT_ZONE.taille * k,
+        zy + dy + (o.y - 0.5) * NEXT_ZONE.taille * k);
       }
     }
     ctx.restore();
