@@ -273,6 +273,9 @@ class Menu {
     fee.flBound = false;
     fee.x = SCENE * 0.5; fee.y = SCENE * 0.5;
     fee.trg = { x: fee.x, y: fee.y };
+    // Slot.initCursor : `cursor.showStatus()`, juste après la naissance. C'est
+    // ce qui pose la croix rouge au-dessus d'une fée à bout de forces.
+    fee.montrerStatut();
     this.champ = champ;
     this.fee = fee;
   }

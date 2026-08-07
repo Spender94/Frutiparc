@@ -199,6 +199,8 @@ test('la fée ne lance rien tant qu\'on ne l\'appelle pas', () => {
   const { jeu, f } = partie({ sorts: [20, 7] });
   f.verifierSort();
   assert.equal(jeu.saList.length, 0, 'sans appel, aucun sort');
+  // La touche d'aide n'est SONDÉE que pendant qu'on joue (Game.update, case 2).
+  jeu.step = E.ETAPE.JEU;
   jeu.appelerAide();
   assert.equal(jeu.flAide, true);
   f.verifierSort();
@@ -216,6 +218,7 @@ test('sans mana, l\'appel échoue', () => {
 
 test('initSorts rabaisse le drapeau : un appel, un sort', () => {
   const { jeu } = partie({ sorts: [20, 7] });
+  jeu.step = E.ETAPE.JEU;
   jeu.appelerAide();
   jeu.initSorts();
   assert.equal(jeu.flAide, false);
@@ -253,6 +256,7 @@ test('l\'intelligence resserre le choix vers le meilleur sort', () => {
       const { jeu, f } = partie({
         sorts, graine: 3 + n, carac: [4, 4, 4, intel, 4, 8],
       });
+      jeu.step = E.ETAPE.JEU;         // la touche d'aide ne s'entend qu'en jeu
       jeu.appelerAide();
       f.verifierSort();
       if (jeu.saList[0]) vus.add(jeu.saList[0].sid);

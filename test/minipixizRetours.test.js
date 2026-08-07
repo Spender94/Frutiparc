@@ -1585,3 +1585,237 @@ test('le bassin bleuit tout le plateau, comme Base.elementColor', () => {
   // (`new Color(e.skin).setTransform`), elle ne s'y ajoute pas.
   assert.match(src, /\} else if \(this\.bassin && this\.bassin\.teinteElements\) \{/);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Le lot du donjon — la capture d'un joueur, et six anomalies derrière
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── « L'élément de gauche masque les blocs » ──────────────────────────────
+//
+// Une forme qui n'est QU'UNE IMAGE n'est pas tracée : on recopie l'image. Mais
+// le SVG d'une image porte sa taille en pixels et son coin à zéro, alors que la
+// forme, elle, est posée où le SWF veut. Le montant du donjon (#342) est déclaré
+// de −14 à 242 ; substitué par son image, il se dessinait de 0 à 256 — quatorze
+// pixels trop à droite, assez pour recouvrir la première colonne de billes.
+
+test('les formes remplacées par leur image gardent le cadre du SWF', () => {
+  const man = JSON.parse(fs.readFileSync(
+    path.join(ROOT, 'public/minipixiz/sprites/sprites.json'), 'utf8'));
+  const piece = (cle, frame) => man[cle].etats.find((e) => e.frame === frame).pieces[0];
+
+  // Le montant du donjon : −14, −2 (et non 0, 0).
+  assert.deepEqual(piece('cadreDonjon', 2).vb, [-14, -2, 256, 245]);
+  // Son fond : −2,25 et la taille de la FORME (138×241), pas celle de l'image.
+  assert.deepEqual(piece('cadreDonjon', 3).vb, [-2.25, 0, 138, 241]);
+  // L'ascenseur tombait, lui, sur le repli 100 × 100 : `cadre()` lit un
+  // viewBox, et un PNG n'en a pas.
+  const roues = man.ascenseur.etats[0].pieces.filter((p) => /bitmap800/.test(p.fichier));
+  assert.equal(roues.length, 3, 'les trois poulies du treuil');
+  for (const r of roues) assert.deepEqual(r.vb, [-1, -1, 96, 102]);
+  // Et le panneau de défaite, une image JPEG, se dessinait au quart de sa taille.
+  assert.deepEqual(man.panPerdu.etats[0].pieces[0].vb, [0, 0, 240, 240]);
+});
+
+// ── Le disque brun sur le panneau de pierre ───────────────────────────────
+//
+// `dessinerEnteteLieu` décide de dessiner la roue de loterie de l'arc-en-ciel
+// sur la seule présence d'un champ `roue` dans l'état du lieu. Le donjon y
+// rendait la vitesse de son treuil : la grande roue en bois s'affichait
+// par-dessus le panneau de pierre.
+
+test('le donjon ne rend plus un champ « roue »', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/lieux.js'), 'utf8');
+  const donjon = src.slice(src.indexOf('class Donjon'), src.indexOf('class Arbre'));
+  assert.ok(!/^\s*roue:/m.test(donjon), 'le champ « roue » a quitté le donjon');
+  assert.match(donjon, /treuil: this\.wSpeed,/, 'il s\'appelle « treuil »');
+  // Et l'entête ne dessine le lot que sur un vrai champ `roue`.
+  const jeu = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(jeu, /if \(e\.roue === undefined \|\| !s\.roueLot\) return;/);
+});
+
+// ── « La partie s'arrête après le premier niveau du donjon » ──────────────
+//
+// base/Dungeon.setWin : `level+=1` puis `initStep(2)` — les dix étages
+// s'enchaînent sans repasser par la clairière, et seul le dixième ferme la
+// porte. Le portage rentrait au premier niveau vidé, et la clé était perdue
+// pour les neuf autres.
+
+test('le donjon enchaîne ses dix niveaux sans rentrer à la clairière', () => {
+  const carte = Object.assign(P.carteNeuve(1700000000000), {
+    $key: 1, $dungeon: { $lvl: 1, $f: true, $day: 0, $loop: 0 },
+  });
+  const graine = F.genererGraine(tirage(9));
+  carte.$faerie = [graine]; carte.$current = 0;
+  const X = require('../public/minipixiz/lieux.js');
+  const d = new X.Donjon({ carte, fee: graine, graine: 5 });
+
+  for (let n = 0; n < 9; n++) {
+    assert.equal(d.level, n, 'on est à l\'étage ' + n);
+    d.surFinDePartie({ gagne: true });
+    assert.equal(d.fini, false, 'l\'étage ' + n + ' vidé n\'arrête pas la partie');
+  }
+  assert.equal(d.level, 9, 'le dixième et dernier étage');
+  d.surFinDePartie({ gagne: true });
+  assert.equal(d.fini, true, 'celui-là ferme la porte');
+  assert.equal(d.gagne, true);
+
+  // Et la page ne rentre QUE sur un lieu fini.
+  const html = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
+  assert.match(html, /if \(info && info\.gagne && \(!lieu \|\| lieu\.fini\)\) \{/);
+});
+
+// ── « Level up : le nom du sort n'apparaît pas » ──────────────────────────
+//
+// initExpSlot lit le nom sur le SORT — `Spell.newSpell(n).getName()` — et sa
+// description en bulle (`Mc.makeHint`, 120 px). Le portage cherchait un champ
+// `nom` dans la table de TIRAGE, qui n'en porte pas : il retombait toujours sur
+// « un nouveau sort ».
+
+test('le panneau de montée de niveau nomme le sort et le décrit', () => {
+  const S = require('../public/minipixiz/sorts.js');
+  // La table de tirage ne porte AUCUN nom — c'est bien la classe qu'il faut.
+  assert.ok(S.TABLE.every((o) => o.nom === undefined), 'la table de tirage ne nomme rien');
+  const cloche = S.nouveauSort(12, null);
+  assert.equal(cloche.nom(), 'Cloche d\'immunité');
+  assert.match(cloche.description(), /bouclier d'énergie/);
+
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /const sort = S && S\.nouveauSort \? S\.nouveauSort\(n, null\) : null;/);
+  assert.ok(!/S\.TABLE\[n\]\.nom/.test(src), 'plus de lecture dans la table de tirage');
+  // Et le résumé des caractéristiques, tiré de Lang.caracResume.
+  assert.equal(F.RESUME_CARAC.length, 6);
+  assert.match(F.RESUME_CARAC[4], /voir les pièces en avance/);
+});
+
+// ── « L'input sort est gardé pendant l'animation » ────────────────────────
+//
+// `Key.isDown(Cm.pref.$key[4])` n'est SONDÉ que dans `case 2` de Game.update.
+// Pendant une chute, une cassure, et surtout pendant l'animation d'un sort
+// (étape 4), l'appui n'est ni pris ni mis en attente : il est PERDU.
+
+test('la touche de sort ne s\'entend que pendant qu\'on joue', () => {
+  const jeu = new E.Jeu({ graine: 5, niveau: 0 });
+  const alea = tirage(11);
+  const fsFee = F.genererGraine(alea);
+  fsFee.$mana = 8;
+  const champ = new C.Champ(jeu, { fee: new F.Fee(fsFee, alea, { $inv: [] }) });
+  assert.ok(champ.faerieList[0], 'la fée est en jeu');
+
+  jeu.step = E.ETAPE.JEU;
+  assert.equal(jeu.appelerAide(), true, 'en jeu, la fée entend');
+  jeu.flAide = false;
+
+  for (const etape of [E.ETAPE.CHUTE, E.ETAPE.DESTRUCTION, E.ETAPE.MAGIE]) {
+    jeu.step = etape;
+    assert.equal(jeu.appelerAide(), false, 'à l\'étape ' + etape + ', rien');
+    assert.equal(jeu.flAide, false, 'et rien n\'est mis en attente');
+  }
+});
+
+// ── « Le coffre ne tremble plus quand le combo ne l'ouvre pas » ───────────
+//
+// Element.quake : dix images, trois pixels de rayon, en s'estompant. Deux
+// endroits l'appellent — le coffre d'un démon qu'un combo n'ouvre pas (une fois
+// sur deux) et la pierre qu'un souffle entame sans casser.
+
+test('ce qui résiste tremble : le coffre et la pierre entamée', () => {
+  const jeu = new E.Jeu({ graine: 5, niveau: 0, grille: null });
+  const cellule = new E.Cellule(jeu, { px: 2, py: 5, level: 0 });
+  cellule.poser();
+  // On force la branche qui NE libère PAS l'impy.
+  const vraiHasard = jeu.hasard.bind(jeu);
+  jeu.hasard = (n) => (n === 2 ? 1 : vraiHasard(n));
+  cellule.souffler();
+  assert.equal(cellule.vivant, true, 'le coffre tient');
+  assert.equal(jeu.secousses.length, 1, 'et il tremble');
+
+  jeu.bougerSecousses(1);
+  assert.ok(cellule.decalX !== 0 || cellule.decalY !== 0, 'il bouge dans son rayon');
+  assert.ok(Math.hypot(cellule.decalX, cellule.decalY) <= 3.001, 'de trois pixels au plus');
+
+  // Dix images, puis il revient exactement à sa place.
+  for (let i = 0; i < 12; i++) jeu.bougerSecousses(1);
+  assert.equal(jeu.secousses.length, 0, 'la secousse est finie');
+  assert.equal(cellule.decalX, 0);
+  assert.equal(cellule.decalY, 0);
+
+  // Une pierre entamée tremble aussi ; une pierre cassée, non — elle n'est plus là.
+  const pierre = new E.Pierre(jeu, { px: 3, py: 5, life: 2 });
+  pierre.poser();
+  pierre.souffler();
+  assert.equal(pierre.vivant, true);
+  assert.equal(jeu.secousses.length, 1, 'la pierre entamée tremble');
+});
+
+// ── « Plus de croix rouge sur la fée blessée » ────────────────────────────
+//
+// Slot.initCursor appelle `cursor.showStatus()` : vie 0 → NEED_HEAL (la croix
+// rouge), moral 0 → NEED_MORAL, puis engourdie et malade. Le clip
+// `mcPeopleStatus` porte les quatorze images, et People.updateStatus retient
+// la DERNIÈRE vraie.
+
+test('la fée de la clairière porte son panonceau d\'état', () => {
+  const jeu = new E.Jeu({ graine: 5, niveau: 0 });
+  const alea = tirage(13);
+  const faire = (retouche) => {
+    const g = F.genererGraine(alea);
+    g.$mood = [];
+    retouche(g);
+    const champ = new C.Champ(jeu, {});
+    const fee = champ.naitreFee(new F.Fee(g, alea, { $inv: [] }));
+    return fee.montrerStatut();
+  };
+
+  let f = faire((g) => { g.$life = 0; });
+  assert.equal(f.statut[C.STATUT.SOIN], true, 'sans cœur : la croix rouge');
+
+  f = faire((g) => { g.$life = 3; g.$moral = 0; });
+  assert.equal(f.statut[C.STATUT.MORAL], true, 'sans moral : son panonceau');
+
+  f = faire((g) => { g.$life = 3; g.$moral = 8; g.$mood = [1]; });
+  assert.equal(f.statut[C.STATUT.ENGOURDIE], true, 'endormie');
+
+  f = faire((g) => { g.$life = 3; g.$moral = 8; g.$mood = [0, 1]; });
+  assert.equal(f.statut[C.STATUT.MALADE], true, 'malade');
+
+  f = faire((g) => { g.$life = 3; g.$moral = 8; });
+  assert.ok(!f.statut.some(Boolean), 'et rien du tout quand tout va bien');
+
+  // Le clip est extrait, avec ses quatorze images, et le client le pose.
+  const man = JSON.parse(fs.readFileSync(
+    path.join(ROOT, 'public/minipixiz/sprites/sprites.json'), 'utf8'));
+  assert.equal(man.mcPeopleStatus.etats.length, 14);
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /poserVif\(ctx, s\.mcPeopleStatus, image/);
+  // Et la clairière l'allume à la naissance, comme Slot.initCursor.
+  const menu = fs.readFileSync(path.join(ROOT, 'public/minipixiz/menu.js'), 'utf8');
+  assert.match(menu, /fee\.montrerStatut\(\);/);
+});
+
+// ── Ce qui est CONFORME, et qu'il ne faut pas « corriger » ────────────────
+//
+// Deux retours du même lot décrivent le jeu d'origine, pas un défaut. On les
+// épingle pour que personne ne les « répare » plus tard.
+
+test('la cloche d\'immunité tombe bien quand on lance un autre sort', () => {
+  // spell/Base.cast : `if( caster.currentSpell != null ) currentSpell
+  // .emergencyStop()`. Un second sort ARRÊTE le premier — la cloche comprise.
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/sorts.js'), 'utf8');
+  assert.match(src, /if \(this\.lanceur\.sortEnCours\) this\.lanceur\.sortEnCours\.arretUrgence\(\);/);
+  // Et sa durée : 200 + concentration × 100 images DE JEU (game.step == 2).
+  assert.match(src, /this\.timer = 200 \+ nombre\(this\.fi\.carac\[CONCENTRATION\]\) \* 100;/);
+  assert.match(src, /if \(this\.jeu\.step === E\.ETAPE\.JEU\) \{\n\s*this\.timer -= tmod;/);
+});
+
+test('la mana ne se recharge pas entre deux parties', () => {
+  // FaerieInfo.upkeep ne touche jamais à $mana : elle ne remonte que par les
+  // combos en partie (Game.checkFallStats → incManaTimer) et d'un coup à la
+  // montée de niveau. Perdre en ayant tout dépensé laisse donc la fée à sec.
+  const carte = P.carteNeuve(1700000000000);
+  const g = F.genererGraine(tirage(17));
+  g.$mana = 0; g.$hunger = 20; g.$moral = 10; g.$life = 3; g.$mood = [];
+  carte.$faerie = [g];
+  const N = require('../public/minipixiz/nuit.js');
+  N.entretien(carte, tirage(19));
+  assert.equal(carte.$faerie[0].$mana, 0, 'la nuit ne remplit pas la mana');
+});

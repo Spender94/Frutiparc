@@ -913,7 +913,19 @@
             if (nom === 'rideau') { ouvrirMenu(); return; }
             if (nom !== 'finPartie') return;
             plateforme.ecrire(avant);
-            if (info && info.gagne) setTimeout(function () { ouvrirMenu(); }, 900);
+            // `finPartie` marque la fin d'un NIVEAU, pas celle du lieu.
+            // base/Dungeon.setWin enchaîne ses dix niveaux d'affilée — `level+=1`
+            // puis `initStep(2)` — sans repasser par la clairière ; seul le
+            // dixième ferme la porte. Le portage rentrait au premier niveau
+            // vidé : la partie s'arrêtait net après le premier étage, et la
+            // clé était perdue pour les neuf autres. On ne rentre donc que
+            // quand le LIEU se dit fini.
+            // `client.lieu` plutôt que la variable locale : `finPartie` peut
+            // partir avant que l'affectation ne soit revenue.
+            var lieu = client.lieu;
+            if (info && info.gagne && (!lieu || lieu.fini)) {
+              setTimeout(function () { ouvrirMenu(); }, 900);
+            }
           },
         });
         client.demarrer();

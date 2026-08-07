@@ -40,6 +40,18 @@ const POW_EXP = 4;                    // Cs.POW_EXP — l'index dans sPow / pouv
 
 const NOM_CARAC = ['force', 'rapidité', 'vie', 'intelligence', 'concentration', 'mana'];
 
+// Lang.caracResume — ce que chaque caractéristique fait, mot pour mot. Le jeu
+// d'origine les montre en bulle (`Mc.makeHint`) sous la case du panneau de
+// montée de niveau ; au doigt il n'y a pas de survol, on les écrit.
+const RESUME_CARAC = [
+  'La force de votre fée lui permet de mieux résister aux chocs des démons, ainsi qu\'à donner des coups plus puissants.',
+  'Plus votre fée est rapide mieux elle esquive les tirs ennemis.',
+  'Votre total de coeur maximum dépend de la caractéristique vie.',
+  'L\'intelligence permet à votre fée de choisir les meilleurs sorts, ainsi que les meilleures options pour ceux-ci.',
+  'La concentration permet à votre fée de voir les pièces en avance, elle augmente aussi la puissance ou la durée de certains sorts.',
+  'La mana détermine votre réserve de magie maximum pour une partie.',
+];
+
 // ── Les travers de caractère (Cs.PSYCHOANALYST…) ──────────────────────────
 const PSYCHANALYSTE = 0, CANNIBALISME = 1, CLEPTOMANIE = 2, APATHIE = 3, SCHIZOPHRENIE = 4;
 // Cs.HYPOCONDREAC — l'upkeep le lit, mais genFaerieSeed ne le tire jamais : il
@@ -665,7 +677,7 @@ class Fee {
 
 const API = {
   Fee, genererGraine, genererNom, enrichirGraine,
-  CARAC, NOM_CARAC, NB_CARAC, CARAC_MAX, NIVEAU_MAX,
+  CARAC, NOM_CARAC, RESUME_CARAC, NB_CARAC, CARAC_MAX, NIVEAU_MAX,
   NOM_COMPORTEMENT, RARETE_COMPORTEMENT,
   PSYCHANALYSTE, CANNIBALISME, CLEPTOMANIE, APATHIE, SCHIZOPHRENIE, HYPOCONDRIE,
   ENGOURDIE, MALADE, SYLLABES_1, SYLLABES_2,

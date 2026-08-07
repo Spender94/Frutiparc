@@ -122,6 +122,25 @@ class Element {
     this.jeu.insererDansGrille(this);
   }
 
+  /**
+   * Element.quake — LE TREMBLEMENT DE CE QUI RÉSISTE.
+   *
+   *     quakeList.push({ sp:this, pos:{x,y}, ray:3, timer:10, fadeLimit:10 })
+   *
+   * Dix images, trois pixels de rayon, en s'estompant. Deux endroits l'appellent,
+   * et les deux disent la même chose au joueur : « tu l'as touché, mais il tient
+   * encore ». Le coffre d'un démon qu'un combo n'ouvre pas (une fois sur deux),
+   * et la pierre qu'un souffle entame sans casser.
+   *
+   * Le portage ne l'avait pas du tout : le coffre qui résistait ne bronchait
+   * pas, et un joueur ne pouvait pas distinguer « raté » de « rien ne s'est
+   * passé ».
+   */
+  trembler() {
+    if (!this.jeu) return;
+    this.jeu.secousses.push({ e: this, ray: 3, timer: 10, fadeLimit: 10 });
+  }
+
   // Element.haveGround : le sol, ou un élément qui ne tombe pas lui-même.
   aUnSol() {
     if (this.py + 1 >= this.jeu.yMax) return true;
@@ -205,6 +224,8 @@ class Pierre extends Element {
       this.jeu.evenement('pierreCassee', { x: this.px, y: this.py });
       this.tuer();
     } else {
+      // Stone.setLife : des éclats, ET la secousse.
+      this.trembler();
       this.jeu.evenement('pierreEntamee', { x: this.px, y: this.py, life: this.life });
     }
   }
@@ -228,6 +249,8 @@ class Cellule extends Element {
       this.jeu.evenement('impyLibere', { x: this.px, y: this.py, level: this.level });
       this.tuer();
     } else {
+      // ImpCell.blast, branche `else` : le coffre TREMBLE et reste fermé.
+      this.trembler();
       this.jeu.evenement('celluleSecouee', { x: this.px, y: this.py });
     }
   }
@@ -683,6 +706,8 @@ class Jeu {
     // pour animer un clip — il s'arrête dès que le plateau s'occupe. Celle-ci
     // ne s'arrête jamais.
     this.horloge = 0;
+    // Game.quakeList — ce qui tremble sans céder (voir Element.trembler).
+    this.secousses = [];
     // Game.nextLimit — la forêt en montre dix, le bassin une seule.
     this.nextLimit = o.reserve || RESERVE;
     // base/*.newPieceList : un mode peut IMPOSER la composition d'une pièce.
@@ -1000,8 +1025,58 @@ class Jeu {
     this.flAide = false;
   }
 
-  // Game.callHelp : la touche d'aide. Sans mana, la fée refuse — et le dit.
+  /**
+   * Game.callHelp : la touche d'aide. Sans mana, la fée refuse — et le dit.
+   *
+   * `Key.isDown(Cm.pref.$key[4])` n'est SONDÉ que dans `case 2` de Game.update,
+   * l'étape où l'on joue. Pendant une chute, une cassure, et surtout pendant
+   * l'animation d'un sort (étape 4), la touche n'est pas lue du tout : l'appui
+   * n'est ni pris ni mis en attente, il est PERDU. C'est la mécanique du jeu,
+   * pas un oubli — sans elle, taper pendant la cloche d'immunité enchaînerait
+   * un second sort qui l'annulerait aussitôt (spell/Base.cast arrête le sort
+   * en cours).
+   *
+   * Le portage, lui, écoutait un `keydown` du navigateur à n'importe quelle
+   * étape et gardait `flAide` jusqu'au prochain `initSorts` — c'est-à-dire
+   * jusqu'à la fin de l'animation en cours. D'où « l'input est gardé et la fée
+   * utilise un sort après l'animation ».
+   */
   appelerAide() {
+    if (this.step !== ETAPE.JEU) return false;
+    let ok = false;
+    for (const f of this.faerieList.slice()) ok = f.appelerAide() || ok;
+    return ok;
+  }
+
+  /**
+   * Game.update, la boucle de `quakeList` — elle tourne à CHAQUE image, quelle
+   * que soit l'étape.
+   *
+   *     o.timer -= tmod
+   *     c = 1, puis 0 quand le compte est fini, sinon timer/fadeLimit
+   *     skin._x = pos.x + cos(hasard)·hasard·ray·c
+   *
+   * L'amplitude fond avec le compte, et la dernière image remet l'élément à sa
+   * place exacte (c = 0). Ici, `pos` est la case elle-même : on écrit dans
+   * `decalX/decalY`, que le client ajoute déjà à la position de la grille.
+   */
+  bougerSecousses(tmod) {
+    for (let i = 0; i < this.secousses.length; i++) {
+      const o = this.secousses[i];
+      o.timer -= tmod;
+      let c = 1;
+      if (o.timer < 0) { this.secousses.splice(i--, 1); c = 0; }
+      else if (o.timer < o.fadeLimit) c = o.timer / o.fadeLimit;
+      if (!o.e.vivant) continue;
+      const a = this.rng() * 6.28;
+      const d = this.rng() * o.ray * c;
+      o.e.decalX = Math.cos(a) * d;
+      o.e.decalY = Math.sin(a) * d;
+    }
+  }
+
+  appelerAide() {
+    if (this.step !== ETAPE.JEU) return false;
     let ok = false;
     for (const f of this.faerieList.slice()) ok = f.appelerAide() || ok;
     return ok;
@@ -1012,6 +1087,7 @@ class Jeu {
     if (this.termine) return;
     if (tmod === undefined) tmod = 1;
     this.horloge += tmod;
+    this.bougerSecousses(tmod);
     // Tout ce qui vole avance AVANT le puzzle, quelle que soit l'étape : c'est
     // ce qui fait que la fée continue de voler pendant une cascade.
     if (this.champ) this.champ.update(tmod);

@@ -292,7 +292,13 @@ class Donjon extends Lieu {
     return Object.assign(super.etat(), {
       rang: this.difficulte,
       sur: DONJON_NIVEAUX,
-      roue: this.wSpeed,
+      // `treuil`, et surtout PAS `roue` : l'arc-en-ciel appelle `roue` le
+      // remplissage de SA roue de loterie, en pour-cent, et l'entête du lieu se
+      // sert de ce champ pour décider s'il doit dessiner le lot. Le donjon, qui
+      // rendait ici la vitesse de son treuil, faisait donc apparaître la grande
+      // roue en bois de l'arc-en-ciel par-dessus le panneau de pierre — le
+      // disque brun de la capture.
+      treuil: this.wSpeed,
       montee: Math.max(0, this.heightTimer),
       lignes: this.jeu.yMax,
       // `elevator._y = game.getY(game.yMax)` : le plancher est à la première

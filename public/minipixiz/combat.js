@@ -680,6 +680,30 @@ class Personne extends Corps {
 
   poserStatut(id, drapeau) { this.statut[id] = drapeau; }
 
+  /**
+   * Faerie.showStatus — le panonceau qu'une fée porte quand quelque chose ne va
+   * pas, allumé une fois pour toutes à sa naissance :
+   *
+   *     $life == 0        → NEED_HEAL    la croix rouge
+   *     $moral == 0       → NEED_MORAL
+   *     $mood[M_NUMB]     → NUMB         elle est endormie
+   *     $mood[M_DISEASE]  → DISEASE      elle est malade
+   *
+   * `Slot.initCursor` l'appelle sur la fée qui suit le pointeur — celle de la
+   * clairière et celle du sac. C'est là, et nulle part ailleurs, que le joueur
+   * voit d'un coup d'œil que sa fée ne pourra pas se battre.
+   */
+  montrerStatut() {
+    const fs = (this.fi && this.fi.fs) || null;
+    if (!fs) return this;
+    const humeur = fs.$mood || [];
+    if (nombre(fs.$life) === 0) this.poserStatut(STATUT.SOIN, true);
+    if (nombre(fs.$moral) === 0) this.poserStatut(STATUT.MORAL, true);
+    if (humeur[0] === 1) this.poserStatut(STATUT.ENGOURDIE, true);
+    if (humeur[1] === 1) this.poserStatut(STATUT.MALADE, true);
+    return this;
+  }
+
   poserCible(pe) {
     this.peTrg = pe;
     this.flyMode = 1;

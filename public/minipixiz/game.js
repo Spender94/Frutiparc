@@ -846,6 +846,28 @@ function dessinerCreatureSur(ctx, s, pe) {
     x: pe.x, y: pe.y, rot: pe.penche, alpha: invisible ? 40 : 100,
     parties, melange: pe.melange, deform: pe.spinSpeed !== null ? null : deformationsDeVol(pe),
   });
+  /*
+   * People.updateStatus — le panonceau au-dessus de la tête.
+   *
+   *     frame = null
+   *     pour chaque i de status : si status[i], frame = i+1
+   *     mcStatus.gotoAndStop(frame)
+   *
+   * Le DERNIER état vrai gagne, et les identifiants ne sont pas contigus :
+   * silence 0, poison 1, puis moral 10, soin 11, engourdie 12, malade 13 — donc
+   * les images 1, 2, 11, 12, 13, 14 de `mcPeopleStatus`. L'image 12 est la CROIX
+   * ROUGE : `Slot.initCursor` appelle `showStatus()` sur la fée qui suit le
+   * pointeur, et une fée sans cœur la porte dans la clairière comme au sac.
+   *
+   * Le portage avait les constantes et le dessin extrait, mais n'appelait ni ne
+   * posait rien : une fée à bout de forces avait exactement l'air d'une fée en
+   * pleine santé.
+   */
+  if (s.mcPeopleStatus && pe.statut) {
+    let image = null;
+    for (let i = 0; i < pe.statut.length; i++) if (pe.statut[i]) image = i + 1;
+    if (image !== null) poserVif(ctx, s.mcPeopleStatus, image, { x: pe.x, y: pe.y });
+  }
 }
 
 // Les particules d'un champ, sur n'importe quel canevas — la clairière a les
@@ -956,6 +978,14 @@ class Client {
         && this.pointeur.x <= q.x + q.l && this.pointeur.y >= q.y
         && this.pointeur.y <= q.y + q.h);
       this.ornegon.survole = z ? z.sid : null;
+    });
+    // initExpSlot pose un `onRollOver` sur chaque case du panneau de montée de
+    // niveau : le nom passe dans `fieldName`, et une bulle donne la description.
+    this.canvas.addEventListener('mousemove', () => {
+      if (!this.evolution || !this.pointeur) return;
+      const c = this.casesEvolution().find((q) => Math.abs(this.pointeur.x - q.x) <= 30
+        && Math.abs(this.pointeur.y - q.y) <= 30);
+      this.evolution.survole = c ? c.i : null;
     });
     this.canvas.addEventListener('mouseleave', () => { this.pointeur = null; });
     this.brancherToucher();
@@ -2090,7 +2120,9 @@ class Client {
       poserRendu(ctx, r, SCENE * 0.5, SCENE * 0.5);
     }
     const S = window.MinipixizSorts;
+    const F = window.MinipixizFee;
     const noms = [null, null];
+    const resumes = [null, null];
     for (const c of this.casesEvolution()) {
       const n = fi.fs.$next[c.i];
       const vide = (n === null || n === undefined);
@@ -2105,9 +2137,20 @@ class Client {
       // souvent aucun. La case reste nue, comme dans le jeu ; mais une case nue
       // ET muette, sur laquelle on tape sans effet, ne se distingue pas d'un
       // écran gelé. On dit donc qu'il n'y a rien là.
-      noms[c.i] = vide ? null : (c.i === 0
-        ? '+1 en ' + (window.MinipixizFee.NOM_CARAC[n] || '?')
-        : ((S && S.TABLE && S.TABLE[n] && S.TABLE[n].nom) || 'un nouveau sort'));
+      if (vide) continue;
+      if (c.i === 0) {
+        noms[0] = '+1 en ' + ((F && F.NOM_CARAC[n]) || '?');
+        resumes[0] = (F && F.RESUME_CARAC[n]) || null;
+      } else {
+        // `initExpSlot` lit le nom sur le SORT lui-même — `Spell.newSpell(n)
+        // .getName()` — et sa description en bulle (`Mc.makeHint`, 120 px).
+        // Le portage cherchait un champ `nom` dans la table de tirage, qui n'en
+        // porte pas : il retombait toujours sur « un nouveau sort », et le
+        // joueur ne savait pas ce qu'on lui offrait.
+        const sort = S && S.nouveauSort ? S.nouveauSort(n, null) : null;
+        noms[1] = (sort && sort.nom && sort.nom()) || 'un nouveau sort';
+        resumes[1] = (sort && sort.description && sort.description()) || null;
+      }
     }
     // expPanel.fieldName : « Faites votre choix ! », remplacé au survol par le
     // nom de ce qu'on désigne. Au doigt il n'y a pas de survol : on écrit les
@@ -2141,6 +2184,22 @@ class Client {
           ecrire(ligne, c.x, c.y + 34 + k * 9);
         }
       }
+    }
+
+    // `Mc.makeHint(mc, …, 120)` — la bulle du jeu d'origine, qui dit CE QUE
+    // fait le point de caractéristique ou le sort. Au bureau elle suit le
+    // survol, et on fait pareil ; au doigt il n'y a pas de survol, alors on
+    // montre celle du sort — c'est la seule des deux qu'un joueur ne peut pas
+    // deviner à son nom.
+    let quoi = this.evolution.survole;
+    if (quoi === null || quoi === undefined) quoi = resumes[1] ? 1 : 0;
+    if (resumes[quoi]) {
+      ctx.font = '8px Verdana, Arial, sans-serif';
+      const lignes = decouperTexte(ctx, resumes[quoi], 212);
+      // Le bas de la scène, sous les deux cases : la bande commence assez haut
+      // pour tenir quatre lignes sans jamais mordre sur les noms.
+      let y = SCENE - 8 - lignes.length * 9;
+      for (const ligne of lignes) { ecrire(ligne, SCENE * 0.5, y); y += 9; }
     }
     ctx.textAlign = 'left';
   }
@@ -2380,13 +2439,13 @@ class Client {
     if (e.ascenseur === undefined) return;
     const y = e.ascenseur;
     const rot = e.rotations || [0, 0, 0, 0, 0, 0];
-    const poserRoue = (r, angle) => {
+    const poserRoue = (r, angle, base) => {
       if (!s.roue) return;
       // La roue tourne au CANEVAS, pas au rendu : un dessin par angle aurait
       // rempli le cache d'une image par battement d'horloge.
       const rendu = rendre(s.roue, 1, 100 * r.k);
       ctx.save();
-      ctx.translate(r.x, y + r.y);
+      ctx.translate(r.x, base + r.y);
       ctx.rotate(angle * Math.PI / 180);
       ctx.drawImage(rendu.c, rendu.dx, rendu.dy);
       ctx.restore();
@@ -2394,7 +2453,11 @@ class Client {
     const jeu = devant ? ROUES_DEVANT : ROUES_FOND;
     const de = devant ? 0 : 3;
     if (devant && s.ascenseur) poserRendu(ctx, rendre(s.ascenseur, 1, 100), ASCENSEUR_X, y);
-    for (let i = 0; i < jeu.length; i++) poserRoue(jeu[i], rot[de + i]);
+    // `ws._y` et `wsb._y` sont posés à `Cs.mch` UNE fois dans initElevator, et
+    // `onNewTurn` ne relève que `elevator._y`. Le treuil ne monte donc pas avec
+    // le plancher : il reste au bas de la salle, et c'est le câble qui se
+    // raccourcit.
+    for (let i = 0; i < jeu.length; i++) poserRoue(jeu[i], rot[de + i], HAUTEUR);
   }
 
   // base/Tree.initEscargot — l'escargot grimpe le long du tronc à mesure que le

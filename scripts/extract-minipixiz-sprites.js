@@ -364,6 +364,44 @@ function effets() {
   });
 }
 
+/**
+ * Le CADRE déclaré d'une forme (DefineShape.ShapeBounds), en pixels.
+ *
+ * Il ne sert que dans un cas, mais ce cas comptait. Quand une forme n'est
+ * qu'une IMAGE — un fond de décor, un montant —, on ne la trace pas : on
+ * recopie l'image telle quelle (voir `k = 'img' + …` plus bas). Or le SVG
+ * d'une image porte SA taille en pixels et son coin à zéro, tandis que la
+ * forme, elle, est posée où le SWF veut.
+ *
+ * Le donjon en faisait les frais. Son montant (#342) est déclaré de −14 à 242 ;
+ * substitué par son image, il se dessinait de 0 à 256 — quatorze pixels trop à
+ * droite. Assez pour que la colonne de pierre de gauche recouvre la première
+ * colonne de billes, et pour que le panneau de droite laisse un jour.
+ */
+function bornesFormes(source) {
+  const b = swfs[source].b;
+  const bornes = new Map();
+  swfs[source].parcourir((code, corps) => {
+    if (![2, 22, 32, 83].includes(code)) return;
+    const id = b.readUInt16LE(corps);
+    // RECT : cinq bits de largeur, puis quatre champs signés, en twips.
+    let o = corps + 2, bit = 0;
+    const u = (n) => {
+      let v = 0;
+      for (let i = 0; i < n; i++) {
+        v = (v << 1) | ((b[o] >> (7 - bit)) & 1);
+        if (++bit === 8) { bit = 0; o++; }
+      }
+      return v >>> 0;
+    };
+    const s = (n) => { if (!n) return 0; const v = u(n); return (v & (1 << (n - 1))) ? v - (1 << n) : v; };
+    const n = u(5);
+    const x0 = s(n) / 20, x1 = s(n) / 20, y0 = s(n) / 20, y1 = s(n) / 20;
+    bornes.set(id, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  });
+  return bornes;
+}
+
 // Quelle image chaque forme utilise-t-elle ? extract-swf-shapes.js le dit.
 function tableFormes(source) {
   const brut = execFileSync(process.execPath,
@@ -569,11 +607,13 @@ function principal() {
   // marchent pas dessus.
   const infos = new Map();           // « source#forme » → { images, w, h }
   const ecrites = new Map();         // « source#img|shp N » → fichier écrit
+  const cadresDeclares = new Map();  // « source#forme » → le cadre du SWF
   for (const source of Object.keys(SOURCES)) {
     const voulues = [...formes.values()].filter((f) => f.source === source);
     if (!voulues.length) continue;
     const t = tableFormes(source);
     for (const [id, v] of t) infos.set(source + '#' + id, v);
+    for (const [id, v] of bornesFormes(source)) cadresDeclares.set(source + '#' + id, v);
 
     const images = new Set(), traces = new Set();
     for (const f of voulues) {
@@ -633,7 +673,13 @@ function principal() {
           ? 'img' + info.images[0] : 'shp' + pc.shape);
         const fichier = ecrites.get(k);
         if (!fichier) { perdues.push(`${cle} ${src}#${pc.shape}`); continue; }
-        const c = cadre(fichier) || { x: -50, y: -50, w: 100, h: 100 };
+        // Une forme SUBSTITUÉE par son image : le SVG de l'image ne sait pas où
+        // la forme est posée, ni la taille qu'elle occupe. On prend le cadre
+        // que le SWF déclare. Voir bornesFormes() — c'est le décalage qui
+        // faisait passer le montant du donjon par-dessus les billes.
+        const substituee = !!(info && info.images.length === 1);
+        const declare = substituee ? cadresDeclares.get(src + '#' + pc.shape) : null;
+        const c = declare || cadre(fichier) || { x: -50, y: -50, w: 100, h: 100 };
         // La matrice absolue, translation convertie en pixels. Le client s'en
         // sert telle quelle : c'est le seul moyen exact de poser une pièce
         // MIROIR (l'aile droite de la fée est l'aile gauche à l'envers, a = -1)
