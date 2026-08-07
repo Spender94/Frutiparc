@@ -1307,3 +1307,67 @@ test('une case d\'évolution sans offre le dit au lieu de rester muette', () => 
   assert.match(src, /if \(c\.i === 1 && \(e\.fi\.fs\.\$next\[1\] === null[^)]*\)\) return;/,
     'taper une case sans offre ne choisit rien');
 });
+
+// ── « Je la nourris plusieurs fois mais rien ne change » ───────────────────
+//
+// C'est exact, et c'est la règle du jeu : `FaerieInfo.eat` ne touche QUE la
+// faim et le moral. La vie ne remonte que de deux façons — la nuit (`upkeep`
+// la ramène à hauteur du ventre plein) ou une potion (it/Potion.incLife). Une
+// fée tombée en forêt garde donc zéro de vie jusqu'au lendemain, quoi qu'on
+// lui donne à manger.
+//
+// Le portage est fidèle sur la mécanique ; c'était le MESSAGE qui mentait, en
+// disant « nourrissez-la » comme si le repas suffisait.
+
+test('nourrir ne rend pas la vie — et le message ne le promet plus', () => {
+  const carte = { $faerie: [], $current: 0 };
+  const fs = F.genererGraine(tirage(11));
+  fs.$carac = [2, 2, 3, 2, 2, 2];
+  fs.$life = 0; fs.$hunger = 4; fs.$moral = 10; fs.$mood = [];
+  carte.$faerie.push(fs);
+  const fee = new F.Fee(fs, tirage(11), carte);
+  fee.carac = fs.$carac.slice();
+
+  // Quatre repas : le ventre se remplit, la vie ne bouge pas d'un pouce.
+  for (let i = 0; i < 4; i++) fee.manger(1);
+  assert.equal(nb(fs.$hunger), 20, 'la faim monte de quatre par repas, plafond vingt');
+  assert.equal(nb(fs.$life), 0, 'mais la vie reste à zéro — comme dans le jeu');
+  assert.equal(fee.preteAuCombat(), false, 'elle ne repart donc pas en forêt');
+
+  // Le message doit annoncer la NUIT, pas un effet immédiat.
+  const raison = fee.raisonDeRester();
+  assert.match(raison, /bout de forces/);
+  assert.match(raison, /cette nuit/, 'il dit quand elle se remettra');
+
+  // Et la nuit la remet debout, justement parce qu'elle a mangé.
+  fee.entretien(false, null);
+  assert.ok(nb(fs.$life) > 0, `la nuit lui rend sa vie (${fs.$life})`);
+  const apres = new F.Fee(fs, tirage(11), carte);
+  apres.carac = fs.$carac.slice();
+  assert.equal(apres.preteAuCombat(), true, 'et elle repart');
+
+  // À jeun, en revanche, la nuit ne rend rien : c'est le ventre qui répare.
+  const fs2 = F.genererGraine(tirage(12));
+  fs2.$life = 0; fs2.$hunger = 0; fs2.$moral = 10; fs2.$mood = [];
+  const fee2 = new F.Fee(fs2, tirage(12), { $faerie: [fs2], $current: 0 });
+  fee2.entretien(false, null);
+  assert.equal(nb(fs2.$life), 0, 'sans avoir mangé, la nuit ne la relève pas');
+});
+
+test('le panneau de santé dit par quoi la vie remonte', () => {
+  const carte = { $faerie: [], $current: 0, $item: [], $bag: 0 };
+  const fs = F.genererGraine(tirage(13));
+  fs.$life = 0; fs.$moral = 10; fs.$hunger = 12; fs.$name = 'Pikine';
+  carte.$faerie.push(fs);
+  const inv = fauxInventaire(carte);
+  inv.volet = 3;
+  inv.agir('vie');
+  assert.match(inv.message, /^vie 0 \//);
+  assert.match(inv.message, /cette nuit/, 'la nourriture agit la nuit');
+  assert.match(inv.message, /potion/, 'et la potion tout de suite');
+
+  // Une fée en forme n'a pas besoin de ce rappel.
+  fs.$life = 2;
+  inv.agir('vie');
+  assert.ok(!/potion/.test(inv.message), 'pas de conseil quand tout va bien');
+});

@@ -341,7 +341,14 @@ class Fee {
     const h = this.fs.$mood || [];
     if (h[ENGOURDIE] === 1) return 'est engourdie et dort toute la journée';
     if (h[MALADE] === 1) return 'est malade : elle ne quittera pas le sac aujourd\'hui';
-    if (!(nombre(this.fs.$life) > 0)) return 'est à bout de forces — nourrissez-la';
+    // Manger ne rend PAS de vie — ni ici ni dans le jeu d'origine :
+    // `FaerieInfo.eat` ne touche que la faim et le moral. La vie se répare la
+    // nuit (`upkeep` la remonte à hauteur du ventre plein) ou d'un coup avec
+    // une potion (it/Potion). Dire « nourrissez-la » tout court envoyait donc
+    // le joueur nourrir sa fée en boucle sans que rien ne bouge.
+    if (!(nombre(this.fs.$life) > 0)) {
+      return 'est à bout de forces — nourrissez-la, elle récupérera cette nuit';
+    }
     // Le moral ne remonte que de trois façons (les trois seuls `incMoral` du
     // jeu) : un aliment qu'elle aime, une montée de niveau, ou une nuit passée
     // au bocal. La dernière est un piège sous trois de moral — elle en profite

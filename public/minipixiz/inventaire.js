@@ -941,7 +941,13 @@ class Inventaire {
     if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
     const fs = fee.fs;
     if (quoi === 'vie') {
-      this.dire('vie ' + nombre(fs.$life) + ' / ' + fee.vieMax(), fs.$name);
+      // À zéro, on dit par quoi elle remonte : la nourriture prépare la nuit,
+      // seule une potion soigne sur-le-champ. Sans ça, le joueur nourrit sa fée
+      // en boucle et ne voit jamais le cœur bouger.
+      const v = nombre(fs.$life);
+      this.dire('vie ' + v + ' / ' + fee.vieMax()
+        + (v > 0 ? '' : ' — la nourriture la remettra d\'aplomb cette nuit ;'
+          + ' une potion la soigne tout de suite.'), fs.$name);
       return;
     }
     if (quoi === 'faim') {
