@@ -16844,21 +16844,85 @@ async function mdamirmaReveal() {
     "Ha",
     "P'ué possible",
     `Mé petit ${displayTarget} est ${signName} ascendant ${signBName} !`,
-    "Une b'nne configuration Frutale ça aure plein dé surprises sur lé site.",
+    "Une b'nne configuration Frutale ça augure plein dé surprises sur lé site.",
     "A b'entot lé' frutiz...",
   ], () => setTimeout(() => npcLeave('mdamirma'), 4000 + Math.random() * 4000));
 }
 
-function scheduleMdamirma() {
-  const delayMin = 10 * 60 * 1000;  // 10 min
-  const delayMax = 45 * 60 * 1000;  // 45 min
-  const delay = delayMin + Math.random() * (delayMax - delayMin);
-  setTimeout(() => {
-    mdamirmaReveal();
-    scheduleMdamirma();
-  }, delay);
+/*
+ * La cadence des deux visiteurs.
+ *
+ * Ils passaient beaucoup trop souvent — Irma toutes les dix à quarante-cinq
+ * minutes, Gromelin toutes les trente-cinq à cent vingt. Un habitué du chat les
+ * croisait plusieurs fois par session, et une apparition qu'on attend cesse
+ * d'être une apparition.
+ *
+ * Désormais : Irma UNE fois par heure, Gromelin UNE fois par jour, et pas
+ * n'importe quand — entre huit heures et minuit, pour qu'il n'aille pas
+ * ronchonner devant un salon vide à quatre heures du matin.
+ *
+ * On tire l'instant au sort dans la tranche plutôt que de taper à l'heure
+ * ronde : la surprise est tout l'intérêt de ces passages. Et l'heure vient de
+ * PARIS par Intl, comme le reste du serveur — un changement d'heure ne doit pas
+ * décaler Gromelin pendant six mois.
+ */
+const GROMELIN_HEURE_MIN = 8;           // pas avant huit heures
+const GROMELIN_HEURE_MAX = 23;          // dernière heure possible : 23 h 59
+
+function heureParis(d = new Date()) {
+  const hm = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(d);
+  const [hh, mm] = hm.split(':').map(Number);
+  return { h: hh % 24, m: mm };
 }
-scheduleMdamirma();
+
+const entierEntre = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
+
+// L'état des deux rendez-vous. `cle` est la tranche déjà honorée — jour+heure
+// pour Irma, jour pour Gromelin : tant qu'elle ne change pas, on ne repasse pas.
+const irmaRdv = { cle: null, minute: entierEntre(0, 59) };
+const gromelinRdv = {
+  cle: null,
+  heure: entierEntre(GROMELIN_HEURE_MIN, GROMELIN_HEURE_MAX),
+  minute: entierEntre(0, 59),
+};
+
+function tickVisiteurs(maintenant = new Date()) {
+  const { h, m } = heureParis(maintenant);
+  const jour = parisDayKey(maintenant);
+
+  // Irma : une fois par heure, à la minute tirée pour CETTE heure-là.
+  const cleHeure = jour + 'T' + h;
+  if (irmaRdv.cle !== cleHeure && m >= irmaRdv.minute) {
+    irmaRdv.cle = cleHeure;
+    irmaRdv.minute = entierEntre(0, 59);          // pour l'heure suivante
+    mdamirmaReveal();
+  }
+
+  // Gromelin : une fois par jour, à l'heure et à la minute tirées pour CE
+  // jour-là. Le tirage du lendemain se fait au passage, donc jamais deux fois.
+  if (gromelinRdv.cle !== jour
+    && (h > gromelinRdv.heure || (h === gromelinRdv.heure && m >= gromelinRdv.minute))) {
+    gromelinRdv.cle = jour;
+    gromelinRdv.heure = entierEntre(GROMELIN_HEURE_MIN, GROMELIN_HEURE_MAX);
+    gromelinRdv.minute = entierEntre(0, 59);
+    gromelinVisit();
+  }
+}
+
+// Au démarrage, l'heure et le jour courants comptent pour déjà honorés : un
+// redémarrage ne doit pas rappeler Irma dans la minute, ni faire revenir
+// Gromelin une seconde fois le même jour.
+{
+  const { h } = heureParis();
+  const jour = parisDayKey();
+  irmaRdv.cle = jour + 'T' + h;
+  gromelinRdv.cle = jour;
+}
+setInterval(() => {
+  try { tickVisiteurs(); } catch (e) { console.error('[NPC] visiteurs:', e.message); }
+}, 60 * 1000);
 
 // ── Gromelin — grumpy visitor, rarer than Irma: storms into the busiest room,
 // grumbles a few lines, and leaves. ──
@@ -16878,16 +16942,8 @@ function gromelinVisit() {
     () => setTimeout(() => npcLeave('gromelin'), 2500 + Math.random() * 3000));
 }
 
-function scheduleGromelin() {
-  const delayMin = 35 * 60 * 1000;   // 35 min — clearly rarer than Irma
-  const delayMax = 120 * 60 * 1000;  // up to 2 h
-  const delay = delayMin + Math.random() * (delayMax - delayMin);
-  setTimeout(() => {
-    gromelinVisit();
-    scheduleGromelin();
-  }, delay);
-}
-scheduleGromelin();
+// Sa cadence est tenue par `tickVisiteurs`, plus haut : une visite par jour,
+// entre huit heures et minuit.
 
 // ── MikeHorny — animateur "Question à 60 kikooz" (tous les soirs à 19h Paris) ──
 // NB : la CLÉ de compte reste `kiloute79` (identité interne stable : présence
@@ -19548,6 +19604,30 @@ case 'send': {
         }
       }
       break;
+    }
+
+    // ── /d<n> : le lancer de dé des animateurs, sur le salon Pomme ──
+    // `/d6` tire entre 0 et 6, `/d20` entre 0 et 20 — bornes COMPRISES, donc
+    // n+1 résultats possibles. Le tirage est diffusé à tout le salon : un dé
+    // que l'animateur serait seul à voir n'animerait rien.
+    {
+      const m = text.match(/^\/d(\d{1,4})\s*$/i);
+      if (m) {
+        if (g !== ANIM_CHANNEL || !canAnimate) {
+          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Le lancer de dé est réservé aux animateurs, sur le salon Pomme.</i>]]></${CMD.send}>`);
+          break;
+        }
+        const faces = parseInt(m[1], 10);
+        if (!(faces >= 1 && faces <= 1000)) {
+          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Syntaxe : /d6, /d20… (de 1 à 1000).</i>]]></${CMD.send}>`);
+          break;
+        }
+        const tire = Math.floor(Math.random() * (faces + 1));
+        const qui = escapeXml(getDisplayName(client.username));
+        const corps = `<![CDATA[<b><font color="#C10000">${qui}</font></b> lance un dé (0–${faces}) : <b><font color="#C10000">${tire}</font></b>]]>`;
+        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${corps}</${CMD.send}>`);
+        break;
+      }
     }
 
     // ── /status <word>, /statut <word>: absence pastille (away/phone/zzz/work/eat) ──

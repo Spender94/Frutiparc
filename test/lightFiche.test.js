@@ -206,8 +206,11 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
     'le reflet se pose dans le coin haut-droit');
   assert.match(html, /<div class="fa-frame">\s*<div class="stage" id="fiche-avatar"><\/div>\s*<\/div>/,
     'la vignette ne contient plus que la bouille');
-  assert.match(html, /\.fiche-plaque \.fa-frame \{\s*position: relative; width: 52px; height: 52px;/,
-    'et garde son repère : la bouille ne bouge pas');
+  // La vignette garde son PROPRE repère (position: relative) — c'est ce qui
+  // fait tenir le cadre et le reflet sur la plaque, et non sur elle. Sa taille,
+  // en revanche, a grossi de quinze pour cent : voir le test dédié plus bas.
+  assert.match(html, /\.fiche-plaque \.fa-frame \{\s*position: relative; width: 60px; height: 60px;/,
+    'et garde son repère, à sa nouvelle taille');
   // La bouille n'a plus de contour, et la carte porte son ombre de tous les côtés.
   assert.match(html, /\.fiche-plaque \.fa-frame \{[^}]*\n\s*z-index: 2;\n\s*\}/,
     'plus de liseré autour de la bouille');
@@ -365,4 +368,32 @@ test('l\'écran mobile porte la fenêtre, les onglets et les gestes', () => {
   assert.match(html, /previewIframe\(d\.bouille\)/, 'l\'avatar est la vraie bouille');
   assert.match(html, /id="fiche-niveau"/, 'la plaque NIV');
   assert.match(html, /ans"/, 'l\'âge en années');
+});
+
+// ── Les deux retouches d'affichage du mode light ─────────────────────────
+
+test('la bouille de la fiche a grossi de quinze pour cent', () => {
+  // 52 px d'origine × 1,15 = 59,8 → 60. Un visage de 52 px ne se reconnaît pas
+  // sur un téléphone, et c'est la vignette qu'on regarde en premier.
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  const regle = /\.fiche-plaque \.fa-frame \{[^}]*\}/.exec(html);
+  assert.ok(regle, 'la vignette de la fiche a bien sa règle');
+  assert.match(regle[0], /width: 60px; height: 60px/, 'elle fait soixante pixels');
+  assert.ok(!/width: 52px; height: 52px/.test(regle[0]), 'et plus cinquante-deux');
+  // La plaque reste une boîte flexible : elle s'élargit d'elle-même autour.
+  const plaque = /\.fiche-plaque \{[^}]*\}/.exec(html);
+  assert.ok(plaque && /display: flex/.test(plaque[0]),
+    'la plaque suit la vignette sans qu\'on ait à la retailler');
+});
+
+test('la liste des connectés n\'affiche plus d\'enveloppe à côté des pseudos', () => {
+  // Toucher un pseudo ouvre sa FICHE — et c'est la fiche qui porte le bouton
+  // « discuter en privé ». L'enveloppe promettait autre chose que ce qu'elle
+  // faisait, sur chacune des lignes.
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.ok(!/#users-drawer \.u\.mp::after/.test(html), 'plus d\'enveloppe en bout de ligne');
+  assert.ok(!/content: "\\2709"/.test(html), 'ni son glyphe nulle part ailleurs');
+  // Le geste, lui, ne change pas : la ligne reste cliquable et mène à la fiche.
+  assert.match(html, /#users-drawer \.u\.mp \{ cursor: pointer/, 'la ligne reste un bouton');
+  assert.match(html, /u\.title = "Voir la fiche de " \+ pseudo;/, 'et dit ce qu\'elle ouvre');
 });

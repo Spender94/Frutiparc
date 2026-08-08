@@ -511,8 +511,10 @@
      ils habillent la PLAQUE d'un bout à l'autre, bouille et écran de niveau
      compris. Ils sont donc posés sur la plaque, pas dans la vignette — dit
      dans le HTML plutôt que laissé au hasard d'un contexte de positionnement
-     manquant. La bouille, elle, ne bouge pas : sa vignette garde ses 52 px et
-     son propre repère. */
+     manquant. La bouille, elle, garde son propre repère — et sa vignette fait
+     SOIXANTE pixels : les 52 d'origine grossis de quinze pour cent, parce
+     qu'un visage de 52 px ne se reconnaît pas sur un téléphone. La plaque,
+     elle, s'élargit d'autant toute seule : c'est une boîte flexible. */
   .fiche-plaque > .cadre {
     position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none;
   }
@@ -520,7 +522,7 @@
     position: absolute; right: 3%; top: 4%; width: 26%; height: auto; z-index: 4; pointer-events: none;
   }
   .fiche-plaque .fa-frame {
-    position: relative; width: 52px; height: 52px; border-radius: 5px; overflow: hidden;
+    position: relative; width: 60px; height: 60px; border-radius: 5px; overflow: hidden;
     z-index: 2;
   }
   .fiche-plaque .fa-frame .stage { position: absolute; inset: 5%; z-index: 2; border-radius: 4px; overflow: hidden; }
@@ -675,10 +677,10 @@
     font-size: 11px; font-weight: bold; letter-spacing: 0; color: #6c8f3a;
     text-shadow: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  /* L'enveloppe « écrire en privé » se pose à droite ; en colonne, elle serait
-     poussée sous le pseudo. On la remet dans le flux horizontal. */
+  /* La vue « tout le site » met le lieu sous le pseudo : le haut de la ligne
+     garde son flux horizontal. (Il n'y a plus d'enveloppe à caler ici — voir
+     plus haut : la fiche a remplacé l'icône.) */
   #users-drawer .u.avec-lieu .haut { display: flex; align-items: center; gap: 8px; max-width: 100%; }
-  #users-drawer .u.avec-lieu.mp::after { position: absolute; right: 12px; top: 50%; margin-top: -9px; }
   #users-drawer .u.avec-lieu { position: relative; }
   #users-drawer .vide { padding: 16px 12px; text-align: center; color: #6c8f3a; font-size: 13px; }
   /* Connected-users list styled after the "score panel" mockup: a light-green
@@ -720,11 +722,11 @@
   }
   /* Un pseudo sur lequel on peut appuyer pour écrire en privé. L'enveloppe dit
      ce que le simple texte ne disait pas : que la ligne est un bouton. */
+  /* Pas d'enveloppe au bout de la ligne : toucher un pseudo n'ouvre PAS une
+     conversation, il ouvre sa FICHE — et c'est la fiche qui porte le bouton
+     « discuter en privé ». L'icône promettait donc autre chose que ce qu'elle
+     faisait, et elle le promettait sur chaque ligne de la liste. */
   #users-drawer .u.mp { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  #users-drawer .u.mp::after {
-    content: "\2709"; font-size: 18px; font-weight: 400; color: #6c8f3a;
-    flex-shrink: 0; line-height: 1;
-  }
   #users-drawer .u.mp:active { background: #c7f09a; }
   /* Pastille « des messages privés non lus » sur l'icône des connectés : elle
      doit se voir même quand le tiroir et le sélecteur sont fermés. */

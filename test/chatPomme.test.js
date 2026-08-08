@@ -379,3 +379,74 @@ test('les logs survivent au redémarrage du serveur', async (t) => {
   assert.match(texte, /survivre au reboot/,
     'le message écrit avant le redémarrage est toujours dans la fenêtre');
 });
+
+// ── Le lancer de dé des animateurs ────────────────────────────────────────
+//
+// `/d6` tire entre 0 et 6, `/d20` entre 0 et 20 — bornes comprises. Réservé au
+// salon Pomme et au staff : ailleurs, ou pour un simple frutiz, il ne se passe
+// rien d'autre qu'un rappel.
+
+test('/dN : le dé de l\'animateur, sur pomme et nulle part ailleurs', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+
+  const sidA = await inscrire('animde');
+  const sidT = await inscrire('temoinde');
+  assert.equal((await donnerRole('animde', { is_animator: true })).status, 200);
+
+  const anim = await client('animde', sidA);
+  const temoin = await client('temoinde', sidT);
+  try {
+    anim.envoyer('<o g="pomme" />');
+    await anim.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'pomme (anim)');
+    temoin.envoyer('<o g="pomme" />');
+    await temoin.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'pomme (témoin)');
+
+    // ── 1. Le tirage est DIFFUSÉ, et il tombe dans [0, n]. ──
+    const vus = new Set();
+    for (let i = 0; i < 12; i++) {
+      temoin.trames.length = 0;
+      anim.envoyer('<t g="pomme" t="m" p="">/d6</t>');
+      const ligne = await temoin.attendre((x) => /lance un dé/.test(x), 'le tirage diffusé');
+      const m = /lance un dé \(0–6\) : <b><font color="#C10000">(\d+)<\/font><\/b>/.exec(ligne);
+      assert.ok(m, 'la ligne dit le dé et son résultat : ' + ligne.slice(0, 200));
+      const n = Number(m[1]);
+      assert.ok(n >= 0 && n <= 6, 'le tirage ' + n + ' tient dans [0, 6]');
+      vus.add(n);
+      assert.match(ligne, /animde/, 'et il porte le nom de l\'animateur');
+    }
+    assert.ok(vus.size >= 3, 'douze lancers donnent plusieurs valeurs (' + [...vus].join(',') + ')');
+
+    // ── 2. Les grands dés marchent aussi. ──
+    temoin.trames.length = 0;
+    anim.envoyer('<t g="pomme" t="m" p="">/d20</t>');
+    const vingt = await temoin.attendre((x) => /lance un dé/.test(x), 'le d20');
+    const m20 = /\(0–20\) : <b><font color="#C10000">(\d+)<\/font><\/b>/.exec(vingt);
+    assert.ok(m20 && Number(m20[1]) >= 0 && Number(m20[1]) <= 20, 'entre 0 et 20');
+
+    // ── 3. Ailleurs qu'à Pomme : refusé, et RIEN n'est diffusé. ──
+    anim.envoyer('<o g="poire" />');
+    await anim.attendre((x) => x.startsWith('<p') && x.includes('g="poire"'), 'poire (anim)');
+    temoin.envoyer('<o g="poire" />');
+    await temoin.attendre((x) => x.startsWith('<p') && x.includes('g="poire"'), 'poire (témoin)');
+    temoin.trames.length = 0;
+    anim.trames.length = 0;
+    anim.envoyer('<t g="poire" t="m" p="">/d6</t>');
+    await anim.attendre((x) => /réservé aux animateurs/.test(x), 'le rappel, pour lui seul');
+    await wait(400);
+    assert.ok(!temoin.trames.some((x) => /lance un dé/.test(x)),
+      'et le salon n\'a rien vu passer');
+
+    // ── 4. Un simple frutiz, même sur Pomme : refusé. ──
+    temoin.envoyer('<o g="pomme" />');
+    await temoin.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'retour sur pomme');
+    temoin.trames.length = 0;
+    temoin.envoyer('<t g="pomme" t="m" p="">/d6</t>');
+    await temoin.attendre((x) => /réservé aux animateurs/.test(x), 'le rappel au frutiz');
+    assert.ok(!temoin.trames.some((x) => /lance un dé/.test(x)), 'aucun tirage pour lui');
+
+    // ── 5. La commande n'est jamais rediffusée comme un message ordinaire. ──
+    assert.ok(!temoin.trames.some((x) => />\/d6</.test(x)), '« /d6 » ne s\'affiche pas tel quel');
+  } finally {
+    anim.fermer(); temoin.fermer();
+  }
+});
