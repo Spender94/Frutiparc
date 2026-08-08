@@ -290,9 +290,16 @@ const STATUS_INTERNAL_FRAME = {
 };
 // Nom de jeu ← code interne, pour dire au mobile QUI joue à QUOI. On ne
 // publie que les jeux jouables — le forum n'est pas une partie.
+//
+// Le nom publié est celui des ASSETS du mobile, pas celui de l'internalList du
+// SWF : Swapou y est « swapou2 » (le second opus), et ses icônes s'appellent
+// `voyant_swapou`. Sans cet alias, un joueur de Swapou n'avait aucun voyant
+// dans la vue « tout le site » — le client cherchait `VOYANTS_NOM['swapou2']`,
+// qui n'existe pas.
+const STATUS_JEU_ALIAS = { swapou2: 'swapou' };
 const STATUS_INTERNAL_JEU = Object.fromEntries(Object.entries(STATUS_INTERNAL_FRAME)
   .filter(([nom]) => nom !== 'forum')
-  .map(([nom, code]) => [code, nom]));
+  .map(([nom, code]) => [code, STATUS_JEU_ALIAS[nom] || nom]));
 // Le code interne d'un joueur connecté, lu sur ses sockets de chat (0 si rien).
 function statusInternalOf(username) {
   for (const [, cl] of xmlSocketClients) {
@@ -15561,12 +15568,18 @@ app.get('/api/light/fiche', async (req, res) => {
   for (const [, cl] of xmlSocketClients) {
     if (cl && cl.logged && cl.username === u) { enLigne = true; break; }
   }
+  // Et le VOYANT DE JEU, lu sur sa socket de chat comme la liste des connectés
+  // (statusInternalOf). L'en-tête de la fiche le montre à la place du point de
+  // présence : un joueur en pleine partie se voit d'un coup d'œil — ce qui
+  // permet, entre autres, de ne pas redémarrer le serveur sous ses pieds.
+  const jeu = enLigne ? (STATUS_INTERNAL_JEU[statusInternalOf(u)] || '') : '';
   const lieuDit = nomsPaysRegion(ud);
   res.json({
     ok: true,
     pseudo: getDisplayName(u),
     bouille: bouilleOf(ud, u),
     enLigne,
+    jeu,
     staff: { moderateur: !!ud.isModerator, animateur: !!ud.isAnimator },
     // Les droits du REGARDEUR : la vue modérateur (kick, ban, totoché) ne se
     // montre qu'aux modérateurs, comme box.Frutiz le fait avec me.flMode.

@@ -169,3 +169,63 @@ test('le mobile pose le voyant à côté des pseudos', () => {
   assert.match(light, /Joue à " \+ VOYANTS_NOM\[jeu\]/, 'avec le nom du jeu en infobulle');
   assert.match(light, /\.u \.voyant \{/, 'et son style');
 });
+
+
+// ── Le voyant sur la FICHE ───────────────────────────────────────────────
+//
+// L'en-tête de la fiche ne montrait qu'un point de présence : connecté, ou pas.
+// C'est déjà ce que dit la liste des connectés. Le voyant de jeu, lui, dit ce
+// qu'on ne lit nulle part ailleurs sur la fiche — qu'il est AU MILIEU d'une
+// partie. Un animateur sur le point de redémarrer le serveur veut le savoir
+// avant, pas après.
+
+test('la fiche publie le jeu en cours, lu sur la socket du joueur', () => {
+  assert.match(serveur, /const jeu = enLigne \? \(STATUS_INTERNAL_JEU\[statusInternalOf\(u\)\] \|\| ''\) : '';/,
+    'la fiche lit le code comme la liste des connectés');
+  assert.match(serveur, /^\s*jeu,$/m, 'et le publie dans sa réponse');
+  // Hors ligne, pas de jeu : une socket fermée ne joue à rien.
+  assert.match(serveur, /const jeu = enLigne \?/, 'le voyant suppose la présence');
+});
+
+test('le voyant remplace le point de présence, sans l\'écraser', () => {
+  assert.match(light, /var jeuFiche = \(d && d\.jeu\) \|\| "";/);
+  assert.match(light, /st\.src = "\/fb\/voyant_" \+ jeuFiche \+ "\.png";/,
+    'la même icône que la liste des connectés');
+  assert.match(light, /st\.title = "En partie — " \+ VOYANTS_NOM\[jeuFiche\];/,
+    'et elle dit à quoi il joue');
+  // Sans partie, le point revient — et il dit lui aussi ce qu'il montre.
+  assert.match(light, /st\.src = "\/fb\/fiche\/" \+ \(\(d && d\.enLigne\) \? "statut_present" : "statut_absent"\) \+ "\.png";/);
+  assert.match(light, /st\.title = \(d && d\.enLigne\) \? "En ligne" : "Hors ligne";/);
+  // Le voyant est dessiné plus large que le point : on lui rend ses 22 px
+  // plutôt que de l'écraser dans les 18 du point.
+  assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 22px; height: 22px; \}/);
+});
+
+test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', () => {
+  // L'internalList du SWF nomme le jeu « swapou2 » (le second opus) ; les
+  // icônes du mobile s'appellent « voyant_swapou ». Sans alias, le client
+  // cherchait VOYANTS_NOM['swapou2'] — qui n'existe pas —, et un joueur de
+  // Swapou n'avait aucun voyant dans la vue « tout le site ».
+  assert.match(serveur, /const STATUS_JEU_ALIAS = \{ swapou2: 'swapou' \};/);
+  assert.match(serveur, /\.map\(\(\[nom, code\]\) => \[code, STATUS_JEU_ALIAS\[nom\] \|\| nom\]\)\);/);
+  // Le client, lui, ne connaît que « swapou » — des deux côtés, même mot.
+  assert.match(light, /var VOYANTS_NOM = \{ bandas: "Frutibandas", grapiz: "Grapiz", swapou: "Swapou",/);
+  assert.ok(!/VOYANTS_NOM\s*=\s*\{[^}]*swapou2/.test(light), 'le client ignore « swapou2 »');
+  // Et la table code → nom, rejouée : le 4 doit sortir « swapou ».
+  const FRAME = { bkiwi: 2, mb2: 3, swapou2: 4, snake3: 5, bandas: 6, grapiz: 7,
+    kaluga: 8, miniwave: 9, minipixiz: 12, forum: 1 };
+  const ALIAS = { swapou2: 'swapou' };
+  const table = Object.fromEntries(Object.entries(FRAME)
+    .filter(([nom]) => nom !== 'forum')
+    .map(([nom, code]) => [code, ALIAS[nom] || nom]));
+  assert.equal(table[4], 'swapou', 'le code 4 sort « swapou »');
+  assert.equal(table[6], 'bandas');
+  assert.equal(table[12], 'minipixiz');
+  assert.equal(table[1], undefined, 'et le forum n\'est pas une partie');
+  // Chaque nom publié a bien son PNG.
+  for (const nom of Object.values(table)) {
+    if (!['bandas', 'grapiz', 'swapou', 'miniwave', 'minipixiz'].includes(nom)) continue;
+    const f = path.join(ROOT, 'public/fb/voyant_' + nom + '.png');
+    assert.ok(fs.existsSync(f), 'voyant_' + nom + '.png existe');
+  }
+});

@@ -553,6 +553,10 @@
   .fiche-nom-ligne { display: flex; align-items: center; gap: 5px; }
   /* Le point de présence du bureau (clip status : vert présent, anneau éteint). */
   .fiche-nom-ligne .statut { width: 18px; height: 18px; object-fit: contain; flex: 0 0 auto; }
+  /* Le voyant de jeu prend la place du point quand le frutiz est en partie. Il
+     est dessiné plus large que le point (22 px dans la liste des connectés) :
+     on lui rend ses proportions plutôt que de l'écraser dans 18 px. */
+  .fiche-nom-ligne .statut.en-partie { width: 22px; height: 22px; }
   .fiche-nom-ligne b {
     font-family: Verdana, Arial, sans-serif; font-size: 12.5px; color: #290D64;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto;
@@ -4116,8 +4120,28 @@
       var fb = Math.max(0, Math.min(1, prog * nb - (nb - 1 - bi)));
       barres[bi].style.setProperty("--f", (fb * 100).toFixed(1) + "%");
     }
-    // Le point de présence du bureau : vert s'il est en ligne.
-    $("#fiche-statut").src = "/fb/fiche/" + ((d && d.enLigne) ? "statut_present" : "statut_absent") + ".png";
+    /*
+     * Le point de présence — ou, si le frutiz est EN PARTIE, le voyant du jeu
+     * à sa place.
+     *
+     * Le point ne dit que « connecté / pas connecté », ce que la liste des
+     * connectés dit déjà. Le voyant, lui, dit quelque chose qu'on ne peut lire
+     * nulle part ailleurs sur la fiche : qu'il est au milieu d'une partie. Un
+     * animateur qui s'apprête à redémarrer le serveur veut le savoir avant, pas
+     * après. C'est la même icône que la liste pose à côté du pseudo, et que le
+     * bureau pose à côté du sien.
+     */
+    var st = $("#fiche-statut");
+    var jeuFiche = (d && d.jeu) || "";
+    if (jeuFiche && VOYANTS_NOM[jeuFiche]) {
+      st.src = "/fb/voyant_" + jeuFiche + ".png";
+      st.title = "En partie — " + VOYANTS_NOM[jeuFiche];
+      st.classList.add("en-partie");
+    } else {
+      st.src = "/fb/fiche/" + ((d && d.enLigne) ? "statut_present" : "statut_absent") + ".png";
+      st.title = (d && d.enLigne) ? "En ligne" : "Hors ligne";
+      st.classList.remove("en-partie");
+    }
     var meta = "";
     if (d && d.basic) {
       if (d.basic.age !== null && d.basic.age !== undefined) meta = d.basic.age + " ans";
