@@ -1923,3 +1923,98 @@ test('une bille descend d\'une case par seconde au premier niveau', () => {
   // Et à quarante — l'ancienne valeur — on était vingt-cinq pour cent trop vite.
   assert.equal(Math.round((p.fSpeed * 40) / parSeconde * 100) / 100, 1.25);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Le pinaillage — trois détails d'animation
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── « Les paillettes restent figées trop longtemps » ──────────────────────
+//
+// Imp.harm lance 10 + rang×2 gerbes (`partJet`) et les fait démarrer à une
+// image tirée au sort entre une et douze (`gotoAndPlay(Std.random(12)+1)`). Le
+// clip en compte QUARANTE-HUIT, et il s'efface à la quarante-neuvième.
+//
+// Deux erreurs se cumulaient : l'extraction n'en sortait que douze, et la durée
+// de vie ne tenait pas compte de l'image de départ. Une gerbe vivait donc
+// quarante-huit unités en n'ayant que douze images à montrer — et `poserVif`
+// retient la dernière image connue quand elle manque, d'où la paillette plantée
+// à l'écran.
+
+test('les gerbes d\'un démon mort meurent avec leur dessin', () => {
+  const man = JSON.parse(fs.readFileSync(
+    path.join(ROOT, 'public/minipixiz/sprites/sprites.json'), 'utf8'));
+  assert.equal(man.partJet.etats.length, 48, 'les quarante-huit images sont extraites');
+
+  const jeu = new E.Jeu({ graine: 5, niveau: 0 });
+  const champ = new C.Champ(jeu, {});
+  // Une gerbe partie du début joue tout ; une gerbe partie de l'image douze n'a
+  // plus que trente-sept images à jouer, et doit s'éteindre à la trente-septième.
+  const faire = (image) => {
+    const p = champ.nouvellePart('partJet');
+    p.frame = image; p.joue = true;
+    p.init();
+    return p;
+  };
+  assert.equal(faire(1).timer, 48, 'du début : quarante-huit');
+  assert.equal(faire(12).timer, 37, 'de la douzième : trente-sept');
+  // Et jamais au-delà de ce que le dessin peut montrer.
+  for (let image = 1; image <= 12; image++) {
+    const p = faire(image);
+    assert.ok(p.frame - 1 + p.timer <= man.partJet.etats.length,
+      'une gerbe partie de l\'image ' + image + ' ne survit pas à son dessin');
+  }
+});
+
+// ── « L'aperçu change brutalement » ──────────────────────────────────────
+//
+// inter.Face.update fait GLISSER la colonne :
+//
+//     var dy = (i+1)*ec - mc._y
+//     mc._y += dy*0.1*Timer.tmod
+//
+// et `newPiece` fait entrer une pièce neuve par le bas (`piece._y = 120`).
+// Le portage posait chacune directement à sa place : à chaque pièce jouée,
+// toute la colonne sautait d'un cran.
+
+test('la colonne des pièces à venir glisse au lieu de sauter', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.match(src, /py \+= \(\(i \+ 1\) \* ec - py\) \* 0\.1 \* pas;/, 'un dixième du chemin par image');
+  assert.match(src, /if \(py === undefined\) py = NEXT_ZONE\.y;/, 'une pièce neuve entre par le bas');
+  assert.match(src, /this\.suivantesY = new WeakMap\(\)/, 'la hauteur suit la liste, pas son rang');
+  // Le moteur ne fait que `shift()` : les listes gardent leur identité, ce dont
+  // dépend tout le mécanisme.
+  const moteur = fs.readFileSync(path.join(ROOT, 'public/minipixiz/engine.js'), 'utf8');
+  assert.match(moteur, /this\.nextList\.shift\(\)/);
+
+  // Et la trajectoire elle-même : de 120 vers sa place, en s'approchant.
+  const ec = 100 / 4;                       // trois pièces à venir
+  let py = 120;
+  const cible = 3 * ec;                     // la dernière de la file
+  const suite = [];
+  for (let i = 0; i < 40; i++) { py += (cible - py) * 0.1 * 0.8; suite.push(py); }
+  assert.ok(suite[0] < 120 && suite[0] > 116, 'elle démarre doucement');
+  assert.ok(suite[39] < cible + 2, 'et se pose en une quarantaine d\'images');
+  for (let i = 1; i < suite.length; i++) {
+    assert.ok(suite[i] < suite[i - 1], 'elle ne repart jamais en arrière');
+  }
+});
+
+// ── « Un mini lag à chaque changement de niveau » ────────────────────────
+//
+// `nouvellePartie` remet l'horloge à zéro pour qu'un long chargement ne compte
+// pas comme du temps de jeu. La boucle en profitait pour SAUTER l'image : elle
+// repartait avant même de dessiner. À chaque niveau, l'écran gardait donc le
+// plateau fini une image de plus, juste avant l'annonce du niveau.
+
+test('la remise à zéro de l\'horloge ne saute plus une image', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  assert.ok(!/if \(!this\.dernier\) \{ this\.dernier = t; return; \}/.test(src),
+    'la boucle ne repart plus sans dessiner');
+  assert.match(src, /if \(!this\.dernier\) this\.dernier = t;/);
+  // Une image de durée nulle garde le `tmod` précédent, comme Flash garde son
+  // `calc_tmod` : elle ne remet pas la cadence à zéro.
+  assert.match(src, /if \(dt > 0 && dt < TMOD_SAUT\) \{/);
+  // Et `nouvellePartie` remet bien l'horloge — c'est voulu, c'est le saut qui
+  // ne l'était pas.
+  assert.match(src, /this\.dernier = 0;\n\s*this\.reste = 0;/);
+});

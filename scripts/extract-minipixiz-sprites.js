@@ -328,7 +328,12 @@ const CIBLES = [
 function effets() {
   // Les clips que le jeu fait JOUER : on garde la séquence entière.
   const ANIMES = {
-    partJet: 12, partMiniExplosion: 12, partDeadImp: 12, partPaint: 1,
+    // partJet est le plus long du jeu : QUARANTE-HUIT images dessinées (le clip
+    // vide son calque à la quarante-neuvième). Il n'en sortait que douze, et
+    // comme `poserVif` retient la dernière image connue quand elle manque, la
+    // gerbe d'un démon qui meurt se figeait au quart de son scénario et restait
+    // plantée à l'écran — le « les paillettes restent figées » du joueur.
+    partJet: 48, partMiniExplosion: 12, partDeadImp: 12, partPaint: 1,
     partLightStar: 9, partFlipGlow: 2, partBombEplosion: 12,
     partDynColorFlower: 12, partRoundBlink: 12, partSuperNova: 2,
     partQueueStandard: 12, partQueuePhantom: 8, partOnde: 4,

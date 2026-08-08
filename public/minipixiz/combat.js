@@ -80,7 +80,11 @@ const COULEURS_IMPY = [
  * Cloche, le trou noir — bouclent au contraire et attendent qu'un sort les
  * range : ils ne sont pas dans cette liste, et c'est voulu.
  *
- * La durée est le nombre d'images du clip, relevé dans root.swf.
+ * La durée est le nombre d'images du clip, relevé dans root.swf — celles qu'il
+ * joue DEPUIS SON DÉBUT. Un clip lancé au milieu de son scénario en a d'autant
+ * moins à jouer, et `init` retranche le décalage : les gerbes d'un démon qui
+ * meurt partent d'une image tirée au sort entre une et douze
+ * (`gotoAndPlay(Std.random(12)+1)`) et doivent s'éteindre avec leur dessin.
  */
 const EPHEMERES = {
   partQueueStandard: 12, partQueuePhantom: 8, partJet: 48, partMiniExplosion: 12,
@@ -220,7 +224,11 @@ class Particule extends Corps {
     // `gotoAndStop` explicite le fige, et le jeu n'en compte que deux.
     if (!this.fige && IMAGES[this.lien] > 1) this.joue = true;
     if (this.timer === null && EPHEMERES[this.lien]) {
-      this.timer = EPHEMERES[this.lien];
+      // Ce qui lui RESTE à jouer : le clip s'efface à sa dernière image, où
+      // qu'il ait commencé. Sans ce retranchement, une gerbe lancée à l'image
+      // douze survivait onze unités de plus que son dessin — figée sur sa
+      // dernière image, puisqu'il n'y en avait plus d'autre à montrer.
+      this.timer = Math.max(1, EPHEMERES[this.lien] - (this.frame - 1));
       this.fondu = [];            // il joue jusqu'au bout, il ne s'estompe pas
     }
     return this;

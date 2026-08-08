@@ -1437,12 +1437,20 @@ class Client {
 
     const boucle = (t) => {
       this.raf = requestAnimationFrame(boucle);
-      if (!this.dernier) { this.dernier = t; return; }
+      // `nouvellePartie` remet l'horloge à zéro pour qu'un long chargement ne
+      // compte pas comme du temps de jeu. Le portage en profitait pour SAUTER
+      // l'image : il repartait avant même de dessiner, si bien qu'à chaque
+      // changement de niveau l'écran gardait le plateau fini une image de plus,
+      // juste avant que le bouquet n'annonce le niveau. C'est le « mini lag »
+      // remonté. On repart de zéro, mais on dessine.
+      if (!this.dernier) this.dernier = t;
       const dt = (t - this.dernier) / 1000;
       this.dernier = t;
       // Timer.update, au mot près : la moyenne glissante, et l'image trop
-      // longue qu'on laisse tomber au lieu de la rattraper.
-      if (dt < TMOD_SAUT) {
+      // longue qu'on laisse tomber au lieu de la rattraper. Une image de zéro
+      // — celle qui suit la remise à zéro — garde le `tmod` précédent, comme
+      // Flash garde son `calc_tmod`.
+      if (dt > 0 && dt < TMOD_SAUT) {
         this.tmod = this.tmod * TMOD_LISSAGE + (1 - TMOD_LISSAGE) * dt * IPS;
       }
       this.reste += this.tmod;
@@ -2410,7 +2418,7 @@ class Client {
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_MILIEU, 100), 0, 0);
     if (this.champ && this.champ.faerieList.length) this.dessinerInterface(ctx, tmod);
     const col = lieu.colonneSuivantes;
-    if (col) this.dessinerSuivantes(ctx, col.x, col.y, col.echelle, col.image, col.nombre);
+    if (col) this.dessinerSuivantes(ctx, col.x, col.y, col.echelle, col.image, col.nombre, tmod);
     this.dessinerEnteteLieu(ctx);
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_DESSUS, 100), 0, 0);
     this.dessinerNuitNoire(ctx);
@@ -2429,13 +2437,38 @@ class Client {
    * @param {number} frame son image (`setSkin`)
    * @param {number} n     combien de pièces
    */
-  dessinerSuivantes(ctx, x, y, k, frame, n) {
+  dessinerSuivantes(ctx, x, y, k, frame, n, tmod) {
     const s = this.sprites, jeu = this.jeu;
     if (!s.suivante || !jeu) return;
     poserRendu(ctx, rendre(s.suivante, frame, 100 * k), x, y);
     const zx = x + NEXT_ZONE.x * k;
     const zy = y + NEXT_ZONE.y * k;
     const ec = 100 / (n + 1);
+    /*
+     * inter.Face.update — LA COLONNE GLISSE, elle ne se repose pas.
+     *
+     *     var ec = 100/(pieceList.length+1)
+     *     for( var i=0; i<pieceList.length; i++ ){
+     *         var mc = pieceList[i];
+     *         var dy = (i+1)*ec - mc._y
+     *         mc._y += dy*0.1*Timer.tmod
+     *     }
+     *
+     * Chaque pièce va vers sa place d'un dixième du chemin par image, et une
+     * pièce NEUVE entre par le bas (`newPiece` : `piece._y = 120`, sous la
+     * colonne). Quand la pièce du dessus est consommée, `removeNext` décale la
+     * file : les autres remontent d'un cran EN GLISSANT, et une nouvelle monte
+     * du bas. C'est de là que vient l'impression de billes qui arrivent l'une
+     * derrière l'autre.
+     *
+     * Le portage posait chacune directement à sa place : à chaque pièce jouée,
+     * toute la colonne sautait d'un cran. On garde donc la hauteur de chaque
+     * pièce, attachée à la LISTE elle-même — le moteur ne fait que `shift()`,
+     * les listes gardent leur identité, et une carte faible les oublie d'elle-
+     * même quand elles sortent.
+     */
+    if (!this.suivantesY) this.suivantesY = new WeakMap();
+    const pas = (tmod === undefined ? 1 : tmod);
     const etat = s.suivante.etats.find((e) => e.frame === frame) || s.suivante.etats[0];
     const decoupe = (etat.masquesPartiels || [])[0];
     ctx.save();
@@ -2447,7 +2480,11 @@ class Client {
     for (let i = 0; i < n; i++) {
       const liste = jeu.nextList[i];
       if (!liste) continue;
-      const dy = ((i + 1) * ec - NEXT_ZONE.y) * k;
+      let py = this.suivantesY.get(liste);
+      if (py === undefined) py = NEXT_ZONE.y;      // newPiece : elle entre par le bas
+      py += ((i + 1) * ec - py) * 0.1 * pas;
+      this.suivantesY.set(liste, py);
+      const dy = (py - NEXT_ZONE.y) * k;
       // inter.Face.newPiece pose chaque bille à `ei.x × size` depuis un x FIXE
       // (18), et centre l'élément sur ce point (`ei.e.x = -0.5 × size`). Le
       // portage, lui, ramenait la pièce sur le coin de sa propre boîte
@@ -2903,7 +2940,7 @@ class Client {
     // La colonne des pièces à venir, sous le cadre : elle n'existe que si la fée
     // est assez concentrée pour l'offrir.
     if (voitVenir > 0) {
-      this.dessinerSuivantes(ctx, boite.portrait.x, cy, FACE_ECHELLE, peau, voitVenir);
+      this.dessinerSuivantes(ctx, boite.portrait.x, cy, FACE_ECHELLE, peau, voitVenir, tmod);
     }
 
     // Le portrait se glisse ENTRE le passe-partout du cadre et son liseré, et
