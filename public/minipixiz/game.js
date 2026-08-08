@@ -47,7 +47,41 @@ const TS = E.TS;
  * chaque chute, chaque sort, chaque particule prenait un tiers de temps de plus
  * qu'au bureau. C'est ce qui donnait au jeu son air pâteux à côté du Flash.
  */
-const IPS = 40;                       // Timer.tmod : 1 = une image à 40 i/s
+/*
+ * Timer — la cadence du jeu, lue dans le bytecode de root.swf.
+ *
+ * Il n'y a pas de `Timer.mt` dans les sources : c'est une classe de la
+ * bibliothèque de Motion-Twin, compilée dans le SWF. Ses constantes s'y
+ * retrouvent telles quelles (Timer_wantedFPS, Timer_maxDeltaTime,
+ * Timer_tmod_factor), et son `update` se lit ainsi :
+ *
+ *     deltaT = (getTimer() - oldTime) / 1000            en SECONDES
+ *     oldTime = getTimer()
+ *     if( deltaT < maxDeltaTime ){
+ *         calc_tmod = calc_tmod*tmod_factor + (1-tmod_factor)*deltaT*wantedFPS
+ *     }else{
+ *         deltaT = 1/wantedFPS
+ *     }
+ *     tmod = calc_tmod
+ *
+ * Deux choses en découlent, et le portage se trompait sur les deux.
+ *
+ * D'ABORD LA CADENCE. `wantedFPS` vaut TRENTE-DEUX, pas quarante. Les quarante
+ * de l'en-tête du SWF disent à quelle fréquence Flash REDESSINE ; `tmod`, lui,
+ * ramène tout à une image de 1/32 de seconde. Une pièce qui tombe de 0,0315
+ * case par unité descend donc à 1,008 case par seconde — exactement ce qu'un
+ * joueur a chronométré sur le premier niveau. Le portage comptait quarante
+ * unités par seconde : vingt-cinq pour cent trop vite.
+ *
+ * ENSUITE LA RÉGULARITÉ. `tmod` n'est pas le temps écoulé mais sa MOYENNE
+ * GLISSANTE, à 95 %. Une image un peu longue ne fait pas bondir le plateau ;
+ * elle infléchit à peine la cadence, et la suivante la ramène. C'est de là que
+ * vient la douceur du jeu d'origine, et une image trop longue (plus d'une demi-
+ * seconde) est simplement PERDUE — le jeu ne rattrape jamais son retard.
+ */
+const IPS = 32;                       // Timer.wantedFPS
+const TMOD_LISSAGE = 0.95;            // Timer.tmod_factor
+const TMOD_SAUT = 0.5;                // Timer.maxDeltaTime, en secondes
 
 // L'aire de JEU : les deux lignes d'antichambre restent hors cadre.
 const LARGEUR = E.LARGEUR;            // 132
@@ -1363,11 +1397,12 @@ class Client {
     if (dest) dest(nom, d);
   }
 
-  // La boucle. Le jeu d'origine tourne à quarante images par seconde (voir IPS)
-  // et ses tirages en dépendent : on avance par pas d'UNE image nominale,
-  // jamais à moitié.
+  // La boucle. Une mise à jour par image rendue, du `tmod` de Timer (voir IPS).
   demarrer() {
     if (this.raf) return;
+    // Timer.calc_tmod part à 1 : la première image vaut une image pleine, et la
+    // moyenne glissante s'installe ensuite.
+    if (this.tmod === undefined) this.tmod = 1;
     /**
      * Une image de jeu, avec le `tmod` FRACTIONNAIRE de l'original.
      *
@@ -1403,10 +1438,14 @@ class Client {
     const boucle = (t) => {
       this.raf = requestAnimationFrame(boucle);
       if (!this.dernier) { this.dernier = t; return; }
-      let dt = (t - this.dernier) / 1000;
+      const dt = (t - this.dernier) / 1000;
       this.dernier = t;
-      if (dt > 0.25) dt = 0.25;
-      this.reste += dt * IPS;
+      // Timer.update, au mot près : la moyenne glissante, et l'image trop
+      // longue qu'on laisse tomber au lieu de la rattraper.
+      if (dt < TMOD_SAUT) {
+        this.tmod = this.tmod * TMOD_LISSAGE + (1 - TMOD_LISSAGE) * dt * IPS;
+      }
+      this.reste += this.tmod;
       let pas = 0;
       this.piloterAuDoigt();
       const mode = this.bassin || this.lieu;
@@ -1442,7 +1481,9 @@ class Client {
         && !this.dialogue && Math.random() * 500 < pas) {
         this.ambiance();
       }
-      this.dessiner(dt * IPS);
+      // Le décor bat au même `tmod` que le jeu : Manager.update le pose une
+      // fois par image, et tout le monde lit la même valeur.
+      this.dessiner(this.tmod);
     };
     this.raf = requestAnimationFrame(boucle);
   }

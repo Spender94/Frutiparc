@@ -65,10 +65,13 @@ function couperEnLignes(ctx, texte, large) {
   return lignes;
 }
 
-// La cadence du jeu d'origine : quarante images par seconde (l'en-tête des SWF
-// livrés, et le compteur `400/Timer.tmod` de Manager.update qui affiche 40 pour
-// tmod = 1). La clairière respire au même rythme que le reste.
-const IPS = 40;
+// La cadence du jeu d'origine : `Timer.wantedFPS`, lu dans le bytecode de
+// root.swf — TRENTE-DEUX. Les quarante de l'en-tête du SWF disent à quelle
+// fréquence Flash redessine ; `tmod`, lui, ramène tout à une image de 1/32 de
+// seconde. La clairière respire au même rythme que le jeu (voir game.js).
+const IPS = 32;
+const TMOD_LISSAGE = 0.95;            // Timer.tmod_factor
+const TMOD_SAUT = 0.5;                // Timer.maxDeltaTime, en secondes
 
 // Menu.initDecor — l'ordre d'empilement et le coefficient de parallaxe.
 const PLANS = [
@@ -579,15 +582,20 @@ class Menu {
     this.actif = true;
     if (this.raf) return;
     let dernier = 0;
+    if (this.tmod === undefined) this.tmod = 1;   // Timer.calc_tmod part à 1
     const boucle = (t) => {
       this.raf = requestAnimationFrame(boucle);
       if (!this.actif) return;
-      const dt = dernier ? Math.min((t - dernier) / 1000, 0.25) : 0;
+      const dt = dernier ? (t - dernier) / 1000 : 0;
       dernier = t;
-      this.avancer(dt * IPS);
+      // Timer.update : la moyenne glissante, et l'image trop longue perdue.
+      if (dt > 0 && dt < TMOD_SAUT) {
+        this.tmod = this.tmod * TMOD_LISSAGE + (1 - TMOD_LISSAGE) * dt * IPS;
+      }
+      this.avancer(this.tmod);
       this.rendre();
       // La clairière aussi s'ouvre dans l'iris du jeu.
-      if (this.iris && !this.iris.dessiner(this.ctx, dt * IPS)) this.iris = null;
+      if (this.iris && !this.iris.dessiner(this.ctx, this.tmod)) this.iris = null;
     };
     this.raf = requestAnimationFrame(boucle);
   }

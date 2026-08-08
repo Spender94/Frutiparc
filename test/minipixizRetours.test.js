@@ -760,20 +760,20 @@ test('l\'ouverture du jeu : l\'écran-titre, puis la clairière dans une ÉTOILE
   const client = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
   const page = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
 
-  // 1. LA CADENCE. Le jeu d'origine tourne à QUARANTE images par seconde —
-  //    l'en-tête des SWF livrés le dit, et le compteur de mise au point de
-  //    Manager.update (`400/Timer.tmod`) affiche 40 pour tmod = 1. Le portage
-  //    avançait à trente : un tiers de temps en trop sur chaque chute.
-  assert.match(client, /const IPS = 40;/, 'la boucle du jeu compte 40 i/s');
+  // 1. LA CADENCE. Deux nombres différents, et il ne faut pas les confondre :
+  //    l'en-tête des SWF dit QUARANTE — la fréquence à laquelle Flash REDESSINE
+  //    — tandis que `Timer.wantedFPS`, la référence de `tmod`, vaut
+  //    TRENTE-DEUX. C'est la seconde qui commande la vitesse du jeu ; le test
+  //    qui suit la relit dans le bytecode.
+  assert.match(client, /const IPS = 32;/, 'la boucle du jeu compte 32 unités/s');
   const menu = fs.readFileSync(path.join(ROOT, 'public/minipixiz/menu.js'), 'utf8');
-  assert.match(menu, /const IPS = 40;/, 'la clairière aussi');
-  assert.ok(!/dt \* 30/.test(menu), 'plus de trente images par seconde nulle part');
+  assert.match(menu, /const IPS = 32;/, 'la clairière aussi');
   const zlib = require('zlib');
   for (const f of ['minipixiz.swf', 'full.swf', 'swf/root.swf']) {
     const raw = fs.readFileSync(path.join(ROOT, 'Games/miniTroll', f));
     const b = raw.toString('latin1', 0, 3) === 'CWS' ? zlib.inflateSync(raw.slice(8)) : raw.slice(8);
     const o = Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8);
-    assert.equal(b.readUInt16LE(o) / 256, 40, f + ' tourne à 40 i/s');
+    assert.equal(b.readUInt16LE(o) / 256, 40, f + ' se redessine à 40 i/s');
   }
 
   // 2. L'ÉCRAN-TITRE (sprite « loading ») : fond lavande, logo, bande qui
@@ -1818,4 +1818,108 @@ test('la mana ne se recharge pas entre deux parties', () => {
   const N = require('../public/minipixiz/nuit.js');
   N.entretien(carte, tirage(19));
   assert.equal(carte.$faerie[0].$mana, 0, 'la nuit ne remplit pas la mana');
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+//  « Le jeu est 23 % plus rapide en light » — la cadence
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Un joueur a chronométré le premier niveau : treize billes en treize secondes
+// sous Flash (une case par seconde), dix secondes et demie en light. Il avait
+// raison, et la cause est une constante.
+//
+// Il n'y a pas de `Timer.mt` dans les sources : c'est une classe de la
+// bibliothèque de Motion-Twin, compilée dans root.swf. Ses constantes s'y
+// retrouvent telles quelles, et `wantedFPS` vaut TRENTE-DEUX. Les quarante de
+// l'en-tête du SWF disent à quelle fréquence Flash REDESSINE ; `tmod`, lui,
+// ramène tout à une image de 1/32 de seconde.
+//
+// Ce test relit la constante dans le fichier plutôt que de la recopier : si
+// quelqu'un remet quarante, il saute.
+
+test('la cadence du portage est celle de Timer.wantedFPS, lue dans le SWF', () => {
+  const zlib = require('zlib');
+  const swf = fs.readFileSync(path.join(ROOT, 'Games/miniTroll/swf/root.swf'));
+  const b = zlib.inflateSync(swf.slice(8));
+
+  // La table de constantes du bloc d'actions qui porte la classe Timer.
+  const brut = b.toString('latin1');
+  const marque = brut.indexOf('Timer_wantedFPS');
+  assert.ok(marque > 0, 'la classe Timer est bien dans le fichier');
+  let d = marque;
+  while (d > 0 && b[d] !== 0x88) d--;              // ActionConstantPool
+  const n = b.readUInt16LE(d + 3);
+  let p = d + 5;
+  const pool = [];
+  for (let k = 0; k < n; k++) {
+    let e = p; while (b[e] !== 0) e++;
+    pool.push(b.slice(p, e).toString('latin1')); p = e + 1;
+  }
+
+  // Le code suit la table. On cherche `push "Timer_wantedFPS", <nombre>`.
+  const lire = (cle) => {
+    const idx = pool.indexOf(cle);
+    assert.ok(idx >= 0, cle + ' est dans la table de constantes');
+    for (let o = p; o < b.length - 12; o++) {
+      if (b[o] !== 0x96) continue;                 // ActionPush
+      const len = b.readUInt16LE(o + 1);
+      let q = o + 3;
+      // Premier élément : une constante, notre clé ?
+      const t = b[q];
+      let vu = null;
+      if (t === 8) { vu = b[q + 1]; q += 2; } else if (t === 9) { vu = b.readUInt16LE(q + 1); q += 3; } else continue;
+      if (vu !== idx) continue;
+      // Deuxième élément : le nombre qu'on lui affecte.
+      if (q >= o + 3 + len) continue;
+      const t2 = b[q++];
+      if (t2 === 7) return b.readInt32LE(q);
+      if (t2 === 6) {
+        const tampon = Buffer.alloc(8);
+        b.copy(tampon, 0, q + 4, q + 8); b.copy(tampon, 4, q, q + 4);
+        return tampon.readDoubleLE(0);
+      }
+      if (t2 === 1) return b.readFloatLE(q);
+    }
+    return null;
+  };
+
+  const wantedFPS = lire('Timer_wantedFPS');
+  const facteur = lire('Timer_tmod_factor');
+  const saut = lire('Timer_maxDeltaTime');
+  assert.equal(wantedFPS, 32, 'Timer.wantedFPS');
+  assert.equal(Math.round(facteur * 100) / 100, 0.95, 'Timer.tmod_factor');
+  assert.equal(saut, 0.5, 'Timer.maxDeltaTime');
+
+  // Et le portage écrit les mêmes valeurs, dans le jeu comme dans la clairière.
+  for (const f of ['public/minipixiz/game.js', 'public/minipixiz/menu.js']) {
+    const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    assert.match(src, new RegExp('const IPS = ' + wantedFPS + ';'), f + ' : la cadence');
+    assert.match(src, /const TMOD_LISSAGE = 0\.95;/, f + ' : le lissage');
+    assert.match(src, /const TMOD_SAUT = 0\.5;/, f + ' : le saut d\'image');
+  }
+});
+
+test('une bille descend d\'une case par seconde au premier niveau', () => {
+  // base/Forest.initGame : `setPieceSpeed(0.03 + level*0.002)`, et Game.initStep
+  // ajoute 0,0015 avant CHAQUE pièce — la première tombe donc à 0,0315 case par
+  // unité de temps. À trente-deux unités par seconde : 1,008 case par seconde,
+  // ce que le joueur a chronométré sous Flash.
+  const X = require('../public/minipixiz/lieux.js');
+  assert.ok(X, 'les lieux se chargent');
+  const jeu = new E.Jeu({ graine: 12345, niveau: 0 });
+  assert.equal(Math.round(jeu.pSpeedStart * 10000) / 10000, 0.03, 'la vitesse de départ');
+
+  // On avance jusqu'à ce qu'une pièce soit en jeu, puis on mesure sa chute.
+  let garde = 0;
+  while (jeu.step !== E.ETAPE.JEU && garde++ < 5000) jeu.update(1);
+  const p = jeu.piece;
+  assert.ok(p, 'une pièce est en jeu');
+  assert.equal(Math.round(p.fSpeed * 10000) / 10000, 0.0315, 'la chute de la première pièce');
+
+  const IPS = 32;
+  const parSeconde = p.fSpeed * IPS;
+  assert.ok(Math.abs(parSeconde - 1.008) < 0.001,
+    parSeconde.toFixed(3) + ' case par seconde (le joueur en a compté une)');
+  // Et à quarante — l'ancienne valeur — on était vingt-cinq pour cent trop vite.
+  assert.equal(Math.round((p.fSpeed * 40) / parSeconde * 100) / 100, 1.25);
 });
