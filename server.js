@@ -15222,6 +15222,12 @@ app.get('/api/light/profile', async (req, res) => {
     const list = byDay[day] && byDay[day][username];
     if (Array.isArray(list)) medals += list.length;
   }
+  // Le forum vit en base : sans elle, rien à compter.
+  let forumUnread = 0;
+  if (process.env.DATABASE_URL) {
+    try { forumUnread = await db.forumCountUnread(username); }
+    catch (e) { console.error('[LIGHT] forumCountUnread:', e.message); }
+  }
   res.json({
     ok: true,
     user: getDisplayName(username),
@@ -15237,6 +15243,9 @@ app.get('/api/light/profile', async (req, res) => {
     mailUnread: unreadInboxCount(u),
     eventsUnread: lightLogUnread(u, 'siteLog'),
     historyUnread: lightLogUnread(u, 'userLog'),
+    // Sujets du forum qui ont du nouveau depuis la dernière visite. Sans base,
+    // il n'y a pas de forum du tout : zéro, et le voyant reste éteint.
+    forumUnread,
     // Feutres spéciaux possédés (pour afficher la pastille dédiée dans la palette).
     ownedFeutres: Array.isArray(u.ownedFeutres) ? u.ownedFeutres.slice() : [],
   });

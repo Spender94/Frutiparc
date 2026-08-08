@@ -2066,6 +2066,32 @@ async function forumGetCategories() {
   return rows;
 }
 
+/**
+ * Combien de sujets ont du NOUVEAU pour ce frutiz.
+ *
+ * Même règle que les dossiers du forum (`forumGetBoards` / `forumGetTopics`) :
+ * un sujet compte tant que son dernier message est postérieur à la marque de
+ * lecture — et un sujet jamais ouvert compte aussi, d'où le repli sur l'époque.
+ *
+ * Un seul ajout : on ne se compte pas soi-même. Poster un message y déposait un
+ * `last_post_at` tout neuf sans marque de lecture en face, donc son propre sujet
+ * s'allumait au visage de son auteur.
+ *
+ * Sert au voyant du raccourci Forum sur /light.
+ */
+async function forumCountUnread(username) {
+  if (!username) return 0;
+  const { rows } = await pool.query(`
+    SELECT COUNT(*)::int AS n
+    FROM forum_topics t
+    LEFT JOIN forum_topic_reads r
+      ON r.topic_id = t.id AND r.username = $1
+    WHERE t.last_post_at > COALESCE(r.read_at, 'epoch'::timestamptz)
+      AND LOWER(COALESCE(t.last_post_by, '')) <> LOWER($1)
+  `, [username]);
+  return (rows[0] && rows[0].n) || 0;
+}
+
 async function forumGetBoards(username = null) {
   // unreadSubquery returns TRUE if any topic in the board has a
   // last_post_at newer than the user's last read mark (or no read mark
@@ -2851,6 +2877,7 @@ module.exports = {
   deleteWallpaperAccessories,
   forumGetCategories,
   forumGetBoards,
+  forumCountUnread,
   forumGetTopics,
   forumGetTopic,
   forumGetPosts,

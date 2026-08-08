@@ -2132,7 +2132,7 @@
     { file: "Historique", name: "Historique", go: "historique", voyant: "HistoriqueAlerte", mot: "événement",
       tuile: "icone_historique" },
     { file: "Aide",       name: "Aide" },
-    { file: "Forum",      name: "Forum", go: "forum" },
+    { file: "Forum",      name: "Forum", go: "forum",       voyant: "ForumAlerte",      mot: "sujet" },
     { file: "Jeux",       name: "Jeux", go: "disques" },
   ];
   function raccourci(fichier) {
@@ -2270,6 +2270,7 @@
       // Les icônes peuvent déjà avoir à signaler quelque chose (le profil a pu
       // répondre avant que la grille ne soit construite).
       majVoyant("Mail", mailNonLus);
+      majVoyant("Forum", forumNonLus);
       Object.keys(JOURNAUX).forEach(function (cle) {
         majVoyant(JOURNAUX[cle].raccourci, journalEtat[cle].nonLus);
       });
@@ -2287,6 +2288,7 @@
           homeProfile.rank = (d.rank != null) ? Number(d.rank) : null;
           homeProfile.kikooz = Number(d.kikooz) || 0;
           setMailNonLus(d.mailUnread);                       // voyants messagerie…
+          setForumNonLus(d.forumUnread);                     // …et forum
           setJournalNonLus("evenements", d.eventsUnread);    // …événements…
           setJournalNonLus("historique", d.historyUnread);   // …et historique
           state.ownedFeutres = Array.isArray(d.ownedFeutres) ? d.ownedFeutres : [];
@@ -2434,9 +2436,14 @@
   // activateTab pilote l'affichage des panneaux. On l'appelle depuis la grille
   // d'accueil (Salons, Forum, Scores) ET depuis la feuille « Mes disques » (qui
   // lance grapiz / bandas / swapou). Le bouton ‹ de la top bar ramène à l'accueil.
+  // La rubrique qu'on QUITTE. Le forum vit dans une iframe : lire un sujet s'y
+  // passe hors de notre vue, et c'est en le quittant qu'on redemande le compte.
+  var ongletCourant = null;
   function activateTab(tab) {
     // Choisir une rubrique referme le tiroir (le contenu choisi occupe l'écran).
     closeMenu();
+    if (ongletCourant === "forum" && tab !== "forum") loadHomeProfile();
+    ongletCourant = tab;
     $("#chat-panel").classList.toggle("active", tab === "chat");
     $("#forum-panel").classList.toggle("active", tab === "forum");
     $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
@@ -2746,6 +2753,27 @@
 
   // Le voyant : l'icône du raccourci passe de l'enveloppe verte à l'enveloppe
   // d'alerte rouge dès qu'un message attend, avec le nombre en pastille.
+  /*
+   * Le voyant du FORUM.
+   *
+   * Il manquait, et il manquait à trois endroits : le raccourci n'avait pas
+   * d'icône d'alerte déclarée, aucun compte ne lui parvenait, et le serveur ne
+   * disait rien. Les trois sont là maintenant — l'icône est la même forme dans
+   * le vert sombre de l'écran allumé, comme pour l'historique et les
+   * événements.
+   *
+   * Ce qui l'allume : TOUT sujet ayant du nouveau depuis la dernière visite,
+   * partout sur le forum — la même règle que les dossiers du forum lui-même.
+   * Ses propres messages ne comptent pas.
+   */
+  var forumNonLus = 0;
+  function setForumNonLus(n) {
+    var v = Math.max(0, Number(n) || 0);
+    if (v === forumNonLus) return;
+    forumNonLus = v;
+    majVoyant("Forum", forumNonLus);
+  }
+
   function setMailNonLus(n) {
     var v = Math.max(0, Number(n) || 0);
     if (v === mailNonLus) return;
