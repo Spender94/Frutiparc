@@ -356,7 +356,11 @@ for (const t of tags) {
     (s) => s.degrade ? (s.degrade.radial ? 'radial' : 'linéaire')
       : s.bitmap !== undefined ? ('bitmap#' + s.bitmap) : s.couleur));
   if (!voulus.size) {
-    console.log(`#${f.id}\tshape${t.code}\t${(x1 - x0).toFixed(2)}x${(y1 - y0).toFixed(2)}\t${cols.join(' ')}`);
+    // Le coin haut-gauche des bornes clôt la ligne (`@x,y`) : une forme n'est
+    // pas toujours dessinée autour de son origine — les traînes de Miniwave
+    // s'étendent de -100 à 0 — et le client doit poser l'image LÀ, pas au
+    // centre. Ajout en fin de ligne : les parseurs existants s'arrêtent avant.
+    console.log(`#${f.id}\tshape${t.code}\t${(x1 - x0).toFixed(2)}x${(y1 - y0).toFixed(2)}\t${cols.join(' ')}\t@${x0.toFixed(2)},${y0.toFixed(2)}`);
     continue;
   }
   if (!sortie) { console.log(versSvg(f)); continue; }

@@ -11,6 +11,11 @@
  * l'agrandit par une mise à l'échelle ENTIÈRE tant que c'est possible : les
  * dessins d'origine sont des images de 16 à 20 pixels, et un facteur fractionnaire
  * les rendrait floues.
+ *
+ * Les PARTICULES du SWF (sp/Part.as) sont rejouées ici : anneaux d'onde,
+ * étincelles d'impact, traînes des tirs, étoiles de warp. Chaque clip extrait
+ * garde ses images ; on les fait défiler à la cadence du jeu, avec la physique
+ * de Part.as — gravité, frottement, fondu de fin de vie.
  */
 'use strict';
 
@@ -35,27 +40,90 @@ function charger(manifeste, surAvancee) {
     const fini = () => { faits++; if (surAvancee) surAvancee(faits / liste.length); resoudre(); };
     img.onload = () => { images.set(f, img); fini(); };
     img.onerror = fini;               // une pièce manquante ne doit pas bloquer la partie
-    img.src = BASE + 'sprites/' + f;
+  img.src = BASE + 'sprites/' + f;
   })));
 }
 
+// ── Transformation de couleur du SWF ──────────────────────────────────────
+// sortie = source × mult/256 + add, canal par canal. C'est elle qui peint en
+// blanc le halo de la bombe du Pamplemousse et qui éteint les traînes. On
+// l'applique UNE fois par (image, transformation) et on garde le résultat.
+const teintes = new Map();
+function imageTeintee(fichier, cx) {
+  const cle = fichier + '|' + cx.m.join() + '|' + cx.a.join();
+  let c = teintes.get(cle);
+  if (c !== undefined) return c;
+  const img = images.get(fichier);
+  if (!img || !(img.naturalWidth || img.width)) return null;
+  const K = 3;                        // sur-échantillonné : les pièces sont petites
+  const w = Math.max(1, Math.round((img.naturalWidth || img.width) * K));
+  const h = Math.max(1, Math.round((img.naturalHeight || img.height) * K));
+  c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const cc = c.getContext('2d');
+  cc.drawImage(img, 0, 0, w, h);
+  try {
+    const d = cc.getImageData(0, 0, w, h);
+    const px = d.data;
+    const m = cx.m, a = cx.a;
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] === 0 && !a[3]) continue;
+      px[i] = Math.max(0, Math.min(255, px[i] * m[0] / 256 + a[0]));
+      px[i + 1] = Math.max(0, Math.min(255, px[i + 1] * m[1] / 256 + a[1]));
+      px[i + 2] = Math.max(0, Math.min(255, px[i + 2] * m[2] / 256 + a[2]));
+      px[i + 3] = Math.max(0, Math.min(255, px[i + 3] * m[3] / 256 + a[3]));
+    }
+    cc.putImageData(d, 0, 0);
+  } catch (e) { /* toile souillée : on gardera l'image telle quelle */ c = null; }
+  teintes.set(cle, c);
+  return c;
+}
+
 // Pose un état de sprite centré en (x,y). Les pièces d'un dessin composé (le
-// boss) portent leur propre matrice, exprimée dans le repère du sprite.
+// boss) portent leur propre matrice, exprimée dans le repère du sprite, et
+// parfois une origine excentrée (`o`) : les traînes s'étendent DERRIÈRE leur
+// point d'ancrage, pas autour.
 function poser(ctx, sprite, frame, x, y, echelle) {
   if (!sprite) return;
   const etat = sprite.etats.find((e) => e.frame === frame) || sprite.etats[0];
   if (!etat) return;
   for (const p of etat.pieces) {
-    const img = images.get(p.fichier);
+    let img = null;
+    let alpha = 1;
+    if (p.cx) {
+      // Une transformation qui ne touche QUE l'alpha se pose en globalAlpha :
+      // pas de toile teintée à fabriquer pour chaque image d'un fondu.
+      const m = p.cx.m, a = p.cx.a;
+      if (m[0] === 256 && m[1] === 256 && m[2] === 256 && !a[0] && !a[1] && !a[2] && !a[3]) {
+        alpha = m[3] / 256;
+        if (alpha <= 0) continue;
+      } else {
+        img = imageTeintee(p.fichier, p.cx);
+      }
+    }
+    if (!img) img = images.get(p.fichier);
     if (!img) continue;
-    const m = p.m;
-    ctx.save();
-    ctx.translate(x, y);
-    if (echelle && echelle !== 1) ctx.scale(echelle, echelle);
-    ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
-    ctx.drawImage(img, -p.w / 2, -p.h / 2, p.w, p.h);
-    ctx.restore();
+    if (alpha !== 1) {
+      const avant = ctx.globalAlpha;
+      ctx.globalAlpha = avant * alpha;
+      poserPiece(ctx, img, p, x, y, echelle);
+      ctx.globalAlpha = avant;
+    } else {
+      poserPiece(ctx, img, p, x, y, echelle);
+    }
   }
+}
+
+function poserPiece(ctx, img, p, x, y, echelle) {
+  const m = p.m;
+  ctx.save();
+  ctx.translate(x, y);
+  if (echelle && echelle !== 1) ctx.scale(echelle, echelle);
+  ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+  const ox = p.o ? p.o[0] : -p.w / 2;
+  const oy = p.o ? p.o[1] : -p.h / 2;
+  ctx.drawImage(img, ox, oy, p.w, p.h);
+  ctx.restore();
 }
 
 // ── Le décor ──────────────────────────────────────────────────────────────
@@ -93,9 +161,9 @@ function fond(ctx, dy) {
   }
 }
 
-// ── Particules ────────────────────────────────────────────────────────────
-// Le moteur ne les connaît pas : ce sont des annonces. Une explosion projette
-// des éclats, un impact fait une étincelle.
+// ── Éclats simples ────────────────────────────────────────────────────────
+// Les explosions projettent des éclats de couleur — un raccourci raisonnable
+// des débris de fruits du SWF, gardé pour son punch.
 const eclats = [];
 function eclater(x, y, n, couleur, vitesse) {
   for (let i = 0; i < n; i++) {
@@ -119,30 +187,6 @@ function bougerEclats(ctx, tmod) {
   ctx.globalAlpha = 1;
 }
 
-// Les traînes des tirs (Shot.queue du SWF) : un segment par image, tendu entre
-// la position d'avant et celle de maintenant, qui s'éteint sur place en
-// quelques images. Le bleu du Curaso, l'orangé des têtes chercheuses.
-const traines = [];
-const TRAINE_COULEUR = { curaso: '#7ec9ff', homing: '#ffb060' };
-function tracer(d) {
-  traines.push({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, c: TRAINE_COULEUR[d.genre] || '#ffffff', t: 8 });
-  if (traines.length > 400) traines.splice(0, traines.length - 400);
-}
-function bougerTraines(ctx, tmod) {
-  for (let i = traines.length - 1; i >= 0; i--) {
-    const s = traines[i];
-    s.t -= tmod;
-    if (s.t <= 0) { traines.splice(i, 1); continue; }
-    ctx.globalAlpha = Math.min(1, s.t / 8) * 0.8;
-    ctx.strokeStyle = s.c;
-    ctx.beginPath();
-    ctx.moveTo(s.x0, s.y0);
-    ctx.lineTo(s.x1, s.y1);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-}
-
 // ── Le client ─────────────────────────────────────────────────────────────
 class Client {
   constructor(o) {
@@ -152,6 +196,7 @@ class Client {
     this.sprites = o.sprites;
     this.niveaux = o.niveaux;
     this.surEvenement = o.surEvenement || null;
+    this.surPause = o.surPause || null;// prévient l'interface (bouton ⏸/▶)
     this.panneau = null;               // texte affiché entre deux niveaux
     this.panneauT = 0;
     this.echelle = 1;
@@ -161,11 +206,19 @@ class Client {
     // rien ne bouge — ni le menu ni, plus tard, le jeu.
     this.dernier = 0;
     this.reste = 0;
+    this.animT = 0;                    // horloge des clips à images (soucoupe, tuyère)
+    this.parts = [];                   // particules du SWF en cours de lecture
+    this.flPause = false;
     this.entree = { gauche: false, droite: false, tir: false, bombe: false };
     this.brancherCommandes(o.racine || document);
     this.redimensionner();
     window.addEventListener('resize', () => this.redimensionner());
     window.addEventListener('orientationchange', () => setTimeout(() => this.redimensionner(), 120));
+    // L'onglet qui passe derrière met la partie en PAUSE (et pas seulement la
+    // boucle) : au retour, rien n'a bougé et rien n'a « rattrapé ».
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.pauser(true);
+    });
   }
 
   // `mode` choisit la classe : l'arcade est le moteur nu, les trois autres sont
@@ -176,7 +229,8 @@ class Client {
     opts = opts || {};
     const graine = opts.graine === undefined ? (Date.now() & 0x7fffffff) : opts.graine;
     eclats.length = 0;
-    traines.length = 0;
+    this.parts.length = 0;
+    this.pauser(false);
     const M = window.MiniwaveModes || {};
     const Classe = { mission: M.Mission, survival: M.Survival, letter: M.Letter }[opts.mode] || E.Game;
     this.jeu = new Classe(Object.assign({}, opts, {
@@ -194,30 +248,186 @@ class Client {
     return this.jeu;
   }
 
+  // ── Particules (sp/Part.as) ──
+  // Un clip extrait, une position, la physique de Part.as : gravité (0.5 par
+  // défaut), frottement du jeu, fondu sur les dix dernières images du timer.
+  // Sans timer, le clip se joue UNE fois et s'en va.
+  jouerPart(cle, o) {
+    if (cle && !this.sprites[cle]) return null;
+    const p = Object.assign({
+      cle, x: 0, y: 0, vitx: 0, vity: 0, vitr: 0, rot: 0,
+      sx: 1, sy: 1, alpha: 1, frame: 1, flGrav: false, weight: 0.5,
+    }, o);
+    this.parts.push(p);
+    if (this.parts.length > 200) this.parts.splice(0, this.parts.length - 200);
+    return p;
+  }
+
+  // Avance toutes les particules d'un pas et dessine celles du PLAN DU FOND
+  // (traînes, ondes — le SWF les pose sous les sprites, dp_underPart) ; les
+  // étincelles d'impact et les étoiles passent AU-DESSUS (dp_part), dessinées
+  // par poserPartsDessus une fois les sprites en place.
+  bougerParts(ctx, tmod) {
+    const f = Math.pow(0.95, tmod);    // Game.friction, comme Part.update
+    for (let i = this.parts.length - 1; i >= 0; i--) {
+      const p = this.parts[i];
+      if (p.flGrav) p.vity += p.weight * tmod;
+      p.vitx *= f; p.vity *= f; p.vitr *= f;
+      p.x += p.vitx * tmod;
+      p.y += p.vity * tmod;
+      p.rot += p.vitr * (Math.PI / 180) * tmod;
+      p.frame += tmod;
+      p._alpha = p.alpha;
+      if (p.timer !== undefined) {
+        p.timer -= tmod;
+        if (p.timer < 0) { this.parts.splice(i, 1); continue; }
+        if (p.timer < 10) p._alpha *= p.timer / 10;
+      }
+      if (p.texte === undefined) {
+        const sp = this.sprites[p.cle];
+        if (!sp) { this.parts.splice(i, 1); continue; }
+        let idx = Math.floor(p.frame) - 1;
+        if (idx >= sp.etats.length) {
+          if (p.timer === undefined && !p.boucle) { this.parts.splice(i, 1); continue; }
+          idx = p.boucle ? idx % sp.etats.length : sp.etats.length - 1;
+        }
+        p._idx = Math.max(0, idx);
+      }
+      if (!p.dessus) this.poserPart(ctx, p);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  poserPartsDessus(ctx) {
+    for (const p of this.parts) if (p.dessus) this.poserPart(ctx, p);
+    ctx.globalAlpha = 1;
+  }
+
+  poserPart(ctx, p) {
+    if (p.texte !== undefined) {       // PartField : un « +5 » qui s'élève
+      ctx.save();
+      ctx.globalAlpha = p._alpha;
+      ctx.font = 'bold 8px Verdana, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#F2D1AA';
+      ctx.strokeStyle = 'rgba(0,0,0,.7)';
+      ctx.lineWidth = 2;
+      ctx.strokeText(p.texte, p.x, p.y);
+      ctx.fillText(p.texte, p.x, p.y);
+      ctx.restore();
+      return;
+    }
+    const sp = this.sprites[p.cle];
+    if (!sp || p._idx === undefined) return;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (p.rot) ctx.rotate(p.rot);
+    if (p.sx !== 1 || p.sy !== 1) ctx.scale(p.sx, p.sy);
+    ctx.globalAlpha = p._alpha;
+    poser(ctx, sp, sp.etats[p._idx].frame, 0, 0, p.echelle);
+    ctx.restore();
+  }
+
+  // Shot.queue du SWF : le segment publié par le moteur devient une traîne —
+  // le clip d'origine, étiré sur la distance parcourue (_xscale = dist), qui
+  // s'éteint sur place. Le bleu du Curaso fait 8 px d'épaisseur : c'est lui
+  // qui donne aux tirs jumeaux leur ruban.
+  tracer(d) {
+    const cles = {
+      curaso: 'queueCuraso', homing: 'queueHoming',
+      kumquat: 'queueKumquat', groseille: 'queueGroseille',
+    };
+    const cle = cles[d.genre];
+    if (!cle) return;
+    const dx = d.x1 - d.x0, dy = d.y1 - d.y0;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 0.05) return;
+    this.jouerPart(cle, {
+      x: d.x1, y: d.y1,
+      rot: Math.atan2(dy, dx),
+      sx: dist / 100,                  // les traînes sont dessinées longues de 100
+    });
+  }
+
   annonce(nom, d) {
     switch (nom) {
       case 'panneau':
         this.panneau = d.boss ? 'BOSS' : ('niveau ' + (d.level + 1) + '\n' + (d.name || ''));
         this.panneauT = d.boss ? 160 : 80;
         break;
-      case 'traine': tracer(d); break;
+      case 'traine': this.tracer(d); break;
+      case 'impact':
+        this.jouerPart('partImpact', { x: d.x, y: d.y, rot: Math.random() * 6.28, dessus: true });
+        break;
+      case 'tirDisparait':
+        this.jouerPart('partVanish', { x: d.x, y: d.y, timer: 8, dessus: true });
+        break;
       case 'badsExplose': eclater(d.x, d.y, 6, '#ffd76a', 2.6); break;
       case 'badsEcaille': eclater(d.x, d.y, 3, '#ffffff', 1.6); break;
-      case 'heroExplose': eclater(d.x, d.y, 14, '#8fd0ff', 3.2); break;
-      case 'heroTouche': eclater(d.x, d.y, 5, '#ffffff', 2); break;
-      case 'impact': eclater(d.x, d.y, 2, '#ffffff', 1.2); break;
+      case 'badsWarp':
+        this.jouerPart('partBadsWarp', { x: d.x, y: d.y, rot: Math.random() * 6.28, echelle: 0.7, dessus: true });
+        break;
+      case 'heroExplose':
+        // Hero.hit : l'anneau d'onde, en grand (150 %) pour la mort.
+        this.jouerPart('partOnde', { x: d.x, y: d.y, echelle: 1.5 });
+        eclater(d.x, d.y, 14, '#8fd0ff', 3.2);
+        break;
+      case 'heroTouche':
+        if (!d.mort) this.jouerPart('partOnde', { x: d.x, y: d.y, echelle: 0.5 });
+        eclater(d.x, d.y, 5, '#ffffff', 2);
+        break;
+      case 'ondeChoc':
+        // La bombe du Tequila : le même anneau, doublé (Tequila.bomb pose
+        // l'onde à 200 %).
+        this.jouerPart('partOnde', { x: d.x, y: d.y, echelle: 2 });
+        eclater(d.x, d.y, 20, '#ffffff', 3.4);
+        break;
+      case 'warp': {
+        // Hero.update : les étoiles filantes du passage du bord droit.
+        for (let i = 0; i < 10; i++) {
+          this.jouerPart('partWarpStar', {
+            x: LARGEUR + 6, y: HAUTEUR - 12 + (Math.random() * 2 - 1) * 8,
+            vitx: -(3 + Math.random() * 6), vity: (Math.random() * 2 - 1) * 4,
+            vitr: Math.random() * 30, timer: 30, boucle: true, dessus: true,
+          });
+        }
+        break;
+      }
       case 'bossRenvoi': eclater(d.x, d.y, 3, '#cfe8ff', 2); break;
       case 'bossExplose': eclater(d.x, d.y, 40, '#ffb04a', 4); break;
       case 'soucoupeExplose': eclater(d.x, d.y, 10, '#cfe8ff', 3); break;
-      case 'ondeChoc': eclater(d.x, d.y, 20, '#ffffff', 3.4); break;
+      case 'bonus':
+        // Game.incCred : le « +n » qui s'élève du vaisseau à la collecte.
+        if (d.credit !== undefined && this.jeu && this.jeu.hero) {
+          this.jouerPart(null, {
+            texte: '+' + d.credit,
+            x: this.jeu.hero.x, y: this.jeu.hero.y - 10,
+            vity: -1, timer: 30, dessus: true,
+          });
+        }
+        break;
       case 'saut': eclater(LARGEUR / 2, HAUTEUR / 2, 24, '#8fd0ff', 4); break;
       case 'finPartie':
+        this.pauser(false);
         this.panneau = (d.raison === 'fin') ? 'BRAVO !' : 'GAME OVER';
         this.panneauT = 1e9;
         break;
       default: break;
     }
     if (this.surEvenement) this.surEvenement(nom, d);
+  }
+
+  // ── Pause ──
+  // Le jeu d'origine s'arrête sur P ou Échap (Manager.update), en assombrissant
+  // la scène et en posant l'écusson PAUSE. La partie ne bouge plus, le son se
+  // suspend — et rien ne « rattrape » à la reprise.
+  pauser(etat) {
+    const voulu = (etat === undefined) ? !this.flPause : !!etat;
+    if (voulu === this.flPause) return;
+    // Pas de pause hors partie (menu ouvert, écran de fin) : rien à figer.
+    if (voulu && (!this.jeu || this.jeu.termine || (this.avant && this.avant.visible))) return;
+    this.flPause = voulu;
+    if (this.surPause) this.surPause(this.flPause);
   }
 
   // ── Boucle ──
@@ -242,6 +452,13 @@ class Client {
         return;
       }
       if (!this.jeu) { this.reste = 0; return; }
+      if (this.flPause) {
+        // La scène reste posée sous son voile — figée, pas éteinte.
+        this.reste = 0;
+        this.dessiner(0);
+        this.dessinerPause(this.ctx);
+        return;
+      }
       while (this.reste >= 1 && pas < 6) { this.jeu.update(1); this.reste -= 1; pas++; }
       this.dessiner(dt * IPS);
     };
@@ -251,6 +468,7 @@ class Client {
 
   dessiner(tmod) {
     const ctx = this.ctx, jeu = this.jeu;
+    this.animT += tmod;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     fond(ctx, jeu.defilementDecor());
 
@@ -259,6 +477,10 @@ class Client {
       const sp = this.sprites['bads' + b.type];
       const etat = sp ? Math.min(sp.etats.length, (b.profil.hp || 1) - b.hp + 1) : 1;
       poser(ctx, sp, sp ? sp.etats[Math.max(0, etat - 1)].frame : 1, b.x, b.y);
+      // La Figue-laser ouvre un rayon sous elle (flShooting) : montée en
+      // puissance, colonne mortelle, extinction — le moteur fait le dégât
+      // entre timer 36 et 12, le dessin suit les mêmes bornes.
+      if (b.flShooting && b.timer > 0) this.dessinerRayonFigue(ctx, b);
       // Letter Invader : le caractère à taper, posé sur le monstre. C'est la
       // seule information du mode — sans elle il n'y a pas de jeu.
       if (b.affiche) {
@@ -270,43 +492,127 @@ class Client {
         ctx.strokeText(b.affiche, b.x, b.y + 1);
         ctx.fillStyle = '#ffffff';
         ctx.fillText(b.affiche, b.x, b.y + 1);
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'left';
       }
     }
 
     // La soucoupe passe au-dessus de la mêlée ; les bonus tombent devant.
-    for (const s of jeu.saucerList) poser(ctx, this.sprites.saucer, 1, s.x, s.y);
+    for (const s of jeu.saucerList) {
+      const sp = this.sprites.saucer;
+      const etat = sp ? sp.etats[Math.floor(this.animT) % sp.etats.length] : null;
+      poser(ctx, sp, etat ? etat.frame : 1, s.x, s.y);
+    }
     for (const o of jeu.optList) this.dessinerBonus(ctx, o);
 
     if (jeu.boss) this.dessinerBoss(ctx, jeu.boss);
 
-    // Les traînes passent SOUS les tirs : le trait s'éteint derrière la balle.
-    bougerTraines(ctx, tmod);
-    for (const t of jeu.bShotList) this.dessinerTir(ctx, t, 10 + (t.badsType || 0));
-    for (const t of jeu.hShotList) this.dessinerTir(ctx, t, 1 + (t.heroType || 0));
+    // Les traînes et étincelles passent SOUS les tirs : le trait s'éteint
+    // derrière la balle (le SWF les met sous la couche des sprites).
+    this.bougerParts(ctx, tmod);
+    for (const t of jeu.bShotList) this.dessinerTir(ctx, t, false);
+    for (const t of jeu.hShotList) this.dessinerTir(ctx, t, true);
 
-    if (jeu.hero) {
+    if (jeu.hero) this.dessinerHero(ctx, jeu.hero);
+
+    // Les étincelles d'impact, étoiles de warp et « +n » passent au-dessus de
+    // la mêlée (dp_part du SWF).
+    this.poserPartsDessus(ctx);
+    bougerEclats(ctx, tmod);
+    this.dessinerInterface(ctx, tmod);
+  }
+
+  dessinerHero(ctx, h) {
+    const sp = this.sprites['hero' + h.type];
+    const fiche = E.VAISSEAUX[h.type] || {};
+    // Le rayon du Cherry se dessine sous le vaisseau, ancré à lui.
+    if (h.laser > 0 && h.laserDemi > 0) this.dessinerCherryLaser(ctx, h);
+    // L'image de coque : les vaisseaux à deux points de vie (Pastaga, Cherry)
+    // ont une image « fissurée » — dessinée dans le SWF mais jamais branchée
+    // pour le Pastaga ; le doute sur ses points de vie disparaît avec elle.
+    // Le Tequila, lui, a une tuyère animée sur douze images.
+    let etatIdx = 0;
+    if (sp) {
+      if (fiche.hp === 2 && sp.etats.length >= 2) etatIdx = (h.hp === 1) ? 1 : 0;
+      else if (sp.etats.length > 2) etatIdx = Math.floor(this.animT) % sp.etats.length;
+    }
+    ctx.save();
+    if (h.newShield) {
       // Le bouclier d'apparition : le jeu d'origine ne CACHE pas le vaisseau, il
       // le fait palpiter en blanc (une teinte en cosinus). On garde le principe —
       // le masquer par intermittence le rendrait difficile à suivre au moment
       // précis où l'on vient de le perdre.
-      const h = jeu.hero;
-      ctx.save();
-      if (h.newShield) {
-        const pulse = 0.55 + Math.cos(h.newShield.t / 3) * 0.45;
-        ctx.globalAlpha = 0.55 + pulse * 0.45;
-      }
-      poser(ctx, this.sprites['hero' + h.type], 1, h.x, h.y);
-      ctx.restore();
-      if (h.flEMP) {                       // brouillé : plus de tir
+      const pulse = 0.55 + Math.cos(h.newShield.t / 3) * 0.45;
+      ctx.globalAlpha = 0.55 + pulse * 0.45;
+    }
+    poser(ctx, sp, sp ? sp.etats[etatIdx].frame : 1, h.x, h.y);
+    ctx.restore();
+    if (h.flEMP) {                       // brouillé : l'aura du SWF tourne en boucle
+      const emp = this.sprites.emp;
+      if (emp) {
+        ctx.save();
+        if (h.EMPTimer < 20) ctx.globalAlpha = Math.max(0, h.EMPTimer / 20);
+        poser(ctx, emp, emp.etats[Math.floor(this.animT) % emp.etats.length].frame, h.x, h.y);
+        ctx.restore();
+      } else {
         ctx.strokeStyle = 'rgba(120,220,255,.8)';
         ctx.beginPath();
-        ctx.arc(h.x, h.y, 10 + Math.sin(Date.now() / 60) * 2, 0, 6.28);
+        ctx.arc(h.x, h.y, 10 + Math.sin(this.animT / 2) * 2, 0, 6.28);
         ctx.stroke();
       }
     }
+  }
 
-    bougerEclats(ctx, tmod);
-    this.dessinerInterface(ctx, tmod);
+  // Cherry.bomb : le pilier de lumière. Le gfx du SWF fait 40×100, ancré au
+  // vaisseau et étiré sur toute la hauteur ; sa largeur du moment vient du
+  // moteur (laserDemi), qui s'en sert aussi pour faucher.
+  dessinerCherryLaser(ctx, h) {
+    const sp = this.sprites.cherryLaser;
+    if (!sp || !sp.etats.length) return;
+    const sx = (h.laserDemi * 2) / 40;
+    const pieces = sp.etats[0].pieces;
+    ctx.save();
+    ctx.translate(h.x, h.y - 4);
+    // Le faisceau : étiré en largeur selon la rampe, en hauteur sur tout
+    // l'écran (gfx._yscale = mch dans Cherry.bomb).
+    if (pieces[0]) {
+      ctx.save();
+      ctx.scale(sx, HAUTEUR / 100);
+      const p = pieces[0];
+      const img = images.get(p.fichier);
+      if (img) ctx.drawImage(img, p.o ? p.o[0] : -p.w / 2, p.o ? p.o[1] : -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    // L'éclat au pied du rayon suit la même rampe.
+    for (let i = 1; i < pieces.length; i++) {
+      const p = pieces[i];
+      const img = images.get(p.fichier);
+      if (!img) continue;
+      ctx.save();
+      ctx.scale(sx, 1);
+      ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
+      ctx.drawImage(img, p.o ? p.o[0] : -p.w / 2, p.o ? p.o[1] : -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // La Figue-laser : un rayon qui s'allume sous elle. Montée (48→36), colonne
+  // mortelle (36→12), extinction (12→0) — les bornes du moteur.
+  dessinerRayonFigue(ctx, b) {
+    const t = b.timer;
+    let c;
+    if (t > 36) c = (48 - t) / 12 * 0.35;       // il s'amorce
+    else if (t > 12) c = 1;                     // il fauche
+    else c = t / 12;                            // il s'éteint
+    const demi = 2 + 6 * c;
+    const grad = ctx.createLinearGradient(b.x - demi, 0, b.x + demi, 0);
+    grad.addColorStop(0, 'rgba(255,80,220,0)');
+    grad.addColorStop(0.3, 'rgba(255,255,255,' + (0.85 * c) + ')');
+    grad.addColorStop(0.7, 'rgba(255,255,255,' + (0.85 * c) + ')');
+    grad.addColorStop(1, 'rgba(255,80,220,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(b.x - demi, b.y + 6, demi * 2, HAUTEUR - b.y - 6);
   }
 
   dessinerBoss(ctx, b) {
@@ -328,9 +634,10 @@ class Client {
     ctx.fillRect(30, 6, (LARGEUR - 60) * c, 4);
   }
 
-  // Les bonus n'ont pas de dessin extrait (leur clip est composé à l'exécution :
-  // couleurs posées par code, atomes dupliqués…). On les rend selon leur famille,
-  // avec les couleurs du jeu : pièces, sauts, cartes, vie.
+  // Les bonus : pièces, sauts et cartes gardent leur rendu par famille, avec
+  // les couleurs du jeu. Le bonus VAISSEAU montre le vaisseau qu'il donne —
+  // le halo étoilé et la silhouette (image 4 du clip Opt du SWF), choisie au
+  // largage par le moteur. L'Aliquet n'y figure jamais : il ne se gagne pas.
   dessinerBonus(ctx, o) {
     const b = E.BONUS[o.type] || {};
     const pulse = 0.75 + Math.sin(o.y / 6) * 0.25;
@@ -357,8 +664,17 @@ class Client {
       ctx.fillText(String(b.warp), 0, 3);
       ctx.textAlign = 'left';
     } else if (b.nom === 'vie') {
+      const halo = this.sprites.optHalo;
+      const mini = this.sprites.optVaisseau;
       ctx.globalAlpha = pulse;
-      poser(ctx, this.sprites.hero0, 1, 0, 0, 0.8);
+      if (halo) poser(ctx, halo, 1, 0, 0);
+      if (mini && o.shipId) {
+        const etat = mini.etats[Math.max(0, Math.min(mini.etats.length - 1, o.shipId - 1))];
+        // opt.gotoAndStop(id+1) à l'échelle 0.2 du clip d'origine.
+        poser(ctx, mini, etat.frame, 0, 0, 0.2);
+      } else {
+        poser(ctx, this.sprites['hero' + (o.shipId || 1)], 1, 0, 0, 0.8);
+      }
       ctx.globalAlpha = 1;
     } else {
       const cols = { carteRouge: '#ff4a4a', carteVerte: '#5aff7a', carteBleue: '#5aa8ff' };
@@ -372,24 +688,91 @@ class Client {
     ctx.restore();
   }
 
-  dessinerTir(ctx, t, frame) {
+  dessinerTir(ctx, t, duHero) {
     const sp = this.sprites.shot;
+    // L'aspect vient du moteur quand le tir en a un propre (les spéciales, les
+    // mines, les cartes) ; sinon c'est l'aspect standard du camp — celui du
+    // vaisseau (1+type) ou de l'espèce (10+type), comme les gotoAndStop du SWF.
+    const frame = t.aspect || (duHero ? 1 + (t.heroType || 0) : 10 + (t.badsType || 0));
+
+    // Le rayon de la Cosmirabelle (comportement 5) est un dessin composé :
+    // la boule file, le rayon GRANDIT derrière elle, et l'éclat du départ
+    // s'éteint sur place (Shot.update case 5 pilote square et flare).
+    if (t.behaviourId === 5) { this.dessinerRayonMirabelle(ctx, t); return; }
+
     if (sp && sp.etats.some((e) => e.frame === frame)) {
       // Les projectiles sont dessinés pointe à droite ; le jeu les oriente selon
-      // leur vitesse (Shot.updateRotation). Sans ça, le rayon de la Cosmirabelle
-      // barrerait l'écran à l'horizontale.
-      const a = Math.atan2(t.vity, t.vitx);
+      // leur vitesse (Shot.updateRotation) — ou selon leur toupie (`rot`) quand
+      // ils tournent sur eux-mêmes, comme l'étoile du Coing mutant.
+      const a = (t.rot !== undefined) ? t.rot : Math.atan2(t.vity, t.vitx);
       ctx.save();
       ctx.translate(t.x, t.y);
       ctx.rotate(a);
-      poser(ctx, sp, frame, 0, 0);
+      let echelle = 1;
+      if (t.behaviourId === 7) {
+        // Le souffle d'explosion s'étire avec son rayon (_xscale = ray*2) et
+        // s'estompe sur ses cinq dernières images.
+        echelle = (t.behaviourInfo.ray * 2) / 100;
+        if (t.behaviourInfo.timer < 10) ctx.globalAlpha = Math.max(0, t.behaviourInfo.timer / 10);
+      } else if (frame === 18) {
+        // La bombe du Pamplemousse bat comme un cœur : le halo blanc du SWF
+        // gonfle et retombe sur vingt images.
+        const c = 0.5 - 0.5 * Math.cos((t.age % 20) / 20 * 6.28);
+        echelle = 1 + 0.2 * c;
+      }
+      poser(ctx, sp, frame, 0, 0, echelle);
       ctx.restore();
+      ctx.globalAlpha = 1;
       return;
     }
     // Aspect inconnu (un comportement spécial sans image dédiée) : un point,
     // plutôt qu'un projectile invisible qui tuerait sans prévenir.
-    ctx.fillStyle = (t.listName === 'hShot') ? '#bff18d' : '#ff8a5a';
+    ctx.fillStyle = duHero ? '#bff18d' : '#ff8a5a';
     ctx.fillRect(t.x - 1, t.y - 2, 2, 4);
+  }
+
+  // Mirabelle.shoot : la boule de tête tire un rayon long de `length` px qui
+  // se déploie derrière elle à mesure qu'elle avance (square._xscale suit le
+  // parcouru), pendant qu'un éclat s'amenuise au point de départ. Le moteur
+  // fauche sur toute la colonne du rayon — le dessin doit la montrer.
+  dessinerRayonMirabelle(ctx, t) {
+    const o = t.behaviourInfo;
+    const long = Math.min(o.parcouru || 0, o.length || 160);
+    const a = Math.atan2(t.vity, t.vitx);
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.rotate(a);
+    if (long > 1) {
+      // Le rayon, du blanc chaud bordé de rose — étiré de la boule vers
+      // l'arrière, comme le square du SWF.
+      const grad = ctx.createLinearGradient(0, -2.6, 0, 2.6);
+      grad.addColorStop(0, 'rgba(250,110,250,0)');
+      grad.addColorStop(0.35, 'rgba(255,255,255,.95)');
+      grad.addColorStop(0.65, 'rgba(255,255,255,.95)');
+      grad.addColorStop(1, 'rgba(250,110,250,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(-long, -2.6, long, 5.2);
+    }
+    // La boule de tête : le disque blanc auréolé de cyan du SWF (la pièce
+    // 14×14 de l'image 33) — SANS le carré du rayon, dessiné en dégradé
+    // ci-dessus.
+    const boule = images.get('shape1200.svg');
+    if (boule) ctx.drawImage(boule, -7, -7, 14, 14);
+    else { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, 6.28); ctx.fill(); }
+    ctx.restore();
+    // L'éclat du départ, qui s'éteint à mesure que le rayon s'étire.
+    if (o.sx !== undefined) {
+      const c = Math.min((o.parcouru || 0) / (o.length || 160), 1);
+      if (c < 1) {
+        ctx.save();
+        ctx.globalAlpha = 1 - c;
+        ctx.fillStyle = 'rgba(255,255,255,.9)';
+        ctx.beginPath();
+        ctx.arc(o.sx, o.sy, 4 * (1 - c), 0, 6.28);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
   }
 
   dessinerInterface(ctx, tmod) {
@@ -455,6 +838,27 @@ class Client {
     }
   }
 
+  // Le voile de pause : la scène assombrie de moitié (Manager.setPause pose un
+  // setPColor noir à 50) et l'écusson du SWF — le cadre arrondi et son mot.
+  dessinerPause(ctx) {
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.fillStyle = 'rgba(0,0,0,.5)';
+    ctx.fillRect(0, 0, LARGEUR, HAUTEUR);
+    // Le cadre du SWF porte ses coordonnées de scène (le clip mcPause était
+    // posé à l'origine) : on le pose donc à 0,0 et il se centre tout seul.
+    poser(ctx, this.sprites.pause, 1, 0, 0);
+    ctx.font = 'bold 12px Verdana, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('PAUSE', LARGEUR / 2, HAUTEUR / 2 - 1.5);
+    ctx.font = '8px Verdana, Arial, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    ctx.fillText('P, Échap ou ⏸ pour reprendre', LARGEUR / 2, HAUTEUR / 2 + 22);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
+
   // ── Mise à l'échelle ──
   // Les dessins font 16 à 20 pixels : un facteur ENTIER les garde nets. Mais un
   // écran de 400 points ne loge que ×1 d'une aire de 240, ce qui laisserait 40 %
@@ -486,6 +890,15 @@ class Client {
       ArrowUp: 'tir', Shift: 'bombe',
     };
     window.addEventListener('keydown', (ev) => {
+      // P et Échap : la pause, comme Manager.update (touches 80 et 27). Le
+      // « P » ne désigne jamais un monstre de Letter Invader — il est libre.
+      if (ev.key === 'p' || ev.key === 'P' || ev.key === 'Escape') {
+        if (this.jeu && !(this.avant && this.avant.visible)) {
+          this.pauser();
+          ev.preventDefault();
+          return;
+        }
+      }
       const k = touches[ev.key];
       if (k) { this.entree[k] = true; ev.preventDefault(); }
     });
@@ -508,12 +921,13 @@ class Client {
     });
 
     // ── Le pilotage au doigt ──
-    // Le pouce EST le vaisseau : sa position X (sur la bande OU sur le jeu
-    // lui-même — l'instinct pose le doigt n'importe où) devient celle du
-    // vaisseau, en absolu. Le tir est continu tant que le pouce est posé — la
-    // cadence reste celle du vaisseau, c'est le coolDown qui gouverne — et
-    // s'arrête au relâcher. Un double-tap déclenche la spéciale. Pas de bouton
-    // de tir : c'est toute l'idée.
+    // Le pouce MONTRE la destination : sa position X (sur la bande OU sur le
+    // jeu lui-même — l'instinct pose le doigt n'importe où) devient la cible,
+    // que le vaisseau rejoint à SA vitesse (c'est le moteur qui marche). Le
+    // tir est continu tant que le pouce est posé — la cadence reste celle du
+    // vaisseau, c'est le coolDown qui gouverne — et s'arrête au relâcher. Un
+    // double-tap déclenche la spéciale. Pas de bouton de tir : c'est toute
+    // l'idée.
     //
     // POINTER EVENTS d'abord (iOS 13+, Android, souris — un seul chemin, et
     // setPointerCapture garantit le suivi même quand le doigt déborde de la
@@ -533,6 +947,7 @@ class Client {
         // ouvert (il écoute pointerdown lui aussi) : on ne pilote qu'en jeu.
         if (horsMenu && this.avant && this.avant.visible) return;
         if (ev.cancelable) ev.preventDefault();
+        if (this.flPause) return;                      // figé : on ne pilote pas
         viser(ev);
         this.entree.tir = true;
         surface.classList.add('on');

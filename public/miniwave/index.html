@@ -84,6 +84,17 @@
   }
   #muet.off { opacity: .55; }
 
+  /* La pause, sous le coupe-son — P et Échap font pareil au clavier. Elle ne
+     sert qu'en partie : le menu n'a rien à figer. */
+  #pause {
+    position: fixed; top: 54px; right: 10px; z-index: 4; display: none;
+    border: 0; border-radius: 50%; width: 38px; height: 38px;
+    background: rgba(29,42,72,.85); color: #cfe8a0; font-size: 15px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #pause.on { display: block; }
+  #pause.pausee { background: rgba(75,122,38,.9); color: #fff; }
+
   #chargement {
     position: fixed; inset: 0; z-index: 5;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
@@ -152,7 +163,8 @@
   </div>
   <div id="clavier"></div>
   <button type="button" id="muet" aria-label="Couper le son">🔊</button>
-  <div id="aide">← → pour se déplacer · espace pour tirer · majuscule pour la bombe</div>
+  <button type="button" id="pause" aria-label="Mettre en pause">⏸</button>
+  <div id="aide">← → pour se déplacer · espace pour tirer · majuscule pour la bombe · P pour la pause</div>
 </div>
 
 <div id="message"></div>
@@ -172,12 +184,12 @@
   </div>
 </div>
 
-<script src="/miniwave/engine.js?v=tactile2"></script>
-<script src="/miniwave/modes.js?v=tactile2"></script>
-<script src="/miniwave/game.js?v=tactile2"></script>
-<script src="/miniwave/sons.js?v=tactile2"></script>
-<script src="/miniwave/plateforme.js?v=tactile2"></script>
-<script src="/miniwave/menu.js?v=tactile2"></script>
+<script src="/miniwave/engine.js?v=fidele3"></script>
+<script src="/miniwave/modes.js?v=fidele3"></script>
+<script src="/miniwave/game.js?v=fidele3"></script>
+<script src="/miniwave/sons.js?v=fidele3"></script>
+<script src="/miniwave/plateforme.js?v=fidele3"></script>
+<script src="/miniwave/menu.js?v=fidele3"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
@@ -234,6 +246,7 @@
     direEnPartie(true);
     enCours = { lancement: l, escadron: escadron };
     $('#fin').classList.remove('on');
+    $('#pause').classList.add('on');
     var lettres = (l.mode === 'letter');
     $('#clavier').classList.toggle('on', lettres);
     $('#manette').style.display = lettres ? 'none' : '';
@@ -253,6 +266,8 @@
     direEnPartie(false);
     $('#fin').classList.remove('on');
     $('#clavier').classList.remove('on');
+    $('#pause').classList.remove('on');
+    if (client) client.pauser(false);
     $('#manette').style.display = 'none';
     ui.ouvrir('accueil');
   }
@@ -287,7 +302,7 @@
   });
 
   Promise.all([
-    fetch('/miniwave/sprites/sprites.json').then(function (r) { return r.json(); }),
+    fetch('/miniwave/sprites/sprites.json?v=fidele3').then(function (r) { return r.json(); }),
     fetch('/miniwave/levels.json').then(function (r) { return r.json(); })
   ]).then(function (res) {
     var sprites = res[0];
@@ -310,6 +325,14 @@
       canvas: $('#stage'),
       sprites: sprites,
       niveaux: niveaux.main[0].levels,
+      // La pause fige aussi le son (la boucle de la soucoupe comprise), et le
+      // bouton suit l'état — y compris quand la pause vient du clavier ou de
+      // l'onglet qui passe derrière.
+      surPause: function (pausee) {
+        sons.suspendre(pausee);
+        $('#pause').classList.toggle('pausee', pausee);
+        $('#pause').textContent = pausee ? '▶' : '⏸';
+      },
       surEvenement: function (nom, info) {
         sons.surEvenement(nom, info);
         if (nom !== 'finPartie') return;
@@ -362,6 +385,9 @@
       this.textContent = muet ? '🔇' : '🔊';
       sons.taire(muet);
       if (!muet) sons.ouvrir();
+    });
+    $('#pause').addEventListener('click', function () {
+      client.pauser();
     });
     $('#rejouer').addEventListener('click', function () {
       if (enCours) lancer(enCours.lancement, enCours.escadron); else ouvrirMenu();

@@ -118,6 +118,7 @@ const VAISSEAUX = [
         const a = (77 * c - 157) / 100;
         const s = 5 - Math.abs(c) * 2;
         const t = h.tirBase();
+        t.aspect = 151;                                         // gotoAndStop(151)
         t.vitx = Math.cos(a) * s;
         t.vity = Math.sin(a) * s;
       }
@@ -130,9 +131,10 @@ const VAISSEAUX = [
       const u = h.tirBase();
       u.x -= 6; u.vity = -2.6;
     },
-    // Un missile qu'on fait sauter quand on veut : il explose au tir suivant
-    // (comportement 6 → il meurt dès qu'on rappuie).
-    bombe: (h) => { const t = h.tirBase(); t.behaviourId = 6; t.vity = -2; },
+    // Un missile qu'on fait sauter quand on veut : il meurt au rappel du tir
+    // (comportement 6) ou au premier contact, et laisse alors son SOUFFLE —
+    // l'explosion de zone du comportement 7 (Shot.enMourant).
+    bombe: (h) => { const t = h.tirBase(); t.behaviourId = 6; t.vity = -2; t.aspect = 152; },
   },
   {
     link: 'Manzana', name: 'namazan', speed: 4.5, cdSpeed: 3.6,
@@ -144,7 +146,7 @@ const VAISSEAUX = [
         h.jeu.newHShot({
           x: h.x, y: h.y - 6,
           vitx: Math.cos(a) * 4, vity: Math.sin(a) * 4,
-          behaviourId: 8, heroType: 3,
+          behaviourId: 8, heroType: 3, aspect: 154, killMargin: 200,
         });
       }
     },
@@ -163,7 +165,7 @@ const VAISSEAUX = [
       u.vity = -3.5;
     },
     bombe: (h) => {
-      h.jeu.newHShot({ x: h.x, y: h.y - 6, vitx: 0, vity: -5, behaviourId: 10, heroType: 4 });
+      h.jeu.newHShot({ x: h.x, y: h.y - 6, vitx: 0, vity: -5, behaviourId: 10, heroType: 4, aspect: 155 });
     },
   },
   {
@@ -175,7 +177,7 @@ const VAISSEAUX = [
         const s = (i * 2) - 1;
         h.jeu.newHShot({
           x: h.x + s * 5, y: h.y - 6, vitx: s * 0.5, vity: -2.5,
-          flStandardHeroShot: true, heroType: 5,
+          flStandardHeroShot: true, heroType: 5, aspect: 156,
         });
       }
     },
@@ -288,17 +290,25 @@ class Hero extends Sprite {
 
     // Rayon du Cherry : tout ce qui passe dans sa colonne est pulvérisé, et le
     // boss encaisse aussi — mais avec un temps de latence, sinon il fondrait.
+    // La colonne suit la rampe du SWF : le faisceau (40 px à pleine échelle)
+    // s'ouvre en dix images, tient, puis s'éteint sur les dix dernières — et
+    // c'est sa largeur du moment qui fauche, pas une constante.
     if (this.laser > 0) {
       this.laser -= tmod;
-      for (const b of jeu.badsList.slice()) if (Math.abs(b.x - this.x) < 6) b.frapper();
+      const echelle = (this.laser > 10)
+        ? Math.min(40 - this.laser, 10) * 10
+        : Math.max(0, this.laser) * 10;
+      const demi = (40 * (echelle / 100)) / 2;
+      this.laserDemi = demi;
+      for (const b of jeu.badsList.slice()) if (Math.abs(b.x - this.x) < demi) b.frapper();
       if (jeu.boss) {
         if (this.bossTimer > 0) this.bossTimer -= tmod;
-        else if (Math.abs(jeu.boss.x - this.x) < jeu.boss.ray + 6) {
+        else if (Math.abs(jeu.boss.x - this.x) < jeu.boss.ray + demi) {
           jeu.boss.frapper(null);
           this.bossTimer = 2.5;
         }
       }
-      if (this.laser <= 0) this.speed = this.fiche.speed || 3;
+      if (this.laser <= 0) { this.speed = this.fiche.speed || 3; this.laserDemi = 0; }
     }
 
     // Sortie par la droite : le secret du jeu. Le vaisseau qui franchit le bord
@@ -314,14 +324,20 @@ class Hero extends Sprite {
 
   commander(tmod) {
     const e = this.jeu.entree;
-    // Pilotage tactile : la position X du vaisseau est celle du pouce sur la
-    // bande, en absolu — le doigt EST le vaisseau, pas un bouton de direction.
-    // Sous l'EMP de la Prune, les commandes s'inversent (`sens`) : l'équivalent
-    // absolu est le MIROIR — le vaisseau va à l'opposé du pouce.
+    // Pilotage tactile : le pouce montre la destination, mais le vaisseau la
+    // REJOINT à sa vitesse propre — chaque vaisseau a la sienne, et c'est elle
+    // qui fait la différence entre un Pastaga pataud et un Manzana nerveux. Se
+    // téléporter sur le doigt gommerait cette différence (et rendrait le jeu
+    // trivial). Même pas de vitesse qu'aux flèches, ni plus ni moins.
+    // Sous l'aveuglement du boss, les commandes s'inversent (`sens`) :
+    // l'équivalent absolu est le MIROIR — le vaisseau va à l'opposé du pouce.
     if (e.cibleX !== undefined && e.cibleX !== null) {
       const cible = (this.sens < 0) ? (LARGEUR - e.cibleX) : e.cibleX;
+      const dx = cible - this.x;
+      const pas = this.speed * tmod;
+      this.x += Math.max(-pas, Math.min(pas, dx));
       this.x = Math.max(this.jeu.shipBounds.min + this.ray,
-        Math.min(cible, this.jeu.shipBounds.max - this.ray));
+        Math.min(this.x, this.jeu.shipBounds.max - this.ray));
     }
     if (e.gauche) {
       this.x = Math.max(this.x - this.speed * this.sens * tmod, this.jeu.shipBounds.min + this.ray);
@@ -345,7 +361,8 @@ class Hero extends Sprite {
     this.coolDown = 100;
     const t = this.tirBase();
     if (this.fiche.tirer) this.fiche.tirer(this, t);
-    this.jeu.evenement('tirHero', { x: this.x, y: this.y - 6, type: this.type });
+    // `hp` accompagne l'annonce : le Cherry entamé n'a pas le même son de tir.
+    this.jeu.evenement('tirHero', { x: this.x, y: this.y - 6, type: this.type, hp: this.hp });
     return t;
   }
 
@@ -405,12 +422,28 @@ class Shot extends Sprite {
     if (this.flIndestructible === undefined) this.flIndestructible = false;
     if (this.behaviourInfo === undefined) this.behaviourInfo = {};
     if (this.ray === undefined) this.ray = 4;
+    // La marge hors de laquelle le tir meurt est PAR TIR : le rayon de la
+    // Cosmirabelle vit encore 160 px sous l'écran (le temps que sa queue
+    // balaie le bas), les têtes chercheuses du Manzana vagabondent à 200.
+    if (this.killMargin === undefined) this.killMargin = MARGE_TIR;
+    // `rot` porte la toupie des projectiles qui tournent sur eux-mêmes
+    // (_rotation += vitRot en AS2) ; il s'amorce au premier tour de roue.
+    // `age` compte les images vécues — les aspects animés s'y règlent.
+    this.age = 0;
   }
 
   update(tmod) {
     const jeu = this.jeu;
+    this.age += tmod;
     this.x += this.vitx * tmod;
     this.y += this.vity * tmod;
+    if (this.vitRot !== undefined) {
+      // La toupie se pose souvent APRÈS la fabrique (le Coing ajuste son tir
+      // une fois créé) : l'angle part alors de l'orientation du moment, comme
+      // le _rotation qu'updateRotation avait déjà posé en AS2.
+      if (this.rot === undefined) this.rot = Math.atan2(this.vity, this.vitx);
+      this.rot += this.vitRot * (Math.PI / 180) * tmod;
+    }
 
     switch (this.behaviourId) {
       case 1: {                       // Mûre : dérive vers le vaisseau
@@ -446,8 +479,20 @@ class Shot extends Sprite {
         this.tracer('curaso');        // Shot.queue("…PartCurasoQueue")
         break;
       }
+      case 6:                         // Pastaga : le missile saute au rappel du tir
+        // Shot.as case 6 : Key.isDown(tir) le fait sauter. La touche de tir est
+        // souvent TENUE (c'est un jeu de tir continu, et le pouce posé tire) :
+        // on arme le missile au premier relâcher, et c'est l'appui SUIVANT qui
+        // le fait sauter — le geste que décrit le jeu, « rappuyer pour faire
+        // exploser ». L'explosion elle-même est dans tuer() : elle part AUSSI
+        // au contact d'un ennemi ou en sortie d'écran, comme l'original où
+        // kill() passait toujours par onKill.
+        if (!jeu.entree.tir) this.behaviourInfo.arme = true;
+        else if (this.behaviourInfo.arme) { this.tuer(); return; }
+        break;
       case 12:                        // Groseille : poursuite, meurt en bas
         this.suivre(this.behaviourInfo.target, 0.7, 0.5, tmod);
+        this.tracer('groseille');     // Shot.queue("…PartGroseilleQueue")
         if (this.y > HAUTEUR + 4) { this.tuer(); return; }
         break;
       case 0: {                       // Astro-Pamplemousse : éclate en deux
@@ -457,7 +502,9 @@ class Shot extends Sprite {
           if (this.touche(m.x, m.y)) { m.tuer(); eclate = true; }
         }
         if (eclate) {
-          for (const s of [2, -2]) jeu.newBShot({ x: this.x, y: this.y, vitx: s, vity: 0, time: 40 });
+          // Les deux éclats portent l'aspect 150 (la boule à piques), pas
+          // celui de la bombe.
+          for (const s of [2, -2]) jeu.newBShot({ x: this.x, y: this.y, vitx: s, vity: 0, time: 40, aspect: 150 });
           this.tuer();
           return;
         }
@@ -538,9 +585,11 @@ class Shot extends Sprite {
         const c = Math.pow(0.8, tmod);
         this.vitx *= c;
         this.vity *= c;
+        if (this.vity > 1) this.tracer('groseille');
         if (this.vity < 0.1) {
           this.vity = o.speed;
           this.vitx = o.speed * (jeu.hasard(3) - 1);
+          o.oldPos = { x: this.x, y: this.y };
         }
         break;
       }
@@ -550,6 +599,7 @@ class Shot extends Sprite {
           this.vitx = Math.cos(a) * 4;
           this.vity = Math.sin(a) * 4;
         }
+        this.tracer('kumquat');       // Shot.queue("…PartKumquatQueue")
         break;
       case 17: {                      // Demon lemon : boule qui charge de près
         const o = this.behaviourInfo;
@@ -593,6 +643,7 @@ class Shot extends Sprite {
           this.y += dy * Math.pow(0.5, tmod);
           if (Math.abs(dy) < 2) { this.vitx = o.vitx; this.vity = o.vity; o.step = 0; }
         }
+        this.tracer('kumquat');
         break;
       }
       case 23:                        // Brugnon : mine destructible qui essaime
@@ -602,7 +653,10 @@ class Shot extends Sprite {
         }
         if (this.flHit && jeu.hasard(Math.max(1, Math.round(18 / tmod))) === 0) {
           const a = jeu.hasard(628) / 100;
-          jeu.newBShot({ x: this.x, y: this.y, vitx: Math.cos(a) * 4, vity: Math.sin(a) * 4 });
+          jeu.newBShot({
+            x: this.x, y: this.y, vitx: Math.cos(a) * 4, vity: Math.sin(a) * 4,
+            aspect: 162, vitRot: jeu.hasard(60) - 30,
+          });
         }
         break;
       case 16: {                      // Tir destructible par le vaisseau
@@ -617,6 +671,7 @@ class Shot extends Sprite {
         o.amp += tmod * 0.6;
         o.d = (o.d + 18) % 628;
         this.x = o.x + Math.sin(o.d / 100) * o.amp;
+        this.tracer('kumquat');
         break;
       }
       case 24:                        // Rebondit sur les bords et le bas
@@ -624,6 +679,14 @@ class Shot extends Sprite {
         if (this.x > LARGEUR) this.vitx = -Math.abs(this.vitx);
         if (this.y > HAUTEUR) this.vity = -Math.abs(this.vity);
         break;
+      case 25: {                      // Carte bleue : le mur qui monte balaie tout
+        // Shot.as case 25 : tout ennemi resté SOUS le front de l'onde explose.
+        // Comme elle part du bas et monte, l'escadre entière y passe, rang par
+        // rang — et chaque explosion rapporte ses points, c'est le trésor de
+        // la carte.
+        for (const b of jeu.badsList.slice()) if (b.y > this.y) b.exploser();
+        break;
+      }
       default:
         break;
     }
@@ -635,8 +698,8 @@ class Shot extends Sprite {
 
     // Hors limites. Un tir du vaisseau parti dans le vide COÛTE un point : c'est
     // ce qui empêche d'arroser l'écran pour faire du score.
-    if (this.x < -MARGE_TIR || this.x > LARGEUR + MARGE_TIR
-      || this.y < -MARGE_TIR || this.y > HAUTEUR + MARGE_TIR) {
+    if (this.x < -this.killMargin || this.x > LARGEUR + this.killMargin
+      || this.y < -this.killMargin || this.y > HAUTEUR + this.killMargin) {
       if (this.flStandardHeroShot) jeu.incScore(-1);
       this.tuer();
     }
@@ -655,7 +718,7 @@ class Shot extends Sprite {
         this.jeu.newHShot({
           x: this.x, y: this.y,
           vitx: Math.cos(a) * 4, vity: Math.sin(a) * 4,
-          time: 20, behaviourId: 10, heroType: 4,
+          time: 20, behaviourId: 10, heroType: 4, aspect: 155,
         });
       }
       this.jeu.evenement('impact', { x: this.x, y: this.y });
@@ -696,10 +759,28 @@ class Shot extends Sprite {
   }
 
   tuer() {
+    if (!this.vivant) return;
     super.tuer();
     const l = (this.listName === 'hShot') ? this.jeu.hShotList : this.jeu.bShotList;
     const i = l.indexOf(this);
     if (i >= 0) l.splice(i, 1);
+    this.enMourant();
+  }
+
+  // Shot.onKill : ce que le tir laisse en disparaissant, PAR OÙ QU'IL meure —
+  // rappel du tir, contact, sortie d'écran, nettoyage de fin de vie. Le missile
+  // du Pastaga y gagne son explosion : un souffle (comportement 7) qui grandit
+  // et fauche tout ce qu'il couvre. C'est LA bombe du vaisseau — sans ce
+  // souffle, le missile ne tuait que l'ennemi touché.
+  enMourant() {
+    if (this.behaviourId === 6) {
+      this.jeu.evenement('missileExplose', { x: this.x, y: this.y });
+      this.jeu.newHShot({
+        x: this.x, y: this.y, vitx: 0, vity: 0,
+        behaviourId: 7, aspect: 153,
+        behaviourInfo: { ray: 0, raySpeed: 12, frict: 0.85, timer: 22 },
+      });
+    }
   }
 }
 
@@ -781,7 +862,9 @@ class Bads extends Sprite {
     const jeu = this.jeu;
     switch (jeu.step) {
       case ETAPE.ARRIVEE:
-        if (this.wpTimer < 0) {
+        // L'escorte appelée par le boss n'a pas de point de passage : si elle
+        // se retrouve dans une phase d'arrivée, elle reste où elle est.
+        if (this.wpTimer < 0 && this.wayPoint) {
           const wp = this.wayPoint;
           if (wp.dist < jeu.gridInfo.ss) {
             this.x = wp.x;
@@ -804,11 +887,16 @@ class Bads extends Sprite {
           const dy = (this.ty - this.y) * 0.3;
           this.y += Math.min(dy, 4) * tmod;
         }
-        if (this.profil.tic) this.profil.tic(this, tmod);
         break;
       default:
         break;
     }
+    // Les `update()` du jeu d'origine tournent à CHAQUE image, quelle que soit
+    // l'étape : seule la cadence de tir et le glissement de formation sont
+    // propres au combat. Cantonner `tic` au combat figeait le Kamikaze en
+    // pleine plongée dès que l'escadre battait en retraite — un missile
+    // suspendu en l'air, qui repartait au retour de la vague.
+    if (this.profil.tic) this.profil.tic(this, tmod);
   }
 
   /**
@@ -967,6 +1055,11 @@ class Opt extends Sprite {
     super(jeu, o);
     this.ray = 10;
     this.speed = 2;
+    // Opt.as : le vaisseau offert est choisi AU LARGAGE (opt.id = random(5),
+    // affiché id+1) — jamais l'Aliquet, que tout le monde possède déjà. Le
+    // dessin doit montrer LE vaisseau qu'on va recevoir, pas un autre.
+    const b = BONUS[this.type];
+    if (b && b.nom === 'vie') this.shipId = 1 + jeu.hasard(5);
   }
   update(tmod) {
     this.y += this.speed * tmod;
@@ -977,7 +1070,7 @@ class Opt extends Sprite {
   ramasser() {
     const jeu = this.jeu;
     const b = BONUS[this.type];
-    jeu.evenement('bonus', { type: this.type, nom: b.nom, x: this.x, y: this.y });
+    jeu.evenement('bonus', { type: this.type, nom: b.nom, x: this.x, y: this.y, credit: b.credit });
     if (b.credit !== undefined) { jeu.credits += b.credit; return; }
     if (b.warp !== undefined) { jeu.setWarp(b.warp); return; }
     switch (b.nom) {
@@ -988,6 +1081,7 @@ class Opt extends Sprite {
             x: this.x, y: this.y,
             vitx: Math.cos(a) * 5, vity: Math.sin(a) * 5,
             time: 60 + jeu.hasard(60), behaviourId: 24,
+            aspect: 163, vitRot: 10,
           });
         }
         break;
@@ -995,16 +1089,17 @@ class Opt extends Sprite {
         jeu.newHShot({
           x: this.x, y: this.y, vitx: 0, vity: 0,
           flIndestructible: true, time: 200 + jeu.hasard(200), behaviourId: 8,
+          aspect: 164, vitRot: 10, killMargin: 200,
         });
         break;
       case 'carteBleue':                 // un mur qui monte et fait tout exploser
         jeu.newHShot({
           x: LARGEUR / 2, y: this.y, vitx: 0, vity: -10,
-          flIndestructible: true, behaviourId: 25,
+          flIndestructible: true, behaviourId: 25, aspect: 165,
         });
         break;
       case 'vie':
-        jeu.ajouterVie(jeu.hasard(5) + 1);
+        jeu.ajouterVie(this.shipId === undefined ? jeu.hasard(5) + 1 : this.shipId);
         break;
       default:
         break;
@@ -1237,8 +1332,24 @@ class Boss extends Sprite {
         this.bougerOrange(tmod);
         this.choisirAttaque(tmod);
         this.verifierTirsHero();
+        // En veille, l'orange crache des boules d'énergie de temps à autre —
+        // d'autant plus souvent qu'elle est entamée — et reprend sa vitesse
+        // de croisière après une attaque qui l'a freinée.
+        if (jeu.hasard(Math.max(1, Math.round((20 + 30 * (this.hp / this.hpMax)) / tmod))) === 0) {
+          this.shootInfo = { type: 5, toShoot: 0, timer: -1 };
+          this.tirer(tmod);
+        }
+        this.mvt.cox = this.mvt.cox * 0.5 + 0.5;
+        this.mvt.coy = this.mvt.coy * 0.5 + 0.5;
         break;
       case 22:
+        this.bougerOrange(tmod);
+        this.tirer(tmod);
+        this.mvt.cox *= 0.7;              // les gerbes la clouent presque sur place
+        this.mvt.coy *= 0.7;
+        if (this.shootInfo.toShoot === 0) this.initStep(21);
+        this.verifierTirsHero();
+        break;
       case 25:
         this.bougerOrange(tmod);
         this.tirer(tmod);
@@ -1247,6 +1358,8 @@ class Boss extends Sprite {
         break;
       case 23: {                          // escorte : il appelle des ennemis
         this.bougerOrange(tmod);
+        this.mvt.cox *= 0.95;
+        this.mvt.coy *= 0.95;
         this.timer -= tmod;
         if (this.timer === Math.floor(this.timer) && jeu.badsList.length < 6
           && jeu.hasard(Math.max(1, Math.round(10 / tmod))) === 0) {
@@ -1260,19 +1373,24 @@ class Boss extends Sprite {
         this.verifierTirsHero();
         break;
       }
-      case 24: {                          // morsure du soleil : invulnérable en charge
+      case 24: {                          // morsure du soleil : il plonge et MORD
+        // Boss.as case 24 : pas un tir — une charge. L'orange descend jusqu'à
+        // la ligne du vaisseau (mvt.ty=0 posé à l'initStep l'amène en bas),
+        // referme ses mains d'un coup et AVEUGLE le pilote 300 images — les
+        // commandes s'inversent. Le contact pendant la charge fait le dégât ;
+        // elle est invulnérable tant qu'elle n'a pas mordu.
         this.bougerOrange(tmod);
         this.timer -= tmod;
         if (this.shootInfo.step === 0 && this.timer < 0) {
           this.shootInfo.step = 1;
-          this.shootInfo.type = 5;
-          this.shootInfo.toShoot = 12;
-          this.shootInfo.timer = 0;
-          this.shootInfo.interval = 4;
-        }
-        if (this.shootInfo.step === 1) {
-          this.tirer(tmod);
-          if (this.shootInfo.toShoot === 0) this.initStep(21);
+          this.timer = 26;
+          this.mvt.cox = 0;
+          this.mvt.coy = 0;
+          if (jeu.hero) jeu.hero.aveugler(300);
+          jeu.evenement('bossMorsure', { x: this.x, y: this.y });
+        } else if (this.shootInfo.step === 1 && this.timer < 0) {
+          this.mvt.ty = 0;
+          this.initStep(21);
         }
         this.verifierTirsHero();
         break;
@@ -1567,7 +1685,9 @@ def(7, {                                                          // Poire sous 
 def(8, {                                                          // Astro-Pamplemousse : bombe qui éclate
   freq: 600, cdSpeed: 5,
   peutTirer: (b) => b.y < HAUTEUR - 70,
-  tirer: (b) => { const t = base(b); t.vity = 1; t.behaviourId = 0; },
+  // La bombe se TIRE avant qu'elle n'arrive : son enveloppe (le halo qui bat
+  // autour du noyau) fait la cible — plus large que les 4 px d'un tir nu.
+  tirer: (b) => { const t = base(b); t.vity = 1; t.behaviourId = 0; t.ray = 6; },
 });
 def(9, {                                                          // Cosmo-Prune : descend d'un cran au bord
   tire: false,
@@ -1578,7 +1698,14 @@ def(9, {                                                          // Cosmo-Prune
 });
 def(10, {                                                         // Coing mutant : tir en éventail aléatoire
   freq: 200, cdSpeed: 10,
-  tirer: (b) => { const t = base(b), a = (57 + b.jeu.hasard(200)) / 100; t.vitx = Math.cos(a) * 2.5; t.vity = Math.sin(a) * 2.5; },
+  // Son étoile TOURNE sur elle-même (le clip du SWF l'anime à 12° par image) :
+  // la barre qui balaie donne au projectile sa présence — immobile, il ne
+  // serait qu'un trait.
+  tirer: (b) => {
+    const t = base(b), a = (57 + b.jeu.hasard(200)) / 100;
+    t.vitx = Math.cos(a) * 2.5; t.vity = Math.sin(a) * 2.5;
+    t.vitRot = 12;
+  },
 });
 def(11, {                                                         // Figue-laser : un rayon qui balaie sa colonne
   freq: 200, cdSpeed: 0.5,
@@ -1706,7 +1833,12 @@ def(23, {                                                         // Cosmirabell
     const t = base(b);
     t.vity = 4;
     t.behaviourId = 5;
-    t.behaviourInfo = { length: 160, parcouru: 0 };
+    t.behaviourInfo = { length: 160, parcouru: 0, sx: b.x, sy: b.y };
+    // Mirabelle.as : killMargin = la longueur du rayon. La boule de tête sort
+    // de l'écran bien avant la queue du rayon — avec la marge ordinaire de
+    // 20 px, le rayon disparaissait au moment précis où il devait balayer la
+    // ligne du vaisseau, et l'attaque semblait ne jamais toucher.
+    t.killMargin = 160;
   },
 });
 def(24, {                                                         // Astro-Quetsch : dévie les tirs qui l'approchent
@@ -1988,7 +2120,7 @@ def(49, {                                                         // Nitro-prune
   exploser: (b) => {
     const t = b.jeu.newHShot({
       x: b.x, y: b.y, vitx: b.vitx || 0, vity: 0,
-      behaviourId: 7,
+      behaviourId: 7, aspect: 153,
       behaviourInfo: { ray: 0, raySpeed: 16, frict: 0.77, timer: 16 },
     });
     return t;
@@ -2335,7 +2467,13 @@ class Game {
   // `nextLevel` : le décor doit défiler d'autant, pas sauter d'un coup.
   setWarp(n) {
     this.evenement('saut', { niveaux: n });
-    while (this.badsList.length > 0) this.badsList[0].tuer();
+    // Bads.warp : chaque ennemi disparaît dans son étoile de warp — le client
+    // pose l'animation là où il se tenait.
+    while (this.badsList.length > 0) {
+      const b = this.badsList[0];
+      this.evenement('badsWarp', { x: b.x, y: b.y, type: b.type });
+      b.tuer();
+    }
     while (this.saucerList.length > 0) this.saucerList[0].tuer();
     while (this.optList.length > 0) this.optList[0].tuer();
     this.nettoyerTirs();
@@ -2376,8 +2514,15 @@ class Game {
     if (this.boss) this.boss.onHeroKill();
   }
 
-  // Boss.kill : le parcours reprend au niveau suivant.
+  // Boss.kill : le parcours reprend au niveau suivant. L'escorte encore en vie
+  // part avec lui — sinon elle resterait orpheline du prochain niveau (qui
+  // repart d'une liste neuve), fantôme invisible et immortel.
   bossVaincu() {
+    while (this.badsList.length > 0) {
+      const b = this.badsList[0];
+      this.evenement('badsWarp', { x: b.x, y: b.y, type: b.type });
+      b.tuer();
+    }
     this.evenement('bossVaincu', { level: this.level, score: this.score });
     this.initStep(ETAPE.SUIVANT);
   }

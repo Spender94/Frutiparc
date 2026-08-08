@@ -95,24 +95,34 @@ test('le tir ondulant du Curaso publie sa traîne, segment par segment', () => {
   assert.match(moteur, /this\.tracer\('homing'\)/);
 });
 
-test('au doigt, le vaisseau est à la position du pouce — même sous EMP', () => {
+test('au doigt, le vaisseau REJOINT le pouce à sa vitesse — pas de téléport', () => {
   const { jeu } = partie();
   jusquAuCombat(jeu);
   assert.ok(jeu.hero, 'le vaisseau est là');
+  const vitesse = jeu.hero.speed;
+  const depart = jeu.hero.x;
 
+  // Le pouce se pose loin : le vaisseau fait UN pas de sa vitesse, pas le trajet.
   jeu.entree.cibleX = 30;
   jeu.update(1);
-  assert.ok(Math.abs(jeu.hero.x - 30) < 0.01, 'le pouce à 30, le vaisseau à 30');
+  assert.ok(Math.abs(jeu.hero.x - (depart - vitesse)) < 0.01,
+    'une image, un pas de ' + vitesse + ' vers le pouce');
 
-  jeu.entree.cibleX = 200;
+  // Et il finit par y arriver — sans jamais dépasser.
+  let garde = 0;
+  while (Math.abs(jeu.hero.x - 30) > 0.01 && garde++ < 200) jeu.update(1);
+  assert.ok(Math.abs(jeu.hero.x - 30) < 0.01, 'il rejoint le pouce en ' + garde + ' images');
   jeu.update(1);
-  assert.ok(Math.abs(jeu.hero.x - 200) < 0.01, 'le pouce saute, le vaisseau suit');
+  assert.ok(Math.abs(jeu.hero.x - 30) < 0.01, 'arrivé, il ne tremble pas');
 
-  // L'EMP de la Prune inverse les commandes : en absolu, c'est le MIROIR.
+  // L'aveuglement du boss inverse les commandes : en absolu, c'est le MIROIR —
+  // le vaisseau marche vers l'OPPOSÉ du pouce, toujours à sa vitesse.
   jeu.hero.sens = -1;
   jeu.entree.cibleX = 40;
+  const avant = jeu.hero.x;
   jeu.update(1);
-  assert.ok(Math.abs(jeu.hero.x - (240 - 40)) < 0.01, 'sous EMP, le vaisseau va à l\'opposé');
+  assert.ok(Math.abs(jeu.hero.x - (avant + vitesse)) < 0.01,
+    'sous aveuglement, il s\'éloigne du pouce à sa vitesse');
   jeu.hero.sens = 1;
 
   // Le relâcher rend la main au clavier : cibleX null n'aimante plus.

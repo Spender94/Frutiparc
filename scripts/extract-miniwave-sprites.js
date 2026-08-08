@@ -62,6 +62,29 @@ function aExtraire() {
   liste.push({ cle: 'boss', symbole: 'miniWave2SpBoss', etiquette: 'Boss' });
   liste.push({ cle: 'saucer', symbole: 'miniWave2SpSaucer', etiquette: 'Soucoupe' });
   liste.push({ cle: 'shot', symbole: 'miniWave2SpShot', etiquette: 'Projectiles' });
+  // Les PARTICULES du jeu : anneaux d'onde, étincelles d'impact, traînes des
+  // tirs, étoiles de warp… Chaque image du clip est une étape de l'animation ;
+  // le client les joue à 40 i/s comme le SWF. Les transformations de couleur
+  // posées dans le fichier (le halo BLANC de la bombe du Pamplemousse, le fondu
+  // des traînes) sortent avec les pièces — sans elles, ces dessins sortaient
+  // noirs ou opaques.
+  liste.push({ cle: 'partOnde', symbole: 'miniWave2SpPartOnde', etiquette: 'Onde de choc' });
+  liste.push({ cle: 'partImpact', symbole: 'miniWave2SpPartImpact', etiquette: 'Impact' });
+  liste.push({ cle: 'partVanish', symbole: 'miniWave2SpPartVanish', etiquette: 'Volute' });
+  liste.push({ cle: 'partWarpStar', symbole: 'miniWave2SpPartWarpStar', etiquette: 'Étoile de warp' });
+  liste.push({ cle: 'partBadsWarp', symbole: 'miniWave2SpPartBadsWarp', etiquette: 'Warp des ennemis' });
+  liste.push({ cle: 'queueCuraso', symbole: 'miniWave2SpPartCurasoQueue', etiquette: 'Traîne du Curaso' });
+  liste.push({ cle: 'queueHoming', symbole: 'miniWave2SpPartHomingQueue', etiquette: 'Traîne chercheuse' });
+  liste.push({ cle: 'queueKumquat', symbole: 'miniWave2SpPartKumquatQueue', etiquette: 'Traîne du Kumquat' });
+  liste.push({ cle: 'queueGroseille', symbole: 'miniWave2SpPartGroseilleQueue', etiquette: 'Traîne de la Groseille' });
+  liste.push({ cle: 'cherryLaser', symbole: 'miniWave2SpPartCherryLaser', etiquette: 'Rayon du Cherry' });
+  liste.push({ cle: 'emp', symbole: 'mcEMP', etiquette: 'Brouillage EMP' });
+  liste.push({ cle: 'pause', symbole: 'mcPause', etiquette: 'Écran de pause' });
+  // Le bonus « vaisseau » de la soucoupe : le halo étoilé (image 4 du clip Opt)
+  // et les cinq silhouettes de vaisseaux qu'il peut annoncer — Opt.as tire
+  // l'identité au largage (opt.gotoAndStop(id+1)), jamais l'Aliquet.
+  liste.push({ cle: 'optVaisseau', id: 1404, etiquette: 'Bonus vaisseau' });
+  liste.push({ cle: 'optHalo', id: 1398, etiquette: 'Halo du bonus vaisseau' });
   // Les icônes de la boutique : un seul clip de dix-huit images, une par
   // article (box/ShopSlot.as fait `ico.gotoAndStop(id+1)`). Il n'est pas exporté
   // sous un nom — il vit à l'intérieur de miniWave2BoxShopSlot — d'où
@@ -90,7 +113,11 @@ function tableFormes() {
     const images = [...m[3].matchAll(/bitmap#(\d+)/g)]
       .map((x) => Number(x[1])).filter((id) => id !== 65535);
     const [w, h] = m[2].split('x').map(Number);
-    t.set(Number(m[1]), { images, w, h });
+    // Le coin haut-gauche des bornes (`@x,y` en fin de ligne) : les formes
+    // excentrées — les traînes, ancrées derrière leur origine — se posent par
+    // lui, pas par leur centre.
+    const o = /\t@(-?[\d.]+),(-?[\d.]+)\s*$/.exec(m[3]);
+    t.set(Number(m[1]), { images, w, h, x0: o ? Number(o[1]) : -w / 2, y0: o ? Number(o[2]) : -h / 2 });
   }
   return t;
 }
@@ -104,12 +131,24 @@ function principal() {
   for (const item of liste) {
     const id = (item.id !== undefined) ? item.id : noms.get(item.symbole);
     if (id === undefined) { absents.push(item.symbole); continue; }
+    // Une FORME nue (le halo du bonus vaisseau) n'a pas d'images : elle est sa
+    // propre pièce unique.
+    if (swf.estForme(id)) {
+      formes.add(id);
+      manifeste[item.cle] = {
+        nom: item.etiquette, symbole: '#' + id,
+        etats: [{ frame: 1, pieces: [{ shape: id, M: swf.IDENTITE, chemin: '', cx: null }] }],
+      };
+      continue;
+    }
     const frames = parSprite.get(id);
     if (!frames || frames.size === 0) { absents.push(item.symbole + ' (sans image)'); continue; }
     const etats = [];
     for (const f of [...frames.keys()].sort((a, c) => a - c)) {
       const pieces = [];
-      for (const p of frames.get(f)) pieces.push(...aplatir(p.ch, p.M, 0));
+      // La transformation de couleur du placement de PREMIER niveau part avec
+      // le reste : c'est elle qui éteint l'anneau d'onde et fond les traînes.
+      for (const p of frames.get(f)) pieces.push(...aplatir(p.ch, p.M, 0, undefined, '', p.cx));
       if (!pieces.length) continue;
       for (const pc of pieces) formes.add(pc.shape);
       etats.push({ frame: f, pieces });
@@ -172,7 +211,7 @@ function principal() {
         const k = (info && info.images.length === 1) ? 'img' + info.images[0] : 'shp' + pc.shape;
         const fichier = ecrites.get(k);
         if (!fichier) { perdues.push(`${cle} #${pc.shape}`); continue; }
-        pieces.push({
+        const piece = {
           fichier,
           // Taille du cadre d'origine, en pixels : c'est elle qui dit au client
           // à quelle échelle poser l'image.
@@ -181,7 +220,23 @@ function principal() {
           // Matrice de placement, translation convertie des twips en pixels.
           m: [pc.M.a, pc.M.b, pc.M.c, pc.M.d, pc.M.e / 20, pc.M.f / 20]
             .map((v) => Math.round(v * 1e4) / 1e4),
-        });
+        };
+        // Origine du dessin quand elle n'est PAS le centre du cadre (à plus
+        // d'un demi-pixel près) : le client pose alors l'image à cet endroit.
+        if (info && (Math.abs(info.x0 + info.w / 2) > 0.5 || Math.abs(info.y0 + info.h / 2) > 0.5)) {
+          piece.o = [Math.round(info.x0 * 100) / 100, Math.round(info.y0 * 100) / 100];
+        }
+        // Transformation de couleur posée dans le SWF (sortie = source ×
+        // mult/256 + add) : le halo de la bombe du Pamplemousse est un disque
+        // noir PEINT EN BLANC par elle, les traînes s'éteignent par son alpha.
+        // La laisser tomber rendait ces pièces noires ou opaques.
+        if (pc.cx) {
+          piece.cx = {
+            m: [pc.cx.mr, pc.cx.mv, pc.cx.mb, pc.cx.ma].map((v) => Math.round(v)),
+            a: [pc.cx.ar, pc.cx.av, pc.cx.ab, pc.cx.aa].map((v) => Math.round(v)),
+          };
+        }
+        pieces.push(piece);
       }
       return pieces.length ? { frame: e.frame, pieces } : null;
     }).filter(Boolean);
