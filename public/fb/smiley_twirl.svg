@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="40" height="24" viewBox="0 0 40 24">
-  <!-- Smiley Twirl — l'article 12 du stand Miniwave (dessin du SWF d'origine). -->
-  <style>
-    .t { animation: vrille 1.1s linear infinite; transform-origin: 22px 13px; }
-    @keyframes vrille { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-  </style>
-  <image class="t" width="40" height="24" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAYCAYAAACIhL/AAAABu0lEQVR42u2WPUsDQRCG8z8Ewb9g6U9QLKxMJ5JG0h6I1WmdWpBIKlPEQiSkShtBORtBDrEQGz/SCBYWFiIZeWd39mbDnY33ESQLL9m7HMsz787Mbq02H/PxPwalaHbATndXiAZ1JzxXArq9vkwiB/bW9vXYMopDDVq+czTcIvrsGU36RpgLZBwSRQHdH62VB7mwuEQQwwHo68oX3mlAaNT0IOn7jgqD29tZpZv+AY0v9hno6brN6p4cJoBwcQqQAzJgVAgg4I5bDV5cBDD9zP9PA0ZB8s2gXgwgFoRD4t7Hy6VxzL7Hs8w1sBMg4SAq3L7Lta9hQdle7Vqmg8hBcQ/bC9n2k1fBJPkThw7SAdnck5xygSAHZXs1nLiXE6ABk7aBuc0daPLQcQWSGoiGs4Uh+Zc/oIXTgCqHMgPx8k+dLvqE+UsemsXEGQWI04N7YBTQb4HonPM0auZWxd7CsiVyvMlvViDsnMo7ltruIm4nbqCVQKjYtEDo+Yzz1HNRpUUplwVss4B6Vfw+ZMDpPljqWazPY8CicbNj1jmRbH2VtxkHCt12Nun1vEHj7gbPK7sPZoHO8o268PEDPS+MFn5XTloAAAAASUVORK5CYII=" style="image-rendering:pixelated"/>
-</svg>

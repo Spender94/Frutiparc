@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="40" height="23" viewBox="0 0 40 23">
-  <!-- Smiley Love — l'article 10 du stand Miniwave (dessin du SWF d'origine). -->
-  <style>
-    .b { animation: bat 0.9s ease-in-out infinite; transform-origin: 20px 14px; }
-    @keyframes bat { 0%, 100% { transform: scale(1); } 30% { transform: scale(1.12); } 45% { transform: scale(1.04); } 60% { transform: scale(1.1); } }
-  </style>
-  <image class="b" width="40" height="23" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAXCAYAAAB50g0VAAABZUlEQVR42u2WPUsDQRCG87v8CzaWQZBUNldeYWmXziaNcoJNICBWIiI2NtfdtRYhlU0QwcLKxuYNM7M7zi5rKnc9JAPD7Qzs7cN8MaPRTnbyPwQJHQ7Y9ckecDdWJXsIoAL2fgl8XIm+nQMvZ8BqCjyfWtDycHg4Aj4XDEG6vNhnm77eh65muzSkwpnH4f3WZui2KgopkTFwJH3fK1DKR+Cl0i0193WjMATSNI2CxT4GfJxw8+QG/G4KB+ghSOlMEvt8BKPuzgP4Oj8QQJfiWH703R8yYO5aFMD1TEbKaqrdql3sutb6ffSKAAYd6yJJ6eYv2TT/uhp4Opa6C2sv+/Dm4euVbRrK61kKQNOaupcPDreidHaPx7PQzsBt9/IBukc0Om2VjqCNXuLe7wPSz32qLGA4hIPlYdu9PGk2G4uts7gR2EcN0tVI3Su299k1KxgtbRVvM3+2fikoNYXXoeyDRTbqDZ1aqU7axSn4AAAAAElFTkSuQmCC" style="image-rendering:pixelated"/>
-</svg>

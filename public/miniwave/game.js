@@ -79,23 +79,37 @@ function imageTeintee(fichier, cx) {
   return c;
 }
 
-// La pièce de crédit, colorée par sa LUMIÈRE : le dessin doré du compteur est
-// rendu une fois, puis chaque pixel est remplacé par (luminance × couleur de
-// la valeur). Le relief (bord, éclat) survit à la teinte — un simple décalage
-// de couleur écraserait tout en aplat.
+// La pièce de crédit qui tombe : RONDE, comme celle du clip Opt (dont le corps
+// est un morph qu'on ne sait pas rejouer). On la reconstruit : un disque aux
+// dégradés de la pièce du SWF (le doré ffe57d → ffcc00 → d8ab00 du compteur),
+// coiffé du VRAI reflet extrait (shape1381), puis chaque pixel est remplacé
+// par (luminance × couleur de la valeur) — le relief survit à la teinte, là où
+// le décalage de couleur de MC.setColor écraserait tout en aplat.
 const piecesTeintees = new Map();
 function pieceTeintee(sprites, type) {
   let c = piecesTeintees.get(type);
   if (c !== undefined) return c;
-  const sp = sprites.piece;
-  if (!sp || !sp.etats.length) return null;
-  const K = 3, w = 13, h = 13;
+  const K = 4, w = 12, h = 12, r = 5;
   const toile = document.createElement('canvas');
   toile.width = w * K; toile.height = h * K;
   const cc = toile.getContext('2d');
   cc.translate((w * K) / 2, (h * K) / 2);
-  cc.scale(K * 0.8, K * 0.8);
-  poser(cc, sp, sp.etats[sp.etats.length - 1].frame, 0, 0);
+  cc.scale(K, K);
+  // Le corps : un disque éclairé par le haut, cerclé d'un bord plus sombre.
+  const grad = cc.createRadialGradient(-1, -2.2, 0.5, 0, 0, r);
+  grad.addColorStop(0, '#ffe57d');
+  grad.addColorStop(0.55, '#ffcc00');
+  grad.addColorStop(1, '#d8ab00');
+  cc.fillStyle = grad;
+  cc.beginPath();
+  cc.arc(0, 0, r, 0, 6.2832);
+  cc.fill();
+  cc.lineWidth = 0.8;
+  cc.strokeStyle = 'rgba(140,102,0,.9)';
+  cc.stroke();
+  // Le reflet du SWF (l'arc blanc du haut de la pièce du clip Opt).
+  const reflet = images.get('shape1381.svg');
+  if (reflet) cc.drawImage(reflet, -5, -5, 10, 7.25);
   const COLS = [[0xF2, 0xD1, 0xAA], [0xFF, 0xFF, 0xFF], [0xFF, 0xF5, 0x8A], [0xA5, 0xF8, 0x9E]];
   const col = COLS[type] || COLS[1];
   try {
@@ -104,9 +118,9 @@ function pieceTeintee(sprites, type) {
     for (let i = 0; i < px.length; i += 4) {
       if (px[i + 3] === 0) continue;
       const lum = (0.3 * px[i] + 0.59 * px[i + 1] + 0.11 * px[i + 2]) / 255;
-      px[i] = Math.min(255, lum * col[0] * 1.15);
-      px[i + 1] = Math.min(255, lum * col[1] * 1.15);
-      px[i + 2] = Math.min(255, lum * col[2] * 1.15);
+      px[i] = Math.min(255, lum * col[0] * 1.2);
+      px[i + 1] = Math.min(255, lum * col[1] * 1.2);
+      px[i + 2] = Math.min(255, lum * col[2] * 1.2);
     }
     cc.putImageData(d, 0, 0);
   } catch (e) { /* toile souillée : la pièce restera dorée */ }
@@ -390,9 +404,12 @@ class Client {
       case 'panneau':
         // Les panneaux du SWF (miniWave2Msg) : type 0 = niveau, 3 = boss.
         // Ils fondent à l'ouverture et à la fermeture (Msg.update).
+        // « level » en MINUSCULES : c'est la chaîne exacte de game/Main.as, et
+        // l'Arcade Classic du SWF n'embarque d'ailleurs que ces glyphes-là
+        // (e, l, v — pas de L majuscule).
         this.panneau = {
           type: d.boss ? 3 : 0,
-          titre: d.boss ? '' : ('LEVEL ' + (d.level + 1)),
+          titre: d.boss ? '' : ('level ' + (d.level + 1)),
           texte: d.boss
             ? 'Attention ! Vous entrez dans une zone à haut risque : la présence de "Orangre" le boss des fruits mutants est détectée dans ce secteur...'
             : (d.name || ''),
@@ -940,9 +957,11 @@ class Client {
         ctx.fillText(p.texte, LARGEUR / 2, haut + 38);
         break;
       case 1:                                        // game over
-        ctx.font = '32px ArcadeClassic, Verdana, sans-serif';
+        // La Jawbreaker : l'Arcade Classic du SWF n'a ni G ni M — le panneau
+        // d'origine posait ce texte dans une autre police.
+        ctx.font = '24px Jawbreaker, Verdana, sans-serif';
         ctx.fillStyle = '#ffffff';
-        ctx.fillText('GAME OVER', LARGEUR / 2, haut + 18);
+        ctx.fillText('GAME OVER', LARGEUR / 2, haut + 24);
         break;
       case 2:                                        // fin du parcours
         ctx.font = '32px ArcadeClassic, Verdana, sans-serif';

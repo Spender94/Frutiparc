@@ -2321,17 +2321,6 @@ var EMOTICONS = [
   { file: 'chart.gif',     code: ':chart:',    alts: [],                title: 'Graphique' },
 ];
 
-// Les smileys ANIMÉS du stand Miniwave ($smiley_love / _laugh / _twirl).
-// Tout le monde les VOIT dans les messages (sinon un post en serait troué) ;
-// seuls les joueurs qui les ont achetés au stand les ont dans leur rangée —
-// la liste arrive avec /api/forum/me (mySmileys).
-var MINIWAVE_EMOTICONS = [
-  { file: 'smiley_love.svg',  code: ':love:',  title: 'Smiley Love (stand Miniwave)' },
-  { file: 'smiley_laugh.svg', code: ':laugh:', title: 'Smiley Laugh (stand Miniwave)' },
-  { file: 'smiley_twirl.svg', code: ':twirl:', title: 'Smiley Twirl (stand Miniwave)' },
-];
-var mySmileys = [];   // codes débloqués pour CE joueur, remplis par init()
-
 function emoticonsRowHtml(targetId) {
   var html = '<div class="emoticons-row">';
   for (var i = 0; i < EMOTICONS.length; i++) {
@@ -2340,15 +2329,6 @@ function emoticonsRowHtml(targetId) {
       + ' (' + escapeHtml(e.code) + ')" '
       + 'onclick="bbInsertText(\'' + targetId + '\',\' ' + escapeHtml(e.code) + ' \')">'
       + '<img class="emo-img" src="/fb/' + e.file + '" alt="' + escapeHtml(e.code) + '"></button>';
-  }
-  // La rangée s'allonge des smileys du stand débloqués par le joueur.
-  for (var k = 0; k < MINIWAVE_EMOTICONS.length; k++) {
-    var s = MINIWAVE_EMOTICONS[k];
-    if (mySmileys.indexOf(s.code) < 0) continue;
-    html += '<button type="button" class="emo-btn" title="' + escapeHtml(s.title)
-      + ' (' + escapeHtml(s.code) + ')" '
-      + 'onclick="bbInsertText(\'' + targetId + '\',\' ' + escapeHtml(s.code) + ' \')">'
-      + '<img class="emo-img" src="/fb/' + s.file + '" alt="' + escapeHtml(s.code) + '"></button>';
   }
   html += '</div>';
   return html;
@@ -2367,11 +2347,6 @@ function _buildEmoSubs() {
     for (var j = 0; j < (e.alts || []).length; j++) {
       entries.push({ code: e.alts[j], file: e.file });
     }
-  }
-  // Les smileys du stand Miniwave se rendent pour TOUT LE MONDE : un message
-  // posté par un acheteur doit se lire pareil chez les autres.
-  for (var k = 0; k < MINIWAVE_EMOTICONS.length; k++) {
-    entries.push({ code: MINIWAVE_EMOTICONS[k].code, file: MINIWAVE_EMOTICONS[k].file });
   }
   entries.sort(function(a, b) { return b.code.length - a.code.length; });
   return entries;
@@ -3081,9 +3056,6 @@ async function init() {
       mySignature = data.signature || '';
       myAccessories = data.accessories || [];
       myDefaultAccessories = data.defaultAccessories || [];
-      // Les smileys du stand Miniwave débloqués par CE joueur : leur code
-      // rejoint la rangée de l'éditeur (le rendu, lui, connaît tout le monde).
-      mySmileys = (data.smileys || []).map(function (s) { return s.code; });
       myMuted = !!data.muted;
       myMutedUntilDisplay = data.mutedUntilDisplay || null;
       myBanned = !!data.banned;

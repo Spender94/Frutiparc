@@ -18,11 +18,10 @@
  */
 'use strict';
 
-const { test, before, after } = require('node:test');
+const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -78,15 +77,28 @@ test('l\'écran de chargement est celui du disque d\'origine', () => {
 
 // ── 3. Les pièces ─────────────────────────────────────────────────────────
 
-test('les pièces qui tombent sont le dessin du SWF, teinté par valeur', () => {
-  const manifeste = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/miniwave/sprites/sprites.json'), 'utf8'));
-  assert.ok(manifeste.piece && manifeste.piece.etats.length >= 2,
-    'la pièce du compteur est extraite (tranche et face)');
+test('les pièces qui tombent sont RONDES, teintées par valeur, et toupillent', () => {
   const jeu = fs.readFileSync(path.join(ROOT, 'public/miniwave/game.js'), 'utf8');
+  // Le corps est un DISQUE (la pièce du compteur, elle, est un carré arrondi —
+  // pas la bonne forme pour le bonus qui tombe).
+  assert.match(jeu, /cc\.arc\(0, 0, r, 0, 6\.2832\)/, 'le corps de la pièce est un disque');
+  assert.match(jeu, /shape1381\.svg/, 'coiffé du vrai reflet extrait du SWF');
   assert.match(jeu, /0xF2, 0xD1, 0xAA\], \[0xFF, 0xFF, 0xFF\], \[0xFF, 0xF5, 0x8A\], \[0xA5, 0xF8, 0x9E/,
     'les quatre teintes de MC.setColor');
   assert.match(jeu, /pieceTeintee/, 'et le rendu colore la pièce par sa lumière');
   assert.match(jeu, /Math\.cos\(o\.y \/ 5\)/, 'la toupie suit la chute');
+});
+
+test('les niveaux s\'annoncent en « level » minuscule — les seuls glyphes de la police', () => {
+  const jeu = fs.readFileSync(path.join(ROOT, 'public/miniwave/game.js'), 'utf8');
+  // L'Arcade Classic du SWF n'embarque QUE les caractères que le jeu tapait :
+  // e, l, v (minuscules), B, R, A, V, O, les chiffres… Un « LEVEL » majuscule
+  // ferait retomber le L sur la police de secours.
+  assert.match(jeu, /'level ' \+ \(d\.level \+ 1\)/, 'la chaîne exacte de game/Main.as');
+  assert.ok(!/'LEVEL ' \+/.test(jeu), 'plus de LEVEL majuscule');
+  // GAME OVER : ni G ni M dans l'Arcade Classic — c'est la Jawbreaker qui s'y colle.
+  assert.match(jeu, /24px Jawbreaker[^']*';\s*\n\s*ctx\.fillStyle = '#ffffff';\s*\n\s*ctx\.fillText\('GAME OVER'/,
+    'GAME OVER en Jawbreaker');
 });
 
 // ── 4. L'interface ────────────────────────────────────────────────────────
@@ -105,99 +117,22 @@ test('score centré avec ses pointillés, vies en bas à droite, panneaux du SWF
   assert.match(jeu, /alpha \* 0\.8 \+ p\.ta \* 0\.2/, 'avec le fondu de Msg.update');
 });
 
-// ── 5. Les smileys du stand au forum ──────────────────────────────────────
+// ── 5. Les smileys du stand : en ATTENTE de leurs GIF d'origine ──────────
+// Les animations recréées ont été retirées à la demande : les vrais GIF
+// d'époque seront posés dans public/fb/ quand ils auront été retrouvés, et
+// la rangée du forum rebranchée à ce moment-là. D'ici là, le forum ne doit
+// porter AUCUNE trace des smileys du stand.
 
-test('les trois smileys animés existent et portent les dessins du SWF', () => {
-  for (const f of ['smiley_love.svg', 'smiley_laugh.svg', 'smiley_twirl.svg']) {
-    const p = path.join(ROOT, 'public/fb', f);
-    assert.ok(fs.existsSync(p), f + ' existe');
-    const svg = fs.readFileSync(p, 'utf8');
-    assert.match(svg, /@keyframes/, f + ' est animé');
-    assert.match(svg, /data:image\/png;base64,/, f + ' embarque le dessin d\'origine');
-  }
-});
-
-test('le forum connaît les smileys du stand : rendu pour tous, rangée pour les acheteurs', () => {
+test('le forum ne porte pas de smileys du stand tant que les GIF d\'origine manquent', () => {
   const forum = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
-  assert.match(forum, /MINIWAVE_EMOTICONS/, 'la table des smileys du stand');
-  assert.match(forum, /smiley_love\.svg/, 'le Love');
-  assert.match(forum, /:laugh:/, 'le code du Laugh');
-  assert.match(forum, /mySmileys\.indexOf\(s\.code\) < 0\) continue/, 'la rangée est réservée aux acheteurs');
-  // Le RENDU, lui, passe par _buildEmoSubs qui inclut tout le monde.
-  assert.match(forum, /entries\.push\(\{ code: MINIWAVE_EMOTICONS\[k\]\.code/, 'le rendu les montre à tous');
-
-  const serveur = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  assert.match(serveur, /MINIWAVE_FORUM_SMILEYS/, 'le serveur porte la table');
-  assert.match(serveur, /smileys,/, 'et /api/forum/me l\'expose');
-});
-
-// ── Bout en bout : l'achat au stand ouvre la rangée du forum ─────────────
-
-const PORT = 3487;
-const BASE = `http://127.0.0.1:${PORT}`;
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-let proc = null;
-
-before(async () => {
-  proc = spawn(process.execPath, ['server.js'], {
-    cwd: ROOT,
-    env: Object.assign({}, process.env, {
-      PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      XMLSOCKET_PORT: '5218', FRUTISCORE_PORT: '5219',
-    }),
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  proc.stdout.on('data', () => {});
-  proc.stderr.on('data', () => {});
-  for (let i = 0; i < 120; i++) {
-    try { if ((await fetch(BASE + '/light')).ok) return; } catch {}
-    await wait(250);
+  assert.ok(!/MINIWAVE_EMOTICONS/.test(forum), 'pas de table de smileys du stand');
+  assert.ok(!/smiley_love/.test(forum), 'pas de fichier smiley référencé');
+  for (const f of ['smiley_love.svg', 'smiley_laugh.svg', 'smiley_twirl.svg']) {
+    assert.ok(!fs.existsSync(path.join(ROOT, 'public/fb', f)), f + ' a été retiré');
   }
-  throw new Error('serveur indisponible');
-});
-after(() => { if (proc) proc.kill('SIGKILL'); });
-
-test('acheter un smiley au stand l\'ajoute à la rangée du forum du joueur', async () => {
-  const corps = JSON.stringify({ username: 'fumeur2smiley', password: 'secret123' });
-  await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps });
-  const { sid } = await (await fetch(BASE + '/api/auth/login', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps,
-  })).json();
-  assert.ok(sid, 'connecté');
-
-  // Avant l'achat : pas de smiley du stand dans la rangée.
-  let moi = await (await fetch(BASE + '/api/forum/me?sid=' + sid)).json();
-  assert.deepEqual((moi.smileys || []).map((s) => s.code), [], 'rien avant l\'achat');
-
-  // L'achat au stand : la fiche part avec $shop[10] et [12] à 0 (achetés) —
-  // c'est ce que le SWF comme le light enregistrent.
-  const carte = {
-    $ship: [true, false, false, false, false, false],
-    $badsKill: new Array(51).fill(0),
-    $arcade: { $bestLevel: 1, $bestScore: 120 },
-    $cons: { $main: 0, $bonus: [0, 0, 0, 0, 0, 0, 0, 0], $letter: 0 },
-    $shop: new Array(20).fill(1),
-    $credit: 0,
-    $vs: 0.93,
-  };
-  carte.$shop[10] = 0;                     // Smiley Love acheté
-  carte.$shop[12] = 0;                     // Smiley Twirl acheté
-  const r = await fetch(BASE + '/api/saveFrutiSlot', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sid, game: 'miniwave', slotId: '0', data: JSON.stringify(carte) }),
-  });
-  assert.ok(r.ok, 'la fiche est enregistrée');
-
-  // Après : les deux smileys achetés sont dans la rangée — pas le troisième.
-  moi = await (await fetch(BASE + '/api/forum/me?sid=' + sid)).json();
-  const codes = (moi.smileys || []).map((s) => s.code).sort();
-  assert.deepEqual(codes, [':love:', ':twirl:'], 'les smileys achetés, et eux seuls');
-
-  // Et leurs images se servent en SVG animé (le picto du stand aussi).
-  const svg = await fetch(BASE + '/fb/smiley_love.svg');
-  assert.ok(svg.ok, 'le smiley se sert depuis /fb/');
-  const picto = await fetch(BASE + '/api/picto/%24smiley_love');
-  assert.ok(picto.ok, 'le picto du stand se sert');
-  assert.match(picto.headers.get('content-type') || '', /image\/svg\+xml/, 'en SVG, pas en GIF menteur');
+  const serveur = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.ok(!/MINIWAVE_FORUM_SMILEYS/.test(serveur), 'le serveur non plus');
+  // L'achat au stand continue de donner le picto ($smiley_*) — seule la
+  // partie forum attend.
+  assert.match(serveur, /'\$smiley_love'/, 'le picto du stand existe toujours');
 });
