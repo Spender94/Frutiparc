@@ -577,12 +577,26 @@ const GAME_ITEM_INFO = {
   '$ship05':     { name: 'Vaisseau 5',          game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship05.gif' },
   '$arcade':     { name: 'Arcade Boss',         game: 'MiniWave', gif: 'Games/miniWave2/titem/pictoBoss.gif' },
   '$letter':     { name: 'Letter Invader',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/letter.gif' },
-  '$smiley_love':  { name: 'Smiley Love',      game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
-  '$smiley_laugh': { name: 'Smiley Laugh',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
-  '$smiley_twirl': { name: 'Smiley Twirl',     game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
-  '$wpMinistar':   { name: 'Arme Ministar',    game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
-  '$wpNostromo':   { name: 'Arme Nostromo',    game: 'MiniWave', gif: 'Games/miniWave2/titem/gif/ship00.gif' },
+  // Les trois smileys du stand : les bouilles du SWF (mêmes dessins que les
+  // icônes de la boutique), animées en SVG — et branchées au forum, où elles
+  // rejoignent la rangée de smileys de ceux qui les ont achetées.
+  '$smiley_love':  { name: 'Smiley Love',      game: 'MiniWave', gif: 'public/fb/smiley_love.svg' },
+  '$smiley_laugh': { name: 'Smiley Laugh',     game: 'MiniWave', gif: 'public/fb/smiley_laugh.svg' },
+  '$smiley_twirl': { name: 'Smiley Twirl',     game: 'MiniWave', gif: 'public/fb/smiley_twirl.svg' },
+  // Les deux fonds d'écran du stand : les images de fond du SWF.
+  '$wpMinistar':   { name: 'Fond Ministar',    game: 'MiniWave', gif: 'Games/miniWave2/bitmap/bg/miniwave_ministar.jpg' },
+  '$wpNostromo':   { name: 'Fond Nostromo',    game: 'MiniWave', gif: 'Games/miniWave2/bitmap/bg/miniwave_nostromo.jpg' },
 };
+
+// Les smileys du stand Miniwave, tels que le forum les connaît : le code tapé
+// (ou inséré par la rangée), le fichier servi depuis /fb/, et le titem qui les
+// débloque. Tout le monde VOIT un smiley posté ; seuls les acheteurs ont le
+// bouton dans l'éditeur.
+const MINIWAVE_FORUM_SMILEYS = [
+  { item: '$smiley_love',  code: ':love:',  file: 'smiley_love.svg',  title: 'Smiley Love (stand Miniwave)' },
+  { item: '$smiley_laugh', code: ':laugh:', file: 'smiley_laugh.svg', title: 'Smiley Laugh (stand Miniwave)' },
+  { item: '$smiley_twirl', code: ':twirl:', file: 'smiley_twirl.svg', title: 'Smiley Twirl (stand Miniwave)' },
+];
 
 // Build MiniWave2 bads (bad00..bad50) and missions (mis0..mis4)
 for (let i = 0; i <= 50; i++) {
@@ -7376,7 +7390,11 @@ app.get('/api/picto/:itemName', async (req, res) => {
   }
   const gifPath = resolveGameItemGif(itemName);
   if (!gifPath) return res.status(404).send('Not found');
-  res.type('image/gif').sendFile(gifPath);
+  // Le type suit l'extension : les smileys du stand sont des SVG animés, les
+  // fonds d'écran des JPEG — tout n'est plus du GIF.
+  const ext = path.extname(gifPath).toLowerCase();
+  const mime = { '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png' }[ext] || 'image/gif';
+  res.type(mime).sendFile(gifPath);
 });
 
 // List all available pictos (for forum picto picker)
@@ -13752,10 +13770,17 @@ app.get('/api/forum/me', (req, res) => {
   // — this is purely a UX hint.
   const mute = getMuteInfoForUser(username);
   const ban = getBanInfoForUser(username);
+  // Les smileys achetés au stand Miniwave rejoignent la rangée de l'éditeur
+  // de CE joueur (le rendu des messages, lui, les montre à tout le monde).
+  const items = Array.isArray(u.gameItems) ? u.gameItems : [];
+  const smileys = MINIWAVE_FORUM_SMILEYS
+    .filter(s => items.includes(s.item))
+    .map(s => ({ code: s.code, file: s.file, title: s.title }));
   res.json({
     user: getDisplayName(username),
     isModerator: !!u.isModerator,
     isAnimator: !!u.isAnimator,
+    smileys,
     bouille: bouilleOf(u, username),
     // Mirror the Flash client's editbouille gating (see the f="0,1,..." attr in
     // onident) so the mobile client can force its own "Ma Frutibouille" editor

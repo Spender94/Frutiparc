@@ -38,7 +38,7 @@ const PAGE_H = HAUTEUR - (MARGE + MARGE_HAUT);        // 186
 const FOND = '#4a4a84';                               // le rectangle de miniWave2Menu
 const OUVERT = { fond: '#BCBCDA', trait: '#FFFFFF' };
 const FERME = { fond: '#8A8ABD', trait: '#BCBCDA' };
-const ENCRE = '#2b2b52';                              // le texte sur les encadrés
+const ENCRE = '#4e5387';                              // l'encre du SWF (verdana2 #4e5387)
 const VITESSE_MAX = 8;                                // Box.speedMax
 const COEF = 0.5;                                     // Box.speedCoef
 
@@ -48,7 +48,8 @@ const COEF = 0.5;                                     // Box.speedCoef
 const RUBRIQUES = [
   { id: 'arcade', nom: 'ARCADE', desc: 'Le grand parcours : 200 vagues et le boss.' },
   { id: 'bonus', nom: 'BONUS', desc: 'Les missions, courtes et primées.' },
-  { id: 'special', nom: 'SPÉCIAL', desc: 'Letter Invader et Endurance.' },
+  // « SPECIAL » sans accent, comme page/Main.as — et la Jawbreaker n'a pas le É.
+  { id: 'special', nom: 'SPECIAL', desc: 'Letter Invader et Endurance.' },
   { id: 'stand', nom: 'STAND', desc: 'Vaisseaux, missions et pictos à acheter.' },
 ];
 
@@ -510,7 +511,7 @@ class Interface {
     // stand porte le compteur de crédits et le retour, qu'il masquerait au
     // moment précis où le joueur veut les lire.
     if (this.message) {
-      ctx.font = '8px Verdana, Arial, sans-serif';
+      ctx.font = '10px VerdanaPix, Verdana, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const l = ctx.measureText(this.message).width + 12;
@@ -532,8 +533,8 @@ class Interface {
       // box/ShopSlot : le prix en haut, l'icône au centre. Les trois smileys
       // (10 à 12) gardent leur taille d'origine, les autres remplissent la case.
       const a = b.article;
-      ctx.font = '7px Verdana, Arial, sans-serif';
-      ctx.fillText(a.achete ? 'acquis' : (a.prix + ' ¤'), b.x + b.w / 2, b.y + 6);
+      ctx.font = '14px Jawbreaker, Verdana, sans-serif';
+      ctx.fillText(a.achete ? 'acquis' : String(a.prix), b.x + b.w / 2, b.y + 8);
       const sp = this.sprites.shopIco;
       const etat = sp && sp.etats.find((e) => e.frame === a.ico);
       if (etat) {
@@ -550,7 +551,7 @@ class Interface {
 
     if (b.credits) {
       // box/Credit : le solde, la pièce juste après.
-      ctx.font = 'bold 9px Verdana, Arial, sans-serif';
+      ctx.font = '14px Jawbreaker, Verdana, sans-serif';
       const t = String(this.carte.$credit);
       const l = ctx.measureText(t).width;
       ctx.textAlign = 'left';
@@ -569,7 +570,7 @@ class Interface {
         && this.escadron.choix.indexOf(b.vaisseau) >= 0;
       if (enrole) ctx.globalAlpha = 0.25;
       this.poser(ctx, this.sprites['hero' + b.vaisseau], 1, b.x + b.w / 2, b.y + b.h / 2 - 6, 1.6);
-      ctx.font = '7px Verdana, Arial, sans-serif';
+      ctx.font = '10px VerdanaPix, Verdana, sans-serif';
       ctx.fillText(enrole ? 'parti !' : b.texte, b.x + b.w / 2, b.y + b.h - 8);
       if (enrole) ctx.globalAlpha = 1;
       return;
@@ -577,7 +578,7 @@ class Interface {
 
     if (b.compteur) {
       const e = this.escadron;
-      ctx.font = 'bold 9px Verdana, Arial, sans-serif';
+      ctx.font = '14px Jawbreaker, Verdana, sans-serif';
       ctx.fillText('escadron ' + (e ? e.choix.length : 0) + '/' + (e ? e.lancement.vies : 0),
         b.x + b.w / 2, b.y + b.h / 2);
       return;
@@ -614,7 +615,7 @@ class Interface {
       ctx.clip();
       this.poser(ctx, sp, b.vignette, b.x + b.w / 2, b.y + b.h / 2, (b.w - 8) / 242);
       ctx.restore();
-      ctx.font = 'bold 9px Verdana, Arial, sans-serif';
+      ctx.font = '14px Jawbreaker, Verdana, sans-serif';
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(0,0,0,.7)';
       ctx.strokeText(b.texte, b.x + b.w / 2, b.y + b.h - 10);
@@ -624,7 +625,7 @@ class Interface {
     }
 
     if (b.lignes) {
-      ctx.font = '8px Verdana, Arial, sans-serif';
+      ctx.font = '10px VerdanaPix, Verdana, sans-serif';
       b.lignes.forEach((t, i) => {
         ctx.fillText(t, b.x + b.w / 2, b.y + 14 + i * 12);
       });
@@ -632,8 +633,8 @@ class Interface {
     }
 
     if (b.texte) {
-      ctx.font = 'bold 9px Verdana, Arial, sans-serif';
-      ctx.fillText(b.texte, b.x + b.w / 2, b.y + b.h / 2);
+      ctx.font = '14px Jawbreaker, Verdana, sans-serif';
+      ctx.fillText(b.texte, b.x + b.w / 2, b.y + b.h / 2 + 0.5);
     }
   }
 }

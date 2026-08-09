@@ -16,7 +16,9 @@ const Menu = require(path.join(ROOT, 'public/miniwave/menu.js'));
 const NIVEAUX = require(path.join(ROOT, 'public/miniwave/levels.json'));
 
 test('l\'accueil reprend les rubriques du jeu', () => {
-  assert.deepEqual(Menu.RUBRIQUES.map((r) => r.nom), ['ARCADE', 'BONUS', 'SPÉCIAL', 'STAND']);
+  // « SPECIAL » sans accent : c'est l'étiquette de page/Main.as, et la
+  // Jawbreaker du SWF n'a de toute façon pas le É.
+  assert.deepEqual(Menu.RUBRIQUES.map((r) => r.nom), ['ARCADE', 'BONUS', 'SPECIAL', 'STAND']);
 });
 
 test('sur une fiche neuve, seule l\'arcade est ouverte', () => {

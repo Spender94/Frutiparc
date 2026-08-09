@@ -17,6 +17,24 @@
   ?sid= pour la persistance plateforme (slot, pictos, consécration).
 -->
 <style>
+  /* Les polices du SWF, sorties telles quelles (scripts/extract-swf-font.js) :
+     Jawbreaker pour le score et les encadrés, Arcade Classic pour les grands
+     titres, la Verdana pixel 10 pour les petits textes. */
+  @font-face {
+    font-family: 'Jawbreaker';
+    src: url('/miniwave/fontes/jawbreaker.woff') format('woff');
+    font-display: block;
+  }
+  @font-face {
+    font-family: 'ArcadeClassic';
+    src: url('/miniwave/fontes/arcade.woff') format('woff');
+    font-display: block;
+  }
+  @font-face {
+    font-family: 'VerdanaPix';
+    src: url('/miniwave/fontes/verdana10.woff') format('woff');
+    font-display: block;
+  }
   html, body {
     margin: 0; padding: 0; height: 100%;
     background: #ADE76B;
@@ -95,13 +113,18 @@
   #pause.on { display: block; }
   #pause.pausee { background: rgba(75,122,38,.9); color: #fff; }
 
+  /* L'écran de chargement du DISQUE d'origine (loader_miniwave.swf) : fond
+     blanc, le cadre à tuiles du disque, le logo frusion au centre et le
+     pourcentage. Composé sur une toile 800×600 comme la scène du SWF. */
   #chargement {
     position: fixed; inset: 0; z-index: 5;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-    background: #ADE76B; color: #2c4a0f; font-size: 13px; letter-spacing: 1px;
+    display: flex; align-items: center; justify-content: center;
+    background: #ffffff;
   }
-  #chargement .barre { width: 200px; height: 10px; border: 2px solid #2c4a0f; border-radius: 6px; overflow: hidden; }
-  #chargement .barre > div { height: 100%; width: 0; background: #4e8030; transition: width .12s; }
+  #chargement canvas {
+    width: min(100vw, calc(100vh * 800 / 600));
+    height: auto; display: block;
+  }
 
   /* Écran de fin : on rejoue d'un appui, sans passer par un menu. */
   #fin {
@@ -110,7 +133,7 @@
     background: rgba(7,11,24,.86); color: #cfe8a0;
   }
   #fin.on { display: flex; }
-  #fin .t { font-size: 20px; font-weight: bold; color: #ffd76a; }
+  #fin .t { font: 24px 'Jawbreaker', Verdana, sans-serif; color: #ffd76a; }
   #fin .s { font-size: 14px; }
   #fin button {
     border: 0; border-radius: 14px; padding: 14px 28px;
@@ -170,8 +193,7 @@
 <div id="message"></div>
 
 <div id="chargement">
-  <div>MINIWAVE 2</div>
-  <div class="barre"><div id="jauge"></div></div>
+  <canvas id="chargement-toile" width="800" height="600"></canvas>
 </div>
 
 <div id="fin">
@@ -184,12 +206,12 @@
   </div>
 </div>
 
-<script src="/miniwave/engine.js?v=fidele3"></script>
-<script src="/miniwave/modes.js?v=fidele3"></script>
-<script src="/miniwave/game.js?v=fidele3"></script>
-<script src="/miniwave/sons.js?v=fidele3"></script>
-<script src="/miniwave/plateforme.js?v=fidele3"></script>
-<script src="/miniwave/menu.js?v=fidele3"></script>
+<script src="/miniwave/engine.js?v=fidele4"></script>
+<script src="/miniwave/modes.js?v=fidele4"></script>
+<script src="/miniwave/game.js?v=fidele4"></script>
+<script src="/miniwave/sons.js?v=fidele4"></script>
+<script src="/miniwave/plateforme.js?v=fidele4"></script>
+<script src="/miniwave/menu.js?v=fidele4"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
@@ -201,6 +223,120 @@
   var client = null, niveaux = null, ui = null;
   // Ce qui a été lancé en dernier : sert au bouton « Rejouer ».
   var enCours = null;
+
+  // ── L'écran de chargement du disque (loader_miniwave.swf) ──
+  // Le cadre à tuiles, le logo frusion, le pourcentage — composés d'après
+  // public/miniwave/loader/loader.json, sur la scène 800×600 du SWF.
+  var chargeur = (function () {
+    var toile = $('#chargement-toile');
+    var ctx = toile.getContext('2d');
+    var donnees = null, images = {}, prc = 0, erreur = null;
+    function dessinerPieces(etat, tx, ty) {
+      if (!etat) return;
+      for (var i = 0; i < etat.pieces.length; i++) {
+        var p = etat.pieces[i];
+        var img = images[p.fichier];
+        if (!img) continue;
+        // La transformation de couleur du SWF : ici seul l'alpha compte (les
+        // fondus de l'animation du logo).
+        var alpha = 1;
+        if (p.cx && p.cx.m) alpha = Math.max(0, Math.min(1, p.cx.m[3] / 256));
+        if (alpha <= 0.01) continue;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(tx, ty);
+        ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
+        var ox = p.o ? p.o[0] : -p.w / 2;
+        var oy = p.o ? p.o[1] : -p.h / 2;
+        ctx.drawImage(img, ox, oy, p.w, p.h);
+        ctx.restore();
+      }
+    }
+    // Le cadre du disque : une guirlande de feston (les tuiles 12×12 du SWF —
+    // la forme d'origine les répète le long d'une bordure de 610×410, qu'on
+    // recompose ici tuile à tuile).
+    function dessinerCadre(x, y, w, h) {
+      var t = images['bitmap63.png'];
+      var coin = images['bitmap62.png'];
+      if (!t || !t.complete || !t.naturalWidth) return;
+      var i;
+      for (i = 12; i < w - 12; i += 12) {
+        ctx.drawImage(t, x + i, y);                    // haut
+        ctx.save();                                    // bas (feston retourné)
+        ctx.translate(x + i + 6, y + h - 6);
+        ctx.scale(1, -1);
+        ctx.drawImage(t, -6, -6);
+        ctx.restore();
+      }
+      for (i = 12; i < h - 12; i += 12) {
+        ctx.save();                                    // gauche
+        ctx.translate(x + 6, y + i + 6);
+        ctx.rotate(-Math.PI / 2);
+        ctx.drawImage(t, -6, -6);
+        ctx.restore();
+        ctx.save();                                    // droite
+        ctx.translate(x + w - 6, y + i + 6);
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(t, -6, -6);
+        ctx.restore();
+      }
+      if (coin && coin.complete && coin.naturalWidth) {
+        var coins = [[x, y, 1, 1], [x + w - 12, y, -1, 1], [x, y + h - 12, 1, -1], [x + w - 12, y + h - 12, -1, -1]];
+        for (i = 0; i < coins.length; i++) {
+          ctx.save();
+          ctx.translate(coins[i][0] + 6, coins[i][1] + 6);
+          ctx.scale(coins[i][2], coins[i][3]);
+          ctx.drawImage(coin, -6, -6);
+          ctx.restore();
+        }
+      }
+    }
+    function dessiner() {
+      ctx.clearRect(0, 0, 800, 600);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 800, 600);
+      if (donnees) {
+        // Le cadre (610×410) centré ; le contenu du logo posé en 200,150 dans
+        // l'aire 400×300 centrée, comme le plaçait le clip frusion.
+        dessinerCadre(95, 95, 610, 410);
+        dessinerPieces(donnees.logo && donnees.logo.etats[0], 400, 300);
+      }
+      ctx.font = '24px Jawbreaker, Verdana, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = erreur ? '#cc0000' : '#4a4a84';
+      ctx.fillText(erreur || (Math.round(prc * 100) + '%'), 400, 470);
+      if (erreur) {
+        ctx.font = '10px VerdanaPix, Verdana, sans-serif';
+        ctx.fillText('chargement impossible — recharge la page', 400, 492);
+      }
+      ctx.textAlign = 'left';
+    }
+    // Le manifeste et ses images, puis premier dessin. Un raté n'empêche pas
+    // le jeu de charger : l'écran reste blanc avec le pourcentage.
+    fetch('/miniwave/loader/loader.json').then(function (r) { return r.json(); }).then(function (j) {
+      donnees = j;
+      var fichiers = { 'bitmap62.png': 1, 'bitmap63.png': 1 };   // les tuiles du feston
+      for (var k in j) for (var e = 0; e < j[k].etats.length; e++) {
+        for (var i = 0; i < j[k].etats[e].pieces.length; i++) fichiers[j[k].etats[e].pieces[i].fichier] = 1;
+      }
+      var noms = Object.keys(fichiers);
+      var faits = 0;
+      noms.forEach(function (f) {
+        var img = new Image();
+        img.onload = img.onerror = function () { if (++faits === noms.length) dessiner(); };
+        img.src = '/miniwave/loader/' + f;
+        images[f] = img;
+      });
+    }).catch(function () {});
+    if (document.fonts && document.fonts.load) {
+      document.fonts.load('24px Jawbreaker').then(dessiner).catch(function () {});
+    }
+    dessiner();
+    return {
+      avancer: function (p) { prc = Math.max(prc, Math.min(1, p)); dessiner(); },
+      echouer: function (msg) { erreur = msg; dessiner(); },
+    };
+  })();
 
   // Ce que la partie (ou un achat) vient d'ouvrir, dit au joueur.
   function resumePictos(r) {
@@ -302,20 +438,30 @@
   });
 
   Promise.all([
-    fetch('/miniwave/sprites/sprites.json?v=fidele3').then(function (r) { return r.json(); }),
+    fetch('/miniwave/sprites/sprites.json?v=fidele4').then(function (r) { return r.json(); }),
     fetch('/miniwave/levels.json').then(function (r) { return r.json(); })
   ]).then(function (res) {
     var sprites = res[0];
     niveaux = res[1];
+    // Les polices du SWF doivent être prêtes AVANT le premier dessin du menu,
+    // sinon le canevas retombe sur Verdana le temps qu'elles arrivent.
+    var polices = (document.fonts && document.fonts.load)
+      ? Promise.all([
+        document.fonts.load('24px Jawbreaker'),
+        document.fonts.load('32px ArcadeClassic'),
+        document.fonts.load('10px VerdanaPix'),
+      ]).catch(function () {})
+      : Promise.resolve();
     return Promise.all([
       window.MiniwaveClient.charger(sprites, function (p) {
-        $('#jauge').style.width = Math.round(p * 90) + '%';
+        chargeur.avancer(p * 0.9);
       }),
       window.MiniwaveClient.chargerDecor(),
       sons.charger(),
-      plateforme.charger()
+      plateforme.charger(),
+      polices
     ]).then(function () {
-      $('#jauge').style.width = '100%';
+      chargeur.avancer(1);
       return sprites;
     });
   }).then(function (sprites) {
@@ -402,8 +548,7 @@
     window.__ui = ui;
     window.__sons = sons;
   }).catch(function (e) {
-    $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'
-      + String(e && e.message || e) + '</div>';
+    chargeur.echouer(String(e && e.message || e));
   });
 })();
 </script>

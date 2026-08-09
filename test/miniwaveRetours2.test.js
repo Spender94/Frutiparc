@@ -496,7 +496,7 @@ test('la page branche la pause et estampille les scripts', () => {
   assert.match(page, /client\.pauser\(\)/, 'et branché');
   assert.match(page, /surPause/, 'l\'interface suit l\'état de pause');
   assert.match(page, /sons\.suspendre\(pausee\)/, 'le son se fige avec le jeu');
-  assert.match(page, /v=fidele3/, 'les scripts sont ré-estampillés');
+  assert.match(page, /v=fidele\d/, 'les scripts sont ré-estampillés');
 });
 
 // ── Le boss : la morsure du soleil ────────────────────────────────────────

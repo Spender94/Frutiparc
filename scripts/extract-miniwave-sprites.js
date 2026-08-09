@@ -85,6 +85,17 @@ function aExtraire() {
   // l'identité au largage (opt.gotoAndStop(id+1)), jamais l'Aliquet.
   liste.push({ cle: 'optVaisseau', id: 1404, etiquette: 'Bonus vaisseau' });
   liste.push({ cle: 'optHalo', id: 1398, etiquette: 'Halo du bonus vaisseau' });
+  // La PIÈCE du bonus (image 1 du clip Opt) : la toupie du SWF est un morph
+  // qu'on ne sait pas rejouer, mais sa dernière image — la pièce de face — est
+  // un vrai dessin. Le client la teinte par valeur (MC.setColor ajoute la
+  // couleur au sous-clip `piece`), d'où le chemin conservé sur les pièces.
+  liste.push({ cle: 'optPiece', id: 1382, etiquette: 'Pièce du bonus' });
+  // L'interface du jeu : l'ornement du panneau de score (les chevrons de part
+  // et d'autre des chiffres), les fonds des panneaux de message (level,
+  // game over, fin, boss) et le fond du menu.
+  liste.push({ cle: 'scoreOrne', id: 1123, etiquette: 'Ornement du score' });
+  liste.push({ cle: 'msg', symbole: 'miniWave2Msg', etiquette: 'Panneaux de message' });
+  liste.push({ cle: 'menuFond', id: 1023, etiquette: 'Fond du menu' });
   // Les icônes de la boutique : un seul clip de dix-huit images, une par
   // article (box/ShopSlot.as fait `ico.gotoAndStop(id+1)`). Il n'est pas exporté
   // sous un nom — il vit à l'intérieur de miniWave2BoxShopSlot — d'où
@@ -226,6 +237,9 @@ function principal() {
         if (info && (Math.abs(info.x0 + info.w / 2) > 0.5 || Math.abs(info.y0 + info.h / 2) > 0.5)) {
           piece.o = [Math.round(info.x0 * 100) / 100, Math.round(info.y0 * 100) / 100];
         }
+        // Le chemin des clips nommés qui portent la pièce : le jeu teinte ses
+        // morceaux par leur nom (MC.setColor sur opt.piece).
+        if (pc.chemin) piece.c = pc.chemin;
         // Transformation de couleur posée dans le SWF (sortie = source ×
         // mult/256 + add) : le halo de la bombe du Pamplemousse est un disque
         // noir PEINT EN BLANC par elle, les traînes s'éteignent par son alpha.

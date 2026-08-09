@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="22" viewBox="0 0 40 22">
+  <!-- Smiley Laugh — l'article 11 du stand Miniwave (dessin du SWF d'origine). -->
+  <style>
+    .r { animation: rit 0.5s ease-in-out infinite; transform-origin: 20px 20px; }
+    @keyframes rit { 0%, 100% { transform: rotate(0deg) translateY(0); } 25% { transform: rotate(-4deg) translateY(-1px); } 75% { transform: rotate(4deg) translateY(-1px); } }
+  </style>
+  <image class="r" width="40" height="22" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAWCAYAAACyjt6wAAABrklEQVR42u2Wv0oDQRDG7218B1/BJqUIwcoqjVhIqpBGuMYmhYqk0sZrQggS0qRKYZcmBEGuEYKISCqbK8InM/snu3tZ9bhsDOLBcLeXzdxvv/lm2Sj6v7bjworITwIQ5utOYmPMMHenu0BvXweNvwLdmGoM9nYFzNsiXi+A53Pg6QyYNEzQzcOhXwU+brVSj5d7PKa7+U6Ng5XXC5cly/KiKyDkO6SxVg+jmgkd3H8CSCrHqqHLwe8XHXFPY2DaXKrXr+bKHUpR4P1alQt4ONaAHIsOwzPgpGGVl5ontB+FOtQMWWKpZwHS79Qk4zovgOeRJezuDgP4clMRXUsqEYwLmCXArMXqsbqjmoj7AwYM6kUNSADztrvXecPcI80OXxeolZAByV+zFk4qOz8CpHkKkP1I6sooC5lLxmrQOI0LA+p8yg70XKJxvMnYW+N64RJbOWW+9QA6yfiD0vzfQWr/DY8EID2rqpQG9CcTW8fgkMMHacKZzWEeKsp70J9MQBrbB3lNhV6A3Afd/4bq4tUbt7EIDoImC0ybv3qaidzzoDq5UGzLebDwifpPXp+7IfsDA2pXIQAAAABJRU5ErkJggg==" style="image-rendering:pixelated"/>
+</svg>

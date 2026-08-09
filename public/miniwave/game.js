@@ -79,6 +79,42 @@ function imageTeintee(fichier, cx) {
   return c;
 }
 
+// La pièce de crédit, colorée par sa LUMIÈRE : le dessin doré du compteur est
+// rendu une fois, puis chaque pixel est remplacé par (luminance × couleur de
+// la valeur). Le relief (bord, éclat) survit à la teinte — un simple décalage
+// de couleur écraserait tout en aplat.
+const piecesTeintees = new Map();
+function pieceTeintee(sprites, type) {
+  let c = piecesTeintees.get(type);
+  if (c !== undefined) return c;
+  const sp = sprites.piece;
+  if (!sp || !sp.etats.length) return null;
+  const K = 3, w = 13, h = 13;
+  const toile = document.createElement('canvas');
+  toile.width = w * K; toile.height = h * K;
+  const cc = toile.getContext('2d');
+  cc.translate((w * K) / 2, (h * K) / 2);
+  cc.scale(K * 0.8, K * 0.8);
+  poser(cc, sp, sp.etats[sp.etats.length - 1].frame, 0, 0);
+  const COLS = [[0xF2, 0xD1, 0xAA], [0xFF, 0xFF, 0xFF], [0xFF, 0xF5, 0x8A], [0xA5, 0xF8, 0x9E]];
+  const col = COLS[type] || COLS[1];
+  try {
+    const d = cc.getImageData(0, 0, toile.width, toile.height);
+    const px = d.data;
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] === 0) continue;
+      const lum = (0.3 * px[i] + 0.59 * px[i + 1] + 0.11 * px[i + 2]) / 255;
+      px[i] = Math.min(255, lum * col[0] * 1.15);
+      px[i + 1] = Math.min(255, lum * col[1] * 1.15);
+      px[i + 2] = Math.min(255, lum * col[2] * 1.15);
+    }
+    cc.putImageData(d, 0, 0);
+  } catch (e) { /* toile souillée : la pièce restera dorée */ }
+  c = { canvas: toile, w, h };
+  piecesTeintees.set(type, c);
+  return c;
+}
+
 // Pose un état de sprite centré en (x,y). Les pièces d'un dessin composé (le
 // boss) portent leur propre matrice, exprimée dans le repère du sprite, et
 // parfois une origine excentrée (`o`) : les traînes s'étendent DERRIÈRE leur
@@ -352,7 +388,16 @@ class Client {
   annonce(nom, d) {
     switch (nom) {
       case 'panneau':
-        this.panneau = d.boss ? 'BOSS' : ('niveau ' + (d.level + 1) + '\n' + (d.name || ''));
+        // Les panneaux du SWF (miniWave2Msg) : type 0 = niveau, 3 = boss.
+        // Ils fondent à l'ouverture et à la fermeture (Msg.update).
+        this.panneau = {
+          type: d.boss ? 3 : 0,
+          titre: d.boss ? '' : ('LEVEL ' + (d.level + 1)),
+          texte: d.boss
+            ? 'Attention ! Vous entrez dans une zone à haut risque : la présence de "Orangre" le boss des fruits mutants est détectée dans ce secteur...'
+            : (d.name || ''),
+          alpha: 0, ta: 1,
+        };
         this.panneauT = d.boss ? 160 : 80;
         break;
       case 'traine': this.tracer(d); break;
@@ -409,7 +454,10 @@ class Client {
       case 'saut': eclater(LARGEUR / 2, HAUTEUR / 2, 24, '#8fd0ff', 4); break;
       case 'finPartie':
         this.pauser(false);
-        this.panneau = (d.raison === 'fin') ? 'BRAVO !' : 'GAME OVER';
+        // Type 1 = game over, type 2 = félicitations (Main.getEndMsg).
+        this.panneau = (d.raison === 'fin')
+          ? { type: 2, titre: '', texte: 'vous avez repoussé l\'attaque des fruits mutants', alpha: 0, ta: 1 }
+          : { type: 1, titre: 'GAME OVER', texte: '', alpha: 0, ta: 1 };
         this.panneauT = 1e9;
         break;
       default: break;
@@ -644,13 +692,25 @@ class Client {
     ctx.save();
     ctx.translate(o.x, o.y);
     if (b.credit !== undefined) {
-      const cols = ['#F2D1AA', '#FFFFFF', '#FFF58A', '#A5F89E'];   // bronze, argent, or, platine
-      ctx.fillStyle = cols[o.type] || '#fff';
-      ctx.beginPath();
-      ctx.arc(0, 0, 5, 0, 6.28);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,.45)';
-      ctx.stroke();
+      // La pièce du SWF, COLORÉE par valeur — Opt.as teinte le clip `piece`
+      // (bronze F2D1AA, argent FFFFFF, or FFF58A, platine A5F89E). Le corps
+      // d'origine est un morph qu'on ne sait pas rejouer : on prend le dessin
+      // de la pièce du compteur et on le colore par sa lumière, ce qui garde
+      // son relief. Elle toupille sur son axe au fil de la chute.
+      const img = pieceTeintee(this.sprites, o.type);
+      if (img) {
+        const c = Math.max(0.22, Math.abs(Math.cos(o.y / 5)));
+        ctx.scale(c, 1);
+        ctx.drawImage(img.canvas, -img.w / 2, -img.h / 2, img.w, img.h);
+      } else {
+        const cols = ['#F2D1AA', '#FFFFFF', '#FFF58A', '#A5F89E'];
+        ctx.fillStyle = cols[o.type] || '#fff';
+        ctx.beginPath();
+        ctx.arc(0, 0, 5, 0, 6.28);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,.45)';
+        ctx.stroke();
+      }
     } else if (b.warp !== undefined) {
       ctx.fillStyle = '#8fd0ff';
       ctx.globalAlpha = pulse;
@@ -777,34 +837,54 @@ class Client {
 
   dessinerInterface(ctx, tmod) {
     const jeu = this.jeu;
-    ctx.font = '8px Verdana, Arial, sans-serif';
+    // Le panneau de score du SWF : les chiffres en Jawbreaker 24, blanc à
+    // 60 %, CENTRÉS en haut, flanqués des pointillés d'ornement (b1 en
+    // miroir à gauche, b2 à droite — panel/Score.as).
+    ctx.font = '24px Jawbreaker, Verdana, sans-serif';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = '#cfe8a0';
-    ctx.fillText(String(jeu.score), 4, 3);
+    const texte = String(jeu.score);
+    const tw = ctx.measureText(texte).width;
+    const px = (LARGEUR - tw) / 2;
+    ctx.fillStyle = 'rgba(255,255,255,.6)';
+    ctx.fillText(texte, px, -2);
+    const orne = this.sprites.scoreOrne;
+    if (orne) {
+      ctx.save();
+      ctx.translate(px - 0.7, 2.4);
+      ctx.scale(-1, 1);
+      poser(ctx, orne, 1, 0, 0);
+      ctx.restore();
+      poser(ctx, orne, 1, px + tw + 6, 2.4);
+    }
 
-    // Vies restantes : un petit vaisseau par vie en réserve.
-    for (let i = 0; i < Math.min(jeu.heroList.length, 6); i++) {
-      poser(ctx, this.sprites['hero' + (jeu.heroList[i] || 0)], 1, LARGEUR - 8 - i * 11, 8, 0.6);
+    // Les vies : l'escadron en réserve, rangé en BAS À DROITE à 40 %
+    // (LifePanel.as : taille 8 sur des dessins de 20).
+    for (let i = 0; i < Math.min(jeu.heroList.length, 8); i++) {
+      poser(ctx, this.sprites['hero' + (jeu.heroList[i] || 0)], 1,
+        LARGEUR - (i + 0.5) * 12, HAUTEUR - 6, 0.4);
     }
     // Bombe disponible : elle ne sert qu'une fois, autant que ça se voie.
     if (jeu.hero && jeu.hero.flBomb) {
       ctx.fillStyle = '#ffd76a';
       ctx.beginPath();
-      ctx.arc(6, 16, 3, 0, 6.28);
+      ctx.arc(5, HAUTEUR - 24, 2.5, 0, 6.28);
       ctx.fill();
     }
     // Le compteur de crédits : le PORTEFEUILLE, pas la seule récolte de la
     // manche. Le jeu d'origine crédite la fiche en direct (Game.incCred fait
     // $credit += n pendant la partie) — le joueur du bureau lit donc toujours
-    // son solde total. On affiche le même nombre : fiche + manche en cours.
+    // son solde total. On affiche le même nombre : fiche + manche en cours,
+    // derrière la pièce du compteur du SWF, en bas à gauche.
     const bourse = (jeu.portefeuille || 0) + jeu.credits;
     if (bourse > 0) {
-      ctx.font = '8px Verdana, Arial, sans-serif';
-      ctx.fillStyle = '#F2D1AA';
-      ctx.fillText('¤' + bourse, 12, 13);
+      poser(ctx, this.sprites.piece, 1, 7, HAUTEUR - 9);
+      ctx.font = '14px Jawbreaker, Verdana, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,.85)';
+      ctx.fillText(String(bourse), 15, HAUTEUR - 16);
     }
     // Letter Invader : les boucliers, à la place des vies (il n'y a pas de
     // vaisseau à perdre, seulement des fautes de frappe à ne pas faire).
+    ctx.font = '10px VerdanaPix, Verdana, sans-serif';
     if (jeu.boucliers !== undefined) {
       ctx.textAlign = 'right';
       ctx.fillStyle = jeu.boucliers > 1 ? '#8fd0ff' : '#ff8a5a';
@@ -812,30 +892,91 @@ class Client {
       ctx.textAlign = 'left';
       if (jeu.combo && jeu.combo.num > 1) {
         ctx.fillStyle = '#ffd76a';
-        ctx.fillText('combo ' + jeu.combo.num, 4, 13);
+        ctx.fillText('combo ' + jeu.combo.num, 4, 3);
       }
     }
-    // Endurance : le palier atteint, seule mesure d'avancement du mode. À
-    // GAUCHE sous le score — le coin droit appartient aux vies, et un bonus
-    // « vie » en cours de partie viendrait s'écrire par-dessus.
+    // Endurance : le palier atteint, seule mesure d'avancement du mode.
     if (this.mode === 'survival') {
       ctx.fillStyle = '#8fd0ff';
-      ctx.fillText('palier ' + (jeu.level + 1), 4, HAUTEUR - 11);
+      ctx.fillText('palier ' + (jeu.level + 1), 4, 3);
     }
 
     if (this.panneauT > 0 && this.panneau) {
       this.panneauT -= tmod;
-      const lignes = this.panneau.split('\n');
-      ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(0,0,0,.55)';
-      ctx.fillRect(0, HAUTEUR / 2 - 16 * lignes.length / 2 - 6, LARGEUR, 16 * lignes.length + 12);
-      lignes.forEach((l, i) => {
-        ctx.font = (i === 0 ? 'bold 11px' : '9px') + ' Verdana, Arial, sans-serif';
-        ctx.fillStyle = i === 0 ? '#ffd76a' : '#cfe8a0';
-        ctx.fillText(l, LARGEUR / 2, HAUTEUR / 2 - 16 * lignes.length / 2 + i * 14);
-      });
-      ctx.textAlign = 'left';
+      this.dessinerMessage(ctx, tmod);
     }
+  }
+
+  // Les panneaux du SWF (miniWave2Msg) : le bandeau de l'image type+1, centré
+  // verticalement, qui FOND à l'ouverture et à la fermeture (Msg.update fait
+  // alpha = alpha*0.8 + cible*0.2). Les textes reprennent les polices et
+  // tailles des champs d'origine.
+  dessinerMessage(ctx, tmod) {
+    const p = this.panneau;
+    const sp = this.sprites.msg;
+    if (!p || typeof p !== 'object') return;
+    if (this.panneauT <= 12) p.ta = 0;               // l'extinction s'amorce
+    p.alpha = p.alpha * 0.8 + p.ta * 0.2;
+    if (p.alpha < 0.01) return;
+
+    const etat = sp && sp.etats[Math.min(p.type, sp.etats.length - 1)];
+    const h = etat ? etat.pieces[0].h : 58;
+    const oy = etat && etat.pieces[0].o ? etat.pieces[0].o[1] : 0;
+    const y = (HAUTEUR - h) / 2 - oy;
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    if (etat) poser(ctx, sp, etat.frame, 0, y);
+    else { ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(0, y, LARGEUR, h); }
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const haut = y + oy;                             // le bord haut du bandeau
+    switch (p.type) {
+      case 0:                                        // niveau : titre + nom
+        ctx.font = '32px ArcadeClassic, Verdana, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(p.titre, LARGEUR / 2, haut + 10);
+        ctx.font = '10px VerdanaPix, Verdana, sans-serif';
+        ctx.fillText(p.texte, LARGEUR / 2, haut + 38);
+        break;
+      case 1:                                        // game over
+        ctx.font = '32px ArcadeClassic, Verdana, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('GAME OVER', LARGEUR / 2, haut + 18);
+        break;
+      case 2:                                        // fin du parcours
+        ctx.font = '32px ArcadeClassic, Verdana, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('BRAVO', LARGEUR / 2, haut + 30);
+        ctx.font = '10px VerdanaPix, Verdana, sans-serif';
+        this.texteMultiligne(ctx, p.texte, LARGEUR / 2, haut + 72, 200, 12);
+        break;
+      case 3:                                        // l'avertissement du boss
+        ctx.font = '10px VerdanaPix, Verdana, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        this.texteMultiligne(ctx, p.texte, LARGEUR / 2, haut + 38, 200, 12);
+        break;
+      default: break;
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  // Un petit repli de texte : les champs du SWF étaient multilignes.
+  texteMultiligne(ctx, texte, x, y, largeur, interligne) {
+    const mots = String(texte).split(' ');
+    let ligne = '';
+    for (const mot of mots) {
+      const essai = ligne ? ligne + ' ' + mot : mot;
+      if (ctx.measureText(essai).width > largeur && ligne) {
+        ctx.fillText(ligne, x, y);
+        y += interligne;
+        ligne = mot;
+      } else {
+        ligne = essai;
+      }
+    }
+    if (ligne) ctx.fillText(ligne, x, y);
   }
 
   // Le voile de pause : la scène assombrie de moitié (Manager.setPause pose un
@@ -847,12 +988,12 @@ class Client {
     // Le cadre du SWF porte ses coordonnées de scène (le clip mcPause était
     // posé à l'origine) : on le pose donc à 0,0 et il se centre tout seul.
     poser(ctx, this.sprites.pause, 1, 0, 0);
-    ctx.font = 'bold 12px Verdana, Arial, sans-serif';
+    ctx.font = '14px Jawbreaker, Verdana, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffffff';
     ctx.fillText('PAUSE', LARGEUR / 2, HAUTEUR / 2 - 1.5);
-    ctx.font = '8px Verdana, Arial, sans-serif';
+    ctx.font = '10px VerdanaPix, Verdana, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,.75)';
     ctx.fillText('P, Échap ou ⏸ pour reprendre', LARGEUR / 2, HAUTEUR / 2 + 22);
     ctx.textAlign = 'left';
