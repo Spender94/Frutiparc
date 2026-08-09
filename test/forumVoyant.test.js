@@ -18,6 +18,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const { Client } = require(path.join(__dirname, '..', 'node_modules', 'pg'));
+const WebSocket = require(path.join(__dirname, '..', 'node_modules', 'ws'));
 
 const ROOT = path.join(__dirname, '..');
 const PORT = 3461;
@@ -71,6 +72,18 @@ before(async () => {
 after(() => { if (proc) proc.kill('SIGKILL'); });
 
 const json = (r) => r.json();
+// Les salons par défaut s'ensemencent au boot, parfois APRÈS que le serveur
+// répond : sous la contention de la suite complète, une lecture immédiate de
+// l'index peut les manquer. On attend qu'ils soient là.
+async function salons(sid) {
+  for (let i = 0; i < 40; i++) {
+    const index = await json(await fetch(`${BASE}/api/forum/index?sid=${sid}`));
+    const liste = (index.categories || []).flatMap((c) => c.boards || []);
+    if (liste.length) return liste;
+    await wait(250);
+  }
+  throw new Error('les salons du forum ne sont jamais apparus');
+}
 async function inscrire(pseudo) {
   const body = JSON.stringify({ username: pseudo, password: 'secret123' });
   await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
@@ -89,10 +102,8 @@ test('le voyant du forum compte les sujets qui ont du nouveau', async (t) => {
   // même auteur sur un sujet, donc A ne peut pas se répondre à lui-même.
   const sidC = await inscrire('forumrelance');
 
-  // Un salon où poster : on prend le premier de la liste livrée au boot.
-  const index = await json(await fetch(`${BASE}/api/forum/index?sid=${sidA}`));
-  const liste = (index.categories || []).flatMap((c) => c.boards || []);
-  assert.ok(liste.length, 'le forum a des salons');
+  // Un salon où poster : on attend la liste ensemencée au boot.
+  const liste = await salons(sidA);
   // Pas le premier : « Annonces » est réservé aux modérateurs. On prend un
   // salon où un frutiz ordinaire a le droit d'écrire.
   const board = liste.find((b) => /frutiz/i.test(b.name) && !/jeux/i.test(b.name)) || liste[liste.length - 1];
@@ -137,6 +148,79 @@ test('le voyant du forum compte les sujets qui ont du nouveau', async (t) => {
   });
   assert.equal(rep.status, 200, 'la réponse passe');
   assert.equal(await compte(sidB), departB + 1, 'un sujet relancé se rallume');
+});
+
+// Le même voyant, côté BUREAU (main.swf) : l'écran digital de la barre porte
+// une icône forum (select() : 0 aide, 1 FORUM, 2 messagerie…), et le SWF est
+// câblé depuis toujours pour l'éveiller sur la trame <ay /> (newforummsg →
+// listener.main.onNewForumMsg → digitalScreen.unSleep(1)). Le serveur ne
+// l'émettait jamais : l'icône restait éteinte à vie. Désormais elle part à
+// chaque sujet/réponse (jamais à l'auteur), et à la connexion quand des
+// sujets ont du nouveau.
+async function clientCBee(pseudo, sid) {
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/`);
+  const trames = [];
+  let tampon = '';
+  ws.on('message', (d) => {
+    tampon += d.toString('utf8');
+    const bouts = tampon.split('\0');
+    tampon = bouts.pop();
+    for (const b of bouts) if (b.trim()) trames.push(b.trim());
+  });
+  await new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });
+  ws.send(`<k l="${pseudo}" s="${sid}" />\0`);
+  const c = {
+    pseudo, trames,
+    attendre: async (pred, quoi, ms = 5000) => {
+      for (let i = 0; i < ms / 50; i++) {
+        const t = trames.find(pred);
+        if (t) return t;
+        await wait(50);
+      }
+      throw new Error(`${pseudo} : ${quoi} — jamais reçu. Trames : ${trames.join(' ').slice(0, 500)}`);
+    },
+    fermer: () => { try { ws.close(); } catch { /* déjà fermée */ } },
+  };
+  await c.attendre((t) => t.startsWith('<k'), 'accusé d\'identification');
+  return c;
+}
+const trameForum = (t) => t.startsWith('<ay');
+
+test('le voyant forum du BUREAU s\'allume : à la publication, et à la connexion', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+
+  const sidA = await inscrire('bureauposteur');
+  const sidB = await inscrire('bureautemoin');
+  const sidC = await inscrire('bureauretard');
+
+  const liste = await salons(sidA);
+  const board = liste.find((b) => /frutiz/i.test(b.name) && !/jeux/i.test(b.name)) || liste[liste.length - 1];
+
+  const a = await clientCBee('bureauposteur', sidA);
+  const b = await clientCBee('bureautemoin', sidB);
+  try {
+    const avantA = a.trames.filter(trameForum).length;
+
+    // A poste : le témoin connecté voit la trame, l'auteur non.
+    const r = await fetch(`${BASE}/api/forum/topic`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sidA, boardId: board.id, title: 'Voyant du bureau', content: 'La barre doit s\'éveiller.' }),
+    });
+    assert.equal(r.status, 200, 'le sujet est créé');
+    await b.attendre(trameForum, 'la trame <ay /> du voyant');
+    await wait(400);
+    assert.equal(a.trames.filter(trameForum).length, avantA,
+      'l\'auteur ne s\'allume pas à son propre message');
+
+    // C se connecte APRÈS coup : le voyant l'attend à l'ident.
+    const c = await clientCBee('bureauretard', sidC);
+    try {
+      await c.attendre(trameForum, 'le voyant à la connexion (sujets non lus)');
+    } finally { c.fermer(); }
+  } finally {
+    a.fermer();
+    b.fermer();
+  }
 });
 
 test('le raccourci Forum a son icône d\'alerte, et de quoi l\'allumer', () => {

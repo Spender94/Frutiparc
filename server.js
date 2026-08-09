@@ -1157,6 +1157,14 @@ const RANKINGS = {
   bkiwi_track5_challenge: { name: 'Burning Kiwi - Mistral Kiwi', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 5 },
   snake3_challenge:   { name: 'Frutisnake - Challenge',   game: 'snake3',   type: 'L' },
   kaluga_challenge:   { name: 'Kaluga - Challenge',       game: 'kaluga',   type: 'L' },
+  // Le record SANS grappe — le « freestyle » que des joueurs revendiquent :
+  // une partie n'y entre que si le jeu certifie qu'aucune grappe encaissée n'a
+  // dépassé le seuil (une grappe vaut 2^taille × 10 ; la première au-dessus de
+  // 2000 points est la taille 8, l'« Atomique-grappe » à 2560). Le témoin
+  // vient du SWF patché (scripts/patch-kaluga-grappe.js) dans la donnée de
+  // score « tz:g » — sans témoin (vieux SWF en cache), la partie est
+  // inclassable ici et ne touche qu'aux classements historiques.
+  kaluga_freestyle:   { name: 'Kaluga - Freestyle',       game: 'kaluga',   type: 'L' },
   swapou2_challenge:  { name: 'Swapou - Challenge',       game: 'swapou2',  type: 'L' },
   mb2_challenge:      { name: 'MotionBall - Challenge',   game: 'mb2',      type: 'L', lowerIsBetter: true },
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
@@ -1214,6 +1222,12 @@ const LEGACY_RANKINGS = [
   // jeu dans fileIcon.swf.
   { rk: '10', internal: 'snake3_contest',  ty: 'point',       rn: 'Frutisnake Contest', gs: '1', g: 'snake3', section: 'L' },
   { rk: '11', internal: 'swapou2_contest', ty: 'point',       rn: 'Swapou Contest', gs: '3', g: 'swapou2', section: 'L' },
+  // Kaluga « Freestyle » — le record permanent SANS grappe (voir RANKINGS).
+  // Section 'L' à dessein, comme les Contest : un record de longue haleine,
+  // pas balayé par la remise à zéro quotidienne de la section 'C' et sans
+  // médailles du jour supplémentaires. gs='4' réutilise les colonnes de score
+  // Kaluga (le tzongre joué), g='kaluga' l'icône du jeu dans fileIcon.swf.
+  { rk: '12', internal: 'kaluga_freestyle', ty: 'point',      rn: 'Kaluga Freestyle', gs: '4', g: 'kaluga', section: 'L' },
   // Section L = "Championnat" in front-end — plus aucun classement réel
   { rk: '7', internal: null,                ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
@@ -1340,6 +1354,9 @@ function parseMtSerializedPrimitive(raw) {
 
 function parseKalugaTzId(raw) {
   const s = String(raw || '').trim();
+  // La donnée du SWF patché (« tz:g ») : le tzongre est la première moitié.
+  const paire = s.match(/^(-?\d+):(\d+)$/);
+  if (paire) return Number(paire[1]);
   if (!s) return null;
   const directNum = Number(s);
   if (Number.isFinite(directNum)) return directNum;
@@ -1348,6 +1365,39 @@ function parseKalugaTzId(raw) {
   const mtObj = s.match(/\$?tz[^0-9-]*N?(-?\d+)/i);
   if (mtObj) return Number(mtObj[1]);
   return null;
+}
+
+/*
+ * Le témoin de grappe du Kaluga patché (scripts/patch-kaluga-grappe.js).
+ *
+ * La donnée de score arrive en « tz:g » : le tzongre joué, puis le OU BINAIRE
+ * des tailles de grappes encaissées pendant la partie. Une grappe de taille k
+ * rapporte 2^min(11,k) × 10 points (kaluga.game — la classe des grappes) :
+ * 10, 20, 40 … 1280 (Mega), 2560 (Atomique), 5120, 10240, 20480. Le OU de
+ * tailles toutes < 8 reste < 8, et toute taille ≥ 8 allume le bit 3 : le test
+ * « g ≥ 8 » dit donc exactement « une grappe d'au moins 2560 points est
+ * passée » — la première marche au-dessus des 2000 points retenus.
+ *
+ * Les données d'avant le patch (« [object Object] », MT sérialisé, tz=1…)
+ * n'ont pas de témoin : null — la partie est inclassable en freestyle.
+ */
+const KALUGA_GRAPPE_SEUIL = 8;
+function parseKalugaGrappe(raw) {
+  const m = String(raw || '').trim().match(/^(-?\d+):(\d+)$/);
+  return m ? Number(m[2]) : null;
+}
+
+// La partie de Kaluga SANS grappe nourrit aussi le record « Freestyle ».
+// Même verdict FD que l'écriture principale (aucune consommation en plus) ;
+// une donnée muette ne classe rien — pas de faux records freestyle.
+function persistKalugaFreestyle(username, rankingId, fdDirect, scoreVal, scoreData, voie) {
+  if (!fdDirect) return null;
+  if (rankingId !== 'kaluga_classic' && rankingId !== 'kaluga_challenge') return null;
+  const grappe = parseKalugaGrappe(scoreData);
+  if (grappe === null || grappe >= KALUGA_GRAPPE_SEUIL) return null;
+  const r = persistScore(username, 'kaluga_freestyle', scoreVal, scoreData);
+  console.log(`[${voie}] ${username} kaluga_freestyle: ${r.oldScore} -> ${r.newScore} (updated=${r.updated}, sans grappe, g=${grappe})`);
+  return r;
 }
 
 function extractBkiwiTrack(rawData) {
@@ -1520,7 +1570,7 @@ function formatRankingExtraData(rankingId, rawData, scoreHint) {
   if (!raw) {
     if (rankingId.startsWith('bkiwi_track')) return 'Skiwix:5:1:';
     if (rankingId === 'swapou2_classic' || rankingId === 'swapou2_challenge') return 'S0:';
-    if (rankingId === 'kaluga_classic') return 'Skaluga:';
+    if (rankingId === 'kaluga_classic' || rankingId === 'kaluga_freestyle') return 'Skaluga:';
     // MB2 falls through to the body so the score-derived pct (computed at
     // the bottom from scoreHint) is emitted even when no `data` was stored.
     if (rankingId !== 'mb2_challenge' && rankingId !== 'mb2_classic') return '';
@@ -1551,7 +1601,16 @@ function formatRankingExtraData(rankingId, rawData, scoreHint) {
     return raw;
   }
 
-  if (rankingId === 'kaluga_classic') {
+  if (rankingId === 'kaluga_classic' || rankingId === 'kaluga_freestyle'
+    || rankingId === 'kaluga_challenge') {
+    // La donnée du SWF patché : « tz:g » — le tzongre d'abord, le témoin de
+    // grappe ensuite (il ne s'affiche pas, il classe).
+    const paire = raw.match(/^(-?\d+):(\d+)$/);
+    if (paire) {
+      const tzNum = Number(paire[1]);
+      return KALUGA_TZONGRE_BY_ID[tzNum] !== undefined
+        ? `S${KALUGA_TZONGRE_BY_ID[tzNum]}:` : 'Skaluga:';
+    }
     if (/^S[a-z0-9_]+:$/i.test(raw)) return raw;
     if (raw === '[object Object]') return 'Skaluga:';
     if (raw.startsWith('{') && raw.endsWith('}')) {
@@ -3963,6 +4022,27 @@ function notifyNewMail(targetUsername, mail) {
   for (const sock of socks) sendToClient(sock, xml);
 }
 
+// Allume le voyant « forum » de l'écran digital du bureau (main.swf).
+//
+// Le SWF est câblé depuis toujours : listener.main.onNewForumMsg, déclenché
+// par la trame <ay /> (CMD.newforummsg), fait digitalScreen.unSleep(1) —
+// l'icône forum de la barre s'éveille (l'écran range ses six icônes dans
+// l'ordre de select() : 0 aide, 1 FORUM, 2 messagerie, 3 historique,
+// 4 évènements, 5 jeux). Mais le serveur n'émettait jamais cette trame :
+// le voyant du bureau restait éteint à vie, pendant que /light comptait
+// fidèlement ses sujets non lus. La règle est celle du voyant light
+// (test/forumVoyant.test.js) : les messages de l'AUTEUR ne s'allument pas
+// à son propre visage — tous les autres connectés sont prévenus.
+function notifyForumNews(authorUsername) {
+  const auteur = String(authorUsername || '').toLowerCase();
+  const xml = `<${CMD.newforummsg} />`;
+  for (const [sock, cl] of xmlSocketClients) {
+    if (!cl || !cl.logged || !cl.username) continue;
+    if (String(cl.username).toLowerCase() === auteur) continue;
+    sendToClient(sock, xml);
+  }
+}
+
 function normalizeContactAddress(raw) {
   const v = String(raw || '').trim();
   if (!v) return '';
@@ -5407,6 +5487,7 @@ async function handleSaveScore(req, res) {
     extraResult = persistScore(username, extraRankingId, scoreVal, scoreData);
     console.log(`[HTTP]  saveScore ${username} ${extraRankingId} ${scoreVal} updated=${extraResult.updated} (challenge)`);
   }
+  persistKalugaFreestyle(username, rankingId, fdg.direct, scoreVal, scoreData, 'HTTP');
   if (rankingId === 'jamajama_classic' || rankingId === 'jamajama_challenge') {
     awardJamaPictosOnScore(username);
   }
@@ -14035,6 +14116,9 @@ app.post('/api/forum/topic', async (req, res) => {
       } catch (e) { console.error('[FORUM] poll create error:', e.message); }
     }
     trackXpAction(username, 'forumTopic');
+    // Le voyant forum du bureau s'éveille chez les autres connectés — le
+    // pendant exact du compteur forumUnread que /light relit à son rythme.
+    notifyForumNews(username);
     res.json({ ok: true, topicId: topic.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -14293,6 +14377,8 @@ app.post('/api/forum/post', async (req, res) => {
     if (currentCount + 1 >= FORUM_MAX_POSTS_PER_TOPIC) {
       db.forumSetLocked(topicId, true).catch(dbErr('forumSetLocked auto'));
     }
+    // Une réponse rallume le voyant forum du bureau, comme un sujet neuf.
+    notifyForumNews(username);
     res.json({ ok: true, postId: post.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -18774,6 +18860,18 @@ async function handleCBeeMessage(socket, rawXml) {
           );
         }
       }
+      // Le voyant forum du bureau s'allume aussi À LA CONNEXION quand des
+      // sujets ont du nouveau — la même règle que le forumUnread du profil
+      // /light, lue en tâche de fond pour ne pas retenir l'ident sur la base.
+      if (process.env.DATABASE_URL) {
+        db.forumCountUnread(effectiveLogin)
+          .then((n) => {
+            if (n > 0 && client.logged && xmlSocketClients.has(socket)) {
+              sendToClient(socket, `<${CMD.newforummsg} />`);
+            }
+          })
+          .catch((e) => console.error('[CBee] forumCountUnread (voyant):', e.message));
+      }
       console.log(`[CBee]  User "${effectiveLogin}" logged in (sid=${sid})`);
       break;
     }
@@ -18830,6 +18928,7 @@ async function handleCBeeMessage(socket, rawXml) {
             challengeRes = persistScore(username, extraRankingId, scoreVal, scoreData);
             console.log(`[FSCORE] ${username} ${extraRankingId}: ${challengeRes.oldScore} -> ${challengeRes.newScore} (updated=${challengeRes.updated}, challenge)`);
           }
+          persistKalugaFreestyle(username, rankingId, fdg.direct, scoreVal, scoreData, 'FSCORE');
           if (rankingId === 'jamajama_classic' || rankingId === 'jamajama_challenge') {
             awardJamaPictosOnScore(username);
           }
