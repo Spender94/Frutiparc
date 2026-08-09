@@ -252,6 +252,31 @@ test('la dernière fée peut partir, mais pas par accident', async (t) => {
     'et une liste vide ne dit rien par elle-même');
 });
 
+test('la fée libérée du bassin n\'y retourne pas : la lueur reste éteinte', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  // base/Fountain.freeFaerie : la bulle cède, $pond.$fs part dans $faerie et
+  // la lueur s'éteint ($fs nul, $q zéro). Le filet « prev.$q > merged.$q »
+  // du forward-merge ne doit PAS rallumer le bassin — sinon le joueur
+  // « replonge le même jour » et retrouve la même fée au fond.
+  const dansLeBassin = fee('Nixe', 0, { $carac: [2, 1, 3, 1, 1, 2] });
+  const avant = carteAvec([], null, []);
+  avant.$pond = { $q: 3, $d: 0, $fs: dansLeBassin };
+  await ecrire(avant);
+  let c = await relire();
+  assert.equal(c.$pond.$q, 3, 'la lueur brille');
+  assert.equal(c.$pond.$fs.$name, 'Nixe');
+
+  // La bulle cède : le client écrit la fiche à l'instant même.
+  const apres = carteAvec([fee('Nixe', 0, { $carac: [2, 1, 3, 1, 1, 2] })], 0, []);
+  apres.$pond = { $q: 0, $d: 0, $fs: null };
+  await ecrire(apres);
+  c = await relire();
+  assert.equal(c.$pond.$fs, null, 'le bassin est vide');
+  assert.equal(Number(c.$pond.$q) || 0, 0, 'et la lueur éteinte');
+  assert.equal(c.$faerie.length, 1, 'Nixe est sortie de l\'eau');
+  assert.equal(c.$faerie[c.$current].$name, 'Nixe', 'et accompagne le joueur');
+});
+
 test('une fée qu\'on ne nourrit plus s\'en va d\'elle-même, et ne revient pas', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
   // C'est le ménage que le jeu d'origine fait tout seul (FaerieInfo.upkeep) :

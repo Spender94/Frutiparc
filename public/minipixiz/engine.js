@@ -1075,13 +1075,6 @@ class Jeu {
     }
   }
 
-  appelerAide() {
-    if (this.step !== ETAPE.JEU) return false;
-    let ok = false;
-    for (const f of this.faerieList.slice()) ok = f.appelerAide() || ok;
-    return ok;
-  }
-
   // Game.update — la boucle, un pas d'image à la fois.
   update(tmod) {
     if (this.termine) return;
@@ -1157,7 +1150,13 @@ class Jeu {
             s.lancer();
             this.evenement('sort', { nom: s.nom(), id: s.sid, cout: s.cout });
           }
-          s.updateActif(tmod);
+          // Un sort peut se terminer NET dans son lancer même — Perce-Puits
+          // sans colonne à vider, Ascension sans bille : initStep(0) fait
+          // toutFinir() et le sort sort des listes avant d'avoir joué. Lui
+          // donner quand même son image d'updateActif le faisait dérouler son
+          // étape 0 sans cible (`l.trg` nul, tube absent) : la boucle de jeu
+          // levait une exception à CHAQUE image et la partie gelait.
+          if (this.saList[0] === s) s.updateActif(tmod);
         } else {
           this.nouveauCycle();
         }

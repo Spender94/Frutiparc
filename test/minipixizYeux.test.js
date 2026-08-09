@@ -258,9 +258,12 @@ test('la perle et l\'étoile prennent la couleur de leur bille', () => {
 test('l\'inventaire s\'ouvre sur la fée COURANTE', () => {
   // Inventory.mt lit Cm.getCurrentFaerie() — $faerie[$current] — partout.
   // Ouvrir sur la première du bocal montrait la mauvaise fée au médaillon.
+  // Et quand $current est NUL (la fée dort au bocal), le médaillon reste
+  // VIDE : l'ancien repli sur zéro ressuscitait « une ancienne fée niveau 12
+  // présente comme fée active » aux yeux du joueur.
   const inv = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
-  assert.match(inv, /const c = nombre\(this\.carte\.\$current\);\n\s*this\.feeCourante = \(c >= 0 && c < l\.length && l\[c\]\) \? c : 0;/,
-    'ouvrir() suit $current, avec repli sur zéro');
+  assert.match(inv, /this\.feeCourante = \(c !== null && c !== undefined\n\s*&& nombre\(c\) >= 0 && nombre\(c\) < l\.length && l\[nombre\(c\)\]\) \? nombre\(c\) : null;/,
+    'ouvrir() suit $current, et personne quand la main est vide');
 });
 
 test('le coin de sortie ramène à la clairière', () => {

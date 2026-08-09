@@ -317,8 +317,21 @@ function deplacer(carte, de, vers) {
   const x = (a.liste[de.case] === undefined) ? null : a.liste[de.case];
   const y = (b.liste[vers.case] === undefined) ? null : b.liste[vers.case];
   if (x === null && y === null) return false;
+
+  // inv/Slot.swap et inv/Item.addItem : la LOCATAIRE suit son bocal. `$pos`
+  // est un index du sac du JOUEUR — un bocal habité n'a donc pas le droit d'en
+  // sortir (dans le jeu, il n'est pas flEquip : il ne se pose pas ailleurs).
+  const locataire = (s, type, c) => (s.sac === 'joueur' && type === IT_BOCAL
+    ? (carte.$faerie || []).find((f) => f && f.$pos === c) || null : null);
+  const fx = locataire(de, x, de.case);
+  const fy = locataire(vers, y, vers.case);
+  if (fx && vers.sac !== 'joueur') return false;
+  if (fy && de.sac !== 'joueur') return false;
+
   a.liste[de.case] = y;
   b.liste[vers.case] = x;
+  if (fx) fx.$pos = vers.case;
+  if (fy) fy.$pos = de.case;
   // Les trous se gardent : une place vide au milieu doit rester une place.
   for (const s of [a, b]) {
     for (let i = 0; i < s.places; i++) if (s.liste[i] === undefined) s.liste[i] = null;

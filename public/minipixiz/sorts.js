@@ -1686,6 +1686,16 @@ class Cloche extends Sort {
         this.timer -= tmod;
         if (this.timer <= 0) {
           this.timer = 200 + nombre(this.fi.carac[CONCENTRATION]) * 100;
+          // CLOCHE_REND_LE_VOL. Le sort finit par endActive + dispel, et ni
+          // l'un ni l'autre ne rend `flForceWay` — seul finishAll le fait, que
+          // Shield.mt n'appelle jamais. La fée restait donc AIMANTÉE à son
+          // dernier point de sort ; et comme Clametorche réécrit `trg` sur le
+          // démon le plus proche, elle continuait, le démon mort, sa navette
+          // au-dessus du cadavre jusqu'à la fin du niveau — sans esquiver, ni
+          // s'écarter des bombes (« elle voulait vraiment pas bouger »). La
+          // bulle n'a pas besoin de la clouer : on lui rend le vol ici.
+          this.lanceur.flForceWay = false;
+          this.lanceur.trg = null;
           this.finActif();
         }
         break;
@@ -2675,7 +2685,18 @@ class Nuit extends SortImpy {
         this.echelle *= Math.pow(0.92, tmod);
         if (this.echelle < 1) this.echelle = 0;
         this.jeu.nuit.ouverture = 100 - this.echelle;
-        if (this.echelle === 0) this.finActif();
+        if (this.echelle === 0) {
+          // NUIT_REND_LE_VOL — même fuite que la Cloche, côté démon : le sort
+          // finit par finActif puis dissiper, jamais par toutFinir, et le
+          // `centrerLanceur` du départ laissait le démon AIMANTÉ au centre
+          // pour de bon (plus de cap aléatoire tant que flForceWay tient). Un
+          // démon figé sous les tirs finissait poussé dans un coin — parfois
+          // dans la bande cachée au-dessus de l'écran, invisible et
+          // intouchable, la fée mitraillant « exactement le même endroit ».
+          this.lanceur.flForceWay = false;
+          this.lanceur.trg = null;
+          this.finActif();
+        }
         break;
       default: break;
     }

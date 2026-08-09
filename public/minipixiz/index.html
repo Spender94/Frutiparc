@@ -564,6 +564,16 @@
               // niveau dans tout le jeu ; sans lui l'expérience s'entassait
               // sans jamais rien donner.
               if (mfXp && !mfXp.flDeath && mfXp.fi && mfXp.fi.peutMonter()) {
+                // Les fiches d'avant le correctif du bassin portent un
+                // `$next = [c, null]` : la graine était préparée SANS tirage
+                // de sort, et le premier passage de niveau disait « rien à
+                // apprendre ». On retire ici, comme setNextLevelUp l'aurait
+                // fait à la naissance — un vrai « aucun sort à sa portée »
+                // (idAleatoire nul) reste nul, comme dans le jeu.
+                var nx = mfXp.fi.fs.$next;
+                if (!nx || nx[1] === null || nx[1] === undefined) {
+                  mfXp.fi.preparerProchainNiveau(sortAApprendre);
+                }
                 setTimeout(function () {
                   client.ouvrirEvolution({
                     fi: mfXp.fi,

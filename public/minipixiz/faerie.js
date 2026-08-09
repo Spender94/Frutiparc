@@ -261,17 +261,33 @@ class Fee {
    * setNextLevelUp — ce que la fée apprendra à sa prochaine montée : une
    * caractéristique OU un sort, au choix du joueur.
    *
+   * L'original tire le sort LUI-MÊME (`Spell.getRandomId(this)`), y compris à
+   * la naissance de la graine (Cm.genFaerieSeed appelle setNextLevelUp) : dès
+   * le niveau 0, la table offre toujours un sort à une fée d'un point de mana.
+   * Le portage l'avait rendu injectable et `genererGraine` ne passait rien —
+   * la fée du bassin arrivait donc avec `$next = [cid, null]` et son premier
+   * passage de niveau disait « rien à apprendre » en face du +1. On retombe
+   * ici sur le tirage du jeu quand personne n'en fournit un.
+   *
    * @param {function} [sortDisponible] tire un sort qu'elle ne connaît pas
    */
   preparerProchainNiveau(sortDisponible) {
     const { entier } = tirages(this.alea);
 
+    // Spell.getRandomId, si l'appelant n'a pas le sien (les tests en injectent).
+    let tirerUnSort = sortDisponible;
+    if (!tirerUnSort) {
+      const S = (typeof module !== 'undefined' && module.exports)
+        ? require('./sorts.js') : racine.MinipixizSorts;
+      if (S && S.idAleatoire) tirerUnSort = (fee) => S.idAleatoire(fee, entier);
+    }
+
     // Le sort : on retire tant qu'il est déjà connu, avec le même garde-fou de
     // cent essais que l'original.
     let sid = null;
-    if (sortDisponible) {
+    if (tirerUnSort) {
       for (let t = 0; t < 100; t++) {
-        sid = sortDisponible(this);
+        sid = tirerUnSort(this);
         if (sid === null || this.fs.$spell.indexOf(sid) < 0) break;
       }
     }

@@ -515,15 +515,28 @@ class Plateforme {
     if (!this.sid || !this.charge) {
       return Promise.resolve({ enregistre: false, carte: this.carte, gagnes });
     }
-    return fetch('/api/saveFrutiSlot', {
+    const corps = JSON.stringify({
+      sid: this.sid, game: 'minipixiz', slotId: '0', data: JSON.stringify(this.carte),
+    });
+    // `keepalive` : la requête survit à la fermeture de la page. La fée du
+    // bassin s'écrit à l'INSTANT où la bulle cède ('feeLiberee') — mais le
+    // joueur qui quittait aussitôt, sans finir le niveau, tuait l'envoi en
+    // vol : au retour, la lueur (et la fée) étaient revenues au fond du
+    // bassin, et il « replongeait le même jour ». Le drapeau a une limite de
+    // taille (64 Ko) ; une fiche n'en fait que quelques-uns, mais on la mesure
+    // quand même. Et un envoi qui échoue (réseau mobile) se retente une fois.
+    const envoyer = () => fetch('/api/saveFrutiSlot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sid: this.sid, game: 'minipixiz', slotId: '0', data: JSON.stringify(this.carte),
-      }),
-    })
+      body: corps,
+      keepalive: corps.length < 60000,
+    });
+    return envoyer()
+      .then((r) => (r.ok ? r : new Promise((res) => setTimeout(res, 800)).then(envoyer)))
       .then((r) => ({ enregistre: r.ok, carte: this.carte, gagnes }))
-      .catch(() => ({ enregistre: false, carte: this.carte, gagnes }));
+      .catch(() => envoyer()
+        .then((r) => ({ enregistre: r.ok, carte: this.carte, gagnes }))
+        .catch(() => ({ enregistre: false, carte: this.carte, gagnes })));
   }
 
   // Appelé à la fin d'une course. `avant` est la photo de la fiche à l'ENTRÉE

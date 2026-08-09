@@ -151,6 +151,25 @@ class Inventaire {
     this.extraMax = 0;
 
     this.canvas.addEventListener('click', (ev) => this.clic(ev));
+    /*
+     * Le GLISSER — inv/Hand.mt et inv/Slot.take : au bureau, cliquer un objet
+     * le prenait en main et la main suivait la souris ; pour un BOCAL, c'était
+     * même le seul déplacement possible, l'échange de fée passant par
+     * ESPACE+clic. Au doigt, pas de touche ESPACE : l'appui court reste le
+     * geste de la fée (bocal() — « quand on clique dessus la fée va dedans »),
+     * et c'est le GLISSER qui déplace, bocaux compris. Les autres objets
+     * gardent en plus le porter-par-touches (main) qui existait déjà.
+     */
+    this.glisse = null;               // {sac, case, x, y, x0, y0, pris}
+    this.clicApresGlisse = false;     // le navigateur émet un click après le lâcher
+    this.canvas.style.touchAction = 'none';
+    this.canvas.addEventListener('pointerdown', (ev) => this.doigtPose(ev));
+    this.canvas.addEventListener('pointermove', (ev) => this.doigtBouge(ev));
+    this.canvas.addEventListener('pointerup', (ev) => this.doigtLeve(ev));
+    this.canvas.addEventListener('pointercancel', () => {
+      if (this.glisse && this.glisse.pris) this.rendreApresGlisse();
+      this.glisse = null;
+    });
     // Le coin de sortie s'allume au survol (mcButQuit image 2). L'écran ne se
     // redessine que quand l'état change — pas à chaque mouvement.
     this.surLeCoin = false;
@@ -292,6 +311,32 @@ class Inventaire {
         ctx.strokeRect(r.x - 16, r.y - 16, 32, 32);
       }
     }
+
+    // 6. Le GLISSER : l'objet suit le doigt (inv/Hand.mt suivait la souris), sa
+    //    case d'origine reste marquée le temps du geste.
+    if (this.glisse && this.glisse.pris) {
+      const type = (this.glisse.sac === 'joueur' ? (this.carte.$inv || [])[this.glisse.case]
+        : this.glisse.sac === 'extra' ? (this.extraList || [])[this.glisse.case]
+          : (((this.carte.$faerie || [])[this.glisse.sac] || {}).$inv || [])[this.glisse.case]);
+      const d = dessinObjet(type);
+      const g = this.grillePour(this.glisse.sac);
+      const org = g && g.cases.find((q) => q.i === this.glisse.case);
+      if (org) {
+        ctx.strokeStyle = 'rgba(255,215,106,.6)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(org.cx - 16, org.cy - 16, 32, 32);
+      }
+      if (d && s[d.cle]) {
+        C.poserRendu(ctx, C.rendre(s[d.cle], d.frame, SLOT_SIZE * 0.9, undefined, d.parties),
+          this.glisse.x, this.glisse.y);
+      }
+    }
+  }
+
+  grillePour(sac) {
+    if (sac === 'joueur') return this.grilleJoueur();
+    if (sac === 'extra') return null;
+    return this.grilleFee();
   }
 
   caseDeLaMain() {
@@ -642,18 +687,97 @@ class Inventaire {
   zoneRect(quoi, x, y, l, h) { this.zones.push({ quoi, x, y, l, h }); }
 
   // ── Les gestes ──
-  clic(ev) {
+  pointDe(ev) {
     const r = this.canvas.getBoundingClientRect();
-    const x = (ev.clientX - r.left) / this.echelle;
-    const y = (ev.clientY - r.top) / this.echelle;
-    // La dernière zone posée est la plus haute : on cherche à l'envers.
+    return { x: (ev.clientX - r.left) / this.echelle, y: (ev.clientY - r.top) / this.echelle };
+  }
+
+  // La dernière zone posée est la plus haute : on cherche à l'envers.
+  zoneSous(x, y) {
     for (let i = this.zones.length - 1; i >= 0; i--) {
       const z = this.zones[i];
-      if (x >= z.x && x <= z.x + z.l && y >= z.y && y <= z.y + z.h) {
-        this.agir(z.quoi);
+      if (x >= z.x && x <= z.x + z.l && y >= z.y && y <= z.y + z.h) return z.quoi;
+    }
+    return null;
+  }
+
+  doigtPose(ev) {
+    const p = this.pointDe(ev);
+    const quoi = this.zoneSous(p.x, p.y);
+    if (quoi && quoi.sac !== undefined && this.objetA(quoi.sac, quoi.case)) {
+      this.glisse = {
+        sac: quoi.sac, case: quoi.case, x: p.x, y: p.y, x0: p.x, y0: p.y, pris: false,
+        pointeur: ev.pointerId,
+      };
+    }
+  }
+
+  doigtBouge(ev) {
+    if (!this.glisse) return;
+    const p = this.pointDe(ev);
+    this.glisse.x = p.x;
+    this.glisse.y = p.y;
+    if (!this.glisse.pris) {
+      const dx = p.x - this.glisse.x0, dy = p.y - this.glisse.y0;
+      if (dx * dx + dy * dy < 36) return;              // moins de six pixels : un appui
+      // inv/Slot.mt : tant qu'il reste des objets à ranger, un bocal HABITÉ ne
+      // se déplace pas — le même verrou que pour l'échange à mains pleines.
+      const it = this.objetA(this.glisse.sac, this.glisse.case);
+      if (this.extraList && this.glisse.sac === 'joueur' && it && it.famille === 'bocal'
+        && (this.carte.$faerie || []).some((f) => f && f.$pos === this.glisse.case)) {
+        this.dire('Rangez vos nouveaux objets avant de déplacer ce bocal.');
+        this.glisse = null;
         return;
       }
+      this.glisse.pris = true;
+      this.main = null;                                // le glisser remplace la main
+      try { this.canvas.setPointerCapture(this.glisse.pointeur); } catch (e) { /* vieux navigateur */ }
     }
+    this.rendre();
+  }
+
+  doigtLeve(ev) {
+    const g = this.glisse;
+    this.glisse = null;
+    if (!g || !g.pris) return;                         // l'appui simple : le click suivra
+    // Après un vrai glisser, le navigateur émet encore un click : à ignorer.
+    this.clicApresGlisse = true;
+    setTimeout(() => { this.clicApresGlisse = false; }, 400);
+    const p = this.pointDe(ev);
+    this.deposer(g, this.zoneSous(p.x, p.y));
+  }
+
+  // Là où le doigt lâche : une case (déplacer/échanger), la poubelle (jeter),
+  // le portrait (donner à manger) — sinon l'objet reste où il était.
+  deposer(g, quoi) {
+    const de = { sac: g.sac, case: g.case };
+    if (quoi && quoi.sac !== undefined) {
+      if (quoi.sac === de.sac && quoi.case === de.case) { this.rendre(); return; }
+      const vers = { sac: quoi.sac, case: quoi.case };
+      const bouge = (de.sac === 'extra' || vers.sac === 'extra')
+        ? this.deplacerExtra(de, vers)
+        : O.deplacer(this.carte, de, vers);
+      if (!bouge) { this.dire('Impossible de poser là.'); return; }
+      if (this.extraList && !this.resteARanger()) {
+        this.dire('Tout est rangé. Vous pouvez repartir.');
+      } else {
+        this.dire('');
+      }
+      this.changer();
+      return;
+    }
+    if (quoi === 'poubelle') { this.jeterDepuis(de); return; }
+    if (quoi === 'portrait') { this.donnerDepuis(de); return; }
+    this.rendre();
+  }
+
+  rendreApresGlisse() { this.rendre(); }
+
+  clic(ev) {
+    if (this.clicApresGlisse) { this.clicApresGlisse = false; return; }
+    const p = this.pointDe(ev);
+    const quoi = this.zoneSous(p.x, p.y);
+    if (quoi !== null) this.agir(quoi);
   }
 
   agir(quoi) {
@@ -753,6 +877,9 @@ class Inventaire {
       const courante = (c !== null && c !== undefined) ? l[nombre(c)] : null;
       dedans.$pos = null;
       this.carte.$current = l.indexOf(dedans);
+      // inv/Slot.mt : `inv.updateCurrent()` — le panneau suit la fée qui vient
+      // de sortir, il ne reste pas sur celle qu'on regardait avant.
+      this.feeCourante = l.indexOf(dedans);
       let msg = dedans.$name + ' sort de son bocal.';
       if (courante && courante !== dedans && !enMission(courante) && !enBocal(courante)) {
         courante.$pos = index;
@@ -793,18 +920,23 @@ class Inventaire {
 
   toucher(sac, index) {
     const it = this.objetA(sac, index);
-    // inv/Slot.mt (« PAS DE MANIP DE FEE EN FIN DE MATCH ») : tant qu'il reste
-    // des objets à ranger, un bocal HABITÉ ne répond plus — ni pour en sortir
-    // la fée, ni pour bouger. Le jeu ne dit rien, il ignore.
-    if (this.extraList && sac === 'joueur' && it && it.famille === 'bocal'
-      && (this.carte.$faerie || []).some((f) => f && f.$pos === index)) {
-      return;
-    }
     // Un bocal du sac du JOUEUR se touche pour y mettre — ou en sortir — la fée
     // qu'on regarde. Les mains pleines, il redevient un objet ordinaire qu'on
     // peut déplacer.
+    //
+    // inv/Slot.mt, à la lettre : le verrou de fin de partie (« PAS DE MANIP DE
+    // FEE EN FIN DE MATCH ») n'interdit que de DÉPLACER un bocal habité tant
+    // qu'il reste des objets à ranger — l'échange de fée (ESPACE+clic au
+    // bureau, l'appui simple ici) reste permis. Le portage bloquait TOUT, en
+    // silence : la fée rangée « pour un test » pendant le rangement devenait
+    // imprenable jusqu'à la prochaine visite du sac.
     if (!this.main && sac === 'joueur' && it && it.famille === 'bocal') {
       return this.bocal(index);
+    }
+    if (this.extraList && this.main && sac === 'joueur' && it && it.famille === 'bocal'
+      && (this.carte.$faerie || []).some((f) => f && f.$pos === index)) {
+      this.dire('Rangez vos nouveaux objets avant de déplacer ce bocal.');
+      return;
     }
     if (!this.main) {
       if (!it) { this.dire(''); return; }
@@ -873,12 +1005,22 @@ class Inventaire {
   // rangement aussi peuvent y passer, c'est même souvent le prix de la place.
   jeter() {
     if (!this.main) { this.dire('Prenez un objet, puis touchez la poubelle.'); return; }
-    const it = this.objetA(this.main.sac, this.main.case);
-    const liste = this.main.sac === 'joueur' ? this.carte.$inv
-      : this.main.sac === 'extra' ? this.extraList
-        : ((this.carte.$faerie || [])[this.main.sac] || {}).$inv;
-    if (Array.isArray(liste)) liste[this.main.case] = null;
+    const src = this.main;
     this.main = null;
+    this.jeterDepuis(src);
+  }
+
+  jeterDepuis(src) {
+    const it = this.objetA(src.sac, src.case);
+    // Un bocal HABITÉ ne part pas à la poubelle avec sa locataire dedans.
+    if (src.sac === 'joueur' && it && it.famille === 'bocal') {
+      const dedans = (this.carte.$faerie || []).find((f) => f && f.$pos === src.case);
+      if (dedans) { this.dire('Sortez d\'abord ' + dedans.$name + ' du bocal.'); return; }
+    }
+    const liste = src.sac === 'joueur' ? this.carte.$inv
+      : src.sac === 'extra' ? this.extraList
+        : ((this.carte.$faerie || [])[src.sac] || {}).$inv;
+    if (Array.isArray(liste)) liste[src.case] = null;
     if (this.extraList && !this.resteARanger()) {
       this.dire('Tout est rangé. Vous pouvez repartir.');
     } else {
@@ -902,27 +1044,36 @@ class Inventaire {
         : (g || 'Amenez un aliment ici pour la nourrir.'), fee.fs.$name);
       return;
     }
-    const it = this.objetA(this.main.sac, this.main.case);
+    // Un aliment se donne en TROIS parts (it.taille). Reposer la main entre
+    // chaque obligeait à retourner chercher l'aliment dans le sac deux fois de
+    // plus pour finir la portion — trois allers-retours pour un seul repas. On
+    // garde donc en main ce qui reste du même aliment ; la case vidée relâche
+    // d'elle-même.
+    const src = this.main;
+    if (!this.donnerDepuis(src)) return;
+    const reste = this.objetA(src.sac, src.case);
+    if (!reste || !reste.flUse) this.main = null;
+  }
+
+  // Le repas lui-même, depuis n'importe quelle case — la main qui touche le
+  // portrait, ou l'objet qu'on y fait GLISSER (Inventory.giveItem).
+  donnerDepuis(src) {
+    const fee = this.fee();
+    if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return false; }
+    const it = this.objetA(src.sac, src.case);
     if (!it || !it.flUse) {
       this.dire((it ? it.nom : 'Cet objet') + ' ne se donne pas à manger.');
-      return;
+      return false;
     }
     const r = O.donner(this.carte,
-      { sac: this.main.sac, case: this.main.case, extra: this.extraList }, fee);
-    if (!r.ok) { this.dire(r.message); return; }
+      { sac: src.sac, case: src.case, extra: this.extraList }, fee);
+    if (!r.ok) { this.dire(r.message); return false; }
 
     // La fée vit dans la fiche : ce que `donner` a changé doit y retourner.
     const fs = (this.carte.$faerie || [])[this.feeCourante];
     fs.$life = fee.fs.$life; fs.$mana = fee.fs.$mana;
     fs.$hunger = fee.fs.$hunger; fs.$moral = fee.fs.$moral;
 
-    // Un aliment se donne en TROIS parts (it.taille). Reposer la main entre
-    // chaque obligeait à retourner chercher l'aliment dans le sac deux fois de
-    // plus pour finir la portion — trois allers-retours pour un seul repas. On
-    // garde donc en main ce qui reste du même aliment ; la case vidée relâche
-    // d'elle-même.
-    const reste = this.objetA(this.main.sac, this.main.case);
-    if (!reste || !reste.flUse) this.main = null;
     let msg;
     if (r.effet.genre === 'repas') {
       msg = fee.fs.$name + (r.effet.moral > 0 ? ' se régale !'
@@ -933,6 +1084,7 @@ class Inventaire {
     if (r.pictos.length) msg += ' Album : +' + r.pictos.length + ' !';
     this.dire(msg);
     this.changer();
+    return true;
   }
 
   /**
@@ -981,11 +1133,17 @@ class Inventaire {
 
   ouvrir() {
     this.main = null;
+    this.glisse = null;
     // Inventory.mt s'ouvre sur la fée COURANTE (Cm.getCurrentFaerie lit
-    // $faerie[$current]) — pas sur la première du bocal.
+    // $faerie[$current]) — et sur PERSONNE quand la main est vide : $current
+    // nul donne un médaillon vide, pas la première fée venue. Le portage
+    // retombait sur la fée 0, et le joueur dont la compagne dormait au bocal
+    // retrouvait « une ancienne fée niveau 12 présente comme fée active » —
+    // qui « disparaissait » sitôt la vraie ressortie du bocal.
     const l = this.carte.$faerie || [];
-    const c = nombre(this.carte.$current);
-    this.feeCourante = (c >= 0 && c < l.length && l[c]) ? c : 0;
+    const c = this.carte.$current;
+    this.feeCourante = (c !== null && c !== undefined
+      && nombre(c) >= 0 && nombre(c) < l.length && l[nombre(c)]) ? nombre(c) : null;
     this.redimensionner();
     this.dire('');
   }

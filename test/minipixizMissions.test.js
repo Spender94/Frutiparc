@@ -57,6 +57,8 @@ function fauxInventaire(carte) {
   const canvas = {
     getContext: () => ctx,
     addEventListener() {},
+    setPointerCapture() {},
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
     style: {},
     parentElement: null,
     width: 0,
@@ -385,35 +387,45 @@ test('les flèches feuillettent la rangée un cran à la fois, mains vides', () 
   assert.equal(inv.extraIndex, 1);
 });
 
-test('pendant le rangement, un bocal habité ne répond plus', () => {
-  // inv/Slot.mt : « PAS DE MANIP DE FEE EN FIN DE MATCH » — sans la barre
-  // espace, un bocal occupé est muet tant que dure la rangée.
+test('pendant le rangement, le bocal ne se DÉPLACE plus — mais la fée en sort', () => {
+  // inv/Slot.mt, relu de près : « PAS DE MANIP DE FEE EN FIN DE MATCH » ne
+  // bloque que le clic qui PREND le bocal habité (le déplacement). L'échange
+  // de fée — ESPACE+clic au bureau, l'appui simple ici — passe toujours :
+  // `Key.isDown(Key.SPACE)` court-circuite le verrou. Le portage bloquait
+  // tout, en silence, et le joueur qui rangeait sa fée « pour un test »
+  // pendant la rangée ne pouvait plus l'en sortir sans quitter le sac.
   const carte = carteNeuve();
   carte.$bag = 1;
   carte.$inv = [30, 301];
   const fee = ajouterFee(carte);
   fee.$pos = 0;
+  carte.$current = null;
   const inv = fauxInventaire(carte);
   inv.ouvrir();
   inv.setExtraList([303]);
 
+  // L'appui simple : la fée sort, rangement ou pas.
   inv.toucher('joueur', 0);
-  assert.equal(fee.$pos, 0, 'la fée reste dans son bocal');
-  assert.equal(inv.main, null, 'et le bocal ne vient pas en main');
+  assert.equal(fee.$pos, null, 'la fée ressort de son bocal');
+  assert.equal(inv.main, null, 'sans que le bocal vienne en main');
 
-  // Même rangée VIDÉE, le verrou tient tant que l'écran n'est pas refermé :
-  // Slot.mt teste `inv.extraList != null`, et l'extraList ne meurt qu'avec
-  // l'écran (le SWF détruit le slot en quittant).
-  inv.toucher('extra', 0);
-  inv.jeter();
+  // Elle y retourne du même geste.
   inv.toucher('joueur', 0);
-  assert.equal(fee.$pos, 0, 'le bocal reste muet jusqu\'à la sortie');
+  assert.equal(fee.$pos, 0, 'et y retourne à l\'appui suivant');
 
-  // La porte franchie, tout redevient normal.
-  inv.fermer();
-  inv.ouvrir();
+  // DÉPLACER le bocal habité, en revanche, attend la fin du rangement — à
+  // mains pleines comme au glisser, et le jeu le dit au lieu de se taire.
+  inv.main = { sac: 'extra', case: 0 };
   inv.toucher('joueur', 0);
-  assert.equal(fee.$pos, null, 'la fée ressort du bocal');
+  assert.equal(carte.$inv[0], 30, 'le bocal n\'a pas bougé');
+  assert.match(inv.message, /Rangez vos nouveaux objets/, 'et le jeu explique');
+  inv.main = null;
+  inv.zones = [];
+  inv.zoneRect({ sac: 'joueur', case: 0 }, 45, 58, 32, 32);
+  inv.doigtPose({ clientX: 61, clientY: 74 });
+  inv.doigtBouge({ clientX: 70, clientY: 84 });
+  assert.equal(inv.glisse, null, 'le glisser est retenu');
+  assert.match(inv.message, /Rangez vos nouveaux objets/, 'avec la même explication');
 });
 
 test('la rangée NOURRIT sans détour, mais n\'équipe pas une fée', () => {
