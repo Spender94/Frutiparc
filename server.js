@@ -9934,6 +9934,49 @@ function miniwaveGreffeHorsTuyau(neuf, prev) {
   return true;
 }
 
+/**
+ * MiniWave : redérive les DÉVERROUILLAGES ($ship, $mode) du REGISTRE D'ACHATS
+ * ($shop), pour guérir les fiches amputées par les sauvegardes du bureau
+ * d'avant la regreffe.
+ *
+ * $shop voyage dans le TUYAU du SWF : il a survécu à l'écrasement. $mode n'y
+ * tient pas : chez les joueurs touchés, le stand montre leurs achats (cases
+ * verrouillées, vides — c'est l'affichage d'époque d'un article acquis) mais
+ * les missions restent muettes au menu light et BONUS/SPECIAL verrouillés au
+ * bureau (page/Main.as : flLock = !menuIsActive($mode[i])). Les deux champs
+ * sont INCOHÉRENTS, et l'achat est la source de vérité.
+ *
+ * La table est celle, exacte, de la boutique d'époque (box/ShopSlot.select) :
+ *   ids 0-4  → $ship[id+1]        (Proto, Gapatsa, Namazan, Sacuro, Rycher)
+ *   ids 5-7  → $mode[1][id-5]     (Missions 1-3)
+ *   ids 8-9  → $mode[2][id-8]     (Letter Invader, Endurance)
+ *   ids 15-17→ $mode[1][id-12]    (Missions 4-6)
+ * (ids 10-14 : des pictos, accordés par extractGameItemsFromSlot depuis $shop
+ * directement — rien à redériver sur la fiche.)
+ *
+ * On ne fait qu'OUVRIR : rien n'est jamais reverrouillé — aucun chemin du jeu
+ * ne retire un déverrouillage, une incohérence dans l'autre sens n'existe pas.
+ * Renvoie true si la fiche a changé.
+ */
+function miniwaveReconcilieAchats(c) {
+  if (!c || typeof c !== 'object' || !Array.isArray(c.$shop)) return false;
+  let change = false;
+  const achete = (id) => c.$shop[id] === 0;
+  const pose = (tab, i) => {
+    if (Number(tab[i]) !== 1) { tab[i] = 1; change = true; }
+  };
+  if (!Array.isArray(c.$ship)) { c.$ship = [1, 0, 0, 0, 0, 0]; change = true; }
+  if (!Array.isArray(c.$mode)) { c.$mode = [1, [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0], 1, 1]; change = true; }
+  if (!Array.isArray(c.$mode[1])) { c.$mode[1] = [0, 0, 0, 0, 0, 0, 0, 0]; change = true; }
+  if (!Array.isArray(c.$mode[2])) { c.$mode[2] = [0, 0, 0]; change = true; }
+  if (Number(c.$ship[0]) !== 1) { c.$ship[0] = 1; change = true; }   // l'aliquet est offert
+  for (let id = 0; id <= 4; id++) if (achete(id)) pose(c.$ship, id + 1);
+  for (let id = 5; id <= 7; id++) if (achete(id)) pose(c.$mode[1], id - 5);
+  for (let id = 8; id <= 9; id++) if (achete(id)) pose(c.$mode[2], id - 8);
+  for (let id = 15; id <= 17; id++) if (achete(id)) pose(c.$mode[1], id - 12);
+  return change;
+}
+
 // Fresh MiniPixiz slot 0 — mirrors Cm.formatFruticard() output for the
 // 19 fields the patched saveSlot serialises. Used to auto-repair slots
 // that were corrupted by a prior buggy save cycle (arrays written as
@@ -10940,17 +10983,28 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
   }
 
   // MiniWave forward-merge — protège ce que le tuyau ne sait pas transporter
-  // (miniwaveGreffeHorsTuyau : crédits, modes achetés, records, stats).
+  // (miniwaveGreffeHorsTuyau : crédits, modes achetés, records, stats) — puis
+  // réconciliation $shop → déverrouillages : une fiche déjà amputée par
+  // l'écrasement d'avant la regreffe se guérit à la sauvegarde suivante.
   if ((game === 'miniwave' || game === 'miniwave2') && slotId === '0'
-      && data && data[0] === '{' && prevSlotData) {
+      && data && data[0] === '{') {
     try {
       const neuf = JSON.parse(data);
-      const prev = JSON.parse(prevSlotData);
-      if (miniwaveGreffeHorsTuyau(neuf, prev)) {
-        data = JSON.stringify(neuf);
-        console.log(`[SLOT]  miniwave : champs hors tuyau regreffés pour ${username}`
-          + ` (crédits=${neuf.$credit}, modes=${JSON.stringify(neuf.$mode && neuf.$mode[2])})`);
+      let recrit = false;
+      if (prevSlotData) {
+        const prev = JSON.parse(prevSlotData);
+        if (miniwaveGreffeHorsTuyau(neuf, prev)) {
+          recrit = true;
+          console.log(`[SLOT]  miniwave : champs hors tuyau regreffés pour ${username}`
+            + ` (crédits=${neuf.$credit}, modes=${JSON.stringify(neuf.$mode && neuf.$mode[2])})`);
+        }
       }
+      if (miniwaveReconcilieAchats(neuf)) {
+        recrit = true;
+        console.log(`[SLOT]  miniwave : déverrouillages redérivés des achats pour ${username}`
+          + ` (missions=${JSON.stringify(neuf.$mode && neuf.$mode[1])})`);
+      }
+      if (recrit) data = JSON.stringify(neuf);
     } catch (e) {
       console.error(`[SLOT]  miniwave forward-merge failed for ${username}: ${e.message}`);
     }
@@ -11221,6 +11275,25 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
         try { extractGameItemsFromSlot(username, game, slots['0']); } catch (e) {
           console.log(`[SLOT]  load-extract error for ${game}: ${e.message}`);
         }
+      }
+      // MiniWave : réconciliation $shop → déverrouillages AU CHARGEMENT — les
+      // fiches amputées par les sauvegardes du bureau d'avant la regreffe
+      // (missions muettes au light, BONUS/SPECIAL verrouillés au bureau alors
+      // que le stand montre les achats) se guérissent d'elles-mêmes à la
+      // prochaine ouverture du jeu, et la guérison est PERSISTÉE pour que les
+      // deux clients lisent la même fiche.
+      if ((game === 'miniwave' || game === 'miniwave2') && slots['0']) {
+        try {
+          const carte = JSON.parse(slots['0']);
+          if (miniwaveReconcilieAchats(carte)) {
+            const soigne = JSON.stringify(carte);
+            slots['0'] = soigne;
+            console.log(`[SLOT]  miniwave : fiche de ${username} guérie au chargement`
+              + ` (missions=${JSON.stringify(carte.$mode && carte.$mode[1])})`);
+            const dbId = users[username]._dbId;
+            if (dbId) db.upsertFrutiSlot(dbId, game, 0, soigne).catch((e) => console.error('[DB] miniwave heal upsert error:', e.message));
+          }
+        } catch (e) { /* illisible : servie telle quelle */ }
       }
       for (const [key, val] of Object.entries(slots)) {
         // MiniPixiz: pad slot0 with the full Card structure (incl.
@@ -11508,6 +11581,15 @@ app.get('/frusion', (req, res) => {
   console.log(`[FRUSION] launch sid=${frusionSid} game=${gameName} user=${frusionUser || '-'} internal=${internalCode}`);
   if (frusionUser && internalCode > 0) {
     setUserInternalStatus(frusionUser, internalCode);
+  }
+  // Le nom du joueur pour le GameClient frusion : frusion-ruffle.html fait de
+  // CHAQUE paramètre d'URL une FlashVar (_root.<clé>), et la table des chaînes
+  // du client (« getUser » / « _user » / « user » côte à côte) dit qu'il lit
+  // `user`. Sans lui, les jeux qui saluent par le nom — « Bonsoir Chef
+  // d'escadre undefined » de Miniwave (box/InfoMain.as :
+  // mng.client.getUser()) — restaient sans interlocuteur.
+  if (frusionUser && !params.get('user')) {
+    params.set('user', getDisplayName(frusionUser));
   }
   res.redirect(`/frusion-ruffle.html?${params.toString()}`);
 });
@@ -20983,17 +21065,26 @@ case 'createchannel': {
         // ne transporte ni les crédits ni les modes achetés — sans regreffe,
         // la première partie jouée au bureau les effaçait. « Missions
         // verrouillées de nouveau, crédits envolés » : c'était CE chemin-ci,
-        // le fil, qui convertissait le tuyau sans regreffer.
+        // le fil, qui convertissait le tuyau sans regreffer. Puis la
+        // réconciliation $shop → déverrouillages, comme en HTTP.
         if ((game === 'miniwave' || game === 'miniwave2') && slotId === '0'
-            && prevSlotData && normalizedSlotData && normalizedSlotData[0] === '{') {
+            && normalizedSlotData && normalizedSlotData[0] === '{') {
           try {
             const neuf = JSON.parse(normalizedSlotData);
-            const prev = JSON.parse(prevSlotData);
-            if (miniwaveGreffeHorsTuyau(neuf, prev)) {
-              normalizedSlotData = JSON.stringify(neuf);
-              console.log(`[FCARD] miniwave : champs hors tuyau regreffés pour ${username}`
-                + ` (crédits=${neuf.$credit}, modes=${JSON.stringify(neuf.$mode && neuf.$mode[1])})`);
+            let recrit = false;
+            if (prevSlotData) {
+              const prev = JSON.parse(prevSlotData);
+              if (miniwaveGreffeHorsTuyau(neuf, prev)) {
+                recrit = true;
+                console.log(`[FCARD] miniwave : champs hors tuyau regreffés pour ${username}`
+                  + ` (crédits=${neuf.$credit}, modes=${JSON.stringify(neuf.$mode && neuf.$mode[1])})`);
+              }
             }
+            if (miniwaveReconcilieAchats(neuf)) {
+              recrit = true;
+              console.log(`[FCARD] miniwave : déverrouillages redérivés des achats pour ${username}`);
+            }
+            if (recrit) normalizedSlotData = JSON.stringify(neuf);
           } catch (e) { /* illisible : la garde de taille s'en charge plus bas */ }
         }
         // La garde de taille court sur la donnée NORMALISÉE et regreffée,

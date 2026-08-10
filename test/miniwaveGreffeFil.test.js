@@ -171,3 +171,86 @@ test('la fiche d\'usine du bureau ne remplace toujours pas la progression', asyn
   assert.equal(fiche.$badsKill[0], 260, 'le tableau de chasse n\'a pas été remis à zéro');
   assert.equal(fiche.$credit, 500, 'et les crédits non plus');
 });
+
+// ── La réconciliation $shop → déverrouillages (le retour de Sykka) ────────
+//
+// Les fiches amputées AVANT la regreffe gardent leurs achats ($shop voyage
+// dans le tuyau) mais plus leurs déverrouillages ($mode n'y tient pas) : le
+// stand montre les cases achetées, le menu light reste muet et le bureau
+// verrouille BONUS/SPECIAL. Le serveur redérive désormais $ship/$mode du
+// registre d'achats — la table exacte de la boutique d'époque
+// (box/ShopSlot.select) — au chargement comme à la sauvegarde.
+
+function ficheAmputee() {
+  const f = ficheRiche();
+  // Achats : Proto (0), Sacuro (3), Missions 1-3 (5-7), Endurance (9),
+  // Mission 4 (15). Mais plus un seul déverrouillage : l'état d'après
+  // l'écrasement d'avant le correctif.
+  f.$shop = [0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1];
+  f.$ship = [1, 0, 0, 0, 0, 0];
+  f.$mode = [1, [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0], 1, 1];
+  f.$credit = 23;
+  return f;
+}
+
+test('la fiche amputée d\'avant le correctif se guérit d\'elle-même', async () => {
+  await session();
+  const envoi = await fetch(BASE + '/api/saveFrutiSlot', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid, game: 'miniwave', slotId: '0', data: JSON.stringify(ficheAmputee()) }),
+  });
+  assert.equal((await envoi.text()).slice(0, 4), 'ok=1');
+  const fiche = await relire();
+  // Les missions achetées rouvrent…
+  assert.deepEqual(fiche.$mode[1], [1, 1, 1, 1, 0, 0, 0, 0],
+    'missions 1-3 (ids 5-7) et 4 (id 15 → $mode[1][3]) rouvertes');
+  // …les vaisseaux achetés aussi…
+  assert.deepEqual(fiche.$ship, [1, 1, 0, 0, 1, 0],
+    'Proto (id 0 → $ship[1]) et Sacuro (id 3 → $ship[4]) rendus');
+  // …et les modes spéciaux achetés.
+  assert.deepEqual(fiche.$mode[2], [0, 1, 0], 'Endurance (id 9) rouverte, Letter non acheté fermé');
+  // Rien n'est inventé : le registre d'achats n'a pas bougé.
+  assert.equal(fiche.$shop[1], 1, 'Gapatsa toujours à vendre');
+  assert.equal(fiche.$credit, 23, 'les crédits ne bougent pas');
+});
+
+test('la réconciliation n\'enlève jamais rien', async () => {
+  await session();
+  // Un déverrouillage présent SANS achat correspondant (cadeau, vieil état) :
+  // il reste. La réconciliation ouvre, elle ne referme pas.
+  const f = ficheRiche();
+  f.$shop = new Array(20).fill(1);        // rien d'acheté
+  f.$mode = [1, [1, 0, 0, 0, 0, 0, 0, 0], [1, 0, 0], 1, 1];
+  f.$ship = [1, 1, 0, 0, 0, 0];
+  await fetch(BASE + '/api/saveFrutiSlot', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid, game: 'miniwave', slotId: '0', data: JSON.stringify(f) }),
+  });
+  const fiche = await relire();
+  assert.equal(fiche.$mode[1][0], 1, 'la mission offerte reste ouverte');
+  assert.equal(fiche.$mode[2][0], 1, 'le mode offert aussi');
+  assert.equal(fiche.$ship[1], 1, 'le vaisseau offert aussi');
+});
+
+test('le fil aussi guérit : un tuyau de bureau sur une fiche amputée', async () => {
+  await session();
+  // La fiche stockée est amputée MAIS marchande ; le bureau envoie son tuyau.
+  // La greffe rapporte crédits et $mode (vides), la réconciliation rouvre
+  // depuis $shop — qui vient du TUYAU, donc du bureau lui-même.
+  await fetch(BASE + '/api/saveFrutiSlot', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid, game: 'miniwave', slotId: '0', data: JSON.stringify(ficheAmputee()) }),
+  });
+  const ships = ['true', 'false', 'false', 'false', 'false', 'false'].join(',');
+  const kills = Array.from({ length: 51 }, (_, i) => (i < 3 ? 300 : 0)).join(',');
+  const shop = [0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1].join(',');
+  const tuyau = [ships, kills, '9', [40, 0, 0, 0, 0, 0, 0, 0].join(','), '0', shop, '0.93'].join('|');
+  const c = await socketFil();
+  try {
+    c.envoyer(`<ed r="9" g="miniwave" s="0">${tuyau}</ed>`);
+    await c.attendre((t) => t.startsWith('<ed'), 'accusé updateSlot');
+  } finally { c.fermer(); }
+  const fiche = await relire();
+  assert.deepEqual(fiche.$mode[1], [1, 1, 1, 1, 0, 0, 0, 0], 'missions rouvertes après le tuyau');
+  assert.equal(fiche.$credit, 23, 'et les crédits regreffés');
+});
