@@ -1161,8 +1161,11 @@ const RANKINGS = {
   //     pictos $pixiz_treeMax) place le très bon score autour de 8 000.
   //   · MiniWave — l'ARCADE : le grand parcours de 200 vagues. Le score
   //     classe, le NIVEAU atteint voyage dans la donnée et s'affiche à côté.
-  minipixiz_classic: { name: 'MiniPixiz - Arbre creux', game: 'minipixiz', type: 'C' },
-  miniwave_classic:  { name: 'MiniWave - Arcade',       game: 'miniwave',  type: 'C' },
+  // Le libellé ne nomme QUE le jeu : chacun n'a qu'un classement, préciser le
+  // mode n'apporte rien (contrairement aux « - Classique » / « - Challenge »
+  // des jeux qui en ont plusieurs).
+  minipixiz_classic: { name: 'MiniPixiz',               game: 'minipixiz', type: 'C' },
+  miniwave_classic:  { name: 'MiniWave',                game: 'miniwave',  type: 'C' },
   bkiwi_track0_challenge: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 0 },
   bkiwi_track1_challenge: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 1 },
   bkiwi_track2_challenge: { name: 'Burning Kiwi - Terre Grise', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 2 },
@@ -1224,8 +1227,8 @@ const LEGACY_RANKINGS = [
   // n'y entrerait pas. Il s'affiche donc là où on maîtrise le rendu (l'onglet
   // Challenge du light et le livre des records), et le bureau montre les
   // points. g='minipixiz'/'miniwave' : fileIcon.swf connaît déjà les deux.
-  { rk: '13', internal: 'minipixiz_classic', ty: 'point',     rn: 'Pixiz Arbre creux', gs: '1', g: 'minipixiz', section: 'C' },
-  { rk: '14', internal: 'miniwave_classic',  ty: 'point',     rn: 'MiniWave Arcade',   gs: '1', g: 'miniwave',  section: 'C' },
+  { rk: '13', internal: 'minipixiz_classic', ty: 'point',     rn: 'MiniPixiz',    gs: '1', g: 'minipixiz', section: 'C' },
+  { rk: '14', internal: 'miniwave_classic',  ty: 'point',     rn: 'MiniWave',     gs: '1', g: 'miniwave',  section: 'C' },
   // Classement Kikooz : ce n'est PAS un jeu mais un classement « joueur » (comme
   // l'XP / la consécration), monté ici dans la liste pilotée serveur pour
   // apparaître comme un onglet supplémentaire dans main.swf sans toucher au SWF.

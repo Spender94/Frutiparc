@@ -52,16 +52,34 @@ before(async () => {
   }
   throw new Error('serveur indisponible');
 });
-after(() => { if (serverProc) serverProc.kill('SIGKILL'); });
+// Les pseudos de ce fichier, pour le ménage de fin.
+const BASES = ['freestyleuse', 'megajoueuse', 'vieuxclient', 'vieuxobjet', 'championne'];
 
-// Les scores écrits par un passage précédent persistent sur le disque du
-// dépôt (saveScoresFile) : des pseudos UNIQUES par exécution évitent de
-// comparer nos scores à ceux d'hier.
+after(() => {
+  if (serverProc) serverProc.kill('SIGKILL');
+  // MÉNAGE — indispensable, pas cosmétique. Les scores sont écrits sur le
+  // disque (data/scores.json, hors dépôt) et SURVIVENT à l'exécution ; le
+  // livre des records ne rend que le top 20. Sans ce nettoyage, une vingtaine
+  // de passages suffisait à remplir la fenêtre de résidus et le test se
+  // mettait à échouer sans qu'une ligne de code ait bougé.
+  try {
+    const fichier = path.join(ROOT, 'data/scores.json');
+    const d = JSON.parse(fs.readFileSync(fichier, 'utf8'));
+    for (const u of Object.keys(d.users || {})) {
+      if (BASES.some((b) => u.startsWith(b))) delete d.users[u];
+    }
+    fs.writeFileSync(fichier, JSON.stringify(d));
+  } catch { /* rien à nettoyer */ }
+});
+
+// Des pseudos UNIQUES par exécution : deux passages qui se chevauchent ne se
+// marchent pas dessus (le ménage ci-dessus efface les deux séries).
 const CRU = Date.now().toString(36).slice(-6);
 const pseudo = (base) => base + CRU;
-// Le livre des records ne montre que le top 20 : nos scores doivent DOMINER
-// les résidus des suites précédentes (le fichier de scores persiste), et
-// chaque exécution doit dominer la précédente.
+// Le livre des records ne montre que le top 20 : nos scores doivent dominer
+// ceux des autres suites. Une base très haute suffit — l'unicité entre
+// exécutions, elle, vient du ménage de fin et non de cette valeur (qui
+// reboucle toutes les mille secondes).
 const B = 900000000 + (Date.now() % 1000000) * 100;
 
 async function sidFor(username) {
