@@ -236,6 +236,89 @@ test('préférences du moulin (slot 1) : mini-pipe → JSON → relecture', asyn
   assert.deepEqual(after2.slot1.$key, [37, 39, 32, 40, 38], 'prefs précédentes intactes');
 });
 
+// ── L'encodage du courrier (le retour de 3l_professor, image « Jour 36 ») ──
+//
+// Deux clients écrivent la même fiche :
+//   · le SWF (Ruffle) escape() son texte de mission dans le pipe — en UTF-8,
+//     octet par octet ('é' → '%C3%A9') — et le serveur, qui déballe l'escape
+//     par OCTET Latin-1, lisait « Ã© » : le mojibake naissait à chaque
+//     sauvegarde ;
+//   · le portage HTML5 envoie du JSON propre, mais relisait les couches déjà
+//     accumulées (« n'a pas rÃ□Â□…ssi ») et les réenregistrait telles
+//     quelles — l'amplification.
+// Le serveur déroule maintenant les couches à l'entrée (demojibake, signé
+// U+00C2/U+00C3 + continuation) et émet le slot0 minipixiz en ASCII pur
+// (\uXXXX) : la naissance devient impossible, les fiches abîmées guérissent
+// toutes seules au chargement suivant.
+
+// escape() d'un lecteur Flash ≥ 6 : les OCTETS UTF-8, un %XX chacun.
+function escapeFlashUtf8(s) {
+  return Array.from(Buffer.from(s, 'utf8'))
+    .map((b) => '%' + b.toString(16).toUpperCase().padStart(2, '0')).join('');
+}
+// n couches de mojibake : les octets UTF-8 relus en Latin-1, n fois.
+function mojibake(s, couches) {
+  let out = s;
+  for (let i = 0; i < couches; i++) out = Buffer.from(out, 'utf8').toString('latin1');
+  return out;
+}
+const STORY = 'n’a pas réussi à plaire au public du concours du plus gros mensonge';
+
+test('encodage : le pipe du SWF (escape UTF-8) ne fabrique plus de « Ã© »', async () => {
+  const sid = await makeSession('pixienc');
+  const mis = `5~83~2~${escapeFlashUtf8(STORY)}`;
+  await saveSlot(sid, 0, buildPipeV2({ faerie: faerieTok('Enca', 0, null) + ',', mis, mission: '' }));
+  const { slot0 } = await loadSlots(sid);
+  assert.equal(slot0.$mis[0].$string, STORY,
+    'les octets UTF-8 escapés par le lecteur reviennent en clair');
+});
+
+test('encodage : les couches de mojibake déjà stockées guérissent au chargement', async () => {
+  const sid = await makeSession('pixienc2');
+  // Une fiche saine d'abord (le pipe pose la structure complète)…
+  await saveSlot(sid, 0, buildPipeV2({
+    faerie: faerieTok('Ency', 0, null) + ',', mis: `4~71~1~${escape('propre')}`, mission: '',
+  }));
+  const carte = (await loadSlots(sid)).slot0;
+  // …puis le client HTML5 réenregistre la fiche avec un texte DÉJÀ abîmé
+  // (deux couches — le « rÃƒÂ©ussi » des captures) : c'est l'état hérité.
+  carte.$mis[0].$string = mojibake(STORY, 2);
+  await saveSlot(sid, 0, JSON.stringify(carte));
+  const gueri = (await loadSlots(sid)).slot0;
+  assert.equal(gueri.$mis[0].$string, STORY, 'deux couches déroulées');
+  // Trois couches (les fiches les plus anciennes) guérissent aussi.
+  gueri.$mis[0].$string = mojibake(STORY, 3);
+  await saveSlot(sid, 0, JSON.stringify(gueri));
+  assert.equal((await loadSlots(sid)).slot0.$mis[0].$string, STORY, 'trois couches aussi');
+});
+
+test('encodage : un texte français sain ne bouge pas, même réenregistré', async () => {
+  const sid = await makeSession('pixienc3');
+  const sain = 'déjà vu — Ça alors, une drôle d’œuvre !';
+  await saveSlot(sid, 0, buildPipeV2({
+    faerie: faerieTok('Enco', 0, null) + ',', mis: `3~~2~${escapeFlashUtf8(sain)}`, mission: '',
+  }));
+  let carte = (await loadSlots(sid)).slot0;
+  assert.equal(carte.$mis[0].$string, sain);
+  // Le cycle charge → réenregistre (JSON) → recharge est un point fixe.
+  await saveSlot(sid, 0, JSON.stringify(carte));
+  carte = (await loadSlots(sid)).slot0;
+  assert.equal(carte.$mis[0].$string, sain, 'aucune « guérison » à tort');
+});
+
+test('encodage : le slot0 minipixiz part en ASCII pur (plus de naissance possible)', async () => {
+  const sid = await makeSession('pixienc');
+  const r = await fetch(BASE + `/api/loadFrutiSlots?sid=${sid}&game=minipixiz`);
+  const brut = await r.text();
+  const m = brut.match(/(?:^|&)slot0=([^&]*)/);
+  assert.ok(m, 'slot0 présent');
+  assert.match(m[1], /^[\x00-\x7f]*$/,
+    'aucun octet non-ASCII : le lecteur ne peut plus mal les décoder');
+  // Et la valeur reste un JSON valide qui porte bien les accents.
+  const relu = JSON.parse(decodeURIComponent(m[1]));
+  assert.equal(relu.$mis[0].$string, STORY, 'les accents voyagent en \\uXXXX');
+});
+
 test('table des aliments (pictos) synchrone avec it/Food.mt', () => {
   const foodMt = fs.readFileSync(path.join(__dirname, '..', 'Games', 'miniTroll', 'src', 'it', 'Food.mt'), 'latin1');
   const gameNames = [];

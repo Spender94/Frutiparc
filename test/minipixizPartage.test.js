@@ -90,7 +90,8 @@ function fonctionsDuServeur() {
     }
     throw new Error(nom + ' : accolade non fermée');
   };
-  const code = morceau('parseMinipixizPipe') + '\n' + morceau('padMinipixizSlot0')
+  const code = morceau('demojibake') + '\n'
+    + morceau('parseMinipixizPipe') + '\n' + morceau('padMinipixizSlot0')
     + '\n' + morceau('minipixizReconcileMissions')
     + '\nreturn { parseMinipixizPipe, padMinipixizSlot0 };';
   const F = require('../minipixizFaerie.js');

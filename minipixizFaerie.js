@@ -148,16 +148,39 @@ function mergeFaerieByIdentity(prev, next, opts) {
   const prevNamed = pf.some(hasName);
 
   if (nextNamed && prevNamed) {
-    const prevByName = new Map();
-    for (const p of pf) if (hasName(p) && !prevByName.has(p.$name)) prevByName.set(p.$name, p);
-    const matched = new Set();
+    // Deux fées peuvent LÉGITIMEMENT porter le même nom : le bassin le tire
+    // dans ~970 combinaisons de syllabes (Lang.nameSyl0/1), la collision est
+    // une question de temps. L'appariement se fait donc à l'IDENTITÉ — nom
+    // PLUS peau (identiteFee) — et le nom seul reste le repli des sauvegardes
+    // appauvries, dont le pipe ne transporte pas $skin. Les files gardent
+    // l'ordre : deux homonymes de part et d'autre se retrouvent chacune.
+    const parIdentite = new Map();
+    const parNom = new Map();
+    for (const p of pf) {
+      if (!hasName(p)) continue;
+      const ci = identiteFee(p);
+      if (!parIdentite.has(ci)) parIdentite.set(ci, []);
+      parIdentite.get(ci).push(p);
+      if (!parNom.has(p.$name)) parNom.set(p.$name, []);
+      parNom.get(p.$name).push(p);
+    }
+    const consommees = new Set();
+    const prendre = (file) => {
+      while (file && file.length) {
+        const p = file.shift();
+        if (!consommees.has(p)) { consommees.add(p); return p; }
+      }
+      return null;
+    };
     const out = nf.map(n => {
-      const p = prevByName.get(n.$name);
-      if (p && !matched.has(n.$name)) { matched.add(n.$name); return Object.assign({}, p, n); }
+      const p = prendre(parIdentite.get(identiteFee(n))) || prendre(parNom.get(n.$name));
+      if (p) return Object.assign({}, p, n);
       return n; // genuinely new fairy (no prev) — rich data fills in on later saves
     });
     if (!autoritaire) {
-      for (const p of pf) if (hasName(p) && !matched.has(p.$name)) out.push(p);
+      // Par OBJET, pas par nom : l'homonyme restée sans paire n'est pas
+      // « déjà vue », elle est une autre fée — on ne la laisse pas tomber.
+      for (const p of pf) if (hasName(p) && !consommees.has(p)) out.push(p);
     }
     return out;
   }
@@ -189,6 +212,40 @@ function faerieNameHash(name) {
   return h >>> 0;
 }
 
+// La peau qu'une fée SANS $skin recevra de synthesizeFaerieDefaults :
+// [corps 0-5, 3 couleurs 24 bits], déterministe à partir du nom
+// (multiplicateurs de Knuth pour des couleurs stables et bien dispersées).
+function skinSynthetique(nom) {
+  const h = faerieNameHash(nom);
+  return [
+    h % 6,
+    (Math.imul(h, 2654435761) >>> 8) % 0xFFFFFF,
+    (Math.imul(h ^ 0x9e3779b9, 40503) >>> 4) % 0xFFFFFF,
+    (Math.imul(h + 0x85ebca6b, 2246822519) >>> 6) % 0xFFFFFF,
+  ];
+}
+
+/**
+ * L'IDENTITÉ d'une fée : son nom ET sa peau.
+ *
+ * Le nom seul ne suffit pas — le bassin le tire dans un pool fini, deux fées
+ * distinctes peuvent être homonymes. La peau, elle, est posée à la naissance
+ * (genFaerieSeed) et ne change jamais : deux entrées de même nom ET même peau
+ * sont la même fée (le clone d'un vieux bug de fusion), deux homonymes de
+ * peaux différentes sont deux fées. Une fée sans $skin (moignon du pipe)
+ * répond par la peau que la synthèse lui donnera — déterministe par nom, donc
+ * stable d'un chargement à l'autre.
+ */
+function identiteFee(f) {
+  const nom = String(f && f.$name != null ? f.$name : '');
+  const peau = (f && Array.isArray(f.$skin) && f.$skin.length >= 4)
+    ? f.$skin.slice(0, 4).join(',')
+    : skinSynthetique(nom).join(',');
+  // « | » ne peut pas apparaitre dans un nom (c'est le separateur du pipe
+  // de sauvegarde SWF) : la cle est sans ambiguite.
+  return nom + '|' + peau;
+}
+
 function synthesizeFaerieDefaults(f) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return false;
   const h = faerieNameHash(f.$name);
@@ -213,14 +270,9 @@ function synthesizeFaerieDefaults(f) {
     changed = true;
   }
   if (!Array.isArray(f.$skin) || f.$skin.length < 4) {
-    // [corps 0-5, 3 couleurs 24 bits] — multiplicateurs de Knuth pour des
-    // couleurs stables et bien dispersées par nom.
-    f.$skin = [
-      h % 6,
-      (Math.imul(h, 2654435761) >>> 8) % 0xFFFFFF,
-      (Math.imul(h ^ 0x9e3779b9, 40503) >>> 4) % 0xFFFFFF,
-      (Math.imul(h + 0x85ebca6b, 2246822519) >>> 6) % 0xFFFFFF,
-    ];
+    // La même peau que celle par laquelle identiteFee répond pour un moignon :
+    // la synthèse ne change donc jamais l'identité d'une fée.
+    f.$skin = skinSynthetique(f.$name);
     changed = true;
   }
   if (!Array.isArray(f.$mood)) { f.$mood = []; changed = true; }
@@ -273,17 +325,22 @@ function synthesizeFaerieDefaults(f) {
 // `$pos` à chaque chargement, supprimait bien le doublon, mais en vidant les
 // bocaux de tout le monde à chaque partie.
 
-// Le dé-doublonnage par nom : la même fée ne doit jamais figurer deux fois.
-// On garde la PREMIÈRE occurrence (déjà fusionnée). Les fées sans nom, vieux
-// moignons dont l'identité est l'index, passent telles quelles.
+// Le dé-doublonnage : la MÊME fée ne doit jamais figurer deux fois. L'identité
+// est le nom PLUS la peau (identiteFee) — le nom seul supprimait une vraie fée
+// dès que le bassin tirait un nom déjà porté (« j'ai déplacé le bocal…
+// ça l'a supprimée » : la première écriture venue déclenchait le filtre).
+// Deux homonymes de peaux différentes sont deux fées, et elles restent deux.
+// On garde la PREMIÈRE occurrence d'un vrai doublon (déjà fusionnée). Les fées
+// sans nom, vieux moignons dont l'identité est l'index, passent telles quelles.
 function dedoublonnerFees(liste) {
   if (!Array.isArray(liste)) return [];
   const vus = new Set();
   return liste.filter((f) => {
     const n = (f && typeof f === 'object') ? f.$name : undefined;
     if (n === undefined || n === null || n === '') return true;
-    if (vus.has(n)) return false;
-    vus.add(n);
+    const ci = identiteFee(f);
+    if (vus.has(ci)) return false;
+    vus.add(ci);
     return true;
   });
 }
@@ -304,7 +361,12 @@ function recalerCurrent(carte, nouvelle) {
   }
   let n = carte.$faerie.indexOf(enMain);
   if (n < 0 && enMain.$name) {
-    n = carte.$faerie.findIndex((f) => f && f.$name === enMain.$name);
+    // À identité égale d'abord : entre deux homonymes, la main doit suivre la
+    // SIENNE. Le nom seul reste le repli d'une liste sans peaux.
+    const ci = identiteFee(enMain);
+    n = carte.$faerie.findIndex((f) => f && typeof f === 'object'
+      && f.$name === enMain.$name && identiteFee(f) === ci);
+    if (n < 0) n = carte.$faerie.findIndex((f) => f && f.$name === enMain.$name);
   }
   carte.$current = n >= 0 ? n : null;
   return carte;
@@ -344,6 +406,7 @@ function reglerBocaux(carte) {
 
 module.exports = {
   faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults,
-  faerieNameHash, listeAutoritaire, dedoublonnerFees, recalerCurrent, reglerBocaux,
+  faerieNameHash, skinSynthetique, identiteFee,
+  listeAutoritaire, dedoublonnerFees, recalerCurrent, reglerBocaux,
   OBJET_BOCAL,
 };

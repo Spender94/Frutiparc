@@ -307,3 +307,100 @@ test('une fée qu\'on ne nourrit plus s\'en va d\'elle-même, et ne revient pas'
   assert.ok(c.$faerie.some((f) => f.$name === 'Gardee'),
     'tandis que celle qu\'on garde reste');
 });
+
+// ── Les homonymes du bassin (le retour de 3l_professor) ───────────────────
+//
+// « Le bogue s'est produit lorsque j'ai déplacé le bocal avec ma fée niveau 11
+// dedans, ça l'a supprimée ! » Le bassin tire les noms dans un pool fini
+// (~970 combinaisons de syllabes) : deux fées distinctes finissent par être
+// homonymes. Le dé-doublonnage « par nom » d'alors en supprimait une à la
+// PREMIÈRE écriture venue — déplacer le bocal, plonger au bassin… L'identité
+// d'une fée est désormais son nom PLUS sa peau ($skin, posée à la naissance,
+// jamais changée) : les homonymes vivent, les vrais clones tombent toujours.
+
+test('deux fées homonymes sont deux fées — l\'identité est nom + peau', () => {
+  const A = { $skin: [1, 111, 222, 333] };
+  const B = { $skin: [2, 444, 555, 666] };
+  const paire = [fee('Lumilie', 11, A), fee('Lumilie', 12, B)];
+  assert.equal(M.dedoublonnerFees(paire).length, 2, 'aucune des deux ne disparaît');
+  // Même nom, même peau : la même fée deux fois (le clone d'un vieux bug de
+  // fusion) — le doublon tombe, comme avant.
+  const clone = [fee('Lumilie', 11, A), fee('Lumilie', 11, A)];
+  assert.equal(M.dedoublonnerFees(clone).length, 1, 'le vrai doublon tombe');
+  // Moignons sans peau : la peau synthétique se calcule du nom, elles sont
+  // indistinguables — doublon aussi (stable d'un chargement à l'autre).
+  assert.equal(M.dedoublonnerFees(
+    [{ $name: 'Stub', $level: 1 }, { $name: 'Stub', $level: 3 }]).length, 1);
+});
+
+test('le merge apparie chaque homonyme à la SIENNE (par la peau)', () => {
+  const A = { $skin: [1, 111, 222, 333] };
+  const B = { $skin: [2, 444, 555, 666] };
+  const prev = [
+    Object.assign(fee('Jumelle', 11, A), { $exp: 110 }),
+    Object.assign(fee('Jumelle', 12, B), { $exp: 220 }),
+  ];
+  // La sauvegarde revient dans l'AUTRE ordre, sans $exp : l'état riche stocké
+  // doit suivre la peau, pas la position ni la première du nom.
+  const sansExp = (f) => { const c = Object.assign({}, f); delete c.$exp; return c; };
+  const next = [sansExp(fee('Jumelle', 12, B)), sansExp(fee('Jumelle', 11, A))];
+  const out = M.mergeFaerieByIdentity(prev, next, { autoritaire: true });
+  assert.equal(out.length, 2);
+  assert.equal(out[0].$exp, 220, 'la 12 retrouve SON expérience');
+  assert.equal(out[1].$exp, 110, 'et la 11 la sienne');
+});
+
+test('la séquence de 3l_professor, sans perte : bocal déplacé, second bocal, bassin', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  const peau11 = [1, 111, 222, 333];
+  const peau12 = [2, 444, 555, 666];
+  // Deux homonymes : la 11 dort dans le bocal de la case 0, la 12 est en main.
+  await ecrire(carteAvec(
+    [fee('Vaillante', 11, { $skin: peau11, $pos: 0 }), fee('Vaillante', 12, { $skin: peau12 })],
+    1, [30]));
+  let c = await relire();
+  assert.equal(c.$faerie.length, 2, 'les deux homonymes sont là');
+
+  // « J'ai déplacé le bocal avec ma fée niveau 11 dedans » : case 0 → case 2.
+  // La locataire suit son bocal (It.deplacer) — et personne ne disparaît.
+  await ecrire(carteAvec(
+    [fee('Vaillante', 11, { $skin: peau11, $pos: 2 }), fee('Vaillante', 12, { $skin: peau12 })],
+    1, [null, null, 30]));
+  c = await relire();
+  assert.equal(c.$faerie.length, 2, 'déplacer le bocal ne supprime personne');
+  const onze = c.$faerie.find((f) => f.$level === 11);
+  assert.ok(onze, 'la 11 est toujours là');
+  assert.equal(onze.$pos, 2, 'dans son bocal, case 2');
+  assert.equal(c.$faerie[c.$current].$level, 12, 'et la main tient toujours la 12');
+
+  // « Je l'ai mise en bocal celle-là » : un second bocal, la 12 y dort.
+  await ecrire(carteAvec(
+    [fee('Vaillante', 11, { $skin: peau11, $pos: 2 }),
+      fee('Vaillante', 12, { $skin: peau12, $pos: 0 })],
+    null, [30, null, 30]));
+  c = await relire();
+  assert.equal(c.$faerie.length, 2, 'la mise en bocal non plus');
+
+  // « Je suis allé dans le bassin chercher une nouvelle fée » — et le bassin
+  // TIRE LE MÊME NOM : c'était le déclencheur du drame. Trois homonymes.
+  await ecrire(carteAvec(
+    [fee('Vaillante', 11, { $skin: peau11, $pos: 2 }),
+      fee('Vaillante', 12, { $skin: peau12, $pos: 0 }),
+      fee('Vaillante', 0, { $skin: [3, 777, 888, 999] })],
+    2, [30, null, 30]));
+  c = await relire();
+  assert.equal(c.$faerie.length, 3, 'les trois Vaillante vivent leur vie');
+  assert.equal(c.$faerie[c.$current].$level, 0, 'la nouvelle est en main');
+  assert.equal(c.$faerie.find((f) => f.$level === 11).$pos, 2, 'la 11 dort toujours');
+  assert.equal(c.$faerie.find((f) => f.$level === 12).$pos, 0, 'la 12 aussi');
+});
+
+test('le vrai clone (même nom, même peau) tombe toujours au chargement', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  await ecrire(carteAvec(
+    [fee('Clonee', 12, { $skin: [4, 10, 20, 30] }), fee('Clonee', 12, { $skin: [4, 10, 20, 30] })],
+    null, []));
+  const c = await relire();
+  assert.equal(c.$faerie.filter((f) => f.$name === 'Clonee').length, 1,
+    'le clone strict est tombé — le correctif des fantômes tient');
+});

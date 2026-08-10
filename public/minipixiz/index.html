@@ -935,6 +935,41 @@
             var lieu = client.lieu;
             if (info && info.gagne && (!lieu || lieu.fini)) {
               setTimeout(function () { ouvrirMenu(); }, 900);
+              return;
+            }
+            // Entre deux niveaux, la même halte qu'en forêt :
+            // base/Aventure.tryToCloseGame vaut pour le donjon aussi — si la
+            // fée a de quoi monter, le panneau de choix s'ouvre, et le
+            // bouquet du niveau suivant repart une fois le choix fait.
+            if (info && info.gagne && lieu && !lieu.fini) {
+              var mfXp = client.champ && client.champ.faerieList
+                && client.champ.faerieList[0];
+              if (mfXp && !mfXp.flDeath && mfXp.fi && mfXp.fi.peutMonter()) {
+                // Les fiches d'avant le correctif du bassin : un `$next`
+                // préparé sans tirage de sort se complète ici (cf. la forêt).
+                var nxd = mfXp.fi.fs.$next;
+                if (!nxd || nxd[1] === null || nxd[1] === undefined) {
+                  mfXp.fi.preparerProchainNiveau(sortAApprendre);
+                }
+                setTimeout(function () {
+                  if (client.lieu !== lieu || lieu.fini) return;
+                  client.ouvrirEvolution({
+                    fi: mfXp.fi,
+                    surChoix: function (choix) {
+                      var appris = mfXp.fi.monterNiveau(choix, sortAApprendre);
+                      if (appris) {
+                        menu.dire(mfXp.fi.fs.$name + ' passe au niveau '
+                          + (Number(mfXp.fi.fs.$level) + 1) + ' — '
+                          + (appris.genre === 'carac' ? '+1 en ' + appris.nom
+                            : 'elle apprend un sort !'));
+                      }
+                      plateforme.ecrire(avant);
+                      client.commencerOuverture(((client.lieu
+                        && client.lieu.level) || 0) + 1);
+                    },
+                  });
+                }, 900);
+              }
             }
           },
         });

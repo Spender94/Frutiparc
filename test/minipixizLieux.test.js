@@ -117,6 +117,78 @@ test('le donjon s\'enchaîne sur dix niveaux, et le dernier a ses démons', () =
   assert.equal(d.gagne, true);
 });
 
+test('l\'annonce niveauDonjon part une fois la partie neuve en place', () => {
+  const { c, fs } = carte({ rang: 1 });
+  const vu = [];
+  const boite = {};
+  boite.d = new X.Donjon({
+    carte: c, fee: fs, graine: 7,
+    surEvenement: (n, o) => {
+      if (n !== 'niveauDonjon') return;
+      // Le client se raccroche au moteur du lieu EN RECEVANT l'annonce
+      // (game.js) : elle doit donc partir après commencer(). Émise avant, le
+      // client repartait sur le moteur FINI du niveau vidé — l'écran du
+      // donjon restait figé sur une grille vide, sans retour possible (le
+      // retour de 3l_professor).
+      vu.push({
+        niveau: o.niveau,
+        termine: boite.d.jeu.termine,
+        garni: boite.d.jeu.eList.length > 0,
+      });
+    },
+  });
+  viderEtFinirLeTour(boite.d);
+  assert.equal(vu.length, 1, 'un niveau vidé, une annonce');
+  assert.equal(vu[0].niveau, 1);
+  assert.equal(vu[0].termine, false, 'le moteur reçu n\'est pas celui du niveau fini');
+  assert.equal(vu[0].garni, true, 'la pile du niveau suivant est déjà dressée');
+});
+
+test('le client reprend moteur, fée et bouquet à chaque niveau du donjon', () => {
+  const fsMod = require('fs');
+  const path = require('path');
+  const js = fsMod.readFileSync(
+    path.join(__dirname, '..', 'public/minipixiz/game.js'), 'utf8');
+  // Le raccrochage complet : la partie, le champ, l'entrée, la fée — et le
+  // bouquet du niveau, comme base/Aventure.initStep(0) le rejoue à chaque fois.
+  const bloc = js.match(/if \(nom === 'niveauDonjon' && this\.lieu\) \{[\s\S]*?\n    \}/);
+  assert.ok(bloc, 'le gestionnaire niveauDonjon existe');
+  for (const attendu of [
+    'this.jeu = this.lieu.jeu', 'this.champ = this.lieu.champ',
+    'this.jeu.entree = this.entree', 'this.fee = this.lieu.fi',
+    'this.commencerOuverture(',
+  ]) {
+    assert.ok(bloc[0].indexOf(attendu) >= 0, 'niveauDonjon : ' + attendu);
+  }
+  // Et entre deux niveaux, la halte d'évolution de tryToCloseGame — le
+  // panneau de choix s'ouvre dans le donjon aussi quand la fée peut monter.
+  const html = fsMod.readFileSync(
+    path.join(__dirname, '..', 'public/minipixiz/index.html'), 'utf8');
+  const halte = html.match(/if \(info && info\.gagne && lieu && !lieu\.fini\) \{[\s\S]*?ouvrirEvolution/);
+  assert.ok(halte, 'le panneau de montée de niveau s\'ouvre entre deux niveaux');
+  assert.match(html, /client\.commencerOuverture\(\(\(client\.lieu[\s\S]*?\.level\) \|\| 0\) \+ 1\)/,
+    'et le bouquet du niveau suivant repart après le choix');
+});
+
+test('le panneau d\'évolution n\'affiche rien sans survol', () => {
+  const fsMod = require('fs');
+  const path = require('path');
+  const js = fsMod.readFileSync(
+    path.join(__dirname, '..', 'public/minipixiz/game.js'), 'utf8');
+  // Le retour des joueurs : la description du sort s'écrivait d'office. Elle
+  // ne suit plus que la case désignée — comme la bulle Mc.makeHint d'origine.
+  assert.ok(js.indexOf('quoi = resumes[1] ? 1 : 0') < 0,
+    'plus de description par défaut');
+  assert.match(js, /sv !== null && sv !== undefined && resumes\[sv\]/,
+    'la bande du bas ne s\'écrit qu\'au survol');
+  // Le nom vit dans le bandeau, à la place de « Faites votre choix ! » —
+  // c'est le fieldName du jeu (initExpSlot.onRollOver).
+  assert.match(js, /noms\[sv\]\) \|\| 'Faites votre choix !'/);
+  // Au doigt, le premier appui sur une case vaut survol, le second confirme.
+  const toucher = js.match(/if \(this\.evolution\) \{[\s\S]*?preventDefault[\s\S]*?survole = c\.i;/);
+  assert.ok(toucher, 'l\'appui de désignation existe au toucher');
+});
+
 test('le dernier niveau du donjon lâche deux démons', () => {
   const { c, fs } = carte({ rang: 3 });
   const d = new X.Donjon({ carte: c, fee: fs, graine: 7 });

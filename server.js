@@ -9948,6 +9948,31 @@ const FRESH_MINIPIXIZ_SLOT0 = JSON.stringify({
 // payload — anchor Cm.card on formatFruticard() defaults and the UI
 // appears reset every session. This function pads in those defaults
 // without disturbing any value the player has already accumulated.
+/*
+ * Déroule le mojibake « Ã©… » : de l'UTF-8 relu en Latin-1, parfois sur
+ * PLUSIEURS couches — chaque aller-retour entre le pipe du SWF (escape/
+ * unescape Flash, sémantique par octet) et le chemin JSON du light pouvait en
+ * rajouter une, d'où les chaînes « n'a pas rÃ...Â...Ã...Â... » du courrier.
+ * On ne touche qu'aux chaînes qui portent la signature (« Ã » ou « Â » suivi
+ * d'un octet de continuation UTF-8 relu en Latin-1 : 0x80-0xBF, ou d'une
+ * voyelle accentuée issue d'un octet de tête 0xC0-0xFF) et on s'arrête dès
+ * que le décodage cesse d'être un vrai UTF-8 — un texte français légitime
+ * n'a jamais cette forme, il ressort intact.
+ */
+function demojibake(s) {
+  let cur = String(s == null ? '' : s);
+  for (let i = 0; i < 6; i++) {
+    // Un U+00C2 ou U+00C3 suivi d'un caractere 0x80-0xFF relu en Latin-1 :
+    // la trace d'un octet de tete UTF-8 mal decode.
+    if (!/[\u00C2\u00C3][\u0080-\u00FF]/.test(cur)) break;
+    let d;
+    try { d = Buffer.from(cur, 'latin1').toString('utf8'); } catch { break; }
+    if (!d || d === cur || d.includes('�')) break;
+    cur = d;
+  }
+  return cur;
+}
+
 function padMinipixizSlot0(jsonStr) {
   if (!jsonStr || typeof jsonStr !== 'string') return jsonStr;
   let obj;
@@ -9999,11 +10024,13 @@ function padMinipixizSlot0(jsonStr) {
   if (!Array.isArray(obj.$faerie)) obj.$faerie = [];
   // $current is null when nothing is selected (not 0)
   if (obj.$current === undefined) obj.$current = null;
-  // Dé-doublonnage par nom : la même fée ne doit JAMAIS apparaître deux fois.
-  // Filet anti-« dédoublement » (la fée se clonait à chaque bocal), cohérent
-  // avec l'identité-par-nom de mergeFaerieByIdentity. On garde la 1re occurrence
-  // (déjà fusionnée). Les fées sans nom (vieux stubs) sont conservées telles
-  // quelles (identité par index).
+  // Dé-doublonnage : la MÊME fée ne doit JAMAIS apparaître deux fois. Filet
+  // anti-« dédoublement » (la fée se clonait à chaque bocal), cohérent avec
+  // l'identité de mergeFaerieByIdentity : le nom PLUS la peau (identiteFee) —
+  // le nom seul supprimait une vraie fée dès que le bassin tirait un nom déjà
+  // porté (le « déplacer le bocal l'a supprimée » de 3l_professor). On garde
+  // la 1re occurrence d'un vrai clone (déjà fusionnée). Les fées sans nom
+  // (vieux stubs) sont conservées telles quelles (identité par index).
   //
   // Et on RECALE la main : `$current` est un index, pas un nom. Retirer une
   // entrée devant elle faisait désigner au joueur une autre fée — ou le vide,
@@ -10030,6 +10057,15 @@ function padMinipixizSlot0(jsonStr) {
   // $help defaults to [true,true,true] (all three hints enabled for new users)
   if (!Array.isArray(obj.$help) || obj.$help.length < 3) obj.$help = [true, true, true];
   if (!Array.isArray(obj.$mis))     obj.$mis     = [];
+  // Les textes de mission STOCKÉS ($mis[].$string) sont le seul français à
+  // accents qui voyage entre le pipe du SWF et le JSON du light : on déroule
+  // ici le mojibake accumulé — la fiche se répare d'elle-même au chargement
+  // suivant, et l'amplification devient impossible.
+  for (const m of obj.$mis) {
+    if (m && typeof m === 'object' && typeof m.$string === 'string') {
+      m.$string = demojibake(m.$string);
+    }
+  }
   if (typeof obj.$wind !== 'number')obj.$wind    = 0;
   if (!Array.isArray(obj.$god) || obj.$god.length < 3) obj.$god = [false, false, false];
   if (!obj.$time || typeof obj.$time !== 'object') obj.$time = { $t: Date.now(), $d: 0, $s: 0 };
@@ -10192,7 +10228,10 @@ function parseMinipixizPipe(s) {
         $d: Number(seg[0]) || 0,
         $gift: numOrNull(seg[1]),
         $type: Number(seg[2]) || 0,
-        $string: seg.length > 3 ? unesc(seg.slice(3).join('~')) : '',
+        // demojibake : selon les versions du lecteur, escape() encode l'octet
+        // Latin-1 OU les octets UTF-8 — dans ce second cas, l'unescape par
+        // octet fabrique du « Ã© ». On déroule au seuil.
+        $string: seg.length > 3 ? demojibake(unesc(seg.slice(3).join('~'))) : '',
       };
     });
   }
@@ -11181,6 +11220,15 @@ app.all('/api/loadFrutiSlots', async (req, res) => {
         let outVal = val;
         if ((game === 'minipixiz' || game === 'minitroll') && key === '0') {
           outVal = padMinipixizSlot0(val);
+          // Emission 100 % ASCII : les accents partent en echappements JSON
+          // (\u00e9), valides pour TOUS les lecteurs — le JSON.parse du light
+          // comme un eventuel eval du SWF. Le pourcent-encodage ne porte plus
+          // un seul octet non-ASCII : plus aucune ambiguite entre l'unescape
+          // Flash (par octet) et decodeURIComponent (UTF-8), c'etait la
+          // fabrique du « Ã© » du courrier. (JSON : le non-ASCII ne vit que
+          // dans les litteraux de chaine, l'echappement global est sur.)
+          outVal = outVal.replace(/[\u0080-\uffff]/g,
+            (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
         }
         response += `&slot${key}=${encodeURIComponent(outVal)}`;
       }

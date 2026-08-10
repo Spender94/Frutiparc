@@ -247,12 +247,17 @@ class Donjon extends Lieu {
     }
     this.level++;
     this.donnerExp(this.level * (this.difficulte + 1));
-    this.evenement('niveauDonjon', { niveau: this.level });
     // On rejoue, en gardant la fée telle qu'elle est sortie du niveau.
     const fee = this.champ.faerieList[0];
     this.fee = fee ? fee.fi.fs : this.fee;
     this.graine = this.graine + 1;
     this.commencer();
+    // L'annonce part une fois la partie neuve EN PLACE : le client s'y
+    // raccroche en la recevant. Émise avant commencer(), elle lui faisait
+    // reprendre le moteur du niveau fini — l'écran restait figé sur la
+    // grille vide pendant que la suite se jouait en aveugle, sans retour
+    // possible à la clairière.
+    this.evenement('niveauDonjon', { niveau: this.level });
   }
 
   /**

@@ -1280,10 +1280,15 @@ class Client {
     }
     // Un lieu qui enchaîne ses niveaux (le donjon) remonte une partie neuve :
     // il faut la reprendre, sans quoi on continuerait de dessiner l'ancienne.
+    // L'événement arrive une fois le nouveau moteur en place (lieux.js), la
+    // fée comprise. Et le niveau s'annonce sur son bouquet, comme à l'entrée :
+    // base/Aventure.initStep(0) rejoue initBouquet à CHAQUE niveau du donjon.
     if (nom === 'niveauDonjon' && this.lieu) {
       this.jeu = this.lieu.jeu;
       this.champ = this.lieu.champ;
       this.jeu.entree = this.entree;
+      if (this.lieu.fi) this.fee = this.lieu.fi;
+      this.commencerOuverture(((d && d.niveau) || 0) + 1);
     }
     // Les marges sont celles de la PARTIE, pas du module : l'arbre creux décale
     // son aire de quarante-huit pixels pour laisser la place au tronc.
@@ -2201,9 +2206,12 @@ class Client {
         resumes[1] = (sort && sort.description && sort.description()) || null;
       }
     }
-    // expPanel.fieldName : « Faites votre choix ! », remplacé au survol par le
-    // nom de ce qu'on désigne. Au doigt il n'y a pas de survol : on écrit les
-    // deux, sous leur case.
+    // expPanel.fieldName : « Faites votre choix ! », REMPLACÉ au survol par le
+    // nom de ce qu'on désigne, et rendu au rollOut (initExpSlot.onRollOver).
+    // Rien d'autre ne s'écrit sans survol — c'est le jeu d'origine, et c'est ce
+    // que les joueurs ont redemandé. Au doigt, le premier appui sur une case
+    // vaut survol (voir brancherToucher), le suivant confirme.
+    const sv = this.evolution.survole;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     // L'illustration est chargée : sans liseré, le texte s'y perd.
@@ -2215,36 +2223,29 @@ class Client {
       ctx.fillText(t, x, y);
     };
     ctx.font = 'bold 9px Verdana, Arial, sans-serif';
-    ecrire('Faites votre choix !', SCENE * 0.5, SCENE * 0.5 - 38);
+    ecrire((sv === null || sv === undefined ? null : noms[sv]) || 'Faites votre choix !',
+      SCENE * 0.5, SCENE * 0.5 - 38);
+    // La case sans offre garde sa note grise : nue, muette et sans survol, on
+    // la prendrait pour un écran gelé.
     ctx.font = 'bold 8px Verdana, Arial, sans-serif';
     for (const c of this.casesEvolution()) {
-      const texte = noms[c.i] || (c.i === 1 ? 'rien à apprendre' : null);
-      if (!texte) continue;
-      // La case sans offre s'écrit en gris : elle se lit, mais ne se propose pas.
-      const terne = !noms[c.i];
-      for (const [k, ligne] of decouperTexte(ctx, texte, 84).entries()) {
-        if (terne) {
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = 'rgba(24,12,40,.7)';
-          ctx.strokeText(ligne, c.x, c.y + 34 + k * 9);
-          ctx.fillStyle = 'rgba(255,238,184,.5)';
-          ctx.fillText(ligne, c.x, c.y + 34 + k * 9);
-        } else {
-          ecrire(ligne, c.x, c.y + 34 + k * 9);
-        }
+      if (noms[c.i] || c.i !== 1) continue;
+      for (const [k, ligne] of decouperTexte(ctx, 'rien à apprendre', 84).entries()) {
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(24,12,40,.7)';
+        ctx.strokeText(ligne, c.x, c.y + 34 + k * 9);
+        ctx.fillStyle = 'rgba(255,238,184,.5)';
+        ctx.fillText(ligne, c.x, c.y + 34 + k * 9);
       }
     }
 
     // `Mc.makeHint(mc, …, 120)` — la bulle du jeu d'origine, qui dit CE QUE
-    // fait le point de caractéristique ou le sort. Au bureau elle suit le
-    // survol, et on fait pareil ; au doigt il n'y a pas de survol, alors on
-    // montre celle du sort — c'est la seule des deux qu'un joueur ne peut pas
-    // deviner à son nom.
-    let quoi = this.evolution.survole;
-    if (quoi === null || quoi === undefined) quoi = resumes[1] ? 1 : 0;
-    if (resumes[quoi]) {
+    // fait le point de caractéristique ou le sort. Elle SUIT le survol, elle
+    // ne s'affiche pas d'office : sans case désignée, la bande du bas reste
+    // vide.
+    if (sv !== null && sv !== undefined && resumes[sv]) {
       ctx.font = '8px Verdana, Arial, sans-serif';
-      const lignes = decouperTexte(ctx, resumes[quoi], 212);
+      const lignes = decouperTexte(ctx, resumes[sv], 212);
       // Le bas de la scène, sous les deux cases : la bande commence assez haut
       // pour tenir quatre lignes sans jamais mordre sur les noms.
       let y = SCENE - 8 - lignes.length * 9;
@@ -3072,6 +3073,24 @@ class Client {
       && !this.gromelin && !this.evolution && !this.pause && !this.cine;
 
     this.canvas.addEventListener('touchstart', (ev) => {
+      // Le panneau de montée de niveau n'a pas de survol au doigt : le PREMIER
+      // appui sur une case la désigne — son nom dans le bandeau, sa
+      // description en bas, comme au passage de la souris — et l'appui suivant
+      // sur la même case confirme (le clic synthétisé fait alors le choix).
+      if (this.evolution) {
+        const t0 = ev.changedTouches[0];
+        if (!t0) return;
+        const p = scene(t0);
+        const c = this.casesEvolution().find((q) => Math.abs(p.x - q.x) <= 30
+          && Math.abs(p.y - q.y) <= 30);
+        if (c && this.evolution.survole !== c.i) {
+          ev.preventDefault();         // pas de clic synthétisé : pas de choix
+          this.evolution.survole = c.i;
+        } else if (!c) {
+          this.evolution.survole = null;
+        }
+        return;
+      }
       if (!enJeu()) return;            // les écrans gardent leurs clics
       const t = ev.changedTouches[0];
       if (this.doigt) return;          // un seul doigt pilote
