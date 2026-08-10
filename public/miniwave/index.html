@@ -489,6 +489,13 @@
           + (l.mode === 'survival' ? ('palier ' + (info.level + 1)) : ('niveau ' + (info.level + 1)));
         $('#fin-pictos').textContent = '';
         $('#fin').classList.add('on');
+        // L'ARCADE est le mode classé : son score part au challenge du jour à
+        // chaque fin de partie, avec le NIVEAU atteint en donnée (le moteur
+        // compte les niveaux à partir de zéro, l'affichage et le classement à
+        // partir de un — comme la ligne de score juste au-dessus).
+        if ((l.mode || 'arcade') === 'arcade') {
+          plateforme.envoyerScore(info.score, (Number(info.level) || 0) + 1);
+        }
         // La fiche part au serveur : les éliminations s'ajoutent à celles des
         // parties précédentes, les records montent, les crédits s'accumulent.
         // C'est de là que le serveur tire les pictos, puis la consécration.

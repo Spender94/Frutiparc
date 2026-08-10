@@ -145,13 +145,21 @@ test('le mode Championnat (m=1) nourrit aussi le freestyle', async () => {
 
 // ── Le Club (bureau) : l'onglet piloté serveur ────────────────────────────
 
-test('la table des classements du bureau porte la ligne Kaluga Freestyle', () => {
+test('le freestyle vit dans les records, pas dans le tableau des scores', async () => {
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  assert.match(src,
-    /\{ rk: '12', internal: 'kaluga_freestyle', ty: 'point',\s+rn: 'Kaluga Freestyle', gs: '4', g: 'kaluga', section: 'L' \}/,
-    'la ligne rk 12 en section L — record permanent, comme les Contest');
+  // La cuve existe (c'est elle que le livre des records et /api/club/records
+  // itèrent) …
   assert.match(src, /kaluga_freestyle:\s+\{ name: 'Kaluga - Freestyle',\s+game: 'kaluga',\s+type: 'L' \}/,
-    'et la cuve dans RANKINGS');
+    'la cuve dans RANKINGS');
+  // … mais AUCUNE ligne de la table du bureau ne la porte : décision
+  // d'exploitation, pour garder le tableau des scores lisible pendant
+  // l'animation des classements pilotes.
+  assert.doesNotMatch(src, /\{ rk: '\d+', internal: 'kaluga_freestyle'/,
+    'pas d\'onglet dans le tableau des scores du bureau');
+  // La preuve par l'usage : les scores freestyle sont bien là où on les
+  // attend — au livre des records — même sans onglet au bureau.
+  const c = await cuves();
+  assert.ok(c.kaluga_freestyle, 'la cuve répond toujours à /api/club/records');
   // La section L échappe à la remise à zéro quotidienne (et à ses médailles).
   assert.match(src, /section === 'C' && r\.internal && r\.internal !== 'bkiwi_track5_classic'/,
     'DAILY_RESET_RANKING_SET ne prend que la section C');

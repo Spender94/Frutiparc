@@ -1149,6 +1149,20 @@ const RANKINGS = {
   swapou2_classic:  { name: 'Swapou - Classique',      game: 'swapou2',  type: 'C' },
   mb2_classic:      { name: 'MotionBall - Classique',  game: 'mb2',      type: 'C', lowerIsBetter: true },
   jamajama_classic: { name: 'JamaJama - Classique',    game: 'jamajama', type: 'C', lowerIsBetter: true },
+  // ── Les deux classements PILOTES (animation) ─────────────────────────────
+  // Deux modes qui n'avaient aucun classement : on les ouvre au challenge du
+  // jour pour voir si les joueurs s'y investissent. Section 'C' dans
+  // LEGACY_RANKINGS → remise à zéro quotidienne, médailles et kikooz comme les
+  // autres. Aucun quota FD (ils ne sont pas dans FD_LIMITED_GAMES) : rationner
+  // un mode qu'on veut faire découvrir serait contre-productif.
+  //
+  //   · MiniPixiz — l'ARBRE CREUX (base/Tree) : le seul lieu qui se joue sans
+  //     fée, pour le score pur. L'échelle du jeu lui-même (Cs.treeLimit, les
+  //     pictos $pixiz_treeMax) place le très bon score autour de 8 000.
+  //   · MiniWave — l'ARCADE : le grand parcours de 200 vagues. Le score
+  //     classe, le NIVEAU atteint voyage dans la donnée et s'affiche à côté.
+  minipixiz_classic: { name: 'MiniPixiz - Arbre creux', game: 'minipixiz', type: 'C' },
+  miniwave_classic:  { name: 'MiniWave - Arcade',       game: 'miniwave',  type: 'C' },
   bkiwi_track0_challenge: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 0 },
   bkiwi_track1_challenge: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 1 },
   bkiwi_track2_challenge: { name: 'Burning Kiwi - Terre Grise', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 2 },
@@ -1203,6 +1217,15 @@ const LEGACY_RANKINGS = [
   // (section C) à bandas_challenge/grapiz_challenge.
   { rk: '5', internal: 'bandas_challenge', ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'C' },
   { rk: '6', internal: 'grapiz_challenge', ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'C' },
+  // Les deux PILOTES. gs='1' (le gabarit de colonnes de Frutisnake : un simple
+  // score, sans colonne annexe) à dessein — les gabarits qui portent une
+  // seconde colonne y logent une IMAGE chargée depuis /sd/<nom>.swf (le
+  // tzongre de Kaluga, le perso de Swapou), pas du texte : le niveau d'arcade
+  // n'y entrerait pas. Il s'affiche donc là où on maîtrise le rendu (l'onglet
+  // Challenge du light et le livre des records), et le bureau montre les
+  // points. g='minipixiz'/'miniwave' : fileIcon.swf connaît déjà les deux.
+  { rk: '13', internal: 'minipixiz_classic', ty: 'point',     rn: 'Pixiz Arbre creux', gs: '1', g: 'minipixiz', section: 'C' },
+  { rk: '14', internal: 'miniwave_classic',  ty: 'point',     rn: 'MiniWave Arcade',   gs: '1', g: 'miniwave',  section: 'C' },
   // Classement Kikooz : ce n'est PAS un jeu mais un classement « joueur » (comme
   // l'XP / la consécration), monté ici dans la liste pilotée serveur pour
   // apparaître comme un onglet supplémentaire dans main.swf sans toucher au SWF.
@@ -1222,12 +1245,12 @@ const LEGACY_RANKINGS = [
   // jeu dans fileIcon.swf.
   { rk: '10', internal: 'snake3_contest',  ty: 'point',       rn: 'Frutisnake Contest', gs: '1', g: 'snake3', section: 'L' },
   { rk: '11', internal: 'swapou2_contest', ty: 'point',       rn: 'Swapou Contest', gs: '3', g: 'swapou2', section: 'L' },
-  // Kaluga « Freestyle » — le record permanent SANS grappe (voir RANKINGS).
-  // Section 'L' à dessein, comme les Contest : un record de longue haleine,
-  // pas balayé par la remise à zéro quotidienne de la section 'C' et sans
-  // médailles du jour supplémentaires. gs='4' réutilise les colonnes de score
-  // Kaluga (le tzongre joué), g='kaluga' l'icône du jeu dans fileIcon.swf.
-  { rk: '12', internal: 'kaluga_freestyle', ty: 'point',      rn: 'Kaluga Freestyle', gs: '4', g: 'kaluga', section: 'L' },
+  // Kaluga « Freestyle » (le record SANS grappe) n'a PAS de ligne ici : il
+  // reste dans RANKINGS — donc au livre des records du Club et à l'API des
+  // records, qui itèrent RANKINGS — mais ne prend pas d'onglet dans le tableau
+  // des scores du bureau. Décision d'exploitation : garder la table lisible
+  // pendant l'animation des deux classements pilotes. Lui rendre son onglet
+  // tient en une ligne (rk '12', ty 'point', gs '4', g 'kaluga', section 'L').
   // Section L = "Championnat" in front-end — plus aucun classement réel
   { rk: '7', internal: null,                ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
@@ -1398,6 +1421,68 @@ function persistKalugaFreestyle(username, rankingId, fdDirect, scoreVal, scoreDa
   const r = persistScore(username, 'kaluga_freestyle', scoreVal, scoreData);
   console.log(`[${voie}] ${username} kaluga_freestyle: ${r.oldScore} -> ${r.newScore} (updated=${r.updated}, sans grappe, g=${grappe})`);
   return r;
+}
+
+// Le parcours d'arcade compte 200 vagues (public/miniwave/levels.json) : c'est
+// une règle EXACTE du jeu, pas une estimation — au-delà, le niveau est
+// impossible, et pas seulement improbable.
+const MINIWAVE_NIVEAU_MAX = 200;
+
+/**
+ * Le NIVEAU d'une partie d'arcade MiniWave, lu dans la donnée de score.
+ *
+ * Le portage envoie le niveau ATTEINT (1 à 200 — `level` est un index côté
+ * moteur, le client ajoute le 1 comme partout ailleurs dans son affichage).
+ * Renvoie null si la donnée ne dit rien de lisible : le score reste classé, il
+ * s'affiche simplement sans mention de niveau.
+ */
+function parseMiniwaveNiveau(raw) {
+  const m = String(raw == null ? '' : raw).trim().match(/^(\d{1,3})$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return (n >= 1 && n <= MINIWAVE_NIVEAU_MAX) ? n : null;
+}
+
+// ── Les garde-fous de plausibilité des classements pilotes ────────────────
+//
+// Dans MiniPixiz et MiniWave, le score est calculé par le NAVIGATEUR : un
+// joueur déterminé peut le forger. Le précédent existe (le portage web de
+// Swapou enregistre déjà ainsi), mais une animation avec médailles à la clé
+// mérite des rails. Ce ne sont PAS des plafonds de jeu : ils sont posés très
+// au-dessus de ce qu'une partie humaine produit, pour n'écarter que l'absurde.
+//
+//   · Arbre creux — l'échelle du jeu lui-même (Cs.treeLimit, le dernier picto
+//     à 8 000) situe l'exploit vers 10 000. Le rail est vingt-cinq fois plus
+//     haut : aucune partie honnête ne le touchera.
+//   · Arcade — le score est borné RELATIVEMENT au niveau atteint (lui-même
+//     plafonné par les 200 vagues du parcours, cf. MINIWAVE_NIVEAU_MAX) :
+//     forger un million de points en restant au niveau 1 ne passe pas, là où
+//     un plafond absolu seul laisserait faire.
+const PILOTE_PLAFONDS = {
+  minipixiz_classic: { max: 200000 },
+  miniwave_classic:  { max: 4000000, parNiveau: 20000 },
+};
+
+/**
+ * @returns {string|null} la raison du refus, ou null si le score peut passer.
+ */
+function raisonScoreImplausible(rankingId, score, data) {
+  const p = PILOTE_PLAFONDS[rankingId];
+  if (!p) return null;
+  const n = Number(score);
+  if (!Number.isFinite(n) || n < 0) return 'score illisible';
+  if (n > p.max) return `score au-delà du plafond (${n} > ${p.max})`;
+  if (p.parNiveau !== undefined) {
+    // Le niveau est facultatif à l'affichage, mais une donnée présente et
+    // ILLISIBLE ne doit pas ouvrir une porte : sans niveau lisible, on borne
+    // le score comme si le joueur en était au premier.
+    const niveau = parseMiniwaveNiveau(data);
+    const brut = String(data == null ? '' : data).trim();
+    if (brut !== '' && niveau === null) return `niveau illisible (${brut.slice(0, 20)})`;
+    const plafond = (niveau === null ? 1 : niveau) * p.parNiveau;
+    if (n > plafond) return `score incohérent avec le niveau (${n} > ${plafond} au niveau ${niveau === null ? 1 : niveau})`;
+  }
+  return null;
 }
 
 function extractBkiwiTrack(rawData) {
@@ -3406,6 +3491,30 @@ const GAME_DISPLAY_NAMES = {
   bandas: 'Frutibandas', grapiz: 'Grapiz', minipixiz: 'MiniPixiz',
 };
 const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
+
+/**
+ * La VIGNETTE de médaille du bureau, pour un jeu donné.
+ *
+ * Le dessin est piloté par public/awards.swf : `gotoAndStop(<vignette>)` choisit
+ * le jeu, `ico.gotoAndStop(<rang>)` la couleur (or / argent / bronze). Le
+ * fichier porte les 22 vignettes du catalogue de 2006, et leurs noms coïncident
+ * avec nos clés de jeu pour tous les classements historiques (snake3, mb2,
+ * swapou2, kaluga, bkiwi, bandas, grapiz) — d'où l'envoi direct de `g`.
+ *
+ * Les deux pilotes ont besoin d'une traduction :
+ *   · miniwave  → « wave » : la vignette d'époque de MiniWave (le vaisseau)
+ *                 existe telle quelle, elle n'attendait qu'un classement ;
+ *   · minipixiz → « tris » : MiniPixiz est né après awards.swf, il n'y a donc
+ *                 pas de vignette à son nom. On emprunte celle de Tris le temps
+ *                 du pilote (choix d'exploitation, pas un défaut) ; le jour où
+ *                 on dessine la vraie, seule cette ligne change.
+ *
+ * Un nom ABSENT du fichier n'affiche pas la médaille d'un autre jeu : le clip
+ * reste sur sa première image, un disque vert vide. C'est sans danger, mais
+ * sans médaille — d'où cette table.
+ */
+const MEDAL_AWARD_FRAME = { miniwave: 'wave', minipixiz: 'tris' };
+const medalAwardFrame = (game) => MEDAL_AWARD_FRAME[String(game || '').toLowerCase()] || game;
 // Récompense kikooz d'une médaille du challenge du jour (versée UNE fois, au roll
 // quotidien) : or → 15, argent → 10, bronze → 5.
 const MEDAL_KIKOOZ = { or: 15, argent: 10, bronze: 5 };
@@ -5447,6 +5556,15 @@ async function handleSaveScore(req, res) {
   let rankingId = rankingIdForGame(gameName, mode);
   if (!rankingId) {
     return res.status(400).json({ ok: false, error: 'unknown_game', game: gameName });
+  }
+  // Garde-fou de plausibilité des classements pilotes (score calculé par le
+  // navigateur). On refuse AVANT toute écriture, et sans consommer de FD.
+  {
+    const refus = raisonScoreImplausible(rankingId, scoreVal, scoreData);
+    if (refus) {
+      console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} REFUSÉ — ${refus}`);
+      return res.status(400).json({ ok: false, error: 'implausible_score', rankingId, raison: refus });
+    }
   }
   let extraResult = null;
   let extraRankingId = null;
@@ -15003,10 +15121,18 @@ app.get('/api/club/consecration', async (req, res) => {
 // /light client stays dumb: BKiwi is a chrono (ms → m:ss.cc), MotionBall packs
 // the completion % in its score (((score % 100) + 1)%), everything else is a
 // plain point total with a French thousands separator.
-function formatChallengeScoreLabel(rankingId, score) {
+function formatChallengeScoreLabel(rankingId, score, data) {
   const meta = RANKINGS[rankingId] || {};
   const n = Number(score);
   if (!Number.isFinite(n)) return String(score == null ? '' : score);
+  // MiniWave Arcade : le score classe, mais c'est le NIVEAU atteint qui dit la
+  // performance — il voyage dans la donnée de score et s'affiche à côté des
+  // points. (Le tableau du bureau, lui, n'a pas de colonne de texte libre à
+  // offrir : il montre les points seuls — cf. LEGACY_RANKINGS, gs='1'.)
+  if (rankingId === 'miniwave_classic') {
+    const niveau = parseMiniwaveNiveau(data);
+    return n.toLocaleString('fr-FR') + (niveau !== null ? ` · niveau ${niveau}` : '');
+  }
   if (meta.game === 'bkiwi') {
     const pad = (x) => (x < 10 ? '0' + x : '' + x);
     const minutes = Math.floor(n / 60000);
@@ -15042,6 +15168,9 @@ app.get('/api/light/challenge', async (req, res) => {
     { game: 'snake3',  ranking: 'snake3_classic' },
     { game: 'mb2',     ranking: 'mb2_classic' },
     { game: 'kaluga',  ranking: 'kaluga_classic' },
+    // Les deux pilotes de l'animation (cf. RANKINGS).
+    { game: 'minipixiz', ranking: 'minipixiz_classic' },
+    { game: 'miniwave',  ranking: 'miniwave_classic' },
   ];
   // Podium de la veille par jeu : on lit les médaillés déjà résolus en mémoire
   // (medalsByVisibleDay[hier], alimenté au boot depuis la DB / le JSON puis à
@@ -15072,7 +15201,7 @@ app.get('/api/light/challenge', async (req, res) => {
     const scores = all.slice(0, limit).map((e) => ({
       user: getDisplayName(e.u),
       score: e.s,
-      label: formatChallengeScoreLabel(rkId, e.s),
+      label: formatChallengeScoreLabel(rkId, e.s, e.data),
       isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
     }));
     return {
@@ -20856,7 +20985,7 @@ case 'createchannel': {
         seenMedalGame.add(medal.game);
         const gameName = GAME_DISPLAY_NAMES[medal.game] || medal.game;
         const medalName = MEDAL_DISPLAY_NAMES[medal.medal] || medal.medal;
-        inner += `<a g="${escapeXml(medal.game)}" n="${escapeXml(`Médaille ${medalName} - ${gameName} (${medal.awarded_day})`)}" v="${medal.rank}" d="1" />`;
+        inner += `<a g="${escapeXml(medalAwardFrame(medal.game))}" n="${escapeXml(`Médaille ${medalName} - ${gameName} (${medal.awarded_day})`)}" v="${medal.rank}" d="1" />`;
       }
       sendToClient(socket, `<${CMD.awarduser}${rAttr} u="${escapeXml(getDisplayName(targetUser))}">${inner}</${CMD.awarduser}>`);
       const medalSummary = allMedals.map(m => `${m.game}:rank${m.rank}=${m.medal}`).join(',');

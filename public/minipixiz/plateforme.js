@@ -548,6 +548,31 @@ class Plateforme {
     return this.ecrire(avant || base);
   }
 
+  /**
+   * Le score d'une partie part au classement du jour.
+   *
+   * Le challenge quotidien veut le meilleur score DU JOUR, pas le record
+   * personnel : on envoie donc à CHAQUE fin de partie, et c'est le serveur qui
+   * garde le meilleur (persistScore). N'envoyer qu'au record personnel
+   * priverait de classement le joueur déjà bien installé.
+   *
+   * Sans session (le jeu ouvert hors du site), il n'y a personne à classer.
+   *
+   * @param {number} score
+   * @param {string} [donnee]  la donnée annexe du classement (vide ici)
+   */
+  envoyerScore(score, donnee) {
+    const n = Math.max(0, Math.round(Number(score) || 0));
+    if (!this.sid || n <= 0) return Promise.resolve({ ok: false });
+    const p = new URLSearchParams({
+      sid: this.sid, game: 'minipixiz', m: '0', score: String(n),
+      data: donnee === undefined || donnee === null ? '' : String(donnee),
+    });
+    return fetch('/api/saveScore?' + p.toString())
+      .then((r) => r.json())
+      .catch(() => ({ ok: false }));
+  }
+
   // Où le joueur peut reprendre : les relais acquis, tous les vingt niveaux
   // (base/Forest.initCheckpoint). Le premier est toujours ouvert.
   departs() {

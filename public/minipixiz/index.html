@@ -922,6 +922,14 @@
             // Gagné (le donjon vidé), il n'y a pas de panneau : on rentre.
             if (nom === 'rideau') { ouvrirMenu(); return; }
             if (nom !== 'finPartie') return;
+            // L'ARBRE CREUX est le mode classé : son score part au challenge du
+            // jour à CHAQUE fin de partie, et le serveur garde le meilleur.
+            // C'est le score de l'arbre (base/Tree : les grappes fois le
+            // multiplicateur), pas celui du moteur de puzzle — d'où la lecture
+            // sur le lieu et non sur `info`.
+            if (classe === 'Arbre' && client.lieu && client.lieu.score > 0) {
+              plateforme.envoyerScore(client.lieu.score);
+            }
             plateforme.ecrire(avant);
             // `finPartie` marque la fin d'un NIVEAU, pas celle du lieu.
             // base/Dungeon.setWin enchaîne ses dix niveaux d'affilée — `level+=1`

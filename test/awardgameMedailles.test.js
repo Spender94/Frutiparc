@@ -150,3 +150,41 @@ test('grapiz et bandas rendent le podium de la veille, comme les jeux à classic
     c.fermer();
   }
 });
+
+// ── Les deux classements pilotes décrochent de vraies médailles ───────────
+//
+// Ils sont en section C : le roll quotidien leur distribue or/argent/bronze
+// comme aux autres. Reste à vérifier que le bureau reçoit une VIGNETTE qui
+// existe — MiniPixiz est né après awards.swf, il emprunte celle de Tris ;
+// MiniWave a la sienne d'origine (« wave »).
+
+test('Arbre creux et Arcade décrochent des médailles, avec une vignette valide', async () => {
+  for (const [jeu, rk] of [['minipixiz', 'minipixiz_classic'], ['miniwave', 'miniwave_classic']]) {
+    await semer(joueur(jeu.slice(0, 2) + 'p1'), rk, 900);
+    await semer(joueur(jeu.slice(0, 2) + 'p2'), rk, 600);
+    await semer(joueur(jeu.slice(0, 2) + 'p3'), rk, 300);
+  }
+  assert.ok((await fetch(BASE + '/api/admin/challenge/roll', { method: 'POST', headers: hdr })).ok,
+    'roll forcé');
+
+  const c = await socketScore(joueur('temoin'));
+  try {
+    // Le podium du bureau, jeu par jeu.
+    for (const [jeu, prefixe] of [['minipixiz', 'mi'], ['miniwave', 'mi']]) {
+      c.envoyer(`<ha r="8" g="${jeu}" />`);
+      const t = await c.attendre((x) => x.startsWith('<ha') && x.includes(`g="${jeu}"`), `podium ${jeu}`);
+      assert.equal(medailles(t).length, 3, `${jeu} : trois marches (${t.slice(0, 160)})`);
+    }
+    // Et la fiche du médaillé d'or : c'est là que la VIGNETTE est choisie.
+    for (const [jeu, vignette] of [['minipixiz', 'tris'], ['miniwave', 'wave']]) {
+      const or = joueur(jeu.slice(0, 2) + 'p1');
+      c.envoyer(`<hb r="9" u="${or}" />`);
+      const t = await c.attendre((x) => x.startsWith('<hb') && x.includes(or), `médailles de ${or}`);
+      assert.match(t, new RegExp(`<a g="${vignette}"`),
+        `${jeu} pointe sur la vignette « ${vignette} » (${t.slice(0, 200)})`);
+      assert.match(t, /v="1"/, 'et c\'est bien l\'or');
+    }
+  } finally {
+    c.fermer();
+  }
+});

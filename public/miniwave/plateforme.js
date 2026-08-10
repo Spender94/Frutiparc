@@ -369,6 +369,32 @@ class Plateforme {
       .catch(() => ({ enregistre: false, carte: this.carte, gagnes }));
   }
 
+  /**
+   * Le score d'une partie d'ARCADE part au classement du jour.
+   *
+   * Le challenge quotidien veut le meilleur score DU JOUR, pas le record
+   * personnel : on envoie donc à chaque fin de partie d'arcade, et c'est le
+   * serveur qui garde le meilleur. Le NIVEAU atteint voyage dans la donnée —
+   * il s'affiche à côté des points, et il sert au serveur à juger la
+   * cohérence du score.
+   *
+   * Sans session (le jeu ouvert hors du site), il n'y a personne à classer.
+   *
+   * @param {number} score
+   * @param {number} niveau  le niveau ATTEINT (1 à 200)
+   */
+  envoyerScore(score, niveau) {
+    const n = Math.max(0, Math.round(Number(score) || 0));
+    if (!this.sid || n <= 0) return Promise.resolve({ ok: false });
+    const lvl = Math.max(1, Math.min(200, Math.round(Number(niveau) || 1)));
+    const p = new URLSearchParams({
+      sid: this.sid, game: 'miniwave', m: '0', score: String(n), data: String(lvl),
+    });
+    return fetch('/api/saveScore?' + p.toString())
+      .then((r) => r.json())
+      .catch(() => ({ ok: false }));
+  }
+
   // Appelé en fin de partie.
   enregistrer(jeu) {
     const avant = this.carte;
