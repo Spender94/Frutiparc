@@ -22,6 +22,7 @@ function createBitWriter() {
         bits.push((value >> i) & 1);
       }
     },
+    bitLength() { return bits.length; },
     flush() {
       // pad to multiple of 6
       while (bits.length % 6 !== 0) {
@@ -207,6 +208,30 @@ function canHaveInvisibleDoor(bonus) {
       return true;
   }
   return false;
+}
+
+/**
+ * Clôt une PARTIE du flux (donjon → salles) en écrivant le bourrage que le
+ * next_part() du client consommera.
+ *
+ * MTBitcodec.next_part() (appelé par LevelLoader.as entre le donjon et les
+ * salles) AVANCE TOUJOURS d'un caractère base64 : il consomme le reste du
+ * caractère entamé — et un caractère ENTIER quand la partie précédente finit
+ * pile sur la frontière des 6 bits. Preuve par élimination, le SWF étant
+ * obfusqué et la lib ext/ absente du dépôt : le flux généré est bit-identique
+ * à la grammaire du client (validée sur les quatre .dat faits main, qui
+ * finissent tous HORS frontière — mod 6 = 2 ou 4 — et se jouent depuis 2006),
+ * et pourtant ~1 map générée sur 6 sortait injouable, précisément celles dont
+ * le donjon finissait ALIGNÉ (les quotidiennes des 1ᵉʳ, 4, 7 et 9 août).
+ * Items fantômes — téléporteurs et leviers, types 10/11 que ce générateur
+ * n'émet jamais — et salles aux portes closes : la signature d'une lecture
+ * décalée de 6 bits. Seul le cas « déjà aligné » restait libre dans la
+ * grammaire : c'est donc lui. Un simple bourrage à la frontière (l'ancien
+ * b.flush()) laissait alors les salles là où next_part avait déjà dépassé.
+ */
+function flushPartie(b) {
+  if (b.bitLength() % 6 === 0) b.write(6, 0);
+  b.flush();
 }
 
 function isDoorNeed(p) {
@@ -1554,7 +1579,7 @@ function levelMake() {
   const [dists, dmoy] = computeDists(ddata);
   const b = createBitWriter();
   encodeDungeon(b, ddata);
-  b.flush();
+  flushPartie(b);
 
   scan(ddata.dmap, (p, r) => {
     const roomContent = genRoomRec(
@@ -1608,7 +1633,7 @@ function levelMakeClassic(choiceRooms) {
     const ddata = makeEmptyDungeon(nrooms, choiceRooms);
     const b = createBitWriter();
     encodeDungeon(b, ddata);
-    b.flush();
+    flushPartie(b);
 
     for (let j = 0; j < nrooms; j++) {
       for (let i = 0; i < choiceRooms; i++) {
@@ -1848,7 +1873,7 @@ function assembleMake(filePath) {
   };
 
   encodeDungeon(b, d);
-  b.flush();
+  flushPartie(b);
 
   for (let rx = 0; rx < FIXED_WIDTH; rx++) {
     for (let ry = 0; ry < FIXED_HEIGHT; ry++) {

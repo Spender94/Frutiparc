@@ -468,7 +468,7 @@ test('le serveur regreffe ce que le tuyau ne transporte pas', () => {
   // Flash sur son ordinateur, et la première sauvegarde du SWF — un tuyau —
   // remplace la fiche riche par sa version amputée. Crédits envolés.
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  const i = src.indexOf('MiniWave forward-merge');
+  const i = src.indexOf('function miniwaveGreffeHorsTuyau');
   assert.ok(i > 0, 'la greffe est bien dans server.js');
   const bloc = src.slice(i, i + 2600);
   for (const champ of ['$mode', '$letter', '$survival', '$bonus', '$credit', '$stats', '$lvl']) {
@@ -480,6 +480,11 @@ test('le serveur regreffe ce que le tuyau ne transporte pas', () => {
   // sauvegarde JS se ferait écraser par l'état précédent.
   assert.ok(/venuDuTuyau\s*=\s*neuf\.\$credit === undefined && neuf\.\$mode === undefined/.test(bloc),
     'la greffe reconnaît une fiche amputée');
+  // Et la greffe court sur les DEUX chemins d'écriture : /api/saveFrutiSlot ET
+  // le fil fcardupdateslot — le trou qui vidait crédits et missions était sur
+  // le fil (miniwaveGreffeFil.test.js le rejoue de bout en bout).
+  assert.equal((src.match(/if \(miniwaveGreffeHorsTuyau\(neuf, prev\)\)/g) || []).length, 2,
+    'HTTP et fil regreffent tous deux');
 });
 
 // ── L'accrochage à la page ─────────────────────────────────────────────────

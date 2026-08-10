@@ -9892,6 +9892,48 @@ function parseMiniwavePipe(s) {
   };
 }
 
+/**
+ * MiniWave : regreffe sur une sauvegarde venue du TUYAU les champs que
+ * celui-ci ne sait pas transporter.
+ *
+ * Le SWF du bureau enregistre par une chaîne à sept champs
+ * (parseMiniwavePipe). Sept, pas plus : le solde de crédits, les modes
+ * achetés en boutique (missions, Letter Invader, Endurance), les records
+ * d'Endurance et de Letter Invader, le meilleur score d'arcade, la
+ * consécration d'arcade et les statistiques n'y tiennent pas. Le portage
+ * light, lui, envoie la fiche complète en JSON. Sans la greffe, la première
+ * partie jouée dans le mode Frutiz remplace la fiche riche par sa version
+ * amputée — missions verrouillées de nouveau, crédits envolés, sans une
+ * erreur ni un refus.
+ *
+ * `neuf` et `prev` sont des objets déjà parsés. La greffe ne s'applique qu'à
+ * une sauvegarde reconnue « venue du tuyau » — aucun des champs que seul le
+ * JSON complet écrit. Les champs que le tuyau PORTE ($ship, $badsKill,
+ * $arcade.$bestLevel, $cons.$bonus, $cons.$letter, $shop, $vs) viennent du
+ * SWF et gagnent, comme il se doit. Renvoie true si des champs ont été
+ * regreffés (l'appelant resérialise alors `neuf`).
+ */
+function miniwaveGreffeHorsTuyau(neuf, prev) {
+  if (!neuf || typeof neuf !== 'object' || !prev || typeof prev !== 'object') return false;
+  const venuDuTuyau = neuf.$credit === undefined && neuf.$mode === undefined;
+  if (!venuDuTuyau) return false;
+  for (const k of ['$mode', '$letter', '$survival', '$time', '$bonus',
+    '$saucerKill', '$credit', '$lvl', '$stats']) {
+    if (prev[k] !== undefined) neuf[k] = prev[k];
+  }
+  // $arcade : le tuyau porte $bestLevel mais pas $bestScore.
+  if (prev.$arcade && neuf.$arcade && prev.$arcade.$bestScore !== undefined
+      && neuf.$arcade.$bestScore === undefined) {
+    neuf.$arcade.$bestScore = prev.$arcade.$bestScore;
+  }
+  // $cons.$main non plus (le tuyau ne porte que $bonus et $letter).
+  if (prev.$cons && neuf.$cons && prev.$cons.$main !== undefined
+      && neuf.$cons.$main === undefined) {
+    neuf.$cons.$main = prev.$cons.$main;
+  }
+  return true;
+}
+
 // Fresh MiniPixiz slot 0 — mirrors Cm.formatFruticard() output for the
 // 19 fields the patched saveSlot serialises. Used to auto-repair slots
 // that were corrupted by a prior buggy save cycle (arrays written as
@@ -10897,45 +10939,14 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
     } catch (e) { /* illisible : les autres gardes s'en chargent */ }
   }
 
-  // MiniWave forward-merge — protège ce que le tuyau ne sait pas transporter.
-  //
-  // Le SWF du bureau enregistre par une chaîne à sept champs (parseMiniwavePipe).
-  // Sept, pas plus : le solde de crédits, les modes achetés en boutique, les
-  // records d'Endurance et de Letter Invader, le meilleur score d'arcade et les
-  // statistiques n'y tiennent pas. Le portage JavaScript, lui, envoie la fiche
-  // complète en JSON.
-  //
-  // Sans cette greffe, l'enchaînement suivant efface tout : le joueur achète un
-  // vaisseau sur mobile, ouvre le jeu Flash sur son ordinateur, et la première
-  // sauvegarde du SWF — un tuyau — remplace la fiche riche par sa version
-  // amputée. Aucune erreur, aucun refus : juste des crédits envolés.
-  //
-  // On ne recopie QUE les champs absents du tuyau. Ceux qu'il porte
-  // ($ship, $badsKill, $arcade.$bestLevel, $cons, $shop, $vs) viennent du SWF
-  // et gagnent, comme il se doit.
+  // MiniWave forward-merge — protège ce que le tuyau ne sait pas transporter
+  // (miniwaveGreffeHorsTuyau : crédits, modes achetés, records, stats).
   if ((game === 'miniwave' || game === 'miniwave2') && slotId === '0'
       && data && data[0] === '{' && prevSlotData) {
     try {
       const neuf = JSON.parse(data);
       const prev = JSON.parse(prevSlotData);
-      // On ne greffe que sur une sauvegarde venue du tuyau : elle se reconnaît
-      // à l'absence des champs que seul le JSON complet écrit.
-      const venuDuTuyau = neuf.$credit === undefined && neuf.$mode === undefined;
-      if (venuDuTuyau) {
-        for (const k of ['$mode', '$letter', '$survival', '$time', '$bonus',
-          '$saucerKill', '$credit', '$lvl', '$stats']) {
-          if (prev[k] !== undefined) neuf[k] = prev[k];
-        }
-        // $arcade : le tuyau porte $bestLevel mais pas $bestScore.
-        if (prev.$arcade && neuf.$arcade && prev.$arcade.$bestScore !== undefined
-            && neuf.$arcade.$bestScore === undefined) {
-          neuf.$arcade.$bestScore = prev.$arcade.$bestScore;
-        }
-        // $cons.$main non plus (le tuyau ne porte que $bonus et $letter).
-        if (prev.$cons && neuf.$cons && prev.$cons.$main !== undefined
-            && neuf.$cons.$main === undefined) {
-          neuf.$cons.$main = prev.$cons.$main;
-        }
+      if (miniwaveGreffeHorsTuyau(neuf, prev)) {
         data = JSON.stringify(neuf);
         console.log(`[SLOT]  miniwave : champs hors tuyau regreffés pour ${username}`
           + ` (crédits=${neuf.$credit}, modes=${JSON.stringify(neuf.$mode && neuf.$mode[2])})`);
@@ -20692,7 +20703,14 @@ case 'createchannel': {
       const rAttr = reqId ? ` r="${escapeXml(String(reqId))}"` : '';
       let inner = '';
       let rkId = rankingIdForGame(gameName);
-      if (rkId && !isDailyResetRanking(rkId)) {
+      // Le repli vers le classement Challenge vaut AUSSI quand le jeu n'a pas
+      // de classement « classic » du tout : Grapiz et Frutibandas n'existent
+      // qu'en <jeu>_challenge (leur série de victoires, section C), et le
+      // repli conditionné à un rkId non nul laissait leur réponse vide — les
+      // médailles de la veille manquaient en tête de leurs scores Challenge
+      // dans le tableau de main.swf, alors que tous les autres jeux, dotés
+      // d'un « classic », les affichaient.
+      if (!rkId || !isDailyResetRanking(rkId)) {
         const challengeId = rankingIdForGame(gameName, 1);
         if (challengeId && isDailyResetRanking(challengeId)) rkId = challengeId;
       }
@@ -20932,18 +20950,6 @@ case 'createchannel': {
         if (!u.frutiSlots) u.frutiSlots = {};
         if (!u.frutiSlots[game]) u.frutiSlots[game] = {};
         const prevSlotData = u.frutiSlots[game][slotId];
-        const WIRE_SAVE_GUARDED_GAMES = new Set(['miniwave', 'miniwave2']);
-        if (
-          WIRE_SAVE_GUARDED_GAMES.has(game) &&
-          slotId === '0' &&
-          prevSlotData &&
-          slotData &&
-          slotData.length < prevSlotData.length * 0.5
-        ) {
-          console.log(`[FCARD] save REJECTED (clobber guard) — new data (${slotData.length}) much smaller than existing (${prevSlotData.length}) for ${username}/${game}/slot${slotId}`);
-          sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
-          break;
-        }
         let normalizedSlotData = slotData;
         if (slotId === '0' && slotData && slotData.indexOf('|') >= 0 && slotData[0] !== '{') {
           if (game === 'miniwave' || game === 'miniwave2') {
@@ -20959,6 +20965,8 @@ case 'createchannel': {
         }
         // Miroir de la garde HTTP : la fiche « formatFruticard() » d'usine ne
         // remplace pas une progression Miniwave, quel que soit le chemin.
+        // AVANT la greffe — regreffés, les crédits masqueraient la fiche
+        // d'usine, et ses $badsKill à zéro écraseraient le tableau de chasse.
         if ((game === 'miniwave' || game === 'miniwave2') && slotId === '0'
             && prevSlotData && normalizedSlotData && normalizedSlotData[0] === '{') {
           try {
@@ -20969,7 +20977,39 @@ case 'createchannel': {
               sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
               break;
             }
-          } catch (e) { /* illisible : la garde de taille reste en amont */ }
+          } catch (e) { /* illisible : la garde de taille s'en charge plus bas */ }
+        }
+        // Miroir de la greffe HTTP (miniwaveGreffeHorsTuyau) : le tuyau du SWF
+        // ne transporte ni les crédits ni les modes achetés — sans regreffe,
+        // la première partie jouée au bureau les effaçait. « Missions
+        // verrouillées de nouveau, crédits envolés » : c'était CE chemin-ci,
+        // le fil, qui convertissait le tuyau sans regreffer.
+        if ((game === 'miniwave' || game === 'miniwave2') && slotId === '0'
+            && prevSlotData && normalizedSlotData && normalizedSlotData[0] === '{') {
+          try {
+            const neuf = JSON.parse(normalizedSlotData);
+            const prev = JSON.parse(prevSlotData);
+            if (miniwaveGreffeHorsTuyau(neuf, prev)) {
+              normalizedSlotData = JSON.stringify(neuf);
+              console.log(`[FCARD] miniwave : champs hors tuyau regreffés pour ${username}`
+                + ` (crédits=${neuf.$credit}, modes=${JSON.stringify(neuf.$mode && neuf.$mode[1])})`);
+            }
+          } catch (e) { /* illisible : la garde de taille s'en charge plus bas */ }
+        }
+        // La garde de taille court sur la donnée NORMALISÉE et regreffée,
+        // comme en HTTP : un tuyau légitime, une fois regreffé, n'est plus
+        // « trop petit » — une sauvegarde tronquée ou corrompue le reste.
+        const WIRE_SAVE_GUARDED_GAMES = new Set(['miniwave', 'miniwave2']);
+        if (
+          WIRE_SAVE_GUARDED_GAMES.has(game) &&
+          slotId === '0' &&
+          prevSlotData &&
+          normalizedSlotData &&
+          normalizedSlotData.length < prevSlotData.length * 0.5
+        ) {
+          console.log(`[FCARD] save REJECTED (clobber guard) — new data (${normalizedSlotData.length}) much smaller than existing (${prevSlotData.length}) for ${username}/${game}/slot${slotId}`);
+          sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
+          break;
         }
         // Et le pref « undefined|undefined|… » du slot 1 ne s'enregistre pas.
         if ((game === 'miniwave' || game === 'miniwave2') && slotId === '1'
