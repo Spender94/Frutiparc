@@ -222,6 +222,10 @@ class Sons {
       case 'saut':
       case 'warp': this.jouer('sWarp0', CANAL.saut); break;
       case 'soucoupe': this.boucler('sSaucer', CANAL.soucoupe); break;
+      // sp/Saucer.kill coupe la boucle QUOI QU'IL ARRIVE — abattue ou sortie par
+      // le bord. `soucoupeFin` part des deux chemins, `soucoupeExplose` n'ajoute
+      // que la détonation.
+      case 'soucoupeFin': this.arreter(CANAL.soucoupe); break;
       case 'soucoupeExplose':
         this.arreter(CANAL.soucoupe);
         this.jouer('sPop0', CANAL.explosion);

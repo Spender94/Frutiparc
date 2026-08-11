@@ -1026,6 +1026,12 @@ class Saucer extends Sprite {
   }
   tuer() {
     super.tuer();
+    // sp/Saucer.kill : `sfx.stop(57)` — le son de la soucoupe TOURNE EN BOUCLE
+    // tant qu'elle est là, et s'arrête quoi qu'il arrive quand elle disparaît.
+    // Le portage ne coupait la boucle qu'à l'explosion : une soucoupe LOUPÉE,
+    // sortie par le bord, laissait son bourdonnement jusqu'à la fin de la
+    // partie. On annonce donc sa disparition, abattue ou non.
+    this.jeu.evenement('soucoupeFin', { x: this.x, y: this.y });
     const i = this.jeu.saucerList.indexOf(this);
     if (i >= 0) this.jeu.saucerList.splice(i, 1);
   }
@@ -2232,6 +2238,15 @@ class Game {
   // direction ligne[0]→ligne[1] jusqu'à sortir du cadre, puis rejoignent leur
   // point de passage. Les cases vides décalent l'arrivée des suivants.
   initLevel() {
+    // game/Main.initLevel remet le compteur de soucoupes À ZÉRO à chaque
+    // niveau. C'est capital : la probabilité de tirage est 1/(3 + 3^(n+1)), donc
+    // une chance sur six au premier passage, sur douze au deuxième, sur trente
+    // au troisième… Sans cette remise à zéro, le compteur montait pour toute la
+    // partie et la soucoupe devenait introuvable au bout de trois ou quatre —
+    // une sur sept cents à la sixième. D'où « quasi nulle » alors que le Flash
+    // en montre à peu près une par niveau.
+    this.saucerCompt = 0;
+    this.eventTimer = 100;
     this.waveSens = 1;
     this.flChangeSens = false;
     this.shipBounds = { min: 0, max: LARGEUR };

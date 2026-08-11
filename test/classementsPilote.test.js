@@ -328,3 +328,40 @@ test('un record d\'arbre battu au bureau entre au classement du jour', async () 
   assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, 5600,
     'le classement ne bouge pas — le bureau ne dit rien des parties non-records');
 });
+
+test('un record d\'arcade battu au bureau entre au classement du jour', async () => {
+  // Le SWF de Mini-Wave n'envoie pas plus de score que celui de MiniPixiz : le
+  // bloc `SCORE` de class/miniwave/Client.as est commenté, rien n'appelle
+  // saveScore. Mais sa fiche porte $arcade.$bestScore / $bestLevel, écrits en
+  // fin de partie par game/Main.as — quand ils montent, une partie vient de
+  // passer.
+  const u = joueur('arcbur');
+  const sid = await sidPour(u);
+  const P = require('../public/miniwave/plateforme.js');
+  const fiche = (score, niveau) => {
+    const c = P.carteNeuve();
+    c.$arcade.$bestScore = score;
+    c.$arcade.$bestLevel = niveau;
+    return JSON.stringify(c);
+  };
+  const sauver = (score, niveau) => fetch(BASE + '/api/saveFrutiSlot', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid, game: 'miniwave', slotId: '0', data: fiche(score, niveau) }),
+  }).then((r) => r.text());
+
+  await sauver(12000, 9);                   // la fiche d'arrivée : rien à classer
+  assert.equal(ligne((await onglets()).miniwave_classic, u), null,
+    'une fiche posée ne classe rien toute seule');
+
+  await sauver(31000, 24);                  // le record monte : une partie l'a battu
+  const e = ligne((await onglets()).miniwave_classic, u) || {};
+  assert.equal(e.score, 31000, 'le record d\'arcade du bureau entre au classement');
+  assert.match(String(e.label || ''), /niveau 24/,
+    'et le niveau voyage avec, comme depuis le portage light');
+
+  // La MÊME limite qu'à l'arbre creux : une partie qui ne bat pas le record
+  // personnel ne laisse aucune trace dans la fiche.
+  await sauver(31000, 24);
+  assert.equal((ligne((await onglets()).miniwave_classic, u) || {}).score, 31000,
+    'le classement ne bouge pas — le bureau ne dit rien des parties non-records');
+});

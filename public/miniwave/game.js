@@ -595,12 +595,14 @@ class Client {
     // L'image de coque : les vaisseaux à deux points de vie (Pastaga, Cherry)
     // ont une image « fissurée » — dessinée dans le SWF mais jamais branchée
     // pour le Pastaga ; le doute sur ses points de vie disparaît avec elle.
-    // Le Tequila, lui, a une tuyère animée sur douze images.
+    //
+    // La coque ne s'ANIME PAS : sp/Hero.init appelle `this.stop()` sur le clip
+    // du vaisseau, et rien ne le relance jamais. Le Tequila porte bien douze
+    // images sur sa ligne de temps, mais le jeu les fige sur la première — le
+    // portage les déroulait en boucle, d'où le scintillement permanent sous le
+    // vaisseau de départ, celui que tout le monde pilote en arcade.
     let etatIdx = 0;
-    if (sp) {
-      if (fiche.hp === 2 && sp.etats.length >= 2) etatIdx = (h.hp === 1) ? 1 : 0;
-      else if (sp.etats.length > 2) etatIdx = Math.floor(this.animT) % sp.etats.length;
-    }
+    if (sp && fiche.hp === 2 && sp.etats.length >= 2) etatIdx = (h.hp === 1) ? 1 : 0;
     ctx.save();
     if (h.newShield) {
       // Le bouclier d'apparition : le jeu d'origine ne CACHE pas le vaisseau, il
@@ -1049,6 +1051,26 @@ class Client {
       q: 'gauche', d: 'droite', a: 'gauche',
       ArrowUp: 'tir', Shift: 'bombe',
     };
+    /*
+     * REPRENDRE LE FOCUS — sinon le clavier ne sert à rien.
+     *
+     * Sur /light le jeu tourne dans une IFRAME, et les touches ne lui arrivent
+     * que si elle a le focus. Or le pilotage au pointeur appelle
+     * `preventDefault()` sur `pointerdown` (il le faut : c'est ce qui empêche
+     * le navigateur de sélectionner et de faire défiler pendant qu'on vise) —
+     * et ce faisant il annule aussi le transfert de focus que le clic aurait
+     * provoqué. Résultat : on pouvait cliquer autant qu'on voulait, les touches
+     * partaient à la page parente et le vaisseau restait sourd au clavier.
+     *
+     * On réclame donc le focus à la main, à la première interaction et à
+     * chaque appui. En fenêtre autonome (le disque dans la Frusion) c'est sans
+     * effet — elle l'a déjà.
+     */
+    const reprendreFocus = () => { try { window.focus(); } catch (e) { /* refusé */ } };
+    for (const ev of ['pointerdown', 'touchstart', 'mousedown']) {
+      window.addEventListener(ev, reprendreFocus, { capture: true, passive: true });
+    }
+
     window.addEventListener('keydown', (ev) => {
       // P et Échap : la pause, comme Manager.update (touches 80 et 27). Le
       // « P » ne désigne jamais un monstre de Letter Invader — il est libre.

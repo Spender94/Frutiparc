@@ -2443,6 +2443,28 @@
   // La rubrique qu'on QUITTE. Le forum vit dans une iframe : lire un sujet s'y
   // passe hors de notre vue, et c'est en le quittant qu'on redemande le compte.
   var ongletCourant = null;
+  // Les onglets qui hébergent un jeu en iframe, et le cadre correspondant.
+  var CADRES_JEU = {
+    grapiz: "#grapiz-frame", bandas: "#bandas-frame", swapou: "#swapou-frame",
+    miniwave: "#miniwave-frame", minipixiz: "#minipixiz-frame",
+  };
+  function donnerFocusAuJeu(tab) {
+    var sel = CADRES_JEU[tab];
+    if (!sel) return;
+    var cadre = $(sel);
+    if (!cadre) return;
+    // Après le basculement de l'onglet : un élément encore caché ne prend pas
+    // le focus. Deux essais, le second pour laisser le temps au chargement.
+    var viser = function () {
+      try {
+        if (cadre.contentWindow) cadre.contentWindow.focus();
+        else cadre.focus();
+      } catch (e) { /* cadre pas prêt, ou refusé */ }
+    };
+    setTimeout(viser, 0);
+    setTimeout(viser, 600);
+  }
+
   function activateTab(tab) {
     // Choisir une rubrique referme le tiroir (le contenu choisi occupe l'écran).
     closeMenu();
@@ -2498,6 +2520,11 @@
         pf.setAttribute("src", "/minipixiz/?sid=" + encodeURIComponent(state.sid));
       }
     }
+    // Un jeu dans une IFRAME ne reçoit le clavier que s'il a le focus. Ouvrir
+    // son onglet le lui donne — sans quoi les flèches restaient à cette page et
+    // le joueur croyait le clavier ignoré (rapporté sur Mini-Wave). Le jeu le
+    // réclame aussi de son côté au premier clic ; ici on lui évite le détour.
+    donnerFocusAuJeu(tab);
     // Les scores évoluent toute la journée : on rafraîchit à chaque ouverture.
     if (tab === "scores") loadChallengeScores();
     if (tab === "trombi") loadTrombi();

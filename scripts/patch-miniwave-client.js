@@ -208,7 +208,17 @@ function buildSaveSlotBody(CP) {
   ]);
 
   // Part 2: Build pipe string → r5
-  // Format: ship|badsKill|arcadeBestLevel|consBonus|consLetter|shop|vs
+  // Format: ship|badsKill|arcadeBestLevel|consBonus|consLetter|shop|vs|arcadeBestScore
+  //
+  // arcadeBestScore is APPENDED LAST, after vs, on purpose: an older cached
+  // build of this SWF still sends seven fields, and the readers must keep
+  // accepting those. A missing eighth field means "the SWF doesn't know about
+  // it" — the server then leaves $bestScore alone (see miniwaveGreffeHorsTuyau)
+  // instead of overwriting a real record with a zero.
+  //
+  // Without it, an arcade game played in the desktop (Frutiz) mode could never
+  // reach the daily ranking: the card kept the record in memory, but the only
+  // channel out of the SWF carried the best LEVEL and not the best SCORE.
   const buildStr = Buffer.concat([
     actionPush(pushStr('')),
 
@@ -218,8 +228,10 @@ function buildSaveSlotBody(CP) {
     appendNestedProp(CP.$cons, CP.$bonus),
     appendNestedProp(CP.$cons, CP.$letter),
     appendSimpleProp(CP.$shop),
+    appendSimpleProp(CP.$vs),
 
-    actionPush(pushReg(3), pushCp(CP.$vs)), GET_MEMBER,
+    actionPush(pushReg(3), pushCp(CP.$arcade)), GET_MEMBER,
+    actionPush(pushCp(CP.$bestScore)), GET_MEMBER,
     actionPush(pushStr('')), ADD2,
     ADD2,
 
@@ -299,6 +311,7 @@ function patchClientTagBody(tagBody) {
     'sendAndLoad',             // +20
     '/api/saveFrutiSlot',      // +21
     'POST',                    // +22
+    '$bestScore',              // +23
   ];
 
   let newCpData = Buffer.alloc(0);
@@ -335,6 +348,7 @@ function patchClientTagBody(tagBody) {
     $letter: newCpBase + 12,
     $shop: newCpBase + 13,
     $vs: newCpBase + 14,
+    $bestScore: newCpBase + 23,
     LoadVars: newCpBase + 15,
     sid: newCpBase + 16,
     game: newCpBase + 17,

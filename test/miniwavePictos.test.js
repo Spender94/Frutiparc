@@ -235,10 +235,15 @@ test('les modes achetés au stand survivent à une sauvegarde du SWF', async (t)
   assert.deepEqual(relu.$mode[2], [0, 1, 0], 'et le mode ouvert aussi');
   assert.equal(relu.$ship[1], 1);
 
-  // Maintenant le SWF du bureau enregistre : un tuyau à sept champs, qui ne
-  // porte ni crédits ni modes. Sans la greffe côté serveur, tout serait perdu.
+  // Maintenant le SWF du bureau enregistre : un tuyau étroit, qui ne porte ni
+  // crédits ni modes. Sans la greffe côté serveur, tout serait perdu.
+  //
+  // Il a HUIT champs depuis qu'on y a ajouté le meilleur score d'arcade — sans
+  // quoi une partie jouée au bureau ne pouvait pas entrer au classement du
+  // jour. Ce qu'il ne porte toujours pas est ce que ce test surveille.
   const tuyau = P.versTuyau(relu);
-  assert.equal(tuyau.split('|').length, 7, 'le tuyau du bureau n\'a que sept champs');
+  assert.equal(tuyau.split('|').length, 8, 'le tuyau du bureau a huit champs');
+  assert.doesNotMatch(tuyau, /800/, 'et le solde de crédits n\'y figure pas');
   const rep = await fetch(`${BASE}/api/saveFrutiSlot`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sid, game: 'miniwave', slotId: '0', data: tuyau }),

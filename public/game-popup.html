@@ -1004,13 +1004,20 @@
     // MiniWave: Ruffle's EI can't serialize AS2 objects (they arrive as null).
     // The patched SWF sends a pipe-delimited string of primitives instead.
     // Format: ship|badsKill|arcadeBestLevel|consBonus|consLetter|shop|vs
+    //         [|arcadeBestScore]
+    // Le huitième champ est facultatif : sans lui on n'écrit PAS $bestScore, et
+    // le serveur regreffe l'ancien plutôt que d'écraser un record par un zéro.
     if (game === "miniwave" && typeof data === "string" && data.indexOf("|") >= 0) {
       try {
         var parts = data.split("|");
+        var arcade = { "$bestLevel": Number(parts[2]) || 0 };
+        if (parts.length >= 8 && String(parts[7]).trim() !== "") {
+          arcade["$bestScore"] = Number(parts[7]) || 0;
+        }
         var obj = {
           "$ship": parts[0] ? parts[0].split(",").map(function(v) { return v === "true" || Number(v) > 0; }) : [],
           "$badsKill": parts[1] ? parts[1].split(",").map(Number) : [],
-          "$arcade": { "$bestLevel": Number(parts[2]) || 0 },
+          "$arcade": arcade,
           "$cons": {
             "$bonus": parts[3] ? parts[3].split(",").map(Number) : [],
             "$letter": Number(parts[4]) || 0

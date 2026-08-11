@@ -173,6 +173,10 @@ function versTuyau(c) {
     String(c.$cons.$letter),
     c.$shop.join(','),
     String(c.$vs),
+    // Huitième champ, ajouté après coup : sans lui, une partie d'arcade jouée
+    // au bureau ne pouvait jamais entrer au classement du jour — le tuyau
+    // portait le NIVEAU atteint, jamais les points.
+    String(c.$arcade.$bestScore),
   ].join('|');
 }
 

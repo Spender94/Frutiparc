@@ -1535,6 +1535,50 @@ function minipixizClasserArbreDepuisFiche(username, avantBrut, apresBrut, voie) 
   return neuf;
 }
 
+/**
+ * Le même pont, pour l'ARCADE de Mini-Wave — et pour la même raison.
+ *
+ * Le SWF de miniWave2 n'envoie pas davantage de score : tout le bloc `SCORE` de
+ * `class/miniwave/Client.as` est COMMENTÉ dans les sources, et rien n'appelle
+ * `saveScore`. Le jeu de 2006 n'avait pas de classement d'arcade non plus.
+ *
+ * Mais sa fiche en garde la trace : `game/Main.as` écrit, à chaque fin de
+ * partie, `$arcade.$bestScore` et `$arcade.$bestLevel` — le record PERSONNEL et
+ * le niveau où il a été fait. Quand ce record monte entre deux sauvegardes,
+ * c'est qu'une partie d'arcade vient de le battre.
+ *
+ * MÊME LIMITE qu'à l'arbre creux, et il faut la dire : une partie du bureau qui
+ * ne bat pas le record personnel ne laisse aucune trace. Le classement complet
+ * se joue sur le portage light, qui envoie CHAQUE partie.
+ *
+ * @returns {number|null} le score classé, ou null si rien à classer
+ */
+function miniwaveClasserArcadeDepuisFiche(username, avantBrut, apresBrut, voie) {
+  if (!username || !avantBrut || !apresBrut) return null;
+  let avant, apres;
+  try {
+    avant = JSON.parse(avantBrut);
+    apres = JSON.parse(apresBrut);
+  } catch { return null; }
+  const lu = (c) => Number((c && c.$arcade && c.$arcade.$bestScore) || 0) || 0;
+  const vieux = lu(avant);
+  const neuf = lu(apres);
+  if (!(neuf > vieux)) return null;
+  // Le niveau voyage dans `data`, comme pour la voie light : c'est lui qui
+  // s'affiche à côté des points, et qui borne le garde-fou.
+  const niveau = Number((apres && apres.$arcade && apres.$arcade.$bestLevel) || 0) || 0;
+  const donnee = (niveau >= 1 && niveau <= MINIWAVE_NIVEAU_MAX) ? String(niveau) : '';
+  const refus = raisonScoreImplausible('miniwave_classic', neuf, donnee);
+  if (refus) {
+    console.log(`[${voie}] ${username} arcade ${neuf} REFUSÉ — ${refus}`);
+    return null;
+  }
+  const r = persistScore(username, 'miniwave_classic', neuf, donnee);
+  console.log(`[${voie}] ${username} miniwave_classic: ${r.oldScore} -> ${r.newScore}`
+    + ` (updated=${r.updated}, record d'arcade du bureau ${vieux} -> ${neuf}, niveau ${niveau})`);
+  return neuf;
+}
+
 function extractBkiwiTrack(rawData) {
   const raw = String(rawData || '').trim();
   if (raw.includes(':')) {
@@ -10039,7 +10083,15 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
 // MiniWave: SWF sends slot data as a pipe-delimited string of primitives
 // because Ruffle AVM1's ExternalInterface can't serialize AS2 objects.
 // Format: ship|badsKill|arcadeBestLevel|consBonus|consLetter|shop|vs
+//         [|arcadeBestScore]
 // where arrays are comma-joined (Array.toString output).
+//
+// Le HUITIÈME champ (le meilleur score d'arcade) est arrivé après coup, pour que
+// les parties jouées au bureau puissent enfin entrer au classement du jour : le
+// tuyau ne portait que le NIVEAU, jamais les points, et le record restait donc
+// enfermé dans le SWF. Il est FACULTATIF — un client encore en cache n'envoie
+// que sept champs, et dans ce cas on ne touche pas à $bestScore (la regreffe
+// s'en charge) plutôt que d'écraser un vrai record par un zéro.
 function parseMiniwavePipe(s) {
   const parts = String(s).split('|');
   if (parts.length < 7) return null;
@@ -10047,10 +10099,14 @@ function parseMiniwavePipe(s) {
   function parseShipArr(p) {
     return p ? p.split(',').map(v => v === 'true' || Number(v) > 0) : [];
   }
+  const arcade = { $bestLevel: Number(parts[2]) || 0 };
+  if (parts.length >= 8 && String(parts[7]).trim() !== '') {
+    arcade.$bestScore = Number(parts[7]) || 0;
+  }
   return {
     $ship: parseShipArr(parts[0]),
     $badsKill: parseArr(parts[1]),
-    $arcade: { $bestLevel: Number(parts[2]) || 0 },
+    $arcade: arcade,
     $cons: {
       $bonus: parseArr(parts[3]),
       $letter: Number(parts[4]) || 0,
@@ -10089,10 +10145,20 @@ function miniwaveGreffeHorsTuyau(neuf, prev) {
     '$saucerKill', '$credit', '$lvl', '$stats']) {
     if (prev[k] !== undefined) neuf[k] = prev[k];
   }
-  // $arcade : le tuyau porte $bestLevel mais pas $bestScore.
-  if (prev.$arcade && neuf.$arcade && prev.$arcade.$bestScore !== undefined
-      && neuf.$arcade.$bestScore === undefined) {
-    neuf.$arcade.$bestScore = prev.$arcade.$bestScore;
+  // $arcade.$bestScore : le tuyau le porte DEPUIS PEU (huitième champ). Deux
+  // cas, et il faut les deux :
+  //
+  //   · un client encore en cache n'envoie que sept champs → on regreffe
+  //     l'ancien, sans quoi le record disparaîtrait ;
+  //   · le champ est là → on garde le PLUS GRAND. Le SWF relit sa fiche depuis
+  //     le SharedObject local, qui peut être en retard sur le serveur (une
+  //     partie jouée en light entre-temps) ; sans ce plafond, une simple visite
+  //     au bureau ferait redescendre un record. game/Main.as écrit lui-même
+  //     `Math.max` — on ne fait que tenir la même règle de bout en bout.
+  if (prev.$arcade && neuf.$arcade && prev.$arcade.$bestScore !== undefined) {
+    neuf.$arcade.$bestScore = (neuf.$arcade.$bestScore === undefined)
+      ? prev.$arcade.$bestScore
+      : Math.max(Number(prev.$arcade.$bestScore) || 0, Number(neuf.$arcade.$bestScore) || 0);
   }
   // $cons.$main non plus (le tuyau ne porte que $bonus et $letter).
   if (prev.$cons && neuf.$cons && prev.$cons.$main !== undefined
@@ -11275,6 +11341,15 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
       minipixizClasserArbreDepuisFiche(username, prevSlotData, data, 'SLOT');
     } catch (e) {
       console.error(`[SLOT]  arbre creux (fiche) failed for ${username}: ${e.message}`);
+    }
+  }
+  // Même rattrapage pour l'arcade de Mini-Wave : son SWF ne sait pas davantage
+  // envoyer un score, mais sa fiche porte $arcade.$bestScore.
+  if (game === 'miniwave' && slotId === '0') {
+    try {
+      miniwaveClasserArcadeDepuisFiche(username, prevSlotData, data, 'SLOT');
+    } catch (e) {
+      console.error(`[SLOT]  arcade (fiche) failed for ${username}: ${e.message}`);
     }
   }
 
@@ -21364,6 +21439,13 @@ case 'createchannel': {
             minipixizClasserArbreDepuisFiche(username, prevSlotData, normalizedSlotData, 'FCARD');
           } catch (e) {
             console.error(`[FCARD] arbre creux (fiche) failed for ${username}: ${e.message}`);
+          }
+        }
+        if (game === 'miniwave' && slotId === '0') {
+          try {
+            miniwaveClasserArcadeDepuisFiche(username, prevSlotData, normalizedSlotData, 'FCARD');
+          } catch (e) {
+            console.error(`[FCARD] arcade (fiche) failed for ${username}: ${e.message}`);
           }
         }
         u.frutiSlots[game][slotId] = normalizedSlotData;
