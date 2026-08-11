@@ -38,6 +38,43 @@
 const CARAC = { FORCE: 0, RAPIDITE: 1, VIE: 2, INTELLIGENCE: 3, CONCENTRATION: 4, MANA: 5 };
 const NOM_CARAC = ['force', 'rapidité', 'vie', 'intelligence', 'concentration', 'mana'];
 
+/*
+ * Parchemins et grimoires : DIRE LE SORT, pas l'évidence.
+ *
+ * Le jeu de 2006 les décrivait tous pareil — « Ce parchemin permet à la fée
+ * qui le porte de lancer ce sort. » On sait déjà ce que fait un parchemin ;
+ * ce qu'on veut savoir, c'est QUEL sort, et à quoi il sert. Les sorts portent
+ * cette réponse depuis toujours (Spell.getName / getDesc, déjà affichés quand
+ * on touche un sort dans la liste de la fée) — elle n'arrivait simplement pas
+ * jusqu'à l'objet.
+ *
+ * La résolution est TARDIVE : items.js est chargé avant sorts.js, et sous Node
+ * un require en tête de fichier refermerait la boucle items → sorts → combat →
+ * items. On va chercher la table au moment de l'appel, et on retombe sur le
+ * texte d'époque si le sort est introuvable.
+ */
+function sorts() {
+  try {
+    return (typeof module !== 'undefined' && module.exports)
+      ? require('./sorts.js') : racine.MinipixizSorts;
+  } catch { return null; }
+}
+function leSort(id) {
+  const S = sorts();
+  if (!S || !S.nouveauSort) return null;
+  try { return S.nouveauSort(id, null); } catch { return null; }
+}
+function titreSort(prefixe, id) {
+  const s = leSort(id);
+  const nom = s && s.nom && s.nom();
+  return nom ? prefixe + ' : ' + nom : prefixe + ' de sort';
+}
+function descSort(id, defaut) {
+  const s = leSort(id);
+  const d = s && s.description && s.description();
+  return d || defaut;
+}
+
 // it.Carac.nameList — trois qualités par caractéristique, puis deux places
 // vides que le jeu n'a jamais remplies (les « f4 », « r5 »… du fichier).
 const NOM_OBJET_CARAC = [
@@ -176,12 +213,15 @@ function info(type) {
       desc: 'Agrandit votre inventaire.', flGeneral: true };
   }
   if (n >= 100 && n < 200) {
-    return { type: n, famille: 'parchemin', sort: n - 100, nom: 'Parchemin de sort',
-      desc: 'Ce parchemin permet à la fée qui le porte de lancer ce sort.', flEquip: true };
+    return { type: n, famille: 'parchemin', sort: n - 100,
+      nom: titreSort('Parchemin', n - 100),
+      desc: descSort(n - 100, 'Ce parchemin permet à la fée qui le porte de lancer ce sort.'),
+      flEquip: true };
   }
   if (n >= 200 && n < 300) {
-    return { type: n, famille: 'grimoire', sort: n - 200, nom: 'Livre de sort',
-      desc: 'Ce grimoire permet à toutes les fées de lancer ce sort.' };
+    return { type: n, famille: 'grimoire', sort: n - 200,
+      nom: titreSort('Livre', n - 200),
+      desc: descSort(n - 200, 'Ce grimoire permet à toutes les fées de lancer ce sort.') };
   }
   if (n >= PREMIER_ALIMENT && n < 400) {
     const id = Math.floor((n - PREMIER_ALIMENT) / 3);

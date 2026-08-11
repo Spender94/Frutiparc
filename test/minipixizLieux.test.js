@@ -336,13 +336,26 @@ test('tenir la roue jusqu\'à zéro donne l\'objet', () => {
   c.$rainbow = { $f: true, $day: 0, $it: 71 };
   const r = new X.ArcEnCiel({ carte: c, fee: fs, graine: 13 });
   const avant = r.fi.fs.$exp;
+
+  // Quatre-vingt-sept pièces posées, et la roue touche zéro.
   let tours = 0;
-  while (!r.fini && tours < 200) { r.jeu.nouveauTour(); tours++; }
+  while (!r.sortie && tours < 200) { r.jeu.nouveauTour(); tours++; }
   assert.equal(tours, 87);
+  assert.equal(r.fi.fs.$exp - avant, 100, 'la fée y gagne cent points, tout de suite');
+
+  // La SORTIE (base/Rainbow.initStep 21 → 23) commence alors seulement : le
+  // lieu n'est pas fini, et l'objet n'est pas encore pris. C'est elle qui rend
+  // la clairière — sans elle, on restait bloqué devant un plateau gelé.
+  assert.equal(r.fini, false, 'la partie n\'est pas close à l\'instant zéro');
+  assert.equal(c.$inv.indexOf(71), -1, 'et l\'objet n\'est pas encore ramassé');
+
+  let images = 0;
+  while (!r.fini && images < 5000) { r.update(1); images++; }
+  assert.ok(r.fini, `la sortie se termine (bloquée après ${images} images)`);
   assert.equal(r.gagne, true);
   assert.ok(c.$inv.indexOf(71) >= 0, 'l\'objet est dans le sac');
   assert.equal(c.$rainbow.$f, false, 'et l\'arc-en-ciel a quitté le ciel');
-  assert.equal(r.fi.fs.$exp - avant, 100, 'la fée y gagne cent points');
+  assert.equal(r.fi.fs.$exp - avant, 100, 'l\'expérience n\'a pas été comptée deux fois');
 });
 
 test('déborder avant la fin ne donne rien', () => {

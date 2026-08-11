@@ -35,7 +35,10 @@ const sousNode = (typeof module !== 'undefined' && module.exports);
 const E = sousNode ? require('./engine.js') : racine.MinipixizEngine;
 const F = sousNode ? require('./faerie.js') : racine.MinipixizFee;
 const O = sousNode ? require('./items.js') : racine.MinipixizObjets;
-const P = sousNode ? require('./plateforme.js') : racine.MinipixizPlateforme;
+// Même piège que dans lieux.js : plateforme.js est chargé APRÈS nuit.js dans la
+// page, donc la capture immédiate ne ramenait qu'un `undefined`. Ici, c'était
+// le cadeau d'une fée de retour de mission qui plantait la nuit.
+const P = () => (sousNode ? require('./plateforme.js') : racine.MinipixizPlateforme);
 
 const JOUR = 86400000;                // Cs.sDay
 const MISSION_SEUIL_COURSE = 1000;    // Cm.upkeep : pas de mission avant d'avoir couru
@@ -155,7 +158,7 @@ function validerMission(carte, id, dire) {
     const it = O.info(mis.$gift);
     texte = 'Félicitations !\n' + groupe + (pluriel ? ' ont ' : ' a ') + mis.$string
       + '\nVous avez gagné l\'objet suivant : ' + (it ? it.nom : '?') + ' !';
-    if (P.ramasser(carte, mis.$gift) === 'perdu') {
+    if (P().ramasser(carte, mis.$gift) === 'perdu') {
       texte += '\nMalheureusement, vous n\'aviez pas assez de place dans votre inventaire '
         + 'pour cet objet. Il a donc été généreusement offert à l\'AFD '
         + '( Association des Fées Démunies ) qui vous remercie chaleureusement pour ce don.';

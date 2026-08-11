@@ -29,7 +29,12 @@ const sousNode = (typeof module !== 'undefined' && module.exports);
 const E = sousNode ? require('./engine.js') : racine.MinipixizEngine;
 const C = sousNode ? require('./combat.js') : racine.MinipixizCombat;
 const F = sousNode ? require('./faerie.js') : racine.MinipixizFee;
-const P = sousNode ? require('./plateforme.js') : racine.MinipixizPlateforme;
+// La plateforme se résout TARD. Sous Node, un require en tête suffirait ; dans
+// la page, plateforme.js est chargé APRÈS lieux.js, et la capture immédiate ne
+// ramenait qu'un `undefined` figé. Le seul appel (P.ramasser, le lot de
+// l'arc-en-ciel) levait donc une exception à chaque image de la sortie — sous
+// Node tout allait bien, ce qui a longtemps caché la panne.
+const P = () => (sousNode ? require('./plateforme.js') : racine.MinipixizPlateforme);
 
 const nombre = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
@@ -518,6 +523,35 @@ class Arbre extends Lieu {
 const ROUE_DEPART = 100;
 const ROUE_PAS = 1.15;
 
+/*
+ * La SORTIE de l'arc-en-ciel — base/Rainbow.initStep(21 → 23).
+ *
+ * Le portage s'arrêtait à la roue vide : la partie gelait, l'objet était
+ * empoché, et plus rien n'arrivait. Il fallait recharger la page. Manquaient
+ * les trois temps que le jeu joue avant de rendre la clairière :
+ *
+ *   21  une pause, puis la ROUE glisse vers la droite en accélérant jusqu'à
+ *       sortir de l'écran ;
+ *   22  l'objet est pris, l'arc-en-ciel s'efface du ciel, et une vague de
+ *       lumière BALAIE le plateau en diagonale, effaçant les billes sur son
+ *       passage ;
+ *   23  le lot MONTE du bas de l'écran, freine, et quand il s'immobilise la
+ *       partie se ferme (tryToClose).
+ *
+ * Les valeurs sont celles de l'original. Le trajet de la roue est le seul
+ * chiffre qui regarde la mise en page : elle part de ROUE_LOT.x (146) et
+ * s'en va quand elle a passé le bord droit de la scène (240).
+ */
+const SORTIE_PAUSE = 20;        // dTimer
+const SORTIE_ROUE_V = 0.5;      // intWheelSpeed, ×1,1 par image
+const SORTIE_ROUE_COURSE = 94;  // 240 − 146 : de sa place au bord droit
+const SORTIE_BALAI = 5;         // dTimer += 5×tmod
+const SORTIE_BALAI_PENTE = 1.1; // e.x + e.y×1,1 < dTimer
+const PRIX_VY = -5.5;
+const PRIX_FREIN = 0.97;
+const PRIX_ARRET = -0.1;
+const PRIX_ECHELLE = 20;
+
 class ArcEnCiel extends Lieu {
   get cadre() { return 'cadreArcEnCiel'; }
   // base/Rainbow.initFaerieInterface : les nuages.
@@ -547,6 +581,7 @@ class ArcEnCiel extends Lieu {
     this.roue = ROUE_DEPART;
     this.prix = (this.carte && this.carte.$rainbow) ? this.carte.$rainbow.$it : null;
     this.recolte = false;
+    this.sortie = null;
   }
 
   surNouveauTour() {
@@ -554,12 +589,73 @@ class ArcEnCiel extends Lieu {
     this.roue = Math.max(0, this.roue - ROUE_PAS);
     this.evenement('roue', { roue: this.roue });
     if (this.roue > 0) return;
-    // Le compte est bon. Le puzzle s'arrête et l'objet est à nous.
+    // Le compte est bon. Le puzzle s'arrête — mais l'objet n'est pas encore
+    // pris : c'est l'étape 22 qui l'empoche, après la sortie de la roue.
     this.jeu.step = E.ETAPE.FIGE;
     this.jeu.piece = null;
     this.recolte = true;
     this.donnerExp(100);
-    this.recolter();
+    this.sortie = { etape: 21, timer: SORTIE_PAUSE, vitesse: SORTIE_ROUE_V, roueX: 0 };
+    this.evenement('roueVide', {});
+  }
+
+  // La partie gèle à l'étape 21, mais le monde continue : la fée vole, les
+  // particules retombent. C'est `super.update` qui les fait vivre.
+  update(tmod) {
+    if (this.fini) return;
+    super.update(tmod);
+    if (this.sortie) this.avancerSortie(tmod);
+  }
+
+  /**
+   * base/Rainbow.update, cases 21 à 23 — les trois temps de la sortie.
+   */
+  avancerSortie(tmod) {
+    const s = this.sortie;
+
+    // 21 — la roue s'en va par la droite, de plus en plus vite.
+    if (s.etape === 21) {
+      if (s.timer > 0) { s.timer -= tmod; return; }
+      s.vitesse *= Math.pow(1.1, tmod);
+      s.roueX += s.vitesse * tmod;
+      if (s.roueX <= SORTIE_ROUE_COURSE) return;
+      // 22 — on empoche, et l'arc-en-ciel s'efface du ciel.
+      this.recolter();
+      s.etape = 22;
+      s.timer = 0;
+      return;
+    }
+
+    // 22 — la vague de lumière balaie le plateau en diagonale.
+    if (s.etape === 22) {
+      s.timer += SORTIE_BALAI * tmod;
+      // Une COPIE : `tuer()` retire de eList, on ne peut pas parcourir la liste
+      // vivante en la vidant.
+      for (const e of this.jeu.eList.slice()) {
+        const d = (e.px + e.py * SORTIE_BALAI_PENTE) * E.TS;
+        if (d >= s.timer) continue;
+        this.evenement('balaiLumiere', { x: e.px, y: e.py });
+        e.tuer();
+      }
+      if (this.jeu.eList.length) return;
+      // 23 — le lot monte du bas de l'écran.
+      s.etape = 23;
+      s.prix = { x: this.jeu.xMax * E.TS * 0.5, y: this.jeu.yMax * E.TS + 20, vy: PRIX_VY };
+      this.evenement('prixMonte', { objet: this.prix });
+      return;
+    }
+
+    // 23 — il freine ; quand il s'immobilise, la clairière nous reprend.
+    const p = s.prix;
+    p.y += p.vy * tmod;
+    p.vy *= Math.pow(PRIX_FREIN, tmod);
+    if (p.vy < PRIX_ARRET) return;
+    this.sortie = null;
+    this.fini = true;
+    this.gagne = true;
+    // C'est `finPartie` que la page attend pour rouvrir la clairière : sans
+    // lui, on restait devant un plateau gelé, la fée volant dans le vide.
+    this.evenement('finPartie', { gagne: true, score: this.jeu.score });
   }
 
   /**
@@ -570,12 +666,13 @@ class ArcEnCiel extends Lieu {
     const c = this.carte;
     let ou = 'perdu';
     if (c && this.prix !== null && this.prix !== undefined) {
-      ou = P.ramasser(c, this.prix);
+      ou = P().ramasser(c, this.prix);
       c.$rainbow.$day = 0;
       c.$rainbow.$f = false;
     }
-    this.fini = true;
-    this.gagne = true;
+    // `fini` ne se lève PAS ici : la sortie a encore deux temps à jouer, et
+    // `update` s'arrête dès que le lieu se dit fini. C'est l'étape 23 qui
+    // ferme, une fois le lot immobile.
     this.evenement('prix', { objet: this.prix, ou });
     return ou;
   }
@@ -586,6 +683,11 @@ class ArcEnCiel extends Lieu {
       tours: Math.ceil(this.roue / ROUE_PAS),
       prix: this.prix,
       recolte: this.recolte,
+      // Ce que la sortie donne à dessiner : le décalage de la roue qui s'en va,
+      // et la position du lot qui monte.
+      sortie: this.sortie
+        ? { etape: this.sortie.etape, roueX: this.sortie.roueX, lot: this.sortie.prix || null }
+        : null,
     });
   }
 }

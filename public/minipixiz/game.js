@@ -178,6 +178,8 @@ const ROUES_FOND = [
 // inter.Wheel — la roue de l'arc-en-ciel : 80 × 80, `mx = 10`, son moyeu en
 // (42, 42), douze flammes à quarante-deux pixels, et le lot au centre à 40 %.
 const ROUE_LOT = { x: COLONNE_X + 10, cx: 42, cy: 42, rayon: 42, flammes: 12, lot: 40 };
+// base/Rainbow.initStep(23) : `item._xscale = 20` — le lot remonte en petit.
+const PRIX_ECHELLE = 20;
 // Frog.mt — chez Ornegon : les barres à x = 99 depuis y = 12, le curseur entre
 // 17 et 133 autour du centre 75 ; le salut dans la bulle, le nom du sort en bas.
 // Mission.mt — chez Gromelin : la récompense dans son alvéole (le clip `slot`
@@ -1385,6 +1387,32 @@ class Client {
         }
         break;
       }
+      /*
+       * base/Rainbow.update(22) — la vague qui efface le plateau.
+       *
+       * Trois traits de lumière par bille, jetés autour de son centre, étirés
+       * en longueur et penchés à quarante-cinq degrés : ils filent tous dans
+       * le même sens que la vague, en haut à droite. `vitx = -vitesse` et
+       * `vity = +vitesse` avec une vitesse SIGNÉE — la moitié part donc à
+       * rebours, et c'est ce qui donne l'éclaboussure.
+       */
+      case 'balaiLumiere': {
+        if (!this.champ) break;
+        for (let i = 0; i < 3; i++) {
+          const p = this.champ.nouvellePart('partHoriLight');
+          const a = Math.random() * 6.28;
+          p.x = px(d.x) + Math.cos(a) * 4;
+          p.y = py(d.y) + Math.sin(a) * 4;
+          const v = (Math.random() * 2 - 1) * 10;
+          p.vitx = -v;
+          p.vity = v;
+          p.timer = 10 + Math.random() * 10;
+          p.rot = -45;
+          p.init();
+          p.sx = 100 + Math.random() * 200;
+        }
+        break;
+      }
       // Eye.blast : l'onde et les éclats sombres de sa couleur.
       case 'oeilDetruit':
         eclater(px(d.x), py(d.y), 14, couleurCss(E.COULEURS[d.couleur] || 0xffffff), 3);
@@ -2353,8 +2381,15 @@ class Client {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, SCENE, SCENE);
     // Le panneau est un tableau plein cadre : la forêt sous un ciel violet.
+    //
+    // Il est DÉJÀ dessiné aux dimensions de la scène (240 × 240 unités, comme
+    // les `cadre…`), pas sur les cent unités des habitants du plateau. Le
+    // rendre à `SCENE` le prenait pour un pourcentage — 240 % — et le posait
+    // en plus au centre : on ne voyait qu'un quart du coin haut-gauche d'un
+    // panneau de 576 pixels, poussé dans le bas de l'écran. D'où le « rendu
+    // étrange » du Game Over. Échelle 100, coin en (0,0).
     if (this.sprites.panPerdu) {
-      poserRendu(ctx, rendre(this.sprites.panPerdu, 1, SCENE), SCENE / 2, SCENE / 2);
+      poserRendu(ctx, rendre(this.sprites.panPerdu, 1, 100), 0, 0);
     }
     c.timer -= tmod;
     if (c.timer <= 10 && !c.dit) {
@@ -2416,6 +2451,7 @@ class Client {
     // roues de devant, eux, sont à DP_SPRITE_FRONT — au-dessus des jetons.
     this.dessinerEscargot(ctx);
     this.dessinerAscenseur(ctx, true);
+    this.dessinerLotQuiMonte(ctx);
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_MILIEU, 100), 0, 0);
     if (this.champ && this.champ.faerieList.length) this.dessinerInterface(ctx, tmod);
     const col = lieu.colonneSuivantes;
@@ -2423,6 +2459,30 @@ class Client {
     this.dessinerEnteteLieu(ctx);
     if (cadre) poserRendu(ctx, rendre(cadre, CADRE_DESSUS, 100), 0, 0);
     this.dessinerNuitNoire(ctx);
+  }
+
+  /**
+   * base/Rainbow.initStep(23) — le lot monte du bas de la scène.
+   *
+   * Le plateau vient d'être balayé ; l'objet gagné remonte au centre de l'aire,
+   * en petit (vingt pour cent), avec sa lueur (`partFlipGlow`). Quand il
+   * s'immobilise, le lieu ferme la partie.
+   */
+  dessinerLotQuiMonte(ctx) {
+    const lieu = this.lieu;
+    if (!lieu || !lieu.etat) return;
+    const e = lieu.etat();
+    const lot = e.sortie && e.sortie.lot;
+    if (!lot || e.prix === null || e.prix === undefined) return;
+    const O = window.MinipixizInventaire;
+    const d = O && O.dessinObjet ? O.dessinObjet(e.prix) : null;
+    if (!d || !this.sprites[d.cle]) return;
+    const x = this.jeu.margeGauche + lot.x;
+    const y = this.jeu.margeHaut + lot.y;
+    if (this.sprites.partFlipGlow) {
+      poserRendu(ctx, rendre(this.sprites.partFlipGlow, 1, 40), x, y);
+    }
+    poserRendu(ctx, rendre(this.sprites[d.cle], d.frame, PRIX_ECHELLE, undefined, d.parties), x, y);
   }
 
   /**
@@ -2593,9 +2653,12 @@ class Client {
     if (e.roue === undefined || !s.roueLot) return;
 
     // inter.Wheel — la roue vient après le portrait, le mana et la vie dans la
-    // pile de `updatePos`, avec `mx = 10`.
+    // pile de `updatePos`, avec `mx = 10`. En fin de partie elle s'en va vers
+    // la droite (Rainbow.initStep(21)) : `sortie.roueX` est son décalage.
     const boite = pilerInterface(this.lieu.margeFace);
-    const x = ROUE_LOT.x, y = boite.vie.y + boite.vie.h + 3;
+    const x = ROUE_LOT.x + ((e.sortie && e.sortie.roueX) || 0);
+    const y = boite.vie.y + boite.vie.h + 3;
+    if (x > SCENE) return;
     poserRendu(ctx, rendre(s.roueLot, 1, 100), x, y);
 
     // Le lot, au centre de la roue, au tiers et demi de sa taille.
