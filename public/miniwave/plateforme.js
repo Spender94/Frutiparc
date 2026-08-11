@@ -182,9 +182,10 @@ function versTuyau(c) {
     String(c.$cons.$letter),
     c.$shop.join(','),
     String(c.$vs),
-    // Huitième champ, ajouté après coup : sans lui, une partie d'arcade jouée
-    // au bureau ne pouvait jamais entrer au classement du jour — le tuyau
-    // portait le NIVEAU atteint, jamais les points.
+    // Huitième champ, ajouté après coup : le tuyau portait le NIVEAU atteint,
+    // jamais les points — le record personnel d'arcade restait enfermé dans le
+    // SWF. Il ne nourrit aucun classement (le Challenge, un mode du light,
+    // classe) : il tient juste le record sur la carte.
     String(c.$arcade.$bestScore),
   ].join('|');
 }
@@ -413,23 +414,32 @@ class Plateforme {
   }
 
   /**
-   * Le score d'une partie d'ARCADE part au classement du jour.
+   * Le score d'une partie de CHALLENGE part au classement du jour.
    *
-   * Le challenge quotidien veut le meilleur score DU JOUR, pas le record
-   * personnel : on envoie donc à chaque fin de partie d'arcade, et c'est le
-   * serveur qui garde le meilleur. Le NIVEAU atteint voyage dans la donnée —
-   * il s'affiche à côté des points, et il sert au serveur à juger la
-   * cohérence du score.
+   * C'est le Challenge qui classe — la map du jour, la même pour tous : sur
+   * un parcours commun, les scores se comparent. L'arcade, elle, ne classe
+   * pas (le jeu de 2006 n'a jamais classé, et un parcours connu par cœur ne
+   * départage personne).
+   *
+   * Le classement quotidien veut le meilleur score DU JOUR, pas le record
+   * personnel : on envoie donc à chaque fin de partie de Challenge, et c'est
+   * le serveur qui garde le meilleur. Le NIVEAU atteint voyage dans la
+   * donnée — il s'affiche à côté des points, et il sert au serveur à juger
+   * la cohérence du score.
    *
    * Sans session (le jeu ouvert hors du site), il n'y a personne à classer.
    *
    * @param {number} score
-   * @param {number} niveau  le niveau ATTEINT (1 à 200)
+   * @param {number} niveau  le niveau ATTEINT (1 à NIVEAUX_PAR_JOUR)
    */
   envoyerScore(score, niveau) {
+    const defi = (typeof module !== 'undefined' && module.exports)
+      ? require('./challenge.js')
+      : (typeof window !== 'undefined' ? window.MiniwaveChallenge : null);
+    const nivMax = defi ? defi.NIVEAUX_PAR_JOUR : 40;
     const n = Math.max(0, Math.round(Number(score) || 0));
     if (!this.sid || n <= 0) return Promise.resolve({ ok: false });
-    const lvl = Math.max(1, Math.min(200, Math.round(Number(niveau) || 1)));
+    const lvl = Math.max(1, Math.min(nivMax, Math.round(Number(niveau) || 1)));
     const p = new URLSearchParams({
       sid: this.sid, game: 'miniwave', m: '0', score: String(n), data: String(lvl),
     });

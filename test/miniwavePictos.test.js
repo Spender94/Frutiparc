@@ -238,9 +238,10 @@ test('les modes achetés au stand survivent à une sauvegarde du SWF', async (t)
   // Maintenant le SWF du bureau enregistre : un tuyau étroit, qui ne porte ni
   // crédits ni modes. Sans la greffe côté serveur, tout serait perdu.
   //
-  // Il a HUIT champs depuis qu'on y a ajouté le meilleur score d'arcade — sans
-  // quoi une partie jouée au bureau ne pouvait pas entrer au classement du
-  // jour. Ce qu'il ne porte toujours pas est ce que ce test surveille.
+  // Il a HUIT champs depuis qu'on y a ajouté le meilleur score d'arcade — le
+  // record PERSONNEL, qui restait enfermé dans le SWF (il ne nourrit aucun
+  // classement : le classement MiniWave mesure le Challenge, un mode du
+  // light). Ce que le tuyau ne porte toujours pas est ce que ce test surveille.
   const tuyau = P.versTuyau(relu);
   assert.equal(tuyau.split('|').length, 8, 'le tuyau du bureau a huit champs');
   assert.doesNotMatch(tuyau, /800/, 'et le solde de crédits n\'y figure pas');

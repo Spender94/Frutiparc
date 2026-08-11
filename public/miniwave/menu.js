@@ -62,8 +62,10 @@ const RUBRIQUES = [
     desc: 'Decouvrez les projets les plus secrets de la mini-airforce.' },
   // Le mode du PORTAGE : la map du jour. Il reprend l'illustration de l'arcade
   // (c'est le même jeu — seuls les niveaux changent chaque nuit).
+  // La description tient en ≤ 7 lignes du panneau InfoMain (110 px de large,
+  // 82 px sous l'illustration) : phrase courte obligatoire.
   { id: 'challenge', nom: 'CHALLENGE', illus: 2, titre: 'challenge',
-    desc: 'Une map neuve chaque jour, de plus en plus dure. Nouveau parcours à minuit !' },
+    desc: 'Une map neuve chaque jour, de plus en plus dure. Le classement retient le meilleur score !' },
   { id: 'stand', nom: 'STAND', illus: 5, titre: 'achats',
     desc: 'Dépensez vos crédits et améliorez votre arsenal.' },
 ];

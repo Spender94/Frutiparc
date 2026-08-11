@@ -528,11 +528,13 @@
           + (l.mode === 'survival' ? ('palier ' + (info.level + 1)) : ('niveau ' + (info.level + 1)));
         $('#fin-pictos').textContent = '';
         $('#fin').classList.add('on');
-        // L'ARCADE est le mode classé : son score part au challenge du jour à
-        // chaque fin de partie, avec le NIVEAU atteint en donnée (le moteur
-        // compte les niveaux à partir de zéro, l'affichage et le classement à
-        // partir de un — comme la ligne de score juste au-dessus).
-        if ((l.mode || 'arcade') === 'arcade') {
+        // Le CHALLENGE est le mode classé : la map du jour est la même pour
+        // tous, les scores se comparent. Son score part au classement à chaque
+        // fin de partie, avec le NIVEAU atteint en donnée (le moteur compte
+        // les niveaux à partir de zéro, l'affichage et le classement à partir
+        // de un — comme la ligne de score juste au-dessus). L'arcade, connue
+        // par cœur, ne classe pas.
+        if (l.mode === 'challenge') {
           plateforme.envoyerScore(info.score, (Number(info.level) || 0) + 1);
         }
         // La fiche part au serveur : les éliminations s'ajoutent à celles des

@@ -3,8 +3,8 @@
  *
  * L'arcade est toujours le même enchaînement de deux cents niveaux : au bout
  * d'un moment, on le connaît par cœur. Le Challenge y répond par un parcours
- * COURT et NEUF chaque jour : vingt niveaux générés d'une graine quotidienne,
- * la même pour tous les joueurs (le serveur donne la graine, minuit Paris fait
+ * NEUF chaque jour : quarante niveaux générés d'une graine quotidienne, la
+ * même pour tous les joueurs (le serveur donne la graine, minuit Paris fait
  * tourner la map).
  *
  * Le générateur ne produit pas du bruit : il est CALIBRÉ sur les niveaux
@@ -42,10 +42,19 @@
 const sousNode = (typeof module !== 'undefined' && module.exports);
 const E = sousNode ? require('./engine.js') : racine.MiniwaveEngine;
 
-// Le nombre de niveaux d'une map. C'est LE curseur du mode : assez long pour
-// une vraie session (un quart d'heure environ), assez court pour donner envie
-// de revenir demain — l'arcade garde le monopole du marathon.
-const NIVEAUX_PAR_JOUR = 20;
+/*
+ * Le nombre de niveaux d'une map — et la raison d'être de ce chiffre.
+ *
+ * La map n'est PAS faite pour être finie : c'est un CLASSEMENT quotidien, et un
+ * parcours que tout le monde boucle ne départage personne. Quarante niveaux en
+ * trois actes — l'échauffement, la montée, puis la ZONE ROUGE : le dernier
+ * quart n'aligne plus que les espèces les plus dures du jeu, en formations
+ * denses, aux vitesses maximales. On ne « gagne » pas la map du jour : on va le
+ * plus loin possible, et c'est le niveau atteint qui creuse les écarts.
+ */
+const NIVEAUX_PAR_JOUR = 40;
+// Où commence la zone rouge, en fraction du parcours (les ~10 derniers niveaux).
+const ZONE_ROUGE = 0.72;
 
 // Les types utilisables : ceux que l'arcade emploie dans ses niveaux NORMAUX
 // (1..199). Les autres entrées de la table (escortes du boss, variantes
@@ -197,18 +206,34 @@ function genererMap(graine, nombre) {
   const niveaux = [];
   for (let i = 0; i < N; i++) {
     const t = N === 1 ? 1 : i / (N - 1);                // 0 → 1 le long de la map
+    // La profondeur DANS la zone rouge (0 avant, 0 → 1 dedans).
+    const rouge = Math.max(0, (t - ZONE_ROUGE) / (1 - ZONE_ROUGE));
 
-    // La fenêtre de rangs du niveau : le plafond grimpe du rang ~4 au rang
-    // maximal (modulé par le profil), le plancher suit à distance — les
-    // premières espèces sortent du jeu à mesure que les dures entrent.
-    const plafond = Math.min(rankMax, Math.round((4 + t * (rankMax - 4)) * profil.plafond));
-    const plancher = Math.max(0, plafond - 16);
+    /*
+     * La fenêtre de rangs du niveau. Avant la zone rouge : le plafond grimpe
+     * du rang ~4 vers le maximum, modulé par le profil, et le plancher suit à
+     * seize rangs — les premières espèces sortent à mesure que les dures
+     * entrent. DANS la zone rouge, le profil ne protège plus personne : le
+     * plafond est le maximum pour tout le monde, et le plancher REMONTE — au
+     * dernier niveau, il ne reste que les huit espèces les plus féroces du
+     * jeu. C'est ce mur commun qui départage les joueurs du jour.
+     */
+    let plafond, plancher;
+    if (rouge > 0) {
+      plafond = rankMax;
+      plancher = Math.max(0, rankMax - Math.round(16 - 8 * rouge));
+    } else {
+      const tm = t / ZONE_ROUGE;                        // 0 → 1 jusqu'au mur
+      plafond = Math.min(rankMax, Math.round((4 + tm * (rankMax - 4)) * profil.plafond));
+      plancher = Math.max(0, plafond - 16);
+    }
     const fenetre = pool.filter((p) => p.rank >= plancher && p.rank <= plafond);
-    if (fenetre.length === 0) fenetre.push(pool[0]);
+    if (fenetre.length === 0) fenetre.push(pool[pool.length - 1]);
 
-    // Le budget d'ennemis : de ~12 à ~24, comme les niveaux dessinés à la
-    // main (2..26), gonflé ou dégonflé par le profil.
-    const budget = Math.round((12 + t * 12 + h(3)) * profil.budget);
+    // Le budget d'ennemis : de ~12 à ~26 sur la montée (les niveaux dessinés à
+    // la main vont de 2 à 26), puis la zone rouge pousse jusqu'à ~30 — des
+    // formations pleines, sans respiration.
+    const budget = Math.round((12 + t * 14 + h(3)) * profil.budget + rouge * 4);
 
     // Deux à quatre escadres se partagent le budget.
     const nbEscadres = 2 + h(2) + (t > 0.5 && h(2) === 0 ? 1 : 0);
@@ -228,13 +253,18 @@ function genererMap(graine, nombre) {
       list.push([{ t: fenetre[0].type, x: 96, y: 48 }, { t: fenetre[0].type, x: 120, y: 48 }]);
     }
 
-    // Les vitesses du jeu : quasi constantes, comme dans l'arcade. La fin de
-    // map accélère d'un cran — c'est le seul moment où le jeu le fait aussi.
+    /*
+     * Les vitesses. Sur la montée : quasi constantes, comme l'arcade (sa
+     * difficulté est la composition, pas la cadence). La zone rouge est le
+     * seul endroit qui dépasse le SWF : vague à 2, chute à 8, entrées
+     * resserrées (sd 5 — chaque vaisseau de l'escadre déboule plus tôt). C'est
+     * une extrapolation assumée : le mur final doit être un mur.
+     */
     niveaux.push({
-      moveSpeed: (t > 0.75 && profil.budget > 1 && h(3) === 0) ? 2 : 1,
-      fallSpeed: t > 0.8 ? 7 : 6,
+      moveSpeed: (rouge > 0.3 || (t > 0.55 && profil.budget > 1 && h(3) === 0)) ? 2 : 1,
+      fallSpeed: rouge > 0.6 ? 8 : (t > 0.6 ? 7 : 6),
       ss: 6,
-      sd: 6,
+      sd: rouge > 0.5 ? 5 : 6,
       list,
     });
   }

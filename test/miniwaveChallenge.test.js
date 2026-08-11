@@ -12,9 +12,15 @@
  *   et changent chaque jour. L'arcade est toujours le même enchaînement — la
  *   map du jour ne l'est jamais. Le serveur publie une graine (minuit Paris
  *   fait foi), le générateur embarqué la déroule : même graine, même map, pour
- *   tout le monde. Vingt niveaux, difficulté croissante, pas de titres, pas de
- *   boss (il reste l'apanage de l'arcade), et un profil de map tiré du jour —
- *   certaines journées sont plus féroces que d'autres.
+ *   tout le monde. Quarante niveaux, difficulté croissante jusqu'à la ZONE
+ *   ROUGE (le dernier quart, fait pour ne presque jamais être passé — c'est le
+ *   niveau atteint qui départage), pas de titres, pas de boss (il reste
+ *   l'apanage de l'arcade), et un profil de map tiré du jour — certaines
+ *   journées sont plus féroces que d'autres.
+ *
+ * · Et c'est LE CHALLENGE QUI CLASSE : le classement quotidien MiniWave mesure
+ *   la map du jour (un parcours commun, les scores se comparent), plus
+ *   l'arcade (connue par cœur, elle ne départage personne).
  */
 'use strict';
 
@@ -152,6 +158,28 @@ test('la difficulté monte le long de la map : espèces plus dures, niveaux plus
     const fin = poids.slice(-5).reduce((a, x) => a + x, 0) / 5;
     assert.ok(fin > debut * 2,
       `les cinq derniers niveaux pèsent plus du double des cinq premiers (${debut.toFixed(1)} → ${fin.toFixed(1)}, graine ${g})`);
+  }
+});
+
+test('la zone rouge : la fin de map n\'aligne que les espèces les plus dures, à pleine vitesse', () => {
+  // Le dernier quart est le MUR qui départage les joueurs : le plafond de rang
+  // est au maximum quel que soit le profil du jour, le plancher remonte (au
+  // dernier niveau, les huit espèces les plus féroces seulement), et les
+  // cadences sortent — c'est le seul endroit du mode qui dépasse le SWF.
+  const rankMax = C.typesJouables().slice(-1)[0].rank;
+  for (const g of [3, 55, 1234, 999983]) {
+    const m = C.genererMap(g);
+    const dernier = m.niveaux[m.niveaux.length - 1];
+    let minRank = Infinity;
+    for (const l of dernier.list) for (const c of l) minRank = Math.min(minRank, E.ENNEMIS[c.t].rank);
+    assert.ok(minRank >= rankMax - 8,
+      `le dernier niveau n'a plus d'espèce douce (rang min ${minRank} ≥ ${rankMax - 8}, graine ${g})`);
+    assert.equal(dernier.moveSpeed, 2, 'la vague est à sa vitesse haute');
+    assert.equal(dernier.fallSpeed, 8, 'la descente aussi');
+    assert.equal(dernier.sd, 5, 'et les entrées d\'escadre sont resserrées');
+    // Avant le mur, la map reste dans les cadences du SWF (fallSpeed 6..7).
+    assert.ok(m.niveaux[0].fallSpeed <= 7 && m.niveaux[0].moveSpeed === 1,
+      'le début de map garde les vitesses de l\'arcade');
   }
 });
 
@@ -300,7 +328,10 @@ test('la page charge la map du jour et la relie au lancement', () => {
   assert.match(src, /defiJour\.jour !== d\.jour/, 'minuit régénère (l\'onglet ouvert la nuit)');
   assert.match(src, /mode: 'challenge'/, 'le lancement porte le mode');
   assert.match(src, /jour: l\.jour/, 'et le jour voyage jusqu\'à la fiche');
-  // Le score du Challenge ne part PAS au classement arcade : le filtre du
-  // pilote reste sur le mode arcade seul.
-  assert.match(src, /\(l\.mode \|\| 'arcade'\) === 'arcade'/, 'envoyerScore reste réservé à l\'arcade');
+  // C'est le CHALLENGE qui classe : le score part au classement du jour à la
+  // fin d'une partie de Challenge, et d'elle seule — l'arcade, connue par
+  // cœur, ne départage personne.
+  assert.match(src, /l\.mode === 'challenge'/, 'envoyerScore est réservé au Challenge');
+  assert.doesNotMatch(src, /=== 'arcade'\)\s*\{\s*\n?\s*plateforme\.envoyerScore/,
+    'l\'arcade ne classe plus');
 });

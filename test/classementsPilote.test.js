@@ -1,6 +1,7 @@
 /*
  * Les deux classements PILOTES de l'animation : MiniPixiz « Arbre creux » et
- * MiniWave « Arcade ».
+ * MiniWave « Challenge » (la map du jour — l'arcade, connue par cœur, ne
+ * classe pas : un parcours commun est ce qui permet de comparer les scores).
  *
  * Deux modes qui n'avaient aucun classement. On les ouvre au challenge du jour
  * (section C) : remise à zéro quotidienne, médailles or/argent/bronze, kikooz,
@@ -10,7 +11,7 @@
  *   · une partie enregistre bien un score dans la bonne cuve ;
  *   · les garde-fous de plausibilité écartent l'absurde (le score est calculé
  *     par le NAVIGATEUR dans ces deux portages) sans gêner une vraie partie ;
- *   · le niveau d'arcade voyage et s'affiche à côté des points ;
+ *   · le niveau atteint voyage et s'affiche à côté des points ;
  *   · les vignettes de médaille pointent sur des dessins qui EXISTENT dans
  *     public/awards.swf (miniwave → « wave », minipixiz → « tris ») ;
  *   · Kaluga Freestyle a quitté le tableau des scores mais reste aux records.
@@ -29,6 +30,10 @@ const PORT = 3494;
 const BASE = `http://127.0.0.1:${PORT}`;
 const RUN = Date.now().toString(36).slice(-5);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// La taille de la map du Challenge : la borne de niveau du classement MiniWave
+// se dérive du module du mode (même source que le serveur).
+const NB_NIVEAUX_DEFI = require(path.join(ROOT, 'public/miniwave/challenge.js')).NIVEAUX_PAR_JOUR;
 
 let proc = null;
 before(async () => {
@@ -109,8 +114,8 @@ test('une partie d\'Arbre creux entre au challenge du jour', async () => {
     'une meilleure partie monte');
 });
 
-test('une partie d\'Arcade entre avec son niveau, affiché à côté des points', async () => {
-  const u = joueur('arcade');
+test('une partie de Challenge entre avec son niveau, affiché à côté des points', async () => {
+  const u = joueur('defi');
   const sid = await sidPour(u);
   const r = await enregistrer(sid, 'miniwave', 48000, '37');
   assert.equal(r.ok, true);
@@ -142,22 +147,28 @@ test('un score d\'arbre absurde est refusé, une vraie partie passe', async () =
   assert.equal(ok.ok, true, 'une partie hors norme mais humaine passe');
 });
 
-test('un score d\'arcade incohérent avec le niveau est refusé', async () => {
+test('un score de Challenge incohérent avec le niveau est refusé', async () => {
   const u = joueur('trichw');
   const sid = await sidPour(u);
-  // Un million de points en étant resté au niveau 1 : impossible.
-  const r = await enregistrer(sid, 'miniwave', 1000000, '1');
+  // Cent mille points en étant resté au niveau 1 : impossible (le niveau le
+  // plus riche que le générateur sache produire vaut ~6 000 points).
+  const r = await enregistrer(sid, 'miniwave', 100000, '1');
   assert.equal(r.statut, 400, 'refusé');
   assert.match(r.raison, /incohérent avec le niveau/);
 
-  // Le parcours ne compte que 200 vagues : au-delà, le niveau n'existe pas.
-  const r2 = await enregistrer(sid, 'miniwave', 5000, '404');
-  assert.equal(r2.statut, 400, 'niveau hors parcours refusé');
+  // La map du jour compte NIVEAUX_PAR_JOUR niveaux, pas un de plus : au-delà,
+  // le niveau n'existe pas. Le garde-fou se dérive du module du mode — la
+  // borne suit la map si elle est un jour retaillée.
+  const r2 = await enregistrer(sid, 'miniwave', 5000, String(NB_NIVEAUX_DEFI + 1));
+  assert.equal(r2.statut, 400, 'niveau hors map refusé');
+  const r3 = await enregistrer(sid, 'miniwave', 5000, '404');
+  assert.equal(r3.statut, 400, 'le niveau d\'arcade d\'hier ne passe plus');
 
-  // Et la même performance, au niveau qui va avec, passe.
-  const ok = await enregistrer(sid, 'miniwave', 1000000, '120');
-  assert.equal(ok.ok, true, 'un gros score à un niveau élevé est légitime');
-  assert.equal((ligne((await onglets()).miniwave_classic, u) || {}).score, 1000000);
+  // Et une grosse performance, au niveau qui va avec, passe — y compris au
+  // tout dernier niveau de la map.
+  const ok = await enregistrer(sid, 'miniwave', 300000, String(NB_NIVEAUX_DEFI));
+  assert.equal(ok.ok, true, 'un gros score au bout de la map est légitime');
+  assert.equal((ligne((await onglets()).miniwave_classic, u) || {}).score, 300000);
 });
 
 test('les deux pilotes ne consomment aucun fruit défendu', async () => {
@@ -246,7 +257,7 @@ test('les deux portages envoient leur score en fin de partie', () => {
   assert.match(pixP, /game: 'minipixiz', m: '0'/, 'vers la cuve du jour');
 
   const mw = fs.readFileSync(path.join(ROOT, 'public/miniwave/index.html'), 'utf8');
-  assert.match(mw, /\(l\.mode \|\| 'arcade'\) === 'arcade'/, 'l\'arcade, et elle seule, est classée');
+  assert.match(mw, /l\.mode === 'challenge'/, 'le Challenge, et lui seul, est classé');
   assert.match(mw, /plateforme\.envoyerScore\(info\.score, \(Number\(info\.level\) \|\| 0\) \+ 1\)/,
     'le niveau affiché part avec le score');
   const mwP = fs.readFileSync(path.join(ROOT, 'public/miniwave/plateforme.js'), 'utf8');
@@ -329,12 +340,12 @@ test('un record d\'arbre battu au bureau entre au classement du jour', async () 
     'le classement ne bouge pas — le bureau ne dit rien des parties non-records');
 });
 
-test('un record d\'arcade battu au bureau entre au classement du jour', async () => {
-  // Le SWF de Mini-Wave n'envoie pas plus de score que celui de MiniPixiz : le
-  // bloc `SCORE` de class/miniwave/Client.as est commenté, rien n'appelle
-  // saveScore. Mais sa fiche porte $arcade.$bestScore / $bestLevel, écrits en
-  // fin de partie par game/Main.as — quand ils montent, une partie vient de
-  // passer.
+test('le record d\'arcade du bureau n\'entre PAS au classement — le Challenge classe', async () => {
+  // Le classement MiniWave mesure la MAP DU JOUR, un mode du portage light
+  // seulement : le SWF du bureau n'a que l'arcade, dont le parcours connu par
+  // cœur ne départage personne. Une fiche du bureau dont $arcade.$bestScore
+  // monte reste donc un RECORD PERSONNEL (conservé sur la carte, jamais
+  // écrasé — miniwaveGreffeHorsTuyau y veille), mais ne classe rien.
   const u = joueur('arcbur');
   const sid = await sidPour(u);
   const P = require('../public/miniwave/plateforme.js');
@@ -349,19 +360,16 @@ test('un record d\'arcade battu au bureau entre au classement du jour', async ()
     body: JSON.stringify({ sid, game: 'miniwave', slotId: '0', data: fiche(score, niveau) }),
   }).then((r) => r.text());
 
-  await sauver(12000, 9);                   // la fiche d'arrivée : rien à classer
+  await sauver(12000, 9);
   assert.equal(ligne((await onglets()).miniwave_classic, u), null,
-    'une fiche posée ne classe rien toute seule');
+    'une fiche posée ne classe rien');
 
-  await sauver(31000, 24);                  // le record monte : une partie l'a battu
-  const e = ligne((await onglets()).miniwave_classic, u) || {};
-  assert.equal(e.score, 31000, 'le record d\'arcade du bureau entre au classement');
-  assert.match(String(e.label || ''), /niveau 24/,
-    'et le niveau voyage avec, comme depuis le portage light');
+  await sauver(31000, 24);                  // le record d'arcade monte…
+  assert.equal(ligne((await onglets()).miniwave_classic, u), null,
+    '…et ne classe toujours rien : l\'arcade ne nourrit pas le classement du Challenge');
 
-  // La MÊME limite qu'à l'arbre creux : une partie qui ne bat pas le record
-  // personnel ne laisse aucune trace dans la fiche.
-  await sauver(31000, 24);
-  assert.equal((ligne((await onglets()).miniwave_classic, u) || {}).score, 31000,
-    'le classement ne bouge pas — le bureau ne dit rien des parties non-records');
+  // La fiche, elle, garde bien le record : c'est un trophée personnel.
+  const brut = await (await fetch(`${BASE}/api/loadFrutiSlots?sid=${sid}&game=miniwave`)).text();
+  const carte = JSON.parse(new URLSearchParams(brut).get('slot0'));
+  assert.equal(carte.$arcade.$bestScore, 31000, 'le record personnel est sur la carte');
 });

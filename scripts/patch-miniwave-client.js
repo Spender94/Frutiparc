@@ -216,9 +216,11 @@ function buildSaveSlotBody(CP) {
   // it" — the server then leaves $bestScore alone (see miniwaveGreffeHorsTuyau)
   // instead of overwriting a real record with a zero.
   //
-  // Without it, an arcade game played in the desktop (Frutiz) mode could never
-  // reach the daily ranking: the card kept the record in memory, but the only
-  // channel out of the SWF carried the best LEVEL and not the best SCORE.
+  // Without it, the personal arcade record stayed locked inside the SWF: the
+  // card kept it in memory, but the only channel out carried the best LEVEL
+  // and not the best SCORE. It feeds no ranking (the daily MiniWave ranking
+  // measures the light-only Challenge) — it just keeps the record true on the
+  // server-side card.
   const buildStr = Buffer.concat([
     actionPush(pushStr('')),
 

@@ -1159,8 +1159,11 @@ const RANKINGS = {
   //   · MiniPixiz — l'ARBRE CREUX (base/Tree) : le seul lieu qui se joue sans
   //     fée, pour le score pur. L'échelle du jeu lui-même (Cs.treeLimit, les
   //     pictos $pixiz_treeMax) place le très bon score autour de 8 000.
-  //   · MiniWave — l'ARCADE : le grand parcours de 200 vagues. Le score
-  //     classe, le NIVEAU atteint voyage dans la donnée et s'affiche à côté.
+  //   · MiniWave — le CHALLENGE : la map du jour, générée d'une graine
+  //     quotidienne (light seulement — le SWF du bureau n'a que l'arcade, qui
+  //     ne classe pas). Le score classe, le NIVEAU atteint voyage dans la
+  //     donnée et s'affiche à côté — et comme la map n'est pas faite pour
+  //     être finie, c'est lui qui creuse les écarts.
   // Le libellé ne nomme QUE le jeu : chacun n'a qu'un classement, préciser le
   // mode n'apporte rien (contrairement aux « - Classique » / « - Challenge »
   // des jeux qui en ont plusieurs).
@@ -1223,7 +1226,7 @@ const LEGACY_RANKINGS = [
   // Les deux PILOTES. gs='1' (le gabarit de colonnes de Frutisnake : un simple
   // score, sans colonne annexe) à dessein — les gabarits qui portent une
   // seconde colonne y logent une IMAGE chargée depuis /sd/<nom>.swf (le
-  // tzongre de Kaluga, le perso de Swapou), pas du texte : le niveau d'arcade
+  // tzongre de Kaluga, le perso de Swapou), pas du texte : le niveau atteint
   // n'y entrerait pas. Il s'affiche donc là où on maîtrise le rendu (l'onglet
   // Challenge du light et le livre des records), et le bureau montre les
   // points. g='minipixiz'/'miniwave' : fileIcon.swf connaît déjà les deux.
@@ -1426,18 +1429,20 @@ function persistKalugaFreestyle(username, rankingId, fdDirect, scoreVal, scoreDa
   return r;
 }
 
-// Le parcours d'arcade compte 200 vagues (public/miniwave/levels.json) : c'est
-// une règle EXACTE du jeu, pas une estimation — au-delà, le niveau est
-// impossible, et pas seulement improbable.
-const MINIWAVE_NIVEAU_MAX = 200;
+// Le classement MiniWave mesure le CHALLENGE : la map du jour compte autant de
+// niveaux que le générateur en produit (public/miniwave/challenge.js) — une
+// règle EXACTE du mode, pas une estimation : au-delà, le niveau est impossible,
+// et pas seulement improbable. On lit la constante DANS le module du mode pour
+// que retailler la map retaille le garde-fou du même geste.
+const MINIWAVE_NIVEAU_MAX = require('./public/miniwave/challenge.js').NIVEAUX_PAR_JOUR;
 
 /**
- * Le NIVEAU d'une partie d'arcade MiniWave, lu dans la donnée de score.
+ * Le NIVEAU d'une partie de Challenge MiniWave, lu dans la donnée de score.
  *
- * Le portage envoie le niveau ATTEINT (1 à 200 — `level` est un index côté
- * moteur, le client ajoute le 1 comme partout ailleurs dans son affichage).
- * Renvoie null si la donnée ne dit rien de lisible : le score reste classé, il
- * s'affiche simplement sans mention de niveau.
+ * Le portage envoie le niveau ATTEINT (1 à MINIWAVE_NIVEAU_MAX — `level` est un
+ * index côté moteur, le client ajoute le 1 comme partout ailleurs dans son
+ * affichage). Renvoie null si la donnée ne dit rien de lisible : le score reste
+ * classé, il s'affiche simplement sans mention de niveau.
  */
 function parseMiniwaveNiveau(raw) {
   const m = String(raw == null ? '' : raw).trim().match(/^(\d{1,3})$/);
@@ -1457,13 +1462,17 @@ function parseMiniwaveNiveau(raw) {
 //   · Arbre creux — l'échelle du jeu lui-même (Cs.treeLimit, le dernier picto
 //     à 8 000) situe l'exploit vers 10 000. Le rail est vingt-cinq fois plus
 //     haut : aucune partie honnête ne le touchera.
-//   · Arcade — le score est borné RELATIVEMENT au niveau atteint (lui-même
-//     plafonné par les 200 vagues du parcours, cf. MINIWAVE_NIVEAU_MAX) :
-//     forger un million de points en restant au niveau 1 ne passe pas, là où
-//     un plafond absolu seul laisserait faire.
+//   · Challenge MiniWave — le score est borné RELATIVEMENT au niveau atteint
+//     (lui-même plafonné par la taille de la map, cf. MINIWAVE_NIVEAU_MAX) :
+//     forger des dizaines de milliers de points en restant au niveau 1 ne
+//     passe pas, là où un plafond absolu seul laisserait faire. Le rail par
+//     niveau est calibré sur le générateur MESURÉ : le niveau le plus riche
+//     qu'il sache produire vaut ~6 000 points d'ennemis (soucoupes comprises,
+//     à +200 pièce) — 12 000 laisse un doublement de marge sans ouvrir la
+//     porte aux scores forgés.
 const PILOTE_PLAFONDS = {
   minipixiz_classic: { max: 200000 },
-  miniwave_classic:  { max: 4000000, parNiveau: 20000 },
+  miniwave_classic:  { max: MINIWAVE_NIVEAU_MAX * 12000, parNiveau: 12000 },
 };
 
 /**
@@ -1532,50 +1541,6 @@ function minipixizClasserArbreDepuisFiche(username, avantBrut, apresBrut, voie) 
   const r = persistScore(username, 'minipixiz_classic', neuf, '');
   console.log(`[${voie}] ${username} minipixiz_classic: ${r.oldScore} -> ${r.newScore}`
     + ` (updated=${r.updated}, record d'arbre du bureau ${vieux} -> ${neuf})`);
-  return neuf;
-}
-
-/**
- * Le même pont, pour l'ARCADE de Mini-Wave — et pour la même raison.
- *
- * Le SWF de miniWave2 n'envoie pas davantage de score : tout le bloc `SCORE` de
- * `class/miniwave/Client.as` est COMMENTÉ dans les sources, et rien n'appelle
- * `saveScore`. Le jeu de 2006 n'avait pas de classement d'arcade non plus.
- *
- * Mais sa fiche en garde la trace : `game/Main.as` écrit, à chaque fin de
- * partie, `$arcade.$bestScore` et `$arcade.$bestLevel` — le record PERSONNEL et
- * le niveau où il a été fait. Quand ce record monte entre deux sauvegardes,
- * c'est qu'une partie d'arcade vient de le battre.
- *
- * MÊME LIMITE qu'à l'arbre creux, et il faut la dire : une partie du bureau qui
- * ne bat pas le record personnel ne laisse aucune trace. Le classement complet
- * se joue sur le portage light, qui envoie CHAQUE partie.
- *
- * @returns {number|null} le score classé, ou null si rien à classer
- */
-function miniwaveClasserArcadeDepuisFiche(username, avantBrut, apresBrut, voie) {
-  if (!username || !avantBrut || !apresBrut) return null;
-  let avant, apres;
-  try {
-    avant = JSON.parse(avantBrut);
-    apres = JSON.parse(apresBrut);
-  } catch { return null; }
-  const lu = (c) => Number((c && c.$arcade && c.$arcade.$bestScore) || 0) || 0;
-  const vieux = lu(avant);
-  const neuf = lu(apres);
-  if (!(neuf > vieux)) return null;
-  // Le niveau voyage dans `data`, comme pour la voie light : c'est lui qui
-  // s'affiche à côté des points, et qui borne le garde-fou.
-  const niveau = Number((apres && apres.$arcade && apres.$arcade.$bestLevel) || 0) || 0;
-  const donnee = (niveau >= 1 && niveau <= MINIWAVE_NIVEAU_MAX) ? String(niveau) : '';
-  const refus = raisonScoreImplausible('miniwave_classic', neuf, donnee);
-  if (refus) {
-    console.log(`[${voie}] ${username} arcade ${neuf} REFUSÉ — ${refus}`);
-    return null;
-  }
-  const r = persistScore(username, 'miniwave_classic', neuf, donnee);
-  console.log(`[${voie}] ${username} miniwave_classic: ${r.oldScore} -> ${r.newScore}`
-    + ` (updated=${r.updated}, record d'arcade du bureau ${vieux} -> ${neuf}, niveau ${niveau})`);
   return neuf;
 }
 
@@ -10217,10 +10182,12 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
 //         [|arcadeBestScore]
 // where arrays are comma-joined (Array.toString output).
 //
-// Le HUITIÈME champ (le meilleur score d'arcade) est arrivé après coup, pour que
-// les parties jouées au bureau puissent enfin entrer au classement du jour : le
-// tuyau ne portait que le NIVEAU, jamais les points, et le record restait donc
-// enfermé dans le SWF. Il est FACULTATIF — un client encore en cache n'envoie
+// Le HUITIÈME champ (le meilleur score d'arcade) est arrivé après coup : le
+// tuyau ne portait que le NIVEAU, jamais les points, et le record personnel
+// restait donc enfermé dans le SWF — invisible de la fiche serveur, effaçable
+// par une regreffe. Il ne nourrit AUCUN classement (le classement MiniWave
+// mesure le Challenge, un mode du light) : il tient le record juste sur la
+// carte, rien d'autre. Il est FACULTATIF — un client encore en cache n'envoie
 // que sept champs, et dans ce cas on ne touche pas à $bestScore (la regreffe
 // s'en charge) plutôt que d'écraser un vrai record par un zéro.
 function parseMiniwavePipe(s) {
@@ -11477,15 +11444,9 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
       console.error(`[SLOT]  arbre creux (fiche) failed for ${username}: ${e.message}`);
     }
   }
-  // Même rattrapage pour l'arcade de Mini-Wave : son SWF ne sait pas davantage
-  // envoyer un score, mais sa fiche porte $arcade.$bestScore.
-  if (game === 'miniwave' && slotId === '0') {
-    try {
-      miniwaveClasserArcadeDepuisFiche(username, prevSlotData, data, 'SLOT');
-    } catch (e) {
-      console.error(`[SLOT]  arcade (fiche) failed for ${username}: ${e.message}`);
-    }
-  }
+  // Pas d'équivalent pour Mini-Wave : son classement mesure le CHALLENGE, un
+  // mode du portage light seulement (le SWF du bureau n'a que l'arcade, qui ne
+  // classe pas). Rien de rattrapable dans une fiche du bureau.
 
   users[username].frutiSlots[game][slotId] = data;
   if (dbId) {
@@ -15439,7 +15400,7 @@ function formatChallengeScoreLabel(rankingId, score, data) {
   const meta = RANKINGS[rankingId] || {};
   const n = Number(score);
   if (!Number.isFinite(n)) return String(score == null ? '' : score);
-  // MiniWave Arcade : le score classe, mais c'est le NIVEAU atteint qui dit la
+  // MiniWave Challenge : le score classe, mais c'est le NIVEAU atteint qui dit la
   // performance — il voyage dans la donnée de score et s'affiche à côté des
   // points. (Le tableau du bureau, lui, n'a pas de colonne de texte libre à
   // offrir : il montre les points seuls — cf. LEGACY_RANKINGS, gs='1'.)
@@ -21590,13 +21551,8 @@ case 'createchannel': {
             console.error(`[FCARD] arbre creux (fiche) failed for ${username}: ${e.message}`);
           }
         }
-        if (game === 'miniwave' && slotId === '0') {
-          try {
-            miniwaveClasserArcadeDepuisFiche(username, prevSlotData, normalizedSlotData, 'FCARD');
-          } catch (e) {
-            console.error(`[FCARD] arcade (fiche) failed for ${username}: ${e.message}`);
-          }
-        }
+        // (Pas de miroir Mini-Wave : le classement mesure le Challenge, un mode
+        // du light seulement — la fiche du bureau n'a rien à y verser.)
         u.frutiSlots[game][slotId] = normalizedSlotData;
         if (u._dbId) {
           db.upsertFrutiSlot(u._dbId, game, Number(slotId), normalizedSlotData).catch((e) => {
