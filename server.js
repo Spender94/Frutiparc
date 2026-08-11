@@ -6568,6 +6568,105 @@ app.post('/api/admin/users/:username/feutre', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/*
+ * Les CRÉDITS Mini-Wave d'un joueur — lire, et créditer.
+ *
+ * Les crédits sont la monnaie interne du jeu (le stand : vaisseaux, modes,
+ * smileys). Ils vivent dans `$credit` de la fiche Mini-Wave, slot 0 — pas dans
+ * les kikooz du site, qui sont une autre monnaie.
+ *
+ * À quoi ça sert : dédommager. Un joueur qui a perdu son solde dans une panne
+ * n'a aucun moyen de le regagner autrement qu'en rejouant des heures, et le
+ * serveur n'a pas d'historique des crédits pour le recalculer.
+ *
+ * `delta` ajoute (ou retire, s'il est négatif), `set` fixe une valeur absolue.
+ * Le solde ne descend jamais sous zéro.
+ */
+const MINIWAVE_CREDITS_MAX = 999999;   // garde-fou de saisie, pas une règle de jeu
+
+// Lit la fiche Mini-Wave (slot 0) : mémoire d'abord — c'est elle qui gagne à
+// l'écriture — puis la base pour un joueur hors ligne.
+async function miniwaveLireFiche(username, user) {
+  const enMemoire = user && user.frutiSlots && user.frutiSlots.miniwave
+    && user.frutiSlots.miniwave['0'];
+  if (enMemoire) {
+    try { return { carte: JSON.parse(enMemoire), source: 'mémoire' }; } catch { /* illisible */ }
+  }
+  if (process.env.DATABASE_URL) {
+    try {
+      const row = await db.findUserByUsername(username);
+      if (row) {
+        const slots = await db.getAllFrutiSlots(row.id);
+        const brut = slots && slots.miniwave && slots.miniwave['0'];
+        if (brut) return { carte: JSON.parse(brut), source: 'base', dbId: row.id };
+      }
+    } catch { /* pas de fiche lisible */ }
+  }
+  return null;
+}
+
+app.get('/api/admin/users/:username/miniwave-credits', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  try {
+    const user = await adminLoadUser(u);
+    const fiche = await miniwaveLireFiche(u, user);
+    if (!fiche) return res.json({ ok: true, username: u, carte: false, credits: null });
+    res.json({
+      ok: true, username: u, carte: true, source: fiche.source,
+      credits: Number(fiche.carte.$credit) || 0,
+      bestScore: Number((fiche.carte.$arcade || {}).$bestScore) || 0,
+      bestLevel: Number((fiche.carte.$arcade || {}).$bestLevel) || 0,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/users/:username/miniwave-credits', adminAuth, async (req, res) => {
+  const u = req.params.username;
+  const corps = req.body || {};
+  const aDelta = corps.delta !== undefined && corps.delta !== null && corps.delta !== '';
+  const aSet = corps.set !== undefined && corps.set !== null && corps.set !== '';
+  if (!aDelta && !aSet) return res.status(400).json({ error: 'delta ou set requis' });
+  const delta = Math.trunc(Number(corps.delta) || 0);
+  const valeur = Math.trunc(Number(corps.set) || 0);
+  if (aDelta && !Number.isFinite(delta)) return res.status(400).json({ error: 'delta invalide' });
+  if (aSet && (!Number.isFinite(valeur) || valeur < 0)) return res.status(400).json({ error: 'set invalide' });
+  if (Math.abs(delta) > MINIWAVE_CREDITS_MAX || valeur > MINIWAVE_CREDITS_MAX) {
+    return res.status(400).json({ error: `au-delà de ${MINIWAVE_CREDITS_MAX} — saisie sans doute erronée` });
+  }
+
+  try {
+    const user = await adminLoadUser(u);
+    if (!user) return res.status(404).json({ error: 'not found' });
+    const fiche = await miniwaveLireFiche(u, user);
+    // On ne FABRIQUE pas de fiche : un joueur qui n'a jamais lancé Mini-Wave
+    // n'en a pas, et en poser une ici risquerait d'entrer en conflit avec sa
+    // toute première sauvegarde. Mieux vaut le dire.
+    if (!fiche) {
+      return res.status(400).json({
+        error: 'ce joueur n\'a pas encore de fiche Mini-Wave — qu\'il lance le jeu une fois' });
+    }
+    const carte = fiche.carte;
+    const avant = Number(carte.$credit) || 0;
+    const apres = Math.max(0, Math.min(MINIWAVE_CREDITS_MAX, aSet ? valeur : avant + delta));
+    carte.$credit = apres;
+
+    const data = JSON.stringify(carte);
+    if (!user.frutiSlots) user.frutiSlots = {};
+    if (!user.frutiSlots.miniwave) user.frutiSlots.miniwave = {};
+    user.frutiSlots.miniwave['0'] = data;
+    let dbId = user._dbId || fiche.dbId;
+    if (!dbId && process.env.DATABASE_URL) {
+      try { const row = await db.findUserByUsername(u); if (row) dbId = row.id; } catch { /* hors base */ }
+    }
+    if (dbId && process.env.DATABASE_URL) {
+      await db.upsertFrutiSlot(dbId, 'miniwave', 0, data);
+    }
+    console.log(`[ADMIN] crédits Mini-Wave de ${u} : ${avant} -> ${apres}`
+      + ` (${aSet ? 'fixés' : (delta >= 0 ? '+' : '') + delta})`);
+    res.json({ ok: true, username: u, avant, credits: apres });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ENDPOINT: /api/admin/users/:username/slots — Export de la progression de jeu
 // (FrutiSlots) d'un joueur, en JSON lisible : { game: { slotId: <objet> } }.
 // Source = DB si disponible (vérité de persistance), sinon mémoire. Les valeurs
