@@ -371,6 +371,14 @@
                 }
             }
 
+            // Les jeux qui existent AUSSI en portage HTML. La clé est le
+            // marqueur que GAME_DISCS met dans le gameId du disque light ; il ne
+            // ressemble pas à un chemin de .swf, justement pour qu'aucun disque
+            // Flash ne puisse tomber dedans par accident.
+            var LIGHT_CLIENTS = {
+                "light/minipixiz": { url: "/minipixiz/", w: 820, h: 760 },
+            };
+
             // Parse /do/ld XML and store game info for the standalone popup
             function parseDoLdResponse(text) {
                 try {
@@ -625,7 +633,12 @@
                         var parsed = new URL(rewritten, window.location.origin);
                         var gameId = parsed.searchParams.get("u") || "";
                         var gameName = parsed.searchParams.get("gameName") || "";
-                        if (gameId && gameId.endsWith(".swf")) {
+                        // Un marqueur light n'est pas un .swf : sans ce cas, le
+                        // repli laissait passer le disque vers l'ouverture
+                        // générique et le jeu s'ouvrait à côté de la plaque.
+                        if (LIGHT_CLIENTS[gameId]) {
+                            game = { swf: gameId, name: gameName, width: w || 640, height: h || 480 };
+                        } else if (gameId && gameId.endsWith(".swf")) {
                             game = {
                                 swf: gameId,
                                 name: gameName || gameId.split("/").pop().replace(".swf", ""),
@@ -640,6 +653,24 @@
                 // Open standalone game player (LocalConnection is broken in Ruffle)
                 if (game) {
                     var sid = new URLSearchParams(window.location.search).get("sid") || "";
+                    // Les disques LIGHT (FD à anneau rouge) : le jeu existe en
+                    // deux moteurs, et celui-ci est le portage HTML. Le serveur
+                    // le signale en mettant un marqueur `light/<jeu>` dans le
+                    // gameId au lieu d'un .swf (voir GAME_DISCS) — on ouvre donc
+                    // le client web, jamais Ruffle. Le disque Flash du même jeu
+                    // garde son vrai chemin .swf et passe par la voie normale.
+                    // Testé en PREMIER : c'est le seul cas à clé exacte, et il
+                    // doit primer sur les reconnaissances par nom ci-dessous.
+                    var lightClient = LIGHT_CLIENTS[game.swf];
+                    if (lightClient) {
+                        var lightUrl = lightClient.url + "?sid=" + encodeURIComponent(sid);
+                        var lightFeat = "width=" + lightClient.w + ",height=" + lightClient.h
+                            + ",resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no";
+                        window.__dlog("[Frusion] Opening light client:", lightUrl);
+                        if (window.__gamePopup && !window.__gamePopup.closed) { try { window.__gamePopup.close(); } catch (e) {} }
+                        window.__gamePopup = window.open(lightUrl, "frutiparc_game", lightFeat);
+                        return true;
+                    }
                     // Grapiz est un jeu NATIF (client web HTML), pas un SWF : on ouvre
                     // /grapiz/ dans la fenêtre de jeu au lieu de game-popup.html + Ruffle.
                     if ((game.name || "").toLowerCase() === "grapiz" || /grapiz/i.test(game.swf || "")) {

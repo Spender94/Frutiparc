@@ -12744,6 +12744,36 @@ const GAME_DISCS = {
       { u: 'games/miniTroll/minipixiz.swf' },
     ],
   },
+  // Le MÊME jeu, mais le portage HTML (/minipixiz/) au lieu du SWF de 2006 —
+  // c'est lui qui porte le classement du jour, les corrections et la suite.
+  //
+  // Deux détails font tout le disque :
+  //
+  //  · discType 3 = GAMEDISC_RED. Le clip `disc` de fileIcon.swf s'arrête sur
+  //    l'image discType+1 (but.icon.Full : `ico.disc.gotoAndStop(desc[0]+1)`)
+  //    et sa 4e image porte un cxform additif +255 sur le rouge : l'anneau
+  //    vire au rouge, on distingue le disque light du FD noir d'à côté. Le
+  //    rouge n'est pas qu'une couleur — main.swf ne FAIT ÉCLATER un disque en
+  //    fin de partie que si `discType < GAMEDISC_WHITE` (2). À 3, le disque
+  //    est relâché : il revient dans « Mes disques », il ne se consomme pas.
+  //
+  //  · gameId n'est pas un .swf mais le marqueur `light/minipixiz`, que
+  //    ruffle.html reconnaît pour ouvrir le client HTML au lieu de Ruffle —
+  //    même mécanique que Grapiz et Frutibandas, qui sont natifs eux aussi.
+  //
+  // swfName reste « minipixiz », volontairement : c'est lui qui alimente le
+  // voyant « joue à… », l'entrée <service> du FrusionServer et la résolution
+  // de classement. Jouer en light doit se voir et se classer EXACTEMENT comme
+  // jouer en Flash — seul le moteur change.
+  minipixizlight: {
+    discType: '3',
+    playMode: 'single',
+    swfName: 'minipixiz',
+    iconName: 'minipixiz',
+    gameId: 'light/minipixiz',
+    props: 'w=820;h=760;m=p',
+    files: [],
+  },
   snake3: {
     discType: '0',
     playMode: 'single',
