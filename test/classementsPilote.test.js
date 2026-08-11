@@ -252,3 +252,79 @@ test('les deux portages envoient leur score en fin de partie', () => {
   const mwP = fs.readFileSync(path.join(ROOT, 'public/miniwave/plateforme.js'), 'utf8');
   assert.match(mwP, /game: 'miniwave', m: '0'/);
 });
+
+// ── L'Arbre creux : le contrat d'événement dont dépend la remontée ────────
+//
+// Le portage envoie son score sur « finPartie ». Or l'arbre émet AUSSI
+// « record » quand le record personnel tombe, et le gestionnaire de la page
+// traite « record » par un `return` anticipé. Si les deux se confondaient, une
+// partie sur deux ne remonterait pas. Ce test épingle le contrat : « finPartie »
+// arrive TOUJOURS, record ou pas — et le score de l'arbre est lisible dessus.
+
+test('l\'arbre émet finPartie à chaque partie, record personnel ou non', () => {
+  const X = require('../public/minipixiz/lieux.js');
+  const P = require('../public/minipixiz/plateforme.js');
+  const F = require('../public/minipixiz/faerie.js');
+
+  const partie = (treeMaxAvant, score) => {
+    const c = P.carteNeuve(1700000000000);
+    c.$stat.$treeMax = treeMaxAvant;
+    const vus = [];
+    const a = new X.Arbre({
+      carte: c, fee: F.genererGraine(() => 0.5), graine: 11,
+      surEvenement: (n, d) => vus.push({ n, score: d && d.score }),
+    });
+    a.score = score;
+    a.jeu.finPartie(false);
+    return { vus: vus.map((v) => v.n), score: a.score, treeMax: c.$stat.$treeMax };
+  };
+
+  // Record battu : « record » ET « finPartie ».
+  const bat = partie(0, 4200);
+  assert.ok(bat.vus.includes('record'), 'le record est annoncé');
+  assert.ok(bat.vus.includes('finPartie'), 'et la fin de partie aussi');
+  assert.equal(bat.treeMax, 4200, 'le record personnel monte');
+
+  // SOUS le record : pas de « record », mais « finPartie » quand même — c'est
+  // LE cas qui doit continuer d'alimenter le challenge du jour.
+  const sous = partie(99999, 1500);
+  assert.ok(!sous.vus.includes('record'), 'pas de record personnel');
+  assert.ok(sous.vus.includes('finPartie'), 'mais la fin de partie est bien annoncée');
+  assert.equal(sous.score, 1500, 'et le score de l\'arbre est lisible sur le lieu');
+  assert.equal(sous.treeMax, 99999, 'le record personnel ne bouge pas');
+});
+
+// ── Le rattrapage du BUREAU (le SWF n'envoie aucun score) ─────────────────
+
+test('un record d\'arbre battu au bureau entre au classement du jour', async () => {
+  const u = joueur('bureau');
+  const sid = await sidPour(u);
+  const fiche = (treeMax) => JSON.stringify({
+    $stat: { $item: [], $eat: [], $kill: [0, 0, 0, 0, 0], $run: 40,
+      $game: [0, 0, 0, 0, 3], $forestMax: 5, $treeMax: treeMax, $misNum: 0 },
+    $diam: 0, $key: 2, $star: 4, $bag: 2, $frog: false, $checkpoint: 0,
+    $dungeon: { $lvl: 0, $f: false, $loop: 0, $day: 0 },
+    $rainbow: { $f: false, $day: 0, $it: 0 }, $pond: { $q: 0, $d: 0, $fs: null },
+    $faerie: [], $vs: 1.2, $inv: [], $current: null, $help: [true, true, true],
+    $mis: [], $mission: [], $wind: 0, $god: [false, false, false],
+    $time: { $t: Date.now(), $d: 3, $s: 21600000 },
+  });
+  const sauver = (treeMax) => fetch(BASE + '/api/saveFrutiSlot', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid, game: 'minipixiz', slotId: '0', data: fiche(treeMax) }),
+  }).then((r) => r.text());
+
+  await sauver(2000);                       // la fiche d'arrivée : rien à classer
+  assert.equal(ligne((await onglets()).minipixiz_classic, u), null,
+    'une fiche posée ne classe rien toute seule');
+
+  await sauver(5600);                       // le record monte : une partie l'a battu
+  assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, 5600,
+    'le record battu au bureau entre au classement du jour');
+
+  // Et la LIMITE, assumée : une partie du bureau qui ne bat pas le record ne
+  // laisse aucune trace dans la fiche, donc rien à rattraper.
+  await sauver(5600);
+  assert.equal((ligne((await onglets()).minipixiz_classic, u) || {}).score, 5600,
+    'le classement ne bouge pas — le bureau ne dit rien des parties non-records');
+});

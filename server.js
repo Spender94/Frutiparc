@@ -1488,6 +1488,53 @@ function raisonScoreImplausible(rankingId, score, data) {
   return null;
 }
 
+/**
+ * Le pont du BUREAU pour l'Arbre creux — partiel, et il faut savoir pourquoi.
+ *
+ * Le portage light envoie le score de CHAQUE partie d'arbre (plateforme
+ * .envoyerScore) : le challenge du jour y retient donc le meilleur de la
+ * journée, record personnel ou pas. Le SWF du mode Frutiz, lui, n'a AUCUN
+ * moyen d'envoyer un score : le jeu de 2006 n'a jamais eu de classement (pas
+ * une ligne de `saveScore` dans les sources de miniTroll), et le binaire livré
+ * est obfusqué d'un bloc.
+ *
+ * Ce qu'il transporte, en revanche, c'est sa fiche — dont `$stat.$treeMax`,
+ * le record PERSONNEL. Quand ce record MONTE entre deux sauvegardes, c'est
+ * qu'une partie d'arbre vient de le battre : ce score-là est réel, il a été
+ * fait aujourd'hui, et il a sa place au classement du jour.
+ *
+ * LA LIMITE, à énoncer plutôt qu'à masquer : une partie du bureau qui ne bat
+ * PAS le record personnel ne laisse aucune trace, et reste donc invisible du
+ * classement. Un vétéran au record élevé ne se classera quasiment jamais
+ * depuis le bureau. Le classement complet se joue sur le portage light — le
+ * pont ne fait que rattraper ce qui est rattrapable.
+ *
+ * @returns {number|null} le score classé, ou null si rien à classer
+ */
+function minipixizClasserArbreDepuisFiche(username, avantBrut, apresBrut, voie) {
+  if (!username || !avantBrut || !apresBrut) return null;
+  let avant, apres;
+  try {
+    avant = JSON.parse(avantBrut);
+    apres = JSON.parse(apresBrut);
+  } catch { return null; }
+  const lu = (c) => Number((c && c.$stat && c.$stat.$treeMax) || 0) || 0;
+  const vieux = lu(avant);
+  const neuf = lu(apres);
+  if (!(neuf > vieux)) return null;
+  // Le même garde-fou que la voie light : un record invraisemblable ne classe
+  // rien (la fiche vient elle aussi du navigateur).
+  const refus = raisonScoreImplausible('minipixiz_classic', neuf, '');
+  if (refus) {
+    console.log(`[${voie}] ${username} arbre creux ${neuf} REFUSÉ — ${refus}`);
+    return null;
+  }
+  const r = persistScore(username, 'minipixiz_classic', neuf, '');
+  console.log(`[${voie}] ${username} minipixiz_classic: ${r.oldScore} -> ${r.newScore}`
+    + ` (updated=${r.updated}, record d'arbre du bureau ${vieux} -> ${neuf})`);
+  return neuf;
+}
+
 function extractBkiwiTrack(rawData) {
   const raw = String(rawData || '').trim();
   if (raw.includes(':')) {
@@ -11218,6 +11265,16 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
       }
     } catch (e) {
       console.error(`[SLOT]  faerie-safety failed for ${username}/${game}: ${e.message}`);
+    }
+  }
+
+  // Le bureau n'envoie pas de score : on rattrape ce qui est rattrapable — un
+  // record d'arbre creux qui monte est une partie jouée aujourd'hui.
+  if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0') {
+    try {
+      minipixizClasserArbreDepuisFiche(username, prevSlotData, data, 'SLOT');
+    } catch (e) {
+      console.error(`[SLOT]  arbre creux (fiche) failed for ${username}: ${e.message}`);
     }
   }
 
@@ -21267,6 +21324,16 @@ case 'createchannel': {
             console.log(`[FCARD] BLOCKED minipixiz default-clobber for ${username} (wire path, existing progress preserved)`);
             sendToClient(socket, `<${msg.tag}${rAttr}${gAttr}${sAttr}></${msg.tag}>`);
             break;
+          }
+        }
+        // Miroir du rattrapage HTTP : c'est par CE chemin que le SWF du bureau
+        // sauve sa fiche, donc c'est ici que son record d'arbre creux est vu
+        // monter (cf. minipixizClasserArbreDepuisFiche et ses limites).
+        if ((game === 'minipixiz' || game === 'minitroll') && slotId === '0') {
+          try {
+            minipixizClasserArbreDepuisFiche(username, prevSlotData, normalizedSlotData, 'FCARD');
+          } catch (e) {
+            console.error(`[FCARD] arbre creux (fiche) failed for ${username}: ${e.message}`);
           }
         }
         u.frutiSlots[game][slotId] = normalizedSlotData;
