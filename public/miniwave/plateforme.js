@@ -336,6 +336,20 @@ class Plateforme {
     // Tant que la fiche du serveur n'est pas là, on refuse d'enregistrer : on
     // n'a rien à quoi fusionner, et écrire écraserait tout.
     this.charge = false;
+    // Le PSEUDO, pour le salut du panneau d'accueil (box/InfoMain lit
+    // `client.getUser()`). Il n'est pas dans la fiche de jeu : on va le
+    // chercher à part, et le menu s'en passe tant qu'il n'est pas là plutôt que
+    // d'écrire « undefined » comme le faisait le SWF.
+    this.pseudo = '';
+  }
+
+  // Le nom du joueur, une fois, sans bloquer le chargement du jeu.
+  chargerPseudo() {
+    if (!this.sid) return Promise.resolve('');
+    return fetch('/api/light/profile?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { this.pseudo = (d && d.user) || ''; return this.pseudo; })
+      .catch(() => '');
   }
 
   // Sans session (le jeu ouvert hors du site), on joue sans rien enregistrer.

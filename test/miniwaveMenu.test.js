@@ -245,9 +245,13 @@ test('le stand garde la grille cinq par trois du jeu', () => {
   const colonnes = [...new Set(cases.map((c) => Math.round(c.gx)))];
   assert.equal(colonnes.length, 5);
   assert.equal(cases[5].gx, cases[0].gx, 'la deuxième rangée repart à gauche');
-  // Le compteur de crédits et le retour ferment la page.
-  assert.ok(ui.boites.some((b) => b.credits), 'le compteur est là');
-  assert.ok(ui.boites.some((b) => b.texte === 'RETOUR'), 'et le retour aussi');
+  // Le compteur de crédits ferme la page — et lui seul : le jeu n'a pas de
+  // bouton « RETOUR », c'est la BANNIÈRE qui ramène à l'accueil (Menu.init :
+  // `title.onPress = … backToMenu()`). Le compteur prend donc toute la largeur.
+  const credits = ui.boites.find((b) => b.credits);
+  assert.ok(credits, 'le compteur est là');
+  assert.equal(credits.gw, Menu.PAGE_L, 'et il occupe toute la dernière rangée');
+  assert.ok(!ui.boites.some((b) => b.texte === 'RETOUR'), 'aucun bouton retour');
   // Et chaque case connaît l'image du clip d'origine (ico.gotoAndStop(id+1)).
   assert.equal(cases[0].article.ico, 1, 'le Proto est à l\'image 1');
   assert.equal(cases[8].article.ico, 9, 'Letter Invader à la 9');

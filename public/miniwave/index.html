@@ -459,6 +459,9 @@
       window.MiniwaveClient.chargerDecor(),
       sons.charger(),
       plateforme.charger(),
+      // Le pseudo sert au salut du panneau d'accueil. Il ne bloque rien : s'il
+      // tarde ou échoue, le menu s'ouvre sans lui.
+      plateforme.chargerPseudo(),
       polices
     ]).then(function () {
       chargeur.avancer(1);
@@ -531,6 +534,17 @@
       var r = this.getBoundingClientRect();
       ui.auClic((ev.clientX - r.left) * 240 / r.width, (ev.clientY - r.top) * 240 / r.height);
       ev.preventDefault();
+    });
+    // Le SURVOL : le jeu s'en sert pour éclairer l'encadré visé, changer le
+    // panneau d'accueil et nommer le vaisseau qu'on regarde. Au doigt il n'y a
+    // pas de survol — l'appui fait les deux, comme dans le SWF sur tablette.
+    $('#stage').addEventListener('pointermove', function (ev) {
+      if (!ui.visible) return;
+      var r = this.getBoundingClientRect();
+      ui.auSurvol((ev.clientX - r.left) * 240 / r.width, (ev.clientY - r.top) * 240 / r.height);
+    });
+    $('#stage').addEventListener('pointerleave', function () {
+      if (ui.visible) ui.auSurvol(-1, -1);
     });
 
     $('#muet').addEventListener('click', function () {

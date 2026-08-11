@@ -9,7 +9,7 @@
  * Tout vient des sources AS2, à la valeur près :
  *
  *   • le fond du menu est le rectangle #4a4a84 de miniWave2Menu ;
- *   • le logo se pose en (120, 24), la page occupe (10, 54) sur 220 × 186
+ *   • le logo se pose en (120, 24), la page occupe (10, 54) sur 220 × 176
  *     (Menu.margin = 10, Menu.marginUp = 54) ;
  *   • chaque encadré est un rectangle arrondi tracé à l'exécution — bordure de
  *     2 px, rayon min(w/2, h/2, 10) — en #BCBCDA bordé de blanc quand il est
@@ -34,10 +34,15 @@ const P = (typeof module !== 'undefined' && module.exports)
 const LARGEUR = 240, HAUTEUR = 240;
 const MARGE = 10, MARGE_HAUT = 54;                    // Menu.margin / Menu.marginUp
 const PAGE_L = LARGEUR - MARGE * 2;                   // 220
-const PAGE_H = HAUTEUR - (MARGE + MARGE_HAUT);        // 186
+const PAGE_H = HAUTEUR - (MARGE + MARGE_HAUT);        // 176
 const FOND = '#4a4a84';                               // le rectangle de miniWave2Menu
 const OUVERT = { fond: '#BCBCDA', trait: '#FFFFFF' };
 const FERME = { fond: '#8A8ABD', trait: '#BCBCDA' };
+// box/Menu.setActive : l'encadré survolé fonce d'un cran. Et box/ShipDemo et
+// box/Life se posent d'emblée sur ce ton sombre — ce sont des vitrines, pas des
+// boutons, et le jeu les distingue par la couleur.
+const SURVOL = { fond: '#A0A0CB', trait: '#FFFFFF' };
+const VITRINE = { fond: '#8A8ABD', trait: '#FFFFFF' };
 const ENCRE = '#4e5387';                              // l'encre du SWF (verdana2 #4e5387)
 const VITESSE_MAX = 8;                                // Box.speedMax
 const COEF = 0.5;                                     // Box.speedCoef
@@ -45,13 +50,42 @@ const COEF = 0.5;                                     // Box.speedCoef
 // L'ordre du menu d'accueil, repris de page/Main.as. « Options » n'a pas de
 // contenu à porter (le réglage du son est le bouton de la page) et « Time »
 // n'existe pas dans le jeu livré : ni l'un ni l'autre n'apparaît.
+// `illus` est l'image du panneau de droite (box/InfoMain.setIllus) : une par
+// rubrique, plus celle de l'accueil. Le titre et le texte sont ceux du jeu.
 const RUBRIQUES = [
-  { id: 'arcade', nom: 'ARCADE', desc: 'Le grand parcours : 200 vagues et le boss.' },
-  { id: 'bonus', nom: 'BONUS', desc: 'Les missions, courtes et primées.' },
+  { id: 'arcade', nom: 'ARCADE', illus: 2, titre: 'action',
+    desc: 'Repoussez les fruits mutants au confin du Frunivers et gagnez des Crédits.' },
+  { id: 'bonus', nom: 'BONUS', illus: 3, titre: 'missions',
+    desc: 'Débloquez et validez les 8 missions du mode bonus.' },
   // « SPECIAL » sans accent, comme page/Main.as — et la Jawbreaker n'a pas le É.
-  { id: 'special', nom: 'SPECIAL', desc: 'Letter Invader et Endurance.' },
-  { id: 'stand', nom: 'STAND', desc: 'Vaisseaux, missions et pictos à acheter.' },
+  { id: 'special', nom: 'SPECIAL', illus: 4, titre: 'secret?',
+    desc: 'Decouvrez les projets les plus secrets de la mini-airforce.' },
+  { id: 'stand', nom: 'STAND', illus: 5, titre: 'achats',
+    desc: 'Dépensez vos crédits et améliorez votre arsenal.' },
 ];
+
+/*
+ * La GRILLE du menu d'accueil, telle que page/Main.as la pose.
+ *
+ * Cinq rangées de trente pixels, mais pas d'affilée : après la TROISIÈME
+ * (`if(i==2)`), le jeu saute `height - (5*30 - 10)` — les deux dernières
+ * rubriques tombent au bas de la page. Le portage sautait après la DEUXIÈME, ce
+ * qui poussait SPECIAL en bas avec STAND et laissait un trou au milieu.
+ *
+ * Il nous manque OPTION, la cinquième : son écran (page/Option.as) n'est pas
+ * porté. On garde la grille d'origine et on met STAND sur la DERNIÈRE rangée,
+ * pour que le groupe du bas reste calé sur le bas de page comme dans le jeu.
+ */
+function grilleAccueil(hauteur) {
+  const y = [];
+  let v = 0;
+  for (let i = 0; i < 5; i++) {
+    y.push(v);
+    v += 30;
+    if (i === 2) v += hauteur - (5 * 30 - 10);
+  }
+  return [y[0], y[1], y[2], y[4]];
+}
 
 // SelectSpecial.select : deux modes portés sur les trois du jeu. Le troisième
 // (« Time ») n'a pas de classe dans les sources — il n'a jamais été écrit.
@@ -142,7 +176,14 @@ class Boite {
     this.ouverte = false;
   }
 
-  get couleurs() { return this.verrou ? FERME : OUVERT; }
+  get couleurs() {
+    if (this.verrou) return FERME;
+    if (this.survole && !this.statique) return SURVOL;
+    // Les VITRINES (les alvéoles de l'escadron, le panneau des vies) naissent
+    // déjà sur le ton sombre : box/ShipDemo et box/Life posent colBack à
+    // 0x8A8ABD dès leur init.
+    return this.vitrine ? VITRINE : OUVERT;
+  }
 
   update(tmod) {
     if (this.etape === 0) {
@@ -276,56 +317,80 @@ class Interface {
 
   // page/Main.as : quatre rubriques à gauche, la description à droite.
   pageAccueil() {
-    let y = 0;
+    const y = grilleAccueil(PAGE_H);
     RUBRIQUES.forEach((r, i) => {
       this.boite({
-        gx: 0, gy: y, gw: 100, gh: 20, attente: i * 8,
-        texte: r.nom, action: { rubrique: r.id }, info: r.desc,
+        // box/Menu : cent sur vingt, toujours.
+        gx: 0, gy: y[i], gw: 100, gh: 20, attente: i * 8,
+        texte: r.nom, action: { rubrique: r.id }, rubrique: i,
       });
-      y += 30;
-      // Le jeu pousse les deux dernières rubriques en bas de page.
-      if (i === 1) y += PAGE_H - (RUBRIQUES.length * 30 - 10);
     });
-    const c = this.carte;
+    // box/InfoMain : le panneau de droite. Il s'ouvre sur « bienvenue » et suit
+    // le survol des rubriques.
     this.boite({
-      gx: 110, gy: 0, gw: 110, gh: PAGE_H, attente: 0, statique: true,
-      lignes: [P.GRADES[P.grade(c)], c.$credit + ' crédits', '',
-        'record arcade', c.$arcade.$bestLevel ? ('niv. ' + c.$arcade.$bestLevel) : '—'],
+      gx: 110, gy: 0, gw: 110, gh: PAGE_H, attente: 0, statique: true, info: true,
     });
+    this.infoPage = 0;
+    this.infoT = 0;
+  }
+
+  /**
+   * box/InfoMain.setPage — ce que le panneau raconte, selon la rubrique survolée.
+   * L'image 0 est l'accueil : le salut au joueur, avec son grade.
+   */
+  infoContenu() {
+    if (this.infoPage > 0) {
+      const r = RUBRIQUES[this.infoPage - 1];
+      return r ? { titre: r.titre, texte: r.desc, illus: r.illus } : null;
+    }
+    const c = this.carte;
+    const h = new Date().getHours();
+    const bonjour = (h > 5 && h < 16) ? 'Bonjour ' : 'Bonsoir ';
+    // Le jeu affiche `grade + " " + client.getUser()`. Sans nom de joueur, le
+    // SWF écrivait « Chef d'escadre undefined » — on s'arrête au grade.
+    const nom = this.plateforme && this.plateforme.pseudo;
+    return {
+      titre: 'bienvenue', illus: 1,
+      texte: bonjour + P.GRADES[P.grade(c)] + (nom ? ' ' + nom : '')
+        + ', choisissez votre section.',
+    };
   }
 
   // page/SelectLevel.as : un titre par mission, et son pourcentage à droite.
+  // Pas de bouton retour : la bannière du haut ramène à l'accueil.
   pageMissions() {
     const l = entrees(this.carte, this.niveaux).bonus;
     l.forEach((m, i) => {
       this.boite({
         gx: 0, gy: 23 * i, gw: PAGE_L - 56, gh: 18, attente: 4 * i,
-        texte: m.nom, verrou: !m.ouvert,
+        titreMission: m.nom, verrou: !m.ouvert,
         action: m.ouvert ? { lancer: m.lancement } : { refus: m.pourAcheter },
-        info: m.ouvert ? m.detail : m.pourAcheter,
       });
+      // box/Pourcentage : cinquante sur dix-huit, avec sa jauge derrière le
+      // texte (`bar._xscale = ratio`).
       this.boite({
         gx: PAGE_L - 50, gy: 23 * i, gw: 50, gh: 18, attente: 20 + 4 * i,
         verrou: !m.ouvert, statique: true,
-        texte: m.ouvert ? (m.pourcent + '%') : '',
+        pourcent: m.ouvert ? m.pourcent : null,
       });
     });
-    this.retour(0, PAGE_H - 20);
   }
 
-  // page/SelectSpecial.as : deux grandes vignettes.
+  // page/SelectSpecial.as : trois grandes vignettes, une par case de $mode[2].
+  // La troisième (« Time ») n'a jamais eu de jeu derrière — dans le SWF non
+  // plus : elle reste là, verrouillée, parce que c'est ce qu'on voit à l'écran.
   pageSpeciaux() {
     const l = entrees(this.carte, this.niveaux).special;
-    const m = 6, h = (PAGE_H - 22 - m * (l.length - 1)) / l.length;
-    l.forEach((s, i) => {
+    const max = 3, m = 6, h = (PAGE_H - m * (max - 1)) / max;
+    for (let i = 0; i < max; i++) {
+      const s = l[i];
       this.boite({
         gx: 0, gy: (h + m) * i, gw: PAGE_L, gh: h, attente: 8 * i,
-        texte: s.nom, verrou: !s.ouvert, vignette: s.index + 1,
-        action: s.ouvert ? { lancer: s.lancement } : { refus: s.pourAcheter },
-        info: s.ouvert ? s.detail : s.pourAcheter,
+        verrou: !(s && s.ouvert), vignette: i + 1,
+        action: (s && s.ouvert) ? { lancer: s.lancement }
+          : { refus: s ? s.pourAcheter : 'Ce mode n\'a jamais vu le jour.' },
       });
-    });
-    this.retour(0, PAGE_H - 20);
+    }
   }
 
   // page/SelectShip.as : on choisit son escadron, un vaisseau à la fois.
@@ -338,20 +403,21 @@ class Interface {
     const w = (PAGE_L - (max - 1) * 8) / max;
     dispo.forEach((n, i) => {
       this.boite({
+        // Les vitrines s'arrêtent au-dessus du bandeau : `height-(lowHeight+8)`.
         gx: i * (w + 8), gy: 0, gw: w, gh: PAGE_H - 28, attente: i * 8,
-        vaisseau: n, texte: P.VAISSEAUX[n], action: { vaisseau: n },
-        info: P.VAISSEAUX[n],
+        vaisseau: n, action: { vaisseau: n }, vitrine: true, etoiles: [],
       });
     });
-    // Le bandeau du bas : le décompte à gauche, l'escadron composé à droite.
-    // Les deux se relisent à chaque image — SelectShip.select ne redessine pas
-    // la page à chaque choix, il ne fait qu'ajouter une vie au panneau.
+    // Le bandeau du bas, aux mesures de SelectShip.initBox : la plaque de
+    // description à gauche, le panneau d'escadron à droite.
+    const wd = PAGE_L - (20 + lancement.vies * 16);
     this.boite({
-      gx: 0, gy: PAGE_H - 20, gw: PAGE_L - 100, gh: 20, attente: 16, compteur: true,
+      gx: 0, gy: PAGE_H - 20, gw: wd, gh: 20, attente: 16, statique: true,
+      descVaisseau: true,
     });
     this.boite({
-      gx: PAGE_L - 96, gy: PAGE_H - 20, gw: 96, gh: 20, attente: 24,
-      escadronChoisi: true, action: { rubrique: 'accueil' }, texte: '',
+      gx: 8 + wd, gy: PAGE_H - 20, gw: PAGE_L - (8 + wd), gh: 20, attente: 24,
+      statique: true, vitrine: true, escadronChoisi: true,
     });
   }
 
@@ -384,22 +450,22 @@ class Interface {
       }
     }
     this.boite({
-      gx: 0, gy: PAGE_H - lowHeight, gw: PAGE_L - 105, gh: lowHeight,
+      gx: 0, gy: PAGE_H - lowHeight, gw: PAGE_L, gh: lowHeight,
       attente: 15, statique: true, credits: true,
-    });
-    this.retour(PAGE_L - 100, PAGE_H - lowHeight, 35);
-  }
-
-  retour(gx, gy, attente) {
-    this.boite({
-      gx, gy, gw: 100, gh: 20, attente: attente === undefined ? 20 : attente,
-      texte: 'RETOUR', action: { rubrique: 'accueil' },
     });
   }
 
   // ── Interaction ──
+  //
+  // Menu.init : `this.title.onPress = … mng.backToMenu()`. LA BANNIÈRE EST LE
+  // BOUTON RETOUR — le jeu n'en a pas d'autre, et aucune page ne porte de
+  // « RETOUR ». On lui donne donc toute la bande du haut.
   auClic(px, py) {
     if (!this.visible) return false;
+    if (py < MARGE_HAUT) {
+      if (this.page !== 'accueil') { this.surSon('clic'); this.ouvrir('accueil'); }
+      return true;
+    }
     const x = px - MARGE, y = py - MARGE_HAUT;
     for (const b of this.boites) {
       if (!b.contient(x, y) || !b.action) continue;
@@ -407,6 +473,31 @@ class Interface {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Le SURVOL. Le jeu s'en sert partout : l'encadré du menu fonce (box/Menu
+   * .setActive), le panneau d'accueil change de page (page/Main.rOver), et la
+   * plaque de l'escadron affiche le nom du vaisseau visé (SelectShip.rOver).
+   * Sans lui, le portage restait muet — d'où le panneau figé et les noms de
+   * vaisseaux écrits en dur sous chaque vitrine.
+   */
+  auSurvol(px, py) {
+    if (!this.visible) return;
+    const x = px - MARGE, y = py - MARGE_HAUT;
+    let vu = null;
+    for (const b of this.boites) {
+      b.survole = false;
+      if (b.contient(x, y) && b.action) vu = b;
+    }
+    if (vu) vu.survole = true;
+    this.survol = vu;
+    // page/Main.rOver / rOut : le panneau suit la rubrique visée, et revient à
+    // l'accueil dès qu'on en sort.
+    if (this.page === 'accueil') {
+      const n = (vu && vu.rubrique !== undefined) ? vu.rubrique + 1 : 0;
+      if (n !== this.infoPage) { this.infoPage = n; this.infoT = 0; }
+    }
   }
 
   agir(a) {
@@ -503,7 +594,7 @@ class Interface {
     ctx.translate(MARGE, MARGE_HAUT);
     for (const b of this.boites) {
       b.dessiner(ctx);
-      if (b.ouverte) this.contenu(ctx, b);
+      if (b.ouverte) this.contenu(ctx, b, tmod);
     }
     ctx.restore();
 
@@ -523,8 +614,110 @@ class Interface {
     }
   }
 
+  /**
+   * box/ShipDemo.updateStars — la pluie d'étoiles au fond de chaque alvéole.
+   *
+   * Des traits blancs verticaux qui tombent, à demi transparents, régénérés
+   * tant qu'il en manque. C'est ce qui donne aux vitrines leur profondeur ; sans
+   * elles, les alvéoles sont des rectangles morts.
+   */
+  etoiles(ctx, b, tmod) {
+    const t = (tmod === undefined || !(tmod > 0)) ? 1 : tmod;
+    const max = 40 / (this.boites.filter((x) => x.vaisseau !== undefined).length || 1);
+    if (t < 1.3 && b.etoiles.length < max) {
+      b.etoiles.push({ x: Math.random() * b.gw, y: 0, s: 8 + Math.random() * 80 });
+    }
+    ctx.save();
+    ctx.beginPath();
+    const r = Math.min(b.w / 2, b.h / 2, 10);
+    ctx.moveTo(b.x + r, b.y);
+    ctx.arcTo(b.x + b.w, b.y, b.x + b.w, b.y + b.h, r);
+    ctx.arcTo(b.x + b.w, b.y + b.h, b.x, b.y + b.h, r);
+    ctx.arcTo(b.x, b.y + b.h, b.x, b.y, r);
+    ctx.arcTo(b.x, b.y, b.x + b.w, b.y, r);
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < b.etoiles.length; i++) {
+      const o = b.etoiles[i];
+      const sp = o.s * t;
+      const h = sp * 3;
+      o.y += sp;
+      if (o.y - h > b.gh) { b.etoiles.splice(i, 1); i--; continue; }
+      ctx.moveTo(b.x + o.x, b.y + o.y);
+      ctx.lineTo(b.x + o.x, b.y + o.y - h);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * box/InfoMain — le panneau de droite de l'accueil.
+   *
+   * Trois étages : le TITRE de la rubrique, son ILLUSTRATION, puis le TEXTE qui
+   * s'écrit lettre à lettre (`mainTxtIndex += tmod`, avec un souligné tant qu'il
+   * reste à taper) et se cale verticalement dans ce qui reste sous les
+   * quatre-vingt-quatorze premiers pixels.
+   *
+   * Le portage n'affichait qu'une liste figée — grade, crédits, record —, sans
+   * titre ni image. C'était lisible, mais ce n'était pas le jeu.
+   */
+  panneauInfo(ctx, b, tmod) {
+    const info = this.infoContenu();
+    if (!info) return;
+    this.infoT += (tmod === undefined ? 1 : tmod);
+
+    // Le titre. Les sources l'écrivent en bas de casse (« bienvenue ») mais le
+    // champ du SWF le rend avec une capitale : c'est le RENDU qu'on reproduit,
+    // dans la police proportionnelle du jeu et non la pixel — celle-ci n'a que
+    // des capitales et donnerait un titre en criant.
+    ctx.font = '10px VerdanaPix, Verdana, sans-serif';
+    ctx.fillStyle = ENCRE;
+    ctx.textAlign = 'center';
+    ctx.fillText(info.titre.charAt(0).toUpperCase() + info.titre.slice(1),
+      b.x + b.w / 2, b.y + 10);
+
+    // L'illustration : 96 × 76, centrée sous le titre.
+    const sp = this.sprites.illus;
+    if (sp && info.illus) {
+      this.poser(ctx, sp, info.illus, b.x + (b.w - 96) / 2, b.y + 20, 1);
+    }
+
+    // Le texte, tapé au fil des images puis centré dans le bas du panneau.
+    const HAUT_TEXTE = 94;
+    const n = Math.round(this.infoT);
+    let texte = info.texte.slice(0, n);
+    if (n < info.texte.length) texte += '_';
+    ctx.font = '10px VerdanaPix, Verdana, sans-serif';
+    const lignes = this.decouper(ctx, texte, b.w - 10);
+    const hb = b.h - HAUT_TEXTE;
+    let y = b.y + HAUT_TEXTE + Math.max(0, (hb - lignes.length * 11)) / 2 + 6;
+    for (const l of lignes) {
+      ctx.fillText(l, b.x + b.w / 2, y);
+      y += 11;
+    }
+  }
+
+  // Coupe un texte aux mots pour tenir dans `large`.
+  decouper(ctx, texte, large) {
+    const out = [];
+    let courante = '';
+    for (const mot of String(texte).split(' ')) {
+      const essai = courante ? courante + ' ' + mot : mot;
+      if (courante && ctx.measureText(essai).width > large) {
+        out.push(courante);
+        courante = mot;
+      } else {
+        courante = essai;
+      }
+    }
+    if (courante) out.push(courante);
+    return out;
+  }
+
   // Le contenu d'un encadré, une fois qu'il s'est ouvert.
-  contenu(ctx, b) {
+  contenu(ctx, b, tmod) {
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
     ctx.fillStyle = ENCRE;
@@ -564,71 +757,115 @@ class Interface {
     }
 
     if (b.vaisseau !== undefined) {
-      // box/ShipDemo : un vaisseau déjà enrôlé (sauf le basique) a quitté son
-      // hangar — la case s'éteint, et choisirVaisseau refuse de toute façon.
+      /*
+       * box/ShipDemo — la vitrine d'un vaisseau.
+       *
+       * Deux choses que le portage avait perdues : le vaisseau est posé À SA
+       * TAILLE (attachHero ne met aucune échelle) et il se tient DOUZE PIXELS
+       * AU-DESSUS DU BAS de l'alvéole (`mc.y = this.gh-12`), pas au milieu. Et
+       * son nom ne s'écrit pas ici — il apparaît sur la plaque du bas quand on
+       * le survole (SelectShip.rOver).
+       */
       const enrole = this.escadron && b.vaisseau !== 0
         && this.escadron.choix.indexOf(b.vaisseau) >= 0;
+      this.etoiles(ctx, b, tmod);
       if (enrole) ctx.globalAlpha = 0.25;
-      this.poser(ctx, this.sprites['hero' + b.vaisseau], 1, b.x + b.w / 2, b.y + b.h / 2 - 6, 1.6);
-      ctx.font = '10px VerdanaPix, Verdana, sans-serif';
-      ctx.fillText(enrole ? 'parti !' : b.texte, b.x + b.w / 2, b.y + b.h - 8);
+      this.poser(ctx, this.sprites['hero' + b.vaisseau], 1, b.x + b.w / 2, b.y + b.h - 12, 1);
       if (enrole) ctx.globalAlpha = 1;
       return;
     }
 
-    if (b.compteur) {
-      const e = this.escadron;
-      ctx.font = '14px Jawbreaker, Verdana, sans-serif';
-      ctx.fillText('escadron ' + (e ? e.choix.length : 0) + '/' + (e ? e.lancement.vies : 0),
-        b.x + b.w / 2, b.y + b.h / 2);
+    if (b.descVaisseau) {
+      // box/Desc : deux lignes. Le nom du vaisseau visé, ou le libellé du mode.
+      const v = this.survol && this.survol.vaisseau;
+      if (v !== undefined && v !== null && v !== false) {
+        ctx.font = '14px Jawbreaker, Verdana, sans-serif';
+        ctx.fillText(P.VAISSEAUX[v] || '', b.x + b.w / 2, b.y + b.h / 2 + 0.5);
+      } else {
+        ctx.font = '10px VerdanaPix, Verdana, sans-serif';
+        ctx.fillText('escadron selection', b.x + b.w / 2, b.y + b.h / 2 + 0.5);
+      }
       return;
     }
 
     if (b.escadronChoisi) {
+      // box/Life : les vaisseaux enrôlés, alignés DEPUIS LA DROITE (le panneau
+      // se pose en `gw-6`) et à la taille 12.
       const e = this.escadron;
-      const n = e ? e.lancement.vies : 0;
-      for (let i = 0; i < n; i++) {
-        const x = b.x + 10 + i * 16;
-        if (e.choix[i] === undefined) {
-          ctx.fillStyle = '#8A8ABD';
-          ctx.beginPath();
-          ctx.arc(x, b.y + b.h / 2, 3, 0, 6.28);
-          ctx.fill();
-        } else {
-          this.poser(ctx, this.sprites['hero' + e.choix[i]], 1, x, b.y + b.h / 2, 0.7);
-        }
+      if (!e) return;
+      for (let i = 0; i < e.choix.length; i++) {
+        this.poser(ctx, this.sprites['hero' + e.choix[i]], 1,
+          b.x + b.w - 10 - i * 14, b.y + b.h / 2, 0.75);
       }
       return;
     }
 
     if (b.vignette) {
-      // box/Special : la vignette du mode, rognée aux coins de l'encadré.
+      /*
+       * box/Special — l'illustration REMPLIT l'encadré.
+       *
+       * Le dessin fait 242 × 56 et s'accroche au COIN de la boîte, sans échelle,
+       * découpé par un masque en retrait de quatre pixels. Le portage le posait
+       * centré et réduit : on n'en voyait qu'une vignette collée en bas à
+       * droite, avec le nom du mode écrit par-dessus. Le jeu, lui, n'écrit rien
+       * — l'image dit tout.
+       */
       const sp = this.sprites.specialIco;
       ctx.save();
-      const r = Math.min(b.w / 2, b.h / 2, 10) - 2;
+      const is = 4;
+      const r = Math.max(0, Math.min((b.w - is * 2) / 2, (b.h - is * 2) / 2, 10 - is));
       ctx.beginPath();
-      ctx.moveTo(b.x + 4 + r, b.y + 4);
-      ctx.arcTo(b.x + b.w - 4, b.y + 4, b.x + b.w - 4, b.y + b.h - 4, r);
-      ctx.arcTo(b.x + b.w - 4, b.y + b.h - 4, b.x + 4, b.y + b.h - 4, r);
-      ctx.arcTo(b.x + 4, b.y + b.h - 4, b.x + 4, b.y + 4, r);
-      ctx.arcTo(b.x + 4, b.y + 4, b.x + b.w - 4, b.y + 4, r);
+      ctx.moveTo(b.x + is + r, b.y + is);
+      ctx.arcTo(b.x + b.w - is, b.y + is, b.x + b.w - is, b.y + b.h - is, r);
+      ctx.arcTo(b.x + b.w - is, b.y + b.h - is, b.x + is, b.y + b.h - is, r);
+      ctx.arcTo(b.x + is, b.y + b.h - is, b.x + is, b.y + is, r);
+      ctx.arcTo(b.x + is, b.y + is, b.x + b.w - is, b.y + is, r);
       ctx.clip();
-      this.poser(ctx, sp, b.vignette, b.x + b.w / 2, b.y + b.h / 2, (b.w - 8) / 242);
+      this.poser(ctx, sp, b.vignette, b.x, b.y, 1);
       ctx.restore();
-      ctx.font = '14px Jawbreaker, Verdana, sans-serif';
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(0,0,0,.7)';
-      ctx.strokeText(b.texte, b.x + b.w / 2, b.y + b.h - 10);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(b.texte, b.x + b.w / 2, b.y + b.h - 10);
       return;
     }
 
-    if (b.lignes) {
-      ctx.font = '10px VerdanaPix, Verdana, sans-serif';
-      b.lignes.forEach((t, i) => {
-        ctx.fillText(t, b.x + b.w / 2, b.y + 14 + i * 12);
-      });
+    if (b.titreMission) {
+      // box/LevelTitle : le nom de la mission, dans la police PROPORTIONNELLE
+      // du jeu et sa casse d'origine — « Fruit d'artifice », pas « FRUIT
+      // D'ARTIFICE ». La Jawbreaker n'a que des capitales et coupait les titres
+      // longs.
+      ctx.font = '11px VerdanaPix, Verdana, sans-serif';
+      ctx.fillText(b.titreMission, b.x + b.w / 2, b.y + b.h / 2 + 0.5);
+      return;
+    }
+
+    if (b.pourcent !== undefined) {
+      // box/Pourcentage : une jauge derrière (`bar._xscale = ratio`), le chiffre
+      // devant. Rien du tout si la mission n'est pas ouverte.
+      if (b.pourcent === null) return;
+      const p = Math.max(0, Math.min(100, Number(b.pourcent) || 0));
+      if (p > 0) {
+        ctx.save();
+        ctx.beginPath();
+        const r = Math.min(b.w / 2, b.h / 2, 10);
+        ctx.moveTo(b.x + r, b.y);
+        ctx.arcTo(b.x + b.w, b.y, b.x + b.w, b.y + b.h, r);
+        ctx.arcTo(b.x + b.w, b.y + b.h, b.x, b.y + b.h, r);
+        ctx.arcTo(b.x, b.y + b.h, b.x, b.y, r);
+        ctx.arcTo(b.x, b.y, b.x + b.w, b.y, r);
+        ctx.clip();
+        // Discrète, comme dans le jeu : un éclaircissement, pas un pavé sombre.
+        // Une jauge trop marquée se lit à l'envers — l'œil prend la part NON
+        // remplie pour la barre.
+        ctx.fillStyle = 'rgba(255,255,255,.38)';
+        ctx.fillRect(b.x, b.y, b.w * (p / 100), b.h);
+        ctx.restore();
+        ctx.fillStyle = ENCRE;
+      }
+      ctx.font = '11px VerdanaPix, Verdana, sans-serif';
+      ctx.fillText(p + '%', b.x + b.w / 2, b.y + b.h / 2 + 0.5);
+      return;
+    }
+
+    if (b.info) {
+      this.panneauInfo(ctx, b, tmod);
       return;
     }
 

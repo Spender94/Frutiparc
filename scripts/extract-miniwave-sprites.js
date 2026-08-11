@@ -108,6 +108,10 @@ function aExtraire() {
   liste.push({ cle: 'piece', id: 1082, etiquette: 'Pièce du compteur' });
   // Les vignettes des modes spéciaux (box/Special.as : `illus.gotoAndStop(id+1)`).
   liste.push({ cle: 'specialIco', symbole: 'specialIllustration', etiquette: 'Vignettes des spéciaux' });
+  // L'illustration du panneau d'accueil (box/InfoMain.setIllus) : six images,
+  // une par rubrique du menu, l'accueil compris. C'est le carré vert au logo
+  // « mw » qu'on voit à l'ouverture, et qui change au survol des boutons.
+  liste.push({ cle: 'illus', symbole: 'illus', etiquette: 'Illustration du panneau d\'accueil' });
   return liste;
 }
 
