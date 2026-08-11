@@ -207,6 +207,7 @@
 </div>
 
 <script src="/miniwave/engine.js?v=fidele4"></script>
+<script src="/miniwave/challenge.js?v=fidele4"></script>
 <script src="/miniwave/modes.js?v=fidele4"></script>
 <script src="/miniwave/game.js?v=fidele4"></script>
 <script src="/miniwave/sons.js?v=fidele4"></script>
@@ -377,6 +378,41 @@
   }
   window.addEventListener('pagehide', function () { direEnPartie(false); });
 
+  /*
+   * ── La map du jour (mode Challenge) ──
+   *
+   * La graine vient du SERVEUR (minuit Paris fait foi), les niveaux sont
+   * générés ici même (challenge.js) : même graine, même map pour tous. On la
+   * charge au démarrage, et on REVÉRIFIE le jour à chaque entrée dans le mode
+   * — un onglet resté ouvert à cheval sur minuit doit jouer la map du matin,
+   * pas celle d'hier.
+   */
+  var defiJour = null;
+  function chargerDefi() {
+    return fetch('/api/miniwave/challenge', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.ok) return defiJour;
+        if (!defiJour || defiJour.jour !== d.jour) {
+          var map = window.MiniwaveChallenge.genererMap(d.graine);
+          defiJour = { jour: d.jour, graine: d.graine, map: map };
+        }
+        return defiJour;
+      })
+      .catch(function () { return defiJour; });
+  }
+  function lancementDefi() {
+    if (!defiJour) return null;
+    return {
+      mode: 'challenge', niveaux: defiJour.map.niveaux,
+      // Le même escadron que l'arcade : c'est le même jeu, seuls les niveaux
+      // changent. `jour` voyage jusqu'à la fiche — le record du Challenge est
+      // celui de LA map, il repart à zéro quand elle tourne.
+      vies: (niveaux && niveaux.main[0].ship) || 4,
+      nom: 'Challenge', jour: defiJour.jour,
+    };
+  }
+
   // ── Lancer une partie ──
   function lancer(l, escadron) {
     direEnPartie(true);
@@ -504,6 +540,7 @@
         // C'est de là que le serveur tire les pictos, puis la consécration.
         plateforme.enregistrer(Object.assign({}, info, {
           mode: l.mode || 'arcade', missionNum: l.missionNum, prime: l.prime,
+          jour: l.jour,
           cons: (client.jeu.cons !== undefined) ? client.jeu.cons : client.jeu.getCons(),
         })).then(function (r) {
           $('#fin-pictos').textContent = resumePictos(r);
@@ -523,6 +560,16 @@
       niveaux: niveaux,
       surChoix: lancer,
       surSon: sonMenu,
+      // La rubrique CHALLENGE : on revérifie le jour (minuit a pu passer),
+      // puis on enchaîne sur le choix d'escadron comme l'arcade. Si le serveur
+      // est injoignable ET qu'aucune map n'est en mémoire, on le dit.
+      surChallenge: function () {
+        chargerDefi().then(function () {
+          var l = lancementDefi();
+          if (l) ui.preparer(l);
+          else { sonMenu('refus'); ui.dire('La map du jour est injoignable — réessayez.'); }
+        });
+      },
     });
     // Le menu occupe le même canevas que le jeu : c'est lui qui dessine quand il
     // est ouvert, et le jeu reprend la main dès qu'une partie commence.
@@ -563,11 +610,15 @@
 
     client.demarrer();
     ouvrirMenu();
+    // La map du jour se précharge en arrière-plan : le menu n'attend pas le
+    // réseau, et le clic sur CHALLENGE revérifiera le jour de toute façon.
+    chargerDefi();
 
     window.miniwaveClient = client;        // utile aux vérifications automatisées
     window.__plateforme = plateforme;
     window.__ui = ui;
     window.__sons = sons;
+    window.__defi = function () { return defiJour; };
   }).catch(function (e) {
     chargeur.echouer(String(e && e.message || e));
   });

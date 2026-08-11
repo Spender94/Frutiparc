@@ -7824,6 +7824,38 @@ app.get('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => {
   res.status(404).json({ error: 'not found' });
 });
 
+/*
+ * La MAP DU JOUR du mode Challenge de Mini-Wave.
+ *
+ * Le Challenge est un parcours d'arcade dont les niveaux sont GÉNÉRÉS, et
+ * changent chaque jour — c'est sa raison d'être : l'arcade est toujours le
+ * même enchaînement, la map du jour ne l'est jamais.
+ *
+ * Le serveur ne fabrique pas les niveaux : il donne LA GRAINE, et le client la
+ * passe au générateur déterministe embarqué (public/miniwave/challenge.js) —
+ * même graine, même map, pour tout le monde. C'est le serveur qui fait foi sur
+ * la date (minuit PARIS, comme la map Challenge de Motion-Ball et le reste du
+ * site) : l'horloge du navigateur ne décide de rien.
+ *
+ * La graine est un FNV-1a de « miniwave: » + jour — la même famille que
+ * mb2gen.dailyChallengeSeed, le préfixe séparant les deux espaces pour que les
+ * deux jeux ne tirent pas la même valeur le même jour.
+ */
+function miniwaveChallengeSeed(jourCle) {
+  const s = 'miniwave:' + (jourCle || parisDayKey());
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return (h >>> 0) & 0x3FFFFFFF;
+}
+
+app.get('/api/miniwave/challenge', (req, res) => {
+  // Public : la graine n'est pas un secret (le générateur est servi au client),
+  // seule la DATE compte, et c'est celle du serveur.
+  const jour = parisDayKey();
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, jour, graine: miniwaveChallengeSeed(jour) });
+});
+
 // Admin: add a game item to a user (works even if user is offline)
 app.post('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => {
   const username = req.params.username;
@@ -10240,8 +10272,11 @@ function miniwaveGreffeHorsTuyau(neuf, prev) {
   if (!neuf || typeof neuf !== 'object' || !prev || typeof prev !== 'object') return false;
   const venuDuTuyau = neuf.$credit === undefined && neuf.$mode === undefined;
   if (!venuDuTuyau) return false;
+  // $challenge (le record du mode Challenge quotidien) est un champ du PORTAGE :
+  // le SWF du bureau ne le connaît pas et son tuyau ne le transporte pas — sans
+  // la regreffe, une partie au bureau l'effacerait.
   for (const k of ['$mode', '$letter', '$survival', '$time', '$bonus',
-    '$saucerKill', '$credit', '$lvl', '$stats']) {
+    '$saucerKill', '$credit', '$lvl', '$stats', '$challenge']) {
     if (prev[k] !== undefined) neuf[k] = prev[k];
   }
   // $arcade.$bestScore : le tuyau le porte DEPUIS PEU (huitième champ). Deux
@@ -12917,6 +12952,21 @@ const GAME_DISCS = {
     files: [
       { u: 'games/miniTroll/minipixiz.swf' },
     ],
+  },
+  // Le portage HTML de Mini-Wave, sur le même modèle que minipixizlight :
+  // discType 3 = GAMEDISC_RED (anneau rouge, jamais consommé — un disque
+  // n'éclate que sous GAMEDISC_WHITE=2), gameId marqueur `light/miniwave`
+  // que ruffle.html détourne vers /miniwave/ au lieu de Ruffle. swfName
+  // reste « miniwave » : voyant « joue à… », <service> et classement se
+  // comportent comme pour le disque Flash — seul le moteur change.
+  miniwavelight: {
+    discType: '3',
+    playMode: 'single',
+    swfName: 'miniwave',
+    iconName: 'miniwave',
+    gameId: 'light/miniwave',
+    props: 'w=820;h=760;m=p',
+    files: [],
   },
   // Le MÊME jeu, mais le portage HTML (/minipixiz/) au lieu du SWF de 2006 —
   // c'est lui qui porte le classement du jour, les corrections et la suite.

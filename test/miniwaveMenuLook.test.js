@@ -74,18 +74,19 @@ test('les rubriques suivent la grille du jeu : trois en haut, le reste en bas', 
   const i = ui();
   i.poserPage('accueil');
   const b = i.boites.filter((x) => x.rubrique !== undefined);
-  assert.equal(b.length, 4, 'quatre rubriques portées');
-  // page/Main.as : rangées de trente, saut après la TROISIÈME.
-  assert.deepEqual(b.map((x) => x.gy), [0, 30, 60, 156],
-    'ARCADE 0, BONUS 30, SPECIAL 60 — puis STAND au bas de la page');
+  assert.equal(b.length, 5, 'cinq rubriques — les cinq rangées de page/Main.as');
+  // page/Main.as : rangées de trente, saut après la TROISIÈME. CHALLENGE (le
+  // mode du portage) occupe la rangée d'OPTION, non portée.
+  assert.deepEqual(b.map((x) => x.gy), [0, 30, 60, 126, 156],
+    'ARCADE, BONUS, SPECIAL en haut — CHALLENGE et STAND calés en bas');
   for (const x of b) {
     assert.equal(x.gw, 100, 'box/Menu : cent de large');
     assert.equal(x.gh, 20, 'et vingt de haut');
     assert.equal(x.gx, 0);
   }
-  // Le trou du milieu est réel : entre SPECIAL et STAND, plus de soixante-dix
-  // pixels de vide. C'est LUI qui donne son allure à la page.
-  assert.ok(b[3].gy - (b[2].gy + b[2].gh) > 70, 'le groupe du bas est bien détaché');
+  // Le trou du milieu est réel : entre SPECIAL et le groupe du bas, plus de
+  // quarante pixels de vide. C'est LUI qui donne son allure à la page.
+  assert.ok(b[3].gy - (b[2].gy + b[2].gh) > 40, 'le groupe du bas est bien détaché');
 });
 
 test('le panneau d\'accueil a un titre, une image et un texte — pas une liste', () => {

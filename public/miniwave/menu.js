@@ -60,6 +60,10 @@ const RUBRIQUES = [
   // « SPECIAL » sans accent, comme page/Main.as — et la Jawbreaker n'a pas le É.
   { id: 'special', nom: 'SPECIAL', illus: 4, titre: 'secret?',
     desc: 'Decouvrez les projets les plus secrets de la mini-airforce.' },
+  // Le mode du PORTAGE : la map du jour. Il reprend l'illustration de l'arcade
+  // (c'est le même jeu — seuls les niveaux changent chaque nuit).
+  { id: 'challenge', nom: 'CHALLENGE', illus: 2, titre: 'challenge',
+    desc: 'Une map neuve chaque jour, de plus en plus dure. Nouveau parcours à minuit !' },
   { id: 'stand', nom: 'STAND', illus: 5, titre: 'achats',
     desc: 'Dépensez vos crédits et améliorez votre arsenal.' },
 ];
@@ -72,9 +76,10 @@ const RUBRIQUES = [
  * rubriques tombent au bas de la page. Le portage sautait après la DEUXIÈME, ce
  * qui poussait SPECIAL en bas avec STAND et laissait un trou au milieu.
  *
- * Il nous manque OPTION, la cinquième : son écran (page/Option.as) n'est pas
- * porté. On garde la grille d'origine et on met STAND sur la DERNIÈRE rangée,
- * pour que le groupe du bas reste calé sur le bas de page comme dans le jeu.
+ * Les cinq rangées sont toutes occupées : OPTION, qui n'est pas portée (le
+ * réglage du son vit sur la page), cède sa place — CHALLENGE prend la
+ * quatrième rangée et STAND garde la dernière. La géométrie 3 + 2 du jeu est
+ * intacte.
  */
 function grilleAccueil(hauteur) {
   const y = [];
@@ -84,7 +89,7 @@ function grilleAccueil(hauteur) {
     v += 30;
     if (i === 2) v += hauteur - (5 * 30 - 10);
   }
-  return [y[0], y[1], y[2], y[4]];
+  return y;
 }
 
 // SelectSpecial.select : deux modes portés sur les trois du jeu. Le troisième
@@ -271,6 +276,9 @@ class Interface {
     this.niveaux = o.niveaux;
     this.surChoix = o.surChoix || (() => {});
     this.surSon = o.surSon || (() => {});
+    // Le mode Challenge : la page fournit le lancement (la map du jour vient
+    // du serveur). Sans lui, la rubrique refuse poliment.
+    this.surChallenge = o.surChallenge || null;
     this.visible = false;
     this.boites = [];
     this.page = null;
@@ -514,6 +522,14 @@ class Interface {
     if (id === 'arcade') return this.preparer(entrees(this.carte, this.niveaux).arcade[0].lancement);
     if (id === 'bonus') return this.ouvrir('missions');
     if (id === 'special') return this.ouvrir('speciaux');
+    if (id === 'challenge') {
+      // La map du jour vient du RÉSEAU (la graine est au serveur — minuit
+      // Paris fait foi) : c'est la page qui la tient. Le menu délègue, et dit
+      // pourquoi quand elle n'est pas là.
+      if (this.surChallenge) return this.surChallenge();
+      this.surSon('refus');
+      return this.dire('La map du jour n\'est pas disponible.');
+    }
     if (id === 'stand') return this.ouvrir('stand');
   }
 

@@ -96,6 +96,10 @@ function carteNeuve() {
     // $mode : [arcade, missions[8], spéciaux[3], boutique, options]
     $mode: [1, new Array(NB_MISSIONS).fill(0), [0, 0, 0], 1, 1],
     $arcade: { $bestScore: 0, $bestLevel: 0 },
+    // Le mode Challenge (la map quotidienne du portage — le SWF de 2006 ne le
+    // connaît pas). $day dit de quel jour date le record : une map neuve chaque
+    // matin rend un « record du jour » plus parlant qu'un absolu.
+    $challenge: { $bestScore: 0, $bestLevel: 0, $day: '' },
     $letter: 0,
     $survival: 0,
     $time: 0,
@@ -137,6 +141,11 @@ function normaliser(o) {
   if (o.$arcade) {
     c.$arcade.$bestScore = nombre(o.$arcade.$bestScore);
     c.$arcade.$bestLevel = nombre(o.$arcade.$bestLevel);
+  }
+  if (o.$challenge) {
+    c.$challenge.$bestScore = nombre(o.$challenge.$bestScore);
+    c.$challenge.$bestLevel = nombre(o.$challenge.$bestLevel);
+    c.$challenge.$day = String(o.$challenge.$day || '');
   }
   c.$letter = nombre(o.$letter);
   c.$survival = nombre(o.$survival);
@@ -220,6 +229,22 @@ function fusionner(carte, jeu) {
       // meurt au premier niveau a donc bien 1, ce qui suffit au picto arcade.
       c.$arcade.$bestLevel = Math.max(c.$arcade.$bestLevel, niveau + 1);
       break;
+    case 'challenge': {
+      // La map change chaque jour : le record est CELUI DU JOUR. Une partie
+      // sur la map d'un autre jour que celle du record repart de zéro — les
+      // scores de deux maps ne se comparent pas. Rien d'autre ne bouge : ni
+      // $arcade (son record et son pont bureau restent purs), ni $cons (la
+      // consécration est celle du parcours arcade).
+      const jour = String(jeu.jour || '');
+      if (jour && c.$challenge.$day !== jour) {
+        c.$challenge.$day = jour;
+        c.$challenge.$bestScore = 0;
+        c.$challenge.$bestLevel = 0;
+      }
+      c.$challenge.$bestScore = Math.max(c.$challenge.$bestScore, score);
+      c.$challenge.$bestLevel = Math.max(c.$challenge.$bestLevel, niveau + 1);
+      break;
+    }
     case 'mission': {
       c.$stats.$play.$mission++;
       const n = nombre(jeu.missionNum);
