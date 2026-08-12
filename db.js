@@ -2160,6 +2160,28 @@ async function forumMarkTopicRead(username, topicId) {
   );
 }
 
+/**
+ * « Tout marquer comme lu » : pose la marque de lecture sur TOUS les sujets.
+ *
+ * Le voyant forum s'allume sur le moindre sujet ayant du nouveau, et un sujet
+ * jamais ouvert compte AUSSI (COALESCE(read_at, 'epoch')). Un vieux fil qu'on
+ * ne veut pas lire laissait donc le voyant allumé à vie : rien, dans le forum,
+ * ne permettait de dire « j'ai vu, passe à autre chose ». C'est ce que fait
+ * cette marque de masse — la même écriture que forumMarkTopicRead, sur tout.
+ *
+ * @returns {number} le nombre de sujets marqués
+ */
+async function forumMarkAllRead(username) {
+  if (!username) return 0;
+  const { rowCount } = await pool.query(
+    `INSERT INTO forum_topic_reads (username, topic_id, read_at)
+     SELECT $1, t.id, now() FROM forum_topics t
+     ON CONFLICT (username, topic_id) DO UPDATE SET read_at = now()`,
+    [username]
+  );
+  return rowCount || 0;
+}
+
 async function forumGetTopic(topicId) {
   const { rows } = await pool.query('SELECT * FROM forum_topics WHERE id = $1', [topicId]);
   return rows[0] || null;
@@ -2887,6 +2909,7 @@ module.exports = {
   forumDeletePost,
   forumIncrementViews,
   forumMarkTopicRead,
+  forumMarkAllRead,
   forumGetBoard,
   forumCreateBoard,
   forumUpdateBoard,

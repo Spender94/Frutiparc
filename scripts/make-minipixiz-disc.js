@@ -182,6 +182,16 @@ window.fait = Promise.all([...fichiers].map((f) => img('sprites/' + f).then((i) 
 });
 </script>`;
 
+// PÉRIMÉ — la jaquette servie est désormais une image DESSINÉE, déposée dans
+// le dépôt à la main : elle vaut mieux que cette composition de dépannage. Le
+// script reste pour mémoire (il documente d'où venait la première version),
+// mais il n'écrase plus rien sans qu'on le lui demande explicitement.
+if (fs.existsSync(SORTIE) && !process.argv.includes('--force')) {
+  console.log(`${SORTIE} existe déjà (jaquette dessinée) — rien à faire.`);
+  console.log('Pour la régénérer malgré tout : node scripts/make-minipixiz-disc.js --force');
+  process.exit(0);
+}
+
 (async () => {
   const base = path.join(ROOT, 'public/minipixiz');
   const page = path.join(base, '.disque.tmp.html');

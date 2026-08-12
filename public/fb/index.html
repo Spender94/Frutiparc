@@ -1866,7 +1866,49 @@ async function loadIndex() {
       html += '</div>';
     }
   }
+
+  // « Tout marquer comme lu » — l'interrupteur du voyant Forum.
+  //
+  // Le voyant s'allume au moindre sujet ayant du nouveau, et un sujet jamais
+  // ouvert compte aussi : un vieux fil qu'on ne compte pas lire le laissait
+  // allumé à demeure. Le bouton pose la marque de lecture sur TOUT le forum ;
+  // le compte retombe à zéro, l'accueil du téléphone éteint son raccourci, et
+  // le bureau ne rallume plus le sien à la connexion suivante.
+  if (currentUser) {
+    html += '<div class="shell-actions">';
+    html += '<div class="shell-left"></div>';
+    html += '<div class="shell-right">';
+    html += '<button type="button" class="btn btn-green btn-sm" id="tout-lu-btn" onclick="marquerToutLu()"'
+      + ' title="Éteint le voyant Forum : tous les sujets passent en « lu »">Tout marquer comme lu</button>';
+    html += '</div>';
+    html += '</div>';
+  }
+
   app.innerHTML = html;
+}
+
+/**
+ * Marque tout le forum comme lu, puis rafraîchit l'index (les dossiers
+ * repassent en gris) et prévient la page qui nous héberge — /light tient le
+ * voyant du raccourci Forum, il doit le relire tout de suite plutôt qu'à la
+ * prochaine sortie du forum.
+ */
+async function marquerToutLu() {
+  var b = document.getElementById('tout-lu-btn');
+  if (b) { b.disabled = true; b.textContent = 'Marquage…'; }
+  try {
+    var r = await apiFetch('/api/forum/read-all', { method: 'POST' });
+    if (!r || !r.ok) throw new Error((r && r.error) || 'échec');
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ forum: 'toutLu', restant: Number(r.restant) || 0 }, '*');
+      }
+    } catch (e) { /* page hébergée ailleurs : tant pis pour le voyant */ }
+    await loadIndex();
+  } catch (e) {
+    if (b) { b.disabled = false; b.textContent = 'Tout marquer comme lu'; }
+    alert('Impossible de tout marquer comme lu pour le moment.');
+  }
 }
 
 var currentBoardId = null;

@@ -223,6 +223,128 @@ test('le voyant forum du BUREAU s\'allume : à la publication, et à la connexio
   }
 });
 
+// ── « Tout marquer comme lu » : l'interrupteur du voyant ──────────────────
+//
+// Un sujet JAMAIS OUVERT compte comme neuf (COALESCE(read_at, 'epoch')) : un
+// vieux fil qu'on ne compte pas lire laissait donc le voyant allumé à demeure,
+// sans aucun moyen de dire « j'ai vu ». Le bouton du forum pose la marque de
+// lecture partout d'un coup.
+
+test('« Tout marquer comme lu » éteint le voyant, et un message neuf le rallume', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+
+  const sidA = await inscrire('toutluauteur');
+  const sidB = await inscrire('toutlulecteur');
+  const sidC = await inscrire('toutlurelance');
+
+  const liste = await salons(sidA);
+  const board = liste.find((b) => /frutiz/i.test(b.name) && !/jeux/i.test(b.name)) || liste[liste.length - 1];
+
+  // A poste DEUX sujets : B ne les lira jamais — c'est tout le propos.
+  const numeros = [];
+  for (const titre of ['Un fil que je ne lirai pas', 'Un autre fil de la même eau']) {
+    const r = await fetch(`${BASE}/api/forum/topic`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sidA, boardId: board.id, title: titre, content: 'Du texte pour faire un sujet.' }),
+    });
+    assert.equal(r.status, 200, 'sujet créé : ' + titre);
+    const j = await json(r);
+    numeros.push(j.topicId || j.id || (j.topic && j.topic.id));
+  }
+  assert.ok(await compte(sidB) >= 2, 'B a au moins ces deux sujets à lire');
+
+  // Sans session : personne à marquer.
+  const anonyme = await fetch(`${BASE}/api/forum/read-all`, { method: 'POST' });
+  assert.equal(anonyme.status, 401, 'le marquage exige une session');
+
+  // Le bouton.
+  const r = await fetch(`${BASE}/api/forum/read-all?sid=${sidB}`, { method: 'POST' });
+  assert.equal(r.status, 200, 'le marquage passe');
+  const d = await json(r);
+  assert.equal(d.ok, true);
+  assert.equal(d.restant, 0, 'le serveur annonce un forum entièrement lu');
+  assert.ok(d.marques >= 2, 'et il dit combien de sujets il a marqués (' + d.marques + ')');
+  assert.equal(await compte(sidB), 0, 'le voyant de B est éteint');
+
+  // A, qui n'a rien demandé, garde son propre compte : le marquage est PERSONNEL.
+  const sidD = await inscrire('toutlutemoin');
+  assert.ok(await compte(sidD) >= 2, 'un autre frutiz voit toujours les sujets non lus');
+
+  // Et le forum continue de vivre : une réponse rallume le voyant de B.
+  const rep = await fetch(`${BASE}/api/forum/post`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid: sidC, topicId: numeros[0], content: 'Une réponse qui doit rallumer le voyant.' }),
+  });
+  assert.equal(rep.status, 200, 'la réponse passe');
+  assert.equal(await compte(sidB), 1, 'un sujet relancé se rallume');
+});
+
+test('le forum porte le bouton, et /light écoute son extinction', () => {
+  const forum = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
+  assert.match(forum, /Tout marquer comme lu/, 'le bouton existe sur l\'index du forum');
+  assert.match(forum, /id="tout-lu-btn"/, 'et il est repérable');
+  assert.match(forum, /apiFetch\('\/api\/forum\/read-all', \{ method: 'POST' \}\)/,
+    'il appelle bien la route de marquage');
+  assert.match(forum, /if \(currentUser\) \{[\s\S]{0,400}tout-lu-btn/,
+    'réservé au frutiz connecté (un visiteur n\'a rien à marquer)');
+  assert.match(forum, /postMessage\(\{ forum: 'toutLu'/, 'et il prévient la page qui l\'héberge');
+
+  const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(light, /d\.forum !== "toutLu"/, '/light écoute ce message…');
+  assert.match(light, /setForumNonLus\(d\.restant\)/, '…et éteint son voyant sans attendre');
+});
+
+test('le bureau ENDORT son voyant forum quand la fenêtre du forum s\'ouvre', () => {
+  // main.swf n'avait que l'allumage : `onNewForumMsg → digitalScreen.unSleep(1)`,
+  // et RIEN n'appelait jamais `sleep(1)` — le voyant du bureau restait allumé
+  // toute la session. La rustine pose l'appel manquant en tête de
+  // FPForumSlot.onActivate, comme FPFileMng le fait pour les fichiers.
+  const zlib = require('node:zlib');
+  const raw = fs.readFileSync(path.join(ROOT, 'legacy/main.swf'));
+  const corps = raw.slice(0, 3).toString('ascii') === 'CWS'
+    ? zlib.inflateSync(raw.slice(8)) : raw.slice(8);
+
+  // Le bloc de classe FPForumSlot, repéré par son ConstantPool.
+  let pool = null, cpFin = 0, tagFin = 0;
+  const debut = Math.ceil((5 + ((corps[0] >> 3) & 0x1f) * 4) / 8) + 4;
+  for (let o = debut; o < corps.length - 1;) {
+    const hdr = corps.readUInt16LE(o); const code = hdr >> 6;
+    let len = hdr & 0x3f, h = 2;
+    if (len === 0x3f) { len = corps.readUInt32LE(o + 2); h = 6; }
+    if (code === 0) break;
+    if (code === 59 && corps[o + h + 2] === 0x88) {
+      const c = o + h + 2;
+      const cpLen = corps.readUInt16LE(c + 1), cpCount = corps.readUInt16LE(c + 3);
+      const p = corps.slice(c + 5, c + 3 + cpLen).toString('latin1').split('\0').slice(0, cpCount);
+      if (p.includes('FPForumSlot')) { pool = p; cpFin = c + 3 + cpLen; tagFin = o + h + len; break; }
+    }
+    o += h + len;
+  }
+  assert.ok(pool, 'le bloc FPForumSlot est là');
+  const iMe = pool.indexOf('me');
+  const iEcran = pool.indexOf('digitalScreen');
+  const iSleep = pool.indexOf('sleep');
+  assert.ok(iEcran >= 0 && iSleep >= 0, 'le pool porte « digitalScreen » et « sleep »');
+
+  // La séquence exacte : Push [1, 1, reg?, "me"] ; GetMember ; Push
+  // "digitalScreen" ; GetMember ; Push "sleep" ; CallMethod ; Pop.
+  const zone = corps.slice(cpFin, tagFin);
+  let trouve = false;
+  for (let i = 0; i + 30 < zone.length && !trouve; i++) {
+    if (zone[i] !== 0x96 || zone.readUInt16LE(i + 1) !== 14) continue;
+    if (zone[i + 3] !== 0x07 || zone.readInt32LE(i + 4) !== 1) continue;   // le voyant 1 = forum
+    if (zone[i + 8] !== 0x07 || zone.readInt32LE(i + 9) !== 1) continue;   // un argument
+    if (zone[i + 13] !== 0x04) continue;                                    // le registre _global
+    if (zone[i + 15] !== 0x08 || zone[i + 16] !== iMe) continue;
+    trouve = zone[i + 17] === 0x4e
+      && zone[i + 18] === 0x96 && zone[i + 21] === 0x08 && zone[i + 22] === iEcran
+      && zone[i + 23] === 0x4e
+      && zone[i + 24] === 0x96 && zone[i + 27] === 0x08 && zone[i + 28] === iSleep
+      && zone[i + 29] === 0x52 && zone[i + 30] === 0x17;
+  }
+  assert.ok(trouve, '_global.me.digitalScreen.sleep(1) est bien dans FPForumSlot');
+});
+
 test('le raccourci Forum a son icône d\'alerte, et de quoi l\'allumer', () => {
   // L'icône : la même forme dans le vert SOMBRE de l'écran allumé, exactement
   // comme l'historique et les événements. C'est l'inversion d'un segment de

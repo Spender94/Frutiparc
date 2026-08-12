@@ -498,7 +498,9 @@ test('/light lance Miniwave comme les autres disques', () => {
   // rien — ni pictos ni consécration.
   assert.match(html, /"\/miniwave\/\?sid=" \+ encodeURIComponent\(state\.sid\)/,
     'le cadre reçoit la session du joueur');
-  assert.match(html, /\{ tab: "miniwave", img: "\/fb\/fd_miniwave\.png", name: "Mini-Wave" \}/,
-    'le disque est dans « Mes disques »');
+  // La jaquette porte un numéro de version : les images sont servies sous leur
+  // propre nom, et un navigateur qui tient encore l'ancienne ne la relit pas.
+  assert.match(html, /\{ tab: "miniwave", img: "\/fb\/fd_miniwave\.png\?v=\d+", name: "Mini-Wave" \}/,
+    'le disque est dans « Mes disques », jaquette versionnée');
   assert.ok(fs.existsSync(path.join(ROOT, 'public/fb/fd_miniwave.png')), 'la vignette du disque existe');
 });

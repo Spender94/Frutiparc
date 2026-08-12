@@ -318,10 +318,31 @@ test('l\'inventaire propose bien le geste du bocal', () => {
 
 test('le disque Minipixiz est dans la pochette de /light', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public/light.html'), 'utf8');
-  assert.match(html, /tab: "minipixiz", img: "\/fb\/fd_minipixiz\.png", name: "Minipixiz"/,
-    'le disque figure dans la feuille « Mes disques »');
+  // La jaquette porte un NUMÉRO DE VERSION : sans lui, un navigateur qui tient
+  // encore l'ancienne image ne verrait jamais la nouvelle (les fichiers sont
+  // servis sous leur propre nom, sans empreinte).
+  assert.match(html, /tab: "minipixiz", img: "\/fb\/fd_minipixiz\.png\?v=\d+", name: "Minipixiz"/,
+    'le disque figure dans « Mes disques », jaquette versionnée');
+  assert.match(html, /tab: "miniwave", img: "\/fb\/fd_miniwave\.png\?v=\d+", name: "Mini-Wave"/,
+    'celui de Mini-Wave aussi');
   assert.match(html, /id="minipixiz-panel"/, 'et son panneau existe');
   assert.match(html, /"\/minipixiz\/\?sid="/, 'qui charge le jeu avec la session');
-  assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/fb/fd_minipixiz.png')),
-    'la pochette du disque est là');
+
+  // Les deux jaquettes sont des DESSINS déposés dans le dépôt, au gabarit des
+  // trois autres (~93×93 px) : les scripts qui avaient composé les premières
+  // versions ne doivent plus les écraser.
+  for (const nom of ['fd_minipixiz', 'fd_miniwave']) {
+    const p = path.join(__dirname, '..', 'public/fb/' + nom + '.png');
+    assert.ok(fs.existsSync(p), `la pochette ${nom} est là`);
+    const png = fs.readFileSync(p);
+    assert.equal(png.slice(1, 4).toString('latin1'), 'PNG', `${nom} est bien un PNG`);
+    const l = png.readUInt32BE(16), h = png.readUInt32BE(20);
+    assert.ok(l >= 90 && l <= 96 && h >= 90 && h <= 96,
+      `${nom} au gabarit des autres disques (${l}×${h})`);
+  }
+  for (const script of ['make-minipixiz-disc.js', 'make-miniwave-disc.js']) {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', script), 'utf8');
+    assert.match(src, /fs\.existsSync\(SORTIE\) && !process\.argv\.includes\('--force'\)/,
+      `${script} n'écrase plus la jaquette dessinée`);
+  }
 });

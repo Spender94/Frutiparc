@@ -3571,6 +3571,13 @@ const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze
  * Un nom ABSENT du fichier n'affiche pas la médaille d'un autre jeu : le clip
  * reste sur sa première image, un disque vert vide. C'est sans danger, mais
  * sans médaille — d'où cette table.
+ *
+ * ATTENTION, cette table ne couvre QUE la fiche (awarduser) : le TABLEAU DES
+ * SCORES, lui, ne nous demande rien — main.swf y construit sa médaille avec
+ * `frame: currentRanking.game`, l'identifiant de jeu du classement. C'est
+ * pourquoi awards.swf porte désormais, en plus, les étiquettes « miniwave » et
+ * « minipixiz » posées sur ces deux mêmes images (scripts/patch-awards-
+ * vignettes.js) : les deux chemins mènent au même dessin.
  */
 const MEDAL_AWARD_FRAME = { miniwave: 'wave', minipixiz: 'tris' };
 const medalAwardFrame = (game) => MEDAL_AWARD_FRAME[String(game || '').toLowerCase()] || game;
@@ -14480,6 +14487,34 @@ app.get('/api/forum/index', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/**
+ * « Tout marquer comme lu » — le bouton qui ÉTEINT le voyant forum.
+ *
+ * Le voyant s'allume sur le moindre sujet ayant du nouveau, et un sujet jamais
+ * ouvert compte aussi : un vieux fil qu'on ne compte pas lire le laissait donc
+ * allumé à demeure, sans aucun moyen de dire « j'ai vu ». Ce bouton pose la
+ * marque de lecture partout d'un coup ; forumCountUnread retombe à zéro, donc
+ * le raccourci Forum de /light s'éteint, et le voyant du bureau ne se rallume
+ * plus à la connexion suivante.
+ *
+ * Renvoie le compte restant (toujours 0 en pratique) pour que le client puisse
+ * rafraîchir son affichage sans deuxième appel.
+ */
+app.post('/api/forum/read-all', async (req, res) => {
+  const username = forumAuth(req);
+  if (!username) return res.status(401).json({ error: 'auth_required' });
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, marques: 0, restant: 0 });
+  try {
+    const marques = await db.forumMarkAllRead(username);
+    const restant = await db.forumCountUnread(username).catch(() => 0);
+    console.log(`[FORUM] ${username} marque tout comme lu (${marques} sujets, reste ${restant})`);
+    res.json({ ok: true, marques, restant });
+  } catch (e) {
+    console.error(`[FORUM] read-all failed for ${username}: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/forum/board/:id', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ board: null, topics: [], total: 0 });
   try {
@@ -16546,6 +16581,7 @@ async function boot() {
                     + "&#8226; <i>/aide</i> ou <i>/help</i>&#160;: ouvre cette fen&#234;tre<br/>"
                     + "&#8226; <i>/fiche pseudo</i>&#160;: affiche la fiche d&#8217;un Frutiz<br/>"
                     + "&#8226; <i>/donne nombre pseudo</i>&#160;: offre des Kikooz (le nombre d&#8217;abord&#160;!)<br/>"
+                    + "&#8226; <i>/d6</i>, <i>/d20</i>&#8230;&#160;: lance un d&#233; devant tout le salon<br/>"
                     + "&#8226; <i>/topic ...</i>&#160;: change le sujet du salon (mod&#233;rateurs)",
                 },
               ],
@@ -20281,17 +20317,19 @@ case 'send': {
       break;
     }
 
-    // ── /d<n> : le lancer de dé des animateurs, sur le salon Pomme ──
+    // ── /d<n> : le lancer de dé, pour TOUT LE MONDE, dans tous les salons ──
     // `/d6` tire entre 0 et 6, `/d20` entre 0 et 20 — bornes COMPRISES, donc
     // n+1 résultats possibles. Le tirage est diffusé à tout le salon : un dé
-    // que l'animateur serait seul à voir n'animerait rien.
+    // que le lanceur serait seul à voir n'animerait rien.
+    //
+    // Il était réservé aux animateurs, sur le seul salon Pomme — c'était en
+    // faire un outil d'animation. Un dé est un JEU DE SALON : il vaut pour la
+    // partie de rôle improvisée entre trois joueurs autant que pour le concours
+    // du samedi. Les seules bornes qui restent sont celles du bon sens (1 à
+    // 1000 faces) et l'appartenance au salon, vérifiée plus haut.
     {
       const m = text.match(/^\/d(\d{1,4})\s*$/i);
       if (m) {
-        if (g !== ANIM_CHANNEL || !canAnimate) {
-          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Le lancer de dé est réservé aux animateurs, sur le salon Pomme.</i>]]></${CMD.send}>`);
-          break;
-        }
         const faces = parseInt(m[1], 10);
         if (!(faces >= 1 && faces <= 1000)) {
           sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Syntaxe : /d6, /d20… (de 1 à 1000).</i>]]></${CMD.send}>`);

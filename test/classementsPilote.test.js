@@ -187,15 +187,16 @@ test('les deux pilotes ne consomment aucun fruit défendu', async () => {
 
 // ── Les médailles ─────────────────────────────────────────────────────────
 
-test('les vignettes de médaille désignent des dessins qui existent vraiment', () => {
-  // public/awards.swf porte 22 vignettes, une par jeu du catalogue de 2006 ;
-  // le bureau en choisit une par son LABEL D'IMAGE. Un nom absent n'affiche
-  // pas la médaille d'un autre jeu — il n'affiche rien du tout.
+// Les étiquettes d'images de public/awards.swf, avec leur NUMÉRO d'image :
+// c'est `gotoAndStop(<étiquette>)` qui choisit le dessin de la médaille.
+function vignettesAwards() {
   const raw = fs.readFileSync(path.join(ROOT, 'public/awards.swf'));
   const body = raw.slice(0, 3).toString('ascii') === 'CWS'
     ? zlib.inflateSync(raw.slice(8)) : raw.slice(8);
-  const labels = [];
-  (function tags(from, to) {
+  const parImage = {};                 // étiquette → numéro d'image, PELLICULE RACINE
+  const labels = [];                   // toutes les étiquettes, sprites compris
+  let image = 1;
+  (function tags(from, to, racine) {
     let o = from;
     while (o < to - 1) {
       const hdr = body.readUInt16LE(o), code = hdr >> 6;
@@ -203,11 +204,45 @@ test('les vignettes de médaille désignent des dessins qui existent vraiment', 
       if (len === 0x3f) { len = body.readUInt32LE(o + 2); hs = 6; }
       if (code === 0) break;
       const corps = o + hs;
-      if (code === 43) labels.push(body.slice(corps, body.indexOf(0, corps)).toString('latin1'));
-      if (code === 39) tags(corps + 4, corps + len);
+      if (code === 43) {
+        const nom = body.slice(corps, body.indexOf(0, corps)).toString('latin1');
+        labels.push(nom);
+        if (racine) parImage[nom] = image;   // le numéro n'a de sens qu'ici
+      }
+      if (code === 1 && racine) image++;
+      if (code === 39) tags(corps + 4, corps + len, false);
       o = corps + len;
     }
-  })(Math.ceil((5 + ((body[0] >> 3) & 0x1f) * 4) / 8) + 4, body.length);
+  })(Math.ceil((5 + ((body[0] >> 3) & 0x1f) * 4) / 8) + 4, body.length, true);
+  return { labels, parImage };
+}
+
+test('les deux pilotes ont une vignette de médaille SOUS LEUR PROPRE NOM', () => {
+  // Deux endroits du bureau demandent une médaille, et ils ne nomment pas
+  // l'étiquette de la même façon :
+  //
+  //   · la FICHE (awarduser) prend le nom dans la réponse du serveur — c'est
+  //     nous qui choisissons, d'où MEDAL_AWARD_FRAME ;
+  //   · le TABLEAU DES SCORES, lui, ne demande rien : main.swf construit
+  //     `{frame: currentRanking.game}` avec l'identifiant du jeu
+  //     (« miniwave », « minipixiz »). Hors de portée du serveur.
+  //
+  // D'où les étiquettes ALIAS posées sur les images existantes : les deux noms
+  // mènent au même dessin, et les médailles apparaissent des deux côtés.
+  const { parImage } = vignettesAwards();
+  assert.ok(parImage.wave, 'l\'image d\'époque de Mini-Wave est là');
+  assert.ok(parImage.tris, 'celle de Tris — empruntée par MiniPixiz — aussi');
+  assert.equal(parImage.miniwave, parImage.wave,
+    '« miniwave » désigne la MÊME image que « wave »');
+  assert.equal(parImage.minipixiz, parImage.tris,
+    '« minipixiz » désigne la même image que « tris »');
+});
+
+test('les vignettes de médaille désignent des dessins qui existent vraiment', () => {
+  // public/awards.swf porte une vignette par jeu du catalogue de 2006 ;
+  // le bureau en choisit une par son LABEL D'IMAGE. Un nom absent n'affiche
+  // pas la médaille d'un autre jeu — il n'affiche rien du tout.
+  const { labels } = vignettesAwards();
 
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   const table = /const MEDAL_AWARD_FRAME = \{([^}]*)\}/.exec(src);

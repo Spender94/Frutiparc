@@ -2539,12 +2539,17 @@
   // ── Mes disques (feuille de lancement des jeux) ──
   // Reprend le look de l'inventaire d'accessoires : un FrusionDisc par jeu
   // jouable. Un clic ferme la feuille et bascule sur le panneau du jeu.
+  // Les jaquettes portent un NUMÉRO DE VERSION : elles sont servies par
+  // express.static sous leur propre nom, et un navigateur (ou le cache d'un
+  // relais) qui tient encore l'ancienne image ne la relit pas de lui-même.
+  // Remplacer un PNG sans toucher à ce numéro, c'est le remplacer pour les
+  // nouveaux venus seulement — on l'incrémente à chaque nouvelle jaquette.
   var DISCS = [
     { tab: "bandas", img: "/fb/fd_bandas.png", name: "Frutibandas" },
     { tab: "grapiz", img: "/fb/fd_grapiz.png", name: "Grapiz" },
     { tab: "swapou", img: "/fb/fd_swapou.png", name: "Swapou" },
-    { tab: "miniwave", img: "/fb/fd_miniwave.png", name: "Mini-Wave" },
-    { tab: "minipixiz", img: "/fb/fd_minipixiz.png", name: "Minipixiz" },
+    { tab: "miniwave", img: "/fb/fd_miniwave.png?v=2", name: "Mini-Wave" },
+    { tab: "minipixiz", img: "/fb/fd_minipixiz.png?v=2", name: "Minipixiz" },
   ];
   function renderDiscs() {
     var grid = $("#disques-grid");
@@ -2796,6 +2801,10 @@
    * Ce qui l'allume : TOUT sujet ayant du nouveau depuis la dernière visite,
    * partout sur le forum — la même règle que les dossiers du forum lui-même.
    * Ses propres messages ne comptent pas.
+   *
+   * Ce qui l'ÉTEINT : lire les sujets… ou le bouton « Tout marquer comme lu »
+   * du forum, qui nous prévient par postMessage depuis son iframe (sans quoi
+   * le voyant attendrait qu'on quitte la rubrique pour se relire).
    */
   var forumNonLus = 0;
   function setForumNonLus(n) {
@@ -2804,6 +2813,11 @@
     forumNonLus = v;
     majVoyant("Forum", forumNonLus);
   }
+  window.addEventListener("message", function (e) {
+    var d = e && e.data;
+    if (!d || d.forum !== "toutLu") return;
+    setForumNonLus(d.restant);
+  });
 
   function setMailNonLus(n) {
     var v = Math.max(0, Number(n) || 0);

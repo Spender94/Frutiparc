@@ -380,13 +380,14 @@ test('les logs survivent au redémarrage du serveur', async (t) => {
     'le message écrit avant le redémarrage est toujours dans la fenêtre');
 });
 
-// ── Le lancer de dé des animateurs ────────────────────────────────────────
+// ── Le lancer de dé, à la table de tout le monde ──────────────────────────
 //
-// `/d6` tire entre 0 et 6, `/d20` entre 0 et 20 — bornes comprises. Réservé au
-// salon Pomme et au staff : ailleurs, ou pour un simple frutiz, il ne se passe
-// rien d'autre qu'un rappel.
+// `/d6` tire entre 0 et 6, `/d20` entre 0 et 20 — bornes comprises. Il était
+// réservé aux animateurs, sur le seul salon Pomme : c'était en faire un outil
+// d'animation. Un dé est un JEU DE SALON — il appartient à qui veut jouer, où
+// qu'il joue. Ne restent que les bornes du bon sens (1 à 1000 faces).
 
-test('/dN : le dé de l\'animateur, sur pomme et nulle part ailleurs', async (t) => {
+test('/dN : le dé roule pour tout le monde, dans n\'importe quel salon', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
 
   const sidA = await inscrire('animde');
@@ -412,7 +413,7 @@ test('/dN : le dé de l\'animateur, sur pomme et nulle part ailleurs', async (t)
       const n = Number(m[1]);
       assert.ok(n >= 0 && n <= 6, 'le tirage ' + n + ' tient dans [0, 6]');
       vus.add(n);
-      assert.match(ligne, /animde/, 'et il porte le nom de l\'animateur');
+      assert.match(ligne, /animde/, 'et il porte le nom du lanceur');
     }
     assert.ok(vus.size >= 3, 'douze lancers donnent plusieurs valeurs (' + [...vus].join(',') + ')');
 
@@ -423,7 +424,7 @@ test('/dN : le dé de l\'animateur, sur pomme et nulle part ailleurs', async (t)
     const m20 = /\(0–20\) : <b><font color="#C10000">(\d+)<\/font><\/b>/.exec(vingt);
     assert.ok(m20 && Number(m20[1]) >= 0 && Number(m20[1]) <= 20, 'entre 0 et 20');
 
-    // ── 3. Ailleurs qu'à Pomme : refusé, et RIEN n'est diffusé. ──
+    // ── 3. AILLEURS QU'À POMME : le dé roule pareil. ──
     anim.envoyer('<o g="poire" />');
     await anim.attendre((x) => x.startsWith('<p') && x.includes('g="poire"'), 'poire (anim)');
     temoin.envoyer('<o g="poire" />');
@@ -431,21 +432,27 @@ test('/dN : le dé de l\'animateur, sur pomme et nulle part ailleurs', async (t)
     temoin.trames.length = 0;
     anim.trames.length = 0;
     anim.envoyer('<t g="poire" t="m" p="">/d6</t>');
-    await anim.attendre((x) => /réservé aux animateurs/.test(x), 'le rappel, pour lui seul');
-    await wait(400);
-    assert.ok(!temoin.trames.some((x) => /lance un dé/.test(x)),
-      'et le salon n\'a rien vu passer');
+    const ailleurs = await temoin.attendre((x) => /lance un dé/.test(x), 'le tirage à Poire');
+    assert.match(ailleurs, /g="poire"/, 'et il est bien diffusé dans CE salon');
+    assert.ok(!anim.trames.some((x) => /réservé aux animateurs/.test(x)),
+      'plus aucun rappel de droits');
 
-    // ── 4. Un simple frutiz, même sur Pomme : refusé. ──
-    temoin.envoyer('<o g="pomme" />');
-    await temoin.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'retour sur pomme');
+    // ── 4. UN SIMPLE FRUTIZ lance aussi son dé. ──
     temoin.trames.length = 0;
-    temoin.envoyer('<t g="pomme" t="m" p="">/d6</t>');
-    await temoin.attendre((x) => /réservé aux animateurs/.test(x), 'le rappel au frutiz');
-    assert.ok(!temoin.trames.some((x) => /lance un dé/.test(x)), 'aucun tirage pour lui');
+    anim.trames.length = 0;
+    temoin.envoyer('<t g="poire" t="m" p="">/d10</t>');
+    const duJoueur = await anim.attendre((x) => /lance un dé/.test(x), 'le tirage du frutiz');
+    assert.match(duJoueur, /temoinde/, 'la ligne porte SON nom');
+    assert.match(duJoueur, /\(0–10\)/, 'et son dé à dix faces');
 
-    // ── 5. La commande n'est jamais rediffusée comme un message ordinaire. ──
-    assert.ok(!temoin.trames.some((x) => />\/d6</.test(x)), '« /d6 » ne s\'affiche pas tel quel');
+    // ── 5. Les bornes du bon sens tiennent toujours. ──
+    temoin.trames.length = 0;
+    temoin.envoyer('<t g="poire" t="m" p="">/d0</t>');
+    await temoin.attendre((x) => /Syntaxe : \/d6/.test(x), 'le rappel de syntaxe pour /d0');
+    assert.ok(!temoin.trames.some((x) => /lance un dé/.test(x)), 'et aucun tirage');
+
+    // ── 6. La commande n'est jamais rediffusée comme un message ordinaire. ──
+    assert.ok(!temoin.trames.some((x) => />\/d\d/.test(x)), '« /d6 » ne s\'affiche pas tel quel');
   } finally {
     anim.fermer(); temoin.fermer();
   }
