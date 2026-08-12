@@ -15465,23 +15465,62 @@ function formatChallengeScoreLabel(rankingId, score, data) {
 // first; BKiwi resolves to today's rotating challenge track. sid is optional —
 // when present, the caller's own rows are flagged (isMe) so the UI can spotlight
 // them.
+/**
+ * Le tableau des scores du mobile — la MÊME fenêtre que celle du bureau.
+ *
+ * Le portage light affiche désormais la fenêtre « Scores » de main.swf : deux
+ * sections dans la colonne de gauche (Challenge / Championnat), et à droite les
+ * médaillés de la veille, mon rang, puis le tableau Frutiz / Score / Heure.
+ * Pour que le rendu soit le même, la SOURCE doit être la même : cette route
+ * suit LEGACY_RANKINGS — l'ordre, les libellés et les sections que le bureau
+ * reçoit par listRankings — au lieu d'une liste parallèle qui divergeait.
+ *
+ * Chaque ligne porte ce que le bureau affiche : le pseudo, la BOUILLE (le
+ * bureau la charge par le champ `f` de <score …/>), le score formaté et
+ * l'HEURE. `me` donne le « Je suis Nème avec … » même quand le joueur est hors
+ * des premières places.
+ */
 app.get('/api/light/challenge', async (req, res) => {
   const me = resolveUsernameFromSid(req.query.sid || '');
   const meLower = me ? String(me).toLowerCase() : '';
   const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
   const dailyTrack = getBkiwiDailyTrack();
+  // Le jour demandé (navigation par flèches, comme le bas de la fenêtre du
+  // bureau). Aujourd'hui par défaut ; un jour passé se lit dans l'archive.
+  const jourDemande = String(req.query.day || '').slice(0, 10);
+  const aujourdhui = parisDayKey();
+  const jour = /^\d{4}-\d{2}-\d{2}$/.test(jourDemande) ? jourDemande : aujourdhui;
+  const passe = jour !== aujourdhui;
+  // Burning Kiwi : le bureau range rk '0' sur le circuit du jour ; le mobile
+  // faisait déjà ce choix, on le garde (c'est le classement qui bouge).
   const GAMES = [
-    { game: 'bandas',  ranking: 'bandas_challenge' },
-    { game: 'grapiz',  ranking: 'grapiz_challenge' },
-    { game: 'swapou2', ranking: 'swapou2_classic' },
     { game: 'bkiwi',   ranking: `bkiwi_track${dailyTrack}_challenge` },
     { game: 'snake3',  ranking: 'snake3_classic' },
     { game: 'mb2',     ranking: 'mb2_classic' },
+    { game: 'swapou2', ranking: 'swapou2_classic' },
     { game: 'kaluga',  ranking: 'kaluga_classic' },
+    { game: 'bandas',  ranking: 'bandas_challenge' },
+    { game: 'grapiz',  ranking: 'grapiz_challenge' },
     // Les deux pilotes de l'animation (cf. RANKINGS).
     { game: 'minipixiz', ranking: 'minipixiz_classic' },
     { game: 'miniwave',  ranking: 'miniwave_classic' },
   ];
+  // Le libellé de chaque classement vient du descriptif du bureau (rn) : les
+  // deux clients nomment les onglets pareil, sans table en double. Burning Kiwi
+  // n'a pas de descripteur par circuit — son onglet emprunte celui de rk '0'.
+  const nomBureau = (rkId, repli) => {
+    const cle = /^bkiwi_/.test(rkId) ? 'bkiwi_track5_classic' : rkId;
+    const d = LEGACY_RANKINGS.find((x) => x.internal === cle);
+    return (d && d.rn) || repli;
+  };
+  // L'heure d'un score, telle que la colonne « Heure » du bureau l'affiche.
+  const heureDe = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const p = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+    return `${pad2(p.getHours())}:${pad2(p.getMinutes())}`;
+  };
   // Podium de la veille par jeu : on lit les médaillés déjà résolus en mémoire
   // (medalsByVisibleDay[hier], alimenté au boot depuis la DB / le JSON puis à
   // chaque roll). Médaille normalisée en gold/silver/bronze pour le client.
@@ -15493,85 +15532,142 @@ app.get('/api/light/challenge', async (req, res) => {
     const pod = [];
     for (const [username, medals] of Object.entries(yMedals)) {
       for (const m of (medals || [])) {
-        if (m.game === game) pod.push({ user: getDisplayName(username), rank: m.rank, medal: normMedal(m.medal) });
+        if (m.game === game) {
+          pod.push({
+            user: getDisplayName(username), rank: m.rank, medal: normMedal(m.medal),
+            bouille: bouilleOf(users[username], username),
+          });
+        }
       }
     }
     pod.sort((a, b) => a.rank - b.rank);
     return pod.slice(0, 3);
   };
-  const games = GAMES.map((g) => {
-    const rkId = g.ranking;
+  // Une ligne du tableau, dans la forme qu'affiche le bureau.
+  const ligne = (rkId, e, pos) => ({
+    pos,
+    user: getDisplayName(e.u),
+    bouille: bouilleOf(users[e.u], e.u),
+    score: e.s,
+    label: formatChallengeScoreLabel(rkId, e.s, e.data),
+    time: heureDe(e.at),
+    isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
+  });
+  // Le classement complet d'un jeu, aujourd'hui (mémoire) ou un jour passé
+  // (archive). Renvoie aussi MA place — le bureau l'affiche en tête, même
+  // quand le joueur n'est pas dans les premières lignes.
+  const classement = async (rkId) => {
     const all = [];
-    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
-      if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
-        all.push({ u, s: Number(rlist[rkId].score), data: rlist[rkId].data });
+    if (passe && process.env.DATABASE_URL) {
+      try {
+        for (const row of await db.getArchivedScores(rkId, jour)) {
+          all.push({ u: row.username, s: Number(row.score), data: row.data || '', at: row.updated_at || '' });
+        }
+      } catch (e) { console.error(`[LIGHT] archive ${rkId}/${jour}: ${e.message}`); }
+    } else if (!passe) {
+      for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+        if (rlist && rlist[rkId] && Number.isFinite(Number(rlist[rkId].score))) {
+          all.push({ u, s: Number(rlist[rkId].score), data: rlist[rkId].data, at: rlist[rkId].updatedAt || '' });
+        }
       }
     }
     all.sort(scoreComparator(rkId));
-    const scores = all.slice(0, limit).map((e) => ({
-      user: getDisplayName(e.u),
-      score: e.s,
-      label: formatChallengeScoreLabel(rkId, e.s, e.data),
-      isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
-    }));
+    const iMoi = meLower ? all.findIndex((e) => String(e.u).toLowerCase() === meLower) : -1;
     return {
+      count: all.length,
+      scores: all.slice(0, limit).map((e, i) => ligne(rkId, e, i + 1)),
+      me: iMoi < 0 ? null : {
+        pos: iMoi + 1, score: all[iMoi].s,
+        label: formatChallengeScoreLabel(rkId, all[iMoi].s, all[iMoi].data),
+      },
+    };
+  };
+  const games = [];
+  for (const g of GAMES) {
+    const rkId = g.ranking;
+    const c = await classement(rkId);
+    games.push({
       id: rkId,
       game: g.game,
-      name: GAME_DISPLAY_NAMES[g.game] || g.game,
+      name: nomBureau(rkId, GAME_DISPLAY_NAMES[g.game] || g.game),
+      section: 'C',
       lowerIsBetter: !!(RANKINGS[rkId] && RANKINGS[rkId].lowerIsBetter),
-      count: all.length,
-      scores,
-      podium: podiumFor(g.game),
-    };
-  });
-  // Onglet « Kikooz » : classement TOUS-TEMPS des joueurs par nombre de kikooz
-  // (≠ challenge du jour). allTime:true → le client n'affiche ni « aujourd'hui »
-  // ni podium. Même source que le classement Kikooz de main.swf (user.kikooz).
-  try {
-    const kAll = await getKikoozLeaderboard();
-    games.push({
-      id: 'kikooz',
-      game: 'kikooz',
-      name: 'Kikooz',
-      allTime: true,
-      lowerIsBetter: false,
-      count: kAll.length,
-      scores: kAll.slice(0, limit).map((e) => ({
+      count: c.count,
+      scores: c.scores,
+      me: c.me,
+      // Le podium de la veille n'a de sens que sur la journée en cours : un
+      // jour passé montre son propre tableau, pas les médailles d'après.
+      podium: passe ? [] : podiumFor(g.game),
+    });
+  }
+  // ── Section « Championnat » ──
+  // Les classements PERMANENTS, dans l'ordre du bureau : kikooz, les deux
+  // concours, puis l'XP et la consécration (que main.swf ajoute lui-même à la
+  // liste qu'il reçoit — le mobile les sert donc de son côté).
+  //
+  // allTime:true → ni « aujourd'hui » ni podium : ils ne sont pas remis à zéro.
+  const permanent = (id, nom, jeu, tout) => {
+    const iMoi = meLower ? tout.findIndex((e) => String(e.u).toLowerCase() === meLower) : -1;
+    return {
+      id, game: jeu, name: nom, section: 'L', allTime: true, lowerIsBetter: false,
+      count: tout.length, podium: [],
+      scores: tout.slice(0, limit).map((e, i) => ({
+        pos: i + 1,
         user: getDisplayName(e.u),
+        bouille: bouilleOf(users[e.u], e.u),
         score: e.s,
-        label: Number(e.s).toLocaleString('fr-FR') + ' kikooz',
+        label: e.label !== undefined ? e.label : Number(e.s).toLocaleString('fr-FR'),
+        time: '',
         isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
       })),
-      podium: [],
-    });
+      me: iMoi < 0 ? null : {
+        pos: iMoi + 1, score: tout[iMoi].s,
+        label: tout[iMoi].label !== undefined ? tout[iMoi].label : Number(tout[iMoi].s).toLocaleString('fr-FR'),
+      },
+    };
+  };
+  try {
+    const kAll = (await getKikoozLeaderboard()).map((e) => ({
+      u: e.u, s: e.s, label: Number(e.s).toLocaleString('fr-FR') + ' kikooz',
+    }));
+    games.push(permanent('kikooz', nomBureau('kikooz', 'Class. kikooz'), 'kikooz', kAll));
   } catch (e) { console.error('[LIGHT] kikooz ranking error:', e.message); }
-  // Onglets « Contest » : les concours, tous temps confondus. allTime:true → le
-  // client n'affiche ni « aujourd'hui » ni podium, comme pour les kikooz : ces
-  // classements ne sont pas remis à zéro chaque jour.
   for (const [jeu, def] of Object.entries(CONTESTS)) {
     const all = [];
     for (const [u, rlist] of Object.entries(scoresData.users || {})) {
       const e = rlist && rlist[def.ranking];
-      if (e && Number.isFinite(Number(e.score))) all.push({ u, s: Number(e.score), data: e.data });
+      if (e && Number.isFinite(Number(e.score))) {
+        all.push({ u, s: Number(e.score), label: e.score + ' ' + def.unite });
+      }
     }
     all.sort(scoreComparator(def.ranking));
-    games.push({
-      id: def.ranking,
-      game: jeu,
-      name: (RANKINGS[def.ranking] && RANKINGS[def.ranking].name || def.ranking).replace(' - ', ' '),
-      allTime: true,
-      lowerIsBetter: false,
-      count: all.length,
-      scores: all.slice(0, limit).map((e) => ({
-        user: getDisplayName(e.u),
-        score: e.s,
-        label: e.s + ' ' + def.unite,
-        isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
-      })),
-      podium: [],
-    });
+    const nom = nomBureau(def.ranking,
+      (RANKINGS[def.ranking] && RANKINGS[def.ranking].name || def.ranking).replace(' - ', ' '));
+    games.push(permanent(def.ranking, nom, jeu, all));
   }
-  res.json({ day: parisDayKey(), yesterday, games });
+  // L'XP et la consécration : les deux classements « joueur » du bureau. Ils ne
+  // vivent pas dans le magasin de scores — l'un lit users[].xp (fusionné avec la
+  // base, comme la voie FrutiScore), l'autre computeConsecration.
+  try {
+    const fusion = new Map();
+    if (process.env.DATABASE_URL) {
+      try {
+        for (const row of await db.listAllUsers()) if (row.xp > 0) fusion.set(row.username, Number(row.xp));
+      } catch (e) { console.error('[LIGHT] xp ranking DB error:', e.message); }
+    }
+    for (const [u, ud] of Object.entries(users)) {
+      if (ud && Number.isFinite(ud.xp) && ud.xp > 0) fusion.set(u, Number(ud.xp));
+    }
+    const xp = [...fusion.entries()].map(([u, s]) => ({ u, s, label: Number(s).toLocaleString('fr-FR') + ' xp' }));
+    xp.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
+    games.push(permanent('_xp', 'Classement XP', 'xp', xp));
+  } catch (e) { console.error('[LIGHT] xp ranking error:', e.message); }
+  try {
+    const cons = (await getConsecrationLeaderboard()).map((e) => ({ u: e.u, s: e.s, label: e.s + ' %' }));
+    games.push(permanent('_rate', 'Class. consécration', 'consecration', cons));
+  } catch (e) { console.error('[LIGHT] consecration ranking error:', e.message); }
+
+  res.json({ day: jour, today: aujourdhui, yesterday, past: passe, games });
 });
 
 // ─────────────────────────────────────────────

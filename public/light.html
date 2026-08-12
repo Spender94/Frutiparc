@@ -778,28 +778,9 @@
   /* ── Scores du jour (Challenge) ──
      Barre de jeux (chips) corail collée en haut + tableau vert scrollable,
      dans la même palette que le chat. Lecture seule, rechargé à l'ouverture. */
+  /* Le panneau des scores porte la fenêtre du bureau (cf. #sc-fenetre plus
+     bas) : fond vert du plateau, la fenêtre posée dessus. */
   #scores-panel { padding: 0; background: #CCF599; }
-  #scores-head {
-    flex-shrink: 0; background: #FEABAB; border-bottom: 1px solid #DDDDDD;
-    box-shadow: 0 1px 3px rgba(44,74,15,.18);
-  }
-  #scores-tabs {
-    display: flex; gap: 6px; padding: 8px 10px; overflow-x: auto;
-    -webkit-overflow-scrolling: touch; scrollbar-width: none;
-  }
-  #scores-tabs::-webkit-scrollbar { display: none; }
-  .scores-tab {
-    flex: 0 0 auto; padding: 6px 13px; border: 0; border-radius: 14px;
-    background: rgba(255,255,255,.35); color: #7a1f1f; font-weight: bold;
-    font-size: 12.5px; cursor: pointer; white-space: nowrap;
-  }
-  .scores-tab.active {
-    background: #fff; color: #D16767; box-shadow: 0 1px 2px rgba(44,74,15,.25);
-  }
-  #scores-body {
-    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 8px 10px 16px;
-  }
 
   /* ── Messagerie ──
      Même grammaire visuelle que les scores (bandeau corail collé en haut,
@@ -1038,64 +1019,112 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .trombi-empty { grid-column: 1 / -1; text-align: center; color: #888; font-size: 13px; padding: 22px 10px; }
-  .scores-cap {
-    font-size: 11.5px; color: #2f5510; font-weight: bold; text-align: center;
-    margin: 2px 0 8px;
+  /* ══════════════════════════════════════════════════════════════════════
+     LE TABLEAU DES SCORES — la fenêtre du bureau, à l'identique.
+
+     Le portage montrait des chips corail et une liste verte : sa propre
+     grammaire, jolie mais étrangère au jeu. La fenêtre « Scores » de main.swf,
+     elle, a une forme précise, mesurée sur un rendu Ruffle de la vraie fenêtre
+     (cf. scripts/extract-scores-icones.js, qui en sort aussi les icônes) :
+
+       · un cadre BLANC arrondi, cerné d'un filet gris, sur fond doré #FACE68 ;
+       · une barre de titre blanche, texte gris #444 : « Scores - <jeu> - <date> » ;
+       · deux panneaux crème #FBD888 (dégradé clair en haut), bordés de blanc :
+         à gauche la liste des classements (Challenge / Championnat), à droite
+         le tableau ;
+       · le texte du tableau en brun #433005, celui de la liste en noir ;
+       · une ligne tous les 19 px, en Verdana 11.
+
+     Les couleurs et les pas viennent de l'échantillonnage du rendu, pas d'une
+     approximation à l'œil.
+     ══════════════════════════════════════════════════════════════════════ */
+  #sc-fenetre {
+    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+    margin: 8px; border: 4px solid #FFFFFF; border-radius: 9px;
+    box-shadow: 0 0 0 1px #737373, 0 2px 6px rgba(0,0,0,.25);
+    background: #FACE68; overflow: hidden;
+    font-family: Verdana, Arial, sans-serif;
   }
-  /* Podium de la veille : bandeau clair en tête du tableau, médaillés côte à
-     côte. Les visuels de médaille (≈100 px à la source) sont fortement réduits. */
-  .podium {
-    display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: center;
-    background: #E9F8CE; border: 1px solid #ADE76B; border-radius: 6px;
-    box-shadow: 0 0 0 1px #DDDDDD; padding: 7px 10px 8px; margin-bottom: 10px;
+  /* Barre de titre : l'icône du raccourci « Scores » du bureau, puis le libellé
+     qui NOMME le classement affiché — c'est ainsi que le bureau dit lequel est
+     ouvert (sa liste de gauche ne surligne rien). */
+  #sc-titre {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 5px;
+    background: #FFFFFF; padding: 3px 6px; border-bottom: 1px solid #DDDDDD;
   }
-  .podium-title {
-    width: 100%; text-align: center; font-size: 11px; font-weight: bold;
-    color: #2f5510; margin-bottom: 3px;
-  }
-  .pod-item { display: inline-flex; align-items: center; gap: 5px; }
-  .pod-medal { width: 26px; height: 26px; object-fit: contain; flex: 0 0 auto; }
-  .pod-name {
-    font-size: 12px; font-weight: bold; color: #2C4A0F;
-    max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .scores-list {
-    list-style: none; margin: 0; padding: 0; overflow: hidden;
-    border: 1px solid #ADE76B; border-radius: 6px;
-    box-shadow: 0 0 0 1px #DDDDDD; background: #D6F7B5;
-  }
-  .score-row {
-    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
-    font-family: 'Verdana', Arial, sans-serif; font-size: 13px;
-    background: #D6F7B5; border-bottom: 1px solid #fff;
-  }
-  .score-row:last-child { border-bottom: 0; }
-  .score-row:nth-child(even) { background: #C3EF93; }
-  .score-row .pos {
-    flex: 0 0 auto; width: 26px; text-align: center; font-weight: bold;
-    color: #2C4A0F; font-size: 14px;
-  }
-  .score-row.r1 .pos, .score-row.r2 .pos, .score-row.r3 .pos { font-size: 17px; }
-  .score-row .pname {
-    flex: 1 1 auto; min-width: 0; color: #2C4A0F; font-weight: bold;
+  #sc-titre img { width: 13px; height: 14px; flex: 0 0 auto; }
+  #sc-titre span {
+    font-size: 11px; font-weight: bold; color: #444444;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .score-row .pscore {
-    flex: 0 0 auto; color: #335511; font-weight: bold;
-    font-family: "Courier New", monospace; font-size: 13px;
+  #sc-corps { flex: 1 1 auto; min-height: 0; display: flex; gap: 5px; padding: 5px; }
+  /* Les deux panneaux : même carte crème, même bordure blanche. */
+  #sc-liste, #sc-table {
+    background: #FBD888 linear-gradient(180deg, #FDEDC8 0, #FBD888 14px);
+    border: 2px solid #FFFFFF; border-radius: 6px;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
-  /* Ligne du joueur courant : ressort en corail clair avec un badge « toi ». */
-  .score-row.me { background: #FFE4E4; }
-  .score-row.me .pname { color: #D16767; }
-  .score-row.me .pscore { color: #D16767; }
-  .me-badge {
-    flex: 0 0 auto; font-size: 9px; font-weight: bold; color: #fff;
-    background: #E3756A; border-radius: 7px; padding: 1px 6px;
-    text-transform: uppercase; letter-spacing: .04em;
+  #sc-liste { flex: 0 0 132px; padding: 3px 0 6px; }
+  #sc-table { flex: 1 1 auto; min-width: 0; padding: 4px 6px 8px; }
+  /* Colonne de gauche : titre de section (podium / coupe) puis les lignes, une
+     médaille à couronne devant chacune — la même pour tous les classements,
+     comme dans le SWF. */
+  .sc-section {
+    display: flex; align-items: center; gap: 4px; padding: 2px 4px 1px;
+    font-size: 15px; color: #000000; letter-spacing: -.01em;
   }
-  .scores-loading, .scores-empty {
-    text-align: center; padding: 30px 16px; color: #4f7b1f;
-    font-style: italic; font-size: 13px; line-height: 1.6;
+  .sc-section img { width: 17px; height: 19px; flex: 0 0 auto; }
+  .sc-rk {
+    display: flex; align-items: center; gap: 4px; width: 100%;
+    border: 0; background: transparent; padding: 1px 4px 1px 10px;
+    font: inherit; font-size: 11px; color: #000000; text-align: left; cursor: pointer;
+  }
+  .sc-rk img { width: 12px; height: 13px; flex: 0 0 auto; }
+  .sc-rk span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Le bureau ne surligne pas la ligne choisie (son titre de fenêtre suffit) ;
+     au doigt, il faut un retour : un liseré discret, sans changer la couleur
+     du texte. */
+  .sc-rk.on { background: rgba(255,255,255,.55); border-radius: 4px; font-weight: bold; }
+  /* Panneau de droite ── médaillés de la veille, mon rang, puis le tableau. */
+  .sc-podium { display: flex; justify-content: space-around; gap: 6px; padding: 2px 0 4px; }
+  .sc-pod { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .sc-pod img { width: 22px; height: 22px; flex: 0 0 auto; }
+  .sc-pod span {
+    font-size: 11px; color: #433005; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sc-moi { text-align: center; font-size: 12px; font-weight: bold; color: #433005; padding: 3px 0 5px; }
+  .sc-entete, .sc-ligne {
+    display: grid; grid-template-columns: 18px 20px minmax(0,1fr) auto 38px;
+    align-items: center; gap: 4px; font-size: 11px; color: #433005; min-height: 19px;
+  }
+  .sc-entete { font-weight: bold; padding-bottom: 2px; }
+  .sc-entete .f { grid-column: 3; }
+  .sc-entete .s { text-align: right; }
+  .sc-entete .h { text-align: right; }
+  .sc-ligne .r { font-weight: bold; text-align: right; }
+  .sc-ligne .b { width: 18px; height: 18px; }
+  .sc-ligne .b img { width: 18px; height: 18px; display: block; }
+  .sc-ligne .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-ligne .s { text-align: right; white-space: nowrap; }
+  .sc-ligne .h { text-align: right; white-space: nowrap; }
+  /* Ma ligne : le bureau ne la distingue pas non plus, mais sur un téléphone
+     on la cherche des yeux — un fond très léger, rien de plus. */
+  .sc-ligne.moi { background: rgba(255,255,255,.5); border-radius: 3px; font-weight: bold; }
+  /* Le pied : la date, entre deux flèches — la navigation par jour du bureau. */
+  #sc-pied {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 3px 6px 5px;
+  }
+  #sc-pied button {
+    border: 0; background: transparent; padding: 0; cursor: pointer; line-height: 0;
+  }
+  #sc-pied button img { width: 17px; height: 15px; display: block; }
+  #sc-pied button[disabled] { opacity: .35; cursor: default; }
+  #sc-jour { font-size: 11px; color: #433005; min-width: 92px; text-align: center; }
+  .sc-vide {
+    text-align: center; padding: 22px 10px; color: #7A5F1E;
+    font-size: 11px; font-style: italic; line-height: 1.6;
   }
 
   .hidden { display: none !important; }
@@ -1606,13 +1635,32 @@
     <iframe id="minipixiz-frame" title="Minipixiz" referrerpolicy="no-referrer"></iframe>
   </section>
 
-  <!-- Scores du jour — classement « Challenge » du jour, en lecture seule.
-       Panneau plein écran : barre de jeux (chips) collée en haut, tableau
-       scrollable en dessous. Rechargé à chaque ouverture (les scores évoluent
-       toute la journée), via /api/light/challenge. -->
+  <!-- Les scores — la fenêtre « Scores » du bureau, reproduite.
+       Barre de titre « Scores - <jeu> - <date> », liste des classements à
+       gauche (Challenge / Championnat), tableau à droite (médaillés de la
+       veille, mon rang, puis Frutiz / Score / Heure), et la date du jour entre
+       deux flèches en pied. Alimentée par /api/light/challenge, rechargée à
+       chaque ouverture — les scores bougent toute la journée. -->
   <section class="panel" id="scores-panel">
-    <div id="scores-head"><div id="scores-tabs"></div></div>
-    <div id="scores-body"></div>
+    <div id="sc-fenetre">
+      <div id="sc-titre">
+        <img src="/fb/icone_scores.png" alt="" onerror="this.style.display='none'">
+        <span id="sc-titre-txt">Scores</span>
+      </div>
+      <div id="sc-corps">
+        <div id="sc-liste"></div>
+        <div id="sc-table"></div>
+      </div>
+      <div id="sc-pied">
+        <button id="sc-jour-prec" type="button" title="Jour précédent" aria-label="Jour précédent">
+          <img src="/fb/icone_fleche_gauche.png" alt="◀" onerror="this.replaceWith(document.createTextNode('◀'))">
+        </button>
+        <span id="sc-jour"></span>
+        <button id="sc-jour-suiv" type="button" title="Jour suivant" aria-label="Jour suivant">
+          <img src="/fb/icone_fleche_droite.png" alt="▶" onerror="this.replaceWith(document.createTextNode('▶'))">
+        </button>
+      </div>
+    </div>
   </section>
 
   <!-- Messagerie interne — la MÊME boîte que celle du bureau (user.mails côté
@@ -2684,90 +2732,173 @@
   $("#shop-sheet-close").addEventListener("click", closeShopSheet);
   $("#shop-sheet-backdrop").addEventListener("click", closeShopSheet);
 
-  // ── Scores du jour (Challenge) ──
-  // Tableau en lecture seule alimenté par /api/light/challenge : un onglet (chip)
-  // par jeu, le classement du jour en dessous. La ligne du joueur courant (isMe)
-  // est mise en avant.
+  /* ══════════════════════════════════════════════════════════════════════
+     LES SCORES — la fenêtre du bureau, reproduite.
+
+     Le bureau ouvre une fenêtre « Scores » à deux volets : la liste des
+     classements à gauche (Challenge, puis Championnat), le tableau à droite —
+     les médaillés de la veille, « Je suis Nème avec … », puis les lignes
+     Frutiz / Score / Heure, chacune avec la bouille du joueur. Le titre de la
+     fenêtre nomme le classement affiché et le jour ; le pied permet de
+     remonter dans les jours passés.
+
+     Le portage montre la MÊME chose, servie par /api/light/challenge (qui suit
+     LEGACY_RANKINGS, la liste que le bureau reçoit).
+     ══════════════════════════════════════════════════════════════════════ */
   var challengeScores = null;   // dernière réponse de l'API
-  var scoresGameIdx = 0;        // jeu sélectionné dans la barre de chips
+  var scoresGameIdx = 0;        // classement sélectionné
+  var scoresJour = "";          // jour affiché (vide = aujourd'hui)
+
   function loadChallengeScores() {
-    var body = $("#scores-body");
-    if (body && !challengeScores) body.innerHTML = '<div class="scores-loading">Chargement…</div>';
-    fetch("/api/light/challenge?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+    var t = $("#sc-table");
+    if (t && !challengeScores) t.innerHTML = '<div class="sc-vide">Chargement…</div>';
+    var u = "/api/light/challenge?sid=" + encodeURIComponent(state.sid)
+      + (scoresJour ? "&day=" + encodeURIComponent(scoresJour) : "");
+    fetch(u, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         challengeScores = d;
         if (scoresGameIdx >= (d.games || []).length) scoresGameIdx = 0;
-        renderScoresTabs();
+        renderScoresListe();
         renderScoresBody();
       })
       .catch(function () {
-        if (body) body.innerHTML = '<div class="scores-empty">Scores indisponibles pour le moment.</div>';
+        if (t) t.innerHTML = '<div class="sc-vide">Scores indisponibles pour le moment.</div>';
       });
   }
-  function renderScoresTabs() {
-    var tabs = $("#scores-tabs");
-    if (!tabs || !challengeScores) return;
-    tabs.innerHTML = "";
-    (challengeScores.games || []).forEach(function (g, i) {
-      var b = el("button", "scores-tab" + (i === scoresGameIdx ? " active" : ""));
-      b.textContent = g.name;
-      b.addEventListener("click", function () {
-        scoresGameIdx = i; renderScoresTabs(); renderScoresBody();
-      });
-      tabs.appendChild(b);
-    });
-  }
-  // jeu (API) → suffixe des assets de médailles /fb/medal_{couleur}_{clé}.png
+
+  // jeu (API) → suffixe des visuels de médaille /fb/medal_{couleur}_{clé}.png
   var MEDAL_ASSET_KEY = {
     bandas: "bandas", grapiz: "grapiz", swapou2: "swapou",
     bkiwi: "bk", snake3: "snake", mb2: "mb2", kaluga: "kaluga",
+    minipixiz: "minipixiz", miniwave: "miniwave",
   };
-  // Bandeau « médaillés d'hier » en tête du tableau d'un jeu (vide si aucun).
-  function podiumHtml(g) {
-    if (!g.podium || !g.podium.length) return "";
-    var ak = MEDAL_ASSET_KEY[g.game] || g.game;
-    var h = '<div class="podium"><div class="podium-title">Médaillés d\'hier</div>';
-    g.podium.forEach(function (p) {
-      h += '<span class="pod-item">'
-        + '<img class="pod-medal" src="/fb/medal_' + p.medal + '_' + ak + '.png" alt="'
-        + xmlEscape(p.medal) + '" onerror="this.style.display=\'none\'">'
-        + '<span class="pod-name">' + xmlEscape(p.user) + '</span></span>';
-    });
-    return h + '</div>';
+  var SC_MOIS = ["janv.", "fevr.", "mars", "avril", "mai", "juin",
+    "juil.", "aout", "sept.", "oct.", "nov.", "dec."];
+  var SC_JOURS = ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"];
+  // « mer 12 aout » (barre de titre) et « 12 aout 26 » (pied), comme le bureau.
+  function scDateTitre(iso) {
+    var d = scDate(iso); if (!d) return "";
+    return SC_JOURS[d.getDay()] + " " + d.getDate() + " " + SC_MOIS[d.getMonth()];
   }
-  function renderScoresBody() {
-    var body = $("#scores-body");
-    if (!body || !challengeScores) return;
-    var g = (challengeScores.games || [])[scoresGameIdx];
-    if (!g) { body.innerHTML = ""; return; }
-    var html = podiumHtml(g); // podium de la veille en tête (le cas échéant)
-    if (!g.scores || !g.scores.length) {
-      html += g.allTime
-        ? '<div class="scores-empty">Aucun joueur classé pour le moment.</div>'
-        : '<div class="scores-empty">Aucun score pour « ' + xmlEscape(g.name) + ' » aujourd\'hui.<br>'
-          + 'À toi de lancer la première partie&nbsp;!</div>';
-    } else {
-      var n = g.count || g.scores.length;
-      // Classement tous-temps (Kikooz) : pas de « aujourd'hui ».
-      html += '<div class="scores-cap">' + xmlEscape(g.name) + ' — '
-        + n + ' joueur' + (n > 1 ? 's' : '') + (g.allTime ? ' classé' + (n > 1 ? 's' : '') : ' aujourd\'hui')
-        + '</div><ol class="scores-list">';
-      g.scores.forEach(function (s, i) {
-        var pos = i + 1;
-        var cls = "score-row" + (pos <= 3 ? " r" + pos : "") + (s.isMe ? " me" : "");
-        html += '<li class="' + cls + '">'
-          + '<span class="pos">' + pos + '</span>'
-          + '<span class="pname">' + xmlEscape(s.user) + '</span>'
-          + (s.isMe ? '<span class="me-badge">toi</span>' : '')
-          + '<span class="pscore">' + xmlEscape(s.label) + '</span>'
-          + '</li>';
+  function scDatePied(iso) {
+    var d = scDate(iso); if (!d) return "";
+    return d.getDate() + " " + SC_MOIS[d.getMonth()] + " " + String(d.getFullYear()).slice(2);
+  }
+  function scDate(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+  }
+  function scDecale(iso, jours) {
+    var d = scDate(iso); if (!d) return "";
+    d.setDate(d.getDate() + jours);
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  // La colonne de gauche : deux sections, comme le bureau. La médaille à
+  // couronne précède CHAQUE ligne (ce n'est pas l'icône du jeu — le SWF met la
+  // même partout).
+  function renderScoresListe() {
+    var box = $("#sc-liste");
+    if (!box || !challengeScores) return;
+    var jeux = challengeScores.games || [];
+    var html = "";
+    [["C", "Challenge", "score_podium"], ["L", "Championnat", "score_coupe"]].forEach(function (sec) {
+      var dedans = jeux.filter(function (g) { return (g.section || "C") === sec[0]; });
+      if (!dedans.length) return;
+      html += '<div class="sc-section"><img src="/fb/' + sec[2] + '.png" alt=""'
+        + ' onerror="this.style.display=\'none\'">' + sec[1] + '</div>';
+      dedans.forEach(function (g) {
+        var i = jeux.indexOf(g);
+        html += '<button type="button" class="sc-rk' + (i === scoresGameIdx ? " on" : "") + '"'
+          + ' data-i="' + i + '">'
+          + '<img src="/fb/score_medaille.png" alt="" onerror="this.style.display=\'none\'">'
+          + '<span>' + xmlEscape(g.name) + '</span></button>';
       });
-      html += '</ol>';
-    }
-    body.innerHTML = html;
-    body.scrollTop = 0;
+    });
+    box.innerHTML = html;
+    Array.prototype.forEach.call(box.querySelectorAll(".sc-rk"), function (b) {
+      b.addEventListener("click", function () {
+        scoresGameIdx = Number(b.getAttribute("data-i")) || 0;
+        renderScoresListe(); renderScoresBody();
+      });
+    });
   }
+
+  function renderScoresBody() {
+    var box = $("#sc-table");
+    if (!box || !challengeScores) return;
+    var g = (challengeScores.games || [])[scoresGameIdx];
+    var titre = $("#sc-titre-txt");
+    var jour = challengeScores.day || "";
+    if (titre) {
+      titre.textContent = "Scores" + (g ? " - " + g.name : "")
+        + (jour ? " - " + scDateTitre(jour) : "");
+    }
+    var pied = $("#sc-jour");
+    if (pied) pied.textContent = scDatePied(jour);
+    var suiv = $("#sc-jour-suiv");
+    if (suiv) suiv.disabled = !challengeScores.past;
+    if (!g) { box.innerHTML = ""; return; }
+
+    var html = "";
+    // Les médaillés de la veille, en tête — la rangée de médailles du bureau.
+    if (g.podium && g.podium.length) {
+      var ak = MEDAL_ASSET_KEY[g.game] || g.game;
+      html += '<div class="sc-podium">';
+      g.podium.forEach(function (p) {
+        html += '<span class="sc-pod">'
+          + '<img src="/fb/medal_' + p.medal + '_' + ak + '.png" alt=""'
+          + ' onerror="this.style.display=\'none\'">'
+          + '<span>' + xmlEscape(p.user) + '</span></span>';
+      });
+      html += '</div>';
+    }
+    // « Je suis 4ème avec 2798 » — la ligne que le bureau met au-dessus du
+    // tableau. Sans classement du joueur, on n'invente rien.
+    if (g.me && g.me.pos) {
+      html += '<div class="sc-moi">Je suis ' + g.me.pos + (g.me.pos === 1 ? "er" : "ème")
+        + ' avec ' + xmlEscape(String(g.me.label || g.me.score)) + '</div>';
+    }
+    if (!g.scores || !g.scores.length) {
+      html += '<div class="sc-vide">'
+        + (challengeScores.past ? "Aucun score ce jour-là."
+          : g.allTime ? "Aucun joueur classé pour le moment."
+            : "Aucun score aujourd’hui.<br>À toi de lancer la première partie&nbsp;!")
+        + '</div>';
+    } else {
+      html += '<div class="sc-entete"><span class="f">Frutiz</span>'
+        + '<span class="s">Score</span><span class="h">Heure</span></div>';
+      g.scores.forEach(function (s, i) {
+        html += '<div class="sc-ligne' + (s.isMe ? " moi" : "") + '">'
+          + '<span class="r">' + (s.pos || (i + 1)) + '</span>'
+          + '<span class="b">' + (s.bouille ? FPBouilleThumb.imgHtml(s.bouille, 0) : "") + '</span>'
+          + '<span class="n">' + xmlEscape(s.user) + '</span>'
+          + '<span class="s">' + xmlEscape(s.label) + '</span>'
+          + '<span class="h">' + xmlEscape(s.time || "") + '</span>'
+          + '</div>';
+      });
+    }
+    box.innerHTML = html;
+    box.scrollTop = 0;
+  }
+
+  // Le pied : un jour en arrière, un jour en avant — jamais après aujourd'hui.
+  (function () {
+    var prec = $("#sc-jour-prec"), suiv = $("#sc-jour-suiv");
+    if (prec) prec.addEventListener("click", function () {
+      if (!challengeScores) return;
+      scoresJour = scDecale(challengeScores.day, -1);
+      loadChallengeScores();
+    });
+    if (suiv) suiv.addEventListener("click", function () {
+      if (!challengeScores || !challengeScores.past) return;
+      var j = scDecale(challengeScores.day, 1);
+      scoresJour = (j === challengeScores.today) ? "" : j;
+      loadChallengeScores();
+    });
+  })();
 
   // ══════════════════════════════════════════════════════════════════════════
   // Messagerie interne
