@@ -162,44 +162,102 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
-  /* ── Boutique ── solde kikooz + cartes d'accessoires (aperçu, prix, achat) */
-  .shop-wallet {
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-    font-size: 14px; color: #6b4a00; font-weight: bold; margin-bottom: 10px;
-    background: #FFF3B0; border: 1px solid #EAD93A; border-radius: 8px;
-    box-shadow: 0 0 0 1px #DDDDDD; padding: 9px 12px;
+  /* ══════════════════════════════════════════════════════════════════════
+     LA BOUTIQUE — la fenêtre du bureau.
+
+     Le mobile n'en montrait qu'une rubrique (les accessoires), en cartes
+     jaunes. Le bureau, lui, tient un magasin à cinq rayons : le solde en
+     pastille en haut, les rubriques en dossiers à gauche, et à droite la FICHE
+     de l'article — aperçu encadré, bouton Acheter dessous, accroche en gras,
+     descriptif, puis le prix. Couleurs relevées sur un rendu Ruffle de la vraie
+     fenêtre : carte vert clair #DCF0B4 bordée de #8CC63F, titre brun #8C3B1E,
+     texte vert sombre #3B5E13.
+     ══════════════════════════════════════════════════════════════════════ */
+  /* Le corps de la fenêtre est BLANC (celui de l'inventaire est jaune) : on
+     annule ici le fond de .sheet-body pour retrouver celui du bureau. */
+  #bo-corps {
+    display: flex; flex-direction: column; gap: 8px;
+    background: #FFFFFF; border-color: #DDDDDD;
   }
-  .shop-wallet strong { color: #2C4A0F; font-size: 16px; }
-  .shop-grid {
-    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
-    background: #F8F866; border-radius: 10px; padding: 6px 10px 12px;
+  #bo-haut { display: flex; align-items: center; gap: 8px; }
+  /* La pastille du solde : le petit kikooz dans son cartouche pêche. */
+  .bo-solde {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #F8D5BC; border: 1px solid #E0A882; border-radius: 6px;
+    padding: 2px 10px 2px 5px; font-size: 14px; font-weight: bold; color: #6b4a00;
   }
-  .shop-item {
-    background: #fff; border: 1px solid #EAD93A; border-radius: 8px;
-    padding: 8px 6px; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  .bo-solde img { width: 18px; height: 18px; display: block; }
+  .bo-solde strong { color: #4A2B10; font-size: 15px; }
+  #bo-fenetre { display: flex; gap: 6px; align-items: flex-start; }
+  /* Les rubriques : un dossier rose par rayon, comme l'arborescence du bureau. */
+  /* Largeur FIXE, comme la colonne du bureau (qui rogne d'ailleurs « Fonds
+     d'écran ») : sans min-width:0, un nom d'article long la ferait enfler et
+     étranglerait la fiche. */
+  #bo-rubriques {
+    flex: 0 0 118px; min-width: 0; background: #FFFFFF; border: 1px solid #EBEBEB;
+    border-radius: 7px; padding: 5px 3px; align-self: stretch;
   }
-  .shop-item .thumb {
-    width: 86px; height: 86px; border-radius: 8px; overflow: hidden;
-    background: #fff; border: 1px solid #EEE; position: relative;
+  .bo-rub {
+    display: flex; align-items: center; gap: 5px; width: 100%; border: 0;
+    background: transparent; padding: 3px 4px; border-radius: 5px; cursor: pointer;
+    font: inherit; font-size: 12px; color: #000000; text-align: left;
   }
-  .shop-item .thumb iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
-  .shop-name {
-    font-size: 12px; font-weight: bold; color: #2C4A0F; text-align: center;
-    line-height: 1.2; min-height: 28px; display: flex; align-items: center;
+  .bo-rub img { width: 20px; height: 18px; flex: 0 0 auto; }
+  .bo-rub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bo-rub.on { background: #ECF8DC; font-weight: bold; }
+  /* Les articles d'une rubrique, sous son dossier — l'arbre du bureau déplié. */
+  /* Les noms d'articles vont au bout de la ligne : le bureau les rogne, mais il
+     a 950 px de large — sur 118 px, cinq « Pass quotidien de… » tronqués au même
+     endroit seraient indistinguables. */
+  .bo-art {
+    display: block; width: 100%; border: 0; background: transparent; cursor: pointer;
+    font: inherit; font-size: 11px; color: #000000; text-align: left;
+    padding: 2px 4px 2px 25px; border-radius: 4px;
+    line-height: 1.3; overflow-wrap: break-word;
   }
-  .shop-price { font-size: 12px; font-weight: bold; color: #b06a00; }
-  .shop-buy {
-    width: 100%; padding: 7px 0; border: 1px solid #F48081; border-radius: 8px;
-    background: #FFAAAD; color: #660000; font-weight: bold; font-size: 13px;
-    box-shadow: 0 0 0 1px #DDDDDD; cursor: pointer;
+  .bo-art.on { background: #CCF599; font-weight: bold; }
+  .bo-art.eu { color: #5E7A3A; }
+  /* La fiche : la carte verte de la fenêtre (teintes relevées au pixel sur un
+     rendu Ruffle — fond #CCF599, filet #ADE76B). */
+  #bo-fiche {
+    flex: 1 1 auto; min-width: 0; background: #CCF599;
+    border: 2px solid #ADE76B; border-radius: 8px; padding: 8px;
   }
-  .shop-buy:active { background: #ff9699; }
-  .shop-buy:disabled { opacity: .9; cursor: default; }
-  .shop-buy.owned {
-    background: #D6F7B5; border-color: #ADE76B; color: #2f6b16; box-shadow: none;
+  .bo-tete { display: flex; gap: 9px; align-items: flex-start; }
+  .bo-vue {
+    flex: 0 0 auto; width: 88px; background: #F1FAE4; border: 2px solid #ADE76B;
+    border-radius: 6px; padding: 3px;
   }
-  #shop-hint.ok { color: #2f6b16; }
-  #shop-hint.err { color: #b23b2e; }
+  .bo-vue .cadre {
+    width: 78px; height: 78px; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .bo-vue iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
+  .bo-vue img { max-width: 100%; max-height: 100%; display: block; }
+  /* Le stylo : le corps d'origine, et par-dessus son calque teinté — le SWF
+     colore ce même calque par code, on fait pareil avec un masque. */
+  .bo-feutre { position: relative; width: 78px; height: 78px; }
+  .bo-feutre img { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .bo-feutre .teinte {
+    position: absolute; inset: 0;
+    -webkit-mask: url("/fb/boutique/feutre_teinte.png") center/contain no-repeat;
+    mask: url("/fb/boutique/feutre_teinte.png") center/contain no-repeat;
+  }
+  .bo-titre { font-size: 15px; font-weight: bold; color: #842929; line-height: 1.2; }
+  .bo-accroche { font-size: 12px; font-weight: bold; color: #335511; margin-top: 7px; line-height: 1.35; }
+  .bo-texte { font-size: 12px; color: #335511; margin-top: 6px; line-height: 1.4; }
+  .bo-prix { font-size: 12.5px; font-weight: bold; color: #335511; margin-top: 8px; }
+  .bo-acheter {
+    display: block; width: 100%; margin-top: 6px; padding: 3px 0;
+    border: 1px solid #ADE76B; border-radius: 999px;
+    background: linear-gradient(180deg, #99CB4B, #73B01E); color: #FFFFFF;
+    font-weight: bold; font-size: 12px; cursor: pointer;
+  }
+  .bo-acheter:active { background: #5E9416; }
+  .bo-acheter[disabled] { background: #BFD8A0; border-color: #A9BE8A; color: #4A5F30; cursor: default; }
+  .bo-etat { font-size: 11px; color: #4E7128; margin-top: 6px; }
+  .bo-etat.ok { color: #2f6b16; font-weight: bold; }
+  .bo-etat.err { color: #b23b2e; font-weight: bold; }
 
   /* ── "Ma Frutibouille" : éditeur de visage (auto-affiché si needsBouille) ──
      Look calqué sur l'editbouille de main.swf : cadre arrondi vert clair,
@@ -1778,19 +1836,25 @@
     </div>
   </div>
 
-  <!-- Boutique (bottom sheet) — accessoires achetables + solde kikooz. Les fonds
-       d'écran ne sont pas affichés (non exploitables sur mobile). L'achat débite
-       les kikooz puis l'accessoire rejoint « Mon inventaire » pour être équipé. -->
+  <!-- La boutique — la fenêtre du bureau, reproduite : le solde en pastille, la
+       liste des rubriques à gauche (Accessoires, Fonds d'écran, Pass, Feutres,
+       Packs), la fiche de l'article à droite (aperçu, accroche, descriptif,
+       prix, Acheter). Alimentée par /api/light/shop, qui sert tout le
+       catalogue — le mobile n'en montrait qu'une rubrique sur cinq. -->
   <div id="shop-sheet-backdrop" class="sheet-backdrop"></div>
   <div id="shop-sheet" class="sheet">
     <div class="sheet-head">
       <span>Boutique</span>
       <button id="shop-sheet-close">✕</button>
     </div>
-    <div class="sheet-body">
-      <div class="shop-wallet" id="shop-wallet">…</div>
-      <div class="sheet-hint" id="shop-hint">Accessoires disponibles :</div>
-      <div id="shop-grid" class="shop-grid"></div>
+    <div class="sheet-body" id="bo-corps">
+      <div id="bo-haut">
+        <span class="bo-solde"><img src="/fb/icone_kikooz.svg" alt=""><strong id="shop-wallet">0</strong></span>
+      </div>
+      <div id="bo-fenetre">
+        <div id="bo-rubriques"></div>
+        <div id="bo-fiche"></div>
+      </div>
     </div>
   </div>
 
@@ -2631,10 +2695,30 @@
   // l'accessoire sur la bouille du joueur (réutilise buildState/previewIframe).
   // L'achat débite les kikooz ; l'accessoire devient ensuite équipable dans
   // « Mon inventaire ».
-  var shopItems = [];
+  /* ══════════════════════════════════════════════════════════════════════
+     LA BOUTIQUE — la fenêtre du bureau, reproduite.
+
+     Elle ne montrait que les accessoires : quatre rayons sur cinq manquaient au
+     téléphone alors que le catalogue est le même des deux côtés. On sert donc
+     l'arbre entier (/api/light/shop) et on le présente comme le bureau : le
+     solde en pastille, les rubriques à gauche (dossier + articles dépliés), et
+     à droite la FICHE de l'article — aperçu encadré, bouton Acheter dessous,
+     accroche en gras, descriptif, puis le prix.
+
+     Les aperçus sont ceux du jeu : l'accessoire se voit sur SA PROPRE bouille
+     (comme au bureau), le fond d'écran est son image, le pass et le pack ont le
+     picto d'époque sorti de shopitem.swf, et le feutre est le stylo d'origine
+     dont on teinte le calque « col » — le SWF le colore par code, pas par
+     dessin.
+     ══════════════════════════════════════════════════════════════════════ */
+  var shopCategories = [];      // rubriques servies par l'API
+  var shopItems = [];           // les accessoires seuls (compat : achat/aperçu)
+  var boRubrique = 0;           // rubrique ouverte
+  var boArticle = 0;            // article choisi dans la rubrique
+
   function setShopWallet(k) {
     var w = $("#shop-wallet");
-    if (w) w.innerHTML = '🪙 <strong>' + (Number(k) || 0) + '</strong> kikooz';
+    if (w) w.textContent = Number(k) || 0;
   }
   // Point d'entrée unique du solde : un don, un achat ou la poussée <av ku> du
   // serveur passent tous par ici, pour que la boutique n'affiche jamais un
@@ -2645,53 +2729,123 @@
     homeProfile.kikooz = n;
     setShopWallet(n);
   }
-  function shopHint(msg, cls) {
-    var h = $("#shop-hint");
-    if (!h) return;
-    h.className = "sheet-hint" + (cls ? " " + cls : "");
-    h.textContent = msg;
+  function boEtat(msg, cls) {
+    var e = $("#bo-etat");
+    if (!e) return;
+    e.className = "bo-etat" + (cls ? " " + cls : "");
+    e.textContent = msg || "";
   }
-  function renderShop() {
-    var grid = $("#shop-grid");
-    if (!grid) return;
-    grid.innerHTML = "";
-    if (!shopItems.length) {
-      grid.innerHTML = '<div class="sheet-hint">Aucun accessoire disponible pour le moment.</div>';
-      return;
+  function boArticleCourant() {
+    var r = shopCategories[boRubrique];
+    return r ? (r.items || [])[boArticle] : null;
+  }
+
+  // Colonne de gauche : un dossier par rubrique, ses articles dessous quand
+  // elle est ouverte — l'arborescence du bureau.
+  function renderShopRubriques() {
+    var box = $("#bo-rubriques");
+    if (!box) return;
+    var html = "";
+    shopCategories.forEach(function (c, i) {
+      html += '<button type="button" class="bo-rub' + (i === boRubrique ? " on" : "") + '"'
+        + ' data-r="' + i + '"><img src="/fb/boutique/dossier.png" alt="" onerror="this.style.display=\'none\'">'
+        + '<span>' + xmlEscape(c.name) + '</span></button>';
+      if (i !== boRubrique) return;
+      (c.items || []).forEach(function (it, k) {
+        html += '<button type="button" class="bo-art' + (k === boArticle ? " on" : "")
+          + (it.owned ? " eu" : "") + '" data-r="' + i + '" data-a="' + k + '">'
+          + xmlEscape(it.name) + '</button>';
+      });
+    });
+    box.innerHTML = html;
+    Array.prototype.forEach.call(box.querySelectorAll("[data-r]"), function (b) {
+      b.addEventListener("click", function () {
+        var r = Number(b.getAttribute("data-r")) || 0;
+        var a = b.hasAttribute("data-a") ? Number(b.getAttribute("data-a")) : 0;
+        if (r !== boRubrique) boArticle = 0; else boArticle = a;
+        boRubrique = r;
+        renderShopRubriques(); renderShopFiche();
+      });
+    });
+  }
+
+  // L'aperçu d'un article, selon son espèce.
+  function boApercu(it) {
+    if (it.kind === "fond" && it.wallpaper) {
+      return '<img src="' + xmlEscape(it.wallpaper) + '" alt="" loading="lazy">';
     }
-    shopItems.forEach(function (it, i) {
-      var st = buildState(myBase, it.suffix9, null);
-      var item = el("div", "shop-item");
-      item.innerHTML = '<div class="thumb">' + previewIframe(st) + '</div>'
-        + '<div class="shop-name">' + xmlEscape(it.name) + '</div>'
-        + '<div class="shop-price">' + (Number(it.price) || 0) + ' kikooz</div>'
-        + (it.owned
-            ? '<button class="shop-buy owned" disabled>Possédé</button>'
-            : '<button class="shop-buy" data-i="' + i + '">Acheter</button>');
-      grid.appendChild(item);
-    });
-    Array.prototype.forEach.call(grid.querySelectorAll(".shop-buy:not(.owned)"), function (b) {
-      b.addEventListener("click", function () { buyShopItem(Number(b.getAttribute("data-i")), b); });
-    });
+    if (it.kind === "feutre") {
+      // Le 18e stylo (index 17) est le feutre MULTICOLORE : le SWF y fait
+      // défiler la teinte à travers les couleurs des autres feutres, on la
+      // rend donc en dégradé plutôt qu'en aplat.
+      var c = it.feutre === 17
+        ? "linear-gradient(135deg," + FEUTRES.map(function (f) { return f.color; }).join(",") + ")"
+        : (FEUTRE_BY_INDEX[it.feutre] || "#888888");
+      return '<span class="bo-feutre">'
+        + '<img src="/fb/boutique/feutre_corps.png" alt="">'
+        + '<span class="teinte" style="background:' + c + '"></span></span>';
+    }
+    if (it.kind === "picto" && it.picto) {
+      return '<img src="' + xmlEscape(it.picto) + '" alt="" loading="lazy">';
+    }
+    // Accessoire : posé sur la bouille du joueur, comme l'aperçu du bureau.
+    return previewIframe(buildState(myBase, it.suffix9, null));
   }
+
+  function renderShopFiche() {
+    var box = $("#bo-fiche");
+    if (!box) return;
+    var it = boArticleCourant();
+    if (!it) { box.innerHTML = '<div class="bo-etat">Rubrique vide.</div>'; return; }
+    var achetable = !it.owned;
+    var prix = Number(it.price) || 0;
+    // Le bureau met le titre à droite de l'aperçu, puis l'accroche en gras et
+    // le descriptif dessous. Il a 630 px de large ; le téléphone en a 240, donc
+    // seul le TITRE tient à côté de l'aperçu — les deux textes passent en pleine
+    // largeur au lieu d'être étranglés dans une colonne de 130 px.
+    var html = '<div class="bo-tete">'
+      + '<div class="bo-vue"><div class="cadre">' + boApercu(it) + '</div>'
+      + (achetable
+        ? '<button type="button" class="bo-acheter" id="bo-acheter">Acheter</button>'
+        : '<button type="button" class="bo-acheter" disabled>'
+          + (it.offert ? "Offert" : "Possédé") + '</button>')
+      + '</div>'
+      + '<div class="bo-txt"><div class="bo-titre">' + xmlEscape(it.name) + '</div></div></div>'
+      + (it.comment ? '<div class="bo-accroche">' + xmlEscape(it.comment) + '</div>' : '')
+      + (it.description ? '<div class="bo-texte">' + xmlEscape(it.description) + '</div>' : '')
+      + '<div class="bo-prix">Prix : ' + prix + ' kikooz</div>'
+      + (it.pass
+        ? '<div class="bo-etat">Tu en possèdes ' + it.pass.possede
+          + ' → ' + it.pass.parJour + ' parties par jour.</div>'
+        : '')
+      + '<div class="bo-etat" id="bo-etat"></div>';
+    box.innerHTML = html;
+    var b = $("#bo-acheter");
+    if (b) b.addEventListener("click", function () { buyShopItem(b); });
+  }
+
+  function renderShop() { renderShopRubriques(); renderShopFiche(); }
+
   function loadShop() {
-    setShopWallet(0);
-    shopHint("Accessoires disponibles :");
-    $("#shop-grid").innerHTML = '<div class="sheet-hint">Chargement…</div>';
+    var box = $("#bo-fiche");
+    if (box) box.innerHTML = '<div class="bo-etat">Chargement…</div>';
     fetch("/api/light/shop?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.bouille && !isIncarnation(d.bouille)) myBase = d.bouille;
         setShopWallet(d && d.kikooz);
+        shopCategories = (d && d.categories) || [];
         shopItems = (d && d.items) || [];
+        if (boRubrique >= shopCategories.length) { boRubrique = 0; boArticle = 0; }
         renderShop();
       })
       .catch(function () {
-        $("#shop-grid").innerHTML = '<div class="sheet-hint">Boutique indisponible.</div>';
+        if (box) box.innerHTML = '<div class="bo-etat err">Boutique indisponible.</div>';
       });
   }
-  function buyShopItem(i, btn) {
-    var it = shopItems[i];
+
+  function buyShopItem(btn) {
+    var it = boArticleCourant();
     if (!it || it.owned) return;
     if (!window.confirm("Acheter « " + it.name + " » pour " + it.price + " kikooz ?")) return;
     btn.disabled = true; btn.textContent = "…";
@@ -2703,19 +2857,21 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.ok) {
-          it.owned = true;
           setShopWallet(d.kikooz);
+          // Un pass se cumule : on relit la boutique pour rafraîchir son compte.
+          if (it.cumulable) { loadShop(); return; }
+          it.owned = true;
           renderShop();
-          shopHint("✓ « " + it.name + " » acheté ! Retrouve-le dans « Mon inventaire ».", "ok");
+          boEtat("✓ « " + it.name + " » acheté !", "ok");
         } else {
           if (d && d.kikooz !== undefined) setShopWallet(d.kikooz);
           renderShop();
-          shopHint((d && d.error) || "Achat impossible.", "err");
+          boEtat((d && d.error) || "Achat impossible.", "err");
         }
       })
       .catch(function () {
         renderShop();
-        shopHint("Erreur réseau, réessaie.", "err");
+        boEtat("Erreur réseau, réessaie.", "err");
       });
   }
   function openShopSheet() {

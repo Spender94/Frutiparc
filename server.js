@@ -16380,25 +16380,90 @@ app.get('/api/light/fiche', async (req, res) => {
   });
 });
 
-// Boutique mobile (/light) : accessoires achetables + solde kikooz. On expose
-// uniquement la rubrique « Accessoires » (les fonds d'écran ne sont pas
-// exploitables sur mobile, on les masque) et on signale ceux déjà possédés. La
-// bouille de base du joueur est renvoyée pour l'aperçu (accessoire posé dessus).
+/**
+ * La boutique du mobile — le MÊME magasin que celui du bureau.
+ *
+ * Elle ne montrait que les Accessoires : quatre rubriques sur cinq restaient
+ * invisibles au téléphone (Fonds d'écran, Pass, Feutres, Packs), alors que le
+ * catalogue est commun aux deux clients (SHOP_PACKS, servi au bureau par
+ * /ft/tree et /ft/pack). On sert donc l'ARBRE ENTIER, rubrique par rubrique,
+ * dans l'ordre du catalogue — celui que le bureau affiche.
+ *
+ * Chaque article porte de quoi se dessiner sans SWF :
+ *   · accessoire → `suffix9`, que le client pose sur la bouille du joueur
+ *     (l'aperçu du bureau fait exactement ça) ;
+ *   · fond d'écran → l'URL de l'image, qui est déjà un JPEG ;
+ *   · pass / pack / feutre → le picto d'époque sorti de shopitem.swf en PNG
+ *     (scripts/extract-boutique-pictos.js). Le stylo vient en deux couches,
+ *     corps et teinte, parce que le SWF le colore par code.
+ *
+ * `owned` suit la règle du bureau (shopCategoryOwnedByDefault : tout rayon qui
+ * n'est ni Accessoires, ni Fonds d'écran, ni Pass est offert d'office — donc
+ * les feutres d'origine —, sauf les articles marqués `notDefault`, qui restent
+ * à acheter au milieu d'un rayon offert : feutre spécial, packs de jeu). Un
+ * Pass, lui, reste TOUJOURS achetable : il se cumule.
+ */
+const BOUTIQUE_PICTO_IMG = (picto) => {
+  const m = /^(pass|pack),(\d+)$/.exec(String(picto || ''));
+  return m ? `/fb/boutique/${m[1]}_${m[2]}.png` : null;
+};
 app.get('/api/light/shop', (req, res) => {
   const username = resolveUsernameFromSid(req.query.sid || '');
   if (!username) return res.status(401).json({ error: 'auth' });
   const user = users[username] || {};
-  const items = SHOP_PACKS
-    .filter((p) => !p.disabled && p.category === 'Accessoires')
-    .map((p) => ({
+  const visible = SHOP_PACKS.filter((p) => !p.disabled);
+
+  const article = (p) => {
+    const feutre = /^feutre,(\d+)$/.exec(String(p.picto || ''));
+    const wp = p.wallpaperId ? WALLPAPER_BY_ID[p.wallpaperId] : null;
+    const offert = shopCategoryOwnedByDefault(p.category) && !p.notDefault;
+    const accessoire = !wp && !p.picto;
+    // Un ACCESSOIRE n'a pas de `comment` : le bureau lui compose sa fiche en
+    // deux niveaux (resolveAccessoryLevels → l1 en gras, l2 en texte courant),
+    // avec les deux paragraphes communs quand rien n'est personnalisé. Le
+    // mobile affichait à la place le `description` brut, deux fois.
+    const niv = accessoire ? resolveAccessoryLevels(p) : null;
+    const a = {
       id: p.id,
       name: p.name,
+      category: p.category,
       price: Number(p.price) || 0,
-      description: p.description || '',
+      description: niv ? niv.l2 : (p.description || ''),
+      comment: niv ? niv.l1 : (p.comment || ''),
+      owned: offert || userOwnsShopPack(user, p.id),
+      offert,
+      kind: wp ? 'fond' : feutre ? 'feutre' : p.picto ? 'picto' : 'accessoire',
       suffix9: p.suffix9 || '000000000',
-      owned: userOwnsShopPack(user, p.id),
-    }));
-  res.json({ kikooz: Number(user.kikooz) || 0, bouille: bouilleOf(user, username), items });
+    };
+    if (wp) a.wallpaper = wp.url.startsWith('/') ? wp.url : '/' + wp.url;
+    if (feutre) a.feutre = Number(feutre[1]);
+    else if (p.picto) a.picto = BOUTIQUE_PICTO_IMG(p.picto);
+    // Un pass se cumule : il se rachète, et sa fiche dit où on en est.
+    if (p.fdPassGame) {
+      a.owned = false;
+      a.cumulable = true;
+      a.pass = { jeu: p.fdPassGame, possede: fdPassCount(user, p.fdPassGame),
+        parJour: fdAllowance(user, p.fdPassGame) };
+    }
+    return a;
+  };
+
+  const parRubrique = new Map();
+  for (const p of visible) {
+    if (!parRubrique.has(p.category)) parRubrique.set(p.category, []);
+    parRubrique.get(p.category).push(article(p));
+  }
+  const categories = [...parRubrique.entries()].map(([name, items]) => ({ name, items }));
+  res.json({
+    kikooz: Number(user.kikooz) || 0,
+    bouille: bouilleOf(user, username),
+    categories,
+    // Les accessoires seuls, comme avant : d'anciens appels s'y adossent.
+    items: (parRubrique.get('Accessoires') || []).map((a) => ({
+      id: a.id, name: a.name, price: a.price, description: a.description,
+      suffix9: a.suffix9, owned: a.owned,
+    })),
+  });
 });
 
 // Achat d'un accessoire depuis le mobile. Réutilise purchaseShopPack (mêmes
