@@ -90,6 +90,25 @@ function aExtraire() {
   // un vrai dessin. Le client la teinte par valeur (MC.setColor ajoute la
   // couleur au sous-clip `piece`), d'où le chemin conservé sur les pièces.
   liste.push({ cle: 'optPiece', id: 1382, etiquette: 'Pièce du bonus' });
+  // Le BONUS DE SAUT (Opt.as types 4/5/6 : +5, +10, +20 niveaux) — l'image 2 du
+  // clip Opt. C'est un ATOME : un halo, un noyau qui porte le chiffre (une image
+  // par valeur, `center.gotoAndStop(type-3)`), un anneau, et QUATRE électrons —
+  // Opt.as duplique le clip `atome` quatre fois, chacun tourné au hasard et
+  // lancé sur une image au hasard, d'où l'orbite désordonnée. Chaque électron
+  // décrit une ellipse en quarante-deux images.
+  liste.push({ cle: 'optSautHalo', id: 1383, etiquette: 'Halo du bonus de saut' });
+  liste.push({ cle: 'optSautNoyau', id: 1387, etiquette: 'Noyau du bonus de saut' });
+  liste.push({ cle: 'optSautAnneau', id: 1388, etiquette: 'Anneau du bonus de saut' });
+  liste.push({ cle: 'optSautAtome', id: 1392, etiquette: 'Électron du bonus de saut' });
+  // La MINE du Brugnon cuirassé (bads 48). L'image 58 du clip des projectiles
+  // ne pose pas un dessin mais un sous-clip ANIMÉ nommé `shot` : la mine
+  // s'amorce en grossissant (images 1→10), bat sur place en boucle (11→23,
+  // l'image 23 renvoyant à la 11), et joue sa destruction depuis l'étiquette
+  // « death » (24→33) avant que l'image 34 n'appelle _parent.kill(). Aplatie à
+  // son image 1 avec le reste, elle sortait au HUITIÈME de sa taille — deux
+  // pixels, d'où la « bombe invisible » qui semait des éclats venus de nulle
+  // part. On l'extrait donc pour elle-même, ses trente-trois images comprises.
+  liste.push({ cle: 'mineBrugnon', id: 1285, etiquette: 'Mine du Brugnon' });
   // L'interface du jeu : l'ornement du panneau de score (les chevrons de part
   // et d'autre des chiffres), les fonds des panneaux de message (level,
   // game over, fin, boss) et le fond du menu.
@@ -161,12 +180,29 @@ function principal() {
     const etats = [];
     for (const f of [...frames.keys()].sort((a, c) => a - c)) {
       const pieces = [];
-      // La transformation de couleur du placement de PREMIER niveau part avec
-      // le reste : c'est elle qui éteint l'anneau d'onde et fond les traînes.
-      for (const p of frames.get(f)) pieces.push(...aplatir(p.ch, p.M, 0, undefined, '', p.cx));
+      let masque = false;
+      for (const p of frames.get(f)) {
+        // La transformation de couleur du placement de PREMIER niveau part avec
+        // le reste : c'est elle qui éteint l'anneau d'onde et fond les traînes.
+        const morceaux = aplatir(p.ch, p.M, 0, undefined, '', p.cx);
+        // Un MASQUE est une DÉCOUPE, pas un dessin : Flash s'en sert pour cacher
+        // ce qui dépasse — l'électron du bonus de saut, sur la moitié de son
+        // orbite qui passe derrière le noyau. Le rendu à la toile ne découpe
+        // pas ; poser la forme telle quelle collait un rectangle vert en
+        // travers du bonus. On l'écarte donc, en NOTANT l'image : au client
+        // d'en tirer la conséquence (ici, dessiner l'électron sous le noyau).
+        // aplatir() ne voit pas le masque posé au premier niveau du symbole
+        // visé, puisqu'on l'appelle placement par placement — d'où les deux
+        // cas.
+        if (p.masque) { masque = true; continue; }
+        for (const m of morceaux) {
+          if (m.masque) { masque = true; continue; }
+          pieces.push(m);
+        }
+      }
       if (!pieces.length) continue;
       for (const pc of pieces) formes.add(pc.shape);
-      etats.push({ frame: f, pieces });
+      etats.push(masque ? { frame: f, masque: true, pieces } : { frame: f, pieces });
     }
     if (!etats.length) { absents.push(item.symbole + ' (aucune forme)'); continue; }
     manifeste[item.cle] = { nom: item.etiquette, symbole: item.symbole || ('#' + id), etats };
@@ -256,7 +292,10 @@ function principal() {
         }
         pieces.push(piece);
       }
-      return pieces.length ? { frame: e.frame, pieces } : null;
+      if (!pieces.length) return null;
+      // `masque` voyage jusqu'au client : c'est lui qui dit que cette image
+      // était découpée dans le SWF (cf. plus haut).
+      return e.masque ? { frame: e.frame, masque: true, pieces } : { frame: e.frame, pieces };
     }).filter(Boolean);
   }
   for (const cle of Object.keys(manifeste)) {

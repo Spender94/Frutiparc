@@ -731,17 +731,7 @@ class Client {
         ctx.stroke();
       }
     } else if (b.warp !== undefined) {
-      ctx.fillStyle = '#8fd0ff';
-      ctx.globalAlpha = pulse;
-      ctx.beginPath();
-      ctx.arc(0, 0, 6, 0, 6.28);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = '#0b1024';
-      ctx.font = 'bold 7px Verdana, Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(String(b.warp), 0, 3);
-      ctx.textAlign = 'left';
+      this.dessinerSaut(ctx, o);
     } else if (b.nom === 'vie') {
       const halo = this.sprites.optHalo;
       const mini = this.sprites.optVaisseau;
@@ -767,6 +757,52 @@ class Client {
     ctx.restore();
   }
 
+  /*
+   * Le bonus de SAUT (+5, +10, +20 niveaux) — l'image 2 du clip Opt du SWF.
+   *
+   * C'est un atome, pas une pastille : un halo, un noyau dont la COULEUR dit la
+   * valeur (Opt.as fait `center.gotoAndStop(type-3)` — orange, vert, violet
+   * pour +5, +10, +20), un anneau, et QUATRE électrons en orbite — le clip
+   * `atome` dupliqué quatre fois, chacun tourné au hasard et lancé sur une
+   * image au hasard de sa boucle de quarante-deux. Le portage dessinait à la
+   * place un rond bleu avec le chiffre écrit en Verdana par-dessus.
+   *
+   * La moitié de l'orbite qui passe DERRIÈRE le noyau est celle que le SWF
+   * découpe au masque : l'extraction marque ces images, on y dessine donc
+   * l'électron sous le noyau au lieu de le poser dessus.
+   */
+  dessinerSaut(ctx, o) {
+    const noyau = this.sprites.optSautNoyau;
+    if (!noyau) {                                   // dessins absents : un repère
+      ctx.fillStyle = '#8fd0ff';
+      ctx.beginPath(); ctx.arc(0, 0, 6, 0, 6.28); ctx.fill();
+      return;
+    }
+    const atome = this.sprites.optSautAtome;
+    const derriere = [], devant = [];
+    if (atome) {
+      const n = atome.etats.length;
+      for (const a of (o.atomes || [])) {
+        const f = 1 + ((a.image - 1 + Math.floor(o.age || 0)) % n);
+        const etat = atome.etats.find((e) => e.frame === f);
+        (etat && etat.masque ? derriere : devant).push({ rot: a.rot, f });
+      }
+    }
+    const poserAtome = (e) => {
+      ctx.save();
+      ctx.rotate(e.rot * Math.PI / 180);
+      poser(ctx, atome, e.f, 0, 0);
+      ctx.restore();
+    };
+    for (const e of derriere) poserAtome(e);
+    poser(ctx, this.sprites.optSautHalo, 1, 0, 0);
+    // Le noyau est posé à 0,777 dans le clip du bonus — sans cette échelle, il
+    // déborderait de son anneau.
+    poser(ctx, noyau, Math.max(1, Math.min(3, o.type - 3)), 0, 0, 0.777);
+    poser(ctx, this.sprites.optSautAnneau, 1, 0, 0);
+    for (const e of devant) poserAtome(e);
+  }
+
   dessinerTir(ctx, t, duHero) {
     const sp = this.sprites.shot;
     // L'aspect vient du moteur quand le tir en a un propre (les spéciales, les
@@ -778,6 +814,9 @@ class Client {
     // la boule file, le rayon GRANDIT derrière elle, et l'éclat du départ
     // s'éteint sur place (Shot.update case 5 pilote square et flare).
     if (t.behaviourId === 5) { this.dessinerRayonMirabelle(ctx, t); return; }
+    // La mine du Brugnon (comportement 23) n'est pas un dessin mais un CLIP
+    // ANIMÉ : l'image 58 des projectiles ne fait que le poser.
+    if (t.behaviourId === 23) { this.dessinerMine(ctx, t); return; }
 
     if (sp && sp.etats.some((e) => e.frame === frame)) {
       // Les projectiles sont dessinés pointe à droite ; le jeu les oriente selon
@@ -808,6 +847,35 @@ class Client {
     // plutôt qu'un projectile invisible qui tuerait sans prévenir.
     ctx.fillStyle = duHero ? '#bff18d' : '#ff8a5a';
     ctx.fillRect(t.x - 1, t.y - 2, 2, 4);
+  }
+
+  /*
+   * La MINE du Brugnon cuirassé.
+   *
+   * L'image 58 du clip des projectiles ne pose pas un dessin : elle pose un
+   * sous-clip qui JOUE. La mine s'amorce en grossissant (images 1→10), atteint
+   * ses vingt-quatre pixels et bat sur place en boucle (11→23, l'image 23
+   * renvoyant à la 11), puis, abattue, joue sa destruction (24→33).
+   *
+   * L'extraction l'avait aplatie à son image 1 — deux pixels de large. On voyait
+   * donc les éclats qu'elle sème partir de nulle part, sans jamais voir ce qui
+   * les lançait. Elle se dessine ici à l'image où elle en est.
+   */
+  dessinerMine(ctx, t) {
+    const sp = this.sprites.mineBrugnon;
+    if (!sp) { ctx.fillStyle = '#ff8a5a'; ctx.fillRect(t.x - 3, t.y - 3, 6, 6); return; }
+    let frame;
+    if (t.mourant !== undefined) {
+      frame = Math.min(33, 24 + Math.floor(t.mourant));
+    } else {
+      const n = Math.floor(t.age || 0);
+      frame = n < E.MINE_AMORCE ? 1 + n : 11 + ((n - E.MINE_AMORCE) % E.MINE_BOUCLE);
+    }
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    if (t.rot !== undefined) ctx.rotate(t.rot);
+    poser(ctx, sp, frame, 0, 0);
+    ctx.restore();
   }
 
   // Mirabelle.shoot : la boule de tête tire un rayon long de `length` px qui

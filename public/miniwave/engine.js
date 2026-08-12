@@ -408,6 +408,14 @@ class Hero extends Sprite {
   }
 }
 
+// La MINE du Brugnon cuirassé, en images : elle s'amorce en grossissant
+// (1→10), bat sur place en boucle (11→23, l'image 23 renvoyant à la 11), et sa
+// destruction dure dix images (l'étiquette « death » va de 24 à 33, et l'image
+// 34 appelle _parent.kill()). Le client cale son dessin sur ces mêmes bornes.
+const MINE_AMORCE = 10;           // images de mise en place
+const MINE_BOUCLE = 13;           // longueur de la boucle (11..23)
+const MINE_MORT = 10;             // images de destruction (24..33)
+
 // ── Les tirs ───────────────────────────────────────────────────────────────
 // Un seul type de sprite pour les deux camps : c'est `behaviourId` qui décide
 // de la trajectoire. Les comportements sans effet purement graphique sont
@@ -647,9 +655,24 @@ class Shot extends Sprite {
         break;
       }
       case 23:                        // Brugnon : mine destructible qui essaime
+        // Abattre la mine l'ÉTEINT : elle cesse d'essaimer, cesse de blesser,
+        // arrête sa toupie et joue sa destruction — Shot.as fait
+        // `shot.gotoAndPlay("death")` et la dernière image de cette animation
+        // appelle _parent.kill(). Sans ça, une mine tirée dessus restait là,
+        // muette et invisible, jusqu'à sortir de l'écran.
         for (let i = 0; i < jeu.hShotList.length; i++) {
           const m = jeu.hShotList[i];
-          if (this.distance(m) < 10) { m.tuer(); this.flHit = false; }
+          if (this.distance(m) < 10) {
+            m.tuer();
+            this.flHit = false;
+            this.vitRot = 0;
+            if (this.mourant === undefined) this.mourant = 0;
+          }
+        }
+        if (this.mourant !== undefined) {
+          this.mourant += tmod;
+          if (this.mourant >= MINE_MORT) { this.tuer(); return; }
+          break;
         }
         if (this.flHit && jeu.hasard(Math.max(1, Math.round(18 / tmod))) === 0) {
           const a = jeu.hasard(628) / 100;
@@ -1066,8 +1089,30 @@ class Opt extends Sprite {
     // dessin doit montrer LE vaisseau qu'on va recevoir, pas un autre.
     const b = BONUS[this.type];
     if (b && b.nom === 'vie') this.shipId = 1 + jeu.hasard(5);
+    // Le bonus de saut est un ATOME : Opt.as duplique quatre fois le clip
+    // `atome`, chacun tourné au hasard et lancé sur une image au hasard de sa
+    // boucle de quarante-deux (mc._rotation = random(360) ;
+    // mc.gotoAndPlay(random(40)+1)). C'est ce désordre qui donne l'orbite.
+    //
+    // Ces deux nombres sont PUREMENT décoratifs : on les dérive du point de
+    // largage plutôt que de puiser dans le tirage du jeu. Une partie doit se
+    // rejouer à l'identique à graine égale — consommer des tirages pour un
+    // dessin décalerait tout ce qui suit (une partie d'endurance ne franchit
+    // plus les mêmes paliers).
+    if (b && b.warp !== undefined) {
+      this.atomes = [];
+      const graine = Math.round(this.x * 7 + this.y * 13 + this.type * 101);
+      for (let i = 0; i < 4; i++) {
+        this.atomes.push({
+          rot: ((graine * (i + 3) + i * 91) % 360 + 360) % 360,
+          image: 1 + ((Math.abs(graine * (i + 5) + i * 17)) % 40),
+        });
+      }
+    }
+    this.age = 0;
   }
   update(tmod) {
+    this.age += tmod;
     this.y += this.speed * tmod;
     const h = this.jeu.hero;
     if (h && this.distance(h) < h.ray + this.ray) { this.ramasser(); this.tuer(); return; }
@@ -2119,7 +2164,11 @@ def(47, {                                                         // Pois casseu
 });
 def(48, {                                                         // Brugnon cuirassé : pose des mines
   freq: 360, cdSpeed: 1, hp: 2,
-  tirer: (b) => { const t = base(b); t.vity = 0.6; t.behaviourId = 23; },
+  // La mine descend lentement en tournant sur elle-même (Brugnon.shoot :
+  // vity 0.6, vitRot 6) — sa toupie et sa taille sont ce qui la rend visible
+  // et anticipable ; sans elles, les éclats qu'elle sème semblent partir de
+  // nulle part.
+  tirer: (b) => { const t = base(b); t.vity = 0.6; t.vitRot = 6; t.behaviourId = 23; },
 });
 def(49, {                                                         // Nitro-pruneau : explose en chaîne
   freq: 200, cdSpeed: 50, tire: false,
@@ -2600,7 +2649,8 @@ class Game {
 
 const API = { Game, Hero, Bads, Boss, Saucer, Opt, Shot, Sprite,
   ENNEMIS, VAISSEAUX, TYPES, BONUS, ETAPE, FORME, generateur,
-  LARGEUR, HAUTEUR, TAILLE_BADS, FLUX_BADS, FRICTION, DECOR_DECAL };
+  LARGEUR, HAUTEUR, TAILLE_BADS, FLUX_BADS, FRICTION, DECOR_DECAL,
+  MINE_AMORCE, MINE_BOUCLE, MINE_MORT };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MiniwaveEngine = API;

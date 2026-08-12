@@ -56,16 +56,40 @@ const NIVEAUX_PAR_JOUR = 40;
 // Où commence la zone rouge, en fraction du parcours (les ~10 derniers niveaux).
 const ZONE_ROUGE = 0.72;
 
-// Les types utilisables : ceux que l'arcade emploie dans ses niveaux NORMAUX
-// (1..199). Les autres entrées de la table (escortes du boss, variantes
-// spéciales) n'ont jamais volé en escadre — on ne leur fait pas confiance.
+/*
+ * Les espèces utilisables : celles que l'ARCADE fait voler en escadre.
+ *
+ * Le bestiaire du moteur compte cinquante et une entrées, mais les deux cents
+ * niveaux dessinés à la main n'en emploient que quarante et une. Les dix
+ * autres appartiennent à d'autres modes :
+ *
+ *   · 33 (Pruneau passe-muraille) ne sort que dans les missions spéciales ;
+ *   · 42 à 49 (Demon lemon, Pêche jongleuse, Courge céleste, Bulbe spatial,
+ *     Cosmo-Cassis, Pois casseur, Brugnon cuirassé, Nitro-pruneau) idem ;
+ *   · 50 (Letter-monster) est la bête du MODE LETTRE — elle porte une lettre,
+ *     ne tire pas, et n'a rien à faire dans une vague.
+ *
+ * Les laisser entrer donnait des niveaux hors-sujet (le mode lettre au niveau
+ * 33 d'une map) et des espèces jamais éprouvées en escadre. La liste ci-dessous
+ * est donc l'inverse : ce que l'arcade ne fait JAMAIS voler.
+ *
+ * (Le filtre d'origine écartait le type 34 — l'Astro-raisin, que l'arcade
+ * emploie trente-deux fois — en croyant écarter le passe-muraille : c'est
+ * l'index 33. L'escorte du boss, elle, n'est ni l'un ni l'autre : Boss.as
+ * appelle `newBads(1, …)`, c'est l'Orangeonaute.)
+ *
+ * test/miniwaveChallenge.test.js recompte la liste dans levels.json : si un
+ * jour l'arcade change, le test le dira.
+ */
+const HORS_ESCADRE = [33, 42, 43, 44, 45, 46, 47, 48, 49, 50];
+
 // Triés par `rank`, l'échelle de difficulté du moteur.
 function typesJouables() {
   const l = [];
   for (let t = 0; t < E.ENNEMIS.length; t++) {
     const e = E.ENNEMIS[t];
     if (!e || e.rank === undefined) continue;
-    if (t === 34) continue;               // l'escorte du boss (Pruneau passe-muraille)
+    if (HORS_ESCADRE.indexOf(t) >= 0) continue;
     l.push({ type: t, rank: e.rank, value: e.value });
   }
   l.sort((a, b) => a.rank - b.rank);
@@ -271,7 +295,7 @@ function genererMap(graine, nombre) {
   return { graine, profil: profil.nom, niveaux };
 }
 
-const API = { genererMap, typesJouables, NIVEAUX_PAR_JOUR, PROFILS, MOTIFS };
+const API = { genererMap, typesJouables, NIVEAUX_PAR_JOUR, PROFILS, MOTIFS, HORS_ESCADRE };
 
 if (sousNode) module.exports = API;
 else racine.MiniwaveChallenge = API;

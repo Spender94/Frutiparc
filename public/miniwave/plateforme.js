@@ -9,7 +9,8 @@
  *
  * Ce que le serveur en tire :
  *   • $ship[i] vrai            → picto du vaisseau i
- *   • $badsKill[i] ≥ 200       → picto de l'espèce i (deux cents fruits abattus)
+ *   • $badsKill[i] ≥ 200       → picto de l'espèce i (deux cents fruits abattus,
+ *                                Challenge NON compris : cf. fusionner)
  *   • $arcade.$bestLevel > 0   → picto « arcade »
  *   • $cons.$bonus[i] ≥ 100    → picto de la mission i (i ≤ 4)
  *   • $cons.$letter ≥ 100      → picto « lettre »
@@ -212,15 +213,30 @@ function fusionner(carte, jeu) {
   jeu = jeu || {};
   const score = nombre(jeu.score);
   const niveau = nombre(jeu.level);
+  const mode = jeu.mode || 'arcade';
 
-  for (const [type, n] of Object.entries(jeu.badsKill || {})) {
-    const i = Number(type);
-    if (Number.isInteger(i) && i >= 0 && i < NB_ENNEMIS) c.$badsKill[i] += nombre(n);
+  /*
+   * Le TABLEAU DE CHASSE ne compte pas les éliminations du Challenge.
+   *
+   * Deux cents fruits d'une même espèce ouvrent son picto, et le même tableau
+   * pondère le grade du pilote. Or la map du jour n'a pas la progression de
+   * l'arcade : sa zone rouge n'aligne QUE les espèces les plus dures, en
+   * formations pleines, dès le premier jour venu. Les compter reviendrait à
+   * ouvrir en quelques parties de Challenge des pictos que l'arcade fait
+   * gagner en des dizaines d'heures — et à décerner des grades avec.
+   *
+   * Le reste d'une partie de Challenge compte normalement : les crédits
+   * ramassés, les soucoupes, et bien sûr son propre record du jour.
+   */
+  if (mode !== 'challenge') {
+    for (const [type, n] of Object.entries(jeu.badsKill || {})) {
+      const i = Number(type);
+      if (Number.isInteger(i) && i >= 0 && i < NB_ENNEMIS) c.$badsKill[i] += nombre(n);
+    }
   }
   c.$saucerKill += nombre(jeu.saucerKill);
   c.$credit += nombre(jeu.credits);
 
-  const mode = jeu.mode || 'arcade';
   switch (mode) {
     case 'arcade':
       c.$stats.$play.$main++;

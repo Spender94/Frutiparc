@@ -108,6 +108,43 @@ test('même graine, même map — au bit près ; graines différentes, maps diff
   assert.equal(a.niveaux.length, C.NIVEAUX_PAR_JOUR, 'le nombre de niveaux du jour est fixé');
 });
 
+/*
+ * Le vivier du générateur, recompté sur les niveaux DESSINÉS À LA MAIN.
+ *
+ * Le bestiaire du moteur compte cinquante et une espèces ; les deux cents
+ * niveaux de l'arcade n'en font voler que quarante et une. Les dix autres —
+ * le Pruneau passe-muraille, les huit fruits des missions spéciales et le
+ * Letter-monster du mode lettre — n'ont jamais volé en escadre. La map du jour
+ * ne doit pas les inventer : on avait vu débarquer le mode lettre au niveau 33.
+ */
+test('le vivier du Challenge est exactement ce que l\'arcade fait voler', () => {
+  const niveaux = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/miniwave/levels.json'), 'utf8'));
+  const arcade = niveaux.main.find((g) => g.name === 'arcade') || niveaux.main[0];
+  const vus = new Set();
+  for (const lv of arcade.levels) {
+    for (const ligne of (lv.list || [])) {
+      if (!ligne) continue;
+      for (const c of ligne) if (c && Number.isInteger(c.t)) vus.add(c.t);
+    }
+  }
+  const absents = [];
+  for (let t = 0; t < E.ENNEMIS.length; t++) if (!vus.has(t)) absents.push(t);
+  assert.deepEqual(absents.sort((a, b) => a - b), C.HORS_ESCADRE.slice().sort((a, b) => a - b),
+    'HORS_ESCADRE liste exactement les espèces que l\'arcade n\'emploie jamais');
+
+  const vivier = C.typesJouables().map((p) => p.type).sort((a, b) => a - b);
+  assert.deepEqual(vivier, [...vus].sort((a, b) => a - b), 'et le vivier est le complément');
+  assert.equal(vivier.length, 41, 'quarante et une espèces');
+  // Les deux bêtes que le joueur a croisées à tort.
+  assert.equal(E.ENNEMIS[50].name, 'Letter-monster');
+  assert.equal(E.ENNEMIS[48].name, 'Brugnon cuirassé');
+  for (const t of [48, 50]) assert.ok(!vivier.includes(t), `${E.ENNEMIS[t].name} reste dehors`);
+  // Et l'Astro-raisin, qu'un filtre trop large écartait, revient : l'arcade le
+  // fait voler trente-deux fois.
+  assert.equal(E.ENNEMIS[34].name, 'Astro-raisin');
+  assert.ok(vivier.includes(34), 'l\'Astro-raisin vole bien en escadre');
+});
+
 test('chaque niveau généré respecte le contrat du moteur, sur 300 graines', () => {
   for (let g = 1; g <= 300; g++) {
     const m = C.genererMap(g);
@@ -125,7 +162,8 @@ test('chaque niveau généré respecte le contrat du moteur, sur 300 graines', (
         for (const c of ligne) {
           assert.ok(Number.isInteger(c.t) && E.ENNEMIS[c.t] && E.ENNEMIS[c.t].rank !== undefined,
             `type valide (${c.t})`);
-          assert.notEqual(c.t, 34, 'l\'escorte du boss ne vole pas en escadre');
+          assert.ok(!C.HORS_ESCADRE.includes(c.t),
+            `${E.ENNEMIS[c.t].name} (type ${c.t}) ne vole pas en escadre dans l'arcade`);
           assert.ok(c.x >= 24 && c.x <= 216, `x dans la fenêtre du jeu (${c.x})`);
           assert.ok(c.y >= 40 && c.y <= 128, `y dans la fenêtre du jeu (${c.y})`);
         }
@@ -245,7 +283,12 @@ test('le record du Challenge vit dans $challenge, par jour, sans toucher l\'arca
   assert.equal(c.$arcade.$bestScore, 0, 'l\'arcade n\'a pas bougé');
   assert.equal(c.$cons.$main, 0, 'la consécration arcade non plus');
   assert.equal(c.$credit, 12, 'les crédits ramassés comptent, comme partout');
-  assert.equal(c.$badsKill[2], 5, 'les éliminations aussi (pictos)');
+  assert.equal(c.$saucerKill, 1, 'les soucoupes aussi');
+  // Le TABLEAU DE CHASSE, lui, reste celui de l'arcade : la zone rouge de la map
+  // du jour n'aligne que les espèces les plus dures, en formations pleines. Les
+  // compter ouvrirait en quelques parties des pictos que l'arcade fait gagner
+  // en des dizaines d'heures — et pèserait sur le grade avec.
+  assert.equal(c.$badsKill[2], 0, 'les éliminations du Challenge ne comptent pas (pictos)');
 
   // Le lendemain, la map a tourné : le record repart de zéro.
   c = P.fusionner(c, { mode: 'challenge', jour: '2026-08-12', score: 900, level: 2 });
