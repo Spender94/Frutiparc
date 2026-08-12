@@ -245,3 +245,49 @@ test('la fenêtre du light est bâtie comme celle du bureau', () => {
   assert.match(html, /#bo-corps\s*\{[^}]*background:\s*#FFFFFF/i,
     'le corps de la fenêtre Boutique est blanc');
 });
+
+/*
+ * Les trois retouches de look de la fenêtre.
+ *
+ * Le bureau porte l'icône de la boutique devant son titre, entre toujours par
+ * les Accessoires, et son arborescence se plie et se déplie. Sur un téléphone,
+ * ce dernier point n'est pas un ornement : la rubrique des Feutres compte
+ * dix-huit articles, et sans repli elle chasse les autres rayons de l'écran.
+ */
+test('la barre de titre porte l\'icône de la fenêtre', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(html, /<img class="sheet-ico" src="\/fb\/boutique\/icone\.png"[\s\S]{0,120}Boutique<\/span>/,
+    'l\'icône précède le titre « Boutique »');
+  assert.ok(fs.existsSync(path.join(ROOT, 'public/fb/boutique/icone.png')),
+    'découpée sur la barre de titre du bureau');
+  assert.match(html, /\.sheet-head \.sheet-ico \{/, 'et elle a sa taille');
+});
+
+test('la boutique s\'ouvre toujours sur les Accessoires', async () => {
+  const d = await boutique(await inscrire(joueur('def')));
+  assert.equal((d.categories || [])[0].name, 'Accessoires',
+    'le premier rayon du catalogue est celui des accessoires');
+
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(html, /var BO_RUBRIQUE_DEFAUT = 0;/, 'le rayon d\'entrée est nommé');
+  // L'ouverture REPOSE l'état : sans ça, on retombait sur la rubrique de la
+  // visite précédente.
+  assert.match(html, /function openShopSheet\(\) \{[\s\S]{0,400}boRubrique = BO_RUBRIQUE_DEFAUT;[\s\S]{0,200}boArticle = 0;/,
+    'chaque ouverture repart des Accessoires');
+});
+
+test('un dossier se replie quand on le rappuie, sans vider la fiche', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  // Le dossier ouvert se referme ; un autre s'ouvre ; un article se choisit.
+  assert.match(html, /\} else if \(r === boRubrique\) \{[\s\S]{0,120}boRubrique = -1;/,
+    'rappuyer sur le dossier ouvert le referme');
+  assert.match(html, /boRubrique = -1;\s*\/\/ \(la fiche reste, elle\)/,
+    'et la fiche reste affichée');
+  // Deux états distincts : le dossier déplié et l'article montré.
+  assert.match(html, /var boChoixR = 0;/, 'la fiche a sa propre rubrique');
+  assert.match(html, /function boArticleCourant\(\) \{\s*var r = shopCategories\[boChoixR\];/,
+    'la fiche lit boChoixR, pas le dossier déplié');
+  // L'état est annoncé aux lecteurs d'écran.
+  assert.match(html, /aria-expanded="' \+ \(ouverte \? "true" : "false"\)/,
+    'le dossier dit s\'il est déplié');
+});

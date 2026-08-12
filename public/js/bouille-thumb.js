@@ -51,14 +51,53 @@
   // HTML d'une vignette : une <img> qui sonde le cache (nocapture=1).
   //   HIT  → 200, l'image s'affiche immédiatement (aucun Ruffle) ;
   //   MISS → 404, onerror déclenche une capture ponctuelle (ci-dessous).
-  function imgHtml(s, e) {
+  //
+  // `o.detourer` retire le FOND de la vignette (cf. detourer plus bas) : à
+  // réserver aux surfaces qui ne sont pas du vert des cartes du forum.
+  function imgHtml(s, e, o) {
     var ss = sanitize(s), ee = normEmote(e);
     return '<img class="fp-bthumb" loading="lazy" decoding="async" alt=""'
       + ' data-s="' + ss + '" data-e="' + ee + '"'
+      + ((o && o.detourer) ? ' data-detour="1"' : '')
       + ' src="' + imgUrl(ss, ee, true) + '"'
       + ' onerror="window.FPBouilleThumb&&FPBouilleThumb._miss(this)"'
       + ' onload="window.FPBouilleThumb&&FPBouilleThumb._ok(this)"'
       + ' style="width:100%;height:100%;object-fit:contain;display:block">';
+  }
+
+  /*
+   * Détourage du fond de capture.
+   *
+   * Le PNG du cache est peint sur le vert des cartes du forum (#E8F8D3) — le
+   * fond que bouille-capture.html donne à Ruffle. Posé là-dessus, il est
+   * invisible ; posé ailleurs — le panneau doré de la fenêtre des scores —, le
+   * carré vert saute aux yeux. On le retire ICI, au chargement, dans une toile,
+   * plutôt que côté serveur : le cache disque est partagé avec le forum et le
+   * Bouilloscope, qui n'ont rien demandé, et il est parfois durable (Postgres).
+   *
+   * La même clef de couleur que la sortie GIF de bouille-capture.html, à la
+   * tolérance près — c'est un aplat, il n'y a pas de dégradé à ménager.
+   */
+  var FOND = [0xE8, 0xF8, 0xD3];
+  function detourer(img) {
+    if (img.getAttribute("data-detoure") === "1") return;
+    img.setAttribute("data-detoure", "1");
+    var l = img.naturalWidth, h = img.naturalHeight;
+    if (!l || !h) return;
+    try {
+      var cv = document.createElement("canvas");
+      cv.width = l; cv.height = h;
+      var g = cv.getContext("2d");
+      g.drawImage(img, 0, 0);
+      var d = g.getImageData(0, 0, l, h);
+      for (var i = 0; i < d.data.length; i += 4) {
+        if (Math.abs(d.data[i] - FOND[0]) <= 10
+          && Math.abs(d.data[i + 1] - FOND[1]) <= 10
+          && Math.abs(d.data[i + 2] - FOND[2]) <= 10) d.data[i + 3] = 0;
+      }
+      g.putImageData(d, 0, 0);
+      img.src = cv.toDataURL("image/png");
+    } catch (err) { /* toile inutilisable : on garde la vignette telle quelle */ }
   }
 
   function statusUrl(s, e) {
@@ -89,9 +128,19 @@
   loadFamilies();
 
   // Vignette « ? » (famille indisponible ou capture impossible) — data-URI, léger.
-  var PLACEHOLDER = "data:image/svg+xml," + encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72"><rect width="72" height="72" fill="#E8F8D3"/>'
-    + '<text x="36" y="48" font-size="34" text-anchor="middle" fill="#bcd0a0" font-family="Verdana,Arial,sans-serif">?</text></svg>');
+  // Deux versions : sur fond vert comme les cartes du forum, et sans fond pour
+  // les vignettes détourées (cf. `detourer`).
+  function placeholder(fond) {
+    return "data:image/svg+xml," + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72">'
+      + (fond ? '<rect width="72" height="72" fill="#E8F8D3"/>' : '')
+      + '<text x="36" y="48" font-size="34" text-anchor="middle" fill="#bcd0a0" font-family="Verdana,Arial,sans-serif">?</text></svg>');
+  }
+  var PLACEHOLDER = placeholder(true);
+  var PLACEHOLDER_NU = placeholder(false);
+  function placeholderPour(img) {
+    return (img.getAttribute("data-detour") === "1") ? PLACEHOLDER_NU : PLACEHOLDER;
+  }
 
   // ── pool de capture (iframes /bouille-capture cachées) ─────────────────────
   // Concurrence faible + recyclage périodique des iframes : sans ça, des milliers
@@ -152,7 +201,7 @@
     var s = img.getAttribute("data-s"), e = img.getAttribute("data-e") || "0";
     if (!s) return;
     img.onerror = null;                  // ne pas boucler sur le 404
-    if (!renderable(s)) { img.src = PLACEHOLDER; img.style.visibility = "visible"; return; } // famille indisponible
+    if (!renderable(s)) { img.src = placeholderPour(img); img.style.visibility = "visible"; return; } // famille indisponible
     img.style.visibility = "hidden";     // masquer l'icône « image cassée »
     (waiting[s] = waiting[s] || []).push(img);
     if (queued[s]) return;
@@ -163,16 +212,19 @@
       for (var i = 0; i < imgs.length; i++) resolveImg(imgs[i], job, ok);
     });
   }
-  function onOk(img) { img.style.visibility = "visible"; }
+  function onOk(img) {
+    img.style.visibility = "visible";
+    if (img.getAttribute("data-detour") === "1") detourer(img);
+  }
   function resolveImg(img, job, ok) {
     if (!img.isConnected) return;
     if (ok) {
-      img.onload = function () { img.style.visibility = "visible"; };
+      img.onload = function () { onOk(img); };   // détourage compris
       img.src = imgUrl(job.s, job.e, false);   // en cache désormais → 200
     } else {
       // Capture en échec → vignette « ? » (léger). On NE relance PAS d'iframe live :
       // ça surchargerait et échouerait pareil.
-      img.onerror = null; img.src = PLACEHOLDER; img.style.visibility = "visible";
+      img.onerror = null; img.src = placeholderPour(img); img.style.visibility = "visible";
     }
   }
 

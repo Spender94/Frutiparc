@@ -245,3 +245,45 @@ test('le panneau du light reproduit la fenêtre : barre de titre, deux volets, p
   assert.ok(!/class="scores-tab/.test(html), 'plus de pastilles corail');
   assert.ok(!/id="scores-body"/.test(html), 'plus de liste verte');
 });
+
+/*
+ * Les deux retouches de look du sélecteur de jour et des vignettes.
+ *
+ * Le bureau pose son sélecteur de jour SOUS l'arborescence, dans la colonne de
+ * gauche, entre deux boutons roses — et non centré sous la fenêtre entière. Et
+ * les bouilles y sont posées à même le panneau doré : la capture PNG, elle, est
+ * peinte sur le vert des cartes du forum, un carré qui saute aux yeux ailleurs.
+ */
+test('le sélecteur de jour est celui du bureau : sous la liste, entre deux boutons roses', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  // Le pied vit DANS la colonne de gauche, sous la liste.
+  assert.match(html, /<div id="sc-gauche">[\s\S]{0,200}<div id="sc-liste">[\s\S]{0,200}<div id="sc-pied">/,
+    'la colonne de gauche porte la liste puis le pied');
+  assert.match(html, /#sc-gauche \{[\s\S]*?flex-direction: column/, 'et les empile');
+  // Les deux boutons sont aux extrémités, la date au milieu.
+  assert.match(html, /#sc-pied \{[\s\S]*?justify-content: space-between/,
+    'les flèches aux deux bouts, la date entre');
+  // Les boutons roses du bureau, pas des flèches quelconques.
+  for (const f of ['fleche_gauche.svg', 'fleche_droite.svg']) {
+    assert.match(html, new RegExp('/fb/' + f.replace('.', '\\.')), f + ' est le dessin employé');
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/fb', f)), f + ' existe');
+  }
+});
+
+test('les bouilles du tableau sont détourées : pas de carré vert sur le panneau doré', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(html, /FPBouilleThumb\.imgHtml\(s\.bouille, 0, \{ detourer: true \}\)/,
+    'le tableau demande des vignettes détourées');
+
+  const thumb = fs.readFileSync(path.join(ROOT, 'public/js/bouille-thumb.js'), 'utf8');
+  assert.match(thumb, /function detourer\(img\)/, 'le détourage existe');
+  assert.match(thumb, /var FOND = \[0xE8, 0xF8, 0xD3\]/,
+    'et vise la couleur de fond de bouille-capture.html');
+  assert.match(thumb, /data-detour="1"/, 'posé par l\'option `detourer`');
+  // La vignette « ? » du repli suit la même règle, sinon le carré revenait par
+  // la bande pour les bouilles non rendables.
+  assert.match(thumb, /function placeholderPour\(img\)/, 'le repli « ? » a sa version sans fond');
+  // Et le cache serveur n'est pas touché : le forum garde ses vignettes vertes.
+  const capture = fs.readFileSync(path.join(ROOT, 'public/bouille-capture.html'), 'utf8');
+  assert.match(capture, /backgroundColor: "#E8F8D3"/, 'la capture reste peinte sur le vert du forum');
+});

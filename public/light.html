@@ -90,6 +90,9 @@
     padding: 12px 16px; font-weight: bold; color: #2C4A0F;
     border-bottom: 1px solid #DDDDDD;
   }
+  /* La barre de titre du bureau porte l'icône de la fenêtre devant son nom. */
+  .sheet .sheet-head > span { display: inline-flex; align-items: center; gap: 7px; }
+  .sheet .sheet-head .sheet-ico { width: 16px; height: 16px; display: block; }
   .sheet .sheet-head button {
     background: transparent; border: 0; font-size: 18px; color: #2C4A0F;
   }
@@ -1122,7 +1125,9 @@
     border: 2px solid #FFFFFF; border-radius: 6px;
     overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
-  #sc-liste { flex: 0 0 132px; padding: 3px 0 6px; }
+  /* La colonne de gauche : la liste, et le sélecteur de jour sous elle. */
+  #sc-gauche { flex: 0 0 132px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  #sc-liste { flex: 1 1 auto; min-height: 0; padding: 3px 0 6px; }
   #sc-table { flex: 1 1 auto; min-width: 0; padding: 4px 6px 8px; }
   /* Colonne de gauche : titre de section (podium / coupe) puis les lignes, une
      médaille à couronne devant chacune — la même pour tous les classements,
@@ -1169,17 +1174,22 @@
   /* Ma ligne : le bureau ne la distingue pas non plus, mais sur un téléphone
      on la cherche des yeux — un fond très léger, rien de plus. */
   .sc-ligne.moi { background: rgba(255,255,255,.5); border-radius: 3px; font-weight: bold; }
-  /* Le pied : la date, entre deux flèches — la navigation par jour du bureau. */
+  /* Le pied : la date entre deux boutons roses, aux deux bouts de la colonne —
+     le sélecteur de jour du bureau, à sa place et à son dessin. */
   #sc-pied {
-    flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 10px;
-    padding: 3px 6px 5px;
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+    gap: 4px; padding: 0 2px 2px;
   }
   #sc-pied button {
     border: 0; background: transparent; padding: 0; cursor: pointer; line-height: 0;
+    flex: 0 0 auto;
   }
-  #sc-pied button img { width: 17px; height: 15px; display: block; }
+  #sc-pied button img { width: 20px; height: 20px; display: block; }
   #sc-pied button[disabled] { opacity: .35; cursor: default; }
-  #sc-jour { font-size: 11px; color: #433005; min-width: 92px; text-align: center; }
+  #sc-jour {
+    flex: 1 1 auto; min-width: 0; font-size: 11px; color: #433005; text-align: center;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .sc-vide {
     text-align: center; padding: 22px 10px; color: #7A5F1E;
     font-size: 11px; font-style: italic; line-height: 1.6;
@@ -1706,17 +1716,21 @@
         <span id="sc-titre-txt">Scores</span>
       </div>
       <div id="sc-corps">
-        <div id="sc-liste"></div>
+        <!-- La colonne de gauche porte la liste ET le sélecteur de jour, en
+             pied — c'est là que le bureau le pose, sous l'arborescence. -->
+        <div id="sc-gauche">
+          <div id="sc-liste"></div>
+          <div id="sc-pied">
+            <button id="sc-jour-prec" type="button" title="Jour précédent" aria-label="Jour précédent">
+              <img src="/fb/fleche_gauche.svg" alt="◀" onerror="this.replaceWith(document.createTextNode('◀'))">
+            </button>
+            <span id="sc-jour"></span>
+            <button id="sc-jour-suiv" type="button" title="Jour suivant" aria-label="Jour suivant">
+              <img src="/fb/fleche_droite.svg" alt="▶" onerror="this.replaceWith(document.createTextNode('▶'))">
+            </button>
+          </div>
+        </div>
         <div id="sc-table"></div>
-      </div>
-      <div id="sc-pied">
-        <button id="sc-jour-prec" type="button" title="Jour précédent" aria-label="Jour précédent">
-          <img src="/fb/icone_fleche_gauche.png" alt="◀" onerror="this.replaceWith(document.createTextNode('◀'))">
-        </button>
-        <span id="sc-jour"></span>
-        <button id="sc-jour-suiv" type="button" title="Jour suivant" aria-label="Jour suivant">
-          <img src="/fb/icone_fleche_droite.png" alt="▶" onerror="this.replaceWith(document.createTextNode('▶'))">
-        </button>
       </div>
     </div>
   </section>
@@ -1844,7 +1858,8 @@
   <div id="shop-sheet-backdrop" class="sheet-backdrop"></div>
   <div id="shop-sheet" class="sheet">
     <div class="sheet-head">
-      <span>Boutique</span>
+      <span><img class="sheet-ico" src="/fb/boutique/icone.png" alt=""
+        onerror="this.style.display='none'">Boutique</span>
       <button id="shop-sheet-close">✕</button>
     </div>
     <div class="sheet-body" id="bo-corps">
@@ -2713,8 +2728,12 @@
      ══════════════════════════════════════════════════════════════════════ */
   var shopCategories = [];      // rubriques servies par l'API
   var shopItems = [];           // les accessoires seuls (compat : achat/aperçu)
-  var boRubrique = 0;           // rubrique ouverte
-  var boArticle = 0;            // article choisi dans la rubrique
+  // Deux états distincts : le dossier DÉPLIÉ (l'arborescence) et l'article
+  // MONTRÉ (la fiche). Replier un dossier ne doit pas vider la fiche.
+  var boRubrique = 0;           // rubrique dépliée (-1 = toutes repliées)
+  var boChoixR = 0;             // rubrique de l'article montré
+  var boArticle = 0;            // article montré, dans cette rubrique
+  var BO_RUBRIQUE_DEFAUT = 0;   // à l'ouverture : le premier rayon, les Accessoires
 
   function setShopWallet(k) {
     var w = $("#shop-wallet");
@@ -2736,23 +2755,28 @@
     e.textContent = msg || "";
   }
   function boArticleCourant() {
-    var r = shopCategories[boRubrique];
+    var r = shopCategories[boChoixR];
     return r ? (r.items || [])[boArticle] : null;
   }
 
-  // Colonne de gauche : un dossier par rubrique, ses articles dessous quand
-  // elle est ouverte — l'arborescence du bureau.
+  // Colonne de gauche : un dossier par rubrique, ses articles dessous quand elle
+  // est dépliée — l'arborescence du bureau. Le dossier se REFERME si on le
+  // rappuie : sur un téléphone, une rubrique de dix-huit feutres mange l'écran,
+  // et il faut pouvoir la replier pour retrouver les autres rayons.
   function renderShopRubriques() {
     var box = $("#bo-rubriques");
     if (!box) return;
     var html = "";
     shopCategories.forEach(function (c, i) {
-      html += '<button type="button" class="bo-rub' + (i === boRubrique ? " on" : "") + '"'
-        + ' data-r="' + i + '"><img src="/fb/boutique/dossier.png" alt="" onerror="this.style.display=\'none\'">'
+      var ouverte = (i === boRubrique);
+      html += '<button type="button" class="bo-rub' + (ouverte ? " on" : "") + '"'
+        + ' data-r="' + i + '" aria-expanded="' + (ouverte ? "true" : "false") + '">'
+        + '<img src="/fb/boutique/dossier.png" alt="" onerror="this.style.display=\'none\'">'
         + '<span>' + xmlEscape(c.name) + '</span></button>';
-      if (i !== boRubrique) return;
+      if (!ouverte) return;
       (c.items || []).forEach(function (it, k) {
-        html += '<button type="button" class="bo-art' + (k === boArticle ? " on" : "")
+        html += '<button type="button" class="bo-art'
+          + ((i === boChoixR && k === boArticle) ? " on" : "")
           + (it.owned ? " eu" : "") + '" data-r="' + i + '" data-a="' + k + '">'
           + xmlEscape(it.name) + '</button>';
       });
@@ -2761,9 +2785,13 @@
     Array.prototype.forEach.call(box.querySelectorAll("[data-r]"), function (b) {
       b.addEventListener("click", function () {
         var r = Number(b.getAttribute("data-r")) || 0;
-        var a = b.hasAttribute("data-a") ? Number(b.getAttribute("data-a")) : 0;
-        if (r !== boRubrique) boArticle = 0; else boArticle = a;
-        boRubrique = r;
+        if (b.hasAttribute("data-a")) {              // un article : on le choisit
+          boChoixR = r; boArticle = Number(b.getAttribute("data-a")) || 0;
+        } else if (r === boRubrique) {               // le dossier ouvert : on le referme
+          boRubrique = -1;                           // (la fiche reste, elle)
+        } else {                                     // un autre dossier : on l'ouvre
+          boRubrique = r; boChoixR = r; boArticle = 0;
+        }
         renderShopRubriques(); renderShopFiche();
       });
     });
@@ -2836,7 +2864,8 @@
         setShopWallet(d && d.kikooz);
         shopCategories = (d && d.categories) || [];
         shopItems = (d && d.items) || [];
-        if (boRubrique >= shopCategories.length) { boRubrique = 0; boArticle = 0; }
+        if (boRubrique >= shopCategories.length) boRubrique = BO_RUBRIQUE_DEFAUT;
+        if (boChoixR >= shopCategories.length) { boChoixR = BO_RUBRIQUE_DEFAUT; boArticle = 0; }
         renderShop();
       })
       .catch(function () {
@@ -2876,6 +2905,11 @@
   }
   function openShopSheet() {
     openMenu(false);
+    // La boutique s'ouvre TOUJOURS sur les Accessoires, comme le bureau : le
+    // rayon où l'on rentre ne dépend pas de la dernière visite.
+    boRubrique = BO_RUBRIQUE_DEFAUT;
+    boChoixR = BO_RUBRIQUE_DEFAUT;
+    boArticle = 0;
     $("#shop-sheet-backdrop").classList.add("show");
     $("#shop-sheet").classList.add("show");
     loadShop();
@@ -3029,7 +3063,11 @@
       g.scores.forEach(function (s, i) {
         html += '<div class="sc-ligne' + (s.isMe ? " moi" : "") + '">'
           + '<span class="r">' + (s.pos || (i + 1)) + '</span>'
-          + '<span class="b">' + (s.bouille ? FPBouilleThumb.imgHtml(s.bouille, 0) : "") + '</span>'
+          // Vignette DÉTOURÉE : la capture est peinte sur le vert des cartes du
+          // forum, et ce carré se verrait sur le panneau doré de la fenêtre.
+          + '<span class="b">'
+          + (s.bouille ? FPBouilleThumb.imgHtml(s.bouille, 0, { detourer: true }) : "")
+          + '</span>'
           + '<span class="n">' + xmlEscape(s.user) + '</span>'
           + '<span class="s">' + xmlEscape(s.label) + '</span>'
           + '<span class="h">' + xmlEscape(s.time || "") + '</span>'

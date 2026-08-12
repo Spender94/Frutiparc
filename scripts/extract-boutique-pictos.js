@@ -164,8 +164,12 @@ const TRAVAIL = ${JSON.stringify(TRAVAIL)};
 const SORTIE = ${JSON.stringify(SORTIE)};
 const TAILLE = ${TAILLE};
 const CAPTURE = ${JSON.stringify(CAPTURE)};
-// La boîte où chercher le dossier du PREMIER rayon, dans la capture ×2.
-const DOSSIER = { x: 37, y: 146, w: 46, h: 40 };
+// Ce qu'on découpe dans la capture ×2, et où : le dossier du PREMIER rayon, et
+// l'icône que la barre de titre pose devant « Boutique ».
+const DECOUPES = [
+  { nom: 'dossier', x: 37, y: 146, w: 46, h: 40 },
+  { nom: 'icone', x: 32, y: 49, w: 26, h: 30 },
+];
 (async () => {
   const donnees = JSON.parse(fs.readFileSync(TRAVAIL + '/pictos.json', 'utf8'));
   const svgs = {};
@@ -219,13 +223,15 @@ const DOSSIER = { x: 37, y: 146, w: 46, h: 40 };
     fs.writeFileSync(SORTIE + '/' + c.nom + '.png', Buffer.from(url.split(',')[1], 'base64'));
     console.log(c.nom + '.png');
   }
-  // Le dossier rose des rubriques, découpé dans la capture du bureau. Le fond
+  // Les morceaux de la fenêtre elle-même — le dossier rose des rubriques et
+  // l'icône de la barre de titre —, découpés dans la capture du bureau. Le fond
   // est blanc : on le rend transparent, et on dé-multiplie ce blanc pour que le
-  // rose antialiasé garde sa teinte sur n'importe quel fond.
+  // dessin antialiasé garde sa teinte sur n'importe quel fond.
   if (CAPTURE) {
     const src64 = 'data:image/png;base64,' + fs.readFileSync(CAPTURE).toString('base64');
     await page.setContent('<img id="cap" src="' + src64 + '">');
     await page.waitForFunction(() => document.getElementById('cap').complete);
+    for (const BOITE of DECOUPES) {
     const d = await page.evaluate((B) => {
       const im = document.getElementById('cap');
       const cv = document.createElement('canvas');
@@ -257,11 +263,12 @@ const DOSSIER = { x: 37, y: 146, w: 46, h: 40 };
       }
       out.getContext('2d').putImageData(dst, 0, 0);
       return { url: out.toDataURL('image/png'), w, h };
-    }, DOSSIER);
-    if (!d) console.log('dossier : rien dans la boîte — la capture n\\'est pas cadrée comme attendu.');
+    }, BOITE);
+    if (!d) console.log(BOITE.nom + ' : rien dans la boîte — capture mal cadrée ?');
     else {
-      fs.writeFileSync(SORTIE + '/dossier.png', Buffer.from(d.url.split(',')[1], 'base64'));
-      console.log('dossier.png — ' + d.w + 'x' + d.h);
+      fs.writeFileSync(SORTIE + '/' + BOITE.nom + '.png', Buffer.from(d.url.split(',')[1], 'base64'));
+      console.log(BOITE.nom + '.png — ' + d.w + 'x' + d.h);
+    }
     }
   }
   await nav.close();
