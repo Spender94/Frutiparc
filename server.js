@@ -1434,7 +1434,8 @@ function persistKalugaFreestyle(username, rankingId, fdDirect, scoreVal, scoreDa
 // règle EXACTE du mode, pas une estimation : au-delà, le niveau est impossible,
 // et pas seulement improbable. On lit la constante DANS le module du mode pour
 // que retailler la map retaille le garde-fou du même geste.
-const MINIWAVE_NIVEAU_MAX = require('./public/miniwave/challenge.js').NIVEAUX_PAR_JOUR;
+const MiniwaveChallenge = require('./public/miniwave/challenge.js');
+const MINIWAVE_NIVEAU_MAX = MiniwaveChallenge.NIVEAUX_PAR_JOUR;
 
 /**
  * Le NIVEAU d'une partie de Challenge MiniWave, lu dans la donnée de score.
@@ -7812,6 +7813,22 @@ app.get('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => {
  * La graine est un FNV-1a de « miniwave: » + jour — la même famille que
  * mb2gen.dailyChallengeSeed, le préfixe séparant les deux espaces pour que les
  * deux jeux ne tirent pas la même valeur le même jour.
+ *
+ * ── Pourquoi le serveur GÈLE la map, et ne se contente pas de la graine ──
+ *
+ * La graine ne bouge pas : elle sort de la date. Les NIVEAUX, eux, sont l'œuvre
+ * d'un générateur qu'on fait évoluer (le vivier d'espèces, les motifs, la zone
+ * rouge…). Servir la graine seule revenait donc à changer la map À CHAQUE
+ * DÉPLOIEMENT — en pleine journée, avec un classement qui comparait alors des
+ * scores faits sur deux parcours différents. Pire : deux joueurs pouvaient
+ * jouer deux maps le même jour, selon la version du générateur que leur
+ * navigateur avait en cache.
+ *
+ * La map du jour est donc FABRIQUÉE UNE FOIS, puis conservée : en base quand
+ * elle est là (le disque du conteneur est éphémère), sur le disque sinon. On la
+ * sert telle quelle jusqu'à minuit Paris, quelle que soit la version du code
+ * qui tourne entre-temps. C'est exactement le traitement de la map MotionBall
+ * (cf. mb2_maps).
  */
 function miniwaveChallengeSeed(jourCle) {
   const s = 'miniwave:' + (jourCle || parisDayKey());
@@ -7820,12 +7837,88 @@ function miniwaveChallengeSeed(jourCle) {
   return (h >>> 0) & 0x3FFFFFFF;
 }
 
-app.get('/api/miniwave/challenge', (req, res) => {
-  // Public : la graine n'est pas un secret (le générateur est servi au client),
-  // seule la DATE compte, et c'est celle du serveur.
+const MINIWAVE_MAP_FILE = path.join(SCORES_DIR, 'miniwave-challenge.json');
+let miniwaveMapCache = null;              // { jour, graine, niveaux } du jour
+
+function miniwaveMapValide(m, jour) {
+  return !!(m && m.jour === jour && Array.isArray(m.niveaux) && m.niveaux.length
+    && typeof m.graine === 'number');
+}
+function miniwaveMapLireDisque() {
+  try {
+    if (!fs.existsSync(MINIWAVE_MAP_FILE)) return null;
+    return JSON.parse(fs.readFileSync(MINIWAVE_MAP_FILE, 'utf8'));
+  } catch (e) { return null; }
+}
+function miniwaveMapEcrireDisque(m) {
+  try {
+    if (!fs.existsSync(SCORES_DIR)) fs.mkdirSync(SCORES_DIR, { recursive: true });
+    const tmp = MINIWAVE_MAP_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(m), 'utf8');
+    fs.renameSync(tmp, MINIWAVE_MAP_FILE);
+  } catch (e) { console.error('[MINIWAVE] écriture de la map:', e.message); }
+}
+
+/**
+ * La map du jour, fabriquée une fois pour toutes.
+ *
+ * Ordre de recherche : la mémoire, puis le DISQUE (reboot du même conteneur),
+ * puis la BASE (déploiement neuf : le disque est reparti à zéro). Rien de tout
+ * ça ne porte le jour courant → on la génère, et on la range dans les deux.
+ */
+async function miniwaveMapDuJour() {
   const jour = parisDayKey();
+  if (miniwaveMapValide(miniwaveMapCache, jour)) return miniwaveMapCache;
+
+  const surDisque = miniwaveMapLireDisque();
+  if (miniwaveMapValide(surDisque, jour)) {
+    miniwaveMapCache = surDisque;
+    console.log(`[MINIWAVE] Map du jour reprise du disque (${jour}, graine=${surDisque.graine})`
+      + ' — inchangée par ce redémarrage');
+    return miniwaveMapCache;
+  }
+  if (process.env.DATABASE_URL) {
+    try {
+      const ligne = await db.getMiniwaveMap();
+      if (ligne && ligne.day_key === jour && ligne.data) {
+        const m = JSON.parse(ligne.data);
+        if (miniwaveMapValide(m, jour)) {
+          miniwaveMapCache = m;
+          miniwaveMapEcrireDisque(m);       // le disque redevient le chemin rapide
+          console.log(`[MINIWAVE] Map du jour restaurée depuis la base (${jour}, graine=${m.graine})`);
+          return miniwaveMapCache;
+        }
+      }
+    } catch (e) { console.error('[MINIWAVE] lecture de la map en base:', e.message); }
+  }
+
+  const graine = miniwaveChallengeSeed(jour);
+  const m = { jour, graine, niveaux: MiniwaveChallenge.genererMap(graine).niveaux };
+  miniwaveMapCache = m;
+  miniwaveMapEcrireDisque(m);
+  if (process.env.DATABASE_URL) {
+    try { await db.setMiniwaveMap(jour, String(graine), JSON.stringify(m)); }
+    catch (e) { console.error('[MINIWAVE] écriture de la map en base:', e.message); }
+  }
+  console.log(`[MINIWAVE] Map du jour générée (${jour}, graine=${graine}, `
+    + `${m.niveaux.length} niveaux) — figée jusqu'au prochain minuit Paris`);
+  return miniwaveMapCache;
+}
+
+app.get('/api/miniwave/challenge', async (req, res) => {
+  // Public : ni la graine ni les niveaux ne sont un secret (le générateur est
+  // servi au client), seule la DATE compte, et c'est celle du serveur.
   res.set('Cache-Control', 'no-store');
-  res.json({ ok: true, jour, graine: miniwaveChallengeSeed(jour) });
+  try {
+    const m = await miniwaveMapDuJour();
+    // `graine` reste servie : le client sait encore générer la map lui-même si
+    // les niveaux venaient à manquer (vieille page en cache, réseau coupé).
+    res.json({ ok: true, jour: m.jour, graine: m.graine, niveaux: m.niveaux });
+  } catch (e) {
+    console.error('[MINIWAVE] map du jour:', e.message);
+    const jour = parisDayKey();
+    res.json({ ok: true, jour, graine: miniwaveChallengeSeed(jour) });
+  }
 });
 
 // Admin: add a game item to a user (works even if user is offline)
@@ -17021,6 +17114,13 @@ async function boot() {
   } catch (e) {
     console.error('[MB2] Map setup error:', e.message);
   }
+
+  // La map du jour de Mini-Wave, pour la même raison : elle est FABRIQUÉE une
+  // fois et conservée, sinon chaque déploiement la changeait en pleine journée.
+  // On la réveille au démarrage pour que la première partie ne l'attende pas —
+  // et pour que le journal dise d'où elle vient.
+  try { await miniwaveMapDuJour(); }
+  catch (e) { console.error('[MINIWAVE] Map setup error:', e.message); }
 }
 
 boot();

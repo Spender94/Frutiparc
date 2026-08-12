@@ -342,6 +342,20 @@ async function initSchema() {
         updated_at  TIMESTAMPTZ DEFAULT now()
       );
 
+      -- Map challenge du jour de Mini-Wave, pour la même raison que celle de
+      -- MotionBall : la graine est stable (elle vient de la date), mais les
+      -- NIVEAUX sont l'œuvre d'un générateur qu'on fait évoluer. Sans cette
+      -- copie, le moindre déploiement changeait la map en cours de journée —
+      -- et le classement du jour comparait alors des scores faits sur deux
+      -- parcours différents. La map posée ici vaut jusqu'à minuit Paris.
+      CREATE TABLE IF NOT EXISTS miniwave_maps (
+        slot        TEXT PRIMARY KEY CHECK (slot IN ('current')),
+        day_key     TEXT NOT NULL,
+        seed        TEXT NOT NULL DEFAULT '',
+        data        TEXT NOT NULL,
+        updated_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Custom wallpapers ("fonds d'écran") uploaded from the admin panel. The
       -- image BYTES live in the DB (not on disk) so a bought wallpaper keeps
       -- loading even after an ephemeral-filesystem redeploy. Served on demand by
@@ -1650,6 +1664,21 @@ async function swapMb2Maps() {
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; }
   finally { client.release(); }
 }
+// ── Map challenge Mini-Wave (les niveaux du jour, figés jusqu'à minuit Paris) ──
+async function getMiniwaveMap() {
+  const { rows } = await pool.query(
+    "SELECT day_key, seed, data, updated_at FROM miniwave_maps WHERE slot = 'current'");
+  return rows[0] || null;
+}
+async function setMiniwaveMap(dayKey, seed, data) {
+  await pool.query(
+    `INSERT INTO miniwave_maps (slot, day_key, seed, data, updated_at)
+     VALUES ('current', $1, $2, $3, now())
+     ON CONFLICT (slot) DO UPDATE SET day_key = $1, seed = $2, data = $3, updated_at = now()`,
+    [dayKey, String(seed || ''), data]
+  );
+}
+
 // ── Quiz images (MikeHorny "image" quizzes, uploaded from the admin) ──
 // Metadata only (no bytes) — feeds the in-memory quiz-image registry at boot.
 async function loadQuizImages() {
@@ -2843,6 +2872,8 @@ module.exports = {
   getMb2Map,
   setMb2CurrentMap,
   swapMb2Maps,
+  getMiniwaveMap,
+  setMiniwaveMap,
   deleteWallpaper,
   upsertForumImage,
   getForumImage,

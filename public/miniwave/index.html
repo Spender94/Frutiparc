@@ -206,13 +206,13 @@
   </div>
 </div>
 
-<script src="/miniwave/engine.js?v=fidele4"></script>
-<script src="/miniwave/challenge.js?v=fidele4"></script>
-<script src="/miniwave/modes.js?v=fidele4"></script>
-<script src="/miniwave/game.js?v=fidele4"></script>
-<script src="/miniwave/sons.js?v=fidele4"></script>
-<script src="/miniwave/plateforme.js?v=fidele4"></script>
-<script src="/miniwave/menu.js?v=fidele4"></script>
+<script src="/miniwave/engine.js?v=fidele5"></script>
+<script src="/miniwave/challenge.js?v=fidele5"></script>
+<script src="/miniwave/modes.js?v=fidele5"></script>
+<script src="/miniwave/game.js?v=fidele5"></script>
+<script src="/miniwave/sons.js?v=fidele5"></script>
+<script src="/miniwave/plateforme.js?v=fidele5"></script>
+<script src="/miniwave/menu.js?v=fidele5"></script>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
@@ -394,8 +394,14 @@
       .then(function (d) {
         if (!d || !d.ok) return defiJour;
         if (!defiJour || defiJour.jour !== d.jour) {
-          var map = window.MiniwaveChallenge.genererMap(d.graine);
-          defiJour = { jour: d.jour, graine: d.graine, map: map };
+          // Les NIVEAUX viennent du serveur, qui fige la map du jour : le
+          // générateur évolue, la map d'une journée entamée ne doit pas.
+          // Sans eux (vieille page en cache, réponse tronquée), on la refait
+          // ici depuis la graine — mieux vaut une map que pas de Challenge.
+          var niveaux = (d.niveaux && d.niveaux.length)
+            ? d.niveaux
+            : window.MiniwaveChallenge.genererMap(d.graine).niveaux;
+          defiJour = { jour: d.jour, graine: d.graine, map: { niveaux: niveaux } };
         }
         return defiJour;
       })
@@ -474,7 +480,7 @@
   });
 
   Promise.all([
-    fetch('/miniwave/sprites/sprites.json?v=fidele4').then(function (r) { return r.json(); }),
+    fetch('/miniwave/sprites/sprites.json?v=fidele5').then(function (r) { return r.json(); }),
     fetch('/miniwave/levels.json').then(function (r) { return r.json(); })
   ]).then(function (res) {
     var sprites = res[0];
