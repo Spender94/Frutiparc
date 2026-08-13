@@ -267,8 +267,29 @@ class Client {
     // L'onglet qui passe derrière met la partie en PAUSE (et pas seulement la
     // boucle) : au retour, rien n'a bougé et rien n'a « rattrapé ».
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.pauser(true);
+      if (document.hidden) { this.relacherTout(); this.pauser(true); }
     });
+    // La fenêtre qui perd le focus ne reçoit plus les RELÂCHEMENTS : une touche
+    // enfoncée au moment du basculement reste enfoncée pour toujours. Gauche et
+    // droite coincées ensemble s'annulent — le vaisseau est alors cloué sur
+    // place, et un pointeur dont le « lever » s'est perdu le ramène à son
+    // dernier point de visée à chaque image. C'est le vaisseau qui « ne bouge
+    // plus du tout jusqu'à l'explosion ». On lâche donc tout ce qui était tenu.
+    window.addEventListener('blur', () => this.relacherTout());
+  }
+
+  // Remet les commandes à zéro : plus rien n'est tenu.
+  relacherTout() {
+    this.entree.gauche = false;
+    this.entree.droite = false;
+    this.entree.tir = false;
+    this.entree.bombe = false;
+    this.entree.cibleX = null;
+    if (this.surfaces) {
+      for (const s of this.surfaces) { s.pointeur = null; s.el.classList.remove('on'); }
+    }
+    const boutons = document.querySelectorAll('[data-cmd].on');
+    Array.prototype.forEach.call(boutons, (b) => b.classList.remove('on'));
   }
 
   // `mode` choisit la classe : l'arcade est le moteur nu, les trois autres sont
@@ -540,8 +561,15 @@ class Client {
     for (const b of jeu.badsList) {
       // L'image de coque suit les points de vie : intact = image 1, entamé = 2…
       const sp = this.sprites['bads' + b.type];
-      const etat = sp ? Math.min(sp.etats.length, (b.profil.hp || 1) - b.hp + 1) : 1;
-      poser(ctx, sp, sp ? sp.etats[Math.max(0, etat - 1)].frame : 1, b.x, b.y);
+      // La Batmandarine a une seconde image, sa pose d'esquive : le SWF y passe
+      // le temps du glissement (Mandarine : gotoAndStop(2) au départ, 1 à
+      // l'arrivée). Elle n'a qu'un point de vie — l'image 2 ne servait à rien.
+      const etat = b.flStrafe && sp && sp.etats.length > 1 ? 2
+        : (sp ? Math.min(sp.etats.length, (b.profil.hp || 1) - b.hp + 1) : 1);
+      // `dx` : le rattrapage de la Batmandarine. Elle change de place d'un coup
+      // — pour la vague et pour les tirs — mais son DESSIN la rejoint en
+      // glissant (Mandarine.endUpdate pose le clip à x+dx puis remet x).
+      poser(ctx, sp, sp ? sp.etats[Math.max(0, etat - 1)].frame : 1, b.x + (b.dx || 0), b.y);
       // La Figue-laser ouvre un rayon sous elle (flShooting) : montée en
       // puissance, colonne mortelle, extinction — le moteur fait le dégât
       // entre timer 36 et 12, le dessin suit les mêmes bornes.
@@ -1114,6 +1142,7 @@ class Client {
   // trois zones tactiles pour le téléphone. Le tir est MAINTENU : le vaisseau a
   // sa propre cadence, inutile de marteler.
   brancherCommandes(racine) {
+    this.surfaces = [];
     const touches = {
       ArrowLeft: 'gauche', ArrowRight: 'droite', ' ': 'tir',
       q: 'gauche', d: 'droite', a: 'gauche',
@@ -1212,8 +1241,18 @@ class Client {
         if (ev.cancelable) ev.preventDefault();
         if (this.entree.tir) viser(ev);
       };
+      // Deux surfaces pilotent (la bande tactile et le canevas) et partagent la
+      // même commande. Sans savoir QUI tient le doigt, le relâchement de l'une
+      // effaçait la prise de l'autre : le pouce resté posé ne visait plus rien
+      // (glisser ne vise que si `tir`), et le vaisseau restait cloué à son
+      // dernier point. Chaque surface retient donc son pointeur.
+      const etat = { el: surface, pointeur: null };
+      this.surfaces.push(etat);
       const lever = (ev) => {
         if (ev && ev.cancelable) ev.preventDefault();
+        if (ev && ev.pointerId !== undefined && etat.pointeur !== null
+          && ev.pointerId !== etat.pointeur) return;   // ce n'est pas notre doigt
+        etat.pointeur = null;
         this.entree.tir = false;
         this.entree.cibleX = null;                     // le clavier reprend la main
         surface.classList.remove('on');
@@ -1221,11 +1260,15 @@ class Client {
       if (window.PointerEvent) {
         surface.addEventListener('pointerdown', (ev) => {
           try { surface.setPointerCapture(ev.pointerId); } catch (e) { /* vieux moteurs */ }
+          etat.pointeur = ev.pointerId;
           poser_(ev);
         });
         surface.addEventListener('pointermove', glisser);
         surface.addEventListener('pointerup', lever);
         surface.addEventListener('pointercancel', lever);
+        // Le « lever » se perd parfois (fenêtre qui bascule, capture rompue) :
+        // sans lui, la prise resterait éternelle.
+        surface.addEventListener('lostpointercapture', lever);
       } else {
         surface.addEventListener('touchstart', poser_, { passive: false });
         surface.addEventListener('touchmove', glisser, { passive: false });

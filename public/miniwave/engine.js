@@ -217,9 +217,19 @@ class Sprite {
   }
   distance(o) { const dx = o.x - this.x, dy = o.y - this.y; return Math.sqrt(dx * dx + dy * dy); }
   angle(o) { return Math.atan2(o.y - this.y, o.x - this.x); }
-  // hTest d'origine s'appuyait sur la boîte du clip Flash. Sans clip, on prend
-  // le rayon du sprite — la même chose à un pixel près pour des vaisseaux de 24.
+  /*
+   * Sprite.hTest d'origine : `getBounds(_parent)`, la BOÎTE DU DESSIN — pas un
+   * rayon. Pour un fruit de 20×20 la différence est nulle, et le rayon suffit ;
+   * pour un dessin franchement plus large que haut, elle change tout. D'où
+   * `boite` : quand un sprite en pose une (mesurée sur le dessin sorti du SWF),
+   * c'est elle qui tranche.
+   */
   touche(x, y) {
+    const b = this.boite;
+    if (b) {
+      return x > this.x + b.x0 && x < this.x + b.x1
+        && y > this.y + b.y0 && y < this.y + b.y1;
+    }
     const r = this.ray || 10;
     return Math.abs(x - this.x) < r && Math.abs(y - this.y) < r;
   }
@@ -1028,6 +1038,11 @@ class Saucer extends Sprite {
   constructor(jeu, o) {
     super(jeu, o);
     this.ray = 12;
+    // La soucoupe est LARGE : son dessin fait 39,4 × 22,1 (mesuré sur le clip
+    // miniWave2SpSaucer sorti du SWF), et Saucer.checkHeroShot teste la boîte
+    // de ce dessin. Un rayon de 12 rognait dix pixels de chaque côté : on
+    // touchait les bords à l'œil, le tir passait au travers.
+    this.boite = { x0: -19.7, y0: -12.7, x1: 19.7, y1: 9.4 };
   }
   update(tmod) {
     this.x += this.speed * this.sens * tmod;
@@ -1773,14 +1788,36 @@ def(11, {                                                         // Figue-laser
   },
   tic: (b, tmod) => { if (b.flShooting) b.timer -= tmod; },
 });
-def(12, {                                                         // Batmandarine : se téléporte sur le côté
+/*
+ * Batmandarine : elle GLISSE sur le côté, elle ne se téléporte pas.
+ *
+ * Mandarine.as change bien sa position d'un coup — mais il garde l'écart
+ * (`dx = ancienX - nouveauX`) et DESSINE le fruit à `x + dx`, en le résorbant
+ * de 0,6 par image jusqu'à moins d'un pixel (endUpdate : `x += dx`,
+ * super.endUpdate(), `x -= dx`). L'ennemi est donc déjà à sa nouvelle place —
+ * pour les tirs comme pour la vague — pendant que son image le rattrape en une
+ * dizaine d'images. Le portage sautait ce rattrapage : le fruit disparaissait
+ * d'un côté pour réapparaître de l'autre.
+ *
+ * `dx` est un décalage de DESSIN : le client l'ajoute, personne d'autre.
+ */
+const MANDARINE_ECART_MAX = 60;      // Mandarine.ecartMax
+const MANDARINE_MARGE = 15;          // Mandarine.margin
+def(12, {                                                         // Batmandarine : glisse sur le côté
   freq: 280, cdSpeed: 1,
-  vague: (b) => {
-    if (b.flStrafe) { b.flStrafe = false; return; }
+  vague: (b, tmod) => {
+    if (b.flStrafe) {
+      b.dx *= Math.pow(0.6, tmod);
+      if (Math.abs(b.dx) < 1) { b.dx = 0; b.flStrafe = false; }
+      return;
+    }
     if (b.jeu.hasard(200) !== 0) return;
     for (let i = 0; i < 10; i++) {
-      const x = 15 + b.jeu.hasard(LARGEUR - 30);
-      if (Math.abs(b.x - x) < 60 && b.jeu.placeLibre(x, b.y)) { b.x = x; b.flStrafe = true; break; }
+      const x = MANDARINE_MARGE + b.jeu.hasard(LARGEUR - 2 * MANDARINE_MARGE);
+      const dx = b.x - x;
+      if (Math.abs(dx) < MANDARINE_ECART_MAX && b.jeu.placeLibre(x, b.y)) {
+        b.x = x; b.dx = dx; b.flStrafe = true; break;
+      }
     }
   },
 });
@@ -1842,6 +1879,12 @@ def(19, {                                                         // Baies : tro
       const t = b.tirBase();
       t.vitx = 8 * (b.jeu.hasard(200) - 100) / 100;
       t.vity = -(3 + b.jeu.hasard(30) / 10);
+      // Baies.as : `killMargin = 0`. Les trois baies partent VERS LE HAUT avant
+      // de redescendre sur le vaisseau ; sans cette marge nulle, celles qui
+      // sortaient par le haut survivaient dans les vingt pixels de marge
+      // ordinaire, faisaient demi-tour et revenaient — d'où ces trajectoires
+      // qui « remontent bizarrement ». Au bord, elles meurent.
+      t.killMargin = 0;
       t.behaviourId = 2;
     }
   },
@@ -1950,12 +1993,17 @@ def(28, {                                                         // Aubergine f
     b.step = 1;
     b.kx = b.x; b.ky = b.y;
     b.timer = b.distance(c) / 6.6;
-    b.cible = { x: c.x, y: c.y };
+    // Aubergine.as garde la RÉFÉRENCE du vaisseau (`this.target =
+    // game.getHeroTarget()`), pas ses coordonnées : la charge le SUIT tant que
+    // le compte à rebours tourne. Le portage figeait le point de visée au
+    // départ — l'aubergine fonçait donc là où le vaisseau ÉTAIT, le dépassait
+    // et finissait sa course sous lui.
+    b.cible = null;                    // null = « le vaisseau, où qu'il soit »
     b.vitx = 0; b.vity = 0;
   },
   tic: (b, tmod) => {
     if (b.step !== 1) return;
-    const t = b.cible;
+    const t = b.cible || b.jeu.cibleHero();
     const dx = t.x - b.kx, dy = t.y - b.ky;
     if (dx > 1) b.vitx += tmod * 0.5;
     if (dx < -1) b.vitx -= tmod * 0.5;
@@ -2199,6 +2247,9 @@ class Game {
     this.waveInfo = o.levels || [];
     this.rng = generateur(o.graine === undefined ? 1 : o.graine);
     this.onEvent = o.onEvent || null;
+    // Le mode joué : game/Main.initLevel ne fait son cas particulier que
+    // `if (this.name == "arcade")`. Le parcours du jour, lui, n'a pas de porte.
+    this.mode = o.mode || 'arcade';
     this.heroList = [];
     const type = (o.ship === undefined) ? 0 : o.ship;
     for (let i = 0; i < (o.vies === undefined ? 3 : o.vies); i++) this.heroList.push(type);
@@ -2299,6 +2350,21 @@ class Game {
     this.waveSens = 1;
     this.flChangeSens = false;
     this.shipBounds = { min: 0, max: LARGEUR };
+    /*
+     * LA PORTE DU NIVEAU 49.
+     *
+     * Le secret du jeu : au cinquantième écran de l'arcade — `level` compte à
+     * partir de zéro, l'affichage à partir de un —, le mur de droite s'écarte de
+     * soixante pixels (game/Main.initLevel : `case 48: shipBounds.max = mcw+60`).
+     * Rien ne le dit ; il faut pousser le vaisseau contre le bord pour le
+     * découvrir. Le franchir sème les étoiles de warp, saute CENT niveaux et
+     * rend le vaisseau à l'escadron (sp/Hero : setWarp(100), addLife, kill).
+     *
+     * Le portage avait bien la sortie, mais jamais la porte : le vaisseau restait
+     * bloqué à `LARGEUR - ray` et ne pouvait donc pas atteindre `LARGEUR + ray`.
+     * Le raccourci était inatteignable.
+     */
+    if (this.mode === 'arcade' && this.level === 48) this.shipBounds.max = LARGEUR + 60;
     this.gridInfo = this.waveInfo[this.level];
     // Un niveau du parcours d'essai a un moveSpeed absent (NaN à l'origine, null
     // en JSON) : sans repli, toute la vague resterait figée.

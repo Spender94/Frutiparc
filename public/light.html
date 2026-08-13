@@ -1195,6 +1195,11 @@
     font-size: 11px; font-style: italic; line-height: 1.6;
   }
 
+  /* Un pseudo cliquable — la fiche du frutiz au bout. Discret : le bureau ne
+     souligne pas les noms non plus, il les rend simplement actifs. */
+  .pseudo-lien { cursor: pointer; }
+  .pseudo-lien:active { opacity: .6; }
+
   .hidden { display: none !important; }
   .banner {
     background: #fff3cd; color: #7a5b00; border-bottom: 1px solid #e0c97a;
@@ -1889,6 +1894,52 @@
   "use strict";
   function $(s) { return document.querySelector(s); }
   function el(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
+
+  /*
+   * TOUT PSEUDO SE TOUCHE.
+   *
+   * Au bureau, un nom de frutiz est cliquable où qu'il soit : dans le chat, au
+   * tableau des scores, en tête d'un courrier. Le mobile ne l'offrait que dans
+   * trois endroits (la liste du salon, l'auteur d'un message, le
+   * trombinoscope) — ailleurs, le nom n'était que du texte.
+   *
+   * Les vues bâties en une chaîne HTML posent `data-fiche="<pseudo>"` sur le
+   * nom ; celles bâties en éléments appellent `pseudoCliquable(noeud, pseudo)`.
+   * Dans les deux cas, un appui ouvre la fiche — et s'arrête là : le clic ne
+   * remonte pas au parent (une ligne de courrier ouvrirait sinon le courrier).
+   */
+  function pseudoCliquable(noeud, pseudo) {
+    var p = String(pseudo || "").trim();
+    if (!noeud) return noeud;
+    // « admin » n'est pas un frutiz : il n'a pas de fiche.
+    if (!p || p.toLowerCase() === "admin") {
+      noeud.classList.remove("pseudo-lien");
+      noeud.removeAttribute("data-fiche");
+      return noeud;
+    }
+    // Le nom vit dans l'attribut, jamais dans la fermeture : un même élément
+    // sert à plusieurs frutiz au fil des vues (l'en-tête du courrier change à
+    // chaque lecture), et l'écouteur ne se pose qu'une fois.
+    noeud.setAttribute("data-fiche", p);
+    noeud.classList.add("pseudo-lien");
+    noeud.title = "Voir la fiche de " + p;
+    if (noeud.__fiche) return noeud;
+    noeud.__fiche = true;
+    noeud.addEventListener("click", function (ev) {
+      var q = noeud.getAttribute("data-fiche");
+      if (!q) return;
+      ev.stopPropagation();
+      if (ev.preventDefault) ev.preventDefault();
+      ouvrirFiche(q);
+    });
+    return noeud;
+  }
+  function brancherPseudos(racine) {
+    if (!racine) return;
+    Array.prototype.forEach.call(racine.querySelectorAll("[data-fiche]"), function (n) {
+      pseudoCliquable(n, n.getAttribute("data-fiche"));
+    });
+  }
 
   // Public salons (mirror server-side `channels`), in display order. pomme
   // (Salon Anim's) is FIRST so it's the salon the mobile client joins by default.
@@ -3041,7 +3092,7 @@
         html += '<span class="sc-pod">'
           + '<img src="/fb/medal_' + p.medal + '_' + ak + '.png" alt=""'
           + ' onerror="this.style.display=\'none\'">'
-          + '<span>' + xmlEscape(p.user) + '</span></span>';
+          + '<span data-fiche="' + xmlEscape(p.user) + '">' + xmlEscape(p.user) + '</span></span>';
       });
       html += '</div>';
     }
@@ -3068,13 +3119,14 @@
           + '<span class="b">'
           + (s.bouille ? FPBouilleThumb.imgHtml(s.bouille, 0, { detourer: true }) : "")
           + '</span>'
-          + '<span class="n">' + xmlEscape(s.user) + '</span>'
+          + '<span class="n" data-fiche="' + xmlEscape(s.user) + '">' + xmlEscape(s.user) + '</span>'
           + '<span class="s">' + xmlEscape(s.label) + '</span>'
           + '<span class="h">' + xmlEscape(s.time || "") + '</span>'
           + '</div>';
       });
     }
     box.innerHTML = html;
+    brancherPseudos(box);
     box.scrollTop = 0;
   }
 
@@ -3232,6 +3284,9 @@
         $("#mail-lu-sujet").textContent = mailLu.subject || "(sans sujet)";
         $("#mail-lu-qui").textContent = (mailLu.folder === "outbox")
           ? "à " + (mailLu.to || "?") : "de " + (mailLu.from || "?");
+        // L'en-tête du courrier porte un nom de frutiz : il ouvre sa fiche.
+        pseudoCliquable($("#mail-lu-qui"),
+          (mailLu.folder === "outbox") ? mailLu.to : mailLu.from);
         $("#mail-lu-date").textContent = mailDate(mailLu.date);
         $("#mail-lu-corps").textContent = mailLu.body || "";
         // On ne répond pas à un courrier qu'on a soi-même envoyé.
@@ -4217,6 +4272,7 @@
     if (t) { var ts = el("span", "time"); ts.textContent = t; row.appendChild(ts); }
     var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
     fr.textContent = o.from || "?";
+    pseudoCliquable(fr, o.from);
     row.appendChild(fr);
     row.appendChild(document.createTextNode(" "));
     var lb = el("span", "body"); lb.textContent = o.label;
@@ -4235,6 +4291,7 @@
     if (t) { var ts = el("span", "time"); ts.textContent = t; row.appendChild(ts); }
     var fr = el("span", "from" + (String(o.from).toLowerCase() === state.userLower ? " me" : ""));
     fr.textContent = (o.from || "?") + " : ";
+    pseudoCliquable(fr, o.from);
     row.appendChild(fr);
     if (o.title) { var cap = el("span", "body"); cap.textContent = o.title; row.appendChild(cap); }
     var wrap = el("div", "img-wrap");
