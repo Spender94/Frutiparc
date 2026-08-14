@@ -835,6 +835,11 @@
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
     border: 0; display: block; background: #150f28;
   }
+  #minifever-panel { padding: 0; }
+  #minifever-frame {
+    flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
+    border: 0; display: block; background: #101830;
+  }
 
   /* ── Scores du jour (Challenge) ──
      Barre de jeux (chips) corail collée en haut + tableau vert scrollable,
@@ -1706,6 +1711,15 @@
        ramassés entrent à l'album, et les pictos suivent. -->
   <section class="panel" id="minipixiz-panel">
     <iframe id="minipixiz-frame" title="Minipixiz" referrerpolicy="no-referrer"></iframe>
+  </section>
+
+  <!-- Mini-Fever — le jeu de mini-jeux que Motion Twin n'a jamais mis en ligne,
+       porté en natif d'après ses sources « mt » et les dessins tirés de son SWF
+       de développement. Il lit ?sid= pour classer la partie et remplir l'album
+       (une épreuve remportée = un picto). Light seulement : le bureau de 2006
+       ne connaît pas ce jeu, il n'existait pas. -->
+  <section class="panel" id="minifever-panel">
+    <iframe id="minifever-frame" title="Mini-Fever" referrerpolicy="no-referrer"></iframe>
   </section>
 
   <!-- Les scores — la fenêtre « Scores » du bureau, reproduite.
@@ -2625,6 +2639,7 @@
   var CADRES_JEU = {
     grapiz: "#grapiz-frame", bandas: "#bandas-frame", swapou: "#swapou-frame",
     miniwave: "#miniwave-frame", minipixiz: "#minipixiz-frame",
+    minifever: "#minifever-frame",
   };
   function donnerFocusAuJeu(tab) {
     var sel = CADRES_JEU[tab];
@@ -2655,6 +2670,7 @@
     $("#swapou-panel").classList.toggle("active", tab === "swapou");
     $("#miniwave-panel").classList.toggle("active", tab === "miniwave");
     $("#minipixiz-panel").classList.toggle("active", tab === "minipixiz");
+    $("#minifever-panel").classList.toggle("active", tab === "minifever");
     $("#scores-panel").classList.toggle("active", tab === "scores");
     $("#trombi-panel").classList.toggle("active", tab === "trombi");
     $("#mail-panel").classList.toggle("active", tab === "mail");
@@ -2698,6 +2714,12 @@
         pf.setAttribute("src", "/minipixiz/?sid=" + encodeURIComponent(state.sid));
       }
     }
+    if (tab === "minifever") {
+      var ff = $("#minifever-frame");
+      if (ff && !ff.getAttribute("src") && state.sid) {
+        ff.setAttribute("src", "/minifever/?sid=" + encodeURIComponent(state.sid));
+      }
+    }
     // Un jeu dans une IFRAME ne reçoit le clavier que s'il a le focus. Ouvrir
     // son onglet le lui donne — sans quoi les flèches restaient à cette page et
     // le joueur croyait le clavier ignoré (rapporté sur Mini-Wave). Le jeu le
@@ -2728,6 +2750,9 @@
     { tab: "swapou", img: "/fb/fd_swapou.png", name: "Swapou" },
     { tab: "miniwave", img: "/fb/fd_miniwave.png?v=2", name: "Mini-Wave" },
     { tab: "minipixiz", img: "/fb/fd_minipixiz.png?v=2", name: "Minipixiz" },
+    // Mini-Fever n'a jamais eu de jaquette : la sienne est composée des
+    // épreuves portées (scripts/make-minifever-pictos.js), en SVG.
+    { tab: "minifever", img: "/fb/fd_minifever.svg", name: "Mini-Fever" },
   ];
   function renderDiscs() {
     var grid = $("#disques-grid");

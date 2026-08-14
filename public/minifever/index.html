@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Mini-Fever</title>
+<!--
+  Mini-Fever — portage natif JS d'un jeu qui n'est JAMAIS SORTI.
+
+  Motion Twin l'avait écrit pour Frutiparc — quatre-vingt-dix micro-épreuves de
+  trois secondes, quatre modes — puis l'a laissé au fond du disque. Il en reste
+  les sources, dans un langage maison (« mt ») dont le compilateur n'existe
+  plus, et un SWF de développement obfusqué d'où l'on a sorti les dessins.
+
+  Ce portage rejoue le socle et les épreuves ligne à ligne d'après ces sources.
+  Tout se joue à la souris ou au doigt : l'original n'utilisait pas une seule
+  touche, ce qui le rend tactile sans rien y changer.
+
+  ?sid= pour la persistance plateforme.
+-->
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #101830;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; -webkit-user-select: none;
+    font-family: "Trebuchet MS", Verdana, Arial, sans-serif;
+    color: #e8eeff;
+  }
+  #tout {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    box-sizing: border-box;
+  }
+  #aire {
+    flex: 1 1 auto; min-height: 0; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  #stage {
+    display: block;
+    cursor: crosshair;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px #2a3a68, 0 8px 30px rgba(0,0,0,.6);
+  }
+  /* Les panneaux se posent SUR le canvas, à sa taille exacte : le client la
+     calcule (agrandissement entier), on la recopie ici. */
+  .panneau {
+    position: absolute;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; box-sizing: border-box; padding: 18px;
+    background: linear-gradient(180deg, #16234a, #0d1428);
+    border-radius: 4px; box-shadow: 0 0 0 2px #2a3a68, 0 8px 30px rgba(0,0,0,.6);
+    text-align: center;
+  }
+  .panneau.on { display: flex; }
+  .panneau h1 {
+    margin: 0; font-size: 25px; letter-spacing: 1px;
+    color: #ffd040; text-shadow: 0 2px 0 #7a5400;
+  }
+  .panneau h2 { margin: 0; font-size: 15px; color: #e8eeff; font-weight: normal; }
+  .panneau p { margin: 0; font-size: 11px; line-height: 1.6; color: #8fa0c8; }
+  .bouton {
+    display: block; width: 168px; padding: 8px 0;
+    font: inherit; font-size: 14px; color: #10182e;
+    background: linear-gradient(180deg, #ffe27a, #f0b820);
+    border: 0; border-radius: 14px; cursor: pointer;
+    box-shadow: 0 3px 0 #8a6200;
+  }
+  .bouton:active { transform: translateY(2px); box-shadow: 0 1px 0 #8a6200; }
+  .bouton[disabled] { opacity: .35; cursor: default; box-shadow: 0 3px 0 #3a3f52; }
+  .bouton .sous { display: block; font-size: 10px; opacity: .7; }
+  #barre-chargement {
+    width: 160px; height: 8px; border-radius: 4px; background: #2a3a68; overflow: hidden;
+  }
+  #barre-chargement i { display: block; height: 100%; width: 0; background: #ffd040; }
+  #bandeau {
+    flex: 0 0 auto; width: 100%; max-width: 460px; box-sizing: border-box;
+    padding: 8px 14px 12px; display: flex; justify-content: center;
+    font-size: 11px; color: #6d7fa8;
+  }
+</style>
+</head>
+<body>
+<div id="tout">
+  <div id="aire">
+    <canvas id="stage" width="240" height="240"></canvas>
+
+    <div class="panneau on" id="p-chargement">
+      <h1>Mini-Fever</h1>
+      <p>chargement…</p>
+      <div id="barre-chargement"><i></i></div>
+    </div>
+
+    <div class="panneau" id="p-menu">
+      <h1>Mini-Fever</h1>
+      <p>enchaîne les épreuves.<br>tout se joue au clic.</p>
+      <div id="paliers"></div>
+    </div>
+
+    <div class="panneau" id="p-fin">
+      <h1 id="fin-titre">terminé</h1>
+      <h2 id="fin-detail"></h2>
+      <p id="fin-note"></p>
+      <button class="bouton" id="b-rejouer">rejouer</button>
+    </div>
+  </div>
+  <!-- Pas de bouton « retour » : le jeu vit dans un cadre du light, et c'est la
+       barre du haut du light qui ramène — comme pour Mini-Wave et Minipixiz.
+       Un lien vers /light.html ici rechargerait le site DANS le cadre. -->
+  <div id="bandeau"><span id="etat"></span></div>
+</div>
+
+<script src="/minifever/engine.js"></script>
+<script src="/minifever/client.js"></script>
+<script src="/minifever/jeux.js"></script>
+<script>
+(function () {
+'use strict';
+
+const E = window.MinifeverEngine;
+const C = window.MinifeverClient;
+const { JEUX } = window.MinifeverJeux;
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const sid = params.get('sid') || '';
+
+const canvas = $('stage');
+let client = null;
+let socle = null;
+let palierChoisi = 0;
+let enCours = null;                 // la clef de l'épreuve à l'écran
+const gagnees = new Set();          // celles remportées dans la partie : les pictos
+
+/* Les panneaux épousent le canvas — dont la taille change avec la fenêtre. */
+function caler() {
+  const r = canvas.getBoundingClientRect();
+  const p = canvas.parentElement.getBoundingClientRect();
+  for (const el of document.querySelectorAll('.panneau')) {
+    el.style.left = (r.left - p.left) + 'px';
+    el.style.top = (r.top - p.top) + 'px';
+    el.style.width = r.width + 'px';
+    el.style.height = r.height + 'px';
+  }
+}
+window.addEventListener('resize', () => setTimeout(caler, 0));
+
+function montrer(id) {
+  for (const el of document.querySelectorAll('.panneau')) el.classList.toggle('on', el.id === id);
+  caler();
+}
+
+/* ── Le menu : on choisit son palier, comme dans Menu.mt ── */
+function construireMenu() {
+  const hote = $('paliers');
+  hote.innerHTML = '';
+  E.PALIERS.forEach((p, i) => {
+    if (!p.nom) return;                     // le cinquième palier n'a jamais servi
+    const b = document.createElement('button');
+    b.className = 'bouton';
+    b.innerHTML = p.nom + '<span class="sous">' + p.lvl + ' épreuves · ' + p.vies + ' vies</span>';
+    b.addEventListener('click', () => { palierChoisi = i; jouer(); });
+    hote.appendChild(b);
+  });
+}
+
+function jouer() {
+  montrer('');
+  gagnees.clear();
+  enCours = null;
+  socle = client.nouvellePartie(E.Arcade, JEUX, { palier: palierChoisi });
+  client.demarrer();
+  majEtat();
+}
+
+function majEtat() {
+  if (!socle) { $('etat').textContent = ''; return; }
+  const p = socle.info;
+  $('etat').textContent = p.nom + ' · épreuve ' + (socle.niveau + 1) + '/' + p.lvl
+    + ' · ' + socle.vies + ' vie' + (socle.vies > 1 ? 's' : '');
+}
+
+function finir(d) {
+  const gagne = d.gagnee;
+  $('fin-titre').textContent = gagne ? 'bravo !' : 'perdu';
+  $('fin-detail').textContent = gagne
+    ? 'mode ' + d.nom + ' terminé'
+    : d.niveau + ' épreuve' + (d.niveau > 1 ? 's' : '') + ' réussie' + (d.niveau > 1 ? 's' : '');
+  $('fin-note').textContent = 'mode ' + d.nom + ' · ' + d.jouees + ' épreuve'
+    + (d.jouees > 1 ? 's' : '') + ' jouée' + (d.jouees > 1 ? 's' : '');
+  montrer('p-fin');
+  envoyerScore(d);
+}
+
+/*
+ * Le score part à la plateforme quand on joue depuis un compte. On n'envoie PAS
+ * de points : le serveur les calcule d'après le déroulé (cf. minifeverScore).
+ * `gagnees` porte les épreuves remportées — c'est ce qui remplit l'album.
+ */
+function envoyerScore(d) {
+  if (!sid) return;
+  fetch('/api/minifever/score', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sid, palier: d.palier, niveau: d.niveau, jouees: d.jouees,
+      gagnee: d.gagnee, gagnees: [...gagnees] }),
+  }).then((r) => r.json()).then((r) => {
+    if (r && r.pictos && r.pictos.length) {
+      $('fin-note').textContent += ' · picto : ' + r.pictos.join(', ');
+    }
+  }).catch(() => {});
+}
+
+$('b-rejouer').addEventListener('click', () => { montrer('p-menu'); majEtat(); });
+
+/* ── Le chargement ── */
+C.charger('/minifever/sprites/', (c) => {
+  document.querySelector('#barre-chargement i').style.width = Math.round(c * 100) + '%';
+}).then(() => {
+  client = new C.Client({
+    canvas,
+    surEvenement: (nom, d) => {
+      if (nom === 'jeu') enCours = d.cle;
+      else if (nom === 'resultat' && d.gagne && enCours) gagnees.add(enCours);
+      if (nom === 'finPartie') finir(d);
+      else majEtat();
+    },
+  });
+  construireMenu();
+  montrer('p-menu');
+}).catch((e) => {
+  document.querySelector('#p-chargement p').textContent = 'chargement impossible : ' + e.message;
+});
+
+})();
+</script>
+</body>
+</html>

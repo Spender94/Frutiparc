@@ -589,6 +589,26 @@ const GAME_ITEM_INFO = {
   '$wpNostromo':   { name: 'Fond Nostromo',    game: 'MiniWave', gif: 'Games/miniWave2/bitmap/bg/miniwave_nostromo.jpg' },
 };
 
+// ── Mini-Fever ───────────────────────────────────────────────────────────────
+// Le jeu n'est JAMAIS sorti : personne n'a jamais dessiné ses récompenses, et
+// son SWF de développement n'en contient aucune. On reprend donc l'idée des
+// monstres de MiniWave — un picto par épreuve, gagné la première fois qu'on la
+// remporte — et l'image est fabriquée à partir des dessins sortis du SWF
+// (scripts/make-minifever-pictos.js). Un picto par mini-jeu PORTÉ : la liste
+// s'allonge au rythme des portages, sinon la consécration compterait des
+// pictos que personne ne peut obtenir.
+const MINIFEVER_EPREUVES = [
+  { cle: 'gameBasket', item: '$fvBasket', nom: 'Panier',      image: 'basket' },
+  { cle: 'gameLander', item: '$fvLander', nom: 'Alunissage',  image: 'lander' },
+  { cle: 'gameFlower', item: '$fvFlower', nom: 'Arrosage',    image: 'flower' },
+  { cle: 'gamePong',   item: '$fvPong',   nom: 'Renvoi',      image: 'pong' },
+];
+for (const e of MINIFEVER_EPREUVES) {
+  GAME_ITEM_INFO[e.item] = {
+    name: e.nom, game: 'Mini-Fever', gif: `public/minifever/pictos/${e.image}.svg`,
+  };
+}
+
 // Build MiniWave2 bads (bad00..bad50) and missions (mis0..mis4)
 for (let i = 0; i <= 50; i++) {
   const pad = String(i).padStart(2, '0');
@@ -777,6 +797,22 @@ const GAME_PROGRESS_REGISTRY = [
     name: 'MiniWave',
     enabled: true,
     matchGame: 'MiniWave',
+  },
+  {
+    // Mini-Fever : l'album se remplit d'une épreuve à chaque première victoire.
+    //
+    // HORS CONSÉCRATION, et il faut savoir pourquoi : la part de chaque jeu
+    // vaut 100/nombre_de_jeux_actifs (computeConsecration). Allumer celui-ci
+    // ferait donc BAISSER la consécration de tout le monde du jour au
+    // lendemain, et donnerait le même poids qu'à MiniWave à un jeu dont quatre
+    // épreuves sur vingt-sept sont portées. Les pictos existent quand même —
+    // album, fiche, forum — comme les pictos inédits de l'admin, qui ne
+    // comptent pas non plus. À rallumer quand le portage sera complet, et en
+    // sachant que ça rebat les pourcentages de tous les joueurs.
+    id: 'minifever',
+    name: 'Mini-Fever',
+    enabled: false,
+    matchGame: 'Mini-Fever',
   },
   {
     id: 'jamajama',
@@ -1169,6 +1205,18 @@ const RANKINGS = {
   // des jeux qui en ont plusieurs).
   minipixiz_classic: { name: 'MiniPixiz',               game: 'minipixiz', type: 'C' },
   miniwave_classic:  { name: 'MiniWave',                game: 'miniwave',  type: 'C' },
+  //   · Mini-Fever — l'ARCADE : le jeu jamais sorti, porté en natif. Il ne
+  //     compte pas des points mais des épreuves réussies ; le classement les
+  //     valorise par le palier choisi (cf. /api/minifever/score) et le palier
+  //     voyage dans la donnée. LIGHT SEULEMENT, et sans entrée dans
+  //     LEGACY_RANKINGS : fileIcon.swf ne connaît pas ce jeu — il n'existait
+  //     pas quand le bureau a été gravé — et lui inventer une icône
+  //     casserait la liste des classements du SWF. Rester hors de cette liste
+  //     le tient aussi hors de la remise à zéro quotidienne
+  //     (DAILY_RESET_RANKING_SET en est dérivé) : c'est un RECORD, comme le
+  //     Contest de Frutisnake, et c'est bien ce qu'on veut d'un mode qui se
+  //     termine plutôt qu'il ne se refait chaque jour.
+  minifever_arcade:  { name: 'Mini-Fever',              game: 'minifever', type: 'C' },
   bkiwi_track0_challenge: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 0 },
   bkiwi_track1_challenge: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 1 },
   bkiwi_track2_challenge: { name: 'Burning Kiwi - Terre Grise', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 2 },
@@ -3549,6 +3597,7 @@ const GAME_DISPLAY_NAMES = {
   bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', kaluga: 'Kaluga',
   swapou2: 'Swapou', miniwave2: 'MiniWave', miniwave: 'MiniWave', mb2: 'MotionBall',
   bandas: 'Frutibandas', grapiz: 'Grapiz', minipixiz: 'MiniPixiz',
+  minifever: 'Mini-Fever',
 };
 const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
 
@@ -7919,6 +7968,79 @@ app.get('/api/miniwave/challenge', async (req, res) => {
     const jour = parisDayKey();
     res.json({ ok: true, jour, graine: miniwaveChallengeSeed(jour) });
   }
+});
+
+/*
+ * ── Mini-Fever : la fin d'une partie d'arcade ────────────────────────────────
+ *
+ * Le jeu n'ayant jamais été mis en ligne, il n'a jamais eu de score : Arcade.mt
+ * compte des ÉPREUVES et des VIES, pas des points. Le classement est donc de
+ * nous, et on le pose sur ce que le jeu mesure vraiment — les épreuves
+ * réussies, valorisées par le palier choisi (une épreuve « infernale » vaut
+ * quatre fois une épreuve « facile », ce qui suit l'échelle de déblocage de
+ * Cm.finishArcade).
+ *
+ * Le score n'est pas transmis, il est CALCULÉ ici : le client n'envoie que le
+ * déroulé de la partie, et sa cohérence se vérifie contre les paliers du jeu —
+ * on ne réussit pas plus d'épreuves que le palier n'en compte, et on n'en rate
+ * pas plus qu'on n'avait de vies.
+ */
+const MINIFEVER_PALIERS = require('./public/minifever/engine.js').PALIERS;
+const MINIFEVER_POINTS = 10;              // par épreuve réussie, avant le palier
+
+function minifeverScore(palier, niveau) {
+  return niveau * MINIFEVER_POINTS * (1 + palier);
+}
+
+app.post('/api/minifever/score', async (req, res) => {
+  const sid = getSidFromRequest(req, req.body || {});
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
+
+  const b = req.body || {};
+  const palier = Math.trunc(Number(b.palier));
+  const niveau = Math.trunc(Number(b.niveau));
+  const jouees = Math.trunc(Number(b.jouees));
+  const info = MINIFEVER_PALIERS[palier];
+  if (!info || !info.nom) return res.json({ ok: false, error: 'palier' });
+  if (!Number.isFinite(niveau) || niveau < 0 || niveau > info.lvl) {
+    return res.json({ ok: false, error: 'niveau' });
+  }
+  // Les épreuves jouées, ce sont les réussies plus les ratées ; et on ne rate
+  // pas plus souvent qu'on n'a de vies.
+  if (!Number.isFinite(jouees) || jouees < niveau || jouees - niveau > info.vies) {
+    return res.json({ ok: false, error: 'partie' });
+  }
+
+  // Les pictos : une épreuve remportée pour la première fois entre à l'album.
+  const gagnees = Array.isArray(b.gagnees) ? b.gagnees.map(String) : [];
+  const user = users[username];
+  if (!Array.isArray(user.gameItems)) user.gameItems = [];
+  const neufs = [];
+  for (const e of MINIFEVER_EPREUVES) {
+    if (!gagnees.includes(e.cle)) continue;
+    if (user.gameItems.includes(e.item)) continue;
+    user.gameItems.push(e.item);
+    neufs.push(e);
+  }
+  if (neufs.length) {
+    const dbId = user._dbId;
+    for (const e of neufs) {
+      if (dbId) db.addGameItem(dbId, e.item).catch((x) => console.error('[DB] addGameItem:', x.message));
+      addAndNotifyUserLog(username, {
+        type: USER_LOG_TYPE.PICTO,
+        content: `Nouveau picto débloqué sur Mini-Fever : ${e.nom} !`,
+      });
+    }
+  }
+
+  const score = minifeverScore(palier, niveau);
+  let r = { updated: false, newScore: score, oldScore: 0 };
+  if (score > 0) r = persistScore(username, 'minifever_arcade', score, String(palier));
+  console.log(`[MINIFEVER] ${username} : ${info.nom}, ${niveau}/${info.lvl} épreuves`
+    + `${b.gagnee ? ' (terminé)' : ''} → ${score} pts`
+    + (neufs.length ? ` · ${neufs.length} picto(s)` : ''));
+  res.json({ ok: true, score, classe: !!r.updated, pictos: neufs.map((e) => e.nom) });
 });
 
 // Admin: add a game item to a user (works even if user is offline)
@@ -15536,6 +15658,12 @@ function formatChallengeScoreLabel(rankingId, score, data) {
     const niveau = parseMiniwaveNiveau(data);
     return n.toLocaleString('fr-FR') + (niveau !== null ? ` · niveau ${niveau}` : '');
   }
+  // Mini-Fever : le palier joué voyage dans la donnée. Sans lui, le total ne
+  // veut rien dire — une épreuve « infernale » vaut quatre fois une « facile ».
+  if (rankingId === 'minifever_arcade') {
+    const p = MINIFEVER_PALIERS[Math.trunc(Number(data))];
+    return n.toLocaleString('fr-FR') + (p && p.nom ? ` · ${p.nom}` : '');
+  }
   if (meta.game === 'bkiwi') {
     const pad = (x) => (x < 10 ? '0' + x : '' + x);
     const minutes = Math.floor(n / 60000);
@@ -15597,6 +15725,10 @@ app.get('/api/light/challenge', async (req, res) => {
     // Les deux pilotes de l'animation (cf. RANKINGS).
     { game: 'minipixiz', ranking: 'minipixiz_classic' },
     { game: 'miniwave',  ranking: 'miniwave_classic' },
+    // Mini-Fever : light seulement (le bureau ne connaît pas ce jeu), et hors
+    // remise à zéro quotidienne — c'est un record, pas un défi du jour. Il n'a
+    // donc jamais de podium de la veille, et c'est normal.
+    { game: 'minifever', ranking: 'minifever_arcade' },
   ];
   // Le libellé de chaque classement vient du descriptif du bureau (rn) : les
   // deux clients nomment les onglets pareil, sans table en double. Burning Kiwi
