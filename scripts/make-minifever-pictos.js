@@ -61,6 +61,12 @@ const SCENES = {
     { cle: 'sym283', x: 226, y: 120, sy: 0.6 },     // la raquette
     { cle: 'sym279', x: 96, y: 120, s: 0.1 },       // la balle
   ],
+  gameAstero: [
+    { cle: 'sym318', x: 62, y: 62, s: 0.5 },        // trois rochers à 50 %
+    { cle: 'sym318', x: 186, y: 92, s: 0.5 },
+    { cle: 'sym318', x: 96, y: 186, s: 0.5 },
+    { cle: 'sym316', x: 150, y: 150, rot: -35 },    // et le vaisseau
+  ],
 };
 
 /** Recoud une image d'un symbole : ses pièces, chacune sous sa matrice. */

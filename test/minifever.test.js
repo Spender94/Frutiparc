@@ -24,6 +24,7 @@ const J = require(path.join(ROOT, 'public/minifever/jeux.js'));
 const MANIFESTE = JSON.parse(
   fs.readFileSync(path.join(ROOT, 'public/minifever/sprites/sprites.json'), 'utf8'));
 const MESURES = C.mesures(MANIFESTE);
+const { LARGEUR, HAUTEUR } = E;
 
 /** Un tirage figé : la même suite à chaque exécution. */
 function dé(graine) {
@@ -391,6 +392,91 @@ test('FLOWER : le nuage épuisé sans fleur poussée, c\'est perdu', () => {
   assert.equal(j.pousse, 0);
 });
 
+test('ASTERO : un rocher touché se casse en deux, et le champ vidé fait gagner', () => {
+  const b = banc(J.Astero, { dif: 0 });
+  const j = b.jeu;
+  assert.equal(j.airFriction, 1);
+  assert.equal(j.rochers.length, 1, 'un seul rocher à difficulté nulle');
+  assert.equal(j.rochers[0].taille, 50);
+
+  // Un tir posé sur le rocher : il se fend en deux moitiés de vingt-cinq.
+  const r = j.rochers[0];
+  const t = j.nouveauPhys('sym314');
+  t.x = r.x; t.y = r.y; t.flPhys = false; t.duree = 100;
+  t.init();
+  j.tirs.push(t);
+  b.avancer(1);
+  assert.equal(j.rochers.length, 2, 'deux morceaux');
+  assert.deepEqual(j.rochers.map((x) => x.taille), [25, 25]);
+  assert.equal(j.gagnant, null, 'la partie continue');
+
+  // Sous vingt, un morceau ne se fend plus : il disparaît.
+  for (const m of j.rochers.slice()) {
+    const s = j.nouveauPhys('sym314');
+    s.x = m.x; s.y = m.y; s.flPhys = false; s.duree = 100;
+    s.init();
+    j.tirs.push(s);
+    b.avancer(1);
+  }
+  assert.ok(j.rochers.length >= 2, 'vingt-cinq se fend encore, en deux fois douze et demi');
+  // On finit le travail : tout ce qui reste saute.
+  for (let i = 0; i < 12 && j.rochers.length; i++) {
+    const m = j.rochers[0];
+    const s = j.nouveauPhys('sym314');
+    s.x = m.x; s.y = m.y; s.flPhys = false; s.duree = 100;
+    s.init();
+    j.tirs.push(s);
+    b.avancer(1);
+  }
+  assert.equal(j.rochers.length, 0);
+  assert.equal(j.gagnant, true, 'le champ vidé, c\'est gagné');
+});
+
+test('ASTERO : le vaisseau percuté explose, et le jeu ne trébuche pas dessus', () => {
+  const b = banc(J.Astero, { dif: 0 });
+  const j = b.jeu;
+  const r = j.rochers[0];
+  r.x = j.vaisseau.x;
+  r.y = j.vaisseau.y;
+  b.avancer(1);
+  assert.equal(j.gagnant, false);
+  assert.equal(j.vaisseau, null, 'le vaisseau a disparu');
+  // Les sources laissaient AS2 avaler les appels sur `null` ; ici c'est gardé.
+  b.avancer(20);
+  assert.equal(j.gagnant, false);
+});
+
+test('ASTERO : l\'appui tire, avec un délai entre deux coups', () => {
+  const b = banc(J.Astero, { dif: 0 });
+  const j = b.jeu;
+  b.socle.click();
+  b.avancer(1);
+  assert.equal(j.tirs.length, 1, 'le premier coup part');
+  assert.equal(j.repos, 2.5);
+  b.avancer(1);
+  assert.equal(j.tirs.length, 1, 'le suivant attend');
+  b.avancer(3);
+  assert.equal(j.tirs.length, 2, 'puis part à son tour');
+  // Un tir s'éteint au bout de cent images.
+  b.socle.relache();
+  const t = j.tirs[0];
+  t.duree = 5;
+  b.avancer(6);
+  assert.equal(t.vivant, false);
+});
+
+test('ASTERO : ce qui sort d\'un bord rentre par l\'autre', () => {
+  const b = banc(J.Astero, { dif: 0 });
+  const j = b.jeu;
+  const v = j.vaisseau;
+  v.x = -12;                       // au-delà de la marge de dix
+  j.replier(v, 10);
+  assert.ok(v.x > LARGEUR, `x=${v.x} : revenu par la droite`);
+  v.y = HAUTEUR + 14;
+  j.replier(v, 10);
+  assert.ok(v.y < 0, `y=${v.y} : revenu par le haut`);
+});
+
 test('la difficulté durcit bien chaque épreuve', () => {
   const facile = banc(J.Basket, { dif: 0 }).jeu;
   const dur = banc(J.Basket, { dif: 100 }).jeu;
@@ -407,4 +493,8 @@ test('la difficulté durcit bien chaque épreuve', () => {
   const f0 = banc(J.Flower, { dif: 0 }).jeu;
   const f1 = banc(J.Flower, { dif: 100 }).jeu;
   assert.ok(f1.gameTime < f0.gameTime && f1.taille < f0.taille && f1.vitesse > f0.vitesse);
+
+  const a0 = banc(J.Astero, { dif: 0 }).jeu;
+  const a1 = banc(J.Astero, { dif: 100 }).jeu;
+  assert.ok(a1.rochers.length > a0.rochers.length, 'le champ se remplit');
 });

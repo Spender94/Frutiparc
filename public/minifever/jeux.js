@@ -521,6 +521,203 @@ class Flower extends Jeu {
 }
 
 /*
+ * ASTERO — « nettoie le champ d'astéroïdes ».
+ *
+ * Un Asteroids complet en trois secondes. Le vaisseau se tourne vers la souris
+ * et la rejoint quand on ne tire pas ; l'appui tire, et le tir immobilise. Un
+ * astéroïde touché se casse en deux moitiés plus petites et plus rapides, deux
+ * fois de suite — les rendre tous, c'est gagné ; s'en prendre un, c'est perdu.
+ * Tout ce qui sort d'un bord rentre par l'autre. La difficulté ajoute des
+ * rochers.
+ *
+ * Comme Pong, le départ est amorti par `startCoef` : la physique avance les
+ * rochers, le jeu les retranche, et ils se dégèlent en une soixantaine
+ * d'images.
+ *
+ * Dessins (voisins de gameAstero #330) :
+ *   sym316  le vaisseau
+ *   sym318  l'astéroïde, cent unités — mis à l'échelle en pourcentage
+ *   sym314  le tir
+ *   sym328  l'explosion du vaisseau, dix-sept images de feu
+ *   sym312  la poussière d'un rocher qui se casse, vingt-six images
+ */
+class Astero extends Jeu {
+  constructor(socle) {
+    super(socle);
+    this.gameTime = 320;
+    this.airFriction = 1;
+  }
+
+  init() {
+    super.init();
+    this.angle = 0;
+    this.repos = 0;                    // `cool` : le délai entre deux tirs
+    this.coefDepart = 1;
+    this.tirs = [];
+    this.rochers = [];
+
+    this.vaisseau = this.nouveauPhys('sym316');
+    this.vaisseau.x = LARGEUR * 0.5;
+    this.vaisseau.y = HAUTEUR * 0.5;
+    this.vaisseau.flPhys = false;
+    this.vaisseau.init();
+
+    const max = 1 + Math.floor(this.dif * 0.07);
+    for (let i = 0; i < max; i++) {
+      const r = this.nouveauRocher(50);
+      const a = (i / max) * 6.28;
+      r.x = this.vaisseau.x + Math.cos(a) * 70;
+      r.y = this.vaisseau.y + Math.sin(a) * 70;
+      const a2 = this.socle.hasard(628) / 100;
+      r.vitx = Math.cos(a2);
+      r.vity = Math.sin(a2);
+      r.flPhys = false;
+      r.init();
+    }
+  }
+
+  nouveauRocher(taille) {
+    const r = this.nouveauPhys('sym318');
+    r.peau.sx = taille / 100;
+    r.peau.sy = taille / 100;
+    r.taille = taille;                 // `skin._xscale` des sources, en unités
+    r.flPhys = false;
+    this.rochers.push(r);
+    return r;
+  }
+
+  /** Une explosion : le clip joue sa pellicule, puis s'efface. */
+  eclat(cle, x, y, echelle, rot) {
+    const p = this.nouvellePart(cle);
+    p.flPhys = false;
+    p.x = x;
+    p.y = y;
+    p.echelle = echelle;
+    p.fonduSeuil = 0;                  // le dessin s'éteint tout seul
+    p.init();
+    p.peau.jouer();
+    p.minuteur = p.peau.nbImages;
+    if (rot !== undefined) p.peau.rot = rot;
+    return p;
+  }
+
+  update() {
+    if (this.etape === 1) {
+      this.coefDepart = Math.max(0, this.coefDepart - 0.015 * Temps.tmod);
+      this.bougerVaisseau();
+      this.bougerRochers();
+      this.suivreTirs();
+    }
+    super.update();
+  }
+
+  bougerVaisseau() {
+    // Le vaisseau détruit ne pilote plus rien : les sources laissaient AS2
+    // avaler les appels sur `null`, ici il faut le dire.
+    if (!this.vaisseau) return;
+    const v = this.vaisseau;
+    this.repos = Math.max(0, this.repos - Temps.tmod);
+    const m = { x: this.sourisX, y: this.sourisY };
+    let da = v.angle(m) - this.angle;
+    while (da > 3.14) da -= 6.28;
+    while (da < -3.14) da += 6.28;
+    this.angle += da * 0.5 * Temps.tmod;
+    v.peau.rot = this.angle / 0.0174;
+
+    if (this.socle && this.socle.flPresse) {
+      if (this.repos === 0 && this.gagnant === null) {
+        const t = this.nouveauPhys('sym314');
+        const ca = Math.cos(this.angle);
+        const sa = Math.sin(this.angle);
+        t.x = v.x + ca * 8;
+        t.y = v.y + sa * 8;
+        t.vitx = ca * 4;
+        t.vity = sa * 4;
+        t.flPhys = false;
+        t.peau.rot = this.angle / 0.0174;
+        t.duree = 100;
+        t.init();
+        this.tirs.push(t);
+        this.repos = 2.5;
+      }
+    } else {
+      // Sans tir, le vaisseau se laisse porter vers la souris — d'autant moins
+      // qu'il doit encore tourner pour lui faire face.
+      const d = v.distance(m);
+      const vit = borner(0, (d - Math.abs(da) * 5) * 0.005, 0.5);
+      v.vitx += Math.cos(this.angle) * vit * (1 - this.coefDepart);
+      v.vity += Math.sin(this.angle) * vit * (1 - this.coefDepart);
+    }
+    const f = Math.pow(0.95, Temps.tmod);
+    v.vitx *= f;
+    v.vity *= f;
+    this.replier(v, 10);
+  }
+
+  bougerRochers() {
+    for (const r of this.rochers) {
+      r.x -= r.vitx * Temps.tmod * this.coefDepart;
+      r.y -= r.vity * Temps.tmod * this.coefDepart;
+      if (this.vaisseau && r.distance(this.vaisseau) < r.taille * 0.5 + 4) {
+        this.eclat('sym328', this.vaisseau.x, this.vaisseau.y, 50);
+        this.vaisseau.tuer();
+        this.vaisseau = null;
+        this.gagne(false);
+      }
+      this.replier(r, r.taille * 0.5);
+    }
+  }
+
+  suivreTirs() {
+    for (let i = 0; i < this.tirs.length; i++) {
+      const t = this.tirs[i];
+      let mort = false;
+      for (let n = 0; n < this.rochers.length; n++) {
+        const r = this.rochers[n];
+        if (t.distance(r) >= r.taille * 0.5) continue;
+        // Un rocher assez gros se casse en deux moitiés plus vives.
+        if (r.taille > 20) {
+          const ang = this.socle.hasard(628) / 100;
+          const ca = Math.cos(ang);
+          const sa = Math.sin(ang);
+          const ns = r.taille * 0.5;
+          const vit = Math.sqrt(r.vitx * r.vitx + r.vity * r.vity) * 1.2;
+          for (let ii = 0; ii < 2; ii++) {
+            const sens = ii * 2 - 1;
+            const nr = this.nouveauRocher(ns);
+            nr.x = r.x + ca * ns * 0.5 * sens;
+            nr.y = r.y + sa * ns * 0.5 * sens;
+            nr.vitx = ca * vit * sens;
+            nr.vity = sa * vit * sens;
+            nr.flPhys = false;
+            nr.init();
+          }
+        }
+        this.eclat('sym312', r.x, r.y, r.taille * 2, this.socle.hasard(360));
+        r.tuer();
+        this.rochers.splice(n, 1);
+        mort = true;
+        break;
+      }
+      t.duree -= Temps.tmod;
+      if (t.duree < 0) mort = true;
+      else if (t.duree < 10) t.peau.alpha = t.duree / 10;
+      this.replier(t, 8);
+      if (mort) { t.tuer(); this.tirs.splice(i, 1); i--; }
+    }
+    if (this.rochers.length === 0) this.gagne(true);
+  }
+
+  /** checkWarp : ce qui sort d'un bord rentre par l'autre. */
+  replier(o, m) {
+    if (o.x < -m) o.x = LARGEUR + m + (o.x + m);
+    if (o.x > LARGEUR + m) o.x = -m + (o.x - (LARGEUR + m));
+    if (o.y < -m) o.y = HAUTEUR + m + (o.y + m);
+    if (o.y > HAUTEUR + m) o.y = -m + (o.y - (HAUTEUR + m));
+  }
+}
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui de Base.genGameList(), qui donnait à chaque épreuve une
@@ -533,9 +730,10 @@ const JEUX = [
   { cle: 'gameLander', nom: 'alunissage', Classe: Lander },
   { cle: 'gameFlower', nom: 'arrosage', Classe: Flower },
   { cle: 'gamePong', nom: 'renvoi', Classe: Pong },
+  { cle: 'gameAstero', nom: 'astéroïdes', Classe: Astero },
 ];
 
-const API = { JEUX, Basket, Lander, Pong, Flower };
+const API = { JEUX, Basket, Lander, Pong, Flower, Astero };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

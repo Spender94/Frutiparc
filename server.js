@@ -602,6 +602,7 @@ const MINIFEVER_EPREUVES = [
   { cle: 'gameLander', item: '$fvLander', nom: 'Alunissage',  image: 'lander' },
   { cle: 'gameFlower', item: '$fvFlower', nom: 'Arrosage',    image: 'flower' },
   { cle: 'gamePong',   item: '$fvPong',   nom: 'Renvoi',      image: 'pong' },
+  { cle: 'gameAstero', item: '$fvAstero', nom: 'Astéroïdes',   image: 'astero' },
 ];
 for (const e of MINIFEVER_EPREUVES) {
   GAME_ITEM_INFO[e.item] = {
@@ -7888,6 +7889,15 @@ function miniwaveChallengeSeed(jourCle) {
 
 const MINIWAVE_MAP_FILE = path.join(SCORES_DIR, 'miniwave-challenge.json');
 let miniwaveMapCache = null;              // { jour, graine, niveaux } du jour
+// La copie en base est-elle faite ? Sans ce témoin, une écriture ratée était
+// définitive : la map restait en mémoire, tous les appels suivants la
+// renvoyaient de là, et personne ne retentait. Le cas se produit pour de bon —
+// une première requête servie pendant que le schéma se crée (le serveur écoute
+// avant que boot() ait fini) écrit dans une table qui n'existe pas encore. La
+// journée se jouait alors sans copie en base, et le déploiement suivant
+// refabriquait la map sur des scores déjà posés : exactement ce que ce
+// dispositif est censé empêcher.
+let miniwaveMapEnBase = false;
 
 function miniwaveMapValide(m, jour) {
   return !!(m && m.jour === jour && Array.isArray(m.niveaux) && m.niveaux.length
@@ -7908,6 +7918,15 @@ function miniwaveMapEcrireDisque(m) {
   } catch (e) { console.error('[MINIWAVE] écriture de la map:', e.message); }
 }
 
+/** La copie en base, avec son témoin. Retentée tant qu'elle n'a pas abouti. */
+async function miniwaveMapRangerEnBase(m) {
+  if (!process.env.DATABASE_URL || miniwaveMapEnBase) return;
+  try {
+    await db.setMiniwaveMap(m.jour, String(m.graine), JSON.stringify(m));
+    miniwaveMapEnBase = true;
+  } catch (e) { console.error('[MINIWAVE] écriture de la map en base:', e.message); }
+}
+
 /**
  * La map du jour, fabriquée une fois pour toutes.
  *
@@ -7917,13 +7936,21 @@ function miniwaveMapEcrireDisque(m) {
  */
 async function miniwaveMapDuJour() {
   const jour = parisDayKey();
-  if (miniwaveMapValide(miniwaveMapCache, jour)) return miniwaveMapCache;
+  if (miniwaveMapValide(miniwaveMapCache, jour)) {
+    // Déjà en mémoire — mais si la copie en base manque encore, on la reprend :
+    // c'est le seul rattrapage possible pour une écriture ratée au démarrage.
+    await miniwaveMapRangerEnBase(miniwaveMapCache);
+    return miniwaveMapCache;
+  }
+  miniwaveMapEnBase = false;                // map d'un autre jour : tout est à refaire
 
   const surDisque = miniwaveMapLireDisque();
   if (miniwaveMapValide(surDisque, jour)) {
     miniwaveMapCache = surDisque;
     console.log(`[MINIWAVE] Map du jour reprise du disque (${jour}, graine=${surDisque.graine})`
       + ' — inchangée par ce redémarrage');
+    // Le disque peut l'avoir sans que la base l'ait : on complète.
+    await miniwaveMapRangerEnBase(miniwaveMapCache);
     return miniwaveMapCache;
   }
   if (process.env.DATABASE_URL) {
@@ -7933,6 +7960,7 @@ async function miniwaveMapDuJour() {
         const m = JSON.parse(ligne.data);
         if (miniwaveMapValide(m, jour)) {
           miniwaveMapCache = m;
+          miniwaveMapEnBase = true;         // elle en vient : rien à ranger
           miniwaveMapEcrireDisque(m);       // le disque redevient le chemin rapide
           console.log(`[MINIWAVE] Map du jour restaurée depuis la base (${jour}, graine=${m.graine})`);
           return miniwaveMapCache;
@@ -7945,10 +7973,7 @@ async function miniwaveMapDuJour() {
   const m = { jour, graine, niveaux: MiniwaveChallenge.genererMap(graine).niveaux };
   miniwaveMapCache = m;
   miniwaveMapEcrireDisque(m);
-  if (process.env.DATABASE_URL) {
-    try { await db.setMiniwaveMap(jour, String(graine), JSON.stringify(m)); }
-    catch (e) { console.error('[MINIWAVE] écriture de la map en base:', e.message); }
-  }
+  await miniwaveMapRangerEnBase(m);
   console.log(`[MINIWAVE] Map du jour générée (${jour}, graine=${graine}, `
     + `${m.niveaux.length} niveaux) — figée jusqu'au prochain minuit Paris`);
   return miniwaveMapCache;

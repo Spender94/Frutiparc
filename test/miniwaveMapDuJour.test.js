@@ -149,6 +149,31 @@ test('une map d\'un autre jour est écartée : la journée neuve a la sienne', a
  * refabriquée — la version neuve, sur des scores déjà posés. On simule donc un
  * conteneur neuf : même base, disque effacé.
  */
+/**
+ * Une requete sur la base, connexion refermee QUOI QU'IL ARRIVE — une socket
+ * laissee ouverte par une assertion qui echoue garde le lanceur en vie, et
+ * l'echec se change alors en blocage.
+ */
+async function avecLaBase(url, faire) {
+  const { Client } = require('pg');
+  const c = new Client({ connectionString: url });
+  await c.connect();
+  try { return await faire(c); } finally { await c.end().catch(() => {}); }
+}
+
+/** La map du jour en base, attendue le temps que le serveur finisse son schema. */
+async function attendreLaMapEnBase(url) {
+  for (let i = 0; i < 60; i++) {
+    const r = await avecLaBase(url, (c) => c
+      .query("SELECT day_key, data FROM miniwave_maps WHERE slot = 'current'")
+      .catch(() => ({ rows: [] })));          // la table peut ne pas exister encore
+    if (r.rows.length) return r.rows[0];
+    await defi();                             // relance la tentative d'ecriture
+    await wait(250);
+  }
+  return null;
+}
+
 test('un déploiement (disque vidé) ne change pas la map : la base fait foi', async () => {
   const { Client } = require('pg');
   const DB = process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5433/frutiparc_mwmap';
@@ -168,19 +193,21 @@ test('un déploiement (disque vidé) ne change pas la map : la base fait foi', a
   try { fs.unlinkSync(CARTE); } catch { /* déjà propre */ }
   await demarrer(DB);
   const avant = await defi();
+  // Le serveur ÉCOUTE avant d'avoir fini de créer son schéma : sur une base
+  // neuve, la copie de la map peut donc être retentée plusieurs fois avant
+  // d'aboutir. On l'attend plutôt que de supposer l'instant d'après — sinon
+  // l'épreuve court après le démarrage et échoue au hasard de la machine.
+  const ligne = await attendreLaMapEnBase(DB);
   await arreter();
+  assert.ok(ligne, 'la map du jour finit par etre rangee en base');
+  assert.equal(ligne.day_key, avant.jour);
 
   // On marque la map EN BASE, puis on efface le disque : c'est un conteneur neuf.
-  const c = new Client({ connectionString: DB });
-  await c.connect();
-  const { rows } = await c.query("SELECT day_key, data FROM miniwave_maps WHERE slot = 'current'");
-  assert.equal(rows.length, 1, 'la map du jour est rangée en base');
-  assert.equal(rows[0].day_key, avant.jour);
-  const enBase = JSON.parse(rows[0].data);
+  const enBase = JSON.parse(ligne.data);
   enBase.niveaux[0].list[0][0].t = 7;
   enBase.marqueDeTest = 'deploiement';
-  await c.query("UPDATE miniwave_maps SET data = $1 WHERE slot = 'current'", [JSON.stringify(enBase)]);
-  await c.end();
+  await avecLaBase(DB, (c) => c.query(
+    "UPDATE miniwave_maps SET data = $1 WHERE slot = 'current'", [JSON.stringify(enBase)]));
   fs.unlinkSync(CARTE);
 
   await demarrer(DB);
