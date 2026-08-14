@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-97.3 -77.5 194.64999999999998 167.5" width="194.64999999999998" height="167.5">
+  <defs>
+    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.00061,0.0008,-0.00205,0.00156,60.45,46.6)"><stop offset="0" stop-color="#666666"/><stop offset="1" stop-color="#000000"/></linearGradient>
+    <linearGradient id="g2" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(-0.00068,0.00086,-0.00205,-0.00163,-67.8,40.7)"><stop offset="0" stop-color="#666666"/><stop offset="1" stop-color="#000000"/></linearGradient>
+    <radialGradient id="g3" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00305,0,0,0.00305,0.25,64.2)"><stop offset="0.12941" stop-color="#666666"/><stop offset="1" stop-color="#000000"/></radialGradient>
+  </defs>
+  <path d="M-95.1 -5.95Q-93.9 -7.9 -92.05 -9.35L-91.9 -9.5L-8.65 -74.5L-8.45 -74.65Q-4.7 -77.55 0 -77.5L0.05 -77.5Q4.75 -77.55 8.55 -74.65L8.7 -74.5L92 -9.5L92.15 -9.35Q94.85 -7.2 96.2 -4.05Q95 -2.15 93.15 -0.65L93 -0.55L9.7 64.5L9.55 64.6Q7.65 66.05 5.6 66.75Q3.45 67.5 1.05 67.5L1 67.5Q-2.1 67.5 -4.8 66.25Q-6.2 65.6 -7.45 64.6L-7.65 64.5L-90.9 -0.55L-91.05 -0.65Q-93.8 -2.85 -95.1 -5.95Z" fill="#666666" fill-rule="evenodd"/>
+  <path d="M96.2 -4.05L96.7 -2.65L96.7 -2.7Q97.5 -0.2 97.35 2.25L97.35 11.75Q97.25 13.45 96.7 15.15Q95.45 19.15 92.15 21.85L92 21.95L17 80.55L5.6 66.75Q7.65 66.05 9.55 64.6L9.7 64.5L93 -0.55L93.15 -0.65Q95 -2.15 96.2 -4.05Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M-17.5 80.1L-91.9 21.95L-92.05 21.85Q-95.35 19.15 -96.65 15.15L-97.3 11.75L-97.3 2.25Q-97.45 -0.2 -96.65 -2.65Q-96.1 -4.45 -95.1 -5.95Q-93.8 -2.85 -91.05 -0.65L-90.9 -0.55L-7.65 64.5L-7.45 64.6Q-6.2 65.6 -4.8 66.25L-17.5 80.1Z" fill="url(#g2)" fill-rule="evenodd"/>
+  <path d="M17 80.55L8.7 87L8.55 87.1Q4.75 90 0.05 90L0 90Q-4.7 90 -8.45 87.1L-8.65 87L-17.5 80.1L-4.8 66.25Q-2.1 67.5 1 67.5L1.05 67.5Q3.45 67.5 5.6 66.75L17 80.55Z" fill="url(#g3)" fill-rule="evenodd"/>
+</svg>

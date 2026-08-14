@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-30 -0.75 60.05 99.3" width="60.05" height="99.3">
+  <path d="M30 98.55L-30 98.55L-30 92.85L30 92.85L30 98.55Z" fill="#f45c0b" fill-rule="evenodd"/>
+  <path d="M-3.55 9.2Q-4.95 7.75 -4.95 5.7Q-4.95 3.65 -3.55 2.2Q-2.05 0.75 0 0.75Q2.05 0.75 3.45 2.2Q4.95 3.65 4.95 5.7Q4.95 7.75 3.45 9.2Q2.05 10.65 0 10.65Q-2.05 10.65 -3.55 9.2" fill="none" stroke="#c06a01" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M-25.4 93.6Q-26 94.2 -26.8 94.2Q-27.65 94.2 -28.25 93.6Q-28.8 93.05 -28.8 92.2Q-28.8 91.35 -28.25 90.8Q-27.65 90.2 -26.8 90.2Q-26 90.2 -25.4 90.8Q-24.85 91.35 -24.8 92.2Q-24.85 93.05 -25.4 93.6" fill="none" stroke="#f45c0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M28.45 93.6Q27.85 94.2 27.05 94.2Q26.2 94.2 25.6 93.6Q25.05 93.05 25.05 92.2Q25.05 91.35 25.6 90.8Q26.2 90.2 27.05 90.2Q27.85 90.2 28.45 90.8Q29 91.35 29.05 92.2Q29 93.05 28.45 93.6" fill="none" stroke="#f45c0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M1.45 93.6Q0.85 94.2 0.05 94.2Q-0.8 94.2 -1.4 93.6Q-1.95 93.05 -1.95 92.2Q-1.95 91.35 -1.4 90.8Q-0.8 90.2 0.05 90.2Q0.85 90.2 1.45 90.8Q2 91.35 2.05 92.2Q2 93.05 1.45 93.6" fill="none" stroke="#f45c0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M0 8L0 40.05L0 91.75M0 40.05L-26.55 91.6" fill="none" stroke="#fee6c9" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M0 40.05L26.85 91.6" fill="none" stroke="#fee6c9" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

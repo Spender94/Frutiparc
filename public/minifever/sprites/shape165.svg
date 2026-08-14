@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-55 -55 110 110" width="110" height="110">
+  <path d="M55 55L-55 55L-55 -55L55 -55L55 55ZM-50 50L50 50L50 -50L-50 -50L-50 50Z" fill="#ffffff" fill-rule="evenodd"/>
+  <path d="M48 47L48 -47L47.7 -47.7L47 -48L-47 -48L-47.7 -47.7L-48 -47L-48 47L-47.7 47.7L-47 48L47 48L47.7 47.7L48 47ZM49 49L-49 49L-49 -49L49 -49L49 49Z" fill="#000000" fill-opacity="0.2" fill-rule="evenodd"/>
+  <path d="M50 50L-50 50L-50 -50L50 -50L50 50ZM-49 49L49 49L49 -49L-49 -49L-49 49Z" fill="#cccccc" fill-rule="evenodd"/>
+  <path d="M41.1 -44.6Q40.55 -44.55 41.1 -44.7L41.1 -44.6Z" fill="#ffffff" fill-opacity="0.5" fill-rule="evenodd"/>
+  <path d="M46.2 -46.45L46.1 -44.3L45.85 -44.6Q45.85 -45.4 45.25 -45.9L45.05 -46.05L44.15 -46.45L46.2 -46.45Z" fill="#ffffff" fill-rule="evenodd"/>
+  <path d="M46.1 -44.3L46.2 -46.45L44.15 -46.45L45.05 -46.05L45.25 -45.9Q45.85 -45.4 45.85 -44.6L46.1 -44.3ZM20.95 -46.75L46.45 -46.95L46.6 -46.8L46.45 -21.15L46.3 -21.2L45.5 -44.1Q45.35 -45.7 43.9 -46.05L20.95 -46.75Z" fill="#ffffff" fill-opacity="0.5" fill-rule="evenodd"/>
+</svg>

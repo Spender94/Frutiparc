@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-5.85 -0.8 6.35 1.75" width="6.35" height="1.75">
+  <path d="M-3.15 -0.8L-1.05 -0.8L-1.05 0.95L-3.15 0.95L-3.15 -0.8Z" fill="#ffcc00" fill-rule="evenodd"/>
+  <path d="M-1.05 -0.8L0.5 -0.8L0.5 0.95L-1.05 0.95L-1.05 -0.8Z" fill="#fff0c1" fill-rule="evenodd"/>
+  <path d="M-3.15 0.95L-5.85 0.95L-5.85 -0.8L-3.15 -0.8L-3.15 0.95Z" fill="#fff0c1" fill-opacity="0.5" fill-rule="evenodd"/>
+</svg>
