@@ -9,10 +9,12 @@
  *
  * Deux conventions du jeu d'origine qu'il faut avoir en tête :
  *
- *   • `tmod` — Flash tournait à 40 images/s, mais Std.tmod corrigeait les
- *     ralentissements : toutes les vitesses sont multipliées par lui. tmod = 1
- *     signifie « une image nominale ». On le garde tel quel, sinon le jeu
- *     changerait de difficulté selon la machine.
+ *   • `tmod` — le multiplicateur de temps de Std, par lequel passent toutes les
+ *     vitesses. tmod = 1 signifie « une image nominale », et une image nominale
+ *     dure un TRENTE-DEUXIÈME de seconde : `Std.wantedFPS` vaut 32, quand
+ *     l'en-tête du SWF dit 40 (la fréquence à laquelle Flash redessine, pas
+ *     celle du jeu). La cadence de la boucle est donc dans game.js, où elle est
+ *     démontrée ; le moteur, lui, se contente de tmod.
  *   • `random(n)` d'AS2 rend un entier de 0 à n-1, et le jeu écrit souvent
  *     `if(!random(f))` pour dire « une chance sur f ». Le générateur est
  *     INJECTABLE ici : une partie rejouée avec la même graine se déroule à

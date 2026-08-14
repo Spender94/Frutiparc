@@ -105,7 +105,11 @@ test('un redémarrage ne change pas la map du jour', async () => {
   await arreter();
 
   const range = JSON.parse(fs.readFileSync(CARTE, 'utf8'));
-  range.niveaux[0].list[0][0].t = 7;          // une Poire sous cloche en tête
+  // La marque doit être une VRAIE différence : écrire 7 quand le générateur a
+  // déjà mis 7 ne marque rien, et l'épreuve passe ou échoue selon la map du
+  // jour. On prend donc l'espèce suivante, quelle qu'elle soit.
+  const espece = (range.niveaux[0].list[0][0].t + 1) % 40;
+  range.niveaux[0].list[0][0].t = espece;
   range.marqueDeTest = 'reboot';
   fs.writeFileSync(CARTE, JSON.stringify(range));
 
@@ -113,7 +117,7 @@ test('un redémarrage ne change pas la map du jour', async () => {
   const apres = await defi();
   assert.equal(apres.jour, avant.jour, 'même journée');
   assert.equal(apres.graine, avant.graine, 'même graine');
-  assert.equal(apres.niveaux[0].list[0][0].t, 7,
+  assert.equal(apres.niveaux[0].list[0][0].t, espece,
     'la map servie est celle qui était rangée, marque comprise');
   assert.equal(JSON.stringify(apres.niveaux), JSON.stringify(range.niveaux),
     'la map entière est relue, pas refabriquée');
@@ -204,7 +208,8 @@ test('un déploiement (disque vidé) ne change pas la map : la base fait foi', a
 
   // On marque la map EN BASE, puis on efface le disque : c'est un conteneur neuf.
   const enBase = JSON.parse(ligne.data);
-  enBase.niveaux[0].list[0][0].t = 7;
+  const espece = (enBase.niveaux[0].list[0][0].t + 1) % 40;   // cf. plus haut
+  enBase.niveaux[0].list[0][0].t = espece;
   enBase.marqueDeTest = 'deploiement';
   await avecLaBase(DB, (c) => c.query(
     "UPDATE miniwave_maps SET data = $1 WHERE slot = 'current'", [JSON.stringify(enBase)]));
@@ -213,7 +218,7 @@ test('un déploiement (disque vidé) ne change pas la map : la base fait foi', a
   await demarrer(DB);
   const apres = await defi();
   assert.equal(apres.jour, avant.jour, 'même journée');
-  assert.equal(apres.niveaux[0].list[0][0].t, 7,
+  assert.equal(apres.niveaux[0].list[0][0].t, espece,
     'la map vient de la base, pas du générateur');
   assert.ok(fs.existsSync(CARTE), 'et le disque est réamorcé pour la suite');
   assert.equal(JSON.parse(fs.readFileSync(CARTE, 'utf8')).marqueDeTest, 'deploiement');

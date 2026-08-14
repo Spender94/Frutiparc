@@ -24,7 +24,44 @@
 const E = window.MiniwaveEngine;
 const LARGEUR = E.LARGEUR, HAUTEUR = E.HAUTEUR;
 const BASE = '/miniwave/';
-const IPS = 40;                       // le jeu d'origine tournait à 40 images/s
+/*
+ * LA CADENCE — deux nombres qu'il ne faut pas confondre.
+ *
+ * L'en-tête de miniwave.swf dit QUARANTE : c'est la fréquence à laquelle Flash
+ * REDESSINE. La vitesse du jeu, elle, ne vient pas de là. Tout le code compte
+ * en `Std.tmod`, et `Std` est une classe de la bibliothèque de Motion-Twin,
+ * compilée dans le SWF — absente des sources, mais lisible dans le bytecode.
+ * Son bloc statique s'y trouve tel quel :
+ *
+ *     Std.maxDeltaTime = 0.5
+ *     Std.wantedFPS    = 32
+ *     Std.tmod_factor  = 0.95
+ *
+ * et son `update` se lit ainsi :
+ *
+ *     deltaT = (getTimer() - oldTime) / 1000            en SECONDES
+ *     oldTime = getTimer()
+ *     if( deltaT < maxDeltaTime ){
+ *         tmod = tmod*tmod_factor + (1-tmod_factor)*deltaT*wantedFPS
+ *     }else{
+ *         deltaT = 1/wantedFPS                          l'image est PERDUE
+ *     }
+ *
+ * `tmod` ramène donc tout à une image d'un TRENTE-DEUXIÈME de seconde. Le
+ * portage en comptait quarante par seconde : vingt-cinq pour cent trop vite,
+ * partout à la fois — les vaisseaux, les tirs, la descente des ennemis, les
+ * transitions de niveau. C'est ce qu'un joueur d'époque sent immédiatement
+ * sans pouvoir désigner un coupable. Minipixiz, même bibliothèque, mêmes
+ * constantes, avait exactement le même écart (public/minipixiz/game.js).
+ *
+ * `tmod` n'est pas non plus le temps écoulé mais sa MOYENNE GLISSANTE à 95 % :
+ * une image un peu longue n'accélère pas la scène, elle infléchit à peine la
+ * cadence. Et une image de plus d'une demi-seconde est simplement perdue — le
+ * jeu ne rattrape jamais son retard.
+ */
+const IPS = 32;                       // Std.wantedFPS
+const TMOD_LISSAGE = 0.95;            // Std.tmod_factor
+const TMOD_SAUT = 0.5;                // Std.maxDeltaTime, en secondes
 
 // ── Chargement des dessins ────────────────────────────────────────────────
 const images = new Map();
@@ -256,6 +293,7 @@ class Client {
     // rien ne bouge — ni le menu ni, plus tard, le jeu.
     this.dernier = 0;
     this.reste = 0;
+    this.tmod = 1;                     // Std.tmod, initialisé à 1 comme dans le SWF
     this.animT = 0;                    // horloge des clips à images (soucoupe, tuyère)
     this.parts = [];                   // particules du SWF en cours de lecture
     this.flPause = false;
@@ -517,24 +555,31 @@ class Client {
   }
 
   // ── Boucle ──
-  // On avance le moteur par pas d'UNE image nominale : le jeu d'origine se règle
-  // sur 40 i/s et ses tirages au sort en dépendent. Un écran à 60 Hz exécute
-  // donc parfois deux pas, parfois aucun — jamais un pas « à moitié ».
+  // On avance le moteur par pas d'UNE image nominale — un trente-deuxième de
+  // seconde, cf. IPS — et les tirages au sort en dépendent : un pas se joue
+  // entier ou pas du tout. Un écran à 60 Hz exécute donc parfois deux pas,
+  // parfois aucun, jamais un pas « à moitié ».
   demarrer() {
     if (this.raf) return;                           // une seule boucle
     const boucle = (t) => {
       this.raf = requestAnimationFrame(boucle);
       if (!this.dernier) { this.dernier = t; return; }
-      let dt = (t - this.dernier) / 1000;
+      const dt = (t - this.dernier) / 1000;
       this.dernier = t;
-      if (dt > 0.25) dt = 0.25;                     // onglet revenu au premier plan
-      this.reste += dt * IPS;
+      // Std.update, au mot près : la moyenne glissante, et l'image trop longue
+      // qu'on laisse tomber au lieu de la rattraper (`tmod` garde alors sa
+      // valeur, donc l'onglet revenu au premier plan coûte UNE image, pas une
+      // rafale).
+      if (dt > 0 && dt < TMOD_SAUT) {
+        this.tmod = this.tmod * TMOD_LISSAGE + (1 - TMOD_LISSAGE) * dt * IPS;
+      }
+      this.reste += this.tmod;
       let pas = 0;
       // Le menu occupe le même canevas : quand il est ouvert, c'est lui qui
       // avance et qui dessine, et la partie attend son tour.
       if (this.avant && this.avant.visible) {
         while (this.reste >= 1 && pas < 6) { this.avant.update(1); this.reste -= 1; pas++; }
-        this.avant.dessiner(dt * IPS);
+        this.avant.dessiner(this.tmod);
         return;
       }
       if (!this.jeu) { this.reste = 0; return; }
@@ -546,7 +591,7 @@ class Client {
         return;
       }
       while (this.reste >= 1 && pas < 6) { this.jeu.update(1); this.reste -= 1; pas++; }
-      this.dessiner(dt * IPS);
+      this.dessiner(this.tmod);
     };
     this.raf = requestAnimationFrame(boucle);
   }
