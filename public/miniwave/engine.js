@@ -1047,7 +1047,10 @@ class Saucer extends Sprite {
     this.boite = { x0: -19.7, y0: -12.7, x1: 19.7, y1: 9.4 };
   }
   update(tmod) {
-    this.x += this.speed * this.sens * tmod;
+    // Saucer.update : la soucoupe avance d'un pas par IMAGE, sans tmod — comme
+    // la marche de l'escadre. Sans effet tant qu'un pas vaut exactement une
+    // image, mais c'est la lettre des sources.
+    this.x += this.speed * this.sens;
     if (this.x + MARGE_SOUCOUPE < 0 || this.x - MARGE_SOUCOUPE > LARGEUR) { this.tuer(); return; }
     for (const t of this.jeu.hShotList.slice()) {
       if (!t.flHit || !this.touche(t.x, t.y)) continue;
