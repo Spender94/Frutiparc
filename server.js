@@ -621,6 +621,7 @@ const MINIFEVER_EPREUVES = [
   { cle: 'gameCliff',      item: '$fvCliff',      nom: 'Falaise',     image: 'cliff' },
   { cle: 'gameChain',      item: '$fvChain',      nom: 'Chaîne',      image: 'chain' },
   { cle: 'gameGhost',      item: '$fvGhost',      nom: 'Fantôme',     image: 'ghost' },
+  { cle: 'gameBalance',    item: '$fvBalance',    nom: 'Balance',     image: 'balance' },
 ];
 for (const e of MINIFEVER_EPREUVES) {
   GAME_ITEM_INFO[e.item] = {

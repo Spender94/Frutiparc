@@ -156,6 +156,15 @@ const SCENES = {
     { cle: 'sym370', x: 150, y: 190 },
     { cle: 'sym363', x: 118, y: 172, image: 50, rot: -12 },  // …le héros en vol
   ],
+  gameBalance: [
+    { cle: 'sym258', x: 120, y: 18, rot: 8 },       // le fléau penché…
+    { cle: 'sym256', x: 41, y: 7 },                 // …ses deux plateaux…
+    { cle: 'sym256', x: 199, y: 29 },
+    { cle: 'sym250', x: 199, y: 122, s: 0.54 },     // …un poids posé à droite,
+    { cle: 'sym250', x: 60, y: 202, s: 0.28 },      // et les étalons du bas
+    { cle: 'sym250', x: 120, y: 199, s: 0.45 },
+    { cle: 'sym250', x: 180, y: 190, s: 0.89 },
+  ],
   gameGhost: [
     { cle: 'sym275', x: 73.5, y: 24.6, image: 6 },  // la stalactite du plafond…
     { cle: 'sym275', x: 163.6, y: 214.1, image: 6, rot: 180 },  // …la stalagmite

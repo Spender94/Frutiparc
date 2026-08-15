@@ -3742,6 +3742,187 @@ const GHOST_ETAGES = [
 ];
 
 /*
+ * game/Balance.mt — LA BALANCE : trouver le poids caché.
+ *
+ * Un fléau (à 120, 18) porte deux plateaux pendus à ±80 ; le gauche pèse
+ * left = 12 + random(60), INVISIBLE — seule l'inclinaison le trahit. En bas,
+ * trois poids étalons (2, 5 et 20, dessinés à l'échelle sqrt(p)·20) : les
+ * cliquer les pose sur le plateau droit (cinq par calibre au plus,
+ * échelle sqrt(p)·12), cliquer un poids posé retire le DERNIER de son
+ * calibre. Le fléau court vers (right - left)·6 borné à ±20 (ressort 0,1
+ * borné ±0,5, amorti 0,92^tmod). Égalité, fléau posé (|vitr| < 0,6 et
+ * |rotation| < 0,6) : gagné — perdu au chrono (500 - dif·3).
+ *
+ * Tout est vérifié contre le bytecode (classe « 6Q4T45 » du SWF de dev) :
+ *   · le LAPIN de la source (attachMC mcBalanceRabbit, échelle 30 + left —
+ *     la bestiole qui aurait montré le poids) N'EST PAS dans le compilé :
+ *     son bloc, comme le TODO « ajouter une bestiole dans le plateau de
+ *     gauche », est postérieur au build. L'arbitre tranche : plateau
+ *     gauche vide, l'aiguille seule parle ;
+ *   · la profondeur d'époque des poids posés — floor(d + 10^(3-n)), le
+ *     compteur d dans le champ « 4 » de p2 — fait l'ordre de dessin :
+ *     reproduite dans la profondeur de scène ;
+ *   · l'étalement sur le plateau : w = la LARGEUR AFFICHÉE du premier
+ *     poids du calibre, e = (60 - (n·w))/(n-1), x = w·0,5 + (w+e)·i - 30 ;
+ *   · flWin bloque l'ajout après la victoire ; le retrait, lui, reste
+ *     permis (removePoid ne teste rien) — coquille conservée.
+ *
+ * Les plateaux d'époque pendent leur conteneur vide (« 44Qvg », à +93) où
+ * s'accrochent les poids : on garde la position LOCALE de chaque poids posé
+ * et on la repose chaque image sous le plateau droit, qui suit le fléau.
+ *
+ * Les dessins : gameBalance le fond et son pied, sym258 le fléau,
+ * sym256 la corde et l'assiette, sym250 le poids.
+ */
+class Balance extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 500 - this.dif * 3;
+    super.init();
+    this.pInfoList = [2, 5, 20];
+    this.d = 0;                    // Std.cast(p2).d — le compteur de profondeur
+    this.plateWidth = 60;
+    this.barRay = 80;
+    this.left = 12 + this.socle.hasard(60);
+    this.rotCible = -20;           // `rot` des sources (la cible du fléau)
+    this.vitr = 0;
+    this.right = 0;
+    this.attachElements();
+  }
+
+  attachElements() {
+    // Le fléau et les plateaux — les enfants de timeline de la scène.
+    this.bar = this.attacher('sym258', PROF.SPRITE);
+    this.bar.x = 120;
+    this.bar.y = 18;
+    this.bar.sy = 0.997;           // le quantifié du placement d'époque
+    this.p1 = this.attacher('sym256', PROF.SPRITE);
+    this.p2 = this.attacher('sym256', PROF.SPRITE);
+    this.p1.x = 39.4;              // les PlaceObject — remplacés dès la
+    this.p1.y = 21.4;              // première image par le suivi du fléau
+    this.p2.x = 200.8;
+    this.p2.y = 21.4;
+
+    // POIDS — les trois étalons du bas.
+    this.pList = [];
+    this.boutons = [];
+    const max = this.pInfoList.length;
+    const ec = LARGEUR / (max + 1);
+    for (let i = 0; i < max; i++) {
+      this.pList[i] = [];
+      const mc = this.nouveauSprite('sym250');
+      mc.x = ec * (i + 1);
+      mc.y = HAUTEUR - 10;
+      mc.peau.sx = Math.sqrt(this.pInfoList[i]) * 20 / 100;
+      mc.peau.sy = mc.peau.sx;
+      mc.init();
+      this.boutons.push(mc);
+    }
+  }
+
+  /** onPress d'époque : les étalons du bas, puis les poids posés (dessus). */
+  click() {
+    if (this.etape !== 1) return;
+    const sx = this.sourisX;
+    const sy = this.sourisY;
+    // Les poids posés d'abord, du plus haut au plus bas (la profondeur
+    // d'époque) : cliquer l'un d'eux retire le dernier de son calibre.
+    let haut = null;
+    for (let n = 0; n < this.pList.length; n++) {
+      for (const p of this.pList[n]) {
+        if (p.mc.contient(sx, sy) && (!haut || p.mc.prof > haut.mc.prof)) haut = p;
+      }
+    }
+    if (haut) {
+      this.removePoid(haut.n);
+      return;
+    }
+    for (let i = 0; i < this.boutons.length; i++) {
+      if (this.boutons[i].contient(sx, sy)) {
+        this.addPoid(i);
+        return;
+      }
+    }
+  }
+
+  addPoid(n) {
+    if (this.pList[n].length > 4 || this.gagnant) return;
+    this.d++;
+    const prof = Math.floor(this.d + Math.pow(10, this.pList.length - n));
+    const mc = this.attacher('sym250', PROF.SPRITE + prof * 1e-6);
+    mc.sx = Math.sqrt(this.pInfoList[n]) * 12 / 100;
+    mc.sy = mc.sx;
+    this.pList[n].push({ mc, n, lx: 0 });
+    this.updatePlate();
+  }
+
+  removePoid(n) {
+    // Pas de garde flWin ici : l'époque laissait retirer après la victoire.
+    const p = this.pList[n].pop();
+    if (p) p.mc.enlever();
+    this.updatePlate();
+  }
+
+  updatePlate() {
+    this.right = 0;
+    for (let n = 0; n < this.pList.length; n++) {
+      const a = this.pList[n];
+      if (a.length) {
+        const b = a[0].mc.boite || { x0: -25, x1: 25 };
+        const w = (b.x1 - b.x0) * a[0].mc.sx;          // a[0]._width d'époque
+        const wt = (a.length - 1) * w;
+        const e = (this.plateWidth - (wt + w)) / (a.length - 1);
+        for (let i = 0; i < a.length; i++) {
+          a[i].lx = w * 0.5 + (w + e) * i - this.plateWidth * 0.5;
+        }
+      }
+      this.right += a.length * this.pInfoList[n];
+    }
+    const lim = 20;
+    this.rotCible = Math.min(Math.max(-lim, (this.right - this.left) * 6), lim);
+  }
+
+  update() {
+    switch (this.etape) {
+      case 1: {
+        const dr = this.rotCible - this.bar.rot;
+        const lim = 0.5;
+        this.vitr += Math.min(Math.max(-lim, dr * 0.1), lim);
+        this.vitr *= Math.pow(0.92, Temps.tmod);
+        this.bar.rot += this.vitr * Temps.tmod;
+
+        const a = this.bar.rot * 0.0174;
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        this.p1.x = this.bar.x - ca * this.barRay;
+        this.p1.y = this.bar.y - sa * this.barRay;
+        this.p2.x = this.bar.x + ca * this.barRay;
+        this.p2.y = this.bar.y + sa * this.barRay;
+
+        // Les poids posés suivent le conteneur du plateau droit (+93).
+        for (const file of this.pList) {
+          for (const p of file) {
+            p.mc.x = this.p2.x - 0.2 + p.lx;
+            p.mc.y = this.p2.y + 93;
+          }
+        }
+
+        if (this.right === this.left && Math.abs(this.vitr) < 0.6
+          && Math.abs(this.bar.rot) < 0.6) {
+          this.gagne(true);
+        }
+        break;
+      }
+      default: break;
+    }
+    super.update();                // la source l'appelle en dernier
+  }
+}
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui du portage, épreuve après épreuve — à fréquences de
@@ -3771,11 +3952,12 @@ const JEUX = [
   { cle: 'gameCliff', nom: 'falaise', Classe: Cliff },
   { cle: 'gameChain', nom: 'chaîne', Classe: Chain },
   { cle: 'gameGhost', nom: 'fantôme', Classe: Ghost },
+  { cle: 'gameBalance', nom: 'balance', Classe: Balance },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
   Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff, Chain,
-  Ghost };
+  Ghost, Balance };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

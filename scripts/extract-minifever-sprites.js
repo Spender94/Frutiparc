@@ -267,6 +267,13 @@ function principal() {
     { cle: 'sym275', id: 275 },
     { cle: 'sym272', id: 272 },
     { cle: 'sym274', id: 274 },
+    // LA BALANCE (gameBalance) : le fléau (sym258) et les deux plateaux
+    // (sym256 — la corde et l'assiette, avec leur conteneur vide « 44Qvg »
+    // à +93, celui où l'époque accrochait les poids) sont des enfants
+    // nommés de la scène : on les sort, et la scène sans eux garde le pied.
+    { cle: 'gameBalance', id: 259, sansEnfantsNommes: true },
+    { cle: 'sym256', id: 256 },
+    { cle: 'sym258', id: 258 },
   ];
   for (const s of SUPPLEMENTS) {
     const etats = etatsDe(s.id, s);

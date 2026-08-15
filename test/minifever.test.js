@@ -1374,6 +1374,88 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── LA BALANCE (game/Balance.mt, classe « 6Q4T45 » du bytecode) ──
+
+test('la balance : la mise en place du bytecode, constante par constante', () => {
+  const b = banc(J.Balance, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 500 - 40 * 3);
+  assert.deepEqual(j.pInfoList, [2, 5, 20]);
+  assert.equal(j.plateWidth, 60);
+  assert.equal(j.barRay, 80);
+  assert.ok(j.left >= 12 && j.left < 72, 'left = 12 + random(60)');
+  assert.equal(j.rotCible, -20);
+  assert.equal(j.vitr, 0);
+  // Le fléau et les plateaux de la timeline ; PAS de lapin : son bloc de la
+  // source (et le TODO « ajouter une bestiole ») est postérieur au build.
+  assert.equal(j.bar.x, 120);
+  assert.equal(j.bar.y, 18);
+  assert.equal(j.pList.length, 3);
+  // Les trois étalons du bas, à l'échelle sqrt(p)·20.
+  assert.equal(j.boutons.length, 3);
+  assert.equal(j.boutons[0].x, LARGEUR / 4);
+  assert.equal(j.boutons[0].peau.sx.toFixed(4), (Math.sqrt(2) * 0.2).toFixed(4));
+  assert.equal(j.boutons[2].peau.sx.toFixed(4), (Math.sqrt(20) * 0.2).toFixed(4));
+});
+
+test('le fléau penche du côté lourd et les plateaux suivent (ressort 0,1, amorti 0,92)', () => {
+  const b = banc(J.Balance);
+  const j = b.jeu;
+  // À vide, la cible est -20 : le fléau plonge à gauche.
+  b.avancer(30);
+  assert.ok(j.bar.rot < -10, 'penché à gauche : ' + j.bar.rot.toFixed(1));
+  // Les plateaux collent aux bouts du fléau.
+  const a = j.bar.rot * 0.0174;
+  assert.equal(j.p1.x.toFixed(4), (120 - Math.cos(a) * 80).toFixed(4));
+  assert.equal(j.p2.y.toFixed(4), (18 + Math.sin(a) * 80).toFixed(4));
+  // On surcharge à droite : la cible bascule à +20, le fléau suit.
+  j.left = 12;
+  for (let i = 0; i < 5; i++) j.addPoid(2);
+  assert.equal(j.right, 100);
+  assert.equal(j.rotCible, 20, 'borné à +20');
+  b.avancer(40);
+  assert.ok(j.bar.rot > 10, 'penché à droite');
+  // Les poids posés pendent sous le plateau droit (+93), étalés sur 60.
+  const dernier = j.pList[2][4];
+  assert.equal(dernier.mc.y.toFixed(4), (j.p2.y + 93).toFixed(4));
+  assert.ok(Math.abs(dernier.lx) <= 30 + 1e-9, 'dans la largeur du plateau');
+});
+
+test('l\'équilibre exact, fléau posé, gagne — et les gardes d\'époque tiennent', () => {
+  const b = banc(J.Balance);
+  const j = b.jeu;
+  j.left = 27;                     // 20 + 5 + 2 : trouvable pile
+  j.addPoid(2);
+  j.addPoid(1);
+  j.addPoid(0);
+  assert.equal(j.right, 27);
+  assert.equal(j.rotCible, 0);
+  b.avancer(120);                  // le fléau se pose (|vitr| et |rot| < 0,6)
+  assert.equal(j.gagnant, true);
+  // flWin : l'ajout est bloqué… le retrait, lui, passe encore (la source ne
+  // le garde pas) — coquille conservée.
+  j.addPoid(0);
+  assert.equal(j.pList[0].length, 1, 'l\'ajout est figé');
+  j.removePoid(0);
+  assert.equal(j.pList[0].length, 0, 'le retrait d\'époque passe toujours');
+  // Et la sixième pièce d'un calibre est refusée (length > 4).
+  const b2 = banc(J.Balance);
+  const j2 = b2.jeu;
+  for (let i = 0; i < 7; i++) j2.addPoid(0);
+  assert.equal(j2.pList[0].length, 5, 'cinq par calibre au plus');
+});
+
+test('les dessins de la balance sont extraits, plateaux démontés compris', () => {
+  for (const cle of ['gameBalance', 'sym250', 'sym256', 'sym258']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.gameBalance.etats[0].pieces.length, 3,
+    'le fond et le pied — fléau et plateaux vivent à part');
+  // Le fléau : la barre de 180 centrée ; l'assiette pend sous son ancre.
+  assert.equal(Math.round(MANIFESTE.sym258.etats[0].pieces[0].w), 180);
+  assert.equal(Math.round(MANIFESTE.sym256.etats[0].pieces[0].h), 99);
+});
+
 // ── LE FANTÔME (game/Ghost.mt, classe « 5cciQ1 » du bytecode) ──
 
 test('le fantôme : la mise en place du bytecode, constante par constante', () => {
