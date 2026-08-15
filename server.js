@@ -1116,47 +1116,49 @@ async function migrateSwapouChallengeScores() {
   }
 }
 
-// La première mouture du classement Mini-Fever rangeait TOUS les paliers dans
-// un tableau unique (`minifever_arcade`), le score multiplié par le palier et
-// le palier dans la donnée. Un facile terminé y valait un infernal à dix
-// épreuves — c'est ce qu'on a défait : un tableau PAR palier, le compte
-// d'épreuves pour score. On replie ici les lignes de l'ancien tableau dans le
-// bon, en retrouvant le compte d'épreuves depuis l'ancienne formule
-// (score / (10 · (1 + palier))). Appelée depuis boot() APRÈS le merge des
-// scores DB (sinon les lignes DB referaient surface au boot suivant), fichier
-// ET DB, comme le repli Swapou ci-dessus.
-async function migrateMinifeverArcadeScores() {
+// Une courte parenthèse a éclaté le classement Mini-Fever en quatre tableaux
+// (un par palier, le compte d'épreuves pour score) avant qu'on tranche pour
+// LE TABLEAU UNIQUE au barème affiché — dix points l'épreuve, fois
+// (1 + palier). On replie ici les lignes de la parenthèse : chaque tableau de
+// palier redevient des points par l'ancienne-nouvelle formule, la meilleure
+// ligne du joueur gagne (son tableau unique existant compris), les tableaux
+// par palier disparaissent. Appelée depuis boot() APRÈS le merge des scores DB
+// (sinon les lignes DB referaient surface au boot suivant), fichier ET DB,
+// comme le repli Swapou ci-dessus.
+async function migrateMinifeverPaliersScores() {
+  const PALIERS_NOMS = MINIFEVER_PALIERS
+    .map((p, i) => (p && p.nom ? { id: 'minifever_' + p.nom, palier: i } : null))
+    .filter(Boolean);
   let migres = 0;
   for (const [username, rlist] of Object.entries(scoresData.users || {})) {
-    const entry = rlist && rlist.minifever_arcade;
-    if (!entry) continue;
-    migres++;
-    delete rlist.minifever_arcade;
-    const palier = Math.trunc(Number(entry.data));
-    const info = MINIFEVER_PALIERS[palier];
-    let cible = null;
-    if (info && info.nom) {
-      cible = 'minifever_' + info.nom;
-      const niveau = Math.max(0, Math.min(info.lvl,
-        Math.round((Number(entry.score) || 0) / (10 * (1 + palier)))));
-      const cur = rlist[cible];
-      if (niveau > 0 && (!cur || niveau > Number(cur.score))) {
-        rlist[cible] = {
-          score: niveau, data: '',
+    if (!rlist) continue;
+    let touche = false;
+    for (const { id, palier } of PALIERS_NOMS) {
+      const entry = rlist[id];
+      if (!entry) continue;
+      touche = true;
+      delete rlist[id];
+      const niveau = Math.max(0, Math.trunc(Number(entry.score) || 0));
+      const points = niveau * MINIFEVER_POINTS * (1 + palier);
+      const cur = rlist.minifever_arcade;
+      if (points > 0 && (!cur || points > Number(cur.score))) {
+        rlist.minifever_arcade = {
+          score: points, data: String(palier),
           updatedAt: entry.updatedAt || new Date().toISOString(),
         };
-      } else if (!cur) {
-        cible = null;                  // rien à écrire — l'ancienne ligne était vide
       }
     }
+    if (!touche) continue;
+    migres++;
     if (process.env.DATABASE_URL) {
       try {
         const row = await db.findUserByUsername(username);
         if (row) {
-          if (cible && rlist[cible]) {
-            await db.upsertScore(row.id, cible, Number(rlist[cible].score) || 0, '');
+          if (rlist.minifever_arcade) {
+            await db.upsertScore(row.id, 'minifever_arcade',
+              Number(rlist.minifever_arcade.score) || 0, rlist.minifever_arcade.data || '');
           }
-          await db.deleteScore(row.id, 'minifever_arcade');
+          for (const { id } of PALIERS_NOMS) await db.deleteScore(row.id, id);
         }
       } catch (e) {
         console.error(`[SCORES] migration Mini-Fever (${username}):`, e.message);
@@ -1164,7 +1166,7 @@ async function migrateMinifeverArcadeScores() {
     }
   }
   if (migres > 0) {
-    console.log(`[SCORES] ${migres} score(s) Mini-Fever repliés vers les tableaux par palier`);
+    console.log(`[SCORES] ${migres} joueur(s) Mini-Fever repliés vers le tableau unique`);
     saveScoresFile();
   }
 }
@@ -1268,26 +1270,20 @@ const RANKINGS = {
   // des jeux qui en ont plusieurs).
   minipixiz_classic: { name: 'MiniPixiz',               game: 'minipixiz', type: 'C' },
   miniwave_classic:  { name: 'MiniWave',                game: 'miniwave',  type: 'C' },
-  //   · Mini-Fever — l'ARCADE : le jeu jamais sorti, porté en natif. Il ne
-  //     compte pas des points mais des épreuves réussies — et un palier est un
-  //     MODE : on ne classe pas un joueur du facile parmi ceux de l'infernal.
-  //     UN TABLEAU PAR PALIER donc, comme Kaluga a les siens et Burning Kiwi
-  //     ses circuits ; le score y est le compte d'épreuves remportées, nu —
-  //     l'ancien multiplicateur (× palier) n'existait que pour comparer des
-  //     modes entre eux, ce que des tableaux séparés rendent caduc. (L'ancien
-  //     tableau unique `minifever_arcade` se replie au boot :
-  //     migrateMinifeverArcadeScores.) LIGHT SEULEMENT, et sans entrée dans
-  //     LEGACY_RANKINGS : fileIcon.swf ne connaît pas ce jeu — il n'existait
-  //     pas quand le bureau a été gravé — et lui inventer une icône
-  //     casserait la liste des classements du SWF. Rester hors de cette liste
-  //     les tient aussi hors de la remise à zéro quotidienne
-  //     (DAILY_RESET_RANKING_SET en est dérivé) : ce sont des RECORDS, comme
-  //     le Contest de Frutisnake — un mode se termine, il ne se refait pas
-  //     chaque jour.
-  minifever_facile:    { name: 'Mini-Fever - Facile',    game: 'minifever', type: 'C' },
-  minifever_normal:    { name: 'Mini-Fever - Normal',    game: 'minifever', type: 'C' },
-  minifever_difficile: { name: 'Mini-Fever - Difficile', game: 'minifever', type: 'C' },
-  minifever_infernal:  { name: 'Mini-Fever - Infernal',  game: 'minifever', type: 'C' },
+  //   · Mini-Fever — l'ARCADE : le jeu jamais sorti, porté en natif. UN SEUL
+  //     tableau, au BARÈME AFFICHÉ : une épreuve remportée vaut dix points,
+  //     multipliés par (1 + palier) — l'infernal paie quadruple. Choisir plus
+  //     dur rapporte donc plus, c'est la règle, elle est écrite sur la page du
+  //     jeu et dans le libellé de chaque ligne (« 900 · 30 épreuves en
+  //     difficile »). Le palier joué voyage dans la donnée de score. LIGHT
+  //     SEULEMENT, et sans entrée dans LEGACY_RANKINGS : fileIcon.swf ne
+  //     connaît pas ce jeu — il n'existait pas quand le bureau a été gravé —
+  //     et lui inventer une icône casserait la liste des classements du SWF.
+  //     Rester hors de cette liste le tient aussi hors de la remise à zéro
+  //     quotidienne (DAILY_RESET_RANKING_SET en est dérivé) : c'est un
+  //     RECORD, comme le Contest de Frutisnake — un mode se termine, il ne se
+  //     refait pas chaque jour.
+  minifever_arcade:  { name: 'Mini-Fever',              game: 'minifever', type: 'C' },
   bkiwi_track0_challenge: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 0 },
   bkiwi_track1_challenge: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 1 },
   bkiwi_track2_challenge: { name: 'Burning Kiwi - Terre Grise', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 2 },
@@ -8070,13 +8066,10 @@ app.get('/api/miniwave/challenge', async (req, res) => {
  *
  * Le jeu n'ayant jamais été mis en ligne, il n'a jamais eu de score : Arcade.mt
  * compte des ÉPREUVES et des VIES, pas des points. Le classement est donc de
- * nous, et on le pose sur ce que le jeu mesure vraiment — les épreuves
- * réussies, DANS LE TABLEAU DU PALIER JOUÉ. Un joueur du facile ne se mesure
- * qu'aux joueurs du facile : chaque palier a son classement, et le score y est
- * le compte d'épreuves remportées, sans coefficient. (La première mouture
- * rangeait tout le monde dans un tableau unique en multipliant par le palier —
- * un facile terminé y valait un infernal à dix épreuves, ce qui ne voulait
- * rien dire ; migrateMinifeverArcadeScores replie ces lignes-là.)
+ * nous — UN SEUL tableau, une règle simple et affichée : une épreuve remportée
+ * vaut DIX points, multipliés par (1 + palier). Le facile paie simple,
+ * l'infernal quadruple — choisir plus dur rapporte plus, et c'est écrit sur la
+ * page du jeu comme dans le libellé du classement.
  *
  * Le score n'est pas transmis, il est CALCULÉ ici : le client n'envoie que le
  * déroulé de la partie, et sa cohérence se vérifie contre les paliers du jeu —
@@ -8084,7 +8077,11 @@ app.get('/api/miniwave/challenge', async (req, res) => {
  * pas plus qu'on n'avait de vies.
  */
 const MINIFEVER_PALIERS = require('./public/minifever/engine.js').PALIERS;
-const minifeverRankingId = (palier) => 'minifever_' + MINIFEVER_PALIERS[palier].nom;
+const MINIFEVER_POINTS = 10;              // par épreuve réussie, avant le palier
+
+function minifeverScore(palier, niveau) {
+  return niveau * MINIFEVER_POINTS * (1 + palier);
+}
 
 app.post('/api/minifever/score', async (req, res) => {
   const sid = getSidFromRequest(req, req.body || {});
@@ -8128,12 +8125,11 @@ app.post('/api/minifever/score', async (req, res) => {
     }
   }
 
-  // Le score EST le compte d'épreuves réussies, dans le tableau de SON palier.
-  const score = niveau;
+  const score = minifeverScore(palier, niveau);
   let r = { updated: false, newScore: score, oldScore: 0 };
-  if (score > 0) r = persistScore(username, minifeverRankingId(palier), score, '');
+  if (score > 0) r = persistScore(username, 'minifever_arcade', score, String(palier));
   console.log(`[MINIFEVER] ${username} : ${info.nom}, ${niveau}/${info.lvl} épreuves`
-    + `${b.gagnee ? ' (terminé)' : ''}`
+    + `${b.gagnee ? ' (terminé)' : ''} → ${score} pts`
     + (neufs.length ? ` · ${neufs.length} picto(s)` : ''));
   res.json({ ok: true, score, classe: !!r.updated, pictos: neufs.map((e) => e.nom) });
 });
@@ -15753,10 +15749,17 @@ function formatChallengeScoreLabel(rankingId, score, data) {
     const niveau = parseMiniwaveNiveau(data);
     return n.toLocaleString('fr-FR') + (niveau !== null ? ` · niveau ${niveau}` : '');
   }
-  // Mini-Fever : chaque palier a son tableau, et le score y est le compte
-  // d'épreuves remportées — on l'écrit en toutes lettres.
-  if (meta.game === 'minifever') {
-    return `${n.toLocaleString('fr-FR')} épreuve${n > 1 ? 's' : ''}`;
+  // Mini-Fever : la règle du tableau unique, lisible sur chaque ligne — les
+  // points, puis d'où ils viennent : le compte d'épreuves et le palier joué
+  // (dix points l'épreuve, multipliés par 1 + palier).
+  if (rankingId === 'minifever_arcade') {
+    const palier = Math.trunc(Number(data));
+    const p = MINIFEVER_PALIERS[palier];
+    if (p && p.nom) {
+      const niveau = Math.round(n / (MINIFEVER_POINTS * (1 + palier)));
+      return `${n.toLocaleString('fr-FR')} · ${niveau} épreuve${niveau > 1 ? 's' : ''} en ${p.nom}`;
+    }
+    return n.toLocaleString('fr-FR');
   }
   if (meta.game === 'bkiwi') {
     const pad = (x) => (x < 10 ? '0' + x : '' + x);
@@ -15820,14 +15823,9 @@ app.get('/api/light/challenge', async (req, res) => {
     { game: 'minipixiz', ranking: 'minipixiz_classic' },
     { game: 'miniwave',  ranking: 'miniwave_classic' },
     // Mini-Fever : light seulement (le bureau ne connaît pas ce jeu), et hors
-    // remise à zéro quotidienne — ce sont des records, pas des défis du jour.
-    // Ils n'ont donc jamais de podium de la veille, et c'est normal. Un onglet
-    // PAR PALIER : on ne classe pas un joueur du facile parmi ceux de
-    // l'infernal.
-    { game: 'minifever', ranking: 'minifever_facile' },
-    { game: 'minifever', ranking: 'minifever_normal' },
-    { game: 'minifever', ranking: 'minifever_difficile' },
-    { game: 'minifever', ranking: 'minifever_infernal' },
+    // remise à zéro quotidienne — c'est un record, pas un défi du jour. Il n'a
+    // donc jamais de podium de la veille, et c'est normal.
+    { game: 'minifever', ranking: 'minifever_arcade' },
   ];
   // Le libellé de chaque classement vient du descriptif du bureau (rn) : les
   // deux clients nomment les onglets pareil, sans table en double. Burning Kiwi
@@ -17211,7 +17209,7 @@ async function boot() {
   }
 
   await migrateSwapouChallengeScores();
-  await migrateMinifeverArcadeScores();
+  await migrateMinifeverPaliersScores();
 
   const today = parisDayKey();
   await rollDailyChallengeIfNeeded();

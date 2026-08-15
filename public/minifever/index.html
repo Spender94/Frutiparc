@@ -59,6 +59,7 @@
   }
   #modes a.actif { background: #eee; color: #333; }
   #etat { color: #bbb; }
+  #bareme { color: #ccc; font-size: 10px; line-height: 1.5; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -67,6 +68,9 @@
   <div id="bandeau">
     <div id="modes"></div>
     <div id="etat">chargement…</div>
+    <!-- La règle du classement, écrite là où on choisit sa difficulté : un
+         seul tableau pour tous les modes, et le palier fait le multiplicateur. -->
+    <div id="bareme">arcade : 10 pts par épreuve remportée, × 2 en normal, × 3 en difficile, × 4 en infernal — un seul classement</div>
   </div>
 </div>
 
@@ -156,6 +160,10 @@ function finArcade(d) {
     body: JSON.stringify({ sid, palier: d.palier, niveau: d.niveau, jouees: d.jouees,
       gagnee: d.gagnee, gagnees: [...gagnees] }),
   }).then((r) => r.json()).then((r) => {
+    if (r && r.ok && r.score > 0) {
+      $('etat').textContent += ' · ' + r.score + ' pts'
+        + (d.palier > 0 ? ' (×' + (1 + d.palier) + ')' : '');
+    }
     if (r && r.pictos && r.pictos.length) {
       $('etat').textContent += ' · picto : ' + r.pictos.join(', ');
     }

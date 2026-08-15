@@ -5,8 +5,9 @@
  * rien d'autre. Le classement est donc de nous, et il tient à deux décisions —
  * le client n'envoie PAS de points, il envoie le déroulé de sa partie (le
  * serveur calcule, et refuse ce qui ne tient pas debout au regard des paliers
- * du jeu) ; et un palier est un MODE : chacun a son tableau, on ne classe pas
- * un joueur du facile parmi ceux de l'infernal.
+ * du jeu) ; et UN SEUL tableau, au barème affiché : dix points l'épreuve
+ * remportée, fois (1 + palier) — choisir plus dur rapporte plus, et la règle
+ * s'écrit sur la page du jeu comme dans le libellé de chaque ligne.
  *
  * L'album suit la même règle que les monstres de MiniWave : une épreuve
  * remportée pour la première fois donne son picto.
@@ -30,16 +31,17 @@ const JEUX = require(path.join(ROOT, 'public/minifever/jeux.js')).JEUX;
 
 let proc = null;
 before(async () => {
-  // Une ligne de l'ANCIEN tableau unique, semée avant le démarrage : 900 pts
-  // en donnée « 2 » = 30 épreuves du palier difficile, à l'ancienne formule
-  // (niveau × 10 × (1 + palier)). Le boot doit la replier dans
-  // minifever_difficile avec 30 pour score.
+  // Des lignes de la PARENTHÈSE aux quatre tableaux, semées avant le
+  // démarrage : 30 épreuves en difficile et 40 en facile. Le boot doit les
+  // replier dans le tableau unique en gardant la meilleure au barème —
+  // 30 × 10 × 3 = 900 bat 40 × 10 × 1 = 400.
   try {
     const f = path.join(ROOT, 'data/scores.json');
     const d = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : { users: {} };
     if (!d.users) d.users = {};
     d.users['fevmig' + RUN] = {
-      minifever_arcade: { score: 900, data: '2', updatedAt: new Date().toISOString() },
+      minifever_difficile: { score: 30, data: '', updatedAt: new Date().toISOString() },
+      minifever_facile: { score: 40, data: '', updatedAt: new Date().toISOString() },
     };
     fs.writeFileSync(f, JSON.stringify(d));
   } catch (e) { throw new Error('semis de migration impossible : ' + e.message); }
@@ -88,24 +90,23 @@ const finir = (sid, corps) => fetch(BASE + '/api/minifever/score', {
   body: JSON.stringify(Object.assign({ sid }, corps)),
 }).then((r) => r.json());
 
-test('chaque palier a son tableau : le facile ne se mesure pas à l\'infernal', async () => {
+test('le barème du tableau unique : dix points l\'épreuve, fois (1 + palier)', async () => {
   const sid = await sidPour(joueur('a'));
   const facile = await finir(sid, { palier: 0, niveau: 12, jouees: 15 });
   assert.equal(facile.ok, true);
-  assert.equal(facile.score, 12, 'le score EST le compte d\'épreuves');
+  assert.equal(facile.score, 12 * 10 * 1);
   assert.equal(facile.classe, true);
 
-  // Le même joueur, moins bon en infernal : il se classe QUAND MÊME — c'est
-  // un autre tableau, l'exploit facile ne lui fait pas d'ombre.
-  const infernal = await finir(sid, { palier: 3, niveau: 3, jouees: 6 });
-  assert.equal(infernal.score, 3);
-  assert.equal(infernal.classe, true, 'trois épreuves infernales se classent chez les infernaux');
+  // La règle, noir sur blanc : la même partie en infernal vaut quatre fois
+  // plus — choisir plus dur rapporte plus, dans le MÊME tableau.
+  const infernal = await finir(sid, { palier: 3, niveau: 12, jouees: 15 });
+  assert.equal(infernal.score, 12 * 10 * 4, 'une épreuve infernale vaut quatre faciles');
+  assert.equal(infernal.classe, true, 'et elle passe donc devant');
 
-  // Et les deux tableaux gardent chacun leur ligne.
-  const d = await (await fetch(`${BASE}/api/light/challenge?sid=${encodeURIComponent(sid)}`)).json();
-  const tableau = (id) => (d.games || []).find((g) => g.id === id);
-  assert.equal(tableau('minifever_facile').scores.find((s) => s.isMe).score, 12);
-  assert.equal(tableau('minifever_infernal').scores.find((s) => s.isMe).score, 3);
+  // Un score MOINDRE au barème ne remplace pas le record.
+  const petit = await finir(sid, { palier: 0, niveau: 20, jouees: 22 });
+  assert.equal(petit.score, 200);
+  assert.equal(petit.classe, false, 'deux cents points ne délogent pas quatre cent quatre-vingts');
 });
 
 test('une partie qui ne tient pas debout est refusée', async () => {
@@ -182,43 +183,39 @@ test('chaque épreuve portée a son picto, et son image existe', async () => {
   assert.ok(fs.existsSync(path.join(ROOT, 'public/fb/fd_minifever.svg')));
 });
 
-test('le classement du light : quatre onglets Mini-Fever, un par palier', async () => {
+test('le classement du light : un seul onglet Mini-Fever, la règle sur chaque ligne', async () => {
   const sid = await sidPour(joueur('d'));
   await finir(sid, { palier: 2, niveau: 30, jouees: 33 });
   const d = await (await fetch(`${BASE}/api/light/challenge?sid=${encodeURIComponent(sid)}`)).json();
-  const noms = (d.games || []).filter((g) => g.game === 'minifever').map((g) => [g.id, g.name]);
-  assert.deepEqual(noms, [
-    ['minifever_facile', 'Mini-Fever - Facile'],
-    ['minifever_normal', 'Mini-Fever - Normal'],
-    ['minifever_difficile', 'Mini-Fever - Difficile'],
-    ['minifever_infernal', 'Mini-Fever - Infernal'],
-  ], 'les quatre paliers, dans l\'ordre du jeu');
-  const jeu = (d.games || []).find((g) => g.id === 'minifever_difficile');
-  const moi = jeu.scores.find((s) => s.isMe);
-  assert.ok(moi, 'ma partie figure dans SON tableau');
-  assert.equal(moi.score, 30);
-  assert.equal(moi.label, '30 épreuves', 'le score se lit en épreuves');
-  for (const autre of ['minifever_facile', 'minifever_normal', 'minifever_infernal']) {
-    const t = (d.games || []).find((g) => g.id === autre);
-    assert.ok(!t.scores.some((s) => s.isMe), `et pas dans ${autre}`);
-  }
+  const onglets = (d.games || []).filter((g) => g.game === 'minifever');
+  assert.equal(onglets.length, 1, 'un seul tableau pour tous les modes');
+  assert.equal(onglets[0].id, 'minifever_arcade');
+  assert.equal(onglets[0].name, 'Mini-Fever');
+  const moi = onglets[0].scores.find((s) => s.isMe);
+  assert.ok(moi, 'ma partie y figure');
+  assert.equal(moi.score, 30 * 10 * 3);
+  assert.equal(moi.label, '900 · 30 épreuves en difficile',
+    'le libellé dit les points ET d\'où ils viennent');
 });
 
-test('l\'ancien tableau unique se replie au boot, palier par palier', async () => {
-  // La ligne semée avant le démarrage : 900 pts, donnée « 2 » — l'ancienne
-  // formule pour 30 épreuves difficiles. Elle doit ressortir à 30, dans
-  // minifever_difficile, et l'ancien tableau ne doit plus exister.
+test('la parenthèse des tableaux par palier se replie au boot, meilleure ligne gardée', async () => {
+  // Les lignes semées avant le démarrage : 30 épreuves en difficile, 40 en
+  // facile. Au barème, 900 bat 400 — le tableau unique doit montrer 900,
+  // palier difficile, et les tableaux par palier ne plus exister.
   const d = await (await fetch(`${BASE}/api/light/challenge`)).json();
-  assert.ok(!(d.games || []).some((g) => g.id === 'minifever_arcade'), 'plus de tableau unique');
-  const jeu = (d.games || []).find((g) => g.id === 'minifever_difficile');
+  assert.ok(!(d.games || []).some((g) => /^minifever_(facile|normal|difficile|infernal)$/.test(g.id)),
+    'plus de tableaux par palier');
+  const jeu = (d.games || []).find((g) => g.id === 'minifever_arcade');
   const migre = jeu.scores.find((s) => s.user === 'fevmig' + RUN);
-  assert.ok(migre, 'la ligne a déménagé');
-  assert.equal(migre.score, 30, 'et son score est redevenu un compte d\'épreuves');
+  assert.ok(migre, 'la ligne a rejoint le tableau unique');
+  assert.equal(migre.score, 900, 'la meilleure des deux au barème');
+  assert.equal(migre.label, '900 · 30 épreuves en difficile');
 });
 
 test('le jeu se sert et se lance depuis le light', async () => {
   const page = await (await fetch(BASE + '/minifever/')).text();
   assert.match(page, /Mini-Fever/);
+  assert.match(page, /10 pts par épreuve remportée/, 'le barème est écrit sur la page');
   for (const f of ['engine.js', 'client.js', 'jeux.js']) {
     const r = await fetch(BASE + '/minifever/' + f);
     assert.equal(r.status, 200, `/minifever/${f} est servi`);
