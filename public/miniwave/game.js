@@ -62,6 +62,25 @@ const BASE = '/miniwave/';
 const IPS = 32;                       // Std.wantedFPS
 const TMOD_LISSAGE = 0.95;            // Std.tmod_factor
 const TMOD_SAUT = 0.5;                // Std.maxDeltaTime, en secondes
+/*
+ * ET la cadence d'APPEL : deux nombres différents, les deux comptent.
+ *
+ * La racine du SWF boucle sur deux images (11 : `mng.update()` ; 12 :
+ * `gotoAndPlay(_currentframe-1)`) — une itération par image Flash, donc
+ * QUARANTE appels par seconde, la cadence de l'en-tête. À chaque appel,
+ * Std.update mesure le temps réel écoulé et en tire `tmod` ≈ 32/40 = 0,8 :
+ * les lignes en `*Std.tmod` avancent de 32 unités nominales par seconde, les
+ * lignes « par image » (la marche de la vague, la soucoupe, les pellicules
+ * des clips) avancent 40 fois par seconde, et les tirages `random(n/Std.tmod)`
+ * compensent d'eux-mêmes.
+ *
+ * Avancer par pas ENTIERS à 32 par seconde — l'état d'avant — donnait la bonne
+ * moyenne aux lignes en tmod mais ralentissait d'un cinquième tout le reste,
+ * et saccadait à 32 Hz sur un écran à 60. Flash en retard SAUTE des images
+ * (tmod grossit), il ne les rattrape jamais : la boucle fait pareil.
+ */
+const CADENCE_FLASH = 40;             // l'en-tête du SWF : mng.update() par image
+const IMAGE_FLASH = 1 / CADENCE_FLASH;
 
 // ── Chargement des dessins ────────────────────────────────────────────────
 const images = new Map();
@@ -259,14 +278,18 @@ function eclater(x, y, n, couleur, vitesse) {
     eclats.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 1, t: 10 + Math.random() * 14, c: couleur });
   }
 }
-function bougerEclats(ctx, tmod) {
+function avancerEclats(tmod) {
   for (let i = eclats.length - 1; i >= 0; i--) {
     const p = eclats[i];
     p.x += p.vx * tmod;
     p.y += p.vy * tmod;
     p.vy += 0.25 * tmod;
     p.t -= tmod;
-    if (p.t <= 0) { eclats.splice(i, 1); continue; }
+    if (p.t <= 0) eclats.splice(i, 1);
+  }
+}
+function dessinerEclats(ctx) {
+  for (const p of eclats) {
     ctx.globalAlpha = Math.min(1, p.t / 8);
     ctx.fillStyle = p.c;
     ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
@@ -288,11 +311,13 @@ class Client {
     this.panneauT = 0;
     this.echelle = 1;
     // Le compteur d'images doit exister DÈS la construction : le menu tourne sur
-    // la même boucle, et il s'ouvre avant la première partie. Sans ces deux
-    // valeurs, `reste` vaut NaN, la condition d'avancement n'est jamais vraie et
-    // rien ne bouge — ni le menu ni, plus tard, le jeu.
+    // la même boucle, et il s'ouvre avant la première partie. Sans ces valeurs,
+    // l'attente vaut NaN, la condition d'avancement n'est jamais vraie et rien
+    // ne bouge — ni le menu ni, plus tard, le jeu.
     this.dernier = 0;
-    this.reste = 0;
+    this.attente = 0;                  // le temps accumulé vers la prochaine image Flash
+    this.derniereImage = 0;            // l'instant de la dernière image exécutée
+    this.imagesAvantDessin = 0;
     this.tmod = 1;                     // Std.tmod, initialisé à 1 comme dans le SWF
     this.animT = 0;                    // horloge des clips à images (soucoupe, tuyère)
     this.parts = [];                   // particules du SWF en cours de lecture
@@ -353,7 +378,8 @@ class Client {
     // portefeuille + récolte, comme le bureau qui crédite en direct.
     this.jeu.portefeuille = Number(opts.portefeuille) || 0;
     this.dernier = 0;
-    this.reste = 0;
+    this.attente = 0;
+    this.derniereImage = 0;
     return this.jeu;
   }
 
@@ -376,7 +402,13 @@ class Client {
   // (traînes, ondes — le SWF les pose sous les sprites, dp_underPart) ; les
   // étincelles d'impact et les étoiles passent AU-DESSUS (dp_part), dessinées
   // par poserPartsDessus une fois les sprites en place.
-  bougerParts(ctx, tmod) {
+  /*
+   * Part.update, une image Flash : la physique suit Std.tmod, la ROTATION et
+   * la PELLICULE avancent d'un cran par image — `this._rotation += this.vitr`
+   * n'a pas de tmod dans les sources, et la pellicule d'un clip joue à la
+   * cadence de l'en-tête, pas à la cadence nominale.
+   */
+  avancerParts(tmod) {
     const f = Math.pow(0.95, tmod);    // Game.friction, comme Part.update
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
@@ -384,8 +416,8 @@ class Client {
       p.vitx *= f; p.vity *= f; p.vitr *= f;
       p.x += p.vitx * tmod;
       p.y += p.vity * tmod;
-      p.rot += p.vitr * (Math.PI / 180) * tmod;
-      p.frame += tmod;
+      p.rot += p.vitr * (Math.PI / 180);
+      p.frame += 1;
       p._alpha = p.alpha;
       if (p.timer !== undefined) {
         p.timer -= tmod;
@@ -402,7 +434,12 @@ class Client {
         }
         p._idx = Math.max(0, idx);
       }
-      if (!p.dessus) this.poserPart(ctx, p);
+    }
+  }
+
+  dessinerParts(ctx, dessus) {
+    for (const p of this.parts) {
+      if (!p.dessus === !dessus) this.poserPart(ctx, p);
     }
     ctx.globalAlpha = 1;
   }
@@ -563,43 +600,64 @@ class Client {
     if (this.raf) return;                           // une seule boucle
     const boucle = (t) => {
       this.raf = requestAnimationFrame(boucle);
-      if (!this.dernier) { this.dernier = t; return; }
-      const dt = (t - this.dernier) / 1000;
+      if (!this.dernier) { this.dernier = t; this.attente = 0; this.derniereImage = t; return; }
+      this.attente += (t - this.dernier) / 1000;
       this.dernier = t;
-      // Std.update, au mot près : la moyenne glissante, et l'image trop longue
-      // qu'on laisse tomber au lieu de la rattraper (`tmod` garde alors sa
-      // valeur, donc l'onglet revenu au premier plan coûte UNE image, pas une
-      // rafale).
-      if (dt > 0 && dt < TMOD_SAUT) {
-        this.tmod = this.tmod * TMOD_LISSAGE + (1 - TMOD_LISSAGE) * dt * IPS;
+
+      // Une image Flash au plus par rafraîchissement, comme le lecteur : en
+      // retard, Flash SAUTE des images — `tmod` grossit pour compenser — il ne
+      // les rattrape jamais. L'excédent au-delà d'une image est donc perdu.
+      if (this.attente >= IMAGE_FLASH) {
+        this.attente = Math.min(this.attente - IMAGE_FLASH, IMAGE_FLASH);
+        // Std.update, au mot près : tmod est la moyenne glissante (à 95 %) du
+        // temps réel entre deux images EXÉCUTÉES, ramené à la seconde de
+        // trente-deux ; une image de plus d'une demi-seconde le laisse tel quel.
+        const ecart = (t - this.derniereImage) / 1000;
+        this.derniereImage = t;
+        if (ecart > 0 && ecart < TMOD_SAUT) {
+          this.tmod = this.tmod * TMOD_LISSAGE + (1 - TMOD_LISSAGE) * ecart * IPS;
+        }
+        this.imageFlash(this.tmod);
+        this.imagesAvantDessin++;
       }
-      this.reste += this.tmod;
-      let pas = 0;
-      // Le menu occupe le même canevas : quand il est ouvert, c'est lui qui
-      // avance et qui dessine, et la partie attend son tour.
-      if (this.avant && this.avant.visible) {
-        while (this.reste >= 1 && pas < 6) { this.avant.update(1); this.reste -= 1; pas++; }
-        this.avant.dessiner(this.tmod);
-        return;
-      }
-      if (!this.jeu) { this.reste = 0; return; }
-      if (this.flPause) {
-        // La scène reste posée sous son voile — figée, pas éteinte.
-        this.reste = 0;
-        this.dessiner(0);
-        this.dessinerPause(this.ctx);
-        return;
-      }
-      while (this.reste >= 1 && pas < 6) { this.jeu.update(1); this.reste -= 1; pas++; }
-      this.dessiner(this.tmod);
+
+      // Le rendu, à chaque rafraîchissement. Le menu avance une part de ses
+      // effets EN dessinant (la pluie d'étoiles des vitrines) : on lui passe le
+      // temps nominal des images exécutées depuis le dernier rendu — zéro
+      // quand aucune ne l'a été — pour qu'ils suivent la cadence Flash.
+      const tmodDessin = this.tmod * this.imagesAvantDessin;
+      this.imagesAvantDessin = 0;
+      if (this.avant && this.avant.visible) { this.avant.dessiner(tmodDessin); return; }
+      if (!this.jeu) return;
+      this.dessiner();
+      if (this.flPause) this.dessinerPause(this.ctx);
     };
     this.raf = requestAnimationFrame(boucle);
   }
   arreter() { if (this.raf) cancelAnimationFrame(this.raf); this.raf = null; }
 
-  dessiner(tmod) {
+  /** UNE image Flash : mng.update() — le jeu ou le menu, puis l'habillage. */
+  imageFlash(tmod) {
+    if (this.avant && this.avant.visible) { this.avant.update(tmod); return; }
+    if (!this.jeu || this.flPause) return;
+    this.jeu.update(tmod);
+    // L'habillage vit à la même cadence : les pellicules des clips avancent
+    // d'UNE image par image Flash, la physique des particules suit tmod.
+    this.animT += 1;
+    this.avancerParts(tmod);
+    avancerEclats(tmod);
+    if (this.panneauT > 0) {
+      this.panneauT -= tmod;
+      const p = this.panneau;
+      if (p && typeof p === 'object') {
+        if (this.panneauT <= 12) p.ta = 0;           // l'extinction s'amorce
+        p.alpha = p.alpha * 0.8 + p.ta * 0.2;        // le fondu de Msg.as
+      }
+    }
+  }
+
+  dessiner() {
     const ctx = this.ctx, jeu = this.jeu;
-    this.animT += tmod;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     fond(ctx, jeu.defilementDecor());
 
@@ -647,7 +705,7 @@ class Client {
 
     // Les traînes et étincelles passent SOUS les tirs : le trait s'éteint
     // derrière la balle (le SWF les met sous la couche des sprites).
-    this.bougerParts(ctx, tmod);
+    this.dessinerParts(ctx, false);
     for (const t of jeu.bShotList) this.dessinerTir(ctx, t, false);
     for (const t of jeu.hShotList) this.dessinerTir(ctx, t, true);
 
@@ -655,9 +713,9 @@ class Client {
 
     // Les étincelles d'impact, étoiles de warp et « +n » passent au-dessus de
     // la mêlée (dp_part du SWF).
-    this.poserPartsDessus(ctx);
-    bougerEclats(ctx, tmod);
-    this.dessinerInterface(ctx, tmod);
+    this.dessinerParts(ctx, true);
+    dessinerEclats(ctx);
+    this.dessinerInterface(ctx);
   }
 
   dessinerHero(ctx, h) {
@@ -1061,22 +1119,17 @@ class Client {
       ctx.fillText('palier ' + (jeu.level + 1), 4, 3);
     }
 
-    if (this.panneauT > 0 && this.panneau) {
-      this.panneauT -= tmod;
-      this.dessinerMessage(ctx, tmod);
-    }
+    if (this.panneauT > 0 && this.panneau) this.dessinerMessage(ctx);
   }
 
   // Les panneaux du SWF (miniWave2Msg) : le bandeau de l'image type+1, centré
   // verticalement, qui FOND à l'ouverture et à la fermeture (Msg.update fait
   // alpha = alpha*0.8 + cible*0.2). Les textes reprennent les polices et
   // tailles des champs d'origine.
-  dessinerMessage(ctx, tmod) {
+  dessinerMessage(ctx) {
     const p = this.panneau;
     const sp = this.sprites.msg;
     if (!p || typeof p !== 'object') return;
-    if (this.panneauT <= 12) p.ta = 0;               // l'extinction s'amorce
-    p.alpha = p.alpha * 0.8 + p.ta * 0.2;
     if (p.alpha < 0.01) return;
 
     const etat = sp && sp.etats[Math.min(p.type, sp.etats.length - 1)];

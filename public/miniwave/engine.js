@@ -454,7 +454,9 @@ class Shot extends Sprite {
 
   update(tmod) {
     const jeu = this.jeu;
-    this.age += tmod;
+    // `age` choisit l'image des aspects ANIMÉS : une pellicule de clip, qui
+    // joue à la cadence des images, pas à la seconde nominale — pas de tmod.
+    this.age += 1;
     this.x += this.vitx * tmod;
     this.y += this.vity * tmod;
     if (this.vitRot !== undefined) {
@@ -682,7 +684,7 @@ class Shot extends Sprite {
           }
         }
         if (this.mourant !== undefined) {
-          this.mourant += tmod;
+          this.mourant += 1;              // l'animation de destruction est une pellicule
           if (this.mourant >= MINE_MORT) { this.tuer(); return; }
           break;
         }

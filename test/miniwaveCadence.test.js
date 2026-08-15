@@ -115,39 +115,77 @@ test('Std.wantedFPS vaut 32 dans le SWF, et le portage compte pareil', () => {
   assert.match(src, /const TMOD_SAUT = 0\.5;/, 'le saut d\'image');
 });
 
-test('la boucle avance de tmod lissé, et une image perdue ne se rattrape pas', () => {
+/*
+ * La boucle n'avance PAS par pas entiers de tmod : elle rejoue le LECTEUR.
+ * La racine du SWF boucle sur deux images (11 : `mng.update()` ; 12 :
+ * `gotoAndPlay(_currentframe-1)`) — une itération par image Flash, donc
+ * QUARANTE appels par seconde (l'en-tête), chacun recevant le tmod lissé
+ * (≈ 32/40 = 0,8 sur une machine à l'aise). Les lignes en `*tmod` avancent de
+ * 32 unités nominales par seconde ; les lignes « par image » (la marche de la
+ * vague, la soucoupe, les pellicules) avancent quarante fois par seconde ; en
+ * retard, Flash SAUTE des images, il ne les rattrape pas.
+ */
+test('la boucle rejoue le lecteur : quarante images par seconde, tmod lissé', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public/miniwave/game.js'), 'utf8');
-  // Std.update : la moyenne glissante, et l'image trop longue simplement perdue.
-  assert.match(src, /this\.tmod = this\.tmod \* TMOD_LISSAGE \+ \(1 - TMOD_LISSAGE\) \* dt \* IPS;/);
-  assert.match(src, /if \(dt > 0 && dt < TMOD_SAUT\)/,
-    'au-delà du seuil, tmod garde sa valeur — pas de rafale de rattrapage');
-  assert.match(src, /this\.reste \+= this\.tmod;/, 'c\'est lui qui nourrit les pas');
-  assert.doesNotMatch(src, /this\.reste \+= dt \* IPS;/, 'et plus le temps brut');
+  // La cadence d'appel vient de l'en-tête du SWF, relue ici.
+  const b = corps();
+  const o = Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8);
+  const entete = b.readUInt16LE(o) / 256;
+  assert.match(src, new RegExp('const CADENCE_FLASH = ' + entete + ';'),
+    'la boucle appelle update() à la cadence de l\'en-tête');
+  // Std.update : la moyenne glissante du temps réel entre images EXÉCUTÉES.
+  assert.match(src, /this\.tmod = this\.tmod \* TMOD_LISSAGE \+ \(1 - TMOD_LISSAGE\) \* ecart \* IPS;/);
+  assert.match(src, /if \(ecart > 0 && ecart < TMOD_SAUT\)/,
+    'au-delà du seuil, tmod garde sa valeur');
+  // Une image au plus par rafraîchissement : l'excédent est PERDU, comme Flash.
+  assert.match(src, /this\.attente = Math\.min\(this\.attente - IMAGE_FLASH, IMAGE_FLASH\);/);
+  assert.match(src, /this\.jeu\.update\(tmod\)/, 'le moteur reçoit le tmod fractionnaire');
+  assert.doesNotMatch(src, /this\.jeu\.update\(1\)/, 'et plus des pas entiers');
 });
 
 /*
- * La conséquence, mesurée sur le jeu : le vaisseau avance de `speed * tmod` à
- * chaque image (Hero.as, ligne 174). En UNE SECONDE il parcourt donc trente-deux
- * fois sa vitesse — le portage lui en faisait parcourir quarante.
+ * La conséquence, mesurée sur le jeu, LES DEUX CADENCES À LA FOIS :
+ *
+ *   · le vaisseau avance de `speed*Std.tmod` par image (Hero.as) — en une
+ *     seconde (quarante images à tmod 0,8) il parcourt 32 fois sa vitesse ;
+ *   · l'escadre marche de `waveSpeed` par image, SANS tmod (Bads.waveUpdate) —
+ *     en une seconde elle avance 40 fois sa vitesse de vague.
+ *
+ * L'ancienne boucle (32 pas entiers de tmod 1) donnait la bonne moyenne au
+ * vaisseau mais ralentissait la marche d'un cinquième ; celle d'avant (40 pas
+ * entiers) faisait l'inverse. Seul le modèle du lecteur donne les deux.
  */
-test('une seconde de jeu vaut trente-deux images, pas quarante', () => {
-  const IPS = 32;
+test('une seconde de jeu : 40 images à tmod 0,8 — le vaisseau à 32, la vague à 40', () => {
+  const IMAGES = 40, TMOD = 0.8;
   const jeu = new E.Game({ levels: NIVEAUX.main[0].levels, graine: 7 });
   for (let i = 0; i < 600 && jeu.step !== E.ETAPE.COMBAT; i++) jeu.update(1);
   assert.equal(jeu.step, E.ETAPE.COMBAT, 'la partie est engagée');
   const h = jeu.hero;
   assert.ok(h, 'le vaisseau est en piste');
 
-  // On le pose à gauche pour qu'une seconde de course ne bute pas sur le bord.
+  // Le vaisseau : une seconde de course vers la droite, mesurée en pixels.
   h.x = jeu.shipBounds.min + h.ray;
   const x0 = h.x;
   jeu.entree = { gauche: false, droite: true, tir: false, bombe: false };
-  for (let i = 0; i < IPS; i++) jeu.update(1);
+  for (let i = 0; i < IMAGES; i++) jeu.update(TMOD);
   const parcouru = h.x - x0;
-  const attendu = h.speed * h.sens * IPS;
+  const attendu = h.speed * h.sens * 32;             // speed × tmod × 40 = speed × 32
   assert.ok(Math.abs(parcouru - attendu) < 0.001,
-    `${IPS} images à ${h.speed * h.sens}/image = ${attendu}, mesuré ${parcouru}`);
-  // Et la même seconde comptée à quarante images irait un quart plus loin.
-  assert.equal(Math.round((h.speed * h.sens * 40) / attendu * 100), 125,
-    'quarante images par seconde, c\'est vingt-cinq pour cent de trop');
+    `${IMAGES} images à tmod ${TMOD} : ${attendu} attendu, ${parcouru} mesuré`);
+
+  // La vague : sa marche ne porte pas de tmod — elle dépend du NOMBRE d'images,
+  // pas de leur durée nominale. On rejoue donc la même partie aux deux tmod et
+  // on exige la MÊME trajectoire horizontale, image par image : c'est ce que
+  // l'ancienne boucle à pas entiers de 32 par seconde ne donnait pas (un
+  // cinquième de marche en moins par seconde).
+  const trace = (tmod) => {
+    const g = new E.Game({ levels: NIVEAUX.main[0].levels, graine: 7 });
+    for (let i = 0; i < 600 && g.step !== E.ETAPE.COMBAT; i++) g.update(1);
+    const b0 = g.badsList.find((b) => b.vivant !== false && b.flWave);
+    const xs = [];
+    for (let i = 0; i < IMAGES; i++) { g.update(tmod); xs.push(+b0.x.toFixed(3)); }
+    return xs;
+  };
+  assert.deepEqual(trace(TMOD), trace(1),
+    'la marche de la vague, image par image, ne dépend pas de tmod');
 });
