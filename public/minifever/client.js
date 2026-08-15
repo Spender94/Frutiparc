@@ -202,7 +202,14 @@ class Client {
     const bas = (ev) => {
       if (ev.cancelable) ev.preventDefault();
       bouger(ev);
-      if (this.socle) this.socle.click();
+      if (this.socle) {
+        // Doigt ou souris ? Certains jeux en tiennent compte : Tubulo vise la
+        // case VISIBLE au doigt (pas de survol pour guider la main).
+        this.socle.flTactile = ev.pointerType
+          ? ev.pointerType !== 'mouse'
+          : String(ev.type).startsWith('touch');
+        this.socle.click();
+      }
     };
     const haut = (ev) => {
       if (ev && ev.cancelable) ev.preventDefault();
@@ -272,6 +279,10 @@ class Client {
     ctx.clearRect(0, 0, LARGEUR, HAUTEUR);
     const s = this.socle;
     if (!s) return;
+
+    // L'écran d'accueil (Menu.mt reconstruit) : le mouvement vient du moteur,
+    // le dessin est d'ici — cf. dessinerMenu.
+    if (s.estMenu) { this.dessinerMenu(ctx, s); return; }
 
     // GameOver.mt : l'écran de fin — le clip `gameOver` du SWF plein cadre, et
     // la pomme (sym544, quinze images) qui joue sa grimace une fois.
@@ -409,6 +420,83 @@ class Client {
     ctx.globalAlpha = 1;
   }
 
+  /*
+   * L'écran d'accueil — le MOUVEMENT est celui de Menu.mt (rejoué par
+   * engine.Menu) ; les dessins d'époque (menuTitle, menuBubble, mcMenuSlot)
+   * n'ont survécu nulle part, alors le portage pose les siens : LES CERISES
+   * du jeu (sym544, son seul personnage) en guise de titre, des bulles
+   * vertes ombrées comme sp/Bubble les ordonne (ombre à +6 d'échelle, la
+   * dixième et les suivantes DEVANT le titre), et des cases crème au style de
+   * la console. Tout le reste — ressort du titre, sinusoïde, glissements,
+   * verrous à 50 % — vient du moteur.
+   */
+  dessinerMenu(ctx, s) {
+    const rond = (x, y, r, couleur) => {
+      ctx.fillStyle = couleur;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(0, r), 0, Math.PI * 2);
+      ctx.fill();
+    };
+    // Les ombres d'abord (profondeur 9 de la source), puis les bulles
+    // d'ARRIÈRE, le titre, et les bulles de DEVANT (dm.over à la dixième).
+    for (const b of s.bulles) rond(b.x + 2, b.y + 3, (b.echelle + 6) / 2, '#8fc45e');
+    const bulle = (b) => {
+      rond(b.x, b.y, b.echelle / 2, '#bfe98f');
+      rond(b.x - b.echelle * 0.15, b.y - b.echelle * 0.15, b.echelle / 6, '#e2f6c8');
+    };
+    for (const b of s.bulles) if (!b.devant) bulle(b);
+
+    const t = s.titre;
+    if (t.sc > 0.5) {
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.scale(t.sc / 100, t.sc / 100);
+      // Les cerises, centre visuel (7, -7.2) — cf. l'écran de fin.
+      poser(ctx, 'sym544', 1, -7, -8, 0.9, 0.9, 0, 1);
+      // Le nom, pendant l'INTRO seulement (titre au centre) : une fois les
+      // cases en place, il passerait sous la première — les cerises seules
+      // font l'écusson en haut.
+      if (s.etape < 2) {
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 26px "Trebuchet MS", sans-serif';
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = '#ffffff';
+        ctx.strokeText('MINI FEVER', 0, 52);
+        ctx.fillStyle = '#d94f2b';
+        ctx.fillText('MINI FEVER', 0, 52);
+      }
+      ctx.restore();
+    }
+    for (const b of s.bulles) if (b.devant) bulle(b);
+
+    // Les cases : glissantes (mList) et escamotées (dList, échelle ×0,7).
+    const carte = (c) => {
+      const k = c.echelle / 100;
+      if (k <= 0.01) return;
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.scale(k, k);
+      if (c.verrou) ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#f0e0a0';
+      ctx.strokeStyle = '#b48a4a';
+      ctx.lineWidth = 2;
+      const L = 150, H = 26, r = 8;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(-L / 2, -H / 2, L, H, r);
+      else ctx.rect(-L / 2, -H / 2, L, H);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = c.verrou ? '#8a713f' : '#6b4a1f';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 13px "Trebuchet MS", sans-serif';
+      ctx.fillText(String(c.nom).toUpperCase(), 0, 5);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    };
+    for (const c of s.dList) carte(c);
+    for (const c of s.mList) carte(c);
+  }
+
   dessinerBarre(ctx, c) {
     const b = manifeste && manifeste.sym547;
     if (!b) return;
@@ -498,8 +586,11 @@ class Client {
     ctx.textAlign = 'center';
     ctx.font = 'bold 15px "Trebuchet MS", sans-serif';
     if (s.etape === 1) {
-      ctx.fillStyle = s.derniere ? '#7ce04a' : '#ff5a5a';
-      ctx.fillText(s.derniere ? 'gagné !' : 'raté !', LARGEUR / 2, 24);
+      // s.verdict, pas s.derniere : apresFondu efface `derniere` sitôt le
+      // débriefing lancé (comme flWin dans initStep(1) des sources) — le lire
+      // ici affichait « raté ! » même sur une victoire.
+      ctx.fillStyle = s.verdict ? '#7ce04a' : '#ff5a5a';
+      ctx.fillText(s.verdict ? 'gagné !' : 'raté !', LARGEUR / 2, 24);
     } else if (vue) {
       ctx.fillStyle = '#f0e0a0';
       ctx.fillText(vue.nom, LARGEUR / 2, 24);

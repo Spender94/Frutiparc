@@ -178,8 +178,10 @@ test('le freestyle vit dans les records, pas dans le tableau des scores', async 
   // attend — au livre des records — même sans onglet au bureau.
   const c = await cuves();
   assert.ok(c.kaluga_freestyle, 'la cuve répond toujours à /api/club/records');
-  // La section L échappe à la remise à zéro quotidienne (et à ses médailles).
-  assert.match(src, /section === 'C' && r\.internal && r\.internal !== 'bkiwi_track5_classic'/,
+  // La section L échappe à la remise à zéro quotidienne (et à ses médailles) ;
+  // en section C, deux exclus explicites — le proxy bkiwi et Mini-Fever, le
+  // record permanent affiché sous Challenge.
+  assert.match(src, /section === 'C' && r\.internal\s*&& r\.internal !== 'bkiwi_track5_classic' && r\.internal !== 'minifever_arcade'/,
     'DAILY_RESET_RANKING_SET ne prend que la section C');
 });
 

@@ -191,13 +191,15 @@ test('le classement du light : un seul onglet Mini-Fever, la règle sur chaque l
   assert.equal(onglets.length, 1, 'un seul tableau pour tous les modes');
   assert.equal(onglets[0].id, 'minifever_arcade');
   assert.equal(onglets[0].name, 'Mini-Fever');
-  // Un RECORD permanent : section Championnat, jamais remis à zéro — la même
-  // place que sur le bureau (LEGACY_RANKINGS rk '15', section 'L').
-  assert.equal(onglets[0].section, 'L', 'en Championnat, comme les concours');
-  assert.equal(onglets[0].allTime, true, 'et jamais remis à zéro');
+  // Sous CHALLENGE avec les autres jeux — mais le tableau est un RECORD
+  // permanent : minifever_arcade est écarté de la remise à zéro quotidienne
+  // (DAILY_RESET_RANKING_SET, même exclusion que le proxy bkiwi).
+  assert.equal(onglets[0].section, 'C', 'sous Challenge, comme les autres jeux');
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  assert.match(src, /rk: '15', internal: 'minifever_arcade'[\s\S]{0,120}section: 'L'/,
-    'le bureau a son onglet (rk 15, section L) — vignette awards.swf et icône fileIcon comprises');
+  assert.match(src, /rk: '15', internal: 'minifever_arcade'[\s\S]{0,120}section: 'C'/,
+    'le bureau a son onglet (rk 15, section C) — vignette awards.swf et icône fileIcon comprises');
+  assert.match(src, /r\.internal !== 'minifever_arcade'/,
+    'mais son tableau échappe à la remise à zéro quotidienne : c\'est un record');
   const moi = onglets[0].scores.find((s) => s.isMe);
   assert.ok(moi, 'ma partie y figure');
   assert.equal(moi.score, 30 * 10 * 3);

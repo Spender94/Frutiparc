@@ -9,25 +9,29 @@
   le SWF de développement MONTRE quand on l'ouvre (il tourne sous Ruffle, et il
   a servi de référence image par image) :
 
-    · une page BLANCHE (l'embed d'époque : bgcolor #ffffff, 300×300) ;
-    · AUCUN menu, aucun écran-titre — la première épreuve démarre seule ;
-    · les épreuves s'enchaînent, la difficulté monte de dix par épreuve
-      (le mode « fever » : Manager.init() y saute directement) ;
-    · la barre de temps du SWF (mcTimerBar), à gauche, à 50 % d'alpha,
-      qui se vide par le bas ;
+    · la scène BLANCHE de l'embed d'époque (bgcolor #ffffff, 300×300), posée
+      sur le vert de la plateforme comme Mini-Wave et Minipixiz ;
+    · l'ÉCRAN D'ACCUEIL officiel des sources (Menu.mt, jamais compilé dans le
+      SWF de dev — lui sautait droit au fever) : le titre sur ressort, ses
+      bulles, puis les cases de mode qui glissent — fever, arcade et ses
+      paliers ; Time et Train, jamais compilés, restent verrouillés ;
+    · les épreuves s'enchaînent, la difficulté du fever monte de dix par
+      épreuve ; la barre de temps du SWF (mcTimerBar), à gauche, à 50 %
+      d'alpha, qui se vide par le bas ;
     · perdre une épreuve = l'écran gameOver du SWF ; un clic relance.
 
-  L'arcade des sources (base/Arcade.mt : on choisit son palier, les vies) reste
-  jouable — c'est elle qui classe et qui remplit l'album — mais elle se choisit
-  SOUS la scène, dans la page : la scène de 240 × 240 reste celle du Flash.
+  L'arcade des sources (base/Arcade.mt : on choisit son palier, les vies) est
+  celle qui classe et remplit l'album ; le bandeau sous la scène reste un
+  RACCOURCI vers chaque mode — la scène de 240 × 240 reste celle du Flash.
 
   ?sid= pour la persistance plateforme.
 -->
 <style>
-  /* La page de l'embed d'époque : blanche, le jeu au milieu, rien d'autre. */
+  /* La page : le VERT de la plateforme, comme Mini-Wave et Minipixiz — la
+     SCÈNE, elle, reste blanche (le bgcolor de l'embed d'époque). */
   html, body {
     margin: 0; padding: 0; height: 100%;
-    background: #ffffff;
+    background: #ADE76B;
     overflow: hidden;
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
@@ -54,12 +58,12 @@
     font-size: 11px; color: #999; line-height: 2;
   }
   #modes a {
-    color: #777; text-decoration: none; margin: 0 7px;
+    color: #4b7a26; text-decoration: none; margin: 0 7px;
     padding: 2px 6px; border-radius: 3px; cursor: pointer;
   }
-  #modes a.actif { background: #eee; color: #333; }
-  #etat { color: #bbb; }
-  #bareme { color: #ccc; font-size: 10px; line-height: 1.5; margin-top: 2px; }
+  #modes a.actif { background: #7cbf3a; color: #fff; }
+  #etat { color: #3f6620; }
+  #bareme { color: #5d8f33; font-size: 10px; line-height: 1.5; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -92,15 +96,16 @@ const sid = params.get('sid') || '';
 const canvas = $('stage');
 let client = null;
 let socle = null;
-let modeChoisi = 'fever';           // le SWF s'ouvre sur fever : lui aussi
+let modeChoisi = 'menu';            // l'écran d'accueil officiel, d'abord
 let enCours = null;                 // la clef de l'épreuve à l'écran
 const gagnees = new Set();          // celles remportées dans la partie : les pictos
 
 /*
- * Les modes, sous la scène. « fever » est celui du SWF — il démarre seul,
- * comme l'original. Les paliers d'arcade viennent de base/Arcade.mt.
+ * Les modes, sous la scène — un raccourci : le VRAI choix se fait sur l'écran
+ * d'accueil (Menu.mt reconstruit — le SWF de dev, lui, sautait droit au mode
+ * fever, menu jamais compilé). Les paliers d'arcade viennent de base/Arcade.mt.
  */
-const MODES = [{ id: 'fever', nom: 'fever' }]
+const MODES = [{ id: 'menu', nom: 'menu' }, { id: 'fever', nom: 'fever' }]
   .concat(E.PALIERS.filter((p) => p.nom).map((p, i) => ({ id: 'arcade' + i, nom: p.nom, palier: i })));
 
 function construireModes() {
@@ -138,6 +143,14 @@ function jouer() {
   gagnees.clear();
   enCours = null;
   const m = MODES.find((x) => x.id === modeChoisi) || MODES[0];
+  if (m.id === 'menu') {
+    // L'écran d'accueil : pas une partie — le voyant reste éteint.
+    socle = client.nouvellePartie(E.Menu, JEUX);
+    client.demarrer();
+    direEnPartie(false);
+    majEtat();
+    return;
+  }
   socle = client.nouvellePartie(
     m.id === 'fever' ? E.Fever : E.Arcade,
     JEUX,
@@ -150,6 +163,7 @@ function jouer() {
 function majEtat(texte) {
   if (texte !== undefined) { $('etat').textContent = texte; return; }
   if (!socle) { $('etat').textContent = ''; return; }
+  if (modeChoisi === 'menu') { $('etat').textContent = 'choisis ton mode'; return; }
   if (modeChoisi === 'fever') {
     $('etat').textContent = 'épreuve ' + Math.max(1, socle.niveau);
   } else {
@@ -197,6 +211,13 @@ C.charger('/minifever/sprites/', (c) => {
   client = new C.Client({
     canvas,
     surEvenement: (nom, d) => {
+      // L'écran d'accueil a tranché : le mode part.
+      if (nom === 'mode') {
+        modeChoisi = d.mode === 'fever' ? 'fever' : 'arcade' + d.palier;
+        construireModes();
+        jouer();
+        return;
+      }
       if (nom === 'jeu') enCours = d.cle;
       else if (nom === 'resultat' && d.gagne && enCours) gagnees.add(enCours);
       if (nom === 'finPartie') {

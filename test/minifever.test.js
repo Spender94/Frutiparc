@@ -223,12 +223,21 @@ test('entre deux épreuves, la console tient l\'antenne (Arcade.initStep)', () =
   assert.equal(a.jeu, null, 'plus d\'épreuve à l\'écran');
   assert.equal(a.etape, 1, 'débriefing');
   assert.equal(a.vies, 6, 'la vie est décomptée là, pas avant');
+  // Le VERDICT AFFICHABLE : `derniere` est déjà consommé (comme flWin dans
+  // initStep(1) des sources), c'est `verdict` que la console lit — le lire
+  // sur `derniere` écrivait « raté ! » même sur une victoire.
+  assert.equal(a.derniere, null, 'flWin est consommé sitôt le débriefing ouvert');
+  assert.equal(a.verdict, false, 'mais sa trace reste : épreuve perdue');
   for (let i = 0; i < 45 && a.etape === 1; i++) a.update(1);
   assert.equal(a.etape, 2, 'puis le tirage');
   for (let i = 0; i < 200 && a.etape === 2; i++) a.update(1);
   assert.equal(a.etape, 3, 'puis le briefing');
   for (let i = 0; i < 60 && !a.jeu; i++) a.update(1);
   assert.ok(a.jeu, 'et l\'épreuve suivante reprend');
+  // La deuxième épreuve est GAGNÉE : au débriefing suivant, la trace dit vrai.
+  for (let i = 0; i < 300 && !(a.jouees === 2 && a.etape === 1); i++) a.update(1);
+  assert.equal(a.etape, 1);
+  assert.equal(a.verdict, true, '« gagné ! » sur une victoire, enfin');
 });
 
 // ── LES ÉPREUVES ──
@@ -1329,4 +1338,110 @@ test('les dessins de la grenouille sont extraits, pupille détachée comprise', 
   const pupilles = new Set();
   for (const e of p.etats) for (const pc of e.pieces) pupilles.add(pc.fichier);
   for (const f of pupilles) assert.ok(!fichiers.has(f), f + ' ne reste que dans la pupille');
+});
+
+test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte Flash', () => {
+  const b = banc(J.Tubulo, { dif: 0 });
+  const j = b.jeu;
+  const slot = j.grille[1][1];
+  // La boîte Flash d'une capsule couvre son TUBE, qui monte derrière le hublot
+  // de la case du dessus — et la dernière posée gagne : un appui posé SUR le
+  // tube (l'ancre de la case) déclenche la case du DESSOUS avec la règle du
+  // lecteur. À la souris, le survol teinte la croix et guide la main ; au
+  // doigt il n'y a rien — on choisit donc la case au HUBLOT le plus proche.
+  // La grille est ISOMÉTRIQUE (+x = (+20,+16), +y = (−20,+16)) : la case
+  // visuellement « en dessous » de (1,1) est (2,2), trente-deux pixels plus
+  // bas au même x.
+  const surTube = { x: slot.x, y: slot.y };            // l'ancre : le tube
+  assert.equal(j.sousLePoint(surTube.x, surTube.y), j.grille[2][2],
+    'règle du lecteur : le tube appartient à la fenêtre du dessous');
+  assert.equal(j.caseVisible(surTube.x, surTube.y), j.grille[2][2],
+    'et le hublot le plus proche de ce point est AUSSI celui du dessous — cohérent');
+  // Le HUBLOT visible de (1,1) : le centre de la fenêtre sym210 (~ y - 24).
+  const bo = b.socle.mesures.sym210.boite;
+  const k = j.taille / 100;
+  const hublot = { x: slot.x + (bo.x0 + bo.x1) / 2 * k, y: slot.y + (bo.y0 + bo.y1) / 2 * k };
+  assert.equal(j.caseVisible(hublot.x, hublot.y), slot, 'le doigt sur le hublot prend SA case');
+
+  // Le clic au DOIGT passe par caseVisible : l'appui sur le hublot de (1,1)
+  // plonge SA croix — la grille bouge autour d'elle.
+  b.socle.flTactile = true;
+  b.souris(hublot.x, hublot.y);
+  b.socle.click();
+  assert.equal(j.etape, 2, 'la croix plonge');
+  assert.ok(j.plongeurs.includes(slot), 'et c\'est bien la case visée qui mène la croix');
+  // À la SOURIS, la règle du lecteur reste inchangée (fidélité au SWF).
+  assert.equal(b.socle.flTactile, true);
+});
+
+// ── L'ÉCRAN D'ACCUEIL (Menu.mt reconstruit) ──
+
+test('le menu : titre sur ressort, sinusoïde, cases qui glissent — Menu.mt rejoué', () => {
+  const m = new E.Menu({ mesures: MESURES, rng: dé(5) });
+  m.demarrer();
+  assert.equal(m.etape, 0);
+  assert.equal(m.bulles.length, 20, 'vingt bulles autour du titre');
+  assert.equal(m.bulles.filter((b) => b.devant).length, 10,
+    'la dixième et les suivantes passent DEVANT le titre (dm.over)');
+  // Le ressort du titre converge vers 100 (vs ±6, amorti 0,8).
+  for (let i = 0; i < 400 && m.etape === 0; i++) m.update(1);
+  assert.equal(m.etape, 1, 'le titre est posé');
+  assert.ok(Math.abs(m.titre.sc - 100) < 2);
+  // La sinusoïde : decal file à 471, le titre finit en haut (y = 40).
+  for (let i = 0; i < 200 && m.etape === 1; i++) m.update(1);
+  assert.equal(m.etape, 2);
+  assert.ok(Math.abs(m.titre.y - 40) < 1, 'le titre finit tout en haut');
+  // Les cinq cases de Menu.select : arcade, fever, time, train, secret —
+  // Time et Train jamais compilés, au style verrouillé.
+  assert.deepEqual(m.mList.map((c) => c.nom), ['arcade', 'fever', 'time', 'train', 'secret']);
+  assert.deepEqual(m.mList.map((c) => c.verrou), [false, false, true, true, false]);
+  // Elles partent des deux bords (±200) et glissent vers le centre.
+  for (let i = 0; i < 60; i++) m.update(1);
+  for (const c of m.mList) assert.ok(Math.abs(c.x - E.LARGEUR / 2) < 2, 'chaque case rejoint la colonne');
+});
+
+test('le menu : fever part, arcade ouvre ses paliers (le cinquième verrouillé)', () => {
+  const lance = [];
+  const m = new E.Menu({ mesures: MESURES, rng: dé(5), surEvenement: (n, d) => { if (n === 'mode') lance.push(d); } });
+  m.demarrer();
+  for (let i = 0; i < 700 && m.etape !== 2; i++) m.update(1);
+  for (let i = 0; i < 60; i++) m.update(1);
+  // Un appui sur ARCADE : le sous-menu des cinq paliers de DIF_INFO.
+  const arcade = m.mList.find((c) => c.nom === 'arcade');
+  m.souris.x = arcade.x; m.souris.y = arcade.y;
+  m.click(); m.relache();
+  assert.equal(m.mList.length, E.PALIERS.length, 'les cinq paliers');
+  assert.equal(m.mList.filter((c) => c.verrou).length, 1, 'le cinquième, sans nom, est verrouillé');
+  assert.equal(m.mList[4].verrou, true);
+  // Un appui sur un palier : les cases s'escamotent (×0,7 par image), le titre
+  // file en -100, et le mode part avec SON palier.
+  for (let i = 0; i < 60; i++) m.update(1);
+  const normal = m.mList.find((c) => c.nom === E.PALIERS[1].nom);
+  m.souris.x = normal.x; m.souris.y = normal.y;
+  m.click(); m.relache();
+  assert.equal(m.mList.length, 0, 'la sélection vide la colonne');
+  for (let i = 0; i < 400 && !lance.length; i++) m.update(1);
+  assert.deepEqual(lance, [{ mode: 'arcade', palier: 1 }], 'l\'arcade part au palier choisi');
+  assert.ok(m.titre.y < -90, 'le titre a filé par le haut');
+});
+
+test('le menu : une case verrouillée ne répond pas, secret remélange', () => {
+  const lance = [];
+  const m = new E.Menu({ mesures: MESURES, rng: dé(5), surEvenement: (n, d) => { if (n === 'mode') lance.push(d); } });
+  m.demarrer();
+  for (let i = 0; i < 700 && m.etape !== 2; i++) m.update(1);
+  for (let i = 0; i < 60; i++) m.update(1);
+  const time = m.mList.find((c) => c.nom === 'time');
+  m.souris.x = time.x; m.souris.y = time.y;
+  m.click(); m.relache();
+  assert.equal(m.mList.length, 5, 'Time est verrouillé : rien ne bouge');
+  assert.equal(lance.length, 0);
+  // SECRET, lui, répond — et ne fait que reconstruire le menu (la source :
+  // select() repasse par initStep(2) sans rien choisir).
+  const secret = m.mList.find((c) => c.nom === 'secret');
+  m.souris.x = secret.x; m.souris.y = secret.y;
+  m.click(); m.relache();
+  assert.equal(m.mList.length, 5, 'le menu se reconstruit');
+  assert.ok(m.dList.length > 0, 'les anciennes cases s\'escamotent');
+  assert.equal(lance.length, 0, 'et rien ne part');
 });

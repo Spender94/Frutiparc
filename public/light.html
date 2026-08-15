@@ -838,7 +838,7 @@
   #minifever-panel { padding: 0; }
   #minifever-frame {
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
-    border: 0; display: block; background: #101830;
+    border: 0; display: block; background: #ADE76B;
   }
 
   /* ── Scores du jour (Challenge) ──
@@ -1564,6 +1564,10 @@
       <button class="home-tile" data-go="inventaire"><span class="ico"><img src="/fb/inventaire.png" alt="" onerror="this.replaceWith(document.createTextNode('🎒'))"></span><span class="lbl">Inventaire</span></button>
       <button class="home-tile" data-go="forum"><span class="ico"><img src="/fb/icone_forum.png" alt="" onerror="this.replaceWith(document.createTextNode('📋'))"></span><span class="lbl">Forum</span></button>
       <button class="home-tile" data-go="trombi"><span class="ico"><img src="/fb/icone_bouilloscope.png" alt="" onerror="this.replaceWith(document.createTextNode('👥'))"></span><span class="lbl">Bouilloscope</span></button>
+      <!-- Le CLUB : le livre des records (dont les deux Concours, sortis du
+           tableau des scores pour ne pas l'alourdir). La page /club/ est déjà
+           taillée pour le mobile — on l'ouvre telle quelle. -->
+      <button class="home-tile" data-go="club"><span class="ico"><img src="/fb/score_coupe.png" alt="" onerror="this.replaceWith(document.createTextNode('🏆'))"></span><span class="lbl">Club</span></button>
     </div>
   </section>
 
@@ -1578,67 +1582,10 @@
       <div id="bouille-overlay-name"></div>
     </div>
 
-    <!-- La FICHE d'un frutiz (winFrutizInfo du bureau). Ouverte en touchant un
-         pseudo — dans un salon, la liste des connectés ou le trombinoscope. -->
-    <div id="fiche-backdrop">
-      <div id="fiche" class="deploye" role="dialog" aria-modal="true" aria-label="Fiche du frutiz">
-        <div class="fiche-haut">
-          <!-- La plaque verte : la bouille et l'écran de niveau dans un seul
-               encart, avec les dessins de la mainbar (cadre, reflets, NIV). -->
-          <div class="fiche-plaque">
-            <img class="reflet-niv" src="/fb/reflet_niveau.svg" alt="">
-            <div class="fa-frame">
-              <div class="stage" id="fiche-avatar"></div>
-            </div>
-            <div class="fa-jauge">
-              <div class="fa-progress" id="fiche-barres"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="fa-niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
-            </div>
-            <!-- Le cadre et le reflet de la mainbar, posés sur la PLAQUE : le
-                 cadre en fait toute la largeur, le reflet se pose dans le coin
-                 haut-droit. Ils viennent après le contenu, mais leur étage est
-                 fixé par le z-index — le cadre derrière, le reflet devant. -->
-            <img class="cadre" src="/fb/cadre_bouille.svg" alt="">
-            <img class="reflet" src="/fb/reflet_bouille.svg" alt="">
-          </div>
-          <!-- À droite de la plaque, DEUX lignes : l'identité (voyant, pseudo,
-               âge et département, la croix) puis la rangée d'actions avec, au
-               bout, le bouton rose. -->
-          <div class="fiche-droite">
-            <div class="fiche-nom-ligne">
-              <img class="statut" id="fiche-statut" src="/fb/fiche/statut_absent.png" alt=""><b id="fiche-pseudo">…</b>
-              <span class="meta" id="fiche-meta"></span>
-              <button type="button" id="fiche-fermer" aria-label="Fermer"><img src="/fb/fiche/croix_fermer.png" alt="Fermer"></button>
-            </div>
-            <!-- La rangée du bureau (box.Frutiz.getIconList), avec les VRAIS
-                 glyphes de main.swf — la feuille `icon` de butPushSmallWhite.
-                 On n'y met que les gestes QUI MARCHENT sur mobile : trois
-                 boutons éteints (Bouilloscope, contacts, liste noire) ne
-                 servaient qu'à prendre la place. Kick, ban et totoché ne se
-                 montrent qu'au staff qui peut s'en servir. Au bout, le bouton
-                 ROSE (butPushSmallPink + son triangle) : au bureau il ouvre la
-                 partie détaillée, ici il déplie la fiche. -->
-            <div class="fiche-actions">
-              <button type="button" id="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
-              <button type="button" id="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
-              <button type="button" id="fiche-kick" class="modo" title="Éjecter du salon" hidden><img src="/fb/fiche/ico_kick.png" alt=""></button>
-              <button type="button" id="fiche-ban" class="modo" title="Bannir" hidden><img src="/fb/fiche/ico_ban.png" alt=""></button>
-              <button type="button" id="fiche-totoche" class="modo" title="Totocher (rendre muet)" hidden><img src="/fb/fiche/ico_totoche.png" alt=""></button>
-              <button type="button" id="fiche-avance" title="Afficher ou masquer le détail" aria-expanded="true"><img src="/fb/fiche/ico_avance.png" alt=""></button>
-            </div>
-          </div>
-        </div>
-        <div class="fiche-corps">
-          <div class="fiche-onglets" id="fiche-onglets">
-            <button type="button" data-onglet="frutiz" class="actif">Frutiz</button>
-            <button type="button" data-onglet="perso">Perso</button>
-            <button type="button" data-onglet="scores">Scores</button>
-            <button type="button" data-onglet="bonus">Bonus</button>
-          </div>
-          <div class="fiche-page" id="fiche-page"></div>
-        </div>
-      </div>
-    </div>
+    <!-- (La fiche d'un frutiz vivait ici, DANS le panneau du chat : ouverte
+         depuis le tableau des scores ou le trombinoscope, elle restait cachée
+         avec lui — display:none des panneaux inactifs. Elle vit désormais au
+         niveau racine, par-dessus n'importe quel panneau.) -->
 
     <!-- Feutre (pen) swatch picker, toggled by the feutres icon in the header -->
     <div id="pen-bar"></div>
@@ -1857,6 +1804,68 @@
   <!-- Mes disques (bottom sheet) — même habillage que l'inventaire d'accessoires,
        mais à la place des bouilles on présente les FrusionDisc des jeux jouables
        (Frutibandas, Grapiz, Swapou). Un clic sur un disque lance le jeu associé. -->
+    <!-- La FICHE d'un frutiz (winFrutizInfo du bureau). Ouverte en touchant un
+         pseudo — dans un salon, la liste des connectés ou le trombinoscope. -->
+    <div id="fiche-backdrop">
+      <div id="fiche" class="deploye" role="dialog" aria-modal="true" aria-label="Fiche du frutiz">
+        <div class="fiche-haut">
+          <!-- La plaque verte : la bouille et l'écran de niveau dans un seul
+               encart, avec les dessins de la mainbar (cadre, reflets, NIV). -->
+          <div class="fiche-plaque">
+            <img class="reflet-niv" src="/fb/reflet_niveau.svg" alt="">
+            <div class="fa-frame">
+              <div class="stage" id="fiche-avatar"></div>
+            </div>
+            <div class="fa-jauge">
+              <div class="fa-progress" id="fiche-barres"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="fa-niv"><img src="/fb/Niveau.svg" alt="NIV"><b id="fiche-niveau">1</b></div>
+            </div>
+            <!-- Le cadre et le reflet de la mainbar, posés sur la PLAQUE : le
+                 cadre en fait toute la largeur, le reflet se pose dans le coin
+                 haut-droit. Ils viennent après le contenu, mais leur étage est
+                 fixé par le z-index — le cadre derrière, le reflet devant. -->
+            <img class="cadre" src="/fb/cadre_bouille.svg" alt="">
+            <img class="reflet" src="/fb/reflet_bouille.svg" alt="">
+          </div>
+          <!-- À droite de la plaque, DEUX lignes : l'identité (voyant, pseudo,
+               âge et département, la croix) puis la rangée d'actions avec, au
+               bout, le bouton rose. -->
+          <div class="fiche-droite">
+            <div class="fiche-nom-ligne">
+              <img class="statut" id="fiche-statut" src="/fb/fiche/statut_absent.png" alt=""><b id="fiche-pseudo">…</b>
+              <span class="meta" id="fiche-meta"></span>
+              <button type="button" id="fiche-fermer" aria-label="Fermer"><img src="/fb/fiche/croix_fermer.png" alt="Fermer"></button>
+            </div>
+            <!-- La rangée du bureau (box.Frutiz.getIconList), avec les VRAIS
+                 glyphes de main.swf — la feuille `icon` de butPushSmallWhite.
+                 On n'y met que les gestes QUI MARCHENT sur mobile : trois
+                 boutons éteints (Bouilloscope, contacts, liste noire) ne
+                 servaient qu'à prendre la place. Kick, ban et totoché ne se
+                 montrent qu'au staff qui peut s'en servir. Au bout, le bouton
+                 ROSE (butPushSmallPink + son triangle) : au bureau il ouvre la
+                 partie détaillée, ici il déplie la fiche. -->
+            <div class="fiche-actions">
+              <button type="button" id="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
+              <button type="button" id="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
+              <button type="button" id="fiche-kick" class="modo" title="Éjecter du salon" hidden><img src="/fb/fiche/ico_kick.png" alt=""></button>
+              <button type="button" id="fiche-ban" class="modo" title="Bannir" hidden><img src="/fb/fiche/ico_ban.png" alt=""></button>
+              <button type="button" id="fiche-totoche" class="modo" title="Totocher (rendre muet)" hidden><img src="/fb/fiche/ico_totoche.png" alt=""></button>
+              <button type="button" id="fiche-avance" title="Afficher ou masquer le détail" aria-expanded="true"><img src="/fb/fiche/ico_avance.png" alt=""></button>
+            </div>
+          </div>
+        </div>
+        <div class="fiche-corps">
+          <div class="fiche-onglets" id="fiche-onglets">
+            <button type="button" data-onglet="frutiz" class="actif">Frutiz</button>
+            <button type="button" data-onglet="perso">Perso</button>
+            <button type="button" data-onglet="scores">Scores</button>
+            <button type="button" data-onglet="bonus">Bonus</button>
+          </div>
+          <div class="fiche-page" id="fiche-page"></div>
+        </div>
+      </div>
+    </div>
+
   <div id="disques-sheet-backdrop" class="sheet-backdrop"></div>
   <div id="disques-sheet" class="sheet">
     <div class="sheet-head">
@@ -2534,6 +2543,7 @@
       if (go === "mail" || go === "evenements" || go === "historique") return activateTab(go);
       if (go === "disques") return openDisquesSheet();
       if (go === "inventaire") return openBouilleSheet();
+      if (go === "club") return window.open("/club/", "_blank");
       activateTab(go); // chat / forum / scores
     });
   });

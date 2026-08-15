@@ -85,12 +85,14 @@ test('le classement existe, permanent et ouvert au tournoi', async () => {
   assert.equal(r.game, 'swapou2');
   assert.equal(r.lowerIsBetter, false, 'le PLUS de coups gagne');
 
+  // PLUS d'onglet au tableau des scores (il l'encombrait) : le concours se
+  // consulte au livre des records du Club, qui itère RANKINGS.
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  const ligne = /\{ rk: '11', internal: 'swapou2_contest',[^}]*\}/.exec(src);
-  assert.ok(ligne, 'descripteur d\'onglet présent');
-  assert.ok(/rn: 'Swapou Contest'/.test(ligne[0]), 'libellé de l\'onglet');
-  assert.ok(/section: 'L'/.test(ligne[0]),
-    'section L : en section C le classement serait balayé chaque nuit avec les challenges');
+  assert.ok(!/\{ rk: '11', internal: 'swapou2_contest'/.test(src),
+    'le descripteur d\'onglet a été retiré');
+  const records = await (await fetch(BASE + '/api/club/records?limit=5')).json();
+  const livre = (records.rankings || []).find((r2) => r2.id === 'swapou2_contest');
+  assert.ok(livre, 'le livre des records du Club le garde');
 
   const tournois = await (await fetch(BASE + '/api/admin/tournament-games?key=' + CLE)).json();
   assert.ok(tournois.some((g) => g.ranking_id === 'swapou2_contest'),
@@ -193,18 +195,19 @@ test('le compte des coups : Challenge classé, Classique ignoré', () => {
   assert.deepEqual(envois, [5, 2], 'aucun envoi à vide');
 });
 
-test('le concours apparaît aussi côté mobile', async () => {
+test('côté mobile : plus d\'onglet au tableau, le Club garde le record', async () => {
   const sid = await sidFor(joueur('swmobile'));
   await envoyer(sid, 44);
   const j = await (await fetch(`${BASE}/api/light/challenge?sid=${encodeURIComponent(sid)}`)).json();
-  const onglet = (j.games || []).find((g) => g.id === 'swapou2_contest');
-  assert.ok(onglet, 'onglet Swapou Contest présent dans le client mobile');
-  assert.equal(onglet.name, 'Swapou Contest');
-  assert.equal(onglet.allTime, true, 'affiché comme un classement permanent');
-  const moi = onglet.scores.find((s) => s.user.toLowerCase() === joueur('swmobile'));
-  assert.ok(moi, 'le joueur y figure');
-  assert.equal(moi.label, '44 coups');
-  // Et le concours Frutisnake est toujours là, à côté.
-  assert.ok((j.games || []).some((g) => g.id === 'snake3_contest'),
-    'les deux concours cohabitent');
+  assert.ok(!(j.games || []).some((g) => g.id === 'swapou2_contest'),
+    'plus d\'onglet Swapou Contest au tableau des scores');
+  assert.ok(!(j.games || []).some((g) => g.id === 'snake3_contest'),
+    'ni Frutisnake Contest : les deux sont sortis ensemble');
+  // Le record vit au livre du Club — la tuile « Club » du light ouvre /club/.
+  const records = await (await fetch(BASE + '/api/club/records?limit=20')).json();
+  const livre = (records.rankings || []).find((r2) => r2.id === 'swapou2_contest');
+  assert.ok(livre, 'le livre des records le sert');
+  const moi = (livre.scores || []).find((s) => s.user.toLowerCase() === joueur('swmobile'));
+  assert.ok(moi, 'et le joueur y figure');
+  assert.equal(moi.score, 44);
 });

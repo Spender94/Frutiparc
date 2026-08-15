@@ -87,17 +87,19 @@ test('la liste des classements est celle du bureau : ordre, libellés, sections'
   assert.deepEqual(challenge, [
     'Burning kiwi', 'Frutisnake 2', 'Motion Ball 2', 'Swapou 2', 'Kaluga',
     'Frutibandas', 'Grapiz', 'MiniPixiz', 'MiniWave',
-  ], 'la section Challenge : exactement celle du bureau');
+    // Mini-Fever ferme la marche, sous Challenge comme les autres jeux — mais
+    // son tableau unique est un RECORD permanent, écarté de la remise à zéro
+    // quotidienne (DAILY_RESET_RANKING_SET) : jamais de podium de la veille.
+    'Mini-Fever',
+  ], 'la section Challenge : celle du bureau, Mini-Fever compris');
 
   const championnat = (d.games || []).filter((g) => g.section === 'L').map((g) => g.name);
   assert.deepEqual(championnat, [
-    'Class. kikooz', 'Frutisnake Contest', 'Swapou Contest',
-    // Mini-Fever est un RECORD permanent (un seul tableau, jamais remis à
-    // zéro) : il vit en Championnat, à la suite des concours — au bureau
-    // (LEGACY_RANKINGS rk '15', section 'L') comme ici.
-    'Mini-Fever',
-    'Classement XP', 'Class. consécration',
-  ], 'la section Championnat, XP et consécration comprises');
+    // Les deux Concours n'ont PLUS d'onglet : ils encombraient le tableau pour
+    // deux records qui bougent peu — ils se consultent au livre des records du
+    // Club (/api/club/records), où RANKINGS les garde.
+    'Class. kikooz', 'Classement XP', 'Class. consécration',
+  ], 'la section Championnat, XP et consécration comprises — sans les Concours');
 
   // Les libellés viennent bien du descriptif du bureau, pas d'une table à part.
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');

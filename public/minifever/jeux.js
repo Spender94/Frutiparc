@@ -1444,6 +1444,34 @@ class Tubulo extends Jeu {
     return null;
   }
 
+  /*
+   * AU DOIGT, la règle Flash trahit l'œil : la boîte d'une capsule couvre son
+   * tube, qui monte DERRIÈRE le hublot de la case du dessus — et la dernière
+   * posée gagne (sousLePoint). À la souris, le survol teinte la croix et
+   * guide la main ; au tactile il n'y a pas de survol, on tape ce qu'on VOIT
+   * — et on déclenche la case du dessous. On choisit donc la case dont le
+   * HUBLOT visible (le centre de la fenêtre sym210) est le plus proche du
+   * doigt, dans un rayon d'une case. La souris garde la règle du lecteur.
+   */
+  caseVisible(px, py) {
+    const b = (this.socle && this.socle.mesures && this.socle.mesures.sym210)
+      ? this.socle.mesures.sym210.boite : { x0: -8, y0: -50, x1: 8, y1: 50 };
+    const k = this.taille / 100;
+    const cx = (b.x0 + b.x1) / 2 * k;
+    const cy = (b.y0 + b.y1) / 2 * k;
+    let mieux = null, meilleure = this.taille * this.taille;   // rayon : une case
+    for (let x = 0; x < this.xMax; x++) {
+      for (let y = 0; y < this.yMax; y++) {
+        const slot = this.grille[x][y];
+        const dx = px - (slot.x + cx);
+        const dy = py - (slot.y + cy);
+        const d = dx * dx + dy * dy;
+        if (d < meilleure) { meilleure = d; mieux = slot; }
+      }
+    }
+    return mieux;
+  }
+
   update() {
     // Le survol : la case sous le curseur teinte sa croix (rollOver 70,
     // rollOut 100).
@@ -1483,8 +1511,12 @@ class Tubulo extends Jeu {
     if (this.etape !== 1) return;
     // La case se cherche AU POINT D'APPUI, pas dans le survol de l'image
     // d'avant : au doigt, l'appui arrive sans survol préalable — s'y fier
-    // rendait le jeu muet au tactile.
-    const prise = this.sousLePoint(this.sourisX, this.sourisY);
+    // rendait le jeu muet au tactile. Et au DOIGT, c'est la case VISIBLE la
+    // plus proche qui compte (caseVisible) : la boîte Flash sélectionnait la
+    // case du dessous, injouable sans le guide du survol.
+    const prise = (this.socle && this.socle.flTactile)
+      ? this.caseVisible(this.sourisX, this.sourisY)
+      : this.sousLePoint(this.sourisX, this.sourisY);
     if (!prise) return;
     let sx = -1, sy = -1;
     for (let x = 0; x < this.xMax; x++) {

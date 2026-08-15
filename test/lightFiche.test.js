@@ -352,6 +352,17 @@ test('l\'écran mobile porte la fenêtre, les onglets et les gestes', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   // La fenêtre et ses quatre onglets.
   assert.match(html, /id="fiche-backdrop"/, 'la surcouche');
+  // Elle vit AU NIVEAU RACINE, pas dans le panneau du chat : les panneaux
+  // inactifs sont en display:none, et une fiche ouverte depuis le tableau des
+  // scores ou le trombinoscope restait invisible tant qu'on ne revenait pas
+  // sur un salon.
+  {
+    const chat = html.indexOf('id="chat-panel"');
+    const finChat = html.indexOf('</section>', chat);
+    assert.ok(chat > 0 && finChat > chat, 'le panneau du chat se découpe');
+    assert.ok(!html.slice(chat, finChat).includes('fiche-backdrop'),
+      'la fiche n\'est plus prisonnière du panneau du chat');
+  }
   for (const o of ['frutiz', 'perso', 'scores', 'bonus']) {
     assert.match(html, new RegExp('data-onglet="' + o + '"'), 'l\'onglet ' + o);
   }

@@ -361,6 +361,7 @@ class Socle {
     this.dif = 0;
     this.jeu = null;
     this.flPresse = false;
+    this.flTactile = false;        // le dernier appui venait-il d'un doigt ?
     this.flTimer = false;
     this.timer = 0;
     this.timerMax = 1;
@@ -478,6 +479,9 @@ class Arcade extends Socle {
     this.toss = 0;
     this.gagnee = false;           // le palier est allé à son terme
     this.derniere = null;          // le verdict de l'épreuve qu'on vient de jouer
+    this.verdict = null;           // …et sa TRACE pour le débriefing (l'original
+                                   // déclenche l'anim « turn » dans initStep(1),
+                                   // puis efface flWin : le visible se fige là)
   }
 
   get info() { return PALIERS[Math.min(this.palier, PALIERS.length - 1)]; }
@@ -508,6 +512,7 @@ class Arcade extends Socle {
     switch (n) {
       case 1:                       // DÉBRIEFING : le verdict s'affiche
         this.flTimer = false;
+        this.verdict = !!this.derniere;
         if (this.derniere) this.monter(); else this.vies--;
         this.minuteur = T_DEBRIEF;
         break;
@@ -630,7 +635,246 @@ class Fever extends Socle {
   }
 }
 
-const API = { Mc, Scene, Sprite, Phys, Part, Jeu, Socle, Arcade, Fever, Temps,
+/*
+ * Menu.mt — l'écran d'accueil OFFICIEL, reconstruit depuis sa source.
+ *
+ * Le SWF de développement ne l'a JAMAIS compilé (Manager.init() saute droit au
+ * mode Fever, et ses dessins — menuTitle, menuBubble, mcMenuSlot — n'ont
+ * survécu nulle part : ni dans le SWF, ni en gfx). Le MOUVEMENT, lui, est
+ * écrit noir sur blanc dans Menu.mt et sp/Bubble.mt ; on le rejoue ligne à
+ * ligne, et le client pose dessus une typographie du portage (assumée) :
+ *
+ *   étape 0  le TITRE jaillit au centre sur un ressort (vs ±6, amorti 0,8),
+ *            vingt BULLES l'entourent — orbites (rayon 5-15, phase vd),
+ *            ressort 0,1 borné à ±0,75, friction 0,95, collisions deux à
+ *            deux, ombre à +6 d'échelle ; la dixième bulle passe DEVANT le
+ *            titre (dm.over), les neuf premières restent derrière ;
+ *   étape 1  le titre PLONGE en sinusoïde (decal 0 → 471, y = 40+(1+sin)·80)
+ *            et finit tout en haut ;
+ *   étape 2  les CASES du menu glissent des deux bords (±200, rejointes à
+ *            0,2 par temps) : Arcade, Fever, Time, Train, Secret — l'ordre de
+ *            Menu.select(). Arcade ouvre le sous-menu des CINQ paliers (le
+ *            cinquième verrouillé : alpha 50, sans appui — le style que la
+ *            source réserve aux paliers non débloqués). Une sélection
+ *            escamote les cases (échelle ×0,7 par image, SANS tmod — comme
+ *            gravé), le titre file en -100, et le mode part.
+ *
+ * Écarts assumés du portage : Time (baseChrono) et Train (baseTrain) n'ont
+ *   jamais été compilés — leurs cases s'affichent au style verrouillé.
+ *   Secret (case 5) reste appuyable et ne fait que remélanger le menu,
+ *   exactement comme dans la source (le switch ne lui donne rien, mais
+ *   select() repasse toujours par initStep(2)).
+ */
+class Menu extends Socle {
+  constructor(o) {
+    super(o);
+    this.estMenu = true;
+    this.etape = 0;
+    this.menuId = 0;
+    this.decal = 0;
+    this.baseName = null;
+    this.choixPalier = null;       // infoList de la source
+    this.titre = { x: LARGEUR * 0.5, y: HAUTEUR * 0.5, sc: 0, vs: 0 };
+    this.bulles = [];
+    this.mList = [];
+    this.dList = [];
+  }
+
+  demarrer() { this.initEtape(0); }
+
+  initEtape(n) {
+    this.etape = n;
+    switch (n) {
+      case 0:
+        this.bulles = [];
+        for (let i = 0; i < 20; i++) {
+          const b = {
+            tx: (this.rng() - 0.5) * LARGEUR,
+            ty: (this.rng() - 0.5) * 40,
+            sc: 10 + this.hasard(20),
+            x: this.titre.x, y: this.titre.y,
+            vx: (this.rng() * 2 - 1) * 10,
+            vy: (this.rng() * 2 - 1) * 10,
+            vs: 0, echelle: 1,
+            vr: -this.rng() * 20, rot: 0,
+            vd: 10 + this.rng() * 20,
+            dec: this.rng() * 628,
+            ray: 5 + this.rng() * 10,
+            devant: i >= 10,       // dm.over(title) à la dixième : elle et les
+          };                       // suivantes passent DEVANT le titre
+          this.bulles.push(b);
+        }
+        break;
+      case 1:
+        this.menuId = 0;
+        this.decal = 0;
+        break;
+      case 2: {
+        this.detruireMenu();
+        if (this.menuId === 0) {
+          // L'écran principal : les cinq cases de Menu.select(). Time, Train
+          // et Secret ne mènent à rien de compilé — Time et Train prennent le
+          // style verrouillé, Secret reste appuyable (et remélange).
+          this.nouvelleCase(1, 'arcade', false);
+          this.nouvelleCase(2, 'fever', false);
+          this.nouvelleCase(3, 'time', true);
+          this.nouvelleCase(4, 'train', true);
+          this.nouvelleCase(5, 'secret', false);
+        } else if (this.menuId === 1) {
+          // Le sous-menu Arcade : les CINQ paliers de DIF_INFO, le cinquième
+          // sans nom — verrouillé, comme un palier non débloqué de la source.
+          for (let i = 0; i < PALIERS.length; i++) {
+            const p = PALIERS[i];
+            this.nouvelleCase(10 + i, p.nom || '?????', !p.nom);
+          }
+        }
+        this.placerMenu();
+        break;
+      }
+      default: break;
+    }
+  }
+
+  nouvelleCase(id, nom, verrou) {
+    this.mList.push({ id, nom, verrou: !!verrou, x: 0, y: 0, echelle: 100 });
+  }
+
+  /** Menu.initMenu : la colonne, chaque case partie de son côté (±200). */
+  placerMenu() {
+    const max = this.mList.length;
+    const mt = 56, mb = 2;
+    const ec = (HAUTEUR - (mt + mb)) / (max + 1);
+    for (let i = 0; i < max; i++) {
+      const c = this.mList[i];
+      c.x = LARGEUR * 0.5 + ((i % 2) * 2 - 1) * 200;
+      c.y = mt + (i + 1) * ec;
+    }
+  }
+
+  detruireMenu() {
+    while (this.mList.length > 0) this.dList.push(this.mList.pop());
+  }
+
+  /** Menu.select, à l'identique — Fever/Arcade partent, le reste remélange. */
+  choisir(id) {
+    switch (this.menuId) {
+      case 0:
+        if (id === 1) this.menuId = 1;
+        else if (id === 2) { this.menuId = null; this.baseName = 'fever'; }
+        break;
+      case 1:
+        this.menuId = null;
+        this.baseName = 'arcade';
+        this.choixPalier = id - 10;
+        break;
+      default: break;
+    }
+    this.initEtape(2);
+  }
+
+  /** L'appui : la case sous le doigt, hors verrouillées. */
+  click() {
+    if (this.flPresse) return;
+    this.flPresse = true;
+    if (this.etape !== 2) return;
+    const L = 150, H = 26;         // le gabarit des cases du portage
+    for (const c of this.mList) {
+      if (c.verrou) continue;
+      if (Math.abs(this.souris.x - c.x) < L / 2 && Math.abs(this.souris.y - c.y) < H / 2) {
+        this.choisir(c.id);
+        return;
+      }
+    }
+  }
+
+  update(tmod) {
+    Temps.tmod = tmod;
+    this.bougerBulles();
+    switch (this.etape) {
+      case 0: {
+        const ds = 100 - this.titre.sc;
+        const lim = 6;
+        this.titre.vs += Math.min(Math.max(-lim, ds * 0.3), lim) * tmod;
+        this.titre.vs *= Math.pow(0.8, tmod);
+        this.titre.sc += this.titre.vs * tmod;
+        if (Math.abs(ds) + Math.abs(this.titre.vs) < 1) this.initEtape(1);
+        break;
+      }
+      case 1: {
+        const lim = 628 * 0.75;
+        this.decal = Math.min(this.decal + 10 * tmod, lim);
+        this.titre.y = 40 + (1 + Math.sin(this.decal / 100)) * (HAUTEUR - 80) * 0.5;
+        if (this.decal === lim) this.initEtape(2);
+        break;
+      }
+      case 2: {
+        for (const c of this.mList) {
+          const dx = LARGEUR * 0.5 - c.x;
+          c.x += dx * 0.2 * tmod;
+        }
+        for (let i = 0; i < this.dList.length; i++) {
+          const c = this.dList[i];
+          c.echelle *= 0.7;        // par image, sans tmod — comme la source
+          if (c.echelle < 1) this.dList.splice(i--, 1);
+        }
+        if (this.mList.length === 0 && this.dList.length === 0 && this.baseName) {
+          const dy = -100 - this.titre.y;
+          this.titre.y += dy * 0.2 * tmod;
+          if (Math.abs(dy) < 1) {
+            const nom = this.baseName;
+            this.baseName = null;  // un seul départ
+            this.evenement('mode', { mode: nom, palier: this.choixPalier });
+          }
+        }
+        break;
+      }
+      default: break;
+    }
+  }
+
+  /** Menu.moveBubble + sp/Bubble.update, à l'identique. */
+  bougerBulles() {
+    const tmod = Temps.tmod;
+    for (const b of this.bulles) {
+      if (this.hasard(800) === 0) {
+        b.tx = (this.rng() - 0.5) * LARGEUR;
+        b.ty = (this.rng() - 0.5) * 40;
+        b.sc = 10 + this.hasard(20);
+        b.vd = 10 + this.rng() * 20;
+        b.ray = 5 + this.rng() * 10;
+      }
+      b.dec = (b.dec + b.vd * tmod) % 628;
+      const ttx = b.tx + Math.cos(b.dec / 100) * b.ray + this.titre.x;
+      const tty = b.ty + Math.sin(b.dec / 100) * b.ray + this.titre.y;
+      const lim = 0.75;
+      b.vx += Math.min(Math.max(-lim, (ttx - b.x) * 0.1), lim) * tmod;
+      b.vy += Math.min(Math.max(-lim, (tty - b.y) * 0.1), lim) * tmod;
+      b.vs += Math.min(Math.max(-lim, (b.sc - b.echelle) * 0.1), lim) * tmod;
+      const frict = Math.pow(0.95, tmod);
+      b.vx *= frict; b.vy *= frict; b.vs *= frict;
+      b.x += b.vx * tmod;
+      b.y += b.vy * tmod;
+      b.echelle += b.vs * tmod;
+      b.rot += b.vr * tmod;
+      for (const b2 of this.bulles) {
+        if (b2 === b) continue;
+        const ddx = b2.x - b.x, ddy = b2.y - b.y;
+        const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+        const ray = (b.sc + b2.sc) * 0.5;
+        if (dist < ray) {
+          const dd = ray - dist;
+          const a = Math.atan2(ddy, ddx);
+          b.x -= Math.cos(a) * dd * 0.5;
+          b.y -= Math.sin(a) * dd * 0.5;
+          b2.x += Math.cos(a) * dd * 0.5;
+          b2.y += Math.sin(a) * dd * 0.5;
+        }
+      }
+    }
+  }
+}
+
+const API = { Mc, Scene, Sprite, Phys, Part, Jeu, Socle, Arcade, Fever, Menu, Temps,
   LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT, CADENCE_FLASH, PROF, PALIERS, borner };
 
 if (sousNode) module.exports = API;

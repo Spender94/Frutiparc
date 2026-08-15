@@ -1351,6 +1351,16 @@ const LEGACY_RANKINGS = [
   // points. g='minipixiz'/'miniwave' : fileIcon.swf connaît déjà les deux.
   { rk: '13', internal: 'minipixiz_classic', ty: 'point',     rn: 'MiniPixiz',    gs: '1', g: 'minipixiz', section: 'C' },
   { rk: '14', internal: 'miniwave_classic',  ty: 'point',     rn: 'MiniWave',     gs: '1', g: 'miniwave',  section: 'C' },
+  // Mini-Fever : le classement UNIQUE du portage (niveau × 10 × (1 + palier),
+  // cf. minifeverScore), affiché sous CHALLENGE avec les autres jeux — mais
+  // c'est un RECORD permanent : il est explicitement écarté de la remise à
+  // zéro quotidienne et des médailles du jour (DAILY_RESET_RANKING_SET, même
+  // exclusion que bkiwi_track5_classic). gs='1' comme les pilotes (des points,
+  // sans colonne annexe) ; g='minifever' : fileIcon.swf porte l'étiquette
+  // depuis la greffe patch-fileicon-minifever.js (la jaquette du light), et
+  // awards.swf depuis patch-awards-minifever.js — la vignette de médaille
+  // EMPRUNTÉE au set d'époque inutilisé de Tubulo, une épreuve du jeu.
+  { rk: '15', internal: 'minifever_arcade', ty: 'point',      rn: 'Mini-Fever', gs: '1', g: 'minifever', section: 'C' },
   // Classement Kikooz : ce n'est PAS un jeu mais un classement « joueur » (comme
   // l'XP / la consécration), monté ici dans la liste pilotée serveur pour
   // apparaître comme un onglet supplémentaire dans main.swf sans toucher au SWF.
@@ -1363,22 +1373,11 @@ const LEGACY_RANKINGS = [
   // internal = KIKOOZ_RANKING_ID (id virtuel, hors RANKINGS) : la source des
   // scores est spécialisée dans rankingResult (lecture de user.kikooz).
   { rk: '9', internal: 'kikooz',           ty: 'point',       rn: 'Class. kikooz', gs: '9', g: 'linkClub', section: 'L' },
-  // Frutisnake Contest — même mécanique d'onglet supplémentaire piloté serveur.
-  // Rangé en section 'L' à dessein : c'est un record PERMANENT, il ne doit pas
-  // être balayé par la remise à zéro quotidienne des classements de section 'C'
-  // (ni distribuer de médailles du jour). g='snake3' pour hériter de l'icône du
-  // jeu dans fileIcon.swf.
-  { rk: '10', internal: 'snake3_contest',  ty: 'point',       rn: 'Frutisnake Contest', gs: '1', g: 'snake3', section: 'L' },
-  { rk: '11', internal: 'swapou2_contest', ty: 'point',       rn: 'Swapou Contest', gs: '3', g: 'swapou2', section: 'L' },
-  // Mini-Fever : le classement UNIQUE du portage (niveau × 10 × (1 + palier),
-  // cf. minifeverScore). Section 'L' à dessein — c'est un RECORD permanent,
-  // comme les deux concours : pas de remise à zéro quotidienne ni de médailles
-  // du jour (DAILY_RESET_RANKING_SET ne lit que la section 'C'). gs='1' comme
-  // les pilotes (des points, sans colonne annexe) ; g='minifever' : fileIcon.swf
-  // porte l'étiquette depuis la greffe patch-fileicon-minifever.js (la jaquette
-  // du light), et awards.swf depuis patch-awards-minifever.js — la vignette de
-  // médaille EMPRUNTÉE au set d'époque inutilisé de Tubulo, une épreuve du jeu.
-  { rk: '15', internal: 'minifever_arcade', ty: 'point',      rn: 'Mini-Fever', gs: '1', g: 'minifever', section: 'L' },
+  // Les deux CONCOURS (snake3_contest, swapou2_contest) n'ont PLUS d'onglet
+  // ici : ils encombraient le tableau des scores pour deux records qui bougent
+  // peu. Ils restent dans RANKINGS — donc au LIVRE DES RECORDS du Club (bureau
+  // et light), où on les consulte toujours. Leur rendre un onglet tient en une
+  // ligne (rk '10'/'11', section 'L', g 'snake3'/'swapou2').
   // Kaluga « Freestyle » (le record SANS grappe) n'a PAS de ligne ici : il
   // reste dans RANKINGS — donc au livre des records du Club et à l'API des
   // records, qui itèrent RANKINGS — mais ne prend pas d'onglet dans le tableau
@@ -3654,8 +3653,12 @@ function buildUserLogXml(entries) {
 // rankings (which rotate daily based on dayOfYear % 6).
 // BKiwi classic was previously the daily proxy; replaced by proper _challenge
 // rankings so we exclude it to avoid duplicate medal awards.
+// Mini-Fever est affiché sous Challenge mais N'EST PAS un défi du jour : son
+// tableau unique (niveau × 10 × (1 + palier)) est un record permanent — on
+// l'écarte donc, comme le proxy bkiwi.
 const DAILY_RESET_RANKING_SET = new Set([
-  ...LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal && r.internal !== 'bkiwi_track5_classic').map(r => r.internal),
+  ...LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal
+    && r.internal !== 'bkiwi_track5_classic' && r.internal !== 'minifever_arcade').map(r => r.internal),
   ...Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_challenge`),
 ]);
 
@@ -15863,8 +15866,11 @@ app.get('/api/light/challenge', async (req, res) => {
     // Les deux pilotes de l'animation (cf. RANKINGS).
     { game: 'minipixiz', ranking: 'minipixiz_classic' },
     { game: 'miniwave',  ranking: 'miniwave_classic' },
-    // Mini-Fever n'est PAS ici : c'est un record permanent (section 'L' du
-    // bureau, rk '15'), servi plus bas avec les concours — pas un défi du jour.
+    // Mini-Fever, sous Challenge comme les autres jeux — mais son tableau est
+    // un RECORD permanent, hors remise à zéro quotidienne (cf.
+    // DAILY_RESET_RANKING_SET) : il n'a jamais de podium de la veille, et
+    // c'est normal.
+    { game: 'minifever', ranking: 'minifever_arcade' },
   ];
   // Le libellé de chaque classement vient du descriptif du bureau (rn) : les
   // deux clients nomment les onglets pareil, sans table en double. Burning Kiwi
@@ -15943,6 +15949,10 @@ app.get('/api/light/challenge', async (req, res) => {
       },
     };
   };
+  // NOTE : les deux CONCOURS (snake3_contest, swapou2_contest) ne sont plus
+  // servis ici — plus d'onglet au tableau des scores, ni bureau ni light. Ils
+  // se consultent au livre des records du Club (/api/club/records), qui itère
+  // RANKINGS et les garde.
   const games = [];
   for (const g of GAMES) {
     const rkId = g.ranking;
@@ -15995,34 +16005,8 @@ app.get('/api/light/challenge', async (req, res) => {
     }));
     games.push(permanent('kikooz', nomBureau('kikooz', 'Class. kikooz'), 'kikooz', kAll));
   } catch (e) { console.error('[LIGHT] kikooz ranking error:', e.message); }
-  for (const [jeu, def] of Object.entries(CONTESTS)) {
-    const all = [];
-    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
-      const e = rlist && rlist[def.ranking];
-      if (e && Number.isFinite(Number(e.score))) {
-        all.push({ u, s: Number(e.score), label: e.score + ' ' + def.unite });
-      }
-    }
-    all.sort(scoreComparator(def.ranking));
-    const nom = nomBureau(def.ranking,
-      (RANKINGS[def.ranking] && RANKINGS[def.ranking].name || def.ranking).replace(' - ', ' '));
-    games.push(permanent(def.ranking, nom, jeu, all));
-  }
-  // Mini-Fever : le record permanent du portage, à la suite des concours —
-  // même place que sur le bureau (rk '15', section 'L'). Chaque ligne porte le
-  // libellé complet (« 900 · 30 épreuves en difficile ») : les points ET d'où
-  // ils viennent, comme l'affiche le jeu lui-même.
-  {
-    const all = [];
-    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
-      const e = rlist && rlist.minifever_arcade;
-      if (e && Number.isFinite(Number(e.score))) {
-        all.push({ u, s: Number(e.score), label: formatChallengeScoreLabel('minifever_arcade', Number(e.score), e.data) });
-      }
-    }
-    all.sort(scoreComparator('minifever_arcade'));
-    games.push(permanent('minifever_arcade', nomBureau('minifever_arcade', 'Mini-Fever'), 'minifever', all));
-  }
+  // (Les CONCOURS ne défilent plus ici — cf. la note au-dessus de la boucle
+  // des jeux : le livre des records du Club les garde.)
   // L'XP et la consécration : les deux classements « joueur » du bureau. Ils ne
   // vivent pas dans le magasin de scores — l'un lit users[].xp (fusionné avec la
   // base, comme la voie FrutiScore), l'autre computeConsecration.

@@ -89,13 +89,16 @@ test('le classement existe et n\'est pas remis à zéro chaque jour', async () =
   assert.equal(r.game, 'snake3');
   assert.equal(r.lowerIsBetter, false, 'le plus LONG gagne');
 
-  // Le descripteur envoyé aux clients : un onglet à part, en « Championnat ».
+  // PLUS d'onglet au tableau des scores : le concours encombrait la fenêtre
+  // pour un record qui bouge peu. Il se consulte au livre des records du Club
+  // (/api/club/records itère RANKINGS), comme Kaluga Freestyle.
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  const ligne = /\{ rk: '10', internal: 'snake3_contest',[^}]*\}/.exec(src);
-  assert.ok(ligne, 'descripteur d\'onglet présent');
-  assert.ok(/rn: 'Frutisnake Contest'/.test(ligne[0]), 'libellé de l\'onglet');
-  assert.ok(/section: 'L'/.test(ligne[0]),
-    'section L : en section C le classement serait balayé chaque nuit avec les challenges');
+  assert.ok(!/\{ rk: '10', internal: 'snake3_contest'/.test(src),
+    'le descripteur d\'onglet a été retiré');
+  const records = await (await fetch(BASE + '/api/club/records?limit=5')).json();
+  const livre = (records.rankings || []).find((r2) => r2.id === 'snake3_contest');
+  assert.ok(livre, 'et le livre des records du Club le garde');
+  assert.equal(livre.name, 'Frutisnake - Contest');
 });
 
 test('un joueur SANS le pack peut concourir', async () => {
@@ -216,16 +219,22 @@ test('la fin de partie et la relance sont bien détectées', () => {
   assert.deepEqual(envois, [12, 30], 'rien n\'est renvoyé deux fois');
 });
 
-test('le concours apparaît aussi côté mobile', async () => {
+test('côté mobile : plus d\'onglet au tableau, le Club garde le record', async () => {
   const sid = await sidFor(joueur('mobilecontest'));
   await envoyer(sid, 88);
+  // Le tableau des scores du light ne le liste PLUS (il l'encombrait) : c'est
+  // le miroir exact du bureau.
   const j = await (await fetch(`${BASE}/api/light/challenge?sid=${encodeURIComponent(sid)}`)).json();
-  const onglet = (j.games || []).find((g) => g.id === 'snake3_contest');
-  assert.ok(onglet, 'onglet Frutisnake Contest présent dans le client mobile');
-  assert.equal(onglet.allTime, true, 'affiché comme un classement permanent (ni « aujourd\'hui » ni podium)');
-  const moi = onglet.scores.find((s) => s.user.toLowerCase() === joueur('mobilecontest'));
-  assert.ok(moi, 'le joueur y figure');
-  assert.equal(moi.label, '88 anneaux');
+  assert.ok(!(j.games || []).some((g) => g.id === 'snake3_contest'),
+    'plus d\'onglet Frutisnake Contest au tableau des scores');
+  // Mais le record du joueur se consulte au livre du Club — la tuile « Club »
+  // du light ouvre /club/, qui lit cette API.
+  const records = await (await fetch(BASE + '/api/club/records?limit=20')).json();
+  const livre = (records.rankings || []).find((r2) => r2.id === 'snake3_contest');
+  assert.ok(livre, 'le livre des records le sert');
+  const moi = (livre.scores || []).find((s) => s.user.toLowerCase() === joueur('mobilecontest'));
+  assert.ok(moi, 'et le joueur y figure');
+  assert.equal(moi.score, 88);
 });
 
 test('un tournoi peut se tenir sur ce classement', async () => {
