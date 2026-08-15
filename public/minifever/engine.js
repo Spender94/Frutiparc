@@ -35,10 +35,32 @@
 
 const sousNode = (typeof module !== 'undefined' && module.exports);
 
-// La scène du SWF : 240 × 240 à 40 images par seconde (Cs.mcw / Cs.mch).
+// La scène du SWF : 240 × 240 (Cs.mcw / Cs.mch).
 const LARGEUR = 240;
 const HAUTEUR = 240;
-const IPS = 40;
+
+/*
+ * LA CADENCE — le même piège que Mini-Wave et Minipixiz, et la même preuve.
+ *
+ * L'en-tête de minifever.swf dit quarante : la fréquence à laquelle Flash
+ * REDESSINE. La vitesse du jeu, elle, vient de `Timer.tmod` (la bibliothèque
+ * « mt » de Motion-Twin, compilée dans le SWF, noms obfusqués). Son bloc
+ * statique se reconnaît à ses VALEURS, identiques à celles de miniTroll et de
+ * Mini-Wave :
+ *
+ *     <a> = 32          wantedFPS
+ *     <b> = 0.5         maxDeltaTime
+ *     <c> = getTimer()  oldTime
+ *     <d> = 0.95        tmod_factor
+ *     <e> = 1           tmod        <f> = 1  deltaT
+ *
+ * (offset 346490 du corps décompressé — cf. test/minifeverSprites.test.js.)
+ * Une image « nominale » dure donc UN TRENTE-DEUXIÈME de seconde ; le portage
+ * en comptait quarante par seconde, vingt-cinq pour cent trop vite.
+ */
+const IPS = 32;                       // Timer.wantedFPS
+const TMOD_LISSAGE = 0.95;            // Timer.tmod_factor
+const TMOD_SAUT = 0.5;                // Timer.maxDeltaTime, en secondes
 
 // Le multiplicateur de temps, lu par tous les mini-jeux. La boucle avance le
 // moteur par pas d'UNE image nominale, donc il vaut 1 — mais les sources le
@@ -523,8 +545,72 @@ class Arcade extends Socle {
   }
 }
 
-const API = { Mc, Scene, Sprite, Phys, Part, Jeu, Socle, Arcade, Temps,
-  LARGEUR, HAUTEUR, IPS, PROF, PALIERS, borner };
+/*
+ * base/Fever.mt : le mode de la MONTÉE — et celui que le SWF d'origine joue.
+ *
+ * Ouvrir minifever.swf, c'est tomber directement dans ce mode : pas de menu,
+ * pas d'écran-titre, la première épreuve démarre seule (Manager.init() fait
+ * genSlot("baseFever") avec le client plateforme commenté). Les épreuves
+ * s'enchaînent, la difficulté monte de DIX par épreuve (plafonnée à cent), et
+ * la PREMIÈRE défaite arrête tout : l'écran gameOver, un clic, on repart.
+ *
+ * L'ordre de Fever.setNext, gardé à la lettre : l'épreuve est lancée AVANT que
+ * la difficulté ne monte — la première se joue donc à zéro, la deuxième à dix,
+ * la onzième et toutes les suivantes à cent.
+ */
+class Fever extends Socle {
+  constructor(o) {
+    super(o);
+    this.niveau = 0;               // `level` : épreuves lancées
+    this.derniere = null;          // le verdict de l'épreuve qu'on vient de jouer
+    this.ecranFin = false;         // l'écran gameOver est à l'écran
+    this.pomme = 1;                // l'image de la pomme de l'écran de fin
+  }
+
+  demarrer() { this.suivante(); }
+
+  /** Fever.setNext : tirer, lancer, PUIS monter la difficulté. */
+  suivante() {
+    this.tirer();
+    this.lancer();
+    this.niveau += 1;
+    this.dif = Math.min(this.dif + 10, 100);
+  }
+
+  apresFondu() {
+    if (this.derniere === false) {
+      // GameOver.mt : l'écran de fin prend la scène ; un appui relance.
+      this.fermer();
+      this.ecranFin = true;
+      this.pomme = 1;
+      this.evenement('finPartie', { niveau: this.niveau });
+      this.fonduEntrant();
+      return;
+    }
+    this.fermer();
+    this.suivante();
+    this.fonduEntrant();
+  }
+
+  resultat(gagne) {
+    this.derniere = !!gagne;
+    super.resultat(gagne);
+  }
+
+  update(tmod) {
+    super.update(tmod);
+    // La pomme de l'écran de fin joue sa pellicule une fois, puis se tient.
+    if (this.ecranFin && this.pomme < 15) this.pomme = Math.min(15, this.pomme + tmod);
+  }
+
+  click() {
+    if (this.ecranFin) { this.evenement('rejouer', { niveau: this.niveau }); return; }
+    super.click();
+  }
+}
+
+const API = { Mc, Scene, Sprite, Phys, Part, Jeu, Socle, Arcade, Fever, Temps,
+  LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT, PROF, PALIERS, borner };
 
 if (sousNode) module.exports = API;
 else racine.MinifeverEngine = API;

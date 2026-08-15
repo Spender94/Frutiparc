@@ -122,3 +122,60 @@ test('les dessins sont extraits et complets', () => {
   }
   assert.ok(fichiers.size >= 150, `${fichiers.size} dessins distincts`);
 });
+
+/*
+ * LA CADENCE — le même piège que Mini-Wave et Minipixiz : l'en-tête du SWF dit
+ * quarante (la fréquence de REDESSIN), mais la vitesse du jeu vient de
+ * `Timer.tmod`, dont la référence est trente-deux images par seconde.
+ *
+ * Ici les noms sont obfusqués : impossible de chercher « wantedFPS ». On
+ * reconnaît le bloc statique de Timer à ses VALEURS — les mêmes que dans
+ * miniTroll et Mini-Wave : maxDeltaTime 0,5 / wantedFPS 32 / tmod_factor 0,95,
+ * affectées coup sur coup dans le même bloc.
+ */
+test('la cadence du SWF est trente-deux images par seconde, et le portage suit', () => {
+  const b = corps();
+  // Les affectations `push <nom>, <valeur> ; setVariable` du bloc de Timer.
+  const affectations = [];
+  for (let o = 0; o < b.length - 8; o++) {
+    if (b[o] !== 0x96) continue;                      // ActionPush
+    const fin = o + 3 + b.readUInt16LE(o + 1);
+    if (fin >= b.length || b[fin] !== 0x1d) continue; // suivi d'un SetVariable
+    let q = o + 3;
+    const pile = [];
+    let bon = true;
+    while (q < fin) {
+      const t = b[q++];
+      if (t === 0) { let e = q; while (b[e] !== 0) e++; pile.push(b.slice(q, e).toString('latin1')); q = e + 1; }
+      else if (t === 1) { pile.push(b.readFloatLE(q)); q += 4; }
+      else if (t === 5) { pile.push(!!b[q]); q += 1; }
+      else if (t === 6) {
+        const t8 = Buffer.alloc(8);
+        b.copy(t8, 0, q + 4, q + 8); b.copy(t8, 4, q, q + 4);
+        pile.push(t8.readDoubleLE(0)); q += 8;
+      } else if (t === 7) { pile.push(b.readInt32LE(q)); q += 4; }
+      // Les NOMS passent par la table de constantes (types 8 et 9) : leur
+      // valeur importe peu ici, seule la paire nom-nombre compte.
+      else if (t === 8) { pile.push('cst'); q += 1; }
+      else if (t === 9) { pile.push('cst'); q += 2; }
+      else { bon = false; break; }
+    }
+    if (!bon || pile.length !== 2 || typeof pile[1] !== 'number') continue;
+    affectations.push({ o, valeur: pile[1] });
+  }
+  // Le bloc : 32, puis 0,5, puis 0,95, à quelques octets d'écart.
+  const bloc = affectations.find((a, i) => a.valeur === 32
+    && affectations[i + 1] && affectations[i + 1].valeur === 0.5
+    && affectations.slice(i + 1, i + 4).some((x) => x.valeur === 0.95)
+    && affectations[i + 1].o - a.o < 40);
+  assert.ok(bloc, 'le bloc statique de Timer (32 / 0,5 / 0,95) est dans le SWF');
+
+  const moteur = fs.readFileSync(path.join(ROOT, 'public/minifever/engine.js'), 'utf8');
+  assert.match(moteur, /const IPS = 32;/, 'le moteur compte 32 unités par seconde');
+  assert.match(moteur, /const TMOD_LISSAGE = 0\.95;/, 'le lissage de Timer.update');
+  assert.match(moteur, /const TMOD_SAUT = 0\.5;/, 'et son saut d\'image');
+  const client = fs.readFileSync(path.join(ROOT, 'public/minifever/client.js'), 'utf8');
+  assert.match(client, /this\.tmod = this\.tmod \* TMOD_LISSAGE \+ \(1 - TMOD_LISSAGE\) \* dt \* IPS;/,
+    'la boucle avance du tmod lissé');
+  assert.doesNotMatch(client, /dt \* IPS;\s*\n\s*this\.reste/, 'et plus du temps brut');
+});

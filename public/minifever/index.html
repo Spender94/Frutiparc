@@ -5,29 +5,34 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Mini-Fever</title>
 <!--
-  Mini-Fever — portage natif JS d'un jeu qui n'est JAMAIS SORTI.
+  Mini-Fever — portage natif JS d'un jeu qui n'est JAMAIS SORTI, calé sur ce que
+  le SWF de développement MONTRE quand on l'ouvre (il tourne sous Ruffle, et il
+  a servi de référence image par image) :
 
-  Motion Twin l'avait écrit pour Frutiparc — quatre-vingt-dix micro-épreuves de
-  trois secondes, quatre modes — puis l'a laissé au fond du disque. Il en reste
-  les sources, dans un langage maison (« mt ») dont le compilateur n'existe
-  plus, et un SWF de développement obfusqué d'où l'on a sorti les dessins.
+    · une page BLANCHE (l'embed d'époque : bgcolor #ffffff, 300×300) ;
+    · AUCUN menu, aucun écran-titre — la première épreuve démarre seule ;
+    · les épreuves s'enchaînent, la difficulté monte de dix par épreuve
+      (le mode « fever » : Manager.init() y saute directement) ;
+    · la barre de temps du SWF (mcTimerBar), à gauche, à 50 % d'alpha,
+      qui se vide par le bas ;
+    · perdre une épreuve = l'écran gameOver du SWF ; un clic relance.
 
-  Ce portage rejoue le socle et les épreuves ligne à ligne d'après ces sources.
-  Tout se joue à la souris ou au doigt : l'original n'utilisait pas une seule
-  touche, ce qui le rend tactile sans rien y changer.
+  L'arcade des sources (base/Arcade.mt : on choisit son palier, les vies) reste
+  jouable — c'est elle qui classe et qui remplit l'album — mais elle se choisit
+  SOUS la scène, dans la page : la scène de 240 × 240 reste celle du Flash.
 
   ?sid= pour la persistance plateforme.
 -->
 <style>
+  /* La page de l'embed d'époque : blanche, le jeu au milieu, rien d'autre. */
   html, body {
     margin: 0; padding: 0; height: 100%;
-    background: #101830;
+    background: #ffffff;
     overflow: hidden;
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
     user-select: none; -webkit-user-select: none;
-    font-family: "Trebuchet MS", Verdana, Arial, sans-serif;
-    color: #e8eeff;
+    font-family: Verdana, Arial, sans-serif;
   }
   #tout {
     position: fixed; inset: 0;
@@ -38,80 +43,31 @@
   #aire {
     flex: 1 1 auto; min-height: 0; width: 100%;
     display: flex; align-items: center; justify-content: center;
-    position: relative;
   }
-  #stage {
-    display: block;
-    cursor: crosshair;
-    border-radius: 4px;
-    box-shadow: 0 0 0 2px #2a3a68, 0 8px 30px rgba(0,0,0,.6);
-  }
-  /* Les panneaux se posent SUR le canvas, à sa taille exacte : le client la
-     calcule (agrandissement entier), on la recopie ici. */
-  .panneau {
-    position: absolute;
-    display: none; flex-direction: column; align-items: center; justify-content: center;
-    gap: 14px; box-sizing: border-box; padding: 18px;
-    background: linear-gradient(180deg, #16234a, #0d1428);
-    border-radius: 4px; box-shadow: 0 0 0 2px #2a3a68, 0 8px 30px rgba(0,0,0,.6);
-    text-align: center;
-  }
-  .panneau.on { display: flex; }
-  .panneau h1 {
-    margin: 0; font-size: 25px; letter-spacing: 1px;
-    color: #ffd040; text-shadow: 0 2px 0 #7a5400;
-  }
-  .panneau h2 { margin: 0; font-size: 15px; color: #e8eeff; font-weight: normal; }
-  .panneau p { margin: 0; font-size: 11px; line-height: 1.6; color: #8fa0c8; }
-  .bouton {
-    display: block; width: 168px; padding: 8px 0;
-    font: inherit; font-size: 14px; color: #10182e;
-    background: linear-gradient(180deg, #ffe27a, #f0b820);
-    border: 0; border-radius: 14px; cursor: pointer;
-    box-shadow: 0 3px 0 #8a6200;
-  }
-  .bouton:active { transform: translateY(2px); box-shadow: 0 1px 0 #8a6200; }
-  .bouton[disabled] { opacity: .35; cursor: default; box-shadow: 0 3px 0 #3a3f52; }
-  .bouton .sous { display: block; font-size: 10px; opacity: .7; }
-  #barre-chargement {
-    width: 160px; height: 8px; border-radius: 4px; background: #2a3a68; overflow: hidden;
-  }
-  #barre-chargement i { display: block; height: 100%; width: 0; background: #ffd040; }
+  #stage { display: block; cursor: pointer; background: #ffffff; }
+
+  /* Sous la scène : le choix du mode et l'état — la seule chose qui n'existait
+     pas dans le SWF, tenue HORS du cadre de jeu pour cette raison. */
   #bandeau {
-    flex: 0 0 auto; width: 100%; max-width: 460px; box-sizing: border-box;
-    padding: 8px 14px 12px; display: flex; justify-content: center;
-    font-size: 11px; color: #6d7fa8;
+    flex: 0 0 auto; width: 100%; max-width: 520px; box-sizing: border-box;
+    padding: 10px 14px 14px; text-align: center;
+    font-size: 11px; color: #999; line-height: 2;
   }
+  #modes a {
+    color: #777; text-decoration: none; margin: 0 7px;
+    padding: 2px 6px; border-radius: 3px; cursor: pointer;
+  }
+  #modes a.actif { background: #eee; color: #333; }
+  #etat { color: #bbb; }
 </style>
 </head>
 <body>
 <div id="tout">
-  <div id="aire">
-    <canvas id="stage" width="240" height="240"></canvas>
-
-    <div class="panneau on" id="p-chargement">
-      <h1>Mini-Fever</h1>
-      <p>chargement…</p>
-      <div id="barre-chargement"><i></i></div>
-    </div>
-
-    <div class="panneau" id="p-menu">
-      <h1>Mini-Fever</h1>
-      <p>enchaîne les épreuves.<br>tout se joue au clic.</p>
-      <div id="paliers"></div>
-    </div>
-
-    <div class="panneau" id="p-fin">
-      <h1 id="fin-titre">terminé</h1>
-      <h2 id="fin-detail"></h2>
-      <p id="fin-note"></p>
-      <button class="bouton" id="b-rejouer">rejouer</button>
-    </div>
+  <div id="aire"><canvas id="stage" width="240" height="240"></canvas></div>
+  <div id="bandeau">
+    <div id="modes"></div>
+    <div id="etat">chargement…</div>
   </div>
-  <!-- Pas de bouton « retour » : le jeu vit dans un cadre du light, et c'est la
-       barre du haut du light qui ramène — comme pour Mini-Wave et Minipixiz.
-       Un lien vers /light.html ici rechargerait le site DANS le cadre. -->
-  <div id="bandeau"><span id="etat"></span></div>
 </div>
 
 <script src="/minifever/engine.js"></script>
@@ -132,76 +88,67 @@ const sid = params.get('sid') || '';
 const canvas = $('stage');
 let client = null;
 let socle = null;
-let palierChoisi = 0;
+let modeChoisi = 'fever';           // le SWF s'ouvre sur fever : lui aussi
 let enCours = null;                 // la clef de l'épreuve à l'écran
 const gagnees = new Set();          // celles remportées dans la partie : les pictos
 
-/* Les panneaux épousent le canvas — dont la taille change avec la fenêtre. */
-function caler() {
-  const r = canvas.getBoundingClientRect();
-  const p = canvas.parentElement.getBoundingClientRect();
-  for (const el of document.querySelectorAll('.panneau')) {
-    el.style.left = (r.left - p.left) + 'px';
-    el.style.top = (r.top - p.top) + 'px';
-    el.style.width = r.width + 'px';
-    el.style.height = r.height + 'px';
-  }
-}
-window.addEventListener('resize', () => setTimeout(caler, 0));
+/*
+ * Les modes, sous la scène. « fever » est celui du SWF — il démarre seul,
+ * comme l'original. Les paliers d'arcade viennent de base/Arcade.mt.
+ */
+const MODES = [{ id: 'fever', nom: 'fever' }]
+  .concat(E.PALIERS.filter((p) => p.nom).map((p, i) => ({ id: 'arcade' + i, nom: p.nom, palier: i })));
 
-function montrer(id) {
-  for (const el of document.querySelectorAll('.panneau')) el.classList.toggle('on', el.id === id);
-  caler();
-}
-
-/* ── Le menu : on choisit son palier, comme dans Menu.mt ── */
-function construireMenu() {
-  const hote = $('paliers');
+function construireModes() {
+  const hote = $('modes');
   hote.innerHTML = '';
-  E.PALIERS.forEach((p, i) => {
-    if (!p.nom) return;                     // le cinquième palier n'a jamais servi
-    const b = document.createElement('button');
-    b.className = 'bouton';
-    b.innerHTML = p.nom + '<span class="sous">' + p.lvl + ' épreuves · ' + p.vies + ' vies</span>';
-    b.addEventListener('click', () => { palierChoisi = i; jouer(); });
-    hote.appendChild(b);
-  });
+  for (const m of MODES) {
+    const a = document.createElement('a');
+    a.textContent = m.nom;
+    a.className = (m.id === modeChoisi) ? 'actif' : '';
+    a.addEventListener('click', () => { modeChoisi = m.id; construireModes(); jouer(); });
+    hote.appendChild(a);
+  }
 }
 
 function jouer() {
-  montrer('');
   gagnees.clear();
   enCours = null;
-  socle = client.nouvellePartie(E.Arcade, JEUX, { palier: palierChoisi });
+  const m = MODES.find((x) => x.id === modeChoisi) || MODES[0];
+  socle = client.nouvellePartie(
+    m.id === 'fever' ? E.Fever : E.Arcade,
+    JEUX,
+    m.id === 'fever' ? {} : { palier: m.palier });
   client.demarrer();
   majEtat();
 }
 
-function majEtat() {
+function majEtat(texte) {
+  if (texte !== undefined) { $('etat').textContent = texte; return; }
   if (!socle) { $('etat').textContent = ''; return; }
-  const p = socle.info;
-  $('etat').textContent = p.nom + ' · épreuve ' + (socle.niveau + 1) + '/' + p.lvl
-    + ' · ' + socle.vies + ' vie' + (socle.vies > 1 ? 's' : '');
-}
-
-function finir(d) {
-  const gagne = d.gagnee;
-  $('fin-titre').textContent = gagne ? 'bravo !' : 'perdu';
-  $('fin-detail').textContent = gagne
-    ? 'mode ' + d.nom + ' terminé'
-    : d.niveau + ' épreuve' + (d.niveau > 1 ? 's' : '') + ' réussie' + (d.niveau > 1 ? 's' : '');
-  $('fin-note').textContent = 'mode ' + d.nom + ' · ' + d.jouees + ' épreuve'
-    + (d.jouees > 1 ? 's' : '') + ' jouée' + (d.jouees > 1 ? 's' : '');
-  montrer('p-fin');
-  envoyerScore(d);
+  if (modeChoisi === 'fever') {
+    $('etat').textContent = 'épreuve ' + Math.max(1, socle.niveau);
+  } else {
+    const p = socle.info;
+    $('etat').textContent = p.nom + ' · épreuve ' + (socle.niveau + 1) + '/' + p.lvl
+      + ' · ' + socle.vies + ' vie' + (socle.vies > 1 ? 's' : '');
+  }
 }
 
 /*
- * Le score part à la plateforme quand on joue depuis un compte. On n'envoie PAS
- * de points : le serveur les calcule d'après le déroulé (cf. minifeverScore).
- * `gagnees` porte les épreuves remportées — c'est ce qui remplit l'album.
+ * La fin d'une chaîne fever : l'écran gameOver est DANS la scène (le clip du
+ * SWF) ; le bandeau dit juste le compte, et l'appui relance — GameOver.mt.
  */
-function envoyerScore(d) {
+function finFever(d) {
+  majEtat((d.niveau - 1) + ' épreuve' + (d.niveau > 2 ? 's' : '') + ' remportée'
+    + (d.niveau > 2 ? 's' : '') + ' — cliquer pour rejouer');
+}
+
+/* La fin d'une partie d'arcade : le score part à la plateforme. */
+function finArcade(d) {
+  majEtat(d.gagnee
+    ? 'mode ' + d.nom + ' terminé ! — cliquer sur un mode pour rejouer'
+    : d.niveau + '/' + d.objectif + ' épreuves — choisir un mode pour rejouer');
   if (!sid) return;
   fetch('/api/minifever/score', {
     method: 'POST',
@@ -210,30 +157,32 @@ function envoyerScore(d) {
       gagnee: d.gagnee, gagnees: [...gagnees] }),
   }).then((r) => r.json()).then((r) => {
     if (r && r.pictos && r.pictos.length) {
-      $('fin-note').textContent += ' · picto : ' + r.pictos.join(', ');
+      $('etat').textContent += ' · picto : ' + r.pictos.join(', ');
     }
   }).catch(() => {});
 }
 
-$('b-rejouer').addEventListener('click', () => { montrer('p-menu'); majEtat(); });
-
-/* ── Le chargement ── */
+/* ── Le chargement, puis la première épreuve — toute seule, comme le SWF. ── */
 C.charger('/minifever/sprites/', (c) => {
-  document.querySelector('#barre-chargement i').style.width = Math.round(c * 100) + '%';
+  $('etat').textContent = 'chargement… ' + Math.round(c * 100) + ' %';
 }).then(() => {
   client = new C.Client({
     canvas,
     surEvenement: (nom, d) => {
       if (nom === 'jeu') enCours = d.cle;
       else if (nom === 'resultat' && d.gagne && enCours) gagnees.add(enCours);
-      if (nom === 'finPartie') finir(d);
-      else majEtat();
+      if (nom === 'finPartie') {
+        if (modeChoisi === 'fever') finFever(d); else finArcade(d);
+        return;
+      }
+      if (nom === 'rejouer') { jouer(); return; }
+      majEtat();
     },
   });
-  construireMenu();
-  montrer('p-menu');
+  construireModes();
+  jouer();
 }).catch((e) => {
-  document.querySelector('#p-chargement p').textContent = 'chargement impossible : ' + e.message;
+  $('etat').textContent = 'chargement impossible : ' + e.message;
 });
 
 })();

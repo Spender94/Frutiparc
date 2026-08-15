@@ -498,3 +498,78 @@ test('la difficulté durcit bien chaque épreuve', () => {
   const a1 = banc(J.Astero, { dif: 100 }).jeu;
   assert.ok(a1.rochers.length > a0.rochers.length, 'le champ se remplit');
 });
+
+// ── LE MODE FEVER — celui que le SWF d'origine joue ──
+
+/** Une chaîne fever sur des épreuves dont on décide l'issue. */
+function fever(verdicts) {
+  let i = 0;
+  class Bidon extends E.Jeu {
+    init() { super.init(); this.gameTime = 4; this.verdict = verdicts[i++]; }
+    update() { super.update(); if (this.etapePrincipale === 1 && this.verdict !== undefined) this.gagne(this.verdict); }
+  }
+  const f = new E.Fever({
+    mesures: MESURES, rng: dé(11),
+    catalogue: [{ cle: 'test', nom: 'test', Classe: Bidon }],
+  });
+  f.demarrer();
+  return f;
+}
+
+test('FEVER : pas de menu — la première épreuve démarre seule, à difficulté nulle', () => {
+  const f = fever([]);
+  assert.ok(f.jeu, 'ouvrir, c\'est déjà jouer — comme le SWF');
+  assert.equal(f.jeu.dif, 0, 'la première épreuve se joue à zéro');
+  assert.equal(f.niveau, 1);
+  assert.equal(f.dif, 10, 'et la difficulté est déjà armée pour la suivante');
+});
+
+test('FEVER : la difficulté monte de dix par épreuve, plafonnée à cent', () => {
+  const f = fever(new Array(30).fill(true));
+  const difs = [f.jeu.dif];
+  for (let i = 0; i < 4000 && f.niveau < 13; i++) {
+    const avant = f.jeu;
+    f.update(1);
+    if (f.jeu && f.jeu !== avant) difs.push(f.jeu.dif);
+  }
+  // Fever.setNext : l'épreuve N se joue à (N-1)*10, plafonné à cent.
+  assert.deepEqual(difs.slice(0, 12), [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 100]);
+});
+
+test('FEVER : la première défaite arrête tout — écran gameOver, un clic relance', () => {
+  const f = fever([true, true, false]);
+  const evts = [];
+  f.surEvenement = (n, d) => evts.push({ n, d });
+  for (let i = 0; i < 1000 && !f.ecranFin; i++) f.update(1);
+  assert.equal(f.ecranFin, true, 'l\'écran de fin est là');
+  assert.equal(f.jeu, null, 'l\'épreuve a quitté la scène');
+  assert.equal(f.niveau, 3, 'trois épreuves lancées');
+  assert.ok(evts.some((e) => e.n === 'finPartie'), 'la fin est annoncée');
+  // La pomme de l'écran de fin joue ses quinze images puis se tient.
+  for (let i = 0; i < 30; i++) f.update(1);
+  assert.equal(Math.floor(f.pomme), 15);
+  // GameOver.mt : onPress = leave — l'appui demande la relance.
+  f.click();
+  assert.ok(evts.some((e) => e.n === 'rejouer'), 'l\'appui relance');
+});
+
+test('FEVER : gagner ne meurt jamais — la chaîne continue', () => {
+  // Cinquante victoires d'affilée : on s'arrête à la vingtième épreuve lancée,
+  // AVANT d'épuiser les verdicts (l'épreuve d'après, sans verdict, mourrait au
+  // chrono — et ce serait une vraie mort, pas un défaut).
+  const f = fever(new Array(50).fill(true));
+  for (let i = 0; i < 5000 && f.niveau < 20; i++) f.update(1);
+  assert.equal(f.ecranFin, false);
+  assert.equal(f.niveau, 20, 'vingt épreuves lancées sans mourir');
+});
+
+test('les dessins de l\'habillage du SWF sont extraits : barre de temps, écran de fin', () => {
+  // sym547 : mcTimerBar — le cadre, puis le remplissage que updateGameTimer
+  // réduit. sym544 : les cerises de l'écran gameOver, quinze images.
+  assert.ok(MANIFESTE.sym547, 'la barre de temps');
+  assert.equal(MANIFESTE.sym547.etats.length, 1);
+  assert.equal(MANIFESTE.sym547.etats[0].pieces.length, 2, 'le cadre et le remplissage');
+  assert.ok(MANIFESTE.sym544, 'les cerises de l\'écran de fin');
+  assert.equal(MANIFESTE.sym544.etats.length, 15, 'leur grimace en quinze images');
+  assert.ok(MANIFESTE.gameOver, 'et le fond de l\'écran');
+});

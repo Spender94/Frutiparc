@@ -15,7 +15,7 @@
 
 const sousNode = (typeof module !== 'undefined' && module.exports);
 const E = sousNode ? require('./engine.js') : racine.MinifeverEngine;
-const { LARGEUR, HAUTEUR, IPS } = E;
+const { LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT } = E;
 
 const images = new Map();          // fichier SVG → Image
 let manifeste = null;
@@ -101,6 +101,7 @@ class Client {
     this.raf = null;
     this.dernier = 0;
     this.reste = 0;
+    this.tmod = 1;                 // Timer.tmod, initialisé à 1 comme dans le SWF
     this.echelle = 1;
     this.surEvenement = o.surEvenement || null;
     this.redimensionner();
@@ -182,10 +183,15 @@ class Client {
     const boucle = (t) => {
       this.raf = requestAnimationFrame(boucle);
       if (!this.dernier) { this.dernier = t; return; }
-      let dt = (t - this.dernier) / 1000;
+      const dt = (t - this.dernier) / 1000;
       this.dernier = t;
-      if (dt > 0.25) dt = 0.25;
-      this.reste += dt * IPS;
+      // Timer.update, au mot près : `tmod` est la moyenne glissante du temps
+      // écoulé, et une image de plus d'une demi-seconde est simplement PERDUE
+      // — le jeu ne rattrape jamais son retard.
+      if (dt > 0 && dt < TMOD_SAUT) {
+        this.tmod = this.tmod * TMOD_LISSAGE + (1 - TMOD_LISSAGE) * dt * IPS;
+      }
+      this.reste += this.tmod;
       let pas = 0;
       while (this.reste >= 1 && pas < 6) {
         if (this.socle && !this.socle.termine) this.socle.update(1);
@@ -204,6 +210,17 @@ class Client {
     const s = this.socle;
     if (!s) return;
 
+    // GameOver.mt : l'écran de fin — le clip `gameOver` du SWF plein cadre, et
+    // la pomme (sym544, quinze images) qui joue sa grimace une fois.
+    if (s.ecranFin) {
+      poser(ctx, 'gameOver', 1, 0, 0, 1, 1, 0, 1);
+      // Les cerises, posées pour que leur CENTRE VISUEL tombe au milieu : leur
+      // origine est décalée dans le dessin (boîte -34,7..48,7 × -45,7..31,3).
+      poser(ctx, 'sym544', Math.floor(s.pomme), 113, 127, 1, 1, 0, 1);
+      this.dessinerFondu(ctx, s);
+      return;
+    }
+
     if (s.jeu) {
       const jeu = s.jeu;
       ctx.save();
@@ -218,31 +235,46 @@ class Client {
       }
       ctx.restore();
 
-      // La barre de temps, à gauche — mcTimerBar, à 50 % d'alpha, dont la
-      // hauteur suit `gameTimer/gameTimerMax`.
-      if (s.flTimer) {
-        const c = Math.max(0, Math.min(1, s.timer / s.timerMax));
-        ctx.globalAlpha = 0.5;
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(4, 6, 7, HAUTEUR - 12);
-        ctx.fillStyle = c > 0.35 ? '#7ce04a' : '#ff4040';
-        const h = (HAUTEUR - 14) * c;
-        ctx.fillRect(5, HAUTEUR - 7 - h, 5, h);
-        ctx.globalAlpha = 1;
-      }
+      // La barre de temps — mcTimerBar (sym547) tel que Base.initGameTimer la
+      // pose : à gauche, à 50 % d'alpha, au-dessus de la scène (profondeur 12).
+      // Sa PREMIÈRE pièce est le cadre ; la SECONDE est le remplissage, dont
+      // updateGameTimer réduit `_yscale` — accroché en haut, il se vide donc
+      // par le bas.
+      if (s.flTimer) this.dessinerBarre(ctx, Math.max(0, Math.min(1, s.timer / s.timerMax)));
     } else {
       this.dessinerConsole(ctx, s);
     }
 
-    // Le fondu de fin d'épreuve : blanc gagné, rouge perdu.
+    this.dessinerFondu(ctx, s);
+  }
+
+  dessinerBarre(ctx, c) {
+    const b = manifeste && manifeste.sym547;
+    if (!b) return;
+    const pieces = b.etats[0].pieces;
+    ctx.save();
+    ctx.globalAlpha = 0.5;                       // tbar._alpha = 50
+    pieces.forEach((p, i) => {
+      const im = images.get(p.fichier);
+      if (!im) return;
+      ctx.save();
+      ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
+      if (i > 0) ctx.scale(1, c);                // tbar.b._yscale = c*100
+      ctx.drawImage(im, p.o ? p.o[0] : -p.w / 2, p.o ? p.o[1] : -p.h / 2, p.w, p.h);
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
+  /** Base.updateFade : blanc gagné, rouge perdu, sur toute la scène. */
+  dessinerFondu(ctx, s) {
     const f = s.fondu;
-    if (f.prc < 100) {
-      const col = f.couleur;
-      ctx.globalAlpha = 1 - f.prc / 100;
-      ctx.fillStyle = 'rgb(' + ((col >> 16) & 255) + ',' + ((col >> 8) & 255) + ',' + (col & 255) + ')';
-      ctx.fillRect(0, 0, LARGEUR, HAUTEUR);
-      ctx.globalAlpha = 1;
-    }
+    if (f.prc >= 100) return;
+    const col = f.couleur;
+    ctx.globalAlpha = 1 - f.prc / 100;
+    ctx.fillStyle = 'rgb(' + ((col >> 16) & 255) + ',' + ((col >> 8) & 255) + ',' + (col & 255) + ')';
+    ctx.fillRect(0, 0, LARGEUR, HAUTEUR);
+    ctx.globalAlpha = 1;
   }
 
   /*
