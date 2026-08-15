@@ -3923,6 +3923,279 @@ class Balance extends Jeu {
 }
 
 /*
+ * game/Picture.mt — L'IMAGE : mémoriser l'orientation du tableau.
+ *
+ * Un tableau descend dans son cadre, les PORTES se ferment (la pellicule du
+ * cadre, 21 images), et le cadre subit mvt = 2 + floor(dif·0,05) tours de
+ * passe-passe : quart de tour (±90°, un tirage sur trois de chaque côté) ou
+ * MIROIR (l'échelle court de 100 à -100 — un retournement à plat, à
+ * mi-vitesse), enchaînés avec une pause qui fond de moitié à chaque coup
+ * (pausePool 10, puis 5, 2,5…). Les portes rouvertes sur trois tableaux
+ * candidats montés du bas : cliquer celui qui a l'orientation FINALE
+ * (rot 0-3 quarts, face 0-1 miroir). gameTime = 400, la difficulté joue
+ * sur la vitesse (30 + dif·0,2) et le nombre de tours.
+ *
+ * Tout est vérifié contre la classe « 0CvjR5 » du SWF de dev — dont LE
+ * FALLTHROUGH d'époque : le case 2 (les portes) n'a PAS de break, il
+ * déborde dans le case 3 (le tour) — sans effet quand tout est nul, mais
+ * l'image où les portes finissent de se fermer lance launchMvt PUIS avance
+ * déjà son premier pas de décalage. Le compilé le confirme (le corps du
+ * case 2 coule dans le case 3) : on garde le fallthrough.
+ *
+ * Autres manies conservées :
+ *   · la face INITIALE vaut 1 (l'image stoppée sur sa première pellicule —
+ *     gotoAndStop(2 - face) : face 1 → image 1, face 0 → image 2, le
+ *     dessin en miroir) ;
+ *   · le miroir horizontal force rot pair, le vertical force rot impair
+ *     (rot += 2 selon la parité) — la géométrie du retournement ;
+ *   · les trois candidats sont tirés distincts et différents de la
+ *     réponse, PUIS l'un d'eux (winIndex = random(3)) est écrasé par la
+ *     réponse ;
+ *   · l'étape 5 de la source (les portes rouvertes après le choix) n'est
+ *     pas un case du switch : plus rien ne bouge, le verdict suit.
+ *
+ * Les dessins : gamePicture le mur, sym246 le tableau (image 1 droite,
+ * image 2 en miroir), sym242 le cadre et ses portes (21 images).
+ */
+class Picture extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 400;
+    super.init();
+    this.speed = 30 + this.dif * 0.2;
+    this.mvt = 2 + Math.floor(this.dif * 0.05);
+    this.size = 100;
+    this.rot = 0;
+    this.face = 1;
+    this.pausePool = 10;
+    this.decal = null;
+    this.tRotation = null;
+    this.tXScale = null;
+    this.tYScale = null;
+    this.pause = null;
+    this.cSpeed = 1;
+    this.image = 0;                // `frame` des sources : la porte
+    this.doorSens = 1;
+    this.winIndex = 0;
+    this.tryList = [];
+    this.attachElements();
+    this.picSize = 68;
+    this.marginDown = this.picSize + 20;
+  }
+
+  attachElements() {
+    // IMG
+    this.img = this.nouveauSprite('sym246');
+    this.img.x = LARGEUR * 0.5;
+    this.img.y = -this.size * 0.5;
+    this.img.peau.sx = this.size / 100;
+    this.img.peau.sy = this.size / 100;
+    this.img.peau.arreter();
+    this.img.init();
+    // CADRE
+    this.cadre = this.nouveauSprite('sym242');
+    this.cadre.x = LARGEUR * 0.5;
+    this.cadre.y = HAUTEUR * 0.5;
+    this.cadre.peau.sx = this.size / 100;
+    this.cadre.peau.sy = this.size / 100;
+    this.cadre.peau.arreter();
+    this.cadre.init();
+  }
+
+  update() {
+    switch (this.etape) {
+      case 1: {                    // SHOW — le tableau descend dans le cadre
+        const dy = this.cadre.y - this.img.y;
+        this.img.y += dy * 0.4 * Temps.tmod;
+        if (Math.abs(dy) < 0.5) {
+          this.etape = 2;
+          this.doorSens = 1;
+          this.image = 0;
+          this.img.y = this.cadre.y;
+        }
+        break;
+      }
+      case 2:                      // MOVE DOOR
+        this.image += this.doorSens * Temps.tmod;
+        if (this.image < 0) {
+          this.image = 0;
+          this.etape = 5;
+        }
+        if (this.image > this.cadre.peau.nbImages - 1) {
+          this.image = this.cadre.peau.nbImages - 1;
+          this.img.peau.visible = false;
+          this.etape = 3;
+          this.launchMvt();
+        }
+        this.cadre.peau.allerA(Math.round(this.image + 1));
+        // PAS de break : la source n'en a pas, le compilé coule dans le
+        // case 3 — l'image de la fermeture avance déjà son premier pas.
+        /* fallthrough */
+      case 3: {                    // TURN
+        if (this.decal !== null) {
+          this.decal += Temps.tmod * this.speed * this.cSpeed;
+          this.checkReset();
+        }
+        const c = (1 - Math.cos(this.decal / 100)) * 0.5;
+        if (this.tRotation !== null) {
+          this.cadre.peau.rot = c * this.tRotation;
+        }
+        if (this.tXScale !== null) {
+          this.cadre.peau.sx = (100 + this.tXScale * c * 2) / 100;
+        }
+        if (this.tYScale !== null) {
+          this.cadre.peau.sy = (100 + this.tYScale * c * 2) / 100;
+        }
+        if (this.pause !== null) {
+          if (this.pause < 0) {
+            this.pause = null;
+            this.launchMvt();
+          } else {
+            this.pause -= Temps.tmod;
+          }
+        }
+        break;
+      }
+      case 4: {                    // CHOOSE — les candidats montent
+        let ty = HAUTEUR - this.marginDown * 0.5;
+        for (let i = 0; i < this.tryList.length; i++) {
+          const info = this.tryList[i];
+          if (info.timer < 0) {
+            const d = ty - info.mc.y;
+            info.mc.y += d * 0.3 * Temps.tmod;
+          } else {
+            info.timer -= Temps.tmod;
+          }
+        }
+        ty = (HAUTEUR - this.marginDown) * 0.5;
+        const d = ty - this.cadre.y;
+        this.cadre.y += d * 0.3 * Temps.tmod;
+        this.img.y = this.cadre.y;
+        break;
+      }
+      default: break;              // l'étape 5 d'époque : plus rien ne bouge
+    }
+    super.update();
+  }
+
+  launchMvt() {
+    this.mvt--;
+    this.decal = 0;
+    switch (this.socle.hasard(6)) {
+      case 0:
+      case 1:
+        this.rot = (this.rot + 1) % 4;
+        this.tRotation = 90;
+        this.cSpeed = 1;
+        break;
+      case 2:
+      case 3:
+        this.rot = (this.rot + 3) % 4;
+        this.tRotation = -90;
+        this.cSpeed = 1;
+        break;
+      case 4:
+        this.tXScale = -100;
+        if (this.rot === 1 || this.rot === 3) this.rot = (this.rot + 2) % 4;
+        this.face = (this.face + 1) % 2;
+        this.cSpeed = 0.5;
+        break;
+      case 5:
+        this.tYScale = -100;
+        if (this.rot === 0 || this.rot === 2) this.rot = (this.rot + 2) % 4;
+        this.face = (this.face + 1) % 2;
+        this.cSpeed = 0.5;
+        break;
+      default: break;
+    }
+  }
+
+  checkReset() {
+    if (this.decal > 314) {
+      this.cadre.peau.rot = 0;
+      this.cadre.peau.sx = 1;
+      this.cadre.peau.sy = 1;
+      this.tRotation = null;
+      this.tXScale = null;
+      this.tYScale = null;
+      this.decal = null;
+      if (this.mvt > 0) {
+        this.pause = this.pausePool;
+        this.pausePool *= 0.5;
+      } else {
+        this.etape = 4;
+        this.initTryStep();
+      }
+    }
+  }
+
+  initTryStep() {
+    // INIT TRYLIST — trois candidats distincts, différents de la réponse…
+    this.tryList = [];
+    for (let i = 0; i < 3; i++) {
+      const r = this.socle.hasard(4);
+      const f = this.socle.hasard(2);
+      let flValide = r !== this.rot || f !== this.face;
+      for (let n = 0; n < this.tryList.length; n++) {
+        const o = this.tryList[n];
+        if (o.rot === r && o.face === f) flValide = false;
+      }
+      if (flValide) {
+        this.tryList.push({ rot: r, face: f, mc: null, timer: 4 + i * 8 });
+      } else {
+        i--;
+      }
+    }
+    // …puis l'un d'eux est écrasé par la réponse.
+    this.winIndex = this.socle.hasard(3);
+    const inf = this.tryList[this.winIndex];
+    inf.rot = this.rot;
+    inf.face = this.face;
+
+    // GEN PIC
+    const max = this.tryList.length;
+    const w = LARGEUR - max * this.picSize;
+    const e = w / (max + 1);
+    for (let i = 0; i < max; i++) {
+      const info = this.tryList[i];
+      const mc = this.nouveauSprite('sym246');
+      mc.x = e + this.picSize * 0.5 + i * (e + this.picSize);
+      mc.y = HAUTEUR + this.picSize * 0.5;
+      mc.peau.sx = this.picSize / 100;
+      mc.peau.sy = this.picSize / 100;
+      mc.peau.allerA(2 - info.face);
+      mc.peau.rot = info.rot * 90;
+      mc.init();
+      this.tryList[i].mc = mc;
+    }
+  }
+
+  /** onPress d'époque des candidats — vivants dès leur montée. */
+  click() {
+    const sx = this.sourisX;
+    const sy = this.sourisY;
+    for (let i = 0; i < this.tryList.length; i++) {
+      if (this.tryList[i].mc && this.tryList[i].mc.contient(sx, sy)) {
+        this.select(i);
+        return;
+      }
+    }
+  }
+
+  select(i) {
+    this.gagne(i === this.winIndex);
+    this.doorSens = -1;
+    this.etape = 2;
+    this.img.peau.visible = true;
+    this.img.peau.rot = this.rot * 90;
+    this.img.peau.allerA(2 - this.face);
+  }
+}
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui du portage, épreuve après épreuve — à fréquences de
@@ -3953,11 +4226,12 @@ const JEUX = [
   { cle: 'gameChain', nom: 'chaîne', Classe: Chain },
   { cle: 'gameGhost', nom: 'fantôme', Classe: Ghost },
   { cle: 'gameBalance', nom: 'balance', Classe: Balance },
+  { cle: 'gamePicture', nom: 'tableau', Classe: Picture },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
   Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff, Chain,
-  Ghost, Balance };
+  Ghost, Balance, Picture };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

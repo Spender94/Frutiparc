@@ -1374,6 +1374,109 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── L'IMAGE (game/Picture.mt, classe « 0CvjR5 » du bytecode) ──
+
+test('le tableau : la mise en place du bytecode, et la descente dans le cadre', () => {
+  const b = banc(J.Picture, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 400);
+  assert.equal(j.speed, 30 + 40 * 0.2);
+  assert.equal(j.mvt, 2 + Math.floor(40 * 0.05));
+  assert.equal(j.face, 1, 'la face initiale vaut UN (pellicule 1)');
+  assert.equal(j.rot, 0);
+  assert.equal(j.picSize, 68);
+  assert.equal(j.marginDown, 88);
+  assert.equal(j.img.peau.image, 1);
+  assert.equal(j.cadre.peau.nbImages, 21, 'les portes du cadre');
+  // SHOW : le tableau descend (ressort 0,4) puis les portes se ferment.
+  b.avancer(30);
+  assert.ok(j.etape >= 2, 'posé dans le cadre');
+  for (let i = 0; i < 40 && j.etape === 2; i++) b.avancer(1);
+  assert.equal(j.etape, 3, 'portes closes, le tour commence');
+  assert.equal(j.img.peau.visible, false, 'le tableau caché');
+  assert.equal(j.cadre.peau.image, 21);
+  // Le FALLTHROUGH d'époque : launchMvt a déjà avancé son premier pas.
+  assert.ok(j.decal > 0, 'le case 2 déborde dans le case 3 : decal = ' + j.decal);
+});
+
+test('les tours du tableau : quarts, miroirs et parité de rot (launchMvt)', () => {
+  const b = banc(J.Picture);
+  const j = b.jeu;
+  // Rejouer chaque tirage à la main, sur l'état.
+  j.rot = 0; j.face = 1;
+  const tirages = [];
+  const hasardOrig = j.socle.hasard.bind(j.socle);
+  j.socle.hasard = (n) => { const v = tirages.shift(); return v !== undefined ? v : hasardOrig(n); };
+  tirages.push(0);                       // quart à droite
+  j.launchMvt();
+  assert.equal(j.rot, 1);
+  assert.equal(j.tRotation, 90);
+  assert.equal(j.cSpeed, 1);
+  j.tRotation = null;
+  tirages.push(4);                       // miroir horizontal : rot impair → +2
+  j.launchMvt();
+  assert.equal(j.rot, 3, 'le miroir horizontal retourne les rot impairs');
+  assert.equal(j.face, 0);
+  assert.equal(j.tXScale, -100);
+  assert.equal(j.cSpeed, 0.5);
+  j.tXScale = null;
+  tirages.push(5);                       // miroir vertical : rot pair → +2
+  j.rot = 2;
+  j.launchMvt();
+  assert.equal(j.rot, 0, 'le miroir vertical retourne les rot pairs');
+  assert.equal(j.face, 1);
+  // La remise à zéro : décal > 314 nettoie tout et arme la pause fondante.
+  j.mvt = 1;
+  j.decal = 315;
+  j.tYScale = null;
+  j.checkReset();
+  assert.equal(j.decal, null);
+  assert.equal(j.pause, 10, 'pausePool');
+  assert.equal(j.pausePool, 5, 'la pause fond de moitié');
+});
+
+test('le choix du tableau : trois candidats, la réponse écrasée, le verdict', () => {
+  const b = banc(J.Picture);
+  const j = b.jeu;
+  j.rot = 3;
+  j.face = 0;
+  j.initTryStep();
+  assert.equal(j.tryList.length, 3);
+  const gagnant = j.tryList[j.winIndex];
+  assert.equal(gagnant.rot, 3, 'la réponse écrase le candidat tiré');
+  assert.equal(gagnant.face, 0);
+  // Les deux autres diffèrent de la réponse et entre eux.
+  const autres = j.tryList.filter((t, i) => i !== j.winIndex);
+  assert.ok(autres.every((t) => t.rot !== 3 || t.face !== 0));
+  assert.ok(autres[0].rot !== autres[1].rot || autres[0].face !== autres[1].face);
+  // Les pellicules : 2 - face, tournées de rot·90, à l'échelle 68.
+  assert.ok(j.tryList.every((t) => t.mc.peau.image === 2 - t.face));
+  assert.ok(j.tryList.every((t) => t.mc.peau.rot === t.rot * 90));
+  assert.equal(j.tryList[0].mc.peau.sx, 0.68);
+  // Cliquer le bon : gagné, les portes rouvrent, le tableau montre la solution.
+  j.etape = 4;
+  const bon = j.tryList[j.winIndex].mc;
+  b.souris(bon.x, bon.y);
+  b.socle.click();
+  assert.equal(j.gagnant, true);
+  assert.equal(j.etape, 2);
+  assert.equal(j.doorSens, -1);
+  assert.equal(j.img.peau.visible, true);
+  assert.equal(j.img.peau.rot, 3 * 90);
+  assert.equal(j.img.peau.image, 2, 'gotoAndStop(2 - face)');
+  // Les portes rouvrent jusqu'à l'étape 5, où plus rien ne bouge.
+  for (let i = 0; i < 40 && j.etape === 2; i++) b.avancer(1);
+  assert.equal(j.etape, 5);
+});
+
+test('les dessins du tableau sont extraits', () => {
+  for (const cle of ['gamePicture', 'sym246', 'sym242']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.sym242.etats.length, 21, 'les portes');
+  assert.ok(MANIFESTE.sym246.etats.length >= 2, 'le tableau et son miroir');
+});
+
 // ── LA BALANCE (game/Balance.mt, classe « 6Q4T45 » du bytecode) ──
 
 test('la balance : la mise en place du bytecode, constante par constante', () => {

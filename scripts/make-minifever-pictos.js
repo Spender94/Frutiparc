@@ -156,6 +156,13 @@ const SCENES = {
     { cle: 'sym370', x: 150, y: 190 },
     { cle: 'sym363', x: 118, y: 172, image: 50, rot: -12 },  // …le héros en vol
   ],
+  gamePicture: [
+    { cle: 'sym242', x: 120, y: 96, image: 1 },     // le cadre ouvert…
+    { cle: 'sym246', x: 120, y: 96, image: 1, rot: 90 },    // …le tableau tourné,
+    { cle: 'sym246', x: 46, y: 196, s: 0.5, image: 1 },     // et trois candidats
+    { cle: 'sym246', x: 120, y: 196, s: 0.5, image: 2 },
+    { cle: 'sym246', x: 194, y: 196, s: 0.5, image: 1, rot: 90 },
+  ],
   gameBalance: [
     { cle: 'sym258', x: 120, y: 18, rot: 8 },       // le fléau penché…
     { cle: 'sym256', x: 41, y: 7 },                 // …ses deux plateaux…
