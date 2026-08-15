@@ -15,7 +15,8 @@
 
 const sousNode = (typeof module !== 'undefined' && module.exports);
 const E = sousNode ? require('./engine.js') : racine.MinifeverEngine;
-const { LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT } = E;
+const { LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT, CADENCE_FLASH } = E;
+const IMAGE_FLASH = 1 / CADENCE_FLASH;
 
 const images = new Map();          // fichier SVG → Image
 let manifeste = null;
@@ -100,7 +101,8 @@ class Client {
     this.socle = null;
     this.raf = null;
     this.dernier = 0;
-    this.reste = 0;
+    this.attente = 0;              // le temps accumulé vers la prochaine image Flash
+    this.derniereImage = 0;
     this.tmod = 1;                 // Timer.tmod, initialisé à 1 comme dans le SWF
     this.echelle = 1;
     this.surEvenement = o.surEvenement || null;
@@ -173,7 +175,8 @@ class Client {
     }, opt || {}));
     this.socle.demarrer();
     this.dernier = 0;
-    this.reste = 0;
+    this.attente = 0;
+    this.derniereImage = 0;
     this.etoiles = 0;
     return this.socle;
   }
@@ -182,21 +185,23 @@ class Client {
     if (this.raf) return;
     const boucle = (t) => {
       this.raf = requestAnimationFrame(boucle);
-      if (!this.dernier) { this.dernier = t; return; }
-      const dt = (t - this.dernier) / 1000;
+      if (!this.dernier) { this.dernier = t; this.attente = 0; this.derniereImage = t; return; }
+      this.attente += (t - this.dernier) / 1000;
       this.dernier = t;
-      // Timer.update, au mot près : `tmod` est la moyenne glissante du temps
-      // écoulé, et une image de plus d'une demi-seconde est simplement PERDUE
-      // — le jeu ne rattrape jamais son retard.
-      if (dt > 0 && dt < TMOD_SAUT) {
-        this.tmod = this.tmod * TMOD_LISSAGE + (1 - TMOD_LISSAGE) * dt * IPS;
-      }
-      this.reste += this.tmod;
-      let pas = 0;
-      while (this.reste >= 1 && pas < 6) {
-        if (this.socle && !this.socle.termine) this.socle.update(1);
-        this.reste -= 1;
-        pas++;
+      // La boucle du LECTEUR, comme Mini-Wave : la racine du SWF appelle son
+      // update UNE fois par image Flash (la boucle gotoAndPlay des images 6-7),
+      // à la cadence de l'en-tête — et Timer.update en tire un tmod
+      // FRACTIONNAIRE (≈ 32/40 = 0,8 sur une machine à l'aise), la moyenne
+      // glissante du temps réel entre images exécutées. En retard, Flash saute
+      // des images, il ne les rattrape pas : l'excédent est perdu.
+      if (this.attente >= IMAGE_FLASH) {
+        this.attente = Math.min(this.attente - IMAGE_FLASH, IMAGE_FLASH);
+        const ecart = (t - this.derniereImage) / 1000;
+        this.derniereImage = t;
+        if (ecart > 0 && ecart < TMOD_SAUT) {
+          this.tmod = this.tmod * TMOD_LISSAGE + (1 - TMOD_LISSAGE) * ecart * IPS;
+        }
+        if (this.socle && !this.socle.termine) this.socle.update(this.tmod);
       }
       this.dessiner();
     };

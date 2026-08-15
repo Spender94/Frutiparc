@@ -61,6 +61,11 @@ const HAUTEUR = 240;
 const IPS = 32;                       // Timer.wantedFPS
 const TMOD_LISSAGE = 0.95;            // Timer.tmod_factor
 const TMOD_SAUT = 0.5;                // Timer.maxDeltaTime, en secondes
+// … et la cadence d'APPEL : la racine du SWF appelle son update une fois par
+// image Flash (boucle gotoAndPlay des images 6-7), à la cadence de l'en-tête.
+// Les pellicules des clips avancent d'UNE image par appel ; tmod ne porte que
+// les vitesses. Même modèle que Mini-Wave — cf. public/miniwave/game.js.
+const CADENCE_FLASH = 40;             // l'en-tête de minifever.swf
 
 // Le multiplicateur de temps, lu par tous les mini-jeux. La boucle avance le
 // moteur par pas d'UNE image nominale, donc il vaut 1 — mais les sources le
@@ -599,8 +604,9 @@ class Fever extends Socle {
 
   update(tmod) {
     super.update(tmod);
-    // La pomme de l'écran de fin joue sa pellicule une fois, puis se tient.
-    if (this.ecranFin && this.pomme < 15) this.pomme = Math.min(15, this.pomme + tmod);
+    // La pomme de l'écran de fin joue sa pellicule une fois, puis se tient —
+    // une image de clip par image Flash, pas de tmod.
+    if (this.ecranFin && this.pomme < 15) this.pomme = Math.min(15, this.pomme + 1);
   }
 
   click() {
@@ -610,7 +616,7 @@ class Fever extends Socle {
 }
 
 const API = { Mc, Scene, Sprite, Phys, Part, Jeu, Socle, Arcade, Fever, Temps,
-  LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT, PROF, PALIERS, borner };
+  LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT, CADENCE_FLASH, PROF, PALIERS, borner };
 
 if (sousNode) module.exports = API;
 else racine.MinifeverEngine = API;

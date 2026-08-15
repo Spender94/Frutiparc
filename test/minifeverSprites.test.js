@@ -174,8 +174,13 @@ test('la cadence du SWF est trente-deux images par seconde, et le portage suit',
   assert.match(moteur, /const IPS = 32;/, 'le moteur compte 32 unités par seconde');
   assert.match(moteur, /const TMOD_LISSAGE = 0\.95;/, 'le lissage de Timer.update');
   assert.match(moteur, /const TMOD_SAUT = 0\.5;/, 'et son saut d\'image');
+  // La cadence d'APPEL vient de l'en-tête (40) : un update par image Flash,
+  // recevant le tmod lissé — le modèle du lecteur, comme Mini-Wave.
+  assert.match(moteur, /const CADENCE_FLASH = 40;/, 'la cadence d\'appel de l\'en-tête');
   const client = fs.readFileSync(path.join(ROOT, 'public/minifever/client.js'), 'utf8');
-  assert.match(client, /this\.tmod = this\.tmod \* TMOD_LISSAGE \+ \(1 - TMOD_LISSAGE\) \* dt \* IPS;/,
-    'la boucle avance du tmod lissé');
-  assert.doesNotMatch(client, /dt \* IPS;\s*\n\s*this\.reste/, 'et plus du temps brut');
+  assert.match(client, /this\.tmod = this\.tmod \* TMOD_LISSAGE \+ \(1 - TMOD_LISSAGE\) \* ecart \* IPS;/,
+    'la boucle avance du tmod lissé, mesuré entre images exécutées');
+  assert.match(client, /this\.socle\.update\(this\.tmod\)/, 'le socle reçoit le tmod fractionnaire');
+  assert.match(client, /this\.attente = Math\.min\(this\.attente - IMAGE_FLASH, IMAGE_FLASH\);/,
+    'une image au plus par rafraîchissement : l\'excédent est perdu, comme Flash');
 });
