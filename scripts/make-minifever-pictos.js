@@ -29,12 +29,23 @@ const SORTIE = path.join(RACINE, 'public/minifever/pictos');
 const SCENE = 240;                 // Cs.mcw / Cs.mch
 const COTE = 64;                   // la taille d'un picto
 
-/** Le contenu d'un tracé, et la boîte que son viewBox déclare. */
+/**
+ * Le contenu d'un tracé, et la boîte que son viewBox déclare.
+ *
+ * Les identifiants internes (dégradés, surtout) sont PRÉFIXÉS du nom du
+ * fichier : chaque tracé sort de l'extracteur avec ses « g0, g1… », et en
+ * incruster plusieurs dans un même SVG faisait peindre les tubes de Tubulo
+ * avec le dégradé sombre de leur décor.
+ */
 function lireTrace(fichier) {
   const brut = fs.readFileSync(path.join(SPRITES, fichier), 'utf8');
   const vb = /viewBox="([^"]+)"/.exec(brut);
   const [x, y, w, h] = vb ? vb[1].trim().split(/\s+/).map(Number) : [0, 0, 1, 1];
-  const dedans = brut.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+  const prefixe = fichier.replace(/\W/g, '') + '_';
+  const dedans = brut.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')
+    .replace(/\bid="([^"]+)"/g, (m, id) => `id="${prefixe}${id}"`)
+    .replace(/url\(#([^)]+)\)/g, (m, id) => `url(#${prefixe}${id})`)
+    .replace(/\b(xlink:href|href)="#([^"]+)"/g, (m, attr, id) => `${attr}="#${prefixe}${id}"`);
   return { x, y, w: w || 1, h: h || 1, dedans };
 }
 
@@ -89,6 +100,24 @@ const SCENES = {
     { cle: 'sym200', x: 174, y: 50, image: 3 },
     { cle: 'sym187', x: 120, y: 240 },              // le livre attend en bas
   ],
+  gameGather: [
+    { cle: 'sym418', x: 120, y: 120, s: 1.4 },      // le cercle, rayon 70
+    { cle: 'sym414', x: 40, y: 52, s: 2, image: 1 },   // rouges dehors…
+    { cle: 'sym414', x: 198, y: 76, s: 2, image: 1 },
+    { cle: 'sym414', x: 60, y: 196, s: 2, image: 1 },
+    { cle: 'sym414', x: 130, y: 112, s: 2, image: 2 }, // …bleue dedans
+  ],
+  gameTubulo: [                                     // trois pistons, découpés
+    { cle: 'sym209', x: 100, y: 128, s: 0.4, image: 1, masque: { cle: 'sym210', s: 0.4 } },
+    { cle: 'sym209', x: 120, y: 144, s: 0.4, image: 2, masque: { cle: 'sym210', s: 0.4 } },
+    { cle: 'sym209', x: 140, y: 160, s: 0.4, image: 3, masque: { cle: 'sym210', s: 0.4 } },
+  ],
+  gameTrampoline: [
+    { cle: 'sym160', x: 0, y: 128 },                // le mur à son étage facile
+    { cle: 'sym152', x: 0, y: 0 },                  // le sol
+    { cle: 'sym157', x: 120, y: 150, s: 0.48, image: 2 },  // le bonhomme
+    { cle: 'sym150', x: 120, y: 200 },              // le trampoline
+  ],
 };
 
 /** Recoud une image d'un symbole : ses pièces, chacune sous sa matrice. */
@@ -110,6 +139,7 @@ function coudre(etat) {
 }
 
 /** Un symbole posé sur la scène, comme le ferait le client. */
+let masqueSuivant = 0;
 function poser(manifeste, o) {
   const s = manifeste[o.cle];
   if (!s) throw new Error(`${o.cle} : pas dans le manifeste`);
@@ -119,7 +149,29 @@ function poser(manifeste, o) {
   const t = [`translate(${o.x || 0} ${o.y || 0})`];
   if (o.rot) t.push(`rotate(${o.rot})`);
   if (sx !== 1 || sy !== 1) t.push(`scale(${sx} ${sy})`);
-  return `<g transform="${t.join(' ')}">${coudre(etat)}</g>`;
+  // Le masque éventuel — la découpe que le jeu applique (setMask) : la forme
+  // d'un autre symbole, posée au même endroit. Les capsules de Tubulo.
+  let avant = '', attr = '';
+  if (o.masque) {
+    const m = manifeste[o.masque.cle];
+    if (!m) throw new Error(`${o.masque.cle} : masque absent du manifeste`);
+    const id = 'm' + (masqueSuivant++);
+    const ms = o.masque.s !== undefined ? o.masque.s : 1;
+    const chemins = [];
+    for (const p of m.etats[0].pieces) {
+      const trace = lireTrace(p.fichier);
+      for (const d of trace.dedans.matchAll(/\bd="([^"]+)"/g)) {
+        chemins.push(`<path d="${d[1]}" transform="translate(${o.x || 0} ${o.y || 0}) scale(${ms}) matrix(${p.m.join(' ')})"/>`);
+      }
+    }
+    avant = `<clipPath id="${id}">${chemins.join('')}</clipPath>`;
+    attr = ` clip-path="url(#${id})"`;
+  }
+  // La découpe vit sur une ENVELOPPE sans transform : ses chemins sont déjà en
+  // coordonnées de scène, et un clip-path posé sur un groupe transformé se
+  // verrait appliquer le transform une seconde fois.
+  const dedans = `<g transform="${t.join(' ')}">${coudre(etat)}</g>`;
+  return o.masque ? `${avant}<g${attr}>${dedans}</g>` : dedans;
 }
 
 function picto(manifeste, cle) {

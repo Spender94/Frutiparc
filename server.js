@@ -606,6 +606,9 @@ const MINIFEVER_EPREUVES = [
   { cle: 'gameParachute', item: '$fvParachute', nom: 'Parachute', image: 'parachute' },
   { cle: 'gameGobelet',   item: '$fvGobelet',   nom: 'Bonneteau', image: 'gobelet' },
   { cle: 'gameMarmite',   item: '$fvMarmite',   nom: 'Marmite',   image: 'marmite' },
+  { cle: 'gameGather',     item: '$fvGather',     nom: 'Bourrasque',  image: 'gather' },
+  { cle: 'gameTubulo',     item: '$fvTubulo',     nom: 'Pistons',     image: 'tubulo' },
+  { cle: 'gameTrampoline', item: '$fvTrampoline', nom: 'Trampoline',  image: 'trampoline' },
 ];
 for (const e of MINIFEVER_EPREUVES) {
   GAME_ITEM_INFO[e.item] = {

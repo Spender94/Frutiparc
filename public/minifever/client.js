@@ -56,7 +56,9 @@ function mesures(m) {
   const out = {};
   for (const [cle, s] of Object.entries(m || manifeste || {})) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    const e = s.etats[0];
+    // La boîte se lit sur la première image DESSINÉE — une pellicule peut
+    // commencer ou finir sur une image-clé vide (le souffle de Gather).
+    const e = s.etats.find((t) => t.pieces.length) || s.etats[0];
     for (const p of e.pieces) {
       const ox = p.o ? p.o[0] : -p.w / 2;
       const oy = p.o ? p.o[1] : -p.h / 2;
@@ -68,7 +70,9 @@ function mesures(m) {
       }
     }
     out[cle] = {
-      nbImages: s.etats.length,
+      // Le NUMÉRO de la dernière image, pas le compte d'états : une pellicule
+      // clairsemée (images-clés tenues) va au-delà de ses états.
+      nbImages: s.etats[s.etats.length - 1].frame,
       boite: isFinite(x0) ? { x0, y0, x1, y1 } : { x0: -10, y0: -10, x1: 10, y1: 10 },
     };
   }
@@ -85,6 +89,10 @@ function mesures(m) {
  * (0,0) — deviennent un Path2D que la toile applique en découpe. Le fichier se
  * lit à la première demande ; d'ici là, le Mc se dessine entier, comme un clip
  * Flash avant son setMask.
+ *
+ * Un masque qui BOUGE s'écrit `masque: { cle, x, y, sx, sy }` — la forme du
+ * symbole, posée là : le carré du trampoline suit la ligne du mur, la fenêtre
+ * capsule de Tubulo se pose sur chaque case.
  */
 const masques = new Map();         // clé de symbole → Path2D (null : en cours)
 
@@ -107,11 +115,23 @@ function cheminMasque(cle) {
   return null;
 }
 
-/** Pose un dessin (une image d'un symbole) sur la toile. */
+/**
+ * Pose un dessin (une image d'un symbole) sur la toile.
+ *
+ * L'image demandée se résout comme dans le lecteur : la dernière IMAGE-CLÉ
+ * atteinte tient jusqu'à la suivante. Une image-clé vide ne dessine rien —
+ * c'est ainsi que la bouffée du souffle s'éteint au milieu de sa pellicule.
+ */
 function poser(ctx, cle, image, x, y, sx, sy, rot, alpha) {
   const s = manifeste && manifeste[cle];
   if (!s) return;
-  const etat = s.etats.find((e) => e.frame === image) || s.etats[0];
+  let etat = null;
+  for (const e of s.etats) {
+    if (e.frame > image) break;
+    etat = e;
+  }
+  etat = etat || s.etats[0];
+  if (!etat.pieces.length) return;
   ctx.save();
   ctx.translate(x, y);
   if (rot) ctx.rotate(rot * Math.PI / 180);
@@ -270,14 +290,23 @@ class Client {
       // niveau de la grenouille file à 1524 sur la droite).
       if (s.suivant) poser(ctx, s.suivant.cle, 1, 0, 0, 1, 1, 0, 1);
       for (const mc of jeu.scene.ordre()) {
-        const decoupe = mc.masque ? cheminMasque(mc.masque) : null;
+        // Un Mc peut porter un DESSIN à main levée au lieu d'une pellicule —
+        // le clip vide où Trampoline trace son filet (dm.empty + lineTo).
+        if (mc.dessin) { if (mc.dessin.length) this.dessinerTraits(ctx, mc.dessin); continue; }
+        let decoupe = mc.masque ? cheminMasque(typeof mc.masque === 'string' ? mc.masque : mc.masque.cle) : null;
+        if (decoupe && typeof mc.masque === 'object') {
+          const m = mc.masque;
+          const place = new Path2D();
+          place.addPath(decoupe, new DOMMatrix([m.sx || 1, 0, 0, m.sy || 1, m.x || 0, m.y || 0]));
+          decoupe = place;
+        }
         if (decoupe) {
           ctx.save();
           ctx.clip(decoupe);
-          poser(ctx, mc.cle, mc.image, mc.x, mc.y, mc.sx, mc.sy, mc.rot, mc.alpha);
+          this.poserMc(ctx, mc);
           ctx.restore();
         } else {
-          poser(ctx, mc.cle, mc.image, mc.x, mc.y, mc.sx, mc.sy, mc.rot, mc.alpha);
+          this.poserMc(ctx, mc);
         }
       }
       ctx.restore();
@@ -293,6 +322,75 @@ class Client {
     }
 
     this.dessinerFondu(ctx, s);
+  }
+
+  /**
+   * Un Mc, avec sa teinte éventuelle. `blanchi` (0..1) est le setPColor blanc
+   * des sources : sortie = dessin × (1-b) + blanc × b. La toile ne sait pas
+   * teinter en posant, alors le Mc passe par un tampon — dessiné seul, blanchi
+   * sur place (source-atop), reporté.
+   */
+  poserMc(ctx, mc) {
+    if (!mc.blanchi) {
+      poser(ctx, mc.cle, mc.image, mc.x, mc.y, mc.sx, mc.sy, mc.rot, mc.alpha);
+      return;
+    }
+    if (!this.tampon) {
+      this.tampon = document.createElement('canvas');
+      this.tampon.width = LARGEUR; this.tampon.height = HAUTEUR;
+      this.tamponCtx = this.tampon.getContext('2d');
+    }
+    const t = this.tamponCtx;
+    t.clearRect(0, 0, LARGEUR, HAUTEUR);
+    poser(t, mc.cle, mc.image, mc.x, mc.y, mc.sx, mc.sy, mc.rot, mc.alpha);
+    t.save();
+    t.globalCompositeOperation = 'source-atop';
+    t.globalAlpha = Math.min(1, mc.blanchi);
+    t.fillStyle = '#fff';
+    t.fillRect(0, 0, LARGEUR, HAUTEUR);
+    t.restore();
+    ctx.drawImage(this.tampon, 0, 0);
+  }
+
+  /**
+   * L'API de dessin d'AS2, rejouée : une liste de commandes posée par le jeu
+   * — ['style', épaisseur, couleur, alpha%], ['fond', couleur, alpha%],
+   * ['aller', x, y], ['ligne', x, y], ['courbe', cx, cy, x, y], ['fin'].
+   * Comme dans le lecteur, le fond se remplit et le trait se tire par-dessus.
+   */
+  dessinerTraits(ctx, commandes) {
+    ctx.save();
+    let chemin = null, trait = null, fond = null;
+    const finir = () => {
+      if (!chemin) return;
+      if (fond) {
+        ctx.globalAlpha = fond.alpha / 100;
+        ctx.fillStyle = fond.couleur;
+        ctx.fill(chemin);
+      }
+      if (trait) {
+        ctx.globalAlpha = trait.alpha / 100;
+        ctx.strokeStyle = trait.couleur;
+        ctx.lineWidth = trait.epaisseur;
+        ctx.stroke(chemin);
+      }
+      chemin = null;
+    };
+    const teinte = (c) => '#' + (c & 0xffffff).toString(16).padStart(6, '0');
+    for (const c of commandes) {
+      switch (c[0]) {
+        case 'style': trait = { epaisseur: c[1], couleur: teinte(c[2]), alpha: c[3] }; break;
+        case 'fond': fond = { couleur: teinte(c[1]), alpha: c[2] }; break;
+        case 'aller': if (!chemin) chemin = new Path2D(); chemin.moveTo(c[1], c[2]); break;
+        case 'ligne': if (chemin) chemin.lineTo(c[1], c[2]); break;
+        case 'courbe': if (chemin) chemin.quadraticCurveTo(c[1], c[2], c[3], c[4]); break;
+        case 'fin': finir(); break;
+        default: break;
+      }
+    }
+    finir();
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   dessinerBarre(ctx, c) {

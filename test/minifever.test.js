@@ -680,6 +680,165 @@ test('MARMITE : l\'ingrédient hors recette perd, jugé à 190 en tombant', () =
   assert.equal(j.tombants.length, 0, 'l\'ingrédient jugé a disparu');
 });
 
+test('GATHER : la bille au rouge dehors, au bleu dedans — toutes dedans, gagné', () => {
+  const b = banc(J.Gather, { dif: 0 });
+  const j = b.jeu;
+  // Gather.init : rayon 10 + dif·0.05, cercle 70, 1 + ⌊dif·0.05⌋ billes.
+  assert.equal(j.rayonBille, 10);
+  assert.equal(j.rayonCercle, 70);
+  assert.equal(j.billes.length, 1);
+  assert.equal(j.airFriction, 0.95, 'le seul jeu à frotter à 0.95');
+  const mc = j.billes[0];
+  assert.ok(mc.distance(j.cercle) > j.rayonBille + j.rayonCercle, 'née hors du cercle');
+  b.avancer(1);
+  assert.equal(mc.peau.image, 1, 'dehors : rouge');
+  // Poussée au centre : elle passe au bleu et l\'épreuve est gagnée.
+  mc.x = j.cercle.x; mc.y = j.cercle.y;
+  mc.vitx = 0; mc.vity = 0;
+  b.avancer(1);
+  assert.equal(mc.peau.image, 2, 'dedans : bleue');
+  assert.equal(j.gagnant, true);
+});
+
+test('GATHER : la bourrasque repousse, et sa griffe part en taille pleine', () => {
+  const b = banc(J.Gather, { dif: 0 });
+  const j = b.jeu;
+  const mc = j.billes[0];
+  mc.vitx = 0; mc.vity = 0;
+  const avant = j.sprites.length;
+  // Un appui à trente pixels de la bille (rayon d\'effet : blowRay·2 = 40).
+  b.souris(mc.x + 30, mc.y);
+  b.socle.click();
+  // Gather.click : pow = 10·(40-d)/40 = 2.5, dans la direction OPPOSÉE.
+  assert.ok(Math.abs(mc.vitx - (-Math.cos(0) * 2.5)) < 1e-9, `vitx ${mc.vitx}`);
+  assert.equal(j.sprites.length, avant + 1, 'la griffe est née');
+  const griffe = j.sprites[j.sprites.length - 1];
+  assert.equal(griffe.flPhys, true, 'elle tombe');
+  assert.equal(griffe.peau.sx, 1, 'Part.init réécrit l\'échelle à 100 — les _xscale de la source sont morts');
+  assert.equal(griffe.peau.nbImages, 7, 'sept images, dont les vides');
+  b.socle.relache();
+});
+
+test('TUBULO : résoudre la croix du mélange ramène tout à zéro', () => {
+  const b = banc(J.Tubulo, { dif: 0 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 320);
+  // Un seul tour de mélange à difficulté nulle : une croix à l\'état 2. La
+  // résoudre, c\'est cliquer SA case centrale (+1 : (2+1)%3 = 0). On la
+  // retrouve en cherchant le centre dont la croix est à 2 et le reste à 0.
+  let centre = null;
+  for (let x = 0; x < 4 && !centre; x++) {
+    for (let y = 0; y < 4 && !centre; y++) {
+      const dedans = new Set();
+      for (const c of j.croix) {
+        const s = j.caseEn(x + c.x, y + c.y);
+        if (s) dedans.add(s);
+      }
+      let bon = true;
+      for (let gx = 0; gx < 4; gx++) {
+        for (let gy = 0; gy < 4; gy++) {
+          const s = j.grille[gx][gy];
+          if (dedans.has(s) ? s.id !== 2 : s.id !== 0) bon = false;
+        }
+      }
+      if (bon) centre = j.grille[x][y];
+    }
+  }
+  assert.ok(centre, 'le mélange est bien une seule croix');
+  // Le curseur se pose sur le HAUT de sa capsule — la seule part que les
+  // fenêtres voisines, posées après, ne recouvrent pas (le dernier accroché
+  // reçoit le survol, comme dans le lecteur).
+  b.souris(centre.x, centre.y - 40);
+  b.avancer(1);
+  assert.equal(j.survole, centre, 'la case est sous le curseur');
+  b.socle.click();
+  assert.equal(j.etape, 2, 'la plongée commence');
+  b.socle.relache();
+  // decal court à 40·tmod vers 314 ; au creux (157), les états s\'affichent.
+  b.avancer(3);
+  assert.ok(centre.mc.y > centre.y, 'le tube plonge dans sa capsule');
+  b.avancer(10);
+  assert.equal(j.etape, 1, 'la plongée est finie');
+  let zeros = true;
+  for (let x = 0; x < 4; x++) for (let y = 0; y < 4; y++) if (j.grille[x][y].id !== 0) zeros = false;
+  assert.ok(zeros, 'tout est à zéro');
+  assert.equal(j.gagnant, true);
+  assert.deepEqual(centre.mc.masque, { cle: 'sym210', x: centre.x, y: centre.y, sx: 0.4, sy: 0.4 },
+    'chaque tube est découpé par sa fenêtre capsule');
+});
+
+test('TUBULO : le survol blanchit la croix, et s\'éteint en partant', () => {
+  const b = banc(J.Tubulo, { dif: 0 });
+  const j = b.jeu;
+  const slot = j.grille[1][1];
+  b.souris(slot.x, slot.y - 40);
+  b.avancer(8);
+  assert.equal(j.survole, slot);
+  assert.ok(slot.mc.blanchi > 0.1, 'la teinte blanche monte (rollOver 70)');
+  b.souris(0, 0);
+  b.avancer(40);
+  assert.ok(slot.mc.blanchi < 0.02, 'et retombe (rollOut 100)');
+});
+
+test('TRAMPOLINE : passer la ligne du mur puis redescendre gagne — et le mur escamote', () => {
+  const b = banc(J.Trampoline, { dif: 0 });
+  const j = b.jeu;
+  // Trampoline.init : toile à 200, sol à 234, mur à (4 - round(dif·0.1))·32.
+  assert.equal(j.hautToile, 200);
+  assert.equal(j.hautMur, 128);
+  assert.equal(j.homme.poids, 0.5);
+  assert.equal(j.mur.y, 128);
+  // Sans rien faire, le bonhomme rebondit sur la toile : le filet se dessine
+  // au contact, puis s\'efface en vol.
+  let filetVu = false, vide = false;
+  for (let i = 0; i < 200; i++) {
+    b.avancer(1);
+    if (j.filet.dessin.length) filetVu = true;
+    else vide = true;
+  }
+  assert.ok(filetVu && vide, 'le filet apparaît au contact et disparaît en vol');
+
+  // La victoire se JOUE : appui tenu, le ressort plafonne sous le mur — c'est
+  // vrai aussi dans le SWF sous Ruffle (fondu rouge au chrono, sommet ~127).
+  // Le geste gagnant est un RYTHME : relâcher pendant que la toile s'enfonce,
+  // appuyer pendant qu'elle renvoie. Joué ainsi, le bonhomme passe le mur,
+  // sourit (image 6, verdict gelé là-haut), redescend — gagné, et le carré
+  // rouge l'escamote derrière le mur.
+  const h = j.homme;
+  let sourire = false, gele = false;
+  for (let i = 0; i < 1500 && j.gagnant === null; i++) {
+    const contact = h.y + j.rayonHomme > j.hautToile;
+    if (contact && h.vity < 0) b.socle.click(); else b.socle.relache();
+    b.avancer(1);
+    h.x = 120;                     // la dérive n'est pas le sujet
+    if (j.flHaut) {
+      sourire = sourire || h.peau.image === 6;
+      gele = gele || j.flGelResultat;
+    }
+  }
+  assert.equal(j.gagnant, true, 'le rythme fait passer le mur');
+  assert.ok(sourire, 'là-haut, le sourire (image 6)');
+  assert.ok(gele, 'et le verdict gelé le temps du vol');
+  assert.deepEqual(h.peau.masque,
+    { cle: 'sym148', x: 0, y: j.hautMur - HAUTEUR, sx: 2.4, sy: 2.4 },
+    'le carré rouge découpe le bonhomme à la ligne du mur');
+});
+
+test('TRAMPOLINE : sortir de la toile, c\'est la chute et la surprise', () => {
+  const b = banc(J.Trampoline, { dif: 0 });
+  const j = b.jeu;
+  // Poussé hors de la toile (rayon 94, marge un rayon d\'homme), il passe
+  // DEVANT (dm.over) puis s\'écrase au sol.
+  j.homme.x = 10;
+  j.homme.y = 190;
+  b.avancer(2);
+  assert.equal(j.flDehors, true);
+  b.avancer(80);
+  assert.equal(j.gagnant, false);
+  assert.equal(j.homme.peau.image, 5, 'la surprise du crash');
+  assert.ok(j.homme.y <= j.hautSol - j.rayonHomme + 0.001, 'posé au sol');
+});
+
 test('la difficulté durcit bien chaque épreuve', () => {
   const facile = banc(J.Basket, { dif: 0 }).jeu;
   const dur = banc(J.Basket, { dif: 100 }).jeu;
@@ -714,6 +873,15 @@ test('la difficulté durcit bien chaque épreuve', () => {
   const m0 = banc(J.Marmite, { dif: 0 }).jeu;
   const m1 = banc(J.Marmite, { dif: 100 }).jeu;
   assert.ok(m1.recette.length > m0.recette.length, 'la recette s\'allonge');
+
+  const r0 = banc(J.Gather, { dif: 0 }).jeu;
+  const r1 = banc(J.Gather, { dif: 100 }).jeu;
+  assert.ok(r1.billes.length > r0.billes.length && r1.rayonBille > r0.rayonBille,
+    'plus de billes, plus grosses');
+
+  const t0 = banc(J.Trampoline, { dif: 0 }).jeu;
+  const t1 = banc(J.Trampoline, { dif: 100 }).jeu;
+  assert.ok(t1.hautMur < t0.hautMur, 'le mur monte (jusqu\'au-dessus du cadre)');
 });
 
 // ── LE MODE FEVER — celui que le SWF d'origine joue ──

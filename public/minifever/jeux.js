@@ -1213,6 +1213,460 @@ class Marmite extends Jeu {
 }
 
 /*
+ * GATHER — « rassemble les billes ».
+ *
+ * Des billes rouges éparpillées, un cercle au centre : chaque appui souffle
+ * une bourrasque au curseur qui les repousse. Toutes dans le cercle en même
+ * temps — elles passent au bleu — et c'est gagné. La difficulté grossit les
+ * billes et en ajoute.
+ *
+ * Dessins (voisins de gameGather #420) :
+ *   sym418  le cercle central, tracé en filigrane
+ *   sym414  la bille, deux images — rouge dehors, bleue dedans
+ *   sym411  la bourrasque, pellicule de sept images dont quatre VIDES : la
+ *           griffe s'efface au milieu et souffle un dernier fil à la fin
+ */
+class Gather extends Jeu {
+  constructor(socle) {
+    super(socle);
+    this.gameTime = 300;
+    this.airFriction = 0.95;      // initDefault — le seul jeu à 0.95
+  }
+
+  init() {
+    super.init();
+    this.rayonBille = 10 + this.dif * 0.05;
+    this.rayonCercle = 70;
+    this.nbBilles = 1 + Math.floor(this.dif * 0.05);
+    this.rayonSouffle = 20;
+
+    this.cercle = this.attacher('sym418', PROF.SPRITE);
+    this.cercle.x = LARGEUR * 0.5;
+    this.cercle.y = HAUTEUR * 0.5;
+    this.cercle.sx = this.rayonCercle * 2 / 100;
+    this.cercle.sy = this.rayonCercle * 2 / 100;
+
+    this.billes = [];
+    for (let i = 0; i < this.nbBilles; i++) {
+      const mc = this.nouveauPhys('sym414');
+      // Le tirage recommence tant que la bille naît sur le cercle.
+      for (let garde = 0; garde < 1000; garde++) {
+        mc.x = this.rayonBille + this.socle.hasard(Math.floor(LARGEUR - 2 * this.rayonBille));
+        mc.y = this.rayonBille + this.socle.hasard(Math.floor(HAUTEUR - 2 * this.rayonBille));
+        if (mc.distance(this.cercle) > this.rayonBille + this.rayonCercle) break;
+      }
+      // Le dessin fait un dixième des cent unités de référence : ×10.
+      mc.peau.sx = this.rayonBille * 2 * 10 / 100;
+      mc.peau.sy = this.rayonBille * 2 * 10 / 100;
+      mc.flPhys = false;
+      mc.peau.arreter();
+      mc.init();
+      this.billes.push(mc);
+    }
+  }
+
+  update() {
+    if (this.etape === 1) {
+      let gagne = true;
+      const p = { x: this.cercle.x, y: this.cercle.y };
+      for (const mc of this.billes) {
+        if (this.gagnant === null) {
+          if (mc.distance(p) < this.rayonCercle - this.rayonBille) {
+            mc.peau.allerA(2);
+          } else {
+            gagne = false;
+            mc.peau.allerA(1);
+          }
+        }
+        this.cogner(mc);
+        this.borgner(mc);
+      }
+      if (gagne) this.gagne(true);
+    }
+    super.update();
+  }
+
+  click() {
+    const p = { x: this.sourisX, y: this.sourisY };
+    for (const mc of this.billes) {
+      const d = mc.distance(p);
+      const rayon = this.rayonSouffle * 2;
+      if (d < rayon) {
+        const a = mc.angle(p);
+        const force = 10 * (rayon - d) / rayon;
+        mc.vitx -= Math.cos(a) * force;
+        mc.vity -= Math.sin(a) * force;
+      }
+    }
+    // La source règle deux fois `_xscale` avant init() — du code MORT : dans
+    // le SWF compilé aussi, Part.init() réécrit l'échelle à 100. La griffe
+    // souffle donc en taille pleine, et sa pellicule boucle (le clip attaché
+    // joue tout seul).
+    const mc = this.nouvellePart('sym411');
+    mc.x = p.x;
+    mc.y = p.y;
+    mc.flPhys = true;
+    mc.peau.jouer();
+    mc.init();
+  }
+
+  /** Game.checkBounds, aux murs amortis à -0.8. */
+  borgner(mc) {
+    const r = this.rayonBille;
+    if (mc.x < r || mc.x > LARGEUR - r) {
+      mc.vitx *= -0.8;
+      mc.x = borner(r, mc.x, LARGEUR - r);
+    }
+    if (mc.y < r || mc.y > HAUTEUR - r) {
+      mc.vity *= -0.8;
+      mc.y = borner(r, mc.y, HAUTEUR - r);
+    }
+  }
+
+  /** Gather.checkCol : les billes se poussent, moyenne des élans. */
+  cogner(mc) {
+    for (const mc2 of this.billes) {
+      if (mc2 === mc) continue;
+      const d = mc.distance(mc2);
+      if (d >= this.rayonBille * 2) continue;
+      const ecart = this.rayonBille * 2 - d;
+      const a = mc.angle(mc2);
+      const p1 = Math.sqrt(mc.vitx * mc.vitx + mc.vity * mc.vity);
+      const p2 = Math.sqrt(mc2.vitx * mc2.vitx + mc2.vity * mc2.vity);
+      const force = (p1 + p2) * 0.5;
+      mc.x -= Math.cos(a) * ecart * 0.5;
+      mc.y -= Math.sin(a) * ecart * 0.5;
+      mc2.x += Math.cos(a) * ecart * 0.5;
+      mc2.y += Math.sin(a) * ecart * 0.5;
+      mc.vitx -= Math.cos(a) * force;
+      mc.vity -= Math.sin(a) * force;
+      mc2.vitx += Math.cos(a) * force;
+      mc2.vity += Math.sin(a) * force;
+    }
+  }
+}
+
+/*
+ * TUBULO — les pistons.
+ *
+ * Seize capsules en damier isométrique, chacune montrant un tube à trois
+ * états. Appuyer sur une case plonge la croix qu'elle forme avec ses quatre
+ * voisines, et chaque tube plongé avance d'un état (+1 modulo 3). Tout le
+ * monde à l'état zéro, c'est gagné. La difficulté multiplie les croix du
+ * mélange initial.
+ *
+ * Dessins (gameTubulo #214) :
+ *   sym209  le tube, trois images — l'enfant nommé du clip mcTube, sorti à
+ *           part par l'extracteur
+ *   sym210  la FENÊTRE capsule : la forme qui servait de masque au tube, et
+ *           qui redevient une découpe ici
+ */
+class Tubulo extends Jeu {
+  constructor(socle) {
+    super(socle);
+    this.gameTime = 320;
+  }
+
+  init() {
+    super.init();
+    this.xMax = 4;
+    this.yMax = 4;
+    this.taille = 40;
+    this.decal = 0;
+    this.flVerif = false;
+    this.plongeurs = [];
+    this.survole = null;
+    // La croix : la case et ses quatre voisines.
+    this.croix = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }];
+
+    // La grille, puis le mélange — AVANT d'accrocher les dessins, comme la
+    // source (initPuzzle puis attachElements).
+    this.grille = [];
+    for (let x = 0; x < this.xMax; x++) {
+      this.grille[x] = [];
+      for (let y = 0; y < this.yMax; y++) this.grille[x].push({ id: 0, mc: null, p: 100, tp: null });
+    }
+    const tours = 1 + Math.round(this.dif * 0.12);
+    for (let i = 0; i < tours; i++) {
+      const x = this.socle.hasard(this.xMax);
+      const y = this.socle.hasard(this.yMax);
+      for (const c of this.croix) {
+        const caseLa = this.caseEn(x + c.x, y + c.y);
+        if (caseLa) caseLa.id = (caseLa.id + 2) % 3;
+      }
+    }
+
+    const bx = LARGEUR * 0.5;
+    const by = HAUTEUR * 0.5 - this.taille * (this.yMax + this.xMax) * 0.125;
+    for (let x = 0; x < this.xMax; x++) {
+      for (let y = 0; y < this.yMax; y++) {
+        const slot = this.grille[x][y];
+        const mc = this.attacher('sym209', PROF.SPRITE);
+        slot.x = bx + x * this.taille * 0.5 + y * (-this.taille * 0.5);
+        slot.y = by + x * this.taille * 0.4 + y * this.taille * 0.4;
+        mc.sx = this.taille / 100;
+        mc.sy = this.taille / 100;
+        mc.allerA(slot.id + 1);
+        mc.masque = { cle: 'sym210', x: slot.x, y: slot.y, sx: this.taille / 100, sy: this.taille / 100 };
+        slot.mc = mc;
+        this.poserTube(slot, 0);
+      }
+    }
+  }
+
+  /** L'enfant `tube` dans sa capsule : sa plongée est en unités du clip (×taille). */
+  poserTube(slot, plongee) {
+    slot.mc.x = slot.x;
+    slot.mc.y = slot.y + plongee * this.taille / 100;
+  }
+
+  caseEn(x, y) {
+    const col = this.grille[x];
+    return col ? col[y] : null;     // hors grille : la croix s'y absorbe
+  }
+
+  update() {
+    // Le survol : la case sous le curseur teinte sa croix (rollOver 70,
+    // rollOut 100) — repérée par la fenêtre capsule, dernière posée devant.
+    const b = (this.socle && this.socle.mesures && this.socle.mesures.sym210)
+      ? this.socle.mesures.sym210.boite : { x0: -8, y0: -50, x1: 8, y1: 50 };
+    let sous = null;
+    for (let x = this.xMax - 1; x >= 0; x--) {
+      for (let y = this.yMax - 1; y >= 0 && !sous; y--) {
+        const slot = this.grille[x][y];
+        const k = this.taille / 100;
+        if (this.sourisX > slot.x + b.x0 * k && this.sourisX < slot.x + b.x1 * k
+          && this.sourisY > slot.y + b.y0 * k && this.sourisY < slot.y + b.y1 * k) sous = slot;
+      }
+      if (sous) break;
+    }
+    if (sous !== this.survole) {
+      if (this.survole) this.teinterCroix(this.survole, 100);
+      if (sous) this.teinterCroix(sous, 70);
+      this.survole = sous;
+    }
+
+    switch (this.etape) {
+      case 1:
+        this.eclairer();
+        break;
+      case 2: {
+        this.eclairer();
+        this.decal += 40 * Temps.tmod;
+        if (this.decal > 314) {
+          this.etape = 1;
+          this.decal = 314;
+        }
+        for (const slot of this.plongeurs) {
+          this.poserTube(slot, Math.sin(this.decal / 100) * this.taille * 2);
+        }
+        if (this.flVerif && this.decal > 157) {
+          this.verifier();
+          this.flVerif = false;
+        }
+        break;
+      }
+      default: break;
+    }
+    super.update();
+  }
+
+  click() {
+    if (this.etape !== 1 || !this.survole) return;
+    let sx = -1, sy = -1;
+    for (let x = 0; x < this.xMax; x++) {
+      for (let y = 0; y < this.yMax; y++) {
+        if (this.grille[x][y] === this.survole) { sx = x; sy = y; }
+      }
+    }
+    this.plongeurs = [];
+    this.etape = 2;
+    this.decal = 0;
+    this.flVerif = true;
+    for (const c of this.croix) {
+      const slot = this.caseEn(sx + c.x, sy + c.y);
+      if (!slot) continue;
+      this.plongeurs.push(slot);
+      slot.id = (slot.id + 1) % 3;
+    }
+  }
+
+  teinterCroix(centre, p) {
+    let cx = -1, cy = -1;
+    for (let x = 0; x < this.xMax; x++) {
+      for (let y = 0; y < this.yMax; y++) {
+        if (this.grille[x][y] === centre) { cx = x; cy = y; }
+      }
+    }
+    for (const c of this.croix) {
+      const slot = this.caseEn(cx + c.x, cy + c.y);
+      if (slot) slot.tp = p;
+    }
+  }
+
+  /** Tubulo.checkLight : la teinte blanche court vers sa cible (setPColor). */
+  eclairer() {
+    for (let x = 0; x < this.xMax; x++) {
+      for (let y = 0; y < this.yMax; y++) {
+        const slot = this.grille[x][y];
+        if (slot.tp === null) continue;
+        slot.p += (slot.tp - slot.p) * 0.2 * Temps.tmod;
+        slot.mc.blanchi = 1 - slot.p / 100;
+      }
+    }
+  }
+
+  /** Tubulo.checkColor : au creux de la plongée, les états s'affichent. */
+  verifier() {
+    let gagne = true;
+    for (let x = 0; x < this.xMax; x++) {
+      for (let y = 0; y < this.yMax; y++) {
+        const slot = this.grille[x][y];
+        slot.mc.allerA(slot.id + 1);
+        if (slot.id !== 0) gagne = false;
+      }
+    }
+    if (gagne) this.gagne(true);
+  }
+}
+
+/*
+ * TRAMPOLINE — « saute par-dessus le mur ».
+ *
+ * Le bonhomme rebondit sur le trampoline ; l'appui tend la toile (ressort
+ * doublé) et le guide vers le curseur. Il faut monter plus haut que la ligne
+ * du mur puis redescendre — il disparaît alors derrière. Sortir du trampoline,
+ * c'est la chute. La difficulté monte le mur d'un étage par palier.
+ *
+ * Dessins (voisins de gameTrampoline #162) :
+ *   sym157  le bonhomme, sept visages — l'ennui (1-4), la surprise du crash
+ *           (5), le sourire de la victoire (6), l'inquiétude au bord (7)
+ *   sym150  le trampoline
+ *   sym152  le sol
+ *   sym160  le mur de briques
+ *   sym148  le carré rouge : le masque qui escamote le bonhomme derrière le
+ *           mur une fois la victoire acquise
+ */
+class Trampoline extends Jeu {
+  constructor(socle) {
+    super(socle);
+    this.gameTime = 400;
+  }
+
+  init() {
+    super.init();
+    this.hautToile = HAUTEUR - 40;
+    this.hautSol = HAUTEUR - 6;
+    this.rayonHomme = 24;
+    this.rayonToile = 94;
+    this.hautMur = (4 - Math.round(this.dif * 0.1)) * 32;
+    this.flHaut = false;
+    this.flDehors = false;
+    this.flTete = true;
+
+    this.mur = this.attacher('sym160', PROF.FOND);
+    this.mur.y = this.hautMur;
+    this.sol = this.attacher('sym152', PROF.FOND);
+
+    this.homme = this.nouveauPhys('sym157');
+    this.homme.x = LARGEUR * 0.5;
+    this.homme.y = HAUTEUR * 0.5;
+    this.homme.vitr = 0;
+    this.homme.poids = 0.5;
+    this.homme.peau.sx = this.rayonHomme * 2 / 100;
+    this.homme.peau.sy = this.rayonHomme * 2 / 100;
+    this.homme.peau.arreter();
+    this.homme.init();
+
+    // Le clip vide où l'original trace le filet (dm.empty à DP_SPRITE).
+    this.filet = this.attacher(null, PROF.SPRITE);
+    this.filet.dessin = [];
+
+    this.toile = this.nouveauSprite('sym150');
+    this.toile.x = LARGEUR * 0.5;
+    this.toile.y = this.hautToile;
+    this.toile.init();
+  }
+
+  update() {
+    super.update();
+    if (this.etape !== 1) return;
+    const h = this.homme;
+    const y = h.y + this.rayonHomme;
+
+    // Le sommet : passer la ligne du mur gèle le verdict…
+    if (!this.flHaut && y < this.hautMur) {
+      this.flHaut = true;
+      this.flGelResultat = true;
+      h.peau.allerA(6);
+    }
+    // …et la repasser vers le bas le rend : gagné, et le bonhomme s'escamote
+    // derrière le mur (le carré rouge en masque, posé à sa ligne).
+    if (this.flHaut && y > this.hautMur) {
+      this.flGelResultat = false;
+      this.flHaut = false;
+      this.gagne(true);
+      h.peau.masque = { cle: 'sym148', x: 0, y: this.hautMur - HAUTEUR, sx: LARGEUR / 100, sy: HAUTEUR / 100 };
+    }
+
+    if (this.flDehors) {
+      // Tombé à côté : le sol ne rend rien.
+      if (y > this.hautSol) {
+        h.y = this.hautSol - this.rayonHomme;
+        h.vity *= -0.5;
+        this.gagne(false);
+        h.peau.allerA(5);
+      }
+    } else {
+      if (y > this.hautToile) {
+        if (Math.abs(h.x - this.toile.x) > this.rayonToile - this.rayonHomme) {
+          this.flDehors = true;
+          this.scene.devant(h.peau);
+        }
+        // La toile : un ressort, doublé quand on appuie.
+        const dy = this.hautToile - y;
+        h.vity += dy * 0.1 * Temps.tmod * (this.socle && this.socle.flPresse ? 2 : 1);
+        if (this.socle && this.socle.flPresse) {
+          const dx = (this.sourisX - h.x) + (this.aleatoire() * 2 - 1) * 5;
+          h.vitx -= dx * 0.005;
+          h.vitr -= dx * 0.05;
+        }
+        // Une grimace par rebond, tirée au sort dans l'ennui (2-4).
+        if (this.flTete && Math.abs(dy) > this.rayonHomme * 1.5) {
+          this.flTete = false;
+          h.peau.allerA(this.socle.hasard(3) + 2);
+        }
+      } else {
+        if (!this.flTete) this.flTete = true;
+        h.vitr -= h.peau.rot * 0.002;
+      }
+      // Près du bord, l'inquiétude.
+      if (!this.flHaut && this.gagnant === null
+        && Math.abs(h.x - this.toile.x) > this.rayonToile - this.rayonHomme * 2) {
+        h.peau.allerA(7);
+      }
+    }
+
+    // Le filet, redessiné à chaque image quand la toile est tendue.
+    const d = this.filet.dessin;
+    d.length = 0;
+    if (!this.flDehors && y > this.hautToile - 4) {
+      d.push(['style', 1, 0x0000, 20]);
+      d.push(['fond', 0xCECE79, 100]);
+      d.push(['aller', this.toile.x - this.rayonToile, this.toile.y]);
+      d.push(['ligne', this.toile.x + this.rayonToile, this.toile.y]);
+      d.push(['courbe', (this.toile.x + this.rayonToile) * 0.3 + h.x * 0.7, y, h.x, y]);
+      d.push(['courbe', (this.toile.x - this.rayonToile) * 0.3 + h.x * 0.7, y, this.toile.x - this.rayonToile, this.toile.y]);
+      d.push(['fin']);
+    }
+
+    // La caméra suit le bonhomme vers le haut (le _y du clip de jeu).
+    const dy = (HAUTEUR * 0.5 - h.y) - this.decalY;
+    this.decalY = Math.max(0, this.decalY + dy * 0.15 * Temps.tmod);
+  }
+}
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui de Base.genGameList(), qui donnait à chaque épreuve une
@@ -1229,9 +1683,13 @@ const JEUX = [
   { cle: 'gameParachute', nom: 'parachute', Classe: Parachute },
   { cle: 'gameGobelet', nom: 'bonneteau', Classe: Gobelet },
   { cle: 'gameMarmite', nom: 'marmite', Classe: Marmite },
+  { cle: 'gameGather', nom: 'bourrasque', Classe: Gather },
+  { cle: 'gameTubulo', nom: 'pistons', Classe: Tubulo },
+  { cle: 'gameTrampoline', nom: 'trampoline', Classe: Trampoline },
 ];
 
-const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite };
+const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
+  Gather, Tubulo, Trampoline };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

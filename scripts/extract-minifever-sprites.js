@@ -166,31 +166,58 @@ function principal() {
     + `(${nomDe.get(liens[0])} … ${nomDe.get(liens[liens.length - 1])})`);
 
   // Toutes les images de tous les symboles exportés. Les clips de mini-jeu
-  // portent leur vrai nom ; les autres gardent leur identifiant.
-  const cellules = [];
-  const formes = new Set();
-  for (const [obf, id] of swf.noms.entries()) {
-    if (!swf.estSprite(id)) continue;
+  // portent leur vrai nom ; les autres gardent leur identifiant. Une image
+  // VIDE reste dans la liste (pieces: []) : c'est une vraie image-clé du clip
+  // — la bouffée du souffle de Gather s'éteint ainsi à sa septième image, et
+  // la laisser tomber ferait resurgir la première.
+  const etatsDe = (id, o) => {
+    o = o || {};
     const images = swf.parSprite.get(id);
-    if (!images || images.size === 0) continue;
+    if (!images || images.size === 0) return [];
     const etats = [];
     for (const f of [...images.keys()].sort((x, y) => x - y)) {
       const pieces = [];
       let masque = false;
       for (const p of images.get(f)) {
+        if (o.sansEnfantsNommes && p.nom) continue;
         const morceaux = swf.aplatir(p.ch, p.M, 0, undefined, '', p.cx);
-        if (p.masque) { masque = true; continue; }
+        if (p.masque && !o.masquesEnPieces) { masque = true; continue; }
         for (const m of morceaux) {
-          if (m.masque) { masque = true; continue; }
+          if (m.masque && !o.masquesEnPieces) { masque = true; continue; }
           pieces.push(m);
         }
       }
-      if (!pieces.length) continue;
       for (const pc of pieces) formes.add(pc.shape);
       etats.push(masque ? { frame: f, masque: true, pieces } : { frame: f, pieces });
     }
-    if (!etats.length) continue;
+    return etats;
+  };
+  const cellules = [];
+  const formes = new Set();
+  for (const [obf, id] of swf.noms.entries()) {
+    if (!swf.estSprite(id)) continue;
+    const etats = etatsDe(id);
+    if (!etats.some((e) => e.pieces.length)) continue;
     cellules.push({ cle: nomDe.get(obf) || ('sym' + id), obf, id, etats });
+  }
+
+  // Les SUPPLÉMENTS : ce qu'un jeu pilote SÉPARÉMENT de son parent. Le clip
+  // mcTube de Tubulo (sym210) n'a que deux enfants : le tube — nommé, trois
+  // images, que le jeu fait plonger et changer d'état — et une forme qui lui
+  // sert de MASQUE (la fenêtre capsule). On sort le tube sous son propre
+  // identifiant (sym209), et sym210 devient la forme du masque, gardée en
+  // pièces pour que le client puisse en faire une découpe.
+  const SUPPLEMENTS = [
+    { cle: 'sym209', id: 209 },
+    { cle: 'sym210', id: 210, sansEnfantsNommes: true, masquesEnPieces: true },
+  ];
+  for (const s of SUPPLEMENTS) {
+    const etats = etatsDe(s.id, s);
+    if (!etats.some((e) => e.pieces.length)) throw new Error(`supplément ${s.cle} : rien à dessiner`);
+    const deja = cellules.findIndex((c) => c.cle === s.cle);
+    const cellule = { cle: s.cle, obf: deja >= 0 ? cellules[deja].obf : null, id: s.id, etats };
+    if (deja >= 0) cellules[deja] = cellule;
+    else cellules.push(cellule);
   }
   const nommes = cellules.filter((c) => !/^sym/.test(c.cle)).length;
   console.log(`${cellules.length} symboles dessinables — ${nommes} nommés, `
@@ -251,10 +278,9 @@ function principal() {
         }
         pieces.push(piece);
       }
-      if (!pieces.length) continue;
       etats.push(e.masque ? { frame: e.frame, masque: true, pieces } : { frame: e.frame, pieces });
     }
-    if (!etats.length) continue;
+    if (!etats.some((e) => e.pieces.length)) continue;
     manifeste[c.cle] = { symbole: c.obf, id: c.id, etats };
   }
   if (perdues.length) console.log(`pièces non extraites (${perdues.length}) : ${perdues.slice(0, 8).join(', ')}…`);

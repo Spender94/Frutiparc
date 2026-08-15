@@ -104,10 +104,12 @@ test('les dessins sont extraits et complets', () => {
   const fichiers = new Set();
   for (const [cle, s] of Object.entries(m)) {
     assert.ok(Array.isArray(s.etats) && s.etats.length, `${cle} a des images`);
+    // Une image-clé VIDE est légitime (le souffle de Gather s'éteint ainsi),
+    // mais un symbole entier ne peut pas l'être.
+    assert.ok(s.etats.some((e) => e.pieces.length), `${cle} : au moins un dessin`);
     for (const e of s.etats) {
       images++;
       assert.ok(Number.isInteger(e.frame) && e.frame >= 1, `${cle} : image numérotée`);
-      assert.ok(e.pieces.length, `${cle} image ${e.frame} : au moins un dessin`);
       for (const p of e.pieces) {
         assert.ok(p.fichier && p.w > 0 && p.h > 0, `${cle} : pièce mesurée`);
         assert.equal(p.m.length, 6, 'une matrice de placement');
