@@ -156,6 +156,14 @@ const SCENES = {
     { cle: 'sym370', x: 150, y: 190 },
     { cle: 'sym363', x: 118, y: 172, image: 50, rot: -12 },  // …le héros en vol
   ],
+  gameSpaceDodge: [
+    { cle: 'sym628', x: 0, y: 0 },                  // le fuselage du vaisseau-mère
+    { cle: 'sym627', x: 95.6, y: 8.7 },             // deux tourelles…
+    { cle: 'sym627', x: 201.5, y: 44.7 },
+    { cle: 'sym616', x: 110, y: 120, image: 1 },    // …des boulons qui pleuvent,
+    { cle: 'sym616', x: 160, y: 90, image: 2 },
+    { cle: 'sym619', x: 120, y: 200 },              // et l'Aliquet qui esquive
+  ],
   gamePoint: [
     { cle: 'sym101', x: 118.95, y: 124.75 },        // le dessin fini…
     { cle: 'sym98', x: 172.25, y: 188.65, image: 2 },   // …et quelques pointillés

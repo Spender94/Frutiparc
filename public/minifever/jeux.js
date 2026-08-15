@@ -4529,6 +4529,212 @@ const POINT_FIGURE = [
 ];
 
 /*
+ * game/SpaceDodge.mt — L'ESQUIVE SPATIALE : survivre au vaisseau-mère.
+ *
+ * L'ALIQUET — le vaisseau fantôme de Miniwave — suit la souris (ressort 0,2
+ * borné à 16) sous un vaisseau-mère hérissé de tourelles ($t0 à $t9, la
+ * difficulté en RETIRE 9 - dif·0,1 : une seule reste à zéro, toutes à 90).
+ * Chaque tourelle arme (10 + random(10), puis 16 entre deux) et tire un
+ * boulon (cône 0,4 à π-0,4 rad, vitesse 3). Toucher un boulon (boîte ±8) ou
+ * FRÔLER le vaisseau-mère (y < sa hauteur, 66,2) : explosion, perdu. Tenir
+ * jusqu'au chrono (100 + dif·3) : GAGNÉ — le seul jeu où outOfTime fait
+ * setWin(true).
+ *
+ * Tout est vérifié contre la classe « 5clh34 » du SWF de dev :
+ *   · la TRAÎNE : six copies de l'Aliquet à l'alpha 50 - i·8, qui relisent
+ *     l'historique des positions quatre images en quatre images — et la
+ *     PREMIÈRE lit UNE CASE APRÈS LA FIN du tableau (pList[length]) : en
+ *     AS2, poser _x à undefined ne fait rien — elle reste plantée en
+ *     (0, 0), le fantôme du coin. Coquille conservée ;
+ *   · airFriction = 1 (initDefault d'époque) : les boulons filent sans
+ *     frein ;
+ *   · après l'explosion, hero passe à null et la boucle d'époque continue
+ *     de l'appeler — l'AVM1 avale les appels sur null, on garde les mêmes
+ *     gardes ;
+ *   · la pellicule de la tourelle rembobine en boucle (le GotoFrame de
+ *     l'image 14) ; l'explosion (mcPartSpaceExplo, échelle 200) se retire
+ *     seule à sa dernière image (le kill d'époque — notre `finit`) ;
+ *   · le tir d'une tourelle part de SES coordonnées locales dans le
+ *     vaisseau-mère — posé en (0,0), elles sont aussi celles de la scène.
+ *
+ * Les dessins : gameSpaceDodge l'espace, sym628 le fuselage (sans ses
+ * tourelles), sym627 la tourelle (recul en pellicule), sym619 l'Aliquet,
+ * sym616 le boulon, sym612 l'explosion.
+ */
+class SpaceDodge extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 100 + this.dif * 3;
+    super.init();
+    this.airFriction = 1;          // initDefault() d'époque
+    this.sList = [];
+    this.tList = [];
+    this.pList = [];
+    this.attachElements();
+  }
+
+  attachElements() {
+    // Le vaisseau-mère : fuselage, puis les tourelles de la timeline.
+    this.vaisseau = this.attacher('sym628', PROF.FOND);
+    for (let i = 0; i < SPACEDODGE_TOURELLES.length; i++) {
+      const t = SPACEDODGE_TOURELLES[i];
+      const mc = this.attacher('sym627', PROF.FOND);
+      mc.x = t.x;
+      mc.y = t.y;
+      mc.arreter();                // le stop() d'époque de la classe
+      this.tList.push({ mc, c: 10 + this.socle.hasard(10), l: 5 });
+    }
+    // La difficulté en retire : à zéro, une seule tourelle survit.
+    const max = 9 - this.dif * 0.1;
+    for (let i = 0; i < max; i++) {
+      const rnd = this.socle.hasard(this.tList.length);
+      this.tList[rnd].mc.visible = false;
+      this.tList.splice(rnd, 1);
+    }
+
+    // QUEUE — la traîne de l'Aliquet.
+    this.qList = [];
+    for (let i = 0; i < 6; i++) {
+      const mc = this.attacher('sym619', PROF.SPRITE);
+      mc.alpha = (50 - i * 8) / 100;
+      this.qList.push(mc);
+    }
+
+    // HERO
+    this.hero = this.nouveauPhys('sym619');
+    this.hero.x = LARGEUR * 0.5;
+    this.hero.y = HAUTEUR - 10;
+    this.hero.flPhys = false;
+    this.hero.init();
+    for (let i = 0; i < 100; i++) this.pList.push({ x: this.hero.x, y: this.hero.y });
+  }
+
+  update() {
+    switch (this.etape) {
+      case 1: {
+        // HERO — l'AVM1 avalait les appels sur null après l'explosion.
+        if (this.hero) {
+          this.hero.vers({ x: this.sourisX, y: this.sourisY }, 0.2, 16);
+          if (this.hero.y < SPACEDODGE_HAUTEUR) this.heroExplode();
+        }
+
+        // QUEUE — la première copie lit pList[length] : plantée en (0,0).
+        const max = this.pList.length;
+        const ec = 4;
+        for (let i = 0; i < this.qList.length; i++) {
+          const mc = this.qList[i];
+          const p = this.pList[max - i * ec];
+          if (p) {
+            mc.x = p.x;
+            mc.y = p.y;
+          }
+        }
+        if (this.hero) this.pList.push({ x: this.hero.x, y: this.hero.y });
+        else this.pList.push({ x: undefined, y: undefined });
+
+        // TOWER
+        for (let i = 0; i < this.tList.length; i++) {
+          const o = this.tList[i];
+          if (o.c > 0) {
+            o.c -= Temps.tmod;
+          } else {
+            this.tShoot(o);
+          }
+          // Le GotoFrame d'époque de l'image 14 : le recul reboucle.
+          if (o.mc.joue && o.mc.image >= 14) {
+            o.mc.allerA(1);
+            o.mc.jouer();
+          }
+        }
+
+        // SHOTS
+        for (let i = 0; i < this.sList.length; i++) {
+          const mc = this.sList[i];
+          const m = 10;
+          if (mc.x < -m || mc.x > LARGEUR + m || mc.y < -m || mc.y > HAUTEUR + m) {
+            mc.tuer();
+            this.sList.splice(i--, 1);
+          }
+          const lim = 8;
+          if (this.hero
+            && Math.abs(this.hero.x - mc.x) < lim && Math.abs(this.hero.y - mc.y) < lim) {
+            this.sList.splice(i--, 1);
+            mc.tuer();
+            this.heroExplode();
+          }
+        }
+        break;
+      }
+      default: break;
+    }
+    super.update();
+  }
+
+  /** outOfTime d'époque : SURVIVRE gagne — le seul jeu à l'envers. */
+  horsTemps() {
+    this.gagne(true);
+  }
+
+  tShoot(o) {
+    // SHOT — un boulon dans le cône du bas.
+    const mc = this.nouveauPhys('sym616');
+    const m = 0.4;
+    const a = m + this.aleatoire() * (3.14 - 2 * m);
+    const p = 3;
+    mc.x = o.mc.x;
+    mc.y = o.mc.y;
+    mc.vitx = Math.cos(a) * p;
+    mc.vity = Math.sin(a) * p;
+    mc.flPhys = false;
+    mc.init();
+    mc.peau.jouer();
+    this.sList.push(mc);
+    // TURRET
+    o.mc.allerA(2);                // gotoAndPlay("2") : le recul
+    o.mc.jouer();
+    o.c = 16;
+  }
+
+  heroExplode() {
+    // PART — l'explosion, qui se retire seule à sa dernière image.
+    const p = this.nouvellePart('sym612');
+    p.x = this.hero.x;
+    p.y = this.hero.y;
+    p.echelle = 200;
+    p.flPhys = false;
+    p.init();
+    p.peau.jouer();
+    p.peau.finit = true;           // le kill d'époque de l'image 15
+
+    this.hero.tuer();
+    this.hero = null;
+    this.gagne(false);
+
+    while (this.qList.length > 0) this.qList.pop().enlever();
+  }
+}
+
+// Le vaisseau-mère de l'esquive — les PlaceObject de sym628 : ses dix
+// tourelles « $t0 » à « $t9 », et sa hauteur d'époque (_height, le fuselage
+// de 66,2 px qui domine tout, tourelles cachées comprises).
+const SPACEDODGE_HAUTEUR = 66.2;
+const SPACEDODGE_TOURELLES = [
+  { x: 136.05, y: 33.75 },
+  { x: 51.8, y: 33.25 },
+  { x: 95.6, y: 8.7 },
+  { x: 201.5, y: 44.7 },
+  { x: 188.75, y: 18.25 },
+  { x: 224.8, y: 26.75 },
+  { x: 20.1, y: 23.1 },
+  { x: 77.6, y: 45.35 },
+  { x: 163.35, y: 33.75 },
+  { x: 15.55, y: 52.6 },
+];
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui du portage, épreuve après épreuve — à fréquences de
@@ -4562,11 +4768,12 @@ const JEUX = [
   { cle: 'gamePicture', nom: 'tableau', Classe: Picture },
   { cle: 'gamePlate', nom: 'assiette', Classe: Plate },
   { cle: 'gamePoint', nom: 'pointillés', Classe: Point },
+  { cle: 'gameSpaceDodge', nom: 'esquive', Classe: SpaceDodge },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
   Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff, Chain,
-  Ghost, Balance, Picture, Plate, Point };
+  Ghost, Balance, Picture, Plate, Point, SpaceDodge };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

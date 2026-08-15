@@ -280,6 +280,15 @@ function principal() {
     // victoire. On sort la scène sans eux (le papier), et le dessin à part.
     { cle: 'gamePoint', id: 103, sansEnfantsNommes: true },
     { cle: 'sym101', id: 101 },
+    // L'ESQUIVE SPATIALE (gameSpaceDodge) : le vaisseau-mère (sym628) porte
+    // ses dix tourelles « $t0 » à « $t9 » — on sort le fuselage sans elles,
+    // la tourelle à part (sa pellicule de recul, rembobinée en boucle par le
+    // GotoFrame d'époque de l'image 14), et la scène sans le vaisseau
+    // entier — sinon les dix tourelles cuiraient dans le décor, y compris
+    // celles que la difficulté cache.
+    { cle: 'gameSpaceDodge', id: 629, sansEnfantsNommes: true },
+    { cle: 'sym628', id: 628, sansEnfantsNommes: true },
+    { cle: 'sym627', id: 627 },
   ];
   for (const s of SUPPLEMENTS) {
     const etats = etatsDe(s.id, s);
@@ -433,6 +442,34 @@ function principal() {
     cellule.contour = groupes;
     console.log(`contour ${c.cle} : ${groupes.length} groupe(s), `
       + `${groupes.reduce((n, g) => n + g.reduce((k, r) => k + r.length / 2, 0), 0)} points`);
+  }
+
+  // Les RASTERS : les rares dessins à REMPLISSAGE BITMAP, que
+  // extract-swf-shapes laisse de côté (« hors périmètre »). L'Aliquet de
+  // l'esquive spatiale est le seul du jeu : un PNG de 18 × 18
+  // (DefineBitsLossless2 n° 617) posé sur toute la boîte de sa forme. On le
+  // sort par extract-swf-bitmaps et on récrit le SVG de la forme autour —
+  // en data-URI, net au pixel (l'art d'époque est du pixel-art).
+  const RASTERS = [
+    { shape: 618, bitmap: 617 },       // l'Aliquet (sym619)
+  ];
+  for (const r of RASTERS) {
+    const temp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'raster-'));
+    execFileSync(process.execPath,
+      [path.join(__dirname, 'extract-swf-bitmaps.js'), SWF, temp, String(r.bitmap)],
+      { cwd: RACINE, encoding: 'utf8' });
+    const png = fs.readFileSync(path.join(temp, `bitmap${r.bitmap}.png`));
+    fs.rmSync(temp, { recursive: true, force: true });
+    const info = bornes.get(r.shape);
+    if (!info) throw new Error(`raster : la forme ${r.shape} n'a pas de bornes`);
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"'
+      + ` viewBox="${info.x0} ${info.y0} ${info.w} ${info.h}"`
+      + ` width="${info.w}" height="${info.h}">\n`
+      + `<image x="${info.x0}" y="${info.y0}" width="${info.w}" height="${info.h}"`
+      + ' image-rendering="pixelated" href="data:image/png;base64,'
+      + png.toString('base64') + '"/>\n</svg>\n';
+    fs.writeFileSync(path.join(SORTIE, `shape${r.shape}.svg`), svg, 'utf8');
+    console.log(`raster shape${r.shape} : bitmap ${r.bitmap} incrusté (${png.length} octets)`);
   }
 
   const dest = path.join(SORTIE, 'sprites.json');

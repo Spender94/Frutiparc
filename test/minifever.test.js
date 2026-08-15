@@ -1374,6 +1374,88 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── L'ESQUIVE SPATIALE (game/SpaceDodge.mt, classe « 5clh34 » du bytecode) ──
+
+test('l\'esquive : la mise en place du bytecode, tourelles décimées comprises', () => {
+  const b = banc(J.SpaceDodge, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 100 + 40 * 3);
+  assert.equal(j.airFriction, 1, 'initDefault d\'époque : les boulons filent');
+  assert.equal(j.hero.x, 120);
+  assert.equal(j.hero.y, HAUTEUR - 10);
+  assert.equal(j.pList.length, 100, 'l\'historique amorcé');
+  // 9 - dif·0,1 tourelles retirées : à 40, il en reste 10 - 5 = 5.
+  assert.equal(j.tList.length, 5);
+  assert.ok(j.tList.every((t) => t.c >= 10 && t.c < 20));
+  // La traîne : six copies, alphas 50 - i·8.
+  assert.equal(j.qList.length, 6);
+  assert.equal(j.qList[0].alpha, 0.5);
+  assert.equal(j.qList[5].alpha.toFixed(2), '0.10');
+});
+
+test('la traîne suit l\'historique — sauf la première copie, plantée en (0,0)', () => {
+  const b = banc(J.SpaceDodge, { dif: 0 });
+  const j = b.jeu;
+  b.souris(60, 180);
+  b.avancer(12);
+  // La coquille d'époque : pList[length] n'existe pas — q[0] n'a jamais bougé.
+  assert.equal(j.qList[0].x, 0);
+  assert.equal(j.qList[0].y, 0);
+  // Les suivantes relisent l'historique, quatre images en quatre images.
+  const max = j.pList.length - 1;              // avant le push du dernier tour
+  assert.equal(j.qList[1].x.toFixed(4), j.pList[max - 4].x.toFixed(4));
+  assert.equal(j.qList[2].x.toFixed(4), j.pList[max - 8].x.toFixed(4));
+});
+
+test('les tourelles arment, tirent dans le cône et reculent en boucle', () => {
+  const b = banc(J.SpaceDodge, { dif: 90 });   // toutes les tourelles
+  const j = b.jeu;
+  assert.equal(j.tList.length, 10);
+  b.souris(120, 220);
+  b.avancer(21);                               // toutes ont armé (c < 20)
+  assert.ok(j.sList.length > 0, 'des boulons volent : ' + j.sList.length);
+  assert.ok(j.sList.every((s) => s.vity > 0), 'le cône tire vers le bas');
+  assert.ok(j.sList.every((s) => !s.flPhys));
+  const tir = j.tList.find((t) => t.mc.joue);
+  assert.ok(tir, 'une tourelle recule');
+  // Le boulon au contact (boîte ±8) : explosion, hero null, perdu.
+  const s = j.sList[0];
+  s.x = j.hero.x + 2;
+  s.y = j.hero.y - 2;
+  s.vitx = 0;
+  s.vity = 0;
+  b.avancer(1);
+  assert.equal(j.gagnant, false);
+  assert.equal(j.hero, null, 'l\'AVM1 avalait les appels sur null — nous aussi');
+  assert.equal(j.qList.length, 0, 'la traîne est balayée');
+  const explo = j.sprites.find((p) => p.peau && p.peau.cle === 'sym612');
+  assert.ok(explo && explo.echelle === 200 && explo.peau.finit, 'l\'explosion se retirera seule');
+  b.avancer(3);                                // et la partie continue sans lui
+  assert.equal(j.gagnant, false);
+});
+
+test('frôler le vaisseau-mère tue ; survivre au chrono GAGNE (outOfTime inversé)', () => {
+  let b = banc(J.SpaceDodge, { dif: 0 });
+  let j = b.jeu;
+  b.souris(120, 40);                           // au-dessus de la ligne des 66,2
+  b.avancer(80);                               // la remontée est bornée à 3,2 par image
+  assert.equal(j.gagnant, false, 'le fuselage brûle');
+
+  b = banc(J.SpaceDodge, { dif: 0 });
+  j = b.jeu;
+  j.horsTemps();
+  assert.equal(j.gagnant, true, 'le seul outOfTime qui gagne');
+});
+
+test('les dessins de l\'esquive sont extraits', () => {
+  for (const cle of ['gameSpaceDodge', 'sym628', 'sym627', 'sym619', 'sym616', 'sym612']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.sym628.etats[0].pieces.length, 1, 'le fuselage sans ses tourelles');
+  assert.equal(MANIFESTE.sym627.etats.length, 15, 'le recul de la tourelle');
+  assert.ok(MANIFESTE.sym612.etats.length >= 14, 'l\'explosion');
+});
+
 // ── LE POINT À POINT (game/Point.mt, classe « 05gRo1 » du bytecode) ──
 
 test('le point à point : la figure d\'époque, le premier pointillé allumé', () => {

@@ -625,6 +625,7 @@ const MINIFEVER_EPREUVES = [
   { cle: 'gamePicture',    item: '$fvPicture',    nom: 'Tableau',     image: 'picture' },
   { cle: 'gamePlate',      item: '$fvPlate',      nom: 'Assiette',    image: 'plate' },
   { cle: 'gamePoint',      item: '$fvPoint',      nom: 'Pointillés',  image: 'point' },
+  { cle: 'gameSpaceDodge', item: '$fvSpaceDodge', nom: 'Esquive',     image: 'spacedodge' },
 ];
 for (const e of MINIFEVER_EPREUVES) {
   GAME_ITEM_INFO[e.item] = {
