@@ -133,7 +133,11 @@ class Scene {
   attacher(cle, prof) {
     const mc = new Mc(cle, prof);
     const m = this.mesures && this.mesures[cle];
-    if (m) { mc.nbImages = m.nbImages; mc.boite = m.boite; }
+    if (m) {
+      mc.nbImages = m.nbImages;
+      mc.boite = m.boite;
+      if (m.lins) mc.lins = m.lins;   // la chaîne de l'œil (sym673_pupille)
+    }
     this.mcs.push(mc);
     return mc;
   }
@@ -289,6 +293,7 @@ class Jeu {
     this.gravite = 1;
     this.flGelResultat = false;
     this.flHorsTemps = false;
+    this.decalX = 0;              // la CAMÉRA de Frog (this._x des sources)
     this.decalY = 0;              // le jeu peut faire défiler sa scène (Basket)
   }
   init() { this.etape = 1; this.etapePrincipale = 1; }
@@ -331,11 +336,12 @@ class Jeu {
 
   /*
    * `this._xmouse` / `this._ymouse` des sources : la souris dans le repère du
-   * mini-jeu. Le clip est posé en 0,0 sur la scène, au décalage vertical près —
-   * la moitié des vingt-sept jeux compilés s'en sert, aucun n'a besoin du
-   * clavier.
+   * mini-jeu. Le clip est posé en 0,0 sur la scène, aux décalages près — quand
+   * la caméra déplace le clip (Frog fait les deux axes, Basket le seul Y),
+   * Flash compense d'office dans _xmouse/_ymouse ; on fait pareil. La moitié
+   * des vingt-sept jeux compilés s'en sert, aucun n'a besoin du clavier.
    */
-  get sourisX() { return this.socle ? this.socle.souris.x : LARGEUR / 2; }
+  get sourisX() { return (this.socle ? this.socle.souris.x : LARGEUR / 2) - this.decalX; }
   get sourisY() { return (this.socle ? this.socle.souris.y : HAUTEUR / 2) - this.decalY; }
   /** Un tirage flottant, pour `Math.random()`. */
   aleatoire() { return this.socle ? this.socle.rng() : Math.random(); }

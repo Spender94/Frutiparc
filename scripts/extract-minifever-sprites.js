@@ -45,7 +45,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const { execFileSync } = require('child_process');
-const { ouvrir } = require('./lib/swf-sprites.js');
+const { ouvrir, composer } = require('./lib/swf-sprites.js');
 
 const RACINE = path.join(__dirname, '..');
 const SWF = path.join(RACINE, 'Games/miniFever/release/swf/minifever.swf');
@@ -227,6 +227,48 @@ function principal() {
     if (deja >= 0) cellules[deja] = cellule;
     else cellules.push(cellule);
   }
+
+  // La GRENOUILLE (mcFrog, sym673) : le jeu déplace sa PUPILLE — la chaîne
+  // skin.«8».«8».«51».«61» du bytecode, f.h.h.o.p des sources — de ±1,8 px
+  // (le chemin aplati est « 8.51.61 » : le nom du placement de PREMIER niveau
+  // n'entre pas dans `chemin`, etatsDe le passe vide à aplatir) —
+  // dans le repère de l'œil, pour que le regard SUIVE l'appât
+  // (Frog.checkFrog). Une pellicule aplatie fige ce détail ; on sépare donc :
+  // sym673 sort SANS les pièces de la pupille, et sym673_pupille les porte,
+  // état par état, avec `lin` — la partie linéaire de la chaîne des
+  // placements jusqu'à l'œil (les deux miroirs, ~-1,34 sur le corps et -1,2
+  // sur l'œil, se composent en ~+1,61 : les yeux suivent bien l'appât, sans
+  // inversion), celle qui transforme le décalage local posé par le jeu en
+  // décalage écran. La tête est STOPPÉE à sa première image (DoAction 0x07),
+  // la chaîne se lit donc à l'image 1 des clips intermédiaires.
+  {
+    const c673 = cellules.find((c) => c.id === 673);
+    if (!c673) throw new Error('mcFrog (sym673) introuvable — la pupille reste collée');
+    const frames673 = swf.parSprite.get(673);
+    const enfantNomme = (id, nom) => {
+      const images = swf.parSprite.get(id);
+      const f = [...images.keys()].sort((x, y) => x - y)[0];
+      return (images.get(f) || []).find((p) => p.nom === nom);
+    };
+    const pupille = { cle: 'sym673_pupille', obf: null, id: 673, etats: [] };
+    for (const e of c673.etats) {
+      const dedans = e.pieces.filter((p) => (p.chemin || '').startsWith('8.51.61'));
+      e.pieces = e.pieces.filter((p) => !(p.chemin || '').startsWith('8.51.61'));
+      const p8 = (frames673.get(e.frame) || []).find((p) => p.nom === '8');
+      let lin = null;
+      if (p8) {
+        const p8b = enfantNomme(p8.ch, '8');
+        const p51 = enfantNomme(p8b.ch, '51');
+        const M = composer(composer(p8.M, p8b.M), p51.M);
+        lin = [M.a, M.b, M.c, M.d].map((v) => Math.round(v * 1e4) / 1e4);
+      }
+      pupille.etats.push({ frame: e.frame, pieces: dedans, lin });
+    }
+    if (!pupille.etats.some((e) => e.pieces.length)) {
+      throw new Error('la pupille de mcFrog est introuvable (chemin 8.51.61)');
+    }
+    cellules.push(pupille);
+  }
   const nommes = cellules.filter((c) => !/^sym/.test(c.cle)).length;
   console.log(`${cellules.length} symboles dessinables — ${nommes} nommés, `
     + `${cellules.length - nommes} à identifier (cf. --planche)`);
@@ -286,7 +328,9 @@ function principal() {
         }
         pieces.push(piece);
       }
-      etats.push(e.masque ? { frame: e.frame, masque: true, pieces } : { frame: e.frame, pieces });
+      const etat = e.masque ? { frame: e.frame, masque: true, pieces } : { frame: e.frame, pieces };
+      if (e.lin) etat.lin = e.lin;         // la chaîne de l'œil (sym673_pupille)
+      etats.push(etat);
     }
     if (!etats.some((e) => e.pieces.length)) continue;
     manifeste[c.cle] = { symbole: c.obf, id: c.id, etats };

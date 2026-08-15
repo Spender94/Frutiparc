@@ -1122,3 +1122,211 @@ test('les dessins de l\'habillage du SWF sont extraits : barre de temps, écran 
   assert.equal(MANIFESTE.sym544.etats.length, 15, 'leur grimace en quinze images');
   assert.ok(MANIFESTE.gameOver, 'et le fond de l\'écran');
 });
+
+// ── LA GRENOUILLE (game/Frog.mt, classe « 2N9i1 » du bytecode) ──
+
+test('la grenouille : la mise en place du bytecode, constante par constante', () => {
+  const b = banc(J.Frog, { dif: 30 });
+  const j = b.jeu;
+  // Le COMPILÉ retranche la difficulté au temps (gameTime = 360 - dif) — la
+  // source nue dit 360 : le SWF est l'arbitre.
+  assert.equal(j.gameTime, 360 - 30);
+  assert.equal(j.mancheSize, 30);
+  assert.equal(j.canneSize, 80);
+  assert.equal(j.tensionMax, 80);
+  assert.equal(j.limit, 700);
+  assert.equal(j.gl, HAUTEUR - 10);
+  assert.equal(j.cRot, -1.57);
+  assert.equal(j.nerveMax, 1000);
+  assert.equal(j.nerve, 1000);
+  assert.deepEqual(j.camBox, { xMin: -9999, xMax: 9999, yMin: 0, yMax: 0, cx: 0.1, sp: 1 });
+  // frog.x = limit - (50 + dif*2) ; y = gl ; sans physique tant qu'elle guette.
+  assert.equal(j.frog.x, 700 - (50 + 30 * 2));
+  assert.equal(j.frog.y, j.gl);
+  assert.equal(j.frog.flPhys, false);
+  // La canne au centre, redressée de -1,57 rad ; l'appât au coin, poids 0,7.
+  assert.equal(j.canne.x, LARGEUR * 0.5);
+  assert.equal(Math.round(j.canne.peau.rot), Math.round(-1.57 / 0.0174));
+  assert.equal(j.bait.x, LARGEUR - 0.5);
+  assert.equal(j.bait.y, HAUTEUR - 0.5);
+  assert.equal(j.bait.poids, 0.7);
+  // ob part de l'appât (la mesure d'agitation de la première image vaut zéro).
+  assert.deepEqual(j.ob, { x: j.bait.x, y: j.bait.y });
+  // Le décor de la falaise posé à gl, ATTACHÉ EN DERNIER (il couvre le fil).
+  assert.equal(j.decor.y, j.gl);
+  const ordre = j.scene.ordre();
+  assert.ok(ordre.indexOf(j.decor) > ordre.indexOf(j.fil), 'le sol passe devant le fil');
+  assert.ok(ordre.indexOf(j.fil) > ordre.indexOf(j.bait.peau), 'et le fil devant l\'appât');
+  // La pupille détachée, avec sa chaîne par image (l'extracteur la fournit).
+  assert.ok(j.pupille.lins && j.pupille.lins.length === 49, 'les 49 chaînes de l\'œil');
+});
+
+test('la patience de la grenouille : pleine au calme, fondue sous l\'agitation (checkFrog)', () => {
+  const b = banc(J.Frog);
+  const j = b.jeu;
+  // Les premières images ne sont PAS calmes : le ressort happe l'appât vers la
+  // pointe (c > 0,2 : rappel de force), il se balance — et la patience s'en
+  // ressent un peu. Une fois le balancier éteint (amorti 0,95), elle REMONTE
+  // de 2 par temps et se replafonne à 1000.
+  b.souris(120, 100);
+  b.avancer(200);
+  assert.equal(j.nerve, 1000, 'un appât qui pend sans bouger n\'agace personne');
+  assert.equal(j.frog.peau.image, 10, '20 - round(1000/1000·10) = 10 : posée');
+  // On agite l'appât SOUS SON NEZ, par GRANDS gestes alternés toutes les six
+  // images : la canne va à mi-chemin de la souris par temps — des allers-
+  // retours à chaque image la feraient vibrer sur place, fil mou, appât
+  // immobile, grenouille de marbre. La souris du banc est en coordonnées
+  // d'écran — le jeu la retraduit (sourisX - decalX), caméra comprise.
+  for (let i = 0; i < 400 && j.etape === 1; i++) {
+    const ex = j.frog.x + j.decalX + (Math.floor(i / 6) % 2 ? -70 : 70);
+    b.souris(ex, j.frog.y + j.decalY - 30);
+    b.avancer(1);
+  }
+  assert.equal(j.etape, 2, 'à bout de nerfs, elle a bondi');
+  assert.equal(j.frog.flPhys, true, 'et vole (initJump)');
+  assert.equal(j.frog.peau.image >= 30, true, 'la pellicule « jump » (30…)');
+  assert.equal(j.flHorsTemps, true, 'flTimeProof : le chrono ne peut plus la tuer');
+  assert.equal(j.camBox.cx, 0.5);
+  assert.equal(j.camBox.sp, 0.2);
+  assert.equal(j.camBox.yMin, -200);
+  assert.equal(j.camBox.xMax, -j.frog.x, 'l\'écran ne reculera plus derrière elle');
+});
+
+test('les yeux suivent l\'appât : la pupille glisse de 1,8·(1-c), chaîne comprise', () => {
+  const b = banc(J.Frog);
+  const j = b.jeu;
+  b.avancer(2);
+  // Le vecteur du regard, recalculé comme checkFrog le pose.
+  const d1 = j.frog.distance(j.bait);
+  const c = Math.max(0, 180 - d1) / 180;
+  const a = j.frog.angle(j.bait);
+  assert.equal(j.oeil.x.toFixed(6), (1.8 * (1 - c) * Math.cos(a)).toFixed(6));
+  assert.equal(j.oeil.y.toFixed(6), (1.8 * (1 - c) * Math.sin(a)).toFixed(6));
+  // La pupille copie l'image de la grenouille et se décale de lin·oeil.
+  assert.equal(j.pupille.image, j.frog.peau.image);
+  const lin = j.pupille.lins[j.frog.peau.image - 1];
+  assert.equal(j.pupille.x.toFixed(4), (j.frog.x + lin[0] * j.oeil.x + lin[2] * j.oeil.y).toFixed(4));
+  assert.equal(j.pupille.y.toFixed(4), (j.frog.y + lin[1] * j.oeil.x + lin[3] * j.oeil.y).toFixed(4));
+  // La chaîne compose les deux miroirs en POSITIF (~1,61) : l'appât est à
+  // gauche de la grenouille (cos(a) < 0), la pupille part bien vers la gauche.
+  assert.ok(Math.cos(a) < 0 && lin[0] > 1.5 && j.pupille.x < j.frog.x,
+    'le regard suit l\'appât, sans inversion');
+});
+
+test('la canne : redressée à l\'appui, pliée par la traction, le fil pend au mou', () => {
+  const b = banc(J.Frog);
+  const j = b.jeu;
+  b.avancer(5);
+  const avant = j.cRot;
+  b.socle.click();
+  b.avancer(10);
+  assert.ok(j.cRot < avant - 0.5, 'l\'appui la redresse vers -2,7 rad');
+  b.socle.relache();
+  for (let i = 0; i < 40; i++) b.avancer(1);
+  assert.ok(Math.abs(j.cRot - -1) < 0.1, 'relâchée, elle revient vers -1 rad');
+  // Le BOIS est dessiné (trois commandes : style, aller, courbe) — brun 0x8B6830,
+  // épaisseur 3 ; le FIL blanc d'un pixel pend en courbe quand il est mou.
+  assert.deepEqual(j.tige.dessin[0], ['style', 3, 0x8B6830, 100]);
+  assert.equal(j.tige.dessin[2][0], 'courbe');
+  assert.deepEqual(j.fil.dessin[0], ['style', 1, 0xFFFFFF, 100]);
+  // La souris collée à l'appât : distance sous tensionMax, le fil PEND.
+  b.souris(j.bait.x + j.decalX, j.bait.y + j.decalY - 40);
+  b.avancer(12);
+  assert.equal(j.fil.dessin[2][0], 'courbe', 'mou : la courbe pend de (80-dist)/2');
+  // La souris à l'autre bout : tension — une droite, et l'appât tiré.
+  b.souris(10, 10);
+  b.avancer(3);
+  assert.equal(j.fil.dessin[2][0], 'ligne', 'tendu : le fil est droit');
+});
+
+test('le bond gagné : passée la falaise, le sol tombe de 120 et vingt éclats de terre', () => {
+  const b = banc(J.Frog);
+  const j = b.jeu;
+  // On rejoue l'atterrissage tel quel : en vol au-delà de limit, qui descend.
+  j.etape = 2;
+  j.frog.flPhys = true;
+  j.frog.x = j.limit + 40;
+  j.frog.y = j.gl + 60;             // sous le sol d'origine : le trou de la falaise
+  j.frog.vity = 8;
+  const avant = j.sprites.length;
+  b.avancer(8);
+  assert.equal(j.gagnant, true, 'passée la falaise : gagné (checkLand)');
+  assert.equal(j.frog.y, j.gl + 120, 'posée cent vingt pixels plus bas');
+  assert.equal(j.sprites.length, avant + 20, 'les vingt mcPartDirt (sym631)');
+});
+
+test('le bond raté : retombée au sol d\'origine, assise image 1, perdu', () => {
+  const b = banc(J.Frog);
+  const j = b.jeu;
+  j.etape = 2;
+  j.frog.flPhys = true;
+  j.frog.x = j.limit - 100;         // avant la falaise
+  j.frog.y = j.gl - 30;
+  j.frog.vity = 10;
+  b.avancer(8);
+  assert.equal(j.gagnant, false, 'retombée avant la falaise : perdu');
+  assert.equal(j.frog.peau.image, 1, 'rassise (gotoAndStop("1"))');
+  assert.equal(j.frog.peau.rot, 0);
+});
+
+test('gobé en plein vol : l\'appât disparaît, « eat », et le chrono de la défaite', () => {
+  const b = banc(J.Frog);
+  const j = b.jeu;
+  // L'appât doit être STABLE : moveCanne le déplace AVANT checkEat dans la
+  // même image — on le laisse pendre DEVANT la grenouille, souris fixe (loin
+  // d'elle, la caméra sauterait au moment du pas et le coup de fouet
+  // arracherait l'appât avant la morsure).
+  for (let i = 0; i < 100; i++) {
+    b.souris(j.frog.x - 20 + j.decalX, j.frog.y - 60 + j.decalY);
+    b.avancer(1);
+  }
+  j.etape = 2;
+  j.frog.flPhys = true;
+  j.frog.x = j.bait.x - 12;         // à moins de vingt pixels de l'appât
+  j.frog.y = j.bait.y - 6;
+  j.frog.vitx = 2;
+  b.avancer(1);
+  assert.equal(j.flEat, true, 'd < 20 : gobé (checkEat)');
+  assert.equal(j.bait.peau.visible, false, 'l\'appât a disparu dans le gosier');
+  assert.equal(j.frog.peau.image, 46, 'la pellicule « eat »');
+  assert.equal(j.camBox.sp, 0, 'la caméra se fige');
+  assert.ok(j.looseTimer > 0 && j.looseTimer <= 12);
+  b.avancer(14);
+  assert.equal(j.gagnant, false, 'douze temps plus tard : perdu');
+});
+
+test('la caméra de la grenouille : elle suit, bornée, et la souris est retraduite', () => {
+  const b = banc(J.Frog);
+  const j = b.jeu;
+  b.avancer(40);
+  // À l'affût : la cible est mcw·0,1 - frog.x — la grenouille au bord gauche.
+  const cible = LARGEUR * 0.1 - j.frog.x;
+  assert.ok(Math.abs(j.decalX - cible) < 1, 'la caméra s\'est posée sur sa cible');
+  assert.equal(j.decalY, 0, 'bornée à yMin = yMax = 0 tant qu\'elle guette');
+  // La souris d'écran est retraduite dans le repère du jeu (sourisX - decalX),
+  // comme le _xmouse d'un clip déplacé.
+  b.souris(120, 100);
+  assert.equal(j.sourisX, 120 - j.decalX);
+  assert.equal(j.sourisY, 100 - j.decalY);
+});
+
+test('les dessins de la grenouille sont extraits, pupille détachée comprise', () => {
+  for (const cle of ['gameFrog', 'sym673', 'sym673_pupille', 'sym635', 'sym633', 'sym637', 'sym631']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.sym673.etats.length, 49, 'la pellicule complète (affût, bond, gobage)');
+  // La pupille : une pièce par état, et sa chaîne lin (les deux miroirs
+  // composés en positif — le regard suit, il ne s'inverse pas).
+  const p = MANIFESTE.sym673_pupille;
+  assert.equal(p.etats.length, 49);
+  assert.ok(p.etats.every((e) => e.pieces.length >= 1), 'la pupille sur chaque image');
+  assert.ok(p.etats.every((e) => Array.isArray(e.lin) && e.lin.length === 4), 'sa chaîne par image');
+  assert.ok(p.etats[9].lin[0] > 1.5, 'l\'échelle de la chaîne (~+1,61)');
+  // Et la grenouille SANS pupille n'en garde aucune trace : la pièce 5×5 du
+  // point noir n'apparaît plus dans ses états.
+  const fichiers = new Set();
+  for (const e of MANIFESTE.sym673.etats) for (const pc of e.pieces) fichiers.add(pc.fichier);
+  const pupilles = new Set();
+  for (const e of p.etats) for (const pc of e.pieces) pupilles.add(pc.fichier);
+  for (const f of pupilles) assert.ok(!fichiers.has(f), f + ' ne reste que dans la pupille');
+});

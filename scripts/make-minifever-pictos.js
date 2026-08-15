@@ -131,6 +131,13 @@ const SCENES = {
     { cle: 'sym180', x: 120, y: 92, rot: -35 },     // le poisson en plein saut
     { cle: 'sym166', x: 104, y: 108, rot: 6 },      // le cadre à ses trousses
   ],
+  gameFrog: [
+    { cle: 'sym637', x: 0, y: 230 },                // le sol de la falaise
+    { cle: 'sym673', x: 60, y: 230, image: 18 },    // la grenouille à cran…
+    { cle: 'sym673_pupille', x: 60, y: 230, image: 18 },
+    { cle: 'sym635', x: 150, y: 110, rot: -90 },    // …le manche dressé,
+    { cle: 'sym633', x: 150, y: 195 },              // l'appât sous son nez
+  ],
   gamePatate: [
     { cle: 'sym235', x: 60, y: 54 },                // votre légume, nu
     { cle: 'sym235', x: 180, y: 54 },               // le modèle, habillé :

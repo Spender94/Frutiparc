@@ -75,6 +75,10 @@ function mesures(m) {
       nbImages: s.etats[s.etats.length - 1].frame,
       boite: isFinite(x0) ? { x0, y0, x1, y1 } : { x0: -10, y0: -10, x1: 10, y1: 10 },
     };
+    // La chaîne de l'œil (sym673_pupille) : la partie linéaire du chemin des
+    // placements jusqu'à l'œil, par image — le jeu s'en sert pour traduire le
+    // décalage du regard en décalage écran.
+    if (s.etats.some((e) => e.lin)) out[cle].lins = s.etats.map((e) => e.lin || null);
   }
   return out;
 }
@@ -283,7 +287,7 @@ class Client {
     if (s.jeu) {
       const jeu = s.jeu;
       ctx.save();
-      ctx.translate(0, jeu.decalY || 0);
+      ctx.translate(jeu.decalX || 0, jeu.decalY || 0);
       // Le décor : le clip du mini-jeu, posé au fond. Flash l'accrochait en
       // (0,0) — ses dessins couvrent la scène depuis le coin, pas depuis le
       // centre, et certains débordent (le terrain de basket monte à -391, le

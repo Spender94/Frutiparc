@@ -2198,6 +2198,369 @@ class Patate extends Jeu {
 }
 
 /*
+ * game/Frog.mt — LA GRENOUILLE : la pêche à l'envers.
+ *
+ * Une grenouille somnole au bord de la falaise (limit = 700, le sol y tombe de
+ * cent vingt pixels). On tient une canne à pêche : l'appât pend au bout du fil,
+ * la canne suit la souris, et l'APPUI la redresse (tr passe de -1 à -2,7 rad).
+ * L'agacer, c'est agiter l'appât SOUS son nez : sa patience (`nerve`, 1000)
+ * fond de c·d2·8 par unité de temps — c = proximité (max(0, 180-d1)/180),
+ * d2 = le chemin parcouru par l'appât depuis l'image d'avant. À bout de nerfs,
+ * elle BONDIT sur l'appât (p = 16 + d·0,02) : trop près, elle le gobe
+ * (d < 20 → looseTimer 12, perdu) ; assez loin, elle le dépasse — et si elle
+ * retombe au-delà de la falaise, vingt éclats de terre saluent la victoire.
+ * Retombée au sol d'origine : elle se rassoit (image 1), perdu.
+ *
+ * Tout est vérifié contre le bytecode (classe « 2N9i1 » du SWF de dev) :
+ *   · gameTime = 360 - dif — la SOURCE nue dit 360, le compilé retranche la
+ *     difficulté (le champ « 9FH ») : l'arbitre a raison ;
+ *   · la CANNE est DESSINÉE (lineStyle(3, 0x8B6830) — moveTo(manche, 0),
+ *     curveTo vers la pointe fléchie par bRot). Deux coquilles d'époque
+ *     conservées : la pointe DESSINÉE raccourcit de |bRot|·15
+ *     (getCanneSize), la pointe PHYSIQUE de |bRot|·10 — elles divergent dès
+ *     que le bois plie ; et bRot *= 0,9 s'applique par image, sans tmod ;
+ *   · le FIL : tendu au-delà de tensionMax (ressort c·20 sur l'appât, et
+ *     au-delà de vingt pour cent d'étirement l'appât est ramené de force),
+ *     détendu en-dessous — la courbe pend alors de (tensionMax-dist)·0,5 ;
+ *   · les YEUX suivent l'appât : le jeu déplace la PUPILLE
+ *     (skin.«8».«8».«51».«61»._x/_y, f.h.h.o.p des sources) de
+ *     1,8·(1-c)·cos/sin(a) dans le repère de l'œil. Le dessin extrait la
+ *     sépare (sym673_pupille) avec `lin`, la chaîne des placements — les deux
+ *     miroirs (corps -1,34, œil -1,2) se composent en +1,61 : le regard suit
+ *     bien l'appât, sans inversion ;
+ *   · la CAMÉRA (camBox) : cx 0,1 et suivi plein (sp 1) pendant l'affût, puis
+ *     au saut cx 0,5, sp 0,2, yMin -200 et xMax = -frog.x — l'écran
+ *     accompagne le bond mais ne revient jamais en arrière ;
+ *   · la pellicule de la grenouille : images 1-20 l'énervement
+ *     (20 - round(nerve/1000·10) : de 10 posée à 20 furieuse), « jump » à 30
+ *     (jouée jusqu'au stop d'époque, 42), « eat » à 46.
+ *
+ * Les dessins : sym673 la grenouille (sans sa pupille), sym673_pupille le
+ * regard, sym635 le manche de la canne, sym633 l'appât, sym637 le sol de la
+ * falaise (posé à gl, ATTACHÉ EN DERNIER — il passe DEVANT le fil et l'appât,
+ * comme dans le SWF : l'ordre d'accrochage fait l'ordre de dessin),
+ * sym631 les éclats de terre, gameFrog le ciel (1525 px de long).
+ */
+class Frog extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 360 - this.dif;
+    super.init();
+    this.mancheSize = 30;
+    this.canneSize = 80;
+    this.tensionMax = 80;
+    this.limit = 700;
+    this.gl = HAUTEUR - 10;
+    this.cRot = -1.57;
+    this.bRot = 0;
+    this.nerveMax = 1000;
+    this.nerve = this.nerveMax;
+    this.flEat = false;
+    this.looseTimer = null;
+    this.camBox = { xMin: -9999, xMax: 9999, yMin: 0, yMax: 0, cx: 0.1, sp: 1 };
+    this.attachElements();
+    this.ob = { x: this.bait.x, y: this.bait.y };
+  }
+
+  attachElements() {
+    this.frog = this.nouveauPhys('sym673');
+    this.frog.x = this.limit - (50 + this.dif * 2);
+    this.frog.y = this.gl;
+    this.frog.poids = 1;
+    this.frog.flPhys = false;
+    this.frog.peau.arreter();
+    this.frog.init();
+
+    // La pupille, détachée du dessin : même image et même rotation que la
+    // grenouille, décalée du vecteur du regard (posé par checkFrog).
+    this.pupille = this.attacher('sym673_pupille', PROF.SPRITE);
+    this.pupille.arreter();
+    this.oeil = { x: 0, y: 0 };            // p._x/_y des sources
+
+    this.canne = this.nouveauSprite('sym635');
+    this.canne.x = LARGEUR * 0.5;
+    this.canne.y = HAUTEUR * 0.5;
+    this.canne.peau.rot = this.cRot / 0.0174;
+    this.canne.init();
+    // Le clip vide où l'original trace le BOIS de la canne (skin.clear() +
+    // curveTo, dans le repère tourné du manche — on tourne les points à la
+    // main, même dessin).
+    this.tige = this.attacher(null, PROF.SPRITE);
+    this.tige.dessin = [];
+
+    this.bait = this.nouveauPhys('sym633');
+    this.bait.x = LARGEUR - 0.5;
+    this.bait.y = HAUTEUR - 0.5;
+    this.bait.poids = 0.7;
+    this.bait.init();
+
+    // Le fil (dm.empty), PUIS le décor : l'original accroche le sol en
+    // dernier, il couvre le fil et l'appât qui pendouille dessous.
+    this.fil = this.attacher(null, PROF.SPRITE);
+    this.fil.dessin = [];
+    this.decor = this.attacher('sym637', PROF.SPRITE);
+    this.decor.y = this.gl;
+  }
+
+  update() {
+    super.update();
+    switch (this.etape) {
+      case 1:
+        this.moveCam();
+        this.moveCanne();
+        this.checkFrog();
+        this.ob = { x: this.bait.x, y: this.bait.y };
+        break;
+      case 2:
+        this.moveCam();
+        this.moveCanne();
+        if (this.flEat) {
+          this.frog.x = this.bait.x;
+          this.frog.y = this.bait.y;
+          const dr = -90 - this.frog.peau.rot;
+          this.frog.vitr += dr * 0.01 * Temps.tmod;
+        } else {
+          this.checkLand();
+          if (this.frog.flPhys) {
+            this.frog.alignerRot();
+            this.checkEat();
+          }
+        }
+        if (this.looseTimer !== null) {
+          this.looseTimer -= Temps.tmod;
+          if (this.looseTimer < 0) {
+            this.gagne(false);
+            this.looseTimer = 0;
+          }
+        }
+        break;
+    }
+    // Le stop d'époque au bout du bond (l'image 42 de la pellicule).
+    if (this.frog.peau.joue && this.frog.peau.image >= 42) this.frog.peau.arreter();
+    this.poserPupille();
+    // L'original recale les skins de la canne et de l'appât à chaque image,
+    // dans tous les cas — nos Sprites le font déjà (Sprite.update), la tige et
+    // le fil se redessinent dans moveCanne.
+  }
+
+  /*
+   * Frog.moveCam — la caméra : le CLIP ENTIER du jeu se déplace (this._x/_y
+   * des sources), nos décalages de scène font pareil. Le suivi vise
+   * (mcw·cx - frog.x, mch/2 - frog.y), amorti par camBox.sp, borné par la
+   * boîte — que initJump referme sur le présent (xMax = -frog.x).
+   */
+  moveCam() {
+    const c = this.camBox.sp;
+    const x = LARGEUR * this.camBox.cx - this.frog.x;
+    const y = HAUTEUR * 0.5 - this.frog.y;
+    const dx = x - this.decalX;
+    const dy = y - this.decalY;
+    this.decalX = Math.min(Math.max(this.camBox.xMin, this.decalX + dx * c * Temps.tmod), this.camBox.xMax);
+    this.decalY = Math.min(Math.max(this.camBox.yMin, this.decalY + dy * c * Temps.tmod), this.camBox.yMax);
+  }
+
+  moveCanne() {
+    // La canne se redresse à l'appui (tr -1 → -2,7 rad), en s'amortissant.
+    let tr = -1;
+    if (this.socle && this.socle.flPresse) tr = -2.7;
+    const dr = tr - this.cRot;
+    this.cRot += dr * 0.2 * Temps.tmod;
+    this.canne.peau.rot = this.cRot / 0.0174;
+
+    // Elle suit la souris, à moitié chemin par unité de temps.
+    this.canne.vers({ x: this.sourisX, y: this.sourisY }, 0.5, null);
+
+    // LE BOIS : l'original dessine dans le repère TOURNÉ du manche
+    // (moveTo(mancheSize, 0), curveTo(manche + cs·0,8, 0, x, y)) — on tourne
+    // les trois points de cRot et on trace en coordonnées de scène.
+    const cs = this.getCanneSize();
+    const cosR = Math.cos(this.cRot), sinR = Math.sin(this.cRot);
+    const tourne = (x, y) => ({
+      x: this.canne.x + x * cosR - y * sinR,
+      y: this.canne.y + x * sinR + y * cosR,
+    });
+    const xB = Math.cos(this.bRot) * cs + this.mancheSize;
+    const yB = Math.sin(this.bRot) * cs;
+    const p0 = tourne(this.mancheSize, 0);
+    const pc = tourne(this.mancheSize + cs * 0.8, 0);
+    const p1 = tourne(xB, yB);
+    this.tige.dessin = [
+      ['style', 3, 0x8B6830, 100],
+      ['aller', p0.x, p0.y],
+      ['courbe', pc.x, pc.y, p1.x, p1.y],
+    ];
+
+    // La POINTE physique — raccourcie de |bRot|·10 là où le dessin retire 15 :
+    // la coquille d'époque, conservée.
+    const bx = this.canne.x + Math.cos(this.cRot) * this.mancheSize;
+    const by = this.canne.y + Math.sin(this.cRot) * this.mancheSize;
+    const px = bx + Math.cos(this.cRot + this.bRot) * (this.canneSize - Math.abs(this.bRot) * 10);
+    const py = by + Math.sin(this.cRot + this.bRot) * (this.canneSize - Math.abs(this.bRot) * 10);
+
+    // L'APPÂT au bout du fil : ressort au-delà de tensionMax, rappel de force
+    // au-delà de vingt pour cent d'étirement, mou dessous.
+    const dxF = px - this.bait.x;
+    const dyF = py - this.bait.y;
+    const dist = Math.sqrt(dxF * dxF + dyF * dyF);
+    const a = Math.atan2(dyF, dxF);
+    let g = null;
+    let pression = null;
+    if (dist > this.tensionMax) {
+      const c = (dist - this.tensionMax) / this.tensionMax;
+      const p = 20;
+      pression = { a, p: c * p };
+      this.bait.vitx += Math.cos(a) * c * p;
+      this.bait.vity += Math.sin(a) * c * p;
+      const lim = 0.2;
+      if (c > lim) {
+        this.bait.x = px - Math.cos(a) * this.tensionMax * (1 + lim);
+        this.bait.y = py - Math.sin(a) * this.tensionMax * (1 + lim);
+      }
+    } else {
+      g = (this.tensionMax - dist) * 0.5;
+    }
+    this.bait.vitx *= Math.pow(0.95, Temps.tmod);
+    this.bait.vity *= Math.pow(0.95, Temps.tmod);
+
+    // La TENSION DU BOIS : la traction fait plier la canne (bRot), plus fort
+    // quand la grenouille pend au bout (flEat). L'amortissement 0,9 est PAR
+    // IMAGE, sans tmod — comme gravé.
+    if (pression !== null) {
+      const sa = pression.a - this.cRot;
+      const pr = Math.sin(sa + 3.14) * pression.p;
+      this.bRot += pr * 0.02 * (this.bait.poids + (this.flEat ? 2 : 0)) * Temps.tmod;
+    }
+    this.bRot *= 0.9;
+
+    // LE FIL : blanc, un pixel — droit sous tension, pendant de g sinon.
+    const fil = [['style', 1, 0xFFFFFF, 100], ['aller', px, py]];
+    if (g === null) {
+      fil.push(['ligne', this.bait.x, this.bait.y]);
+    } else {
+      const mx = (this.bait.x + px) * 0.5;
+      const my = (this.bait.y + py) * 0.5 + g;
+      fil.push(['courbe', mx, my, this.bait.x, this.bait.y]);
+    }
+    this.fil.dessin = fil;
+  }
+
+  getCanneSize() {
+    return this.canneSize - Math.abs(this.bRot) * 15;
+  }
+
+  checkFrog() {
+    // La patience remonte de 2 par unité de temps, fond de c·d2·8 — c la
+    // proximité de l'appât, d2 son agitation depuis l'image d'avant.
+    this.nerve = Math.min(this.nerve + 2 * Temps.tmod, 1000);
+    const d1 = this.frog.distance(this.bait);
+    const d2 = this.bait.distance(this.ob);
+    const c = Math.max(0, 180 - d1) / 180;
+    this.nerve -= c * d2 * 8 * Temps.tmod;
+
+    if (this.nerve < 0) {
+      this.initJump();
+    } else {
+      const frame = 20 - Math.round((this.nerve / this.nerveMax) * 10);
+      this.frog.peau.allerA(frame);
+    }
+
+    // LES YEUX : la pupille glisse de 1,8·(1-c) vers l'appât — même après le
+    // déclenchement du bond (l'original pose les yeux APRÈS le if, sans
+    // retour anticipé).
+    const a = this.frog.angle(this.bait);
+    this.oeil.x = 1.8 * (1 - c) * Math.cos(a);
+    this.oeil.y = 1.8 * (1 - c) * Math.sin(a);
+  }
+
+  /*
+   * La pupille suit la grenouille : même image, même rotation, décalée du
+   * vecteur du regard transformé par la chaîne de l'œil (`lin`, par image),
+   * puis par la rotation du corps — translate(pos)∘R∘translate(o) =
+   * translate(pos + R·o)∘R.
+   */
+  poserPupille() {
+    const peau = this.frog.peau;
+    const p = this.pupille;
+    p.image = peau.image;
+    p.rot = peau.rot;
+    const lin = (p.lins && p.lins[peau.image - 1]) || [1, 0, 0, 1];
+    const ox = lin[0] * this.oeil.x + lin[2] * this.oeil.y;
+    const oy = lin[1] * this.oeil.x + lin[3] * this.oeil.y;
+    const r = peau.rot * 0.0174;
+    const cosR = Math.cos(r), sinR = Math.sin(r);
+    p.x = this.frog.x + ox * cosR - oy * sinR;
+    p.y = this.frog.y + ox * sinR + oy * cosR;
+    p.visible = peau.visible;
+  }
+
+  initJump() {
+    this.etape = 2;
+    const a = this.frog.angle(this.bait);
+    const d = this.frog.distance(this.bait);
+    const p = 16 + d * 0.02;
+    this.frog.vitx += Math.cos(a) * p;
+    this.frog.vity += Math.sin(a) * p;
+    this.frog.flPhys = true;
+    this.frog.peau.allerA(30);            // « jump », jouée jusqu'au stop (42)
+    this.frog.peau.jouer();
+    this.camBox.yMin = -200;
+    this.camBox.yMax = 0;
+    this.camBox.cx = 0.5;
+    this.camBox.sp = 0.2;
+    this.camBox.xMax = -this.frog.x;
+    this.flHorsTemps = true;              // flTimeProof : le sort est déjà joué
+  }
+
+  checkEat() {
+    const d = this.frog.distance(this.bait);
+    if (d < 20) {
+      this.flEat = true;
+      this.bait.vitx += this.frog.vitx;
+      this.bait.vity += this.frog.vity;
+      this.bait.peau.visible = false;
+      this.frog.flPhys = false;
+      this.frog.vitx = 0;
+      this.frog.vity = 0;
+      this.frog.vitr = 0;
+      this.frog.peau.allerA(46);          // « eat »
+      this.camBox.sp = 0;
+      this.looseTimer = 12;
+    }
+  }
+
+  checkLand() {
+    let g = this.gl;
+    if (this.frog.x > this.limit) g += 120;
+    if (this.frog.y > g) {
+      this.frog.y = g;
+      this.frog.flPhys = false;
+      this.frog.vitx = 0;
+      this.frog.vity = 0;
+      if (g === this.gl) {
+        this.frog.peau.allerA(1);
+        this.frog.peau.rot = 0;
+        this.gagne(false);
+      } else {
+        this.gagne(true);
+        for (let i = 0; i < 20; i++) {
+          const mc = this.nouvellePart('sym631');
+          mc.x = this.frog.x;
+          mc.y = this.frog.y;
+          mc.vitx = 5 * (this.aleatoire() * 2 - 1);
+          mc.vity = -(3 + this.aleatoire() * 6);
+          mc.echelle = 30 + this.socle.hasard(60);
+          mc.poids = 0.5;
+          mc.init();
+        }
+      }
+    }
+  }
+}
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui de Base.genGameList(), qui donnait à chaque épreuve une
@@ -2220,10 +2583,11 @@ const JEUX = [
   { cle: 'gameOrbital', nom: 'orbite', Classe: Orbital },
   { cle: 'gameJumpFish', nom: 'photo', Classe: JumpFish },
   { cle: 'gamePatate', nom: 'légume', Classe: Patate },
+  { cle: 'gameFrog', nom: 'grenouille', Classe: Frog },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
-  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate };
+  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Frog };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;
