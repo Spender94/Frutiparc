@@ -4196,6 +4196,184 @@ class Picture extends Jeu {
 }
 
 /*
+ * game/Plate.mt — L'ASSIETTE : récurer les taches à l'éponge.
+ *
+ * Une assiette monte du bas de l'écran (ressort 0,2 vers le centre),
+ * constellée de 6 + dif·0,09 taches (rayon 10 + dif·0,1 + random(30),
+ * posées en polaire dans le rayon restant). L'éponge (rayon 30 - dif·0,15)
+ * court après la souris (ressort 0,5) : la PUISSANCE du récurage, c'est la
+ * distance parcourue depuis l'image d'avant ×0,1 — il faut FROTTER. Chaque
+ * tache sous l'éponge perd c·power de vie (c = 1 - dist/(sRay + ray)), et
+ * le coefficient FOND de moitié à chaque tache touchée dans la même image
+ * (la première prend tout). Vie à zéro : la tache sort de la liste — son
+ * clip RESTE, à l'alpha zéro, comme à l'époque. Plus de taches : gagné.
+ *
+ * Tout est vérifié contre la classe « 0q8Ho1 » du SWF de dev :
+ *   · gameTime 320 ; la mousse : round(power) flocons par image sous
+ *     l'éponge (dans les 100 px du centre de l'assiette), échelle
+ *     100 ± 50, pellicule lancée à random(3) + 1 — et leur DoAction
+ *     d'époque les retire à la dernière image (notre `finit`) ;
+ *   · le ruissellement : dix mcPartWaterFlow lancés à random(10) + 1, qui
+ *     se retirent pareil au bout de leurs trente-six images ;
+ *   · op naît à (0,0) : la première image mesure la distance de l'éponge à
+ *     l'ORIGINE — un petit paquet de mousse gratuit au départ, conservé ;
+ *   · tout ce qui vit sur l'assiette (taches, mousse, ruissellement) est
+ *     accroché DANS son clip : on garde les coordonnées locales et on les
+ *     repose sous l'assiette à chaque image, l'éponge par-dessus tout.
+ *
+ * Les dessins : gamePlate le fond, sym129 l'assiette, sym125 la tache
+ * (quatre formes), sym120 l'éponge, sym115 la mousse, sym118 l'eau.
+ */
+class Plate extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 320;
+    super.init();
+    this.pRay = 50;
+    this.sRay = 30 - this.dif * 0.15;
+    this.depthRun = 0;
+    this.op = { x: 0, y: 0 };
+    this.attachElements();
+  }
+
+  attachElements() {
+    // PLATE
+    this.plate = this.nouveauSprite('sym129');
+    this.plate.x = LARGEUR * 0.5;
+    this.plate.y = HAUTEUR * 1.5;
+    this.plate.peau.sx = this.pRay * 2 / 100;
+    this.plate.peau.sy = this.pRay * 2 / 100;
+    this.plate.init();
+
+    // TACHES — attachées dans l'assiette : coordonnées locales gardées.
+    this.tache = [];
+    this.enAssiette = [];
+    const max = 6 + this.dif * 0.09;
+    for (let i = 0; i < max; i++) {
+      const mc = this.attacher('sym125', PROF.SPRITE);
+      const ray = 10 + this.dif * 0.1 + this.socle.hasard(30);
+      const d = this.socle.hasard(Math.floor(100 - ray));
+      const a = this.socle.hasard(628) / 100;
+      const lx = Math.cos(a) * d;
+      const ly = Math.sin(a) * d;
+      mc.sx = ray * 2 / 100;
+      mc.sy = ray * 2 / 100;
+      mc.alpha = 1;
+      mc.rot = this.socle.hasard(360);
+      mc.allerA(this.socle.hasard(mc.nbImages) + 1);
+      this.tache.push({ mc, ray, life: ray, lx, ly });
+      this.enAssiette.push({ mc, lx, ly });
+    }
+
+    // SPONGE — par-dessus l'assiette et tout ce qu'elle porte.
+    this.sponge = this.nouveauSpriteDevant();
+
+    // PART WATER — le ruissellement, lancé au hasard, qui s'efface seul.
+    for (let i = 0; i < 10; i++) {
+      const mc = this.attacher('sym118', PROF.SPRITE);
+      const d = this.socle.hasard(100);
+      const a = this.socle.hasard(628) / 100;
+      const s = (50 + this.aleatoire() * 50) / 100;
+      mc.sx = s;
+      mc.sy = s;
+      mc.allerA(this.socle.hasard(10) + 1);
+      mc.jouer();
+      mc.finit = true;             // le removeMovieClip de sa dernière image
+      this.enAssiette.push({ mc, lx: Math.cos(a) * d, ly: Math.sin(a) * d });
+    }
+    this.poserAssiette();
+  }
+
+  /** L'éponge : un sprite posé DEVANT (la mousse d'après reste dessous). */
+  nouveauSpriteDevant() {
+    const s = this.nouveauSprite('sym120');
+    s.peau.prof = PROF.DEVANT;
+    s.x = LARGEUR * 0.5;
+    s.y = HAUTEUR * 0.5;
+    s.peau.sx = this.sRay * 2 / 100;
+    s.peau.sy = this.sRay * 2 / 100;
+    s.init();
+    return s;
+  }
+
+  /** Le clip de l'assiette, rejoué : ses enfants la suivent. */
+  poserAssiette() {
+    for (const o of this.enAssiette) {
+      if (!o.mc.vivant) continue;
+      o.mc.x = this.plate.x + o.lx;
+      o.mc.y = this.plate.y + o.ly;
+    }
+  }
+
+  update() {
+    super.update();
+    switch (this.etape) {
+      case 1: {
+        // PLATE
+        this.plate.vers({ x: LARGEUR * 0.5, y: HAUTEUR * 0.5 }, 0.2, null);
+        // MOVE SPONGE
+        this.sponge.vers({ x: this.sourisX, y: this.sourisY }, 0.5, null);
+        const power = this.sponge.distance(this.op) * 0.1;
+
+        // MOUSSE
+        const max = Math.round(power);
+        const dx = this.sponge.x - this.plate.x;
+        const dy = this.sponge.y - this.plate.y;
+        for (let i = 0; i < max; i++) {
+          const d = this.socle.hasard(Math.floor(this.sRay));
+          const a = this.socle.hasard(628) / 100;
+          const x = dx + Math.cos(a) * d;
+          const y = dy + Math.sin(a) * d;
+          if (Math.sqrt(x * x + y * y) < 100) {
+            this.depthRun++;
+            const mc = this.attacher('sym115', PROF.SPRITE);
+            const s = (100 + (this.aleatoire() * 2 - 1) * 50) / 100;
+            mc.sx = s;
+            mc.sy = s;
+            mc.rot = this.socle.hasard(360);
+            mc.allerA(this.socle.hasard(3) + 1);
+            mc.jouer();
+            mc.finit = true;
+            this.enAssiette.push({ mc, lx: x, ly: y });
+          }
+        }
+
+        // CLEAN TACHE — le coefficient fond de moitié par tache touchée.
+        let efCoef = 1;
+        for (let i = 0; i < this.tache.length; i++) {
+          const o = this.tache[i];
+          const dist = this.sponge.distance(
+            { x: o.lx + this.plate.x, y: o.ly + this.plate.y });
+          const c = 1 - (dist / (this.sRay + o.ray));
+          if (c > 0) {
+            o.life = Math.max(0, o.life - c * power * efCoef);
+            o.mc.alpha = o.life / o.ray;
+            if (o.life === 0) {
+              // La source ne retire que l'entrée : le clip reste, invisible.
+              this.tache.splice(i, 1);
+              i--;
+            }
+            efCoef *= 0.5;
+          }
+        }
+
+        // CHECK WIN
+        if (this.tache.length === 0) this.gagne(true);
+
+        // OLD POS
+        this.op = { x: this.sponge.x, y: this.sponge.y };
+        break;
+      }
+      default: break;
+    }
+    this.poserAssiette();
+  }
+}
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui du portage, épreuve après épreuve — à fréquences de
@@ -4227,11 +4405,12 @@ const JEUX = [
   { cle: 'gameGhost', nom: 'fantôme', Classe: Ghost },
   { cle: 'gameBalance', nom: 'balance', Classe: Balance },
   { cle: 'gamePicture', nom: 'tableau', Classe: Picture },
+  { cle: 'gamePlate', nom: 'assiette', Classe: Plate },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
   Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff, Chain,
-  Ghost, Balance, Picture };
+  Ghost, Balance, Picture, Plate };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

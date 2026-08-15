@@ -1374,6 +1374,89 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── L'ASSIETTE (game/Plate.mt, classe « 0q8Ho1 » du bytecode) ──
+
+test('l\'assiette : la mise en place du bytecode, et sa montée du bas', () => {
+  const b = banc(J.Plate, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 320);
+  assert.equal(j.pRay, 50);
+  assert.equal(j.sRay, 30 - 40 * 0.15);
+  assert.deepEqual(j.op, { x: 0, y: 0 });
+  assert.equal(j.plate.x, 120);
+  assert.equal(j.plate.y, 360, 'elle naît sous l\'écran');
+  assert.equal(j.tache.length, Math.ceil(6 + 40 * 0.09),
+    'la boucle d\'époque court sur max = 6 + dif·0,09, fraction comprise');
+  assert.ok(j.tache.every((t) => Math.hypot(t.lx, t.ly) <= 100), 'toutes dans l\'assiette');
+  assert.ok(j.tache.every((t) => t.life === t.ray));
+  // L'éponge au centre, à l'échelle du rayon, DEVANT tout.
+  assert.equal(j.sponge.peau.sx, (30 - 40 * 0.15) * 2 / 100);
+  assert.equal(j.sponge.peau.prof, E.PROF.DEVANT);
+  // Le ruissellement : dix clips qui s'ôteront tout seuls.
+  const eaux = j.scene.mcs.filter((m) => m.cle === 'sym118');
+  assert.equal(eaux.length, 10);
+  assert.ok(eaux.every((m) => m.finit && m.joue));
+  // La montée : l'assiette court vers le centre (ressort 0,2) et ses taches
+  // la suivent.
+  b.avancer(1);
+  assert.equal(j.plate.y.toFixed(4), (360 + (120 - 360) * 0.2).toFixed(4));
+  const t0 = j.tache[0];
+  assert.equal(t0.mc.y.toFixed(4), (j.plate.y + t0.ly).toFixed(4));
+});
+
+test('le récurage : la puissance vient du geste, le coefficient fond par tache', () => {
+  const b = banc(J.Plate);
+  const j = b.jeu;
+  b.avancer(30);                   // l'assiette se pose
+  const t = j.tache[0];
+  // L'éponge posée PILE sur la tache, immobile : puissance nulle, rien.
+  j.sponge.x = j.plate.x + t.lx;
+  j.sponge.y = j.plate.y + t.ly;
+  j.op = { x: j.sponge.x, y: j.sponge.y };
+  b.souris(j.sponge.x, j.sponge.y);
+  const vie0 = t.life;
+  b.avancer(1);
+  assert.equal(t.life, vie0, 'sans geste, pas de récurage');
+  // Un grand geste : op loin — la puissance mord la vie.
+  j.op = { x: j.sponge.x - 80, y: j.sponge.y };
+  b.avancer(1);
+  assert.ok(t.life < vie0, 'le frottement récure : ' + t.life.toFixed(1) + ' < ' + vie0);
+  assert.equal(t.mc.alpha.toFixed(4), (t.life / t.ray).toFixed(4), 'l\'alpha suit la vie');
+  // Et le geste sème la mousse sous l'éponge, qui s'ôte toute seule.
+  const mousses = j.scene.mcs.filter((m) => m.cle === 'sym115');
+  assert.ok(mousses.length > 0, 'la mousse est née');
+  assert.ok(mousses.every((m) => m.finit));
+});
+
+test('l\'assiette récurée gagne — la tache morte sort de la liste, son clip reste', () => {
+  const b = banc(J.Plate);
+  const j = b.jeu;
+  b.avancer(30);
+  const clips = j.tache.map((t) => t.mc);
+  // On récure chaque tache à grands gestes jusqu'au bout.
+  for (let garde = 0; garde < 400 && j.tache.length; garde++) {
+    const t = j.tache[0];
+    j.sponge.x = j.plate.x + t.lx;
+    j.sponge.y = j.plate.y + t.ly;
+    b.souris(j.sponge.x, j.sponge.y);
+    j.op = { x: j.sponge.x - 120, y: j.sponge.y };
+    b.avancer(1);
+  }
+  assert.equal(j.tache.length, 0);
+  assert.equal(j.gagnant, true, 'assiette propre : gagné');
+  assert.ok(clips.every((mc) => mc.vivant), 'les clips des taches restent (alpha zéro)');
+  assert.ok(clips.every((mc) => mc.alpha === 0 || mc.alpha < 1e-9));
+});
+
+test('les dessins de l\'assiette sont extraits', () => {
+  for (const cle of ['gamePlate', 'sym129', 'sym125', 'sym120', 'sym115', 'sym118']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.sym125.etats.length, 4, 'les quatre formes de tache');
+  assert.ok(MANIFESTE.sym115.etats.length >= 11, 'la pellicule de la mousse');
+  assert.ok(MANIFESTE.sym118.etats.length >= 35, 'le ruissellement');
+});
+
 // ── L'IMAGE (game/Picture.mt, classe « 0CvjR5 » du bytecode) ──
 
 test('le tableau : la mise en place du bytecode, et la descente dans le cadre', () => {

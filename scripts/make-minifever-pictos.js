@@ -156,6 +156,13 @@ const SCENES = {
     { cle: 'sym370', x: 150, y: 190 },
     { cle: 'sym363', x: 118, y: 172, image: 50, rot: -12 },  // …le héros en vol
   ],
+  gamePlate: [
+    { cle: 'sym129', x: 120, y: 120 },              // l'assiette au centre…
+    { cle: 'sym125', x: 90, y: 100, s: 0.5, image: 1 },     // …trois taches,
+    { cle: 'sym125', x: 150, y: 140, s: 0.4, image: 2, rot: 60 },
+    { cle: 'sym125', x: 110, y: 165, s: 0.35, image: 3, rot: -40 },
+    { cle: 'sym120', x: 150, y: 95, s: 0.6 },       // et l'éponge à l'œuvre
+  ],
   gamePicture: [
     { cle: 'sym242', x: 120, y: 96, image: 1 },     // le cadre ouvert…
     { cle: 'sym246', x: 120, y: 96, image: 1, rot: 90 },    // …le tableau tourné,
