@@ -156,6 +156,12 @@ const SCENES = {
     { cle: 'sym370', x: 150, y: 190 },
     { cle: 'sym363', x: 118, y: 172, image: 50, rot: -12 },  // …le héros en vol
   ],
+  gameGhost: [
+    { cle: 'sym275', x: 73.5, y: 24.6, image: 6 },  // la stalactite du plafond…
+    { cle: 'sym275', x: 163.6, y: 214.1, image: 6, rot: 180 },  // …la stalagmite
+    { cle: 'sym269', x: 170, y: 120, image: 2 },    // le fantôme qui souffle…
+    { cle: 'sym264', x: 105, y: 128, image: 1 },    // …et la bulle poussée
+  ],
   gameChain: [
     { cle: 'sym345', x: 0, y: 42, s: 0.25 },        // la bande du bandeau
     { cle: 'sym336', x: 45, y: 30, image: 2, s: 0.5 },      // deux cases modèles

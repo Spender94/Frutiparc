@@ -256,6 +256,17 @@ function principal() {
     { cle: 'sym336', id: 336 },
     { cle: 'sym345', id: 345 },
     { cle: 'gameChain', id: 346, sansEnfantsNommes: true },
+    // LE FANTÔME (gameGhost) : la scène cache trois enfants nommés — le
+    // TUNNEL de la grotte (« 5Rng », sym272 : la forme rouge invisible que
+    // le jeu interroge au hitTest — couverte par le fond, jamais vue) et les
+    // deux stalactites (« 3c1 »/« 4c1 », sym275 : dix images, la pique
+    // sym274 étirée par paliers). On sort la scène SANS eux (sinon le rouge
+    // du tunnel cuirait dans le décor), la pellicule de la stalactite, et
+    // les deux formes de collision AVEC leur contour (cf. CONTOURS).
+    { cle: 'gameGhost', id: 277, sansEnfantsNommes: true },
+    { cle: 'sym275', id: 275 },
+    { cle: 'sym272', id: 272 },
+    { cle: 'sym274', id: 274 },
   ];
   for (const s of SUPPLEMENTS) {
     const etats = etatsDe(s.id, s);
@@ -375,10 +386,87 @@ function principal() {
   }
   if (perdues.length) console.log(`pièces non extraites (${perdues.length}) : ${perdues.slice(0, 8).join(', ')}…`);
 
+  // Les CONTOURS : le polygone d'une forme de COLLISION, pour les jeux qui
+  // font du hitTest(x, y, true) sur un dessin — le tunnel de la grotte du
+  // Fantôme, sa stalactite. On aplatit le chemin du SVG extrait (les
+  // courbes Q en huit segments — largement sous le pixel sur ces formes) et
+  // on le range sur la cellule ; le moteur fait le reste (pair-impair, les
+  // trous compris). Les points passent par la matrice de la pièce : le
+  // contour vit dans le repère de la CELLULE, comme ses dessins.
+  const CONTOURS = [
+    { cle: 'sym272', shape: 271 },     // le tunnel de la grotte (rouge, invisible)
+    { cle: 'sym274', shape: 273 },     // la pique de la stalactite
+  ];
+  for (const c of CONTOURS) {
+    const cellule = manifeste[c.cle];
+    if (!cellule) throw new Error(`contour ${c.cle} : cellule absente`);
+    const piece = cellule.etats[0].pieces.find((p) => p.fichier === `shape${c.shape}.svg`);
+    if (!piece) throw new Error(`contour ${c.cle} : la forme ${c.shape} n'y est pas`);
+    const svg = fs.readFileSync(path.join(SORTIE, piece.fichier), 'utf8');
+    // Un GROUPE d'anneaux par <path> : au test, chaque groupe se juge en
+    // pair-impair (ses trous compris) et les groupes s'additionnent — le
+    // hitTest de Flash prend l'UNION des remplissages, et les couches
+    // d'ombrage posées sur la silhouette ne doivent pas la percer.
+    const groupes = [];
+    const [a, bb, cc, d, e, f] = piece.m;
+    for (const m of svg.matchAll(/\bd="([^"]+)"/g)) {
+      const anneaux = aplatirChemin(m[1]).map((anneau) => anneau.map(([x, y]) => [
+        Math.round((a * x + cc * y + e) * 20) / 20,
+        Math.round((bb * x + d * y + f) * 20) / 20,
+      ]).flat());
+      if (anneaux.length) groupes.push(anneaux);
+    }
+    if (!groupes.length) throw new Error(`contour ${c.cle} : chemin illisible`);
+    cellule.contour = groupes;
+    console.log(`contour ${c.cle} : ${groupes.length} groupe(s), `
+      + `${groupes.reduce((n, g) => n + g.reduce((k, r) => k + r.length / 2, 0), 0)} points`);
+  }
+
   const dest = path.join(SORTIE, 'sprites.json');
   fs.writeFileSync(dest, JSON.stringify(manifeste), 'utf8');
   const total = Object.values(manifeste).reduce((n, m) => n + m.etats.length, 0);
   console.log(`→ ${path.relative(RACINE, dest)} (${Object.keys(manifeste).length} symboles, ${total} images)`);
+}
+
+/**
+ * Un chemin SVG (M/L/Q/Z, ce que sort extract-swf-shapes) en polygones :
+ * un anneau par sous-chemin, les Q échantillonnées en huit pas.
+ */
+function aplatirChemin(d) {
+  const jetons = d.match(/[MLQZz]|-?[\d.]+/g) || [];
+  const anneaux = [];
+  let anneau = null;
+  let x = 0;
+  let y = 0;
+  let i = 0;
+  const nombre = () => Number(jetons[i++]);
+  while (i < jetons.length) {
+    const op = jetons[i++];
+    if (op === 'M') {
+      if (anneau && anneau.length > 2) anneaux.push(anneau);
+      x = nombre(); y = nombre();
+      anneau = [[x, y]];
+    } else if (op === 'L') {
+      x = nombre(); y = nombre();
+      anneau.push([x, y]);
+    } else if (op === 'Q') {
+      const cx = nombre(); const cy = nombre();
+      const fx = nombre(); const fy = nombre();
+      for (let t = 1; t <= 8; t++) {
+        const u = t / 8;
+        const v = 1 - u;
+        anneau.push([v * v * x + 2 * v * u * cx + u * u * fx,
+          v * v * y + 2 * v * u * cy + u * u * fy]);
+      }
+      x = fx; y = fy;
+    } else if (op === 'Z' || op === 'z') {
+      // l'anneau se referme tout seul au test pair-impair
+    } else {
+      i--; i++;                        // un nombre isolé : on l'ignore
+    }
+  }
+  if (anneau && anneau.length > 2) anneaux.push(anneau);
+  return anneaux;
 }
 
 if (require.main === module) principal();

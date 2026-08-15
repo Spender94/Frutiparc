@@ -78,6 +78,35 @@ const PROF = { FOND: 1, SPRITE2: 3, SPRITE: 4, PART: 6, DEVANT: 7 };
 // Cs.mm : borner une valeur.
 const borner = (min, n, max) => Math.min(Math.max(min, n), max);
 
+/*
+ * hitTest(x, y, true) d'époque, sur un CONTOUR extrait du SWF : des groupes
+ * d'anneaux (un par remplissage du dessin) — chaque groupe se juge en
+ * pair-impair, ses trous compris, et les groupes s'additionnent, comme le
+ * lecteur prenait l'union des remplissages. C'est le tunnel de la grotte du
+ * Fantôme, sa stalactite.
+ */
+function dansContour(contour, x, y) {
+  if (!contour) return false;
+  for (const groupe of contour) {
+    let dedans = false;
+    for (const anneau of groupe) {
+      const n = anneau.length / 2;
+      for (let i = 0; i < n; i++) {
+        const x1 = anneau[i * 2];
+        const y1 = anneau[i * 2 + 1];
+        const k = (i + 1) % n;
+        const x2 = anneau[k * 2];
+        const y2 = anneau[k * 2 + 1];
+        if ((y1 > y) !== (y2 > y) && x < x1 + (y - y1) / (y2 - y1) * (x2 - x1)) {
+          dedans = !dedans;
+        }
+      }
+    }
+    if (dedans) return true;
+  }
+  return false;
+}
+
 /**
  * Un objet d'affichage — ce que `dm.attach("mcBasketBall", prof)` rendait.
  *
@@ -137,6 +166,7 @@ class Scene {
       mc.nbImages = m.nbImages;
       mc.boite = m.boite;
       if (m.lins) mc.lins = m.lins;   // la chaîne de l'œil (sym673_pupille)
+      if (m.contour) mc.contour = m.contour;   // la forme de collision (grotte)
     }
     this.mcs.push(mc);
     return mc;
@@ -875,7 +905,8 @@ class Menu extends Socle {
 }
 
 const API = { Mc, Scene, Sprite, Phys, Part, Jeu, Socle, Arcade, Fever, Menu, Temps,
-  LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT, CADENCE_FLASH, PROF, PALIERS, borner };
+  LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT, CADENCE_FLASH, PROF, PALIERS, borner,
+  dansContour };
 
 if (sousNode) module.exports = API;
 else racine.MinifeverEngine = API;

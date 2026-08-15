@@ -79,6 +79,7 @@ function mesures(m) {
     // placements jusqu'à l'œil, par image — le jeu s'en sert pour traduire le
     // décalage du regard en décalage écran.
     if (s.etats.some((e) => e.lin)) out[cle].lins = s.etats.map((e) => e.lin || null);
+    if (s.contour) out[cle].contour = s.contour;   // la forme de collision (grotte)
   }
   return out;
 }

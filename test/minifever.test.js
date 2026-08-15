@@ -1374,6 +1374,116 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── LE FANTÔME (game/Ghost.mt, classe « 5cciQ1 » du bytecode) ──
+
+test('le fantôme : la mise en place du bytecode, constante par constante', () => {
+  const b = banc(J.Ghost, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 340, 'sans difficulté — elle grossit les stalactites');
+  assert.equal(j.ghost.x, LARGEUR - 10);
+  assert.equal(j.ghost.y, HAUTEUR * 0.5);
+  assert.equal(j.ghost.flPhys, false);
+  assert.equal(j.bulle.x, LARGEUR - 24);
+  assert.equal(j.bulle.poids, 0.004);
+  assert.equal(j.bulle.peau.image, 1, 'le stop d\'époque');
+  // Les stalactites, à la taille de la difficulté (1 + floor(dif·0,1)).
+  assert.equal(j.s1.image, 5);
+  assert.equal(j.s2.image, 5);
+  assert.equal(j.s2.sx, -1, 'la stalagmite : le placement tourné de 180°');
+  assert.equal(j.s2.sy, -1);
+  // Les contours de collision, extraits du SWF.
+  assert.ok(j.contourTunnel && j.contourTunnel.length === 1);
+  assert.ok(j.contourPique && j.contourPique.length === 4, 'l\'union des remplissages');
+  // La bulle naît DANS le tunnel — sinon elle éclaterait à la première image.
+  assert.equal(j.isIn(j.bulle.x, j.bulle.y), false);
+  assert.equal(j.isIn(120, 20), true, 'la paroi du haut');
+  assert.equal(j.isIn(73.5, 40), true, 'sous la stalactite du plafond');
+});
+
+test('le fantôme suit la souris et souffle la bulle (blob, poussée, poses)', () => {
+  const b = banc(J.Ghost);
+  const j = b.jeu;
+  // Il glisse vers la souris (ressort 0,1) et la regarde de loin.
+  b.souris(120, 120);
+  const dx = j.ghost.x - 120;
+  b.avancer(1);
+  assert.equal(j.ghost.x.toFixed(4), (LARGEUR - 10 - dx * 0.1).toFixed(4));
+  assert.equal(j.ghost.peau.image, 1, 'bouche fermée');
+  // Collé à la bulle, l'appui souffle : pose 2, poussée à l'opposé, blob.
+  j.ghost.x = j.bulle.x - 30;
+  j.ghost.y = j.bulle.y;
+  b.souris(j.ghost.x, j.ghost.y);
+  const vx0 = j.bulle.vitx;
+  b.socle.click();
+  b.avancer(1);
+  assert.equal(j.ghost.peau.image, 2, 'la pose du souffle');
+  assert.ok(j.bulle.vitx > vx0, 'poussée vers la droite (à l\'opposé du fantôme)');
+  assert.ok(j.blob > 0, 'la bulle tremble');
+  // Le tremblement déforme : sx = c, sy = 1/c — et decal avance de 16.
+  const d0 = j.decal;
+  b.avancer(1);
+  assert.equal((j.decal - d0 + 628) % 628, 16, 'decal += 16 (le « + blob·0 » d\'époque)');
+  assert.equal(j.bulle.peau.sy.toFixed(6), (1 / j.bulle.peau.sx).toFixed(6));
+  b.socle.relache();
+  b.avancer(1);
+  assert.equal(j.ghost.peau.image, 1);
+});
+
+test('la bulle sort à gauche : gagné — ou éclate à la paroi : perdu et retirée', () => {
+  let b = banc(J.Ghost);
+  let j = b.jeu;
+  j.bulle.x = -1;
+  b.avancer(1);
+  assert.equal(j.gagnant, true, 'sortie de la grotte');
+
+  b = banc(J.Ghost);
+  j = b.jeu;
+  j.bulle.x = 120;
+  j.bulle.y = 20;                        // dans la paroi du haut
+  j.bulle.vitx = 3;
+  b.avancer(1);
+  assert.equal(j.gagnant, false, 'éclatée');
+  assert.equal(j.bulle.vitx, 0, 'figée net');
+  assert.ok(j.bulle.peau.joue, 'l\'éclat se joue (images 2-4)');
+  b.avancer(3);
+  assert.equal(j.bulle.vivant, false, 'le DoAction d\'époque : le phys éclaté se retire');
+});
+
+test('l\'alpha du fantôme : hors du tunnel il s\'efface — jamais sous 20 %', () => {
+  const b = banc(J.Ghost);
+  const j = b.jeu;
+  // On le cloue dans la paroi (souris immobile dessus).
+  j.ghost.x = 120;
+  j.ghost.y = 20;
+  b.souris(120, 20);
+  b.avancer(40);
+  assert.equal(j.ghost.peau.alpha.toFixed(2), '0.20', 'le clamp d\'époque');
+  // De retour dans le tunnel, il revient plein.
+  j.ghost.x = 120;
+  j.ghost.y = 120;
+  b.souris(120, 120);
+  b.avancer(60);
+  assert.equal(j.ghost.peau.alpha.toFixed(2), '1.00', 'le ressort converge, le clamp coiffe à 100');
+});
+
+test('les dessins du fantôme sont extraits, contours de collision compris', () => {
+  for (const cle of ['gameGhost', 'sym269', 'sym264', 'sym275', 'sym272', 'sym274']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.gameGhost.etats[0].pieces.length, 3,
+    'la grotte SANS ses enfants — le tunnel rouge ne cuit pas dans le décor');
+  assert.equal(MANIFESTE.sym269.etats.length, 2, 'les deux poses du fantôme');
+  assert.equal(MANIFESTE.sym264.etats.length, 4,
+    'la bulle et son éclat (la cinquième image d\'époque répète la quatrième)');
+  assert.equal(MANIFESTE.sym275.etats.length, 10, 'les dix paliers de stalactite');
+  assert.ok(Array.isArray(MANIFESTE.sym272.contour), 'le contour du tunnel');
+  assert.ok(Array.isArray(MANIFESTE.sym274.contour), 'le contour de la pique');
+  // La pointe de la pique est en bas de sa boîte (~150), pas au-delà.
+  const E2 = require(path.join(ROOT, 'public/minifever/engine.js'));
+  assert.ok(E2.dansContour(MANIFESTE.sym274.contour, 0, 100), 'dans le fût');
+  assert.ok(!E2.dansContour(MANIFESTE.sym274.contour, 0, 170), 'sous la pointe : dehors');
+});
+
 // ── LA FALAISE (game/Cliff.mt, classe « 2Mm6G1 » du bytecode) ──
 
 test('la falaise : la mise en place du bytecode, constante par constante', () => {

@@ -30,7 +30,7 @@
 const E = (typeof module !== 'undefined' && module.exports)
   ? require('./engine.js') : racine.MinifeverEngine;
 
-const { Jeu, Temps, LARGEUR, HAUTEUR, PROF, borner } = E;
+const { Jeu, Temps, LARGEUR, HAUTEUR, PROF, borner, dansContour } = E;
 
 /*
  * BASKET — « marque le panier ».
@@ -3554,6 +3554,194 @@ class Chain extends Jeu {
 }
 
 /*
+ * game/Ghost.mt — LE FANTÔME : souffler la bulle hors de la grotte.
+ *
+ * Un fantôme suit la souris (ressort 0,1·tmod) dans une grotte ; une bulle
+ * (poids 0,004 — elle coule à peine) attend au fond à droite. APPUYER le
+ * fait souffler : à moins de 80 px, la bulle est poussée à l'opposé
+ * (c = 1 - dist/80, force 0,1·tmod) et se met à trembler (blob += 0,02·c).
+ * La sortir par la GAUCHE (x < 0) : gagné. La laisser toucher la paroi ou
+ * une stalactite : elle éclate — perdu. Le chrono : 340, sans difficulté —
+ * c'est la TAILLE des stalactites qui monte (image 1 + floor(dif·0,1)).
+ *
+ * Tout est vérifié contre le bytecode (classe « 5cciQ1 » du SWF de dev) :
+ *   · le regard : le fantôme fixe la bulle à moins de 80 px, la souris
+ *     sinon — miroir ±100, rotation atan2/0,0174 + ((sens·0,5)+0,5)·180 ;
+ *   · l'ALPHA : hors du tunnel il s'efface (cible 0, ressort 0,15·tmod)
+ *     mais le clamp d'époque le retient à 20 % — jamais tout à fait
+ *     disparu ;
+ *   · la bulle tremble : decal += tmod·(16 + blob·0) — le « + blob·0 »
+ *     est DANS le compilé, coquille conservée —, blob s'amortit en
+ *     0,95^tmod, échelles 100·c et 100/c avec c = 1 + cos(decal/100)·blob ;
+ *   · à l'éclat : play() (images 2-5) puis le DoAction d'époque de
+ *     l'image 5 retire le phys (skin.«76z».kill()) — rejoué à la main ;
+ *   · la source annote le hitTest de la grotte « HIT TEST A ADAPTER
+ *     ( --> FRUTIPARC ) » — c'est fait, vingt ans plus tard : les CONTOURS
+ *     extraits du SWF (le tunnel rouge invisible sym272, la pique sym274)
+ *     jouent le hitTest(x, y, true) du lecteur en pair-impair par
+ *     remplissage, union des remplissages (dansContour).
+ *
+ * isIn(x, y) = hors du tunnel OU dans une stalactite. Les stalactites de la
+ * timeline : sym275 (dix images, la pique étirée par paliers), « 3c1 » en
+ * haut à (73.5, 24.6), « 4c1 » RETOURNÉE (échelles -1) à (163.6, 214.1) —
+ * une stalagmite. Le test remonte leurs matrices d'époque (la pique posée à
+ * (-2.8, ty) et étirée de sy, relevés sur les PlaceObject, GHOST_ETAGES).
+ *
+ * Les dessins : gameGhost la grotte (sans ses enfants — le tunnel rouge
+ * resterait cuit dans le décor), sym269 le fantôme (2 poses), sym264 la
+ * bulle (l'éclat en images 2-5), sym275 la stalactite.
+ */
+class Ghost extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 340;
+    super.init();
+    this.blob = 0;
+    this.decal = 0;
+    this.attachElements();
+  }
+
+  attachElements() {
+    // GHOST
+    this.ghost = this.nouveauPhys('sym269');
+    this.ghost.x = LARGEUR - 10;
+    this.ghost.y = HAUTEUR * 0.5;
+    this.ghost.flPhys = false;
+    this.ghost.peau.arreter();
+    this.ghost.init();
+
+    // BUBBLE
+    this.bulle = this.nouveauPhys('sym264');
+    this.bulle.x = LARGEUR - 24;
+    this.bulle.y = HAUTEUR * 0.5;
+    this.bulle.poids = 0.004;
+    this.bulle.init();
+    this.bulle.peau.arreter();           // le stop d'époque sur l'image 1
+
+    // STALACTITES — les enfants de timeline, à la taille de la difficulté.
+    const image = 1 + Math.floor(this.dif * 0.1);
+    this.s1 = this.attacher('sym275', PROF.FOND);
+    this.s1.x = 73.5;
+    this.s1.y = 24.6;
+    this.s1.allerA(image);
+    this.s2 = this.attacher('sym275', PROF.FOND);
+    this.s2.x = 163.6;
+    this.s2.y = 214.1;
+    this.s2.sx = -1;                     // le placement d'époque : tournée
+    this.s2.sy = -1;                     // de 180° — une stalagmite
+    this.s2.allerA(image);
+
+    // Le TUNNEL : la forme rouge invisible — un contour, pas un dessin.
+    this.contourTunnel = this.socle.mesures.sym272.contour;
+    this.contourPique = this.socle.mesures.sym274.contour;
+  }
+
+  update() {
+    switch (this.etape) {
+      case 1:
+        this.moveGhost();
+        this.moveBubble();
+        break;
+      default: break;
+    }
+    super.update();                      // la source l'appelle en dernier
+  }
+
+  moveGhost() {
+    const m = { x: this.sourisX, y: this.sourisY };
+
+    // MOVE
+    const dx0 = this.ghost.x - m.x;
+    const dy0 = this.ghost.y - m.y;
+    this.ghost.x -= dx0 * 0.1 * Temps.tmod;
+    this.ghost.y -= dy0 * 0.1 * Temps.tmod;
+
+    // LOOK — la bulle si elle est proche, la souris sinon.
+    const dist = this.ghost.distance(this.bulle);
+    const focus = dist < 80 ? this.bulle : m;
+    const sens = focus.x < this.ghost.x ? -1 : 1;
+    const dx = this.ghost.x - focus.x;
+    const dy = this.ghost.y - focus.y;
+    this.ghost.peau.sx = sens;           // _xscale = 100·sens
+    this.ghost.peau.rot = Math.atan2(dy, dx) / 0.0174 + ((sens * 0.5) + 0.5) * 180;
+
+    // BLOW
+    if (this.socle.flPresse) {
+      this.ghost.peau.allerA(2);
+      if (dist < 80) {
+        const c = 1 - dist / 80;
+        const a = this.ghost.angle(this.bulle);
+        this.bulle.vitx += Math.cos(a) * c * 0.1 * Temps.tmod;
+        this.bulle.vity += Math.sin(a) * c * 0.1 * Temps.tmod;
+        this.blob += Temps.tmod * 0.02 * c;
+      }
+    } else {
+      this.ghost.peau.allerA(1);
+    }
+
+    // ALPHA — hors du tunnel, le fantôme s'efface… jamais sous 20 %.
+    let alpha = 100;
+    if (this.isIn(this.ghost.x, this.ghost.y)) alpha = 0;
+    const da = alpha - this.ghost.peau.alpha * 100;
+    this.ghost.peau.alpha = Math.min(Math.max(20,
+      this.ghost.peau.alpha * 100 + da * 0.15 * Temps.tmod), 100) / 100;
+  }
+
+  moveBubble() {
+    // BLOB — le tremblement : « 16 + blob·0 », coquille d'époque comprise.
+    this.decal = (this.decal + Temps.tmod * (16 + this.blob * 0)) % 628;
+    this.blob *= Math.pow(0.95, Temps.tmod);
+    const c = 1 + Math.cos(this.decal / 100) * this.blob;
+    this.bulle.peau.sx = c;              // _xscale = 100·c
+    this.bulle.peau.sy = 1 / c;          // _yscale = 100/c
+
+    if (this.bulle.x < 0) this.gagne(true);
+
+    // HIT — « HIT TEST A ADAPTER ( --> FRUTIPARC ) », disait la source.
+    if (this.isIn(this.bulle.x, this.bulle.y)) {
+      this.bulle.peau.jouer();           // l'éclat, images 2-5
+      this.bulle.vitx = 0;
+      this.bulle.vity = 0;
+      this.gagne(false);
+    }
+    // Le DoAction d'époque de l'image 5 : le phys éclaté se retire. La
+    // cinquième image répète la quatrième (pas d'image-clé) et le kill se
+    // joue à son entrée, avant tout rendu — l'éclat visible fait 2-3-4,
+    // puis plus rien : on retire au bout de la pellicule.
+    if (this.bulle.vivant && this.bulle.peau.joue
+      && this.bulle.peau.image >= this.bulle.peau.nbImages) {
+      this.bulle.tuer();
+    }
+  }
+
+  /** Une stalactite d'époque : son repère (±180°), puis la pique étirée. */
+  dansStalactite(s, x, y) {
+    const lx = (x - s.x) * (s.sx < 0 ? -1 : 1);
+    const ly = (y - s.y) * (s.sy < 0 ? -1 : 1);
+    const e = GHOST_ETAGES[s.image - 1];
+    return dansContour(this.contourPique, lx + 2.8, (ly - e.ty) / e.sy);
+  }
+
+  isIn(x, y) {
+    return !dansContour(this.contourTunnel, x, y)
+      || this.dansStalactite(this.s1, x, y)
+      || this.dansStalactite(this.s2, x, y);
+  }
+}
+
+// Les dix paliers de la stalactite — les PlaceObject des images de sym275 :
+// la pique (sym274) posée à (-2.8, ty) et étirée de sy.
+const GHOST_ETAGES = [
+  { sy: 0.267136, ty: 5.15 }, { sy: 0.348572, ty: 4.55 }, { sy: 0.429993, ty: 4.05 },
+  { sy: 0.511414, ty: 3.5 }, { sy: 0.59285, ty: 2.95 }, { sy: 0.674286, ty: 2.45 },
+  { sy: 0.755722, ty: 1.85 }, { sy: 0.837143, ty: 1.35 }, { sy: 0.918564, ty: 0.75 },
+  { sy: 1, ty: 0.25 },
+];
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui du portage, épreuve après épreuve — à fréquences de
@@ -3582,10 +3770,12 @@ const JEUX = [
   { cle: 'gameFrog', nom: 'grenouille', Classe: Frog },
   { cle: 'gameCliff', nom: 'falaise', Classe: Cliff },
   { cle: 'gameChain', nom: 'chaîne', Classe: Chain },
+  { cle: 'gameGhost', nom: 'fantôme', Classe: Ghost },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
-  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff, Chain };
+  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff, Chain,
+  Ghost };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;
