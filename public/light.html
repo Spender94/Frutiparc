@@ -4953,11 +4953,14 @@
   // swapou2, snake3, bandas, grapiz, kaluga, miniwave]) — le bureau fait
   // ensuite gotoAndStop(nom) sur sa feuille d'icônes étiquetée. On garde les
   // mêmes index, traduits en PNG extraits PAR ÉTIQUETTE du même sprite
-  // (scripts/extract-voyants-jeux.js). Minipixiz (12) est hors liste côté
-  // SWF : seul le mobile montre sa fée-papillon.
-  var VOYANTS_JEU = { 6: "bandas", 7: "grapiz", 4: "swapou", 9: "miniwave", 12: "minipixiz" };
+  // (scripts/extract-voyants-jeux.js). Minipixiz (12) et Mini-Fever (13) sont
+  // hors liste d'origine : deux rustines DoInitAction les branchent au bureau
+  // (patch-main-statusmng-*.js) — les cerises de Mini-Fever, dessinées pour la
+  // greffe, sont servies ici par le même voyant_minifever.png.
+  var VOYANTS_JEU = { 6: "bandas", 7: "grapiz", 4: "swapou", 9: "miniwave", 12: "minipixiz",
+    13: "minifever" };
   var VOYANTS_NOM = { bandas: "Frutibandas", grapiz: "Grapiz", swapou: "Swapou",
-    miniwave: "Mini-Wave", minipixiz: "Minipixiz" };
+    miniwave: "Mini-Wave", minipixiz: "Minipixiz", minifever: "Mini-Fever" };
   var BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   function decode62(s) {
     var r = 0;

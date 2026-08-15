@@ -191,11 +191,21 @@ test('le classement du light : un seul onglet Mini-Fever, la règle sur chaque l
   assert.equal(onglets.length, 1, 'un seul tableau pour tous les modes');
   assert.equal(onglets[0].id, 'minifever_arcade');
   assert.equal(onglets[0].name, 'Mini-Fever');
+  // Un RECORD permanent : section Championnat, jamais remis à zéro — la même
+  // place que sur le bureau (LEGACY_RANKINGS rk '15', section 'L').
+  assert.equal(onglets[0].section, 'L', 'en Championnat, comme les concours');
+  assert.equal(onglets[0].allTime, true, 'et jamais remis à zéro');
+  const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(src, /rk: '15', internal: 'minifever_arcade'[\s\S]{0,120}section: 'L'/,
+    'le bureau a son onglet (rk 15, section L) — vignette awards.swf et icône fileIcon comprises');
   const moi = onglets[0].scores.find((s) => s.isMe);
   assert.ok(moi, 'ma partie y figure');
   assert.equal(moi.score, 30 * 10 * 3);
   assert.equal(moi.label, '900 · 30 épreuves en difficile',
     'le libellé dit les points ET d\'où ils viennent');
+  const mien = onglets[0].me;
+  assert.ok(mien && mien.pos >= 1, 'et « Je suis Nème » est servi');
+  assert.equal(mien.label, '900 · 30 épreuves en difficile');
 });
 
 test('la parenthèse des tableaux par palier se replie au boot, meilleure ligne gardée', async () => {

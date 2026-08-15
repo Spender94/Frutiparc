@@ -115,6 +115,25 @@ function construireModes() {
   }
 }
 
+/*
+ * Le voyant « en partie » — la même icône que le bureau pose à côté du
+ * pseudo (les cerises, greffées à main.swf). On prévient au départ d'une
+ * partie, on éteint à l'écran de fin ; la fermeture de l'onglet éteint par
+ * sendBeacon, et la déconnexion du chat éteint de toute façon côté serveur.
+ */
+function direEnPartie(on) {
+  if (!sid) return;
+  const corps = JSON.stringify({ sid, jeu: 'minifever', on: on ? '1' : '0' });
+  if (!on && navigator.sendBeacon) {
+    navigator.sendBeacon('/api/light/jeu-en-cours', new Blob([corps], { type: 'application/json' }));
+    return;
+  }
+  fetch('/api/light/jeu-en-cours', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps,
+  }).catch(() => {});
+}
+window.addEventListener('pagehide', () => direEnPartie(false));
+
 function jouer() {
   gagnees.clear();
   enCours = null;
@@ -124,6 +143,7 @@ function jouer() {
     JEUX,
     m.id === 'fever' ? {} : { palier: m.palier });
   client.demarrer();
+  direEnPartie(true);
   majEtat();
 }
 
@@ -180,6 +200,7 @@ C.charger('/minifever/sprites/', (c) => {
       if (nom === 'jeu') enCours = d.cle;
       else if (nom === 'resultat' && d.gagne && enCours) gagnees.add(enCours);
       if (nom === 'finPartie') {
+        direEnPartie(false);
         if (modeChoisi === 'fever') finFever(d); else finArcade(d);
         return;
       }

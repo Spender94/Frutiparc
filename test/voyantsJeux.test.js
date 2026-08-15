@@ -40,10 +40,12 @@ test('la table du bureau suit internalList, et l\'extracteur suit les étiquette
     ['miniwave', 9], ['bkiwi', 2], ['mb2', 3], ['snake3', 5], ['kaluga', 8]]) {
     assert.match(serveur, new RegExp(jeu + ':\\s*' + code + ','), jeu + ' → ' + code);
   }
-  // Minipixiz est HORS liste (elle s'arrête à miniwave = 9) : le code 12 ne
-  // sert qu'au mobile, et le serveur le dit.
+  // Minipixiz et Mini-Fever sont HORS liste d'origine (elle s'arrête à
+  // miniwave = 9) : leurs codes 12 et 13 sont branchés au bureau par les deux
+  // rustines DoInitAction, et le serveur le dit.
   assert.match(serveur, /minipixiz:\s*12,/, 'minipixiz → interne 12');
-  assert.match(serveur, /OUTSIDE the SWF's internalList/);
+  assert.match(serveur, /minifever:\s*13,/, 'minifever → interne 13');
+  assert.match(serveur, /OUTSIDE the SWF's original internalList/);
   // L'extracteur choisit les images PAR ÉTIQUETTE — la source de vérité du
   // gotoAndStop(nom) du SWF — plus jamais par décalage.
   const extracteur = fs.readFileSync(
@@ -57,33 +59,30 @@ test('la table du bureau suit internalList, et l\'extracteur suit les étiquette
   }
 });
 
-test('main.swf porte la rustine qui branche la fée au bureau', () => {
-  // internalList s'arrête à miniwave (index 9) dans la classe compilée : le
-  // patch appende un DoInitAction après celui de StatusMng —
-  // _global.StatusMng.internalList[12] = "minipixiz" — et le bureau résout
-  // enfin le code 12 vers l'image étiquetée minipixiz (la fée-papillon).
+test('main.swf porte les rustines qui branchent la fée et les cerises au bureau', () => {
+  // internalList s'arrête à miniwave (index 9) dans la classe compilée : les
+  // patchs appendent des DoInitAction après celui de StatusMng —
+  // _global.StatusMng.internalList[12] = "minipixiz" (la fée-papillon), puis
+  // [13] = "minifever" (les cerises, dont l'image est greffée à la feuille).
   const zlib = require('zlib');
   const raw = fs.readFileSync(path.join(ROOT, 'legacy/main.swf'));
   const corps = zlib.inflateSync(raw.slice(8));
-  const graine = Buffer.concat([
+  const graineDe = (index) => Buffer.concat([
     Buffer.from([0x96, 14, 0, 0]), Buffer.from('internalList'), Buffer.from([0]),
-    Buffer.from([0x4e]),                       // getMember
-    Buffer.from([0x96, 5, 0, 7, 12, 0, 0, 0]), // push int 12
+    Buffer.from([0x4e]),                          // getMember
+    Buffer.from([0x96, 5, 0, 7, index, 0, 0, 0]), // push int <index>
   ]);
-  let n = 0, i = 0;
-  while ((i = corps.indexOf(graine, i)) >= 0) { n++; i++; }
-  assert.equal(n, 1, 'l\'injection est là, une seule fois');
-  // Et elle est LISIBLE et EXÉCUTÉE AU CHARGEMENT : en marchant les tags, la
-  // graine doit tomber dans un DoInitAction (code 59). Les deux pièges déjà
-  // rencontrés : un en-tête 0x33F tronqué en octet (tag End long — lecteurs
-  // stricts arrêtés, rustine jamais exécutée), et un DoAction ordinaire (la
-  // classe vit sur l'image 10 de 23, qu'un gotoAndStop peut ne jamais
-  // afficher — l'init action, elle, s'exécute au chargement, vérifié sous
-  // Ruffle par une balise /api/diag : icone12=minipixiz).
+  // Et elles sont LISIBLES et EXÉCUTÉES AU CHARGEMENT : en marchant les tags,
+  // chaque graine doit tomber dans un DoInitAction (code 59). Les deux pièges
+  // déjà rencontrés : un en-tête 0x33F tronqué en octet (tag End long —
+  // lecteurs stricts arrêtés, rustine jamais exécutée), et un DoAction
+  // ordinaire (la classe vit sur l'image 10 de 23, qu'un gotoAndStop peut ne
+  // jamais afficher — l'init action, elle, s'exécute au chargement, vérifié
+  // sous Ruffle par une balise /api/diag : icone12=minipixiz).
   const nbits = (corps[0] >> 3) & 0x1f;
-  let o = Math.ceil((5 + nbits * 4) / 8) + 4;
-  let porteur = -1, sprite = -1;
+  const debut = Math.ceil((5 + nbits * 4) / 8) + 4;
   const initsParSprite = new Map();
+  let o = debut;
   while (o < corps.length) {
     const hdr = corps.readUInt16LE(o), code = hdr >> 6;
     let len = hdr & 0x3f, hs = 2;
@@ -92,19 +91,42 @@ test('main.swf porte la rustine qui branche la fée au bureau', () => {
       const id = corps.readUInt16LE(o + hs);
       initsParSprite.set(id, (initsParSprite.get(id) || 0) + 1);
     }
-    if (porteur < 0 && corps.slice(o + hs, o + hs + len).indexOf(graine) >= 0) {
-      porteur = code;
-      sprite = corps.readUInt16LE(o + hs);
-    }
     if (code === 0) break;
     o += hs + len;
   }
-  assert.equal(porteur, 59, 'la graine vit dans un DoInitAction atteignable');
-  // Un seul DoInitAction par sprite fait foi : le porteur doit être le seul.
-  assert.equal(initsParSprite.get(sprite), 1,
-    'le sprite porteur (' + sprite + ') n\'a que cette init action');
+  const porteurs = new Set();
+  for (const [index, nom] of [[12, 'minipixiz'], [13, 'minifever']]) {
+    const graine = graineDe(index);
+    let n = 0, i = 0;
+    while ((i = corps.indexOf(graine, i)) >= 0) { n++; i++; }
+    assert.equal(n, 1, 'l\'injection [' + index + ']=' + nom + ' est là, une seule fois');
+    let porteur = -1, sprite = -1;
+    o = debut;
+    while (o < corps.length) {
+      const hdr = corps.readUInt16LE(o), code = hdr >> 6;
+      let len = hdr & 0x3f, hs = 2;
+      if (len === 0x3f) { len = corps.readUInt32LE(o + 2); hs = 6; }
+      if (corps.slice(o + hs, o + hs + len).indexOf(graine) >= 0) {
+        porteur = code;
+        sprite = corps.readUInt16LE(o + hs);
+        break;
+      }
+      if (code === 0) break;
+      o += hs + len;
+    }
+    assert.equal(porteur, 59, nom + ' : la graine vit dans un DoInitAction atteignable');
+    // Un seul DoInitAction par sprite fait foi : le porteur doit être le seul,
+    // et chaque rustine a le SIEN (le second réutiliserait un sprite déjà pris
+    // et ne s'exécuterait jamais).
+    assert.equal(initsParSprite.get(sprite), 1,
+      nom + ' : le sprite porteur (' + sprite + ') n\'a que cette init action');
+    assert.ok(!porteurs.has(sprite), nom + ' : un porteur à soi');
+    porteurs.add(sprite);
+  }
   assert.ok(fs.existsSync(path.join(ROOT, 'scripts/patch-main-statusmng-minipixiz.js')),
-    'et le patch est rejouable');
+    'le patch de la fée est rejouable');
+  assert.ok(fs.existsSync(path.join(ROOT, 'scripts/patch-main-statusmng-minifever.js')),
+    'celui des cerises aussi');
 });
 
 test('le serveur sait traduire le code interne en nom de jeu', () => {
@@ -117,14 +139,17 @@ test('le serveur sait traduire le code interne en nom de jeu', () => {
 test('les jeux natifs ont leur balise « je joue »', () => {
   assert.match(serveur, /app\.post\('\/api\/light\/jeu-en-cours'/, 'la route existe');
   assert.match(serveur, /JEUX_NATIFS_VOYANT/, 'et ne prend que les jeux connus');
-  // Les cinq jeux jouables nativement.
-  assert.match(serveur, /'bandas', 'grapiz', 'swapou2', 'miniwave', 'minipixiz'/,
-    'bandas, grapiz, swapou, miniwave, minipixiz');
+  // Les six jeux jouables nativement.
+  assert.match(serveur, /'bandas', 'grapiz', 'swapou2', 'miniwave', 'minipixiz', 'minifever'/,
+    'bandas, grapiz, swapou, miniwave, minipixiz, minifever');
   // Les clients solo l'appellent au départ et à l'arrêt.
-  for (const fichier of ['public/minipixiz/index.html', 'public/miniwave/index.html']) {
+  for (const fichier of ['public/minipixiz/index.html', 'public/miniwave/index.html',
+    'public/minifever/index.html']) {
     const t = fs.readFileSync(path.join(ROOT, fichier), 'utf8');
     assert.match(t, /jeu-en-cours/, fichier + ' porte la balise');
     assert.match(t, /sendBeacon/, fichier + ' éteint à la fermeture de l\'onglet');
+    assert.match(t, /direEnPartie\(true\)/, fichier + ' : allumée au départ');
+    assert.match(t, /direEnPartie\(false\)/, fichier + ' : éteinte à la fin');
   }
   const swapou = fs.readFileSync(path.join(ROOT, 'public/swapou/game.js'), 'utf8');
   assert.match(swapou, /direEnPartie/, 'swapou aussi');
@@ -146,8 +171,11 @@ test('les matchs Grapiz et Frutibandas allument le voyant côté serveur', () =>
   }
 });
 
-test('les cinq voyants sont extraits de la feuille du bureau', () => {
-  for (const jeu of ['bandas', 'grapiz', 'swapou', 'miniwave', 'minipixiz']) {
+test('les six voyants ont leur PNG (extraits de la feuille, ou dessinés pour la greffe)', () => {
+  // Les cinq d'époque viennent de la feuille du bureau (extract-voyants-jeux) ;
+  // celui de Mini-Fever est né avec la greffe (make-minifever-emblemes.js) —
+  // les cerises, le même dessin que l'image ajoutée au clip 246.
+  for (const jeu of ['bandas', 'grapiz', 'swapou', 'miniwave', 'minipixiz', 'minifever']) {
     const f = path.join(ROOT, 'public/fb/voyant_' + jeu + '.png');
     assert.ok(fs.existsSync(f), 'voyant_' + jeu + '.png existe');
     assert.ok(fs.statSync(f).size > 800, 'et porte un vrai dessin');
@@ -156,7 +184,8 @@ test('les cinq voyants sont extraits de la feuille du bureau', () => {
 
 test('le mobile pose le voyant à côté des pseudos', () => {
   // La même table que le bureau, traduite en icônes.
-  assert.match(light, /VOYANTS_JEU = \{ 6: "bandas", 7: "grapiz", 4: "swapou", 9: "miniwave", 12: "minipixiz" \}/,
+  assert.match(light,
+    /VOYANTS_JEU = \{ 6: "bandas", 7: "grapiz", 4: "swapou", 9: "miniwave", 12: "minipixiz",\s*13: "minifever" \}/,
     'les codes internes du bureau');
   // La chaîne de statut est lue au format du bureau : base 62, le jeu au milieu.
   assert.match(light, /decode62\(String\(s\)\.substring\(1, 3\)\)/, 'les deux caractères du jeu');
@@ -213,7 +242,7 @@ test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', ()
   assert.ok(!/VOYANTS_NOM\s*=\s*\{[^}]*swapou2/.test(light), 'le client ignore « swapou2 »');
   // Et la table code → nom, rejouée : le 4 doit sortir « swapou ».
   const FRAME = { bkiwi: 2, mb2: 3, swapou2: 4, snake3: 5, bandas: 6, grapiz: 7,
-    kaluga: 8, miniwave: 9, minipixiz: 12, forum: 1 };
+    kaluga: 8, miniwave: 9, minipixiz: 12, minifever: 13, forum: 1 };
   const ALIAS = { swapou2: 'swapou' };
   const table = Object.fromEntries(Object.entries(FRAME)
     .filter(([nom]) => nom !== 'forum')
@@ -221,10 +250,11 @@ test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', ()
   assert.equal(table[4], 'swapou', 'le code 4 sort « swapou »');
   assert.equal(table[6], 'bandas');
   assert.equal(table[12], 'minipixiz');
+  assert.equal(table[13], 'minifever');
   assert.equal(table[1], undefined, 'et le forum n\'est pas une partie');
   // Chaque nom publié a bien son PNG.
   for (const nom of Object.values(table)) {
-    if (!['bandas', 'grapiz', 'swapou', 'miniwave', 'minipixiz'].includes(nom)) continue;
+    if (!['bandas', 'grapiz', 'swapou', 'miniwave', 'minipixiz', 'minifever'].includes(nom)) continue;
     const f = path.join(ROOT, 'public/fb/voyant_' + nom + '.png');
     assert.ok(fs.existsSync(f), 'voyant_' + nom + '.png existe');
   }

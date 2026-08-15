@@ -87,16 +87,15 @@ test('la liste des classements est celle du bureau : ordre, libellés, sections'
   assert.deepEqual(challenge, [
     'Burning kiwi', 'Frutisnake 2', 'Motion Ball 2', 'Swapou 2', 'Kaluga',
     'Frutibandas', 'Grapiz', 'MiniPixiz', 'MiniWave',
-    // Mini-Fever ferme la marche, et lui SEUL n'a pas de contrepartie au
-    // bureau : le jeu n'est jamais sorti, fileIcon.swf ne le connaît pas, il
-    // n'a donc pas d'entrée dans LEGACY_RANKINGS. Le light le montre quand
-    // même — c'est chez lui qu'il se joue.
-    'Mini-Fever',
-  ], 'la section Challenge : celle du bureau, plus le classement propre au light');
+  ], 'la section Challenge : exactement celle du bureau');
 
   const championnat = (d.games || []).filter((g) => g.section === 'L').map((g) => g.name);
   assert.deepEqual(championnat, [
     'Class. kikooz', 'Frutisnake Contest', 'Swapou Contest',
+    // Mini-Fever est un RECORD permanent (un seul tableau, jamais remis à
+    // zéro) : il vit en Championnat, à la suite des concours — au bureau
+    // (LEGACY_RANKINGS rk '15', section 'L') comme ici.
+    'Mini-Fever',
     'Classement XP', 'Class. consécration',
   ], 'la section Championnat, XP et consécration comprises');
 

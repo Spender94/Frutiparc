@@ -265,9 +265,10 @@ const USER_LOG_TYPE = {
 // and the SWF then does gotoAndStop(<name>) on the activity-icon sprite
 // (id=246), whose frames carry FrameLabels — snake3=f1, mb2=f2, swapou2=f5,
 // kaluga=f8, bkiwi=f10, grapiz=f12, bandas=f13, miniwave=f14, minipixiz=f15,
-// forum=f36. The labels DO match their drawings (bandas = the red beret,
-// grapiz = the blue marble…) — the old "+3 offset" note here was a wrong
-// rationalization that only held by accident for minipixiz.
+// forum=f36, minifever=f37 (greffée). The labels DO match their drawings
+// (bandas = the red beret, grapiz = the blue marble…) — the old "+3 offset"
+// note here was a wrong rationalization that only held by accident for
+// minipixiz.
 // Returning 0 hides the icon (no internal status).
 const STATUS_INTERNAL_FRAME = {
   bkiwi:     2,
@@ -278,12 +279,14 @@ const STATUS_INTERNAL_FRAME = {
   grapiz:    7,
   kaluga:    8,
   miniwave:  9,
-  // minipixiz sits OUTSIDE the SWF's internalList (it stops at miniwave=9):
-  // the desktop cannot show its icon — internalList[12] is undefined, so the
-  // SWF simply shows nothing. The mobile, which resolves codes itself, shows
-  // the butterfly (frame label minipixiz=f15). Patching main.swf's list would
-  // be needed for a desktop icon.
+  // minipixiz and minifever sit OUTSIDE the SWF's original internalList (it
+  // stops at miniwave=9). Two DoInitAction rustines wire them up on the
+  // desktop — internalList[12]="minipixiz" (patch-main-statusmng-minipixiz.js)
+  // and internalList[13]="minifever" (patch-main-statusmng-minifever.js, which
+  // also grafts the icon frame the sheet never had). The mobile resolves the
+  // same codes itself (VOYANTS_JEU in light.html).
   minipixiz: 12,
+  minifever: 13,
   // Kept for completeness: the SWF list's index 1. Filtered out of the
   // mobile's "joue à…" display below — browsing the forum is not a game.
   forum:     1,
@@ -1366,6 +1369,15 @@ const LEGACY_RANKINGS = [
   // jeu dans fileIcon.swf.
   { rk: '10', internal: 'snake3_contest',  ty: 'point',       rn: 'Frutisnake Contest', gs: '1', g: 'snake3', section: 'L' },
   { rk: '11', internal: 'swapou2_contest', ty: 'point',       rn: 'Swapou Contest', gs: '3', g: 'swapou2', section: 'L' },
+  // Mini-Fever : le classement UNIQUE du portage (niveau × 10 × (1 + palier),
+  // cf. minifeverScore). Section 'L' à dessein — c'est un RECORD permanent,
+  // comme les deux concours : pas de remise à zéro quotidienne ni de médailles
+  // du jour (DAILY_RESET_RANKING_SET ne lit que la section 'C'). gs='1' comme
+  // les pilotes (des points, sans colonne annexe) ; g='minifever' : fileIcon.swf
+  // porte l'étiquette depuis la greffe patch-fileicon-minifever.js (la jaquette
+  // du light), et awards.swf depuis patch-awards-minifever.js — la vignette de
+  // médaille EMPRUNTÉE au set d'époque inutilisé de Tubulo, une épreuve du jeu.
+  { rk: '15', internal: 'minifever_arcade', ty: 'point',      rn: 'Mini-Fever', gs: '1', g: 'minifever', section: 'L' },
   // Kaluga « Freestyle » (le record SANS grappe) n'a PAS de ligne ici : il
   // reste dans RANKINGS — donc au livre des records du Club et à l'API des
   // records, qui itèrent RANKINGS — mais ne prend pas d'onglet dans le tableau
@@ -1827,6 +1839,11 @@ function formatMb2Time(centisec) {
 
 function formatRankingExtraData(rankingId, rawData, scoreHint) {
   const raw = String(rawData || '').trim();
+  // Mini-Fever : la donnée stockée est le PALIER (0..3), déjà raconté par le
+  // libellé du light (« 900 · 30 épreuves en difficile »). Le tableau du
+  // bureau affiche ce classement sur le gabarit gs='1' (Frutisnake, sans
+  // colonne annexe) : on n'envoie rien plutôt qu'un chiffre orphelin.
+  if (rankingId === 'minifever_arcade') return '';
   if (!raw) {
     if (rankingId.startsWith('bkiwi_track')) return 'Skiwix:5:1:';
     if (rankingId === 'swapou2_classic' || rankingId === 'swapou2_challenge') return 'S0:';
@@ -3695,6 +3712,12 @@ const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze
  * pourquoi awards.swf porte désormais, en plus, les étiquettes « miniwave » et
  * « minipixiz » posées sur ces deux mêmes images (scripts/patch-awards-
  * vignettes.js) : les deux chemins mènent au même dessin.
+ *
+ * Mini-Fever suit le même principe SANS entrée ici : son étiquette
+ * « minifever » est posée directement dans awards.swf sur l'image de
+ * « tubulo » (le set d'époque inutilisé — patch-awards-minifever.js), le nom
+ * existe donc tel quel pour les deux chemins. On n'invente pas de médailles :
+ * on pioche dans les sets gravés que plus aucun classement n'utilise.
  */
 const MEDAL_AWARD_FRAME = { miniwave: 'wave', minipixiz: 'tris' };
 const medalAwardFrame = (game) => MEDAL_AWARD_FRAME[String(game || '').toLowerCase()] || game;
@@ -13275,11 +13298,11 @@ const GAME_DISCS = {
   // Mini-Fever depuis le BUREAU : le jeu jamais sorti n'a pas de SWF jouable —
   // le portage HTML est le seul moteur. Même anneau rouge (discType 3, jamais
   // consommé) et même marqueur `light/…` que les deux disques ci-dessus ;
-  // ruffle.html ouvre /minifever/ avec le sid. Deux limites assumées, faute de
-  // pouvoir toucher aux SWF gravés : fileIcon.swf ne connaît pas le label
-  // « minifever », le disque prend donc le VISUEL par défaut (celui du snake)
-  // sous son bon nom ; et l'internalList de main.swf s'arrête à miniwave — pas
-  // de voyant « joue à… » côté bureau, comme pour minipixiz.
+  // ruffle.html ouvre /minifever/ avec le sid. Les SWF gravés ont été greffés
+  // pour que le bureau le traite comme un jeu de plein droit : fileIcon.swf
+  // porte l'étiquette « minifever » (patch-fileicon-minifever.js — la jaquette
+  // du light, plus le disque du snake), et main.swf le voyant « joue à… »
+  // (patch-main-statusmng-minifever.js : internalList[13] + feuille d'icônes).
   minifeverlight: {
     discType: '3',
     playMode: 'single',
@@ -15839,10 +15862,8 @@ app.get('/api/light/challenge', async (req, res) => {
     // Les deux pilotes de l'animation (cf. RANKINGS).
     { game: 'minipixiz', ranking: 'minipixiz_classic' },
     { game: 'miniwave',  ranking: 'miniwave_classic' },
-    // Mini-Fever : light seulement (le bureau ne connaît pas ce jeu), et hors
-    // remise à zéro quotidienne — c'est un record, pas un défi du jour. Il n'a
-    // donc jamais de podium de la veille, et c'est normal.
-    { game: 'minifever', ranking: 'minifever_arcade' },
+    // Mini-Fever n'est PAS ici : c'est un record permanent (section 'L' du
+    // bureau, rk '15'), servi plus bas avec les concours — pas un défi du jour.
   ];
   // Le libellé de chaque classement vient du descriptif du bureau (rn) : les
   // deux clients nomment les onglets pareil, sans table en double. Burning Kiwi
@@ -15985,6 +16006,21 @@ app.get('/api/light/challenge', async (req, res) => {
     const nom = nomBureau(def.ranking,
       (RANKINGS[def.ranking] && RANKINGS[def.ranking].name || def.ranking).replace(' - ', ' '));
     games.push(permanent(def.ranking, nom, jeu, all));
+  }
+  // Mini-Fever : le record permanent du portage, à la suite des concours —
+  // même place que sur le bureau (rk '15', section 'L'). Chaque ligne porte le
+  // libellé complet (« 900 · 30 épreuves en difficile ») : les points ET d'où
+  // ils viennent, comme l'affiche le jeu lui-même.
+  {
+    const all = [];
+    for (const [u, rlist] of Object.entries(scoresData.users || {})) {
+      const e = rlist && rlist.minifever_arcade;
+      if (e && Number.isFinite(Number(e.score))) {
+        all.push({ u, s: Number(e.score), label: formatChallengeScoreLabel('minifever_arcade', Number(e.score), e.data) });
+      }
+    }
+    all.sort(scoreComparator('minifever_arcade'));
+    games.push(permanent('minifever_arcade', nomBureau('minifever_arcade', 'Mini-Fever'), 'minifever', all));
   }
   // L'XP et la consécration : les deux classements « joueur » du bureau. Ils ne
   // vivent pas dans le magasin de scores — l'un lit users[].xp (fusionné avec la
@@ -16431,7 +16467,7 @@ app.get('/api/light/online', (req, res) => {
 // déjà le voyant ; les natifs n'avaient aucun chemin. Le client l'appelle au
 // début d'une partie (on=1) et à la sortie (on=0) — et sendBeacon à la
 // fermeture de l'onglet. Le voyant s'éteint de toute façon avec la socket.
-const JEUX_NATIFS_VOYANT = new Set(['bandas', 'grapiz', 'swapou2', 'miniwave', 'minipixiz']);
+const JEUX_NATIFS_VOYANT = new Set(['bandas', 'grapiz', 'swapou2', 'miniwave', 'minipixiz', 'minifever']);
 app.post('/api/light/jeu-en-cours', (req, res) => {
   const corps = req.body || {};
   const sid = corps.sid || req.query.sid || '';
