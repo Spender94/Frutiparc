@@ -3054,6 +3054,271 @@ const BOMB_SOUFFLE = {
 };
 
 /*
+ * game/Cliff.mt — LA FALAISE : courir en secouant la souris, sauter la
+ * crevasse.
+ *
+ * Le héros court vers la crevasse (à jumpPoint = 1000, large de
+ * 60 + dif·2) : sa vitesse vient de l'AGITATION de la souris (+distance
+ * parcourue·0,01 par image, amortie 0,96^tmod). Au bord, saut plat
+ * automatique (-0,2 rad) ; ou bien on APPUIE — le héros s'arrête, un
+ * quart-de-cercle se remplit (angle -0,05 par temps, plafonné -1,3), et le
+ * relâcher lance cos/sin(angle)·vitesse. Retomber au-delà : gagné ($win).
+ * Retomber avant — on a sauté TROP TÔT — : $tooSoon, et la glissade s'arrête
+ * dix pixels avant le bord. Retomber dedans : perdu, sans un mot — le héros
+ * disparaît dans la crevasse (aucune image de chute : il continue de tomber,
+ * devant le décor, jusqu'au fondu).
+ *
+ * Tout est vérifié contre le bytecode (classe « 2Mm6G1 » du SWF de dev) :
+ *   · gameTime = 260, sans difficulté ; cliffLevel = mch - 50 ;
+ *     heroDecal = 40 ; les 36 images de course, les poses 40-42 du sprint
+ *     (dash = vitesse·0,3 ≥ 4) — et round(heroFrame + 1) peut toucher 37,
+ *     coquille d'époque conservée ;
+ *   · hero._x += speed SANS tmod à la course, et la glissade de l'étape 4
+ *     avance de vitx sans tmod non plus — deux coquilles gardées ;
+ *   · le saut : gravité +1·tmod, frein airFrict, rotation
+ *     atan2(vity, vitx)/0,0174·0,8 ; les parois de la crevasse renvoient
+ *     (vitx·-0,9) tant qu'on n'a pas passé le rebord ; l'atterrissage ne se
+ *     juge qu'au retour d'un vrai vol (flWasUp) ;
+ *   · super.update() se fait EN DERNIER (la source l'appelle en fin
+ *     d'update, après moveMap et l'étape — seul jeu à faire ça) ;
+ *   · les étiquettes du héros, en clair dans le SWF : « $jump » à l'image
+ *     50, « $win » à 62 (stop 74), « $tooSoon » à 82 (stop 95) — et le stop
+ *     d'époque à 55, rejoués à la main comme les timelines de la Bombe.
+ *
+ * Le DÉCOR est un conteneur (dm.empty) que la caméra fait glisser
+ * (decor._x += (40 - hero._x - decor._x)·0,5·tmod) : notre scène n'a pas de
+ * conteneurs, on garde decorX et on l'ajoute chaque image aux enfants —
+ * arbres, crevasse, héros. Le SOL (mcCliffGround) et le ciel de la scène,
+ * eux, sont accrochés au JEU : ils ne bougent pas. La souris se lit au
+ * BRUT (socle.souris) : le repère du jeu ne défile pas, seul le décor
+ * défile dedans.
+ *
+ * La crevasse (mcCliffHole, sym371) s'écartèle comme à l'époque : le fond
+ * rose (sym368, cent pixels de large — _xscale y vaut la largeur du trou,
+ * posé à (-0,1, -2,5)), le bord friable (sym370) à l'entrée, et le même en
+ * MIROIR (_xscale -100) déplacé au bout (s2._x = jumpSize). Le
+ * quart-de-cercle (mcAngleQuart) : un cadran blanc à 50 % (sym350, sorti
+ * sans son aiguille), et le carré blanc (sym349, alpha 50 % — le cx du
+ * placement) qui tourne derrière une découpe quart-de-cercle (le même
+ * carré, tourné de -90°) : l'arc se remplit à la visée.
+ *
+ * Les dessins : gameCliff le ciel, sym373 le sol, sym363 le héros
+ * (98 images), sym366 les arbres (deux variantes), sym368/sym370 la
+ * crevasse, sym350/sym349 le compteur.
+ */
+class Cliff extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 260;
+    super.init();
+    this.jumpPoint = 1000;
+    this.jumpSize = 60 + this.dif * 2;
+    this.cliffLevel = HAUTEUR - 50;
+    this.heroDecal = 40;
+    this.heroFrame = 0;
+    this.heroFrameMax = 36;
+    this.omp = { x: this.socle.souris.x, y: this.socle.souris.y };
+    this.speed = 0;
+    this.flWasUp = false;
+    this.heroX = 0;                // hero._x/_y, dans le repère du décor
+    this.heroY = 0;
+    this.vitx = 0;
+    this.vity = 0;
+    this.angle = 0;
+    this.decorX = 0;               // decor._x : la caméra
+    this.attachElements();
+  }
+
+  attachElements() {
+    // CLIFF — le sol plein cadre, accroché au JEU : il ne défile pas.
+    this.sol = this.attacher('sym373', PROF.SPRITE);
+    this.sol.x = 0;
+    this.sol.y = this.cliffLevel;
+    // DECOR — les arbres et la crevasse, puis le héros à la profondeur 500,
+    // au-dessus de tout le décor (il passe DEVANT la crevasse en y tombant).
+    this.genDecor();
+    this.heroMc = this.attacher('sym363', PROF.SPRITE);
+    this.heroMc.arreter();
+    this.poserDecor();
+  }
+
+  genDecor() {
+    this.arbres = [];              // { mc, x } — x en coordonnées décor
+    this.trouRose = null;
+    let x = 0;
+    const ec = 40;
+    while (x < this.jumpPoint) {
+      x += ec * 0.2 + this.socle.hasard(ec);
+      if (x < this.jumpPoint) {
+        const mc = this.attacher('sym366', PROF.SPRITE);
+        mc.allerA(this.socle.hasard(mc.nbImages) + 1);
+        this.arbres.push({ mc, x });
+      } else {
+        // La crevasse, écartée à jumpSize : fond rose étiré, bord à
+        // l'entrée, bord en miroir au bout.
+        this.trouRose = this.attacher('sym368', PROF.SPRITE);
+        this.trouRose.sx = this.jumpSize / 100;
+        this.trouBord1 = this.attacher('sym370', PROF.SPRITE);
+        this.trouBord2 = this.attacher('sym370', PROF.SPRITE);
+        this.trouBord2.sx = -1;
+      }
+    }
+  }
+
+  moveMap() {
+    const x = this.heroDecal - this.heroX;
+    const dif = x - this.decorX;
+    this.decorX += dif * 0.5 * Temps.tmod;
+  }
+
+  /** Le conteneur d'époque, rejoué : chaque enfant reçoit decorX. */
+  poserDecor() {
+    for (const a of this.arbres) {
+      a.mc.x = a.x + this.decorX;
+      a.mc.y = this.cliffLevel;
+    }
+    if (this.trouRose) {
+      this.trouRose.x = this.jumpPoint - 0.1 + this.decorX;
+      this.trouRose.y = this.cliffLevel - 2.5;
+      this.trouBord1.x = this.jumpPoint + this.decorX;
+      this.trouBord1.y = this.cliffLevel;
+      this.trouBord2.x = this.jumpPoint + this.jumpSize + this.decorX;
+      this.trouBord2.y = this.cliffLevel;
+    }
+    this.heroMc.x = this.heroX + this.decorX;
+    this.heroMc.y = this.heroY + this.cliffLevel;
+  }
+
+  update() {
+    this.moveMap();
+    // Les stops de la pellicule du héros (DoActions d'époque : 55, 74, 95).
+    if (this.heroMc.joue) {
+      if (this.heroMc.image >= 95
+        || (this.heroMc.image >= 74 && this.heroMc.image < 82)
+        || (this.heroMc.image >= 55 && this.heroMc.image < 62)) {
+        this.heroMc.arreter();
+      }
+    }
+    switch (this.etape) {
+      case 1: {                    // RUN — l'agitation de la souris propulse
+        const p = { x: this.socle.souris.x, y: this.socle.souris.y };
+        const dx = p.x - this.omp.x;
+        const dy = p.y - this.omp.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        this.speed += dist * 0.01;
+        this.speed *= Math.pow(0.96, Temps.tmod);
+        this.heroX += this.speed;            // sans tmod, comme la source
+        const dash = this.speed * 0.3;
+        this.heroFrame = (this.heroFrame + dash) % this.heroFrameMax;
+        if (dash < 4) {
+          this.heroMc.allerA(Math.round(this.heroFrame + 1));
+        } else {
+          this.heroMc.allerA(40 + this.socle.hasard(3));
+        }
+        this.omp = p;
+        if (this.heroX > this.jumpPoint) {
+          this.heroX = this.jumpPoint;
+          this.initJump(-0.2, this.speed);
+        }
+        if (this.socle.flPresse) {
+          this.angle = 0;
+          this.etape = 2;
+          // mcAngleQuart, à la position ÉCRAN du héros : cadran sans
+          // aiguille, et le carré blanc derrière sa découpe quart.
+          const mx = this.heroX + this.decorX;
+          const my = this.heroY + this.cliffLevel;
+          this.cadran = this.attacher('sym350', PROF.SPRITE);
+          this.cadran.x = mx;
+          this.cadran.y = my;
+          this.carre = this.attacher('sym349', PROF.SPRITE);
+          this.carre.x = mx;
+          this.carre.y = my;
+          this.carre.alpha = 0.5;            // le cx du placement d'époque
+          this.carre.masque = { cle: 'sym349', x: mx, y: my, rot: -90 };
+        }
+        break;
+      }
+      case 2: {                    // ANGLE — le quart se remplit
+        this.angle -= 0.05 * Temps.tmod;
+        this.carre.rot = this.angle / 0.0174;
+        if (this.angle < -1.3 || !this.socle.flPresse) {
+          this.initJump(this.angle, this.speed);
+          this.cadran.enlever();             // removeMovieClip d'époque
+          this.carre.enlever();
+        }
+        break;
+      }
+      case 3: {                    // JUMP
+        this.vity += 1 * Temps.tmod;
+        this.vitx *= this.airFrict;
+        this.vity *= this.airFrict;
+        this.heroX += this.vitx * Temps.tmod;
+        this.heroY += this.vity * Temps.tmod;
+        this.heroMc.rot = (Math.atan2(this.vity, this.vitx) / 0.0174) * 0.8;
+        const flUp = this.heroY < 0;
+        const flIn = this.heroX > this.jumpPoint && this.heroX < this.jumpPoint + this.jumpSize;
+        if (!flUp) {
+          if (this.flWasUp) {
+            if (!flIn) {
+              if (this.heroX > this.jumpPoint + this.jumpSize) {
+                this.gagne(true);
+                this.heroMc.allerA(CLIFF_WIN);       // « $win »
+                this.heroMc.jouer();
+              } else {
+                this.gagne(false);
+                this.heroMc.allerA(CLIFF_TOOSOON);   // « $tooSoon »
+                this.heroMc.jouer();
+              }
+              this.heroY = 0;
+              this.heroMc.rot = 0;
+              this.etape = 4;
+            } else {
+              this.gagne(false);   // dans la crevasse : il tombe, sans un mot
+            }
+          } else if (!flIn) {
+            // Sous le rebord, les parois renvoient.
+            this.heroX = Math.min(Math.max(this.jumpPoint, this.heroX),
+              this.jumpPoint + this.jumpSize);
+            this.vitx *= -0.9;
+          }
+        }
+        this.flWasUp = flUp;
+        break;
+      }
+      case 4: {                    // ATTERRISSAGE — la glissade
+        this.vitx *= Math.pow(0.9, Temps.tmod);
+        this.heroX += this.vitx;             // sans tmod, comme la source
+        if (!this.gagnant && this.heroX > this.jumpPoint - 10) {
+          this.heroX = this.jumpPoint - 10;
+          this.vitx = 0;
+        }
+        break;
+      }
+      default: break;              // l'étape 5 de la source est vide
+    }
+    this.poserDecor();
+    super.update();                // la source l'appelle EN DERNIER
+  }
+
+  initJump(angle, power) {
+    this.flWasUp = true;
+    this.etape = 3;
+    this.vitx = Math.cos(angle) * power;
+    this.vity = Math.sin(angle) * power;
+    this.heroMc.allerA(CLIFF_JUMP);          // gotoAndStop(« $jump »)
+  }
+}
+
+// Les étiquettes du héros de la falaise — en CLAIR dans le SWF (seules les
+// étiquettes en $ ont échappé à l'obfuscation) : relevées sur sym363.
+const CLIFF_JUMP = 50;
+const CLIFF_WIN = 62;
+const CLIFF_TOOSOON = 82;
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui du portage, épreuve après épreuve — à fréquences de
@@ -3080,10 +3345,11 @@ const JEUX = [
   { cle: 'gameApple', nom: 'pomme', Classe: Apple },
   { cle: 'gameBomb', nom: 'bombe', Classe: Bomb },
   { cle: 'gameFrog', nom: 'grenouille', Classe: Frog },
+  { cle: 'gameCliff', nom: 'falaise', Classe: Cliff },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
-  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog };
+  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

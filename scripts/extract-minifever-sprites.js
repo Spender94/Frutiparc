@@ -234,6 +234,18 @@ function principal() {
     { cle: 'sym73', id: 73 },
     { cle: 'sym88', id: 88 },
     { cle: 'gameBomb', id: 92, sansEnfantsNommes: true },
+    // LA FALAISE (gameCliff) : la crevasse et le compteur se pilotent par
+    // morceaux. Le trou (mcCliffHole, sym371) écarte ses trois enfants — le
+    // fond rose (sym368, cent pixels de large : _xscale y vaut la largeur du
+    // trou) et le bord friable (sym370, posé droit à l'entrée puis en MIROIR
+    // au bout) ; le quart-de-cercle (mcAngleQuart, sym350) fait tourner un
+    // carré blanc (sym349, posé à 50 % d'alpha) derrière un masque
+    // quart-de-cercle : l'arc se remplit à la visée. On sort le cadran SANS
+    // son aiguille, et le carré à part — il sert aussi de fenêtre de découpe.
+    { cle: 'sym368', id: 368 },
+    { cle: 'sym370', id: 370 },
+    { cle: 'sym349', id: 349 },
+    { cle: 'sym350', id: 350, sansEnfantsNommes: true },
   ];
   for (const s of SUPPLEMENTS) {
     const etats = etatsDe(s.id, s);

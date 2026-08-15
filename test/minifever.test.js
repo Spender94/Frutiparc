@@ -1374,6 +1374,151 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── LA FALAISE (game/Cliff.mt, classe « 2Mm6G1 » du bytecode) ──
+
+test('la falaise : la mise en place du bytecode, constante par constante', () => {
+  const b = banc(J.Cliff, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 260, 'sans difficulté');
+  assert.equal(j.jumpPoint, 1000);
+  assert.equal(j.jumpSize, 60 + 40 * 2);
+  assert.equal(j.cliffLevel, HAUTEUR - 50);
+  assert.equal(j.heroDecal, 40);
+  assert.equal(j.heroFrameMax, 36);
+  assert.equal(j.speed, 0);
+  assert.deepEqual(j.omp, { x: 120, y: 120 }, 'la souris du socle au départ');
+  // Le décor généré : des arbres AVANT la crevasse, jamais après.
+  assert.ok(j.arbres.length > 0);
+  assert.ok(j.arbres.every((a) => a.x < 1000));
+  // La crevasse écartée à jumpSize : rose étiré, bord droit, bord en miroir.
+  assert.equal(j.trouRose.sx, j.jumpSize / 100, '_xscale du fond rose = la largeur');
+  assert.equal(j.trouBord2.sx, -1, 'le bord du fond, en miroir');
+  assert.equal(j.trouBord2.x - j.trouBord1.x, j.jumpSize);
+  // Le héros : image 1, arrêté, posé au bord gauche du décor.
+  assert.equal(j.heroMc.image, 1);
+  assert.equal(j.heroMc.joue, false);
+  assert.equal(j.heroMc.y, j.cliffLevel);
+});
+
+test('la course de la falaise : l\'agitation de la souris propulse, la caméra suit', () => {
+  const b = banc(J.Cliff);
+  const j = b.jeu;
+  // Une secousse de 100 px : speed = (0 + 100·0,01)·0,96, et le héros avance
+  // de speed SANS tmod (coquille d'époque).
+  b.souris(j.omp.x + 100, j.omp.y);
+  b.avancer(1);
+  const v1 = (0 + 100 * 0.01) * 0.96;
+  assert.equal(j.speed.toFixed(6), v1.toFixed(6));
+  assert.equal(j.heroX.toFixed(6), v1.toFixed(6));
+  // La pellicule suit la course : round(heroFrame + 1).
+  assert.equal(j.heroMc.image, Math.round(j.heroFrame + 1));
+  // Souris immobile : la vitesse s'amortit, la caméra glisse vers 40 - heroX.
+  b.avancer(1);
+  assert.equal(j.speed.toFixed(6), (v1 * 0.96).toFixed(6));
+  assert.ok(j.decorX < 0 || Math.abs(j.decorX) < 40, 'decorX court vers heroDecal - heroX');
+  // À pleine vitesse (dash ≥ 4), les poses du sprint 40-42.
+  j.speed = 20;
+  b.avancer(1);
+  assert.ok(j.heroMc.image >= 40 && j.heroMc.image <= 42, 'pose ' + j.heroMc.image);
+});
+
+test('la visée de la falaise : le quart se remplit, le relâcher lance', () => {
+  const b = banc(J.Cliff);
+  const j = b.jeu;
+  j.speed = 18;
+  j.heroX = 900;
+  b.socle.click();
+  b.avancer(1);
+  assert.equal(j.etape, 2, 'l\'appui ouvre la visée');
+  assert.equal(j.angle, 0, 'l\'angle naît à zéro — il ne descend qu\'à l\'étape 2');
+  // Le compteur, posé à l'écran du héros À CET INSTANT (la caméra glisse
+  // encore ensuite, le compteur reste) : cadran + carré à 50 % derrière sa
+  // découpe quart-de-cercle (le même carré, tourné de -90°).
+  assert.equal(j.cadran.cle, 'sym350');
+  assert.equal(j.carre.cle, 'sym349');
+  assert.equal(j.carre.alpha, 0.5);
+  assert.equal(j.carre.masque.cle, 'sym349');
+  assert.equal(j.carre.masque.rot, -90);
+  assert.equal(j.carre.x, j.heroX + j.decorX, 'accroché là où le héros s\'arrête');
+  b.avancer(1);
+  assert.equal(j.angle.toFixed(4), (-0.05).toFixed(4));
+  assert.equal(j.carre.rot.toFixed(3), (j.angle / 0.0174).toFixed(3));
+  // Le héros ne court plus pendant la visée.
+  const x0 = j.heroX;
+  b.avancer(3);
+  assert.equal(j.heroX, x0);
+  // Le relâcher : saut cos/sin(angle)·speed, pose « $jump » (image 50),
+  // compteur retiré.
+  const a = j.angle - 0.05;                    // l'angle du tour du relâcher
+  b.socle.relache();
+  b.avancer(1);
+  assert.equal(j.etape, 3);
+  assert.equal(j.heroMc.image, 50);
+  // L'élan du saut : la vitesse a décru UNE fois (le tour du clic jouait
+  // encore la course), et la friction de l'air n'a pas encore mordu.
+  assert.equal(j.vitx.toFixed(4), (Math.cos(a) * 18 * 0.96).toFixed(4));
+  assert.equal(j.cadran.vivant, false, 'removeMovieClip d\'époque');
+  assert.equal(j.carre.vivant, false);
+});
+
+test('le saut de la falaise : au-delà gagné, trop tôt $tooSoon, dedans la chute muette', () => {
+  // GAGNÉ : bord de la crevasse, plein élan, angle plat.
+  let b = banc(J.Cliff);
+  let j = b.jeu;
+  j.heroX = 1000;
+  j.initJump(-0.2, 25);
+  b.avancer(30);
+  assert.equal(j.gagnant, true, 'retombé au-delà');
+  assert.equal(j.etape, 4);
+  assert.equal(j.heroY, 0);
+  assert.ok(j.heroMc.image >= 62 && j.heroMc.image <= 74, '« $win » : ' + j.heroMc.image);
+  assert.ok(j.heroX > j.jumpPoint + j.jumpSize);
+
+  // TROP TÔT : sauté loin du bord — il retombe avant la crevasse, glisse,
+  // et s'arrête dix pixels avant le bord (clamp du perdant).
+  b = banc(J.Cliff);
+  j = b.jeu;
+  j.heroX = 500;
+  j.initJump(-1.2, 8);
+  b.avancer(40);
+  assert.equal(j.gagnant, false);
+  assert.equal(j.etape, 4);
+  assert.ok(j.heroMc.image >= 82, '« $tooSoon » : ' + j.heroMc.image);
+  assert.ok(j.heroX < j.jumpPoint - 9.99, 'la glissade ne dépasse jamais jumpPoint - 10');
+
+  // DEDANS : bord de la crevasse, élan trop court — perdu sans un mot, et
+  // il continue de tomber dans le trou (aucune étape 4).
+  b = banc(J.Cliff);
+  j = b.jeu;
+  j.heroX = 1000;
+  j.initJump(-1.2, 8);
+  b.avancer(20);
+  assert.equal(j.gagnant, false);
+  assert.equal(j.etape, 3, 'pas d\'atterrissage : la chute continue');
+  assert.ok(j.heroY > 0, 'sous le rebord, dans la crevasse');
+  const y1 = j.heroY;
+  b.avancer(2);
+  assert.ok(j.heroY > y1, 'et il tombe toujours');
+});
+
+test('les dessins de la falaise sont extraits, compteur démonté compris', () => {
+  for (const cle of ['gameCliff', 'sym373', 'sym363', 'sym366', 'sym368', 'sym370', 'sym349', 'sym350']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.sym363.etats.length, 98, 'course, sprint, $jump, $win, $tooSoon');
+  assert.equal(MANIFESTE.sym366.etats.length, 2, 'deux variantes d\'arbre');
+  // Le fond rose de la crevasse : cent pixels — _xscale y vaut la largeur.
+  assert.equal(Math.round(MANIFESTE.sym368.etats[0].pieces[0].w), 100);
+  // Le cadran est sorti SANS son aiguille : une seule pièce, le quart blanc.
+  assert.equal(MANIFESTE.sym350.etats[0].pieces.length, 1);
+  assert.equal(MANIFESTE.sym350.etats[0].pieces[0].fichier, 'shape347.svg');
+  // Les poses du héros aux étiquettes d'époque ne sont pas vides.
+  for (const img of [50, 62, 82]) {
+    const e = MANIFESTE.sym363.etats.find((et) => et.frame === img);
+    assert.ok(e && e.pieces.length, 'image ' + img + ' dessinée');
+  }
+});
+
 // ── LA POMME (game/Apple.mt, classe « 68iuA1 » du bytecode) ──
 
 test('la pomme : la mise en place du bytecode, constante par constante', () => {

@@ -148,6 +148,14 @@ const SCENES = {
     { cle: 'sym220', x: 88, y: 138, image: 1, rot: 30 },    // …et deux miettes
     { cle: 'sym220', x: 146, y: 130, image: 4, rot: -20 },
   ],
+  gameCliff: [
+    { cle: 'sym373', x: 0, y: 190 },                // le sol de la falaise
+    { cle: 'sym366', x: 30, y: 190, image: 1 },     // deux arbres…
+    { cle: 'sym366', x: 68, y: 190, image: 2 },
+    { cle: 'sym368', x: 150, y: 187.5, s: 0.6 },    // …la crevasse (60 px)…
+    { cle: 'sym370', x: 150, y: 190 },
+    { cle: 'sym363', x: 118, y: 172, image: 50, rot: -12 },  // …le héros en vol
+  ],
   gamePatate: [
     { cle: 'sym235', x: 60, y: 54 },                // votre légume, nu
     { cle: 'sym235', x: 180, y: 54 },               // le modèle, habillé :
