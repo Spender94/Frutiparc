@@ -2593,6 +2593,233 @@ class Frog extends Jeu {
 }
 
 /*
+ * game/Apple.mt — LA POMME : la croquer toute, au bout de son élastique.
+ *
+ * Une pomme pend au fil (ancre fil = {120, 0}, longueur max 120) : au-delà,
+ * un ressort la rappelle (c = (dist-max)/max, force 4) — et chaque BOUCHÉE la
+ * repousse (recul 14 à l'opposé de la souris). Cliquer la pomme la croque :
+ * la morsure s'ajoute au MASQUE qui découvre le ciel — la chair disparaît, le
+ * trognon apparaît là où le cœur passe. Tout croqué (au sondage : sur
+ * cinquante points tirés dans le rayon, deux tolérés encore pleins), gagné.
+ * Perdu seulement au chrono (gameTime = 350 - dif·2,5).
+ *
+ * Tout est vérifié contre le bytecode (classe « 68iuA1 » du SWF de dev) :
+ *   · ray 50, crunchSize 50, airFriction 0,97 (initDefault d'époque) ;
+ *   · le « TRES TRES SALE » de la source, conservé : l'angle du fil se mesure
+ *     depuis un point UN RAYON PLUS BAS que la pomme (apple.y += ray, getAng,
+ *     apple.y -= ray) — la distance, elle, se mesure au centre ;
+ *   · la peau s'oriente a/0,0174 + 90 ; le fil se trace lineStyle(4,
+ *     0x448800), de (fil.x, -ray) en courbe vers le bord de la pomme, la
+ *     détente creusant le ventre (fall = min(0, max-dist)·0,5) ;
+ *   · la MORSURE : huit miettes tirées en couronne (angle random(628)/100,
+ *     portée 1 + random(10), ×2,5), gardées seulement sur la CHAIR pas
+ *     encore mangée ; le blob de morsure s'accroche dans le masque à
+ *     l'échelle crunchSize ; le recul vaut 14 ; la fin sonde cinquante
+ *     points (rayon random(50), angle random(628)/100) et tolère deux
+ *     survivants — setWin(true) SANS toucher à step : l'élastique continue
+ *     de vivre, et on peut encore mordre dans le vide après la victoire ;
+ *   · COQUILLE des miettes, conservée : la source les pose à
+ *     apple.x + skin._xmouse — la souris LOCALE (repère tourné de la peau)
+ *     ajoutée telle quelle à la position MONDE : pomme tournée, les miettes
+ *     dérivent un peu du point mordu. On fait pareil.
+ *
+ * Les appuis et les formes — hitTest(x, y, true) d'époque, approché sur les
+ * géométries extraites (comme la case au doigt de Tubulo) :
+ *   · le disque d'APPUI : shape225, un rond magenta de 130 px à alpha 0
+ *     (fill-opacity 0 dans le SVG extrait) sous la pomme — rayon 65 ;
+ *   · la CHAIR (image 3 de mcApple, shape229, cachée par _alpha = 0 comme le
+ *     crunchZone d'époque) : une galette 96,5 × 73,6 centrée (-0,45, 3,65)
+ *     dans le repère de la peau — approchée par cette ellipse ;
+ *   · la MORSURE (shape221) : un blob rond festonné de 100 px — approché par
+ *     son cercle, rayon 50 × crunchSize % = 25 ;
+ *   · la BASE du masque (shape223) : un fil de 0,05 px — rien de visible au
+ *     départ, ignorée des sondages.
+ *
+ * Les dessins : gameApple la scène — qui n'est QUE le ciel (sym232 posé à
+ * l'identité) : mordre révèle le fond même —, sym230 la pomme (1 pleine,
+ * 2 trognon, 3 chair), sym232 le ciel à révéler, sym224 la base du masque,
+ * sym222 le blob de morsure, sym220 les miettes (cinq poses au hasard).
+ */
+class Apple extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 350 - this.dif * 2.5;
+    super.init();
+    this.airFriction = 0.97;             // initDefault() d'époque
+    this.fil = { x: LARGEUR * 0.5, y: 0, max: HAUTEUR * 0.5 };
+    this.ray = 50;
+    this.crunchSize = 50;
+    this.depthRun = 0;
+    this.morsures = [];                  // les enfants du masque (attachMC d'époque)
+    this.attachElements();
+  }
+
+  attachElements() {
+    // APPLE — la peau ne règle que _xscale (coquille de la source) ; à
+    // ray·2 = 100 %, ça ne change rien, on l'écrit quand même.
+    this.pomme = this.nouveauPhys('sym230');
+    this.pomme.x = LARGEUR * 0.5;
+    this.pomme.y = -this.ray;
+    this.pomme.peau.sx = this.ray * 2 / 100;
+    this.pomme.peau.allerA(1);
+    this.pomme.init();
+
+    // SKY — le ciel à révéler, et le trognon accroché DEDANS : tous deux ne
+    // se voient qu'à travers le masque des morsures (sky.setMask d'époque —
+    // un seul objet masque, partagé).
+    this.ciel = this.attacher('sym232', PROF.SPRITE);
+    this.trognon = this.attacher('sym230', PROF.SPRITE);
+    this.trognon.allerA(2);
+    this.trognon.x = this.pomme.x;
+    this.trognon.y = this.pomme.y;
+    this.trognon.sx = this.ray * 2 / 100;
+    this.trognon.sy = this.ray * 2 / 100;
+
+    // MASK — la base filiforme (sym224) plus les morsures à venir.
+    this.masque = { cle: 'sym224', x: this.pomme.x, y: this.pomme.y,
+      sx: this.ray * 2 / 100, sy: this.ray * 2 / 100, rot: 0, enfants: this.morsures };
+    this.ciel.masque = this.masque;
+    this.trognon.masque = this.masque;
+
+    // MCFIL — le clip vide où se trace l'élastique.
+    this.mcFil = this.attacher(null, PROF.SPRITE);
+    this.mcFil.dessin = [];
+  }
+
+  update() {
+    super.update();
+    switch (this.etape) {
+      case 1: {
+        // FIL — la distance au centre, l'angle un rayon plus bas.
+        const dist = this.pomme.distance(this.fil);
+        this.pomme.y += this.ray;            // TRES TRES SALE (sic, la source)
+        const a = this.pomme.angle(this.fil);
+        this.pomme.y -= this.ray;            // TRES TRES SALE
+
+        if (dist > this.fil.max) {
+          const c = (dist - this.fil.max) / this.fil.max;
+          const p = 4;
+          this.pomme.vitx += Math.cos(a) * c * p;
+          this.pomme.vity += Math.sin(a) * c * p;
+        }
+        this.pomme.peau.rot = a / 0.0174 + 90;
+
+        // DRAW
+        const x = this.pomme.x + Math.cos(a) * this.ray;
+        const y = this.pomme.y + Math.sin(a) * this.ray;
+        const fall = Math.min(0, this.fil.max - dist) * 0.5;
+        const mx = (this.fil.x + x) * 0.5;
+        const my = (this.fil.y + y) * 0.5;
+        this.mcFil.dessin = [
+          ['style', 4, 0x448800, 100],
+          ['aller', this.fil.x, this.fil.y - this.ray],
+          ['courbe', mx, my + fall, x, y],
+        ];
+        break;
+      }
+      default: break;
+    }
+    // Le masque et le trognon suivent la pomme — chaque image, étape ou pas.
+    this.masque.x = this.pomme.x;
+    this.masque.y = this.pomme.y;
+    this.masque.rot = this.pomme.peau.rot;
+    this.trognon.x = this.pomme.x;
+    this.trognon.y = this.pomme.y;
+    this.trognon.rot = this.pomme.peau.rot;
+  }
+
+  /** La souris dans le repère de la peau (skin._xmouse/_ymouse d'époque). */
+  enLocal(x, y) {
+    const r = -this.pomme.peau.rot * Math.PI / 180;
+    const dx = x - this.pomme.x;
+    const dy = y - this.pomme.y;
+    return { x: dx * Math.cos(r) - dy * Math.sin(r), y: dx * Math.sin(r) + dy * Math.cos(r) };
+  }
+
+  /** crunchZone.hitTest : la chair (shape229), approchée par son ellipse. */
+  estChair(x, y) {
+    const l = this.enLocal(x, y);
+    const ex = (l.x + 0.45) / 48.25;
+    const ey = (l.y - 3.65) / 36.8;
+    return ex * ex + ey * ey <= 1;
+  }
+
+  /** sky.hitTest : le point n'est « ciel » qu'à travers une morsure du masque. */
+  estMange(x, y) {
+    const l = this.enLocal(x, y);
+    const r = 50 * (this.crunchSize / 100);
+    for (const m of this.morsures) {
+      const dx = l.x - m.x;
+      const dy = l.y - m.y;
+      if (dx * dx + dy * dy <= r * r) return true;
+    }
+    return false;
+  }
+
+  /** onPress du dessin : le disque d'appui invisible de 130 px (rayon 65). */
+  click() {
+    if (this.pomme.distance({ x: this.sourisX, y: this.sourisY }) <= 65) this.crunch();
+  }
+
+  crunch() {
+    const lm = this.enLocal(this.sourisX, this.sourisY);
+
+    // PARTICULE — huit miettes en couronne, gardées sur la chair encore
+    // pleine. La position MONDE reçoit la souris LOCALE telle quelle
+    // (coquille d'époque, conservée).
+    for (let i = 0; i < 8; i++) {
+      const a = this.socle.hasard(628) / 100;
+      const p = 1 + this.socle.hasard(10);
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const x = this.pomme.x + lm.x + ca * p * 2.5;
+      const y = this.pomme.y + lm.y + sa * p * 2.5;
+      if (this.estChair(x, y) && !this.estMange(x, y)) {
+        const mc = this.nouvellePart('sym220');
+        mc.x = x;
+        mc.y = y;
+        mc.vitx = ca * p;
+        mc.vity = sa * p;
+        mc.vitr = this.aleatoire() * 20;
+        mc.peau.rot = a / 0.0174;
+        mc.init();
+        mc.peau.allerA(this.socle.hasard(mc.peau.nbImages) + 1);
+      }
+    }
+
+    // ATTACH CRUNCH — la morsure entre dans le masque, à l'échelle crunchSize.
+    this.depthRun++;
+    this.morsures.push({ cle: 'sym222', x: lm.x, y: lm.y,
+      sx: this.crunchSize / 100, sy: this.crunchSize / 100 });
+
+    // Le recul : à l'opposé de la souris JEU.
+    const m = { x: this.sourisX, y: this.sourisY };
+    const a2 = this.pomme.angle(m);
+    const p2 = 14;
+    this.pomme.vitx -= Math.cos(a2) * p2;
+    this.pomme.vity -= Math.sin(a2) * p2;
+
+    // CHECK END — cinquante sondages, deux survivants tolérés. setWin(true)
+    // sans toucher à step : l'élastique continue, on peut mordre le vide.
+    let tol = 0;
+    for (let i = 0; i < 50; i++) {
+      const d = this.socle.hasard(Math.round(this.ray));
+      const an = this.socle.hasard(628) / 100;
+      const x = this.pomme.x + Math.cos(an) * d;
+      const y = this.pomme.y + Math.sin(an) * d;
+      if (this.estChair(x, y) && !this.estMange(x, y)) {
+        tol++;
+        if (tol > 2) return;
+      }
+    }
+    this.gagne(true);
+  }
+}
+
+/*
  * game/Bomb.mt — LA BOMBE : éteindre la mèche.
  *
  * Une braise remonte la mèche (speed = 0,5 + dif·0,015 px par unité de temps)
@@ -2850,12 +3077,13 @@ const JEUX = [
   { cle: 'gameOrbital', nom: 'orbite', Classe: Orbital },
   { cle: 'gameJumpFish', nom: 'photo', Classe: JumpFish },
   { cle: 'gamePatate', nom: 'légume', Classe: Patate },
+  { cle: 'gameApple', nom: 'pomme', Classe: Apple },
   { cle: 'gameBomb', nom: 'bombe', Classe: Bomb },
   { cle: 'gameFrog', nom: 'grenouille', Classe: Frog },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
-  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Bomb, Frog };
+  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

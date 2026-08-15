@@ -1374,6 +1374,152 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── LA POMME (game/Apple.mt, classe « 68iuA1 » du bytecode) ──
+
+test('la pomme : la mise en place du bytecode, constante par constante', () => {
+  const b = banc(J.Apple, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 350 - 40 * 2.5);
+  assert.deepEqual(j.fil, { x: 120, y: 0, max: 120 });
+  assert.equal(j.ray, 50);
+  assert.equal(j.crunchSize, 50);
+  assert.equal(j.depthRun, 0);
+  assert.equal(j.airFriction, 0.97, 'initDefault d\'époque');
+  // La pomme naît au-dessus de l'écran, peau à l'image 1 — la source ne
+  // règle que _xscale (à 100 %, sans effet : coquille conservée).
+  assert.equal(j.pomme.x, 120);
+  assert.equal(j.pomme.y, -50);
+  assert.equal(j.pomme.peau.image, 1);
+  assert.equal(j.pomme.peau.sx, 1);
+  // Le trognon : l'image 2 du même dessin, cousu au masque partagé.
+  assert.equal(j.trognon.image, 2);
+  assert.equal(j.trognon.cle, 'sym230');
+  assert.equal(j.ciel.masque, j.masque, 'le ciel et le trognon partagent LE masque');
+  assert.equal(j.trognon.masque, j.masque);
+  assert.equal(j.masque.cle, 'sym224');
+  assert.equal(j.masque.enfants, j.morsures, 'les morsures sont les enfants du masque');
+  // L'ordre : pomme sous le ciel révélé, fil par-dessus tout.
+  const ordre = j.scene.ordre().filter((m) => [j.pomme.peau, j.ciel, j.trognon].includes(m));
+  assert.deepEqual(ordre, [j.pomme.peau, j.ciel, j.trognon]);
+});
+
+test('l\'élastique de la pomme : ressort au-delà de 120, angle mesuré UN RAYON PLUS BAS', () => {
+  const b = banc(J.Apple);
+  const j = b.jeu;
+  // On pose la pomme au repos, tendue plein sud (200 px sous l'ancre).
+  j.pomme.x = 120;
+  j.pomme.y = 200;
+  j.pomme.vitx = 0;
+  j.pomme.vity = 0;
+  b.avancer(1);
+  // La physique d'abord (gravité 1, friction 0,97 posée par le jeu), le
+  // ressort ensuite, sur la position déjà avancée.
+  const y1 = 200 + 1 * 0.97;
+  assert.equal(j.pomme.y.toFixed(4), y1.toFixed(4));
+  // Plein sud, l'angle vers l'ancre vaut -π/2 — mesuré depuis y + 50, même
+  // verticale : identique ici, mais la formule du ressort a couru sur la
+  // distance vraie (getDist au centre).
+  const c = (y1 - 120) / 120;
+  assert.equal(j.pomme.vity.toFixed(4), (1 * 0.97 - c * 4).toFixed(4), 'vity = gravité freinée - ressort');
+  assert.equal(j.pomme.vitx.toFixed(4), (0).toFixed(4));
+  // La peau : a/0,0174 + 90 — presque droite, pas tout à fait (0,0174 ≠ π/180).
+  assert.equal(j.pomme.peau.rot.toFixed(3), (-Math.PI / 2 / 0.0174 + 90).toFixed(3));
+  // Le fil : style 4/0x448800, ancré à (120, -50), courbe vers le bord bas.
+  assert.deepEqual(j.mcFil.dessin[0], ['style', 4, 0x448800, 100]);
+  assert.deepEqual(j.mcFil.dessin[1], ['aller', 120, -50]);
+  assert.equal(j.mcFil.dessin[2][0], 'courbe');
+  // Le masque et le trognon collent à la pomme, rotation comprise.
+  assert.equal(j.masque.x, j.pomme.x);
+  assert.equal(j.masque.rot, j.pomme.peau.rot);
+  assert.equal(j.trognon.rot, j.pomme.peau.rot);
+});
+
+test('croquer la pomme : morsure au masque, miettes sur la chair, recul de 14', () => {
+  const b = banc(J.Apple);
+  const j = b.jeu;
+  // Une pomme posée bien en vue, droite.
+  j.pomme.x = 120;
+  j.pomme.y = 120;
+  j.pomme.vitx = 0;
+  j.pomme.vity = 0;
+  j.pomme.peau.rot = 0;
+  // Un clic à 200 px : hors du disque d'appui (rayon 65) — rien.
+  b.souris(120, 320);
+  b.socle.click();
+  b.socle.relache();
+  assert.equal(j.morsures.length, 0, 'hors du disque d\'appui, pas de morsure');
+  // Un clic dans la joue basse (10, 15) : morsure aux coordonnées locales.
+  b.souris(130, 135);
+  b.socle.click();
+  b.socle.relache();
+  assert.equal(j.morsures.length, 1);
+  assert.equal(j.depthRun, 1);
+  assert.equal(j.morsures[0].cle, 'sym222');
+  assert.equal(j.morsures[0].x, 10);
+  assert.equal(j.morsures[0].y, 15);
+  assert.equal(j.morsures[0].sx, 0.5, 'le blob à l\'échelle crunchSize (50 %)');
+  // Le point mordu est mangé, un point éloigné non.
+  assert.ok(j.estMange(130, 135));
+  assert.ok(!j.estMange(90, 100));
+  // Les miettes : tirées en couronne sur la chair encore pleine.
+  const miettes = j.sprites.filter((s) => s.peau && s.peau.cle === 'sym220');
+  assert.ok(miettes.length >= 1 && miettes.length <= 8, miettes.length + ' miettes');
+  assert.ok(miettes.every((m) => m.vitr !== null && m.vitr >= 0 && m.vitr < 20), 'vitr = hasard·20');
+  assert.ok(miettes.every((m) => m.peau.image >= 1 && m.peau.image <= 5), 'une des cinq poses');
+  // Le recul : à l'opposé de la souris (en bas à droite) — la pomme part
+  // vers le haut-gauche, de 14.
+  assert.ok(j.pomme.vitx < 0 && j.pomme.vity < 0);
+  assert.equal(Math.hypot(j.pomme.vitx, j.pomme.vity).toFixed(4), (14).toFixed(4));
+});
+
+test('tout croquer gagne — et l\'élastique survit au verdict (pas de step 2)', () => {
+  const b = banc(J.Apple);
+  const j = b.jeu;
+  j.pomme.x = 120;
+  j.pomme.y = 120;
+  j.pomme.peau.rot = 0;
+  // On quadrille la chair de morsures (rayon 25 chacune) sans laisser le
+  // temps à la pomme de bouger : clic, relâche, pas d'image entre deux.
+  for (let gx = -45; gx <= 45 && j.gagnant === null; gx += 18) {
+    for (let gy = -30; gy <= 40 && j.gagnant === null; gy += 18) {
+      j.pomme.vitx = 0;
+      j.pomme.vity = 0;
+      b.souris(120 + gx, 120 + gy);
+      b.socle.click();
+      b.socle.relache();
+    }
+  }
+  assert.equal(j.gagnant, true, 'la pomme croquée gagne');
+  assert.equal(j.etape, 1, 'setWin(true) SANS step = 2 : l\'élastique continue');
+  // Et on peut encore mordre dans le vide : le verdict, lui, ne bouge plus.
+  const avant = j.morsures.length;
+  b.souris(120, 120);
+  b.socle.click();
+  b.socle.relache();
+  assert.equal(j.morsures.length, avant + 1, 'mordre après la victoire ajoute encore au masque');
+  assert.equal(j.gagnant, true);
+});
+
+test('les dessins de la pomme sont extraits, zones d\'appui invisibles comprises', () => {
+  for (const cle of ['gameApple', 'sym230', 'sym232', 'sym224', 'sym222', 'sym220']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.gameApple.etats.length, 1, 'la scène n\'est que le ciel');
+  assert.deepEqual(MANIFESTE.sym230.etats.map((e) => e.pieces.length), [3, 3, 1],
+    'pomme pleine, trognon, chair');
+  assert.equal(MANIFESTE.sym220.etats.length, 5, 'les cinq poses de miette');
+  // Le disque d'appui (shape225) : 130 px, magenta INVISIBLE (alpha 0).
+  const disque = MANIFESTE.sym230.etats[0].pieces.find((p) => p.fichier === 'shape225.svg');
+  assert.ok(disque, 'le disque d\'appui est dans la pomme');
+  assert.equal(disque.w, 130);
+  const svg = fs.readFileSync(path.join(ROOT, 'public/minifever/sprites/shape225.svg'), 'utf8');
+  assert.ok(/fill-opacity="0"/.test(svg), 'magenta à alpha 0 — la zone se presse, ne se voit pas');
+  // La base du masque : le fil de 0,05 px — rien de révélé au départ.
+  assert.ok(MANIFESTE.sym224.etats[0].pieces[0].w < 1);
+  // Le blob de morsure : 100 px centrés.
+  assert.equal(Math.round(MANIFESTE.sym222.etats[0].pieces[0].w), 100);
+});
+
 // ── LA BOMBE (game/Bomb.mt, classe « 8__V1 » du bytecode) ──
 
 test('la bombe : la mise en place du bytecode, constante par constante', () => {

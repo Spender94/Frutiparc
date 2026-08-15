@@ -97,6 +97,12 @@ function mesures(m) {
  * Un masque qui BOUGE s'écrit `masque: { cle, x, y, sx, sy }` — la forme du
  * symbole, posée là : le carré du trampoline suit la ligne du mur, la fenêtre
  * capsule de Tubulo se pose sur chaque case.
+ *
+ * Un masque qui GRANDIT porte des `enfants: [{ cle, x, y, sx, sy, rot }]` —
+ * les clips que le jeu accroche DANS le masque, aux coordonnées locales du
+ * masque (Std.attachMC(mask, …) d'époque) : chaque morsure de la pomme est
+ * une forme de plus dans la découpe, et le tout suit la position et la
+ * rotation du masque.
  */
 const masques = new Map();         // clé de symbole → Path2D (null : en cours)
 
@@ -316,6 +322,17 @@ class Client {
           M = M.scale(m.sx === undefined ? 1 : m.sx, m.sy === undefined ? 1 : m.sy);
           const place = new Path2D();
           place.addPath(decoupe, M);
+          // Les enfants du masque : leurs formes s'ajoutent à la découpe,
+          // posées dans le repère du masque (position, rotation et échelle
+          // du parent comprises).
+          for (const en of (m.enfants || [])) {
+            const forme = cheminMasque(en.cle);
+            if (!forme) continue;
+            let M2 = M.translate(en.x || 0, en.y || 0);
+            if (en.rot) M2 = M2.rotate(en.rot);
+            M2 = M2.scale(en.sx === undefined ? 1 : en.sx, en.sy === undefined ? 1 : en.sy);
+            place.addPath(forme, M2);
+          }
           decoupe = place;
         }
         if (decoupe) {

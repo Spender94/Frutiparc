@@ -615,6 +615,7 @@ const MINIFEVER_EPREUVES = [
   { cle: 'gameOrbital',    item: '$fvOrbital',    nom: 'Orbite',      image: 'orbital' },
   { cle: 'gameJumpFish',   item: '$fvJumpFish',   nom: 'Photo',       image: 'jumpfish' },
   { cle: 'gamePatate',     item: '$fvPatate',     nom: 'Légume',      image: 'patate' },
+  { cle: 'gameApple',      item: '$fvApple',      nom: 'Pomme',       image: 'apple' },
   { cle: 'gameBomb',       item: '$fvBomb',       nom: 'Bombe',       image: 'bomb' },
   { cle: 'gameFrog',       item: '$fvFrog',       nom: 'Grenouille',  image: 'frog' },
 ];

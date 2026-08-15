@@ -143,6 +143,11 @@ const SCENES = {
     { cle: 'sym73', x: 90, y: 229.45 },             // la braise à mi-course
     { cle: 'sym88', x: 200.8, y: 199.85, image: 26 },   // le monstre qui charge
   ],
+  gameApple: [
+    { cle: 'sym230', x: 120, y: 95 },               // la pomme pendue…
+    { cle: 'sym220', x: 88, y: 138, image: 1, rot: 30 },    // …et deux miettes
+    { cle: 'sym220', x: 146, y: 130, image: 4, rot: -20 },
+  ],
   gamePatate: [
     { cle: 'sym235', x: 60, y: 54 },                // votre légume, nu
     { cle: 'sym235', x: 180, y: 54 },               // le modèle, habillé :
