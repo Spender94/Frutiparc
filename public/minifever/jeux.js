@@ -1667,6 +1667,524 @@ class Trampoline extends Jeu {
 }
 
 /*
+ * ORBITAL — « abats le poussin ».
+ *
+ * Un poussin tourne autour d'une planète, à vitesse ondulante ; des lanceurs
+ * pointent depuis le sol, chacun recharge son missile puis attend l'appui.
+ * Toucher l'oiseau — à dix unités près — l'éclate en plumes. La difficulté
+ * accélère l'orbite et RETIRE des lanceurs (six à un seul).
+ *
+ * Dessins (voisins de gameOrbital #147) :
+ *   sym145  la planète
+ *   sym143  le poussin
+ *   sym141  le lanceur, onze images — 1 le socle vide, 2-11 la recharge du
+ *           missile (un stop la tient pleine)
+ *   sym137  le missile
+ *   sym135  les plumes, quatre variantes
+ */
+class Orbital extends Jeu {
+  constructor(socle) {
+    super(socle);
+    this.gameTime = 400;
+  }
+
+  init() {
+    super.init();
+    this.vitesse = 4 + this.dif * 0.1;
+    this.vitesseDecal = 0;
+    this.decal = this.socle.hasard(328);
+    this.rayonPlanete = 50;
+    this.rayonOrbite = 108;
+    this.missiles = [];
+    this.vieuxCible = null;
+
+    this.planete = this.nouveauSprite('sym145');
+    this.planete.x = LARGEUR * 0.5;
+    this.planete.y = HAUTEUR * 0.5;
+    this.planete.peau.sx = this.rayonPlanete * 2 / 100;
+    this.planete.peau.sy = this.planete.peau.sx;
+    this.planete.init();
+
+    this.cible = this.nouveauSprite('sym143');
+    this.cible.init();
+
+    // Les lanceurs : espacés d'au moins 0,2 radian, à la cadence i·4.
+    this.lanceurs = [];
+    const max = 6 - this.dif * 0.05;
+    for (let i = 0; i < max; i++) {
+      const mc = this.attacher('sym141', PROF.SPRITE);
+      mc.x = this.planete.x;
+      mc.y = this.planete.y;
+      let a = 0;
+      for (let garde = 0; garde < 1000; garde++) {
+        a = this.socle.hasard(628) / 100;
+        let libre = true;
+        for (const l of this.lanceurs) if (Math.abs(l.a - a) < 0.2) libre = false;
+        if (libre) break;
+      }
+      mc.rot = a / 0.0174;
+      mc.arreter();
+      this.lanceurs.push({ mc, a, t: i * 4, anim: null });
+    }
+  }
+
+  /** Orbital.initLauncher : la recharge joue (2-11), puis le lanceur écoute. */
+  armer(info) {
+    info.t = null;
+    info.anim = { image: 2, fin: 11 };
+  }
+
+  update() {
+    super.update();
+    if (this.etape !== 1) return;
+    // L'orbite ondule : dix pas de phase PAR IMAGE, sans tmod, comme l'orbite
+    // elle-même — le poussin est un mobile « par image ».
+    this.vitesseDecal = (this.vitesseDecal + 10) % 628;
+    const sp = this.vitesse + Math.cos(this.vitesseDecal / 100) * this.vitesse * 0.5;
+    this.decal = (this.decal + sp) % 628;
+    this.cible.x = this.planete.x + Math.cos(this.decal / 100) * this.rayonOrbite;
+    this.cible.y = this.planete.y + Math.sin(this.decal / 100) * this.rayonOrbite;
+    this.cible.peau.rot += 50 / sp;
+
+    // Les recharges.
+    for (const info of this.lanceurs) {
+      if (info.t !== null) {
+        info.t -= Temps.tmod;
+        if (info.t < 0) this.armer(info);
+      }
+      if (info.anim) {
+        info.mc.allerA(info.anim.image);
+        if (info.anim.image < info.anim.fin) info.anim.image += 1;
+      }
+    }
+
+    // Les missiles au contact : dix unités, et le poussin éclate.
+    for (let i = 0; i < this.missiles.length; i++) {
+      const m = this.missiles[i];
+      if (m.distance(this.cible) < 10) {
+        this.exploser(this.cible.x, this.cible.y);
+        this.gagne(true);
+        m.tuer();
+        this.cible.tuer();
+        this.missiles.splice(i, 1);
+        i--;
+      }
+    }
+
+    this.vieuxCible = { x: this.cible.x, y: this.cible.y };
+  }
+
+  click() {
+    if (this.etape !== 1) return;
+    // Le lanceur PRÊT sous le doigt : le point ramené dans son repère tourné.
+    const b = (this.socle.mesures && this.socle.mesures.sym141)
+      ? this.socle.mesures.sym141.boite : { x0: -10, y0: -10, x1: 10, y1: 10 };
+    for (const info of this.lanceurs) {
+      if (info.t !== null || !info.anim || info.anim.image < info.anim.fin) continue;
+      const dx = this.sourisX - info.mc.x;
+      const dy = this.sourisY - info.mc.y;
+      const lx = Math.cos(-info.a) * dx - Math.sin(-info.a) * dy;
+      const ly = Math.sin(-info.a) * dx + Math.cos(-info.a) * dy;
+      if (lx > b.x0 && lx < b.x1 && ly > b.y0 && ly < b.y1) { this.tirer(info); return; }
+    }
+  }
+
+  /** Orbital.fire — la rotation du missile porte la coquille de la source. */
+  tirer(info) {
+    info.t = 80;
+    info.anim = null;
+    info.mc.allerA(1);
+    const mc = this.nouveauPhys('sym137');
+    const ca = Math.cos(info.a);
+    const sa = Math.sin(info.a);
+    const d = this.rayonPlanete + 10;
+    mc.x = info.mc.x + ca * d;
+    mc.y = info.mc.y + sa * d;
+    mc.vitx = ca * 6;
+    mc.vity = sa * 6;
+    mc.flPhys = false;
+    mc.peau.rot = info.a / 0.01714;    // 0.01714, pas 0.0174 — la coquille d'origine
+    mc.init();
+    this.missiles.push(mc);
+  }
+
+  exploser(x, y) {
+    // Les plumes héritent de l'élan du poussin : son déplacement d'une image.
+    const dist = this.vieuxCible ? Math.hypot(this.cible.x - this.vieuxCible.x, this.cible.y - this.vieuxCible.y) : 0;
+    const ta = this.vieuxCible ? Math.atan2(this.vieuxCible.y - this.cible.y, this.vieuxCible.x - this.cible.x) : 0;
+    for (let i = 0; i < 12; i++) {
+      const mc = this.nouvellePart('sym135');
+      const a = this.socle.hasard(628) / 100;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const p = 0.5 + this.socle.hasard(30) * 0.1;
+      const taille = 50 + this.socle.hasard(100);
+      mc.x = x + ca * p * 1.5;
+      mc.y = y + sa * p * 1.5;
+      mc.vitx = ca * p - Math.cos(ta) * dist * 0.15;
+      mc.vity = sa * p - Math.sin(ta) * dist * 0.15;
+      mc.vitr = this.aleatoire() * 20;
+      mc.flPhys = false;
+      mc.init();
+      mc.peau.allerA(this.socle.hasard(mc.peau.nbImages) + 1);
+      // La source règle `_xscale` DEUX FOIS après init — jamais `_yscale` :
+      // la plume est étirée en largeur seulement. On garde la coquille.
+      mc.peau.sx = taille / 100;
+    }
+  }
+}
+
+/*
+ * JUMPFISH — « photographie le poisson ».
+ *
+ * Une ombre tourne dans l'eau ; le poisson saute — une seule fois — et il faut
+ * le prendre dans le cadre, qui suit la souris en tanguant. L'appui déclenche :
+ * flash blanc, le décor se découpe au format de la photo, le poisson s'y fige.
+ * Réussie si le poisson est à moins de 30 % du cadre de son centre. La
+ * difficulté rétrécit le cadre et raidit le saut.
+ *
+ * Dessins (voisins de gameJumpFish #184) :
+ *   sym182  l'eau, en toile de fond
+ *   sym173  l'ombre sous la surface, dix-sept images de remous
+ *   sym166  le cadre photo, deux images — visée, cliché pris
+ *   sym163  le carré rouge : masque de la ligne d'eau ET du format photo
+ *   sym180  le poisson, six images de nage
+ *   sym16   le plouf — la bouffée partagée avec la fumée du Lander, quinze
+ *           images, qui se retire d'elle-même
+ */
+class JumpFish extends Jeu {
+  constructor(socle) {
+    super(socle);
+    this.gameTime = 200;
+  }
+
+  init() {
+    super.init();
+    this.decal = this.socle.hasard(628);
+    // `speed = 4 + dif·0.2` dort dans la source : jamais relu. On le laisse.
+    this.taille = 100 - this.dif * 0.4;
+    this.imageOmbre = 0;
+    this.flash = 0;
+    this.blancEcran = 0;
+    this.distance = 0;
+
+    this.fond = this.attacher('sym182', PROF.SPRITE);
+    this.ombre = this.nouveauSprite('sym173');
+    this.ombre.peau.alpha = 0;
+    this.ombre.peau.arreter();
+    this.ombre.init();
+    this.cadre = this.nouveauSprite('sym166');
+    this.cadre.x = this.sourisX;
+    this.cadre.y = this.sourisY;
+    this.cadre.peau.sx = this.taille / 100;
+    this.cadre.peau.sy = this.taille / 100;
+    this.cadre.init();
+    this.cadre.peau.arreter();
+  }
+
+  update() {
+    super.update();
+    switch (this.etape) {
+      case 1: {
+        this.bougerCadre();
+        this.decal = (this.decal + 10 * Temps.tmod) % 628;
+        const cx = LARGEUR * 0.5;
+        const cy = HAUTEUR - 20;
+        const ny = cy + Math.sin(this.decal / 100) * 4;
+        const dy = ny - this.ombre.y;
+        this.ombre.x = cx + Math.cos(this.decal / 100) * 60;
+        this.ombre.y = ny;
+        const echelle = 100 + (this.ombre.y - cy) * 4;
+        this.imageOmbre = (this.imageOmbre + Math.abs(dy * 2)) % this.ombre.peau.nbImages;
+        this.ombre.peau.allerA(Math.round(this.imageOmbre) + 1);
+        this.ombre.peau.alpha = Math.min(this.ombre.peau.alpha + Temps.tmod * 2 / 100, 1);
+        this.ombre.peau.sx = echelle / 100;
+        this.ombre.peau.sy = echelle / 100;
+
+        // Le saut : certain sous 100 au chrono, possible dès 140 — au taux
+        // auto-compensé random(100/tmod).
+        if (this.socle.timer < 100) this.sauter();
+        else if (this.socle.timer < 140
+          && this.socle.hasard(Math.trunc(100 / Temps.tmod)) === 0) this.sauter();
+        break;
+      }
+      case 2: {
+        this.bougerCadre();
+        const a = Math.atan2(this.poisson.vity, this.poisson.vitx);
+        this.poisson.peau.rot = a / 0.0174;
+        if (this.socle.flPresse) { this.photographier(); break; }
+        if (this.poisson.y > this.yEau) {
+          this.plouf(this.poisson.x, this.poisson.y);
+          this.poisson.tuer();
+          // La source retire le masque, et son test « y > _y + _yscale·0.5 »
+          // devient NaN — TOUJOURS faux : un seul plouf. On garde la garde.
+          this.yEau = NaN;
+        }
+        break;
+      }
+      case 3:
+        this.flash = Math.min(this.flash + 2 * Temps.tmod, 100);
+        this.blancEcran = (100 - this.flash) / 100;
+        if (this.flash > 98) this.gagne(this.distance < this.taille * 0.3);
+        break;
+      default: break;
+    }
+  }
+
+  /** JumpFish.movePhoto : le cadre court après la souris et tangue avec elle. */
+  bougerCadre() {
+    const c = 0.4;
+    const dx = this.sourisX - this.cadre.x;
+    const dy = this.sourisY - this.cadre.y;
+    const dr = dx * 0.5 - this.cadre.peau.rot;
+    this.cadre.x += dx * c * Temps.tmod;
+    this.cadre.y += dy * c * Temps.tmod;
+    this.cadre.peau.rot += dr * c * Temps.tmod;
+  }
+
+  /** JumpFish.initJump : l'ombre devient poisson, masqué à sa ligne d'eau. */
+  sauter() {
+    this.etape = 2;
+    this.plouf(this.ombre.x, this.ombre.y);
+    this.poisson = this.nouveauPhys('sym180');
+    this.poisson.poids = 0.3 + this.dif * 0.015;
+    this.poisson.x = this.ombre.x;
+    this.poisson.y = this.ombre.y;
+    const tx = LARGEUR * 0.5 + this.aleatoire() * 60;
+    const ty = 50 + (this.aleatoire() * 2 - 1) * 10;
+    const a = Math.atan2(ty - this.poisson.y, tx - this.poisson.x);
+    const p = 9 + this.aleatoire() * 3 + this.dif * 0.15;
+    this.poisson.vitx = Math.cos(a) * p;
+    this.poisson.vity = Math.sin(a) * p;
+    if (this.poisson.vitx < 0) this.poisson.peau.sy *= -1;   // le miroir du saut
+    this.ombre.tuer();
+    this.poisson.init();
+    this.poisson.peau.jouer();                               // la nage continue en vol
+    // La ligne d'eau : le carré rouge en masque, du haut du cadre à son départ.
+    this.yEau = this.poisson.y;
+    this.poisson.peau.masque = { cle: 'sym163', x: LARGEUR * 0.5, y: this.yEau * 0.5, sx: 2.4, sy: this.yEau / 100 };
+  }
+
+  /** JumpFish.makePhoto : le monde se découpe au format du cliché. */
+  photographier() {
+    this.etape = 3;
+    this.flash = 0;
+    this.blancEcran = 1;
+    const m = { cle: 'sym163', x: this.cadre.x, y: this.cadre.y, rot: this.cadre.peau.rot,
+      sx: this.taille / 100, sy: this.taille / 100 };
+    this.fond.masque = m;
+    this.cadre.peau.allerA(2);
+    this.scene.devant(this.cadre.peau);
+    this.distance = this.poisson.distance(this.cadre);
+    // Le poisson FIGÉ, dans le fond masqué — la copie que la source attache.
+    const fige = this.attacher('sym180', PROF.SPRITE);
+    fige.x = this.poisson.x;
+    fige.y = this.poisson.y;
+    fige.rot = this.poisson.peau.rot;
+    fige.sy = this.poisson.peau.sy;
+    fige.allerA(this.poisson.peau.image);
+    fige.masque = m;
+    this.poisson.tuer();
+  }
+
+  plouf(x, y) {
+    const mc = this.nouvellePart('sym16');
+    mc.x = x;
+    mc.y = y;
+    mc.flPhys = false;
+    mc.init();
+    mc.peau.rot = this.aleatoire() * 10;
+    mc.peau.finit = true;                // le clip se retire à sa quinzième image
+    mc.peau.jouer();
+  }
+}
+
+/*
+ * PATATE — l'habillage du légume.
+ *
+ * Deux carottes : le MODÈLE à droite, coiffé de trois pièces — yeux, bouche,
+ * feuillage — et la vôtre à gauche, nue. En bas, la réserve : douze pièces
+ * mélangées, à glisser sur votre légume pour copier le modèle. Reposer une
+ * pièce en chasse une autre du même emplacement. La difficulté RACCOURCIT le
+ * temps (320 - dif·2).
+ *
+ * Dessins (gamePatate #237) :
+ *   sym235  le légume
+ *   sym40   la pièce détachée : la punaise, trois images (une par emplacement)
+ *   sym26   les yeux, sym32 les bouches, sym39 les feuillages — l'enfant nommé
+ *           de chaque image de sym40, sorti à part (cinq variantes, le jeu en
+ *           tire quatre)
+ */
+// L'ancre de l'enfant dans chaque image de sym40, relevée dans le SWF ; la
+// punaise est déjà décalée dans le dessin. decalList = [-12, -31, 26] des
+// sources est son arrondi négatif — la pièce se centre ainsi sous le doigt.
+const PATATE_TYPES = ['sym26', 'sym32', 'sym39'];
+const PATATE_ANCRES = [{ x: 0, y: 12 }, { x: 0.05, y: 30.95 }, { x: -0.05, y: -26.95 }];
+
+class Patate extends Jeu {
+  constructor(socle) {
+    super(socle);
+    this.gameTime = 320;
+  }
+
+  init() {
+    this.gameTime = 320 - this.dif * 2;
+    super.init();
+    this.margeHaut = 108;
+    this.nbPieces = 3;
+    this.nbTypes = 4;
+    this.decals = [-12, -31, 26];
+    this.poses = [null, null, null];   // elementList
+    this.drag = null;
+    this.desc = [];
+    for (let i = 0; i < this.nbPieces; i++) this.desc.push(this.socle.hasard(this.nbTypes));
+
+    this.corps = this.nouveauSprite('sym235');
+    this.corps.x = LARGEUR * 0.25;
+    this.corps.y = this.margeHaut * 0.5;
+    this.corps.init();
+
+    this.modele = this.nouveauSprite('sym235');
+    this.modele.x = LARGEUR * 0.75;
+    this.modele.y = this.margeHaut * 0.5;
+    this.modele.init();
+    for (let e = 0; e < this.nbPieces; e++) {
+      const piece = this.nouvellePiece(e, this.desc[e]);
+      this.poserPiece(piece, this.modele.x, this.modele.y);
+    }
+
+    // La réserve : la grille 3×4, remplie de pièces TIRÉES AU SORT — les
+    // positions restent, les contenus se mélangent (attachElements).
+    const mx = 50;
+    const my = 18;
+    const ex = (LARGEUR - 2 * mx) / (this.nbPieces - 1);
+    const ey = (HAUTEUR - (this.margeHaut + 2 * my)) / (this.nbTypes - 1);
+    const libres = [];
+    for (let x = 0; x < this.nbPieces; x++) {
+      for (let y = 0; y < this.nbTypes; y++) {
+        libres.push({ x: mx + ex * x, y: my + this.margeHaut + ey * y });
+      }
+    }
+    this.pieces = [];
+    for (let e = 0; e < this.nbPieces; e++) {
+      for (let t = 0; t < this.nbTypes; t++) {
+        const idx = this.socle.hasard(libres.length);
+        const place = libres[idx];
+        libres.splice(idx, 1);
+        const piece = this.nouvellePiece(e, t);
+        piece.tx = place.x;
+        piece.ty = place.y + this.decals[e];
+        this.poserPiece(piece, piece.tx, piece.ty);   // le clip se place à l'attache
+        this.armerPiece(piece);
+        this.pieces.push(piece);
+      }
+    }
+  }
+
+  /** Une pièce : la punaise (image de sym40) et son motif (l'enfant, à l'ancre). */
+  nouvellePiece(e, t) {
+    const socle = this.attacher('sym40', PROF.SPRITE);
+    socle.allerA(e + 1);
+    const motif = this.attacher(PATATE_TYPES[e], PROF.SPRITE);
+    motif.allerA(t + 1);
+    const piece = { e, t, socle, motif, x: 0, y: 0, tx: null, ty: null, prenable: false, x0: 0, y0: 0 };
+    this.poserPiece(piece, 0, 0);
+    return piece;
+  }
+
+  poserPiece(piece, x, y) {
+    piece.x = x;
+    piece.y = y;
+    piece.socle.x = x;
+    piece.socle.y = y;
+    piece.motif.x = x + PATATE_ANCRES[piece.e].x;
+    piece.motif.y = y + PATATE_ANCRES[piece.e].y;
+  }
+
+  /** Patate.initElement : la pièce (re)devient prenable depuis SA place. */
+  armerPiece(piece) {
+    piece.prenable = true;
+    piece.x0 = piece.x;
+    piece.y0 = piece.y;
+  }
+
+  update() {
+    if (this.etape === 1) {
+      // Tout ce qui a une cible glisse vers elle, à mi-chemin par image.
+      for (const p of this.pieces) {
+        if (p.tx === null) continue;
+        this.poserPiece(p,
+          p.x + (p.tx - p.x) * 0.5 * Temps.tmod,
+          p.y + (p.ty - p.y) * 0.5 * Temps.tmod);
+      }
+      if (this.drag) {
+        this.drag.tx = this.sourisX;
+        this.drag.ty = this.sourisY + this.decals[this.drag.e];
+      }
+    }
+    super.update();
+  }
+
+  click() {
+    if (this.etape !== 1 || this.drag) return;
+    // La pièce prenable la plus HAUTE sous le doigt (la dernière dessinée).
+    for (let i = this.pieces.length - 1; i >= 0; i--) {
+      const p = this.pieces[i];
+      if (!p.prenable) continue;
+      if (!p.motif.contient(this.sourisX, this.sourisY)) continue;
+      if (p.posee) { this.reprendre(p); return; }
+      this.drag = p;
+      this.scene.devant(p.socle);
+      this.scene.devant(p.motif);
+      return;
+    }
+  }
+
+  relache() {
+    if (!this.drag) return;
+    const p = this.drag;
+    this.drag = null;
+    // Patate.drop : à moins de soixante unités du légume, la pièce se pose.
+    if (Math.hypot(this.corps.x - p.x, this.corps.y - p.y) < 60) {
+      if (this.poses[p.e]) this.reprendre(this.poses[p.e].piece);
+      p.tx = this.corps.x;
+      p.ty = this.corps.y;
+      p.prenable = true;               // re-cliquable : c'est le retour
+      p.posee = true;
+      this.poses[p.e] = { t: p.t, piece: p };
+      this.verifier();
+    } else {
+      p.tx = p.x0;
+      p.ty = p.y0;
+    }
+  }
+
+  /**
+   * Le onPress de remplacement de la source : la pièce repart vers sa place —
+   * puis initElement recapture sa position COURANTE (encore sur le légume)
+   * comme nouvelle place. Une pièce reprise a donc « déménagé » : c'est la
+   * bizarrerie de la source, gardée telle quelle.
+   */
+  reprendre(piece) {
+    piece.posee = false;
+    piece.tx = piece.x0;
+    piece.ty = piece.y0;
+    if (this.poses[piece.e] && this.poses[piece.e].piece === piece) this.poses[piece.e] = null;
+    piece.x0 = piece.x;
+    piece.y0 = piece.y;
+    piece.prenable = true;
+  }
+
+  verifier() {
+    for (let i = 0; i < this.nbPieces; i++) {
+      const info = this.poses[i];
+      if (!info || info.t !== this.desc[i]) return;
+    }
+    this.gagne(true);
+  }
+}
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui de Base.genGameList(), qui donnait à chaque épreuve une
@@ -1686,10 +2204,13 @@ const JEUX = [
   { cle: 'gameGather', nom: 'bourrasque', Classe: Gather },
   { cle: 'gameTubulo', nom: 'pistons', Classe: Tubulo },
   { cle: 'gameTrampoline', nom: 'trampoline', Classe: Trampoline },
+  { cle: 'gameOrbital', nom: 'orbite', Classe: Orbital },
+  { cle: 'gameJumpFish', nom: 'photo', Classe: JumpFish },
+  { cle: 'gamePatate', nom: 'légume', Classe: Patate },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
-  Gather, Tubulo, Trampoline };
+  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

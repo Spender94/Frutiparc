@@ -839,6 +839,157 @@ test('TRAMPOLINE : sortir de la toile, c\'est la chute et la surprise', () => {
   assert.ok(j.homme.y <= j.hautSol - j.rayonHomme + 0.001, 'posé au sol');
 });
 
+test('ORBITAL : recharge, tir — et la rotation du missile porte la coquille de la source', () => {
+  const b = banc(J.Orbital, { dif: 0 });
+  const j = b.jeu;
+  // Orbital.init : vitesse 4 + dif·0.1, orbite 108, planète 50, 6 lanceurs.
+  assert.equal(j.vitesse, 4);
+  assert.equal(j.rayonOrbite, 108);
+  assert.equal(j.lanceurs.length, 6);
+  for (let i = 0; i < 6; i++) {
+    for (let n = i + 1; n < 6; n++) {
+      assert.ok(Math.abs(j.lanceurs[i].a - j.lanceurs[n].a) >= 0.2, 'angles espacés de 0,2 radian');
+    }
+    assert.ok(Math.abs(j.lanceurs[i].mc.rot - j.lanceurs[i].a / 0.0174) < 1e-9);
+  }
+  // La cadence des recharges : i·4 au chrono, puis l'animation 2 → 11.
+  assert.equal(j.lanceurs[0].t, 0);
+  assert.equal(j.lanceurs[5].t, 20);
+  b.avancer(2);
+  assert.equal(j.lanceurs[0].t, null, 'le premier est armé');
+  assert.ok(j.lanceurs[0].anim, 'sa recharge joue');
+  b.avancer(10);
+  assert.equal(j.lanceurs[0].mc.image, 11, 'missile plein, tenu par le stop');
+
+  // Le tir : l'appui sur le lanceur plein.
+  const info = j.lanceurs[0];
+  const bte = MESURES.sym141.boite;
+  const milieu = { x: (bte.x0 + bte.x1) / 2, y: (bte.y0 + bte.y1) / 2 };
+  b.souris(info.mc.x + Math.cos(info.a) * milieu.x - Math.sin(info.a) * milieu.y,
+    info.mc.y + Math.sin(info.a) * milieu.x + Math.cos(info.a) * milieu.y);
+  b.socle.click();
+  b.socle.relache();
+  assert.equal(j.missiles.length, 1, 'le missile part');
+  assert.equal(info.t, 80, 'le lanceur recharge quatre-vingts unités');
+  assert.equal(info.mc.image, 1, 'socle vide');
+  const m = j.missiles[0];
+  assert.ok(Math.abs(m.vitx - Math.cos(info.a) * 6) < 1e-9, 'six unités par image, tout droit');
+  // La coquille de la source : `_rotation = a/0.01714` — PAS 0.0174.
+  assert.ok(Math.abs(m.peau.rot - info.a / 0.01714) < 1e-9, 'la rotation du missile, coquille comprise');
+
+  // Le contact : à dix unités, le poussin éclate en douze plumes étirées.
+  m.x = j.cible.x;
+  m.y = j.cible.y;
+  const avant = j.sprites.length;
+  b.avancer(1);
+  assert.equal(j.gagnant, true);
+  assert.equal(j.cible.peau.vivant, false, 'le poussin n\'est plus');
+  const plumes = j.sprites.filter((s) => s.peau.cle === 'sym135');
+  assert.equal(plumes.length, 12);
+  for (const p of plumes) {
+    assert.ok(p.peau.sx >= 0.5 && p.peau.sx <= 1.5, 'étirée en largeur (50-150)');
+    assert.equal(p.peau.sy, 1, 'jamais en hauteur : la coquille des plumes');
+  }
+});
+
+test('JUMPFISH : le saut, la ligne d\'eau, le cliché — gagné si le poisson est dans le cadre', () => {
+  const b = banc(J.JumpFish, { dif: 0 });
+  const j = b.jeu;
+  assert.equal(j.taille, 100);
+  assert.equal(j.ombre.peau.alpha, 0, 'l\'ombre naît invisible');
+  b.avancer(20);
+  assert.ok(j.ombre.peau.alpha > 0, 'et s\'affirme');
+  assert.equal(j.etape, 1, 'pas encore de saut');
+
+  // Sous cent unités au chrono, le saut est certain.
+  b.socle.timer = 99;
+  b.avancer(1);
+  assert.equal(j.etape, 2, 'le poisson est en l\'air');
+  assert.ok(j.poisson, 'il existe');
+  assert.ok(j.poisson.vity < 0, 'il monte');
+  assert.equal(j.poisson.peau.joue, true, 'et nage en volant');
+  // Sa ligne d'eau : le carré rouge en masque, du haut du cadre à son départ.
+  assert.deepEqual(j.poisson.peau.masque,
+    { cle: 'sym163', x: 120, y: j.yEau * 0.5, sx: 2.4, sy: j.yEau / 100 });
+  // Le miroir : vers la gauche, il se retourne.
+  if (j.poisson.vitx < 0) assert.equal(j.poisson.peau.sy, -1);
+
+  // Le cadre sur le poisson, et l'appui : flash, découpe, figé.
+  b.souris(j.poisson.x, j.poisson.y);
+  j.cadre.x = j.poisson.x;
+  j.cadre.y = j.poisson.y;
+  b.socle.click();
+  b.avancer(1);
+  b.socle.relache();
+  assert.equal(j.etape, 3);
+  assert.ok(j.distance < 30, 'le poisson est dans le cadre');
+  assert.equal(j.cadre.peau.image, 2, 'le cliché est pris');
+  assert.equal(j.fond.masque.cle, 'sym163', 'le monde se découpe au format photo');
+  assert.equal(j.fond.masque.rot, j.cadre.peau.rot, 'incliné comme le cadre');
+  const fige = j.scene.mcs.find((m) => m.cle === 'sym180' && m.vivant && m.masque);
+  assert.ok(fige, 'le poisson figé est dans le cliché');
+  assert.equal(j.blancEcran, 1, 'le flash part du blanc pur');
+  b.avancer(30);
+  assert.ok(j.blancEcran < 0.5 && j.blancEcran > 0, 'et se dissipe');
+  b.avancer(30);
+  assert.equal(j.gagnant, true, 'photo réussie');
+});
+
+test('JUMPFISH : le poisson manqué replonge — plouf partagé avec la fumée du Lander', () => {
+  const b = banc(J.JumpFish, { dif: 0 });
+  const j = b.jeu;
+  b.socle.timer = 99;
+  b.avancer(1);
+  const y0 = j.yEau;
+  let garde = 0;
+  while (j.poisson.vivant !== false && garde++ < 400) b.avancer(1);
+  assert.ok(j.poisson.vivant === false, 'replongé sans cliché');
+  assert.ok(j.poisson.y > y0, 'sous sa ligne d\'eau');
+  const plouf = j.sprites.find((s) => s.peau.cle === 'sym16');
+  assert.ok(plouf, 'le plouf est là');
+  assert.equal(plouf.peau.finit, true, 'et se retirera à sa dernière image');
+  b.avancer(20);
+  assert.ok(!j.sprites.some((s) => s.peau.cle === 'sym16' && s.peau.vivant), 'retiré');
+});
+
+test('PATATE : copier le modèle gagne, et reposer une pièce chasse l\'ancienne', () => {
+  const b = banc(J.Patate, { dif: 0 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 320);
+  assert.equal(j.desc.length, 3);
+  assert.equal(j.pieces.length, 12, 'la réserve : trois emplacements × quatre variantes');
+  assert.equal(j.corps.x, 60);
+  assert.equal(j.modele.x, 180);
+
+  // On joue comme un joueur : viser une pièce en prend parfois UNE AUTRE (les
+  // motifs se chevauchent, le dernier dessiné reçoit l'appui — comme dans le
+  // lecteur). Ce qu'on attrape, on le pose ; la réserve se dégage et la pièce
+  // voulue finit par être dessus. Reposer sur un emplacement occupé CHASSE
+  // l'occupante.
+  const ancre = (p) => [{ x: 0, y: 12 }, { x: 0.05, y: 30.95 }, { x: -0.05, y: -26.95 }][p.e];
+  let chassees = 0;
+  for (let tours = 0; tours < 40 && j.gagnant === null; tours++) {
+    const e = [0, 1, 2].find((k) => !j.poses[k] || j.poses[k].t !== j.desc[k]);
+    const cible = j.pieces.find((p) => p.e === e && p.t === j.desc[e] && !p.posee);
+    b.souris(cible.x + ancre(cible).x, cible.y + ancre(cible).y);
+    b.socle.click();
+    const prise = j.drag;
+    assert.ok(prise, 'une pièce est en main');
+    const avant = j.poses[prise.e] ? j.poses[prise.e].piece : null;
+    b.souris(j.corps.x, j.corps.y);
+    b.avancer(14);                     // elle court après le doigt
+    b.socle.relache();
+    assert.equal(j.poses[prise.e].piece, prise, 'posée sur son emplacement');
+    if (avant) {
+      chassees++;
+      assert.equal(avant.posee, false, 'l\'ancienne est chassée');
+    }
+    b.avancer(4);
+  }
+  assert.equal(j.gagnant, true, 'le légume est conforme');
+  assert.ok(chassees >= 0, 'comptage des remplacements');
+});
+
 test('la difficulté durcit bien chaque épreuve', () => {
   const facile = banc(J.Basket, { dif: 0 }).jeu;
   const dur = banc(J.Basket, { dif: 100 }).jeu;
@@ -882,6 +1033,19 @@ test('la difficulté durcit bien chaque épreuve', () => {
   const t0 = banc(J.Trampoline, { dif: 0 }).jeu;
   const t1 = banc(J.Trampoline, { dif: 100 }).jeu;
   assert.ok(t1.hautMur < t0.hautMur, 'le mur monte (jusqu\'au-dessus du cadre)');
+
+  const o0 = banc(J.Orbital, { dif: 0 }).jeu;
+  const o1 = banc(J.Orbital, { dif: 100 }).jeu;
+  assert.ok(o1.vitesse > o0.vitesse && o1.lanceurs.length === 1 && o0.lanceurs.length === 6,
+    'l\'orbite accélère, les lanceurs se raréfient');
+
+  const j0 = banc(J.JumpFish, { dif: 0 }).jeu;
+  const j1 = banc(J.JumpFish, { dif: 100 }).jeu;
+  assert.ok(j1.taille < j0.taille, 'le cadre rétrécit');
+
+  const q0 = banc(J.Patate, { dif: 0 }).jeu;
+  const q1 = banc(J.Patate, { dif: 100 }).jeu;
+  assert.ok(q1.gameTime < q0.gameTime, 'le temps se resserre');
 });
 
 // ── LE MODE FEVER — celui que le SWF d'origine joue ──

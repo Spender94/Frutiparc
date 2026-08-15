@@ -118,6 +118,31 @@ const SCENES = {
     { cle: 'sym157', x: 120, y: 150, s: 0.48, image: 2 },  // le bonhomme
     { cle: 'sym150', x: 120, y: 200 },              // le trampoline
   ],
+  gameOrbital: [
+    { cle: 'sym145', x: 120, y: 120 },              // la planète, rayon 50
+    { cle: 'sym141', x: 120, y: 120, rot: 40, image: 11 },  // un lanceur plein…
+    { cle: 'sym141', x: 120, y: 120, rot: 175, image: 4 },  // …un qui recharge
+    { cle: 'sym137', x: 176, y: 60, rot: -46 },     // un missile en route
+    { cle: 'sym143', x: 188, y: 36, rot: -25 },     // le poussin en orbite
+  ],
+  gameJumpFish: [
+    { cle: 'sym182', x: 0, y: 0 },                  // l'eau
+    { cle: 'sym173', x: 156, y: 222, s: 1.1, image: 4 },   // l'ombre qui tourne
+    { cle: 'sym180', x: 120, y: 92, rot: -35 },     // le poisson en plein saut
+    { cle: 'sym166', x: 104, y: 108, rot: 6 },      // le cadre à ses trousses
+  ],
+  gamePatate: [
+    { cle: 'sym235', x: 60, y: 54 },                // votre légume, nu
+    { cle: 'sym235', x: 180, y: 54 },               // le modèle, habillé :
+    { cle: 'sym40', x: 180, y: 54, image: 1 },
+    { cle: 'sym26', x: 180, y: 66, image: 1 },      // yeux (ancre 0,12)
+    { cle: 'sym40', x: 180, y: 54, image: 2 },
+    { cle: 'sym32', x: 180.05, y: 84.95, image: 2 },  // bouche (0.05,30.95)
+    { cle: 'sym40', x: 180, y: 54, image: 3 },
+    { cle: 'sym39', x: 179.95, y: 27.05, image: 3 },  // feuillage (-0.05,-26.95)
+    { cle: 'sym40', x: 60, y: 190, image: 1 },      // une pièce dans la réserve
+    { cle: 'sym26', x: 60, y: 202, image: 3 },
+  ],
 };
 
 /** Recoud une image d'un symbole : ses pièces, chacune sous sa matrice. */

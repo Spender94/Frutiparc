@@ -296,8 +296,11 @@ class Client {
         let decoupe = mc.masque ? cheminMasque(typeof mc.masque === 'string' ? mc.masque : mc.masque.cle) : null;
         if (decoupe && typeof mc.masque === 'object') {
           const m = mc.masque;
+          let M = new DOMMatrix().translate(m.x || 0, m.y || 0);
+          if (m.rot) M = M.rotate(m.rot);
+          M = M.scale(m.sx === undefined ? 1 : m.sx, m.sy === undefined ? 1 : m.sy);
           const place = new Path2D();
-          place.addPath(decoupe, new DOMMatrix([m.sx || 1, 0, 0, m.sy || 1, m.x || 0, m.y || 0]));
+          place.addPath(decoupe, M);
           decoupe = place;
         }
         if (decoupe) {
@@ -308,6 +311,15 @@ class Client {
         } else {
           this.poserMc(ctx, mc);
         }
+      }
+      // Le VOILE BLANC d'un jeu (Mc.setPColor(this, 0xFFFFFF, p) — le flash de
+      // l'appareil photo) : chaque pixel = dessin×p + blanc×(1-p). Il couvre
+      // la scène du jeu, pas la barre de temps, accrochée au-dessus.
+      if (jeu.blancEcran > 0) {
+        ctx.globalAlpha = Math.min(1, jeu.blancEcran);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, LARGEUR, HAUTEUR);
+        ctx.globalAlpha = 1;
       }
       ctx.restore();
 

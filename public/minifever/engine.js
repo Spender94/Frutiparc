@@ -98,6 +98,7 @@ class Mc {
     this.alpha = 1;
     this.visible = true;
     this.vivant = true;
+    this.finit = false;         // un clip qui se RETIRE à sa dernière image
   }
   arreter() { this.joue = false; }
   jouer() { this.joue = true; }
@@ -112,6 +113,7 @@ class Mc {
   }
   avancer() {
     if (!this.joue) return;
+    if (this.image >= this.nbImages && this.finit) { this.enlever(); return; }
     this.image++;
     if (this.image > this.nbImages) this.image = 1;
   }
@@ -249,6 +251,9 @@ class Part extends Phys {
     this.peau.sy = this.echelle / 100;
   }
   update() {
+    // Un clip qui s'est retiré (pellicule `finit`) emporte sa particule —
+    // le plouf de la photo, la fumée : ils se suppriment eux-mêmes en AS2.
+    if (this.peau && this.peau.vivant === false) { this.tuer(); return; }
     super.update();
     if (this.minuteur === null || this.minuteur === undefined) return;
     this.minuteur -= Temps.tmod;

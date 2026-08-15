@@ -210,6 +210,14 @@ function principal() {
   const SUPPLEMENTS = [
     { cle: 'sym209', id: 209 },
     { cle: 'sym210', id: 210, sansEnfantsNommes: true, masquesEnPieces: true },
+    // La pièce détachée de Patate (mcPatateElement, sym40) : chaque image
+    // porte un enfant nommé — les yeux, le nez, la bouche, quatre à cinq
+    // variantes chacun — que le jeu feuillette (skin.e.gotoAndStop). L'enfant
+    // sort par emplacement, et le clip parent SANS lui garde la punaise.
+    { cle: 'sym26', id: 26 },
+    { cle: 'sym32', id: 32 },
+    { cle: 'sym39', id: 39 },
+    { cle: 'sym40', id: 40, sansEnfantsNommes: true },
   ];
   for (const s of SUPPLEMENTS) {
     const etats = etatsDe(s.id, s);
