@@ -67,6 +67,28 @@ const SCENES = {
     { cle: 'sym318', x: 96, y: 186, s: 0.5 },
     { cle: 'sym316', x: 150, y: 150, rot: -35 },    // et le vaisseau
   ],
+  gameParachute: [
+    { cle: 'sym384', x: 170, y: 225, s: 0.8 },      // la feuille, rayon 40
+    { cle: 'sym382', x: 120, y: 100 },              // le moulin
+    { cle: 'sym404', x: 120, y: 120, s: 0.5 },      // la fourmi, rayon 25
+  ],
+  gameGobelet: [                                    // le choix : un gobelet levé
+    { cle: 'sym450', x: 39, y: 210, s: 0.3 },       // les ombres au sol
+    { cle: 'sym450', x: 93, y: 210, s: 0.3 },
+    { cle: 'sym450', x: 147, y: 210, s: 0.3 },
+    { cle: 'sym450', x: 201, y: 210, s: 0.3 },
+    { cle: 'sym452', x: 39, y: 210, s: 0.3 },       // trois gobelets posés
+    { cle: 'sym452', x: 93, y: 210, s: 0.3 },
+    { cle: 'sym452', x: 201, y: 210, s: 0.3 },
+    { cle: 'sym448', x: 147, y: 210, s: 0.3 },      // la bille, sous le quatrième
+    { cle: 'sym452', x: 147, y: 140, s: 0.3 },
+  ],
+  gameMarmite: [
+    { cle: 'sym200', x: 69, y: 52, image: 1 },      // la ronde passe en haut
+    { cle: 'sym200', x: 120, y: 60, image: 2 },
+    { cle: 'sym200', x: 174, y: 50, image: 3 },
+    { cle: 'sym187', x: 120, y: 240 },              // le livre attend en bas
+  ],
 };
 
 /** Recoud une image d'un symbole : ses pièces, chacune sous sa matrice. */

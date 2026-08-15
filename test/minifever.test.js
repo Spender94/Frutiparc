@@ -1,10 +1,13 @@
 /*
  * Mini-Fever — le portage du socle et des épreuves.
  *
- * Le jeu n'est jamais sorti et son SWF ne tourne plus : les SOURCES sont la
- * seule référence. Ces épreuves-là vérifient donc une chose et une seule — que
- * les formules portées sont bien celles de Games/miniFever/src, à la ligne
- * près. Chaque assertion cite la sienne.
+ * Le jeu n'est jamais sorti. Il en reste les SOURCES (Games/miniFever/src) et
+ * un SWF de développement qui, lui, se lance sous Ruffle — c'est l'arbitre
+ * quand les deux divergent, car les sources ont continué de vivre après ce
+ * build (Marmite.mt a des bulles que le bytecode n'a pas). Ces épreuves-ci
+ * vérifient donc une chose et une seule : que les formules portées sont bien
+ * celles des sources QUE LE SWF A COMPILÉES, à la ligne près. Chaque assertion
+ * cite la sienne.
  *
  * On joue les mini-jeux pour de bon, avec un tirage figé : c'est le seul moyen
  * de savoir qu'une épreuve se gagne et se perd comme il faut.
@@ -477,6 +480,206 @@ test('ASTERO : ce qui sort d\'un bord rentre par l\'autre', () => {
   assert.ok(v.y < 0, `y=${v.y} : revenu par le haut`);
 });
 
+test('PARACHUTE : la fourmi posée sur la feuille gagne, et sa pellicule joue $landing', () => {
+  const b = banc(J.Parachute, { dif: 0 });
+  const j = b.jeu;
+  // Parachute.init : rayon 40 - dif·0.1, vitesse 0.5 + dif·0.06, sol à mch-15.
+  assert.equal(j.rayonFeuille, 40);
+  assert.equal(j.vitesseFeuille, 0.5);
+  assert.equal(j.solFeuille, HAUTEUR - 15);
+  assert.equal(j.rayonPara, 25);
+  // attachElements : moulin en (120, 100), fourmi en (120, 120), pellicule
+  // ARRÊTÉE sur l'image 1 (skin.stop()).
+  assert.equal(j.moulin.x, 120); assert.equal(j.moulin.y, 100);
+  assert.equal(j.para.x, 120); assert.equal(j.para.y, 120);
+  assert.equal(j.para.peau.image, 1);
+  assert.equal(j.anim, null, 'en vol, pas d\'animation');
+
+  // On fige la feuille sous la fourmi et on laisse la gravité (0.75 par image)
+  // faire le reste. Personne n'appuie : le moulin ne souffle pas.
+  j.sensFeuille = 0;
+  j.para.x = j.feuille.x;
+  b.avancer(200);
+  assert.equal(j.etape, 2, 'posée');
+  assert.equal(j.gagnant, true);
+  assert.equal(j.decalPose, 0, 'pile au centre de la feuille');
+  // landing(true) : gotoAndPlay("$landing") — l'étiquette est sur l'image 7,
+  // le stop() sur la 19.
+  assert.ok(j.para.peau.image >= 7 && j.para.peau.image <= 19,
+    `pellicule à ${j.para.peau.image}, dans le segment $landing`);
+  b.avancer(20);
+  assert.equal(j.para.peau.image, 19, 'et s\'y arrête');
+  // En étape 2, la fourmi suit la feuille (para.x = leaf._x + paraDecal).
+  assert.equal(j.para.x, j.feuille.x + j.decalPose);
+});
+
+test('PARACHUTE : à côté de la feuille, dix pixels plus bas, c\'est le plouf', () => {
+  const b = banc(J.Parachute, { dif: 0 });
+  const j = b.jeu;
+  j.sensFeuille = 0;
+  // À plus d'un rayon de feuille (quarante) du centre, sans sortir des murs.
+  j.para.x = j.feuille.x > 120 ? j.feuille.x - 50 : j.feuille.x + 50;
+  b.avancer(220);
+  assert.equal(j.etape, 2);
+  assert.equal(j.gagnant, false, 'raté');
+  assert.ok(j.para.peau.image >= 21, `pellicule à ${j.para.peau.image} : $ploufing (21-28)`);
+  b.avancer(20);
+  assert.equal(j.para.peau.image, 28, 'le stop de fin de pellicule');
+});
+
+test('PARACHUTE : l\'appui lance les pales, et le souffle pousse la fourmi', () => {
+  const b = banc(J.Parachute, { dif: 0 });
+  const j = b.jeu;
+  b.souris(120, 100);                       // le moulin reste sous la fourmi
+  b.socle.click();                          // les pales accélèrent (+1 par image)
+  b.avancer(4);
+  assert.ok(j.vitRotation > 0, 'les pales tournent');
+  // La fourmi est à moins de soixante pixels : vitx bouge (pow·0.02, par image).
+  assert.notEqual(j.para.vitx, 0, 'le souffle la pousse');
+  const v = j.vitRotation;
+  b.socle.relache();
+  b.avancer(10);
+  assert.ok(j.vitRotation < v, 'sans appui, les pales s\'essoufflent (×0.95^tmod)');
+});
+
+test('GOBELET : la bille suit les échanges — le gobelet gagnant reste le sien', () => {
+  const b = banc(J.Gobelet, { dif: 30 });
+  const j = b.jeu;
+  // Gobelet.init : 4 + round(dif/50) gobelets de taille 30, espacés de
+  // (240 - n·30)/(n+1), le premier centré à ec + 15.
+  assert.equal(j.gobelets.length, 4 + Math.round(30 / 50));
+  const n = j.gobelets.length;
+  const ec = (LARGEUR - n * 30) / (n + 1);
+  assert.equal(j.gobelets[0].x, ec + 15);
+  assert.equal(j.gobelets[1].x - j.gobelets[0].x, ec + 30);
+  assert.equal(j.vitesse, 0.2 + 30 * 0.003);
+  // La bille attend sous le gobelet tiré au sort.
+  assert.equal(j.bille.x, j.gobelets[j.pos].x);
+
+  // Le gobelet initialement au-dessus de la bille : après TOUS les échanges
+  // d'objets (launchSwap échange gob0.mc et gob1.mc et déplace pos avec), c'est
+  // encore lui que `pos` désigne.
+  const gagnant = j.gobelets[j.pos].mc;
+  b.avancer(22);                            // le minuteur de 20 s'épuise
+  assert.equal(j.etape, 2, 'les gobelets descendent');
+  let garde = 0;
+  while (j.etape !== 4 && garde++ < 3000) b.avancer(1);
+  assert.equal(j.etape, 4, 'les échanges sont finis');
+  assert.equal(j.gobelets[j.pos].mc, gagnant, 'pos a suivi la bille');
+
+  // Cliquer le bon : la bille reparaît dessous, et l'épreuve est gagnée.
+  const mc = j.gobelets[j.pos].mc;
+  b.souris(mc.x, mc.y);
+  b.socle.click();
+  assert.equal(j.gagnant, true);
+  assert.equal(j.bille.x, mc.x);
+  b.socle.relache();
+  b.avancer(5);
+  assert.ok(mc.y < HAUTEUR - 30, 'le gobelet choisi se lève');
+});
+
+test('GOBELET : l\'arc d\'un échange suit la formule de la source, et l\'erreur montre la soluce', () => {
+  const b = banc(J.Gobelet, { dif: 0 });
+  const j = b.jeu;
+  b.avancer(21);
+  let garde = 0;
+  while (j.etape !== 3 && garde++ < 2000) b.avancer(1);
+  assert.equal(j.etape, 3, 'un échange est en cours');
+  // Une image d'échange : decal = vitesse·tmod, et chaque gobelet de la paire
+  // est sur son arc — x = px + cos(decal)·d·sens, y = base + sin(decal·sens)·
+  // (4 + |d|·0.25).
+  b.avancer(1);
+  const base = HAUTEUR - 30;
+  const p = j.paires[0];
+  for (let g = 0; g < 2; g++) {
+    const mc = j.gobelets[p.list[g]].mc;
+    const sens = g * 2 - 1;
+    assert.ok(Math.abs(mc.x - (p.x + Math.cos(j.decal) * p.d * sens)) < 1e-9);
+    assert.ok(Math.abs(mc.y - (base + Math.sin(j.decal * sens) * (4 + Math.abs(p.d) * 0.25))) < 1e-9);
+  }
+
+  // Choisir un mauvais gobelet : perdu — puis, pendant le fondu, le jeu lève
+  // le bon (update, case 4 : endTimer < 16 déclenche select(pos)).
+  garde = 0;
+  while (j.etape !== 4 && garde++ < 3000) b.avancer(1);
+  const faux = (j.pos + 1) % j.gobelets.length;
+  const mc = j.gobelets[faux].mc;
+  b.souris(mc.x, mc.y);
+  b.socle.click();
+  assert.equal(j.gagnant, false);
+  b.socle.relache();
+  b.avancer(6);
+  assert.equal(j.flSoluce, true, 'la solution s\'est montrée');
+  assert.equal(j.leves.length, 2, 'deux gobelets levés : le faux, puis le bon');
+});
+
+test('MARMITE : la recette s\'affiche sur la page du livre, et la suivre gagne', () => {
+  const b = banc(J.Marmite, { dif: 0 });
+  const j = b.jeu;
+  // Marmite.init : 460 au chrono, ronde de neuf, recette de 1 + dif·0.08.
+  assert.equal(j.gameTime, 460);
+  assert.equal(j.ronde.length, 9);
+  assert.equal(j.recette.length, 1);
+  // attachElements : les copies de la recette sur la page — échelle 50,
+  // alpha 75, la grille 16 + (i%4)·24 / 30 + ⌊i/4⌋·24 portée par la matrice
+  // de la page (15°, calée en -90.3, -93.9).
+  assert.equal(j.pageIcones.length, 1);
+  const ic = j.pageIcones[0];
+  assert.equal(ic.image, j.recette[0] + 1);
+  assert.equal(ic.sx, 0.5);
+  assert.equal(ic.alpha, 0.75);
+  assert.equal(ic.rot, 15);
+  assert.equal(ic.prof, E.PROF.SPRITE, 'au-dessus du livre, pas derrière');
+  const P = { a: 0.9659271240234375, b: 0.258819580078125 };
+  assert.ok(Math.abs(ic.x - (j.livre.x + P.a * 16 - P.b * 30 - 90.3)) < 1e-9);
+  assert.ok(Math.abs(ic.y - (j.livre.y + P.b * 16 + P.a * 30 - 93.9)) < 1e-9);
+
+  // La souris en bas : la ronde remonte (centre à -100) et le livre s'installe
+  // à 240 ; en haut : la ronde descend et le livre plonge à 340.
+  b.souris(120, 200);
+  b.avancer(30);
+  assert.equal(j.centre.y, -100);
+  assert.ok(Math.abs(j.livre.y - HAUTEUR) < 1, 'le livre est là');
+  assert.ok(Math.abs((j.pageIcones[0].y - j.livre.y) - (P.b * 16 + P.a * 30 - 93.9)) < 1e-9,
+    'la page suit le livre');
+  b.souris(120, 0);
+  b.avancer(60);
+  assert.ok(j.livre.y > HAUTEUR + 90, 'le livre est rangé');
+
+  // La ronde immobile (souris au centre) : l'ingrédient le plus bas est sous
+  // l'axe, on le lâche. On arrange la recette pour qu'il soit LE BON.
+  b.avancer(120);
+  const bas = j.plusBas();
+  assert.ok(bas, 'un ingrédient est à portée');
+  j.recette = [bas.peau.image - 1];
+  const decalAvant = j.decal;
+  b.socle.click();
+  assert.equal(j.tombants.length, 1, 'il tombe');
+  assert.equal(bas.peau.masque, 'sym202', 'et s\'engloutira derrière le bord de la soupe');
+  assert.equal(j.ronde.length, 8);
+  // La ronde se resserre d'un demi-cran : ((1/8) - (1/9))·628·0.5.
+  const ec = ((1 / 8) - (1 / 9)) * 628;
+  assert.ok(Math.abs(j.decal - decalAvant - ec * 0.5) < 1e-9);
+  b.socle.relache();
+  b.avancer(200);
+  assert.equal(j.gagnant, true, 'la recette est bouclée');
+});
+
+test('MARMITE : l\'ingrédient hors recette perd, jugé à 190 en tombant', () => {
+  const b = banc(J.Marmite, { dif: 0 });
+  const j = b.jeu;
+  b.souris(120, 0);
+  b.avancer(150);
+  const bas = j.plusBas();
+  assert.ok(bas);
+  // La recette réclame AUTRE CHOSE que ce qui va tomber.
+  j.recette = [(bas.peau.image % 9)];
+  b.socle.click();
+  b.avancer(200);
+  assert.equal(j.gagnant, false, 'la soupe est gâchée');
+  assert.equal(j.tombants.length, 0, 'l\'ingrédient jugé a disparu');
+});
+
 test('la difficulté durcit bien chaque épreuve', () => {
   const facile = banc(J.Basket, { dif: 0 }).jeu;
   const dur = banc(J.Basket, { dif: 100 }).jeu;
@@ -497,6 +700,20 @@ test('la difficulté durcit bien chaque épreuve', () => {
   const a0 = banc(J.Astero, { dif: 0 }).jeu;
   const a1 = banc(J.Astero, { dif: 100 }).jeu;
   assert.ok(a1.rochers.length > a0.rochers.length, 'le champ se remplit');
+
+  const c0 = banc(J.Parachute, { dif: 0 }).jeu;
+  const c1 = banc(J.Parachute, { dif: 100 }).jeu;
+  assert.ok(c1.rayonFeuille < c0.rayonFeuille && c1.vitesseFeuille > c0.vitesseFeuille,
+    'la feuille rétrécit et accélère');
+
+  const g0 = banc(J.Gobelet, { dif: 0 }).jeu;
+  const g1 = banc(J.Gobelet, { dif: 100 }).jeu;
+  assert.ok(g1.gobelets.length > g0.gobelets.length && g1.vitesse > g0.vitesse,
+    'plus de gobelets, plus vite');
+
+  const m0 = banc(J.Marmite, { dif: 0 }).jeu;
+  const m1 = banc(J.Marmite, { dif: 100 }).jeu;
+  assert.ok(m1.recette.length > m0.recette.length, 'la recette s\'allonge');
 });
 
 // ── LE MODE FEVER — celui que le SWF d'origine joue ──

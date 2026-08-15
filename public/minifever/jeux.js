@@ -718,6 +718,501 @@ class Astero extends Jeu {
 }
 
 /*
+ * PARACHUTE — « pose la fourmi sur la feuille ».
+ *
+ * Une fourmi descend en parachute ; un moulin à vent suit la souris et souffle
+ * dessus quand il tourne — l'appui le fait tourner. Il faut la poser sur la
+ * feuille qui glisse au ras du sol. La difficulté rétrécit la feuille et
+ * l'accélère.
+ *
+ * Dessins (voisins de gameParachute #406) :
+ *   sym404  la fourmi sous son parachute, vingt-huit images. L'obfuscation n'a
+ *           pas touché les étiquettes de pellicule : « $landing » est posée sur
+ *           l'image 7 (un stop() l'arrête à la 19), « $ploufing » sur la 21
+ *           (stop à la fin). En vol, la pellicule est ARRÊTÉE sur l'image 1 —
+ *           attachElements appelle skin.stop().
+ *   sym382  le moulin, neuf images d'inclinaison (prevFrame/nextFrame)
+ *   sym384  la feuille
+ */
+const PARA_LANDING = [7, 19];
+const PARA_PLOUF = [21, 28];
+
+class Parachute extends Jeu {
+  constructor(socle) {
+    super(socle);
+    this.gameTime = 140;
+  }
+
+  init() {
+    super.init();
+    this.rayonFeuille = 40 - this.dif * 0.1;
+    this.vitesseFeuille = 0.5 + this.dif * 0.06;
+    this.sensFeuille = this.socle.hasard(2) * 2 - 1;
+    this.rayonPara = 25;
+    this.solFeuille = HAUTEUR - 15;
+    this.vitRotation = 0;
+    this.flEtaitHaut = false;
+    this.decalPose = 0;
+
+    // FEUILLE — le tirage des sources ne retranche le rayon QUE d'un côté.
+    this.feuille = this.attacher('sym384', PROF.SPRITE);
+    this.feuille.x = this.rayonFeuille + this.socle.hasard(Math.round(LARGEUR - this.rayonFeuille));
+    this.feuille.y = this.solFeuille;
+    this.feuille.sx = this.rayonFeuille * 2 / 100;
+    this.feuille.sy = this.rayonFeuille * 2 / 100;
+
+    // MOULIN
+    this.moulin = this.attacher('sym382', PROF.SPRITE);
+    this.moulin.x = LARGEUR * 0.5;
+    this.moulin.y = HAUTEUR * 0.5 - 20;
+    this.moulin.arreter();
+
+    // PARACHUTE
+    this.para = this.nouveauPhys('sym404');
+    this.para.x = LARGEUR * 0.5;
+    this.para.y = HAUTEUR * 0.5;
+    this.para.vitr = 0;
+    this.para.flPhys = false;
+    this.para.peau.arreter();
+    this.para.init();
+    this.anim = null;             // en vol, la pellicule reste sur l'image 1
+  }
+
+  update() {
+    switch (this.etape) {
+      case 1: {
+        this.bougerFeuille();
+
+        // La gravité, à la main (le phys est éteint).
+        this.para.y += 0.75 * Temps.tmod;
+
+        // Le souffle du moulin, s'il est à moins de soixante pixels.
+        const dx = this.para.x - this.moulin.x;
+        const gauche = dx > 0;
+        if (Math.abs(dx) < 60) {
+          const force = this.vitRotation * (gauche ? 1 : -1);
+          this.para.vitx += force * 0.02;
+          this.para.vitr -= force * 0.05;
+        }
+
+        // La fourmi se redresse d'elle-même.
+        this.para.vitr -= borner(-1, this.para.peau.rot * 0.05, 1) * Temps.tmod;
+        this.para.vitr *= Math.pow(0.95, Temps.tmod);
+
+        // Les murs.
+        if (this.para.x < this.rayonPara || this.para.x > LARGEUR - this.rayonPara) {
+          this.para.vitx *= -0.5;
+          this.para.x = borner(this.rayonPara, this.para.x, LARGEUR - this.rayonPara);
+        }
+
+        this.bougerMoulin();
+
+        // L'atterrissage : le point sous la fourmi, incliné avec elle.
+        const y = this.para.y + Math.cos(this.para.peau.rot * 0.0175) * this.rayonPara;
+        const haut = y < this.solFeuille;
+        if (!haut) {
+          if (this.flEtaitHaut) {
+            const d = this.para.x - this.feuille.x;
+            if (Math.abs(d) < this.rayonFeuille) {
+              this.decalPose = d;
+              this.atterrir(true);
+            }
+          }
+          if (y > this.solFeuille + 10) this.atterrir(false);
+        }
+        this.flEtaitHaut = haut;
+        break;
+      }
+      case 2:
+        this.bougerFeuille();
+        this.para.x = this.feuille.x + this.decalPose;
+        this.moulin.alpha *= 0.5;
+        break;
+      default: break;
+    }
+    // La pellicule de la fourmi : gotoAndPlay(étiquette), une image par image,
+    // jusqu'au stop() du segment.
+    if (this.anim && this.para.vivant) {
+      this.para.peau.allerA(this.anim.image);
+      if (this.anim.image < this.anim.fin) this.anim.image += 1;
+    }
+    super.update();
+  }
+
+  bougerFeuille() {
+    this.feuille.x += this.sensFeuille * this.vitesseFeuille;
+    if (this.feuille.x < this.rayonFeuille || this.feuille.x > LARGEUR - this.rayonFeuille) {
+      this.sensFeuille *= -1;
+      this.feuille.x = borner(this.rayonFeuille, this.feuille.x, LARGEUR - this.rayonFeuille);
+    }
+  }
+
+  bougerMoulin() {
+    const m = this.moulin;
+    m.x = m.x * 0.5 + this.sourisX * 0.5;
+    m.y = m.y * 0.5 + this.sourisY * 0.5;
+    // L'inclinaison : une image de pellicule par image, sans boucler.
+    const gauche = (this.para.x - m.x) > 0;
+    m.image = borner(1, m.image + (gauche ? -1 : 1), m.nbImages);
+    m.rot = (this.para.y - m.y) * 0.2 * (gauche ? 1 : -1);
+    // L'appui lance les pales ; elles s'essoufflent seules.
+    if (this.socle && this.socle.flPresse) this.vitRotation += 1 * Temps.tmod;
+    this.vitRotation *= Math.pow(0.95, Temps.tmod);
+  }
+
+  atterrir(reussi) {
+    this.etape = 2;
+    this.anim = reussi
+      ? { image: PARA_LANDING[0], fin: PARA_LANDING[1] }
+      : { image: PARA_PLOUF[0], fin: PARA_PLOUF[1] };
+    this.gagne(reussi);
+    this.para.peau.rot = 0;
+    this.para.vitx = 0;
+    this.para.vity = 0;
+    this.para.vitr = 0;
+  }
+}
+
+/*
+ * GOBELET — le bonneteau.
+ *
+ * Une bille verte se cache sous un gobelet ; les gobelets descendent, se
+ * mélangent par paires, et il faut cliquer le bon. La difficulté ajoute des
+ * gobelets (quatre à six), des échanges (quatre à quatorze) et de la vitesse.
+ * Après un mauvais choix, le jeu montre la solution.
+ *
+ * Dessins (voisins de gameGobelet #454) :
+ *   sym452  le gobelet
+ *   sym448  la bille verte
+ *   sym450  l'ombre au sol
+ */
+class Gobelet extends Jeu {
+  constructor(socle) {
+    super(socle);
+    this.gameTime = 220;
+  }
+
+  init() {
+    super.init();
+    this.minuteur = 20;
+    this.vitesse = 0.2 + this.dif * 0.003;
+    this.nbGobelets = 4 + Math.round(this.dif / 50);
+    this.taille = 30;
+    this.flSoluce = false;
+    this.pos = this.socle.hasard(this.nbGobelets);
+    this.decal = 0;
+    this.echanges = 0;
+    this.paires = [];
+    this.leves = [];
+
+    const base = HAUTEUR - 30;
+    const ec = (LARGEUR - this.nbGobelets * this.taille) / (this.nbGobelets + 1);
+    this.gobelets = [];
+    for (let i = 0; i < this.nbGobelets; i++) {
+      const x = ec + this.taille * 0.5 + i * (ec + this.taille);
+      const ombre = this.attacher('sym450', PROF.SPRITE);
+      ombre.x = x; ombre.y = base;
+      ombre.sx = this.taille / 100; ombre.sy = this.taille / 100;
+      if (this.pos === i) this.poserBille(x, base);
+      const mc = this.attacher('sym452', PROF.SPRITE);
+      mc.x = x; mc.y = HAUTEUR * 0.5;
+      mc.sx = this.taille / 100; mc.sy = this.taille / 100;
+      this.gobelets.push({ mc, ombre, t: 4 * i, x });
+    }
+  }
+
+  poserBille(x, y) {
+    this.bille = this.attacher('sym448', PROF.SPRITE);
+    this.bille.x = x; this.bille.y = y;
+    this.bille.sx = this.taille / 100; this.bille.sy = this.taille / 100;
+  }
+
+  update() {
+    const base = HAUTEUR - 30;
+    switch (this.etape) {
+      case 1:
+        if (this.minuteur < 0) this.etape = 2;
+        else this.minuteur -= Temps.tmod;
+        break;
+      case 2: {
+        // Chaque gobelet attend son tour, puis descend coiffer sa place.
+        let tous = true;
+        for (const g of this.gobelets) {
+          if (g.t < 0) {
+            const d = base - g.mc.y;
+            g.mc.y += Math.min(d * 0.2, 10) * Temps.tmod;
+            if (Math.abs(d) < 0.5) g.mc.y = base;
+            else tous = false;
+          } else {
+            g.t -= Temps.tmod;
+            tous = false;
+          }
+        }
+        if (tous) {
+          this.echanges = 4 + Math.round(this.dif / 10);
+          for (const g of this.gobelets) g.ombre.enlever();
+          this.bille.enlever();
+          this.melanger();
+        }
+        break;
+      }
+      case 3: {
+        // L'échange : les deux gobelets décrivent chacun un demi-arc.
+        this.decal = Math.min(this.decal + this.vitesse * Temps.tmod, 3.14);
+        for (const p of this.paires) {
+          for (let g = 0; g < 2; g++) {
+            const mc = this.gobelets[p.list[g]].mc;
+            const sens = g * 2 - 1;
+            mc.x = p.x + Math.cos(this.decal) * p.d * sens;
+            mc.y = base + Math.sin(this.decal * sens) * (4 + Math.abs(p.d) * 0.25);
+          }
+        }
+        if (this.decal === 3.14) this.melanger();
+        break;
+      }
+      case 4:
+        for (const mc of this.leves) {
+          const d = HAUTEUR * 0.5 - mc.y;
+          mc.y += Math.min(d * 0.2, 10) * Temps.tmod;
+        }
+        // Perdu : la solution se montre pendant le fondu.
+        if (this.gagnant === false && this.finTimer < 16 && this.leves.length < 2 && !this.flSoluce) {
+          this.choisir(this.pos);
+          this.flSoluce = true;
+        }
+        break;
+      default: break;
+    }
+    super.update();
+  }
+
+  melanger() {
+    this.echanges--;
+    if (this.echanges === 0) { this.etape = 4; return; }
+    this.etape = 3;
+    this.decal = 0;
+    this.paires = [];
+    let max = 1;
+    if (this.socle.hasard(Math.max(1, Math.round(this.dif))) > 20) max++;
+    const restants = this.gobelets.map((_, i) => i);
+    for (let i = 0; i < max && restants.length >= 2; i++) {
+      const p = [];
+      for (let g = 0; g < 2; g++) {
+        const idx = this.socle.hasard(restants.length);
+        p.push(restants[idx]);
+        restants.splice(idx, 1);
+      }
+      const g0 = this.gobelets[p[0]], g1 = this.gobelets[p[1]];
+      this.paires.push({ list: p, x: (g0.x + g1.x) * 0.5, d: (g0.x - g1.x) * 0.5 });
+      this.scene.devant(g0.mc);
+      this.scene.derriere(g1.mc);
+      // L'échange d'OBJETS : les places gardent leur x, les gobelets circulent.
+      const t = g0.mc; g0.mc = g1.mc; g1.mc = t;
+      if (this.pos === p[0]) this.pos = p[1];
+      else if (this.pos === p[1]) this.pos = p[0];
+    }
+  }
+
+  /** L'appui : en phase de choix, le gobelet sous le doigt se lève. */
+  click() {
+    if (this.etape !== 4 || this.gagnant !== null) return;
+    for (let i = 0; i < this.gobelets.length; i++) {
+      const mc = this.gobelets[i].mc;
+      if (this.leves.includes(mc)) continue;
+      if (mc.contient(this.sourisX, this.sourisY)) { this.choisir(i); return; }
+    }
+  }
+
+  choisir(i) {
+    const mc = this.gobelets[i].mc;
+    const ombre = this.attacher('sym450', PROF.SPRITE);
+    ombre.x = mc.x; ombre.y = mc.y;
+    ombre.sx = this.taille / 100; ombre.sy = this.taille / 100;
+    if (i === this.pos) {
+      this.poserBille(mc.x, mc.y);
+      this.gagne(true);
+    } else {
+      this.gagne(false);
+    }
+    this.scene.devant(mc);
+    this.leves.push(mc);
+  }
+}
+
+/*
+ * MARMITE — « suis la recette ».
+ *
+ * Neuf ingrédients tournent en ellipse au-dessus de la marmite ; le livre de
+ * recette dit lesquels y jeter, DANS L'ORDRE. La souris fait tourner la ronde
+ * (sa position gauche-droite donne la vitesse), le bas de l'écran remonte la
+ * ronde et cache le livre, l'appui lâche l'ingrédient le plus proche du
+ * centre. Un ingrédient hors recette, c'est perdu. La difficulté allonge la
+ * recette (une à neuf étapes).
+ *
+ * Dessins (voisins de gameMarmite #204) :
+ *   sym200  les ingrédients, douze images — la recette en affiche des copies
+ *   sym187  le livre de recette
+ *   sym202  le masque de la marmite — l'ingrédient lâché le reçoit (setMask) et
+ *           disparaît DANS la soupe : la forme s'arrête à la courbe du bord
+ *
+ * Les sources (Marmite.mt) ont aussi une écume — updateBubble(), une bulle par
+ * image dans une zone masquée. Elle est POSTÉRIEURE au SWF de développement :
+ * le bytecode de la classe compilée n'a ni la méthode, ni son appel, ni le clip
+ * mcPartMarmiteBubble parmi les symboles exportés. Le portage suit le SWF, la
+ * seule version qui se lance — pas de bulles.
+ */
+// La matrice du sous-clip `page` dans sym187 : rotation de quinze degrés
+// (a = cos, b = sin), calage en (-90.3, -93.9). Relevée dans le SWF.
+const PAGE_LIVRE = { a: 0.9659271240234375, b: 0.258819580078125, x: -90.3, y: -93.9, rot: 15 };
+
+class Marmite extends Jeu {
+  constructor(socle) {
+    super(socle);
+    this.gameTime = 460;
+  }
+
+  init() {
+    super.init();
+    this.rx = 100;
+    this.ry = 60;
+    this.nbIngredients = 9;
+    this.decal = 0;
+    this.centre = { x: LARGEUR * 0.5, y: 0 };
+    this.posLivre = HAUTEUR;
+    this.tombants = [];
+
+    // LA RECETTE : un tirage sans remise, d'autant plus long que c'est dur.
+    this.recette = [];
+    const noms = [];
+    for (let i = 0; i < this.nbIngredients; i++) noms.push(i);
+    const max = 1 + this.dif * 0.08;
+    for (let i = 0; i < max; i++) {
+      const idx = this.socle.hasard(noms.length);
+      this.recette.push(noms[idx]);
+      noms.splice(idx, 1);
+    }
+
+    // LA RONDE
+    this.ronde = [];
+    for (let i = 0; i < this.nbIngredients; i++) {
+      const mc = this.nouveauPhys('sym200');
+      mc.x = LARGEUR * 0.5;
+      mc.y = 0;
+      mc.peau.allerA(i + 1);
+      mc.init();
+      mc.flPhys = false;
+      this.ronde.push(mc);
+    }
+
+    // LE LIVRE, et sa page : les copies d'ingrédients de la recette,
+    // accrochées UNE FOIS — la page montre la recette entière jusqu'au bout,
+    // c'est au joueur de se souvenir d'où il en est. Grille de
+    // attachElements : x = 16 + (i%4)·24, y = 30 + ⌊i/4⌋·24, échelle 50,
+    // alpha 75, dans le sous-clip `page` du livre.
+    this.livre = this.nouveauSprite('sym187');
+    this.livre.x = LARGEUR * 0.5;
+    this.livre.y = this.posLivre;
+    this.livre.init();
+    this.pageIcones = [];
+    for (let i = 0; i < this.recette.length; i++) {
+      const mc = this.attacher('sym200', PROF.SPRITE);
+      mc.allerA(this.recette[i] + 1);
+      mc.sx = 0.5; mc.sy = 0.5;
+      mc.alpha = 0.75;
+      mc.rot = PAGE_LIVRE.rot;
+      this.pageIcones.push(mc);
+    }
+    this.poserPage();
+  }
+
+  /**
+   * Les icônes suivent le livre : dans le Flash, elles sont les enfants de sa
+   * page, qui porte la matrice du clip 186 dans sym187 — quinze degrés,
+   * calée en (-90.3, -93.9). Le livre glisse, ses enfants avec lui.
+   */
+  poserPage() {
+    const P = PAGE_LIVRE;
+    for (let i = 0; i < this.pageIcones.length; i++) {
+      const lx = 16 + (i % 4) * 24;
+      const ly = 30 + Math.floor(i / 4) * 24;
+      const mc = this.pageIcones[i];
+      mc.x = this.livre.x + P.a * lx - P.b * ly + P.x;
+      mc.y = this.livre.y + P.b * lx + P.a * ly + P.y;
+    }
+  }
+
+  update() {
+    if (this.etape === 1) {
+      // La moitié basse de l'écran remonte la ronde et range le livre.
+      if (this.sourisY > HAUTEUR * 0.5) {
+        this.centre.y = -100;
+        this.posLivre = HAUTEUR;
+      } else {
+        this.centre.y = 0;
+        this.posLivre = HAUTEUR + 100;
+      }
+
+      // La ronde tourne au gré de la souris.
+      const vitesse = (this.sourisX - LARGEUR * 0.5) * 0.3;
+      this.decal = (this.decal + vitesse * Temps.tmod) % 628;
+      for (let i = 0; i < this.ronde.length; i++) {
+        const a = (this.decal / 100) + (i / this.ronde.length) * 6.28;
+        const mc = this.ronde[i];
+        mc.x += (this.centre.x + Math.cos(a) * this.rx - mc.x) * 0.2 * Temps.tmod;
+        mc.y += (this.centre.y + Math.sin(a) * this.ry - mc.y) * 0.2 * Temps.tmod;
+      }
+
+      // Le livre glisse vers sa place, sa page de recette avec lui.
+      this.livre.y += (this.posLivre - this.livre.y) * 0.2 * Temps.tmod;
+      this.poserPage();
+
+      // Les ingrédients lâchés : à 190, la marmite avale et juge.
+      for (let i = 0; i < this.tombants.length; i++) {
+        const mc = this.tombants[i];
+        if (mc.y > 190) {
+          const id = mc.peau.image - 1;
+          if (id === this.recette[0]) {
+            this.recette.shift();
+            if (this.recette.length === 0) this.gagne(true);
+          } else {
+            this.gagne(false);
+          }
+          mc.tuer();
+          this.tombants.splice(i, 1);
+          i--;
+        }
+      }
+    }
+    super.update();
+  }
+
+  click() {
+    if (this.etape !== 1) return;
+    const mc = this.plusBas();
+    if (!mc) return;
+    mc.flPhys = true;                                // il tombe
+    mc.peau.masque = 'sym202';                       // et s'engloutira dans la soupe
+    this.tombants.push(mc);
+    // La ronde se resserre d'un demi-cran.
+    const ec = ((1 / (this.ronde.length - 1)) - (1 / this.ronde.length)) * 628;
+    this.decal += ec * 0.5;
+    const i = this.ronde.indexOf(mc);
+    if (i >= 0) this.ronde.splice(i, 1);
+  }
+
+  /** Marmite.getBottom : l'ingrédient le plus proche du centre, sous l'axe. */
+  plusBas() {
+    let dx = 50;
+    let bas = null;
+    for (const mc of this.ronde) {
+      const d = Math.abs(mc.x - LARGEUR * 0.5);
+      if (d < dx && mc.y > 0) { dx = d; bas = mc; }
+    }
+    return bas;
+  }
+}
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui de Base.genGameList(), qui donnait à chaque épreuve une
@@ -731,9 +1226,12 @@ const JEUX = [
   { cle: 'gameFlower', nom: 'arrosage', Classe: Flower },
   { cle: 'gamePong', nom: 'renvoi', Classe: Pong },
   { cle: 'gameAstero', nom: 'astéroïdes', Classe: Astero },
+  { cle: 'gameParachute', nom: 'parachute', Classe: Parachute },
+  { cle: 'gameGobelet', nom: 'bonneteau', Classe: Gobelet },
+  { cle: 'gameMarmite', nom: 'marmite', Classe: Marmite },
 ];
 
-const API = { JEUX, Basket, Lander, Pong, Flower, Astero };
+const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

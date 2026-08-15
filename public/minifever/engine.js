@@ -126,6 +126,7 @@ class Scene {
     this.mcs = [];
     this.mesures = mesures || null;   // cle → { nbImages, boite }
     this.suivant = 1000;              // profondeurs libres, pour `devant`
+    this.plancher = -1;               // … et pour `derriere`
   }
   attacher(cle, prof) {
     const mc = new Mc(cle, prof);
@@ -136,6 +137,9 @@ class Scene {
   }
   // dm.over(mc) : passer un dessin devant tous les autres.
   devant(mc) { mc.prof = this.suivant++; }
+  // dm.under(mc) : le passer derrière tous les autres (le bonneteau s'en sert
+  // pour croiser deux gobelets pendant l'échange).
+  derriere(mc) { mc.prof = this.plancher--; }
   vider() { this.mcs.length = 0; }
   // L'ordre de tracé : par profondeur, puis par ordre d'arrivée.
   ordre() {

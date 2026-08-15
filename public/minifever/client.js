@@ -20,10 +20,12 @@ const IMAGE_FLASH = 1 / CADENCE_FLASH;
 
 const images = new Map();          // fichier SVG → Image
 let manifeste = null;
+let baseDessins = '/minifever/sprites/';
 
 /** Charge le manifeste et tous ses dessins. `surAvance` suit le chargement. */
 function charger(base, surAvance) {
   base = base || '/minifever/sprites/';
+  baseDessins = base;
   return fetch(base + 'sprites.json', { cache: 'force-cache' })
     .then((r) => r.json())
     .then((m) => {
@@ -71,6 +73,38 @@ function mesures(m) {
     };
   }
   return out;
+}
+
+/*
+ * Les MASQUES — `skin.setMask(mc)` des sources.
+ *
+ * Un Mc qui porte `masque: 'sym202'` ne se dessine QUE dans la forme de ce
+ * symbole (l'ingrédient de la marmite disparaît dans la soupe en passant la
+ * courbe du bord). La forme vient du SVG extrait : ses chemins, posés dans les
+ * coordonnées du symbole — ici celles de la scène, le masque s'accrochant en
+ * (0,0) — deviennent un Path2D que la toile applique en découpe. Le fichier se
+ * lit à la première demande ; d'ici là, le Mc se dessine entier, comme un clip
+ * Flash avant son setMask.
+ */
+const masques = new Map();         // clé de symbole → Path2D (null : en cours)
+
+function cheminMasque(cle) {
+  if (masques.has(cle)) return masques.get(cle);
+  masques.set(cle, null);
+  const s = manifeste && manifeste[cle];
+  if (!s) return null;
+  Promise.all(s.etats[0].pieces.map((p) => fetch(baseDessins + p.fichier, { cache: 'force-cache' })
+    .then((r) => r.text()).then((t) => ({ p, t }))))
+    .then((morceaux) => {
+      const chemin = new Path2D();
+      for (const { p, t } of morceaux) {
+        const M = new DOMMatrix(p.m);
+        for (const m of t.matchAll(/\bd="([^"]+)"/g)) chemin.addPath(new Path2D(m[1]), M);
+      }
+      masques.set(cle, chemin);
+    })
+    .catch(() => { masques.delete(cle); });
+  return null;
 }
 
 /** Pose un dessin (une image d'un symbole) sur la toile. */
@@ -236,7 +270,15 @@ class Client {
       // niveau de la grenouille file à 1524 sur la droite).
       if (s.suivant) poser(ctx, s.suivant.cle, 1, 0, 0, 1, 1, 0, 1);
       for (const mc of jeu.scene.ordre()) {
-        poser(ctx, mc.cle, mc.image, mc.x, mc.y, mc.sx, mc.sy, mc.rot, mc.alpha);
+        const decoupe = mc.masque ? cheminMasque(mc.masque) : null;
+        if (decoupe) {
+          ctx.save();
+          ctx.clip(decoupe);
+          poser(ctx, mc.cle, mc.image, mc.x, mc.y, mc.sx, mc.sy, mc.rot, mc.alpha);
+          ctx.restore();
+        } else {
+          poser(ctx, mc.cle, mc.image, mc.x, mc.y, mc.sx, mc.sy, mc.rot, mc.alpha);
+        }
       }
       ctx.restore();
 
