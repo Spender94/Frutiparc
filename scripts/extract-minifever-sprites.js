@@ -274,6 +274,12 @@ function principal() {
     { cle: 'gameBalance', id: 259, sansEnfantsNommes: true },
     { cle: 'sym256', id: 256 },
     { cle: 'sym258', id: 258 },
+    // LE POINT À POINT (gamePoint) : la scène porte la figure — dix-huit
+    // pointillés « $p0 » à « $p17 » (les noms en $ ont survécu à
+    // l'obfuscation) et le dessin fini « 9kOpo » (sym101), caché jusqu'à la
+    // victoire. On sort la scène sans eux (le papier), et le dessin à part.
+    { cle: 'gamePoint', id: 103, sansEnfantsNommes: true },
+    { cle: 'sym101', id: 101 },
   ];
   for (const s of SUPPLEMENTS) {
     const etats = etatsDe(s.id, s);

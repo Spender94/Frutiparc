@@ -4374,6 +4374,161 @@ class Plate extends Jeu {
 }
 
 /*
+ * game/Point.mt — LE POINT À POINT : relier les pointillés au survol.
+ *
+ * Dix-huit pointillés sur le papier : le prochain s'allume (image 2, alpha
+ * plein), et le SURVOL suffit — onRollOver d'époque — pour tirer le trait
+ * (lineStyle(2, 0x746410)) et passer au suivant, qui s'éteint derrière soi.
+ * Un point TOURNÉ (rotation non nulle — le $p12 de la figure) lève le
+ * crayon : moveTo au lieu de lineTo. Tous reliés : gagné, et le dessin fini
+ * (« 9kOpo ») apparaît. Perdu au chrono seul (gameTime = 500 - dif).
+ *
+ * Tout est vérifié contre la classe « 05gRo1 » du SWF de dev :
+ *   · le compilé fait gotoAndStop(round(1 + dif·0,1)) — la source disait
+ *     0,04 — et la scène n'a qu'UNE image : une seule figure a jamais été
+ *     dessinée, la difficulté ne joue que sur le chrono ;
+ *   · initPoints : le do…while d'époque éteint les points à l'alpha 20
+ *     jusqu'à tomber sur un $pN inexistant ;
+ *   · updateNext éteint ET CACHE le point relié (les pointillés
+ *     disparaissent, l'encre reste) ; à court de points, setWin(true) et le
+ *     dessin fini se montre ;
+ *   · le survol ne mord qu'au FRANCHISSEMENT du bord (onRollOver) : si le
+ *     curseur couvre déjà le point suivant, il faut ressortir et revenir ;
+ *   · la TEXTURE : le grain de papier (mcTexture) posé au fond, teinté
+ *     {ra 200, ga 150, ba 100, aa 50} — l'alpha (50 %) est appliqué ; les
+ *     multiplicateurs de canaux, la toile ne les fait pas : le grain reste
+ *     au naturel, un peu moins chaud qu'en Flash.
+ *
+ * La figure : les PlaceObject de la scène (POINT_FIGURE, relevés du SWF).
+ * Les dessins : gamePoint le papier (sans ses enfants nommés), sym98 le
+ * pointillé (2 images), sym101 le dessin fini, sym95 le grain.
+ */
+class Point extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 500 - this.dif;
+    super.init();
+    // gotoAndStop(round(1 + dif·0,1)) d'époque : une seule image, sans effet.
+    this.poserTimeline();
+    this.index = 0;
+    this.next = null;
+    this.flDessus = false;
+    this.initPoints();
+    this.updateNext();
+    this.attachElements();
+    this.mcLigne.dessin = [
+      ['style', 2, 0x746410, 100],
+      ['aller', this.next.x, this.next.y],
+    ];
+  }
+
+  /** Les enfants de la timeline : les pointillés et le dessin fini. */
+  poserTimeline() {
+    this.points = POINT_FIGURE.map((p) => {
+      const mc = this.attacher('sym98', PROF.SPRITE);
+      mc.x = p.x;
+      mc.y = p.y;
+      mc.rot = p.rot;
+      return mc;
+    });
+    this.shape = this.attacher('sym101', PROF.SPRITE);
+    this.shape.x = 118.95;
+    this.shape.y = 124.75;
+  }
+
+  attachElements() {
+    // SHAPE
+    this.shape.visible = false;
+    // LINE
+    this.mcLigne = this.attacher(null, PROF.FOND);
+    this.mcLigne.dessin = [];
+    // TEXTURE — le grain, à l'alpha du setTransform d'époque.
+    const grain = this.attacher('sym95', PROF.FOND);
+    grain.alpha = 0.5;
+  }
+
+  initPoints() {
+    // Le do…while d'époque : il court jusqu'au premier $pN inexistant.
+    let i = 0;
+    let mc = null;
+    do {
+      mc = this.points[i];
+      if (mc) {
+        mc.alpha = 0.2;
+        mc.arreter();
+      }
+      i++;
+    } while (mc && mc.visible);
+  }
+
+  update() {
+    super.update();
+    // onRollOver d'époque : au franchissement du bord seulement.
+    if (this.next) {
+      const dedans = this.next.contient(this.sourisX, this.sourisY);
+      if (dedans && !this.flDessus) {
+        this.draw();
+        this.flDessus = this.next
+          ? this.next.contient(this.sourisX, this.sourisY) : false;
+      } else {
+        this.flDessus = dedans;
+      }
+    }
+  }
+
+  updateNext() {
+    if (this.next) {
+      this.next.allerA(1);
+      this.next.visible = false;   // le point relié disparaît, l'encre reste
+    }
+    this.next = this.points[this.index] || null;
+    if (this.next && this.next.visible) {
+      this.next.allerA(2);
+      this.next.alpha = 1;
+    } else {
+      this.gagne(true);
+      this.shape.visible = true;
+    }
+  }
+
+  draw() {
+    if (this.next.rot === 0) {
+      this.mcLigne.dessin.push(['ligne', this.next.x, this.next.y]);
+    } else {
+      this.mcLigne.dessin.push(['aller', this.next.x, this.next.y]);
+    }
+    this.index++;
+    this.updateNext();
+  }
+}
+
+// La figure du point à point — les PlaceObject de la scène (sym103) : les
+// dix-huit pointillés, et le $p12 TOURNÉ qui lève le crayon.
+const POINT_FIGURE = [
+  { x: 172.25, y: 188.65, rot: 0 },
+  { x: 114.7, y: 207.8, rot: 0 },
+  { x: 73.1, y: 194.3, rot: 0 },
+  { x: 47.8, y: 168.15, rot: 0 },
+  { x: 35.8, y: 122.55, rot: 0 },
+  { x: 46.8, y: 83, rot: 0 },
+  { x: 77.7, y: 52.3, rot: 0 },
+  { x: 127.4, y: 42, rot: 0 },
+  { x: 173.85, y: 62.3, rot: 0 },
+  { x: 199.45, y: 103.1, rot: 0 },
+  { x: 199.7, y: 145.55, rot: 0 },
+  { x: 105.7, y: 141.5, rot: 0 },
+  { x: 108.95, y: 108, rot: 1 },     // le crayon se lève ici
+  { x: 140.7, y: 86.6, rot: 0 },
+  { x: 165.5, y: 108, rot: 0 },
+  { x: 146.1, y: 108, rot: 0 },
+  { x: 139.2, y: 100.5, rot: 0 },
+  { x: 132.55, y: 108, rot: 0 },
+];
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui du portage, épreuve après épreuve — à fréquences de
@@ -4406,11 +4561,12 @@ const JEUX = [
   { cle: 'gameBalance', nom: 'balance', Classe: Balance },
   { cle: 'gamePicture', nom: 'tableau', Classe: Picture },
   { cle: 'gamePlate', nom: 'assiette', Classe: Plate },
+  { cle: 'gamePoint', nom: 'pointillés', Classe: Point },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
   Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff, Chain,
-  Ghost, Balance, Picture, Plate };
+  Ghost, Balance, Picture, Plate, Point };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

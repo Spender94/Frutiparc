@@ -156,6 +156,12 @@ const SCENES = {
     { cle: 'sym370', x: 150, y: 190 },
     { cle: 'sym363', x: 118, y: 172, image: 50, rot: -12 },  // …le héros en vol
   ],
+  gamePoint: [
+    { cle: 'sym101', x: 118.95, y: 124.75 },        // le dessin fini…
+    { cle: 'sym98', x: 172.25, y: 188.65, image: 2 },   // …et quelques pointillés
+    { cle: 'sym98', x: 47.8, y: 168.15, image: 1 },
+    { cle: 'sym98', x: 127.4, y: 42, image: 1 },
+  ],
   gamePlate: [
     { cle: 'sym129', x: 120, y: 120 },              // l'assiette au centre…
     { cle: 'sym125', x: 90, y: 100, s: 0.5, image: 1 },     // …trois taches,

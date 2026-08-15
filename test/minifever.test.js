@@ -1374,6 +1374,71 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── LE POINT À POINT (game/Point.mt, classe « 05gRo1 » du bytecode) ──
+
+test('le point à point : la figure d\'époque, le premier pointillé allumé', () => {
+  const b = banc(J.Point, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 500 - 40);
+  assert.equal(j.points.length, 18, 'les dix-huit pointillés de la scène');
+  // Tous éteints à l\'alpha 20… sauf le premier, allumé plein (image 2).
+  assert.equal(j.next, j.points[0]);
+  assert.equal(j.next.image, 2);
+  assert.equal(j.next.alpha, 1);
+  assert.ok(j.points.slice(1).every((p) => p.alpha === 0.2 && p.image === 1));
+  // Le dessin fini est caché ; la ligne est amorcée au premier point.
+  assert.equal(j.shape.visible, false);
+  assert.deepEqual(j.mcLigne.dessin[1], ['aller', 172.25, 188.65]);
+  assert.deepEqual(j.mcLigne.dessin[0], ['style', 2, 0x746410, 100]);
+  // Le crayon se lèvera au $p12 — le point tourné.
+  assert.equal(j.points[12].rot, 1);
+});
+
+test('le tracé au survol : un trait par entrée, le point relié disparaît', () => {
+  const b = banc(J.Point);
+  const j = b.jeu;
+  const p0 = j.points[0];
+  b.souris(p0.x, p0.y);
+  b.avancer(1);
+  assert.equal(j.index, 1, 'le survol relie');
+  assert.equal(p0.visible, false, 'le point relié disparaît');
+  assert.equal(j.next, j.points[1]);
+  assert.equal(j.next.image, 2, 'le suivant s\'allume');
+  assert.deepEqual(j.mcLigne.dessin[2], ['ligne', p0.x, p0.y],
+    'le trait rejoint le point qu\'on vient de relier');
+  // Rester posé dessus ne re-relie pas (onRollOver : il faut ressortir).
+  b.avancer(5);
+  assert.equal(j.index, 1);
+});
+
+test('la figure entière : crayon levé au $p12, victoire et dessin révélé', () => {
+  const b = banc(J.Point);
+  const j = b.jeu;
+  for (let i = 0; i < 18; i++) {
+    const p = j.points[i];
+    b.souris(p.x, p.y);
+    b.avancer(1);
+    // ressortir, pour que le survol du suivant compte comme une entrée
+    b.souris(-50, -50);
+    b.avancer(1);
+  }
+  assert.equal(j.index, 18);
+  assert.equal(j.gagnant, true, 'tous reliés : gagné');
+  assert.equal(j.shape.visible, true, 'le dessin fini apparaît');
+  // Le $p12 a levé le crayon : un « aller », pas une « ligne ».
+  const verbes = j.mcLigne.dessin.slice(1).map((c) => c[0]);
+  assert.equal(verbes.filter((v) => v === 'aller').length, 2, 'l\'amorce et le crayon levé');
+  assert.equal(verbes[13], 'aller', 'le douzième relié lève le crayon');
+});
+
+test('les dessins du point à point sont extraits', () => {
+  for (const cle of ['gamePoint', 'sym98', 'sym101', 'sym95']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.sym98.etats.length, 2, 'le pointillé et son état allumé');
+  assert.ok(MANIFESTE.gamePoint.etats[0].pieces.length >= 1, 'le papier, sans la figure');
+});
+
 // ── L'ASSIETTE (game/Plate.mt, classe « 0q8Ho1 » du bytecode) ──
 
 test('l\'assiette : la mise en place du bytecode, et sa montée du bas', () => {
