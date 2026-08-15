@@ -246,6 +246,16 @@ function principal() {
     { cle: 'sym370', id: 370 },
     { cle: 'sym349', id: 349 },
     { cle: 'sym350', id: 350, sansEnfantsNommes: true },
+    // LA CHAÎNE (gameChain) : chaque case (mcChainSlot, sym342) porte un fond
+    // nommé « 9A » (sym336, posé à (-50,-50) — la tuile est centrée) que le
+    // jeu feuillette à part (« 1 » table, « 2 » bandeau) : on sort le fruit
+    // sans son fond, et le fond seul. La scène garde sa BARRE (sym345, la
+    // bande blanche à 50 % du bandeau) comme enfant nommé : on la sort
+    // aussi, et la scène sans elle.
+    { cle: 'sym342', id: 342, sansEnfantsNommes: true },
+    { cle: 'sym336', id: 336 },
+    { cle: 'sym345', id: 345 },
+    { cle: 'gameChain', id: 346, sansEnfantsNommes: true },
   ];
   for (const s of SUPPLEMENTS) {
     const etats = etatsDe(s.id, s);

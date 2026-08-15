@@ -1519,6 +1519,142 @@ test('les dessins de la falaise sont extraits, compteur démonté compris', () =
   }
 });
 
+// ── LA CHAÎNE (game/Chain.mt, classe « 1MtsF1 » du bytecode) ──
+
+/** Le clic au centre d'une case de la grille de la chaîne. */
+function cliquerCase(b, j, x, y) {
+  const s = j.slotList[x][y];
+  b.souris(s.px, s.py);
+  b.socle.click();
+  b.socle.relache();
+}
+
+/** Un chemin adjacent, sans repasse, qui épelle le bandeau — il existe. */
+function cheminDuBandeau(j) {
+  const suite = j.rowList.map((r) => r.id);
+  const vus = new Set();
+  const chercher = (etape, chemin) => {
+    if (etape === suite.length) return chemin;
+    for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      if (etape === 0 && (dx || dy)) continue;
+      if (etape > 0 && !(dx || dy)) continue;
+      const dep = etape === 0 ? null : chemin[chemin.length - 1];
+      const xs = etape === 0 ? [...Array(j.xMax).keys()] : [dep.x + dx];
+      const ys = etape === 0 ? [...Array(j.yMax).keys()] : [dep.y + dy];
+      for (const x of xs) {
+        for (const y of ys) {
+          if (x < 0 || x >= j.xMax || y < 0 || y >= j.yMax) continue;
+          const cle = x + ':' + y;
+          if (vus.has(cle) || j.slotList[x][y].id !== suite[etape]) continue;
+          vus.add(cle);
+          const trouve = chercher(etape + 1, [...chemin, { x, y }]);
+          if (trouve) return trouve;
+          vus.delete(cle);
+        }
+      }
+    }
+    return null;
+  };
+  return chercher(0, []);
+}
+
+test('la chaîne : la mise en place du bytecode, constante par constante', () => {
+  const b = banc(J.Chain, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 400 - 40);
+  assert.equal(j.chainLength, 8, 'déclaré comme à l\'époque — et jamais lu');
+  assert.equal(j.idMax, 5);
+  assert.equal(j.size, 50 - Math.round(40 * 0.2));
+  assert.equal(j.xMax, Math.floor((LARGEUR - 8) / j.size));
+  assert.equal(j.xMargin, LARGEUR - j.xMax * j.size);
+  assert.equal(j.yMax, Math.floor((HAUTEUR - (60 + j.size)) / j.size));
+  assert.equal(j.yMargin, HAUTEUR - (j.yMax + 1) * j.size);
+  // Le bandeau mesure xMax cases — pas chainLength — et il est jouable :
+  // un chemin adjacent qui l'épelle existe sur la grille (celui du tirage).
+  assert.equal(j.rowList.length, j.xMax);
+  assert.ok(cheminDuBandeau(j), 'le bandeau s\'épelle sur la grille');
+  // Chaque case du bandeau porte l'id qu'elle affiche, style « 2 ».
+  assert.ok(j.rowList.every((r) => r.mc.image === r.id + 1));
+  assert.ok(j.rowList.every((r) => r.fond.image === 2));
+  assert.ok(j.slotList.every((col) => col.every((s) => s.fond.image === 1)));
+  // La barre d'époque : la bande blanche, réglée par le code de la source.
+  assert.equal(j.bar.cle, 'sym345');
+  assert.equal(j.bar.y, j.size * 0.25 + j.yMargin * 0.33);
+  assert.equal(j.bar.sy, j.size * 0.5 / 100);
+});
+
+test('la chaîne se recopie : adjacence stricte, annulation, remise à zéro', () => {
+  const b = banc(J.Chain);
+  const j = b.jeu;
+  const chemin = cheminDuBandeau(j);
+  assert.ok(chemin, 'un chemin existe');
+  // La première case du chemin : sélectionnée, blanchie à 80 %.
+  cliquerCase(b, j, chemin[0].x, chemin[0].y);
+  assert.equal(j.cList.length, 1);
+  const s0 = j.slotList[chemin[0].x][chemin[0].y];
+  assert.equal(s0.mc.blanchi, 0.8, 'setPColor(blanc, 20)');
+  assert.equal(s0.fond.blanchi, 0.8);
+  // La recliquer : annulée, re-teintée pleine.
+  cliquerCase(b, j, chemin[0].x, chemin[0].y);
+  assert.equal(j.cList.length, 0);
+  assert.equal(s0.mc.blanchi, 0);
+  // Une case au MAUVAIS fruit en tête de chaîne : rien ne s'accroche.
+  const fausse = (() => {
+    for (let x = 0; x < j.xMax; x++) {
+      for (let y = 0; y < j.yMax; y++) {
+        if (j.slotList[x][y].id !== j.rowList[0].id) return { x, y };
+      }
+    }
+    return null;
+  })();
+  if (fausse) {
+    cliquerCase(b, j, fausse.x, fausse.y);
+    assert.equal(j.cList.length, 0, 'mauvais fruit : tout retombe');
+  }
+  // Reprendre, puis cliquer LOIN (non adjacent) : tout se déselectionne.
+  cliquerCase(b, j, chemin[0].x, chemin[0].y);
+  assert.equal(j.cList.length, 1);
+  const loin = { x: (chemin[0].x + 2) % j.xMax, y: chemin[0].y };
+  cliquerCase(b, j, loin.x, loin.y);
+  assert.equal(j.cList.length, 0, 'le saut casse la chaîne');
+  assert.equal(s0.mc.blanchi, 0);
+});
+
+test('la chaîne complète gagne, la victoire fige les clics, le bandeau fond', () => {
+  const b = banc(J.Chain);
+  const j = b.jeu;
+  const chemin = cheminDuBandeau(j);
+  for (const p of chemin) cliquerCase(b, j, p.x, p.y);
+  assert.equal(j.cList.length, j.rowList.length);
+  assert.equal(j.gagnant, true);
+  // flWin d'époque : plus un clic ne passe.
+  const av = j.cList.length;
+  cliquerCase(b, j, chemin[chemin.length - 1].x, chemin[chemin.length - 1].y);
+  assert.equal(j.cList.length, av, 'la victoire fige tout');
+  // Le bandeau fond : les cases recopiées filent vers zéro (ressort 0,5).
+  const r0 = j.rowList[0];
+  const s1 = r0.mc.sx * 100 + (0 - r0.mc.sx * 100) * 0.5;
+  b.avancer(1);
+  assert.equal((r0.mc.sx * 100).toFixed(4), s1.toFixed(4));
+  b.avancer(8);
+  assert.ok(r0.mc.sx * 100 < 1, 'quasi fondue');
+  assert.ok(Math.abs(r0.fond.x - (r0.px - 50 * r0.mc.sx)) < 1e-9, 'le fond suit le centre');
+});
+
+test('les dessins de la chaîne sont extraits, case éclatée comprise', () => {
+  for (const cle of ['gameChain', 'sym342', 'sym336', 'sym345']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.gameChain.etats[0].pieces.length, 1, 'le fond SANS sa barre');
+  assert.equal(MANIFESTE.sym342.etats.length, 5, 'les cinq fruits');
+  assert.ok(MANIFESTE.sym342.etats.every((e) => e.pieces.length === 1), 'sans leur fond « 9A »');
+  assert.equal(MANIFESTE.sym336.etats.length, 5, 'la tuile (« 1 » table, « 2 » bandeau servent)');
+  // La barre : la bande blanche à 50 %.
+  const svg = fs.readFileSync(path.join(ROOT, 'public/minifever/sprites',
+    MANIFESTE.sym345.etats[0].pieces[0].fichier), 'utf8');
+  assert.ok(/fill-opacity="0.5"/.test(svg), 'blanche à demi');
+});
+
 // ── LA POMME (game/Apple.mt, classe « 68iuA1 » du bytecode) ──
 
 test('la pomme : la mise en place du bytecode, constante par constante', () => {

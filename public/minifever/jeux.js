@@ -3319,6 +3319,241 @@ const CLIFF_WIN = 62;
 const CLIFF_TOOSOON = 82;
 
 /*
+ * game/Chain.mt — LA CHAÎNE : recopier le bandeau, case à case.
+ *
+ * Une grille de fruits (cinq espèces, cases de 50 - round(dif·0,2) px), et
+ * en bandeau la SÉQUENCE à recopier : une marche aléatoire auto-évitante de
+ * xMax cases tirée sur la grille même (après vingt tirages coincés, elle se
+ * rembobine jusqu'à sa première case et repart). On clique la grille dans
+ * l'ordre du bandeau — chaque case ADJACENTE à la précédente (|dx| + |dy|
+ * = 1) et du BON fruit : la case blanchit (setPColor 20), la case du
+ * bandeau fond (échelle vers zéro, ressort 0,5·tmod). Recliquer la dernière
+ * l'annule ; cliquer plus loin, un fruit faux ou une case déjà prise remet
+ * tout. La chaîne complète : gagné — perdu au chrono seul.
+ *
+ * Tout est vérifié contre le bytecode (classe « 1MtsF1 » du SWF de dev) :
+ *   · gameTime = 400 - dif ; idMax 5 ; chainLength = 8 déclaré et JAMAIS lu
+ *     (le bandeau mesure xMax, pas chainLength) — vestige conservé ;
+ *   · la grille : xMax = floor((mcw-8)/size), xMargin = mcw - xMax·size,
+ *     yMax = floor((mch-(60+size))/size), yMargin = mch - (yMax+1)·size ;
+ *     cases à (xMargin·0,5 + (x+0,5)·size, yMargin·0,66 + (y+1,5)·size),
+ *     bandeau à yMargin·0,33 + 0,5·size ;
+ *   · les directions de la marche dans l'ordre COMPILÉ — {-1,0} {0,1}
+ *     {1,0} {0,-1} — car le tirage les indexe ;
+ *   · flWin coupe les clics après la victoire (contrairement à la pomme) ;
+ *   · la BARRE : l'enfant de timeline de la scène (la bande blanche à 50 %
+ *     derrière le bandeau) — la source la règle via un champ jamais
+ *     accroché, ça marche parce qu'elle est LÀ, nommée, sur la timeline :
+ *     bar._y = size·0,25 + yMargin·0,33, _yscale = size·0,5.
+ *
+ * Chaque case d'époque est UN clip (fruit + fond nommé « 9A » posé à
+ * (-50,-50), feuilleté « 1 » table / « 2 » bandeau) : on l'éclate en deux
+ * Mc — le fond (sym336) et le fruit (sym342 sans son fond) — que blanchi
+ * teinte ensemble comme le setPColor du parent d'époque. L'appui d'époque
+ * (onPress sur la case) devient le carré exact de la tuile : taille size,
+ * centré case.
+ *
+ * Les dessins : gameChain le fond (sans sa barre), sym345 la barre,
+ * sym336 la tuile (cinq images — « 1 » et « 2 » servent), sym342 les cinq
+ * fruits.
+ */
+class Chain extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 400 - this.dif;
+    super.init();
+    this.chainLength = 8;          // déclaré comme à l'époque — et jamais lu
+    this.idMax = 5;
+    this.size = 50 - Math.round(this.dif * 0.2);
+    this.attachElements();
+    this.cList = [];
+  }
+
+  attachElements() {
+    // TABLE
+    this.slotList = [];
+    this.xMax = Math.floor((LARGEUR - 8) / this.size);
+    this.xMargin = LARGEUR - this.xMax * this.size;
+    this.yMax = Math.floor((HAUTEUR - (60 + this.size)) / this.size);
+    this.yMargin = HAUTEUR - (this.yMax + 1) * this.size;
+    for (let x = 0; x < this.xMax; x++) {
+      this.slotList[x] = [];
+      for (let y = 0; y < this.yMax; y++) this.initTableSlot(x, y);
+    }
+
+    // ROW — la marche auto-évitante, remise à zéro après vingt échecs.
+    this.rowList = [];
+    const dirList = [{ x: -1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 0 }, { x: 0, y: -1 }];
+    const list = [{ x: this.socle.hasard(this.xMax), y: this.socle.hasard(this.yMax) }];
+    this.rowList.push({ id: this.slotList[list[0].x][list[0].y].id, mc: null });
+    let t = 0;
+    while (list.length < this.xMax) {
+      const d = dirList[this.socle.hasard(dirList.length)];
+      const last = list[list.length - 1];
+      const x = last.x + d.x;
+      const y = last.y + d.y;
+      let flIn = x >= 0 && x < this.xMax && y >= 0 && y < this.yMax;
+      for (let i = 0; i < list.length; i++) {
+        if (x === list[i].x && y === list[i].y) { flIn = false; break; }
+      }
+      if (flIn) {
+        list.push({ x, y });
+        this.rowList.push({ id: this.slotList[x][y].id, mc: null });
+      }
+      t++;
+      if (t > 20) {
+        t = 0;
+        while (list.length > 1) { list.pop(); this.rowList.pop(); }
+      }
+    }
+    for (let x = 0; x < this.rowList.length; x++) this.initRowSlot(x);
+
+    // BAR — l'enfant de timeline : la bande blanche derrière le bandeau.
+    this.bar = this.attacher('sym345', PROF.FOND);
+    this.bar.y = this.size * 0.25 + this.yMargin * 0.33;
+    this.bar.sy = this.size * 0.5 / 100;
+  }
+
+  /** Une case : le fond (« 9A », posé à -50,-50 du centre) et le fruit. */
+  nouvelleCase(px, py, id, style) {
+    const k = this.size / 100;
+    const fond = this.attacher('sym336', PROF.SPRITE);
+    fond.allerA(style);
+    fond.x = px - 50 * k;
+    fond.y = py - 50 * k;
+    fond.sx = k;
+    fond.sy = k;
+    const mc = this.attacher('sym342', PROF.SPRITE);
+    mc.allerA(id + 1);
+    mc.x = px;
+    mc.y = py;
+    mc.sx = k;
+    mc.sy = k;
+    return { mc, fond, id, px, py };
+  }
+
+  initTableSlot(x, y) {
+    const id = this.socle.hasard(this.idMax);
+    this.slotList[x][y] = this.nouvelleCase(
+      this.xMargin * 0.5 + (x + 0.5) * this.size,
+      this.yMargin * 0.66 + (y + 1.5) * this.size, id, 1);
+  }
+
+  initRowSlot(x) {
+    const id = this.rowList[x].id;
+    const c = this.nouvelleCase(
+      this.xMargin * 0.5 + (x + 0.5) * this.size,
+      this.yMargin * 0.33 + 0.5 * this.size, id, 2);
+    this.rowList[x].mc = c.mc;
+    this.rowList[x].fond = c.fond;
+    this.rowList[x].px = c.px;
+    this.rowList[x].py = c.py;
+  }
+
+  /** onPress d'époque : l'appui tombe sur la tuile — le carré exact. */
+  click() {
+    const sx = this.sourisX;
+    const sy = this.sourisY;
+    const demi = this.size / 2;
+    for (let x = 0; x < this.xMax; x++) {
+      for (let y = 0; y < this.yMax; y++) {
+        const s = this.slotList[x][y];
+        if (sx > s.px - demi && sx < s.px + demi && sy > s.py - demi && sy < s.py + demi) {
+          this.press(x, y);
+          return;
+        }
+      }
+    }
+  }
+
+  press(x, y) {
+    if (this.gagnant) return;      // flWin d'époque : la victoire fige tout
+    if (this.cList.length === 0) {
+      this.select(x, y);
+      return;
+    }
+    const last = this.cList[this.cList.length - 1];
+    const dx = last.x - x;
+    const dy = last.y - y;
+    const sum = Math.abs(dx) + Math.abs(dy);
+    if (sum === 0) {
+      this.cancel(x, y);
+    } else if (sum === 1) {
+      this.select(x, y);
+    } else {
+      this.deselect();
+    }
+  }
+
+  /** setPColor(mc, blanc, p) : blanchi = 1 - p/100, sur le fruit ET le fond. */
+  teinter(s, p) {
+    s.mc.blanchi = 1 - p / 100;
+    s.fond.blanchi = 1 - p / 100;
+  }
+
+  cancel(x, y) {
+    this.teinter(this.slotList[x][y], 100);
+    this.cList.pop();
+  }
+
+  select(x, y) {
+    for (let i = 0; i < this.cList.length; i++) {
+      const p = this.cList[i];
+      if (p.x === x && p.y === y) {
+        this.deselect();
+        return;
+      }
+    }
+    const matchId = this.rowList[this.cList.length].id;
+    const info = this.slotList[x][y];
+    if (info.id === matchId) {
+      this.cList.push({ x, y });
+      this.teinter(info, 20);
+      if (this.cList.length === this.rowList.length) this.gagne(true);
+    } else {
+      this.deselect();
+    }
+  }
+
+  deselect() {
+    while (this.cList.length > 0) {
+      const p = this.cList.pop();
+      this.teinter(this.slotList[p.x][p.y], 100);
+    }
+  }
+
+  /** Les cases du bandeau fondent à mesure que la chaîne se recopie. */
+  checkRowVanish() {
+    for (let i = 0; i < this.rowList.length; i++) {
+      let trg = this.size;
+      if (i < this.cList.length) trg = 0;
+      const r = this.rowList[i];
+      const dif = trg - r.mc.sx * 100;
+      const s = r.mc.sx * 100 + dif * 0.5 * Temps.tmod;
+      r.mc.sx = s / 100;
+      r.mc.sy = s / 100;
+      r.fond.sx = s / 100;
+      r.fond.sy = s / 100;
+      r.fond.x = r.px - 50 * (s / 100);
+      r.fond.y = r.py - 50 * (s / 100);
+    }
+  }
+
+  update() {
+    switch (this.etape) {
+      case 1:
+        this.checkRowVanish();
+        break;
+      default: break;
+    }
+    super.update();                // la source l'appelle en dernier
+  }
+}
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui du portage, épreuve après épreuve — à fréquences de
@@ -3346,10 +3581,11 @@ const JEUX = [
   { cle: 'gameBomb', nom: 'bombe', Classe: Bomb },
   { cle: 'gameFrog', nom: 'grenouille', Classe: Frog },
   { cle: 'gameCliff', nom: 'falaise', Classe: Cliff },
+  { cle: 'gameChain', nom: 'chaîne', Classe: Chain },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
-  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff };
+  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff, Chain };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

@@ -156,6 +156,17 @@ const SCENES = {
     { cle: 'sym370', x: 150, y: 190 },
     { cle: 'sym363', x: 118, y: 172, image: 50, rot: -12 },  // …le héros en vol
   ],
+  gameChain: [
+    { cle: 'sym345', x: 0, y: 42, s: 0.25 },        // la bande du bandeau
+    { cle: 'sym336', x: 45, y: 30, image: 2, s: 0.5 },      // deux cases modèles
+    { cle: 'sym342', x: 70, y: 55, image: 1, s: 0.5 },      // (fruit au centre :
+    { cle: 'sym336', x: 145, y: 30, image: 2, s: 0.5 },     //  la tuile est à
+    { cle: 'sym342', x: 170, y: 55, image: 3, s: 0.5 },     //  -50,-50 de lui)
+    { cle: 'sym336', x: 70, y: 130, image: 1, s: 0.5 },     // …et la grille
+    { cle: 'sym342', x: 95, y: 155, image: 2, s: 0.5 },
+    { cle: 'sym336', x: 120, y: 130, image: 1, s: 0.5 },
+    { cle: 'sym342', x: 145, y: 155, image: 5, s: 0.5 },
+  ],
   gamePatate: [
     { cle: 'sym235', x: 60, y: 54 },                // votre légume, nu
     { cle: 'sym235', x: 180, y: 54 },               // le modèle, habillé :
