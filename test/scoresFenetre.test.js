@@ -293,3 +293,34 @@ test('les bouilles du tableau sont détourées : pas de carré vert sur le panne
   const capture = fs.readFileSync(path.join(ROOT, 'public/bouille-capture.html'), 'utf8');
   assert.match(capture, /backgroundColor: "#E8F8D3"/, 'la capture reste peinte sur le vert du forum');
 });
+
+/*
+ * Les deux CONCOURS (Frutisnake, Swapou) ont quitté le tableau des scores : ils
+ * l'alourdissaient pour deux records qui bougent peu. Ils vivent au LIVRE DES
+ * RECORDS du Club — encore faut-il pouvoir y aller depuis le mobile, qui n'avait
+ * aucune entrée « Club ». D'où la tuile, et son icône : celle du BUREAU.
+ */
+test('le light a sa tuile Club, avec l\'icône du bureau (linkClub de fileIcon.swf)', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  assert.match(html, /data-go="club"/, 'la tuile existe sur l\'accueil');
+  assert.match(html, /if \(go === "club"\) return window\.open\("\/club\/"/,
+    'et elle ouvre le Club, où les concours se consultent');
+  assert.match(html, /<img src="\/fb\/icone_club\.svg"/, 'elle porte l\'icône extraite');
+
+  // L'ICÔNE vient bien du bureau : main.swf ne la dessine pas lui-même, il
+  // charge fileIcon.swf, dont le clip 223 est la feuille des raccourcis —
+  // l'image « linkClub » (la prune violette). C'est la même que LEGACY_RANKINGS
+  // demande avec g='linkClub' pour les classements « Club ».
+  const svg = fs.readFileSync(path.join(ROOT, 'public/fb/icone_club.svg'), 'utf8');
+  assert.match(svg, /^<svg /, 'un vrai SVG (vecteur : net à toutes les tailles)');
+  assert.ok(svg.length > 1500, 'et le dessin complet, dégradés compris');
+  assert.match(svg, /radialGradient/, 'la prune garde ses dégradés d\'origine');
+
+  const { imageDe, CLIP, ETIQUETTE } = require(path.join(ROOT, 'scripts/extract-club-icone.js'));
+  const G = require(path.join(ROOT, 'scripts/lib/swf-greffe.js'));
+  const { body } = G.lireSwf(path.join(ROOT, 'public/fileIcon.swf'));
+  assert.equal(imageDe(body, CLIP, ETIQUETTE), 84,
+    'fileIcon.swf porte toujours « linkClub » à l\'image 84 du clip 223');
+  assert.match(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'), /g: 'linkClub'/,
+    'et les classements « Club » du bureau pointent sur la MÊME image');
+});
