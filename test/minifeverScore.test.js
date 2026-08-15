@@ -212,6 +212,21 @@ test('la parenthèse des tableaux par palier se replie au boot, meilleure ligne 
   assert.equal(migre.label, '900 · 30 épreuves en difficile');
 });
 
+test('le FD du bureau : un disque à anneau rouge, détourné vers le portage HTML', async () => {
+  const sid = await sidPour(joueur('f'));
+  // Le disque est dans « Mes disques » de main.swf (catalogue statique).
+  const coll = await (await fetch(`${BASE}/ff/ls?uid=disccollector&sid=${encodeURIComponent(sid)}`)).text();
+  assert.match(coll, /u="minifeverlight"/, 'le disque est au catalogue');
+  assert.match(coll, /u="minifeverlight"[^>]*>3\n/, 'anneau rouge (discType 3) : jamais consommé');
+  // Son lancement (do/ld) porte le marqueur `light/minifever`, que ruffle.html
+  // détourne vers /minifever/ au lieu de Ruffle.
+  const ld = await (await fetch(`${BASE}/do/ld?u=minifeverlight&sid=${encodeURIComponent(sid)}`)).text();
+  assert.match(ld, /u="light\/minifever"/, 'le marqueur light');
+  assert.match(ld, /t="3"/, 'et le type rouge voyage avec');
+  const ruffle = await (await fetch(`${BASE}/ruffle.html`)).text();
+  assert.match(ruffle, /"light\/minifever": \{ url: "\/minifever\/"/, 'ruffle.html sait où l\'ouvrir');
+});
+
 test('le jeu se sert et se lance depuis le light', async () => {
   const page = await (await fetch(BASE + '/minifever/')).text();
   assert.match(page, /Mini-Fever/);

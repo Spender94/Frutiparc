@@ -1425,21 +1425,29 @@ class Tubulo extends Jeu {
     return col ? col[y] : null;     // hors grille : la croix s'y absorbe
   }
 
-  update() {
-    // Le survol : la case sous le curseur teinte sa croix (rollOver 70,
-    // rollOut 100) — repérée par la fenêtre capsule, dernière posée devant.
+  /**
+   * La case sous un point : la fenêtre capsule, la dernière posée devant —
+   * comme le onPress/onRollOver du lecteur. Servie par le survol ET par
+   * l'appui, qui arrive au doigt SANS survol préalable.
+   */
+  sousLePoint(px, py) {
     const b = (this.socle && this.socle.mesures && this.socle.mesures.sym210)
       ? this.socle.mesures.sym210.boite : { x0: -8, y0: -50, x1: 8, y1: 50 };
-    let sous = null;
+    const k = this.taille / 100;
     for (let x = this.xMax - 1; x >= 0; x--) {
-      for (let y = this.yMax - 1; y >= 0 && !sous; y--) {
+      for (let y = this.yMax - 1; y >= 0; y--) {
         const slot = this.grille[x][y];
-        const k = this.taille / 100;
-        if (this.sourisX > slot.x + b.x0 * k && this.sourisX < slot.x + b.x1 * k
-          && this.sourisY > slot.y + b.y0 * k && this.sourisY < slot.y + b.y1 * k) sous = slot;
+        if (px > slot.x + b.x0 * k && px < slot.x + b.x1 * k
+          && py > slot.y + b.y0 * k && py < slot.y + b.y1 * k) return slot;
       }
-      if (sous) break;
     }
+    return null;
+  }
+
+  update() {
+    // Le survol : la case sous le curseur teinte sa croix (rollOver 70,
+    // rollOut 100).
+    const sous = this.sousLePoint(this.sourisX, this.sourisY);
     if (sous !== this.survole) {
       if (this.survole) this.teinterCroix(this.survole, 100);
       if (sous) this.teinterCroix(sous, 70);
@@ -1472,11 +1480,16 @@ class Tubulo extends Jeu {
   }
 
   click() {
-    if (this.etape !== 1 || !this.survole) return;
+    if (this.etape !== 1) return;
+    // La case se cherche AU POINT D'APPUI, pas dans le survol de l'image
+    // d'avant : au doigt, l'appui arrive sans survol préalable — s'y fier
+    // rendait le jeu muet au tactile.
+    const prise = this.sousLePoint(this.sourisX, this.sourisY);
+    if (!prise) return;
     let sx = -1, sy = -1;
     for (let x = 0; x < this.xMax; x++) {
       for (let y = 0; y < this.yMax; y++) {
-        if (this.grille[x][y] === this.survole) { sx = x; sy = y; }
+        if (this.grille[x][y] === prise) { sx = x; sy = y; }
       }
     }
     this.plongeurs = [];

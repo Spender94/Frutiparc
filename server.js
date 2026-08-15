@@ -13272,6 +13272,23 @@ const GAME_DISCS = {
     props: 'w=820;h=760;m=p',
     files: [],
   },
+  // Mini-Fever depuis le BUREAU : le jeu jamais sorti n'a pas de SWF jouable —
+  // le portage HTML est le seul moteur. Même anneau rouge (discType 3, jamais
+  // consommé) et même marqueur `light/…` que les deux disques ci-dessus ;
+  // ruffle.html ouvre /minifever/ avec le sid. Deux limites assumées, faute de
+  // pouvoir toucher aux SWF gravés : fileIcon.swf ne connaît pas le label
+  // « minifever », le disque prend donc le VISUEL par défaut (celui du snake)
+  // sous son bon nom ; et l'internalList de main.swf s'arrête à miniwave — pas
+  // de voyant « joue à… » côté bureau, comme pour minipixiz.
+  minifeverlight: {
+    discType: '3',
+    playMode: 'single',
+    swfName: 'minifever',
+    iconName: 'minifever',
+    gameId: 'light/minifever',
+    props: 'w=820;h=760;m=p',
+    files: [],
+  },
   snake3: {
     discType: '0',
     playMode: 'single',

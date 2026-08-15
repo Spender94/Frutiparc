@@ -745,14 +745,14 @@ test('TUBULO : résoudre la croix du mélange ramène tout à zéro', () => {
     }
   }
   assert.ok(centre, 'le mélange est bien une seule croix');
-  // Le curseur se pose sur le HAUT de sa capsule — la seule part que les
+  // L'appui se pose sur le HAUT de sa capsule — la seule part que les
   // fenêtres voisines, posées après, ne recouvrent pas (le dernier accroché
-  // reçoit le survol, comme dans le lecteur).
+  // reçoit l'appui, comme dans le lecteur). Et il arrive À FROID, comme un
+  // doigt : position et clic dans la même image, sans survol préalable —
+  // c'est le point d'appui qui compte, pas le survol de l'image d'avant.
   b.souris(centre.x, centre.y - 40);
-  b.avancer(1);
-  assert.equal(j.survole, centre, 'la case est sous le curseur');
   b.socle.click();
-  assert.equal(j.etape, 2, 'la plongée commence');
+  assert.equal(j.etape, 2, 'la plongée commence dès l\'appui, même sans survol');
   b.socle.relache();
   // decal court à 40·tmod vers 314 ; au creux (157), les états s\'affichent.
   b.avancer(3);
