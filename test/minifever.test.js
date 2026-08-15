@@ -1374,6 +1374,198 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── LA BOMBE (game/Bomb.mt, classe « 8__V1 » du bytecode) ──
+
+test('la bombe : la mise en place du bytecode, constante par constante', () => {
+  const b = banc(J.Bomb, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 540 - 40 * 3);
+  assert.equal(j.limit, 169);
+  assert.equal(j.powerMax, 10, 'déclaré comme à l\'époque — et jamais lu');
+  assert.equal(j.angle, -Math.PI * 0.75);
+  assert.equal(j.speed, 0.5 + 40 * 0.015);
+  assert.deepEqual(j.water, []);
+  assert.equal(j.power, null);
+  // Les acteurs de la timeline, aux PlaceObject du SWF (sym92, image 1).
+  assert.equal(j.fond.joue, false, 'la scène est stoppée sur le pré');
+  assert.equal(j.bombe.x, 200.8);
+  assert.equal(j.bombe.y, 199.85);
+  assert.equal(j.etincelle.x, -13.25);
+  assert.equal(j.etincelle.y, 229.45);
+  assert.equal(j.monstre.x, 200.8);
+  assert.equal(j.monstre.y, 199.85);
+  assert.equal(j.monstre.joue, true, 'le monstre joue son entrée');
+  // La fenêtre du masque, aux valeurs d'auteur avant la première image.
+  assert.equal(j.bombe.masque.cle, 'sym67');
+  assert.equal(j.bombe.masque.sy, 0.999466, 'le _yscale d\'auteur, jamais retouché');
+  // L'ordre d'accrochage refait les profondeurs 1, 4, 11, 15 de la timeline.
+  const ordre = j.scene.ordre();
+  assert.ok(ordre.indexOf(j.fond) < ordre.indexOf(j.bombe), 'le pré sous la mèche');
+  assert.ok(ordre.indexOf(j.bombe) < ordre.indexOf(j.etincelle), 'la mèche sous la braise');
+  assert.ok(ordre.indexOf(j.etincelle) < ordre.indexOf(j.monstre), 'la braise sous le monstre');
+});
+
+test('les timelines rejouées : flammes 1-2-3, entrée du monstre stoppée à 15 (flReady)', () => {
+  const b = banc(J.Bomb);
+  const j = b.jeu;
+  // La flamme boucle 1-2-3 : le DoAction de l'image 4 rembobine AVANT le
+  // rendu, son image (le même dessin que la 3) ne s'affiche jamais. On lit
+  // APRÈS chaque tour : le client fait update puis dessine — l'état
+  // d'accrochage, lui, ne passe jamais à l'écran.
+  const vues = [];
+  for (let i = 0; i < 6; i++) { b.avancer(1); vues.push(j.etincelle.image); }
+  assert.deepEqual(vues, [1, 2, 3, 1, 2, 3]);
+  // Le monstre : l'entrée 1-14, le stop de l'image 15 — qui pose flReady,
+  // la variable déclarée dans la source que RIEN ne lit (vestige d'époque).
+  assert.equal(j.flReady, false);
+  b.avancer(9);                                        // quinze images en tout
+  assert.equal(j.monstre.image, 15);
+  assert.equal(j.monstre.joue, false, 'stop() de l\'image 15');
+  assert.equal(j.flReady, true, 'sa timeline a posé flReady');
+});
+
+test('la braise remonte la mèche, le masque la suit ; au bout (169), la bombe saute', () => {
+  const b = banc(J.Bomb, { dif: 0 });
+  const j = b.jeu;
+  const x0 = j.etincelle.x;
+  b.avancer(1);
+  assert.equal(j.etincelle.x, x0 + 0.5, 'speed = 0,5 + dif·0,015');
+  // Le masque colle à la braise : mask._x = spark._x, _xscale = mcw - spark._x
+  // — un rectangle de cent pixels, l'échelle y vaut des pixels.
+  assert.equal(j.bombe.masque.x, j.etincelle.x);
+  assert.equal(j.bombe.masque.sx, (LARGEUR - j.etincelle.x) / 100);
+  // Jusqu'au bout de la mèche : la défaite, et play() déroule l'explosion.
+  b.avancer(Math.ceil((j.limit - j.etincelle.x) / 0.5) + 1);
+  assert.equal(j.gagnant, false, 'la bombe a sauté');
+  assert.equal(j.etape, 2);
+  assert.ok(j.fond.image >= 2, 'play() : la scène est partie');
+  // Les éclairs (images 2-3) n'affichent plus personne…
+  b.avancer(1);
+  assert.equal(j.etincelle.visible, false);
+  assert.equal(j.bombe.visible, false);
+  // …puis le monstre revient soufflé (images 4-6), et la scène s'arrête à 6.
+  b.avancer(5);
+  assert.equal(j.fond.image, 6, 'le stop de la fin');
+  assert.equal(j.fond.joue, false);
+  assert.equal(j.monstre.visible, true);
+  assert.equal(j.monstre.x, -35.5, 'la troisième pose du souffle (PlaceObject de l\'image 6)');
+  assert.equal(j.monstre.y, -40.15);
+  assert.ok(Math.abs(j.monstre.rot - 25.34) < 0.01, 'il tournoie (~25,3°)');
+});
+
+test('la charge monte de 0,5 par temps (poses 20 à 30), le lancer mou est avalé', () => {
+  const b = banc(J.Bomb);
+  const j = b.jeu;
+  b.socle.click();
+  b.avancer(1);
+  assert.equal(j.power, 0, 'le premier tour arme la charge sans poser le monstre');
+  b.avancer(1);
+  assert.equal(j.power, 0.5);
+  assert.equal(j.monstre.image, 21, 'gotoAndStop(round(0,5 + 20)) = 21');
+  b.avancer(19);
+  assert.equal(j.power, 10, 'le plafond — un littéral du bytecode, pas powerMax');
+  assert.equal(j.monstre.image, 30, 'la pose la plus armée');
+  b.socle.relache();
+  b.avancer(1);
+  assert.equal(j.power, null);
+  assert.equal(j.water.length, 1, 'la boule est partie');
+  assert.equal(j.monstre.image, 20, 'gotoAndStop("20") après le lancer');
+  const boule = j.water[0];
+  assert.equal(boule.poids, 0.5);
+  assert.equal(boule.peau.sx, 0.6, 'la peau à 60 %');
+  assert.equal(boule.peau.cle, 'sym62');
+  // Partie de la main (x - 39, y - 63), en cloche vers la gauche (-3π/4).
+  assert.equal(boule.x, 200.8 - 39);
+  assert.equal(boule.y, 199.85 - 63);
+  assert.equal(boule.vitx.toFixed(4), (Math.cos(-Math.PI * 0.75) * 10 * 0.8).toFixed(4));
+  assert.equal(boule.vity.toFixed(4), (Math.sin(-Math.PI * 0.75) * 10 * 0.8).toFixed(4));
+  // Le lancer MOU : power ≤ 2,5 au relâchement, pas de boule — mais la pose
+  // retombe quand même à 20.
+  b.socle.click();
+  b.avancer(3);
+  assert.equal(j.power, 1);
+  j.monstre.allerA(22);                        // pour voir la pose retomber
+  b.socle.relache();
+  b.avancer(1);
+  assert.equal(j.water.length, 1, 'toujours une seule boule : le lancer mou est avalé');
+  assert.equal(j.power, null);
+  assert.equal(j.monstre.image, 20);
+});
+
+test('la boule qui crève la ligne éclate en dix gouttes ; à moins de dix pixels, la braise s\'éteint', () => {
+  const b = banc(J.Bomb);
+  const j = b.jeu;
+  // Une boule réglementaire, pendue juste au-dessus de la braise.
+  j.power = 5;
+  j.launch();
+  const mc = j.water[0];
+  mc.x = j.etincelle.x + 6;
+  mc.y = j.etincelle.y - 1;
+  mc.vitx = 2;
+  mc.vity = 1;
+  b.avancer(1);
+  assert.equal(j.gagnant, true, 'éteinte');
+  assert.equal(j.etape, 2);
+  assert.equal(j.water.length, 0, 'la boule éclatée est retirée');
+  assert.equal(j.fond.joue, false, 'PAS de play() à la victoire : la bombe ne saute pas');
+  assert.equal(j.fond.image, 1);
+  assert.ok(j.fumee, 'gotoAndPlay(« smoke »)');
+  assert.ok(j.etincelle.image >= 5, 'la fumée est partie (étiquette : image 5)');
+  // Les dix gouttes réglementaires de l'éclat.
+  const gouttes = j.sprites.filter((s) => s.peau && s.peau.cle === 'sym422');
+  assert.equal(gouttes.length, 10);
+  assert.ok(gouttes.every((g) => g.poids === 0.5 && g.fonduType === 1), 'poids 0,5, fondu par l\'échelle');
+  assert.ok(gouttes.every((g) => g.peau.alpha === 0.6), 'alpha 60 %');
+  assert.ok(gouttes.every((g) => g.vity < 0), 'toutes giclent vers le haut');
+  assert.ok(gouttes.every((g) => g.minuteur >= 10 && g.minuteur < 20), 'minuteur 10 + random(10)');
+  assert.ok(gouttes.every((g) => g.echelle >= 40 && g.echelle < 100), 'échelle 40 + random(60)');
+  // La fumée joue jusqu'au stop de l'image 22, dans la fenêtre du verdict.
+  b.avancer(17);
+  assert.equal(j.etincelle.image, 22);
+  assert.equal(j.etincelle.joue, false, 'le stop au bout de la fumée');
+});
+
+test('la coquille de la victoire : setWin sans return — la charge tourne encore cette image-là', () => {
+  const b = banc(J.Bomb);
+  const j = b.jeu;
+  // Le joueur relance déjà la charge pendant que sa boule retombe…
+  j.power = 5;
+  j.launch();
+  const mc = j.water[0];
+  mc.x = j.etincelle.x + 6;
+  mc.y = j.etincelle.y - 3;
+  mc.vitx = 0.5;
+  mc.vity = 1;
+  b.socle.click();
+  b.avancer(1);                                // la boule n'a pas encore passé la ligne
+  assert.equal(j.gagnant, null);
+  assert.equal(j.power, 0, 'la charge s\'arme');
+  b.avancer(1);                                // l'image de la victoire
+  assert.equal(j.gagnant, true);
+  assert.equal(j.power, 0.5, 'le bloc de charge a ENCORE tourné : ni play() ni return dans la branche gagnée');
+  assert.equal(j.monstre.image, 21, 'et le monstre a reposé sur l\'image même de la victoire');
+  b.avancer(1);
+  assert.equal(j.power, 0.5, 'l\'étape 2 fige tout : la coquille ne dure qu\'une image');
+});
+
+test('les dessins de la bombe sont extraits, la scène nettoyée de ses acteurs', () => {
+  for (const cle of ['gameBomb', 'sym64', 'sym67', 'sym73', 'sym88', 'sym62', 'sym422']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.gameBomb.etats.length, 6, 'le pré, deux éclairs, trois images soufflées');
+  assert.equal(MANIFESTE.gameBomb.etats[0].pieces.length, 1,
+    'l\'image 1 : le pré SEUL — braise, monstre et mèche vivent à part, pilotés par le jeu');
+  assert.equal(MANIFESTE.sym73.etats.length, 22, 'flammes puis fumée');
+  assert.equal(MANIFESTE.sym88.etats.length, 30, 'l\'entrée du monstre et ses poses de charge');
+  assert.equal(MANIFESTE.sym62.etats.length, 21, 'la boule ondule');
+  // La fenêtre du masque : un rectangle 100×100 accroché en haut à gauche —
+  // c'est lui qui fait valoir _xscale en pixels (mask._xscale = mcw - x).
+  const m67 = MANIFESTE.sym67.etats[0].pieces[0];
+  assert.equal(m67.w, 100);
+  assert.equal(m67.h, 100);
+  assert.deepEqual(m67.o, [0, 0]);
+});
+
 // ── L'ÉCRAN D'ACCUEIL (Menu.mt reconstruit) ──
 
 test('le menu : titre sur ressort, sinusoïde, cases qui glissent — Menu.mt rejoué', () => {

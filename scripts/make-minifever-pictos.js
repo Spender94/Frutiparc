@@ -138,6 +138,11 @@ const SCENES = {
     { cle: 'sym635', x: 150, y: 110, rot: -90 },    // …le manche dressé,
     { cle: 'sym633', x: 150, y: 195 },              // l'appât sous son nez
   ],
+  gameBomb: [
+    { cle: 'sym64', x: 200.8, y: 199.85 },          // la mèche et sa bombe
+    { cle: 'sym73', x: 90, y: 229.45 },             // la braise à mi-course
+    { cle: 'sym88', x: 200.8, y: 199.85, image: 26 },   // le monstre qui charge
+  ],
   gamePatate: [
     { cle: 'sym235', x: 60, y: 54 },                // votre légume, nu
     { cle: 'sym235', x: 180, y: 54 },               // le modèle, habillé :

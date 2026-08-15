@@ -2593,12 +2593,247 @@ class Frog extends Jeu {
 }
 
 /*
+ * game/Bomb.mt — LA BOMBE : éteindre la mèche.
+ *
+ * Une braise remonte la mèche (speed = 0,5 + dif·0,015 px par unité de temps)
+ * vers la bombe, au bout à droite (limit = 169). Le monstre du coin tient
+ * l'arrosage : APPUYER charge (power monte de 0,5 par temps, plafond 10 — sa
+ * pose suit, images 20 à 30), RELÂCHER lance une boule d'eau en cloche
+ * (angle fixe -3π/4, vitesse power·0,8, poids 0,5) — mais seulement si
+ * power > 2,5 : le lancer mou est avalé sans boule. Chaque boule qui passe
+ * SOUS la ligne de la mèche y éclate en dix gouttes ; à moins de dix pixels
+ * de la braise, c'est éteint — gagné. La braise au bout : la bombe saute.
+ *
+ * Tout est vérifié contre le bytecode (classe « 8__V1 » du SWF de dev) :
+ *   · gameTime = 540 - dif·3 ; limit 169 ; angle -2.356194490192345 ;
+ *     speed 0,5 + dif·0,015 ; charge min(power + 0,5·tmod, 10) — le 10 est
+ *     un littéral, powerMax (10 aussi) déclaré mais jamais lu ;
+ *   · la boule part de (monster._x - 39, monster._y - 63), peau à 60 %,
+ *     et ondule (vingt et une images rebouclées par le DoAction du clip) ;
+ *   · l'éclat : dix gouttes, vitx 5·(2·hasard-1) + vitx de la boule,
+ *     vity -(3 + hasard·8), échelle 40 + random(60), minuteur 10 +
+ *     random(10), fondu par l'échelle (type 1), alpha 60 % ;
+ *   · COQUILLE de la victoire, conservée : la branche « éteinte » pose
+ *     setWin(true) et step = 2 SANS play() ni return — le tour de
+ *     charge/lancer s'exécute donc encore cette image-là (un appui tenu y
+ *     charge une dernière fois la pose du monstre) ; la défaite, elle, fait
+ *     play() et return ;
+ *   · la MÈCHE (l'enfant « bomb » de la source, jamais piloté) est masquée
+ *     par sym67 — un rectangle 100×100 accroché en haut à gauche, donc
+ *     _xscale y vaut des PIXELS : mask._x = spark._x, _xscale =
+ *     Cs.mcw - spark._x — la mèche n'existe qu'à droite de la braise, le
+ *     brûlé disparaît ;
+ *   · var flReady, déclarée dans la source et jamais lue : c'est la TIMELINE
+ *     du monstre qui la pose (stop() puis _parent.flReady = true à son image
+ *     quinze, la fin de son entrée) — vestige d'époque, reproduit tel quel.
+ *
+ * Les timelines, rejouées à la main comme le lecteur les jouait :
+ *   · l'étincelle (sym73) boucle ses flammes 1-2-3 — le DoAction de l'image
+ *     4 rembobine AVANT le rendu, et son dessin (le même que la 3) ne
+ *     s'affiche jamais ; « fumée » (étiquette obfusquée « 3w07p », image 5)
+ *     se joue jusqu'au stop de l'image 22 ;
+ *   · le monstre (sym88) joue son entrée 1-14 et s'arrête à 15 ;
+ *   · la scène (la cellule gameBomb, extraite sans ses enfants nommés) est
+ *     stoppée sur son image 1 (le pré) ; jouée à la défaite, elle déroule
+ *     l'explosion — deux éclairs plein cadre (images 2-3, plus personne
+ *     d'affiché), puis le monstre REPLACÉ par la timeline, instance fraîche
+ *     soufflée en tournoyant (trois poses relevées sur les PlaceObject,
+ *     rotation ~25,3°), stop à 6.
+ *
+ * Les dessins : gameBomb la scène (sans ses enfants nommés — le client la
+ * pose déjà en décor, on l'accroche AUSSI en Mc pour jouer l'explosion),
+ * sym64 la mèche et sa bombe (ancrées à la bombe, la mèche file à gauche),
+ * sym73 l'étincelle, sym88 le monstre, sym67 la fenêtre du masque, sym62 la
+ * boule d'eau (mcWaterBall), sym422 la goutte (mcPartGoutte, partagée).
+ */
+class Bomb extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 540 - this.dif * 3;
+    super.init();
+    this.limit = 169;
+    this.powerMax = 10;            // déclaré comme à l'époque… et comme à l'époque, jamais lu
+    this.angle = -Math.PI * 0.75;
+    this.speed = 0.5 + this.dif * 0.015;
+    this.water = [];
+    this.power = null;
+    this.fumee = false;
+    this.flReady = false;
+    this.tourFlamme = 0;
+    this.monstreSouffle = false;
+    this.attachElements();
+  }
+
+  attachElements() {
+    // Vide dans la source : la scène (sym92 du SWF) porte déjà ses acteurs.
+    // On rejoue ici ses PlaceObject, aux positions du SWF, tous sous
+    // PROF.FOND — l'ordre d'accrochage refait l'ordre des profondeurs de la
+    // timeline (1, 2, 4, 11, 15), et les clips attachés par script (boules,
+    // gouttes) passent devant, comme les attachMovie d'époque au-dessus de
+    // la timeline.
+    this.fond = this.attacher('gameBomb', PROF.FOND);
+    this.fond.arreter();                   // stop() d'époque sur l'image 1
+
+    this.bombe = this.attacher('sym64', PROF.FOND);
+    this.bombe.x = 200.8;
+    this.bombe.y = 199.85;
+    // La fenêtre du masque, aux valeurs posées dans le SWF — l'image 1 du jeu
+    // les remplace aussitôt par celles de l'étincelle. Le _yscale d'auteur
+    // (99,9466 %) n'est jamais retouché par le code : on le garde.
+    this.bombe.masque = { cle: 'sym67', x: 12.45, y: 138.9, sx: 2.409088, sy: 0.999466 };
+
+    this.etincelle = this.attacher('sym73', PROF.FOND);
+    this.etincelle.x = -13.25;
+    this.etincelle.y = 229.45;
+
+    this.monstre = this.attacher('sym88', PROF.FOND);
+    this.monstre.x = 200.8;
+    this.monstre.y = 199.85;
+    this.monstre.jouer();                  // son entrée, images 1 à 14
+  }
+
+  update() {
+    super.update();
+
+    // Les TIMELINES — ce que le lecteur Flash faisait tout seul.
+    if (!this.fumee && this.fond.image < 2) {
+      this.etincelle.allerA(1 + (this.tourFlamme % 3));   // flammes 1-2-3
+      this.tourFlamme++;
+    } else if (this.etincelle.joue && this.etincelle.image >= 22) {
+      this.etincelle.arreter();            // le stop au bout de la fumée
+    }
+    if (this.monstre.joue && this.monstre.image >= 15) {
+      this.monstre.arreter();              // stop() de l'image 15…
+      this.flReady = true;                 // …et son _parent.flReady = true
+    }
+    if (this.fond.joue && this.fond.image >= 6) this.fond.arreter();
+    if (this.fond.image >= 2) {
+      // L'explosion : la timeline d'époque n'y place plus ni mèche ni
+      // étincelle ni masque, et le monstre revient à l'image 4 — instance
+      // fraîche (pellicule redémarrée), soufflée en tournoyant.
+      this.etincelle.visible = false;
+      this.bombe.visible = false;
+      const pose = BOMB_SOUFFLE[this.fond.image];
+      if (pose) {
+        if (!this.monstreSouffle) {
+          this.monstreSouffle = true;
+          this.monstre.allerA(1);
+          this.monstre.jouer();
+        }
+        this.monstre.visible = true;
+        this.monstre.x = pose.x;
+        this.monstre.y = pose.y;
+        this.monstre.rot = pose.rot;
+        this.monstre.sx = pose.s;
+        this.monstre.sy = pose.s;
+      } else {
+        this.monstre.visible = false;
+      }
+    }
+
+    switch (this.etape) {
+      case 1:
+        // LA BRAISE remonte la mèche.
+        this.etincelle.x += this.speed * Temps.tmod;
+        if (this.etincelle.x > this.limit) {
+          this.gagne(false);
+          this.etape = 2;
+          this.fond.jouer();               // play() : la scène déroule l'explosion
+          return;
+        }
+        this.bombe.masque = { cle: 'sym67', x: this.etincelle.x, y: 138.9,
+          sx: (LARGEUR - this.etincelle.x) / 100, sy: 0.999466 };
+
+        // L'EAU : toute boule passée sous la ligne de la mèche y éclate.
+        for (let i = 0; i < this.water.length; i++) {
+          const mc = this.water[i];
+          if (mc.y > this.etincelle.y) {
+            if (Math.abs(this.etincelle.x - mc.x) < 10) {
+              this.fumee = true;           // gotoAndPlay(« smoke »)
+              this.etincelle.allerA(5);
+              this.etincelle.jouer();
+              this.gagne(true);
+              this.etape = 2;
+              // pas de play() ni de return : coquille d'époque — la charge
+              // ci-dessous tourne encore cette image-là.
+            }
+            this.explosion(mc.x, this.etincelle.y, mc.vitx);
+            mc.tuer();
+            this.water.splice(i, 1);
+            i--;
+          }
+        }
+
+        // LA CHARGE, tant qu'on appuie ; le lancer au relâchement.
+        if (this.socle.flPresse) {
+          if (this.power === null) {
+            this.power = 0;
+          } else {
+            this.power = Math.min(this.power + 0.5 * Temps.tmod, 10);
+            this.monstre.allerA(Math.round(this.power + 20));
+          }
+        } else if (this.power !== null) {
+          this.launch();
+        }
+        break;
+      default: break;
+    }
+  }
+
+  launch() {
+    if (this.power > 2.5) {
+      const mc = this.nouveauPhys('sym62');
+      mc.x = this.monstre.x - 39;
+      mc.y = this.monstre.y - 63;
+      mc.vitx = Math.cos(this.angle) * this.power * 0.8;
+      mc.vity = Math.sin(this.angle) * this.power * 0.8;
+      mc.poids = 0.5;
+      mc.init();
+      mc.peau.sx = 0.6;
+      mc.peau.sy = 0.6;
+      mc.peau.jouer();                     // la boule ondule, en boucle
+      this.water.push(mc);
+    }
+    this.monstre.allerA(20);               // gotoAndStop("20")
+    this.power = null;
+  }
+
+  explosion(x, y, vx) {
+    for (let n = 0; n < 10; n++) {
+      const g = this.nouvellePart('sym422');
+      g.x = x;
+      g.y = y;
+      g.vitx = 5 * (this.aleatoire() * 2 - 1) + vx;
+      g.vity = -(3 + this.aleatoire() * 8);
+      g.echelle = 40 + this.socle.hasard(60);
+      g.poids = 0.5;
+      g.minuteur = 10 + this.socle.hasard(10);
+      g.fonduType = 1;
+      g.peau.alpha = 0.6;
+      g.init();
+    }
+  }
+}
+
+// Les trois poses du monstre soufflé — les PlaceObject des images 4, 5 et 6
+// de la scène (rotation en degrés, échelle du quantifié Flash, ~1).
+const BOMB_SOUFFLE = {
+  4: { x: 60.5, y: 96.3, rot: 25.34, s: 0.9984 },
+  5: { x: 12.6, y: 28.15, rot: 25.31, s: 0.9971 },
+  6: { x: -35.5, y: -40.15, rot: 25.34, s: 0.9984 },
+};
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
- * L'ordre est celui de Base.genGameList(), qui donnait à chaque épreuve une
- * fréquence de tirage identique. Les noms, eux, n'ont jamais été écrits — le
- * tableau Lang.GAME_NAME des sources ne contient que « Nom du jeu », quatre-
- * vingt-dix fois. Ceux-là sont donc de nous.
+ * L'ordre est celui du portage, épreuve après épreuve — à fréquences de
+ * tirage égales (Base.genGameList() donnait freq: 10 à toutes), l'ordre du
+ * tableau est sans effet sur le hasard. Les noms, eux, n'ont jamais été
+ * écrits — le tableau Lang.GAME_NAME des sources ne contient que « Nom du
+ * jeu », quatre-vingt-dix fois. Ceux-là sont donc de nous.
  */
 const JEUX = [
   { cle: 'gameBasket', nom: 'panier', Classe: Basket },
@@ -2615,11 +2850,12 @@ const JEUX = [
   { cle: 'gameOrbital', nom: 'orbite', Classe: Orbital },
   { cle: 'gameJumpFish', nom: 'photo', Classe: JumpFish },
   { cle: 'gamePatate', nom: 'légume', Classe: Patate },
+  { cle: 'gameBomb', nom: 'bombe', Classe: Bomb },
   { cle: 'gameFrog', nom: 'grenouille', Classe: Frog },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
-  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Frog };
+  Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Bomb, Frog };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

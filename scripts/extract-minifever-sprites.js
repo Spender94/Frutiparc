@@ -218,6 +218,22 @@ function principal() {
     { cle: 'sym32', id: 32 },
     { cle: 'sym39', id: 39 },
     { cle: 'sym40', id: 40, sansEnfantsNommes: true },
+    // La BOMBE (gameBomb, sym92) : ses acteurs sont des enfants de TIMELINE,
+    // pas des attachMovie — seuls la mèche (sym64) et les clips accrochés par
+    // script sortaient déjà sous leur identifiant. On sépare donc :
+    // l'étincelle (sym73 — flammes 1 à 4 bouclées par DoAction, fumée
+    // étiquetée à l'image 5, stop à 22), le monstre (sym88, trente images,
+    // stop à 15 où sa timeline pose flReady), la fenêtre du masque de la
+    // mèche (sym67 — un rectangle 100×100 accroché en haut à gauche :
+    // _xscale y vaut des pixels). Et la cellule gameBomb elle-même est
+    // REPRISE sans ses enfants nommés : le pré, puis les éclairs et le décor
+    // de l'explosion — sans quoi le décor que le client pose d'office
+    // porterait des copies figées de l'étincelle, du monstre et de la mèche
+    // (le monstre soufflé des images 4-6 reste piloté par le jeu).
+    { cle: 'sym67', id: 67 },
+    { cle: 'sym73', id: 73 },
+    { cle: 'sym88', id: 88 },
+    { cle: 'gameBomb', id: 92, sansEnfantsNommes: true },
   ];
   for (const s of SUPPLEMENTS) {
     const etats = etatsDe(s.id, s);
