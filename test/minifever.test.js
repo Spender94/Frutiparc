@@ -2897,3 +2897,61 @@ test('la toile est PROTÉGÉE du navigateur : touch-action, appui long, geste', 
   // est alors tenu pour tactile, plutôt que de retomber sur la règle souris.
   assert.match(client, /pointer: coarse/, 'le doute penche du côté du doigt');
 });
+
+// ── LES PICTOS DES ÉPREUVES (la vignette du tirage) ──
+
+test('chaque épreuve a son picto, et la clef y mène toute seule', () => {
+  // La console de l'entre-deux-épreuves montrait le symbole `gameX` brut : le
+  // DÉCOR NU, sans un acteur. La moitié des épreuves s'y réduisait à un aplat
+  // — le renvoi un rectangle rouge, la bombe un rectangle vert — et la photo,
+  // dont le décor est noir, ne montrait rien. Elle sert donc le picto, qui
+  // recoud le décor ET ses acteurs.
+  const dossier = path.join(ROOT, 'public/minifever/pictos');
+  for (const j of J.JEUX) {
+    const f = path.join(dossier, C.fichierPicto(j.cle));
+    assert.ok(fs.existsSync(f), j.nom + ' : il manque ' + path.basename(f));
+    const svg = fs.readFileSync(f, 'utf8');
+    assert.match(svg, /^<\?xml|^<svg/, path.basename(f) + ' est un SVG');
+    // Un picto qui ne porterait qu'un fond ne vaudrait pas mieux que le
+    // décor nu : chacun empile au moins deux tracés.
+    const traces = (svg.match(/<(path|polygon|rect|circle|ellipse|image)\b/g) || []).length;
+    assert.ok(traces >= 2, j.nom + ' : picto trop pauvre (' + traces + ' tracé)');
+  }
+  // La règle de nommage est mécanique — aucune table à tenir à jour.
+  assert.equal(C.fichierPicto('gameJumpFish'), 'jumpfish.svg');
+  assert.equal(C.fichierPicto('gameSpaceDodge'), 'spacedodge.svg');
+});
+
+test('le tirage montre le PICTO, et retombe sur le décor s\'il manque', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minifever/client.js'), 'utf8');
+  const console_ = src.substring(src.indexOf('dessinerConsole(ctx, s)'),
+    src.indexOf('Le verdict de l\'épreuve'));
+  assert.match(console_, /const pic = pictos\.get\(vue\.cle\)/, 'la vignette cherche le picto');
+  assert.match(console_, /ctx\.drawImage\(pic,/, 'et le pose tel quel');
+  // Le repli : tant qu'un picto n'est pas chargé, le décor du jeu — jamais
+  // un carré noir.
+  assert.match(console_, /poser\(ctx, vue\.cle, 1,/, 'à défaut, le décor du jeu');
+  // Et le chargement ne bloque pas la partie.
+  const page = fs.readFileSync(path.join(ROOT, 'public/minifever/index.html'), 'utf8');
+  assert.match(page, /C\.chargerPictos\(JEUX, '\/minifever\/pictos\/'\)\.catch/,
+    'les pictos se chargent à côté, sans retarder la première épreuve');
+});
+
+test('la roulette du tirage parcourt tout le catalogue, sans trou', () => {
+  // Arcade.updateVignette : l'indice court de `toss` crans à partir du jeu
+  // tiré, modulo le catalogue. Aucun cran ne doit tomber hors liste — c'est
+  // ce qui produirait une vignette vide en plein défilé.
+  const cat = J.JEUX;
+  const vus = new Set();
+  const suivant = cat[5];
+  for (let toss = 26; toss >= 0; toss -= 0.5) {
+    const i = (cat.indexOf(suivant) + Math.ceil(toss)) % cat.length;
+    const vue = cat[(i + cat.length) % cat.length];
+    assert.ok(vue, 'toss ' + toss + ' : la roulette pointe une épreuve');
+    vus.add(vue.cle);
+  }
+  assert.ok(vus.size >= 20, 'la roulette brasse le catalogue (' + vus.size + ' épreuves vues)');
+  // Et elle s'arrête sur l'épreuve RÉELLEMENT tirée.
+  const i0 = (cat.indexOf(suivant) + Math.ceil(0)) % cat.length;
+  assert.equal(cat[i0], suivant, 'toss à zéro : la vignette est celle du jeu qui vient');
+});

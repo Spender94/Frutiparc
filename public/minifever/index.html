@@ -224,6 +224,12 @@ function finArcade(d) {
 C.charger('/minifever/sprites/', (c) => {
   $('etat').textContent = 'chargement… ' + Math.round(c * 100) + ' %';
 }).then(() => {
+  // Les pictos des épreuves — ceux que la console montre pendant le tirage.
+  // Ils ne bloquent PAS le départ : la partie commence, et la console retombe
+  // sur le décor du jeu pour les quelques images où ils manquent encore.
+  C.chargerPictos(JEUX, '/minifever/pictos/').catch(() => {});
+  return null;
+}).then(() => {
   client = new C.Client({
     canvas,
     surEvenement: (nom, d) => {

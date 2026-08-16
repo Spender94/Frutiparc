@@ -22,6 +22,27 @@ const images = new Map();          // fichier SVG → Image
 let manifeste = null;
 let baseDessins = '/minifever/sprites/';
 
+/*
+ * LES PICTOS DES ÉPREUVES — le dessin qui NOMME un mini-jeu.
+ *
+ * La console de l'entre-deux-épreuves montrait le symbole `gameX` brut, c'est
+ * à dire le DÉCOR NU : la salle vide, sans un seul acteur. La moitié des
+ * épreuves s'y réduisait à un aplat de couleur — le renvoi un rectangle rouge,
+ * la bombe un rectangle vert, le taquin un rectangle brun — et la photo, dont
+ * le décor est un fond noir, ne montrait rien du tout. Pendant le tirage,
+ * regarder défiler des rectangles n'apprend rien de l'épreuve qui vient.
+ *
+ * Les pictos, eux, existent déjà : scripts/make-minifever-pictos.js recoud le
+ * décor ET ses acteurs en un SVG par épreuve (le panier avec son ballon, le
+ * maillet avec sa bestiole…). C'est le dessin de l'album ; c'est donc lui que
+ * la console doit montrer. Une seule source, un seul dessin.
+ *
+ * Le nom du fichier se déduit de la clef : `gameJumpFish` → `jumpfish.svg`.
+ */
+const pictos = new Map();          // clef de jeu → Image (ou null si absent)
+let basePictos = '/minifever/pictos/';
+const fichierPicto = (cle) => String(cle || '').replace(/^game/, '').toLowerCase() + '.svg';
+
 /** Charge le manifeste et tous ses dessins. `surAvance` suit le chargement. */
 function charger(base, surAvance) {
   base = base || '/minifever/sprites/';
@@ -44,6 +65,25 @@ function charger(base, surAvance) {
         im.src = base + f;
       }))).then(() => m);
     });
+}
+
+/**
+ * Les pictos des épreuves, chargés à part — un par clef du catalogue.
+ *
+ * Ils ne sont PAS dans le manifeste : ce sont des dessins de plateforme
+ * (comme les monstres de MiniWave), pas des symboles du SWF. On les charge
+ * donc à côté, sans bloquer la partie : un picto qui manque laisse la console
+ * retomber sur le décor du jeu, comme avant.
+ */
+function chargerPictos(catalogue, base) {
+  basePictos = base || basePictos;
+  const cles = (catalogue || []).map((j) => j.cle).filter(Boolean);
+  return Promise.all(cles.map((cle) => new Promise((res) => {
+    if (pictos.has(cle)) return res();
+    const im = new Image();
+    im.onload = im.onerror = () => { pictos.set(cle, im.naturalWidth ? im : null); res(); };
+    im.src = basePictos + fichierPicto(cle);
+  })));
 }
 
 /**
@@ -630,11 +670,19 @@ class Client {
     ctx.fillStyle = '#000';
     ctx.fillRect(vx - vr, vy - vr, vr * 2, vr * 2);
     if (vue) {
-      ctx.save();
-      ctx.translate(vx - vr, vy - vr);
-      ctx.scale(vr * 2 / LARGEUR, vr * 2 / HAUTEUR);
-      poser(ctx, vue.cle, 1, 0, 0, 1, 1, 0, 1);
-      ctx.restore();
+      // Le PICTO de l'épreuve — le décor AVEC ses acteurs. À défaut (picto
+      // pas encore chargé, ou absent), le décor nu du jeu : moins parlant,
+      // mais jamais un carré noir.
+      const pic = pictos.get(vue.cle);
+      if (pic) {
+        ctx.drawImage(pic, vx - vr, vy - vr, vr * 2, vr * 2);
+      } else {
+        ctx.save();
+        ctx.translate(vx - vr, vy - vr);
+        ctx.scale(vr * 2 / LARGEUR, vr * 2 / HAUTEUR);
+        poser(ctx, vue.cle, 1, 0, 0, 1, 1, 0, 1);
+        ctx.restore();
+      }
     }
     ctx.restore();
     ctx.strokeStyle = '#f0e0a0';
@@ -687,7 +735,7 @@ class Client {
   }
 }
 
-const API = { Client, charger, mesures, poser, images };
+const API = { Client, charger, chargerPictos, mesures, poser, images, pictos, fichierPicto };
 
 if (sousNode) module.exports = API;
 else racine.MinifeverClient = API;

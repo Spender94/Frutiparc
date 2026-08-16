@@ -100,12 +100,19 @@ const SCENES = {
     { cle: 'sym200', x: 174, y: 50, image: 3 },
     { cle: 'sym187', x: 120, y: 240 },              // le livre attend en bas
   ],
+  // Le cercle est tracé EN FILIGRANE et les billes de difficulté zéro font
+  // sept pixels une fois la scène réduite à la vignette : le picto d'origine
+  // était un carré blanc. On pose donc la scène telle qu'elle est au MILIEU du
+  // barème (billes plus grosses, quatre d'entre elles — Gather.init : rayon
+  // 10 + dif·0,05, nombre 1 + dif·0,05), et on montre la BOURRASQUE, qui est
+  // le verbe du jeu. Rien d'inventé : les mêmes dessins, une pose plus lisible.
   gameGather: [
-    { cle: 'sym418', x: 120, y: 120, s: 1.4 },      // le cercle, rayon 70
-    { cle: 'sym414', x: 40, y: 52, s: 2, image: 1 },   // rouges dehors…
-    { cle: 'sym414', x: 198, y: 76, s: 2, image: 1 },
-    { cle: 'sym414', x: 60, y: 196, s: 2, image: 1 },
-    { cle: 'sym414', x: 130, y: 112, s: 2, image: 2 }, // …bleue dedans
+    { cle: 'sym418', x: 120, y: 120, s: 1.4 },        // le cercle, rayon 70
+    { cle: 'sym414', x: 44, y: 56, s: 3, image: 1 },  // rouges dehors…
+    { cle: 'sym414', x: 196, y: 74, s: 3, image: 1 },
+    { cle: 'sym414', x: 62, y: 194, s: 3, image: 1 },
+    { cle: 'sym414', x: 128, y: 116, s: 3, image: 2 }, // …bleue dedans
+    { cle: 'sym411', x: 176, y: 176, s: 1.6, image: 1 }, // la bourrasque souffle
   ],
   gameTubulo: [                                     // trois pistons, découpés
     { cle: 'sym209', x: 100, y: 128, s: 0.4, image: 1, masque: { cle: 'sym210', s: 0.4 } },
