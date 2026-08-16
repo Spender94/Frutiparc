@@ -289,6 +289,17 @@ test('le forum porte le bouton, et /light écoute son extinction', () => {
     'réservé au frutiz connecté (un visiteur n\'a rien à marquer)');
   assert.match(forum, /postMessage\(\{ forum: 'toutLu'/, 'et il prévient la page qui l\'héberge');
 
+  // EN HAUT de l'index, pas en bas : la liste des forums fait plusieurs
+  // écrans sur un téléphone, et personne ne descendait chercher le bouton.
+  const index = forum.substring(forum.indexOf('async function loadIndex'),
+    forum.indexOf('async function marquerToutLu'));
+  const bouton = index.indexOf('tout-lu-btn');
+  const entete = index.indexOf('<div class="tbl-header">');
+  const boucle = index.indexOf('data.categories.length; ci++');
+  assert.ok(bouton > 0 && entete > 0 && boucle > 0, 'les trois repères sont là');
+  assert.ok(bouton < entete, 'le bouton est posé AVANT l\'en-tête du tableau');
+  assert.ok(bouton < boucle, 'et avant la liste des forums — visible sans scroller');
+
   const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   assert.match(light, /d\.forum !== "toutLu"/, '/light écoute ce message…');
   assert.match(light, /setForumNonLus\(d\.restant\)/, '…et éteint son voyant sans attendre');

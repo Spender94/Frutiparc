@@ -1841,7 +1841,30 @@ async function loadIndex() {
     return;
   }
 
-  var html = '<div class="tbl-header"><span class="col-main">Forums</span><span class="col-num">Sujets</span><span class="col-num">Messages</span><span class="col-last">Dernier message</span></div>';
+  var html = '';
+
+  // « Tout marquer comme lu » — l'interrupteur du voyant Forum, EN TÊTE.
+  //
+  // Le voyant s'allume au moindre sujet ayant du nouveau, et un sujet jamais
+  // ouvert compte aussi : un vieux fil qu'on ne compte pas lire le laissait
+  // allumé à demeure. Le bouton pose la marque de lecture sur TOUT le forum ;
+  // le compte retombe à zéro, l'accueil du téléphone éteint son raccourci, et
+  // le bureau ne rallume plus le sien à la connexion suivante.
+  //
+  // Il était en BAS de page : sur un téléphone, la liste des forums fait
+  // plusieurs écrans et personne ne descendait jusque-là. On le met donc
+  // au-dessus de la liste, visible dès l'ouverture.
+  if (currentUser) {
+    html += '<div class="shell-actions">';
+    html += '<div class="shell-left"></div>';
+    html += '<div class="shell-right">';
+    html += '<button type="button" class="btn btn-green btn-sm" id="tout-lu-btn" onclick="marquerToutLu()"'
+      + ' title="Éteint le voyant Forum : tous les sujets passent en « lu »">Tout marquer comme lu</button>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  html += '<div class="tbl-header"><span class="col-main">Forums</span><span class="col-num">Sujets</span><span class="col-num">Messages</span><span class="col-last">Dernier message</span></div>';
 
   for (var ci = 0; ci < data.categories.length; ci++) {
     var cat = data.categories[ci];
@@ -1865,23 +1888,6 @@ async function loadIndex() {
       html += '</div>';
       html += '</div>';
     }
-  }
-
-  // « Tout marquer comme lu » — l'interrupteur du voyant Forum.
-  //
-  // Le voyant s'allume au moindre sujet ayant du nouveau, et un sujet jamais
-  // ouvert compte aussi : un vieux fil qu'on ne compte pas lire le laissait
-  // allumé à demeure. Le bouton pose la marque de lecture sur TOUT le forum ;
-  // le compte retombe à zéro, l'accueil du téléphone éteint son raccourci, et
-  // le bureau ne rallume plus le sien à la connexion suivante.
-  if (currentUser) {
-    html += '<div class="shell-actions">';
-    html += '<div class="shell-left"></div>';
-    html += '<div class="shell-right">';
-    html += '<button type="button" class="btn btn-green btn-sm" id="tout-lu-btn" onclick="marquerToutLu()"'
-      + ' title="Éteint le voyant Forum : tous les sujets passent en « lu »">Tout marquer comme lu</button>';
-    html += '</div>';
-    html += '</div>';
   }
 
   app.innerHTML = html;
