@@ -225,3 +225,32 @@ test('le client dessine la pellicule du clip, pas son affiche', () => {
   assert.match(extr, /cle: 'trouNoir', id: 1217/, 'le trou noir est extrait pour lui-même');
   assert.match(extr, /cle: 'tirKiwi', id: 1251/, 'l\'éclatement du kiwi aussi');
 });
+
+// ── 5. LA PLONGÉE DU KAMIKAZE ────────────────────────────────────────────
+
+test('le kamikaze plonge à mi-chemin des deux extrêmes d\'époque', () => {
+  // Citron.as applique tmod DEUX FOIS : `vity = min(vity+0.5, 8)*tmod` puis
+  // `y += vity*tmod`. La première ligne est une suite dont le point fixe vaut
+  // 0,5·tmod/(1−tmod) : le plafond de 8 écrit dans le code n'est atteint que
+  // si la machine NE TIENT PAS la cadence de l'en-tête (tmod ≥ 1). Nous la
+  // tenons — la formule brute s'effondrait au quart, d'où « trop lents ».
+  const jeu = partie();
+  const [k] = poser(jeu, [{ type: 4, x: 120, y: 20 }]);
+  k.mode = 1; k.vity = 0; k.flWave = false;
+  const depart = k.y;
+  let images = 0;
+  while (k.vivant && k.y - depart < 200 && images < 10000) { E.TYPES[4].tic(k, 0.8); images++; }
+  // Quarante images par seconde : la traversée doit tenir entre une seconde et
+  // deux — la plongée rapide d'époque en faisait une, la formule brute trois.
+  const secondes = images / 40;
+  assert.ok(secondes > 1 && secondes < 2.2,
+    `200 px en ${secondes.toFixed(2)} s — ni la chute de plume, ni le missile`);
+  assert.equal(Math.round(k.vity * 100) / 100, 4, 'sa vitesse limite est le point fixe attendu');
+
+  // La formule reste celle du jeu, coquille comprise : seule la poussée change.
+  const src = fs.readFileSync(path.join(ROOT, 'public/miniwave/engine.js'), 'utf8');
+  assert.match(src, /b\.vity = Math\.min\(b\.vity \+ KAMIKAZE_POUSSEE, 8\) \* tmod;/,
+    'le double tmod d\'époque est conservé');
+  assert.match(src, /b\.y \+= b\.vity \* tmod;/, 'et l\'intégration aussi');
+  assert.match(src, /const KAMIKAZE_POUSSEE = 1;/, 'la poussée est nommée et documentée');
+});

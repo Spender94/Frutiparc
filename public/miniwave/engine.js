@@ -1824,6 +1824,35 @@ def(3, {                                                          // Clémentine
   freq: 400, cdSpeed: 1,
   tirer: (b) => { for (let i = 0; i < 2; i++) { const s = i * 2 - 1, t = base(b); t.x = b.x + 3 * s; t.vitx = 0.5 * s; t.vity = 2; } },
 });
+/*
+ * LA PLONGÉE DU KAMIKAZE — une coquille d'époque qui rend la vitesse
+ * dépendante de la MACHINE.
+ *
+ * Citron.as écrit :
+ *
+ *     this.vity = Math.min(this.vity+(0.5),8)*Std.tmod
+ *     this.y += this.vity*Std.tmod
+ *
+ * `tmod` est appliqué DEUX FOIS : une fois en rangeant la vitesse, une fois en
+ * s'en servant. La première en fait une suite `v ← (v + 0,5)·tmod`, dont le
+ * point fixe est `0,5·tmod / (1 − tmod)` — donc :
+ *
+ *     tmod 0,80 (40 images/s tenues) → v plafonne à 2   →  64 px/s
+ *     tmod 1,00 (32 images/s)        → v atteint le 8   → 256 px/s
+ *     tmod 1,07 (30 images/s)        → v dépasse le 8   → 273 px/s
+ *
+ * Le plafond de 8 écrit dans le code n'est donc atteint que sur une machine
+ * qui NE TIENT PAS la cadence de l'en-tête. En 2005 c'était le cas courant :
+ * les joueurs voyaient la plongée rapide. Nous tenons quarante images par
+ * seconde, et la formule s'effondre au quart — la chute d'un kamikaze qui
+ * prend trois secondes à traverser l'écran ne se lit plus comme une plongée.
+ *
+ * Les deux vitesses que les joueurs ont connues sur le portage sont donc les
+ * deux BOUTS de l'éventail d'époque, pas un réglage juste et un faux. On pose
+ * la poussée à 1 : le point fixe passe à 4, soit 128 px/s — à mi-chemin, et
+ * la seule valeur de ce fichier qui ne vienne pas du jeu d'origine.
+ */
+const KAMIKAZE_POUSSEE = 1;       // Citron.as en écrit 0,5 (cf. ci-dessus)
 def(4, {                                                          // Kamikaze : plonge quand on passe dessous
   tire: false,
   vague: (b, tmod) => {
@@ -1835,7 +1864,7 @@ def(4, {                                                          // Kamikaze : 
   },
   tic: (b, tmod) => {
     if (b.mode !== 1) return;
-    b.vity = Math.min(b.vity + 0.5, 8) * tmod;
+    b.vity = Math.min(b.vity + KAMIKAZE_POUSSEE, 8) * tmod;
     b.y += b.vity * tmod;
     if (b.y > HAUTEUR + 20) b.tuer();
   },
