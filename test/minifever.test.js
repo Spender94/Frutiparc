@@ -1374,6 +1374,157 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── LE MAILLET (game/Hammer.mt, classe « 47khM6 » du bytecode) ──
+
+test('le maillet : dix-huit terriers, les bestioles surgissent et replongent', () => {
+  const b = banc(J.Hammer, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 320);
+  assert.equal(j.cSpeed, 0.3);
+  assert.equal(j.flReady, true);
+  assert.equal(j.trous.length, 18);
+  assert.equal(j.bList.length, Math.ceil(1 + 40 * 0.08), 'des bestioles à la difficulté');
+  // Chaque bestiole occupe un trou, enfouie à 100, l'espèce tirée une fois.
+  assert.ok(j.bList.every((x) => x.hole && x.hole.by === 100));
+  assert.ok(j.bList.every((x) => x.frame >= 1 && x.frame <= 8));
+  assert.ok(j.bList.every((x) => x.hole.bestiole.image === x.frame));
+  assert.ok(j.bList.every((x) => x.appuyable));
+  // La fenêtre de découpe suit chaque trou.
+  const t = j.bList[0].hole;
+  assert.equal(t.bestiole.masque.cle, 'sym567');
+  assert.equal(t.bestiole.masque.x, t.x);
+  // Elle SURGIT : by fond de ×0,3 par image, puis se cale à zéro.
+  b.avancer(1);
+  assert.equal(t.by, 30, '100 × 0,3');
+  b.avancer(4);
+  assert.equal(t.by, 0, 'sortie (le < 1 devient 0)');
+  assert.equal(t.bestiole.y, t.y, 'le clip suit');
+});
+
+test('le coup de maillet : écraser, se rarmer à l\'image 14, gagner à la dernière', () => {
+  const b = banc(J.Hammer, { dif: 0 });
+  const j = b.jeu;
+  assert.equal(j.bList.length, 1, 'une seule bestiole à difficulté nulle');
+  const bad = j.bList[0];
+  const trou = bad.hole;
+  b.avancer(6);                    // elle est sortie
+  b.souris(trou.x, trou.y - 10);   // la boîte de la bestiole, masque ignoré
+  b.socle.click();
+  assert.equal(j.gagnant, true, 'la dernière écrasée gagne');
+  assert.equal(j.flReady, false);
+  assert.equal(j.hammer.x, trou.x, 'le maillet s\'est posé sur le trou');
+  assert.equal(j.hammer.peau.visible, false);
+  assert.ok(trou.coup.visible && trou.coup.joue, 'le coup se joue');
+  assert.equal(trou.bestiole.visible, false, 'la bestiole est rentrée');
+  // À l'image 14, readyToBlast : le maillet revient et se rarme.
+  b.avancer(14);
+  assert.equal(j.flReady, true);
+  assert.equal(j.hammer.peau.visible, true);
+  // À l'image 16, le coup se cache (le SetProperty d'époque).
+  b.avancer(3);
+  assert.equal(trou.coup.visible, false);
+  // Et le maillet rarmé se rarrête au retour sur son image 1.
+  b.avancer(8);
+  assert.equal(j.hammer.peau.image, 1);
+  assert.equal(j.hammer.peau.joue, false);
+});
+
+test('l\'exposition s\'épuise : la bestiole replonge, ressort AILLEURS, imprenable en chemin', () => {
+  const b = banc(J.Hammer, { dif: 0 });
+  const j = b.jeu;
+  const bad = j.bList[0];
+  const avant = bad.hole;
+  // On brûle l'exposition (t ≤ 15 + 80 à dif nulle) : elle replonge.
+  b.avancer(6);
+  bad.t = 0;
+  b.avancer(2);
+  assert.equal(bad.t, null);
+  assert.equal(bad.appuyable, false, 'le onPress d\'époque est retiré');
+  // Elle redescend (20 par image à dif nulle) puis ressort d'un autre trou.
+  b.avancer(6);
+  assert.notEqual(bad.hole, null);
+  assert.ok(bad.appuyable, 'ressortie, à nouveau prenable');
+  assert.ok(j.hList.includes(avant) || bad.hole !== avant, 'le premier trou est rendu');
+});
+
+test('les dessins du maillet sont extraits, terrier scindé compris', () => {
+  for (const cle of ['gameHammer', 'sym597', 'sym597_margelle', 'sym567', 'sym578', 'sym595', 'sym565']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.gameHammer.etats[0].pieces.length, 1, 'le pré sans ses terriers');
+  assert.equal(MANIFESTE.sym578.etats.length, 8, 'les huit espèces');
+  assert.equal(MANIFESTE.sym595.etats.length, 15, 'le coup');
+  assert.equal(MANIFESTE.sym565.etats.length, 7, 'le maillet et son rarmement');
+  // La fenêtre du terrier monte à -105 : la bestiole sortie reste visible.
+  const f = MANIFESTE.sym567.etats[0].pieces[0];
+  assert.equal(f.fichier, 'shape567.svg');
+});
+
+// ── LE TAQUIN (game/Taquin.mt, classe « 2pp4O5 » du bytecode) ──
+
+test('le taquin : huit fenêtres sur l\'image, le trou en haut à gauche', () => {
+  const b = banc(J.Taquin, { dif: 40 });
+  const j = b.jeu;
+  assert.equal(j.gameTime, 600 - 40 * 2);
+  assert.equal(j.size, 200);
+  assert.equal(j.side, 3);
+  assert.equal(j.ec.toFixed(4), (200 / 3).toFixed(4));
+  assert.equal(j.sList.length, 8, 'huit tuiles, un trou');
+  // Chaque tuile montre le morceau de sa case d'ORIGINE : l'image plein
+  // cadre sous sa fenêtre.
+  for (const o of j.sList) {
+    assert.equal(o.image.x, o.px - o.origX * j.ec);
+    assert.equal(o.image.masque.cle, 'sym555');
+    assert.equal(o.image.masque.x, o.px);
+  }
+  // Le mélange n'a fait que des coups valides : la grille reste cohérente
+  // (positions toutes distinctes, et le trou quelque part).
+  const posees = new Set(j.sList.map((o) => o.x + ':' + o.y));
+  assert.equal(posees.size, 8);
+  assert.ok(!posees.has(j.free.x + ':' + j.free.y));
+  assert.ok(!j.checkWin(), 'jamais mélangé en position gagnante');
+});
+
+test('le taquin se joue : glisser vers le trou, et la victoire attend le trou en (0,0)', () => {
+  const b = banc(J.Taquin, { dif: 0 });
+  const j = b.jeu;
+  // À difficulté nulle : 2 coups de mélange — se défait en refaisant les
+  // coups à l'envers. On résout en cherchant à chaque fois la tuile qui
+  // remet le trou vers sa place ET l'ordre (au plus quelques coups).
+  const voisine = () => j.sList.find((o) =>
+    Math.abs(j.free.x - o.x) + Math.abs(j.free.y - o.y) === 1
+    && o.id === Math.round(j.free.y + j.free.x * j.side));
+  for (let garde = 0; garde < 6 && j.gagnant === null; garde++) {
+    const o = voisine();
+    if (!o) break;
+    j.select(o);
+  }
+  assert.equal(j.gagnant, true, 'remis en ordre, trou en (0,0) : gagné');
+  // Les tuiles COULENT vers leurs cases (ressort 0,5 par image).
+  const o = j.sList[0];
+  o.px = o.py = 0;
+  b.avancer(1);
+  assert.equal(o.px.toFixed(4), ((j.cx + o.x * j.ec) * 0.5).toFixed(4));
+  // Et un clic hors voisinage ne fait rien.
+  const loin = j.sList.find((t) =>
+    Math.abs(j.free.x - t.x) + Math.abs(j.free.y - t.y) > 1);
+  if (loin) {
+    const avant = loin.x + ':' + loin.y;
+    j.select(loin);
+    assert.equal(loin.x + ':' + loin.y, avant);
+  }
+});
+
+test('les dessins du taquin sont extraits — une seule image des quatre prévues', () => {
+  for (const cle of ['gameTaquin', 'sym554', 'sym555', 'sym558', 'sym560']) {
+    assert.ok(MANIFESTE[cle], cle + ' est extrait');
+  }
+  assert.equal(MANIFESTE.sym554.etats.length, 1,
+    'picFrame = random(4) + 1 d\'époque, mais une seule image compilée');
+  assert.equal(MANIFESTE.sym558.etats[0].pieces.length, 1, 'la bordure seule');
+  assert.equal(MANIFESTE.sym558.etats[0].pieces[0].fichier, 'shape557.svg');
+});
+
 // ── L'ESQUIVE SPATIALE (game/SpaceDodge.mt, classe « 5clh34 » du bytecode) ──
 
 test('l\'esquive : la mise en place du bytecode, tourelles décimées comprises', () => {

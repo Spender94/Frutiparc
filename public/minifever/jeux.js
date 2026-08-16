@@ -4735,6 +4735,389 @@ const SPACEDODGE_TOURELLES = [
 ];
 
 /*
+ * game/Hammer.mt — LE MAILLET : taper les taupes.
+ *
+ * Dix-huit terriers ($t0 à $t17) ; 1 + dif·0,08 bestioles (huit espèces,
+ * l'espèce tirée une fois pour toutes) surgissent d'un trou libre au hasard
+ * (y de 100 vers 0, ressort ×0,3 par image), s'exposent
+ * random(round(15 + 80·(1 - dif·0,01))) temps, puis replongent
+ * ((20 + dif·0,2)·tmod) et ressortent AILLEURS. Le maillet suit la souris
+ * (ressort 0,5) ; l'appui sur une bestiole EXPOSABLE (le onPress d'époque
+ * vit de la sortie à la fin de l'exposition, pas pendant la replongée)
+ * l'écrase : le maillet se pose sur le trou et se cache, le COUP (sym595,
+ * posé à l'échelle 2) joue — il rappelle readyToBlast à son image 14 (le
+ * maillet se rarme, pellicule 2-7 puis stop au retour à 1) et SE CACHE à
+ * l'image 16 (le SetProperty _visible d'époque). Toutes écrasées : gagné —
+ * perdu au chrono seul (gameTime = 320).
+ *
+ * Tout est vérifié contre la classe « 47khM6 » du SWF de dev :
+ *   · flReady — LE MÊME nom obfusqué (« 914q83 ») que celui que la timeline
+ *     du monstre de la Bombe renseigne : un champ de la classe Game ;
+ *   · le terrier d'époque (sym597) masque sa bestiole par la FENÊTRE
+ *     (forme 567, clipDepth 17 — elle monte à -105) et la MARGELLE passe
+ *     devant : la taupe sort de derrière la lèvre. Le clip se scinde donc
+ *     en arrière (566), bestiole masquée, coup, margelle (596) ;
+ *   · l'appui d'époque ignore le masque (les boutons AVM1 restent
+ *     cliquables sous une découpe) : la bestiole à peine émergée se tape
+ *     aussi sous la lèvre — la boîte entière fait foi ;
+ *   · Log.clear() d'époque à l'init — sans objet ici.
+ *
+ * Les dessins : gameHammer le pré (sans ses terriers), sym597 l'arrière du
+ * trou, sym597_margelle la lèvre, sym567 la fenêtre de découpe, sym578 la
+ * bestiole (huit espèces), sym595 le coup, sym565 le maillet.
+ */
+class Hammer extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 320;
+    super.init();
+    this.cSpeed = 0.3;
+    this.flReady = true;
+    this.attachElements();
+  }
+
+  attachElements() {
+    // HOLE — les dix-huit terriers de la timeline, scindés en tranches.
+    this.trous = HAMMER_TERRIERS.map(([x, y]) => {
+      const arriere = this.attacher('sym597', PROF.SPRITE);
+      arriere.x = x;
+      arriere.y = y;
+      const bestiole = this.attacher('sym578', PROF.SPRITE);
+      bestiole.x = x;
+      bestiole.y = y + 112.6;      // le placement d'époque, remplacé au surgissement
+      bestiole.visible = false;
+      bestiole.arreter();
+      bestiole.masque = { cle: 'sym567', x, y };
+      const coup = this.attacher('sym595', PROF.SPRITE);
+      coup.x = x;
+      coup.y = y;
+      coup.sx = 2;                 // le placement d'époque : échelle 2
+      coup.sy = 2;
+      coup.visible = false;
+      coup.arreter();
+      const margelle = this.attacher('sym597_margelle', PROF.SPRITE);
+      margelle.x = x;
+      margelle.y = y;
+      return { x, y, arriere, bestiole, coup, margelle, by: 112.6 };
+    });
+    this.hList = this.trous.slice();
+
+    // BADS
+    this.bList = [];
+    const max = 1 + this.dif * 0.08;
+    for (let i = 0; i < max; i++) {
+      const b = { hole: null, t: null, frame: this.socle.hasard(8) + 1, appuyable: false };
+      this.findHole(b);
+      this.bList.push(b);
+    }
+
+    // HAMMER
+    this.hammer = this.nouveauSprite('sym565');
+    this.hammer.x = LARGEUR * 0.5;
+    this.hammer.y = HAUTEUR * 0.5;
+    this.hammer.peau.arreter();    // le stop d'époque de l'image 1
+    this.hammer.init();
+  }
+
+  update() {
+    switch (this.etape) {
+      case 1: {
+        if (this.flReady) {
+          this.hammer.vers({ x: this.sourisX, y: this.sourisY }, 0.5, null);
+        }
+
+        // BADS
+        for (let i = 0; i < this.bList.length; i++) {
+          const b = this.bList[i];
+          const trou = b.hole;
+          if (!trou) continue;
+          if (b.t !== null) {
+            if (trou.by > 0) {
+              trou.by *= this.cSpeed;
+              if (trou.by < 1) trou.by = 0;
+            } else if (b.t > 0) {
+              b.t -= Temps.tmod;
+            } else {
+              b.t = null;
+              b.appuyable = false;   // onPress = null d'époque
+            }
+          } else {
+            trou.by += (20 + this.dif * 0.2) * Temps.tmod;
+            if (trou.by > 100) {
+              this.freeHole(b);
+              this.findHole(b);
+            }
+          }
+          const t2 = b.hole;
+          if (t2) t2.bestiole.y = t2.y + t2.by;
+        }
+        break;
+      }
+      default: break;
+    }
+    // Les timelines : le coup rappelle readyToBlast à 14 et se cache à 16 ;
+    // le maillet rarmé se rarrête au retour sur son image 1.
+    for (const trou of this.trous) {
+      if (trou.coup.joue) {
+        if (trou.coup.image === 14 && !trou.coup.aRappele) {
+          trou.coup.aRappele = true;
+          this.readyToBlast();
+        }
+        // Le SetProperty d'époque cache le coup en ENTRANT dans l'image 16
+        // — qui n'a pas d'image-clé : notre pellicule s'arrête à la 15.
+        if (trou.coup.image >= trou.coup.nbImages) {
+          trou.coup.visible = false;
+          trou.coup.arreter();
+        }
+      }
+    }
+    if (this.hammer.peau.joue && this.hammer.peau.image === 1) this.hammer.peau.arreter();
+    super.update();
+  }
+
+  findHole(b) {
+    const n = this.socle.hasard(this.hList.length);
+    const trou = this.hList[n];
+    this.hList.splice(n, 1);
+    trou.bestiole.visible = true;
+    trou.by = 100;
+    trou.bestiole.y = trou.y + 100;
+    trou.bestiole.allerA(b.frame);
+    b.appuyable = true;            // le onPress d'époque
+    b.hole = trou;
+    b.t = this.socle.hasard(Math.round(15 + (80 * (1 - this.dif * 0.01))));
+  }
+
+  freeHole(b) {
+    b.hole.bestiole.visible = false;
+    this.hList.push(b.hole);
+    b.hole = null;
+  }
+
+  /** L'appui d'époque : la boîte de la bestiole, masque ignoré. */
+  click() {
+    const sx = this.sourisX;
+    const sy = this.sourisY;
+    for (const b of this.bList) {
+      if (!b.hole || !b.appuyable) continue;
+      if (b.hole.bestiole.contient(sx, sy)) {
+        this.catchBad(b);
+        return;
+      }
+    }
+  }
+
+  catchBad(b) {
+    if (!this.flReady) return;
+    // HAMMER
+    this.flReady = false;
+    this.hammer.x = b.hole.x;
+    this.hammer.y = b.hole.y;
+    this.hammer.peau.visible = false;
+    const coup = b.hole.coup;
+    coup.aRappele = false;
+    coup.allerA(2);                // gotoAndPlay("2")
+    coup.jouer();
+    coup.visible = true;
+
+    this.freeHole(b);
+    for (let i = 0; i < this.bList.length; i++) {
+      if (this.bList[i] === b) {
+        this.bList.splice(i, 1);
+        if (this.bList.length === 0) this.gagne(true);
+        break;
+      }
+    }
+  }
+
+  readyToBlast() {
+    this.flReady = true;
+    this.hammer.peau.visible = true;
+    this.hammer.peau.allerA(2);    // gotoAndPlay("2") : le rarmement
+    this.hammer.peau.jouer();
+  }
+}
+
+// Les dix-huit terriers du maillet — les PlaceObject de la scène (sym599).
+const HAMMER_TERRIERS = [
+  [40.5, 109.7], [92.55, 109.7], [144.1, 109.7], [196.15, 109.7],
+  [65.15, 134.65], [118.1, 134.65], [171.05, 134.65],
+  [40.5, 161.75], [92.55, 161.75], [144.1, 161.75], [196.15, 161.75],
+  [65.55, 187.9], [117.1, 187.9], [169.15, 187.9],
+  [40.5, 214.25], [92.55, 214.25], [144.1, 214.25], [196.15, 214.25],
+];
+
+/*
+ * game/Taquin.mt — LE TAQUIN : l'image en huit tuiles, un trou.
+ *
+ * Un taquin 3 × 3 de 200 px, centré ; la case (0, 0) — en haut à gauche —
+ * est le TROU. Chaque tuile est une FENÊTRE de 66,7 px sur l'image plein
+ * cadre (le masque de sa forme 555, la bordure 557 devant) : elle montre le
+ * morceau de sa case d'ORIGINE, où qu'elle soit. Le mélange fait
+ * 2 + dif·0,3 coups VALIDES (une tuile adjacente au trou, sinon on retire)
+ * — et se relance s'il retombe sur la solution. Cliquer une tuile voisine
+ * du trou l'y glisse (les tuiles COULENT vers leur case, ressort 0,5) ; la
+ * victoire n'est jugée que LE TROU REVENU EN (0, 0) et l'ordre refait.
+ * Perdu au chrono seul (gameTime = 600 - dif·2).
+ *
+ * Tout est vérifié contre la classe « 2pp4O5 » du SWF de dev :
+ *   · picFrame = random(4) + 1, mais UNE seule image a été compilée
+ *     (sym554) : le tirage d'époque brûle un aléa et retombe toujours sur
+ *     le même tableau — reproduit tel quel. Et cette image (un bitmap de
+ *     102 px) ne couvre que le coin HAUT-GAUCHE du taquin de 200 : les
+ *     tuiles du bas et de la droite sont nues — l'état du build, conservé ;
+ *   · l'id d'époque s'incrémente TROU COMPRIS (id = x·3 + y), et checkWin
+ *     compare id à round(y + x·side) ;
+ *   · le recadrage d'époque (pic à 100·c, décalé de -x·ec·c) se compense
+ *     exactement : l'image reste PLEIN CADRE sous la fenêtre de chaque
+ *     tuile — c'est ainsi qu'on la pose ici, à (cx, cy), masquée par la
+ *     fenêtre qui suit la tuile.
+ *
+ * Les dessins : gameTaquin l'atelier, sym554 l'image, sym555 la fenêtre,
+ * sym558 la bordure de tuile, sym560 le cadre.
+ */
+class Taquin extends Jeu {
+  constructor(socle) {
+    super(socle);
+  }
+
+  init() {
+    this.gameTime = 600 - this.dif * 2;
+    super.init();
+    this.size = 200;
+    this.side = 3;
+    this.free = { x: 0, y: 0 };
+    this.attachElements();
+    this.shuffle();
+  }
+
+  attachElements() {
+    this.cx = (LARGEUR - this.size) * 0.5;
+    this.cy = (HAUTEUR - this.size) * 0.5;
+
+    // SLOTS — huit tuiles-fenêtres ; le tirage d'époque de picFrame brûle
+    // son aléa (une seule image compilée).
+    this.sList = [];
+    this.ec = this.size / this.side;
+    let id = 0;
+    const picFrame = this.socle.hasard(4) + 1;
+    const k = this.ec / 100;
+    for (let x = 0; x < this.side; x++) {
+      for (let y = 0; y < this.side; y++) {
+        if (this.free.x !== x || this.free.y !== y) {
+          // L'image plein cadre, masquée par la fenêtre de la tuile…
+          const image = this.attacher('sym554', PROF.SPRITE);
+          image.allerA(picFrame);
+          // …et la bordure par-dessus.
+          const bord = this.attacher('sym558', PROF.SPRITE);
+          bord.sx = k;
+          bord.sy = k;
+          const o = { image, bord, x, y, id, origX: x, origY: y };
+          this.poserTuile(o, this.cx + x * this.ec, this.cy + y * this.ec);
+          this.sList.push(o);
+        }
+        id++;
+      }
+    }
+
+    // CADRE
+    const c = this.attacher('sym560', PROF.SPRITE);
+    c.x = this.cx;
+    c.y = this.cy;
+    c.sx = this.size / 100;
+    c.sy = this.size / 100;
+  }
+
+  /** La tuile posée là : l'image sous sa fenêtre, la bordure dessus. */
+  poserTuile(o, px, py) {
+    o.px = px;
+    o.py = py;
+    o.image.x = px - o.origX * this.ec;
+    o.image.y = py - o.origY * this.ec;
+    o.image.masque = { cle: 'sym555', x: px, y: py, sx: this.ec / 100, sy: this.ec / 100 };
+    o.bord.x = px;
+    o.bord.y = py;
+  }
+
+  shuffle() {
+    const max = 2 + this.dif * 0.3;
+    for (let i = 0; i < max; i++) {
+      const o = this.sList[this.socle.hasard(this.sList.length)];
+      const d = Math.abs(this.free.x - o.x) + Math.abs(this.free.y - o.y);
+      if (d === 1) {
+        this.swap(o);
+      } else {
+        i--;
+      }
+    }
+    if (this.checkWin()) {
+      this.shuffle();
+      return;
+    }
+    for (let i = 0; i < this.sList.length; i++) {
+      const o = this.sList[i];
+      this.poserTuile(o, this.cx + o.x * this.ec, this.cy + o.y * this.ec);
+    }
+  }
+
+  update() {
+    switch (this.etape) {
+      case 1:
+        for (let i = 0; i < this.sList.length; i++) {
+          const o = this.sList[i];
+          const pos = { x: this.cx + o.x * this.ec, y: this.cy + o.y * this.ec };
+          // Sprite.toward d'époque, à la main : la tuile coule vers sa case.
+          o.px += (pos.x - o.px) * 0.5 * Temps.tmod;
+          o.py += (pos.y - o.py) * 0.5 * Temps.tmod;
+          this.poserTuile(o, o.px, o.py);
+        }
+        break;
+      default: break;
+    }
+    super.update();
+  }
+
+  /** onPress d'époque : la tuile sous l'appui (son carré de 66,7). */
+  click() {
+    const sx = this.sourisX;
+    const sy = this.sourisY;
+    for (const o of this.sList) {
+      if (sx > o.px && sx < o.px + this.ec && sy > o.py && sy < o.py + this.ec) {
+        this.select(o);
+        return;
+      }
+    }
+  }
+
+  select(o) {
+    if (Math.abs(this.free.x - o.x) + Math.abs(this.free.y - o.y) === 1) {
+      this.swap(o);
+      if (this.free.x === 0 && this.free.y === 0 && this.checkWin()) this.gagne(true);
+    }
+  }
+
+  swap(o) {
+    const x = o.x;
+    const y = o.y;
+    o.x = this.free.x;
+    o.y = this.free.y;
+    this.free.x = x;
+    this.free.y = y;
+  }
+
+  checkWin() {
+    for (let i = 0; i < this.sList.length; i++) {
+      const o = this.sList[i];
+      if (o.id !== Math.round(o.y + o.x * this.side)) return false;
+    }
+    return true;
+  }
+}
+
+/*
  * Le catalogue : la clef du dessin de fond, le nom, la classe.
  *
  * L'ordre est celui du portage, épreuve après épreuve — à fréquences de
@@ -4769,11 +5152,13 @@ const JEUX = [
   { cle: 'gamePlate', nom: 'assiette', Classe: Plate },
   { cle: 'gamePoint', nom: 'pointillés', Classe: Point },
   { cle: 'gameSpaceDodge', nom: 'esquive', Classe: SpaceDodge },
+  { cle: 'gameHammer', nom: 'maillet', Classe: Hammer },
+  { cle: 'gameTaquin', nom: 'taquin', Classe: Taquin },
 ];
 
 const API = { JEUX, Basket, Lander, Pong, Flower, Astero, Parachute, Gobelet, Marmite,
   Gather, Tubulo, Trampoline, Orbital, JumpFish, Patate, Apple, Bomb, Frog, Cliff, Chain,
-  Ghost, Balance, Picture, Plate, Point, SpaceDodge };
+  Ghost, Balance, Picture, Plate, Point, SpaceDodge, Hammer, Taquin };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MinifeverJeux = API;

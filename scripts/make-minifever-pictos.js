@@ -156,6 +156,20 @@ const SCENES = {
     { cle: 'sym370', x: 150, y: 190 },
     { cle: 'sym363', x: 118, y: 172, image: 50, rot: -12 },  // …le héros en vol
   ],
+  gameHammer: [
+    { cle: 'sym597', x: 70, y: 130 },               // deux terriers…
+    { cle: 'sym597_margelle', x: 70, y: 130 },
+    { cle: 'sym597', x: 170, y: 170 },
+    { cle: 'sym578', x: 170, y: 170, image: 2 },    // …une bestiole sortie…
+    { cle: 'sym597_margelle', x: 170, y: 170 },
+    { cle: 'sym565', x: 110, y: 90 },               // …et le maillet qui plane
+  ],
+  gameTaquin: [
+    { cle: 'sym554', x: 20, y: 20 },                // l'image en place…
+    { cle: 'sym560', x: 20, y: 20, s: 2 },          // …le cadre autour…
+    { cle: 'sym558', x: 86.65, y: 86.65, s: 0.667 },    // …et deux bordures
+    { cle: 'sym558', x: 153.3, y: 153.3, s: 0.667 },    // de tuiles qui glissent
+  ],
   gameSpaceDodge: [
     { cle: 'sym628', x: 0, y: 0 },                  // le fuselage du vaisseau-mère
     { cle: 'sym627', x: 95.6, y: 8.7 },             // deux tourelles…

@@ -176,7 +176,7 @@ function principal() {
     if (!images || images.size === 0) return [];
     const etats = [];
     for (const f of [...images.keys()].sort((x, y) => x - y)) {
-      const pieces = [];
+      let pieces = [];
       let masque = false;
       for (const p of images.get(f)) {
         if (o.sansEnfantsNommes && p.nom) continue;
@@ -187,6 +187,9 @@ function principal() {
           pieces.push(m);
         }
       }
+      // `formes` : ne garder que ces dessins-là — pour scinder un clip en
+      // tranches (l'arrière du trou du maillet, puis sa margelle).
+      if (o.formes) pieces = pieces.filter((pc) => o.formes.includes(pc.shape));
       for (const pc of pieces) formes.add(pc.shape);
       etats.push(masque ? { frame: f, masque: true, pieces } : { frame: f, pieces });
     }
@@ -289,6 +292,25 @@ function principal() {
     { cle: 'gameSpaceDodge', id: 629, sansEnfantsNommes: true },
     { cle: 'sym628', id: 628, sansEnfantsNommes: true },
     { cle: 'sym627', id: 627 },
+    // LE MAILLET (gameHammer) : dix-huit terriers « $t0 » à « $t17 » sur la
+    // scène — on la sort sans eux. Le terrier (sym597) se SCINDE : l'arrière
+    // (la forme 566) sous la bestiole, la MARGELLE (596) devant elle — la
+    // taupe sort de derrière la lèvre — et sa fenêtre de découpe (sym567,
+    // qui monte à -105). La bestiole (sym578, huit espèces) et le coup de
+    // maillet (sym595, rappel readyToBlast à l'image 14, se cache à la 16)
+    // sortent à part.
+    { cle: 'gameHammer', id: 599, sansEnfantsNommes: true },
+    { cle: 'sym597', id: 597, sansEnfantsNommes: true, formes: [566] },
+    { cle: 'sym597_margelle', id: 597, sansEnfantsNommes: true, formes: [596] },
+    { cle: 'sym578', id: 578 },
+    { cle: 'sym595', id: 595 },
+    // LE TAQUIN (gameTaquin) : la tuile (sym558) est une FENÊTRE — sa forme
+    // 555 masque l'image plein cadre, la bordure 557 passe devant. On sort
+    // la bordure seule, le cadre (sym560), l'image (sym554 — UNE seule des
+    // quatre prévues a été compilée), et la fenêtre en cellule à la main
+    // (cf. plus bas, comme celle du terrier).
+    { cle: 'sym558', id: 558, sansEnfantsNommes: true, formes: [557] },
+    { cle: 'sym560', id: 560 },
   ];
   for (const s of SUPPLEMENTS) {
     const etats = etatsDe(s.id, s);
@@ -297,6 +319,15 @@ function principal() {
     const cellule = { cle: s.cle, obf: deja >= 0 ? cellules[deja].obf : null, id: s.id, etats };
     if (deja >= 0) cellules[deja] = cellule;
     else cellules.push(cellule);
+  }
+
+  // Les fenêtres de découpe qui ne sont pas des clips — la forme montée en
+  // cellule à la main, à l'identité : celle du terrier du maillet (567,
+  // clipDepth 17, la bestiole seule) et celle de la tuile du taquin (555).
+  for (const id of [567, 555]) {
+    cellules.push({ cle: 'sym' + id, obf: null, id,
+      etats: [{ frame: 1, pieces: [{ shape: id, M: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 } }] }] });
+    formes.add(id);
   }
 
   // La GRENOUILLE (mcFrog, sym673) : le jeu déplace sa PUPILLE — la chaîne
@@ -452,6 +483,7 @@ function principal() {
   // en data-URI, net au pixel (l'art d'époque est du pixel-art).
   const RASTERS = [
     { shape: 618, bitmap: 617 },       // l'Aliquet (sym619)
+    { shape: 553, bitmap: 552 },       // l'image du taquin (sym554)
   ];
   for (const r of RASTERS) {
     const temp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'raster-'));
