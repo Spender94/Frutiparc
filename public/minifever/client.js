@@ -173,18 +173,39 @@ class Client {
     this.surEvenement = o.surEvenement || null;
     this.redimensionner();
     window.addEventListener('resize', () => this.redimensionner());
+    // Le cadre bouge aussi SANS que la fenêtre bouge : le bandeau se
+    // remplit après le premier tour (« chargement… » puis trois lignes), le
+    // panneau du light s'ouvre, le téléphone pivote. On observe donc la
+    // boîte elle-même — sans quoi la scène, mesurée trop tôt, déborde.
+    if (typeof ResizeObserver === 'function' && this.canvas.parentElement) {
+      this.observateur = new ResizeObserver(() => this.redimensionner());
+      this.observateur.observe(this.canvas.parentElement);
+    }
     this.brancher();
   }
 
+  /*
+   * La scène est carrée (240 × 240, Cs.mcw × Cs.mch) et elle prend TOUT le
+   * cadre : sur un téléphone de 390 px, elle fait 390 de large.
+   *
+   * Minipixiz, lui, s'agrandit d'un facteur ENTIER tant qu'il peut — ses
+   * dessins font seize pixels, une fraction les rendrait flous. Mini-Fever
+   * n'a pas ce souci : son art est VECTORIEL (des chemins SVG), il s'affine
+   * en grandissant au lieu de pixelliser. On prend donc le facteur juste,
+   * fraction comprise, et la toile reçoit autant de pixels que l'écran en a
+   * vraiment (le facteur × la densité, plafonnée à trois) ; tout le tracé se
+   * fait ensuite en coordonnées de SCÈNE grâce à `pixels`, la transformation
+   * posée en tête de chaque image.
+   */
   redimensionner() {
-    const dispo = Math.min(this.canvas.parentElement.clientWidth || LARGEUR,
-      this.canvas.parentElement.clientHeight || HAUTEUR);
-    // Un agrandissement ENTIER : les dessins sont petits, un facteur
-    // fractionnaire les rendrait flous.
-    const k = Math.max(1, Math.floor(dispo / LARGEUR));
+    const parent = this.canvas.parentElement || document.body;
+    const k = Math.min((parent.clientWidth || LARGEUR) / LARGEUR,
+      (parent.clientHeight || HAUTEUR) / HAUTEUR);
     this.echelle = k;
-    this.canvas.width = LARGEUR;
-    this.canvas.height = HAUTEUR;
+    this.dpr = Math.min(window.devicePixelRatio || 1, 3);
+    this.pixels = k * this.dpr;
+    this.canvas.width = Math.max(1, Math.round(LARGEUR * this.pixels));
+    this.canvas.height = Math.max(1, Math.round(HAUTEUR * this.pixels));
     this.canvas.style.width = (LARGEUR * k) + 'px';
     this.canvas.style.height = (HAUTEUR * k) + 'px';
   }
@@ -283,6 +304,9 @@ class Client {
 
   dessiner() {
     const ctx = this.ctx;
+    // La toile porte les pixels de l'écran ; tout le tracé, lui, se fait en
+    // coordonnées de SCÈNE (240 × 240) — cf. redimensionner.
+    ctx.setTransform(this.pixels, 0, 0, this.pixels, 0, 0);
     ctx.clearRect(0, 0, LARGEUR, HAUTEUR);
     const s = this.socle;
     if (!s) return;
@@ -380,12 +404,20 @@ class Client {
       poser(ctx, mc.cle, mc.image, mc.x, mc.y, mc.sx, mc.sy, mc.rot, mc.alpha);
       return;
     }
+    // Le tampon suit la densité de la toile, sinon la teinte reviendrait
+    // floue sur un écran agrandi.
     if (!this.tampon) {
       this.tampon = document.createElement('canvas');
-      this.tampon.width = LARGEUR; this.tampon.height = HAUTEUR;
       this.tamponCtx = this.tampon.getContext('2d');
+      this.tamponPixels = 0;
+    }
+    if (this.tamponPixels !== this.pixels) {
+      this.tampon.width = Math.max(1, Math.round(LARGEUR * this.pixels));
+      this.tampon.height = Math.max(1, Math.round(HAUTEUR * this.pixels));
+      this.tamponPixels = this.pixels;
     }
     const t = this.tamponCtx;
+    t.setTransform(this.pixels, 0, 0, this.pixels, 0, 0);
     t.clearRect(0, 0, LARGEUR, HAUTEUR);
     poser(t, mc.cle, mc.image, mc.x, mc.y, mc.sx, mc.sy, mc.rot, mc.alpha);
     t.save();
@@ -394,7 +426,7 @@ class Client {
     t.fillStyle = '#fff';
     t.fillRect(0, 0, LARGEUR, HAUTEUR);
     t.restore();
-    ctx.drawImage(this.tampon, 0, 0);
+    ctx.drawImage(this.tampon, 0, 0, LARGEUR, HAUTEUR);
   }
 
   /**

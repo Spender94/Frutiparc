@@ -1374,6 +1374,55 @@ test('TUBULO au doigt : on touche la capsule qu\'on VOIT, pas celle de la boîte
   assert.equal(b.socle.flTactile, true);
 });
 
+// ── LA MISE À L'ÉCHELLE (client.redimensionner) ──
+
+/*
+ * Sur téléphone, la scène doit prendre TOUTE la largeur : un facteur entier
+ * laissait le jeu à 240 px au milieu d'une bande verte sur un écran de 390.
+ * L'art étant vectoriel, la fraction ne coûte rien — on remplit le cadre, et
+ * la toile porte les pixels de l'écran pendant que le tracé reste en
+ * coordonnées de scène.
+ */
+function mesurerEchelle(largeur, hauteur, densite) {
+  const toile = {
+    width: 0, height: 0, style: {},
+    parentElement: { clientWidth: largeur, clientHeight: hauteur },
+    getContext: () => ({}),
+  };
+  const avant = global.window;
+  global.window = { devicePixelRatio: densite, addEventListener() {} };
+  try {
+    const c = Object.create(C.Client.prototype);
+    c.canvas = toile;
+    c.redimensionner();
+    return { css: parseFloat(toile.style.width), toile: toile.width,
+      echelle: c.echelle, pixels: c.pixels };
+  } finally {
+    if (avant === undefined) delete global.window; else global.window = avant;
+  }
+}
+
+test('la scène prend toute la largeur du téléphone, à la densité de l\'écran', () => {
+  // Un téléphone courant : 390 px de large, 700 de haut, densité 3.
+  const tel = mesurerEchelle(390, 700, 3);
+  assert.equal(tel.css, 390, 'plein écran en largeur — pas 240');
+  assert.equal(tel.toile, 1170, 'la toile porte les pixels réels (390 × 3)');
+  // Un cadre carré : la scène le remplit, fraction comprise (le produit
+  // 240 × 2,0833… ne retombe pas rond au bit près — on tolère le poil).
+  const bureau = mesurerEchelle(500, 500, 1);
+  assert.ok(Math.abs(bureau.css - 500) < 0.01, 'le cadre est rempli, pas arrondi à 480');
+  // Un cadre plus PETIT que la scène : on rétrécit, sans déborder.
+  const etroit = mesurerEchelle(180, 400, 2);
+  assert.equal(etroit.css, 180, 'ça tient dans le cadre');
+  assert.ok(etroit.echelle < 1);
+  // C'est la plus petite des deux dimensions qui commande (scène carrée).
+  const bas = mesurerEchelle(600, 300, 1);
+  assert.equal(bas.css, 300, 'un cadre bas ne déborde pas en hauteur');
+  // La densité est plafonnée à trois : au-delà, la toile n'y gagne rien.
+  const retina = mesurerEchelle(390, 700, 6);
+  assert.equal(retina.toile, 1170, 'densité plafonnée à 3');
+});
+
 // ── LE MAILLET (game/Hammer.mt, classe « 47khM6 » du bytecode) ──
 
 test('le maillet : dix-huit terriers, les bestioles surgissent et replongent', () => {

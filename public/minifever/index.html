@@ -44,8 +44,12 @@
     padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
     box-sizing: border-box;
   }
+  /* La scène prend TOUTE la place qui reste — sur téléphone, toute la
+     largeur. `flex-basis: 0` : la hauteur de l'aire vient du partage, pas de
+     la taille de la toile, sinon les deux se poursuivraient d'une image à
+     l'autre (la toile grandit, l'aire grandit, la toile grandit…). */
   #aire {
-    flex: 1 1 auto; min-height: 0; width: 100%;
+    flex: 1 1 0; min-height: 0; width: 100%;
     display: flex; align-items: center; justify-content: center;
   }
   #stage { display: block; cursor: pointer; background: #ffffff; }
