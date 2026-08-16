@@ -830,11 +830,17 @@ const GAME_PROGRESS_REGISTRY = [
     // HORS CONSÉCRATION, et il faut savoir pourquoi : la part de chaque jeu
     // vaut 100/nombre_de_jeux_actifs (computeConsecration). Allumer celui-ci
     // ferait donc BAISSER la consécration de tout le monde du jour au
-    // lendemain, et donnerait le même poids qu'à MiniWave à un jeu dont quatre
-    // épreuves sur vingt-sept sont portées. Les pictos existent quand même —
-    // album, fiche, forum — comme les pictos inédits de l'admin, qui ne
-    // comptent pas non plus. À rallumer quand le portage sera complet, et en
-    // sachant que ça rebat les pourcentages de tous les joueurs.
+    // lendemain — passer de huit à neuf jeux actifs retire un neuvième de
+    // barème à chacun, sans que personne n'ait rien perdu. Les pictos existent
+    // quand même — album, fiche, forum, notifications — comme les pictos
+    // inédits de l'admin, qui ne comptent pas non plus.
+    //
+    // Les vingt-sept épreuves sont désormais portées, donc la réserve d'alors
+    // (« un jeu dont quatre épreuves sur vingt-sept sont jouables ») ne tient
+    // plus. Le maintien hors calcul est UNE DÉCISION, prise le 16 août 2026 :
+    // on ne fait pas reculer le pourcentage affiché de joueurs qui n'ont rien
+    // fait de mal. À rouvrir seulement de pair avec une annonce, pour que la
+    // baisse ne surprenne personne.
     id: 'minifever',
     name: 'Mini-Fever',
     enabled: false,
