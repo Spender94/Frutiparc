@@ -35,6 +35,29 @@ const TAILLE_BADS = 24;           // Game.badsSize — largeur d'un ennemi pour 
 const FLUX_BADS = 10;             // Game.badsFlow — ennemis déplacés par tour de vague
 const FRICTION = 0.95;            // Game.friction
 const MARGE_TIR = 20;             // Shot.killMargin
+
+/*
+ * LES PROJECTILES QUI S'ANIMENT.
+ *
+ * Chaque image du clip des tirs pose un sous-clip nommé `shot`, arrêté sur sa
+ * première image (`stop()`). Shot.as le lance (`this.shot.play()`) au moment
+ * qui compte, et deux d'entre eux ont une pellicule qui CHANGE la partie —
+ * bornes et actions relevées dans le bytecode des clips du SWF :
+ *
+ *   comp. 13  Nectarine trou-noir (sprite 1217, 26 images) : arrivé à hauteur
+ *             du vaisseau, le tir s'ouvre en trou noir. L'image 16 porte
+ *             `if (flLoop) gotoAndPlay("loop")` — l'étiquette « loop » est
+ *             posée sur l'image 8 : il bat donc entre 8 et 16 tant qu'il
+ *             aspire, puis se referme et s'efface à l'image 25.
+ *   comp. 16  Kiwi interstellaire (sprite 1251, 8 images) : le tir touché est
+ *             désarmé et joue son éclatement ; l'image 7 appelle
+ *             `_parent.kill()`. Sans ces images, un projectile désarmé restait
+ *             à l'écran, identique à un projectile vivant.
+ */
+const CLIPS_TIR = {
+  13: { cle: 'trouNoir', boucle: [8, 16], fin: 25 },
+  16: { cle: 'tirKiwi', fin: 7 },
+};
 const DECOR_DECAL = 18.7;         // Game.decorDecal — défilement du fond par niveau
 
 // badsInfo.as : valeur au score, rang de déblocage et nom de chaque ennemi.
@@ -450,6 +473,33 @@ class Shot extends Sprite {
     // (_rotation += vitRot en AS2) ; il s'amorce au premier tour de roue.
     // `age` compte les images vécues — les aspects animés s'y règlent.
     this.age = 0;
+    // La PELLICULE INTERNE du projectile (cf. CLIPS_TIR) : à l'arrêt sur sa
+    // première image, comme le `stop()` que porte l'image 1 de chaque clip.
+    this.clipImage = 1;
+    this.clipJoue = false;
+  }
+
+  /** `this.shot.play()` — et `flLoop` pour les clips qui bouclent. */
+  jouerClip(enBoucle) {
+    this.clipJoue = true;
+    this.flLoop = !!enBoucle;
+  }
+
+  /*
+   * La pellicule du sous-clip `shot`, jouée comme Flash la joue : UNE image
+   * par image de jeu (une timeline de clip ne connaît pas tmod), avec le
+   * retour de boucle et l'image finale qui tue le projectile — les deux
+   * actions relevées dans le bytecode des clips.
+   */
+  avancerClip() {
+    const c = CLIPS_TIR[this.behaviourId];
+    if (!c || !this.clipJoue) return;
+    this.clipImage++;
+    if (c.boucle && this.clipImage > c.boucle[1]) {
+      // L'action de l'image de fin de boucle : `if (flLoop) gotoAndPlay("loop")`.
+      if (this.flLoop) this.clipImage = c.boucle[0];
+    }
+    if (this.clipImage >= c.fin) { this.tuer(); }        // l'image finale appelle _parent.kill()
   }
 
   update(tmod) {
@@ -591,14 +641,23 @@ class Shot extends Sprite {
       case 13: {                      // Nectarine : se fige et aspire le vaisseau
         const o = this.behaviourInfo;
         const c = jeu.cibleHero();
-        if (this.y > c.y) {
+        if (this.y > c.y && !o.flBlackHole) {
           this.y = c.y; this.vitx = 0; this.vity = 0;
           o.flBlackHole = true; o.timer = 100;
+          // `this.shot.play(); this.shot.flLoop = true` — le projectile
+          // S'OUVRE en trou noir, et bat en boucle tant qu'il aspire. Sans
+          // cette pellicule il restait le petit point du départ : on se
+          // faisait tirer par quelque chose qu'on ne voyait pas.
+          this.jouerClip(true);
         }
-        if (o.flBlackHole && o.timer > 0 && jeu.hero) {
-          o.timer -= tmod;
-          const dif = jeu.hero.x - this.x;
-          if (dif !== 0) jeu.hero.x -= Math.min(Math.max(-2, 40 / dif), 2) * tmod;
+        if (o.flBlackHole && jeu.hero) {
+          if (o.timer > 0) {
+            o.timer -= tmod;
+            const dif = jeu.hero.x - this.x;
+            if (dif !== 0) jeu.hero.x -= Math.min(Math.max(-2, 40 / dif), 2) * tmod;
+          } else if (this.flLoop) {
+            this.flLoop = false;        // il se referme, puis s'efface (image 25)
+          }
         }
         break;
       }
@@ -699,7 +758,13 @@ class Shot extends Sprite {
       case 16: {                      // Tir destructible par le vaisseau
         for (let i = 0; i < jeu.hShotList.length; i++) {
           const m = jeu.hShotList[i];
-          if (this.touche(m.x, m.y)) { m.tuer(); this.flHit = false; }
+          // `flHit` d'abord : une fois désarmé, le projectile s'en va en
+          // jouant son éclatement — le retoucher ne doit pas le relancer.
+          if (this.flHit && this.touche(m.x, m.y)) {
+            m.tuer();
+            this.flHit = false;
+            this.jouerClip();           // `this.shot.play()` : il éclate
+          }
         }
         break;
       }
@@ -727,6 +792,11 @@ class Shot extends Sprite {
       default:
         break;
     }
+
+    // La pellicule du sous-clip tourne APRÈS le comportement — c'est elle qui
+    // efface le projectile quand elle atteint son image finale.
+    this.avancerClip();
+    if (!this.vivant) return;
 
     if (this.time !== undefined) {
       this.time -= tmod;
@@ -864,11 +934,27 @@ class Bads extends Sprite {
     return true;
   }
 
+  /*
+   * OÙ L'ENNEMI EST VRAIMENT — sa place de vague, ou celle de sa charge.
+   *
+   * L'Aubergine folle « charge en laissant sa place » : Aubergine.as garde son
+   * créneau dans la vague (`x, y` continuent d'avancer avec l'escadre) et
+   * DESSINE le fruit à `kx, ky`, le point qui fonce sur le vaisseau — c'est
+   * son endUpdate : `_x = kx ; _y = ky`. Tout la suit là-bas : le choc avec le
+   * vaisseau (`checkHeroCol(kx, ky)`), les tirs (`checkHeroShot` passe kx/ky),
+   * et jusqu'à son explosion, qui déplace x/y le temps de semer ses éclats.
+   *
+   * Le portage calculait bien kx/ky mais ne les appliquait à RIEN : l'aubergine
+   * restait sagement dans son rang, invisible charge comprise. Un plot.
+   */
+  get px() { return (this.step === 1 && this.kx !== undefined) ? this.kx : this.x; }
+  get py() { return (this.step === 1 && this.ky !== undefined) ? this.ky : this.y; }
+
   verifierChocHero() {
     const h = this.jeu.hero;
     if (!h) return;
     const limite = 1.2 * (this.ray + h.ray) / 2;
-    if (Math.abs(h.x - this.x) < limite && Math.abs(h.y - this.y) < limite) {
+    if (Math.abs(h.x - this.px) < limite && Math.abs(h.y - this.py) < limite) {
       this.frapper();
       h.frapper();
     }
@@ -877,8 +963,14 @@ class Bads extends Sprite {
   verifierTirsHero() {
     for (let i = 0; i < this.jeu.hShotList.length; i++) {
       const m = this.jeu.hShotList[i];
-      if (m.flHit && this.touche(m.x, m.y)) { m.auContact(); this.frapper(); return; }
+      if (m.flHit && this.toucheEn(m.x, m.y)) { m.auContact(); this.frapper(); return; }
     }
+  }
+
+  /** `touche`, mais au point où le fruit se MONTRE (cf. px/py). */
+  toucheEn(x, y) {
+    const dx = x - this.px, dy = y - this.py;
+    return Math.sqrt(dx * dx + dy * dy) < this.ray;
   }
 
   verifierTir(tmod) {
@@ -990,7 +1082,10 @@ class Bads extends Sprite {
   exploser() {
     if (!this.vivant) return;
     if (this.profil.exploser) this.profil.exploser(this);
-    this.jeu.evenement('badsExplose', { x: this.x, y: this.y, type: this.type });
+    // Les éclats partent d'où le fruit se MONTRE : Aubergine.explode déplace
+    // x/y sur kx/ky le temps de l'appel, puis les remet (« HOULA C'EST PAS
+    // MIEUX », dit le commentaire d'époque). px/py disent la même chose.
+    this.jeu.evenement('badsExplose', { x: this.px, y: this.py, type: this.type });
     this.jeu.incScore(ENNEMIS[this.type].value);
     this.jeu.badsKill[this.type] = (this.jeu.badsKill[this.type] || 0) + 1;
     this.tuer();
@@ -2010,6 +2105,9 @@ def(28, {                                                         // Aubergine f
   },
   tic: (b, tmod) => {
     if (b.step !== 1) return;
+    // `cible` : null tant que la charge court après le vaisseau, puis la place
+    // de vague qu'elle a quittée — c'est le `this.target = this` d'époque, qui
+    // la fait revenir se ranger.
     const t = b.cible || b.jeu.cibleHero();
     const dx = t.x - b.kx, dy = t.y - b.ky;
     if (dx > 1) b.vitx += tmod * 0.5;
@@ -2018,11 +2116,16 @@ def(28, {                                                         // Aubergine f
     if (dy < -1) b.vity -= tmod * 0.5;
     b.vitx *= b.jeu.frict; b.vity *= b.jeu.frict;
     b.kx += b.vitx; b.ky += b.vity;
+    // Le fruit se tourne dans le sens de sa course (_rotation d'époque).
+    b.rot = Math.atan2(b.vity, b.vitx) + Math.PI / 2;
     if (b.timer > 0) b.timer -= tmod;
     else {
-      b.cible = { x: b.x, y: b.y };
+      // `this.target = this` : la RÉFÉRENCE au fruit, pas une copie de ses
+      // coordonnées — sa place de vague continue d'avancer avec l'escadre, et
+      // la charge la rejoint où qu'elle soit passée entre-temps.
+      b.cible = b;
       const ddx = b.kx - b.x, ddy = b.ky - b.y;
-      if (Math.sqrt(ddx * ddx + ddy * ddy) < 6) b.step = 0;
+      if (Math.sqrt(ddx * ddx + ddy * ddy) < 6) { b.step = 0; b.rot = 0; }
     }
   },
 });
@@ -2723,7 +2826,7 @@ class Game {
 const API = { Game, Hero, Bads, Boss, Saucer, Opt, Shot, Sprite,
   ENNEMIS, VAISSEAUX, TYPES, BONUS, ETAPE, FORME, generateur,
   LARGEUR, HAUTEUR, TAILLE_BADS, FLUX_BADS, FRICTION, DECOR_DECAL,
-  MINE_AMORCE, MINE_BOUCLE, MINE_MORT };
+  MINE_AMORCE, MINE_BOUCLE, MINE_MORT, CLIPS_TIR };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.MiniwaveEngine = API;

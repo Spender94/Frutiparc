@@ -109,6 +109,23 @@ function aExtraire() {
   // pixels, d'où la « bombe invisible » qui semait des éclats venus de nulle
   // part. On l'extrait donc pour elle-même, ses trente-trois images comprises.
   liste.push({ cle: 'mineBrugnon', id: 1285, etiquette: 'Mine du Brugnon' });
+  // MÊME HISTOIRE, deux autres projectiles. Chaque image du clip des tirs pose
+  // un sous-clip nommé `shot` ; l'extraction n'en gardait que la PREMIÈRE
+  // image, or Shot.as en démarre l'animation (`this.shot.play()`) au moment
+  // qui compte :
+  //   · la Nectarine trou-noir (bads 32, image 42 → sprite 1217, cinq images).
+  //     Son tir tombe, atteint la hauteur du vaisseau, s'y fige et joue son
+  //     animation EN BOUCLE (`flLoop = true`) : c'est là qu'il devient un trou
+  //     noir et se met à aspirer. Aplati à son image 1, il restait le petit
+  //     projectile du départ — invisible sur le fond, alors qu'il tire le
+  //     vaisseau à lui.
+  //   · le Kiwi interstellaire (bads 39, image 49 → sprite 1251, six images).
+  //     Son tir est DESTRUCTIBLE : le toucher tue la balle du joueur, désarme
+  //     le projectile (`flHit = false`) et joue son éclatement. Sans ces
+  //     images, un projectile désarmé ressemblait trait pour trait à un
+  //     projectile vivant — d'où l'impression qu'ils sont increvables.
+  liste.push({ cle: 'trouNoir', id: 1217, etiquette: 'Trou noir de la Nectarine' });
+  liste.push({ cle: 'tirKiwi', id: 1251, etiquette: 'Tir du Kiwi (destructible)' });
   // L'interface du jeu : l'ornement du panneau de score (les chevrons de part
   // et d'autre des chiffres), les fonds des panneaux de message (level,
   // game over, fin, boss) et le fond du menu.

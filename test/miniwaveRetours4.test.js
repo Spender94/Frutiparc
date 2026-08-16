@@ -200,7 +200,10 @@ test('la Batmandarine change de place d\'un coup mais se DESSINE en glissant', (
 
   // Le client pose bien le dessin décalé, et la pose d'esquive.
   const jeujs = fs.readFileSync(path.join(ROOT, 'public/miniwave/game.js'), 'utf8');
-  assert.match(jeujs, /b\.x \+ \(b\.dx \|\| 0\)/, 'le dessin suit le décalage');
+  // `px` = la place où le fruit se MONTRE (celle de la vague pour presque
+  // tous, celle de la charge pour l'Aubergine) ; `dx` reste le rattrapage
+  // propre à la Batmandarine, qui s'y ajoute.
+  assert.match(jeujs, /b\.px \+ \(b\.dx \|\| 0\)/, 'le dessin suit le décalage');
   assert.match(jeujs, /b\.flStrafe && sp && sp\.etats\.length > 1 \? 2/, 'et prend l\'image 2 en route');
   assert.ok(SPRITES.bads12.etats.length >= 2, 'la Batmandarine a bien sa seconde image');
 });

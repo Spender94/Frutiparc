@@ -672,7 +672,21 @@ class Client {
       // `dx` : le rattrapage de la Batmandarine. Elle change de place d'un coup
       // — pour la vague et pour les tirs — mais son DESSIN la rejoint en
       // glissant (Mandarine.endUpdate pose le clip à x+dx puis remet x).
-      poser(ctx, sp, sp ? sp.etats[Math.max(0, etat - 1)].frame : 1, b.x + (b.dx || 0), b.y);
+      // `px/py` : là où le fruit se MONTRE. Pour presque tous c'est sa place
+      // de vague ; l'Aubergine folle, elle, garde son créneau et se dessine au
+      // bout de sa charge (Aubergine.endUpdate : `_x = kx ; _y = ky`).
+      // `rot` : la charge se tourne dans le sens de sa course.
+      const bx = b.px + (b.dx || 0);
+      const cadre = sp ? sp.etats[Math.max(0, etat - 1)].frame : 1;
+      if (b.rot) {
+        ctx.save();
+        ctx.translate(bx, b.py);
+        ctx.rotate(b.rot);
+        poser(ctx, sp, cadre, 0, 0);
+        ctx.restore();
+      } else {
+        poser(ctx, sp, cadre, bx, b.py);
+      }
       // La Figue-laser ouvre un rayon sous elle (flShooting) : montée en
       // puissance, colonne mortelle, extinction — le moteur fait le dégât
       // entre timer 36 et 12, le dessin suit les mêmes bornes.
@@ -948,6 +962,23 @@ class Client {
     // La mine du Brugnon (comportement 23) n'est pas un dessin mais un CLIP
     // ANIMÉ : l'image 58 des projectiles ne fait que le poser.
     if (t.behaviourId === 23) { this.dessinerMine(ctx, t); return; }
+    // Deux autres projectiles posent un sous-clip qui JOUE — le trou noir de
+    // la Nectarine et l'éclatement du tir de Kiwi (cf. CLIPS_TIR). Tant qu'ils
+    // dorment sur leur image 1, c'est le petit projectile du départ ; dès que
+    // Shot.as les lance, c'est leur pellicule qu'on voit.
+    const clip = E.CLIPS_TIR[t.behaviourId];
+    if (clip && this.sprites[clip.cle]) {
+      const sp2 = this.sprites[clip.cle];
+      const n = Math.max(1, Math.min(t.clipImage || 1, sp2.etats[sp2.etats.length - 1].frame));
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      // Le trou noir, une fois ouvert, ne tourne plus avec sa vitesse : il est
+      // posé à plat, comme le clip d'époque qui s'arrête sur place.
+      if (!t.clipJoue) ctx.rotate((t.rot !== undefined) ? t.rot : Math.atan2(t.vity, t.vitx));
+      poser(ctx, sp2, n, 0, 0);
+      ctx.restore();
+      return;
+    }
 
     if (sp && sp.etats.some((e) => e.frame === frame)) {
       // Les projectiles sont dessinés pointe à droite ; le jeu les oriente selon
