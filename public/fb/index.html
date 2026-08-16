@@ -53,6 +53,7 @@
     align-items: center;
     gap: 6px;
   }
+  .forum-header .bc-home { flex: none; display: flex; align-items: center; }
   .forum-header .bc-icon {
     width: 18px;
     height: 18px;
@@ -64,7 +65,25 @@
     font-size: 14px;
     font-weight: bold;
     text-decoration: none;
+    /* Le titre est une COLONNE ÉLASTIQUE : sans min-width:0 il refuse de se
+       rétrécir sous la largeur de son texte, et la boîte entière saute à la
+       ligne suivante — l'orange restait seule en haut. Le texte se replie
+       maintenant DANS la boîte, à côté de l'icône. */
+    flex: 1 1 auto;
+    min-width: 0;
   }
+  /* Les actions de la page (« tout marquer comme lu ») tiennent le bout de la
+     même ligne, plutôt que d'ouvrir une bande à elles toutes seules. */
+  .forum-header .header-actions {
+    flex: none;
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .forum-header .header-actions:empty { display: none; }
+  /* Le bouton dit tout au large, et l'essentiel à l'étroit. */
+  .forum-header .lb-court { display: none; }
   .forum-header .title-link:hover { text-decoration: none; }
   /* Breadcrumb parts inside the header title: each level is its own link so
      you can jump back to the sub-forum, not just the forum root. */
@@ -1304,7 +1323,27 @@
      illisible autrement sur mobile. */
   @media (max-width: 640px) {
     body { padding: 5px; }
-    .forum-header { flex-wrap: wrap; }
+    /* L'EN-TÊTE TIENT SUR UNE LIGNE.
+       « Forum Frutiparc.com > Frutiz > Vos anciens pseudos ! » ne rentre pas
+       dans 390 px : la racine passe donc sous l'orange, qui la remplace (elle
+       mène au même endroit, et son alt le dit). Reste « Frutiz > Vos anciens
+       pseudos ! », qui tient. Sur l'accueil, où il n'y a pas de niveau plus
+       bas, `deep` n'est pas posé : le nom du forum reste écrit en entier. */
+    .forum-header { flex-wrap: nowrap; }
+    .forum-header.deep .bc-root { display: none; }
+    /* Le titre du sujet peut être long : deux lignes au plus, la fin en
+       points de suspension — jamais un pavé qui repousse la liste. */
+    .forum-header .title-link {
+      font-size: 13px;
+      line-height: 1.25;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+    }
+    .forum-header .header-actions .btn { white-space: nowrap; }
+    .forum-header .lb-long { display: none; }
+    .forum-header .lb-court { display: inline; }
     /* Listes (accueil + board) : colonnes de stats masquées ; l'icône (dossier
        46px) garde sa colonne de 56px — ne PAS la rétrécir (sinon elle chevauche
        le titre/la description). */
@@ -1346,8 +1385,11 @@
     <button class="close-btn" onclick="closeForum()">Fermer</button>
   </div>
   <div class="forum-header" id="forum-header">
-    <img class="bc-icon" src="/fb/ico.gif" alt="" width="18" height="18">
+    <!-- L'orange EST le retour au forum : sur un téléphone, où le fil d'Ariane
+         perd sa racine faute de place, c'est elle qui ramène à l'accueil. -->
+    <a href="#" class="bc-home" onclick="navigate('index');return false" title="Retour au forum"><img class="bc-icon" src="/fb/ico.gif" alt="Forum Frutiparc.com" width="18" height="18"></a>
     <span class="title-link" id="header-title"><a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a></span>
+    <div class="header-actions" id="header-actions"></div>
   </div>
   <div id="app">
     <div class="loading">Chargement du forum...</div>
@@ -1789,9 +1831,14 @@ function setBreadcrumb(parts) {
   // plain text.
   var headerTitle = document.getElementById('header-title');
   if (headerTitle) {
-    var html = '<a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
+    // La RACINE porte son séparateur avec elle : sur un téléphone elle
+    // disparaît d'un bloc (voir .forum-header.deep .bc-root), et le chevron
+    // orphelin ne reste pas en tête de ligne.
+    var html = '<span class="bc-root"><a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
+    if (parts.length) html += ' <span class="bc-sep">&gt;</span> ';
+    html += '</span>';
     for (var i = 0; i < parts.length; i++) {
-      html += ' <span class="bc-sep">&gt;</span> ';
+      if (i > 0) html += ' <span class="bc-sep">&gt;</span> ';
       if (parts[i].href) {
         html += '<a href="#" onclick="' + parts[i].href + '">' + escapeHtml(parts[i].text) + '</a>';
       } else {
@@ -1800,6 +1847,14 @@ function setBreadcrumb(parts) {
     }
     headerTitle.innerHTML = html;
   }
+  // `deep` = on est descendu d'au moins un cran. Il commande l'effacement de
+  // la racine sur les petits écrans.
+  var entete = document.getElementById('forum-header');
+  if (entete) entete.classList.toggle('deep', parts.length > 0);
+  // Les actions de l'en-tête appartiennent à la page qu'on quitte : chaque vue
+  // repart d'une barre vide et y remet les siennes.
+  var actions = document.getElementById('header-actions');
+  if (actions) actions.innerHTML = '';
   var bc = document.getElementById('breadcrumb');
   if (bc) bc.innerHTML = '';
 }
@@ -1852,16 +1907,16 @@ async function loadIndex() {
   // le bureau ne rallume plus le sien à la connexion suivante.
   //
   // Il était en BAS de page : sur un téléphone, la liste des forums fait
-  // plusieurs écrans et personne ne descendait jusque-là. On le met donc
-  // au-dessus de la liste, visible dès l'ouverture.
-  if (currentUser) {
-    html += '<div class="shell-actions">';
-    html += '<div class="shell-left"></div>';
-    html += '<div class="shell-right">';
-    html += '<button type="button" class="btn btn-green btn-sm" id="tout-lu-btn" onclick="marquerToutLu()"'
-      + ' title="Éteint le voyant Forum : tous les sujets passent en « lu »">Tout marquer comme lu</button>';
-    html += '</div>';
-    html += '</div>';
+  // plusieurs écrans et personne ne descendait jusque-là. Il est maintenant
+  // DANS L'EN-TÊTE, au bout de la ligne du titre : visible dès l'ouverture,
+  // sans ouvrir une bande blanche à lui seul entre le titre et la liste.
+  var actions = document.getElementById('header-actions');
+  if (actions && currentUser) {
+    actions.innerHTML = '<button type="button" class="btn btn-green btn-sm" id="tout-lu-btn"'
+      + ' onclick="marquerToutLu()"'
+      + ' title="Éteint le voyant Forum : tous les sujets passent en « lu »">'
+      + '<span class="lb-long">Tout marquer comme lu</span>'
+      + '<span class="lb-court">Tout lu</span></button>';
   }
 
   html += '<div class="tbl-header"><span class="col-main">Forums</span><span class="col-num">Sujets</span><span class="col-num">Messages</span><span class="col-last">Dernier message</span></div>';
@@ -1901,7 +1956,15 @@ async function loadIndex() {
  */
 async function marquerToutLu() {
   var b = document.getElementById('tout-lu-btn');
-  if (b) { b.disabled = true; b.textContent = 'Marquage…'; }
+  // Le bouton porte DEUX libellés (le long, le court) : on ne remplace que le
+  // texte de chacun, sinon l'attente effacerait la paire et le bouton
+  // reviendrait muet sur un téléphone.
+  var libelles = b ? b.querySelectorAll('span') : [];
+  var dire = function (long, court) {
+    if (libelles.length === 2) { libelles[0].textContent = long; libelles[1].textContent = court; }
+    else if (b) b.textContent = long;
+  };
+  if (b) { b.disabled = true; dire('Marquage…', 'Marquage…'); }
   try {
     var r = await apiFetch('/api/forum/read-all', { method: 'POST' });
     if (!r || !r.ok) throw new Error((r && r.error) || 'échec');
@@ -1912,7 +1975,7 @@ async function marquerToutLu() {
     } catch (e) { /* page hébergée ailleurs : tant pis pour le voyant */ }
     await loadIndex();
   } catch (e) {
-    if (b) { b.disabled = false; b.textContent = 'Tout marquer comme lu'; }
+    if (b) { b.disabled = false; dire('Tout marquer comme lu', 'Tout lu'); }
     alert('Impossible de tout marquer comme lu pour le moment.');
   }
 }

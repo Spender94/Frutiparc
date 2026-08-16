@@ -285,12 +285,14 @@ test('le forum porte le bouton, et /light écoute son extinction', () => {
   assert.match(forum, /id="tout-lu-btn"/, 'et il est repérable');
   assert.match(forum, /apiFetch\('\/api\/forum\/read-all', \{ method: 'POST' \}\)/,
     'il appelle bien la route de marquage');
-  assert.match(forum, /if \(currentUser\) \{[\s\S]{0,400}tout-lu-btn/,
+  assert.match(forum, /if \(actions && currentUser\) \{[\s\S]{0,400}tout-lu-btn/,
     'réservé au frutiz connecté (un visiteur n\'a rien à marquer)');
   assert.match(forum, /postMessage\(\{ forum: 'toutLu'/, 'et il prévient la page qui l\'héberge');
 
   // EN HAUT de l'index, pas en bas : la liste des forums fait plusieurs
   // écrans sur un téléphone, et personne ne descendait chercher le bouton.
+  // Il vit maintenant DANS l'en-tête (voir le test de mise en page plus bas),
+  // donc au-dessus de tout ce que loadIndex compose.
   const index = forum.substring(forum.indexOf('async function loadIndex'),
     forum.indexOf('async function marquerToutLu'));
   const bouton = index.indexOf('tout-lu-btn');
@@ -299,6 +301,8 @@ test('le forum porte le bouton, et /light écoute son extinction', () => {
   assert.ok(bouton > 0 && entete > 0 && boucle > 0, 'les trois repères sont là');
   assert.ok(bouton < entete, 'le bouton est posé AVANT l\'en-tête du tableau');
   assert.ok(bouton < boucle, 'et avant la liste des forums — visible sans scroller');
+  assert.match(index, /getElementById\('header-actions'\)/,
+    'et il est posé dans la barre d\'actions de l\'en-tête');
 
   const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   assert.match(light, /d\.forum !== "toutLu"/, '/light écoute ce message…');
@@ -385,4 +389,64 @@ test('le raccourci Forum a son icône d\'alerte, et de quoi l\'allumer', () => {
   // Quitter le forum redemande le compte : les sujets se lisent dans l'iframe,
   // hors de notre vue.
   assert.match(html, /if \(ongletCourant === "forum" && tab !== "forum"\) loadHomeProfile\(\);/);
+});
+
+test('l\'en-tête du forum tient sur UNE ligne, même sur un téléphone', () => {
+  // Le fil d'Ariane « Forum Frutiparc.com > Frutiz > Vos anciens pseudos ! »
+  // ne rentre pas dans 390 px. Le repli mobile posait `flex-wrap: wrap` : le
+  // titre, boîte flex qui refuse de se rétrécir sous son texte, sautait tout
+  // entier à la ligne — l'orange restait SEULE en haut, le titre s'étalait sur
+  // deux lignes en dessous, et le bouton « tout marquer comme lu » ouvrait
+  // encore une bande blanche à lui seul. Trois lignes pour un titre.
+  const forum = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
+
+  // 1. L'icône ne se sépare plus du titre.
+  assert.match(forum, /\.forum-header \.title-link \{[^}]*min-width: 0;/,
+    'le titre accepte de se rétrécir : son texte se replie DANS la boîte');
+  assert.match(forum, /\.forum-header \{ flex-wrap: nowrap; \}/,
+    'et rien ne saute plus à la ligne suivante');
+  assert.match(forum, /\.forum-header \.bc-home \{ flex: none;/,
+    'l\'orange garde sa taille quoi qu\'il arrive');
+
+  // 2. L'orange EST la racine : sur un petit écran elle remplace le nom du
+  // forum, qui coûte la moitié de la ligne. Elle mène au même endroit.
+  assert.match(forum, /class="bc-home" onclick="navigate\('index'\);return false"/,
+    'l\'icône est un lien vers l\'accueil du forum');
+  assert.match(forum, /alt="Forum Frutiparc\.com"/, 'et elle le dit aux lecteurs d\'écran');
+  assert.match(forum, /\.forum-header\.deep \.bc-root \{ display: none; \}/,
+    'la racine s\'efface dès qu\'on est descendu d\'un cran');
+  assert.match(forum, /entete\.classList\.toggle\('deep', parts\.length > 0\)/,
+    'et « deep » se pose exactement là');
+  // La racine emporte son chevron : sinon « > Frutiz » ouvrirait la ligne.
+  const fil = forum.substring(forum.indexOf('function setBreadcrumb'),
+    forum.indexOf('function navigate'));
+  assert.match(fil, /if \(parts\.length\) html \+= ' <span class="bc-sep">&gt;<\/span> ';\s*\n\s*html \+= '<\/span>';/,
+    'le séparateur de tête vit DANS la racine');
+  assert.match(fil, /if \(i > 0\) html \+= ' <span class="bc-sep">&gt;<\/span> ';/,
+    'les suivants restent entre les niveaux');
+
+  // 3. Un titre à rallonge ne fait pas un pavé : deux lignes au plus.
+  assert.match(forum, /-webkit-line-clamp: 2;/, 'le titre est borné à deux lignes');
+
+  // 4. Le bouton partage la ligne du titre au lieu d'ouvrir une bande.
+  assert.match(forum, /<div class="header-actions" id="header-actions"><\/div>/,
+    'la barre d\'actions est dans l\'en-tête');
+  assert.match(forum, /\.forum-header \.header-actions \{[^}]*margin-left: auto;/,
+    'poussée au bout de la ligne');
+  assert.match(forum, /\.forum-header \.header-actions:empty \{ display: none; \}/,
+    'et invisible quand la page n\'a rien à y mettre');
+  // Elle se vide à chaque changement de vue : les actions appartiennent à la
+  // page qu'on quitte.
+  assert.match(fil, /actions\.innerHTML = '';/, 'setBreadcrumb repart d\'une barre vide');
+  // Le libellé raccourcit quand la place manque, sans perdre le bouton.
+  assert.match(forum, /<span class="lb-long">Tout marquer comme lu<\/span>/);
+  assert.match(forum, /<span class="lb-court">Tout lu<\/span>/);
+  assert.match(forum, /\.forum-header \.lb-long \{ display: none; \}/,
+    'à l\'étroit, c\'est le court qui parle');
+  // Et l'attente ne mange pas la paire de libellés.
+  const marquage = forum.substring(forum.indexOf('async function marquerToutLu'),
+    forum.indexOf('var currentBoardId'));
+  assert.match(marquage, /libelles\.length === 2/, 'le « Marquage… » écrit dans les deux');
+  assert.ok(!/b\.textContent = 'Tout marquer comme lu'/.test(marquage),
+    'plus de textContent qui écraserait les spans');
 });
