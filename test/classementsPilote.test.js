@@ -270,10 +270,9 @@ test('les deux pilotes distribuent des médailles (section C)', () => {
     assert.match(src, re, `${internal} est en section C — donc remise à zéro et médailles`);
   }
   // La remise à zéro quotidienne (et donc l'attribution des médailles) se
-  // dérive de la section C : rien d'autre à câbler. Deux exclus explicites :
-  // le proxy bkiwi, et Mini-Fever — affiché sous Challenge mais record
-  // permanent.
-  assert.match(src, /section === 'C' && r\.internal\s*&& r\.internal !== 'bkiwi_track5_classic' && r\.internal !== 'minifever_arcade'/);
+  // dérive de la section C : rien d'autre à câbler. Un seul exclu, le proxy
+  // bkiwi — remplacé par les vrais classements par circuit, il ferait doublon.
+  assert.match(src, /section === 'C' && r\.internal\s*&& r\.internal !== 'bkiwi_track5_classic'\)/);
   // Et l'icône des deux lignes : fileIcon.swf connaît déjà les deux noms.
   const ico = fs.readFileSync(path.join(ROOT, 'public/fileIcon.swf'));
   const txt = (ico.slice(0, 3).toString('ascii') === 'CWS'

@@ -25,6 +25,7 @@ const PORT = 3505;
 const BASE = `http://127.0.0.1:${PORT}`;
 const RUN = Date.now().toString(36).slice(-5);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const CLE = 'fever-' + RUN;
 
 const PALIERS = require(path.join(ROOT, 'public/minifever/engine.js')).PALIERS;
 const JEUX = require(path.join(ROOT, 'public/minifever/jeux.js')).JEUX;
@@ -51,6 +52,8 @@ before(async () => {
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
       XMLSOCKET_PORT: '5232', FRUTISCORE_PORT: '5233',
+      // Pour déclencher le tirage quotidien à la main, en fin de fichier.
+      ADMIN_KEY: CLE,
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -191,15 +194,15 @@ test('le classement du light : un seul onglet Mini-Fever, la règle sur chaque l
   assert.equal(onglets.length, 1, 'un seul tableau pour tous les modes');
   assert.equal(onglets[0].id, 'minifever_arcade');
   assert.equal(onglets[0].name, 'Mini-Fever');
-  // Sous CHALLENGE avec les autres jeux — mais le tableau est un RECORD
-  // permanent : minifever_arcade est écarté de la remise à zéro quotidienne
-  // (DAILY_RESET_RANKING_SET, même exclusion que le proxy bkiwi).
+  // Sous CHALLENGE avec les autres jeux, et DÉFI DU JOUR de plein droit : la
+  // section C alimente DAILY_RESET_RANKING_SET, donc remise à zéro nocturne
+  // et médailles au tirage.
   assert.equal(onglets[0].section, 'C', 'sous Challenge, comme les autres jeux');
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.match(src, /rk: '15', internal: 'minifever_arcade'[\s\S]{0,120}section: 'C'/,
     'le bureau a son onglet (rk 15, section C) — vignette awards.swf et icône fileIcon comprises');
-  assert.match(src, /r\.internal !== 'minifever_arcade'/,
-    'mais son tableau échappe à la remise à zéro quotidienne : c\'est un record');
+  assert.ok(!/r\.internal !== 'minifever_arcade'/.test(src),
+    'plus aucune exclusion : le tableau se remet à zéro et médaille comme les autres');
   const moi = onglets[0].scores.find((s) => s.isMe);
   assert.ok(moi, 'ma partie y figure');
   assert.equal(moi.score, 30 * 10 * 3);
@@ -253,4 +256,59 @@ test('le jeu se sert et se lance depuis le light', async () => {
   const light = await (await fetch(BASE + '/light.html')).text();
   assert.match(light, /minifever-frame/, 'le panneau existe');
   assert.match(light, /fd_minifever\.svg/, 'et son disque est dans la feuille de lancement');
+});
+
+/*
+ * LE DÉFI DU JOUR. Mini-Fever se remet à zéro chaque nuit et distribue ses
+ * médailles, comme les autres jeux de la section C — sa vignette est gravée
+ * dans awards.swf sous l'étiquette « minifever » (empruntée au set d'époque
+ * inutilisé de Tubulo), les deux clients la trouvent donc.
+ *
+ * Ce test DÉCLENCHE le tirage : il vide les tableaux du jour de tout le
+ * monde. Il reste donc en DERNIER — les épreuves d'avant comptent sur leurs
+ * scores.
+ */
+test('le tirage quotidien : Mini-Fever se remet à zéro et médaille son podium', async () => {
+  const or = joueur('or');
+  const argent = joueur('ar');
+  const bronze = joueur('br');
+  // Trois parties d'arcade en infernal, trois scores distincts — au-dessus
+  // des 900 points du joueur semé avant le boot, pour tenir tout le podium.
+  await finir(await sidPour(or), { palier: 3, niveau: 100, jouees: 100 });
+  await finir(await sidPour(argent), { palier: 3, niveau: 80, jouees: 80 });
+  await finir(await sidPour(bronze), { palier: 3, niveau: 60, jouees: 60 });
+
+  const avant = await (await fetch(`${BASE}/api/light/challenge`)).json();
+  const tableau = (avant.games || []).find((g) => g.id === 'minifever_arcade');
+  const mien = (n) => (tableau.scores || []).find((s) => String(s.user).toLowerCase() === n);
+  assert.ok(mien(or) && mien(or).score === 4000, 'les trois parties sont au tableau');
+  assert.ok(mien(bronze) && mien(bronze).score === 2400);
+
+  // LE TIRAGE.
+  const roll = await (await fetch(`${BASE}/api/admin/challenge/roll`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': CLE },
+  })).json();
+  assert.ok(roll && roll.ok, 'le tirage passe');
+
+  const apres = await (await fetch(`${BASE}/api/light/challenge`)).json();
+  const tableauApres = (apres.games || []).find((g) => g.id === 'minifever_arcade');
+  assert.equal((tableauApres.scores || []).length, 0,
+    'le tableau du jour est vidé — c\'est un défi quotidien, pas un record');
+
+  // Le podium de la veille, dans l'ordre, avec ses médailles.
+  const podium = tableauApres.podium || [];
+  assert.equal(podium.length, 3, 'trois marches');
+  assert.equal(String(podium[0].user).toLowerCase(), or);
+  assert.equal(podium[0].medal, 'gold', 'l\'or aux 4000 points');
+  assert.equal(String(podium[1].user).toLowerCase(), argent);
+  assert.equal(podium[1].medal, 'silver');
+  assert.equal(String(podium[2].user).toLowerCase(), bronze);
+  assert.equal(podium[2].medal, 'bronze', 'le bronze aux 2400 points');
+
+  // Et la médaille est comptée sur la fiche du champion (avec ses kikooz).
+  const sid = await sidPour(or);
+  const profil = await (await fetch(
+    `${BASE}/api/light/profile?sid=${encodeURIComponent(sid)}`)).json();
+  assert.ok(Number(profil.medals) >= 1, 'la fiche compte la médaille');
+  assert.ok(Number(profil.kikooz) >= 15, 'et l\'or vaut quinze kikooz');
 });

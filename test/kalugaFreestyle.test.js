@@ -179,9 +179,9 @@ test('le freestyle vit dans les records, pas dans le tableau des scores', async 
   const c = await cuves();
   assert.ok(c.kaluga_freestyle, 'la cuve répond toujours à /api/club/records');
   // La section L échappe à la remise à zéro quotidienne (et à ses médailles) ;
-  // en section C, deux exclus explicites — le proxy bkiwi et Mini-Fever, le
-  // record permanent affiché sous Challenge.
-  assert.match(src, /section === 'C' && r\.internal\s*&& r\.internal !== 'bkiwi_track5_classic' && r\.internal !== 'minifever_arcade'/,
+  // en section C, un seul exclu — le proxy bkiwi, qui ferait doublon avec les
+  // vrais classements par circuit.
+  assert.match(src, /section === 'C' && r\.internal\s*&& r\.internal !== 'bkiwi_track5_classic'\)/,
     'DAILY_RESET_RANKING_SET ne prend que la section C');
 });
 

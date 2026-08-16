@@ -5322,10 +5322,21 @@
   // se gagnent/achètent (boutique, packs) et se posent via l'inventaire.
   // L'éditeur n'édite que le visage ; les chars 14-23 de l'état initial sont
   // conservés tels quels à la validation (fbSet n'écrit que les paires listées).
+  //
+  // LE SAC À PATATE : les coiffures 1, 2 et 3 de la famille 0 ne sont pas des
+  // coiffures — c'est le sac en papier que porte, à l'époque, qui n'a pas
+  // encore fait sa bouille. Les deux premières COUVRENT LE VISAGE : tant
+  // qu'on est dessus, changer d'yeux, d'iris ou de bouche ne se voit pas, et
+  // l'éditeur s'ouvrait justement là (la bouille par défaut porte le sac).
+  // On ne les propose donc plus (`saute`), et l'ouverture quitte le sac pour
+  // le crâne nu, où chaque choix se voit. Les bouilles DÉJÀ enregistrées avec
+  // un sac restent intactes et s'affichent partout comme avant : on retire
+  // l'option, pas le dessin.
+  var FB_SAC = [1, 2, 3];
   var FB_PARTS = [
     { key: "yeux",    label: "yeux",    pos: 2,  max: 8,  count: true },
     { key: "iris",    label: "iris",    pos: 4,  max: 17, count: true },
-    { key: "cheveux", label: "cheveux", pos: 6,  max: 66, count: true },
+    { key: "cheveux", label: "cheveux", pos: 6,  max: 66, count: true, saute: FB_SAC },
     { key: "bouche",  label: "bouche",  pos: 8,  max: 4,  count: true },
     // Couleurs : sélecteur de palette (53 couleurs, cf. /js/bouille-palette.js).
     { key: "peau",    label: "couleur peau",    pos: 10, max: 52, color: true },
@@ -5365,18 +5376,40 @@
     if (fbPrevTimer) clearTimeout(fbPrevTimer);
     fbPrevTimer = setTimeout(fbRenderPreview, 120);
   }
+  // Les valeurs qu'on propose vraiment pour cette ligne — le sac à patate en
+  // moins pour les cheveux.
+  function fbChoix(part) {
+    var liste = [];
+    for (var i = 0; i <= (part.max || 0); i++) {
+      if (part.saute && part.saute.indexOf(i) >= 0) continue;
+      liste.push(i);
+    }
+    return liste;
+  }
   function fbCycle(part, dir) {
-    var span = (part.max || 0) + 1;
-    fbSet(part.pos, ((fbGet(part.pos) + dir) % span + span) % span);
+    var choix = fbChoix(part);
+    var ici = choix.indexOf(fbGet(part.pos));
+    // Sur une valeur écartée (une vieille bouille à sac), la flèche rejoint la
+    // liste au lieu de tourner dans le vide.
+    if (ici < 0) ici = dir > 0 ? -1 : 0;
+    fbSet(part.pos, choix[((ici + dir) % choix.length + choix.length) % choix.length]);
     if (part.color) fbRefreshBar(part);
     else fbRefreshLabel(part);
     fbRenderPreviewSoon();
   }
-  // Ligne élément (yeux, cheveux, accessoire…) : « cheveux · 13/67 » pour se
-  // repérer dans les longues listes (67 coiffures !).
+  // Ligne élément (yeux, cheveux, accessoire…) : « cheveux · 13/64 » pour se
+  // repérer dans les longues listes — la place se compte parmi les coiffures
+  // PROPOSÉES, sac exclu, sinon le compte sauterait des numéros.
   function fbRefreshLabel(part) {
     var l = document.getElementById("fb-lbl-" + part.key);
-    if (l) l.textContent = part.label + (part.count ? " · " + (fbGet(part.pos) + 1) + "/" + (part.max + 1) : "");
+    if (!l) return;
+    var texte = part.label;
+    if (part.count) {
+      var choix = fbChoix(part);
+      var ici = choix.indexOf(fbGet(part.pos));
+      texte += " · " + (ici >= 0 ? ici + 1 : "–") + "/" + choix.length;
+    }
+    l.textContent = texte;
   }
   function fbRefreshLabels() { FB_PARTS.forEach(function (p) { if (!p.color) fbRefreshLabel(p); }); }
   // Ligne couleur (peau / cheveux) = barre montrant la VRAIE couleur courante ;
@@ -5404,7 +5437,6 @@
         center.title = FPBouille.colorName(idx) + " (" + idx + ")";
       } else {
         center = el("div", "fb-label"); center.id = "fb-lbl-" + part.key;
-        center.textContent = part.label + (part.count ? " · " + (fbGet(part.pos) + 1) + "/" + (part.max + 1) : "");
       }
       left.addEventListener("click", function () { fbCycle(part, -1); });
       right.addEventListener("click", function () { fbCycle(part, 1); });
@@ -5412,10 +5444,14 @@
       rows.appendChild(row);
     });
     fbRowsBuilt = true;
+    fbRefreshLabels();
   }
 
   function openFbEditor(initial) {
     fbState = fbPad(initial && initial.length >= 15 ? initial : DEFAULT_BOUILLE);
+    // On quitte le sac à patate dès l'ouverture : sous le sac, le visage est
+    // caché et aucun des choix qu'on propose ne se verrait.
+    if (FB_SAC.indexOf(fbGet(6)) >= 0) fbSet(6, 0);
     if (!fbRowsBuilt) fbBuildRows();
     else { fbRefreshBars(); fbRefreshLabels(); }
     fbRenderPreview();

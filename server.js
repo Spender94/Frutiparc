@@ -1291,14 +1291,11 @@ const RANKINGS = {
   //     multipliés par (1 + palier) — l'infernal paie quadruple. Choisir plus
   //     dur rapporte donc plus, c'est la règle, elle est écrite sur la page du
   //     jeu et dans le libellé de chaque ligne (« 900 · 30 épreuves en
-  //     difficile »). Le palier joué voyage dans la donnée de score. LIGHT
-  //     SEULEMENT, et sans entrée dans LEGACY_RANKINGS : fileIcon.swf ne
-  //     connaît pas ce jeu — il n'existait pas quand le bureau a été gravé —
-  //     et lui inventer une icône casserait la liste des classements du SWF.
-  //     Rester hors de cette liste le tient aussi hors de la remise à zéro
-  //     quotidienne (DAILY_RESET_RANKING_SET en est dérivé) : c'est un
-  //     RECORD, comme le Contest de Frutisnake — un mode se termine, il ne se
-  //     refait pas chaque jour.
+  //     difficile »). Le palier joué voyage dans la donnée de score. C'est un
+  //     DÉFI DU JOUR de plein droit : section C de LEGACY_RANKINGS (rk '15'),
+  //     donc remis à zéro chaque nuit et médaillé par le tirage — sa vignette
+  //     est déjà gravée dans awards.swf sous l'étiquette « minifever »
+  //     (patch-awards-minifever.js), les deux clients la trouvent.
   minifever_arcade:  { name: 'Mini-Fever',              game: 'minifever', type: 'C' },
   bkiwi_track0_challenge: { name: 'Burning Kiwi - Green Hill', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 0 },
   bkiwi_track1_challenge: { name: 'Burning Kiwi - Banana Derby', game: 'bkiwi', type: 'L', lowerIsBetter: true, bkiwiTrack: 1 },
@@ -3665,12 +3662,13 @@ function buildUserLogXml(entries) {
 // rankings (which rotate daily based on dayOfYear % 6).
 // BKiwi classic was previously the daily proxy; replaced by proper _challenge
 // rankings so we exclude it to avoid duplicate medal awards.
-// Mini-Fever est affiché sous Challenge mais N'EST PAS un défi du jour : son
-// tableau unique (niveau × 10 × (1 + palier)) est un record permanent — on
-// l'écarte donc, comme le proxy bkiwi.
+// Mini-Fever est un DÉFI DU JOUR comme les autres : son tableau (niveau × 10
+// × (1 + palier)) se remet à zéro chaque nuit et distribue ses médailles — la
+// vignette existe déjà dans awards.swf sous l'étiquette « minifever »
+// (patch-awards-minifever.js), les deux clients la trouvent donc.
 const DAILY_RESET_RANKING_SET = new Set([
   ...LEGACY_RANKINGS.filter(r => r.section === 'C' && r.internal
-    && r.internal !== 'bkiwi_track5_classic' && r.internal !== 'minifever_arcade').map(r => r.internal),
+    && r.internal !== 'bkiwi_track5_classic').map(r => r.internal),
   ...Array.from({ length: 6 }, (_, i) => `bkiwi_track${i}_challenge`),
 ]);
 
@@ -15878,10 +15876,8 @@ app.get('/api/light/challenge', async (req, res) => {
     // Les deux pilotes de l'animation (cf. RANKINGS).
     { game: 'minipixiz', ranking: 'minipixiz_classic' },
     { game: 'miniwave',  ranking: 'miniwave_classic' },
-    // Mini-Fever, sous Challenge comme les autres jeux — mais son tableau est
-    // un RECORD permanent, hors remise à zéro quotidienne (cf.
-    // DAILY_RESET_RANKING_SET) : il n'a jamais de podium de la veille, et
-    // c'est normal.
+    // Mini-Fever, défi du jour comme les autres : remis à zéro chaque nuit,
+    // avec son podium de la veille et ses médailles.
     { game: 'minifever', ranking: 'minifever_arcade' },
   ];
   // Le libellé de chaque classement vient du descriptif du bureau (rn) : les
