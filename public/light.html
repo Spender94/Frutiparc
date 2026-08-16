@@ -701,6 +701,27 @@
   .fiche-ligne .val { color: #444; text-align: right; min-width: 0; overflow-wrap: anywhere; }
   .fiche-ligne .val a { color: #2f6b16; }
   /* L'onglet « perso » encadre ses lignes de deux séparateurs. */
+  /* ── Onglet « scores » de la fiche, à la façon du bureau ──
+     win.Frutiz y montre la RANGÉE DES MÉDAILLES (les disques d'awards.swf,
+     un par jeu gagné la veille) puis « Scores du jour », la liste des jeux
+     où le frutiz s'est classé — noms centrés, en gras. Le mobile n'a pas de
+     SWF : les disques sont les PNG public/fb/medal_<couleur>_<jeu>.png,
+     déjà servis au podium du tableau des scores. */
+  .fiche-medailles {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 10px; margin: 0 4px 12px; padding-bottom: 10px;
+    border-bottom: 1.5px solid #a7dc6b;
+  }
+  .fiche-medaille { width: 52px; height: 52px; display: block; }
+  .fiche-jour {
+    font-family: Verdana, Arial, sans-serif; font-size: 11.5px; font-weight: bold;
+    color: #446531; text-align: center; padding: 3px 4px;
+    display: flex; align-items: baseline; justify-content: center; gap: 8px;
+  }
+  /* Le score reste lisible à côté du nom, sans voler la vedette — le bureau
+     n'affiche que le nom, mais un onglet « scores » sans chiffre serait
+     avare sur un écran qui a la place. */
+  .fiche-jour .pts { font-weight: normal; color: #6f8f52; font-size: 10.5px; }
   .fiche-lignes.encadre { padding: 4px; }
   .fiche-lignes.encadre::before, .fiche-lignes.encadre::after {
     content: ""; display: block; height: 2px; background: #a7dc6b; margin: 5px 0;
@@ -3050,7 +3071,7 @@
   var MEDAL_ASSET_KEY = {
     bandas: "bandas", grapiz: "grapiz", swapou2: "swapou",
     bkiwi: "bk", snake3: "snake", mb2: "mb2", kaluga: "kaluga",
-    minipixiz: "minipixiz", miniwave: "miniwave",
+    minipixiz: "minipixiz", miniwave: "miniwave", minifever: "minifever",
   };
   var SC_MOIS = ["janv.", "fevr.", "mars", "avril", "mai", "juin",
     "juil.", "aout", "sept.", "oct.", "nov.", "dec."];
@@ -4668,21 +4689,40 @@
       if ((!sc.classements || !sc.classements.length) && (!sc.medailles || !sc.medailles.length)) {
         page.appendChild(el("div", "fiche-vide")).textContent = "Aucun score enregistré.";
       } else {
-        if (sc.classements && sc.classements.length) {
-          var ts = el("div", "fiche-titre"); ts.textContent = "Championnat"; page.appendChild(ts);
-          var ls = el("div", "fiche-lignes");
-          sc.classements.forEach(function (c) {
-            ls.appendChild(ligneFiche(c.titre, scoreLisible(c.score, c.type) + (c.pos > 0 ? " (" + c.pos + "ᵉ)" : "")));
-          });
-          page.appendChild(ls);
-        }
+        // L'ORDRE DU BUREAU : les médailles d'abord, la liste du jour ensuite.
         if (sc.medailles && sc.medailles.length) {
-          var tm = el("div", "fiche-titre"); tm.textContent = "Récompenses"; page.appendChild(tm);
-          var lm = el("div", "fiche-lignes");
+          var tm = el("div", "fiche-titre"); tm.textContent = "Médailles"; page.appendChild(tm);
+          var lm = el("div", "fiche-medailles");
           sc.medailles.forEach(function (m) {
-            lm.appendChild(ligneFiche(m.jeu, "Médaille " + m.medaille));
+            var cle = MEDAL_ASSET_KEY[m.cle] || m.cle || "";
+            var img = document.createElement("img");
+            img.className = "fiche-medaille";
+            img.src = "/fb/medal_" + (m.couleur || "gold") + "_" + cle + ".png";
+            img.alt = m.jeu + " — médaille " + m.medaille;
+            img.title = img.alt;
+            // Un jeu sans PNG de médaille ne laisse pas d'image cassée : on
+            // retombe sur le libellé, comme avant.
+            img.onerror = function () {
+              var t = el("div", "fiche-jour");
+              t.textContent = m.jeu + " · médaille " + m.medaille;
+              img.replaceWith(t);
+            };
+            lm.appendChild(img);
           });
           page.appendChild(lm);
+        }
+        if (sc.classements && sc.classements.length) {
+          var ts = el("div", "fiche-titre"); ts.textContent = "Scores du jour"; page.appendChild(ts);
+          var ls = el("div", "fiche-lignes");
+          sc.classements.forEach(function (c) {
+            var l = el("div", "fiche-jour");
+            l.appendChild(document.createTextNode(c.titre));
+            var pts = el("span", "pts");
+            pts.textContent = scoreLisible(c.score, c.type) + (c.pos > 0 ? " (" + c.pos + "ᵉ)" : "");
+            l.appendChild(pts);
+            ls.appendChild(l);
+          });
+          page.appendChild(ls);
         }
       }
     } else if (ficheEtat.onglet === "bonus") {

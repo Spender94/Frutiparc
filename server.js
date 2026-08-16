@@ -16696,6 +16696,12 @@ app.get('/api/light/fiche', async (req, res) => {
       medaille: MEDAL_DISPLAY_NAMES[m.medal] || m.medal,
       rang: m.rank,
       jour: m.awarded_day,
+      // De quoi retrouver la VIGNETTE : le bureau la tire d'awards.swf avec
+      // (frame = le jeu, value = le rang) ; le mobile n'a pas de SWF et pose
+      // le PNG public/fb/medal_<couleur>_<jeu>.png. On livre donc la clé du
+      // jeu et la couleur en clair, en plus du libellé français.
+      cle: m.game,
+      couleur: m.medal === 'or' ? 'gold' : m.medal === 'argent' ? 'silver' : 'bronze',
     });
   }
 

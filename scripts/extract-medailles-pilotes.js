@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Sort les MÉDAILLES de MiniPixiz et Mini-Wave pour le portage light.
+// Sort les MÉDAILLES des jeux nés APRÈS le bureau, pour le portage light.
 //
 //   node scripts/extract-medailles-pilotes.js        (serveur local sur :3499)
 //   BASE=http://127.0.0.1:3000 node scripts/extract-medailles-pilotes.js
@@ -25,6 +25,7 @@ const TAILLE = 103;                                  // le gabarit des sept autr
 const CIBLES = [
   { vignette: 'miniwave', cle: 'miniwave' },
   { vignette: 'minipixiz', cle: 'minipixiz' },
+  { vignette: 'minifever', cle: 'minifever' },
 ];
 const RANGS = [[1, 'gold'], [2, 'silver'], [3, 'bronze']];
 

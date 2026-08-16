@@ -409,3 +409,68 @@ test('la liste des connectés n\'affiche plus d\'enveloppe à côté des pseudos
   assert.match(html, /#users-drawer \.u\.mp \{ cursor: pointer/, 'la ligne reste un bouton');
   assert.match(html, /u\.title = "Voir la fiche de " \+ pseudo;/, 'et dit ce qu\'elle ouvre');
 });
+
+test('l\'onglet Scores tient la mise en page de main.swf : les médailles, puis le jour', () => {
+  // AU BUREAU (main.swf, onglet Scores de winFrutizInfo) : un intitulé
+  // « Médailles » surmonte une rangée de PASTILLES — le disque d'awards.swf,
+  // un par jeu médaillé la veille — et « Scores du jour » les suit, chaque jeu
+  // sur sa ligne, centré. Le mobile écrivait à la place « Championnat » (le
+  // mauvais mot : la section C est le Challenge quotidien) et « Récompenses :
+  // MiniWave : Médaille d'or » en toutes lettres, sans un seul dessin.
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  const onglet = html.substring(html.indexOf('ficheEtat.onglet === "scores"'),
+    html.indexOf('ficheEtat.onglet === "bonus"'));
+  assert.ok(onglet.length > 200, 'l\'onglet Scores se lit dans le fichier');
+  // L'ORDRE : les médailles d'abord, la liste du jour ensuite.
+  const iMed = onglet.indexOf('"Médailles"');
+  const iJour = onglet.indexOf('"Scores du jour"');
+  assert.ok(iMed > 0, 'l\'intitulé « Médailles »');
+  assert.ok(iJour > 0, 'l\'intitulé « Scores du jour »');
+  assert.ok(iMed < iJour, 'et les médailles passent devant');
+  assert.ok(!/"Championnat"/.test(onglet), 'plus de « Championnat » : c\'est le Challenge');
+  assert.ok(!/Récompenses/.test(onglet), 'ni la liste de récompenses en toutes lettres');
+  // La PASTILLE est le PNG du jeu, tiré de la clé et de la couleur du serveur.
+  assert.match(onglet, /\/fb\/medal_" \+ \(m\.couleur \|\| "gold"\) \+ "_" \+ cle \+ "\.png"/,
+    'la vignette se compose comme celle du tableau Challenge');
+  assert.match(onglet, /MEDAL_ASSET_KEY\[m\.cle\]/, 'la clé de jeu passe par la table d\'assets');
+  // Une rangée centrée, et des lignes de jour centrées en gras.
+  assert.match(html, /\.fiche-medailles \{[^}]*justify-content: center/, 'la rangée est centrée');
+  assert.match(html, /\.fiche-jour \{[^}]*text-align: center/, 'les lignes du jour aussi');
+});
+
+test('chaque jeu médaillable a ses trois pastilles sur le disque', () => {
+  // Le mobile n'a pas de SWF : il pose un PNG. Un jeu médaillé sans vignette
+  // afficherait un carré cassé au milieu de la fiche.
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  const table = /var MEDAL_ASSET_KEY = \{([\s\S]*?)\};/.exec(html);
+  assert.ok(table, 'la table des vignettes existe');
+  const cles = table[1].match(/: "([a-z0-9]+)"/g).map((s) => s.slice(3, -1));
+  assert.ok(cles.includes('minifever'), 'Mini-Fever y figure — il médaille depuis peu');
+  for (const cle of new Set(cles)) {
+    for (const couleur of ['gold', 'silver', 'bronze']) {
+      const f = path.join(ROOT, 'public/fb/medal_' + couleur + '_' + cle + '.png');
+      assert.ok(fs.existsSync(f), 'il manque ' + path.basename(f));
+      const png = fs.readFileSync(f);
+      assert.equal(png.subarray(1, 4).toString('ascii'), 'PNG', path.basename(f) + ' est un PNG');
+    }
+  }
+});
+
+test('la fiche livre de quoi DESSINER la médaille, pas seulement de quoi l\'écrire', async () => {
+  // Le libellé français (« MiniWave : médaille d'or ») reste — il sert
+  // d'alternative textuelle. Mais la fiche porte aussi la clé du jeu et la
+  // couleur en clair : sans elles, le mobile ne saurait quel PNG poser.
+  const nom = joueur('fichemed');
+  const sid = await sidFor(nom);
+  const j = await (await fetch(`${BASE}/api/light/fiche?sid=${encodeURIComponent(sid)}&u=${nom}`)).json();
+  assert.equal(j.ok, true);
+  assert.ok(Array.isArray(j.scores.medailles), 'la liste des médailles');
+  // Le joueur vient de naître : il n'en a aucune. On lit donc la FORME dans
+  // le serveur, là où elle est construite.
+  const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const bloc = src.substring(src.indexOf('const medailles = [];'),
+    src.indexOf('const signe = (n) =>'));
+  assert.match(bloc, /cle: m\.game/, 'la clé du jeu part avec la médaille');
+  assert.match(bloc, /couleur: m\.medal === 'or' \? 'gold'/, 'et sa couleur en clair');
+  assert.match(bloc, /jeu: GAME_DISPLAY_NAMES/, 'le libellé français reste');
+});
