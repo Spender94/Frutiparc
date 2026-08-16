@@ -860,6 +860,12 @@
   #minifever-frame {
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
     border: 0; display: block; background: #ADE76B;
+    /* Le geste appartient au JEU : sans ça, certains navigateurs jugent le
+       traîner depuis le cadre hôte (« c'est un défilement ») et le coupent
+       en route (pointercancel) — les épreuves qui se jouent en glissant
+       mouraient au milieu du geste. La page du jeu se protège aussi ; les
+       deux côtés de la vitre valent mieux qu'un. */
+    touch-action: none;
   }
 
   /* ── Scores du jour (Challenge) ──

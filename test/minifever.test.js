@@ -1721,6 +1721,96 @@ test('les dessins du point à point sont extraits', () => {
   assert.ok(MANIFESTE.gamePoint.etats[0].pieces.length >= 1, 'le papier, sans la figure');
 });
 
+test('AU DOIGT, le tracé teste le CHEMIN parcouru, pas le seul relevé', () => {
+  // Le pointeur n'est qu'échantillonné : entre deux relevés, un doigt vif
+  // SAUTE par-dessus un pointillé de quatre pixels sans qu'aucun relevé ne
+  // tombe dedans. La souris d'époque avançait pixel par pixel sous une main
+  // lente — le doigt, non. Au tactile, le segment entre deux relevés compte.
+  const b = banc(J.Point);
+  const j = b.jeu;
+  b.socle.flTactile = true;
+  const p0 = j.points[0];
+  // Le doigt se pose à côté du point, appuyé, puis BONDIT de l'autre côté :
+  // le point est franchi en route, sans qu'aucun relevé ne soit dedans.
+  b.souris(p0.x - 30, p0.y);
+  b.socle.click();
+  b.avancer(1);
+  assert.equal(j.index, 0, 'posé à côté : rien');
+  b.souris(p0.x + 30, p0.y);
+  b.avancer(1);
+  assert.equal(j.index, 1, 'le bond par-dessus le pointillé le relie');
+  // Et la SOURIS garde la règle du lecteur : le même bond ne relie pas.
+  const b2 = banc(J.Point);
+  const j2 = b2.jeu;
+  b2.souris(j2.points[0].x - 30, j2.points[0].y);
+  b2.avancer(1);
+  b2.souris(j2.points[0].x + 30, j2.points[0].y);
+  b2.avancer(1);
+  assert.equal(j2.index, 0, 'à la souris, l\'échantillon d\'époque fait foi');
+});
+
+test('AU DOIGT, le couloir s\'élargit, et se reposer ailleurs ne trace pas', () => {
+  const b = banc(J.Point);
+  const j = b.jeu;
+  b.socle.flTactile = true;
+  const p0 = j.points[0];
+  // À cinq pixels du point : hors de la boîte d'époque (±2), dans le couloir
+  // du doigt (±2 élargis de MARGE_DOIGT).
+  b.souris(p0.x + 5, p0.y);
+  b.socle.click();
+  b.avancer(1);
+  assert.equal(j.index, 1, 'le doigt qui cache le point a droit à sa marge');
+  b.socle.relache();
+  // Le doigt se REPOSE de l'autre côté de la figure : le bond entre le point
+  // de repos et le nouveau point d'appui ne doit PAS compter comme un tracé.
+  const p1 = j.points[1];
+  b.souris(p1.x + 60, p1.y - 40);   // se reposer loin du prochain pointillé
+  b.socle.click();
+  b.avancer(1);
+  assert.equal(j.index, 1, 'l\'ancre repart du point d\'appui : pas de faux trait');
+  b.socle.relache();
+});
+
+test('AU DOIGT, le maillet frappe la tête VISIBLE la plus proche', () => {
+  const b = banc(J.Hammer, { dif: 0 });
+  const j = b.jeu;
+  b.socle.flTactile = true;
+  // Faire sortir la bestiole (by → 0) : quelques images suffisent.
+  b.avancer(30);
+  const cible = j.bList[0];
+  assert.ok(cible.hole && cible.appuyable, 'une bestiole est sortie');
+  // Le doigt se pose DIX PIXELS SOUS la gueule du terrier, et de biais : la
+  // boîte d'époque l'aurait peut-être donné au terrier voisin (elles se
+  // chevauchent) — la prise du doigt choisit la tête qu'on VOIT.
+  b.souris(cible.hole.x + 6, cible.hole.y + 10);
+  j.click();
+  assert.equal(j.bList.length, 0, 'la bestiole visée est frappée');
+  assert.equal(j.gagnant, true, 'la dernière : gagné');
+  // Un tap dans le VIDE (à plus d'un demi-écart de tout terrier sorti) ne
+  // frappe rien — comme un coup de maillet à côté.
+  const b2 = banc(J.Hammer, { dif: 0 });
+  b2.socle.flTactile = true;
+  b2.avancer(30);
+  const avant = b2.jeu.bList.length;
+  b2.souris(5, 5);                 // le coin du pré, loin des terriers
+  b2.jeu.click();
+  assert.equal(b2.jeu.bList.length, avant, 'le coup à côté ne fauche personne');
+});
+
+test('à la SOURIS, le maillet garde la boîte d\'époque, masque ignoré', () => {
+  const b = banc(J.Hammer, { dif: 0 });
+  const j = b.jeu;
+  assert.equal(b.socle.flTactile, false, 'le banc est une souris');
+  b.avancer(30);
+  const cible = j.bList[0];
+  // La boîte de la bestiole déborde le hublot : un clic dans la boîte mais
+  // hors du visible frappe quand même — le onPress du lecteur.
+  const boite = cible.hole.bestiole.boite;
+  b.souris(cible.hole.x + boite.x1 - 2, cible.hole.bestiole.y + boite.y0 + 2);
+  j.click();
+  assert.equal(j.bList.length, 0, 'la boîte d\'époque fait foi, comme en Flash');
+});
+
 // ── L'ASSIETTE (game/Plate.mt, classe « 0q8Ho1 » du bytecode) ──
 
 test('l\'assiette : la mise en place du bytecode, et sa montée du bas', () => {
@@ -2788,4 +2878,22 @@ test('le menu : une case verrouillée ne répond pas, secret remélange', () => 
   assert.equal(m.mList.length, 5, 'le menu se reconstruit');
   assert.ok(m.dList.length > 0, 'les anciennes cases s\'escamotent');
   assert.equal(lance.length, 0, 'et rien ne part');
+});
+
+test('la toile est PROTÉGÉE du navigateur : touch-action, appui long, geste', () => {
+  // Sans touch-action SUR LA TOILE, certains navigateurs confisquent le
+  // traîner en route (pointercancel : « c'est un défilement ») — le doigt
+  // continue, le jeu ne le voit plus. Et l'appui long d'Android ouvre un
+  // menu contextuel qui coupe pareil les jeux à visée tenue.
+  const page = fs.readFileSync(path.join(ROOT, 'public/minifever/index.html'), 'utf8');
+  assert.match(page, /#stage \{[^}]*touch-action: none;/, 'la toile porte sa propre protection');
+  assert.match(page, /#aire \{ touch-action: none; \}/, 'et son cadre aussi');
+  assert.match(page, /overscroll-behavior: none;/, 'ni tiré-pour-rafraîchir ni rebond');
+  assert.match(page, /-webkit-touch-callout: none;/, 'pas de menu d\'appui long iOS');
+  const client = fs.readFileSync(path.join(ROOT, 'public/minifever/client.js'), 'utf8');
+  assert.match(client, /addEventListener\('contextmenu', \(ev\) => ev\.preventDefault\(\)\)/,
+    'l\'appui long Android ne coupe plus le flux de pointeurs');
+  // flTactile : pointerType peut être VIDE — un écran au pointeur grossier
+  // est alors tenu pour tactile, plutôt que de retomber sur la règle souris.
+  assert.match(client, /pointer: coarse/, 'le doute penche du côté du doigt');
 });

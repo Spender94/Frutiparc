@@ -4466,8 +4466,9 @@ class Point extends Jeu {
 
   update() {
     super.update();
-    // onRollOver d'époque : au franchissement du bord seulement.
-    if (this.next) {
+    if (this.socle && this.socle.flTactile) this.updateTactile();
+    else if (this.next) {
+      // onRollOver d'époque : au franchissement du bord seulement.
       const dedans = this.next.contient(this.sourisX, this.sourisY);
       if (dedans && !this.flDessus) {
         this.draw();
@@ -4477,6 +4478,65 @@ class Point extends Jeu {
         this.flDessus = dedans;
       }
     }
+  }
+
+  /** Le pointillé, à ±marge près — la boîte d'époque, élargie pour le doigt. */
+  prisAuDoigt(mc, x, y) {
+    const b = mc.boite || { x0: -2, y0: -2, x1: 2, y1: 2 };
+    const m = Point.MARGE_DOIGT;
+    return x > mc.x + b.x0 - m && x < mc.x + b.x1 + m
+      && y > mc.y + b.y0 - m && y < mc.y + b.y1 + m;
+  }
+
+  /*
+   * AU DOIGT, la règle d'époque trahit la main deux fois. Le pointillé fait
+   * QUATRE pixels de large : sous un doigt qui le cache, autant enfiler une
+   * aiguille — le couloir s'élargit (±MARGE_DOIGT). Et le pointeur n'est
+   * qu'ÉCHANTILLONNÉ : entre deux relevés, un doigt vif saute par-dessus le
+   * point sans qu'aucun relevé ne tombe dedans — le survol de la souris
+   * d'époque, lui, avançait pixel par pixel sous une main lente. On teste
+   * donc le SEGMENT parcouru depuis le dernier relevé, pas à pas, tant que le
+   * doigt reste posé. La souris garde la règle du lecteur, à la lettre.
+   */
+  updateTactile() {
+    const x = this.sourisX;
+    const y = this.sourisY;
+    const d = this.dernierReleve || { x, y };
+    this.dernierReleve = { x, y };
+    if (!this.next) return;
+    if (this.socle.flPresse && (d.x !== x || d.y !== y)) {
+      // Le chemin depuis le dernier relevé, par pas de deux pixels : chaque
+      // pointillé franchi EN ROUTE compte, dans l'ordre du tracé.
+      const pas = Math.max(1, Math.ceil(Math.hypot(x - d.x, y - d.y) / 2));
+      for (let i = 1; i <= pas && this.next; i++) {
+        const px = d.x + (x - d.x) * i / pas;
+        const py = d.y + (y - d.y) * i / pas;
+        if (!this.flDessus && this.prisAuDoigt(this.next, px, py)) {
+          this.draw();
+          this.flDessus = this.next ? this.prisAuDoigt(this.next, px, py) : false;
+        } else if (this.flDessus) {
+          this.flDessus = this.next ? this.prisAuDoigt(this.next, px, py) : false;
+        }
+      }
+    } else {
+      // Doigt immobile ou levé : la règle du franchissement, comme d'époque —
+      // poser le doigt PILE sur le point suivant le relie aussi.
+      const dedans = this.prisAuDoigt(this.next, x, y);
+      if (dedans && !this.flDessus) {
+        this.draw();
+        this.flDessus = this.next ? this.prisAuDoigt(this.next, x, y) : false;
+      } else {
+        this.flDessus = dedans;
+      }
+    }
+  }
+
+  /**
+   * Un doigt qui se REPOSE ailleurs ne doit pas tracer le bond depuis son
+   * ancien point de repos : l'ancrage du segment repart du point d'appui.
+   */
+  click() {
+    this.dernierReleve = { x: this.sourisX, y: this.sourisY };
   }
 
   updateNext() {
@@ -4504,6 +4564,11 @@ class Point extends Jeu {
     this.updateNext();
   }
 }
+
+// Le couloir du DOIGT autour d'un pointillé de ±2 px : six pixels de scène de
+// chaque côté — dix sur l'écran d'un téléphone, l'épaisseur d'un trait de
+// feutre. La souris, elle, garde la boîte nue du lecteur.
+Point.MARGE_DOIGT = 6;
 
 // La figure du point à point — les PlaceObject de la scène (sym103) : les
 // dix-huit pointillés, et le $p12 TOURNÉ qui lève le crayon.
@@ -4897,10 +4962,37 @@ class Hammer extends Jeu {
     b.hole = null;
   }
 
-  /** L'appui d'époque : la boîte de la bestiole, masque ignoré. */
+  /**
+   * L'appui d'époque : la boîte de la bestiole, masque ignoré. Cette boîte
+   * fait 90 px de large — plus que l'ÉCART entre deux terriers (52 px) : les
+   * boîtes voisines se chevauchent, et la première de la liste gagne. À la
+   * souris, on ne s'en aperçoit pas : le curseur vise la tête au pixel. AU
+   * DOIGT, la tête est CACHÉE sous le doigt et l'appui se pose à côté — la
+   * règle des boîtes rendait le coup au petit bonheur (souvent le terrier
+   * d'à-côté, parfois rien). Le doigt frappe donc la tête VISIBLE la plus
+   * proche : le hublot du terrier (sym567) d'une bestiole appuyable, dans un
+   * rayon d'un demi-écart. La souris garde la règle du lecteur.
+   */
   click() {
     const sx = this.sourisX;
     const sy = this.sourisY;
+    if (this.socle && this.socle.flTactile) {
+      // L'ancre est la GUEULE du terrier, la tête à peine au-dessus : on vise
+      // (x, y − 8), à un demi-écart de terrier près. Quand deux bestioles
+      // sont sorties côte à côte, la plus proche l'emporte — c'est déjà ce
+      // que le chevauchement des boîtes d'époque décidait, en moins lisible.
+      let mieux = null;
+      let meilleure = 26 * 26;
+      for (const b of this.bList) {
+        if (!b.hole || !b.appuyable) continue;
+        const dx = sx - b.hole.x;
+        const dy = sy - (b.hole.y - 8);
+        const d = dx * dx + dy * dy;
+        if (d < meilleure) { meilleure = d; mieux = b; }
+      }
+      if (mieux) this.catchBad(mieux);
+      return;
+    }
     for (const b of this.bList) {
       if (!b.hole || !b.appuyable) continue;
       if (b.hole.bestiole.contient(sx, sy)) {

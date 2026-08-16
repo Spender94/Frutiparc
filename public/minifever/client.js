@@ -232,10 +232,15 @@ class Client {
       bouger(ev);
       if (this.socle) {
         // Doigt ou souris ? Certains jeux en tiennent compte : Tubulo vise la
-        // case VISIBLE au doigt (pas de survol pour guider la main).
+        // case VISIBLE au doigt (pas de survol pour guider la main), le
+        // maillet la tête la plus proche, le point à point élargit son
+        // couloir. pointerType peut être VIDE (la spécification l'autorise
+        // quand le navigateur ne sait pas) : dans le doute, un écran qui n'a
+        // qu'un pointeur grossier est un écran tactile.
         this.socle.flTactile = ev.pointerType
           ? ev.pointerType !== 'mouse'
-          : String(ev.type).startsWith('touch');
+          : (String(ev.type).startsWith('touch')
+            || !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
         this.socle.click();
       }
     };
@@ -258,6 +263,10 @@ class Client {
     }
     // Une fenêtre qui part ne rend jamais le doigt levé.
     window.addEventListener('blur', haut);
+    // L'appui long d'Android ouvre un menu contextuel ET coupe le flux de
+    // pointeurs (pointercancel) : viser en restant appuyé — panier, fusée,
+    // arrosage — devenait une loterie au doigt.
+    this.canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
   }
 
   nouvellePartie(Mode, catalogue, opt) {
