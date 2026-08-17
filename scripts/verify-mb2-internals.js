@@ -14,10 +14,13 @@
 const fs = require('fs');
 const path = require('path');
 
-// Same custom alphabet the generator uses (BitCodec.encode_b64 in level.ml /
-// B64_ALPHABET in mb2gen.js). NOT the standard base64 alphabet.
-const BASE64 = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-';
-function bitReader(data) {
+// Two alphabets, matching mb2gen.js (see the proof over there): the SWF's
+// MTBitcodec reads '-'=62/'_'=63, while the historical OCaml toolchain wrote
+// '_'=62/'-'=63. Generator OUTPUT is written for the SWF; bumpers.txt is an
+// OCaml-era artifact and keeps its own order.
+const B64_SWF = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
+const B64_OCAML = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-';
+function bitReader(data, BASE64 = B64_SWF) {
   let cur = 0, nbits = 0, byte = 0, consumed = 0;
   return {
     read(n) {
@@ -45,7 +48,7 @@ function calcBits(n) { let v = n - 1, b = 0; while (v > 0) { b++; v >>= 1; } ret
 // Read bumpers.txt header to get the same levelPosNbits the generator uses.
 function bumpersPosNbits() {
   const data = fs.readFileSync(path.join(__dirname, '..', 'Games', 'motionBall2', 'mb2gen', 'bumpers.txt'), 'utf8').trim();
-  const br = bitReader(data);
+  const br = bitReader(data, B64_OCAML);
   br.read(5);            // delta
   const cw = br.read(10);
   const ch = br.read(10);
@@ -125,7 +128,8 @@ let totEmpty = 0, totWith = 0, totItems = 0, totClassic = 0, totInvalid = 0;
 let worstTrailing = 0;
 const itemGrand = {};
 for (let i = 0; i < N; i++) {
-  generateMb2ChallengeMap();
+  // Varied seeds — the daily seed alone would re-verify the same map N times.
+  generateMb2ChallengeMap(1000 + i * 60013);
   const raw = fs.readFileSync(path.join(__dirname, '..', 'Games', 'motionBall2', 'mb2data.dat'), 'utf8').trim();
   const data = raw.match(/ddata=(.*)$/)[1];
   const r = decodeMap(data, posNbits);
@@ -155,4 +159,5 @@ const pass = totClassic === 0 && totInvalid === 0 && Math.abs(worstTrailing) < 6
 console.log(pass
   ? 'PASS — only challenge items (1..9), bitstream aligned on every map'
   : 'FAIL — see counts above');
-process.exit(pass ? 0 : 1);
+// Leave today's real daily map in place, not the last probe seed.
+generateMb2ChallengeMap().then(() => process.exit(pass ? 0 : 1));

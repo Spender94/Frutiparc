@@ -7,14 +7,48 @@ const path = require('path');
 // ============================================================================
 // BitCodec — custom base64 bit-level encoder/decoder
 // ============================================================================
+//
+// DEUX alphabets, car l'outillage d'époque était en désaccord avec lui-même
+// sur les valeurs 62 et 63 :
+//
+//   · motionball.swf (l'ARBITRE : c'est lui qui relit nos fichiers) — sa
+//     fonction caractère→valeur, désassemblée depuis le DoInitAction
+//     « __Packages.ext.util.MTBitcodec », se termine par
+//         if (c == '-') return 62;
+//         if (c == '_') return 63;
+//     soit l'alphabet « …9-_ » ;
+//
+//   · mb2gen.exe (l'OCaml qui a fabriqué les mb2*.dat livrés et bumpers.txt)
+//     écrivait l'ordre inverse, « …9_- ». Preuve : avec cet alphabet-là,
+//     notre port reproduit les mb2adv1..5/mb2run1..7/mb2tuto historiques
+//     OCTET POUR OCTET depuis dungeon/*.txt — tirets et underscores compris.
+//
+// Conséquence : chaque '-' ou '_' d'un fichier encodé côté OCaml a son
+// DERNIER BIT lu à l'envers par le client Flash (62=111110 / 63=111111 — le
+// swap ne touche que ce bit) : items rouge↔bleue (types 8↔9), positions à
+// ±1, listes coupées net quand le bit retourné transforme un type 8 (1000)
+// en 0 (fin de liste), drapeaux « salle meublée » inversés… Les plateformes
+// de reprise qui réimplémentent le lecteur « naturellement » (…9_-) relisent
+// ces fichiers sans accroc : seul le VRAI SWF expose le désaccord. D'où la
+// règle appliquée partout ici :
+//
+//   on ÉCRIT pour le SWF (B64_SWF) ; on RELIT les artefacts OCaml d'époque
+//   (bumpers.txt, lignes DATA des dungeon/*.txt) avec B64_OCAML.
+//
+const B64_SWF = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
+const B64_OCAML = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-';
 
-const B64_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-';
-const B64_LOOKUP = {};
-for (let i = 0; i < B64_ALPHABET.length; i++) {
-  B64_LOOKUP[B64_ALPHABET[i]] = i;
+function makeLookup(alphabet) {
+  const lookup = {};
+  for (let i = 0; i < alphabet.length; i++) lookup[alphabet[i]] = i;
+  return lookup;
 }
+const B64_LOOKUPS = new Map([[B64_SWF, makeLookup(B64_SWF)], [B64_OCAML, makeLookup(B64_OCAML)]]);
 
-function createBitWriter() {
+function createBitWriter(alphabet) {
+  if (alphabet !== B64_SWF && alphabet !== B64_OCAML) {
+    throw new Error('createBitWriter: alphabet explicite requis (B64_SWF ou B64_OCAML)');
+  }
   const bits = [];
   return {
     write(nbits, value) {
@@ -36,17 +70,21 @@ function createBitWriter() {
         for (let j = 0; j < 6; j++) {
           val = (val << 1) | (bits[i + j] || 0);
         }
-        s += B64_ALPHABET[val];
+        s += alphabet[val];
       }
       return s;
     }
   };
 }
 
-function createBitReader(data) {
+function createBitReader(data, alphabet) {
+  if (alphabet !== B64_SWF && alphabet !== B64_OCAML) {
+    throw new Error('createBitReader: alphabet explicite requis (B64_SWF ou B64_OCAML)');
+  }
+  const lookup = B64_LOOKUPS.get(alphabet);
   const bits = [];
   for (let i = 0; i < data.length; i++) {
-    const val = B64_LOOKUP[data[i]];
+    const val = lookup[data[i]];
     if (val === undefined) continue;
     for (let j = 5; j >= 0; j--) {
       bits.push((val >> j) & 1);
@@ -211,26 +249,34 @@ function canHaveInvisibleDoor(bonus) {
 }
 
 /**
- * Clôt une PARTIE du flux (donjon → salles) en écrivant le bourrage que le
- * next_part() du client consommera.
+ * Clôt une PARTIE du flux (donjon → salles) : bourrage jusqu'à la frontière
+ * des 6 bits, RIEN de plus.
  *
- * MTBitcodec.next_part() (appelé par LevelLoader.as entre le donjon et les
- * salles) AVANCE TOUJOURS d'un caractère base64 : il consomme le reste du
- * caractère entamé — et un caractère ENTIER quand la partie précédente finit
- * pile sur la frontière des 6 bits. Preuve par élimination, le SWF étant
- * obfusqué et la lib ext/ absente du dépôt : le flux généré est bit-identique
- * à la grammaire du client (validée sur les quatre .dat faits main, qui
- * finissent tous HORS frontière — mod 6 = 2 ou 4 — et se jouent depuis 2006),
- * et pourtant ~1 map générée sur 6 sortait injouable, précisément celles dont
- * le donjon finissait ALIGNÉ (les quotidiennes des 1ᵉʳ, 4, 7 et 9 août).
- * Items fantômes — téléporteurs et leviers, types 10/11 que ce générateur
- * n'émet jamais — et salles aux portes closes : la signature d'une lecture
- * décalée de 6 bits. Seul le cas « déjà aligné » restait libre dans la
- * grammaire : c'est donc lui. Un simple bourrage à la frontière (l'ancien
- * b.flush()) laissait alors les salles là où next_part avait déjà dépassé.
+ * La sémantique de MTBitcodec.next_part() (appelé par LevelLoader.as entre le
+ * donjon et les salles) est désormais lue dans le BYTECODE du SWF — la classe
+ * ext.util.MTBitcodec vit dans le DoInitAction exporté
+ * « __Packages.ext.util.MTBitcodec » de motionball.swf, et son next_part se
+ * désassemble en une seule ligne :
+ *
+ *     next_part() { this.nbits = 0; }
+ *
+ * Il JETTE les bits restants du caractère entamé — et c'est tout. La boucle
+ * de read() ne tire un caractère que quand elle en a besoin (« while nbits <
+ * n »), donc le tampon ne retient jamais six bits : quand une partie finit
+ * PILE sur la frontière, nbits vaut zéro et next_part ne saute RIEN.
+ *
+ * Une révision précédente avait conclu l'inverse par élimination (« il avance
+ * toujours d'un caractère ») et insérait ici un caractère entier de bourrage
+ * quand le flux se trouvait déjà aligné. Le client lisait alors ces six zéros
+ * comme six drapeaux « salle sans mobilier » : tout le contenu glissait de
+ * SIX SALLES — salles normales vides donc impossibles à ouvrir, mobilier posé
+ * sur les salles à bonus, et la traîne du flux relue n'importe où. Environ
+ * une map sur six (celles au donjon aligné), au hasard des graines : le
+ * symptôme exact des retours joueurs. Les vraies pannes d'alors avaient une
+ * autre cause (la fuite levelClassic, corrigée en tête de levelMake) ; le
+ * bourrage conditionnel n'a jamais été la bonne lecture.
  */
 function flushPartie(b) {
-  if (b.bitLength() % 6 === 0) b.write(6, 0);
   b.flush();
 }
 
@@ -1537,7 +1583,9 @@ function encodeRoomContent(b, r) {
 function loadBumpers() {
   const filePath = path.join(__dirname, 'Games', 'motionBall2', 'mb2gen', 'bumpers.txt');
   const data = fs.readFileSync(filePath, 'utf8').trim();
-  const br = createBitReader(data);
+  // bumpers.txt est un artefact de l'outillage OCaml (jamais lu par le SWF,
+  // qui a ses propres tables compilées) : on le relit avec SON alphabet.
+  const br = createBitReader(data, B64_OCAML);
 
   levelDelta = br.read(5);
   levelCwidth = br.read(10);
@@ -1577,7 +1625,8 @@ function levelMake() {
   levelClassic = false;
   const ddata = genDungeonRec(FIXED_WIDTH, FIXED_HEIGHT);
   const [dists, dmoy] = computeDists(ddata);
-  const b = createBitWriter();
+  // La map du jour est relue par motionball.swf : alphabet du SWF.
+  const b = createBitWriter(B64_SWF);
   encodeDungeon(b, ddata);
   flushPartie(b);
 
@@ -1631,7 +1680,7 @@ function levelMakeClassic(choiceRooms) {
     levelClassicExit = randomExit();
 
     const ddata = makeEmptyDungeon(nrooms, choiceRooms);
-    const b = createBitWriter();
+    const b = createBitWriter(B64_SWF);
     encodeDungeon(b, ddata);
     flushPartie(b);
 
@@ -1662,7 +1711,8 @@ function levelMakeClassic(choiceRooms) {
 const SINGLE_WAY = { type: 'door', obj: OBJ_GREEN }; // hack matching OCaml
 
 function assembleDecode(data) {
-  const br = createBitReader(data);
+  // Les lignes DATA des dungeon/*.txt ont été encodées par l'outillage OCaml.
+  const br = createBitReader(data, B64_OCAML);
 
   function decodePath() {
     const v = br.read(2);
@@ -1834,7 +1884,11 @@ function assembleConvertLevel(rooms, x, y) {
   return null;
 }
 
-function assembleMake(filePath) {
+// alphabet : B64_SWF par défaut (les .dat servis doivent être lisibles par
+// motionball.swf). Passer B64_OCAML reproduit l'encodage historique de
+// mb2gen.exe — octet pour octet — ce qui sert de preuve de fidélité du port
+// (voir test/mb2Generateur.test.js).
+function assembleMake(filePath, alphabet = B64_SWF) {
   const content = fs.readFileSync(filePath, 'utf8');
   const lines = content.split(/\r?\n/);
 
@@ -1859,7 +1913,7 @@ function assembleMake(filePath) {
 
   if (startPos.x === -1) throw new Error('No start!');
 
-  const b = createBitWriter();
+  const b = createBitWriter(alphabet);
   const d = {
     dmap: Array.from({ length: FIXED_WIDTH }, (_, x) =>
       Array.from({ length: FIXED_HEIGHT }, (_, y) => assembleConvertRoom(rooms, x, y))
@@ -1927,7 +1981,10 @@ async function generateMb2ChallengeMap(forceSeed) {
       rng.init(seed);
       loadBumpers();
       const ddata = levelMake();
-      const output = `dseed=${seed}&ddata=${ddata.data}\n`;
+      // Pas de saut de ligne final : les .dat d'époque n'en ont pas, et
+      // LoadVars garde tout jusqu'à la fin du fichier dans la valeur de la
+      // dernière variable — un '\n' traînerait dans ddata côté client.
+      const output = `dseed=${seed}&ddata=${ddata.data}`;
       const finalPath = path.join(outputDir, 'mb2data.dat');
       const tmpPath = finalPath + '.tmp';
       fs.writeFileSync(tmpPath, output);
@@ -1958,25 +2015,14 @@ async function generateMB2Maps() {
     log.push(`Generated ${r.log}`);
   }
 
-  // 2. Generate classic mode: mb2classic.dat
-  {
-    let generated = false;
-    for (let attempt = 0; attempt < 10 && !generated; attempt++) {
-      try {
-        rng.selfInit();
-        const classicSeed = rng.int(0x3FFFFFFF);
-        rng.init(classicSeed);
-        loadBumpers();
-        const ddata = levelMakeClassic(5);
-        const output = `dseed=${classicSeed}&ddata=${ddata}\n`;
-        fs.writeFileSync(path.join(outputDir, 'mb2classic.dat'), output);
-        log.push(`Generated mb2classic.dat (classic mode, seed=${classicSeed}, 100 levels x 5 rooms)`);
-        generated = true;
-      } catch (e) {
-        if (attempt === 9) throw e;
-      }
-    }
-  }
+  // 2. Classic mode: mb2classic.dat n'est PAS regénéré. Le fichier du dépôt
+  // est le classic canonique (dseed=845889385, 100 niveaux × 5 salles) que
+  // les joueurs connaissent — transcodé une fois vers l'alphabet du SWF (voir
+  // scripts/transcode-mb2-dats.js). Le regénérer ici avec une graine
+  // aléatoire remplacerait les 100 niveaux historiques par des niveaux
+  // inédits ; notre Random n'est de toute façon pas celui d'OCaml, donc la
+  // graine d'origine ne reproduirait pas les niveaux d'époque.
+  log.push('mb2classic.dat : classic canonique du dépôt conservé (jamais regénéré)');
 
   // 3. Generate tutorial: mb2tuto.dat
   {
@@ -2002,7 +2048,12 @@ async function generateMB2Maps() {
   return log.join('\n');
 }
 
-module.exports = { generateMB2Maps, generateMb2ChallengeMap, dailyChallengeSeed };
+module.exports = {
+  generateMB2Maps, generateMb2ChallengeMap, dailyChallengeSeed,
+  // Exposés pour les tests et l'outillage (preuves d'alphabet / fidélité).
+  // assembleMake suppose loadBumpers() déjà appelé (posNbits en dépend).
+  assembleMake, loadBumpers, B64_SWF, B64_OCAML,
+};
 
 // Run directly if executed as a script
 if (require.main === module) {
