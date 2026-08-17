@@ -1884,11 +1884,42 @@ function assembleConvertLevel(rooms, x, y) {
   return null;
 }
 
+// Items posés HORS DU TERRAIN dans les niveaux d'origine.
+//
+// La table de jeu fait 152×102 cases (Const : 610×410 px ÷ DELTA 4). Or 46
+// items des dungeon/*.txt tombent au-delà — jusqu'à y=215, soit 860 px, très
+// au-dessous du sol. Tous partagent la même empreinte : les cinq bits de
+// poids faible de X sont à 1 (x ∈ {31,63,95,127}) ET le bit de poids fort de
+// Y est mis (y − 128 redonne à chaque fois une valeur qui s'aligne
+// parfaitement sur ses voisines). Six bits à 1 d'affilée à la frontière X/Y :
+// une signature d'outil, pas un placement d'auteur.
+//
+// Le décodeur COMPILÉ (motionball.swf, tag 1108) lit pourtant strictement
+// type(4) + x(POS_NBITS) + y(POS_NBITS) — désassemblé, aucun champ caché —
+// donc le client d'époque lisait bien ces valeurs-là. L'origine du bit
+// parasite reste inexpliquée ; ce qui est certain, c'est son effet :
+//   · pour un décor (BNormal, BMagnet…), l'item est simplement invisible ;
+//   · pour une BILLE ROUGE, c'est bloquant. gen_normal_room incrémente
+//     bonus_reds pour chaque rouge, et les portes ne s'ouvrent qu'à
+//     bonus_reds == 0 : une rouge hors terrain est incomptable, la salle ne
+//     s'ouvre JAMAIS. Sept salles étaient dans ce cas (aventure 2, courses
+//     2, 3 et 4) — « une salle de la verte ne s'ouvre pas même après avoir
+//     récupéré toutes les billes ».
+// On retire donc ces items à la construction des .dat servis. Un item hors
+// terrain n'est de toute façon ni visible ni atteignable : le rendu est
+// identique, seule la comptabilité des portes est assainie.
+// Un item d'assemblage est un couple [type, position] (cf. encodeRoomContent).
+function horsTerrain([, p]) {
+  return p.x < 0 || p.x >= levelCwidth || p.y < 0 || p.y >= levelCheight;
+}
+
 // alphabet : B64_SWF par défaut (les .dat servis doivent être lisibles par
-// motionball.swf). Passer B64_OCAML reproduit l'encodage historique de
-// mb2gen.exe — octet pour octet — ce qui sert de preuve de fidélité du port
-// (voir test/mb2Generateur.test.js).
-function assembleMake(filePath, alphabet = B64_SWF) {
+// motionball.swf). Passer B64_OCAML SANS réparation reproduit l'encodage
+// historique de mb2gen.exe — octet pour octet — ce qui sert de preuve de
+// fidélité du port (voir test/mb2Generateur.test.js).
+// options.reparerHorsChamp : retire les items hors table (cf. ci-dessus) et
+// renseigne options.retires avec le détail, pour journalisation.
+function assembleMake(filePath, alphabet = B64_SWF, options = null) {
   const content = fs.readFileSync(filePath, 'utf8');
   const lines = content.split(/\r?\n/);
 
@@ -1929,11 +1960,23 @@ function assembleMake(filePath, alphabet = B64_SWF) {
   encodeDungeon(b, d);
   flushPartie(b);
 
+  const retires = [];
   for (let rx = 0; rx < FIXED_WIDTH; rx++) {
     for (let ry = 0; ry < FIXED_HEIGHT; ry++) {
-      encodeRoomContent(b, assembleConvertLevel(rooms, rx, ry));
+      let contenu = assembleConvertLevel(rooms, rx, ry);
+      if (contenu && options && options.reparerHorsChamp) {
+        const garde = contenu.filter((it) => !horsTerrain(it));
+        if (garde.length !== contenu.length) {
+          for (const it of contenu) {
+            if (horsTerrain(it)) retires.push({ x: rx, y: ry, btype: it[0], ix: it[1].x, iy: it[1].y });
+          }
+          contenu = garde;
+        }
+      }
+      encodeRoomContent(b, contenu);
     }
   }
+  if (options) options.retires = retires;
 
   const basename = path.basename(filePath);
   return `dseed=${basename}&ddata=${b.toString()}`;
@@ -2053,6 +2096,16 @@ module.exports = {
   // Exposés pour les tests et l'outillage (preuves d'alphabet / fidélité).
   // assembleMake suppose loadBumpers() déjà appelé (posNbits en dépend).
   assembleMake, loadBumpers, B64_SWF, B64_OCAML,
+  // Les tables de collision lues dans bumpers.txt, telles quelles : elles
+  // permettent de reconstruire hors du jeu la grille d'une salle et donc de
+  // vérifier qu'une bille rouge y est bien atteignable (cf. le contrôle des
+  // salles infranchissables dans test/mb2Salles.test.js).
+  get _tables() {
+    return {
+      cwidth: levelCwidth, cheight: levelCheight, cborder: levelCborder,
+      delta: levelDelta, bumpers: levelBumpersTbl, redTable: levelRedCtbl,
+    };
+  },
 };
 
 // Run directly if executed as a script

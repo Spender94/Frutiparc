@@ -48,21 +48,41 @@ const SOURCES = [
   ...[1, 2, 3, 4, 5, 6, 7].map((i) => [`course_${i}.txt`, `mb2run${i}.dat`]),
 ];
 
+const NOMS_ITEM = [null, 'BNormal', 'BTime', 'BDeath', 'BMagnet', 'BShadow', 'BBlock',
+  'BHole', 'BRed', 'BBlue', 'Teleport', 'Interupt', 'IBlockRed', 'IBlockBlue', 'Zapper', 'ClassicExit'];
+let totalRetires = 0, sallesDebloquees = 0;
+
 for (const [txt, dat] of SOURCES) {
   const cible = path.join(OUT, dat);
   const avant = fs.readFileSync(cible, 'utf8');
-  const swf = mb2.assembleMake(path.join(OUT, 'dungeon', txt), mb2.B64_SWF);
-  const ocaml = mb2.assembleMake(path.join(OUT, 'dungeon', txt), mb2.B64_OCAML);
+  const source = path.join(OUT, 'dungeon', txt);
+  // Les deux rendus BRUTS servent à identifier l'état du fichier sur disque
+  // et à prouver que le transcodage n'est qu'un échange -/_ ; c'est le rendu
+  // RÉPARÉ (items hors terrain retirés) qui est effectivement servi.
+  const swfBrut = mb2.assembleMake(source, mb2.B64_SWF);
+  const ocaml = mb2.assembleMake(source, mb2.B64_OCAML);
+  const rapport = { reparerHorsChamp: true };
+  const swf = mb2.assembleMake(source, mb2.B64_SWF, rapport);
   let etat;
-  if (avant === swf) etat = 'déjà transcodé';
-  else if (avant === ocaml) etat = 'encodage OCaml → transcodé';
+  if (avant === swf) etat = 'déjà transcodé et réparé';
+  else if (avant === swfBrut) etat = 'déjà transcodé → réparé';
+  else if (avant === ocaml) etat = 'encodage OCaml → transcodé et réparé';
   else etat = 'ÉTAT INATTENDU (ni OCaml ni SWF) → réécrit depuis la source';
-  if (avant === ocaml && swf !== avant.split('&ddata=')[0] + '&ddata=' + swap(avant.split('&ddata=')[1])) {
+  if (avant === ocaml && swfBrut !== avant.split('&ddata=')[0] + '&ddata=' + swap(avant.split('&ddata=')[1])) {
     throw new Error(dat + ' : la sortie SWF n\'est pas le swap -/_ de l\'archive — incohérence, on ne touche à rien');
   }
   fs.writeFileSync(cible, swf);
-  console.log(`${dat.padEnd(16)} ${etat}`);
+  const rouges = rapport.retires.filter((r) => r.btype === 8);
+  totalRetires += rapport.retires.length;
+  sallesDebloquees += new Set(rouges.map((r) => r.x + ',' + r.y)).size;
+  const detail = rapport.retires.length
+    ? '  — ' + rapport.retires.length + ' item(s) hors terrain retiré(s) : '
+      + rapport.retires.map((r) => `${NOMS_ITEM[r.btype]}@${r.ix},${r.iy} salle(${r.x},${r.y})`).join(', ')
+    : '';
+  console.log(`${dat.padEnd(16)} ${etat}${detail}`);
 }
+console.log(`\n${totalRetires} items hors terrain retirés au total, dont des billes rouges `
+  + `qui bloquaient ${sallesDebloquees} salle(s) (portes jamais ouvertes).`);
 
 {
   const cible = path.join(OUT, 'mb2classic.dat');

@@ -421,18 +421,54 @@ function buildSaveSlotBody() {
       ADD2,                             // concat onto running string
     ]);
   }
+  // Idem, mais en descendant une CHAÎNE de clés : r4.$records[i][j].$t.
+  // Indispensable pour $records, seul champ imbriqué de la carte : « r4.$records
+  // + "" » ne donnerait que « [object Object] », et Ruffle ne sait pas non plus
+  // sérialiser un objet AS2 vers JS par ExternalInterface (cf. la note MiniWave
+  // dans game-popup.html). On déroule donc les accès — la forme est FIXE :
+  // Card() pose 7 courses × 3 temps, et GameOverCourse retaille à 3
+  // (records.splice(3, …)) juste avant d'appeler saveSlot(0).
+  function appendChemin(cles) {
+    const morceaux = [actionPush(pushReg(4))];
+    for (const c of cles) {
+      morceaux.push(actionPush(typeof c === 'number' ? pushInt(c) : pushStr(c)), GET_MEMBER);
+    }
+    morceaux.push(actionPush(pushStr('')), ADD2, ADD2);
+    return Buffer.concat(morceaux);
+  }
   function appendLiteral(piece) {
     return Buffer.concat([actionPush(pushStr(piece)), ADD2]);
   }
-  // Assemble les champs en « a|b|c », résultat dans r5.
+  // Les 7 courses × 3 temps de $records, aplatis en « t,c,t,c,… » (42 valeurs).
+  // Sans eux, chaque session repartait sur les temps CPU : les chronos
+  // personnels du joueur disparaissaient à la fermeture du jeu.
+  function appendRecords() {
+    const morceaux = [];
+    let premier = true;
+    for (let course = 0; course < 7; course++) {
+      for (let rang = 0; rang < 3; rang++) {
+        for (const champ of ['$t', '$c']) {
+          if (!premier) morceaux.push(appendLiteral(','));
+          premier = false;
+          morceaux.push(appendChemin(['$records', course, rang, champ]));
+        }
+      }
+    }
+    return Buffer.concat(morceaux);
+  }
+  // Assemble les champs en « a|b|c », résultat dans r5. Un champ peut être un
+  // nom de propriété simple, ou la marque spéciale RECORDS.
+  const RECORDS = Symbol('records');
   function buildPipe(champs) {
-    const morceaux = [actionPush(pushStr('')), appendValue(champs[0])];
+    const rendre = (c) => (c === RECORDS ? appendRecords() : appendValue(c));
+    const morceaux = [actionPush(pushStr('')), rendre(champs[0])];
     for (let i = 1; i < champs.length; i++) {
-      morceaux.push(appendLiteral('|'), appendValue(champs[i]));
+      morceaux.push(appendLiteral('|'), rendre(champs[i]));
     }
     morceaux.push(storeReg(5), POP);
     return Buffer.concat(morceaux);
   }
+  buildPipe.RECORDS = RECORDS;
   // getURL("slot:mb2:<n>:" + r5, "_blank")
   // Ruffle routes getURL with target to window.open → intercepted by game-popup.html
   function doGetURL(prefixe) {
@@ -446,7 +482,7 @@ function buildSaveSlotBody() {
   const corpsSlot0 = Buffer.concat([
     getSlot(0),
     buildPipe(['$items', '$challenge', '$classic', '$courses',
-      '$dungeons', '$dungeons_done', '$classic_score', '$dtimes']),
+      '$dungeons', '$dungeons_done', '$classic_score', '$dtimes', buildPipe.RECORDS]),
     doGetURL('slot:mb2:0:'),
   ]);
   const corpsSlot1 = Buffer.concat([

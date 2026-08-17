@@ -164,15 +164,19 @@ test('les .dat servis sont à l\'alphabet du SWF ; l\'encodage OCaml historique 
   mb2.loadBumpers();
   const swap = (s) => s.replace(/[-_]/g, (c) => (c === '-' ? '_' : '-'));
   for (const [txt, dat] of [['adv_1', 'mb2adv1'], ['tuto', 'mb2tuto'], ['course_1', 'mb2run1']]) {
+    const source = path.join(ROOT, 'Games', 'motionBall2', 'dungeon', txt + '.txt');
     const surDisque = fs.readFileSync(path.join(ROOT, 'Games', 'motionBall2', dat + '.dat'), 'utf8');
-    const rendueSwf = mb2.assembleMake(path.join(ROOT, 'Games', 'motionBall2', 'dungeon', txt + '.txt'), mb2.B64_SWF);
-    const rendueOcaml = mb2.assembleMake(path.join(ROOT, 'Games', 'motionBall2', 'dungeon', txt + '.txt'), mb2.B64_OCAML);
+    // Le fichier servi est la sortie SWF *réparée* : les items hors table sont
+    // retirés (cf. test/mb2Salles.test.js — ils condamnaient sept salles).
+    const rendueSwf = mb2.assembleMake(source, mb2.B64_SWF, { reparerHorsChamp: true });
     assert.equal(surDisque, rendueSwf,
-      `${dat}.dat : le fichier servi est la sortie SWF de sa source dungeon/${txt}.txt`);
-    // La preuve de fidélité du port : l'alphabet OCaml reproduit l'archive
-    // d'époque, qui est le swap -/_ du fichier servi.
-    const [pre, dd] = surDisque.split('&ddata=');
-    assert.equal(rendueOcaml, pre + '&ddata=' + swap(dd),
+      `${dat}.dat : le fichier servi est la sortie SWF réparée de dungeon/${txt}.txt`);
+    // La preuve de fidélité du port porte sur le rendu BRUT : l'alphabet OCaml
+    // reproduit l'archive d'époque, dont la sortie SWF est le swap -/_ exact.
+    const brutSwf = mb2.assembleMake(source, mb2.B64_SWF);
+    const brutOcaml = mb2.assembleMake(source, mb2.B64_OCAML);
+    const [pre, dd] = brutSwf.split('&ddata=');
+    assert.equal(brutOcaml, pre + '&ddata=' + swap(dd),
       `${dat}.dat : la sortie OCaml reste le transcodage exact — le port n'a pas dérivé`);
   }
 });
