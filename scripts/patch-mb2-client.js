@@ -4,13 +4,24 @@
 //   2. serviceConnect initialises slots=[], overrides disc-type methods
 //      (isBlack→false, isWhite→true) to enable all game modes + menu return,
 //      overrides saveScore (getURL → /api/saveScore),
-//      overrides saveSlot (pipe-delimited getURL → /api/saveFrutiSlot),
+//      overrides saveSlot (pipe-delimited getURL → /api/saveFrutiSlot)
+//        · slot 0 = la FrutiCard (modes, records, titems) ;
+//        · slot 1 = les PRÉFÉRENCES (musique / bruitages) — cf. Client.savePrefs,
+//          appelé quand on quitte l'écran des options (Menu.as, entrée 24) ;
 //      overrides endGame to set gameRunning=false,
-//      then LOADS slot0 from /api/loadFrutiSlots via LoadVars.sendAndLoad and
-//      defers onServiceConnect to the async onLoad callback so progression
+//      then LOADS slot0 ET slot1 from /api/loadFrutiSlots via LoadVars.sendAndLoad
+//      and defers onServiceConnect to the async onLoad callback so progression
 //      restored from DB before the menu paints (no XMLSocket connections).
 //
 // This makes the game work in game-popup.html without XMLSocket/Frusion infrastructure.
+//
+// IDEMPOTENT. Le SWF versionné dans le dépôt est DÉJÀ patché (aucune copie
+// vierge n'existe dans l'historique git), donc le script doit pouvoir tourner
+// sur un fichier déjà traité : il repère serviceConnect par son ANCRE
+// bytecode (« Push reg1, cp[17]='serviceConnect' » suivi d'un DefineFunction2)
+// plutôt que par des offsets figés, et n'ajoute entrées de pool constant et
+// drapeau STANDALONE que s'ils manquent. Relancer le script réécrit la même
+// fonction : sortie inchangée.
 
 const fs = require('fs');
 const path = require('path');
@@ -127,6 +138,13 @@ function actionIf(offset) {
   b.writeInt16LE(offset, 3);
   return b;
 }
+function actionJump(offset) {
+  const b = Buffer.alloc(5);
+  b[0] = 0x99;
+  b.writeUInt16LE(2, 1);
+  b.writeInt16LE(offset, 3);
+  return b;
+}
 
 function buildDefineFunction2(name, params, regcount, flags, bodyBytes) {
   const nameBytes = Buffer.from(name + '\0', 'latin1');
@@ -175,6 +193,13 @@ const cp = parseConstantPool(buf, cpStart);
 
 console.log(`Found DoInitAction at offset ${targetTag.offset}, len=${targetTag.length}, sprite=${spriteId}`);
 console.log(`Constant pool: ${cp.count} entries, payload ${cp.payloadLen} bytes`);
+
+// Déjà patché ? Le v1 a ajouté 17 entrées à partir de l'index 69. On les
+// réutilise telles quelles ; sinon on les ajoute (SWF vierge).
+const DEJA_PATCHE = cp.entries[69] === 'score:mb2:0:';
+console.log(DEJA_PATCHE
+  ? 'SWF déjà patché (pool constant étendu présent) — mise à jour de serviceConnect'
+  : 'SWF vierge — extension du pool constant');
 
 // Verify expected CP entries
 const expectedCp = {
@@ -226,45 +251,41 @@ const newStrings = [
   'call',                  // CP[85]
 ];
 
-const newCpBase = cp.count; // 69
+// Le v1 a placé ses entrées à partir de l'index 69 ; on garde cette base.
+const newCpBase = DEJA_PATCHE ? 69 : cp.count;
+let cpDelta = 0;
+let cpDataEnd = cp.dataEnd;
 
-let newCpData = Buffer.alloc(0);
-for (const s of newStrings) {
-  newCpData = Buffer.concat([newCpData, Buffer.from(s + '\0', 'latin1')]);
+if (!DEJA_PATCHE) {
+  let newCpData = Buffer.alloc(0);
+  for (const s of newStrings) {
+    newCpData = Buffer.concat([newCpData, Buffer.from(s + '\0', 'latin1')]);
+  }
+  cpDelta = newCpData.length;
+
+  const beforeCpEnd = buf.slice(0, cpDataEnd);
+  const afterCpEnd = buf.slice(cpDataEnd);
+  buf = Buffer.concat([beforeCpEnd, newCpData, afterCpEnd]);
+
+  const newCpPayloadLen = cp.payloadLen + cpDelta;
+  const newCpCount = cp.count + newStrings.length;
+  buf.writeUInt16LE(newCpPayloadLen, cpStart + 1);
+  buf.writeUInt16LE(newCpCount, cpStart + 3);
+
+  if (targetTag.hdrSize !== 6) throw new Error('Expected long-form tag');
+  buf.writeUInt32LE(targetTag.length + cpDelta, targetTag.offset + 2);
+
+  console.log(`Added ${newStrings.length} CP entries (+${cpDelta} bytes)`);
+  console.log(`CP: ${cp.payloadLen} -> ${newCpPayloadLen}, count: ${cp.count} -> ${newCpCount}`);
+
+  // Step 2: Set STANDALONE = true (Bool(false) littéral dans le constructeur)
+  const standaloneOffset = 1514071 + cpDelta;
+  if (buf[standaloneOffset - 1] !== 0x05 || buf[standaloneOffset] !== 0x00) {
+    throw new Error(`Expected Push Bool(false) at ${standaloneOffset - 1}`);
+  }
+  buf[standaloneOffset] = 0x01;
+  console.log(`Set STANDALONE = true at offset ${standaloneOffset}`);
 }
-const cpDelta = newCpData.length;
-
-const cpDataEnd = cp.dataEnd;
-const beforeCpEnd = buf.slice(0, cpDataEnd);
-const afterCpEnd = buf.slice(cpDataEnd);
-
-buf = Buffer.concat([beforeCpEnd, newCpData, afterCpEnd]);
-
-const newCpPayloadLen = cp.payloadLen + cpDelta;
-const newCpCount = cp.count + newStrings.length;
-buf.writeUInt16LE(newCpPayloadLen, cpStart + 1);
-buf.writeUInt16LE(newCpCount, cpStart + 3);
-
-if (targetTag.hdrSize !== 6) throw new Error('Expected long-form tag');
-const newTagLen = targetTag.length + cpDelta;
-buf.writeUInt32LE(newTagLen, targetTag.offset + 2);
-
-console.log(`Added ${newStrings.length} CP entries (+${cpDelta} bytes)`);
-console.log(`CP: ${cp.payloadLen} -> ${newCpPayloadLen}, count: ${cp.count} -> ${newCpCount}`);
-
-// All offsets after cpDataEnd are shifted by cpDelta
-const shift = (o) => o >= cpDataEnd ? o + cpDelta : o;
-
-// Step 2: Set STANDALONE = true
-const standaloneOffset = shift(1514071);
-if (buf[standaloneOffset] !== 0x00) {
-  throw new Error(`Expected Bool(false) at ${standaloneOffset}, got 0x${buf[standaloneOffset].toString(16)}`);
-}
-if (buf[standaloneOffset - 1] !== 0x05) {
-  throw new Error(`Expected Bool type 0x05 at ${standaloneOffset - 1}`);
-}
-buf[standaloneOffset] = 0x01;
-console.log(`Set STANDALONE = true at offset ${standaloneOffset}`);
 
 // Step 3: Replace serviceConnect function body
 
@@ -374,18 +395,25 @@ function pushUndef() { return Buffer.from([0x03]); }
 
 // Inner function: saveSlot(n, cb)
 // DefineFunction2 flags 0x29: preloadThis | suppressArguments | suppressSuper
-// r1=this, r2=n(param), r3=cb(param), r4=card, r5=pipe-string
-// Only persists slot 0 (the Card). Other slots (prefs) are no-ops here —
-// the server stores the slot raw and extracts pictos from $items on slot 0.
+// r1=this, r2=n(param), r3=cb(param), r4=slot, r5=pipe-string
+//
+// Deux slots persistés, chacun avec son gabarit de pipe :
+//   · slot 0 = la FrutiCard (modes, records, titems) ;
+//   · slot 1 = les préférences musique/bruitages (Client.savePrefs).
+// Le v1 n'émettait que le slot 0 : les préférences n'étaient donc NI écrites
+// NI relues, et le joueur devait recouper la musique à chaque session.
+// Le serveur stocke chaque slot tel quel et n'extrait les pictos que du 0.
 function buildSaveSlotBody() {
-  // r4 = this.slots[0]
-  const getCard = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
-    actionPush(pushInt(0)), GET_MEMBER,
-    storeReg(4), POP,
-  ]);
+  // Helper: r4 = this.slots[<n>]
+  function getSlot(index) {
+    return Buffer.concat([
+      actionPush(pushReg(1), pushCp(CP.slots)), GET_MEMBER,
+      actionPush(pushInt(index)), GET_MEMBER,
+      storeReg(4), POP,
+    ]);
+  }
 
-  // Helper: append card.<prop> (coerced to string) to the running stack-top string
+  // Helper: append r4.<prop> (coerced to string) to the running stack-top string
   function appendValue(propStr) {
     return Buffer.concat([
       actionPush(pushReg(4), pushStr(propStr)), GET_MEMBER,
@@ -396,43 +424,62 @@ function buildSaveSlotBody() {
   function appendLiteral(piece) {
     return Buffer.concat([actionPush(pushStr(piece)), ADD2]);
   }
-
-  // Build pipe-delimited string: items|challenge|classic|courses|dungeons|dungeons_done|classic_score|dtimes
-  const buildPipe = Buffer.concat([
-    actionPush(pushStr('')),
-    appendValue('$items'),
-    appendLiteral('|'), appendValue('$challenge'),
-    appendLiteral('|'), appendValue('$classic'),
-    appendLiteral('|'), appendValue('$courses'),
-    appendLiteral('|'), appendValue('$dungeons'),
-    appendLiteral('|'), appendValue('$dungeons_done'),
-    appendLiteral('|'), appendValue('$classic_score'),
-    appendLiteral('|'), appendValue('$dtimes'),
-    storeReg(5), POP,
-  ]);
-
-  // getURL("slot:mb2:0:" + r5, "_blank")
+  // Assemble les champs en « a|b|c », résultat dans r5.
+  function buildPipe(champs) {
+    const morceaux = [actionPush(pushStr('')), appendValue(champs[0])];
+    for (let i = 1; i < champs.length; i++) {
+      morceaux.push(appendLiteral('|'), appendValue(champs[i]));
+    }
+    morceaux.push(storeReg(5), POP);
+    return Buffer.concat(morceaux);
+  }
+  // getURL("slot:mb2:<n>:" + r5, "_blank")
   // Ruffle routes getURL with target to window.open → intercepted by game-popup.html
-  const doGetURL = Buffer.concat([
-    actionPush(pushStr('slot:mb2:0:'), pushReg(5)), ADD2,
-    actionPush(pushCp(CP._blank)),
-    actionGetURL2(0x00),
+  function doGetURL(prefixe) {
+    return Buffer.concat([
+      actionPush(pushStr(prefixe), pushReg(5)), ADD2,
+      actionPush(pushCp(CP._blank)),
+      actionGetURL2(0x00),
+    ]);
+  }
+
+  const corpsSlot0 = Buffer.concat([
+    getSlot(0),
+    buildPipe(['$items', '$challenge', '$classic', '$courses',
+      '$dungeons', '$dungeons_done', '$classic_score', '$dtimes']),
+    doGetURL('slot:mb2:0:'),
+  ]);
+  const corpsSlot1 = Buffer.concat([
+    getSlot(1),
+    buildPipe(['$music', '$sounds']),
+    doGetURL('slot:mb2:1:'),
   ]);
 
-  const bodyWhenSlot0 = Buffer.concat([getCard, buildPipe, doGetURL]);
+  // if (n == 1) { corpsSlot1 } — testé en second, après le saut du slot 0.
+  const blocSlot1 = Buffer.concat([
+    actionPush(pushReg(2), pushInt(1)), EQUALS2, NOT,
+    actionIf(corpsSlot1.length),
+    corpsSlot1,
+  ]);
 
-  // if (n != 0) skip body. ActionIf jumps forward if popped value is truthy.
-  // Push n: when n=0 falls through to body; when n!=0 jumps over body.
+  // if (n != 0) → saute le corps du slot 0 et son Jump, et tombe sur le bloc 1.
+  // ActionIf saute en avant quand la valeur dépilée est vraie ; n=0 est faux
+  // donc on enchaîne sur corpsSlot0, puis le Jump enjambe le bloc 1.
+  const sautApresSlot0 = actionJump(blocSlot1.length);
   return Buffer.concat([
     actionPush(pushReg(2)),
-    actionIf(bodyWhenSlot0.length),
-    bodyWhenSlot0,
+    actionIf(corpsSlot0.length + sautApresSlot0.length),
+    corpsSlot0,
+    sautApresSlot0,
+    blocSlot1,
   ]);
 }
 
 // Inner function: result.onLoad(success)
-// DefineFunction2 flags 0x29: r1=this (result LoadVars), r2=success(param), r3=client, r4=slot0_then_parsed
-// Restores slot0 from server response (if any) then calls client.onServiceConnect()
+// DefineFunction2 flags 0x29: r1=this (result LoadVars), r2=success(param), r3=client, r4=champ_puis_parsé
+// Restaure slot0 (la carte) ET slot1 (les préférences) depuis la réponse
+// serveur, puis appelle client.onServiceConnect() — qui lit les deux
+// (Client.as : fcard = slots[0] ; k = slots[1] → Prefs.music/sound_enabled).
 function buildOnLoadBody() {
   // r3 = this._client
   const getClient = Buffer.concat([
@@ -440,38 +487,50 @@ function buildOnLoadBody() {
     storeReg(3), POP,
   ]);
 
-  // client.slots[0] = r4 (the parsed object)
-  const doAssign = Buffer.concat([
-    actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
-    actionPush(pushInt(0), pushReg(4)),
-    SET_MEMBER,
-  ]);
+  // Bloc de restauration d'un slot : lit this.<champ>, le passe à parseJSON
+  // et l'affecte à client.slots[<index>] si le résultat n'est pas null.
+  // `pousserNom` : le Push du nom de champ LoadVars — entrée de pool constant
+  // pour « slot0 » (déjà présente depuis le v1), littéral inline pour
+  // « slot1 » (aucune chirurgie de pool constant nécessaire).
+  function blocSlot(pousserNom, index) {
+    // client.slots[index] = r4 (l'objet parsé)
+    const affecter = Buffer.concat([
+      actionPush(pushReg(3), pushCp(CP.slots)), GET_MEMBER,
+      actionPush(pushInt(index), pushReg(4)),
+      SET_MEMBER,
+    ]);
 
-  // Parse JSON via ExternalInterface.call('parseJSON', r4_slot0_string), then maybe assign
-  const parseAndMaybeAssign = Buffer.concat([
-    // Push args + argcount + object + method for ExternalInterface.call("parseJSON", slot0Str)
-    actionPush(pushReg(4)),                                   // arg1 = slot0 string
-    actionPush(pushCp(CP.parseJSON)),                          // arg0 (JS function name)
-    actionPush(pushInt(2)),                                    // argcount
-    actionPush(pushCp(CP.flash)), GET_VARIABLE,               // flash
-    actionPush(pushCp(CP.external)), GET_MEMBER,              // .external
-    actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,     // .ExternalInterface
-    actionPush(pushCp(CP.call)),                               // method "call"
-    CALL_METHOD,
-    storeReg(4), POP,                                          // r4 = parsed (or null)
-    // if (r4 == null) skip doAssign
-    actionPush(pushReg(4), pushNull()), EQUALS2,
-    actionIf(doAssign.length),
-    doAssign,
-  ]);
+    // Parse JSON via ExternalInterface.call('parseJSON', r4), puis affectation
+    const parserPuisAffecter = Buffer.concat([
+      // Push args + argcount + object + method for ExternalInterface.call("parseJSON", str)
+      actionPush(pushReg(4)),                                   // arg1 = la chaîne du slot
+      actionPush(pushCp(CP.parseJSON)),                          // arg0 (JS function name)
+      actionPush(pushInt(2)),                                    // argcount
+      actionPush(pushCp(CP.flash)), GET_VARIABLE,               // flash
+      actionPush(pushCp(CP.external)), GET_MEMBER,              // .external
+      actionPush(pushCp(CP.ExternalInterface)), GET_MEMBER,     // .ExternalInterface
+      actionPush(pushCp(CP.call)),                               // method "call"
+      CALL_METHOD,
+      storeReg(4), POP,                                          // r4 = parsé (ou null)
+      // if (r4 == null) saute l'affectation
+      actionPush(pushReg(4), pushNull()), EQUALS2,
+      actionIf(affecter.length),
+      affecter,
+    ]);
 
-  // Slot0 check block: get this.slot0; if not undefined, parseAndMaybeAssign
-  const slot0CheckBlock = Buffer.concat([
-    actionPush(pushReg(1), pushCp(CP.slot0)), GET_MEMBER,
-    storeReg(4), POP,
-    actionPush(pushReg(4), pushUndef()), EQUALS2,
-    actionIf(parseAndMaybeAssign.length),
-    parseAndMaybeAssign,
+    // this.<champ> ; si défini, on parse
+    return Buffer.concat([
+      actionPush(pushReg(1), pousserNom), GET_MEMBER,
+      storeReg(4), POP,
+      actionPush(pushReg(4), pushUndef()), EQUALS2,
+      actionIf(parserPuisAffecter.length),
+      parserPuisAffecter,
+    ]);
+  }
+
+  const blocsSlots = Buffer.concat([
+    blocSlot(pushCp(CP.slot0), 0),
+    blocSlot(pushStr('slot1'), 1),
   ]);
 
   // Always: client.onServiceConnect()
@@ -480,12 +539,12 @@ function buildOnLoadBody() {
     CALL_METHOD, POP,
   ]);
 
-  // Top-level: if (!success) skip slot0CheckBlock; always call onServiceConnect
+  // Top-level: if (!success) saute les blocs slots ; onServiceConnect toujours
   return Buffer.concat([
     getClient,
     actionPush(pushReg(2)), NOT,
-    actionIf(slot0CheckBlock.length),
-    slot0CheckBlock,
+    actionIf(blocsSlots.length),
+    blocsSlots,
     callOnServiceConnect,
   ]);
 }
@@ -611,14 +670,30 @@ function buildServiceConnectBody() {
 const serviceConnectBody = buildServiceConnectBody();
 const newServiceConnectFunc = buildDefineFunction2('', [], 4, 0x29, serviceConnectBody);
 
-// Find and replace the old serviceConnect DefineFunction2 in the buffer
-// Original offsets (before CP expansion): DefineFunction2 at 1512700, SetMember at 1512789
-const origFuncStart = shift(1512700);
-const origFuncEnd = shift(1512789);
-
-if (buf[origFuncStart] !== 0x8E) {
-  throw new Error(`Expected DefineFunction2 (0x8E) at ${origFuncStart}, got 0x${buf[origFuncStart].toString(16)}`);
+// Repérage de serviceConnect par ANCRE bytecode plutôt que par offsets figés :
+// la déclaration s'écrit toujours « Push reg1, cp[17]='serviceConnect' »
+// suivie du DefineFunction2 puis d'un SetMember. L'ancre survit donc aussi
+// bien au SWF vierge qu'au SWF déjà patché (dont la fonction a changé de
+// taille), ce qui rend le script rejouable.
+const ancre = Buffer.concat([
+  actionPush(pushReg(1), pushCp(CP.serviceConnect)),
+  Buffer.from([0x8E]),
+]);
+const tagFin = targetTag.offset + 6 + buf.readUInt32LE(targetTag.offset + 2);
+const posAncre = buf.indexOf(ancre, targetTag.offset);
+if (posAncre < 0 || posAncre >= tagFin) {
+  throw new Error("ancre « Push reg1, cp[serviceConnect] + DefineFunction2 » introuvable");
 }
+if (buf.indexOf(ancre, posAncre + 1) >= 0 && buf.indexOf(ancre, posAncre + 1) < tagFin) {
+  throw new Error('ancre serviceConnect ambiguë (plusieurs occurrences)');
+}
+const origFuncStart = posAncre + ancre.length - 1;   // sur l'octet 0x8E
+
+// Longueur de la fonction : en-tête DefineFunction2 (3 + innerLen) puis le
+// corps, dont la taille est écrite sur les deux derniers octets de l'en-tête.
+const innerLen = buf.readUInt16LE(origFuncStart + 1);
+const codeSize = buf.readUInt16LE(origFuncStart + 3 + innerLen - 2);
+const origFuncEnd = origFuncStart + 3 + innerLen + codeSize;
 if (buf[origFuncEnd] !== 0x4F) {
   throw new Error(`Expected SetMember (0x4F) at ${origFuncEnd}, got 0x${buf[origFuncEnd].toString(16)}`);
 }

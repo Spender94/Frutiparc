@@ -11351,6 +11351,16 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
     }
   }
 
+  // MB2 slot 1 = les préférences, émises par Client.savePrefs en « $music|$sounds ».
+  // Sans cette conversion le slot resterait une chaîne brute, illisible au
+  // rechargement (le SWF attend du JSON) : le joueur recoupait la musique à
+  // chaque session.
+  if (game === 'mb2' && slotId === '1' && data.indexOf('|') >= 0 && data[0] !== '{') {
+    const [musique, bruitages] = data.split('|');
+    data = JSON.stringify({ $music: musique === 'true', $sounds: bruitages === 'true' });
+    console.log(`[SLOT]  mb2 prefs pipe → JSON ${data}`);
+  }
+
   let username = '';
   if (sid && sessions[sid]) username = sessions[sid].user || '';
   if (!username) {
