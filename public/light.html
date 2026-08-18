@@ -139,6 +139,82 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
+  /* ── Le bureau mobile sous un fond d'écran ───────────────────────────────
+     Le bureau teinte le TEXTE de ses étiquettes avec la 2ᵉ couleur de
+     dataMisc (WallPaperMng garde txtColor pour displayIconList) — en
+     pratique NOIR, voir couleursFond(). On la passe en variable CSS, avec un
+     halo dont la teinte est calculée pour contraster : sur un téléphone les
+     tuiles sont posées à même l'illustration, alors que le bureau Flash
+     gardait ses icônes petites et espacées. La main bar et les encarts, eux,
+     restent posés dessus — c'est le bureau d'origine, où les fenêtres gardent
+     leur fond propre. */
+  #home-panel.a-fond .home-tile .lbl {
+    color: var(--fond-txt, #2C4A0F);
+    text-shadow:
+      0 0 2px var(--fond-halo, rgba(255,255,255,.85)),
+      0 0 5px var(--fond-halo, rgba(255,255,255,.85)),
+      0 1px 0 var(--fond-halo, rgba(255,255,255,.85));
+  }
+  #home-panel.a-fond .daily-banner { backdrop-filter: blur(2px); }
+
+  /* ── Inventaire : les trois rubriques du bureau ──────────────────────────
+     Onglets posés entre l'en-tête et la carte jaune, dans les mêmes tons que
+     le reste de la feuille. */
+  .inv-onglets {
+    display: flex; gap: 4px; padding: 0 5px 6px; background: #fff;
+  }
+  .inv-onglet {
+    flex: 1; padding: 7px 4px; font-size: 12px; font-weight: bold;
+    color: #2C4A0F; background: #EDEDED; border: 1px solid #DDDDDD;
+    border-radius: 6px 6px 0 0; cursor: pointer;
+  }
+  .inv-onglet.on { background: #F8F866; border-color: #EAEA0E; }
+  .inv-rubrique[hidden] { display: none; }
+
+  /* Fonds d'écran : une vignette PAYSAGE (le fond n'est pas carré), cadrée
+     « contain » sur sa couleur de fond — exactement ce que WallPaperMng fait
+     sur le bureau, à l'échelle de la vignette. */
+  .fond-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+    padding: 0 6px 10px;
+  }
+  .fond-item {
+    background: transparent; border: 0; padding: 0; cursor: pointer;
+    text-align: center; -webkit-user-select: none; user-select: none;
+  }
+  .fond-item .vign {
+    width: 100%; aspect-ratio: 16/10; border-radius: 8px; overflow: hidden;
+    border: 2px solid #DDDDDD; background: #ADE76B center/contain no-repeat;
+  }
+  .fond-item.sel .vign { border-color: #D16767; }
+  .fond-item .lbl {
+    font-size: 10px; color: #2C4A0F; margin-top: 4px; font-weight: bold;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fond-item.sel .lbl { color: #D16767; }
+  /* La vignette « Aucun » : le vert du bureau nu, barré d'une croix douce. */
+  .fond-item.vide .vign {
+    background: #ADE76B; display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: #2C4A0F;
+  }
+
+  /* Pictos : groupés par jeu, comme la galerie du bureau. */
+  .picto-jeu { margin: 0 6px 12px; }
+  .picto-jeu h4 {
+    margin: 0 0 6px; font-size: 12px; color: #2f5510;
+    border-bottom: 1px solid #EAEA0E; padding-bottom: 3px;
+  }
+  .picto-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .picto-case { text-align: center; }
+  .picto-case img {
+    width: 100%; aspect-ratio: 1/1; object-fit: contain;
+    image-rendering: -webkit-optimize-contrast;
+  }
+  .picto-case .lbl {
+    font-size: 9px; color: #2C4A0F; font-weight: bold; line-height: 1.15;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+
   /* Mes disques: same yellow inventory card as the accessory grid, but each tile
      is a static FrusionDisc PNG that launches its game on tap. */
   .fd-grid {
@@ -1817,17 +1893,41 @@
     <div id="trombi-pager"></div>
   </section>
 
-  <!-- Bouille / accessory picker (bottom sheet) -->
+  <!-- L'INVENTAIRE — les trois dossiers du bureau (cf. FILE_TREE_XML :
+       inv_accessories / inv_wallpapers / inv_pictos). Le mobile n'en ouvrait
+       qu'un, les accessoires ; les fonds d'écran et les pictos n'existaient
+       nulle part. Les trois rubriques partagent la feuille, on bascule par
+       les onglets. -->
   <div id="bouille-sheet-backdrop" class="sheet-backdrop"></div>
   <div id="bouille-sheet" class="sheet">
     <div class="sheet-head">
-      <span>Ma bouille</span>
+      <span><img class="sheet-ico" src="/fb/inventaire.png" alt=""
+        onerror="this.style.display='none'">Inventaire</span>
       <button id="bouille-sheet-close">✕</button>
     </div>
+    <div class="inv-onglets" id="inv-onglets">
+      <button class="inv-onglet on" data-rub="accessoires">Accessoires</button>
+      <button class="inv-onglet" data-rub="fonds">Fonds d'écran</button>
+      <button class="inv-onglet" data-rub="pictos">Pictos</button>
+    </div>
     <div class="sheet-body">
-      <div class="sheet-preview"><div id="bouille-sheet-preview"></div></div>
-      <div class="sheet-hint" id="bouille-sheet-hint">Choisis un accessoire de ton inventaire :</div>
-      <div id="bouille-acc-grid" class="acc-grid"></div>
+      <!-- Accessoires : l'aperçu de SA bouille, puis la grille. -->
+      <div class="inv-rubrique" data-rub="accessoires">
+        <div class="sheet-preview"><div id="bouille-sheet-preview"></div></div>
+        <div class="sheet-hint" id="bouille-sheet-hint">Choisis un accessoire de ton inventaire :</div>
+        <div id="bouille-acc-grid" class="acc-grid"></div>
+      </div>
+      <!-- Fonds d'écran : la vignette est le fond lui-même, cadré comme il le
+           sera sur le bureau. « Aucun » rend le vert d'origine. -->
+      <div class="inv-rubrique" data-rub="fonds" hidden>
+        <div class="sheet-hint">Pose un fond sur ton bureau :</div>
+        <div id="inv-fonds-grid" class="fond-grid"></div>
+      </div>
+      <!-- Pictos : la collection, groupée par jeu comme la galerie du bureau. -->
+      <div class="inv-rubrique" data-rub="pictos" hidden>
+        <div class="sheet-hint" id="inv-pictos-hint">Ta collection :</div>
+        <div id="inv-pictos-corps"></div>
+      </div>
     </div>
   </div>
 
@@ -2311,6 +2411,10 @@
     if (!isDesktop()) openMenu(true);
     loadHomeProfile();
     loadDailyStatus();
+    // Le fond d'écran est posé DÈS le démarrage : le bureau du SWF le
+    // restaure aussi à l'ouverture de session (userPref « wallpaper »), il
+    // n'a pas à attendre qu'on ouvre l'inventaire.
+    chargerInventaire();
 
     connectWs();
 
@@ -5248,11 +5352,127 @@
       + encodeURIComponent(s) + '&bg=transparent"></iframe>';
   }
 
-  function openBouilleSheet() {
+  function openBouilleSheet(rubrique) {
     openMenu(false); // close the hamburger if it was open
     var bd = $("#bouille-sheet-backdrop"), sheet = $("#bouille-sheet");
     bd.classList.add("show"); sheet.classList.add("show");
+    montrerRubrique(rubrique || "accessoires");
     loadAccessories();
+    chargerInventaire();
+  }
+
+  // ── Inventaire : les trois rubriques du bureau ───────────────────────────
+  // Le bureau range l'inventaire en trois dossiers (inv_accessories,
+  // inv_wallpapers, inv_pictos) ; on les retrouve ici en onglets. Les
+  // accessoires gardent leur chargement historique (/api/forum/me, qui sert
+  // aussi le forum) ; fonds et pictos viennent de /api/light/inventaire.
+  var invFonds = [];            // [{id, nom, url, color}]
+  var invFondActuel = null;     // {url, color} ou null
+  var invPictos = [];           // [{id, nom, jeu, url}]
+  var invCharge = false;
+
+  function montrerRubrique(nom) {
+    var onglets = document.querySelectorAll(".inv-onglet");
+    for (var i = 0; i < onglets.length; i++) {
+      onglets[i].classList.toggle("on", onglets[i].getAttribute("data-rub") === nom);
+    }
+    var corps = document.querySelectorAll(".inv-rubrique");
+    for (var j = 0; j < corps.length; j++) {
+      corps[j].hidden = corps[j].getAttribute("data-rub") !== nom;
+    }
+    $("#bouille-sheet").querySelector(".sheet-body").scrollTop = 0;
+  }
+  $("#inv-onglets").addEventListener("click", function (e) {
+    var b = e.target.closest(".inv-onglet");
+    if (b) montrerRubrique(b.getAttribute("data-rub"));
+  });
+
+  function chargerInventaire(force) {
+    if (invCharge && !force) return;
+    fetch("/api/light/inventaire?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) throw new Error("inventaire");
+        invCharge = true;
+        invFonds = d.fonds || [];
+        invPictos = d.pictos || [];
+        invFondActuel = d.fond || null;
+        rendreFonds();
+        rendrePictos();
+        appliquerFond(invFondActuel);
+      })
+      .catch(function () {
+        $("#inv-fonds-grid").innerHTML = '<div class="sheet-hint">Inventaire indisponible.</div>';
+      });
+  }
+
+  function rendreFonds() {
+    var grille = $("#inv-fonds-grid");
+    grille.innerHTML = "";
+    var courant = invFondActuel && invFondActuel.url;
+    // « Aucun » d'abord : le bureau nu, ce que le SWF obtient en vidant la
+    // préférence (WallPaperMng.loadWP(undefined)).
+    var vide = el("div", "fond-item vide" + (courant ? "" : " sel"));
+    vide.innerHTML = '<div class="vign">✕</div><div class="lbl">Aucun</div>';
+    vide.addEventListener("click", function () { poserFond(""); });
+    grille.appendChild(vide);
+    if (!invFonds.length) {
+      var rien = el("div", "sheet-hint");
+      rien.textContent = "Aucun fond pour l'instant — il y en a à la boutique.";
+      rien.style.gridColumn = "1 / -1";
+      grille.appendChild(rien);
+      return;
+    }
+    invFonds.forEach(function (f) {
+      var it = el("div", "fond-item" + (courant === f.url ? " sel" : ""));
+      var fond = couleursFond(f.color);
+      it.innerHTML = '<div class="vign"></div><div class="lbl">' + xmlEscape(f.nom) + "</div>";
+      var v = it.querySelector(".vign");
+      v.style.backgroundImage = 'url("' + f.url + '")';
+      if (fond.bg) v.style.backgroundColor = fond.bg;
+      it.addEventListener("click", function () { poserFond(f.id); });
+      grille.appendChild(it);
+    });
+  }
+
+  function rendrePictos() {
+    var corps = $("#inv-pictos-corps");
+    corps.innerHTML = "";
+    $("#inv-pictos-hint").textContent = invPictos.length
+      ? "Ta collection : " + invPictos.length + " picto" + (invPictos.length > 1 ? "s" : "")
+      : "Ta collection :";
+    if (!invPictos.length) {
+      corps.innerHTML = '<div class="sheet-hint">Aucun picto pour le moment — joue pour en collecter !</div>';
+      return;
+    }
+    var parJeu = {};
+    invPictos.forEach(function (p) { (parJeu[p.jeu || "Autre"] = parJeu[p.jeu || "Autre"] || []).push(p); });
+    Object.keys(parJeu).sort(function (a, b) { return a.localeCompare(b, "fr"); }).forEach(function (jeu) {
+      var bloc = el("div", "picto-jeu");
+      var cases = parJeu[jeu].map(function (p) {
+        return '<div class="picto-case"><img src="' + xmlEscape(p.url) + '" alt="" loading="lazy">'
+          + '<div class="lbl">' + xmlEscape(p.nom) + "</div></div>";
+      }).join("");
+      bloc.innerHTML = "<h4>" + xmlEscape(jeu) + " (" + parJeu[jeu].length + ")</h4>"
+        + '<div class="picto-grid">' + cases + "</div>";
+      corps.appendChild(bloc);
+    });
+  }
+
+  function poserFond(id) {
+    fetch("/api/light/fond", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "sid=" + encodeURIComponent(state.sid) + "&id=" + encodeURIComponent(id || ""),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) return;
+        invFondActuel = d.fond || null;
+        rendreFonds();
+        appliquerFond(invFondActuel);
+      })
+      .catch(function () {});
   }
   function closeBouilleSheet() {
     $("#bouille-sheet-backdrop").classList.remove("show");
@@ -5303,6 +5523,110 @@
         $("#bouille-acc-grid").innerHTML = '<div class="sheet-hint">Inventaire indisponible.</div>';
       });
   }
+
+  // ── Le fond d'écran sur le bureau mobile ─────────────────────────────────
+  //
+  // On suit la règle du bureau (WallPaperMng.as), qui n'est PAS un
+  // « background-size: cover » :
+  //   · une couleur de fond (dataMisc[0]) couvre TOUTE la surface ;
+  //   · l'image est CONTENUE dans la zone et CENTRÉE — et surtout jamais
+  //     agrandie au-delà de sa taille native : « if (w <= dispo && h <= dispo)
+  //     scale = 100 », sinon min(ratioLargeur, ratioHauteur) ;
+  //   · le centrage se fait dans la zone qui commence SOUS la main bar
+  //     (_global.main.cornerY), pas en haut de l'écran ;
+  //   · dataMisc[1] donne la couleur du TEXTE des étiquettes du bureau ;
+  //   · dataMisc[2] (défaut 80) est l'opacité des panneaux posés dessus.
+  //
+  // appliquerFond() transcrit onStageResize() en tailles et positions
+  // EXPLICITES plutôt qu'en mots-clés CSS : `contain` centrerait sur toute la
+  // hauteur du panneau, main bar comprise, et l'image remonterait.
+  //
+  // `cover` a été essayé et écarté : sur un téléphone en portrait, remplir
+  // 390×714 avec un paysage 1024×768 n'en montre que la bande centrale (41 %
+  // de la largeur), ce qui décapite le sujet — le chevalier moutarde n'y garde
+  // que son torse, tête et lune hors champ. Le cadrage du SWF montre au
+  // contraire l'illustration entière, posée sur SA couleur d'accompagnement.
+  function couleursFond(color) {
+    var arr = String(color || "").split(";");
+    var hex = function (v) {
+      v = String(v || "").trim();
+      return /^[0-9a-fA-F]{6}$/.test(v) ? "#" + v : null;
+    };
+    var a = arr.length >= 3 && arr[2] !== "" ? Number(arr[2]) : 80;
+    // Coquille d'origine CONSERVÉE. WallPaperMng ne lit txtColor que si
+    // dataMisc a au moins deux champs, et le lit par Number("0x" + arr[1]) :
+    // or TOUS les fonds de la boutique valent "4E5464;" — deuxième champ VIDE,
+    // donc Number("0x") = NaN. En AS2 « NaN == undefined » est FAUX, si bien
+    // que FPDesktop.displayIconList ne retombe jamais sur son vert
+    // colorSet.green.overdark (0x335511) et peint les étiquettes en NOIR.
+    // Vérifié sur main.swf : bureau « Chevalier moutarde », libellés noirs.
+    var txt = arr.length >= 2 ? (hex(arr[1]) || "#000000") : null;
+    return { bg: hex(arr[0]), txt: txt, alpha: isFinite(a) ? a : 80 };
+  }
+
+  function appliquerFond(fond) {
+    var panneau = $("#home-panel");
+    if (!panneau) return;
+    if (!fond || !fond.url) {
+      panneau.style.background = "";
+      panneau.style.removeProperty("--fond-txt");
+      panneau.style.removeProperty("--fond-halo");
+      panneau.classList.remove("a-fond");
+      return;
+    }
+    var c = couleursFond(fond.color);
+    panneau.classList.add("a-fond");
+    panneau.style.backgroundColor = c.bg || "#ADE76B";
+    panneau.style.backgroundImage = 'url("' + fond.url + '")';
+    panneau.style.backgroundRepeat = "no-repeat";
+    // `scroll` (et non `local`) : l'image reste collée au cadre du bureau et
+    // ne défile pas avec les tuiles.
+    panneau.style.backgroundAttachment = "scroll";
+    if (c.txt) panneau.style.setProperty("--fond-txt", c.txt);
+    else panneau.style.removeProperty("--fond-txt");
+    // Un halo contrastant : la couleur du texte vient du SWF (souvent noire),
+    // et sur un téléphone les tuiles sont POSÉES sur l'illustration, là où le
+    // bureau Flash gardait ses icônes petites. On éclaire donc un fond sombre
+    // et on assombrit un fond clair, sans jamais toucher à la couleur elle-même.
+    var halo = "255,255,255";
+    if (c.txt) {
+      var v = parseInt(c.txt.slice(1), 16);
+      var lum = 0.299 * ((v >> 16) & 255) + 0.587 * ((v >> 8) & 255) + 0.114 * (v & 255);
+      if (lum > 140) halo = "0,0,0";
+    }
+    panneau.style.setProperty("--fond-halo", "rgba(" + halo + ",.85)");
+    // Transcription littérale de WallPaperMng.onStageResize : le bureau ne
+    // commence pas en haut de l'écran, il commence sous la main bar — c'est
+    // _global.main.cornerY. On centre donc DANS cette zone-là, sinon l'image
+    // remonte de la moitié de la barre et flotte trop haut.
+    var img = new Image();
+    img.onload = function () {
+      var dispo = panneau.getBoundingClientRect();
+      var barre = panneau.querySelector(".mainbar");
+      var cornerY = barre ? barre.offsetHeight : 0;
+      var largeurDispo = dispo.width;                 // cornerX = 0 : le tiroir prend toute la largeur
+      var hauteurDispo = Math.max(0, dispo.height - cornerY);
+      var w = img.naturalWidth, h = img.naturalHeight;
+      var e = (w <= largeurDispo && h <= hauteurDispo)
+        ? 1                                            // « scale = 100 » : jamais d'agrandissement
+        : Math.min(largeurDispo / w, hauteurDispo / h);
+      panneau.style.backgroundSize = Math.round(w * e) + "px " + Math.round(h * e) + "px";
+      panneau.style.backgroundPosition =
+        Math.round((largeurDispo - w * e) / 2) + "px " +
+        Math.round(cornerY + (hauteurDispo - h * e) / 2) + "px";
+    };
+    img.onerror = function () {
+      panneau.style.backgroundSize = "contain";
+      panneau.style.backgroundPosition = "center center";
+    };
+    img.src = fond.url;
+  }
+  // Rotation de l'écran / redimensionnement : le bureau recalcule son cadrage
+  // (WallPaperMng.onStageResize) — ici l'échelle ET la position dépendent de
+  // la taille disponible, donc on repasse la même fonction.
+  window.addEventListener("resize", function () {
+    if (invFondActuel) appliquerFond(invFondActuel);
+  });
 
   function isAccSelected(ac) {
     return ac.fullState ? (ac.fullState === accSel.fullState)

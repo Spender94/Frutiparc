@@ -12412,6 +12412,72 @@ app.get('/xml/services.xml', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// La chaîne de préférences du SWF, lisible des deux côtés.
+//
+// getFormatedPref (main.swf, DoInitAction des préférences) concatène, pour
+// chaque préférence : encode62(id, 2) + encode62(longueur, 2) + valeur. La
+// valeur est « Y »/« N » pour un booléen, encode62(n) pour un entier, et la
+// chaîne telle quelle pour un type 's'. C'est ce format que /do/prefsave
+// enregistre en bloc.
+//
+// Le fond d'écran est la préférence 5 (type 's'), au format « url|dataMisc »
+// exactement comme WallPaperMng.loadWP l'écrit. Savoir la lire et la
+// réécrire SANS toucher aux autres, c'est ce qui permet au mobile et au
+// bureau de partager le même fond : on change une entrée, le reste passe
+// intact.
+// ─────────────────────────────────────────────
+const PREF_ID_WALLPAPER = 5;
+
+function parsePrefsString(str) {
+  const out = [];
+  const s = String(str || '');
+  let i = 0;
+  while (i + 4 <= s.length) {
+    const id = decode62(s.substr(i, 2));
+    const len = decode62(s.substr(i + 2, 2));
+    if (!Number.isFinite(id) || !Number.isFinite(len) || len < 0) break;
+    if (i + 4 + len > s.length) break;
+    out.push({ id, value: s.substr(i + 4, len) });
+    i += 4 + len;
+  }
+  return out;
+}
+
+function formatPrefsString(entries) {
+  return entries
+    .map((e) => encode62(e.id, 2) + encode62(String(e.value).length, 2) + String(e.value))
+    .join('');
+}
+
+// Remplace (ou ajoute, ou retire si value === null) une préférence, en
+// laissant les autres exactement où elles étaient.
+function setPrefValue(str, id, value) {
+  const entries = parsePrefsString(str).filter((e) => e.id !== id);
+  if (value !== null && value !== undefined) entries.push({ id, value: String(value) });
+  entries.sort((a, b) => a.id - b.id);
+  return formatPrefsString(entries);
+}
+
+function getPrefValue(str, id) {
+  const e = parsePrefsString(str).find((x) => x.id === id);
+  return e ? e.value : '';
+}
+
+// « url|dataMisc » → { url, color }. On rend dataMisc TEL QUEL : c'est le
+// client qui le découpe (couleur de fond, couleur du texte, opacité), avec les
+// mêmes conventions que WallPaperMng.loadWP. Le serveur n'a pas à en connaître
+// le détail, et ne pas y toucher garantit qu'un fond ajouté demain avec un
+// champ de plus traverse le tuyau sans être amputé.
+function parseWallpaperPref(raw) {
+  const s = String(raw || '');
+  if (!s) return null;
+  const coupe = s.indexOf('|');
+  const url = coupe >= 0 ? s.slice(0, coupe) : s;
+  if (!url) return null;
+  return { url, color: coupe >= 0 ? s.slice(coupe + 1) : '' };
+}
+
+// ─────────────────────────────────────────────
 // ENDPOINT: do/mypref — User's personal preferences
 // Returns LoadVars: myPref=<encoded_string>
 // ─────────────────────────────────────────────
@@ -16879,6 +16945,100 @@ app.get('/api/light/shop', (req, res) => {
       suffix9: a.suffix9, owned: a.owned,
     })),
   });
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: /api/light/inventaire — l'inventaire du bureau, pour le mobile.
+//
+// Le bureau range l'inventaire en TROIS dossiers (FILE_TREE_XML) : Accessoires,
+// Fonds d'écran, Pictos. Le mobile n'en montrait qu'un — la tuile « Inventaire »
+// ouvrait droit sur les accessoires. On sert donc ici les trois rubriques,
+// bâties sur EXACTEMENT les mêmes sources que les nœuds XML du bureau
+// (DEFAULT_ACCESSORIES + customAccessories, getAccessoryWallpaper, gameItems),
+// pour qu'un objet vu d'un côté se retrouve de l'autre.
+// ─────────────────────────────────────────────
+app.get('/api/light/inventaire', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username] || {};
+  const perso = Array.isArray(user.customAccessories) ? user.customAccessories : [];
+  const base = bouilleOf(user, username).substring(0, 15);
+
+  // Accessoires : les quatre d'origine (suffixe seul, posé sur SA bouille)
+  // puis ceux achetés — dont les incarnations, qui valent une bouille entière.
+  const vus = new Set();
+  const accessoires = [];
+  for (const acc of DEFAULT_ACCESSORIES) {
+    if (vus.has(acc.suffix)) continue;
+    vus.add(acc.suffix);
+    accessoires.push({ id: acc.u, nom: acc.n, etat: base + acc.suffix });
+  }
+  for (const acc of perso) {
+    if (getAccessoryWallpaper(acc)) continue;            // c'est un fond, pas un accessoire
+    const v = String(acc.v || '');
+    if (v.length !== 24 || vus.has(v)) continue;
+    vus.add(v);
+    accessoires.push({ id: acc.id, nom: acc.n || 'Accessoire', etat: v });
+  }
+
+  // Fonds d'écran : ceux que le joueur possède. L'entrée « aucun » n'est pas
+  // un objet d'inventaire — c'est la préférence vidée, que le client propose
+  // en tête de liste comme le bureau le fait avec sa corbeille de fond.
+  const fonds = [];
+  for (const acc of perso) {
+    const wp = getAccessoryWallpaper(acc);
+    if (!wp || !wp.url) continue;
+    fonds.push({
+      id: acc.id, nom: acc.n || 'Fond',
+      url: '/' + String(wp.url).replace(/^\/+/, ''),
+      color: wp.color || '',
+    });
+  }
+
+  const pictos = (Array.isArray(user.gameItems) ? user.gameItems : []).map((n) => ({
+    id: n, nom: getGameItemDisplayName(n), jeu: getGameItemGame(n) || 'Autre',
+    url: `/api/picto/${encodeURIComponent(n)}`,
+  }));
+
+  const courant = parseWallpaperPref(getPrefValue(user.prefs, PREF_ID_WALLPAPER));
+  res.json({
+    ok: true,
+    accessoires, fonds, pictos,
+    fond: courant ? { url: '/' + courant.url.replace(/^\/+/, ''), color: courant.color } : null,
+    bouille: bouilleOf(user, username),
+  });
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT: /api/light/fond — pose ou retire le fond d'écran.
+//
+// Écrit la MÊME préférence que WallPaperMng.loadWP côté bureau (n° 5, valeur
+// « url|dataMisc »), sans toucher aux autres préférences : le fond choisi au
+// mobile s'applique au bureau, et réciproquement.
+// ─────────────────────────────────────────────
+app.post('/api/light/fond', (req, res) => {
+  const sid = (req.body && req.body.sid) || req.query.sid || '';
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
+  const user = users[username];
+  const id = String((req.body && req.body.id) || req.query.id || '');
+
+  let valeur = '';
+  let fond = null;
+  if (id) {
+    // On ne fait confiance qu'à ce que le joueur POSSÈDE : on relit son
+    // inventaire plutôt que l'url envoyée par le client.
+    const perso = Array.isArray(user.customAccessories) ? user.customAccessories : [];
+    const acc = perso.find((a) => a && String(a.id) === id);
+    const wp = acc ? getAccessoryWallpaper(acc) : null;
+    if (!wp || !wp.url) return res.status(404).json({ ok: false, error: 'inconnu' });
+    valeur = wp.url + '|' + (wp.color || '');
+    fond = { url: '/' + String(wp.url).replace(/^\/+/, ''), color: wp.color || '' };
+  }
+
+  user.prefs = setPrefValue(user.prefs, PREF_ID_WALLPAPER, valeur);
+  if (user._dbId) db.updateUser(username, { prefs: user.prefs }).catch(dbErr('updateUser'));
+  res.json({ ok: true, fond });
 });
 
 // Achat d'un accessoire depuis le mobile. Réutilise purchaseShopPack (mêmes
