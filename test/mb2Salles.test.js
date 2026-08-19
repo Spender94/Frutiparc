@@ -196,3 +196,48 @@ test('la réparation hors-champ est rejouable et laisse la preuve de fidélité 
       `${dat} : les deux alphabets restent l'exact miroir l'un de l'autre`);
   }
 });
+
+/*
+ * La LIGNE D'ARRIVÉE des courses.
+ *
+ * En mode course, l'arrivée est un segment tracé entre DEUX Zappers (type 14,
+ * rendus en « checkpoint ») — c'est lui qui appelle course_turn_done, donc qui
+ * compte les tours. Level.finalize_zappers ne travaille que sur `objects`, la
+ * liste de la salle courante : deux zappers logés dans deux salles ne tracent
+ * rien, et la course ne finit jamais.
+ *
+ * La course 6 (la « grise ») était dans ce cas — « ça fonctionne bien jusqu'à
+ * la course grise qui est interminable. Il n'y a plus de ligne d'arrivée. »
+ * assembleMake({reparerHorsChamp:true}) replace la paire dans la salle de
+ * départ, comme les six autres courses.
+ */
+test('chaque course servie porte sa ligne d’arrivée dans sa salle de départ', () => {
+  for (let i = 1; i <= 7; i++) {
+    const rapport = { reparerHorsChamp: true };
+    mb2.assembleMake(path.join(JEU, 'dungeon', `course_${i}.txt`), mb2.B64_SWF, rapport);
+    const z = rapport.zappers;
+    assert.equal(z.length, 2, `course ${i} : il faut exactement deux checkpoints`);
+    assert.ok(z[0].x === z[1].x && z[0].y === z[1].y,
+      `course ${i} : les deux checkpoints doivent être dans la MÊME salle `
+      + `(sinon aucun segment n'est tracé) — vus en (${z[0].x},${z[0].y}) et (${z[1].x},${z[1].y})`);
+    assert.ok(z[0].x === rapport.depart.x && z[0].y === rapport.depart.y,
+      `course ${i} : la ligne d'arrivée est dans la salle de départ `
+      + `(${rapport.depart.x},${rapport.depart.y}), pas (${z[0].x},${z[0].y})`);
+    // Un vrai segment, pas deux checkpoints confondus.
+    assert.ok(Math.abs(z[0].ix - z[1].ix) + Math.abs(z[0].iy - z[1].iy) > 20,
+      `course ${i} : les deux checkpoints doivent être écartés pour tracer une ligne`);
+  }
+});
+
+test('la course 6 est la seule à avoir eu besoin qu’on replace son arrivée', () => {
+  for (let i = 1; i <= 7; i++) {
+    const brut = {};
+    mb2.assembleMake(path.join(JEU, 'dungeon', `course_${i}.txt`), mb2.B64_SWF, brut);
+    const z = brut.zappers;
+    const disperse = z.length === 2 && (z[0].x !== z[1].x || z[0].y !== z[1].y);
+    assert.equal(disperse, i === 6,
+      i === 6
+        ? 'la source de la course 6 doit toujours montrer ses zappers dispersés'
+        : `course ${i} : sa source ne doit PAS avoir besoin de réparation`);
+  }
+});

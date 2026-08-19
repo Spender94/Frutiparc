@@ -751,6 +751,27 @@ buf.writeUInt32LE(currentTagLen + funcDelta, targetTag.offset + 2);
 console.log(`Tag length: ${currentTagLen} -> ${currentTagLen + funcDelta} (delta ${funcDelta})`);
 
 // Step 4: Write the patched SWF
-const outSize = writeSwf(OUT_PATH, sig, version, buf);
+//
+// La relecture de la carte passe par ExternalInterface.call('parseJSON', …) —
+// et flash.external.ExternalInterface n'existe QUE pour un SWF de version 8
+// ou plus. Motion-Ball est estampillé version 7 : dans le lecteur, « flash »
+// vaut donc undefined, l'appel ne part jamais, et onServiceConnect repart sur
+// un « new mb2.Card() » — courses verrouillées, records personnels effacés,
+// modes refermés à chaque session. Mesuré dans le vrai client : la réponse du
+// serveur arrivait pourtant complète (onLoad reçoit success = true et
+// this.slot0 porte bien le JSON), et une sonde typeof rendait
+// « flash=undefined | external=undefined | EI=undefined ».
+//
+// On estampille donc le fichier en version 8. C'est le seul octet du SWF que
+// nous touchons hors bytecode, et il n'ajoute que des CLASSES au moteur — le
+// jeu, écrit pour la 7, n'en utilise aucune : son propre code s'exécute à
+// l'identique. Sans quoi il faudrait réécrire tout le décodage de la carte en
+// bytecode AS2, faute d'analyseur JSON dans le lecteur.
+const SWF_VERSION_EXTERNALINTERFACE = 8;
+const versionSortie = Math.max(version, SWF_VERSION_EXTERNALINTERFACE);
+if (versionSortie !== version) {
+  console.log(`SWF version ${version} -> ${versionSortie} (requis par ExternalInterface)`);
+}
+const outSize = writeSwf(OUT_PATH, sig, versionSortie, buf);
 console.log(`Wrote ${OUT_PATH} (${outSize} bytes)`);
 console.log('Done!');

@@ -1913,6 +1913,43 @@ function horsTerrain([, p]) {
   return p.x < 0 || p.x >= levelCwidth || p.y < 0 || p.y >= levelCheight;
 }
 
+// La ligne d'arrivée manquante de la course 6 (la « grise »).
+//
+// En mode course, l'arrivée est faite de DEUX Zappers (type 14, affichés en
+// « checkpoint » : Level.gen_bumper) que Level.finalize_zappers relie par un
+// segment — et c'est ce segment qui appelle course_turn_done, donc qui compte
+// les tours. Or finalize_zappers ne travaille que sur `objects`, la liste de
+// la salle COURANTE : deux zappers logés dans deux salles différentes ne
+// tracent aucune ligne.
+//
+// C'est le cas de la course 6, et d'elle seule :
+//
+//   course 1  départ (2,1)  zappers (2,1)@69,83  (2,1)@70,5
+//   course 2  départ (2,3)  zappers (2,3)@77,5   (2,3)@74,85
+//   course 3  départ (5,6)  zappers (5,6)@65,80  (5,6)@65,10
+//   course 4  départ (4,5)  zappers (4,5)@71,60  (4,5)@71,32
+//   course 5  départ (3,6)  zappers (3,6)@68,7   (3,6)@68,84
+//   course 6  départ (1,2)  zappers (1,2)@113,46 (2,6)@56,6   ← dispersés
+//   course 7  départ (1,1)  zappers (1,1)@67,85  (1,1)@67,8
+//
+// Les six autres suivent toutes la même règle : la paire est dans la SALLE DE
+// DÉPART, alignée verticalement autour de x ≈ 71 — l'axe de symétrie des
+// salles (mesuré : dans la salle de départ de la course 6, les onze paires
+// d'items se répondent toutes autour de x = 71). La course 6 est aussi la
+// seule dont la salle de départ s'ouvre à GAUCHE et à DROITE (les six autres
+// s'ouvrent en haut et en bas) : une ligne verticale y est franchie à chaque
+// traversée.
+//
+// On replace donc les deux zappers égarés selon cette règle, sans rien
+// inventer d'autre : mêmes items, même nombre, position conforme aux six
+// courses de référence. dungeon/course_6.txt n'est PAS touché — la preuve de
+// fidélité du générateur compare toujours notre rendu à l'archive d'époque.
+const ARRIVEES_A_REPLACER = {
+  'course_6.txt': {
+    zappers: [{ x: 1, y: 2, ix: 71, iy: 5 }, { x: 1, y: 2, ix: 71, iy: 85 }],
+  },
+};
+
 // alphabet : B64_SWF par défaut (les .dat servis doivent être lisibles par
 // motionball.swf). Passer B64_OCAML SANS réparation reproduit l'encodage
 // historique de mb2gen.exe — octet pour octet — ce qui sert de preuve de
@@ -1961,9 +1998,36 @@ function assembleMake(filePath, alphabet = B64_SWF, options = null) {
   flushPartie(b);
 
   const retires = [];
+  // Inventaire des items RÉELLEMENT écrits, par type. Sert de garde-fou :
+  // une course sans Zapper (type 14, la « ligne d'arrivée » — cf. Level.as où
+  // il s'affiche en « checkpoint » et Collide.zapper_line_on_hit qui appelle
+  // course_turn_done) ne peut pas être terminée.
+  //
+  // On relève aussi la position de chaque Zapper. Level.finalize_zappers ne
+  // relie que les zappers d'une MÊME salle (il travaille sur `objects`, qui
+  // n'est peuplé que par init_room) : deux zappers dispersés dans deux salles
+  // ne tracent aucune ligne, et la course devient infinissable.
+  const inventaire = {};
+  const zappers = [];
+  // Ligne d'arrivée à replacer (cf. ARRIVEES_A_REPLACER) : on retire les
+  // zappers de leurs salles d'origine et on les repose dans la salle de
+  // départ. Réparation appliquée avec la même option que le hors-champ, car
+  // c'est le même geste : rendre jouables les .dat servis sans toucher aux
+  // sources d'époque.
+  const arrivee = (options && options.reparerHorsChamp)
+    ? ARRIVEES_A_REPLACER[path.basename(filePath)] : null;
+  const aPoser = arrivee ? arrivee.zappers.slice() : [];
   for (let rx = 0; rx < FIXED_WIDTH; rx++) {
     for (let ry = 0; ry < FIXED_HEIGHT; ry++) {
       let contenu = assembleConvertLevel(rooms, rx, ry);
+      if (contenu && arrivee) contenu = contenu.filter((it) => it[0] !== ITEM_ZAPPER);
+      if (arrivee) {
+        const ici = aPoser.filter((z) => z.x === rx && z.y === ry);
+        if (ici.length) {
+          if (!contenu) contenu = [];
+          for (const z of ici) contenu.push([ITEM_ZAPPER, pos(z.ix, z.iy)]);
+        }
+      }
       if (contenu && options && options.reparerHorsChamp) {
         const garde = contenu.filter((it) => !horsTerrain(it));
         if (garde.length !== contenu.length) {
@@ -1973,10 +2037,21 @@ function assembleMake(filePath, alphabet = B64_SWF, options = null) {
           contenu = garde;
         }
       }
+      if (contenu) {
+        for (const it of contenu) {
+          inventaire[it[0]] = (inventaire[it[0]] || 0) + 1;
+          if (it[0] === ITEM_ZAPPER) zappers.push({ x: rx, y: ry, ix: it[1].x, iy: it[1].y });
+        }
+      }
       encodeRoomContent(b, contenu);
     }
   }
-  if (options) options.retires = retires;
+  if (options) {
+    options.retires = retires;
+    options.inventaire = inventaire;
+    options.zappers = zappers;
+    options.depart = { x: startPos.x, y: startPos.y };
+  }
 
   const basename = path.basename(filePath);
   return `dseed=${basename}&ddata=${b.toString()}`;

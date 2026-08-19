@@ -140,3 +140,43 @@ test('le patch du SWF est rejouable (le fichier livré est déjà patché)', () 
   assert.doesNotMatch(src, /const origFuncStart = shift\(/,
     'plus de repérage par offset figé');
 });
+
+/*
+ * La carte relue au démarrage : le SWF doit être estampillé version 8.
+ *
+ * La restauration passe par ExternalInterface.call('parseJSON', …), et
+ * flash.external.ExternalInterface n'existe QUE pour un SWF de version 8 ou
+ * plus. Motion-Ball est un SWF de 2005, estampillé version 7 : « flash » y
+ * vaut undefined, l'appel ne part jamais, et Client.onServiceConnect repart
+ * sur un « new mb2.Card() » à chaque session — courses reverrouillées,
+ * records personnels effacés, modes refermés.
+ *
+ * Mesuré dans le vrai client avant correction : la réponse du serveur
+ * arrivait pourtant complète (onLoad reçoit success = true, this.slot0 porte
+ * bien le JSON) et une sonde typeof rendait « flash=undefined ». Après
+ * estampillage en 8, parseJSON est appelé pour les deux slots et le menu
+ * affiche l'état enregistré (challenge et classique grisés quand la carte
+ * dit false, trois courses ouvertes quand elle en annonce trois).
+ */
+test('le SWF servi est estampillé version 8 (sans quoi ExternalInterface n’existe pas)', () => {
+  const b = fs.readFileSync(path.join(ROOT, 'Games', 'motionBall2', 'motionball.swf'));
+  assert.ok(['CWS', 'FWS'].includes(b.slice(0, 3).toString('ascii')), 'signature SWF');
+  assert.ok(b[3] >= 8,
+    `version SWF = ${b[3]} : en dessous de 8, flash.external.ExternalInterface `
+    + 'est absent et la carte ne peut pas être relue');
+
+  // Et le script de patch doit garder ce relèvement, sinon un re-patch le perd.
+  const src = fs.readFileSync(path.join(ROOT, 'scripts', 'patch-mb2-client.js'), 'utf8');
+  assert.match(src, /SWF_VERSION_EXTERNALINTERFACE\s*=\s*8/,
+    'le script de patch relève la version du SWF à 8');
+});
+
+test('la relecture des slots ne dépend PAS du drapeau success de onLoad', () => {
+  // Le drapeau n'est pas le coupable (mesuré : il vaut bien true sous Ruffle),
+  // mais chaque bloc de slot doit rester gardé par « champ défini ? » — c'est
+  // lui qui protège d'une vraie panne réseau, pas le drapeau.
+  const src = fs.readFileSync(path.join(ROOT, 'scripts', 'patch-mb2-client.js'), 'utf8');
+  assert.match(src, /pushUndef\(\)\), EQUALS2/,
+    'chaque slot est restauré seulement si son champ LoadVars est défini');
+  assert.match(src, /parseJSON/, 'la restauration passe bien par le pont parseJSON');
+});

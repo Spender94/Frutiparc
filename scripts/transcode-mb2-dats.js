@@ -59,7 +59,8 @@ for (const [txt, dat] of SOURCES) {
   // Les deux rendus BRUTS servent à identifier l'état du fichier sur disque
   // et à prouver que le transcodage n'est qu'un échange -/_ ; c'est le rendu
   // RÉPARÉ (items hors terrain retirés) qui est effectivement servi.
-  const swfBrut = mb2.assembleMake(source, mb2.B64_SWF);
+  const brut = {};
+  const swfBrut = mb2.assembleMake(source, mb2.B64_SWF, brut);
   const ocaml = mb2.assembleMake(source, mb2.B64_OCAML);
   const rapport = { reparerHorsChamp: true };
   const swf = mb2.assembleMake(source, mb2.B64_SWF, rapport);
@@ -67,7 +68,11 @@ for (const [txt, dat] of SOURCES) {
   if (avant === swf) etat = 'déjà transcodé et réparé';
   else if (avant === swfBrut) etat = 'déjà transcodé → réparé';
   else if (avant === ocaml) etat = 'encodage OCaml → transcodé et réparé';
-  else etat = 'ÉTAT INATTENDU (ni OCaml ni SWF) → réécrit depuis la source';
+  // Ces fichiers-là sont REGÉNÉRÉS depuis dungeon/*.txt : quand la sortie
+  // change (nouvelle réparation), l'archive sur disque ne correspond plus à
+  // aucun des trois rendus de référence. Ce n'est pas une anomalie, c'est le
+  // signe qu'on sert une version réparée de plus.
+  else etat = 'régénéré depuis la source';
   if (avant === ocaml && swfBrut !== avant.split('&ddata=')[0] + '&ddata=' + swap(avant.split('&ddata=')[1])) {
     throw new Error(dat + ' : la sortie SWF n\'est pas le swap -/_ de l\'archive — incohérence, on ne touche à rien');
   }
@@ -75,10 +80,18 @@ for (const [txt, dat] of SOURCES) {
   const rouges = rapport.retires.filter((r) => r.btype === 8);
   totalRetires += rapport.retires.length;
   sallesDebloquees += new Set(rouges.map((r) => r.x + ',' + r.y)).size;
-  const detail = rapport.retires.length
+  let detail = rapport.retires.length
     ? '  — ' + rapport.retires.length + ' item(s) hors terrain retiré(s) : '
       + rapport.retires.map((r) => `${NOMS_ITEM[r.btype]}@${r.ix},${r.iy} salle(${r.x},${r.y})`).join(', ')
     : '';
+  // La ligne d'arrivée, quand elle a dû être replacée (course 6) : on le dit
+  // seulement si le rendu BRUT avait ses deux zappers dans deux salles.
+  const zb = brut.zappers || [], z = rapport.zappers || [];
+  const disperse = zb.length === 2 && (zb[0].x !== zb[1].x || zb[0].y !== zb[1].y);
+  if (disperse && z.length === 2) {
+    detail += `  — ligne d'arrivée replacée dans la salle de départ `
+      + `(${z[0].x},${z[0].y}) @${z[0].ix},${z[0].iy}–${z[1].ix},${z[1].iy}`;
+  }
   console.log(`${dat.padEnd(16)} ${etat}${detail}`);
 }
 console.log(`\n${totalRetires} items hors terrain retirés au total, dont des billes rouges `
