@@ -83,38 +83,120 @@ const { sig, version, body } = readSwf(IN_PATH);
 
 // 1) Locate the kaluga.Game DoInitAction (tag 59) containing "$train".
 const needle = Buffer.from(OLD_STR + '\0', 'ascii');
-const strOff = body.indexOf(needle);
-if (strOff < 0) throw new Error('"$train" not found in SWF');
-
+// On ne prend PLUS « le premier $train du fichier ».
+//
+// « $train » figure dans plusieurs classes du SWF, et « $classic » dans huit
+// d'entre elles à des index tous différents (9, 57, 65, 78, 79, 98, 119…).
+// La classe visée est kaluga.Game, reconnaissable à ce qu'elle SEULE porte
+// les deux formes de bytecode à retoucher. On parcourt donc les
+// DoInitAction et on retient celle qui les présente — l'index de pool étant
+// relu dans sa table, jamais supposé.
 const nbits = (body[0] >> 3) & 0x1f;
 const rectBytes = Math.ceil((5 + nbits * 4) / 8);
-let off = rectBytes + 4;
-let initActionOff = -1, initActionLen = 0, initActionHdrSize = 0;
-while (off < body.length) {
-  const hdr = body.readUInt16LE(off);
-  const code = hdr >> 6;
-  let len = hdr & 0x3f;
-  let hSize = 2;
-  if (len === 0x3f) { len = body.readUInt32LE(off + 2); hSize = 6; }
-  if (code === 0) break;
-  if (code === 59 && strOff >= off + hSize && strOff < off + hSize + len) {
-    initActionOff = off; initActionLen = len; initActionHdrSize = hSize;
-    break;
-  }
-  off += hSize + len;
-}
-if (initActionOff < 0) throw new Error('Enclosing DoInitAction not found');
 
-const cpActionOff = initActionOff + initActionHdrSize + 2; // skip 2-byte sprite ID
-if (body[cpActionOff] !== 0x88) throw new Error('Expected ConstantPool action');
-const cpPayloadLen = body.readUInt16LE(cpActionOff + 1);
+function listerTags() {
+  const out = [];
+  let off = rectBytes + 4;
+  while (off < body.length) {
+    const hdr = body.readUInt16LE(off);
+    const code = hdr >> 6;
+    let len = hdr & 0x3f, hSize = 2;
+    if (len === 0x3f) { len = body.readUInt32LE(off + 2); hSize = 6; }
+    if (code === 0) break;
+    if (code === 59) out.push({ off, len, hSize });
+    off += hSize + len;
+  }
+  return out;
+}
+
+function lirePool(t) {
+  const cp = t.off + t.hSize + 2;                        // 2 octets d'id de sprite
+  if (body[cp] !== 0x88) return null;
+  const payloadLen = body.readUInt16LE(cp + 1);
+  const count = body.readUInt16LE(cp + 3);
+  const entrees = [];
+  let p = cp + 5;
+  for (let i = 0; i < count; i++) {
+    const e = body.indexOf(0, p);
+    entrees.push(body.slice(p, e).toString('latin1'));
+    p = e + 1;
+  }
+  return { cp, payloadLen, count, entrees };
+}
+
+// Les deux formes recherchées, pour un index de pool donné.
+function reperer(t, idx) {
+  const motif = Buffer.from([0x96, 0x02, 0x00, 0x08, idx]);
+  const debut = t.off + t.hSize, fin = debut + t.len;
+  const trouves = [];
+  let scan = debut;
+  while (scan < fin) {
+    const i = body.indexOf(motif, scan);
+    if (i < 0 || i >= fin) break;
+    scan = i + motif.length;
+    if (body[i + 5] !== 0x49) continue;                   // Equals2
+    const apresEq = body[i + 6];
+    if (apresEq === 0x12 && body[i + 7] === 0x9d) trouves.push({ pushOff: i, notOff: i + 6, kind: 'replay' });
+    else if (apresEq === 0x12 && body[i + 7] === 0x4c) trouves.push({ pushOff: i, notOff: i + 6, kind: 'savescore' });
+    else if (apresEq === 0x08 && body[i + 7] === 0x4c) trouves.push({ pushOff: i, notOff: i + 6, kind: 'savescore-fait' });
+  }
+  return trouves;
+}
+
+let cible = null;
+for (const t of listerTags()) {
+  const pool = lirePool(t);
+  if (!pool) continue;
+  for (const mot of [OLD_STR, NEW_STR]) {
+    const idx = pool.entrees.indexOf(mot);
+    if (idx < 0 || idx > 0xFF) continue;
+    const sites = reperer(t, idx);
+    if (sites.some((s) => s.kind.startsWith('savescore'))) {
+      cible = { t, pool, idx, mot, sites };
+      break;
+    }
+  }
+  if (cible) break;
+}
+if (!cible) throw new Error('kaluga.Game introuvable : aucune classe ne porte les deux formes visées');
+
+if (cible.mot === NEW_STR) {
+  // Déjà corrigé : l'entrée est devenue « $classic » et le Not du garde
+  // saveScore est devenu ToggleQuality. Le script n'est pas rejouable — ses
+  // motifs sont consommés — mais il ne doit pas ÉCHOUER pour autant : la
+  // chaîne (challenge → endgame → grappe) doit pouvoir se relancer entière.
+  console.log(`SWF déjà corrigé : « ${NEW_STR} » est l'entrée ${cible.idx} `
+    + `de la classe @${cible.t.off} — rien à faire.`);
+  process.exit(0);
+}
+
+const strOff = body.indexOf(needle, cible.t.off + cible.t.hSize);
+const initActionOff = cible.t.off, initActionLen = cible.t.len, initActionHdrSize = cible.t.hSize;
+const cpActionOff = cible.pool.cp;
+const cpPayloadLen = cible.pool.payloadLen;
 
 console.log('Found DoInitAction at', initActionOff, 'len', initActionLen);
 console.log('"$train" at offset', strOff, '— constant pool payload len', cpPayloadLen);
 
-// 2) Catalog every Push(CP[98]) site by pattern, distinguishing the two cases.
+// L'index de pool de « $train », LU dans la table de la classe retenue —
+// plus jamais écrit en dur.
+//
+// Le script codait 98 (l'index dans kaluga.Game) et fabriquait son motif de
+// recherche à partir de là. Or « $train » figure dans PLUSIEURS classes du
+// SWF et « $classic » dans huit d'entre elles, à des index tous différents
+// (9, 57, 65, 78, 79, 98, 119…) : le premier « $train » du fichier n'est pas
+// forcément celui de kaluga.Game, et l'index 98 y désigne alors autre chose
+// — « $key » dans la première classe du fichier, « $param » dans une autre.
+// Chercher « Push CP[98] » à l'aveugle revenait à viser des pushes sans
+// rapport, dont le patch remet le saut à zéro : une condition étrangère
+// neutralisée en silence.
+const cpIndex = cible.idx;
+console.log(`"${OLD_STR}" est l'entrée ${cpIndex} de cette classe `
+  + `(${cible.pool.count} entrées)`);
+
+// 2) Catalog every Push(CP[idx]) site by pattern, distinguishing the two cases.
 //    We need to apply different fixups to each.
-const pushCp98       = Buffer.from([0x96, 0x02, 0x00, 0x08, 0x62]); // Push CP[98]
+const pushCp98       = Buffer.from([0x96, 0x02, 0x00, 0x08, cpIndex]); // Push CP[$train]
 const ifAfterNot     = 0x9d; // If (line 254 — Equals2 Not If)
 const pushDupAfterNot = 0x4c; // PushDup (line 902 — Equals2 Not PushDup Not If)
 
