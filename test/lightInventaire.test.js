@@ -206,3 +206,77 @@ test('sans session, l’inventaire ne dit rien', async () => {
   assert.equal((await fetch(BASE + '/api/light/inventaire?sid=zzz')).status, 401);
   assert.equal((await poser('zzz', 'wp_moutarde')).status, 401);
 });
+
+/*
+ * Les versions VERTICALES des fonds d'écran.
+ *
+ * Les fonds d'origine sont des paysages : dans le tiroir de /light — étroit et
+ * en portrait, sur téléphone comme sur écran large — le cadrage du bureau
+ * Flash ne peut que les poser en timbre au milieu. Chaque fond a donc reçu un
+ * redessin plein cadre (1536×2752) dans public/fb/boutique/, que le serveur
+ * annonce en `urlMobile`.
+ *
+ * La correspondance se fait par nom de fichier, sur le libellé du fond
+ * slugifié : cela couvre d'office les fonds ajoutés depuis l'admin. Deux des
+ * fonds d'origine échappent à la règle et sont nommés explicitement.
+ */
+test('chaque fond annonce sa version verticale, et le fichier existe vraiment', async () => {
+  const fsync = require('node:fs');
+  const sid = await sidPour('lvert' + RUN);
+  for (const id of [201, 202, 203, 204, 205, 206, 207, 208]) {
+    assert.equal((await acheter(sid, id)).ok, true, `achat du fond ${id}`);
+  }
+  const inv = await inventaire(sid);
+  assert.equal(inv.fonds.length, 8, 'les huit fonds du catalogue');
+
+  const parNom = Object.fromEntries(inv.fonds.map((f) => [f.nom, f]));
+  const attendus = {
+    'Chevalier moutarde':  'background_chevalier_moutarde_mobile.jpg',
+    'Noël Pixiz':          'background_noel_pixiz_mobile.jpg',
+    'Noël Frutisnake':     'background_noel_frutisnake_mobile.jpg',
+    'Mini-Pixiz':          'background_mini_pixiz_mobile.jpg',
+    'Mini-Wave Nostromo':  'background_mini_wave_nostromodo_mobile.jpg',
+    'Mini-Wave Mini-Star': 'background_mini_wave_ministar_mobile.png',
+    'Utopiz':              'background_utopiz_mobile.jpg',
+  };
+  for (const [nom, fichier] of Object.entries(attendus)) {
+    assert.equal(parNom[nom].urlMobile, '/fb/boutique/' + fichier,
+      `${nom} doit pointer sur sa version verticale`);
+    assert.ok(fsync.existsSync(path.join(ROOT, 'public', 'fb', 'boutique', fichier)),
+      `${fichier} doit exister sur le disque`);
+  }
+  // La Chorale n'a pas encore de redessin : elle garde le cadrage d'origine.
+  assert.equal(parNom['Chorale Frutiparc'].urlMobile, null,
+    'un fond sans version verticale doit annoncer null, pas une url morte');
+});
+
+test('poser un fond rend aussi sa version verticale, sans la mettre dans la préférence', async () => {
+  const sid = await sidPour('lvpr' + RUN);
+  assert.equal((await acheter(sid, 206)).ok, true);          // Mini-Wave Nostromo
+
+  const j = await (await poser(sid, 'wp_nostromo')).json();
+  assert.equal(j.fond.url, '/wal/pl.jpg');
+  assert.equal(j.fond.urlMobile, '/fb/boutique/background_mini_wave_nostromodo_mobile.jpg');
+
+  // La préférence est PARTAGÉE avec main.swf : elle ne doit porter que l'url
+  // d'origine. La variante verticale est déduite à la lecture, jamais stockée
+  // — sans quoi le bureau Flash irait chercher une image faite pour le portrait.
+  assert.equal(await mypref(sid), 'myPref=050iwal/pl.jpg|000044;',
+    'la préférence du bureau ne doit rien connaître de la version verticale');
+
+  // Et l'inventaire la redéduit tout seul au chargement suivant.
+  assert.equal((await inventaire(sid)).fond.urlMobile,
+    '/fb/boutique/background_mini_wave_nostromodo_mobile.jpg');
+});
+
+test('le client pose la version verticale en plein cadre, et garde la règle du SWF sans elle', () => {
+  const fsync = require('node:fs');
+  const src = fsync.readFileSync(path.join(ROOT, 'public', 'light.html'), 'utf8');
+  assert.match(src, /var vertical = !!fond\.urlMobile;/,
+    'le redessin est choisi dès qu’il existe, quelle que soit la largeur');
+  assert.match(src, /backgroundSize = "cover"/,
+    'la version verticale est posée en plein cadre');
+  // Le repli garde la transcription de WallPaperMng, « scale = 100 » compris.
+  assert.match(src, /jamais d'agrandissement/,
+    'la règle du bureau doit rester en place pour les fonds sans redessin');
+});

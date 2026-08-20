@@ -4437,6 +4437,58 @@ function registerCustomWallpaper(wp) {
   CUSTOM_WALLPAPER_IDS.add(wp.id);
 }
 
+// ── Les fonds d'écran redessinés pour le PORTRAIT ───────────────────────────
+//
+// Les fonds d'origine sont des paysages : sur le bureau ils remplissent la
+// zone, sur un téléphone tenu droit ils ne peuvent qu'être posés en timbre au
+// milieu (c'est ce que fait WallPaperMng, et c'est ce que /light reproduit).
+// Chaque fond a donc reçu une version verticale, plein cadre, rangée dans
+// public/fb/boutique/ sous « background_<nom>_mobile.<ext> ». Elles ne servent
+// QU'au /light en disposition mobile : le /light large et le bureau Flash
+// gardent le cadrage d'origine.
+//
+// La correspondance se fait par NOM de fichier, sur le libellé du fond mis en
+// minuscules sans accents ni apostrophes — ce qui couvre d'office les fonds
+// ajoutés depuis l'admin (« Ceci n'est pas une pipe » →
+// ceci_nest_pas_une_pipe, « Masque Hiko » → masque_hiko). Deux des fonds
+// d'origine échappent à la règle (« Mini-Wave Mini-Star » est livré en
+// ministar, « Mini-Wave Nostromo » en nostromodo) : ils sont nommés
+// explicitement. Un fond sans version verticale — la Chorale pour l'instant —
+// retombe simplement sur le cadrage d'origine.
+const MOBILE_DIR = path.join(__dirname, 'public', 'fb', 'boutique');
+const WALLPAPER_MOBILE_EXCEPTIONS = {
+  ministar: 'background_mini_wave_ministar_mobile',
+  nostromo: 'background_mini_wave_nostromodo_mobile',
+};
+function slugFond(nom) {
+  return String(nom || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // accents
+    .toLowerCase()
+    .replace(/['’]/g, '')                               // l'apostrophe disparaît : n'est → nest
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+// Le dossier est lu une fois : ces fichiers sont livrés avec le dépôt.
+let mobileFiles = null;
+function listeFondsMobiles() {
+  if (mobileFiles) return mobileFiles;
+  try { mobileFiles = fs.readdirSync(MOBILE_DIR); } catch { mobileFiles = []; }
+  return mobileFiles;
+}
+function wallpaperMobileUrl(wp) {
+  if (!wp) return null;
+  const base = WALLPAPER_MOBILE_EXCEPTIONS[wp.u] || `background_${slugFond(wp.n)}_mobile`;
+  const f = listeFondsMobiles().find((x) => x.startsWith(base + '.'));
+  return f ? '/fb/boutique/' + f : null;
+}
+// Depuis l'url stockée dans la préférence (« wal/ch.jpg »), retrouver le fond
+// du catalogue — la préférence ne porte QUE l'url d'origine, partagée avec
+// main.swf, et il n'est pas question d'y glisser la variante mobile.
+function wallpaperParUrl(url) {
+  const u = String(url || '').replace(/^\/+/, '');
+  return Object.values(WALLPAPER_BY_ID).find((w) => String(w.url).replace(/^\/+/, '') === u) || null;
+}
+
 // ── Quiz images (MikeHorny "image" quizzes, uploaded from the admin) ──
 // Same idea as custom wallpapers: bytes live in the DB, served same-origin by
 // /quiz-img/:file so BOTH the desktop SWF (Ruffle opens a window) and the
@@ -16991,6 +17043,8 @@ app.get('/api/light/inventaire', (req, res) => {
     fonds.push({
       id: acc.id, nom: acc.n || 'Fond',
       url: '/' + String(wp.url).replace(/^\/+/, ''),
+      // La version verticale, quand elle existe : le mobile la préfère.
+      urlMobile: wallpaperMobileUrl(wallpaperParUrl(wp.url)),
       color: wp.color || '',
     });
   }
@@ -17004,7 +17058,11 @@ app.get('/api/light/inventaire', (req, res) => {
   res.json({
     ok: true,
     accessoires, fonds, pictos,
-    fond: courant ? { url: '/' + courant.url.replace(/^\/+/, ''), color: courant.color } : null,
+    fond: courant ? {
+      url: '/' + courant.url.replace(/^\/+/, ''),
+      urlMobile: wallpaperMobileUrl(wallpaperParUrl(courant.url)),
+      color: courant.color,
+    } : null,
     bouille: bouilleOf(user, username),
   });
 });
@@ -17033,7 +17091,11 @@ app.post('/api/light/fond', (req, res) => {
     const wp = acc ? getAccessoryWallpaper(acc) : null;
     if (!wp || !wp.url) return res.status(404).json({ ok: false, error: 'inconnu' });
     valeur = wp.url + '|' + (wp.color || '');
-    fond = { url: '/' + String(wp.url).replace(/^\/+/, ''), color: wp.color || '' };
+    fond = {
+      url: '/' + String(wp.url).replace(/^\/+/, ''),
+      urlMobile: wallpaperMobileUrl(wallpaperParUrl(wp.url)),
+      color: wp.color || '',
+    };
   }
 
   user.prefs = setPrefValue(user.prefs, PREF_ID_WALLPAPER, valeur);

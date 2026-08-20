@@ -5541,11 +5541,18 @@
   // EXPLICITES plutôt qu'en mots-clés CSS : `contain` centrerait sur toute la
   // hauteur du panneau, main bar comprise, et l'image remonterait.
   //
-  // `cover` a été essayé et écarté : sur un téléphone en portrait, remplir
-  // 390×714 avec un paysage 1024×768 n'en montre que la bande centrale (41 %
-  // de la largeur), ce qui décapite le sujet — le chevalier moutarde n'y garde
-  // que son torse, tête et lune hors champ. Le cadrage du SWF montre au
-  // contraire l'illustration entière, posée sur SA couleur d'accompagnement.
+  // Recadrer les paysages d'origine en `cover` avait été essayé et écarté :
+  // remplir 390×714 avec un 1024×768 n'en montre que la bande centrale (41 %
+  // de la largeur), ce qui décapite le sujet — le chevalier moutarde n'y
+  // gardait que son torse, tête et lune hors champ.
+  //
+  // Chaque fond a donc reçu une VERSION VERTICALE redessinée (1536×2752,
+  // public/fb/boutique/background_*_mobile.*), que le serveur annonce en
+  // `urlMobile`. Dès qu'elle existe on la pose en plein cadre : elle est
+  // composée pour ça, et le bureau de /light reste un tiroir étroit — donc en
+  // portrait — même sur un écran large. Seul un fond SANS redessin (la
+  // Chorale pour l'instant) retombe sur le cadrage du bureau Flash, transcrit
+  // ci-dessous au caractère près.
   function couleursFond(color) {
     var arr = String(color || "").split(";");
     var hex = function (v) {
@@ -5574,10 +5581,14 @@
       panneau.classList.remove("a-fond");
       return;
     }
+    // La version verticale dès qu'elle existe — le bureau de /light est un
+    // tiroir étroit, en portrait, aussi bien sur téléphone que sur écran large.
+    var vertical = !!fond.urlMobile;
+    var image = vertical ? fond.urlMobile : fond.url;
     var c = couleursFond(fond.color);
     panneau.classList.add("a-fond");
     panneau.style.backgroundColor = c.bg || "#ADE76B";
-    panneau.style.backgroundImage = 'url("' + fond.url + '")';
+    panneau.style.backgroundImage = 'url("' + image + '")';
     panneau.style.backgroundRepeat = "no-repeat";
     // `scroll` (et non `local`) : l'image reste collée au cadre du bureau et
     // ne défile pas avec les tuiles.
@@ -5595,6 +5606,14 @@
       if (lum > 140) halo = "0,0,0";
     }
     panneau.style.setProperty("--fond-halo", "rgba(" + halo + ",.85)");
+    // La version verticale est composée pour l'écran : plein cadre, main bar
+    // comprise, sans mesurer quoi que ce soit. Le sujet est au centre du
+    // dessin, donc `cover` centré ne rogne que les marges.
+    if (vertical) {
+      panneau.style.backgroundSize = "cover";
+      panneau.style.backgroundPosition = "center center";
+      return;
+    }
     // Transcription littérale de WallPaperMng.onStageResize : le bureau ne
     // commence pas en haut de l'écran, il commence sous la main bar — c'est
     // _global.main.cornerY. On centre donc DANS cette zone-là, sinon l'image
