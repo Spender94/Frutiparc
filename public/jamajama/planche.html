@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<!-- La planche de contrôle de JamaJama : les symboles extraits du SWF, remis en
+     scène par rendu.js, pour l'œil. C'est ici qu'on vérifie qu'un dessin du
+     portage est bien celui du jeu de 2005 — même famille de pages de travail
+     que bouille-preview.html.
+
+       /jamajama/planche.html                   les éléments du plateau
+       /jamajama/planche.html?vue=menu          le menu et ses morceaux
+       /jamajama/planche.html?vue=gui           fenêtres, boutons, listes
+       /jamajama/planche.html?vue=anims         déroulé d'animations (marches, sortie)
+       /jamajama/planche.html?vue=SYMBOLE       toutes les images d'un symbole -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JamaJama — planche des dessins</title>
+<style>
+  body { background: #408200; margin: 0; font: 12px Verdana, sans-serif; color: #fff; }
+  h1 { font-size: 14px; margin: 8px; }
+  .case { display: inline-block; margin: 4px; text-align: center; vertical-align: top; }
+  .case span { display: block; font-size: 10px; margin-top: 2px; }
+  canvas { background:
+    repeating-conic-gradient(#3a7500 0% 25%, #468d00 0% 50%) 0 0/16px 16px; }
+</style>
+</head>
+<body>
+<h1 id="titre">JamaJama — planche</h1>
+<div id="planche"></div>
+<script src="rendu.js"></script>
+<script>
+(function () {
+  'use strict';
+  var K = 2;                                   // l'échelle de lecture
+
+  function case_(cle, ref, sur, etiquette, taille) {
+    var d = document.createElement('div');
+    d.className = 'case';
+    var c = document.createElement('canvas');
+    var t = taille || 96;
+    c.width = t * K; c.height = t * K;
+    c.style.width = t + 'px'; c.style.height = t + 'px';
+    d.appendChild(c);
+    var s = document.createElement('span');
+    s.textContent = etiquette || (cle + (ref ? ' · ' + ref : ''));
+    d.appendChild(s);
+    document.getElementById('planche').appendChild(d);
+    var ctx = c.getContext('2d');
+    ctx.setTransform(K, 0, 0, K, c.width / 2, c.height / 2);
+    try { JamaRendu.dessiner(ctx, cle, ref, sur); }
+    catch (e) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#f66'; ctx.fillText(String(e.message || e), 4, 12);
+    }
+    return c;
+  }
+
+  function vueElements() {
+    var elements = ['jama_Hero', 'jama_Box', 'jama_Pin', 'jama_Peeble', 'jama_Rune',
+      'jama_Bomb', 'jama_Winkle', 'jama_Louki', 'jama_Kohl', 'jama_Spider',
+      'jama_Archer', 'jama_Lurker', 'jama_Jade', 'jama_Eye', 'jama_Magnet',
+      'jama_GoldMagnet', 'jama_OneWay', 'jama_OneWayStrict', 'jama_Exit'];
+    elements.forEach(function (cle) { case_(cle, 1, null, cle.replace('jama_', ''), 64); });
+    // Le fruit : la même pièce, cinq visages — mc.j.gotoAndStop(param).
+    for (var p = 1; p <= 5; p++) case_('jama_Fruit', 1, { clips: { j: p } }, 'Fruit ' + p, 48);
+    // Le héros regarde dans les quatre directions (subMc = mc.j).
+    ['N', 'E', 'S', 'O'].forEach(function (n, d) {
+      case_('jama_Hero', 1, { clips: { j: d + 1 } }, 'Héros ' + n, 48);
+    });
+    // Le mur et l'eau : seize raccords, choisis par les voisins.
+    for (var f = 1; f <= 17; f++) case_('jama_Wall', f, null, 'Mur f' + f, 40);
+    for (var g = 1; g <= 16; g++) case_('jama_Water', 1, { clips: { j: g } }, 'Eau j' + g, 40);
+    case_('jama_Bridge', 1, null, 'Pont', 48);
+    case_('jama_Side', 1, null, 'Bord 1', 48);
+    for (var s = 2; s <= 8; s++) case_('jama_Side', s, null, 'Bord ' + s, 48);
+  }
+
+  function vueMenu() {
+    case_('jama_Menu_Title', 1, null, 'Titre', 320);
+    case_('jama_Menu_Glyph', 1, null, 'Glyphe', 200);
+    case_('jama_Menu_Bande', 1, null, 'Bande', 128);
+    for (var i = 1; i <= 12; i++) {
+      case_('jama_Menu_Button', 1, { clips: { text: i } }, 'Bouton ' + i, 128);
+      case_('jama_Menu_ButtonBackground', i, null, 'Fond ' + i, 128);
+    }
+  }
+
+  function vueGui() {
+    ['jama_gui_Window', 'jama_TextWindow', 'jama_GUI_Confirm', 'jama_gui_EscapeDialog',
+      'jama_GUI_ConfirmQuit', 'jama_GUI_ConfirmRestart', 'jama_GUI_SaveExitDialog',
+      'jama_gui_Banned', 'jama_gui_LoginDialog', 'jama_gui_AdventureSelect',
+      'jama_gui_AdventurePack', 'jama_gui_list', 'jama_GUI_HeaderPane',
+      'jama_GUI_LevelSlot', 'jama_gui_Tab', 'jama_gui_LevelInfo', 'jama_gui_BigHelp',
+      'jama_gui_LevelDesign', 'jama_gui_LevelDesignBack', 'jama_gui_LevelSizeEdit',
+      'jama_gui_LevelInfoEdit', 'jama_gui_OrderPane', 'jama_gui_Select',
+      'jama_gui_lens', 'jama_gui_WaitCursor', 'jama_gui_Arrow', 'jama_gui_CheckBox']
+      .forEach(function (cle) { case_(cle, 1, null, cle, 200); });
+    ['jama_GUI_ButtonPlay', 'jama_GUI_ButtonNext', 'jama_GUI_ButtonPrev',
+      'jama_GUI_ButtonEdit', 'jama_GUI_ButtonDelete', 'jama_GUI_ButtonPane',
+      'jama_GUI_Header_Score', 'jama_GUI_Header_Level', 'but_supprime']
+      .forEach(function (cle) {
+        for (var e = 1; e <= 3; e++) case_(cle, e, null, cle.replace(/^jama_GUI_/, '') + ' ' + e, 48);
+      });
+    ['jama_Star', 'jama_YN', 'jama_GUI_LevelIcon', 'jama_gui_OrderPM',
+      'jama_gui_ScrollArrow', 'jama_gui_SelectItem']
+      .forEach(function (cle) { case_(cle, 1, null, cle, 64); });
+  }
+
+  function vueAnims() {
+    var t = 48;
+    for (var f = 1; f <= 26; f++) case_('clip562', f, null, 'héros j f' + f, t);
+    ['moveSouth', 'moveWest', 'moveNorth', 'moveEast'].forEach(function (l) {
+      var s = JamaRendu.symbole('jama_Louki');
+      var de = (s.etiquettes || {})[l];
+      for (var f = 0; f < 3; f++) case_('jama_Louki', de + f, null, 'Louki ' + l + '+' + f, t);
+    });
+    for (var f = 1; f <= 83; f += 6) case_('jama_Exit', f, null, 'Sortie f' + f, t);
+    for (var f = 1; f <= 9; f++) case_('jama_Winkle', f, null, 'Winkle f' + f, t);
+    for (var f = 1; f <= 34; f += 3) case_('jama_fx_BombCounter', f, null, 'Compteur f' + f, t);
+    for (var f = 1; f <= 20; f += 2) case_('jama_fx_cocon', f, null, 'Cocon f' + f, t);
+    for (var f = 1; f <= 19; f += 2) case_('jama_fx_Gaz', f, null, 'Gaz f' + f, t);
+    for (var f = 1; f <= 17; f += 2) case_('clip599', f, null, 'Iris f' + f, t);
+  }
+
+  function vueSymbole(cle) {
+    var s = JamaRendu.symbole(cle);
+    s.etats.forEach(function (e) {
+      case_(cle, e.frame, null, 'f' + e.frame, 96);
+    });
+  }
+
+  var vue = new URLSearchParams(location.search).get('vue') || 'elements';
+  document.getElementById('titre').textContent = 'JamaJama — planche « ' + vue + ' »';
+  JamaRendu.charger('').then(function () {
+    if (vue === 'elements') vueElements();
+    else if (vue === 'menu') vueMenu();
+    else if (vue === 'gui') vueGui();
+    else if (vue === 'anims') vueAnims();
+    else vueSymbole(vue);
+    document.title = 'planche prête';
+  }).catch(function (e) {
+    document.getElementById('titre').textContent = 'échec : ' + (e.message || e);
+  });
+})();
+</script>
+</body>
+</html>

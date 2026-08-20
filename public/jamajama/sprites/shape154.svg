@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 6 32 26" width="32" height="26">
+  <path d="M0 6L32 6L32 32L0 32L0 6Z" fill="#58b185" fill-rule="evenodd"/>
+  <path d="M0 32L4.75 30.85L10 31.45L15.4 30.85L32 32L0 32Z" fill="#218684" fill-rule="evenodd"/>
+  <path d="M32 31L32 32L15.4 30.85L10 31.45L4.75 30.85L0 32L0 31L1 31L5.1 29.85L9.8 30.6L15.5 29.85L32 31Z" fill="#092220" fill-rule="evenodd"/>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 19.2 16" width="19.2" height="16">
+  <defs>
+    <radialGradient id="g1" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00069,0,0,0.00069,11.2,8)"><stop offset="0" stop-color="#624d28" stop-opacity="0.6"/><stop offset="1" stop-color="#624d28" stop-opacity="0"/></radialGradient>
+  </defs>
+  <path d="M16.85 2.35Q19.15 4.7 19.2 8Q19.15 11.3 16.85 13.65Q14.55 15.9 11.4 16L3.2 16L3.2 0L11.4 0Q14.55 0.05 16.85 2.35Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M0 2L0 0L8.2 0Q11.35 0.05 13.65 2.35Q15.95 4.7 16 8Q15.95 11.3 13.65 13.65Q11.35 15.9 8.2 16L6 16Q2.85 14.8 3.9 11.5Q4.4 10.05 5.75 9.45Q8.8 8.15 10.4 11.2L9.3 12.35L8.1 12.25L7.6 10.9L5.7 11.25L5.5 11.4L5.55 11.25L4.9 12.9Q5 14.9 7.65 14.8Q14.55 14.45 13.75 6.8Q12.3 1.2 0 2Z" fill="#c9b981" fill-rule="evenodd"/>
+  <path d="M6 16L0 16L0 2Q12.3 1.2 13.75 6.8Q14.55 14.45 7.65 14.8Q5 14.9 4.9 12.9L5.55 11.25L5.5 11.4L5.7 11.25L7.6 10.9L8.1 12.25L9.3 12.35L10.4 11.2Q8.8 8.15 5.75 9.45Q4.4 10.05 3.9 11.5Q2.85 14.8 6 16Z" fill="#b99966" fill-rule="evenodd"/>
+</svg>

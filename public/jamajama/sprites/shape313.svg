@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -7.15 32 39.1" width="32" height="39.1">
+  <defs>
+    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0.0003,0,0,0.00054,27.1,23.05)"><stop offset="0" stop-color="#dedb00"/><stop offset="1" stop-color="#ffff6b"/></linearGradient>
+  </defs>
+  <path d="M0 24.8L0 14.15L5.3 14.15L5.3 24.8L0 24.8ZM0 3.5L0 -7.15L5.3 -7.15L5.3 3.5L0 3.5Z" fill="#da1010" fill-rule="evenodd"/>
+  <path d="M5.3 31.95L0 31.95L0 24.8L5.3 24.8L5.3 31.95ZM5.3 10.6L0 10.6L0 3.5L5.3 3.5L5.3 10.6Z" fill="#9a0c0c" fill-rule="evenodd"/>
+  <path d="M5.3 -7.15L22.35 -7.15Q26.1 -6.85 28.85 -4.15Q30.65 -2.35 31.4 -0.05Q31.9 1.45 32 3.15L32 14.15L31.95 14.15Q31.95 18.3 29.2 21.25L28.85 21.6Q26.1 24.4 22.3 24.8L5.3 24.8L5.3 14.15L21.3 14.15L21.3 10.6L21.3 3.5L5.3 3.5L5.3 -7.15Z" fill="#ffff6a" fill-rule="evenodd"/>
+  <path d="M22.3 31.95L5.3 31.95L5.3 24.8L22.3 24.8L22.3 31.95ZM21.3 10.6L5.3 10.6L5.3 3.5L21.3 3.5L21.3 10.6Z" fill="#d9d900" fill-rule="evenodd"/>
+  <path d="M32 14.15L32 21.25L31.95 21.25Q31.95 23.15 31.35 24.8Q30.6 27 28.85 28.75Q26.1 31.5 22.3 31.95L22.3 24.8Q26.1 24.4 28.85 21.6L29.2 21.25Q31.95 18.3 31.95 14.15L32 14.15Z" fill="url(#g1)" fill-rule="evenodd"/>
+</svg>
