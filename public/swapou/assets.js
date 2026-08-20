@@ -48,6 +48,12 @@ const SwapouAssets = (function () {
     comboStar: 'images/comboStar.png',
     fullDimitri: 'character/bitmap/menu/dimitri.png',
     fullNatacha: 'character/bitmap/menu/natacha.png',
+    // Pièces du menu sorties du SWF (scripts/extract-swapou-menu.js) : les
+    // plaques de bouton et de titre sont VECTORIELLES dans l'original, elles
+    // n'existent donc pas dans Games/swapou2/images.
+    menuBouton: '/swapou/ui/bouton-vert.svg',
+    menuBoutonRetour: '/swapou/ui/bouton-orange.svg',
+    menuTitre: '/swapou/ui/titre.svg',
     scene6_temple: 'character/bitmap/cinematique/scene6/temple.png',
     scene6_brume: 'character/bitmap/cinematique/scene6/brume.png',
     scene6_poteau: 'character/bitmap/cinematique/scene6/poteau.png',
@@ -76,6 +82,11 @@ const SwapouAssets = (function () {
       MANIFEST['face' + ci + '_' + si] = 'character/bitmap/' + dir + '/' + file + '.png';
     });
   });
+  // Le sel et le poivre sont des salières : leur CORPS ne change pas d'un état
+  // à l'autre, il est dans base.png, et normal/panic/… ne portent que les yeux
+  // et la bouche. Sans le corps on n'affichait que des yeux flottants.
+  MANIFEST.face2_base = 'character/bitmap/salt/base.png';
+  MANIFEST.face3_base = 'character/bitmap/poivre/base.png';
   // cinématiques
   for (let i = 1; i <= 9; i++) MANIFEST['scene' + i] = 'character/bitmap/cinematique/scene' + i + '.png';
 
@@ -93,7 +104,10 @@ const SwapouAssets = (function () {
           if (onProgress) onProgress(loadedCount, totalCount);
           resolve();
         };
-        img.src = IMG_BASE + MANIFEST[name];
+        // Un chemin absolu sort de /games/swapou2 : c'est le cas des pièces
+        // d'interface qu'on a extraites du SWF dans public/swapou/ui.
+        const rel = MANIFEST[name];
+        img.src = rel[0] === '/' ? rel : IMG_BASE + rel;
         images[name] = img;
       });
     }));

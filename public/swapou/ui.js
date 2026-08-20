@@ -63,6 +63,51 @@ const SwapouUI = (function () {
     ctx.closePath();
   }
 
+  // ── Décalage de couleur additif (le CXFORM de Flash) ─────────────────────
+  //
+  // Les pulsations de survol du menu ne changent pas de dessin : elles AJOUTENT
+  // du rouge et du vert aux couleurs du clip (c' = c + décalage), ce qui fait
+  // virer la plaque verte au doré et allume la tuile d'un personnage. Le canvas
+  // n'a pas cette opération : on passe donc par un calque, où l'on ajoute la
+  // couleur (« lighter » sature aussi l'alpha) avant de redécouper le tout à
+  // l'alpha du dessin (« destination-in »).
+  //
+  // Sans décalage — le cas de repos, donc l'immense majorité des dessins — on
+  // peint directement, sans calque.
+  let calque = null, calqueCtx = null;
+  function avecDecalage(ctx, r, v, b, x, y, w, h, dessiner) {
+    // Sans décalage — ou sans DOM pour tenir le calque — on peint tel quel.
+    if ((r < 0.5 && v < 0.5 && b < 0.5) || typeof document === 'undefined'
+      || !ctx.getTransform) { dessiner(ctx); return; }
+    const cible = ctx.canvas;
+    if (!calque || calque.width !== cible.width || calque.height !== cible.height) {
+      calque = document.createElement('canvas');
+      calque.width = cible.width;
+      calque.height = cible.height;
+      calqueCtx = calque.getContext('2d');
+    }
+    const m = ctx.getTransform();
+    calqueCtx.setTransform(1, 0, 0, 1, 0, 0);
+    calqueCtx.clearRect(0, 0, calque.width, calque.height);
+    calqueCtx.setTransform(m);
+    calqueCtx.globalCompositeOperation = 'source-over';
+    calqueCtx.globalAlpha = 1;
+    dessiner(calqueCtx);
+    const marge = 8;
+    calqueCtx.globalCompositeOperation = 'lighter';
+    calqueCtx.fillStyle = 'rgb(' + Math.round(r) + ',' + Math.round(v) + ',' + Math.round(b) + ')';
+    calqueCtx.fillRect(x - marge, y - marge, w + marge * 2, h + marge * 2);
+    calqueCtx.globalCompositeOperation = 'destination-in';
+    dessiner(calqueCtx);
+    calqueCtx.globalCompositeOperation = 'source-over';
+    ctx.save();
+    const a = ctx.globalAlpha;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = a;
+    ctx.drawImage(calque, 0, 0);
+    ctx.restore();
+  }
+
   function drawCentered(ctx, img, cx, cy, scale) {
     if (!img || !img.naturalWidth) return;
     const s = scale == null ? 1 : scale;
@@ -70,11 +115,18 @@ const SwapouUI = (function () {
     ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
   }
 
-  // texte style jeu (Verdana bold + contour sombre optionnel)
+  // texte style jeu (Verdana bold + contour sombre optionnel).
+  // `opt.font` bascule sur une des fontes embarquées du SWF : « banana » pour
+  // les libellés de boutons et de titres, « impact » pour la barre d'aide.
+  const FONTES = {
+    banana: '"PT Banana Split",Verdana,Arial,sans-serif',
+    impact: '"Impact SW",Impact,"Arial Narrow",Arial,sans-serif',
+  };
   function text(ctx, str, x, y, opt) {
     opt = opt || {};
     ctx.save();
-    ctx.font = (opt.bold === false ? '' : 'bold ') + (opt.size || 13) + 'px Verdana,Arial,sans-serif';
+    ctx.font = (opt.bold === false || opt.font ? '' : 'bold ') + (opt.size || 13) + 'px '
+      + (FONTES[opt.font] || 'Verdana,Arial,sans-serif');
     ctx.textAlign = opt.align || 'center';
     ctx.textBaseline = opt.baseline || 'middle';
     if (opt.stroke) {
@@ -351,14 +403,41 @@ const SwapouUI = (function () {
 
   // ── Visage (Face.as) ─────────────────────────────────────────────────────
   // états : 0 normal, 1 panique, 2 colère, 3 peur, 4 joie, 5 mort
+  //
+  // Le symbole `face` du SWF (sprite #328) est une fenêtre de 110×110 : un fond
+  // (`bg`, dont chaque frame est un fond différent) puis le portrait (`char`),
+  // posé au CENTRE de la fenêtre — Face.as le dit lui-même, sub.char._x =
+  // FACE_WIDTH*0.5. Les deux premiers fonds sont les dégradés d'origine
+  // (formes #211 et #212) ; les suivants sont des compositions animées
+  // (rayons, étincelles) qu'on approche par un dégradé de mêmes tons.
   const FACE_BGS = [
-    ['#9fd4f5', '#3d7fc1'], // 0 calme (ciel)
-    ['#9aa0ad', '#3c4250'], // 1 sombre (défaite)
-    ['#f59a8a', '#b8322a'], // 2 touché (rouge)
-    ['#ffe98a', '#f0a020'], // 3 joie (soleil)
-    ['#ffb060', '#d84810'], // 4 attaque (feu)
-    ['#e8e0cc', '#a09878'], // 5 neutre
+    ['#b1c26b', '#87913e'], // 0 calme — dégradé olive de la forme #211
+    ['#ea3939', '#620b0b'], // 1 rouge — forme #212 (mort)
+    ['#f59a8a', '#b8322a'], // 2 touché
+    ['#ffe98a', '#f0a020'], // 3 joie
+    ['#ffb060', '#d84810'], // 4 colère / attaque
+    ['#e8e0cc', '#a09878'], // 5 neutre (fondu du « fake »)
   ];
+
+  // Où chaque portrait se pose dans la fenêtre de 110×110, en pixels depuis son
+  // coin haut-gauche. Ces valeurs sont RELEVÉES sur le SWF (recalage image par
+  // image de l'écran de choix de personnage) : chaque dessin a sa propre taille
+  // et son propre cadrage dans la bibliothèque du .fla, il n'y a pas de règle
+  // qui s'en déduise. Le sel et le poivre ont en plus un corps commun.
+  const FACE_POS = [
+    { x: -53, y: -1 },   // 0 Dimitri  (182×132)
+    { x: -9, y: 9 },     // 1 Natacha  (119×109)
+    { x: 47, y: 21, base: { x: -9, y: 1 } },   // 2 Sel     (yeux 53×40 sur un corps 126×117)
+    { x: 37, y: 17, base: { x: -9, y: 1 } },   // 3 Poivre  (yeux 62×43, même corps)
+    { x: -9, y: -1 },    // 4 Moutarde (139×134)
+    { x: 13, y: -25 },   // 5 Piment   (65×188)
+    { x: -7, y: -7 },    // 6 Wasabi   (127×123)
+  ];
+
+  // Teinte des personnages VERROUILLÉS, telle que RotatorFace.disable l'écrit :
+  // multiplicateurs à zéro et décalages (106, 134, −51) — donc toute la boîte du
+  // portrait, transparence comprise (aa=100, ab=100), devient ce vert plat.
+  const FACE_VERROU = '#6a8600';
 
   function Face(charId) {
     this.skinId = charId || 0;
@@ -419,42 +498,59 @@ const SwapouUI = (function () {
       }
     }
   };
-  // dessine la face dans une boîte size×size en (x,y)
+  // dessine la face dans une boîte size×size en (x,y). `opts.cadre` choisit le
+  // cadre : 'faceTop' en jeu, 'menuFaceTop' sur l'écran de choix de personnage
+  // (le même bois, mais avec les feuilles vertes des coins).
   Face.prototype.draw = function (ctx, x, y, size, opts) {
     if (!this.visible) return;
+    opts = opts || {};
     const s = size || D.FACE_WIDTH;
     ctx.save();
     roundRect(ctx, x, y, s, s, 6);
     ctx.clip();
-    drawFaceContent(ctx, this.skinId, this.stateId, this.bgId, x + this.shakeX, y + this.shakeY, s, this.flipped, 1);
+    drawFaceContent(ctx, this.skinId, this.stateId, this.bgId,
+      x + this.shakeX, y + this.shakeY, s, this.flipped, 1, opts.verrou);
     if (this.fakeAlpha > 0)
       drawFaceContent(ctx, this.fakeSkin, this.fakeState, 5, x, y, s, this.flipped, this.fakeAlpha / 100);
     ctx.restore();
-    if (opts && opts.frame !== false) {
-      const ft = A.img('faceTop');
+    if (opts.frame !== false) {
+      const ft = A.img(opts.cadre || 'faceTop');
       if (ft) ctx.drawImage(ft, x - D.FACEBORDER_X * s / D.FACE_WIDTH, y - D.FACEBORDER_Y * s / D.FACE_HEIGHT,
         130 * s / D.FACE_WIDTH, 133 * s / D.FACE_HEIGHT);
     }
   };
 
-  function drawFaceContent(ctx, skinId, stateId, bgId, x, y, s, flipped, alpha) {
+  function drawFaceContent(ctx, skinId, stateId, bgId, x, y, s, flipped, alpha, verrou) {
     ctx.save();
     ctx.globalAlpha *= alpha;
     const bg = FACE_BGS[bgId] || FACE_BGS[0];
-    const grad = ctx.createRadialGradient(x + s / 2, y + s * 0.38, s * 0.1, x + s / 2, y + s / 2, s * 0.75);
+    // Fond : dégradé vertical, comme les formes #211/#212 du SWF.
+    const grad = ctx.createLinearGradient(x, y, x, y + s);
     grad.addColorStop(0, bg[0]);
     grad.addColorStop(1, bg[1]);
     ctx.fillStyle = grad;
     ctx.fillRect(x, y, s, s);
-    const img = A.img('face' + skinId + '_' + stateId);
-    if (img && img.naturalWidth) {
-      // art 182×131 env. : cadrage « buste » ancré en bas de boîte
-      const sc = (s / img.naturalHeight) * 1.04;
-      const w = img.naturalWidth * sc, h = img.naturalHeight * sc;
-      ctx.translate(x + s / 2, y + s);
-      if (flipped) ctx.scale(-1, 1);
-      ctx.drawImage(img, -w / 2, -h, w, h);
+    // Le portrait est posé à sa place d'origine dans la fenêtre de 110, à sa
+    // taille naturelle ; on suit l'échelle de la boîte demandée.
+    const k = s / D.FACE_WIDTH;
+    const pos = FACE_POS[skinId] || { x: 0, y: 0 };
+    ctx.translate(x + s / 2, y);
+    if (flipped) ctx.scale(-1, 1);
+    // Verrouillé : toute la boîte du portrait vire au vert plat — transparence
+    // comprise, ce qui remplit la fenêtre entière (cf. FACE_VERROU).
+    if (verrou) {
+      ctx.fillStyle = FACE_VERROU;
+      ctx.fillRect(-s / 2, 0, s, s);
+      ctx.restore();
+      return;
     }
+    const poser = (img, p) => {
+      if (!img || !img.naturalWidth) return;
+      ctx.drawImage(img, (p.x - D.FACE_WIDTH / 2) * k, p.y * k,
+        img.naturalWidth * k, img.naturalHeight * k);
+    };
+    if (pos.base) poser(A.img('face' + skinId + '_base'), pos.base);
+    poser(A.img('face' + skinId + '_' + stateId), pos);
     ctx.restore();
   }
 
@@ -508,7 +604,11 @@ const SwapouUI = (function () {
     this.speed = D.BUTTON_SPEED;
     this.curX = x; this.curY = y; this.scale = 0.4;
     this.behind = true;
-    this.hoverFrame = 0;
+    // Frame de la pulsation de survol. Le SWF ne fait pas un « état survolé » :
+    // Rotator*.update avance d'une frame par tour tant que le curseur est là,
+    // et revient à 1 en fin de bande — c'est donc une boucle. Hors survol, la
+    // bande FINIT son tour au lieu de s'arrêter net (cf. le `else if`).
+    this.frame = 1;
   }
   Rotator.prototype.hide = function () {
     this.isOver = false;
@@ -547,9 +647,12 @@ const SwapouUI = (function () {
       if (this.behind && this.cpt >= Math.PI * 1.5) this.behind = false;
       if (!this.behind && this.cpt >= Math.PI * 2.5) this.behind = true;
     }
-    // anim de rollover (avance de frame → pulsation)
-    if (this.isOver && this.active && !this.locked) this.hoverFrame = Math.min(this.hoverFrame + tmod, 6);
-    else this.hoverFrame = Math.max(this.hoverFrame - tmod, 0);
+    // Pulsation de survol : une frame par tour, retour à 1 en fin de bande.
+    const n = this.nbFrames || 1;
+    if ((this.isOver && this.active && !this.locked) || this.frame > 1) {
+      this.frame += tmod;
+      if (this.frame >= n) this.frame = 1;
+    }
   };
   Rotator.prototype.setOver = function (over) {
     if (over && !this.isOver && this.stable) {
@@ -560,22 +663,53 @@ const SwapouUI = (function () {
     this.isOver = over;
   };
 
+  // ── Pulsation du bouton de menu (sprite #206 du SWF) ─────────────────────
+  //
+  // Treize frames, relevées telles quelles dans la timeline : une bosse
+  // d'échelle qui monte à 1,15 puis retombe, un léger glissement vers le bas,
+  // et une transformation de couleur ADDITIVE (rouge et vert montent, le bleu
+  // ne bouge pas) — c'est elle qui fait virer la plaque du vert au doré.
+  const BT_ECHELLE = [1, 1.02, 1.1175, 1.15, 1.1481, 1.1426, 1.1333, 1.1204,
+    1.1037, 1.0833, 1.0592, 1.0315, 1];
+  const BT_DY = [1.1, 1.2, 1.6, 1.7, 1.65, 1.65, 1.65, 1.55, 1.5, 1.4, 1.3, 1.2, 1.1];
+  const BT_ROUGE = [0, 0, 86, 115, 114, 109, 102, 92, 80, 64, 45, 24, 0];
+  const BT_VERT = [0, 0, 38, 51, 50, 48, 45, 41, 35, 28, 20, 11, 0];
+  // La plaque d'origine (formes #202 vert / #204 orange), au pixel près.
+  const BT_L = 161.45, BT_H = 34.8, BT_HAUT = 16.4;
+  // Le champ texte du bouton est posé ÉTIRÉ en hauteur dans le SWF — sa matrice
+  // vaut 1 en x et 1,5512 en y. D'où des lettres hautes et serrées, qu'un
+  // simple choix de corps ne reproduit pas.
+  // Corps et ligne de base calés sur le rendu du SWF, à un pixel près.
+  const BT_TEXTE_ETIRE = 1.5512, BT_TEXTE_CORPS = 20, BT_TEXTE_Y = -1.3;
+
   // bouton texte du menu (RotatorButton.as)
   function RotatorButton(menu, yLine, label, linkId, help) {
     Rotator.call(this, menu, D.BUTTON_X, yLine * D.BUTTON_HEIGHT + D.BUTTON_Y, yLine, help);
     this.yId = Math.floor(yLine);
     this.label = label;
     this.linkId = linkId;
+    // sub.gotoAndStop(2) quand linkId < 0 : les boutons « retour » sont orange.
     this.isBack = linkId < 0;
     this.releaseCallback = null;
-    this.w = 230; this.h = 40;
+    this.nbFrames = BT_ECHELLE.length;
   }
   RotatorButton.prototype = Object.create(Rotator.prototype);
+  // La bosse de survol, interpolée entre deux frames de la bande.
+  RotatorButton.prototype.pulse = function () {
+    const f = Math.max(0, Math.min(BT_ECHELLE.length - 1.001, this.frame - 1));
+    const i = Math.floor(f), k = f - i;
+    const m = (t) => t[i] + (t[i + 1] - t[i]) * k;
+    return { s: m(BT_ECHELLE), dy: m(BT_DY), r: m(BT_ROUGE), v: m(BT_VERT) };
+  };
   RotatorButton.prototype.hitTest = function (mx, my) {
     if (!this.visible || !this.stable) return false;
-    const w = this.w * this.scale, h = this.h * this.scale;
-    return mx >= this.curX - w / 2 && mx <= this.curX + w / 2 &&
-      my >= this.curY - h / 2 && my <= this.curY + h / 2;
+    const p = this.pulse();
+    const s = this.scale * p.s;
+    // La plaque n'est pas centrée sur son point d'ancrage : elle descend de
+    // 18,4 sous lui et ne monte que de 16,4 (la lèvre sombre du bas).
+    const haut = this.curY + p.dy * s - BT_HAUT * s;
+    return mx >= this.curX - BT_L * s / 2 && mx <= this.curX + BT_L * s / 2 &&
+      my >= haut && my <= haut + BT_H * s;
   };
   RotatorButton.prototype.release = function () {
     if (!this.active || this.locked) return;
@@ -586,36 +720,35 @@ const SwapouUI = (function () {
   RotatorButton.prototype.draw = function (ctx) {
     if (!this.visible) return;
     this.updatePos();
+    const p = this.pulse();
+    const s = this.scale * p.s;
     ctx.save();
     ctx.globalAlpha = this.alpha;
-    ctx.translate(this.curX, this.curY);
-    const bump = 1 + this.hoverFrame * 0.012;
-    ctx.scale(this.scale * bump, this.scale * bump);
-    const w = this.w, h = this.h;
-    // plaque de bois (style levelBox), texte vert comme l'original
-    const plate = A.img('levelBox');
-    if (plate && plate.naturalWidth) {
-      const cap = 18;
-      ctx.drawImage(plate, 0, 0, cap, 46, -w / 2, -h / 2, cap, h);
-      ctx.drawImage(plate, cap, 0, 107 - cap * 2, 46, -w / 2 + cap, -h / 2, w - cap * 2, h);
-      ctx.drawImage(plate, 107 - cap, 0, cap, 46, w / 2 - cap, -h / 2, cap, h);
-    } else {
-      const grad = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
-      grad.addColorStop(0, '#e8b269'); grad.addColorStop(0.5, '#c08540'); grad.addColorStop(1, '#92602a');
-      roundRect(ctx, -w / 2, -h / 2, w, h, h / 2);
-      ctx.fillStyle = grad;
-      ctx.fill();
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#5d3c14';
-      ctx.stroke();
-    }
-    text(ctx, this.label, 0, 1, {
-      size: 17,
-      color: this.isBack ? '#2f6b16' : '#3a7a1a',
-      stroke: '#fff3d8', strokeWidth: 3,
-    });
+    ctx.translate(this.curX, this.curY + p.dy * s);
+    ctx.scale(s, s);
+    const plaque = A.img(this.isBack ? 'menuBoutonRetour' : 'menuBouton');
+    // Le décalage de couleur du survol s'applique à la plaque ET au libellé :
+    // dans le SWF c'est le clip entier qui porte la transformation.
+    avecDecalage(ctx, p.r, p.v, 0, -BT_L / 2, -BT_HAUT, BT_L, BT_H, function (c) {
+      if (plaque && plaque.naturalWidth) c.drawImage(plaque, -BT_L / 2, -BT_HAUT, BT_L, BT_H);
+      // Le libellé est blanc, dans la fonte embarquée « PT Banana Split ».
+      c.save();
+      c.scale(1, BT_TEXTE_ETIRE);
+      text(c, this.label, 0, BT_TEXTE_Y, { size: BT_TEXTE_CORPS, color: '#ffffff', font: 'banana' });
+      c.restore();
+    }.bind(this));
     ctx.restore();
   };
+
+  // ── Pulsation de la tuile de personnage (sprite #332 du SWF) ─────────────
+  //
+  // Onze frames, et cette fois PAS de bosse d'échelle : seulement un coup de
+  // rouge sur le contenu de la tuile, qui monte très haut (+255) puis retombe.
+  const TUILE_ROUGE = [0, 28, 113, 255, 187, 130, 83, 47, 21, 5, 0];
+  const TUILE_VERT = [0, 6, 24, 55, 40, 28, 18, 10, 4, 1, 0];
+  // La tuile est le symbole `face` (fenêtre de 110, cadre de 130×133 en
+  // (−65, −66,5)) posé à la MOITIÉ de sa taille.
+  const TUILE_ECHELLE = 0.5;
 
   // visage sélectionnable du menu (RotatorFace.as)
   function RotatorFace(menu, gridPos, faceId, linkId, help) {
@@ -629,7 +762,8 @@ const SwapouUI = (function () {
     this.linkId = linkId;
     this.faceId = faceId;
     this.xMove *= 0.8;
-    this.r = 27;
+    this.face = new Face(faceId);
+    this.nbFrames = TUILE_ROUGE.length;
   }
   RotatorFace.prototype = Object.create(Rotator.prototype);
   RotatorFace.prototype.disable = function () {
@@ -642,9 +776,11 @@ const SwapouUI = (function () {
   };
   RotatorFace.prototype.hitTest = function (mx, my) {
     if (!this.visible || !this.stable) return false;
-    const r = this.r * this.scale + 4;
-    const dx = mx - this.curX, dy = my - this.curY;
-    return dx * dx + dy * dy <= r * r;
+    // La zone sensible est le CADRE de la tuile, pas un disque : les cases se
+    // touchent, et c'est ainsi qu'on peut viser celle du milieu.
+    const d = D.FACE_WIDTH * TUILE_ECHELLE * this.scale / 2;
+    return mx >= this.curX - d && mx <= this.curX + d &&
+      my >= this.curY - d && my <= this.curY + d;
   };
   RotatorFace.prototype.release = function () {
     if (!this.active || this.locked) return;
@@ -652,40 +788,26 @@ const SwapouUI = (function () {
     this.menu.onFaceSelect(this.linkId, this.faceId);
   };
   RotatorFace.prototype.draw = function (ctx) {
-    // case verte arrondie (vide si perso verrouillé), cf. capture d'époque
     if (!this.visible) return;
     this.updatePos();
+    const f = Math.max(0, Math.min(TUILE_ROUGE.length - 1.001, this.frame - 1));
+    const i = Math.floor(f), k = f - i;
+    const r = TUILE_ROUGE[i] + (TUILE_ROUGE[i + 1] - TUILE_ROUGE[i]) * k;
+    const v = TUILE_VERT[i] + (TUILE_VERT[i + 1] - TUILE_VERT[i]) * k;
+    const s = D.FACE_WIDTH * TUILE_ECHELLE * this.scale;   // côté de la fenêtre
+    const x = this.curX - s / 2, y = this.curY - s / 2;
+    const me = this;
     ctx.save();
-    const bump = 1 + this.hoverFrame * 0.018;
-    const s = this.scale * bump;
-    ctx.translate(this.curX, this.curY);
-    ctx.scale(s, s);
-    const r = this.r + 2;
-    const grad = ctx.createLinearGradient(0, -r, 0, r);
-    if (this.active) {
-      grad.addColorStop(0, '#9ccb4a');
-      grad.addColorStop(1, '#5f9a23');
-    } else {
-      grad.addColorStop(0, '#86b13e');
-      grad.addColorStop(1, '#557f22');
-    }
-    roundRect(ctx, -r, -r, r * 2, r * 2, 9);
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#c9a248';
-    ctx.stroke();
-    if (this.active) {
-      ctx.save();
-      roundRect(ctx, -r + 3, -r + 3, r * 2 - 6, r * 2 - 6, 7);
-      ctx.clip();
-      const img = A.img('face' + this.faceId + '_0');
-      if (img && img.naturalWidth) {
-        const sc = (r * 2 / img.naturalHeight) * 1.18;
-        ctx.drawImage(img, -img.naturalWidth * sc / 2, -r + 4, img.naturalWidth * sc, img.naturalHeight * sc);
-      }
-      ctx.restore();
-    }
+    ctx.globalAlpha = this.alpha;
+    // Le coup de rouge du survol ne touche que le CONTENU (depth 1 du sprite) —
+    // le cadre de bois et ses feuilles restent tels quels.
+    avecDecalage(ctx, r, v, 0, x, y, s, s, function (c) {
+      me.face.draw(c, x, y, s, { frame: false, verrou: !me.active });
+    });
+    const cadre = A.img('menuFaceTop');
+    if (cadre) ctx.drawImage(cadre,
+      x - D.FACEBORDER_X * s / D.FACE_WIDTH, y - D.FACEBORDER_Y * s / D.FACE_HEIGHT,
+      130 * s / D.FACE_WIDTH, 133 * s / D.FACE_HEIGHT);
     ctx.restore();
   };
 

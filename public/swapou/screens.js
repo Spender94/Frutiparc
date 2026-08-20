@@ -147,8 +147,11 @@
         if (!this.lock) this.onEnd();
         break;
     }
+    // `<= 0` et non `< 0` : à cadence nominale tmod vaut exactement 1, le
+    // compte à rebours tombait pile sur zéro sans jamais passer en dessous —
+    // et le logo restait alors affiché par-dessus tout le menu.
     if (this.logoHide > 0) this.logoHide -= tmod;
-    if (this.logoHide < 0) { this.logoHide = 0; this.logoVisible = false; }
+    if (this.logoHide <= 0) { this.logoHide = 0; this.logoVisible = false; }
 
     for (let i = 0; i < this.titles.length; i++) {
       const t = this.titles[i];
@@ -169,11 +172,19 @@
       }
     }
 
-    // survol (souris uniquement)
+    // Survol (souris uniquement). En DEUX passes, et dans cet ordre : Flash
+    // envoie onRollOut avant onRollOver quand on glisse d'un bouton à l'autre.
+    // Tout traiter dans une seule boucle laissait le « out » du bouton quitté
+    // effacer l'aide que le « over » du bouton visé venait d'afficher — selon
+    // leur ordre dans la liste, le libellé ne s'affichait donc pas.
+    const survole = [];
     for (let i = 0; i < this.btList.length; i++) {
       const bt = this.btList[i];
-      bt.setOver(bt.hitTest && bt.hitTest(SW.mouse.x, SW.mouse.y));
+      const dessus = !!(bt.hitTest && bt.hitTest(SW.mouse.x, SW.mouse.y));
+      if (dessus) survole.push(bt);
+      else bt.setOver(false);
     }
+    for (let i = 0; i < survole.length; i++) survole[i].setOver(true);
   };
 
   Menu.prototype.attachButton = function (y, label, gotoPhase, help) {
@@ -396,6 +407,25 @@
     }
   };
 
+  // Où le SWF pose ses images de menu, relevé sur la bibliothèque du .fla.
+  //
+  // Rien n'est centré : chaque dessin a son propre point d'ancrage. Les deux
+  // personnages tiennent debout au bord de l'écran (Menu.as les amène à _x = 0
+  // et _x = DOCWIDTH), et c'est l'ancrage qui les ramène DANS le cadre — les
+  // dessiner centrés sur ces abscisses en coupait la moitié.
+  const ANCRE_DIMITRI = { x: -2, y: 33 };
+  const ANCRE_NATACHA = { x: -163, y: 2 };
+  // Le gros fruit : les trois dessins font 285×439, mais la POMME (frame 1 du
+  // clip menuFruit) est ancrée 42 px plus bas que son centre — sur le cœur du
+  // fruit, feuilles exclues. La poire et l'orange, elles, sont centrées.
+  const ANCRE_FRUIT = {
+    menuPomme: { x: -142.5, y: -262.25 },
+    menuPoire: { x: -142.5, y: -219.5 },
+    menuOrange: { x: -142.5, y: -219.5 },
+  };
+  // bigShadow (forme #193) : une ellipse noire à 20 %.
+  const OMBRE_RX = 116.85, OMBRE_RY = 24.15;
+
   Menu.prototype.draw = function (ctx) {
     SW.drawBg(ctx, 'bg');
     const f = this.fruit;
@@ -405,12 +435,15 @@
       ctx.globalAlpha = Math.max(0, Math.min(1, f.alpha / 100));
       const sx = (f.scaleX || f.scale) / 100;
       const sy = (f.scaleY || f.scale) / 100;
-      ctx.fillStyle = 'rgba(30,50,10,0.3)';
+      // Menu.as : l'ombre suit le fruit en x, se pose 200 px sous son ancrage
+      // (à l'échelle en y) et prend son échelle.
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
       ctx.beginPath();
-      ctx.ellipse(f.curX, D.DOCHEIGHT - 40, 130 * sx, 18 * sx, 0, 0, Math.PI * 2);
+      ctx.ellipse(f.curX, f.y + 200 * sy, OMBRE_RX * sx, OMBRE_RY * sy, 0, 0, Math.PI * 2);
       ctx.fill();
       const img = A.img(this.menuFruitImg);
-      if (img) ctx.drawImage(img, f.curX - img.naturalWidth * sx / 2, f.curY - img.naturalHeight * sy / 2,
+      const a = ANCRE_FRUIT[this.menuFruitImg] || { x: -142.5, y: -219.5 };
+      if (img) ctx.drawImage(img, f.curX + a.x * sx, f.curY + a.y * sy,
         img.naturalWidth * sx, img.naturalHeight * sy);
       ctx.restore();
     }
@@ -420,21 +453,22 @@
       const nata = A.img('fullNatacha');
       const cs = this.charScale / 100;
       ctx.save();
-      if (dimi) ctx.drawImage(dimi, this.leftCharX - dimi.naturalWidth * cs / 2,
-        D.DOCHEIGHT - dimi.naturalHeight * cs + 10, dimi.naturalWidth * cs, dimi.naturalHeight * cs);
-      if (nata) ctx.drawImage(nata, this.rightCharX - nata.naturalWidth * cs / 2,
-        D.DOCHEIGHT - nata.naturalHeight * cs + 10, nata.naturalWidth * cs, nata.naturalHeight * cs);
+      if (dimi) ctx.drawImage(dimi, this.leftCharX + ANCRE_DIMITRI.x * cs, ANCRE_DIMITRI.y * cs,
+        dimi.naturalWidth * cs, dimi.naturalHeight * cs);
+      if (nata) ctx.drawImage(nata, this.rightCharX + ANCRE_NATACHA.x * cs, ANCRE_NATACHA.y * cs,
+        nata.naturalWidth * cs, nata.naturalHeight * cs);
       ctx.restore();
     }
-    // titres
+    // titres : la plaque orange du SWF (forme #358), libellé blanc
     for (let i = 0; i < this.titles.length; i++) {
       const t = this.titles[i];
       const k = Math.min(1, t.frame / 8);
       ctx.save();
       ctx.globalAlpha = k;
-      const img = A.img('levelBox');
-      if (img) ctx.drawImage(img, D.BUTTON_X - 80, D.TITLE_Y - 26, 160, 52);
-      U.text(ctx, t.text, D.BUTTON_X, D.TITLE_Y, { size: 16, color: '#3a7a1a', stroke: '#fff3d8', strokeWidth: 3 });
+      const img = A.img('menuTitre');
+      if (img) ctx.drawImage(img, D.BUTTON_X - 98.95, D.TITLE_Y - 14.15, 197.95, 28.3);
+      // Champ #359 du SWF : Impact 16, ivoire — pas la fonte des boutons.
+      U.text(ctx, t.text, D.BUTTON_X, D.TITLE_Y, { size: 16, color: '#ffe8b7', font: 'impact' });
       ctx.restore();
     }
     // boutons (arrière puis avant pour l'orbite)
@@ -442,19 +476,15 @@
       if (this.btList[i].behind) this.btList[i].draw(ctx);
     for (let i = 0; i < this.btList.length; i++)
       if (!this.btList[i].behind) this.btList[i].draw(ctx);
-    // barre d'aide
-    if (this.barVisible && this.helpText) {
-      ctx.save();
-      ctx.globalAlpha = 0.85;
-      U.roundRect(ctx, D.DOCWIDTH / 2 - 240, 8, 480, 26, 13);
-      ctx.fillStyle = '#fff7dd';
-      ctx.fill();
-      ctx.strokeStyle = '#8a5a2a';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      U.text(ctx, this.helpText, D.DOCWIDTH / 2, 21, { size: 12, color: '#5a3a10' });
-      ctx.restore();
-    }
+    // Barre d'aide : dans le SWF ce n'est pas un encart, juste une ligne de
+    // texte posée en haut de l'écran (helpBar en 350;20), champ #357 en
+    // Impact 18. Le champ est déclaré blanc mais sort à l'écran en vert pâle —
+    // c'est cette teinte-là qu'on reprend, pas celle du tag.
+    // Le clip est en y = 20, mais son champ y est posé 15,4 px plus haut : les
+    // lettres tombent donc au-dessus de cette ligne.
+    if (this.barVisible && this.helpText)
+      U.text(ctx, this.helpText, D.DOCWIDTH / 2, 17,
+        { size: 18, color: '#b5c77e', font: 'impact' });
     // logo
     if (this.logoVisible || this.logoHide > 0) {
       const img = A.img('logo');
@@ -465,9 +495,6 @@
       ctx.globalAlpha = a;
       U.drawCentered(ctx, img, D.DOCWIDTH / 2, D.DOCHEIGHT / 2, 0.95 * s);
       ctx.restore();
-      if (this.animPhase === 1 && Math.floor(Date.now() / 600) % 2 === 0)
-        U.text(ctx, '— cliquez pour commencer —', D.DOCWIDTH / 2, D.DOCHEIGHT - 40,
-          { size: 14, color: '#fff7dd', stroke: '#3a5a10', strokeWidth: 3 });
     }
     // versus
     if (this.versus) this.drawVersus(ctx);

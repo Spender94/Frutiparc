@@ -62,10 +62,24 @@ function makeCtx() {
     measureText: function () { return { width: 10 }; },
     createLinearGradient: function () { return grad; },
     createRadialGradient: function () { return grad; },
+    // Nécessaires au décalage de couleur additif (avecDecalage) : il repasse
+    // par un calque, donc par la matrice courante et les modes de composition.
+    globalCompositeOperation: 'source-over',
+    getTransform: function () { return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }; },
+    setTransform: function () {},
     nCalls: function () { return calls; },
   };
   return ctx;
 }
+// Le calque du décalage de couleur veut un vrai canvas : on lui en donne un
+// factice, pour que ce chemin soit parcouru lui aussi.
+sandbox.document = {
+  createElement: function () {
+    const c = { width: 0, height: 0 };
+    c.getContext = function () { const x = makeCtx(); x.canvas = c; return x; };
+    return c;
+  },
+};
 
 function pump(n, tmod) {
   tmod = tmod || 1;
@@ -95,6 +109,29 @@ drawNow('options + aide');
 Manager.mode.jump(30);
 pump(120, 2);
 drawNow('sélection des persos');
+{
+  // Le survol d'une tuile allume son nom dans la barre d'aide, et la pulsation
+  // (décalage de couleur additif) passe par le calque de composition.
+  const menu = Manager.mode;
+  const tuiles = menu.btList.filter(function (b) { return b.faceId !== undefined; });
+  assert(tuiles.length === 7, 'sept personnages proposés');
+  SW.handleMouseMove(tuiles[0].curX, tuiles[0].curY);
+  pump(4, 1);
+  assert(menu.helpText === SW.E.CHAR_NAMES[tuiles[0].faceId],
+    'le nom du perso survolé s’affiche : ' + menu.helpText);
+  assert(tuiles[0].frame > 1, 'la pulsation de survol est lancée');
+  drawNow('tuile survolée');
+  // Glisser d'une tuile à l'autre : Flash envoie le « out » AVANT le « over ».
+  // Traiter les deux dans le désordre effaçait l'aide qu'on venait d'afficher.
+  const autre = tuiles.find(function (t) { return t.faceId !== tuiles[0].faceId; });
+  SW.handleMouseMove(autre.curX, autre.curY);
+  pump(2, 1);
+  assert(menu.helpText === SW.E.CHAR_NAMES[autre.faceId],
+    'en glissant d’une tuile à l’autre, l’aide suit : ' + menu.helpText);
+  SW.handleMouseMove(5, 5);
+  pump(2, 1);
+  assert(menu.helpText === '', 'l’aide s’efface quand on quitte la tuile');
+}
 // versus
 SW.Data.players = [0, 4];
 Manager.mode.wins_flag = undefined;

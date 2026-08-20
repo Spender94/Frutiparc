@@ -25,6 +25,21 @@
     user-select: none;
     -webkit-user-select: none;
   }
+  /* Les deux fontes EMBARQUÉES du SWF, sorties par
+     scripts/extract-swapou-menu.js : « PT Banana Split » pour les libellés de
+     boutons et de titres, « Impact » pour la barre d'aide. Ce sont des fontes
+     de 2005, sans accentués — comme dans le jeu d'origine, qui écrit donc
+     « Parametres de jeu ». */
+  @font-face {
+    font-family: "PT Banana Split";
+    src: url("fontes/banana.woff") format("woff");
+    font-display: block;
+  }
+  @font-face {
+    font-family: "Impact SW";
+    src: url("fontes/impact.woff") format("woff");
+    font-display: block;
+  }
   #stage {
     position: fixed;
     left: 50%; top: 50%;
@@ -217,6 +232,15 @@
   SwapouAssets.loadImages(function (n, total) {
     loadbar.style.width = Math.round(n * 100 / total) + '%';
     loadtxt.textContent = 'chargement… ' + n + '/' + total;
+  }).then(function () {
+    // Le canvas ne sait pas attendre une fonte : `ctx.font` retombe sans bruit
+    // sur la police de secours si le WOFF n'est pas encore là. On les charge
+    // donc explicitement — et on démarre quand même si ça échoue.
+    if (!document.fonts || !document.fonts.load) return;
+    return Promise.all([
+      document.fonts.load('16px "PT Banana Split"'),
+      document.fonts.load('16px "Impact SW"'),
+    ]).catch(function () {});
   }).then(function () {
     loader.style.display = 'none';
     SW.boot(canvas, sid);
