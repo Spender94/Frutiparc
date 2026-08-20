@@ -42,6 +42,13 @@ const VOYANTS = [
   { jeu: 'swapou', etiquette: 'swapou2' },       // la grappe de fruits
   { jeu: 'miniwave', etiquette: 'miniwave' },    // le vaisseau blanc
   { jeu: 'minipixiz', etiquette: 'minipixiz' },  // la fée-papillon
+  // Les quatre qui manquaient : la fiche s'en sert aussi, pour marquer chaque
+  // ligne de « Scores du jour » du voyant de son jeu — comme le bureau.
+  { jeu: 'bkiwi', etiquette: 'bkiwi' },          // le bolide
+  { jeu: 'snake3', etiquette: 'snake3' },        // le serpent
+  { jeu: 'mb2', etiquette: 'mb2' },              // la bille
+  { jeu: 'kaluga', etiquette: 'kaluga' },        // le papillon
+  { jeu: 'minifever', etiquette: 'minifever' },  // le maillet
 ];
 
 // Les ÉTIQUETTES d'images d'un sprite (FrameLabel, code 43), directement dans
@@ -128,7 +135,7 @@ fs.writeFileSync(path.join(TRAVAIL, 'voyants.json'), JSON.stringify(donnees));
 // jeu utilisent des dégradés que seul un vrai moteur rend fidèlement.
 const rendu = path.join(TRAVAIL, 'rendu.js');
 fs.writeFileSync(rendu, `
-const { chromium } = require(${JSON.stringify(path.join(RACINE, 'node_modules/playwright'))});
+const { chromium } = require('playwright');
 const fs = require('fs');
 const TRAVAIL = ${JSON.stringify(TRAVAIL)};
 const SORTIE = ${JSON.stringify(SORTIE)};

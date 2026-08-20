@@ -2644,6 +2644,10 @@ function dbUserToMemory(row) {
     frutiSign: row.fruti_sign ?? -1,
     frutiSignB: row.fruti_sign_b ?? -1,
     createdAt: row.created_at ? (row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)) : '',
+    // La colonne last_login était tenue à jour depuis toujours (db.recordLogin
+    // à chaque identification) sans jamais remonter jusqu'aux clients. La
+    // fiche l'affiche désormais, des deux côtés.
+    lastLogin: row.last_login ? (row.last_login instanceof Date ? row.last_login.toISOString() : String(row.last_login)) : '',
     customAccessories: [],
     kikoozLog: [],
     userLog: [],
@@ -3170,6 +3174,21 @@ function awardImmediateXp(username, gain, reason = '', { notify = true } = {}) {
     maybeUnlockReferral(username, oldLevel, newLevel).catch(() => {});
   }
   console.log(`[XP]  ${username}: +${gain} XP${reason ? ' (' + reason + ')' : ''} → total=${user.xp}`);
+}
+
+// ── La DERNIÈRE CONNEXION ────────────────────────────────────────────────────
+//
+// db.recordLogin écrit la colonne last_login à chaque identification depuis
+// toujours ; personne ne la relisait. La fiche l'affiche maintenant dans sa
+// section « bonus », des deux côtés (bureau et mobile) — d'où ce relais, qui
+// pose AUSSI la date en mémoire : sans base, la colonne n'existe pas, et une
+// fiche consultée dans la foulée doit quand même savoir dire « aujourd'hui ».
+function marquerConnexion(username) {
+  const user = users[username];
+  if (user) user.lastLogin = new Date().toISOString();
+  if (process.env.DATABASE_URL) {
+    db.recordLogin(username).catch((e) => console.error('[DB] recordLogin error:', e.message));
+  }
 }
 
 // Once-per-day connection bonus. The claim marker is stored DURABLY on the user
@@ -4109,6 +4128,14 @@ function getFrutizSubscribeDate(user) {
 // Format birthday for "bd" attribute in DOT format.
 function getFrutizBirthday(user, fallback) {
   return formatFrutizDate(user && user.birthday, fallback || '2000-01-01.00:00:00');
+}
+
+// La dernière connexion, au même format que les autres dates de `userinfo`.
+// Vide plutôt qu'une date de repli : mieux vaut ne rien dire que d'inventer une
+// visite. Un compte jamais revu depuis la mise en place de la colonne n'a pas
+// de date — le bureau et le mobile affichent alors « inconnue ».
+function getDerniereConnexion(user) {
+  return user && user.lastLogin ? formatFrutizDate(user.lastLogin, '') : '';
 }
 
 // ─────────────────────────────────────────────
@@ -5649,7 +5676,6 @@ app.post('/api/auth/login', async (req, res) => {
       users[username]._dbId = dbUser.id;
       users[username].pass = dbUser.password;
       applyPendingChallengeNotifications(username, users[username]);
-      db.recordLogin(username).catch((e) => console.error('[DB] recordLogin error:', e.message));
     } else {
       const user = users[username];
       const { ok, upgrade } = await verifyPassword(user && user.pass, password);
@@ -5668,6 +5694,10 @@ app.post('/api/auth/login', async (req, res) => {
     }
     if (upgrade) user.pass = upgrade;
   }
+
+  // Ici la connexion est acquise, quel que soit le chemin emprunté (base,
+  // mémoire, ou repli sur erreur) : c'est l'endroit où dater la visite.
+  marquerConnexion(username);
 
   // Parrainage : on renseigne le jeton d'appareil des comptes existants qui n'en
   // ont pas (améliore la détection « même appareil » pour leurs futurs filleuls).
@@ -13112,17 +13142,25 @@ function saveMyInfo(req, res) {
   const birthday = /^\d{4}-\d{2}-\d{2}$/.test(rawBirthday) ? rawBirthday : (user.birthday || '2000-01-01');
   const lastNamePublic = String(source.p || user.lastNamePublic || 'Y').toUpperCase() === 'N' ? 'N' : 'Y';
 
+  // Un champ PRÉSENT fait foi, même vide ; un champ absent laisse l'ancienne
+  // valeur. Auparavant c'était `source.f || user.firstName` : une chaîne vide
+  // retombait sur l'ancienne, et personne — ni au bureau ni au mobile — ne
+  // pouvait EFFACER son nom, sa ville ou son commentaire. Le garde-fou contre
+  // le formulaire partiel tient toujours, il porte juste sur la présence.
+  const champ = (cle, actuel, defaut) => (source[cle] !== undefined
+    ? String(source[cle]) : String(actuel !== undefined && actuel !== null ? actuel : (defaut || '')));
+
   user.birthday = birthday;
-  user.firstName = String(source.f || user.firstName || '').slice(0, 64);
-  user.lastName = String(source.l || user.lastName || '').slice(0, 64);
+  user.firstName = champ('f', user.firstName).slice(0, 64);
+  user.lastName = champ('l', user.lastName).slice(0, 64);
   user.lastNamePublic = lastNamePublic;
-  user.gender = String(source.g || user.gender || 'M').slice(0, 1) || 'M';
-  user.realJob = String(source.j || user.realJob || 'Frutiz').slice(0, 80);
-  user.city = String(source.c || user.city || '').slice(0, 80);
-  user.countryIndex = String(source.o || user.countryIndex || '1').slice(0, 8);
-  user.regionIndex = String(source.r || user.regionIndex || '1').slice(0, 8);
-  user.siteUrl = String(source.u || user.siteUrl || '').slice(0, 256);
-  user.comment = String(source.m || user.comment || '').slice(0, 500);
+  user.gender = (champ('g', user.gender, 'M').slice(0, 1) || 'M');
+  user.realJob = champ('j', user.realJob, 'Frutiz').slice(0, 80);
+  user.city = champ('c', user.city).slice(0, 80);
+  user.countryIndex = (champ('o', user.countryIndex, '1') || '1').slice(0, 8);
+  user.regionIndex = (champ('r', user.regionIndex, '1') || '1').slice(0, 8);
+  user.siteUrl = champ('u', user.siteUrl).slice(0, 256);
+  user.comment = champ('m', user.comment).slice(0, 500);
   if (source.q !== undefined) user.departmentIndex = String(source.q).slice(0, 8);
 
   // Keep public userinfo fields in sync with the edit form values.
@@ -16857,6 +16895,41 @@ app.get('/api/chat/histo', (req, res) => {
   res.type('html').send(page);
 });
 
+// ── MA fiche, telle qu'on la modifie ────────────────────────────────────────
+//
+// Le bureau ouvre « éditer ma fiche » (win.EditInfo) : il lit /do/gmi et écrit
+// /do/smi. Le mobile n'avait rien — sa fiche était en lecture seule, alors que
+// c'est SA fiche. On sert donc ici les mêmes champs, plus la table des pays et
+// régions que le formulaire du bureau tire de lang_french.xml : sans elle, le
+// téléphone ne pourrait proposer que du texte libre là où le bureau a des
+// listes, et les deux clients écriraient des index différents.
+//
+// L'ÉCRITURE, elle, ne passe pas par ici : le mobile poste sur /do/smi, comme
+// le bureau. Un seul écrivain, donc aucune règle à tenir en double.
+app.get('/api/light/profil', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
+  const u = users[username];
+  const t = tablePays();
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    profil: {
+      prenom: u.firstName || '', nom: u.lastName || '',
+      nomPublic: String(u.lastNamePublic || 'Y').toUpperCase() !== 'N',
+      anniversaire: /^\d{4}-\d{2}-\d{2}$/.test(String(u.birthday || '')) ? u.birthday : '',
+      sexe: String(u.gender || 'M').toUpperCase() === 'F' ? 'F' : 'M',
+      metier: u.realJob || '', ville: u.city || '',
+      pays: String(u.countryIndex || '1'), region: String(u.regionIndex || '1'),
+      site: u.siteUrl || '', commentaire: u.comment || '',
+    },
+    pays: Object.keys(t).map((c) => ({
+      code: c, nom: t[c].nom,
+      regions: Object.keys(t[c].regions).map((r) => ({ code: r, nom: t[c].regions[r] })),
+    })),
+  });
+});
+
 app.get('/api/light/fiche', async (req, res) => {
   const demandeur = resolveUsernameFromSid(req.query.sid || '');
   if (!demandeur) return res.status(401).json({ ok: false, error: 'auth' });
@@ -16983,7 +17056,12 @@ app.get('/api/light/fiche', async (req, res) => {
       // Pays et région par leurs noms, résolus dans la table du bureau.
       pays: lieuDit.pays, region: lieuDit.region,
     },
-    bonus: { commentaire: ud.comment || '', site: ud.siteUrl || '' },
+    bonus: {
+      commentaire: ud.comment || '', site: ud.siteUrl || '',
+      // La dernière visite : elle s'affiche par défaut, même sur une fiche
+      // sans commentaire ni site — c'est souvent la seule chose qu'on cherche.
+      derniereConnexion: ud.lastLogin || '',
+    },
     scores: { classements, medailles },
   });
 });
@@ -20311,9 +20389,7 @@ async function handleCBeeMessage(socket, rawXml) {
         }
       }
 
-      if (process.env.DATABASE_URL && user._dbId) {
-        db.recordLogin(effectiveLogin).catch((e) => console.error('[DB] recordLogin error:', e.message));
-      }
+      marquerConnexion(effectiveLogin);
 
       sendToClient(socket, `<${CMD.ident} l="${escapeXml(getDisplayName(effectiveLogin))}" x="${user.xp}" f="${bouilleOf(user)}" />`);
       if (user.userLog && user.userLog.length > 0) {
@@ -21659,7 +21735,7 @@ case 'trace': {
       if (!ud) ud = {};
       const consUserA = computeConsecration(u);
       sendToClient(socket,
-        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(getFrutizBirthday(ud, ''))}" fj="${escapeXml(getFrutizJob(u, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consUserA.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(getFrutizBirthday(ud, ''))}" fj="${escapeXml(getFrutizJob(u, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consUserA.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" lc="${escapeXml(getDerniereConnexion(ud))}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
       );
       break;
     }
@@ -21872,7 +21948,7 @@ case 'createchannel': {
   const consOtherUser = computeConsecration(otherUser);
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(getFrutizBirthday(ud, '2000-01-01.00:00:00'))}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consOtherUser.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${escapeXml(getFrutizBirthday(ud, '2000-01-01.00:00:00'))}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consOtherUser.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" lc="${escapeXml(getDerniereConnexion(ud))}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
   );
 
   sendToClient(

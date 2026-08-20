@@ -85,6 +85,10 @@
     box-shadow: 0 0 0 1px #DDDDDD, 0 -8px 24px rgba(44,74,15,.3);
   }
   .sheet.show { transform: translateY(0); }
+  /* Une feuille ouverte DEPUIS la fiche doit passer devant elle (la fiche est
+     au-dessus de tout le reste, en 70). */
+  .sheet.haut { z-index: 81; }
+  .sheet-backdrop.haut { z-index: 80; }
   .sheet .sheet-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 12px 16px; font-weight: bold; color: #2C4A0F;
@@ -110,6 +114,39 @@
   }
   #bouille-sheet-preview iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
   .sheet-hint { font-size: 12px; color: #2f5510; margin-bottom: 8px; font-weight: bold; }
+
+  /* ── « Modifier ma fiche » ────────────────────────────────────────────────
+     Une colonne de champs sur la carte jaune de la feuille, dans les tons du
+     reste du mobile. Chaque libellé porte son champ : la cible tactile fait
+     toute la ligne. */
+  .prof-grille { display: flex; flex-direction: column; gap: 9px; }
+  .prof-grille label {
+    display: flex; flex-direction: column; gap: 3px;
+    font-size: 11px; font-weight: bold; color: #2f5510;
+  }
+  .prof-grille input[type=text], .prof-grille input[type=url],
+  .prof-grille input[type=date], .prof-grille select, .prof-grille textarea {
+    font: 13px Verdana, Arial, sans-serif; color: #2C4A0F;
+    border: 1px solid #C9C90B; border-radius: 5px; padding: 7px 8px;
+    background: #fff; width: 100%; box-sizing: border-box;
+  }
+  .prof-grille textarea { resize: vertical; }
+  .prof-grille .prof-case {
+    flex-direction: row; align-items: center; gap: 7px; font-weight: normal;
+  }
+  .prof-grille .prof-case input { width: 16px; height: 16px; }
+  .prof-pied {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-top: 12px;
+  }
+  #prof-etat { font-size: 11px; font-weight: bold; color: #2f5510; }
+  #prof-enregistrer {
+    border: 0; border-radius: 8px; padding: 9px 18px; cursor: pointer;
+    font: bold 13px Verdana, Arial, sans-serif; color: #2C4A0F;
+    background: linear-gradient(180deg, #DFF7A0, #A7DC6B);
+    box-shadow: 0 1px 2px rgba(44,74,15,.25), inset 0 1px 0 rgba(255,255,255,.6);
+  }
+  #prof-enregistrer:disabled { opacity: .5; cursor: default; }
   /* Accessory grid: bouilles laid side by side on the yellow inventory card,
      with no per-item frame or background (cf. the boutique "Accessoires"). */
   .acc-grid {
@@ -726,6 +763,11 @@
     display: flex; align-items: center; justify-content: center;
   }
   .fiche-actions button img { width: 20px; height: 20px; object-fit: contain; display: block; }
+  /* `display:flex` ci-dessus l'emportait sur la règle du navigateur pour
+     [hidden] : les boutons de MODÉRATION (kick, ban, totoché) s'affichaient
+     donc sur toutes les fiches, y compris la sienne et y compris pour qui n'a
+     aucun pouvoir. On rend son effet à l'attribut. */
+  .fiche-actions button[hidden] { display: none; }
   .fiche-actions button:active { filter: brightness(.92); }
   /* Pas encore porté sur mobile : présent, mais éteint — comme convenu. */
   .fiche-actions button:disabled { opacity: .42; cursor: default; }
@@ -747,6 +789,23 @@
      scores d'un joueur chargé, par exemple). Sans ça, la carte sautait à
      chaque changement d'onglet. */
   .fiche-page { padding: 10px 12px 12px; height: 236px; overflow-y: auto; }
+  /* Barre de défilement « gélule » verte, aux teintes de la carte — la même
+     facture que celle du bouilloscope, dans la gamme de la fiche. Chromium et
+     WebKit par ::-webkit-scrollbar ; Firefox par scrollbar-* sous @supports,
+     car le poser sur Chromium désactiverait les pseudo-éléments. */
+  @supports not selector(::-webkit-scrollbar) {
+    .fiche-page { scrollbar-width: thin; scrollbar-color: #8FC451 #DDF2BC; }
+  }
+  .fiche-page::-webkit-scrollbar { width: 12px; }
+  .fiche-page::-webkit-scrollbar-track { background: #DDF2BC; border-radius: 999px; margin: 4px 2px; }
+  .fiche-page::-webkit-scrollbar-thumb {
+    border-radius: 999px; border: 3px solid transparent; background-clip: padding-box;
+    background-image: linear-gradient(90deg, #6FA436 0%, #CDEB9A 48%, #A7DC6B 56%, #6FA436 100%);
+    box-shadow: inset 0 0 0 1px rgba(68,101,49,.30);
+  }
+  .fiche-page::-webkit-scrollbar-thumb:hover {
+    background-image: linear-gradient(90deg, #628F30 0%, #DAF3B4 48%, #B7E585 56%, #628F30 100%);
+  }
   /* Le titre de section, centré entre deux filets — le « FrutiSigne » de
      l'intégration. */
   .fiche-titre {
@@ -788,12 +847,16 @@
     gap: 10px; margin: 0 4px 12px; padding-bottom: 10px;
     border-bottom: 1.5px solid #a7dc6b;
   }
-  .fiche-medaille { width: 52px; height: 52px; display: block; }
+  .fiche-medaille { width: 42px; height: 42px; display: block; }
   .fiche-jour {
     font-family: Verdana, Arial, sans-serif; font-size: 11.5px; font-weight: bold;
     color: #446531; text-align: center; padding: 3px 4px;
-    display: flex; align-items: baseline; justify-content: center; gap: 8px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
   }
+  /* L'icône du jeu, à gauche de son nom : son VOYANT (public/fb/voyant_*.png,
+     le clip 246 de main.swf), celui-là même que le bureau pose sur ses lignes
+     de scores et à côté d'un joueur en partie. */
+  .fiche-jour .jeu-ico { width: 20px; height: 20px; flex: 0 0 auto; display: block; }
   /* Le score reste lisible à côté du nom, sans voler la vedette — le bureau
      n'affiche que le nom, mais un onglet « scores » sans chiffre serait
      avare sur un écran qui a la place. */
@@ -1374,6 +1437,12 @@
   .mb-avatar .stage iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
   /* Reflet (brillance) dans le coin SUPÉRIEUR DROIT de l'encart bouille. */
   .mb-avatar .reflet { right: 5%; top: 5%; width: 46%; height: auto; z-index: 3; }
+  /* Le calque de clic : au-dessus de tout, invisible, toute la vignette. */
+  #home-avatar-fiche {
+    position: absolute; inset: 3px; z-index: 4; border: 0; padding: 0;
+    background: transparent; border-radius: 10px; cursor: pointer;
+  }
+  #home-avatar-fiche:active { background: rgba(255,255,255,.18); }
 
   /* Colonne droite : encart niveau (haut) + rangée d'emotes (bas). */
   .mb-right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -1517,6 +1586,20 @@
   .home-tile:active .ico img { transform: scale(.9); }
   .home-tile .lbl { font-size: 14px; font-weight: bold; color: #2C4A0F; text-align: center; }
   .home-tile:active .lbl { text-decoration: underline; }
+  /* Icône attrapée : la tuile d'origine reste en place, fantôme, pour montrer
+     où la grille se refermera ; c'est le clone qui suit le doigt. */
+  .home-tile.tuile-partie { opacity: .28; }
+  .tuile-volante {
+    position: fixed; z-index: 60; pointer-events: none; margin: 0;
+    transform: scale(1.12); filter: drop-shadow(0 6px 10px rgba(44,74,15,.45));
+  }
+  /* Sans ça, un appui long sur une icône ferait défiler le tiroir au lieu de
+     l'emporter — et sur iOS ouvrirait le menu de partage de l'image. */
+  .home-tile { touch-action: manipulation; -webkit-touch-callout: none; }
+  /* Et sans ça, tirer sur une icône déclenche le glisser-déposer NATIF du
+     navigateur (on tire une image) : il avale les événements de pointeur et
+     rend le déplacement impossible. */
+  .home-tile img { -webkit-user-drag: none; user-drag: none; }
   /* Messages privés non lus : sans ce compteur sur l'accueil, un message reçu
      pendant qu'on est ailleurs dans l'appli restait totalement invisible — la
      pastille du bandeau de chat n'est affichée que DANS les salons. */
@@ -1613,6 +1696,10 @@
             <img class="cadre" src="/fb/cadre_bouille.svg" alt="">
             <img class="reflet" src="/fb/reflet_bouille.svg" alt="">
           </div>
+          <!-- La bouille du bureau ouvre SA fiche, comme au bureau Flash. La
+               scène est une iframe : le clic n'en sort pas, d'où ce calque
+               transparent par-dessus, qui le reçoit à sa place. -->
+          <button type="button" id="home-avatar-fiche" title="Voir ma fiche"></button>
         </div>
         <!-- Colonne droite : encart niveau (haut) + emotes (bas) -->
         <div class="mb-right">
@@ -1977,6 +2064,9 @@
             <div class="fiche-actions">
               <button type="button" id="fiche-mp" title="Discuter en privé"><img src="/fb/fiche/ico_chat.png" alt=""></button>
               <button type="button" id="fiche-mail" title="Lui écrire un message"><img src="/fb/fiche/ico_mail.png" alt=""></button>
+              <!-- Sur SA fiche, le bureau remplace ces deux boutons par
+                   « modifier ma fiche » (win.EditInfo). Ici aussi. -->
+              <button type="button" id="fiche-editer" title="Modifier ma fiche" hidden><img src="/fb/fiche/ico_edite.png" alt=""></button>
               <button type="button" id="fiche-kick" class="modo" title="Éjecter du salon" hidden><img src="/fb/fiche/ico_kick.png" alt=""></button>
               <button type="button" id="fiche-ban" class="modo" title="Bannir" hidden><img src="/fb/fiche/ico_ban.png" alt=""></button>
               <button type="button" id="fiche-totoche" class="modo" title="Totocher (rendre muet)" hidden><img src="/fb/fiche/ico_totoche.png" alt=""></button>
@@ -1995,6 +2085,35 @@
         </div>
       </div>
     </div>
+
+  <!-- « Modifier ma fiche » — les mêmes champs que win.EditInfo au bureau, et
+       le même écrivain : l'enregistrement poste sur /do/smi. -->
+  <div id="profil-sheet-backdrop" class="sheet-backdrop haut"></div>
+  <div id="profil-sheet" class="sheet haut">
+    <div class="sheet-head">
+      <span><img class="sheet-ico" src="/fb/fiche/ico_edite.png" alt="">Modifier ma fiche</span>
+      <button id="profil-sheet-close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="prof-grille">
+        <label>Prénom<input id="prof-prenom" type="text" maxlength="64" autocomplete="given-name"></label>
+        <label>Nom<input id="prof-nom" type="text" maxlength="64" autocomplete="family-name"></label>
+        <label class="prof-case"><input id="prof-nom-public" type="checkbox"><span>Afficher mon nom sur ma fiche</span></label>
+        <label>Date de naissance<input id="prof-anniv" type="date"></label>
+        <label>Sexe<select id="prof-sexe"><option value="M">Garçon</option><option value="F">Fille</option></select></label>
+        <label>Activité<input id="prof-metier" type="text" maxlength="80"></label>
+        <label>Pays<select id="prof-pays"></select></label>
+        <label>Région<select id="prof-region"></select></label>
+        <label>Ville<input id="prof-ville" type="text" maxlength="80"></label>
+        <label>Site Internet<input id="prof-site" type="url" maxlength="256" placeholder="http://…"></label>
+        <label class="prof-large">Commentaire<textarea id="prof-com" maxlength="500" rows="4"></textarea></label>
+      </div>
+      <div class="prof-pied">
+        <span id="prof-etat"></span>
+        <button type="button" id="prof-enregistrer">Enregistrer</button>
+      </div>
+    </div>
+  </div>
 
   <div id="disques-sheet-backdrop" class="sheet-backdrop"></div>
   <div id="disques-sheet" class="sheet">
@@ -2565,6 +2684,13 @@
     stage.innerHTML = '<iframe scrolling="no" aria-hidden="true" '
       + 'sandbox="allow-scripts allow-same-origin" src="' + url + '"></iframe>';
   }
+  // La bouille du bureau ouvre ma fiche — d'où l'on peut la modifier.
+  (function () {
+    var b = $("#home-avatar-fiche");
+    if (b) b.addEventListener("click", function () {
+      if (state.user) ouvrirFiche(state.user);
+    });
+  })();
   function refreshHomeAvatar() {
     // Bouille live (changement d'accessoire en session) sinon celle du profil.
     var b = (state.bouilleByUser && state.bouilleByUser[state.userLower])
@@ -2579,6 +2705,9 @@
     refreshHomeAvatar();
   }
   function renderHome() {
+    // Le rangement du bureau est propre à chaque frutiz : on ne peut le poser
+    // qu'une fois le pseudo connu, donc ici et pas au chargement du script.
+    if (window.appliquerOrdreBureau) window.appliquerOrdreBureau();
     var em = $("#home-emotes");
     if (em && !em.childNodes.length) {
       HOME_EMOTES.forEach(function (it) {
@@ -2672,6 +2801,8 @@
   // Clics sur la grille de l'accueil → navigation (panneaux ou feuilles).
   Array.prototype.forEach.call(document.querySelectorAll(".home-tile[data-go]"), function (b) {
     b.addEventListener("click", function () {
+      // Un glissement qui vient de finir n'est pas un clic.
+      if (bureauVientDeGlisser) return;
       var go = b.getAttribute("data-go");
       if (go === "shop") return openShopSheet();
       if (go === "mail" || go === "evenements" || go === "historique") return activateTab(go);
@@ -2681,6 +2812,132 @@
       activateTab(go); // chat / forum / scores
     });
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Ranger son bureau
+  //
+  // Au bureau Flash on attrape une icône et on la pose où l'on veut : ses
+  // coordonnées voyagent avec le fichier (FPDesktop.onDrop pose `pos` puis
+  // fileMng.move). Ici la grille est FLUIDE — trois colonnes dans un tiroir
+  // dont la largeur change à chaque rotation. On garde donc le GESTE, pas les
+  // coordonnées : l'icône se déplace dans la grille, et c'est l'ORDRE qu'on
+  // retient. Un x/y absolu aurait fini hors de l'écran au premier changement
+  // de format, ou sous une autre icône.
+  //
+  // À la souris on attrape tout de suite ; au doigt il faut un APPUI LONG, sans
+  // quoi on volerait le défilement du tiroir à chaque fois qu'on l'effleure.
+  // ══════════════════════════════════════════════════════════════════════════
+  var bureauVientDeGlisser = false;
+  (function () {
+    var grille = $("#home-grid");
+    if (!grille) return;
+    var APPUI_LONG = 320;                 // ms avant de saisir, au doigt
+    var SEUIL = 8;                        // px avant de saisir, à la souris
+    var tuile = null, clone = null, minuteur = null;
+    var x0 = 0, y0 = 0, dx = 0, dy = 0, tactile = false, saisi = false;
+
+    function cle() { return "fp_bureau_ordre_" + (state.userLower || ""); }
+    function lireOrdre() {
+      try { return JSON.parse(localStorage.getItem(cle()) || "[]"); } catch (e) { return []; }
+    }
+    function ecrireOrdre() {
+      var l = Array.prototype.map.call(grille.children, function (t) {
+        return t.getAttribute("data-go");
+      }).filter(Boolean);
+      try { localStorage.setItem(cle(), JSON.stringify(l)); } catch (e) {}
+    }
+    // Au chargement : on replace les tuiles dans l'ordre retenu. Celles qu'on
+    // ne connaît pas (une rubrique ajoutée depuis) restent à leur place native,
+    // à la suite — jamais perdues.
+    window.appliquerOrdreBureau = function () {
+      var ordre = lireOrdre();
+      if (!ordre.length) return;
+      ordre.forEach(function (go) {
+        var t = grille.querySelector('.home-tile[data-go="' + go + '"]');
+        if (t) grille.appendChild(t);
+      });
+      Array.prototype.slice.call(grille.children).forEach(function (t) {
+        if (ordre.indexOf(t.getAttribute("data-go")) < 0) grille.appendChild(t);
+      });
+    };
+
+    // Une fois l'icône en main, le tiroir ne doit plus défiler sous elle.
+    // `touch-action` ne suffit pas : il est évalué au DÉBUT du contact, donc
+    // bien avant l'appui long. On bloque donc le défilement à la source.
+    function bloquer(ev) { ev.preventDefault(); }
+
+    function saisir(ev) {
+      saisi = true;
+      bureauVientDeGlisser = true;
+      document.addEventListener("touchmove", bloquer, { passive: false });
+      var r = tuile.getBoundingClientRect();
+      dx = x0 - r.left; dy = y0 - r.top;
+      clone = tuile.cloneNode(true);
+      clone.className = "home-tile tuile-volante";
+      clone.style.width = r.width + "px";
+      clone.style.height = r.height + "px";
+      document.body.appendChild(clone);
+      tuile.classList.add("tuile-partie");
+      deplacer(x0, y0);
+      if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) {} }
+    }
+    function deplacer(x, y) {
+      clone.style.left = (x - dx) + "px";
+      clone.style.top = (y - dy) + "px";
+      // Le clone ne reçoit pas les événements (pointer-events: none) : ce que
+      // l'on trouve sous le doigt est bien la tuile survolée.
+      var sous = document.elementFromPoint(x, y);
+      var cible = sous && sous.closest && sous.closest(".home-tile");
+      if (!cible || cible === tuile || cible === clone || cible.parentNode !== grille) return;
+      var r = cible.getBoundingClientRect();
+      grille.insertBefore(tuile, (x > r.left + r.width / 2) ? cible.nextSibling : cible);
+    }
+    function relacher() {
+      clearTimeout(minuteur);
+      document.removeEventListener("touchmove", bloquer, { passive: false });
+      if (clone) { clone.remove(); clone = null; }
+      if (tuile) tuile.classList.remove("tuile-partie");
+      if (saisi) {
+        ecrireOrdre();
+        // Le clic de fin de geste arrive juste après : on le laisse passer
+        // dans le vide, puis on rouvre la navigation.
+        setTimeout(function () { bureauVientDeGlisser = false; }, 0);
+      } else {
+        bureauVientDeGlisser = false;
+      }
+      tuile = null; saisi = false;
+    }
+
+    // Le glisser-déposer natif du navigateur (on tire une image) coupe le nôtre
+    // net : il s'empare du pointeur dès le deuxième mouvement.
+    grille.addEventListener("dragstart", function (ev) { ev.preventDefault(); });
+    grille.addEventListener("pointerdown", function (ev) {
+      if (ev.button != null && ev.button !== 0) return;
+      var t = ev.target.closest && ev.target.closest(".home-tile");
+      if (!t || t.parentNode !== grille) return;
+      tuile = t; saisi = false;
+      x0 = ev.clientX; y0 = ev.clientY;
+      tactile = ev.pointerType === "touch" || ev.pointerType === "pen";
+      try { grille.setPointerCapture(ev.pointerId); } catch (e) {}
+      if (tactile) minuteur = setTimeout(function () { if (tuile) saisir(ev); }, APPUI_LONG);
+    });
+    grille.addEventListener("pointermove", function (ev) {
+      if (!tuile) return;
+      if (!saisi) {
+        var loin = Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > SEUIL;
+        // Au doigt, bouger AVANT l'appui long veut dire « je fais défiler » :
+        // on lâche la tuile et on rend le geste au tiroir.
+        if (tactile) { if (loin) { clearTimeout(minuteur); tuile = null; } return; }
+        if (!loin) return;
+        saisir(ev);
+      }
+      ev.preventDefault();
+      deplacer(ev.clientX, ev.clientY);
+    });
+    ["pointerup", "pointercancel"].forEach(function (n) {
+      grille.addEventListener(n, function () { if (tuile || saisi) relacher(); });
+    });
+  })();
 
   // ── Trombinoscope (annuaire des Frutiz) ──
   // Chargé une fois puis gardé en mémoire. Navigation par lettre + recherche +
@@ -3183,6 +3440,14 @@
     bkiwi: "bk", snake3: "snake", mb2: "mb2", kaluga: "kaluga",
     minipixiz: "minipixiz", miniwave: "miniwave", minifever: "minifever",
   };
+  // jeu (API) → suffixe du VOYANT /fb/voyant_<clé>.png — l'icône « en partie »,
+  // celle que la fiche du bureau pose à gauche de chaque ligne de scores.
+  // Seul Swapou change de nom au passage (swapou2 côté serveur).
+  var VOYANT_ASSET_KEY = { swapou2: "swapou" };
+  function voyantDuJeu(jeu) {
+    var k = VOYANT_ASSET_KEY[jeu] || jeu;
+    return k ? "/fb/voyant_" + k + ".png" : "";
+  }
   var SC_MOIS = ["janv.", "fevr.", "mars", "avril", "mai", "juin",
     "juil.", "aout", "sept.", "oct.", "nov.", "dec."];
   var SC_JOURS = ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"];
@@ -3285,7 +3550,9 @@
           + '<span class="r">' + (s.pos || (i + 1)) + '</span>'
           // Vignette DÉTOURÉE : la capture est peinte sur le vert des cartes du
           // forum, et ce carré se verrait sur le panneau doré de la fenêtre.
-          + '<span class="b">'
+          // Elle ouvre la fiche, comme le pseudo à côté : au bureau on clique
+          // la bouille aussi volontiers que le nom.
+          + '<span class="b" data-fiche="' + xmlEscape(s.user) + '">'
           + (s.bouille ? FPBouilleThumb.imgHtml(s.bouille, 0, { detourer: true }) : "")
           + '</span>'
           + '<span class="n" data-fiche="' + xmlEscape(s.user) + '">' + xmlEscape(s.user) + '</span>'
@@ -4655,6 +4922,20 @@
     if (isNaN(d.getTime())) return "";
     return d.getDate() + " " + MOIS_COURTS[d.getMonth()] + " " + String(d.getFullYear() % 100).padStart(2, "0");
   }
+  // « aujourd'hui », « hier », sinon le jour et l'heure. Une date de visite se
+  // lit d'un coup d'œil : personne ne compte les jours de tête.
+  function quandCourt(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    var hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    var j = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var a = new Date(); a = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+    var jours = Math.round((a - j) / 86400000);
+    if (jours === 0) return "aujourd’hui à " + hm;
+    if (jours === 1) return "hier à " + hm;
+    return jourCourt(iso) + " à " + hm;
+  }
   function scoreLisible(score, type) {
     if (type === "millisecond") {
       var s = Math.floor(score / 1000), ms = score % 1000;
@@ -4745,6 +5026,8 @@
     var moi = ficheEtat.pseudo && ficheEtat.pseudo.toLowerCase() === state.userLower;
     ["#fiche-mp", "#fiche-mail"]
       .forEach(function (s) { $(s).style.display = moi ? "none" : ""; });
+    // …et à leur place, « modifier ma fiche » — comme box.Frutiz.
+    $("#fiche-editer").hidden = !moi;
     // La vue modérateur : kick, ban, totoché — aux modérateurs seulement.
     var modo = !moi && d && d.vous && d.vous.moderateur;
     // L'animateur est staff de SON salon (pomme) : il peut éjecter — mais ni
@@ -4826,6 +5109,17 @@
           var ls = el("div", "fiche-lignes");
           sc.classements.forEach(function (c) {
             var l = el("div", "fiche-jour");
+            // Le VOYANT du jeu, comme au bureau — la même icône que celle qui
+            // signale un joueur en partie. Sans PNG pour ce jeu-là, on
+            // n'affiche pas de cadre vide : la ligne se referme sur son nom.
+            if (c.jeu) {
+              var ico = document.createElement("img");
+              ico.className = "jeu-ico";
+              ico.src = voyantDuJeu(c.jeu);
+              ico.alt = "";
+              ico.onerror = function () { ico.remove(); };
+              l.appendChild(ico);
+            }
             l.appendChild(document.createTextNode(c.titre));
             var pts = el("span", "pts");
             pts.textContent = scoreLisible(c.score, c.type) + (c.pos > 0 ? " (" + c.pos + "ᵉ)" : "");
@@ -4838,24 +5132,135 @@
     } else if (ficheEtat.onglet === "bonus") {
       var com = d.bonus && d.bonus.commentaire;
       var site = d.bonus && d.bonus.site;
-      if (!com && !site) {
-        page.appendChild(el("div", "fiche-vide")).textContent = "Rien à montrer ici.";
-      } else {
-        if (com) {
-          var tc = el("div", "fiche-titre"); tc.textContent = "commentaire"; page.appendChild(tc);
-          var bloc = el("div", "fiche-com"); bloc.textContent = com; page.appendChild(bloc);
-        }
-        if (site) {
-          var lb = el("div", "fiche-lignes");
-          if (!com) lb.style.borderTop = "0";
-          var lien = el("a"); lien.href = site; lien.target = "_blank"; lien.rel = "noopener";
-          lien.textContent = site;
-          lb.appendChild(ligneFiche("site", lien));
-          page.appendChild(lb);
-        }
+      // La dernière visite, TOUJOURS — c'est souvent la seule chose qu'on
+      // vient chercher sur la fiche d'un autre. Elle passe donc avant le
+      // commentaire, et l'onglet n'est plus jamais vide.
+      var lb0 = el("div", "fiche-lignes");
+      lb0.style.borderTop = "0";
+      lb0.appendChild(ligneFiche("dernière connexion",
+        (d.bonus && quandCourt(d.bonus.derniereConnexion)) || "inconnue"));
+      page.appendChild(lb0);
+      if (com) {
+        var tc = el("div", "fiche-titre"); tc.textContent = "commentaire"; page.appendChild(tc);
+        var bloc = el("div", "fiche-com"); bloc.textContent = com; page.appendChild(bloc);
+      }
+      if (site) {
+        var lb = el("div", "fiche-lignes");
+        var lien = el("a"); lien.href = site; lien.target = "_blank"; lien.rel = "noopener";
+        lien.textContent = site;
+        lb.appendChild(ligneFiche("site", lien));
+        page.appendChild(lb);
       }
     }
   }
+  // ══════════════════════════════════════════════════════════════════════════
+  // « Modifier ma fiche »
+  //
+  // Les mêmes champs que la fenêtre EditInfo du bureau, et le MÊME écrivain :
+  // on poste sur /do/smi, avec ses noms d'attributs d'une lettre. Dupliquer la
+  // validation côté mobile aurait garanti la divergence — pays et régions y
+  // sont des index, pas du texte libre.
+  // ══════════════════════════════════════════════════════════════════════════
+  var profilPays = [];                  // la table servie par /api/light/profil
+  function ouvrirProfil() {
+    $("#profil-sheet-backdrop").classList.add("show");
+    $("#profil-sheet").classList.add("show");
+    $("#prof-etat").textContent = "Chargement…";
+    fetch("/api/light/profil?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.ok) throw new Error("profil");
+        profilPays = j.pays || [];
+        var p = j.profil || {};
+        $("#prof-prenom").value = p.prenom || "";
+        $("#prof-nom").value = p.nom || "";
+        $("#prof-nom-public").checked = p.nomPublic !== false;
+        $("#prof-anniv").value = p.anniversaire || "";
+        $("#prof-sexe").value = p.sexe === "F" ? "F" : "M";
+        $("#prof-metier").value = p.metier || "";
+        $("#prof-ville").value = p.ville || "";
+        $("#prof-site").value = p.site || "";
+        $("#prof-com").value = p.commentaire || "";
+        remplirPays(p.pays, p.region);
+        $("#prof-etat").textContent = "";
+      })
+      .catch(function () { $("#prof-etat").textContent = "Chargement impossible."; });
+  }
+  function fermerProfil() {
+    $("#profil-sheet-backdrop").classList.remove("show");
+    $("#profil-sheet").classList.remove("show");
+  }
+  function remplirPays(codePays, codeRegion) {
+    var sel = $("#prof-pays");
+    sel.innerHTML = "";
+    profilPays.forEach(function (c) {
+      var o = document.createElement("option");
+      o.value = c.code; o.textContent = c.nom;
+      sel.appendChild(o);
+    });
+    if (codePays) sel.value = String(codePays);
+    if (!sel.value && profilPays.length) sel.value = profilPays[0].code;
+    remplirRegions(codeRegion);
+  }
+  function remplirRegions(codeRegion) {
+    var sel = $("#prof-region");
+    var pays = profilPays.filter(function (c) { return c.code === $("#prof-pays").value; })[0];
+    sel.innerHTML = "";
+    ((pays && pays.regions) || []).forEach(function (r) {
+      var o = document.createElement("option");
+      o.value = r.code; o.textContent = r.nom;
+      sel.appendChild(o);
+    });
+    // Un pays sans découpage (la table n'en donne pas à tous) : on n'impose pas
+    // une liste vide, la ligne se grise.
+    sel.disabled = !sel.options.length;
+    if (codeRegion) sel.value = String(codeRegion);
+    if (!sel.value && sel.options.length) sel.selectedIndex = 0;
+  }
+  $("#prof-pays").addEventListener("change", function () { remplirRegions(""); });
+  $("#fiche-editer").addEventListener("click", ouvrirProfil);
+  $("#profil-sheet-close").addEventListener("click", fermerProfil);
+  $("#profil-sheet-backdrop").addEventListener("click", fermerProfil);
+  $("#prof-enregistrer").addEventListener("click", function () {
+    var bouton = this;
+    bouton.disabled = true;
+    $("#prof-etat").textContent = "Enregistrement…";
+    // Les noms d'une lettre de /do/smi : d anniversaire, f prénom, l nom,
+    // p nom public, g sexe, j activité, c ville, o pays, r région, u site,
+    // m commentaire.
+    var champs = {
+      d: $("#prof-anniv").value || "",
+      f: $("#prof-prenom").value,
+      l: $("#prof-nom").value,
+      p: $("#prof-nom-public").checked ? "Y" : "N",
+      g: $("#prof-sexe").value,
+      j: $("#prof-metier").value,
+      c: $("#prof-ville").value,
+      o: $("#prof-pays").value || "1",
+      r: $("#prof-region").value || "1",
+      u: $("#prof-site").value,
+      m: $("#prof-com").value,
+      sid: state.sid,
+    };
+    var corps = Object.keys(champs).map(function (k) {
+      return encodeURIComponent(k) + "="
+        + encodeURIComponent(String(champs[k] == null ? "" : champs[k]));
+    }).join("&");
+    fetch("/do/smi", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: corps,
+    }).then(function (r) {
+      if (!r.ok) throw new Error("smi");
+      $("#prof-etat").textContent = "Fiche enregistrée.";
+      // La fiche affichée derrière doit montrer les nouvelles valeurs.
+      if (ficheEtat.pseudo) ouvrirFiche(ficheEtat.pseudo);
+      setTimeout(function () { fermerProfil(); $("#prof-etat").textContent = ""; }, 700);
+    }).catch(function () {
+      $("#prof-etat").textContent = "Enregistrement impossible.";
+    }).then(function () { bouton.disabled = false; });
+  });
+
   // Le bouton ROSE du bureau : là-bas il ouvre la partie détaillée de la
   // fiche, ici il la déplie ou la replie. Le choix se retient — qui préfère la
   // carte compacte la retrouve compacte au tap suivant.
