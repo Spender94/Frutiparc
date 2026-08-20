@@ -422,6 +422,22 @@ test('le blindtest : un jeton, jamais la vidéo, et tout le monde à la même se
     assert.equal(dest.searchParams.get('end'), '82', 'et fin vingt secondes plus loin');
     assert.equal(dest.searchParams.get('controls'), '0', 'sans contrôles ni titre à lire');
 
+    // MUET au départ, et pilotable ensuite — c'est ce qui fait entendre
+    // l'extrait ailleurs que sur Firefox (cf. test/blindtestSon.test.js).
+    assert.equal(dest.searchParams.get('mute'), '1', 'muet au départ');
+    assert.equal(dest.searchParams.get('enablejsapi'), '1', 'mais pilotable');
+    assert.match(String(dest.searchParams.get('origin')), /^https?:\/\/[^/]+$/,
+      'avec l\'origine de la page, sans laquelle YouTube n\'écoute pas : '
+        + dest.searchParams.get('origin'));
+
+    // La porte de sortie du dernier recours : ?m=0 rend le son — et l'extrait
+    // garde sa seconde, il ne repart pas du début.
+    const rSon = await fetch(`${BASE}/api/blindtest/embed?k=${jeton}&m=0`, { redirect: 'manual' });
+    const destSon = new URL(rSon.headers.get('location'));
+    assert.equal(destSon.searchParams.get('mute'), '0', 'avec ?m=0, le son est rendu');
+    assert.ok(Number(destSon.searchParams.get('start')) >= 62,
+      'et le recours reste synchrone : ' + destSon.searchParams.get('start'));
+
     // La synchro par l'horloge : deux secondes plus tard, on entre plus loin.
     await wait(2200);
     const r2 = await fetch(`${BASE}/api/blindtest/embed?k=${jeton}`, { redirect: 'manual' });

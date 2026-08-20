@@ -48,7 +48,10 @@ const VOYANTS = [
   { jeu: 'snake3', etiquette: 'snake3' },        // le serpent
   { jeu: 'mb2', etiquette: 'mb2' },              // la bille
   { jeu: 'kaluga', etiquette: 'kaluga' },        // le papillon
-  { jeu: 'minifever', etiquette: 'minifever' },  // le maillet
+  // Mini-Fever, lui, n'est PAS d'ici : son image du clip 246 a été greffée, et
+  // elle est faite d'un bitmap que cette moulinette-là ne sait pas rendre — on
+  // n'en tirerait qu'une vignette vide. Ses cerises viennent du dessin
+  // d'origine, par scripts/make-minifever-emblemes.js.
 ];
 
 // Les ÉTIQUETTES d'images d'un sprite (FrameLabel, code 43), directement dans

@@ -172,8 +172,13 @@ test('chaque ligne de scores porte le voyant de son jeu', async () => {
   // partie » du bureau (clip 246 de main.swf), pas la jaquette du disque.
   for (const jeu of ['bkiwi', 'snake3', 'mb2', 'kaluga', 'swapou', 'grapiz',
     'bandas', 'miniwave', 'minipixiz', 'minifever']) {
-    assert.ok(fs.existsSync(path.join(ROOT, 'public/fb/voyant_' + jeu + '.png')),
-      'voyant_' + jeu + '.png doit exister');
+    const f = path.join(ROOT, 'public/fb/voyant_' + jeu + '.png');
+    assert.ok(fs.existsSync(f), 'voyant_' + jeu + '.png doit exister');
+    // Et porter un dessin : une vignette vide passerait inaperçue sur la fiche,
+    // alors qu'elle trahit une extraction ratée (Mini-Fever, dont l'image du
+    // clip 246 est un bitmap greffé, s'était vidée ainsi).
+    assert.ok(fs.statSync(f).size > 800,
+      'voyant_' + jeu + '.png est vide : ' + fs.statSync(f).size + ' octets');
   }
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   assert.match(html, /ico\.src = voyantDuJeu\(c\.jeu\)/,

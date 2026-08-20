@@ -4608,11 +4608,74 @@
   //  · On CALCULE où en est l'extrait à partir de l'instant de départ. Un
   //    joueur qui arrive en retard, ou dont l'onglet dormait, retombe sur la
   //    même seconde que les autres.
-  //  · Le son ne démarre pas tout seul : les navigateurs l'interdisent sans
-  //    geste de l'utilisateur. On propose donc un bouton une bonne fois, et on
-  //    retient le consentement — les extraits suivants partent sans rien
-  //    demander.
-  var blindtest = { jeton: "", fin: 0, minuteur: null, arme: false };
+  //  · L'extrait part MUET, et le bouton ne fait que couper le muet.
+  //
+  //    Un navigateur n'autorise le son qu'après un geste de l'utilisateur, et
+  //    ce geste ne vaut que pour le CADRE où il a eu lieu : un clic dans la
+  //    page ne déverrouille pas une iframe d'un autre domaine. Fabriquer
+  //    l'iframe avec le son au moment du clic ne marchait donc que sur
+  //    Firefox — le seul à regarder l'activation de la page du dessus.
+  //    Ailleurs, et sur tous les téléphones, la bannière s'affichait sans
+  //    qu'on entende rien.
+  //
+  //    La lecture muette, elle, démarre partout : l'extrait tourne en silence,
+  //    à la bonne seconde, et le clic n'a plus qu'à demander le son au lecteur
+  //    DÉJÀ lancé. On lui PARLE (enablejsapi + postMessage) au lieu de
+  //    recharger une iframe — et c'est là tout l'intérêt : WebKit fait voyager
+  //    le geste avec le message, ce qui débloque enfin l'iPhone, tandis que
+  //    Chrome se contente de allow="autoplay" plus le clic reçu par la page.
+  //
+  //    On écoute aussi ce que le lecteur RÉPOND : le bouton dit « Couper »
+  //    quand il a confirmé qu'il n'est plus muet, jamais sur une supposition.
+  //    Et s'il ne répond pas du tout — dialogue coupé, extension, vieux
+  //    navigateur —, on retombe en dernier recours sur l'ancienne méthode,
+  //    celle que Firefox honore : recharger l'iframe avec le son.
+  var blindtest = {
+    jeton: "", fin: 0, minuteur: null,
+    arme: false,       // ce que le JOUEUR veut (retenu d'un extrait à l'autre)
+    muet: true,        // ce que le LECTEUR dit
+    etat: -1,          // ... et où il en est (1 = joue, 2 = en pause)
+    repond: false,     // a-t-il seulement répondu une fois ?
+    recours: null, poignee: null,
+  };
+  // Ce qu'affiche le bouton : la parole du lecteur si on l'a, sinon la nôtre.
+  function btSonne() { return blindtest.repond ? !blindtest.muet : blindtest.arme; }
+
+  // Le dialogue avec le lecteur YouTube — sans sa bibliothèque, qui exigerait
+  // de connaître l'identifiant de la vidéo (et donc la réponse du blindtest).
+  function btEnvoyer(charge) {
+    var f = document.querySelector("#bt-cadre iframe");
+    if (!f || !f.contentWindow) return;
+    try {
+      f.contentWindow.postMessage(JSON.stringify(charge), "https://www.youtube.com");
+    } catch (e) { /* le lecteur n'est pas encore là */ }
+  }
+  function btCommande(func, args) {
+    btEnvoyer({ event: "command", func: func, args: args || [], id: 1, channel: "widget" });
+  }
+  function btEcouterLecteur() {
+    btEnvoyer({ event: "listening", id: 1, channel: "widget" });
+  }
+  // Les trois demandes vont ENSEMBLE : sortir du muet ne sert à rien si le
+  // volume est à zéro, ni si le navigateur en a profité pour mettre en pause.
+  function btDemanderSon() {
+    btCommande("unMute");
+    btCommande("setVolume", [100]);
+    btCommande("playVideo");
+  }
+  window.addEventListener("message", function (ev) {
+    if (ev.origin !== "https://www.youtube.com") return;
+    var d;
+    try { d = JSON.parse(ev.data); } catch (e) { return; }
+    if (!d || !d.info) return;
+    if (d.info.muted !== undefined) { blindtest.repond = true; blindtest.muet = !!d.info.muted; }
+    if (d.info.playerState !== undefined) blindtest.etat = d.info.playerState;
+    // Le son est demandé mais le lecteur s'est arrêté : c'est le navigateur qui
+    // l'a mis en pause en le démuetant. On le relance — allow="autoplay" et le
+    // clic déjà reçu par la page suffisent, cette fois, à le laisser repartir.
+    if (blindtest.arme && !blindtest.muet && blindtest.etat === 2) btCommande("playVideo");
+    majBlindtest();
+  });
 
   function blindtestBoite() {
     var b = document.getElementById("blindtest");
@@ -4626,21 +4689,67 @@
     var av = document.getElementById("messages");
     av.parentNode.insertBefore(b, av);
     document.getElementById("bt-bouton").addEventListener("click", function () {
-      if (blindtest.arme) { arreterBlindtest(true); return; }
-      blindtest.arme = true;
-      try { localStorage.setItem("fp_bt_son", "1"); } catch (e) {}
-      lancerCadre();
+      // Le geste, c'est ICI : la demande de son doit partir du clic lui-même,
+      // sans quoi elle perd le droit qu'il lui donne.
+      if (btSonne()) {
+        blindtest.arme = false;
+        blindtest.muet = true;
+        try { localStorage.removeItem("fp_bt_son"); } catch (e) {}
+        btCommande("mute");
+      } else {
+        blindtest.arme = true;
+        try { localStorage.setItem("fp_bt_son", "1"); } catch (e) {}
+        btDemanderSon();
+        btArmerRecours();
+      }
       majBlindtest();
     });
     return b;
   }
 
-  function lancerCadre() {
+  // Dernier recours, et lui seul : si le lecteur n'a JAMAIS répondu, le
+  // dialogue ne passe pas et nos demandes tombent dans le vide. On recharge
+  // alors l'iframe avec le son — l'ancienne méthode, celle que Firefox honore.
+  // Le droit au son est ACQUIS à la page (le joueur y a cliqué), pas transitoire :
+  // ce rechargement tardif vaut donc autant que celui d'autrefois.
+  // Quand le lecteur répond, en revanche, on le croit : recharger ne ferait
+  // que casser la lecture muette qui, elle, était au moins synchrone.
+  function btArmerRecours() {
+    if (blindtest.recours) clearTimeout(blindtest.recours);
+    blindtest.recours = setTimeout(function () {
+      blindtest.recours = null;
+      if (!blindtest.jeton || !blindtest.arme || blindtest.repond) return;
+      lancerCadre(true);
+    }, 2000);
+  }
+
+  function lancerCadre(avecSon) {
     var cadre = document.getElementById("bt-cadre");
     if (!cadre || !blindtest.jeton) return;
+    if (blindtest.poignee) { clearInterval(blindtest.poignee); blindtest.poignee = null; }
     cadre.innerHTML = '<iframe title="extrait" allow="autoplay" frameborder="0"'
       + ' src="/api/blindtest/embed?k=' + encodeURIComponent(blindtest.jeton)
+      + (avecSon ? "&m=0" : "")
       + '&r=' + Date.now() + '"></iframe>';
+    var f = cadre.querySelector("iframe");
+    if (!f) return;
+    f.addEventListener("load", function () {
+      // La poignée de main : le lecteur ne s'abonne que lorsqu'il est prêt, ce
+      // qui arrive APRÈS le chargement de l'iframe. On redemande jusqu'à
+      // réponse, comme le fait la bibliothèque officielle.
+      var reste = 12;
+      btEcouterLecteur();
+      blindtest.poignee = setInterval(function () {
+        if (blindtest.repond || reste-- <= 0) {
+          clearInterval(blindtest.poignee); blindtest.poignee = null; return;
+        }
+        btEcouterLecteur();
+      }, 300);
+      // Consentement retenu : on TENTE le son sans attendre un nouveau clic.
+      // Si le navigateur refuse — il en a le droit —, le lecteur dira qu'il est
+      // resté muet et le bouton redeviendra « Écouter ».
+      if (blindtest.arme && !avecSon) { btDemanderSon(); btArmerRecours(); }
+    });
   }
 
   function majBlindtest() {
@@ -4649,13 +4758,16 @@
     if (!t || !bouton) return;
     var reste = Math.max(0, Math.ceil((blindtest.fin - Date.now()) / 1000));
     t.textContent = reste + " s";
-    bouton.textContent = blindtest.arme ? "Couper" : "Écouter";
+    bouton.textContent = btSonne() ? "Couper" : "Écouter";
     if (reste <= 0) arreterBlindtest(false);
   }
 
   function arreterBlindtest(parLeJoueur) {
     if (blindtest.minuteur) { clearInterval(blindtest.minuteur); blindtest.minuteur = null; }
+    if (blindtest.poignee) { clearInterval(blindtest.poignee); blindtest.poignee = null; }
+    if (blindtest.recours) { clearTimeout(blindtest.recours); blindtest.recours = null; }
     blindtest.jeton = "";
+    blindtest.muet = true; blindtest.repond = false; blindtest.etat = -1;
     var b = document.getElementById("blindtest");
     if (b) b.parentNode.removeChild(b);
     // Couper soi-même retire le consentement : on ne veut pas que le suivant
@@ -4676,7 +4788,9 @@
     var ecoule = Math.max(0, Math.min(Date.now() - depart, duree * 1000));
     blindtest.fin = Date.now() + (duree * 1000 - ecoule);
     blindtestBoite();
-    if (blindtest.arme) lancerCadre();
+    // Le lecteur part TOUJOURS, muet : ainsi l'extrait tourne à la bonne
+    // seconde pour tout le monde, et le bouton n'a plus qu'à demander le son.
+    lancerCadre(false);
     majBlindtest();
     blindtest.minuteur = setInterval(majBlindtest, 500);
   }

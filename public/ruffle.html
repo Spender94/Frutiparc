@@ -164,8 +164,62 @@
         (function () {
             var sid = new URLSearchParams(window.location.search).get("sid") || "";
             if (!sid) return;
-            var etat = { jeton: "", fin: 0, arme: false, boite: null, minuteur: null };
+            var etat = {
+                jeton: "", fin: 0, boite: null, minuteur: null,
+                arme: false,   // ce que le JOUEUR veut
+                muet: true,    // ce que le LECTEUR dit
+                pEtat: -1,     // ... et où il en est (1 = joue, 2 = en pause)
+                repond: false, // a-t-il seulement répondu une fois ?
+                recours: null, poignee: null,
+            };
             try { etat.arme = localStorage.getItem("fp_bt_son") === "1"; } catch (e) {}
+
+            // ── Le son part MUET, et le bouton ne fait que couper le muet ──
+            //
+            // Un navigateur n'autorise le son qu'après un geste, et ce geste ne
+            // vaut que pour le CADRE où il a eu lieu : un clic dans la page ne
+            // déverrouille pas une iframe d'un autre domaine. Fabriquer
+            // l'iframe avec le son au moment du clic ne marchait donc que sur
+            // Firefox — le seul à regarder l'activation de la page du dessus.
+            // La lecture MUETTE, elle, démarre partout : l'extrait tourne en
+            // silence à la bonne seconde, et le clic n'a plus qu'à demander le
+            // son au lecteur DÉJÀ lancé (voir light.html pour le détail).
+            function sonne() { return etat.repond ? !etat.muet : etat.arme; }
+            function envoyer(charge) {
+                var f = document.querySelector("#bt-b-cadre iframe");
+                if (!f || !f.contentWindow) return;
+                try {
+                    f.contentWindow.postMessage(JSON.stringify(charge), "https://www.youtube.com");
+                } catch (e) { /* le lecteur n'est pas encore là */ }
+            }
+            function commande(func, args) {
+                envoyer({ event: "command", func: func, args: args || [], id: 1, channel: "widget" });
+            }
+            function ecouterLecteur() { envoyer({ event: "listening", id: 1, channel: "widget" }); }
+            function demanderSon() {
+                commande("unMute"); commande("setVolume", [100]); commande("playVideo");
+            }
+            window.addEventListener("message", function (ev) {
+                if (ev.origin !== "https://www.youtube.com") return;
+                var d;
+                try { d = JSON.parse(ev.data); } catch (e) { return; }
+                if (!d || !d.info) return;
+                // La vérité vient du lecteur, pas de notre intention.
+                if (d.info.muted !== undefined) { etat.repond = true; etat.muet = !!d.info.muted; }
+                if (d.info.playerState !== undefined) etat.pEtat = d.info.playerState;
+                if (etat.arme && !etat.muet && etat.pEtat === 2) commande("playVideo");
+                tic();
+            });
+            // Dernier recours : si le lecteur ne répond JAMAIS, le dialogue ne
+            // passe pas — on recharge l'iframe avec le son, l'ancienne méthode.
+            function armerRecours() {
+                if (etat.recours) clearTimeout(etat.recours);
+                etat.recours = setTimeout(function () {
+                    etat.recours = null;
+                    if (!etat.jeton || !etat.arme || etat.repond) return;
+                    cadre(true);
+                }, 2000);
+            }
 
             function poser() {
                 if (etat.boite) return etat.boite;
@@ -181,32 +235,57 @@
                     + '<div id="bt-b-cadre" style="width:1px;height:1px;overflow:hidden;opacity:.01"></div>';
                 document.body.appendChild(b);
                 b.querySelector("#bt-b-bouton").addEventListener("click", function () {
-                    if (etat.arme) {
+                    // Le geste, c'est ICI : la demande de son doit partir du clic.
+                    if (sonne()) {
                         etat.arme = false;
+                        etat.muet = true;
                         try { localStorage.removeItem("fp_bt_son"); } catch (e) {}
-                        var c = document.getElementById("bt-b-cadre");
-                        if (c) c.innerHTML = "";
+                        commande("mute");
                     } else {
                         etat.arme = true;
                         try { localStorage.setItem("fp_bt_son", "1"); } catch (e) {}
-                        cadre();
+                        demanderSon();
+                        armerRecours();
                     }
                     tic();
                 });
                 etat.boite = b;
                 return b;
             }
-            function cadre() {
+            function cadre(avecSon) {
                 var c = document.getElementById("bt-b-cadre");
                 if (!c || !etat.jeton) return;
+                if (etat.poignee) { clearInterval(etat.poignee); etat.poignee = null; }
                 c.innerHTML = '<iframe title="extrait" allow="autoplay" frameborder="0"'
                     + ' style="width:320px;height:180px;border:0"'
                     + ' src="/api/blindtest/embed?k=' + encodeURIComponent(etat.jeton)
+                    + (avecSon ? "&m=0" : "")
                     + '&r=' + Date.now() + '"></iframe>';
+                var f = c.querySelector("iframe");
+                if (!f) return;
+                f.addEventListener("load", function () {
+                    // Le lecteur ne s'abonne qu'une fois prêt, après le
+                    // chargement de l'iframe : on redemande jusqu'à réponse.
+                    var reste = 12;
+                    ecouterLecteur();
+                    etat.poignee = setInterval(function () {
+                        if (etat.repond || reste-- <= 0) {
+                            clearInterval(etat.poignee); etat.poignee = null; return;
+                        }
+                        ecouterLecteur();
+                    }, 300);
+                    // Consentement retenu : on TENTE le son. Si le navigateur
+                    // refuse — il en a le droit sans geste — le lecteur dira
+                    // qu'il est resté muet, et le bouton redira « Écouter ».
+                    if (etat.arme && !avecSon) { demanderSon(); armerRecours(); }
+                });
             }
             function retirer() {
                 if (etat.boite && etat.boite.parentNode) etat.boite.parentNode.removeChild(etat.boite);
+                if (etat.poignee) { clearInterval(etat.poignee); etat.poignee = null; }
+                if (etat.recours) { clearTimeout(etat.recours); etat.recours = null; }
                 etat.boite = null; etat.jeton = "";
+                etat.muet = true; etat.repond = false; etat.pEtat = -1;
             }
             function tic() {
                 if (!etat.jeton) return;
@@ -214,7 +293,7 @@
                 var t = document.getElementById("bt-b-temps");
                 var bo = document.getElementById("bt-b-bouton");
                 if (t) t.textContent = reste + " s";
-                if (bo) bo.textContent = etat.arme ? "Couper" : "Écouter";
+                if (bo) bo.textContent = sonne() ? "Couper" : "Écouter";
                 if (reste <= 0) retirer();
             }
             setInterval(tic, 500);
@@ -226,9 +305,13 @@
                         if (!d.jeton) { if (etat.jeton) retirer(); return; }
                         if (d.jeton === etat.jeton) return;     // déjà en cours
                         etat.jeton = d.jeton;
+                        etat.muet = true; etat.repond = false; etat.pEtat = -1;
                         etat.fin = Date.now() + (Number(d.restant) || 0) * 1000;
                         poser();
-                        if (etat.arme) cadre();
+                        // Le lecteur part TOUJOURS, muet : l'extrait tourne à la
+                        // bonne seconde pour tout le monde, et le bouton n'a
+                        // plus qu'à demander le son.
+                        cadre(false);
                         tic();
                     })
                     .catch(function () { /* le bureau continue sans */ });

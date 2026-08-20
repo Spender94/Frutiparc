@@ -10163,6 +10163,24 @@ app.get('/api/blindtest/embed', (req, res) => {
     // vidéo pendant qu'elle joue.
     controls: '0', modestbranding: '1', rel: '0', iv_load_policy: '3',
     fs: '0', disablekb: '1', playsinline: '1',
+    // MUET au départ, et pilotable ensuite.
+    //
+    // Aucun navigateur n'autorise le son sans geste de l'utilisateur — et le
+    // geste n'atteint QUE le cadre où il a eu lieu. Un clic dans la page ne
+    // déverrouille donc pas une iframe d'un autre domaine : Chrome, Edge et
+    // Safari refusaient de faire parler le lecteur, et les téléphones avec
+    // eux. Seul Firefox marchait, parce qu'il regarde, lui, l'activation de la
+    // page du dessus — d'où « ça marche chez moi, pas chez les autres ».
+    //
+    // La lecture MUETTE, elle, part partout : l'extrait tourne en silence, à
+    // la bonne seconde, et le clic n'a plus qu'à demander le son au lecteur
+    // déjà lancé. D'où enablejsapi, qui ouvre le dialogue (unMute, mute, et
+    // l'état réel qu'il renvoie), et origin, que YouTube exige pour l'écouter.
+    // `?m=0` reste la porte de sortie : le client s'en sert en dernier recours
+    // quand le lecteur ne répond pas (voir light.html / ruffle.html).
+    mute: String(req.query.m) === '0' ? '0' : '1',
+    enablejsapi: '1',
+    origin: buildPublicBase(req),
   });
   res.redirect(302, `https://www.youtube.com/embed/${b.id}?${p.toString()}`);
 });
