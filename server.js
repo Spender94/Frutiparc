@@ -4437,6 +4437,50 @@ function registerCustomWallpaper(wp) {
   CUSTOM_WALLPAPER_IDS.add(wp.id);
 }
 
+// ── La couleur du TEXTE des étiquettes du bureau ────────────────────────────
+//
+// dataMisc vaut « bgColor;txtColor;pvAlpha ». WallPaperMng.loadWP ne lit
+// txtColor que si le champ existe, et FPDesktop.displayIconList ne retombe
+// sur le vert colorSet.green.overdark que si la valeur est undefined :
+//
+//     var textColor = _global.wallPaper.txtColor;
+//     if( textColor == undefined ) textColor = _global.colorSet.green.overdark;
+//
+// Or notre catalogue ne stockait QUE la couleur de fond — « 4E5464; », second
+// champ vide. Flash évalue alors Number("0x"), c'est-à-dire NaN ; et comme
+// « NaN == undefined » est faux en AS2, le repli vert n'est jamais pris et
+// les libellés sortent en NOIR. Sur les trois fonds sombres (Chevalier
+// moutarde, Mini-Wave Nostromo, Mini-Wave Mini-Star) ils devenaient
+// illisibles.
+//
+// Mesuré sur le vrai bureau : avec « 4E5464; » les libellés sont noirs, avec
+// « 4E5464;FFFFFF » ils sont blancs. Le mécanisme d'origine fonctionne, il
+// n'attendait qu'une valeur. On renseigne donc le champ à la volée, d'après
+// la luminance de la couleur d'accompagnement — clair sur fond sombre, noir
+// sinon (ce que le NaN donnait déjà, donc rien ne bouge pour les fonds
+// clairs). Aucun patch de SWF : le bureau relit la préférence et se règle
+// tout seul, et /light applique la même valeur.
+const SEUIL_FOND_SOMBRE = 140;                 // luminance perçue, 0–255
+function couleurTexteFond(bg) {
+  const hex = String(bg || '').trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+  const v = parseInt(hex, 16);
+  const lum = 0.299 * ((v >> 16) & 255) + 0.587 * ((v >> 8) & 255) + 0.114 * (v & 255);
+  return lum < SEUIL_FOND_SOMBRE ? 'FFFFFF' : '000000';
+}
+// « 4E5464; » → « 4E5464;FFFFFF ». Une valeur déjà renseignée n'est jamais
+// touchée : un fond peut vouloir sa propre couleur de texte.
+function completerDataMisc(color) {
+  const s = String(color || '');
+  if (!s) return s;
+  const parts = s.split(';');
+  if (parts.length >= 2 && parts[1].trim() !== '') return s;
+  const txt = couleurTexteFond(parts[0]);
+  if (!txt) return s;
+  parts[1] = txt;
+  return parts.join(';');
+}
+
 // ── Les fonds d'écran redessinés pour le PORTRAIT ───────────────────────────
 //
 // Les fonds d'origine sont des paysages : sur le bureau ils remplissent la
@@ -4966,13 +5010,13 @@ function getAccessoryWallpaper(acc) {
   const v = acc.v || '';
   if (typeof v === 'string' && v.startsWith('wp:')) {
     const parts = v.split(':');
-    return { url: parts[1] || '', color: parts.slice(2).join(':') || '' };
+    return { url: parts[1] || '', color: completerDataMisc(parts.slice(2).join(':') || '') };
   }
   if (acc.shopId) {
     const pack = SHOP_PACKS.find((p) => p.id === Number(acc.shopId));
     if (pack && pack.wallpaperId) {
       const wp = WALLPAPER_BY_ID[pack.wallpaperId];
-      if (wp) return { url: wp.url, color: wp.color };
+      if (wp) return { url: wp.url, color: completerDataMisc(wp.color) };
     }
   }
   return null;
@@ -12529,6 +12573,25 @@ function parseWallpaperPref(raw) {
   return { url, color: coupe >= 0 ? s.slice(coupe + 1) : '' };
 }
 
+// Rattrapage des fonds posés AVANT que la couleur de texte soit renseignée.
+//
+// Le bureau lit la préférence, pas l'inventaire : compléter le catalogue ne
+// suffit pas pour qui a déjà choisi son fond — il garderait ses libellés
+// noirs jusqu'à le reposer. On complète donc la valeur stockée à la première
+// relecture. L'opération est idempotente (completerDataMisc ne touche jamais
+// une couleur déjà renseignée) et ne concerne que la préférence n° 5.
+function reparerFondDeLaPref(username, user) {
+  if (!user || !user.prefs) return user && user.prefs;
+  const brut = getPrefValue(user.prefs, PREF_ID_WALLPAPER);
+  const fond = parseWallpaperPref(brut);
+  if (!fond) return user.prefs;
+  const complet = completerDataMisc(fond.color);
+  if (complet === fond.color) return user.prefs;
+  user.prefs = setPrefValue(user.prefs, PREF_ID_WALLPAPER, fond.url + '|' + complet);
+  if (user._dbId) db.updateUser(username, { prefs: user.prefs }).catch(dbErr('updateUser'));
+  return user.prefs;
+}
+
 // ─────────────────────────────────────────────
 // ENDPOINT: do/mypref — User's personal preferences
 // Returns LoadVars: myPref=<encoded_string>
@@ -12537,7 +12600,7 @@ app.get('/do/mypref', (req, res) => {
   const sid = req.query.sid;
   const session = sessions[sid];
   const user = session && users[session.user];
-  const myPref = (user && user.prefs) || '';
+  const myPref = (user && reparerFondDeLaPref(session.user, user)) || '';
   res.type('text/plain').send(`myPref=${myPref}`);
 });
 
@@ -13111,6 +13174,13 @@ app.get('/do/prefsavepartial', (req, res) => {
         const isDefault = (rawVal === '' || rawVal === def.def);
         if (isDefault) {
           delete parsed[prefId];
+        } else if (prefId === PREF_ID_WALLPAPER) {
+          // Le bureau réécrit le fond à chaque démarrage (WallPaperMng.loadWP
+          // finit par userPref.setAndSave). On complète la couleur de texte au
+          // passage, pour que la valeur stockée converge même si un vieux
+          // client renvoie l'ancienne forme.
+          const f = parseWallpaperPref(rawVal);
+          parsed[prefId] = f ? f.url + '|' + completerDataMisc(f.color) : rawVal;
         } else {
           parsed[prefId] = rawVal;
         }
@@ -13208,7 +13278,12 @@ app.get('/do/onident', (req, res) => {
 
   user.items = withDefaultPens(user.items);
   const items = user.items.join(',');
-  const myPref = user.prefs || '';
+  // C'est ICI que le bureau reçoit ses préférences — pas par /do/mypref, qu'il
+  // n'appelle jamais au démarrage (tracé : prefdef, onident, puis le .jpg du
+  // fond, puis prefsavepartial). Le rattrapage de la couleur de texte doit
+  // donc se faire sur ce chemin, sans quoi un joueur qui a déjà posé son fond
+  // garde ses libellés noirs.
+  const myPref = reparerFondDeLaPref(auth.username, user) || '';
   const now = nowSqlTimestamp();
   const currentUsername = auth.username || '';
   const allowModeration = user.isModerator && !isDebugNotUser(currentUsername);
@@ -17054,7 +17129,10 @@ app.get('/api/light/inventaire', (req, res) => {
     url: `/api/picto/${encodeURIComponent(n)}`,
   }));
 
-  const courant = parseWallpaperPref(getPrefValue(user.prefs, PREF_ID_WALLPAPER));
+  // Même rattrapage que /do/mypref : le mobile et le bureau doivent lire la
+  // MÊME chaîne, couleur de texte comprise.
+  const courant = parseWallpaperPref(
+    getPrefValue(reparerFondDeLaPref(username, user), PREF_ID_WALLPAPER));
   res.json({
     ok: true,
     accessoires, fonds, pictos,

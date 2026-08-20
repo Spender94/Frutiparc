@@ -141,9 +141,9 @@
 
   /* ── Le bureau mobile sous un fond d'écran ───────────────────────────────
      Le bureau teinte le TEXTE de ses étiquettes avec la 2ᵉ couleur de
-     dataMisc (WallPaperMng garde txtColor pour displayIconList) — en
-     pratique NOIR, voir couleursFond(). On la passe en variable CSS, avec un
-     halo dont la teinte est calculée pour contraster : sur un téléphone les
+     dataMisc (WallPaperMng garde txtColor pour displayIconList) — blanc sur
+     un fond sombre, noir sinon, voir couleursFond(). On la passe en variable
+     CSS, avec un halo dont la teinte suit la sienne : sur un téléphone les
      tuiles sont posées à même l'illustration, alors que le bureau Flash
      gardait ses icônes petites et espacées. La main bar et les encarts, eux,
      restent posés dessus — c'est le bureau d'origine, où les fenêtres gardent
@@ -5560,13 +5560,19 @@
       return /^[0-9a-fA-F]{6}$/.test(v) ? "#" + v : null;
     };
     var a = arr.length >= 3 && arr[2] !== "" ? Number(arr[2]) : 80;
-    // Coquille d'origine CONSERVÉE. WallPaperMng ne lit txtColor que si
-    // dataMisc a au moins deux champs, et le lit par Number("0x" + arr[1]) :
-    // or TOUS les fonds de la boutique valent "4E5464;" — deuxième champ VIDE,
-    // donc Number("0x") = NaN. En AS2 « NaN == undefined » est FAUX, si bien
-    // que FPDesktop.displayIconList ne retombe jamais sur son vert
-    // colorSet.green.overdark (0x335511) et peint les étiquettes en NOIR.
-    // Vérifié sur main.swf : bureau « Chevalier moutarde », libellés noirs.
+    // dataMisc[1] est la couleur du TEXTE des étiquettes. Le serveur la
+    // renseigne désormais d'après la luminance du fond (voir couleurTexteFond
+    // dans server.js) : blanc sur fond sombre, noir sinon. On la reprend telle
+    // quelle — c'est ce que main.swf affiche, et les deux bureaux doivent
+    // s'accorder.
+    //
+    // Le repli NOIR reproduit la coquille d'origine, pour les valeurs qui
+    // arriveraient encore sans couleur de texte : WallPaperMng lit le champ par
+    // Number("0x" + arr[1]), donc Number("0x") = NaN sur un champ vide ; et
+    // comme « NaN == undefined » est FAUX en AS2, FPDesktop.displayIconList ne
+    // retombe jamais sur son vert colorSet.green.overdark (0x335511) et peint
+    // en noir. Mesuré sur main.swf : « 4E5464; » → libellés noirs,
+    // « 4E5464;FFFFFF » → libellés blancs.
     var txt = arr.length >= 2 ? (hex(arr[1]) || "#000000") : null;
     return { bg: hex(arr[0]), txt: txt, alpha: isFinite(a) ? a : 80 };
   }
@@ -5595,10 +5601,10 @@
     panneau.style.backgroundAttachment = "scroll";
     if (c.txt) panneau.style.setProperty("--fond-txt", c.txt);
     else panneau.style.removeProperty("--fond-txt");
-    // Un halo contrastant : la couleur du texte vient du SWF (souvent noire),
-    // et sur un téléphone les tuiles sont POSÉES sur l'illustration, là où le
-    // bureau Flash gardait ses icônes petites. On éclaire donc un fond sombre
-    // et on assombrit un fond clair, sans jamais toucher à la couleur elle-même.
+    // Un halo contrastant : la couleur du texte est celle du bureau Flash, et
+    // sur un téléphone les tuiles sont POSÉES sur l'illustration, là où le
+    // bureau Flash gardait ses icônes petites. On borde donc un texte clair de
+    // sombre et l'inverse, sans jamais toucher à la couleur elle-même.
     var halo = "255,255,255";
     if (c.txt) {
       var v = parseInt(c.txt.slice(1), 16);

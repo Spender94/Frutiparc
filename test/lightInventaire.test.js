@@ -98,10 +98,11 @@ test('les trois rubriques du bureau existent au mobile, et chaque objet est dans
   const noms = apres.fonds.map((f) => f.nom).sort();
   assert.deepEqual(noms, ['Chevalier moutarde', 'Mini-Wave Nostromo']);
   // Chaque fond porte son image et son dataMisc — c'est ce couple que le
-  // bureau range dans la préférence.
+  // bureau range dans la préférence. La couleur de texte est renseignée
+  // (voir plus bas) : « 4E5464 » est sombre, les étiquettes seront blanches.
   const moutarde = apres.fonds.find((f) => f.nom === 'Chevalier moutarde');
   assert.equal(moutarde.url, '/wal/ch.jpg');
-  assert.equal(moutarde.color, '4E5464;');
+  assert.equal(moutarde.color, '4E5464;FFFFFF');
 });
 
 test('les pictos remontent des gameItems, groupables par jeu', async () => {
@@ -136,16 +137,16 @@ test('poser un fond au mobile écrit la préférence n° 5 du bureau, au format 
   assert.equal(j.fond.url, '/wal/pl.jpg');
 
   // Le format exact que main.swf relit : id et longueur sur deux caractères
-  // base62, puis « url|dataMisc ». « 05 » = préférence 5, « 0i » = 18
+  // base62, puis « url|dataMisc ». « 05 » = préférence 5, « 0o » = 24
   // caractères, et la valeur est bien celle qu'écrirait loadWP().
   const pref = await mypref(sid);
-  assert.equal(pref, 'myPref=050iwal/pl.jpg|000044;',
+  assert.equal(pref, 'myPref=050owal/pl.jpg|000044;FFFFFF',
     'la chaîne de préférences doit être celle du bureau, au caractère près');
 
   // Et l'inventaire annonce le fond courant, pour que le mobile le coche.
   const inv = await inventaire(sid);
   assert.equal(inv.fond.url, '/wal/pl.jpg');
-  assert.equal(inv.fond.color, '000044;');
+  assert.equal(inv.fond.color, '000044;FFFFFF');
 
   // « Aucun » : le bureau vide la préférence sans la supprimer (setAndSave
   // avec une chaîne vide). La longueur retombe à zéro.
@@ -166,7 +167,7 @@ test('un fond posé depuis le bureau Flash est celui que le mobile affiche', asy
 
   const inv = await inventaire(sid);
   assert.equal(inv.fond.url, '/wal/ch.jpg', 'le mobile affiche le fond choisi au bureau');
-  assert.equal(inv.fond.color, '4E5464;', 'avec sa couleur d’accompagnement');
+  assert.equal(inv.fond.color, '4E5464;FFFFFF', 'avec sa couleur d’accompagnement');
 });
 
 test('le fond posé au mobile n’écrase pas les autres préférences', async () => {
@@ -186,7 +187,7 @@ test('le fond posé au mobile n’écrase pas les autres préférences', async (
   // Les deux réglages d'origine sont intacts, et le fond s'est glissé à sa
   // place (les entrées sont rangées par numéro : 1, 3, puis 5).
   assert.ok(chaine.startsWith('0101Y0301N'), 'les préférences 1 et 3 survivent : ' + chaine);
-  assert.ok(chaine.endsWith('050iwal/ch.jpg|4E5464;'), 'le fond est ajouté à la suite : ' + chaine);
+  assert.ok(chaine.endsWith('050owal/ch.jpg|4E5464;FFFFFF'), 'le fond est ajouté à la suite : ' + chaine);
 });
 
 test('on ne pose que ce qu’on possède', async () => {
@@ -261,7 +262,7 @@ test('poser un fond rend aussi sa version verticale, sans la mettre dans la pré
   // La préférence est PARTAGÉE avec main.swf : elle ne doit porter que l'url
   // d'origine. La variante verticale est déduite à la lecture, jamais stockée
   // — sans quoi le bureau Flash irait chercher une image faite pour le portrait.
-  assert.equal(await mypref(sid), 'myPref=050iwal/pl.jpg|000044;',
+  assert.equal(await mypref(sid), 'myPref=050owal/pl.jpg|000044;FFFFFF',
     'la préférence du bureau ne doit rien connaître de la version verticale');
 
   // Et l'inventaire la redéduit tout seul au chargement suivant.
@@ -279,4 +280,113 @@ test('le client pose la version verticale en plein cadre, et garde la règle du 
   // Le repli garde la transcription de WallPaperMng, « scale = 100 » compris.
   assert.match(src, /jamais d'agrandissement/,
     'la règle du bureau doit rester en place pour les fonds sans redessin');
+});
+
+/*
+ * La couleur du TEXTE des étiquettes du bureau.
+ *
+ * dataMisc vaut « bgColor;txtColor;pvAlpha », et FPDesktop.displayIconList ne
+ * retombe sur son vert colorSet.green.overdark que si txtColor est undefined.
+ * Or notre catalogue ne stockait QUE la couleur de fond — « 4E5464; », second
+ * champ VIDE : Flash évalue Number("0x") = NaN, et comme « NaN == undefined »
+ * est faux en AS2 le repli n'est jamais pris et les libellés sortent en NOIR,
+ * illisibles sur les trois fonds sombres.
+ *
+ * Mesuré sur le vrai bureau, en posant la préférence à la main : « 4E5464; »
+ * → libellés noirs, « 4E5464;FFFFFF » → libellés blancs. Le mécanisme marche,
+ * il n'attendait qu'une valeur. On renseigne donc le champ, d'après la
+ * luminance de la couleur d'accompagnement.
+ */
+const onident = (sid) =>
+  fetch(`${BASE}/do/onident?sid=${sid}`).then((r) => r.text());
+const prefDeOnident = async (sid) => {
+  const m = (await onident(sid)).match(/<mp><!\[CDATA\[([\s\S]*?)\]\]><\/mp>/);
+  assert.ok(m, 'onident doit porter la chaîne de préférences');
+  return m[1];
+};
+
+test('chaque fond annonce une couleur de texte, claire sur fond sombre', async () => {
+  const sid = await sidPour('ltxt' + RUN);
+  for (const id of [201, 202, 203, 204, 205, 206, 207, 208]) {
+    assert.equal((await acheter(sid, id)).ok, true, `achat du fond ${id}`);
+  }
+  const parNom = Object.fromEntries((await inventaire(sid)).fonds.map((f) => [f.nom, f]));
+
+  // Les trois fonds que le joueur signalait : leurs libellés doivent passer
+  // au blanc. Les autres gardent le noir — c'est déjà ce que le NaN donnait,
+  // donc rien ne bouge à l'écran pour eux.
+  const attendus = {
+    'Chevalier moutarde':  '4E5464;FFFFFF',
+    'Mini-Wave Nostromo':  '000044;FFFFFF',
+    'Mini-Wave Mini-Star': '000044;FFFFFF',
+    'Chorale Frutiparc':   'ADE76B;000000',
+    'Utopiz':              'F6AFA9;000000',
+  };
+  for (const [nom, color] of Object.entries(attendus)) {
+    assert.equal(parNom[nom].color, color, `${nom} : couleur de texte attendue`);
+  }
+  // Et aucun fond ne repart avec un champ vide.
+  for (const f of Object.values(parNom)) {
+    assert.match(f.color, /^[0-9A-Fa-f]{6};[0-9A-Fa-f]{6}/,
+      `${f.nom} doit porter fond ET texte : ` + f.color);
+  }
+});
+
+test('un fond posé AVANT la correction est complété à la relecture du bureau', async () => {
+  const sid = await sidPour('lrat' + RUN);
+
+  // L'ancienne forme, telle qu'elle dort dans les comptes existants : le
+  // second champ est vide. Le bureau lit ses préférences par /do/onident (il
+  // n'appelle jamais /do/mypref au démarrage), c'est donc là que le rattrapage
+  // doit se voir.
+  const ancien = '0101Y050iwal/pl.jpg|000044;';
+  await fetch(`${BASE}/do/prefsave?sid=${sid}&s=${encodeURIComponent(ancien)}`);
+
+  const repare = await prefDeOnident(sid);
+  assert.equal(repare, '0101Y050owal/pl.jpg|000044;FFFFFF',
+    'la couleur de texte est ajoutée, la préférence n° 1 est intacte');
+
+  // Idempotent : une deuxième lecture ne rajoute pas un champ de plus.
+  assert.equal(await prefDeOnident(sid), repare, 'le rattrapage ne se répète pas');
+  assert.equal(await mypref(sid), 'myPref=' + repare, '/do/mypref dit la même chose');
+  // Et le mobile lit la même valeur, pour peindre ses étiquettes pareil.
+  assert.equal((await inventaire(sid)).fond.color, '000044;FFFFFF');
+});
+
+test('une couleur de texte choisie à la main n’est jamais écrasée', async () => {
+  const sid = await sidPour('lmai' + RUN);
+
+  // « 000044 » est sombre : la règle donnerait du blanc. Mais le champ est
+  // renseigné — un fond a le droit de vouloir sa propre teinte.
+  const voulu = '050mwal/pl.jpg|000044;FF9900';
+  await fetch(`${BASE}/do/prefsave?sid=${sid}&s=${encodeURIComponent(voulu)}`);
+  assert.equal(await prefDeOnident(sid), voulu, 'la valeur du joueur passe telle quelle');
+});
+
+test('le bureau qui réécrit son fond au démarrage enregistre la forme complète', async () => {
+  const sid = await sidPour('lpar' + RUN);
+
+  // WallPaperMng.loadWP finit par userPref.setAndSave, ce qui déclenche un
+  // /do/prefsavepartial?i=5&v=… avec la valeur du catalogue — l'ancienne forme
+  // si le SWF la tenait d'ailleurs. On la complète au passage.
+  await fetch(`${BASE}/do/prefsavepartial?sid=${sid}&i=5&v=${encodeURIComponent('wal/ch.jpg|4E5464;')}`);
+  assert.equal(await mypref(sid), 'myPref=050owal/ch.jpg|4E5464;FFFFFF');
+
+  // Le bureau qui renvoie déjà la forme complète ne la voit pas changer.
+  await fetch(`${BASE}/do/prefsavepartial?sid=${sid}&i=5&v=${encodeURIComponent('wal/ch.jpg|4E5464;FFFFFF')}`);
+  assert.equal(await mypref(sid), 'myPref=050owal/ch.jpg|4E5464;FFFFFF');
+});
+
+test('le client mobile peint ses étiquettes de la couleur servie, noir à défaut', () => {
+  const fsync = require('node:fs');
+  const src = fsync.readFileSync(path.join(ROOT, 'public', 'light.html'), 'utf8');
+  // La couleur vient du champ, sans recalcul côté client : les deux bureaux
+  // doivent afficher la MÊME teinte.
+  assert.match(src, /var txt = arr\.length >= 2 \? \(hex\(arr\[1\]\) \|\| "#000000"\) : null;/,
+    'le repli NOIR reproduit la coquille d’origine pour une valeur non renseignée');
+  assert.match(src, /panneau\.style\.setProperty\("--fond-txt", c\.txt\)/,
+    'la couleur servie est posée en variable CSS');
+  // Et le halo suit la couleur du texte, pas celle du fond.
+  assert.match(src, /var v = parseInt\(c\.txt\.slice\(1\), 16\);/,
+    'le halo se calcule sur la couleur du texte');
 });
