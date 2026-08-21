@@ -8489,6 +8489,14 @@ app.post('/api/jamajama/score', (req, res) => {
   } else {
     return res.json({ ok: false, error: 'source' });
   }
+  // Trois packs de levels.xml ne contiennent qu'une entrée SANS contenu :
+  // « Aide-toi, le ciel t'aidera », « Rien ne sert de courir »… Ce sont des
+  // paliers d'attente, laissés là avec un `total` supérieur au nombre réel
+  // de niveaux pour barrer la route au pack suivant. Il n'y a rien à jouer,
+  // donc rien à compter.
+  if (!contenu) {
+    return res.json({ ok: false, error: 'niveau' });
+  }
 
   let verdict;
   try {

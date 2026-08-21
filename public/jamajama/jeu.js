@@ -47,6 +47,7 @@
   // jeu qui « saute » des touches.
   const touches = {};
   let enAttente = null;
+  let toucheTexte = null;                      // pour le champ de recherche
   let espaceAppuye = false, espaceBascule = false, echapDemande = false;
   const FLECHES = { ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3 };
   window.addEventListener('keydown', (e) => {
@@ -54,6 +55,9 @@
     if (FLECHES[e.key] !== undefined) { enAttente = FLECHES[e.key]; e.preventDefault(); }
     if (e.key === ' ') { espaceAppuye = true; e.preventDefault(); }
     if (e.key === 'Escape') echapDemande = true;
+    if (e.key === 'Enter' || e.key === 'Backspace' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey)) {
+      toucheTexte = e.key;
+    }
   });
   window.addEventListener('keyup', (e) => {
     touches[e.key] = false;
@@ -119,8 +123,10 @@
       update(tmod) {
         const id = ecran.update(tmod, souris);
         if (id === 2) passer(EtatAventure());
-        // 1 tournoi, 4 éditeur, 5 stats, 6 aide, 7 options : les prochaines
-        // étapes du portage — le menu les montre déjà, fidèle au fichier.
+        if (id === 1) passer(EtatTournoi());
+        if (id === 7) passer(EtatOptions());
+        // 4 éditeur, 5 statistiques, 6 aide : les prochaines étapes du
+        // portage — le menu les montre déjà, fidèle au fichier.
       },
       dessiner() { ecran.dessiner(ctx); },
     };
@@ -203,6 +209,10 @@
           if (a === 'prev') precedent();
           if (a === 'next') suivant();
           if (a === 'play') {
+            // Trois packs ne contiennent qu'une entrée sans contenu : des
+            // paliers d'attente que levels.xml pose pour barrer la route au
+            // pack suivant. Leur titre est le message ; il n'y a rien à
+            // lancer, et le bouton reste sans effet.
             const niveau = plateforme.niveauAventure(moi.packId, moi.index);
             if (niveau) {
               passer(EtatPartie(niveau, { type: 'aventure', pack: moi.packId, niveau: moi.index },
@@ -214,6 +224,65 @@
       dessiner() {
         if (moi.ecran) moi.ecran.dessiner(ctx);
         else if (moi.select) moi.select.dessiner(ctx);
+      },
+    };
+  }
+
+  // — les OPTIONS (options.State) : les deux fondus, gardés côté serveur —
+  function EtatOptions() {
+    const ecran = new Ecrans.EcranOptions(plateforme.options);
+    return {
+      nom: 'options',
+      update(tmod) {
+        if (echapDemande) { echapDemande = false; passer(EtatMenu()); return; }
+        const a = ecran.update(tmod, souris);
+        if (a === 'annuler') passer(EtatMenu());
+        if (a === 'sauver') {
+          plateforme.options.showBeginFade = ecran.debut;
+          plateforme.options.showVictoFade = ecran.fin;
+          plateforme.sauverOptions();
+          passer(EtatMenu());
+        }
+      },
+      dessiner() { ecran.dessiner(ctx); },
+    };
+  }
+
+  // — le TOURNOI (playlist.State) : la liste des niveaux de la communauté —
+  //
+  // Le fichier va chercher sa liste par le réseau (listLevels / getLevel) ;
+  // ici tout est arrivé d'un coup avec /api/jamajama/donnees, et le serveur
+  // tient les statuts. Une victoire y va au classement.
+  function EtatTournoi(memoire) {
+    const ecran = new Ecrans.EcranListe(plateforme.tournoi);
+    if (memoire) {
+      ecran.page = memoire.page || 0;
+      ecran.filtre = memoire.filtre || '';
+      ecran.recherche = memoire.recherche || '';
+      ecran.choisi = plateforme.tournoi.find((n) => n.id === memoire.choisi) || null;
+    }
+    let fiche = null;
+    return {
+      nom: 'tournoi',
+      update(tmod) {
+        if (fiche) {
+          if (fiche.update(tmod, souris) === 'fermer') fiche = null;
+          echapDemande = false;
+          return;
+        }
+        if (echapDemande) { echapDemande = false; passer(EtatMenu()); return; }
+        const a = ecran.update(tmod, souris, toucheTexte);
+        toucheTexte = null;
+        if (a === 'proprietes' && ecran.choisi) fiche = new Ecrans.FicheNiveau(ecran.choisi);
+        if (a === 'jouer' && ecran.choisi) {
+          const n = ecran.choisi;
+          passer(EtatPartie(R.Level.depuisChaine(n.contenu), { type: 'tournoi', id: n.id },
+            { page: ecran.page, filtre: ecran.filtre, recherche: ecran.recherche, choisi: n.id }));
+        }
+      },
+      dessiner() {
+        ecran.dessiner(ctx);
+        if (fiche) fiche.dessiner(ctx);
       },
     };
   }

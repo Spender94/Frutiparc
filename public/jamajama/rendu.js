@@ -69,6 +69,10 @@
     let f = ref || 1;
     if (typeof ref === 'string') {
       f = (s.etiquettes || {})[ref];
+      // Flash lit d'abord les étiquettes, puis se rabat sur le NUMÉRO : c'est
+      // ainsi que LevelSlot écrit icon.gotoAndStop("4") pour un niveau jamais
+      // joué, alors que ce clip n'a pas la moindre étiquette.
+      if (f === undefined && /^\d+$/.test(ref)) f = Number(ref);
       if (f === undefined) throw new Error('étiquette inconnue : ' + ref);
     }
     let choix = null;
@@ -161,7 +165,9 @@
    * @param sur    les consignes du jeu, par chemin d'instance :
    *               clips   {chemin: image|étiquette} — pilote un renvoi
    *               boutons {chemin: 1|2|3}           — repos, survol, appui
-   *               champs  {chemin: texte}           — contenu d'un champ
+   *               champs  {chemin: texte}           — contenu d'un champ nommé
+   *               vars    {variable: texte}         — contenu par VARIABLE
+   *                                                   (mc.name = …, comme le SWF)
    *               cacher  [chemin…]                 — pièces à passer
    *               alpha   0..1                      — transparence d'ensemble
    *               temps   images écoulées           — fait tourner les clips
@@ -178,6 +184,11 @@
     let fenetre = 0;
     ctx.save();
     if (sur.alpha !== undefined) ctx.globalAlpha *= sur.alpha;
+    // Quoi qu'il arrive dans une pièce — une étiquette qui manque, un dessin
+    // absent —, la pile de transformations doit revenir comme elle était :
+    // sans ce filet, un incident au milieu d'une liste décalait toutes les
+    // lignes suivantes, chacune un peu plus bas que la précédente.
+    try {
     for (const p of etat.pieces) {
       const chemin = p.nom
         ? (prefixe ? prefixe + '.' + p.nom : p.nom)
@@ -194,6 +205,7 @@
         }
       }
       ctx.save();
+      try {
       if (p.m) ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
       if (p.fichier !== undefined) {
         const img = images.get(p.fichier);
@@ -236,17 +248,25 @@
         dessiner(ctx, p.clip, ref2, sur, chemin);
       } else if (p.champ !== undefined) {
         const meta = MANIFESTE.champs[p.champ];
-        const texte = (p.nom && sur.champs && chemin in sur.champs)
-          ? sur.champs[chemin] : (meta.texte || '');
+        // Un champ se remplit de deux façons dans le fichier : par son nom
+        // d'instance (win.title.text = …) ou par sa VARIABLE (mc.name = …,
+        // et le champ lié suit). Les lignes de la liste des niveaux sont de
+        // la seconde sorte — sans ce canal, elles resteraient au texte de
+        // maquette (« Le nom de mon super level lalatsouin »).
+        let texte = meta.texte || '';
+        if (meta.variable && sur.vars && meta.variable in sur.vars) texte = sur.vars[meta.variable];
+        if (p.nom && sur.champs && chemin in sur.champs) texte = sur.champs[chemin];
         ecrireChamp(ctx, meta, texte, meta.alpha);
       } else if (p.bouton !== undefined) {
         const etatBouton = (p.nom ? (sur.boutons || {})[chemin] : 0) || 1;
         if (MANIFESTE.symboles[p.bouton]) dessiner(ctx, p.bouton, etatBouton, sur, chemin);
       }
+      } finally { ctx.restore(); }
+    }
+    } finally {
+      if (fenetre) ctx.restore();
       ctx.restore();
     }
-    if (fenetre) ctx.restore();
-    ctx.restore();
   }
 
   /** La zone de clic d'un bouton (le cadre de son état `hit` dans le SWF). */

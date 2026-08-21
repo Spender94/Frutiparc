@@ -33,7 +33,8 @@
     };
     for (const p of etat.pieces) {
       const nom = p.nom || '';
-      if (nom !== prefixe && nom.indexOf(prefixe + '.') !== 0) continue;
+      // Sans préfixe, on mesure le symbole entier ; avec, la branche visée.
+      if (prefixe != null && nom !== prefixe && nom.indexOf(prefixe + '.') !== 0) continue;
       const ox = p.m ? p.m[4] : 0, oy = p.m ? p.m[5] : 0;
       if (p.x !== undefined) etendre(p.x, p.y, p.w, p.h);
       else if (p.clip) {
@@ -250,6 +251,217 @@
     }
   }
 
+  // ── les options ──
+  //
+  // Deux cases à cocher et deux boutons, sur le fond du menu — c'est
+  // options.State au détail près : la case bascule entre ses images 1 et 2
+  // (« gotoAndStop(3 - _currentframe) »), « Sauver » enregistre, « Annuler »
+  // revient au menu sans rien changer.
+  //
+  // Le VerticalPane du fichier pose ses enfants avec 50 px de marge ; on
+  // garde ces places.
+  class EcranOptions {
+    constructor(options) {
+      this.fond = new FondVagues();
+      this.debut = !!options.showBeginFade;
+      this.fin = !!options.showVictoFade;
+      const c = cadreEnfant('jama_gui_CheckBox', 1, null) || { x: 0, y: 0, w: 220, h: 24 };
+      this.cases = [
+        { y: 50, dit: 'Animation de debut de partie', clef: 'debut' },
+        { y: 90, dit: 'Animation de fin de partie', clef: 'fin' },
+      ];
+      this.cadreCase = c;
+      const b = cadreEnfant('jama_gui_Button', 1, null) || { x: -40, y: -13, w: 80, h: 26 };
+      this.cadreBouton = b;
+      this.boutons = [
+        { x: 192 - 55, y: 160, dit: 'Sauver', quoi: 'sauver' },
+        { x: 192 + 55, y: 160, dit: 'Annuler', quoi: 'annuler' },
+      ];
+    }
+    update(tmod, souris) {
+      this.fond.update(tmod);
+      if (!souris || !souris.clic) return null;
+      for (const c of this.cases) {
+        const r = { x: 50 + this.cadreCase.x, y: c.y + this.cadreCase.y,
+          w: this.cadreCase.w, h: this.cadreCase.h };
+        if (dans(r, souris.x, souris.y)) { this[c.clef] = !this[c.clef]; return null; }
+      }
+      for (const b of this.boutons) {
+        const r = { x: b.x + this.cadreBouton.x, y: b.y + this.cadreBouton.y,
+          w: this.cadreBouton.w, h: this.cadreBouton.h };
+        if (dans(r, souris.x, souris.y)) return b.quoi;
+      }
+      return null;
+    }
+    dessiner(ctx) {
+      this.fond.dessiner(ctx);
+      for (const c of this.cases) {
+        ctx.save();
+        ctx.translate(50, c.y);
+        try {
+          Rendu.dessiner(ctx, 'jama_gui_CheckBox', this[c.clef] ? 2 : 1,
+            { vars: { label: c.dit } });
+        } catch (e) {}
+        ctx.restore();
+      }
+      for (const b of this.boutons) {
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        try { Rendu.dessiner(ctx, 'jama_gui_Button', 1, { champs: { label: b.dit } }); } catch (e) {}
+        ctx.restore();
+      }
+    }
+  }
+
+  // ── la liste des niveaux (le tournoi) ──
+  //
+  // C'est jama_gui_list à son image 1 : le fond, l'en-tête (nom, record,
+  // difficulté), la rangée de boutons du bas et le compteur de pages. Les
+  // lignes sont des jama_GUI_LevelSlot empilés depuis y = 50 — avec le
+  // décalage d'origine : LevelsPane pose la première à (0 − 1) × hauteur,
+  // si bien qu'elle chevauche l'en-tête d'une ligne. On garde ce pas.
+  //
+  // Un clic choisit, un second clic sur la même ligne dans la demi-seconde
+  // lance la partie (doubleClickAction). Les statuts d'icône sont ceux de
+  // LevelSlot : « 4 » jamais joué, « 1 » mort, « 3 » bronze, « 2 » or.
+  const ICONES = { '-1': '4', 0: '1', 1: '3', 2: '2' };
+  const PAR_PAGE = 15;
+
+  class EcranListe {
+    constructor(niveaux) {
+      this.tous = niveaux;
+      this.filtre = '';
+      this.page = 0;
+      this.choisi = null;
+      this._dernierClic = 0;
+      this._dernierId = null;
+      this.recherche = '';
+      // La hauteur d'une ligne, c'est celle du clip — le `_height` que
+      // LevelsPane multiplie pour empiler.
+      const r = cadreEnfant('jama_GUI_LevelSlot', 1, null);
+      this.hauteurLigne = (r && r.h) || 19;
+      this._zones = {
+        butPlay: cadreEnfant('jama_gui_list', 1, 'butPlay'),
+        butProp: cadreEnfant('jama_gui_list', 1, 'butProp'),
+        butPrev: cadreEnfant('jama_gui_list', 1, 'butPrev'),
+        butNext: cadreEnfant('jama_gui_list', 1, 'butNext'),
+        butSearch: cadreEnfant('jama_gui_list', 1, 'butSearch'),
+        butSort: cadreEnfant('jama_gui_list', 1, 'butSort'),
+        fieldSearch: cadreEnfant('jama_gui_list', 1, 'fieldSearch'),
+      };
+    }
+    niveaux() {
+      const q = this.filtre.toLowerCase();
+      if (!q) return this.tous;
+      return this.tous.filter((n) => (n.titre + ' ' + n.auteur).toLowerCase().indexOf(q) >= 0);
+    }
+    pages() { return Math.max(1, Math.ceil(this.niveaux().length / PAR_PAGE)); }
+    visibles() {
+      const l = this.niveaux();
+      return l.slice(this.page * PAR_PAGE, (this.page + 1) * PAR_PAGE);
+    }
+    update(tmod, souris, clavier) {
+      if (clavier && this.saisie) {
+        // Le champ de recherche a le clavier : Entrée valide, comme le
+        // yota.Keyboard du fichier.
+        if (clavier === 'Enter') { this.filtre = this.recherche; this.page = 0; this.saisie = false; }
+        else if (clavier === 'Backspace') this.recherche = this.recherche.slice(0, -1);
+        else if (clavier.length === 1) this.recherche += clavier;
+      }
+      if (!souris || !souris.clic) return null;
+      const { x, y } = souris;
+      if (dans(this._zones.fieldSearch, x, y)) { this.saisie = true; return null; }
+      this.saisie = false;
+      if (dans(this._zones.butSearch, x, y)) { this.filtre = this.recherche; this.page = 0; return null; }
+      if (dans(this._zones.butPrev, x, y)) { if (this.page > 0) this.page -= 1; return null; }
+      if (dans(this._zones.butNext, x, y)) { if (this.page + 1 < this.pages()) this.page += 1; return null; }
+      if (dans(this._zones.butProp, x, y)) return this.choisi ? 'proprietes' : null;
+      if (dans(this._zones.butPlay, x, y)) return this.choisi ? 'jouer' : null;
+      if (dans(this._zones.butSort, x, y)) return 'tri';
+      // Les lignes.
+      const liste = this.visibles();
+      for (let i = 0; i < liste.length; i++) {
+        const ly = 50 + (i - 1) * this.hauteurLigne;
+        if (y >= ly && y < ly + this.hauteurLigne && x >= 0 && x < Consts.WIDTH) {
+          const avant = this._dernierId;
+          this.choisi = liste[i];
+          const t = Date.now();
+          const double = avant === liste[i].id && (t - this._dernierClic) < 500;
+          this._dernierClic = t;
+          this._dernierId = liste[i].id;
+          return double ? 'jouer' : null;
+        }
+      }
+      return null;
+    }
+    dessiner(ctx) {
+      try {
+        Rendu.dessiner(ctx, 'jama_gui_list', 1, {
+          champs: {
+            fieldPage: (this.page + 1) + ' / ' + this.pages(),
+            fieldSearch: this.recherche,
+          },
+        });
+      } catch (e) {}
+      const liste = this.visibles();
+      for (let i = 0; i < liste.length; i++) {
+        const n = liste[i];
+        ctx.save();
+        ctx.translate(0, 50 + (i - 1) * this.hauteurLigne);
+        if (this.choisi && this.choisi.id === n.id) {
+          // Le curseur de sélection : un liseré clair sur toute la ligne.
+          ctx.save();
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = teinte(Consts.LIGHT_BROWN);
+          ctx.fillRect(0, 0, Consts.WIDTH, this.hauteurLigne);
+          ctx.restore();
+        }
+        const statut = n.moi ? n.moi.s : -1;
+        try {
+          Rendu.dessiner(ctx, 'jama_GUI_LevelSlot', 1, {
+            vars: {
+              name: n.titre,
+              record: n.moi && n.moi.b ? String(n.moi.b) : '-',
+              // La « valeur » d'un niveau, telle que l'extension la calcule au
+              // moment de le valider : le score de l'auteur, au carré sur 290.
+              // Les niveaux de levels.xml n'ont pas d'attribut `p`, on la
+              // recalcule donc pour eux.
+              difficulty: String(n.difficulte
+                || Math.round(n.score * (n.score / 290))),
+            },
+            clips: { icon: ICONES[String(statut)] || '4' },
+          });
+        } catch (e) {}
+        ctx.restore();
+      }
+    }
+  }
+
+  // ── la fiche d'un niveau (jama_gui_LevelInfo) ──
+  class FicheNiveau {
+    constructor(niveau) { this.niveau = niveau; }
+    update(tmod, souris) { return (souris && souris.clic) ? 'fermer' : null; }
+    dessiner(ctx) {
+      const n = this.niveau;
+      const d = n.date ? new Date(Number(n.date)) : null;
+      ctx.save();
+      try {
+        Rendu.dessiner(ctx, 'jama_gui_LevelInfo', 1, {
+          champs: { title: n.titre },
+          vars: {
+            author: n.auteur || '?',
+            date: d ? d.toLocaleDateString('fr-FR') : '?',
+            nbrPlays: n.moi ? String(n.moi.p || 0) : '0',
+            nbrVictories: n.moi ? String(n.moi.v || 0) : '0',
+            value: n.score ? String(n.score) : '-',
+            title: n.titre,
+          },
+        });
+      } catch (e) {}
+      ctx.restore();
+    }
+  }
+
   // ── les dialogues ──
   class Dialogue {
     /**
@@ -310,5 +522,6 @@
     }
   }
 
-  window.JamaEcrans = { EcranMenu, EcranPacks, EcranSelect, Dialogue, Attente, FondVagues, cadreEnfant };
+  window.JamaEcrans = { EcranMenu, EcranPacks, EcranSelect, EcranListe, EcranOptions,
+    FicheNiveau, Dialogue, Attente, FondVagues, cadreEnfant };
 })();

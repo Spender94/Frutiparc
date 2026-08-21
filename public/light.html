@@ -995,6 +995,15 @@
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
     border: 0; display: block; background: #150f28;
   }
+  /* JamaJama : le jeu tient dans un carré de 384 et se centre sur le brun
+     de son propre décor — le cadre prend la couleur du fond du menu pour
+     qu'aucun liseré ne tranche autour du plateau. */
+  #jamajama-panel { padding: 0; }
+  #jamajama-frame {
+    flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
+    border: 0; display: block; background: #624d28;
+    touch-action: none;
+  }
   #minifever-panel { padding: 0; }
   #minifever-frame {
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
@@ -1860,6 +1869,16 @@
        ne connaît pas ce jeu, il n'existait pas. -->
   <section class="panel" id="minifever-panel">
     <iframe id="minifever-frame" title="Mini-Fever" referrerpolicy="no-referrer"></iframe>
+  </section>
+
+  <!-- JamaJama (« Tiki le petit fantôme ») — le casse-tête de 2005, porté en
+       natif d'après son SWF : les dessins en sont tirés au tracé près, la
+       mécanique transcrite méthode par méthode. Il lit ?sid= pour retenir
+       l'aventure, classer les niveaux du tournoi et débloquer les pictos —
+       ce que la version Flash ne faisait plus, sa couche réseau ayant été
+       remplacée par une mémoire locale (voir public/jamajama/plateforme.js). -->
+  <section class="panel" id="jamajama-panel">
+    <iframe id="jamajama-frame" title="JamaJama" referrerpolicy="no-referrer"></iframe>
   </section>
 
   <!-- Les scores — la fenêtre « Scores » du bureau, reproduite.
@@ -3040,7 +3059,7 @@
   var CADRES_JEU = {
     grapiz: "#grapiz-frame", bandas: "#bandas-frame", swapou: "#swapou-frame",
     miniwave: "#miniwave-frame", minipixiz: "#minipixiz-frame",
-    minifever: "#minifever-frame",
+    minifever: "#minifever-frame", jamajama: "#jamajama-frame",
   };
   function donnerFocusAuJeu(tab) {
     var sel = CADRES_JEU[tab];
@@ -3072,6 +3091,7 @@
     $("#miniwave-panel").classList.toggle("active", tab === "miniwave");
     $("#minipixiz-panel").classList.toggle("active", tab === "minipixiz");
     $("#minifever-panel").classList.toggle("active", tab === "minifever");
+    $("#jamajama-panel").classList.toggle("active", tab === "jamajama");
     $("#scores-panel").classList.toggle("active", tab === "scores");
     $("#trombi-panel").classList.toggle("active", tab === "trombi");
     $("#mail-panel").classList.toggle("active", tab === "mail");
@@ -3121,6 +3141,12 @@
         ff.setAttribute("src", "/minifever/?sid=" + encodeURIComponent(state.sid));
       }
     }
+    if (tab === "jamajama") {
+      var jf = $("#jamajama-frame");
+      if (jf && !jf.getAttribute("src") && state.sid) {
+        jf.setAttribute("src", "/jamajama/?sid=" + encodeURIComponent(state.sid));
+      }
+    }
     // Un jeu dans une IFRAME ne reçoit le clavier que s'il a le focus. Ouvrir
     // son onglet le lui donne — sans quoi les flèches restaient à cette page et
     // le joueur croyait le clavier ignoré (rapporté sur Mini-Wave). Le jeu le
@@ -3154,6 +3180,10 @@
     // Mini-Fever n'a jamais eu de jaquette : la sienne est composée des
     // épreuves portées (scripts/make-minifever-pictos.js), en SVG.
     { tab: "minifever", img: "/fb/fd_minifever.svg", name: "Mini-Fever" },
+    // JamaJama non plus n'a jamais eu de jaquette (le portail le lançait par
+    // un iconName que fileIcon.swf ne connaît pas). La sienne est composée
+    // de ses propres dessins — scripts/make-jamajama-disc.js.
+    { tab: "jamajama", img: "/fb/fd_jamajama.svg", name: "JamaJama" },
   ];
   function renderDiscs() {
     var grid = $("#disques-grid");
