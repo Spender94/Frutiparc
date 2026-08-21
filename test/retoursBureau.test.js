@@ -307,8 +307,21 @@ test('les fenêtres de jeu portent le bandeau', async () => {
 
 const bureau = (sid) => texte('/ff/ls?sid=' + encodeURIComponent(sid) + '&uid=root');
 const disques = (sid) => texte('/ff/ls?sid=' + encodeURIComponent(sid) + '&uid=disccollector');
-const deplacer = (sid, f, folder, p) => texte('/ff/mv?sid=' + encodeURIComponent(sid)
-  + '&f=' + encodeURIComponent(f) + '&folder=' + folder + (p ? '&p=' + p : ''));
+
+// On imite le SWF À LA LETTRE, et c'est tout l'enjeu : FPFileMng.move n'envoie
+// QUE le fichier et la destination — jamais la provenance — et pas de
+// destination du tout quand c'est le bureau :
+//
+//     if(newFolder != undefined && newFolder != "root"){ … folder: newFolder … }
+//     else                                             { … sans folder …      }
+//
+// Les premiers essais, eux, envoyaient `folder=root&p=disccollector`. Deux
+// paramètres que le client n'a jamais envoyés : le premier faisait croire que
+// le bureau était reconnu, le second que la provenance était juste. Ils
+// passaient donc au vert sur un bureau qui, en vrai, ne retenait rien.
+const deplacer = (sid, f, folder) => texte('/ff/mv?sid=' + encodeURIComponent(sid)
+  + '&f=' + encodeURIComponent(f) + (folder ? '&folder=' + encodeURIComponent(folder) : ''));
+const lacherSurLeBureau = (sid, f) => deplacer(sid, f);
 
 test('un disque posé sur le bureau QUITTE « Mes disques » — un objet, une place', async () => {
   const sid = await sidPour('rburbur' + RUN);
@@ -316,22 +329,44 @@ test('un disque posé sur le bureau QUITTE « Mes disques » — un objet, une p
   assert.ok(avant > 1, 'le catalogue est garni');
   assert.equal(/u="grapiz1"/.test(await bureau(sid)), false, 'bureau nu au départ');
 
-  await deplacer(sid, 'grapiz1', 'root', 'disccollector');
+  await lacherSurLeBureau(sid, 'grapiz1');
   assert.match(await bureau(sid), /<e u="grapiz1" t="disc"/, 'le disque est sur le bureau');
   const apres = await disques(sid);
   assert.equal(/u="grapiz1"/.test(apres), false, 'et plus dans « Mes disques »');
   assert.equal((apres.match(/t="disc"/g) || []).length, avant - 1, 'un de moins au catalogue');
 
   // Reposé dix fois, il ne fait pas dix icônes.
-  for (let i = 0; i < 10; i++) await deplacer(sid, 'grapiz1', 'root');
+  for (let i = 0; i < 10; i++) await lacherSurLeBureau(sid, 'grapiz1');
   assert.equal(((await bureau(sid)).match(/u="grapiz1"/g) || []).length, 1,
     'une seule icône, quoi qu\'on fasse');
 
   // Rangé, il revient au catalogue et quitte le bureau.
-  await deplacer(sid, 'grapiz1', 'disccollector', 'root');
+  await deplacer(sid, 'grapiz1', 'disccollector');
   assert.equal(/u="grapiz1"/.test(await bureau(sid)), false, 'parti du bureau');
   assert.match(await disques(sid), /u="grapiz1"/, 'revenu au catalogue');
   assert.equal(((await disques(sid)).match(/t="disc"/g) || []).length, avant, 'compte rétabli');
+});
+
+test('le disque dit d\'où il vient : plus de fantôme à demi effacé dans « Mes disques »', async () => {
+  const sid = await sidPour('rburfan' + RUN);
+
+  // C'est la RÉPONSE qui décide quelle fenêtre perd l'icône : onMove appelle
+  // callListeners(p, "rmUid", uid). Et il faut bien qu'une fenêtre la perde —
+  // IconFileBox.initMove a posé _alpha = 50 sur l'icône dès le début du
+  // glisser, et rien d'autre ne la ranime.
+  const aller = await lacherSurLeBureau(sid, 'bkiwi1');
+  assert.match(aller, /p="disccollector"/, 'à l\'aller, c\'est le catalogue qui la perd');
+  assert.match(aller, /f="root"/, 'et le bureau qui la gagne');
+
+  // Au retour, l'inverse : le bureau la perd.
+  const retour = await deplacer(sid, 'bkiwi1', 'disccollector');
+  assert.match(retour, /p="root"/, 'au retour, c\'est le bureau qui la perd');
+
+  // Et le lâcher sur le fond d'écran est bien reconnu comme tel, sans `folder`.
+  const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const bloc = srv.slice(srv.indexOf('function estLeBureau'),
+    srv.indexOf('function parseDesktopItems'));
+  assert.match(bloc, /f === ''/, 'le vide est le bureau — c\'est ce que le SWF envoie');
 });
 
 test('un Frutiz posé sur le bureau y est un RACCOURCI — il reste aux contacts', async () => {
@@ -341,8 +376,8 @@ test('un Frutiz posé sur le bureau y est un RACCOURCI — il reste aux contacts
   const adresse = ami + '@frutiparc.com';
 
   await deplacer(sid, adresse, 'mycontact');
-  await deplacer(sid, adresse, 'root', 'mycontact');
-  await deplacer(sid, adresse, 'root', 'mycontact');       // deux fois : une icône
+  await lacherSurLeBureau(sid, adresse);
+  await lacherSurLeBureau(sid, adresse);                   // deux fois : une icône
   assert.equal(((await bureau(sid)).match(new RegExp('u="' + ami + '"', 'g')) || []).length, 1,
     'une seule icône sur le bureau');
   const contacts = await texte('/ff/ls?sid=' + encodeURIComponent(sid) + '&uid=mycontact');
@@ -356,16 +391,19 @@ test('un Frutiz posé sur le bureau y est un RACCOURCI — il reste aux contacts
 
 test('le bureau garde ses icônes d\'une visite à l\'autre', async () => {
   const sid = await sidPour('rburgar' + RUN);
-  await deplacer(sid, 'kaluga', 'root', 'disccollector');
-  await deplacer(sid, 'swapou2', 'root', 'disccollector');
+  // De VRAIS identifiants de disque : « kaluga » et « swapou2 » n'en sont pas
+  // (le catalogue dit kaluga1 et swapou1), et le serveur les prenait pour des
+  // adresses — l'essai passait au vert en posant deux contacts sur le bureau.
+  await lacherSurLeBureau(sid, 'kaluga1');
+  await lacherSurLeBureau(sid, 'swapou1');
   // Une seconde session du MÊME joueur voit le même bureau : c'est le serveur
   // qui le retient, pas l'écran.
   const sid2 = await sidPour('rburgar' + RUN);
   const vu = await bureau(sid2);
-  assert.match(vu, /u="kaluga"/, 'le premier disque est toujours là');
-  assert.match(vu, /u="swapou2"/, 'le second aussi');
+  assert.match(vu, /<e u="kaluga1" t="disc"/, 'le premier disque est toujours là');
+  assert.match(vu, /<e u="swapou1" t="disc"/, 'le second aussi');
   // Et dans l'ordre où ils ont été posés — le bureau les range en grille.
-  assert.ok(vu.indexOf('u="kaluga"') < vu.indexOf('u="swapou2"'), 'dans l\'ordre du dépôt');
+  assert.ok(vu.indexOf('u="kaluga1"') < vu.indexOf('u="swapou1"'), 'dans l\'ordre du dépôt');
 });
 
 test('une icône que le serveur ne reconnaît plus est abandonnée, pas fatale', async () => {

@@ -4783,9 +4783,19 @@ const SPECIAL_FEUTRE_BY_SHOPID = Object.fromEntries(
 // ─────────────────────────────────────────────
 
 // « root » côté arbre, « desktop » côté type : main.swf emploie les deux.
+//
+// Et le VIDE aussi — c'est même la forme courante. FPFileMng.move n'envoie pas
+// de `folder` du tout quand la destination est la racine :
+//
+//     if(newFolder != undefined && newFolder != "root"){ … folder: newFolder … }
+//     else                                             { … sans folder …      }
+//
+// soit exactement ce qui part quand on lâche une icône sur le fond d'écran
+// (FPDesktop.onDrop passe destUid = "root"). Oublier ce cas, c'est ne jamais
+// rien retenir de ce que le joueur pose sur son bureau.
 function estLeBureau(folder) {
   const f = String(folder || '');
-  return f === 'root' || f === 'desktop';
+  return f === '' || f === 'root' || f === 'desktop';
 }
 
 function parseDesktopItems(raw) {
@@ -14878,6 +14888,18 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     const disc = GAME_DISCS[file];
     const displayName = disc.iconName || disc.swfName;
     const discDesc = `${disc.discType}\r\n${displayName}`;
+    // D'OÙ VIENT-IL ? Le client ne le dit pas — FPFileMng.move n'envoie que le
+    // fichier et la destination — mais c'est notre réponse qui décide quelle
+    // fenêtre perd l'icône : onMove fait callListeners(p, "rmUid", uid). Se
+    // tromper de provenance, c'est laisser l'icône de départ en place et à
+    // demi effacée, car IconFileBox.initMove lui pose _alpha = 50 dès le
+    // début du glisser et n'attend plus que son retrait pour disparaître.
+    // C'était le disque fantôme de « Mes disques ».
+    //
+    // Un disque n'a que deux gîtes possibles : le bureau, ou le catalogue.
+    // (La Frusion, elle, se range toute seule — FPFileMng.frusionOn a déjà
+    // retiré l'icône de son dossier au moment de l'insertion.)
+    oldFolder = desktopHasDisc(user, file) ? 'root' : 'disccollector';
     // Track eject events so the standalone game popup can poll and
     // close itself. Ruffle's WASM networking bypasses both window.fetch
     // and XMLHttpRequest wrappers, so the only reliable signal back to
