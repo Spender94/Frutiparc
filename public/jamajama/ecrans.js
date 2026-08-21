@@ -23,7 +23,13 @@
     const s = Rendu.symbole(cle);
     const etat = Rendu.etatDe(s, frame);
     let r = null;
-    const etendre = (x, y, w, h) => {
+    const etendre = (x0, y0, w0, h0) => {
+      // Une pièce posée en MIROIR (la flèche « suivante » est la « précédente »
+      // retournée, a = −1) donne une largeur négative : on remet le cadre à
+      // l'endroit, sans quoi aucun clic ne tombe jamais dedans.
+      const x = w0 < 0 ? x0 + w0 : x0;
+      const y = h0 < 0 ? y0 + h0 : y0;
+      const w = Math.abs(w0), h = Math.abs(h0);
       if (!r) r = { x, y, w, h };
       else {
         const x2 = Math.max(r.x + r.w, x + w), y2 = Math.max(r.y + r.h, y + h);

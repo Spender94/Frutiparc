@@ -113,7 +113,12 @@
 
   // ── la ronde des états ──
   let etat = null;
-  function passer(nouvel) { etat = nouvel; }
+  function passer(nouvel) {
+    // Un écran qui a posé quelque chose HORS du canevas (l'aide et son texte)
+    // le retire en partant.
+    if (etat && etat.quitter) etat.quitter();
+    etat = nouvel;
+  }
 
   // — le menu —
   function EtatMenu() {
@@ -124,9 +129,10 @@
         const id = ecran.update(tmod, souris);
         if (id === 2) passer(EtatAventure());
         if (id === 1) passer(EtatTournoi());
+        if (id === 6) passer(EtatAide());
         if (id === 7) passer(EtatOptions());
-        // 4 éditeur, 5 statistiques, 6 aide : les prochaines étapes du
-        // portage — le menu les montre déjà, fidèle au fichier.
+        // 4 éditeur, 5 statistiques : les prochaines étapes du portage — le
+        // menu les montre déjà, fidèle au fichier.
       },
       dessiner() { ecran.dessiner(ctx); },
     };
@@ -225,6 +231,116 @@
         if (moi.ecran) moi.ecran.dessiner(ctx);
         else if (moi.select) moi.select.dessiner(ctx);
       },
+    };
+  }
+
+  // — l'AIDE (help.State) —
+  //
+  // Le fichier d'aide est du HTML : Toad06 l'a réécrit en 2024 avec sa
+  // feuille de style, ses illustrations et ses renvois d'une rubrique à
+  // l'autre. Le champ de Flash le rendait tel quel ; ici c'est un vrai
+  // élément de page posé sur le canevas, dans la fenêtre dessinée par
+  // jama_gui_BigHelp — le texte se sélectionne, se fait lire à voix haute et
+  // défile au doigt, ce que le champ Flash ne savait pas faire. La navigation
+  // (retour, sommaire, précédent, suivant) est celle de help.Window.
+  function EtatAide() {
+    const boite = document.createElement('div');
+    boite.className = 'jama-aide';
+    document.body.appendChild(boite);
+    // Les dix rubriques, dans l'ordre où l'extension les fait défiler : ses
+    // flèches ne remontent pas l'historique (comme le faisait le fichier
+    // d'origine) mais tournent en boucle d'une rubrique à la suivante.
+    const ORDRE = ['index', 'index_controls', 'index_adventure', 'index_tournament',
+      'index_tournament_2', 'index_edition', 'index_edition_2', 'index_stats',
+      'index_annex', 'index_credits'];
+    let rang = 0;
+    let section = 'index';
+    let sections = null;
+    let style = '';
+
+    function poser() {
+      const html = (sections && sections[section]) || '<p>…</p>';
+      boite.innerHTML = '<style>' + style + '</style>' + html;
+      boite.scrollTop = 0;
+      // Trois illustrations que l'aide appelle (help_illuspictos1..3) ne sont
+      // pas dans le jeu livré — elles manquaient déjà à la version Flash, qui
+      // ne montrait alors rien du tout. On garde ce silence plutôt que
+      // l'icône d'image brisée du navigateur.
+      for (const img of boite.querySelectorAll('img')) {
+        img.addEventListener('error', () => img.remove());
+      }
+      // Les renvois du fichier d'aide appellent showSection(clé) : ici, un
+      // clic sur le lien correspondant.
+      for (const a of boite.querySelectorAll('a[href]')) {
+        const cible = (a.getAttribute('href') || '').replace(/^asfunction:[^,]*,/, '');
+        a.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (!sections || !(cible in sections)) return;
+          section = cible;
+          const i = ORDRE.indexOf(cible);
+          if (i >= 0) rang = i;
+          poser();
+        });
+      }
+    }
+    fetch('/api/jamajama/aide').then((r) => r.json()).then((d) => {
+      if (!d.ok) return;
+      sections = d.sections;
+      style = d.style;
+      poser();
+    }).catch(() => {});
+    poser();
+
+    function placer() {
+      // La fenêtre d'aide vit dans le canevas : on aligne la boîte de texte
+      // sur le champ que le fichier lui réserve, à l'échelle de l'écran.
+      const r = canvas.getBoundingClientRect();
+      const champ = Rendu.manifeste().champs[740];
+      const x = 33.5, y = 30;                    // le cadre, dans jama_gui_BigHelp
+      boite.style.left = (r.left + (x + 4) * K) + 'px';
+      boite.style.top = (r.top + (y + 4) * K) + 'px';
+      boite.style.width = ((champ ? champ.rect.w : 317) - 12) * K + 'px';
+      boite.style.height = ((champ ? champ.rect.h : 263) - 8) * K + 'px';
+      boite.style.fontSize = (12 * K) + 'px';
+    }
+
+    const zones = {
+      btnBack: Ecrans.cadreEnfant('jama_gui_BigHelp', 1, 'btnBack'),
+      btnTop: Ecrans.cadreEnfant('jama_gui_BigHelp', 1, 'btnTop'),
+      btnPrev: Ecrans.cadreEnfant('jama_gui_BigHelp', 1, 'btnPrev'),
+      btnNext: Ecrans.cadreEnfant('jama_gui_BigHelp', 1, 'btnNext'),
+    };
+    const dedans = (r, x, y) => r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+    function partir() {
+      boite.remove();
+      passer(EtatMenu());
+    }
+    return {
+      nom: 'aide',
+      update(tmod) {
+        placer();
+        if (echapDemande) { echapDemande = false; partir(); return; }
+        if (!souris || !souris.clic) return;
+        const x = souris.x, y = souris.y;
+        if (dedans(zones.btnBack, x, y)) { partir(); return; }
+        if (dedans(zones.btnTop, x, y)) {
+          rang = 0; section = ORDRE[0]; poser();
+        } else if (dedans(zones.btnPrev, x, y)) {
+          rang = (rang - 1 + ORDRE.length) % ORDRE.length;
+          section = ORDRE[rang];
+          poser();
+        } else if (dedans(zones.btnNext, x, y)) {
+          rang = (rang + 1) % ORDRE.length;
+          section = ORDRE[rang];
+          poser();
+        }
+      },
+      dessiner() {
+        ctx.fillStyle = '#' + Consts.BROWN.toString(16).padStart(6, '0');
+        ctx.fillRect(0, 0, Consts.WIDTH, Consts.HEIGHT);
+        try { Rendu.dessiner(ctx, 'jama_gui_BigHelp', 1, { champs: { content: '' } }); } catch (e) {}
+      },
+      quitter() { boite.remove(); },
     };
   }
 

@@ -12,6 +12,18 @@
   html, body { margin: 0; height: 100%; background: #624d28; overflow: hidden; }
   body { display: flex; align-items: center; justify-content: center; }
   #jama { image-rendering: auto; touch-action: none; outline: none; }
+  /* L'AIDE : le seul morceau de vrai HTML du jeu. Le fichier d'aide EST du
+     HTML (Toad06 l'a réécrit ainsi, avec ses illustrations et ses renvois) ;
+     le champ de Flash le rendait tel quel. On le pose donc dans la fenêtre
+     dessinée par le canevas, où il se sélectionne et défile au doigt. */
+  .jama-aide {
+    position: fixed; overflow-y: auto; overflow-x: hidden;
+    color: #000; background: transparent; z-index: 5;
+    -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  }
+  .jama-aide p, .jama-aide ul { margin: 0 0 .6em; }
+  .jama-aide img { max-width: 45%; height: auto; float: left; margin: 0 6px 4px 0; }
+  .jama-aide a { color: #4a3c21; }
 </style>
 </head>
 <body>

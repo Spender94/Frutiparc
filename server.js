@@ -8423,6 +8423,30 @@ app.get('/api/jamajama/donnees', (req, res) => {
   });
 });
 
+// L'AIDE — help.xml, réécrite par Toad06 en 2024.
+//
+// Le fichier tient du HTML dans des sections nommées, plus une feuille de
+// style ; le champ de Flash le rendait tel quel. On le sert découpé, à
+// charge du client de l'afficher. Les illustrations sont déjà accessibles
+// (express.static monte Games/poulpi sur /games/poulpi), on ne réécrit donc
+// que la racine de leurs adresses.
+let jamaAideCache = null;
+app.get('/api/jamajama/aide', (req, res) => {
+  if (!jamaAideCache) {
+    const xml = fs.readFileSync(path.join(__dirname, 'Games/poulpi/help.xml'), 'utf8');
+    const style = (/<stylesheet>\s*<!\[CDATA\[([\s\S]*?)\]\]>/.exec(xml) || [, ''])[1];
+    const sections = {};
+    for (const s of xml.matchAll(/<section\s+name="([^"]+)"\s*>([\s\S]*?)<\/section>/g)) {
+      sections[s[1]] = s[2]
+        .replace(/<!\[CDATA\[|\]\]>/g, '')
+        .replace(/src="images\//g, 'src="/games/poulpi/images/')
+        .trim();
+    }
+    jamaAideCache = { style: style.trim(), sections };
+  }
+  res.json(Object.assign({ ok: true }, jamaAideCache));
+});
+
 // L'aventure (le format de chaîne du jeu d'origine) et les options.
 app.post('/api/jamajama/aventure', (req, res) => {
   const sid = getSidFromRequest(req, req.body || {});
