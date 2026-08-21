@@ -998,6 +998,44 @@ function renderPictoEntryXml(itemName) {
   return `<e u="${escapeXml(itemName)}" t="url" s="10" d="0" a="0">${escapeXml(displayName)}\r\njavascript:fp_openPopup('${escapeXml(viewerUrl)}','Picto','width=400,height=450')\r\n</e>`;
 }
 
+/**
+ * LES PICTOS, RANGÉS PAR JEU.
+ *
+ * Le dossier « Pictos » les déversait tous en vrac. Un collectionneur de longue
+ * date en a plusieurs centaines — le bureau dessine alors autant d'icônes dans
+ * une même fenêtre, et la fenêtre rame. Rangés par jeu, on ouvre une trentaine
+ * d'icônes à la fois, et on retrouve ce qu'on cherche.
+ *
+ * Une tentative précédente s'était heurtée à des nœuds « Undefined » : les
+ * sous-dossiers étaient annoncés dans le CONTENU du dossier, mais pas dans
+ * l'ARBRE (/ff/tree), que FFileMng lit une fois pour toutes au démarrage. Un
+ * dossier absent de l'arbre n'a pas de nom. On les déclare donc aux deux
+ * endroits — comme le fait déjà « Mes contacts » pour ses propres sous-dossiers.
+ *
+ * @returns {Array<{uid: string, nom: string, jeu: string, pictos: string[]}>}
+ */
+function dossiersPictos(user) {
+  const gi = Array.isArray(user && user.gameItems) ? user.gameItems : [];
+  const parJeu = new Map();
+  for (const item of gi) {
+    const jeu = getGameItemGame(item) || 'Autre';
+    if (!parJeu.has(jeu)) parJeu.set(jeu, []);
+    parJeu.get(jeu).push(item);
+  }
+  const dossiers = [];
+  for (const [jeu, pictos] of parJeu) {
+    // L'identifiant du dossier voyage dans des adresses et des attributs XML :
+    // on le réduit à des lettres et des chiffres.
+    const cle = String(jeu).normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '') || 'autre';
+    dossiers.push({ uid: 'inv_pictos_' + cle, nom: jeu, jeu, pictos });
+  }
+  // « Autre » en dernier, le reste par ordre alphabétique.
+  dossiers.sort((a, b) => (a.jeu === 'Autre') - (b.jeu === 'Autre')
+    || a.nom.localeCompare(b.nom, 'fr'));
+  return dossiers;
+}
+
 const bouilleCache = {};
 
 function bouilleOf(user, username) {
@@ -2502,6 +2540,29 @@ function getUserScore(username, rankingId) {
   const ud = scoresData.users[key];
   if (!ud || !ud[rankingId]) return { score: 0, pos: 0 };
   return { score: Number(ud[rankingId].score) || 0, pos: computePosition(rankingId, key) };
+}
+
+/**
+ * MA PLACE dans un classement — y compris ceux qui ne vivent pas dans le
+ * magasin de scores.
+ *
+ * Le bureau demande sa position au serveur (FrutiScore.userResult) et écrit
+ * dessous « Je suis 3e avec 1420 » — ou, faute de réponse, « Je ne suis pas
+ * classé pour le moment ». Or le KIKOOZ ne se compte pas comme un score : il
+ * vit sur la fiche de chaque joueur (user.kikooz), pas dans scoresData.
+ * getUserScore n'y trouvait donc rien, et le bureau annonçait « pas classé »
+ * à des joueurs qui l'étaient — le premier du tableau y compris.
+ *
+ * Asynchrone parce que le classement kikooz fusionne la mémoire et la base ;
+ * pour tous les autres classements, on retombe sur le calcul habituel.
+ */
+async function positionDuJoueur(username, internalId) {
+  if (internalId !== KIKOOZ_RANKING_ID) return getUserScore(username, internalId);
+  const cle = String(username || '').toLowerCase();
+  const tout = await getKikoozLeaderboard();
+  const i = tout.findIndex((e) => String(e.u).toLowerCase() === cle);
+  if (i < 0) return { score: 0, pos: 0 };
+  return { score: Number(tout[i].s) || 0, pos: i + 1 };
 }
 
 async function getConsecrationLeaderboard() {
@@ -5132,7 +5193,14 @@ function buildShopPackXml(pack, user) {
     let comment = pack.comment || '';
     if (pack.fdPassGame && user) {
       const n = fdPassCount(user, pack.fdPassGame);
-      comment += ` Vous en possédez ${n} → ${fdAllowance(user, pack.fdPassGame)} parties par jour.`;
+      const parties = fdAllowance(user, pack.fdPassGame);
+      // EN TOUTES LETTRES. La phrase disait « Vous en possédez 5 → 7 parties
+      // par jour » ; la police de shopitem.swf est un jeu de glyphes RÉDUIT,
+      // découpé en 2005 sur les caractères des textes d'époque, et la flèche
+      // n'en fait pas partie. Flash n'affiche pas de carré blanc pour un glyphe
+      // absent : il ne dessine RIEN. Le joueur lisait donc « Vous en possédez
+      // 5  7 parties par jour », deux nombres collés sans rien entre eux.
+      comment += ` Vous en possédez ${n}, soit ${parties} partie${parties > 1 ? 's' : ''} par jour.`;
     }
     return (
       `<p i="${pack.id}" n="${escapeXml(pack.name)}"` +
@@ -13703,8 +13771,13 @@ app.get('/api/check-ejected', (req, res) => {
   // Drapeau FD : le SWF vient d'essuyer un refus de partie challenge (plus de
   // FD) → le popup affiche l'overlay d'information (l'achat de pass se fait en
   // BOUTIQUE, pas dans l'overlay). Lu-et-effacé (une seule fois).
+  //
+  // `fd=0` : le demandeur ne veut QUE savoir si son disque a été éjecté (c'est
+  // le cas du guetteur des clients natifs, public/js/eject-watch.js). On ne lit
+  // donc pas le drapeau — le lire l'effacerait, et la fenêtre à qui il était
+  // destiné ne le verrait jamais.
   let fd = null;
-  const refusal = fdTakeRefusalFlag(sid);
+  const refusal = String(req.query.fd || '') === '0' ? null : fdTakeRefusalFlag(sid);
   if (refusal && Date.now() - refusal.at < 120000) {
     const username = resolveUsernameFromSid(sid);
     const user = username ? users[username] : null;
@@ -14014,6 +14087,19 @@ app.get(['/ff/tree', '/tree'], (req, res) => {
         `<f u="mycontact" n="Mes contacts" t="mycontact">${subXml}</f>`
       );
     }
+    // Les pictos ont un sous-dossier par jeu. Ils doivent figurer ICI, dans
+    // l'arbre — FFileMng ne le charge qu'une fois, et un dossier qu'il n'y
+    // trouve pas s'affiche « Undefined ». (Voir dossiersPictos.)
+    const dossiers = dossiersPictos(user);
+    if (dossiers.length > 0) {
+      const subXml = dossiers
+        .map((d) => `<f u="${escapeXml(d.uid)}" n="${escapeXml(d.nom)}" t="inventory" />`)
+        .join('');
+      xml = xml.replace(
+        '<f u="inv_pictos" n="Pictos" t="inventory" />',
+        `<f u="inv_pictos" n="Pictos" t="inventory">${subXml}</f>`
+      );
+    }
   }
   res.type('text/xml').send(xml);
 });
@@ -14282,6 +14368,24 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 
   if (uid === 'inv_wallpapers') {
     let nodes = '';
+    // LE CHEMIN DU RETOUR. La rubrique ne listait que les fonds ACHETÉS : une
+    // fois l'un d'eux posé, plus rien ne ramenait au thème d'origine — il
+    // fallait en choisir un autre, jamais aucun. Le thème n'est pourtant qu'une
+    // préférence vide (n° 5) ; on ajoute donc de quoi la vider.
+    //
+    // Une entrée `t="url"` à charge utile `javascript:` — le même détour que la
+    // galerie de pictos, et que l'icône Frutiblogs (patch-main-frutiblogs-trombi) :
+    // Ruffle exécute l'adresse contre la page, qui efface la préférence puis
+    // recharge le bureau. On ne s'en remet pas à WallPaperMng pour « défaire »
+    // sa pose : le bureau repart simplement comme au premier jour.
+    //
+    // L'entrée n'apparaît que si un fond est POSÉ : sans fond, elle ne
+    // proposerait rien.
+    const fondPose = String(getPrefValue(user.prefs, PREF_ID_WALLPAPER) || '').trim();
+    if (fondPose) {
+      nodes += '<e u="__fond_defaut__" t="url" s="10" d="0" a="0">'
+        + "Thème d'origine\r\njavascript:fp_fondDefaut()\r\n</e>";
+    }
     for (const acc of (Array.isArray(user.customAccessories) ? user.customAccessories : [])) {
       const wp = getAccessoryWallpaper(acc);
       if (wp) {
@@ -14291,17 +14395,32 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     return res.type('text/xml').send(`<f u="inv_wallpapers">${nodes || '<i />'}</f>`);
   }
 
-  // Pictos folder → a "Voir tous mes pictos" entry that opens an HTML gallery
-  // popup (native browser scrollbar, grouped by game — the SWF icon list can't
-  // scroll), followed by the flat list of pictos (each opens its picto-view
-  // popup). Per-game sub-folders were tried but rendered as "Undefined" nodes.
+  // Le dossier PICTOS — désormais un dossier par JEU, plus l'entrée qui ouvre
+  // la galerie HTML (barre de défilement native, tout d'un coup ; la liste
+  // d'icônes du SWF, elle, ne défile pas).
+  //
+  // Il les déversait tous à plat : plusieurs centaines d'icônes dans une seule
+  // fenêtre chez un collectionneur, et la fenêtre ramait. Les sous-dossiers
+  // sont annoncés dans l'ARBRE aussi (/ff/tree), sans quoi ils s'affichent
+  // « Undefined » — c'est ce qui avait fait échouer la première tentative.
   if (uid === 'inv_pictos') {
     const gi = Array.isArray(user.gameItems) ? user.gameItems : [];
     if (gi.length === 0) return res.type('text/xml').send('<f u="inv_pictos"><i /></f>');
     const galleryUrl = `/pictos-gallery.html?sid=${encodeURIComponent(sid || '')}`;
     const galleryEntry = `<e u="__pictos_gallery__" t="url" s="10" d="0" a="0">Voir tous mes pictos\r\njavascript:fp_openPopup('${escapeXml(galleryUrl)}','Mes Pictos','width=760,height=620,resizable=yes,scrollbars=yes')\r\n</e>`;
-    const nodes = galleryEntry + gi.map(renderPictoEntryXml).join('');
-    return res.type('text/xml').send(`<f u="inv_pictos">${nodes}</f>`);
+    const dossiers = dossiersPictos(user)
+      .map((d) => `<f u="${escapeXml(d.uid)}" n="${escapeXml(d.nom)}" t="folder" />`)
+      .join('');
+    return res.type('text/xml').send(`<f u="inv_pictos">${galleryEntry}${dossiers}</f>`);
+  }
+
+  // Un jeu, ses pictos. Le dossier existe tant que le joueur en possède au
+  // moins un (dossiersPictos ne fabrique que des dossiers pleins) ; s'il n'en
+  // a plus, on rend un dossier vide plutôt qu'une erreur.
+  if (uid.startsWith('inv_pictos_')) {
+    const d = dossiersPictos(user).find((x) => x.uid === uid);
+    const nodes = d ? d.pictos.map(renderPictoEntryXml).join('') : '';
+    return res.type('text/xml').send(`<f u="${escapeXml(uid)}">${nodes || '<i />'}</f>`);
   }
 
   if (uid === 'shop') {
@@ -14582,7 +14701,10 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     'linkForum', 'linkChat', 'linkHisto', 'linkPreference',
     'linkScore', 'linkShop', 'linkBlogs', 'linkClub',
   ]);
-  if (PROTECTED_UIDS.has(file) || /^link/.test(file)) {
+  // `inv_pictos_<jeu>` : les sous-dossiers de pictos sont fabriqués à la
+  // demande depuis la collection du joueur (dossiersPictos). Les déplacer ou
+  // les jeter n'aurait aucun sens — ils repousseraient au rechargement suivant.
+  if (PROTECTED_UIDS.has(file) || /^link/.test(file) || /^inv_pictos_/.test(file)) {
     // Return a no-op "move" back to the source folder so the SWF client
     // restores the icon. The AS2 client doesn't handle 403 errors — it
     // optimistically removes the icon from the display, and a 403 would
@@ -22667,7 +22789,7 @@ case 'createchannel': {
           }
           const internalId = resolveInternalRankingId(rkAny);
           if (!internalId) { debugParts.push(`${rkAny}->unresolved`); continue; }
-          const info = getUserScore(targetUser, internalId);
+          const info = await positionDuJoueur(targetUser, internalId);
           if (info.score <= 0 && info.pos <= 0) { debugParts.push(`${rkAny}->${internalId}:empty`); continue; }
           const rkOut = INTERNAL_TO_LEGACY_RK[internalId] || rkAny || internalId;
           const tAttr = legacyDesc && legacyDesc.ty && legacyDesc.ty !== 'point' ? ` t="${escapeXml(legacyDesc.ty)}"` : '';
