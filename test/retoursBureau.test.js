@@ -429,3 +429,68 @@ test('le tiroir porte le compte et sa porte de sortie, en deux temps', async () 
   assert.match(html, /\.home-compte \{[^}]*margin-top: auto/,
     'le pied reste au bout du chemin');
 });
+
+test('la sortie se lit comme une mention de bas de page, pas comme un bouton', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+
+  // On se déconnecte une fois par mois et on ouvre ses rubriques cent fois par
+  // jour : un aplat corail sous les tuiles tirait l'œil vers la seule chose
+  // qu'on ne vient pas y chercher.
+  const repos = html.slice(html.indexOf('.hc-quitter {'), html.indexOf('.hc-quitter:hover'));
+  assert.match(repos, /background: none/, 'aucun aplat');
+  assert.match(repos, /border: 0/, 'aucune bordure');
+  assert.match(repos, /text-decoration: underline/, 'un lien, pas un bouton');
+
+  // Armé, en revanche, il doit se voir : le prochain appui, lui, compte.
+  assert.match(html, /\.hc-quitter\.confirme \{[^}]*color: #A8332A/,
+    'la confirmation rougit');
+
+  // Le pied n'a plus d'encart à lui : sous un fond d'écran il est posé à même
+  // l'illustration, comme les étiquettes des tuiles — donc même halo.
+  assert.match(html, /#home-panel\.a-fond \.home-compte/,
+    'lisible aussi par-dessus un fond d\'écran');
+  assert.match(html, /#home-panel\.a-fond \.hc-quitter\.confirme \{[^}]*color: #A8332A/,
+    'et il rougit même là');
+});
+
+// ── Le bureau light se clique encore à la souris ──────────────────────────
+//
+// Le rangement du bureau (glisser une icône pour changer l'ordre) capturait le
+// pointeur sur #home-grid dès le `pointerdown`. Or un élément qui capture le
+// pointeur reçoit AUSSI le `click` de fin de geste, à la place de ce qui se
+// trouvait vraiment sous le curseur : chaque clic de souris atterrissait sur la
+// grille, jamais sur la tuile, et plus aucune rubrique ne s'ouvrait. Au clavier
+// ça marchait encore — Entrée envoie le clic directement sur le bouton, sans
+// pointeur — et au doigt aussi, dont le clic est fabriqué à partir des touches.
+// D'où un bug qui ne se voyait QUE sur ordinateur, à la souris.
+//
+// La capture n'a lieu qu'au moment où l'icône est réellement en main. Vérifié
+// dans Chromium avant/après : clic simple, glisser à la souris, appui long au
+// doigt, ordre retenu au rechargement.
+test('le pointeur n\'est capturé qu\'une fois l\'icône en main', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+  const bloc = html.slice(html.indexOf('var bureauVientDeGlisser = false;'),
+    html.indexOf('// ── Trombinoscope'));
+  assert.ok(bloc.length > 500, 'le rangement du bureau est bien là');
+
+  const appui = bloc.slice(bloc.indexOf('grille.addEventListener("pointerdown"'),
+    bloc.indexOf('// Suite du geste'));
+  assert.ok(appui.length > 100, 'on tient bien le gestionnaire d\'appui');
+  assert.equal(/setPointerCapture/.test(appui), false,
+    'rien n\'est capturé à l\'appui, sans quoi le clic irait à la grille');
+
+  const prise = bloc.slice(bloc.indexOf('function saisir('), bloc.indexOf('function deplacer('));
+  assert.match(prise, /grille\.setPointerCapture/,
+    'la capture arrive avec le glisser, où elle sert vraiment');
+
+  // Tant que rien n'est capturé, une souris qui sort de la grille avant le
+  // seuil emporterait la suite du geste ailleurs : on écoute le document.
+  assert.match(bloc, /document\.addEventListener\("pointermove"/,
+    'la suite du geste se suit au niveau du document');
+  assert.match(bloc, /\["pointerup", "pointercancel"\]\.forEach\(function \(n\) \{\s*document\.addEventListener/,
+    'le relâchement aussi, où qu\'il tombe');
+
+  // Et le clic parasite qui clôt un vrai glisser reste, lui, sans effet.
+  assert.match(bloc, /bureauVientDeGlisser = true/, 'un glisser se signale…');
+  assert.match(html, /if \(bureauVientDeGlisser\) return;/, '…et son clic ne navigue pas');
+});

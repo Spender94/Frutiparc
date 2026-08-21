@@ -185,13 +185,18 @@
      gardait ses icônes petites et espacées. La main bar et les encarts, eux,
      restent posés dessus — c'est le bureau d'origine, où les fenêtres gardent
      leur fond propre. */
-  #home-panel.a-fond .home-tile .lbl {
+  #home-panel.a-fond .home-tile .lbl,
+  #home-panel.a-fond .home-compte {
     color: var(--fond-txt, #2C4A0F);
     text-shadow:
       0 0 2px var(--fond-halo, rgba(255,255,255,.85)),
       0 0 5px var(--fond-halo, rgba(255,255,255,.85)),
       0 1px 0 var(--fond-halo, rgba(255,255,255,.85));
   }
+  /* Le pied du tiroir n'a pas d'encart à lui : sous un fond d'écran il est posé
+     à même l'illustration, comme les étiquettes — d'où le même halo. Armé, il
+     doit rougir malgré tout : sa couleur passe avant celle du fond. */
+  #home-panel.a-fond .hc-quitter.confirme { color: #A8332A; }
   #home-panel.a-fond .daily-banner { backdrop-filter: blur(2px); }
 
   /* ── Inventaire : les trois rubriques du bureau ──────────────────────────
@@ -1577,28 +1582,33 @@
 
      `margin-top: auto` le colle au BAS du tiroir, qui est une colonne flex :
      la sortie reste au bout du chemin, que le joueur ait onze rubriques ou
-     quinze. */
+     quinze.
+
+     Une simple LIGNE, pas un bouton : on se déconnecte une fois par mois, les
+     rubriques s'ouvrent cent fois par jour. Un aplat corail sous les tuiles
+     aurait tiré l'œil vers la seule chose qu'on ne vient pas y chercher. Ce
+     pied se lit comme une mention de bas de page — jusqu'à l'armement, où il
+     rougit pour dire que le prochain appui, lui, compte. */
   .home-compte {
-    margin: 18px 12px 16px; margin-top: auto; padding: 12px 14px 14px;
-    border-radius: 14px; text-align: center;
-    background: linear-gradient(135deg, #EAF7CE, #D3ED9E);
-    border: 1px solid #B6D97E; box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+    margin-top: auto; padding: 4px 12px 14px;
+    text-align: center; font-size: 12px; line-height: 1.6; color: #4A6B22;
   }
-  .home-compte .hc-qui { display: block; font-size: 12px; color: #4A6B22; }
-  .home-compte .hc-qui b { color: #2C4A0F; font-size: 14px; }
+  .home-compte .hc-qui { opacity: .7; }
+  .hc-sep { opacity: .45; margin: 0 5px; }
   .hc-quitter {
-    margin-top: 10px; padding: 8px 22px; border: 0; border-radius: 999px;
-    background: #E3756A; color: #fff; font-family: inherit;
-    font-size: 13px; font-weight: bold; cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0,0,0,.18);
+    padding: 0; border: 0; background: none; color: inherit;
+    font: inherit; opacity: .7; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 2px;
     -webkit-tap-highlight-color: transparent;
   }
-  .hc-quitter:active { transform: translateY(1px); }
+  .hc-quitter:hover { opacity: 1; }
   /* Deuxième temps. Un appui malheureux coûterait un mot de passe à retaper :
-     le bouton demande confirmation À SA PLACE plutôt que d'ouvrir une fenêtre
+     le lien demande confirmation À SA PLACE plutôt que d'ouvrir une fenêtre
      par-dessus, et se rétracte tout seul si on n'y revient pas. */
-  .hc-quitter.confirme { background: #C4453A; }
-  .hc-quitter[disabled] { background: #9BB77A; }
+  .hc-quitter.confirme {
+    opacity: 1; font-weight: bold; color: #A8332A; text-decoration: none;
+  }
+  .hc-quitter[disabled] { opacity: .5; text-decoration: none; cursor: default; }
   /* Bandeau récompense de connexion quotidienne (série de kikooz). */
   .daily-banner {
     margin: 6px 12px 0; padding: 10px 14px; border-radius: 14px;
@@ -1804,10 +1814,13 @@
 
     <!-- Le compte, et la sortie. Le bureau Flash n'offre « Se déconnecter »
          que par le menu contextuel du fond d'écran : sur mobile, il n'y avait
-         aucun moyen de quitter sa session. -->
+         aucun moyen de quitter sa session. Une mention de bas de page, pas un
+         bouton : la sortie doit se trouver, pas se remarquer. Le balisage est
+         collé pour que le point médian ne prenne pas d'espace insécable. -->
     <div class="home-compte">
-      <span class="hc-qui">Connecté en tant que <b id="home-pseudo">…</b></span>
-      <button type="button" id="logout-btn" class="hc-quitter">Se déconnecter</button>
+      <span class="hc-qui">Connecté en tant que <b id="home-pseudo">…</b></span><span
+        class="hc-sep" aria-hidden="true">·</span><button
+        type="button" id="logout-btn" class="hc-quitter">Se déconnecter</button>
     </div>
   </section>
 
@@ -2928,9 +2941,20 @@
     // bien avant l'appui long. On bloque donc le défilement à la source.
     function bloquer(ev) { ev.preventDefault(); }
 
+    // Le pointeur n'est capturé qu'ICI, l'icône déjà en main — surtout pas dès
+    // l'appui. Un élément qui capture le pointeur reçoit AUSSI le `click` de fin
+    // de geste, à la place de ce qui se trouvait vraiment sous le curseur : en
+    // capturant sur la grille dès le `pointerdown`, on détournait chaque clic de
+    // souris vers #home-grid, et plus aucune icône ne s'ouvrait. Au clavier ça
+    // marchait encore — Entrée envoie le clic directement sur le bouton, sans
+    // pointeur. Le doigt aussi, son clic étant fabriqué à partir des touches.
+    // Capturer seulement au glisser : le clic simple retrouve sa cible, et le
+    // clic parasite qui clôt un vrai glisser continue d'atterrir sur la grille
+    // (où `bureauVientDeGlisser` l'attend).
     function saisir(ev) {
       saisi = true;
       bureauVientDeGlisser = true;
+      try { grille.setPointerCapture(ev.pointerId); } catch (e) {}
       document.addEventListener("touchmove", bloquer, { passive: false });
       var r = tuile.getBoundingClientRect();
       dx = x0 - r.left; dy = y0 - r.top;
@@ -2980,10 +3004,14 @@
       tuile = t; saisi = false;
       x0 = ev.clientX; y0 = ev.clientY;
       tactile = ev.pointerType === "touch" || ev.pointerType === "pen";
-      try { grille.setPointerCapture(ev.pointerId); } catch (e) {}
       if (tactile) minuteur = setTimeout(function () { if (tuile) saisir(ev); }, APPUI_LONG);
     });
-    grille.addEventListener("pointermove", function (ev) {
+    // Suite du geste écoutée sur le document, pas sur la grille : tant que rien
+    // n'est capturé, une souris qui sort de la grille avant le seuil emporterait
+    // ses `pointermove`/`pointerup` ailleurs et laisserait la tuile en suspens.
+    // Une fois la capture posée, les événements passent par la grille puis
+    // remontent jusqu'ici : les deux moments sont couverts.
+    document.addEventListener("pointermove", function (ev) {
       if (!tuile) return;
       if (!saisi) {
         var loin = Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > SEUIL;
@@ -2997,7 +3025,7 @@
       deplacer(ev.clientX, ev.clientY);
     });
     ["pointerup", "pointercancel"].forEach(function (n) {
-      grille.addEventListener(n, function () { if (tuile || saisi) relacher(); });
+      document.addEventListener(n, function () { if (tuile || saisi) relacher(); });
     });
   })();
 
@@ -4100,8 +4128,10 @@
   // quitter sa session. Le pied du tiroir en tient lieu.
   //
   // EN DEUX TEMPS, et sans fenêtre par-dessus : un appui malheureux coûterait
-  // un mot de passe à retaper au doigt. Le bouton demande confirmation à sa
+  // un mot de passe à retaper au doigt. Le lien demande confirmation à sa
   // place, et se rétracte seul au bout de cinq secondes si on n'y revient pas.
+  // C'est aussi ce qui permet de le laisser discret : puisqu'un appui seul ne
+  // déconnecte personne, il n'a pas besoin de se faire remarquer.
   function installerDeconnexion() {
     var b = $("#logout-btn");
     if (!b || b._pret) return;
