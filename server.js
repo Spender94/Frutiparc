@@ -8303,6 +8303,244 @@ app.post('/api/minifever/score', async (req, res) => {
   res.json({ ok: true, score, classe: !!r.updated, pictos: neufs.map((e) => e.nom) });
 });
 
+// ─────────────────────────────────────────────
+// JamaJama — le portage /light (public/jamajama/).
+//
+// Le SWF déployé est un jeu HORS LIGNE : extension.swf remplace toute sa
+// couche réseau par un SharedObject local. Aucun score n'atteignait donc le
+// serveur, et awardJamaPictosOnScore ne se déclenchait jamais — c'est la
+// panne des pictos. Le portage rebranche le circuit : le client envoie le
+// REPLAY (la liste des mouvements, comme le SaveScore d'origine), le serveur
+// le REJOUE avec le même moteur de règles (public/jamajama/regles.js, partagé
+// tel quel), et seul un replay qui gagne vraiment inscrit le score.
+//
+// L'état du joueur vit dans le slot fruti « jamajama » (mémoire + Postgres),
+// comme les autres portages : l'aventure (le format « N[l,l;… » d'origine),
+// les options (« 1:1:1:AvTdS »), les statuts par niveau du tournoi, et les
+// champs $best/$plays que la FrutiCard du bureau lit déjà.
+// ─────────────────────────────────────────────
+const jamaRegles = require('./public/jamajama/regles.js');
+
+// levels.xml — les 7 packs d'aventure et les niveaux du tournoi, tels que
+// Toad06 les a gravés. Ids du tournoi : la convention de l'extension donne
+// aux niveaux embarqués des identifiants au-delà de 200000.
+let jamaLevelsCache = null;
+function jamaLevels() {
+  if (jamaLevelsCache) return jamaLevelsCache;
+  const xml = fs.readFileSync(path.join(__dirname, 'Games/poulpi/levels.xml'), 'utf8');
+  const desechapper = (s) => String(s || '')
+    .replace(/&apos;/g, "'").replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const packs = [];
+  const avBloc = /<adventure>([\s\S]*?)<\/adventure>/.exec(xml);
+  if (avBloc) {
+    for (const p of avBloc[1].matchAll(/<pack\s+name="([^"]*)"\s+total="(-?\d+)"\s*>([\s\S]*?)<\/pack>/g)) {
+      const niveaux = [];
+      for (const l of p[3].matchAll(/<l\s+t="([^"]*)"\s*>([^<]*)<\/l>/g)) {
+        // « \n » écrit en toutes lettres dans le XML devient un vrai saut de
+        // ligne — c'est le t.split("\\n").join("\n") de l'extension, et c'est
+        // ce qui met « Grotte 1 : » et son sous-titre sur deux lignes.
+        niveaux.push({
+          titre: desechapper(l[1]).split('\\n').join('\n'),
+          contenu: l[2].trim(),
+        });
+      }
+      packs.push({ titre: desechapper(p[1]), total: Number(p[2]), niveaux });
+    }
+  }
+  const tournoi = [];
+  const tBloc = /<tournament>([\s\S]*?)<\/tournament>/.exec(xml);
+  if (tBloc) {
+    let i = 0;
+    for (const l of tBloc[1].matchAll(/<l\s+([^>]*)>([^<]*)<\/l>/g)) {
+      const attr = (nom) => {
+        const m = new RegExp(nom + '="([^"]*)"').exec(l[1]);
+        return m ? desechapper(m[1]) : '';
+      };
+      tournoi.push({
+        id: 200001 + i,
+        titre: attr('t'),                       // le tournoi garde son titre brut
+        auteur: attr('u'),
+        score: Number(attr('s')) || 0,
+        date: Number(attr('m')) || 0,
+        difficulte: Number(attr('p')) || 0,
+        contenu: l[2].trim(),
+      });
+      i += 1;
+    }
+  }
+  jamaLevelsCache = { packs, tournoi };
+  return jamaLevelsCache;
+}
+
+// Le slot « jamajama » du joueur — la mémoire du portage.
+function jamaLireSlot(username) {
+  const u = users[username];
+  const brut = u && u.frutiSlots && u.frutiSlots.jamajama && u.frutiSlots.jamajama['0'];
+  let o = null;
+  if (brut) { try { o = JSON.parse(brut); } catch { o = null; } }
+  if (!o || typeof o !== 'object') o = {};
+  return {
+    aventure: typeof o.aventure === 'string' ? o.aventure : '',
+    options: typeof o.options === 'string' ? o.options : '1:1:1:AvTdS',
+    niveaux: (o.niveaux && typeof o.niveaux === 'object') ? o.niveaux : {},
+    $best: Number(o.$best) || 0,
+    $plays: Number(o.$plays) || 0,
+  };
+}
+function jamaEcrireSlot(username, slot) {
+  const u = users[username];
+  if (!u) return;
+  const data = JSON.stringify(slot);
+  if (!u.frutiSlots) u.frutiSlots = {};
+  if (!u.frutiSlots.jamajama) u.frutiSlots.jamajama = {};
+  u.frutiSlots.jamajama['0'] = data;
+  if (u._dbId && process.env.DATABASE_URL) {
+    db.upsertFrutiSlot(u._dbId, 'jamajama', 0, data)
+      .catch((e) => console.error('[DB] upsertFrutiSlot jamajama:', e.message));
+  }
+}
+
+// Tout ce qu'il faut au jeu pour démarrer, en une requête.
+app.get('/api/jamajama/donnees', (req, res) => {
+  const sid = getSidFromRequest(req);
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
+  const slot = jamaLireSlot(username);
+  const lv = jamaLevels();
+  res.json({
+    ok: true,
+    user: username,
+    options: slot.options,
+    aventure: slot.aventure,
+    packs: lv.packs.map((p) => ({ titre: p.titre, total: p.total,
+      niveaux: p.niveaux.map((n) => ({ titre: n.titre, contenu: n.contenu })) })),
+    tournoi: lv.tournoi.map((t) => ({
+      id: t.id, titre: t.titre, auteur: t.auteur, score: t.score, date: t.date,
+      difficulte: t.difficulte, contenu: t.contenu,
+      moi: slot.niveaux[t.id] || null,
+    })),
+  });
+});
+
+// L'aventure (le format de chaîne du jeu d'origine) et les options.
+app.post('/api/jamajama/aventure', (req, res) => {
+  const sid = getSidFromRequest(req, req.body || {});
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
+  const dt = String((req.body || {}).dt || '');
+  if (dt.length > 4000) return res.json({ ok: false, error: 'taille' });
+  const slot = jamaLireSlot(username);
+  slot.aventure = dt;
+  jamaEcrireSlot(username, slot);
+  res.json({ ok: true });
+});
+app.post('/api/jamajama/options', (req, res) => {
+  const sid = getSidFromRequest(req, req.body || {});
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
+  const p = String((req.body || {}).p || '');
+  if (p.length > 100) return res.json({ ok: false, error: 'taille' });
+  const slot = jamaLireSlot(username);
+  slot.options = p;
+  jamaEcrireSlot(username, slot);
+  res.json({ ok: true });
+});
+
+/**
+ * Fin de partie : le client raconte, le serveur REJOUE et juge.
+ *
+ * corps : { sid, source: 'tournoi'|'aventure', id? (tournoi),
+ *           pack?, niveau? (aventure), mouvements: [0..5, …] }
+ *
+ * Toute partie FINIE (victoire ou défaite rejouée jusqu'au bout) compte un
+ * « niveau joué » — c'est l'assiette des pictos $jama_*. Une victoire au
+ * TOURNOI inscrit de plus le score au niveau (statut tombeau/bronze/or face
+ * au score de l'auteur, comme l'extension) et nourrit le classement
+ * jamajama_classic (le moins de coups — lowerIsBetter est déjà dans RANKINGS).
+ */
+app.post('/api/jamajama/score', (req, res) => {
+  const sid = getSidFromRequest(req, req.body || {});
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
+  const b = req.body || {};
+  const mouvements = Array.isArray(b.mouvements)
+    ? b.mouvements.map((v) => Math.trunc(Number(v))).filter((v) => v >= 0 && v <= 5)
+    : null;
+  if (!mouvements || mouvements.length !== (Array.isArray(b.mouvements) ? b.mouvements.length : -1)
+    || mouvements.length > 20000) {
+    return res.json({ ok: false, error: 'mouvements' });
+  }
+  const lv = jamaLevels();
+  let contenu = null;
+  let cleTournoi = null;
+  let auteurScore = 0;
+  if (b.source === 'tournoi') {
+    const t = lv.tournoi.find((x) => x.id === Math.trunc(Number(b.id)));
+    if (!t) return res.json({ ok: false, error: 'niveau' });
+    contenu = t.contenu;
+    cleTournoi = String(t.id);
+    auteurScore = t.score;
+  } else if (b.source === 'aventure') {
+    const p = lv.packs[Math.trunc(Number(b.pack))];
+    const n = p && p.niveaux[Math.trunc(Number(b.niveau))];
+    if (!n) return res.json({ ok: false, error: 'niveau' });
+    contenu = n.contenu;
+  } else {
+    return res.json({ ok: false, error: 'source' });
+  }
+
+  let verdict;
+  try {
+    verdict = jamaRegles.rejouer(jamaRegles.Level.depuisChaine(contenu), mouvements);
+  } catch (e) {
+    console.error('[JAMA]  rejouer :', e.message);
+    return res.json({ ok: false, error: 'rejeu' });
+  }
+  if (!verdict.fini) return res.json({ ok: false, error: 'inacheve' });
+
+  const slot = jamaLireSlot(username);
+  slot.$plays += 1;
+  let statut = null;
+  let classement = null;
+  if (cleTournoi) {
+    const s = slot.niveaux[cleTournoi] || { p: 0, v: 0, b: 0, s: -1 };
+    s.p += 1;
+    if (verdict.victorieux) {
+      s.v += 1;
+      if (!s.b || verdict.coups < s.b) s.b = verdict.coups;
+      // Le statut de l'extension : or si l'on fait aussi bien que l'auteur,
+      // bronze sinon ; la défaite marque la tombe (0) tant qu'on n'a pas gagné.
+      s.s = (auteurScore > 0 && verdict.coups <= auteurScore) ? 2 : Math.max(s.s, 1);
+    } else if (s.s < 1) {
+      s.s = 0;
+    }
+    slot.niveaux[cleTournoi] = s;
+    if (verdict.victorieux) {
+      classement = persistScore(username, 'jamajama_classic', verdict.coups, cleTournoi);
+      if (!slot.$best || verdict.coups < slot.$best) slot.$best = verdict.coups;
+    }
+  }
+  jamaEcrireSlot(username, slot);
+  const avantPictos = (users[username].gameItems || []).length;
+  awardJamaPictosOnScore(username);
+  const pictos = (users[username].gameItems || []).slice(avantPictos)
+    .filter((id) => JAMA_MILESTONES[id])
+    .map((id) => JAMA_MILESTONES[id].name);
+  if (cleTournoi) statut = slot.niveaux[cleTournoi];
+  console.log(`[JAMA]  ${username} ${b.source}${cleTournoi ? ' #' + cleTournoi : ''} : `
+    + `${verdict.victorieux ? 'victoire en ' + verdict.coups + ' coups' : 'défaite'}`
+    + (pictos.length ? ` · pictos : ${pictos.join(', ')}` : ''));
+  res.json({
+    ok: true,
+    victorieux: verdict.victorieux,
+    coups: verdict.coups,
+    statut,
+    classement: classement ? { classe: !!classement.updated, position: classement.newPos } : null,
+    pictos,
+  });
+});
+
 // Admin: add a game item to a user (works even if user is offline)
 app.post('/api/admin/users/:username/gameitems', adminAuth, async (req, res) => {
   const username = req.params.username;

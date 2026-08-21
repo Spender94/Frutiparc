@@ -405,6 +405,10 @@
   // ── Avatar (héros, fantôme, créatures possédées) ──
   class Avatar extends Sprite {
     constructor(data) { super(data); this.IS_AVATAR = true; }
+    // Tout avatar naît face au SUD, quoi qu'en dise le niveau : c'est le
+    // show() du fichier, et c'est ce qui fait que Tiki regarde le joueur au
+    // lever de rideau plutôt que de lui tourner le dos.
+    show() { this.setOrientation(Direction.SOUTH); }
     setOrientation(d) {
       if (this.attractedByMagnet) return;
       this.orientation = d;
@@ -1560,11 +1564,12 @@
 
     // — construction —
     _drawPlayground() {
-      for (const t of this._level.tiles) {
-        const s = this._createSprite(t);
-        if (s == null) continue;
-      }
+      for (const t of this._level.tiles) this._createSprite(t);
       this._createHero();
+      // Le tour de show() du fichier : chaque sprite se met dans sa pose de
+      // départ. Presque tous n'y font rien de mécanique — mais les avatars y
+      // prennent leur orientation.
+      for (const s of this._sprites) s.show();
     }
     _createSprite(data) {
       const s = creerSprite(data);

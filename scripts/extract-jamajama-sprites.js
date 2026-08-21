@@ -125,6 +125,35 @@ swf.parcourir((code, corps, len) => {
   boutons.set(id, recs);
 });
 
+// ── Qui S'ARRÊTE, et qui joue tout seul ──
+//
+// Un clip imbriqué que rien n'arrête TOURNE : c'est le lecteur qui l'avance,
+// image après image, sans que le jeu s'en mêle. La flamme bleue d'un joker
+// (#850) est de ceux-là — elle démarre même sur une image tirée au sort
+// (Push + RandomNumber + GotoFrame2, à son image 1) pour que les trois
+// flammes du parchemin ne battent pas ensemble.
+//
+// On relève donc les images qui portent un stop() (opcode 0x07) : un clip qui
+// en a un se pilote depuis le code du jeu et reste immobile ; les autres
+// bouclent. Sans cette distinction, la flamme restait sur sa première image —
+// qui est VIDE — et les coupes du parchemin paraissaient éteintes.
+const arrets = new Map();
+swf.parcourir((code, corps, len, id, frame) => {
+  if (code !== 12 || !id) return;
+  let o = corps;
+  const fin = corps + len;
+  while (o < fin) {
+    const c = b[o];
+    if (c === 0) break;
+    if (c === 0x07) {                                  // ActionStop
+      if (!arrets.has(id)) arrets.set(id, []);
+      if (arrets.get(id).indexOf(frame) < 0) arrets.get(id).push(frame);
+    }
+    if (c < 0x80) o += 1;
+    else o += 3 + b.readUInt16LE(o + 1);
+  }
+});
+
 // ── Étiquettes d'images (FrameLabel 43), par clip ──
 const etiquettes = new Map();
 swf.parcourir((code, corps, len, id, frame) => {
@@ -213,9 +242,11 @@ function aplatirVif(ch, M, cx, frame, chemin, profondeur, compteurMasques) {
     const sous = p.nom ? (chemin ? chemin + '.' + p.nom : p.nom) : chemin;
     const fLocal = f - naissance(ch, prof, f) + 1;
     let morceaux;
-    if (p.nom && swf.estSprite(p.ch) && (longueurs.get(p.ch) || 1) > 1) {
-      // Enfant nommé et animé : un renvoi, avec l'image que la ligne de temps
-      // lui donnerait ici — voir l'en-tête.
+    if (swf.estSprite(p.ch) && (longueurs.get(p.ch) || 1) > 1) {
+      // Enfant animé : un RENVOI, avec l'image que la ligne de temps lui
+      // donnerait ici. Qu'il soit nommé ou non ne change rien au dessin — le
+      // nom sert seulement à ce que le jeu puisse le piloter (mc.j, mask,
+      // text…), et un clip anonyme que rien n'arrête tourne de lui-même.
       renvoisAExtraire.add(p.ch);
       morceaux = [{ clip: p.ch, frame: ((fLocal - 1) % longueurs.get(p.ch)) + 1,
         M: composer(M, p.M), cx: swf.composerCouleur(cx, p.cx), chemin: sous }];
@@ -391,6 +422,11 @@ function extraireCible(nom, id) {
         versManifeste(aplatirVif(id, IDENTITE, null, f, '', 0, compteur)));
     });
     if (etiquettes.has(id)) entree.etiquettes = etiquettes.get(id);
+    // Un clip que RIEN n'arrête tourne de lui-même sous le lecteur : le
+    // client le fera avancer. Les autres attendent que le jeu les envoie
+    // quelque part.
+    const longueur = longueurs.get(id) || 1;
+    if (longueur > 1 && !arrets.has(id)) entree.anime = longueur;
   } else if (swf.estForme(id) || textes.statiques.has(id)) {
     entree.etats = [Object.assign({ frame: 1 },
       versManifeste(aplatirVif(id, IDENTITE, null, 1, '', 0, { n: 0 })))];

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="fr">
+<!-- JamaJama — le portage JavaScript du jeu de 2005 (Games/poulpi/game.swf),
+     dessiné avec les tracés extraits du SWF (voir planche.html), animé par la
+     transcription de son moteur (regles.js). S'ouvre depuis /light dans une
+     iframe : /jamajama/?sid=…  -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>JamaJama</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #624d28; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  #jama { image-rendering: auto; touch-action: none; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="jama" tabindex="0"></canvas>
+<script src="regles.js"></script>
+<script src="rendu.js"></script>
+<script src="plateforme.js"></script>
+<script src="vue.js"></script>
+<script src="ecrans.js"></script>
+<script src="jeu.js"></script>
+</body>
+</html>

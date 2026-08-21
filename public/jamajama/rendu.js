@@ -164,10 +164,13 @@
    *               champs  {chemin: texte}           — contenu d'un champ
    *               cacher  [chemin…]                 — pièces à passer
    *               alpha   0..1                      — transparence d'ensemble
+   *               temps   images écoulées           — fait tourner les clips
+   *                                                   que rien n'arrête
    * @param prefixe (interne) le chemin déjà parcouru par la récursion
    */
   function dessiner(ctx, cle, ref, sur, prefixe) {
     sur = sur || {};
+    if (sur.temps === undefined) sur = Object.assign({ temps }, sur);
     const s = symbole(cle);
     const etat = etatDe(s, ref);
     if (!etat) return;
@@ -206,16 +209,38 @@
           }
         }
       } else if (p.clip !== undefined) {
-        const consigne = (sur.clips || {})[chemin];
+        // La consigne ne vaut que pour la pièce qui PORTE le nom : un clip
+        // anonyme hérite du chemin de son parent pour l'affichage, mais pas
+        // de ses ordres — sans quoi le « available » du joker descendait
+        // jusqu'à la flamme, qui ne connaît pas cette étiquette.
+        const consigne = p.nom ? (sur.clips || {})[chemin] : undefined;
         if (p.cx) ctx.globalAlpha *= Math.max(0, Math.min(1, p.cx[3] / 256));
-        dessiner(ctx, p.clip, consigne !== undefined ? consigne : p.frame, sur, chemin);
+        let ref2 = consigne;
+        if (ref2 === undefined) {
+          ref2 = p.frame;
+          // Un clip que rien n'arrête TOURNE sous le lecteur : la flamme d'un
+          // joker, les remous d'un décor. `temps` (en images) le fait avancer,
+          // et le décalage tiré du chemin remplace le gotoAndPlay(random) que
+          // le fichier pose sur ces clips pour qu'ils ne battent pas ensemble.
+          const s2 = MANIFESTE.symboles[p.clip];
+          // Seuls les clips ANONYMES tournent d'eux-mêmes : un enfant nommé
+          // est, par construction, celui que l'ActionScript atteint et arrête
+          // (mc.j, mask, text, icon, star1…). Le laisser défiler ferait
+          // clignoter l'orientation du héros ou le raccord de l'eau.
+          if (s2 && s2.anime && sur.temps && !p.nom) {
+            let graine = 0;
+            for (let i = 0; i < chemin.length; i++) graine = (graine * 31 + chemin.charCodeAt(i)) % 997;
+            ref2 = Math.floor((sur.temps + graine + (p.frame || 1) - 1) % s2.anime) + 1;
+          }
+        }
+        dessiner(ctx, p.clip, ref2, sur, chemin);
       } else if (p.champ !== undefined) {
         const meta = MANIFESTE.champs[p.champ];
-        const texte = (sur.champs && chemin in sur.champs)
+        const texte = (p.nom && sur.champs && chemin in sur.champs)
           ? sur.champs[chemin] : (meta.texte || '');
         ecrireChamp(ctx, meta, texte, meta.alpha);
       } else if (p.bouton !== undefined) {
-        const etatBouton = (sur.boutons || {})[chemin] || 1;
+        const etatBouton = (p.nom ? (sur.boutons || {})[chemin] : 0) || 1;
         if (MANIFESTE.symboles[p.bouton]) dessiner(ctx, p.bouton, etatBouton, sur, chemin);
       }
       ctx.restore();
@@ -227,6 +252,13 @@
   /** La zone de clic d'un bouton (le cadre de son état `hit` dans le SWF). */
   function zoneBouton(cle) { return symbole(cle).hit || null; }
 
+  // Le TEMPS du lecteur, en images : le jeu l'avance à chaque tour de boucle
+  // et le rendu s'en sert pour les clips qui tournent tout seuls. Le tenir ici
+  // évite de le passer de main en main jusqu'au fond des écrans.
+  let temps = 0;
+  function avancer(tmod) { temps += tmod; }
+  function tempsCourant() { return temps; }
+
   window.JamaRendu = { charger, dessiner, etatDe, longueur, etiquettes, zoneBouton,
-    symbole, ecrireChamp, manifeste: () => MANIFESTE };
+    symbole, ecrireChamp, manifeste: () => MANIFESTE, avancer, temps: tempsCourant };
 })();
