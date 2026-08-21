@@ -2623,6 +2623,7 @@ function createDefaultUser(pass) {
     fbouille: DEFAULT_BOUILLE_STATE,
     items: [],
     gameItems: [],
+    desktopItems: [],
     contacts: [],
     blacklist: [],
     gender: 'M',
@@ -2673,6 +2674,7 @@ function dbUserToMemory(row) {
     fbouille: row.fbouille || DEFAULT_BOUILLE_STATE,
     items: withDefaultPens([]),
     gameItems: [],
+    desktopItems: [],
     contacts: [],
     blacklist: [],
     gender: row.gender || 'M',
@@ -2727,6 +2729,7 @@ function dbUserToMemory(row) {
     fdState: parseFdState(row.fd_state),
     ownedFeutres: parseOwnedFeutres(row.owned_feutres),
     ownedFeatures: parseOwnedFeutres(row.owned_features),
+    desktopItems: parseDesktopItems(row.desktop_items),
     _dbId: row.id,
   };
 }
@@ -4755,6 +4758,117 @@ const SPECIAL_FEUTRES = {
 const SPECIAL_FEUTRE_BY_SHOPID = Object.fromEntries(
   Object.entries(SPECIAL_FEUTRES).map(([kind, f]) => [f.shopId, kind])
 );
+// ─────────────────────────────────────────────
+// LE BUREAU EST UN DOSSIER
+//
+// Au portail d'origine, on posait ses disques et ses Frutiz sur le bureau, et
+// on les y retrouvait à la connexion suivante — le bureau était un dossier
+// comme un autre, rendu en grille dans l'ordre de son contenu.
+//
+// Le portage n'en avait gardé que la moitié : main.swf accepte toujours qu'on
+// lui dépose une icône, mais le serveur ne le retenait pas. La copie déposée
+// cohabitait donc avec l'original du catalogue — c'est le « disque dupliqué »
+// remonté par les joueurs — et disparaissait au rechargement.
+//
+// Deux natures d'icône, deux règles, et elles diffèrent :
+//
+//   · un DISQUE est un objet : il est SOIT dans « Mes disques », SOIT sur le
+//     bureau, jamais aux deux endroits. C'est ce qui fait disparaître le double.
+//   · un CONTACT est un raccourci : le Frutiz reste dans « Mes contacts » et
+//     dans la barre latérale. Poser deux fois le même n'ajoute qu'une icône.
+//
+// Aucune position n'est mémorisée : le bureau range ses icônes en grille, dans
+// l'ordre de la liste (FPDesktop.setIconList). C'est ce que montrent les
+// captures d'époque.
+// ─────────────────────────────────────────────
+
+// « root » côté arbre, « desktop » côté type : main.swf emploie les deux.
+function estLeBureau(folder) {
+  const f = String(folder || '');
+  return f === 'root' || f === 'desktop';
+}
+
+function parseDesktopItems(raw) {
+  const brut = (() => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    try { const a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch { return []; }
+  })();
+  const vus = new Set();
+  const out = [];
+  for (const it of brut) {
+    if (!it || typeof it !== 'object') continue;
+    const u = String(it.u || '');
+    const t = it.t === 'contact' ? 'contact' : 'disc';
+    if (!u || vus.has(t + ':' + u)) continue;
+    vus.add(t + ':' + u);
+    out.push({ u, t });
+  }
+  return out;
+}
+
+function ensureDesktopItems(user) {
+  if (!Array.isArray(user.desktopItems)) user.desktopItems = [];
+  return user.desktopItems;
+}
+
+function desktopPersist(username, user) {
+  if (user && user._dbId) {
+    db.updateUser(username, { desktop_items: JSON.stringify(user.desktopItems) })
+      .catch(dbErr('updateUser desktop_items'));
+  }
+}
+
+function desktopAdd(username, user, uid, type) {
+  const liste = ensureDesktopItems(user);
+  const u = String(uid || '');
+  if (!u) return;
+  if (liste.some((it) => it.u === u && it.t === type)) return;   // déjà posé
+  liste.push({ u, t: type });
+  desktopPersist(username, user);
+}
+
+function desktopRemove(username, user, uid) {
+  const liste = ensureDesktopItems(user);
+  const u = String(uid || '');
+  const avant = liste.length;
+  user.desktopItems = liste.filter((it) => it.u !== u);
+  if (user.desktopItems.length !== avant) desktopPersist(username, user);
+}
+
+// Le disque `id` est-il posé sur le bureau ? « Mes disques » s'en sert pour ne
+// pas le lister deux fois.
+function desktopHasDisc(user, id) {
+  return ensureDesktopItems(user).some((it) => it.t === 'disc' && it.u === id);
+}
+
+/**
+ * Les nœuds XML des icônes posées sur le bureau, dans l'ordre où le joueur les
+ * y a mises.
+ *
+ * Une icône dont on ne sait plus quoi faire (disque retiré du catalogue,
+ * contact effacé) est SILENCIEUSEMENT abandonnée : mieux vaut une icône de
+ * moins qu'un bureau qui refuse de s'afficher. Le disque, lui, ne peut pas se
+ * perdre — s'il n'est plus listé ici, il est de retour dans « Mes disques ».
+ */
+function desktopNodesXml(user) {
+  let xml = '';
+  for (const it of ensureDesktopItems(user)) {
+    if (it.t === 'disc') {
+      const disc = GAME_DISCS[it.u];
+      if (!disc) continue;
+      const nom = disc.iconName || disc.swfName;
+      xml += `<e u="${escapeXml(it.u)}" t="disc" s="10" d="0" a="0">${disc.discType}\n${escapeXml(nom)}</e>`;
+    } else {
+      const adresse = normalizeContactAddress(it.u) || it.u;
+      const local = String(adresse).split('@')[0];
+      if (!local) continue;
+      xml += `<e u="${escapeXml(local)}" t="contact" s="10" d="0" a="0">${escapeXml(adresse)}</e>`;
+    }
+  }
+  return xml;
+}
+
 function parseOwnedFeutres(raw) {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw.filter((x) => typeof x === 'string');
@@ -14332,6 +14446,9 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     // desktop so users can mail/chat with it without first adding it to
     // their contacts. The original entry was removed in c81ced8's cleanup
     // pass — user reported the absence.
+    //
+    // Puis CE QUE LE JOUEUR Y A POSÉ — ses disques, ses Frutiz — dans l'ordre
+    // où il les y a mis. Le bureau les range en grille à la suite des raccourcis.
     return res.type('text/xml').send(
       `<f u="root">
         <f u="inbox" t="inbox" p="normal" />
@@ -14340,6 +14457,7 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
         <e u="Gaspard" t="contact" s="10" d="0" a="0">Gaspard@frutiparc.com</e>
         <f u="mycontact" t="mycontact" />
         <f u="recyclebin" t="recyclebin" />
+        ${desktopNodesXml(user)}
       </f>`
     );
   }
@@ -14490,8 +14608,14 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
 
   if (uid === 'disccollector') {
     // disc format: content = "discType\ngameName"
+    //
+    // Un disque POSÉ SUR LE BUREAU n'est plus ici : il est là-bas. C'est ce
+    // qu'attend le joueur — un disque est un objet, pas un raccourci — et
+    // c'est ce qui fait disparaître le double. Sorti du bureau (ou jeté), il
+    // revient tout seul dans ce catalogue.
     let discNodes = '';
     for (const [id, disc] of Object.entries(GAME_DISCS)) {
+      if (desktopHasDisc(user, id)) continue;
       const displayName = disc.iconName || disc.swfName;
       discNodes += `<e u="${escapeXml(id)}" t="disc" s="10" d="0" a="0">${disc.discType}\n${escapeXml(displayName)}</e>`;
     }
@@ -14768,6 +14892,11 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
       // Re-mount: any pending eject for this game is stale.
       recentlyEjected.delete(`${sid}::${disc.swfName}`);
     }
+    // Le bureau RETIENT ce qu'on lui pose. Posé, le disque quitte « Mes
+    // disques » ; emporté ailleurs (la Frusion, la corbeille, le catalogue),
+    // il quitte le bureau. Un objet, une place.
+    if (estLeBureau(folder)) desktopAdd(auth.username, user, file, 'disc');
+    else desktopRemove(auth.username, user, file);
     // disccollector is a static catalog: /ff/ls?uid=disccollector already
     // lists every known disc unconditionally. If we answered an eject-back
     // with the disc as a fresh <f> child, the client's onMove handler would
@@ -14885,6 +15014,15 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
   }
 
   const addr = normalizedFileAddr || file;
+  // Un Frutiz posé sur le bureau y est un RACCOURCI : il reste dans « Mes
+  // contacts » et dans la barre latérale, contrairement au disque. Poser deux
+  // fois le même n'ajoute donc qu'une icône (desktopAdd déduplique) — c'était
+  // l'autre moitié du « bug de duplication ». Emporté à la corbeille ou en
+  // liste noire, il quitte le bureau avec le reste.
+  if (estLeBureau(folder)) desktopAdd(auth.username, user, addr, 'contact');
+  else if (folder === 'recyclebin' || folder === 'blacklist') {
+    desktopRemove(auth.username, user, addr);
+  }
   res.type('text/xml').send(`<r f="${escapeXml(folder)}"><f n="${escapeXml(local)}" u="${escapeXml(local)}" t="contact" d="${now}" p="${oldFolder}">${escapeXml(addr)}</f></r>`);
 });
 
@@ -14946,6 +15084,13 @@ app.get(['/ff/rm', '/rm'], async (req, res) => {
     if (!tryRemoveFrom('contacts')) {
       tryRemoveFrom('blacklist');
     }
+  }
+
+  // Effacé pour de bon : il n'a plus rien à faire sur le bureau non plus. On
+  // essaie chaque forme du nom — le bureau retient l'adresse complète, l'appel
+  // peut n'en porter que la partie gauche.
+  for (const c of [removedValue, normalized, rawFile, local]) {
+    if (c) desktopRemove(auth.username, user, c);
   }
 
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);

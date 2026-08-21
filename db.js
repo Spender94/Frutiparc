@@ -110,6 +110,14 @@ async function initSchema() {
         -- ["snake3Hud", ...]. Une option est un confort de jeu permanent, activé
         -- dès l'achat ; distinct des feutres (cosmétique de chat).
         ALTER TABLE users ADD COLUMN IF NOT EXISTS owned_features TEXT DEFAULT NULL;
+        -- Ce que le joueur a POSÉ SUR SON BUREAU — disques et contacts — dans
+        -- l'ordre où il les y a mis, JSON : [{u:"grapiz1",t:"disc"}, …]. Le
+        -- bureau du portail d'origine était un dossier comme un autre : on y
+        -- déposait ses disques et ses Frutiz, et on les y retrouvait à la
+        -- connexion suivante. Sans cette colonne, la copie déposée cohabitait
+        -- avec l'original du catalogue (le disque semblait dupliqué) et
+        -- disparaissait au rechargement.
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS desktop_items TEXT DEFAULT NULL;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT DEFAULT NULL;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_by TEXT DEFAULT '';

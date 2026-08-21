@@ -297,3 +297,87 @@ test('les fenêtres de jeu portent le bandeau', async () => {
   const r = await fetch(BASE + '/js/fd-badge.js');
   assert.ok(r.ok, 'il est servi');
 });
+
+// ── Le bureau est un dossier ──────────────────────────────────────────────
+//
+// Au portail d'origine on posait ses disques et ses Frutiz sur le bureau, et
+// on les y retrouvait à la connexion suivante. Le portage n'en avait gardé que
+// la moitié : main.swf acceptait le dépôt, le serveur ne le retenait pas — d'où
+// la copie qui cohabitait avec l'original (le « disque dupliqué »).
+
+const bureau = (sid) => texte('/ff/ls?sid=' + encodeURIComponent(sid) + '&uid=root');
+const disques = (sid) => texte('/ff/ls?sid=' + encodeURIComponent(sid) + '&uid=disccollector');
+const deplacer = (sid, f, folder, p) => texte('/ff/mv?sid=' + encodeURIComponent(sid)
+  + '&f=' + encodeURIComponent(f) + '&folder=' + folder + (p ? '&p=' + p : ''));
+
+test('un disque posé sur le bureau QUITTE « Mes disques » — un objet, une place', async () => {
+  const sid = await sidPour('rburbur' + RUN);
+  const avant = ((await disques(sid)).match(/t="disc"/g) || []).length;
+  assert.ok(avant > 1, 'le catalogue est garni');
+  assert.equal(/u="grapiz1"/.test(await bureau(sid)), false, 'bureau nu au départ');
+
+  await deplacer(sid, 'grapiz1', 'root', 'disccollector');
+  assert.match(await bureau(sid), /<e u="grapiz1" t="disc"/, 'le disque est sur le bureau');
+  const apres = await disques(sid);
+  assert.equal(/u="grapiz1"/.test(apres), false, 'et plus dans « Mes disques »');
+  assert.equal((apres.match(/t="disc"/g) || []).length, avant - 1, 'un de moins au catalogue');
+
+  // Reposé dix fois, il ne fait pas dix icônes.
+  for (let i = 0; i < 10; i++) await deplacer(sid, 'grapiz1', 'root');
+  assert.equal(((await bureau(sid)).match(/u="grapiz1"/g) || []).length, 1,
+    'une seule icône, quoi qu\'on fasse');
+
+  // Rangé, il revient au catalogue et quitte le bureau.
+  await deplacer(sid, 'grapiz1', 'disccollector', 'root');
+  assert.equal(/u="grapiz1"/.test(await bureau(sid)), false, 'parti du bureau');
+  assert.match(await disques(sid), /u="grapiz1"/, 'revenu au catalogue');
+  assert.equal(((await disques(sid)).match(/t="disc"/g) || []).length, avant, 'compte rétabli');
+});
+
+test('un Frutiz posé sur le bureau y est un RACCOURCI — il reste aux contacts', async () => {
+  const sid = await sidPour('rburcon' + RUN);
+  const ami = 'rburami' + RUN;
+  await sidPour(ami);
+  const adresse = ami + '@frutiparc.com';
+
+  await deplacer(sid, adresse, 'mycontact');
+  await deplacer(sid, adresse, 'root', 'mycontact');
+  await deplacer(sid, adresse, 'root', 'mycontact');       // deux fois : une icône
+  assert.equal(((await bureau(sid)).match(new RegExp('u="' + ami + '"', 'g')) || []).length, 1,
+    'une seule icône sur le bureau');
+  const contacts = await texte('/ff/ls?sid=' + encodeURIComponent(sid) + '&uid=mycontact');
+  assert.match(contacts, new RegExp(ami), 'et il reste dans « Mes contacts »');
+
+  // À la corbeille : il quitte le bureau avec le reste.
+  await deplacer(sid, adresse, 'recyclebin');
+  assert.equal(new RegExp('u="' + ami + '"').test(await bureau(sid)), false,
+    'jeté, il quitte aussi le bureau');
+});
+
+test('le bureau garde ses icônes d\'une visite à l\'autre', async () => {
+  const sid = await sidPour('rburgar' + RUN);
+  await deplacer(sid, 'kaluga', 'root', 'disccollector');
+  await deplacer(sid, 'swapou2', 'root', 'disccollector');
+  // Une seconde session du MÊME joueur voit le même bureau : c'est le serveur
+  // qui le retient, pas l'écran.
+  const sid2 = await sidPour('rburgar' + RUN);
+  const vu = await bureau(sid2);
+  assert.match(vu, /u="kaluga"/, 'le premier disque est toujours là');
+  assert.match(vu, /u="swapou2"/, 'le second aussi');
+  // Et dans l'ordre où ils ont été posés — le bureau les range en grille.
+  assert.ok(vu.indexOf('u="kaluga"') < vu.indexOf('u="swapou2"'), 'dans l\'ordre du dépôt');
+});
+
+test('une icône que le serveur ne reconnaît plus est abandonnée, pas fatale', async () => {
+  const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const bloc = srv.slice(srv.indexOf('function desktopNodesXml'),
+    srv.indexOf('function parseOwnedFeutres'));
+  assert.match(bloc, /if \(!disc\) continue;/,
+    'un disque inconnu du catalogue est sauté');
+  assert.match(bloc, /if \(!local\) continue;/,
+    'un contact sans adresse aussi');
+  // La colonne existe : le bureau survit au redémarrage du serveur.
+  const dbjs = fs.readFileSync(path.join(ROOT, 'db.js'), 'utf8');
+  assert.match(dbjs, /ADD COLUMN IF NOT EXISTS desktop_items TEXT/,
+    'et tout cela se persiste');
+});
