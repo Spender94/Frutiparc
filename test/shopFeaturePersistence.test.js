@@ -15,7 +15,7 @@ const { spawn } = require('node:child_process');
 const { Client } = require(path.join(__dirname, '..', 'node_modules', 'pg'));
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 3431;
+const PORT = 3425;
 const BASE = `http://127.0.0.1:${PORT}`;
 const CLE = 'cle-persistance';
 const DB = process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5433/frutiparc_persist';
@@ -41,7 +41,7 @@ async function demarrer() {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: DB, REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5120', FRUTISCORE_PORT: '5121',
+      ADMIN_KEY: CLE, XMLSOCKET_PORT: '5122', FRUTISCORE_PORT: '5123',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });

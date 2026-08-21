@@ -21,7 +21,7 @@ const { Client } = require(path.join(__dirname, '..', 'node_modules', 'pg'));
 const WebSocket = require(path.join(__dirname, '..', 'node_modules', 'ws'));
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 3461;
+const PORT = 3426;
 const BASE = `http://127.0.0.1:${PORT}`;
 const CLE = 'cle-forum-voyant';
 const DB = process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5433/frutiparc_forumvoyant';

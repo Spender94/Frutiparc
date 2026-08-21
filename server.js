@@ -3720,7 +3720,7 @@ const GAME_DISPLAY_NAMES = {
   bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', kaluga: 'Kaluga',
   swapou2: 'Swapou', miniwave2: 'MiniWave', miniwave: 'MiniWave', mb2: 'MotionBall',
   bandas: 'Frutibandas', grapiz: 'Grapiz', minipixiz: 'MiniPixiz',
-  minifever: 'Mini-Fever',
+  minifever: 'Mini-Fever', jamajama: 'JamaJama',
 };
 const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
 
@@ -16148,29 +16148,56 @@ app.get(['/club', '/club/'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'club', 'index.html'));
 });
 
-app.get('/api/club/medalists', async (req, res) => {
-  try {
-    let medals = [];
-    if (process.env.DATABASE_URL) {
-      try { medals = await db.getAllMedals(); } catch (e) { medals = []; }
-    }
-    if (!medals.length) {
-      for (const [day, dayMedals] of Object.entries(challengeMedalsData.medalsByVisibleDay || {})) {
-        for (const [username, list] of Object.entries(dayMedals || {})) {
-          for (const m of list) {
-            medals.push({ awarded_day: day, username, ranking_id: m.rankingId, game: m.game, rank: m.rank, medal: m.medal });
-          }
+// Les mois, en toutes lettres — la fiche d'un joueur range ses médailles par
+// mois, comme le faisait la page des médaillés d'Aidofrutiz.
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+/**
+ * TOUTES les médailles jamais attribuées — la base si elle est là, le fichier
+ * de journée sinon. Deux vues s'en servent : le tableau des médaillés, et la
+ * fiche d'un joueur.
+ *
+ * Une ligne : { awarded_day: 'AAAA-MM-JJ', username, ranking_id, game, rank, medal }
+ * où `medal` vaut 'or' | 'argent' | 'bronze' (saveMedal écrit en français ;
+ * l'anglais est accepté à la lecture, des lignes anciennes en portent).
+ */
+async function toutesLesMedailles() {
+  let medals = [];
+  if (process.env.DATABASE_URL) {
+    try { medals = await db.getAllMedals(); } catch (e) { medals = []; }
+  }
+  if (!medals.length) {
+    for (const [day, dayMedals] of Object.entries(challengeMedalsData.medalsByVisibleDay || {})) {
+      for (const [username, list] of Object.entries(dayMedals || {})) {
+        for (const m of list) {
+          medals.push({ awarded_day: day, username, ranking_id: m.rankingId, game: m.game, rank: m.rank, medal: m.medal });
         }
       }
     }
+  }
+  return medals;
+}
+
+// Or, argent ou bronze — quelle que soit la langue dans laquelle la ligne a été
+// écrite.
+function metalDe(medal) {
+  if (medal === 'or' || medal === 'gold') return 'or';
+  if (medal === 'argent' || medal === 'silver') return 'argent';
+  return 'bronze';
+}
+
+app.get('/api/club/medalists', async (req, res) => {
+  try {
+    const medals = await toutesLesMedailles();
     const counts = {};
     for (const m of medals) {
       const u = m.username;
       if (!counts[u]) counts[u] = { user: getDisplayName(u), gold: 0, silver: 0, bronze: 0, total: 0 };
-      // Medals are stored in French ('or', 'argent', 'bronze') by saveMedal.
-      if (m.medal === 'or' || m.medal === 'gold') counts[u].gold++;
-      else if (m.medal === 'argent' || m.medal === 'silver') counts[u].silver++;
-      else if (m.medal === 'bronze') counts[u].bronze++;
+      const metal = metalDe(m.medal);
+      if (metal === 'or') counts[u].gold++;
+      else if (metal === 'argent') counts[u].silver++;
+      else counts[u].bronze++;
       counts[u].total++;
     }
     const list = Object.values(counts).sort(
@@ -16182,9 +16209,18 @@ app.get('/api/club/medalists', async (req, res) => {
   }
 });
 
-app.get('/api/club/records', async (req, res) => {
-  const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 10));
-
+/**
+ * LE LIVRE DES RECORDS — le meilleur score de chaque joueur, classement par
+ * classement, scores du jour ET archive confondus.
+ *
+ * Deux vues le lisent : le tableau « Records par jeu » du Club, qui n'en garde
+ * que les premières lignes, et la FICHE d'un joueur, qui y cherche la sienne et
+ * son rang. Elles doivent voir exactement le même livre — d'où cette fonction
+ * plutôt qu'un second calcul.
+ *
+ * @returns {Object} bestByRanking[rankingId][username] = { score, data, updatedAt }
+ */
+async function livreDesRecords() {
   // Build per-(rankingId, user) best score across live scores + archive.
   // bestByRanking[rkId] = { user -> { score, data, updatedAt } }
   const bestByRanking = {};
@@ -16277,6 +16313,13 @@ app.get('/api/club/records', async (req, res) => {
     }
   }
 
+  return bestByRanking;
+}
+
+app.get('/api/club/records', async (req, res) => {
+  const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 10));
+  const bestByRanking = await livreDesRecords();
+
   const out = [];
   for (const [rkId, meta] of Object.entries(RANKINGS)) {
     const userMap = bestByRanking[rkId] || {};
@@ -16302,7 +16345,184 @@ app.get('/api/club/records', async (req, res) => {
   res.json({ rankings: out });
 });
 
+/**
+ * Les classements que la FICHE d'un joueur montre — et ceux qu'elle tait.
+ *
+ *   · MotionBall est écarté : son score n'est pas un score mais un empilement
+ *     (boss atteint, temps, pourcentage), qui ne veut rien dire hors de son
+ *     propre tableau. Le montrer sur une fiche donnerait un nombre que
+ *     personne ne sait lire.
+ *   · Burning Kiwi ne garde que le CHAMPIONNAT. Ses records « classiques » sont
+ *     pollués par un vieux routage de circuit (tout tagué Green Hill) ; le
+ *     tableau « Records par jeu » applique déjà cette règle côté client, la
+ *     fiche l'applique ici — c'est la même vérité, montrée deux fois.
+ */
+function ficheMontreLeClassement(rkId, meta) {
+  if (!meta) return false;
+  if (meta.game === 'mb2') return false;
+  if (/^bkiwi_.*_classic$/.test(rkId)) return false;
+  return true;
+}
+
+/**
+ * La FICHE d'un joueur : sa bouille, ses médailles rangées par mois puis par
+ * jeu, et ses records.
+ *
+ * C'est la page des médaillés d'Aidofrutiz, remise en service : on y arrivait
+ * par `medailles.php?p=<pseudo>`, on y trouvait « X a obtenu N médailles »,
+ * un tableau par date et un tableau par jeu. On lui ajoute ce qui manquait —
+ * la bouille du joueur, et ses records.
+ */
+app.get('/api/club/player', async (req, res) => {
+  try {
+    const demande = String(req.query.u || '').trim();
+    if (!demande) return res.json({ ok: false, error: 'pseudo manquant' });
+    const cle = demande.toLowerCase();
+
+    const medals = await toutesLesMedailles();
+    const bestByRanking = await livreDesRecords();
+
+    // Retrouver le pseudo TEL QU'IL EST ÉCRIT. On accepte n'importe quelle
+    // casse : le joueur tape « anthonybdx », la médaille porte « AnthonyBdx ».
+    let username = users[cle] ? cle : null;
+    if (!username) {
+      for (const m of medals) {
+        if (String(m.username).toLowerCase() === cle) { username = m.username; break; }
+      }
+    }
+    if (!username) {
+      for (const rkId of Object.keys(bestByRanking)) {
+        for (const u of Object.keys(bestByRanking[rkId])) {
+          if (u.toLowerCase() === cle) { username = u; break; }
+        }
+        if (username) break;
+      }
+    }
+    if (!username) return res.json({ ok: false, error: 'inconnu', demande });
+
+    // La bouille demande la fiche en mémoire ; on la réveille de la base si
+    // besoin (un joueur d'archive n'y est pas forcément).
+    if (!users[cle] && process.env.DATABASE_URL) {
+      try {
+        const row = await db.findUserByUsername(username);
+        if (row) await hydrateUserFromDb(cle, row);
+      } catch (e) { /* on affichera la bouille par défaut */ }
+    }
+
+    // ── Les médailles ──
+    const siennes = medals.filter((m) => String(m.username).toLowerCase() === cle);
+    const vide = () => ({ or: 0, argent: 0, bronze: 0, total: 0 });
+    const totaux = vide();
+    const parMois = {};
+    const parJeu = {};
+    for (const m of siennes) {
+      const metal = metalDe(m.medal);
+      const mois = String(m.awarded_day || '').substring(0, 7);      // AAAA-MM
+      const jeu = m.game || (RANKINGS[m.ranking_id] && RANKINGS[m.ranking_id].game) || '?';
+      if (mois && !parMois[mois]) parMois[mois] = vide();
+      if (!parJeu[jeu]) parJeu[jeu] = vide();
+      for (const seau of [totaux, parMois[mois], parJeu[jeu]]) {
+        if (!seau) continue;
+        seau[metal]++;
+        seau.total++;
+      }
+    }
+    const moisLisible = (k) => {
+      const [a, m] = k.split('-');
+      const nom = MOIS_FR[Number(m) - 1] || m;
+      return nom.charAt(0).toUpperCase() + nom.slice(1) + ' ' + a;
+    };
+    const medaillesParMois = Object.keys(parMois).sort().map((k) => (
+      Object.assign({ cle: k, mois: moisLisible(k) }, parMois[k])
+    ));
+    const medaillesParJeu = Object.keys(parJeu)
+      .map((g) => Object.assign({ jeu: g, nom: GAME_DISPLAY_NAMES[g] || g }, parJeu[g]))
+      .sort((a, b) => b.total - a.total || a.nom.localeCompare(b.nom));
+
+    // Sa place au tableau des médaillés — le même ordre que /api/club/medalists.
+    const comptes = {};
+    for (const m of medals) {
+      const u = String(m.username).toLowerCase();
+      if (!comptes[u]) comptes[u] = vide();
+      comptes[u][metalDe(m.medal)]++;
+      comptes[u].total++;
+    }
+    const classementMedailles = Object.entries(comptes).sort(
+      (a, b) => b[1].or - a[1].or || b[1].argent - a[1].argent || b[1].bronze - a[1].bronze
+        || a[0].localeCompare(b[0])
+    );
+    const iMedailles = classementMedailles.findIndex(([u]) => u === cle);
+
+    // ── Les records ──
+    const records = [];
+    for (const [rkId, meta] of Object.entries(RANKINGS)) {
+      if (!ficheMontreLeClassement(rkId, meta)) continue;
+      const userMap = bestByRanking[rkId] || {};
+      const tous = Object.entries(userMap).map(([u, v]) => ({
+        u, s: Number(v.score), data: v.data || '',
+      })).filter((e) => Number.isFinite(e.s));
+      if (!tous.length) continue;
+      tous.sort(scoreComparator(rkId));
+      const i = tous.findIndex((e) => e.u.toLowerCase() === cle);
+      if (i < 0) continue;
+      records.push({
+        id: rkId,
+        nom: meta.name,
+        jeu: meta.game,
+        jeuNom: GAME_DISPLAY_NAMES[meta.game] || meta.game,
+        type: meta.type,
+        score: tous[i].s,
+        label: formatChallengeScoreLabel(rkId, tous[i].s, tous[i].data),
+        rang: i + 1,
+        sur: tous.length,
+      });
+    }
+    // Les jeux d'abord, dans l'ordre où le joueur y brille : sa meilleure place
+    // en tête. À égalité, l'ordre alphabétique — pas celui de la table.
+    records.sort((a, b) => a.rang - b.rang || a.nom.localeCompare(b.nom));
+
+    res.json({
+      ok: true,
+      user: getDisplayName(username),
+      bouille: bouilleOf(users[cle], cle),
+      medailles: Object.assign({ rang: iMedailles < 0 ? null : iMedailles + 1 }, totaux),
+      medaillesParMois,
+      medaillesParJeu,
+      records,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
+ * Les pseudos dont la fiche a quelque chose à raconter — une médaille ou un
+ * record. C'est la liste que propose le champ de recherche ; inutile d'y verser
+ * tout le fichier des inscrits, une fiche vide n'intéresse personne.
+ */
+app.get('/api/club/players', async (req, res) => {
+  try {
+    const vus = new Map();                       // minuscules -> pseudo affiché
+    const noter = (u) => {
+      const k = String(u || '').toLowerCase();
+      if (k && !vus.has(k)) vus.set(k, getDisplayName(u));
+    };
+    for (const m of await toutesLesMedailles()) noter(m.username);
+    const bestByRanking = await livreDesRecords();
+    for (const [rkId, userMap] of Object.entries(bestByRanking)) {
+      if (!ficheMontreLeClassement(rkId, RANKINGS[rkId])) continue;
+      for (const u of Object.keys(userMap)) noter(u);
+    }
+    const joueurs = [...vus.values()].sort((a, b) => a.localeCompare(b, 'fr'));
+    res.json({ joueurs });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Consecration ranking: every known player sorted by overall consecration score.
+// (Le Club ne l'affiche plus : la consécration a sa ligne au tableau des scores
+// de /light, la répéter ici n'apprenait rien. La route reste servie.)
 app.get('/api/club/consecration', async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));

@@ -1,5 +1,15 @@
 <!DOCTYPE html>
 <html lang="fr">
+<!-- Le Club — le livre des records et des médailles.
+
+     Trois onglets : le tableau des médaillés, les records par jeu, et la FICHE
+     d'un joueur. Cette dernière reprend la page des médaillés d'Aidofrutiz
+     (medailles.php?p=<pseudo>) : « X a obtenu N médailles », un tableau par
+     date, un tableau par jeu. On lui ajoute ce qu'elle n'avait pas — la bouille
+     du joueur, et ses records.
+
+     La CONSÉCRATION n'a plus d'onglet : elle a sa ligne au tableau des scores
+     de /light, la répéter ici n'apprenait rien. -->
 <head>
 <meta charset="UTF-8">
 <title>Club Frutiparc</title>
@@ -85,7 +95,7 @@
     flex-wrap: wrap;
     background: #ADE76B;
     padding: 6px 10px;
-    height: 28px;
+    min-height: 28px;
     color: #2C4A0F;
     font-size: 11px;
     font-weight: bold;
@@ -129,6 +139,16 @@
     font-family: Verdana, sans-serif;
     font-size: 10px;
   }
+  input[type="search"], input[type="text"] {
+    padding: 2px 6px;
+    border: 1px solid #8bc55a;
+    border-radius: 3px;
+    background: #fff;
+    color: #2C4A0F;
+    font-family: Verdana, sans-serif;
+    font-size: 11px;
+    width: 160px;
+  }
 
   /* Medalists table — column header in coral, rows alternating green */
   table {
@@ -168,6 +188,10 @@
   td.rank-cell.r2 { color: #808080; }
   td.rank-cell.r3 { color: #a0522d; }
   .username { font-weight: bold; color: #2C4A0F; }
+  /* Un pseudo cliquable ouvre sa fiche — au tableau des médaillés comme dans
+     chaque carte de record. */
+  a.username { cursor: pointer; }
+  a.username:hover { text-decoration: underline; }
 
   /* Records grid */
   .records-area { padding: 8px; background: #fff; }
@@ -179,7 +203,7 @@
     font-family: Arial, Verdana, sans-serif;
     padding: 5px 10px;
     margin: 10px 0 8px 0;
-    height: 25px;
+    min-height: 25px;
     display: flex;
     align-items: center;
     border-radius: 4px;
@@ -227,6 +251,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 6px;
     padding: 3px 10px;
     font-size: 11px;
     background: #D6F7B5;
@@ -244,6 +269,9 @@
     flex: 1;
     color: #2C4A0F;
     font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .score-row .pscore {
     color: #335511;
@@ -259,45 +287,100 @@
     background: #fff;
   }
 
-  /* Consecration ranking */
-  .conse-info {
-    background: #ADE76B;
-    color: #2C4A0F;
-    padding: 6px 10px;
-    margin-bottom: 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: bold;
-  }
-  .conse-score {
+  /* ── La FICHE d'un joueur ──────────────────────────────────────────────
+     Aidofrutiz centrait tout sur un fond vert clair : on garde ce parti, avec
+     la bouille et le pseudo en tête de page. */
+  .fiche { padding: 10px 8px 16px; background: #fff; }
+  .fiche-tete {
     display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 140px;
-  }
-  .conse-pct-val {
-    font-weight: bold;
-    color: #2C4A0F;
-    font-family: "Courier New", monospace;
-  }
-  .conse-bar-mini {
-    width: 140px;
-    height: 8px;
-    background: #fff;
+    align-items: center;
+    gap: 12px;
+    background: #CCF599;
     border: 1px solid #8bc55a;
-    border-radius: 4px;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+  }
+  /* La bouille : même vignette que le forum (cache PNG, détourée du vert de
+     capture pour se poser sur n'importe quel fond). */
+  .fiche-bouille {
+    width: 76px;
+    height: 76px;
+    flex: 0 0 76px;
+    background: #fff;
+    border: 1px solid #8A888D;
+    border-radius: 6px;
     overflow: hidden;
   }
-  .conse-fill-mini {
-    height: 100%;
-    background: linear-gradient(to right, #8fc63f, #E3756A);
-    transition: width 0.3s;
+  .fiche-ident { min-width: 0; }
+  .fiche-nom {
+    font-family: Arial, Verdana, sans-serif;
+    font-size: 16px;
+    font-weight: bold;
+    color: #2C4A0F;
+    margin-bottom: 3px;
+    word-break: break-word;
   }
-  .conse-detail {
-    font-size: 10px;
+  .fiche-ligne { color: #335511; font-size: 11px; line-height: 1.7; }
+  .fiche-ligne b { color: #2C4A0F; }
+  .fiche-metaux { font-weight: bold; }
+  .fiche-metaux .m-or { color: #b58900; }
+  .fiche-metaux .m-ar { color: #808080; }
+  .fiche-metaux .m-br { color: #a0522d; }
+
+  .fiche-bloc { margin-bottom: 14px; }
+  .fiche-bloc:last-child { margin-bottom: 0; }
+  .fiche-titre {
+    color: #fff;
+    background: #E3756A;
+    font-size: 12px;
+    font-weight: bold;
+    font-family: Arial, Verdana, sans-serif;
+    padding: 5px 10px;
+    min-height: 25px;
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+    margin-bottom: 8px;
+  }
+  /* Les deux tableaux de médailles sont étroits : centrés, comme sur la page
+     d'origine, plutôt qu'étirés sur toute la largeur. */
+  .fiche-tableau { max-width: 420px; margin: 0 auto; }
+  .fiche-tableau td:first-child { font-weight: bold; }
+  .fiche-vide {
+    text-align: center;
+    padding: 14px;
     color: #5a8030;
-    line-height: 1.5;
+    font-style: italic;
+    background: #D6F7B5;
+    border: 1px solid #8bc55a;
+    border-radius: 4px;
   }
+  /* Un record : le classement, le score, et la place tenue. */
+  .rec-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 10px;
+    background: #D6F7B5;
+    font-size: 11px;
+  }
+  .rec-row:nth-child(even) { background: #C3EF93; }
+  .rec-row .rname { flex: 1; color: #2C4A0F; font-weight: bold; }
+  .rec-row .rscore {
+    color: #335511;
+    font-family: "Courier New", monospace;
+    font-weight: bold;
+  }
+  .rec-row .rpos {
+    min-width: 78px;
+    text-align: right;
+    color: #5a8030;
+    font-weight: bold;
+  }
+  .rec-row .rpos.r1 { color: #b58900; }
+  .rec-row .rpos.r2 { color: #808080; }
+  .rec-row .rpos.r3 { color: #a0522d; }
 
   /* Footer matches forum-footer */
   .club-footer {
@@ -324,7 +407,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="medalists">Top médaillés</button>
     <button class="tab" data-tab="records">Records par jeu</button>
-    <button class="tab" data-tab="consecration">Consécration</button>
+    <button class="tab" data-tab="fiche">Fiche joueur</button>
   </div>
 
   <div id="panel-medalists" class="panel">
@@ -356,46 +439,56 @@
     <div id="records-content" class="loading">Chargement…</div>
   </div>
 
-  <div id="panel-consecration" class="panel hidden">
+  <div id="panel-fiche" class="panel hidden">
     <div class="toolbar">
-      <button class="btn" onclick="loadConsecration()">Actualiser</button>
-      <label>Top&nbsp;:
-        <select id="conse-limit" onchange="loadConsecration()">
-          <option value="20">20</option>
-          <option value="50" selected>50</option>
-          <option value="100">100</option>
-        </select>
+      <label>Pseudo&nbsp;:
+        <input type="search" id="fiche-pseudo" list="fiche-joueurs" placeholder="un Frutiz…"
+               autocomplete="off" onkeydown="if(event.key==='Enter'){chercherFiche();return false;}">
+        <datalist id="fiche-joueurs"></datalist>
       </label>
-      <span id="conse-summary" class="summary"></span>
+      <button class="btn" onclick="chercherFiche()">Voir la fiche</button>
+      <span id="fiche-summary" class="summary"></span>
     </div>
-    <div id="consecration-content" class="loading">Chargement…</div>
+    <div id="fiche-content" class="loading">
+      Cherchez un Frutiz par son pseudo — ou cliquez un nom dans les deux autres onglets.
+    </div>
   </div>
 </div>
 <div class="club-footer">
   Club Frutiparc &copy; <a href="https://www.motiontwin.com">Motion Twin</a>
 </div>
 
+<!-- Vignettes de bouilles : une <img> sur le cache PNG du serveur, pas une
+     instance Ruffle de plus. Le même rendu que le forum. -->
+<script src="/js/bouille-thumb.js"></script>
 <script>
   let recordsData = null;
-  let consecrationData = null;
+  let joueursCharges = false;
+
+  function activerOnglet(tab) {
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.getAttribute('data-tab') === tab));
+    document.getElementById('panel-medalists').classList.toggle('hidden', tab !== 'medalists');
+    document.getElementById('panel-records').classList.toggle('hidden', tab !== 'records');
+    document.getElementById('panel-fiche').classList.toggle('hidden', tab !== 'fiche');
+    if (tab === 'records' && !recordsData) loadRecords();
+    if (tab === 'fiche') chargerListeJoueurs();
+  }
 
   document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const tab = btn.getAttribute('data-tab');
-      document.getElementById('panel-medalists').classList.toggle('hidden', tab !== 'medalists');
-      document.getElementById('panel-records').classList.toggle('hidden', tab !== 'records');
-      document.getElementById('panel-consecration').classList.toggle('hidden', tab !== 'consecration');
-      if (tab === 'records' && !recordsData) loadRecords();
-      if (tab === 'consecration' && !consecrationData) loadConsecration();
-    });
+    btn.addEventListener('click', () => activerOnglet(btn.getAttribute('data-tab')));
   });
 
   function escapeHtml(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  // Un pseudo pour un attribut onclick : les apostrophes sont déjà en &#39;
+  // après escapeHtml, il reste à protéger l'antislash.
+  function pseudoAttr(u) { return escapeHtml(String(u).replace(/\\/g, '\\\\')); }
+  function lienJoueur(u) {
+    return '<a class="username" href="#" onclick="ouvrirFiche(\'' + pseudoAttr(u) + '\');return false;">'
+      + escapeHtml(u) + '</a>';
   }
 
   async function loadMedalists() {
@@ -429,7 +522,7 @@
         const rkClass = rk <= 3 ? 'rank-cell r' + rk : 'rank-cell';
         html += '<tr>'
           + '<td class="' + rkClass + '">' + rk + '</td>'
-          + '<td><span class="username">' + escapeHtml(m.user) + '</span></td>'
+          + '<td>' + lienJoueur(m.user) + '</td>'
           + '<td class="num gold">' + m.gold + '</td>'
           + '<td class="num silver">' + m.silver + '</td>'
           + '<td class="num bronze">' + m.bronze + '</td>'
@@ -484,7 +577,7 @@
       var cls = pos <= 3 ? ('score-row r' + pos) : 'score-row';
       html += '<div class="' + cls + '">'
         + '<span class="pos">' + pos + '.</span>'
-        + '<span class="pname">' + escapeHtml(s.user) + '</span>'
+        + '<span class="pname">' + lienJoueur(s.user) + '</span>'
         + '<span class="pscore">' + escapeHtml(formatScore(s.score, rk)) + '</span>'
         + '</div>';
     });
@@ -579,72 +672,158 @@
     root.innerHTML = html;
   }
 
-  async function loadConsecration() {
-    const root = document.getElementById('consecration-content');
+  // ── La fiche d'un joueur ────────────────────────────────────────────────
+
+  async function chargerListeJoueurs() {
+    if (joueursCharges) return;
+    joueursCharges = true;
+    try {
+      const r = await fetch('/api/club/players');
+      const d = await r.json();
+      document.getElementById('fiche-joueurs').innerHTML =
+        (d.joueurs || []).map(u => '<option value="' + escapeHtml(u) + '"></option>').join('');
+    } catch (e) { /* la recherche libre marche quand même */ }
+  }
+
+  function chercherFiche() {
+    const v = (document.getElementById('fiche-pseudo').value || '').trim();
+    if (v) ouvrirFiche(v);
+  }
+
+  function ouvrirFiche(pseudo) {
+    activerOnglet('fiche');
+    document.getElementById('fiche-pseudo').value = pseudo;
+    chargerFiche(pseudo);
+  }
+
+  function tableauMedailles(lignes, entete) {
+    if (!lignes.length) return '';
+    let html = '<div class="fiche-tableau"><table><thead><tr>'
+      + '<th>' + entete + '</th>'
+      + '<th class="num">🥇 Or</th>'
+      + '<th class="num">🥈 Argent</th>'
+      + '<th class="num">🥉 Bronze</th>'
+      + '<th class="num">Total</th>'
+      + '</tr></thead><tbody>';
+    lignes.forEach(l => {
+      html += '<tr>'
+        + '<td>' + escapeHtml(l.libelle) + '</td>'
+        + '<td class="num gold">' + l.or + '</td>'
+        + '<td class="num silver">' + l.argent + '</td>'
+        + '<td class="num bronze">' + l.bronze + '</td>'
+        + '<td class="num">' + l.total + '</td>'
+        + '</tr>';
+    });
+    return html + '</tbody></table></div>';
+  }
+
+  async function chargerFiche(pseudo) {
+    const root = document.getElementById('fiche-content');
+    const resume = document.getElementById('fiche-summary');
     root.className = 'loading';
     root.textContent = 'Chargement…';
-    const limit = document.getElementById('conse-limit').value || 50;
+    resume.textContent = '';
+    let d;
     try {
-      const r = await fetch('/api/club/consecration?limit=' + limit);
-      consecrationData = await r.json();
-      renderConsecration();
+      const r = await fetch('/api/club/player?u=' + encodeURIComponent(pseudo));
+      d = await r.json();
     } catch (e) {
       root.className = 'loading';
       root.textContent = 'Erreur de chargement: ' + e.message;
-    }
-  }
-
-  function renderConsecration() {
-    const root = document.getElementById('consecration-content');
-    const players = (consecrationData && consecrationData.players) || [];
-    const summary = document.getElementById('conse-summary');
-    summary.textContent = (consecrationData && consecrationData.totalPlayers != null)
-      ? (consecrationData.totalPlayers + ' joueur' + (consecrationData.totalPlayers > 1 ? 's' : ''))
-      : '';
-
-    if (!players.length) {
-      root.className = 'loading';
-      root.textContent = 'Aucun joueur à classer pour le moment.';
       return;
     }
-    const perGameMax = players[0].perGameMax || 0;
-    const enabledCount = players[0].enabledCount || 0;
-    let html = '<div class="conse-info">'
-      + enabledCount + ' jeu' + (enabledCount > 1 ? 'x' : '') + ' pris en compte — '
-      + 'chaque jeu finalisé vaut ' + perGameMax.toFixed(2) + ' % du score total.'
-      + '</div>';
-    html += '<table><thead><tr>'
-      + '<th class="num">#</th>'
-      + '<th>Joueur</th>'
-      + '<th>Score</th>'
-      + '<th>Détail par jeu</th>'
-      + '</tr></thead><tbody>';
-    players.forEach((p, i) => {
-      const rk = i + 1;
-      const rkClass = rk <= 3 ? 'rank-cell r' + rk : 'rank-cell';
-      const pct = Number(p.overall) || 0;
-      const detail = (p.games || []).map(g => {
-        const label = g.mode === 'completion'
-          ? (g.unlocked ? 'joué' : '—')
-          : (g.unlocked + '/' + g.total);
-        return escapeHtml(g.name) + ' ' + label;
-      }).join(' · ');
-      html += '<tr>'
-        + '<td class="' + rkClass + '">' + rk + '</td>'
-        + '<td><span class="username">' + escapeHtml(p.user) + '</span></td>'
-        + '<td><div class="conse-score">'
-        +   '<span class="conse-pct-val">' + pct.toFixed(2) + ' %</span>'
-        +   '<div class="conse-bar-mini"><div class="conse-fill-mini" style="width:' + Math.min(pct, 100) + '%"></div></div>'
-        + '</div></td>'
-        + '<td class="conse-detail">' + detail + '</td>'
-        + '</tr>';
-    });
-    html += '</tbody></table>';
-    root.className = 'records-area';
+    if (!d || !d.ok) {
+      root.className = 'loading';
+      root.textContent = 'Aucun Frutiz nommé « ' + pseudo +' » n’a de médaille ni de record.';
+      return;
+    }
+
+    const m = d.medailles || { or: 0, argent: 0, bronze: 0, total: 0 };
+    const bouille = window.FPBouilleThumb
+      ? FPBouilleThumb.imgHtml(d.bouille, 0, { detourer: true })
+      : '';
+
+    let html = '<div class="fiche-tete">'
+      + '<div class="fiche-bouille">' + bouille + '</div>'
+      + '<div class="fiche-ident">'
+      +   '<div class="fiche-nom">' + escapeHtml(d.user) + '</div>'
+      +   '<div class="fiche-ligne">'
+      +     (m.total
+              ? '<b>' + escapeHtml(d.user) + '</b> a obtenu <b>' + m.total + '</b> médaille'
+                + (m.total > 1 ? 's' : '')
+                + (m.rang ? ' — ' + m.rang + '<sup>' + (m.rang === 1 ? 're' : 'e') + '</sup> au tableau des médaillés' : '')
+              : '<b>' + escapeHtml(d.user) + '</b> n’a pas encore de médaille.')
+      +   '</div>'
+      +   (m.total
+            ? '<div class="fiche-ligne fiche-metaux">'
+              + '<span class="m-or">🥇 ' + m.or + '</span> &nbsp; '
+              + '<span class="m-ar">🥈 ' + m.argent + '</span> &nbsp; '
+              + '<span class="m-br">🥉 ' + m.bronze + '</span>'
+              + '</div>'
+            : '')
+      + '</div></div>';
+
+    const parMois = (d.medaillesParMois || []).map(l => Object.assign({ libelle: l.mois }, l));
+    const parJeu = (d.medaillesParJeu || []).map(l => Object.assign({ libelle: l.nom }, l));
+
+    if (parMois.length) {
+      html += '<div class="fiche-bloc"><div class="fiche-titre">Médailles classées par date</div>'
+        + tableauMedailles(parMois, 'Mois') + '</div>';
+      html += '<div class="fiche-bloc"><div class="fiche-titre">Médailles classées par jeu</div>'
+        + tableauMedailles(parJeu, 'Jeu') + '</div>';
+    }
+
+    // Les records, groupés par jeu — MotionBall en est absent : son score
+    // empile le boss atteint, le temps et un pourcentage, il ne veut rien dire
+    // hors de son propre tableau (le serveur l'écarte, cf. /api/club/player).
+    html += '<div class="fiche-bloc"><div class="fiche-titre">Records par jeu</div>';
+    const recs = d.records || [];
+    if (!recs.length) {
+      html += '<div class="fiche-vide">Aucun record enregistré pour l’instant.</div>';
+    } else {
+      const parJeuRec = [];
+      recs.forEach(r => {
+        let g = parJeuRec.find(x => x.jeu === r.jeu);
+        if (!g) { g = { jeu: r.jeu, nom: r.jeuNom, lignes: [] }; parJeuRec.push(g); }
+        g.lignes.push(r);
+      });
+      html += '<div class="ranking-list">';
+      parJeuRec.forEach(g => {
+        html += '<div class="ranking-card"><h3>' + escapeHtml(g.nom) + '</h3>';
+        g.lignes.forEach(r => {
+          // Le nom du classement perd son préfixe de jeu : la carte le porte
+          // déjà. Un jeu à classement unique (MiniPixiz, MiniWave, Mini-Fever)
+          // n'a pas de mode à nommer — sa ligne ne porte alors que le score et
+          // la place, plutôt que de répéter le titre de la carte.
+          const court = r.nom.indexOf(' - ') > 0 ? r.nom.split(' - ').slice(1).join(' - ') : '';
+          const posCls = r.rang <= 3 ? 'rpos r' + r.rang : 'rpos';
+          html += '<div class="rec-row">'
+            + '<span class="rname">' + escapeHtml(court) + '</span>'
+            + '<span class="rscore">' + escapeHtml(r.label) + '</span>'
+            + '<span class="' + posCls + '">n&deg;&nbsp;' + r.rang + ' / ' + r.sur + '</span>'
+            + '</div>';
+        });
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+
+    resume.textContent = recs.length
+      ? recs.length + ' record' + (recs.length > 1 ? 's' : '')
+      : '';
+    root.className = 'fiche';
     root.innerHTML = html;
   }
 
-  loadMedalists();
+  // On arrive parfois DROIT sur une fiche : /club/?p=anthonybdx — c'est
+  // l'adresse qu'avait la page des médaillés d'Aidofrutiz, et celle que les
+  // autres écrans peuvent pointer.
+  (function () {
+    const p = new URLSearchParams(location.search).get('p');
+    loadMedalists();
+    if (p) ouvrirFiche(p);
+  })();
 </script>
 </body>
 </html>

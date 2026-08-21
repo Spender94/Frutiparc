@@ -22,7 +22,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 3497;
+const PORT = 3432;
 const BASE = `http://127.0.0.1:${PORT}`;
 const RUN = Date.now().toString(36).slice(-5);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

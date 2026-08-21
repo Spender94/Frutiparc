@@ -30,7 +30,7 @@ const zlib = require('node:zlib');
 const { spawn } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 3463;
+const PORT = 3428;
 const BASE = `http://127.0.0.1:${PORT}`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -40,7 +40,7 @@ before(async () => {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-      XMLSOCKET_PORT: '5198', FRUTISCORE_PORT: '5199',
+      XMLSOCKET_PORT: '5252', FRUTISCORE_PORT: '5253',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
