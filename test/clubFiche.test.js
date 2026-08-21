@@ -217,3 +217,26 @@ test('la page du Club n\'affiche plus la consécration, et ouvre une fiche', asy
   assert.ok(/api\/club\/player\?u=/.test(html), 'qui interroge la fiche');
   assert.ok(/bouille-thumb\.js/.test(html), 'et sait dessiner une bouille');
 });
+
+// Les médailles du bureau, pas celles de la police système : le jeton
+// d'awards.swf sorti par scripts/extract-medailles-vierges.js.
+test('les trois jetons de médaille sont ceux d\'awards.swf', async () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/club/index.html'), 'utf8');
+  assert.equal(/[\u{1F947}-\u{1F949}]/u.test(html), false,
+    'plus un seul émoji de médaille dans la page');
+  for (const [fichier, teinte] of [
+    ['medal_gold.svg', '#fedf0a'],       // le jaune du disque d'or
+    ['medal_silver.svg', '#dddddd'],     // le gris de l'argent
+    ['medal_bronze.svg', '#e19d37'],     // le cuivre du bronze
+  ]) {
+    assert.ok(html.includes('/fb/' + fichier), fichier + ' est appelé par la page');
+    const svg = fs.readFileSync(path.join(ROOT, 'public/fb', fichier), 'utf8');
+    assert.ok(svg.startsWith('<svg'), fichier + ' est bien du vecteur');
+    assert.ok(svg.includes(teinte), fichier + ' porte la teinte du métal (' + teinte + ')');
+    // La vignette du jeu est restée au SWF : le jeton n'a que ses trois anneaux.
+    assert.equal((svg.match(/<path /g) || []).length, 3,
+      fichier + ' : le disque et ses deux anneaux, rien d\'autre');
+    const r = await fetch(BASE + '/fb/' + fichier);
+    assert.ok(r.ok, fichier + ' est servi');
+  }
+});

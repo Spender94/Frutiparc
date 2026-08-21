@@ -165,7 +165,9 @@
     font-weight: bold;
     height: 25px;
   }
-  thead th.num { text-align: center; width: 70px; }
+  /* `nowrap` : le jeton de médaille et son mot tiennent sur une ligne — sans
+     lui, « Argent » et « Bronze » passaient sous leur médaille. */
+  thead th.num { text-align: center; width: 70px; white-space: nowrap; }
   tbody td {
     padding: 7px 10px;
     background: #D6F7B5;
@@ -188,6 +190,10 @@
   td.rank-cell.r2 { color: #808080; }
   td.rank-cell.r3 { color: #a0522d; }
   .username { font-weight: bold; color: #2C4A0F; }
+  /* Le JETON de médaille — le dessin d'awards.swf, sans la vignette du jeu
+     (scripts/extract-medailles-vierges.js). En vecteur : net à quatorze pixels
+     dans un en-tête comme à vingt sur une fiche. */
+  .med { vertical-align: -3px; margin-right: 2px; }
   /* Un pseudo cliquable ouvre sa fiche — au tableau des médaillés comme dans
      chaque carte de record. */
   a.username { cursor: pointer; }
@@ -323,7 +329,8 @@
   }
   .fiche-ligne { color: #335511; font-size: 11px; line-height: 1.7; }
   .fiche-ligne b { color: #2C4A0F; }
-  .fiche-metaux { font-weight: bold; }
+  .fiche-metaux { font-weight: bold; font-size: 13px; }
+  .fiche-metaux .med { vertical-align: -5px; margin-right: 3px; }
   .fiche-metaux .m-or { color: #b58900; }
   .fiche-metaux .m-ar { color: #808080; }
   .fiche-metaux .m-br { color: #a0522d; }
@@ -483,6 +490,24 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+
+  // Les MÉDAILLES du bureau, pas celles de la police système : le jeton
+  // d'awards.swf — disque dégradé, double anneau — dont on a retiré la vignette
+  // du jeu pour n'en garder que le métal.
+  var MEDAILLE = { or: '/fb/medal_gold.svg', argent: '/fb/medal_silver.svg', bronze: '/fb/medal_bronze.svg' };
+  var MEDAILLE_NOM = { or: 'Or', argent: 'Argent', bronze: 'Bronze' };
+  function jeton(metal, taille) {
+    var t = taille || 14;
+    return '<img class="med" src="' + MEDAILLE[metal] + '" width="' + t + '" height="' + t
+      + '" alt="' + MEDAILLE_NOM[metal] + '">';
+  }
+  // Les trois en-têtes de colonne, communs au tableau des médaillés et aux deux
+  // tableaux de la fiche.
+  function enTetesMetaux() {
+    return ['or', 'argent', 'bronze']
+      .map(function (m) { return '<th class="num">' + jeton(m) + MEDAILLE_NOM[m] + '</th>'; })
+      .join('');
+  }
   // Un pseudo pour un attribut onclick : les apostrophes sont déjà en &#39;
   // après escapeHtml, il reste à protéger l'antislash.
   function pseudoAttr(u) { return escapeHtml(String(u).replace(/\\/g, '\\\\')); }
@@ -512,9 +537,7 @@
       let html = '<table><thead><tr>'
         + '<th class="num">#</th>'
         + '<th>Joueur</th>'
-        + '<th class="num">🥇 Or</th>'
-        + '<th class="num">🥈 Argent</th>'
-        + '<th class="num">🥉 Bronze</th>'
+        + enTetesMetaux()
         + '<th class="num">Total</th>'
         + '</tr></thead><tbody>';
       list.forEach((m, i) => {
@@ -700,9 +723,7 @@
     if (!lignes.length) return '';
     let html = '<div class="fiche-tableau"><table><thead><tr>'
       + '<th>' + entete + '</th>'
-      + '<th class="num">🥇 Or</th>'
-      + '<th class="num">🥈 Argent</th>'
-      + '<th class="num">🥉 Bronze</th>'
+      + enTetesMetaux()
       + '<th class="num">Total</th>'
       + '</tr></thead><tbody>';
     lignes.forEach(l => {
@@ -756,9 +777,9 @@
       +   '</div>'
       +   (m.total
             ? '<div class="fiche-ligne fiche-metaux">'
-              + '<span class="m-or">🥇 ' + m.or + '</span> &nbsp; '
-              + '<span class="m-ar">🥈 ' + m.argent + '</span> &nbsp; '
-              + '<span class="m-br">🥉 ' + m.bronze + '</span>'
+              + '<span class="m-or">' + jeton('or', 20) + m.or + '</span> &nbsp; '
+              + '<span class="m-ar">' + jeton('argent', 20) + m.argent + '</span> &nbsp; '
+              + '<span class="m-br">' + jeton('bronze', 20) + m.bronze + '</span>'
               + '</div>'
             : '')
       + '</div></div>';

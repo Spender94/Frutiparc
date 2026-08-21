@@ -38,7 +38,13 @@ async function waitForServer() {
 before(async () => {
   serverProc = spawn(process.execPath, ['server.js'], {
     cwd: path.join(__dirname, '..'),
-    env: Object.assign({}, process.env, { PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000' }),
+    // Les deux ports de socket sont nommés comme partout ailleurs : à défaut,
+    // le serveur prend 5000/5001, et la suite échouait dès qu'un serveur de
+    // développement tournait à côté.
+    env: Object.assign({}, process.env, {
+      PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
+      XMLSOCKET_PORT: '5256', FRUTISCORE_PORT: '5257',
+    }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   serverProc.stdout.on('data', () => {});
