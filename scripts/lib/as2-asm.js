@@ -43,11 +43,17 @@ const OPS = {
   pop: 0x17, getVariable: 0x1c, setVariable: 0x1d, trace: 0x26,
   defineLocal: 0x3c, callFunction: 0x3d, retour: 0x3e,
   nouvelObjet: 0x40, initTableau: 0x42, initObjet: 0x43,
-  plus: 0x47, moins: 0x0b, inferieur: 0x48, egal: 0x49,
+  plus: 0x47, moins: 0x0b, fois: 0x0c, divise: 0x0d,
+  inferieur: 0x48, egal: 0x49,
   nombre: 0x4a, texte: 0x4b, doubler: 0x4c, echanger: 0x4d,
   getMember: 0x4e, setMember: 0x4f, callMethod: 0x52,
   identique: 0x66, non: 0x12, et: 0x10, ou: 0x11,
   typeDe: 0x44, supprimer: 0x3a,
+  // `etend` est l'ActionExtends du compilateur AS2 : il dépile la SUPER-classe
+  // puis la sous-classe, et raccroche le prototype de l'une à celui de l'autre.
+  // Sans lui, une classe qui « extends MovieClip » n'hériterait de rien —
+  // attachMovie rendrait un clip incapable de createEmptyMovieClip.
+  etend: 0x69,
 };
 for (const [nom, code] of Object.entries(OPS)) OPS[nom] = Buffer.from([code]);
 
