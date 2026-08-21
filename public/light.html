@@ -1569,6 +1569,36 @@
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 6px;
     padding: 16px 12px 22px;
   }
+  /* ── Le pied du tiroir : qui je suis, et la porte de sortie ────────────────
+     Le bureau Flash range « Se déconnecter » dans le menu contextuel du fond
+     d'écran (FPDesktop.getMenu) — un clic droit que le tactile n'a pas. Le
+     tiroir est l'espace du joueur : c'est là que son compte se nomme (nulle
+     part ailleurs dans /light) et qu'on en sort.
+
+     `margin-top: auto` le colle au BAS du tiroir, qui est une colonne flex :
+     la sortie reste au bout du chemin, que le joueur ait onze rubriques ou
+     quinze. */
+  .home-compte {
+    margin: 18px 12px 16px; margin-top: auto; padding: 12px 14px 14px;
+    border-radius: 14px; text-align: center;
+    background: linear-gradient(135deg, #EAF7CE, #D3ED9E);
+    border: 1px solid #B6D97E; box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+  }
+  .home-compte .hc-qui { display: block; font-size: 12px; color: #4A6B22; }
+  .home-compte .hc-qui b { color: #2C4A0F; font-size: 14px; }
+  .hc-quitter {
+    margin-top: 10px; padding: 8px 22px; border: 0; border-radius: 999px;
+    background: #E3756A; color: #fff; font-family: inherit;
+    font-size: 13px; font-weight: bold; cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,.18);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .hc-quitter:active { transform: translateY(1px); }
+  /* Deuxième temps. Un appui malheureux coûterait un mot de passe à retaper :
+     le bouton demande confirmation À SA PLACE plutôt que d'ouvrir une fenêtre
+     par-dessus, et se rétracte tout seul si on n'y revient pas. */
+  .hc-quitter.confirme { background: #C4453A; }
+  .hc-quitter[disabled] { background: #9BB77A; }
   /* Bandeau récompense de connexion quotidienne (série de kikooz). */
   .daily-banner {
     margin: 6px 12px 0; padding: 10px 14px; border-radius: 14px;
@@ -1770,6 +1800,14 @@
            la feuille des liens de fileIcon.swf (scripts/extract-club-icone.js).
            -->
       <button class="home-tile" data-go="club"><span class="ico"><img src="/fb/icone_club.svg" alt="" onerror="this.replaceWith(document.createTextNode('🏆'))"></span><span class="lbl">Club</span></button>
+    </div>
+
+    <!-- Le compte, et la sortie. Le bureau Flash n'offre « Se déconnecter »
+         que par le menu contextuel du fond d'écran : sur mobile, il n'y avait
+         aucun moyen de quitter sa session. -->
+    <div class="home-compte">
+      <span class="hc-qui">Connecté en tant que <b id="home-pseudo">…</b></span>
+      <button type="button" id="logout-btn" class="hc-quitter">Se déconnecter</button>
     </div>
   </section>
 
@@ -2727,6 +2765,11 @@
     // Le rangement du bureau est propre à chaque frutiz : on ne peut le poser
     // qu'une fois le pseudo connu, donc ici et pas au chargement du script.
     if (window.appliquerOrdreBureau) window.appliquerOrdreBureau();
+    // Le pied du tiroir : le pseudo (qui ne se lit nulle part ailleurs dans
+    // /light) et la porte de sortie.
+    var pseudo = $("#home-pseudo");
+    if (pseudo) pseudo.textContent = state.user || "";
+    installerDeconnexion();
     var em = $("#home-emotes");
     if (em && !em.childNodes.length) {
       HOME_EMOTES.forEach(function (it) {
@@ -4049,7 +4092,45 @@
     }, 500);
   }
 
-  // ── Logout ── (the "Quitter" menu item was removed from the light client.)
+  // ── Se déconnecter ────────────────────────────────────────────────────────
+  //
+  // Le bureau Flash ne l'offre que par le menu contextuel du fond d'écran
+  // (FPDesktop.getMenu → « Se déconnecter » → _global.logout), c'est-à-dire un
+  // clic droit : sur mobile, il n'y avait tout simplement AUCUN moyen de
+  // quitter sa session. Le pied du tiroir en tient lieu.
+  //
+  // EN DEUX TEMPS, et sans fenêtre par-dessus : un appui malheureux coûterait
+  // un mot de passe à retaper au doigt. Le bouton demande confirmation à sa
+  // place, et se rétracte seul au bout de cinq secondes si on n'y revient pas.
+  function installerDeconnexion() {
+    var b = $("#logout-btn");
+    if (!b || b._pret) return;
+    b._pret = true;
+    var arme = null;
+    function desarmer() {
+      if (arme) clearTimeout(arme);
+      arme = null;
+      b.classList.remove("confirme");
+      b.textContent = "Se déconnecter";
+    }
+    b.addEventListener("click", function () {
+      if (!arme) {
+        b.classList.add("confirme");
+        b.textContent = "Confirmer ?";
+        arme = setTimeout(desarmer, 5000);
+        return;
+      }
+      clearTimeout(arme);
+      arme = null;
+      b.disabled = true;
+      b.classList.remove("confirme");
+      b.textContent = "À bientôt !";
+      // On referme la socket avant de partir : le salon voit le départ tout de
+      // suite, au lieu d'attendre que le serveur constate le silence.
+      try { if (state.ws) state.ws.close(); } catch (e) { /* déjà fermée */ }
+      window.location.href = "/light/logout?sid=" + encodeURIComponent(state.sid || "");
+    });
+  }
 
   // ── WebSocket (CBee bridge at "/") ──
   function wsUrl() {

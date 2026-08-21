@@ -381,3 +381,51 @@ test('une icône que le serveur ne reconnaît plus est abandonnée, pas fatale',
   assert.match(dbjs, /ADD COLUMN IF NOT EXISTS desktop_items TEXT/,
     'et tout cela se persiste');
 });
+
+// ── Se déconnecter, sur mobile ────────────────────────────────────────────
+//
+// Le bureau Flash ne l'offre que par le menu contextuel du fond d'écran, un
+// clic droit que le tactile n'a pas : /light n'avait AUCUN moyen de quitter
+// une session. Le pied du tiroir en tient lieu.
+
+test('la session se ferme vraiment, et le sid ne vaut plus rien', async () => {
+  const sid = await sidPour('rburdec' + RUN);
+  // Vivante avant.
+  const avant = await fetch(BASE + '/api/light/inventaire?sid=' + encodeURIComponent(sid))
+    .then((r) => r.json());
+  assert.equal(avant.ok, true, 'la session répond');
+
+  const r = await fetch(BASE + '/light/logout?sid=' + encodeURIComponent(sid), { redirect: 'manual' });
+  assert.ok(r.status === 302 || r.status === 301, 'la sortie renvoie à l\'accueil');
+  assert.equal(r.headers.get('location'), '/', 'et pointe bien la page d\'accueil');
+
+  const apres = await fetch(BASE + '/api/light/inventaire?sid=' + encodeURIComponent(sid))
+    .then((x) => x.json());
+  assert.equal(apres.ok, false, 'le sid est révoqué');
+  assert.equal(apres.error, 'auth');
+});
+
+test('le tiroir porte le compte et sa porte de sortie, en deux temps', async () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+
+  // Le pseudo : il ne se lit nulle part ailleurs dans /light.
+  assert.match(html, /id="home-pseudo"/, 'le pseudo a sa place');
+  assert.match(html, /pseudo\.textContent = state\.user/, 'et il est renseigné');
+
+  // Le bouton, et le chemin qu'il emprunte.
+  assert.match(html, /id="logout-btn"/, 'le bouton existe');
+  assert.match(html, /\/light\/logout\?sid=/, 'il appelle la route de sortie');
+
+  // DEUX TEMPS : le premier appui demande confirmation, le second part.
+  const bloc = html.slice(html.indexOf('function installerDeconnexion'),
+    html.indexOf('// ── WebSocket'));
+  assert.match(bloc, /Confirmer \?/, 'le premier appui demande confirmation');
+  assert.match(bloc, /setTimeout\(desarmer, 5000\)/, 'et il se rétracte tout seul');
+  assert.match(bloc, /state\.ws\.close\(\)/, 'la socket se referme avant de partir');
+  // Rien qui ouvre une fenêtre par-dessus : la confirmation tient dans le bouton.
+  assert.equal(/confirm\(/.test(bloc), false, 'pas de fenêtre du navigateur');
+
+  // Le pied est collé au bas du tiroir, quel que soit le nombre de rubriques.
+  assert.match(html, /\.home-compte \{[^}]*margin-top: auto/,
+    'le pied reste au bout du chemin');
+});
