@@ -56,6 +56,29 @@ function combat() { return sousNode ? require('./combat.js') : racine.MinipixizC
 
 const FORCE = 0, RAPIDITE = 1, INTELLIGENCE = 3, CONCENTRATION = 4;
 
+/**
+ * Combien d'images un sort a le droit d'ATTENDRE que sa condition arrive.
+ *
+ * Presque tous les sorts commencent par envoyer la fée quelque part, puis
+ * tournent sur place tant qu'elle n'y est pas :
+ *
+ *     if( caster.getDist(caster.trg) < 10 ) initStep(1)
+ *
+ * Le jeu d'origine ne borne jamais cette attente, et la plupart du temps il a
+ * raison : la fée arrive. Mais elle peut ne PAS arriver — plaquée dans un coin
+ * par le rebond des bords, poussée par une charge, ou visant un point qu'un
+ * autre sort lui a repris. Le sort reste alors à son étape zéro : la fée
+ * scintille sans rien lancer, et comme l'étape MAGIE lui laisse la main
+ * jusqu'à ce qu'elle la rende, la partie ne repart plus. C'est le « ma fée
+ * scintille mais ne lance pas le sort » remonté par les joueurs.
+ *
+ * Trois cents images, c'est sept secondes et demie : quatre fois la plus
+ * longue approche mesurée. Passé ce délai on considère que la fée est arrivée
+ * et le sort se déroule depuis là où elle est — il vaut toujours mieux un sort
+ * un peu décalé qu'une partie à recharger.
+ */
+const ATTENTE_MAX = 300;
+
 const nombre = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
 const borner = (a, v, b) => Math.min(Math.max(a, v), b);
 
@@ -113,6 +136,7 @@ class Sort {
     // ActionScript, `undefined - 1` donnait NaN et la comparaison était fausse ;
     // ici il faut le dire.
     this.timer = null;
+    this.attente = 0;             // les images passées à attendre (voir patienter)
   }
 
   hasard(n) { return this.jeu.hasard(n); }
@@ -130,6 +154,7 @@ class Sort {
   // est interrompu net.
   lancer() {
     this.flLance = true;
+    this.attente = 0;
     this.lanceur.incMana(-this.cout);
     if (this.lanceur.sortEnCours) this.lanceur.sortEnCours.arretUrgence();
     this.lanceur.sortEnCours = this;
@@ -187,9 +212,27 @@ class Sort {
     this.lanceur.flForceWay = true;
   }
 
+  /**
+   * « Attends que ce soit vrai — mais pas indéfiniment. »
+   *
+   * On garde le test du jeu d'origine au pixel près ; on lui ajoute seulement
+   * un compte à rebours (voir ATTENTE_MAX). Le compteur se réarme dès que la
+   * condition passe, si bien qu'un sort qui attend plusieurs fois de suite —
+   * la Pigmentation saute de bille en bille, le Tranche-Cimes traverse l'aire
+   * deux fois — repart d'un compte neuf à chaque étape.
+   */
+  patienter(pret) {
+    if (pret) { this.attente = 0; return true; }
+    this.attente = nombre(this.attente) + 1;
+    if (this.attente <= ATTENTE_MAX) return false;
+    this.attente = 0;
+    return true;
+  }
+
   lanceurPret(lim) {
     const l = (lim === undefined) ? 6 : lim;
-    return this.lanceur.trg ? this.lanceur.distance(this.lanceur.trg) < l : false;
+    const trg = this.lanceur ? this.lanceur.trg : null;
+    return this.patienter(!!trg && this.lanceur.distance(trg) < l);
   }
 
   /**
@@ -540,7 +583,7 @@ class SchemeDeDimitri extends Sort {
   updateActif(tmod) {
     switch (this.step) {
       case 0:
-        if (this.lanceur.distance(this.lanceur.trg) < 20) { this.initStep(1); break; }
+        if (this.lanceurPret(20)) { this.initStep(1); break; }
         this.lanceur.etoiles(2, tmod);
         this.lanceur.vers(this.lanceur.trg, 0.1, tmod);
         break;
@@ -614,7 +657,9 @@ class PercePuits extends Sort {
         l.vers(l.trg, 0.1, tmod);
         const dx = Math.abs(l.trg.x - l.x);
         const dy = Math.abs(l.trg.y - l.y);
-        if (dx < 2 && dy < 20) this.initStep(2);
+        // Deux pixels de tolérance en x : c'est le plus serré du jeu, et la
+        // colonne visée peut coller au bord, là où le rebond repousse la fée.
+        if (this.patienter(dx < 2 && dy < 20)) this.initStep(2);
         break;
       }
       case 1:
@@ -1009,7 +1054,7 @@ class GobeurDePerles extends Sort {
       case 0:
         this.lanceur.etoiles(1.5, tmod);
         this.lanceur.vers(this.lanceur.trg, 0.1, tmod);
-        if (this.lanceur.distance(this.lanceur.trg) < 10) this.initStep(1);
+        if (this.lanceurPret(10)) this.initStep(1);
         break;
       case 1:
         this.bs.echelle *= Math.pow(0.7, tmod);
@@ -1081,7 +1126,7 @@ class Depressurisation extends Sort {
       case 0:
         this.lanceur.etoiles(1.5, tmod);
         this.lanceur.vers(this.lanceur.trg, 0.1, tmod);
-        if (this.lanceur.distance(this.lanceur.trg) < 10) this.initStep(1);
+        if (this.lanceurPret(10)) this.initStep(1);
         break;
       case 1:
         for (const p of this.cList) {
@@ -1433,11 +1478,11 @@ class TrancheCimes extends Sort {
     switch (this.step) {
       case 0:
         this.lanceur.vers(this.lanceur.trg, 0.1, tmod);
-        if (this.lanceur.distance(this.lanceur.trg) < 8) this.initStep(1);
+        if (this.lanceurPret(8)) this.initStep(1);
         break;
       case 1:
         this.lanceur.vers(this.lanceur.trg, 0.3, tmod);
-        if (this.lanceur.distance(this.lanceur.trg) < 5) this.initStep(2);
+        if (this.lanceurPret(5)) this.initStep(2);
         break;
       case 2:
         for (let i = 0; i < this.cutList.length; i++) {
@@ -1964,20 +2009,45 @@ class BillesDeLumiere extends Sort {
 
   updateActif(tmod) {
     if (this.step !== 0) return;
+    this.attente = nombre(this.attente) + tmod;
     for (let i = 0; i < this.bList.length; i++) {
       const p = this.bList[i];
       // Une cible peut mourir entre-temps : sa bille s'éteint plutôt que de
-      // poursuivre un fantôme.
-      if (!p.trg || !p.trg.vivant) {
+      // poursuivre un fantôme. Et si la chasse s'éternise — plus de sept
+      // secondes, quatre fois la plus longue mesurée — la bille renonce de la
+      // même façon : mieux vaut un démon épargné qu'une partie à recharger.
+      if (!p.trg || !p.trg.vivant || this.attente > ATTENTE_MAX) {
         p.timer = 6; p.fondu = [1];
         this.bList.splice(i--, 1);
         continue;
       }
       const trg = this.positionCible(p);
       p.versVitesse(trg, 0.15, 0.6, tmod);
+      /*
+       * LA_BILLE_SUIT_SA_CIBLE. L'original enferme la bille dans le CADRE
+       * (`m = 10` de chaque bord) alors que sa cible, elle, a le droit d'en
+       * sortir : `People.checkBounds` laisse les créatures monter jusqu'à
+       * `6 + marginUp`, c'est-à-dire vingt-six pixels AU-DESSUS du cadre, dans
+       * la bande cachée où tombent les pièces. Un démon qui a fini ses sorts
+       * s'en va justement par là (`Imp.update`, action 0) et rien ne le tue
+       * tant que le puzzle n'a pas la main — il se gare au plafond, hors vue.
+       * La bille, elle, rebondissait contre son propre plafond à dix pixels :
+       * `getDist < 10` ne pouvait plus arriver, `bList` ne se vidait jamais,
+       * `finishAll` n'était jamais appelé, et l'étape MAGIE gardait la partie
+       * pour de bon. C'est le « la bille blanche reste coincée en haut à
+       * droite » remonté par les joueurs.
+       *
+       * On garde la boîte de rebond au pixel près — et on l'ÉTEND jusqu'à la
+       * cible quand celle-ci est dehors. Tant que la cible est dans le cadre
+       * (le cas de toutes les parties ordinaires), rien ne change ; hors du
+       * cadre, la bille peut enfin aller la frapper, ce qui est le
+       * comportement que le joueur attend.
+       */
       const m = 10;
-      if (p.x < m || p.x > this.jeu.largeur - m) { p.vitx *= -0.8; p.x = borner(m, p.x, this.jeu.largeur - m); }
-      if (p.y < m || p.y > this.jeu.hauteur - m) { p.vity *= -0.8; p.y = borner(m, p.y, this.jeu.hauteur - m); }
+      const x0 = Math.min(m, trg.x), x1 = Math.max(this.jeu.largeur - m, trg.x);
+      const y0 = Math.min(m, trg.y), y1 = Math.max(this.jeu.hauteur - m, trg.y);
+      if (p.x < x0 || p.x > x1) { p.vitx *= -0.8; p.x = borner(x0, p.x, x1); }
+      if (p.y < y0 || p.y > y1) { p.vity *= -0.8; p.y = borner(y0, p.y, y1); }
       if (p.distance(trg) < 10) {
         if (p.trgType === 0) {
           p.trg.vitx += p.vitx * 0.5;

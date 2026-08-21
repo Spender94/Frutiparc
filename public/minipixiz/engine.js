@@ -65,6 +65,9 @@ const SPECIAL = { AUCUN: 0, PERLE: 1, ARMURE: 2, ETOILE: 3 };
 // Les étapes de la partie (Game.initStep).
 const ETAPE = { ATTENTE: 0, CHUTE: 1, JEU: 2, DESTRUCTION: 3, MAGIE: 4, ACTIF: 5, FIGE: 10 };
 
+// Combien d'images un sort a le droit de garder la main (voir surveillerSort).
+const TENUE_MAX = 1800;
+
 // Game.shapeList : les formes, par nombre de cases. Au-delà de quatre, elles
 // sont tirées au sort (getBigShape).
 const FORMES = [
@@ -739,6 +742,8 @@ class Jeu {
     this.partList = [];
     this.sList = [];        // Game.sList — les sorts dont l'effet DURE
     this.saList = [];       // Game.saList — le sort qui a la main sur la partie
+    this.sortTenu = null;   // le sort qui l'a en ce moment, et depuis quand
+    this.sortTenue = 0;
     this.flAide = false;    // Game.flHelp — le joueur vient d'appeler sa fée
     this.sortsAFaire = false;
 
@@ -1026,6 +1031,37 @@ class Jeu {
   }
 
   /**
+   * Le garde-fou de l'étape MAGIE — la ceinture par-dessus les bretelles.
+   *
+   * Un sort garde la main jusqu'à ce qu'il la rende. C'est la règle du jeu
+   * d'origine, et c'est aussi sa fragilité : un sort qui attend une condition
+   * qui n'arrivera pas fige la partie POUR DE BON, sans message, sans issue —
+   * « les billes bougent mais n'atteignent pas leur cible, je dois quitter ».
+   * Chaque cas connu est corrigé à sa source (voir sorts.js) ; ceci n'attrape
+   * que l'inconnu.
+   *
+   * Le seuil est large à dessein : la plus longue main mesurée sur des
+   * milliers de sorts est de 430 images, celle des Billes de lumière qui
+   * poursuivent un démon en fuite. Dix-huit cents images — quarante-cinq
+   * secondes — ne peuvent donc être qu'une panne. On rend alors la main comme
+   * le sort l'aurait fait lui-même (finishAll), et la partie repart.
+   */
+  surveillerSort(s, tmod) {
+    if (!s) { this.sortTenu = null; this.sortTenue = 0; return; }
+    if (s !== this.sortTenu) { this.sortTenu = s; this.sortTenue = 0; }
+    this.sortTenue += tmod;
+    if (this.sortTenue <= TENUE_MAX) return;
+    this.sortTenu = null;
+    this.sortTenue = 0;
+    this.evenement('sortBloque', { nom: s.nom(), id: s.sid, step: s.step });
+    if (typeof s.toutFinir === 'function') s.toutFinir();
+    // Un sort qui ne se retire pas de lui-même : on l'écarte à la main, sans
+    // quoi le garde-fou se redéclencherait indéfiniment.
+    const i = this.saList.indexOf(s);
+    if (i >= 0) this.saList.splice(i, 1);
+  }
+
+  /**
    * Game.callHelp : la touche d'aide. Sans mana, la fée refuse — et le dit.
    *
    * `Key.isDown(Cm.pref.$key[4])` n'est SONDÉ que dans `case 2` de Game.update,
@@ -1157,7 +1193,10 @@ class Jeu {
           // étape 0 sans cible (`l.trg` nul, tube absent) : la boucle de jeu
           // levait une exception à CHAQUE image et la partie gelait.
           if (this.saList[0] === s) s.updateActif(tmod);
+          this.surveillerSort(this.saList[0] === s ? s : null, tmod);
         } else {
+          this.sortTenu = null;
+          this.sortTenue = 0;
           this.nouveauCycle();
         }
         break;

@@ -687,3 +687,145 @@ test('le Quintal dresse un mur de pierres', () => {
   assert.ok(jeu.eList.filter((e) => e.et === E.E.PIERRE).length > avant,
     'il y a plus de pierres qu\'avant');
 });
+
+// ── Le démon hors vue, et la partie qui ne repartait plus ─────────────────
+//
+// Trois retours de joueurs, un seul mécanisme : un sort qui attend une
+// condition qui n'arrivera jamais garde la main sur la partie POUR DE BON.
+// L'étape MAGIE ne rend le puzzle que lorsque saList se vide.
+
+// Un démon qui a fini ses sorts s'en va par le haut. checkBounds l'autorise à
+// monter jusqu'à 6 + margeHaut, soit vingt-six pixels AU-DESSUS du cadre : la
+// bande cachée où tombent les pièces. Hors de l'étape JEU, rien ne le tue —
+// il s'y gare, vivant et invisible.
+function demonGare(jeu, champ, x) {
+  const imp = champ.naitreImpy(2, x, 60);
+  imp.action = 0;
+  imp.flForceWay = true;
+  imp.trg = { x: jeu.largeur * 0.5, y: -30 };
+  imp.x = x;
+  imp.y = 6 + jeu.margeHaut;
+  imp.vitx = 0;
+  imp.vity = 0;
+  return imp;
+}
+
+test('la bande cachée du haut est bien hors du cadre des billes', () => {
+  const jeu = new E.Jeu({ graine: 3, niveau: 30 });
+  assert.ok(jeu.margeHaut < 0, 'margeHaut est négatif (deux lignes d\'antichambre)');
+  assert.ok(6 + jeu.margeHaut < 10,
+    'une créature peut se tenir plus haut que le plafond des billes de lumière');
+});
+
+test('les Billes de lumière vont frapper un démon garé hors du cadre', () => {
+  for (const graine of [3, 11, 29, 47]) {
+    const { jeu, champ, f } = partie({ sorts: [20, 15], graine, carac: [4, 4, 4, 4, 0, 8] });
+    let i = 0;
+    while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+    const imp = demonGare(jeu, champ, jeu.largeur - 20);
+    const vie = imp.health;
+    const s = f.sortList[0];
+    s.pertinence();
+    s.ranger();
+    jeu.initStep(E.ETAPE.MAGIE);
+    let images = 0;
+    while (jeu.saList.length > 0 && images < 4000) { jeu.update(1); images++; }
+    assert.equal(jeu.saList.length, 0, 'le sort rend la main (graine ' + graine + ')');
+    assert.ok(imp.health < vie, 'et le démon a bien encaissé (graine ' + graine + ')');
+  }
+});
+
+test('les Billes de lumière rendent la main même contre une cible inatteignable', () => {
+  const { jeu, champ, f } = partie({ sorts: [20, 15], impys: 0 });
+  let i = 0;
+  while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+  // Un démon qu'on remet de force au plafond à chaque image : la bille ne peut
+  // pas le rattraper. Le sort doit renoncer plutôt que de figer la partie.
+  const imp = demonGare(jeu, champ, jeu.largeur - 20);
+  const s = f.sortList[0];
+  s.pertinence();
+  s.ranger();
+  jeu.initStep(E.ETAPE.MAGIE);
+  let images = 0;
+  while (jeu.saList.length > 0 && images < 4000) {
+    imp.x = jeu.largeur - 20;
+    imp.y = 6 + jeu.margeHaut;
+    jeu.update(1);
+    images++;
+  }
+  assert.equal(jeu.saList.length, 0, 'le sort finit par rendre la main');
+  assert.ok(images < 800, 'et sans faire attendre le joueur (' + images + ' images)');
+});
+
+test('un sort dont la fée n\'atteint jamais son point finit tout de même', () => {
+  // Gobeur de perles, Dépressurisation, Tranche-Cimes, le Schème : tous
+  // commencent par « envoie la fée là-bas et attends ». On cloue la fée sur
+  // place : l'attente doit être bornée.
+  const bloques = [];
+  for (const sid of [0, 1, 4, 5, 9, 10, 11, 13, 14, 16]) {
+    const { jeu, champ, f } = partie({ sorts: [20, sid], niveau: 40 });
+    let i = 0;
+    while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+    let n = 0;
+    for (const e of jeu.eList) {
+      if (e.et !== E.E.JETON || n >= 8) continue;
+      e.setSpecial(n % 2 === 0 ? 1 : 2);
+      n++;
+    }
+    const s = f.sortList[0];
+    s.pertinence();
+    s.ranger();
+    jeu.initStep(E.ETAPE.MAGIE);
+    const x = f.x, y = f.y;
+    let images = 0;
+    while (jeu.saList.length > 0 && images < 4000) {
+      f.x = x; f.y = y; f.vitx = 0; f.vity = 0;      // elle ne bouge pas d'un pouce
+      jeu.update(1);
+      images++;
+    }
+    if (jeu.saList.length > 0) bloques.push(s.nom());
+  }
+  assert.deepEqual(bloques, [], 'aucun sort ne garde la main sur une fée immobile');
+});
+
+test('le garde-fou de l\'étape MAGIE rend la main à un sort qui ne la rend pas', () => {
+  const { jeu, f } = partie({ sorts: [20, 12] });
+  let i = 0;
+  while (jeu.step !== E.ETAPE.JEU && i++ < 3000) jeu.update(1);
+  const s = f.sortList[0];
+  // Un sort qui ne finit jamais : son étape active ne fait plus rien.
+  s.updateActif = () => {};
+  let bloque = null;
+  jeu.onEvent = (n, d) => { if (n === 'sortBloque') bloque = d; };
+  s.ranger();
+  jeu.initStep(E.ETAPE.MAGIE);
+  let images = 0;
+  while (jeu.saList.length > 0 && images < 4000) { jeu.update(1); images++; }
+  assert.equal(jeu.saList.length, 0, 'le moteur a repris la main');
+  assert.ok(bloque && bloque.nom, 'et il l\'a signalé (' + (bloque && bloque.nom) + ')');
+  assert.ok(images > 1000, 'mais seulement après une attente franche (' + images + ')');
+  // La partie repart.
+  for (let n = 0; n < 600 && !jeu.termine; n++) {
+    if (jeu.step === E.ETAPE.JEU) jeu.entree.bas = (n % 4) < 2;
+    jeu.update(1);
+  }
+  assert.notEqual(jeu.step, E.ETAPE.MAGIE, 'et le puzzle a repris son cours');
+});
+
+test('patienter se réarme à chaque fois qu\'il aboutit', () => {
+  const { jeu, f } = partie({ sorts: [20, 4] });
+  const s = f.sortList[0];
+  s.attente = 0;
+  // Trois cents images d'attente, puis il cède — et le compte repart de zéro,
+  // de sorte qu'un sort qui attend plusieurs fois de suite (la Pigmentation
+  // saute de bille en bille) reparte à neuf à chaque étape.
+  for (let tour = 0; tour < 2; tour++) {
+    for (let i = 0; i < 300; i++) assert.equal(s.patienter(false), false, 'tour ' + tour + ', image ' + i);
+    assert.equal(s.patienter(false), true, 'il cède à la trois-cent-unième');
+    assert.equal(s.attente, 0, 'et le compte est remis à zéro');
+  }
+  // La condition vraie remet aussi le compte à zéro.
+  s.patienter(false);
+  assert.equal(s.patienter(true), true);
+  assert.equal(s.attente, 0);
+});
