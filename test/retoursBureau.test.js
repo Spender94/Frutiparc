@@ -155,13 +155,44 @@ test('le retour au thème d\'origine n\'apparaît QUE si un fond est posé', asy
     'un fond qu\'on ne possède pas est refusé');
 });
 
-test('la page du bureau sait revenir au thème d\'origine', async () => {
+test('le thème d\'origine est un fond comme les autres — même icône, même clic', async () => {
+  const sid = await sidPour('rburthe' + RUN);
+  await texte('/do/prefsavepartial?sid=' + encodeURIComponent(sid) + '&i=5&v=wal/pi.jpg%7CF9D190;');
+  const liste = await texte('/ff/ls?sid=' + encodeURIComponent(sid) + '&uid=inv_wallpapers');
+
+  // Le TYPE fait l'icône : « wallpaper » comme les fonds achetés, plus la
+  // page-mystère du type « url ».
+  assert.match(liste, /<e u="__fond_defaut__" t="wallpaper"/, 'c\'est un fond d\'écran');
+
+  // Et UNE seule ligne de description. box.Explorer appelle
+  // loadWP(desc[1], desc[2]) ; deux `undefined`, c'est la voie que
+  // WallPaperMng garde depuis toujours pour n'avoir aucun fond.
+  const desc = liste.match(/<e u="__fond_defaut__"[^>]*>([^<]*)<\/e>/);
+  assert.ok(desc, 'l\'entrée est là');
+  assert.equal(desc[1].split('\n').length, 1, 'une seule ligne : ni url, ni couleur');
+  assert.equal(/javascript:/.test(liste), false, 'plus de détour par la page');
+
   const html = fs.readFileSync(path.join(ROOT, 'public/ruffle.html'), 'utf8');
-  assert.ok(/window\.fp_fondDefaut = function/.test(html), 'la fonction existe');
-  assert.ok(/\/api\/light\/fond/.test(html), 'elle efface la préférence n° 5');
-  assert.ok(/location\.reload\(\)/.test(html), 'puis relance le bureau');
-  const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  assert.ok(/javascript:fp_fondDefaut\(\)/.test(srv), 'et l\'inventaire l\'appelle');
+  assert.equal(/fp_fondDefaut = function/.test(html), false,
+    'et plus de fonction de page à appeler — donc plus de rechargement');
+});
+
+test('une préférence VIDE se range quand même, même sans paramètre', async () => {
+  const sid = await sidPour('rburpref' + RUN);
+  await texte('/do/prefsavepartial?sid=' + encodeURIComponent(sid) + '&i=5&v=wal/pi.jpg%7CF9D190;');
+  assert.match(await texte('/do/mypref?sid=' + encodeURIComponent(sid)), /wal\/pi\.jpg/,
+    'le fond est posé');
+
+  // C'est EXACTEMENT ce que le client envoie après
+  // userPref.setAndSave("wallpaper","") : la valeur vide ne voyage pas, il ne
+  // reste que `?i=5`. Le serveur l'ignorait — le bureau se défaisait à l'écran,
+  // mais retrouvait son fond au rechargement.
+  await texte('/do/prefsavepartial?sid=' + encodeURIComponent(sid) + '&i=5');
+  assert.equal(/wal\/pi\.jpg/.test(await texte('/do/mypref?sid=' + encodeURIComponent(sid))), false,
+    'le vide remet la préférence à son défaut');
+  assert.equal(/__fond_defaut__/.test(
+    await texte('/ff/ls?sid=' + encodeURIComponent(sid) + '&uid=inv_wallpapers')), false,
+  'et l\'entrée disparaît, n\'ayant plus rien à défaire');
 });
 
 // ── Pictos rangés par jeu ─────────────────────────────────────────────────
@@ -191,8 +222,11 @@ test('les pictos se rangent par jeu, dans l\'arbre COMME dans le dossier', async
   const arbre = await texte('/ff/tree?sid=' + encodeURIComponent(sid));
   assert.match(arbre, /<f u="inv_pictos" n="Pictos" t="inventory">/,
     'le dossier Pictos a maintenant des enfants');
-  assert.match(arbre, /<f u="inv_pictos_minifever" n="Mini-Fever" t="inventory" \/>/,
-    'et le jeu y est nommé');
+  // Et c'est l'arbre qui donne l'ICÔNE d'un dossier : FFileMng.analyseXml lit
+  // son type dans `this.tree`, pas dans la liste. « folder » — le dossier
+  // jaune ordinaire — et non « inventory », qui les affichait en coffres.
+  assert.match(arbre, /<f u="inv_pictos_minifever" n="Mini-Fever" t="folder" \/>/,
+    'et le jeu y est nommé, avec l\'icône de dossier');
 
   // Le DOSSIER liste la galerie puis les sous-dossiers — plus les pictos à plat.
   const dossier = await texte('/ff/ls?sid=' + encodeURIComponent(sid) + '&uid=inv_pictos');

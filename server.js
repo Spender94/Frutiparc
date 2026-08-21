@@ -13684,8 +13684,13 @@ app.get('/do/prefsavepartial', (req, res) => {
   if (session && session.user && users[session.user]) {
     const user = users[session.user];
     const prefId = Number(req.query.i);
-    const rawVal = req.query.v;
-    if (Number.isFinite(prefId) && rawVal !== undefined) {
+    // Une valeur VIDE ne voyage pas : le client la laisse tomber en montant la
+    // requête, et il n'arrive que `?i=5`. C'est pourtant une valeur — celle
+    // qu'écrit WallPaperMng.loadWP quand on repose le thème d'origine
+    // (`userPref.setAndSave("wallpaper","")`). L'absence du paramètre VAUT donc
+    // la chaîne vide, et le vide remet la préférence à son défaut plus bas.
+    const rawVal = req.query.v === undefined ? '' : String(req.query.v);
+    if (Number.isFinite(prefId)) {
       const parsed = parsePrefString(user.prefs || '');
       const def = prefDefs.find(p => p.id === prefId);
       if (def) {
@@ -14214,10 +14219,17 @@ app.get(['/ff/tree', '/tree'], (req, res) => {
     // Les pictos ont un sous-dossier par jeu. Ils doivent figurer ICI, dans
     // l'arbre — FFileMng ne le charge qu'une fois, et un dossier qu'il n'y
     // trouve pas s'affiche « Undefined ». (Voir dossiersPictos.)
+    //
+    // Et c'est l'arbre, pas la liste, qui donne l'ICÔNE : FFileMng.analyseXml
+    // ne regarde le type d'un dossier que dans l'arbre (`l.desc = [nom, type]`,
+    // lu dans `this.tree`). D'où « folder » plutôt que « inventory » : le
+    // dossier jaune ordinaire, comme les sous-dossiers de « Mes contacts » —
+    // qui prennent le leur (`mycontact`) parce que le leur porte des bouilles.
+    // Avec « inventory », les rubriques par jeu s'affichaient en coffres.
     const dossiers = dossiersPictos(user);
     if (dossiers.length > 0) {
       const subXml = dossiers
-        .map((d) => `<f u="${escapeXml(d.uid)}" n="${escapeXml(d.nom)}" t="inventory" />`)
+        .map((d) => `<f u="${escapeXml(d.uid)}" n="${escapeXml(d.nom)}" t="folder" />`)
         .join('');
       xml = xml.replace(
         '<f u="inv_pictos" n="Pictos" t="inventory" />',
@@ -14498,21 +14510,30 @@ app.get(['/ff/ls', '/ls'], (req, res) => {
     let nodes = '';
     // LE CHEMIN DU RETOUR. La rubrique ne listait que les fonds ACHETÉS : une
     // fois l'un d'eux posé, plus rien ne ramenait au thème d'origine — il
-    // fallait en choisir un autre, jamais aucun. Le thème n'est pourtant qu'une
-    // préférence vide (n° 5) ; on ajoute donc de quoi la vider.
+    // fallait en choisir un autre, jamais aucun.
     //
-    // Une entrée `t="url"` à charge utile `javascript:` — le même détour que la
-    // galerie de pictos, et que l'icône Frutiblogs (patch-main-frutiblogs-trombi) :
-    // Ruffle exécute l'adresse contre la page, qui efface la préférence puis
-    // recharge le bureau. On ne s'en remet pas à WallPaperMng pour « défaire »
-    // sa pose : le bureau repart simplement comme au premier jour.
+    // C'est un fond comme les autres, simplement SANS IMAGE. Le bureau sait
+    // déjà faire : box.Explorer, en ouvrant un fichier « wallpaper », appelle
+    //
+    //     _global.wallPaper.loadWP(desc[1], desc[2]);
+    //
+    // et WallPaperMng.loadWP porte le cas depuis toujours — pas d'image à
+    // charger, pas de couleur à poser, displayBackground efface le fond,
+    // displayIconList reteinte les étiquettes, et la préférence se range vide :
+    //
+    //     if(url == undefined){ _global.userPref.setAndSave("wallpaper",""); }
+    //
+    // Une entrée d'UNE seule ligne — le nom, rien d'autre — donne exactement
+    // ces deux `undefined`. D'où l'icône des fonds d'écran (c'est le type qui
+    // la choisit), le même clic que les autres, et plus de rechargement de
+    // page : c'est le bureau qui se défait, pas le navigateur qui recommence.
     //
     // L'entrée n'apparaît que si un fond est POSÉ : sans fond, elle ne
     // proposerait rien.
     const fondPose = String(getPrefValue(user.prefs, PREF_ID_WALLPAPER) || '').trim();
     if (fondPose) {
-      nodes += '<e u="__fond_defaut__" t="url" s="10" d="0" a="0">'
-        + "Thème d'origine\r\njavascript:fp_fondDefaut()\r\n</e>";
+      nodes += '<e u="__fond_defaut__" t="wallpaper" s="10" d="0" a="0">'
+        + "Thème d'origine</e>";
     }
     for (const acc of (Array.isArray(user.customAccessories) ? user.customAccessories : [])) {
       const wp = getAccessoryWallpaper(acc);

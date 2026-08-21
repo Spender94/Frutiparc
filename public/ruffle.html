@@ -1048,28 +1048,11 @@
                 };
             })();
 
-            // ─── Retour au THÈME D'ORIGINE ───
-            // Inventaire › Fonds d'écran porte une entrée « Thème d'origine »
-            // (server.js, inv_wallpapers) qui appelle ceci. Une fois un fond
-            // posé, rien ne ramenait au bureau d'origine : on ne pouvait
-            // qu'échanger un fond contre un autre.
-            //
-            // Le thème n'est qu'une préférence VIDE (n° 5). On l'efface par la
-            // même route que le mobile — les deux clients écrivent la même
-            // préférence — puis on recharge : le bureau repart comme au premier
-            // jour, sans qu'on ait à demander à WallPaperMng de défaire sa pose.
-            window.fp_fondDefaut = function () {
-                var sid = new URLSearchParams(window.location.search).get("sid") || "";
-                window.__dlog("[FP] fp_fondDefaut — retour au thème d'origine");
-                fetch("/api/light/fond", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ sid: sid, id: "" })
-                })
-                    .then(function () { window.location.reload(); })
-                    .catch(function () { window.location.reload(); });
-                return true;
-            };
+            // (Le retour au THÈME D'ORIGINE passait ici, par une entrée
+            // `t="url"` et un rechargement de page. Il n'en a plus besoin :
+            // l'entrée est devenue un fond d'écran comme les autres, sans
+            // image, et WallPaperMng.loadWP sait défaire sa pose tout seul —
+            // voir inv_wallpapers dans server.js.)
 
             function normalizeAvatarState(value) {
                 let s = String(value || "").replace(/\D/g, "");
