@@ -9208,22 +9208,25 @@ function vitrineChoisir(graine, banque) {
     .map((x) => x.a);
 }
 
-// Baptême. « Casquette citron » ; si le nom est pris, « Casquette citron et
-// pistache » ; s'il l'est aussi, on numérote. `pris` contient les noms déjà
-// portés par le catalogue — deux accessoires de même nom en rayon seraient
-// indiscernables pour l'acheteur.
+// Baptême. Un mot, à la manière de la maison — « Citronocle », « Kiwix »,
+// « Chocette » : cf. accessoryName dans bouille-palette.js. `pris` contient les
+// noms déjà portés par le catalogue ; deux accessoires de même nom en rayon
+// seraient indiscernables pour l'acheteur, alors on retire au suivant.
 function baptiserAccessoire(suffix9, pris) {
-  const simple = FPBouille.accessoryLabel(suffix9, false);
-  if (!simple) return null;
-  if (!pris.has(simple.toLowerCase())) return simple;
-  const double = FPBouille.accessoryLabel(suffix9, true);
-  if (double && !pris.has(double.toLowerCase())) return double;
-  const base = double || simple;
+  let premier = null;
+  for (let essai = 0; essai < 24; essai++) {
+    const nom = FPBouille.accessoryName(suffix9, essai);
+    if (!nom) return null;                       // pas d'accessoire du tout
+    if (premier === null) premier = nom;
+    if (!pris.has(nom.toLowerCase())) return nom;
+  }
+  // Vingt-quatre mots tous pris : impossible en pratique (il faudrait autant
+  // d'accessoires du même type en rayon), mais on ne rend jamais un doublon.
   for (let n = 2; n < 200; n++) {
-    const essai = `${base} (${n})`;
+    const essai = `${premier} ${n}`;
     if (!pris.has(essai.toLowerCase())) return essai;
   }
-  return `${base} ${suffix9}`;
+  return `${premier} ${suffix9}`;
 }
 
 // Renouvelle le rayon. `auto` : ne fait rien si la semaine a déjà eu son

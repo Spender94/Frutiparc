@@ -153,10 +153,13 @@ test('un renouvellement pose dix accessoires nommés, venus de l\'annuaire', asy
     assert.equal(p.price, 60, `${p.name} est au prix demandé`);
     assert.ok(codesAnnuaire.has(p.suffix9), `${p.name} (${p.suffix9}) vient d'une bouille du Bouilloscope`);
     assert.ok(FPBouille.accessoryParts(p.suffix9).type > 0, `${p.name} porte vraiment un accessoire`);
-    assert.ok(p.name && p.name.length > 2, 'chaque accessoire a un nom : ' + JSON.stringify(p.name));
-    // Le nom dit ce que c'est : le type d'accessoire s'y retrouve.
-    const attendu = FPBouille.accessoryLabel(p.suffix9, false).split(' ')[0];
-    assert.ok(p.name.startsWith(attendu), `« ${p.name} » nomme bien un ${attendu}`);
+    // Un surnom d'époque : un seul mot, tiré de la couleur et du type
+    // (« Citronocle », « Kiwix »). Cf. test/accessoiresBapteme.test.js.
+    assert.ok(p.name && !/\s/.test(p.name), 'chaque accessoire a un nom d\'un mot : ' + JSON.stringify(p.name));
+    const possibles = [];
+    for (let e = 0; e < 6; e++) possibles.push(FPBouille.accessoryName(p.suffix9, e));
+    assert.ok(possibles.includes(p.name),
+      `« ${p.name} » est bien le surnom de ${p.suffix9} (attendus : ${possibles.slice(0, 3).join(', ')}…)`);
   }
   assert.equal(new Set(premiere.map((p) => p.suffix9)).size, TAILLE, 'dix codes distincts');
   assert.equal(new Set(premiere.map((p) => p.name.toLowerCase())).size, TAILLE,
