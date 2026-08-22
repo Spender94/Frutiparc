@@ -164,9 +164,9 @@ test('les matchs Grapiz et Frutibandas allument le voyant côté serveur', () =>
   const bandas = serveur.indexOf('const bandasNet = new BandasNet');
   for (const [nom, debut] of [['grapiz', grapiz], ['bandas', bandas]]) {
     const bloc = serveur.slice(debut, debut + 2200);
-    assert.match(bloc, /setUserInternalStatus\(u, statusInternalCode\('/,
+    assert.match(bloc, new RegExp("marquerEnPartie\\(u, '" + nom + "'\\)"),
       nom + ' : allumé quand le match se forme');
-    assert.match(bloc, /setUserInternalStatus\(p\.id, 0\)/,
+    assert.match(bloc, /marquerFinDePartie\(p\.id\)/,
       nom + ' : éteint au résultat');
   }
 });

@@ -863,14 +863,31 @@
     var sidArg = new URLSearchParams(window.location.search).get("sid") || "";
     var gameArg = new URLSearchParams(window.location.search).get("game") || gameSwfName;
     if (!sidArg || !gameArg) return;
-    setInterval(function () {
+    var minuteurEject = setInterval(function () {
       fetch("/api/check-ejected?sid=" + encodeURIComponent(sidArg)
             + "&game=" + encodeURIComponent(gameArg))
         .then(function (r) { return r.json(); })
         .then(function (j) {
           if (j && j.ejected) {
             window.__dlog("[Game] disc ejected by parent — closing popup");
+            clearInterval(minuteurEject);      // le serveur ne le dira qu'une fois
             try { window.close(); } catch (e) {}
+            // Fermer peut échouer. Le jeu ne doit pas continuer pour autant :
+            // il écrirait ses sauvegardes par-dessus la partie suivante. À
+            // défaut de fermer, on l'éteint sous un voile.
+            setTimeout(function () {
+              if (window.closed) return;
+              try {
+                document.title = "Disque éjecté";
+                var voile = document.createElement("div");
+                voile.setAttribute("style", "position:fixed;inset:0;z-index:2147483647;"
+                  + "background:#1d2b12;color:#EAF3D8;display:flex;align-items:center;"
+                  + "justify-content:center;text-align:center;padding:24px;"
+                  + "font:16px/1.6 Verdana,Geneva,sans-serif");
+                voile.textContent = "Disque éjecté de la Frusion — cette fenêtre peut être fermée.";
+                document.body.appendChild(voile);
+              } catch (e) {}
+            }, 400);
           }
           // Le serveur vient de refuser une partie challenge (plus de FD) :
           // le jeu est revenu à son menu ; on propose le rachat par-dessus.

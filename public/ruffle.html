@@ -754,6 +754,7 @@
                         window.__dlog("[Frusion] Opening light client:", lightUrl);
                         if (window.__gamePopup && !window.__gamePopup.closed) { try { window.__gamePopup.close(); } catch (e) {} }
                         window.__gamePopup = window.open(lightUrl, "frutiparc_game", lightFeat);
+                        fp_jeuOuvert(game.name);
                         return true;
                     }
                     // Grapiz est un jeu NATIF (client web HTML), pas un SWF : on ouvre
@@ -764,6 +765,7 @@
                         window.__dlog("[Frusion] Opening native Grapiz client:", grapizUrl);
                         if (window.__gamePopup && !window.__gamePopup.closed) { try { window.__gamePopup.close(); } catch (e) {} }
                         window.__gamePopup = window.open(grapizUrl, "frutiparc_game", grapizFeat);
+                        fp_jeuOuvert("grapiz");
                         return true;
                     }
                     // Frutibandas est lui aussi un jeu NATIF : même mécanique → /bandas/.
@@ -773,6 +775,7 @@
                         window.__dlog("[Frusion] Opening native Frutibandas client:", bandasUrl);
                         if (window.__gamePopup && !window.__gamePopup.closed) { try { window.__gamePopup.close(); } catch (e) {} }
                         window.__gamePopup = window.open(bandasUrl, "frutiparc_game", bandasFeat);
+                        fp_jeuOuvert("bandas");
                         return true;
                     }
                     var popupUrl = "/game-popup.html"
@@ -801,6 +804,7 @@
                         try { window.__gamePopup.close(); } catch (e) {}
                     }
                     window.__gamePopup = window.open(popupUrl, "frutiparc_game", feat);
+                    fp_jeuOuvert(game.name);
                     return true;
                 }
 
@@ -811,6 +815,42 @@
                 window.__gamePopup = window.open(rewritten, "frutiparc_game", features);
                 return true;
             };
+
+            // ── LE VOYANT « EN PARTIE », VU DU BUREAU ──
+            //
+            // C'est le bureau qui ouvre la fenêtre de jeu, et lui seul qui en
+            // tient la poignée : `__gamePopup.closed` répond exactement, tout
+            // de suite, là où un délai d'expiration ne fait que deviner. Il
+            // rapporte donc au serveur l'état de SA fenêtre — ouverte, le
+            // voyant reste ; fermée, il s'éteint dans les deux secondes.
+            //
+            // Le bureau est aussi la fenêtre qu'on REGARDE quand on ne joue
+            // plus : ses minuteurs tournent normalement au moment précis où il
+            // faut éteindre, alors que ceux de la fenêtre de jeu, passée
+            // derrière, sont bridés par le navigateur.
+            window.__gameEnCours = null;
+            window.fp_jeuOuvert = function (nom) {
+                window.__gameEnCours = nom || null;
+                fp_rapporterFenetreJeu();
+            };
+            var fp_dernierRapport = null;
+            function fp_rapporterFenetreJeu() {
+                var sid = new URLSearchParams(window.location.search).get("sid") || "";
+                if (!sid) return;
+                var ouvert = !!(window.__gameEnCours && window.__gamePopup && !window.__gamePopup.closed);
+                if (!ouvert && !window.__gameEnCours) return;   // rien à dire, on n'a jamais rien ouvert
+                var etat = ouvert ? window.__gameEnCours : "";
+                if (etat === fp_dernierRapport) return;         // on ne répète que ce qui change…
+                fp_dernierRapport = etat;
+                if (!ouvert) window.__gameEnCours = null;
+                fetch("/api/jeu/fenetre?sid=" + encodeURIComponent(sid)
+                    + "&jeu=" + encodeURIComponent(etat)
+                    + "&ouvert=" + (ouvert ? "1" : "0")).catch(function () {});
+            }
+            // …sauf toutes les vingt secondes, pour renouveler la place tant
+            // que la fenêtre vit (le serveur l'oublie au bout de 45 s).
+            setInterval(function () { fp_dernierRapport = null; fp_rapporterFenetreJeu(); }, 20000);
+            setInterval(fp_rapporterFenetreJeu, 2000);
 
             window.fp_closePopupFrusion = function () {
                 window.__dlog("[Frusion] fp_closePopupFrusion");

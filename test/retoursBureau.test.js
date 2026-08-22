@@ -255,6 +255,11 @@ test('un sous-dossier de pictos ne se déplace ni ne se jette', async () => {
 
 test('sortir le disque note l\'éjection, et le guetteur la lit', async () => {
   const sid = await sidPour('rburej' + RUN);
+  // Encore faut-il que le disque SOIT dans la console. Le serveur le sait par
+  // la fenêtre de jeu, qui bat toutes les secondes et demie : sans elle, un
+  // disque qu'on range est un disque qu'on range, et rien ne se ferme (cf.
+  // test/voyantEnPartie.test.js).
+  await fetch(BASE + '/api/check-ejected?fd=0&sid=' + encodeURIComponent(sid) + '&game=grapiz');
   // Le disque revient dans « Mes disques » : c'est le signal d'éjection.
   await texte('/ff/mv?sid=' + encodeURIComponent(sid) + '&f=grapiz1&folder=disccollector');
   const vu = await fetch(BASE + '/api/check-ejected?fd=0&sid=' + encodeURIComponent(sid) + '&game=grapiz')

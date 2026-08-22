@@ -303,12 +303,82 @@ const STATUS_JEU_ALIAS = { swapou2: 'swapou' };
 const STATUS_INTERNAL_JEU = Object.fromEntries(Object.entries(STATUS_INTERNAL_FRAME)
   .filter(([nom]) => nom !== 'forum')
   .map(([nom, code]) => [code, STATUS_JEU_ALIAS[nom] || nom]));
-// Le code interne d'un joueur connecté, lu sur ses sockets de chat (0 si rien).
+// ─────────────────────────────────────────────
+// « EN PARTIE » : UNE PLACE QUI EXPIRE, PAS UN INTERRUPTEUR
+//
+// Le voyant qui dit « ce frutiz joue » s'allumait sur un événement et devait
+// s'éteindre sur un autre. Or l'événement d'extinction manque tout le temps :
+// on ferme la fenêtre de jeu, le navigateur la tue, le jeu plante, on part
+// sans poser de score — et le voyant reste allumé sur quelqu'un qui ne joue
+// plus. Dans l'autre sens il manquait aussi : le SWF du bureau pousse son
+// propre `<status>` et écrasait au passage les chiffres que le serveur venait
+// d'y mettre, d'où un voyant qui ne s'affiche pas.
+//
+// On renverse la charge de la preuve. Jouer, ce n'est plus un drapeau posé une
+// fois : c'est une PLACE qu'il faut RENOUVELER. Chaque fenêtre de jeu interroge
+// déjà le serveur toutes les secondes et demie (le guetteur d'éjection) — ce
+// battement-là devient la preuve de vie. Plus de battement, plus de place, plus
+// de voyant : la fenêtre fermée s'éteint d'elle-même en quelques secondes,
+// quelle que soit la façon dont elle a disparu.
+//
+// Et comme le serveur sait maintenant quelle fenêtre est ouverte sur quel jeu,
+// il sait aussi reconnaître une ÉJECTION : un disque qu'on déplace alors que sa
+// fenêtre tourne ne peut venir que de la Frusion (un disque rangé dans un
+// dossier n'est pas dans la console). Voir /ff/mv.
+// ─────────────────────────────────────────────
+// DEUX BATTEURS, ET C'EST VOULU. La fenêtre de jeu bat (son guetteur
+// d'éjection), et le BUREAU bat pour elle — lui seul sait, de façon exacte et
+// immédiate, si la pop-up qu'il a ouverte existe encore (`__gamePopup.closed`).
+// Il en faut deux parce qu'un navigateur BRIDE les minuteurs d'une fenêtre
+// masquée : la fenêtre de jeu passée derrière le bureau ne bat plus qu'une fois
+// par minute. Celle qu'on regarde, elle, bat normalement — et il y en a
+// toujours une qu'on regarde.
+//
+// Le délai est donc large : ce n'est plus lui qui éteint le voyant dans le cas
+// courant (le bureau constate la fermeture en deux secondes), seulement le
+// filet du cas brutal — navigateur tué, machine endormie. Réglable pour
+// resserrer le filet si besoin (et pour que les tests n'attendent pas 45 s).
+const PARTIE_TTL_MS = Math.max(1000, Number(process.env.PARTIE_TTL_MS) || 45000);
+const partiesEnCours = new Map();    // username → { jeu, code, expire }
+
+// La place d'un joueur, ou null si personne ne l'a renouvelée à temps.
+function partieDe(username) {
+  if (!username) return null;
+  const p = partiesEnCours.get(username);
+  if (!p) return null;
+  if (p.expire <= Date.now()) { partiesEnCours.delete(username); return null; }
+  return p;
+}
+
+// Pose ou renouvelle la place. Rend true si le voyant vient de changer — c'est
+// alors, et alors seulement, qu'on rediffuse.
+function ouvrirPartie(username, jeu) {
+  if (!username) return false;
+  const code = statusInternalCode(jeu);
+  if (!code) return false;                       // jeu sans voyant : rien à allumer
+  const avant = partieDe(username);
+  partiesEnCours.set(username, { jeu, code, expire: Date.now() + PARTIE_TTL_MS });
+  return !avant || avant.code !== code;
+}
+
+function fermerPartie(username) {
+  if (!username) return false;
+  const avait = partieDe(username);
+  partiesEnCours.delete(username);
+  return !!avait;
+}
+
+// Le code interne d'un joueur : sa PARTIE d'abord (le serveur en est le seul
+// juge), sinon ce que son client raconte de lui-même — c'est là que vit le
+// voyant du forum, qui n'est pas une partie et reste piloté par le bureau.
+//
+// `internClient` est ce que le bureau a poussé, gardé à part de `statusStr` :
+// mélanger les deux, c'était laisser chacun écraser l'autre à tour de rôle.
 function statusInternalOf(username) {
+  const p = partieDe(username);
+  if (p) return p.code;
   for (const [, cl] of xmlSocketClients) {
-    if (cl && cl.username === username && cl.logged && cl.statusStr) {
-      return decode62(cl.statusStr.substring(1, 3)) || 0;
-    }
+    if (cl && cl.username === username && cl.logged) return cl.internClient || 0;
   }
   return 0;
 }
@@ -6155,8 +6225,10 @@ async function handleSaveScore(req, res) {
   }
   console.log(`[HTTP]  saveScore ${username} ${rankingId} ${scoreVal} updated=${result.updated}`);
 
-  // Clear game presence icon now that the game round is over
-  setUserInternalStatus(username, 0);
+  // On n'éteint PLUS le voyant ici. Poser un score ne veut pas dire quitter :
+  // le joueur enchaîne souvent une autre manche, et le voyant s'éteignait sous
+  // ses yeux en pleine partie. C'est la place de jeu qui expire (ou la fenêtre
+  // qu'on ferme) qui l'éteint désormais.
 
   return res.json({
     ok: true,
@@ -13131,7 +13203,7 @@ app.get('/frusion', (req, res) => {
   const internalCode = statusInternalCode(gameName);
   console.log(`[FRUSION] launch sid=${frusionSid} game=${gameName} user=${frusionUser || '-'} internal=${internalCode}`);
   if (frusionUser && internalCode > 0) {
-    setUserInternalStatus(frusionUser, internalCode);
+    marquerEnPartie(frusionUser, gameName);
   }
   // Le nom du joueur pour le GameClient frusion : frusion-ruffle.html fait de
   // CHAQUE paramètre d'URL une FlashVar (_root.<clé>), et la table des chaînes
@@ -14105,6 +14177,7 @@ app.get('/api/check-ejected', (req, res) => {
   const sid = String(req.query.sid || '');
   const game = String(req.query.game || '');
   if (!sid || !game) return res.json({ ejected: false });
+  const joueur = resolveUsernameFromSid(sid);
   // Drapeau FD : le SWF vient d'essuyer un refus de partie challenge (plus de
   // FD) → le popup affiche l'overlay d'information (l'achat de pass se fait en
   // BOUTIQUE, pas dans l'overlay). Lu-et-effacé (une seule fois).
@@ -14131,11 +14204,42 @@ app.get('/api/check-ejected', (req, res) => {
   if (ts && Date.now() - ts < 120000) {
     // Consume the entry so the response only fires once per eject.
     recentlyEjected.delete(key);
+    if (joueur) marquerFinDePartie(joueur);   // la fenêtre se ferme : voyant éteint tout de suite
     return res.json({ ejected: true, fd });
   }
   // Older than 2 minutes — stale, drop it.
   if (ts) recentlyEjected.delete(key);
+
+  // ── LE BATTEMENT ──
+  // Ce sondage est le seul signe de vie qu'une fenêtre de jeu donne au serveur,
+  // et toutes en envoient un (game-popup.html pour les SWF, eject-watch.js pour
+  // les clients natifs). Il renouvelle donc la place « en partie » : tant que la
+  // fenêtre bat, le voyant reste ; dès qu'elle se tait, il s'éteint tout seul.
+  // Rien à ajouter côté client — le battement existait déjà, il ne servait qu'à
+  // guetter l'éjection.
+  //
+  // Après la réponse d'éjection, pas avant : sinon on rallumerait la place que
+  // la fenêtre s'apprête à quitter.
+  if (joueur) marquerEnPartie(joueur, game);
   return res.json({ ejected: false, fd });
+});
+
+// LE BUREAU RAPPORTE L'ÉTAT DE SA FENÊTRE DE JEU.
+//
+// C'est lui qui l'a ouverte, c'est lui qui tient la poignée : `__gamePopup
+// .closed` est une réponse exacte et immédiate, là où un délai d'expiration ne
+// fait que deviner. Le bureau est aussi la fenêtre qu'on REGARDE quand on ne
+// joue pas — donc celle dont les minuteurs ne sont pas bridés au moment
+// précis où il faut éteindre le voyant.
+//
+// `ouvert=1` renouvelle la place, `ouvert=0` l'éteint sur-le-champ.
+app.get('/api/jeu/fenetre', (req, res) => {
+  const joueur = resolveUsernameFromSid(String(req.query.sid || ''));
+  if (!joueur) return res.json({ ok: false });
+  const jeu = String(req.query.jeu || '');
+  if (String(req.query.ouvert || '') === '1') marquerEnPartie(joueur, jeu);
+  else marquerFinDePartie(joueur);
+  res.json({ ok: true });
 });
 
 const GAME_DISCS = {
@@ -14392,7 +14496,10 @@ app.get('/do/ld', (req, res) => {
     const internalCode = statusInternalCode(disc.swfName);
     if (gameUser && internalCode > 0) {
       console.log(`[FRUSION] do/ld setting game status for ${gameUser} game=${disc.swfName} internal=${internalCode}`);
-      setUserInternalStatus(gameUser, internalCode);
+      marquerEnPartie(gameUser, disc.swfName);
+      // Le disque revient dans la console : une éjection encore en attente sur
+      // ce jeu est périmée, sinon la fenêtre qu'on vient d'ouvrir se refermerait.
+      recentlyEjected.delete(`${sid}::${disc.swfName}`);
     }
   }
 
@@ -15129,19 +15236,31 @@ app.all(['/ff/mv', '/mv'], async (req, res) => {
     // (La Frusion, elle, se range toute seule — FPFileMng.frusionOn a déjà
     // retiré l'icône de son dossier au moment de l'insertion.)
     oldFolder = desktopHasDisc(user, file) ? 'root' : 'disccollector';
-    // Track eject events so the standalone game popup can poll and
-    // close itself. Ruffle's WASM networking bypasses both window.fetch
-    // and XMLHttpRequest wrappers, so the only reliable signal back to
-    // the popup is the server marking the eject and the popup asking.
-    // Keyed by sid::swfName because that's what the popup knows about
-    // itself (URL ?game=<swfName>). Stash a timestamp; the popup poll
-    // endpoint clears it on read so the next mount of the same game
-    // isn't immediately closed.
-    if (folder === 'disccollector') {
+    // ── L'ÉJECTION ──
+    //
+    // Sortir un disque de la console doit refermer la fenêtre de jeu. Le signal
+    // ne peut pas passer directement : le réseau de Ruffle passe par WASM, sous
+    // les enveloppes `fetch` du bureau, qui ne VOIT donc pas le déplacement
+    // qu'il vient pourtant de demander. Le serveur, lui, le voit ici : il le
+    // note, et la fenêtre de jeu vient le lui demander à chaque battement.
+    //
+    // Restait à savoir CE QU'EST une éjection. On ne regardait que les retours
+    // vers « Mes disques » — mais un disque sort aussi de la console vers le
+    // BUREAU ou vers la CORBEILLE, et ces deux-là ne fermaient rien. Pire :
+    // elles effaçaient une éjection en attente, au prétexte d'une remise en
+    // console qui n'a jamais lieu par ce chemin (FPFileMng.frusionOn range le
+    // disque tout seul, sans passer par ici).
+    //
+    // La bonne question n'est pas « où va le disque » mais « d'où vient-il ».
+    // Et la place de jeu y répond : une fenêtre qui bat sur CE jeu, c'est que
+    // le disque était dans la console — un disque rangé dans un dossier n'y est
+    // pas. Déplacé alors qu'il tourne, il en sort forcément. Toute autre
+    // manipulation (ranger un disque qu'on ne joue pas) ne ferme rien.
+    const partie = partieDe(auth.username);
+    if (partie && partie.jeu === disc.swfName) {
       recentlyEjected.set(`${sid}::${disc.swfName}`, Date.now());
-    } else {
-      // Re-mount: any pending eject for this game is stale.
-      recentlyEjected.delete(`${sid}::${disc.swfName}`);
+      marquerFinDePartie(auth.username);
+      console.log(`[FRUSION] ${auth.username} éjecte ${disc.swfName} (→ ${folder || 'bureau'}) — fermeture de la fenêtre`);
     }
     // Le bureau RETIENT ce qu'on lui pose. Posé, le disque quitte « Mes
     // disques » ; emporté ailleurs (la Frusion, la corbeille, le catalogue),
@@ -17765,7 +17884,7 @@ app.post('/api/light/jeu-en-cours', (req, res) => {
   const jeu = String(corps.jeu || req.query.jeu || '');
   const on = String(corps.on !== undefined ? corps.on : req.query.on) === '1';
   if (!JEUX_NATIFS_VOYANT.has(jeu)) return res.status(400).json({ ok: false, error: 'jeu' });
-  setUserInternalStatus(username, on ? statusInternalCode(jeu) : 0);
+  if (on) marquerEnPartie(username, jeu); else marquerFinDePartie(username);
   res.json({ ok: true });
 });
 
@@ -20368,7 +20487,7 @@ const grapizNet = new GrapizNet({
     console.log(`[grapiz] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
     // Le voyant de jeu s'éteint pour chaque humain de la partie (les
     // identifiants de bots n'ont pas de socket : l'appel ne fait rien).
-    for (const p of (session.players || [])) setUserInternalStatus(p.id, 0);
+    for (const p of (session.players || [])) marquerFinDePartie(p.id);
   },
   // Le gros nombre doré = la SÉRIE de victoires consécutives (mode challenge).
   getStreak: (username) => (users[username] || {}).grapizStreak || 0,
@@ -20387,7 +20506,7 @@ const grapizNet = new GrapizNet({
     // Le match part : chaque humain porte le voyant Grapiz à côté de son
     // pseudo, sur le bureau comme sur le mobile.
     if (!r || r.ok !== false) {
-      for (const u of humans) setUserInternalStatus(u, statusInternalCode('grapiz'));
+      for (const u of humans) marquerEnPartie(u, 'grapiz');
     }
     return r;
   },
@@ -20418,7 +20537,7 @@ const bandasNet = new BandasNet({
   botIdentity: piocherIdentiteBot,      // cf. piocherIdentiteBot, plus haut
   onResult: (session, winner, reason) => {
     console.log(`[bandas] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
-    for (const p of (session.players || [])) setUserInternalStatus(p.id, 0);
+    for (const p of (session.players || [])) marquerFinDePartie(p.id);
   },
   // Le gros nombre doré = la SÉRIE de victoires consécutives (mode challenge).
   getStreak: (username) => (users[username] || {}).bandasStreak || 0,
@@ -20435,7 +20554,7 @@ const bandasNet = new BandasNet({
   onMatchForming: (humans, ctx) => {
     const r = fdMatchForming('bandas', humans, ctx);
     if (!r || r.ok !== false) {
-      for (const u of humans) setUserInternalStatus(u, statusInternalCode('bandas'));
+      for (const u of humans) marquerEnPartie(u, 'bandas');
     }
     return r;
   },
@@ -21100,18 +21219,20 @@ function getStatusCode(user, username) {
   const muteEmote = muteVal === '0000-00-00 00:00:00' ? 0 : 7;
   // Pull the live status (external/internal/emote) the user last broadcast.
   // Fall back to all-zero when the user is offline or hasn't sent one yet.
-  let ext = 0, internal = 0, emote = muteEmote;
+  let ext = 0, emote = muteEmote;
   if (username) {
     for (const [, cl] of xmlSocketClients) {
       if (cl && cl.username === username && cl.statusStr) {
         const s = cl.statusStr;
-        ext      = decode62(s.substring(0, 1)) || 0;
-        internal = decode62(s.substring(1, 3)) || 0;
+        ext = decode62(s.substring(0, 1)) || 0;
         if (muteEmote === 0) emote = decode62(s.substring(3, 4)) || 0;
         break;
       }
     }
   }
+  // Les chiffres du MILIEU (le voyant) ne se lisent plus dans la chaîne du
+  // client : ils sortent de statusInternalOf, qui fait foi.
+  const internal = statusInternalOf(username);
   return `${encode62(ext, 1)}${encode62(internal, 2)}${encode62(emote, 1)}`;
 }
 
@@ -21146,7 +21267,6 @@ function setUserInternalStatus(username, internalIdx) {
     updatedSockets.push(sock);
     sendToClient(sock, `<${CMD.status} s="${cl.statusStr}" />`);
   }
-  console.log(`[STATUS] setUserInternalStatus ${username} internal=${internalIdx} sockets=${updatedSockets.length}`);
   if (updatedSockets.length === 0) return;
   const traceXml = `<${CMD.trace} u="${escapeXml(getDisplayName(username))}" p="1" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, username)}" />`;
   const channelsBroadcast = new Set();
@@ -21161,6 +21281,35 @@ function setUserInternalStatus(username, internalIdx) {
   }
   notifyTraceSubscribers(username);
 }
+
+// Rediffuse le voyant COURANT d'un joueur — celui que statusInternalOf calcule.
+// C'est par là que passent l'ouverture, la fermeture et l'expiration d'une
+// partie : personne n'a plus à se souvenir du code à envoyer.
+function pousserVoyant(username) {
+  setUserInternalStatus(username, statusInternalOf(username));
+}
+
+// Ouvre (ou renouvelle) la place d'un joueur, et rallume s'il le faut. Appelée
+// au lancement d'un jeu ET à chaque battement de sa fenêtre.
+function marquerEnPartie(username, jeu) {
+  if (ouvrirPartie(username, jeu)) pousserVoyant(username);
+}
+function marquerFinDePartie(username) {
+  if (fermerPartie(username)) pousserVoyant(username);
+}
+
+// LE BALAYAGE. Une fenêtre de jeu qui ne bat plus — fermée, plantée, onglet
+// tué, machine endormie — perd sa place, et le voyant s'éteint tout seul.
+// C'est le filet qui rattrape tous les cas d'extinction qu'on oubliait.
+setInterval(() => {
+  const maintenant = Date.now();
+  for (const [username, p] of partiesEnCours) {
+    if (p.expire > maintenant) continue;
+    partiesEnCours.delete(username);
+    console.log(`[VOYANT] ${username} : place de jeu expirée (${p.jeu}) — voyant éteint`);
+    try { pousserVoyant(username); } catch (e) { /* socket déjà partie */ }
+  }
+}, 2000);
 
 // Update the external ("absence") char of the user's status string — the
 // same slot StatusMng.setExternal used to write client-side when the
@@ -21598,7 +21747,7 @@ case 'join': {
     if (gameUser) {
       const disc = GAME_DISCS[discId];
       const internal = statusInternalCode(disc && disc.swfName);
-      if (internal > 0) setUserInternalStatus(gameUser, internal);
+      if (internal > 0) marquerEnPartie(gameUser, disc && disc.swfName);
     }
     sendToClient(socket, `<${CMD.join} d="${escapeXml(discId)}" k="0" />`);
     break;
@@ -22775,6 +22924,9 @@ case 'trace': {
       // next to the pseudo in the userlist and in the contacts bar.
       const s = String(msg.attrs.s || '0000');
       client.statusStr = s;
+      // Ce que le bureau dit de son propre voyant (forum, essentiellement),
+      // rangé à part : une partie en cours le couvre sans l'effacer.
+      client.internClient = decode62(s.substring(1, 3)) || 0;
       // Echo back so the sender's own onStatus updates _global.me's traced entry.
       sendToClient(socket, `<${CMD.status} s="${s}" />`);
       if (client.username && client.logged) {
@@ -23802,7 +23954,7 @@ const xmlSocketServer = net.createServer((socket) => {
         (client.sid && sessions[client.sid] && sessions[client.sid].user) || null;
       if (wasGameSocket && disconnectUser) {
         xmlSocketClients.delete(socket);
-        setUserInternalStatus(disconnectUser, 0);
+        marquerFinDePartie(disconnectUser);
       } else {
         xmlSocketClients.delete(socket);
       }

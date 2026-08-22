@@ -39,12 +39,34 @@
   var adresse = '/api/check-ejected?fd=0&sid=' + encodeURIComponent(sid)
     + '&game=' + encodeURIComponent(jeu);
 
-  setInterval(function () {
+  // Fermer peut échouer — le navigateur refuse parfois de fermer une fenêtre
+  // qu'il ne considère pas comme ouverte par script. On ne peut pas laisser le
+  // jeu tourner pour autant : il continuerait d'écrire ses sauvegardes
+  // par-dessus la partie suivante. À défaut de fermer, on éteint.
+  function eteindre() {
+    try { window.close(); } catch (e) { /* on continue */ }
+    setTimeout(function () {
+      if (window.closed) return;
+      try {
+        document.title = 'Disque éjecté';
+        var voile = document.createElement('div');
+        voile.setAttribute('style', 'position:fixed;inset:0;z-index:2147483647;'
+          + 'background:#1d2b12;color:#EAF3D8;display:flex;align-items:center;'
+          + 'justify-content:center;text-align:center;padding:24px;'
+          + 'font:16px/1.6 Verdana,Geneva,sans-serif');
+        voile.textContent = 'Disque éjecté de la Frusion — cette fenêtre peut être fermée.';
+        document.body.appendChild(voile);
+      } catch (e) { /* rien de mieux à faire */ }
+    }, 400);
+  }
+
+  var minuteur = setInterval(function () {
     fetch(adresse)
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j || !j.ejected) return;
-        try { window.close(); } catch (e) { /* fenêtre non ouverte par script */ }
+        clearInterval(minuteur);   // le serveur ne le dira qu'une fois : on arrête là
+        eteindre();
       })
       .catch(function () { /* le bureau est peut-être fermé : on réessaiera */ });
   }, 1500);
