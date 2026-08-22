@@ -6270,9 +6270,28 @@ const ADMIN_ROLES = {
   // Chapelier : crée et met en boutique des accessoires (onglet Boutique).
   chapelier: { label: 'Chapelier', tabs: ['shop'] },
 };
+// UN COMPTE, PLUSIEURS CASQUETTES. Le même bénévole peut tenir les scores, la
+// boutique et l'animation — il fallait choisir, on cumule désormais. La colonne
+// `admin_role` porte une LISTE séparée par des virgules ; une valeur seule
+// reste une liste d'un élément, donc rien à migrer en base.
+function adminRoleList(value) {
+  const brut = Array.isArray(value) ? value : String(value == null ? '' : value).split(',');
+  const vus = new Set();
+  // Ordre canonique (celui de ADMIN_ROLES) : deux réglages équivalents
+  // s'écrivent pareil, et l'affichage ne dépend pas de l'ordre des clics.
+  for (const r of Object.keys(ADMIN_ROLES)) {
+    if (brut.some((x) => String(x || '').trim().toLowerCase() === r)) vus.add(r);
+  }
+  return [...vus];
+}
+const adminRoleStore = (roles) => (roles.length ? roles.join(',') : null);
+const adminRoleLabel = (roles) =>
+  adminRoleList(roles).map((r) => ADMIN_ROLES[r].label).join(' + ');
+// Les onglets d'un compte : la RÉUNION de ceux de ses rôles.
 function adminRoleTabs(role) {
-  const r = ADMIN_ROLES[role];
-  return r ? r.tabs.slice() : [];
+  const tabs = new Set();
+  for (const r of adminRoleList(role)) for (const t of ADMIN_ROLES[r].tabs) tabs.add(t);
+  return [...tabs];
 }
 
 const ADMIN_TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 h
@@ -6317,7 +6336,7 @@ function adminScope(...tabs) {
 // Connexion d'un modérateur à l'admin avec ses identifiants de jeu. Renvoie un
 // token de rôle (et la liste de ses onglets) si le compte porte un rôle admin.
 // Les comptes marqués "Animateur" (badge is_animator du chat) ont le rôle
-// `animateur` implicitement — un admin_role explicite reste prioritaire.
+// `animateur` en plus de leurs rôles explicites : les casquettes s'additionnent.
 app.post('/api/admin/login', async (req, res) => {
   if (!ADMIN_KEY) return res.status(503).json({ ok: false, error: 'admin_disabled', message: 'ADMIN_KEY not configured' });
   const ip = getClientIp(req) || 'unknown';
@@ -6334,30 +6353,37 @@ app.post('/api/admin/login', async (req, res) => {
     return res.status(403).json({ ok: false, error: 'forbidden', message: 'Identifiants invalides ou compte non autorisé.' });
   };
   if (!username || !password) return deny('pseudo ou mot de passe manquant');
-  let role = null, passHash = null;
+  // Les rôles s'ADDITIONNENT, badge animateur compris : un responsable des
+  // scores qui anime aussi garde ses deux jeux d'onglets. Avant, le rôle
+  // explicite masquait le badge — il fallait choisir.
+  let brut = null, anim = false, passHash = null;
   const mem = users[username];
   if (mem) {
-    role = mem.adminRole || (mem.isAnimator ? 'animateur' : null);
+    brut = mem.adminRole || null;
+    anim = !!mem.isAnimator;
     passHash = mem.pass;
   }
   // Pas (ou plus) en mémoire, ou mémoire incomplète → la base fait foi.
-  if ((!role || !passHash) && process.env.DATABASE_URL) {
+  if ((!brut || !passHash) && process.env.DATABASE_URL) {
     try {
       const dbUser = await db.findUserByUsername(username);
       if (dbUser) {
-        if (!role) role = dbUser.admin_role || (dbUser.is_animator ? 'animateur' : null);
+        if (!brut) brut = dbUser.admin_role || null;
+        if (!anim) anim = !!dbUser.is_animator;
         if (!passHash) passHash = dbUser.password;
       }
     } catch (e) { console.error('[ADMIN] login lookup error:', e.message); }
   }
-  if (!role || !ADMIN_ROLES[role]) return deny('aucun rôle admin sur ce compte (ni badge animateur)');
+  const roles = adminRoleList(anim ? [...adminRoleList(brut), 'animateur'] : brut);
+  if (!roles.length) return deny('aucun rôle admin sur ce compte (ni badge animateur)');
   const { ok } = await verifyPassword(passHash, password);
-  if (!ok) return deny(`mot de passe invalide (rôle "${role}")`);
+  if (!ok) return deny(`mot de passe invalide (rôles "${roles.join(',')}")`);
   const token = crypto.randomBytes(24).toString('hex');
-  const tabs = adminRoleTabs(role);
-  adminTokens.set(token, { user: username, role, tabs, createdAt: Date.now() });
-  console.log(`[ADMIN] connexion rôle "${role}" par ${username} (ip=${ip})`);
-  res.json({ ok: true, token, role, label: ADMIN_ROLES[role].label, tabs, user: getDisplayName(username) });
+  const tabs = adminRoleTabs(roles);
+  const role = roles.join(',');
+  adminTokens.set(token, { user: username, role, roles, tabs, createdAt: Date.now() });
+  console.log(`[ADMIN] connexion rôles "${role}" par ${username} (ip=${ip})`);
+  res.json({ ok: true, token, role, roles, label: adminRoleLabel(roles), tabs, user: getDisplayName(username) });
 });
 
 // Déconnexion (révoque le token courant).
@@ -6376,7 +6402,7 @@ app.get('/api/admin/me', (req, res) => {
   const a = resolveAdmin(req);
   if (!a) { if (adminCredsProvided(req)) recordAdminAuthFail(ip); return res.status(403).json({ ok: false, error: 'forbidden' }); }
   if (a.full) return res.json({ ok: true, full: true, tabs: null });
-  res.json({ ok: true, full: false, user: getDisplayName(a.user), role: a.role, label: (ADMIN_ROLES[a.role] || {}).label || a.role, tabs: a.tabs });
+  res.json({ ok: true, full: false, user: getDisplayName(a.user), role: a.role, label: adminRoleLabel(a.role) || a.role, tabs: a.tabs });
 });
 
 app.post('/api/setChallengeMode', (req, res) => {
@@ -7665,9 +7691,11 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
     }
     if (body.is_moderator !== undefined) fields.is_moderator = !!body.is_moderator;
     if (body.is_animator !== undefined) fields.is_animator = !!body.is_animator;
+    // Un compte peut cumuler les rôles : chaîne « scores,chapelier » ou tableau.
+    // Les valeurs inconnues sont écartées en silence, la liste est rangée dans
+    // l'ordre canonique, et vide vaut « aucun rôle ».
     if (body.admin_role !== undefined) {
-      const role = String(body.admin_role || '').trim();
-      fields.admin_role = (role && ADMIN_ROLES[role]) ? role : null;
+      fields.admin_role = adminRoleStore(adminRoleList(body.admin_role));
     }
     if (body.display_name !== undefined) {
       const dn = String(body.display_name).trim();
@@ -7713,7 +7741,8 @@ app.patch('/api/admin/users/:username', adminAuth, async (req, res) => {
       fields.frutijob = gender === 'F' ? 'Animatrice' : 'Animateur';
     }
     // Chapelier : affiche le métier "Chapelier" (sauf frutijob explicite fourni).
-    if (fields.admin_role === 'chapelier' && body.frutijob === undefined && !fields.is_moderator && !fields.is_animator) {
+    if (fields.admin_role !== undefined && adminRoleList(fields.admin_role).includes('chapelier')
+        && body.frutijob === undefined && !fields.is_moderator && !fields.is_animator) {
       fields.frutijob = 'Chapelier';
     }
     if (Object.keys(fields).length > 0) {
@@ -9114,55 +9143,44 @@ app.get('/api/admin/users/:username/modlogs', adminAuth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// LA VITRINE — DIX ACCESSOIRES PAR SEMAINE, PIOCHÉS AU BOUILLOSCOPE
+// LA VITRINE — DIX ACCESSOIRES PIOCHÉS AU BOUILLOSCOPE
 //
-// Le chapelier n'est pas toujours là pour dessiner de quoi renouveler le rayon.
-// Or l'annuaire des Frutiz en est plein sans le savoir : une bouille tient en
+// Une roue de secours, pas un automate. Quand le chapelier n'a pas eu le temps
+// de préparer sa sélection, un bouton de l'admin garnit le rayon à sa place —
+// mais RIEN ne part tout seul : c'est lui qui décide quand et à quel prix.
+//
+// La matière première dormait dans l'annuaire des Frutiz : une bouille tient en
 // 24 caractères dont les NEUF DERNIERS décrivent exactement ce que la boutique
 // appelle un `suffix9` — type d'accessoire, modèle, trois couleurs. Chaque
 // Frutiz du Bouilloscope porte donc un accessoire prêt à vendre.
 //
-// On en pose dix en rayon, on retire les dix précédents, et on recommence
-// chaque lundi à 18 h (heure de Paris). Le chapelier garde la main : ses
-// accessoires à lui (ids < VITRINE_ID_BASE) ne sont jamais touchés, et le
-// bouton de l'admin permet de renouveler à la demande.
+// On en pose dix, on retire les dix précédents. Les accessoires du chapelier
+// (ids < VITRINE_ID_BASE) ne sont jamais touchés.
 //
 // RETIRER, PAS SUPPRIMER. Un accessoire sortant est simplement `disabled` :
 // il quitte la vitrine mais reste au catalogue, donc ceux qui l'ont acheté le
-// gardent, le portent, et le voient toujours dans leur inventaire. Une semaine
-// n'efface jamais la précédente.
+// gardent, le portent, et le voient toujours dans leur inventaire. Une
+// sélection n'efface jamais la précédente.
 //
 // LES IDS NE SE RÉUTILISENT JAMAIS. `userOwnsShopPack` reconnaît un achat à
-// l'id du produit : recycler l'id 900001 d'une semaine sur l'autre dirait à
-// qui a acheté le bonnet de lundi dernier qu'il possède déjà la casquette de
-// ce lundi-ci. D'où un id qui porte sa date : base + semaine×100 + tirage×10 +
-// rang. Cent ids réservés par semaine, dix par tirage — donc jusqu'à dix
-// renouvellements manuels dans la même semaine, sans jamais empiéter sur la
-// suivante.
+// l'id du produit : recycler l'id 900001 d'une fournée sur l'autre dirait à qui
+// a acheté le bonnet de la dernière fois qu'il possède déjà la casquette de
+// celle-ci. Le numéro monte donc, simplement, et ne redescend jamais.
 // ─────────────────────────────────────────────
 const FPBouille = require('./public/js/bouille-palette.js');
-const Calendrier = require('./public/js/vitrine-calendrier.js');
 
-const VITRINE_TAILLE = 10;          // dix accessoires en rayon (≤ VITRINE_PAS_TIRAGE)
+const VITRINE_TAILLE = 10;          // dix accessoires en rayon
 const VITRINE_PRIX = 60;            // le prix des accessoires d'origine
-const VITRINE_HEURE = 18;           // lundi, 18 h — heure de Paris
 const VITRINE_ID_BASE = 900000;     // en dessous : les accessoires du chapelier
-const VITRINE_PAS_SEMAINE = 100;
-const VITRINE_PAS_TIRAGE = 10;
 
 const estPackVitrine = (p) => p && p.id >= VITRINE_ID_BASE;
-const vitrineSemaineDeId = (id) => Math.floor((id - VITRINE_ID_BASE) / VITRINE_PAS_SEMAINE);
-const vitrineTirageDeId = (id) =>
-  Math.floor(((id - VITRINE_ID_BASE) % VITRINE_PAS_SEMAINE) / VITRINE_PAS_TIRAGE);
+// Le prochain numéro libre. On repart du plus haut jamais posé — y compris
+// ceux qui ne sont plus en vente : un id retiré reste pris, à vie.
+const prochainIdVitrine = () =>
+  SHOP_PACKS.reduce((m, p) => (estPackVitrine(p) && p.id >= m ? p.id + 1 : m), VITRINE_ID_BASE);
 
-// Le calendrier (« dernier lundi 18 h de Paris passé ») vit dans son propre
-// module : c'est de l'arithmétique de dates, et l'heure d'été en fait un piège
-// — voir public/js/vitrine-calendrier.js.
-const vitrineSemaineCourante = (d) => Calendrier.semaineDeVitrine(d, VITRINE_HEURE);
-const vitrineDateLundi = (semaine) => Calendrier.dateLundi(semaine);
-
-// Petit générateur reproductible : la même semaine redonne la même vitrine,
-// même après un redémarrage ou un rejeu.
+// Petit générateur reproductible : à annuaire et rayon identiques, la même
+// fournée ressort. De quoi rejouer un tirage à l'identique en cas de besoin.
 function vitrineMelangeur(graine) {
   let s = (graine * 2654435761) >>> 0 || 1;
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
@@ -9190,15 +9208,15 @@ function vitrineBanque() {
 }
 
 // LE ROULEMENT : jamais sortis d'abord, puis les plus anciennement vus. À
-// égalité, un ordre tiré au sort mais STABLE pour la semaine. Tout l'annuaire
-// finit donc par passer en rayon avant qu'un accessoire ne repasse.
+// égalité, un ordre tiré au sort mais reproductible. Tout l'annuaire finit donc
+// par passer en rayon avant qu'un accessoire ne repasse. L'ancienneté se lit
+// dans les ids, qui montent à chaque fournée.
 function vitrineChoisir(graine, banque) {
   const derniereSortie = new Map();
   for (const p of SHOP_PACKS) {
     if (!estPackVitrine(p) || !p.suffix9) continue;
-    const s = vitrineSemaineDeId(p.id);
     const prec = derniereSortie.get(p.suffix9);
-    if (prec === undefined || s > prec) derniereSortie.set(p.suffix9, s);
+    if (prec === undefined || p.id > prec) derniereSortie.set(p.suffix9, p.id);
   }
   const rng = vitrineMelangeur(graine + 1);
   return banque
@@ -9229,32 +9247,24 @@ function baptiserAccessoire(suffix9, pris) {
   return `${premier} ${suffix9}`;
 }
 
-// Renouvelle le rayon. `auto` : ne fait rien si la semaine a déjà eu son
-// tirage (c'est ce que déclenche le lundi 18 h — idempotent, donc increvable
-// face à un redémarrage ou à une panne de plusieurs jours). Sans `auto`
-// (bouton de l'admin), un nouveau tirage part quoi qu'il arrive.
+// Garnit le rayon : dix accessoires posés, les précédents retirés. Appelée
+// UNIQUEMENT depuis le bouton de l'admin — rien ne la déclenche tout seul.
 function tournerLaVitrine(opts = {}) {
-  const semaine = Number.isFinite(opts.semaine) ? opts.semaine : vitrineSemaineCourante();
   const prix = Number.isFinite(opts.prix) && opts.prix >= 0 ? Math.round(opts.prix) : VITRINE_PRIX;
-  const deLaSemaine = SHOP_PACKS.filter((p) => estPackVitrine(p) && vitrineSemaineDeId(p.id) === semaine);
-  if (opts.auto && deLaSemaine.length) return { ok: false, raison: 'deja-faite', semaine };
-  const tirage = deLaSemaine.reduce((m, p) => Math.max(m, vitrineTirageDeId(p.id) + 1), 0);
-  if (tirage * VITRINE_PAS_TIRAGE >= VITRINE_PAS_SEMAINE) {
-    return { ok: false, raison: 'trop-de-tirages', semaine, tirage };
-  }
   const banque = vitrineBanque();
   if (banque.length < VITRINE_TAILLE) {
-    return { ok: false, raison: 'banque-insuffisante', semaine, banque: banque.length, requis: VITRINE_TAILLE };
+    return { ok: false, raison: 'banque-insuffisante', banque: banque.length, requis: VITRINE_TAILLE };
   }
 
+  const depart = prochainIdVitrine();
   const pris = new Set(SHOP_PACKS.map((p) => String(p.name || '').toLowerCase()));
-  // Graine décalée par le tirage : renouveler deux fois la même semaine ne doit
-  // pas reposer exactement les mêmes dix accessoires.
-  const poses = vitrineChoisir(semaine + tirage * 1000, banque).map((a, i) => {
+  // Graine tirée du numéro de départ : deux fournées d'affilée ne reposent pas
+  // les mêmes dix accessoires, et rejouer la même donne le même résultat.
+  const poses = vitrineChoisir(depart, banque).map((a, i) => {
     const nom = baptiserAccessoire(a.suffix9, pris);
     pris.add(nom.toLowerCase());
     return {
-      id: VITRINE_ID_BASE + semaine * VITRINE_PAS_SEMAINE + tirage * VITRINE_PAS_TIRAGE + i,
+      id: depart + i,
       name: nom,
       category: 'Accessoires',
       price: prix,
@@ -9268,7 +9278,6 @@ function tournerLaVitrine(opts = {}) {
   const retires = [];
   for (const p of SHOP_PACKS) {
     if (!estPackVitrine(p) || p.disabled) continue;
-    if (vitrineSemaineDeId(p.id) === semaine && vitrineTirageDeId(p.id) === tirage) continue;
     p.disabled = true;
     retires.push({ id: p.id, name: p.name });
     if (process.env.DATABASE_URL) db.upsertShopPack(p).catch(dbErr('upsertShopPack'));
@@ -9277,12 +9286,9 @@ function tournerLaVitrine(opts = {}) {
     SHOP_PACKS.push(p);
     if (process.env.DATABASE_URL) db.upsertShopPack(p).catch(dbErr('upsertShopPack'));
   }
-  console.log(`[VITRINE] semaine ${semaine} (lundi ${vitrineDateLundi(semaine)}), tirage ${tirage} : `
-    + `${poses.length} accessoires posés, ${retires.length} retirés — banque de ${banque.length}`);
-  return {
-    ok: true, semaine, tirage, lundi: vitrineDateLundi(semaine),
-    prix, banque: banque.length, poses, retires,
-  };
+  console.log(`[VITRINE] ${poses.length} accessoires posés (ids ${depart}→${depart + poses.length - 1}), `
+    + `${retires.length} retirés — banque de ${banque.length}`);
+  return { ok: true, prix, banque: banque.length, poses, retires };
 }
 
 // L'état du rayon, pour l'admin.
@@ -9291,61 +9297,27 @@ function vitrineEtat() {
     .sort((a, b) => a.id - b.id);
   const banque = vitrineBanque();
   const dejaSortis = new Set(SHOP_PACKS.filter(estPackVitrine).map((p) => p.suffix9));
-  const semaine = vitrineSemaineCourante();
   return {
-    semaine,
-    lundi: vitrineDateLundi(semaine),
-    prochainLundi: vitrineDateLundi(semaine + 1),
-    heure: VITRINE_HEURE,
     taille: VITRINE_TAILLE,
     prixDefaut: VITRINE_PRIX,
-    faiteCetteSemaine: SHOP_PACKS.some((p) => estPackVitrine(p) && vitrineSemaineDeId(p.id) === semaine),
     banque: banque.length,
     jamaisSortis: banque.filter((a) => !dejaSortis.has(a.suffix9)).length,
     trombinoscope: TROMBINOSCOPE.length,
-    enRayon: enRayon.map((p) => ({
-      id: p.id, name: p.name, suffix9: p.suffix9, price: p.price,
-      semaine: vitrineSemaineDeId(p.id),
-    })),
+    fournees: new Set(SHOP_PACKS.filter(estPackVitrine).map((p) => Math.floor((p.id - VITRINE_ID_BASE) / VITRINE_TAILLE))).size,
+    enRayon: enRayon.map((p) => ({ id: p.id, name: p.name, suffix9: p.suffix9, price: p.price })),
   };
 }
 
-// Le lundi 18 h (heure de Paris). On sonde régulièrement et on laisse
-// tournerLaVitrine juger : elle ne fait rien si la semaine a déjà son tirage,
-// et rattrape d'elle-même une semaine sautée pendant une coupure. Pas de date
-// de dernier passage à ranger quelque part : le rayon lui-même la porte, dans
-// les ids de ses accessoires.
-//
-// `vitrinePrete` attend que les accessoires soient relus de la base : sonder
-// avant, c'est croire le rayon vide et poser un tirage en double.
-//
-// VITRINE_TICK_MS : période du sondage. 60 s par défaut ; 0 coupe le minuteur
-// (les tests qui veulent une vitrine immobile), une valeur courte l'accélère
-// (ceux qui veulent voir le rendez-vous automatique se déclencher).
-let vitrinePrete = !process.env.DATABASE_URL;
-const VITRINE_TICK_MS = process.env.VITRINE_TICK_MS === undefined
-  ? 60000 : Math.max(0, Number(process.env.VITRINE_TICK_MS) || 0);
-if (VITRINE_TICK_MS > 0) {
-  setInterval(() => {
-    if (!vitrinePrete) return;
-    // Un refus (« banque-insuffisante » quand l'annuaire n'est pas encore
-    // chargé, « deja-faite » le reste de la semaine) n'est pas une anomalie :
-    // le rayon en place reste en vente et on repassera.
-    try { tournerLaVitrine({ auto: true }); }
-    catch (e) { console.error('[VITRINE] rotation:', e.message); }
-  }, VITRINE_TICK_MS);
-}
-
-// ── Admin : la vitrine hebdomadaire ──
+// ── Admin : la vitrine de secours ──
 app.get('/api/admin/shop/vitrine', adminScope('shop'), (req, res) => {
   res.json(vitrineEtat());
 });
 
 app.post('/api/admin/shop/vitrine', adminScope('shop'), (req, res) => {
   const b = req.body || {};
-  const r = tournerLaVitrine({ prix: Number(b.prix), auto: !!b.auto });
+  const r = tournerLaVitrine({ prix: Number(b.prix) });
   if (!r.ok) return res.status(409).json({ error: r.raison, ...r });
-  console.log(`[ADMIN] Vitrine renouvelée à la main : ${r.poses.map((p) => p.name).join(', ')}`);
+  console.log(`[ADMIN] Vitrine garnie à la main : ${r.poses.map((p) => p.name).join(', ')}`);
   res.json({ ok: true, ...r, etat: vitrineEtat() });
 });
 
@@ -18426,10 +18398,6 @@ async function boot() {
             if (dbP && !dbP.wallpaperId) db.upsertShopPack(p).catch(dbErr('upsertShopPack'));
           }
         }
-        // Le rayon est relu : la vitrine hebdomadaire peut se prononcer. Tant
-        // que ce témoin est faux, elle croirait le rayon vide et poserait un
-        // tirage en double par-dessus celui de la semaine.
-        vitrinePrete = true;
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
       try {
         const wps = await db.loadWallpapers();

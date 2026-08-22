@@ -456,22 +456,23 @@
 </div>
 
 <div class="content" id="tab-shop" style="display:none">
-  <!-- La vitrine : dix accessoires puisés au Bouilloscope, renouvelés tout
-       seuls chaque lundi 18 h. Le bouton sert à dépanner (ou à devancer). -->
+  <!-- La vitrine : dix accessoires puisés au Bouilloscope. Roue de secours,
+       déclenchée à la main quand le chapelier n'a pas fait sa sélection. -->
   <div style="border:1px solid #e0d6e6;border-radius:8px;padding:12px 14px;margin-bottom:16px;background:#fbf8fc">
-    <h3 style="margin:0 0 4px">🎩 Vitrine de la semaine</h3>
+    <h3 style="margin:0 0 4px">🎩 Vitrine de secours</h3>
     <p style="color:#777;font-size:12px;margin:0 0 10px;max-width:760px">
-      Dix accessoires pris chez les Frutiz du Bouilloscope — leurs bouilles en portent déjà.
-      Le rayon se renouvelle tout seul chaque <b>lundi à 18 h</b> ; les dix précédents sont
-      retirés de la vente sans être supprimés, donc ceux qui les ont achetés les gardent.
-      Les accessoires du chapelier ne sont jamais touchés. Les noms sont proposés
-      automatiquement (type + couleur) : « Modifier » permet de les retoucher.
+      Quand le chapelier n'a pas eu le temps de préparer sa sélection : dix accessoires pris
+      chez les Frutiz du Bouilloscope — leurs bouilles en portent déjà. <b>Rien ne part tout
+      seul</b>, c'est ce bouton qui décide. Les dix précédents sont retirés de la vente sans
+      être supprimés, donc ceux qui les ont achetés les gardent ; les accessoires du chapelier
+      ne sont jamais touchés. Les noms sont proposés automatiquement
+      (« Kiwette », « Citronocle ») : « Modifier » permet de les retoucher.
     </p>
     <div id="vitrine-etat" style="font-size:13px;margin-bottom:10px">Chargement…</div>
     <label style="font-size:12px;color:#555">Prix :
       <input id="vitrine-prix" type="number" min="0" step="10" value="60" style="width:70px">&nbsp;K
     </label>
-    <button class="btn-success" style="margin-left:8px" onclick="renouvelerVitrine()">Renouveler maintenant</button>
+    <button class="btn-success" style="margin-left:8px" onclick="renouvelerVitrine()">Garnir le rayon</button>
     <button class="btn btn-sm" onclick="loadVitrine()">Rafraîchir</button>
   </div>
   <div class="toolbar">
@@ -2960,14 +2961,15 @@ async function loadDetail() {
       <tr><td>Genre</td><td>${user.gender||'M'}</td></tr>
       <tr><td>Modérateur</td><td><span class="badge ${user.is_moderator ? 'badge-mod' : 'badge-no-mod'}" onclick="toggleMod('${esc(u)}',${!user.is_moderator});setTimeout(loadDetail,500)" style="cursor:pointer">${user.is_moderator ? 'Oui' : 'Non'}</span></td></tr>
       <tr><td>Animateur</td><td><span class="badge ${user.is_animator ? 'badge-anim' : 'badge-no-mod'}" onclick="toggleAnim('${esc(u)}',${!user.is_animator});setTimeout(loadDetail,500)" style="cursor:pointer">${user.is_animator ? 'Oui' : 'Non'}</span></td></tr>
-      <tr><td>Rôle admin</td><td>
-        <select onchange="setAdminRole('${esc(u)}', this.value)" style="padding:3px">
-          <option value=""${!user.admin_role ? ' selected' : ''}>— aucun —</option>
-          <option value="scores"${user.admin_role === 'scores' ? ' selected' : ''}>Responsable des scores (Scores + Challenge)</option>
-          <option value="animateur"${user.admin_role === 'animateur' ? ' selected' : ''}>Animateur (MikeHorny + Salons)</option>
-          <option value="chapelier"${user.admin_role === 'chapelier' ? ' selected' : ''}>Chapelier (Boutique)</option>
-        </select>
-        <span style="color:#888;font-size:11px">accès limité à /admin avec ses identifiants Frutiparc — le badge « Animateur » ci-dessus donne déjà l'accès MikeHorny</span>
+      <tr><td>Rôles admin</td><td>
+        ${ROLES_ADMIN.map((r) => `<label style="margin-right:14px;white-space:nowrap">
+          <input type="checkbox" class="role-admin" value="${r.id}"${rolesDe(user).includes(r.id) ? ' checked' : ''}
+                 onchange="setAdminRoles('${esc(u)}')"> ${r.label}</label>`).join('')}
+        <div style="color:#888;font-size:11px;margin-top:3px">
+          Cumulables : cocher plusieurs cases donne tous les onglets correspondants.
+          Accès limité à /admin avec ses identifiants Frutiparc — le badge « Animateur »
+          ci-dessus donne déjà l'accès MikeHorny.
+        </div>
       </td></tr>
       <tr><td>Anniversaire</td><td>${fmtDate(user.birthday)}</td></tr>
       <tr><td>FrutiSigne</td><td>${signLabel(user.fruti_sign)}</td></tr>
@@ -3464,13 +3466,26 @@ async function toggleMod(username, setMod) {
   loadUsers();
 }
 
-// ── Rôle admin (accès partiel à /admin) ──
-async function setAdminRole(username, role) {
+// ── Rôles admin (accès partiel à /admin, cumulables) ──
+// Le même bénévole peut tenir les scores, la boutique ET l'animation : ses
+// onglets sont la réunion de ceux de ses rôles. La colonne admin_role porte la
+// liste, séparée par des virgules.
+const ROLES_ADMIN = [
+  { id: 'scores', label: 'Responsable des scores (Scores + Challenge)' },
+  { id: 'animateur', label: 'Animateur (MikeHorny + Salons + Tournois)' },
+  { id: 'chapelier', label: 'Chapelier (Boutique)' },
+];
+const rolesDe = (user) => String(user.admin_role || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+async function setAdminRoles(username) {
+  const roles = [...document.querySelectorAll('.role-admin:checked')].map((c) => c.value);
   const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, {
-    method: 'PATCH', headers: hdr(), body: JSON.stringify({ admin_role: role })
+    method: 'PATCH', headers: hdr(), body: JSON.stringify({ admin_role: roles.join(',') })
   });
   if (!r.ok) { toast('Erreur lors du changement de rôle'); return; }
-  toast(role ? `${username} : rôle « ${role} » attribué` : `${username} : rôle admin retiré`);
+  toast(roles.length
+    ? `${username} : ${roles.join(' + ')}`
+    : `${username} : rôles admin retirés`);
 }
 
 // ── Ban / unban ──
@@ -3591,20 +3606,18 @@ async function loadVitrine() {
       <div style="margin-bottom:6px">
         <b>${v.banque}</b> accessoire${v.banque > 1 ? 's' : ''} disponible${v.banque > 1 ? 's' : ''}
         au Bouilloscope (${v.trombinoscope} Frutiz), dont <b>${v.jamaisSortis}</b> jamais passé${v.jamaisSortis > 1 ? 's' : ''} en vitrine.
-        ${maigre ? '<span style="color:#b03">— trop peu pour un renouvellement (il en faut ' + v.taille + ').</span>' : ''}
+        ${maigre ? '<span style="color:#b03">— trop peu pour garnir le rayon (il en faut ' + v.taille + ').</span>' : ''}
       </div>
-      <div style="margin-bottom:6px;color:#666">
-        Semaine du lundi <b>${esc(v.lundi)}</b> — ${v.faiteCetteSemaine
-          ? 'renouvellement fait' : 'pas encore renouvelée'} ;
-        prochain automatique le <b>${esc(v.prochainLundi)}</b> à ${v.heure} h.
-      </div>
+      <div style="margin-bottom:6px;color:#666">${v.fournees
+        ? v.fournees + (v.fournees > 1 ? ' fournées posées' : ' fournée posée') + ' jusqu\'ici.'
+        : 'Aucune fournée posée jusqu\'ici.'}</div>
       <div>En rayon :</div>
       <ul style="margin:4px 0 0;padding-left:20px;columns:2;font-size:12px">${rayon}</ul>`;
   } catch (e) { box.textContent = 'Erreur : ' + e.message; }
 }
 
 async function renouvelerVitrine() {
-  if (!confirm('Mettre dix nouveaux accessoires en vitrine ?\n\nLes dix actuels sont retirés de la vente (pas supprimés : les joueurs qui les ont achetés les gardent).')) return;
+  if (!confirm('Garnir le rayon de dix accessoires du Bouilloscope ?\n\nLes accessoires actuellement en vitrine sont retirés de la vente (pas supprimés : les joueurs qui les ont achetés les gardent).')) return;
   const prix = Number($('#vitrine-prix').value);
   try {
     const r = await fetch('/api/admin/shop/vitrine', {
@@ -3614,8 +3627,6 @@ async function renouvelerVitrine() {
     if (!r.ok) {
       const raisons = {
         'banque-insuffisante': `Pas assez d'accessoires au Bouilloscope (${j.banque || 0} sur ${j.requis || 10} requis). Importe des bouilles dans l'onglet Bouilloscope.`,
-        'trop-de-tirages': 'Dix renouvellements déjà faits cette semaine — attends lundi.',
-        'deja-faite': 'Déjà renouvelée cette semaine.',
       };
       toast(raisons[j.error] || ('Erreur : ' + (j.error || r.status)));
       return;

@@ -1,23 +1,24 @@
 /*
- * La vitrine hebdomadaire : dix accessoires puisés au Bouilloscope.
+ * La vitrine de secours : dix accessoires puisés au Bouilloscope.
  *
- * Le chapelier n'est pas toujours disponible pour renouveler le rayon. Or les
+ * Le chapelier n'est pas toujours disponible pour préparer sa sélection. Or les
  * bouilles du Bouilloscope portent déjà des accessoires : les neuf derniers
  * caractères d'une bouille sont exactement le `suffix9` que la boutique vend.
- * On y pioche donc dix accessoires, on les baptise, on les met en rayon — et
- * on retire les dix précédents.
+ * Un bouton de l'admin y pioche donc dix accessoires, les baptise, les met en
+ * rayon — et retire les dix précédents. Rien ne part tout seul.
  *
  * Ce que ces tests tiennent :
  *   · dix accessoires en rayon, tous venus de l'annuaire, tous nommés, aucun
  *     doublon de nom ni de code ;
  *   · RETIRER N'EST PAS SUPPRIMER — un joueur qui a acheté l'accessoire de la
- *     semaine passée le garde, le porte et le voit encore dans son inventaire
- *     après le renouvellement suivant ;
+ *     fournée passée le garde, le porte et le voit encore dans son inventaire
+ *     après la fournée suivante ;
  *   · les ids ne se réutilisent jamais (sinon la boutique dirait « déjà
  *     possédé » sur un accessoire tout neuf) ;
  *   · les accessoires du chapelier ne bougent pas ;
- *   · le roulement sert vraiment : deux semaines de suite ne remettent pas les
- *     mêmes têtes en rayon tant que la banque est assez fournie.
+ *   · le roulement sert vraiment : deux fournées de suite ne remettent pas les
+ *     mêmes têtes en rayon tant que la banque est assez fournie ;
+ *   · et personne ne garnit le rayon à la place de l'admin.
  */
 'use strict';
 
@@ -71,7 +72,6 @@ before(async () => {
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
       ADMIN_KEY: CLE, XMLSOCKET_PORT: '5264', FRUTISCORE_PORT: '5265',
-      VITRINE_TICK_MS: '0',        // rendez-vous du lundi coupé : le test mène la danse
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -122,24 +122,20 @@ test('la banque ne retient que les vraies têtes accessoirisées', async () => {
     'les 30 accessoires de l\'annuaire sont en banque — ni les têtes nues ni la bouille tronquée');
   assert.equal(v.jamaisSortis, v.banque, 'aucun n\'est encore passé en rayon');
   assert.equal(v.taille, TAILLE);
-  assert.equal(v.heure, 18, 'le rendez-vous est bien à 18 h');
-  assert.match(v.lundi, /^\d{4}-\d{2}-\d{2}$/);
-  assert.equal(new Date(v.prochainLundi) - new Date(v.lundi), 7 * 86400000,
-    'le prochain renouvellement automatique est sept jours plus tard');
-  assert.equal(v.enRayon.length, 0, 'rayon vide avant le premier renouvellement');
+  assert.equal(v.fournees, 0, 'aucune fournée posée');
+  assert.equal(v.enRayon.length, 0, 'rayon vide avant la première fournée');
 });
 
-// ── Le renouvellement ──────────────────────────────────────────────────────
+// ── La fournée ─────────────────────────────────────────────────────────────
 
 let premiere = null;
 
-test('un renouvellement pose dix accessoires nommés, venus de l\'annuaire', async () => {
+test('garnir le rayon pose dix accessoires nommés, venus de l\'annuaire', async () => {
   const avant = await catalogue();
   const chapelier = avant.filter((p) => p.id < ID_BASE);
 
-  // `auto` : exactement ce que déclenche le rendez-vous du lundi 18 h.
-  const { statut, corps } = await renouveler({ prix: 60, auto: true });
-  assert.equal(statut, 200, 'renouvellement accepté : ' + JSON.stringify(corps).slice(0, 200));
+  const { statut, corps } = await renouveler({ prix: 60 });
+  assert.equal(statut, 200, 'fournée acceptée : ' + JSON.stringify(corps).slice(0, 200));
   assert.equal(corps.poses.length, TAILLE, 'dix accessoires posés');
   assert.equal(corps.retires.length, 0, 'rien à retirer la première fois');
 
@@ -187,21 +183,9 @@ test('la vitrine est bien celle que voit le joueur dans la boutique', async () =
   assert.ok(fiche.includes(premiere[0].suffix9), 'l\'aperçu montre bien cet accessoire');
 });
 
-test('le rendez-vous du lundi ne se déclenche qu\'une fois par semaine', async () => {
-  // C'est ce qui rend le minuteur increvable : il sonde toutes les minutes,
-  // et un redémarrage ou une reprise après coupure ne repose pas un tirage
-  // par-dessus celui de la semaine.
-  const avant = vitrineDe(await catalogue()).filter((p) => !p.disabled).map((p) => p.id);
-  const { statut, corps } = await renouveler({ auto: true });
-  assert.equal(statut, 409, 'le second passage automatique de la semaine ne fait rien');
-  assert.equal(corps.error, 'deja-faite');
-  const apres = vitrineDe(await catalogue()).filter((p) => !p.disabled).map((p) => p.id);
-  assert.deepEqual(apres, avant, 'le rayon n\'a pas bougé');
-});
+// ── La fournée suivante ────────────────────────────────────────────────────
 
-// ── Le renouvellement suivant ──────────────────────────────────────────────
-
-test('renouveler retire les dix précédents et en pose dix autres', async () => {
+test('garnir à nouveau retire les dix précédents et en pose dix autres', async () => {
   const { statut, corps } = await renouveler({});
   assert.equal(statut, 200, JSON.stringify(corps).slice(0, 200));
   assert.equal(corps.retires.length, TAILLE, 'les dix précédents sont retirés');
@@ -213,10 +197,10 @@ test('renouveler retire les dix précédents et en pose dix autres', async () =>
 
   const anciens = new Set(premiere.map((p) => p.id));
   for (const p of enRayon) assert.ok(!anciens.has(p.id), `${p.name} porte un id neuf (${p.id})`);
-  // Le roulement : 30 accessoires en banque, 10 par semaine → aucun retour.
+  // Le roulement : 30 accessoires en banque, 10 par fournée → aucun retour.
   const codesAvant = new Set(premiere.map((p) => p.suffix9));
   for (const p of enRayon) {
-    assert.ok(!codesAvant.has(p.suffix9), `${p.name} n'était pas déjà en rayon la semaine passée`);
+    assert.ok(!codesAvant.has(p.suffix9), `${p.name} n'était pas déjà en rayon la fournée d'avant`);
   }
 
   // RETIRÉS, PAS SUPPRIMÉS.
@@ -261,7 +245,7 @@ test('sans annuaire suffisant, le rayon en place est laissé tranquille', async 
   assert.ok(vide.ok, 'annuaire vidé');
 
   const { statut, corps } = await renouveler({});
-  assert.equal(statut, 409, 'le renouvellement est refusé');
+  assert.equal(statut, 409, 'la fournée est refusée');
   assert.equal(corps.error, 'banque-insuffisante');
   assert.equal(corps.requis, TAILLE);
 
@@ -269,25 +253,25 @@ test('sans annuaire suffisant, le rayon en place est laissé tranquille', async 
   assert.deepEqual(apres, avant, 'le rayon précédent reste en vente — mieux qu\'une boutique vide');
 });
 
-// ── Le rendez-vous automatique, sans attendre lundi ────────────────────────
+// ── Rien ne bouge tout seul ────────────────────────────────────────────────
 //
-// Un second serveur, avec un minuteur accéléré (VITRINE_TICK_MS) : personne ne
-// touche à la boutique, et le rayon se remplit tout seul. C'est le seul moyen
-// de vérifier que le minuteur est vraiment branché sur tournerLaVitrine sans
-// patienter jusqu'au lundi suivant.
-test('le minuteur garnit le rayon tout seul', { timeout: 90000 }, async () => {
+// La vitrine est une roue de secours : le chapelier reste maître de son rayon.
+// Un serveur qu'on laisse tourner, annuaire plein, ne doit RIEN poser de
+// lui-même — sans quoi la sélection du chapelier se ferait balayer un matin
+// sans que personne n'ait rien demandé.
+test('un serveur laissé tranquille ne garnit jamais le rayon', { timeout: 90000 }, async () => {
   const P2 = PORT + 1, B2 = `http://127.0.0.1:${P2}`;
   const p2 = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
       PORT: String(P2), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
       ADMIN_KEY: CLE, XMLSOCKET_PORT: '5266', FRUTISCORE_PORT: '5267',
-      VITRINE_TICK_MS: '700',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   p2.stdout.on('data', () => {});
   p2.stderr.on('data', () => {});
+  const vitrine2 = () => fetch(B2 + '/api/admin/shop/vitrine', { headers: hdr }).then((r) => r.json());
   try {
     let pret = false;
     for (let i = 0; i < 160 && !pret; i++) {
@@ -295,29 +279,29 @@ test('le minuteur garnit le rayon tout seul', { timeout: 90000 }, async () => {
       if (!pret) await wait(250);
     }
     assert.ok(pret, 'second serveur démarré');
-    // Rayon vide tant que l'annuaire l'est : le minuteur tourne déjà à vide.
-    await wait(1500);
-    let v = await (await fetch(B2 + '/api/admin/shop/vitrine', { headers: hdr })).json();
-    assert.equal(v.enRayon.length, 0, 'sans annuaire, le minuteur ne fabrique rien');
 
     const lignes = ANNUAIRE.map((e) => e.pseudo + ',' + e.bouille).join('\r\n');
     await fetch(B2 + '/api/admin/trombinoscope/import', {
       method: 'POST', headers: { 'Content-Type': 'text/csv', 'x-admin-key': CLE }, body: lignes,
     });
-    // …et dès que l'annuaire est là, le prochain passage garnit le rayon.
-    for (let i = 0; i < 30 && v.enRayon.length === 0; i++) {
-      await wait(400);
-      v = await (await fetch(B2 + '/api/admin/shop/vitrine', { headers: hdr })).json();
-    }
-    assert.equal(v.enRayon.length, TAILLE, 'dix accessoires posés sans que personne ne clique');
-    assert.ok(v.faiteCetteSemaine, 'la semaine est marquée comme faite');
+    let v = await vitrine2();
+    assert.equal(v.banque, ANNUAIRE.length, 'la banque est pleine — de quoi garnir, s\'il le fallait');
 
-    // Et il ne recommence pas au passage suivant.
+    // On laisse le serveur vivre sa vie.
+    await wait(6000);
+    v = await vitrine2();
+    assert.equal(v.enRayon.length, 0, 'personne n\'a garni le rayon');
+    assert.equal(v.fournees, 0, 'aucune fournée n\'est partie toute seule');
+
+    // Et c'est bien le bouton, et lui seul, qui garnit.
+    const r = await fetch(B2 + '/api/admin/shop/vitrine', { method: 'POST', headers: hdr, body: '{}' });
+    assert.equal(r.status, 200);
+    v = await vitrine2();
+    assert.equal(v.enRayon.length, TAILLE, 'le bouton, lui, garnit bien le rayon');
     const ids = v.enRayon.map((p) => p.id);
-    await wait(2000);
-    v = await (await fetch(B2 + '/api/admin/shop/vitrine', { headers: hdr })).json();
-    assert.deepEqual(v.enRayon.map((p) => p.id), ids,
-      'les passages suivants laissent le rayon tranquille jusqu\'à lundi prochain');
+    await wait(4000);
+    v = await vitrine2();
+    assert.deepEqual(v.enRayon.map((p) => p.id), ids, 'et rien ne vient le remplacer ensuite');
   } finally {
     p2.kill('SIGKILL');
   }
