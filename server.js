@@ -20952,9 +20952,28 @@ function grapizFlush(messages) {
     }
   }
 }
+// LE VOYANT SUIT LA PARTIE. Grapiz et Frutibandas sont arbitrés par le serveur :
+// tant qu'une session vit, la place de ses joueurs est renouvelée. Sans ce
+// battement, le bail (45 s) expirait EN PLEINE PARTIE — le voyant s'éteignait
+// au bout de trois coups, puisque rien ne le renouvelait entre le coup d'envoi
+// (onMatchForming) et la conclusion. La fin de partie (onResult) et la
+// déconnexion l'éteignent ; ici, on ne fait que le tenir allumé.
+function renouvelerVoyantsParties(reseau, jeu) {
+  const sessions = reseau.sessions || {};
+  for (const id of Object.keys(sessions)) {
+    const sess = sessions[id];
+    if (!sess || sess.ended) continue;
+    for (const p of (sess.players || [])) {
+      if (reseau.bots && reseau.bots[p.id]) continue;   // un bot n'a pas de voyant
+      marquerEnPartie(p.id, jeu);
+    }
+  }
+}
+
 // Tick des horloges : termine les parties dont le temps est écoulé (1 Hz).
 setInterval(() => {
   try { grapizFlush(grapizNet.tick()); } catch (e) { console.error('[grapiz] tick:', e.message); }
+  try { renouvelerVoyantsParties(grapizNet, 'grapiz'); } catch (e) { console.error('[grapiz] voyants:', e.message); }
 }, 1000);
 
 // ─────────────────────────────────────────────
@@ -20997,6 +21016,7 @@ const bandasNet = new BandasNet({
 // Tick : horloges (timeout) + coups des bots (1 Hz).
 setInterval(() => {
   try { grapizFlush(bandasNet.tick()); } catch (e) { console.error('[bandas] tick:', e.message); }
+  try { renouvelerVoyantsParties(bandasNet, 'bandas'); } catch (e) { console.error('[bandas] voyants:', e.message); }
 }, 1000);
 
 // Push a live kikooz-balance update to every connected socket of `username`.
@@ -21701,7 +21721,13 @@ function setUserInternalStatus(username, internalIdx) {
     updatedSockets.push(sock);
     sendToClient(sock, `<${CMD.status} s="${cl.statusStr}" />`);
   }
-  if (updatedSockets.length === 0) return;
+  // L'EXTINCTION DOIT PARTIR MÊME SANS SOCKET VIVANTE. Le cas courant du
+  // mobile est exactement celui-là : on joue, on range le téléphone, la socket
+  // meurt — et c'est LÀ que la place de jeu expire. En sortant ici faute de
+  // socket, on laissait le salon avec un voyant allumé pour toujours : « il
+  // joue à Grapiz » deux heures après la partie. Le joueur reste listé dans
+  // ses salons pendant la grâce de reconnexion : ce sont eux qu'il faut
+  // prévenir, socket ou pas.
   const traceXml = `<${CMD.trace} u="${escapeXml(getDisplayName(username))}" p="1" s="${getStatusCode(ud, username)}" mu="${getMuteValue(ud)}" f="${bouilleOf(ud, username)}" />`;
   const channelsBroadcast = new Set();
   for (const sock of updatedSockets) {
@@ -21712,6 +21738,15 @@ function setUserInternalStatus(username, internalIdx) {
       channelsBroadcast.add(ch);
       broadcastToChannel(ch, traceXml);
     }
+  }
+  // Les salons où il figure encore sans y avoir de socket : sa ligne y est
+  // toujours affichée chez les autres, voyant compris.
+  for (const nom of Object.keys(channels)) {
+    if (channelsBroadcast.has(nom)) continue;
+    const ch = channels[nom];
+    if (!ch || !ch.users || !ch.users.has(username)) continue;
+    channelsBroadcast.add(nom);
+    broadcastToChannel(nom, traceXml);
   }
   notifyTraceSubscribers(username);
 }

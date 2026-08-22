@@ -287,3 +287,96 @@ test('remettre le disque en console annule une éjection en attente', async () =
   assert.equal((await battre('snake3')).ejected, false, 'la relance a effacé l\'éjection périmée');
   assert.equal(await voyantDuJoueur(), 'snake3', 'et le voyant s\'est rallumé au lancement');
 });
+
+// ── CE QUI FIGEAIT LES VOYANTS SUR MOBILE ─────────────────────────────────
+//
+// Trois défauts se cumulaient, et le mobile les réunit tous : on joue, on
+// range le téléphone (la socket meurt), la place expire pendant l'absence.
+//   1. l'extinction ne partait pas faute de socket — le salon gardait le
+//      voyant allumé pour toujours (« il joue à Grapiz » deux heures après) ;
+//   2. rien ne renouvelait la place pendant une partie Grapiz/Frutibandas :
+//      le voyant s'éteignait tout seul au bout de 45 s, EN PLEINE PARTIE ;
+//   3. l'arrivée d'un joueur au salon (<v>) porte son statut, mais le client
+//      light ne le lisait pas : le voyant d'avant son départ restait affiché.
+
+const JOUEUR2 = 'partant' + RUN;
+let sidJoueur2 = null, sockJoueur2 = null;
+const battre2 = (jeu) =>
+  fetch(`${BASE}/api/check-ejected?fd=0&sid=${sidJoueur2}&game=${encodeURIComponent(jeu)}`)
+    .then((r) => r.json());
+async function voyantDe(pseudo) {
+  const j = await (await fetch(`${BASE}/api/light/online?sid=${sidTemoin}`)).json();
+  const e = (j.users || []).find((u) => u.pseudo.toLowerCase() === pseudo.toLowerCase());
+  return e ? (e.jeu || null) : null;
+}
+
+test('mise en place : joueur et témoin dans le même salon', async () => {
+  sidJoueur2 = await sidPour(JOUEUR2);
+  sockJoueur2 = await brancher(JOUEUR2, sidJoueur2);
+  const temoin = sockets[1];
+  temoin.write('<o g="hall" />\0');
+  sockJoueur2.write('<o g="hall" />\0');
+  await wait(700);
+  assert.ok(temoin.recus.some((t) => /^<p\b/.test(t)), 'le témoin a la liste du salon');
+});
+
+test('le voyant s\'éteint pour le SALON même quand le joueur a fermé l\'appli', async () => {
+  const temoin = sockets[1];
+  await battre2('kaluga');
+  await wait(500);
+  assert.equal(dernierVoyantDiffuse(temoin, JOUEUR2), '08', 'le salon voit l\'allumage (kaluga = 8)');
+  // Le téléphone est rangé : l'appli gèle, la socket meurt. C'est ICI que la
+  // place expire — et c'est exactement le moment où l'extinction ne partait
+  // plus, faute d'une socket à qui la rattacher.
+  temoin.recus.length = 0;
+  sockJoueur2.destroy();
+  await wait(TTL + 3000);
+  assert.equal(dernierVoyantDiffuse(temoin, JOUEUR2), '00',
+    'le salon a REÇU l\'extinction sans que le joueur soit là : '
+    + JSON.stringify(temoin.recus.slice(-3)));
+  assert.equal(await voyantDe(JOUEUR2), null, 'et le serveur le confirme');
+});
+
+test('le retour au salon porte le statut à jour (<v> avec s=)', async () => {
+  // Le client light garde en cache le voyant de chacun ; il ne le rafraîchit
+  // que sur les trames qui portent un statut. L'arrivée doit donc en porter
+  // un, sinon le revenant traîne son ancien voyant.
+  const temoin = sockets[1];
+  temoin.recus.length = 0;
+  sockJoueur2 = await brancher(JOUEUR2, sidJoueur2);
+  sockJoueur2.write('<o g="hall" />\0');
+  await wait(800);
+  const arrivee = temoin.recus.find((t) => new RegExp('^<v [^>]*u="' + JOUEUR2 + '"', 'i').test(t));
+  assert.ok(arrivee, 'le témoin voit l\'arrivée : ' + JSON.stringify(temoin.recus.slice(-4)));
+  const s = / s="(....)"/.exec(arrivee);
+  assert.ok(s, 'l\'arrivée porte un statut : ' + arrivee);
+  assert.equal(s[1].substring(1, 3), '00', 'et ce statut est le bon (voyant éteint)');
+});
+
+test('une partie Grapiz garde son voyant bien au-delà du bail', async () => {
+  // Grapiz et Frutibandas sont arbitrés par le serveur : personne n'envoie de
+  // battement de fenêtre. Sans renouvellement, le voyant s'éteignait au bout
+  // de 45 s alors que la partie durait encore.
+  sockJoueur2.write(`<gz a="hello" n="${JOUEUR2}" f="${'0'.repeat(24)}" />\0`);
+  await wait(400);
+  sockJoueur2.write('<gz a="challenge" u="pepino" />\0');
+  await wait(900);
+  assert.equal(await voyantDe(JOUEUR2), 'grapiz', 'la partie allume le voyant');
+  await wait(TTL + 3000);                        // bien plus que le bail
+  assert.equal(await voyantDe(JOUEUR2), 'grapiz',
+    'la partie dure toujours : le voyant tient');
+  sockJoueur2.write('<gz a="part" />\0');        // forfait = fin de partie
+  await wait(900);
+  assert.equal(await voyantDe(JOUEUR2), null, 'partie finie, voyant éteint');
+});
+
+test('le client light lit le statut porté par une arrivée', async () => {
+  // Contrôle de source (le client est une page, pas un module) : la branche
+  // « userjoined » doit passer le s= reçu au cache des voyants.
+  const fs = require('node:fs');
+  const page = fs.readFileSync(path.join(ROOT, 'public', 'light.html'), 'utf8');
+  const branche = /case "v": \{[\s\S]*?\n      \}/.exec(page);
+  assert.ok(branche, 'la branche userjoined existe');
+  assert.match(branche[0], /rememberStatut\(uj, attr\(xml, "s"\)\)/,
+    'elle met le voyant à jour depuis le statut reçu');
+});

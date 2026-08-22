@@ -4565,10 +4565,15 @@
         break;
       }
 
-      case "v": { // userjoined: <v u="..." f="<bouille>" g="room" />
+      case "v": { // userjoined: <v u="..." f="<bouille>" s="<statut>" g="room" />
         var rj = attr(xml, "g"); var uj = attr(xml, "u");
         if (rj && uj) {
           rememberBouille(uj, attr(xml, "f"));
+          // Le statut voyage AVEC l'arrivée (buildUserAttrs le met dans s=) :
+          // sans le lire, un joueur qui revenait gardait le voyant de jeu qu'on
+          // avait mis en cache avant son départ — « il joue à Grapiz » alors
+          // qu'il a fini depuis longtemps.
+          rememberStatut(uj, attr(xml, "s"));
           if (!state.usersByRoom[rj]) state.usersByRoom[rj] = {};
           state.usersByRoom[rj][uj] = { staff: attr(xml, "m") === "1" };
           if (rj === state.room) { renderUsers(); systemLine(uj + (estPrive(rj) ? " est là." : " a rejoint le salon.")); }
