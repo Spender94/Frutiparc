@@ -338,7 +338,9 @@ eq(discs.hugo, 1, "bandas: le perdant perd un disque");
 // Le cœur du jeu : Board.moveSprite ne tue que si la destination sort du
 // plateau. Un fruit du centre, avec du vide devant lui, ne meurt jamais de son
 // propre mouvement ; un fruit collé au bord vers lequel on avance, si. D'où
-// l'évaluation : matériel d'abord, puis COHÉSION et MARGE au bord.
+// l'ÉCOLE DU CENTRE : le bloc principal à plein prix, les pions écartés
+// décotés (sacrifiables), et la position du bloc qui peut peser plus lourd
+// qu'un fruit.
 
 // Antisymétrie : sans elle, le négamax raconte n'importe quoi.
 var bs = mk(["0011", "0011", "....", "...."]);
@@ -403,6 +405,80 @@ for (var p = 0; p < 20; p++) {
 }
 ok(victoires > defaites * 2, "bot: la nouvelle IA domine le simple différentiel matériel ("
   + victoires + " – " + defaites + ")");
+
+// ── L'école du centre ───────────────────────────────────────────────────────
+// LE CONTRÔLE DU CENTRE IMPORTE PLUS QUE LE MATÉRIEL : quatre fruits en carré
+// central valent plus que CINQ fruits éparpillés sur les bords. C'est ce qui
+// autorise le bot à supprimer lui-même ses pions des côtés pour souder le bloc.
+var carre = mk([".......", ".......", "..00...", "..00...", ".......", ".......", "......1"]);
+var epars = mk(["0.....0", ".......", "...0...", ".......", "0......", ".......", "0.....1"]);
+eq(carre.countSpritesOf(0), 4, "école: le carré compte 4 fruits");
+eq(epars.countSpritesOf(0), 5, "école: l'éparpillement en compte 5");
+ok(Bot.evaluate(carre, 0) > Bot.evaluate(epars, 0),
+  "école: 4 fruits en bloc central > 5 fruits éparpillés — le centre avant le matériel");
+
+// La profondeur suit le niveau jusqu'à 6 demi-coups (l'alpha-bêta les paie) :
+// c'est elle qui convertit le bloc en victoires.
+eq(Bot.depthFor(0.45), 2, "école: le bas de la plage reste battable");
+eq(Bot.depthFor(0.9), 5, "école: un bon niveau voit cinq demi-coups");
+eq(Bot.depthFor(0.97), 6, "école: le meilleur niveau en voit six");
+
+// Le draft suit la doctrine : vachette, renfort, célérité, désordre d'abord.
+eq(Bot.chooseDraft([CARD.ENCLUME, CARD.RENFORT], 1.0, seeded(3)), CARD.RENFORT,
+  "école: renfort piochée avant enclume");
+eq(Bot.chooseDraft([CARD.CONVERSION, CARD.DESORDRE], 1.0, seeded(3)), CARD.DESORDRE,
+  "école: désordre piochée avant conversion");
+eq(Bot.chooseDraft([CARD.ENCLUME, CARD.CELERITE], 1.0, seeded(3)), CARD.CELERITE,
+  "école: célérité piochée avant enclume");
+
+// La CONFISCATION se joue au moment opportun — la main adverse est publique
+// depuis le draft. Une vachette adverse mérite la fenêtre ; un entracte, non ;
+// une main vide, jamais. (Plateau calme, assez de fruits pour qu'aucune
+// clause de fin de partie ne brouille la lecture.)
+function partieCartes(board, mainMoi, mainLui) {
+  var g = new G.BandasGame({ board: board, pool: [], firstTeam: 0 });
+  g.hands[0] = mainMoi.slice(); g.hands[1] = mainLui.slice();
+  return g;
+}
+var calme = ["........", ".000....", ".000....", "........", "....111.", "....111.", "........", "........"];
+var conf = Bot.chooseCardPlay(partieCartes(mk(calme), [CARD.CONFISCATION], [CARD.VACHETTE]), 0, 1.0, seeded(3));
+ok(conf && conf.card === CARD.CONFISCATION, "école: confiscation armée quand l'adversaire tient une vachette");
+eq(Bot.chooseCardPlay(partieCartes(mk(calme), [CARD.CONFISCATION], [CARD.ENTRACTE]), 0, 1.0, seeded(3)), null,
+  "école: confiscation gardée quand l'adversaire n'a qu'un entracte");
+eq(Bot.chooseCardPlay(partieCartes(mk(calme), [CARD.CONFISCATION], []), 0, 1.0, seeded(3)), null,
+  "école: confiscation jamais jouée sur une main vide");
+
+// Le DÉSORDRE se joue quand l'inversion fait mal : l'adversaire en colonne
+// contre le bord droit — son seul coup sûr est LEFT, l'inversé le jette
+// dans le vide.
+var presse = ["........", ".00....1", ".00....1", ".......1", ".......1", ".......1", ".......1", "........"];
+var des = Bot.chooseCardPlay(partieCartes(mk(presse), [CARD.DESORDRE], []), 0, 1.0, seeded(3));
+ok(des && des.card === CARD.DESORDRE, "école: désordre joué quand l'adversaire est adossé au bord");
+
+// Et le bot complet (draft + cartes + coups) finit ses parties proprement :
+// deux parties toutes règles contre lui-même, aucune action illégale.
+for (var pc = 0; pc < 2; pc++) {
+  var rngC = seeded(pc + 31);
+  var complete = new G.BandasGame({ size: 8, rng: rngC });
+  var iterC = 0;
+  while (!complete.ended && iterC < 600) {
+    iterC++;
+    var tC = complete.currentTeam;
+    if (complete.phase === G.PHASE_CARD_SELECTION) {
+      var prise = complete.chooseCard(tC, Bot.chooseDraft(complete.pool, 1.0, rngC));
+      ok(prise.ok, "école: draft légal (partie " + pc + ")");
+      continue;
+    }
+    if (!complete.cardPlayedThisTurn) {
+      var cp = Bot.chooseCardPlay(complete, tC, 1.0, rngC);
+      if (cp) ok(complete.playCard(tC, cp.card, cp.x, cp.y).ok, "école: carte légale (partie " + pc + ")");
+    }
+    if (!complete.ended && complete.currentTeam === tC && complete.phase === G.PHASE_MOVE) {
+      ok(complete.move(tC, Bot.chooseMove(complete.board, tC, 1.0, rngC)).ok, "école: coup légal (partie " + pc + ")");
+    }
+  }
+  ok(complete.ended, "école: la partie toutes règles se conclut (partie " + pc + ")");
+}
 
 // ══ HABILLAGE DES BOTS : identités empruntées au Bouilloscope ═════════════
 // Trois adversaires gravés dans le code, on finissait par les connaître par

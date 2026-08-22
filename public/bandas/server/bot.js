@@ -16,18 +16,28 @@
 //   • les fruits adverses poussent les nôtres : un pion isolé sur un flanc se
 //     fait sortir tout seul, un bloc serré se pousse en bloc.
 //
-// D'où la stratégie que les joueurs d'époque connaissaient : RASSEMBLER UN
-// BLOC AU CENTRE, quitte à abandonner ceux des bords. L'évaluation ci-dessous
-// dit exactement cela — matériel d'abord, puis cohésion (contacts entre les
-// siens) et marge (distance au bord), les deux en MOYENNE par fruit pour
-// qu'aucune forme ne vaille jamais deux fruits.
+// D'où la stratégie que les joueurs d'époque connaissaient : LE CONTRÔLE DU
+// CENTRE IMPORTE PLUS QUE LE MATÉRIEL. On constitue un bloc central fort, et
+// on SUPPRIME SOI-MÊME ses pions des côtés — un pion écarté est déjà à moitié
+// perdu : il se fera sortir seul, ou coûtera des tours à rapatrier. L'évaluation
+// dit exactement cela :
 //
-// Par-dessus, un négamax de profondeur 2 à 4 selon le niveau : le bot voit la
-// réponse adverse, et les meilleurs voient la sienne d'après. Les cartes sont
+//   • un fruit ne vaut son plein prix que DANS le bloc principal (la plus
+//     grande composante connexe) ; un pion écarté est décoté — l'abandonner
+//     contre un meilleur bloc est un bon échange, que le négamax fait donc ;
+//   • la position du BLOC (sa distance moyenne au bord) pèse davantage qu'un
+//     fruit : à choix égal, on recentre plutôt que de compter les têtes ;
+//   • la cohésion (contacts entre les siens) départage — un carré résiste
+//     mieux aux poussées qu'un serpent.
+//
+// Par-dessus, un négamax alpha-bêta de profondeur 2 à 6 selon le niveau : le
+// bot voit la réponse adverse, et les meilleurs voient trois échanges entiers
+// — c'est la profondeur qui convertit le bloc en victoires. Les cartes sont
 // choisies par SIMULATION quand leur effet se calcule (enclume, vachette,
-// conversion, pétrification, charge, célérité, renfort) — on ne joue une carte
-// que si le plateau qu'elle laisse vaut mieux, ce qui vaut mieux que de la
-// lâcher au hasard sur une cible au hasard.
+// conversion, pétrification, charge, célérité, renfort, désordre) — on ne joue
+// une carte que si le plateau qu'elle laisse vaut mieux. La confiscation, elle,
+// se joue AU MOMENT OPPORTUN : la main adverse est publique depuis le draft,
+// on n'arme la fenêtre que si elle a une vraie carte à voler.
 //
 (function (root, factory) {
   var E = (typeof require !== "undefined") ? require("../engine.js") : (root.Bandas && root.Bandas.engine);
@@ -42,31 +52,75 @@
   var WIN = 100000;
   var CARD = G.CARD;
 
-  // Poids de l'évaluation. Le matériel domine ; la forme départage.
-  var W_FRUIT = 150;    // un fruit
-  var W_COHESION = 45;  // contacts moyens par fruit (0…4)
-  var W_MARGE = 35;     // distance moyenne au bord (0…~3,5)
+  // Poids de l'évaluation. LE CENTRE AVANT LE MATÉRIEL : un fruit ne vaut son
+  // plein prix que dans le bloc principal, et la position du bloc peut peser
+  // plus lourd qu'un fruit. W_FRUIT reste l'unité de compte (« un fruit »)
+  // pour les seuils de cartes et l'ombrage des fins de partie.
+  // (Réglés au banc d'essai — duels graines fixes contre l'évaluation
+  // matérielle d'avant, à profondeur égale : décoter davantage l'écarté ou
+  // surpayer la marge rendait le bot passif, et il perdait.)
+  var W_FRUIT = 150;    // l'unité : un fruit de plein droit
+  var W_BLOC = 150;     // un fruit DU bloc principal
+  var W_ECART = 90;     // un pion écarté du bloc — décoté, donc sacrifiable
+  var W_COHESION = 60;  // contacts moyens par fruit (0…4) : un carré, pas un serpent
+  var W_MARGE = 45;     // distance moyenne au bord DU BLOC (0…~3,5) : le centre
 
   // ── Lecture d'une position ────────────────────────────────────────────────
-  // Pour une équipe : son compte, ses contacts (paires de voisins orthogonaux)
-  // et sa marge cumulée au bord. Un seul balayage du plateau pour les deux
-  // équipes — l'évaluation tourne des centaines de fois par décision.
+  // Pour une équipe : son compte, ses contacts (paires de voisins orthogonaux),
+  // et son BLOC PRINCIPAL — la plus grande composante connexe (orthogonale),
+  // avec sa marge au bord cumulée. À taille égale, le bloc le plus central
+  // fait foi. L'évaluation tourne des centaines de fois par décision : un
+  // balayage pour compter, un parcours en pile pour les composantes.
   function analyse(board) {
-    var n = [0, 0], contacts = [0, 0], marge = [0, 0];
-    for (var y = board.minY; y <= board.maxY; y++) {
-      for (var x = board.minX; x <= board.maxX; x++) {
-        var e = board.getElement({ x: x, y: y });
+    var minX = board.minX, maxX = board.maxX, minY = board.minY, maxY = board.maxY;
+    var w = maxX - minX + 1, h = maxY - minY + 1;
+    var n = [0, 0], contacts = [0, 0];
+    var blocN = [0, 0], blocMarge = [0, 0];
+    var grille = new Int8Array(w * h);   // -1 vide/autre, 0/1 fruit
+    var x, y, e;
+    for (y = minY; y <= maxY; y++) {
+      for (x = minX; x <= maxX; x++) {
+        e = board.getElement({ x: x, y: y });
+        grille[(y - minY) * w + (x - minX)] = (e === 0 || e === 1) ? e : -1;
         if (e !== 0 && e !== 1) continue;
         n[e]++;
         // Contacts : on ne regarde que la droite et le bas — chaque paire est
         // ainsi comptée une fois.
-        if (x < board.maxX && board.getElement({ x: x + 1, y: y }) === e) contacts[e]++;
-        if (y < board.maxY && board.getElement({ x: x, y: y + 1 }) === e) contacts[e]++;
-        var m = Math.min(x - board.minX, board.maxX - x, y - board.minY, board.maxY - y);
-        marge[e] += m;
+        if (x < maxX && board.getElement({ x: x + 1, y: y }) === e) contacts[e]++;
+        if (y < maxY && board.getElement({ x: x, y: y + 1 }) === e) contacts[e]++;
       }
     }
-    return { n: n, contacts: contacts, marge: marge };
+    var vu = new Int8Array(w * h);
+    var pile = [];
+    for (var dep = 0; dep < w * h; dep++) {
+      e = grille[dep];
+      if (e < 0 || vu[dep]) continue;
+      var taille = 0, marge = 0;
+      pile.length = 0; pile.push(dep); vu[dep] = 1;
+      while (pile.length) {
+        var i = pile.pop();
+        taille++;
+        var ix = i % w, iy = (i - ix) / w;
+        marge += Math.min(ix, w - 1 - ix, iy, h - 1 - iy);
+        if (ix > 0 && !vu[i - 1] && grille[i - 1] === e) { vu[i - 1] = 1; pile.push(i - 1); }
+        if (ix < w - 1 && !vu[i + 1] && grille[i + 1] === e) { vu[i + 1] = 1; pile.push(i + 1); }
+        if (iy > 0 && !vu[i - w] && grille[i - w] === e) { vu[i - w] = 1; pile.push(i - w); }
+        if (iy < h - 1 && !vu[i + w] && grille[i + w] === e) { vu[i + w] = 1; pile.push(i + w); }
+      }
+      if (taille > blocN[e] || (taille === blocN[e] && marge > blocMarge[e])) {
+        blocN[e] = taille; blocMarge[e] = marge;
+      }
+    }
+    return { n: n, contacts: contacts, blocN: blocN, blocMarge: blocMarge };
+  }
+
+  // Ce que vaut le camp `t` : son bloc à plein prix, ses écartés décotés, sa
+  // cohésion, et la CENTRALITÉ du bloc (marge moyenne au bord de ses membres).
+  function valeurCamp(a, t) {
+    var bloc = a.blocN[t], ecart = a.n[t] - bloc;
+    return W_BLOC * bloc + W_ECART * ecart
+      + W_COHESION * (a.contacts[t] / a.n[t])
+      + W_MARGE * (bloc > 0 ? a.blocMarge[t] / bloc : 0);
   }
 
   // Évaluation du POINT DE VUE de `team`. Antisymétrique : eval(b,t) === -eval(b,1-t).
@@ -76,11 +130,7 @@
     if (my <= 0 && op <= 0) return 0;
     if (my <= 0) return -WIN;
     if (op <= 0) return WIN;
-    var cohMy = a.contacts[team] / my, cohOp = a.contacts[1 - team] / op;
-    var margeMy = a.marge[team] / my, margeOp = a.marge[1 - team] / op;
-    return W_FRUIT * (my - op)
-      + W_COHESION * (cohMy - cohOp)
-      + W_MARGE * (margeMy - margeOp);
+    return valeurCamp(a, team) - valeurCamp(a, 1 - team);
   }
 
   function applyMove(board, team, d) {
@@ -97,8 +147,13 @@
   // gagner en quatre valent pareil, et le bot tourne en rond au lieu de
   // conclure — il lui arrivait même de laisser filer un gain immédiat parce
   // qu'un autre chemin menait au même WIN plus loin.
-  function negamax(board, team, depth, ply) {
+  //
+  // Coupe alpha-bêta : appelé plein cadre (−∞, +∞) à la racine, il rend la
+  // valeur EXACTE — les coupes n'écourtent que les branches déjà départagées.
+  // C'est elle qui paie les nouvelles profondeurs : 6 demi-coups ≈ 8 ms.
+  function negamax(board, team, depth, ply, alpha, beta) {
     ply = ply || 0;
+    if (alpha === undefined) { alpha = -Infinity; beta = Infinity; }
     var my = board.countSpritesOf(team), op = board.countSpritesOf(1 - team);
     if (my <= 0 || op <= 0) {
       if (my <= 0 && op <= 0) return 0;
@@ -107,14 +162,21 @@
     if (depth <= 0) return evaluate(board, team);
     var best = -Infinity;
     for (var i = 0; i < DIRS.length; i++) {
-      var v = -negamax(applyMove(board, team, DIRS[i]), 1 - team, depth - 1, ply + 1);
+      var v = -negamax(applyMove(board, team, DIRS[i]), 1 - team, depth - 1, ply + 1, -beta, -alpha);
       if (v > best) best = v;
+      if (v > alpha) alpha = v;
+      if (alpha >= beta) break;
     }
     return best;
   }
 
   // Profondeur de recherche : le niveau, c'est d'abord ce que le bot VOIT.
-  function depthFor(skill) { return skill < 0.6 ? 2 : (skill < 0.85 ? 3 : 4); }
+  // Le bas de la plage reste à 2-3 (battable, et par des enfants) ; le haut
+  // monte à 5-6 depuis l'alpha-bêta — c'est là que l'école du centre convertit :
+  // à profondeur égale 6, elle bat l'évaluation matérielle 20-11 (40 duels).
+  function depthFor(skill) {
+    return skill < 0.6 ? 2 : (skill < 0.85 ? 3 : (skill < 0.95 ? 5 : 6));
+  }
 
   // Note chaque direction pour `team` (profondeur `depth` demi-coups au total).
   function scoreMoves(board, team, depth) {
@@ -139,9 +201,24 @@
 
   // ── Draft ─────────────────────────────────────────────────────────────────
   // Préférence simple, sinon au hasard (les faibles piochent moins bien).
-  var DRAFT_PREF = [CARD.VACHETTE, CARD.ENCLUME, CARD.RENFORT, CARD.CONVERSION,
-    CARD.CHARGE, CARD.CELERITE, CARD.PETRIFICATION, CARD.PIEGE,
-    CARD.DESORDRE, CARD.CONFISCATION, CARD.SOLO, CARD.ENTRACTE];
+  // L'école du centre pioche dans cet ordre : vachette (une colonne rasée),
+  // renfort (le bloc s'épaissit), célérité (deux poussées sans réponse),
+  // désordre (leur pas de côté devient un pas dans le vide), puis la
+  // confiscation — jouable au moment opportun maintenant que le bot lit la
+  // main adverse. Les cartes d'appoint ferment la marche.
+  var DRAFT_PREF = [CARD.VACHETTE, CARD.RENFORT, CARD.CELERITE, CARD.DESORDRE,
+    CARD.CONFISCATION, CARD.ENCLUME, CARD.CONVERSION, CARD.CHARGE,
+    CARD.PETRIFICATION, CARD.PIEGE, CARD.SOLO, CARD.ENTRACTE];
+
+  // Ce que vaut une carte EN MAIN, en fruits — sert à jauger ce qu'une
+  // confiscation peut voler. Même hiérarchie que le draft.
+  var CARD_VAL = {};
+  CARD_VAL[CARD.VACHETTE] = 1.3; CARD_VAL[CARD.RENFORT] = 1.1;
+  CARD_VAL[CARD.CELERITE] = 0.9; CARD_VAL[CARD.DESORDRE] = 0.7;
+  CARD_VAL[CARD.CONFISCATION] = 0.5; CARD_VAL[CARD.ENCLUME] = 0.9;
+  CARD_VAL[CARD.CONVERSION] = 1.0; CARD_VAL[CARD.CHARGE] = 0.6;
+  CARD_VAL[CARD.PETRIFICATION] = 0.6; CARD_VAL[CARD.PIEGE] = 0.4;
+  CARD_VAL[CARD.SOLO] = 0.35; CARD_VAL[CARD.ENTRACTE] = 0.25;
   function chooseDraft(pool, skill, rng) {
     rng = rng || Math.random;
     if (rng() > skill) return pool[Math.floor(rng() * pool.length)];
@@ -325,15 +402,46 @@
           break;
         }
 
-        case CARD.DESORDRE:
-          // Le prochain mouvement adverse est inversé : d'autant plus fort que
-          // l'adversaire est serré contre un bord. Forfait modéré.
-          proposer(card, null, W_FRUIT * 0.6);
+        case CARD.DESORDRE: {
+          // L'adversaire ne sait pas qu'il sera inversé : il choisira SON
+          // meilleur mouvement, et c'est l'OPPOSÉ qui s'appliquera. L'apport
+          // de la carte, c'est l'ÉCART entre ces deux mondes — même mouvement
+          // à nous, même adversaire naïf, retourné ou non. Fort quand il est
+          // adossé à un bord (son pas de côté devient un pas dans le vide) ;
+          // presque nul sur un plateau ouvert — la carte attend son moment.
+          var meilleurInv = -Infinity, meilleurDroit = -Infinity;
+          DIRS.forEach(function (dm) {
+            var b1 = applyMove(board, team, dm);
+            if (b1.countSpritesOf(team) <= 0 || b1.countSpritesOf(1 - team) <= 0) return;
+            var naifD = DIRS[0], naifV = -Infinity;
+            DIRS.forEach(function (dd) {
+              var v = -negamax(applyMove(b1, 1 - team, dd), team, 1, 1);
+              if (v > naifV) { naifV = v; naifD = dd; }
+            });
+            var vInv = valeurSansCarte(applyMove(b1, 1 - team, E.dirOpposite(naifD)), team, depth);
+            var vDroit = valeurSansCarte(applyMove(b1, 1 - team, naifD), team, depth);
+            if (vInv > meilleurInv) meilleurInv = vInv;
+            if (vDroit > meilleurDroit) meilleurDroit = vDroit;
+          });
+          if (meilleurInv > -Infinity) proposer(card, null, meilleurInv - meilleurDroit);
           break;
+        }
 
-        case CARD.CONFISCATION:
-          if (game.hands[1 - team] && game.hands[1 - team].length) proposer(card, null, W_FRUIT * 0.5);
+        case CARD.CONFISCATION: {
+          // Le moment opportun : la main adverse est PUBLIQUE depuis le draft.
+          // Voler compte double — il perd sa carte, on la gagne — mais la
+          // fenêtre ne dure que son prochain tour : on ne l'arme que s'il a
+          // une vraie carte à jouer. Une main d'appoint ne la mérite pas.
+          var leurMain = game.hands[1 - team];
+          if (!leurMain || !leurMain.length) break;
+          var vol = 0;
+          leurMain.forEach(function (c2) {
+            var v = CARD_VAL[c2] !== undefined ? CARD_VAL[c2] : 0.3;
+            if (v > vol) vol = v;
+          });
+          proposer(card, null, W_FRUIT * (0.15 + 0.85 * vol));
           break;
+        }
 
         case CARD.ENTRACTE:
           // Ne pas bouger est un vrai coup quand TOUS nos mouvements coûtent :
