@@ -67,6 +67,10 @@
     // Habillage des bots : pseudo + bouille empruntés au Bouilloscope (voir
     // _refreshBotIdentities). Absent en tests purs → noms d'origine.
     this.botIdentity = opts.botIdentity || null;
+    // Hook (de, vers) quand un défi direct ABOUTIT : la partie démarre sans
+    // fenêtre d'acceptation, l'hôte peut donc prévenir un défié qui n'a pas
+    // l'écran sous les yeux (notification sur son téléphone).
+    this.onDefi = opts.onDefi || null;
     this.onDiscLost = opts.onDiscLost || null;
     if (opts.withBots !== false) this._registerBots();
   }
@@ -332,6 +336,9 @@
         if (!rc.ok) return [this._err(username, rc.error)];
         var ra = this.lobby.acceptChallenge(attrs.u, rc.challengeId);
         if (!ra.ok) return [this._err(username, ra.error)];
+        if (this.onDefi && !this.bots[attrs.u]) {
+          try { this.onDefi(username, attrs.u); } catch (e) { /* la partie prime */ }
+        }
         return this._startSession(ra.game).concat(this._lobbyBroadcast());
       }
 

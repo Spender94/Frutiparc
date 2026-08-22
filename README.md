@@ -143,10 +143,20 @@ dans `push_subscriptions`. Optionnel : `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`
 (pour partager la clé entre instances) et `VAPID_CONTACT` (mailto: ou https:).
 **Ne jamais régénérer la clé** : tous les abonnements existants tomberaient.
 
-**La règle d'envoi :** on ne pousse qu'aux joueurs **absents** (aucune socket
-de chat vivante) — un joueur devant son écran voit déjà tout. Le service worker
-(`public/light-sw.js`) n'a **pas** de gestionnaire `fetch` : aucun cache, il ne
-peut rien casser (jeux, Ruffle). Tests : `test/appliMobile.test.js` (le faux
+**La règle d'envoi :** on ne pousse qu'aux joueurs **absents** — et « absent »
+se mesure à la **fraîcheur**, pas à l'existence d'une socket : une appli
+suspendue garde sa connexion ouverte des heures sans rien dire. Une socket ne
+compte comme présence que si elle a parlé récemment (`PRESENCE_FRESH_MS`,
+130 s par défaut — le SWF ping toutes les 60 s, l'appli bat toutes les 25 s
+quand elle est visible) et que l'appli ne s'est pas déclarée en arrière-plan
+(`<e h="1"/>`, envoyé en quittant le premier plan). Notifications envoyées :
+courrier, message privé, **défi Grapiz/Frutibandas** (la partie démarre
+sur-le-champ !), **citation sur le forum** (`[quote=…]`, lien direct vers le
+sujet), événements. Diagnostic : `/api/push/etat?sid=…` rend la présence
+socket par socket et le journal des dernières décisions d'envoi. Le service
+worker (`public/light-sw.js`) n'a **pas** de gestionnaire `fetch` : aucun
+cache, il ne peut rien casser (jeux, Ruffle). Tests :
+`test/appliMobile.test.js` et `test/citationsForum.test.js` (le faux
 « téléphone » déchiffre réellement les charges, RFC 8291).
 
 ### Publier sur le Play Store (Android)

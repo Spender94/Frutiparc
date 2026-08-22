@@ -43,7 +43,7 @@ self.addEventListener('notificationclick', function (e) {
       if (f.url.indexOf('/light') >= 0 && 'focus' in f) {
         try {
           var p = new URL(u, self.location.origin).searchParams;
-          f.postMessage({ ouvre: p.get('ouvre') || '', avec: p.get('avec') || '' });
+          f.postMessage({ ouvre: p.get('ouvre') || '', avec: p.get('avec') || '', sujet: p.get('sujet') || '' });
         } catch (err) { /* lien illisible : le focus suffit */ }
         return f.focus();
       }

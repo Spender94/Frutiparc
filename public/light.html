@@ -2351,6 +2351,7 @@
     ws: null,
     connected: false,
     reconnectTimer: null,
+    coupureTimer: null,   // annonce différée de « Connexion perdue » (4 s)
     intentionalClose: false,
     usersByRoom: {},   // room -> { pseudo: { staff } } (m="1" du salon)
     bouilleByUser: {},
@@ -2655,17 +2656,33 @@
   var lienProfond = null;
   try {
     var pUrl = new URLSearchParams(window.location.search);
-    if (pUrl.get("ouvre")) lienProfond = { ouvre: pUrl.get("ouvre"), avec: pUrl.get("avec") || "" };
+    if (pUrl.get("ouvre")) {
+      lienProfond = { ouvre: pUrl.get("ouvre"), avec: pUrl.get("avec") || "", sujet: pUrl.get("sujet") || "" };
+    }
   } catch (e) { /* pas de lien */ }
-  function routerOuverture(ouvre, avec) {
+  function routerOuverture(ouvre, avec, sujet) {
     if (ouvre === "prive" && avec) { activateTab("chat"); openMenu(false); ouvrirPrive(avec); return; }
     if (ouvre === "mail" || ouvre === "evenements" || ouvre === "historique") { activateTab(ouvre); return; }
+    // Une citation sur le forum mène AU SUJET : on (re)charge le cadre avec le
+    // sujet demandé — le forum s'ouvre dessus au lieu de l'accueil.
+    if (ouvre === "forum" && sujet) {
+      activateTab("forum"); openMenu(false);
+      var fr = $("#forum-frame");
+      if (fr && state.sid) {
+        fr.setAttribute("src", "/fb/?sid=" + encodeURIComponent(state.sid)
+          + "&from=light&sujet=" + encodeURIComponent(sujet));
+      }
+      return;
+    }
+    // Un défi Grapiz/Frutibandas (ou tout jeu en cadre) : la notification
+    // amène directement à la table.
+    if (CADRES_JEU[ouvre]) { activateTab(ouvre); openMenu(false); return; }
     if (ouvre === "chat" || ouvre === "forum" || ouvre === "scores") { activateTab(ouvre); openMenu(false); }
   }
   function appliquerLienProfond() {
     if (!lienProfond) return;
     var l = lienProfond; lienProfond = null;
-    routerOuverture(l.ouvre, l.avec);
+    routerOuverture(l.ouvre, l.avec, l.sujet);
   }
 
   // ── Navigation : le MENU est un TIROIR (overlay) ──
@@ -4244,7 +4261,7 @@
     // nous souffle le lien profond au lieu de recharger.
     navigator.serviceWorker.addEventListener("message", function (e) {
       var d = e.data || {};
-      if (d.ouvre) routerOuverture(d.ouvre, d.avec || "");
+      if (d.ouvre) routerOuverture(d.ouvre, d.avec || "", d.sujet || "");
     });
   }
 
@@ -4342,6 +4359,9 @@
   }
   function setConnected(on) {
     state.connected = on;
+    // Reconnecté avant l'annonce de coupure : on ne dit rien du tout — la
+    // bascule d'appli redevient invisible, comme elle devrait l'être.
+    if (on && state.coupureTimer) { clearTimeout(state.coupureTimer); state.coupureTimer = null; }
     var cd = $("#conn-dot"); if (cd) cd.classList.toggle("on", on); // (voyant retiré de l'accueil)
     $("#compose-input").disabled = !on;
     $("#compose-send").disabled = !on;
@@ -4360,7 +4380,20 @@
     ws.onmessage = function (ev) { onWsData(ev.data); };
     ws.onclose = function () {
       setConnected(false);
-      if (!state.intentionalClose) { systemLine("Connexion perdue. Reconnexion…"); scheduleReconnect(); }
+      // Ne pas crier tout de suite : au retour d'arrière-plan, la socket est
+      // presque toujours morte et la reconnexion prend une seconde — annoncer
+      // « Connexion perdue » à chaque bascule d'appli faisait croire à une
+      // vraie déconnexion. La ligne n'apparaît que si ça TRAÎNE (4 s), donc
+      // uniquement sur une vraie coupure (réseau tombé, serveur injoignable).
+      if (!state.intentionalClose) {
+        if (!state.coupureTimer) {
+          state.coupureTimer = setTimeout(function () {
+            state.coupureTimer = null;
+            if (!state.connected && !state.intentionalClose) systemLine("Connexion perdue. Reconnexion…");
+          }, 4000);
+        }
+        scheduleReconnect();
+      }
     };
     ws.onerror = function () { try { ws.close(); } catch (e) {} };
   }
@@ -4382,9 +4415,18 @@
   // GELÉE telle quelle, socket morte comprise), et le retour du réseau
   // (online — ascenseur, métro, avion).
   function assurerSocket() {
-    if (document.hidden || state.intentionalClose || !state.sid) return;
+    // Passage en ARRIÈRE-PLAN : on le DIT au serveur (<e h="1"/>) avant que le
+    // téléphone ne gèle la page. Une socket déclarée en arrière-plan ne compte
+    // plus comme présence : les notifications (courrier, MP, défis…) partent
+    // tout de suite au lieu d'être étouffées par une socket zombie.
+    if (document.hidden) { wsSend('<e h="1" />'); return; }
+    if (state.intentionalClose || !state.sid) return;
     var rs = state.ws ? state.ws.readyState : 3; // 0=CONNECTING 1=OPEN 2=CLOSING 3=CLOSED
-    if (rs === 1) { requestChannelList(); return; }   // socket vivante : simple rafraîchissement
+    if (rs === 1) {
+      wsSend('<e h="0" />');          // de retour au premier plan : présence rétablie
+      requestChannelList();
+      return;
+    }
     if (rs >= 2) {                                     // socket tombée : reconnexion immédiate
       if (state.reconnectTimer) { clearTimeout(state.reconnectTimer); state.reconnectTimer = null; }
       connectWs();
@@ -4393,6 +4435,9 @@
   document.addEventListener("visibilitychange", assurerSocket);
   window.addEventListener("pageshow", function (e) { if (e.persisted) assurerSocket(); });
   window.addEventListener("online", assurerSocket);
+  // Dernier souffle avant le gel (bfcache/fermeture) : le même signal — s'il
+  // part, le serveur sait sans attendre que la fraîcheur expire.
+  window.addEventListener("pagehide", function () { wsSend('<e h="1" />'); });
   // Battement de cœur : un <e /> (ping) toutes les 25 s quand on est visible.
   // Les box et proxys ferment les WebSockets muettes ; le ping les tient
   // éveillées, et une socket morte se détecte en secondes plutôt qu'au

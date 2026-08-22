@@ -4513,20 +4513,27 @@ async function deliverMailToRecipients(mail, senderUsername) {
 // FPFileMng / listener.main.onNewMail expects <ax from="..." subject="..." />.
 function notifyNewMail(targetUsername, mail) {
   const socks = getSocketsForUsername(targetUsername);
-  if (!socks.length) {
-    // Personne devant l'écran : c'est le téléphone qui prévient (appli /light
-    // installée et abonnée — sans abonnement, pousserNotif ne fait rien).
-    const de = String(mail.fromAddr || mail.from || '').split('@')[0] || 'Frutiparc';
-    pousserNotif(targetUsername, {
-      t: '📬 Nouveau courrier',
-      c: `${de} — ${String(mail.subject || 'sans objet')}`,
-      u: '/light?ouvre=mail',
-      tag: 'courrier',
-    }, PUSH_TTL.courrier);
-    return;
-  }
+  // La trame <ax> part vers toutes les sockets — une socket suspendue l'avale
+  // sans que personne ne la voie : elle ne compte donc PAS comme « prévenu ».
   const xml = `<${CMD.newmail} from="${escapeXml(mail.fromAddr || mail.from || '')}" subject="${escapeXml(mail.subject || '')}" />`;
   for (const sock of socks) sendToClient(sock, xml);
+  // Personne de FRAIS devant un écran : c'est le téléphone qui prévient
+  // (appli /light installée et abonnée — sans abonnement, pousserNotif ne
+  // fait rien). Avant, une appli en poche — socket ouverte mais muette —
+  // suffisait à étouffer la notification : c'était le bug « je ne reçois
+  // aucune notification ».
+  if (estJoignableEnDirect(targetUsername)) {
+    noterDecisionPush(targetUsername, 'courrier', false, 'présent (socket fraîche au premier plan)');
+    return;
+  }
+  noterDecisionPush(targetUsername, 'courrier', true, 'absent → envoyé');
+  const de = String(mail.fromAddr || mail.from || '').split('@')[0] || 'Frutiparc';
+  pousserNotif(targetUsername, {
+    t: '📬 Nouveau courrier',
+    c: `${de} — ${String(mail.subject || 'sans objet')}`,
+    u: '/light?ouvre=mail',
+    tag: 'courrier',
+  }, PUSH_TTL.courrier);
 }
 
 // Allume le voyant « forum » de l'écran digital du bureau (main.swf).
@@ -5561,7 +5568,9 @@ const pushAbonnements = new Map();   // endpoint → { username, endpoint, keys:
 let pushPret = false;
 let PUSH_CLE_PUBLIQUE = '';
 
-const PUSH_TTL = { courrier: 24 * 3600, mp: 3600, evenement: 12 * 3600 };
+// defi : l'horloge de la partie fait 600 s — au-delà, la notification ne mène
+// plus qu'à un forfait déjà consommé ; forum : une citation se lit plus tard.
+const PUSH_TTL = { courrier: 24 * 3600, mp: 3600, evenement: 12 * 3600, defi: 600, forum: 24 * 3600 };
 
 function pushInit(cles, nAbonnements) {
   // Le sujet VAPID identifie l'expéditeur auprès des services de poussée
@@ -5586,8 +5595,33 @@ if (!process.env.DATABASE_URL) {
   pushInit(cles, 0);
 }
 
+// « Joignable en direct » ne veut plus dire « une socket existe » : une appli
+// mobile suspendue garde sa socket ouverte pendant des heures — et le joueur,
+// lui, est dans sa poche. Une socket ne compte que si elle est FRAÎCHE (une
+// trame reçue récemment : le SWF ping toutes les 60 s, le light bat toutes
+// les 25 s quand il est visible) et pas déclarée en arrière-plan (<e h="1"/>).
+// La fenêtre couvre deux pings SWF ratés ; PRESENCE_FRESH_MS pour l'ajuster.
+const PRESENCE_FRESH_MS = Math.max(1000, Number(process.env.PRESENCE_FRESH_MS) || 130000);
 function estJoignableEnDirect(username) {
-  return getSocketsForUsername(username).length > 0;
+  const maintenant = Date.now();
+  for (const sock of getSocketsForUsername(username)) {
+    const cl = xmlSocketClients.get(sock);
+    if (!cl || cl.enArrierePlan) continue;
+    if (maintenant - (cl.derniereTrame || 0) <= PRESENCE_FRESH_MS) return true;
+  }
+  return false;
+}
+
+// Journal des décisions d'envoi — la réponse à « pourquoi mon téléphone n'a
+// pas sonné ? ». Chaque déclencheur note ce qu'il a décidé et pourquoi ;
+// /api/push/etat rend au joueur ses propres entrées.
+const pushJournal = [];
+function noterDecisionPush(username, type, envoye, raison) {
+  pushJournal.push({
+    at: Date.now(), username: String(username || '').toLowerCase(),
+    type: type, envoye: !!envoye, raison: raison || '',
+  });
+  if (pushJournal.length > 300) pushJournal.shift();
 }
 
 // Envoi à un appareil. Rend false si l'abonnement est mort (et le retire).
@@ -5625,9 +5659,13 @@ function pousserNotif(username, charge, ttl) {
 // Tous les joueurs abonnés ET absents (les présents voient déjà l'écran).
 function pousserNotifATous(charge, ttl) {
   if (!pushPret) return;
-  const joignable = new Map();   // username → a une socket vivante ?
+  const joignable = new Map();   // username → une socket FRAÎCHE au premier plan ?
   for (const abo of pushAbonnements.values()) {
-    if (!joignable.has(abo.username)) joignable.set(abo.username, estJoignableEnDirect(abo.username));
+    if (!joignable.has(abo.username)) {
+      const direct = estJoignableEnDirect(abo.username);
+      joignable.set(abo.username, direct);
+      noterDecisionPush(abo.username, charge.tag || 'evenement', !direct, direct ? 'présent (socket fraîche)' : 'absent → envoyé');
+    }
     if (!joignable.get(abo.username)) pushEnvoyerBrut(abo, charge, ttl);
   }
 }
@@ -5641,7 +5679,11 @@ function pousserNotifMpSiAbsent(g, fromUsername, texteBrut) {
     const cible = String(dest || '').toLowerCase();
     if (!cible || cible === String(fromUsername).toLowerCase()) continue;
     if (NPC_USERNAMES.has(cible)) continue;
-    if (estJoignableEnDirect(cible)) continue;
+    if (estJoignableEnDirect(cible)) {
+      noterDecisionPush(cible, 'mp', false, 'présent (socket fraîche au premier plan)');
+      continue;
+    }
+    noterDecisionPush(cible, 'mp', true, 'absent → envoyé');
     const extrait = String(texteBrut || '').replace(/<[^>]*>/g, '').slice(0, 90);
     pousserNotif(cible, {
       t: `💬 ${getDisplayName(fromUsername)} t'écrit`,
@@ -5649,6 +5691,68 @@ function pousserNotifMpSiAbsent(g, fromUsername, texteBrut) {
       u: '/light?ouvre=prive&avec=' + encodeURIComponent(fromUsername),
       tag: 'mp_' + String(fromUsername).toLowerCase(),
     }, PUSH_TTL.mp);
+  }
+}
+
+// Un DÉFI Grapiz/Frutibandas lance la partie immédiatement (pas de fenêtre
+// d'acceptation) : l'horloge du défié tourne déjà. S'il n'est pas frais devant
+// un écran, le téléphone doit sonner tout de suite — c'est la notification la
+// plus urgente du parc.
+function pousserNotifDefiSiAbsent(de, vers, jeu) {
+  if (!pushPret) return;
+  const cible = String(vers || '').toLowerCase();
+  if (!cible || NPC_USERNAMES.has(cible)) return;
+  if (estJoignableEnDirect(cible)) {
+    noterDecisionPush(cible, 'defi_' + jeu, false, 'présent (socket fraîche au premier plan)');
+    return;
+  }
+  noterDecisionPush(cible, 'defi_' + jeu, true, 'absent → envoyé');
+  const nomJeu = jeu === 'bandas' ? 'Frutibandas' : 'Grapiz';
+  pousserNotif(cible, {
+    t: `⚔️ ${getDisplayName(de)} te défie !`,
+    c: `La partie de ${nomJeu} commence — ton horloge tourne.`,
+    u: '/light?ouvre=' + jeu,
+    tag: 'defi_' + jeu,
+  }, PUSH_TTL.defi);
+}
+
+// Une CITATION sur le forum — le bouton « citer » écrit [quote=Pseudo] —
+// mérite de prévenir le cité s'il n'est pas frais devant un écran. Le BBCode
+// porte le nom d'AFFICHAGE : on retombe sur le compte par le pseudo direct,
+// sinon en balayant les displayName. Trois cités au plus par message (un pavé
+// qui cite douze personnes n'est pas douze urgences), jamais l'auteur.
+function usernameDepuisNomAffiche(nom) {
+  const bas = String(nom || '').trim().toLowerCase();
+  if (!bas) return null;
+  if (users[bas]) return bas;
+  for (const k in users) {
+    const u = users[k];
+    if (u && u.displayName && String(u.displayName).toLowerCase() === bas) return k;
+  }
+  return null;
+}
+
+function pousserNotifCitationsForum(auteur, topicId, titre, contenu) {
+  if (!pushPret) return;
+  const vus = new Set();
+  const re = /\[quote=([^\]\n]{1,40})\]/gi;
+  let m;
+  while ((m = re.exec(String(contenu || ''))) !== null && vus.size < 3) {
+    const cible = usernameDepuisNomAffiche(m[1]);
+    if (!cible || vus.has(cible)) continue;
+    if (cible === String(auteur).toLowerCase() || NPC_USERNAMES.has(cible)) continue;
+    vus.add(cible);
+    if (estJoignableEnDirect(cible)) {
+      noterDecisionPush(cible, 'forum', false, 'présent (socket fraîche au premier plan)');
+      continue;
+    }
+    noterDecisionPush(cible, 'forum', true, 'absent → envoyé');
+    pousserNotif(cible, {
+      t: `✏️ ${getDisplayName(auteur)} te cite sur le forum`,
+      c: String(titre || 'Un sujet du forum'),
+      u: '/light?ouvre=forum&sujet=' + Number(topicId),
+      tag: 'forum_' + Number(topicId),
+    }, PUSH_TTL.forum);
   }
 }
 
@@ -5714,7 +5818,29 @@ app.get('/api/push/etat', (req, res) => {
   const username = resolveUsernameFromSid(req.query.sid || '');
   if (!username) return res.status(401).json({ ok: false, error: 'auth' });
   const abo = pushAbonnements.get(String(req.query.endpoint || ''));
-  res.json({ ok: true, actif: !!(abo && abo.username === String(username).toLowerCase()) });
+  const cible = String(username).toLowerCase();
+  // Le diagnostic « pourquoi mon téléphone n'a pas sonné ? » : les appareils
+  // abonnés, la présence telle que le serveur la voit (socket par socket), et
+  // les dernières décisions d'envoi concernant ce joueur.
+  const maintenant = Date.now();
+  let appareils = 0;
+  for (const a of pushAbonnements.values()) if (a.username === cible) appareils++;
+  const sockets = getSocketsForUsername(username).map((s) => {
+    const cl = xmlSocketClients.get(s) || {};
+    return {
+      fraicheurS: cl.derniereTrame ? Math.round((maintenant - cl.derniereTrame) / 1000) : null,
+      arrierePlan: !!cl.enArrierePlan,
+    };
+  });
+  res.json({
+    ok: true,
+    actif: !!(abo && abo.username === cible),
+    appareils: appareils,
+    joignable: estJoignableEnDirect(username),
+    fenetreFraicheurS: Math.round(PRESENCE_FRESH_MS / 1000),
+    sockets: sockets,
+    decisions: pushJournal.filter((d) => d.username === cible).slice(-20),
+  });
 });
 
 // Le service de poussée peut remplacer un abonnement de lui-même
@@ -16778,6 +16904,9 @@ app.post('/api/forum/post', async (req, res) => {
     }
     // Une réponse rallume le voyant forum du bureau, comme un sujet neuf.
     notifyForumNews(username);
+    // Et si elle CITE quelqu'un ([quote=…]), le cité absent est prévenu sur
+    // son téléphone, avec le sujet en lien direct.
+    pousserNotifCitationsForum(username, topicId, topic.title, content);
     res.json({ ok: true, postId: post.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -20782,6 +20911,9 @@ function piocherIdentiteBot(deja, rng) {
 const { GrapizNet } = require('./public/grapiz/server/net.js');
 const grapizNet = new GrapizNet({
   botIdentity: piocherIdentiteBot,
+  // Un défi lance la partie sur-le-champ : si le défié n'est pas frais devant
+  // un écran, son téléphone sonne (voir pousserNotifDefiSiAbsent).
+  onDefi: (de, vers) => pousserNotifDefiSiAbsent(de, vers, 'grapiz'),
   onResult: (session, winner, reason) => {
     console.log(`[grapiz] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
     // Le voyant de jeu s'éteint pour chaque humain de la partie (les
@@ -20834,6 +20966,9 @@ setInterval(() => {
 const { BandasNet } = require('./public/bandas/server/net.js');
 const bandasNet = new BandasNet({
   botIdentity: piocherIdentiteBot,      // cf. piocherIdentiteBot, plus haut
+  // Un défi lance la partie sur-le-champ : si le défié n'est pas frais devant
+  // un écran, son téléphone sonne (voir pousserNotifDefiSiAbsent).
+  onDefi: (de, vers) => pousserNotifDefiSiAbsent(de, vers, 'bandas'),
   onResult: (session, winner, reason) => {
     console.log(`[bandas] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
     for (const p of (session.players || [])) marquerFinDePartie(p.id);
@@ -21668,6 +21803,12 @@ async function handleCBeeMessage(socket, rawXml) {
   const cmdName = CMD_REV[msg.tag] || msg.tag;
   const client = xmlSocketClients.get(socket);
   if (!client) return;
+  // Fraîcheur de présence : toute trame reçue prouve que ce client VIT. Une
+  // appli mobile suspendue garde sa socket ouverte des heures sans rien dire —
+  // c'est ce silence, pas la fermeture, qui signale l'absence (voir
+  // estJoignableEnDirect). Le SWF bureau ping toutes les 60 s, le client
+  // light bat toutes les 25 s quand il est visible.
+  client.derniereTrame = Date.now();
 
   console.log(`[CBee]  <- ${cmdName} (${msg.tag}) ${JSON.stringify(msg.attrs)}`);
 
@@ -21762,7 +21903,14 @@ async function handleCBeeMessage(socket, rawXml) {
 }
 
     // ── ping: just echo back ──
+    // L'attribut h est le SIGNAL DE VISIBILITÉ du client light : <e h="1"/>
+    // en passant en arrière-plan (téléphone rangé, autre appli), <e h="0"/>
+    // au retour. Une socket « en arrière-plan » ne compte plus comme présence
+    // pour les notifications — le téléphone doit sonner tout de suite, sans
+    // attendre que la fraîcheur expire. Le SWF ping sans attribut : rien ne
+    // change pour lui.
     case 'ping': {
+      if (msg.attrs && msg.attrs.h !== undefined) client.enArrierePlan = msg.attrs.h === '1';
       sendToClient(socket, `<${CMD.ping} />`);
       break;
     }

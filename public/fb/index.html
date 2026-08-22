@@ -3186,6 +3186,10 @@ async function init() {
     var bl = document.getElementById('back-chat-link');
     if (bl) bl.style.display = 'inline';
   }
+  // Lien profond d'une notification (« untel te cite ») : ouvrir directement
+  // le sujet cité plutôt que l'accueil du forum.
+  var sujetDemande = Number(new URLSearchParams(window.location.search).get('sujet'));
+  if (sujetDemande > 0) { loadTopic(sujetDemande); return; }
   loadIndex();
 }
 

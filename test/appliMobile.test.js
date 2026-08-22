@@ -306,6 +306,138 @@ test('le bouton « tester » sonne même connecté', async () => {
   assert.match(charge.c, /notifications fonctionnent/i);
 });
 
+// ── La présence par FRAÎCHEUR : le vrai téléphone ─────────────────────────
+// Sur un vrai téléphone, l'appli en arrière-plan garde sa socket ouverte des
+// heures — et avant, cette socket zombie suffisait à étouffer TOUTES les
+// notifications (« je ne reçois rien alors qu'elles sont activées »). Deux
+// parades, testées ici : le signal explicite <e h="1"/> quand l'appli passe
+// derrière, et l'expiration de fraîcheur quand une socket se tait.
+
+test("l'appli passe en arrière-plan (<e h=\"1\"/>) : la socket vit, le téléphone sonne quand même", async () => {
+  const sockDest = await brancher(DEST, sidDest);
+  // Au premier plan : silence (l'écran montre déjà tout).
+  let n = recus.length;
+  await jpost('/api/light/mail/send', { sid: sidExp, to: DEST, subject: 'Premier plan', body: 'Rien ne doit sonner.' });
+  await wait(800);
+  assert.equal(recus.length, n, 'présent au premier plan : silence');
+  // Le téléphone est rangé : l'appli le signale avant d'être gelée.
+  sockDest.write('<e h="1" />\0');
+  await wait(300);
+  n = recus.length;
+  await jpost('/api/light/mail/send', { sid: sidExp, to: DEST, subject: 'Dans la poche', body: 'Là, ça doit sonner.' });
+  const p = await attendrePush(n);
+  const charge = dechiffrer(p.corps);
+  assert.equal(charge.t, '📬 Nouveau courrier');
+  assert.match(charge.c, /Dans la poche/);
+  // Retour au premier plan : le silence revient.
+  sockDest.write('<e h="0" />\0');
+  await wait(300);
+  n = recus.length;
+  await jpost('/api/light/mail/send', { sid: sidExp, to: DEST, subject: 'De retour', body: 'Silence à nouveau.' });
+  await wait(800);
+  assert.equal(recus.length, n, 'revenu au premier plan : plus de doublon');
+  sockDest.destroy();
+  await wait(300);
+});
+
+test('un défi Frutibandas sonne sur le téléphone du défié parti en arrière-plan', async () => {
+  // Les deux joueurs entrent au salon Frutibandas par leur socket de chat.
+  const sExp = await brancher(EXP, sidExp);
+  const sDest = await brancher(DEST, sidDest);
+  sExp.write(`<bd a="hello" n="${EXP}" f="${'0'.repeat(24)}" />\0`);
+  sDest.write(`<bd a="hello" n="${DEST}" f="${'0'.repeat(24)}" />\0`);
+  await attendreTrame(sExp, /<bd e="lobby"/);
+  await attendreTrame(sDest, /<bd e="lobby"/);
+  // Le défié range son téléphone — sa place au salon reste, sa présence non.
+  sDest.write('<e h="1" />\0');
+  await wait(300);
+  const n = recus.length;
+  // Défier lance la partie SUR-LE-CHAMP (pas de fenêtre d'acceptation) : c'est
+  // exactement le moment où le téléphone doit prévenir — l'horloge tourne.
+  sExp.write(`<bd a="challenge" u="${DEST}" />\0`);
+  const p = await attendrePush(n);
+  const charge = dechiffrer(p.corps);
+  assert.match(charge.t, /te défie/, 'le titre annonce le défi : ' + charge.t);
+  assert.match(charge.t, new RegExp(EXP, 'i'), 'et nomme le défieur');
+  assert.match(charge.c, /Frutibandas/);
+  assert.equal(charge.u, '/light?ouvre=bandas', 'le clic mène à la table');
+  sExp.write('<bd a="part" />\0');
+  sDest.write('<bd a="part" />\0');
+  await wait(200);
+  sExp.destroy(); sDest.destroy();
+  await wait(300);
+});
+
+test("l'état du push explique la présence et journalise les décisions", async () => {
+  const etat = await (await fetch(`${BASE}/api/push/etat?sid=${sidDest}&endpoint=${encodeURIComponent(abonnement('/push/tel1').endpoint)}`)).json();
+  assert.equal(etat.ok, true);
+  assert.ok(etat.appareils >= 1, 'au moins un appareil abonné');
+  assert.equal(typeof etat.joignable, 'boolean');
+  assert.ok(etat.fenetreFraicheurS > 0, 'la fenêtre de fraîcheur est annoncée');
+  assert.ok(Array.isArray(etat.decisions) && etat.decisions.length > 0, 'le journal des décisions existe');
+  const defi = etat.decisions.filter((d) => d.type === 'defi_bandas').pop();
+  assert.ok(defi && defi.envoye === true, 'le défi envoyé est journalisé : ' + JSON.stringify(etat.decisions.slice(-4)));
+  const doublon = etat.decisions.filter((d) => d.envoye === false).pop();
+  assert.ok(doublon && /présent/.test(doublon.raison), 'les suppressions disent pourquoi');
+});
+
+test('une socket MUETTE finit par compter pour absente : le courrier sonne malgré elle', async () => {
+  // Le cas où le téléphone n'a pas pu prévenir (appli tuée net, tunnel…) : la
+  // socket reste ouverte mais ne dit plus rien. Passé la fenêtre de fraîcheur,
+  // elle ne vaut plus présence. Serveur dédié à fenêtre courte (1,2 s).
+  const PORT2 = 3516, SOCK2 = 5278, BASE2 = `http://127.0.0.1:${PORT2}`;
+  const proc2 = spawn(process.execPath, ['server.js'], {
+    cwd: ROOT,
+    env: Object.assign({}, process.env, {
+      PORT: String(PORT2), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
+      ADMIN_KEY: CLE_ADMIN, XMLSOCKET_PORT: String(SOCK2), FRUTISCORE_PORT: String(SOCK2 + 1),
+      NODE_TLS_REJECT_UNAUTHORIZED: '0', PRESENCE_FRESH_MS: '1200',
+    }),
+    stdio: ['ignore', 'ignore', 'ignore'],
+  });
+  try {
+    let pret = false;
+    for (let i = 0; i < 160 && !pret; i++) {
+      try { if ((await fetch(BASE2 + '/do/prefdef')).ok) pret = true; } catch { /* pas prêt */ }
+      if (!pret) await wait(250);
+    }
+    assert.ok(pret, 'serveur à fenêtre courte indisponible');
+    const inscrire = async (pseudo) => {
+      const body = JSON.stringify({ username: pseudo, password: 'secret123' });
+      await fetch(BASE2 + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      return (await (await fetch(BASE2 + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })).json()).sid;
+    };
+    const sidZ = await inscrire('zombie' + RUN);
+    const sidV = await inscrire('vif' + RUN);
+    const ab = await fetch(BASE2 + '/api/push/subscribe', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sidZ, subscription: abonnement('/push/tel-zombie') }),
+    });
+    assert.equal((await ab.json()).ok, true);
+    // La socket s'identifie… puis se TAIT (l'appli a été gelée sans prévenir).
+    const sockZ = await new Promise((resolve, reject) => {
+      const s = net.connect(SOCK2, '127.0.0.1');
+      sockets.push(s);
+      s.on('error', reject);
+      s.on('connect', () => { s.write(`<k l="zombie${RUN}" s="${sidZ}" lc="1" />\0`); setTimeout(() => resolve(s), 400); });
+    });
+    await wait(1600);   // la fenêtre (1,2 s) expire — la socket est toujours ouverte
+    const n = recus.length;
+    const envoi = await fetch(BASE2 + '/api/light/mail/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sidV, to: 'zombie' + RUN, subject: 'À travers la socket zombie', body: 'Le téléphone doit sonner.' }),
+    });
+    assert.equal((await envoi.json()).ok, true);
+    const p = await attendrePush(n);
+    const charge = dechiffrer(p.corps);
+    assert.equal(charge.t, '📬 Nouveau courrier');
+    assert.match(charge.c, /À travers la socket zombie/);
+    sockZ.destroy();
+  } finally {
+    proc2.kill('SIGKILL');
+  }
+});
+
 test('un abonnement mort (410) est retiré au fil de l\'eau', async () => {
   reponsePush = 410;
   await jpost('/api/push/test', { sid: sidDest });
