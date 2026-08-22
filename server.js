@@ -20105,8 +20105,57 @@ function getSocketsForUsername(username) {
 // testée) ; ici on ne fait que router les messages <gz> et pousser les
 // événements aux sockets concernés (identité = username).
 // ─────────────────────────────────────────────
+// LES BOTS EMPRUNTENT UNE IDENTITÉ AU BOUILLOSCOPE
+//
+// Frutibandas et Grapiz ont chacun trois bots, avec trois noms et trois
+// bouilles gravés dans le code. On finissait par ne plus jouer que contre
+// Banano, Orangine et Kiwano — toujours les mêmes têtes, dans le même ordre.
+//
+// Le Bouilloscope est l'annuaire des Frutiz : on y pioche un pseudo et sa
+// bouille pour habiller un bot le temps d'une partie. L'identité INTERNE (id
+// du lobby, séries, sessions) ne bouge pas — seuls le nom affiché et la
+// bouille changent.
+//
+// JAMAIS le pseudo d'un COMPTE EXISTANT. Plusieurs entrées du Bouilloscope
+// sont aussi des joueurs d'aujourd'hui (« kasparov »…) : voir son propre nom,
+// ou celui d'un ami, jouer contre soi serait au mieux troublant, au pire pris
+// pour une usurpation. On écarte donc tout pseudo connu de `users` (comptes
+// chargés) ou de `bouilleCache` (tous les comptes qui ont une bouille, chargé
+// au démarrage depuis la base) — en pratique, tous les comptes.
+//
+// Et jamais non plus une bouille CORROMPUE (codes tronqués d'un ancien import
+// Excel, cf. /api/admin/trombinoscope/repair-from-accounts) : le bot aurait
+// une tête cassée.
+//
+// Faute d'annuaire suffisant (base vide, développement local), on rend `null`
+// et les jeux gardent leurs noms d'origine.
+const BOT_IDENTITES_MIN = 8;          // en dessous, l'annuaire ne vaut pas le détour
+function botIdentiteEstLibre(pseudo) {
+  const k = String(pseudo || '').trim().toLowerCase();
+  if (!k) return false;
+  if (users[k]) return false;                    // compte chargé en mémoire
+  if (bouilleCache[k] !== undefined) return false;  // compte connu de la base
+  return true;
+}
+function piocherIdentiteBot(deja, rng) {
+  const pris = new Set((deja || []).map((n) => String(n || '').trim().toLowerCase()));
+  const libres = [];
+  for (const e of TROMBINOSCOPE) {
+    const pseudo = String((e && e.pseudo) || '').trim();
+    if (!pseudo || pris.has(pseudo.toLowerCase())) continue;
+    if (!botIdentiteEstLibre(pseudo)) continue;
+    const fb = normalizeBouilleState(e.bouille);
+    if (!fb || bouilleLooksCorrupted(fb)) continue;
+    libres.push({ name: pseudo, fb: fb });
+  }
+  if (libres.length < BOT_IDENTITES_MIN) return null;
+  const tirage = (typeof rng === 'function' ? rng() : Math.random());
+  return libres[Math.floor(tirage * libres.length) % libres.length];
+}
+
 const { GrapizNet } = require('./public/grapiz/server/net.js');
 const grapizNet = new GrapizNet({
+  botIdentity: piocherIdentiteBot,
   onResult: (session, winner, reason) => {
     console.log(`[grapiz] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
     // Le voyant de jeu s'éteint pour chaque humain de la partie (les
@@ -20158,6 +20207,7 @@ setInterval(() => {
 // ─────────────────────────────────────────────
 const { BandasNet } = require('./public/bandas/server/net.js');
 const bandasNet = new BandasNet({
+  botIdentity: piocherIdentiteBot,      // cf. piocherIdentiteBot, plus haut
   onResult: (session, winner, reason) => {
     console.log(`[bandas] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
     for (const p of (session.players || [])) setUserInternalStatus(p.id, 0);

@@ -46,6 +46,7 @@
     this.streaks = {};                  // username → série de victoires EN COURS (le gros nombre doré)
     this._beaten = {};                  // username → { opponentId: true } battus PENDANT la série en cours (anti-farm)
     this.bots = {};                     // username → config bot ({lo,hi})
+    this._botNeuf = {};                 // bot → doit repartir sous une autre identité
     this.clock = opts.clock || function () { return Date.now(); };
     this._rng = opts.rng || Math.random;
     this.onResult = opts.onResult || function () {};   // hook (game, winner, reason)
@@ -63,9 +64,65 @@
     //     garde sa vie tant qu'on gagne. À 0 disque, on ne peut plus jouer que
     //     contre les bots, sans que ça compte (non classé).
     this.onMatchForming = opts.onMatchForming || null;
+    // Habillage des bots : pseudo + bouille empruntés au Bouilloscope (voir
+    // _refreshBotIdentities). Absent en tests purs → noms d'origine.
+    this.botIdentity = opts.botIdentity || null;
     this.onDiscLost = opts.onDiscLost || null;
     if (opts.withBots !== false) this._registerBots();
   }
+
+  // ── Les bots empruntent une identité au Bouilloscope ───────────────────────
+  //
+  // Trois noms gravés dans le code, c'était trois têtes qu'on finissait par
+  // connaître par cœur. L'hôte (server.js) fournit `botIdentity(deja, rng)`,
+  // qui pioche un pseudo et sa bouille dans l'annuaire des Frutiz — jamais
+  // celui d'un compte existant, ce serait au mieux troublant.
+  //
+  // Seul l'HABILLAGE change : l'identifiant interne (lobby, séries, sessions)
+  // reste `pepino`/`mirabo`/`cassis`. Et on ne renomme qu'un bot AU REPOS —
+  // changer de nom au milieu d'une partie n'aurait aucun sens.
+  //
+  // On ne rebat pas les cartes à tout bout de champ non plus : un bot ne change
+  // de tête qu'une fois « marqué neuf » (au démarrage, puis après CHAQUE partie
+  // qu'il a jouée). Les deux autres gardent la leur — sinon le salon verrait
+  // ses trois adversaires se renommer à chaque connexion, ce qui ferait moins
+  // vivant que trois noms fixes.
+  //
+  // Sans fournisseur, ou sans annuaire assez fourni, les noms d'origine
+  // restent : le jeu marche pareil.
+  GrapizNet.prototype._refreshBotIdentities = function () {
+    if (!this.botIdentity) return;
+    var self = this;
+    // Toutes les têtes du moment sont réservées — y compris CELLE QU'ON
+    // REMPLACE : un bot qui repartirait sous son propre nom raterait tout
+    // l'effet, et deux bots qui échangeraient les leurs aussi.
+    var deja = BOTS.map(function (b) { return self.names[b.id] || b.name; });
+    var aRenommer = BOTS.filter(function (b) {
+      var p = self.lobby.getPlayer(b.id);
+      return self._botNeuf[b.id] && (!p || p.status === "idle");
+    });
+    aRenommer.forEach(function (b) {
+      var ident = null;
+      try { ident = self.botIdentity(deja, self._rng); } catch (e) { ident = null; }
+      if (!ident || !ident.name) return;          // annuaire muet : il garde sa tête
+      self._botNeuf[b.id] = false;
+      self.names[b.id] = ident.name;
+      if (ident.fb) self.bouilles[b.id] = ident.fb;
+      self.lobby.addPlayer(b.id, ident.name);     // le lobby porte le nom affiché
+      deja.push(ident.name);
+    });
+  };
+
+  // Marque les bots d'une partie terminée : ils repartiront sous une autre
+  // identité. Appelé avant que le lobby ne les libère, d'où le décalage avec
+  // _refreshBotIdentities (qui, lui, exige le repos).
+  GrapizNet.prototype._retireBots = function (session) {
+    var self = this;
+    (session.players || []).forEach(function (p) {
+      var uid = p && (p.id || p);
+      if (self.bots[uid]) self._botNeuf[uid] = true;
+    });
+  };
 
   GrapizNet.prototype._registerBots = function () {
     var self = this;
@@ -74,8 +131,10 @@
       self.names[b.id] = b.name;
       self.bouilles[b.id] = b.fb;
       self.streaks[b.id] = 0;
+      self._botNeuf[b.id] = true;           // première tête à tirer dès l'annuaire prêt
       self.lobby.addPlayer(b.id, b.name);   // toujours présent, toujours "idle" hors partie
     });
+    this._refreshBotIdentities();
   };
 
   // ── Sérialisation ──────────────────────────────────────────────────────────
@@ -227,7 +286,11 @@
     this._updateStreaks(session);
     var msgs = [{ to: this._ids(session), xml: this._stateXml(session, "end") }];
     try { this.onResult(session, session.winner, session.endReason); } catch (e) {}
-    this.lobby.endGame(session.id);
+    // Le bot ne change de tête qu'APRÈS l'écran de fin, qui doit encore nommer
+    // l'adversaire qu'on vient de jouer.
+    this._retireBots(session);
+    this.lobby.endGame(session.id);      // ← les bots redeviennent "idle" ici
+    this._refreshBotIdentities();        // …et repartent sous un autre nom
     delete this.sessions[session.id];
     return msgs.concat(this._lobbyBroadcast());
   };
@@ -245,6 +308,9 @@
         // série de départ : ne la seede qu'une fois (ne pas écraser une série en cours)
         if (this.getStreak && this.streaks[username] === undefined) { try { this.streaks[username] = this.getStreak(username) || 0; } catch (e) {} }
         this.lobby.addPlayer(username, this.names[username]);
+        // L'annuaire des Frutiz n'est chargé qu'après le démarrage du serveur :
+        // au premier salon venu, les bots prennent enfin leur vraie tête.
+        this._refreshBotIdentities();
         return this._lobbyBroadcast();
 
       case "list":

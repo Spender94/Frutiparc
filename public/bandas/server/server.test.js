@@ -404,5 +404,81 @@ for (var p = 0; p < 20; p++) {
 ok(victoires > defaites * 2, "bot: la nouvelle IA domine le simple différentiel matériel ("
   + victoires + " – " + defaites + ")");
 
+// ══ HABILLAGE DES BOTS : identités empruntées au Bouilloscope ═════════════
+// Trois adversaires gravés dans le code, on finissait par les connaître par
+// cœur. L'hôte fournit un annuaire ; l'identifiant interne, lui, ne bouge pas.
+var ANNUAIRE = [
+  { name: "cyanure", fb: "111111111111111111111111" },
+  { name: "poupoune", fb: "222222222222222222222222" },
+  { name: "zoulou", fb: "333333333333333333333333" },
+  { name: "tikiwi", fb: "444444444444444444444444" },
+  { name: "malabar", fb: "555555555555555555555555" },
+];
+var curseur = 0;
+function annuaire(deja) {                       // rotation : jamais deux fois la même tête
+  var pris = {};
+  (deja || []).forEach(function (n) { pris[String(n).toLowerCase()] = true; });
+  for (var i = 0; i < ANNUAIRE.length; i++) {
+    var e = ANNUAIRE[(curseur + i) % ANNUAIRE.length];
+    if (!pris[e.name.toLowerCase()]) { curseur = (curseur + i + 1) % ANNUAIRE.length; return e; }
+  }
+  return null;
+}
+var ni = new N.BandasNet({ clock: function () { return 0; }, botIdentity: annuaire });
+ni.handle("visiteur", { a: "hello", n: "Visiteur" });
+var idBots = ni.lobby.listPlayers().filter(function (p) { return ni.bots[p.id]; }).map(function (p) { return p.id; });
+eq(idBots.length, 3, "identités : les trois bots sont toujours là");
+ok(idBots.indexOf("banano") >= 0, "identités : l'identifiant INTERNE reste banano");
+var nomsBots = idBots.map(function (id) { return ni.names[id]; });
+ok(nomsBots.every(function (n) { return n !== "Banano" && n !== "Orangine" && n !== "Kiwano"; }),
+  "identités : les trois bots ont pris un pseudo de l'annuaire (" + nomsBots.join(", ") + ")");
+ok(nomsBots.every(function (n) { return ANNUAIRE.some(function (e) { return e.name === n; }); }),
+  "identités : les pseudos viennent bien de l'annuaire");
+eq(new Set(nomsBots).size, 3, "identités : trois pseudos distincts");
+ok(idBots.every(function (id) { return /^[1-5]{24}$/.test(ni.bouilles[id]); }),
+  "identités : la bouille suit le pseudo");
+ok(ni._lobbyXml().indexOf('n="' + nomsBots[0] + '"') >= 0, "identités : le lobby affiche le pseudo emprunté");
+
+// Un bot EN PARTIE ne change pas de tête sous les yeux du joueur.
+ni.handle("visiteur", { a: "challenge", u: idBots[0], t: "60000" });
+var nomEnJeu = ni.names[idBots[0]];
+ni.handle("badaud", { a: "hello", n: "Badaud" });        // un autre arrive dans le salon
+eq(ni.names[idBots[0]], nomEnJeu, "identités : le bot en partie garde son nom");
+eq(ni.names[idBots[1]], nomsBots[1], "identités : un bot au repos non joué garde le sien aussi");
+
+// …mais la partie finie, il repart sous une autre identité : le prochain
+// adversaire a l'air d'être quelqu'un d'autre.
+ni.handle(idBots[0], { a: "part" });                     // le bot abandonne → partie conclue
+ok(ni.names[idBots[0]] !== nomEnJeu, "identités : après la partie, le bot revient sous un autre pseudo ("
+  + nomEnJeu + " → " + ni.names[idBots[0]] + ")");
+eq(ni.names[idBots[1]], nomsBots[1], "identités : les deux autres n'ont pas bougé");
+eq(new Set(idBots.map(function (id) { return ni.names[id]; })).size, 3, "identités : toujours trois pseudos distincts");
+
+// La tête qu'on remplace part elle aussi dans les noms réservés : un bot qui
+// reprendrait son propre pseudo raterait complètement l'effet recherché.
+var vues = [];
+var nres = new N.BandasNet({
+  clock: function () { return 0; },
+  botIdentity: function (deja) { vues.push(deja.slice()); return annuaire(deja); },
+});
+nres.handle("obs", { a: "hello" });
+var avant = nres.names["banano"];
+nres.handle("obs", { a: "challenge", u: "banano", t: "60000" });
+nres.handle("banano", { a: "part" });
+ok(vues[vues.length - 1].indexOf(avant) >= 0,
+  "identités : le pseudo qu'on remplace est réservé au tirage (pas de retour sur soi-même)");
+
+// Sans annuaire (tests purs, base vide) ou avec un annuaire en panne : les noms
+// d'origine restent, et rien ne casse.
+var nsans = new N.BandasNet({ clock: function () { return 0; } });
+nsans.handle("x", { a: "hello" });
+eq(nsans.names["banano"], "Banano", "sans annuaire : le nom d'origine reste");
+var nko = new N.BandasNet({ clock: function () { return 0; }, botIdentity: function () { throw new Error("base injoignable"); } });
+nko.handle("x", { a: "hello" });
+eq(nko.names["orangine"], "Orangine", "annuaire en panne : on retombe sur les noms d'origine");
+var nvide = new N.BandasNet({ clock: function () { return 0; }, botIdentity: function () { return null; } });
+nvide.handle("x", { a: "hello" });
+eq(nvide.names["kiwano"], "Kiwano", "annuaire trop maigre (null) : noms d'origine");
+
 console.log("bandas server tests: " + passed + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);
