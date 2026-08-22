@@ -9113,6 +9113,239 @@ app.get('/api/admin/users/:username/modlogs', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─────────────────────────────────────────────
+// LA VITRINE — DIX ACCESSOIRES PAR SEMAINE, PIOCHÉS AU BOUILLOSCOPE
+//
+// Le chapelier n'est pas toujours là pour dessiner de quoi renouveler le rayon.
+// Or l'annuaire des Frutiz en est plein sans le savoir : une bouille tient en
+// 24 caractères dont les NEUF DERNIERS décrivent exactement ce que la boutique
+// appelle un `suffix9` — type d'accessoire, modèle, trois couleurs. Chaque
+// Frutiz du Bouilloscope porte donc un accessoire prêt à vendre.
+//
+// On en pose dix en rayon, on retire les dix précédents, et on recommence
+// chaque lundi à 18 h (heure de Paris). Le chapelier garde la main : ses
+// accessoires à lui (ids < VITRINE_ID_BASE) ne sont jamais touchés, et le
+// bouton de l'admin permet de renouveler à la demande.
+//
+// RETIRER, PAS SUPPRIMER. Un accessoire sortant est simplement `disabled` :
+// il quitte la vitrine mais reste au catalogue, donc ceux qui l'ont acheté le
+// gardent, le portent, et le voient toujours dans leur inventaire. Une semaine
+// n'efface jamais la précédente.
+//
+// LES IDS NE SE RÉUTILISENT JAMAIS. `userOwnsShopPack` reconnaît un achat à
+// l'id du produit : recycler l'id 900001 d'une semaine sur l'autre dirait à
+// qui a acheté le bonnet de lundi dernier qu'il possède déjà la casquette de
+// ce lundi-ci. D'où un id qui porte sa date : base + semaine×100 + tirage×10 +
+// rang. Cent ids réservés par semaine, dix par tirage — donc jusqu'à dix
+// renouvellements manuels dans la même semaine, sans jamais empiéter sur la
+// suivante.
+// ─────────────────────────────────────────────
+const FPBouille = require('./public/js/bouille-palette.js');
+const Calendrier = require('./public/js/vitrine-calendrier.js');
+
+const VITRINE_TAILLE = 10;          // dix accessoires en rayon (≤ VITRINE_PAS_TIRAGE)
+const VITRINE_PRIX = 60;            // le prix des accessoires d'origine
+const VITRINE_HEURE = 18;           // lundi, 18 h — heure de Paris
+const VITRINE_ID_BASE = 900000;     // en dessous : les accessoires du chapelier
+const VITRINE_PAS_SEMAINE = 100;
+const VITRINE_PAS_TIRAGE = 10;
+
+const estPackVitrine = (p) => p && p.id >= VITRINE_ID_BASE;
+const vitrineSemaineDeId = (id) => Math.floor((id - VITRINE_ID_BASE) / VITRINE_PAS_SEMAINE);
+const vitrineTirageDeId = (id) =>
+  Math.floor(((id - VITRINE_ID_BASE) % VITRINE_PAS_SEMAINE) / VITRINE_PAS_TIRAGE);
+
+// Le calendrier (« dernier lundi 18 h de Paris passé ») vit dans son propre
+// module : c'est de l'arithmétique de dates, et l'heure d'été en fait un piège
+// — voir public/js/vitrine-calendrier.js.
+const vitrineSemaineCourante = (d) => Calendrier.semaineDeVitrine(d, VITRINE_HEURE);
+const vitrineDateLundi = (semaine) => Calendrier.dateLundi(semaine);
+
+// Petit générateur reproductible : la même semaine redonne la même vitrine,
+// même après un redémarrage ou un rejeu.
+function vitrineMelangeur(graine) {
+  let s = (graine * 2654435761) >>> 0 || 1;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+}
+
+// LA BANQUE : tous les accessoires distincts que portent les Frutiz du
+// Bouilloscope. On écarte les bouilles tronquées (un import Excel qui a perdu
+// ses zéros de tête donnerait un suffixe fantaisiste), les têtes nues (type 0
+// = « Rien ») et ce que le chapelier vend déjà à la main.
+function vitrineBanque() {
+  const dejaAuCatalogue = new Set(
+    SHOP_PACKS.filter((p) => !estPackVitrine(p) && p.suffix9).map((p) => p.suffix9));
+  const vus = new Map();
+  for (const e of TROMBINOSCOPE) {
+    const fb = normalizeBouilleState(e && e.bouille);
+    if (!fb || fb.length !== 24) continue;
+    const suffix9 = fb.substring(15, 24);
+    if (!FPBouille.accessoryParts(suffix9).type) continue;
+    if (dejaAuCatalogue.has(suffix9)) continue;
+    const v = vus.get(suffix9);
+    if (v) { v.porteurs++; if (v.porteurs <= 3) v.exemples.push(e.pseudo); continue; }
+    vus.set(suffix9, { suffix9, porteurs: 1, exemples: [e.pseudo] });
+  }
+  return [...vus.values()];
+}
+
+// LE ROULEMENT : jamais sortis d'abord, puis les plus anciennement vus. À
+// égalité, un ordre tiré au sort mais STABLE pour la semaine. Tout l'annuaire
+// finit donc par passer en rayon avant qu'un accessoire ne repasse.
+function vitrineChoisir(graine, banque) {
+  const derniereSortie = new Map();
+  for (const p of SHOP_PACKS) {
+    if (!estPackVitrine(p) || !p.suffix9) continue;
+    const s = vitrineSemaineDeId(p.id);
+    const prec = derniereSortie.get(p.suffix9);
+    if (prec === undefined || s > prec) derniereSortie.set(p.suffix9, s);
+  }
+  const rng = vitrineMelangeur(graine + 1);
+  return banque
+    .map((a) => ({ a, vu: derniereSortie.has(a.suffix9) ? derniereSortie.get(a.suffix9) : -1, r: rng() }))
+    .sort((x, y) => (x.vu - y.vu) || (x.r - y.r))
+    .slice(0, VITRINE_TAILLE)
+    .map((x) => x.a);
+}
+
+// Baptême. « Casquette citron » ; si le nom est pris, « Casquette citron et
+// pistache » ; s'il l'est aussi, on numérote. `pris` contient les noms déjà
+// portés par le catalogue — deux accessoires de même nom en rayon seraient
+// indiscernables pour l'acheteur.
+function baptiserAccessoire(suffix9, pris) {
+  const simple = FPBouille.accessoryLabel(suffix9, false);
+  if (!simple) return null;
+  if (!pris.has(simple.toLowerCase())) return simple;
+  const double = FPBouille.accessoryLabel(suffix9, true);
+  if (double && !pris.has(double.toLowerCase())) return double;
+  const base = double || simple;
+  for (let n = 2; n < 200; n++) {
+    const essai = `${base} (${n})`;
+    if (!pris.has(essai.toLowerCase())) return essai;
+  }
+  return `${base} ${suffix9}`;
+}
+
+// Renouvelle le rayon. `auto` : ne fait rien si la semaine a déjà eu son
+// tirage (c'est ce que déclenche le lundi 18 h — idempotent, donc increvable
+// face à un redémarrage ou à une panne de plusieurs jours). Sans `auto`
+// (bouton de l'admin), un nouveau tirage part quoi qu'il arrive.
+function tournerLaVitrine(opts = {}) {
+  const semaine = Number.isFinite(opts.semaine) ? opts.semaine : vitrineSemaineCourante();
+  const prix = Number.isFinite(opts.prix) && opts.prix >= 0 ? Math.round(opts.prix) : VITRINE_PRIX;
+  const deLaSemaine = SHOP_PACKS.filter((p) => estPackVitrine(p) && vitrineSemaineDeId(p.id) === semaine);
+  if (opts.auto && deLaSemaine.length) return { ok: false, raison: 'deja-faite', semaine };
+  const tirage = deLaSemaine.reduce((m, p) => Math.max(m, vitrineTirageDeId(p.id) + 1), 0);
+  if (tirage * VITRINE_PAS_TIRAGE >= VITRINE_PAS_SEMAINE) {
+    return { ok: false, raison: 'trop-de-tirages', semaine, tirage };
+  }
+  const banque = vitrineBanque();
+  if (banque.length < VITRINE_TAILLE) {
+    return { ok: false, raison: 'banque-insuffisante', semaine, banque: banque.length, requis: VITRINE_TAILLE };
+  }
+
+  const pris = new Set(SHOP_PACKS.map((p) => String(p.name || '').toLowerCase()));
+  // Graine décalée par le tirage : renouveler deux fois la même semaine ne doit
+  // pas reposer exactement les mêmes dix accessoires.
+  const poses = vitrineChoisir(semaine + tirage * 1000, banque).map((a, i) => {
+    const nom = baptiserAccessoire(a.suffix9, pris);
+    pris.add(nom.toLowerCase());
+    return {
+      id: VITRINE_ID_BASE + semaine * VITRINE_PAS_SEMAINE + tirage * VITRINE_PAS_TIRAGE + i,
+      name: nom,
+      category: 'Accessoires',
+      price: prix,
+      description: '',
+      comment: '',
+      suffix9: a.suffix9,
+    };
+  });
+
+  // On retire AVANT de poser : le rayon ne montre jamais vingt accessoires.
+  const retires = [];
+  for (const p of SHOP_PACKS) {
+    if (!estPackVitrine(p) || p.disabled) continue;
+    if (vitrineSemaineDeId(p.id) === semaine && vitrineTirageDeId(p.id) === tirage) continue;
+    p.disabled = true;
+    retires.push({ id: p.id, name: p.name });
+    if (process.env.DATABASE_URL) db.upsertShopPack(p).catch(dbErr('upsertShopPack'));
+  }
+  for (const p of poses) {
+    SHOP_PACKS.push(p);
+    if (process.env.DATABASE_URL) db.upsertShopPack(p).catch(dbErr('upsertShopPack'));
+  }
+  console.log(`[VITRINE] semaine ${semaine} (lundi ${vitrineDateLundi(semaine)}), tirage ${tirage} : `
+    + `${poses.length} accessoires posés, ${retires.length} retirés — banque de ${banque.length}`);
+  return {
+    ok: true, semaine, tirage, lundi: vitrineDateLundi(semaine),
+    prix, banque: banque.length, poses, retires,
+  };
+}
+
+// L'état du rayon, pour l'admin.
+function vitrineEtat() {
+  const enRayon = SHOP_PACKS.filter((p) => estPackVitrine(p) && !p.disabled)
+    .sort((a, b) => a.id - b.id);
+  const banque = vitrineBanque();
+  const dejaSortis = new Set(SHOP_PACKS.filter(estPackVitrine).map((p) => p.suffix9));
+  const semaine = vitrineSemaineCourante();
+  return {
+    semaine,
+    lundi: vitrineDateLundi(semaine),
+    prochainLundi: vitrineDateLundi(semaine + 1),
+    heure: VITRINE_HEURE,
+    taille: VITRINE_TAILLE,
+    prixDefaut: VITRINE_PRIX,
+    faiteCetteSemaine: SHOP_PACKS.some((p) => estPackVitrine(p) && vitrineSemaineDeId(p.id) === semaine),
+    banque: banque.length,
+    jamaisSortis: banque.filter((a) => !dejaSortis.has(a.suffix9)).length,
+    trombinoscope: TROMBINOSCOPE.length,
+    enRayon: enRayon.map((p) => ({
+      id: p.id, name: p.name, suffix9: p.suffix9, price: p.price,
+      semaine: vitrineSemaineDeId(p.id),
+    })),
+  };
+}
+
+// Le lundi 18 h (heure de Paris). On sonde régulièrement et on laisse
+// tournerLaVitrine juger : elle ne fait rien si la semaine a déjà son tirage,
+// et rattrape d'elle-même une semaine sautée pendant une coupure. Pas de date
+// de dernier passage à ranger quelque part : le rayon lui-même la porte, dans
+// les ids de ses accessoires.
+//
+// `vitrinePrete` attend que les accessoires soient relus de la base : sonder
+// avant, c'est croire le rayon vide et poser un tirage en double.
+//
+// VITRINE_TICK_MS : période du sondage. 60 s par défaut ; 0 coupe le minuteur
+// (les tests qui veulent une vitrine immobile), une valeur courte l'accélère
+// (ceux qui veulent voir le rendez-vous automatique se déclencher).
+let vitrinePrete = !process.env.DATABASE_URL;
+const VITRINE_TICK_MS = process.env.VITRINE_TICK_MS === undefined
+  ? 60000 : Math.max(0, Number(process.env.VITRINE_TICK_MS) || 0);
+if (VITRINE_TICK_MS > 0) {
+  setInterval(() => {
+    if (!vitrinePrete) return;
+    // Un refus (« banque-insuffisante » quand l'annuaire n'est pas encore
+    // chargé, « deja-faite » le reste de la semaine) n'est pas une anomalie :
+    // le rayon en place reste en vente et on repassera.
+    try { tournerLaVitrine({ auto: true }); }
+    catch (e) { console.error('[VITRINE] rotation:', e.message); }
+  }, VITRINE_TICK_MS);
+}
+
+// ── Admin : la vitrine hebdomadaire ──
+app.get('/api/admin/shop/vitrine', adminScope('shop'), (req, res) => {
+  res.json(vitrineEtat());
+});
+
+app.post('/api/admin/shop/vitrine', adminScope('shop'), (req, res) => {
+  const b = req.body || {};
+  const r = tournerLaVitrine({ prix: Number(b.prix), auto: !!b.auto });
+  if (!r.ok) return res.status(409).json({ error: r.raison, ...r });
+  console.log(`[ADMIN] Vitrine renouvelée à la main : ${r.poses.map((p) => p.name).join(', ')}`);
+  res.json({ ok: true, ...r, etat: vitrineEtat() });
+});
+
 // ── Admin: Shop pack management ──
 app.get('/api/admin/shop', adminScope('shop'), (req, res) => {
   res.json(SHOP_PACKS);
@@ -18190,6 +18423,10 @@ async function boot() {
             if (dbP && !dbP.wallpaperId) db.upsertShopPack(p).catch(dbErr('upsertShopPack'));
           }
         }
+        // Le rayon est relu : la vitrine hebdomadaire peut se prononcer. Tant
+        // que ce témoin est faux, elle croirait le rayon vide et poserait un
+        // tirage en double par-dessus celui de la semaine.
+        vitrinePrete = true;
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
       try {
         const wps = await db.loadWallpapers();

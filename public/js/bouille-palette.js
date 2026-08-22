@@ -9,8 +9,9 @@
   Vérifié empiriquement : sur un visage réel, l'index N en pos 11 (peau) /
   pos 13 (cheveux) rend bien la couleur COLORS[N] de la table.
 
-  Partagé par l'éditeur d'accessoires de l'admin et l'éditeur « Ma Frutibouille »
-  de /light (et réutilisable ailleurs).
+  Partagé par l'éditeur d'accessoires de l'admin, l'éditeur « Ma Frutibouille »
+  de /light, et — côté serveur, via require() — la vitrine hebdomadaire qui
+  puise ses accessoires dans le Bouilloscope (voir vitrineBanque, server.js).
 */
 (function (global) {
   "use strict";
@@ -43,9 +44,80 @@
     "Banane", "Bois de cerf", "Nez", "Bonnet type 3", "Carapace"
   ];
 
+  // ── Baptiser un accessoire ─────────────────────────────────────────────────
+  //
+  // Un accessoire pioché dans le Bouilloscope arrive sans nom : neuf caractères
+  // et rien d'autre. On lui en fabrique un — « Casquette citron » — à partir de
+  // son type et de sa couleur principale.
+  //
+  // COLOR_WORDS : un NOM de couleur par index de la palette. Des noms, pas des
+  // adjectifs : en français un nom employé comme couleur est INVARIABLE (« une
+  // casquette citron », « des lunettes turquoise »), ce qui évite tout accord —
+  // et l'imagier fruité tombe juste dans ce parc-là. Deux index voisins peuvent
+  // partager un mot (la palette a trois verts, trois oranges…) : c'est le
+  // baptême qui départage ensuite, pas la couleur seule.
+  var COLOR_WORDS = [
+    "beige", "ivoire", "pêche",                             // beiges
+    "saumon", "caramel", "cuivre", "rouille",               // peaux mates
+    "cannelle", "noisette", "cacao", "chocolat",            // peaux foncées
+    "paille", "miel", "or",                                 // peaux dorées
+    "pistache", "pomme", "kiwi", "avocat", "sapin",         // verts Frutiparc
+    "corail", "tomate", "grenade", "rubis",                 // rouges
+    "bleuet", "azur", "outremer",                           // bleus
+    "lilas", "prune", "aubergine",                          // mauves
+    "citron", "safran", "moutarde",                         // jaunes
+    "mangue", "mandarine", "abricot",                       // oranges
+    "dragée", "bonbon", "fuchsia",                          // roses
+    "brume", "ardoise", "orage",                            // gris bleutés
+    "lin", "chanvre", "kaki",                               // gris bronze
+    "sauge", "laurier", "fougère",                          // gris verts
+    "givre", "océan", "denim",                              // gris azur
+    "turquoise", "lagon",                                   // turquoises
+    "neige"                                                 // blanc
+  ];
+
+  // Le nom d'objet, pour la boutique. Repris de ACCESSORIES, débarrassé des
+  // « type 1/2/3 » : ce sont trois bonnets différents, mais « Bonnet type 2
+  // citron » ne se vend pas. Trois bonnets s'appellent donc « Bonnet » — leur
+  // couleur les distingue, et à défaut le baptême ajoute ce qu'il faut.
+  var ACCESSORY_LABELS = [
+    "", "Chapeau chinois", "Bonnet", "Casquette", "Chapeau de cowboy", "Bonnet",
+    "Bananocle", "Bandeau", "Grand chapeau", "Bonnet de nuit", "Lunettes", "Coquille",
+    "Banane", "Bois de cerf", "Nez", "Bonnet", "Carapace"
+  ];
+
   var B62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   function enc(n) { n = ((n % 62) + 62) % 62; return B62.charAt(n); }
   function dec(c) { var i = B62.indexOf(c); return i < 0 ? 0 : i; }
+
+  // Les cinq emplacements d'un suffix9 (positions 15→23 de la bouille). La
+  // valeur est portée par le PREMIER caractère de chaque paire ; le second
+  // reste un '0' séparateur — c'est ainsi que sont encodés les vrais
+  // accessoires ('9020t0a00' = type 9, variante 2, couleurs t et a).
+  function accessoryParts(suffix9) {
+    var s = String(suffix9 || "").padEnd ? String(suffix9 || "").padEnd(9, "0")
+                                        : (String(suffix9 || "") + "000000000");
+    s = s.substring(0, 9);
+    return { type: dec(s[0]), variante: dec(s[2]), c1: dec(s[4]), c2: dec(s[6]), c3: dec(s[8]) };
+  }
+
+  // « Casquette citron ». Avec `avecSecondeCouleur`, « Casquette citron et
+  // pistache » — de quoi départager deux casquettes jaunes. Rend "" pour un
+  // suffixe sans accessoire (type 0 = « Rien »).
+  //
+  // On s'arrête à deux couleurs : au-delà, c'est à l'appelant de numéroter
+  // (voir baptiserAccessoire, server.js). L'emplacement « variante » ne sert
+  // pas au nom — ses valeurs sont des codes de modèle (33, 34…) qui ne veulent
+  // rien dire pour un joueur.
+  function accessoryLabel(suffix9, avecSecondeCouleur) {
+    var p = accessoryParts(suffix9);
+    if (!p.type) return "";
+    var nom = ACCESSORY_LABELS[p.type] || ("Accessoire " + p.type);
+    var mot = COLOR_WORDS[p.c1];
+    var out = mot ? (nom + " " + mot) : nom;
+    if (avecSecondeCouleur && COLOR_WORDS[p.c2] && p.c2 !== p.c1) out += " et " + COLOR_WORDS[p.c2];
+    return out;
+  }
 
   // Texte noir ou blanc lisible sur un fond donné (luminance).
   function readableText(hex) {
@@ -55,14 +127,22 @@
     return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#000" : "#fff";
   }
 
-  global.FPBouille = {
+  var FPBouille = {
     COLORS: COLORS,
     ACCESSORIES: ACCESSORIES,
+    COLOR_WORDS: COLOR_WORDS,
+    ACCESSORY_LABELS: ACCESSORY_LABELS,
     enc: enc,
     dec: dec,
     readableText: readableText,
+    accessoryParts: accessoryParts,
+    accessoryLabel: accessoryLabel,
     colorHex: function (i) { return (COLORS[i] && COLORS[i].hex) || "#000"; },
     colorName: function (i) { return (COLORS[i] && COLORS[i].name) || ("#" + i); },
     accName: function (i) { return ACCESSORIES[i] || ("Type " + i); }
   };
-})(window);
+
+  global.FPBouille = FPBouille;
+  // Même table côté serveur (vitrine hebdomadaire) : une seule source.
+  if (typeof module !== "undefined" && module.exports) module.exports = FPBouille;
+})(typeof globalThis !== "undefined" ? globalThis : this);

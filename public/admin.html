@@ -456,6 +456,24 @@
 </div>
 
 <div class="content" id="tab-shop" style="display:none">
+  <!-- La vitrine : dix accessoires puisés au Bouilloscope, renouvelés tout
+       seuls chaque lundi 18 h. Le bouton sert à dépanner (ou à devancer). -->
+  <div style="border:1px solid #e0d6e6;border-radius:8px;padding:12px 14px;margin-bottom:16px;background:#fbf8fc">
+    <h3 style="margin:0 0 4px">🎩 Vitrine de la semaine</h3>
+    <p style="color:#777;font-size:12px;margin:0 0 10px;max-width:760px">
+      Dix accessoires pris chez les Frutiz du Bouilloscope — leurs bouilles en portent déjà.
+      Le rayon se renouvelle tout seul chaque <b>lundi à 18 h</b> ; les dix précédents sont
+      retirés de la vente sans être supprimés, donc ceux qui les ont achetés les gardent.
+      Les accessoires du chapelier ne sont jamais touchés. Les noms sont proposés
+      automatiquement (type + couleur) : « Modifier » permet de les retoucher.
+    </p>
+    <div id="vitrine-etat" style="font-size:13px;margin-bottom:10px">Chargement…</div>
+    <label style="font-size:12px;color:#555">Prix :
+      <input id="vitrine-prix" type="number" min="0" step="10" value="60" style="width:70px">&nbsp;K
+    </label>
+    <button class="btn-success" style="margin-left:8px" onclick="renouvelerVitrine()">Renouveler maintenant</button>
+    <button class="btn btn-sm" onclick="loadVitrine()">Rafraîchir</button>
+  </div>
   <div class="toolbar">
     <button class="btn" onclick="loadShop()">Rafraîchir</button>
     <button class="btn-success" onclick="openAddPack()">+ Nouvel accessoire</button>
@@ -3556,6 +3574,55 @@ async function loadShop() {
     </tr>`).join('');
   } catch (e) { toast('Erreur: ' + e.message); }
   loadFeutreAssets();
+  loadVitrine();
+}
+
+// ── Vitrine hebdomadaire (accessoires du Bouilloscope) ──
+async function loadVitrine() {
+  const box = $('#vitrine-etat');
+  if (!box) return;
+  try {
+    const v = await (await fetch('/api/admin/shop/vitrine', { headers: hdr() })).json();
+    const rayon = (v.enRayon || []).length
+      ? v.enRayon.map(p => `<li>${esc(p.name)} <code style="color:#999">${esc(p.suffix9)}</code> — ${p.price} K</li>`).join('')
+      : '<li style="color:#999">rayon vide — le premier renouvellement le remplira</li>';
+    const maigre = v.banque < v.taille;
+    box.innerHTML = `
+      <div style="margin-bottom:6px">
+        <b>${v.banque}</b> accessoire${v.banque > 1 ? 's' : ''} disponible${v.banque > 1 ? 's' : ''}
+        au Bouilloscope (${v.trombinoscope} Frutiz), dont <b>${v.jamaisSortis}</b> jamais passé${v.jamaisSortis > 1 ? 's' : ''} en vitrine.
+        ${maigre ? '<span style="color:#b03">— trop peu pour un renouvellement (il en faut ' + v.taille + ').</span>' : ''}
+      </div>
+      <div style="margin-bottom:6px;color:#666">
+        Semaine du lundi <b>${esc(v.lundi)}</b> — ${v.faiteCetteSemaine
+          ? 'renouvellement fait' : 'pas encore renouvelée'} ;
+        prochain automatique le <b>${esc(v.prochainLundi)}</b> à ${v.heure} h.
+      </div>
+      <div>En rayon :</div>
+      <ul style="margin:4px 0 0;padding-left:20px;columns:2;font-size:12px">${rayon}</ul>`;
+  } catch (e) { box.textContent = 'Erreur : ' + e.message; }
+}
+
+async function renouvelerVitrine() {
+  if (!confirm('Mettre dix nouveaux accessoires en vitrine ?\n\nLes dix actuels sont retirés de la vente (pas supprimés : les joueurs qui les ont achetés les gardent).')) return;
+  const prix = Number($('#vitrine-prix').value);
+  try {
+    const r = await fetch('/api/admin/shop/vitrine', {
+      method: 'POST', headers: hdr(), body: JSON.stringify({ prix }),
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      const raisons = {
+        'banque-insuffisante': `Pas assez d'accessoires au Bouilloscope (${j.banque || 0} sur ${j.requis || 10} requis). Importe des bouilles dans l'onglet Bouilloscope.`,
+        'trop-de-tirages': 'Dix renouvellements déjà faits cette semaine — attends lundi.',
+        'deja-faite': 'Déjà renouvelée cette semaine.',
+      };
+      toast(raisons[j.error] || ('Erreur : ' + (j.error || r.status)));
+      return;
+    }
+    toast(`${j.poses.length} accessoires en vitrine, ${j.retires.length} retirés`);
+    loadShop();
+  } catch (e) { toast('Erreur: ' + e.message); }
 }
 
 // ── Feutres spéciaux : image de boutique éditable ──
