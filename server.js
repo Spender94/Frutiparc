@@ -5494,6 +5494,47 @@ app.get('/light', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// PLAY STORE (TWA) — LA PREUVE DE PROPRIÉTÉ
+//
+// L'appli Android du store est une Trusted Web Activity : Chrome qui affiche
+// ce site en plein écran. Pour qu'Android retire la barre d'adresse, le
+// domaine doit prouver qu'il connaît l'appli : c'est ce fichier, à l'adresse
+// EXACTE /.well-known/assetlinks.json, qui porte l'empreinte SHA-256 du
+// certificat de signature Android.
+//
+// (Route explicite obligatoire : express.static ignore les dossiers en
+// point.) Deux sources, dans l'ordre :
+//   1. data/assetlinks.json — le fichier complet, tel quel (auto-hébergement) ;
+//   2. ANDROID_PACKAGE_ID + ANDROID_CERT_SHA256 dans l'environnement (Render…)
+//      — l'empreinte vient de la Play Console (Intégrité de l'appli →
+//      certificat de la clé de signature d'appli), plusieurs empreintes
+//      séparées par des virgules (clé d'envoi + clé de signature).
+// Sans l'un ni l'autre : 404 — l'appli marche quand même, avec la barre
+// d'adresse en plus (le signal qu'il manque ce fichier).
+// ─────────────────────────────────────────────
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  const fichier = path.join(__dirname, 'data', 'assetlinks.json');
+  if (fs.existsSync(fichier)) return res.type('application/json').sendFile(fichier);
+  const paquet = String(process.env.ANDROID_PACKAGE_ID || '').trim();
+  const empreintes = String(process.env.ANDROID_CERT_SHA256 || '')
+    .split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+  if (!paquet || !empreintes.length) return res.status(404).json({ error: 'non configuré' });
+  res.json([{
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: {
+      namespace: 'android_app',
+      package_name: paquet,
+      sha256_cert_fingerprints: empreintes,
+    },
+  }]);
+});
+
+// La politique de confidentialité — la fiche Play Store EXIGE une URL publique.
+app.get('/confidentialite', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'confidentialite.html'));
+});
+
+// ─────────────────────────────────────────────
 // NOTIFICATIONS PUSH — L'APPLI PRÉVIENT QUAND LE SITE NE PEUT PAS
 //
 // /light s'installe désormais comme une appli (manifest + service worker) ; et

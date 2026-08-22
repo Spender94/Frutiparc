@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ADE76B">
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<title>Frutiparc — Confidentialité</title>
+<style>
+  /* Même famille verte que /light, le forum et l'admin — mais cette page-ci
+     défile normalement : c'est un document, pas l'appli. */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: #ADE76B;
+    color: #2C4A0F;
+    font-family: 'Verdana', Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  a { color: #2f6b16; }
+  .page {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 18px 14px 40px;
+  }
+  header.titre {
+    text-align: center;
+    padding: 10px 0 16px;
+  }
+  header.titre img { height: 60px; image-rendering: pixelated; }
+  header.titre h1 {
+    font-size: 20px;
+    margin: 8px 0 0;
+  }
+  .carte {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 0 rgba(44, 74, 15, 0.15);
+  }
+  .carte h2 {
+    font-size: 15px;
+    margin: 0 0 8px;
+    color: #2f6b16;
+  }
+  .carte p { margin: 8px 0; }
+  .carte ul { margin: 8px 0; padding-left: 22px; }
+  .carte li { margin: 4px 0; }
+  .enbref {
+    background: #f3fbe7;
+    border: 1px solid #cde9a4;
+  }
+  .maj {
+    text-align: center;
+    font-size: 12px;
+    color: #4c6b2c;
+    margin-top: 18px;
+  }
+  .retour { text-align: center; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="titre">
+    <img src="/images/logo.gif" alt="Frutiparc">
+    <h1>Politique de confidentialité</h1>
+  </header>
+
+  <div class="carte enbref">
+    <h2>En bref</h2>
+    <p>Frutiparc est un site de jeux bénévole et non commercial : la
+    reconstitution d'un parc à fruits des années 2000. On ne collecte que ce
+    qu'il faut pour jouer. <strong>Pas de publicité, pas de traqueurs, pas de
+    revente de données — jamais.</strong></p>
+  </div>
+
+  <div class="carte">
+    <h2>Le compte</h2>
+    <ul>
+      <li><strong>Pseudo et mot de passe.</strong> Le mot de passe est
+      enregistré sous forme hachée (bcrypt) : personne, pas même l'équipe, ne
+      peut le lire.</li>
+      <li><strong>E-mail — facultatif.</strong> Il ne sert qu'à récupérer un
+      mot de passe oublié. Sans e-mail, le compte fonctionne exactement
+      pareil.</li>
+    </ul>
+  </div>
+
+  <div class="carte">
+    <h2>Les données de jeu</h2>
+    <p>Tout ce qui fait ta vie dans le parc est gardé pour que tu la
+    retrouves : scores et classements, fruitz, inventaire et accessoires,
+    frutibouille, médailles, progression dans les jeux, préférences.</p>
+  </div>
+
+  <div class="carte">
+    <h2>Ce que tu écris</h2>
+    <p>Les messages des salons de discussion, les messages privés, les
+    courriers et les messages du forum sont enregistrés sur le serveur —
+    c'est ce qui permet de te les remettre. Les espaces publics sont
+    modérés ; le règlement du site s'y applique.</p>
+  </div>
+
+  <div class="carte">
+    <h2>Les données techniques</h2>
+    <ul>
+      <li><strong>Adresse IP d'inscription et jeton d'appareil.</strong>
+      Utilisés uniquement pour empêcher les abus de multi-comptes (le
+      parrainage, notamment). Ils ne servent à rien d'autre.</li>
+      <li><strong>Journaux du serveur.</strong> Journaux techniques
+      classiques, pour le bon fonctionnement et la sécurité du service.</li>
+    </ul>
+  </div>
+
+  <div class="carte">
+    <h2>Les notifications</h2>
+    <p>Les notifications (courrier, messages privés, événements) sont
+    <strong>désactivées par défaut</strong> : elles ne s'activent que si tu
+    appuies sur « Activer les notifications » dans l'appli. Ton navigateur
+    fournit alors une adresse d'envoi chiffrée, que le serveur garde pour te
+    prévenir — et seulement quand tu n'es pas connecté. Tu peux les couper à
+    tout moment, dans l'appli ou dans les réglages de ton téléphone : les
+    adresses correspondantes sont alors supprimées.</p>
+  </div>
+
+  <div class="carte">
+    <h2>Sur ton appareil</h2>
+    <p>Le site garde en local (localStorage) ta session de connexion et
+    quelques préférences d'affichage — c'est ce qui t'évite de retaper ton
+    mot de passe. Aucun cookie tiers, aucun outil de mesure d'audience,
+    aucune régie publicitaire.</p>
+  </div>
+
+  <div class="carte">
+    <h2>Le partage</h2>
+    <p>Les données ne sont ni vendues, ni louées, ni transmises à des tiers.
+    Elles ne quittent le serveur du site que dans un cas : l'envoi des
+    notifications, qui transite chiffré par le service de notifications de
+    ton navigateur (celui de ton téléphone), lequel ne peut pas les lire.</p>
+  </div>
+
+  <div class="carte">
+    <h2>Supprimer son compte</h2>
+    <p>Sur simple demande, le compte et les données associées sont supprimés.
+    Tu peux aussi demander une copie de tes données. Écris à l'équipe par le
+    courrier interne du site, ou à l'adresse de contact indiquée sur la fiche
+    de l'application.</p>
+  </div>
+
+  <div class="carte">
+    <h2>Contact</h2>
+    <p>Pour toute question sur cette politique ou sur tes données : le
+    courrier interne du site (bouton « Courrier »), le forum, ou l'adresse de
+    contact indiquée sur la fiche de l'application dans le store.</p>
+  </div>
+
+  <p class="maj">Dernière mise à jour : août 2026.</p>
+  <p class="retour"><a href="/light">← Retour au parc</a></p>
+
+</div>
+</body>
+</html>

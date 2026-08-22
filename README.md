@@ -149,11 +149,45 @@ de chat vivante) — un joueur devant son écran voit déjà tout. Le service wo
 peut rien casser (jeux, Ruffle). Tests : `test/appliMobile.test.js` (le faux
 « téléphone » déchiffre réellement les charges, RFC 8291).
 
-**Étape suivante (facultative) — les stores :** empaqueter la PWA avec
-[PWABuilder](https://www.pwabuilder.com) (Android/Play : compte 25 $ une fois ;
-iOS/App Store : compte Apple 99 $/an + build Xcode). Sur iOS empaqueté, le push
-passe par APNs et non Web Push — à câbler à ce moment-là ; tout le reste
-(l'appli, l'écran, la reconnexion) est réutilisé tel quel.
+### Publier sur le Play Store (Android)
+
+L'appli du store est une **Trusted Web Activity** : une coquille signée qui
+affiche `/light` en plein écran. Le site reste la seule source — chaque mise en
+ligne du site met à jour l'appli instantanément, sans nouvelle release.
+
+1. **Côté serveur (déjà câblé).** Le domaine doit prouver qu'il connaît
+   l'appli via `/.well-known/assetlinks.json`. Deux façons de l'alimenter :
+   les variables `ANDROID_PACKAGE_ID` (ex. `app.frutiparc.twa`) et
+   `ANDROID_CERT_SHA256` (empreintes séparées par des virgules), ou un fichier
+   complet `data/assetlinks.json`. Sans lui, l'appli marche mais garde la
+   barre d'adresse. La fiche Play exige aussi une politique de
+   confidentialité publique : c'est `/confidentialite`.
+2. **Compte Play Console** : 25 $, une seule fois
+   ([play.google.com/console](https://play.google.com/console)). Un compte
+   **personnel** créé récemment doit d'abord faire un **test fermé** (une
+   vingtaine de testeurs pendant 14 jours — la console affiche le seuil
+   exact du moment) avant d'ouvrir la production ; un compte organisation
+   n'a pas cette contrainte.
+3. **Empaqueter la PWA** : [PWABuilder](https://www.pwabuilder.com) (tout se
+   fait dans le navigateur : entrer l'URL du site, choisir Android, il rend
+   un `.aab` prêt à téléverser) ou `npx @bubblewrap/cli init` pour la ligne
+   de commande. Garder l'ID de paquet choisi : il ne peut plus changer.
+4. **Récupérer l'empreinte de signature.** Laisser Google signer (Play App
+   Signing, le défaut). Après le premier envoi du `.aab` : Play Console →
+   **Intégrité de l'appli** → certificat de la **clé de signature** — copier
+   l'empreinte SHA-256 dans `ANDROID_CERT_SHA256` (ajouter aussi celle de la
+   clé d'envoi, séparée par une virgule, pour tester le `.aab` en direct).
+   Redéployer, vérifier `https://ton-domaine/.well-known/assetlinks.json`.
+5. **La fiche** : icône 512 (déjà là : `public/images/appli/icone-512.png`),
+   au moins 2 captures d'écran, descriptions, l'URL
+   `https://ton-domaine/confidentialite`, puis les formulaires :
+   classification du contenu, sécurité des données (voir la page
+   confidentialité : compte, contenus, pas de pub ni traqueurs), et déclarer
+   le contenu créé par les joueurs (chat/forum modérés, signalement).
+
+**iOS/App Store** (plus tard, facultatif) : compte Apple 99 $/an + build
+Xcode ; le push y passe par APNs et non Web Push — à câbler à ce moment-là ;
+tout le reste (l'appli, l'écran, la reconnexion) est réutilisé tel quel.
 
 ## Serveur XMLSocket (CBee)
 

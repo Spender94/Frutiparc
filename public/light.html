@@ -1612,6 +1612,12 @@
     -webkit-tap-highlight-color: transparent;
   }
   .hc-quitter:hover { opacity: 1; }
+  /* Lien-document (confidentialité) : même registre que la ligne du compte. */
+  .hc-lien {
+    color: inherit; opacity: .7;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .hc-lien:hover { opacity: 1; }
   /* Deuxième temps. Un appui malheureux coûterait un mot de passe à retaper :
      le lien demande confirmation À SA PLACE plutôt que d'ouvrir une fenêtre
      par-dessus, et se rétracte tout seul si on n'y revient pas. */
@@ -1842,7 +1848,9 @@
         Partager&nbsp;→ «&nbsp;Sur l'écran d'accueil&nbsp;», puis ouvre l'appli Frutiparc.</div>
       <span class="hc-qui">Connecté en tant que <b id="home-pseudo">…</b></span><span
         class="hc-sep" aria-hidden="true">·</span><button
-        type="button" id="logout-btn" class="hc-quitter">Se déconnecter</button>
+        type="button" id="logout-btn" class="hc-quitter">Se déconnecter</button><span
+        class="hc-sep" aria-hidden="true">·</span><a class="hc-lien"
+        href="/confidentialite" target="_blank" rel="noopener">Confidentialité</a>
     </div>
   </section>
 
