@@ -1,0 +1,17 @@
+{
+  "name": "Frutiparc",
+  "short_name": "Frutiparc",
+  "id": "/light",
+  "start_url": "/light?source=appli",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ADE76B",
+  "theme_color": "#ADE76B",
+  "lang": "fr",
+  "description": "Le parc à fruits dans ta poche : salons, jeux, courrier et frutibouilles.",
+  "icons": [
+    { "src": "/images/appli/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/images/appli/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/images/appli/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

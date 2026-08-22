@@ -18,6 +18,7 @@
     "compression": "^1.7.4",
     "express": "^5.1.0",
     "pg": "^8.20.0",
+    "web-push": "^3.6.7",
     "ws": "^8.18.2"
   },
   "optionalDependencies": {

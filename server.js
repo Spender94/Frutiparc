@@ -4513,7 +4513,18 @@ async function deliverMailToRecipients(mail, senderUsername) {
 // FPFileMng / listener.main.onNewMail expects <ax from="..." subject="..." />.
 function notifyNewMail(targetUsername, mail) {
   const socks = getSocketsForUsername(targetUsername);
-  if (!socks.length) return;
+  if (!socks.length) {
+    // Personne devant l'écran : c'est le téléphone qui prévient (appli /light
+    // installée et abonnée — sans abonnement, pousserNotif ne fait rien).
+    const de = String(mail.fromAddr || mail.from || '').split('@')[0] || 'Frutiparc';
+    pousserNotif(targetUsername, {
+      t: '📬 Nouveau courrier',
+      c: `${de} — ${String(mail.subject || 'sans objet')}`,
+      u: '/light?ouvre=mail',
+      tag: 'courrier',
+    }, PUSH_TTL.courrier);
+    return;
+  }
   const xml = `<${CMD.newmail} from="${escapeXml(mail.fromAddr || mail.from || '')}" subject="${escapeXml(mail.subject || '')}" />`;
   for (const sock of socks) sendToClient(sock, xml);
 }
@@ -5480,6 +5491,220 @@ app.get('/legacy', (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/light', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'light.html'));
+});
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS PUSH — L'APPLI PRÉVIENT QUAND LE SITE NE PEUT PAS
+//
+// /light s'installe désormais comme une appli (manifest + service worker) ; et
+// une appli fermée, ou repassée en arrière-plan, n'a plus de WebSocket — le
+// système coupe tout. Le Web Push est le SEUL canal qui reste : le serveur
+// remet le message au service de poussée du navigateur (chiffré de bout en
+// bout, clés VAPID), qui réveille le service worker de l'appareil.
+//
+// LA RÈGLE : on ne pousse qu'aux ABSENTS. Un joueur qui a une socket de chat
+// vivante voit déjà tout à l'écran — le téléphone qui vibre en double serait
+// du bruit. Trois choses poussent : le COURRIER (notifyNewMail), les MESSAGES
+// PRIVÉS (pousserNotifMpSiAbsent, depuis le relais du chat) et les ÉVÉNEMENTS
+// du site (la route admin qui diffuse <newsitelog>).
+//
+// Un abonnement = UN APPAREIL (le téléphone, la tablette…), rangé par
+// endpoint. Un endpoint mort (404/410 à l'envoi : l'utilisateur a désabonné ou
+// désinstallé) est supprimé au fil de l'eau. La paire VAPID est générée au
+// premier démarrage et PERSISTÉE : en changer invaliderait tous les
+// abonnements. VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY dans l'environnement
+// priment (utile pour partager la clé entre plusieurs instances).
+// ─────────────────────────────────────────────
+const webpush = require('web-push');
+const pushAbonnements = new Map();   // endpoint → { username, endpoint, keys:{p256dh, auth} }
+let pushPret = false;
+let PUSH_CLE_PUBLIQUE = '';
+
+const PUSH_TTL = { courrier: 24 * 3600, mp: 3600, evenement: 12 * 3600 };
+
+function pushInit(cles, nAbonnements) {
+  // Le sujet VAPID identifie l'expéditeur auprès des services de poussée
+  // (mailto: ou https:). Configurable, avec un défaut qui pointe le projet.
+  const contact = process.env.VAPID_CONTACT || 'https://github.com/Spender94/Frutiparc';
+  try {
+    webpush.setVapidDetails(contact, cles.publicKey, cles.privateKey);
+    PUSH_CLE_PUBLIQUE = cles.publicKey;
+    pushPret = true;
+    console.log(`[PUSH] Web Push prêt (${nAbonnements} abonnement(s), clé ${cles.publicKey.slice(0, 12)}…)`);
+  } catch (e) {
+    console.error('[PUSH] clés VAPID invalides :', e.message);
+  }
+}
+// Sans base (développement), la paire est éphémère : les abonnements ne
+// survivent pas au redémarrage, ce qui est sans conséquence en local. Avec
+// base, l'initialisation se fait au boot() une fois le schéma prêt.
+if (!process.env.DATABASE_URL) {
+  const cles = (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY)
+    ? { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY }
+    : webpush.generateVAPIDKeys();
+  pushInit(cles, 0);
+}
+
+function estJoignableEnDirect(username) {
+  return getSocketsForUsername(username).length > 0;
+}
+
+// Envoi à un appareil. Rend false si l'abonnement est mort (et le retire).
+async function pushEnvoyerBrut(abo, charge, ttl) {
+  try {
+    await webpush.sendNotification(
+      { endpoint: abo.endpoint, keys: abo.keys },
+      JSON.stringify(charge),
+      { TTL: ttl }
+    );
+    return true;
+  } catch (e) {
+    const code = e && e.statusCode;
+    if (code === 404 || code === 410) {
+      pushAbonnements.delete(abo.endpoint);
+      if (process.env.DATABASE_URL) db.deletePushSubscription(abo.endpoint).catch(() => {});
+      console.log(`[PUSH] abonnement mort retiré (${code}, ${abo.username})`);
+    } else {
+      console.error('[PUSH] envoi échoué :', code || e.message);
+    }
+    return false;
+  }
+}
+
+// Tous les appareils d'UN joueur. (Pas de test de présence ici : les appelants
+// décident — le bouton « tester » doit sonner même quand on est connecté.)
+function pousserNotif(username, charge, ttl) {
+  if (!pushPret) return;
+  const cible = String(username || '').toLowerCase();
+  for (const abo of pushAbonnements.values()) {
+    if (abo.username === cible) pushEnvoyerBrut(abo, charge, ttl);
+  }
+}
+
+// Tous les joueurs abonnés ET absents (les présents voient déjà l'écran).
+function pousserNotifATous(charge, ttl) {
+  if (!pushPret) return;
+  const joignable = new Map();   // username → a une socket vivante ?
+  for (const abo of pushAbonnements.values()) {
+    if (!joignable.has(abo.username)) joignable.set(abo.username, estJoignableEnDirect(abo.username));
+    if (!joignable.get(abo.username)) pushEnvoyerBrut(abo, charge, ttl);
+  }
+}
+
+// Message privé relayé vers un joueur ABSENT : le chat ne peut pas le lui
+// montrer, le téléphone prend le relais. Appelé par les deux sorties du
+// relais de chat (normale et feutre multicolore).
+function pousserNotifMpSiAbsent(g, fromUsername, texteBrut) {
+  if (!pushPret || !/^pm2?_/.test(String(g || ''))) return;
+  for (const dest of parsePrivateParticipants(g)) {
+    const cible = String(dest || '').toLowerCase();
+    if (!cible || cible === String(fromUsername).toLowerCase()) continue;
+    if (NPC_USERNAMES.has(cible)) continue;
+    if (estJoignableEnDirect(cible)) continue;
+    const extrait = String(texteBrut || '').replace(/<[^>]*>/g, '').slice(0, 90);
+    pousserNotif(cible, {
+      t: `💬 ${getDisplayName(fromUsername)} t'écrit`,
+      c: extrait,
+      u: '/light?ouvre=prive&avec=' + encodeURIComponent(fromUsername),
+      tag: 'mp_' + String(fromUsername).toLowerCase(),
+    }, PUSH_TTL.mp);
+  }
+}
+
+// L'endpoint vient du service de poussée du navigateur : toujours en https
+// (web-push ne parle d'ailleurs que https).
+function pushEndpointValide(endpoint) {
+  try { return new URL(String(endpoint || '')).protocol === 'https:'; }
+  catch { return false; }
+}
+
+function pushEnregistrer(username, sub, ua) {
+  const abo = {
+    username: String(username).toLowerCase(),
+    endpoint: sub.endpoint,
+    keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+  };
+  pushAbonnements.set(abo.endpoint, abo);
+  if (process.env.DATABASE_URL) {
+    db.upsertPushSubscription(abo.username, abo.endpoint, abo.keys.p256dh, abo.keys.auth, ua || '')
+      .catch(dbErr('upsertPushSubscription'));
+  }
+  return abo;
+}
+
+// La clé publique, pour que la page fabrique son abonnement.
+app.get('/api/push/cle', (req, res) => {
+  if (!pushPret) return res.json({ ok: false, error: 'indisponible' });
+  res.json({ ok: true, cle: PUSH_CLE_PUBLIQUE });
+});
+
+app.post('/api/push/subscribe', (req, res) => {
+  const corps = req.body || {};
+  const username = resolveUsernameFromSid(corps.sid || req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  if (!pushPret) return res.json({ ok: false, error: 'indisponible' });
+  const sub = corps.subscription || {};
+  if (!pushEndpointValide(sub.endpoint) || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
+    return res.status(400).json({ ok: false, error: 'abonnement illisible' });
+  }
+  pushEnregistrer(username, sub, String(req.headers['user-agent'] || '').slice(0, 200));
+  console.log(`[PUSH] ${username} abonné (${pushAbonnements.size} au total)`);
+  res.json({ ok: true });
+});
+
+app.post('/api/push/unsubscribe', (req, res) => {
+  const corps = req.body || {};
+  const username = resolveUsernameFromSid(corps.sid || req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  const endpoint = String(corps.endpoint || '');
+  const abo = pushAbonnements.get(endpoint);
+  // On ne retire que SON abonnement — l'endpoint d'un autre ne se devine pas,
+  // mais autant être strict.
+  if (abo && abo.username === String(username).toLowerCase()) {
+    pushAbonnements.delete(endpoint);
+    if (process.env.DATABASE_URL) db.deletePushSubscription(endpoint).catch(() => {});
+    console.log(`[PUSH] ${username} désabonné`);
+  }
+  res.json({ ok: true });
+});
+
+// L'appareil est-il abonné ? (Pour afficher le bon état du bouton.)
+app.get('/api/push/etat', (req, res) => {
+  const username = resolveUsernameFromSid(req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  const abo = pushAbonnements.get(String(req.query.endpoint || ''));
+  res.json({ ok: true, actif: !!(abo && abo.username === String(username).toLowerCase()) });
+});
+
+// Le service de poussée peut remplacer un abonnement de lui-même
+// (pushsubscriptionchange) : le service worker nous donne l'ancien endpoint,
+// on transfère l'identité dessus — sans sid, l'ancien endpoint EST la preuve.
+app.post('/api/push/resubscribe', (req, res) => {
+  const corps = req.body || {};
+  const ancien = pushAbonnements.get(String(corps.ancien || ''));
+  const sub = corps.subscription || {};
+  if (!ancien || !pushEndpointValide(sub.endpoint) || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
+    return res.json({ ok: false });
+  }
+  pushAbonnements.delete(ancien.endpoint);
+  if (process.env.DATABASE_URL) db.deletePushSubscription(ancien.endpoint).catch(() => {});
+  pushEnregistrer(ancien.username, sub, 'resubscribe');
+  console.log(`[PUSH] ${ancien.username} : abonnement renouvelé par le navigateur`);
+  res.json({ ok: true });
+});
+
+// « Tester » — la notification arrive sur CET appareil, tout de suite.
+app.post('/api/push/test', (req, res) => {
+  const corps = req.body || {};
+  const username = resolveUsernameFromSid(corps.sid || req.query.sid || '');
+  if (!username) return res.status(401).json({ ok: false, error: 'auth' });
+  pousserNotif(username, {
+    t: '🔔 Frutiparc',
+    c: 'Les notifications fonctionnent ! Tu seras prévenu du courrier, des messages privés et des événements.',
+    u: '/light',
+    tag: 'test',
+  }, 300);
+  res.json({ ok: true });
 });
 
 
@@ -11064,6 +11289,15 @@ app.post('/api/admin/broadcast', adminAuth, (req, res) => {
       notified++;
     }
   }
+  // Et l'appli mobile prévient les ABSENTS : un événement du site (tournoi,
+  // animation, nouveauté) est exactement ce pour quoi on s'abonne aux
+  // notifications. Les connectés viennent de recevoir la trame ci-dessus.
+  pousserNotifATous({
+    t: '📣 Frutiparc',
+    c: String(message).slice(0, 160),
+    u: '/light?ouvre=evenements',
+    tag: 'evenement',
+  }, PUSH_TTL.evenement);
 
   // Persistent: append to every known user's siteLog so it shows up after relog too.
   // We tag the entry with `bid` so it can later be removed by event id.
@@ -18519,6 +18753,30 @@ async function boot() {
         }
       } catch (e) { console.error('[DB] Shop packs load error:', e.message); }
       try {
+        // Notifications push : la paire VAPID vit en base (la changer
+        // invaliderait tous les abonnements), l'environnement prime.
+        let clesVapid = null;
+        if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+          clesVapid = { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY };
+        } else {
+          clesVapid = await db.loadVapidKeys();
+          if (!clesVapid) {
+            clesVapid = webpush.generateVAPIDKeys();
+            await db.saveVapidKeys(clesVapid.publicKey, clesVapid.privateKey);
+            console.log('[PUSH] paire VAPID générée et enregistrée');
+          }
+        }
+        const abos = await db.loadAllPushSubscriptions();
+        for (const a of abos) {
+          pushAbonnements.set(a.endpoint, {
+            username: String(a.username).toLowerCase(),
+            endpoint: a.endpoint,
+            keys: { p256dh: a.p256dh, auth: a.auth },
+          });
+        }
+        pushInit(clesVapid, pushAbonnements.size);
+      } catch (e) { console.error('[PUSH] init error:', e.message); }
+      try {
         const wps = await db.loadWallpapers();
         for (const wp of wps) registerCustomWallpaper(wp);
         if (wps.length) console.log(`[DB] Loaded ${wps.length} custom wallpaper(s)`);
@@ -22760,6 +23018,7 @@ case 'send': {
       broadcastToChannel(g,
         `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="m" p="" g="${escapeXml(g)}" h="${hOpen}" d="${timeAttrs.d}" st="mc">${rainbow}</${CMD.send}>`
       );
+      pousserNotifMpSiAbsent(g, client.username, unescapeXml(text));
       trackXpAction(client.username, 'chatMsg');
       kilouteCheckAnswer(g, client.username, text);
       kilouteSessionCheckAnswer(g, client.username, text);
@@ -22768,6 +23027,7 @@ case 'send': {
 
     const xml = `<${CMD.send} u="${escapeXml(getDisplayName(client.username))}" t="${type}"${pen ? ` p="${escapeXml(pen)}"` : ''} g="${g}" h="${timeAttrs.h}" d="${timeAttrs.d}">${safeText}</${CMD.send}>`;
     broadcastToChannel(g, xml);
+    if (type === 'm') pousserNotifMpSiAbsent(g, client.username, unescapeXml(text));
     trackXpAction(client.username, 'chatMsg');
     // MikeHorny's "Question à 60 kikooz" (daily single) AND the live quiz event:
     // react if this line is the answer to whichever is running.

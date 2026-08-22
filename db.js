@@ -300,6 +300,32 @@ async function initSchema() {
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS picto TEXT DEFAULT NULL;
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS disabled BOOLEAN DEFAULT FALSE;
 
+      -- Notifications push (Web Push, appli mobile /light). Un abonnement par
+      -- APPAREIL : l'endpoint est l'adresse que le navigateur a donnée, unique
+      -- par construction. Un joueur peut en avoir plusieurs (téléphone +
+      -- tablette) ; un endpoint mort (410 au moment d'envoyer) est supprimé.
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id         SERIAL PRIMARY KEY,
+        username   TEXT NOT NULL,
+        endpoint   TEXT UNIQUE NOT NULL,
+        p256dh     TEXT NOT NULL,
+        auth       TEXT NOT NULL,
+        ua         TEXT DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
+        ON push_subscriptions(username);
+
+      -- La paire de clés VAPID qui signe les envois. Générée au premier
+      -- démarrage et conservée : en changer invaliderait tous les abonnements
+      -- existants (le navigateur vérifie que la clé n'a pas bougé).
+      CREATE TABLE IF NOT EXISTS push_vapid (
+        id          INTEGER PRIMARY KEY CHECK (id = 1),
+        public_key  TEXT NOT NULL,
+        private_key TEXT NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT now()
+      );
+
       -- Historique CENTRALISÉ des achats boutique (passes, accessoires, fonds
       -- d'écran…). Une ligne par achat, consultable dans l'admin (« Achats
       -- boutique ») — notamment pour suivre qui achète des pass.
@@ -2776,9 +2802,42 @@ async function rankingHasActiveTournament(rankingId, excludeId) {
   return rows.length > 0;
 }
 
+// ── Notifications push (appli mobile) ──
+async function loadVapidKeys() {
+  const { rows } = await pool.query('SELECT public_key, private_key FROM push_vapid WHERE id = 1');
+  return rows[0] ? { publicKey: rows[0].public_key, privateKey: rows[0].private_key } : null;
+}
+async function saveVapidKeys(publicKey, privateKey) {
+  await pool.query(
+    `INSERT INTO push_vapid (id, public_key, private_key) VALUES (1, $1, $2)
+     ON CONFLICT (id) DO NOTHING`,
+    [publicKey, privateKey]
+  );
+}
+async function upsertPushSubscription(username, endpoint, p256dh, auth, ua) {
+  await pool.query(
+    `INSERT INTO push_subscriptions (username, endpoint, p256dh, auth, ua)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (endpoint) DO UPDATE SET username = $1, p256dh = $3, auth = $4, ua = $5`,
+    [username, endpoint, p256dh, auth, ua || '']
+  );
+}
+async function deletePushSubscription(endpoint) {
+  await pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [endpoint]);
+}
+async function loadAllPushSubscriptions() {
+  const { rows } = await pool.query('SELECT username, endpoint, p256dh, auth FROM push_subscriptions');
+  return rows;
+}
+
 module.exports = {
   pool,
   initSchema,
+  loadVapidKeys,
+  saveVapidKeys,
+  upsertPushSubscription,
+  deletePushSubscription,
+  loadAllPushSubscriptions,
   createTournament,
   listTournaments,
   getTournament,

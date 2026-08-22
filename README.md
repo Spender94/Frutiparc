@@ -124,6 +124,37 @@ Games/                Mini-jeux (Burning Kiwi, Kaluga, Frutibandas, etc.)
 | `ff/ls` | Contenu d'un dossier |
 | `ff/mk` `ff/mv` `ff/cp` `ff/erb` `ff/dm` | Opérations sur fichiers |
 
+## Application mobile (/light installable)
+
+`/light` est une PWA : elle s'installe sur l'écran d'accueil et envoie des
+notifications push (courrier, messages privés, événements du site).
+
+**Côté joueur :**
+- **Android (Chrome)** : ouvrir `/light` → menu ⋮ → « Installer l'application »
+  (ou la bulle d'installation). Puis, dans l'appli, pied de l'accueil →
+  « Activer les notifications ».
+- **iPhone/iPad (iOS 16.4+)** : Safari → Partager → « Sur l'écran d'accueil »,
+  puis ouvrir **l'appli** (pas Safari) et activer les notifications. Sur iOS,
+  le push n'existe que dans l'appli installée — la page l'explique d'elle-même.
+
+**Côté serveur :** rien à configurer. La paire de clés VAPID est générée au
+premier démarrage et conservée en base (`push_vapid`) ; les abonnements vivent
+dans `push_subscriptions`. Optionnel : `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`
+(pour partager la clé entre instances) et `VAPID_CONTACT` (mailto: ou https:).
+**Ne jamais régénérer la clé** : tous les abonnements existants tomberaient.
+
+**La règle d'envoi :** on ne pousse qu'aux joueurs **absents** (aucune socket
+de chat vivante) — un joueur devant son écran voit déjà tout. Le service worker
+(`public/light-sw.js`) n'a **pas** de gestionnaire `fetch` : aucun cache, il ne
+peut rien casser (jeux, Ruffle). Tests : `test/appliMobile.test.js` (le faux
+« téléphone » déchiffre réellement les charges, RFC 8291).
+
+**Étape suivante (facultative) — les stores :** empaqueter la PWA avec
+[PWABuilder](https://www.pwabuilder.com) (Android/Play : compte 25 $ une fois ;
+iOS/App Store : compte Apple 99 $/an + build Xcode). Sur iOS empaqueté, le push
+passe par APNs et non Web Push — à câbler à ce moment-là ; tout le reste
+(l'appli, l'écran, la reconnexion) est réutilisé tel quel.
+
 ## Serveur XMLSocket (CBee)
 
 Le serveur TCP sur le port `5173` implémente le protocole CBee
