@@ -4,7 +4,7 @@
 // Des joueurs, des parties ouvertes (salons) créées avec des paramètres
 // (temps par équipe, taille de plateau, cartes par joueur — cf.
 // CreateParameters.as : time [600,480,400,240] s, size [8,7,6,5],
-// cards [4,3,2,1]) et des défis directs. Quand une partie est complète,
+// cards [3,2,1]) et des défis directs. Quand une partie est complète,
 // elle passe en "playing" — le transport instancie alors une BandasSession.
 //
 // Logique pure (aucune dépendance au transport) ; câblage WebSocket dans
@@ -19,7 +19,10 @@
 
   var TIME_CHOICES = [600, 480, 400, 240];   // secondes par équipe
   var SIZE_CHOICES = [8, 7, 6, 5];
-  var CARD_CHOICES = [4, 3, 2, 1];
+  // TROIS cartes par joueur au plus : c'est le compte du jeu d'origine. Le
+  // portage proposait 4 en tête de liste (donc par défaut), ce qui allongeait
+  // les parties et diluait le plateau.
+  var CARD_CHOICES = [3, 2, 1];
 
   function defaultParams(p) {
     p = p || {};

@@ -141,6 +141,7 @@
       if (ev.p !== undefined) attrs += ' p="' + ev.p + '"';
       if (ev.movePhase !== undefined) attrs += ' mp="' + (ev.movePhase ? 1 : 0) + '"';
       if (ev.hidden) attrs += ' h="1"';
+      if (ev.noCard) attrs += ' nc="1"';   // tour rejoué par célérité : mouvement seul
       if (ev.winner !== undefined) attrs += ' w="' + ev.winner + '"';
       attrs += ' rt0="' + rt[0] + '" rt1="' + rt[1] + '"';
       out.push({ to: to, xml: "<bd e=\"ev\"" + attrs + "/>" });

@@ -52,7 +52,10 @@ eq(sess.clocks[1], 60000, "session: team 1 clock untouched");
 r = sess.requestChooseCard("p1", 5, 2000);
 eq(sess.game.phase, G.PHASE_MOVE, "session: move phase after last pick");
 
-r = sess.requestMove("p0", DIR.RIGHT, 3000);
+// Deux cartes au pot, une chacun : p0 pioche en premier, donc c'est p1 qui
+// ouvre la partie (voir game.js, chooseCard).
+eq(sess.game.currentTeam, 1, "session: second drafter opens");
+r = sess.requestMove("p1", DIR.RIGHT, 3000);
 ok(r.ok, "session: move accepted");
 eq(sess.game.currentTeam, 1, "session: turn advances");
 
@@ -112,7 +115,7 @@ eq(ac.game.players.join(","), "u3,u1", "lobby: challenger is team 0");
 var dp = L.defaultParams({ time: 999, boardSize: 99, cards: 0 });
 eq(dp.time, 600000, "lobby: bad time falls back to default");
 eq(dp.boardSize, 8, "lobby: bad size falls back to default");
-eq(dp.cards, 4, "lobby: bad cards falls back to default");
+eq(dp.cards, 3, "lobby: bad cards falls back to default (3 = le compte d'origine)");
 
 // ══ BOT ═══════════════════════════════════════════════════════════════════
 var bb = mk(["01..", "....", "....", "...."]);
@@ -173,7 +176,7 @@ function drafter(net, sess) {
 }
 ok(drafter(net, theSess), "net: full draft runs");
 eq(theSess.game.phase, G.PHASE_MOVE, "net: move phase reached");
-eq(theSess.game.hands[0].length, 4, "net: 4 cards drafted for team 0");
+eq(theSess.game.hands[0].length, 3, "net: 3 cards drafted for team 0");
 
 // mouvement : événements diffusés aux deux
 var who = theSess.playerOfTeam(theSess.game.currentTeam).id;
@@ -329,6 +332,77 @@ nfd.handle("hugo", { a: "part" });                          // hugo abandonne �
 eq(nfd.streaks["gwen"], 1, "bandas: match humain → le gagnant monte sa série");
 eq(discs.gwen, 2, "bandas: le gagnant garde son disque");
 eq(discs.hugo, 1, "bandas: le perdant perd un disque");
+
+
+// ── Ce que l'IA a appris ────────────────────────────────────────────────────
+// Le cœur du jeu : Board.moveSprite ne tue que si la destination sort du
+// plateau. Un fruit du centre, avec du vide devant lui, ne meurt jamais de son
+// propre mouvement ; un fruit collé au bord vers lequel on avance, si. D'où
+// l'évaluation : matériel d'abord, puis COHÉSION et MARGE au bord.
+
+// Antisymétrie : sans elle, le négamax raconte n'importe quoi.
+var bs = mk(["0011", "0011", "....", "...."]);
+ok(Math.abs(Bot.evaluate(bs, 0) + Bot.evaluate(bs, 1)) < 1e-9, "bot: évaluation antisymétrique");
+
+// Un bloc serré au centre vaut mieux que le même nombre de fruits éparpillés
+// sur les bords — à matériel ÉGAL.
+var bloc = mk([".....", ".00..", ".00..", ".....", "....1"]);
+var eparpille = mk(["0...0", ".....", ".....", ".....", "0...1"]);
+// (4 fruits contre 1 dans les deux cas)
+eq(bloc.countSpritesOf(0), 4, "bot: le bloc compte 4 fruits");
+eq(eparpille.countSpritesOf(0), 3, "bot: l'éparpillement en compte 3");
+var serre = mk([".....", ".00..", ".00..", ".....", "....1"]);
+var lache = mk(["0...0", ".....", "..0..", ".....", "0...1"]);
+eq(lache.countSpritesOf(0), 4, "bot: même matériel");
+ok(Bot.evaluate(serre, 0) > Bot.evaluate(lache, 0),
+  "bot: à matériel égal, le bloc central l'emporte sur l'éparpillement");
+
+// La profondeur EST le niveau : un bot fort regarde plus loin.
+ok(Bot.depthFor(1.0) > Bot.depthFor(0.45), "bot: le niveau fort cherche plus profond");
+
+// Un bot fort ne se trompe pas de direction quand un coup gagne sur-le-champ.
+// 0 est collé à 1, qui est lui-même contre le bord droit : pousser à DROITE
+// éjecte 1 du plateau et gagne sur-le-champ.
+var gagnant = mk(["..01", "....", "....", "...."]);
+eq(Bot.chooseMove(gagnant, 0, 1.0, seeded(11)), DIR.RIGHT,
+  "bot: pousse l'adversaire dehors quand il le peut");
+
+// Et la nouvelle IA bat l'ancienne heuristique (différentiel matériel seul,
+// profondeur 1) : 20 parties, couleurs alternées.
+function evalMateriel(board, team) {
+  var my = board.countSpritesOf(team), op = board.countSpritesOf(1 - team);
+  if (my <= 0 && op <= 0) return 0;
+  if (my <= 0) return -100000;
+  if (op <= 0) return 100000;
+  return (my - op) * 100;
+}
+function coupMateriel(board, team) {
+  var best = null, bestV = -Infinity;
+  [DIR.UP, DIR.RIGHT, DIR.DOWN, DIR.LEFT].forEach(function (d) {
+    var b = board.clone(); b.move(team, d); b.removeEmptyBorders(); b.takeTrapHits();
+    var v = evalMateriel(b, team);
+    if (v > bestV) { bestV = v; best = d; }
+  });
+  return best;
+}
+var victoires = 0, defaites = 0;
+for (var p = 0; p < 20; p++) {
+  var rng = seeded(p + 1);
+  var partie = new G.BandasGame({ size: 8, cardsPerPlayer: 0, rng: rng });
+  var iaEnA = (p % 2 === 0);
+  var tours = 0;
+  while (!partie.ended && tours < 400) {
+    tours++;
+    var t = partie.currentTeam;
+    var estIA = (t === 0) === iaEnA;
+    partie.move(t, estIA ? Bot.chooseMove(partie.board, t, 1.0, rng) : coupMateriel(partie.board, t));
+  }
+  if (partie.winner === 0 || partie.winner === 1) {
+    if ((partie.winner === 0) === iaEnA) victoires++; else defaites++;
+  }
+}
+ok(victoires > defaites * 2, "bot: la nouvelle IA domine le simple différentiel matériel ("
+  + victoires + " – " + defaites + ")");
 
 console.log("bandas server tests: " + passed + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

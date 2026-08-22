@@ -47,7 +47,9 @@ g.chooseCard(0, 5);
 r = g.chooseCard(1, 9);
 eq(find(r, "cardChosen")[0].movePhase, true, "last pick flags move phase");
 eq(g.phase, G.PHASE_MOVE, "move phase entered");
-eq(g.currentTeam, 0, "team 0 moves first (alternation continues)");
+// Le draft alterne, mais la PARTIE s'ouvre chez celui qui a choisi en SECOND :
+// piocher le premier donne déjà le meilleur des deux paquets.
+eq(g.currentTeam, 1, "second drafter opens the game");
 eq(g.hands[0].join(","), "3,5", "team 0 hand");
 eq(g.hands[1].join(","), "7,9", "team 1 hand");
 
@@ -269,6 +271,53 @@ eq(snap.hands[1].join(","), "2", "snapshot hands");
 eq(snap.content.length, 16, "snapshot board content");
 var rb = E.Board.fromContent(snap.size, snap.content, snap.bounds);
 eq(rb.countSpritesOf(0), 1, "snapshot board rebuilds");
+
+
+// ── Les retours joueurs d'août 2026 ──────────────────────────────────────────
+
+// TROIS cartes par joueur : le compte du jeu d'origine (le portage en donnait
+// quatre — la première valeur de CreateParameters.as).
+g = new G.BandasGame({ size: 6, rng: seeded(9) });
+eq(g.cardsPerPlayer, 3, "trois cartes par joueur par défaut");
+eq(g.pool.length, 6, "le pot en contient deux fois trois");
+
+// La PARTIE s'ouvre chez celui qui a choisi en SECOND. Piocher le premier donne
+// déjà le meilleur des deux paquets : les deux avantages ne vont pas ensemble.
+g = new G.BandasGame({ board: mk(["01", ".."]), pool: [1, 2, 3, 4], firstTeam: 1 });
+g.chooseCard(1, 1); g.chooseCard(0, 2); g.chooseCard(1, 3); g.chooseCard(0, 4);
+eq(g.phase, G.PHASE_MOVE, "draft terminé");
+eq(g.currentTeam, 0, "l'ouverture revient au second piocheur");
+// … et le compte de cartes est pair, donc la simple alternance aurait rendu la
+// main au premier piocheur : c'est bien une règle, pas un hasard.
+eq(g.firstDrafter, 1, "le premier piocheur est retenu");
+
+// CÉLÉRITÉ ne rend qu'un MOUVEMENT : le tour rejoué ne rouvre pas la main.
+g = game(["0...1.", "0...1.", "0...1.", "......", "......", "......"], { firstTeam: 0 });
+g.hands[0] = [CARD.CELERITE, CARD.ENCLUME];
+r = g.playCard(0, CARD.CELERITE);
+ok(r.ok, "célérité posée");
+r = g.move(0, DIR.RIGHT);
+eq(g.currentTeam, 0, "célérité : on rejoue");
+eq(find(r, "turn")[0].noCard, true, "le tour rejoué est annoncé sans carte");
+eq(g.cardPlayedThisTurn, true, "la main reste fermée");
+r = g.playCard(0, CARD.ENCLUME, 1, 1);
+eq(r.ok, false, "pas de seconde carte après célérité");
+eq(r.error, "one-card-per-turn", "et le refus le dit");
+r = g.move(0, DIR.RIGHT);
+ok(r.ok, "le mouvement, lui, passe");
+eq(g.currentTeam, 1, "puis la main change de camp");
+
+// VACHETTE : la colonne se vide DANS LES BORNES. Hors cadre, les cases sont
+// détruites et doivent le rester — la meuhmeuh les repeignait en libres.
+g = game(["......", ".0.1..", ".0.1..", "......", "......", "......"], { firstTeam: 0 });
+g.board.removeEmptyBorders();                 // le plateau se resserre sur 1..3 / 1..2
+var horsCadre = { x: 1, y: 5 };
+eq(g.board.getElementAt(g.board.toIndex(horsCadre)), E.DESTROYED, "case hors cadre détruite");
+g.hands[0] = [CARD.VACHETTE];
+r = g.playCard(0, CARD.VACHETTE, 3, 0);
+ok(r.ok, "vachette jouée");
+eq(g.board.getElementAt(g.board.toIndex(horsCadre)), E.DESTROYED, "elle le reste après la vachette");
+eq(find(r, "cardPlayed")[0].y, g.board.minY, "l'annonce porte la ligne réelle, pas 0");
 
 console.log("bandas game tests: " + passed + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

@@ -22,14 +22,16 @@ Frutibandas = un **pousse-pousse de fruits** 2 joueurs (oranges, béret rouge,
 - Une équipe **sans fruit a perdu** ; les deux à zéro = égalité (« La
   Vachette » gagne). Horloge type échecs par équipe (600/480/400/240 s).
 - Avant la partie : **draft alterné** des fruticartes (2×N tirées au sort,
-  N = 4/3/2/1 par joueur).
+  N = **3**/2/1 par joueur — trois cartes, comme le jeu d'origine). Le draft
+  alterne, mais **la partie s'ouvre chez celui qui a choisi en second** :
+  piocher le premier donne déjà le meilleur des deux paquets.
 
 ### Les 12 fruticartes (sémantique reconstruite du source + textes du .fla)
 
 | id | carte | effet |
 |---:|---|---|
 | 0 | Enclume | détruit la case ciblée (et son contenu) |
-| 1 | Célérité | on rejoue après son mouvement |
+| 1 | Célérité | on rejoue après son mouvement (un MOUVEMENT seul : le tour rejoué ne rouvre pas la main) |
 | 2 | Confiscation | *(cachée)* la carte adverse du tour suivant est annulée et volée |
 | 3 | Renfort | jusqu'à 3 fruits alliés placés au hasard (coords encodées ×10000/×100) |
 | 4 | Désordre | *(cachée)* le prochain mouvement adverse est **inversé** |
@@ -57,8 +59,16 @@ même logique ici).
   d'origine (`CreateParameters.as`).
 - `server/session.js` — horloges par équipe, timeout, abandon, snapshot
   (reprise sur reconnexion via `hello`).
-- `server/bot.js` — IA (simulation des 4 directions, profondeur 2,
-  heuristiques par carte) ; niveau commun tiré au sort par partie.
+- `server/bot.js` — IA. Négamax de profondeur 2 à 4 selon le niveau, et une
+  évaluation qui dit la stratégie du jeu : matériel d'abord, puis **cohésion**
+  (contacts entre ses fruits) et **marge** au bord — autrement dit *rassembler
+  un bloc au centre, quitte à laisser ceux des flancs*. C'est la géométrie de
+  `Board.moveSprite` : une chaîne qui trouve une case libre devant elle se
+  tasse sans perte, un fruit collé au bord vers lequel on avance meurt. Les
+  cartes sont choisies par SIMULATION (enclume, vachette, conversion,
+  pétrification, charge, célérité, renfort, solo, entracte) et jouées seulement
+  si le plateau qu'elles laissent vaut mieux. Niveau commun tiré au sort par
+  partie.
 - `server/net.js` — pont `<bd a="…">` ↔ `<bd e="…">` : lobby, sessions,
   bots (Banano, Orangine, Kiwano), **séries challenge** avec anti-farm
   (un humain ne compte qu'une fois par série — l'erreur 1529 d'origine).

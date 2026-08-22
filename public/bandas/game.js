@@ -51,18 +51,26 @@
 
   var END_DRAW = -2; // « La Vachette » gagne
 
-  // opts : { size=8, cardsPerPlayer=4, rng=Math.random,
+  // Cartes par joueur. TROIS, comme le jeu d'origine — le portage en donnait
+  // quatre (la première valeur de CreateParameters.as, qui listait aussi des
+  // parties plus courtes).
+  var CARDS_PER_PLAYER = 3;
+
+  // opts : { size=8, cardsPerPlayer=3, rng=Math.random,
   //          board?:Board (test), pool?:[ids] (test), firstTeam? }
   function BandasGame(opts) {
     opts = opts || {};
     this.rng = opts.rng || Math.random;
     this.size = opts.size || 8;
-    this.cardsPerPlayer = (opts.cardsPerPlayer !== undefined) ? opts.cardsPerPlayer : 4;
+    this.cardsPerPlayer = (opts.cardsPerPlayer !== undefined) ? opts.cardsPerPlayer : CARDS_PER_PLAYER;
     this.board = opts.board || E.Board.newStartingBoard(this.size, this.rng);
     this.pool = opts.pool ? opts.pool.slice() : this._randomPool(this.cardsPerPlayer * 2);
     this.hands = [[], []];
     this.phase = this.pool.length ? PHASE_CARD_SELECTION : PHASE_MOVE;
     this.currentTeam = (opts.firstTeam !== undefined) ? opts.firstTeam : (this.rng() < 0.5 ? 0 : 1);
+    // Qui a ouvert le draft : c'est l'AUTRE qui ouvrira la partie (voir
+    // chooseCard). Choisir en premier, c'est déjà un avantage.
+    this.firstDrafter = this.currentTeam;
     this.ended = false;
     this.winner = null;          // 0 | 1 | END_DRAW
     this.cardPlayedThisTurn = false;
@@ -114,17 +122,24 @@
 
   // Fin de tour : célérité fait rejouer la même équipe, sinon on alterne. La
   // fenêtre de confiscation adverse expire quand le tour de sa cible se finit.
+  //
+  // CÉLÉRITÉ NE REND QU'UN MOUVEMENT. Le tour rejoué garde `cardPlayedThisTurn`
+  // à vrai : on rebouge, on ne rejoue pas de carte. Sans quoi la carte se
+  // payait elle-même — célérité, puis une seconde carte dans la foulée, et
+  // ainsi de suite tant qu'il en restait en main.
   BandasGame.prototype._endTurn = function (events) {
     if (this._checkEnd(events)) return;
     var t = this.currentTeam;
     this.confiscation[1 - t] = false;          // la fenêtre « prochain tour » de l'adversaire se referme
+    var rejoue = false;
     if (this.celerite[t]) {
       this.celerite[t] = false;                // on rejoue (le tour reste à t)
+      rejoue = true;
     } else {
       this.currentTeam = 1 - t;
     }
-    this.cardPlayedThisTurn = false;
-    events.push({ type: "turn", team: this.currentTeam, to: "all" });
+    this.cardPlayedThisTurn = rejoue;
+    events.push({ type: "turn", team: this.currentTeam, noCard: rejoue, to: "all" });
   };
 
   // ── Phase de draft ────────────────────────────────────────────────────────
@@ -142,7 +157,11 @@
     var movePhase = this.pool.length === 0;
     events.push({ type: "cardChosen", team: team, card: cardId, movePhase: movePhase, to: "all" });
     if (movePhase) this.phase = PHASE_MOVE;
-    this.currentTeam = 1 - team;
+    // Le draft alterne ; la partie, elle, s'ouvre chez CELUI QUI A CHOISI EN
+    // SECOND. Piocher le premier donne déjà le meilleur des deux paquets : les
+    // deux avantages ne doivent pas aller au même joueur. (Le compte de cartes
+    // étant pair, la simple alternance rendait la main au premier piocheur.)
+    this.currentTeam = movePhase ? (1 - this.firstDrafter) : (1 - team);
     this.cardPlayedThisTurn = false;
     events.push({ type: "turn", team: this.currentTeam, to: "all" });
     return { ok: true, events: events };
@@ -228,16 +247,23 @@
 
       case CARD.VACHETTE: {
         // La colonne x est entièrement vidée (fruits, pierres, pièges, trous).
-        events.push({ type: "cardPlayed", team: team, card: cardId, x: c.x, y: 0, to: "all" });
-        var cell = { x: c.x, y: 0 };
-        while (cell.y < this.board.getSize()) {
+        //
+        // DANS LES BORNES DU PLATEAU, et pas de 0 à size-1 : le plateau
+        // rétrécit (removeEmptyBorders), et les cases sorties du cadre sont
+        // DÉTRUITES. La meuhmeuh les repeignait en LIBRES — un état que le
+        // moteur n'admet pas hors cadre, et qui ne survivait à une reprise de
+        // partie que par chance (getElement court-circuite hors bornes, mais
+        // toContentString, lui, sérialise TOUTES les cases).
+        events.push({ type: "cardPlayed", team: team, card: cardId, x: c.x, y: this.board.minY, to: "all" });
+        for (var vy = this.board.minY; vy <= this.board.maxY; vy++) {
+          var cell = { x: c.x, y: vy };
           var e2 = this.board.getElement(cell);
           if (e2 > E.FREE) this.board.decTeamCounter(e2);
           this.board.setElement(cell, E.FREE);
-          delete this.trapOwner[cell.x + "," + cell.y];
-          cell = { x: cell.x, y: cell.y + 1 };
+          delete this.trapOwner[cell.x + "," + vy];
         }
         this.board.removeEmptyBorders();
+        this._revealTraps(events);   // un bord rasé peut emporter un piège
         this._checkEnd(events);
         break;
       }

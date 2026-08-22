@@ -242,7 +242,9 @@
         GV.currentTeam = team;
         GV.clockTurn = team;
         GV.clockAt = Date.now();
-        GV.cardPlayedThisTurn = false;
+        // nc="1" : tour REJOUÉ par célérité — on rebouge, on ne rejoue pas de
+        // carte. La main reste donc grisée (cf. game.js, _endTurn).
+        GV.cardPlayedThisTurn = el.getAttribute("nc") === "1";
         refreshTurn();
         refreshPanes();
         break;
@@ -574,13 +576,15 @@
     }
     var minY = GV.board.minY, maxY = GV.board.maxY;
     var cap = captureBoard(function () {
-      var c = { x: colX, y: 0 };
-      while (c.y < GV.board.getSize()) {
+      // Dans les bornes, comme le serveur (game.js) : hors cadre, les cases
+      // sont DÉTRUITES et doivent le rester — les repeindre en LIBRES faisait
+      // diverger les deux plateaux à la première reprise de partie.
+      for (var vy = GV.board.minY; vy <= GV.board.maxY; vy++) {
+        var c = { x: colX, y: vy };
         var e2 = GV.board.getElement(c);
         if (e2 > E.FREE) GV.board.decTeamCounter(e2);
         GV.board.setElement(c, E.FREE);
-        delete GV.myTraps[c.x + "," + c.y];
-        c = { x: c.x, y: c.y + 1 };
+        delete GV.myTraps[colX + "," + vy];
       }
       GV.board.removeEmptyBorders();
     });

@@ -32,7 +32,7 @@
     });
     this.game = opts.game || new G.BandasGame({
       size: this.params.boardSize || 8,
-      cardsPerPlayer: (this.params.cards !== undefined) ? this.params.cards : 4,
+      cardsPerPlayer: (this.params.cards !== undefined) ? this.params.cards : 3,
       rng: opts.rng,
     });
     var t = this.params.time || 600000;            // ms par équipe
