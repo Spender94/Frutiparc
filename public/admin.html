@@ -1206,7 +1206,8 @@ async function refreshAdminContext() {
     const r = await fetch('/api/admin/me', { headers: hdr() });
     if (r.ok) {
       const d = await r.json();
-      adminCtx = d.full ? { full: true, tabs: null } : { full: false, tabs: d.tabs || [], label: d.label, user: d.user };
+      adminCtx = d.full ? { full: true, tabs: null }
+        : { full: false, tabs: d.tabs || [], accueil: d.accueil || null, label: d.label, user: d.user };
     } else {
       adminCtx = { full: true, tabs: null }; // pas (encore) authentifié → ne rien masquer
     }
@@ -1233,7 +1234,10 @@ function applyTabVisibility() {
   // Si l'onglet actif n'est pas autorisé, bascule sur le 1er onglet permis.
   if (allowed && allowed.length) {
     const active = document.querySelector('.tab.active');
-    if (!active || !allowed.includes(active.dataset.tab)) switchTab(allowed[0]);
+    // L'onglet d'ARRIVÉE que le serveur désigne pour ce rôle (l'animateur
+    // ouvre sur les Salons, pas sur MikeHorny) ; à défaut, le premier permis.
+    const arrivee = (adminCtx.accueil && allowed.includes(adminCtx.accueil)) ? adminCtx.accueil : allowed[0];
+    if (!active || !allowed.includes(active.dataset.tab)) switchTab(arrivee);
   }
 }
 async function adminLogin() {
@@ -1249,7 +1253,7 @@ async function adminLogin() {
     $('#admin-login-pass').value = '';
     toast('Connecté : ' + d.label);
     await refreshAdminContext();
-    if (d.tabs && d.tabs.length) switchTab(d.tabs[0]);
+    if (d.tabs && d.tabs.length) switchTab(d.accueil && d.tabs.includes(d.accueil) ? d.accueil : d.tabs[0]);
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 async function adminLogout() {

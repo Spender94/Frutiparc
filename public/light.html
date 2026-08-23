@@ -1713,8 +1713,42 @@
      PAR-DESSUS le contenu, qui reste visible derrière (le capteur de clic est
      transparent). On le ferme via ‹, un clic à droite, ou en choisissant une
      rubrique. Sous 768px : tiroir plein écran (launcher), comme avant. ── */
+  /* Sur téléphone, la poignée n'a pas lieu d'être : l'écran EST la largeur.
+     (Déclarée AVANT la règle desktop : à spécificité égale, la dernière
+     l'emporte — l'inverse laissait la poignée invisible partout.) */
+  #chat-poignee { display: none; }
+
   @media (min-width: 768px) {
     #home-panel { width: 440px; }
+
+    /* ── LARGEUR DE LECTURE DU CHAT (desktop) ──
+       Sur un grand écran, la conversation prenait toute la largeur : les
+       lignes couraient d'un bord à l'autre et le texte s'entassait en bas à
+       gauche d'un grand vide. On resserrait alors la FENÊTRE du navigateur,
+       ce qui est une drôle de façon de lire.
+       Le panneau se cadre donc à une largeur réglable, centrée, avec une
+       poignée sur son bord droit — et la valeur se retient (localStorage). */
+    #chat-panel {
+      width: 100%; max-width: var(--chat-w, 900px);
+      align-self: center; position: relative;
+    }
+    /* La poignée reste À L'INTÉRIEUR du panneau : débordant à droite, elle
+       tombait pile sous le tiroir des connectés (qui se range juste après ce
+       bord) et n'attrapait plus le clic. */
+    #chat-poignee {
+      display: block; position: absolute; top: 0; bottom: 0; right: 0;
+      width: 12px; cursor: col-resize; z-index: 6; touch-action: none;
+    }
+    /* Le trait ne se montre qu'au survol (ou pendant le glisser) : au repos,
+       rien ne doit distraire de la conversation. */
+    #chat-poignee::before {
+      content: ""; position: absolute; top: 12px; bottom: 12px; left: 5px;
+      width: 2px; border-radius: 2px; background: #8CC63F; opacity: 0;
+      transition: opacity .15s;
+    }
+    #chat-poignee:hover::before, body.chat-redim #chat-poignee::before { opacity: 1; }
+    /* Pendant le glisser, rien ne se sélectionne sous le curseur. */
+    body.chat-redim { cursor: col-resize; user-select: none; -webkit-user-select: none; }
   }
 </style>
 <!-- Miniatures de bouilles rapides (cache PNG /bouille-img) pour le Bouilloscope. -->
@@ -1884,6 +1918,8 @@
 
   <!-- Chat -->
   <section class="panel" id="chat-panel" style="position:relative">
+    <!-- Poignée de largeur (desktop) : on tire, la conversation se resserre. -->
+    <div id="chat-poignee" title="Régler la largeur du chat" aria-hidden="true"></div>
     <div id="messages"></div>
 
     <!-- Bouille overlay: live Ruffle bouille (transparent) reacting to chat,
@@ -2773,6 +2809,63 @@
   // écran. Desktop/tablette : bande de 440px, le contenu reste visible derrière
   // (capteur de clic transparent). On ouvre/ferme via ‹, on ferme via un clic à
   // droite (#home-backdrop) ou en choisissant une rubrique.
+  // ── La largeur de lecture du chat (desktop) ───────────────────────────────
+  // On tire la poignée du bord droit ; la largeur se retient d'une visite à
+  // l'autre. Bornes : assez large pour une phrase, jamais plus que l'écran.
+  var CHAT_LARGEUR_MIN = 420, CHAT_LARGEUR_DEFAUT = 900;
+  function largeurChatMax() { return Math.max(CHAT_LARGEUR_MIN, window.innerWidth - 24); }
+  function poserLargeurChat(px) {
+    var v = Math.min(largeurChatMax(), Math.max(CHAT_LARGEUR_MIN, Math.round(px)));
+    document.documentElement.style.setProperty("--chat-w", v + "px");
+    try { localStorage.setItem("fp_light_chat_w", String(v)); } catch (e) { /* mode privé */ }
+    return v;
+  }
+  (function () {
+    var enregistre = 0;
+    try { enregistre = parseInt(localStorage.getItem("fp_light_chat_w") || "", 10) || 0; } catch (e) { enregistre = 0; }
+    poserLargeurChat(enregistre || CHAT_LARGEUR_DEFAUT);
+
+    var poignee = $("#chat-poignee");
+    if (!poignee) return;
+    var panneau = $("#chat-panel");
+    var depart = 0, largeurDepart = 0, enCours = false;
+    function auDoigt(e) { return (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX; }
+    function commencer(e) {
+      if (!panneau) return;
+      enCours = true;
+      depart = auDoigt(e);
+      largeurDepart = panneau.getBoundingClientRect().width;
+      document.body.classList.add("chat-redim");
+      e.preventDefault();
+    }
+    function bouger(e) {
+      if (!enCours) return;
+      // Le panneau est CENTRÉ : le bord droit ne parcourt que la moitié du
+      // chemin du curseur, d'où le facteur deux — sans lui, la poignée
+      // « fuit » sous le doigt.
+      poserLargeurChat(largeurDepart + (auDoigt(e) - depart) * 2);
+      e.preventDefault();
+    }
+    function finir() {
+      if (!enCours) return;
+      enCours = false;
+      document.body.classList.remove("chat-redim");
+    }
+    poignee.addEventListener("mousedown", commencer);
+    poignee.addEventListener("touchstart", commencer, { passive: false });
+    document.addEventListener("mousemove", bouger);
+    document.addEventListener("touchmove", bouger, { passive: false });
+    document.addEventListener("mouseup", finir);
+    document.addEventListener("touchend", finir);
+    // Un double-clic remet la largeur d'origine — on s'y perd vite à la souris.
+    poignee.addEventListener("dblclick", function () { poserLargeurChat(CHAT_LARGEUR_DEFAUT); });
+    // Fenêtre rétrécie : la largeur retenue ne doit pas dépasser l'écran.
+    window.addEventListener("resize", function () {
+      var v = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--chat-w"), 10);
+      if (v > largeurChatMax()) poserLargeurChat(largeurChatMax());
+    });
+  })();
+
   function isDesktop() {
     try { return window.matchMedia("(min-width: 768px)").matches; } catch (e) { return false; }
   }

@@ -610,3 +610,31 @@ test('les réglages ont leur rubrique, sous l\'icône du bureau', async () => {
   assert.match(html, /\.reg-actions > span:not\(\[hidden\]\) \{ display: contents; \}/,
     'le groupe « activées » respecte hidden');
 });
+
+// ── LIRE À LA BONNE LARGEUR (desktop) ─────────────────────────────────────
+// Sur grand écran la conversation prenait toute la largeur : les lignes
+// couraient d'un bord à l'autre et l'on resserrait la FENÊTRE du navigateur
+// pour lire — une drôle de façon de faire. Le panneau se cadre désormais à une
+// largeur réglable, centrée, avec une poignée sur son bord.
+
+test('le chat se règle en largeur sur desktop, et s\'en souvient', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+
+  assert.match(html, /<div id="chat-poignee"/, 'la poignée existe');
+  // Cachée par défaut, montrée seulement au-delà de 768 px : sur un téléphone,
+  // l'écran EST la largeur.
+  const avantMedia = html.slice(0, html.indexOf('@media (min-width: 768px)'));
+  assert.match(avantMedia, /#chat-poignee \{ display: none; \}/,
+    'la règle mobile précède la règle desktop (sinon elle l\'écrase)');
+  const media = html.slice(html.indexOf('@media (min-width: 768px)'));
+  assert.match(media, /#chat-poignee \{\s*display: block;/, 'et le desktop la montre');
+  // La largeur vit dans une variable, appliquée au panneau centré.
+  assert.match(html, /max-width: var\(--chat-w, 900px\)/, 'la largeur est réglable');
+  assert.match(html, /align-self: center/, 'et le panneau se centre');
+  // Elle se retient d'une visite à l'autre.
+  assert.match(html, /localStorage\.setItem\("fp_light_chat_w"/, 'la largeur est mémorisée');
+  assert.match(html, /localStorage\.getItem\("fp_light_chat_w"/, 'et relue au retour');
+  // La poignée reste DANS le panneau : débordante, elle tombait sous le tiroir
+  // des connectés et n'attrapait plus le clic.
+  assert.match(media, /#chat-poignee \{[^}]*right: 0;/, 'la poignée ne déborde pas');
+});

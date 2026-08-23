@@ -6745,7 +6745,11 @@ const ADMIN_ROLES = {
   // Les animateurs gèrent aussi les salons (renommage / sujet) et les tournois.
   // `dons` : le registre des kikooz distribués — l'équipe voulait pouvoir
   // relire ses propres dons, et savoir où passe l'enveloppe de la semaine.
-  animateur: { label: 'Animateur', tabs: ['kiloute', 'channels', 'tournoi', 'trombinoscope', 'dons'] },
+  // `accueil` : l'onglet sur lequel l'admin S'OUVRE pour ce rôle. Sans lui on
+  // atterrissait sur le premier de la liste — MikeHorny, qu'on consulte une
+  // fois par semaine — alors que le travail d'un animateur commence aux
+  // salons. L'ordre de `tabs` reste celui des droits, pas celui de l'usage.
+  animateur: { label: 'Animateur', accueil: 'channels', tabs: ['kiloute', 'channels', 'tournoi', 'trombinoscope', 'dons'] },
   // Chapelier : crée et met en boutique des accessoires (onglet Boutique).
   chapelier: { label: 'Chapelier', tabs: ['shop'] },
 };
@@ -6771,6 +6775,17 @@ function adminRoleTabs(role) {
   const tabs = new Set();
   for (const r of adminRoleList(role)) for (const t of ADMIN_ROLES[r].tabs) tabs.add(t);
   return [...tabs];
+}
+// L'onglet d'ARRIVÉE : le premier rôle (ordre canonique) qui en réclame un,
+// à condition qu'il soit bien dans les onglets ouverts. Sinon, le premier
+// onglet venu — le comportement d'avant.
+function adminRoleAccueil(role) {
+  const tabs = adminRoleTabs(role);
+  for (const r of adminRoleList(role)) {
+    const a = ADMIN_ROLES[r].accueil;
+    if (a && tabs.includes(a)) return a;
+  }
+  return tabs[0] || null;
 }
 
 const ADMIN_TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 h
@@ -6862,7 +6877,8 @@ app.post('/api/admin/login', async (req, res) => {
   const role = roles.join(',');
   adminTokens.set(token, { user: username, role, roles, tabs, createdAt: Date.now() });
   console.log(`[ADMIN] connexion rôles "${role}" par ${username} (ip=${ip})`);
-  res.json({ ok: true, token, role, roles, label: adminRoleLabel(roles), tabs, user: getDisplayName(username) });
+  res.json({ ok: true, token, role, roles, label: adminRoleLabel(roles), tabs,
+    accueil: adminRoleAccueil(roles), user: getDisplayName(username) });
 });
 
 // Déconnexion (révoque le token courant).
@@ -6881,7 +6897,8 @@ app.get('/api/admin/me', (req, res) => {
   const a = resolveAdmin(req);
   if (!a) { if (adminCredsProvided(req)) recordAdminAuthFail(ip); return res.status(403).json({ ok: false, error: 'forbidden' }); }
   if (a.full) return res.json({ ok: true, full: true, tabs: null });
-  res.json({ ok: true, full: false, user: getDisplayName(a.user), role: a.role, label: adminRoleLabel(a.role) || a.role, tabs: a.tabs });
+  res.json({ ok: true, full: false, user: getDisplayName(a.user), role: a.role,
+    label: adminRoleLabel(a.role) || a.role, tabs: a.tabs, accueil: adminRoleAccueil(a.role) });
 });
 
 app.post('/api/setChallengeMode', (req, res) => {
@@ -16423,6 +16440,42 @@ const MOD_POST_ONLY_FORUM_BOARDS = new Set(['Annonces']);
 function isModPostOnlyBoard(board) {
   return !!(board && MOD_POST_ONLY_FORUM_BOARDS.has(board.name));
 }
+
+// LE FORUM DE L'ANIMATION. « Animations officielles » annonce les animations
+// que l'équipe organise : tout le monde le lit, seule l'ANIMATION y écrit —
+// animateurs ET modérateurs. Et puisque c'est leur panneau, les animateurs y
+// ont aussi les gestes de modération (épingler, verrouiller, supprimer,
+// corriger) — là, et nulle part ailleurs : hors de ce forum, un animateur
+// reste un Frutiz comme les autres.
+const STAFF_POST_ONLY_FORUM_BOARDS = new Set(['Animations officielles']);
+function isStaffPostOnlyBoard(board) {
+  return !!(board && STAFF_POST_ONLY_FORUM_BOARDS.has(board.name));
+}
+
+// Qui peut ÉCRIRE dans ce forum (sujet neuf comme réponse).
+function peutPosterDansBoard(username, board) {
+  if (isModPostOnlyBoard(board)) return isForumModerator(username);
+  if (isStaffPostOnlyBoard(board)) return isForumStaff(username);
+  return true;
+}
+// Qui peut y MODÉRER. Le refus est silencieux pour tous les autres.
+function peutModererBoard(username, board) {
+  if (isForumModerator(username)) return true;
+  return isAnimator(username) && isStaffPostOnlyBoard(board);
+}
+// Même question à partir d'un identifiant de forum (les routes n'ont souvent
+// que celui-là sous la main).
+async function peutModererBoardId(username, boardId) {
+  if (isForumModerator(username)) return true;
+  if (!isAnimator(username)) return false;
+  return isStaffPostOnlyBoard(await db.forumGetBoard(boardId));
+}
+// À qui le forum est réservé, pour que le client le DISE avec les bons mots.
+function reservationBoard(board) {
+  if (isModPostOnlyBoard(board)) return 'moderateurs';
+  if (isStaffPostOnlyBoard(board)) return 'animation';
+  return '';
+}
 function isForumModerator(username) {
   if (!username) return false;
   const u = users[username];
@@ -16509,9 +16562,18 @@ app.get('/api/forum/board/:id', async (req, res) => {
       unread: !!t.unread,
     }));
     res.json({
-      board: { id: board.id, name: board.name, description: board.description, postRestricted: isModPostOnlyBoard(board) },
+      board: {
+        id: board.id, name: board.name, description: board.description,
+        postRestricted: isModPostOnlyBoard(board) || isStaffPostOnlyBoard(board),
+        // À qui il est réservé, pour que le client le dise avec les bons mots.
+        reservePour: reservationBoard(board),
+      },
       topics: topicsOut, total, page, perPage: 25,
       currentIsMod: isForumModerator(currentUser),
+      // Ce que CE lecteur peut faire ICI : écrire, et modérer. Les animateurs
+      // ont les deux sur « Animations officielles », nulle part ailleurs.
+      peutPoster: peutPosterDansBoard(currentUser, board),
+      peutModerer: peutModererBoard(currentUser, board),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -16577,7 +16639,8 @@ app.get('/api/forum/topic/:id', async (req, res) => {
       topic: {
         id: topic.id, title: topic.title, author: getDisplayName(topic.author_username),
         boardId: topic.board_id, boardName: board ? board.name : '',
-        postRestricted: isModPostOnlyBoard(board),
+        postRestricted: isModPostOnlyBoard(board) || isStaffPostOnlyBoard(board),
+        reservePour: reservationBoard(board),
         isSticky: topic.is_sticky, isLocked: topic.is_locked,
         // Lowercase to align with the username comparison the frontend
         // does against currentUser (also lowercase from /api/forum/me).
@@ -16587,6 +16650,9 @@ app.get('/api/forum/topic/:id', async (req, res) => {
       currentIsMod: !!currentIsMod,
       // Staff = modérateur OU animateur : autorisé à poster à la suite (double-post).
       currentIsStaff: isForumStaff(currentUser),
+      // Ce que CE lecteur peut faire dans CE forum (cf. la liste des sujets).
+      peutPoster: peutPosterDansBoard(currentUser, board),
+      peutModerer: peutModererBoard(currentUser, board),
       poll, canManagePoll,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -16642,8 +16708,13 @@ app.post('/api/forum/topic', async (req, res) => {
   try {
     const { staffOnly, board } = await isStaffOnlyBoard(boardId);
     if (staffOnly && !isForumStaff(username)) return res.status(403).json({ error: 'forbidden' });
-    if (isModPostOnlyBoard(board) && !isForumModerator(username)) {
-      return res.status(403).json({ error: 'forbidden', message: 'Seuls les modérateurs peuvent publier dans le forum Annonces.' });
+    if (!peutPosterDansBoard(username, board)) {
+      return res.status(403).json({
+        error: 'forbidden',
+        message: isStaffPostOnlyBoard(board)
+          ? 'Seuls les animateurs et les modérateurs peuvent publier dans le forum Animations officielles.'
+          : 'Seuls les modérateurs peuvent publier dans le forum Annonces.',
+      });
     }
     const topic = await db.forumCreateTopic(boardId, username, title, content, postBouille, postMood);
     if (pollNorm.poll) {
@@ -16885,8 +16956,13 @@ app.post('/api/forum/post', async (req, res) => {
     if (!topic) return res.status(404).json({ error: 'topic not found' });
     const { staffOnly, board } = await isStaffOnlyBoard(topic.board_id);
     if (staffOnly && !isForumStaff(username)) return res.status(403).json({ error: 'forbidden' });
-    if (isModPostOnlyBoard(board) && !isForumModerator(username)) {
-      return res.status(403).json({ error: 'forbidden', message: 'Seuls les modérateurs peuvent répondre dans le forum Annonces.' });
+    if (!peutPosterDansBoard(username, board)) {
+      return res.status(403).json({
+        error: 'forbidden',
+        message: isStaffPostOnlyBoard(board)
+          ? 'Seuls les animateurs et les modérateurs peuvent répondre dans le forum Animations officielles.'
+          : 'Seuls les modérateurs peuvent répondre dans le forum Annonces.',
+      });
     }
     if (topic.is_locked) return res.status(403).json({ error: 'topic locked' });
     // Anti double-post: a user can't be the author of two consecutive
@@ -16940,8 +17016,11 @@ app.put('/api/forum/post/:id', async (req, res) => {
     const { rows } = await db.pool.query('SELECT * FROM forum_posts WHERE id = $1', [req.params.id]);
     const post = rows[0];
     if (!post) return res.status(404).json({ error: 'not found' });
-    const isAdmin = users[username] && users[username].isModerator;
-    if (post.author_username !== username && !isAdmin) return res.status(403).json({ error: 'forbidden' });
+    const sujetEdit = await db.forumGetTopic(post.topic_id);
+    const peutEdit = sujetEdit
+      ? await peutModererBoardId(username, sujetEdit.board_id)
+      : isForumModerator(username);
+    if (post.author_username !== username && !peutEdit) return res.status(403).json({ error: 'forbidden' });
     await db.forumUpdatePost(post.id, content);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -16955,8 +17034,10 @@ app.delete('/api/forum/post/:id', async (req, res) => {
     const { rows } = await db.pool.query('SELECT * FROM forum_posts WHERE id = $1', [req.params.id]);
     const post = rows[0];
     if (!post) return res.status(404).json({ error: 'not found' });
-    const isAdmin = users[username] && users[username].isModerator;
-    if (post.author_username !== username && !isAdmin) return res.status(403).json({ error: 'forbidden' });
+    // Le forum du message : c'est lui qui dit si un animateur peut modérer ici.
+    const sujet = await db.forumGetTopic(post.topic_id);
+    const peut = sujet ? await peutModererBoardId(username, sujet.board_id) : isForumModerator(username);
+    if (post.author_username !== username && !peut) return res.status(403).json({ error: 'forbidden' });
     await db.forumDeletePost(post.id);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -16966,9 +17047,10 @@ app.post('/api/forum/topic/:id/sticky', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
-  const isMod = users[username] && users[username].isModerator;
-  if (!isMod) return res.status(403).json({ error: 'forbidden' });
   try {
+    const t = await db.forumGetTopic(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not found' });
+    if (!(await peutModererBoardId(username, t.board_id))) return res.status(403).json({ error: 'forbidden' });
     await db.forumToggleSticky(Number(req.params.id));
     const topic = await db.forumGetTopic(Number(req.params.id));
     res.json({ ok: true, isSticky: topic ? topic.is_sticky : false });
@@ -16979,9 +17061,10 @@ app.post('/api/forum/topic/:id/lock', async (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.status(401).json({ error: 'auth_required' });
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no_db' });
-  const isMod = users[username] && users[username].isModerator;
-  if (!isMod) return res.status(403).json({ error: 'forbidden' });
   try {
+    const t = await db.forumGetTopic(Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not found' });
+    if (!(await peutModererBoardId(username, t.board_id))) return res.status(403).json({ error: 'forbidden' });
     await db.forumToggleLocked(Number(req.params.id));
     const topic = await db.forumGetTopic(Number(req.params.id));
     res.json({ ok: true, isLocked: topic ? topic.is_locked : false });
@@ -16995,8 +17078,9 @@ app.delete('/api/forum/topic/:id', async (req, res) => {
   try {
     const topic = await db.forumGetTopic(Number(req.params.id));
     if (!topic) return res.status(404).json({ error: 'not found' });
-    const isMod = users[username] && users[username].isModerator;
-    if (topic.author_username !== username && !isMod) return res.status(403).json({ error: 'forbidden' });
+    if (topic.author_username !== username && !(await peutModererBoardId(username, topic.board_id))) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
     const boardId = topic.board_id;
     await db.forumDeleteTopic(Number(req.params.id));
     res.json({ ok: true, boardId });

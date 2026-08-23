@@ -175,11 +175,11 @@ test('mise en place : forum garni, cité abonné et absent', async (t) => {
   sidCiteur = await sidPour(CITEUR);
   await jpost('/api/admin/forum/seed', {}, true);
   const index = await (await fetch(`${BASE}/api/forum/index?sid=${sidCite}`)).json();
-  // Premier forum où l'on peut poster (les Annonces sont réservées aux
-  // modérateurs) : on évite tout forum nommé « Annonces ».
+  // Un forum OUVERT À TOUS : ni « Annonces » (modérateurs) ni « Animations
+  // officielles » (animation). On prend « Frutiz », qui n'a jamais de garde.
   for (const cat of index.categories || []) {
     for (const b of cat.boards || []) {
-      if (!/annonce/i.test(b.name || '')) { boardId = b.id; break; }
+      if (b.name === 'Frutiz') { boardId = b.id; break; }
     }
     if (boardId) break;
   }

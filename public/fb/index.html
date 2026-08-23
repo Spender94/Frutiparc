@@ -91,6 +91,16 @@
   .forum-header .title-link a:hover { text-decoration: underline; }
   .forum-header .title-link .bc-sep { color: #E3756A; font-weight: bold; }
   .forum-header .title-link .bc-current { color: #555; }
+  /* « ‹ » : reculer d'un cran. Une pastille discrète devant le fil d'Ariane —
+     elle doit se trouver au pouce sur téléphone, où la racine s'efface. */
+  .forum-header .title-link a.bc-retour {
+    display: inline-block; width: 20px; height: 20px; line-height: 18px;
+    text-align: center; border: 1px solid #E3756A; border-radius: 5px;
+    font-weight: bold; text-decoration: none; vertical-align: middle;
+  }
+  .forum-header .title-link a.bc-retour:hover {
+    background: #E3756A; color: #fff; text-decoration: none;
+  }
 
   /* Breadcrumb (legacy — hidden) */
   .breadcrumb { display: none; }
@@ -1834,7 +1844,15 @@ function setBreadcrumb(parts) {
     // La RACINE porte son séparateur avec elle : sur un téléphone elle
     // disparaît d'un bloc (voir .forum-header.deep .bc-root), et le chevron
     // orphelin ne reste pas en tête de ligne.
-    var html = '<span class="bc-root"><a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
+    // « ‹ » — reculer d'un cran, comme le Retour du navigateur. Il n'apparaît
+    // que si l'on est descendu quelque part : à la racine, il n'aurait rien à
+    // dépiler.
+    var html = '';
+    if (parts.length) {
+      html += '<a href="#" class="bc-retour" title="Reculer d\'une page" '
+        + 'onclick="reculerForum();return false">&lsaquo;</a> ';
+    }
+    html += '<span class="bc-root"><a href="#" onclick="navigate(\'index\');return false">Forum Frutiparc.com</a>';
     if (parts.length) html += ' <span class="bc-sep">&gt;</span> ';
     html += '</span>';
     for (var i = 0; i < parts.length; i++) {
@@ -1859,12 +1877,42 @@ function setBreadcrumb(parts) {
   if (bc) bc.innerHTML = '';
 }
 
+// ── RECULER D'UNE PAGE ────────────────────────────────────────────────────
+//
+// Le forum est une page unique : on descend d'une section à un sujet, puis de
+// page en page, sans que le navigateur en sache rien — son bouton Retour
+// faisait donc sortir du forum d'un seul coup. On tient l'historique nous-mêmes.
+//
+// Chaque vue pousse une entrée SANS TOUCHER À L'URL (`location.href` tel quel) :
+// le sid de session y vit, et le réécrire l'emporterait. Reculer rejoue la vue
+// précédente sans repousser d'entrée — d'où le drapeau.
+var restaurationHistoire = false;
+function pousserHistoire(view, id, extra) {
+  if (restaurationHistoire) return;
+  try {
+    history.pushState({ fbVue: { view: view, id: id, extra: extra } }, '', location.href);
+  } catch (e) { /* pas d'historique : le bouton « Retour » du forum reste */ }
+}
+window.addEventListener('popstate', function (e) {
+  var v = e.state && e.state.fbVue;
+  restaurationHistoire = true;
+  try { if (v) navigate(v.view, v.id, v.extra); else loadIndex(); }
+  finally { restaurationHistoire = false; }
+});
+
 function navigate(view, id, extra) {
+  pousserHistoire(view, id, extra);
   if (view === 'index') loadIndex();
   else if (view === 'board') loadBoard(id, extra);
   else if (view === 'topic') loadTopic(id, extra);
   else if (view === 'newTopic') showNewTopicForm(id);
   else if (view === 'pictos') loadPictos();
+}
+// Le bouton « ‹ Retour » de l'en-tête, et le Retour du navigateur : le même
+// geste. Sans entrée à dépiler (on vient d'arriver), on remonte à l'accueil.
+function reculerForum() {
+  if (history.state && history.state.fbVue) history.back();
+  else navigate('index');
 }
 
 function pagination(total, perPage, currentPage, onclick) {
@@ -2035,8 +2083,12 @@ async function loadBoard(boardId, page) {
       html += '<span class="reply-blocked" title="Tu es totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + '">'
         + 'Totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + ' — nouveau sujet impossible'
         + '</span>';
-    } else if (data.board.postRestricted && !data.currentIsMod) {
-      html += '<span class="reply-blocked">Seuls les modérateurs peuvent publier dans ce forum.</span>';
+    } else if (data.board.postRestricted && !data.peutPoster) {
+      html += '<span class="reply-blocked">'
+        + (data.board.reservePour === 'animation'
+          ? 'Seuls les animateurs et les modérateurs peuvent publier dans ce forum.'
+          : 'Seuls les modérateurs peuvent publier dans ce forum.')
+        + '</span>';
     } else {
       html += '<a href="#" onclick="navigate(\'newTopic\',' + boardId + ');return false" class="img-btn"><img src="/fb/post.gif" alt="Nouveau sujet"></a>';
     }
@@ -2050,7 +2102,7 @@ async function loadBoard(boardId, page) {
   html += '</div>';
   app.innerHTML = html;
 }
-function boardPage(p) { loadBoard(currentBoardId, p); }
+function boardPage(p) { pousserHistoire('board', currentBoardId, p); loadBoard(currentBoardId, p); }
 
 var currentTopicId = null;
 var currentTopicData = null;
@@ -2086,8 +2138,8 @@ async function loadTopic(topicId, page) {
   for (var pi = 0; pi < data.posts.length; pi++) {
     var p = data.posts[pi];
     var isFirstPost = (pi === 0 && data.page === 1);
-    var canEdit = currentUser && (p.author === currentUser);
-    var canDelete = currentUser && (p.author === currentUser || data.currentIsMod);
+    var canEdit = currentUser && (p.author === currentUser || data.peutModerer);
+    var canDelete = currentUser && (p.author === currentUser || data.peutModerer);
     html += '<div class="post' + (pi % 2 === 1 ? ' post-alt' : '') + '" id="post-' + p.id + '">';
     html += '<div class="post-author">';
     html += '<div class="avatar">' + renderBouillAvatar(p.bouille, p.author, p.mood) + '</div>';
@@ -2130,8 +2182,12 @@ async function loadTopic(topicId, page) {
       html += '<span class="reply-blocked" title="Tu es totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + '">'
         + 'Totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + ' — réponse impossible'
         + '</span>';
-    } else if (data.topic.postRestricted && !data.currentIsMod) {
-      html += '<span class="reply-blocked">Seuls les modérateurs peuvent répondre dans ce forum.</span>';
+    } else if (data.topic.postRestricted && !data.peutPoster) {
+      html += '<span class="reply-blocked">'
+        + (data.topic.reservePour === 'animation'
+          ? 'Seuls les animateurs et les modérateurs peuvent répondre dans ce forum.'
+          : 'Seuls les modérateurs peuvent répondre dans ce forum.')
+        + '</span>';
     } else if (data.topic.lastPostBy && currentUser
                && data.topic.lastPostBy === String(currentUser).toLowerCase()
                && !data.currentIsStaff) {
@@ -2148,11 +2204,11 @@ async function loadTopic(topicId, page) {
   html += pagination(data.total, data.perPage, data.page, 'topicPage');
   html += '</div>';
   html += '<div class="shell-right">';
-  if (data.currentIsMod) {
+  if (data.peutModerer) {
     html += '<a href="#" class="act-btn act-btn-red" onclick="toggleSticky();return false">' + (data.topic.isSticky ? 'Retirer Post-it' : 'Post-it') + '</a>';
     html += '<a href="#" class="act-btn act-btn-red" onclick="toggleLock();return false">' + (data.topic.isLocked ? 'Déverrouiller' : 'Verrouiller') + '</a>';
   }
-  if (currentUser && (data.topic.author === currentUser || data.currentIsMod)) {
+  if (currentUser && (data.topic.author === currentUser || data.peutModerer)) {
     html += '<a href="#" class="act-btn act-btn-red" onclick="deleteTopic();return false">Supprimer</a>';
   }
   html += '</div>';
@@ -2160,7 +2216,7 @@ async function loadTopic(topicId, page) {
 
   app.innerHTML = html;
 }
-function topicPage(p) { loadTopic(currentTopicId, p); }
+function topicPage(p) { pousserHistoire('topic', currentTopicId, p); loadTopic(currentTopicId, p); }
 
 // ── Forum polls (sondages) ──
 // Per-poll "show the results without voting" toggle (client-side only).
@@ -2779,12 +2835,33 @@ function editPost(postId) {
     + '<textarea id="' + taId + '"></textarea>'
     + '<div class="form-actions" style="margin-top:6px">'
     + '<button class="btn btn-green" onclick="submitEdit(' + postId + ')">Enregistrer</button>'
+    // Le BBCode ne se relit pas de tête : on corrige un message autant qu'on
+    // l'écrit, et l'aperçu n'existait qu'à l'écriture.
+    + '<button class="btn btn-orange" onclick="previewEdit(' + postId + ')">Prévisualiser</button>'
     + '<button class="btn btn-orange" onclick="cancelEdit(' + postId + ')">Annuler</button>'
-    + '</div>';
+    + '</div>'
+    + '<div id="edit-preview-' + postId + '"></div>';
   contentEl.style.display = 'none';
   contentEl.parentNode.insertBefore(wrap, contentEl.nextSibling);
   document.getElementById(taId).value = original;
   document.getElementById(taId).focus();
+}
+
+// L'aperçu d'une CORRECTION. Même cadre que l'aperçu d'un message neuf, mais
+// sans bouille ni pseudo : on corrige parfois le message d'un autre, et lui
+// coller notre tête serait un contresens. Ce qu'on veut voir, c'est le BBCode
+// rendu — les balises fermées, les citations imbriquées, les images.
+function previewEdit(postId) {
+  var ta = document.getElementById('edit-textarea-' + postId);
+  var slot = document.getElementById('edit-preview-' + postId);
+  if (!ta || !slot) return;
+  var html = '<div class="editor-preview-wrap">';
+  html += '<div class="editor-preview-header"><span class="post-icon"></span>Aperçu de la correction.</div>';
+  html += '<div class="editor-preview-body">';
+  html += '<div class="editor-preview-content">' + renderBBCode(ta.value || '') + '</div>';
+  html += '</div></div>';
+  slot.innerHTML = html;
+  if (slot.scrollIntoView) slot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function cancelEdit(postId) {

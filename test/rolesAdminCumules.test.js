@@ -224,3 +224,28 @@ test('un compte sans rôle n\'entre pas', async (t) => {
   const { statut } = await seConnecter(pseudo);
   assert.equal(statut, 403);
 });
+
+// ── L'ONGLET D'ARRIVÉE ────────────────────────────────────────────────────
+// L'admin s'ouvrait sur le PREMIER onglet des droits — MikeHorny pour un
+// animateur, qu'on consulte une fois par semaine, alors que son travail
+// commence aux Salons. Le serveur désigne donc l'onglet d'arrivée.
+
+test('un animateur arrive sur les Salons, pas sur MikeHorny', async (t) => {
+  if (!dispo) return t.skip('pas de base PostgreSQL de test disponible');
+  const pseudo = 'arrive' + RUN;
+  await inscrire(pseudo);
+  await donnerRoles(pseudo, ['animateur']);
+  const j = await (await fetch(BASE + '/api/admin/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: pseudo, password: MDP }),
+  })).json();
+  assert.ok(j.ok, 'connexion admin : ' + JSON.stringify(j).slice(0, 140));
+  assert.equal(j.accueil, 'channels', 'il atterrit sur les Salons');
+  assert.ok(j.tabs.includes('kiloute'), 'MikeHorny lui reste ouvert');
+  assert.notEqual(j.accueil, 'kiloute', 'mais ce n\'est plus la porte d\'entrée');
+  // Et /api/admin/me le redit, pour un rechargement de page.
+  const me = await (await fetch(BASE + '/api/admin/me', {
+    headers: { 'x-admin-token': j.token },
+  })).json();
+  assert.equal(me.accueil, 'channels', 'le contexte le porte aussi');
+});
