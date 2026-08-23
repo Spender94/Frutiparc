@@ -160,6 +160,11 @@ test('le bureau qui pousse son statut n\'éteint plus le voyant', async () => {
   sockJoueur.write('<status s="0010" />\0');
   await wait(300);
   assert.equal(await voyantDuJoueur(), 'snake3', 'la partie prime sur ce que raconte le bureau');
+  // On repose la page blanche : les tests suivants parlent de la PARTIE, et
+  // une revendication « forum » restée en l'air s'afficherait par-dessus —
+  // depuis qu'elle n'est plus filtrée, elle se voit aussi sur mobile.
+  sockJoueur.write('<status s="0000" />\0');
+  await wait(300);
 });
 
 test('poser un score n\'éteint pas le voyant', async () => {
@@ -400,4 +405,35 @@ test('téléphone rangé en pleine partie : le voyant s\'éteint quand même', a
     'de retour devant sa partie, le voyant se rallume');
   sockJoueur2.write('<gz a="part" />\0');
   await wait(800);
+});
+
+// ── LE BALAYAGE : ONZE ACTIVITÉS, ONZE VOYANTS ────────────────────────────
+// « Vérifie que tous les voyants s'affichent bien partout. » Le mobile n'en
+// connaissait que six : Burning Kiwi, MotionBall, Frutisnake, Kaluga et le
+// forum ne s'allumaient jamais. On passe donc TOUTE la liste, par le chemin
+// que le mobile emprunte vraiment (/api/light/online), en battant la fenêtre
+// de chaque jeu comme le fait son sondage.
+
+test('les onze activités du bureau s\'allument bien, une par une', async () => {
+  // Nom envoyé au serveur (celui du SWF) → clé d'icône attendue côté mobile.
+  const ACTIVITES = [
+    ['bkiwi', 'bkiwi'], ['mb2', 'mb2'], ['swapou2', 'swapou'], ['snake3', 'snake3'],
+    ['bandas', 'bandas'], ['grapiz', 'grapiz'], ['kaluga', 'kaluga'],
+    ['miniwave', 'miniwave'], ['minipixiz', 'minipixiz'], ['minifever', 'minifever'],
+  ];
+  for (const [envoye, attendu] of ACTIVITES) {
+    await fetch(`${BASE}/api/check-ejected?fd=0&sid=${sidJoueur2}&game=${encodeURIComponent(envoye)}`);
+    assert.equal(await voyantDe(JOUEUR2), attendu,
+      `le voyant de ${envoye} s'affiche (${attendu})`);
+  }
+  // Et le FORUM, qui n'est pas une partie mais occupe le même emplacement :
+  // c'est le client qui le déclare, par sa chaîne de statut (code 1).
+  await wait(TTL + 2500);                       // on laisse expirer la dernière partie
+  assert.equal(await voyantDe(JOUEUR2), null, 'plus de partie en cours');
+  sockJoueur2.write('<status s="0010" />\0');   // « je lis le forum »
+  await wait(500);
+  assert.equal(await voyantDe(JOUEUR2), 'forum', 'le forum s\'affiche aussi');
+  sockJoueur2.write('<status s="0000" />\0');
+  await wait(300);
+  assert.equal(await voyantDe(JOUEUR2), null, 'et il s\'éteint quand il en sort');
 });

@@ -171,22 +171,54 @@ test('les matchs Grapiz et Frutibandas allument le voyant côté serveur', () =>
   }
 });
 
-test('les six voyants ont leur PNG (extraits de la feuille, ou dessinés pour la greffe)', () => {
-  // Les cinq d'époque viennent de la feuille du bureau (extract-voyants-jeux) ;
-  // celui de Mini-Fever est né avec la greffe (make-minifever-emblemes.js) —
-  // les cerises, le même dessin que l'image ajoutée au clip 246.
-  for (const jeu of ['bandas', 'grapiz', 'swapou', 'miniwave', 'minipixiz', 'minifever']) {
-    const f = path.join(ROOT, 'public/fb/voyant_' + jeu + '.png');
-    assert.ok(fs.existsSync(f), 'voyant_' + jeu + '.png existe');
-    assert.ok(fs.statSync(f).size > 800, 'et porte un vrai dessin');
+// ── L'EXHAUSTIVITÉ : AUCUNE ACTIVITÉ SANS VOYANT ─────────────────────────
+//
+// Le mobile n'en connaissait que six sur onze : Burning Kiwi, MotionBall,
+// Frutisnake, Kaluga et le forum n'avaient AUCUN voyant — le serveur envoyait
+// bien leur code, le client ne savait pas le lire et n'affichait rien. Le
+// travers venait d'une table recopiée à la main, que les tests figeaient au
+// lieu de la confronter à celle du serveur. On les confronte donc.
+
+/** La table `nom → code` du serveur, lue dans la source. */
+function frameServeur() {
+  const bloc = /const STATUS_INTERNAL_FRAME = \{([\s\S]*?)\n\};/.exec(serveur);
+  assert.ok(bloc, 'STATUS_INTERNAL_FRAME se lit dans server.js');
+  const t = {};
+  for (const m of bloc[1].matchAll(/^\s*(\w+):\s*(\d+),/gm)) t[m[1]] = Number(m[2]);
+  return t;
+}
+/** Une table `{clé: "valeur"}` du client, lue dans la source. */
+function tableClient(nom) {
+  const bloc = new RegExp('var ' + nom + ' = \\{([\\s\\S]*?)\\};').exec(light);
+  assert.ok(bloc, nom + ' se lit dans light.html');
+  const t = {};
+  for (const m of bloc[1].matchAll(/(\w+):\s*"([^"]+)"/g)) t[m[1]] = m[2];
+  return t;
+}
+
+test('chaque activité du bureau a son voyant sur mobile, et son dessin', () => {
+  const FRAME = frameServeur();
+  const JEU = tableClient('VOYANTS_JEU');
+  const NOM = tableClient('VOYANTS_NOM');
+  const ALIAS = { swapou2: 'swapou' };
+  assert.ok(Object.keys(FRAME).length >= 11, 'onze activités au moins : ' + Object.keys(FRAME).length);
+
+  for (const [nomSwf, code] of Object.entries(FRAME)) {
+    const cle = ALIAS[nomSwf] || nomSwf;
+    assert.equal(JEU[code], cle, `le code ${code} (${nomSwf}) est connu du mobile`);
+    assert.ok(NOM[cle], `« ${cle} » a un nom affichable`);
+    const f = path.join(ROOT, 'public/fb/voyant_' + cle + '.png');
+    assert.ok(fs.existsSync(f), 'voyant_' + cle + '.png existe');
+    assert.ok(fs.statSync(f).size > 800, 'et porte un vrai dessin (' + cle + ')');
+  }
+  // Et rien d'inventé côté client : chaque code affiché vient bien du serveur.
+  const codesServeur = new Set(Object.values(FRAME).map(String));
+  for (const code of Object.keys(JEU)) {
+    assert.ok(codesServeur.has(code), 'le code ' + code + ' existe côté serveur');
   }
 });
 
 test('le mobile pose le voyant à côté des pseudos', () => {
-  // La même table que le bureau, traduite en icônes.
-  assert.match(light,
-    /VOYANTS_JEU = \{ 6: "bandas", 7: "grapiz", 4: "swapou", 9: "miniwave", 12: "minipixiz",\s*13: "minifever" \}/,
-    'les codes internes du bureau');
   // La chaîne de statut est lue au format du bureau : base 62, le jeu au milieu.
   assert.match(light, /decode62\(String\(s\)\.substring\(1, 3\)\)/, 'les deux caractères du jeu');
   // Mémorisée à l'arrivée de la liste ET des traces — les deux formes.
@@ -195,7 +227,10 @@ test('le mobile pose le voyant à côté des pseudos', () => {
   assert.match(light, /rememberStatut\(attr\(xml, "u"\), attr\(xml, "s"\)\)/, 'et les traces directes');
   // Et posée dans la ligne, pour le salon comme pour tout le site.
   assert.match(light, /voyant_" \+ jeu \+ "\.png/, 'l\'icône vient des PNG extraits');
-  assert.match(light, /Joue à " \+ VOYANTS_NOM\[jeu\]/, 'avec le nom du jeu en infobulle');
+  assert.match(light, /vj\.title = libelleActivite\(jeu\)/, 'avec l\'activité en infobulle');
+  // Lire le forum n'est pas jouer : même emplacement, autre phrase.
+  assert.match(light, /jeu === "forum" \? "Lit le forum" : "Joue à " \+ VOYANTS_NOM\[jeu\]/,
+    'le forum a sa propre formule');
   assert.match(light, /\.u \.voyant \{/, 'et son style');
 });
 
@@ -220,8 +255,8 @@ test('le voyant remplace le point de présence, sans l\'écraser', () => {
   assert.match(light, /var jeuFiche = \(d && d\.jeu\) \|\| "";/);
   assert.match(light, /st\.src = "\/fb\/voyant_" \+ jeuFiche \+ "\.png";/,
     'la même icône que la liste des connectés');
-  assert.match(light, /st\.title = "En partie — " \+ VOYANTS_NOM\[jeuFiche\];/,
-    'et elle dit à quoi il joue');
+  assert.match(light, /st\.title = jeuFiche === "forum"\s*\?\s*"Lit le forum"\s*:\s*"En partie — " \+ VOYANTS_NOM\[jeuFiche\];/,
+    'et elle dit à quoi il joue — ou qu\'il lit le forum');
   // Sans partie, le point revient — et il dit lui aussi ce qu'il montre.
   assert.match(light, /st\.src = "\/fb\/fiche\/" \+ \(\(d && d\.enLigne\) \? "statut_present" : "statut_absent"\) \+ "\.png";/);
   assert.match(light, /st\.title = \(d && d\.enLigne\) \? "En ligne" : "Hors ligne";/);
@@ -238,23 +273,22 @@ test('Swapou retrouve son voyant : swapou2 côté SWF, swapou côté assets', ()
   assert.match(serveur, /const STATUS_JEU_ALIAS = \{ swapou2: 'swapou' \};/);
   assert.match(serveur, /\.map\(\(\[nom, code\]\) => \[code, STATUS_JEU_ALIAS\[nom\] \|\| nom\]\)\);/);
   // Le client, lui, ne connaît que « swapou » — des deux côtés, même mot.
-  assert.match(light, /var VOYANTS_NOM = \{ bandas: "Frutibandas", grapiz: "Grapiz", swapou: "Swapou",/);
-  assert.ok(!/VOYANTS_NOM\s*=\s*\{[^}]*swapou2/.test(light), 'le client ignore « swapou2 »');
-  // Et la table code → nom, rejouée : le 4 doit sortir « swapou ».
-  const FRAME = { bkiwi: 2, mb2: 3, swapou2: 4, snake3: 5, bandas: 6, grapiz: 7,
-    kaluga: 8, miniwave: 9, minipixiz: 12, minifever: 13, forum: 1 };
+  assert.ok(/var VOYANTS_NOM = \{[\s\S]*?swapou: "Swapou"/.test(light), 'le client dit « swapou »');
+  assert.ok(!/VOYANTS_NOM\s*=\s*\{[\s\S]*?swapou2/.test(light), 'le client ignore « swapou2 »');
+  // Et la table code → nom, rejouée depuis la source du serveur.
+  const FRAME = frameServeur();
   const ALIAS = { swapou2: 'swapou' };
   const table = Object.fromEntries(Object.entries(FRAME)
-    .filter(([nom]) => nom !== 'forum')
     .map(([nom, code]) => [code, ALIAS[nom] || nom]));
   assert.equal(table[4], 'swapou', 'le code 4 sort « swapou »');
   assert.equal(table[6], 'bandas');
   assert.equal(table[12], 'minipixiz');
   assert.equal(table[13], 'minifever');
-  assert.equal(table[1], undefined, 'et le forum n\'est pas une partie');
+  // Le forum est publié lui aussi : le bureau montre son icône, le mobile
+  // doit pouvoir en faire autant (avec sa propre phrase).
+  assert.equal(table[1], 'forum', 'le forum a repris sa place');
   // Chaque nom publié a bien son PNG.
   for (const nom of Object.values(table)) {
-    if (!['bandas', 'grapiz', 'swapou', 'miniwave', 'minipixiz', 'minifever'].includes(nom)) continue;
     const f = path.join(ROOT, 'public/fb/voyant_' + nom + '.png');
     assert.ok(fs.existsSync(f), 'voyant_' + nom + '.png existe');
   }

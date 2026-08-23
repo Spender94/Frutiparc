@@ -48,6 +48,11 @@ const VOYANTS = [
   { jeu: 'snake3', etiquette: 'snake3' },        // le serpent
   { jeu: 'mb2', etiquette: 'mb2' },              // la bille
   { jeu: 'kaluga', etiquette: 'kaluga' },        // le papillon
+  // Le forum n'est pas un jeu, mais il occupe le MÊME emplacement dans la
+  // chaîne de statut (internalList[1]) et la feuille lui donne une image
+  // (étiquette « forum ») : le bureau la pose à côté du pseudo de qui lit le
+  // forum. Le mobile en a besoin pour dire la même chose.
+  { jeu: 'forum', etiquette: 'forum' },          // le panneau d'affichage
   // Mini-Fever, lui, n'est PAS d'ici : son image du clip 246 a été greffée, et
   // elle est faite d'un bitmap que cette moulinette-là ne sait pas rendre — on
   // n'en tirerait qu'une vignette vide. Ses cerises viennent du dessin

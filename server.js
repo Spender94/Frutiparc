@@ -287,12 +287,19 @@ const STATUS_INTERNAL_FRAME = {
   // same codes itself (VOYANTS_JEU in light.html).
   minipixiz: 12,
   minifever: 13,
-  // Kept for completeness: the SWF list's index 1. Filtered out of the
-  // mobile's "joue à…" display below — browsing the forum is not a game.
+  // Le forum : index 1 de la liste du SWF. Ce n'est pas une partie, mais il
+  // occupe le même emplacement et le bureau lui donne son icône — le mobile
+  // l'affiche donc aussi, avec sa propre phrase (« Lit le forum »).
   forum:     1,
 };
-// Nom de jeu ← code interne, pour dire au mobile QUI joue à QUOI. On ne
-// publie que les jeux jouables — le forum n'est pas une partie.
+// Nom d'activité ← code interne, pour dire au mobile QUI fait QUOI.
+//
+// Le forum EN FAIT PARTIE. On l'écartait — « le forum n'est pas une partie » —
+// et c'est vrai, mais il occupe le même emplacement dans la chaîne de statut
+// (internalList[1]), le bureau pose son icône à côté du pseudo de qui le lit,
+// et la feuille d'icônes lui en donne une. L'écarter ici, c'était priver le
+// mobile d'un voyant que le bureau affiche : le client dit « Lit le forum »
+// là où il dit « Joue à… » pour les autres.
 //
 // Le nom publié est celui des ASSETS du mobile, pas celui de l'internalList du
 // SWF : Swapou y est « swapou2 » (le second opus), et ses icônes s'appellent
@@ -301,7 +308,6 @@ const STATUS_INTERNAL_FRAME = {
 // qui n'existe pas.
 const STATUS_JEU_ALIAS = { swapou2: 'swapou' };
 const STATUS_INTERNAL_JEU = Object.fromEntries(Object.entries(STATUS_INTERNAL_FRAME)
-  .filter(([nom]) => nom !== 'forum')
   .map(([nom, code]) => [code, STATUS_JEU_ALIAS[nom] || nom]));
 // ─────────────────────────────────────────────
 // « EN PARTIE » : UNE PLACE QUI EXPIRE, PAS UN INTERRUPTEUR

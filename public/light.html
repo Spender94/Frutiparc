@@ -5639,7 +5639,9 @@
     var jeuFiche = (d && d.jeu) || "";
     if (jeuFiche && VOYANTS_NOM[jeuFiche]) {
       st.src = "/fb/voyant_" + jeuFiche + ".png";
-      st.title = "En partie — " + VOYANTS_NOM[jeuFiche];
+      st.title = jeuFiche === "forum"
+        ? "Lit le forum"
+        : "En partie — " + VOYANTS_NOM[jeuFiche];
       st.classList.add("en-partie");
     } else {
       st.src = "/fb/fiche/" + ((d && d.enLigne) ? "statut_present" : "statut_absent") + ".png";
@@ -5963,7 +5965,7 @@
       var vj = el("img", "voyant");
       vj.src = "/fb/voyant_" + jeu + ".png";
       vj.alt = "";
-      vj.title = "Joue à " + VOYANTS_NOM[jeu];
+      vj.title = libelleActivite(jeu);
       contenu.appendChild(vj);
     }
     var nm = el("span"); nm.textContent = pseudo;
@@ -6042,7 +6044,9 @@
     siteListe.forEach(function (j) {
       var lieu = (j.salons && j.salons.length)
         ? j.salons.map(roomLabel).join(", ")
-        : (j.jeu && VOYANTS_NOM[j.jeu] ? "joue à " + VOYANTS_NOM[j.jeu] : "en ligne");
+        : (j.jeu && VOYANTS_NOM[j.jeu]
+          ? (j.jeu === "forum" ? "lit le forum" : "joue à " + VOYANTS_NOM[j.jeu])
+          : "en ligne");
       list.appendChild(ligneConnecte(j.pseudo, lieu, !!j.staff, j.jeu || ""));
     });
   }
@@ -6156,10 +6160,21 @@
   // hors liste d'origine : deux rustines DoInitAction les branchent au bureau
   // (patch-main-statusmng-*.js) — les cerises de Mini-Fever, dessinées pour la
   // greffe, sont servies ici par le même voyant_minifever.png.
-  var VOYANTS_JEU = { 6: "bandas", 7: "grapiz", 4: "swapou", 9: "miniwave", 12: "minipixiz",
+  // LA LISTE COMPLÈTE, dans l'ordre de l'internalList du SWF. Elle n'en tenait
+  // que six : Burning Kiwi, MotionBall, Frutisnake, Kaluga et le FORUM
+  // n'avaient aucun voyant sur mobile — le serveur envoyait bien leur code, le
+  // client ne savait pas le lire et n'affichait rien.
+  var VOYANTS_JEU = { 1: "forum", 2: "bkiwi", 3: "mb2", 4: "swapou", 5: "snake3",
+    6: "bandas", 7: "grapiz", 8: "kaluga", 9: "miniwave", 12: "minipixiz",
     13: "minifever" };
-  var VOYANTS_NOM = { bandas: "Frutibandas", grapiz: "Grapiz", swapou: "Swapou",
-    miniwave: "Mini-Wave", minipixiz: "Minipixiz", minifever: "Mini-Fever" };
+  var VOYANTS_NOM = { forum: "Forum", bkiwi: "Burning Kiwi", mb2: "MotionBall 2",
+    swapou: "Swapou", snake3: "Frutisnake", bandas: "Frutibandas", grapiz: "Grapiz",
+    kaluga: "Kaluga", miniwave: "Mini-Wave", minipixiz: "Minipixiz",
+    minifever: "Mini-Fever" };
+  // Lire le forum n'est pas jouer : même emplacement, autre phrase.
+  function libelleActivite(jeu) {
+    return jeu === "forum" ? "Lit le forum" : "Joue à " + VOYANTS_NOM[jeu];
+  }
   var BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   function decode62(s) {
     var r = 0;
