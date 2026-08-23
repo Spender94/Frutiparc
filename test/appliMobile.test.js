@@ -241,6 +241,10 @@ test('un courrier reçu ABSENT sonne sur le téléphone — chiffré, lisible, c
   const p = await attendrePush(n);
   assert.match(String(p.headers.authorization || ''), /^vapid t=/, 'signature VAPID présente');
   assert.equal(p.headers['content-encoding'], 'aes128gcm', 'chiffrement Web Push');
+  // L'urgence commande le DÉLAI de remise : en « normal », le service de
+  // poussée a le droit d'attendre le prochain réveil du téléphone — d'où des
+  // notifications qui arrivent avec plusieurs minutes de retard.
+  assert.equal(p.headers.urgency, 'high', 'le courrier est remis sans attendre');
   const charge = dechiffrer(p.corps);
   assert.equal(charge.t, '📬 Nouveau courrier');
   assert.match(charge.c, new RegExp(EXP));
@@ -295,6 +299,8 @@ test('un événement du site prévient les abonnés absents', async () => {
   assert.equal(charge.t, '📣 Frutiparc');
   assert.match(charge.c, /Grand tournoi Frutibandas/);
   assert.equal(charge.u, '/light?ouvre=evenements');
+  assert.equal(p.headers.urgency, 'normal',
+    'une annonce du site ne réveille pas un téléphone endormi');
 });
 
 test('le bouton « tester » sonne même connecté', async () => {

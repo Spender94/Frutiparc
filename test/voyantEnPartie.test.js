@@ -380,3 +380,24 @@ test('le client light lit le statut porté par une arrivée', async () => {
   assert.match(branche[0], /rememberStatut\(uj, attr\(xml, "s"\)\)/,
     'elle met le voyant à jour depuis le statut reçu');
 });
+
+test('téléphone rangé en pleine partie : le voyant s\'éteint quand même', async () => {
+  // Une session vit jusqu'à sa conclusion — ranger son téléphone ne la termine
+  // pas, et Frutibandas n'offrait même aucun bouton pour quitter proprement.
+  // Renouveler sur la seule existence de la partie rallumait donc le voyant en
+  // boucle pendant des heures. La présence tranche : plus personne au premier
+  // plan, plus de renouvellement.
+  sockJoueur2.write('<gz a="challenge" u="mirabo" />\0');
+  await wait(900);
+  assert.equal(await voyantDe(JOUEUR2), 'grapiz', 'la partie est bien lancée');
+  sockJoueur2.write('<e h="1" />\0');            // l'appli passe en arrière-plan
+  await wait(TTL + 3000);
+  assert.equal(await voyantDe(JOUEUR2), null,
+    'téléphone rangé : le voyant s\'éteint même si la partie court toujours');
+  sockJoueur2.write('<e h="0" />\0');            // il revient dans l'appli
+  await wait(2500);
+  assert.equal(await voyantDe(JOUEUR2), 'grapiz',
+    'de retour devant sa partie, le voyant se rallume');
+  sockJoueur2.write('<gz a="part" />\0');
+  await wait(800);
+});

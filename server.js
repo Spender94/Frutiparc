@@ -5625,12 +5625,19 @@ function noterDecisionPush(username, type, envoye, raison) {
 }
 
 // Envoi à un appareil. Rend false si l'abonnement est mort (et le retire).
-async function pushEnvoyerBrut(abo, charge, ttl) {
+async function pushEnvoyerBrut(abo, charge, ttl, urgence) {
   try {
     await webpush.sendNotification(
       { endpoint: abo.endpoint, keys: abo.keys },
       JSON.stringify(charge),
-      { TTL: ttl }
+      // L'URGENCE COMMANDE LE DÉLAI. Sans elle, le message part en « normal » :
+      // le service de poussée du téléphone a le droit de l'entasser avec
+      // d'autres et de ne le livrer qu'au prochain réveil de l'appareil — d'où
+      // des notifications qui arrivent avec des minutes de retard, quand
+      // l'écran est éteint. « high » demande une remise immédiate ; on la
+      // réserve à ce qui attend une réponse (courrier, privé, défi), les
+      // annonces du site restant en « normal ».
+      { TTL: ttl, urgency: urgence || 'high' }
     );
     return true;
   } catch (e) {
@@ -5648,11 +5655,11 @@ async function pushEnvoyerBrut(abo, charge, ttl) {
 
 // Tous les appareils d'UN joueur. (Pas de test de présence ici : les appelants
 // décident — le bouton « tester » doit sonner même quand on est connecté.)
-function pousserNotif(username, charge, ttl) {
+function pousserNotif(username, charge, ttl, urgence) {
   if (!pushPret) return;
   const cible = String(username || '').toLowerCase();
   for (const abo of pushAbonnements.values()) {
-    if (abo.username === cible) pushEnvoyerBrut(abo, charge, ttl);
+    if (abo.username === cible) pushEnvoyerBrut(abo, charge, ttl, urgence);
   }
 }
 
@@ -5666,7 +5673,9 @@ function pousserNotifATous(charge, ttl) {
       joignable.set(abo.username, direct);
       noterDecisionPush(abo.username, charge.tag || 'evenement', !direct, direct ? 'présent (socket fraîche)' : 'absent → envoyé');
     }
-    if (!joignable.get(abo.username)) pushEnvoyerBrut(abo, charge, ttl);
+    // Une annonce du site n'a pas à réveiller un téléphone endormi : elle
+    // partira au prochain réveil, avec les autres.
+    if (!joignable.get(abo.username)) pushEnvoyerBrut(abo, charge, ttl, 'normal');
   }
 }
 
@@ -20958,6 +20967,13 @@ function grapizFlush(messages) {
 // au bout de trois coups, puisque rien ne le renouvelait entre le coup d'envoi
 // (onMatchForming) et la conclusion. La fin de partie (onResult) et la
 // déconnexion l'éteignent ; ici, on ne fait que le tenir allumé.
+// … MAIS SEULEMENT TANT QUE LE JOUEUR EST DEVANT SON ÉCRAN. Une session vit
+// jusqu'à sa conclusion (victoire, abandon, temps écoulé) : ranger son
+// téléphone ne la termine pas, et il n'existe même pas de bouton pour quitter
+// proprement une partie de Frutibandas. Renouveler sur la seule existence de
+// la session, c'était donc rallumer le voyant en boucle pendant des heures.
+// La même mesure de fraîcheur que les notifications tranche : plus de socket
+// vivante au premier plan → on ne renouvelle plus, et le bail expire seul.
 function renouvelerVoyantsParties(reseau, jeu) {
   const sessions = reseau.sessions || {};
   for (const id of Object.keys(sessions)) {
@@ -20965,6 +20981,7 @@ function renouvelerVoyantsParties(reseau, jeu) {
     if (!sess || sess.ended) continue;
     for (const p of (sess.players || [])) {
       if (reseau.bots && reseau.bots[p.id]) continue;   // un bot n'a pas de voyant
+      if (!estJoignableEnDirect(p.id)) continue;        // parti : le voyant s'éteindra
       marquerEnPartie(p.id, jeu);
     }
   }
