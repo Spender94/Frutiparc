@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-66.34 -66.34 132.69 132.69" width="132.69" height="132.69">
+<g transform="matrix(2.08,0,0,2.08,0,0)">
+  <path d="M19.45 -19.45Q27.5 -11.4 27.5 0Q27.5 11.4 19.45 19.45Q11.4 27.5 0 27.5Q-11.4 27.5 -19.45 19.45Q-27.5 11.4 -27.5 0Q-27.5 -11.4 -19.45 -19.45Q-11.4 -27.5 0 -27.5Q11.4 -27.5 19.45 -19.45Z" fill="#d6f7b5" fill-rule="evenodd"/>
+
+</g>
+<g transform="matrix(2.41,0,0,2.41,0,0)">
+  <defs>
+    <radialGradient id="g1" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00175,0,0,0.00175,-0.5,-0.5)"><stop offset="0.23529" stop-color="#ffffff"/><stop offset="0.69412" stop-color="#ffff00"/><stop offset="1" stop-color="#ff0000"/></radialGradient>
+  </defs>
+  <path d="M19.45 -19.45Q27.5 -11.4 27.5 0Q27.5 11.4 19.45 19.45Q11.4 27.5 0 27.5Q-11.4 27.5 -19.45 19.45Q-27.5 11.4 -27.5 0Q-27.5 -11.4 -19.45 -19.45Q-11.4 -27.5 0 -27.5Q11.4 -27.5 19.45 -19.45Z" fill="url(#g1)" fill-rule="evenodd"/>
+
+</g>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -2.05 10 16" width="10" height="16">
+<g transform="matrix(1,0,0,1,0,0)">
+  <defs>
+    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,-0.00036,0.00067,0,5,5.65)"><stop offset="0" stop-color="#ee9595"/><stop offset="1" stop-color="#bb1e1e"/></linearGradient>
+    <linearGradient id="g2" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.0002,-0.00061,0,5,4.25)"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#bb1e1e" stop-opacity="0"/></linearGradient>
+  </defs>
+  <path d="M0 13.95L0 -2.05L10 -2.05L10 13.95L0 13.95Z" fill="#ffffff" fill-rule="evenodd"/>
+  <path d="M0 12L0 0L10 0L10 12L0 12Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M10 1L10 7.5L0 7.5L0 1L10 1Z" fill="url(#g2)" fill-rule="evenodd"/>
+
+</g>
+</svg>

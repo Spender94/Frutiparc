@@ -50,8 +50,9 @@ function composer(P, E) {
  *   composer: Function, IDENTITE: object
  * }}
  */
-function ouvrir(chemin) {
+function ouvrir(chemin, options) {
   const b = lireSwf(chemin);
+  const textesEnFormes = !!(options && options.textesEnFormes);
   const debut = Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8) + 4;
 
   function parcourir(visiter) {
@@ -88,9 +89,12 @@ function ouvrir(chemin) {
   // Nature de chaque caractère : une forme se trace, un sprite se traverse.
   const TYPE = new Map();
   parcourir((code, corps) => {
-    if ([2, 22, 32, 83, 39].includes(code)) TYPE.set(b.readUInt16LE(corps), code);
+    if ([2, 22, 32, 83, 39, 11, 33].includes(code)) TYPE.set(b.readUInt16LE(corps), code);
   });
-  const estForme = (id) => [2, 22, 32, 83].includes(TYPE.get(id));
+  // Avec textesEnFormes, les DefineText (11/33) passent pour des formes :
+  // aplatir() les rend comme morceaux, à l'appelant de fournir leur dessin.
+  const estForme = (id) => [2, 22, 32, 83].includes(TYPE.get(id))
+    || (textesEnFormes && [11, 33].includes(TYPE.get(id)));
   const estSprite = (id) => TYPE.get(id) === 39;
 
   // Lecture d'une MATRIX (champs non alignés sur l'octet).

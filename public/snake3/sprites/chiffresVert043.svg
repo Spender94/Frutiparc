@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="2.1 -13.25 8.35 26.85" width="8.35" height="26.85">
+<g transform="matrix(1,0,0,1,0,0)">
+  <defs>
+    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,-0.0007,0.00013,0,6.25,0.2)"><stop offset="0" stop-color="#ea7575"/><stop offset="1" stop-color="#bb1e1e"/></linearGradient>
+    <linearGradient id="g2" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.00056,-0.00007,0,6.3,-0.25)"><stop offset="0" stop-color="#ffffff" stop-opacity="0.8"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+  </defs>
+  <path d="M6.25 -13.25Q8.05 -13.25 9.2 -12.05Q10.45 -10.9 10.45 -9.1L10.45 9.45Q10.45 11.25 9.2 12.4L9.2 12.45Q8.05 13.6 6.25 13.6Q4.45 13.6 3.3 12.45L3.3 12.4Q2.1 11.25 2.1 9.45L2.1 -9.1Q2.1 -10.9 3.3 -12.05Q4.45 -13.25 6.25 -13.25Z" fill="#ffffff" fill-rule="evenodd"/>
+  <path d="M8.45 -9.1L8.45 9.45Q8.45 10.4 7.8 11Q7.2 11.6 6.25 11.6Q5.3 11.6 4.7 11Q4.1 10.4 4.1 9.45L4.1 -9.1Q4.1 -10.05 4.7 -10.65Q5.3 -11.25 6.25 -11.25Q7.2 -11.25 7.8 -10.65Q8.45 -10.05 8.45 -9.1Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M5.4 -9.95L6.25 -10.25L7.1 -9.95L7.15 -9.9L7.45 -9.1L7.45 1.8L5.1 1.8L5.1 -9.1Q5.1 -9.6 5.4 -9.95Z" fill="url(#g2)" fill-rule="evenodd"/>
+
+</g>
+</svg>

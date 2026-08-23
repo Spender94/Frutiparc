@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 -14.6 32.35 29.9" width="32.35" height="29.9">
+<g transform="matrix(1,0,0,1,0,0)">
+  <defs>
+    <radialGradient id="g1" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00068,0,0,0.00059,8.7,-5.1)"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00068,0,0,0.00059,8.7,5.85)"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <path d="M-0.05 -12Q4.95 -12 12.55 -8.25Q20.1 -4.5 20.35 0.5Q20.6 5.5 12.8 8.75Q4.95 12 -0.05 12Q-5 12 -8.55 8.5Q-12.05 5 -12 0Q-12.05 -5 -8.55 -8.5Q-5 -12 -0.05 -12Z" fill="#6666ff" fill-opacity="0.5" fill-rule="evenodd"/>
+  <path d="M11.55 -3.6L8.5 -4.1Q7.35 -4.45 6.6 -5.15Q5.85 -5.9 6 -6.5Q6.05 -7.15 6.95 -7.35L9 -7.2Q10.15 -6.85 11.85 -5.8Q13.5 -4.8 13.5 -4.15Q13.45 -3.5 11.55 -3.6ZM11.55 4.2Q13.45 4.05 13.5 4.7Q13.5 5.35 11.85 6.4Q10.15 7.4 9 7.8L6.95 7.95Q6.05 7.7 6 7.1Q5.85 6.45 6.6 5.75Q7.35 5 8.5 4.7Q9.65 4.3 11.55 4.2Z" fill="#ffffff" fill-rule="evenodd"/>
+  <path d="M8.65 4.35Q4.1 4.35 0.95 1.6Q-2.25 -1.15 -2.25 -5.1Q-2.25 -9.05 0.95 -11.85Q4.1 -14.6 8.65 -14.6Q13.2 -14.6 16.4 -11.85Q19.6 -9.05 19.6 -5.1Q19.6 -1.15 16.4 1.6Q13.2 4.35 8.65 4.35Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M8.65 15.3Q4.1 15.3 0.95 12.55Q-2.25 9.8 -2.25 5.85Q-2.25 1.9 0.95 -0.9Q4.1 -3.65 8.65 -3.65Q13.2 -3.65 16.4 -0.9Q19.6 1.9 19.6 5.85Q19.6 9.8 16.4 12.55Q13.2 15.3 8.65 15.3Z" fill="url(#g2)" fill-rule="evenodd"/>
+
+</g>
+<g transform="matrix(1.24,0,0,1.37,0.8,-6.85)">
+  <path d="M11.25 10.25L0 10.25L0 0L11.25 0L11.25 10.25Z" fill="#d6f7b5" fill-rule="evenodd"/>
+
+</g>
+</svg>

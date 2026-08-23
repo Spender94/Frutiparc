@@ -211,14 +211,19 @@ class Serpent {
     return false;
   }
 
-  // Snake.hit(pt) — le corps OU la tête (Battle). La tête est un disque à
-  // l'échelle du serpent ; son dessin fait ~22 px de large à 100 %.
+  // Snake.hit(pt) — le corps OU la tête (Battle seulement). Le SWF fait un
+  // hitTest vectoriel sur le clip de la tête ; ici une capsule calée sur son
+  // cadre mesuré (x −13,1 … +20,2, demi-hauteur 12,85 px à 100 %), portée par
+  // le cap et à l'échelle 30+70·scale % comme le dessin.
   hit(pt) {
     if (this.toucheLeCorps(pt.x, pt.y)) return true;
     const scale = Math.min(10, this.len + 3) / 10;
-    const rayon = 11 * (30 + 70 * scale) / 100;
-    const dx = pt.x - this.x, dy = pt.y - this.y;
-    return dx * dx + dy * dy <= rayon * rayon;
+    const k = (30 + 70 * scale) / 100;
+    const ux = Math.cos(this.ang), uy = Math.sin(this.ang);
+    const ax = this.x - 0.25 * k * ux, ay = this.y - 0.25 * k * uy;
+    const bx = this.x + 7.35 * k * ux, by = this.y + 7.35 * k * uy;
+    const rayon = 12.85 * k;
+    return distanceSegment2(pt.x, pt.y, ax, ay, bx, by) <= rayon * rayon;
   }
 
   add_queue(fid) {

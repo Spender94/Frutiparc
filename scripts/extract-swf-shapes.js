@@ -81,13 +81,17 @@ function lireStyles(b, o, alpha, shape4) {
       remplissages.push({ degrade: { radial: t !== 0x10, focale, etalement, interpolation, M, arrets } });
       o = q;
     } else if (t >= 0x40 && t <= 0x43) {
-      // Les images matricielles ne se rendent pas en SVG pur : on retient leur
-      // identifiant, pour que extract-swf-bitmaps.js puisse les sortir.
-      remplissages.push({ bitmap: b.readUInt16LE(o + 1) });
+      // Remplissage par image matricielle. La matrice envoie les PIXELS de
+      // l'image dans les twips de la forme (un pixel d'image couvre vingt
+      // twips à l'échelle 1). On la garde : avec un manifeste d'images
+      // (--bitmaps), versSvg saura poser un <image> sous la découpe du tracé ;
+      // sans manifeste, le remplissage reste hors périmètre comme avant.
       const m = new Bits(b, o + 3);
-      if (m.u(1)) { const nb = m.u(5); m.s(nb); m.s(nb); }
-      if (m.u(1)) { const nb = m.u(5); m.s(nb); m.s(nb); }
-      const nb = m.u(5); m.s(nb); m.s(nb); m.align();
+      const M = { sx: 1, sy: 1, b: 0, c: 0, tx: 0, ty: 0 };
+      if (m.u(1)) { const nb = m.u(5); M.sx = m.s(nb) / 65536; M.sy = m.s(nb) / 65536; }
+      if (m.u(1)) { const nb = m.u(5); M.b = m.s(nb) / 65536; M.c = m.s(nb) / 65536; }
+      const nb = m.u(5); M.tx = m.s(nb); M.ty = m.s(nb); m.align();
+      remplissages.push({ bitmap: b.readUInt16LE(o + 1), M, lisse: t <= 0x41 });
       o = m.o;
     } else throw new Error('type de remplissage inconnu : 0x' + t.toString(16));
   }
@@ -289,11 +293,28 @@ function degradeSvg(id, g) {
 
 function versSvg(f) {
   const [x0, x1, y0, y1] = f.bounds.map((v) => v / 20);
-  let corps = '', defs = '', nDeg = 0;
+  let corps = '', defs = '', nDeg = 0, nClip = 0;
   for (const cle of [...f.parFill.keys()].sort(cleTriee)) {
     const [ti, fi] = cle.split(':').map(Number);
     const s = (f.tableaux[ti] || { remplissages: [] }).remplissages[fi - 1];
-    if (!s || s.bitmap !== undefined) continue;            // bitmap : hors périmètre
+    if (!s) continue;
+    if (s.bitmap !== undefined) {
+      // Sans manifeste d'images, hors périmètre — le comportement historique.
+      const img = BITMAPS && BITMAPS[s.bitmap];
+      if (!img) continue;
+      const d = assembler(f.parFill.get(cle)).map((c) => tracer(c, true)).join('');
+      if (!d) continue;
+      const cid = 'c' + (++nClip);
+      defs += `    <clipPath id="${cid}"><path d="${d}" fill-rule="evenodd"/></clipPath>\n`;
+      // La matrice du remplissage va des pixels de l'image aux TWIPS de la
+      // forme ; nos tracés sont en pixels — tout se divise par vingt.
+      const M = s.M;
+      const t = [M.sx / 20, M.b / 20, M.c / 20, M.sy / 20, M.tx / 20, M.ty / 20]
+        .map(arrondi).join(',');
+      corps += `  <g clip-path="url(#${cid})"><image href="${img.fichier}" width="${img.w}" height="${img.h}"`
+        + ` transform="matrix(${t})"${s.lisse ? '' : ' image-rendering="pixelated"'}/></g>\n`;
+      continue;
+    }
     let peinture = s.couleur, opacite = s.alpha;
     if (s.degrade) {
       const gid = 'g' + (++nDeg);
@@ -321,9 +342,21 @@ function versSvg(f) {
 }
 
 // ─── Parcours des tags ───
-const [, , fichier, sortie, ...ids] = process.argv;
+// `--bitmaps <manifeste.json>` : { "<id>": { "fichier": "…", "w": n, "h": n } }
+// — les remplissages par image sortent alors en <image> découpé au tracé, au
+// lieu d'être passés sous silence.
+const argv = process.argv.slice(2);
+let BITMAPS = null;
+{
+  const i = argv.indexOf('--bitmaps');
+  if (i >= 0) {
+    BITMAPS = JSON.parse(fs.readFileSync(argv[i + 1], 'utf8'));
+    argv.splice(i, 2);
+  }
+}
+const [fichier, sortie, ...ids] = argv;
 if (!fichier) {
-  console.error('usage : extract-swf-shapes.js <fichier.swf> [sortie/] [id…]');
+  console.error('usage : extract-swf-shapes.js [--bitmaps manifeste.json] <fichier.swf> [sortie/] [id…]');
   process.exit(1);
 }
 const b = lireSwf(fichier);
