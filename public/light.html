@@ -1010,6 +1010,12 @@
     flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
     border: 0; display: block; background: #150f28;
   }
+  #snake3-panel { padding: 0; }
+  #snake3-frame {
+    flex: 1 1 auto; width: 100%; min-height: 0; height: 100%;
+    border: 0; display: block; background: #ADE76B;
+    touch-action: none;
+  }
   /* JamaJama : le jeu tient dans un carré de 384 et se centre sur le brun
      de son propre décor — le cadre prend la couleur du fond du menu pour
      qu'aucun liseré ne tranche autour du plateau. */
@@ -2005,6 +2011,15 @@
        ramassés entrent à l'album, et les pictos suivent. -->
   <section class="panel" id="minipixiz-panel">
     <iframe id="minipixiz-frame" title="Minipixiz" referrerpolicy="no-referrer"></iframe>
+  </section>
+
+  <!-- Frutisnake — portage natif canvas du serpent de 2004 (Games/snake3),
+       fidèle au SWF : mêmes dessins (SVG extraits), mêmes sons, mêmes
+       mécaniques. Il lit ?sid= pour la collection de fruits (slot 0 — les
+       pictos « Fruit N » suivent), les préférences (slot 1) et le classement
+       snake3_classic, exactement comme le disque du bureau. -->
+  <section class="panel" id="snake3-panel">
+    <iframe id="snake3-frame" title="Frutisnake" referrerpolicy="no-referrer"></iframe>
   </section>
 
   <!-- Mini-Fever — le jeu de mini-jeux que Motion Twin n'a jamais mis en ligne,
@@ -3378,6 +3393,7 @@
   var CADRES_JEU = {
     grapiz: "#grapiz-frame", bandas: "#bandas-frame", swapou: "#swapou-frame",
     miniwave: "#miniwave-frame", minipixiz: "#minipixiz-frame",
+    snake3: "#snake3-frame",
     minifever: "#minifever-frame", jamajama: "#jamajama-frame",
   };
   function donnerFocusAuJeu(tab) {
@@ -3409,6 +3425,7 @@
     $("#swapou-panel").classList.toggle("active", tab === "swapou");
     $("#miniwave-panel").classList.toggle("active", tab === "miniwave");
     $("#minipixiz-panel").classList.toggle("active", tab === "minipixiz");
+    $("#snake3-panel").classList.toggle("active", tab === "snake3");
     $("#minifever-panel").classList.toggle("active", tab === "minifever");
     $("#jamajama-panel").classList.toggle("active", tab === "jamajama");
     $("#scores-panel").classList.toggle("active", tab === "scores");
@@ -3456,6 +3473,12 @@
         pf.setAttribute("src", "/minipixiz/?sid=" + encodeURIComponent(state.sid));
       }
     }
+    if (tab === "snake3") {
+      var kf = $("#snake3-frame");
+      if (kf && !kf.getAttribute("src") && state.sid) {
+        kf.setAttribute("src", "/snake3/?sid=" + encodeURIComponent(state.sid));
+      }
+    }
     if (tab === "minifever") {
       var ff = $("#minifever-frame");
       if (ff && !ff.getAttribute("src") && state.sid) {
@@ -3498,6 +3521,9 @@
     { tab: "swapou", img: "/fb/fd_swapou.png", name: "Swapou" },
     { tab: "miniwave", img: "/fb/fd_miniwave.png?v=2", name: "Mini-Wave" },
     { tab: "minipixiz", img: "/fb/fd_minipixiz.png?v=2", name: "Minipixiz" },
+    // La jaquette de Frutisnake est composée des dessins du jeu
+    // (scripts/make-snake3-disc.js) : il n'en existait pas de dessinée.
+    { tab: "snake3", img: "/fb/fd_snake3.png", name: "Frutisnake" },
     // Mini-Fever n'a jamais eu de jaquette : la sienne est composée des
     // épreuves portées (scripts/make-minifever-pictos.js), en SVG.
     { tab: "minifever", img: "/fb/fd_minifever.svg", name: "Mini-Fever" },
