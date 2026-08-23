@@ -1156,6 +1156,39 @@
     font-weight: bold; font-size: 13px; color: #40305c;
   }
   .fen-ico { width: 15px; height: 15px; display: block; }
+
+  /* ── Réglages de l'appli ──
+     Des cartes claires sur le vert de la fenêtre, comme les événements : on y
+     lit une rubrique par sujet, avec ses commandes dessous. */
+  #reg-corps {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 8px 8px 12px;
+  }
+  .reg-carte {
+    background: #fff; border: 1px solid #8CC63F; border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 8px;
+  }
+  .reg-titre { font-weight: bold; font-size: 13px; color: #40305c; margin-bottom: 4px; }
+  .reg-texte { font-size: 12.5px; line-height: 1.4; color: #2C4A0F; }
+  .reg-note { margin-top: 7px; opacity: .85; }
+  .reg-actions {
+    margin-top: 9px; display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
+  }
+  /* Le groupe « activées » ne casse pas la rangée — mais `display` ne doit
+     jamais l'emporter sur `hidden`, sinon les deux états s'affichent ensemble
+     (« Activer » ET « Activées »). D'où le :not([hidden]). */
+  .reg-actions > span:not([hidden]) { display: contents; }
+  .reg-btn {
+    padding: 8px 13px; border: 0; border-radius: 9px;
+    background: #8CC63F; color: #fff; font-weight: bold; font-size: 13px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.18);
+  }
+  .reg-btn:active { transform: translateY(1px); }
+  .reg-btn-doux { background: #DCF2B4; color: #2C4A0F; }
+  .reg-etat { font-size: 12.5px; font-weight: bold; }
+  .reg-ok { color: #3d7a15; }
+  .reg-pied { text-align: center; font-size: 12px; padding: 4px 0 2px; }
+  .reg-pied a { color: #2f6b16; }
   #evt-liste {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
     padding: 7px 7px 3px;
@@ -1826,6 +1859,11 @@
            la feuille des liens de fileIcon.swf (scripts/extract-club-icone.js).
            -->
       <button class="home-tile" data-go="club"><span class="ico"><img src="/fb/icone_club.svg" alt="" onerror="this.replaceWith(document.createTextNode('🏆'))"></span><span class="lbl">Club</span></button>
+      <!-- Les RÉGLAGES de l'appli : notifications, installation, diagnostic.
+           L'icône est celle du bureau — le radis de « linkPreference », sorti
+           en vecteur de la feuille des liens de fileIcon.swf
+           (scripts/extract-preferences-icone.js), comme la prune du Club. -->
+      <button class="home-tile" data-go="reglages"><span class="ico"><img src="/fb/icone_preferences.svg" alt="" onerror="this.replaceWith(document.createTextNode('⚙️'))"></span><span class="lbl">Réglages</span></button>
     </div>
 
     <!-- Le compte, et la sortie. Le bureau Flash n'offre « Se déconnecter »
@@ -1834,18 +1872,8 @@
          bouton : la sortie doit se trouver, pas se remarquer. Le balisage est
          collé pour que le point médian ne prenne pas d'espace insécable. -->
     <div class="home-compte">
-      <!-- Notifications push : même registre discret que la ligne du compte.
-           La ligne n'apparaît que si l'appareil sait faire (service worker +
-           PushManager) ; sur iPhone hors appli installée, elle explique le
-           préalable au lieu de proposer un bouton qui échouerait. -->
-      <div id="notifs-ligne" hidden>
-        <button type="button" id="notifs-btn" class="hc-quitter">Activer les notifications</button><span
-          id="notifs-actives" hidden><span class="hc-qui">Notifications activées</span><span
-          class="hc-sep" aria-hidden="true">·</span><button type="button" id="notifs-test" class="hc-quitter">tester</button><span
-          class="hc-sep" aria-hidden="true">·</span><button type="button" id="notifs-off" class="hc-quitter">couper</button></span>
-      </div>
-      <div id="notifs-conseil" class="hc-qui" hidden>Pour les notifications sur iPhone :
-        Partager&nbsp;→ «&nbsp;Sur l'écran d'accueil&nbsp;», puis ouvre l'appli Frutiparc.</div>
+      <!-- Les notifications ont quitté ce pied pour les RÉGLAGES (tuile du
+           même nom) : elles s'y règlent au lieu de tenir en une ligne. -->
       <span class="hc-qui">Connecté en tant que <b id="home-pseudo">…</b></span><span
         class="hc-sep" aria-hidden="true">·</span><button
         type="button" id="logout-btn" class="hc-quitter">Se déconnecter</button><span
@@ -2065,6 +2093,60 @@
         <span id="evt-page"></span>
         <button type="button" class="fen-page" id="evt-suiv" aria-label="Page suivante">
           <img src="/fb/fleche_droite.svg" alt=""></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RÉGLAGES — le panneau de l'appli : notifications d'abord (c'est ce qu'on
+       vient y régler), puis l'état de l'installation, puis le diagnostic quand
+       « je ne reçois rien » et le renvoi à la page de confidentialité.
+       Les commandes de notification gardent LEURS identifiants d'origine :
+       elles viennent du pied de l'accueil, leur logique n'a pas bougé. -->
+  <section class="panel" id="reglages-panel">
+    <div class="fenetre">
+      <div class="fen-titre">
+        <img class="fen-ico" src="/fb/icone_preferences.svg" alt="">
+        <span>Réglages de l'appli</span>
+      </div>
+      <div id="reg-corps">
+
+        <div class="reg-carte">
+          <div class="reg-titre">Notifications</div>
+          <div class="reg-texte">Courrier, messages privés, défis à Grapiz ou
+            Frutibandas, événements du parc : le téléphone prévient quand tu
+            n'es pas devant l'écran.</div>
+          <div id="notifs-ligne" class="reg-actions" hidden>
+            <button type="button" id="notifs-btn" class="reg-btn">Activer les notifications</button>
+            <span id="notifs-actives" hidden>
+              <span class="reg-etat reg-ok">Activées sur cet appareil</span>
+              <button type="button" id="notifs-test" class="reg-btn reg-btn-doux">Tester</button>
+              <button type="button" id="notifs-off" class="reg-btn reg-btn-doux">Couper</button>
+            </span>
+          </div>
+          <div id="notifs-conseil" class="reg-texte reg-note" hidden>Sur iPhone, les
+            notifications n'existent que dans l'appli installée : Partager&nbsp;→
+            «&nbsp;Sur l'écran d'accueil&nbsp;», puis ouvre l'appli Frutiparc.</div>
+        </div>
+
+        <div class="reg-carte">
+          <div class="reg-titre">L'appli</div>
+          <div class="reg-texte" id="reg-install">…</div>
+        </div>
+
+        <div class="reg-carte">
+          <div class="reg-titre">Rien ne sonne ?</div>
+          <div class="reg-texte">Le serveur ne pousse rien tant qu'il te croit
+            devant un écran. Ce bouton dit ce qu'il voit.</div>
+          <div class="reg-actions">
+            <button type="button" id="reg-diag-btn" class="reg-btn reg-btn-doux">Faire le point</button>
+          </div>
+          <div class="reg-texte reg-note" id="reg-diag" hidden></div>
+        </div>
+
+        <div class="reg-pied">
+          <a href="/confidentialite" target="_blank" rel="noopener">Confidentialité</a>
+        </div>
+
       </div>
     </div>
   </section>
@@ -3238,6 +3320,8 @@
     $("#jamajama-panel").classList.toggle("active", tab === "jamajama");
     $("#scores-panel").classList.toggle("active", tab === "scores");
     $("#trombi-panel").classList.toggle("active", tab === "trombi");
+    $("#reglages-panel").classList.toggle("active", tab === "reglages");
+    if (tab === "reglages") majReglages();
     $("#mail-panel").classList.toggle("active", tab === "mail");
     $("#evt-panel").classList.toggle("active", tab === "evenements" || tab === "historique");
     // Chargements paresseux (1re ouverture, gardés en mémoire ensuite). On reste
@@ -4349,6 +4433,60 @@
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sid: state.sid }),
       });
+    });
+  })();
+
+  // ── Le panneau des réglages ────────────────────────────────────────────────
+  // Trois choses qu'on ne peut pas deviner de l'extérieur : l'état des
+  // notifications (déjà tenu par majLigneNotifs), celui de l'INSTALLATION, et
+  // ce que le serveur croit savoir de notre présence — la réponse à « pourquoi
+  // mon téléphone n'a pas sonné ? ».
+  function majReglages() {
+    majLigneNotifs();
+    var inst = $("#reg-install");
+    if (inst) {
+      if (estInstallee()) {
+        inst.textContent = "Installée sur l'écran d'accueil : c'est bien l'appli que tu utilises.";
+      } else if (estIOS()) {
+        inst.innerHTML = "Ouverte dans Safari. Pour l'installer : Partager → "
+          + "« Sur l'écran d'accueil », puis ouvre l'icône Frutiparc.";
+      } else {
+        inst.innerHTML = "Ouverte dans le navigateur. Pour l'installer : menu ⋮ → "
+          + "« Installer l'application » (ou la bulle d'installation).";
+      }
+    }
+  }
+
+  (function () {
+    var b = $("#reg-diag-btn");
+    if (!b) return;
+    b.addEventListener("click", function () {
+      var zone = $("#reg-diag");
+      if (!zone || !state.sid) return;
+      zone.hidden = false;
+      zone.textContent = "Un instant…";
+      var lire = swPret
+        ? swPret.then(function (reg) { return reg ? reg.pushManager.getSubscription() : null; })
+        : Promise.resolve(null);
+      lire.then(function (sub) {
+        var url = "/api/push/etat?sid=" + encodeURIComponent(state.sid)
+          + "&endpoint=" + encodeURIComponent(sub ? sub.endpoint : "");
+        return fetch(url).then(function (r) { return r.json(); });
+      }).then(function (j) {
+        if (!j || !j.ok) { zone.textContent = "Diagnostic indisponible."; return; }
+        var lignes = [];
+        lignes.push(j.actif
+          ? "Cet appareil est bien abonné."
+          : "Cet appareil n'est PAS abonné (appuie sur « Activer »).");
+        lignes.push("Appareils abonnés à ton compte : " + (j.appareils || 0) + ".");
+        lignes.push(j.joignable
+          ? "Le serveur te voit devant un écran : il ne pousse rien (tu vois déjà tout)."
+          : "Le serveur te voit absent : les notifications partent.");
+        var envois = (j.decisions || []).filter(function (d) { return d.envoye; }).length;
+        lignes.push("Sur les " + (j.decisions || []).length + " dernières décisions le concernant, "
+          + envois + " ont été envoyées.");
+        zone.textContent = lignes.join(" ");
+      }).catch(function () { zone.textContent = "Diagnostic indisponible."; });
     });
   })();
 

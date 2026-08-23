@@ -571,3 +571,42 @@ test('le pointeur n\'est capturé qu\'une fois l\'icône en main', () => {
   assert.match(bloc, /bureauVientDeGlisser = true/, 'un glisser se signale…');
   assert.match(html, /if \(bureauVientDeGlisser\) return;/, '…et son clic ne navigue pas');
 });
+
+// ── LE PANNEAU DE L'APPLI ─────────────────────────────────────────────────
+// Les notifications se réglaient sur une ligne du pied de l'accueil : bonne
+// place pour une mention, mauvaise pour un réglage. Elles ont désormais leur
+// rubrique, sous l'icône du BUREAU — le radis de « linkPreference », sorti en
+// vecteur de la feuille des liens de fileIcon.swf.
+
+test('les réglages ont leur rubrique, sous l\'icône du bureau', async () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
+
+  assert.match(html, /data-go="reglages"[\s\S]{0,200}icone_preferences\.svg/,
+    'la tuile porte l\'icône du bureau');
+  assert.match(html, /<section class="panel" id="reglages-panel">/, 'le panneau existe');
+  assert.match(html, /\$\("#reglages-panel"\)\.classList\.toggle\("active", tab === "reglages"\)/,
+    'et il s\'ouvre comme les autres');
+
+  // L'icône est bien celle qu'on a sortie du SWF, servie telle quelle.
+  const svg = fs.readFileSync(path.join(ROOT, 'public/fb/icone_preferences.svg'), 'utf8');
+  assert.match(svg, /^<svg/, 'un vrai SVG');
+  assert.match(svg, /viewBox/, 'avec sa boîte d\'origine');
+  const rep = await fetch(BASE + '/fb/icone_preferences.svg');
+  assert.equal(rep.status, 200, 'et le serveur la sert');
+
+  // Les commandes de notification ont quitté le pied pour le panneau.
+  const pied = html.slice(html.indexOf('<div class="home-compte">'),
+    html.indexOf('</section>', html.indexOf('<div class="home-compte">')));
+  assert.equal(/id="notifs-ligne"/.test(pied), false, 'plus de réglage dans le pied');
+  const panneau = html.slice(html.indexOf('id="reglages-panel"'),
+    html.indexOf('<!-- Trombinoscope'));
+  assert.match(panneau, /id="notifs-btn"/, 'activer vit dans le panneau');
+  assert.match(panneau, /id="notifs-test"/, 'tester aussi');
+  assert.match(panneau, /id="notifs-off"/, 'couper aussi');
+  assert.match(panneau, /id="reg-diag-btn"/, 'et le diagnostic « rien ne sonne ? »');
+
+  // Le piège du groupe : une règle d'affichage ne doit pas l'emporter sur
+  // `hidden`, sinon « Activer » et « Activées » s'affichent ensemble.
+  assert.match(html, /\.reg-actions > span:not\(\[hidden\]\) \{ display: contents; \}/,
+    'le groupe « activées » respecte hidden');
+});
