@@ -556,5 +556,113 @@ var nvide = new N.BandasNet({ clock: function () { return 0; }, botIdentity: fun
 nvide.handle("x", { a: "hello" });
 eq(nvide.names["kiwano"], "Kiwano", "annuaire trop maigre (null) : noms d'origine");
 
+
+// ── LE TEMPO DES CARTES ────────────────────────────────────────────────────
+// Le bot brûlait sa main dans les premiers tours. Or une carte n'a pas la même
+// force à tous les moments : la vachette rase une colonne PLEINE au départ, le
+// renfort pose trois fruits qui ne se voient pas sur trente mais retournent une
+// fin de partie, et la conversion pèse d'autant plus qu'il reste peu de monde.
+
+ok(Bot.avancementPartie(64) === 0, 'tempo: plateau plein = début de partie');
+ok(Bot.avancementPartie(10) === 1, 'tempo: presque vide = fin de partie');
+ok(Bot.avancementPartie(30) > 0 && Bot.avancementPartie(30) < 1, 'tempo: le milieu est entre les deux');
+
+ok(Bot.facteurMoment(CARD.VACHETTE, 0) > Bot.facteurMoment(CARD.VACHETTE, 1),
+  'tempo: la vachette est une carte de DÉBUT');
+ok(Bot.facteurMoment(CARD.RENFORT, 1) > Bot.facteurMoment(CARD.RENFORT, 0),
+  'tempo: le renfort est une carte de FIN');
+ok(Bot.facteurMoment(CARD.CONVERSION, 1) > Bot.facteurMoment(CARD.CONVERSION, 0),
+  'tempo: la conversion aussi');
+ok(Bot.facteurMoment(CARD.VACHETTE, 0) > Bot.facteurMoment(CARD.RENFORT, 0),
+  'tempo: au départ, entre les deux, c\'est la vachette');
+ok(Bot.facteurMoment(CARD.RENFORT, 1) > Bot.facteurMoment(CARD.VACHETTE, 1),
+  'tempo: à la fin, c\'est le renfort');
+
+// Et le tempo se voit sur le plateau : le renfort attend son heure.
+(function () {
+  function partieAvec(rows, main) {
+    var g = new G.BandasGame({ board: mk(rows), pool: [], firstTeam: 0 });
+    g.hands[0] = main.slice(); g.hands[1] = [];
+    return g;
+  }
+  var plein = [];                                  // plateau plein : 64 fruits
+  for (var y = 0; y < 8; y++) {
+    var l = '';
+    for (var x = 0; x < 8; x++) l += ((x + y) % 2 ? '1' : '0');
+    plein.push(l);
+  }
+  var maigre = ['........', '..00....', '..00....', '........', '....11..', '....11..', '........', '........'];
+  eq(Bot.chooseCardPlay(partieAvec(plein, [CARD.RENFORT]), 0, 1.0, seeded(3)), null,
+    'tempo: sur un plateau plein, le renfort reste en main');
+  var tard = Bot.chooseCardPlay(partieAvec(maigre, [CARD.RENFORT]), 0, 1.0, seeded(3));
+  ok(tard && tard.card === CARD.RENFORT, 'tempo: en fin de partie, il sort');
+})();
+
+// ── LE CENTRE AVANT LE MATÉRIEL, POUR DE BON ───────────────────────────────
+// Quatre fruits bien placés valent mieux que SIX mal placés : c'est ce qui
+// autorise le bot à laisser filer ses pions de bord pour se recentrer.
+var quatreAuCentre = mk(['.......', '.......', '..00...', '..00...', '.......', '.......', '......1']);
+var sixAuBord = mk(['00.....', '00.....', '.......', '.......', '0......', '......0', '......1']);
+eq(quatreAuCentre.countSpritesOf(0), 4, 'centre: quatre fruits');
+eq(sixAuBord.countSpritesOf(0), 6, 'bord: six fruits');
+ok(Bot.evaluate(quatreAuCentre, 0) > Bot.evaluate(sixAuBord, 0),
+  'centre: 4 fruits au centre valent mieux que 6 collés aux bords');
+
+// Et priver l'adversaire de son centre compte autant que bâtir le sien : à
+// matériel identique des deux côtés, on préfère de loin le voir éparpillé.
+var luiCentre = mk(['.......', '.......', '..00...', '..00...', '..11...', '..11...', '.......']);
+var luiEpars = mk(['1.....1', '.......', '..00...', '..00...', '.......', '.......', '1.....1']);
+eq(luiCentre.countSpritesOf(1), luiEpars.countSpritesOf(1), 'privation: même matériel adverse');
+ok(Bot.evaluate(luiEpars, 0) > Bot.evaluate(luiCentre, 0),
+  'privation: un adversaire sans bloc central vaut bien mieux qu\'un adversaire groupé');
+
+
+// Le tempo ne se lit pas sur une position isolée — la valeur simulée d'une
+// carte dépend d'abord du plateau — mais sur la DURÉE. Douze parties à graines
+// fixes, et l'on mesure combien de fruits restaient au moment où chaque carte
+// est sortie (64 = plateau plein). L'ordre doit suivre la doctrine :
+// la vachette ouvre, la conversion vient après, le renfort ferme la marche.
+// (Sans le facteur de tempo, cet ordre s'inverse : la conversion partait la
+// première et la vachette après elle.)
+(function () {
+  var quand = {};
+  for (var p = 0; p < 12; p++) {
+    var rng = seeded(p + 101);
+    var partie = new G.BandasGame({ size: 8, rng: rng });
+    var iter = 0;
+    while (!partie.ended && iter < 600) {
+      iter++;
+      var t = partie.currentTeam;
+      if (partie.phase === G.PHASE_CARD_SELECTION) {
+        partie.chooseCard(t, Bot.chooseDraft(partie.pool, 1.0, rng));
+        continue;
+      }
+      if (!partie.cardPlayedThisTurn) {
+        var cp = Bot.chooseCardPlay(partie, t, 1.0, rng);
+        if (cp) {
+          var restants = partie.board.countSpritesOf(0) + partie.board.countSpritesOf(1);
+          if (partie.playCard(t, cp.card, cp.x, cp.y).ok) {
+            (quand[cp.card] = quand[cp.card] || []).push(restants);
+          }
+        }
+      }
+      if (!partie.ended && partie.currentTeam === t && partie.phase === G.PHASE_MOVE) {
+        partie.move(t, Bot.chooseMove(partie.board, t, 1.0, rng));
+      }
+    }
+  }
+  function moyenne(c) {
+    var l = quand[c] || [];
+    if (!l.length) return -1;
+    return l.reduce(function (s, x) { return s + x; }, 0) / l.length;
+  }
+  var vach = moyenne(CARD.VACHETTE), conv = moyenne(CARD.CONVERSION), renf = moyenne(CARD.RENFORT);
+  ok(vach > 0 && conv > 0 && renf > 0, "tempo: les trois cartes ont été jouées");
+  ok(vach > conv, "tempo: la vachette sort AVANT la conversion ("
+    + vach.toFixed(1) + " vs " + conv.toFixed(1) + " fruits restants)");
+  ok(conv > renf, "tempo: et le renfort ferme la marche ("
+    + conv.toFixed(1) + " vs " + renf.toFixed(1) + ")");
+})();
+
 console.log("bandas server tests: " + passed + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

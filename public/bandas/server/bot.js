@@ -39,6 +39,12 @@
 // se joue AU MOMENT OPPORTUN : la main adverse est publique depuis le draft,
 // on n'arme la fenêtre que si elle a une vraie carte à voler.
 //
+// Et une carte a son HEURE (cf. facteurMoment) : le bot brûlait sa main dans
+// les premiers tours, alors que la vachette rase une colonne pleine au départ
+// quand le renfort, lui, retourne une fin de partie. Le gain simulé est donc
+// pondéré par l'avancement — on ne fausse pas le calcul, on dit seulement à
+// quel moment une carte mérite d'être dépensée.
+//
 (function (root, factory) {
   var E = (typeof require !== "undefined") ? require("../engine.js") : (root.Bandas && root.Bandas.engine);
   var G = (typeof require !== "undefined") ? require("../game.js") : (root.Bandas && root.Bandas.game);
@@ -56,14 +62,17 @@
   // plein prix que dans le bloc principal, et la position du bloc peut peser
   // plus lourd qu'un fruit. W_FRUIT reste l'unité de compte (« un fruit »)
   // pour les seuils de cartes et l'ombrage des fins de partie.
-  // (Réglés au banc d'essai — duels graines fixes contre l'évaluation
-  // matérielle d'avant, à profondeur égale : décoter davantage l'écarté ou
-  // surpayer la marge rendait le bot passif, et il perdait.)
+  // (Réglés au banc d'essai — duels toutes règles à graines fixes, chaque jeu
+  // de poids contre le précédent. C'est la MARGE qui a le plus rapporté : la
+  // position du bloc vaut jusqu'à ~1,8 fruit, de quoi payer sans hésiter le
+  // pion de bord qu'on abandonne pour se recentrer. Décoter l'écarté plus
+  // fort, en revanche, ne gagne rien de plus : le bot se met à brader du
+  // matériel qu'il aurait pu ramener.)
   var W_FRUIT = 150;    // l'unité : un fruit de plein droit
   var W_BLOC = 150;     // un fruit DU bloc principal
-  var W_ECART = 90;     // un pion écarté du bloc — décoté, donc sacrifiable
+  var W_ECART = 80;     // un pion écarté du bloc — décoté, donc sacrifiable
   var W_COHESION = 60;  // contacts moyens par fruit (0…4) : un carré, pas un serpent
-  var W_MARGE = 45;     // distance moyenne au bord DU BLOC (0…~3,5) : le centre
+  var W_MARGE = 78;     // distance moyenne au bord DU BLOC (0…~3,5) : LE CENTRE
 
   // ── Lecture d'une position ────────────────────────────────────────────────
   // Pour une équipe : son compte, ses contacts (paires de voisins orthogonaux),
@@ -210,6 +219,39 @@
     CARD.CONFISCATION, CARD.ENCLUME, CARD.CONVERSION, CARD.CHARGE,
     CARD.PETRIFICATION, CARD.PIEGE, CARD.SOLO, CARD.ENTRACTE];
 
+  // ── LE MOMENT D'UNE CARTE ─────────────────────────────────────────────────
+  //
+  // Une carte n'a pas la même force à tous les moments de la partie, et le bot
+  // les brûlait toutes dans les premiers tours — le plus mauvais usage qu'on
+  // puisse en faire.
+  //
+  //   · la VACHETTE rase une colonne entière : au départ le plateau est plein,
+  //     elle emporte une pleine rangée adverse ; à la fin elle balaie du vide ;
+  //   · le RENFORT pose jusqu'à trois fruits : trois fruits sur trente ne se
+  //     voient pas, trois fruits sur six retournent la partie — et le plateau
+  //     rétréci les dépose près du bloc au lieu de les éparpiller ;
+  //   · la CONVERSION retourne un fruit : elle compte double (un de moins chez
+  //     l'autre, un de plus chez soi) et pèse d'autant plus qu'il en reste peu.
+  //
+  // `avancement` va de 0 (plateau plein) à 1 (fin de partie). Le facteur
+  // multiplie le gain SIMULÉ : on ne fausse pas le calcul, on dit seulement à
+  // quel moment une carte mérite qu'on la dépense.
+  function avancementPartie(restants) {
+    if (restants >= 48) return 0;
+    if (restants <= 12) return 1;
+    return (48 - restants) / 36;
+  }
+  function facteurMoment(card, av) {
+    switch (card) {
+      case CARD.VACHETTE:     return 1.30 - 0.55 * av;   // tôt
+      case CARD.RENFORT:      return 0.45 + 0.90 * av;   // tard
+      case CARD.CONVERSION:   return 0.55 + 0.70 * av;   // tard
+      case CARD.ENCLUME:      return 0.85 + 0.30 * av;   // un peu plus tard
+      case CARD.PETRIFICATION:return 1.15 - 0.30 * av;   // bloquer sert tant qu'il y a du monde
+      default:                return 1;                  // les autres sont de circonstance
+    }
+  }
+
   // Ce que vaut une carte EN MAIN, en fruits — sert à jauger ce qu'une
   // confiscation peut voler. Même hiérarchie que le draft.
   var CARD_VAL = {};
@@ -278,9 +320,13 @@
     function apresCarte(b) { return valeurSansCarte(b, team, depth); }
 
     var meilleur = null;
+    // Le gain simulé, pondéré par LE MOMENT (cf. facteurMoment) : à gain égal,
+    // c'est la carte dont c'est l'heure qui sort.
+    var avancement = avancementPartie(my + op);
     function proposer(card, c, gain) {
-      if (!meilleur || gain > meilleur.gain) {
-        meilleur = { card: card, x: c ? c.x : undefined, y: c ? c.y : undefined, gain: gain };
+      var pese = gain * facteurMoment(card, avancement);
+      if (!meilleur || pese > meilleur.gain) {
+        meilleur = { card: card, x: c ? c.x : undefined, y: c ? c.y : undefined, gain: pese };
       }
     }
 
@@ -454,6 +500,11 @@
     if (!meilleur) return null;
     // Un bon niveau exige un vrai gain ; un faible se décide plus vite (et
     // gaspille donc ses cartes). Le seuil est en « fruits ».
+    // (On a essayé de relever EN PLUS la barre en ouverture, pour retenir la
+    // main pendant les premiers tours. Au banc d'essai, ni la version douce ni
+    // la version sévère ne battaient franchement l'absence de barrière : le
+    // facteur de moment fait déjà le travail, et une barrière de plus ne
+    // faisait que du bruit. Retirée plutôt que gardée « au cas où ».)
     var seuil = W_FRUIT * (0.15 + 0.55 * skill);
     if (meilleur.gain < seuil) {
       // Fin de partie : garder ses cartes ne sert plus à rien.
@@ -471,5 +522,8 @@
     chooseDraft: chooseDraft,
     chooseCardPlay: chooseCardPlay,
     depthFor: depthFor,
+    // Le tempo, exposé pour que la doctrine se teste directement.
+    avancementPartie: avancementPartie,
+    facteurMoment: facteurMoment,
   };
 });
