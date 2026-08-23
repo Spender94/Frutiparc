@@ -142,6 +142,7 @@ class Inventaire {
     this.titre = '';
     this.zones = [];                  // les rectangles cliquables, refaits à chaque rendu
     this.dpr = 1;
+    this.nettete = 1;               // pixels physiques par unité de scène (redimensionner)
     // Cm.withdraw écrivait ses adieux dans le courrier (Manager.addMsg).
     this.surCourrier = o.surCourrier || null;
     // Inventory.extraList — les objets ramassés en forêt SANS place au sac.
@@ -196,10 +197,16 @@ class Inventaire {
     const entier = Math.floor(dispo);
     this.echelle = (entier >= 1 && entier / dispo >= 0.8) ? entier : dispo;
     this.dpr = Math.min(window.devicePixelRatio || 1, 3);
-    this.canvas.width = SCENE * this.dpr;
-    this.canvas.height = SCENE * this.dpr;
+    // Les pixels PHYSIQUES de la surface affichee, pas seulement SCENE x dpr :
+    // sur bureau (echelle 2-3) l'ancien tampon de 240 etait etire par le
+    // navigateur — flou. Les caches de rendre() suivent via poserDensite.
+    this.nettete = this.echelle * this.dpr;
+    this.canvas.width = Math.max(1, Math.round(SCENE * this.nettete));
+    this.canvas.height = Math.max(1, Math.round(SCENE * this.nettete));
     this.canvas.style.width = (SCENE * this.echelle) + 'px';
     this.canvas.style.height = (SCENE * this.echelle) + 'px';
+    const C = racine.MinipixizClient;
+    if (C && C.poserDensite) C.poserDensite(this.nettete);
   }
 
   // La fée regardée, vivante — avec tout ce qu'elle porte appliqué.
@@ -245,7 +252,7 @@ class Inventaire {
   rendre() {
     const C = racine.MinipixizClient;
     const ctx = this.ctx, s = this.sprites;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.setTransform(this.nettete, 0, 0, this.nettete, 0, 0);
     ctx.clearRect(0, 0, SCENE, SCENE);
     this.zones = [];
 
@@ -618,6 +625,15 @@ class Inventaire {
       C.poserRendu(ctx, C.rendre(s.invPanneau, 1, 100, undefined, null, '>pic'), px, py);
     }
 
+    // La zone du portrait, POSÉE EN PREMIER : zoneSous() prend la dernière
+    // posée, comme Flash prend le clip le plus haut, et ce carré de 58,8
+    // déborde sur les deux boutons (swap est ancré en -23.4, 27.15, à cheval
+    // sur son bord bas) comme sur la pastille de niveau. Posée après eux, elle
+    // leur volait le clic : viser le bouton de gauche donnait à manger à la
+    // fée (ses préférences) au lieu de tourner le volet. Dans le SWF, swapBut,
+    // quitBut et level sont AU-DESSUS de pic.
+    this.zoneRect('portrait', px - 29.4, py - 29.4, 58.8, 58.8);
+
     // Les deux boutons et la pastille de niveau, aux ancres que le fichier
     // donne. Le bouton de gauche montre le volet SUIVANT — c'est ce qu'on
     // obtiendra en le touchant —, celui de droite toujours l'image 6, la fée
@@ -643,12 +659,12 @@ class Inventaire {
       }
     }
 
-    // Les trois zones à toucher, sur le dessin de chacune.
+    // Les zones des deux boutons, par-dessus celle du portrait (voir plus
+    // haut) — sur le dessin de chacun.
     const zone = (quoi, an, r) => {
       if (an) this.zoneRect(quoi, px + an.x - r, py + an.y - r, r * 2, r * 2);
     };
     zone('volet', a.swap, 10);
-    this.zoneRect('portrait', px - 29.4, py - 29.4, 58.8, 58.8);
     if (fee) zone('liberer', a.quit, 10);
 
     // Plusieurs fées : de quoi passer de l'une à l'autre.

@@ -20,7 +20,8 @@ const fs = require('fs');
 const zlib = require('zlib');
 const db = require('./db');
 const { faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults,
-  listeAutoritaire, dedoublonnerFees, recalerCurrent, reglerBocaux } = require('./minipixizFaerie');
+  listeAutoritaire, dedoublonnerFees, recalerCurrent, reglerBocaux,
+  chasserFantomeDuBassin, identiteFee } = require('./minipixizFaerie');
 const { extractRecordsFromSlot, pickRecordsToArchive, RECORD_GAMES } = require('./gameRecords');
 const fontsPath = path.join(__dirname, 'legacy', 'fonts.swf');
 
@@ -12147,8 +12148,16 @@ function padMinipixizSlot0(jsonStr) {
   // la fée qu'on venait d'y ranger en ressortait seule.
   reglerBocaux(obj);
   if (obj.$pond && obj.$pond.$fs && typeof obj.$pond.$fs === 'object') {
-    try { synthesizeFaerieDefaults(obj.$pond.$fs); } catch { /* idem */ }
+    try { synthesizeFaerieDefaults(obj.$pond.$fs); } catch { /* fée malformée : inchangée */ }
   }
+  // Le FANTÔME du bassin : une fée déjà au tableau (même nom, même peau) que
+  // le bassin retient encore, parce qu'une capture au bureau ne pouvait pas
+  // le vider (le pipe ne transporte pas $fs et le merge le restaurait). Tant
+  // qu'il restait, chaque plongée livrait un CLONE de la fée déjà acquise —
+  // c'est le « la fée du bassin a exactement les couleurs de ma seconde fée »
+  // remonté par les joueurs. On dissipe le fantôme au chargement ; la lueur
+  // s'éteint et les nuits réarmeront le bassin avec une fée neuve.
+  try { chasserFantomeDuBassin(obj); } catch { /* bassin malformé : inchangé */ }
   // $help defaults to [true,true,true] (all three hints enabled for new users)
   if (!Array.isArray(obj.$help) || obj.$help.length < 3) obj.$help = [true, true, true];
   if (!Array.isArray(obj.$mis))     obj.$mis     = [];
@@ -12959,6 +12968,34 @@ app.post('/api/saveFrutiSlot', async (req, res) => {
           if (merged.$pond.$d === undefined  && prev.$pond.$d !== undefined)  merged.$pond.$d  = prev.$pond.$d;
           if (merged.$pond.$fs === undefined && prev.$pond.$fs !== undefined) merged.$pond.$fs = prev.$pond.$fs;
         }
+        // …SAUF si cette sauvegarde est justement la CAPTURE : freeFaerie a
+        // poussé la fée du bassin au tableau et vidé le bassin, mais le pipe
+        // n'a emporté que « nom:niveau » — la restauration ci-dessus vient de
+        // la remettre à l'eau. La signature est nette : une fée NOUVELLE au
+        // tableau (aucune correspondance dans prev, donc restée un moignon
+        // sans peau) qui porte le nom de la fée du bassin. On finit alors le
+        // geste du jeu : sa vraie graine — couleurs, carac, sorts — passe du
+        // bassin au tableau, et le bassin se vide. Sans ça, chaque capture au
+        // bureau fabriquait un CLONE (même fée relivrée à chaque plongée) et
+        // la fée capturée restait un moignon aux couleurs inventées.
+        const fsBassin = merged.$pond && merged.$pond.$fs;
+        if (fsBassin && typeof fsBassin === 'object'
+          && typeof fsBassin.$name === 'string' && Array.isArray(merged.$faerie)) {
+          const iCapture = merged.$faerie.findIndex((f) => f && typeof f === 'object'
+            && f.$name === fsBassin.$name && !Array.isArray(f.$skin));
+          if (iCapture >= 0) {
+            merged.$faerie[iCapture] = Object.assign({}, fsBassin, merged.$faerie[iCapture]);
+            merged.$pond.$fs = null;
+            merged.$pond.$q = 0;      // exactement Cm.freeFaerie
+            console.log(`[SLOT]  minipixiz ${username} : capture du bassin par le bureau — `
+              + `${fsBassin.$name} regagne sa graine, le bassin se vide`);
+          }
+        }
+        // Et le FANTÔME : une fée du bassin qui est DÉJÀ au tableau (même nom,
+        // même peau) est une capture d'hier que le merge a ressuscitée — on ne
+        // la range jamais, sous peine de relivrer le même clone à chaque
+        // plongée. Même dissipation qu'au chargement (padMinipixizSlot0).
+        try { chasserFantomeDuBassin(merged); } catch { /* bassin malformé : inchangé */ }
         // $rainbow: pipe transports $f only; $day and $it are lost.
         if (prev.$rainbow && typeof prev.$rainbow === 'object') {
           if (!merged.$rainbow || typeof merged.$rainbow !== 'object') merged.$rainbow = {};

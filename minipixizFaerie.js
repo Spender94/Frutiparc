@@ -404,9 +404,45 @@ function reglerBocaux(carte) {
   return carte;
 }
 
+// ── Le fantôme du bassin ─────────────────────────────────────────────────
+//
+// Le pipe du SWF ne transporte pas $pond.$fs : le serveur le restaure depuis
+// la fiche précédente pour qu'une fée qui mûrit au fond du bassin survive aux
+// sauvegardes. Mais quand le joueur la LIBÈRE depuis le bureau, la même
+// restauration la remettait au bassin — la capture ne le vidait jamais. La
+// fiche portait alors la fée deux fois : au tableau ET au fond de l'eau, et
+// chaque plongée suivante rejouait la même capture. C'est la fabrique des
+// « clones » : une fée du bassin aux couleurs exactes d'une fée déjà acquise,
+// partie après partie.
+//
+// Une peau fait 3 × 24 bits : deux fées distinctes ne partagent jamais nom ET
+// peau (identiteFee). Si la fée du bassin porte l'identité d'une fée du
+// tableau, c'est donc qu'elle y est DÉJÀ — le bassin ne retient que son
+// fantôme. On le dissipe comme freeFaerie l'aurait fait : $fs = null, $q = 0.
+// La lueur s'éteint, et l'entretien des nuits réarmera le bassin avec une fée
+// NEUVE, aux couleurs à elle.
+function chasserFantomeDuBassin(carte) {
+  if (!carte || typeof carte !== 'object') return false;
+  const pond = carte.$pond;
+  const fs = pond && typeof pond === 'object' ? pond.$fs : null;
+  if (!fs || typeof fs !== 'object' || typeof fs.$name !== 'string') return false;
+  // L'identité d'un moignon passe par une peau SYNTHÉTIQUE : elle ne peut pas
+  // répondre pour la vraie. On ne compare que des fées à peau connue.
+  if (!Array.isArray(fs.$skin) || fs.$skin.length < 4) return false;
+  const ci = identiteFee(fs);
+  const capturee = (Array.isArray(carte.$faerie) ? carte.$faerie : []).some(
+    (f) => f && typeof f === 'object' && typeof f.$name === 'string'
+      && Array.isArray(f.$skin) && f.$skin.length >= 4 && identiteFee(f) === ci);
+  if (!capturee) return false;
+  pond.$fs = null;
+  pond.$q = 0;                        // exactement Cm.freeFaerie
+  return true;
+}
+
 module.exports = {
   faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults,
   faerieNameHash, skinSynthetique, identiteFee,
   listeAutoritaire, dedoublonnerFees, recalerCurrent, reglerBocaux,
+  chasserFantomeDuBassin,
   OBJET_BOCAL,
 };

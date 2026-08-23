@@ -675,6 +675,13 @@
           plateforme.ecrire(plateforme.carte);
           // La fée du plateau porte peut-être autre chose depuis tout à l'heure.
           client.poserFee(feeCourante());
+          // Et celle de la CLAIRIÈRE aussi : le sac s'ouvre par-dessus le menu,
+          // qui ne repasse pas par ouvrirMenu() à la fermeture. Ranger sa fée
+          // en bocal la laissait donc voleter derrière — « elle est à la fois
+          // dans le bocal ET dehors ». On repose la fée en main (null si elle
+          // vient d'entrer au bocal : elle disparaît de la clairière, comme
+          // Slot.initCursor l'aurait fait).
+          if (menu && menu.poserFee) menu.poserFee(feeCouranteSeed());
         },
         // Le triangle du coin (Slot.initButQuit) referme l'écran, comme le
         // bouton sous le canevas.

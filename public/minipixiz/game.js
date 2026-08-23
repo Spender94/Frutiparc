@@ -224,6 +224,31 @@ function charger(manifeste, surAvancee) {
 // ── Teinture ──────────────────────────────────────────────────────────────
 const teintes = new Map();
 
+// ── La densité de trame ───────────────────────────────────────────────────
+//
+// La scène se PENSE en 240 × 240, mais elle s'AFFICHE plus grande : trois fois
+// sur un bureau, dpr compris sur un téléphone. Les dessins sont des SVG — ils
+// savent être nets à toutes les tailles — mais les caches de rendre() étaient
+// tramés à l'échelle logique, puis étirés par le navigateur : c'est ce qui
+// rendait le jeu « pixellisé et flou » sur grand écran, et de moins en moins
+// en rétrécissant la fenêtre. Les caches se trament donc à DENSITE pixels
+// physiques par unité de scène, et se REPOSENT à leur taille logique (lw/lh).
+//
+// Quatre au plus : au-delà l'œil ne suit plus, et la teinture au pixel
+// (teinter) paierait le carré de la densité pour rien.
+let DENSITE = 1;
+
+function poserDensite(d) {
+  const v = Math.max(1, Math.min(4, Math.ceil(Number(d) || 1)));
+  if (v === DENSITE) return DENSITE;
+  DENSITE = v;
+  // Les caches sont tramés à l'ancienne densité : tout est à refaire. Les
+  // clés n'ont pas besoin de porter la densité, puisqu'on vide au changement.
+  teintes.clear();
+  peintes.clear();
+  return DENSITE;
+}
+
 // ── Où se pose un dessin ──────────────────────────────────────────────────
 //
 // Les dessins ne partagent pas tous la même origine, et la différence vient du
@@ -573,7 +598,7 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
       sil = { c, dx: base.dx, dy: base.dy };
       teintes.set(cleSil, sil);
     }
-    return { c: base.c, dx: base.dx, dy: base.dy,
+    return { c: base.c, dx: base.dx, dy: base.dy, lw: base.lw, lh: base.lh,
       voile: { c: sil.c, alpha: Math.min(100, melange.prc) / 100 } };
   }
   const colNum = (couleur && typeof couleur === 'object') ? couleur.col : couleur;
@@ -627,6 +652,11 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
       masquesPartiels: complet.masquesPartiels };
   }
   const k = ECHELLE_PIXEL.has(sprite.cle) ? 1 : taille / 100;
+  // Le cache se trame à la densité de l'écran (voir poserDensite) : `k` reste
+  // l'échelle LOGIQUE du dessin, `kd` son échelle en pixels physiques. Le
+  // rendu déclare ses cotes logiques (dx/dy/lw/lh) — c'est à elles que
+  // poserRendu le repose, et le navigateur n'a plus rien à étirer.
+  const kd = k * DENSITE;
   const zero = ANCRE_CENTRE.has(sprite.cle) ? 50 : 0;
   const masques = (etat && etat.masques) || [];
 
@@ -645,8 +675,8 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
       x1 = Math.min(x1, m.x + zero + m.w); y1 = Math.min(y1, m.y + zero + m.h);
     }
   }
-  const dx = Math.floor(x0 * k), dy = Math.floor(y0 * k);
-  const l = Math.max(1, Math.ceil(x1 * k) - dx), h = Math.max(1, Math.ceil(y1 * k) - dy);
+  const dx = Math.floor(x0 * kd), dy = Math.floor(y0 * kd);
+  const l = Math.max(1, Math.ceil(x1 * kd) - dx), h = Math.max(1, Math.ceil(y1 * kd) - dy);
 
   const c = document.createElement('canvas');
   c.width = l;
@@ -660,8 +690,8 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
       const m = p.m, vb = p.vb;
       dest.save();
       if (m && vb) {
-        dest.setTransform(m[0] * k, m[1] * k, m[2] * k, m[3] * k,
-          (m[4] + zero) * k - dx, (m[5] + zero) * k - dy);
+        dest.setTransform(m[0] * kd, m[1] * kd, m[2] * kd, m[3] * kd,
+          (m[4] + zero) * kd - dx, (m[5] + zero) * kd - dy);
         // Une ROTATION vive, autour du point d'accroche de la pièce. Le jeu s'en
         // sert pour les deux aiguilles des cadrans de faim et de moral :
         //     mc.h0.h._rotation = 180 + ($hunger/20)*180
@@ -675,7 +705,7 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
         }
         dest.drawImage(img, vb[0], vb[1], vb[2], vb[3]);
       } else {
-        dest.drawImage(img, (p.x + zero) * k - dx, (p.y + zero) * k - dy, p.w * k, p.h * k);
+        dest.drawImage(img, (p.x + zero) * kd - dx, (p.y + zero) * kd - dy, p.w * kd, p.h * kd);
       }
       dest.restore();
     };
@@ -698,7 +728,7 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
       else {
         dest.setTransform(1, 0, 0, 1, 0, 0);
         dest.fillStyle = '#000';
-        dest.fillRect((m.x + zero) * k - dx, (m.y + zero) * k - dy, m.w * k, m.h * k);
+        dest.fillRect((m.x + zero) * kd - dx, (m.y + zero) * kd - dy, m.w * kd, m.h * kd);
       }
       dest.globalCompositeOperation = 'source-over';
     };
@@ -727,19 +757,23 @@ function rendre(sprite, frame, taille, couleur, parties, tranche, rotations, mel
     }
   }
   if (colNum !== undefined) teinter(g, 0, 0, l, h, colNum, colAjout);
-  const rendu = { c, dx, dy };
+  // Cotes LOGIQUES du rendu : le canevas est tramé DENSITE fois plus grand,
+  // il se repose à lw × lh — voir poserDensite.
+  const rendu = { c, dx: dx / DENSITE, dy: dy / DENSITE, lw: l / DENSITE, lh: h / DENSITE };
   teintes.set(cle, rendu);
   return rendu;
 }
 
-// Pose un rendu à la case (x, y), en pixels. Le VOILE — le fondu vers une
-// couleur (setPercentColor) — se pose par-dessus, à l'alpha du pourcentage.
+// Pose un rendu à la case (x, y), en pixels logiques : le canevas du cache est
+// tramé plus dense (poserDensite), il reprend ici sa taille déclarée. Le VOILE
+// — le fondu vers une couleur (setPercentColor) — se pose par-dessus, à
+// l'alpha du pourcentage.
 function poserRendu(ctx, r, x, y) {
-  ctx.drawImage(r.c, x + r.dx, y + r.dy);
+  ctx.drawImage(r.c, x + r.dx, y + r.dy, r.lw, r.lh);
   if (r.voile) {
     const a = ctx.globalAlpha;
     ctx.globalAlpha = a * r.voile.alpha;
-    ctx.drawImage(r.voile.c, x + r.dx, y + r.dy);
+    ctx.drawImage(r.voile.c, x + r.dx, y + r.dy, r.lw, r.lh);
     ctx.globalAlpha = a;
   }
 }
@@ -808,13 +842,17 @@ function tracerEtoile(g, cx, cy, k) {
  */
 class Iris {
   constructor(source, x, y) {
+    // La photographie garde la TAILLE RÉELLE de l'écran source (tramé plus
+    // dense que 240 depuis poserDensite) : la réduire à 240 rendait l'ancien
+    // écran flou pendant les six dixièmes de seconde de la transition.
+    this.d = Math.max(1, ((source && source.width) || SCENE) / SCENE);
     this.img = document.createElement('canvas');
-    this.img.width = SCENE;
-    this.img.height = SCENE;
-    this.img.getContext('2d').drawImage(source, 0, 0, SCENE, SCENE);
+    this.img.width = SCENE * this.d;
+    this.img.height = SCENE * this.d;
+    this.img.getContext('2d').drawImage(source, 0, 0, SCENE * this.d, SCENE * this.d);
     this.tampon = document.createElement('canvas');
-    this.tampon.width = SCENE;
-    this.tampon.height = SCENE;
+    this.tampon.width = SCENE * this.d;
+    this.tampon.height = SCENE * this.d;
     this.prc = 0;
     this.x = (x === undefined || x === null) ? SCENE / 2 : x;
     this.y = (y === undefined || y === null) ? SCENE / 2 : y;
@@ -831,10 +869,12 @@ class Iris {
     const cy = SCENE / 2 * c + this.y * (1 - c);
     const k = Math.max(0, c);
     const g = this.tampon.getContext('2d');
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    // Le tampon est à la densité de la photo : on y travaille en coordonnées
+    // logiques (240) sous cette base, l'étoile et le halo restent nets.
+    g.setTransform(this.d, 0, 0, this.d, 0, 0);
     g.globalCompositeOperation = 'source-over';
     g.clearRect(0, 0, SCENE, SCENE);
-    g.drawImage(this.img, 0, 0);
+    g.drawImage(this.img, 0, 0, SCENE, SCENE);
     // Le halo, sur l'ancien écran : la grande étoile à demi transparente, puis
     // la moyenne, pleine. Le trou percé juste après en découpera le cœur.
     if (k > 0.01) {
@@ -1543,7 +1583,7 @@ class Client {
 
   dessinerScene(tmod) {
     const ctx = this.ctx, jeu = this.jeu;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.setTransform(this.nettete, 0, 0, this.nettete, 0, 0);
     ctx.clearRect(0, 0, SCENE, SCENE);
     const s = this.sprites;
     if (this.gromelin) { this.dessinerGromelin(ctx, tmod); return; }
@@ -2586,7 +2626,7 @@ class Client {
       ctx.save();
       ctx.translate(r.x, base + r.y);
       ctx.rotate(angle * Math.PI / 180);
-      ctx.drawImage(rendu.c, rendu.dx, rendu.dy);
+      ctx.drawImage(rendu.c, rendu.dx, rendu.dy, rendu.lw, rendu.lh);
       ctx.restore();
     };
     const jeu = devant ? ROUES_DEVANT : ROUES_FOND;
@@ -2618,7 +2658,7 @@ class Client {
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(p.rot * Math.PI / 180);
-      ctx.drawImage(r.c, r.dx, r.dy);
+      ctx.drawImage(r.c, r.dx, r.dy, r.lw, r.lh);
       ctx.restore();
     }
   }
@@ -2702,13 +2742,16 @@ class Client {
   dessinerNuitNoire(ctx) {
     const n = this.jeu && this.jeu.nuit;
     if (!n || !(n.prc > 0)) return;
-    if (!this.calqueNuit) {
+    // Le voile suit la densité de l'écran (poserDensite) : tramé à 240, il
+    // ressortait flou sur grand écran — et son OUVERTURE avec lui.
+    const D = DENSITE;
+    if (!this.calqueNuit || this.calqueNuit.width !== SCENE * D) {
       this.calqueNuit = document.createElement('canvas');
-      this.calqueNuit.width = SCENE;
-      this.calqueNuit.height = SCENE;
+      this.calqueNuit.width = SCENE * D;
+      this.calqueNuit.height = SCENE * D;
     }
     const g = this.calqueNuit.getContext('2d');
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.setTransform(D, 0, 0, D, 0, 0);
     g.clearRect(0, 0, SCENE, SCENE);
     g.fillStyle = '#000';
     g.fillRect(0, 0, SCENE, SCENE);
@@ -2720,7 +2763,7 @@ class Client {
     }
     ctx.save();
     ctx.globalAlpha = Math.min(1, n.prc / 100);
-    ctx.drawImage(this.calqueNuit, 0, 0);
+    ctx.drawImage(this.calqueNuit, 0, 0, SCENE, SCENE);
     ctx.restore();
     // mcBlackRing : le liseré sombre qui borde l'ouverture.
     if (n.ouverture > 0 && this.sprites.mcBlackRing) {
@@ -2908,11 +2951,17 @@ class Client {
          * le joueur voyait un trou au centre de la croix. C'est le « les boules
          * de feu n'avaient pas de skin » remonté du bassin.
          *
-         * Les dix-sept images sont la pulsation de la flamme, et elles
-         * BOUCLENT : sous Flash un clip attaché déroule sa timeline, seul un
-         * `gotoAndStop` l'arrête, et FireBall n'en a pas.
+         * Les images 1 à 16 sont la pulsation de la flamme, en aller-retour
+         * (shapes 281→289→282). La DIX-SEPTIÈME, elle, ne s'affiche JAMAIS :
+         * dans root.swf elle retire la boule et la flamme (seul ch280 reste)
+         * et porte l'action `gotoAndPlay(1)` — octets 81 02 00 00 00 06 du
+         * DoAction du sprite 290. Sous Flash, l'action s'exécute en ENTRANT
+         * dans l'image, avant tout rendu : la tête de lecture repart à 1 et
+         * l'image 17 n'est jamais peinte. Le portage la jouait comme les
+         * autres — la boule disparaissait une pointe de seconde à chaque
+         * cycle, le « sprite qui clignote » remonté du bassin.
          */
-        const n = s.fireball ? s.fireball.etats.length : 0;
+        const n = s.fireball ? s.fireball.etats.length - 1 : 0;
         let f = 1;
         if (n > 1) {
           const t = Math.floor(((this.jeu && this.jeu.horloge) || 0) - (e.ne || 0));
@@ -3098,10 +3147,17 @@ class Client {
     const k = (entier >= 1 && entier / dispo >= 0.8) ? entier : dispo;
     this.echelle = k;
     this.dpr = Math.min(window.devicePixelRatio || 1, 3);
-    this.canvas.width = SCENE * this.dpr;
-    this.canvas.height = SCENE * this.dpr;
+    // Le tampon couvre les pixels PHYSIQUES de la surface affichée — pas
+    // seulement SCENE × dpr : sur un bureau où k vaut 3, l'ancien tampon de
+    // 240 était étiré trois fois par le navigateur, d'où le « pixellisé et
+    // flou » d'autant plus fort que la fenêtre était grande. `nettete` est
+    // l'échelle écran complète ; les caches de rendre() suivent (poserDensite).
+    this.nettete = k * this.dpr;
+    this.canvas.width = Math.max(1, Math.round(SCENE * this.nettete));
+    this.canvas.height = Math.max(1, Math.round(SCENE * this.nettete));
     this.canvas.style.width = (SCENE * k) + 'px';
     this.canvas.style.height = (SCENE * k) + 'px';
+    poserDensite(this.nettete);
   }
 
   // ── Commandes ──
@@ -3386,19 +3442,19 @@ function portraitDeFee(sprites, fee, taille) {
   const g = c.getContext('2d');
   if (!sprites.interFace) return c;
   const fond = rendre(sprites.interFace, 1, taille, undefined, null, 'pic');
-  g.drawImage(fond.c, fond.dx, fond.dy);
+  g.drawImage(fond.c, fond.dx, fond.dy, fond.lw, fond.lh);
   if (fee && sprites.portrait) {
     const a = fee.apparence();
     g.save();
     g.beginPath();
-    g.rect(fond.dx, fond.dy, fond.c.width, fond.c.height);
+    g.rect(fond.dx, fond.dy, fond.lw, fond.lh);
     g.clip();
     const p = rendre(sprites.portrait, a.num + 1, taille, undefined, partiesDeFee(a.couleurs));
-    g.drawImage(p.c, p.dx, p.dy);
+    g.drawImage(p.c, p.dx, p.dy, p.lw, p.lh);
     g.restore();
   }
   const dessus = rendre(sprites.interFace, 1, taille, undefined, null, '>pic');
-  g.drawImage(dessus.c, dessus.dx, dessus.dy);
+  g.drawImage(dessus.c, dessus.dx, dessus.dy, dessus.lw, dessus.lh);
   return c;
 }
 
@@ -3412,7 +3468,7 @@ function jauge(sprites, cle, plein, max, ecart) {
   if (!s) return c;
   for (let i = 0; i < max; i++) {
     const r = rendre(s, i < plein ? 2 : 1, 100);
-    g.drawImage(r.c, ecart * i + r.dx, r.dy + 2);
+    g.drawImage(r.c, ecart * i + r.dx, r.dy + 2, r.lw, r.lh);
   }
   return c;
 }
@@ -3421,7 +3477,7 @@ window.MinipixizClient = {
   Client, Iris, charger, rendre, poserRendu, poserVif, imagePeinte, imageJeton, images,
   portraitDeFee, jauge, partiesDeFee, partiesDeCorps, partiesDImpy, deformationsDeVol,
   dessinerCreatureSur, dessinerPartsSur,
-  fondre, teinter,
+  fondre, teinter, poserDensite,
   LARGEUR, HAUTEUR, LIGNES_CACHEES, SCENE, COLONNE_X, INTER, ECART_COEUR, ECART_MANA,
 };
 

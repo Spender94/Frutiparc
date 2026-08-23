@@ -163,6 +163,7 @@ class Menu {
     this.rotationMoulin = 0;
     this.nuages = [];
     this.dpr = 1;
+    this.nettete = 1;               // pixels physiques par unité de scène (redimensionner)
     this.actif = false;
 
     this.canvas.addEventListener('click', (ev) => this.clic(ev));
@@ -198,10 +199,16 @@ class Menu {
     const entier = Math.floor(dispo);
     this.echelle = (entier >= 1 && entier / dispo >= 0.8) ? entier : dispo;
     this.dpr = Math.min(window.devicePixelRatio || 1, 3);
-    this.canvas.width = SCENE * this.dpr;
-    this.canvas.height = SCENE * this.dpr;
+    // Les pixels PHYSIQUES de la surface affichee, pas seulement SCENE x dpr :
+    // sur bureau (echelle 2-3) l'ancien tampon de 240 etait etire par le
+    // navigateur — flou. Les caches de rendre() suivent via poserDensite.
+    this.nettete = this.echelle * this.dpr;
+    this.canvas.width = Math.max(1, Math.round(SCENE * this.nettete));
+    this.canvas.height = Math.max(1, Math.round(SCENE * this.nettete));
     this.canvas.style.width = (SCENE * this.echelle) + 'px';
     this.canvas.style.height = (SCENE * this.echelle) + 'px';
+    const C = racine.MinipixizClient;
+    if (C && C.poserDensite) C.poserDensite(this.nettete);
   }
 
   // Cm.getNightCoef : zéro à minuit, un demi à midi.
@@ -385,7 +392,7 @@ class Menu {
   rendre() {
     const C = racine.MinipixizClient;
     const ctx = this.ctx, s = this.sprites;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.setTransform(this.nettete, 0, 0, this.nettete, 0, 0);
     ctx.clearRect(0, 0, SCENE, SCENE);
     this.zones = [];
 
