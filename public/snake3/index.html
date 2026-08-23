@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Frutisnake</title>
+<!--
+  Frutisnake — portage natif JS du jeu Flash de 2004 (700×480, cadence
+  interne 32 i/s), fidèle aux sources AS2 (Games/snake3/). Les dessins sont
+  les SVG extraits du SWF, les sons ses MP3, les polices ses fontes
+  embarquées (Alba, les Verdana pixel, Lithograph).
+
+  Au clavier : flèches (gauche/droite tournent, haut = turbo, bas = certaines
+  options), ESPACE utilise l'option active, ÉCHAP met en pause. Au doigt :
+  deux zones de virage en bas, le turbo et l'option à droite.
+
+  ?sid= pour la persistance plateforme (collection de fruits, record,
+  préférences, score au classement).
+-->
+<style>
+  @font-face { font-family: 'Alba'; src: url('/snake3/fontes/alba.woff') format('woff'); font-display: block; }
+  @font-face { font-family: 'Verdana12St'; src: url('/snake3/fontes/verdana12.woff') format('woff'); font-display: block; }
+  @font-face { font-family: 'Verdana12StB'; src: url('/snake3/fontes/verdana12b.woff') format('woff'); font-display: block; }
+  @font-face { font-family: 'Verdana14St'; src: url('/snake3/fontes/verdana14.woff') format('woff'); font-display: block; }
+  @font-face { font-family: 'Verdana10St'; src: url('/snake3/fontes/verdana10.woff') format('woff'); font-display: block; }
+  @font-face { font-family: 'Lithograph'; src: url('/snake3/fontes/lithograph.woff') format('woff'); font-display: block; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #ADE76B;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; -webkit-user-select: none;
+    font-family: Verdana, Arial, sans-serif;
+  }
+  #tout {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    box-sizing: border-box;
+  }
+  #aire {
+    flex: 1 1 auto; min-height: 0; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas { display: block; image-rendering: auto; }
+
+  /* La manette : n'apparaît qu'au doigt (pointer coarse). */
+  #manette { display: none; width: 100%; box-sizing: border-box; padding: 0 12px 10px; }
+  @media (pointer: coarse) { #manette { display: flex; gap: 10px; justify-content: space-between; } }
+  .bloc { display: flex; gap: 10px; }
+  .btn {
+    width: 74px; height: 64px;
+    border: 2px solid #4c7f1f; border-radius: 12px;
+    background: #8fce43; color: #1c3a08;
+    font: bold 15px Verdana, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+  }
+  .btn:active, .btn.presse { background: #cdeb8f; }
+  #b-pause { width: 56px; height: 40px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="tout">
+  <div id="aire"><canvas id="scene" width="700" height="480"></canvas></div>
+  <div id="manette">
+    <div class="bloc">
+      <div class="btn" data-touche="gauche">&#8630;</div>
+      <div class="btn" data-touche="droite">&#8631;</div>
+    </div>
+    <div class="bloc"><div class="btn" id="b-pause" data-touche="echap">pause</div></div>
+    <div class="bloc">
+      <div class="btn" data-touche="bas">&#8595;</div>
+      <div class="btn" data-touche="espace">option</div>
+      <div class="btn" data-touche="haut">turbo</div>
+    </div>
+  </div>
+</div>
+
+<script src="/snake3/const.js"></script>
+<script src="/snake3/serpent.js"></script>
+<script src="/snake3/niveau.js"></script>
+<script src="/snake3/bonus.js"></script>
+<script src="/snake3/partie.js"></script>
+<script src="/snake3/bataille.js"></script>
+<script src="/snake3/sons.js"></script>
+<script src="/snake3/dessin.js"></script>
+<script src="/snake3/plateforme.js"></script>
+<script src="/snake3/rendu.js"></script>
+<script src="/snake3/menu.js"></script>
+<script src="/snake3/encyclo.js"></script>
+<script src="/snake3/game.js"></script>
+<script>
+(function () {
+  'use strict';
+  // La manette écrit dans un objet partagé que le jeu lit chaque image.
+  var pad = {};
+  document.querySelectorAll('#manette .btn').forEach(function (b) {
+    var touche = b.dataset.touche;
+    var poser = function (v, ev) {
+      ev.preventDefault();
+      pad[touche] = v;
+      b.classList.toggle('presse', v);
+    };
+    b.addEventListener('pointerdown', function (ev) { poser(true, ev); });
+    b.addEventListener('pointerup', function (ev) { poser(false, ev); });
+    b.addEventListener('pointercancel', function (ev) { poser(false, ev); });
+    b.addEventListener('pointerleave', function (ev) { if (pad[touche]) poser(false, ev); });
+  });
+
+  window.demarrerFrutisnake({ canvas: 'scene', pad: pad });
+})();
+</script>
+</body>
+</html>

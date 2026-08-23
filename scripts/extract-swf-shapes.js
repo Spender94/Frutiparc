@@ -311,7 +311,7 @@ function versSvg(f) {
       const M = s.M;
       const t = [M.sx / 20, M.b / 20, M.c / 20, M.sy / 20, M.tx / 20, M.ty / 20]
         .map(arrondi).join(',');
-      corps += `  <g clip-path="url(#${cid})"><image href="${img.fichier}" width="${img.w}" height="${img.h}"`
+      corps += `  <g clip-path="url(#${cid})"><image href="${img.dataUri || img.fichier}" width="${img.w}" height="${img.h}"`
         + ` transform="matrix(${t})"${s.lisse ? '' : ' image-rendering="pixelated"'}/></g>\n`;
       continue;
     }
@@ -351,6 +351,16 @@ let BITMAPS = null;
   const i = argv.indexOf('--bitmaps');
   if (i >= 0) {
     BITMAPS = JSON.parse(fs.readFileSync(argv[i + 1], 'utf8'));
+    // Les images s'INLINENT en data:URI : un SVG chargé comme <img> (ou
+    // rasterisé par canvas) n'a pas le droit d'aller chercher un fichier
+    // externe — la référence serait simplement ignorée. Les fichiers vivent
+    // à côté du dossier du manifeste (_formes/../).
+    const base = path.join(path.dirname(argv[i + 1]), '..');
+    for (const img of Object.values(BITMAPS)) {
+      const donnees = fs.readFileSync(path.join(base, img.fichier));
+      const mime = img.fichier.endsWith('.png') ? 'image/png' : 'image/jpeg';
+      img.dataUri = 'data:' + mime + ';base64,' + donnees.toString('base64');
+    }
     argv.splice(i, 2);
   }
 }

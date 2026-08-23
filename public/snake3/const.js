@@ -280,6 +280,65 @@ C.FRUIT_NAMES = [
   'lacherone d\'obbrefus', 'l\'infâme pamplefrousse',
 ];
 
+// ── L'interface (écrans, canaux, sons, touches) — Const.as verbatim ───────
+
+C.TXT_STARTING_GAME_MESSAGE = C.TXT_CONNECTING_MESSAGE;
+
+C.PLAN_BACKGROUND = 0;
+C.PLAN_FRUITSHADE = 1;
+C.PLAN_BONUSES = 2;
+C.PLAN_FRUITS = 2;
+C.PLAN_LANGUE = 3;
+C.PLAN_SNAKE = 4;
+C.PLAN_INTERFACE = 5;
+C.PLAN_SLOTS = 5;
+C.PLAN_DUMMIES = 6;
+
+C.SCREEN_GAMEOVER = 'gameOver';
+C.SCREEN_CONNECTING = 'connexion';
+C.SCREEN_TEXT = 'text';
+C.SCREEN_RESULT = 'resultat';
+C.SCREEN_FRUIT = 'fruit';
+
+C.CHANNEL_MUSIC_1 = 1;
+C.CHANNEL_MUSIC_2 = 2;
+C.MUSIC_FADE_LENGTH = 1.5;          // secondes
+C.CHANNEL_SOUNDS = 0;
+
+// Les noms de sons du jeu → les fichiers extraits (public/snake3/sons/).
+C.SOUND_MENU_LOOP = 'menu_loop';
+C.SOUND_GAME_LOOP = 'game_loop';
+C.SOUND_GAME_OVER = 'game_over';
+C.SOUND_FRUIT_APPEAR = 'fapp';      // jamais joué : l'appel est commenté dans Level.as
+C.SOUND_FRUIT_EAT_1 = 'glurps';
+C.SOUND_FRUIT_EAT_2 = 'glurps_2';
+C.SOUND_CISEAUX = 'ciseaux';
+C.SOUND_COFFRE = 'coffre';
+C.SOUND_EFFECT_END = 'effect_end';
+C.SOUND_LANGUE = 'langue';
+C.SOUND_OPTION_EAT = 'option';
+C.SOUND_CLOCHE = 'cloche';
+C.SOUND_DYNAMITE = 'dynamite';
+C.SOUND_RESSORT = 'ressort';
+C.SOUND_SABRE = 'sabre';
+C.SOUND_POTION = 'potion';
+C.SOUND_DISAPPEAR = 'fdisp';
+C.SOUND_SONNETTE = 'sonnette';
+C.SOUND_EXPLOSE = 'explose';
+C.SOUND_PAGE = 'page';
+C.SOUND_RETURN_MENU = 'retmenu';
+C.SOUND_ROTATION_MENU = 'rotmenu';
+C.SOUND_SELECT_MENU = 'selmenu';
+
+// DEFAULT_KEYS : gauche/droite/haut (turbo) par joueur — flèches, 1/2/3,
+// K/L/M, pavé numérique 7/8/9 (codes clavier AS2 = keyCode DOM).
+C.DEFAULT_KEYS = [
+  37, 39, 38,
+  49, 50, 51,
+  75, 76, 77,
+  103, 104, 105,
+];
+
 // ── Std, la part utile ────────────────────────────────────────────────────
 
 // Std.randomProbas(tab) : un index tiré au poids de tab.

@@ -65,7 +65,7 @@ const CLIPS = [
   { cle: 'fleche', id: 457, frames: [1], etiquette: 'la flèche du carrousel' },
   { cle: 'fleche2', id: 458, frames: [1], etiquette: 'l\'autre flèche' },
   { cle: 'menuBackground', id: 376, frames: [1], etiquette: 'le fond du menu' },
-  { cle: 'optionPanel', id: 630, frames: [1], etiquette: 'le panneau des options' },
+  { cle: 'optionPanel', id: 630, frames: [1], sans: ['format'], etiquette: 'le panneau des options' },
   { cle: 'bombe', id: 393, frames: 'toutes', etiquette: 'la bombe et son souffle' },
   { cle: 'langue', id: 527, frames: [1], etiquette: 'la langue' },
   { cle: 'sonnette', id: 529, frames: [1], etiquette: 'la sonnette' },
@@ -79,11 +79,12 @@ const CLIPS = [
   { cle: 'dropCorner', id: 371, frames: [1], etiquette: 'l\'ombre du coin de page' },
   { cle: 'dropLarge', id: 372, frames: [1], etiquette: 'l\'ombre de la page' },
   { cle: 'bookHole', id: 602, frames: [1], etiquette: 'le creux du livre' },
-  { cle: 'panRouge', id: 374, frames: [1], etiquette: 'panneau rouge (masque/écrans)' },
-  { cle: 'panVert', id: 378, frames: [1], etiquette: 'panneau vert clair' },
+  { cle: 'snakeMask', id: 374, frames: [1], etiquette: 'le masque des transitions (rectangle rouge)' },
+  { cle: 'bookMask', id: 378, frames: [1], etiquette: 'le masque du livre (jamais dessiné)' },
   { cle: 'barSide', id: 637, frames: 'toutes', etiquette: 'bouts des jauges de battle' },
   { cle: 'barMid', id: 644, frames: 'toutes', etiquette: 'corps des jauges de battle' },
   { cle: 'pieces', id: 647, frames: 'toutes', etiquette: 'les piles de pièces' },
+  { cle: 'pan', id: 465, frames: 'toutes', etiquette: 'le panneau des écrans (4 couleurs)' },
   { cle: 'fruitOuter', id: 451, frames: 'toutes', etiquette: 'le fruit qui paraît/disparaît' },
   { cle: 'bonusOuter', id: 450, frames: 'toutes', etiquette: 'l\'option qui paraît/disparaît' },
 ];
@@ -386,7 +387,10 @@ for (const c of CLIPS) {
     ? [...fr.keys()].sort((a, b) => a - b)
     : c.frames;
   for (const f of liste) {
-    const morceaux = swf.aplatir(c.id, IDENTITE, 0, f, '', null);
+    let morceaux = swf.aplatir(c.id, IDENTITE, 0, f, '', null);
+    // `sans` : des sous-clips écartés de la composition (ceux que le jeu
+    // cache à l'exécution, comme le bouton « Formatter » des options).
+    if (c.sans) morceaux = morceaux.filter((m) => !c.sans.some((n) => (m.chemin || '').includes(n)));
     for (const m of morceaux) shapes.add(m.shape);
     travaux.push({ c, f, morceaux });
   }
@@ -431,12 +435,35 @@ console.log(`SVG écrits : ${nSvg}`);
   const langue = swf.parSprite.get(527).get(1);
   const lcol = langue.find((p) => p.nom === 'col');
   manifeste.cadres.langueCol = { x: arr(lcol.M.e / 20) };
+  // Le terrain : Level.as ÉTIRE bg.playField sur le rectangle de jeu
+  // (corner 10,60 → 680×410) — comme la frutibarre, le fond sort donc en
+  // deux pièces : la bordure (tout sauf playField) et le champ, chacun dans
+  // son repère local, avec la pose d'auteur dans le manifeste.
   const fond = swf.parSprite.get(694).get(1);
   const pf = fond.find((p) => p.nom === 'playField');
-  const pvb = boiteForme(pf.ch);
-  manifeste.cadres.playField = pvb
-    ? { x: arr(pf.M.e / 20), y: arr(pf.M.f / 20), w: arr(pvb.w * pf.M.a), h: arr(pvb.h * pf.M.d) }
-    : null;
+  {
+    const rChamp = svgCompose(swf.aplatir(pf.ch, IDENTITE, 0, 1, '', null));
+    fs.writeFileSync(path.join(SORTIE, 'backgroundField.svg'), rChamp.svg);
+    const autres = fond.filter((p) => p !== pf)
+      .flatMap((p) => swf.aplatir(p.ch, p.M, 0, 1, '', p.cx || null));
+    const rBord = svgCompose(autres);
+    fs.writeFileSync(path.join(SORTIE, 'backgroundBord.svg'), rBord.svg);
+    manifeste.cadres.playField = {
+      x: arr(pf.M.e / 20), y: arr(pf.M.f / 20),
+      champ: rChamp.cadre, bord: rBord.cadre,
+    };
+  }
+  // Le masque du livre (378 → forme 377, jamais dessiné : il découpe les
+  // ombres de page au rectangle du livre) et la flèche de retour de
+  // l'encyclopédie (458 : fback à sa pose d'auteur).
+  {
+    const r = svgCompose(swf.aplatir(378, IDENTITE, 0, 1, '', null));
+    manifeste.cadres.bookMask = r ? r.cadre : null;
+  }
+  {
+    const fb = swf.parSprite.get(458).get(1).find((p) => p.nom === 'fback');
+    manifeste.cadres.encycloFback = { x: arr(fb.M.e / 20), y: arr(fb.M.f / 20) };
+  }
 }
 
 // 3bis. Les pièces de la frutibarre (685) — Game.as étire `mid._width` chaque
@@ -462,6 +489,62 @@ console.log(`SVG écrits : ${nSvg}`);
     });
   }
   manifeste.cadres.fbarre = { pieces };
+}
+
+// 3ter. Les pages de l'encyclopédie, SANS l'ombre de pli `grad` — le jeu la
+//       cache sur les pages posées et la dose (alpha = rotation/90) sur la
+//       page qui tourne : elle sort donc à part, avec ses poses d'auteur.
+{
+  const frames = swf.parSprite.get(370);
+  manifeste.clips.pageSans = { id: 370, frames: {} };
+  for (const [f, places] of [...frames.entries()].sort((a, b) => a[0] - b[0])) {
+    const sans = places.filter((p) => p.nom !== 'grad')
+      .flatMap((p) => swf.aplatir(p.ch, p.M, 0, f, p.nom || '', p.cx || null))
+      // Le `skin` du gabarit (la planche des fruits) se dessine à l'exécution
+      // — updateTemplate choisit l'image : on ne fige pas le fruit d'auteur.
+      .filter((m) => !(m.chemin || '').includes('skin'));
+    const r = svgCompose(sans);
+    if (!r) continue;
+    const nom = `pageSans${String(f).padStart(3, '0')}.svg`;
+    fs.writeFileSync(path.join(SORTIE, nom), r.svg);
+    manifeste.clips.pageSans.frames[f] = { fichier: nom, cadre: r.cadre };
+  }
+  const poses = {};
+  let gradCh = null;
+  for (const [f, places] of frames) {
+    const g = places.find((p) => p.nom === 'grad');
+    if (!g) continue;
+    gradCh = g.ch;
+    poses[f] = [g.M.a, g.M.b, g.M.c, g.M.d, arr(g.M.e / 20), arr(g.M.f / 20)];
+  }
+  const rg = svgCompose(swf.aplatir(gradCh, IDENTITE, 0, 1, '', null));
+  fs.writeFileSync(path.join(SORTIE, 'pageGrad.svg'), rg.svg);
+  manifeste.cadres.pageGrad = { cadre: rg.cadre, poses };
+}
+
+// 3quater. Les écrans SANS leur panneau `pan`, et le panneau seul (4
+//          couleurs) : Text.setBgColor teinte l'écran de résultat de la
+//          couleur du vainqueur en Battle — le panneau se choisit donc à
+//          l'exécution, sous le reste de l'écran.
+{
+  const frames = swf.parSprite.get(483);
+  manifeste.clips.screensSans = { id: 483, frames: {} };
+  let panCh = null, panPose = null;
+  for (const [f, places] of [...frames.entries()].sort((a, b) => a[0] - b[0])) {
+    const pan = places.find((p) => p.nom === 'pan');
+    if (pan && !panCh) {
+      panCh = pan.ch;
+      panPose = [pan.M.a, pan.M.b, pan.M.c, pan.M.d, arr(pan.M.e / 20), arr(pan.M.f / 20)];
+    }
+    const sans = places.filter((p) => p.nom !== 'pan')
+      .flatMap((p) => swf.aplatir(p.ch, p.M, 0, f, '', p.cx || null));
+    const r = svgCompose(sans);
+    if (!r) continue;
+    const nom = `screensSans${String(f).padStart(3, '0')}.svg`;
+    fs.writeFileSync(path.join(SORTIE, nom), r.svg);
+    manifeste.clips.screensSans.frames[f] = { fichier: nom, cadre: r.cadre };
+  }
+  manifeste.cadres.panPose = panPose;   // le clip pan sort par la table CLIPS
 }
 
 // 4. Les cadres par fruit et par option — la géométrie des hitboxes.

@@ -14878,6 +14878,20 @@ const GAME_DISCS = {
       { u: 'games/snake3/snake3.swf' },
     ],
   },
+  // Frutisnake en HTML (/snake3/), sur le modèle des trois disques light
+  // ci-dessus : anneau rouge jamais consommé, marqueur `light/snake3` que
+  // ruffle.html détourne vers le portage au lieu de Ruffle, et swfName
+  // « snake3 » pour que voyant, <service> et classement (snake3_classic)
+  // se comportent exactement comme pour le disque Flash.
+  snake3light: {
+    discType: '3',
+    playMode: 'single',
+    swfName: 'snake3',
+    iconName: 'snake3',
+    gameId: 'light/snake3',
+    props: 'w=820;h=760;m=p',
+    files: [],
+  },
   mb2: {
     discType: '1',
     playMode: 'single',
