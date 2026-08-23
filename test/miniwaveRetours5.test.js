@@ -254,3 +254,26 @@ test('le kamikaze plonge à mi-chemin des deux extrêmes d\'époque', () => {
   assert.match(src, /b\.y \+= b\.vity \* tmod;/, 'et l\'intégration aussi');
   assert.match(src, /const KAMIKAZE_POUSSEE = 1;/, 'la poussée est nommée et documentée');
 });
+
+// ── 6. LA NETTETÉ SUR GRAND ÉCRAN ────────────────────────────────────────
+// « Peux-tu faire la même chose pour Miniwave ? » — la même correction que
+// MiniPixiz : le tampon de 240 × dpr était étiré par le navigateur, qui
+// LISSE, un flou par-dessus du pixel-art. Le tampon couvre désormais les
+// pixels physiques affichés (nettete = échelle × dpr) et, le lissage étant
+// coupé, l'agrandissement est un plus-proche-voisin : des carrés francs.
+
+test('le tampon couvre les pixels physiques affichés, pas 240 × dpr', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/miniwave/game.js'), 'utf8');
+  assert.match(src, /this\.nettete = k \* this\.dpr;/, 'la netteté est l\'échelle écran complète');
+  assert.match(src, /Math\.round\(LARGEUR \* this\.nettete\)/, 'et dimensionne le tampon');
+  assert.match(src, /setTransform\(this\.nettete, 0, 0, this\.nettete, 0, 0\)/,
+    'le dessin se fait à cette échelle');
+  assert.equal(/canvas\.width = LARGEUR \* this\.dpr/.test(src), false,
+    'plus de tampon à 240 × dpr');
+  // Le pixel-art reste du pixel-art : le lissage reste coupé, l'agrandissement
+  // est un plus-proche-voisin dans le canevas au lieu d'un flou hors canevas.
+  assert.match(src, /imageSmoothingEnabled = false/, 'le lissage reste coupé');
+  // Le menu dérive son échelle du tampon : il suit sans qu'on le touche.
+  const menu = fs.readFileSync(path.join(ROOT, 'public/miniwave/menu.js'), 'utf8');
+  assert.match(menu, /const dpr = this\.canvas\.width \/ LARGEUR;/, 'le menu lit le tampon');
+});

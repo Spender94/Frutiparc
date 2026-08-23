@@ -310,6 +310,7 @@ class Client {
     this.panneau = null;               // texte affiché entre deux niveaux
     this.panneauT = 0;
     this.echelle = 1;
+    this.nettete = 1;                  // pixels physiques par unité de scène
     // Le compteur d'images doit exister DÈS la construction : le menu tourne sur
     // la même boucle, et il s'ouvre avant la première partie. Sans ces valeurs,
     // l'attente vaut NaN, la condition d'avancement n'est jamais vraie et rien
@@ -658,7 +659,7 @@ class Client {
 
   dessiner() {
     const ctx = this.ctx, jeu = this.jeu;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.setTransform(this.nettete, 0, 0, this.nettete, 0, 0);
     fond(ctx, jeu.defilementDecor());
 
     for (const b of jeu.badsList) {
@@ -1228,7 +1229,7 @@ class Client {
   // Le voile de pause : la scène assombrie de moitié (Manager.setPause pose un
   // setPColor noir à 50) et l'écusson du SWF — le cadre arrondi et son mot.
   dessinerPause(ctx) {
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.setTransform(this.nettete, 0, 0, this.nettete, 0, 0);
     ctx.fillStyle = 'rgba(0,0,0,.5)';
     ctx.fillRect(0, 0, LARGEUR, HAUTEUR);
     // Le cadre du SWF porte ses coordonnées de scène (le clip mcPause était
@@ -1259,8 +1260,15 @@ class Client {
     const k = (entier >= 1 && entier / exact >= 0.85) ? entier : exact;
     this.echelle = k;
     this.dpr = Math.min(window.devicePixelRatio || 1, 3);
-    this.canvas.width = LARGEUR * this.dpr;
-    this.canvas.height = HAUTEUR * this.dpr;
+    // Le tampon couvre les pixels PHYSIQUES de la surface affichée — pas
+    // seulement 240 × dpr : sur un bureau à l'échelle 3, l'ancien tampon de
+    // 240 était étiré par le navigateur, qui LISSE — un flou par-dessus du
+    // pixel-art. En dessinant directement à `nettete` avec le lissage coupé,
+    // l'agrandissement devient un plus-proche-voisin : les pixels des dessins
+    // de 16 à 20 px restent des carrés francs, comme au facteur entier.
+    this.nettete = k * this.dpr;
+    this.canvas.width = Math.max(1, Math.round(LARGEUR * this.nettete));
+    this.canvas.height = Math.max(1, Math.round(HAUTEUR * this.nettete));
     this.canvas.style.width = (LARGEUR * k) + 'px';
     this.canvas.style.height = (HAUTEUR * k) + 'px';
     this.ctx.imageSmoothingEnabled = false;
