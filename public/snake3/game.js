@@ -318,9 +318,12 @@ class VuePartie {
 
   presser(x, y) {
     if (this.ecran) { this.ecran.presser(); return; }
-    // Au doigt, un appui sur l'aire de jeu UTILISE l'option active — c'est ce
-    // que fait la barre d'espace au clavier. La manette garde son bouton ;
-    // celui-ci évite d'avoir à le viser en pleine course.
+    // Au doigt, un appui sur l'AIRE DE JEU utilise l'option active — c'est ce
+    // que fait la barre d'espace au clavier, et c'est pour cela que la manette
+    // n'a plus de bouton « option » : il faisait double emploi.
+    // Le tableau de bord du pack, lui, est hors du cadre : un appui dessus ne
+    // doit rien déclencher.
+    if (x > C.WIDTH || y > C.HEIGHT) return;
     this.jeu.impulsionOption();
   }
 
@@ -599,7 +602,8 @@ class Jeu {
     this.touches = new Set();
     this.pointeur = { x: 0, y: 0, bas: false };
     this.tapOption = 0;               // le reste d'un appui « utiliser l'option »
-    this.surImage = null;             // le tableau de bord du pack, s'il est monté
+    this.pack = null;                 // le tableau de bord du pack, s'il est acheté
+    this.scene = { w: C.WIDTH, h: C.HEIGHT };
 
     this.musique = true;
     this.bruitages = true;
@@ -816,10 +820,10 @@ class Jeu {
       ctx.setTransform(this.nettete, 0, 0, this.nettete, 0, 0);
       // Le fond de scène du SWF (SetBackgroundColor) : le vert Frutiparc.
       ctx.fillStyle = '#ade76b';
-      ctx.fillRect(0, 0, C.WIDTH, C.HEIGHT);
+      ctx.fillRect(0, 0, this.scene.w, this.scene.h);
       if (this.mode && this.mode.dessiner) this.mode.dessiner(ctx);
-      // Le tableau de bord du pack, s'il est monté (pack.js).
-      if (this.surImage) this.surImage();
+      // Le tableau de bord du pack, en prolongement du cadre du jeu (pack.js).
+      if (this.pack) this.pack.dessiner(ctx, this.releve());
 
       requestAnimationFrame(cadre);
     };
@@ -828,21 +832,30 @@ class Jeu {
 
   redimensionner() {
     const aire = this.canvas.parentElement;
-    const kx = aire.clientWidth / C.WIDTH;
-    const ky = aire.clientHeight / C.HEIGHT;
+    // Le tableau de bord du pack s'ajoute à la scène du côté où le jeu ne se
+    // sert de rien : sous la frutibarre en portrait (le jeu est bridé par la
+    // largeur), à droite en paysage (il est bridé par la hauteur). Le critère
+    // est celui de la feuille de style — la forme de la fenêtre.
+    if (this.pack) this.pack.poserSens(window.innerWidth >= window.innerHeight);
+    this.scene = this.pack
+      ? this.pack.scene(aire.clientWidth, aire.clientHeight)
+      : { w: C.WIDTH, h: C.HEIGHT };
+    const kx = aire.clientWidth / this.scene.w;
+    const ky = aire.clientHeight / this.scene.h;
     this.echelle = Math.max(0.2, Math.min(kx, ky));
     // Le tampon couvre les pixels PHYSIQUES (échelle × devicePixelRatio) —
     // la netteté des autres portages light.
     this.nettete = this.echelle * (window.devicePixelRatio || 1);
+    const lp = Math.round(this.scene.w * this.nettete);
+    const hp = Math.round(this.scene.h * this.nettete);
     // Rien n'a bougé : ne pas toucher au canvas (le redimensionner l'effacerait
     // et jetterait tout le cache de rastérisation). L'observateur ci-dessous
     // rappelle cette méthode à chaque remaniement de la mise en page.
-    if (this.canvas.width === Math.round(C.WIDTH * this.nettete)
-      && this.canvas.height === Math.round(C.HEIGHT * this.nettete)) return;
-    this.canvas.width = Math.round(C.WIDTH * this.nettete);
-    this.canvas.height = Math.round(C.HEIGHT * this.nettete);
-    this.canvas.style.width = Math.round(C.WIDTH * this.echelle) + 'px';
-    this.canvas.style.height = Math.round(C.HEIGHT * this.echelle) + 'px';
+    if (this.canvas.width === lp && this.canvas.height === hp) return;
+    this.canvas.width = lp;
+    this.canvas.height = hp;
+    this.canvas.style.width = Math.round(this.scene.w * this.echelle) + 'px';
+    this.canvas.style.height = Math.round(this.scene.h * this.echelle) + 'px';
     D.poserDensite(this.nettete);
   }
 }

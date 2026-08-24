@@ -673,7 +673,7 @@ test('le compteur de fruits passe par eat_fruit, la seule porte', () => {
     'le compteur doit être en tête d\'eat_fruit');
 });
 
-test('le tableau de bord reprend les cinq lignes et la mise en forme du disque', () => {
+test('le tableau de bord reprend les cinq lignes et les couleurs du disque', () => {
   const K = require('../public/snake3/pack.js');
   assert.deepStrictEqual(K.LIGNES.map((l) => l.titre),
     ['Longueur', 'Fruits avalés', 'Dynamites', 'Durée bonus en cours', 'Durée de la partie']);
@@ -690,54 +690,131 @@ test('le tableau de bord reprend les cinq lignes et la mise en forme du disque',
   assert.strictEqual(K.mmss(-3), '00:00');
   assert.strictEqual(K.mmss(3600 + 61), '61:01', 'au-delà de l\'heure, on compte en minutes');
 
-  // Les chiffres sont tracés à la police Alba du portail, remplis du dégradé
-  // et contournés de blanc — comme sur le disque.
-  const alba = JSON.parse(fs.readFileSync(path.join(RACINE, 'public/fb/alba-glyphs.json'), 'utf8'));
-  const svg = K.tracerNombre('01:23', alba);
-  assert.strictEqual((svg.match(/<path /g) || []).length, 5, 'un tracé par caractère');
-  assert.ok(svg.includes('preserveAspectRatio="xMaxYMid meet"'), 'aligné à droite');
-  // Sans les glyphes : du texte, pas un trou.
-  assert.ok(/pk-repli/.test(K.tracerNombre('12', null)));
+  // Hors partie : cinq zéros, jamais un panneau vide (sa place est prise dans
+  // la scène une fois pour toutes).
+  assert.deepStrictEqual(K.valeurs(null),
+    { longueur: '0', fruits: '0', dynamites: '0', bonus: '00:00', chrono: '00:00' });
+  assert.deepStrictEqual(
+    K.valeurs({ longueur: 7, fruits: 12, dynamites: 3, bonus: 29.2, chrono: 75 }),
+    { longueur: '7', fruits: '12', dynamites: '3', bonus: '00:30', chrono: '01:15' },
+    'la durée d\'un bonus s\'arrondit au-dessus : 29,2 s restantes = 30 s affichées');
+
+  // Le panneau se peint DANS le canvas, en prolongement du cadre du jeu : son
+  // vert doit être celui du décor, pas une approximation. Le décor du SWF est
+  // un simple aplat cerné de deux points de blanc — c'est ce qui permet de le
+  // prolonger sans rien déformer.
+  const bord = fs.readFileSync(path.join(SPRITES, 'backgroundBord.svg'), 'utf8');
+  assert.ok(bord.includes('fill="' + K.VERT + '"'),
+    'le vert du panneau (' + K.VERT + ') n\'est pas celui de backgroundBord.svg');
+  assert.strictEqual((bord.match(/<path /g) || []).length, 2,
+    'le décor doit rester deux tracés : l\'aplat et son liseré');
+  assert.ok(bord.includes('M2 2') || bord.includes('L2 2'),
+    'le liseré fait bien ' + K.LISERE + ' points');
 
   const html = fs.readFileSync(path.join(RACINE, 'public/snake3/index.html'), 'utf8');
-  assert.ok(html.includes('#83CA22'), 'le vert du panneau du disque');
-  assert.ok(/url\(#pk-alba\)/.test(html) && /paint-order: stroke fill/.test(html),
-    'dégradé et contour des chiffres');
   assert.ok(html.includes('src="/snake3/pack.js"'), 'pack.js est chargé');
 });
 
-test('le pack ne se monte que pour qui l\'a acheté', () => {
+test('le panneau s\'ajoute du côté où le jeu ne se sert de rien', () => {
   const K = require('../public/snake3/pack.js');
-  const faux = { plateforme: { options: {} }, releve: () => null, surImage: null };
-  const hote = { innerHTML: '', classList: { add() {} }, querySelectorAll: () => [] };
-  return K.monter(faux, hote).then((r) => {
-    assert.strictEqual(r, null, 'sans l\'article, pas de tableau de bord');
-    assert.strictEqual(faux.surImage, null, 'et rien à faire à chaque image');
-    assert.strictEqual(hote.innerHTML, '', 'l\'hôte reste vide (donc sans place occupée)');
-  });
+  const C = require('../public/snake3/const.js');
+  const pack = new K.Pack();
+
+  // PAYSAGE : le jeu est bridé par la hauteur → une colonne à droite, à
+  // taille fixe, et pas un point de hauteur en plus.
+  pack.poserSens(true);
+  const p = pack.scene(852, 393);
+  assert.strictEqual(p.h, C.HEIGHT, 'la colonne ne doit rien coûter en hauteur');
+  assert.strictEqual(p.w, C.WIDTH + K.L_COLONNE - K.LISERE, 'la colonne chevauche le liseré');
+
+  // PORTRAIT : le jeu est bridé par la largeur → le bandeau prend la hauteur
+  // laissée libre, entre son minimum lisible et son maximum.
+  pack.poserSens(false);
+  const serre = pack.scene(393, 300);       // presque pas de place
+  assert.strictEqual(serre.w, C.WIDTH, 'le bandeau ne doit rien coûter en largeur');
+  assert.strictEqual(serre.h, C.HEIGHT + K.H_MIN - K.LISERE, 'plancher du bandeau');
+  const large = pack.scene(393, 3000);      // beaucoup trop de place
+  assert.strictEqual(large.h, C.HEIGHT + K.H_MAX - K.LISERE, 'plafond du bandeau');
+  assert.ok(K.H_MAX < C.HEIGHT / 3,
+    'le bandeau doit rester bien plus petit que le jeu (' + K.H_MAX + ')');
+  // Entre les deux, il colle à la place offerte : la scène remplit l'aire.
+  const juste = pack.scene(393, 393 / C.WIDTH * (C.HEIGHT + 120));
+  assert.ok(Math.abs(juste.h - (C.HEIGHT + 120 - K.LISERE)) < 1,
+    'le bandeau doit épouser la hauteur libre : ' + juste.h);
+});
+
+test('le pack ne se monte que pour qui l\'a acheté', async () => {
+  const K = require('../public/snake3/pack.js');
+  const sans = { plateforme: { options: {} }, pack: null, redimensionner() { this.redim = true; } };
+  assert.strictEqual(await K.monter(sans), null, 'sans l\'article, pas de tableau de bord');
+  assert.strictEqual(sans.pack, null, 'et rien à peindre à chaque image');
+  assert.ok(!sans.redim, 'la scène n\'a pas bougé');
+
+  const avec = { plateforme: { options: { snake3Hud: true } }, pack: null,
+    redimensionner() { this.redim = true; } };
+  const pack = await K.monter(avec);
+  assert.ok(pack instanceof K.Pack);
+  assert.strictEqual(avec.pack, pack, 'le jeu peint désormais le panneau');
+  assert.ok(avec.redim, 'la scène s\'est agrandie tout de suite');
 });
 
 test('la page se replie selon l\'orientation, sans forcer le paysage', () => {
   // La scène est un 700×480 : en paysage le jeu est bridé par la HAUTEUR (les
-  // commandes passent donc sur les côtés et le tableau de bord se glisse dans
-  // le vide qui reste), en portrait par la LARGEUR (tout se range dessous).
+  // commandes passent donc sur les côtés), en portrait par la LARGEUR (elles
+  // se rangent en ligne dessous).
   const html = fs.readFileSync(path.join(RACINE, 'public/snake3/index.html'), 'utf8');
   assert.ok(/@media \(orientation: landscape\) \{[\s\S]*?#tout \{ flex-direction: row;/.test(html),
     'en paysage, la page passe en rangée');
   assert.ok(/@media \(orientation: landscape\) and \(pointer: coarse\) \{ #commandes \{ display: contents/.test(html),
     'les deux côtés de la manette deviennent des colonnes de #tout');
-  assert.ok(/@media \(orientation: landscape\) and \(max-width: 759px\)[\s\S]{0,80}#pack\.pk-actif \{ display: none/.test(html),
-    'un paysage court replie la colonne du tableau de bord');
+  // Les parts 3/2 du portrait sont posées par identifiant : sans les reprendre
+  // par identifiant en paysage, une classe ne les emporte pas et la manette
+  // droite sortait de l'écran.
+  assert.ok(/@media \(orientation: landscape\)[\s\S]*?#cote-droit \{ order: 9; flex: 0 0 auto;/.test(html),
+    'les côtés doivent reprendre leur taille naturelle en paysage');
+  // Et #aire ne doit pas se caler sur le canvas : le jeu calcule la taille du
+  // canvas D'APRÈS #aire, les deux se pousseraient l'un l'autre.
+  assert.ok(/#aire \{\s*flex: 1 1 0;/.test(html), '#aire prend ce qui reste, base 0');
   // Aucune tentative de VERROUILLER l'orientation : impossible sur iOS, et
   // hors de portée depuis le cadre de /light.
   assert.ok(!/orientation\s*\.\s*lock\s*\(|lockOrientation\s*\(/.test(html.replace(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g, '')),
     'on ne force pas le paysage');
   assert.ok(/#tourne/.test(html) && /localStorage[\s\S]{0,60}snake3\.tourne/.test(html),
     'le conseil de tourner ne s\'affiche qu\'une fois');
-  // Les boutons se serrent : à largeur fixe, un téléphone de 390 points en
-  // poussait deux hors de l'écran.
-  assert.ok(/\.btn \{[\s\S]*?flex: 0 1 72px; min-width: 42px;/.test(html),
-    'les touches doivent pouvoir rétrécir');
+});
+
+test('la manette : cinq touches, aux couleurs du jeu, sans bouton « option »', () => {
+  const html = fs.readFileSync(path.join(RACINE, 'public/snake3/index.html'), 'utf8');
+  const touches = [...html.matchAll(/data-touche="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepStrictEqual(touches, ['gauche', 'droite', 'haut', 'bas', 'echap'],
+    'le turbo (haut) rejoint les virages, et « option » a disparu');
+  // « option » faisait double emploi : un appui sur l'aire de jeu l'utilise.
+  const jeuSrc = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
+  assert.ok(/impulsionOption\(\);/.test(jeuSrc));
+  // Les touches reprennent le décor du jeu : l'aplat du cadre, cerné de blanc.
+  const K = require('../public/snake3/pack.js');
+  assert.ok(new RegExp('background: ' + K.VERT + ';').test(html),
+    'les touches doivent porter le vert du décor');
+  assert.ok(/border: 3px solid #fff/.test(html), 'et son liseré blanc');
+});
+
+test('un appui hors du cadre du jeu n\'utilise pas l\'option', () => {
+  // Le tableau de bord du pack est DANS le canvas, mais hors des 700×480 du
+  // jeu : y poser le doigt ne doit rien déclencher.
+  const w = bacASable();
+  const C = w.SnakeConst;
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'),
+    { fruits: {}, record: 0, options: {}, prefs: { $music: true, $sounds: true, $keys: null },
+      sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null) },
+    new Proxy({}, { get: () => () => false }));
+  const vue = new w.SnakeJeu.VuePartie(jeu);
+  jeu.mode = vue;
+  vue.presser(350, C.HEIGHT + 40);
+  assert.strictEqual(jeu.entreesPartie().espace, false, 'sous le jeu : rien');
+  vue.presser(C.WIDTH + 40, 200);
+  assert.strictEqual(jeu.entreesPartie().espace, false, 'à droite du jeu : rien');
+  vue.presser(350, 240);
+  assert.strictEqual(jeu.entreesPartie().espace, true, 'dans le jeu : l\'option');
 });
 
 test('un appui sur un écran le fait avancer, sans utiliser d\'option', () => {
