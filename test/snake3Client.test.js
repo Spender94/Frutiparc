@@ -245,6 +245,17 @@ test('serveur : le disque light, les slots et le classement de Frutisnake', asyn
   }))).json();
   assert.strictEqual(score.rankingId, 'snake3_classic', JSON.stringify(score));
   assert.ok(score.newPos >= 1, 'classé : ' + JSON.stringify(score));
+
+  // Le pack de Frutisnake : plateforme.js interroge /api/features au
+  // chargement et n'affiche le tableau de bord que si snake3Hud est vrai.
+  const options = await (await fetch(BASE + '/api/features?sid=' + sid)).json();
+  assert.strictEqual(options.ok, true, JSON.stringify(options));
+  assert.strictEqual(options.username, 'serpentin');
+  assert.strictEqual(options.features.snake3Hud, false, 'sans achat : pas de tableau de bord');
+  // « kasparov » est le testeur nommé du serveur (FEATURE_TESTERS).
+  const sidPack = await creerSession('kasparov');
+  const avec = await (await fetch(BASE + '/api/features?sid=' + sidPack)).json();
+  assert.strictEqual(avec.features.snake3Hud, true, JSON.stringify(avec));
 });
 
 // ── L'attribution des clips, prouvée par le bytecode ──────────────────────
@@ -536,7 +547,7 @@ function bacASable() {
   contexte.addEventListener = () => {};
   vm.createContext(contexte);
   for (const f of ['const.js', 'serpent.js', 'niveau.js', 'bonus.js', 'partie.js',
-    'bataille.js', 'dessin.js', 'rendu.js', 'menu.js', 'encyclo.js', 'game.js']) {
+    'bataille.js', 'dessin.js', 'rendu.js', 'menu.js', 'encyclo.js', 'pack.js', 'game.js']) {
     vm.runInContext(fs.readFileSync(path.join(RACINE, 'public/snake3', f), 'utf8'), contexte, { filename: f });
   }
   contexte.SnakeDessin.poserManifeste(manifeste);
@@ -574,6 +585,159 @@ test('un appui sur l\'aire de jeu vaut une pression d\'ESPACE (jouer au pouce)',
   vue.presser(350, 240);
   vue.main(1, 1 / 32);
   assert.ok(vue.partie.slots.length < avant, 'l\'option a été utilisée');
+});
+
+// ── Le pack de Frutisnake (tableau de bord) ───────────────────────────────
+
+test('le relevé du pack donne les cinq mêmes valeurs que le pont du SWF', () => {
+  // scripts/patch-snake3-hud.js remonte du SWF : snake.len, Pile.counter,
+  // slots.length, slots[dernier].time, le compteur de fruits et la pause. Ici
+  // le moteur est en JS : Jeu.releve() les lit directement, et doit donner la
+  // même chose — en particulier le DERNIER slot pour la minuterie, puisque
+  // add_slot empile les options activables par la tête et les temporisées par
+  // la queue.
+  const w = bacASable();
+  const plateforme = { fruits: {}, record: 0, options: { snake3Hud: true },
+    prefs: { $music: true, $sounds: true, $keys: null },
+    sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null) };
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'), plateforme,
+    new Proxy({}, { get: () => () => false }));
+  assert.strictEqual(jeu.releve(), null, 'hors partie : rien à relever');
+
+  const vue = new w.SnakeJeu.VuePartie(jeu);
+  jeu.mode = vue;
+  const B = w.SnakeBonus;
+  const p = vue.partie;
+
+  // Un ciseau (activable, empilé par la TÊTE) puis une potion rouge
+  // (temporisée, empilée par la QUEUE) : c'est la potion qui donne la durée.
+  p.add_slot(new B.Ciseaux(p, 1));
+  p.add_slot(new B.PotionRouge(p, 6));
+  B.Pile.counter = 2;
+  p.nbFruits = 7;
+  const r = jeu.releve();
+  assert.strictEqual(r.longueur, p.serpent.len);
+  assert.strictEqual(r.fruits, 7);
+  assert.strictEqual(r.dynamites, 2);
+  assert.ok(r.bonus > 0, 'la potion donne une durée : ' + r.bonus);
+  assert.strictEqual(r.bonus, p.slots[p.slots.length - 1].time);
+  assert.strictEqual(r.pause, false);
+
+  // Un ciseau seul n'a pas de minuterie — le tableau affiche alors 00:00.
+  const seul = new w.SnakeJeu.VuePartie(jeu);
+  jeu.mode = seul;
+  seul.partie.add_slot(new B.Ciseaux(seul.partie, 1));
+  assert.strictEqual(jeu.releve().bonus, 0, 'un ciseau n\'a pas de durée');
+});
+
+test('le chronomètre du pack ne compte ni la pause ni l\'après-mort', () => {
+  const w = bacASable();
+  const plateforme = { fruits: {}, record: 0, options: {},
+    prefs: { $music: true, $sounds: true, $keys: null },
+    sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null) };
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'), plateforme,
+    new Proxy({}, { get: () => () => false }));
+  const vue = new w.SnakeJeu.VuePartie(jeu);
+  jeu.mode = vue;
+
+  for (let i = 0; i < 32; i++) vue.main(1, 1 / 32);
+  const apresUneSeconde = vue.chrono;
+  assert.ok(Math.abs(apresUneSeconde - 1) < 1e-9, 'une seconde de jeu : ' + apresUneSeconde);
+
+  vue.partie.pause = true;
+  for (let i = 0; i < 32; i++) vue.main(1, 1 / 32);
+  assert.strictEqual(vue.chrono, apresUneSeconde, 'la pause ne compte pas');
+
+  vue.partie.pause = false;
+  vue.partie.game_over_flag = true;
+  for (let i = 0; i < 32; i++) vue.main(1, 1 / 32);
+  assert.strictEqual(vue.chrono, apresUneSeconde, 'l\'après-mort ne compte pas');
+});
+
+test('le compteur de fruits passe par eat_fruit, la seule porte', () => {
+  // Le même endroit que le `__nf` injecté dans le SWF : quelle que soit la
+  // cause (contact, Langue, Potion noire), un fruit avalé passe par là.
+  const w = bacASable();
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'),
+    { fruits: {}, record: 0, options: {}, prefs: { $music: true, $sounds: true, $keys: null },
+      sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null) },
+    new Proxy({}, { get: () => () => false }));
+  const partie = new w.SnakeJeu.VuePartie(jeu).partie;
+  assert.strictEqual(partie.nbFruits, 0);
+  partie.eat_fruit(partie.niveau.generate_fruit(1));
+  assert.strictEqual(partie.nbFruits, 1);
+  partie.eat_fruit(partie.niveau.generate_fruit(2));
+  assert.strictEqual(partie.nbFruits, 2);
+  const src = fs.readFileSync(path.join(RACINE, 'public/snake3/partie.js'), 'utf8');
+  assert.ok(/eat_fruit\(f\) \{\s*this\.nbFruits\+\+;/.test(src),
+    'le compteur doit être en tête d\'eat_fruit');
+});
+
+test('le tableau de bord reprend les cinq lignes et la mise en forme du disque', () => {
+  const K = require('../public/snake3/pack.js');
+  assert.deepStrictEqual(K.LIGNES.map((l) => l.titre),
+    ['Longueur', 'Fruits avalés', 'Dynamites', 'Durée bonus en cours', 'Durée de la partie']);
+  // Les mêmes intitulés que le disque Flash (game-popup.html).
+  const popup = fs.readFileSync(path.join(RACINE, 'public/game-popup.html'), 'utf8');
+  for (const l of K.LIGNES) {
+    const echappe = l.titre.replace(/é/g, '\\u00e9');
+    assert.ok(popup.includes('"' + echappe + '"') || popup.includes('"' + l.titre + '"'),
+      'intitulé absent du disque : ' + l.titre);
+  }
+  assert.strictEqual(K.mmss(0), '00:00');
+  assert.strictEqual(K.mmss(9), '00:09');
+  assert.strictEqual(K.mmss(75), '01:15');
+  assert.strictEqual(K.mmss(-3), '00:00');
+  assert.strictEqual(K.mmss(3600 + 61), '61:01', 'au-delà de l\'heure, on compte en minutes');
+
+  // Les chiffres sont tracés à la police Alba du portail, remplis du dégradé
+  // et contournés de blanc — comme sur le disque.
+  const alba = JSON.parse(fs.readFileSync(path.join(RACINE, 'public/fb/alba-glyphs.json'), 'utf8'));
+  const svg = K.tracerNombre('01:23', alba);
+  assert.strictEqual((svg.match(/<path /g) || []).length, 5, 'un tracé par caractère');
+  assert.ok(svg.includes('preserveAspectRatio="xMaxYMid meet"'), 'aligné à droite');
+  // Sans les glyphes : du texte, pas un trou.
+  assert.ok(/pk-repli/.test(K.tracerNombre('12', null)));
+
+  const html = fs.readFileSync(path.join(RACINE, 'public/snake3/index.html'), 'utf8');
+  assert.ok(html.includes('#83CA22'), 'le vert du panneau du disque');
+  assert.ok(/url\(#pk-alba\)/.test(html) && /paint-order: stroke fill/.test(html),
+    'dégradé et contour des chiffres');
+  assert.ok(html.includes('src="/snake3/pack.js"'), 'pack.js est chargé');
+});
+
+test('le pack ne se monte que pour qui l\'a acheté', () => {
+  const K = require('../public/snake3/pack.js');
+  const faux = { plateforme: { options: {} }, releve: () => null, surImage: null };
+  const hote = { innerHTML: '', classList: { add() {} }, querySelectorAll: () => [] };
+  return K.monter(faux, hote).then((r) => {
+    assert.strictEqual(r, null, 'sans l\'article, pas de tableau de bord');
+    assert.strictEqual(faux.surImage, null, 'et rien à faire à chaque image');
+    assert.strictEqual(hote.innerHTML, '', 'l\'hôte reste vide (donc sans place occupée)');
+  });
+});
+
+test('la page se replie selon l\'orientation, sans forcer le paysage', () => {
+  // La scène est un 700×480 : en paysage le jeu est bridé par la HAUTEUR (les
+  // commandes passent donc sur les côtés et le tableau de bord se glisse dans
+  // le vide qui reste), en portrait par la LARGEUR (tout se range dessous).
+  const html = fs.readFileSync(path.join(RACINE, 'public/snake3/index.html'), 'utf8');
+  assert.ok(/@media \(orientation: landscape\) \{[\s\S]*?#tout \{ flex-direction: row;/.test(html),
+    'en paysage, la page passe en rangée');
+  assert.ok(/@media \(orientation: landscape\) and \(pointer: coarse\) \{ #commandes \{ display: contents/.test(html),
+    'les deux côtés de la manette deviennent des colonnes de #tout');
+  assert.ok(/@media \(orientation: landscape\) and \(max-width: 759px\)[\s\S]{0,80}#pack\.pk-actif \{ display: none/.test(html),
+    'un paysage court replie la colonne du tableau de bord');
+  // Aucune tentative de VERROUILLER l'orientation : impossible sur iOS, et
+  // hors de portée depuis le cadre de /light.
+  assert.ok(!/orientation\s*\.\s*lock\s*\(|lockOrientation\s*\(/.test(html.replace(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g, '')),
+    'on ne force pas le paysage');
+  assert.ok(/#tourne/.test(html) && /localStorage[\s\S]{0,60}snake3\.tourne/.test(html),
+    'le conseil de tourner ne s\'affiche qu\'une fois');
+  // Les boutons se serrent : à largeur fixe, un téléphone de 390 points en
+  // poussait deux hors de l'écran.
+  assert.ok(/\.btn \{[\s\S]*?flex: 0 1 72px; min-width: 42px;/.test(html),
+    'les touches doivent pouvoir rétrécir');
 });
 
 test('un appui sur un écran le fait avancer, sans utiliser d\'option', () => {

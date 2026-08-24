@@ -54,6 +54,11 @@ class Partie {
     this.game_over_flag = false;
     this.finie = false;               // après l'explosion complète de la queue
     this.pieu = false;
+    // Le compteur du tableau de bord (pack de Frutisnake) : il ne sert à rien
+    // au jeu, il est là comme le `__nf` que scripts/patch-snake3-hud.js injecte
+    // dans le SWF — au même endroit, eat_fruit, la seule porte par laquelle un
+    // fruit est avalé (contact, Langue ou Potion noire).
+    this.nbFruits = 0;
 
     this.fbarre = 0;
     // Game.as : `Pile.counter = 0` et `Sonnette.activated = false` — les
@@ -333,6 +338,7 @@ class Partie {
   }
 
   eat_fruit(f) {
+    this.nbFruits++;
     this.call_on_eat(f);
     this.evenement('son', { nom: this.hasard(2) === 0 ? 'glurps' : 'glurps_2' });
 

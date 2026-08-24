@@ -15,7 +15,23 @@
   deux zones de virage en bas, le turbo et l'option à droite.
 
   ?sid= pour la persistance plateforme (collection de fruits, record,
-  préférences, score au classement).
+  préférences, score au classement, et le pack de Frutisnake).
+
+  La scène fait 700×480 — un format PAYSAGE. La page se replie donc selon la
+  forme de la fenêtre :
+
+    · PAYSAGE (téléphone tourné, ou bureau) : le jeu est bridé par la HAUTEUR,
+      il reste du vide sur les côtés. Les commandes s'y installent en colonnes,
+      une par pouce, et le jeu prend toute la hauteur — c'est la disposition la
+      plus généreuse (sur un 852×393 : jeu à 82 % contre 56 % en portrait).
+    · PORTRAIT : le jeu est bridé par la LARGEUR et laisse une grande bande
+      libre dessous ; les commandes s'y rangent en ligne, et le tableau de bord
+      du pack en bandeau juste au-dessus.
+
+  On ne FORCE pas le paysage : screen.orientation.lock() n'existe pas sur iOS
+  et n'agit ailleurs qu'en plein écran — impossible depuis le cadre de /light.
+  Le portrait reste donc pleinement jouable, et un bandeau discret propose une
+  fois de tourner le téléphone.
 -->
 <style>
   @font-face { font-family: 'Alba'; src: url('/snake3/fontes/alba.woff') format('woff'); font-display: block; }
@@ -34,51 +50,148 @@
     user-select: none; -webkit-user-select: none;
     font-family: Verdana, Arial, sans-serif;
   }
+
+  /* ── PORTRAIT (et le défaut) : tout en colonne ─────────────────────────
+     le jeu, le tableau de bord du pack, puis les commandes. Le jeu est bridé
+     par la LARGEUR et laisse une grande bande libre dessous : les deux autres
+     s'y installent. */
   #tout {
     position: fixed; inset: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 8px;
-    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
     box-sizing: border-box;
   }
   #aire {
-    flex: 1 1 auto; min-height: 0; width: 100%;
+    flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%;
     display: flex; align-items: center; justify-content: center;
   }
   canvas { display: block; image-rendering: auto; }
 
-  /* La manette : n'apparaît qu'au doigt (pointer coarse). */
-  #manette { display: none; width: 100%; box-sizing: border-box; padding: 0 12px 10px; }
-  @media (pointer: coarse) { #manette { display: flex; gap: 10px; justify-content: space-between; } }
-  .bloc { display: flex; gap: 10px; }
+  /* ── Les commandes : seulement au doigt (pointer coarse) ───────────────
+     Les boutons ont une taille de confort mais SE SERRENT quand l'écran est
+     étroit (flex-shrink) : à 74 px fixes, un téléphone de 390 points en
+     poussait deux hors de l'écran. */
+  #commandes { display: none; width: 100%; box-sizing: border-box; padding: 0 8px 8px;
+               gap: 6px; justify-content: space-between; align-items: flex-end; }
+  @media (pointer: coarse) { #commandes { display: flex; } }
+  .cote { display: flex; gap: 6px; align-items: flex-end; min-width: 0; }
+  .bloc { display: flex; gap: 6px; min-width: 0; }
   .btn {
-    width: 74px; height: 64px;
+    flex: 0 1 72px; min-width: 42px; height: 62px;
     border: 2px solid #4c7f1f; border-radius: 12px;
     background: #8fce43; color: #1c3a08;
     font: bold 15px Verdana, sans-serif;
     display: flex; align-items: center; justify-content: center;
+    overflow: hidden; white-space: nowrap;
     touch-action: none;
   }
   .btn:active, .btn.presse { background: #cdeb8f; }
-  #b-pause { width: 56px; height: 40px; font-size: 12px; }
+  #b-pause { flex: 0 1 54px; min-width: 40px; height: 38px; font-size: 12px; }
+
+  /* ── Le tableau de bord du pack de Frutisnake ──────────────────────────
+     Repris trait pour trait du disque Flash (game-popup.html) : fond #83CA22,
+     bordure blanche, intitulés en Verdana gras, valeurs tracées à la police
+     Alba du portail. Invisible — et sans place occupée — tant que pack.js ne
+     l'a pas monté : le joueur n'a pas forcément l'article. */
+  #pack { display: none; box-sizing: border-box; width: 100%; padding: 5px 6px 6px; gap: 6px;
+          background: #83CA22; border: 2px solid #fff; color: #fff;
+          font: bold 11px Verdana, Geneva, sans-serif; user-select: none; }
+  #pack.pk-actif { display: flex; }
+  #pack .pk-defs { position: absolute; width: 0; height: 0; }
+  #pack .pk-ligne { flex: 1 1 0; min-width: 0; }
+  #pack .pk-lab { text-align: center; letter-spacing: .2px; line-height: 1.2;
+                  text-shadow: 0 1px 0 rgba(0, 0, 0, .15); }
+  /* Le bandeau du portrait n'a que soixante-dix points par case : intitulés
+     abrégés. La colonne (paysage, bureau) reprend ceux du disque. */
+  #pack .pk-long { display: none; }
+  #pack .pk-case { position: relative; height: 28px; margin-top: 2px; }
+  #pack .pk-pastille { position: absolute; left: 0; right: 0; top: 8px; height: 12px;
+                       background: #fff; border-radius: 6px; }
+  #pack .pk-val { position: absolute; inset: 0; display: flex; align-items: center;
+                  justify-content: flex-end; padding-right: 2px; }
+  #pack .pk-num { display: block; height: 28px; max-width: 100%; }
+  #pack .pk-num g { fill: url(#pk-alba); stroke: #fff; stroke-width: 95;
+                    stroke-linejoin: round; paint-order: stroke fill; }
+  #pack .pk-repli { font: bold 24px Verdana, Geneva, sans-serif; color: #E46A6A;
+                    -webkit-text-stroke: 2px #fff; paint-order: stroke fill; }
+  /* Une tablette en portrait a la place des intitulés complets. */
+  @media (orientation: portrait) and (min-width: 700px) {
+    #pack .pk-long { display: inline; }
+    #pack .pk-court { display: none; }
+  }
+
+  /* ── PAYSAGE : le jeu est bridé par la HAUTEUR ─────────────────────────
+     Les commandes passent sur les côtés — une colonne par pouce — et le jeu
+     prend toute la hauteur. Le tableau de bord se glisse dans le vide qui
+     reste à droite : sur un écran assez large il ne coûte rien au jeu.
+     `display: contents` sort les deux côtés de leur boîte pour qu'ils
+     deviennent, eux aussi, des colonnes de #tout. */
+  @media (orientation: landscape) {
+    #tout { flex-direction: row; gap: 6px; }
+    #aire { width: auto; height: 100%; order: 5; }
+    .cote { height: 100%; flex-direction: column; justify-content: center; padding: 0 6px; }
+    .cote .bloc { flex-direction: column; }
+    #cote-gauche { order: 0; }
+    #cote-droit { order: 9; }
+    .btn { flex: 0 0 auto; width: 66px; height: 58px; }
+    #b-pause { width: 66px; height: 34px; }
+    #pack { flex-direction: column; width: 128px; padding: 6px 7px 8px; gap: 0;
+            order: 7; align-self: center; }
+    #pack .pk-ligne { flex: 0 0 auto; margin-bottom: 6px; }
+    #pack .pk-ligne:last-child { margin-bottom: 0; }
+    #pack .pk-long { display: inline; }
+    #pack .pk-court { display: none; }
+  }
+  @media (orientation: landscape) and (pointer: coarse) { #commandes { display: contents; } }
+  /* Un paysage court (téléphone étroit tourné) n'a pas de quoi loger la
+     colonne du tableau de bord sans rogner le jeu : on la replie. */
+  @media (orientation: landscape) and (max-width: 759px) {
+    #pack.pk-actif { display: none; }
+  }
+  /* ── Le conseil de tourner le téléphone ────────────────────────────────
+     Une seule fois, en portrait et au doigt : forcer le paysage n'est pas
+     possible (screen.orientation.lock n'existe pas sur iOS et n'agit ailleurs
+     qu'en plein écran, hors de portée depuis le cadre de /light). En absolu
+     et non en fixe : la page ne défile pas (body overflow hidden), et le
+     positionnement fixe a de mauvaises surprises dans un cadre. */
+  #tourne {
+    display: none; position: absolute; z-index: 5;
+    left: 10px; right: 10px; top: calc(10px + env(safe-area-inset-top));
+    padding: 9px 12px; border-radius: 10px; border: 2px solid #4c7f1f;
+    background: rgba(255, 255, 255, .93); color: #1c3a08;
+    font: bold 12px Verdana, sans-serif; text-align: center; line-height: 1.35;
+  }
+  @media (orientation: portrait) and (pointer: coarse) { #tourne.montre { display: block; } }
 </style>
 </head>
 <body>
 <div id="tout">
   <div id="aire"><canvas id="scene" width="700" height="480"></canvas></div>
-  <div id="manette">
-    <div class="bloc">
-      <div class="btn" data-touche="gauche">&#8630;</div>
-      <div class="btn" data-touche="droite">&#8631;</div>
+  <!-- Le tableau de bord du pack de Frutisnake ; rempli par pack.js, et
+       seulement si le joueur possède l'article. -->
+  <div id="pack"></div>
+  <!-- Les commandes, en deux côtés : un par pouce. En portrait elles font une
+       ligne sous le jeu, en paysage deux colonnes de part et d'autre. -->
+  <div id="commandes">
+    <div class="cote" id="cote-gauche">
+      <div class="bloc">
+        <div class="btn" data-touche="gauche">&#8630;</div>
+        <div class="btn" data-touche="droite">&#8631;</div>
+      </div>
+      <div class="bloc"><div class="btn" id="b-pause" data-touche="echap">pause</div></div>
     </div>
-    <div class="bloc"><div class="btn" id="b-pause" data-touche="echap">pause</div></div>
-    <div class="bloc">
-      <div class="btn" data-touche="bas">&#8595;</div>
-      <div class="btn" data-touche="espace">option</div>
-      <div class="btn" data-touche="haut">turbo</div>
+    <div class="cote" id="cote-droit">
+      <div class="bloc">
+        <div class="btn" data-touche="bas">&#8595;</div>
+        <div class="btn" data-touche="espace">option</div>
+        <div class="btn" data-touche="haut">turbo</div>
+      </div>
     </div>
   </div>
 </div>
+<div id="tourne">Tourne ton téléphone : Frutisnake est bien plus grand en paysage.</div>
 
 <script src="/snake3/const.js"></script>
 <script src="/snake3/serpent.js"></script>
@@ -92,13 +205,14 @@
 <script src="/snake3/rendu.js"></script>
 <script src="/snake3/menu.js"></script>
 <script src="/snake3/encyclo.js"></script>
+<script src="/snake3/pack.js"></script>
 <script src="/snake3/game.js"></script>
 <script>
 (function () {
   'use strict';
   // La manette écrit dans un objet partagé que le jeu lit chaque image.
   var pad = {};
-  document.querySelectorAll('#manette .btn').forEach(function (b) {
+  document.querySelectorAll('#commandes .btn').forEach(function (b) {
     var touche = b.dataset.touche;
     var poser = function (v, ev) {
       ev.preventDefault();
@@ -111,7 +225,26 @@
     b.addEventListener('pointerleave', function (ev) { if (pad[touche]) poser(false, ev); });
   });
 
-  window.demarrerFrutisnake({ canvas: 'scene', pad: pad });
+  // Le conseil de tourner le téléphone : une fois par appareil, quelques
+  // secondes, et il s'efface au premier appui. La feuille de style le garde
+  // invisible ailleurs qu'en portrait tactile — le tourner le fait donc
+  // disparaître de lui-même, ce qui est exactement ce qu'on demande.
+  var banniere = document.getElementById('tourne');
+  try {
+    if (!localStorage.getItem('snake3.tourne')) {
+      banniere.classList.add('montre');
+      var cacher = function () {
+        banniere.classList.remove('montre');
+        try { localStorage.setItem('snake3.tourne', '1'); } catch (e) {}
+      };
+      banniere.addEventListener('pointerdown', cacher);
+      setTimeout(cacher, 7000);
+    }
+  } catch (e) { /* stockage refusé : pas de conseil, pas de gêne */ }
+
+  window.demarrerFrutisnake({ canvas: 'scene', pad: pad }).then(function (jeu) {
+    return window.SnakePack.monter(jeu, document.getElementById('pack'));
+  });
 })();
 </script>
 </body>

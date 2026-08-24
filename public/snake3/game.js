@@ -199,6 +199,7 @@ class VuePartie {
     this.ecran = null;                // l'écran par-dessus (sauvegarde, gameOver…)
     this.scoreMc = new D.Nombre('chiffresVert');
     this.finie = false;
+    this.chrono = 0;                  // secondes de jeu (hors pause, hors mort)
 
     const sons = jeu.sons;
     sons.setVolume(C.CHANNEL_MUSIC_2, 0);
@@ -327,6 +328,12 @@ class VuePartie {
     const partie = this.partie;
     partie.entree = this.jeu.entreesPartie();
     partie.main(tmod, deltaT);
+
+    // Le chronomètre du tableau de bord (pack de Frutisnake). Le jeu ne compte
+    // pas le temps : c'est la page qui le fait, dans le SWF comme ici. Ni la
+    // pause ni ce qui suit la mort ne sont comptés — le chrono se fige alors
+    // sur la durée de la partie.
+    if (!partie.pause && !partie.game_over_flag) this.chrono += deltaT;
 
     if (this.trouFx) {
       this.trouFx.main(tmod);
@@ -592,6 +599,7 @@ class Jeu {
     this.touches = new Set();
     this.pointeur = { x: 0, y: 0, bas: false };
     this.tapOption = 0;               // le reste d'un appui « utiliser l'option »
+    this.surImage = null;             // le tableau de bord du pack, s'il est monté
 
     this.musique = true;
     this.bruitages = true;
@@ -613,6 +621,30 @@ class Jeu {
   // la touche soit vue enfoncée puis relâchée.
   impulsionOption() { this.tapOption = 0.12; }
   toucheEnfoncee(code) { return this.touches.has(code); }
+
+  // Le relevé du tableau de bord (pack de Frutisnake), null hors partie. Ce
+  // sont les cinq mêmes valeurs que le pont fpSnakeHud remonte du SWF patché
+  // (scripts/patch-snake3-hud.js) — ici on les lit directement du moteur.
+  //
+  // `bonus` est le temps du DERNIER slot : add_slot() empile par la tête les
+  // options activables (ciseaux, langue, bombe) et par la queue les autres,
+  // c'est-à-dire précisément les TimedSlot qui portent une minuterie. Un
+  // ciseau en main n'en a pas — d'où le 00:00 affiché.
+  releve() {
+    const vue = this.mode && this.mode.partie ? this.mode : null;
+    const p = vue && vue.partie;
+    if (!p) return null;
+    const dernier = p.slots[p.slots.length - 1];
+    const t = dernier ? Number(dernier.time) : 0;
+    return {
+      longueur: p.serpent.len | 0,
+      fruits: p.nbFruits | 0,
+      dynamites: window.SnakeBonus.Pile.counter | 0,
+      bonus: (isFinite(t) && t > 0) ? t : 0,
+      chrono: vue.chrono,
+      pause: !!p.pause,
+    };
+  }
 
   // Manager.onServiceConnect — les préférences chargées s'appliquent par la
   // bascule (music part « à l'envers » puis toggleMusic la remet).
@@ -723,6 +755,13 @@ class Jeu {
   demarrer() {
     this.redimensionner();
     window.addEventListener('resize', () => this.redimensionner());
+    // La mise en page bouge aussi sans que la fenêtre change de taille : le
+    // téléphone qu'on tourne (portrait/paysage n'ont pas la même disposition),
+    // le tableau de bord du pack qui s'ajoute, le panneau de /light qu'on
+    // redimensionne. On suit donc l'aire de jeu elle-même.
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => this.redimensionner()).observe(this.canvas.parentElement);
+    }
 
     window.addEventListener('keydown', (ev) => {
       const code = ev.keyCode || ev.which;
@@ -779,6 +818,8 @@ class Jeu {
       ctx.fillStyle = '#ade76b';
       ctx.fillRect(0, 0, C.WIDTH, C.HEIGHT);
       if (this.mode && this.mode.dessiner) this.mode.dessiner(ctx);
+      // Le tableau de bord du pack, s'il est monté (pack.js).
+      if (this.surImage) this.surImage();
 
       requestAnimationFrame(cadre);
     };
@@ -793,6 +834,11 @@ class Jeu {
     // Le tampon couvre les pixels PHYSIQUES (échelle × devicePixelRatio) —
     // la netteté des autres portages light.
     this.nettete = this.echelle * (window.devicePixelRatio || 1);
+    // Rien n'a bougé : ne pas toucher au canvas (le redimensionner l'effacerait
+    // et jetterait tout le cache de rastérisation). L'observateur ci-dessous
+    // rappelle cette méthode à chaque remaniement de la mise en page.
+    if (this.canvas.width === Math.round(C.WIDTH * this.nettete)
+      && this.canvas.height === Math.round(C.HEIGHT * this.nettete)) return;
     this.canvas.width = Math.round(C.WIDTH * this.nettete);
     this.canvas.height = Math.round(C.HEIGHT * this.nettete);
     this.canvas.style.width = Math.round(C.WIDTH * this.echelle) + 'px';

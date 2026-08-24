@@ -41,6 +41,9 @@ class Plateforme {
     this.prefs = { $music: true, $sounds: true, $keys: C.DEFAULT_KEYS.slice() };
     this.charge = false;              // slot 0 lu (ou compte neuf) : droit d'écrire
     this.pseudo = null;
+    // Les options de confort achetées en boutique. `snake3Hud` est le « pack
+    // de Frutisnake » (article 40, 300 kikooz) : le tableau de bord de partie.
+    this.options = {};
   }
 
   // SnakeClient.serviceConnect + onServiceConnect.
@@ -53,6 +56,10 @@ class Plateforme {
     const profil = fetch('/api/light/profile?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((p) => { if (p && p.username) this.pseudo = p.username; })
+      .catch(() => {});
+    const options = fetch('/api/features?sid=' + encodeURIComponent(this.sid), { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && j.features) this.options = j.features; })
       .catch(() => {});
     const slots = fetch('/api/loadFrutiSlots?sid=' + encodeURIComponent(this.sid) + '&game=snake3',
       { cache: 'no-store' })
@@ -89,7 +96,7 @@ class Plateforme {
         }
       })
       .catch(() => { this.charge = false; });
-    return Promise.all([profil, slots]).then(() => this);
+    return Promise.all([profil, options, slots]).then(() => this);
   }
 
   // SnakeClient.onSaveScore — la collection et le record, slot 0.
