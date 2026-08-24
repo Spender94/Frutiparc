@@ -479,6 +479,26 @@ const Oeil = {
 };
 
 // ── 19. Bombe — posée à la tête, souffle la queue autour d'elle ───────────
+// Où une bombe posée en (x, y) COUPERAIT le serpent : l'indice, compté DEPUIS
+// LA TÊTE, du premier segment dans le rayon mortel. La queue est rangée du plus
+// ancien au plus récent, `q[l - i*5 - 3]` remonte donc depuis la tête.
+// Rend `len` si aucun segment n'y est — la bombe ne mordrait pas ; sous 2, la
+// tête elle-même y est : c'est la mort.
+//
+// Sorti de Bombe.explose parce que l'assistant de bombe du pack le rejoue à
+// chaque image pour dessiner le danger : les deux ne doivent pas diverger.
+function coupureBombe(serpent, x, y) {
+  const q = serpent.queue;
+  const l = q.length;
+  let i;
+  for (i = 1; i < serpent.len; i++) {
+    const p = q[Math.max(0, l - i * 5 - 3)];
+    const d = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
+    if (d < C.RAYON_BOMBE * C.RAYON_BOMBE) break;
+  }
+  return i;
+}
+
 class Bombe extends Slot {
   constructor(game) {
     super(game, 13);
@@ -488,14 +508,7 @@ class Bombe extends Slot {
 
   explose() {
     const game = this.game;
-    const q = game.serpent.queue;
-    const l = q.length;
-    let i;
-    for (i = 1; i < game.serpent.len; i++) {
-      const p = q[Math.max(0, l - i * 5 - 3)];
-      const d = (p.x - this.x) * (p.x - this.x) + (p.y - this.y) * (p.y - this.y);
-      if (d < 160 * 160) break;
-    }
+    const i = coupureBombe(game.serpent, this.x, this.y);
     const di = Math.trunc(i / 3);
     while (i < game.serpent.len) {
       game.serpent.explode(0xFFFFFF);
@@ -934,7 +947,7 @@ class PotionFuca extends TimedSlot {
 }
 
 const API = {
-  Slot, TimedSlot,
+  Slot, TimedSlot, coupureBombe,
   Ciseaux, Langue, Coffre, PotionRouge, Steroids, Bague, PotionBleue,
   PotionRose, PotionViolette, Ressort, Rondelle, Inverseur, PotionNoire,
   Canne, Molecule, Oeil, Bombe, PotionVerte, Plume, FlecheBleue, FlecheRouge,

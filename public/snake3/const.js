@@ -118,6 +118,10 @@ C.TIME_POTIONNOIRE = 30;
 C.TIME_POTIONFUCA = 60;
 C.TIME_PIEU = 30;
 C.TIME_BOMBE = 5;
+// Le rayon mortel d'une bombe. Il n'est pas dans Const.as : Bombe.as l'écrit
+// en clair (`if( d < 160*160 )`). Il est nommé ici parce que l'assistant de
+// bombe du pack le DESSINE — les deux doivent parler du même cercle.
+C.RAYON_BOMBE = 160;
 
 // Const.fruit_points — la table qui fait toute l'économie du jeu.
 C.fruit_points = function (id) {

@@ -34,15 +34,24 @@
 const sousNode = (typeof module !== 'undefined' && module.exports);
 const C = sousNode ? require('./const.js') : racine.SnakeConst;
 
-// Les cinq relevés du disque, avec l'abrégé des dispositions serrées : une
-// colonne de cent-soixante points ne loge pas « Durée bonus en cours ».
+// Les cinq relevés, avec l'abrégé des dispositions serrées : une colonne de
+// cent-soixante points ne loge pas « Durée bonus en cours ».
+//
+// Quatre viennent du disque Flash. Le cinquième, la VITESSE, remplace sa
+// « durée de la partie » : Frutisnake n'a pas de chronomètre à battre, savoir
+// qu'on joue depuis trois minutes n'aide à rien — alors que l'allure du
+// serpent, qui monte toute la partie et triple sous turbo, se joue.
+// Elle est donnée en indice, cent valant l'allure de départ.
 const LIGNES = [
   { cle: 'longueur', titre: 'Longueur', court: 'Longueur' },
   { cle: 'fruits', titre: 'Fruits avalés', court: 'Fruits' },
   { cle: 'dynamites', titre: 'Dynamites', court: 'Dynamites' },
   { cle: 'bonus', titre: 'Durée bonus en cours', court: 'Bonus' },
-  { cle: 'chrono', titre: 'Durée de la partie', court: 'Partie' },
+  { cle: 'vitesse', titre: 'Vitesse', court: 'Vitesse' },
 ];
+// Le bandeau du portrait tient sur DEUX rangées : trois compteurs puis les
+// deux mesures, plutôt que cinq cases étroites côte à côte.
+const RANGEES = [3, 2];
 
 // Les mesures, en points de scène (la scène du jeu fait 700×480).
 const VERT = '#83ca22';                // l'aplat de backgroundBord.svg
@@ -50,11 +59,11 @@ const BLANC = '#ffffff';
 const LISERE = 2;                      // le liseré du décor, deux points
 const MARGE = 10;
 const ENTRE = 8;                       // entre deux cases
-// Le bandeau du portrait reste un LISERÉ d'instruments : en deçà de 96 points
-// les chiffres ne se lisent plus, au-delà de 130 il prendrait au jeu la place
-// qui lui revient (la scène du jeu en fait 480).
-const H_MIN = 96;
-const H_MAX = 130;
+// Le bandeau du portrait tient sur deux rangées : en deçà de 168 points les
+// chiffres ne se lisent plus, au-delà de 224 il prendrait au jeu la place qui
+// lui revient (la scène du jeu en fait 480).
+const H_MIN = 168;
+const H_MAX = 224;
 const L_COLONNE = 168;
 const DEGRADE = ['#E7A8A8', '#E46A6A'];
 
@@ -67,13 +76,13 @@ function mmss(sec) {
 // Les cinq valeurs à afficher. Hors partie elles sont à zéro : le panneau ne
 // disparaît jamais, sa place est prise dans la scène une fois pour toutes.
 function valeurs(r) {
-  if (!r) return { longueur: '0', fruits: '0', dynamites: '0', bonus: '00:00', chrono: '00:00' };
+  if (!r) return { longueur: '0', fruits: '0', dynamites: '0', bonus: '00:00', vitesse: '100' };
   return {
     longueur: String(r.longueur),
     fruits: String(r.fruits),
     dynamites: String(r.dynamites),
     bonus: mmss(Math.ceil(r.bonus)),
-    chrono: mmss(r.chrono),
+    vitesse: String(r.vitesse),
   };
 }
 
@@ -135,10 +144,19 @@ class Pack {
         this.cellule(ctx, x0, y0 + i * (c + ENTRE), l, c, ligne, v[ligne.cle]);
       });
     } else {
-      // Cinq cases côte à côte, sous la frutibarre.
-      const c = (l - 4 * ENTRE) / 5;
-      LIGNES.forEach((ligne, i) => {
-        this.cellule(ctx, x0 + i * (c + ENTRE), y0, c, haut, ligne, v[ligne.cle]);
+      // Deux rangées sous la frutibarre : les trois compteurs, puis les deux
+      // mesures, centrées sous eux. Toutes les cases ont la même largeur —
+      // celle d'un tiers de bandeau — pour rester alignées.
+      const hr = (haut - ENTRE) / RANGEES.length;
+      const lc = (l - (RANGEES[0] - 1) * ENTRE) / RANGEES[0];
+      let k = 0;
+      RANGEES.forEach((n, r) => {
+        const xr = x0 + (l - (n * lc + (n - 1) * ENTRE)) / 2;
+        for (let j = 0; j < n; j++, k++) {
+          const ligne = LIGNES[k];
+          this.cellule(ctx, xr + j * (lc + ENTRE), y0 + r * (hr + ENTRE),
+            lc, hr, ligne, v[ligne.cle]);
+        }
       });
     }
     ctx.restore();

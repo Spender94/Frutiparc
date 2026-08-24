@@ -199,7 +199,6 @@ class VuePartie {
     this.ecran = null;                // l'écran par-dessus (sauvegarde, gameOver…)
     this.scoreMc = new D.Nombre('chiffresVert');
     this.finie = false;
-    this.chrono = 0;                  // secondes de jeu (hors pause, hors mort)
 
     const sons = jeu.sons;
     sons.setVolume(C.CHANNEL_MUSIC_2, 0);
@@ -239,7 +238,12 @@ class VuePartie {
         if (e) e.disparait = true;
         break;
       }
-      case 'bombePosee': this.bombes.push({ x: d.x, y: d.y, frame: 1, explose: false }); break;
+      // `meche` recopie le compte à rebours que Bombe.use tient dans sa
+      // fermeture : même départ, même deltaT, donc jamais un écart. Il sert à
+      // l'assistant de bombe du pack (l'arc qui se vide sur le cercle).
+      case 'bombePosee':
+        this.bombes.push({ x: d.x, y: d.y, frame: 1, explose: false, meche: C.TIME_BOMBE });
+        break;
       case 'bombeExplose': {
         const b = this.bombes.find((v) => v.x === d.x && v.y === d.y && !v.explose);
         if (b) { b.explose = true; b.frame = 2; }
@@ -332,12 +336,6 @@ class VuePartie {
     partie.entree = this.jeu.entreesPartie();
     partie.main(tmod, deltaT);
 
-    // Le chronomètre du tableau de bord (pack de Frutisnake). Le jeu ne compte
-    // pas le temps : c'est la page qui le fait, dans le SWF comme ici. Ni la
-    // pause ni ce qui suit la mort ne sont comptés — le chrono se fige alors
-    // sur la durée de la partie.
-    if (!partie.pause && !partie.game_over_flag) this.chrono += deltaT;
-
     if (this.trouFx) {
       this.trouFx.main(tmod);
       if (this.trouFx.z < 3) this.trouFx = null;
@@ -357,6 +355,8 @@ class VuePartie {
       if (b.explose) {
         b.frame += deltaT * C.WANTED_FPS;
         if (b.frame > 22) b.mort = true;
+      } else {
+        b.meche -= deltaT;
       }
     }
     this.bombes = this.bombes.filter((b) => !b.mort);
@@ -396,6 +396,10 @@ class VuePartie {
       ctx.drawImage(champ.c, n.corner.x, n.corner.y, n.width, n.height);
     }
 
+    // L'assistant de bombe du pack : l'empreinte du souffle, au sol, sous
+    // tout le reste.
+    if (jeu.pack) R.dessinerZoneBombe(ctx, partie, this.bombes);
+
     // Le terrier du départ, qui se referme (PLAN_FRUITSHADE).
     if (this.trouFx) {
       const k = this.trouFx.z / 100;
@@ -425,7 +429,9 @@ class VuePartie {
       R.dessinerTete(ctx, s, 3);
     }
 
-    // Le serpent du joueur.
+    // Le serpent du joueur, précédé du halo de l'assistant sur la portion de
+    // queue qu'une bombe emporterait.
+    if (jeu.pack) R.dessinerQueueCondamnee(ctx, partie.serpent, this.bombes);
     R.dessinerSerpent(ctx, partie.serpent, jeu.tmod, jeu.temps());
     R.dessinerTete(ctx, partie.serpent, partie.serpent.tete_frame);
 
@@ -645,7 +651,13 @@ class Jeu {
       fruits: p.nbFruits | 0,
       dynamites: window.SnakeBonus.Pile.counter | 0,
       bonus: (isFinite(t) && t > 0) ? t : 0,
-      chrono: vue.chrono,
+      // Snake.move avance de `speed · base_speed` pixels par image : la vitesse
+      // est donc parfaitement mesurable. On la donne en INDICE, cent valant
+      // l'allure de départ (SNAKE_DEFAULT_SPEED) — un nombre de pixels par
+      // seconde ne dirait rien au joueur. Le turbo la triple, et le jeu
+      // l'augmente tout seul d'un millième d'image en image : l'indice monte
+      // doucement toute la partie, ce qui est justement l'information utile.
+      vitesse: Math.round(p.serpent.speed * p.serpent.base_speed / C.SNAKE_DEFAULT_SPEED * 100),
       pause: !!p.pause,
     };
   }

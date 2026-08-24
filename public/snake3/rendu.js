@@ -18,6 +18,7 @@
 const sousNode = (typeof module !== 'undefined' && module.exports);
 const C = sousNode ? require('./const.js') : racine.SnakeConst;
 const D = sousNode ? require('./dessin.js') : racine.SnakeDessin;
+const B = sousNode ? require('./bonus.js') : racine.SnakeBonus;
 
 const rgb = (n) => '#' + (n & 0xFFFFFF).toString(16).padStart(6, '0');
 
@@ -297,9 +298,130 @@ function teinter(ctx, cle, frame, x, y, k, couleur, film) {
   ctx.restore();
 }
 
+// ── L'assistant de bombe (pack de Frutisnake) ─────────────────────────────
+//
+// Une bombe posée coupe le serpent au PREMIER segment (depuis la tête) qui
+// entre dans son rayon de 160 px — tout ce qui est derrière part, et si c'est
+// la tête qui y est, c'est la mort. Rien à l'écran ne le disait : la mèche
+// brûle cinq secondes et on découvre le résultat.
+//
+// L'assistant montre les deux choses qui manquent, dans le vocabulaire du
+// jeu (aplats cernés de blanc, couleurs tirées de ses propres dessins) :
+//   · le CERCLE du souffle, posé au sol comme une empreinte, avec l'arc de la
+//     mèche qui se vide dessus — l'où et le quand dans une seule forme ;
+//   · le HALO sur la portion de queue qui serait emportée, juste sous le
+//     serpent, qui dit d'un coup d'œil ce qu'on va perdre.
+// Trois états : blanc tant que rien n'est menacé, jaune (celui de l'étincelle
+// de la dynamite) quand la queue va être coupée, rouge (celui de la potion
+// rouge) et battement rapide quand la tête est dans le cercle.
+const ASSIST = {
+  sur: { trait: '#ffffff', voile: 'rgba(255,255,255,0.10)' },
+  queue: { trait: '#ffcc00', voile: 'rgba(255,204,0,0.16)' },
+  mort: { trait: '#cc0000', voile: 'rgba(204,0,0,0.20)' },
+};
+
+// Le niveau de danger d'une bombe, maintenant : 0 rien, 1 la queue, 2 la tête.
+function dangerBombe(serpent, x, y) {
+  const coupe = B.coupureBombe(serpent, x, y);
+  return { coupe, niveau: coupe < 2 ? 2 : (coupe < serpent.len ? 1 : 0) };
+}
+
+// L'empreinte au sol : à poser AVANT le serpent et les objets. Elle est
+// DÉCOUPÉE AU TERRAIN — c'est une marque peinte sur le sol, elle n'a rien à
+// faire sur le cadre ni sur la frutibarre.
+function dessinerZoneBombe(ctx, partie, bombes) {
+  const serpent = partie.serpent;
+  const n = partie.niveau;
+  for (const b of bombes) {
+    if (b.explose) continue;
+    const d = dangerBombe(serpent, b.x, b.y);
+    const t = d.niveau === 2 ? ASSIST.mort : (d.niveau === 1 ? ASSIST.queue : ASSIST.sur);
+    // Le battement s'accélère avec le danger et à mesure que la mèche brûle.
+    const reste = Math.max(0, Math.min(1, (b.meche || 0) / C.TIME_BOMBE));
+    const cadence = 3 + (1 - reste) * 5 + d.niveau * 3;
+    const battement = 0.72 + 0.28 * Math.sin((C.TIME_BOMBE - reste * C.TIME_BOMBE) * cadence);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(n.corner.x, n.corner.y, n.width, n.height);
+    ctx.clip();
+    ctx.globalAlpha = battement;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, C.RAYON_BOMBE, 0, Math.PI * 2);
+    ctx.fillStyle = t.voile;
+    ctx.fill();
+    // L'ÉTENDUE en pointillé (le liseré blanc du jeu, puis la couleur), le
+    // TEMPS en trait plein : deux informations, deux traits qu'on ne confond
+    // pas d'un coup d'œil.
+    ctx.lineCap = 'butt';
+    ctx.setLineDash([15, 11]);
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = t.trait;
+    ctx.stroke();
+    // L'arc de la mèche se vide dans le sens des aiguilles, depuis le haut.
+    if (reste > 0) {
+      ctx.setLineDash([]);
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, C.RAYON_BOMBE, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * reste);
+      ctx.lineWidth = 10;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+      ctx.lineWidth = 5.5;
+      ctx.strokeStyle = t.trait;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// Le halo sur la portion condamnée : à poser JUSTE AVANT le serpent, pour
+// qu'il déborde de lui comme une lueur.
+function dessinerQueueCondamnee(ctx, serpent, bombes) {
+  const q = serpent.queue;
+  const l = q.length;
+  if (serpent.len <= 0 || l === 0) return;
+  // Plusieurs bombes peuvent brûler : c'est la plus mordante qui décide.
+  let coupe = serpent.len, niveau = 0;
+  for (const b of bombes) {
+    if (b.explose) continue;
+    const d = dangerBombe(serpent, b.x, b.y);
+    if (d.coupe < coupe) { coupe = d.coupe; niveau = d.niveau; }
+  }
+  if (niveau === 0) return;
+  const t = niveau === 2 ? ASSIST.mort : ASSIST.queue;
+  // La même marche que draw_queue : i = len à la tête, 1 à la queue, un point
+  // tous les cinq échantillons. La portion emportée va de la queue à `coupe`.
+  const scale = Math.min(10, serpent.len + 3) / 10;
+  const ss = scale * 15 / serpent.len;
+  const point = (i) => q[Math.max(0, l - 6 - 5 * (serpent.len - i))];
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = t.trait;
+  let p = point(1);
+  for (let i = 2; i <= serpent.len - coupe + 1 && i <= serpent.len; i++) {
+    const s = point(i);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(s.x, s.y);
+    ctx.lineWidth = i * ss + 16;      // le serpent fait i·ss+8 : le halo déborde
+    ctx.stroke();
+    p = s;
+  }
+  ctx.restore();
+}
+
 const API = {
   rgb, PopupPoints, Particules, dessinerSerpent, dessinerTete,
   Enrobage, dessinerEnrobe, teinter,
+  dangerBombe, dessinerZoneBombe, dessinerQueueCondamnee, ASSIST,
   ECHELLES_FRUIT, ECHELLES_BONUS,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

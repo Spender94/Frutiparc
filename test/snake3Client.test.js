@@ -630,28 +630,97 @@ test('le relevé du pack donne les cinq mêmes valeurs que le pont du SWF', () =
   assert.strictEqual(jeu.releve().bonus, 0, 'un ciseau n\'a pas de durée');
 });
 
-test('le chronomètre du pack ne compte ni la pause ni l\'après-mort', () => {
-  const w = bacASable();
-  const plateforme = { fruits: {}, record: 0, options: {},
-    prefs: { $music: true, $sounds: true, $keys: null },
-    sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null) };
-  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'), plateforme,
+// ── L'assistant de bombe (pack de Frutisnake) ─────────────────────────────
+//
+// Il ne doit PAS pouvoir mentir : ce qu'il annonce et ce que la bombe fait
+// sortent de la même fonction, et le test le vérifie en faisant réellement
+// exploser la bombe.
+function serpentPose(w, n) {
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'),
+    { fruits: {}, record: 0, options: { snake3Hud: true },
+      prefs: { $music: true, $sounds: true, $keys: null },
+      sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null) },
     new Proxy({}, { get: () => () => false }));
   const vue = new w.SnakeJeu.VuePartie(jeu);
   jeu.mode = vue;
+  const s = vue.partie.serpent;
+  // Une queue écrite à la main : un point tous les 5 px de route, un segment
+  // tous les 5 points — la géométrie de Snake.move.
+  const pts = [];
+  for (let i = 0; i < n * 5 + 12; i++) pts.push({ x: 40 + i * 5, y: 240 });
+  s.queue = pts;
+  s.len = n;
+  s.x = pts[pts.length - 1].x;
+  s.y = pts[pts.length - 1].y;
+  return { jeu, vue, s, pts };
+}
 
-  for (let i = 0; i < 32; i++) vue.main(1, 1 / 32);
-  const apresUneSeconde = vue.chrono;
-  assert.ok(Math.abs(apresUneSeconde - 1) < 1e-9, 'une seconde de jeu : ' + apresUneSeconde);
+test('l\'assistant de bombe annonce EXACTEMENT ce que la bombe fera', () => {
+  const w = bacASable();
+  const R = w.SnakeRendu;
+  const B = w.SnakeBonus;
+  const C = w.SnakeConst;
 
-  vue.partie.pause = true;
-  for (let i = 0; i < 32; i++) vue.main(1, 1 / 32);
-  assert.strictEqual(vue.chrono, apresUneSeconde, 'la pause ne compte pas');
+  // Le serpent est droit : le segment i (depuis la tête) est à 25·i pixels
+  // derrière elle. Une bombe posée sur le segment 8 doit donc couper là.
+  for (const cible of [3, 8, 14]) {
+    const { vue, s, pts } = serpentPose(w, 20);
+    const p = pts[pts.length - cible * 5 - 3];
+    const annonce = R.dangerBombe(s, p.x, p.y);
+    assert.strictEqual(annonce.coupe, B.coupureBombe(s, p.x, p.y));
 
-  vue.partie.pause = false;
-  vue.partie.game_over_flag = true;
-  for (let i = 0; i < 32; i++) vue.main(1, 1 / 32);
-  assert.strictEqual(vue.chrono, apresUneSeconde, 'l\'après-mort ne compte pas');
+    // …et la bombe coupe bien là où l'assistant l'annonçait.
+    const bombe = new B.Bombe(vue.partie);
+    bombe.x = p.x; bombe.y = p.y;
+    const avant = s.len;
+    bombe.explose();
+    assert.strictEqual(s.len, annonce.coupe,
+      `bombe sur le segment ${cible} : ${avant} → ${s.len}, annoncé ${annonce.coupe}`);
+  }
+
+  // Le rayon dessiné est celui du bytecode (Bombe.as : `d < 160*160`).
+  const as = fs.readFileSync(path.join(RACINE, 'Games/snake3/bonus/Bombe.as'), 'utf8');
+  assert.ok(as.includes('d < ' + C.RAYON_BOMBE + '*' + C.RAYON_BOMBE),
+    'C.RAYON_BOMBE doit être le rayon du SWF');
+});
+
+test('les trois états de l\'assistant : sûr, la queue, la mort', () => {
+  const w = bacASable();
+  const R = w.SnakeRendu;
+  const C = w.SnakeConst;
+  const { s } = serpentPose(w, 20);
+
+  // Loin derrière : rien n'entre dans le cercle.
+  const loin = R.dangerBombe(s, s.x - 20 * 25 - C.RAYON_BOMBE * 2, 240);
+  assert.strictEqual(loin.niveau, 0);
+  assert.strictEqual(loin.coupe, s.len, 'aucun segment touché : pas de coupe');
+
+  // À mi-corps : la queue y passe, la tête non.
+  const milieu = R.dangerBombe(s, s.x - 250, 240);
+  assert.strictEqual(milieu.niveau, 1);
+  assert.ok(milieu.coupe > 1 && milieu.coupe < s.len, 'coupe ' + milieu.coupe);
+
+  // Sous la tête : c'est la mort — Bombe.explose appelle game_over sous 2.
+  const sousLaTete = R.dangerBombe(s, s.x, s.y);
+  assert.strictEqual(sousLaTete.coupe, 1);
+  assert.strictEqual(sousLaTete.niveau, 2);
+});
+
+test('l\'assistant ne se dessine que pour qui a le pack', () => {
+  const src = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
+  assert.ok(/if \(jeu\.pack\) R\.dessinerZoneBombe/.test(src),
+    'l\'empreinte au sol est réservée au pack');
+  assert.ok(/if \(jeu\.pack\) R\.dessinerQueueCondamnee/.test(src),
+    'le halo de la queue aussi');
+  // L'empreinte se pose AVANT le serpent (c'est une marque au sol), le halo
+  // JUSTE avant lui (c'est une lueur qui déborde de son tracé).
+  const iZone = src.indexOf('dessinerZoneBombe');
+  const iHalo = src.indexOf('dessinerQueueCondamnee');
+  const iSerpent = src.indexOf('R.dessinerSerpent(ctx, partie.serpent');
+  assert.ok(iZone < iHalo && iHalo < iSerpent, 'ordre des plans');
+  // La mèche dessinée est celle du moteur : même départ, même décompte.
+  assert.ok(/meche: C\.TIME_BOMBE/.test(src) && /b\.meche -= deltaT;/.test(src),
+    'le compte à rebours doit suivre celui de Bombe.use');
 });
 
 test('le compteur de fruits passe par eat_fruit, la seule porte', () => {
@@ -676,10 +745,12 @@ test('le compteur de fruits passe par eat_fruit, la seule porte', () => {
 test('le tableau de bord reprend les cinq lignes et les couleurs du disque', () => {
   const K = require('../public/snake3/pack.js');
   assert.deepStrictEqual(K.LIGNES.map((l) => l.titre),
-    ['Longueur', 'Fruits avalés', 'Dynamites', 'Durée bonus en cours', 'Durée de la partie']);
-  // Les mêmes intitulés que le disque Flash (game-popup.html).
+    ['Longueur', 'Fruits avalés', 'Dynamites', 'Durée bonus en cours', 'Vitesse']);
+  // Quatre viennent du disque Flash (game-popup.html) ; la cinquième, la
+  // vitesse, remplace sa « durée de la partie » — Frutisnake n'a pas de
+  // chronomètre à battre, alors que l'allure du serpent se joue.
   const popup = fs.readFileSync(path.join(RACINE, 'public/game-popup.html'), 'utf8');
-  for (const l of K.LIGNES) {
+  for (const l of K.LIGNES.slice(0, 4)) {
     const echappe = l.titre.replace(/é/g, '\\u00e9');
     assert.ok(popup.includes('"' + echappe + '"') || popup.includes('"' + l.titre + '"'),
       'intitulé absent du disque : ' + l.titre);
@@ -693,10 +764,10 @@ test('le tableau de bord reprend les cinq lignes et les couleurs du disque', () 
   // Hors partie : cinq zéros, jamais un panneau vide (sa place est prise dans
   // la scène une fois pour toutes).
   assert.deepStrictEqual(K.valeurs(null),
-    { longueur: '0', fruits: '0', dynamites: '0', bonus: '00:00', chrono: '00:00' });
+    { longueur: '0', fruits: '0', dynamites: '0', bonus: '00:00', vitesse: '100' });
   assert.deepStrictEqual(
-    K.valeurs({ longueur: 7, fruits: 12, dynamites: 3, bonus: 29.2, chrono: 75 }),
-    { longueur: '7', fruits: '12', dynamites: '3', bonus: '00:30', chrono: '01:15' },
+    K.valeurs({ longueur: 7, fruits: 12, dynamites: 3, bonus: 29.2, vitesse: 214 }),
+    { longueur: '7', fruits: '12', dynamites: '3', bonus: '00:30', vitesse: '214' },
     'la durée d\'un bonus s\'arrondit au-dessus : 29,2 s restantes = 30 s affichées');
 
   // Le panneau se peint DANS le canvas, en prolongement du cadre du jeu : son
@@ -735,11 +806,11 @@ test('le panneau s\'ajoute du côté où le jeu ne se sert de rien', () => {
   assert.strictEqual(serre.h, C.HEIGHT + K.H_MIN - K.LISERE, 'plancher du bandeau');
   const large = pack.scene(393, 3000);      // beaucoup trop de place
   assert.strictEqual(large.h, C.HEIGHT + K.H_MAX - K.LISERE, 'plafond du bandeau');
-  assert.ok(K.H_MAX < C.HEIGHT / 3,
+  assert.ok(K.H_MAX < C.HEIGHT / 2,
     'le bandeau doit rester bien plus petit que le jeu (' + K.H_MAX + ')');
   // Entre les deux, il colle à la place offerte : la scène remplit l'aire.
-  const juste = pack.scene(393, 393 / C.WIDTH * (C.HEIGHT + 120));
-  assert.ok(Math.abs(juste.h - (C.HEIGHT + 120 - K.LISERE)) < 1,
+  const juste = pack.scene(393, 393 / C.WIDTH * (C.HEIGHT + 200));
+  assert.ok(Math.abs(juste.h - (C.HEIGHT + 200 - K.LISERE)) < 1,
     'le bandeau doit épouser la hauteur libre : ' + juste.h);
 });
 
