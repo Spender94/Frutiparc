@@ -418,10 +418,13 @@ ok(Bot.evaluate(carre, 0) > Bot.evaluate(epars, 0),
   "école: 4 fruits en bloc central > 5 fruits éparpillés — le centre avant le matériel");
 
 // La profondeur suit le niveau jusqu'à 6 demi-coups (l'alpha-bêta les paie) :
-// c'est elle qui convertit le bloc en victoires.
-eq(Bot.depthFor(0.45), 2, "école: le bas de la plage reste battable");
-eq(Bot.depthFor(0.9), 5, "école: un bon niveau voit cinq demi-coups");
-eq(Bot.depthFor(0.97), 6, "école: le meilleur niveau en voit six");
+// c'est elle qui convertit le bloc en victoires. L'échelle est un escalier
+// SANS MARCHE MANQUANTE — elle sautait le 4, ce qui laissait un trou entre
+// « se fait rouler » et « voit trop loin pour qu'on s'amuse ».
+eq(Bot.depthFor(0.25), 2, "école: le premier bot rencontré reste battable");
+eq(Bot.depthFor(0.9), 6, "école: le meilleur niveau voit six demi-coups");
+var echelle = [0, 0.2, 0.4, 0.6, 0.8, 1].map(Bot.depthFor);
+eq(echelle.join(","), "2,2,3,4,5,6", "école: l'escalier monte d'un cran à la fois");
 
 // Le draft suit la doctrine : vachette, renfort, célérité, désordre d'abord.
 eq(Bot.chooseDraft([CARD.ENCLUME, CARD.RENFORT], 1.0, seeded(3)), CARD.RENFORT,
@@ -454,6 +457,60 @@ eq(Bot.chooseCardPlay(partieCartes(mk(calme), [CARD.CONFISCATION], []), 0, 1.0, 
 var presse = ["........", ".00....1", ".00....1", ".......1", ".......1", ".......1", ".......1", "........"];
 var des = Bot.chooseCardPlay(partieCartes(mk(presse), [CARD.DESORDRE], []), 0, 1.0, seeded(3));
 ok(des && des.card === CARD.DESORDRE, "école: désordre joué quand l'adversaire est adossé au bord");
+
+// ── L'arme ultime : la première ligne ───────────────────────────────────────
+// « Placer un tas de vos pions au milieu des pions de l'adversaire de manière
+//   à ce que les siens vous entourent. » On ne meurt qu'AU BORD : dans une
+//   ligne tassée c'est l'occupant de la case extrême qui tombe, que la poussée
+//   vienne de lui ou d'en face. Être enterré, c'est leur laisser toutes les
+//   premières lignes.
+var enterre = mk(["11111", "10001", "11111", ".....", "....."]);
+var aBord = Bot.analyse(enterre);
+eq(aBord.bord[0], 0, "arme ultime: enterré au milieu des leurs, aucun front exposé");
+ok(aBord.bord[1] > 0, "arme ultime: ce sont EUX qui tiennent toutes les premières lignes");
+
+// Le COIN est la pire case du plateau : il meurt de DEUX poussées, pas d'une.
+// C'est le seul endroit où l'école du centre seule ne voyait rien — un coin et
+// un bord ont la même marge (zéro) — et où la première ligne tranche.
+var auCoin = mk(["0....", ".....", "..11.", "..11.", "....."]);
+var auBord = mk(["..0..", ".....", "..11.", "..11.", "....."]);
+var cc = Bot.analyse(auCoin), cb = Bot.analyse(auBord);
+eq(cc.bord[0], 2, "arme ultime: le coin compte deux fronts");
+eq(cb.bord[0], 1, "arme ultime: le bord simple n'en compte qu'un");
+eq(cc.blocMarge[0], cb.blocMarge[0], "arme ultime: même marge — l'école du centre ne les départage pas");
+ok(Bot.evaluate(auBord, 0) > Bot.evaluate(auCoin, 0),
+  "arme ultime: à marge égale, le bord simple vaut mieux que le coin");
+
+// ── Un faible rate les nuances, il ne se saborde pas ─────────────────────────
+// Le bot tirait le DEUXIÈME coup au sort une fois sur quatre, quel qu'en fût
+// le prix : sous les yeux du joueur, ça ressemble à un bot cassé. On ne dévie
+// plus que dans une fenêtre d'un fruit autour du meilleur coup.
+var noteMax = -Infinity, notes = {};
+Bot.scoreMoves(gagnant, 0, Bot.depthFor(0.25)).forEach(function (s) {
+  notes[s.direction] = s.score;
+  if (s.score > noteMax) noteMax = s.score;
+});
+var pire = 0, vus = {};
+for (var bl = 0; bl < 60; bl++) {
+  var d0 = Bot.chooseMove(gagnant, 0, 0.25, seeded(bl + 1));
+  vus[d0] = true;
+  var perte = noteMax - notes[d0];
+  if (perte > pire) pire = perte;
+}
+ok(pire <= 150, "faible: jamais plus d'un fruit sous le meilleur coup (pire écart " + pire + ")");
+eq(Object.keys(vus).length, 1, "faible: un gain immédiat est joué, même au niveau le plus tendre");
+
+// Même principe au draft : le faible pioche dans le haut du panier, il ne
+// prend plus l'Entracte devant la Vachette une fois sur deux.
+// (Un générateur PARTAGÉ, pas une graine par tirage : les premières valeurs de
+// `seeded(petit entier)` sont toutes minuscules, et l'ancien tirage au hasard
+// ne se serait jamais déclenché — le test n'aurait rien prouvé.)
+var pioches = {}, rngD = seeded(4242);
+for (var dr = 0; dr < 40; dr++) {
+  pioches[Bot.chooseDraft([CARD.ENTRACTE, CARD.VACHETTE], 0.5, rngD)] = true;
+}
+eq(Object.keys(pioches).join(","), String(CARD.VACHETTE),
+  "faible: entre deux cartes, la meilleure est piochée même à mi-niveau");
 
 // Et le bot complet (draft + cartes + coups) finit ses parties proprement :
 // deux parties toutes règles contre lui-même, aucune action illégale.
@@ -555,6 +612,25 @@ eq(nko.names["orangine"], "Orangine", "annuaire en panne : on retombe sur les no
 var nvide = new N.BandasNet({ clock: function () { return 0; }, botIdentity: function () { return null; } });
 nvide.handle("x", { a: "hello" });
 eq(nvide.names["kiwano"], "Kiwano", "annuaire trop maigre (null) : noms d'origine");
+
+// ── Le niveau du bot suit celui d'en face ───────────────────────────────────
+// Un niveau tiré au sort dans une plage fixe, c'était trois parties sur quatre
+// contre un bot qui ne voit que deux ou trois demi-coups. Il suit maintenant la
+// SÉRIE EN COURS : on commence tendre, et au bout de dix victoires d'affilée on
+// n'a plus devant soi que le meilleur.
+var nniv = mknet();
+nniv.streaks["novice"] = 0;
+nniv.streaks["habitue"] = 5;
+nniv.streaks["serie"] = 12;
+eq(Bot.depthFor(nniv._niveauBot(["novice"])), 2, "niveau : le tout premier bot reste tendre");
+eq(Bot.depthFor(nniv._niveauBot(["serie"])), 6, "niveau : dix victoires d'affilée, on affronte le meilleur");
+var pNovice = Bot.depthFor(nniv._niveauBot(["novice"]));
+var pHabitue = Bot.depthFor(nniv._niveauBot(["habitue"]));
+ok(pNovice < pHabitue && pHabitue < 6, "niveau : l'escalade est progressive (" + pNovice + " → " + pHabitue + ")");
+// La série d'un BOT (la « vitrine ») ne doit jamais servir de mesure : seuls
+// les humains de la table comptent.
+nniv.streaks["banano"] = 13;
+eq(Bot.depthFor(nniv._niveauBot([])), 2, "niveau : sans humain en face, on reste au plus tendre");
 
 
 // ── LE TEMPO DES CARTES ────────────────────────────────────────────────────

@@ -68,19 +68,46 @@ même logique ici).
   100. Module pur, isomorphe.
 - `server/session.js` — horloges par équipe, timeout, abandon, snapshot
   (reprise sur reconnexion via `hello`).
-- `server/bot.js` — IA. Négamax de profondeur 2 à 4 selon le niveau, et une
-  évaluation qui dit la stratégie du jeu : matériel d'abord, puis **cohésion**
-  (contacts entre ses fruits) et **marge** au bord — autrement dit *rassembler
-  un bloc au centre, quitte à laisser ceux des flancs*. C'est la géométrie de
-  `Board.moveSprite` : une chaîne qui trouve une case libre devant elle se
-  tasse sans perte, un fruit collé au bord vers lequel on avance meurt. Les
-  cartes sont choisies par SIMULATION (enclume, vachette, conversion,
-  pétrification, charge, célérité, renfort, solo, entracte) et jouées seulement
-  si le plateau qu'elles laissent vaut mieux. Niveau commun tiré au sort par
-  partie.
+- `server/bot.js` — IA. Négamax alpha-bêta de profondeur 2 à 6 selon le niveau,
+  et une évaluation qui dit la stratégie du jeu : le **bloc principal** d'abord
+  (un pion écarté est décoté, donc sacrifiable), puis la **cohésion** (contacts
+  entre ses fruits), la **marge** au bord du bloc, et **les fronts exposés**.
+  C'est la géométrie de `Board.moveSprite` : une chaîne qui trouve une case
+  libre devant elle se tasse sans perte, un fruit collé au bord vers lequel on
+  avance meurt. Les cartes sont choisies par SIMULATION (enclume, vachette,
+  conversion, pétrification, charge, célérité, renfort, solo, entracte) et
+  jouées seulement si le plateau qu'elles laissent vaut mieux — chacune à son
+  heure (`facteurMoment` : vachette tôt, renfort/conversion tard).
+
+  **L'arme ultime** (l'aide écrite par un joueur d'époque) : « placer un tas de
+  vos pions au milieu des pions de l'adversaire de manière à ce que les siens
+  vous entourent ». On ne meurt qu'AU BORD — dans une ligne tassée c'est
+  l'occupant de la case extrême qui tombe, que la poussée vienne de lui ou d'en
+  face. Être enterré, c'est leur laisser toutes les premières lignes : chaque
+  poussée leur coûte un fruit et ne nous coûte rien. L'évaluation compte donc
+  **les fronts exposés par fruit** (un pion sur un bord, le coin comptant
+  double) — le poids le plus rentable depuis l'école du centre, ~58 % contre la
+  version qui ne l'avait pas. Mesurer l'enveloppement lui-même n'apportait rien
+  de plus : les fronts exposés le disent déjà par leur complément.
+
+  **Un faible rate les nuances, il ne se saborde pas** : le bot tirait le
+  DEUXIÈME coup au sort une fois sur quatre, quel qu'en fût le prix, et
+  piochait sa carte au hasard dans tout le tas — sous les yeux du joueur, ça
+  ressemble à un bot cassé, et c'est une bonne part du « les bots sont
+  mauvais » qu'on nous rapportait. Il ne dévie plus que dans une **fenêtre**
+  autour du meilleur coup (nulle au niveau maximum, large d'un fruit tout en
+  bas), et pioche dans le haut du panier. À profondeur égale, la fenêtre bat
+  l'ancien tirage 58 % (profondeur 3) et 63 % (profondeur 2).
 - `server/net.js` — pont `<bd a="…">` ↔ `<bd e="…">` : lobby, sessions,
   bots (Banano, Orangine, Kiwano), **séries challenge** avec anti-farm
   (un humain ne compte qu'une fois par série — l'erreur 1529 d'origine).
+  **Le niveau du bot suit celui d'en face** (`_niveauBot`) : un niveau tiré au
+  sort dans une plage fixe, c'était trois parties sur quatre contre un bot qui
+  ne voit que deux ou trois demi-coups. Il suit maintenant la SÉRIE EN COURS du
+  joueur — on commence tendre (profondeur 2), et au bout de dix victoires
+  d'affilée on n'a plus devant soi que le meilleur (profondeur 6). La série du
+  Challenge cesse du même coup d'être une ferme. Les bots ne tiennent salon
+  qu'au Challenge (le Championnat est entre humains), la série suffit donc.
   Tests : `server/server.test.js`.
 - `index.html` + `ui.js` + `gameview.js` — client : écrans mode/lobby
   (gabarit Grapiz) + page de jeu 1050×728 (assets préparés), plateau canvas

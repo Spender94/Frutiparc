@@ -30,6 +30,31 @@
 //   • la cohésion (contacts entre les siens) départage — un carré résiste
 //     mieux aux poussées qu'un serpent.
 //
+// ── L'ARME ULTIME (l'aide écrite par un joueur d'époque) ───────────────────
+//
+// « Placer un tas de vos pions au milieu des pions de l'adversaire de manière
+//   à ce que les siens vous entourent […] n'hésitez surtout pas à virer vos
+//   grandes lignes de pions le plus tôt possible, quitte à vous retrouver avec
+//   5 à 10 pions contre une vingtaine : vous verrez ensuite ses troupes
+//   diminuer très rapidement. »
+//
+// La mécanique derrière : on ne meurt qu'AU BORD. Dans une ligne tassée, c'est
+// l'occupant de la case extrême qui tombe — et il tombe que la poussée vienne
+// de lui ou d'en face. Être enterré dans la masse adverse, c'est donc leur
+// laisser TOUTES les premières lignes : chaque poussée, la leur comme la nôtre,
+// leur coûte un fruit et ne nous coûte rien. Voilà pourquoi cinq pions dedans
+// valent mieux que vingt dehors.
+//
+// L'évaluation compte donc, par équipe, LES FRONTS EXPOSÉS — les fruits posés
+// sur l'un des quatre bords, le coin comptant double puisqu'il meurt de deux
+// mouvements — et rapporte ce compte à la taille de l'armée. C'est le poids qui
+// a le plus rapporté depuis l'école du centre : ~59 % à profondeur 6, ~58 % à
+// profondeur 3, ~56 % sans cartes, contre la version qui ne l'avait pas.
+// (On a aussi essayé de mesurer l'enveloppement lui-même — pour chaque fruit,
+// combien de ses quatre rayons portent un adverse. N'apporte RIEN de plus :
+// les fronts exposés le disent déjà par leur complément, être enterré c'est
+// exactement leur laisser les bords. Retiré plutôt que gardé « au cas où ».)
+//
 // Par-dessus, un négamax alpha-bêta de profondeur 2 à 6 selon le niveau : le
 // bot voit la réponse adverse, et les meilleurs voient trois échanges entiers
 // — c'est la profondeur qui convertit le bloc en victoires. Les cartes sont
@@ -73,18 +98,21 @@
   var W_ECART = 80;     // un pion écarté du bloc — décoté, donc sacrifiable
   var W_COHESION = 60;  // contacts moyens par fruit (0…4) : un carré, pas un serpent
   var W_MARGE = 78;     // distance moyenne au bord DU BLOC (0…~3,5) : LE CENTRE
+  var W_LIGNE = 400;    // fronts exposés par fruit (0…4) : LA PREMIÈRE LIGNE
 
   // ── Lecture d'une position ────────────────────────────────────────────────
   // Pour une équipe : son compte, ses contacts (paires de voisins orthogonaux),
-  // et son BLOC PRINCIPAL — la plus grande composante connexe (orthogonale),
-  // avec sa marge au bord cumulée. À taille égale, le bloc le plus central
-  // fait foi. L'évaluation tourne des centaines de fois par décision : un
-  // balayage pour compter, un parcours en pile pour les composantes.
+  // ses FRONTS EXPOSÉS (cf. l'arme ultime, plus haut), et son BLOC PRINCIPAL —
+  // la plus grande composante connexe (orthogonale), avec sa marge au bord
+  // cumulée. À taille égale, le bloc le plus central fait foi. L'évaluation
+  // tourne des centaines de fois par décision : un balayage pour compter, un
+  // parcours en pile pour les composantes.
   function analyse(board) {
     var minX = board.minX, maxX = board.maxX, minY = board.minY, maxY = board.maxY;
     var w = maxX - minX + 1, h = maxY - minY + 1;
     var n = [0, 0], contacts = [0, 0];
     var blocN = [0, 0], blocMarge = [0, 0];
+    var bord = [0, 0];
     var grille = new Int8Array(w * h);   // -1 vide/autre, 0/1 fruit
     var x, y, e;
     for (y = minY; y <= maxY; y++) {
@@ -93,6 +121,13 @@
         grille[(y - minY) * w + (x - minX)] = (e === 0 || e === 1) ? e : -1;
         if (e !== 0 && e !== 1) continue;
         n[e]++;
+        // Fronts exposés : un fruit posé SUR un bord meurt dès qu'on pousse
+        // vers ce bord — la sienne comme celle d'en face. Le coin compte deux
+        // fois, parce qu'il meurt de deux mouvements différents.
+        if (y === minY) bord[e]++;
+        if (y === maxY) bord[e]++;
+        if (x === minX) bord[e]++;
+        if (x === maxX) bord[e]++;
         // Contacts : on ne regarde que la droite et le bas — chaque paire est
         // ainsi comptée une fois.
         if (x < maxX && board.getElement({ x: x + 1, y: y }) === e) contacts[e]++;
@@ -120,16 +155,21 @@
         blocN[e] = taille; blocMarge[e] = marge;
       }
     }
-    return { n: n, contacts: contacts, blocN: blocN, blocMarge: blocMarge };
+    return { n: n, contacts: contacts, blocN: blocN, blocMarge: blocMarge, bord: bord };
   }
 
   // Ce que vaut le camp `t` : son bloc à plein prix, ses écartés décotés, sa
-  // cohésion, et la CENTRALITÉ du bloc (marge moyenne au bord de ses membres).
+  // cohésion, la CENTRALITÉ du bloc (marge moyenne au bord de ses membres) et
+  // LES FRONTS QU'IL EXPOSE. Ce dernier est ramené AU FRUIT : ce qui compte
+  // n'est pas combien de pions sont en première ligne, c'est quelle PART de
+  // l'armée l'est — d'où « cinq pions contre vingt » qui reste une bonne
+  // affaire tant que les vingt sont dehors et les cinq dedans.
   function valeurCamp(a, t) {
     var bloc = a.blocN[t], ecart = a.n[t] - bloc;
     return W_BLOC * bloc + W_ECART * ecart
       + W_COHESION * (a.contacts[t] / a.n[t])
-      + W_MARGE * (bloc > 0 ? a.blocMarge[t] / bloc : 0);
+      + W_MARGE * (bloc > 0 ? a.blocMarge[t] / bloc : 0)
+      - W_LIGNE * (a.bord[t] / a.n[t]);
   }
 
   // Évaluation du POINT DE VUE de `team`. Antisymétrique : eval(b,t) === -eval(b,1-t).
@@ -180,14 +220,30 @@
   }
 
   // Profondeur de recherche : le niveau, c'est d'abord ce que le bot VOIT.
-  // Le bas de la plage reste à 2-3 (battable, et par des enfants) ; le haut
-  // monte à 5-6 depuis l'alpha-bêta — c'est là que l'école du centre convertit :
-  // à profondeur égale 6, elle bat l'évaluation matérielle 20-11 (40 duels).
+  // Le bas de la plage reste à 2 (battable, et par des enfants) ; le haut monte
+  // à 6 depuis l'alpha-bêta — c'est là que l'école du centre convertit.
+  //
+  // L'échelle est un VRAI escalier, un cran par palier, sans marche manquante :
+  // 2, 3, 4, 5, 6. Elle sautait le 4, ce qui laissait un trou entre « se fait
+  // rouler » et « voit trop loin pour qu'on s'amuse ». Chaque cran vaut cher —
+  // mesuré au banc apparié, un cran de plus gagne à peu près sept fois sur dix.
+  // Le coût, lui, est dérisoire à ce jeu-là : 0,15 ms le coup à 2, 0,9 ms à 4,
+  // 4 ms à 6.
   function depthFor(skill) {
-    return skill < 0.6 ? 2 : (skill < 0.85 ? 3 : (skill < 0.95 ? 5 : 6));
+    return skill < 0.3 ? 2 : (skill < 0.5 ? 3 : (skill < 0.7 ? 4 : (skill < 0.9 ? 5 : 6)));
   }
 
+  // ── CE QU'UN FAIBLE RATE ──────────────────────────────────────────────────
+  // Un joueur faible ne joue pas un coup ABSURDE une fois sur quatre : il rate
+  // les nuances. Le bot, lui, tirait carrément le DEUXIÈME coup au sort, quel
+  // qu'en fût le prix — d'où des bots qui « bêtisent » sous les yeux du joueur,
+  // ce qu'on nous rapportait. On ne dévie donc que vers un coup PROCHE du
+  // meilleur, dans une fenêtre qui s'élargit à mesure que le niveau baisse : le
+  // faible reste faible (il voit moins loin), mais il ne se saborde plus.
+  var FENETRE_COUP = 150;   // en points d'évaluation, ×(1−niveau) : ~1 fruit
+
   // Note chaque direction pour `team` (profondeur `depth` demi-coups au total).
+
   function scoreMoves(board, team, depth) {
     if (depth === undefined) depth = 2;
     return DIRS.map(function (d) {
@@ -195,17 +251,19 @@
     });
   }
 
-  // Choix d'une direction. Un bon niveau joue le meilleur coup ; un faible
-  // dévie parfois vers le deuxième. À égalité, on tire au sort — deux parties
-  // contre le même bot ne se ressemblent pas.
+  // Choix d'une direction. On tire au sort PARMI LES COUPS PROCHES du meilleur
+  // — fenêtre nulle au niveau maximum (donc seulement les vraies égalités),
+  // large d'un fruit tout en bas. Deux parties contre le même bot ne se
+  // ressemblent donc pas, sans qu'il ait jamais l'air de se saborder.
   function chooseMove(board, team, skill, rng) {
     rng = rng || Math.random;
     if (skill === undefined || skill === null) skill = 0.5;
     var scored = scoreMoves(board, team, depthFor(skill));
     scored.forEach(function (s) { s.bruit = rng(); });
     scored.sort(function (a, b) { return (b.score - a.score) || (a.bruit - b.bruit); });
-    if (scored.length > 1 && rng() < 0.5 * (1 - skill)) return scored[1].direction;
-    return scored[0].direction;
+    var seuil = scored[0].score - FENETRE_COUP * (1 - skill);
+    var proches = scored.filter(function (s) { return s.score >= seuil; });
+    return proches[Math.floor(rng() * proches.length)].direction;
   }
 
   // ── Draft ─────────────────────────────────────────────────────────────────
@@ -261,14 +319,18 @@
   CARD_VAL[CARD.CONVERSION] = 1.0; CARD_VAL[CARD.CHARGE] = 0.6;
   CARD_VAL[CARD.PETRIFICATION] = 0.6; CARD_VAL[CARD.PIEGE] = 0.4;
   CARD_VAL[CARD.SOLO] = 0.35; CARD_VAL[CARD.ENTRACTE] = 0.25;
+  // Même principe qu'au mouvement : un faible ne pioche pas la PIRE carte du
+  // tas (il tirait carrément au hasard dans tout le pool, et prenait donc
+  // l'Entracte devant la Vachette une fois sur deux) — il pioche dans le haut
+  // du panier, d'autant plus large qu'il est faible.
   function chooseDraft(pool, skill, rng) {
     rng = rng || Math.random;
-    if (rng() > skill) return pool[Math.floor(rng() * pool.length)];
-    var best = pool[0];
-    for (var i = 1; i < pool.length; i++) {
-      if (DRAFT_PREF.indexOf(pool[i]) < DRAFT_PREF.indexOf(best)) best = pool[i];
-    }
-    return best;
+    if (skill === undefined || skill === null) skill = 0.5;
+    var tri = pool.slice().sort(function (a, b) {
+      return DRAFT_PREF.indexOf(a) - DRAFT_PREF.indexOf(b);
+    });
+    var large = 1 + Math.floor((tri.length - 1) * (1 - skill));
+    return tri[Math.floor(rng() * large)];
   }
 
   // ── Cartes ────────────────────────────────────────────────────────────────

@@ -34,9 +34,13 @@
   }
   function num(v, dflt) { var n = parseInt(v, 10); return isNaN(n) ? dflt : n; }
 
-  // Bots toujours disponibles (même modèle que Grapiz : plage de niveau
-  // commune, tirée au sort par partie — impossible de farmer "le faible").
-  var BOT_SKILL = { lo: 0.45, hi: 1.0 };
+  // Bots toujours disponibles. Le niveau n'est plus tiré au sort dans une
+  // plage : il SUIT LA SÉRIE EN COURS du joueur d'en face (cf. _niveauBot).
+  // `lo` est le premier bot qu'on rencontre (deux demi-coups, battable par un
+  // enfant), `hi` celui qu'on trouve au bout de dix victoires d'affilée.
+  var BOT_SKILL = { lo: 0.25, hi: 1.0 };
+  var BOT_SERIE_PLEINE = 10;   // série à partir de laquelle on affronte le meilleur
+  var BOT_ALEA = 0.05;         // le grain qui empêche deux parties jumelles
   var BOTS = [
     { id: "banano", name: "Banano", fb: "0006000U040L0N0000000000" },
     { id: "orangine", name: "Orangine", fb: "0006010Y040N0L0000000000" },
@@ -267,6 +271,33 @@
   };
   BandasNet.prototype._ids = function (session) { return session.players.map(function (p) { return p.id; }); };
 
+  // ── LE NIVEAU DU BOT SUIT CELUI D'EN FACE ─────────────────────────────────
+  //
+  // Un niveau tiré au sort dans une plage fixe, c'était trois parties sur
+  // quatre contre un bot qui ne voit que deux ou trois demi-coups : le joueur
+  // qui progresse le roule et s'ennuie — « les bots sont mauvais ». Or le site
+  // sait très bien ce que vaut celui qui s'assoit en face : SA SÉRIE EN COURS.
+  // C'est elle qui règle la profondeur. Vous enchaînez, ça tape plus fort ;
+  // vous tombez, on vous laisse repartir tranquillement. Et la série du
+  // Challenge cesse d'être une ferme : à partir de la dixième, on n'a plus
+  // devant soi que le meilleur bot.
+  //
+  // (Les bots ne tiennent salon qu'au Challenge — le Championnat est entre
+  // humains — donc la série suffit, on n'a pas à lire la note d'Elo.)
+  BandasNet.prototype._niveauBot = function (adversaires) {
+    var serie = 0;
+    for (var i = 0; i < (adversaires || []).length; i++) {
+      var s = this.streaks[adversaires[i]] || 0;
+      if (s > serie) serie = s;
+    }
+    var t = Math.min(1, serie / BOT_SERIE_PLEINE);
+    var niveau = BOT_SKILL.lo + t * (BOT_SKILL.hi - BOT_SKILL.lo);
+    // Un grain de hasard, pour que deux parties d'affilée ne soient pas
+    // jumelles ; jamais assez pour défaire le palier gagné.
+    niveau += (this._rng() - 0.5) * 2 * BOT_ALEA;
+    return Math.max(BOT_SKILL.lo, Math.min(BOT_SKILL.hi, niveau));
+  };
+
   BandasNet.prototype._startSession = function (game) {
     var self = this;
     // Portillon FD (« disque = vie »). onMatchForming décide si le match peut
@@ -301,12 +332,13 @@
       id: game.id, players: players, params: game.params,
       now: this.clock(), rng: this._rng,
     });
-    // Bots : niveau tiré au sort POUR CETTE PARTIE + série "vitrine" (affichée
-    // mais jamais persistée/classée — _fireStreak ignore les bots).
+    // Bots : niveau réglé SUR CELUI D'EN FACE + série "vitrine" (affichée mais
+    // jamais persistée/classée — _fireStreak ignore les bots).
+    var niveau = this._niveauBot(humans);
     sess._botSkill = {};
     game.players.forEach(function (uid) {
       if (self.bots[uid]) {
-        sess._botSkill[uid] = BOT_SKILL.lo + self._rng() * (BOT_SKILL.hi - BOT_SKILL.lo);
+        sess._botSkill[uid] = niveau;
         self.streaks[uid] = Math.floor(self._rng() * 14);
       }
     });
