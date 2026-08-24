@@ -664,5 +664,105 @@ ok(Bot.evaluate(luiEpars, 0) > Bot.evaluate(luiCentre, 0),
     + conv.toFixed(1) + " vs " + renf.toFixed(1) + ")");
 })();
 
+// ══ SALLES + CHAMPIONNAT ══════════════════════════════════════════════════
+// Le jeu d'origine n'avait pas un lobby mais trois (Main.as : FREE_MODE 0,
+// CHALLENGE_MODE 1, CHAMPION_MODE 2), et FruticardSlot.as tenait un bilan
+// séparé pour chacun. On vérifie le cloisonnement, puis la note Elo.
+(function () {
+  var Elo = require("./elo.js");
+
+  // — Le module de note, seul —
+  var neuve = Elo.fiche(null);
+  eq(neuve.ls[0], Elo.DEPART, "elo: on démarre à 1000");
+  eq(Elo.esperance(1000, 1000), 0.5, "elo: à note égale, une chance sur deux");
+  ok(Elo.esperance(1200, 1000) > 0.75, "elo: 200 points d'écart valent 76 %");
+  var gagne = Elo.apres(neuve, 1000, "v");
+  ok(gagne.delta > 0, "elo: gagner fait monter (+" + gagne.delta + ")");
+  eq(gagne.fiche.l[0], 1, "elo: la victoire est comptée");
+  var perd = Elo.apres(neuve, 1000, "d");
+  eq(gagne.delta, -perd.delta, "elo: à note et coefficient égaux, l'échange est symétrique");
+  eq(Elo.apres(neuve, 1000, "n").delta, 0, "elo: une nulle entre égaux ne bouge rien");
+  // min/max suivent setLeagueScore : à la première écriture, les deux prennent
+  // la valeur du jour ; ensuite ils encadrent le parcours.
+  eq(gagne.fiche.ls[1], gagne.fiche.ls[0], "elo: premier calcul → min = note");
+  eq(gagne.fiche.ls[2], gagne.fiche.ls[0], "elo: premier calcul → max = note");
+  var apres2 = Elo.apres(gagne.fiche, 1000, "d");
+  ok(apres2.fiche.ls[1] < gagne.fiche.ls[0], "elo: le minimum descend");
+  eq(apres2.fiche.ls[2], gagne.fiche.ls[0], "elo: le maximum reste le sommet atteint");
+  // Le plancher, et le coefficient de placement.
+  var bas = { linit: true, l: [0, 40, 0], ls: [Elo.PLANCHER, Elo.PLANCHER, 900] };
+  eq(Elo.apres(bas, 2000, "d").fiche.ls[0], Elo.PLANCHER, "elo: on ne passe pas sous le plancher");
+  eq(Elo.coefficient(neuve), Elo.K_PLACEMENT, "elo: coefficient de placement au départ");
+  eq(Elo.coefficient({ linit: true, l: [6, 4, 0], ls: [1000, 1000, 1000] }), Elo.K_ETABLI,
+    "elo: coefficient normal après dix parties classées");
+
+  // — Le cloisonnement des salles —
+  var fiches = {}, journal = [];
+  var nc = new N.BandasNet({
+    clock: function () { return 0; }, rng: seeded(5),
+    getChampion: function (u) { return fiches[u] || null; },
+    onChampion: function (u, f, info) { fiches[u] = f; journal.push(u + ":" + info.delta); },
+    onStreak: function (u, s, info) { journal.push("serie:" + u + ":" + info.series); },
+  });
+  nc.handle("ana", { a: "hello", n: "Ana", sa: "champ" });
+  nc.handle("bo", { a: "hello", n: "Bo", sa: "champ" });
+  nc.handle("cyd", { a: "hello", n: "Cyd" });          // pas de salle → challenge
+  eq(nc.lobby.salleDe("ana"), "champ", "salles: hello place au championnat");
+  eq(nc.lobby.salleDe("cyd"), "chall", "salles: sans mention, on reste au challenge");
+  eq(nc.lobby.listPlayers("champ").length, 2, "salles: le championnat ne voit que les siens");
+  ok(nc.lobby.listPlayers("chall").length >= 4, "salles: les bots tiennent le challenge");
+  eq(nc.lobby.listPlayers("champ").filter(function (p) { return nc.bots[p.id]; }).length, 0,
+    "salles: aucun bot au championnat");
+
+  // On ne défie pas au travers d'une cloison.
+  eq(nc.lobby.challenge("ana", "cyd", {}).error, "other-room", "salles: pas de défi d'une salle à l'autre");
+  // Ni ne rejoint la partie ouverte d'à côté.
+  nc.handle("cyd", { a: "create" });
+  var dehors = nc.lobby.listOpenGames("chall")[0];
+  eq(nc.lobby.joinGame("ana", dehors.id).error, "other-room", "salles: pas de partie rejointe d'à côté");
+  nc.handle("cyd", { a: "part" });
+
+  // Le lobby diffusé est CELUI DE SA SALLE, et porte le compte des trois.
+  var diff = nc.handle("ana", { a: "list" })[0];
+  ok(diff.xml.indexOf('sa="champ"') >= 0, "salles: le lobby dit de quelle salle il vient");
+  ok(diff.xml.indexOf('u="cyd"') < 0, "salles: on ne voit pas les joueurs d'à côté");
+  ok(/<s k="champ" j="2"/.test(diff.xml), "salles: le compte du championnat voyage avec");
+
+  // — Une partie de championnat : la note bouge, la série ne bouge pas —
+  journal.length = 0;
+  var m = nc.handle("ana", { a: "challenge", u: "bo" });
+  ok(m.some(function (x) { return x.xml.indexOf('e="start"') >= 0; }), "champ: la partie démarre");
+  var sid = Object.keys(nc.sessions)[0];
+  var sc = nc.sessions[sid];
+  eq(sc._salle, "champ", "champ: la session retient sa salle");
+  ok(nc._startXml(sc, "ana").indexOf('sa="champ"') >= 0, "champ: le client sait où il joue");
+  // Le gros nombre du bandeau devient la NOTE, pas la série.
+  ok(nc._startXml(sc, "ana").indexOf('sr="1000"') >= 0, "champ: le bandeau affiche la note");
+
+  var gagnant = sc.playerOfTeam(0).id, perdant = sc.playerOfTeam(1).id;
+  sc.forfeit(perdant);
+  nc._concludeGame(sc, []);
+  ok(fiches[gagnant] && fiches[gagnant].ls[0] > Elo.DEPART, "champ: le gagnant monte");
+  ok(fiches[perdant] && fiches[perdant].ls[0] < Elo.DEPART, "champ: le perdant descend");
+  eq(fiches[gagnant].l[0], 1, "champ: une victoire au compteur");
+  eq(fiches[perdant].l[1], 1, "champ: une défaite au compteur");
+  eq(journal.filter(function (l) { return l.indexOf("serie:") === 0; }).length, 0,
+    "champ: la série du challenge n'a pas bougé");
+  eq(nc.streaks[gagnant] || 0, 0, "champ: gagner au championnat ne lance pas de série");
+
+  // Les deux notes sont relevées AVANT correction : l'échange reste symétrique.
+  eq(fiches[gagnant].ls[0] - Elo.DEPART, Elo.DEPART - fiches[perdant].ls[0],
+    "champ: l'échange est symétrique (les notes d'avant sont relevées ensemble)");
+
+  // — Changer de salle —
+  eq(nc.lobby.changerSalle("ana", "amical").salle, "amical", "salles: on change au repos");
+  eq(nc.lobby.salleDe("ana"), "amical", "salles: le changement a pris");
+  nc.handle("ana", { a: "room", sa: "chall" });
+  eq(nc.lobby.salleDe("ana"), "chall", "salles: l'action room déplace aussi");
+  nc.handle("ana", { a: "create" });
+  eq(nc.lobby.changerSalle("ana", "champ").error, "already-busy",
+    "salles: on ne déserte pas une partie ouverte");
+})();
+
 console.log("bandas server tests: " + passed + " passed, " + fails + " failed");
 process.exit(fails ? 1 : 0);

@@ -56,7 +56,16 @@ même logique ici).
   partie. Chaque action renvoie des **événements** (avec visibilité) que le
   client REJOUE avec son propre moteur. Tests : `game.test.js`.
 - `server/lobby.js` — appariements (salons, défis, statuts), paramètres
-  d'origine (`CreateParameters.as`).
+  d'origine (`CreateParameters.as`), et les **trois salles** du jeu d'origine
+  (`Main.as` : FREE_MODE 0 « amical », CHALLENGE_MODE 1, CHAMPION_MODE 2
+  « championnat »). Une salle est un espace d'appariement à part : on ne voit,
+  ne défie et ne rejoint que les siens.
+- `server/elo.js` — la note du **Championnat**. La source impose une note qui
+  monte ET descend (`FruticardSlot.$ls = [note, min, max]` — un cumul n'a pas
+  besoin d'un minimum) mais pas sa formule : elle arrivait du serveur frusion
+  (`Manager.onCbkScoreModif`), perdu. On reconstruit l'Elo classique, avec un
+  coefficient de placement (48 sur dix parties, 32 ensuite) et un plancher à
+  100. Module pur, isomorphe.
 - `server/session.js` — horloges par équipe, timeout, abandon, snapshot
   (reprise sur reconnexion via `hello`).
 - `server/bot.js` — IA. Négamax de profondeur 2 à 4 selon le niveau, et une
@@ -84,10 +93,17 @@ même logique ici).
 
 - route WS `case 'bd'` (+ `onDisconnect` si `client.bandas`), tick 1 Hz ;
 - séries : `users[u].bandasStreak`, fin de série →
-  `persistScore(u, 'bandas_challenge', série)` ;
+  `persistScore(u, 'bandas_challenge', série)` — la série n'appartient qu'à la
+  salle du challenge ;
+- championnat : la note se range sur la FRUTICARTE (slot 0 du disque bandas,
+  aux clés d'origine `$linit`/`$l`/`$ls`) **et** au classement
+  `bandas_champion`, écrit par `fixerScore` (écriture ABSOLUE — `persistScore`
+  ne garderait que le meilleur jour, et une note doit pouvoir descendre). Si la
+  fruticarte est vide mais le classement non, la note repart du classement ;
 - classements : `bandas_challenge` est exposé au rk legacy **'5' (section C
-  = « Challenge »)**, le rk '7' (section L « Championnat ») est retombé à
-  `internal:null` — comme Grapiz ;
+  = « Challenge »)** et `bandas_champion` au rk **'7' (section L
+  « Championnat »)** — la place que le client d'époque lui réservait. Grapiz
+  garde son rk '8' à vide : son championnat n'est pas ouvert ;
 - frutidisc `bandas1` (GAME_DISCS) + interception du lancement dans
   `ruffle.html` → ouvre `/bandas/?sid=…`.
 

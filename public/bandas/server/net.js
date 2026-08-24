@@ -21,10 +21,11 @@
   var S = (typeof require !== "undefined") ? require("./session.js") : (root.Bandas && root.Bandas.session);
   var B = (typeof require !== "undefined") ? require("./bot.js") : (root.Bandas && root.Bandas.bot);
   var G = (typeof require !== "undefined") ? require("../game.js") : (root.Bandas && root.Bandas.game);
-  var api = factory(L, S, B, G);
+  var E = (typeof require !== "undefined") ? require("./elo.js") : (root.Bandas && root.Bandas.elo);
+  var api = factory(L, S, B, G, E);
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else (root.Bandas = root.Bandas || {}).net = api;
-})(typeof self !== "undefined" ? self : this, function (L, S, Bot, G) {
+})(typeof self !== "undefined" ? self : this, function (L, S, Bot, G, E) {
   "use strict";
 
   function esc(s) {
@@ -51,6 +52,7 @@
     this.bouilles = {};                 // username → frutibouille (24 car.)
     this.streaks = {};                  // username → série de victoires EN COURS
     this._beaten = {};                  // username → { adversaire: true } battus pendant la série (anti-farm)
+    this.champions = {};                // username → fiche Championnat (elo.js)
     this.bots = {};                     // username → true
     this._botNeuf = {};                 // bot → doit repartir sous une autre identité
     this.clock = opts.clock || function () { return Date.now(); };
@@ -78,8 +80,25 @@
     // l'écran sous les yeux (notification sur son téléphone).
     this.onDefi = opts.onDefi || null;
     this.onDiscLost = opts.onDiscLost || null;
+    // CHAMPIONNAT (salle « champ »). Deux hooks, absents en tests purs (la
+    // fiche vit alors en mémoire, ce qui suffit à vérifier les règles) :
+    //   • getChampion(username) → la fiche persistée { linit, l, ls } ;
+    //   • onChampion(username, fiche, info) → à persister + classer.
+    //     info = { adversaire, avant, apres, delta, resultat }.
+    this.getChampion = opts.getChampion || null;
+    this.onChampion = opts.onChampion || null;
     if (opts.withBots !== false) this._registerBots();
   }
+
+  // La fiche Championnat d'un joueur, chargée à la demande auprès de l'hôte.
+  BandasNet.prototype.ficheChampion = function (username) {
+    if (!this.champions[username]) {
+      var brut = null;
+      if (this.getChampion) { try { brut = this.getChampion(username); } catch (e) { brut = null; } }
+      this.champions[username] = E.fiche(brut);
+    }
+    return this.champions[username];
+  };
 
   // ── Les bots empruntent une identité au Bouilloscope ───────────────────────
   //
@@ -134,6 +153,11 @@
     });
   };
 
+  // Les bots tiennent la salle du CHALLENGE, et elle seule. Au championnat une
+  // note se gagne sur des joueurs : trois adversaires artificiels toujours
+  // disponibles en feraient un distributeur d'Elo. En amical ils n'ont rien à
+  // faire non plus — on s'y retrouve entre Frutiz, l'entraînement contre les
+  // bots vit au challenge comme aujourd'hui.
   BandasNet.prototype._registerBots = function () {
     var self = this;
     BOTS.forEach(function (b) {
@@ -142,25 +166,33 @@
       self.bouilles[b.id] = b.fb;
       self.streaks[b.id] = 0;
       self._botNeuf[b.id] = true;      // première tête à tirer dès l'annuaire prêt
-      self.lobby.addPlayer(b.id, b.name);
+      self.lobby.addPlayer(b.id, b.name, "chall");
     });
     this._refreshBotIdentities();
   };
 
   // ── Sérialisation ──────────────────────────────────────────────────────────
-  BandasNet.prototype._lobbyXml = function () {
+  // Le lobby d'UNE salle. On y joint le compte des trois salles (`<s>`) : c'est
+  // ce que l'écran de sélection de mode affiche sous chaque bandeau
+  // (JOUEURS / PARTIES), et il doit rester à jour sans qu'on ait à y entrer.
+  BandasNet.prototype._lobbyXml = function (salle) {
     var self = this;
-    var games = this.lobby.listOpenGames().map(function (g) {
+    var games = this.lobby.listOpenGames(salle).map(function (g) {
       return '<game id="' + esc(g.id) + '" host="' + esc(g.host) + '" c="' + g.count +
         '" m="' + g.max + '" t="' + g.params.time + '" sz="' + g.params.boardSize +
         '" cd="' + g.params.cards + '"/>';
     }).join("");
-    var players = this.lobby.listPlayers().map(function (p) {
+    var players = this.lobby.listPlayers(salle).map(function (p) {
+      var f = self.champions[p.id];
       return '<pl u="' + esc(p.id) + '" n="' + esc(p.name || p.id) + '" s="' + esc(p.status) +
         '" f="' + esc(self.bouilles[p.id] || "") + '" sr="' + (self.streaks[p.id] || 0) +
-        '" bot="' + (self.bots[p.id] ? 1 : 0) + '"/>';
+        '" el="' + (f ? f.ls[0] : "") + '" bot="' + (self.bots[p.id] ? 1 : 0) + '"/>';
     }).join("");
-    return '<bd e="lobby">' + players + games + "</bd>";
+    var c = this.lobby.comptes();
+    var salles = Object.keys(c).map(function (s) {
+      return '<s k="' + esc(s) + '" j="' + c[s].joueurs + '" p="' + c[s].parties + '"/>';
+    }).join("");
+    return '<bd e="lobby" sa="' + esc(salle === undefined ? "" : salle) + '">' + players + games + salles + "</bd>";
   };
 
   // Instantané complet d'une partie (départ + reprise) pour UN destinataire :
@@ -169,14 +201,19 @@
   BandasNet.prototype._startXml = function (session, username) {
     var self = this;
     var snap = session.snapshot(this.clock());
+    var champ = (session._salle || L.SALLE_DEFAUT) === "champ";
     var pls = snap.players.map(function (p) {
+      // Au CHAMPIONNAT le gros nombre doré n'est plus la série mais la NOTE :
+      // c'est elle qu'on joue, et c'est elle qu'on veut lire en face de soi.
       return '<p u="' + esc(p.id) + '" n="' + esc(p.name) + '" e="' + p.team +
         '" rt="' + Math.round(p.remaining) + '" f="' + esc(p.fb || "") +
-        '" sr="' + (self.streaks[p.id] || 0) + '" c="' + snap.hands[p.team].join(":") + '"/>';
+        '" sr="' + (champ ? self.ficheChampion(p.id).ls[0] : (self.streaks[p.id] || 0)) +
+        '" c="' + snap.hands[p.team].join(":") + '"/>';
     }).join("");
     var board = '<b size="' + snap.size + '" x1="' + snap.bounds.x1 + '" x2="' + snap.bounds.x2 +
       '" y1="' + snap.bounds.y1 + '" y2="' + snap.bounds.y2 + '">' + snap.content + "</b>";
-    return '<bd e="start" g="' + esc(snap.id) + '" t="' + snap.currentTeam +
+    return '<bd e="start" g="' + esc(snap.id) + '" sa="' + esc(session._salle || L.SALLE_DEFAUT) +
+      '" t="' + snap.currentTeam +
       '" ph="' + snap.phase + '" i="' + snap.totalTime + '" c="' + snap.pool.join(":") + '"' +
       (snap.ended ? ' end="1" w="' + snap.winner + '"' : "") +
       ">" + pls + board + "</bd>";
@@ -215,9 +252,18 @@
   BandasNet.prototype._err = function (username, code) {
     return { to: [username], xml: '<bd e="err" m="' + esc(code) + '"/>' };
   };
+  // Chaque salle reçoit SON lobby : on ne voit pas les joueurs d'à côté. Le
+  // compte des trois salles voyage avec, donc l'écran de mode reste à jour où
+  // qu'on soit.
   BandasNet.prototype._lobbyBroadcast = function () {
-    var to = this.lobby.listPlayers().map(function (p) { return p.id; });
-    return to.length ? [{ to: to, xml: this._lobbyXml() }] : [];
+    var self = this;
+    var parSalle = {};
+    this.lobby.listPlayers().forEach(function (p) {
+      (parSalle[p.salle] || (parSalle[p.salle] = [])).push(p.id);
+    });
+    return Object.keys(parSalle).map(function (s) {
+      return { to: parSalle[s], xml: self._lobbyXml(s) };
+    });
   };
   BandasNet.prototype._ids = function (session) { return session.players.map(function (p) { return p.id; }); };
 
@@ -265,6 +311,7 @@
       }
     });
     sess._fdRanked = fdRanked;   // {username:bool} statut classé par humain (null = tout classé)
+    sess._salle = game.salle || L.SALLE_DEFAUT;   // ce qui sera compté à la fin
     this.sessions[game.id] = sess;
     return game.players.map(function (uid) {
       return { to: [uid], xml: self._startXml(sess, uid) };
@@ -281,6 +328,10 @@
   //     bots) ne gagne ni ne perd rien : entraînement pur.
   //   • Les bots ne sont jamais classés/persistés (série "vitrine" cosmétique).
   BandasNet.prototype._updateStreaks = function (session) {
+    // La SÉRIE n'appartient qu'au challenge (salle « chall »). Une partie du
+    // championnat ou un match amical ne la fait ni monter ni tomber : c'est la
+    // séparation des trois bilans de FruticardSlot.as ($c / $l / $f).
+    if ((session._salle || L.SALLE_DEFAUT) !== "chall") return;
     if (session.winner == null || session.winner < 0) return;   // égalité : personne ne marque ni ne tombe
     var win = session.playerOfTeam(session.winner);
     var lose = session.playerOfTeam(1 - session.winner);
@@ -327,9 +378,43 @@
     if (this.onStreak) { try { this.onStreak(user, streak, { series: series }); } catch (e) {} }
   };
 
+  // CHAMPIONNAT : la note de chacun bouge, y compris sur une égalité (Elo lui
+  // donne un demi-point, et Frutibandas connaît la nulle — les deux camps
+  // peuvent perdre leur dernier fruit du même coup). Les deux notes sont
+  // relevées AVANT d'être modifiées : sinon le second joueur serait évalué
+  // contre la note déjà corrigée du premier.
+  //
+  // Les bots ne mettent pas les pieds dans cette salle (cf. _registerBots), ce
+  // garde-fou n'est donc qu'une ceinture de sécurité.
+  BandasNet.prototype._updateElo = function (session) {
+    if ((session._salle || L.SALLE_DEFAUT) !== "champ") return;
+    var a = session.playerOfTeam(0), b = session.playerOfTeam(1);
+    if (!a || !b || this.bots[a.id] || this.bots[b.id]) return;
+    var nul = session.winner == null || session.winner < 0;
+    var issues = nul ? ["n", "n"]
+      : (session.winner === 0 ? ["v", "d"] : ["d", "v"]);
+    var fa = this.ficheChampion(a.id), fb = this.ficheChampion(b.id);
+    var na = fa.ls[0], nb = fb.ls[0];
+    this._appliquerElo(a.id, fa, nb, issues[0], b.id);
+    this._appliquerElo(b.id, fb, na, issues[1], a.id);
+  };
+  BandasNet.prototype._appliquerElo = function (user, avant, noteAdverse, resultat, adversaire) {
+    var r = E.apres(avant, noteAdverse, resultat);
+    this.champions[user] = r.fiche;
+    if (this.onChampion) {
+      try {
+        this.onChampion(user, r.fiche, {
+          adversaire: adversaire, avant: avant.ls[0], apres: r.fiche.ls[0],
+          delta: r.delta, resultat: resultat,
+        });
+      } catch (e) { /* la partie prime sur la persistance */ }
+    }
+  };
+
   // Conclut une partie : séries → hook classement → libère le lobby.
   BandasNet.prototype._concludeGame = function (session, preMsgs) {
     this._updateStreaks(session);
+    this._updateElo(session);
     var msgs = preMsgs || [];
     try { this.onResult(session, session.winner, session.endReason); } catch (e) {}
     this._retireBots(session);
@@ -367,7 +452,10 @@
         if (this.getStreak && this.streaks[username] === undefined) {
           try { this.streaks[username] = this.getStreak(username) || 0; } catch (e) {}
         }
-        this.lobby.addPlayer(username, this.names[username]);
+        // `sa` absent (client d'avant les salles, ou reconnexion) → on ne
+        // déplace personne : addPlayer garde la salle courante.
+        this.lobby.addPlayer(username, this.names[username], attrs.sa);
+        this.ficheChampion(username);   // charge la note pour le lobby
         // L'annuaire des Frutiz n'est chargé qu'après le démarrage du serveur :
         // au premier salon venu, les bots prennent enfin leur vraie tête.
         this._refreshBotIdentities();
@@ -377,7 +465,16 @@
         return out.concat(this._lobbyBroadcast());
 
       case "list":
-        return [{ to: [username], xml: this._lobbyXml() }];
+        return [{ to: [username], xml: this._lobbyXml(this.lobby.salleDe(username)) }];
+
+      // Changer de salle (l'écran de sélection de mode). Les deux salles
+      // concernées sont rafraîchies : on disparaît de l'une, on paraît dans
+      // l'autre.
+      case "room": {
+        var rs = this.lobby.changerSalle(username, attrs.sa);
+        if (!rs.ok) return [this._err(username, rs.error)];
+        return this._lobbyBroadcast();
+      }
 
       case "create":
         r = this.lobby.createGame(username, params);
@@ -430,9 +527,10 @@
         return this._lobbyBroadcast();
       }
 
-      case "say": {                                 // chat du lobby
+      case "say": {                                 // chat du lobby (de SA salle)
         if (!attrs.m) return [];
-        var to = this.lobby.listPlayers().filter(function (pl) { return pl.status !== "playing"; }).map(function (pl) { return pl.id; });
+        var to = this.lobby.listPlayers(this.lobby.salleDe(username))
+          .filter(function (pl) { return pl.status !== "playing"; }).map(function (pl) { return pl.id; });
         return [{ to: to, xml: '<bd e="chat" u="' + esc(this.names[username] || username) + '" m="' + esc(attrs.m) + '"/>' }];
       }
 

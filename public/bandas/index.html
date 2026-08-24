@@ -41,6 +41,11 @@
   .mode .mstats > div { flex:1; padding:6px 14px; display:flex; justify-content:space-between; background:#cfcfcf; }
   .mode .mstats > div:first-child { border-radius:0 0 0 4px; } .mode .mstats > div:last-child { border-radius:0 0 4px 0; }
   .mode.active .mstats .j { background:#8cc63f; } .mode.active .mstats .p { background:#f06d6d; }
+  /* Sa propre note, sous le bandeau du championnat : c'est l'enjeu de la salle.
+     Le fond de la page est clair — on écrit donc en sombre, et le nombre
+     reprend le vert des bandeaux actifs. */
+  .mode .mnote { margin-top:6px; text-align:center; font-size:12px; font-weight:bold; color:#7a7a7a; letter-spacing:.5px; min-height:17px; }
+  .mode .mnote b { font-size:16px; color:#74902a; }
 
   /* ── Lobby (3 panneaux : Défis / Chat / Joueurs — modèle Grapiz) ─────────── */
   #screen-lobby { padding:14px; background:#fff; }
@@ -271,9 +276,9 @@
       <div class="bandas-v">FRUTIBANDAS</div>
     </div>
     <div class="mode-list">
-      <div class="mode" id="mode-champ"><div class="mname">CHAMPIONNAT</div><div class="mstats"><div class="j"><span>JOUEURS</span><span>0</span></div><div class="p"><span>PARTIES</span><span>0</span></div></div></div>
-      <div class="mode" id="mode-amical"><div class="mname">MATCHES AMICAUX</div><div class="mstats"><div class="j"><span>JOUEURS</span><span>0</span></div><div class="p"><span>PARTIES</span><span>0</span></div></div></div>
-      <div class="mode active" id="mode-chall"><div class="mname">CHALLENGE</div><div class="mstats"><div class="j"><span>JOUEURS</span><span id="ch-j">0</span></div><div class="p"><span>PARTIES</span><span id="ch-p">0</span></div></div></div>
+      <div class="mode active" id="mode-champ" data-salle="champ"><div class="mname">CHAMPIONNAT</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="champ-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="champ-p">0</span></div></div><div class="mnote" id="ma-note"></div></div>
+      <div class="mode active" id="mode-amical" data-salle="amical"><div class="mname">MATCHES AMICAUX</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="amical-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="amical-p">0</span></div></div></div>
+      <div class="mode active" id="mode-chall" data-salle="chall"><div class="mname">CHALLENGE</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="chall-j" id="ch-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="chall-p" id="ch-p">0</span></div></div></div>
     </div>
   </div>
 
@@ -281,7 +286,7 @@
   <div id="screen-lobby" class="screen">
     <div class="lobby-window">
       <div class="lobby-bar">
-        <span class="title">CHALLENGE</span>
+        <span class="title" id="lobby-title">CHALLENGE</span>
         <span class="sp"></span>
         <button id="btn-create">Créer une partie</button>
         <span class="x" id="lobby-back" title="Retour">✕</span>

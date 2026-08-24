@@ -7,6 +7,15 @@
 // cards [3,2,1]) et des défis directs. Quand une partie est complète,
 // elle passe en "playing" — le transport instancie alors une BandasSession.
 //
+// LES TROIS SALLES. Le jeu d'origine n'avait pas un lobby mais trois, un par
+// mode (frutibandas/Main.as) : FREE_MODE = 0 « matches amicaux »,
+// CHALLENGE_MODE = 1 « challenge », CHAMPION_MODE = 2 « championnat ». On
+// rejoignait une salle (`joinRoom`) et son mode gouvernait tout le reste —
+// Manager.as ne quitte proprement (`partGame`) qu'en dehors du challenge, et
+// FruticardSlot.as tient un bilan victoires/défaites/nulles SÉPARÉ par salle
+// ($f, $c, $l). Une salle est donc ici un espace d'appariement à part entière :
+// on ne voit, ne défie et ne rejoint que les gens de sa propre salle.
+//
 // Logique pure (aucune dépendance au transport) ; câblage WebSocket dans
 // server.js via net.js.
 //
@@ -16,6 +25,13 @@
   else (root.Bandas = root.Bandas || {}).lobby = api;
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
+
+  // Les trois salles, dans l'ordre des modes de Main.as (0, 1, 2). Le
+  // CHALLENGE reste la salle par défaut : c'est celle qu'on avait jusqu'ici,
+  // et un client qui ignore les salles y arrive donc sans rien changer.
+  var SALLES = ["amical", "chall", "champ"];
+  var SALLE_DEFAUT = "chall";
+  function salleValide(s) { return SALLES.indexOf(s) >= 0 ? s : SALLE_DEFAUT; }
 
   var TIME_CHOICES = [600, 480, 400, 240];   // secondes par équipe
   var SIZE_CHOICES = [8, 7, 6, 5];
@@ -35,8 +51,8 @@
   }
 
   function BandasLobby() {
-    this.players = {};     // id → { id, name, status:'idle'|'waiting'|'playing', gameId }
-    this.games = {};       // id → { id, host, params, players:[id], status }
+    this.players = {};     // id → { id, name, salle, status:'idle'|'waiting'|'playing', gameId }
+    this.games = {};       // id → { id, host, salle, params, players:[id], status }
     this.challenges = {};  // id → { id, from, to, params, status:'pending' }
     this._seq = 0;
   }
@@ -44,10 +60,30 @@
   BandasLobby.prototype._id = function (prefix) { return prefix + (++this._seq); };
 
   // ── Joueurs ───────────────────────────────────────────────────────────────
-  BandasLobby.prototype.addPlayer = function (id, name) {
-    if (this.players[id]) { this.players[id].name = name; return { ok: true, player: this.players[id] }; }
-    this.players[id] = { id: id, name: name, status: "idle", gameId: null };
+  BandasLobby.prototype.addPlayer = function (id, name, salle) {
+    if (this.players[id]) {
+      this.players[id].name = name;
+      if (salle !== undefined) this.players[id].salle = salleValide(salle);
+      return { ok: true, player: this.players[id] };
+    }
+    this.players[id] = { id: id, name: name, salle: salleValide(salle), status: "idle", gameId: null };
     return { ok: true, player: this.players[id] };
+  };
+
+  // Passer d'une salle à l'autre — seulement au repos : on ne déserte pas une
+  // partie ouverte ni une partie en cours pour aller voir ailleurs.
+  BandasLobby.prototype.changerSalle = function (id, salle) {
+    var p = this.players[id];
+    if (!p) return { ok: false, error: "unknown-player" };
+    if (p.status !== "idle") return { ok: false, error: "already-busy" };
+    var avant = p.salle;
+    p.salle = salleValide(salle);
+    return { ok: true, avant: avant, salle: p.salle, change: avant !== p.salle };
+  };
+
+  BandasLobby.prototype.salleDe = function (id) {
+    var p = this.players[id];
+    return p ? p.salle : SALLE_DEFAUT;
   };
 
   BandasLobby.prototype.getPlayer = function (id) { return this.players[id] || null; };
@@ -95,7 +131,7 @@
     var p = this.players[hostId];
     if (!p) return { ok: false, error: "unknown-player" };
     if (p.status !== "idle") return { ok: false, error: "already-busy" };
-    var g = { id: this._id("g"), host: hostId, params: defaultParams(params), players: [hostId], status: "open" };
+    var g = { id: this._id("g"), host: hostId, salle: p.salle, params: defaultParams(params), players: [hostId], status: "open" };
     this.games[g.id] = g;
     p.status = "waiting"; p.gameId = g.id;
     return { ok: true, gameId: g.id, game: g };
@@ -106,6 +142,7 @@
     if (!p) return { ok: false, error: "unknown-player" };
     if (!g || g.status !== "open") return { ok: false, error: "no-such-open-game" };
     if (p.status !== "idle") return { ok: false, error: "already-busy" };
+    if (g.salle !== p.salle) return { ok: false, error: "other-room" };
     if (g.players.indexOf(playerId) >= 0) return { ok: false, error: "already-in" };
 
     g.players.push(playerId);
@@ -124,6 +161,7 @@
     var a = this.players[fromId], b = this.players[toId];
     if (!a || !b) return { ok: false, error: "unknown-player" };
     if (fromId === toId) return { ok: false, error: "self-challenge" };       // 1526
+    if (a.salle !== b.salle) return { ok: false, error: "other-room" };
     if (a.status !== "idle") return { ok: false, error: "challenger-busy" };  // 1527
     if (b.status !== "idle") return { ok: false, error: "target-busy" };
     var ch = { id: this._id("c"), from: fromId, to: toId, params: defaultParams(params), status: "pending" };
@@ -138,7 +176,7 @@
     if (!a || !b) { delete this.challenges[challengeId]; return { ok: false, error: "player-gone" }; }
     if (a.status !== "idle" || b.status !== "idle") { delete this.challenges[challengeId]; return { ok: false, error: "player-busy" }; }
 
-    var g = { id: this._id("g"), host: ch.from, params: ch.params, players: [ch.from, ch.to], status: "playing" };
+    var g = { id: this._id("g"), host: ch.from, salle: a.salle, params: ch.params, players: [ch.from, ch.to], status: "playing" };
     this.games[g.id] = g;
     a.status = "playing"; a.gameId = g.id;
     b.status = "playing"; b.gameId = g.id;
@@ -186,22 +224,43 @@
   };
 
   // ── Listings ───────────────────────────────────────────────────────────────
-  BandasLobby.prototype.listOpenGames = function () {
+  // `salle` omise = tout le lobby (les tests d'origine, et le compte global).
+  BandasLobby.prototype.listOpenGames = function (salle) {
     var out = [];
     for (var id in this.games) {
       var g = this.games[id];
-      if (g.status === "open") out.push({ id: g.id, host: g.host, params: g.params, count: g.players.length, max: g.params.nbrPlayers });
+      if (g.status !== "open") continue;
+      if (salle !== undefined && g.salle !== salle) continue;
+      out.push({ id: g.id, host: g.host, salle: g.salle, params: g.params, count: g.players.length, max: g.params.nbrPlayers });
     }
     return out;
   };
-  BandasLobby.prototype.listPlayers = function () {
+  BandasLobby.prototype.listPlayers = function (salle) {
     var out = [];
     for (var id in this.players) {
       var p = this.players[id];
-      out.push({ id: p.id, name: p.name, status: p.status });
+      if (salle !== undefined && p.salle !== salle) continue;
+      out.push({ id: p.id, name: p.name, salle: p.salle, status: p.status });
     }
     return out;
   };
 
-  return { BandasLobby: BandasLobby, defaultParams: defaultParams, TIME_CHOICES: TIME_CHOICES, SIZE_CHOICES: SIZE_CHOICES, CARD_CHOICES: CARD_CHOICES };
+  // Le compte de chaque salle, pour l'écran de sélection de mode : combien de
+  // joueurs, combien de parties ouvertes. Les parties EN COURS y comptent
+  // aussi — l'écran d'origine annonce « PARTIES », pas « parties à rejoindre ».
+  BandasLobby.prototype.comptes = function () {
+    var out = {};
+    SALLES.forEach(function (s) { out[s] = { joueurs: 0, parties: 0 }; });
+    for (var pid in this.players) {
+      var p = this.players[pid];
+      if (out[p.salle]) out[p.salle].joueurs++;
+    }
+    for (var gid in this.games) {
+      var g = this.games[gid];
+      if (g.status !== "ended" && out[g.salle]) out[g.salle].parties++;
+    }
+    return out;
+  };
+
+  return { BandasLobby: BandasLobby, defaultParams: defaultParams, TIME_CHOICES: TIME_CHOICES, SIZE_CHOICES: SIZE_CHOICES, CARD_CHOICES: CARD_CHOICES, SALLES: SALLES, SALLE_DEFAUT: SALLE_DEFAUT, salleValide: salleValide };
 });

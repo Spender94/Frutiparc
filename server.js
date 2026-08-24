@@ -1438,6 +1438,13 @@ const RANKINGS = {
   mb2_challenge:      { name: 'MotionBall - Challenge',   game: 'mb2',      type: 'L', lowerIsBetter: true },
   bandas_challenge:   { name: 'Frutibandas - Challenge',  game: 'bandas',   type: 'L' },
   grapiz_challenge:   { name: 'Grapiz - Challenge',       game: 'grapiz',   type: 'L' },
+  // Le CHAMPIONNAT de Frutibandas — la salle classée du jeu d'origine
+  // (Main.CHAMPION_MODE = 2). Ce n'est pas un record mais une NOTE Elo, qui
+  // monte et descend : elle s'écrit donc par fixerScore (écriture absolue) et
+  // non par persistScore, qui ne garderait que le meilleur jour. Permanente
+  // (section L côté clients → hors remise à zéro quotidienne) : un classement
+  // qui s'effacerait chaque nuit ne serait plus un classement.
+  bandas_champion:    { name: 'Frutibandas - Championnat', game: 'bandas',  type: 'L' },
   // ── Frutisnake Contest : le plus long serpent ────────────────────────────
   // Un classement à part, qui ne mesure pas le score mais la LONGUEUR maximale
   // atteinte pendant une partie. Trois différences volontaires avec les autres :
@@ -1514,8 +1521,12 @@ const LEGACY_RANKINGS = [
   // des scores du bureau. Décision d'exploitation : garder la table lisible
   // pendant l'animation des deux classements pilotes. Lui rendre son onglet
   // tient en une ligne (rk '12', ty 'point', gs '4', g 'kaluga', section 'L').
-  // Section L = "Championnat" in front-end — plus aucun classement réel
-  { rk: '7', internal: null,                ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
+  // Section L = "Championnat" in front-end.
+  // Frutibandas a retrouvé le sien : la salle classée du jeu d'origine
+  // (Main.CHAMPION_MODE = 2) est rouverte, et sa note Elo se range exactement
+  // là où le client d'époque l'attendait — rk '7', section L, rn 'Frutibandas'.
+  // Grapiz garde son rk '8' à vide : son mode championnat n'est pas ouvert.
+  { rk: '7', internal: 'bandas_champion',   ty: 'point',       rn: 'Frutibandas',  gs: '5', g: 'bandas', section: 'L' },
   { rk: '8', internal: null,                ty: 'point',       rn: 'Grapiz',       gs: '6', g: 'grapiz', section: 'L' },
 ];
 // Classement « joueur » Kikooz : id virtuel (n'est PAS dans RANKINGS pour ne pas
@@ -2336,6 +2347,40 @@ function persistScore(username, rankingId, score, data) {
   }
   const newPos = computePosition(rankingId, username);
   return { updated, newScore: updated ? n : oldScore, oldScore, oldPos, newPos };
+}
+
+/**
+ * Écriture ABSOLUE dans un classement : la valeur remplace la précédente,
+ * qu'elle soit meilleure ou non.
+ *
+ * persistScore ne garde que le record — c'est la bonne règle pour un score de
+ * partie, et la mauvaise pour une NOTE. Le championnat de Frutibandas est un
+ * Elo : perdre doit faire descendre, sinon le classement ne dit plus rien.
+ *
+ * Même persistance que persistScore (fichier + base) et donc mêmes lectures
+ * (tableau des scores, light, livre des records, position du joueur) ; on ne
+ * touche NI aux fenêtres de tournoi (une note n'est pas un score de tour) NI
+ * aux médailles du jour (le classement est permanent, section L).
+ */
+function fixerScore(username, rankingId, score, data) {
+  if (!username || !rankingId || !RANKINGS[rankingId]) {
+    return { updated: false, newScore: score, oldScore: 0, oldPos: 0, newPos: 0 };
+  }
+  if (!scoresData.users[username]) scoresData.users[username] = {};
+  const prev = scoresData.users[username][rankingId];
+  const oldScore = (prev && Number.isFinite(Number(prev.score))) ? Number(prev.score) : 0;
+  const oldPos = computePosition(rankingId, username);
+  const n = Math.round(Number(score) || 0);
+  const newData = (data === undefined || data === null) ? '' : String(data);
+  scoresData.users[username][rankingId] = { score: n, data: newData, updatedAt: new Date().toISOString() };
+  saveScoresFile();
+  const dbId = users[username] && users[username]._dbId;
+  if (dbId) {
+    db.upsertScore(dbId, rankingId, n, newData).catch((e) => {
+      console.error('[DB] score save error:', e.message);
+    });
+  }
+  return { updated: n !== oldScore, newScore: n, oldScore, oldPos, newPos: computePosition(rankingId, username) };
 }
 
 // ════════════════════ Tournois (« Maître ÈS … ») ════════════════════════════
@@ -21145,6 +21190,66 @@ setInterval(() => {
 // événements aux sockets concernés (identité = username).
 // ─────────────────────────────────────────────
 const { BandasNet } = require('./public/bandas/server/net.js');
+
+// ── La fiche CHAMPIONNAT d'un joueur ────────────────────────────────────────
+//
+// Le jeu d'origine la rangeait sur la FRUTICARTE, slot 0 du disque bandas
+// (FruticardSlot.as → client.frutiCard.updateSlot(0, …)), avec ces clés-là :
+//
+//   $linit  la note a-t-elle déjà été touchée ?
+//   $f/$c/$l  [victoires, défaites, nulles] des trois salles (amical /
+//             challenge / championnat) — mais `increment()` porte un `case 1:
+//             return; // challenge mode does not save its value anymore`, donc
+//             $c ne bougeait plus. On garde le champ, on ne l'écrit pas.
+//   $ls     [note, minimum atteint, maximum atteint]
+//
+// On écrit EXACTEMENT ces clés dans le même slot : la fiche d'un joueur reste
+// lisible par le client d'époque, et l'export de progression de l'admin la
+// montre telle qu'elle était. La NOTE est en outre recopiée au classement
+// `bandas_champion` — c'est lui qui alimente le tableau des scores, le light et
+// le livre des records, et lui seul qui survit à un vidage de slot.
+const BANDAS_SLOT = 'bandas';
+function bandasLireFicheChampion(username) {
+  const u = users[username];
+  const brut = u && u.frutiSlots && u.frutiSlots[BANDAS_SLOT] && u.frutiSlots[BANDAS_SLOT]['0'];
+  let carte = null;
+  if (brut) { try { carte = typeof brut === 'string' ? JSON.parse(brut) : brut; } catch (e) { carte = null; } }
+  if (carte && carte.$linit) return { linit: true, l: carte.$l, ls: carte.$ls };
+  // Pas (ou plus) de fiche sur la fruticarte, mais une note au classement : on
+  // repart de la note. Les deux écritures ne tombent pas dans le même panier
+  // (slot d'un côté, magasin de scores de l'autre) et la seconde est la plus
+  // sûre — c'est elle qui fait foi. Sans cela, un joueur dont le slot a été
+  // vidé (import de progression, base neuve) repartirait à 1000 alors que le
+  // classement le donne à 1240.
+  const note = getUserScore(username, 'bandas_champion');
+  if (note && note.score > 0) {
+    const l = (carte && Array.isArray(carte.$l)) ? carte.$l : [0, 0, 0];
+    return { linit: true, l, ls: [note.score, note.score, note.score] };
+  }
+  return null;
+}
+function bandasEcrireFicheChampion(username, fiche) {
+  const u = users[username];
+  if (!u) return;
+  if (!u.frutiSlots) u.frutiSlots = {};
+  if (!u.frutiSlots[BANDAS_SLOT]) u.frutiSlots[BANDAS_SLOT] = {};
+  let carte = {};
+  const brut = u.frutiSlots[BANDAS_SLOT]['0'];
+  if (brut) { try { carte = (typeof brut === 'string' ? JSON.parse(brut) : brut) || {}; } catch (e) { carte = {}; } }
+  carte.$linit = true;
+  carte.$l = fiche.l;
+  carte.$ls = fiche.ls;
+  if (!Array.isArray(carte.$f)) carte.$f = [0, 0, 0];
+  if (!Array.isArray(carte.$c)) carte.$c = [0, 0, 0];
+  const data = JSON.stringify(carte);
+  u.frutiSlots[BANDAS_SLOT]['0'] = data;
+  if (u._dbId && process.env.DATABASE_URL) {
+    db.upsertFrutiSlot(u._dbId, BANDAS_SLOT, 0, data).catch((e) => {
+      console.error('[bandas] fiche championnat:', e.message);
+    });
+  }
+}
+
 const bandasNet = new BandasNet({
   botIdentity: piocherIdentiteBot,      // cf. piocherIdentiteBot, plus haut
   // Un défi lance la partie sur-le-champ : si le défié n'est pas frais devant
@@ -21174,6 +21279,16 @@ const bandasNet = new BandasNet({
     return r;
   },
   onDiscLost: (username) => fdConsumeDisc('bandas', username),
+  // CHAMPIONNAT : la note se lit sur la fruticarte au premier « hello », et s'y
+  // réécrit après chaque partie classée — plus une copie au classement.
+  getChampion: (username) => bandasLireFicheChampion(username),
+  onChampion: (username, fiche, info) => {
+    bandasEcrireFicheChampion(username, fiche);
+    fixerScore(username, 'bandas_champion', fiche.ls[0]);
+    const signe = info.delta >= 0 ? '+' : '';
+    console.log(`[bandas] championnat ${username} ${info.avant} → ${info.apres}`
+      + ` (${signe}${info.delta}) contre ${info.adversaire}`);
+  },
 });
 // Tick : horloges (timeout) + coups des bots (1 Hz).
 setInterval(() => {

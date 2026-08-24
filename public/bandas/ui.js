@@ -19,9 +19,23 @@
   var sid = new URLSearchParams(location.search).get("sid") || "";
   if (!sid) { try { sid = (JSON.parse(localStorage.getItem("fp_light_session") || "{}") || {}).sid || ""; } catch (e) {} }
 
+  // Les trois salles du jeu d'origine (frutibandas/Main.as : FREE_MODE 0,
+  // CHALLENGE_MODE 1, CHAMPION_MODE 2). On garde la dernière visitée : revenir
+  // au jeu après un rafraîchissement ne doit pas renvoyer au challenge.
+  var SALLES = {
+    chall:  { titre: "CHALLENGE" },
+    champ:  { titre: "CHAMPIONNAT" },
+    amical: { titre: "MATCHES AMICAUX" },
+  };
+  var SALLE_DEFAUT = "chall";
+  function salleGardee() {
+    try { var s = localStorage.getItem("bandas.salle"); if (SALLES[s]) return s; } catch (e) {}
+    return SALLE_DEFAUT;
+  }
+
   var state = {
     ws: null, user: "", myBouille: "", gotLobby: false, screen: "connect",
-    inGame: false, helloTimer: null, lobbyTab: "players",
+    inGame: false, helloTimer: null, lobbyTab: "players", salle: salleGardee(),
   };
   function setStatus(s) { $("#status").textContent = s; }
 
@@ -88,7 +102,8 @@
       if (state.helloTimer) clearInterval(state.helloTimer);
       state.helloTimer = setInterval(function () {
         if (state.gotLobby) { clearInterval(state.helloTimer); return; }
-        send('<bd a="hello" n="' + xml(state.user) + '" f="' + xml(state.myBouille || DEFAULT_BOUILLE) + '" />');
+        send('<bd a="hello" n="' + xml(state.user) + '" f="' + xml(state.myBouille || DEFAULT_BOUILLE)
+          + '" sa="' + xml(state.salle) + '" />');
       }, 600);
     };
     ws.onmessage = function (ev) { onData(ev.data); };
@@ -158,16 +173,35 @@
       setStatus("Connecté — " + state.user);
       if (state.screen === "connect") showScreen("mode");
     }
+    // Le serveur dit de quelle salle vient ce lobby : un message adressé à une
+    // salle qu'on vient de quitter ne doit pas écraser la liste de la nouvelle.
+    var sa = el.getAttribute("sa");
+    if (sa && SALLES[sa] && sa !== state.salle) return;
     lobbyPlayers = []; lobbyGames = [];
     each(el.getElementsByTagName("pl"), function (n) {
-      lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f"), sr: +n.getAttribute("sr") || 0, bot: n.getAttribute("bot") === "1" });
+      lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f"), sr: +n.getAttribute("sr") || 0, el: +n.getAttribute("el") || 0, bot: n.getAttribute("bot") === "1" });
     });
     each(el.getElementsByTagName("game"), function (n) {
       lobbyGames.push({ id: n.getAttribute("id"), host: n.getAttribute("host"), c: +n.getAttribute("c"), m: +n.getAttribute("m") });
     });
-    $("#ch-j").textContent = lobbyPlayers.length;
-    $("#ch-p").textContent = lobbyGames.length;
+    // Les compteurs des TROIS bandeaux de l'écran de mode voyagent avec chaque
+    // lobby : ils restent justes sans qu'on ait à entrer dans chaque salle.
+    each(el.getElementsByTagName("s"), function (n) {
+      var k = n.getAttribute("k");
+      var j = $('[data-cpt="' + k + '-j"]'), p = $('[data-cpt="' + k + '-p"]');
+      if (j) j.textContent = n.getAttribute("j") || "0";
+      if (p) p.textContent = n.getAttribute("p") || "0";
+    });
+    majNote();
     if (state.screen === "lobby") renderLobby();
+  }
+  // Sa propre note de championnat, sous le bandeau du mode. Elle est envoyée
+  // pour chaque joueur quelle que soit la salle : on la lit donc sans avoir à
+  // entrer au championnat.
+  function majNote() {
+    var box = $("#ma-note"); if (!box) return;
+    var moi = lobbyPlayers.filter(isMe)[0];
+    box.innerHTML = (moi && moi.el) ? "Ta note : <b>" + moi.el + "</b>" : "";
   }
   function findPlayer(uid) { for (var i = 0; i < lobbyPlayers.length; i++) if (lobbyPlayers[i].u === uid) return lobbyPlayers[i]; return null; }
   function renderLobby() {
@@ -208,7 +242,10 @@
       return;
     }
     var name = p.n || p.u;
-    title.textContent = "Liste des défis de " + name + " (" + (p.sr || 0) + ")";
+    // Au championnat, le nombre entre parenthèses est la NOTE de l'adversaire
+    // (c'est elle qui dit ce qu'on a à gagner ou à perdre) ; ailleurs, sa série.
+    title.textContent = "Liste des défis de " + name
+      + " (" + (state.salle === "champ" ? (p.el || 0) : (p.sr || 0)) + ")";
     body.innerHTML = '<div class="defis-status"><span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span>' + esc(STATUSLABEL[p.s] || "Disponible") + "</div>";
     foot.innerHTML = "";
     var btn = document.createElement("button"); btn.className = "btn-defier";
@@ -236,7 +273,26 @@
     if (t === "defis") { var pd = $("#panel-defis"); if (pd) pd.classList.remove("collapsed"); renderDefis(); }
   }
   each(document.querySelectorAll(".lobby-tabs button"), function (b) { b.addEventListener("click", function () { setLobbyTab(b.getAttribute("data-tab")); }); });
-  $("#mode-chall").onclick = function () { lobbySel = null; $("#panel-defis").classList.add("collapsed"); showScreen("lobby"); renderLobby(); };
+  // Les trois salles. Entrer, c'est demander au serveur de nous y déplacer
+  // (`a="room"`) puis ouvrir le lobby — on ne voit que les gens de sa salle.
+  each(document.querySelectorAll(".mode[data-salle]"), function (m) {
+    m.onclick = function () { entrerSalle(m.getAttribute("data-salle")); };
+  });
+  function entrerSalle(salle) {
+    if (!SALLES[salle]) salle = SALLE_DEFAUT;
+    if (salle !== state.salle) {
+      state.salle = salle;
+      try { localStorage.setItem("bandas.salle", salle); } catch (e) {}
+      lobbyPlayers = []; lobbyGames = [];
+      bd({ a: "room", sa: salle });
+    }
+    $("#lobby-title").textContent = SALLES[salle].titre;
+    lobbySel = null;
+    $("#panel-defis").classList.add("collapsed");
+    showScreen("lobby");
+    renderLobby();
+    bd({ a: "list" });
+  }
   $("#lobby-back").onclick = function () { showScreen("mode"); };
   $("#btn-create").onclick = function () {
     var me = lobbyPlayers.filter(isMe)[0];
@@ -279,9 +335,15 @@
     GV.started = false;
     GV.stopMusic();
     document.body.classList.remove("chat-open", "sheet-open");
-    // gagnant → retour au lobby (la série continue) ; perdant/égalité → écran d'accueil
-    showScreen(mine ? "lobby" : "mode");
-    if (mine) renderLobby();
+    // CHALLENGE : gagnant → retour au lobby (la série continue), perdant →
+    // écran d'accueil. C'est le mode « une vie » du jeu d'origine — Manager.as
+    // n'y quitte même pas proprement son salon (`quit()` saute `partGame`), et
+    // une défaite renvoie à l'accueil (`hardReboot`).
+    // CHAMPIONNAT et AMICAL : on reste dans sa salle quoi qu'il arrive, c'est
+    // ce qui permet d'enchaîner les manches d'un même match.
+    var reste = mine || state.salle !== "chall";
+    showScreen(reste ? "lobby" : "mode");
+    if (reste) renderLobby();
     bd({ a: "list" });
   };
 
