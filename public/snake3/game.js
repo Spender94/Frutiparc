@@ -195,6 +195,7 @@ class VuePartie {
     this.serpentsNoirs = [];
     this.sonnettes = [];              // { x, y, temps }
     this.trouFx = null;
+    this.filmsSlot = new Map();       // case → images écoulées sur son icône
     this.ecran = null;                // l'écran par-dessus (sauvegarde, gameOver…)
     this.scoreMc = new D.Nombre('chiffresVert');
     this.finie = false;
@@ -351,6 +352,19 @@ class VuePartie {
     this.bombes = this.bombes.filter((b) => !b.mort);
     for (const s of this.sonnettes) s.temps -= deltaT;
     this.sonnettes = this.sonnettes.filter((s) => s.temps > 0);
+
+    // Les icônes de la rangée de cases : le clip est figé sur l'image de son
+    // objet, mais le sous-clip dessus continue de jouer. Changer d'image le
+    // recharge — la boucle repart alors de zéro, comme en Flash.
+    const vues = new Set();
+    for (const s of [...partie.slots, ...partie.unique_slots]) {
+      vues.add(s);
+      let e = this.filmsSlot.get(s);
+      if (!e || e.frame !== s.slotFrame) { e = { frame: s.slotFrame, t: 0 }; this.filmsSlot.set(s, e); }
+      e.t += deltaT * C.WANTED_FPS;
+    }
+    for (const s of [...this.filmsSlot.keys()]) if (!vues.has(s)) this.filmsSlot.delete(s);
+
     for (const p of this.popups) p.main(deltaT);
     this.popups = this.popups.filter((p) => !p.mort);
     this.particules.main(tmod);
@@ -424,7 +438,8 @@ class VuePartie {
     // La rangée de cases (PLAN_SLOTS) : i·50+30, 30.
     const rangee = [...partie.slots, ...partie.unique_slots];
     for (const s of rangee) {
-      D.poser(ctx, 'slot', s.slotFrame, s.pos * 50 + 30, 30, 1, 1, 0);
+      const film = this.filmsSlot.get(s);
+      D.poserAnim(ctx, 'slot', s.slotFrame, film ? film.t : 0, s.pos * 50 + 30, 30, 1, 1, 0);
       if (s.compteur != null) {
         ctx.font = '12px Alba, Verdana, sans-serif';
         ctx.fillStyle = '#ffffff';
@@ -803,6 +818,9 @@ window.demarrerFrutisnake = function (options) {
     return D.precharger(['menu', 'title', 'menuBackground', 'fleche', 'screens',
       'screensSans', 'pan', 'background', 'tete', 'fruits', 'options', 'slot',
       'barreScore', 'chiffresVert', 'chiffresRouge', 'chiffresJaune']).then(() => {
+      // Les suites d'animation (fioles, ciseaux) partent en fond : le menu
+      // n'a pas à les attendre, elles seront prêtes à la première partie.
+      D.amorcerAnimations(['options', 'slot']);
       jeu.demarrer();
       window.__frutisnake = jeu;      // la poignée des tests de bout en bout
       return jeu;

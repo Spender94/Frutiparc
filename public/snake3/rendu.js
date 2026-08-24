@@ -233,6 +233,12 @@ class Enrobage {
     this.genre = genre;                    // 'fruit' | 'bonus'
     this.frame = 1;
     this.tempsFrame = 0;
+    // Le film du sous-clip : en Flash, le clip d'objet est figé sur l'image de
+    // SON option (gotoAndStop) mais la fiole/les ciseaux qu'elle porte jouent
+    // leur propre boucle, depuis l'instant où l'objet a été posé. Chaque objet
+    // a donc sa phase — deux potions posées à une seconde d'écart ne ballottent
+    // pas ensemble.
+    this.film = 0;
     this.disparait = false;
     this.mort = false;
   }
@@ -245,6 +251,7 @@ class Enrobage {
     const dispar = this.genre === 'fruit' ? F_DISPARAIT_FRUIT : F_DISPARAIT_BONUS;
     while (this.tempsFrame >= 1) {
       this.tempsFrame -= 1;
+      this.film++;
       if (this.disparait) {
         this.frame++;
         if (this.frame > echelles.length) { this.mort = true; break; }
@@ -271,16 +278,17 @@ function dessinerEnrobe(ctx, enr) {
   if (o.z && o.z !== 0) {
     const kO = (100 - o.z / 2) / 100 * (o.echelle || 1);
     teinter(ctx, cle, o.id, o.x + o.z / 4, o.y + o.z / 3, kClip * kO,
-      enr.genre === 'fruit' ? OMBRE_FRUIT : OMBRE_BONUS);
+      enr.genre === 'fruit' ? OMBRE_FRUIT : OMBRE_BONUS, enr.film);
   }
   const rot = (o.rotation || 0) * Math.PI / 180;
-  D.poser(ctx, cle, o.id, o.x, o.y - (o.z || 0), kClip * kZ, kClip * kZ, rot);
+  D.poserAnim(ctx, cle, o.id, enr.film, o.x, o.y - (o.z || 0), kClip * kZ, kClip * kZ, rot);
 }
 
 // Dessine une frame d'un clip en silhouette teintée (Color.setRGB / le
 // cxform de l'image « ombre » : tous les pixels prennent la couleur).
-function teinter(ctx, cle, frame, x, y, k, couleur) {
-  const r = D.rendreTeinte(cle, frame, k, couleur);
+function teinter(ctx, cle, frame, x, y, k, couleur, film) {
+  const r = film == null ? D.rendreTeinte(cle, frame, k, couleur)
+    : D.rendreTeinteAnim(cle, frame, film, k, couleur);
   if (!r) return;
   ctx.save();
   ctx.translate(x, y);

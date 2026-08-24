@@ -38,6 +38,9 @@ function poserManifeste(m) { manifeste = m; }
 function image(fichier) {
   let im = images.get(fichier);
   if (!im) {
+    // Sous Node (les tests lisent le manifeste sans navigateur) : un leurre
+    // « chargé mais vide », que rendreFichier refuse et que precharger saute.
+    if (typeof Image === 'undefined') return { complete: true, naturalWidth: 0 };
     im = new Image();
     im.src = BASE + fichier;
     images.set(fichier, im);
@@ -45,7 +48,10 @@ function image(fichier) {
   return im;
 }
 
-// Précharge les images d'un jeu de clés (avant d'ouvrir le jeu).
+// Précharge les images d'un jeu de clés (avant d'ouvrir le jeu). Les SUITES
+// d'animation (voir plus bas) restent en dehors : elles pèsent le double du
+// reste et ne servent qu'aux objets réellement posés — elles se décodent au
+// premier besoin, l'image figée tenant la place en attendant.
 function precharger(cles) {
   const promesses = [];
   for (const cle of cles) {
@@ -106,14 +112,67 @@ function rendreFichier(fichier, cadre, k) {
   return r;
 }
 
+// ── Les clips animés ──────────────────────────────────────────────────────
+// Une image de clip peut porter une SUITE (`anim`) : en Flash le clip parent
+// est figé sur son image (gotoAndStop(id)) mais les sous-clips posés dessus
+// continuent de jouer leur propre boucle — c'est ce qui fait ballotter le
+// liquide des potions et claquer les ciseaux. `tick` est le nombre d'images
+// écoulées depuis que l'objet est apparu (32/s, la cadence du SWF) ; la suite
+// se lit modulo sa longueur, l'index 0 étant le départ de la boucle.
+//
+// Tant qu'une image de la suite n'est pas décodée, on retombe sur l'image
+// figée : l'objet ne clignote pas, il s'anime dès que le décodage a suivi.
+const amorces = new Set();
+
+// Lance le décodage de toutes les suites d'un jeu de clés, sans attendre :
+// le menu s'ouvre tout de suite, les fioles ballottent dès la première partie.
+function amorcerAnimations(cles) {
+  for (const cle of cles) {
+    const clip = manifeste.clips[cle];
+    if (!clip) continue;
+    for (const f of Object.keys(clip.frames)) suiteDe(cle, Number(f));
+  }
+}
+
+function suiteDe(cle, frame) {
+  const clip = manifeste.clips[cle];
+  if (!clip) return null;
+  const f = clip.frames[frame] || clip.frames[1];
+  if (f && f.anim) {
+    const marque = cle + '#' + frame;
+    if (!amorces.has(marque)) {
+      amorces.add(marque);
+      for (const a of f.anim) image(a.fichier);
+    }
+  }
+  return f || null;
+}
+
+// L'entrée { fichier, cadre } à jouer pour ce tick (l'image figée sans suite).
+function imageAnim(cle, frame, tick) {
+  const f = suiteDe(cle, frame);
+  if (!f || !f.anim) return f;
+  const n = f.anim.length;
+  const i = ((Math.floor(tick) % n) + n) % n;
+  return f.anim[i];
+}
+
+function rendreAnim(cle, frame, tick, k) {
+  const f = suiteDe(cle, frame);
+  if (!f) return null;
+  if (!f.anim) return rendreFichier(f.fichier, f.cadre, k);
+  const a = imageAnim(cle, frame, tick);
+  return rendreFichier(a.fichier, a.cadre, k) || rendreFichier(f.fichier, f.cadre, k);
+}
+
 // La frame rasterisée puis TEINTE en silhouette (Color.setRGB, ou le cxform
 // de l'image « ombre ») : chaque pixel opaque prend la couleur. Le fond
 // passe par un canvas intermédiaire — un source-atop sur le canvas de scène
 // teinterait tout ce qui est déjà peint dessous.
-function rendreTeinte(cle, frame, k, couleur) {
-  const base = rendre(cle, frame, k);
+function rendreTeinteFichier(fichier, cadre, k, couleur) {
+  const base = rendreFichier(fichier, cadre, k);
   if (!base) return null;
-  const clef = cle + '#' + frame + '@' + k + '/' + couleur;
+  const clef = fichier + '@' + Math.max(0.05, Math.round((k || 1) * 20) / 20) + '/' + couleur;
   let r = rendus.get(clef);
   if (r) return r;
   const c = document.createElement('canvas');
@@ -127,6 +186,19 @@ function rendreTeinte(cle, frame, k, couleur) {
   r = { c, dx: base.dx, dy: base.dy, lw: base.lw, lh: base.lh };
   rendus.set(clef, r);
   return r;
+}
+
+function rendreTeinte(cle, frame, k, couleur) {
+  const clip = manifeste.clips[cle];
+  const f = clip && (clip.frames[frame] || clip.frames[1]);
+  return f ? rendreTeinteFichier(f.fichier, f.cadre, k, couleur) : null;
+}
+
+function rendreTeinteAnim(cle, frame, tick, k, couleur) {
+  const a = imageAnim(cle, frame, tick);
+  if (!a) return null;
+  return rendreTeinteFichier(a.fichier, a.cadre, k, couleur)
+    || rendreTeinte(cle, frame, k, couleur);
 }
 
 // La frame sous un cxform MULTIPLICATIF (les pastilles du menu : ra=p,
@@ -159,8 +231,7 @@ function rendreMultiplie(cle, frame, k, mr, mv, mb) {
 
 // Dessine la frame au point d'ancrage (x, y), échelle sx/sy (1 = taille du
 // SWF), rotation en radians. Le contexte est déjà en repère logique.
-function poser(ctx, cle, frame, x, y, sx, sy, rot, alpha) {
-  const r = rendre(cle, frame, Math.max(Math.abs(sx || 1), Math.abs(sy || 1)));
+function poserRendu(ctx, r, x, y, sx, sy, rot, alpha) {
   if (!r) return;
   ctx.save();
   ctx.translate(x, y);
@@ -169,6 +240,17 @@ function poser(ctx, cle, frame, x, y, sx, sy, rot, alpha) {
   if (alpha != null && alpha < 100) ctx.globalAlpha *= Math.max(0, alpha / 100);
   ctx.drawImage(r.c, r.dx, r.dy, r.lw, r.lh);
   ctx.restore();
+}
+
+function poser(ctx, cle, frame, x, y, sx, sy, rot, alpha) {
+  poserRendu(ctx, rendre(cle, frame, Math.max(Math.abs(sx || 1), Math.abs(sy || 1))),
+    x, y, sx, sy, rot, alpha);
+}
+
+// Idem, mais en jouant la suite d'animation de l'image (voir suiteDe).
+function poserAnim(ctx, cle, frame, tick, x, y, sx, sy, rot, alpha) {
+  poserRendu(ctx, rendreAnim(cle, frame, tick, Math.max(Math.abs(sx || 1), Math.abs(sy || 1))),
+    x, y, sx, sy, rot, alpha);
 }
 
 // ── PopupFX — asml.PopupFX, décompilé de snake3.swf (DoInitAction 719) ────
@@ -268,7 +350,8 @@ class Nombre {
 
 const API = {
   chargerManifeste, poserManifeste, precharger, poserDensite, cadre, rendre, rendreFichier,
-  rendreTeinte, rendreMultiplie, poser, image, PopupFX, Nombre,
+  rendreTeinte, rendreTeinteFichier, rendreTeinteAnim, rendreMultiplie,
+  imageAnim, rendreAnim, amorcerAnimations, poser, poserAnim, image, PopupFX, Nombre,
   get manifeste() { return manifeste; },
   get DENSITE() { return DENSITE; },
 };

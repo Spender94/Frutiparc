@@ -62,8 +62,8 @@ const swf = ouvrir(SWF, { textesEnFormes: true, morphsEnFormes: true });
 // { cle, id, frames } — frames: liste d'images, ou 'toutes'.
 const CLIPS = [
   { cle: 'fruits', id: 354, frames: 'toutes', etiquette: 'la planche des 342 fruits' },
-  { cle: 'options', id: 449, frames: 'toutes', etiquette: 'les 37 icônes d\'options' },
-  { cle: 'slot', id: 676, frames: 'toutes', etiquette: 'les cases de la rangée' },
+  { cle: 'options', id: 449, frames: 'toutes', anime: true, etiquette: 'les 37 icônes d\'options' },
+  { cle: 'slot', id: 676, frames: 'toutes', anime: true, etiquette: 'les cases de la rangée' },
   { cle: 'tete', id: 661, frames: [1, 2, 3, 10, 11, 12, 13], sans: ['col'],
     etiquette: 'les têtes (sans `col`, le point de collision que Snake.as cache)' },
   { cle: 'fbarre', id: 685, frames: [1], etiquette: 'la frutibarre' },
@@ -119,9 +119,17 @@ function boiteForme(cle) {
   return v;
 }
 
-function corpsForme(cle) {
+// Le corps d'une forme, prêt à être recollé dans un SVG composé. Ses
+// identifiants (dégradés `g1`, découpes `c1`) sont NUMÉROTÉS PAR FORME : deux
+// formes réunies dans le même fichier les répètent, et le navigateur résout
+// alors url(#g1) sur la PREMIÈRE définition — la bombe de la case dynamite
+// héritait ainsi du dégradé de sa case. On les préfixe par le rang de la forme.
+function corpsForme(cle, rang) {
   const p = path.join(SORTIE, '_formes', 'shape' + cle + '.svg');
-  return fs.readFileSync(p, 'utf8').replace(/<svg[^>]*>/, '').replace('</svg>', '');
+  const t = fs.readFileSync(p, 'utf8').replace(/<svg[^>]*>/, '').replace('</svg>', '');
+  const pre = 'f' + rang + '_';
+  return t.replace(/id="([^"]+)"/g, (_, id) => `id="${pre}${id}"`)
+    .replace(/url\(#([^)]+)\)/g, (_, id) => `url(#${pre}${id})`);
 }
 
 // Les MORPHS du SWF, lus une fois — swf-morph.js sait interpoler les deux
@@ -143,6 +151,8 @@ function ecrireMorph(m) {
 // `slope` porte le multiplicateur, `intercept` l'ajout. C'est ce qui donne aux
 // potions leur couleur : la MÊME fiole passe par un cxform différent à chaque
 // image du clip (rouge 204,0,0 ; bleu 0,41,204 ; orange 204,122,0…).
+// Le numéro est LOCAL au fichier (svgCompose le remet à zéro) : ainsi deux
+// extractions donnent les mêmes identifiants et le dépôt ne bruite pas.
 let nFiltre = 0;
 function filtreCouleur(cx) {
   const id = 'cx' + (++nFiltre);
@@ -182,17 +192,103 @@ function svgCompose(morceaux) {
   if (!dessins.length) return null;
   const l = Math.max(0.01, x1 - x0), h = Math.max(0.01, y1 - y0);
   let defs = '', corps = '';
-  for (const d of dessins) {
+  nFiltre = 0;
+  dessins.forEach((d, i) => {
     const M = d.M;
     const f = d.cx ? filtreCouleur(d.cx) : null;
     if (f) defs += f.def;
     corps += `<g transform="matrix(${[M.a, M.b, M.c, M.d, M.e / 20, M.f / 20].map(arr).join(',')})"`
       + (f ? ` filter="url(#${f.id})"` : '') + '>'
-      + corpsForme(cleForme(d)) + '</g>\n';
-  }
+      + corpsForme(cleForme(d), i + 1) + '</g>\n';
+  });
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(x0)} ${arr(y0)} ${arr(l)} ${arr(h)}" width="${arr(l)}" height="${arr(h)}">\n`
     + (defs ? '<defs>' + defs + '</defs>\n' : '') + corps + '</svg>\n';
   return { svg, cadre: { x: arr(x0), y: arr(y0), w: arr(l), h: arr(h) } };
+}
+
+// ── Les sous-clips qui S'ANIMENT ──────────────────────────────────────────
+//
+// En Flash, un sous-clip vit sa propre vie : la case d'option est figée sur
+// l'image de SON option (gotoAndStop(id)), mais la fiole qu'elle contient
+// continue de jouer. C'est ainsi que le liquide des potions ballotte et que
+// les ciseaux claquent. Aplatir tout le monde sur la même image fige le jeu.
+//
+// Chaque clip animé porte sa BOUCLE : sans action, il rejoue depuis l'image 1 ;
+// s'il finit par gotoAndStop(n) suivi de play() — la façon dont ce SWF écrit
+// gotoAndPlay(n) — il reprend à l'image n. La bombe repart ainsi à 2, les
+// flèches à 2, les ciseaux et les potions à 1.
+const boucles = new Map();
+function boucleDe(id) {
+  if (boucles.has(id)) return boucles.get(id);
+  const frames = swf.parSprite.get(id);
+  if (!frames) { boucles.set(id, null); return null; }
+  const n = Math.max(...frames.keys());
+  let depart = 1;
+  swf.parcourir((code, corps, len, sprite, frame) => {
+    if (code !== 12 || sprite !== id || frame !== n) return;
+    const z = swf.b.slice(corps, corps + len);
+    for (let i = 0; i < z.length && z[i];) {
+      const op = z[i];
+      if (op < 0x80) { i++; continue; }
+      if (op === 0x81) depart = z.readUInt16LE(i + 3) + 1;   // GotoFrame
+      i += 3 + z.readUInt16LE(i + 1);
+    }
+  });
+  const b = { n, depart, cycle: Math.max(1, n - depart + 1) };
+  boucles.set(id, b);
+  return b;
+}
+
+// Aplatit une image du clip PARENT en laissant ses sous-clips avancer de
+// `tick` images — chacun sur sa propre boucle.
+function aplatirAnime(ch, M, frameParent, tick, cx, chemin, profondeur, ratio) {
+  profondeur = profondeur || 0;
+  if (profondeur > 6) return [];
+  if (swf.estForme(ch)) {
+    return [{ shape: ch, M, chemin: chemin || '', cx: swf.cxNeutre(cx) ? null : cx,
+      // Un morph porte le TAUX de mélange de son placement (le liquide qui
+      // ballotte est un morph replacé à un taux différent à chaque image).
+      morph: morphs.has(ch) ? (ratio || 0) : undefined }];
+  }
+  if (!swf.estSprite(ch)) return [];
+  const frames = swf.parSprite.get(ch);
+  if (!frames) return [];
+  // Le parent est tenu sur son image ; un sous-clip suit sa boucle.
+  let cle;
+  if (profondeur === 0) {
+    cle = frames.has(frameParent) ? frameParent : [...frames.keys()].sort((a, b) => a - b)[0];
+  } else {
+    const b = boucleDe(ch);
+    cle = b && b.n > 1 ? b.depart + (tick % b.cycle) : 1;
+    if (!frames.has(cle)) {
+      const dispo = [...frames.keys()].sort((a, b2) => a - b2);
+      cle = dispo.filter((f) => f <= cle).pop() || dispo[0];
+    }
+  }
+  const out = [];
+  for (const p of (frames.get(cle) || [])) {
+    const sous = p.nom ? ((chemin ? chemin + '.' : '') + p.nom) : (chemin || '');
+    const morceaux = aplatirAnime(p.ch, swf.composer(M, p.M), frameParent, tick,
+      swf.composerCouleur(cx, p.cx), sous, profondeur + 1, p.ratio);
+    if (p.masque) for (const m of morceaux) m.masque = true;
+    out.push(...morceaux);
+  }
+  return out;
+}
+
+// Le nombre d'images d'animation d'une image de clip : le cycle du plus long
+// de ses sous-clips (1 s'il n'y en a pas — l'image est alors figée).
+function cycleDeLImage(id, frame) {
+  const places = (swf.parSprite.get(id) || new Map()).get(frame) || [];
+  let cycle = 1;
+  const voir = (ch, profondeur) => {
+    if (profondeur > 4 || !swf.estSprite(ch)) return;
+    const b = boucleDe(ch);
+    if (b && b.n > 1) cycle = Math.max(cycle, b.cycle);
+    for (const p of (swf.parSprite.get(ch).get(1) || [])) voir(p.ch, profondeur + 1);
+  };
+  for (const p of places) voir(p.ch, 1);
+  return cycle;
 }
 
 const arr = (v) => Math.round(v * 100) / 100;
@@ -451,6 +547,24 @@ for (const c of CLIPS) {
       else shapes.add(m.shape);
     }
     travaux.push({ c, f, morceaux });
+
+    // Un clip animé sort aussi la SUITE de ses images : le sous-clip avance
+    // d'un cran par image du film (le liquide ballotte, les ciseaux claquent).
+    if (c.anime) {
+      const cycle = cycleDeLImage(c.id, f);
+      if (cycle > 1) {
+        const suite = [];
+        for (let t = 0; t < cycle; t++) {
+          const m = aplatirAnime(c.id, IDENTITE, f, t, null, '', 0, null);
+          for (const x of m) {
+            if (x.morph !== undefined) ecrireMorph(x);
+            else shapes.add(x.shape);
+          }
+          suite.push(m);
+        }
+        travaux[travaux.length - 1].suite = suite;
+      }
+    }
   }
 }
 const manquantes = [...shapes].filter(
@@ -466,6 +580,7 @@ console.log(`formes : ${shapes.size} référencées`);
 // 2. Chaque image en SVG + le manifeste.
 const manifeste = { clips: {}, cadres: {}, notes: {} };
 let nSvg = 0;
+let nAnim = 0;
 for (const t of travaux) {
   const r = svgCompose(t.morceaux);
   if (!r) continue;
@@ -473,8 +588,27 @@ for (const t of travaux) {
   fs.writeFileSync(path.join(SORTIE, nom), r.svg);
   nSvg++;
   if (!manifeste.clips[t.c.cle]) manifeste.clips[t.c.cle] = { id: t.c.id, frames: {} };
-  manifeste.clips[t.c.cle].frames[t.f] = { fichier: nom, cadre: r.cadre };
+  const entree = { fichier: nom, cadre: r.cadre };
+  if (t.suite) {
+    // La séquence : autant de fichiers que le cycle en compte. Chaque image
+    // porte SON cadre — un ciseau grand ouvert déborde le ciseau fermé.
+    // Une boucle dont toutes les images se ressemblent (les flèches : deux
+    // images identiques) ne s'écrit pas : elle ne bougerait pas à l'écran.
+    const rendus = t.suite.map(svgCompose).filter(Boolean);
+    if (rendus.length > 1 && new Set(rendus.map((x) => x.svg)).size > 1) {
+      const fichiers = [];
+      rendus.forEach((ri, i) => {
+        const nomI = `${t.c.cle}A${String(t.f).padStart(3, '0')}_${String(i + 1).padStart(2, '0')}.svg`;
+        fs.writeFileSync(path.join(SORTIE, nomI), ri.svg);
+        nSvg++; nAnim++;
+        fichiers.push({ fichier: nomI, cadre: ri.cadre });
+      });
+      entree.anim = fichiers;
+    }
+  }
+  manifeste.clips[t.c.cle].frames[t.f] = entree;
 }
+console.log(`images d'animation : ${nAnim}`);
 console.log(`SVG écrits : ${nSvg}`);
 
 // 3. Les mesures dont le moteur a besoin.

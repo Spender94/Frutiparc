@@ -389,6 +389,81 @@ test('les potions ont leur liquide (morph) et leur couleur (cxform)', () => {
     'deux potions partagent la même couleur : ' + [...couleurs].join(' | '));
 });
 
+test('les sous-clips continuent de jouer : ciseaux, potions, cases', () => {
+  // En Flash un clip d'objet est FIGÉ sur l'image de son option (gotoAndStop)
+  // mais les sous-clips posés dessus jouent leur propre boucle. Sans cela les
+  // ciseaux restaient ouverts et le liquide des potions immobile.
+  // Le cycle vient du SWF : les ciseaux 21 images, les fioles 15.
+  const CYCLES = {
+    options: { 1: 21, 2: 21, 3: 21, 6: 15, 9: 15, 10: 15, 11: 15, 15: 15,
+      19: 6, 20: 15, 25: 15, 26: 15, 37: 15 },
+    slot: { 3: 15, 5: 15, 6: 15, 7: 15, 9: 15, 10: 15, 11: 15, 12: 15, 13: 6, 14: 15 },
+  };
+  for (const [cle, attendus] of Object.entries(CYCLES)) {
+    const frames = manifeste.clips[cle].frames;
+    const animees = Object.entries(frames).filter(([, v]) => v.anim).map(([f]) => Number(f));
+    assert.deepStrictEqual(animees.sort((a, b) => a - b),
+      Object.keys(attendus).map(Number).sort((a, b) => a - b),
+      `${cle} : ce ne sont pas les bonnes images qui s'animent`);
+    for (const [f, n] of Object.entries(attendus)) {
+      const suite = frames[f].anim;
+      assert.strictEqual(suite.length, n, `${cle} image ${f} : cycle de ${suite.length} au lieu de ${n}`);
+      // Chaque image de la suite existe et porte SON cadre — celui d'un ciseau
+      // grand ouvert déborde celui d'un ciseau fermé, et le client dessine au
+      // coin du cadre de l'image jouée, pas à celui de l'image figée.
+      const fixe = frames[f].cadre;
+      for (const a of suite) {
+        assert.ok(fs.existsSync(path.join(SPRITES, a.fichier)), 'manque ' + a.fichier);
+        assert.ok(a.cadre.w > 0 && a.cadre.h > 0, a.fichier + ' : cadre vide');
+        assert.ok(a.cadre.x < fixe.x + fixe.w && a.cadre.x + a.cadre.w > fixe.x
+          && a.cadre.y < fixe.y + fixe.h && a.cadre.y + a.cadre.h > fixe.y,
+          a.fichier + ' : cadre hors de l\'objet — ' + JSON.stringify(a.cadre));
+      }
+      // …et la suite BOUGE : au moins deux contenus distincts.
+      const vus = new Set(suite.map((a) => fs.readFileSync(path.join(SPRITES, a.fichier), 'utf8')));
+      assert.ok(vus.size >= 2, `${cle} image ${f} : la suite ne bouge pas`);
+    }
+  }
+});
+
+test('les identifiants d\'un SVG composé ne se marchent pas dessus', () => {
+  // Un dégradé s'appelle `g1` DANS SA FORME ; deux formes réunies dans le même
+  // fichier les répétaient, et url(#g1) tombait alors sur la première — la
+  // bombe de la case dynamite héritait du dégradé de sa case. Chaque forme
+  // porte donc son rang en préfixe.
+  let composes = 0;
+  for (const clip of Object.values(manifeste.clips)) {
+    for (const f of Object.values(clip.frames)) {
+      for (const e of [f, ...(f.anim || [])]) {
+        const svg = fs.readFileSync(path.join(SPRITES, e.fichier), 'utf8');
+        const ids = (svg.match(/ id="([^"]+)"/g) || []).map((s) => s.slice(5, -1));
+        if (ids.length < 2) continue;
+        composes++;
+        assert.strictEqual(new Set(ids).size, ids.length,
+          e.fichier + ' : identifiants en double — ' + ids.join(' '));
+        for (const u of (svg.match(/url\(#([^)]+)\)/g) || [])) {
+          assert.ok(ids.includes(u.slice(5, -1)), e.fichier + ' : ' + u + ' ne pointe sur rien');
+        }
+      }
+    }
+  }
+  assert.ok(composes > 100, 'trop peu de SVG composés vérifiés : ' + composes);
+});
+
+test('rendreAnim retombe sur l\'image figée tant que la suite n\'est pas décodée', () => {
+  // Le client ne précharge pas les suites (deux mégaoctets pour des objets qui
+  // ne sont pas tous posés) : il les décode au premier besoin et dessine
+  // l'image figée en attendant, pour ne pas laisser de trou.
+  const cle = 'options', frame = 6;
+  const suite = manifeste.clips[cle].frames[frame].anim;
+  const noms = [0, 1, 7, 14, 15, 29].map((t) => D.imageAnim(cle, frame, t).fichier);
+  assert.deepStrictEqual(noms, [suite[0], suite[1], suite[7], suite[14], suite[0], suite[14]]
+    .map((a) => a.fichier), 'la suite ne boucle pas modulo sa longueur');
+  // Une image sans suite rend son fichier figé quel que soit le tick.
+  const fige = manifeste.clips.fruits.frames[1];
+  assert.strictEqual(D.imageAnim('fruits', 1, 9).fichier, fige.fichier);
+});
+
 test('la tête ne montre pas son point de collision', () => {
   // `col`, l'enfant que Snake.as rend invisible (col_mc._visible = false),
   // laissait un rectangle blanc sur le museau du serpent. Il ne doit pas être

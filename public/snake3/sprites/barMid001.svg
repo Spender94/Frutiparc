@@ -5,16 +5,16 @@
 </g>
 <g transform="matrix(1,0,0,1,0,0)">
   <defs>
-    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.00034,-0.00018,0,-3,5.9)"><stop offset="0" stop-color="#009900"/><stop offset="0.76471" stop-color="#01ba01"/><stop offset="1" stop-color="#03e903"/></linearGradient>
+    <linearGradient id="f2_g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.00034,-0.00018,0,-3,5.9)"><stop offset="0" stop-color="#009900"/><stop offset="0.76471" stop-color="#01ba01"/><stop offset="1" stop-color="#03e903"/></linearGradient>
   </defs>
-  <path d="M-4.25 1.75Q-2.5 0 -0.05 0L0 0L0 12L-0.05 12Q-2.5 11.95 -4.25 10.2Q-6 8.45 -6 6Q-6 3.5 -4.25 1.75Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M-4.25 1.75Q-2.5 0 -0.05 0L0 0L0 12L-0.05 12Q-2.5 11.95 -4.25 10.2Q-6 8.45 -6 6Q-6 3.5 -4.25 1.75Z" fill="url(#f2_g1)" fill-rule="evenodd"/>
 
 </g>
 <g transform="matrix(1,0,0,1,0,0)">
   <defs>
-    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.0002,-0.00061,0,5,4.2)"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="f3_g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.0002,-0.00061,0,5,4.2)"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
   </defs>
-  <path d="M0 7.45L-0.05 7.45Q-2.1 7.45 -3.55 6.9Q-5 6.35 -5 5.55L-4.95 5.3Q-4.75 3.65 -3.5 2.45L-3.55 2.45Q-2.1 1 -0.05 1L0 1L0 7.45Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M0 7.45L-0.05 7.45Q-2.1 7.45 -3.55 6.9Q-5 6.35 -5 5.55L-4.95 5.3Q-4.75 3.65 -3.5 2.45L-3.55 2.45Q-2.1 1 -0.05 1L0 1L0 7.45Z" fill="url(#f3_g1)" fill-rule="evenodd"/>
 
 </g>
 </svg>

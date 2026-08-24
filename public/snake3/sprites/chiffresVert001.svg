@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="1.6 -13.75 28 27.9" width="28" height="27.9">
 <g transform="matrix(1,0,0,1,0,0)">
   <defs>
-    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,-0.00066,0.0007,0,15.55,0.1)"><stop offset="0" stop-color="#ea7575"/><stop offset="1" stop-color="#bb1e1e"/></linearGradient>
-    <linearGradient id="g2" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.0006,-0.00064,0,15.6,0.1)"><stop offset="0" stop-color="#ffffff" stop-opacity="0.8"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="f1_g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,-0.00066,0.0007,0,15.55,0.1)"><stop offset="0" stop-color="#ea7575"/><stop offset="1" stop-color="#bb1e1e"/></linearGradient>
+    <linearGradient id="f1_g2" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.0006,-0.00064,0,15.6,0.1)"><stop offset="0" stop-color="#ffffff" stop-opacity="0.8"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
   </defs>
   <path d="M25.5 -9.65Q29.6 -5.55 29.6 0.2Q29.6 5.95 25.5 10.05Q21.4 14.15 15.6 14.15Q9.8 14.15 5.7 10.05Q1.6 5.95 1.6 0.2Q1.6 -5.55 5.7 -9.65Q9.8 -13.75 15.6 -13.75Q21.4 -13.75 25.5 -9.65ZM12.3 -3.1Q10.95 -1.75 10.95 0.2Q10.95 2.15 12.3 3.5Q13.65 4.85 15.6 4.85Q17.55 4.85 18.9 3.5Q20.25 2.15 20.25 0.2Q20.25 -1.75 18.9 -3.1Q17.55 -4.45 15.6 -4.45Q13.65 -4.45 12.3 -3.1Z" fill="#ffffff" fill-rule="evenodd"/>
-  <path d="M15.55 -6.95Q12.55 -6.95 10.5 -4.9Q8.45 -2.85 8.45 0.2Q8.45 3.2 10.5 5.3Q12.55 7.35 15.55 7.35Q18.6 7.35 20.65 5.3Q22.7 3.2 22.7 0.2Q22.7 -2.8 20.65 -4.9Q18.6 -6.95 15.55 -6.95ZM15.55 -11.25Q20.35 -11.25 23.7 -7.95Q27.05 -4.6 27.05 0.2Q27.05 5 23.7 8.35Q20.35 11.65 15.55 11.65Q10.8 11.65 7.45 8.35Q4.1 5 4.1 0.2Q4.1 -4.6 7.45 -7.95Q10.8 -11.25 15.55 -11.25Z" fill="url(#g1)" fill-rule="evenodd"/>
+  <path d="M15.55 -6.95Q12.55 -6.95 10.5 -4.9Q8.45 -2.85 8.45 0.2Q8.45 3.2 10.5 5.3Q12.55 7.35 15.55 7.35Q18.6 7.35 20.65 5.3Q22.7 3.2 22.7 0.2Q22.7 -2.8 20.65 -4.9Q18.6 -6.95 15.55 -6.95ZM15.55 -11.25Q20.35 -11.25 23.7 -7.95Q27.05 -4.6 27.05 0.2Q27.05 5 23.7 8.35Q20.35 11.65 15.55 11.65Q10.8 11.65 7.45 8.35Q4.1 5 4.1 0.2Q4.1 -4.6 7.45 -7.95Q10.8 -11.25 15.55 -11.25Z" fill="url(#f1_g1)" fill-rule="evenodd"/>
   <path d="M23.05 -7.2L23 -7.2L23 -7.25L23.05 -7.2ZM8.15 -7.25L8.15 -7.2L8.15 -7.25Z" fill="#ea7575" fill-rule="evenodd"/>
-  <path d="M5.1 0.1Q5.15 -4.2 8.15 -7.2Q11.2 -10.25 15.55 -10.25Q19.95 -10.25 23 -7.2L23.05 -7.2Q26 -4.2 26.05 0.1L26.05 0.2L25.95 1.75L23.6 1.75L23.7 0.2L23.7 0.1Q23.65 -3.25 21.4 -5.6L21.35 -5.6Q19 -7.95 15.55 -7.95Q12.15 -7.95 9.8 -5.6Q7.5 -3.3 7.45 0.1L7.45 0.2L7.6 1.75L5.2 1.75L5.1 0.2L5.1 0.1Z" fill="url(#g2)" fill-rule="evenodd"/>
+  <path d="M5.1 0.1Q5.15 -4.2 8.15 -7.2Q11.2 -10.25 15.55 -10.25Q19.95 -10.25 23 -7.2L23.05 -7.2Q26 -4.2 26.05 0.1L26.05 0.2L25.95 1.75L23.6 1.75L23.7 0.2L23.7 0.1Q23.65 -3.25 21.4 -5.6L21.35 -5.6Q19 -7.95 15.55 -7.95Q12.15 -7.95 9.8 -5.6Q7.5 -3.3 7.45 0.1L7.45 0.2L7.6 1.75L5.2 1.75L5.1 0.2L5.1 0.1Z" fill="url(#f1_g2)" fill-rule="evenodd"/>
 
 </g>
 </svg>

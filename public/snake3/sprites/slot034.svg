@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-24.1 -24.15 49.95 50" width="49.95" height="50">
 <g transform="matrix(1,0,0,1,-23.1,-23.15)">
   <defs>
-    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.00129,-0.00146,0,24,21.85)"><stop offset="0" stop-color="#95d258"/><stop offset="0.96078" stop-color="#d6f7b5"/></linearGradient>
-    <radialGradient id="g2" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00191,0,0,0.00191,23.95,2)"><stop offset="0" stop-color="#ffffff" stop-opacity="0.8"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="f1_g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.00129,-0.00146,0,24,21.85)"><stop offset="0" stop-color="#95d258"/><stop offset="0.96078" stop-color="#d6f7b5"/></linearGradient>
+    <radialGradient id="f1_g2" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00191,0,0,0.00191,23.95,2)"><stop offset="0" stop-color="#ffffff" stop-opacity="0.8"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
   </defs>
   <path d="M48.95 24Q48.95 27.75 46.3 30.4L30.35 46.35Q27.7 49 24 49Q20.25 49 17.6 46.35L1.65 30.4Q-1 27.75 -1 24Q-1 20.25 1.65 17.65L17.6 1.7Q20.25 -0.95 24 -1Q27.7 -0.95 30.35 1.7L46.3 17.65Q48.95 20.25 48.95 24Z" fill="#ffffff" fill-rule="evenodd"/>
-  <path d="M45.6 18.35Q47.95 20.7 47.95 24Q47.95 27.35 45.6 29.7L29.65 45.65Q27.3 48 24 48Q20.65 48 18.3 45.65L2.35 29.7Q0 27.35 0 24Q0 20.7 2.35 18.35L18.3 2.4Q20.65 0.05 24 0Q27.3 0.05 29.65 2.4L45.6 18.35Z" fill="url(#g1)" fill-rule="evenodd"/>
-  <path d="M45.95 24.3Q20.95 28.1 2 24.3L2 24Q2 21.5 3.75 19.75L3.8 19.75L19.7 3.85Q21.45 2.05 23.95 2L24 2Q26.5 2.05 28.25 3.8L28.25 3.85L44.15 19.75L44.2 19.75Q45.95 21.5 45.95 24L45.95 24.3Z" fill="url(#g2)" fill-rule="evenodd"/>
+  <path d="M45.6 18.35Q47.95 20.7 47.95 24Q47.95 27.35 45.6 29.7L29.65 45.65Q27.3 48 24 48Q20.65 48 18.3 45.65L2.35 29.7Q0 27.35 0 24Q0 20.7 2.35 18.35L18.3 2.4Q20.65 0.05 24 0Q27.3 0.05 29.65 2.4L45.6 18.35Z" fill="url(#f1_g1)" fill-rule="evenodd"/>
+  <path d="M45.95 24.3Q20.95 28.1 2 24.3L2 24Q2 21.5 3.75 19.75L3.8 19.75L19.7 3.85Q21.45 2.05 23.95 2L24 2Q26.5 2.05 28.25 3.8L28.25 3.85L44.15 19.75L44.2 19.75Q45.95 21.5 45.95 24L45.95 24.3Z" fill="url(#f1_g2)" fill-rule="evenodd"/>
 
 </g>
 <g transform="matrix(0.92,0,0,0.92,-0.3,-0.7)">
