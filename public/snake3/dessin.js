@@ -117,7 +117,7 @@ function rendreFichier(fichier, cadre, k) {
 // est figé sur son image (gotoAndStop(id)) mais les sous-clips posés dessus
 // continuent de jouer leur propre boucle — c'est ce qui fait ballotter le
 // liquide des potions et claquer les ciseaux. `tick` est le nombre d'images
-// écoulées depuis que l'objet est apparu (32/s, la cadence du SWF) ; la suite
+// écoulées depuis que l'objet est apparu (40/s, la cadence du SWF) ; la suite
 // se lit modulo sa longueur, l'index 0 étant le départ de la boucle.
 //
 // Tant qu'une image de la suite n'est pas décodée, on retombe sur l'image

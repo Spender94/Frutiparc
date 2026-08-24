@@ -147,7 +147,11 @@ class Transition {
   dessiner(ctx) {
     if (!this.mode || !this.mode.dessiner) return;
     const k = Math.abs(this.taille) / 100;
-    const masque = D.rendre('snakeMask', 1, Math.max(0.05, k));
+    // Le rideau va de 400 % à 0 : rasteriser la silhouette à CHAQUE échelle
+    // ferait une centaine de canvas, dont des 1350×1720, pour un seul fondu.
+    // On plafonne la finesse à la taille naturelle et on laisse le contexte
+    // agrandir — c'est un masque, ses bords n'ont pas à être nets.
+    const masque = D.rendre('snakeMask', 1, Math.max(0.05, Math.min(1, k)));
     if (!masque) { this.mode.dessiner(ctx); return; }
     // Transition.as pose le rideau au centre de la scène et lui donne
     // |mask_size| % d'échelle, puis `mc.setMask(mask)`. On refait exactement
@@ -353,7 +357,7 @@ class VuePartie {
       // La mèche brûle pendant TIME_BOMBE (5 s) sur les premières images du
       // clip ; le souffle jaillit à l'explosion et joue jusqu'au bout.
       if (b.explose) {
-        b.frame += deltaT * C.WANTED_FPS;
+        b.frame += deltaT * C.SWF_FPS;
         if (b.frame > 22) b.mort = true;
       } else {
         b.meche -= deltaT;
@@ -371,7 +375,7 @@ class VuePartie {
       vues.add(s);
       let e = this.filmsSlot.get(s);
       if (!e || e.frame !== s.slotFrame) { e = { frame: s.slotFrame, t: 0 }; this.filmsSlot.set(s, e); }
-      e.t += deltaT * C.WANTED_FPS;
+      e.t += deltaT * C.SWF_FPS;
     }
     for (const s of [...this.filmsSlot.keys()]) if (!vues.has(s)) this.filmsSlot.delete(s);
 
@@ -812,13 +816,21 @@ class Jeu {
     this.mode = new M.Menu(this, [1, 2, 3, 4], (n) => this.choixMenu(n));
     this.next_mode = -1;
 
+    // Le PAS DU LECTEUR : le SWF tourne à 40 images par seconde, et tout ce
+    // que le jeu fait « une fois par image » sans passer par tmod (le titre du
+    // menu, le carrousel, la flèche bleue, la lecture des clips) en dépend.
+    // On avance donc le jeu par pas fixes de 1/40 s, en rattrapant ce que
+    // l'écran a laissé passer, plutôt qu'une fois par rafraîchissement : sur
+    // un 60 Hz cela tournait une fois et demie trop vite, sur un 120 Hz deux
+    // fois. Le dessin, lui, reste à la cadence de l'écran.
+    const PAS = 1 / C.SWF_FPS;
+    const RATTRAPAGE = Math.ceil(C.MAX_DELTA_TIME * C.SWF_FPS);
     let avant = performance.now();
-    const cadre = (maintenant) => {
-      // L'horloge élastique d'asml : dt borné à une demi-seconde, tmod lissé
-      // à 95/5 sur le nombre d'images de 1/32 s écoulées.
-      let dt = (maintenant - avant) / 1000;
-      avant = maintenant;
-      if (dt > C.MAX_DELTA_TIME) dt = C.MAX_DELTA_TIME;
+    let retard = 0;                   // le temps de jeu pas encore joué
+    const pas = (dt) => {
+      // L'horloge élastique d'asml : tmod lissé à 95/5 sur le nombre d'images
+      // de 1/32 s écoulées. Le pas étant fixe, il converge vers 40/32 = 0,8 —
+      // exactement le tmod du lecteur d'origine.
       const images = dt * C.WANTED_FPS;
       this.tmod = this.tmod * C.TMOD_FACTOR + images * (1 - C.TMOD_FACTOR);
       if (this.tmodForce != null) { this.tmod = this.tmodForce; this.tmodForce = null; }
@@ -827,19 +839,49 @@ class Jeu {
 
       this.sons.main(dt);
       if (this.mode && this.mode.main) this.mode.main(this.tmod, dt);
+    };
+    this.pas = pas;                   // pour les bancs d'essai
+    const cadre = (maintenant) => {
+      let dt = (maintenant - avant) / 1000;
+      avant = maintenant;
+      if (dt > C.MAX_DELTA_TIME) dt = C.MAX_DELTA_TIME;
+      retard += dt;
+      let n = 0;
+      while (retard >= PAS && n < RATTRAPAGE) { retard -= PAS; n++; pas(PAS); }
+      if (n === RATTRAPAGE) retard = 0;   // machine dépassée : on renonce au reste
 
-      const ctx = this.ctx;
-      ctx.setTransform(this.nettete, 0, 0, this.nettete, 0, 0);
-      // Le fond de scène du SWF (SetBackgroundColor) : le vert Frutiparc.
-      ctx.fillStyle = '#ade76b';
-      ctx.fillRect(0, 0, this.scene.w, this.scene.h);
-      if (this.mode && this.mode.dessiner) this.mode.dessiner(ctx);
-      // Le tableau de bord du pack, en prolongement du cadre du jeu (pack.js).
-      if (this.pack) this.pack.dessiner(ctx, this.releve());
-
+      this.dessiner();
       requestAnimationFrame(cadre);
     };
     requestAnimationFrame(cadre);
+  }
+
+  // Une image d'écran. L'empilement est celui du montage du SWF (voir
+  // C.FOND_SCENE) : le vert du portail partout, l'aplat sombre sur les 700×480
+  // du film, le mode par-dessus (masqué pendant un fondu), puis le cadre blanc
+  // — et enfin le tableau de bord du pack, qui prolonge ce cadre.
+  dessiner() {
+    const ctx = this.ctx;
+    ctx.setTransform(this.nettete, 0, 0, this.nettete, 0, 0);
+    ctx.fillStyle = C.FOND_PORTAIL;
+    ctx.fillRect(0, 0, this.scene.w, this.scene.h);
+    ctx.fillStyle = C.FOND_SCENE;
+    ctx.fillRect(0, 0, C.WIDTH, C.HEIGHT);
+    if (this.mode && this.mode.dessiner) this.mode.dessiner(ctx);
+    this.cadreScene(ctx);
+    if (this.pack) this.pack.dessiner(ctx, this.releve());
+  }
+
+  // Le caractère 697 du SWF : un anneau blanc de deux points autour de la
+  // scène, posé au-dessus du jeu. Le panneau du pack vient recouvrir le côté
+  // par lequel il se raccorde — les deux cadres n'en font alors plus qu'un.
+  cadreScene(ctx) {
+    const { x, e } = C.CADRE_SCENE;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.rect(x, 0, C.WIDTH, C.HEIGHT);
+    ctx.rect(x + e, e, C.WIDTH - 2 * e, C.HEIGHT - 2 * e);
+    ctx.fill('evenodd');
   }
 
   redimensionner() {

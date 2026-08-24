@@ -245,8 +245,10 @@ class Enrobage {
   }
 
   main(deltaT) {
-    // Le clip d'enrobage court à la cadence du SWF (32 images/s).
-    this.tempsFrame += deltaT * C.WANTED_FPS;
+    // Le clip d'enrobage court à la cadence du LECTEUR (40 images/s, l'en-tête
+    // du SWF) : un clip Flash avance d'une image par image d'écran, pas au
+    // rythme de tmod.
+    this.tempsFrame += deltaT * C.SWF_FPS;
     const echelles = this.genre === 'fruit' ? ECHELLES_FRUIT : ECHELLES_BONUS;
     const standard = this.genre === 'fruit' ? F_STANDARD_FRUIT : 10;
     const dispar = this.genre === 'fruit' ? F_DISPARAIT_FRUIT : F_DISPARAIT_BONUS;

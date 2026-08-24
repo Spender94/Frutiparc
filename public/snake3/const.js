@@ -362,6 +362,32 @@ C.WANTED_FPS = 32;
 C.TMOD_FACTOR = 0.95;
 C.MAX_DELTA_TIME = 0.5;
 
+// La cadence du LECTEUR, lue dans l'en-tête de snake3.swf : quarante images
+// par seconde. Elle n'a rien à voir avec WANTED_FPS, qui n'est que l'unité de
+// Std.tmod (une image de 1/32 s) — à 40 im/s le tmod d'origine vaut donc 0,8.
+//
+// C'est elle qui compte pour tout ce que le jeu fait UNE FOIS PAR IMAGE sans
+// passer par tmod : le titre du menu qui respire (title._xscale += 2), le
+// carrousel (cur_ang += 0.1), la flèche bleue (x += cos(a)·25), et la lecture
+// des clips. Une boucle calée sur l'écran (60, voire 120 im/s) les jouerait
+// une fois et demie à deux fois trop vite — d'où le pas fixe de la boucle.
+C.SWF_FPS = 40;
+
+// Le décor de la scène, tel que le montage du SWF l'empile :
+//   · SetBackgroundColor #ade76b — le vert clair du portail, visible partout
+//     où le film ne peint rien (les marges, et le panneau du pack) ;
+//   · le caractère 695, un aplat 700×480 #5c9a18 posé à la profondeur 1, SOUS
+//     le clip du jeu. Le rideau de Transition.as ne masque QUE le clip du jeu
+//     (mc.setMask) : cet aplat sombre reste donc entier pendant tout le
+//     fondu — c'est le vert qu'on voit autour du fruit ;
+//   · le caractère 697, à la profondeur 4 (donc PAR-DESSUS le jeu) : un cadre
+//     blanc de deux points, de (0,45 ; 0) à (700,45 ; 480), évidé de
+//     (2,45 ; 2) à (698,45 ; 478). Le demi-point de décalage en x est dans le
+//     montage d'origine — on le garde, il adoucit les bords gauche et droit.
+C.FOND_PORTAIL = '#ade76b';
+C.FOND_SCENE = '#5c9a18';
+C.CADRE_SCENE = { x: 0.45, e: 2 };
+
 const API = C;
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else racine.SnakeConst = API;

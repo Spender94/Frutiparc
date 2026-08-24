@@ -14868,11 +14868,20 @@ const GAME_DISCS = {
     props: 'w=820;h=760;m=p',
     files: [],
   },
-  // Le disque FLASH de Frutisnake est RETIRÉ du catalogue : le portage HTML
-  // (snake3light, juste dessous) le remplace partout. Le SWF de 2004 reste
-  // dans Games/ — c'est lui l'arbitre des dessins et des règles — mais il
-  // n'est plus proposé au joueur : deux disques pour un même jeu, dont l'un
-  // moins bon, ne se justifient pas.
+  // Frutisnake a DEUX disques, comme MiniWave, MiniPixiz et Mini-Fever : le
+  // SWF de 2004 (celui-ci) et le portage HTML (snake3light, juste dessous).
+  // Ils partagent swfName, voyant et classement — c'est le même jeu, joué de
+  // deux façons.
+  snake3: {
+    discType: '0',
+    playMode: 'single',
+    swfName: 'snake3',
+    gameId: 'games/snake3/snake3.swf',
+    props: 'w=700;h=480;m=i',
+    files: [
+      { u: 'games/snake3/snake3.swf' },
+    ],
+  },
   // Frutisnake en HTML (/snake3/), sur le modèle des trois disques light
   // ci-dessus : anneau rouge jamais consommé, marqueur `light/snake3` que
   // ruffle.html détourne vers le portage au lieu de Ruffle, et swfName

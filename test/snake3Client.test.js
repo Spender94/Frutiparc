@@ -903,3 +903,134 @@ test('un appui sur un écran le fait avancer, sans utiliser d\'option', () => {
   assert.strictEqual(suivant, 1, 'l\'écran a pris l\'appui');
   assert.strictEqual(jeu.entreesPartie().espace, false, 'et l\'option n\'a pas été consommée');
 });
+
+// ── La cadence du lecteur et le décor de scène ────────────────────────────
+
+test('la cadence du jeu est celle de l\'en-tête du SWF, pas celle de l\'écran', () => {
+  const { lireSwf } = require('../scripts/lib/swf-sprites.js');
+  const b = lireSwf(path.join(RACINE, 'Games/snake3/snake3.swf'));
+  // L'en-tête : le RECT de la scène, puis FrameRate en 8.8, puis FrameCount.
+  const finRect = Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8);
+  const cadence = b.readUInt16LE(finRect) / 256;
+  const C = require('../public/snake3/const.js');
+  assert.strictEqual(C.SWF_FPS, cadence, 'le pas du jeu doit être celui du lecteur');
+
+  // Et la boucle doit s'y tenir quel que soit le rafraîchissement : tout ce que
+  // le jeu fait UNE FOIS PAR IMAGE sans passer par tmod (le titre qui respire,
+  // le carrousel, la flèche bleue) en dépend directement.
+  const compter = (hz, secondes) => {
+    const w = bacASable();
+    const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'),
+      { fruits: {}, record: 0, options: {}, prefs: { $music: true, $sounds: true, $keys: null },
+        sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null) },
+      new Proxy({}, { get: () => () => false }));
+    let t = 0;
+    const file = [];
+    w.performance = { now: () => t };
+    w.requestAnimationFrame = (f) => { file.push(f); return 0; };
+    jeu.demarrer();
+    let pas = 0;
+    const brut = jeu.mode.main.bind(jeu.mode);
+    jeu.mode.main = (tmod, dt) => { pas++; return brut(tmod, dt); };
+    for (let i = 0; i < hz * secondes; i++) {
+      t += 1000 / hz;
+      const f = file.shift();
+      if (f) f(t);
+    }
+    return { pas, tmod: jeu.tmod, echelle: jeu.mode.titre.echelle };
+  };
+  // Deux secondes de jeu font quatre-vingts pas — à un près, le reliquat de
+  // l'accumulateur pouvant tomber juste avant un pas de plus.
+  const a = compter(60, 2), z = compter(120, 2);
+  assert.ok(Math.abs(a.pas - 80) <= 1, '60 Hz : 40 pas par seconde, pas ' + a.pas / 2);
+  assert.ok(Math.abs(z.pas - 80) <= 1, '120 Hz : la même allure, pas ' + z.pas / 2);
+  assert.ok(Math.abs(a.echelle - z.echelle) <= 2, 'le titre respire à la même allure');
+  // Le pas étant fixe, tmod converge vers 40/32 — exactement celui du lecteur.
+  assert.ok(Math.abs(a.tmod - C.WANTED_FPS / C.SWF_FPS) < 0.01, 'tmod ≈ 0,8 : ' + a.tmod);
+});
+
+test('le décor de scène du SWF : l\'aplat sombre sous le jeu, le cadre blanc dessus', () => {
+  // Le montage de snake3.swf empile trois choses autour du jeu, et le rideau de
+  // Transition.as ne masque QUE le jeu (mc.setMask) : les deux autres restent
+  // entières pendant le fondu. Sans elles, le fondu s'ouvrait sur le vert clair
+  // du portail au lieu du vert profond du film.
+  const { lireSwf } = require('../scripts/lib/swf-sprites.js');
+  const b = lireSwf(path.join(RACINE, 'Games/snake3/snake3.swf'));
+  const C = require('../public/snake3/const.js');
+
+  // 1. SetBackgroundColor (tag 9) — le vert du portail.
+  const debut = Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8) + 4;
+  const enTete = b.readUInt16LE(debut);
+  assert.strictEqual(enTete >> 6, 9, 'le premier tag est SetBackgroundColor');
+  assert.strictEqual('#' + b.slice(debut + 2, debut + 5).toString('hex'), C.FOND_PORTAIL);
+
+  // Les placements de la racine, dans l'ordre des profondeurs, et les formes
+  // qu'ils posent. On relit le SWF plutôt que de faire confiance à un relevé.
+  const bits = (o) => {
+    let bit = 0;
+    const u = (n) => { let v = 0; for (let i = 0; i < n; i++) { v = v * 2 + ((b[o + (bit >> 3)] >> (7 - (bit & 7))) & 1); bit++; } return v; };
+    const s = (n) => { const v = u(n); return v >= 2 ** (n - 1) ? v - 2 ** n : v; };
+    return { u, s, fin: () => o + ((bit + 7) >> 3) };
+  };
+  const forme = (o) => {                 // DefineShape : id, RECT, FILLSTYLEARRAY
+    const r = bits(o + 2);
+    const n = r.u(5);
+    const boite = [r.s(n), r.s(n), r.s(n), r.s(n)].map((v) => v / 20);
+    let p = r.fin();
+    const nf = b[p++];
+    const styles = [];
+    for (let i = 0; i < nf; i++) { const t = b[p++]; styles.push({ t, c: '#' + b.slice(p, p + 3).toString('hex') }); p += 3; }
+    return { boite, styles };
+  };
+  const formes = new Map();
+  const places = [];
+  (function scan(o, fin) {
+    while (o < fin) {
+      const h = b.readUInt16LE(o), code = h >> 6;
+      let len = h & 0x3f, hs = 2;
+      if (len === 0x3f) { len = b.readUInt32LE(o + 2); hs = 6; }
+      if (code === 0) break;
+      const corps = o + hs;
+      if (code === 2) formes.set(b.readUInt16LE(corps), forme(corps));
+      if (code === 26 && (b[corps] & 0x02)) {
+        places.push({ depth: b.readUInt16LE(corps + 1), char: b.readUInt16LE(corps + 3) });
+      }
+      if (code === 1) return;            // on s'arrête à la fin de la 1re image
+      o = corps + len;
+    }
+  })(debut, b.length);
+  places.sort((a, z) => a.depth - z.depth);
+
+  // 2. La profondeur la plus basse : un aplat 700×480, SOUS le clip du jeu.
+  const fond = formes.get(places[0].char);
+  assert.ok(fond, 'la profondeur 1 pose bien une forme');
+  assert.deepStrictEqual(fond.boite, [0, C.WIDTH, 0, C.HEIGHT], 'il couvre toute la scène');
+  assert.strictEqual(fond.styles.length, 1);
+  assert.strictEqual(fond.styles[0].c, C.FOND_SCENE, 'c\'est le vert que le fondu découvre');
+
+  // 3. La profondeur la plus haute : le cadre blanc de deux points, PAR-DESSUS.
+  const cadre = formes.get(places[places.length - 1].char);
+  assert.ok(cadre, 'la profondeur du dessus pose bien une forme');
+  assert.strictEqual(cadre.styles[0].c, '#ffffff', 'le cadre est blanc');
+  assert.deepStrictEqual(cadre.boite,
+    [C.CADRE_SCENE.x, C.CADRE_SCENE.x + C.WIDTH, 0, C.HEIGHT],
+    'aux mesures — le demi-point de décalage compris');
+  assert.ok(places[places.length - 1].depth > places[1].depth,
+    'le cadre est au-dessus du clip du jeu');
+
+  // 4. Et le client peint tout ça dans cet ordre.
+  const src = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
+  const ordre = ['C.FOND_PORTAIL', 'C.FOND_SCENE', 'this.mode.dessiner(ctx)', 'this.cadreScene(ctx)']
+    .map((m) => src.indexOf(m, src.indexOf('  dessiner() {')));
+  assert.ok(ordre.every((i) => i > 0) && ordre.every((v, i) => !i || v > ordre[i - 1]),
+    'portail, puis aplat, puis le mode, puis le cadre : ' + ordre);
+});
+
+test('le rideau de transition ne rasterise pas le masque à chaque échelle', () => {
+  // mask_size va de 400 % à 0 : une rasterisation par échelle ferait une
+  // centaine de canvas, dont des 1350×1720, pour un seul fondu.
+  const src = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
+  const m = src.match(/D\.rendre\('snakeMask'[^;]*/);
+  assert.ok(m, 'le rideau tire bien snakeMask');
+  assert.ok(/Math\.min\(1,\s*k\)/.test(m[0]), 'la finesse est plafonnée : ' + m[0]);
+});
