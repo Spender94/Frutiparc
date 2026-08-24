@@ -146,14 +146,41 @@ class Transition {
 
   dessiner(ctx) {
     if (!this.mode || !this.mode.dessiner) return;
-    const c = D.cadre('snakeMask', 1);
     const k = Math.abs(this.taille) / 100;
+    const masque = D.rendre('snakeMask', 1, Math.max(0.05, k));
+    if (!masque) { this.mode.dessiner(ctx); return; }
+    // Transition.as pose le rideau au centre de la scène et lui donne
+    // |mask_size| % d'échelle, puis `mc.setMask(mask)`. On refait exactement
+    // ça : le mode se dessine dans un tampon, que la silhouette du rideau
+    // découpe (destination-in) avant d'être collée sur la scène.
+    const tampon = Transition.tampon(this.jeu);
+    const t = tampon.getContext('2d');
+    const n = this.jeu.nettete;
+    t.setTransform(1, 0, 0, 1, 0, 0);
+    t.clearRect(0, 0, tampon.width, tampon.height);
+    t.setTransform(n, 0, 0, n, 0, 0);
+    this.mode.dessiner(t);
+    t.globalCompositeOperation = 'destination-in';
+    t.translate(C.WIDTH / 2, C.HEIGHT / 2);
+    t.scale(k, k);
+    t.drawImage(masque.c, masque.dx, masque.dy, masque.lw, masque.lh);
+    t.setTransform(1, 0, 0, 1, 0, 0);
+    t.globalCompositeOperation = 'source-over';
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(C.WIDTH / 2 + c.x * k, C.HEIGHT / 2 + c.y * k, c.w * k, c.h * k);
-    ctx.clip();
-    this.mode.dessiner(ctx);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(tampon, 0, 0);
     ctx.restore();
+  }
+
+  // Un seul tampon pour toutes les transitions, à la taille du canvas.
+  static tampon(jeu) {
+    const l = jeu.canvas.width, h = jeu.canvas.height;
+    if (!Transition._t || Transition._t.width !== l || Transition._t.height !== h) {
+      Transition._t = document.createElement('canvas');
+      Transition._t.width = l;
+      Transition._t.height = h;
+    }
+    return Transition._t;
   }
 }
 
@@ -289,6 +316,10 @@ class VuePartie {
 
   presser(x, y) {
     if (this.ecran) { this.ecran.presser(); return; }
+    // Au doigt, un appui sur l'aire de jeu UTILISE l'option active — c'est ce
+    // que fait la barre d'espace au clavier. La manette garde son bouton ;
+    // celui-ci évite d'avoir à le viser en pleine course.
+    this.jeu.impulsionOption();
   }
 
   main(tmod, deltaT) {
@@ -406,7 +437,10 @@ class VuePartie {
     for (const p of this.popups) p.dessiner(ctx);
 
     if (partie.pause) {
-      D.poser(ctx, 'screens', ECRANS.pause, C.WIDTH / 2, C.HEIGHT / 2, 1, 1, 0);
+      // Game.as : `pause_mc = dmanager.attach("screens", …)` puis
+      // `gotoAndPlay("pause")` — sans _x/_y. Le voile de l'image « pause »
+      // couvre déjà toute la scène depuis (0,0) : le centrer le décalait.
+      D.poser(ctx, 'screens', ECRANS.pause, 0, 0, 1, 1, 0);
     }
     if (this.ecran) this.ecran.dessiner(ctx);
   }
@@ -542,6 +576,7 @@ class Jeu {
     this.horloge = 0;                 // getTimer()/100, pour l'ondulation
     this.touches = new Set();
     this.pointeur = { x: 0, y: 0, bas: false };
+    this.tapOption = 0;               // le reste d'un appui « utiliser l'option »
 
     this.musique = true;
     this.bruitages = true;
@@ -557,6 +592,11 @@ class Jeu {
   }
 
   temps() { return this.horloge; }
+
+  // Un appui compte comme une pression d'ESPACE le temps de quelques images :
+  // partie.js a le même anti-rebond que le SWF (space_flag), il faut donc que
+  // la touche soit vue enfoncée puis relâchée.
+  impulsionOption() { this.tapOption = 0.12; }
   toucheEnfoncee(code) { return this.touches.has(code); }
 
   // Manager.onServiceConnect — les préférences chargées s'appliquent par la
@@ -643,7 +683,7 @@ class Jeu {
       droite: t.has(39) || !!pad.droite,
       haut: t.has(38) || !!pad.haut,
       bas: t.has(40) || !!pad.bas,
-      espace: t.has(32) || !!pad.espace,
+      espace: t.has(32) || !!pad.espace || this.tapOption > 0,
       echap: t.has(27) || !!pad.echap,
     };
   }
@@ -713,6 +753,7 @@ class Jeu {
       this.tmod = this.tmod * C.TMOD_FACTOR + images * (1 - C.TMOD_FACTOR);
       if (this.tmodForce != null) { this.tmod = this.tmodForce; this.tmodForce = null; }
       this.horloge += dt * 10;        // getTimer()/100
+      if (this.tapOption > 0) this.tapOption -= dt;
 
       this.sons.main(dt);
       if (this.mode && this.mode.main) this.mode.main(this.tmod, dt);

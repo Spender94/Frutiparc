@@ -53,6 +53,7 @@ function composer(P, E) {
 function ouvrir(chemin, options) {
   const b = lireSwf(chemin);
   const textesEnFormes = !!(options && options.textesEnFormes);
+  const morphsEnFormes = !!(options && options.morphsEnFormes);
   const debut = Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8) + 4;
 
   function parcourir(visiter) {
@@ -89,12 +90,18 @@ function ouvrir(chemin, options) {
   // Nature de chaque caractère : une forme se trace, un sprite se traverse.
   const TYPE = new Map();
   parcourir((code, corps) => {
-    if ([2, 22, 32, 83, 39, 11, 33].includes(code)) TYPE.set(b.readUInt16LE(corps), code);
+    if ([2, 22, 32, 83, 39, 11, 33, 45, 46].includes(code)) TYPE.set(b.readUInt16LE(corps), code);
   });
   // Avec textesEnFormes, les DefineText (11/33) passent pour des formes :
   // aplatir() les rend comme morceaux, à l'appelant de fournir leur dessin.
   const estForme = (id) => [2, 22, 32, 83].includes(TYPE.get(id))
-    || (textesEnFormes && [11, 33].includes(TYPE.get(id)));
+    || (textesEnFormes && [11, 33].includes(TYPE.get(id)))
+    // Avec morphsEnFormes, les DefineMorphShape (45/46) passent aussi pour des
+    // formes : aplatir les rend comme morceaux, avec le TAUX de mélange du
+    // placement — à l'appelant de dessiner l'interpolation (scripts/lib/
+    // swf-morph.js sait le faire). Sans ça, un morph disparaît du rendu : le
+    // liquide des potions de Frutisnake en est un, et les fioles sortaient vides.
+    || (morphsEnFormes && [45, 46].includes(TYPE.get(id)));
   const estSprite = (id) => TYPE.get(id) === 39;
 
   // Lecture d'une MATRIX (champs non alignés sur l'octet).
@@ -263,11 +270,14 @@ function ouvrir(chemin, options) {
    *           masque comme n'importe quelle forme ; la dessiner telle quelle
    *           collait un rectangle rouge en travers du portrait.
    */
-  function aplatir(ch, M, profondeur, frame, chemin, cx) {
+  function aplatir(ch, M, profondeur, frame, chemin, cx, ratioCourant) {
     profondeur = profondeur || 0;
     chemin = chemin || '';
     if (profondeur > 6) return [];
-    if (estForme(ch)) return [{ shape: ch, M, chemin, cx: cxNeutre(cx) ? null : cx }];
+    if (estForme(ch)) {
+      return [{ shape: ch, M, chemin, cx: cxNeutre(cx) ? null : cx,
+        morph: [45, 46].includes(TYPE.get(ch)) ? (ratioCourant || 0) : undefined }];
+    }
     if (!estSprite(ch)) return [];
     const frames = parSprite.get(ch);
     if (!frames) return [];
@@ -278,7 +288,7 @@ function ouvrir(chemin, options) {
     for (const p of (frames.get(cle) || [])) {
       const sous = p.nom ? (chemin ? chemin + '.' + p.nom : p.nom) : chemin;
       const morceaux = aplatir(p.ch, composer(M, p.M), profondeur + 1, frame, sous,
-        composerCouleur(cx, p.cx));
+        composerCouleur(cx, p.cx), p.ratio);
       if (p.masque) for (const m of morceaux) m.masque = true;
       out.push(...morceaux);
     }

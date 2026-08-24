@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-139.02 -139.02 278.04 278.04" width="278.04" height="278.04">
-<g transform="matrix(4.96,0,0,4.96,0,0)">
+<defs><filter id="cx40" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR type="linear" slope="0.16" intercept="0.84"/><feFuncG type="linear" slope="0.16" intercept="0.67"/><feFuncB type="linear" slope="0.16" intercept="0"/><feFuncA type="linear" slope="1" intercept="0"/></feComponentTransfer></filter></defs>
+<g transform="matrix(4.96,0,0,4.96,0,0)" filter="url(#cx40)">
   <path d="M19.45 -19.45Q27.5 -11.4 27.5 0Q27.5 11.4 19.45 19.45Q11.4 27.5 0 27.5Q-11.4 27.5 -19.45 19.45Q-27.5 11.4 -27.5 0Q-27.5 -11.4 -19.45 -19.45Q-11.4 -27.5 0 -27.5Q11.4 -27.5 19.45 -19.45Z" fill="#d6f7b5" fill-rule="evenodd"/>
 
 </g>

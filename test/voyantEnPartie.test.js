@@ -239,10 +239,13 @@ test('le voyant du forum, lui, reste au bureau — et revient après la partie',
 
 // ── L'ÉJECTION ────────────────────────────────────────────────────────────
 
+// Le cobaye est le disque LIGHT de Frutisnake : le disque Flash a été retiré
+// du catalogue (le portage HTML le remplace). Le jeu battu reste « snake3 » —
+// c'est le swfName du disque light, celui que porte le voyant.
 test('éjecter vers « Mes disques » ferme la fenêtre', async () => {
   await battre('snake3');
   assert.equal(await voyantDuJoueur(), 'snake3');
-  await deplacer('snake3', 'disccollector');
+  await deplacer('snake3light', 'disccollector');
   const r = await battre('snake3');
   assert.equal(r.ejected, true, 'la fenêtre reçoit l\'ordre de se fermer');
   assert.equal(await voyantDuJoueur(), null, 'et le voyant s\'éteint');
@@ -278,7 +281,7 @@ test('ranger un disque auquel on ne joue pas ne ferme rien', async () => {
 });
 
 test('la fenêtre n\'apprend son éjection qu\'une fois', async () => {
-  await deplacer('snake3', 'disccollector');
+  await deplacer('snake3light', 'disccollector');
   assert.equal((await battre('snake3')).ejected, true, 'première demande : oui');
   assert.equal((await battre('snake3')).ejected, false, 'la suivante repart à zéro');
 });
@@ -287,8 +290,8 @@ test('remettre le disque en console annule une éjection en attente', async () =
   // Sans cela, la fenêtre qu'on vient de rouvrir se refermerait aussitôt sur
   // l'éjection précédente, restée en mémoire.
   await battre('snake3');
-  await deplacer('snake3', 'disccollector');       // éjection notée, non lue
-  await fetch(`${BASE}/do/ld?sid=${sidJoueur}&u=snake3`);   // relance du jeu
+  await deplacer('snake3light', 'disccollector');       // éjection notée, non lue
+  await fetch(`${BASE}/do/ld?sid=${sidJoueur}&u=snake3light`);   // relance du jeu
   assert.equal((await battre('snake3')).ejected, false, 'la relance a effacé l\'éjection périmée');
   assert.equal(await voyantDuJoueur(), 'snake3', 'et le voyant s\'est rallumé au lancement');
 });

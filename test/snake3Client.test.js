@@ -31,8 +31,8 @@ test('le manifeste porte tous les clips que le client consomme', () => {
     'screens', 'screensSans', 'pan', 'menu', 'title', 'fleche', 'menuBackground',
     'optionPanel', 'bombe', 'langue', 'sonnette', 'trou', 'beurk', 'qparticule',
     'chiffresVert', 'chiffresRouge', 'chiffresJaune', 'page', 'pageSans',
-    'dropCorner', 'dropLarge', 'bookHole', 'snakeMask', 'barSide', 'barMid',
-    'fruitOuter', 'bonusOuter'];
+    'dropCorner', 'dropLarge', 'bookBase', 'bookHole', 'bookMask', 'snakeMask',
+    'barSide', 'barMid', 'fruitOuter', 'bonusOuter'];
   for (const cle of requis) {
     assert.ok(manifeste.clips[cle], 'clip manquant : ' + cle);
   }
@@ -245,4 +245,274 @@ test('serveur : le disque light, les slots et le classement de Frutisnake', asyn
   }))).json();
   assert.strictEqual(score.rankingId, 'snake3_classic', JSON.stringify(score));
   assert.ok(score.newPos >= 1, 'classé : ' + JSON.stringify(score));
+});
+
+// ── L'attribution des clips, prouvée par le bytecode ──────────────────────
+//
+// Obfu a renommé les exports du SWF : sept clés avaient été devinées à l'œil,
+// et six étaient FAUSSES — le fond du menu montrait le creux du livre, la
+// « sonnette » était la grimace beurk, le rideau de transition un masque de
+// page. La preuve est dans le bytecode : la classe qui fait `attachMovie`
+// pousse le nom (renommé) dans sa table de constantes. Ce test refait le
+// croisement ConstantPool × ExportAssets et exige que le manifeste s'y tienne.
+
+function clipsAttachesParClasse() {
+  const zlib = require('zlib');
+  const { ouvrir } = require('../scripts/lib/swf-sprites.js');
+  const swf = ouvrir(path.join(RACINE, 'Games/snake3/snake3.swf'));
+  const exports_ = new Map([...swf.noms]
+    .filter(([n]) => !n.startsWith('__Packages'))
+    .map(([n, i]) => [n, i]));
+  const classes = new Map();
+  for (const [nom, id] of swf.noms) {
+    if (nom.startsWith('__Packages.')) classes.set(id, nom.slice('__Packages.'.length));
+  }
+
+  let b = fs.readFileSync(path.join(RACINE, 'Games/snake3/snake3.swf'));
+  if (b.slice(0, 3).toString('latin1') === 'CWS') b = zlib.inflateSync(b.slice(8));
+  const debut = Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8) + 4;
+
+  // Les chaînes des ConstantPool (action 0x88) d'une zone d'actions.
+  const motsDuPool = (from, to) => {
+    const mots = new Set();
+    let p = from;
+    while (p < to) {
+      const op = b[p];
+      if (op === 0) { p++; continue; }
+      if (op < 0x80) { p++; continue; }
+      const len = b.readUInt16LE(p + 1);
+      if (op === 0x88) {
+        const n = b.readUInt16LE(p + 3);
+        let q = p + 5;
+        for (let i = 0; i < n && q < p + 3 + len; i++) {
+          let e = q; while (b[e] !== 0) e++;
+          mots.add(b.slice(q, e).toString('latin1'));
+          q = e + 1;
+        }
+      }
+      p += 3 + len;
+    }
+    return mots;
+  };
+
+  const parClasse = new Map();
+  let o = debut;
+  while (o < b.length) {
+    const hdr = b.readUInt16LE(o); const code = hdr >> 6;
+    let len = hdr & 63, hs = 2;
+    if (len === 63) { len = b.readUInt32LE(o + 2); hs = 6; }
+    if (code === 0) break;
+    if (code === 59) {                        // DoInitAction : le corps d'une classe
+      const cls = classes.get(b.readUInt16LE(o + hs));
+      if (cls) {
+        const ids = new Set();
+        for (const m of motsDuPool(o + hs + 2, o + hs + len)) {
+          if (exports_.has(m)) ids.add(exports_.get(m));
+        }
+        parClasse.set(cls, ids);
+      }
+    }
+    o += hs + len;
+  }
+  return parClasse;
+}
+
+test('chaque clé du manifeste tombe sur le clip que le bytecode attache', () => {
+  const parClasse = clipsAttachesParClasse();
+  const id = (cle) => manifeste.clips[cle] && manifeste.clips[cle].id;
+
+  // Menu.as attache menuBackground, title, fleche et menu — et rien d'autre.
+  const menu = parClasse.get('snake3.Menu');
+  for (const cle of ['menuBackground', 'title', 'fleche', 'menu']) {
+    assert.ok(menu.has(id(cle)), `Menu n'attache pas ${cle} (id ${id(cle)})`);
+  }
+  // MenuOptions attache menuBackground + optionPanel : le fond est donc bien
+  // celui que les DEUX classes citent.
+  const opts = parClasse.get('snake3.MenuOptions');
+  assert.ok(opts.has(id('menuBackground')), 'MenuOptions n\'attache pas le même fond');
+  assert.ok(opts.has(id('optionPanel')));
+  // Et il est PLEIN ÉCRAN : c'est ce qui distinguait 602 de 376 à l'œil.
+  const fond = manifeste.clips.menuBackground.frames[1].cadre;
+  assert.ok(fond.w >= 700 && fond.h >= 480, 'le fond du menu ne couvre pas la scène : '
+    + JSON.stringify(fond));
+
+  // Encyclo.as attache page, bookBase, bookHole, bookMask, les deux ombres et
+  // son conteneur — les trois rectangles unis se répartissent là, pas ailleurs.
+  const ency = parClasse.get('snake3.Encyclo');
+  for (const cle of ['page', 'bookBase', 'bookHole', 'bookMask', 'dropCorner', 'dropLarge']) {
+    assert.ok(ency.has(id(cle)), `Encyclo n'attache pas ${cle} (id ${id(cle)})`);
+  }
+  assert.ok(!ency.has(id('menuBackground')), 'le fond du menu n\'a rien à faire dans le livre');
+
+  // Transition.as attache le rideau, et lui seul.
+  const trans = parClasse.get('snake3.Transition');
+  assert.ok(trans.has(id('snakeMask')), 'le rideau de transition n\'est pas celui-là');
+
+  // Popup.as attache beurk et les deux polices de points ; Sonnette la sonnette.
+  const pop = parClasse.get('snake3.Popup');
+  for (const cle of ['beurk', 'chiffresRouge', 'chiffresJaune']) {
+    assert.ok(pop.has(id(cle)), `Popup n'attache pas ${cle} (id ${id(cle)})`);
+  }
+  assert.ok(parClasse.get('snake3.bonus.Sonnette').has(id('sonnette')),
+    'la sonnette n\'est pas celle que Sonnette.as attache');
+
+  // Les autres classes, pour boucler : trou et barreScore (Game), les jauges
+  // (Battle), la langue et la bombe (leurs options), le terrain (Level).
+  assert.ok(parClasse.get('snake3.Game').has(id('trou')));
+  assert.ok(parClasse.get('snake3.Game').has(id('barreScore')));
+  assert.ok(parClasse.get('snake3.Battle').has(id('barSide')));
+  assert.ok(parClasse.get('snake3.Battle').has(id('barMid')));
+  assert.ok(parClasse.get('snake3.bonus.Langue').has(id('langue')));
+  assert.ok(parClasse.get('snake3.bonus.Bombe').has(id('bombe')));
+  assert.ok(parClasse.get('snake3.Level').has(id('background')));
+  assert.ok(parClasse.get('snake3.bonus.Slot').has(id('slot')));
+});
+
+test('les potions ont leur liquide (morph) et leur couleur (cxform)', () => {
+  // Le liquide d'une fiole est un DefineMorphShape, sa couleur vient du cxform
+  // ADDITIF de son placement : sans les deux, les neuf potions sortaient en
+  // fioles vides et identiques.
+  const POTIONS = [6, 9, 10, 11, 15, 20, 25, 26, 37];
+  const couleurs = new Set();
+  for (const f of POTIONS) {
+    const fr = manifeste.clips.options.frames[f];
+    assert.ok(fr, 'image d\'option manquante : ' + f);
+    const svg = fs.readFileSync(path.join(SPRITES, fr.fichier), 'utf8');
+    // Le filtre de couleur du placement (feComponentTransfer linéaire).
+    const m = /<feFuncR type="linear" slope="([-\d.]+)" intercept="([-\d.]+)"\/><feFuncG type="linear" slope="[-\d.]+" intercept="([-\d.]+)"\/><feFuncB type="linear" slope="[-\d.]+" intercept="([-\d.]+)"/.exec(svg);
+    assert.ok(m, 'pas de transformation de couleur sur la potion ' + f);
+    couleurs.add([m[2], m[3], m[4]].join(','));
+    // Et le liquide : au moins deux tracés (le verre, puis le morph).
+    assert.ok((svg.match(/<path /g) || []).length >= 2, 'potion ' + f + ' sans liquide');
+  }
+  assert.strictEqual(couleurs.size, POTIONS.length,
+    'deux potions partagent la même couleur : ' + [...couleurs].join(' | '));
+});
+
+test('la tête ne montre pas son point de collision', () => {
+  // `col`, l'enfant que Snake.as rend invisible (col_mc._visible = false),
+  // laissait un rectangle blanc sur le museau du serpent. Il ne doit pas être
+  // dessiné — mais sa MESURE, elle, sert au moteur (le point de collision).
+  const { ouvrir } = require('../scripts/lib/swf-sprites.js');
+  const swf = ouvrir(path.join(RACINE, 'Games/snake3/snake3.swf'));
+  const tous = swf.aplatir(661, swf.IDENTITE, 0, 1, '', null);
+  const sansCol = tous.filter((m) => !(m.chemin || '').includes('col'));
+  assert.ok(sansCol.length < tous.length, 'le SWF a bien un `col` dans la tête');
+
+  // Le SVG de chaque image de la tête compte exactement les morceaux HORS col.
+  for (const [f, fr] of Object.entries(manifeste.clips.tete.frames)) {
+    const svg = fs.readFileSync(path.join(SPRITES, fr.fichier), 'utf8');
+    const groupes = (svg.match(/<g transform=/g) || []).length;
+    const attendus = swf.aplatir(661, swf.IDENTITE, 0, Number(f), '', null)
+      .filter((m) => !(m.chemin || '').includes('col')).length;
+    assert.strictEqual(groupes, attendus,
+      `tête image ${f} : ${groupes} tracés pour ${attendus} morceaux hors col`);
+  }
+  // La mesure du col, elle, reste au manifeste — le moteur en a besoin.
+  assert.ok(manifeste.cadres.col && manifeste.cadres.col.w > 0, 'la mesure du col reste');
+});
+
+test('l\'écran de pause couvre la scène depuis son coin', () => {
+  // Game.as attache `screens` SANS le poser : le voile de l'image « pause »
+  // est dessiné en (0,0) et couvre déjà les 700×480. Le centrer le décalait
+  // d'un demi-écran (le joueur voyait un rectangle en bas à droite).
+  const c = manifeste.clips.screens.frames[1].cadre;
+  assert.strictEqual(c.x, 0);
+  assert.strictEqual(c.y, 0);
+  assert.ok(c.w >= 700 && c.h >= 480, 'le voile ne couvre pas la scène : ' + JSON.stringify(c));
+  const src = fs.readFileSync(path.join(RACINE, 'public/snake3/game.js'), 'utf8');
+  assert.ok(/'screens', ECRANS\.pause, 0, 0/.test(src),
+    'la pause doit se poser en (0,0), comme le SWF');
+});
+
+// ── Les commandes du client, dans un bac à sable ───────────────────────────
+//
+// game.js s'exécute dans un navigateur ; on lui en fabrique un minuscule (un
+// `window`, un `document` qui rend des canvas muets) pour éprouver ses
+// COMMANDES sans rien dessiner. C'est ainsi qu'on vérifie qu'un appui du doigt
+// sur l'aire de jeu vaut une pression d'ESPACE — la façon d'utiliser l'option
+// quand on joue au pouce.
+function bacASable() {
+  const vm = require('vm');
+  const contexte = {
+    console, Math, JSON, Object, Array, String, Number, Boolean, Date, Set, Map,
+    Promise, performance, isNaN, parseInt, parseFloat, Error, URLSearchParams,
+    requestAnimationFrame: () => 0, setTimeout, clearTimeout, fetch: () => Promise.reject(new Error('hors ligne')),
+  };
+  const faireCanvas = () => ({
+    width: 700, height: 480, style: {},
+    parentElement: { clientWidth: 700, clientHeight: 480 },
+    getContext: () => new Proxy({}, {
+      get: (c, n) => (n === 'canvas' ? faireCanvas()
+        : (typeof n === 'string' ? () => {} : undefined)),
+      set: () => true,
+    }),
+    addEventListener: (nom, f) => { (contexte.window.__ecoute[nom] = contexte.window.__ecoute[nom] || []).push(f); },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 700, height: 480 }),
+  });
+  contexte.window = contexte;
+  contexte.window.__ecoute = {};
+  contexte.devicePixelRatio = 1;
+  contexte.location = { search: '' };
+  contexte.document = {
+    createElement: () => faireCanvas(),
+    getElementById: () => faireCanvas(),
+  };
+  contexte.addEventListener = () => {};
+  vm.createContext(contexte);
+  for (const f of ['const.js', 'serpent.js', 'niveau.js', 'bonus.js', 'partie.js',
+    'bataille.js', 'dessin.js', 'rendu.js', 'menu.js', 'encyclo.js', 'game.js']) {
+    vm.runInContext(fs.readFileSync(path.join(RACINE, 'public/snake3', f), 'utf8'), contexte, { filename: f });
+  }
+  contexte.SnakeDessin.poserManifeste(manifeste);
+  return contexte;
+}
+
+test('un appui sur l\'aire de jeu vaut une pression d\'ESPACE (jouer au pouce)', () => {
+  const w = bacASable();
+  const plateforme = { fruits: {}, record: 0, prefs: { $music: true, $sounds: true, $keys: null },
+    sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null),
+    sauverPrefs: () => Promise.resolve(true) };
+  const sons = new Proxy({}, { get: () => () => false });
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'), plateforme, sons);
+
+  // Au repos, ESPACE n'est pas pressé.
+  assert.strictEqual(jeu.entreesPartie().espace, false);
+
+  // Une VuePartie, et un appui dessus.
+  const vue = new w.SnakeJeu.VuePartie(jeu);
+  jeu.mode = vue;
+  vue.presser(350, 240);
+  assert.strictEqual(jeu.entreesPartie().espace, true, 'l\'appui vaut ESPACE');
+
+  // L'appui RETOMBE : partie.js a le même anti-rebond que le SWF
+  // (space_flag), il faut donc que la touche soit vue relâchée ensuite.
+  jeu.tapOption = 0;
+  assert.strictEqual(jeu.entreesPartie().espace, false, 'et il se relâche');
+
+  // Et il utilise réellement l'option active : les ciseaux quittent la rangée.
+  // On passe par vue.main(), qui recopie les commandes dans le moteur avant de
+  // l'avancer — c'est ce que fait la boucle du jeu à chaque image.
+  const B = w.SnakeBonus;
+  vue.partie.add_slot(new B.Ciseaux(vue.partie, 1));
+  const avant = vue.partie.slots.length;
+  vue.presser(350, 240);
+  vue.main(1, 1 / 32);
+  assert.ok(vue.partie.slots.length < avant, 'l\'option a été utilisée');
+});
+
+test('un appui sur un écran le fait avancer, sans utiliser d\'option', () => {
+  const w = bacASable();
+  const plateforme = { fruits: {}, record: 0, prefs: { $music: true, $sounds: true, $keys: null },
+    sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null) };
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'), plateforme,
+    new Proxy({}, { get: () => () => false }));
+  const vue = new w.SnakeJeu.VuePartie(jeu);
+  jeu.mode = vue;
+  let suivant = 0;
+  vue.ecran = new w.SnakeJeu.Ecran(jeu, 'gameOver', 'Votre score : 12');
+  vue.ecran.poserPresse(() => { suivant++; });
+  vue.presser(350, 240);
+  assert.strictEqual(suivant, 1, 'l\'écran a pris l\'appui');
+  assert.strictEqual(jeu.entreesPartie().espace, false, 'et l\'option n\'a pas été consommée');
 });

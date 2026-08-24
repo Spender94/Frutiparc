@@ -1,9 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-153.99 -153.99 307.98 307.98" width="307.98" height="307.98">
-<g transform="matrix(5.6,0,0,5.6,0,0)">
+<defs><filter id="cx64" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR type="linear" slope="0.56" intercept="0.44"/><feFuncG type="linear" slope="0.56" intercept="0.35"/><feFuncB type="linear" slope="0.56" intercept="0"/><feFuncA type="linear" slope="1" intercept="0"/></feComponentTransfer></filter><filter id="cx65" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR type="linear" slope="1" intercept="0"/><feFuncG type="linear" slope="1" intercept="0"/><feFuncB type="linear" slope="1" intercept="0"/><feFuncA type="linear" slope="0.36" intercept="0"/></feComponentTransfer></filter></defs>
+<g transform="matrix(5.6,0,0,5.6,0,0)" filter="url(#cx64)">
   <path d="M19.45 -19.45Q27.5 -11.4 27.5 0Q27.5 11.4 19.45 19.45Q11.4 27.5 0 27.5Q-11.4 27.5 -19.45 19.45Q-27.5 11.4 -27.5 0Q-27.5 -11.4 -19.45 -19.45Q-11.4 -27.5 0 -27.5Q11.4 -27.5 19.45 -19.45Z" fill="#d6f7b5" fill-rule="evenodd"/>
 
 </g>
-<g transform="matrix(4.5,0,0,4.5,0,0)">
+<g transform="matrix(4.5,0,0,4.5,0,0)" filter="url(#cx65)">
   <defs>
     <radialGradient id="g1" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="16384" spreadMethod="pad" gradientTransform="matrix(0.00175,0,0,0.00175,-0.5,-0.5)"><stop offset="0.23529" stop-color="#ffffff"/><stop offset="0.69412" stop-color="#ffff00"/><stop offset="1" stop-color="#ff0000"/></radialGradient>
   </defs>

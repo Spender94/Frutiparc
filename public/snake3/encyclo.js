@@ -262,7 +262,10 @@ class Encyclo {
   }
 
   dessiner(ctx) {
-    D.poser(ctx, 'menuBackground', 1, 0, 0, 1, 1, 0);
+    // Pas de menuBackground ici : Encyclo.as n'attache que `encyclo` (son
+    // conteneur, avec la flèche de retour) — le fond reste celui de la scène.
+    // Le corps du livre, en dessous de tout (profondeur 0 de init_book).
+    D.poser(ctx, 'bookBase', 1, BOOK_X, BOOK_Y, 1, 1, 0);
 
     const ratio = this.rotation / 90;
     const pivotGauche = { x: BOOK_X + PAGE_WIDTH, y: BOOK_Y + PAGE_HEIGHT + PAGE_WIDTH };

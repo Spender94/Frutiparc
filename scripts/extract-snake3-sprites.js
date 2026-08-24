@@ -19,6 +19,14 @@
 //     (tete 661), `base`+`col` (langue 527), `b1`+`mid`+`b2` (fbarre 685),
 //     `playField` (background 694), `music`/`sound`/`format`/`returnMenu`
 //     (optionPanel 630), `tpl`+`grad` (page 370) ;
+//   · LES NOMS D'ATTACHE, enfin, se lisent dans le BYTECODE : Obfu renomme les
+//     exports, mais la classe qui fait `attachMovie` pousse le nom renommé dans
+//     sa table de constantes. Croiser les ConstantPool de chaque
+//     __Packages.snake3.* avec la table d'exports donne l'attribution SÛRE —
+//     c'est ainsi qu'on a corrigé sept clés devinées à l'œil : menuBackground
+//     est 602 (plein écran) et non 376, qui est le creux du livre ; bookBase
+//     est 378, bookMask 374 (le rectangle rouge), snakeMask 522 (deux volets),
+//     beurk 529, sonnette 647 — et le clip « pieces » n'existe pas ;
 //   · le reste au dénombrement : 429 images = la planche des fruits (354),
 //     46 = le clip slot (ids 1-15 et 40-46 → 676), 37 icônes d'options (449),
 //     9 = les pastilles du menu (600), 20 = les têtes (661 : 1 verte,
@@ -38,6 +46,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { ouvrir, IDENTITE } = require('./lib/swf-sprites.js');
+const { lireMorphs, versSvg: morphVersSvg } = require('./lib/swf-morph.js');
 
 const RACINE = path.join(__dirname, '..');
 const SWF = path.join(RACINE, 'Games/snake3/snake3.swf');
@@ -47,7 +56,7 @@ const DOSSIER_WAV = path.join(RACINE, 'Games/snake3/sons');
 
 const LISTE_SEULE = process.argv.includes('--liste');
 
-const swf = ouvrir(SWF, { textesEnFormes: true });
+const swf = ouvrir(SWF, { textesEnFormes: true, morphsEnFormes: true });
 
 // ── Ce qu'on extrait ──────────────────────────────────────────────────────
 // { cle, id, frames } — frames: liste d'images, ou 'toutes'.
@@ -55,7 +64,8 @@ const CLIPS = [
   { cle: 'fruits', id: 354, frames: 'toutes', etiquette: 'la planche des 342 fruits' },
   { cle: 'options', id: 449, frames: 'toutes', etiquette: 'les 37 icônes d\'options' },
   { cle: 'slot', id: 676, frames: 'toutes', etiquette: 'les cases de la rangée' },
-  { cle: 'tete', id: 661, frames: [1, 2, 3, 10, 11, 12, 13], etiquette: 'les têtes' },
+  { cle: 'tete', id: 661, frames: [1, 2, 3, 10, 11, 12, 13], sans: ['col'],
+    etiquette: 'les têtes (sans `col`, le point de collision que Snake.as cache)' },
   { cle: 'fbarre', id: 685, frames: [1], etiquette: 'la frutibarre' },
   { cle: 'barreScore', id: 649, frames: [1], etiquette: 'le bandeau du score' },
   { cle: 'background', id: 694, frames: [1], etiquette: 'le terrain' },
@@ -64,13 +74,13 @@ const CLIPS = [
   { cle: 'title', id: 453, frames: [1], etiquette: 'le titre Frutisnake' },
   { cle: 'fleche', id: 457, frames: [1], etiquette: 'la flèche du carrousel' },
   { cle: 'fleche2', id: 458, frames: [1], etiquette: 'l\'autre flèche' },
-  { cle: 'menuBackground', id: 376, frames: [1], etiquette: 'le fond du menu' },
+  { cle: 'menuBackground', id: 602, frames: [1], etiquette: 'le fond du menu (plein écran)' },
   { cle: 'optionPanel', id: 630, frames: [1], sans: ['format'], etiquette: 'le panneau des options' },
   { cle: 'bombe', id: 393, frames: 'toutes', etiquette: 'la bombe et son souffle' },
   { cle: 'langue', id: 527, frames: [1], etiquette: 'la langue' },
-  { cle: 'sonnette', id: 529, frames: [1], etiquette: 'la sonnette' },
+  { cle: 'sonnette', id: 647, frames: 'toutes', etiquette: 'la sonnette qui tinte' },
   { cle: 'trou', id: 519, frames: [1], etiquette: 'le terrier du départ' },
-  { cle: 'beurk', id: 522, frames: [1], etiquette: 'la grimace des fruits pourris' },
+  { cle: 'beurk', id: 529, frames: [1], etiquette: 'la grimace des fruits pourris' },
   { cle: 'qparticule', id: 455, frames: [1], etiquette: 'les débris de queue' },
   { cle: 'chiffresVert', id: 515, frames: 'toutes', etiquette: 'les chiffres verts (score)' },
   { cle: 'chiffresRouge', id: 561, frames: 'toutes', etiquette: 'les chiffres rouges (gains)' },
@@ -78,12 +88,12 @@ const CLIPS = [
   { cle: 'page', id: 370, frames: 'toutes', etiquette: 'les pages de l\'encyclopédie' },
   { cle: 'dropCorner', id: 371, frames: [1], etiquette: 'l\'ombre du coin de page' },
   { cle: 'dropLarge', id: 372, frames: [1], etiquette: 'l\'ombre de la page' },
-  { cle: 'bookHole', id: 602, frames: [1], etiquette: 'le creux du livre' },
-  { cle: 'snakeMask', id: 374, frames: [1], etiquette: 'le masque des transitions (rectangle rouge)' },
-  { cle: 'bookMask', id: 378, frames: [1], etiquette: 'le masque du livre (jamais dessiné)' },
+  { cle: 'bookBase', id: 378, frames: [1], etiquette: 'le corps du livre' },
+  { cle: 'bookHole', id: 376, frames: [1], etiquette: 'le creux de la reliure' },
+  { cle: 'snakeMask', id: 522, frames: [1], etiquette: 'le rideau des transitions (deux volets)' },
+  { cle: 'bookMask', id: 374, frames: [1], etiquette: 'le masque du livre (jamais dessiné)' },
   { cle: 'barSide', id: 637, frames: 'toutes', etiquette: 'bouts des jauges de battle' },
   { cle: 'barMid', id: 644, frames: 'toutes', etiquette: 'corps des jauges de battle' },
-  { cle: 'pieces', id: 647, frames: 'toutes', etiquette: 'les piles de pièces' },
   { cle: 'pan', id: 465, frames: 'toutes', etiquette: 'le panneau des écrans (4 couleurs)' },
   { cle: 'fruitOuter', id: 451, frames: 'toutes', etiquette: 'le fruit qui paraît/disparaît' },
   { cle: 'bonusOuter', id: 450, frames: 'toutes', etiquette: 'l\'option qui paraît/disparaît' },
@@ -91,21 +101,61 @@ const CLIPS = [
 
 // ── L'aplatissement d'une image en un SVG autonome ────────────────────────
 
+// La clé de fichier d'une forme. Un MORPH (DefineMorphShape) en a une par taux
+// de mélange : le liquide d'une potion est un morph, et chaque image du clip le
+// place à un taux différent — le liquide ballotte.
+const cleForme = (m) => (m.morph === undefined ? String(m.shape)
+  : m.shape + '_r' + m.morph);
+
 const boitesFormes = new Map();
-function boiteForme(id) {
-  if (boitesFormes.has(id)) return boitesFormes.get(id);
-  const p = path.join(SORTIE, '_formes', 'shape' + id + '.svg');
-  if (!fs.existsSync(p)) { boitesFormes.set(id, null); return null; }
+function boiteForme(cle) {
+  if (boitesFormes.has(cle)) return boitesFormes.get(cle);
+  const p = path.join(SORTIE, '_formes', 'shape' + cle + '.svg');
+  if (!fs.existsSync(p)) { boitesFormes.set(cle, null); return null; }
   const t = fs.readFileSync(p, 'utf8');
   const m = /viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"/.exec(t);
   const v = m ? { x: +m[1], y: +m[2], w: +m[3], h: +m[4] } : null;
-  boitesFormes.set(id, v);
+  boitesFormes.set(cle, v);
   return v;
 }
 
-function corpsForme(id) {
-  const p = path.join(SORTIE, '_formes', 'shape' + id + '.svg');
+function corpsForme(cle) {
+  const p = path.join(SORTIE, '_formes', 'shape' + cle + '.svg');
   return fs.readFileSync(p, 'utf8').replace(/<svg[^>]*>/, '').replace('</svg>', '');
+}
+
+// Les MORPHS du SWF, lus une fois — swf-morph.js sait interpoler les deux
+// formes d'un DefineMorphShape à un taux donné.
+const morphs = lireMorphs(SWF);
+const morphsEcrits = new Set();
+function ecrireMorph(m) {
+  const cle = cleForme(m);
+  if (morphsEcrits.has(cle)) return;
+  morphsEcrits.add(cle);
+  const def = morphs.get(m.shape);
+  if (!def) return;
+  const svg = morphVersSvg(def, (m.morph || 0) / 65535);
+  fs.writeFileSync(path.join(SORTIE, '_formes', 'shape' + cle + '.svg'), svg);
+}
+
+// La transformation de couleur d'un placement (CXFORMWITHALPHA) : Flash calcule
+// canal × mult/256 + add. En SVG c'est un feComponentTransfer linéaire —
+// `slope` porte le multiplicateur, `intercept` l'ajout. C'est ce qui donne aux
+// potions leur couleur : la MÊME fiole passe par un cxform différent à chaque
+// image du clip (rouge 204,0,0 ; bleu 0,41,204 ; orange 204,122,0…).
+let nFiltre = 0;
+function filtreCouleur(cx) {
+  const id = 'cx' + (++nFiltre);
+  const canal = (nom, mult, add) => `<feFunc${nom} type="linear"`
+    + ` slope="${arr(mult / 256)}" intercept="${arr(add / 255)}"/>`;
+  return {
+    id,
+    def: `<filter id="${id}" color-interpolation-filters="sRGB">`
+      + '<feComponentTransfer>'
+      + canal('R', cx.mr, cx.ar) + canal('G', cx.mv, cx.av)
+      + canal('B', cx.mb, cx.ab) + canal('A', cx.ma, cx.aa)
+      + '</feComponentTransfer></filter>',
+  };
 }
 
 // Compose les morceaux d'aplatir() en un SVG : chaque forme dans son <g> à sa
@@ -116,7 +166,8 @@ function svgCompose(morceaux) {
   const dessins = [];
   for (const m of morceaux) {
     if (m.masque) continue;                    // les masques ne se dessinent pas
-    const vb = boiteForme(m.shape);
+    if (m.morph !== undefined) ecrireMorph(m);
+    const vb = boiteForme(cleForme(m));
     if (!vb) continue;
     const M = m.M;
     for (const [px, py] of [[vb.x, vb.y], [vb.x + vb.w, vb.y],
@@ -130,13 +181,17 @@ function svgCompose(morceaux) {
   }
   if (!dessins.length) return null;
   const l = Math.max(0.01, x1 - x0), h = Math.max(0.01, y1 - y0);
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(x0)} ${arr(y0)} ${arr(l)} ${arr(h)}" width="${arr(l)}" height="${arr(h)}">\n`;
+  let defs = '', corps = '';
   for (const d of dessins) {
     const M = d.M;
-    svg += `<g transform="matrix(${[M.a, M.b, M.c, M.d, M.e / 20, M.f / 20].map(arr).join(',')})">`
-      + corpsForme(d.shape) + '</g>\n';
+    const f = d.cx ? filtreCouleur(d.cx) : null;
+    if (f) defs += f.def;
+    corps += `<g transform="matrix(${[M.a, M.b, M.c, M.d, M.e / 20, M.f / 20].map(arr).join(',')})"`
+      + (f ? ` filter="url(#${f.id})"` : '') + '>'
+      + corpsForme(cleForme(d)) + '</g>\n';
   }
-  svg += '</svg>\n';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(x0)} ${arr(y0)} ${arr(l)} ${arr(h)}" width="${arr(l)}" height="${arr(h)}">\n`
+    + (defs ? '<defs>' + defs + '</defs>\n' : '') + corps + '</svg>\n';
   return { svg, cadre: { x: arr(x0), y: arr(y0), w: arr(l), h: arr(h) } };
 }
 
@@ -391,7 +446,10 @@ for (const c of CLIPS) {
     // `sans` : des sous-clips écartés de la composition (ceux que le jeu
     // cache à l'exécution, comme le bouton « Formatter » des options).
     if (c.sans) morceaux = morceaux.filter((m) => !c.sans.some((n) => (m.chemin || '').includes(n)));
-    for (const m of morceaux) shapes.add(m.shape);
+    for (const m of morceaux) {
+      if (m.morph !== undefined) ecrireMorph(m);
+      else shapes.add(m.shape);
+    }
     travaux.push({ c, f, morceaux });
   }
 }
