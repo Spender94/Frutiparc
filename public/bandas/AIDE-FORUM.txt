@@ -1,0 +1,302 @@
+Aide Frutibandas — texte prêt à coller sur le forum (BBCode).
+
+Sources :
+  · l'aide écrite par un joueur d'époque — les quatre conseils sont les siens
+    (le troisième, « l'arme ultime », est cité MOT POUR MOT), ainsi que les
+    notes des quatre premières cartes (Solo 1/10, Entracte 3/10, Piège 4,5/10,
+    Charge 5,5/10). Les huit autres notes sont les nôtres ;
+  · le source AS2 d'origine (Games/frutibandas/lib/frutibandas/) et le portage
+    (public/bandas/) pour les règles exactes ;
+  · le banc d'essai des bots pour les chiffres cités (les ~58 %, les six fruits
+    de la meilleure colonne).
+
+Le forum accepte le BBCode : le texte est vérifié contre le vrai
+renderBBCode de public/fb/index.html, aucune balise ne reste en clair.
+
+──────────────────────────── COLLER À PARTIR D'ICI ────────────────────────────
+
+[taille=24][b]Aide Frutibandas[/b][/taille]
+
+Frutibandas, c'est un pousse-pousse de fruits à deux. Ça a l'air tout bête —
+quatre flèches, c'est tout ce qu'on peut faire — et c'est en réalité un des
+jeux les plus tordus du parc. On peut y perdre vingt fruits d'avance en trois
+tours, et gagner à cinq contre trente.
+
+Cette aide reprend celle qu'un joueur avait écrite à l'époque : ses quatre
+conseils sont repris tels quels, ils n'ont pas pris une ride. Le reste
+complète ce qui manquait — les règles exactes et les douze fruticartes.
+
+[taille=20][b]1. Ce qui se passe à chaque tour[/b][/taille]
+
+Le plateau démarre [b]entièrement plein[/b] : en 8x8, 64 cases, 32 oranges
+(béret rouge) et 32 bananes (béret vert), mélangées au hasard. (Le créateur de
+la partie peut aussi choisir 7x7, 6x6 ou 5x5 — plus petit, plus violent.)
+Personne ne « place » ses fruits : on hérite d'un fouillis, et tout le jeu
+consiste à en faire quelque chose.
+
+À votre tour, vous pouvez :
+[liste]
+[*] jouer [b]au plus une fruticarte[/b] (facultatif) ;
+[*] puis [b]décaler TOUS vos fruits d'une case[/b] dans la direction choisie.
+[/liste]
+
+Vos fruits poussent ce qu'ils ont devant eux, en chaîne — les vôtres comme
+ceux d'en face. Ce qui sort du plateau meurt. Ce qui tombe sur une case
+détruite ou piégée meurt aussi.
+
+Deux conséquences qu'on oublie tout le temps :
+[liste]
+[*] [b]les bords vides sont retirés[/b] : le plateau rétrécit au fil de la
+partie, et une case tranquille au milieu peut se retrouver au bord sans que
+vous ayez bougé ;
+[*] [b]une équipe sans fruit a perdu[/b]. Si les deux tombent à zéro en même
+temps, c'est une égalité — on dit que « La Vachette gagne ».
+[/liste]
+
+Il y a une [b]horloge par équipe[/b], comme aux échecs (600, 480, 400 ou 240
+secondes selon la partie créée). Elle ne tourne que pendant votre tour, mais
+elle tourne vraiment : à zéro, vous perdez.
+
+[b]Le draft.[/b] Avant la partie, six cartes sont tirées au sort et les deux
+joueurs les choisissent [b]à tour de rôle[/b], trois chacun (c'est le réglage
+par défaut ; on peut créer des parties à deux cartes ou à une). Attention à
+l'échange qui se joue là : celui qui choisit en premier prend le meilleur des
+deux paquets, mais [b]c'est l'autre qui ouvre la partie[/b].
+
+Le tirage est uniforme et [b]avec doublons[/b] : il arrive tout à fait que
+deux Vachettes sortent du même paquet, ou qu'aucune bonne carte ne sorte du
+tout. Ne comptez pas dessus pour gagner.
+
+[taille=20][b]2. La seule règle qui compte vraiment[/b][/taille]
+
+Si vous ne retenez qu'une phrase de cette aide, prenez celle-ci :
+
+[b]On ne meurt qu'au bord.[/b]
+
+Une chaîne de fruits qui trouve [b]une seule case libre[/b] devant elle se
+tasse dedans, et personne ne meurt. Personne. Vous pouvez pousser dix fruits
+d'affilée sans en perdre un seul, du moment qu'il y a un trou au bout.
+
+Ce qui meurt, c'est le fruit posé [b]sur le bord vers lequel on avance[/b],
+sans trou devant lui. Et il meurt que la poussée vienne de lui... ou d'en
+face. C'est là toute la subtilité du jeu : [b]votre adversaire tue vos fruits
+en bougeant les siens[/b], et vous tuez les siens en bougeant les vôtres. La
+seule question qui vaille, à chaque tour, c'est : [i]qui est en première
+ligne ?[/i]
+
+Un pion isolé sur un flanc n'a donc pas besoin qu'on s'en occupe : il se fera
+sortir tout seul. Un bloc serré au milieu, lui, se pousse en bloc et ne perd
+rien.
+
+[taille=20][b]3. Les quatre conseils du joueur d'époque[/b][/taille]
+
+[b]Un — retenez les cartes de l'adversaire.[/b]
+Ce sont [b]exactement celles que vous n'avez pas prises[/b] au draft. Six
+cartes tirées, trois pour vous : les trois autres sont dans sa main, et vous
+les avez vues. Il n'y a aucune raison de se faire surprendre. Avant de jouer
+un coup, demandez-vous s'il ne devient pas catastrophique après la carte qu'il
+tient encore.
+
+[b]Deux — ne brûlez pas vos cartes tout de suite.[/b]
+C'est l'erreur la plus courante. Une carte jouée au troisième tour, sur un
+plateau plein où tout est encore possible, ne fait presque rien. La même carte
+à huit fruits contre neuf retourne la partie. Gardez-les.
+
+(Une exception, une seule : la [b]Vachette[/b]. Elle rase une colonne entière.
+Au départ, la colonne est pleine et elle emporte une rangée adverse complète ;
+à la fin, elle balaie du vide. Celle-là, c'est le contraire : elle se joue
+tôt.)
+
+[b]Trois — l'arme ultime.[/b]
+Je la cite mot pour mot, parce qu'elle a l'air absurde et qu'elle ne l'est
+pas :
+
+[citation]Placer un tas de vos pions au milieu des pions de l'adversaire de
+manière à ce que les siens vous entourent. N'hésitez surtout pas à virer vos
+grandes lignes de pions le plus tôt possible afin qu'elles ne vous gênent pas
+ensuite, quitte à vous retrouver avec 5 à 10 pions contre une vingtaine pour
+l'adversaire, car vous verrez ensuite ses troupes diminuer très
+rapidement.[/citation]
+
+Reprenez la règle du paragraphe 2 et ça devient limpide. Si vous êtes
+[b]enterré dans sa masse[/b], c'est lui qui occupe toutes les cases du bord,
+dans les quatre directions. Chaque poussée — la sienne comme la vôtre — jette
+un de ses fruits dehors, et pas un des vôtres. Vous avez cinq pions, il en a
+vingt, et le compteur ne descend que d'un côté.
+
+À l'inverse, une belle grande ligne de vos pions le long d'un bord, c'est
+vingt fruits qui n'attendent qu'une chose : mourir en rang d'oignons. Mieux
+vaut s'en débarrasser soi-même, tôt, et se ressouder au milieu.
+
+C'est violent à faire — on n'aime pas jeter du matériel. C'est pourtant
+mesurable : c'est ce seul principe, ajouté à l'IA des bots, qui leur a fait
+gagner près de six parties sur dix contre leur propre version précédente.
+
+[b]Quatre — la chance.[/b]
+Elle existe. Le plateau de départ est tiré au sort, les six cartes aussi, le
+Renfort pose ses fruits au hasard. On peut jouer juste et perdre. Ce n'est pas
+une raison pour jouer faux.
+
+[taille=20][b]4. Les douze fruticartes, de la pire à la meilleure[/b][/taille]
+
+Les quatre premières notes sont celles du joueur d'époque. Les huit suivantes
+sont les miennes, sur la même échelle : elles viennent de plusieurs milliers
+de parties jouées par les bots, carte par carte.
+
+[b][color=#888]1/10 — Solo[/color][/b] — [i]« Seul le fruit choisi se
+déplacera lors de votre prochain mouvement. »[/i]
+Tous vos autres fruits restent sur place. Sur le papier, c'est un tour perdu.
+Elle a pourtant un usage, et un seul : quand tous vos mouvements coûtent des
+fruits, elle vous laisse en déplacer un sans emmener les autres à l'abattoir.
+Gardez-la pour la fin, ou pour rien.
+
+[b][color=#888]3/10 — Entracte[/color][/b] — [i]« Vous ne jouez pas ce
+tour-ci. »[/i]
+Passer son tour, ça paraît absurde. Ça ne l'est pas quand chacune de vos
+quatre flèches vous coûte quelque chose — ça arrive tout le temps en fin de
+partie, quand le plateau a rétréci et que vous êtes collé de partout. La carte
+tient lieu de tour : c'est un « je ne bouge pas » légal.
+
+[b][color=#888]4,5/10 — Piège[/color][/b] — [i]« Pose un piège sur une case
+libre : le fruit qui s'y placera sera détruit avec la case. »[/i]
+Face cachée : lui ne le voit pas. Rien d'immédiat, donc, mais posez-la
+[b]devant[/b] ses fruits, là où ils arriveront au prochain tour, pas dans un
+coin tranquille. Et surtout, ne l'oubliez pas ensuite : une fois déclenchée,
+[b]la case reste mortelle pour le restant de la partie[/b]. Elle ne bloque
+rien, elle avale — tout fruit qui s'y pose meurt, le vôtre aussi bien que le
+sien. C'est ce qui la sauve de sa note.
+
+[b][color=#888]5,5/10 — Charge[/color][/b] — [i]« Votre prochain mouvement
+sera doublé. »[/i]
+Deux pas dans la même direction, d'un coup. Le piège classique, c'est de la
+jouer pour « avancer plus vite » : le deuxième pas vous met souvent au bord.
+Elle est bonne quand le premier pas ouvre un trou que le second exploite, ou
+pour traverser sa masse d'un coup et aller vous enterrer dedans (voir le
+conseil trois).
+
+[b]6/10 — Pétrification[/b] — [i]« Le fruit ciblé se transforme en
+pierre. »[/i]
+Un fruit adverse de moins, et un rocher à la place. Attention, le rocher fait
+bien plus que boucher un trou : [b]tout fruit dont la chaîne bute dessus ne
+peut plus bouger du tout[/b] dans cette direction — il n'est pas poussé, il
+est immobilisé. Un rocher bien placé peut clouer sur place la moitié de son
+armée pendant plusieurs tours.
+
+Mais il est [b]permanent et aveugle[/b] : il cloue les vôtres exactement
+pareil. Avant de la jouer, regardez de quel côté du rocher vous êtes.
+
+[b]6,5/10 — Confiscation[/b] — [i]« Si votre adversaire joue une carte au
+prochain tour, annulez son effet et récupérez la carte. »[/i]
+Face cachée. Elle compte double quand elle marche — il perd sa carte, vous la
+gagnez — mais la fenêtre ne dure qu'un tour. Ne l'armez que quand vous savez
+qu'il a encore quelque chose à jouer, et quelque chose qui vaut le coup : vous
+connaissez sa main (conseil un). Contre un Entracte, c'est un tour de perdu.
+
+[b]7/10 — Enclume[/b] — [i]« L'enclume détruit la case ciblée. »[/i]
+Elle ne tue pas seulement le fruit : elle [b]détruit la case[/b], définitivement.
+Et une case détruite n'arrête personne — elle [b]avale[/b] : tout fruit qui s'y
+pose meurt, pendant tout le reste de la partie. Un trou au milieu de son bloc,
+c'est donc un fruit tout de suite et un péage pour toujours. À placer là où il
+devra passer, pas là où il est. (Attention : le péage vaut aussi pour vous.)
+Un peu meilleure passé le début de partie, quand le plateau a rétréci et qu'un
+trou pèse plus lourd.
+
+[b]7/10 — Désordre[/b] — [i]« Le prochain mouvement de votre adversaire sera
+inversé. »[/i]
+Face cachée : il choisit son meilleur coup, et c'est [b]l'opposé[/b] qui
+s'applique. Presque nulle sur un plateau ouvert (l'opposé d'un bon coup est
+souvent un coup correct). Redoutable quand il est [b]adossé à un bord[/b] :
+son seul pas sûr est de s'en éloigner, et l'inversion le jette dedans.
+Attendez ce moment-là.
+
+[b]7,5/10 — Conversion[/b] — [i]« Le fruit choisi change d'équipe. »[/i]
+La seule carte qui compte double par nature : un de moins chez lui, un de plus
+chez vous. Deux fruits d'écart d'un coup. À trente fruits sur le plateau, ça
+ne se voit pas ; à huit, c'est énorme. [b]Gardez-la pour la fin[/b], et
+convertissez de préférence un fruit bien enfoncé chez lui — vous héritez d'un
+pion déjà à la bonne place.
+
+[b]8/10 — Célérité[/b] — [i]« Vous pouvez jouer une seconde fois à ce
+tour. »[/i]
+Deux mouvements de suite, sans réponse entre les deux. C'est la carte qui
+permet les manœuvres impossibles : sortir d'un bord [i]et[/i] se recentrer,
+ou traverser sa masse en deux temps. Attention, le tour rejoué ne rouvre pas
+le droit à une carte : c'est un mouvement seul.
+
+[b]8,5/10 — Renfort[/b] — [i]« Place au hasard jusqu'à 3 fruits alliés
+supplémentaires sur le plateau. »[/i]
+Trois fruits sur trente ne changent rien. Trois fruits sur six retournent la
+partie — et comme le plateau a rétréci, le hasard n'a plus beaucoup d'endroits
+où les perdre : ils tombent dans le mouchoir de poche où tout se joue.
+[b]C'est la carte de fin de partie par excellence[/b], et c'est aussi celle
+qui punit le mieux quelqu'un qui a cru gagner en comptant les têtes.
+
+[b]9/10 — Vachette[/b] — [i]« Une meuhmeuh apparaît en haut du plateau et fait
+voler tous les fruits de la colonne choisie. »[/i]
+Une colonne entière — y compris vos fruits à vous, s'il y en a. C'est là qu'il
+faut savoir compter : sur un plateau plein de 8x8, la meilleure des huit
+colonnes porte en moyenne [b]six fruits adverses pour deux à vous[/b]. Quatre
+d'écart d'un seul coup, aucune autre carte n'approche ça. Prenez le temps de
+compter les huit colonnes avant de viser, l'écart entre la bonne et la
+mauvaise est énorme.
+
+C'est la seule carte qui se joue [b]tôt[/b] : plus tard, la colonne est déjà à
+moitié vide et la meuhmeuh balaie du courant d'air. Un détail rare mais
+amusant : si elle vide les deux camps en même temps, la partie est nulle, et
+c'est officiellement La Vachette qui gagne.
+
+[taille=20][b]5. Les trois salles[/b][/taille]
+
+[b]Amical.[/b] On joue, on ne compte rien. C'est là qu'on s'entraîne et qu'on
+essaie les idées bizarres.
+
+[b]Challenge.[/b] La salle des séries : on compte vos victoires d'affilée, et
+la longueur de la série part au classement Frutibandas — Challenge. Une
+défaite remet le compteur à zéro. Un même adversaire humain ne compte qu'une
+fois par série (pas de ferme à deux). Et comme partout, le Frutidisc y est
+une vie : une défaite classée vous coûte un disque, et sans disque on ne peut
+plus affronter d'humain — seulement s'entraîner contre les bots.
+
+[b]Championnat.[/b] Entre humains uniquement, avec une [b]note[/b] qui monte
+et qui descend selon la valeur de celui que vous battez (ou qui vous bat).
+Battre plus fort que soi rapporte beaucoup, perdre contre plus faible coûte
+cher. C'est la salle des tournois : quand un tournoi tourne, le tableau
+s'affiche directement dans le jeu et [b]les parties jouées dans cette salle
+comptent toutes seules[/b] — il n'y a rien à saisir à la main.
+
+[taille=20][b]6. Un mot sur les bots[/b][/taille]
+
+Beaucoup d'entre vous nous ont dit que les bots étaient mauvais. C'était vrai,
+et pas seulement au sens « faciles » : il leur arrivait de laisser filer un
+gain immédiat sous vos yeux, ou de piocher l'Entracte devant la Vachette. Ils
+avaient l'air cassés.
+
+Ils ont été repris. Trois choses ont changé :
+[liste]
+[*] ils connaissent l'arme ultime — ils comptent maintenant qui est en
+première ligne, et n'hésitent plus à lâcher une rangée pour aller s'enterrer
+chez vous ;
+[*] ils ne se sabordent plus : un bot faible voit moins loin qu'un bot fort,
+mais il ne joue plus n'importe quoi ;
+[*] et surtout, [b]leur niveau suit le vôtre[/b]. Au Challenge, le bot que
+vous rencontrez est réglé sur votre série en cours : tendre à la première
+partie, et au bout de dix victoires d'affilée vous n'avez plus en face de vous
+que le meilleur d'entre eux.
+[/liste]
+
+Autrement dit : si vous trouvez encore les bots faciles, enchaînez. Ils vont
+monter avec vous.
+
+[taille=20][b]7. Aide-mémoire[/b][/taille]
+
+[liste]
+[*] On ne meurt qu'au bord. Une chaîne avec un trou devant elle ne perd rien.
+[*] Qui est en première ligne ? Posez-vous la question à chaque tour.
+[*] Le coin est la pire case du plateau : il meurt de deux mouvements.
+[*] Ses cartes sont celles que vous n'avez pas prises.
+[*] Gardez vos cartes — sauf la Vachette, qui se joue tôt.
+[*] Cinq pions enterrés valent mieux que vingt pions dehors.
+[*] L'horloge tourne. À zéro, on perd, même en position gagnante.
+[/liste]
+
+Bon jeu, et méfiez-vous des meuhmeuh.

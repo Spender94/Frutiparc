@@ -160,6 +160,17 @@ stockage et les routes dans `server.js`, l'écran dans `public/admin.html`.
 - Tests : `test/tournoiDuel.test.js` (la règle) et `test/tournoiBandas.test.js`
   (la chaîne complète, vrai serveur + vrai protocole `<bd>`).
 
+## L'aide aux joueurs
+
+`AIDE-FORUM.txt` — une aide Frutibandas prête à coller sur le forum (BBCode).
+Elle part de celle qu'un joueur avait écrite à l'époque : ses quatre conseils
+et les notes de ses quatre premières cartes sont conservés (l'arme ultime est
+citée mot pour mot), le reste complète ce qui manquait — la mécanique exacte
+(« on ne meurt qu'au bord »), les douze fruticartes notées, les trois salles.
+Les faits qu'elle avance sont pris dans le source ou mesurés : la meilleure
+colonne d'un plateau plein porte six fruits adverses pour deux à soi, une case
+détruite avale au lieu de bloquer, seul le rocher bloque.
+
 ## Écarts assumés vs l'original
 
 - Le serveur frusion d'origine est perdu : draft alterné, fenêtre de
