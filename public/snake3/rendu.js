@@ -220,7 +220,17 @@ function dessinerSerpent(ctx, s, tmod, temps) {
 // La tête : image du clip `tete` (1 verte, 2 grise invincible, 3 noire,
 // 11-13 les couleurs de bataille), tournée au cap, à 30+70·scale %.
 function dessinerTete(ctx, s, frame) {
-  if (s.vivant === false || s.len <= 0) return;
+  // `vivant` est le `tete._visible` du SWF, et RIEN D'AUTRE ne cache la tête.
+  // Snake.draw la place, l'oriente et la redimensionne à CHAQUE image, avant
+  // même son `if(!redraw) return` ; seul Game.game_over la fait disparaître,
+  // et seulement une fois la queue entièrement explosée.
+  //
+  // Un serpent réduit à sa seule tête (len 0) est un état de jeu NORMAL : deux
+  // dynamites le laissent là (Pile.as ne tue qu'à la troisième, quand len vaut
+  // déjà 0 en entrant dans la boucle), et il continue de se piloter. Le
+  // masquer ici le rendait invisible : le joueur avançait à l'aveugle jusqu'au
+  // mur et croyait que la dynamite l'avait tué.
+  if (s.vivant === false) return;
   const scale = Math.min(10, s.len + 3) / 10;
   const k = (30 + 70 * scale) / 100;
   D.poser(ctx, 'tete', frame || s.tete_frame || 1, s.x, s.y, k, k, s.ang);

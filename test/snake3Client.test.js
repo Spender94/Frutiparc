@@ -1034,3 +1034,195 @@ test('le rideau de transition ne rasterise pas le masque à chaque échelle', ()
   assert.ok(m, 'le rideau tire bien snakeMask');
   assert.ok(/Math\.min\(1,\s*k\)/.test(m[0]), 'la finesse est plafonnée : ' + m[0]);
 });
+
+// ── Les deux retours de jeu ───────────────────────────────────────────────
+
+test('deux dynamites laissent le serpent à sa seule tête — c\'est la TROISIÈME qui tue', () => {
+  // Pile.as : `counter++` puis `for(i=0;i<counter;i++) if(len>0) explode(); else
+  // game_over();`. La première dynamite coûte un segment, la deuxième deux, la
+  // troisième trois — et la mort n'arrive que si `len` vaut DÉJÀ zéro en entrant
+  // dans un tour de boucle. Un serpent neuf (len 3) encaisse donc les deux
+  // premières et se retrouve réduit à sa tête, bien vivant.
+  const w = bacASable();
+  const C = w.SnakeConst, B = w.SnakeBonus, P = w.SnakePartie;
+  const partie = new P.Partie({ hasard: () => 0 });
+  assert.strictEqual(partie.serpent.len, C.SNAKE_DEFAULT_LENGTH, 'len de départ');
+  assert.strictEqual(B.Pile.counter, 0, 'le compteur repart à zéro à chaque partie');
+
+  B.Pile.activate(partie);
+  assert.strictEqual(partie.serpent.len, 2, 'première dynamite : un segment');
+  assert.strictEqual(partie.game_over_flag, false);
+
+  B.Pile.activate(partie);
+  assert.strictEqual(partie.serpent.len, 0, 'deuxième dynamite : deux segments');
+  assert.strictEqual(partie.game_over_flag, false, 'réduit à sa tête, il VIT');
+
+  // Et il continue de jouer. On le pose au milieu du terrain, cap à droite :
+  // cent images à ~2,6 points l'une, il lui reste largement de quoi rouler
+  // avant le mur. S'il meurt là, c'est que quelque chose tue à len 0.
+  const b = partie.niveau.bounds();
+  partie.serpent.x = (b.left + b.right) / 2;
+  partie.serpent.y = (b.top + b.bottom) / 2;
+  partie.serpent.ang = 0;
+  partie.serpent.old_ang = null;
+  for (let i = 0; i < 100 && !partie.game_over_flag; i++) partie.main(0.8, 1 / C.SWF_FPS);
+  assert.strictEqual(partie.game_over_flag, false, 'la tête seule reste jouable');
+  assert.strictEqual(partie.serpent.len, 0, 'et elle reste seule');
+
+  B.Pile.activate(partie);
+  assert.strictEqual(partie.game_over_flag, true, 'la troisième dynamite tue');
+});
+
+test('la tête se dessine tant que le serpent vit, même réduite à elle seule', () => {
+  // Snake.draw place et redimensionne `tete` à CHAQUE image, avant même son
+  // `if(!redraw) return` ; seul game_over la cache (`tete._visible = false`),
+  // et seulement une fois la queue explosée. La masquer à len 0 rendait le
+  // serpent invisible après deux dynamites — on jouait à l'aveugle.
+  const w = bacASable();
+  const R = w.SnakeRendu;
+  const poses = [];
+  const D = w.SnakeDessin;
+  const brut = D.poser;
+  D.poser = (ctx, cle, ...r) => { poses.push(cle); return brut(ctx, cle, ...r); };
+  const ctx = new Proxy({}, { get: () => () => {}, set: () => true });
+  const serpent = { x: 100, y: 100, ang: 0, len: 0, vivant: true, tete_frame: 1 };
+
+  R.dessinerTete(ctx, serpent, 1);
+  assert.ok(poses.includes('tete'), 'à len 0 et vivant, la tête est posée');
+
+  poses.length = 0;
+  serpent.vivant = false;
+  R.dessinerTete(ctx, serpent, 1);
+  assert.strictEqual(poses.length, 0, 'morte et queue explosée, elle disparaît');
+
+  // La taille suit le SWF : tete._xscale = 30 + 70 · min(10, len+3)/10.
+  poses.length = 0;
+  const echelles = [];
+  D.poser = (c, cle, f, x, y, kx) => { poses.push(cle); echelles.push(kx); };
+  serpent.vivant = true;
+  R.dessinerTete(ctx, serpent, 1);
+  assert.ok(Math.abs(echelles[0] - (30 + 70 * 0.3) / 100) < 1e-9,
+    'la tête seule se dessine à 51 % : ' + echelles[0]);
+  D.poser = brut;
+});
+
+test('la langue affiche ses munitions, aux mesures exactes du SWF', () => {
+  // Langue.as : `Std.cast(mc).count.n = n`. Le compteur n'est pas un texte
+  // libre mais un clip du montage — on relit le SWF pour ses mesures plutôt
+  // que de les inventer :
+  //   · le clip `count` posé dans le clip `slot` à l'image de la langue ;
+  //   · dedans DEUX champs `n` superposés, l'un doré (l'ombre), l'autre blanc.
+  const { lireSwf } = require('../scripts/lib/swf-sprites.js');
+  const b = lireSwf(path.join(RACINE, 'Games/snake3/snake3.swf'));
+  const debut = Math.ceil((5 + ((b[0] >> 3) & 0x1f) * 4) / 8) + 4;
+
+  // Lecture des bits non alignés (MATRIX, RECT).
+  function bits(o) {
+    let bit = 0;
+    const u = (n) => { let v = 0; for (let i = 0; i < n; i++) { v = v * 2 + ((b[o + (bit >> 3)] >> (7 - (bit & 7))) & 1); bit++; } return v; };
+    const s = (n) => { const v = u(n); return v >= 2 ** (n - 1) ? v - 2 ** n : v; };
+    return { u, s, fin: () => o + ((bit + 7) >> 3) };
+  }
+  function matrice(o) {
+    const r = bits(o); const M = { e: 0, f: 0 };
+    if (r.u(1)) { const n = r.u(5); r.s(n); r.s(n); }          // échelle
+    if (r.u(1)) { const n = r.u(5); r.s(n); r.s(n); }          // rotation
+    const n = r.u(5); M.e = r.s(n) / 20; M.f = r.s(n) / 20;
+    return { M, fin: r.fin() };
+  }
+  const placements = new Map();   // sprite → [{ frame, char, M }]
+  const textes = new Map();       // id → { boite, taille, couleur, centre }
+  (function scan(from, to, id) {
+    let o = from, frame = 1;
+    while (o < to) {
+      const h = b.readUInt16LE(o), code = h >> 6;
+      let len = h & 0x3f, hs = 2;
+      if (len === 0x3f) { len = b.readUInt32LE(o + 2); hs = 6; }
+      if (code === 0) break;
+      const c = o + hs;
+      if (code === 39) scan(c + 4, c + len, b.readUInt16LE(c));
+      if (code === 26 && (b[c] & 0x02)) {
+        const f = b[c]; let p = c + 3;
+        const char = b.readUInt16LE(p); p += 2;
+        let M = { e: 0, f: 0 };
+        if (f & 0x04) M = matrice(p).M;
+        if (!placements.has(id)) placements.set(id, []);
+        placements.get(id).push({ frame, char, M });
+      }
+      if (code === 37) {                                        // DefineEditText
+        const id2 = b.readUInt16LE(c);
+        const r = bits(c + 2); const nb = r.u(5);
+        const boite = [r.s(nb), r.s(nb), r.s(nb), r.s(nb)].map((v) => v / 20);
+        let p = r.fin();
+        const f1 = b[p], f2 = b[p + 1]; p += 2;
+        let taille = null, couleur = null, centre = null;
+        if (f1 & 1) { p += 2; taille = b.readUInt16LE(p) / 20; p += 2; }
+        if (f1 & 4) { couleur = '#' + b.slice(p, p + 3).toString('hex'); p += 4; }
+        if (f1 & 2) p += 2;
+        if (f2 & 0x20) { centre = b[p] === 2; }
+        textes.set(id2, { boite, taille, couleur, centre });
+      }
+      if (code === 1) frame++;
+      o = c + len;
+    }
+  })(debut, b.length, 0);
+
+  // Le clip `slot` du manifeste, et l'image de la langue (Langue → super(game,2)).
+  const idSlot = manifeste.clips.slot.id;
+  const dansSlot = (placements.get(idSlot) || []).filter((p) => p.frame === 2);
+  // Le compteur est le seul placement de cette image qui contienne les champs `n`.
+  const compteur = dansSlot.find((p) => (placements.get(p.char) || [])
+    .some((q) => textes.has(q.char) && textes.get(q.char).taille === 12));
+  assert.ok(compteur, 'le clip du compteur est posé sur l\'image de la langue');
+
+  const champs = (placements.get(compteur.char) || [])
+    .filter((q) => textes.has(q.char)).map((q) => ({ M: q.M, t: textes.get(q.char) }));
+  assert.strictEqual(champs.length, 2, 'deux passes : l\'ombre et le chiffre');
+  const blanc = champs.find((c) => c.t.couleur === '#ffffff');
+  const dore = champs.find((c) => c.t.couleur !== '#ffffff');
+  assert.ok(blanc && dore, 'un champ blanc et un champ doré : ' + JSON.stringify(champs.map((c) => c.t.couleur)));
+  assert.ok(blanc.t.centre, 'le chiffre est centré dans sa boîte');
+
+  // Ce que le SWF impose, en coordonnées de scène pour une case au centre (cx, cy).
+  const cx = 130, cy = 30;                                   // la 3e case (pos 2)
+  const attendu = (ch) => ({
+    x: cx + compteur.M.e + ch.M.e + (ch.t.boite[0] + ch.t.boite[1]) / 2,
+    y: cy + compteur.M.f + ch.M.f + (ch.t.boite[2] + ch.t.boite[3]) / 2,
+  });
+
+  // Ce que le client dessine, relevé sur un contexte espion.
+  const w = bacASable();
+  const jeu = new w.SnakeJeu.Jeu(w.document.getElementById('scene'),
+    { fruits: {}, record: 0, options: {}, prefs: { $music: true, $sounds: true, $keys: null },
+      sauverSlot0: () => Promise.resolve(true), sauverScore: () => Promise.resolve(null) },
+    new Proxy({}, { get: () => () => false }));
+  const vue = new w.SnakeJeu.VuePartie(jeu);
+  const ecrits = [];
+  let couleur = null, police = null, aligne = null;
+  const espion = new Proxy({}, {
+    get: (o, n) => (n === 'fillText' ? (t, x, y) => ecrits.push({ t, x, y, couleur, police, aligne })
+      : () => {}),
+    set: (o, n, v) => {
+      if (n === 'fillStyle') couleur = v;
+      if (n === 'font') police = v;
+      if (n === 'textAlign') aligne = v;
+      return true;
+    },
+  });
+  vue.dessinerMunitions(espion, cx, cy, 10);
+
+  assert.strictEqual(ecrits.length, 2, 'deux passes dessinées');
+  assert.deepStrictEqual(ecrits.map((e) => e.t), ['10', '10']);
+  assert.strictEqual(ecrits[0].couleur, dore.t.couleur, 'l\'ombre dorée d\'abord');
+  assert.strictEqual(ecrits[1].couleur, '#ffffff', 'puis le chiffre blanc');
+  assert.ok(/Lithograph/.test(ecrits[1].police), 'en Lithograph, la police du champ');
+  assert.ok(/12px/.test(ecrits[1].police), 'à la taille du champ (12)');
+  assert.strictEqual(ecrits[1].aligne, 'center');
+  for (const [i, ref] of [[0, dore], [1, blanc]]) {
+    const a = attendu(ref);
+    assert.ok(Math.abs(ecrits[i].x - a.x) < 0.01 && Math.abs(ecrits[i].y - a.y) < 0.01,
+      'passe ' + i + ' à sa place : ' + JSON.stringify(ecrits[i]) + ' vs ' + JSON.stringify(a));
+  }
+  // Et il est bien DANS la case, en haut à gauche — pas sous son bord.
+  assert.ok(ecrits[1].y < cy, 'le compteur est au-dessus du centre de la case');
+});

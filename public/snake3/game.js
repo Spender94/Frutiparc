@@ -460,12 +460,7 @@ class VuePartie {
     for (const s of rangee) {
       const film = this.filmsSlot.get(s);
       D.poserAnim(ctx, 'slot', s.slotFrame, film ? film.t : 0, s.pos * 50 + 30, 30, 1, 1, 0);
-      if (s.compteur != null) {
-        ctx.font = '12px Alba, Verdana, sans-serif';
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.fillText(String(s.compteur), s.pos * 50 + 30, 48);
-      }
+      if (s.compteur != null) this.dessinerMunitions(ctx, s.pos * 50 + 30, 30, s.compteur);
     }
 
     // Les nombres qui sautent, puis l'écran éventuel (PLAN_DUMMIES dessus).
@@ -478,6 +473,42 @@ class VuePartie {
       D.poser(ctx, 'screens', ECRANS.pause, 0, 0, 1, 1, 0);
     }
     if (this.ecran) this.ecran.dessiner(ctx);
+  }
+
+  /**
+   * Les munitions d'une case — la langue et ses dix coups (Langue.as :
+   * `Std.cast(mc).count.n = n`).
+   *
+   * Le compteur n'est pas un texte libre : c'est un clip du SWF, et le portage
+   * en reprend les mesures exactes plutôt que de les inventer.
+   *   · le clip `count` (caractère 669) est posé dans le clip `slot` (676) à
+   *     son IMAGE 2 — celle de la langue — en (−28,5 ; −23,55) ;
+   *   · dedans, DEUX champs de texte superposés, tous deux nommés `n`, en
+   *     Lithograph 12, centrés dans une boîte de 26,05 × 18,85 :
+   *     l'un doré (#cea500) en (−25,3 ; +3), l'autre blanc en (−25,8 ; +2,4).
+   *     Le doré est décalé d'un demi-point vers le bas à droite : c'est une
+   *     OMBRE. Sans elle, le chiffre blanc se perdait dans le vert de la case.
+   *
+   * Le portage écrivait un « 10 » blanc, sans ombre, dix-huit points SOUS le
+   * centre de la case : il tombait à cheval sur le bord et ne se lisait pas.
+   */
+  dessinerMunitions(ctx, cx, cy, valeur) {
+    const BOITE = { l: 26.05, h: 18.85 };
+    // Coin haut-gauche de la boîte de texte, cumul des trois placements.
+    const blanc = { x: cx - 28.5 - 25.8 + 25.95, y: cy - 23.55 + 2.4 - 2 };
+    const dore = { x: cx - 28.5 - 25.3 + 25.95, y: cy - 23.55 + 3 - 2 };
+    ctx.save();
+    ctx.font = '12px Lithograph, Verdana, Geneva, sans-serif';
+    ctx.textAlign = 'center';
+    // Une seule ligne dans sa boîte : le lecteur la centre verticalement à un
+    // point près, et « middle » ne dépend pas des métriques de la fonte.
+    ctx.textBaseline = 'middle';
+    const txt = String(valeur);
+    ctx.fillStyle = '#cea500';
+    ctx.fillText(txt, dore.x + BOITE.l / 2, dore.y + BOITE.h / 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(txt, blanc.x + BOITE.l / 2, blanc.y + BOITE.h / 2);
+    ctx.restore();
   }
 
   dessinerFbarre(ctx, x, y) {
