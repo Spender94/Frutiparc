@@ -107,6 +107,32 @@ même logique ici).
 - frutidisc `bandas1` (GAME_DISCS) + interception du lancement dans
   `ruffle.html` → ouvre `/bandas/?sid=…`.
 
+## Les tournois (format « duel »)
+
+Le système de tournois du site départage au SCORE (« Maître ÈS … ») : bon pour
+un jeu solo, inutilisable à deux. Le format **duel** lui ajoute ce qu'il faut
+pour Frutibandas — la règle vit dans `tournoiDuel.js` (module pur, testé), le
+stockage et les routes dans `server.js`, l'écran dans `public/admin.html`.
+
+- **MANCHE** = une partie. **MATCH** = la série de manches entre deux joueurs,
+  pliée « à l'écart » (2-0, 3-1, 4-2… — la règle de l'animation).
+- **Poules** tirées au sort (chacun rencontre chacun), puis **coupe** avec
+  **tirage intégral à chaque tour** ; les non-qualifiés se retrouvent dans une
+  poule de **repêchage**. `round` vaut 0 pour les poules, -1 pour le repêchage,
+  1.. pour les tours de coupe ; `score1`/`score2` comptent les manches.
+- **Rien ne se saisit à la main** : une partie finie dans la salle Championnat
+  cherche l'affiche des deux joueurs et lui ajoute son point (crochet
+  `onResult` → `tournoiDuelManche`). Une partie jouée ailleurs ne compte pas.
+- Le tableau est PUBLIC (`/api/tournaments/duel`) : le jeu l'affiche dans la
+  salle du Championnat (bandeau « ton match » + surcouche), l'animation peut le
+  relayer.
+- Classement du poule : matchs gagnés, puis différence de manches, puis manches
+  gagnées, et enfin la confrontation directe **en passe locale** — un
+  comparateur qui inclurait la confrontation serait non transitif (a bat b,
+  b bat c, c bat a) et rendrait le tri imprévisible.
+- Tests : `test/tournoiDuel.test.js` (la règle) et `test/tournoiBandas.test.js`
+  (la chaîne complète, vrai serveur + vrai protocole `<bd>`).
+
 ## Écarts assumés vs l'original
 
 - Le serveur frusion d'origine est perdu : draft alterné, fenêtre de

@@ -292,8 +292,103 @@
     showScreen("lobby");
     renderLobby();
     bd({ a: "list" });
+    if (salle === "champ") chargerTournoi(); else majTournoi();
   }
-  $("#lobby-back").onclick = function () { showScreen("mode"); };
+  $("#lobby-back").onclick = function () { showScreen("mode"); majTournoi(); };
+
+  // ── Le tournoi (format duel) ───────────────────────────────────────────────
+  //
+  // Rien à saisir ici : les manches se comptent toutes seules côté serveur
+  // (une partie de Championnat entre deux concurrents remplit leur affiche).
+  // Le client ne fait que MONTRER — qui je dois jouer, où en est mon match,
+  // et le tableau complet à la demande.
+  var tournoi = null;
+  function chargerTournoi() {
+    return fetch("/api/tournaments/duel", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { tournoi = (d && d.tournoi) ? d : null; majTournoi(); })
+      .catch(function () { /* pas de tournoi, pas de bandeau */ });
+  }
+  // Mon affiche EN COURS : celle du tour courant qui me concerne.
+  function monMatch() {
+    if (!tournoi) return null;
+    var t = tournoi.tournoi;
+    var tours = t.statut === "poules" ? [0, -1] : [t.tour, -1];
+    for (var i = 0; i < tournoi.tours.length; i++) {
+      var x = tournoi.tours[i];
+      if (tours.indexOf(x.round) < 0) continue;
+      for (var j = 0; j < x.matchs.length; j++) {
+        var m = x.matchs[j];
+        if (m.fini) continue;
+        if (sameUser(m.p1, state.user)) return { m: m, adv: m.p2, moi: m.s1, lui: m.s2, tour: x.nom };
+        if (sameUser(m.p2, state.user)) return { m: m, adv: m.p1, moi: m.s2, lui: m.s1, tour: x.nom };
+      }
+    }
+    return null;
+  }
+  function majTournoi() {
+    var bandeau = $("#tournoi-bandeau"), bouton = $("#btn-tournoi");
+    var visible = state.screen === "lobby" && state.salle === "champ" && !!tournoi;
+    bouton.style.display = visible ? "" : "none";
+    if (!visible) { bandeau.style.display = "none"; return; }
+    var t = tournoi.tournoi;
+    var mien = monMatch();
+    var texte;
+    if (t.statut === "finished") {
+      texte = "<b>" + esc(t.nom) + "</b> — 🏆 " + esc(t.champion || "—") + " l’emporte.";
+    } else if (mien) {
+      texte = "<b>" + esc(t.nom) + "</b> · " + esc(mien.tour) + " — ton match :"
+        + ' <span class="adv">' + esc(mien.adv || "à déterminer") + "</span>"
+        + " <b>" + mien.moi + " – " + mien.lui + "</b>"
+        + ' <span style="color:#6b7a55">(' + t.ecart + " d’écart pour plier)</span>";
+    } else {
+      texte = "<b>" + esc(t.nom) + "</b> — aucun match en attente pour toi.";
+    }
+    bandeau.innerHTML = texte + ' <span style="flex:1"></span>'
+      + '<span class="x" id="tournoi-ouvrir" style="color:#5d7a1c">Voir le tableau »</span>';
+    bandeau.style.display = "";
+    $("#tournoi-ouvrir").onclick = ouvrirTournoi;
+  }
+  function ligneMatch(m) {
+    var g = function (u) { return m.fini && m.v && sameUser(m.v, u); };
+    var nom = function (u) {
+      if (!u) return '<span style="color:#bbb">à déterminer</span>';
+      return '<span class="' + (g(u) ? "gagne" : "") + '">' + esc(u) + "</span>";
+    };
+    if (!m.p2) return "<div>" + nom(m.p1) + ' <span style="color:#888">— exempt</span></div>';
+    return "<div>" + nom(m.p1) + " <b>" + m.s1 + " – " + m.s2 + "</b> " + nom(m.p2)
+      + (m.fini ? "" : ' <span class="encours">en cours</span>') + "</div>";
+  }
+  function ouvrirTournoi() {
+    if (!tournoi) return;
+    var t = tournoi.tournoi;
+    $("#tournoi-titre").textContent = t.nom;
+    var html = "";
+    (tournoi.poules || []).forEach(function (p) {
+      html += '<div><h4>Poule ' + esc(p.poule) + "</h4><table>"
+        + "<tr><th>#</th><th>Joueur</th><th>V</th><th>D</th><th>Manches</th></tr>"
+        + p.lignes.map(function (l, i) {
+          return '<tr class="' + (sameUser(l.username, state.user) ? "moi" : "") + '"><td>' + (i + 1)
+            + "</td><td>" + esc(l.username) + "</td><td>" + l.gagnes + "</td><td>" + l.perdus
+            + "</td><td>" + l.pour + "–" + l.contre + "</td></tr>";
+        }).join("") + "</table></div>";
+    });
+    (tournoi.tours || []).forEach(function (x) {
+      if (x.round === 0) return;                 // les poules sont déjà au-dessus
+      html += "<div><h4>" + esc(x.nom) + "</h4>" + x.matchs.map(ligneMatch).join("") + "</div>";
+    });
+    $("#tournoi-corps").innerHTML = html || '<p style="color:#999">Le tirage n’est pas encore fait.</p>';
+    $("#tournoi-vue").classList.add("on");
+  }
+  $("#btn-tournoi").onclick = ouvrirTournoi;
+  $("#tournoi-fermer").onclick = function () { $("#tournoi-vue").classList.remove("on"); };
+  $("#tournoi-vue").addEventListener("click", function (ev) {
+    if (ev.target === $("#tournoi-vue")) $("#tournoi-vue").classList.remove("on");
+  });
+  chargerTournoi();
+  // Le tableau bouge quand les autres jouent : on le rafraîchit doucement, et
+  // tout de suite après une partie (cf. GV.onEndClosed).
+  setInterval(function () { if (state.salle === "champ" && !state.inGame) chargerTournoi(); }, 30000);
   $("#btn-create").onclick = function () {
     var me = lobbyPlayers.filter(isMe)[0];
     if (me && me.s === "waiting") bd({ a: "part" }); else bd({ a: "create" });
@@ -345,6 +440,7 @@
     showScreen(reste ? "lobby" : "mode");
     if (reste) renderLobby();
     bd({ a: "list" });
+    if (state.salle === "champ") chargerTournoi();
   };
 
   GV.init();

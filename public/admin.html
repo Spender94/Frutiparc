@@ -1629,17 +1629,50 @@ async function openCreateTournament() {
       <h3 style="margin:0 0 10px">Nouveau tournoi</h3>
       <label style="display:block;margin:6px 0 2px">Nom</label>
       <input id="t-name" maxlength="80" value="Maître ÈS Swapou" style="width:100%">
-      <label style="display:block;margin:8px 0 2px">Jeu (ranking)</label>
-      <select id="t-ranking" style="width:100%">${opts}</select>
-      <label style="display:block;margin:8px 0 2px">Taille de la coupe</label>
-      <select id="t-size"><option value="4">4 (2 tours)</option><option value="8" selected>8 (3 tours)</option><option value="16">16 (4 tours)</option><option value="32">32 (5 tours)</option></select>
-      <label style="display:block;margin:8px 0 2px">Durée d'un tour (heures)</label>
-      <input id="t-hours" type="number" min="1" max="720" value="72" style="width:90px"> <span style="color:#888;font-size:12px">72 h = 3 jours</span>
+      <label style="display:block;margin:8px 0 2px">Format</label>
+      <select id="t-format" style="width:100%" onchange="majFormatTournoi()">
+        <option value="score" selected>Au score — « Maître ÈS … » (jeux solo)</option>
+        <option value="duel">En duel — Frutibandas (poules puis coupe)</option>
+      </select>
+      <div id="t-bloc-score">
+        <label style="display:block;margin:8px 0 2px">Jeu (ranking)</label>
+        <select id="t-ranking" style="width:100%">${opts}</select>
+        <label style="display:block;margin:8px 0 2px">Taille de la coupe</label>
+        <select id="t-size"><option value="4">4 (2 tours)</option><option value="8" selected>8 (3 tours)</option><option value="16">16 (4 tours)</option><option value="32">32 (5 tours)</option></select>
+        <label style="display:block;margin:8px 0 2px">Durée d'un tour (heures)</label>
+        <input id="t-hours" type="number" min="1" max="720" value="72" style="width:90px"> <span style="color:#888;font-size:12px">72 h = 3 jours</span>
+      </div>
+      <div id="t-bloc-duel" style="display:none">
+        <div style="background:#f6fbf2;border:1px dashed #9c3;border-radius:6px;padding:9px;margin:8px 0;font-size:13px;color:#456">
+          Les matchs se jouent dans la salle <b>Championnat</b> de Frutibandas, et les
+          manches se comptent <b>toutes seules</b> : aucune saisie à faire.
+        </div>
+        <label style="display:block;margin:8px 0 2px">Joueurs par poule</label>
+        <input id="t-poule" type="number" min="2" max="8" value="3" style="width:70px">
+        <label style="display:block;margin:8px 0 2px">Qualifiés par poule</label>
+        <input id="t-qpp" type="number" min="1" max="4" value="2" style="width:70px">
+        <label style="display:block;margin:8px 0 2px">Victoires d'écart pour plier un match</label>
+        <input id="t-ecart" type="number" min="1" max="9" value="2" style="width:70px">
+        <span style="color:#888;font-size:12px">2 → 2-0, 3-1, 4-2…</span>
+      </div>
       <div style="margin-top:12px"><button class="btn-success" onclick="createTournament()">Créer</button> <button class="btn" onclick="$('#tournoi-detail').innerHTML=''">Annuler</button></div>
     </div>`;
 }
+function majFormatTournoi() {
+  const duel = $('#t-format').value === 'duel';
+  $('#t-bloc-score').style.display = duel ? 'none' : '';
+  $('#t-bloc-duel').style.display = duel ? '' : 'none';
+  const n = $('#t-name');
+  if (n && (n.value === 'Maître ÈS Swapou' || n.value === 'Tournoi Frutibandas')) {
+    n.value = duel ? 'Tournoi Frutibandas' : 'Maître ÈS Swapou';
+  }
+}
 async function createTournament() {
-  const body = { name: $('#t-name').value, ranking_id: $('#t-ranking').value, bracket_size: Number($('#t-size').value), round_hours: Number($('#t-hours').value) };
+  const format = $('#t-format') ? $('#t-format').value : 'score';
+  const body = format === 'duel'
+    ? { name: $('#t-name').value, format: 'duel', poule_size: Number($('#t-poule').value),
+        qualif_par_poule: Number($('#t-qpp').value), win_by: Number($('#t-ecart').value) }
+    : { name: $('#t-name').value, ranking_id: $('#t-ranking').value, bracket_size: Number($('#t-size').value), round_hours: Number($('#t-hours').value) };
   try {
     const d = await (await fetch('/api/admin/tournaments', { method:'POST', headers: hdr(), body: JSON.stringify(body) })).json();
     if (d && d.ok) { toast('Tournoi créé'); loadTournaments(); openTournament(d.tournament.id); }
@@ -1647,11 +1680,98 @@ async function createTournament() {
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 function toLocalInput(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d.getTime()))return''; const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
+
+// ── Tournoi en DUEL (Frutibandas) ──────────────────────────────────────────
+// Rien à saisir : les manches arrivent du jeu (salle Championnat). L'animation
+// n'a que trois gestes à faire — poser les inscrits, tirer les poules, puis
+// enchaîner les tours quand le précédent est joué.
+const TD_STATUT = { draft:'Brouillon', scheduled:'Programmé', poules:'Phase de poules',
+  bracket:'Coupe', finished:'Terminé', cancelled:'Annulé' };
+function tdNom(u){ return u ? esc(u) : '<span style="color:#bbb">à déterminer</span>'; }
+function tdMatch(m) {
+  const fini = m.status === 'done';
+  const g = (u) => fini && m.winner && String(m.winner).toLowerCase() === String(u||'').toLowerCase();
+  const cote = (u, sc) => `<span style="${g(u)?'font-weight:bold;color:#2f8f2f':''}">${tdNom(u)}</span>`;
+  if (!m.player2) return `<div style="padding:3px 0">${cote(m.player1)} <span style="color:#888">— exempt</span></div>`;
+  return `<div style="padding:3px 0">${cote(m.player1)} <b style="margin:0 6px">${Number(m.score1)||0} – ${Number(m.score2)||0}</b> ${cote(m.player2)}`
+    + (fini ? '' : ' <span style="color:#c90;font-size:12px">en cours</span>') + '</div>';
+}
+function renderTournoiDuel(d) {
+  const t = d.tournament;
+  const inscrits = (d.players || []).map(p => p.username);
+  const poules = (d.tables || []).map(tb => `
+    <div style="min-width:240px">
+      <h4 style="margin:0 0 4px">Poule ${esc(tb.poule)}</h4>
+      <table><thead><tr><th>#</th><th>Joueur</th><th>V</th><th>D</th><th>Manches</th></tr></thead><tbody>
+      ${tb.lignes.map((l,i)=>`<tr><td>${i+1}</td><td><b>${esc(l.username)}</b></td><td>${l.gagnes}</td><td>${l.perdus}</td><td>${l.pour}–${l.contre}</td></tr>`).join('')}
+      </tbody></table>
+    </div>`).join('');
+  const tours = (d.tours || []).map(x => `
+    <div style="min-width:250px">
+      <h4 style="margin:0 0 4px">${esc(x.nom)}</h4>
+      ${x.matchs.map(tdMatch).join('') || '<p style="color:#999">—</p>'}
+    </div>`).join('');
+
+  let actions = '';
+  if (['draft','scheduled'].includes(t.status)) {
+    actions = `
+      <div style="border:1px dashed #aac;padding:10px;border-radius:6px;font-size:13px">
+        <b>1. Les inscrits</b> — un pseudo par ligne (ou séparés par des virgules).
+        <div style="margin:6px 0"><textarea id="td-players" rows="6" style="width:100%;font-family:monospace">${esc(inscrits.join('\n'))}</textarea></div>
+        <button class="btn-success" onclick="tdSetPlayers(${t.id})">Enregistrer les inscrits</button>
+        ${inscrits.length >= 2 ? `<button class="btn" onclick="tdPoules(${t.id})">2. Tirer les poules (${inscrits.length} joueurs)</button>` : ''}
+        <button class="btn" style="background:#c10000;color:#fff" onclick="deleteTournament(${t.id})">Supprimer</button>
+      </div>`;
+  } else if (t.status === 'poules') {
+    actions = `
+      <button class="btn-success" onclick="tdClosePoules(${t.id}, false)">Clôturer les poules &amp; lancer la coupe</button>
+      <button class="btn" onclick="tdClosePoules(${t.id}, true)">Forcer la clôture</button>
+      <button class="btn" onclick="tdPoules(${t.id})">Re-tirer les poules</button>
+      <span style="color:#888;font-size:12px">Les ${t.qualif_par_poule} premiers de chaque poule passent en coupe, les autres au repêchage.</span>`;
+  } else if (t.status === 'bracket') {
+    actions = `<button class="btn-success" onclick="tdNextRound(${t.id})">Tour suivant (tirage au sort intégral)</button>
+      <span style="color:#888;font-size:12px">À cliquer quand tous les matchs du tour sont joués.</span>`;
+  } else if (t.status === 'finished') {
+    actions = `<span style="color:#2f8f2f;font-weight:bold">🏆 ${esc(t.champion || '—')} remporte le tournoi.</span>`;
+  }
+
+  $('#tournoi-detail').innerHTML = `
+    <div style="border:1px solid #cdd;padding:14px;border-radius:8px">
+      <h3 style="margin:0 0 6px">${esc(t.name)} <span style="color:${T_COLOR[t.status]||'#555'};font-size:13px">(${TD_STATUT[t.status]||t.status})</span></h3>
+      <div style="font-size:13px;color:#555;margin-bottom:8px">
+        Frutibandas · en duel · poules de ${t.poule_size} · ${t.qualif_par_poule} qualifié(s) par poule ·
+        match plié à <b>${t.win_by} victoire(s) d'écart</b> · ${inscrits.length} inscrit(s)
+      </div>
+      <div style="background:#f6fbf2;border:1px dashed #9c3;border-radius:6px;padding:9px;margin-bottom:10px;font-size:13px;color:#456">
+        Les joueurs se retrouvent dans la salle <b>Championnat</b> de Frutibandas et se défient.
+        Chaque partie gagnée compte pour leur match ; il se plie tout seul à ${t.win_by} d'écart.
+        Le tableau public est à <a href="/api/tournaments/duel" target="_blank">/api/tournaments/duel</a>.
+      </div>
+      <div style="margin-bottom:10px">${actions}</div>
+      ${poules ? `<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">${poules}</div>` : ''}
+      ${tours ? `<div style="display:flex;gap:24px;flex-wrap:wrap">${tours}</div>` : ''}
+    </div>`;
+}
+async function tdPost(id, route, body) {
+  try {
+    const r = await fetch('/api/admin/tournaments/'+id+'/duel/'+route, { method:'POST', headers:hdr(), body: JSON.stringify(body||{}) });
+    const d = await r.json();
+    if (d && d.ok) { loadTournaments(); openTournament(id); return d; }
+    toast('Erreur: ' + (d.message || JSON.stringify(d)));
+  } catch (e) { toast('Erreur: ' + e.message); }
+  return null;
+}
+function tdSetPlayers(id) { tdPost(id, 'players', { players: $('#td-players').value }).then(d => { if (d) toast(d.players.length + ' inscrit(s)'); }); }
+function tdPoules(id) { tdPost(id, 'poules').then(d => { if (d) toast('Poules tirées'); }); }
+function tdClosePoules(id, force) { tdPost(id, 'close-poules', { force }).then(d => { if (d) toast(d.qualifies.length + ' qualifiés, ' + d.repeches.length + ' repêchés'); }); }
+function tdNextRound(id) { tdPost(id, 'next-round').then(d => { if (d) toast(d.fini ? ('🏆 ' + (d.champion||'—')) : ('Tour ' + d.tour + ' tiré')); }); }
+
 async function openTournament(id) {
   try {
     const d = await (await fetch('/api/admin/tournaments/' + id, { headers: hdr() })).json();
     if (!d.tournament) { toast('Erreur: ' + JSON.stringify(d)); return; }
     const t = d.tournament;
+    if (t.format === 'duel') return renderTournoiDuel(d);
     let actions = '';
     if (t.status === 'draft' || t.status === 'scheduled') {
       const planLabel = t.status === 'scheduled' ? 'Reprogrammer' : 'Programmer';

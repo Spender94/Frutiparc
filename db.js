@@ -477,6 +477,24 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_tmatches_tour ON tournament_matches(tournament_id, round, slot);
 
+      -- Format DUEL (Frutibandas) : le tournoi ne se départage plus au score
+      -- mais au MATCH entre deux joueurs, joué « à l'écart » (2-0, 3-1, 4-2…),
+      -- précédé d'une phase de POULES. Voir tournoiDuel.js.
+      --   tournaments.format      'score' (Maître ÈS, l'existant) | 'duel'
+      --   tournaments.win_by      victoires d'écart pour plier un match
+      --   tournaments.poule_size  joueurs par poule
+      --   tournaments.qualif_par_poule  combien passent en coupe par poule
+      --   tournament_players.poule  la lettre de son groupe (A, B, C…)
+      --   tournament_matches.poule  idem, sur l'affiche
+      -- En duel, score1/score2 comptent les MANCHES gagnées, et round vaut
+      -- 0 pour les poules, -1 pour le repêchage, 1.. pour les tours de coupe.
+      ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS format TEXT DEFAULT 'score';
+      ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS win_by INTEGER DEFAULT 2;
+      ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS poule_size INTEGER DEFAULT 3;
+      ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS qualif_par_poule INTEGER DEFAULT 2;
+      ALTER TABLE tournament_players ADD COLUMN IF NOT EXISTS poule TEXT DEFAULT NULL;
+      ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS poule TEXT DEFAULT NULL;
+
       -- Capture des scores postés pendant une fenêtre (round 0 = qualif, sinon le tour).
       -- On garde le MEILLEUR score par joueur et par tour (indépendant du record perso).
       CREATE TABLE IF NOT EXISTS tournament_round_scores (
@@ -2702,9 +2720,11 @@ async function deleteGaspardHelpTopic(id) {
 // ── Tournois ───────────────────────────────────────────────────────────────
 async function createTournament(t) {
   const { rows } = await pool.query(
-    `INSERT INTO tournaments (name, game, ranking_id, bracket_size, round_hours, status)
-     VALUES ($1,$2,$3,$4,$5,'draft') RETURNING *`,
-    [t.name, t.game, t.ranking_id, t.bracket_size ?? 8, t.round_hours ?? 72]
+    `INSERT INTO tournaments (name, game, ranking_id, bracket_size, round_hours, status,
+                              format, win_by, poule_size, qualif_par_poule)
+     VALUES ($1,$2,$3,$4,$5,'draft',$6,$7,$8,$9) RETURNING *`,
+    [t.name, t.game, t.ranking_id, t.bracket_size ?? 8, t.round_hours ?? 72,
+     t.format || 'score', t.win_by ?? 2, t.poule_size ?? 3, t.qualif_par_poule ?? 2]
   );
   return rows[0];
 }
@@ -2740,9 +2760,9 @@ async function setTournamentPlayers(id, players) {
   await pool.query(`DELETE FROM tournament_players WHERE tournament_id = $1`, [id]);
   for (const p of players) {
     await pool.query(
-      `INSERT INTO tournament_players (tournament_id, username, seed, qualif_score, status)
-       VALUES ($1,$2,$3,$4,$5)`,
-      [id, p.username, p.seed || 0, p.qualif_score || 0, p.status || 'qualified']);
+      `INSERT INTO tournament_players (tournament_id, username, seed, qualif_score, status, poule)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [id, p.username, p.seed || 0, p.qualif_score || 0, p.status || 'qualified', p.poule || null]);
   }
 }
 async function getTournamentMatches(id) {
@@ -2759,12 +2779,28 @@ async function setTournamentMatches(tid, matches) {
   await pool.query(`DELETE FROM tournament_matches WHERE tournament_id = $1`, [tid]);
   for (const m of matches) {
     await pool.query(
-      `INSERT INTO tournament_matches (tournament_id, round, slot, player1, player2, score1, score2, winner, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      `INSERT INTO tournament_matches (tournament_id, round, slot, player1, player2, score1, score2, winner, status, poule)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [tid, m.round, m.slot, m.player1 || null, m.player2 || null,
        m.score1 == null ? null : m.score1, m.score2 == null ? null : m.score2,
-       m.winner || null, m.status || 'pending']);
+       m.winner || null, m.status || 'pending', m.poule || null]);
   }
+}
+// AJOUTE des affiches sans toucher aux précédentes. Le format duel avance tour
+// par tour (poules, puis quarts, demies, finale) : on empile, alors qu'un
+// tournoi au score régénère tout son bracket d'un coup (setTournamentMatches).
+async function addTournamentMatches(tid, matches) {
+  for (const m of matches) {
+    await pool.query(
+      `INSERT INTO tournament_matches (tournament_id, round, slot, player1, player2, score1, score2, winner, status, poule)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [tid, m.round, m.slot, m.player1 || null, m.player2 || null,
+       m.score1 == null ? 0 : m.score1, m.score2 == null ? 0 : m.score2,
+       m.winner || null, m.status || 'pending', m.poule || null]);
+  }
+}
+async function deleteTournamentRound(tid, round) {
+  await pool.query(`DELETE FROM tournament_matches WHERE tournament_id = $1 AND round = $2`, [tid, round]);
 }
 async function updateTournamentMatch(matchId, fields) {
   const keys = Object.keys(fields);
@@ -2848,6 +2884,8 @@ module.exports = {
   getTournamentMatches,
   getTournamentMatch,
   setTournamentMatches,
+  addTournamentMatches,
+  deleteTournamentRound,
   updateTournamentMatch,
   upsertRoundScore,
   getRoundScores,

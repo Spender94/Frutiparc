@@ -7050,13 +7050,23 @@ app.post('/api/admin/tournaments', tournoiScope, async (req, res) => {
   if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
   const b = req.body || {};
   const name = String(b.name || '').trim().slice(0, 80);
-  const rankingId = String(b.ranking_id || '').trim();
+  // Format DUEL : le tournoi se joue en face à face (Frutibandas), poules puis
+  // coupe, chaque match « à l'écart ». Son classement de rattachement est celui
+  // du Championnat — c'est la salle où les manches se jouent.
+  const format = b.format === 'duel' ? 'duel' : 'score';
+  const rankingId = format === 'duel' ? 'bandas_champion' : String(b.ranking_id || '').trim();
   if (!name) return res.status(400).json({ error: 'name_required' });
   if (!RANKINGS[rankingId]) return res.status(400).json({ error: 'ranking_invalid' });
   const bracketSize = [4, 8, 16, 32].includes(Number(b.bracket_size)) ? Number(b.bracket_size) : 8;
   const roundHours = Math.max(1, Math.min(720, Number(b.round_hours) || 72));
   try {
-    const t = await db.createTournament({ name, game: RANKINGS[rankingId].game, ranking_id: rankingId, bracket_size: bracketSize, round_hours: roundHours });
+    const t = await db.createTournament({
+      name, game: RANKINGS[rankingId].game, ranking_id: rankingId,
+      bracket_size: bracketSize, round_hours: roundHours, format,
+      win_by: Math.max(1, Math.min(9, Number(b.win_by) || 2)),
+      poule_size: Math.max(2, Math.min(8, Number(b.poule_size) || 3)),
+      qualif_par_poule: Math.max(1, Math.min(4, Number(b.qualif_par_poule) || 2)),
+    });
     res.json({ ok: true, tournament: t });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -7068,6 +7078,12 @@ app.get('/api/admin/tournaments/:id', tournoiScope, async (req, res) => {
     if (!t) return res.status(404).json({ error: 'not_found' });
     const players = await db.getTournamentPlayers(t.id);
     const matches = await db.getTournamentMatches(t.id);
+    // En DUEL il n'y a pas de fenêtre de scores : le tableau, ce sont les
+    // poules et les tours (voir tournoiDuelEtat).
+    if (t.format === 'duel') {
+      const e = await tournoiDuelEtat(t);
+      return res.json({ tournament: t, players, matches, roundScores: [], tables: e.tables, tours: e.tours });
+    }
     const roundScores = rankTournamentRoundScores(t.ranking_id, await db.getRoundScores(t.id, t.current_round || 0));
     res.json({ tournament: t, players, matches, roundScores });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -7275,6 +7291,221 @@ app.post('/api/admin/tournaments/:id/match/:mid', tournoiScope, async (req, res)
     if (w && w !== match.player1 && w !== match.player2) return res.status(400).json({ error: 'winner_not_in_match', message: 'Le vainqueur doit être un des deux joueurs du match.' });
     await tournamentSetMatchWinner(t, match, w || null, b.score1, b.score2);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════ Tournois en DUEL (Frutibandas) ═════════════════════════
+//
+// Un tournoi au SCORE ouvre une fenêtre et retient le meilleur score : c'est le
+// bon outil pour un jeu solo. Frutibandas se joue à deux — un match y est une
+// SÉRIE DE MANCHES pliée « à l'écart » (2-0, 3-1, 4-2…), précédée de poules.
+// La règle de ce format vit dans tournoiDuel.js (module pur, testé) ; ici on
+// range et on route. Le tour 0 porte les poules, -1 le repêchage, 1.. la coupe.
+//
+// Les manches ne se saisissent pas à la main : elles ARRIVENT du jeu. Une
+// partie de Frutibandas terminée dans la salle du Championnat cherche l'affiche
+// correspondante et lui ajoute son point (voir tournoiDuelManche, appelé par le
+// crochet onResult du pont bandas).
+const TD = require('./tournoiDuel.js');
+
+// L'état complet d'un tournoi en duel, pour l'admin comme pour le jeu.
+async function tournoiDuelEtat(t) {
+  const players = await db.getTournamentPlayers(t.id);
+  const matches = await db.getTournamentMatches(t.id);
+  const poules = [...new Set(players.map((p) => p.poule).filter(Boolean))].sort();
+  const tables = poules.map((p) => ({
+    poule: p,
+    lignes: TD.classementPoule(
+      players.filter((x) => x.poule === p),
+      matches.filter((m) => m.poule === p && Number(m.round) === TD.TOUR_POULES)),
+  }));
+  const tours = [...new Set(matches.map((m) => Number(m.round)))].sort((a, b) => a - b);
+  return {
+    tournament: t, players, matches, tables,
+    tours: tours.map((n) => ({
+      round: n,
+      nom: TD.nomDuTour(n, matches.filter((m) => Number(m.round) === n).length),
+      matchs: matches.filter((m) => Number(m.round) === n),
+    })),
+  };
+}
+
+// Le tournoi en duel EN COURS (il n'y en a qu'un à la fois — deux tournois
+// ouverts sur le même jeu ne sauraient pas à qui attribuer une manche).
+async function tournoiDuelActif() {
+  if (!process.env.DATABASE_URL) return null;
+  try {
+    const tous = await db.listTournaments();
+    return tous.find((t) => t.format === 'duel' && ['poules', 'bracket'].includes(t.status)) || null;
+  } catch (e) { return null; }
+}
+
+/**
+ * Une manche de Championnat vient d'être jouée. Si elle correspond à une
+ * affiche ouverte du tournoi en cours, elle compte ; sinon elle ne fait rien
+ * (deux concurrents peuvent très bien s'entraîner hors tournoi).
+ *
+ * Le tour retenu est celui EN COURS et lui seul : une affiche de poule ne se
+ * remplit plus une fois la coupe lancée.
+ */
+async function tournoiDuelManche(a, b, gagnant) {
+  const t = await tournoiDuelActif();
+  if (!t) return null;
+  const matches = await db.getTournamentMatches(t.id);
+  const tours = t.status === 'poules'
+    ? [TD.TOUR_POULES, TD.TOUR_REPECHAGE]
+    : [Number(t.current_round) || 1, TD.TOUR_REPECHAGE];
+  const r = TD.manche(matches, tours, a, b, gagnant, t.win_by);
+  if (!r) return null;
+  const champs = { score1: r.score1, score2: r.score2 };
+  if (r.fini) { champs.winner = r.winner; champs.status = 'done'; }
+  await db.updateTournamentMatch(r.match.id, champs);
+  console.log(`[tournoi] ${t.name} — ${r.match.player1} ${r.score1}-${r.score2} ${r.match.player2}`
+    + (r.fini ? ` → ${r.winner} l'emporte` : ''));
+  return { tournoi: t, match: r.match, fini: r.fini, winner: r.winner, score1: r.score1, score2: r.score2 };
+}
+
+// Inscrits : un pseudo par ligne (l'animation les relève sur le forum).
+app.post('/api/admin/tournaments/:id/duel/players', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t || t.format !== 'duel') return res.status(404).json({ error: 'not_found' });
+    if (!['draft', 'scheduled'].includes(t.status)) {
+      return res.status(400).json({ error: 'bad_status', message: 'Les inscrits se posent avant le tirage des poules.' });
+    }
+    const noms = String((req.body && req.body.players) || '')
+      .split(/[\n,;]+/).map((s) => normalizeUsername(s)).filter(Boolean);
+    const uniques = [...new Set(noms)];
+    if (uniques.length < 2) return res.status(400).json({ error: 'too_few', message: 'Il faut au moins deux joueurs.' });
+    // On vérifie que les comptes existent : un pseudo mal recopié ne pourra
+    // jamais jouer sa poule, et cela se verrait trop tard.
+    const inconnus = [];
+    for (const u of uniques) {
+      if (users[u]) continue;
+      let row = null;
+      try { row = await db.findUserByUsername(u); } catch (e) { row = null; }
+      if (!row) inconnus.push(u);
+    }
+    if (inconnus.length) {
+      return res.status(400).json({ error: 'unknown_players', message: 'Pseudos inconnus : ' + inconnus.join(', ') });
+    }
+    await db.setTournamentPlayers(t.id, uniques.map((u, i) => ({ username: u, seed: i + 1, status: 'qualified' })));
+    res.json({ ok: true, players: uniques });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Tirage des poules + toutes les affiches. Rejouable tant que rien n'est joué.
+app.post('/api/admin/tournaments/:id/duel/poules', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t || t.format !== 'duel') return res.status(404).json({ error: 'not_found' });
+    const joueurs = await db.getTournamentPlayers(t.id);
+    if (joueurs.length < 2) return res.status(400).json({ error: 'too_few', message: 'Pose d\'abord les inscrits.' });
+    const deja = await db.getTournamentMatches(t.id);
+    if (deja.some((m) => m.status === 'done')) {
+      return res.status(400).json({ error: 'already_played', message: 'Des matchs sont déjà joués — un nouveau tirage effacerait leurs résultats.' });
+    }
+    const tires = TD.tirerPoules(joueurs.map((j) => j.username), t.poule_size);
+    await db.setTournamentPlayers(t.id, tires.map((j, i) => ({
+      username: j.username, poule: j.poule, seed: i + 1, status: 'qualified',
+    })));
+    await db.setTournamentMatches(t.id, TD.matchsDeGroupes(tires, TD.TOUR_POULES));
+    await db.updateTournament(t.id, { status: 'poules', current_round: TD.TOUR_POULES });
+    res.json({ ok: true, poules: tires });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Clôture des poules : les premiers passent en coupe (tirage intégral), les
+// autres se retrouvent dans la poule de repêchage.
+app.post('/api/admin/tournaments/:id/duel/close-poules', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t || t.format !== 'duel') return res.status(404).json({ error: 'not_found' });
+    if (t.status !== 'poules') return res.status(400).json({ error: 'bad_status' });
+    const joueurs = await db.getTournamentPlayers(t.id);
+    const matchs = await db.getTournamentMatches(t.id);
+    const force = !!(req.body && req.body.force);
+    if (!force && !TD.poulesTerminees(matchs, TD.TOUR_POULES)) {
+      const reste = matchs.filter((m) => Number(m.round) === TD.TOUR_POULES && m.status !== 'done');
+      return res.status(400).json({ error: 'poules_en_cours',
+        message: reste.length + ' match(s) de poule pas encore joué(s). Coche « forcer » pour clôturer quand même.' });
+    }
+    const s = TD.sortieDesPoules(joueurs, matchs, t.qualif_par_poule);
+    if (s.qualifies.length < 2) return res.status(400).json({ error: 'too_few' });
+    // Les statuts : qualifié en coupe, repêché pour les autres.
+    const parNom = new Map(joueurs.map((j) => [TD.clef(j.username), j]));
+    const maj = [];
+    s.qualifies.forEach((q, i) => maj.push({ username: q.username, poule: q.poule, seed: i + 1, status: 'qualified' }));
+    s.repeches.forEach((q, i) => maj.push({ username: q.username, poule: q.poule, seed: s.qualifies.length + i + 1, status: 'repechage' }));
+    for (const j of joueurs) if (!maj.some((m) => TD.memeJoueur(m.username, j.username))) maj.push(j);
+    await db.setTournamentPlayers(t.id, maj);
+    // La coupe : premier tour tiré au sort intégralement.
+    await db.addTournamentMatches(t.id, TD.tirerTour(s.qualifies.map((q) => q.username), 1));
+    // Le repêchage : une poule unique où les éliminés finissent leur tournoi.
+    if (s.repeches.length >= 2) {
+      await db.addTournamentMatches(t.id,
+        TD.matchsDeGroupes(s.repeches.map((q) => ({ username: q.username, poule: 'R' })), TD.TOUR_REPECHAGE));
+    }
+    await db.updateTournament(t.id, { status: 'bracket', current_round: 1 });
+    res.json({ ok: true, qualifies: s.qualifies, repeches: s.repeches, parNom: parNom.size });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Tour de coupe suivant — tirage au sort INTÉGRAL, comme l'affiche l'annonce.
+app.post('/api/admin/tournaments/:id/duel/next-round', tournoiScope, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'no_db' });
+  try {
+    const t = await db.getTournament(Number(req.params.id));
+    if (!t || t.format !== 'duel') return res.status(404).json({ error: 'not_found' });
+    if (t.status !== 'bracket') return res.status(400).json({ error: 'bad_status' });
+    const tour = Number(t.current_round) || 1;
+    const matchs = await db.getTournamentMatches(t.id);
+    if (!TD.tourTermine(matchs, tour)) {
+      return res.status(400).json({ error: 'tour_en_cours', message: 'Ce tour n\'est pas fini.' });
+    }
+    const restants = TD.vainqueursDuTour(matchs, tour);
+    if (restants.length <= 1) {
+      const champion = restants[0] || null;
+      await db.updateTournament(t.id, { status: 'finished', champion });
+      if (champion) {
+        const joueurs = await db.getTournamentPlayers(t.id);
+        await db.setTournamentPlayers(t.id, joueurs.map((j) => TD.memeJoueur(j.username, champion)
+          ? Object.assign({}, j, { status: 'champion' }) : j));
+      }
+      return res.json({ ok: true, fini: true, champion });
+    }
+    await db.addTournamentMatches(t.id, TD.tirerTour(restants, tour + 1));
+    await db.updateTournament(t.id, { current_round: tour + 1 });
+    res.json({ ok: true, tour: tour + 1, joueurs: restants });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Le tableau, PUBLIC : c'est lui que le jeu affiche dans la salle du
+// championnat, et que l'animation peut relayer sur le forum.
+app.get('/api/tournaments/duel', async (req, res) => {
+  try {
+    const t = req.query.id
+      ? await db.getTournament(Number(req.query.id))
+      : await tournoiDuelActif();
+    if (!t || t.format !== 'duel') return res.json({ tournoi: null });
+    const e = await tournoiDuelEtat(t);
+    res.json({
+      tournoi: {
+        id: t.id, nom: t.name, statut: t.status, tour: Number(t.current_round) || 0,
+        ecart: t.win_by, champion: t.champion,
+      },
+      poules: e.tables,
+      tours: e.tours.map((x) => ({
+        round: x.round, nom: x.nom,
+        matchs: x.matchs.map((m) => ({
+          p1: m.player1, p2: m.player2, s1: Number(m.score1) || 0, s2: Number(m.score2) || 0,
+          v: m.winner, poule: m.poule, fini: m.status === 'done',
+        })),
+      })),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -21258,6 +21489,16 @@ const bandasNet = new BandasNet({
   onResult: (session, winner, reason) => {
     console.log(`[bandas] partie ${session.id} terminée — équipe ${winner} gagne (${reason})`);
     for (const p of (session.players || [])) marquerFinDePartie(p.id);
+    // Une manche du CHAMPIONNAT peut être un point de match de tournoi : si
+    // l'affiche existe, elle se remplit toute seule. Rien à saisir à la main,
+    // et rien à faire si les deux joueurs ne sont pas en tournoi.
+    if ((session._salle || 'chall') !== 'champ') return;
+    const a = session.playerOfTeam(0), b = session.playerOfTeam(1);
+    if (!a || !b) return;
+    const gagnant = (winner == null || winner < 0) ? null
+      : (winner === 0 ? a.id : b.id);
+    tournoiDuelManche(a.id, b.id, gagnant).catch((e) =>
+      console.error('[tournoi] manche non enregistrée :', e.message));
   },
   // Le gros nombre doré = la SÉRIE de victoires consécutives (mode challenge).
   getStreak: (username) => (users[username] || {}).bandasStreak || 0,
