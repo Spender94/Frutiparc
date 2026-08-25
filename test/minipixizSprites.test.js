@@ -276,12 +276,15 @@ test('un masque ne découpe que sa tranche de profondeurs', () => {
   // entier rognait le panneau à son médaillon.
   const e = sprites.invPanneau.etats[0];
   assert.ok(!e.masques, 'le médaillon ne prend pas tout le panneau');
-  assert.ok(e.masquesPartiels && e.masquesPartiels.length === 1, 'il est retenu à part');
+  // Trois masques partiels désormais : le médaillon, et l'orbite de chaque
+  // pupille — les masques IMBRIQUÉS des yeux sont retenus depuis que les iris
+  // ne s'étalent plus sur la chevelure.
+  assert.ok(e.masquesPartiels && e.masquesPartiels.length === 3, 'médaillon + deux orbites');
   const m = e.masquesPartiels[0];
   assert.ok(m.fichier, 'avec son DESSIN, pas seulement son cadre : c\'est un disque');
   const marquees = e.pieces.filter((p) => p.msq === m.num);
   assert.ok(marquees.length > 0, 'le portrait est découpé');
-  assert.ok(marquees.every((p) => (p.nom || '').indexOf('pic') === 0),
+  assert.ok(e.pieces.filter((p) => p.msq).every((p) => (p.nom || '').indexOf('pic') === 0),
     'et lui seul : ' + e.pieces.filter((p) => p.msq).map((p) => p.nom).join(', '));
 });
 

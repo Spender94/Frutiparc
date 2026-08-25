@@ -751,9 +751,15 @@ class Jeu {
     // mode a la sienne — Game.setPieceSpeed.
     this.pSpeedStart = (o.vitesse === undefined) ? 0.03 + this.niveau * 0.002 : o.vitesse;
     this.pSpeed = this.pSpeedStart;
-    // Base.getManaReplenishCoef : ce que chaque bille détruite rend en mana.
-    // L'aventure (forêt et lieux) rend 3, le bassin garde le 1 de Base.
+    // Aventure.getManaReplenishCoef : ce que chaque bille détruite rend en
+    // mana — `flColorKill ? 0 : 3`. TOUTES les bases jouables (Forest, Dungeon,
+    // Fountain, Tree, Rainbow) héritent d'Aventure : le taux est le même
+    // partout, bassin compris — le « 1 » de Base n'est jamais servi. Et dès
+    // qu'une COULEUR a été éliminée du niveau, la recharge se coupe pour tout
+    // ce qui reste de la partie : c'est ce qui rend la fin de niveau tendue,
+    // on y vit sur ses réserves. Le portage rechargait plein pot jusqu'au bout.
     this.manaCoef = (o.manaCoef === undefined) ? 3 : o.manaCoef;
+    this.flColorKill = false;         // Game.flColorKill — posé par majCouleurs
 
     this.colorList = [];
     for (let i = 0; i < this.colMax; i++) this.colorList.push(i);
@@ -876,6 +882,9 @@ class Jeu {
     for (let i = 0; i < this.colorList.length; i++) {
       if (!presentes[this.colorList[i]]) {
         this.evenement('couleurFinie', { couleur: this.colorList[i] });
+        // Game.updatecolorList : le drapeau reste levé jusqu'à la fin du
+        // niveau — la recharge de mana est coupée pour de bon.
+        this.flColorKill = true;
         this.colorList.splice(i--, 1);
         retirees = true;
       }
@@ -1344,12 +1353,14 @@ class Jeu {
     }
     // Sans étoile dans le lot, les jetons détruits nourrissent la prochaine —
     // et rechargent la mana des fées : Game.checkFallStats fait
-    // fi.incManaTimer(-somme × coef), coef = base.getManaReplenishCoef()
-    // (3 dans l'aventure, 1 au bassin).
+    // fi.incManaTimer(-somme × coef), coef = Aventure.getManaReplenishCoef()
+    // — 3, mais ZÉRO dès qu'une couleur du niveau a été éliminée (flColorKill).
+    // L'étoile, elle, n'est pas coupée : sa règle ne lit que flSpecial.
     if (!this.fs.flSpecial) {
       this.starWait += this.fs.sum;
+      const coef = this.flColorKill ? 0 : this.manaCoef;
       for (const f of this.faerieList) {
-        if (f && f.incManaTimer) f.incManaTimer(-this.fs.sum * this.manaCoef);
+        if (f && f.incManaTimer) f.incManaTimer(-this.fs.sum * coef);
       }
     }
   }

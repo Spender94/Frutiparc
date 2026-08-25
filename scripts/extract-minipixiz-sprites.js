@@ -550,7 +550,10 @@ function principal() {
       // panneau, ses deux boutons et sa pastille de niveau vivent au-dessus.
       // Les appliquer au dessin entier rognait le panneau à son médaillon.
       let masqueOuvert = null;
-      let numeroDeMasque = 0;
+      // Le compteur est PARTAGÉ avec aplatir() : les masques imbriqués (ceux
+      // des pupilles de la fée, au fond du clip de chaque œil) reçoivent leurs
+      // numéros de la même suite que ceux du premier niveau — pas de collision.
+      const compteurMasques = { n: 0 };
       for (const p of frames.get(f)) {
         if (p.nom && exclus.has(p.nom)) continue;
         if (masqueOuvert && p.prof > masqueOuvert.clip) masqueOuvert = null;
@@ -568,16 +571,24 @@ function principal() {
         // La transformation de couleur du placement de PREMIER niveau se
         // transmet comme le masque : aplatir() ne la voit pas, puisqu'on
         // l'appelle placement par placement.
-        const morceaux = aplatir(p.ch, p.M, 0, fEnfant, p.nom || '', p.cx || null);
+        const morceaux = aplatir(p.ch, p.M, 0, fEnfant, p.nom || '', p.cx || null,
+          undefined, compteurMasques);
         // Le masque posé au PREMIER niveau du symbole visé : aplatir() ne le
         // voit pas, puisqu'on l'appelle placement par placement. Sans ce
         // rattrapage, le rectangle rouge qui découpe la colonne des pièces à
-        // venir se dessinait par-dessus elle.
+        // venir se dessinait par-dessus elle. Les masques plus PROFONDS, eux,
+        // sortent d'aplatir déjà numérotés — et une forme qu'ils découpent
+        // garde leur numéro : le masque le plus proche fait foi.
         if (p.masque) {
-          masqueOuvert = { clip: p.masque, num: ++numeroDeMasque };
-          for (const m of morceaux) { m.masque = true; m.numeroMasque = masqueOuvert.num; }
+          masqueOuvert = { clip: p.masque, num: ++compteurMasques.n };
+          for (const m of morceaux) {
+            m.masque = true;
+            if (m.numeroMasque === undefined) m.numeroMasque = masqueOuvert.num;
+          }
         } else if (masqueOuvert) {
-          for (const m of morceaux) m.sousMasque = masqueOuvert.num;
+          for (const m of morceaux) {
+            if (!m.masque && m.sousMasque === undefined) m.sousMasque = masqueOuvert.num;
+          }
         }
         pieces.push(...morceaux);
       }
@@ -747,29 +758,30 @@ function principal() {
         const parLeNom = m.chemin !== '' && (n === m.chemin || n.indexOf(m.chemin + '.') === 0);
         return parLeNom || (m.num !== 0 && p.msq === m.num);
       });
-      const gardes = masques.filter(couvreTout).map((m) => ({ x: m.x, y: m.y, w: m.w, h: m.h }));
+      const pleins = masques.filter(couvreTout);
+      const gardes = pleins.map((m) => ({ x: m.x, y: m.y, w: m.w, h: m.h }));
       const etat = { frame: e.frame, pieces };
       if (gardes.length) {
         // Un masque qui prend TOUT le dessin devient la fenêtre du canevas : rien
         // ne peut en sortir, autant ne pas préparer plus grand.
         etat.masques = gardes;
-        for (const p of pieces) delete p.msq;
-      } else {
-        // Un masque PARTIEL, lui, ne découpe que sa tranche. Le client garde le
-        // cadre entier et ne pose sous fenêtre que les pièces marquées.
-        //
-        // On sort AUSSI ceux que rien ne référence : la découpe de la colonne
-        // des pièces à venir ne s'applique qu'à un clip vide (`mcNext.zone`),
-        // que le jeu remplit lui-même à chaque pièce. Sans son cadre, elles
-        // déborderaient du cadre du portrait en montant.
-        const partiels = masques.filter((m) => m.num !== 0);
-        if (partiels.length) {
-          etat.masquesPartiels = partiels.map((m) => {
-            const q = Object.assign({}, m); delete q.chemin; return q;
-          });
-        }
-        for (const p of pieces) if (p.msq && !partiels.some((m) => m.num === p.msq)) delete p.msq;
       }
+      // Un masque PARTIEL, lui, ne découpe que sa tranche. Le client garde le
+      // cadre entier et ne pose sous fenêtre que les pièces marquées. Il peut
+      // COEXISTER avec une fenêtre : le portrait de la fée a son rectangle et,
+      // au fond de chaque œil, le petit masque qui contient la pupille.
+      //
+      // On sort AUSSI ceux que rien ne référence : la découpe de la colonne
+      // des pièces à venir ne s'applique qu'à un clip vide (`mcNext.zone`),
+      // que le jeu remplit lui-même à chaque pièce. Sans son cadre, elles
+      // déborderaient du cadre du portrait en montant.
+      const partiels = masques.filter((m) => m.num !== 0 && !pleins.includes(m));
+      if (partiels.length) {
+        etat.masquesPartiels = partiels.map((m) => {
+          const q = Object.assign({}, m); delete q.chemin; return q;
+        });
+      }
+      for (const p of pieces) if (p.msq && !partiels.some((m) => m.num === p.msq)) delete p.msq;
       return etat;
     }).filter((e) => e.pieces.length);
   }

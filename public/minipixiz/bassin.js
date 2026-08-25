@@ -156,9 +156,10 @@ class Bassin {
       grille: null,
       vitesse: VITESSE,
       couleursSeVident: false,
-      // base/Fountain descend de Base, pas de l'aventure : sa mana revient au
-      // coefficient de Base (1), pas aux 3 de la forêt.
-      manaCoef: 1,
+      // base/Fountain descend de base.Aventure comme tous les modes jouables :
+      // même coefficient de mana que la forêt (3, coupé par flColorKill). On
+      // avait cru qu'il retombait au 1 de Base — mauvaise lecture de la
+      // hiérarchie, ce 1 n'est jamais servi.
       fabriquePiece: (jeu) => this.fabriquePiece(jeu),
       onEvent: (n, d) => this.annonce(n, d),
     });

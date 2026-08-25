@@ -846,6 +846,13 @@ class Fee extends Personne {
     this.berserk = false;
     this.x = this.jeu.largeur * 0.5;
     this.y = this.jeu.hauteur * 0.5;
+    // base/Aventure.new : `fi.fs.$mana = fi.carac[Cs.MANA]*2` — la réserve est
+    // PLEINE à chaque entrée en partie. Chaque niveau est un nouvel écran chez
+    // Flash (fadeSlot ré-attache la base, son constructeur repart), donc la
+    // fée recommence toujours mana au complet ; le portage la laissait repartir
+    // avec les restes du niveau d'avant — et c'est ici, PAS dans poserInfo :
+    // la fée qui mange en cours de partie relit sa fiche sans être rechargée.
+    if (fi && fi.fs) fi.fs.$mana = nombre(fi.carac[MANA]) * 2;
     this.poserInfo(fi);
   }
 

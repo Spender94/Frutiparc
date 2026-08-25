@@ -269,8 +269,20 @@ function ouvrir(chemin, options) {
    *   masque  vrai si la forme sert de DÉCOUPE et non de dessin. Flash range un
    *           masque comme n'importe quelle forme ; la dessiner telle quelle
    *           collait un rectangle rouge en travers du portrait.
+   *
+   * `compteurMasques` (facultatif, un objet {n}) réveille les masques
+   * IMBRIQUÉS : chaque masque rencontré, à quelque niveau que ce soit, reçoit
+   * un numéro (`numeroMasque`) et les formes de sa tranche de profondeurs — ses
+   * seules découpées, de sa profondeur à son ClipDepth — sont marquées
+   * `sousMasque`. Un masque plus profond a déjà marqué les siennes quand le
+   * parent passe : on ne réécrit pas, le plus proche fait foi. Sans compteur,
+   * rien ne change — les autres extracteurs gardent leur comportement.
+   * C'est ce qui rend leurs orbites aux pupilles de la fée de Minipixiz : le
+   * dessin de chaque pupille est bien plus grand que l'œil, et c'est un masque
+   * DANS le clip de l'œil qui la contient. Perdu, la pupille teintée s'étalait
+   * sur la chevelure.
    */
-  function aplatir(ch, M, profondeur, frame, chemin, cx, ratioCourant) {
+  function aplatir(ch, M, profondeur, frame, chemin, cx, ratioCourant, compteurMasques) {
     profondeur = profondeur || 0;
     chemin = chemin || '';
     if (profondeur > 6) return [];
@@ -285,11 +297,26 @@ function ouvrir(chemin, options) {
     if (frame !== undefined && frames.has(frame)) cle = frame;
     else cle = [...frames.keys()].sort((x, y) => x - y)[0];
     const out = [];
+    // Les placements sortent TRIÉS par profondeur (photographier) : un masque
+    // précède donc les formes qu'il découpe, et sa tranche se referme à la
+    // première profondeur au-delà de son ClipDepth.
+    let masqueOuvert = null;
     for (const p of (frames.get(cle) || [])) {
+      if (masqueOuvert && p.prof > masqueOuvert.clip) masqueOuvert = null;
       const sous = p.nom ? (chemin ? chemin + '.' + p.nom : p.nom) : chemin;
       const morceaux = aplatir(p.ch, composer(M, p.M), profondeur + 1, frame, sous,
-        composerCouleur(cx, p.cx), p.ratio);
-      if (p.masque) for (const m of morceaux) m.masque = true;
+        composerCouleur(cx, p.cx), p.ratio, compteurMasques);
+      if (p.masque) {
+        for (const m of morceaux) m.masque = true;
+        if (compteurMasques) {
+          masqueOuvert = { clip: p.masque, num: ++compteurMasques.n };
+          for (const m of morceaux) m.numeroMasque = masqueOuvert.num;
+        }
+      } else if (masqueOuvert) {
+        for (const m of morceaux) {
+          if (!m.masque && m.sousMasque === undefined) m.sousMasque = masqueOuvert.num;
+        }
+      }
       out.push(...morceaux);
     }
     return out;

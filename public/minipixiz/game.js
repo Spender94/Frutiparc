@@ -2783,8 +2783,15 @@ class Client {
       });
     }
     for (const pe of jeu.pList) this.dessinerCreature(ctx, pe);
+    // Un TIR déroule ses images comme une particule : sous Flash, un clip à
+    // plusieurs images joue, il n'y a pas à le demander. On le figeait sur sa
+    // première — la boule de la Clametorche (partFlameBall, treize images : la
+    // bille qui prend feu) restait une bille de lumière au lieu de retomber en
+    // flammes. Les tirs shot* ne bronchent pas : absents de la table IMAGES,
+    // leur `joue` reste faux, et ceux qui pilotent leur image à la main
+    // (l'orbe du démon, la sphère) gardent la leur.
     for (const t of jeu.shotList) {
-      poserVif(ctx, s[t.lien], t.frame, {
+      poserVif(ctx, s[t.lien], t.joue ? t.frame + Math.floor(t.age) : t.frame, {
         x: t.x, y: t.y, sx: t.sx, sy: t.sy, rot: t.rot, alpha: t.sa, melange: t.melange,
       });
     }
@@ -3066,7 +3073,11 @@ class Client {
         const a = fee.apparence();
         ctx.save();
         ctx.beginPath();
-        ctx.rect(cx + fond.dx, cy + fond.dy, fond.c.width, fond.c.height);
+        // Le cadre de découpe en cotes LOGIQUES (lw × lh) — `fond.c` est le
+        // canevas du cache, tramé DENSITE fois plus grand depuis la netteté
+        // desktop : prendre sa taille en pixels physiques ouvrait la fenêtre
+        // deux fois trop grand, et le portrait débordait du cadre.
+        ctx.rect(cx + fond.dx, cy + fond.dy, fond.lw, fond.lh);
         ctx.clip();
         // gotoAndStop(skin.num + 1) : six corps, six images.
         poserRendu(ctx, rendre(s.portrait, a.num + 1, t, undefined, partiesDeFee(a.couleurs)),

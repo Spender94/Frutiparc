@@ -85,10 +85,12 @@ test('détruire des billes recharge la mana de la fée', () => {
   const jeu = new E.Jeu({ graine: 3, niveau: 0, grille: null });
   const alea = tirage(5);
   const fsFee = F.genererGraine(alea);
-  fsFee.$mana = 0;                     // à sec : la goutte a la place de tomber
   const fi = new F.Fee(fsFee, alea, { $inv: [] });
   const champ = new C.Champ(jeu, { fee: fi });
   const fee = champ.faerieList[0];
+  // L'entrée en partie remplit la réserve (Aventure.new) : on la vide APRÈS,
+  // pour que la goutte ait la place de tomber.
+  fee.poserMana(0);
   fee.manaTimer = 4;                   // la prochaine goutte est proche
   const avant = fee.mana;
 
@@ -106,9 +108,11 @@ test('détruire des billes recharge la mana de la fée', () => {
   while (jeu.step !== E.ETAPE.JEU && !jeu.termine && garde++ < 200) jeu.update(1);
 
   assert.ok(fee.mana > avant, 'la goutte est tombée : ' + avant + ' → ' + fee.mana);
-  // Et le bassin garde le coefficient de Base (1), pas les 3 de l'aventure.
+  // Le bassin recharge au MÊME taux que la forêt : base/Fountain descend de
+  // base.Aventure comme tous les modes jouables — on avait épinglé ici un
+  // « coefficient de Base (1) » né d'une mauvaise lecture de la hiérarchie.
   const bassin = fs.readFileSync(path.join(ROOT, 'public/minipixiz/bassin.js'), 'utf8');
-  assert.match(bassin, /manaCoef: 1/, 'le bassin recharge au taux de Base');
+  assert.ok(!/manaCoef:/.test(bassin), 'le bassin ne déroge plus au taux de l\'aventure');
 });
 
 test('le sac et la clé ont leur dessin sur la grille', () => {

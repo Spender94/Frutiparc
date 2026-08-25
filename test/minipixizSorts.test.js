@@ -208,7 +208,9 @@ test('la fée ne lance rien tant qu\'on ne l\'appelle pas', () => {
 });
 
 test('sans mana, l\'appel échoue', () => {
-  const { jeu, f, champ } = partie({ sorts: [20, 7], mana: 0 });
+  const { jeu, f, champ } = partie({ sorts: [20, 7] });
+  // L'entrée en partie remplit la réserve (Aventure.new) : on la vide APRÈS.
+  f.poserMana(0);
   const dits = [];
   champ.surEvenement = (n, d) => { if (n === 'aide') dits.push(d.ok); };
   assert.equal(f.appelerAide(), false);
@@ -229,14 +231,18 @@ test('initSorts rabaisse le drapeau : un appel, un sort', () => {
 
 test('un sort trop cher n\'est pas proposé', () => {
   // Tremblement de terre coûte sept ; avec six de mana, il reste sur l'étagère.
-  const { f } = partie({ sorts: [20, 11], mana: 6 });
+  // (La réserve se remplit à l'entrée en partie — Aventure.new — donc on la
+  // pose APRÈS la construction du champ.)
+  const { f } = partie({ sorts: [20, 11] });
+  f.poserMana(6);
   assert.equal(f.listeDeSorts().length, 0);
   f.poserMana(7);
   assert.equal(f.listeDeSorts().length, 1);
 });
 
 test('lancer un sort dépense son mana', () => {
-  const { jeu, f } = partie({ sorts: [20, 11], mana: 10 });
+  const { jeu, f } = partie({ sorts: [20, 11] });
+  f.poserMana(10);
   const s = f.sortList[0];
   s.pertinence();
   s.ranger();
