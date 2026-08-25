@@ -432,7 +432,16 @@ body.bureau-frutiz #bureau .home-tile {
   background: none; border: 0; border-radius: 0; box-shadow: none;
   cursor: pointer;
 }
-body.bureau-frutiz #bureau .home-tile:hover .lbl { text-decoration: underline; }
+/* Aucun effet de SURVOL : sur le rendu 1:1, le curseur posé sur une icône ne
+   change rien à son étiquette. Seul l'appui la souligne — la règle du tiroir
+   mobile (`.home-tile:active .lbl`), qui vaut donc aussi ici. */
+/* Une icône DÉPOSÉE quitte la rangée pour une position libre sur le bureau ;
+   l'espaceur garde sa case ouverte derrière elle (d'époque, les voisines ne se
+   décalent pas pour combler le trou). Rien n'est retenu d'une session à
+   l'autre : au rechargement, tout revient dans la rangée. */
+body.bureau-frutiz #bureau .home-tile.posee { position: absolute; z-index: 3; }
+body.bureau-frutiz #bureau .home-tile.en-main { cursor: grabbing; }
+body.bureau-frutiz #bureau .home-trou { flex: 0 0 auto; pointer-events: none; }
 body.bureau-frutiz #bureau .home-tile .ico {
   width: 64px; height: 44px; display: flex; align-items: center; justify-content: center;
   background: none; border: 0; box-shadow: none; font-size: 30px;

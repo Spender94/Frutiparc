@@ -246,6 +246,89 @@ window.BureauFrutiz = (function () {
     });
   }
 
+  // ── Le GLISSER-DÉPOSER des icônes du bureau ────────────────────────────
+  // `cpDragIconList` + `FPDesktop.onDrop` (0xb9ca9). Le comportement a été
+  // relevé sur le rendu 1:1 (une icône prise, promenée, lâchée, puis un
+  // rechargement), et il ne ressemble PAS à celui des fenêtres :
+  //
+  //   • l'icône elle-même suit le curseur — pas de fantôme, pas de glissade
+  //     de retour ; sa case d'origine se VIDE pendant la prise ;
+  //   • lâchée, elle reste où on l'a mise : `onDrop` inscrit un `pos` libre
+  //     sur l'entrée de la liste, et `DragIconList.fitInGrid` ne fait que la
+  //     BORNER (il retranche `gridSpace` tant qu'on dépasse), sans arrondir ;
+  //   • les voisines ne bougent pas : le trou reste ouvert dans la rangée ;
+  //   • et RIEN n'est retenu — après rechargement, l'icône est revenue à sa
+  //     place (relevé : la corbeille déposée au milieu du bureau retrouve sa
+  //     6e case). Le `pos` ne vit qu'en mémoire.
+  //
+  // QUIRK D'ÉPOQUE conservé : au relâché, l'icône saute de +9 en x et +6 en y
+  // par rapport à l'endroit où on la voyait. `onDrop` convertit la position du
+  // curseur en coordonnées de la liste sans défalquer le décalage de celle-ci
+  // — soit `cornerX` (9) et `margin` (6). Le saut est visible d'origine, on le
+  // garde.
+  var ICONE_SAUT_X = 9, ICONE_SAUT_Y = 6;
+  var dernierGlisse = 0;
+
+  function rendreIconesDeplacables(grille, bureau) {
+    // Un glissé ne doit pas OUVRIR la rubrique. On ne peut pas s'appuyer sur
+    // le clic de fin de geste : la tuile ayant changé de parent en cours de
+    // route, le navigateur n'en émet aucun. On garde donc l'heure du dernier
+    // dépôt et on n'avale que ce qui arrive dans la foulée.
+    bureau.addEventListener('click', function (ev) {
+      if (Date.now() - dernierGlisse > 250) return;
+      if (!ev.target.closest('.home-tile')) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+    }, true);
+
+    grille.addEventListener('pointerdown', function (ev) {
+      var tuile = ev.target.closest('.home-tile');
+      if (!tuile || ev.button !== 0) return;
+      var boite = tuile.getBoundingClientRect();
+      var app = bureau.getBoundingClientRect();
+      var departX = ev.clientX, departY = ev.clientY;
+      var bouge = false;
+      // Le décalage du curseur DANS la tuile, pour qu'elle ne saute pas sous
+      // la main au premier pixel de mouvement.
+      var decalX = ev.clientX - boite.left, decalY = ev.clientY - boite.top;
+      var trou = null;
+
+      var glisser = function (e2) {
+        if (!bouge) {
+          if (Math.abs(e2.clientX - departX) < 4 && Math.abs(e2.clientY - departY) < 4) return;
+          bouge = true;
+          // La case libérée reste OUVERTE : on laisse un espaceur de la même
+          // largeur, sinon la rangée se refermerait — d'époque elle ne le
+          // fait pas.
+          if (!tuile.classList.contains('posee')) {
+            trou = document.createElement('div');
+            trou.className = 'home-trou';
+            trou.style.width = boite.width + 'px';
+            trou.style.height = boite.height + 'px';
+            grille.insertBefore(trou, tuile);
+          }
+          tuile.classList.add('posee', 'en-main');
+          bureau.appendChild(tuile);
+        }
+        tuile.style.left = Math.round(e2.clientX - app.left - decalX) + 'px';
+        tuile.style.top = Math.round(e2.clientY - app.top - decalY) + 'px';
+      };
+
+      var lacher = function () {
+        document.removeEventListener('pointermove', glisser);
+        document.removeEventListener('pointerup', lacher);
+        if (!bouge) return;                       // simple clic : la rubrique s'ouvre
+        tuile.classList.remove('en-main');
+        tuile.style.left = (parseFloat(tuile.style.left) + ICONE_SAUT_X) + 'px';
+        tuile.style.top = (parseFloat(tuile.style.top) + ICONE_SAUT_Y) + 'px';
+        dernierGlisse = Date.now();
+      };
+
+      document.addEventListener('pointermove', glisser);
+      document.addEventListener('pointerup', lacher);
+    });
+  }
+
   // initResize/endResize (0x53a2e/0x53b2a) : le redimensionnement au fantôme —
   // decalSize garde l'écart entre la souris et le coin, les minima s'imposent
   // pendant le suivi, la taille ne s'applique qu'au lâcher.
@@ -529,7 +612,7 @@ window.BureauFrutiz = (function () {
     var mainbar = $('#home-panel .mainbar');
     if (mainbar) coin.appendChild(mainbar);
     var grille = $('#home-grid');
-    if (grille) bureau.appendChild(grille);
+    if (grille) { bureau.appendChild(grille); rendreIconesDeplacables(grille, bureau); }
     var compte = $('#home-panel .home-compte');
     if (compte) bureau.appendChild(compte);
 

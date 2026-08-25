@@ -449,6 +449,26 @@ dp_scrollBar 40, dp_element 100.
   historique » passent à deux lignes, « Mes contacts » (63) tient sur une.
   L'encre est `#335511` sur l'aplat `#ADE76B`, sans halo.
 
+- **Le GLISSER-DÉPOSER** (`cpDragIconList`, `FPDesktop.onDrop` 0xb9ca9) ne
+  ressemble PAS à celui des fenêtres. Relevé sur le rendu 1:1 — une icône
+  prise, promenée, lâchée, puis un rechargement :
+  • l'icône elle-même suit le curseur ; il n'y a ni fantôme ni glissade de
+    retour, et sa case d'origine se VIDE pendant la prise ;
+  • lâchée, elle reste où on l'a mise : `onDrop` inscrit un `pos` LIBRE sur
+    l'entrée de la liste, et `DragIconList.fitInGrid` (0x74823) ne fait que
+    la BORNER — il retranche `gridSpace` tant qu'on dépasse `(xMax−1)·
+    gridSpace` — sans jamais arrondir. La grille de `initGrid` ne sert qu'à
+    la comptabilité des cases occupées (`isFreePos`, `getNextAvailablePos`) ;
+  • les voisines ne bougent pas : le trou reste ouvert dans la rangée ;
+  • **rien n'est retenu** : après rechargement, la corbeille déposée au milieu
+    du bureau a retrouvé sa 6e case. Le `pos` ne vit qu'en mémoire.
+  • QUIRK conservé : au relâché, l'icône SAUTE de +9 en x et +6 en y par
+    rapport à l'endroit où on la voyait (mesuré : pendant la prise
+    x 590..632 / y 334..381, après le lâcher x 599..641 / y 340..387).
+    `onDrop` convertit la position du curseur en coordonnées de la liste sans
+    défalquer le décalage de celle-ci — soit `cornerX` (9) et `margin` (6).
+- **Aucun effet de SURVOL** : le curseur posé sur une icône ne change rien à
+  son étiquette (vérifié sur la capture du dépôt, curseur sur l'icône).
 - **La TAILLE des dessins** n'est pas normalisée : c'est l'artwork tel quel,
   de 23×39 (l'historique) à 42×42 (le bouilloscope). Deux constats utiles au
   portage : les icônes tirées de fileIcon.swf en SVG tombent toutes à **0,60**
@@ -469,11 +489,7 @@ dp_scrollBar 40, dp_element 100.
    initSideIconList 0x6b786) ; le MEUBLE du lecteur frusion est posé (clip
    #324 extrait) mais sa mécanique reste (FDDrive 0x6d884 : trappe, disque,
    éjection), tout comme les boutons de la mandala (rotation, plantation).
-3. ~~Les icônes du bureau et leur pose~~ FAITE (rangée au pas de 76, case de
-   44, étiquette en y 152, tailles de dessin rétablies). Reste le
-   GLISSER-DÉPOSER des icônes (`cpDragIconList`, `listener.dragIconMouse`
-   #895, `FPDesktop.onDrop` 0xb9ca9) : d'époque les icônes restent sur la
-   grille, le glissé RÉORDONNE la liste.
+3. ~~Les icônes du bureau, leur pose et leur glisser-déposer~~ FAIT.
 4. Le mode « tab » des fenêtres (les onglets qui suivent « Bureau »), le
    menu déroulant de l'onglet, les préférences (`win_flMoveAnim`).
 5. Le DÉPLIEMENT du panneau des contacts (toggle/activate : la bande passe
