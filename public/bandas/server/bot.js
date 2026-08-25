@@ -64,11 +64,23 @@
 // se joue AU MOMENT OPPORTUN : la main adverse est publique depuis le draft,
 // on n'arme la fenêtre que si elle a une vraie carte à voler.
 //
-// Et une carte a son HEURE (cf. facteurMoment) : le bot brûlait sa main dans
-// les premiers tours, alors que la vachette rase une colonne pleine au départ
-// quand le renfort, lui, retourne une fin de partie. Le gain simulé est donc
-// pondéré par l'avancement — on ne fausse pas le calcul, on dit seulement à
-// quel moment une carte mérite d'être dépensée.
+// Et surtout, LA MAIN SE GARDE POUR LA FINALE. Le bot la brûlait dans les
+// premiers tours — 57 % des cartes partaient avec quarante fruits encore au
+// plateau. Un facteur de moment (cf. facteurMoment) n'y suffisait pas, ni même
+// une barre haute en ouverture : une barre se franchit dès qu'un gain la
+// dépasse, et sur un plateau peuplé il s'en trouve toujours un. C'est donc un
+// VERROU (cf. chooseCardPlay) — au-dessus de douze fruits, la main ne s'ouvre
+// pas, sauf pour un coup qui plie la partie sur-le-champ.
+//
+// Ce n'est pas qu'une question de style : au banc apparié, garder sa main
+// gagne ÉNORMÉMENT — 75 % à profondeur 3, 74 % à profondeur 6, contre la même
+// IA qui jouait ses cartes au fil de l'eau. Et plus le verrou est serré, plus
+// ça paie (85 % si on ne les joue quasiment jamais). Ce dernier chiffre est un
+// AVERTISSEMENT plus qu'un réglage : il dit que le chiffrage des cartes est
+// encore trop généreux quelque part — le Piège et la Confiscation, notamment,
+// ne sont pas simulés mais crédités d'un gain forfaitaire. Le verrou est posé
+// à la finale, pas plus bas : un bot qui meurt avec ses trois cartes en main
+// aurait l'air aussi cassé qu'un bot qui les brûle.
 //
 (function (root, factory) {
   var E = (typeof require !== "undefined") ? require("../engine.js") : (root.Bandas && root.Bandas.engine);
@@ -117,7 +129,8 @@
   //
   // Le danger que les joueurs sentent en finale est réel, mais il ne vient pas
   // de la géométrie : il vient des CARTES, que la recherche ne modélise pas du
-  // tout. C'est là qu'on corrige — cf. menaceDeLaMain.
+  // tout. C'est là qu'on corrige — cf. le VERROU de chooseCardPlay, qui garde
+  // la main entière pour ce moment-là.
 
   // ── Lecture d'une position ────────────────────────────────────────────────
   // Pour une équipe : son compte, ses contacts (paires de voisins orthogonaux),
@@ -323,15 +336,25 @@
   // `avancement` va de 0 (plateau plein) à 1 (fin de partie). Le facteur
   // multiplie le gain SIMULÉ : on ne fausse pas le calcul, on dit seulement à
   // quel moment une carte mérite qu'on la dépense.
-  // La barre à franchir pour dépenser une carte, en fruits (cf. chooseCardPlay).
+  // Le VERROU de la main : tant qu'il reste plus de tant de fruits sur le
+  // plateau, les trois cartes ne bougent pas (cf. chooseCardPlay).
+  var FRUITS_MAIN_FERMEE = 12;
+  var GAIN_DECISIF = WIN / 2;  // un gain de cet ordre, c'est la partie qui se plie
+  // Et, DANS la finale, la barre à franchir pour dépenser une carte, en fruits.
   var SEUIL_BASE = 0.35;       // le minimum, en toute fin de partie
   var SEUIL_NIVEAU = 0.45;     // ce que le niveau ajoute
-  var SEUIL_OUVERTURE = 1.10;  // ce que le plateau PLEIN ajoute en plus
+  var SEUIL_OUVERTURE = 1.10;  // ce que le plateau encore garni ajoute en plus
   function avancementPartie(restants) {
     if (restants >= 48) return 0;
     if (restants <= 12) return 1;
     return (48 - restants) / 36;
   }
+  // Depuis le VERROU, ce facteur ne place plus les cartes dans la partie — la
+  // main ne s'ouvre qu'en finale, où `av` vaut toujours 0,9 à 1. Il ne reste
+  // donc qu'une pondération par carte, et elle ne pèse plus lourd : mesuré à
+  // 500 parties, l'annuler entièrement ne change rien (50,4 %). On la garde
+  // parce qu'elle dit juste (le renfort vaut le plus quand le plateau est
+  // minuscule), pas parce qu'elle départage encore.
   function facteurMoment(card, av) {
     switch (card) {
       case CARD.VACHETTE:     return 1.30 - 0.55 * av;   // tôt
@@ -601,24 +624,27 @@
 
     if (!meilleur) return null;
 
-    // ── LA BARRE : ce qu'une carte doit rapporter pour mériter d'être jouée ──
+    // ── LE VERROU : la main reste fermée jusqu'à la finale ────────────────
     //
-    // Le facteur de moment ne suffisait pas. Mesuré sur quarante parties :
-    // 57 % des cartes partaient alors qu'il restait QUARANTE fruits ou plus, et
-    // 6 % seulement en dessous de vingt-quatre — le Renfort lui-même, qui ne
-    // vaut qu'en fin de partie, sortait à trente-huit fruits en médiane. Un
-    // facteur multiplicatif rabote le gain, il n'empêche pas de le franchir :
-    // sur un plateau plein, TOUT rapporte un peu, et la barre était basse.
+    // On a d'abord essayé une simple BARRE, haute sur plateau plein : mieux,
+    // mais pas assez — une barre se franchit dès qu'un gain la dépasse, et sur
+    // un plateau peuplé il s'en trouve toujours un. Les trois cartes doivent
+    // tenir jusqu'à la finale : c'est donc un verrou, pas une barre. Au-dessus
+    // de FRUITS_MAIN_FERMEE fruits sur le plateau, la main ne s'ouvre pas.
     //
-    // Elle est donc haute quand le plateau est plein, et descend avec lui. Le
-    // niveau n'y fait qu'un appoint : un bot faible doit rester battable, pas
-    // vider sa main dès le troisième tour — ça n'a l'air ni faible ni fort,
-    // ça a l'air cassé. (La Vachette n'est pas gênée : sur un plateau plein,
-    // raser la meilleure colonne rapporte quatre fruits nets, très au-dessus.)
+    // Une seule dérogation, et elle va de soi : on ne garde pas en main une
+    // carte qui PLIE la partie sur-le-champ. Le négamax chiffre ces coups-là
+    // aux environs de WIN ; rien d'ordinaire n'en approche.
+    if ((my + op) > FRUITS_MAIN_FERMEE && meilleur.gain < GAIN_DECISIF) return null;
+
+    // Dans la finale, le tempo reprend ses droits : une carte à vingt fruits
+    // doit rapporter plus qu'une carte à dix. Le niveau n'y fait qu'un appoint
+    // — un bot faible doit rester battable, pas vider sa main d'un coup.
     var seuil = W_FRUIT * (SEUIL_BASE + SEUIL_NIVEAU * skill
       + SEUIL_OUVERTURE * (1 - avancement));
     if (meilleur.gain < seuil) {
-      // Fin de partie : garder ses cartes ne sert plus à rien.
+      // Tout à la fin, garder ses cartes ne sert plus à rien : on les dépense
+      // dès qu'elles rapportent quoi que ce soit, plutôt que de mourir avec.
       var presqueFini = (my + op) <= 8;
       if (!(presqueFini && meilleur.gain > 0)) return null;
     }

@@ -76,8 +76,22 @@ même logique ici).
   libre devant elle se tasse sans perte, un fruit collé au bord vers lequel on
   avance meurt. Les cartes sont choisies par SIMULATION (enclume, vachette,
   conversion, pétrification, charge, célérité, renfort, solo, entracte) et
-  jouées seulement si le plateau qu'elles laissent vaut mieux — chacune à son
-  heure (`facteurMoment` : vachette tôt, renfort/conversion tard).
+  jouées seulement si le plateau qu'elles laissent vaut mieux.
+
+  **La main se garde pour la finale.** Le bot la brûlait dans les premiers
+  tours — 57 % des cartes partaient avec quarante fruits encore au plateau. Ni
+  un facteur de moment ni une barre haute en ouverture n'y suffisaient : une
+  barre se franchit dès qu'un gain la dépasse, et sur un plateau peuplé il s'en
+  trouve toujours un. C'est donc un **verrou** — au-dessus de douze fruits la
+  main ne s'ouvre pas, sauf pour un coup qui plie la partie sur-le-champ. Au
+  banc apparié, garder sa main gagne **75 % à profondeur 3 et 74 % à profondeur
+  6** contre la même IA qui jouait ses cartes au fil de l'eau. Plus le verrou
+  est serré, plus ça paie (85 % si on ne les joue quasiment jamais) — ce
+  dernier chiffre est un AVERTISSEMENT : le chiffrage des cartes reste trop
+  généreux quelque part, le Piège et la Confiscation n'étant pas simulés mais
+  crédités d'un forfait. Le verrou est posé à la finale et pas plus bas : un
+  bot qui meurt avec ses trois cartes en main aurait l'air aussi cassé qu'un
+  bot qui les brûle.
 
   **L'arme ultime** (l'aide écrite par un joueur d'époque) : « placer un tas de
   vos pions au milieu des pions de l'adversaire de manière à ce que les siens

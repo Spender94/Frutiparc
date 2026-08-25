@@ -711,7 +711,10 @@ ok(Bot.facteurMoment(CARD.RENFORT, 1) > Bot.facteurMoment(CARD.VACHETTE, 1),
   }
   ok(finales >= 20, 'finale: assez de parties vont jusqu\'à la finale (' + finales + ')');
   var part = finalesAvecMain / Math.max(1, finales);
-  ok(part >= 0.6, 'finale: on y arrive une carte en main dans au moins 60 % des cas ('
+  // Depuis le VERROU, ce n'est plus « souvent » mais TOUJOURS : la main ne peut
+  // pas s'être vidée avant, sauf coup qui plie la partie. (35 % avant le tempo,
+  // 81 % avec la seule barre, 100 % avec le verrou.)
+  ok(part >= 0.95, 'finale: on y arrive une carte en main ('
     + Math.round(100 * part) + ' %)');
 })();
 
@@ -737,10 +740,15 @@ ok(Bot.evaluate(luiEpars, 0) > Bot.evaluate(luiCentre, 0),
 // Le tempo ne se lit pas sur une position isolée — la valeur simulée d'une
 // carte dépend d'abord du plateau — mais sur la DURÉE. Douze parties à graines
 // fixes, et l'on mesure combien de fruits restaient au moment où chaque carte
-// est sortie (64 = plateau plein). L'ordre doit suivre la doctrine :
-// la vachette ouvre, la conversion vient après, le renfort ferme la marche.
-// (Sans le facteur de tempo, cet ordre s'inverse : la conversion partait la
-// première et la vachette après elle.)
+// est sortie (64 = plateau plein).
+//
+// La doctrine a changé : depuis le VERROU, la main entière est gardée pour la
+// finale, et l'on ne vérifie donc plus un ordre d'ouverture mais que TOUT se
+// joue tard. L'ordre interne à la finale, lui, appartient au gain simulé — et
+// il n'a pas tort d'y placer la conversion en tête : à douze fruits, retourner
+// un fruit adverse vaut deux d'écart sur un plateau de six contre six, quand
+// la vachette d'un plateau rétréci n'en emporte qu'un ou deux. (Vérifié : même
+// en annulant le facteur de moment, la conversion sort la première.)
 (function () {
   var quand = {};
   for (var p = 0; p < 12; p++) {
@@ -775,10 +783,18 @@ ok(Bot.evaluate(luiEpars, 0) > Bot.evaluate(luiCentre, 0),
   }
   var vach = moyenne(CARD.VACHETTE), conv = moyenne(CARD.CONVERSION), renf = moyenne(CARD.RENFORT);
   ok(vach > 0 && conv > 0 && renf > 0, "tempo: les trois cartes ont été jouées");
-  ok(vach > conv, "tempo: la vachette sort AVANT la conversion ("
-    + vach.toFixed(1) + " vs " + conv.toFixed(1) + " fruits restants)");
-  ok(conv > renf, "tempo: et le renfort ferme la marche ("
-    + conv.toFixed(1) + " vs " + renf.toFixed(1) + ")");
+  // Aucune ne doit sortir avant la finale — c'est ce que le verrou promet, et
+  // aucune moyenne ne peut donc dépasser le seuil de la main fermée.
+  var toutes = Object.keys(quand).map(Number);
+  ok(toutes.length >= 6, "tempo: assez de cartes différentes jouées (" + toutes.length + ")");
+  for (var ci = 0; ci < toutes.length; ci++) {
+    var m = moyenne(toutes[ci]);
+    ok(m <= 12, "tempo: " + G.CARD_NAMES[toutes[ci]] + " attend la finale ("
+      + m.toFixed(1) + " fruits restants)");
+  }
+  // Et le renfort, qui ne vaut que sur un plateau minuscule, ferme la marche.
+  ok(renf < conv, "tempo: le renfort ferme la marche ("
+    + renf.toFixed(1) + " vs conversion " + conv.toFixed(1) + ")");
 })();
 
 // ══ SALLES + CHAMPIONNAT ══════════════════════════════════════════════════
