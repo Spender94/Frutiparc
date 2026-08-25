@@ -232,8 +232,13 @@ bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
   #413` sur la fonte **#412 « lcd » en 22 px** (c'est le RANG, 15 px de haut).
   Les deux fontes sont EMBARQUÉES dans main.swf ; `scripts/extract-swf-font.js`
   les sort en WOFF (`public/frutiz/fontes/impact.woff` et `lcd.woff`) comme il
-  l'avait fait pour les jeux. L'encre d'époque est **`#73AF1E`**, pas le
-  `#73B01E` du tiroir mobile.
+  l'avait fait pour les jeux. Les DEUX champs DÉCLARENT aussi leur encre :
+  **`#73B01E`** — le `#73AF1E` qu'on échantillonne sur le rendu Ruffle est son
+  anticrénelage, pas la couleur. Le champ fait foi.
+  (Leçon de méthode : les drapeaux d'un `DefineEditText` tiennent dans DEUX
+  octets, et `HasTextColor` est le bit 0x04 du PREMIER — le lire dans le
+  second fait manquer toutes les couleurs déclarées, ce qui m'a d'abord fait
+  croire les libellés noirs par défaut.)
 - **Les ÉMOTIONS** (`initEmoteIconList` 0x6b6a4) : le gris autour d'une
   émotion n'est ni une plaque carrée ni un flou — c'est une **PASTILLE RONDE
   de 21 px en `#DDDDDD`** derrière le disque de 17, ce qui laisse 2 px de
@@ -506,8 +511,12 @@ dp_scrollBar 40, dp_element 100.
     barre `#999999` de 100×12 que `buildElement` ÉTIRE à
     `wMain − decal − fondD._width`) + `fondD` (#213, image 1 = forme #211,
     20,65 × 12 : le BOUT ARRONDI de la barre et son bouton clair `#CCCCCC`)
-    + `tf` (champ #214, **Verdana 10** — font #189, sans couleur déclarée
-    donc noir). QUIRK : `fondD.gotoAndStop(1)` est appelé sans condition — le
+    + `tf` (champ #214 : variable `title`, font #189 Verdana **10 px**,
+    couleur DÉCLARÉE **`#FFFFFF`**, aligné à gauche — du BLANC sur la barre
+    grise). La fonte #189 ne porte pas le drapeau gras, mais le champ n'a pas
+    `UseOutlines` : Flash tire la Verdana du SYSTÈME et le rendu d'époque est
+    bien GRAS — la même graisse que l'onglet « Bureau », qui use du même
+    champ #190. QUIRK : `fondD.gotoAndStop(1)` est appelé sans condition — le
     bout ne change JAMAIS d'image, replié ou non ;
   • la LIGNE de contact `userSlot` (#261) : sa forme de fond (#259) fait
     **120 × 18**, d'où la hauteur de ligne. `backgroundId = 2` tombe sur
@@ -524,11 +533,10 @@ dp_scrollBar 40, dp_element 100.
   • le PSEUDO : `initText` (0x6353a) pose le champ à **`_x = 20`**, large de
     100 et haut de 20, au style `Standard.getTextStyle().def` (0x491a9) —
     **Verdana 10, couleur 0** — que la méthode passe en **GRAS**.
-- **QUIRK de cadrage** : l'icône étant posée à l'origine de la ligne et son
-  dessin CENTRÉ sur cette origine, la moitié gauche du voyant sort du masque
-  pour les contacts à la racine (decal 0) ; ceux d'un dossier (decal 5) sont
-  presque entiers. Faute d'un compte de référence pourvu de contacts, cela n'a
-  pas pu être confronté à une capture d'époque — c'est la lettre du bytecode.
+- **Le CADRAGE de l'icône** : `icon` est bien attaché sans `_x`, mais son
+  dessin n'est pas centré sur l'origine pour autant — la bande `status` pose
+  son contenu à +9, ce qui annule le −9 interne du fond, et l'icône occupe
+  donc **x 0,5..17,5**. Elle tombe pile à gauche du pseudo, qui commence à 20.
 - **Carnet vide : rien ne s'écrit.** `buildList` ne parcourt rien et la bande
   reste blanche — pas de message d'absence.
 - Côté light, les données existaient déjà : le bureau Flash lit ses contacts

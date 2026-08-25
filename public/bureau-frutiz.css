@@ -171,11 +171,12 @@ body.bureau-frutiz #bureau-coin .enc-trophy { left: 33px; top: 3px; height: 17px
 body.bureau-frutiz #bureau-coin .enc-divider { left: 34px; right: 4px; top: 21px; }
 body.bureau-frutiz #bureau-coin .enc-trophy .tro { height: 16px; }
 /* Le RANG : fonte « lcd » du SWF, 22 px — la taille inscrite dans le champ
-   texte #413. L'encre d'époque est `#73AF1E` (relevé), pas le `#73B01E` du
-   tiroir mobile. */
+   texte #413, qui DÉCLARE aussi son encre : `#73B01E`. (Le rendu Ruffle
+   échantillonne `#73AF1E` — c'est son anticrénelage, pas la couleur ; le
+   champ fait foi.) */
 body.bureau-frutiz #bureau-coin .enc-trophy .val {
   font-family: 'LcdSwf', Verdana, sans-serif; font-size: 22px;
-  font-weight: normal; color: #73AF1E; text-shadow: none;
+  font-weight: normal; color: #73B01E; text-shadow: none;
   /* la coupe tombe juste, mais le chiffre est centré 2 px trop bas dans sa
      ligne : d'époque son sommet est au niveau de celui de la coupe (y 11). */
   position: relative; top: -2px;
@@ -192,7 +193,7 @@ body.bureau-frutiz #bureau-coin .enc-niv { left: 2px; bottom: -1px; gap: 6px; }
 body.bureau-frutiz #bureau-coin .enc-niv .niv-img { height: 17px; }
 body.bureau-frutiz #bureau-coin .enc-niv .lvl {
   font-family: 'ImpactSwf', Impact, sans-serif; font-size: 11px;
-  font-weight: normal; color: #73AF1E;
+  font-weight: normal; color: #73B01E;
 }
 /* Les raccourcis d'époque tiennent plus HAUT (bloc y 26..47 contre 26..50) et
    dans l'ORDRE : l'aide, le forum, le courrier, l'historique, les événements,
@@ -396,13 +397,18 @@ body.bureau-frutiz.contacts-ouverts #side-list .sl-liste { display: block; }
    `fond` (forme #209, une barre `#999999` de 100×12 que `buildElement`
    ÉTIRE — `fond._width = fondD._x`) et `fondD` (#213, dont l'image 1 est la
    forme #211 : le BOUT ARRONDI de la barre et son bouton clair `#CCCCCC`,
-   20,65 × 12). Le libellé est le champ #214, en **Verdana 10** (font #189).
+   20,65 × 12). Le libellé est le champ #214 : variable `title`, font #189
+   (Verdana) 10 px, couleur DÉCLARÉE **`#FFFFFF`**, aligné à gauche — du blanc
+   sur la barre grise. La fonte #189 ne porte pas le drapeau gras, mais le
+   champ n'a pas `UseOutlines` : Flash tire alors la Verdana du SYSTÈME, et le
+   rendu d'époque est bien GRAS — la même graisse que l'onglet « Bureau », qui
+   use du même champ.
    QUIRK conservé : `fondD.gotoAndStop(1)` est appelé sans condition — le bout
    ne change JAMAIS d'image, replié ou non. */
 body.bureau-frutiz #side-list .sl-dossier > .sl-titre {
   position: relative; display: block; width: 100%;
   height: 18px; padding: 0; border: 0; background: none;
-  font: normal 10px Verdana, Arial, sans-serif; color: #000000;
+  font: 700 10px Verdana, Arial, sans-serif; color: #FFFFFF;
   cursor: pointer; text-align: left;
 }
 body.bureau-frutiz #side-list .sl-titre .plaque {
@@ -422,9 +428,10 @@ body.bureau-frutiz #side-list .sl-dossier.replie > .sl-contenu { display: none; 
 body.bureau-frutiz #side-list .sl-contenu { margin-left: 5px; }
 /* LA LIGNE DE CONTACT, `userSlot` (#261) : sa forme de fond fait 120 × 18 —
    d'où la hauteur de ligne. `UserSlot.init` (0x633dc) attache la bande
-   `status` (#253) comme `icon`, SANS lui donner de `_x` : le dessin est donc
-   centré sur l'origine de la ligne, et à la racine du carnet sa moitié gauche
-   sort du masque. C'est le rendu d'époque, on le garde.
+   `status` (#253) comme `icon` sans lui donner de `_x`, mais le dessin n'est
+   PAS centré sur l'origine pour autant : la bande pose son contenu à +9, ce
+   qui annule le −9 interne du fond, et l'icône occupe donc **x 0,5..17,5** —
+   pile à gauche du pseudo, qui commence à 20.
    Le fond de l'icône est la forme #216 (`iconBackgroundId = 2`) : un carré
    arrondi de 17, vide, au liseré `#CCCCCC`. Le voyant est la bande #222, dont
    `ico.gotoAndStop(presence + 1)` choisit l'image : présence 1 (le serveur
@@ -437,7 +444,7 @@ body.bureau-frutiz #side-list .sl-contact {
   cursor: pointer; text-align: left;
 }
 body.bureau-frutiz #side-list .sl-contact .voyant {
-  position: absolute; left: -8.5px; top: .5px; width: 17px; height: 17px;
+  position: absolute; left: .5px; top: .5px; width: 17px; height: 17px;
   background: url('/frutiz/sprites/sl-presence-0.svg') center center / 8px 8px no-repeat,
               url('/frutiz/sprites/sl-icone-fond.svg') left top / 17px 17px no-repeat;
 }
