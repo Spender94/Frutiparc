@@ -196,6 +196,63 @@ function svgCompose(morceaux) {
   return { svg, cadre: { x: +arr(x0), y: +arr(y0), w: +arr(l), h: +arr(h) } };
 }
 
+// ── Les placements d'une frame 1 de sprite, à l'octet ─────────────────────
+// L'aplatisseur commun saute les DefineButton2 : pour l'ONGLET (#206), dont
+// la plaque est justement un bouton (#133), on relit les PlaceObject2 de la
+// première image et on substitue l'état UP du bouton — le reste passe par
+// morceauxDe comme d'habitude.
+function placementsFrame1(spriteId) {
+  let corps = null, len = 0;
+  const nbits = b[0] >> 3;
+  const debut = Math.ceil((5 + nbits * 4) / 8) + 4;
+  (function scan(from, to) {
+    let o = from;
+    while (o + 2 <= to) {
+      const cl = b.readUInt16LE(o); const code = cl >> 6;
+      let l = cl & 0x3f, hs = 2;
+      if (l === 0x3f) { l = b.readUInt32LE(o + 2); hs = 6; }
+      const c = o + hs;
+      if (code === 0) break;
+      if (code === 39) {
+        if (b.readUInt16LE(c) === spriteId) { corps = c + 4; len = l - 4; }
+        else scan(c + 4, c + l);
+      }
+      o = c + l;
+    }
+  })(debut, b.length);
+  if (corps === null) throw new Error('sprite absent : ' + spriteId);
+  const poses = [];
+  let o = corps;
+  const fin = corps + len;
+  while (o + 2 <= fin) {
+    const cl = b.readUInt16LE(o); const code = cl >> 6;
+    let l = cl & 0x3f, hs = 2;
+    if (l === 0x3f) { l = b.readUInt32LE(o + 2); hs = 6; }
+    const c = o + hs;
+    if (code === 0 || code === 1) break;            // End ou ShowFrame : image 1 close
+    if (code === 26) {                              // PlaceObject2
+      const drapeaux = b[c]; let p = c + 3;         // flags + depth(2)
+      const prof = b.readUInt16LE(c + 1);
+      let ch = null, M = IDENTITE, cx;
+      if (drapeaux & 2) { ch = b.readUInt16LE(p); p += 2; }
+      if (drapeaux & 4) { const bits = new Bits(p); M = lireMatrice(bits); p = bits.o; }
+      if (drapeaux & 8) { const bits = new Bits(p); cx = lireCx(bits); }
+      if (ch !== null) poses.push({ ch, prof, M, cx });
+    }
+    o = c + l;
+  }
+  return poses.sort((a, bb) => a.prof - bb.prof);
+}
+
+// Matrices en twips : composition A∘B (B dessiné dans le repère de A).
+function composerTwips(A, B) {
+  return {
+    a: A.a * B.a + A.c * B.b, b: A.b * B.a + A.d * B.b,
+    c: A.a * B.c + A.c * B.d, d: A.b * B.c + A.d * B.d,
+    e: A.a * B.e + A.c * B.f + A.e, f: A.b * B.e + A.d * B.f + A.f,
+  };
+}
+
 // ── L'extraction ──────────────────────────────────────────────────────────
 function principal() {
   fs.mkdirSync(SORTIE, { recursive: true });
@@ -253,6 +310,96 @@ function principal() {
     }
     manifeste.boutons[c.cle].cadre = cadre;
   }
+
+  // ── L'ONGLET du bureau (MainBarTab, DoInitAction #781 0x6e614) ──────────
+  // Deux clips attachés côte à côte par la barre : `tabFond` (#187, la
+  // silhouette sombre sur mcTabBlack) et `tab` (#206, la plaque + le
+  // contenu sur mcTab). La plaque de #206 est un DefineButton2 (#133,
+  // étiré ×1.2325/×0.2406) : on compose son état UP sous la matrice du
+  // placement. Le label (« Bureau ») est un DefineEditText (#190, Verdana
+  // 10 #000000 lié à _parent.name) : il ne se dessine pas ici — c'est du
+  // texte HTML dans le portage. Les deux SVG partagent le MÊME cadre pour
+  // se superposer tels quels.
+  const ONGLET = [{ cle: 'onglet_fond', id: 187 }, { cle: 'onglet_corps', id: 206 }];
+  const morceauxOnglet = new Map();
+  const formesOnglet = new Set();
+  for (const c of ONGLET) {
+    const liste = [];
+    for (const pose of placementsFrame1(c.id)) {
+      const def = boutons.get(pose.ch);
+      if (def) {
+        for (const rec of lireBouton(def).up) {
+          for (const m of morceauxDe({ ch: rec.ch, M: composerTwips(pose.M, rec.M), cx: rec.cx })) liste.push(m);
+        }
+      } else {
+        for (const m of morceauxDe(pose)) liste.push(m);
+      }
+    }
+    for (const m of liste) if (m.shape !== undefined) formesOnglet.add(m.shape);
+    morceauxOnglet.set(c.cle, liste);
+  }
+  chargerFormes([...formesOnglet].filter((id) => !corpsFormes.has(id)));
+  {
+    const rendus = {};
+    let u = null;
+    for (const c of ONGLET) {
+      const r = svgCompose(morceauxOnglet.get(c.cle));
+      if (!r) { console.warn('!! onglet vide', c.cle); continue; }
+      rendus[c.cle] = r;
+      u = u ? {
+        x: Math.min(u.x, r.cadre.x), y: Math.min(u.y, r.cadre.y),
+        x1: Math.max(u.x1, r.cadre.x + r.cadre.w), y1: Math.max(u.y1, r.cadre.y + r.cadre.h),
+      } : { x: r.cadre.x, y: r.cadre.y, x1: r.cadre.x + r.cadre.w, y1: r.cadre.y + r.cadre.h };
+    }
+    const cadre = { x: u.x, y: u.y, w: +arr(u.x1 - u.x), h: +arr(u.y1 - u.y) };
+    manifeste.onglet = { cadre, notes: 'tabFond #187 + tab #206 (plaque = état UP du bouton #133) ; label = Verdana 10 #000000 (#190)' };
+    for (const cle of Object.keys(rendus)) {
+      const svg = rendus[cle].svg.replace(/viewBox="[^"]*" width="[^"]*" height="[^"]*"/,
+        `viewBox="${arr(cadre.x)} ${arr(cadre.y)} ${arr(cadre.w)} ${arr(cadre.h)}" width="${arr(cadre.w)}" height="${arr(cadre.h)}"`);
+      fs.writeFileSync(path.join(SORTIE, cle + '.svg'), svg, 'utf8');
+      manifeste.onglet[cle] = { fichier: cle + '.svg' };
+      console.log(cle + '.svg cadre commun', JSON.stringify(cadre));
+    }
+  }
+
+  // ── La bande des fruits-pastilles (#198) ────────────────────────────────
+  // Une image étiquetée par TYPE de fenêtre — la pastille d'une barre-titre
+  // est un gotoAndStop sur cette bande, et une étiquette inconnue laisse la
+  // frame 1 : l'ORANGE est le fruit par défaut. Chaque fruit sort sur un
+  // cadre COMMUN (l'union) pour se poser au même endroit dans le bandeau.
+  const FRUITS = [
+    { cle: 'fruit_default', id: 191 },     // l'orange (frame 1)
+    { cle: 'fruit_winDebug', id: 192 },    // la prune
+    { cle: 'fruit_winChat', id: 193 },     // la fraise
+    { cle: 'fruit_winExplorer', id: 194 }, // la banane
+    { cle: 'fruit_winShop', id: 195 },     // le fruit vert
+    { cle: 'fruit_winAlert', id: 196 },    // le citron
+    { cle: 'fruit_f86', id: 197 },         // frame 86, sans étiquette (rose)
+  ];
+  chargerFormes(FRUITS.map((f) => f.id).filter((id) => !corpsFormes.has(id)));
+  {
+    let u = null;
+    for (const f of FRUITS) {
+      const vb = corpsFormes.get(f.id) && corpsFormes.get(f.id).vb;
+      if (!vb) continue;
+      u = u ? {
+        x: Math.min(u.x, vb.x), y: Math.min(u.y, vb.y),
+        x1: Math.max(u.x1, vb.x + vb.w), y1: Math.max(u.y1, vb.y + vb.h),
+      } : { x: vb.x, y: vb.y, x1: vb.x + vb.w, y1: vb.y + vb.h };
+    }
+    const cadre = { x: u.x, y: u.y, w: +arr(u.x1 - u.x), h: +arr(u.y1 - u.y) };
+    manifeste.fruits = { cadre, notes: 'bande #198 : une frame étiquetée par type (gotoAndStop) ; étiquette inconnue → frame 1, l’orange' };
+    for (const f of FRUITS) {
+      const forme = corpsFormes.get(f.id);
+      if (!forme) { console.warn('!! fruit absent', f.id); continue; }
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${arr(cadre.x)} ${arr(cadre.y)} ${arr(cadre.w)} ${arr(cadre.h)}" width="${arr(cadre.w)}" height="${arr(cadre.h)}">\n`
+        + forme.corps + '</svg>\n';
+      fs.writeFileSync(path.join(SORTIE, f.cle + '.svg'), svg, 'utf8');
+      manifeste.fruits[f.cle] = { fichier: f.cle + '.svg', id: f.id };
+      console.log(f.cle + '.svg (forme #' + f.id + ')');
+    }
+  }
+
   fs.writeFileSync(path.join(SORTIE, 'bureau.json'), JSON.stringify(manifeste, null, 1), 'utf8');
   console.log('manifeste → public/frutiz/sprites/bureau.json');
 }

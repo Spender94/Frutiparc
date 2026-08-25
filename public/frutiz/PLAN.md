@@ -154,14 +154,121 @@ montre, en pleine prise, la silhouette blanche arrondie qui suit la souris
 pendant que la fenêtre « Salons publics » reste en place — exactement la
 reproduction light.
 
+## Le rendu 1:1 (la règle de mesure)
+
+ruffle.html joue main.swf en `noScale` dans un conteneur **1380×800**, que
+fitFrutiparc étire ensuite (`scale = min(vw/1380, vh/800)`). À viewport
+**1380×800 exactement, l'échelle vaut 1** : chaque pixel capturé est un
+pixel de scène (scratchpad/ref-1a1.js). Toutes les mesures ci-dessous sont
+prises là. (L'en-tête du SWF dit 1024×768 — le noScale le rend caduc ; la
+LARGEUR DE RÉFÉRENCE du bureau d'époque est la constante **1370** codée en
+dur dans MainBar.update.)
+
+## La main bar (`_global.MainBar`, DoInitAction sprite#775, 0x6afba)
+
+Constantes du prototype (0x6c65f..0x6c6b9) : `dp_tab` 10000, `tabMax` 500,
+`infoMax` 8, **`tabSpace` 110**, **`height` 76**, `minWidth` 600,
+**`margin` 6**. `init` (0x6b578) pose **`main.cornerY = 106`** — le coin du
+bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
+
+- **drawInterface** (0x6b93c) : trois `FEMC.drawSmoothSquare` empilés sur la
+  boîte `{x:−10, y:−10, w:w+10, h:height+10}` — le SOMBRE (`darkest`, +2 px
+  tout autour, rayon 12) sur mcInterfaceBlack, le LISERÉ (`shade`) puis le
+  FOND (`main`, −2 px, rayon 8) sur mcInterface. Décalée de −10, la boîte
+  sort de l'écran en haut/gauche : seul le bas-droit s'arrondit à l'écran.
+  Vérifié au pixel 1:1 : blanc 0..74, `#DDDDDD` 74..76, `#444444` 76..78.
+- **update** (0x6bfc2) : `pos.x = main.cornerX` ;
+  **largeur = 1370 − cornerX − (frusion.width + frusion.margin)**, minimum
+  `minWidth` ; `maxTab = floor(largeur / tabSpace)` ; drawInterface(w) puis
+  frameSet.update().
+- **initFrameSet** (0x6bb6c) : l'arbre `Frame` type `h` — `screen` (compo
+  **FrutiScreen**, un CARRÉ de côté height−2·margin = 64, style frSystem :
+  la bouille), `info` (min w 150 : **cpDigital** 130×45 — le NIV et la
+  jauge — au-dessus de la liste des **7 butPushEmoteIcon**, struct 19 px,
+  initEmoteIconList 0x6b6a4), `tile` (type w, min 100 — la zone EXTENSIBLE,
+  blanche), et **cpWheelMng** (la frutimandala, au bout droit).
+- **initInterface** (0x6b8af) : mcInterface prof 10, mcTab prof 8,
+  mcTabBlack prof 4, mcInterfaceBlack prof 2 ; `mcTab._y = height` — la
+  rangée d'onglets pend sous la barre, RECOUVERTE par elle (8 < 10).
+- **addTab** (0x6c120) : `attachMovie('tab', 'tab'+n, dp_tab + tabMax −
+  id·2)` — un id plus PETIT donne une profondeur plus GRANDE : l'onglet de
+  gauche chevauche celui de droite. Reflow (removeTab 0x6c1e9) :
+  `pos.x = id · tabSpace`, glissé par `animList.addSlide(move, 2)`.
+
+## L'onglet (`_global.MainBarTab`, DoInitAction sprite#781, 0x6e614)
+
+- `init` (0x6ea05) : `_x = id·tabSpace`, **`_y = −30`** (l'onglet DESCEND en
+  glissant : addSlide('slide', 2)) ; `name = slot.title` ; le clip `tabFond`
+  (#187) s'attache sur mcTabBlack et SUIT l'onglet (followList).
+- L'ART (extrait par scripts/extract-frutiz-bureau.js, cadre commun
+  (−17.5, −18)–(105.5, 23.5)) : `onglet_fond.svg` = #187 (la silhouette
+  `#444444` : #183 122.95×23.5 + #185 étiré 123×18 posé à y −18, qui fond
+  l'onglet dans le contour de la barre) ; `onglet_corps.svg` = #206 — la
+  PLAQUE est un DefineButton2 (#133, étiré ×1.2325/×0.2406 : état UP lu à
+  l'octet), le contenu #202 (cadre #188, champ du label #190, la pastille),
+  la jonction blanche #204 (120×4, cachée sous la barre), le trait #205.
+- Le LABEL : DefineEditText #190 — **Verdana (police embarquée #189) 10 px,
+  `#000000`**, lié à `_parent.name` (« Bureau »). Mesuré : glyphes à ~30 px
+  du bord gauche, centrés dans la plaque (écran y 76..99.5).
+- Au clic (onPress 0x6ecaa) : le MENU du slot s'attache et DÉROULE
+  (scrollDown, setInterval 25 ms) ; re-clic → scrollUp. `ico` passe à la
+  frame 2 au survol (menu disponible), 3 menu ouvert. À porter avec les
+  onglets de fenêtres (mode tab).
+
+## La pastille est un FRUIT (la bande #198)
+
+La pastille d'une barre-titre n'est PAS un disque teinté : c'est le clip
+#198 — une frame ÉTIQUETÉE par type de fenêtre, choisie par gotoAndStop :
+
+| étiquette | forme | le fruit (couleurs relevées) |
+|---|---|---|
+| `default` (f1) | #191 | **l'orange** `#FF9900`/`#E98001`, feuille `#009900` |
+| `winDebug` (f9) | #192 | la prune `#8B3CB7`/`#5B287B` |
+| `winChat` (f16) | #193 | **la fraise** `#EB1A14`/`#910D0D` |
+| `winExplorer` (f22) | #194 | la banane `#FEFE25`/`#C7C701` |
+| `winShop` (f29) | #195 | le fruit vert `#39B315`/`#309611` |
+| `winAlert` (f36) | #196 | **le citron** `#F2E337`/`#B59B0D` |
+| (f86, sans étiquette) | #197 | le fruit rose `#FE7681` |
+
+Une étiquette INCONNUE laisse la frame 1 : **l'orange est le fruit par
+défaut** — c'est pourquoi « Mon historique », « Ma Frutibouille » et
+l'onglet « Bureau » portent tous l'orange (`#FF9900` mesuré plus haut), les
+salons la fraise, les alertes le citron. Les sept fruits sont extraits sur
+un cadre commun (sprites/fruit_*.svg) ; le light applique la même loi.
+
+## La zone droite (mesures 1:1, ref1-bureau.png)
+
+- **La boîte frusion** (le lecteur de disques) : blanc 1262..1372 (110 de
+  large), même chrome que la barre, coins BAS arrondis, hauteur 76, contour
+  à Stage.width − 6. Son CONTENU (la console, frusionSlot #19) est un clip
+  VIDE construit au runtime (la classe à 0x6d884 : openSlot/runDisc…) — à
+  transcrire.
+- **La frutimandala** (cpWheelMng) : l'éventail aux fruits x≈1050..1230,
+  qui dépasse la barre en haut ; boutons rose (flèches), « G » jaune, ↓↑
+  vert. À transcrire (composant dynamique).
+- **La pilule « N en ligne »** : bord droit à Stage.width − 6, y ≈ 8..30,
+  fond vert sombre `#43671F`, texte blanc gras, point vert clair.
+- **La languette CONTACTS** : bord GAUCHE, en BAS (y ≈ 700..790), plaque
+  blanche aux coins droits arrondis, lettres empilées à la verticale.
+- **La rangée d'icônes** : sous la barre, un PAS de 76 px — mesuré Gaspard
+  282, Mes contacts 358, Corbeille 433, Forum 509, Liste noire 585, Les
+  salons 661, Mon historique 737, Préférences 814, Scores 889, Boutique
+  965, Bouilloscope 1042, Club 1117 (centres) ; étiquettes dessous.
+- L'éditeur de bouille d'un compte neuf est une fenêtre SANS CROIX (« Ma
+  Frutibouille ») : on n'en sort qu'en validant une bouille travaillée.
+
 ## Reste à faire (étapes suivantes)
 
-1. ~~L'art des boutons (`butGroupWinTop`)~~ FAIT (extraits, 9 états) ;
-   reste la barre-titre des types de fenêtres (winChat #5, winPanel #7,
+1. La barre-titre des types de fenêtres (winChat #5, winPanel #7,
    winRoomList #59…) et les teintes `getWinStyle` manquantes — mesurer au
    pixel les fenêtres jaune/verte/blanche/violette (Préférences, Corbeille,
    Boutique, Mes contacts…) sur la session connectée.
-2. La main bar, l'onglet « Bureau », la languette CONTACTS, la frutimandala.
+2. L'INTÉRIEUR de la main bar : FrutiScreen (le carré bouille 64),
+   cpDigital (130×45, le NIV et la jauge), les 7 butPushEmoteIcon (struct
+   19 px), les 3 butPushVerySmallPink (halfHide/fullScreen) ; puis la
+   frutimandala (cpWheelMng) et la console frusion (FrusionSlot).
 3. Les icônes du bureau (fileIconStandard #11) et leur pose en colonnes
    (FPDesktop), le glisser-déposer des icônes.
-4. Le mode « tab » des fenêtres, les préférences (`win_flMoveAnim`).
+4. Le mode « tab » des fenêtres (les onglets qui suivent « Bureau »), le
+   menu déroulant de l'onglet, les préférences (`win_flMoveAnim`).
+5. Le tiroir des contacts derrière la languette CONTACTS.

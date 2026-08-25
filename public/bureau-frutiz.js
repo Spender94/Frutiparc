@@ -22,31 +22,35 @@
 
 window.BureauFrutiz = (function () {
 
-  // Chaque rubrique fenêtrable : son panneau, son titre de fenêtre, la
-  // couleur de sa pastille (les fruits de main.swf), et son gabarit.
+  // Chaque rubrique fenêtrable : son panneau, son titre de fenêtre, son FRUIT
+  // de pastille, et son gabarit. La pastille d'époque n'est pas un disque
+  // teinté : c'est la BANDE DE FRUITS #198 de main.swf (une frame étiquetée
+  // par type — gotoAndStop(type)), et une étiquette inconnue laisse la
+  // frame 1 : L'ORANGE. D'où la loi : winChat → la fraise, alertes → le
+  // citron, boutique → le fruit vert, et TOUT LE RESTE l'orange par défaut —
+  // exactement le comportement du SWF (public/frutiz/PLAN.md).
   // `evenements` et `historique` partagent le panneau #evt-panel : la fenêtre
   // est UNIQUE et se retitre selon l'onglet demandé.
-  // Les pastilles MESURÉES sur le rendu Ruffle connecté (public/frutiz/PLAN.md,
-  // « colorSet ») : Salons = la fraise #E01813, Mon historique = #FF9900.
-  // Les autres restent des placements en attendant leur relevé.
   var RUBRIQUES = {
-    chat:       { panneau: '#chat-panel',      titre: 'Salons',         pastille: '#E01813', l: 780, h: 580 },
-    forum:      { panneau: '#forum-panel',     titre: 'Forum',          pastille: '#8A5BC8', l: 920, h: 640 },
-    scores:     { panneau: '#scores-panel',    titre: 'Scores',         pastille: '#3FA43F', l: 720, h: 620 },
-    mail:       { panneau: '#mail-panel',      titre: 'Messagerie',     pastille: '#E7A31C', l: 640, h: 560 },
-    evenements: { panneau: '#evt-panel',       titre: 'Événements',     pastille: '#4FA3D8', l: 560, h: 560 },
-    historique: { panneau: '#evt-panel',       titre: 'Mon historique', pastille: '#FF9900', l: 560, h: 560 },
-    trombi:     { panneau: '#trombi-panel',    titre: 'Bouilloscope',   pastille: '#C8497E', l: 780, h: 620 },
-    reglages:   { panneau: '#reglages-panel',  titre: 'Préférences',    pastille: '#7A9C3C', l: 560, h: 620 },
-    grapiz:     { panneau: '#grapiz-panel',    titre: 'Grapiz',         pastille: '#8A5BC8', l: 900, h: 660 },
-    bandas:     { panneau: '#bandas-panel',    titre: 'Frutibandas',    pastille: '#D8262C', l: 900, h: 660 },
-    swapou:     { panneau: '#swapou-panel',    titre: 'Swapou',         pastille: '#3FA43F', l: 900, h: 660 },
-    miniwave:   { panneau: '#miniwave-panel',  titre: 'Mini-Wave',      pastille: '#4FA3D8', l: 900, h: 700 },
-    minipixiz:  { panneau: '#minipixiz-panel', titre: 'MiniPixiz',      pastille: '#F08AC8', l: 900, h: 700 },
-    snake3:     { panneau: '#snake3-panel',    titre: 'Frutisnake',     pastille: '#3FA43F', l: 880, h: 740 },
-    minifever:  { panneau: '#minifever-panel', titre: 'Mini-Fever',     pastille: '#E7A31C', l: 880, h: 760 },
-    jamajama:   { panneau: '#jamajama-panel',  titre: 'JamaJama',       pastille: '#F08A24', l: 620, h: 640 },
+    chat:       { panneau: '#chat-panel',      titre: 'Salons',         fruit: 'winChat', l: 780, h: 580 },
+    forum:      { panneau: '#forum-panel',     titre: 'Forum',          l: 920, h: 640 },
+    scores:     { panneau: '#scores-panel',    titre: 'Scores',         l: 720, h: 620 },
+    mail:       { panneau: '#mail-panel',      titre: 'Messagerie',     l: 640, h: 560 },
+    evenements: { panneau: '#evt-panel',       titre: 'Événements',     l: 560, h: 560 },
+    historique: { panneau: '#evt-panel',       titre: 'Mon historique', l: 560, h: 560 },
+    trombi:     { panneau: '#trombi-panel',    titre: 'Bouilloscope',   l: 780, h: 620 },
+    reglages:   { panneau: '#reglages-panel',  titre: 'Préférences',    l: 560, h: 620 },
+    grapiz:     { panneau: '#grapiz-panel',    titre: 'Grapiz',         l: 900, h: 660 },
+    bandas:     { panneau: '#bandas-panel',    titre: 'Frutibandas',    l: 900, h: 660 },
+    swapou:     { panneau: '#swapou-panel',    titre: 'Swapou',         l: 900, h: 660 },
+    miniwave:   { panneau: '#miniwave-panel',  titre: 'Mini-Wave',      l: 900, h: 700 },
+    minipixiz:  { panneau: '#minipixiz-panel', titre: 'MiniPixiz',      l: 900, h: 700 },
+    snake3:     { panneau: '#snake3-panel',    titre: 'Frutisnake',     l: 880, h: 740 },
+    minifever:  { panneau: '#minifever-panel', titre: 'Mini-Fever',     l: 880, h: 760 },
+    jamajama:   { panneau: '#jamajama-panel',  titre: 'JamaJama',       l: 620, h: 640 },
   };
+
+  function fruitUrl(nom) { return '/frutiz/sprites/fruit_' + (nom || 'default') + '.svg'; }
 
   var actif = false;
   var fenetres = {};                    // id de panneau → { fen, corps, panneau, origine, txt, pastille }
@@ -150,12 +154,17 @@ window.BureauFrutiz = (function () {
 
   // recal (0x54126) : la taille bornée aux minima et au bureau, la position
   // gardée dans la zone visible.
+  // Le coin du bureau : main.cornerY = 106 (MainBar.init, 0x6b5e2) — la
+  // barre (76) plus la rangée d'onglets. recal (0x54126) borne les fenêtres
+  // à ce coin : une fenêtre ne passe JAMAIS au-dessus de la zone de la barre
+  // (et la barre, plus profonde, recouvre ce qui s'en approche).
+  var CORNER_Y = 106;
   function recal(pos, minimum) {
     var vw = window.innerWidth, vh = window.innerHeight;
     pos.w = Math.max(minimum.w, Math.min(pos.w, vw));
-    pos.h = Math.max(minimum.h, Math.min(pos.h, vh));
+    pos.h = Math.max(minimum.h, Math.min(pos.h, vh - CORNER_Y));
     pos.x = Math.max(0, Math.min(pos.x, vw - pos.w));
-    pos.y = Math.max(0, Math.min(pos.y, vh - pos.h));
+    pos.y = Math.max(CORNER_Y, Math.min(pos.y, vh - pos.h));
     return pos;
   }
 
@@ -284,7 +293,7 @@ window.BureauFrutiz = (function () {
     var fen = document.createElement('div');
     fen.className = 'fen';
     fen.style.width = Math.min(rub.l, window.innerWidth - 24) + 'px';
-    fen.style.height = Math.min(rub.h, window.innerHeight - 16) + 'px';
+    fen.style.height = Math.min(rub.h, window.innerHeight - CORNER_Y - 12) + 'px';
     // Les ouvertures se décalent en cascade sous le coin de la main bar et
     // sous la rangée d'icônes du haut (qu'une fenêtre neuve ne doit pas
     // recouvrir d'emblée — on peut toujours la déplacer ensuite).
@@ -297,7 +306,7 @@ window.BureauFrutiz = (function () {
     titre.className = 'fen-titre';
     var pastille = document.createElement('span');
     pastille.className = 'fen-pastille';
-    pastille.style.setProperty('--pastille', rub.pastille);
+    pastille.style.backgroundImage = 'url(' + fruitUrl(rub.fruit) + ')';
     var txt = document.createElement('span');
     txt.className = 'txt';
     txt.textContent = rub.titre;
@@ -363,7 +372,7 @@ window.BureauFrutiz = (function () {
     }
     // #evt-panel sert deux rubriques : la fenêtre prend le titre demandé.
     f.txt.textContent = rub.titre;
-    f.pastille.style.setProperty('--pastille', rub.pastille);
+    f.pastille.style.backgroundImage = 'url(' + fruitUrl(rub.fruit) + ')';
     panneau.classList.add('active');
   }
 
@@ -377,6 +386,23 @@ window.BureauFrutiz = (function () {
     for (var id in fenetres) fenetres[id].panneau.classList.add('active');
   }
 
+  // La pilule « N en ligne » : le même décompte que le tiroir « site » du
+  // light (/api/light/online), rafraîchi sans hâte — la pilule d'époque
+  // n'était qu'un compteur, le détail vit ailleurs.
+  function majEnLigne() {
+    var sid = window.state && window.state.sid;
+    if (!sid) return;
+    fetch('/api/light/online?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) return;
+        var n = Math.max(1, (d.users || []).length);
+        var el = $('#pill-enligne-txt');
+        if (el) el.textContent = n + ' en ligne';
+      })
+      .catch(function () {});
+  }
+
   function demarrer() {
     if (actif) return;
     actif = true;
@@ -385,20 +411,70 @@ window.BureauFrutiz = (function () {
 
     var bureau = document.createElement('div');
     bureau.id = 'bureau';
-    var coin = document.createElement('div');
-    coin.id = 'bureau-coin';
-    bureau.appendChild(coin);
     var couche = document.createElement('div');
     couche.id = 'bureau-fenetres';
+    // La couche HAUTE : la barre et ses meubles, AU-DESSUS des fenêtres —
+    // les profondeurs du SWF (la main bar recouvre ce qui s'en approche,
+    // recal borne d'ailleurs les fenêtres sous cornerY).
+    var haut = document.createElement('div');
+    haut.id = 'bureau-haut';
+    var coin = document.createElement('div');
+    coin.id = 'bureau-coin';
     app.appendChild(bureau);
     app.appendChild(couche);
+    app.appendChild(haut);
 
-    // La main bar, la bannière quotidienne, la grille et la ligne du compte
-    // quittent le tiroir : ce sont les meubles du bureau maintenant.
+    // L'ONGLET « Bureau » (MainBarTab #781) : les deux clips extraits —
+    // tabFond (la silhouette sombre) sous tab (la plaque + l'orange) — dans
+    // leur cadre commun (x −17.5, y −18, 123×41.5), posés à l'origine de la
+    // barre d'onglets (mcTab._y = height = 76). Le label est le champ #190 :
+    // Verdana 10 gras #000000, lié au titre du slot (« Bureau »).
+    var onglet = document.createElement('div');
+    onglet.id = 'onglet-bureau';
+    var ongletLabel = document.createElement('span');
+    ongletLabel.textContent = 'Bureau';
+    onglet.appendChild(ongletLabel);
+    haut.appendChild(onglet);          // sous la barre (tabBlack 4 < tab 8 < interface 10)
+    haut.appendChild(coin);
+
+    // La boîte de la FRUSION (le lecteur de disques, en haut à droite) : le
+    // même chrome que la barre — blanc, liseré #DDD, contour #444, coins bas
+    // arrondis — hauteur 76, calée à 8 px du bord (le contour tombe à
+    // Stage.width − 6, comme la pilule). Son contenu (la console) viendra
+    // avec la transcription de FrusionSlot.
+    var frusion = document.createElement('div');
+    frusion.id = 'frusion-boite';
+    haut.appendChild(frusion);
+
+    // La pilule « N en ligne » (coin haut-droit, bord à Stage.width − 6).
+    var pilule = document.createElement('div');
+    pilule.id = 'pill-enligne';
+    var point = document.createElement('span');
+    point.className = 'point';
+    var piluleTxt = document.createElement('span');
+    piluleTxt.id = 'pill-enligne-txt';
+    piluleTxt.textContent = '1 en ligne';
+    pilule.appendChild(point);
+    pilule.appendChild(piluleTxt);
+    pilule.appendChild(document.createTextNode(' ▾'));
+    haut.appendChild(pilule);
+    majEnLigne();
+    setInterval(majEnLigne, 60000);
+
+    // La languette CONTACTS du bord gauche (bas d'écran) : lettres empilées
+    // à la verticale, plaque blanche aux coins droits arrondis. Le tiroir
+    // qu'elle ouvre viendra avec l'étape des contacts — la languette fait
+    // partie du décor d'époque.
+    var languette = document.createElement('div');
+    languette.id = 'languette-contacts';
+    languette.textContent = 'CONTACTS';
+    bureau.appendChild(languette);
+
+    // La main bar quitte le tiroir : c'est le meuble du bureau maintenant.
+    // (La bannière quotidienne reste au tiroir : main.swf n'a pas de bandeau
+    // — la « Connexion quotidienne : +10 kikooz » se lit dans l'historique.)
     var mainbar = $('#home-panel .mainbar');
     if (mainbar) coin.appendChild(mainbar);
-    var banniere = $('#daily-banner');
-    if (banniere) coin.appendChild(banniere);
     var grille = $('#home-grid');
     if (grille) bureau.appendChild(grille);
     var compte = $('#home-panel .home-compte');

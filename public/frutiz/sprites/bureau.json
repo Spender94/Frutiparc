@@ -52,5 +52,57 @@
    }
   }
  },
- "notes": "butGroupWinTop #180 : images 1..3 → boutons #173/#176/#179 (up/over/down)"
+ "notes": "butGroupWinTop #180 : images 1..3 → boutons #173/#176/#179 (up/over/down)",
+ "onglet": {
+  "cadre": {
+   "x": -17.5,
+   "y": -18,
+   "w": 123,
+   "h": 41.5
+  },
+  "notes": "tabFond #187 + tab #206 (plaque = état UP du bouton #133) ; label = Verdana 10 #000000 (#190)",
+  "onglet_fond": {
+   "fichier": "onglet_fond.svg"
+  },
+  "onglet_corps": {
+   "fichier": "onglet_corps.svg"
+  }
+ },
+ "fruits": {
+  "cadre": {
+   "x": 1.35,
+   "y": 1.7,
+   "w": 15.85,
+   "h": 15.05
+  },
+  "notes": "bande #198 : une frame étiquetée par type (gotoAndStop) ; étiquette inconnue → frame 1, l’orange",
+  "fruit_default": {
+   "fichier": "fruit_default.svg",
+   "id": 191
+  },
+  "fruit_winDebug": {
+   "fichier": "fruit_winDebug.svg",
+   "id": 192
+  },
+  "fruit_winChat": {
+   "fichier": "fruit_winChat.svg",
+   "id": 193
+  },
+  "fruit_winExplorer": {
+   "fichier": "fruit_winExplorer.svg",
+   "id": 194
+  },
+  "fruit_winShop": {
+   "fichier": "fruit_winShop.svg",
+   "id": 195
+  },
+  "fruit_winAlert": {
+   "fichier": "fruit_winAlert.svg",
+   "id": 196
+  },
+  "fruit_f86": {
+   "fichier": "fruit_f86.svg",
+   "id": 197
+  }
+ }
 }
