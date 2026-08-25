@@ -793,6 +793,20 @@ Fenêtre x 9..273 (**265**), y 105..392 (**288**) :
 En largeur : contenu de la liste x 15..266 (**252**), contour du compo 13-14
 et 267-268, blanc 269-270, liseré 271-272, contour 273.
 
+Le compo de la liste est peint par `drawCustomSquare` comme le reste, avec le
+`curve: 3` des styles de contenu : rayon extérieur **5** (curve + outline),
+rayon du contenu **3**. Et son LISERÉ est ROSE — `#FEABAB`, sur 2 px — mais
+il ne se voit que sur TROIS côtés : les rangées, posées à `_y = i * 20` depuis
+le haut du compo, recouvrent celui du haut. Vérifié sur une rangée IMPAIRE
+(donc `#FEC9C9`) : x 15-16 et 265-266 restent roses, et y 364-365 aussi, juste
+avant le `#DDDDDD`.
+
+Le BLANC de la fenêtre, lui, est arrondi à `curve − inline` = **8** : relevé au
+coin haut-gauche, il démarre en x 18 sur sa première ligne (y 108) et rejoint
+x 12 trois pixels plus bas. Le reproduire demande une plaque à part — une
+ombre interne ne courbe rien, et le fond de la boîte garderait les coins de
+la boîte.
+
 Le BANDEAU, au détail : pastille (encre x 17..28, y 108..121), titre gras
 11 px `#444444` à partir de x 31, croix de fermeture x 257..267.
 
@@ -801,9 +815,12 @@ Teintes, toutes relevées :
 - rangée paire `#FEABAB`, impaire `#FEC9C9`, **survol `#FFF2F2`** — les deux
   parités passent au survol, le fond appuyé des paires ne le retient pas ;
 - encre des rangées `#BA4444`, Verdana 10 (la taille de `getTextStyle`) ;
-- bouton : anneau `#F28687`, fond `#FFAAAD`, encre `#660000` grasse, éclat du
-  bout droit `#FFEAEC` — et ce sont EXACTEMENT les couleurs du dessin extrait
-  (`butPushStandard` #465), donc aucune teinture à l'emploi ;
+- bouton : anneau `#F28687`, fond `#FFAAAD`, encre `#660000` grasse — et ce
+  sont EXACTEMENT les couleurs du dessin extrait (`butPushStandard` #465),
+  donc aucune teinture à l'emploi. Le dessin porte une TROISIÈME forme, son
+  REFLET : un filet `#FFEAEC` qui longe l'intérieur du bord haut (y 2,85..3,4
+  sur les 16 de haut, de x 5,3 à 34,2) puis s'enroule autour du bout DROIT
+  jusqu'à y 12,65 ;
 - champ : fond `#DDFFBB` = green.light, bord `#94DB39` = green.dark — là, en
   revanche, le dessin d'origine (`inputField` #170) est GRIS `#EEEEEE` et se
   fait bien teinter.
