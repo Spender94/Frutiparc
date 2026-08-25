@@ -110,6 +110,185 @@
    "icone": 363
   }
  },
+ "feutres": {
+  "cadre": {
+   "x": 0,
+   "y": 0,
+   "w": 7,
+   "h": 40
+  },
+  "notes": "bitmap #595 (9×57, niveaux de gris). Coiffé : lignes 1..14 (capuchon, x1..7) empilées sur 30..55 (corps, x2..6), 7×40. Décapuchonné (feutre choisi, frame 5) : lignes 19..55, 7×37 — posé au même haut, il finit 3 px plus haut. Le corps seul est teinté : résultat = couleur + (gris − 255)",
+  "feutre-0": {
+   "fichier": "feutre-0.png",
+   "couleur": "#FF6600",
+   "h": 40
+  },
+  "feutre-0-sel": {
+   "fichier": "feutre-0-sel.png",
+   "couleur": "#FF6600",
+   "h": 37
+  },
+  "feutre-1": {
+   "fichier": "feutre-1.png",
+   "couleur": "#6666CC",
+   "h": 40
+  },
+  "feutre-1-sel": {
+   "fichier": "feutre-1-sel.png",
+   "couleur": "#6666CC",
+   "h": 37
+  },
+  "feutre-2": {
+   "fichier": "feutre-2.png",
+   "couleur": "#5EA523",
+   "h": 40
+  },
+  "feutre-2-sel": {
+   "fichier": "feutre-2-sel.png",
+   "couleur": "#5EA523",
+   "h": 37
+  },
+  "feutre-3": {
+   "fichier": "feutre-3.png",
+   "couleur": "#962761",
+   "h": 40
+  },
+  "feutre-3-sel": {
+   "fichier": "feutre-3-sel.png",
+   "couleur": "#962761",
+   "h": 37
+  },
+  "feutre-4": {
+   "fichier": "feutre-4.png",
+   "couleur": "#F986E2",
+   "h": 40
+  },
+  "feutre-4-sel": {
+   "fichier": "feutre-4-sel.png",
+   "couleur": "#F986E2",
+   "h": 37
+  },
+  "feutre-5": {
+   "fichier": "feutre-5.png",
+   "couleur": "#EBB601",
+   "h": 40
+  },
+  "feutre-5-sel": {
+   "fichier": "feutre-5-sel.png",
+   "couleur": "#EBB601",
+   "h": 37
+  },
+  "feutre-6": {
+   "fichier": "feutre-6.png",
+   "couleur": "#20D251",
+   "h": 40
+  },
+  "feutre-6-sel": {
+   "fichier": "feutre-6-sel.png",
+   "couleur": "#20D251",
+   "h": 37
+  },
+  "feutre-7": {
+   "fichier": "feutre-7.png",
+   "couleur": "#47B9C9",
+   "h": 40
+  },
+  "feutre-7-sel": {
+   "fichier": "feutre-7-sel.png",
+   "couleur": "#47B9C9",
+   "h": 37
+  },
+  "feutre-8": {
+   "fichier": "feutre-8.png",
+   "couleur": "#472899",
+   "h": 40
+  },
+  "feutre-8-sel": {
+   "fichier": "feutre-8-sel.png",
+   "couleur": "#472899",
+   "h": 37
+  },
+  "feutre-9": {
+   "fichier": "feutre-9.png",
+   "couleur": "#A0752E",
+   "h": 40
+  },
+  "feutre-9-sel": {
+   "fichier": "feutre-9-sel.png",
+   "couleur": "#A0752E",
+   "h": 37
+  },
+  "feutre-10": {
+   "fichier": "feutre-10.png",
+   "couleur": "#66451E",
+   "h": 40
+  },
+  "feutre-10-sel": {
+   "fichier": "feutre-10-sel.png",
+   "couleur": "#66451E",
+   "h": 37
+  },
+  "feutre-11": {
+   "fichier": "feutre-11.png",
+   "couleur": "#729236",
+   "h": 40
+  },
+  "feutre-11-sel": {
+   "fichier": "feutre-11-sel.png",
+   "couleur": "#729236",
+   "h": 37
+  },
+  "feutre-12": {
+   "fichier": "feutre-12.png",
+   "couleur": "#408877",
+   "h": 40
+  },
+  "feutre-12-sel": {
+   "fichier": "feutre-12-sel.png",
+   "couleur": "#408877",
+   "h": 37
+  },
+  "feutre-13": {
+   "fichier": "feutre-13.png",
+   "couleur": "#5B944B",
+   "h": 40
+  },
+  "feutre-13-sel": {
+   "fichier": "feutre-13-sel.png",
+   "couleur": "#5B944B",
+   "h": 37
+  },
+  "feutre-14": {
+   "fichier": "feutre-14.png",
+   "couleur": "#264859",
+   "h": 40
+  },
+  "feutre-14-sel": {
+   "fichier": "feutre-14-sel.png",
+   "couleur": "#264859",
+   "h": 37
+  },
+  "feutre-15": {
+   "fichier": "feutre-15.png",
+   "couleur": "#C8400D",
+   "h": 40
+  },
+  "feutre-15-sel": {
+   "fichier": "feutre-15-sel.png",
+   "couleur": "#C8400D",
+   "h": 37
+  },
+  "feutre-16": {
+   "fichier": "feutre-16.png",
+   "couleur": "#6E3C8D",
+   "h": 40
+  },
+  "feutre-16-sel": {
+   "fichier": "feutre-16-sel.png",
+   "couleur": "#6E3C8D",
+   "h": 37
+  }
+ },
  "fruits": {
   "cadre": {
    "x": 1.35,
@@ -286,6 +465,33 @@
    "y": 0,
    "w": 150,
    "h": 45
+  }
+ },
+ "user-list-boite": {
+  "fichier": "user-list-boite.svg",
+  "cadre": {
+   "x": 0,
+   "y": 22,
+   "w": 122,
+   "h": 119
+  }
+ },
+ "user-list-pilule": {
+  "fichier": "user-list-pilule.svg",
+  "cadre": {
+   "x": 0,
+   "y": 0,
+   "w": 122,
+   "h": 20
+  }
+ },
+ "user-slot": {
+  "fichier": "user-slot.svg",
+  "cadre": {
+   "x": 0,
+   "y": 0,
+   "w": 120,
+   "h": 18
   }
  },
  "frutimandalaRoue": {

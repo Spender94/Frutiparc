@@ -969,23 +969,127 @@ bouilles s'ouvre, la colonne des icônes passe en RANGÉE — `min.h` devient
 `lefIconListHMaxLarge` = 28. Le relevé le montre bien : les quatre gélules se
 rangent côte à côte au-dessus des panneaux.
 
+### LA CHARPENTE EN TROIS COLONNES (relevé 1:1, au pixel)
+
+Les deux panneaux latéraux sont des MARGES de la fenêtre — ils descendent sur
+toute la hauteur du corps. Les feutres et la ligne de saisie, eux, sont dans
+`main`, la colonne du MILIEU : ils s'arrêtent donc au bord du fil. Le relevé
+le prouve — la saisie va de 443 à 604 quand la boîte des connectés occupe
+déjà 557..678 sur la même ligne.
+
+Sur une fenêtre de 276×253 (le gabarit d'époque), les trois colonnes tombent
+sur :
+
+    bouilles 417..516 (100)   fil 523..550 (28)   connectés 557..678 (122)
+
+soit `100 + 6 + 28 + 6 + 122 = 262` — la largeur utile exactement. **L'écart
+entre colonnes est de 6 px** : deux pour le contour de gauche, deux pour celui
+de droite, deux de blanc au milieu. (En CSS il faut le porter par les MARGES
+des panneaux et non par un `column-gap` : une colonne fermée ne doit rien
+coûter.)
+
+### La zone des bouilles : une PILE d'écrans
+
+`cp.ScreenList` n'a pas de fond à elle : elle empile des `cp.FrutiScreen`,
+**le même objet que la bouille de la main bar** — un par personne du salon,
+**100×100**, alignés en haut de la marge gauche. Elle ne remplit pas la
+colonne, elle s'empile. D'où le cadre, qu'on n'a plus à mesurer puisqu'on le
+CALCULE : liseré extérieur 2 px `white.shade` `#DDDDDD`, anneau intérieur
+1 px `white.darker` `#888888`, rayon 6.
+
+Le fond, lui, ne vient pas du SWF du bureau mais de la BOUILLE : c'est un
+**dégradé radial**, relevé au pixel — `#D6F7B5` jusqu'à 49 px du centre,
+`#C5F297` de 51 à 60, `#A2E866` au-delà de 64. Rapporté au rayon du coin
+(70,7 sur un carré de 100) : 69 %, 74–85 %, 91 %. Les trois teintes se lisent
+aussi bien sur la colonne x 419 que sur la ligne y 318 — la seule distance au
+centre les explique, c'est bien un cercle.
+
+J'avais d'abord peint la zone comme le compo vert du fil (celui-là a son
+dégradé et son liseré `#ADE76B`) : c'était le mauvais fond. La règle est
+celle des écrans, pas celle des compos.
+
+### LA LISTE DES CONTACTS : trois pièces du SWF, pas du CSS
+
+`cp.UserList` ne dessine rien non plus. Elle attache `userListBackground`
+(clip **#352**) et, par ligne, `userSlot` (clip **#261**) — la liste du
+salon n'a NI titre NI onglets, deux ajouts du light qui sautent sur le
+bureau (dont « Tout le site », qui n'a jamais existé d'époque).
+
+Le clip #352 tient trois pièces qu'on sort séparément, chacune **sur son
+propre cadre** (d'où l'option `cadrePropre` de l'extracteur : sans elle,
+toutes les pièces sortent sur le cadre de l'ensemble et se retrouvent
+noyées de vide) :
+
+| pièce | profondeurs | taille | rôle |
+|---|---|---|---|
+| `user-list-boite` | tout sauf 11 et 19 | 122×119 | la boîte, posée en `border-image … 10 fill / 10px` |
+| `user-list-pilule` | 11 | 122×20 | la gélule de défilement, en haut ET en bas |
+| `user-slot` (#261) | — | 120×18 | la bande d'une ligne |
+
+La boîte est faite de trois morceaux : un chapeau arrondi de 10 px, un corps
+droit de 100, un pied qui est le chapeau retourné — d'où la découpe à **10**
+et non 14. Le relevé 1:1 confirme : boîte x 557..678 (`#DDDDDD` en 557,
+`#C0F18D` en 558, `#E8F8D1` au-dedans), **première bande 10 px sous le bord**,
+gélules de 20 px à 4 px de la boîte.
+
+Et la bande d'une personne va d'un bord à l'autre : **557..676**, soit 120 px
+— elle RECOUVRE à gauche l'anneau gris et le liseré vert, à droite elle
+s'arrête juste avant. Le pseudo y est CENTRÉ (« temoinchat5 » sur 71 px dans
+une bande de 120, à 2 px du milieu), en Verdana gras 10, encre `#22224A`.
+
 ### LES FEUTRES, au pixel
 
-Un feutre, c'est un capuchon gris, un corps de couleur et une pointe blanche —
-**5 px de large, 31 de haut, au pas de 12**. En coupe verticale :
-`#E1E1E1` sur 3, `#C4C4C4` sur 1, `#6F6F6F` sur 1, le corps sur 22, `#6F6F6F`
-sur 1, blanc sur 2, `#E1E1E1` sur 1.
+`penGFX` (#600) **n'est pas un dessin vectoriel** : c'est le BITMAP **#595**,
+une planche de 9×57 en NIVEAUX DE GRIS dont `cp.PenList.display` (0x8212c)
+teinte une copie par feutre. Le noir de la planche est le VIDE, pas une
+couleur.
 
-Le corps est peint sur CINQ colonnes, et le SWF les tire de la couleur
-nominale par une transformation ADDITIVE — vérifié sur deux feutres de teintes
-très différentes, les écarts sont identiques :
+La planche tient DEUX dessins, et le feutre affiché les EMPILE :
 
-    colonne 1 = base − 59    colonne 2 = base (la couleur nominale)
-    colonne 3 = base − 30    colonne 4 = base − 95    colonne 5 = base − 131
+- **lignes 1..14, colonnes 1..7** : le CAPUCHON, plus large ;
+- **lignes 30..55, colonnes 2..6** : le CORPS, l'anneau et la pointe.
 
-chaque canal borné à 0. (`cp.PenList.display`, 0x8212c, attache un `penGFX`
-par feutre et le teinte ; les feutres qu'on ne POSSÈDE pas sont grisés à
-`#DDDDDD`, 0x821b1.)
+Sept px de large, **quarante de haut**. Le relevé de la colonne nominale
+(x = 530 sur le feutre orange) donne `a0 d2 e1 ff×6 e1×3 c4 6f | corps×22 |
+6f ff ff e1` : exactement les lignes 1..14 puis 30..55 bout à bout. Les
+lignes 19..29 — une mine et une virole plus étroite — ne servent pas là.
+
+`display` dit la pose, et elle tombe juste :
+
+    _x = 2 + i × 12      _y = 4
+
+soit le **PAS DE 12** qu'on avait mesuré, et 4 px de blanc en haut. Le compo
+fait 48 de haut (`displayPenList`, min 120×48) : 4 + 40 + 4. Le premier
+capuchon tombe en x 528 quand la colonne du milieu commence en 523. Et le SWF
+ne fait pas passer la rangée à la ligne : au-delà de la largeur, les derniers
+feutres sont simplement COUPÉS — le relevé montre le quatorzième amputé de
+deux colonnes et les trois derniers absents.
+
+La teinture est la transformation ADDITIVE de Flash :
+
+    résultat = couleur + (gris − 255),  borné à 0
+
+Vérifié sur le rendu : le corps d'un feutre orange `#FF6600` sort en
+`#C42B00#FF6600#E14800#A00700#7C0000`, et les cinq colonnes du bitmap
+valent 196, 255, 225, 160, 124 — soit exactement 255−59, 255, 255−30,
+255−95, 255−131. C'est ce que j'avais lu comme « cinq écarts additifs » :
+ce sont les cinq colonnes de la planche.
+
+Et la teinture ne prend QUE le corps — **les lignes 30..51**, le clip `col`
+que `FEMC.setColor(pen.gfx.col, penList[i], 2)` vise. Le relevé au pixel
+montre un capuchon et une pointe GRIS quelle que soit la couleur du feutre ;
+les trois premiers feutres du rendu ont rigoureusement le même capuchon. Les
+teinter entièrement était un contresens. (Les feutres qu'on ne POSSÈDE pas
+sont peints d'un `#DDDDDD` PLAT : `setPColor(pen, 0xDDDDDD, 0)`, 0x821b1,
+là où les autres reçoivent `setPColor(pen, 0xFFFFFF, 100)`, l'identité.)
+
+**Le feutre CHOISI est décapuchonné.** `selectPen` (0x821f4) envoie son `gfx`
+à la **frame 5** et rend le précédent à la frame 1 ; recliquer le feutre
+courant remet `current` à `undefined` — c'est comme cela qu'on se déchoisit,
+il n'y a pas de bouton « aucun feutre » d'époque. La frame 5, ce sont les
+lignes 19..55 de la planche : le feutre sans son capuchon, mine dehors.
+Trois lignes de MOINS que le feutre coiffé — posé au même `_y`, il finit donc
+3 px plus haut que ses voisins, et c'est toute la marque de la sélection.
 
 Les dix-sept couleurs, relevées sur la colonne 2 de chaque feutre :
 
@@ -994,7 +1098,8 @@ Les dix-sept couleurs, relevées sur la colonne 2 de chaque feutre :
    12 #408877  13 #5B944B  14 #264859  15 #C8400D  16 #6E3C8D
 
 Le light en avait des approximations « ISO » assez loin du compte —
-l'orange était `#E8732A` là où le SWF met `#FF6600`. Elles sont corrigées.
+l'orange était `#E8732A` là où le SWF met `#FF6600`. Elles sont corrigées,
+et les dix-sept `feutre-N.png` sont tirés du bitmap, pas dessinés.
 
 ### Ce que le light en fait, et les écarts assumés
 
@@ -1013,13 +1118,36 @@ et un quatrième bouton est ajouté pour l'avertissement. Trois écarts :
   jamais, mais le clic la traverse quand même. HTML ne sait pas faire ça — un
   élément transparent, lui, reçoit les clics : elle reste donc là, invisible,
   et s'allume quand la souris arrive dessus.
+- **Le titre de la liste et l'onglet « Tout le site » sautent** sur le
+  bureau : ni l'un ni l'autre n'existe d'époque — `cp.UserList` n'affiche
+  que les lignes. Le mobile, lui, les garde tous les deux. Restent les deux
+  pastilles « toi » et « staff », qui disent quelque chose que le revival ne
+  dit nulle part ailleurs : elles restent, mises à l'échelle de la bande et
+  dans la palette verte.
+- **La pastille « aucun feutre » saute aussi.** Elle décalerait toute la
+  rangée d'un pas, et le SWF a mieux : on se déchoisit en RECLIQUANT son
+  feutre (`selectPen` remet `current` à `undefined`). C'est ce que fait le
+  bureau ; le mobile garde sa croix.
 - **Le bouton des bouilles devient un vrai bascule de panneau** sur le
   bureau. Le light s'en servait pour une préférence (afficher ou non la
   bouille de qui vient de parler, en surimpression du fil) ; d'époque il
   ouvre un panneau qui reste. Le clic est donc intercepté avant d'atteindre
   le bouton et ouvre le panneau — le mobile garde sa préférence.
-  Reste un écart : le SWF y met la bouille de CHAQUE membre du salon, le
-  light celle de qui vient de parler. Il n'en sait rendre qu'une.
+  La colonne montre bien, désormais, la bouille de CHAQUE membre du salon.
+  Deux écarts subsistent, tous deux de moyens :
+  - les écrans sont des IMAGES (le cache PNG partagé du site, celui du
+    Bouilloscope et du trombinoscope) et non un lecteur Flash par personne :
+    un salon plein ne coûte alors que des images déjà en cache ;
+  - le fond dégradé de l'écran est repeint en CSS d'après le relevé, parce
+    que la capture du cache est prise sur un vert PLAT (`#E8F8D3`, le fond
+    des cartes du forum) — on la détoure et on remet le dégradé dessous.
+  Quand quelqu'un fait une émotion, le seul lecteur du light déménage DANS
+  son écran le temps de l'animation, puis s'éteint : c'est exactement là que
+  le SWF la joue.
+- **Le feutre multicolore n'a pas de teinte dans la planche** — c'est un
+  article du revival. On lui prête la SILHOUETTE du feutre (le PNG sert de
+  masque) et on la remplit d'un arc-en-ciel puisé dans les dix-sept teintes.
+  C'est le seul feutre dessiné et non extrait.
 
 ## Reste à faire (étapes suivantes)
 

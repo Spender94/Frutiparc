@@ -369,6 +369,75 @@ function principal() {
     }
   }
 
+  // ── Un lecteur et un écrivain PNG minimaux ──────────────────────────────
+  // Juste ce qu'il faut pour reprendre une planche sortie par
+  // extract-swf-bitmaps.js et en réécrire des découpes teintées : ces PNG-là
+  // sont toujours en RGBA 8 bits, non entrelacés, filtre « None » sur chaque
+  // ligne — la lecture se réduit donc à décompresser et sauter un octet par
+  // ligne. (Le dépôt n'embarque pas de bibliothèque PNG, et ce n'est pas la
+  // peine d'en ajouter une pour ça.)
+  function lirePngSimple(buf) {
+    let o = 8, w = 0, h = 0, canaux = 4;
+    const morceaux = [];
+    while (o + 8 <= buf.length) {
+      const len = buf.readUInt32BE(o);
+      const type = buf.toString('ascii', o + 4, o + 8);
+      const corps = buf.slice(o + 8, o + 8 + len);
+      if (type === 'IHDR') {
+        w = corps.readUInt32BE(0); h = corps.readUInt32BE(4);
+        if (corps[8] !== 8) throw new Error('PNG : 8 bits par canal attendus');
+        if (corps[12] !== 0) throw new Error('PNG : entrelacement non géré');
+        canaux = corps[9] === 0 ? 1 : corps[9] === 6 ? 4 : 0;
+        if (!canaux) throw new Error('PNG : type de couleur non géré (' + corps[9] + ')');
+      } else if (type === 'IDAT') morceaux.push(corps);
+      else if (type === 'IEND') break;
+      o += 12 + len;
+    }
+    const brut = require('zlib').inflateSync(Buffer.concat(morceaux));
+    const parLigne = w * canaux;
+    const data = Buffer.alloc(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      const filtre = brut[y * (parLigne + 1)];
+      if (filtre !== 0) throw new Error('PNG : filtre ' + filtre + ' non géré');
+      for (let x = 0; x < w; x++) {
+        const si = y * (parLigne + 1) + 1 + x * canaux, di = (y * w + x) * 4;
+        if (canaux === 1) { data[di] = data[di + 1] = data[di + 2] = brut[si]; data[di + 3] = 255; }
+        else for (let k = 0; k < 4; k++) data[di + k] = brut[si + k];
+      }
+    }
+    return { w, h, data };
+  }
+  function encoderPng(w, h, pixels) {
+    const zlib = require('zlib');
+    const TABLE = (() => {
+      const t = new Int32Array(256);
+      for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c; }
+      return t;
+    })();
+    const crc32 = (b2) => { let c = -1; for (let i = 0; i < b2.length; i++) c = TABLE[(c ^ b2[i]) & 0xff] ^ (c >>> 8); return (c ^ -1) >>> 0; };
+    const bloc = (type, data) => {
+      const len = Buffer.alloc(4); len.writeUInt32BE(data.length, 0);
+      const corps = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+      const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(corps), 0);
+      return Buffer.concat([len, corps, crc]);
+    };
+    const parLigne = w * 4;
+    const brut = Buffer.alloc((parLigne + 1) * h);
+    for (let y = 0; y < h; y++) {
+      brut[y * (parLigne + 1)] = 0;
+      pixels.copy(brut, y * (parLigne + 1) + 1, y * parLigne, (y + 1) * parLigne);
+    }
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
+    ihdr[8] = 8; ihdr[9] = 6;
+    return Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      bloc('IHDR', ihdr),
+      bloc('IDAT', zlib.deflateSync(brut, { level: 9 })),
+      bloc('IEND', Buffer.alloc(0)),
+    ]);
+  }
+
   // ── Les quatre boutons de la colonne gauche du SALON ────────────────────
   // `win.Chat.genLeftIconList` (0x691da) déclare quatre `butPush` dont le
   // `param` est `{link: 'butPushSmallPink', frame: N, outline: 2, curve: 4}`.
@@ -402,6 +471,103 @@ function principal() {
         manifeste.chatBoutons[b.cle] = { fichier: b.cle + '.svg', icone: b.icone };
         console.log(b.cle + '.svg (icône #' + b.icone + ')');
       }
+    }
+  }
+
+  // ── LES DIX-SEPT FEUTRES du salon ───────────────────────────────────────
+  // `penGFX` (#600) n'est pas un dessin vectoriel : c'est le BITMAP #595, une
+  // planche de 9×57 en NIVEAUX DE GRIS, dont `cp.PenList.display` (0x8212c)
+  // teinte une copie par feutre. La teinture est une transformation ADDITIVE
+  // de Flash : `résultat = couleur + (gris − 255)`, borné à 0. On le vérifie
+  // sur le rendu : le corps d'un feutre orange (#FF6600) sort en
+  // #C42B00 #FF6600 #E14800 #A00700 #7C0000, et les cinq colonnes du bitmap
+  // valent 196, 255, 225, 160, 124 — soit exactement 255 − 59, 255, 255 − 30,
+  // 255 − 95, 255 − 131.
+  //
+  // La planche tient DEUX dessins, et le feutre affiché les EMPILE :
+  //   • lignes 1..14, sur 7 colonnes (x1..7) : le CAPUCHON, plus large ;
+  //   • lignes 30..55, sur 5 colonnes (x2..6) : le CORPS, l'anneau et la
+  //     pointe.
+  // Relevé de la colonne nominale sur le rendu Ruffle (x=530, feutre orange) :
+  //   a0 d2 e1 ff×6 e1×3 c4 6f | corps×22 | 6f ff ff e1
+  // soit exactement lignes 1..14 puis 30..55 bout à bout — 40 lignes en tout,
+  // au PAS DE 12. (Les lignes 19..29 de la planche, une mine et un second
+  // capuchon plus étroit, ne servent pas ici.)
+  //
+  // Plutôt que de redessiner des gélules, on sort donc le feutre du bitmap et
+  // on écrit les dix-sept teintes. Les couleurs sont celles relevées au pixel
+  // sur le rendu Ruffle (cf. PLAN.md).
+  const FEUTRES = [
+    '#FF6600', '#6666CC', '#5EA523', '#962761', '#F986E2', '#EBB601',
+    '#20D251', '#47B9C9', '#472899', '#A0752E', '#66451E', '#729236',
+    '#408877', '#5B944B', '#264859', '#C8400D', '#6E3C8D',
+  ];
+  {
+    const dossier = fs.mkdtempSync(path.join(require('os').tmpdir(), 'frutiz-bmp-'));
+    execFileSync(process.execPath,
+      [path.join(__dirname, 'extract-swf-bitmaps.js'), SWF, dossier, '595'], { stdio: 'pipe' });
+    const src = path.join(dossier, 'bitmap595.png');
+    if (!fs.existsSync(src)) console.warn('!! bitmap 595 absent');
+    else {
+      const planche = lirePngSimple(fs.readFileSync(src));
+      // Le feutre affiché = capuchon (lignes 1..14, colonnes 1..7) EMPILÉ sur
+      // le corps (lignes 30..55, colonnes 2..6). Sept colonnes de large,
+      // quarante lignes de haut ; le corps est centré, d'où son décalage de 1.
+      // Et la teinture ne prend QUE le corps (lignes 30..51 de la planche) :
+      // le relevé au pixel donne un capuchon et une pointe GRIS quelle que
+      // soit la couleur du feutre — les trois premiers feutres du rendu ont
+      // rigoureusement le même capuchon.
+      // Et le feutre CHOISI n'est pas le même dessin : `selectPen` (0x821f4)
+      // envoie son `gfx` à la frame 5 et rend l'autre à la frame 1. La frame 5,
+      // ce sont les lignes 19..55 de la planche — le feutre DÉCAPUCHONNÉ, sa
+      // mine dehors. Trois lignes de moins que le feutre coiffé : posés au même
+      // `_y`, le feutre choisi se retrouve 3 px plus haut. C'est là toute la
+      // marque de la sélection.
+      const L = 7;
+      const COIFFE = [
+        { y0: 1, y1: 14, x0: 1, teint: false },            // le capuchon
+        { y0: 30, y1: 51, x0: 2, teint: true },            // le CORPS, teinté
+        { y0: 52, y1: 55, x0: 2, teint: false },           // anneau + pointe
+      ];
+      const NUE = [
+        { y0: 19, y1: 29, x0: 2, teint: false },           // mine + virole
+        { y0: 30, y1: 51, x0: 2, teint: true },            // le CORPS, teinté
+        { y0: 52, y1: 55, x0: 2, teint: false },           // anneau + pointe
+      ];
+      const composer = (bandes, base) => {
+        const h = bandes.reduce((n, b) => n + (b.y1 - b.y0 + 1), 0);
+        const pix = Buffer.alloc(L * h * 4);
+        let ligne = 0;
+        for (const b of bandes) for (let sy = b.y0; sy <= b.y1; sy++, ligne++) {
+          // Le capuchon tient sur 7 colonnes, le corps sur 5 — centré, d'où
+          // son décalage de 1.
+          const large = b.x0 === 1, dx = large ? 0 : 1;
+          for (let x = b.x0; x <= b.x0 + (large ? 6 : 4); x++) {
+            const si = (sy * planche.w + x) * 4;
+            const di = (ligne * L + (x - b.x0 + dx)) * 4;
+            const gris = planche.data[si];
+            // Le noir de la planche est le VIDE (rien n'y est dessiné).
+            const vide = gris === 0 && planche.data[si + 1] === 0 && planche.data[si + 2] === 0;
+            for (let k = 0; k < 3; k++) {
+              pix[di + k] = b.teint ? Math.max(0, Math.min(255, base[k] + gris - 255)) : gris;
+            }
+            pix[di + 3] = vide ? 0 : 255;
+          }
+        }
+        return { pix, h };
+      };
+      manifeste.feutres = { cadre: { x: 0, y: 0, w: L, h: 40 },
+        notes: 'bitmap #595 (9×57, niveaux de gris). Coiffé : lignes 1..14 (capuchon, x1..7) empilées sur 30..55 (corps, x2..6), 7×40. Décapuchonné (feutre choisi, frame 5) : lignes 19..55, 7×37 — posé au même haut, il finit 3 px plus haut. Le corps seul est teinté : résultat = couleur + (gris − 255)' };
+      FEUTRES.forEach((teinte, i) => {
+        const base = [parseInt(teinte.slice(1, 3), 16), parseInt(teinte.slice(3, 5), 16), parseInt(teinte.slice(5, 7), 16)];
+        for (const [suffixe, bandes] of [['', COIFFE], ['-sel', NUE]]) {
+          const { pix, h } = composer(bandes, base);
+          const nom = 'feutre-' + i + suffixe + '.png';
+          fs.writeFileSync(path.join(SORTIE, nom), encoderPng(L, h, pix));
+          manifeste.feutres['feutre-' + i + suffixe] = { fichier: nom, couleur: teinte, h };
+        }
+      });
+      console.log('feutre-0..16(-sel).png (7×40 coiffé, 7×37 décapuchonné, bitmap #595)');
     }
   }
 
@@ -524,6 +690,18 @@ function principal() {
     // clip entier, donc dans le repère de la plaque : elle se pose telle
     // quelle sur l'encart.
     { cle: 'encart-reflet', id: 417, profondeurs: (p) => p === 7 },
+    // LA LISTE DES CONNECTÉS du salon. `cp.UserList` attache `userListBackground`
+    // (#352) — le cadre vert de la liste, monté de sprites : le corps #343, les
+    // deux bouts #341 (le second retourné), les filets #349 et le fond #351 —
+    // et un `userSlot` (#261) par personne, la ligne au pseudo.
+    // On la sort en TROIS pièces, parce qu'elles ne s'étirent pas ensemble :
+    // la gélule rose (profondeur 11, la même en haut et en bas), la BOÎTE de
+    // la liste (le reste), et la ligne d'une personne. La boîte est faite d'un
+    // chapeau, d'un corps étirable et d'un pied — un border-image la reprend
+    // sans déformer ses coins.
+    { cle: 'user-list-boite', id: 352, profondeurs: (p) => p !== 11 && p !== 19, cadrePropre: true },
+    { cle: 'user-list-pilule', id: 352, profondeurs: (p) => p === 11, cadrePropre: true },
+    { cle: 'user-slot', id: 261, cadrePropre: true },
   ];
   for (const c of CLIPS) {
     // On relit ses placements à l'octet plutôt que d'appeler aplatir() : le
@@ -554,7 +732,10 @@ function principal() {
     const garde = c.profondeurs ? morceaux.filter((m) => c.profondeurs(m._prof)) : morceaux;
     const r = svgCompose(garde);
     if (!r || !cadreEntier) { console.warn('!! clip vide', c.cle); continue; }
-    const k = cadreEntier.cadre;
+    // `cadrePropre` : la pièce sort sur SON cadre à elle, et non sur celui du
+    // clip entier. C'est ce qu'il faut quand la pièce sera ÉTIRÉE toute seule
+    // (un fond en border-image, une gélule) plutôt que superposée aux autres.
+    const k = c.cadrePropre ? r.cadre : cadreEntier.cadre;
     const svg = r.svg.replace(/viewBox="[^"]*" width="[^"]*" height="[^"]*"/,
       `viewBox="${arr(k.x)} ${arr(k.y)} ${arr(k.w)} ${arr(k.h)}" width="${arr(k.w)}" height="${arr(k.h)}"`);
     fs.writeFileSync(path.join(SORTIE, c.cle + '.svg'), svg, 'utf8');

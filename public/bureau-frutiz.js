@@ -412,7 +412,68 @@ window.BureauFrutiz = (function () {
       if (!p) return;
       var ouvert = p.classList.toggle('bouilles-ouvertes');
       if (t) t.classList.toggle('en-rangee', ouvert);
+      if (ouvert) majBouilles();
     }, true);
+  }
+
+  // ── LA COLONNE DES BOUILLES (`cp.ScreenList`) ─────────────────────────────
+  // D'époque, ce panneau n'est pas une surimpression : c'est une PILE d'écrans
+  // de 100×100 (`cp.FrutiScreen`), un par personne du salon, dans l'ordre de
+  // la liste des connectés. Le light, lui, s'en servait pour montrer la bouille
+  // de qui venait de parler, en gros, par-dessus le fil.
+  //
+  // On rend donc la colonne d'époque, et on la remplit d'IMAGES — le cache PNG
+  // partagé du site (`FPBouilleThumb`, le même que le Bouilloscope et le
+  // trombinoscope) — plutôt que d'un lecteur Flash par personne : un salon
+  // plein ne coûte alors que des images déjà en cache. Le lecteur, il n'y en a
+  // qu'UN, et il ne s'allume que le temps d'une émotion (cf. `ecranDe`).
+  function ecranDe(pseudo) {
+    var col = $('#bouille-overlay');
+    var p = $('#chat-panel');
+    if (!col || !p || !p.classList.contains('bouilles-ouvertes')) return null;
+    return col.querySelector('.bo-ecran[data-qui="' + cleCss(String(pseudo).toLowerCase()) + '"]');
+  }
+  // `CSS.escape` n'est pas partout ; un pseudo n'a de toute façon que des
+  // lettres, des chiffres, `_` et `-`, on s'en tient là.
+  function cleCss(s) { return s.replace(/["\\\]]/g, ''); }
+
+  function majBouilles() {
+    var col = $('#bouille-overlay');
+    var p = $('#chat-panel');
+    if (!col || !p || !p.classList.contains('bouilles-ouvertes')) return;
+    var S = window.SalonsBureau;
+    var gens = (S && S.membres) ? S.membres() : [];
+    var vus = {};
+    gens.forEach(function (g) {
+      var cle = String(g.pseudo).toLowerCase();
+      vus[cle] = true;
+      var ecran = col.querySelector('.bo-ecran[data-qui="' + cleCss(cle) + '"]');
+      if (!ecran) {
+        ecran = document.createElement('div');
+        ecran.className = 'bo-ecran';
+        ecran.setAttribute('data-qui', cle);
+        col.appendChild(ecran);
+      }
+      ecran.title = g.pseudo;
+      // On ne refait la vignette que si la bouille a changé : sinon elle
+      // clignoterait à chaque relevé des connectés.
+      if (ecran.getAttribute('data-bouille') !== g.bouille) {
+        ecran.setAttribute('data-bouille', g.bouille);
+        var vieux = ecran.querySelector('img');
+        if (vieux) vieux.remove();
+        // `detourer` retire le vert plat sur lequel la capture est peinte
+        // (#E8F8D3, le fond des cartes du forum) : ici c'est le DÉGRADÉ de
+        // l'écran qui doit se voir derrière la bouille, pas un carré pâle.
+        if (window.FPBouilleThumb) {
+          ecran.insertAdjacentHTML('afterbegin', FPBouilleThumb.imgHtml(g.bouille, 0, { detourer: true }));
+        }
+      }
+    });
+    // Qui a quitté le salon perd son écran — sauf s'il est en train de jouer
+    // une émotion : la scène du light y est logée, on ne l'arrache pas.
+    Array.prototype.slice.call(col.querySelectorAll('.bo-ecran')).forEach(function (e) {
+      if (!vus[e.getAttribute('data-qui')] && !e.querySelector('#bouille-overlay-stage')) e.remove();
+    });
   }
 
   var boutonWarning = null;
@@ -877,6 +938,10 @@ window.BureauFrutiz = (function () {
     // Rappelé par renderRoomOptions : l'affluence des salons bouge, la
     // fenêtre la suit — et la fenêtre du salon se retitre au changement.
     majSalons: function () { majSalons(); majTitreSalon(); },
+    // Rappelés par le light : la colonne des bouilles suit la liste des
+    // connectés, et une émotion joue dans l'écran de la personne.
+    majBouilles: majBouilles,
+    ecranDe: ecranDe,
     actif: function () { return actif; },
   };
 })();

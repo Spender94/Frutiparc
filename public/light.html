@@ -2802,6 +2802,18 @@
         return c ? 'Discussion privée avec ' + c.avec : roomLabel(state.room);
       },
       rejoindre: function (id) { switchRoom(id); },
+      // Les membres du salon avec leur bouille — de quoi remplir la colonne
+      // d'écrans du bureau (`cp.ScreenList`), qui en montre UN par personne.
+      membres: function () {
+        var set = state.usersByRoom[state.room] || {};
+        return membresDuSalon().map(function (n) {
+          return {
+            pseudo: n,
+            bouille: state.bouilleByUser[n.toLowerCase()] || DEFAULT_BOUILLE,
+            staff: !!(set[n] && set[n].staff),
+          };
+        });
+      },
     };
     if (isDesktop() && window.BureauFrutiz) BureauFrutiz.demarrer();
     activateTab("chat");
@@ -6158,22 +6170,30 @@
     return u;
   }
 
-  function renderUsers() {
+  // Le staff du salon d'abord (m="1"), puis l'alphabet — le tri du bureau
+  // (UserListMng : flMode en tête). Le bureau Frutiz s'en sert aussi pour
+  // remplir sa colonne de bouilles, d'où la fonction à part.
+  function membresDuSalon() {
     var set = state.usersByRoom[state.room] || {};
-    // Le staff du salon d'abord (m="1"), puis l'alphabet — le tri du bureau
-    // (UserListMng : flMode en tête).
-    var names = Object.keys(set).sort(function (a, b) {
+    return Object.keys(set).sort(function (a, b) {
       var sa = set[a] && set[a].staff ? 0 : 1;
       var sb = set[b] && set[b].staff ? 0 : 1;
       if (sa !== sb) return sa - sb;
       return a.toLowerCase().localeCompare(b.toLowerCase());
     });
+  }
+  function renderUsers() {
+    var set = state.usersByRoom[state.room] || {};
+    var names = membresDuSalon();
     // Keep the selector's "(n)" for the current room fresh between polls.
     if (state.room) {
       var prev = state.roomCounts[state.room];
       state.roomCounts[state.room] = names.length;
       if (prev !== names.length) renderRoomOptions();
     }
+    // Le bureau Frutiz montre une bouille par membre : sa colonne suit la même
+    // liste que celle-ci, elle se refait donc au même moment.
+    if (window.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif() && BureauFrutiz.majBouilles) BureauFrutiz.majBouilles();
     if (drawerVue !== "salon") return;   // la vue « site » a son propre rendu
     var list = $("#users-list");
     list.innerHTML = "";
@@ -6439,19 +6459,6 @@
 
   // Build the feutre swatch row once (a "none" chip + the 17 colours). Tapping a
   // swatch sets state.pen and tints the composer text so the choice is obvious.
-  // Les cinq colonnes du corps d'un feutre, à partir de sa couleur nominale.
-  function corpsDeFeutre(hex) {
-    var n = parseInt(hex.slice(1), 16);
-    var r = (n >> 16) & 255, v = (n >> 8) & 255, b = n & 255;
-    function moins(d) {
-      var c = [Math.max(0, r - d), Math.max(0, v - d), Math.max(0, b - d)];
-      return "#" + c.map(function (x) { return x.toString(16).padStart(2, "0"); }).join("");
-    }
-    var col = [moins(59), moins(0), moins(30), moins(95), moins(131)];
-    return "linear-gradient(to right,"
-      + col.map(function (c, i) { return c + " " + i + "px " + (i + 1) + "px"; }).join(",") + ")";
-  }
-
   function buildPenBar() {
     var bar = $("#pen-bar");
     if (!bar) return;
@@ -6463,16 +6470,22 @@
     FEUTRES.forEach(function (f) {
       var sw = el("div", "pen-swatch" + (String(state.pen) === String(f.i) ? " sel" : ""));
       sw.style.background = f.color; sw.title = f.name;
-      // Le bureau desktop dessine de VRAIS feutres, pas des pastilles : le
-      // corps d'un feutre est peint sur cinq colonnes, et le SWF les obtient
-      // par une transformation ADDITIVE de la couleur nominale (relevé sur
-      // deux feutres de teintes très différentes, les écarts sont les mêmes) :
-      //   colonne 1 = base − 59, 2 = base, 3 = base − 30, 4 = base − 95,
-      //   colonne 5 = base − 131, chaque canal borné à 0.
-      // On pose le dégradé en propriété : le mobile garde son aplat.
-      sw.style.setProperty("--feutre-corps", corpsDeFeutre(f.color));
+      // Le bureau desktop montre le VRAI feutre — le bitmap #595 de main.swf
+      // découpé et teinté (scripts/extract-frutiz-bureau.js). On pose les deux
+      // images en propriétés : le feutre coiffé et, pour celui qu'on a choisi,
+      // le feutre décapuchonné (la frame 5 du SWF). Le mobile, lui, garde sa
+      // pastille de couleur et ne lit ni l'une ni l'autre.
+      sw.style.setProperty("--feutre-image", "url(/frutiz/sprites/feutre-" + f.i + ".png)");
+      sw.style.setProperty("--feutre-image-sel", "url(/frutiz/sprites/feutre-" + f.i + "-sel.png)");
       sw.setAttribute("data-pen", f.i);
-      sw.addEventListener("click", function () { selectPen(String(f.i)); });
+      // Sur le bureau Frutiz, la pastille « aucun feutre » n'existe pas : on
+      // se déchoisit en recliquant le feutre choisi, comme `selectPen`
+      // (0x821f4) qui remet `current` à `undefined` quand on lui redonne
+      // l'index courant. Le mobile, lui, garde sa croix.
+      sw.addEventListener("click", function () {
+        var bureau = document.body.classList.contains("bureau-frutiz");
+        selectPen(bureau && String(state.pen) === String(f.i) ? "" : String(f.i));
+      });
       bar.appendChild(sw);
     });
     // Feutre multicolore (uniquement s'il est possédé) : pastille dédiée à dégradé.
@@ -6541,6 +6554,26 @@
   var OVERLAY_HOLD_MS = 4200;
   function showBouilleOverlay(pseudo, anim, labelOverride) {
     if (!state.bouillesEnabled) return; // "light" mode: no bouille animations
+    // Sur le bureau Frutiz, l'animation ne passe PAS en surimpression du fil :
+    // elle joue DANS l'écran de la personne, là où `cp.ScreenList` la joue
+    // d'époque. On y déménage la scène du light — le même lecteur, un seul —
+    // le temps de l'animation, puis on l'éteint et la bouille figée revient.
+    var ecran = document.body.classList.contains("bureau-frutiz")
+      && window.BureauFrutiz && BureauFrutiz.ecranDe && BureauFrutiz.ecranDe(pseudo);
+    if (ecran) {
+      var scene = $("#bouille-overlay-stage");
+      if (scene.parentNode !== ecran) ecran.appendChild(scene);
+      scene.classList.add("joue");
+      var f2 = overlayIframe();
+      f2.src = "about:blank";
+      setTimeout(function () { f2.src = overlayUrl(pseudo, anim); }, 20);
+      if (state.overlayTimer) clearTimeout(state.overlayTimer);
+      state.overlayTimer = setTimeout(function () {
+        scene.classList.remove("joue");
+        if (overlayFrame) overlayFrame.src = "about:blank";
+      }, OVERLAY_HOLD_MS);
+      return;
+    }
     var box = $("#bouille-overlay");
     if (!box) return;
     var name = $("#bouille-overlay-name");
