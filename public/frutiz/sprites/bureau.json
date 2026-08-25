@@ -130,5 +130,14 @@
    "w": 119,
    "h": 77.5
   }
+ },
+ "frutimandala": {
+  "fichier": "frutimandala.svg",
+  "cadre": {
+   "x": -6.3,
+   "y": -4.35,
+   "w": 200,
+   "h": 80
+  }
  }
 }

@@ -260,9 +260,15 @@ un cadre commun (sprites/fruit_*.svg) ; le light applique la même loi.
   Posé au relevé 1:1 : contour x 1258..1376 sur 1380 — **4 px du bord
   droit** — et y 0..77.5. Reste la mécanique (FDDrive 0x6d884 : la trappe
   `doorA`/`doorB` qui coulisse de x 36/61 à 11/…, le disque qui tourne).
-- **La frutimandala** (cpWheelMng) : l'éventail aux fruits x≈1050..1230,
-  qui dépasse la barre en haut ; boutons rose (flèches), « G » jaune, ↓↑
-  vert. À transcrire (composant dynamique).
+- **La frutimandala** (`cpWheelMng` #640) : son CHÂSSIS s'aplatit tel quel
+  (sprites/frutimandala.svg, 200×80 — le bâti gris, les deux triangles
+  rouges, le « G » jaune de rotation, le « ↓↑ » vert) et se pose au bout
+  droit de la barre (bord droit de la barre mesuré à x 1240 ; le bouton vert
+  finit à 1230). MAIS son plateau est GRIS dans le fichier (formes #610/
+  #611/#612, `#CCCCCC`/`#999999`) : le VERT et les quartiers de fruits du
+  rendu viennent du runtime — `Wheel` (#773) teinte le plateau et
+  `wheel.FruitMonth` (#777) y attache les fruits du mois. Le châssis seul
+  donnerait un cadran gris vide : il attend donc la roue, pas l'inverse.
 - **La pilule « N en ligne »** : elle ne flotte pas dans le coin — elle est
   POSÉE SUR le lecteur, en haut. Mesuré : x 1271..1369 (98 de large, soit
   11 px du bord droit), y 8..32 (24 de haut) ; fond `#526B3A`, point
@@ -321,8 +327,10 @@ dp_scrollBar 40, dp_element 100.
    Boutique, Mes contacts…) sur la session connectée.
 2. ~~L'INTÉRIEUR de la main bar au gabarit~~ FAIT (bouille 64, encart 45,
    smileys au pas de 21) ; restent les 3 `butPushVerySmallPink`
-   (halfHide/fullScreen, initSideIconList 0x6b786) et la frutimandala
-   (cpWheelMng). Le MEUBLE du lecteur frusion est posé (clip #324 extrait) ;
+   (halfHide/fullScreen, initSideIconList 0x6b786) et la ROUE de la
+   frutimandala — son châssis est extrait (#640), mais le cadran n'a de sens
+   qu'avec `Wheel`/`FruitMonth` (teinte + fruits du mois) : à porter
+   ensemble. Le MEUBLE du lecteur frusion est posé (clip #324 extrait) ;
    reste sa mécanique (FDDrive 0x6d884 : trappe, disque, éjection).
 3. Les icônes du bureau (fileIconStandard #11) et leur pose en colonnes
    (FPDesktop), le glisser-déposer des icônes.

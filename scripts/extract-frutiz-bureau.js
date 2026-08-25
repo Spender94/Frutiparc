@@ -408,7 +408,7 @@ function principal() {
   // Tout n'est pas un conteneur vide : le lecteur `frusion` (#324) pose bien
   // ses dessins sur sa première image (la cuve, les trois fruits, les deux
   // boutons ronds). On l'aplatit par la bibliothèque commune, à l'identique.
-  const CLIPS = [{ cle: 'frusion', id: 324 }];
+  const CLIPS = [{ cle: 'frusion', id: 324 }, { cle: 'frutimandala', id: 640 }];
   for (const c of CLIPS) {
     // On relit ses placements à l'octet plutôt que d'appeler aplatir() : le
     // lecteur pose DEUX DefineButton2 (#317 le casque à gauche, #313
