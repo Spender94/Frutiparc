@@ -106,8 +106,14 @@ body.bureau-frutiz #bureau-coin .mb-right { gap: 0; height: 66px; width: 145px; 
    la coupe et le rang en haut-droite, « NIV n » en bas-gauche, les raccourcis
    en bas-droite) sont remises au gabarit relevé sur le rendu 1:1. */
 /* Arrondi RELEVÉ : le fond atteint son bord gauche dès 1 à 2 px du haut —
-   un rayon de 2, pas les 5 du tiroir mobile. */
-body.bureau-frutiz #bureau-coin .mb-encart { flex: 0 0 45px; border-radius: 2px; }
+   un rayon de 2, pas les 5 du tiroir mobile. Et l'encart a, comme le cadre de
+   la bouille, un LISERÉ INTERNE plus sombre qui lui donne son relief :
+   mesuré `#97AD80` sur le bord gauche (x 84) et `#A2AF94` en haut (y 7),
+   juste à l'intérieur des 2 px de `#DDDDDD`. */
+body.bureau-frutiz #bureau-coin .mb-encart {
+  flex: 0 0 45px; border-radius: 2px;
+  box-shadow: inset 0 0 0 1px #97AD80, 0 0 0 2px #DDDDDD;
+}
 /* Les 9 barres de progression, au relevé 1:1 (colonne x=90 du rendu) : des
    barres de **2 px séparées de 1 px**, de y 9 à 35 (9×2 + 8×1 = 26), larges
    de 27 (x 86..113) — pas les filets de 1 px du tiroir mobile. Vide
@@ -123,7 +129,11 @@ body.bureau-frutiz #bureau-coin .enc-progress {
 }
 body.bureau-frutiz #bureau-coin .enc-progress i { height: 2px; background: #A2EB56; }
 body.bureau-frutiz #bureau-coin .enc-progress i::before { background: #73B01E; }
-body.bureau-frutiz #bureau-coin .enc-trophy { top: 3px; height: 17px; gap: 2px; }
+/* La coupe et le rang commencent à x 110 dans le rendu d'époque (contre 123
+   au tiroir) : l'espace entre les barres de progression et la colonne de
+   droite est plus serré. Le trait de séparation part du même bord. */
+body.bureau-frutiz #bureau-coin .enc-trophy { left: 25px; top: 3px; height: 17px; gap: 2px; }
+body.bureau-frutiz #bureau-coin .enc-divider { left: 25px; }
 body.bureau-frutiz #bureau-coin .enc-trophy .tro { height: 16px; }
 body.bureau-frutiz #bureau-coin .enc-trophy .val { font-size: 15px; }
 /* « NIV n » : le bloc d'époque va de x 87 à 108 et fait 8 px d'encre (contre
@@ -156,14 +166,18 @@ body.bureau-frutiz #bureau-coin .sc-btn[data-sc="Jeux"] { order: 5; }
    probablement deux couches superposées à l'origine. */
 body.bureau-frutiz #bureau-coin .reflet-niv { right: 0; top: 1px; height: 16px; }
 body.bureau-frutiz #bureau-coin .mb-emotes { flex: 0 0 21px; justify-content: flex-start; }
-/* Chaque émotion est une PLAQUE de 21×21 en `#DDDDDD` (le `butPush` que
-   initEmoteIconList pose autour de l'icône) portant l'image de 17×17 :
-   relevé au pixel, plaque y 51..72, icône 86..102 puis 4 px de gris avant la
-   suivante — les plaques se touchent, d'où la bande grise continue. C'est ce
-   liseré diffus qui manquait. */
+/* Le gris autour d'une émotion est un HALO CIRCULAIRE, pas une plaque : la
+   carte de gris relevée sur le rendu (x 82..111, y 49..74) dessine un anneau
+   qui épouse le disque et s'éteint vers le blanc en 3 à 4 px — au-dessus et
+   au-dessous des disques, le fond reste BLANC. C'est une lueur portée par la
+   forme ronde de l'icône, que `drop-shadow` reproduit exactement puisqu'il
+   suit son canal alpha. */
 body.bureau-frutiz #bureau-coin .mb-emotes { gap: 0; }
 body.bureau-frutiz #bureau-coin .em-btn {
-  flex: 0 0 21px; padding: 0; background: #DDDDDD;
+  flex: 0 0 21px; padding: 0; background: transparent;
+}
+body.bureau-frutiz #bureau-coin .em-btn img {
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, .3));
 }
 body.bureau-frutiz #bureau-coin .em-btn img { width: 17px; max-width: 17px; height: 17px; }
 /* L'ORDRE d'époque (bande #102, images 1 à 7 = setEmote 0 à 6) : le neutre,

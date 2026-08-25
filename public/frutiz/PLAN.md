@@ -203,15 +203,22 @@ bureau sous la barre et sa rangée d'onglets : recal borne les fenêtres LÀ.
     (`verdana_10pt_st`, police #602), déjà extraite pour les jeux ;
   • les RACCOURCIS tiennent haut (bloc y 26..47) et dans CET ordre :
     l'aide, le forum, le courrier, l'historique, les événements, les jeux ;
+  • la COUPE, le rang et le trait de séparation commencent à x 110 (contre
+    123 au tiroir) : la colonne de droite est plus près des barres ;
+  • l'encart porte, comme le cadre de la bouille, un LISERÉ INTERNE plus
+    sombre qui fait son relief — `#97AD80` au bord gauche (x 84), `#A2AF94`
+    en haut (y 7), juste à l'intérieur des 2 px de `#DDDDDD` ;
   • le REFLET est une tache douce au coin haut-droit, centrée vers (222, 11)
     sur ~15×8 — l'image est bien celle du SWF (forme #409, blanc à 50 %),
     mais le rendu Flash y monte jusqu'au blanc PUR : il y a probablement
     deux couches superposées à l'origine, à revoir à l'extraction.
-- **Les ÉMOTIONS** (`initEmoteIconList` 0x6b6a4) : chacune est un `butPush`
-  qui porte une PLAQUE de 21×21 en `#DDDDDD` avec l'image 17×17 au milieu
-  (relevé : plaque y 51..72, icône x 86..102, puis 4 px de gris avant la
-  suivante — les plaques se touchent, d'où la bande grise continue ; c'est ce
-  liseré qui donne le « contour diffus »). L'art est la bande #102, sept
+- **Les ÉMOTIONS** (`initEmoteIconList` 0x6b6a4) : le gris autour d'une
+  émotion n'est PAS une plaque carrée — la carte de gris relevée sur le rendu
+  (x 82..111, y 49..74) dessine un **halo CIRCULAIRE** qui épouse le disque
+  et s'éteint vers le blanc en 3 à 4 px ; au-dessus et au-dessous des disques
+  le fond reste BLANC. C'est une lueur portée par la forme ronde de l'icône
+  (profil mesuré à mi-hauteur : blanc, puis deux pixels à ~221, puis le bord
+  du disque à 87). L'art est la bande #102, sept
   images en BITMAP 17×17 (#88, #90, #92, #94, #96, #98, #100) dans CET
   ordre : le neutre, la colère, la tristesse, le sourire, le rire à pleines
   dents, le rictus, le rire aux éclats — `setEmote(0..6)`. Le tiroir mobile
