@@ -1018,6 +1018,11 @@ body.bureau-frutiz .fen #chat-panel #messages .msg.system { font-size: 12px; col
 body.bureau-frutiz .fen #topbar.en-rangee {
   flex: 0 0 24px; flex-direction: row; justify-content: flex-start;
   width: max-content; height: 24px; padding: 2px 0 0; gap: 6px;
+  /* `align-items: center` vient du mode COLONNE, où il centre les gélules en
+     largeur. Couché, il les centrerait en HAUTEUR dans les 24 px et les
+     descendrait d'un pixel : le relevé les veut à 2 px du haut, contour
+     compris, comme dans la colonne. */
+  align-items: flex-start;
 }
 
 /* LES FEUTRES — les dessins du SWF, pas une peinture. Chaque feutre est le
@@ -1115,8 +1120,22 @@ body.bureau-frutiz .fen #chat-panel #pen-bar .pen-swatch.mc.sel:hover {
 body.bureau-frutiz .fen #chat-panel #bouille-overlay {
   position: static; width: 100px; flex: 0 0 100px; display: none;
   align-self: stretch; background: transparent; border: 0; border-radius: 0;
-  box-shadow: none; overflow: hidden auto; scrollbar-width: none;
-  margin: 0 6px 0 0; padding: 0;
+  box-shadow: none;
+  /* Rien ne ROGNE ici. Le contour `#DDDDDD` d'un écran est peint HORS de sa
+     boîte (2 px, comme celui d'une gélule) : un `overflow` sur la colonne le
+     mangeait des quatre côtés — d'où des écrans qui semblaient collés à la
+     rangée et au fil. Le relevé le veut bien là : ligne y=400, `#DDDDDD` en
+     427..428 puis l'anneau `#888888` en 429. La colonne n'a de toute façon
+     jamais à défiler : `max = floor(hauteur / (taille + écart))` décide du
+     nombre d'écrans AVANT de les poser, et l'aquarium, lui, rogne dans
+     l'écran (c'est là que les bouilles entrent par la gauche). */
+  overflow: visible;
+  /* Quatre px sous la rangée d'icônes : les contours (2 px de chaque côté)
+     s'y logent et il reste 2 px de blanc — le MÊME écart que le cadre « w »
+     de `margin.left` met entre deux gélules de la colonne. Relevé d'époque,
+     colonne x=440 : contour du bouton 315..316, blanc 317..318, contour de
+     l'écran 319..320, anneau #888888 en 321, dessin en 322. */
+  margin: 4px 6px 0 0; padding: 0;
   /* Sur mobile la zone est une SURIMPRESSION du fil : elle laisse passer la
      souris pour qu'on puisse lire dessous. Ici c'est un panneau à part, et
      chaque écran est un BOUTON — `cp.FrutiScreen` branche `onRollOver`,
@@ -1127,9 +1146,6 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay .bo-ecran { cursor: pointer
 /* …sauf la scène de l'émotion, qui joue DANS l'écran : son iframe avalerait
    le clic destiné à la fiche. */
 body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-stage { pointer-events: none; }
-/* Aucune barre de défilement : `size = width`, et une barre qui mangerait la
-   largeur ferait changer le nombre d'écrans qui tiennent. */
-body.bureau-frutiz .fen #chat-panel #bouille-overlay::-webkit-scrollbar { display: none; }
 body.bureau-frutiz .fen #chat-panel.bouilles-ouvertes #bouille-overlay {
   display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start;
 }
@@ -1217,7 +1233,11 @@ body.bureau-frutiz .bo-tip {
   position: fixed; z-index: 60; display: none; pointer-events: none;
   box-sizing: content-box; width: 104px; padding: 0 3px;
   background: linear-gradient(rgba(255, 255, 255, .72), rgba(255, 255, 255, 0) 9px), #CCF599;
-  border: 1px solid #ADE76B; border-radius: 1px;
+  /* 2 px, et non 1 : le rayon d'une ombre à écart n'est `rayon + écart` que
+     si le rayon ATTEINT l'écart ; en dessous, la spec le rabote —
+     `r + s(1 + (r/s − 1)³)`. Avec r = 1 et s = 5 le coin extérieur ne faisait
+     que 3,4 px au lieu des 6 du relevé ; avec r = 2 il tombe à 5,9. */
+  border: 1px solid #ADE76B; border-radius: 2px;
   /* Et une OMBRE PORTÉE sous le tout : le relevé la donne noire, à ~.20
      contre le liseré et éteinte 4 px plus loin, un peu plus marquée sous la
      bulle que sur ses flancs (d'où le pixel de décalage). */
@@ -1257,7 +1277,9 @@ body.bureau-frutiz .fen #chat-panel #bouille-overlay #bouille-overlay-stage ifra
    La liste du light garde ses nœuds et ses clics, elle change d'habits. */
 body.bureau-frutiz .fen #chat-panel #users-drawer {
   position: static; transform: none; width: 122px;
-  margin: 0 0 0 6px; box-shadow: none;
+  /* Le relevé donne 4 px de blanc entre la boîte et le cadre de la fenêtre,
+     et le light y était exactement ; deux px de plus à la demande. */
+  margin: 0 2px 0 6px; box-shadow: none;
   background: transparent; border: 0; border-radius: 0;
   display: none; height: auto; min-height: 0; padding: 0; gap: 4px;
 }
